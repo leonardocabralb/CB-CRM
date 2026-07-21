@@ -42,3 +42,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# --- CB Advogados (customizacoes do fork) ---
+# Config local do Claude Code (launch.json p/ subir o dev server, settings locais)
+.claude/
