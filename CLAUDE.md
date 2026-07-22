@@ -104,11 +104,32 @@ git merge upstream/main            # fast-forward, sem conflito
 git push origin main               # backup no nosso fork
 git checkout cb-advogados
 git merge main                     # aqui podem surgir conflitos (resolver)
+
+node scripts/i18n-parity.mjs       # ⚠️ OBRIGATÓRIO — ver abaixo
+npm run typecheck && npm run test
+
 git push origin cb-advogados
 ```
 
+⚠️ **Rodar `scripts/i18n-parity.mjs` depois de todo merge do upstream.** Se o
+upstream adicionou chave nova em `messages/en.json`, ela **precisa** entrar no
+`pt-BR.json` no mesmo merge: o fallback do next-intl é por arquivo, não por
+chave, então chave faltando vira `MISSING_MESSAGE` e aparece crua na tela do
+usuário. O script sai com código 1 nesse caso. Ele reporta erro de parse ICU
+apenas como *aviso* — de propósito, porque isso quase nunca é bug de verdade
+(ver seção i18n).
+
 Conflitos só ocorrem quando o original e nós editamos **a mesma linha do mesmo
 arquivo** — por isso preferir módulos novos a reescrever o core.
+
+**Onde já divergimos do upstream** (checar a cada merge com
+`git diff --stat upstream/main cb-advogados`): `messages/en.json` é o campo de
+batalha — o upstream mexe nele a cada feature e nós temos tradução por cima.
+Também são nossos: `messages/pt-BR.json`, `CLAUDE.md`, `.gitignore`,
+`scripts/`, `supabase/migrations/900_*` e os componentes que
+internacionalizamos (o upstream tem string literal onde nós temos `t('chave')`
+— ao resolver, manter a nossa forma e levar o texto novo dele para os **dois**
+dicionários).
 
 ## Branches — criação e nomenclatura
 
