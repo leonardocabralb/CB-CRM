@@ -69,8 +69,8 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API.
   tipos compartilhados.
 - `supabase/migrations/` — migrations SQL (ver seção própria). **Não há
   `config.toml`** — a CLI do Supabase ainda não está linkada neste repo.
-- `messages/` — traduções i18n. Hoje só `en.json`; PT-BR provavelmente será
-  adicionado para o CB Advogados.
+- `messages/` — dicionários i18n: `en.json` (referência), `pt-BR.json` (o que o
+  app usa hoje) e `ko.json` (veio do upstream, não usamos). Ver seção "i18n".
 - `mcp-server/` — subprojeto separado (tem `package.json` próprio) que expõe o
   CRM via MCP. Rodar `npm` dentro dele, não na raiz.
 - `docs/` — `mcp.md`, `public-api.md`. A doc completa de self-host vive em
@@ -135,6 +135,42 @@ arquivo** — por isso preferir módulos novos a reescrever o core.
   editor de tabelas da UI (causa drift).
 - **Nunca renomear nem renumerar** migration já aplicada.
 - Antes de criar nova, **validar drift** entre local e o projeto Supabase.
+
+## i18n (armadilhas que já morderam)
+
+O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
+(hoje `pt-BR`). `src/i18n/request.ts` importa `messages/<locale>.json`.
+
+- ⚠️ **O fallback é por ARQUIVO, não por chave.** Se `pt-BR.json` existe mas
+  falta uma chave, o app **não** cai para o inglês — ele dispara
+  `MISSING_MESSAGE` e mostra a chave crua na tela. Portanto: **ao adicionar
+  qualquer chave em `en.json`, adicione no `pt-BR.json` na mesma passada.**
+  Conferir com paridade de chaves antes de commitar.
+- ⚠️ **`t('chave')` sem `values` NÃO parseia ICU** — devolve a string crua.
+  Erro `INVALID_TAG`/`MALFORMED_ARGUMENT` no console **não significa** tela
+  quebrada: pode ser só ruído de log, com a renderização correta. Já
+  removemos um `<strong>` que funcionava por confiar no log (commit `4e8f2c6`,
+  revertido em `22b6d4f`). **Antes de "consertar" uma mensagem, compare o que
+  `t()` devolve antes e depois.**
+- Só **`t.rich(...)`** falha de forma visível (mostra o caminho da chave). Tags
+  de rich text no dicionário **não podem ter atributos** (`<code>` sim,
+  `<code className="...">` não) — o atributo vem do handler no componente.
+- Rótulos que o operador vê **em inglês no painel da Meta** (`Phone Number ID`,
+  `Access Token`, `Verify Token`, `Webhook Callback URL`) **não se traduzem** —
+  traduzir torna as instruções de configuração inúteis.
+- Chaves ICU literais (`{{1}}`, `{{name}}`, JSON de exemplo) precisam de aspas
+  simples (`'{{1}}'`) para silenciar o log — mas isso é cosmético, a saída é a
+  mesma.
+- Datas/moeda: usar `toLocaleDateString(undefined, ...)`, **nunca** locale fixo
+  (`'en-US'`), senão a data sai em inglês com o app em português.
+- ⚠️ Coluna Postgres `DATE` (ex.: `expected_close_date`) chega como
+  `"2026-05-18"`, e `new Date()` interpreta isso como **meia-noite UTC** — no
+  Brasil retrocede um dia. Concatenar `T00:00:00` antes de parsear.
+- **Achar texto da UI no código:** `node scripts/i18n-find.mjs "<texto>"` — faz
+  os dois saltos (texto → chave → componente), já que buscar o texto em
+  português só encontra o dicionário.
+- Há ~11 componentes com texto **fixo em inglês**, sem i18n (o upstream os
+  adicionou assim). Eles não passam pelo dicionário.
 
 ## Deploy
 
