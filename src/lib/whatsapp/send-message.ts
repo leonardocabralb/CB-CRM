@@ -40,6 +40,7 @@ import {
   toEvolutionNumber,
   type ProviderMessageRef,
 } from '@/lib/whatsapp/transport';
+import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import {
   sanitizePhoneForMeta,
@@ -252,14 +253,15 @@ export async function sendMessageToConversation(
     );
   }
 
-  // WhatsApp config, account-scoped.
-  const { data: config, error: configError } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', accountId)
-    .single();
+  // Which number (channel) this conversation replies through. Resolves
+  // the conversation's channel → the account default → whatsapp_config
+  // fallback. Field names mirror whatsapp_config so the branches below
+  // read the same. Behaviour is unchanged while only the default channel
+  // exists (every conversation.channel_id is NULL → the default, which
+  // the 901 backfill mirrored from whatsapp_config).
+  const channel = await resolveChannelForConversation(db, accountId, conversation);
 
-  if (configError || !config) {
+  if (!channel) {
     throw new SendMessageError(
       'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',
@@ -267,17 +269,30 @@ export async function sendMessageToConversation(
     );
   }
 
-  const provider: 'meta' | 'evolution' =
-    config.provider === 'evolution' ? 'evolution' : 'meta';
+  const provider = channel.provider;
+
+  if (provider === 'meta' && (!channel.phone_number_id || !channel.access_token)) {
+    throw new SendMessageError(
+      'whatsapp_not_configured',
+      'WhatsApp (Meta) connection is incomplete — reconfigure it in Settings.',
+      400
+    );
+  }
 
   // Meta keeps its token in access_token; Evolution its instance key in
-  // api_key. Only the Meta path decrypts here (and self-heals legacy CBC).
-  const accessToken = provider === 'meta' ? decrypt(config.access_token) : '';
-  if (provider === 'meta' && isLegacyFormat(config.access_token)) {
+  // api_key. Only the Meta path decrypts here (and self-heals legacy CBC —
+  // only for the whatsapp_config fallback; channels are GCM from creation).
+  const accessToken = provider === 'meta' ? decrypt(channel.access_token!) : '';
+  if (
+    provider === 'meta' &&
+    channel.source === 'whatsapp_config' &&
+    channel.legacyConfigId &&
+    isLegacyFormat(channel.access_token!)
+  ) {
     void db
       .from('whatsapp_config')
       .update({ access_token: encrypt(accessToken) })
-      .eq('id', config.id)
+      .eq('id', channel.legacyConfigId)
       .then(({ error }: { error: { message: string } | null }) => {
         if (error) {
           console.warn(
@@ -361,7 +376,7 @@ export async function sendMessageToConversation(
         400
       );
     }
-    if (!config.base_url || !config.instance_name || !config.api_key) {
+    if (!channel.base_url || !channel.instance_name || !channel.api_key) {
       throw new SendMessageError(
         'whatsapp_not_configured',
         'Evolution connection is incomplete — reconnect WhatsApp in Settings.',
@@ -370,9 +385,9 @@ export async function sendMessageToConversation(
     }
     const transport = getTransport({
       provider: 'evolution',
-      baseUrl: config.base_url,
-      instance: config.instance_name,
-      apikey: decrypt(config.api_key),
+      baseUrl: channel.base_url,
+      instance: channel.instance_name,
+      apikey: decrypt(channel.api_key),
     });
     try {
       const res = isMediaKind
@@ -405,7 +420,7 @@ export async function sendMessageToConversation(
     const attempt = async (phone: string): Promise<string> => {
       if (messageType === 'template') {
         const result = await sendTemplateMessage({
-          phoneNumberId: config.phone_number_id,
+          phoneNumberId: channel.phone_number_id,
           accessToken,
           to: phone,
           templateName: templateName!,
@@ -419,7 +434,7 @@ export async function sendMessageToConversation(
       }
       if (isMediaKind) {
         const result = await sendMediaMessage({
-          phoneNumberId: config.phone_number_id,
+          phoneNumberId: channel.phone_number_id,
           accessToken,
           to: phone,
           kind: messageType as MediaKind,
@@ -434,7 +449,7 @@ export async function sendMessageToConversation(
         const p = interactivePayload!;
         if (p.kind === 'buttons') {
           const result = await sendInteractiveButtons({
-            phoneNumberId: config.phone_number_id,
+            phoneNumberId: channel.phone_number_id,
             accessToken,
             to: phone,
             bodyText: p.body,
@@ -446,7 +461,7 @@ export async function sendMessageToConversation(
           return result.messageId;
         }
         const result = await sendInteractiveList({
-          phoneNumberId: config.phone_number_id,
+          phoneNumberId: channel.phone_number_id,
           accessToken,
           to: phone,
           bodyText: p.body,
@@ -459,7 +474,7 @@ export async function sendMessageToConversation(
         return result.messageId;
       }
       const result = await sendTextMessage({
-        phoneNumberId: config.phone_number_id,
+        phoneNumberId: channel.phone_number_id,
         accessToken,
         to: phone,
         text: contentText!,
