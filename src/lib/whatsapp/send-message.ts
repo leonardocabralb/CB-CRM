@@ -35,6 +35,11 @@ import {
   type InteractiveMessagePayload,
 } from '@/lib/whatsapp/interactive';
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
+import {
+  getTransport,
+  toEvolutionNumber,
+  type ProviderMessageRef,
+} from '@/lib/whatsapp/transport';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import {
   sanitizePhoneForMeta,
@@ -262,10 +267,13 @@ export async function sendMessageToConversation(
     );
   }
 
-  const accessToken = decrypt(config.access_token);
+  const provider: 'meta' | 'evolution' =
+    config.provider === 'evolution' ? 'evolution' : 'meta';
 
-  // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
-  if (isLegacyFormat(config.access_token)) {
+  // Meta keeps its token in access_token; Evolution its instance key in
+  // api_key. Only the Meta path decrypts here (and self-heals legacy CBC).
+  const accessToken = provider === 'meta' ? decrypt(config.access_token) : '';
+  if (provider === 'meta' && isLegacyFormat(config.access_token)) {
     void db
       .from('whatsapp_config')
       .update({ access_token: encrypt(accessToken) })
@@ -284,10 +292,11 @@ export async function sendMessageToConversation(
   // belong to this same conversation — otherwise a caller could quote
   // messages they can't see by guessing UUIDs.
   let contextMessageId: string | undefined;
+  let evolutionQuoted: ProviderMessageRef | undefined;
   if (replyToMessageId) {
     const { data: parent, error: parentError } = await db
       .from('messages')
-      .select('message_id, conversation_id')
+      .select('message_id, conversation_id, remote_jid, from_me')
       .eq('id', replyToMessageId)
       .eq('conversation_id', conversationId)
       .maybeSingle();
@@ -301,10 +310,16 @@ export async function sendMessageToConversation(
     }
     if (!parent.message_id) {
       console.warn(
-        '[send-message] reply target has no Meta message_id; sending without context'
+        '[send-message] reply target has no provider message id; sending without context'
       );
     } else {
       contextMessageId = parent.message_id;
+      // Evolution needs the whole Baileys key to quote; Meta uses just the id.
+      evolutionQuoted = {
+        id: parent.message_id,
+        remoteJid: parent.remote_jid ?? undefined,
+        fromMe: parent.from_me ?? undefined,
+      };
     }
   }
 
@@ -329,115 +344,172 @@ export async function sendMessageToConversation(
     templateRow = data ?? null;
   }
 
-  const attempt = async (phone: string): Promise<string> => {
-    if (messageType === 'template') {
-      const result = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
-        to: phone,
-        templateName: templateName!,
-        language: templateLanguage || 'en_US',
-        template: templateRow ?? undefined,
-        messageParams: templateMessageParams ?? undefined,
-        params: templateParams || [],
-        contextMessageId,
-      });
-      return result.messageId;
+  let waMessageId = '';
+  let workingPhone = sanitizedPhone;
+  // For Evolution rows: the recipient JID, persisted so reactions/replies
+  // can rebuild the Baileys key later. NULL for Meta.
+  let outboundRemoteJid: string | null = null;
+
+  if (provider === 'evolution') {
+    // Evolution/Baileys has no HSM templates and unreliable native
+    // buttons/lists — both are rejected up front until they degrade to
+    // plain text in a later pass. Text + media are the reply MVP.
+    if (messageType === 'template' || messageType === 'interactive') {
+      throw new SendMessageError(
+        'not_supported',
+        'Templates and interactive messages are not supported on the Evolution transport yet.',
+        400
+      );
     }
-    if (isMediaKind) {
-      const result = await sendMediaMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
-        to: phone,
-        kind: messageType as MediaKind,
-        link: mediaUrl!,
-        caption: contentText || undefined,
-        filename: filename || undefined,
-        contextMessageId,
-      });
-      return result.messageId;
+    if (!config.base_url || !config.instance_name || !config.api_key) {
+      throw new SendMessageError(
+        'whatsapp_not_configured',
+        'Evolution connection is incomplete — reconnect WhatsApp in Settings.',
+        400
+      );
     }
-    if (messageType === 'interactive') {
-      const p = interactivePayload!;
-      if (p.kind === 'buttons') {
-        const result = await sendInteractiveButtons({
+    const transport = getTransport({
+      provider: 'evolution',
+      baseUrl: config.base_url,
+      instance: config.instance_name,
+      apikey: decrypt(config.api_key),
+    });
+    try {
+      const res = isMediaKind
+        ? await transport.sendMedia({
+            to: sanitizedPhone,
+            kind: messageType as MediaKind,
+            media: mediaUrl!,
+            caption: contentText || undefined,
+            filename: filename || undefined,
+            quoted: evolutionQuoted,
+          })
+        : await transport.sendText({
+            to: sanitizedPhone,
+            text: contentText!,
+            quoted: evolutionQuoted,
+          });
+      waMessageId = res.providerMessageId;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unknown Evolution error';
+      console.error('[send-message] Evolution send failed:', message);
+      throw new SendMessageError(
+        'evolution_error',
+        `Evolution API error: ${message}`,
+        502
+      );
+    }
+    outboundRemoteJid = `${toEvolutionNumber(sanitizedPhone)}@s.whatsapp.net`;
+  } else {
+    const attempt = async (phone: string): Promise<string> => {
+      if (messageType === 'template') {
+        const result = await sendTemplateMessage({
           phoneNumberId: config.phone_number_id,
           accessToken,
           to: phone,
-          bodyText: p.body,
-          headerText: p.header || undefined,
-          footerText: p.footer || undefined,
-          buttons: p.buttons,
+          templateName: templateName!,
+          language: templateLanguage || 'en_US',
+          template: templateRow ?? undefined,
+          messageParams: templateMessageParams ?? undefined,
+          params: templateParams || [],
           contextMessageId,
         });
         return result.messageId;
       }
-      const result = await sendInteractiveList({
+      if (isMediaKind) {
+        const result = await sendMediaMessage({
+          phoneNumberId: config.phone_number_id,
+          accessToken,
+          to: phone,
+          kind: messageType as MediaKind,
+          link: mediaUrl!,
+          caption: contentText || undefined,
+          filename: filename || undefined,
+          contextMessageId,
+        });
+        return result.messageId;
+      }
+      if (messageType === 'interactive') {
+        const p = interactivePayload!;
+        if (p.kind === 'buttons') {
+          const result = await sendInteractiveButtons({
+            phoneNumberId: config.phone_number_id,
+            accessToken,
+            to: phone,
+            bodyText: p.body,
+            headerText: p.header || undefined,
+            footerText: p.footer || undefined,
+            buttons: p.buttons,
+            contextMessageId,
+          });
+          return result.messageId;
+        }
+        const result = await sendInteractiveList({
+          phoneNumberId: config.phone_number_id,
+          accessToken,
+          to: phone,
+          bodyText: p.body,
+          buttonLabel: p.button_label,
+          headerText: p.header || undefined,
+          footerText: p.footer || undefined,
+          sections: p.sections,
+          contextMessageId,
+        });
+        return result.messageId;
+      }
+      const result = await sendTextMessage({
         phoneNumberId: config.phone_number_id,
         accessToken,
         to: phone,
-        bodyText: p.body,
-        buttonLabel: p.button_label,
-        headerText: p.header || undefined,
-        footerText: p.footer || undefined,
-        sections: p.sections,
+        text: contentText!,
         contextMessageId,
       });
       return result.messageId;
-    }
-    const result = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
-      to: phone,
-      text: contentText!,
-      contextMessageId,
-    });
-    return result.messageId;
-  };
+    };
 
-  // Send via Meta — retry across phone-number variants if Meta rejects
-  // with "recipient not in allowed list"; persist a working variant
-  // back to the contact so the next send goes straight through.
-  let waMessageId = '';
-  let workingPhone = sanitizedPhone;
-  try {
-    const variants = phoneVariants(sanitizedPhone);
-    let lastError: unknown = null;
+    // Send via Meta — retry across phone-number variants if Meta rejects
+    // with "recipient not in allowed list"; persist a working variant
+    // back to the contact so the next send goes straight through.
+    try {
+      const variants = phoneVariants(sanitizedPhone);
+      let lastError: unknown = null;
 
-    for (const variant of variants) {
-      try {
-        waMessageId = await attempt(variant);
-        workingPhone = variant;
-        lastError = null;
-        break;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (!isRecipientNotAllowedError(message)) {
-          throw err;
+      for (const variant of variants) {
+        try {
+          waMessageId = await attempt(variant);
+          workingPhone = variant;
+          lastError = null;
+          break;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!isRecipientNotAllowedError(message)) {
+            throw err;
+          }
+          lastError = err;
+          console.warn(
+            `[send-message] variant "${variant}" rejected by Meta, trying next…`
+          );
         }
-        lastError = err;
-        console.warn(
-          `[send-message] variant "${variant}" rejected by Meta, trying next…`
-        );
       }
+
+      if (lastError) throw lastError;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unknown Meta API error';
+      console.error('[send-message] Meta send failed for all variants:', message);
+      throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
     }
 
-    if (lastError) throw lastError;
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : 'Unknown Meta API error';
-    console.error('[send-message] Meta send failed for all variants:', message);
-    throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
-  }
-
-  if (workingPhone !== sanitizedPhone) {
-    console.log(
-      `[send-message] Auto-corrected contact phone: ${sanitizedPhone} → ${workingPhone}`
-    );
-    await db
-      .from('contacts')
-      .update({ phone: workingPhone })
-      .eq('id', contact.id);
+    if (workingPhone !== sanitizedPhone) {
+      console.log(
+        `[send-message] Auto-corrected contact phone: ${sanitizedPhone} → ${workingPhone}`
+      );
+      await db
+        .from('contacts')
+        .update({ phone: workingPhone })
+        .eq('id', contact.id);
+    }
   }
 
   // Persist the sent message. Field names MUST match the messages
@@ -460,6 +532,9 @@ export async function sendMessageToConversation(
       interactive_payload:
         messageType === 'interactive' ? interactivePayload : null,
       message_id: waMessageId,
+      // Baileys key parts — only meaningful for Evolution (NULL for Meta).
+      remote_jid: outboundRemoteJid,
+      from_me: provider === 'evolution' ? true : null,
       status: 'sent',
       reply_to_message_id: replyToMessageId || null,
     })
