@@ -26,8 +26,9 @@ concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: true
 
+# GHCR image names must be lowercase; the repo is leonardocabralb/CB-CRM.
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
+  IMAGE: ghcr.io/leonardocabralb/cb-crm
 
 jobs:
   build-and-deploy:

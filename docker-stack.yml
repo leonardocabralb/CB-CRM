@@ -1,7 +1,22 @@
+# ============================================================
+# Docker Swarm stack for the CRM, fronted by the existing Traefik.
+#
+# First deploy (on the VPS):
+#   set -a && source crm.env && set +a
+#   docker stack deploy -c docker-stack.yml crm
+#
+# Values below match THIS VPS's Traefik (confirmed via SSH), mirroring the
+# working Evolution service: overlay network `CBAdvNet`, entrypoint
+# `websecure` (:443, with :80->:443 redirect), cert resolver
+# `letsencryptresolver`. Traefik issues the TLS cert automatically once
+# crm.cbadvogados.com's DNS points at the VPS.
+# ============================================================
+
 services:
   crm:
-    # Image built + pushed by CI (see .github/workflows/deploy.yml).
-    image: ${CRM_IMAGE:-ghcr.io/slvgabriels/cb-crm:latest}
+    # Built + pushed by CI (see .github/workflows/deploy.yml). Override the
+    # tag at deploy time with CRM_IMAGE=ghcr.io/leonardocabralb/cb-crm:<sha>.
+    image: ${CRM_IMAGE:-ghcr.io/leonardocabralb/cb-crm:latest}
     environment:
       # NEXT_PUBLIC_* are also read server-side at runtime; keep them here.
       NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
@@ -17,7 +32,7 @@ services:
       # Evolution inbound-webhook shared secret (set when the webhook lands).
       EVOLUTION_WEBHOOK_SECRET: ${EVOLUTION_WEBHOOK_SECRET:-}
     networks:
-      - traefik-public # (1) NETWORK — must match Traefik's attachable overlay
+      - CBAdvNet
     deploy:
       replicas: 1
       restart_policy:
@@ -27,13 +42,14 @@ services:
         failure_action: rollback
       labels:
         - traefik.enable=true
-        - traefik.docker.network=traefik-public # (1) same network as above
+        - traefik.docker.network=CBAdvNet
         - traefik.http.routers.crm.rule=Host(`crm.cbadvogados.com`)
-        - traefik.http.routers.crm.entrypoints=websecure # (2) ENTRYPOINT (often websecure/https)
-        - traefik.http.routers.crm.tls=true
-        - traefik.http.routers.crm.tls.certresolver=letsencrypt # (3) CERTRESOLVER name
+        - traefik.http.routers.crm.entrypoints=websecure
+        - traefik.http.routers.crm.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.crm.service=crm
         - traefik.http.services.crm.loadbalancer.server.port=3000
+        - traefik.http.services.crm.loadbalancer.passHostHeader=true
 
 networks:
-  traefik-public:
-    external: true # created already by the Traefik stack; do not recreate
+  CBAdvNet:
+    external: true # the overlay Traefik + Evolution already share
