@@ -13,7 +13,16 @@ interface DealCardProps {
 }
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-US", {
+  // `expected_close_date` is a Postgres DATE, so PostgREST sends it as a
+  // date-only string ("2026-05-18"). `new Date()` parses that as UTC
+  // midnight, which lands on the previous day in any negative-offset
+  // timezone — the whole of Brazil. Appending a time makes the spec parse
+  // it as local midnight instead. Timestamps that already carry a time are
+  // left untouched.
+  const local = /^\d{4}-\d{2}-\d{2}$/.test(dateStr)
+    ? `${dateStr}T00:00:00`
+    : dateStr;
+  return new Date(local).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
