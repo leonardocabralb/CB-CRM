@@ -269,12 +269,22 @@ export interface MessageReaction {
 export interface WhatsAppConfig {
   id: string;
   user_id: string;
-  phone_number_id: string;
-  waba_id?: string;
-  access_token: string;
-  verify_token?: string;
+  /**
+   * Which transport backs this connection (migration 037). 'meta' rows
+   * carry phone_number_id + access_token; 'evolution' rows carry
+   * base_url + instance_name + api_key. A CHECK enforces the pairing.
+   */
+  provider: 'meta' | 'evolution';
   status: 'connected' | 'disconnected';
   connected_at?: string;
+
+  // --- Meta Cloud API fields (provider = 'meta') -------------
+  /** Nullable since 037 — only present on Meta rows. */
+  phone_number_id?: string;
+  waba_id?: string;
+  /** Encrypted Meta token. Nullable since 037 — only on Meta rows. */
+  access_token?: string;
+  verify_token?: string;
   /**
    * Set when POST /{phone_number_id}/register last succeeded. NULL
    * means the number was saved but never actually subscribed for
@@ -285,6 +295,18 @@ export interface WhatsAppConfig {
   subscribed_apps_at?: string;
   /** Last error from /register; cleared on success. */
   last_registration_error?: string;
+
+  // --- Evolution API fields (provider = 'evolution') ---------
+  /** Evolution server origin, e.g. `https://api.cbadvogados.com`. */
+  base_url?: string;
+  /** Evolution instance name (also the inbound-routing key). */
+  instance_name?: string;
+  /** Encrypted Evolution instance apikey (the instance `hash`/token). */
+  api_key?: string;
+  /** Baileys connection state from the last poll / connection.update. */
+  instance_state?: 'open' | 'connecting' | 'close';
+  last_connected_at?: string;
+  last_connection_error?: string;
 }
 
 // Raw Meta status enum. We persist this verbatim from Meta (sync + webhook)

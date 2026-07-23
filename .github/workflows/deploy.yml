@@ -1,0 +1,85 @@
+# ============================================================
+# Build the CRM image, push to GHCR, and roll it out on the VPS Swarm.
+#
+# Runs on push to main (after CI passes) or manual dispatch.
+#
+# Required GitHub secrets:
+#   NEXT_PUBLIC_SUPABASE_URL      — inlined into the client bundle at build
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY — inlined into the client bundle at build
+#   VPS_SSH_HOST                  — the VPS host/IP (82.25.76.63)
+#   VPS_SSH_USER                  — SSH user (e.g. root or a deploy user)
+#   VPS_SSH_KEY                   — private key authorized on the VPS
+#
+# Runtime secrets (service-role key, ENCRYPTION_KEY, Evolution creds, …)
+# live on the VPS in crm.env and are NOT needed here — CI only swaps the
+# image; the stack keeps its env. Do the FIRST deploy manually on the VPS
+# (see docs/DEPLOY-VPS.md); this workflow does the rolling updates after.
+# ============================================================
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+# GHCR image names must be lowercase; the repo is leonardocabralb/CB-CRM.
+env:
+  IMAGE: ghcr.io/leonardocabralb/cb-crm
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_SITE_URL=https://crm.cbadvogados.com
+            NEXT_PUBLIC_APP_LOCALE=en
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Roll out on the VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_SSH_HOST }}
+          username: ${{ secrets.VPS_SSH_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            if docker service inspect crm_crm >/dev/null 2>&1; then
+              docker service update \
+                --image ${{ env.IMAGE }}:${{ github.sha }} \
+                --with-registry-auth \
+                crm_crm
+            else
+              echo "Service crm_crm not found yet."
+              echo "Do the one-time manual deploy on the VPS first (see docs/DEPLOY-VPS.md),"
+              echo "then this workflow will roll out updates automatically."
+            fi

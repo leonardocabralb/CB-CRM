@@ -65,6 +65,15 @@ const SECURITY_HEADERS = [
 
 const nextConfig: NextConfig = {
   /**
+   * Standalone output for containerized production (Docker on the VPS).
+   * Emits `.next/standalone/server.js` — a self-contained server that
+   * runs without `node_modules`, so the runtime image stays small. The
+   * `public/` and `.next/static/` folders are copied in by the Dockerfile
+   * (Traefik fronts TLS/CDN, so Next serves static assets directly).
+   */
+  output: "standalone",
+
+  /**
    * Cross-origin dev access (Next.js 16).
    *
    * Next 16 blocks requests to dev-only resources (`/_next/*` internals,
