@@ -1,0 +1,39 @@
+services:
+  crm:
+    # Image built + pushed by CI (see .github/workflows/deploy.yml).
+    image: ${CRM_IMAGE:-ghcr.io/slvgabriels/cb-crm:latest}
+    environment:
+      # NEXT_PUBLIC_* are also read server-side at runtime; keep them here.
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      NEXT_PUBLIC_SITE_URL: https://crm.cbadvogados.com
+      NEXT_PUBLIC_APP_LOCALE: en
+      # Server-only secrets.
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      AUTOMATION_CRON_SECRET: ${AUTOMATION_CRON_SECRET}
+      # Meta secret arrives at the production cutover — optional for now.
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      # Evolution inbound-webhook shared secret (set when the webhook lands).
+      EVOLUTION_WEBHOOK_SECRET: ${EVOLUTION_WEBHOOK_SECRET:-}
+    networks:
+      - traefik-public # (1) NETWORK — must match Traefik's attachable overlay
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      update_config:
+        order: start-first # zero-downtime: new task healthy before old stops
+        failure_action: rollback
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=traefik-public # (1) same network as above
+        - traefik.http.routers.crm.rule=Host(`crm.cbadvogados.com`)
+        - traefik.http.routers.crm.entrypoints=websecure # (2) ENTRYPOINT (often websecure/https)
+        - traefik.http.routers.crm.tls=true
+        - traefik.http.routers.crm.tls.certresolver=letsencrypt # (3) CERTRESOLVER name
+        - traefik.http.services.crm.loadbalancer.server.port=3000
+
+networks:
+  traefik-public:
+    external: true # created already by the Traefik stack; do not recreate

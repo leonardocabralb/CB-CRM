@@ -1,0 +1,25 @@
+# Keep the build context small and secrets out of the image.
+node_modules
+.next
+.git
+.github
+npm-debug.log*
+
+# Never ship env files — runtime config comes from the stack env.
+.env
+.env.*
+!.env.local.example
+!.env.example
+
+# Local/dev cruft
+.claude
+supabase/.temp
+coverage
+*.log
+.DS_Store
+
+# Docs / deploy manifests aren't needed inside the image
+docs
+Dockerfile
+.dockerignore
+docker-stack.yml
