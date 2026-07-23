@@ -72,7 +72,13 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
-            docker service update \
-              --image ${{ env.IMAGE }}:${{ github.sha }} \
-              --with-registry-auth \
-              crm_crm
+            if docker service inspect crm_crm >/dev/null 2>&1; then
+              docker service update \
+                --image ${{ env.IMAGE }}:${{ github.sha }} \
+                --with-registry-auth \
+                crm_crm
+            else
+              echo "Service crm_crm not found yet."
+              echo "Do the one-time manual deploy on the VPS first (see docs/DEPLOY-VPS.md),"
+              echo "then this workflow will roll out updates automatically."
+            fi
