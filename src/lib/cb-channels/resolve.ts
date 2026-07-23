@@ -102,7 +102,7 @@ export async function resolveChannelForConversation(
       .eq('id', channelId)
       .eq('account_id', accountId)
       .maybeSingle();
-    if (data) row = data as ChannelRow;
+    if (data) row = data as unknown as ChannelRow;
   }
 
   // 2. Canal padrão da conta.
@@ -113,7 +113,7 @@ export async function resolveChannelForConversation(
       .eq('account_id', accountId)
       .eq('is_default', true)
       .maybeSingle();
-    if (data) row = data as ChannelRow;
+    if (data) row = data as unknown as ChannelRow;
   }
 
   if (row) return mapChannelRow(row);

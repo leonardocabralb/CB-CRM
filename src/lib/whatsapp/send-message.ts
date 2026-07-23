@@ -420,7 +420,7 @@ export async function sendMessageToConversation(
     const attempt = async (phone: string): Promise<string> => {
       if (messageType === 'template') {
         const result = await sendTemplateMessage({
-          phoneNumberId: channel.phone_number_id,
+          phoneNumberId: channel.phone_number_id!,
           accessToken,
           to: phone,
           templateName: templateName!,
@@ -434,7 +434,7 @@ export async function sendMessageToConversation(
       }
       if (isMediaKind) {
         const result = await sendMediaMessage({
-          phoneNumberId: channel.phone_number_id,
+          phoneNumberId: channel.phone_number_id!,
           accessToken,
           to: phone,
           kind: messageType as MediaKind,
@@ -449,7 +449,7 @@ export async function sendMessageToConversation(
         const p = interactivePayload!;
         if (p.kind === 'buttons') {
           const result = await sendInteractiveButtons({
-            phoneNumberId: channel.phone_number_id,
+            phoneNumberId: channel.phone_number_id!,
             accessToken,
             to: phone,
             bodyText: p.body,
@@ -461,7 +461,7 @@ export async function sendMessageToConversation(
           return result.messageId;
         }
         const result = await sendInteractiveList({
-          phoneNumberId: channel.phone_number_id,
+          phoneNumberId: channel.phone_number_id!,
           accessToken,
           to: phone,
           bodyText: p.body,
@@ -474,7 +474,7 @@ export async function sendMessageToConversation(
         return result.messageId;
       }
       const result = await sendTextMessage({
-        phoneNumberId: channel.phone_number_id,
+        phoneNumberId: channel.phone_number_id!,
         accessToken,
         to: phone,
         text: contentText!,
