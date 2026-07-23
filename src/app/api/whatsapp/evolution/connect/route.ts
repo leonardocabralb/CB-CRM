@@ -52,11 +52,25 @@ export async function POST(request: Request) {
       new URL(request.url).origin;
     const webhookUrl = `${origin}/api/whatsapp/evolution/webhook`;
 
+    // Fetch the existing row first: if this account already has an
+    // Evolution instance (e.g. one paired directly in the manager), adopt
+    // it by name instead of deriving a fresh cbcrm-<accountId>.
+    const { data: existing } = await supabase
+      .from('whatsapp_config')
+      .select('id, provider, instance_name')
+      .eq('account_id', accountId)
+      .maybeSingle();
+    const adoptInstanceName =
+      existing?.provider === 'evolution' && existing.instance_name
+        ? existing.instance_name
+        : undefined;
+
     let result;
     try {
       result = await provisionEvolutionInstance({
         accountId,
         webhook: { url: webhookUrl, secret: webhookSecret },
+        instanceName: adoptInstanceName,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown Evolution error';
@@ -79,12 +93,6 @@ export async function POST(request: Request) {
       last_connected_at: result.state === 'open' ? new Date().toISOString() : null,
       updated_at: new Date().toISOString(),
     };
-
-    const { data: existing } = await supabase
-      .from('whatsapp_config')
-      .select('id')
-      .eq('account_id', accountId)
-      .maybeSingle();
 
     if (existing) {
       const { error } = await supabase

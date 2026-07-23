@@ -76,9 +76,16 @@ function normalizeState(raw?: string): 'open' | 'connecting' | 'close' {
 export async function provisionEvolutionInstance(args: {
   accountId: string;
   webhook: WebhookConfig;
+  /**
+   * Adopt this exact instance instead of deriving `cbcrm-<accountId>`.
+   * Used when a connection already exists (e.g. an instance paired
+   * directly in the Evolution manager) so re-provisioning doesn't spawn
+   * a duplicate.
+   */
+  instanceName?: string;
 }): Promise<ProvisionResult> {
   const { baseUrl, apikey: globalKey } = evolutionGlobalConfig();
-  const instanceName = instanceNameForAccount(args.accountId);
+  const instanceName = args.instanceName ?? instanceNameForAccount(args.accountId);
 
   // The global key can drive any instance's endpoints, so one client
   // (global key + this instance's path) handles every management call.
