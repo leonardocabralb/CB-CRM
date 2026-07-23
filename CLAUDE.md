@@ -31,8 +31,9 @@ por cima, continuando a receber melhorias e correções de bugs do original.
 - **Nunca deduzir nada.** Se faltar informação (rota, schema, regra de negócio,
   intenção), pergunte ou verifique no código/banco. Não inferir requisitos a
   partir de nome de variável ou contexto vago.
-- **Trabalhar sempre em `cb-advogados` (ou branch derivada), nunca no `main`.**
-  Ver seção "Fork + upstream". O `main` é espelho limpo do original.
+- **Trabalhar sempre numa branch derivada de `main`, nunca commitar direto no
+  `main`.** No CB-CRM o `main` é o nosso trunk (não é mais espelho do upstream).
+  Ver seção "Fork + upstream".
 - **Caminho mais simples que cumpre o objetivo.** Sem overengineering: nada de
   abstração para futuro hipotético, nada de fallback para cenário impossível,
   nada de helper de uma chamada só. Três linhas parecidas > abstração prematura.
@@ -83,32 +84,41 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API.
 
 | Remote     | Aponta para                | Papel                                          |
 | ---------- | -------------------------- | ---------------------------------------------- |
-| `origin`   | `leonardocabralb/CB-CRM`   | Nosso fork — para onde fazemos **push**        |
-| `upstream` | `ArnasDon/wacrm`           | Original — de onde só **puxamos** (read-only). **Nunca push.** |
+| `origin`   | `leonardocabralb/CB-CRM`   | Nosso repositório — para onde fazemos **push** e **PRs** |
+| `upstream` | `ArnasDon/wacrm`           | Original — de onde só **puxamos** (read-only). **Nunca push. Nunca PR.** |
 
-| Branch         | Função                                                                      |
-| -------------- | --------------------------------------------------------------------------- |
-| `main`         | **Espelho limpo do original.** NÃO customizar aqui. Só reflete `upstream/main`. |
-| `cb-advogados` | **Branch de trabalho.** Todas as customizações do CB Advogados vivem aqui.  |
+| Branch  | Função                                                                             |
+| ------- | ---------------------------------------------------------------------------------- |
+| `main`  | **Nosso trunk.** Contém todas as customizações do CB Advogados. É de onde saem as branches e para onde elas voltam. (Fica no `origin`/CB-CRM.) |
 
-> **Regra de ouro:** o `main` deve permanecer idêntico ao `upstream/main`. Todo
-> código nosso vai para `cb-advogados` (ou branches derivadas). Isso mantém as
-> atualizações do upstream sem conflito.
+> **Regras de ouro (inegociáveis):**
+>
+> 1. **PRs só para o CB-CRM.** É **estritamente proibido** abrir Pull Request
+>    para qualquer branch do repositório `ArnasDon/wacrm` (upstream). Todo e
+>    qualquer PR tem como alvo **apenas** branches do `leonardocabralb/CB-CRM`.
+> 2. **Branches novas saem só de `main`.** A criação de branch de
+>    desenvolvimento ocorre **única e exclusivamente a partir de `main`**, dentro
+>    do CB-CRM — nunca de outra branch, nunca do upstream.
 
-**Puxar atualizações do original:**
+Este é um **fork definitivo**: `main` deixou de ser espelho do upstream e passou
+a ser o nosso trunk. Ainda incorporamos correções e melhorias do original, mas
+por **merge pontual** (abaixo), não por espelhamento.
+
+**Puxar atualizações do original** (o upstream muda `messages/en.json` e às vezes
+o core, então trate como merge com conflito, não fast-forward):
 
 ```bash
-git fetch upstream                 # busca novidades (não altera nada)
-git checkout main
-git merge upstream/main            # fast-forward, sem conflito
-git push origin main               # backup no nosso fork
-git checkout cb-advogados
-git merge main                     # aqui podem surgir conflitos (resolver)
+git fetch upstream                        # busca novidades (não altera nada)
+git checkout main && git pull origin main
+git checkout -b chore/merge-upstream-AAAA-MM-DD   # branch de integração, a partir de main
+git merge upstream/main                   # conflitos esperados (resolver)
 
-node scripts/i18n-parity.mjs       # ⚠️ OBRIGATÓRIO — ver abaixo
+node scripts/i18n-parity.mjs              # ⚠️ OBRIGATÓRIO — ver abaixo
 npm run typecheck && npm run test
 
-git push origin cb-advogados
+git checkout main
+git merge chore/merge-upstream-AAAA-MM-DD  # traz o merge já resolvido e testado
+git push origin main
 ```
 
 ⚠️ **Rodar `scripts/i18n-parity.mjs` depois de todo merge do upstream.** Se o
@@ -123,22 +133,28 @@ Conflitos só ocorrem quando o original e nós editamos **a mesma linha do mesmo
 arquivo** — por isso preferir módulos novos a reescrever o core.
 
 **Onde já divergimos do upstream** (checar a cada merge com
-`git diff --stat upstream/main cb-advogados`): `messages/en.json` é o campo de
+`git diff --stat upstream/main main`): `messages/en.json` é o campo de
 batalha — o upstream mexe nele a cada feature e nós temos tradução por cima.
 Também são nossos: `messages/pt-BR.json`, `CLAUDE.md`, `.gitignore`,
-`scripts/`, `supabase/migrations/900_*` e os componentes que
-internacionalizamos (o upstream tem string literal onde nós temos `t('chave')`
-— ao resolver, manter a nossa forma e levar o texto novo dele para os **dois**
-dicionários).
+`scripts/`, as migrations `037_evolution_transport.sql` e `900_cb_*`, a
+**integração Evolution API** (`src/lib/whatsapp/transport/`,
+`src/app/api/whatsapp/evolution/`, `src/components/settings/evolution-connect.tsx`,
+`src/lib/whatsapp/inbound-store.ts`), a **infra de deploy** (`Dockerfile`,
+`docker-stack.yml`, `.github/workflows/deploy.yml`, `docs/DEPLOY-VPS.md`) e os
+componentes que internacionalizamos (o upstream tem string literal onde nós temos
+`t('chave')` — ao resolver, manter a nossa forma e levar o texto novo dele para
+os **dois** dicionários).
 
 ## Branches — criação e nomenclatura
 
-- Toda branch nova sai **de `cb-advogados`** (nunca de `main`) e faz merge **de
-  volta para `cb-advogados`**.
+- **Toda branch nova sai única e exclusivamente de `main`** e faz merge **de
+  volta para `main`** (via PR no CB-CRM). Nunca criar branch a partir de outra
+  branch de feature nem do upstream.
 - Nomenclatura: `<tipo>/<descricao-kebab-case>`, com `tipo` ∈
   `feat` · `fix` · `chore` · `docs` · `refactor`. (Mesma convenção do upstream.)
   Ex.: `feat/integracao-processos-tj`, `fix/webhook-duplicado`.
-- `git pull` na `cb-advogados` antes de criar a branch.
+- `git checkout main && git pull origin main` **antes** de criar a branch, para
+  sair do `main` atualizado.
 
 ## Workflow de migrations (Supabase)
 
@@ -149,11 +165,19 @@ dicionários).
   merge. **Nossas migrations próprias usam a faixa reservada `900+`** e prefixo
   `cb_` na descrição: `900_cb_<descricao>.sql`, `901_cb_...`. Assim ficam
   isoladas da numeração do upstream.
+- ⚠️ **Exceção existente:** a integração Evolution criou
+  `037_evolution_transport.sql` na sequência do upstream, não no `900+`. Já está
+  aplicada e no `main` — **não renumerar**. É exceção conhecida; daqui em diante
+  seguir o `900+`. Se o upstream um dia criar um `037_*`, resolver o conflito de
+  número renomeando o **do upstream** no merge, nunca o nosso já aplicado.
 - Criar o arquivo de migration **antes** de aplicar.
-- Aplicar em **ordem numérica** no projeto Supabase — via CLI do Supabase
-  (`supabase db push`, exige `supabase link` antes, ainda não configurado) ou
-  colando os SQL no **SQL Editor** em ordem. **Nunca** editar schema à mão pelo
-  editor de tabelas da UI (causa drift).
+- Aplicar em **ordem numérica** no projeto Supabase. Caminho preferido: o
+  **conector MCP do Supabase** (`apply_migration` / `execute_sql`), que dispensa
+  senha de banco. Alternativa: colar os SQL no **SQL Editor** em ordem. ⚠️ **Não**
+  usar `supabase db push`: a tabela de histórico de migrations do projeto está
+  vazia (as 001–036 do upstream foram aplicadas à mão), então o push tentaria
+  re-aplicar tudo desde a 001. **Nunca** editar schema à mão pelo editor de
+  tabelas da UI (causa drift).
 - **Nunca renomear nem renumerar** migration já aplicada.
 - Antes de criar nova, **validar drift** entre local e o projeto Supabase.
 
@@ -195,12 +219,23 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
 
 ## Deploy
 
-- ⚠️ **Alvo de deploy do CB Advogados ainda não definido** — não deduzir.
-  Confirmar com o operador antes de qualquer ação de deploy.
-- Referência do upstream: recomenda **Hostinger** (Node.js gerenciado; push no
-  `main` builda). Roda em qualquer host Node (Vercel, Railway, VPS).
+- ⚠️⚠️ **`git push origin main` DISPARA DEPLOY DE PRODUÇÃO.** O workflow
+  `.github/workflows/deploy.yml` roda a cada push no `main`: builda a imagem,
+  publica no GHCR (`ghcr.io/leonardocabralb/cb-crm`) e faz rollout no serviço do
+  **Docker Swarm da VPS** (`82.25.76.63` / `vps.cbadvogados.com`), atrás do
+  **Traefik** (TLS Let's Encrypt). **Nunca dar push no `main` sem o operador
+  saber que aquilo vai para produção.**
+- Domínio: `crm.cbadvogados.com`. ⚠️ Em 2026-07-23 o DNS ainda apontava para a
+  Hostinger compartilhada, não para a VPS — o cutover é manual (ver
+  `docs/DEPLOY-VPS.md`, passo 1). Até virar o DNS, o rollout atinge o serviço da
+  VPS mas o domínio público ainda serve a Hostinger.
+- Segredos de runtime vivem em `crm.env` **na VPS** (fora do git), espelhando o
+  `.env.local`. A Evolution API roda como serviço `evolution_evolution` no mesmo
+  Swarm.
+- Arquivos: `Dockerfile`, `docker-stack.yml`, `.github/workflows/deploy.yml`,
+  `docs/DEPLOY-VPS.md`. (Trazidos pela integração da Evolution — ver abaixo.)
 - Restrição fixa: o webhook do WhatsApp **exige HTTPS** — o endpoint precisa de
-  URL pública com SSL.
+  URL pública com SSL (o Traefik resolve isso na VPS).
 
 ## Integrações externas
 
@@ -221,15 +256,19 @@ mesma passada** (help/config no app, `docs/`, ou README do módulo). Doc obsolet
 
 ## Antes de aplicar mudanças
 
-- [ ] Estamos em `cb-advogados` (ou branch derivada dela)? Nunca no `main`.
-- [ ] `git pull` antes de começar.
+- [ ] Estamos numa branch derivada de `main`? Não commitar direto no `main`.
+- [ ] Branch criada a partir de `main` atualizado (`git pull origin main`)?
 - [ ] Se mexer em schema: migration na faixa `900+`/`cb_` e check de drift.
 - [ ] Não commitar `.env.local` (confirmar com `git status`).
 - [ ] Rodar `npm run typecheck` e `npm run lint` antes de finalizar.
 
 ## Não faça
 
-- ❌ Customizar/commitar no `main` (ele é espelho limpo do `upstream`).
+- ❌ **Abrir PR para qualquer branch de `ArnasDon/wacrm` (upstream).** PR só para
+  branch do CB-CRM. (Regra de ouro 1.)
+- ❌ **Criar branch de desenvolvimento a partir de algo que não seja `main`.**
+  (Regra de ouro 2.)
+- ❌ Commitar direto no `main` sem passar por branch de feature.
 - ❌ `git push` no `upstream` (é read-only).
 - ❌ Numerar migration nossa na sequência do upstream (`037`, `038`…) em vez da
   faixa reservada `900+`.
