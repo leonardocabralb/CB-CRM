@@ -29,7 +29,9 @@ services:
       AUTOMATION_CRON_SECRET: ${AUTOMATION_CRON_SECRET}
       # Meta secret arrives at the production cutover — optional for now.
       META_APP_SECRET: ${META_APP_SECRET:-}
-      # Evolution inbound-webhook shared secret (set when the webhook lands).
+      # Evolution transport (WhatsApp gateway) — server + keys + webhook secret.
+      EVOLUTION_BASE_URL: ${EVOLUTION_BASE_URL:-}
+      EVOLUTION_GLOBAL_API_KEY: ${EVOLUTION_GLOBAL_API_KEY:-}
       EVOLUTION_WEBHOOK_SECRET: ${EVOLUTION_WEBHOOK_SECRET:-}
     networks:
       - CBAdvNet
