@@ -60,7 +60,19 @@ const CREATE_LIMIT = { limit: 10, windowMs: 60_000 };
 export async function GET() {
   try {
     const ctx = await getCurrentAccount();
-    const channels = await listChannels(ctx.supabase, ctx.accountId);
+    let channels;
+    try {
+      channels = await listChannels(ctx.supabase, ctx.accountId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // Janela pré-migration: tabela ausente → o painel mostra o aviso de
+      // migration ({ unavailable }) em vez de um toast de erro.
+      if (/cb_channels|does not exist|42P01/i.test(message)) {
+        console.warn('[cb/channels] GET pré-migration:', message);
+        return NextResponse.json({ channels: [], unavailable: true });
+      }
+      throw err;
+    }
     return NextResponse.json({ channels });
   } catch (err) {
     return toErrorResponse(err);
@@ -293,56 +305,28 @@ async function createMetaChannel(
   const nowIso = new Date().toISOString();
   const encAccess = encrypt(accessToken);
   const encVerify = verifyToken ? encrypt(verifyToken) : null;
+  const displayPhone =
+    (prov.phoneInfo as { display_phone_number?: string } | null)
+      ?.display_phone_number ?? null;
+  const registration = {
+    registered: prov.registeredAt != null,
+    skipped: prov.registrationSkipped,
+    error: registrationError,
+  };
 
-  const { data: channel, error } = await ctx.supabase
-    .from('cb_channels')
-    .insert({
-      account_id: ctx.accountId,
-      created_by: ctx.userId,
-      kind: 'meta',
-      label,
-      is_default: isDefault,
-      display_phone:
-        (prov.phoneInfo as { display_phone_number?: string } | null)
-          ?.display_phone_number ?? null,
-      status: registrationError ? 'disconnected' : 'connected',
-      connected_at: registrationError ? null : nowIso,
-      last_error: registrationError,
-      phone_number_id: phoneNumberId,
-      waba_id: wabaId,
-      access_token: encAccess,
-      verify_token: encVerify,
-    })
-    .select(CB_CHANNEL_SAFE_COLUMNS)
-    .single();
-
-  if (error) {
-    console.error('[cb/channels] erro ao inserir canal Meta:', error.code, error.message);
-    // O índice único global de phone_number_id (901) barra número repetido.
-    const claimed = error.code === '23505';
-    return NextResponse.json(
-      {
-        error: claimed
-          ? 'Esse número Meta já está vinculado a uma conexão.'
-          : 'Não foi possível salvar o canal.',
-      },
-      { status: claimed ? 409 : 500 },
-    );
-  }
-
-  // Escrita dupla do PADRÃO (só no primeiro canal / conta greenfield): o
-  // espelho whatsapp_config é o que o código herdado (envio, mídia, templates)
-  // lê. provider='meta'.
-  if (isDefault) {
+  // Espelho whatsapp_config do canal PADRÃO — o que o código herdado (envio,
+  // mídia, templates) lê. Best-effort: falha loga, não aborta. Campos
+  // opcionais em branco (waba/verify) não apagam o que o espelho já tem.
+  const mirrorDefaultMeta = async () => {
     const { error: wcErr } = await ctx.supabase.from('whatsapp_config').upsert(
       {
         account_id: ctx.accountId,
         user_id: ctx.userId,
         provider: 'meta',
         phone_number_id: phoneNumberId,
-        waba_id: wabaId,
+        ...(wabaId ? { waba_id: wabaId } : {}),
         access_token: encAccess,
-        verify_token: encVerify,
+        ...(encVerify ? { verify_token: encVerify } : {}),
         status: registrationError ? 'disconnected' : 'connected',
         connected_at: registrationError ? null : nowIso,
         updated_at: nowIso,
@@ -355,17 +339,99 @@ async function createMetaChannel(
         wcErr.message,
       );
     }
+  };
+
+  const { data: channel, error } = await ctx.supabase
+    .from('cb_channels')
+    .insert({
+      account_id: ctx.accountId,
+      created_by: ctx.userId,
+      kind: 'meta',
+      label,
+      is_default: isDefault,
+      display_phone: displayPhone,
+      status: registrationError ? 'disconnected' : 'connected',
+      connected_at: registrationError ? null : nowIso,
+      last_error: registrationError,
+      phone_number_id: phoneNumberId,
+      waba_id: wabaId,
+      access_token: encAccess,
+      verify_token: encVerify,
+    })
+    .select(CB_CHANNEL_SAFE_COLUMNS)
+    .single();
+
+  if (error) {
+    // O índice único global de phone_number_id (901) barra número repetido.
+    if (error.code === '23505') {
+      // Número já vinculado NESTA conta → o re-cadastro é o caminho de
+      // RECUPERAÇÃO (registro que falhou / PIN pulado — achado da revisão
+      // 4b): atualiza credenciais e o resultado do novo provisionamento em
+      // vez de devolver um beco-sem-saída 409. Número de OUTRA conta
+      // (linha invisível pela RLS) continua caindo no 409 abaixo.
+      const { data: existing } = await ctx.supabase
+        .from('cb_channels')
+        .select('id, is_default')
+        .eq('account_id', ctx.accountId)
+        .eq('kind', 'meta')
+        .eq('phone_number_id', phoneNumberId)
+        .maybeSingle();
+
+      if (existing) {
+        const { data: updated, error: updErr } = await ctx.supabase
+          .from('cb_channels')
+          .update({
+            label,
+            // Opcionais em branco não apagam o que já está salvo.
+            ...(wabaId ? { waba_id: wabaId } : {}),
+            access_token: encAccess,
+            ...(encVerify ? { verify_token: encVerify } : {}),
+            display_phone: displayPhone,
+            status: registrationError ? 'disconnected' : 'connected',
+            connected_at: registrationError ? null : nowIso,
+            last_error: registrationError,
+          })
+          .eq('id', existing.id)
+          .eq('account_id', ctx.accountId)
+          .select(CB_CHANNEL_SAFE_COLUMNS)
+          .single();
+
+        if (updErr || !updated) {
+          console.error(
+            '[cb/channels] erro ao recadastrar canal Meta:',
+            updErr?.code,
+            updErr?.message,
+          );
+          return NextResponse.json(
+            { error: 'Não foi possível salvar o canal.' },
+            { status: 500 },
+          );
+        }
+
+        if (existing.is_default) await mirrorDefaultMeta();
+
+        return NextResponse.json(
+          { channel: updated, updated: true, registration },
+          { status: 200 },
+        );
+      }
+
+      console.error('[cb/channels] erro ao inserir canal Meta:', error.code, error.message);
+      return NextResponse.json(
+        { error: 'Esse número Meta já está vinculado a uma conexão.' },
+        { status: 409 },
+      );
+    }
+
+    console.error('[cb/channels] erro ao inserir canal Meta:', error.code, error.message);
+    return NextResponse.json(
+      { error: 'Não foi possível salvar o canal.' },
+      { status: 500 },
+    );
   }
 
-  return NextResponse.json(
-    {
-      channel,
-      registration: {
-        registered: prov.registeredAt != null,
-        skipped: prov.registrationSkipped,
-        error: registrationError,
-      },
-    },
-    { status: 201 },
-  );
+  // Escrita dupla do PADRÃO (só no primeiro canal / conta greenfield).
+  if (isDefault) await mirrorDefaultMeta();
+
+  return NextResponse.json({ channel, registration }, { status: 201 });
 }
