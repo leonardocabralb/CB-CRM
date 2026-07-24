@@ -4,6 +4,7 @@ import { timingSafeEqual } from 'crypto';
 
 import { normalizeUpsert, type EvolutionUpsert } from '@/lib/whatsapp/transport/evolution-inbound';
 import { persistInboundMessage } from '@/lib/whatsapp/inbound-store';
+import { resolveInboundEvolutionChannel } from '@/lib/cb-channels/resolve-inbound';
 
 // Inbound processing fans out to flows / automations / AI, so give the
 // after() block headroom beyond the platform default.
@@ -71,15 +72,12 @@ export async function POST(request: Request) {
   const instance = body.instance;
   if (!instance) return NextResponse.json({ ok: true });
 
-  // Route to the owning account by instance name (the inbound key).
-  const { data: config } = await supabaseAdmin()
-    .from('whatsapp_config')
-    .select('account_id, user_id, provider, instance_name')
-    .eq('instance_name', instance)
-    .eq('provider', 'evolution')
-    .maybeSingle();
+  // Route to the owning account/channel by instance name (the inbound key).
+  // cb_channels first (multi-canal); falls back to whatsapp_config (the
+  // single-channel flow) with a warning. Deploy-safe: unknown table → fallback.
+  const route = await resolveInboundEvolutionChannel(supabaseAdmin(), instance);
 
-  if (!config) {
+  if (!route) {
     // Unknown/foreign instance — ack so Evolution doesn't retry forever.
     return NextResponse.json({ ok: true });
   }
@@ -90,7 +88,12 @@ export async function POST(request: Request) {
       : [body.data as EvolutionUpsert];
     after(async () => {
       for (const item of items) {
-        const normalized = normalizeUpsert(item, config.account_id, config.user_id);
+        const normalized = normalizeUpsert(
+          item,
+          route.accountId,
+          route.ownerUserId,
+          route.channelId,
+        );
         if (!normalized) continue;
         try {
           await persistInboundMessage(supabaseAdmin(), normalized);
@@ -107,7 +110,11 @@ export async function POST(request: Request) {
     const status = ackToStatus(d.status);
     if (d.keyId && status) {
       after(async () => {
-        // Only touches our own outbound rows (message_id === keyId).
+        // Só toca nossas mensagens de saída (message_id === keyId). NÃO
+        // escopamos por channel_id: o keyId da Baileys é único por mensagem,
+        // então já mira exatamente a mensagem certa mesmo com vários canais —
+        // e escopar por canal congelaria o ✓✓ das mensagens antigas
+        // (channel_id NULL, anteriores à Fase 3).
         const { error } = await supabaseAdmin()
           .from('messages')
           .update({ status })
@@ -124,6 +131,7 @@ export async function POST(request: Request) {
     const raw = d.state;
     const state = raw === 'open' || raw === 'connecting' ? raw : 'close';
     after(async () => {
+      // Espelho whatsapp_config (canal padrão / fluxo single-channel).
       await supabaseAdmin()
         .from('whatsapp_config')
         .update({
@@ -133,6 +141,30 @@ export async function POST(request: Request) {
           updated_at: new Date().toISOString(),
         })
         .eq('instance_name', instance);
+      // cb_channels (multi-canal): mantém o status do canal fresco após
+      // conexão/queda passiva — importante para o seletor da Fase 4. Best-
+      // effort e deploy-safe (tabela ausente → erro ignorado). O CHECK de
+      // cb_channels.status admite connected/connecting/disconnected (sem
+      // 'close'), então 'close' → 'disconnected'.
+      const { error: chErr } = await supabaseAdmin()
+        .from('cb_channels')
+        .update({
+          status:
+            state === 'open'
+              ? 'connected'
+              : state === 'connecting'
+                ? 'connecting'
+                : 'disconnected',
+          ...(state === 'open' ? { connected_at: new Date().toISOString() } : {}),
+        })
+        .eq('instance_name', instance)
+        .eq('kind', 'evolution');
+      if (chErr) {
+        console.warn(
+          '[evolution/webhook] cb_channels status sync falhou (ignorado):',
+          chErr.message,
+        );
+      }
     });
     return NextResponse.json({ ok: true });
   }

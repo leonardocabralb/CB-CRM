@@ -13,6 +13,13 @@ import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
+// Aditivo (multi-canal): só ACRESCENTA o carimbo de channel_id. A resolução
+// de conta/token da Meta abaixo continua vindo de whatsapp_config, intacta.
+import { resolveInboundMetaChannelId } from '@/lib/cb-channels/resolve-inbound'
+import {
+  stampMessageChannel,
+  followConversationChannel,
+} from '@/lib/cb-channels/stamp'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -286,6 +293,15 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
 
       const decryptedAccessToken = decrypt(config.access_token)
 
+      // Canal (cb_channels) que atende este phone_number_id, só para carimbar
+      // messages.channel_id (permite distinguir números Meta diferentes). A
+      // conta e o token continuam vindo de whatsapp_config, acima. Best-effort
+      // e deploy-safe: NULL antes da 901 ou quando não há canal Meta cadastrado.
+      const metaChannelId = await resolveInboundMetaChannelId(
+        supabaseAdmin(),
+        phoneNumberId
+      )
+
       for (let i = 0; i < value.messages.length; i++) {
         const message = value.messages[i]
         const contact = value.contacts[i] || value.contacts[0]
@@ -300,7 +316,8 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           // inserts that need it for NOT NULL FK compliance. Always
           // the admin who saved the WhatsApp config.
           config.user_id,
-          decryptedAccessToken
+          decryptedAccessToken,
+          metaChannelId
         )
       }
     }
@@ -568,7 +585,11 @@ async function processMessage(
   // (contacts, conversations). Always the admin who saved the
   // WhatsApp config; the choice is arbitrary post-017 but stable.
   configOwnerUserId: string,
-  accessToken: string
+  accessToken: string,
+  // cb_channels.id que atende o phone_number_id (multi-canal), para carimbar
+  // messages.channel_id e a conversa "seguir o cliente". NULL = sem carimbo,
+  // comportamento idêntico ao de antes.
+  channelId: string | null = null
 ) {
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
@@ -666,21 +687,25 @@ async function processMessage(
     .eq('sender_type', 'customer')
   const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
 
-  const { error: msgError } = await supabaseAdmin().from('messages').insert({
-    conversation_id: conversation.id,
-    sender_type: 'customer',
-    content_type: contentType,
-    content_text: contentText,
-    media_url: mediaUrl,
-    message_id: message.id,
-    status: 'delivered',
-    created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
-    reply_to_message_id: replyToInternalId,
-    // Only populated for content_type='interactive'. Migration 010 added
-    // the column; null for every other content_type so existing inserts
-    // behave identically.
-    interactive_reply_id: interactiveReplyId,
-  })
+  const { data: insertedMsg, error: msgError } = await supabaseAdmin()
+    .from('messages')
+    .insert({
+      conversation_id: conversation.id,
+      sender_type: 'customer',
+      content_type: contentType,
+      content_text: contentText,
+      media_url: mediaUrl,
+      message_id: message.id,
+      status: 'delivered',
+      created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+      reply_to_message_id: replyToInternalId,
+      // Only populated for content_type='interactive'. Migration 010 added
+      // the column; null for every other content_type so existing inserts
+      // behave identically.
+      interactive_reply_id: interactiveReplyId,
+    })
+    .select('id')
+    .single()
 
   if (msgError) {
     console.error('Error inserting message:', msgError)
@@ -700,6 +725,14 @@ async function processMessage(
 
   if (convError) {
     console.error('Error updating conversation:', convError)
+  }
+
+  // Carimbo de canal (multi-canal): marca por onde a mensagem entrou e faz a
+  // conversa "seguir o cliente" (a menos que fixada). Aditivo, best-effort e
+  // deploy-safe — nunca altera o insert/fluxo acima.
+  if (channelId && insertedMsg) {
+    await stampMessageChannel(supabaseAdmin(), insertedMsg.id, channelId)
+    await followConversationChannel(supabaseAdmin(), conversation.id, channelId)
   }
 
   // If this contact was a recent broadcast recipient, flag the reply

@@ -136,14 +136,23 @@ arquivo** — por isso preferir módulos novos a reescrever o core.
 `git diff --stat upstream/main main`): `messages/en.json` é o campo de
 batalha — o upstream mexe nele a cada feature e nós temos tradução por cima.
 Também são nossos: `messages/pt-BR.json`, `CLAUDE.md`, `.gitignore`,
-`scripts/`, as migrations `037_evolution_transport.sql` e `900_cb_*`, a
-**integração Evolution API** (`src/lib/whatsapp/transport/`,
+`scripts/`, as migrations `037_evolution_transport.sql`, `900_cb_*` e
+`901`/`902_cb_*`, a **integração Evolution API** (`src/lib/whatsapp/transport/`,
 `src/app/api/whatsapp/evolution/`, `src/components/settings/evolution-connect.tsx`,
-`src/lib/whatsapp/inbound-store.ts`), a **infra de deploy** (`Dockerfile`,
-`docker-stack.yml`, `.github/workflows/deploy.yml`, `docs/DEPLOY-VPS.md`) e os
-componentes que internacionalizamos (o upstream tem string literal onde nós temos
-`t('chave')` — ao resolver, manter a nossa forma e levar o texto novo dele para
-os **dois** dicionários).
+`src/lib/whatsapp/inbound-store.ts`), o **multi-canal** (`src/lib/cb-channels/`,
+`src/app/api/cb/`, `src/components/settings/cb-channels-panel.tsx`), a **infra de
+deploy** (`Dockerfile`, `docker-stack.yml`, `.github/workflows/deploy.yml`,
+`docs/DEPLOY-VPS.md`) e os componentes que internacionalizamos (o upstream tem
+string literal onde nós temos `t('chave')` — ao resolver, manter a nossa forma e
+levar o texto novo dele para os **dois** dicionários).
+
+⚠️ **Dois arquivos do upstream ganharam mudanças NOSSAS, ADITIVAS, para o
+multi-canal — cuidado no merge**: `src/lib/whatsapp/send-message.ts` (resolve o
+canal da conversa e carimba `channel_id` na saída) e
+`src/app/api/whatsapp/webhook/route.ts` (o webhook **Meta**, que carimba
+`channel_id` na entrada resolvendo por `phone_number_id`). Ambas preservam 100%
+do comportamento antigo (best-effort, deploy-safe); ao mesclar upstream, manter os
+nossos trechos aditivos e não deixar o upstream sobrescrevê-los.
 
 ## Branches — criação e nomenclatura
 

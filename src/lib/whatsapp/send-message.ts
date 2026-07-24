@@ -41,6 +41,7 @@ import {
   type ProviderMessageRef,
 } from '@/lib/whatsapp/transport';
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
+import { stampMessageChannel } from '@/lib/cb-channels/stamp';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import {
   sanitizePhoneForMeta,
@@ -578,6 +579,12 @@ export async function sendMessageToConversation(
       updated_at: new Date().toISOString(),
     })
     .eq('id', conversationId);
+
+  // Carimbo de canal (Fase 3): registra por qual número esta resposta saiu.
+  // Via supabaseAdmin (não depende de policy de UPDATE em messages para o
+  // client do dashboard) e best-effort/deploy-safe. NULL no fallback
+  // whatsapp_config → no-op.
+  await stampMessageChannel(supabaseAdmin(), messageRecord.id, channel.channelId);
 
   // Pause any active Flow run for this contact — the agent stepping in
   // is the strongest "yield, human is here" signal. Best-effort.
