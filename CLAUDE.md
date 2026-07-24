@@ -179,14 +179,21 @@ nossos trechos aditivos e não deixar o upstream sobrescrevê-los.
   aplicada e no `main` — **não renumerar**. É exceção conhecida; daqui em diante
   seguir o `900+`. Se o upstream um dia criar um `037_*`, resolver o conflito de
   número renomeando o **do upstream** no merge, nunca o nosso já aplicado.
+  ⚠️ Ela é a **única** aplicada *sem* registro no histórico do Supabase: as
+  colunas dela existem no banco (`whatsapp_config.provider`, `base_url`,
+  `instance_name`, `api_key`, `instance_state`, …), mas `list_migrations` não a
+  lista. Ou seja, **o histórico não é fonte de verdade completa** — para checar
+  se algo foi aplicado, consultar o schema, não só o histórico.
 - Criar o arquivo de migration **antes** de aplicar.
 - Aplicar em **ordem numérica** no projeto Supabase. Caminho preferido: o
   **conector MCP do Supabase** (`apply_migration` / `execute_sql`), que dispensa
   senha de banco. Alternativa: colar os SQL no **SQL Editor** em ordem. ⚠️ **Não**
-  usar `supabase db push`: a tabela de histórico de migrations do projeto está
-  vazia (as 001–036 do upstream foram aplicadas à mão), então o push tentaria
-  re-aplicar tudo desde a 001. **Nunca** editar schema à mão pelo editor de
-  tabelas da UI (causa drift).
+  usar `supabase db push`: o histórico do projeto hoje tem as 001–036 do upstream
+  mais `900`/`901`/`902` (conferido em 2026-07-24 via `list_migrations`), mas
+  registradas com **version em timestamp** (`20260721164546` = `001_initial_schema`),
+  que não corresponde ao prefixo `NNN_` dos nossos arquivos — o push não casaria
+  local↔remoto e tentaria re-aplicar tudo. **Nunca** editar schema à mão pelo
+  editor de tabelas da UI (causa drift).
 - **Nunca renomear nem renumerar** migration já aplicada.
 - Antes de criar nova, **validar drift** entre local e o projeto Supabase.
 
