@@ -318,6 +318,11 @@ export class EvolutionClient {
     await this.request('DELETE', 'instance/logout');
   }
 
+  /** Remove the instance entirely (logs out first if connected). */
+  async deleteInstance(): Promise<void> {
+    await this.request('DELETE', 'instance/delete');
+  }
+
   // ----------------------------------------------------------
   // Provisioning (GLOBAL key — construct the client with it)
   // ----------------------------------------------------------

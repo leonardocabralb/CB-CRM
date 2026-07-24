@@ -150,6 +150,22 @@ export async function POST(request: Request) {
       )
     }
 
+    // Broadcast é template-only → só sai por número Meta (API oficial).
+    // Guarda clara para conta cujo canal padrão é Evolution (Fase 5).
+    if (
+      config.provider === 'evolution' ||
+      !config.phone_number_id ||
+      !config.access_token
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'Broadcasts require an official Meta (Cloud API) number — this account default WhatsApp channel is not a Meta number.',
+        },
+        { status: 400 }
+      )
+    }
+
     const accessToken = decrypt(config.access_token)
 
     // Load the template row once so sendTemplateMessage can build

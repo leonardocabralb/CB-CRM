@@ -17,12 +17,21 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import {
+  stampMessageChannel,
+  followConversationChannel,
+} from '@/lib/cb-channels/stamp';
 
 /** A message from any transport, reduced to what persistence needs. */
 export interface NormalizedInbound {
   accountId: string;
   /** NOT NULL audit FK for created contact/conversation rows. */
   configOwnerUserId: string;
+  /**
+   * `cb_channels.id` do canal por onde a mensagem entrou (Fase 3). NULL no
+   * fallback de transição (whatsapp_config) — aí não há carimbo nem follow.
+   */
+  channelId?: string | null;
   /** Sender phone (any form — normalized on store). */
   phone: string;
   /** Display name (pushName / profile name), falls back to phone. */
@@ -177,18 +186,22 @@ export async function persistInboundMessage(
     .eq('sender_type', 'customer');
   const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0;
 
-  const { error: msgError } = await db.from('messages').insert({
-    conversation_id: conversation.id,
-    sender_type: 'customer',
-    content_type: contentType,
-    content_text: m.text,
-    media_url: m.mediaUrl ?? null,
-    message_id: m.providerMessageId,
-    remote_jid: m.remoteJid ?? null,
-    from_me: false,
-    status: 'delivered',
-    created_at: new Date(m.timestamp * 1000).toISOString(),
-  });
+  const { data: insertedMsg, error: msgError } = await db
+    .from('messages')
+    .insert({
+      conversation_id: conversation.id,
+      sender_type: 'customer',
+      content_type: contentType,
+      content_text: m.text,
+      media_url: m.mediaUrl ?? null,
+      message_id: m.providerMessageId,
+      remote_jid: m.remoteJid ?? null,
+      from_me: false,
+      status: 'delivered',
+      created_at: new Date(m.timestamp * 1000).toISOString(),
+    })
+    .select('id')
+    .single();
   if (msgError) {
     console.error('[inbound-store] insert message failed:', msgError);
     return;
@@ -203,6 +216,14 @@ export async function persistInboundMessage(
       updated_at: new Date().toISOString(),
     })
     .eq('id', conversation.id);
+
+  // Carimbo de canal (Fase 3): marca por onde a mensagem entrou e faz a
+  // conversa "seguir o cliente" (a menos que fixada). Best-effort e
+  // deploy-safe — nunca afeta o insert acima nem o fan-out abaixo.
+  if (m.channelId && insertedMsg) {
+    await stampMessageChannel(db, insertedMsg.id, m.channelId);
+    await followConversationChannel(db, conversation.id, m.channelId);
+  }
 
   // ---- downstream engines (parity with the Meta webhook) ----
   const inboundText = m.text ?? '';

@@ -10,6 +10,12 @@ import {
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
+  resolveEngineChannel,
+  evolutionTransportFor,
+  evolutionRemoteJid,
+} from '@/lib/cb-channels/engine-send'
+import { stampMessageChannel } from '@/lib/cb-channels/stamp'
+import {
   sanitizePhoneForMeta,
   isValidE164,
   phoneVariants,
@@ -82,61 +88,82 @@ export async function engineSendText(
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', args.accountId)
-    .single()
-  if (configErr || !config) {
+  // Canal da conversa (multi-canal, Fase 5): resolve como o envio manual —
+  // conversations.channel_id → canal padrão → fallback whatsapp_config.
+  const channel = await resolveEngineChannel(db, args.accountId, args.conversationId)
+  if (!channel) {
     throw new Error('WhatsApp not configured for this account')
   }
 
-  const accessToken = decrypt(config.access_token)
-
-  const attempt = async (phone: string): Promise<string> => {
-    const r = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
-      to: phone,
-      text: args.text,
-    })
-    return r.messageId
-  }
-
-  const variants = phoneVariants(sanitized)
-  let workingPhone = sanitized
   let waMessageId = ''
-  let lastError: unknown = null
-  for (const v of variants) {
-    try {
-      waMessageId = await attempt(v)
-      workingPhone = v
-      lastError = null
-      break
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (!isRecipientNotAllowedError(msg)) throw err
-      lastError = err
+  let workingPhone = sanitized
+  let outboundRemoteJid: string | null = null
+
+  if (channel.provider === 'evolution') {
+    // Texto sai pelo transport da Evolution (Baileys) — sem janela de 24h.
+    const transport = evolutionTransportFor(channel)
+    const res = await transport.sendText({ to: sanitized, text: args.text })
+    waMessageId = res.providerMessageId
+    outboundRemoteJid = evolutionRemoteJid(sanitized)
+  } else {
+    if (!channel.phone_number_id || !channel.access_token) {
+      throw new Error('WhatsApp (Meta) connection is incomplete for this account')
+    }
+    const accessToken = decrypt(channel.access_token)
+
+    const attempt = async (phone: string): Promise<string> => {
+      const r = await sendTextMessage({
+        phoneNumberId: channel.phone_number_id!,
+        accessToken,
+        to: phone,
+        text: args.text,
+      })
+      return r.messageId
+    }
+
+    const variants = phoneVariants(sanitized)
+    let lastError: unknown = null
+    for (const v of variants) {
+      try {
+        waMessageId = await attempt(v)
+        workingPhone = v
+        lastError = null
+        break
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (!isRecipientNotAllowedError(msg)) throw err
+        lastError = err
+      }
+    }
+    if (lastError) throw lastError
+
+    if (workingPhone !== sanitized) {
+      await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
     }
   }
-  if (lastError) throw lastError
 
-  if (workingPhone !== sanitized) {
-    await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
-  }
-
-  const { error: msgErr } = await db.from('messages').insert({
-    conversation_id: args.conversationId,
-    sender_type: 'bot',
-    content_type: 'text',
-    content_text: args.text,
-    message_id: waMessageId,
-    status: 'sent',
-    ai_generated: args.aiGenerated ?? false,
-  })
+  const { data: insertedMsg, error: msgErr } = await db
+    .from('messages')
+    .insert({
+      conversation_id: args.conversationId,
+      sender_type: 'bot',
+      content_type: 'text',
+      content_text: args.text,
+      message_id: waMessageId,
+      // Partes da chave Baileys — só Evolution (NULL no Meta).
+      remote_jid: outboundRemoteJid,
+      from_me: channel.provider === 'evolution' ? true : null,
+      status: 'sent',
+      ai_generated: args.aiGenerated ?? false,
+    })
+    .select('id')
+    .single()
   if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+    throw new Error(`sent but DB insert failed: ${msgErr.message}`)
   }
+
+  // Carimbo de canal (Fase 3) — best-effort; NULL no fallback → no-op.
+  if (insertedMsg) await stampMessageChannel(db, insertedMsg.id, channel.channelId)
 
   await db
     .from('conversations')
@@ -192,50 +219,66 @@ export async function engineSendMedia(
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', args.accountId)
-    .single()
-  if (configErr || !config) {
+  // Canal da conversa (multi-canal, Fase 5) — mesmo resolve do envio manual.
+  const channel = await resolveEngineChannel(db, args.accountId, args.conversationId)
+  if (!channel) {
     throw new Error('WhatsApp not configured for this account')
   }
 
-  const accessToken = decrypt(config.access_token)
+  let waMessageId = ''
+  let workingPhone = sanitized
+  let outboundRemoteJid: string | null = null
 
-  const attempt = async (phone: string): Promise<string> => {
-    const r = await sendMediaMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
-      to: phone,
+  if (channel.provider === 'evolution') {
+    // Mídia sai pelo transport da Evolution (aceita URL pública).
+    const transport = evolutionTransportFor(channel)
+    const res = await transport.sendMedia({
+      to: sanitized,
       kind: args.kind,
-      link: args.link,
+      media: args.link,
       caption: args.caption,
       filename: args.filename,
     })
-    return r.messageId
-  }
-
-  const variants = phoneVariants(sanitized)
-  let workingPhone = sanitized
-  let waMessageId = ''
-  let lastError: unknown = null
-  for (const v of variants) {
-    try {
-      waMessageId = await attempt(v)
-      workingPhone = v
-      lastError = null
-      break
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (!isRecipientNotAllowedError(msg)) throw err
-      lastError = err
+    waMessageId = res.providerMessageId
+    outboundRemoteJid = evolutionRemoteJid(sanitized)
+  } else {
+    if (!channel.phone_number_id || !channel.access_token) {
+      throw new Error('WhatsApp (Meta) connection is incomplete for this account')
     }
-  }
-  if (lastError) throw lastError
+    const accessToken = decrypt(channel.access_token)
 
-  if (workingPhone !== sanitized) {
-    await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
+    const attempt = async (phone: string): Promise<string> => {
+      const r = await sendMediaMessage({
+        phoneNumberId: channel.phone_number_id!,
+        accessToken,
+        to: phone,
+        kind: args.kind,
+        link: args.link,
+        caption: args.caption,
+        filename: args.filename,
+      })
+      return r.messageId
+    }
+
+    const variants = phoneVariants(sanitized)
+    let lastError: unknown = null
+    for (const v of variants) {
+      try {
+        waMessageId = await attempt(v)
+        workingPhone = v
+        lastError = null
+        break
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (!isRecipientNotAllowedError(msg)) throw err
+        lastError = err
+      }
+    }
+    if (lastError) throw lastError
+
+    if (workingPhone !== sanitized) {
+      await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
+    }
   }
 
   // content_type='image'|'video'|'document' — these are already in the
@@ -243,17 +286,26 @@ export async function engineSendMedia(
   // content_text carries the caption (or empty) so the conversation
   // list preview shows something meaningful when the user glances at it.
   const preview = args.caption?.trim() || `[${args.kind}]`
-  const { error: msgErr } = await db.from('messages').insert({
-    conversation_id: args.conversationId,
-    sender_type: 'bot',
-    content_type: args.kind,
-    content_text: args.caption ?? null,
-    message_id: waMessageId,
-    status: 'sent',
-  })
+  const { data: insertedMsg, error: msgErr } = await db
+    .from('messages')
+    .insert({
+      conversation_id: args.conversationId,
+      sender_type: 'bot',
+      content_type: args.kind,
+      content_text: args.caption ?? null,
+      message_id: waMessageId,
+      remote_jid: outboundRemoteJid,
+      from_me: channel.provider === 'evolution' ? true : null,
+      status: 'sent',
+    })
+    .select('id')
+    .single()
   if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+    throw new Error(`sent but DB insert failed: ${msgErr.message}`)
   }
+
+  // Carimbo de canal (Fase 3) — best-effort; NULL no fallback → no-op.
+  if (insertedMsg) await stampMessageChannel(db, insertedMsg.id, channel.channelId)
 
   await db
     .from('conversations')
@@ -344,21 +396,28 @@ async function sendInteractiveViaMeta(
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', input.accountId)
-    .single()
-  if (configErr || !config) {
+  // Canal da conversa (multi-canal). Botões/listas não entregam via
+  // Baileys — em canal Evolution o nó falha com motivo CLARO (o run
+  // registra o erro), em vez de fingir que enviou.
+  const channel = await resolveEngineChannel(db, input.accountId, input.conversationId)
+  if (!channel) {
     throw new Error('WhatsApp not configured for this account')
   }
+  if (channel.provider === 'evolution') {
+    throw new Error(
+      'interactive messages (buttons/lists) are not supported on the Evolution (unofficial) channel',
+    )
+  }
+  if (!channel.phone_number_id || !channel.access_token) {
+    throw new Error('WhatsApp (Meta) connection is incomplete for this account')
+  }
 
-  const accessToken = decrypt(config.access_token)
+  const accessToken = decrypt(channel.access_token)
 
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'buttons') {
       const r = await sendInteractiveButtons({
-        phoneNumberId: config.phone_number_id,
+        phoneNumberId: channel.phone_number_id!,
         accessToken,
         to: phone,
         bodyText: input.bodyText,
@@ -369,7 +428,7 @@ async function sendInteractiveViaMeta(
       return r.messageId
     }
     const r = await sendInteractiveList({
-      phoneNumberId: config.phone_number_id,
+      phoneNumberId: channel.phone_number_id!,
       accessToken,
       to: phone,
       bodyText: input.bodyText,
@@ -435,18 +494,25 @@ async function sendInteractiveViaMeta(
           sections: input.sections,
         }
 
-  const { error: msgErr } = await db.from('messages').insert({
-    conversation_id: input.conversationId,
-    sender_type: 'bot',
-    content_type: 'interactive',
-    content_text: input.bodyText,
-    interactive_payload: interactivePayload,
-    message_id: waMessageId,
-    status: 'sent',
-  })
+  const { data: insertedMsg, error: msgErr } = await db
+    .from('messages')
+    .insert({
+      conversation_id: input.conversationId,
+      sender_type: 'bot',
+      content_type: 'interactive',
+      content_text: input.bodyText,
+      interactive_payload: interactivePayload,
+      message_id: waMessageId,
+      status: 'sent',
+    })
+    .select('id')
+    .single()
   if (msgErr) {
     throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
   }
+
+  // Carimbo de canal (Fase 3) — best-effort; NULL no fallback → no-op.
+  if (insertedMsg) await stampMessageChannel(db, insertedMsg.id, channel.channelId)
 
   await db
     .from('conversations')

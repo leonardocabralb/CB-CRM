@@ -26,6 +26,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useTranslations } from 'next-intl';
 import { Card, CardContent } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SettingsPanelHead } from './settings-panel-head';
 import {
   Dialog,
@@ -126,6 +127,31 @@ function emptyButton(type: TemplateButton['type']): TemplateButton {
 
 export function TemplateManager() {
   const t = useTranslations('Settings.templates');
+
+  // Multi-canal (Fase 5): templates são um conceito da API oficial. Quando
+  // a conta tem canais e NENHUM é Meta, o gestor mostra uma guarda graciosa
+  // em vez de deixar o sync/submit morrer num erro opaco de WABA. Contas
+  // sem canais (pré-migration) seguem o comportamento antigo.
+  const [channelKinds, setChannelKinds] = useState<string[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/cb/channels')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p) => {
+        if (cancelled || !p) return;
+        setChannelKinds(
+          ((p.channels ?? []) as { kind?: string }[]).map((c) => c.kind ?? ''),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const metaRequired =
+    channelKinds !== null &&
+    channelKinds.length > 0 &&
+    !channelKinds.includes('meta');
   const supabase = createClient();
   const { user, loading: authLoading } = useAuth();
 
@@ -504,6 +530,16 @@ export function TemplateManager() {
           </div>
         }
       />
+
+      {metaRequired && (
+        <Alert>
+          <AlertTitle className="flex items-center gap-2">
+            <AlertCircle className="size-4" />
+            {t('metaRequiredTitle')}
+          </AlertTitle>
+          <AlertDescription>{t('metaRequiredDesc')}</AlertDescription>
+        </Alert>
+      )}
 
       {templates.length === 0 ? (
         <Card>

@@ -68,12 +68,15 @@ export function detectContentType(
 
 /**
  * Normalize one upsert item. Returns null for messages the inbox should
- * ignore (group chats, our own echoes, or missing key/id).
+ * ignore (group chats, our own echoes, or missing key/id). `channelId` é o
+ * `cb_channels.id` por onde a mensagem entrou (Fase 3), propagado para o
+ * carimbo — NULL no fallback de transição.
  */
 export function normalizeUpsert(
   item: EvolutionUpsert,
   accountId: string,
-  configOwnerUserId: string
+  configOwnerUserId: string,
+  channelId: string | null = null
 ): NormalizedInbound | null {
   const jid = item.key?.remoteJid;
   const id = item.key?.id;
@@ -94,6 +97,7 @@ export function normalizeUpsert(
   return {
     accountId,
     configOwnerUserId,
+    channelId,
     phone,
     name: item.pushName || phone,
     providerMessageId: id,

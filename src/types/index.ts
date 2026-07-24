@@ -181,6 +181,14 @@ export interface Conversation {
   ai_autoreply_disabled?: boolean;
   ai_reply_count?: number;
   ai_handoff_summary?: string | null;
+  /**
+   * Multi-canal (migration 902): por qual número (cb_channels) a conversa
+   * responde. `channel_pinned` = o atendente fixou o canal na mão; enquanto
+   * false, o inbound move `channel_id` para o canal da última mensagem do
+   * cliente ("segue o cliente").
+   */
+  channel_id?: string | null;
+  channel_pinned?: boolean;
 }
 
 // ============================================================
@@ -252,6 +260,8 @@ export interface Message {
    * badge in the inbox. Migration 033.
    */
   ai_generated?: boolean;
+  /** Canal (cb_channels) por onde esta mensagem entrou/saiu. Migration 902. */
+  channel_id?: string | null;
 }
 
 export type ReactionActor = 'customer' | 'agent';

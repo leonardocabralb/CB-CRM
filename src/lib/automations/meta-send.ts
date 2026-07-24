@@ -6,6 +6,12 @@ import {
 } from '@/lib/flows/meta-send'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
+  resolveEngineChannel,
+  evolutionTransportFor,
+  evolutionRemoteJid,
+} from '@/lib/cb-channels/engine-send'
+import { stampMessageChannel } from '@/lib/cb-channels/stamp'
+import {
   sanitizePhoneForMeta,
   isValidE164,
   phoneVariants,
@@ -131,84 +137,112 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', input.accountId)
-    .single()
-  if (configErr || !config) {
+  // Canal da conversa (multi-canal, Fase 5) — mesmo resolve do envio manual:
+  // conversations.channel_id → canal padrão → fallback whatsapp_config.
+  const channel = await resolveEngineChannel(db, input.accountId, input.conversationId)
+  if (!channel) {
     throw new Error('WhatsApp not configured for this account')
   }
 
-  const accessToken = decrypt(config.access_token)
+  let waMessageId = ''
+  let workingPhone = sanitized
+  let outboundRemoteJid: string | null = null
 
-  const attempt = async (phone: string): Promise<string> => {
+  if (channel.provider === 'evolution') {
     if (input.kind === 'template') {
-      const r = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
+      // Template é conceito da API oficial — falha CLARA em canal Evolution
+      // (a execução da automação registra o motivo), nada de envio fantasma.
+      throw new Error(
+        'templates are not supported on the Evolution (unofficial) channel — this step needs an official Meta number',
+      )
+    }
+    // Texto sai pelo transport da Evolution (Baileys) — sem janela de 24h.
+    const transport = evolutionTransportFor(channel)
+    const res = await transport.sendText({ to: sanitized, text: input.text })
+    waMessageId = res.providerMessageId
+    outboundRemoteJid = evolutionRemoteJid(sanitized)
+  } else {
+    if (!channel.phone_number_id || !channel.access_token) {
+      throw new Error('WhatsApp (Meta) connection is incomplete for this account')
+    }
+    const accessToken = decrypt(channel.access_token)
+
+    const attempt = async (phone: string): Promise<string> => {
+      if (input.kind === 'template') {
+        const r = await sendTemplateMessage({
+          phoneNumberId: channel.phone_number_id!,
+          accessToken,
+          to: phone,
+          templateName: input.templateName,
+          language: input.language,
+          params: input.params,
+        })
+        return r.messageId
+      }
+      const r = await sendTextMessage({
+        phoneNumberId: channel.phone_number_id!,
         accessToken,
         to: phone,
-        templateName: input.templateName,
-        language: input.language,
-        params: input.params,
+        text: input.text,
       })
       return r.messageId
     }
-    const r = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
-      to: phone,
-      text: input.text,
-    })
-    return r.messageId
-  }
 
-  // Same phone-variant retry as /api/whatsapp/send — Meta sandbox and
-  // numbers registered with/without a trunk 0 both require this to
-  // reliably land a message.
-  const variants = phoneVariants(sanitized)
-  let workingPhone = sanitized
-  let waMessageId = ''
-  let lastError: unknown = null
-  for (const v of variants) {
-    try {
-      waMessageId = await attempt(v)
-      workingPhone = v
-      lastError = null
-      break
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (!isRecipientNotAllowedError(msg)) throw err
-      lastError = err
+    // Same phone-variant retry as /api/whatsapp/send — Meta sandbox and
+    // numbers registered with/without a trunk 0 both require this to
+    // reliably land a message.
+    const variants = phoneVariants(sanitized)
+    let lastError: unknown = null
+    for (const v of variants) {
+      try {
+        waMessageId = await attempt(v)
+        workingPhone = v
+        lastError = null
+        break
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (!isRecipientNotAllowedError(msg)) throw err
+        lastError = err
+      }
     }
-  }
-  if (lastError) throw lastError
+    if (lastError) throw lastError
 
-  if (workingPhone !== sanitized) {
-    await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
+    if (workingPhone !== sanitized) {
+      await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
+    }
   }
 
   // Persist the sent message so it appears in the inbox with a real
-  // Meta message id. sender_type='bot' distinguishes automation sends
+  // provider message id. sender_type='bot' distinguishes automation sends
   // from manual agent sends.
   const content_type = input.kind === 'template' ? 'template' : 'text'
   const content_text = input.kind === 'text' ? input.text : null
   const template_name = input.kind === 'template' ? input.templateName : null
 
-  const { error: msgErr } = await db.from('messages').insert({
-    conversation_id: input.conversationId,
-    sender_type: 'bot',
-    content_type,
-    content_text,
-    template_name,
-    message_id: waMessageId,
-    status: 'sent',
-  })
+  const { data: insertedMsg, error: msgErr } = await db
+    .from('messages')
+    .insert({
+      conversation_id: input.conversationId,
+      sender_type: 'bot',
+      content_type,
+      content_text,
+      template_name,
+      message_id: waMessageId,
+      // Partes da chave Baileys — só Evolution (NULL no Meta).
+      remote_jid: outboundRemoteJid,
+      from_me: channel.provider === 'evolution' ? true : null,
+      status: 'sent',
+    })
+    .select('id')
+    .single()
   if (msgErr) {
-    // Meta already has the message; record the DB error but don't pretend
-    // the send failed. The engine wraps this in a log line.
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+    // The provider already has the message; record the DB error but don't
+    // pretend the send failed. The engine wraps this in a log line.
+    throw new Error(`sent but DB insert failed: ${msgErr.message}`)
   }
+
+  // Carimbo de canal (Fase 3) — best-effort; NULL no fallback → no-op.
+  if (insertedMsg) await stampMessageChannel(db, insertedMsg.id, channel.channelId)
 
   await db
     .from('conversations')

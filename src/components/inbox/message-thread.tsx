@@ -27,7 +27,10 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
+  BadgeCheck,
+  QrCode,
 } from "lucide-react";
+import type { CbChannel } from "@/lib/cb-channels/repo";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +79,15 @@ interface MessageThreadProps {
   onAssignChange: (
     conversationId: string,
     assignedAgentId: string | null,
+  ) => void;
+  /**
+   * Multi-canal: o operador trocou o canal de resposta da conversa (ou
+   * voltou para o Automático). Opcional para os callers existentes; o
+   * seletor só aparece quando a conta tem 2+ canais.
+   */
+  onChannelChange?: (
+    conversationId: string,
+    patch: { channel_id?: string; channel_pinned: boolean },
   ) => void;
   /**
    * On mobile, the thread is shown full-screen with the conversation list
@@ -162,6 +174,7 @@ export function MessageThread({
   onUpdateMessage,
   onStatusChange,
   onAssignChange,
+  onChannelChange,
   onBack,
   resyncToken = 0,
   onRefresh,
@@ -225,6 +238,47 @@ export function MessageThread({
       cancelled = true;
     };
   }, []);
+
+  // Canais de WhatsApp da conta (multi-canal). Uma busca por montagem —
+  // a lista muda raramente (Settings → Conexões). Falha ou pré-migration
+  // → lista vazia → seletor oculto e comportamento antigo preservado.
+  const [channels, setChannels] = useState<CbChannel[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/cb/channels");
+        if (!res.ok) return;
+        const payload = await res.json();
+        if (!cancelled) setChannels(payload.channels ?? []);
+      } catch {
+        // silencioso — sem canais, o inbox se comporta como sempre
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Canal ativo da conversa: o fixado/seguido, senão o padrão da conta.
+  const activeChannel = useMemo(() => {
+    if (!channels.length) return null;
+    return (
+      channels.find((c) => c.id === conversation?.channel_id) ??
+      channels.find((c) => c.is_default) ??
+      null
+    );
+  }, [channels, conversation?.channel_id]);
+
+  // Canal Evolution (não oficial) não tem janela de 24h nem templates —
+  // o cronômetro some e o compositor fica livre (ver props do composer).
+  const evolutionActive = activeChannel?.kind === "evolution";
+
+  const channelsById = useMemo(() => {
+    const map = new Map<string, CbChannel>();
+    for (const c of channels) map.set(c.id, c);
+    return map;
+  }, [channels]);
 
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
@@ -838,6 +892,35 @@ export function MessageThread({
     [conversation, onAssignChange],
   );
 
+  const handleChannelChange = useCallback(
+    async (channelId: string | null) => {
+      if (!conversation) return;
+
+      // Escolher um canal FIXA a conversa nele; "Automático" solta o pino
+      // (o channel_id fica — o próximo inbound o move, ver
+      // followConversationChannel em src/lib/cb-channels/stamp.ts).
+      const patch =
+        channelId === null
+          ? { channel_pinned: false }
+          : { channel_id: channelId, channel_pinned: true };
+
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("conversations")
+        .update(patch)
+        .eq("id", conversation.id);
+
+      if (error) {
+        console.error("Failed to update channel:", error);
+        toast.error(t("channelUpdateFailed"));
+        return;
+      }
+
+      onChannelChange?.(conversation.id, patch);
+    },
+    [conversation, onChannelChange, t],
+  );
+
   // Empty state — same WhatsApp-style doodle background as the active
   // thread below, so swapping between empty/selected doesn't change the
   // pattern under the user's eye.
@@ -902,17 +985,20 @@ export function MessageThread({
             <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
           </div>
           {/* Session timer badge — hidden on the narrowest phones so
-              the name + back arrow keep their room. */}
-          <Badge
-            variant="outline"
-            className={cn(
-              "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
-              sessionInfo.expired ? "text-red-400" : "text-primary"
-            )}
-          >
-            <Clock className="h-3 w-3" />
-            {sessionInfo.remaining}
-          </Badge>
+              the name + back arrow keep their room. Canal Evolution não
+              tem janela de 24h, então o cronômetro some. */}
+          {!evolutionActive && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
+                sessionInfo.expired ? "text-red-400" : "text-primary"
+              )}
+            >
+              <Clock className="h-3 w-3" />
+              {sessionInfo.remaining}
+            </Badge>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -963,6 +1049,73 @@ export function MessageThread({
                 className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
               />
             </button>
+          )}
+
+          {/* Seletor de canal — só quando a conta tem 2+ números. Escolher
+              fixa a conversa no canal; "Automático" volta a seguir o número
+              que o cliente usou por último. */}
+          {channels.length >= 2 && activeChannel && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                title={t("channelTitle")}
+                className={cn(
+                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                  conversation.channel_pinned
+                    ? "text-primary"
+                    : "text-muted-foreground",
+                )}
+              >
+                {activeChannel.kind === "meta" ? (
+                  <BadgeCheck className="h-3 w-3" />
+                ) : (
+                  <QrCode className="h-3 w-3" />
+                )}
+                <span className="hidden max-w-[8rem] truncate sm:inline">
+                  {activeChannel.label}
+                </span>
+                <ChevronDown className="h-3 w-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="border-border bg-popover">
+                {channels.map((c) => {
+                  const isSelected =
+                    Boolean(conversation.channel_pinned) &&
+                    c.id === activeChannel.id;
+                  return (
+                    <DropdownMenuItem
+                      key={c.id}
+                      onClick={() => handleChannelChange(c.id)}
+                      className={cn(
+                        "text-sm",
+                        isSelected ? "text-primary" : "text-popover-foreground",
+                      )}
+                    >
+                      {c.kind === "meta" ? (
+                        <BadgeCheck className="mr-2 h-3.5 w-3.5" />
+                      ) : (
+                        <QrCode className="mr-2 h-3.5 w-3.5" />
+                      )}
+                      <span className="flex-1">{c.label}</span>
+                      {isSelected && <Check className="ml-2 h-3 w-3" />}
+                    </DropdownMenuItem>
+                  );
+                })}
+                <DropdownMenuSeparator className="bg-border" />
+                <DropdownMenuItem
+                  onClick={() => handleChannelChange(null)}
+                  className={cn(
+                    "text-sm",
+                    conversation.channel_pinned
+                      ? "text-muted-foreground"
+                      : "text-primary",
+                  )}
+                >
+                  <span className="flex-1">{t("channelAuto")}</span>
+                  {!conversation.channel_pinned && (
+                    <Check className="ml-2 h-3 w-3" />
+                  )}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
 
           {/* Status dropdown */}
@@ -1096,6 +1249,12 @@ export function MessageThread({
                         }
                       : null;
                     const msgReactions = reactionsByMessageId.get(msg.id);
+                    // Rótulo do canal por mensagem — só em conta multi-canal
+                    // e quando a mensagem foi carimbada (Fase 3).
+                    const channelLabel =
+                      channels.length >= 2 && msg.channel_id
+                        ? (channelsById.get(msg.channel_id)?.label ?? null)
+                        : null;
                     // Toggle is computed at the call site — `msgReactions`
                     // and `user?.id` are already in scope, no extra hook.
                     const handlePillToggle = (emoji: string) => {
@@ -1122,6 +1281,7 @@ export function MessageThread({
                           reactions={msgReactions}
                           currentUserId={user?.id}
                           onToggleReaction={handlePillToggle}
+                          channelLabel={channelLabel}
                         />
                       </MessageActions>
                     );
@@ -1149,10 +1309,12 @@ export function MessageThread({
         }}
       />
 
-      {/* Composer */}
+      {/* Composer — canal Evolution não tem janela de 24h (sessionExpired
+          neutralizado) nem templates/interativas (channelKind esconde). */}
       <MessageComposer
         conversationId={conversation.id}
-        sessionExpired={sessionInfo.expired}
+        sessionExpired={evolutionActive ? false : sessionInfo.expired}
+        channelKind={activeChannel?.kind ?? null}
         onSend={handleSend}
         onSendMedia={handleSendMedia}
         onSendInteractive={handleSendInteractive}

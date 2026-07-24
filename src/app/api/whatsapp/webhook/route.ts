@@ -13,6 +13,18 @@ import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
+// Aditivo (multi-canal): o número PADRÃO continua resolvido por whatsapp_config,
+// intacto. resolveInboundMetaChannelId só ACRESCENTA o carimbo de channel_id;
+// resolveInboundMetaChannel é o FALLBACK para receber de um 2º número Meta que
+// vive só em cb_channels.
+import {
+  resolveInboundMetaChannelId,
+  resolveInboundMetaChannel,
+} from '@/lib/cb-channels/resolve-inbound'
+import {
+  stampMessageChannel,
+  followConversationChannel,
+} from '@/lib/cb-channels/stamp'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -266,12 +278,30 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
         continue
       }
 
-      if (!configRows || configRows.length === 0) {
-        console.error('No config found for phone_number_id:', phoneNumberId)
-        continue
-      }
+      // Resolve conta / dono / token / canal por phone_number_id.
+      //   - 1 linha em whatsapp_config: o número PADRÃO (caminho existente,
+      //     comportamento intacto) — carimba o channel_id por cima.
+      //   - 0 linhas: FALLBACK ADITIVO em cb_channels — um 2º número Meta que
+      //     vive só lá. Sem esse fallback, ele seria descartado como antes.
+      //   - >1 linha: duplicata (não deveria acontecer pós-013) — descarta.
+      let resolved:
+        | {
+            accountId: string
+            ownerUserId: string
+            accessToken: string
+            channelId: string | null
+          }
+        | null = null
 
-      if (configRows.length > 1) {
+      if (configRows && configRows.length === 1) {
+        const config = configRows[0]
+        resolved = {
+          accountId: config.account_id,
+          ownerUserId: config.user_id,
+          accessToken: decrypt(config.access_token),
+          channelId: await resolveInboundMetaChannelId(supabaseAdmin(), phoneNumberId),
+        }
+      } else if (configRows && configRows.length > 1) {
         console.error(
           `Multiple configs (${configRows.length}) found for phone_number_id:`,
           phoneNumberId,
@@ -280,11 +310,23 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           configRows.map((r: { account_id: string; user_id: string }) => `${r.account_id} (admin ${r.user_id})`)
         )
         continue
+      } else {
+        // Número não está em whatsapp_config — tenta um canal Meta adicional.
+        const ch = await resolveInboundMetaChannel(supabaseAdmin(), phoneNumberId)
+        if (ch) {
+          resolved = {
+            accountId: ch.accountId,
+            ownerUserId: ch.ownerUserId,
+            accessToken: decrypt(ch.accessToken),
+            channelId: ch.channelId,
+          }
+        }
       }
 
-      const config = configRows[0]
-
-      const decryptedAccessToken = decrypt(config.access_token)
+      if (!resolved) {
+        console.error('No config found for phone_number_id:', phoneNumberId)
+        continue
+      }
 
       for (let i = 0; i < value.messages.length; i++) {
         const message = value.messages[i]
@@ -295,12 +337,12 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           contact,
           // Tenancy — drives every contact / conversation lookup
           // and the engines' active-row dispatch.
-          config.account_id,
+          resolved.accountId,
           // Audit / sender-of-record — used as the user_id on row
-          // inserts that need it for NOT NULL FK compliance. Always
-          // the admin who saved the WhatsApp config.
-          config.user_id,
-          decryptedAccessToken
+          // inserts that need it for NOT NULL FK compliance.
+          resolved.ownerUserId,
+          resolved.accessToken,
+          resolved.channelId
         )
       }
     }
@@ -568,7 +610,11 @@ async function processMessage(
   // (contacts, conversations). Always the admin who saved the
   // WhatsApp config; the choice is arbitrary post-017 but stable.
   configOwnerUserId: string,
-  accessToken: string
+  accessToken: string,
+  // cb_channels.id que atende o phone_number_id (multi-canal), para carimbar
+  // messages.channel_id e a conversa "seguir o cliente". NULL = sem carimbo,
+  // comportamento idêntico ao de antes.
+  channelId: string | null = null
 ) {
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
@@ -613,7 +659,7 @@ async function processMessage(
 
   // Parse message content based on type
   const { contentText, mediaUrl, mediaType, interactiveReplyId } =
-    await parseMessageContent(message, accessToken)
+    await parseMessageContent(message, accessToken, channelId)
 
   // Resolve swipe-reply context if present. A missing parent is fine —
   // we just store NULL and the UI renders the message without a quote.
@@ -666,21 +712,25 @@ async function processMessage(
     .eq('sender_type', 'customer')
   const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
 
-  const { error: msgError } = await supabaseAdmin().from('messages').insert({
-    conversation_id: conversation.id,
-    sender_type: 'customer',
-    content_type: contentType,
-    content_text: contentText,
-    media_url: mediaUrl,
-    message_id: message.id,
-    status: 'delivered',
-    created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
-    reply_to_message_id: replyToInternalId,
-    // Only populated for content_type='interactive'. Migration 010 added
-    // the column; null for every other content_type so existing inserts
-    // behave identically.
-    interactive_reply_id: interactiveReplyId,
-  })
+  const { data: insertedMsg, error: msgError } = await supabaseAdmin()
+    .from('messages')
+    .insert({
+      conversation_id: conversation.id,
+      sender_type: 'customer',
+      content_type: contentType,
+      content_text: contentText,
+      media_url: mediaUrl,
+      message_id: message.id,
+      status: 'delivered',
+      created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+      reply_to_message_id: replyToInternalId,
+      // Only populated for content_type='interactive'. Migration 010 added
+      // the column; null for every other content_type so existing inserts
+      // behave identically.
+      interactive_reply_id: interactiveReplyId,
+    })
+    .select('id')
+    .single()
 
   if (msgError) {
     console.error('Error inserting message:', msgError)
@@ -700,6 +750,14 @@ async function processMessage(
 
   if (convError) {
     console.error('Error updating conversation:', convError)
+  }
+
+  // Carimbo de canal (multi-canal): marca por onde a mensagem entrou e faz a
+  // conversa "seguir o cliente" (a menos que fixada). Aditivo, best-effort e
+  // deploy-safe — nunca altera o insert/fluxo acima.
+  if (channelId && insertedMsg) {
+    await stampMessageChannel(supabaseAdmin(), insertedMsg.id, channelId)
+    await followConversationChannel(supabaseAdmin(), conversation.id, channelId)
   }
 
   // If this contact was a recent broadcast recipient, flag the reply
@@ -828,7 +886,11 @@ async function processMessage(
 
 async function parseMessageContent(
   message: WhatsAppMessage,
-  accessToken: string
+  accessToken: string,
+  // Canal (cb_channels.id) por onde a mensagem entrou. Vai na URL de mídia
+  // (?channel=) para o proxy usar o token DESTE número (2º número Meta com
+  // token próprio). NULL → URL sem canal, proxy usa o número padrão (como antes).
+  channelId: string | null = null
 ): Promise<{
   contentText: string | null
   mediaUrl: string | null
@@ -851,7 +913,9 @@ async function parseMessageContent(
   ): Promise<string | null> => {
     try {
       await getMediaUrl({ mediaId, accessToken })
-      return `/api/whatsapp/media/${mediaId}`
+      return channelId
+        ? `/api/whatsapp/media/${mediaId}?channel=${channelId}`
+        : `/api/whatsapp/media/${mediaId}`
     } catch (error) {
       console.error(
         `Failed to verify media ${mediaId} with Meta:`,

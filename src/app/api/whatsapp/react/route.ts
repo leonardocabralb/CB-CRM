@@ -4,6 +4,10 @@ import { sendReactionMessage } from '@/lib/whatsapp/meta-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils';
 import {
+  resolveEngineChannel,
+  evolutionTransportFor,
+} from '@/lib/cb-channels/engine-send';
+import {
   checkRateLimit,
   rateLimitResponse,
   RATE_LIMITS,
@@ -67,7 +71,7 @@ export async function POST(request: Request) {
     // Resolve target message + its conversation; verify ownership.
     const { data: targetMessage, error: msgError } = await supabase
       .from('messages')
-      .select('id, message_id, conversation_id')
+      .select('id, message_id, conversation_id, remote_jid, from_me')
       .eq('id', message_id)
       .maybeSingle();
 
@@ -108,39 +112,65 @@ export async function POST(request: Request) {
       );
     }
 
-    // WhatsApp config + access token. Account-scoped post-multi-user.
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('phone_number_id, access_token')
-      .eq('account_id', accountId)
-      .single();
-
-    if (configError || !config) {
+    // Canal da conversa (multi-canal, Fase 5): a reação sai pelo MESMO
+    // número da conversa — Meta via Graph, Evolution via transport
+    // (Baileys, que precisa da chave completa remote_jid/from_me/id).
+    const channel = await resolveEngineChannel(supabase, accountId, conversation.id);
+    if (!channel) {
       return NextResponse.json(
         { error: 'WhatsApp not configured.' },
         { status: 400 },
       );
     }
 
-    const accessToken = decrypt(config.access_token);
     const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
 
-    try {
-      await sendReactionMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
-        to: sanitizedPhone,
-        targetMessageId: targetMessage.message_id,
-        emoji,
-      });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Unknown Meta API error';
-      console.error('[whatsapp/react] Meta send failed:', message);
-      return NextResponse.json(
-        { error: `Meta API error: ${message}` },
-        { status: 502 },
-      );
+    if (channel.provider === 'evolution') {
+      try {
+        const transport = evolutionTransportFor(channel);
+        await transport.sendReaction({
+          target: {
+            id: targetMessage.message_id,
+            remoteJid: targetMessage.remote_jid ?? undefined,
+            fromMe: targetMessage.from_me ?? undefined,
+          },
+          emoji,
+        });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'Unknown Evolution error';
+        console.error('[whatsapp/react] Evolution send failed:', message);
+        return NextResponse.json(
+          { error: `Evolution API error: ${message}` },
+          { status: 502 },
+        );
+      }
+    } else {
+      if (!channel.phone_number_id || !channel.access_token) {
+        return NextResponse.json(
+          { error: 'WhatsApp not configured.' },
+          { status: 400 },
+        );
+      }
+      const accessToken = decrypt(channel.access_token);
+
+      try {
+        await sendReactionMessage({
+          phoneNumberId: channel.phone_number_id,
+          accessToken,
+          to: sanitizedPhone,
+          targetMessageId: targetMessage.message_id,
+          emoji,
+        });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'Unknown Meta API error';
+        console.error('[whatsapp/react] Meta send failed:', message);
+        return NextResponse.json(
+          { error: `Meta API error: ${message}` },
+          { status: 502 },
+        );
+      }
     }
 
     // Mirror into DB. Empty emoji = removal.

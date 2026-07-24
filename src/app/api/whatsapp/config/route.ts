@@ -7,6 +7,10 @@ import {
   verifyPhoneNumber,
 } from '@/lib/whatsapp/meta-api'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
+import {
+  syncDefaultMetaChannelFromConfig,
+  flagDefaultMetaChannelRemoved,
+} from '@/lib/cb-channels/legacy-mirror'
 
 /**
  * Resolve the caller's account_id from their profile. Inlined here
@@ -401,6 +405,17 @@ export async function POST(request: Request) {
       }
     }
 
+    // Espelho multi-canal (best-effort, Fase 5): o ENVIO e a MÍDIA resolvem
+    // credenciais pelo canal padrão em cb_channels — sem este sync, uma
+    // rotação de token por esta rota deixaria o canal com token defasado
+    // (achado da revisão da 4a). Só toca o padrão quando ele é Meta.
+    await syncDefaultMetaChannelFromConfig(supabase, accountId, {
+      ...baseRow,
+      display_phone:
+        (phoneInfo as { display_phone_number?: string } | null)
+          ?.display_phone_number ?? null,
+    })
+
     if (registrationError) {
       // Save succeeded but the number isn't actually live. Return
       // 200 with a structured error so the UI can show the specific
@@ -471,6 +486,11 @@ export async function DELETE() {
         { status: 500 }
       )
     }
+
+    // Espelho multi-canal (best-effort, Fase 5): sinaliza no canal padrão
+    // Meta que a configuração legada foi removida, para o painel de
+    // Conexões não exibir um canal "conectado" sem lastro.
+    await flagDefaultMetaChannelRemoved(supabase, accountId)
 
     return NextResponse.json({ success: true })
   } catch (error) {
