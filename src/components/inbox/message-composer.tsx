@@ -112,6 +112,14 @@ interface MediaDraft {
 interface MessageComposerProps {
   conversationId: string;
   sessionExpired: boolean;
+  /**
+   * Tipo do canal ativo da conversa (multi-canal). Canal 'evolution' (não
+   * oficial, Baileys) não tem templates nem mensagens interativas — os dois
+   * atalhos somem. A janela de 24h também não existe lá, mas isso o pai já
+   * neutraliza passando sessionExpired=false. Null = conta sem canais
+   * (pré-migration) → comportamento de sempre.
+   */
+  channelKind?: "meta" | "evolution" | null;
   onSend: (text: string, replyToId?: string) => void;
   onSendMedia: (payload: SendMediaPayload) => void;
   onSendInteractive: (payload: InteractiveMessagePayload, replyToId?: string) => void;
@@ -134,6 +142,7 @@ const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
 export function MessageComposer({
   conversationId,
   sessionExpired,
+  channelKind = null,
   onSend,
   onSendMedia,
   onSendInteractive,
@@ -360,6 +369,13 @@ export function MessageComposer({
     (qr: QuickReply) => {
       setQuickReplyOpen(false);
       if (qr.kind === "interactive" && qr.interactive_payload) {
+        // Botões/listas não entregam via Baileys — este atalho por resposta
+        // rápida também precisa da barreira (o item direto já está oculto;
+        // sem isto o envio morreria num 400 do servidor).
+        if (channelKind === "evolution") {
+          toast.error(t("interactiveNotOnChannel"));
+          return;
+        }
         openInteractiveBuilder(qr.interactive_payload);
         return;
       }
@@ -378,7 +394,7 @@ export function MessageComposer({
         }
       });
     },
-    [openInteractiveBuilder, adjustHeight],
+    [openInteractiveBuilder, adjustHeight, channelKind, t],
   );
 
   // Upload a captured file to chat-media and stage it as a draft.
@@ -686,10 +702,14 @@ export function MessageComposer({
               <Plus className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="border-border bg-popover">
-              <DropdownMenuItem onClick={() => openInteractiveBuilder()}>
-                <MessageSquareDashed className="mr-2 h-4 w-4" />
-                {t("interactiveMessage")}
-              </DropdownMenuItem>
+              {/* Botões/listas não entregam via Baileys — o item some no
+                  canal Evolution; respostas rápidas de texto continuam. */}
+              {channelKind !== "evolution" && (
+                <DropdownMenuItem onClick={() => openInteractiveBuilder()}>
+                  <MessageSquareDashed className="mr-2 h-4 w-4" />
+                  {t("interactiveMessage")}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => setQuickReplyOpen(true)}>
                 <Zap className="mr-2 h-4 w-4" />
                 {t("quickReplies")}
@@ -697,17 +717,21 @@ export function MessageComposer({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <GatedButton
-            variant="ghost"
-            size="sm"
-            canAct={!readOnly}
-            gateReason="send messages"
-            title={readOnly ? undefined : t("sendTemplate")}
-            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-            onClick={onOpenTemplates}
-          >
-            <LayoutTemplate className="h-4 w-4" />
-          </GatedButton>
+          {/* Templates são um conceito da API oficial — o botão some no
+              canal Evolution. */}
+          {channelKind !== "evolution" && (
+            <GatedButton
+              variant="ghost"
+              size="sm"
+              canAct={!readOnly}
+              gateReason="send messages"
+              title={readOnly ? undefined : t("sendTemplate")}
+              className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+              onClick={onOpenTemplates}
+            >
+              <LayoutTemplate className="h-4 w-4" />
+            </GatedButton>
+          )}
 
           <GatedButton
             variant="ghost"

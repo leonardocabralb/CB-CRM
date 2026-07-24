@@ -161,6 +161,9 @@
       "unassign": "Unassign",
       "noTeammates": "No teammates available",
       "me": " (me)",
+      "channelTitle": "Reply channel",
+      "channelAuto": "Automatic (follows the customer)",
+      "channelUpdateFailed": "Could not switch the channel.",
       "noMessagesYet": "No messages yet",
       "sendTemplateHint": "Send a template to start the conversation",
       "selectConversation": "Select a conversation",
@@ -196,6 +199,7 @@
       "removeAttachment": "Remove attachment",
       "moreActions": "More",
       "interactiveMessage": "Interactive message",
+      "interactiveNotOnChannel": "Interactive messages are not supported on QR-Code channels.",
       "quickReplies": "Quick replies",
       "quickRepliesEmpty": "No quick replies yet. Add some in Settings → Quick replies.",
       "saveAsQuickReply": "Save as quick reply",
@@ -216,7 +220,8 @@
       "interactiveReply": "[Interactive reply]",
       "unsupported": "[Unsupported message type]",
       "aiBadge": "AI",
-      "aiBadgeTitle": "Sent automatically by the AI assistant"
+      "aiBadgeTitle": "Sent automatically by the AI assistant",
+      "viaChannel": "via {label}"
     },
     "actions": {
       "reply": "Reply",

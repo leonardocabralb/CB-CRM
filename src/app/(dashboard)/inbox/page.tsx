@@ -554,6 +554,23 @@ function InboxPageInner() {
     [activeConversation]
   );
 
+  // Multi-canal: o thread já gravou {channel_id, channel_pinned} no banco;
+  // aqui só espelhamos no estado (mesmo padrão do status/assign).
+  const handleChannelChange = useCallback(
+    (
+      conversationId: string,
+      patch: { channel_id?: string; channel_pinned: boolean }
+    ) => {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conversationId ? { ...c, ...patch } : c))
+      );
+      if (activeConversation?.id === conversationId) {
+        setActiveConversation((prev) => (prev ? { ...prev, ...patch } : prev));
+      }
+    },
+    [activeConversation]
+  );
+
   // On mobile (<lg) we show a SINGLE pane — either the list or the
   // thread — rather than cramming both side-by-side. Selecting a
   // conversation slides the thread in; the thread's back button pops
@@ -618,6 +635,7 @@ function InboxPageInner() {
             onUpdateMessage={handleUpdateMessage}
             onStatusChange={handleStatusChange}
             onAssignChange={handleAssignChange}
+            onChannelChange={handleChannelChange}
             onBack={handleCloseConversation}
             resyncToken={resyncToken}
             onRefresh={handleManualRefresh}

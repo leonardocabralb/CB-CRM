@@ -161,6 +161,9 @@
       "unassign": "Remover atribuição",
       "noTeammates": "Nenhum membro da equipe disponível",
       "me": " (eu)",
+      "channelTitle": "Canal de resposta",
+      "channelAuto": "Automático (segue o cliente)",
+      "channelUpdateFailed": "Não foi possível trocar o canal.",
       "noMessagesYet": "Nenhuma mensagem ainda",
       "sendTemplateHint": "Envie um modelo para iniciar a conversa",
       "selectConversation": "Selecione uma conversa",
@@ -196,6 +199,7 @@
       "removeAttachment": "Remover anexo",
       "moreActions": "Mais",
       "interactiveMessage": "Mensagem interativa",
+      "interactiveNotOnChannel": "Mensagens interativas não são suportadas em canais por QR Code.",
       "quickReplies": "Respostas rápidas",
       "quickRepliesEmpty": "Nenhuma resposta rápida ainda. Adicione em Configurações → Respostas rápidas.",
       "saveAsQuickReply": "Salvar como resposta rápida",
@@ -216,7 +220,8 @@
       "interactiveReply": "[Resposta interativa]",
       "unsupported": "[Tipo de mensagem não suportado]",
       "aiBadge": "IA",
-      "aiBadgeTitle": "Enviada automaticamente pelo assistente de IA"
+      "aiBadgeTitle": "Enviada automaticamente pelo assistente de IA",
+      "viaChannel": "via {label}"
     },
     "actions": {
       "reply": "Responder",

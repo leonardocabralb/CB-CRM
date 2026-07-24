@@ -28,6 +28,11 @@ interface MessageBubbleProps {
   reactions?: MessageReaction[];
   currentUserId?: string;
   onToggleReaction?: (emoji: string) => void;
+  /**
+   * Rótulo do canal (cb_channels) por onde a mensagem passou. O thread só
+   * o preenche em conta multi-canal (2+ números) — senão é ruído.
+   */
+  channelLabel?: string | null;
 }
 
 function StatusIcon({ status }: { status: Message["status"] }) {
@@ -264,6 +269,7 @@ export function MessageBubble({
   reactions,
   currentUserId,
   onToggleReaction,
+  channelLabel,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
 
@@ -312,6 +318,17 @@ export function MessageBubble({
             >
               <Sparkles className="h-2.5 w-2.5" />
               {t("aiBadge")}
+            </span>
+          )}
+          {channelLabel && (
+            <span
+              title={t("viaChannel", { label: channelLabel })}
+              className={cn(
+                "max-w-[7rem] truncate text-[9px]",
+                isAgent ? "text-primary-foreground/60" : "text-muted-foreground",
+              )}
+            >
+              {channelLabel}
             </span>
           )}
           <span
