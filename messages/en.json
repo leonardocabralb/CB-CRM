@@ -1342,6 +1342,8 @@
       "syncTitle": "Pull approved templates from your Meta WhatsApp Business Account",
       "newTemplate": "New Template",
       "noTemplates": "No templates yet.",
+      "metaRequiredTitle": "Templates require an official Meta number",
+      "metaRequiredDesc": "This workspace's WhatsApp numbers are QR-Code (unofficial) connections, which have no template system. Connect an official Meta API number in Settings → Connections to create and send templates.",
       "createFirst": "Create your first message template to get started.",
       "editTitle": "Editing triggers Meta re-review — status flips to PENDING.",
       "editLabel": "Edit template",

@@ -1342,6 +1342,8 @@
       "syncTitle": "Importe os modelos aprovados da sua WhatsApp Business Account na Meta",
       "newTemplate": "Novo modelo",
       "noTemplates": "Nenhum modelo ainda.",
+      "metaRequiredTitle": "Modelos exigem um número oficial da Meta",
+      "metaRequiredDesc": "Os números de WhatsApp desta conta são conexões por QR Code (não oficiais), que não têm sistema de modelos. Conecte um número oficial da API da Meta em Configurações → Conexões para criar e enviar modelos.",
       "createFirst": "Crie seu primeiro modelo de mensagem para começar.",
       "editTitle": "Editar aciona nova revisão da Meta — o status volta para PENDING.",
       "editLabel": "Editar modelo",

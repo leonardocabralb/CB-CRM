@@ -120,19 +120,35 @@ export function SettingsOverview({
     // WhatsApp connection status — slower, independent.
     (async () => {
       setWhatsappLoading(true);
-      const [row, health] = await Promise.allSettled([
+      const [row, health, channelsRes] = await Promise.allSettled([
         supabase
           .from('whatsapp_config')
           .select('phone_number_id')
           .eq('account_id', acctId)
           .maybeSingle(),
         fetch('/api/whatsapp/config', { cache: 'no-store' }).then((r) => r.json()),
+        fetch('/api/cb/channels', { cache: 'no-store' }).then((r) => r.json()),
       ]);
       if (cancelled) return;
-      setWhatsapp({
-        configured: row.status === 'fulfilled' && !!row.value.data?.phone_number_id,
-        connected: health.status === 'fulfilled' && !!health.value?.connected,
-      });
+      // Multi-canal (Fase 5): quando a conta tem canais, o tile reflete a
+      // MESMA fonte que o painel de Conexões (qualquer canal conectado),
+      // em vez da saúde Meta-only do legado — que contradiz o painel numa
+      // conta Evolution. Sem canais (pré-migration), lógica antiga.
+      const channels =
+        channelsRes.status === 'fulfilled'
+          ? ((channelsRes.value?.channels ?? []) as { status?: string }[])
+          : [];
+      if (channels.length > 0) {
+        setWhatsapp({
+          configured: true,
+          connected: channels.some((c) => c.status === 'connected'),
+        });
+      } else {
+        setWhatsapp({
+          configured: row.status === 'fulfilled' && !!row.value.data?.phone_number_id,
+          connected: health.status === 'fulfilled' && !!health.value?.connected,
+        });
+      }
       setWhatsappLoading(false);
     })();
 

@@ -123,6 +123,16 @@ export async function createBroadcast(
       400
     );
   }
+  // Broadcast é template-only → só sai por número Meta (API oficial). Sem
+  // esta guarda, uma conta cujo padrão é Evolution morreria num decrypt de
+  // token nulo — erro opaco em vez de motivo claro. (Multi-canal, Fase 5.)
+  if (config.provider === 'evolution' || !config.phone_number_id || !config.access_token) {
+    throw new BroadcastError(
+      'meta_channel_required',
+      'Broadcasts require an official Meta (Cloud API) number — this account default WhatsApp channel is not a Meta number.',
+      400
+    );
+  }
   const accessToken = decrypt(config.access_token);
 
   // Template row (once) for header/button components; guard a
