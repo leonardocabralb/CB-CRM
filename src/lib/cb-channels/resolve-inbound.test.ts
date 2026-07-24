@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   resolveInboundEvolutionChannel,
   resolveInboundMetaChannelId,
+  resolveInboundMetaChannel,
 } from './resolve-inbound';
 
 // Mock que RESPEITA tabela + filtros: cada tabela recebe um handler que vê os
@@ -151,5 +152,69 @@ describe('resolveInboundMetaChannelId', () => {
       cb_channels: () => ({ data: null, error: { message: 'does not exist' } }),
     });
     expect(await resolveInboundMetaChannelId(db, 'pn1')).toBeNull();
+  });
+});
+
+describe('resolveInboundMetaChannel', () => {
+  it('canal Meta com created_by e token → devolve conta/dono/token(cripto)/canal', async () => {
+    const db = makeDb({
+      cb_channels: (f) =>
+        f.phone_number_id === 'pn1' && f.kind === 'meta'
+          ? {
+              data: {
+                id: 'chm',
+                account_id: 'acc1',
+                created_by: 'user1',
+                access_token: 'enc-token',
+              },
+            }
+          : { data: null },
+    });
+    expect(await resolveInboundMetaChannel(db, 'pn1')).toEqual({
+      accountId: 'acc1',
+      ownerUserId: 'user1',
+      accessToken: 'enc-token',
+      channelId: 'chm',
+    });
+    expect(db.calls.map((c) => c.table)).toEqual(['cb_channels']);
+  });
+
+  it('created_by NULL → cai para whatsapp_config.user_id', async () => {
+    const db = makeDb({
+      cb_channels: () => ({
+        data: {
+          id: 'chm',
+          account_id: 'acc1',
+          created_by: null,
+          access_token: 'enc-token',
+        },
+      }),
+      whatsapp_config: (f) =>
+        f.account_id === 'acc1' ? { data: { user_id: 'owner2' } } : { data: null },
+    });
+    const r = await resolveInboundMetaChannel(db, 'pn1');
+    expect(r?.ownerUserId).toBe('owner2');
+    expect(r?.channelId).toBe('chm');
+  });
+
+  it('canal sem access_token → null (não dá para receber sem token)', async () => {
+    const db = makeDb({
+      cb_channels: () => ({
+        data: { id: 'chm', account_id: 'acc1', created_by: 'u', access_token: null },
+      }),
+    });
+    expect(await resolveInboundMetaChannel(db, 'pn1')).toBeNull();
+  });
+
+  it('sem canal → null', async () => {
+    const db = makeDb({ cb_channels: () => ({ data: null }) });
+    expect(await resolveInboundMetaChannel(db, 'pn1')).toBeNull();
+  });
+
+  it('erro na consulta (tabela ausente pré-901) → null (engolido)', async () => {
+    const db = makeDb({
+      cb_channels: () => ({ data: null, error: { message: 'does not exist' } }),
+    });
+    expect(await resolveInboundMetaChannel(db, 'pn1')).toBeNull();
   });
 });

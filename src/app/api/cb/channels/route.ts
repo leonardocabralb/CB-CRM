@@ -2,8 +2,9 @@
 // /api/cb/channels
 //
 //   GET  — lista os canais de WhatsApp da conta (sem segredos).
-//   POST — cria um canal Evolution (nova instância no servidor compartilhado)
-//          e devolve o QR Code para parear.
+//   POST — cria um canal. body.kind='evolution' (padrão): nova instância no
+//          servidor compartilhado + QR. body.kind='meta': assistente por token
+//          (verify → register → subscribe), grava em cb_channels.
 //
 // Rota NOSSA (prefixo /api/cb/), fora de /api/whatsapp/ do upstream/Gabriel.
 //
@@ -38,8 +39,19 @@ import {
   evolutionWebhookConfig,
   provisionChannelInstance,
 } from '@/lib/cb-channels/evolution-admin';
+import { provisionMetaChannel } from '@/lib/cb-channels/meta-admin';
 
 const MAX_LABEL_LEN = 60;
+
+type AdminCtx = Awaited<ReturnType<typeof requireRole>>;
+
+function asStr(v: unknown): string {
+  return typeof v === 'string' ? v.trim() : '';
+}
+function asStrOrNull(v: unknown): string | null {
+  const s = asStr(v);
+  return s || null;
+}
 
 /** Criar canal cria estado remoto (instância + webhook) — mais apertado
  *  que uma ação de admin comum. */
@@ -62,10 +74,13 @@ export async function POST(request: Request) {
     const limit = checkRateLimit(`cb:channelCreate:${ctx.userId}`, CREATE_LIMIT);
     if (!limit.success) return rateLimitResponse(limit);
 
-    const body = (await request.json().catch(() => null)) as {
-      label?: unknown;
-    } | null;
-    const label = typeof body?.label === 'string' ? body.label.trim() : '';
+    const body = (await request.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
+    const label = asStr(body?.label);
+    // 'evolution' por padrão (o painel antigo mandava só { label }).
+    const kind = body?.kind === 'meta' ? 'meta' : 'evolution';
 
     if (!label) {
       return NextResponse.json(
@@ -80,20 +95,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Webhook global + nome de instância único.
-    let webhook;
-    try {
-      webhook = evolutionWebhookConfig(new URL(request.url).origin);
-    } catch (err) {
-      return NextResponse.json(
-        { error: err instanceof Error ? err.message : 'Evolution não configurada.' },
-        { status: 500 },
-      );
-    }
-    // Conta os canais ANTES de provisionar. Se o banco não estiver pronto
-    // (tabela cb_channels ausente na janela pré-migration) ou a leitura
-    // falhar, retornamos SEM criar a instância na Evolution — provisionar
-    // primeiro deixaria uma instância órfã no servidor a cada tentativa.
+    // Conta os canais ANTES de criar qualquer estado remoto (instância
+    // Evolution / registro na Meta). Se o banco não estiver pronto (tabela
+    // cb_channels ausente na janela pré-migration) ou a leitura falhar,
+    // retornamos SEM ter tocado em nada externo.
     let existingCount: number;
     try {
       existingCount = await countChannels(ctx.supabase, ctx.accountId);
@@ -111,6 +116,31 @@ export async function POST(request: Request) {
       );
     }
     const isDefault = existingCount === 0;
+
+    // ---- Canal Meta (API oficial): assistente por token ----
+    if (kind === 'meta') {
+      return createMetaChannel(ctx, {
+        label,
+        isDefault,
+        phoneNumberId: asStr(body?.phone_number_id),
+        wabaId: asStrOrNull(body?.waba_id),
+        accessToken: asStr(body?.access_token),
+        verifyToken: asStrOrNull(body?.verify_token),
+        pin: asStrOrNull(body?.pin),
+      });
+    }
+
+    // ---- Canal Evolution (QR): instância nova no servidor compartilhado ----
+    // Webhook global + nome de instância único.
+    let webhook;
+    try {
+      webhook = evolutionWebhookConfig(new URL(request.url).origin);
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : 'Evolution não configurada.' },
+        { status: 500 },
+      );
+    }
 
     const instanceName = buildChannelInstanceName(ctx.accountId);
 
@@ -204,4 +234,138 @@ export async function POST(request: Request) {
   } catch (err) {
     return toErrorResponse(err);
   }
+}
+
+// ============================================================
+// Criação de canal Meta (API oficial). Espelha o pipeline de
+// /api/whatsapp/config (verify → register → subscribe), gravando em
+// cb_channels em vez de whatsapp_config. NÃO cria estado remoto irreversível:
+// register/subscribe são idempotentes na Meta, então uma falha de insert não
+// deixa órfão (diferente da instância Evolution).
+// ============================================================
+async function createMetaChannel(
+  ctx: AdminCtx,
+  args: {
+    label: string;
+    isDefault: boolean;
+    phoneNumberId: string;
+    wabaId: string | null;
+    accessToken: string;
+    verifyToken: string | null;
+    pin: string | null;
+  },
+): Promise<NextResponse> {
+  const { label, isDefault, phoneNumberId, wabaId, accessToken, verifyToken, pin } =
+    args;
+
+  if (!accessToken || !phoneNumberId) {
+    return NextResponse.json(
+      { error: 'Access Token e Phone Number ID são obrigatórios.' },
+      { status: 400 },
+    );
+  }
+  if (pin && !/^\d{6}$/.test(pin)) {
+    return NextResponse.json(
+      { error: 'O PIN deve ter exatamente 6 dígitos.' },
+      { status: 400 },
+    );
+  }
+
+  // Valida na Meta ANTES de gravar (verify lança → 400). register/subscribe
+  // são best-effort dentro de provisionMetaChannel.
+  let prov;
+  try {
+    prov = await provisionMetaChannel({
+      phoneNumberId,
+      wabaId,
+      accessToken,
+      pin,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erro desconhecido';
+    return NextResponse.json(
+      { error: `Erro da Meta: ${message}` },
+      { status: 400 },
+    );
+  }
+
+  const registrationError = prov.registrationError;
+  const nowIso = new Date().toISOString();
+  const encAccess = encrypt(accessToken);
+  const encVerify = verifyToken ? encrypt(verifyToken) : null;
+
+  const { data: channel, error } = await ctx.supabase
+    .from('cb_channels')
+    .insert({
+      account_id: ctx.accountId,
+      created_by: ctx.userId,
+      kind: 'meta',
+      label,
+      is_default: isDefault,
+      display_phone:
+        (prov.phoneInfo as { display_phone_number?: string } | null)
+          ?.display_phone_number ?? null,
+      status: registrationError ? 'disconnected' : 'connected',
+      connected_at: registrationError ? null : nowIso,
+      last_error: registrationError,
+      phone_number_id: phoneNumberId,
+      waba_id: wabaId,
+      access_token: encAccess,
+      verify_token: encVerify,
+    })
+    .select(CB_CHANNEL_SAFE_COLUMNS)
+    .single();
+
+  if (error) {
+    console.error('[cb/channels] erro ao inserir canal Meta:', error.code, error.message);
+    // O índice único global de phone_number_id (901) barra número repetido.
+    const claimed = error.code === '23505';
+    return NextResponse.json(
+      {
+        error: claimed
+          ? 'Esse número Meta já está vinculado a uma conexão.'
+          : 'Não foi possível salvar o canal.',
+      },
+      { status: claimed ? 409 : 500 },
+    );
+  }
+
+  // Escrita dupla do PADRÃO (só no primeiro canal / conta greenfield): o
+  // espelho whatsapp_config é o que o código herdado (envio, mídia, templates)
+  // lê. provider='meta'.
+  if (isDefault) {
+    const { error: wcErr } = await ctx.supabase.from('whatsapp_config').upsert(
+      {
+        account_id: ctx.accountId,
+        user_id: ctx.userId,
+        provider: 'meta',
+        phone_number_id: phoneNumberId,
+        waba_id: wabaId,
+        access_token: encAccess,
+        verify_token: encVerify,
+        status: registrationError ? 'disconnected' : 'connected',
+        connected_at: registrationError ? null : nowIso,
+        updated_at: nowIso,
+      },
+      { onConflict: 'account_id' },
+    );
+    if (wcErr) {
+      console.error(
+        '[cb/channels] escrita dupla Meta em whatsapp_config falhou (canal criado):',
+        wcErr.message,
+      );
+    }
+  }
+
+  return NextResponse.json(
+    {
+      channel,
+      registration: {
+        registered: prov.registeredAt != null,
+        skipped: prov.registrationSkipped,
+        error: registrationError,
+      },
+    },
+    { status: 201 },
+  );
 }

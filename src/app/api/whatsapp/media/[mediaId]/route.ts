@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
+import { getChannelWithSecrets } from '@/lib/cb-channels/repo'
 
 export async function GET(
   request: Request,
@@ -62,7 +63,29 @@ export async function GET(
       )
     }
 
-    const accessToken = decrypt(config.access_token)
+    // Token: se a mídia veio carimbada com um canal ADICIONAL (?channel= de um
+    // canal NÃO-padrão), usa o token daquele número — assim um 2º número Meta
+    // com token próprio carrega sua mídia. O número PADRÃO usa sempre o
+    // whatsapp_config (sua fonte autoritativa: a tela de config Meta grava lá),
+    // EXATAMENTE como antes da 4a — mesmo que a URL traga o ?channel= dele, para
+    // não pegar um token de cb_channels que possa ter ficado defasado após uma
+    // rotação de token feita pela tela antiga. getChannelWithSecrets filtra por
+    // account_id (tenancy). Canal inválido/sem token → cai no padrão.
+    const channelId = new URL(request.url).searchParams.get('channel')
+    let accessToken = decrypt(config.access_token)
+    if (channelId) {
+      try {
+        const channel = await getChannelWithSecrets(supabase, accountId, channelId)
+        if (channel?.kind === 'meta' && channel.access_token && !channel.is_default) {
+          accessToken = decrypt(channel.access_token)
+        }
+      } catch (err) {
+        console.warn(
+          '[whatsapp/media] falha ao resolver canal; usando token padrão:',
+          err instanceof Error ? err.message : err
+        )
+      }
+    }
 
     // Get the download URL from Meta
     const mediaInfo = await getMediaUrl({ mediaId, accessToken })

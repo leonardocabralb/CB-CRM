@@ -111,3 +111,56 @@ export async function resolveInboundMetaChannelId(
     .maybeSingle();
   return data?.id ?? null;
 }
+
+export interface InboundMetaRoute {
+  accountId: string;
+  ownerUserId: string;
+  /** access_token AINDA CRIPTOGRAFADO (o webhook decripta, como faz hoje). */
+  accessToken: string;
+  channelId: string;
+}
+
+/**
+ * Resolve um canal Meta ADICIONAL (que vive só em `cb_channels`, fora do
+ * `whatsapp_config`) a partir do `phone_number_id`, para o webhook Meta RECEBER
+ * de um 2º número. É ADITIVO e usado só como fallback: o número PADRÃO continua
+ * resolvido por `whatsapp_config`, com o comportamento intacto. Devolve o token
+ * ainda criptografado (o webhook decripta). NULL se não houver canal Meta —
+ * inclusive antes da 901 (a consulta ignora o erro de tabela ausente).
+ */
+export async function resolveInboundMetaChannel(
+  db: SupabaseClient,
+  phoneNumberId: string,
+): Promise<InboundMetaRoute | null> {
+  const { data: channel } = await db
+    .from('cb_channels')
+    .select('id, account_id, created_by, access_token')
+    .eq('phone_number_id', phoneNumberId)
+    .eq('kind', 'meta')
+    .maybeSingle();
+  if (!channel || !channel.access_token) return null;
+
+  let ownerUserId: string | null = channel.created_by ?? null;
+  if (!ownerUserId) {
+    const { data: wc } = await db
+      .from('whatsapp_config')
+      .select('user_id')
+      .eq('account_id', channel.account_id)
+      .maybeSingle();
+    ownerUserId = wc?.user_id ?? null;
+  }
+  if (!ownerUserId) {
+    console.error(
+      '[cb-channels] canal Meta sem dono resolvível (created_by e whatsapp_config nulos); mensagem descartada:',
+      phoneNumberId,
+    );
+    return null;
+  }
+
+  return {
+    accountId: channel.account_id,
+    ownerUserId,
+    accessToken: channel.access_token,
+    channelId: channel.id,
+  };
+}
