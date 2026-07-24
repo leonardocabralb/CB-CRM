@@ -34,6 +34,7 @@ import {
 } from '@/lib/cb-channels/repo';
 import {
   buildChannelInstanceName,
+  deleteChannelInstance,
   evolutionWebhookConfig,
   provisionChannelInstance,
 } from '@/lib/cb-channels/evolution-admin';
@@ -89,10 +90,32 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
+    // Conta os canais ANTES de provisionar. Se o banco não estiver pronto
+    // (tabela cb_channels ausente na janela pré-migration) ou a leitura
+    // falhar, retornamos SEM criar a instância na Evolution — provisionar
+    // primeiro deixaria uma instância órfã no servidor a cada tentativa.
+    let existingCount: number;
+    try {
+      existingCount = await countChannels(ctx.supabase, ctx.accountId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const tableMissing = /cb_channels|does not exist|42P01/i.test(message);
+      console.error('[cb/channels] contagem falhou (nada provisionado):', message);
+      return NextResponse.json(
+        {
+          error: tableMissing
+            ? 'Os canais ainda não estão disponíveis — aplique a migration 901 no banco.'
+            : 'Não foi possível preparar o canal. Tente novamente.',
+        },
+        { status: tableMissing ? 503 : 500 },
+      );
+    }
+    const isDefault = existingCount === 0;
+
     const instanceName = buildChannelInstanceName(ctx.accountId);
 
-    // Provisiona ANTES de gravar: servidor fora do ar / mal configurado não
-    // deve deixar canal órfão no banco.
+    // Só agora cria estado remoto. Servidor fora do ar / mal configurado
+    // vira 502 sem ter tocado o banco.
     let result;
     try {
       result = await provisionChannelInstance({
@@ -108,9 +131,6 @@ export async function POST(request: Request) {
         { status: 502 },
       );
     }
-
-    const existingCount = await countChannels(ctx.supabase, ctx.accountId);
-    const isDefault = existingCount === 0;
 
     const connected = result.state === 'open';
     const nowIso = new Date().toISOString();
@@ -133,10 +153,15 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
+      // Persistência falhou DEPOIS de provisionar (ex.: corrida do índice
+      // único de canal-padrão, 23505) — remove a instância órfã do servidor
+      // compartilhado antes de responder. deleteChannelInstance é best-effort
+      // (engole os próprios erros).
+      await deleteChannelInstance(instanceName);
       console.error('[cb/channels] erro ao inserir canal:', error.code, error.message);
       const hint =
-        error.code === '42P01'
-          ? ' A tabela cb_channels ainda não existe — aplique a migration 901.'
+        error.code === '23505'
+          ? ' Outro canal padrão foi criado ao mesmo tempo — tente novamente.'
           : '';
       return NextResponse.json(
         { error: `Não foi possível salvar o canal.${hint}` },
