@@ -739,7 +739,21 @@ async function advanceFromNodeKey(
       continue;
     }
     if (node.node_type === "send_buttons") {
-      await sendButtonsAndSuspend(db, run, node);
+      // Multi-canal: botões não existem na Evolution, e o sender lança de
+      // propósito (meta-send.ts). Sem este catch a exceção sobe até o catch
+      // genérico do dispatch e o run fica `active` no mesmo nó para sempre,
+      // engolindo toda mensagem seguinte do cliente — sem bot, sem automação
+      // e sem IA. Mesmo tratamento de send_message/send_media.
+      try {
+        await sendButtonsAndSuspend(db, run, node);
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "send_interactive_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        await endRun(db, run.id, "failed", "send_interactive_failed");
+        return { outcome: "completed" };
+      }
       // Persist the new current_node_key via optimistic UPDATE.
       const advanced = await advanceCurrentNodeKey(
         db,
@@ -755,7 +769,16 @@ async function advanceFromNodeKey(
       return { outcome: "advanced" };
     }
     if (node.node_type === "send_list") {
-      await sendListAndSuspend(db, run, node);
+      try {
+        await sendListAndSuspend(db, run, node);
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "send_interactive_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        await endRun(db, run.id, "failed", "send_interactive_failed");
+        return { outcome: "completed" };
+      }
       const advanced = await advanceCurrentNodeKey(
         db,
         run.id,
@@ -1011,10 +1034,29 @@ async function handleReplyForActiveRun(
   }
   if (action.type === "reprompt") {
     // Re-send the same prompt. Same node, no current_node_key change.
-    if (currentNode.node_type === "send_buttons") {
-      await sendButtonsAndSuspend(db, run, currentNode);
-    } else if (currentNode.node_type === "send_list") {
-      await sendListAndSuspend(db, run, currentNode);
+    if (
+      currentNode.node_type === "send_buttons" ||
+      currentNode.node_type === "send_list"
+    ) {
+      try {
+        if (currentNode.node_type === "send_buttons") {
+          await sendButtonsAndSuspend(db, run, currentNode);
+        } else {
+          await sendListAndSuspend(db, run, currentNode);
+        }
+      } catch (err) {
+        // O run está suspenso esperando uma resposta interativa. Se o
+        // prompt não pode ser reenviado (ex.: a conversa migrou para um
+        // canal Evolution, que não tem botões/listas), ele ficaria ativo
+        // para sempre engolindo as mensagens do cliente. Falhar libera o
+        // contato para automações e IA.
+        await logEvent(db, run.id, "error", currentNode.node_key, {
+          reason: "reprompt_interactive_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        await endRun(db, run.id, "failed", "reprompt_interactive_failed");
+        return { consumed: true, flow_run_id: run.id, outcome: "completed" };
+      }
     } else if (currentNode.node_type === "collect_input") {
       // Customer typed something we couldn't accept (empty after trim,
       // or var_key missing — rare). Re-send the prompt so they try again.

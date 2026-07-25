@@ -61,11 +61,23 @@ export async function resolveConversationByPhone(
     .eq('account_id', accountId)
     .maybeSingle();
   if (!config) {
-    throw new SendMessageError(
-      'whatsapp_not_configured',
-      'WhatsApp not configured. Please set up your WhatsApp integration first.',
-      400
-    );
+    // Multi-canal: o espelho `whatsapp_config` pode simplesmente não existir
+    // enquanto a conta tem canais em `cb_channels` e o inbox funciona normal
+    // (o DELETE /api/whatsapp/config apaga o espelho e deixa os canais de pé).
+    // Perguntar só ao espelho fazia a API pública responder "configure o
+    // WhatsApp" para uma conta visivelmente configurada. Erro na consulta
+    // (deploy pré-901) cai no mesmo erro de antes.
+    const { count, error: channelError } = await db
+      .from('cb_channels')
+      .select('id', { count: 'exact', head: true })
+      .eq('account_id', accountId);
+    if (channelError || !count) {
+      throw new SendMessageError(
+        'whatsapp_not_configured',
+        'WhatsApp not configured. Please set up your WhatsApp integration first.',
+        400
+      );
+    }
   }
 
   // Audit user for created rows = the single account-wide default used

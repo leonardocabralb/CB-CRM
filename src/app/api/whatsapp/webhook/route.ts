@@ -167,6 +167,43 @@ export async function GET(request: Request) {
       })
     }
 
+    // Multi-canal (ADITIVO — o caminho acima fica intacto e tem prioridade):
+    // um número Meta pode viver SÓ em cb_channels. É exatamente o que acontece
+    // quando o canal padrão da conta é Evolution: whatsapp_config tem
+    // provider='evolution' e verify_token NULL, o laço acima pula todas as
+    // linhas e o handshake responde 403. Sem passar no handshake a Meta nunca
+    // entrega nada, então TODA mensagem do número oficial some sem erro visível.
+    const { data: channels, error: channelError } = await supabaseAdmin()
+      .from('cb_channels')
+      .select('id, verify_token')
+      .eq('kind', 'meta')
+      .not('verify_token', 'is', null)
+
+    if (channelError) {
+      // Deploy fora de ordem (pré-901) não pode derrubar a verificação do
+      // número legado — degrada para o comportamento antigo.
+      console.warn(
+        '[webhook] falha ao varrer cb_channels na verificação:',
+        channelError.message,
+      )
+    }
+
+    for (const channel of channels ?? []) {
+      if (!channel.verify_token) continue
+      try {
+        // cb_channels sempre grava com encrypt() (GCM), então aqui não há o
+        // upgrade de formato legado que o whatsapp_config precisa.
+        if (decrypt(channel.verify_token) !== verifyToken) continue
+      } catch {
+        // Token malformado / chave errada — pula e segue checando.
+        continue
+      }
+      return new Response(challenge, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' },
+      })
+    }
+
     return NextResponse.json(
       { error: 'Verification token mismatch' },
       { status: 403 }

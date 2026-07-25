@@ -364,7 +364,9 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         contactId: args.contactId,
         text,
       })
-      return `sent via Meta (${whatsapp_message_id})`
+      // Sem "via Meta": engineSendText resolve o canal da conversa e pode ter
+      // saído pela Evolution. O canal efetivo entra no detalhe na Fase E1.
+      return `sent (${whatsapp_message_id})`
     }
 
     case 'send_buttons':
@@ -384,7 +386,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         contactId: args.contactId,
         payload,
       })
-      return `interactive sent via Meta (${whatsapp_message_id})`
+      return `interactive sent (${whatsapp_message_id})`
     }
 
     case 'send_template': {
@@ -419,7 +421,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         language: cfg.language,
         params,
       })
-      return `template sent via Meta (${whatsapp_message_id})`
+      return `template sent (${whatsapp_message_id})`
     }
 
     case 'add_tag': {
