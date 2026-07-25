@@ -274,6 +274,7 @@ export async function persistInboundMessage(
       conversationId: conversation.id,
       contactId: contact.id,
       configOwnerUserId: m.configOwnerUserId,
+      channelId: m.channelId ?? null,
     });
   }
 

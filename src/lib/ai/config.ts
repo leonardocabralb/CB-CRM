@@ -31,22 +31,58 @@ const CONFIG_COLUMNS =
 export async function loadAiConfig(
   db: SupabaseClient,
   accountId: string,
-  opts: { requireActive?: boolean } = {},
+  opts: { requireActive?: boolean; channelId?: string | null } = {},
 ): Promise<AiConfig | null> {
-  const { requireActive = true } = opts
+  const { requireActive = true, channelId = null } = opts
+
+  // Multi-canal: agente POR canal, com queda para o agente padrao da conta.
+  // Antes existia UM unico agente por conta (ai_configs.account_id era
+  // UNIQUE), entao o bot se apresentava com o discurso comercial respondendo
+  // quem escreveu no numero do juridico. A 903 trocou o UNIQUE por dois
+  // indices parciais: um agente padrao (channel_id NULL) + um por canal.
+  if (channelId) {
+    const { data: doCanal, error: erroCanal } = await db
+      .from('ai_configs')
+      .select(CONFIG_COLUMNS)
+      .eq('account_id', accountId)
+      .eq('channel_id', channelId)
+      .maybeSingle()
+    // Erro (deploy pre-903, coluna ausente) nao pode derrubar a IA — cai no
+    // agente padrao, que e o comportamento de antes.
+    if (!erroCanal && doCanal) {
+      const rowCanal = doCanal as AiConfigRow
+      if (!requireActive || rowCanal.is_active) return mapAiConfigRow(rowCanal, accountId)
+      // Agente do canal existe mas esta desligado => a IA fica MUDA neste
+      // numero. Cair no padrao aqui reabriria o que o operador desligou.
+      return null
+    }
+  }
+
   const { data, error } = await db
     .from('ai_configs')
     .select(CONFIG_COLUMNS)
     .eq('account_id', accountId)
+    .is('channel_id', null)
     .maybeSingle()
 
   if (error) throw error
   if (!data) return null
 
-  const row = data as AiConfigRow
   // The Playground passes requireActive:false so an admin can test the
   // agent before flipping the master switch on.
-  if (requireActive && !row.is_active) return null
+  if (requireActive && !(data as AiConfigRow).is_active) return null
+
+  return mapAiConfigRow(data as AiConfigRow, accountId)
+}
+
+/**
+ * Linha -> AiConfig. Extraido para que o agente POR CANAL e o agente PADRAO
+ * compartilhem exatamente o mesmo mapeamento (incl. o tratamento de chave de
+ * embeddings corrompida), em vez de duas copias que podem divergir.
+ *
+ * Devolve null quando a linha nao e utilizavel (sem api_key).
+ */
+function mapAiConfigRow(row: AiConfigRow, accountId: string): AiConfig | null {
   // Defensive: the column is NOT NULL, but a partial write / manual DB
   // edit could leave it empty. Treat a missing key as "not configured"
   // rather than letting decrypt() throw on null.
