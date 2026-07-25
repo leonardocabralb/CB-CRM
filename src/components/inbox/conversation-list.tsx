@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useChannels } from "@/hooks/use-channels";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -74,24 +75,9 @@ export function ConversationList({
   // Filtro por canal. `null` = todos. Só aparece com 2+ canais: numa conta de
   // um número o seletor seria ruído puro.
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
-  const [channels, setChannels] = useState<
-    { id: string; label: string; kind: string }[]
-  >([]);
-
-  useEffect(() => {
-    let cancelado = false;
-    fetch('/api/cb/channels')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((p) => {
-        if (!cancelado && p?.channels) setChannels(p.channels);
-      })
-      // Conta sem canais (ou deploy pré-901): a lista fica vazia e o seletor
-      // simplesmente não aparece.
-      .catch(() => {});
-    return () => {
-      cancelado = true;
-    };
-  }, []);
+  // Conta sem canais (ou deploy pré-901): a lista fica vazia e o seletor
+  // simplesmente não aparece.
+  const { channels } = useChannels();
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
 
   // Keep the latest callback in a ref so the fetch effect below can

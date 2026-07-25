@@ -1,4 +1,18 @@
 {
+  "Channels": {
+    "label": "Canal",
+    "all": "Todos os canais",
+    "manyCount": "{count} canais",
+    "selectPlaceholder": "Escolha um canal",
+    "kind_meta": "API oficial · Meta",
+    "kind_evolution": "Não oficial · QR Code",
+    "scopeLabel": "Vale para",
+    "scopeHelpAll": "Sem canal escolhido, vale para todos os números.",
+    "filterAll": "Todos os canais",
+    "outboundLabel": "Enviar por",
+    "metaOnlyNone": "Nenhum número oficial da Meta está conectado. Conecte um em Ajustes › Conexões.",
+    "accountWide": "Conta inteira"
+  },
   "LoginPage": {
     "titleAccept": "Entre para aceitar",
     "titleWelcome": "Bem-vindo de volta",

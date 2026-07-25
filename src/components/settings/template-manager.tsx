@@ -19,6 +19,8 @@ import {
   MEDIA_MAX_BYTES_BY_KIND,
 } from '@/lib/storage/upload-media';
 import { useAuth } from '@/hooks/use-auth';
+import { useChannels } from '@/hooks/use-channels';
+import { metaChannels } from '@/lib/cb-channels/display';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -132,26 +134,10 @@ export function TemplateManager() {
   // a conta tem canais e NENHUM é Meta, o gestor mostra uma guarda graciosa
   // em vez de deixar o sync/submit morrer num erro opaco de WABA. Contas
   // sem canais (pré-migration) seguem o comportamento antigo.
-  const [channelKinds, setChannelKinds] = useState<string[] | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/cb/channels')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((p) => {
-        if (cancelled || !p) return;
-        setChannelKinds(
-          ((p.channels ?? []) as { kind?: string }[]).map((c) => c.kind ?? ''),
-        );
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { channels, loading: channelsLoading } = useChannels();
+  const canaisMeta = useMemo(() => metaChannels(channels), [channels]);
   const metaRequired =
-    channelKinds !== null &&
-    channelKinds.length > 0 &&
-    !channelKinds.includes('meta');
+    !channelsLoading && channels.length > 0 && canaisMeta.length === 0;
   const supabase = createClient();
   const { user, loading: authLoading } = useAuth();
 

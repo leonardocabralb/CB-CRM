@@ -1,4 +1,18 @@
 {
+  "Channels": {
+    "label": "Channel",
+    "all": "All channels",
+    "manyCount": "{count} channels",
+    "selectPlaceholder": "Pick a channel",
+    "kind_meta": "Official API · Meta",
+    "kind_evolution": "Unofficial · QR Code",
+    "scopeLabel": "Runs on",
+    "scopeHelpAll": "With no channel picked it runs on every number.",
+    "filterAll": "All channels",
+    "outboundLabel": "Send from",
+    "metaOnlyNone": "No official Meta number is connected. Connect one under Settings › Connections.",
+    "accountWide": "Whole account"
+  },
   "LoginPage": {
     "titleAccept": "Sign in to accept",
     "titleWelcome": "Welcome back",

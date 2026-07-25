@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { usePresence } from "@/hooks/use-presence";
+import { useChannels } from "@/hooks/use-channels";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
@@ -242,43 +243,35 @@ export function MessageThread({
   // Canais de WhatsApp da conta (multi-canal). Uma busca por montagem —
   // a lista muda raramente (Settings → Conexões). Falha ou pré-migration
   // → lista vazia → seletor oculto e comportamento antigo preservado.
-  const [channels, setChannels] = useState<CbChannel[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/cb/channels");
-        if (!res.ok) return;
-        const payload = await res.json();
-        if (!cancelled) setChannels(payload.channels ?? []);
-      } catch {
-        // silencioso — sem canais, o inbox se comporta como sempre
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Canal ativo da conversa: o fixado/seguido, senão o padrão da conta.
-  const activeChannel = useMemo(() => {
-    if (!channels.length) return null;
-    return (
-      channels.find((c) => c.id === conversation?.channel_id) ??
-      channels.find((c) => c.is_default) ??
-      null
-    );
-  }, [channels, conversation?.channel_id]);
-
-  // Canal Evolution (não oficial) não tem janela de 24h nem templates —
-  // o cronômetro some e o compositor fica livre (ver props do composer).
-  const evolutionActive = activeChannel?.kind === "evolution";
+  const { channels } = useChannels();
 
   const channelsById = useMemo(() => {
     const map = new Map<string, CbChannel>();
     for (const c of channels) map.set(c.id, c);
     return map;
   }, [channels]);
+
+  // Canal ativo da conversa: o fixado/seguido, senão o padrão da conta.
+  //
+  // Este valor também é o `expected_channel_id` do envio, então ele TEM de
+  // espelhar o que o servidor resolve (`resolveChannelForConversation`).
+  // Inferir o canal por outra via aqui — pela última mensagem carimbada,
+  // por exemplo — faria a asserção discordar do servidor e devolver 409
+  // `channel_changed` em loop, sem envio nenhum passar.
+  const activeChannel = useMemo(() => {
+    if (!channels.length) return null;
+    return (
+      channelsById.get(conversation?.channel_id ?? "") ??
+      channels.find((c) => c.is_default) ??
+      null
+    );
+  }, [channels, channelsById, conversation?.channel_id]);
+
+  // Só a API oficial da Meta tem janela de 24h, e ela só REABRE por template.
+  // No canal Evolution o atendente escolhe o número e conversa normalmente:
+  // o cronômetro some, o aviso de "janela expirada" não aparece e o
+  // compositor nunca trava (ver as props do MessageComposer).
+  const evolutionActive = activeChannel?.kind === "evolution";
 
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
