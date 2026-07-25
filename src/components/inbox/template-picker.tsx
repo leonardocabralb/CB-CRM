@@ -34,6 +34,16 @@ interface TemplatePickerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (template: MessageTemplate, values: TemplateSendValues) => void;
+  /**
+   * Canal da conversa. Modelos da Meta sao POR WABA: oferecer o catalogo
+   * inteiro fazia o atendente escolher, fora da janela de 24h, um modelo que
+   * nao existe naquele numero — e a Meta devolvia "template name does not
+   * exist in the translation". Como a lista nao dizia de quem era cada
+   * modelo, ele tentava os outros no chute.
+   *
+   * `null`/ausente = sem recorte (conta de um canal so, ou pre-multi-canal).
+   */
+  channelId?: string | null;
 }
 
 function renderBodyPreview(body: string, params: string[]): string {
@@ -78,6 +88,7 @@ export function TemplatePicker({
   open,
   onOpenChange,
   onSelect,
+  channelId = null,
 }: TemplatePickerProps) {
   const t = useTranslations("Inbox.templatePicker");
 
@@ -122,7 +133,17 @@ export function TemplatePicker({
         console.error("Failed to fetch templates:", error);
         setTemplates([]);
       } else {
-        setTemplates((data as MessageTemplate[]) ?? []);
+        const todos = (data as MessageTemplate[]) ?? [];
+        // Modelos com channel_id NULL sao globais (anteriores a 903) e valem
+        // para qualquer numero — esconde-los apagaria o catalogo existente.
+        setTemplates(
+          channelId
+            ? todos.filter((t) => {
+                const dono = (t as { channel_id?: string | null }).channel_id;
+                return !dono || dono === channelId;
+              })
+            : todos,
+        );
       }
       setLoading(false);
     })();
@@ -130,7 +151,7 @@ export function TemplatePicker({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, channelId]);
 
   function resetSelection() {
     setSelected(null);

@@ -528,10 +528,30 @@ export function MessageThread({
             message_type: "text",
             content_text: text,
             reply_to_message_id: replyToId,
+            // Assert de canal: manda o número que ESTÁ NA TELA. Se o cliente
+            // escreveu por outro número nesse meio-tempo, a conversa "segue"
+            // e o envio sairia por ele — sem o atendente perceber, porque a
+            // bolha aparece normal e o rótulo "via <canal>" é discreto. O
+            // servidor devolve 409 e a gente pergunta em vez de mandar.
+            expected_channel_id: activeChannel?.id ?? undefined,
           }),
         });
 
         const payload = await res.json().catch(() => ({}));
+
+        if (res.status === 409 && payload?.code === "channel_changed") {
+          // NÃO é erro: é uma pergunta. O cliente escreveu por outro número
+          // enquanto o atendente digitava.
+          const novo = channels.find((c) => c.id === payload.current_channel_id);
+          onNewMessage({ ...optimisticMsg, status: "failed" });
+          toast.warning(
+            t("channelChangedWhileTyping", {
+              channel: novo?.label ?? t("channelChangedUnknown"),
+            }),
+            { duration: 12_000 },
+          );
+          return;
+        }
 
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
@@ -553,7 +573,10 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage]
+    // `activeChannel` e `channels` são load-bearing aqui: um closure obsoleto
+    // mandaria o assert com o canal ERRADO, que é justamente o bug que ele
+    // existe para impedir.
+    [conversation, onNewMessage, onUpdateMessage, activeChannel?.id, channels, t]
   );
 
   const handleSendMedia = useCallback(
@@ -1324,6 +1347,7 @@ export function MessageThread({
       />
 
       <TemplatePicker
+        channelId={activeChannel?.id ?? null}
         open={templateModalOpen}
         onOpenChange={setTemplateModalOpen}
         onSelect={handleSendTemplate}
