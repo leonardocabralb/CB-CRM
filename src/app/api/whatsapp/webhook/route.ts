@@ -286,8 +286,15 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
 
       // Handle status updates
       if (value.statuses) {
+        // Canal do numero que recebeu este status — escopa o ACK para nao
+        // carimbar a mensagem homonima de OUTRO numero (Meta reusa wamid
+        // entre numeros; ver o comentario em handleStatusUpdate).
+        const statusChannelId = await resolveInboundMetaChannelId(
+          supabaseAdmin(),
+          value.metadata?.phone_number_id,
+        ).catch(() => null)
         for (const status of value.statuses) {
-          await handleStatusUpdate(status)
+          await handleStatusUpdate(status, statusChannelId)
         }
       }
 
@@ -428,21 +435,34 @@ function isValidStatusTransition(current: string, incoming: string): boolean {
   return ii > ci
 }
 
-async function handleStatusUpdate(status: {
+async function handleStatusUpdate(
+  status: {
   id: string
   status: string
   timestamp: string
-  recipient_id: string
-}) {
+    recipient_id: string
+  },
+  /** Canal que recebeu o status. `null` = desconhecido (nao escopa). */
+  channelId: string | null = null,
+) {
   // 1) Mirror onto messages (legacy behavior) — Meta's status values
   //    already match the CHECK constraint on messages.status. No
   //    `.select()`: message_id is NOT unique (migration 009 — Meta ids
   //    repeat across numbers), so this updates 0..N rows and must not
   //    assume a single row.
-  const { error: msgErr } = await supabaseAdmin()
+  //
+  //    Multi-canal: "Meta ids repeat across numbers" deixou de ser hipotese
+  //    com N numeros na mesma conta. O UPDATE passa a ser escopado ao canal
+  //    que recebeu o status — mas com `OR channel_id IS NULL`, senao o ✓✓ das
+  //    mensagens anteriores a Fase 3 (sem carimbo) congelaria.
+  let q = supabaseAdmin()
     .from('messages')
     .update({ status: status.status })
     .eq('message_id', status.id)
+  if (channelId) {
+    q = q.or(`channel_id.eq.${channelId},channel_id.is.null`)
+  }
+  const { error: msgErr } = await q
 
   if (msgErr) {
     console.error('Error updating message status:', msgErr)
