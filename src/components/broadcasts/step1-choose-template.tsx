@@ -1,11 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { MessageTemplate } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Loader2, FileText, ArrowRight } from 'lucide-react';
+import { Loader2, FileText, ArrowRight, PlugZap } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { ChannelSelect } from '@/components/channels/channel-select';
+import { useChannels } from '@/hooks/use-channels';
+import { metaChannels, preferredChannel } from '@/lib/cb-channels/display';
 
 const categoryColors: Record<string, string> = {
   Marketing: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
@@ -16,15 +19,43 @@ const categoryColors: Record<string, string> = {
 interface Step1Props {
   selectedTemplate: MessageTemplate | null;
   onSelect: (template: MessageTemplate) => void;
+  /** Canal de saída escolhido aqui e usado até o envio. */
+  channelId: string | null;
+  onChannelChange: (channelId: string | null) => void;
   onNext: () => void;
   onBack: () => void;
 }
 
-export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack }: Step1Props) {
+export function Step1ChooseTemplate({
+  selectedTemplate,
+  onSelect,
+  channelId,
+  onChannelChange,
+  onNext,
+  onBack,
+}: Step1Props) {
   const t = useTranslations('Broadcasts.wizard');
+  const tCanais = useTranslations('Channels');
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Disparo é conceito da API oficial: um canal Evolution não tem WABA nem
+  // modelos. O número sai ESCOLHIDO AQUI, e não no passo 4, porque a lista
+  // de modelos depende dele — desde a 903 o mesmo nome de modelo pode
+  // existir em dois WABAs, e oferecer o modelo do outro número levaria a
+  // uma campanha que falha no envio.
+  const { channels, loading: canaisCarregando } = useChannels();
+  const canaisMeta = useMemo(() => metaChannels(channels), [channels]);
+  const semCanalMeta =
+    !canaisCarregando && channels.length > 0 && canaisMeta.length === 0;
+
+  // Pré-seleciona o padrão da conta assim que os canais chegam.
+  useEffect(() => {
+    if (channelId || canaisMeta.length === 0) return;
+    const escolha = preferredChannel(canaisMeta);
+    if (escolha) onChannelChange(escolha.id);
+  }, [canaisMeta, channelId, onChannelChange]);
 
   useEffect(() => {
     async function fetchTemplates() {
@@ -67,6 +98,23 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
     );
   }
 
+  // Guarda: antes, uma conta só com número não oficial percorria os quatro
+  // passos e só descobria no envio que disparo exige a API da Meta.
+  if (semCanalMeta) {
+    return (
+      <div className="flex h-64 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-card/40 px-6 text-center">
+        <PlugZap className="mb-1 h-8 w-8 text-muted-foreground" />
+        <p className="text-sm text-foreground">{tCanais('metaOnlyNone')}</p>
+      </div>
+    );
+  }
+
+  // Modelo do canal escolhido + os globais (channel_id nulo, anteriores à
+  // 903, que qualquer canal Meta ainda serve).
+  const visiveis = channelId
+    ? templates.filter((tp) => !tp.channel_id || tp.channel_id === channelId)
+    : templates;
+
   return (
     <div className="space-y-6">
       <div>
@@ -76,7 +124,20 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
         </p>
       </div>
 
-      {templates.length === 0 ? (
+      {canaisMeta.length >= 2 && (
+        <div className="max-w-sm">
+          <label className="mb-1 block text-xs text-muted-foreground">
+            {tCanais('outboundLabel')}
+          </label>
+          <ChannelSelect
+            channels={canaisMeta}
+            value={channelId}
+            onChange={onChannelChange}
+          />
+        </div>
+      )}
+
+      {visiveis.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-border bg-card/50">
           <FileText className="mb-2 h-8 w-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">{t('chooseTemplate.noTemplates')}</p>
@@ -84,7 +145,7 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {templates.map((template) => {
+          {visiveis.map((template) => {
             const isSelected = selectedTemplate?.id === template.id;
             const catColor = categoryColors[template.category] ?? categoryColors.Utility;
 

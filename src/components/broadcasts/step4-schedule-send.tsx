@@ -16,6 +16,8 @@ import {
 } from '@/components/ui/dialog';
 import { ArrowLeft, Send, Loader2, Users, Save } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useChannels } from '@/hooks/use-channels';
+import { channelLabel } from '@/lib/cb-channels/display';
 
 interface AudienceConfig {
   type: string;
@@ -28,6 +30,8 @@ interface Step4Props {
   onNameChange: (name: string) => void;
   template: MessageTemplate;
   audience: AudienceConfig;
+  /** Canal escolhido no passo 1 — aqui só para conferência antes do envio. */
+  channelId: string | null;
   onSend: () => void;
   onSaveDraft?: () => void;
   onBack: () => void;
@@ -40,6 +44,7 @@ export function Step4ScheduleSend({
   onNameChange,
   template,
   audience,
+  channelId,
   onSend,
   onSaveDraft,
   onBack,
@@ -47,6 +52,8 @@ export function Step4ScheduleSend({
   progress,
 }: Step4Props) {
   const t = useTranslations('Broadcasts.wizard');
+  const tCanais = useTranslations('Channels');
+  const { channels } = useChannels();
   const [showConfirm, setShowConfirm] = useState(false);
   const [estimatedReach, setEstimatedReach] = useState<number>(0);
   const [loadingReach, setLoadingReach] = useState(true);
@@ -141,6 +148,20 @@ export function Step4ScheduleSend({
             <p className="text-xs text-muted-foreground">Language</p>
             <p className="text-foreground">{template.language ?? 'en_US'}</p>
           </div>
+          {/* De qual número a campanha sai. Só aparece com 2+ oficiais, e é
+              leitura: quem escolhe é o passo 1, porque a lista de modelos
+              depende do canal. Mostrado aqui para o operador conferir antes
+              de disparar para centenas de contatos. */}
+          {channels.filter((c) => c.kind === 'meta').length >= 2 && (
+            <div>
+              <p className="text-xs text-muted-foreground">
+                {tCanais('outboundLabel')}
+              </p>
+              <p className="text-foreground">
+                {channelLabel(channels, channelId) ?? '—'}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

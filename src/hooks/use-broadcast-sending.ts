@@ -46,6 +46,14 @@ interface BroadcastPayload {
    * falls back to the template's stored URL only when this is empty.
    */
   headerMediaUrl?: string;
+  /**
+   * Canal Meta de saída, escolhido no passo 1 do assistente. `null` deixa a
+   * rota resolver (`resolveMetaChannel`: padrão se for Meta, senão o
+   * primeiro Meta conectado). Gravado na linha de `broadcasts` para o
+   * relatório dizer DE QUAL número a campanha saiu — sem isso, duas
+   * campanhas por números diferentes ficam indistinguíveis depois.
+   */
+  channelId?: string | null;
 }
 
 interface UseBroadcastSendingReturn {
@@ -368,6 +376,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             customField: payload.audience.customField,
             excludeTagIds: payload.audience.excludeTagIds,
           },
+          channel_id: payload.channelId ?? null,
           status: 'sending',
           total_recipients: contacts.length,
           sent_count: 0,
@@ -481,6 +490,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
               recipients: apiRecipients,
               template_name: payload.template.name,
               template_language: payload.template.language ?? 'en_US',
+              channel_id: payload.channelId ?? null,
             }),
           });
 

@@ -364,6 +364,16 @@ export interface MessageTemplate {
   quality_score?: 'GREEN' | 'YELLOW' | 'RED';
   submission_error?: string;
   last_submitted_at?: string;
+  /**
+   * Canal (WABA) a que este modelo pertence (migration 903). `null` = modelo
+   * global, anterior ao multi-canal — ele serve qualquer canal Meta até ser
+   * adotado por um na primeira sincronização.
+   *
+   * ⚠️ Desde a 903 o par `(name, language)` só é único DENTRO do canal: o
+   * mesmo nome de modelo pode existir em dois WABAs. Consulta sem recorte de
+   * canal estoura com "multiple rows".
+   */
+  channel_id?: string | null;
   created_at: string;
 }
 
@@ -429,6 +439,12 @@ export interface Broadcast {
   read_count: number;
   replied_count: number;
   failed_count: number;
+  /**
+   * Número (canal Meta) de onde a campanha saiu, migration 903. `null` nas
+   * campanhas anteriores ao multi-canal — o relatório mostra travessão em
+   * vez de chutar o padrão atual, que pode nem ser o de então.
+   */
+  channel_id?: string | null;
   created_at: string;
 }
 

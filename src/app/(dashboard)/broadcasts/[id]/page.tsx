@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Broadcast, BroadcastRecipient, RecipientStatus } from '@/types';
+import { ChannelCell } from '@/components/channels/channel-badge';
+import { useChannels } from '@/hooks/use-channels';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -150,6 +152,7 @@ export default function BroadcastDetailPage() {
   const broadcastId = params.id as string;
 
   const [broadcast, setBroadcast] = useState<Broadcast | null>(null);
+  const { channels } = useChannels();
   const [recipients, setRecipients] = useState<BroadcastRecipient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -300,6 +303,11 @@ export default function BroadcastDetailPage() {
               <span>
                 {t('createdAt', { date: new Date(broadcast.created_at).toLocaleDateString() })}
               </span>
+              {/* De qual número esta campanha saiu. Sem isto, duas campanhas
+                  disparadas por números diferentes ficam indistinguíveis no
+                  relatório — e "por que este cliente recebeu do celular do
+                  sócio?" vira uma pergunta sem resposta. */}
+              <ChannelCell channels={channels} channelId={broadcast.channel_id} />
             </div>
           </div>
         </div>

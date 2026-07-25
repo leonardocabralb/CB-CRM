@@ -45,6 +45,9 @@ export default function NewBroadcastPage() {
   >({});
   const [headerMediaUrl, setHeaderMediaUrl] = useState('');
   const [name, setName] = useState('');
+  // Canal Meta de saída. Escolhido no passo 1 (a lista de modelos depende
+  // dele), conferido no passo 4 e gravado na campanha.
+  const [channelId, setChannelId] = useState<string | null>(null);
 
   async function handleSend() {
     if (!template) return;
@@ -62,6 +65,7 @@ export default function NewBroadcastPage() {
         },
         variables,
         headerMediaUrl,
+        channelId,
       });
       router.push(`/broadcasts/${broadcastId}`);
     } catch (err) {
@@ -112,6 +116,7 @@ export default function NewBroadcastPage() {
         type: audience.type,
         tagIds: audience.tagIds,
       },
+      channel_id: channelId,
       status: 'draft',
       total_recipients: 0,
       sent_count: 0,
@@ -190,6 +195,8 @@ export default function NewBroadcastPage() {
         >
           {currentStep === 0 && (
             <Step1ChooseTemplate
+              channelId={channelId}
+              onChannelChange={setChannelId}
               selectedTemplate={template}
               onSelect={setTemplate}
               onNext={() => setCurrentStep(1)}
@@ -217,6 +224,7 @@ export default function NewBroadcastPage() {
           )}
           {currentStep === 3 && template && (
             <Step4ScheduleSend
+              channelId={channelId}
               name={name}
               onNameChange={setName}
               template={template}
