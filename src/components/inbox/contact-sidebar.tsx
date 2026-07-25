@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useChannels } from "@/hooks/use-channels";
+import { ChannelCell } from "@/components/channels/channel-badge";
 import { cn } from "@/lib/utils";
 import type { Contact, Deal, ContactNote, Tag } from "@/types";
 import {
@@ -15,6 +17,7 @@ import {
   DollarSign,
   StickyNote,
   Plus,
+  Smartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,11 +26,20 @@ import { useTranslations } from "next-intl";
 
 interface ContactSidebarProps {
   contact: Contact | null;
+  /**
+   * Canal em que a conversa aberta corre. Sem isto a ficha do contato não
+   * dizia por qual dos números do escritório aquela conversa acontece — a
+   * informação existia só no cabeçalho da thread, que fica fora de vista
+   * quando o atendente está lendo a ficha.
+   */
+  channelId?: string | null;
 }
 
-export function ContactSidebar({ contact }: ContactSidebarProps) {
+export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
+  const tCanais = useTranslations("Channels");
+  const { channels } = useChannels();
 
   const { accountId } = useAuth();
   const [copied, setCopied] = useState(false);
@@ -174,6 +186,20 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
               <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground">
                 <Mail className="h-4 w-4 text-muted-foreground" />
                 <span className="truncate">{contact.email}</span>
+              </div>
+            )}
+
+            {/* Por qual número do escritório esta conversa corre. Só com 2+
+                canais — com um só a resposta é óbvia. */}
+            {channels.length >= 2 && channelId && (
+              <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground">
+                <Smartphone className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs">{tCanais("label")}</span>
+                <ChannelCell
+                  channels={channels}
+                  channelId={channelId}
+                  className="ml-auto"
+                />
               </div>
             )}
           </div>
