@@ -46,11 +46,14 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import {
+  validateFlowChannelForActivation,
   validateFlowForActivation,
   type ValidationIssue,
 } from "@/lib/flows/validate";
+import { useChannels } from "@/hooks/use-channels";
 import { useTranslations } from "next-intl";
 import { unlinkNodeReferences } from "@/lib/flows/edges";
+import type { CbChannel } from "@/lib/cb-channels/repo";
 import type { FlowNodeRow, FlowRow } from "@/lib/flows/types";
 import { NODE_META, slugify, type BuilderNode, type NodeType } from "./shared";
 
@@ -63,6 +66,13 @@ export interface BuilderState {
   description: string;
   trigger_type: "keyword" | "first_inbound_message" | "manual";
   trigger_config: Record<string, unknown>;
+  /**
+   * Canal em que este flow pode ENTRAR. `null` = curinga (qualquer número),
+   * que é como todo flow anterior ao multi-canal se comporta. Com valor, é
+   * o que permite dois flows com a MESMA palavra-chave em números
+   * diferentes — ver `findEntryFlow`.
+   */
+  channel_id: string | null;
   entry_node_id: string | null;
   status: FlowRow["status"];
   nodes: BuilderNode[];
@@ -71,6 +81,13 @@ export interface BuilderState {
 export interface FlowEditorContextValue {
   /** Immutable post-load envelope: id, created_at, fallback_policy, etc. */
   flow: FlowRow;
+
+  /**
+   * Canais da conta. Vive no contexto (e não num `useChannels()` dentro do
+   * TriggerPanel) porque o provider já precisa deles para validar o canal
+   * do flow — duas chamadas do hook na mesma tela dariam duas buscas.
+   */
+  channels: CbChannel[];
 
   // Authored state
   state: BuilderState;
@@ -239,12 +256,14 @@ export function FlowEditorProvider({
 }: ProviderProps) {
   const router = useRouter();
   const t = useTranslations("Flows.editorState");
+  const { channels } = useChannels();
 
   const [state, setStateRaw] = useState<BuilderState>(() => ({
     name: initialFlow.name,
     description: initialFlow.description ?? "",
     trigger_type: initialFlow.trigger_type,
     trigger_config: initialFlow.trigger_config as Record<string, unknown>,
+    channel_id: initialFlow.channel_id ?? null,
     entry_node_id: initialFlow.entry_node_id,
     status: initialFlow.status,
     nodes: initialNodes.map((n) => ({
@@ -310,9 +329,14 @@ export function FlowEditorProvider({
   }, [dirty]);
 
   // ---- Validation ----
+  // A regra de canal roda aqui TAMBÉM, e não só na rota de ativação: agora
+  // que o canal do flow é escolhível na tela, dá para prender um flow com
+  // botões/lista a um número não oficial. Sem esta checagem local o
+  // operador só descobriria ao clicar em "Ativar" e levar o erro do
+  // servidor, já com o flow salvo naquele estado.
   const issues = useMemo<ValidationIssue[]>(
-    () =>
-      validateFlowForActivation(
+    () => [
+      ...validateFlowForActivation(
         {
           name: state.name,
           trigger_type: state.trigger_type,
@@ -321,7 +345,13 @@ export function FlowEditorProvider({
         },
         state.nodes,
       ),
-    [state],
+      ...validateFlowChannelForActivation(
+        state.channel_id,
+        state.nodes,
+        channels.map((c) => ({ id: c.id, label: c.label, kind: c.kind })),
+      ),
+    ],
+    [state, channels],
   );
   const canActivate = useMemo(
     () => issues.every((i) => i.severity !== "error"),
@@ -340,6 +370,7 @@ export function FlowEditorProvider({
           description: state.description || null,
           trigger_type: state.trigger_type,
           trigger_config: state.trigger_config,
+          channel_id: state.channel_id,
           entry_node_id: state.entry_node_id,
           nodes: state.nodes,
         }),
@@ -521,6 +552,7 @@ export function FlowEditorProvider({
   const value = useMemo<FlowEditorContextValue>(
     () => ({
       flow: initialFlow,
+      channels,
       state,
       setState,
       dirty,
@@ -542,6 +574,7 @@ export function FlowEditorProvider({
     }),
     [
       initialFlow,
+      channels,
       state,
       setState,
       dirty,

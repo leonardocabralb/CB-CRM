@@ -40,6 +40,9 @@ export default function EditAutomationPage({
         description: body.automation.description ?? "",
         trigger_type: body.automation.trigger_type as AutomationTriggerType,
         trigger_config: body.automation.trigger_config ?? {},
+        // `null` no banco = todos os canais; no formulário isso é o array
+        // vazio (ver BuilderInitial.channel_ids).
+        channel_ids: (body.automation.channel_ids as string[] | null) ?? [],
         is_active: !!body.automation.is_active,
         steps: fromServerSteps((body.steps ?? []) as ServerStepNode[]),
       })

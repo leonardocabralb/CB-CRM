@@ -53,9 +53,12 @@ function ChannelRow({ channel }: { channel: CbChannel }) {
           CHANNEL_STATUS_DOT[channel.status],
         )}
       />
-      <span className="truncate">{channel.label}</span>
+      {/* O NOME fica com a folga; o telefone é curto e não encolhe. Ao
+          contrário, os dois truncavam junto e o nome do canal — a única
+          coisa que o operador reconhece — virava "Comercial (…". */}
+      <span className="min-w-0 flex-1 truncate">{channel.label}</span>
       {telefone && (
-        <span className="truncate text-xs text-muted-foreground">{telefone}</span>
+        <span className="text-muted-foreground shrink-0 text-xs">{telefone}</span>
       )}
     </span>
   );
@@ -92,7 +95,20 @@ export function ChannelSelect({
       disabled={disabled}
     >
       <SelectTrigger className={cn('bg-muted w-full', className)}>
-        <SelectValue placeholder={placeholder ?? t('selectPlaceholder')} />
+        {/* `Select.Value` sem função mostra o VALOR cru — o gatilho exibia
+            literalmente "__all__" e o id do canal. O rótulo tem de ser
+            resolvido aqui. */}
+        <SelectValue placeholder={placeholder ?? t('selectPlaceholder')}>
+          {(v: unknown) => {
+            const id = v == null ? null : String(v);
+            if (id === null || id === ALL) return allLabel ?? t('all');
+            return (
+              channels.find((c) => c.id === id)?.label ??
+              placeholder ??
+              t('selectPlaceholder')
+            );
+          }}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent className="max-h-64">
         {allowAll && <SelectItem value={ALL}>{allLabel ?? t('all')}</SelectItem>}
@@ -152,7 +168,7 @@ export function ChannelMultiSelect({
         <span className="truncate">{rotulo}</span>
         <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-64 w-64 overflow-y-auto">
+      <DropdownMenuContent align="start" className="max-h-64 w-72 overflow-y-auto">
         <DropdownMenuItem
           onClick={() => onChange([])}
           className={cn('text-sm', value.length === 0 && 'text-primary')}
