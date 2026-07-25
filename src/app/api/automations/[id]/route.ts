@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { loadAccountChannelsForValidation } from '@/lib/cb-channels/repo'
 import { createClient } from '@/lib/supabase/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
@@ -9,6 +10,7 @@ import {
 } from '@/lib/automations/steps-tree'
 import {
   validateStepsForActivation,
+  validateChannelScopeForActivation,
   validateTriggerForActivation,
 } from '@/lib/automations/validate'
 
@@ -70,7 +72,7 @@ export async function PATCH(
   // to compute the post-patch "effective" state for validation.
   const { data: existing } = await admin
     .from('automations')
-    .select('id, user_id, is_active, trigger_type, trigger_config')
+    .select('id, user_id, account_id, is_active, trigger_type, trigger_config, channel_ids')
     .eq('id', id)
     .maybeSingle()
   if (!existing || existing.user_id !== user.id) {
@@ -84,8 +86,14 @@ export async function PATCH(
     'trigger_type',
     'trigger_config',
     'is_active',
+    'channel_ids',
   ] as const) {
     if (k in body) update[k] = body[k]
+  }
+  // Array vazio significaria "nenhum canal", mas o dispatch o leria como
+  // "sem restricao" — normaliza para null, a mesma regra da migration 903.
+  if (Array.isArray(update.channel_ids) && update.channel_ids.length === 0) {
+    update.channel_ids = null
   }
 
   // If this PATCH leaves the automation active (either explicitly
@@ -103,6 +111,13 @@ export async function PATCH(
     const issues = [
       ...validateTriggerForActivation(mergedTriggerType, mergedTriggerConfig),
       ...validateStepsForActivation(mergedSteps),
+      ...validateChannelScopeForActivation(
+        mergedSteps,
+        (('channel_ids' in update
+          ? update.channel_ids
+          : existing.channel_ids) as string[] | null) ?? null,
+        await loadAccountChannelsForValidation(supabaseAdmin(), existing.account_id as string),
+      ),
     ]
     if (issues.length > 0) {
       return NextResponse.json(

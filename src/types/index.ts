@@ -519,7 +519,19 @@ export type AutomationTriggerConfig =
   | InteractiveReplyTriggerConfig
   | Record<string, unknown>;
 
-export interface SendMessageStepConfig {
+/**
+ * Canal de SAÍDA opcional, comum a todo passo que envia mensagem.
+ *
+ * Ausente/`null` = usa o canal do DISPARO (o número por onde o cliente
+ * escreveu), com queda para o canal atual da conversa. Preenchido = força
+ * aquele número — é o "envie a confirmação formal SEMPRE pelo número oficial,
+ * mesmo que o cliente tenha escrito no celular do advogado".
+ */
+export interface ChannelScopedStepConfig {
+  channel_id?: string | null;
+}
+
+export interface SendMessageStepConfig extends ChannelScopedStepConfig {
   text: string;
 }
 
@@ -531,7 +543,7 @@ export interface SendMessageStepConfig {
 export type SendButtonsStepConfig = InteractiveMessagePayload;
 export type SendListStepConfig = InteractiveMessagePayload;
 
-export interface SendTemplateStepConfig {
+export interface SendTemplateStepConfig extends ChannelScopedStepConfig {
   template_name: string;
   language?: string;
   variables?: Record<string, string>;
@@ -575,7 +587,9 @@ export type ConditionSubject =
   | 'contact_field'
   | 'tag_presence'
   | 'message_content'
-  | 'time_of_day';
+  | 'time_of_day'
+  /** Compara o canal do disparo com `operand` (um cb_channels.id). */
+  | 'channel';
 
 export interface ConditionStepConfig {
   subject: ConditionSubject;
@@ -619,6 +633,17 @@ export interface Automation {
   description?: string;
   trigger_type: AutomationTriggerType;
   trigger_config: AutomationTriggerConfig;
+  /**
+   * Canais (`cb_channels.id`) em que esta automação pode disparar.
+   * `null`/ausente = TODOS os canais — o comportamento de antes do
+   * multi-canal, e o que toda automação existente continua tendo.
+   *
+   * Array vazio é estado inválido: significaria "nenhum canal", mas o
+   * dispatch o leria como "sem restrição". O trigger
+   * `cb_channels_drop_from_automations` (migration 903) normaliza para NULL
+   * e DESATIVA a automação quando o último canal do escopo é removido.
+   */
+  channel_ids?: string[] | null;
   is_active: boolean;
   execution_count: number;
   last_executed_at?: string | null;

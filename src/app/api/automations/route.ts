@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { loadAccountChannelsForValidation } from '@/lib/cb-channels/repo'
 import { createClient } from '@/lib/supabase/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
@@ -6,6 +7,7 @@ import { getTemplate } from '@/lib/automations/templates'
 import { insertSteps, type BuilderStepInput } from '@/lib/automations/steps-tree'
 import {
   validateStepsForActivation,
+  validateChannelScopeForActivation,
   validateTriggerForActivation,
 } from '@/lib/automations/validate'
 
@@ -60,6 +62,12 @@ export async function POST(request: Request) {
   if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
 
   const { name, description, trigger_type, trigger_config, is_active, steps, template } = body
+  // Escopo de canal: undefined/null = todos os canais (o comportamento de
+  // toda automacao criada antes do multi-canal). Array vazio e normalizado
+  // para null — ver o trigger da migration 903.
+  const channelIds = Array.isArray(body.channel_ids)
+    ? (body.channel_ids as unknown[]).filter((v): v is string => typeof v === 'string')
+    : null
 
   let effectiveSteps: BuilderStepInput[] | undefined = steps
   let effectiveName = name
@@ -95,6 +103,11 @@ export async function POST(request: Request) {
       ...validateStepsForActivation(
         (effectiveSteps ?? []) as unknown as { step_type: string; step_config: Record<string, unknown> }[],
       ),
+      ...validateChannelScopeForActivation(
+        (effectiveSteps ?? []) as unknown as { step_type: string; step_config: Record<string, unknown> }[],
+        channelIds,
+        await loadAccountChannelsForValidation(supabaseAdmin(), accountId),
+      ),
     ]
     if (issues.length > 0) {
       return NextResponse.json(
@@ -114,6 +127,7 @@ export async function POST(request: Request) {
       description: effectiveDescription ?? null,
       trigger_type: effectiveTriggerType,
       trigger_config: effectiveTriggerConfig ?? {},
+      channel_ids: channelIds && channelIds.length > 0 ? channelIds : null,
       is_active: !!is_active,
     })
     .select()

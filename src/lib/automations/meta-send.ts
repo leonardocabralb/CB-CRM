@@ -6,7 +6,7 @@ import {
 } from '@/lib/flows/meta-send'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
-  resolveEngineChannel,
+  resolveEngineChannelPreferring,
   evolutionTransportFor,
   evolutionRemoteJid,
 } from '@/lib/cb-channels/engine-send'
@@ -42,6 +42,9 @@ interface SendTextArgs {
   conversationId: string
   contactId: string
   text: string
+  /** Canal de saida preferido: o do passo (cfg.channel_id) ou o do DISPARO.
+   *  Ausente = canal atual da conversa (comportamento de antes). */
+  preferredChannelId?: string | null
 }
 
 interface SendTemplateArgs {
@@ -52,6 +55,7 @@ interface SendTemplateArgs {
   templateName: string
   language?: string
   params?: string[]
+  preferredChannelId?: string | null
 }
 
 export async function engineSendText(args: SendTextArgs): Promise<{ whatsapp_message_id: string }> {
@@ -70,6 +74,7 @@ interface SendInteractiveArgs {
   conversationId: string
   contactId: string
   payload: InteractiveMessagePayload
+  preferredChannelId?: string | null
 }
 
 /**
@@ -137,9 +142,17 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  // Canal da conversa (multi-canal, Fase 5) — mesmo resolve do envio manual:
-  // conversations.channel_id → canal padrão → fallback whatsapp_config.
-  const channel = await resolveEngineChannel(db, input.accountId, input.conversationId)
+  // Canal de SAIDA (multi-canal, Fase E1). Ordem: canal preferido do passo/
+  // disparo → canal atual da conversa → padrão da conta → espelho legado.
+  // Separar "por onde a conversa está" de "por onde ESTE envio sai" é o que
+  // impede o follow-up de 24h de sair pelo número que o cliente usou no
+  // meio-tempo.
+  const channel = await resolveEngineChannelPreferring(
+    db,
+    input.accountId,
+    input.conversationId,
+    input.preferredChannelId,
+  )
   if (!channel) {
     throw new Error('WhatsApp not configured for this account')
   }
