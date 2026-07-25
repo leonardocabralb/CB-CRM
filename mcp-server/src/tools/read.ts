@@ -28,6 +28,18 @@ export function registerReadTools(server: McpServer, client: WacrmClient): void 
   );
 
   server.registerTool(
+    'list_channels',
+    {
+      title: 'List WhatsApp channels',
+      description:
+        'List the account WhatsApp numbers (channels) with their id, label, phone, type and connection status. Call this before send_message or send_broadcast when you need to choose which number to send from — the ids returned here are the valid values for `channel_id`. `kind: "meta"` is an official Cloud API number (supports templates and interactive messages); `kind: "evolution"` is an unofficial QR-code number (plain text only). Requires the `channels:read` scope.',
+      inputSchema: {},
+      annotations: { ...READ_ONLY, title: 'List WhatsApp channels' },
+    },
+    handle(async () => jsonResult(await client.listChannels())),
+  );
+
+  server.registerTool(
     'list_contacts',
     {
       title: 'List contacts',

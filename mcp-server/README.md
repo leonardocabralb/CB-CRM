@@ -71,6 +71,7 @@ when their guard is set.
 | Tool                 | Group     | Scope needed         | What it does                                    |
 | -------------------- | --------- | -------------------- | ----------------------------------------------- |
 | `whoami`             | read      | _(any valid key)_    | Show the account + scopes the key carries       |
+| `list_channels`      | read      | `channels:read`      | List the account's WhatsApp numbers             |
 | `list_contacts`      | read      | `contacts:read`      | List/search contacts (paginated)                |
 | `get_contact`        | read      | `contacts:read`      | Read one contact                                |
 | `list_conversations` | read      | `conversations:read` | List conversations, filter by status/contact    |
@@ -81,6 +82,20 @@ when their guard is set.
 | `create_contact`     | write     | `contacts:write`     | Create (find-or-create) a contact               |
 | `update_contact`     | write     | `contacts:write`     | Update a contact / replace its tags             |
 | `send_broadcast`     | broadcast | `broadcasts:send`    | Launch a template broadcast (requires `confirm`)|
+
+### Accounts with several WhatsApp numbers
+
+`send_message` and `send_broadcast` take an optional `channel_id` —
+which number to send **from**. Call `list_channels` first to get the ids.
+
+Omitting it is not neutral: the message leaves on the number the
+conversation is already on, and that follows the customer. If they last
+wrote to a different number of yours, the reply goes out from that one.
+Pass `channel_id` when the sending number matters.
+
+`kind` limits the number: only `meta` (official Cloud API) accepts
+templates and button/list messages. `evolution` (QR code) is text-only,
+so broadcasts always need a `meta` number.
 
 ## Safety model
 

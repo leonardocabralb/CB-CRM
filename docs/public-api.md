@@ -48,6 +48,7 @@ it. Grant the minimum.
 | `contacts:read`      | List and read contacts                   |
 | `contacts:write`     | Create and update contacts               |
 | `conversations:read` | List and read conversations              |
+| `channels:read`      | List the account's WhatsApp numbers      |
 | `broadcasts:send`    | Launch broadcast campaigns               |
 | `webhooks:manage`    | Register and manage outbound webhooks    |
 
@@ -142,7 +143,8 @@ curl -X POST https://your-crm.example.com/api/v1/messages \
     "language": "en_US",
     "params": ["A123"]        // positional body vars, or a structured object
   },
-  "reply_to_message_id": "<uuid>"   // optional; must be in the same conversation
+  "reply_to_message_id": "<uuid>",  // optional; must be in the same conversation
+  "channel_id": "<uuid>"            // optional; which number to send FROM
 }
 ```
 
@@ -263,6 +265,55 @@ Broadcast status + counts. Scope: `broadcasts:send`. `status` moves
 `sending` → `sent`; `delivered_count` / `read_count` keep climbing as
 Meta delivery webhooks arrive. `404` for another account's broadcast.
 
+### `GET /api/v1/channels`
+
+List the account's WhatsApp numbers. Scope: `channels:read`.
+
+An account can have several numbers — official Meta (Cloud API) ones and
+unofficial QR-code ones. Every id returned here is a valid `channel_id`
+for `POST /api/v1/messages` and `POST /api/v1/broadcasts`.
+
+```jsonc
+{
+  "data": [
+    {
+      "id": "<uuid>",
+      "label": "Comercial",
+      "kind": "meta",          // "meta" = official Cloud API; "evolution" = QR code
+      "display_phone": "+55 11 …",
+      "is_default": true,
+      "status": "connected",
+      "connected_at": "2026-07-01T12:00:00Z"
+    }
+  ]
+}
+```
+
+**`kind` decides what the number can do.** Only `meta` numbers accept
+templates and interactive (button/list) messages. Sending a template
+through an `evolution` number fails with `not_supported`.
+
+### Choosing which number to send from
+
+`POST /api/v1/messages` accepts an optional `channel_id`.
+
+- **Omitted** — the message goes out on the number the conversation is
+  already on, falling back to the account default. Note this "follows the
+  customer": if they last wrote to a different number of yours, the reply
+  goes out from that one.
+- **Set** — the message goes out from that number *and* pins the
+  conversation to it, so the customer's reply comes back to the same
+  number they saw. An id that isn't a channel of your account returns
+  `400 bad_request`.
+
+The `201` response includes `channel_id` — the number the message
+**actually** went out on, which is what you should record for auditing.
+
+`POST /api/v1/broadcasts` also accepts `channel_id`, but it must be an
+official Meta number (broadcasts are template-only). Omitted, it picks
+the first usable Meta number (account default first). If the account has
+none, the call returns `meta_channel_required`.
+
 ## Pagination
 
 Every list endpoint pages the same way. Request a page size with
@@ -294,6 +345,12 @@ things happen in your account. **Migration required:** apply
 | `message.received`       | An inbound message arrives from a contact         |
 | `message.status_updated` | A message you sent changed delivery status        |
 | `conversation.created`   | A new conversation is opened for a contact        |
+
+All three carry `channel_id` in `data` — which of your numbers the event
+happened on, or `null` for events recorded before multi-channel. Without
+it, several numbers look like one indistinguishable stream, and a rule
+like "only open a ticket for what comes in on Comercial" is unbuildable.
+List the numbers with `GET /api/v1/channels`.
 
 ### Managing endpoints
 
