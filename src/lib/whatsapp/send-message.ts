@@ -349,13 +349,29 @@ export async function sendMessageToConversation(
   // guards against a malformed local row crashing the send-builder.
   let templateRow: MessageTemplate | null = null;
   if (messageType === 'template' && templateName) {
-    const { data } = await db
+    // Multi-canal: o catalogo da Meta e POR WABA, entao o modelo tem que ser
+    // o DAQUELE numero. Sem o filtro, numa conversa fixada no 2o numero Meta o
+    // atendente via o preview certo e o cliente recebia outro texto — ou nada,
+    // com a Meta devolvendo "template does not exist".
+    //
+    // Modelos com channel_id NULL sao globais (anteriores a 903) e continuam
+    // valendo; o do canal tem prioridade, resolvida em memoria porque o
+    // PostgREST nao ordena por "NOT NULL primeiro" sem SQL cru.
+    let q = db
       .from('message_templates')
       .select('*')
       .eq('account_id', accountId)
       .eq('name', templateName)
-      .eq('language', templateLanguage || 'en_US')
-      .maybeSingle();
+      .eq('language', templateLanguage || 'en_US');
+    if (channel.channelId) {
+      q = q.or(`channel_id.eq.${channel.channelId},channel_id.is.null`);
+    }
+    const { data: candidatos } = await q;
+    const lista = (candidatos ?? []) as Record<string, unknown>[];
+    const data =
+      lista.find((t) => t.channel_id === channel.channelId) ??
+      lista.find((t) => t.channel_id == null) ??
+      null;
     if (data && !isMessageTemplate(data)) {
       throw new SendMessageError(
         'template_malformed',

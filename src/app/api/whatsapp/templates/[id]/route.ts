@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { resolveMetaChannel } from '@/lib/cb-channels/resolve-meta'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
@@ -91,7 +92,7 @@ export async function PATCH(
     // meta_template_id and status — fetch explicitly.
     const { data: existing, error: lookupErr } = await supabase
       .from('message_templates')
-      .select('id, name, status, meta_template_id, language')
+      .select('id, name, status, meta_template_id, language, channel_id')
       .eq('id', id)
       .eq('account_id', accountId)
       .maybeSingle()
@@ -138,18 +139,20 @@ export async function PATCH(
     }
 
     if (!isDryRun()) {
-      const { data: config, error: configError } = await supabase
-        .from('whatsapp_config')
-        .select('*')
-        .eq('account_id', accountId)
-        .single()
-      if (configError || !config) {
+      // Multi-canal: edita no WABA do canal DO PROPRIO MODELO. Usar o canal
+      // padrao aqui editaria o modelo no WABA errado.
+      const canal = await resolveMetaChannel(
+        supabase,
+        accountId,
+        (existing as { channel_id?: string | null }).channel_id ?? null,
+      )
+      if (!canal) {
         return NextResponse.json(
-          { error: 'WhatsApp not configured.' },
+          { error: 'WhatsApp not configured — no official Meta number available.' },
           { status: 400 },
         )
       }
-      const accessToken = decrypt(config.access_token)
+      const accessToken = decrypt(canal.accessToken)
 
       // Image headers need a fresh Resumable-Upload handle on every edit
       // (Meta replaces components wholesale). Derive from header_media_url.
@@ -269,7 +272,7 @@ export async function DELETE(
 
     const { data: existing, error: lookupErr } = await supabase
       .from('message_templates')
-      .select('id, name, meta_template_id')
+      .select('id, name, meta_template_id, channel_id')
       .eq('id', id)
       .eq('account_id', accountId)
       .maybeSingle()
@@ -278,21 +281,21 @@ export async function DELETE(
     }
 
     if (existing.meta_template_id && !isDryRun()) {
-      const { data: config, error: configError } = await supabase
-        .from('whatsapp_config')
-        .select('*')
-        .eq('account_id', accountId)
-        .single()
-      if (configError || !config || !config.waba_id) {
+      const canal = await resolveMetaChannel(
+        supabase,
+        accountId,
+        (existing as { channel_id?: string | null }).channel_id ?? null,
+      )
+      if (!canal || !canal.wabaId) {
         return NextResponse.json(
           { error: 'WhatsApp not configured — cannot delete on Meta.' },
           { status: 400 },
         )
       }
-      const accessToken = decrypt(config.access_token)
+      const accessToken = decrypt(canal.accessToken)
       try {
         await deleteMessageTemplate({
-          wabaId: config.waba_id,
+          wabaId: canal.wabaId,
           accessToken,
           name: existing.name,
           metaTemplateId: existing.meta_template_id,
