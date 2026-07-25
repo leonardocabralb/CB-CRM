@@ -11,7 +11,8 @@
     "filterAll": "All channels",
     "outboundLabel": "Send from",
     "metaOnlyNone": "No official Meta number is connected. Connect one under Settings › Connections.",
-    "accountWide": "Whole account"
+    "accountWide": "Whole account",
+    "noneOnChannel": "Nothing on this channel. Clear the filter to see everything."
   },
   "LoginPage": {
     "titleAccept": "Sign in to accept",

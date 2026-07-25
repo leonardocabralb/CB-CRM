@@ -92,6 +92,7 @@ export default function FlowsPage() {
   const router = useRouter();
   const canCreate = useCan("send-messages");
   const t = useTranslations("Flows.list");
+  const tCanais = useTranslations("Channels");
   const [flows, setFlows] = useState<FlowRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -250,6 +251,10 @@ export default function FlowsPage() {
           canCreate={canCreate}
           t={t}
         />
+      ) : visiveis.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-card/40 px-4 py-8 text-center text-sm text-muted-foreground">
+          {tCanais("noneOnChannel")}
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {visiveis.map((flow) => (

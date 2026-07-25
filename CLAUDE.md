@@ -160,6 +160,37 @@ upstream sobrescrevê-los:
 | `src/lib/ai/{auto-reply,config,knowledge,usage}.ts` | agente por canal, interruptor, RAG por canal |
 | `src/lib/whatsapp/broadcast-core.ts` + rotas de template | `resolveMetaChannel` no lugar do espelho |
 | `src/lib/api/v1/conversations.ts`, `src/lib/api-keys/scopes.ts` | `channel_id` nos serializers, escopo `channels:read` |
+| `src/components/automations/automation-builder.tsx`, `src/components/flows/{flow-builder,flow-editor-state}.tsx` | escopo de canal editável (multi-select / select), canais no contexto do editor, validação de canal no cliente |
+| páginas de `automations`, `flows`, `broadcasts`, `dashboard` | etiqueta e filtro de canal, coluna de canal nos históricos, filtro do painel |
+| `src/components/broadcasts/step{1,4}-*.tsx`, `src/hooks/use-broadcast-sending.ts` | canal escolhido no passo 1, `channel_id` no corpo da API e na linha de `broadcasts` |
+| `src/components/settings/template-manager.tsx` | seletor de WABA para criar/sincronizar, etiqueta de canal por modelo |
+| `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato, canal da conversa na ficha |
+| `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
+| `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
+
+⚠️ **UI de canal: peças próprias, prefira reusá-las.** `src/hooks/use-channels.ts`
+(uma busca por montagem, falha silenciosa), `src/lib/cb-channels/display.ts`
+(funções puras, com teste) e `src/components/channels/` (`ChannelBadge`,
+`ChannelCell`, `ChannelScopeBadge`, `ChannelSelect`, `ChannelMultiSelect`,
+`ChannelFilter`). Convenções que valem em toda tela nova:
+
+- **Escopo vazio = TODOS os canais**, nunca "nenhum" — igual ao motor
+  (`channelInScope`, `findEntryFlow`). Uma tela que disser "nenhum canal" onde o
+  motor lê "todos" faz o operador desativar a regra errada.
+- **Seletor some com menos de 2 canais.** Numa conta de um número ele não decide
+  nada e só ocupa espaço.
+- **Registro sem `channel_id` mostra travessão**, nunca o canal padrão: em
+  registro anterior à 903 o disparo pode ter vindo de outro número.
+- **Filtro não esconde o irrestrito.** Uma automação sem escopo dispara em todos
+  os números e continua visível sob qualquer filtro.
+
+⚠️ **`<SelectValue />` mostra o VALOR cru, não o rótulo.** O `Select` do base-ui
+só resolve o texto com uma função em children
+(`<SelectValue>{(v) => rotulo(v)}</SelectValue>`). Quase todo call site do app
+está sem isso — a tela de Agentes exibe literalmente `openai` e `__queue__` para
+o usuário. Corrigido em `channel-select.tsx` e no seletor de gatilho do
+flow-builder; os ~18 restantes seguem quebrados, e a correção boa é central (no
+primitivo `src/components/ui/select.tsx`), não uma por call site.
 
 ⚠️ **A 903 removeu dois índices únicos.** `message_templates(user_id, name,
 language)` e `ai_configs(account_id)` viraram pares de índices **parciais**

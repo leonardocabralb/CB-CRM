@@ -11,7 +11,8 @@
     "filterAll": "Todos os canais",
     "outboundLabel": "Enviar por",
     "metaOnlyNone": "Nenhum número oficial da Meta está conectado. Conecte um em Ajustes › Conexões.",
-    "accountWide": "Conta inteira"
+    "accountWide": "Conta inteira",
+    "noneOnChannel": "Nada neste canal. Limpe o filtro para ver tudo."
   },
   "LoginPage": {
     "titleAccept": "Entre para aceitar",

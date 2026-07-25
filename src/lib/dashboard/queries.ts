@@ -27,9 +27,44 @@ import type {
 
 type DB = SupabaseClient
 
+// ------------------------------------------------------------
+// FILTRO POR CANAL — o que dá e o que NÃO dá para recortar.
+//
+// `conversations`, `messages`, `broadcasts` e `automation_logs` têm
+// `channel_id` desde as migrations 902/903. `contacts`, `deals` e
+// `pipeline_stages` NÃO têm, e nem faria sentido: um contato pertence ao
+// escritório, não a um número, e um negócio pode nascer numa conversa e
+// fechar noutra.
+//
+// Por isso o filtro é PARCIAL por natureza, e a tela precisa dizer quais
+// cartões ele não alcança. Um número da conta inteira exibido sob um
+// filtro de canal seria lido como "isto é do Comercial" — a mentira mais
+// cara que um painel pode contar.
+// ------------------------------------------------------------
+
+/**
+ * Aplica `channel_id = X` quando há filtro; devolve a query intacta se não.
+ *
+ * `Q` fica SEM constraint de propósito: escrever `Q extends { eq(...): Q }`
+ * é auto-referente e faz o compilador estourar com TS2589 ("type
+ * instantiation is excessively deep") no builder do PostgREST, que já é
+ * profundamente genérico. O cast local resolve sem contaminar o tipo de
+ * retorno — quem chama continua recebendo o builder original.
+ */
+function porCanal<Q>(query: Q, channelId?: string | null): Q {
+  if (!channelId) return query
+  return (query as { eq: (coluna: string, valor: string) => Q }).eq(
+    'channel_id',
+    channelId,
+  )
+}
+
 // --- 1. Metric cards ---------------------------------------------------
 
-export async function loadMetrics(db: DB): Promise<MetricsBundle> {
+export async function loadMetrics(
+  db: DB,
+  channelId?: string | null,
+): Promise<MetricsBundle> {
   const todayStart = startOfLocalDay().toISOString()
   const yesterdayStart = daysAgoStart(1).toISOString()
 
@@ -43,18 +78,27 @@ export async function loadMetrics(db: DB): Promise<MetricsBundle> {
     messagesToday,
     messagesYesterday,
   ] = await Promise.all([
-    db.from('conversations').select('id', { count: 'exact', head: true }).eq('status', 'open'),
-    db
-      .from('conversations')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'open')
-      .gte('created_at', todayStart),
-    db
-      .from('conversations')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'open')
-      .gte('created_at', yesterdayStart)
-      .lt('created_at', todayStart),
+    porCanal(
+      db.from('conversations').select('id', { count: 'exact', head: true }).eq('status', 'open'),
+      channelId,
+    ),
+    porCanal(
+      db
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'open')
+        .gte('created_at', todayStart),
+      channelId,
+    ),
+    porCanal(
+      db
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'open')
+        .gte('created_at', yesterdayStart)
+        .lt('created_at', todayStart),
+      channelId,
+    ),
     db.from('contacts').select('id', { count: 'exact', head: true }).gte('created_at', todayStart),
     db
       .from('contacts')
@@ -62,18 +106,41 @@ export async function loadMetrics(db: DB): Promise<MetricsBundle> {
       .gte('created_at', yesterdayStart)
       .lt('created_at', todayStart),
     db.from('deals').select('value, status').eq('status', 'open'),
-    db
-      .from('messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('sender_type', 'agent')
-      .gte('created_at', todayStart),
-    db
-      .from('messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('sender_type', 'agent')
-      .gte('created_at', yesterdayStart)
-      .lt('created_at', todayStart),
+    porCanal(
+      db
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('sender_type', 'agent')
+        .gte('created_at', todayStart),
+      channelId,
+    ),
+    porCanal(
+      db
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('sender_type', 'agent')
+        .gte('created_at', yesterdayStart)
+        .lt('created_at', todayStart),
+      channelId,
+    ),
   ])
+
+  // As oito consultas acima devolvem `{ count, data, error }` sem lançar, e
+  // o código só lia `count ?? 0`. Uma falha virava CARTÃO ZERADO: o painel
+  // afirmava "0 conversas ativas" quando na verdade a consulta nem
+  // respondeu. Zero é um número plausível — ninguém desconfia dele. Agora a
+  // falha sobe e o chamador registra o erro em vez de mostrar mentira.
+  const falha = [
+    openConvCur,
+    newConvToday,
+    newConvYesterday,
+    newContactsToday,
+    newContactsYesterday,
+    openDeals,
+    messagesToday,
+    messagesYesterday,
+  ].find((r) => r.error)
+  if (falha?.error) throw falha.error
 
   const openDealsRows = (openDeals.data ?? []) as { value: number | null }[]
   const openDealsValue = openDealsRows.reduce((sum, d) => sum + (d.value ?? 0), 0)
@@ -104,13 +171,16 @@ export async function loadMetrics(db: DB): Promise<MetricsBundle> {
 export async function loadConversationsSeries(
   db: DB,
   rangeDays: number,
+  channelId?: string | null,
 ): Promise<ConversationsSeriesPoint[]> {
   const start = daysAgoStart(rangeDays - 1).toISOString()
-  const { data, error } = await db
-    .from('messages')
-    .select('created_at, sender_type')
-    .gte('created_at', start)
-    .order('created_at', { ascending: true })
+  const { data, error } = await porCanal(
+    db
+      .from('messages')
+      .select('created_at, sender_type')
+      .gte('created_at', start),
+    channelId,
+  ).order('created_at', { ascending: true })
   if (error) throw error
 
   const keys = lastNDayKeys(rangeDays)
@@ -169,17 +239,23 @@ export async function loadPipelineDonut(db: DB): Promise<PipelineDonutData> {
 
 // --- 4. Response time by day of week ----------------------------------
 
-export async function loadResponseTime(db: DB): Promise<ResponseTimeSummary> {
+export async function loadResponseTime(
+  db: DB,
+  channelId?: string | null,
+): Promise<ResponseTimeSummary> {
   // Pull the last 14 days of messages in one shot, then walk per
   // conversation to find each "first inbound" → "first subsequent
   // outbound" pair. 14 days gives us both "this week" + "last week"
   // with enough overlap if the user opens the dashboard late on a
   // Monday.
   const fourteenDaysAgo = daysAgoStart(13).toISOString()
-  const { data, error } = await db
-    .from('messages')
-    .select('conversation_id, sender_type, created_at')
-    .gte('created_at', fourteenDaysAgo)
+  const { data, error } = await porCanal(
+    db
+      .from('messages')
+      .select('conversation_id, sender_type, created_at')
+      .gte('created_at', fourteenDaysAgo),
+    channelId,
+  )
     .order('conversation_id', { ascending: true })
     .order('created_at', { ascending: true })
   if (error) throw error
@@ -265,35 +341,55 @@ export async function loadResponseTime(db: DB): Promise<ResponseTimeSummary> {
 
 // --- 5. Activity feed --------------------------------------------------
 
-export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> {
+export async function loadActivity(
+  db: DB,
+  limit = 20,
+  channelId?: string | null,
+): Promise<ActivityItem[]> {
   // Pull ~10 from each source (plenty of headroom after merge-sort),
   // then interleave by timestamp. The individual per-table limits
   // keep the payload small; the final limit is enforced after sort.
+  //
+  // Com filtro de canal, contatos e negócios saem do feed. Não é perda: um
+  // contato criado não pertence a número nenhum, e mostrá-lo sob o recorte
+  // "Comercial" o faria parecer originado ali.
+  const semCanal = !channelId
   const [msgs, contacts, deals, broadcasts, autoLogs] = await Promise.all([
-    db
-      .from('messages')
-      .select('id, content_text, sender_type, created_at, conversation_id, conversations(contact_id, contacts(name, phone))')
-      .eq('sender_type', 'customer')
+    porCanal(
+      db
+        .from('messages')
+        .select('id, content_text, sender_type, created_at, conversation_id, conversations(contact_id, contacts(name, phone))')
+        .eq('sender_type', 'customer'),
+      channelId,
+    )
       .order('created_at', { ascending: false })
       .limit(10),
-    db
-      .from('contacts')
-      .select('id, name, phone, created_at')
-      .order('created_at', { ascending: false })
-      .limit(10),
-    db
-      .from('deals')
-      .select('id, title, updated_at, stage:pipeline_stages(name)')
-      .order('updated_at', { ascending: false })
-      .limit(10),
-    db
-      .from('broadcasts')
-      .select('id, name, status, total_recipients, created_at')
+    semCanal
+      ? db
+          .from('contacts')
+          .select('id, name, phone, created_at')
+          .order('created_at', { ascending: false })
+          .limit(10)
+      : Promise.resolve({ data: [] }),
+    semCanal
+      ? db
+          .from('deals')
+          .select('id, title, updated_at, stage:pipeline_stages(name)')
+          .order('updated_at', { ascending: false })
+          .limit(10)
+      : Promise.resolve({ data: [] }),
+    porCanal(
+      db.from('broadcasts').select('id, name, status, total_recipients, created_at'),
+      channelId,
+    )
       .order('created_at', { ascending: false })
       .limit(5),
-    db
-      .from('automation_logs')
-      .select('id, trigger_event, status, created_at, automation:automations(name), contact:contacts(name, phone)')
+    porCanal(
+      db
+        .from('automation_logs')
+        .select('id, trigger_event, status, created_at, automation:automations(name), contact:contacts(name, phone)'),
+      channelId,
+    )
       .order('created_at', { ascending: false })
       .limit(10),
   ])

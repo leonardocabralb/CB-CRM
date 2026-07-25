@@ -35,11 +35,14 @@ import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 
 import { useTranslations } from 'next-intl'
+import { ChannelFilter } from '@/components/channels/channel-filter'
+import { useChannels } from '@/hooks/use-channels'
 
 type RangeDays = 7 | 30 | 90
 
 export default function DashboardPage() {
   const t = useTranslations('Dashboard.page')
+  const tCanais = useTranslations('Channels')
   const { defaultCurrency } = useAuth()
   const [metrics, setMetrics] = useState<MetricsBundle | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(true)
@@ -64,18 +67,26 @@ export default function DashboardPage() {
   const [activity, setActivity] = useState<ActivityItem[] | null>(null)
   const [activityLoading, setActivityLoading] = useState(true)
 
+  // Filtro de canal. `null` = conta inteira, exatamente o painel de antes.
+  // ⚠️ O filtro é PARCIAL por natureza: contatos, negócios e funil não têm
+  // `channel_id` no schema. Os cartões que ele não alcança ganham a marca
+  // "conta inteira" abaixo — mostrar número da conta toda sob um recorte de
+  // canal seria pior do que não filtrar.
+  const { channels } = useChannels()
+  const [canalFiltro, setCanalFiltro] = useState<string | null>(null)
+
   const loadAll = useCallback(() => {
     const db = createClient()
 
     // Kick everything off in parallel. Each block has its own
     // setState + finally so a slow query doesn't hold up faster
     // sections — each widget shows its own skeleton independently.
-    void loadMetrics(db)
+    void loadMetrics(db, canalFiltro)
       .then((m) => setMetrics(m))
       .catch((err) => console.error('[dashboard] metrics failed:', err))
       .finally(() => setMetricsLoading(false))
 
-    void loadConversationsSeries(db, 30)
+    void loadConversationsSeries(db, 30, canalFiltro)
       .then((s) => setSeries((prev) => ({ ...prev, 30: s })))
       .catch((err) => console.error('[dashboard] series failed:', err))
       .finally(() => setSeriesLoading(false))
@@ -85,7 +96,7 @@ export default function DashboardPage() {
       .catch((err) => console.error('[dashboard] pipeline failed:', err))
       .finally(() => setPipelineLoading(false))
 
-    void loadResponseTime(db)
+    void loadResponseTime(db, canalFiltro)
       .then((r) => setResponseTime(r))
       .catch((err) => console.error('[dashboard] response time failed:', err))
       .finally(() => setResponseTimeLoading(false))
@@ -93,11 +104,11 @@ export default function DashboardPage() {
     // Fetch up to 50 so the biggest page-size option in the feed
     // (50 rows) is already in memory — switching sizes then becomes
     // a pure client-side slice with no extra round trip.
-    void loadActivity(db, 50)
+    void loadActivity(db, 50, canalFiltro)
       .then((a) => setActivity(a))
       .catch((err) => console.error('[dashboard] activity failed:', err))
       .finally(() => setActivityLoading(false))
-  }, [])
+  }, [canalFiltro])
 
   useEffect(() => {
     loadAll()
@@ -113,22 +124,40 @@ export default function DashboardPage() {
       if (series[r] !== null) return
       setSeriesLoading(true)
       const db = createClient()
-      loadConversationsSeries(db, r)
+      loadConversationsSeries(db, r, canalFiltro)
         .then((s) => setSeries((prev) => ({ ...prev, [r]: s })))
         .catch((err) => console.error('[dashboard] series failed:', err))
         .finally(() => setSeriesLoading(false))
     },
-    [series],
+    [series, canalFiltro],
   )
 
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t('description')}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t('description')}
+          </p>
+        </div>
+        <ChannelFilter
+          channels={channels}
+          value={canalFiltro}
+          onChange={(id) => {
+            setCanalFiltro(id)
+            // Troca de canal invalida TODO o cache de séries: os pontos em
+            // memória são do recorte anterior. Sem isto, alternar o filtro
+            // e voltar para um intervalo já visto mostraria o gráfico do
+            // canal errado, sem nenhum sinal na tela.
+            setSeries({ 7: null, 30: null, 90: null })
+            setMetricsLoading(true)
+            setSeriesLoading(true)
+            setResponseTimeLoading(true)
+            setActivityLoading(true)
+          }}
+        />
       </div>
 
       {/* Metric cards */}
@@ -151,6 +180,7 @@ export default function DashboardPage() {
               }}
             />
             <MetricCard
+              accountWideNote={canalFiltro ? tCanais('accountWide') : undefined}
               title={t('newContactsToday')}
               value={metrics.newContactsToday.current.toLocaleString()}
               icon={UserPlus}
@@ -165,6 +195,7 @@ export default function DashboardPage() {
               }}
             />
             <MetricCard
+              accountWideNote={canalFiltro ? tCanais('accountWide') : undefined}
               title={t('openDealsValue')}
               value={formatCurrency(metrics.openDealsValue, defaultCurrency)}
               icon={DollarSign}
@@ -207,7 +238,15 @@ export default function DashboardPage() {
             onRangeChange={handleRangeChange}
           />
         </div>
-        <div className="h-full lg:col-span-2">
+        {/* O funil é da conta inteira: negócio não tem canal, e um negócio
+            pode nascer numa conversa e fechar noutra. Com filtro ativo a
+            marca aparece sobre o cartão. */}
+        <div className="relative h-full lg:col-span-2">
+          {canalFiltro && (
+            <span className="absolute right-4 top-4 z-10 rounded border border-border bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              {tCanais('accountWide')}
+            </span>
+          )}
           <PipelineDonut
             data={pipeline}
             loading={pipelineLoading}

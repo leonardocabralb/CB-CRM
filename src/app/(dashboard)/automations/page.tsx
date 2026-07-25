@@ -66,6 +66,7 @@ export default function AutomationsPage() {
   const router = useRouter()
   const canCreate = useCan("send-messages")
   const t = useTranslations("Automations.list")
+  const tCanais = useTranslations("Channels")
   const [automations, setAutomations] = useState<Automation[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Automation | null>(null)
@@ -238,6 +239,14 @@ export default function AutomationsPage() {
         </div>
       ) : (
         <ul className="space-y-3">
+          {/* Filtro que não casa nada precisa DIZER isso. Sem esta linha a
+              lista ficava simplesmente vazia e parecia que as automações
+              tinham sumido. */}
+          {visiveis.length === 0 && (
+            <li className="rounded-xl border border-dashed border-border bg-card/40 px-4 py-6 text-center text-sm text-muted-foreground">
+              {tCanais("noneOnChannel")}
+            </li>
+          )}
           {visiveis.map((a) => (
             <AutomationCard
               key={a.id}
