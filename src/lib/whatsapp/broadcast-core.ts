@@ -135,13 +135,24 @@ export async function createBroadcast(
 
   // Template row (once) for header/button components; guard a
   // malformed local row rather than N identical opaque failures.
-  const { data: rawTemplateRow } = await db
+  // Escopado ao canal: desde a 903 o mesmo nome de modelo pode existir em
+  // dois WABAs, entao um .maybeSingle() sem recorte estouraria com "multiple
+  // rows". O do canal ganha do global (channel_id NULL, pre-903).
+  let tplQuery = db
     .from('message_templates')
     .select('*')
     .eq('account_id', accountId)
     .eq('name', templateName)
-    .eq('language', templateLanguage)
-    .maybeSingle();
+    .eq('language', templateLanguage);
+  if (canal.channelId) {
+    tplQuery = tplQuery.or(`channel_id.eq.${canal.channelId},channel_id.is.null`);
+  }
+  const { data: tplCandidatos } = await tplQuery;
+  const tplLista = (tplCandidatos ?? []) as Record<string, unknown>[];
+  const rawTemplateRow =
+    tplLista.find((t) => t.channel_id === canal.channelId) ??
+    tplLista.find((t) => t.channel_id == null) ??
+    null;
   if (rawTemplateRow && !isMessageTemplate(rawTemplateRow)) {
     throw new BroadcastError(
       'template_malformed',

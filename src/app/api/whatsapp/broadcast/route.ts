@@ -161,13 +161,24 @@ export async function POST(request: Request) {
     // the loop would N+1 against Supabase for every recipient.
     // Guard against a malformed local row crashing every send in
     // the loop with the same opaque TypeError — fail loudly once.
-    const { data: rawTemplateRow } = await supabase
+    // Escopado ao canal: desde a 903 o mesmo nome de modelo pode existir em
+    // dois WABAs, entao um .maybeSingle() sem recorte estouraria com "multiple
+    // rows". O do canal ganha do global (channel_id NULL, pre-903).
+    let tplQuery = supabase
       .from('message_templates')
       .select('*')
       .eq('account_id', accountId)
       .eq('name', template_name)
       .eq('language', template_language || 'en_US')
-      .maybeSingle()
+    if (canal.channelId) {
+      tplQuery = tplQuery.or(`channel_id.eq.${canal.channelId},channel_id.is.null`)
+    }
+    const { data: tplCandidatos } = await tplQuery
+    const tplLista = (tplCandidatos ?? []) as Record<string, unknown>[]
+    const rawTemplateRow =
+      tplLista.find((t) => t.channel_id === canal.channelId) ??
+      tplLista.find((t) => t.channel_id == null) ??
+      null
     if (rawTemplateRow && !isMessageTemplate(rawTemplateRow)) {
       return NextResponse.json(
         {

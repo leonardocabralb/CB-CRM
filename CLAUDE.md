@@ -137,7 +137,7 @@ arquivo** — por isso preferir módulos novos a reescrever o core.
 batalha — o upstream mexe nele a cada feature e nós temos tradução por cima.
 Também são nossos: `messages/pt-BR.json`, `CLAUDE.md`, `.gitignore`,
 `scripts/`, as migrations `037_evolution_transport.sql`, `900_cb_*` e
-`901`/`902_cb_*`, a **integração Evolution API** (`src/lib/whatsapp/transport/`,
+`901`/`902`/`903_cb_*`, a **integração Evolution API** (`src/lib/whatsapp/transport/`,
 `src/app/api/whatsapp/evolution/`, `src/components/settings/evolution-connect.tsx`,
 `src/lib/whatsapp/inbound-store.ts`), o **multi-canal** (`src/lib/cb-channels/`,
 `src/app/api/cb/`, `src/components/settings/cb-channels-panel.tsx`), a **infra de
@@ -146,13 +146,32 @@ deploy** (`Dockerfile`, `docker-stack.yml`, `.github/workflows/deploy.yml`,
 string literal onde nós temos `t('chave')` — ao resolver, manter a nossa forma e
 levar o texto novo dele para os **dois** dicionários).
 
-⚠️ **Dois arquivos do upstream ganharam mudanças NOSSAS, ADITIVAS, para o
-multi-canal — cuidado no merge**: `src/lib/whatsapp/send-message.ts` (resolve o
-canal da conversa e carimba `channel_id` na saída) e
-`src/app/api/whatsapp/webhook/route.ts` (o webhook **Meta**, que carimba
-`channel_id` na entrada resolvendo por `phone_number_id`). Ambas preservam 100%
-do comportamento antigo (best-effort, deploy-safe); ao mesclar upstream, manter os
-nossos trechos aditivos e não deixar o upstream sobrescrevê-los.
+⚠️ **Vários arquivos do upstream ganharam mudanças NOSSAS para o multi-canal —
+cuidado no merge.** Ao mesclar upstream, manter os nossos trechos e não deixar o
+upstream sobrescrevê-los:
+
+| Arquivo do upstream | O que é nosso |
+| --- | --- |
+| `src/lib/whatsapp/send-message.ts` | resolve o canal, carimba `channel_id`, devolve `channelId` no resultado, e busca o template **filtrando por canal** |
+| `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
+| `src/lib/whatsapp/inbound-store.ts` | idem, no lado Evolution |
+| `src/lib/automations/engine.ts` | `channelInScope`, condição `channel`, canal de saída por passo |
+| `src/lib/flows/engine.ts` | `findEntryFlow` por canal, `flow_runs.channel_id`, try/catch nos nós interativos |
+| `src/lib/ai/{auto-reply,config,knowledge,usage}.ts` | agente por canal, interruptor, RAG por canal |
+| `src/lib/whatsapp/broadcast-core.ts` + rotas de template | `resolveMetaChannel` no lugar do espelho |
+| `src/lib/api/v1/conversations.ts`, `src/lib/api-keys/scopes.ts` | `channel_id` nos serializers, escopo `channels:read` |
+
+⚠️ **A 903 removeu dois índices únicos.** `message_templates(user_id, name,
+language)` e `ai_configs(account_id)` viraram pares de índices **parciais**
+(global + por canal). Consequências que já morderam durante a implementação e
+mordem de novo em qualquer código novo:
+
+- **`.upsert(..., { onConflict })` não funciona mais nessas tabelas** — índice
+  parcial não serve como alvo de `ON CONFLICT`. Use lookup + insert/update.
+- **`.maybeSingle()` filtrando só por `account_id` estoura** assim que existir
+  uma segunda linha (agente por canal, template homônimo em outro WABA).
+  Toda consulta precisa escopar o canal, ou `.is('channel_id', null)` quando o
+  alvo é explicitamente o padrão da conta.
 
 ## Branches — criação e nomenclatura
 
@@ -179,7 +198,8 @@ nossos trechos aditivos e não deixar o upstream sobrescrevê-los.
   aplicada e no `main` — **não renumerar**. É exceção conhecida; daqui em diante
   seguir o `900+`. Se o upstream um dia criar um `037_*`, resolver o conflito de
   número renomeando o **do upstream** no merge, nunca o nosso já aplicado.
-  ⚠️ Ela é a **única** aplicada *sem* registro no histórico do Supabase: as
+  ⚠️ Aplicadas até aqui: `900`, `901`, `902` e `903_cb_multicanal`.
+  ⚠️ A `037` é a **única** aplicada *sem* registro no histórico do Supabase: as
   colunas dela existem no banco (`whatsapp_config.provider`, `base_url`,
   `instance_name`, `api_key`, `instance_state`, …), mas `list_migrations` não a
   lista. Ou seja, **o histórico não é fonte de verdade completa** — para checar
