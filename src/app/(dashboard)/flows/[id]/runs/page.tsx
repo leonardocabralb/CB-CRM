@@ -21,6 +21,9 @@ import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { ChannelCell } from "@/components/channels/channel-badge";
+import { useChannels } from "@/hooks/use-channels";
+import type { CbChannel } from "@/lib/cb-channels/repo";
 
 /**
  * Run history viewer.
@@ -48,6 +51,11 @@ interface RunRow {
   end_reason: string | null;
   vars: Record<string, unknown>;
   reprompt_count: number;
+  /**
+   * Canal TRAVADO na entrada do run — por onde o cliente entrou. `null`
+   * nos runs anteriores à 903.
+   */
+  channel_id: string | null;
   contact: { id: string; name: string | null; phone: string } | null;
 }
 
@@ -107,6 +115,7 @@ export default function FlowRunsPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [notFound, setNotFound] = useState(false);
+  const { channels } = useChannels();
 
   useEffect(() => {
     if (!params.id) return;
@@ -199,6 +208,7 @@ export default function FlowRunsPage() {
             <RunCard
               key={run.id}
               run={run}
+              channels={channels}
               events={events.filter((e) => e.flow_run_id === run.id)}
               expanded={expanded.has(run.id)}
               onToggle={() => toggle(run.id)}
@@ -213,12 +223,14 @@ export default function FlowRunsPage() {
 
 function RunCard({
   run,
+  channels,
   events,
   expanded,
   onToggle,
   t,
 }: {
   run: RunRow;
+  channels: CbChannel[];
   events: EventRow[];
   expanded: boolean;
   onToggle: () => void;
@@ -278,6 +290,9 @@ function RunCard({
               <span>· {t("reprompts", { count: run.reprompt_count })}</span>
             )}
             {duration && <span>· {t("ranFor", { duration })}</span>}
+            {/* Por onde o cliente entrou. Sem isto, dois runs do mesmo flow
+                em números diferentes ficavam indistinguíveis no histórico. */}
+            <ChannelCell channels={channels} channelId={run.channel_id} />
           </div>
         </div>
       </button>

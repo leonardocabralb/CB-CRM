@@ -680,6 +680,13 @@ export interface AutomationLog {
   error_message?: string | null;
   created_at: string;
   contact?: Contact;
+  /**
+   * Canal por onde este disparo entrou (migration 903). `null` nos
+   * registros anteriores ao multi-canal — a tela mostra travessão, e não o
+   * canal padrão, porque naquela época o disparo pode ter vindo de outro
+   * número.
+   */
+  channel_id?: string | null;
 }
 
 // ============================================================

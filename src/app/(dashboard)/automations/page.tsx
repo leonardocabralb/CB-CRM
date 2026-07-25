@@ -41,6 +41,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { AUTOMATION_TEMPLATES, type TemplateSlug } from "@/lib/automations/templates"
+import { ChannelScopeBadge } from "@/components/channels/channel-badge"
+import { ChannelFilter } from "@/components/channels/channel-filter"
+import { useChannels } from "@/hooks/use-channels"
+import type { CbChannel } from "@/lib/cb-channels/repo"
 import { triggerMeta, formatRelative } from "@/lib/automations/trigger-meta"
 import { cn } from "@/lib/utils"
 
@@ -66,6 +70,11 @@ export default function AutomationsPage() {
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Automation | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const { channels } = useChannels()
+  // Filtro por canal. `null` = todas. Uma automação SEM escopo vale para
+  // todos os números, então ela aparece em qualquer filtro — esconder a
+  // regra que dispara em todo lugar seria a leitura mais perigosa da tela.
+  const [filtroCanal, setFiltroCanal] = useState<string | null>(null)
 
   async function load() {
     try {
@@ -156,6 +165,13 @@ export default function AutomationsPage() {
     )
   }
 
+  const visiveis = filtroCanal
+    ? automations.filter((a) => {
+        const escopo = a.channel_ids
+        return !escopo || escopo.length === 0 || escopo.includes(filtroCanal)
+      })
+    : automations
+
   const showTemplates = automations.length < 3
 
   return (
@@ -167,15 +183,22 @@ export default function AutomationsPage() {
             {t("subtitle")}
           </p>
         </div>
-        <GatedButton
-          canAct={canCreate}
-          gateReason="create automations"
-          onClick={() => router.push("/automations/new")}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          {t("create")}
-        </GatedButton>
+        <div className="flex items-center gap-2">
+          <ChannelFilter
+            channels={channels}
+            value={filtroCanal}
+            onChange={setFiltroCanal}
+          />
+          <GatedButton
+            canAct={canCreate}
+            gateReason="create automations"
+            onClick={() => router.push("/automations/new")}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4" />
+            {t("create")}
+          </GatedButton>
+        </div>
       </div>
 
       {showTemplates && (
@@ -215,10 +238,11 @@ export default function AutomationsPage() {
         </div>
       ) : (
         <ul className="space-y-3">
-          {automations.map((a) => (
+          {visiveis.map((a) => (
             <AutomationCard
               key={a.id}
               automation={a}
+              channels={channels}
               onToggle={(next) => toggleActive(a, next)}
               onEdit={() => router.push(`/automations/${a.id}/edit`)}
               onDuplicate={() => duplicate(a)}
@@ -263,6 +287,7 @@ export default function AutomationsPage() {
 
 function AutomationCard({
   automation,
+  channels,
   onToggle,
   onEdit,
   onDuplicate,
@@ -271,6 +296,7 @@ function AutomationCard({
   t,
 }: {
   automation: Automation
+  channels: CbChannel[]
   onToggle: (next: boolean) => void
   onEdit: () => void
   onDuplicate: () => void
@@ -324,6 +350,9 @@ function AutomationCard({
             </span>
             <span aria-hidden>·</span>
             <span>{t("lastRun", { time: formatRelative(automation.last_executed_at) })}</span>
+            {/* Só as restritas ganham etiqueta: "todos os canais" em cada
+                linha viraria ruído, e é quem TEM escopo que precisa saltar. */}
+            <ChannelScopeBadge channels={channels} scope={automation.channel_ids} />
           </div>
         </button>
 
