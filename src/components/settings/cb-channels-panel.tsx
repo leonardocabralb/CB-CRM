@@ -124,6 +124,8 @@ export function CbChannelsPanel() {
   const [confirmDelete, setConfirmDelete] = useState<CbChannel | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const [promotingId, setPromotingId] = useState<string | null>(null);
+
   const webhookUrl =
     typeof window !== 'undefined'
       ? `${window.location.origin}/api/whatsapp/webhook`
@@ -327,6 +329,32 @@ export function CbChannelsPanel() {
     }
   };
 
+  const handleSetDefault = async (channel: CbChannel) => {
+    setPromotingId(channel.id);
+    try {
+      const res = await fetch(`/api/cb/channels/${channel.id}/default`, {
+        method: 'POST',
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        toast.error(payload.error || t('setDefaultFailed'));
+        return;
+      }
+      // O espelho pode falhar sem derrubar a promoção — o operador precisa
+      // saber, porque broadcast e modelos continuariam no canal anterior.
+      if (payload.warning) {
+        toast.warning(payload.warning, { duration: 10_000 });
+      } else {
+        toast.success(t('setDefaultDone', { label: channel.label }));
+      }
+      await load();
+    } catch {
+      toast.error(t('networkError'));
+    } finally {
+      setPromotingId(null);
+    }
+  };
+
   const metaFormValid =
     Boolean(label) && Boolean(metaPhoneNumberId.trim()) && Boolean(metaAccessToken.trim());
 
@@ -425,6 +453,22 @@ export function CbChannelsPanel() {
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
+                    {!channel.is_default && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={promotingId === channel.id}
+                        onClick={() => handleSetDefault(channel)}
+                        title={t('setDefaultHint')}
+                      >
+                        {promotingId === channel.id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Star className="mr-2 h-4 w-4" />
+                        )}
+                        {t('setDefaultAction')}
+                      </Button>
+                    )}
                     {!channel.is_default && (
                       <Button
                         variant="ghost"

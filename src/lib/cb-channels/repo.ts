@@ -41,10 +41,13 @@ export interface CbChannel {
   updated_at: string;
 }
 
-/** Canal como o servidor o enxerga — inclui os segredos criptografados. */
+/** Canal como o servidor o enxerga — inclui os segredos criptografados.
+ *  `verify_token` fica de fora de CB_CHANNEL_SAFE_COLUMNS de propósito: é
+ *  segredo, e só a verificação do webhook Meta e a promoção a padrão o leem. */
 export interface CbChannelWithSecrets extends CbChannel {
   access_token: string | null;
   api_key: string | null;
+  verify_token: string | null;
 }
 
 /**

@@ -5,9 +5,8 @@
 //   DELETE — remover o canal (e sua instância no servidor Evolution).
 //
 // Ambos admin+. O canal PADRÃO não pode ser excluído aqui (é o espelho de
-// whatsapp_config que o código herdado lê) — trocar o padrão é uma operação
-// separada, de uma fase posterior. "Tornar padrão" também fica para depois:
-// exige reescrever o espelho whatsapp_config atomicamente.
+// whatsapp_config que o código herdado lê) — promova outro canal primeiro,
+// via POST /api/cb/channels/[id]/default.
 // ============================================================
 
 import { NextResponse } from 'next/server';
