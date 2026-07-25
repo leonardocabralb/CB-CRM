@@ -241,10 +241,17 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
   **Docker Swarm da VPS** (`82.25.76.63` / `vps.cbadvogados.com`), atrás do
   **Traefik** (TLS Let's Encrypt). **Nunca dar push no `main` sem o operador
   saber que aquilo vai para produção.**
-- Domínio: `crm.cbadvogados.com`. ⚠️ Em 2026-07-23 o DNS ainda apontava para a
-  Hostinger compartilhada, não para a VPS — o cutover é manual (ver
-  `docs/DEPLOY-VPS.md`, passo 1). Até virar o DNS, o rollout atinge o serviço da
-  VPS mas o domínio público ainda serve a Hostinger.
+- Domínio: `crm.cbadvogados.com`. ✅ O cutover de DNS **já foi feito** (conferido
+  em 2026-07-25): `crm.cbadvogados.com` → `vps.cbadvogados.com` → `82.25.76.63`,
+  respondendo 200 com TLS do Traefik. Ou seja, o domínio público serve a VPS —
+  **o push no `main` atinge usuário real**, não mais um serviço isolado.
+- ⚠️ **`NEXT_PUBLIC_APP_LOCALE` é build-arg, não env de runtime.** Como todo
+  `NEXT_PUBLIC_*` é inlinado no bundle **em tempo de build**, editar o `crm.env`
+  da VPS **não** muda o idioma — é preciso alterar `deploy.yml`/`docker-stack.yml`
+  e **rebuildar a imagem**. Isso já mordeu: até 2026-07-25 os dois arquivos
+  fixavam `en` e a produção inteira servia inglês, enquanto o dev local (que lê
+  `.env.local`, com `pt-BR`) parecia certo. Ao investigar "produção está
+  diferente do meu local", checar build-arg antes de env de runtime.
 - Segredos de runtime vivem em `crm.env` **na VPS** (fora do git), espelhando o
   `.env.local`. A Evolution API roda como serviço `evolution_evolution` no mesmo
   Swarm.
