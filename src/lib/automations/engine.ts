@@ -42,6 +42,16 @@ export interface AutomationContext {
   agent_id?: string
   /** Button / list-row id the customer tapped, for interactive_reply. */
   interactive_reply_id?: string
+  /**
+   * Canal (cb_channels.id) por onde o disparo entrou. `null`/ausente = canal
+   * desconhecido ou conta pré-multi-canal.
+   *
+   * Vem carimbado do webhook e sobrevive ao passo `wait` de graça: o contexto
+   * é gravado como JSONB em `automation_pending_executions.context` e devolvido
+   * intacto pelo cron. Sem isso, um follow-up de 24h sairia pelo canal que o
+   * cliente usou nesse meio-tempo, e não pelo canal do disparo original.
+   */
+  channel_id?: string | null
 }
 
 export interface DispatchInput {

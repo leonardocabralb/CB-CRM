@@ -23,12 +23,16 @@
 //       "params": ["A123"] | { "body": [...] }   // array = positional body; object = structured
 //     },
 //     "reply_to_message_id": "<uuid>",       // optional, must be in the same conversation
-//     "name": "Jane Doe"                     // optional, names a newly-created contact
+//     "name": "Jane Doe",                    // optional, names a newly-created contact
+//     "channel_id": "<uuid>"                 // optional, which of the account's WhatsApp
+//                                            // numbers to send from. Omitted = the channel
+//                                            // the conversation is already on, else the
+//                                            // account default. Listable via GET /api/v1/channels.
 //   }
 //
 // Response (201):
 //   { "data": { "message_id", "whatsapp_message_id", "conversation_id",
-//               "contact_id", "contact_created" } }
+//               "contact_id", "contact_created", "channel_id" } }
 // ============================================================
 
 import { requireApiKey } from '@/lib/auth/api-context';
@@ -40,6 +44,7 @@ import {
   SendMessageError,
 } from '@/lib/whatsapp/send-message';
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive';
+import { pinConversationChannel } from '@/lib/cb-channels/stamp';
 
 export async function POST(request: Request) {
   try {
@@ -105,6 +110,30 @@ export async function POST(request: Request) {
       typeof body.name === 'string' ? body.name : null
     );
 
+    // Canal explícito (multi-canal). Sem isto o número remetente é
+    // imprevisível para quem integra: o envio herda o canal da conversa, que
+    // "segue o cliente" — um lembrete de audiência sairia pelo celular pessoal
+    // do sócio só porque o cliente respondeu por lá na semana passada.
+    // FIXAR (e não só usar uma vez) é deliberado: a resposta do cliente volta
+    // pelo mesmo número que ele viu.
+    const channelId =
+      typeof body.channel_id === 'string' ? body.channel_id.trim() : '';
+    if (channelId) {
+      const pinned = await pinConversationChannel(
+        ctx.supabase,
+        ctx.accountId,
+        resolved.conversationId,
+        channelId
+      );
+      if (!pinned) {
+        return fail(
+          'bad_request',
+          "'channel_id' is not a channel of this account",
+          400
+        );
+      }
+    }
+
     const result = await sendMessageToConversation(
       ctx.supabase,
       ctx.accountId,
@@ -134,6 +163,9 @@ export async function POST(request: Request) {
         conversation_id: resolved.conversationId,
         contact_id: resolved.contactId,
         contact_created: resolved.contactCreated,
+        // Por qual número saiu de fato — sem isto quem integra não tem como
+        // auditar o remetente depois.
+        channel_id: result.channelId,
       },
       201
     );

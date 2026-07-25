@@ -5,6 +5,7 @@ import { timingSafeEqual } from 'crypto';
 import { normalizeUpsert, type EvolutionUpsert } from '@/lib/whatsapp/transport/evolution-inbound';
 import { persistInboundMessage } from '@/lib/whatsapp/inbound-store';
 import { resolveInboundEvolutionChannel } from '@/lib/cb-channels/resolve-inbound';
+import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 
 // Inbound processing fans out to flows / automations / AI, so give the
 // after() block headroom beyond the platform default.
@@ -120,7 +121,39 @@ export async function POST(request: Request) {
           .update({ status })
           .eq('message_id', d.keyId)
           .eq('sender_type', 'agent');
-        if (error) console.error('[evolution/webhook] status update failed:', error);
+        if (error) {
+          console.error('[evolution/webhook] status update failed:', error);
+          return;
+        }
+
+        // Fan-out do webhook público. O lado Meta já emite
+        // message.status_updated; sem isto, quem integra recebe o ✓✓ dos
+        // números oficiais e silêncio dos não-oficiais. Best-effort: uma
+        // falha aqui não pode desfazer o UPDATE acima.
+        const { data: msgRow } = await supabaseAdmin()
+          .from('messages')
+          .select('conversation_id, channel_id, conversations(account_id)')
+          .eq('message_id', d.keyId)
+          .eq('sender_type', 'agent')
+          .limit(1)
+          .maybeSingle();
+
+        const accountId = (
+          msgRow?.conversations as { account_id: string } | null
+        )?.account_id;
+        if (msgRow && accountId) {
+          await dispatchWebhookEvent(
+            supabaseAdmin(),
+            accountId,
+            'message.status_updated',
+            {
+              whatsapp_message_id: d.keyId,
+              conversation_id: msgRow.conversation_id,
+              status,
+              channel_id: msgRow.channel_id ?? null,
+            },
+          );
+        }
       });
     }
     return NextResponse.json({ ok: true });

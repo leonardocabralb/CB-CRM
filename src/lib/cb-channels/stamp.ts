@@ -56,3 +56,46 @@ export async function followConversationChannel(
     );
   }
 }
+
+/**
+ * FIXA o canal da conversa por escolha explícita (API pública, seletor do
+ * inbox, primeiro contato pela ficha). Diferente de
+ * {@link followConversationChannel}, que só acompanha o cliente enquanto
+ * ninguém fixou: aqui a escolha é do operador/integrador e passa a valer
+ * mesmo que o cliente escreva por outro número.
+ *
+ * Valida a posse do canal antes de gravar — `channelId` vindo de request
+ * externo não pode apontar para canal de outra conta.
+ *
+ * @returns `true` se fixou; `false` se o canal não pertence à conta.
+ */
+export async function pinConversationChannel(
+  db: SupabaseClient,
+  accountId: string,
+  conversationId: string,
+  channelId: string,
+): Promise<boolean> {
+  const { data: canal, error: lookupError } = await db
+    .from('cb_channels')
+    .select('id')
+    .eq('id', channelId)
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  if (lookupError || !canal) return false;
+
+  const { error } = await db
+    .from('conversations')
+    .update({ channel_id: channelId, channel_pinned: true })
+    .eq('id', conversationId)
+    .eq('account_id', accountId);
+
+  if (error) {
+    console.warn(
+      '[cb-channels] fixar canal na conversa falhou (ignorado):',
+      error.message,
+    );
+    return false;
+  }
+  return true;
+}

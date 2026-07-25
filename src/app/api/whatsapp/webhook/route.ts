@@ -493,7 +493,7 @@ async function handleStatusUpdate(status: {
   //    the owning account for delivery.
   const { data: msgRow } = await supabaseAdmin()
     .from('messages')
-    .select('conversation_id, conversations(account_id)')
+    .select('conversation_id, channel_id, conversations(account_id)')
     .eq('message_id', status.id)
     .limit(1)
     .maybeSingle()
@@ -510,6 +510,8 @@ async function handleStatusUpdate(status: {
           whatsapp_message_id: status.id,
           conversation_id: msgRow.conversation_id,
           status: status.status,
+          // Carimbado no envio; vem de graça no select acima.
+          channel_id: msgRow.channel_id ?? null,
         }
       )
     }
@@ -683,6 +685,9 @@ async function processMessage(
     await dispatchWebhookEvent(supabaseAdmin(), accountId, 'conversation.created', {
       conversation_id: conversation.id,
       contact_id: contactRecord.id,
+      // Sem o canal, N números viram um stream indistinguível para quem
+      // integra: não dá para rotear "só o que entrar pelo Comercial".
+      channel_id: channelId,
     })
   }
 
@@ -826,6 +831,7 @@ async function processMessage(
     userId: configOwnerUserId,
     contactId: contactRecord.id,
     conversationId: conversation.id,
+    channelId,
     message:
       interactiveReplyId
         ? {
@@ -887,6 +893,9 @@ async function processMessage(
         // Only set on interactive taps; drives the interactive_reply
         // trigger's exact-id match.
         interactive_reply_id: interactiveReplyId ?? undefined,
+        // Canal do disparo. Sobrevive ao passo `wait` porque o contexto é
+        // gravado intacto como JSONB em automation_pending_executions.
+        channel_id: channelId,
       },
     }).catch((err) => console.error('[automations] dispatch failed:', err))
   }
@@ -918,6 +927,7 @@ async function processMessage(
     whatsapp_message_id: message.id,
     content_type: contentType,
     text: contentText,
+    channel_id: channelId,
   })
 }
 

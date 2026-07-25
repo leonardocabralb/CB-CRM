@@ -339,6 +339,12 @@ export interface DispatchInboundInput {
   contactId: string;
   conversationId: string;
   message: ParsedInbound;
+  /**
+   * Canal (cb_channels.id) por onde a mensagem entrou. `null` = desconhecido
+   * ou conta pré-multi-canal. Necessário para o gatilho poder filtrar por
+   * canal e para o run travar o canal de saída (Fase E2).
+   */
+  channelId?: string | null;
 }
 
 export interface DispatchInboundResult {

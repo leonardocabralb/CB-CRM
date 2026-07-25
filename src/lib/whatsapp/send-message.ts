@@ -98,6 +98,12 @@ export interface SendMessageResult {
   messageId: string;
   /** Meta's `wamid` for the delivered message. */
   whatsappMessageId: string;
+  /**
+   * Canal (`cb_channels.id`) por onde a mensagem REALMENTE saiu — que pode
+   * não ser o que o chamador esperava, já que o canal da conversa "segue o
+   * cliente". `null` no fallback do espelho `whatsapp_config`.
+   */
+  channelId: string | null;
 }
 
 /**
@@ -609,5 +615,9 @@ export async function sendMessageToConversation(
     );
   }
 
-  return { messageId: messageRecord.id, whatsappMessageId: waMessageId };
+  return {
+    messageId: messageRecord.id,
+    whatsappMessageId: waMessageId,
+    channelId: channel.channelId,
+  };
 }
