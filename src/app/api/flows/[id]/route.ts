@@ -78,6 +78,8 @@ interface PutBody {
   trigger_config?: Record<string, unknown>
   entry_node_id?: string | null
   fallback_policy?: Record<string, unknown>
+  /** Canal de ENTRADA do flow. null = curinga (dispara em qualquer numero). */
+  channel_id?: string | null
   nodes?: Array<{
     node_key: string
     node_type: string
@@ -134,6 +136,9 @@ export async function PUT(
     flowPatch.entry_node_id = body.entry_node_id
   if (body.fallback_policy !== undefined)
     flowPatch.fallback_policy = body.fallback_policy
+  // String vazia vinda de um <select> sem selecao vira null = curinga.
+  if (body.channel_id !== undefined)
+    flowPatch.channel_id = body.channel_id || null
 
   const { error: updErr } = await admin
     .from('flows')

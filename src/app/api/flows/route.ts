@@ -166,6 +166,7 @@ export async function POST(request: Request) {
       status: 'draft',
       trigger_type,
       trigger_config: body.trigger_config ?? {},
+      channel_id: (body as { channel_id?: string | null }).channel_id || null,
     })
     .select()
     .single()
