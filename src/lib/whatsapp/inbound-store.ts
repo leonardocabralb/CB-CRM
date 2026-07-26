@@ -142,15 +142,26 @@ async function findOrCreateConversation(
   return { conversation: created, created: true };
 }
 
+/** Identificadores do que foi gravado, para o chamador completar depois. */
+export interface PersistedInbound {
+  messageId: string;
+  conversationId: string;
+}
+
 /**
  * Persist an inbound message and drive the downstream engines. Safe to
  * call inside a route's `after()` — every fan-out owns its try/catch and
  * never throws. Media resolution (mediaUrl) is the caller's job.
+ *
+ * Devolve os ids do que foi gravado (ou `null` quando desistiu no meio) para
+ * que o chamador possa **anexar a mídia DEPOIS**. O caminho antigo resolvia a
+ * mídia antes de chamar aqui, e com isso uma falha de download levava junto a
+ * mensagem inteira — ver o comentário no webhook da Evolution.
  */
 export async function persistInboundMessage(
   db: SupabaseClient,
   m: NormalizedInbound
-): Promise<void> {
+): Promise<PersistedInbound | null> {
   const contactOutcome = await findOrCreateContact(
     db,
     m.accountId,
@@ -158,7 +169,7 @@ export async function persistInboundMessage(
     m.phone,
     m.name
   );
-  if (!contactOutcome) return;
+  if (!contactOutcome) return null;
   const contact = contactOutcome.contact;
 
   const convResult = await findOrCreateConversation(
@@ -167,7 +178,7 @@ export async function persistInboundMessage(
     m.configOwnerUserId,
     contact.id
   );
-  if (!convResult) return;
+  if (!convResult) return null;
   const conversation = convResult.conversation;
 
   if (convResult.created) {
@@ -205,9 +216,11 @@ export async function persistInboundMessage(
     })
     .select('id')
     .single();
-  if (msgError) {
+  // `!insertedMsg` junto com o erro: sem ele o id abaixo seria `string |
+  // undefined` e o chamador não teria onde pendurar o anexo.
+  if (msgError || !insertedMsg) {
     console.error('[inbound-store] insert message failed:', msgError);
-    return;
+    return null;
   }
 
   await db
@@ -223,7 +236,7 @@ export async function persistInboundMessage(
   // Carimbo de canal (Fase 3): marca por onde a mensagem entrou e faz a
   // conversa "seguir o cliente" (a menos que fixada). Best-effort e
   // deploy-safe — nunca afeta o insert acima nem o fan-out abaixo.
-  if (m.channelId && insertedMsg) {
+  if (m.channelId) {
     await stampMessageChannel(db, insertedMsg.id, m.channelId);
     await followConversationChannel(db, conversation.id, m.channelId);
   }
@@ -286,4 +299,6 @@ export async function persistInboundMessage(
     text: m.text,
     channel_id: m.channelId ?? null,
   });
+
+  return { messageId: insertedMsg.id, conversationId: conversation.id };
 }

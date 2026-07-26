@@ -64,6 +64,20 @@ export class EvolutionApiError extends Error {
 }
 
 /**
+ * Teto para uma chamada normal (envio, estado, webhook). Folgado o bastante
+ * para a Evolution acordar sob carga, curto o bastante para caber várias
+ * vezes no `maxDuration` de uma rota.
+ */
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+/**
+ * Mídia é a exceção: a Evolution baixa o binário dos servidores do WhatsApp
+ * e converte antes de responder, então demora legitimamente mais que o resto.
+ * Ainda assim tem teto — o webhook de entrada roda com `maxDuration = 60`.
+ */
+const MEDIA_TIMEOUT_MS = 30_000;
+
+/**
  * Validate the Evolution base URL. Both http and https are accepted:
  * Evolution is expected to be co-located with the CRM on the same VPS
  * and reached over the loopback / private interface (e.g.
@@ -111,20 +125,38 @@ export class EvolutionClient {
     method: 'GET' | 'POST' | 'DELETE',
     path: string,
     body?: unknown,
-    appendInstance = true
+    appendInstance = true,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS
   ): Promise<T> {
     const url = appendInstance
       ? `${this.baseUrl}/${path}/${encodeURIComponent(this.instance)}`
       : `${this.baseUrl}/${path}`;
 
-    const response = await fetch(url, {
-      method,
-      headers: {
-        apikey: this.apikey,
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers: {
+          apikey: this.apikey,
+          ...(body ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        // Sem isto o `fetch` espera para sempre. No webhook de entrada, que
+        // roda dentro de um `after()` com `maxDuration`, um servidor mudo
+        // consumia o orçamento inteiro e a plataforma matava a execução —
+        // levando junto trabalho já pendente. Falhar rápido é melhor.
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      // 504: o problema é do outro lado, não do nosso pedido.
+      if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+        throw new EvolutionApiError(
+          `Evolution não respondeu em ${timeoutMs}ms (${method} ${path})`,
+          504
+        );
+      }
+      throw err;
+    }
 
     if (!response.ok) {
       await this.throwError(response);
@@ -254,13 +286,24 @@ export class EvolutionClient {
    * audio/video.
    */
   async getBase64FromMediaMessage(args: {
+    /**
+     * O registro COMPLETO do webhook (`{key, message, …}`). A Evolution faz
+     * `m?.message ? m : getMessage(m.key)` — mandar só o conteúdo interno
+     * quebra os dois caminhos e devolve 400.
+     */
     message: unknown;
     convertToMp4?: boolean;
   }): Promise<{ base64: string; mimetype: string; fileName?: string }> {
-    return this.request('POST', 'chat/getBase64FromMediaMessage', {
-      message: args.message,
-      ...(args.convertToMp4 ? { convertToMp4: true } : {}),
-    });
+    return this.request(
+      'POST',
+      'chat/getBase64FromMediaMessage',
+      {
+        message: args.message,
+        ...(args.convertToMp4 ? { convertToMp4: true } : {}),
+      },
+      true,
+      MEDIA_TIMEOUT_MS
+    );
   }
 
   // ----------------------------------------------------------

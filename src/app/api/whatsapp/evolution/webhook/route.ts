@@ -101,21 +101,40 @@ export async function POST(request: Request) {
         );
         if (!normalized) continue;
         try {
-          // Midia RECEBIDA (ALTO): ate aqui 100% do que o cliente mandava por
-          // numero nao-oficial se perdia — a bolha aparecia vazia no inbox e o
-          // conteudo so existia no aparelho pareado. A Evolution nao expoe URL
-          // de download, entao o binario e buscado em base64 e persistido no
-          // bucket chat-media. Best-effort: falhando, a mensagem e gravada sem
-          // anexo, como antes.
-          if (normalized.contentType !== 'text' && !normalized.mediaUrl) {
-            normalized.mediaUrl = await resolveEvolutionMedia(
+          // A MENSAGEM PRIMEIRO, O ANEXO DEPOIS — a ordem aqui é a correção,
+          // não um detalhe de estilo.
+          //
+          // Antes a mídia era baixada ANTES de gravar, e o comentário jurava
+          // que falhar só custaria o anexo. Não custava: o download não tinha
+          // timeout, então um servidor mudo consumia os 60s de `maxDuration`
+          // e a plataforma matava o `after()` inteiro — a mensagem do cliente
+          // nunca chegava a existir. Perder o anexo é ruim; perder a mensagem
+          // é inaceitável.
+          //
+          // Gravando primeiro, o pior caso volta a ser o que o comentário
+          // antigo prometia: bolha sem anexo.
+          const gravada = await persistInboundMessage(supabaseAdmin(), normalized);
+
+          if (gravada && normalized.contentType !== 'text' && !normalized.mediaUrl) {
+            const mediaUrl = await resolveEvolutionMedia(
               route.accountId,
               route.channelId,
               item,
               normalized.contentType,
             );
+            if (mediaUrl) {
+              const { error } = await supabaseAdmin()
+                .from('messages')
+                .update({ media_url: mediaUrl })
+                .eq('id', gravada.messageId);
+              if (error) {
+                console.error(
+                  '[evolution/webhook] anexo baixado mas não pôde ser ligado à mensagem:',
+                  error.message,
+                );
+              }
+            }
           }
-          await persistInboundMessage(supabaseAdmin(), normalized);
         } catch (err) {
           console.error('[evolution/webhook] persist failed:', err);
         }
@@ -134,11 +153,15 @@ export async function POST(request: Request) {
         // então já mira exatamente a mensagem certa mesmo com vários canais —
         // e escopar por canal congelaria o ✓✓ das mensagens antigas
         // (channel_id NULL, anteriores à Fase 3).
+        //
+        // 'agent' é o envio manual do inbox; 'bot' é o que IA, flows e
+        // automações gravam. Filtrar só por 'agent' deixava toda resposta
+        // automática presa em "enviado", sem nunca virar entregue/lido.
         const { error } = await supabaseAdmin()
           .from('messages')
           .update({ status })
           .eq('message_id', d.keyId)
-          .eq('sender_type', 'agent');
+          .in('sender_type', ['agent', 'bot']);
         if (error) {
           console.error('[evolution/webhook] status update failed:', error);
           return;
@@ -152,7 +175,7 @@ export async function POST(request: Request) {
           .from('messages')
           .select('conversation_id, channel_id, conversations(account_id)')
           .eq('message_id', d.keyId)
-          .eq('sender_type', 'agent')
+          .in('sender_type', ['agent', 'bot'])
           .limit(1)
           .maybeSingle();
 
@@ -251,7 +274,12 @@ async function resolveEvolutionMedia(
       db: supabaseAdmin(),
       client,
       accountId,
-      rawMessage: (rawItem as { message?: unknown })?.message ?? rawItem,
+      // O item CRU do webhook (`{key, message, …}`), não o `.message` de
+      // dentro dele. A Evolution faz `const msg = m?.message ? m :
+      // getMessage(m.key)`: mandando só o conteúdo, `m.message` é undefined,
+      // ela tenta o lookup por `m.key` — que não existe no que enviamos — e
+      // devolve 400. Era por isso que NENHUM anexo recebido era baixado.
+      rawMessage: rawItem,
       contentType,
     });
   } catch (err) {
