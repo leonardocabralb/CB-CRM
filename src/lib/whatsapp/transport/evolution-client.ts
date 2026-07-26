@@ -71,11 +71,36 @@ export class EvolutionApiError extends Error {
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 /**
- * Mídia é a exceção: a Evolution baixa o binário dos servidores do WhatsApp
- * e converte antes de responder, então demora legitimamente mais que o resto.
- * Ainda assim tem teto — o webhook de entrada roda com `maxDuration = 60`.
+ * Mídia é a exceção nos DOIS sentidos: a Evolution move um binário inteiro
+ * antes de responder, então demora legitimamente mais que o resto. Os dois
+ * tetos abaixo existem porque os orçamentos de quem chama são diferentes —
+ * não são o mesmo número escrito duas vezes.
+ *
+ * ENTRADA (`getBase64FromMediaMessage`): a Evolution baixa do WhatsApp e
+ * devolve base64. Roda dentro do `after()` do webhook, que tem
+ * `maxDuration = 60` para o lote inteiro; por isso o teto é o menor dos dois.
  */
-const MEDIA_TIMEOUT_MS = 30_000;
+const MEDIA_DOWNLOAD_TIMEOUT_MS = 30_000;
+
+/**
+ * SAÍDA (`sendMedia` / `sendWhatsAppAudio`): mais pesado que a entrada — a
+ * Evolution BAIXA o arquivo do nosso bucket (até 16 MB) e SOBE para o
+ * WhatsApp na mesma requisição, sendo o upload o sentido tipicamente mais
+ * lento numa VPS. A rota de envio não declara `maxDuration`, então aqui cabe
+ * mais folga.
+ *
+ * ⚠️ O valor é deliberadamente FOLGADO, e não o "aperto certo". Abortar do
+ * nosso lado NÃO cancela a Evolution: ela conclui, o cliente RECEBE o
+ * arquivo, e o CRM devolve erro sem gravar mensagem nenhuma — o operador
+ * reenvia e o cliente recebe duas vezes. Um teto apertado aqui troca uma
+ * espera longa por corrupção silenciosa do histórico, que é bem pior.
+ *
+ * Antes não havia teto algum (na prática o padrão do undici, ~300s). 90s
+ * cobre com folga qualquer transferência legítima de 16 MB e ainda impede o
+ * caso que motivou o timeout: servidor mudo prendendo a invocação para
+ * sempre.
+ */
+const MEDIA_SEND_TIMEOUT_MS = 90_000;
 
 /**
  * Validate the Evolution base URL. Both http and https are accepted:
@@ -228,7 +253,9 @@ export class EvolutionClient {
         ...(args.caption ? { caption: args.caption } : {}),
         ...(args.fileName ? { fileName: args.fileName } : {}),
         ...(args.quoted ? { quoted: { key: args.quoted } } : {}),
-      }
+      },
+      true,
+      MEDIA_SEND_TIMEOUT_MS
     );
     return this.extractId(res);
   }
@@ -246,7 +273,9 @@ export class EvolutionClient {
         number: args.number,
         audio: args.audio,
         ...(args.quoted ? { quoted: { key: args.quoted } } : {}),
-      }
+      },
+      true,
+      MEDIA_SEND_TIMEOUT_MS
     );
     return this.extractId(res);
   }
@@ -302,7 +331,7 @@ export class EvolutionClient {
         ...(args.convertToMp4 ? { convertToMp4: true } : {}),
       },
       true,
-      MEDIA_TIMEOUT_MS
+      MEDIA_DOWNLOAD_TIMEOUT_MS
     );
   }
 

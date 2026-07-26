@@ -92,6 +92,27 @@ export async function POST(request: Request) {
       ? (body.data as EvolutionUpsert[])
       : [body.data as EvolutionUpsert];
     after(async () => {
+      // DUAS FASES, de propósito — a separação é a correção, não estilo.
+      //
+      // Antes a mídia era baixada ANTES de gravar, e o comentário jurava que
+      // falhar só custaria o anexo. Não custava: o download não tinha timeout,
+      // então um servidor mudo consumia os 60s de `maxDuration` e a plataforma
+      // matava o `after()` — a mensagem do cliente nunca chegava a existir.
+      //
+      // Gravar antes conserta o caso de UM item. Mas o lote pode ter vários, e
+      // intercalar (gravar 1 → baixar 1 → gravar 2) faz o download lento do
+      // primeiro consumir o orçamento e os SEGUINTES nunca serem gravados —
+      // some a mensagem de novo, agora nos itens de trás.
+      //
+      // Fase 1 grava tudo; fase 2 busca os anexos. Assim o pior caso do
+      // estouro de orçamento é ficar sem anexo, com todas as mensagens no
+      // lugar. Perder o anexo é ruim; perder a mensagem é inaceitável.
+      const semAnexo: {
+        item: EvolutionUpsert;
+        contentType: string;
+        messageId: string;
+      }[] = [];
+
       for (const item of items) {
         const normalized = normalizeUpsert(
           item,
@@ -101,42 +122,41 @@ export async function POST(request: Request) {
         );
         if (!normalized) continue;
         try {
-          // A MENSAGEM PRIMEIRO, O ANEXO DEPOIS — a ordem aqui é a correção,
-          // não um detalhe de estilo.
-          //
-          // Antes a mídia era baixada ANTES de gravar, e o comentário jurava
-          // que falhar só custaria o anexo. Não custava: o download não tinha
-          // timeout, então um servidor mudo consumia os 60s de `maxDuration`
-          // e a plataforma matava o `after()` inteiro — a mensagem do cliente
-          // nunca chegava a existir. Perder o anexo é ruim; perder a mensagem
-          // é inaceitável.
-          //
-          // Gravando primeiro, o pior caso volta a ser o que o comentário
-          // antigo prometia: bolha sem anexo.
           const gravada = await persistInboundMessage(supabaseAdmin(), normalized);
-
           if (gravada && normalized.contentType !== 'text' && !normalized.mediaUrl) {
-            const mediaUrl = await resolveEvolutionMedia(
-              route.accountId,
-              route.channelId,
+            semAnexo.push({
               item,
-              normalized.contentType,
-            );
-            if (mediaUrl) {
-              const { error } = await supabaseAdmin()
-                .from('messages')
-                .update({ media_url: mediaUrl })
-                .eq('id', gravada.messageId);
-              if (error) {
-                console.error(
-                  '[evolution/webhook] anexo baixado mas não pôde ser ligado à mensagem:',
-                  error.message,
-                );
-              }
-            }
+              contentType: normalized.contentType,
+              messageId: gravada.messageId,
+            });
           }
         } catch (err) {
           console.error('[evolution/webhook] persist failed:', err);
+        }
+      }
+
+      for (const pendente of semAnexo) {
+        try {
+          const mediaUrl = await resolveEvolutionMedia(
+            route.accountId,
+            route.channelId,
+            pendente.item,
+            pendente.contentType,
+          );
+          if (!mediaUrl) continue;
+          const { error } = await supabaseAdmin()
+            .from('messages')
+            .update({ media_url: mediaUrl })
+            .eq('id', pendente.messageId);
+          if (error) {
+            console.error(
+              '[evolution/webhook] anexo baixado mas não pôde ser ligado à mensagem:',
+              error.message,
+            );
+          }
+        } catch (err) {
+          // A mensagem já está gravada — aqui só se perde o anexo.
+          console.error('[evolution/webhook] anexo falhou:', err);
         }
       }
     });
