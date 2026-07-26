@@ -92,6 +92,27 @@ export async function POST(request: Request) {
       ? (body.data as EvolutionUpsert[])
       : [body.data as EvolutionUpsert];
     after(async () => {
+      // DUAS FASES, de propósito — a separação é a correção, não estilo.
+      //
+      // Antes a mídia era baixada ANTES de gravar, e o comentário jurava que
+      // falhar só custaria o anexo. Não custava: o download não tinha timeout,
+      // então um servidor mudo consumia os 60s de `maxDuration` e a plataforma
+      // matava o `after()` — a mensagem do cliente nunca chegava a existir.
+      //
+      // Gravar antes conserta o caso de UM item. Mas o lote pode ter vários, e
+      // intercalar (gravar 1 → baixar 1 → gravar 2) faz o download lento do
+      // primeiro consumir o orçamento e os SEGUINTES nunca serem gravados —
+      // some a mensagem de novo, agora nos itens de trás.
+      //
+      // Fase 1 grava tudo; fase 2 busca os anexos. Assim o pior caso do
+      // estouro de orçamento é ficar sem anexo, com todas as mensagens no
+      // lugar. Perder o anexo é ruim; perder a mensagem é inaceitável.
+      const semAnexo: {
+        item: EvolutionUpsert;
+        contentType: string;
+        messageId: string;
+      }[] = [];
+
       for (const item of items) {
         const normalized = normalizeUpsert(
           item,
@@ -101,23 +122,41 @@ export async function POST(request: Request) {
         );
         if (!normalized) continue;
         try {
-          // Midia RECEBIDA (ALTO): ate aqui 100% do que o cliente mandava por
-          // numero nao-oficial se perdia — a bolha aparecia vazia no inbox e o
-          // conteudo so existia no aparelho pareado. A Evolution nao expoe URL
-          // de download, entao o binario e buscado em base64 e persistido no
-          // bucket chat-media. Best-effort: falhando, a mensagem e gravada sem
-          // anexo, como antes.
-          if (normalized.contentType !== 'text' && !normalized.mediaUrl) {
-            normalized.mediaUrl = await resolveEvolutionMedia(
-              route.accountId,
-              route.channelId,
+          const gravada = await persistInboundMessage(supabaseAdmin(), normalized);
+          if (gravada && normalized.contentType !== 'text' && !normalized.mediaUrl) {
+            semAnexo.push({
               item,
-              normalized.contentType,
-            );
+              contentType: normalized.contentType,
+              messageId: gravada.messageId,
+            });
           }
-          await persistInboundMessage(supabaseAdmin(), normalized);
         } catch (err) {
           console.error('[evolution/webhook] persist failed:', err);
+        }
+      }
+
+      for (const pendente of semAnexo) {
+        try {
+          const mediaUrl = await resolveEvolutionMedia(
+            route.accountId,
+            route.channelId,
+            pendente.item,
+            pendente.contentType,
+          );
+          if (!mediaUrl) continue;
+          const { error } = await supabaseAdmin()
+            .from('messages')
+            .update({ media_url: mediaUrl })
+            .eq('id', pendente.messageId);
+          if (error) {
+            console.error(
+              '[evolution/webhook] anexo baixado mas não pôde ser ligado à mensagem:',
+              error.message,
+            );
+          }
+        } catch (err) {
+          // A mensagem já está gravada — aqui só se perde o anexo.
+          console.error('[evolution/webhook] anexo falhou:', err);
         }
       }
     });
@@ -134,11 +173,15 @@ export async function POST(request: Request) {
         // então já mira exatamente a mensagem certa mesmo com vários canais —
         // e escopar por canal congelaria o ✓✓ das mensagens antigas
         // (channel_id NULL, anteriores à Fase 3).
+        //
+        // 'agent' é o envio manual do inbox; 'bot' é o que IA, flows e
+        // automações gravam. Filtrar só por 'agent' deixava toda resposta
+        // automática presa em "enviado", sem nunca virar entregue/lido.
         const { error } = await supabaseAdmin()
           .from('messages')
           .update({ status })
           .eq('message_id', d.keyId)
-          .eq('sender_type', 'agent');
+          .in('sender_type', ['agent', 'bot']);
         if (error) {
           console.error('[evolution/webhook] status update failed:', error);
           return;
@@ -152,7 +195,7 @@ export async function POST(request: Request) {
           .from('messages')
           .select('conversation_id, channel_id, conversations(account_id)')
           .eq('message_id', d.keyId)
-          .eq('sender_type', 'agent')
+          .in('sender_type', ['agent', 'bot'])
           .limit(1)
           .maybeSingle();
 
@@ -251,7 +294,12 @@ async function resolveEvolutionMedia(
       db: supabaseAdmin(),
       client,
       accountId,
-      rawMessage: (rawItem as { message?: unknown })?.message ?? rawItem,
+      // O item CRU do webhook (`{key, message, …}`), não o `.message` de
+      // dentro dele. A Evolution faz `const msg = m?.message ? m :
+      // getMessage(m.key)`: mandando só o conteúdo, `m.message` é undefined,
+      // ela tenta o lookup por `m.key` — que não existe no que enviamos — e
+      // devolve 400. Era por isso que NENHUM anexo recebido era baixado.
+      rawMessage: rawItem,
       contentType,
     });
   } catch (err) {

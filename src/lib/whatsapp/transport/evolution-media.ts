@@ -26,9 +26,19 @@ import type { EvolutionClient } from './evolution-client';
 
 const BUCKET = 'chat-media';
 
+/**
+ * Mimetype sem parâmetros e em minúsculas. Nota de voz chega como
+ * `audio/ogg; codecs=opus`, e o `allowed_mime_types` do bucket `chat-media`
+ * lista `audio/ogg` — a comparação é literal, então o parâmetro fazia o
+ * Storage recusar TODA nota de voz recebida.
+ */
+function mimeBase(mime: string): string {
+  return mime.split(';')[0].trim().toLowerCase();
+}
+
 /** Extensão a partir do mimetype, para o arquivo abrir com o app certo. */
 function extFromMime(mime: string): string {
-  const limpo = mime.split(';')[0].trim().toLowerCase();
+  const limpo = mimeBase(mime);
   const mapa: Record<string, string> = {
     'image/jpeg': 'jpg',
     'image/png': 'png',
@@ -64,7 +74,11 @@ export async function fetchAndStoreEvolutionMedia(args: {
   db: SupabaseClient;
   client: EvolutionClient;
   accountId: string;
-  /** O objeto `message` cru do webhook — é o que a Evolution quer de volta. */
+  /**
+   * O item CRU do webhook (`data`), COM `key` e `message` — não o `.message`
+   * de dentro dele. A Evolution resolve com `m?.message ? m : getMessage(m.key)`;
+   * receber só o conteúdo quebra os dois ramos e devolve 400.
+   */
   rawMessage: unknown;
   contentType: string;
 }): Promise<string | null> {
@@ -86,7 +100,7 @@ export async function fetchAndStoreEvolutionMedia(args: {
       return null;
     }
 
-    const mime = mimetype || 'application/octet-stream';
+    const mime = mimeBase(mimetype || '') || 'application/octet-stream';
     const nome = fileName || `media.${extFromMime(mime)}`;
     const path = buildMediaPath(args.accountId, nome);
 
