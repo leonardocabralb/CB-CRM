@@ -295,21 +295,10 @@ function TriggerPanel({
             }
           >
             <SelectTrigger className="bg-muted">
-              {/* Sem função de rótulo o base-ui mostra o VALOR cru — este
-                  campo exibia literalmente "keyword". Não é bug só daqui:
-                  quase todo `<SelectValue />` do app tem o mesmo problema
-                  (a página de Agentes chega a mostrar "__queue__"). Corrigido
-                  aqui porque fica colado no seletor de canal novo; a varredura
-                  do resto é trabalho à parte. */}
-              <SelectValue>
-                {(v: unknown) =>
-                  v === 'keyword'
-                    ? t('triggerKeywordTitle')
-                    : v === 'first_inbound_message'
-                      ? t('triggerFirstInboundTitle')
-                      : t('triggerManualTitle')
-                }
-              </SelectValue>
+              {/* Mostrava o valor cru ("keyword") até o wrapper `Select`
+                  passar a derivar `items` dos próprios SelectItem. Sem
+                  função aqui de propósito: o rótulo agora vem do item. */}
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="keyword">

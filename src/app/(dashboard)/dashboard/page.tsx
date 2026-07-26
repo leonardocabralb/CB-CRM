@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { formatCurrency } from '@/lib/currency'
@@ -48,6 +48,14 @@ export default function DashboardPage() {
   const [metricsLoading, setMetricsLoading] = useState(true)
 
   const [range, setRange] = useState<RangeDays>(30)
+  // O intervalo aberto, num ref, para `loadAll` recarregar o que está na
+  // tela sem passar a depender de `range` — se dependesse, trocar de
+  // intervalo dispararia a carga INTEIRA (métricas, funil, atividade) em
+  // vez de só a série, e o cache por intervalo perderia a razão de existir.
+  const rangeRef = useRef<RangeDays>(30)
+  useEffect(() => {
+    rangeRef.current = range
+  }, [range])
   // Keep a cache per range so switching tabs doesn't re-fetch what we
   // already have. Ranges the user hasn't opened yet stay null and
   // trigger a fetch on first view.
@@ -75,39 +83,53 @@ export default function DashboardPage() {
   const { channels } = useChannels()
   const [canalFiltro, setCanalFiltro] = useState<string | null>(null)
 
+  // Geração da carga. Trocar de canal duas vezes rápido deixa DUAS cargas
+  // no ar; sem este contador, a mais lenta (do canal anterior) podia chegar
+  // por último e sobrescrever a tela com os números do canal errado — sem
+  // nenhum sinal de que aquilo é de outro número.
+  const geracaoRef = useRef(0)
+
   const loadAll = useCallback(() => {
     const db = createClient()
+    geracaoRef.current += 1
+    const geracao = geracaoRef.current
+    const atual = () => geracao === geracaoRef.current
 
     // Kick everything off in parallel. Each block has its own
     // setState + finally so a slow query doesn't hold up faster
     // sections — each widget shows its own skeleton independently.
     void loadMetrics(db, canalFiltro)
-      .then((m) => setMetrics(m))
+      .then((m) => atual() && setMetrics(m))
       .catch((err) => console.error('[dashboard] metrics failed:', err))
-      .finally(() => setMetricsLoading(false))
+      .finally(() => atual() && setMetricsLoading(false))
 
-    void loadConversationsSeries(db, 30, canalFiltro)
-      .then((s) => setSeries((prev) => ({ ...prev, 30: s })))
+    // O intervalo VISÍVEL, não 30 fixo. Enquanto isto só rodava na
+    // montagem, 30 era sempre o intervalo aberto; agora que roda a cada
+    // troca de canal, quem estivesse em "7 dias" ficava com o gráfico
+    // preso no esqueleto para sempre — o cache tinha sido limpo e o único
+    // intervalo recarregado era o errado.
+    void loadConversationsSeries(db, rangeRef.current, canalFiltro)
+      .then((s) => atual() && setSeries((prev) => ({ ...prev, [rangeRef.current]: s })))
       .catch((err) => console.error('[dashboard] series failed:', err))
-      .finally(() => setSeriesLoading(false))
+      .finally(() => atual() && setSeriesLoading(false))
 
     void loadPipelineDonut(db)
-      .then((p) => setPipeline(p))
+      .then((p) => atual() && setPipeline(p))
       .catch((err) => console.error('[dashboard] pipeline failed:', err))
-      .finally(() => setPipelineLoading(false))
+      .finally(() => atual() && setPipelineLoading(false))
 
     void loadResponseTime(db, canalFiltro)
-      .then((r) => setResponseTime(r))
+      .then((r) => atual() && setResponseTime(r))
       .catch((err) => console.error('[dashboard] response time failed:', err))
-      .finally(() => setResponseTimeLoading(false))
+      .finally(() => atual() && setResponseTimeLoading(false))
 
     // Fetch up to 50 so the biggest page-size option in the feed
     // (50 rows) is already in memory — switching sizes then becomes
     // a pure client-side slice with no extra round trip.
     void loadActivity(db, 50, canalFiltro)
-      .then((a) => setActivity(a))
+      .then((a) => atual() && setActivity(a))
       .catch((err) => console.error('[dashboard] activity failed:', err))
-      .finally(() => setActivityLoading(false))
+      .finally(() => atual() && setActivityLoading(false))
   }, [canalFiltro])
 
   useEffect(() => {

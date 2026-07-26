@@ -184,13 +184,23 @@ upstream sobrescrevê-los:
 - **Filtro não esconde o irrestrito.** Uma automação sem escopo dispara em todos
   os números e continua visível sob qualquer filtro.
 
-⚠️ **`<SelectValue />` mostra o VALOR cru, não o rótulo.** O `Select` do base-ui
-só resolve o texto com uma função em children
-(`<SelectValue>{(v) => rotulo(v)}</SelectValue>`). Quase todo call site do app
-está sem isso — a tela de Agentes exibe literalmente `openai` e `__queue__` para
-o usuário. Corrigido em `channel-select.tsx` e no seletor de gatilho do
-flow-builder; os ~18 restantes seguem quebrados, e a correção boa é central (no
-primitivo `src/components/ui/select.tsx`), não uma por call site.
+⚠️ **`src/components/ui/select.tsx` divergiu do upstream — não deixar sobrescrever.**
+O `<Select.Value />` do base-ui mostra o **valor cru** quando o `Root` não recebe
+`items`: a tela de Agentes exibia literalmente `openai` e `__queue__` para o
+usuário, e o editor de fluxos, `keyword`. Nosso `Select` agora **deriva `items`
+percorrendo os próprios `<SelectItem>` da árvore**, então todo call site (~20)
+mostra o rótulo certo sem mudar nada. Ao mesclar upstream, manter o wrapper.
+
+- O wrapper repassa os genéricos `<Value, Multiple>`. Tipá-lo com o
+  `Root.Props` não-genérico apaga a inferência e joga o `onValueChange` de
+  todo call site para `any` implícito (20 erros de typecheck de uma vez).
+- A lista é memoizada por **assinatura**, não por `children` — `children` tem
+  identidade nova a cada render, e o `store.update` do base-ui compara com
+  `Object.is`, então sem isso os assinantes eram notificados à toa.
+- Rótulo que é JSX (não texto) entra na assinatura por posição. Quem precisar
+  de rótulo dinâmico complexo no gatilho passa a função em `<SelectValue>` —
+  é o que `channel-select.tsx` faz, para o gatilho mostrar só o nome do canal
+  em vez da linha inteira com bolinha e telefone.
 
 ⚠️ **A 903 removeu dois índices únicos.** `message_templates(user_id, name,
 language)` e `ai_configs(account_id)` viraram pares de índices **parciais**

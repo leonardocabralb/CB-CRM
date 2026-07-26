@@ -95,13 +95,21 @@ export function ChannelSelect({
       disabled={disabled}
     >
       <SelectTrigger className={cn('bg-muted w-full', className)}>
-        {/* `Select.Value` sem função mostra o VALOR cru — o gatilho exibia
-            literalmente "__all__" e o id do canal. O rótulo tem de ser
-            resolvido aqui. */}
+        {/* Função explícita mesmo com o wrapper derivando `items`: o rótulo
+            do item é a linha inteira (bolinha + nome + telefone), e no
+            gatilho queremos só o nome. */}
         <SelectValue placeholder={placeholder ?? t('selectPlaceholder')}>
           {(v: unknown) => {
             const id = v == null ? null : String(v);
-            if (id === null || id === ALL) return allLabel ?? t('all');
+            // Sem `allowAll`, "nada escolhido" é MESMO nada — devolver
+            // "Todos os canais" aqui faria um seletor de canal único
+            // afirmar algo que ele nem consegue representar.
+            if (id === null) {
+              return allowAll
+                ? (allLabel ?? t('all'))
+                : (placeholder ?? t('selectPlaceholder'));
+            }
+            if (id === ALL) return allLabel ?? t('all');
             return (
               channels.find((c) => c.id === id)?.label ??
               placeholder ??
@@ -145,7 +153,11 @@ export function ChannelMultiSelect({
         ? resumo.label
         : resumo.kind === 'many'
           ? t('manyCount', { count: resumo.count })
-          : t('all');
+          : // `unresolved`: HÁ escopo, mas nenhum id resolve para um canal
+            // desta conta. Cair em "Todos os canais" aqui seria mentir sobre
+            // uma automação restrita — o pior erro possível nesta tela. O
+            // convite a escolher é honesto e leva à correção.
+            t('selectPlaceholder');
 
   function alternar(id: string, marcado: boolean) {
     // Desmarcar o último volta a "todos" — é o mesmo estado que o motor lê
