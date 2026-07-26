@@ -1,4 +1,19 @@
 {
+  "Channels": {
+    "label": "Channel",
+    "all": "All channels",
+    "manyCount": "{count} channels",
+    "selectPlaceholder": "Pick a channel",
+    "kind_meta": "Official API · Meta",
+    "kind_evolution": "Unofficial · QR Code",
+    "scopeLabel": "Runs on",
+    "scopeHelpAll": "With no channel picked it runs on every number.",
+    "filterAll": "All channels",
+    "outboundLabel": "Send from",
+    "metaOnlyNone": "No official Meta number is connected. Connect one under Settings › Connections.",
+    "accountWide": "Whole account",
+    "noneOnChannel": "Nothing on this channel. Clear the filter to see everything."
+  },
   "LoginPage": {
     "titleAccept": "Sign in to accept",
     "titleWelcome": "Welcome back",
@@ -142,7 +157,9 @@
       "clearAll": "Clear all",
       "noConversations": "No conversations found",
       "noMessagesYet": "No messages yet",
-      "unknown": "Unknown"
+      "unknown": "Unknown",
+      "channelFilter": "Channel",
+      "channelFilterAll": "All channels"
     },
     "messageThread": {
       "backToConversations": "Back to conversations",
@@ -169,7 +186,9 @@
       "selectConversation": "Select a conversation",
       "selectConversationHint": "Choose a conversation from the left to start messaging",
       "today": "Today",
-      "yesterday": "Yesterday"
+      "yesterday": "Yesterday",
+      "channelChangedWhileTyping": "Not sent. {channel} messaged you from a different number while you were typing — the thread moved there. Check the channel above and send again.",
+      "channelChangedUnknown": "The customer"
     },
     "sessionTimer": {
       "expired": "Expired",
@@ -1533,6 +1552,10 @@
       "kindMeta": "Official API · Meta",
       "kindEvolution": "Unofficial · QR Code",
       "defaultBadge": "Default",
+      "setDefaultAction": "Make default",
+      "setDefaultHint": "Broadcasts, message templates and the public API always use the default channel.",
+      "setDefaultDone": "{label} is now the default channel.",
+      "setDefaultFailed": "Could not make this channel the default.",
       "noNumberYet": "Number not paired yet",
       "status_disconnected": "Disconnected",
       "status_connecting": "Waiting for pairing",

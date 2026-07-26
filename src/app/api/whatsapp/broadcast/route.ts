@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { resolveMetaChannel } from '@/lib/cb-channels/resolve-meta'
 import { createClient } from '@/lib/supabase/server'
 import { sendTemplateMessage } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
@@ -134,52 +135,50 @@ export async function POST(request: Request) {
       )
     }
 
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
-
-    if (configError || !config) {
+    // Canal de saida (multi-canal, Fase E4). A pergunta deixou de ser "o
+    // PADRAO e Meta?" e passou a ser "EXISTE canal Meta utilizavel?" — antes,
+    // a conta cujo padrao e Evolution recebia o erro mesmo tendo acabado de
+    // conectar o numero oficial como canal adicional.
+    const canal = await resolveMetaChannel(
+      supabase,
+      accountId,
+      typeof body.channel_id === 'string' ? body.channel_id : null,
+    )
+    if (!canal) {
       return NextResponse.json(
         {
           error:
-            'WhatsApp not configured. Please set up your WhatsApp integration first.',
+            'Broadcasts require an official Meta (Cloud API) number — connect one in Settings > Connections, or pick a different channel.',
         },
         { status: 400 }
       )
     }
 
-    // Broadcast é template-only → só sai por número Meta (API oficial).
-    // Guarda clara para conta cujo canal padrão é Evolution (Fase 5).
-    if (
-      config.provider === 'evolution' ||
-      !config.phone_number_id ||
-      !config.access_token
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            'Broadcasts require an official Meta (Cloud API) number — this account default WhatsApp channel is not a Meta number.',
-        },
-        { status: 400 }
-      )
-    }
-
-    const accessToken = decrypt(config.access_token)
+    const accessToken = decrypt(canal.accessToken)
 
     // Load the template row once so sendTemplateMessage can build
     // header + button components on each iteration. Loading inside
     // the loop would N+1 against Supabase for every recipient.
     // Guard against a malformed local row crashing every send in
     // the loop with the same opaque TypeError — fail loudly once.
-    const { data: rawTemplateRow } = await supabase
+    // Escopado ao canal: desde a 903 o mesmo nome de modelo pode existir em
+    // dois WABAs, entao um .maybeSingle() sem recorte estouraria com "multiple
+    // rows". O do canal ganha do global (channel_id NULL, pre-903).
+    let tplQuery = supabase
       .from('message_templates')
       .select('*')
       .eq('account_id', accountId)
       .eq('name', template_name)
       .eq('language', template_language || 'en_US')
-      .maybeSingle()
+    if (canal.channelId) {
+      tplQuery = tplQuery.or(`channel_id.eq.${canal.channelId},channel_id.is.null`)
+    }
+    const { data: tplCandidatos } = await tplQuery
+    const tplLista = (tplCandidatos ?? []) as Record<string, unknown>[]
+    const rawTemplateRow =
+      tplLista.find((t) => t.channel_id === canal.channelId) ??
+      tplLista.find((t) => t.channel_id == null) ??
+      null
     if (rawTemplateRow && !isMessageTemplate(rawTemplateRow)) {
       return NextResponse.json(
         {
@@ -217,7 +216,7 @@ export async function POST(request: Request) {
       for (const variant of variants) {
         try {
           const result = await sendTemplateMessage({
-            phoneNumberId: config.phone_number_id,
+            phoneNumberId: canal.phoneNumberId,
             accessToken,
             to: variant,
             templateName: template_name,

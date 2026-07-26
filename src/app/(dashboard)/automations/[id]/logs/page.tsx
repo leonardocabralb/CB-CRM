@@ -21,6 +21,8 @@ import type {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatRelative } from "@/lib/automations/trigger-meta"
+import { ChannelCell, ChannelScopeBadge } from "@/components/channels/channel-badge"
+import { useChannels } from "@/hooks/use-channels"
 
 export default function AutomationLogsPage({
   params,
@@ -35,6 +37,7 @@ export default function AutomationLogsPage({
   const [logs, setLogs] = useState<AutomationLog[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [openLogId, setOpenLogId] = useState<string | null>(null)
+  const { channels } = useChannels()
 
   useEffect(() => {
     async function load() {
@@ -96,7 +99,18 @@ export default function AutomationLogsPage({
         </button>
         <div>
           <h1 className="text-2xl font-bold text-foreground">{automation.name}</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">{t("title")}</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2">
+            <p className="text-sm text-muted-foreground">{t("title")}</p>
+            {/* No detalhe mostramos o escopo SEMPRE, inclusive "todos os
+                canais": aqui o silêncio seria ambíguo — o operador não
+                saberia se a automação vale para tudo ou se ninguém
+                configurou. Nas listas a regra é a inversa. */}
+            <ChannelScopeBadge
+              channels={channels}
+              scope={automation.channel_ids}
+              hideWhenAll={false}
+            />
+          </div>
         </div>
       </div>
 
@@ -136,6 +150,11 @@ export default function AutomationLogsPage({
                       {log.steps_executed?.length === 1 ? t("step", { count: 1 }).replace("1 ", "") : t("stepPlural", { count: log.steps_executed?.length ?? 0 }).replace(/^[0-9]+ /, "")}
                     </div>
                   </div>
+                  <ChannelCell
+                    channels={channels}
+                    channelId={log.channel_id}
+                    className="hidden sm:inline-flex"
+                  />
                   <div className="text-xs text-muted-foreground">
                     {formatRelative(log.created_at)}
                   </div>

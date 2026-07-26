@@ -18,6 +18,8 @@ interface DispatchArgs {
   /** The account's WhatsApp config owner, used for the outbound send's
    *  audit columns (mirrors how the flow runner passes it through). */
   configOwnerUserId: string
+  /** Canal por onde a mensagem entrou. Decide QUAL agente responde, se algum. */
+  channelId?: string | null
 }
 
 /**
@@ -43,11 +45,30 @@ export async function dispatchInboundToAiReply(
   args: DispatchArgs,
 ): Promise<void> {
   const { accountId, conversationId, contactId, configOwnerUserId } = args
+  const channelId = args.channelId ?? null
 
   try {
     const db = supabaseAdmin()
 
-    const config = await loadAiConfig(db, accountId)
+    // Interruptor POR CANAL. Sem ele, o socio conectava o WhatsApp pessoal
+    // pelo QR e a IA comecava a responder os contatos dele sozinha, sem
+    // nenhum botao para impedir — so entrando conversa por conversa em
+    // "Assumir". `ai_autoreply_enabled` tem DEFAULT true, entao todo canal
+    // existente segue exatamente como antes.
+    if (channelId) {
+      const { data: canal, error: erroCanal } = await db
+        .from('cb_channels')
+        .select('ai_autoreply_enabled')
+        .eq('id', channelId)
+        .eq('account_id', accountId)
+        .maybeSingle()
+      // Erro (deploy pre-903) nao pode calar a IA: so um `false` explicito
+      // desliga.
+      if (!erroCanal && canal && canal.ai_autoreply_enabled === false) return
+    }
+
+    // Agente do canal, com queda para o agente padrao da conta.
+    const config = await loadAiConfig(db, accountId, { channelId })
     if (!config || !config.autoReplyEnabled) return
 
     // Deterministic, user-configured responders win over the LLM — the
@@ -60,12 +81,33 @@ export async function dispatchInboundToAiReply(
     // auto-responders.)
     const { data: autoResponders } = await db
       .from('automations')
-      .select('id')
+      .select('id, name, channel_ids')
       .eq('account_id', accountId)
       .eq('is_active', true)
       .in('trigger_type', ['new_message_received', 'keyword_match'])
-      .limit(1)
-    if (autoResponders && autoResponders.length > 0) return
+      // Precisa de TODAS (nao .limit(1)) para checar o escopo de canal de
+      // cada uma — mas limitado, porque so importa saber se EXISTE alguma
+      // concorrente, e 50 auto-respondedoras por conta ja e irreal.
+      .limit(50)
+
+    // Multi-canal: so cala a IA a automacao que REALMENTE pode disparar neste
+    // canal. Antes, qualquer automacao ativa da conta calava a IA em TODOS os
+    // numeros — o operador criava uma resposta de palavra-chave no Comercial
+    // e no dia seguinte ninguem entendia por que o agente do Juridico parou.
+    const concorrente = (autoResponders ?? []).find((a) => {
+      const escopo = (a as { channel_ids?: string[] | null }).channel_ids
+      if (!escopo || escopo.length === 0) return true // vale para todo canal
+      if (!channelId) return true // sem canal, nao da para excluir
+      return escopo.includes(channelId)
+    })
+    if (concorrente) {
+      // Antes era um `return` mudo: nao havia como descobrir por que a IA
+      // ficou calada. Agora o motivo fica no log do servidor.
+      console.info(
+        `[ai auto-reply] silenciada na conversa ${conversationId}: a automação "${(concorrente as { name?: string }).name ?? concorrente.id}" responde neste canal`,
+      )
+      return
+    }
 
     const { data: conv, error: convErr } = await db
       .from('conversations')
@@ -104,6 +146,8 @@ export async function dispatchInboundToAiReply(
       accountId,
       config,
       latestUserMessage(messages),
+      5,
+      channelId,
     )
 
     const systemPrompt = buildSystemPrompt({
@@ -127,6 +171,7 @@ export async function dispatchInboundToAiReply(
       accountId,
       conversationId,
       mode: 'auto_reply',
+      channelId,
       provider: config.provider,
       model: config.model,
       usage,
@@ -186,6 +231,9 @@ export async function dispatchInboundToAiReply(
       contactId,
       text,
       aiGenerated: true,
+      // Responde pelo MESMO numero por onde o cliente escreveu, e nao pelo
+      // canal atual da conversa (que pode ter mudado no meio-tempo).
+      preferredChannelId: channelId,
     })
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)

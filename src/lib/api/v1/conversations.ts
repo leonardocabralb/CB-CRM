@@ -13,6 +13,12 @@ import type { Conversation, Message } from '@/types';
 export interface ApiConversation {
   id: string;
   contact_id: string;
+  /**
+   * Canal (número de WhatsApp) por onde esta conversa está ativa. `null` em
+   * conversas anteriores ao multi-canal ou ainda sem carimbo — quem integra
+   * deve tratar null como "canal padrão da conta".
+   */
+  channel_id: string | null;
   status: string;
   assigned_agent_id: string | null;
   last_message_text: string | null;
@@ -33,6 +39,8 @@ export interface ApiConversation {
 export interface ApiMessage {
   id: string;
   conversation_id: string;
+  /** Canal por onde esta mensagem entrou ou saiu. `null` = pré-multi-canal. */
+  channel_id: string | null;
   direction: 'inbound' | 'outbound';
   sender_type: string;
   content_type: string;
@@ -55,6 +63,7 @@ export function serializeConversation(conv: Conversation): ApiConversation {
   return {
     id: conv.id,
     contact_id: conv.contact_id,
+    channel_id: conv.channel_id ?? null,
     status: conv.status,
     assigned_agent_id: conv.assigned_agent_id ?? null,
     last_message_text: conv.last_message_text ?? null,
@@ -84,6 +93,7 @@ export function serializeMessage(m: Message): ApiMessage {
   return {
     id: m.id,
     conversation_id: m.conversation_id,
+    channel_id: m.channel_id ?? null,
     // `customer` = inbound (from the contact); anything else is outbound.
     direction: m.sender_type === 'customer' ? 'inbound' : 'outbound',
     sender_type: m.sender_type,

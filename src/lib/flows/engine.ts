@@ -315,6 +315,7 @@ async function findEntryFlow(
   accountId: string,
   message: ParsedInbound,
   isFirstInbound: boolean,
+  channelId: string | null,
 ): Promise<FlowRow | null> {
   // Only text messages can match an entry trigger. Interactive replies
   // are responses to existing prompts; they never start a new flow.
@@ -331,21 +332,39 @@ async function findEntryFlow(
     .order("created_at", { ascending: true });
   if (error || !flows) return null;
 
+  // Multi-canal: um flow com channel_id so pode entrar por AQUELE numero; um
+  // sem channel_id e curinga. Sem isso, criar um segundo flow com a mesma
+  // palavra-chave para outro numero era impossivel — o primeiro sempre vencia,
+  // e quem escrevesse para o numero do socio recebia o menu comercial.
+  //
+  // Mensagem sem canal (pre-Fase 3) casa com QUALQUER flow, inclusive os
+  // restritos — o oposto esconderia o flow de todo inbound nao carimbado.
+  const casaCanal = (flow: FlowRow): boolean =>
+    !flow.channel_id || !channelId || flow.channel_id === channelId;
+
   const typed = flows as FlowRow[];
-  for (const flow of typed) {
+  const casa = (flow: FlowRow): boolean => {
+    if (!casaCanal(flow)) return false;
     if (flow.trigger_type === "keyword") {
-      if (matchesKeywordTrigger(
+      return matchesKeywordTrigger(
         message.text,
         flow.trigger_config as KeywordTriggerConfig,
-      )) {
-        return flow;
-      }
-    } else if (flow.trigger_type === "first_inbound_message" && isFirstInbound) {
-      return flow;
+      );
     }
+    if (flow.trigger_type === "first_inbound_message") return isFirstInbound;
     // 'manual' triggers do not auto-start from inbound messages.
-  }
-  return null;
+    return false;
+  };
+
+  // Duas passadas: o flow ESPECIFICO do canal ganha do curinga. Uma passada
+  // so devolveria o mais antigo, e o curinga (criado antes) engoliria o
+  // especifico — exatamente o que o operador tentou evitar ao restringi-lo.
+  const candidatos = typed.filter(casa);
+  return (
+    candidatos.find((f) => f.channel_id && f.channel_id === channelId) ??
+    candidatos[0] ??
+    null
+  );
 }
 
 // ============================================================
@@ -353,6 +372,20 @@ async function findEntryFlow(
 // send_list also persist `last_prompt_message_id` so the inbox
 // thread can quote the prompt the customer is replying to.
 // ============================================================
+
+/**
+ * Canal de SAIDA de um no. Precedencia:
+ *   1. `cfg.channel_id` — o operador fixou aquele no num numero especifico
+ *      ("a triagem chega pelo nao-oficial, a confirmacao sai pelo oficial");
+ *   2. `run.channel_id` — o canal travado na ENTRADA do run;
+ *   3. undefined — o sender cai no canal atual da conversa (pre-903).
+ */
+function nodeChannel(
+  cfg: { channel_id?: string | null } | null | undefined,
+  run: FlowRunRow,
+): string | null | undefined {
+  return cfg?.channel_id ?? run.channel_id ?? undefined;
+}
 
 async function sendButtonsAndSuspend(
   db: AdminClient,
@@ -369,6 +402,7 @@ async function sendButtonsAndSuspend(
     headerText: cfg.header_text,
     footerText: cfg.footer_text,
     buttons: cfg.buttons.map((b) => ({ id: b.reply_id, title: b.title })),
+    preferredChannelId: nodeChannel(cfg, run),
   });
   await logEvent(db, run.id, "message_sent", node.node_key, {
     node_type: "send_buttons",
@@ -584,10 +618,11 @@ async function advanceFromNodeKey(
       try {
         const { whatsapp_message_id } = await engineSendText({
           accountId: run.account_id,
-    userId: run.user_id,
+          userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
           text: interpolateVars(cfg.text, run.vars),
+          preferredChannelId: nodeChannel(cfg, run),
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
           node_type: "send_message",
@@ -618,6 +653,7 @@ async function advanceFromNodeKey(
             ? interpolateVars(cfg.caption, run.vars)
             : undefined,
           filename: cfg.filename,
+          preferredChannelId: nodeChannel(cfg, run),
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
           node_type: "send_media",
@@ -739,7 +775,21 @@ async function advanceFromNodeKey(
       continue;
     }
     if (node.node_type === "send_buttons") {
-      await sendButtonsAndSuspend(db, run, node);
+      // Multi-canal: botões não existem na Evolution, e o sender lança de
+      // propósito (meta-send.ts). Sem este catch a exceção sobe até o catch
+      // genérico do dispatch e o run fica `active` no mesmo nó para sempre,
+      // engolindo toda mensagem seguinte do cliente — sem bot, sem automação
+      // e sem IA. Mesmo tratamento de send_message/send_media.
+      try {
+        await sendButtonsAndSuspend(db, run, node);
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "send_interactive_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        await endRun(db, run.id, "failed", "send_interactive_failed");
+        return { outcome: "completed" };
+      }
       // Persist the new current_node_key via optimistic UPDATE.
       const advanced = await advanceCurrentNodeKey(
         db,
@@ -755,7 +805,16 @@ async function advanceFromNodeKey(
       return { outcome: "advanced" };
     }
     if (node.node_type === "send_list") {
-      await sendListAndSuspend(db, run, node);
+      try {
+        await sendListAndSuspend(db, run, node);
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "send_interactive_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        await endRun(db, run.id, "failed", "send_interactive_failed");
+        return { outcome: "completed" };
+      }
       const advanced = await advanceCurrentNodeKey(
         db,
         run.id,
@@ -872,6 +931,7 @@ export async function dispatchInboundToFlows(
       input.accountId,
       input.message,
       input.isFirstInboundMessage,
+      input.channelId ?? null,
     );
     if (!flow || !flow.entry_node_id) {
       return { consumed: false, outcome: "no_match" };
@@ -1011,10 +1071,29 @@ async function handleReplyForActiveRun(
   }
   if (action.type === "reprompt") {
     // Re-send the same prompt. Same node, no current_node_key change.
-    if (currentNode.node_type === "send_buttons") {
-      await sendButtonsAndSuspend(db, run, currentNode);
-    } else if (currentNode.node_type === "send_list") {
-      await sendListAndSuspend(db, run, currentNode);
+    if (
+      currentNode.node_type === "send_buttons" ||
+      currentNode.node_type === "send_list"
+    ) {
+      try {
+        if (currentNode.node_type === "send_buttons") {
+          await sendButtonsAndSuspend(db, run, currentNode);
+        } else {
+          await sendListAndSuspend(db, run, currentNode);
+        }
+      } catch (err) {
+        // O run está suspenso esperando uma resposta interativa. Se o
+        // prompt não pode ser reenviado (ex.: a conversa migrou para um
+        // canal Evolution, que não tem botões/listas), ele ficaria ativo
+        // para sempre engolindo as mensagens do cliente. Falhar libera o
+        // contato para automações e IA.
+        await logEvent(db, run.id, "error", currentNode.node_key, {
+          reason: "reprompt_interactive_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        await endRun(db, run.id, "failed", "reprompt_interactive_failed");
+        return { consumed: true, flow_run_id: run.id, outcome: "completed" };
+      }
     } else if (currentNode.node_type === "collect_input") {
       // Customer typed something we couldn't accept (empty after trim,
       // or var_key missing — rare). Re-send the prompt so they try again.
@@ -1077,6 +1156,11 @@ async function startNewRun(
       user_id: flow.user_id,
       contact_id: input.contactId,
       conversation_id: input.conversationId,
+      // Canal do RUN: travado na ENTRADA. Os nos de envio usam este valor em
+      // vez de re-resolver pela conversa a cada no — senao o cliente que
+      // responde por outro numero no meio do atendimento faz o bot trocar de
+      // identidade na metade da conversa.
+      channel_id: input.channelId ?? flow.channel_id ?? null,
       status: "active",
       current_node_key: flow.entry_node_id,
     })

@@ -28,6 +28,7 @@ import {
   CornerDownRight,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { ChannelSelect } from '@/components/channels/channel-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -272,6 +273,8 @@ function TriggerPanel({
   triggerIssues: ValidationIssue[];
   t: ReturnType<typeof useTranslations>;
 }) {
+  const tCanais = useTranslations('Channels');
+  const { channels } = useFlowEditor();
   return (
     <section className="border-border bg-card rounded-lg border p-4">
       <h2 className="text-foreground mb-3 text-sm font-semibold">{t('triggerTitle')}</h2>
@@ -292,6 +295,9 @@ function TriggerPanel({
             }
           >
             <SelectTrigger className="bg-muted">
+              {/* Mostrava o valor cru ("keyword") até o wrapper `Select`
+                  passar a derivar `items` dos próprios SelectItem. Sem
+                  função aqui de propósito: o rótulo agora vem do item. */}
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -326,6 +332,25 @@ function TriggerPanel({
               }
               t={t}
             />
+          </div>
+        )}
+        {/* Canal de ENTRADA. Só com 2+ números — numa conta de um número
+            não há o que escolher. É o que permite dois flows com a mesma
+            palavra-chave em números diferentes (ver `findEntryFlow`). */}
+        {channels.length >= 2 && (
+          <div>
+            <label className="text-muted-foreground mb-1 block text-xs">
+              {tCanais('scopeLabel')}
+            </label>
+            <ChannelSelect
+              channels={channels}
+              value={state.channel_id}
+              onChange={(id) => setState((s) => ({ ...s, channel_id: id }))}
+              allowAll
+            />
+            <p className="text-muted-foreground mt-1 text-[11px]">
+              {tCanais('scopeHelpAll')}
+            </p>
           </div>
         )}
       </div>

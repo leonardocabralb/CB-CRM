@@ -42,6 +42,16 @@ export interface AutomationContext {
   agent_id?: string
   /** Button / list-row id the customer tapped, for interactive_reply. */
   interactive_reply_id?: string
+  /**
+   * Canal (cb_channels.id) por onde o disparo entrou. `null`/ausente = canal
+   * desconhecido ou conta pré-multi-canal.
+   *
+   * Vem carimbado do webhook e sobrevive ao passo `wait` de graça: o contexto
+   * é gravado como JSONB em `automation_pending_executions.context` e devolvido
+   * intacto pelo cron. Sem isso, um follow-up de 24h sairia pelo canal que o
+   * cliente usou nesse meio-tempo, e não pelo canal do disparo original.
+   */
+  channel_id?: string | null
 }
 
 export interface DispatchInput {
@@ -106,6 +116,7 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
     if (!automations || automations.length === 0) return
 
     for (const automation of automations as Automation[]) {
+      if (!channelInScope(automation, input.context)) continue
       if (!triggerMatches(automation, input.context)) continue
       try {
         await executeAutomation(automation, input)
@@ -188,6 +199,9 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
       user_id: automation.user_id,
       contact_id: input.contactId ?? null,
       trigger_event: input.triggerType,
+      // Sem isto, "por que isso respondeu pelo numero errado?" nao tem
+      // resposta na tela de logs.
+      channel_id: input.context?.channel_id ?? null,
       steps_executed: [],
       status: 'success',
     })
@@ -363,8 +377,14 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         conversationId,
         contactId: args.contactId,
         text,
+        preferredChannelId: stepChannel(
+          step.step_config as SendMessageStepConfig,
+          args,
+        ),
       })
-      return `sent via Meta (${whatsapp_message_id})`
+      // Sem "via Meta": engineSendText resolve o canal da conversa e pode ter
+      // saído pela Evolution. O canal efetivo entra no detalhe na Fase E1.
+      return `sent (${whatsapp_message_id})`
     }
 
     case 'send_buttons':
@@ -383,8 +403,12 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         conversationId,
         contactId: args.contactId,
         payload,
+        preferredChannelId: stepChannel(
+          step.step_config as { channel_id?: string | null },
+          args,
+        ),
       })
-      return `interactive sent via Meta (${whatsapp_message_id})`
+      return `interactive sent (${whatsapp_message_id})`
     }
 
     case 'send_template': {
@@ -411,6 +435,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
             .map((k) => String(cfg.variables![k]))
         : []
       const { whatsapp_message_id } = await engineSendTemplate({
+        preferredChannelId: stepChannel(cfg, args),
         accountId: args.automation.account_id,
         userId: args.automation.user_id,
         conversationId,
@@ -419,7 +444,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         language: cfg.language,
         params,
       })
-      return `template sent via Meta (${whatsapp_message_id})`
+      return `template sent (${whatsapp_message_id})`
     }
 
     case 'add_tag': {
@@ -647,6 +672,38 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
   return data.id as string
 }
 
+/**
+ * A automação pode disparar no canal por onde este evento entrou?
+ *
+ * Sem este filtro, TODA automação ativa disparava em TODOS os números da
+ * conta: o menu de triagem do número Comercial respondia também quem
+ * escrevesse no WhatsApp pessoal do sócio — pelo próprio número dele. A
+ * única saída do operador era desligar a automação inteira.
+ *
+ * Semântica de `channel_ids`:
+ *   null/ausente -> todos os canais (comportamento pré-multi-canal)
+ *   array vazio  -> tratado como "todos", porque o estado é inválido e
+ *                   silenciar a automação seria pior que o excesso; a 903
+ *                   impede que ele exista (normaliza para NULL + desativa)
+ *   com valores  -> só os canais listados
+ *
+ * ⚠️ Contexto SEM canal (`channel_id` null/ausente) passa em qualquer
+ * escopo. É o caso dos disparos que não vêm de mensagem (tag_added,
+ * conversation_assigned, gatilhos por tempo) e do inbound anterior à Fase 3.
+ * Barrá-los faria uma automação restrita a um canal parar de funcionar
+ * nesses gatilhos — regressão silenciosa pior que o excesso de disparo.
+ */
+export function channelInScope(
+  automation: Automation,
+  ctx: AutomationContext | undefined,
+): boolean {
+  const escopo = automation.channel_ids
+  if (!escopo || escopo.length === 0) return true
+  const canal = ctx?.channel_id
+  if (!canal) return true
+  return escopo.includes(canal)
+}
+
 export function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
   if (automation.trigger_type === 'keyword_match') {
     const cfg = automation.trigger_config as KeywordMatchTriggerConfig
@@ -713,6 +770,15 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       const text = (args.context.message_text ?? '').toString()
       return text.toLowerCase().includes((cfg.value ?? '').toLowerCase())
     }
+    case 'channel': {
+      // Ramifica pelo número por onde o cliente escreveu, dentro de UMA
+      // automação — sem isso, "se veio pelo Comercial faça X, senão Y" exigia
+      // duplicar a automação inteira. Contexto sem canal é FALSE (e não true
+      // como no filtro de escopo): aqui a pergunta é "é ESTE canal?", e a
+      // resposta honesta para um disparo sem canal é não.
+      return Boolean(args.context.channel_id) &&
+        args.context.channel_id === (cfg.operand ?? cfg.value ?? null)
+    }
     case 'time_of_day': {
       // operand form "HH:mm-HH:mm" — true if now is within that window
       // (supports over-midnight ranges like "18:00-09:00").
@@ -733,6 +799,23 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
   }
 }
 
+/**
+ * Canal de SAIDA deste passo. Precedencia deliberada:
+ *   1. `cfg.channel_id` — escolha explicita do operador naquele passo
+ *      ("a confirmacao formal sai SEMPRE pelo numero oficial");
+ *   2. `context.channel_id` — o canal do DISPARO, nao o atual da conversa.
+ *      E o que faz o follow-up de 24h voltar pelo numero por onde o cliente
+ *      escreveu, e nao pelo que ele usou no meio-tempo;
+ *   3. undefined — o sender cai no canal atual da conversa (comportamento
+ *      de antes do multi-canal).
+ */
+function stepChannel(
+  cfg: { channel_id?: string | null } | null | undefined,
+  args: ExecuteArgs,
+): string | null | undefined {
+  return cfg?.channel_id ?? args.context.channel_id ?? undefined
+}
+
 function waitMs(cfg: WaitStepConfig): number {
   const unitMs = cfg.unit === 'days' ? 86_400_000 : cfg.unit === 'hours' ? 3_600_000 : 60_000
   return Math.max(1_000, cfg.amount * unitMs)
@@ -743,6 +826,9 @@ function interpolate(s: string, args: ExecuteArgs): string {
     const [ns, prop] = String(key).split('.')
     if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
     if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')
+    // `{{channel.id}}` no corpo de um send_webhook faz o sistema externo
+    // saber por qual número o cliente falou, sem depender do webhook nativo.
+    if (ns === 'channel' && prop === 'id') return String(args.context.channel_id ?? '')
     return ''
   })
 }

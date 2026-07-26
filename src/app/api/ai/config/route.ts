@@ -33,6 +33,11 @@ export async function GET() {
         'provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key',
       )
       .eq('account_id', accountId)
+      // Esta tela gerencia o agente PADRAO da conta. Desde a 903 o UNIQUE
+      // (account_id) virou dois indices parciais — sem este filtro, o
+      // .maybeSingle() estoura assim que existir um agente por canal, e o
+      // UPDATE/DELETE atingiria TODOS os agentes em vez de so o padrao.
+      .is('channel_id', null)
       .maybeSingle()
 
     if (error) {
@@ -130,6 +135,7 @@ export async function POST(request: Request) {
       .from('ai_configs')
       .select('id, provider, model, api_key')
       .eq('account_id', accountId)
+      .is('channel_id', null)
       .maybeSingle()
 
     let apiKeyPlain: string
@@ -220,6 +226,7 @@ export async function POST(request: Request) {
         .from('ai_configs')
         .update(encryptedKey ? { ...shared, api_key: encryptedKey } : shared)
         .eq('account_id', accountId)
+        .is('channel_id', null)
       if (upErr) {
         console.error('[ai/config POST] update error:', upErr)
         return NextResponse.json(
@@ -262,6 +269,9 @@ export async function DELETE() {
       .from('ai_configs')
       .delete()
       .eq('account_id', accountId)
+      // So o agente PADRAO. Sem isto, remover o agente da conta apagaria
+      // junto todos os agentes por canal.
+      .is('channel_id', null)
     if (error) {
       console.error('[ai/config DELETE] error:', error)
       return NextResponse.json(

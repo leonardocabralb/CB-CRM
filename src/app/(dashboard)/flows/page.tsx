@@ -33,6 +33,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { ChannelScopeBadge } from "@/components/channels/channel-badge";
+import { ChannelFilter } from "@/components/channels/channel-filter";
+import { useChannels } from "@/hooks/use-channels";
+import type { CbChannel } from "@/lib/cb-channels/repo";
 
 /**
  * Flows list page.
@@ -47,6 +51,8 @@ interface FlowRow {
   name: string;
   description: string | null;
   status: "draft" | "active" | "archived";
+  /** Canal de ENTRADA. `null` = curinga, entra por qualquer número. */
+  channel_id: string | null;
   trigger_type: "keyword" | "first_inbound_message" | "manual";
   trigger_config: { keywords?: string[] } | Record<string, unknown>;
   execution_count: number;
@@ -86,12 +92,17 @@ export default function FlowsPage() {
   const router = useRouter();
   const canCreate = useCan("send-messages");
   const t = useTranslations("Flows.list");
+  const tCanais = useTranslations("Channels");
   const [flows, setFlows] = useState<FlowRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  const { channels } = useChannels();
+  // `null` = todos. Um flow curinga (sem `channel_id`) entra por qualquer
+  // número, então continua visível sob qualquer filtro.
+  const [filtroCanal, setFiltroCanal] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -191,6 +202,10 @@ export default function FlowsPage() {
     }
   }
 
+  const visiveis = filtroCanal
+    ? flows.filter((f) => !f.channel_id || f.channel_id === filtroCanal)
+    : flows;
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -213,14 +228,21 @@ export default function FlowsPage() {
             {t("description")}
           </p>
         </div>
-        <GatedButton
-          canAct={canCreate}
-          gateReason="create flows"
-          onClick={() => setCreateOpen(true)}
-        >
-          <Plus className="h-4 w-4" />
-          {t("newFlow")}
-        </GatedButton>
+        <div className="flex items-center gap-2">
+          <ChannelFilter
+            channels={channels}
+            value={filtroCanal}
+            onChange={setFiltroCanal}
+          />
+          <GatedButton
+            canAct={canCreate}
+            gateReason="create flows"
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            {t("newFlow")}
+          </GatedButton>
+        </div>
       </header>
 
       {flows.length === 0 ? (
@@ -229,12 +251,17 @@ export default function FlowsPage() {
           canCreate={canCreate}
           t={t}
         />
+      ) : visiveis.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-card/40 px-4 py-8 text-center text-sm text-muted-foreground">
+          {tCanais("noneOnChannel")}
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {flows.map((flow) => (
+          {visiveis.map((flow) => (
             <FlowCard
               key={flow.id}
               flow={flow}
+              channels={channels}
               onEdit={() => router.push(`/flows/${flow.id}`)}
               onDelete={() => handleDelete(flow)}
               t={t}
@@ -358,11 +385,13 @@ function EmptyState({
 
 function FlowCard({
   flow,
+  channels,
   onEdit,
   onDelete,
   t,
 }: {
   flow: FlowRow;
+  channels: CbChannel[];
   onEdit: () => void;
   onDelete: () => void;
   t: ReturnType<typeof useTranslations>;
@@ -399,11 +428,14 @@ function FlowCard({
         {flow.description || triggerSummary}
       </p>
 
-      <div className="mt-4 flex items-center gap-3 text-[11px] text-muted-foreground">
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1">
           <MessageSquare className="h-3 w-3" />
           {t("runCount", { count: flow.execution_count })}
         </span>
+        {/* Só o flow preso a um número ganha etiqueta — o curinga é a
+            maioria e marcá-lo em cada cartão não informaria nada. */}
+        <ChannelScopeBadge channels={channels} scope={flow.channel_id} />
       </div>
 
       <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-3">

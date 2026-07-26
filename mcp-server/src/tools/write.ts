@@ -51,6 +51,12 @@ export function registerWriteTools(server: McpServer, client: WacrmClient): void
           .string()
           .optional()
           .describe('Optional id of a message in the same conversation to reply to.'),
+        channel_id: z
+          .string()
+          .optional()
+          .describe(
+            'Which of the account WhatsApp numbers to send from. List them with list_channels. Omit to use the number the conversation is already on, falling back to the account default. Choosing one PINS the conversation to it, so the customer reply comes back to the same number.',
+          ),
       },
       annotations: { title: 'Send WhatsApp message', readOnlyHint: false, openWorldHint: true },
     },

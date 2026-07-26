@@ -1,127 +1,29 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { encrypt } from '@/lib/whatsapp/encryption';
-import { provisionEvolutionInstance } from '@/lib/whatsapp/transport/evolution-provision';
 
 /**
- * POST /api/whatsapp/evolution/connect
+ * POST /api/whatsapp/evolution/connect — DESATIVADA (410 Gone).
  *
- * Provisions the account's Evolution instance: creates/adopts it, wires the
- * webhook back to this CRM, stores the connection on whatsapp_config
- * (provider='evolution', encrypted instance key), and returns the QR to
- * pair a WhatsApp number. Safe to call repeatedly — it re-adopts and
- * refreshes the QR.
+ * Era o caminho single-channel: provisionava a instância da Evolution e
+ * gravava a conexão SOMENTE em `whatsapp_config`. Com o multi-canal isso
+ * virou fonte de drift silencioso — a conexão nascia fora de `cb_channels`,
+ * então não aparecia no painel de canais, não podia ser promovida a padrão,
+ * e o `legacy-mirror` não a cobre (ele só espelha canal `kind='meta'`).
+ *
+ * Nenhuma tela do app aponta para cá (conferido por varredura). O caminho
+ * atual é POST /api/cb/channels, que cria o canal E o espelho na mesma
+ * operação.
+ *
+ * O arquivo permanece com 410 (em vez de ser apagado) para que um integrador
+ * que ainda chame a rota antiga receba uma resposta explicativa, e não um 404
+ * mudo.
  */
-export async function POST(request: Request) {
-  try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('account_id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    const accountId = profile?.account_id as string | undefined;
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 }
-      );
-    }
-
-    const webhookSecret = process.env.EVOLUTION_WEBHOOK_SECRET;
-    if (!webhookSecret) {
-      return NextResponse.json(
-        { error: 'EVOLUTION_WEBHOOK_SECRET is not set on the server.' },
-        { status: 500 }
-      );
-    }
-
-    // Evolution posts inbound events here. Prefer the canonical site URL;
-    // fall back to the request origin (dev). Must be reachable by Evolution.
-    const origin =
-      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '') ||
-      new URL(request.url).origin;
-    const webhookUrl = `${origin}/api/whatsapp/evolution/webhook`;
-
-    // Fetch the existing row first: if this account already has an
-    // Evolution instance (e.g. one paired directly in the manager), adopt
-    // it by name instead of deriving a fresh cbcrm-<accountId>.
-    const { data: existing } = await supabase
-      .from('whatsapp_config')
-      .select('id, provider, instance_name')
-      .eq('account_id', accountId)
-      .maybeSingle();
-    const adoptInstanceName =
-      existing?.provider === 'evolution' && existing.instance_name
-        ? existing.instance_name
-        : undefined;
-
-    let result;
-    try {
-      result = await provisionEvolutionInstance({
-        accountId,
-        webhook: { url: webhookUrl, secret: webhookSecret },
-        instanceName: adoptInstanceName,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown Evolution error';
-      console.error('[evolution/connect] provisioning failed:', message);
-      return NextResponse.json(
-        { error: `Evolution error: ${message}` },
-        { status: 502 }
-      );
-    }
-
-    // Persist the connection (one row per account — UNIQUE(account_id)).
-    const row = {
-      provider: 'evolution' as const,
-      base_url: result.baseUrl,
-      instance_name: result.instanceName,
-      api_key: encrypt(result.instanceApiKey),
-      instance_state: result.state,
-      status: result.state === 'open' ? ('connected' as const) : ('disconnected' as const),
-      connected_at: result.state === 'open' ? new Date().toISOString() : null,
-      last_connected_at: result.state === 'open' ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (existing) {
-      const { error } = await supabase
-        .from('whatsapp_config')
-        .update(row)
-        .eq('account_id', accountId);
-      if (error) {
-        console.error('[evolution/connect] update failed:', error);
-        return NextResponse.json({ error: 'Failed to save connection' }, { status: 500 });
-      }
-    } else {
-      const { error } = await supabase
-        .from('whatsapp_config')
-        .insert({ account_id: accountId, user_id: user.id, ...row });
-      if (error) {
-        console.error('[evolution/connect] insert failed:', error);
-        return NextResponse.json({ error: 'Failed to save connection' }, { status: 500 });
-      }
-    }
-
-    return NextResponse.json({
-      instance_name: result.instanceName,
-      state: result.state,
-      connected: result.state === 'open',
-      qr: result.qrBase64 ?? null,
-      pairing_code: result.pairingCode ?? null,
-    });
-  } catch (error) {
-    console.error('[evolution/connect] error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
+export async function POST() {
+  return NextResponse.json(
+    {
+      error:
+        'Esta rota foi desativada. Conecte números em Configurações > Conexões (POST /api/cb/channels), que registra o canal e o espelho de compatibilidade juntos.',
+      code: 'route_retired',
+    },
+    { status: 410 },
+  );
 }

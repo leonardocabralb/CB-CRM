@@ -24,6 +24,8 @@ describe('logAiUsage', () => {
       account_id: 'acct-1',
       conversation_id: 'conv-1',
       mode: 'auto_reply',
+      // Multi-canal: null quando o chamador nao informa o canal.
+      channel_id: null,
       provider: 'anthropic',
       model: 'claude-x',
       prompt_tokens: 30,
@@ -58,5 +60,23 @@ describe('logAiUsage', () => {
         usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
       }),
     ).resolves.toBeUndefined()
+  })
+})
+
+describe('logAiUsage — canal', () => {
+  it('atribui o custo ao canal quando informado', async () => {
+    const { db, insert } = fakeDb()
+    await logAiUsage(db, {
+      accountId: 'acct-1',
+      conversationId: 'conv-1',
+      mode: 'auto_reply',
+      channelId: 'ch-juridico',
+      provider: 'anthropic',
+      model: 'claude-x',
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+    })
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({ channel_id: 'ch-juridico' }),
+    )
   })
 })

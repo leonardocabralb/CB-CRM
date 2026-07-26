@@ -29,6 +29,18 @@ describe('serializeConversation', () => {
     expect(out.contact?.tags).toEqual([{ id: 't1', name: 'vip', color: '#fff' }]);
     expect(out.unread_count).toBe(2);
   });
+
+  it('expõe channel_id, e null quando a conversa é pré-multi-canal', () => {
+    // Sem isso, um painel construído sobre a API v1 não consegue separar
+    // "atendimento Comercial" de "clientes do Dr. Leonardo".
+    const base = { id: 'conv1', contact_id: 'c1', status: 'open' };
+
+    const comCanal = { ...base, channel_id: 'ch-1' } as unknown as Conversation;
+    expect(serializeConversation(comCanal).channel_id).toBe('ch-1');
+
+    const semCanal = base as unknown as Conversation;
+    expect(serializeConversation(semCanal).channel_id).toBeNull();
+  });
 });
 
 describe('serializeMessage', () => {
@@ -50,5 +62,17 @@ describe('serializeMessage', () => {
 
     const agent = { ...inbound, sender_type: 'agent' } as unknown as Message;
     expect(serializeMessage(agent).direction).toBe('outbound');
+  });
+
+  it('expõe channel_id, e null quando a mensagem é pré-multi-canal', () => {
+    const base = {
+      id: 'm1',
+      conversation_id: 'conv1',
+      sender_type: 'customer',
+      content_type: 'text',
+    };
+    const comCanal = { ...base, channel_id: 'ch-2' } as unknown as Message;
+    expect(serializeMessage(comCanal).channel_id).toBe('ch-2');
+    expect(serializeMessage(base as unknown as Message).channel_id).toBeNull();
   });
 });

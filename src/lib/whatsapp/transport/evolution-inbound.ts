@@ -105,6 +105,8 @@ export function normalizeUpsert(
     timestamp: ts,
     contentType: detectContentType(item.message),
     text: extractText(item.message),
-    mediaUrl: null, // inbound media pipeline lands in a later pass
+    // Preenchido pelo webhook, que tem as credenciais para chamar
+    // chat/getBase64FromMediaMessage — ver evolution-media.ts.
+    mediaUrl: null,
   };
 }

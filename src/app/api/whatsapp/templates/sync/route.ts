@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { resolveMetaChannel } from '@/lib/cb-channels/resolve-meta'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
@@ -122,7 +123,7 @@ function extractSampleValues(
   return sv
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const supabase = await createClient()
 
@@ -150,38 +151,40 @@ export async function POST() {
       )
     }
 
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+    // Multi-canal: sincroniza o catalogo do canal PEDIDO, ou do primeiro
+    // canal Meta utilizavel. Antes lia so o espelho e perguntava se o PADRAO
+    // era Meta — entao, numa conta cujo padrao e Evolution, "Sincronizar da
+    // Meta" respondia "WABA ID missing. Re-connect your account" logo depois
+    // de o operador conectar o numero oficial.
+    const canalPedido =
+      new URL(request.url).searchParams.get('channel_id') ?? null
+    const canal = await resolveMetaChannel(supabase, accountId, canalPedido)
 
-    if (configError || !config) {
+    if (!canal) {
       return NextResponse.json(
         {
           error:
-            'WhatsApp not configured. Connect your WhatsApp Business account in Settings first.',
+            'WhatsApp not configured. Connect an official Meta (Cloud API) number in Settings > Connections first.',
         },
         { status: 400 },
       )
     }
 
-    if (!config.waba_id) {
+    if (!canal.wabaId) {
       return NextResponse.json(
         {
-          error:
-            'WABA (WhatsApp Business Account) ID missing. Re-connect your account in Settings.',
+          error: `WABA (WhatsApp Business Account) ID missing for "${canal.label}". Re-connect that number in Settings.`,
         },
         { status: 400 },
       )
     }
 
-    const accessToken = decrypt(config.access_token)
+    const accessToken = decrypt(canal.accessToken)
 
     const metaTemplates: MetaTemplate[] = []
     let nextUrl:
       | string
-      | null = `${META_API_BASE}/${config.waba_id}/message_templates?limit=100&fields=id,name,language,status,category,components,quality_score`
+      | null = `${META_API_BASE}/${canal.wabaId}/message_templates?limit=100&fields=id,name,language,status,category,components,quality_score`
     const PAGE_CAP = 20
     let pageCount = 0
 
@@ -238,6 +241,10 @@ export async function POST() {
         // post-017, so an INSERT without it errors.
         account_id: accountId,
         user_id: user.id,
+        // Multi-canal: o catalogo da Meta e POR WABA. Carimbar a origem e o
+        // que impede o modelo de um numero ser usado no outro — o atendente
+        // via o preview certo e o cliente recebia outra coisa.
+        channel_id: canal.channelId,
         name: t.name,
         category: normalizeCategory(t.category),
         language: t.language,
@@ -254,13 +261,19 @@ export async function POST() {
         updated_at: new Date().toISOString(),
       }
 
-      const { data: existing, error: lookupErr } = await supabase
+      // Escopado ao canal: sem isso, sincronizar o 2o numero SOBRESCREVERIA o
+      // modelo homonimo do 1o, em vez de criar o dele. Modelos anteriores a
+      // 903 (channel_id NULL) sao adotados por este canal na primeira sync.
+      let lookup = supabase
         .from('message_templates')
         .select('id')
         .eq('account_id', accountId)
         .eq('name', t.name)
         .eq('language', t.language)
-        .maybeSingle()
+      lookup = canal.channelId
+        ? lookup.or(`channel_id.eq.${canal.channelId},channel_id.is.null`)
+        : lookup.is('channel_id', null)
+      const { data: existing, error: lookupErr } = await lookup.maybeSingle()
 
       if (lookupErr) {
         errors.push({

@@ -42,11 +42,30 @@ data or send messages, add `"WACRM_ENABLE_WRITES": "true"` (and
 
 ## What it exposes
 
-- **Reads (always on):** `whoami`, contacts (list/get), conversations
-  (list/get), messages (list), broadcast status.
+- **Reads (always on):** `whoami`, `list_channels`, contacts (list/get),
+  conversations (list/get), messages (list), broadcast status.
 - **Writes (opt-in):** send a message, create/update a contact.
 - **Broadcasts (opt-in):** launch a template broadcast — requires an
   explicit `confirm` and is marked destructive.
+
+### Several WhatsApp numbers
+
+An account can have more than one number. `list_channels` shows them, and
+`send_message` / `send_broadcast` take an optional `channel_id` to pick
+which one to send **from**. It needs the `channels:read` scope.
+
+Two things worth knowing before choosing:
+
+- **Omitting `channel_id` is not neutral.** The message goes out on the
+  number the conversation is already on, and that follows the customer —
+  if they last wrote to a different number of yours, the reply leaves
+  from that one. When the number matters (an official notice, a formal
+  confirmation), pass `channel_id` explicitly.
+- **`kind` limits what the number can do.** `meta` is an official Cloud
+  API number and is the only kind that accepts templates and
+  button/list messages. `evolution` is a QR-code number: plain text
+  only. Broadcasts are template-only, so they always need a `meta`
+  number.
 
 ## Safety
 

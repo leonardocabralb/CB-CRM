@@ -10,7 +10,7 @@ import {
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
-  resolveEngineChannel,
+  resolveEngineChannelPreferring,
   evolutionTransportFor,
   evolutionRemoteJid,
 } from '@/lib/cb-channels/engine-send'
@@ -54,6 +54,9 @@ interface SendTextEngineArgs {
    *  badges it as an AI reply. Only the auto-reply bot sets this;
    *  deterministic Flow/automation sends leave it false. */
   aiGenerated?: boolean
+  /** Canal de saida preferido (passo/no do operador, ou o canal do RUN).
+   *  Ausente = canal atual da conversa — o comportamento de antes. */
+  preferredChannelId?: string | null
 }
 
 /**
@@ -90,7 +93,12 @@ export async function engineSendText(
 
   // Canal da conversa (multi-canal, Fase 5): resolve como o envio manual —
   // conversations.channel_id → canal padrão → fallback whatsapp_config.
-  const channel = await resolveEngineChannel(db, args.accountId, args.conversationId)
+  const channel = await resolveEngineChannelPreferring(
+    db,
+    args.accountId,
+    args.conversationId,
+    args.preferredChannelId,
+  )
   if (!channel) {
     throw new Error('WhatsApp not configured for this account')
   }
@@ -188,6 +196,9 @@ interface SendMediaEngineArgs {
   caption?: string
   /** Document-only; ignored by Meta for image/video. */
   filename?: string
+  /** Canal de saida preferido (passo/no do operador, ou o canal do RUN).
+   *  Ausente = canal atual da conversa — o comportamento de antes. */
+  preferredChannelId?: string | null
 }
 
 /**
@@ -220,7 +231,12 @@ export async function engineSendMedia(
   }
 
   // Canal da conversa (multi-canal, Fase 5) — mesmo resolve do envio manual.
-  const channel = await resolveEngineChannel(db, args.accountId, args.conversationId)
+  const channel = await resolveEngineChannelPreferring(
+    db,
+    args.accountId,
+    args.conversationId,
+    args.preferredChannelId,
+  )
   if (!channel) {
     throw new Error('WhatsApp not configured for this account')
   }
@@ -328,6 +344,9 @@ interface SendInteractiveButtonsEngineArgs {
   buttons: InteractiveButton[]
   headerText?: string
   footerText?: string
+  /** Canal de saida preferido (passo/no do operador, ou o canal do RUN).
+   *  Ausente = canal atual da conversa — o comportamento de antes. */
+  preferredChannelId?: string | null
 }
 
 interface SendInteractiveListEngineArgs {
@@ -340,6 +359,9 @@ interface SendInteractiveListEngineArgs {
   sections: InteractiveListSection[]
   headerText?: string
   footerText?: string
+  /** Canal de saida preferido (passo/no do operador, ou o canal do RUN).
+   *  Ausente = canal atual da conversa — o comportamento de antes. */
+  preferredChannelId?: string | null
 }
 
 /**
@@ -399,7 +421,12 @@ async function sendInteractiveViaMeta(
   // Canal da conversa (multi-canal). Botões/listas não entregam via
   // Baileys — em canal Evolution o nó falha com motivo CLARO (o run
   // registra o erro), em vez de fingir que enviou.
-  const channel = await resolveEngineChannel(db, input.accountId, input.conversationId)
+  const channel = await resolveEngineChannelPreferring(
+    db,
+    input.accountId,
+    input.conversationId,
+    input.preferredChannelId,
+  )
   if (!channel) {
     throw new Error('WhatsApp not configured for this account')
   }

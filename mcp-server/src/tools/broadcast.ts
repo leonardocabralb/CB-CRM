@@ -38,6 +38,12 @@ export function registerBroadcastTools(server: McpServer, client: WacrmClient): 
           .min(1)
           .max(1000)
           .describe('Recipients (1–1000). Invalid numbers are dropped and counted as rejected.'),
+        channel_id: z
+          .string()
+          .optional()
+          .describe(
+            'Which official Meta number to send the campaign from. List them with list_channels. Omit to use the first usable Meta number (account default first). Broadcasts are template-only, so a QR-code (unofficial) number cannot be used.',
+          ),
         confirm: z
           .boolean()
           .describe('Must be true to actually send. A safety gate against accidental mass sends.'),

@@ -45,6 +45,11 @@ export async function POST(
       description: original.description,
       trigger_type: original.trigger_type,
       trigger_config: original.trigger_config,
+      // Sem isto a cópia nasce SEM escopo — e escopo ausente é lido pelo
+      // motor como "todos os canais". Duplicar a triagem do Comercial
+      // devolvia uma automação que responde por todos os números do
+      // escritório, inclusive o celular pessoal do sócio.
+      channel_ids: original.channel_ids ?? null,
       is_active: false,
     })
     .select()

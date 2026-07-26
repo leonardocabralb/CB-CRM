@@ -19,13 +19,34 @@ interface MetricCardProps {
   }
   /** Used instead of `delta` when the metric has a static subtitle. */
   subtitle?: string
+  /**
+   * Marca o cartão como "conta inteira" quando há filtro de canal ativo mas
+   * este número NÃO é filtrável (contatos e negócios não têm `channel_id` no
+   * schema). Sem a marca, o operador leria um total do escritório como se
+   * fosse daquele número.
+   */
+  accountWideNote?: string
 }
 
-export function MetricCard({ title, value, icon: Icon, delta, subtitle }: MetricCardProps) {
+export function MetricCard({
+  title,
+  value,
+  icon: Icon,
+  delta,
+  subtitle,
+  accountWideNote,
+}: MetricCardProps) {
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-start justify-between">
-        <p className="text-sm font-medium text-muted-foreground">{title}</p>
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+          {accountWideNote && (
+            <span className="w-fit rounded border border-border bg-muted/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+              {accountWideNote}
+            </span>
+          )}
+        </div>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
           <Icon className="h-4 w-4" />
         </div>

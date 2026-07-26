@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { formatCurrency } from '@/lib/currency'
@@ -35,16 +35,27 @@ import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 
 import { useTranslations } from 'next-intl'
+import { ChannelFilter } from '@/components/channels/channel-filter'
+import { useChannels } from '@/hooks/use-channels'
 
 type RangeDays = 7 | 30 | 90
 
 export default function DashboardPage() {
   const t = useTranslations('Dashboard.page')
+  const tCanais = useTranslations('Channels')
   const { defaultCurrency } = useAuth()
   const [metrics, setMetrics] = useState<MetricsBundle | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(true)
 
   const [range, setRange] = useState<RangeDays>(30)
+  // O intervalo aberto, num ref, para `loadAll` recarregar o que está na
+  // tela sem passar a depender de `range` — se dependesse, trocar de
+  // intervalo dispararia a carga INTEIRA (métricas, funil, atividade) em
+  // vez de só a série, e o cache por intervalo perderia a razão de existir.
+  const rangeRef = useRef<RangeDays>(30)
+  useEffect(() => {
+    rangeRef.current = range
+  }, [range])
   // Keep a cache per range so switching tabs doesn't re-fetch what we
   // already have. Ranges the user hasn't opened yet stay null and
   // trigger a fetch on first view.
@@ -64,40 +75,62 @@ export default function DashboardPage() {
   const [activity, setActivity] = useState<ActivityItem[] | null>(null)
   const [activityLoading, setActivityLoading] = useState(true)
 
+  // Filtro de canal. `null` = conta inteira, exatamente o painel de antes.
+  // ⚠️ O filtro é PARCIAL por natureza: contatos, negócios e funil não têm
+  // `channel_id` no schema. Os cartões que ele não alcança ganham a marca
+  // "conta inteira" abaixo — mostrar número da conta toda sob um recorte de
+  // canal seria pior do que não filtrar.
+  const { channels } = useChannels()
+  const [canalFiltro, setCanalFiltro] = useState<string | null>(null)
+
+  // Geração da carga. Trocar de canal duas vezes rápido deixa DUAS cargas
+  // no ar; sem este contador, a mais lenta (do canal anterior) podia chegar
+  // por último e sobrescrever a tela com os números do canal errado — sem
+  // nenhum sinal de que aquilo é de outro número.
+  const geracaoRef = useRef(0)
+
   const loadAll = useCallback(() => {
     const db = createClient()
+    geracaoRef.current += 1
+    const geracao = geracaoRef.current
+    const atual = () => geracao === geracaoRef.current
 
     // Kick everything off in parallel. Each block has its own
     // setState + finally so a slow query doesn't hold up faster
     // sections — each widget shows its own skeleton independently.
-    void loadMetrics(db)
-      .then((m) => setMetrics(m))
+    void loadMetrics(db, canalFiltro)
+      .then((m) => atual() && setMetrics(m))
       .catch((err) => console.error('[dashboard] metrics failed:', err))
-      .finally(() => setMetricsLoading(false))
+      .finally(() => atual() && setMetricsLoading(false))
 
-    void loadConversationsSeries(db, 30)
-      .then((s) => setSeries((prev) => ({ ...prev, 30: s })))
+    // O intervalo VISÍVEL, não 30 fixo. Enquanto isto só rodava na
+    // montagem, 30 era sempre o intervalo aberto; agora que roda a cada
+    // troca de canal, quem estivesse em "7 dias" ficava com o gráfico
+    // preso no esqueleto para sempre — o cache tinha sido limpo e o único
+    // intervalo recarregado era o errado.
+    void loadConversationsSeries(db, rangeRef.current, canalFiltro)
+      .then((s) => atual() && setSeries((prev) => ({ ...prev, [rangeRef.current]: s })))
       .catch((err) => console.error('[dashboard] series failed:', err))
-      .finally(() => setSeriesLoading(false))
+      .finally(() => atual() && setSeriesLoading(false))
 
     void loadPipelineDonut(db)
-      .then((p) => setPipeline(p))
+      .then((p) => atual() && setPipeline(p))
       .catch((err) => console.error('[dashboard] pipeline failed:', err))
-      .finally(() => setPipelineLoading(false))
+      .finally(() => atual() && setPipelineLoading(false))
 
-    void loadResponseTime(db)
-      .then((r) => setResponseTime(r))
+    void loadResponseTime(db, canalFiltro)
+      .then((r) => atual() && setResponseTime(r))
       .catch((err) => console.error('[dashboard] response time failed:', err))
-      .finally(() => setResponseTimeLoading(false))
+      .finally(() => atual() && setResponseTimeLoading(false))
 
     // Fetch up to 50 so the biggest page-size option in the feed
     // (50 rows) is already in memory — switching sizes then becomes
     // a pure client-side slice with no extra round trip.
-    void loadActivity(db, 50)
-      .then((a) => setActivity(a))
+    void loadActivity(db, 50, canalFiltro)
+      .then((a) => atual() && setActivity(a))
       .catch((err) => console.error('[dashboard] activity failed:', err))
-      .finally(() => setActivityLoading(false))
-  }, [])
+      .finally(() => atual() && setActivityLoading(false))
+  }, [canalFiltro])
 
   useEffect(() => {
     loadAll()
@@ -113,22 +146,40 @@ export default function DashboardPage() {
       if (series[r] !== null) return
       setSeriesLoading(true)
       const db = createClient()
-      loadConversationsSeries(db, r)
+      loadConversationsSeries(db, r, canalFiltro)
         .then((s) => setSeries((prev) => ({ ...prev, [r]: s })))
         .catch((err) => console.error('[dashboard] series failed:', err))
         .finally(() => setSeriesLoading(false))
     },
-    [series],
+    [series, canalFiltro],
   )
 
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t('description')}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t('description')}
+          </p>
+        </div>
+        <ChannelFilter
+          channels={channels}
+          value={canalFiltro}
+          onChange={(id) => {
+            setCanalFiltro(id)
+            // Troca de canal invalida TODO o cache de séries: os pontos em
+            // memória são do recorte anterior. Sem isto, alternar o filtro
+            // e voltar para um intervalo já visto mostraria o gráfico do
+            // canal errado, sem nenhum sinal na tela.
+            setSeries({ 7: null, 30: null, 90: null })
+            setMetricsLoading(true)
+            setSeriesLoading(true)
+            setResponseTimeLoading(true)
+            setActivityLoading(true)
+          }}
+        />
       </div>
 
       {/* Metric cards */}
@@ -151,6 +202,7 @@ export default function DashboardPage() {
               }}
             />
             <MetricCard
+              accountWideNote={canalFiltro ? tCanais('accountWide') : undefined}
               title={t('newContactsToday')}
               value={metrics.newContactsToday.current.toLocaleString()}
               icon={UserPlus}
@@ -165,6 +217,7 @@ export default function DashboardPage() {
               }}
             />
             <MetricCard
+              accountWideNote={canalFiltro ? tCanais('accountWide') : undefined}
               title={t('openDealsValue')}
               value={formatCurrency(metrics.openDealsValue, defaultCurrency)}
               icon={DollarSign}
@@ -207,7 +260,15 @@ export default function DashboardPage() {
             onRangeChange={handleRangeChange}
           />
         </div>
-        <div className="h-full lg:col-span-2">
+        {/* O funil é da conta inteira: negócio não tem canal, e um negócio
+            pode nascer numa conversa e fechar noutra. Com filtro ativo a
+            marca aparece sobre o cartão. */}
+        <div className="relative h-full lg:col-span-2">
+          {canalFiltro && (
+            <span className="absolute right-4 top-4 z-10 rounded border border-border bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              {tCanais('accountWide')}
+            </span>
+          )}
           <PipelineDonut
             data={pipeline}
             loading={pipelineLoading}

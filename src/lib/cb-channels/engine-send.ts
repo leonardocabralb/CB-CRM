@@ -50,6 +50,38 @@ export async function resolveEngineChannel(
 }
 
 /**
+ * Como {@link resolveEngineChannel}, mas com um canal PREFERIDO — o do
+ * passo/nó (escolha explícita do operador) ou o do DISPARO (o número por
+ * onde o cliente escreveu).
+ *
+ * Existe para separar "por onde a conversa está agora" de "por onde ESTE
+ * envio deve sair". Sem essa distinção, um follow-up agendado às 9h saía às
+ * 15h pelo número que o cliente usou no meio-tempo, e não havia como dizer
+ * "a confirmação formal sai SEMPRE pelo número oficial".
+ *
+ * Um `preferredChannelId` inexistente ou de outra conta NÃO é erro: cai no
+ * comportamento normal (canal da conversa → padrão → espelho). O filtro por
+ * `account_id` em resolveChannelForConversation é o que barra o vazamento
+ * entre contas.
+ */
+export async function resolveEngineChannelPreferring(
+  db: SupabaseClient,
+  accountId: string,
+  conversationId: string,
+  preferredChannelId: string | null | undefined,
+): Promise<ResolvedChannel | null> {
+  if (preferredChannelId) {
+    const escolhido = await resolveChannelForConversation(db, accountId, {
+      channel_id: preferredChannelId,
+    });
+    // Só aceita se o canal pedido REALMENTE resolveu — senão o resolve já
+    // teria caído no padrão, e aí é melhor seguir o caminho da conversa.
+    if (escolhido?.channelId === preferredChannelId) return escolhido;
+  }
+  return resolveEngineChannel(db, accountId, conversationId);
+}
+
+/**
  * Transport da Evolution para um canal resolvido. Lança com mensagem
  * clara quando o canal está incompleto (o run/log do engine a registra).
  */

@@ -45,6 +45,8 @@ export async function POST(request: Request) {
         .from('ai_configs')
         .select('api_key')
         .eq('account_id', accountId)
+        // Agente padrao da conta — ver a nota em /api/ai/config.
+        .is('channel_id', null)
         .maybeSingle()
       if (!existing?.api_key) {
         return NextResponse.json(

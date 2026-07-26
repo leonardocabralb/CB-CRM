@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { validateFlowChannelForActivation } from '@/lib/flows/validate'
+import { loadAccountChannelsForValidation } from '@/lib/cb-channels/repo'
 import { createClient } from '@/lib/supabase/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
@@ -70,7 +72,7 @@ export async function POST(
     const [{ data: flow }, { data: nodes }] = await Promise.all([
       admin
         .from('flows')
-        .select('name, trigger_type, trigger_config, entry_node_id')
+        .select('name, trigger_type, trigger_config, entry_node_id, channel_id, account_id')
         .eq('id', id)
         .maybeSingle(),
       admin
@@ -93,6 +95,21 @@ export async function POST(
         node_type: string
         config: Record<string, unknown>
       }>,
+    )
+    // Multi-canal: no interativo preso a canal Evolution nao entrega nada.
+    issues.push(
+      ...validateFlowChannelForActivation(
+        (flow as { channel_id?: string | null }).channel_id,
+        (nodes ?? []) as Array<{
+          node_key: string
+          node_type: string
+          config: Record<string, unknown>
+        }>,
+        await loadAccountChannelsForValidation(
+          admin,
+          (flow as { account_id: string }).account_id,
+        ),
+      ),
     )
     const blockers = issues.filter((i) => i.severity === 'error')
     if (blockers.length > 0) {

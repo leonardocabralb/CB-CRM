@@ -174,6 +174,9 @@ export async function persistInboundMessage(
     await dispatchWebhookEvent(db, m.accountId, 'conversation.created', {
       conversation_id: conversation.id,
       contact_id: contact.id,
+      // Sem o canal, N números viram um stream indistinguível para quem
+      // integra: não dá para rotear "só o que entrar pelo Comercial".
+      channel_id: m.channelId ?? null,
     });
   }
 
@@ -233,6 +236,7 @@ export async function persistInboundMessage(
     userId: m.configOwnerUserId,
     contactId: contact.id,
     conversationId: conversation.id,
+    channelId: m.channelId ?? null,
     message: {
       kind: 'text',
       text: inboundText,
@@ -256,7 +260,11 @@ export async function persistInboundMessage(
       accountId: m.accountId,
       triggerType,
       contactId: contact.id,
-      context: { message_text: inboundText, conversation_id: conversation.id },
+      context: {
+        message_text: inboundText,
+        conversation_id: conversation.id,
+        channel_id: m.channelId ?? null,
+      },
     }).catch((err) => console.error('[inbound-store] automation dispatch failed:', err));
   }
 
@@ -266,6 +274,7 @@ export async function persistInboundMessage(
       conversationId: conversation.id,
       contactId: contact.id,
       configOwnerUserId: m.configOwnerUserId,
+      channelId: m.channelId ?? null,
     });
   }
 
@@ -275,5 +284,6 @@ export async function persistInboundMessage(
     whatsapp_message_id: m.providerMessageId,
     content_type: contentType,
     text: m.text,
+    channel_id: m.channelId ?? null,
   });
 }

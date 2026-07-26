@@ -145,6 +145,14 @@ export class WacrmClient {
     return this.request('PATCH', `/contacts/${encodeURIComponent(id)}`, { body });
   }
 
+  // --- Channels -----------------------------------------------------
+
+  /** Numeros de WhatsApp da conta. Sem isto, ninguem descobre os UUIDs
+   *  validos para `channel_id` nas tools de envio e broadcast. */
+  listChannels(): Promise<{ data: unknown }> {
+    return this.request('GET', '/channels');
+  }
+
   // --- Conversations ------------------------------------------------
 
   listConversations(query: {

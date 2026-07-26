@@ -7,6 +7,8 @@ export interface LogAiUsageArgs {
    *  deleted between generation and logging. */
   conversationId: string | null
   mode: 'auto_reply' | 'draft'
+  /** Canal por onde a conversa corre — atribui o custo por numero. */
+  channelId?: string | null
   provider: AiProvider
   model: string
   /** Provider usage; a no-op when null (nothing worth recording). */
@@ -36,6 +38,7 @@ export async function logAiUsage(
       account_id: args.accountId,
       conversation_id: args.conversationId,
       mode: args.mode,
+      channel_id: args.channelId ?? null,
       provider: args.provider,
       model: args.model,
       prompt_tokens: args.usage.promptTokens,

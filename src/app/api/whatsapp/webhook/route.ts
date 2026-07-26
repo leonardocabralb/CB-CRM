@@ -167,6 +167,43 @@ export async function GET(request: Request) {
       })
     }
 
+    // Multi-canal (ADITIVO — o caminho acima fica intacto e tem prioridade):
+    // um número Meta pode viver SÓ em cb_channels. É exatamente o que acontece
+    // quando o canal padrão da conta é Evolution: whatsapp_config tem
+    // provider='evolution' e verify_token NULL, o laço acima pula todas as
+    // linhas e o handshake responde 403. Sem passar no handshake a Meta nunca
+    // entrega nada, então TODA mensagem do número oficial some sem erro visível.
+    const { data: channels, error: channelError } = await supabaseAdmin()
+      .from('cb_channels')
+      .select('id, verify_token')
+      .eq('kind', 'meta')
+      .not('verify_token', 'is', null)
+
+    if (channelError) {
+      // Deploy fora de ordem (pré-901) não pode derrubar a verificação do
+      // número legado — degrada para o comportamento antigo.
+      console.warn(
+        '[webhook] falha ao varrer cb_channels na verificação:',
+        channelError.message,
+      )
+    }
+
+    for (const channel of channels ?? []) {
+      if (!channel.verify_token) continue
+      try {
+        // cb_channels sempre grava com encrypt() (GCM), então aqui não há o
+        // upgrade de formato legado que o whatsapp_config precisa.
+        if (decrypt(channel.verify_token) !== verifyToken) continue
+      } catch {
+        // Token malformado / chave errada — pula e segue checando.
+        continue
+      }
+      return new Response(challenge, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' },
+      })
+    }
+
     return NextResponse.json(
       { error: 'Verification token mismatch' },
       { status: 403 }
@@ -249,8 +286,15 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
 
       // Handle status updates
       if (value.statuses) {
+        // Canal do numero que recebeu este status — escopa o ACK para nao
+        // carimbar a mensagem homonima de OUTRO numero (Meta reusa wamid
+        // entre numeros; ver o comentario em handleStatusUpdate).
+        const statusChannelId = await resolveInboundMetaChannelId(
+          supabaseAdmin(),
+          value.metadata?.phone_number_id,
+        ).catch(() => null)
         for (const status of value.statuses) {
-          await handleStatusUpdate(status)
+          await handleStatusUpdate(status, statusChannelId)
         }
       }
 
@@ -391,21 +435,34 @@ function isValidStatusTransition(current: string, incoming: string): boolean {
   return ii > ci
 }
 
-async function handleStatusUpdate(status: {
+async function handleStatusUpdate(
+  status: {
   id: string
   status: string
   timestamp: string
-  recipient_id: string
-}) {
+    recipient_id: string
+  },
+  /** Canal que recebeu o status. `null` = desconhecido (nao escopa). */
+  channelId: string | null = null,
+) {
   // 1) Mirror onto messages (legacy behavior) — Meta's status values
   //    already match the CHECK constraint on messages.status. No
   //    `.select()`: message_id is NOT unique (migration 009 — Meta ids
   //    repeat across numbers), so this updates 0..N rows and must not
   //    assume a single row.
-  const { error: msgErr } = await supabaseAdmin()
+  //
+  //    Multi-canal: "Meta ids repeat across numbers" deixou de ser hipotese
+  //    com N numeros na mesma conta. O UPDATE passa a ser escopado ao canal
+  //    que recebeu o status — mas com `OR channel_id IS NULL`, senao o ✓✓ das
+  //    mensagens anteriores a Fase 3 (sem carimbo) congelaria.
+  let q = supabaseAdmin()
     .from('messages')
     .update({ status: status.status })
     .eq('message_id', status.id)
+  if (channelId) {
+    q = q.or(`channel_id.eq.${channelId},channel_id.is.null`)
+  }
+  const { error: msgErr } = await q
 
   if (msgErr) {
     console.error('Error updating message status:', msgErr)
@@ -456,7 +513,7 @@ async function handleStatusUpdate(status: {
   //    the owning account for delivery.
   const { data: msgRow } = await supabaseAdmin()
     .from('messages')
-    .select('conversation_id, conversations(account_id)')
+    .select('conversation_id, channel_id, conversations(account_id)')
     .eq('message_id', status.id)
     .limit(1)
     .maybeSingle()
@@ -473,6 +530,8 @@ async function handleStatusUpdate(status: {
           whatsapp_message_id: status.id,
           conversation_id: msgRow.conversation_id,
           status: status.status,
+          // Carimbado no envio; vem de graça no select acima.
+          channel_id: msgRow.channel_id ?? null,
         }
       )
     }
@@ -646,6 +705,9 @@ async function processMessage(
     await dispatchWebhookEvent(supabaseAdmin(), accountId, 'conversation.created', {
       conversation_id: conversation.id,
       contact_id: contactRecord.id,
+      // Sem o canal, N números viram um stream indistinguível para quem
+      // integra: não dá para rotear "só o que entrar pelo Comercial".
+      channel_id: channelId,
     })
   }
 
@@ -789,6 +851,7 @@ async function processMessage(
     userId: configOwnerUserId,
     contactId: contactRecord.id,
     conversationId: conversation.id,
+    channelId,
     message:
       interactiveReplyId
         ? {
@@ -850,6 +913,9 @@ async function processMessage(
         // Only set on interactive taps; drives the interactive_reply
         // trigger's exact-id match.
         interactive_reply_id: interactiveReplyId ?? undefined,
+        // Canal do disparo. Sobrevive ao passo `wait` porque o contexto é
+        // gravado intacto como JSONB em automation_pending_executions.
+        channel_id: channelId,
       },
     }).catch((err) => console.error('[automations] dispatch failed:', err))
   }
@@ -865,6 +931,7 @@ async function processMessage(
       conversationId: conversation.id,
       contactId: contactRecord.id,
       configOwnerUserId,
+      channelId: channelId,
     })
   }
 
@@ -881,6 +948,7 @@ async function processMessage(
     whatsapp_message_id: message.id,
     content_type: contentType,
     text: contentText,
+    channel_id: channelId,
   })
 }
 

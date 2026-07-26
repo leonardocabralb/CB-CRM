@@ -87,6 +87,10 @@ export async function retrieveKnowledge(
   config: Pick<AiConfig, 'embeddingsApiKey'>,
   queryText: string,
   k = 5,
+  /** Canal da conversa. Recorta o acervo: sem ele, um lead que pergunta
+   *  honorarios no Comercial podia receber trecho da tabela interna do
+   *  Juridico. `null` = sem recorte (todo o acervo da conta). */
+  channelId: string | null = null,
 ): Promise<string[]> {
   const query = queryText.trim()
   if (!query || k <= 0) return []
@@ -116,6 +120,9 @@ export async function retrieveKnowledge(
           p_account_id: accountId,
           p_query_embedding: toVectorLiteral(queryEmbedding),
           p_match_count: k,
+          // NULL no chunk = documento comum a todos os canais; NULL aqui =
+          // sem recorte. Nunca esconde o acervo anterior a 903.
+          p_channel_id: channelId ?? null,
         })
         if (!error && Array.isArray(data)) {
           for (const row of data as MatchRow[]) picked.set(row.id, row.content)
@@ -133,6 +140,7 @@ export async function retrieveKnowledge(
         p_account_id: accountId,
         p_query: query,
         p_match_count: k,
+        p_channel_id: channelId ?? null,
       })
       if (!error && Array.isArray(data)) {
         for (const row of data as MatchRow[]) {

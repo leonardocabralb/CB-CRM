@@ -13,6 +13,12 @@ type ContactRow = { id: string; phone: string; name?: string | null };
 
 interface Script {
   config?: { user_id: string } | null; // whatsapp_config.maybeSingle
+  /** cb_channels count — a conta pode ter canais sem o espelho whatsapp_config. */
+  channelCount?: number;
+  /** Erro na consulta a cb_channels (deploy pré-901). */
+  channelError?: { message: string } | null;
+  /** accounts.owner_user_id, usado por resolveAuditUserId quando não há espelho. */
+  accountOwner?: string | null;
   contactCandidates?: ContactRow[]; // contacts .like (same every call)
   /** Per-call `.like` results — overrides contactCandidates. Lets a
    *  test simulate "miss, then hit" for the unique-race path. */
@@ -68,6 +74,13 @@ function makeDb(script: Script): SupabaseClient {
     maybeSingle: () => {
       if (table === 'whatsapp_config')
         return Promise.resolve({ data: script.config ?? null, error: null });
+      if (table === 'accounts')
+        return Promise.resolve({
+          data: script.accountOwner
+            ? { owner_user_id: script.accountOwner }
+            : null,
+          error: null,
+        });
       return Promise.resolve({ data: null, error: null });
     },
     single: () => {
@@ -95,9 +108,18 @@ function makeDb(script: Script): SupabaseClient {
       }
       return Promise.resolve({ data: null, error: null });
     },
-    // Thenable: `await db.from().update().eq()` lands here.
-    then: (resolve: (v: { data: null; error: null }) => void) =>
-      resolve({ data: null, error: null }),
+    // Thenable: `await db.from().update().eq()` lands here. A contagem de
+    // cb_channels (`select(id, {count, head})` + `.eq()`) também termina aqui.
+    then: (resolve: (v: unknown) => void) => {
+      if (table === 'cb_channels') {
+        return resolve({
+          data: null,
+          count: script.channelCount ?? 0,
+          error: script.channelError ?? null,
+        });
+      }
+      return resolve({ data: null, error: null });
+    },
   };
 
   return {
@@ -132,6 +154,39 @@ describe('resolveConversationByPhone', () => {
     await expect(
       resolveConversationByPhone(db, 'acct', '+14155550123')
     ).rejects.toBeInstanceOf(SendMessageError);
+  });
+
+  it('aceita a conta que só tem cb_channels, sem espelho whatsapp_config', async () => {
+    // O DELETE /api/whatsapp/config apaga o espelho e deixa os canais de pé;
+    // o inbox segue funcionando. Antes, a API pública respondia
+    // "configure o WhatsApp" para uma conta visivelmente configurada.
+    const db = makeDb({
+      config: null,
+      channelCount: 1,
+      accountOwner: 'owner-2',
+      contactCandidates: [{ id: 'c1', phone: '14155550123' }],
+      existingConversation: { id: 'conv1' },
+    });
+    const out = await resolveConversationByPhone(db, 'acct', '+14155550123');
+    expect(out.conversationId).toBe('conv1');
+    expect(out.contactId).toBe('c1');
+  });
+
+  it('ainda falha com whatsapp_not_configured quando não há espelho NEM canais', async () => {
+    const db = makeDb({ config: null, channelCount: 0 });
+    await expect(
+      resolveConversationByPhone(db, 'acct', '+14155550123')
+    ).rejects.toMatchObject({ code: 'whatsapp_not_configured', status: 400 });
+  });
+
+  it('degrada para o erro antigo quando cb_channels não existe (deploy pré-901)', async () => {
+    const db = makeDb({
+      config: null,
+      channelError: { message: 'relation "cb_channels" does not exist' },
+    });
+    await expect(
+      resolveConversationByPhone(db, 'acct', '+14155550123')
+    ).rejects.toMatchObject({ code: 'whatsapp_not_configured' });
   });
 
   it('returns the existing contact + conversation without creating', async () => {

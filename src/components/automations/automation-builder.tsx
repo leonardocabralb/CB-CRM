@@ -63,6 +63,8 @@ import {
 import { interactivePayloadPreviewText } from "@/lib/whatsapp/interactive"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
+import { useChannels } from "@/hooks/use-channels"
+import { ChannelMultiSelect } from "@/components/channels/channel-select"
 
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
@@ -82,6 +84,13 @@ export interface BuilderInitial {
   description: string
   trigger_type: AutomationTriggerType
   trigger_config: Record<string, unknown>
+  /**
+   * Canais em que esta automação pode disparar. **Array vazio = TODOS** —
+   * é a mesma leitura de `channelInScope` no motor, e o save converte para
+   * `null` antes de enviar. Guardar `[]` em vez de `null` aqui deixa o
+   * estado do formulário com um tipo só, sem `undefined` a cada patch.
+   */
+  channel_ids: string[]
   is_active: boolean
   steps: BuilderStep[]
 }
@@ -668,6 +677,10 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
         description: state.description || null,
         trigger_type: state.trigger_type,
         trigger_config: state.trigger_config,
+        // Vazio vira `null` — "sem restrição". A rota também normaliza,
+        // mas mandar `[]` seria pedir para a 903 desativar a automação
+        // (o trigger trata array vazio como escopo órfão).
+        channel_ids: state.channel_ids.length > 0 ? state.channel_ids : null,
         is_active: state.is_active,
         steps: toApiSteps(state.steps),
       }
@@ -755,8 +768,10 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
             <TriggerCard
               type={state.trigger_type}
               config={state.trigger_config}
+              channelIds={state.channel_ids}
               onTypeChange={(tVal) => patchTop("trigger_type", tVal)}
               onConfigChange={(c) => patchTop("trigger_config", c)}
+              onChannelIdsChange={(ids) => patchTop("channel_ids", ids)}
               t={t}
             />
             <StepList
@@ -783,17 +798,23 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
 function TriggerCard({
   type,
   config,
+  channelIds,
   onTypeChange,
   onConfigChange,
+  onChannelIdsChange,
   t,
 }: {
   type: AutomationTriggerType
   config: Record<string, unknown>
+  channelIds: string[]
   onTypeChange: (t: AutomationTriggerType) => void
   onConfigChange: (c: Record<string, unknown>) => void
+  onChannelIdsChange: (ids: string[]) => void
   t: ReturnType<typeof useTranslations>
 }) {
   const [open, setOpen] = useState(false)
+  const tCanais = useTranslations("Channels")
+  const { channels } = useChannels()
   return (
     // Card width: full on mobile, fixed 320px on sm+. The canvas wrapper
     // (max-w-2xl + px-4) keeps this tidy on tablet/desktop.
@@ -838,6 +859,25 @@ function TriggerCard({
                 {t(`triggers.${type}.hint`)}
               </p>
             </div>
+            {/* Escopo de canal. Só aparece com 2+ números: numa conta de um
+                número o seletor não decide nada. Sem ele, `channel_ids` só
+                era gravável pela API — o motor sabia filtrar por canal e a
+                tela não deixava dizer qual. */}
+            {channels.length >= 2 && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  {tCanais("scopeLabel")}
+                </label>
+                <ChannelMultiSelect
+                  channels={channels}
+                  value={channelIds}
+                  onChange={onChannelIdsChange}
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {tCanais("scopeHelpAll")}
+                </p>
+              </div>
+            )}
             {type === "keyword_match" && (
               <KeywordMatchConfig
                 config={config as unknown as KeywordMatchTriggerConfig}

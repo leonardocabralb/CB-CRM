@@ -1,0 +1,120 @@
+// ============================================================
+// Resolver um canal META (API oficial) para operações que NÃO passam por uma
+// conversa: broadcast, sync/criação de modelos.
+//
+// Essas operações liam o espelho `whatsapp_config` e perguntavam
+// "o canal PADRÃO é Meta?". Numa conta cujo padrão é Evolution — que é o caso
+// em produção — a resposta era não, e o operador recebia
+// "Broadcasts require an official Meta (Cloud API) number" logo depois de
+// conectar o número oficial como canal adicional. Beco sem saída.
+//
+// A pergunta certa é "EXISTE um canal Meta utilizável?". Ordem:
+//   1. o canal pedido explicitamente (validado contra a conta e o tipo);
+//   2. o canal PADRÃO, se for Meta;
+//   3. o primeiro canal Meta conectado;
+//   4. o espelho `whatsapp_config`, para a conta que nunca criou cb_channels.
+// ============================================================
+
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+export interface MetaChannelForSend {
+  /** `cb_channels.id`, ou `null` quando veio do espelho legado. */
+  channelId: string | null;
+  phoneNumberId: string;
+  /** AINDA CRIPTOGRAFADO — o chamador decripta. */
+  accessToken: string;
+  wabaId: string | null;
+  label: string;
+}
+
+interface LinhaCanal {
+  id: string;
+  label: string;
+  kind: string;
+  is_default: boolean;
+  status: string;
+  phone_number_id: string | null;
+  waba_id: string | null;
+  access_token: string | null;
+}
+
+/** A linha serve para enviar por API oficial? */
+function utilizavel(c: LinhaCanal): boolean {
+  return c.kind === 'meta' && !!c.phone_number_id && !!c.access_token;
+}
+
+function mapear(c: LinhaCanal): MetaChannelForSend {
+  return {
+    channelId: c.id,
+    phoneNumberId: c.phone_number_id as string,
+    accessToken: c.access_token as string,
+    wabaId: c.waba_id,
+    label: c.label,
+  };
+}
+
+/**
+ * Canal Meta por onde um broadcast / uma operação de modelo deve sair.
+ * Devolve `null` quando a conta não tem NENHUM número oficial utilizável —
+ * o chamador traduz isso no seu próprio erro.
+ *
+ * `requestedChannelId` inexistente, de outra conta ou NÃO-Meta devolve `null`
+ * em vez de cair no padrão: quem pediu um número específico prefere um erro a
+ * ver a campanha sair pelo número errado.
+ */
+export async function resolveMetaChannel(
+  db: SupabaseClient,
+  accountId: string,
+  requestedChannelId?: string | null,
+): Promise<MetaChannelForSend | null> {
+  if (requestedChannelId) {
+    const { data } = await db
+      .from('cb_channels')
+      .select('id, label, kind, is_default, status, phone_number_id, waba_id, access_token')
+      .eq('id', requestedChannelId)
+      .eq('account_id', accountId)
+      .maybeSingle();
+    const linha = data as LinhaCanal | null;
+    return linha && utilizavel(linha) ? mapear(linha) : null;
+  }
+
+  const { data, error } = await db
+    .from('cb_channels')
+    .select('id, label, kind, is_default, status, phone_number_id, waba_id, access_token')
+    .eq('account_id', accountId)
+    .eq('kind', 'meta')
+    // Padrão primeiro, depois conectados, depois o mais antigo — a ordem que
+    // o operador espera se não escolheu nada.
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: true });
+
+  if (!error && data) {
+    const linhas = (data as LinhaCanal[]).filter(utilizavel);
+    const conectado = linhas.find((c) => c.status === 'connected');
+    const escolhido = conectado ?? linhas[0];
+    if (escolhido) return mapear(escolhido);
+  }
+
+  // Espelho legado: conta que nunca passou pelo cadastro de canais.
+  const { data: cfg } = await db
+    .from('whatsapp_config')
+    .select('phone_number_id, waba_id, access_token, provider')
+    .eq('account_id', accountId)
+    .maybeSingle();
+  const c = cfg as {
+    phone_number_id: string | null;
+    waba_id: string | null;
+    access_token: string | null;
+    provider: string | null;
+  } | null;
+  if (c && c.provider !== 'evolution' && c.phone_number_id && c.access_token) {
+    return {
+      channelId: null,
+      phoneNumberId: c.phone_number_id,
+      accessToken: c.access_token,
+      wabaId: c.waba_id,
+      label: 'WhatsApp',
+    };
+  }
+  return null;
+}

@@ -5,9 +5,8 @@
 //   DELETE — remover o canal (e sua instância no servidor Evolution).
 //
 // Ambos admin+. O canal PADRÃO não pode ser excluído aqui (é o espelho de
-// whatsapp_config que o código herdado lê) — trocar o padrão é uma operação
-// separada, de uma fase posterior. "Tornar padrão" também fica para depois:
-// exige reescrever o espelho whatsapp_config atomicamente.
+// whatsapp_config que o código herdado lê) — promova outro canal primeiro,
+// via POST /api/cb/channels/[id]/default.
 // ============================================================
 
 import { NextResponse } from 'next/server';
@@ -95,6 +94,24 @@ export async function DELETE(
     // perderíamos as credenciais). Erros são engolidos na função.
     if (channel.kind === 'evolution' && channel.instance_name) {
       await deleteChannelInstance(channel.instance_name);
+    }
+
+    // Solta o pino ANTES de apagar. A FK é ON DELETE SET NULL, então depois do
+    // delete a conversa fica com channel_id=NULL e channel_pinned=true — um
+    // estado morto: followConversationChannel só move conversa com
+    // channel_pinned=false, então ela nunca mais seria apontada para nenhum
+    // canal. Depois do delete também não daria para encontrá-las (o
+    // channel_id já teria virado NULL). Best-effort: não bloqueia a remoção.
+    const { error: unpinError } = await ctx.supabase
+      .from('conversations')
+      .update({ channel_pinned: false })
+      .eq('channel_id', id)
+      .eq('account_id', ctx.accountId);
+    if (unpinError) {
+      console.warn(
+        '[cb/channels DELETE] falha ao soltar o pino das conversas:',
+        unpinError.message,
+      );
     }
 
     const { error } = await ctx.supabase

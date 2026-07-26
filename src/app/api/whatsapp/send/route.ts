@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { pinConversationChannel } from '@/lib/cb-channels/stamp'
+import { resolveChannelForConversation } from '@/lib/cb-channels/resolve'
 import { createClient } from '@/lib/supabase/server'
 import {
   checkRateLimit,
@@ -77,6 +79,13 @@ export async function POST(request: Request) {
       template_message_params,
       interactive_payload,
       reply_to_message_id,
+      /** Canal escolhido explicitamente (seletor do compositor / primeiro
+       *  contato pela ficha). FIXA a conversa naquele numero. */
+      channel_id,
+      /** Canal que a TELA estava mostrando quando o atendente digitou.
+       *  Se divergir do canal real no instante do envio, a rota devolve 409
+       *  em vez de enviar — ver o bloco de assert abaixo. */
+      expected_channel_id,
     } = body
 
     if ((!conversationIdInput && !contact_id) || !message_type) {
@@ -158,6 +167,61 @@ export async function POST(request: Request) {
         )
       }
       conversationId = resolved
+    }
+
+    // ----------------------------------------------------------
+    // Canal (multi-canal). Duas coisas distintas:
+    //
+    // 1. `channel_id` — escolha EXPLICITA. Fixa a conversa naquele numero
+    //    (channel_pinned), para a resposta do cliente voltar pelo mesmo
+    //    numero que ele viu. Cobre tambem o primeiro contato pela ficha, que
+    //    antes saia sempre pelo canal padrao sem escolha.
+    //
+    // 2. `expected_channel_id` — ASSERT. O compositor manda o canal que
+    //    estava na tela; se o canal real mudou nesse meio-tempo (o cliente
+    //    escreveu por outro numero e a conversa "seguiu"), a rota devolve 409
+    //    com o canal novo, em vez de mandar pelo numero errado.
+    //    Num escritorio de advocacia, responder de um numero que o cliente
+    //    nao esperava mistura identidades — por isso e uma PERGUNTA, nao um
+    //    envio silencioso.
+    // ----------------------------------------------------------
+    if (!conversationId) {
+      return NextResponse.json(
+        { error: 'Failed to resolve a conversation' },
+        { status: 500 },
+      )
+    }
+    if (typeof channel_id === 'string' && channel_id) {
+      const fixou = await pinConversationChannel(
+        supabase,
+        accountId,
+        conversationId,
+        channel_id,
+      )
+      if (!fixou) {
+        return NextResponse.json(
+          { error: 'Canal inválido para esta conta.' },
+          { status: 400 },
+        )
+      }
+    } else if (typeof expected_channel_id === 'string' && expected_channel_id) {
+      const atual = await resolveChannelForConversation(
+        supabase,
+        accountId,
+        { channel_id: await currentConversationChannel(supabase, accountId, conversationId) },
+      )
+      if (atual?.channelId && atual.channelId !== expected_channel_id) {
+        return NextResponse.json(
+          {
+            error: 'channel_changed',
+            code: 'channel_changed',
+            // Só o id: a UI já tem a lista de canais e resolve o rótulo,
+            // evitando uma consulta extra no caminho do envio.
+            current_channel_id: atual.channelId,
+          },
+          { status: 409 },
+        )
+      }
     }
 
     if (!conversationId) {
@@ -249,4 +313,19 @@ async function findOrCreateConversation(
   }
 
   return created.id
+}
+
+/** channel_id atual da conversa (sem resolver o padrao). */
+async function currentConversationChannel(
+  supabase: SendSupabase,
+  accountId: string,
+  conversationId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('conversations')
+    .select('channel_id')
+    .eq('id', conversationId)
+    .eq('account_id', accountId)
+    .maybeSingle()
+  return (data as { channel_id?: string | null } | null)?.channel_id ?? null
 }

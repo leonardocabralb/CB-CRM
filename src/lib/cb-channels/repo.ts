@@ -41,10 +41,13 @@ export interface CbChannel {
   updated_at: string;
 }
 
-/** Canal como o servidor o enxerga — inclui os segredos criptografados. */
+/** Canal como o servidor o enxerga — inclui os segredos criptografados.
+ *  `verify_token` fica de fora de CB_CHANNEL_SAFE_COLUMNS de propósito: é
+ *  segredo, e só a verificação do webhook Meta e a promoção a padrão o leem. */
 export interface CbChannelWithSecrets extends CbChannel {
   access_token: string | null;
   api_key: string | null;
+  verify_token: string | null;
 }
 
 /**
@@ -100,4 +103,30 @@ export async function countChannels(
 
   if (error) throw new Error(`Falha ao contar canais: ${error.message}`);
   return count ?? 0;
+}
+
+/**
+ * Canais da conta no formato mínimo que a validação de ativação precisa
+ * (id + rótulo + tipo). Usa o client de service-role dos engines/rotas, e o
+ * filtro por `account_id` é a barreira de tenancy.
+ *
+ * Devolve `[]` (e não lança) quando a tabela ainda não existe — assim um
+ * deploy fora de ordem não impede salvar automação.
+ */
+export async function loadAccountChannelsForValidation(
+  db: SupabaseClient,
+  accountId: string,
+): Promise<{ id: string; label: string; kind: CbChannelKind }[]> {
+  const { data, error } = await db
+    .from('cb_channels')
+    .select('id, label, kind')
+    .eq('account_id', accountId);
+  if (error) {
+    console.warn(
+      '[cb-channels] listagem para validação falhou (ignorado):',
+      error.message,
+    );
+    return [];
+  }
+  return (data ?? []) as { id: string; label: string; kind: CbChannelKind }[];
 }

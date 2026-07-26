@@ -206,3 +206,66 @@ export function validateTriggerForActivation(
 function nonEmpty(v: unknown): boolean {
   return typeof v === 'string' && v.trim().length > 0
 }
+
+// ------------------------------------------------------------
+// Multi-canal: passos que só existem na API OFICIAL da Meta.
+//
+// `send_template`, `send_buttons` e `send_list` não têm equivalente na
+// Evolution (Baileys). Antes, o operador montava um menu de botões, ativava
+// sem nenhum aviso, e ele funcionava para METADE dos clientes — a tela de
+// logs mostrava execuções `failed` alternando com `success`, sem nenhuma
+// indicação de que a causa era o número por onde a pessoa escreveu.
+//
+// Agora a ativação recusa a combinação impossível na hora de salvar.
+// ------------------------------------------------------------
+
+/** Passos que exigem um canal Meta (API oficial). */
+const META_ONLY_STEPS = new Set(['send_template', 'send_buttons', 'send_list']);
+
+export interface ChannelForValidation {
+  id: string;
+  label: string;
+  kind: 'meta' | 'evolution';
+}
+
+/**
+ * Recusa a automação quando ela usa passo exclusivo da API oficial e o
+ * escopo de canais NÃO contém nenhum canal Meta.
+ *
+ * `channelIds` vazio/nulo = "todos os canais": aí a automação pode cair num
+ * canal Meta e a ativação passa — barrar seria regressão para toda automação
+ * existente, que nasceu sem escopo.
+ */
+export function validateChannelScopeForActivation(
+  steps: StepLike[],
+  channelIds: string[] | null | undefined,
+  contasCanais: ChannelForValidation[],
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (!channelIds || channelIds.length === 0) return issues;
+
+  const escopo = contasCanais.filter((c) => channelIds.includes(c.id));
+  // Ids desconhecidos (canal apagado entre a edição e o save) não devem
+  // travar a ativação — o trigger da 903 já cuida do array órfão.
+  if (escopo.length === 0) return issues;
+  if (escopo.some((c) => c.kind === 'meta')) return issues;
+
+  const nomes = escopo.map((c) => c.label).join(', ');
+  const visitar = (lista: StepLike[], prefixo: string) => {
+    lista.forEach((s, i) => {
+      const path = `${prefixo}steps[${i}]`;
+      if (META_ONLY_STEPS.has(s.step_type)) {
+        issues.push({
+          path: `${path}.step_type`,
+          message: `"${s.step_type}" só funciona em número oficial da Meta, e esta automação está restrita a ${nomes}. Inclua um canal oficial no escopo ou troque o passo por uma mensagem de texto.`,
+        });
+      }
+      if (s.step_type === 'condition' && s.branches) {
+        if (s.branches.yes) visitar(s.branches.yes, `${path}.yes.`);
+        if (s.branches.no) visitar(s.branches.no, `${path}.no.`);
+      }
+    });
+  };
+  visitar(steps, '');
+  return issues;
+}

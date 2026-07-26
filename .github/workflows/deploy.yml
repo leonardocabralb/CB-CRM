@@ -61,7 +61,7 @@ jobs:
             NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
             NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
             NEXT_PUBLIC_SITE_URL=https://crm.cbadvogados.com
-            NEXT_PUBLIC_APP_LOCALE=en
+            NEXT_PUBLIC_APP_LOCALE=pt-BR
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

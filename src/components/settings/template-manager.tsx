@@ -19,6 +19,10 @@ import {
   MEDIA_MAX_BYTES_BY_KIND,
 } from '@/lib/storage/upload-media';
 import { useAuth } from '@/hooks/use-auth';
+import { useChannels } from '@/hooks/use-channels';
+import { metaChannels, preferredChannel } from '@/lib/cb-channels/display';
+import { ChannelCell } from '@/components/channels/channel-badge';
+import { ChannelSelect } from '@/components/channels/channel-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -132,26 +136,21 @@ export function TemplateManager() {
   // a conta tem canais e NENHUM é Meta, o gestor mostra uma guarda graciosa
   // em vez de deixar o sync/submit morrer num erro opaco de WABA. Contas
   // sem canais (pré-migration) seguem o comportamento antigo.
-  const [channelKinds, setChannelKinds] = useState<string[] | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/cb/channels')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((p) => {
-        if (cancelled || !p) return;
-        setChannelKinds(
-          ((p.channels ?? []) as { kind?: string }[]).map((c) => c.kind ?? ''),
-        );
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { channels, loading: channelsLoading } = useChannels();
+  const canaisMeta = useMemo(() => metaChannels(channels), [channels]);
   const metaRequired =
-    channelKinds !== null &&
-    channelKinds.length > 0 &&
-    !channelKinds.includes('meta');
+    !channelsLoading && channels.length > 0 && canaisMeta.length === 0;
+
+  // WABA em que criar/sincronizar modelos. Desde a 903 o modelo pertence a
+  // UM canal: sem escolher, criar "boas_vindas" com dois números oficiais
+  // conectados jogaria o modelo num WABA arbitrário — e o disparo pelo
+  // outro número não o encontraria.
+  const [canalModelos, setCanalModelos] = useState<string | null>(null);
+  useEffect(() => {
+    if (canalModelos || canaisMeta.length === 0) return;
+    const escolha = preferredChannel(canaisMeta);
+    if (escolha) setCanalModelos(escolha.id);
+  }, [canaisMeta, canalModelos]);
   const supabase = createClient();
   const { user, loading: authLoading } = useAuth();
 
@@ -256,6 +255,7 @@ export function TemplateManager() {
       buttons: form.buttons.length > 0 ? form.buttons : undefined,
       sample_values:
         Object.keys(sample_values).length > 0 ? sample_values : undefined,
+      channel_id: canalModelos,
     };
   }
 
@@ -331,7 +331,14 @@ export function TemplateManager() {
     if (!user) return;
     setSyncing(true);
     try {
-      const res = await fetch('/api/whatsapp/templates/sync', { method: 'POST' });
+      // A sync puxa do WABA daquele canal; sem o parâmetro a rota resolve
+      // sozinha, mas com dois números oficiais isso é uma loteria.
+      const res = await fetch(
+        canalModelos
+          ? `/api/whatsapp/templates/sync?channel_id=${encodeURIComponent(canalModelos)}`
+          : '/api/whatsapp/templates/sync',
+        { method: 'POST' },
+      );
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data?.error || `Sync failed (HTTP ${res.status})`);
@@ -514,6 +521,14 @@ export function TemplateManager() {
         description={t('description')}
         action={
           <div className="flex items-center gap-2">
+            {canaisMeta.length >= 2 && (
+              <ChannelSelect
+                channels={canaisMeta}
+                value={canalModelos}
+                onChange={setCanalModelos}
+                className="w-48"
+              />
+            )}
             <Button
               variant="outline"
               onClick={handleSyncFromMeta}
@@ -573,6 +588,15 @@ export function TemplateManager() {
                         <span className="text-xs text-muted-foreground uppercase">
                           {template.language}
                         </span>
+                      )}
+                      {/* A que WABA o modelo pertence. Com dois números
+                          oficiais, dois modelos de mesmo nome convivem — sem
+                          isto seriam duas linhas idênticas na tela. */}
+                      {canaisMeta.length >= 2 && (
+                        <ChannelCell
+                          channels={channels}
+                          channelId={template.channel_id}
+                        />
                       )}
                       {template.quality_score && (
                         <span

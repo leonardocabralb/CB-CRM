@@ -29,6 +29,7 @@ import {
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/api/v1/contacts';
+import { resolveMetaChannel } from '@/lib/cb-channels/resolve-meta';
 
 /** Thrown by createBroadcast on a caller-visible failure; route maps it. */
 export class BroadcastError extends Error {
@@ -54,6 +55,13 @@ export interface CreateBroadcastParams {
   templateName: string;
   templateLanguage?: string | null;
   recipients: BroadcastRecipientInput[];
+  /**
+   * Numero de saida da campanha. Ausente = primeiro canal Meta utilizavel da
+   * conta (padrao primeiro). Sem isso, uma campanha de cobranca pensada para
+   * o Comercial saia pelo numero pessoal do socio, e os clientes passavam a
+   * responder no numero errado.
+   */
+  channelId?: string | null;
 }
 
 interface PlannedRecipient {
@@ -64,6 +72,8 @@ interface PlannedRecipient {
 
 export interface BroadcastPlan {
   broadcastId: string;
+  /** Canal por onde a campanha REALMENTE sai. `null` = espelho legado. */
+  channelId: string | null;
   templateName: string;
   templateLanguage: string;
   phoneNumberId: string;
@@ -109,41 +119,40 @@ export async function createBroadcast(
     );
   }
 
-  // Config (fail fast + provides the audit trail owner already resolved
-  // by the caller). Meta send needs phone_number_id + decrypted token.
-  const { data: config, error: configError } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', accountId)
-    .single();
-  if (configError || !config) {
-    throw new BroadcastError(
-      'whatsapp_not_configured',
-      'WhatsApp not configured. Please set up your WhatsApp integration first.',
-      400
-    );
-  }
-  // Broadcast é template-only → só sai por número Meta (API oficial). Sem
-  // esta guarda, uma conta cujo padrão é Evolution morreria num decrypt de
-  // token nulo — erro opaco em vez de motivo claro. (Multi-canal, Fase 5.)
-  if (config.provider === 'evolution' || !config.phone_number_id || !config.access_token) {
+  // Canal de saida (multi-canal, Fase E4). A pergunta mudou de "o PADRAO e
+  // Meta?" para "EXISTE canal Meta utilizavel?" — antes, uma conta cujo padrao
+  // e Evolution recebia "Broadcasts require an official Meta number" mesmo
+  // tendo acabado de conectar o numero oficial como canal adicional.
+  const canal = await resolveMetaChannel(db, accountId, params.channelId);
+  if (!canal) {
     throw new BroadcastError(
       'meta_channel_required',
-      'Broadcasts require an official Meta (Cloud API) number — this account default WhatsApp channel is not a Meta number.',
+      'Broadcasts require an official Meta (Cloud API) number — connect one in Settings > Connections, or pick a different channel.',
       400
     );
   }
-  const accessToken = decrypt(config.access_token);
+  const accessToken = decrypt(canal.accessToken);
 
   // Template row (once) for header/button components; guard a
   // malformed local row rather than N identical opaque failures.
-  const { data: rawTemplateRow } = await db
+  // Escopado ao canal: desde a 903 o mesmo nome de modelo pode existir em
+  // dois WABAs, entao um .maybeSingle() sem recorte estouraria com "multiple
+  // rows". O do canal ganha do global (channel_id NULL, pre-903).
+  let tplQuery = db
     .from('message_templates')
     .select('*')
     .eq('account_id', accountId)
     .eq('name', templateName)
-    .eq('language', templateLanguage)
-    .maybeSingle();
+    .eq('language', templateLanguage);
+  if (canal.channelId) {
+    tplQuery = tplQuery.or(`channel_id.eq.${canal.channelId},channel_id.is.null`);
+  }
+  const { data: tplCandidatos } = await tplQuery;
+  const tplLista = (tplCandidatos ?? []) as Record<string, unknown>[];
+  const rawTemplateRow =
+    tplLista.find((t) => t.channel_id === canal.channelId) ??
+    tplLista.find((t) => t.channel_id == null) ??
+    null;
   if (rawTemplateRow && !isMessageTemplate(rawTemplateRow)) {
     throw new BroadcastError(
       'template_malformed',
@@ -211,6 +220,9 @@ export async function createBroadcast(
       name: name || `API broadcast (${templateName})`,
       template_name: templateName,
       template_language: templateLanguage,
+      // Por qual numero a campanha saiu — sem isto, o relatorio depois nao
+      // diz de onde ela partiu.
+      channel_id: canal.channelId,
       status: 'sending',
       total_recipients: deduped.length,
     })
@@ -248,7 +260,8 @@ export async function createBroadcast(
     broadcastId: broadcast.id,
     templateName,
     templateLanguage,
-    phoneNumberId: config.phone_number_id,
+    phoneNumberId: canal.phoneNumberId,
+    channelId: canal.channelId,
     accessToken,
     templateRow,
     planned,

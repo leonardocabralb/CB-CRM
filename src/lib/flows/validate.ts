@@ -791,3 +791,61 @@ function outgoingEdges(node: NodeInput): string[] {
       return [];
   }
 }
+
+// ------------------------------------------------------------
+// Multi-canal: nós que só existem na API OFICIAL da Meta.
+//
+// `send_buttons` e `send_list` não têm equivalente na Evolution (Baileys).
+// Antes, o operador clonava o template "Welcome menu", ativava, e o cliente
+// que mandava "oi" pelo número não-oficial simplesmente não recebia nada —
+// pior, o run travava e passava a engolir as mensagens seguintes dele.
+// A Fase A fez o run falhar de forma visível; aqui a combinação impossível
+// é recusada já na ativação.
+// ------------------------------------------------------------
+
+/** Nós que exigem um canal Meta (API oficial). */
+const META_ONLY_NODES = new Set(['send_buttons', 'send_list']);
+
+export interface FlowChannelForValidation {
+  id: string;
+  label: string;
+  kind: 'meta' | 'evolution';
+}
+
+/**
+ * Recusa a ativação quando o flow está preso a um canal Evolution e usa nó
+ * interativo — seja pelo canal do próprio flow, seja por um nó com
+ * `channel_id` fixado.
+ *
+ * Flow sem `channel_id` (curinga) NÃO é bloqueado: ele pode entrar por um
+ * canal Meta, e barrá-lo seria regressão para todo flow existente.
+ */
+export function validateFlowChannelForActivation(
+  flowChannelId: string | null | undefined,
+  nodes: Array<{ node_key: string; node_type: string; config: Record<string, unknown> }>,
+  canais: FlowChannelForValidation[],
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const porId = new Map(canais.map((c) => [c.id, c]));
+
+  for (const node of nodes) {
+    if (!META_ONLY_NODES.has(node.node_type)) continue;
+
+    // Canal efetivo do nó: o dele, senão o do flow.
+    const alvoId =
+      (node.config?.channel_id as string | null | undefined) ?? flowChannelId ?? null;
+    if (!alvoId) continue; // curinga — pode cair num canal Meta
+
+    const canal = porId.get(alvoId);
+    // Canal desconhecido (apagado entre editar e salvar) não trava a ativação.
+    if (!canal || canal.kind === 'meta') continue;
+
+    issues.push({
+      node_key: node.node_key,
+      severity: 'error',
+      scope: 'node',
+      message: `O nó "${node.node_type}" precisa de um número oficial da Meta, mas está apontado para "${canal.label}", que é um número não oficial (QR Code). Troque o canal ou use uma mensagem de texto.`,
+    });
+  }
+  return issues;
+}

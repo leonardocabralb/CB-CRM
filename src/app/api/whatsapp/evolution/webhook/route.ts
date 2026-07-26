@@ -5,6 +5,11 @@ import { timingSafeEqual } from 'crypto';
 import { normalizeUpsert, type EvolutionUpsert } from '@/lib/whatsapp/transport/evolution-inbound';
 import { persistInboundMessage } from '@/lib/whatsapp/inbound-store';
 import { resolveInboundEvolutionChannel } from '@/lib/cb-channels/resolve-inbound';
+import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
+import { fetchAndStoreEvolutionMedia } from '@/lib/whatsapp/transport/evolution-media';
+import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
+import { decrypt } from '@/lib/whatsapp/encryption';
 
 // Inbound processing fans out to flows / automations / AI, so give the
 // after() block headroom beyond the platform default.
@@ -96,6 +101,20 @@ export async function POST(request: Request) {
         );
         if (!normalized) continue;
         try {
+          // Midia RECEBIDA (ALTO): ate aqui 100% do que o cliente mandava por
+          // numero nao-oficial se perdia — a bolha aparecia vazia no inbox e o
+          // conteudo so existia no aparelho pareado. A Evolution nao expoe URL
+          // de download, entao o binario e buscado em base64 e persistido no
+          // bucket chat-media. Best-effort: falhando, a mensagem e gravada sem
+          // anexo, como antes.
+          if (normalized.contentType !== 'text' && !normalized.mediaUrl) {
+            normalized.mediaUrl = await resolveEvolutionMedia(
+              route.accountId,
+              route.channelId,
+              item,
+              normalized.contentType,
+            );
+          }
           await persistInboundMessage(supabaseAdmin(), normalized);
         } catch (err) {
           console.error('[evolution/webhook] persist failed:', err);
@@ -120,7 +139,39 @@ export async function POST(request: Request) {
           .update({ status })
           .eq('message_id', d.keyId)
           .eq('sender_type', 'agent');
-        if (error) console.error('[evolution/webhook] status update failed:', error);
+        if (error) {
+          console.error('[evolution/webhook] status update failed:', error);
+          return;
+        }
+
+        // Fan-out do webhook público. O lado Meta já emite
+        // message.status_updated; sem isto, quem integra recebe o ✓✓ dos
+        // números oficiais e silêncio dos não-oficiais. Best-effort: uma
+        // falha aqui não pode desfazer o UPDATE acima.
+        const { data: msgRow } = await supabaseAdmin()
+          .from('messages')
+          .select('conversation_id, channel_id, conversations(account_id)')
+          .eq('message_id', d.keyId)
+          .eq('sender_type', 'agent')
+          .limit(1)
+          .maybeSingle();
+
+        const accountId = (
+          msgRow?.conversations as { account_id: string } | null
+        )?.account_id;
+        if (msgRow && accountId) {
+          await dispatchWebhookEvent(
+            supabaseAdmin(),
+            accountId,
+            'message.status_updated',
+            {
+              whatsapp_message_id: d.keyId,
+              conversation_id: msgRow.conversation_id,
+              status,
+              channel_id: msgRow.channel_id ?? null,
+            },
+          );
+        }
       });
     }
     return NextResponse.json({ ok: true });
@@ -171,4 +222,43 @@ export async function POST(request: Request) {
 
   // Any other event (qrcode.updated, send.message echo, …) — just ack.
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * Monta o client da Evolution a partir das credenciais do canal e baixa a
+ * midia. Devolve `null` (e nunca lanca) quando o canal nao resolve ou o
+ * download falha — o chamador persiste a mensagem sem anexo.
+ */
+async function resolveEvolutionMedia(
+  accountId: string,
+  channelId: string | null,
+  rawItem: unknown,
+  contentType: string,
+): Promise<string | null> {
+  try {
+    const canal = await resolveChannelForConversation(supabaseAdmin(), accountId, {
+      channel_id: channelId,
+    });
+    if (!canal || canal.provider !== 'evolution') return null;
+    if (!canal.base_url || !canal.instance_name || !canal.api_key) return null;
+
+    const client = new EvolutionClient({
+      baseUrl: canal.base_url,
+      instance: canal.instance_name,
+      apikey: decrypt(canal.api_key),
+    });
+    return await fetchAndStoreEvolutionMedia({
+      db: supabaseAdmin(),
+      client,
+      accountId,
+      rawMessage: (rawItem as { message?: unknown })?.message ?? rawItem,
+      contentType,
+    });
+  } catch (err) {
+    console.error(
+      '[evolution/webhook] midia recebida nao pode ser salva:',
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
 }

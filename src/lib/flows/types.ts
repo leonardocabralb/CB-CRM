@@ -30,12 +30,26 @@ export interface StartNodeConfig {
 export interface SendMessageNodeConfig {
   /** Plain text sent to the customer; can interpolate {{vars.X}}. */
   text: string;
+  /**
+   * Canal de SAIDA deste no. Ausente = canal travado no RUN (por onde o
+   * cliente entrou). Preenchido = forca aquele numero — e o "a triagem chega
+   * pelo nao-oficial, mas a confirmacao formal sai pelo oficial".
+   */
+  channel_id?: string | null;
+
   /** Auto-advance target after the message lands at Meta. */
   next_node_key: string;
 }
 
 export interface SendButtonsNodeConfig {
   text: string;
+  /**
+   * Canal de SAIDA deste no. Ausente = canal travado no RUN (por onde o
+   * cliente entrou). Preenchido = forca aquele numero — e o "a triagem chega
+   * pelo nao-oficial, mas a confirmacao formal sai pelo oficial".
+   */
+  channel_id?: string | null;
+
   /** Optional header / footer lines around the buttons. */
   header_text?: string;
   footer_text?: string;
@@ -52,6 +66,13 @@ export interface SendButtonsNodeConfig {
 
 export interface SendListNodeConfig {
   text: string;
+  /**
+   * Canal de SAIDA deste no. Ausente = canal travado no RUN (por onde o
+   * cliente entrou). Preenchido = forca aquele numero — e o "a triagem chega
+   * pelo nao-oficial, mas a confirmacao formal sai pelo oficial".
+   */
+  channel_id?: string | null;
+
   /** Label of the tap-to-expand button on the message bubble. */
   button_label: string;
   header_text?: string;
@@ -83,6 +104,13 @@ export interface SendListNodeConfig {
  */
 export interface SendMediaNodeConfig {
   media_type: "image" | "video" | "document";
+  /**
+   * Canal de SAIDA deste no. Ausente = canal travado no RUN (por onde o
+   * cliente entrou). Preenchido = forca aquele numero — e o "a triagem chega
+   * pelo nao-oficial, mas a confirmacao formal sai pelo oficial".
+   */
+  channel_id?: string | null;
+
   /** Public URL Meta will fetch. Uploaded via the builder's file picker. */
   media_url: string;
   /** Optional caption shown under the media (Meta caps at 1024 chars). */
@@ -237,6 +265,13 @@ export interface FlowRow {
   trigger_type: "keyword" | "first_inbound_message" | "manual";
   trigger_config: KeywordTriggerConfig | FirstInboundTriggerConfig | Record<string, unknown>;
   entry_node_id: string | null;
+  /**
+   * Canal (`cb_channels.id`) em que este flow pode ENTRAR. `null` = curinga,
+   * dispara em qualquer numero — o comportamento de todo flow criado antes do
+   * multi-canal. Com valor, o gatilho so casa naquele numero, que e o que
+   * permite dois flows com a MESMA palavra-chave em numeros diferentes.
+   */
+  channel_id?: string | null;
   fallback_policy: FlowFallbackPolicy;
   execution_count: number;
   last_executed_at: string | null;
@@ -272,6 +307,13 @@ export interface FlowRunRow {
     | "paused_by_agent"
     | "failed";
   current_node_key: string | null;
+  /**
+   * Canal TRAVADO na entrada do run. Os nos de envio usam este valor em vez
+   * de re-resolver pela conversa a cada no — senao o cliente que responde por
+   * outro numero no meio do atendimento faria o bot trocar de identidade.
+   * `null` = runs anteriores a 903, que caem no canal da conversa.
+   */
+  channel_id?: string | null;
   last_prompt_message_id: string | null;
   vars: Record<string, unknown>;
   reprompt_count: number;
@@ -339,6 +381,12 @@ export interface DispatchInboundInput {
   contactId: string;
   conversationId: string;
   message: ParsedInbound;
+  /**
+   * Canal (cb_channels.id) por onde a mensagem entrou. `null` = desconhecido
+   * ou conta pré-multi-canal. Necessário para o gatilho poder filtrar por
+   * canal e para o run travar o canal de saída (Fase E2).
+   */
+  channelId?: string | null;
 }
 
 export interface DispatchInboundResult {

@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { useAuth } from '@/hooks/use-auth';
+import { useChannels } from '@/hooks/use-channels';
+import { metaChannels, preferredChannel } from '@/lib/cb-channels/display';
+import { ChannelSelect } from '@/components/channels/channel-select';
 import { formatCurrency } from '@/lib/currency';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag, ContactNote, CustomField, ContactCustomValue, Deal, MessageTemplate } from '@/types';
@@ -68,6 +71,19 @@ export function ContactDetailView({
   // find-or-creates the conversation, so no inbound message is required.
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [sendingTemplate, setSendingTemplate] = useState(false);
+
+  // PRIMEIRO CONTATO pela ficha: fora de uma conversa existente não há canal
+  // a seguir, então antes disto o envio saía sempre pelo padrão da conta —
+  // sem escolha e sem aviso. Só canais Meta: primeiro contato é por modelo,
+  // e modelo é conceito da API oficial.
+  const { channels } = useChannels();
+  const canaisMeta = useMemo(() => metaChannels(channels), [channels]);
+  const [canalEnvio, setCanalEnvio] = useState<string | null>(null);
+  useEffect(() => {
+    if (canalEnvio || canaisMeta.length === 0) return;
+    const escolha = preferredChannel(canaisMeta);
+    if (escolha) setCanalEnvio(escolha.id);
+  }, [canaisMeta, canalEnvio]);
 
   // Details tab
   const [editName, setEditName] = useState('');
@@ -338,6 +354,9 @@ export function ContactDetailView({
           // No conversation_id — the route find-or-creates one for this
           // contact, mirroring the inbox template-send payload otherwise.
           contact_id: contactId,
+          // Fixa a conversa neste número: a resposta do cliente volta pelo
+          // mesmo lugar de onde ele viu a mensagem.
+          channel_id: canalEnvio,
           message_type: 'template',
           template_name: template.name,
           template_language: template.language,
@@ -432,7 +451,7 @@ export function ContactDetailView({
                   </div>
                 </div>
               </div>
-              <div className="mt-3">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
                   onClick={() => setTemplatePickerOpen(true)}
@@ -446,6 +465,14 @@ export function ContactDetailView({
                   )}
                   {t('sendTemplateBtn')}
                 </Button>
+                {canaisMeta.length >= 2 && (
+                  <ChannelSelect
+                    channels={canaisMeta}
+                    value={canalEnvio}
+                    onChange={setCanalEnvio}
+                    className="h-8 w-44"
+                  />
+                )}
               </div>
             </SheetHeader>
 
@@ -750,6 +777,7 @@ export function ContactDetailView({
       </SheetContent>
     </Sheet>
     <TemplatePicker
+      channelId={canalEnvio}
       open={templatePickerOpen}
       onOpenChange={setTemplatePickerOpen}
       onSelect={handleSendTemplate}

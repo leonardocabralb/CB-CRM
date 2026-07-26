@@ -45,6 +45,9 @@ export default function NewBroadcastPage() {
   >({});
   const [headerMediaUrl, setHeaderMediaUrl] = useState('');
   const [name, setName] = useState('');
+  // Canal Meta de saída. Escolhido no passo 1 (a lista de modelos depende
+  // dele), conferido no passo 4 e gravado na campanha.
+  const [channelId, setChannelId] = useState<string | null>(null);
 
   async function handleSend() {
     if (!template) return;
@@ -62,6 +65,7 @@ export default function NewBroadcastPage() {
         },
         variables,
         headerMediaUrl,
+        channelId,
       });
       router.push(`/broadcasts/${broadcastId}`);
     } catch (err) {
@@ -112,6 +116,7 @@ export default function NewBroadcastPage() {
         type: audience.type,
         tagIds: audience.tagIds,
       },
+      channel_id: channelId,
       status: 'draft',
       total_recipients: 0,
       sent_count: 0,
@@ -190,6 +195,22 @@ export default function NewBroadcastPage() {
         >
           {currentStep === 0 && (
             <Step1ChooseTemplate
+              channelId={channelId}
+              onChannelChange={(id) => {
+                setChannelId(id);
+                // Modelo de OUTRO WABA não serve para este número. Sem
+                // limpar, dava para escolher o modelo do Comercial, trocar
+                // para o Jurídico e seguir: o cartão sumia da lista mas a
+                // seleção continuava viva, o "Avançar" seguia habilitado e
+                // a campanha morria no envio, depois de já ter público e
+                // variáveis definidos. Modelo global (`channel_id` nulo)
+                // sobrevive — ele serve qualquer canal Meta.
+                setTemplate((atual) =>
+                  atual && id && atual.channel_id && atual.channel_id !== id
+                    ? null
+                    : atual,
+                );
+              }}
               selectedTemplate={template}
               onSelect={setTemplate}
               onNext={() => setCurrentStep(1)}
@@ -217,6 +238,7 @@ export default function NewBroadcastPage() {
           )}
           {currentStep === 3 && template && (
             <Step4ScheduleSend
+              channelId={channelId}
               name={name}
               onNameChange={setName}
               template={template}

@@ -137,7 +137,7 @@ arquivo** — por isso preferir módulos novos a reescrever o core.
 batalha — o upstream mexe nele a cada feature e nós temos tradução por cima.
 Também são nossos: `messages/pt-BR.json`, `CLAUDE.md`, `.gitignore`,
 `scripts/`, as migrations `037_evolution_transport.sql`, `900_cb_*` e
-`901`/`902_cb_*`, a **integração Evolution API** (`src/lib/whatsapp/transport/`,
+`901`/`902`/`903_cb_*`, a **integração Evolution API** (`src/lib/whatsapp/transport/`,
 `src/app/api/whatsapp/evolution/`, `src/components/settings/evolution-connect.tsx`,
 `src/lib/whatsapp/inbound-store.ts`), o **multi-canal** (`src/lib/cb-channels/`,
 `src/app/api/cb/`, `src/components/settings/cb-channels-panel.tsx`), a **infra de
@@ -146,13 +146,73 @@ deploy** (`Dockerfile`, `docker-stack.yml`, `.github/workflows/deploy.yml`,
 string literal onde nós temos `t('chave')` — ao resolver, manter a nossa forma e
 levar o texto novo dele para os **dois** dicionários).
 
-⚠️ **Dois arquivos do upstream ganharam mudanças NOSSAS, ADITIVAS, para o
-multi-canal — cuidado no merge**: `src/lib/whatsapp/send-message.ts` (resolve o
-canal da conversa e carimba `channel_id` na saída) e
-`src/app/api/whatsapp/webhook/route.ts` (o webhook **Meta**, que carimba
-`channel_id` na entrada resolvendo por `phone_number_id`). Ambas preservam 100%
-do comportamento antigo (best-effort, deploy-safe); ao mesclar upstream, manter os
-nossos trechos aditivos e não deixar o upstream sobrescrevê-los.
+⚠️ **Vários arquivos do upstream ganharam mudanças NOSSAS para o multi-canal —
+cuidado no merge.** Ao mesclar upstream, manter os nossos trechos e não deixar o
+upstream sobrescrevê-los:
+
+| Arquivo do upstream | O que é nosso |
+| --- | --- |
+| `src/lib/whatsapp/send-message.ts` | resolve o canal, carimba `channel_id`, devolve `channelId` no resultado, e busca o template **filtrando por canal** |
+| `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
+| `src/lib/whatsapp/inbound-store.ts` | idem, no lado Evolution |
+| `src/lib/automations/engine.ts` | `channelInScope`, condição `channel`, canal de saída por passo |
+| `src/lib/flows/engine.ts` | `findEntryFlow` por canal, `flow_runs.channel_id`, try/catch nos nós interativos |
+| `src/lib/ai/{auto-reply,config,knowledge,usage}.ts` | agente por canal, interruptor, RAG por canal |
+| `src/lib/whatsapp/broadcast-core.ts` + rotas de template | `resolveMetaChannel` no lugar do espelho |
+| `src/lib/api/v1/conversations.ts`, `src/lib/api-keys/scopes.ts` | `channel_id` nos serializers, escopo `channels:read` |
+| `src/components/automations/automation-builder.tsx`, `src/components/flows/{flow-builder,flow-editor-state}.tsx` | escopo de canal editável (multi-select / select), canais no contexto do editor, validação de canal no cliente |
+| páginas de `automations`, `flows`, `broadcasts`, `dashboard` | etiqueta e filtro de canal, coluna de canal nos históricos, filtro do painel |
+| `src/components/broadcasts/step{1,4}-*.tsx`, `src/hooks/use-broadcast-sending.ts` | canal escolhido no passo 1, `channel_id` no corpo da API e na linha de `broadcasts` |
+| `src/components/settings/template-manager.tsx` | seletor de WABA para criar/sincronizar, etiqueta de canal por modelo |
+| `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato, canal da conversa na ficha |
+| `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
+| `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
+
+⚠️ **UI de canal: peças próprias, prefira reusá-las.** `src/hooks/use-channels.ts`
+(uma busca por montagem, falha silenciosa), `src/lib/cb-channels/display.ts`
+(funções puras, com teste) e `src/components/channels/` (`ChannelBadge`,
+`ChannelCell`, `ChannelScopeBadge`, `ChannelSelect`, `ChannelMultiSelect`,
+`ChannelFilter`). Convenções que valem em toda tela nova:
+
+- **Escopo vazio = TODOS os canais**, nunca "nenhum" — igual ao motor
+  (`channelInScope`, `findEntryFlow`). Uma tela que disser "nenhum canal" onde o
+  motor lê "todos" faz o operador desativar a regra errada.
+- **Seletor some com menos de 2 canais.** Numa conta de um número ele não decide
+  nada e só ocupa espaço.
+- **Registro sem `channel_id` mostra travessão**, nunca o canal padrão: em
+  registro anterior à 903 o disparo pode ter vindo de outro número.
+- **Filtro não esconde o irrestrito.** Uma automação sem escopo dispara em todos
+  os números e continua visível sob qualquer filtro.
+
+⚠️ **`src/components/ui/select.tsx` divergiu do upstream — não deixar sobrescrever.**
+O `<Select.Value />` do base-ui mostra o **valor cru** quando o `Root` não recebe
+`items`: a tela de Agentes exibia literalmente `openai` e `__queue__` para o
+usuário, e o editor de fluxos, `keyword`. Nosso `Select` agora **deriva `items`
+percorrendo os próprios `<SelectItem>` da árvore**, então todo call site (~20)
+mostra o rótulo certo sem mudar nada. Ao mesclar upstream, manter o wrapper.
+
+- O wrapper repassa os genéricos `<Value, Multiple>`. Tipá-lo com o
+  `Root.Props` não-genérico apaga a inferência e joga o `onValueChange` de
+  todo call site para `any` implícito (20 erros de typecheck de uma vez).
+- A lista é memoizada por **assinatura**, não por `children` — `children` tem
+  identidade nova a cada render, e o `store.update` do base-ui compara com
+  `Object.is`, então sem isso os assinantes eram notificados à toa.
+- Rótulo que é JSX (não texto) entra na assinatura por posição. Quem precisar
+  de rótulo dinâmico complexo no gatilho passa a função em `<SelectValue>` —
+  é o que `channel-select.tsx` faz, para o gatilho mostrar só o nome do canal
+  em vez da linha inteira com bolinha e telefone.
+
+⚠️ **A 903 removeu dois índices únicos.** `message_templates(user_id, name,
+language)` e `ai_configs(account_id)` viraram pares de índices **parciais**
+(global + por canal). Consequências que já morderam durante a implementação e
+mordem de novo em qualquer código novo:
+
+- **`.upsert(..., { onConflict })` não funciona mais nessas tabelas** — índice
+  parcial não serve como alvo de `ON CONFLICT`. Use lookup + insert/update.
+- **`.maybeSingle()` filtrando só por `account_id` estoura** assim que existir
+  uma segunda linha (agente por canal, template homônimo em outro WABA).
+  Toda consulta precisa escopar o canal, ou `.is('channel_id', null)` quando o
+  alvo é explicitamente o padrão da conta.
 
 ## Branches — criação e nomenclatura
 
@@ -179,7 +239,8 @@ nossos trechos aditivos e não deixar o upstream sobrescrevê-los.
   aplicada e no `main` — **não renumerar**. É exceção conhecida; daqui em diante
   seguir o `900+`. Se o upstream um dia criar um `037_*`, resolver o conflito de
   número renomeando o **do upstream** no merge, nunca o nosso já aplicado.
-  ⚠️ Ela é a **única** aplicada *sem* registro no histórico do Supabase: as
+  ⚠️ Aplicadas até aqui: `900`, `901`, `902` e `903_cb_multicanal`.
+  ⚠️ A `037` é a **única** aplicada *sem* registro no histórico do Supabase: as
   colunas dela existem no banco (`whatsapp_config.provider`, `base_url`,
   `instance_name`, `api_key`, `instance_state`, …), mas `list_migrations` não a
   lista. Ou seja, **o histórico não é fonte de verdade completa** — para checar
@@ -241,10 +302,17 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
   **Docker Swarm da VPS** (`82.25.76.63` / `vps.cbadvogados.com`), atrás do
   **Traefik** (TLS Let's Encrypt). **Nunca dar push no `main` sem o operador
   saber que aquilo vai para produção.**
-- Domínio: `crm.cbadvogados.com`. ⚠️ Em 2026-07-23 o DNS ainda apontava para a
-  Hostinger compartilhada, não para a VPS — o cutover é manual (ver
-  `docs/DEPLOY-VPS.md`, passo 1). Até virar o DNS, o rollout atinge o serviço da
-  VPS mas o domínio público ainda serve a Hostinger.
+- Domínio: `crm.cbadvogados.com`. ✅ O cutover de DNS **já foi feito** (conferido
+  em 2026-07-25): `crm.cbadvogados.com` → `vps.cbadvogados.com` → `82.25.76.63`,
+  respondendo 200 com TLS do Traefik. Ou seja, o domínio público serve a VPS —
+  **o push no `main` atinge usuário real**, não mais um serviço isolado.
+- ⚠️ **`NEXT_PUBLIC_APP_LOCALE` é build-arg, não env de runtime.** Como todo
+  `NEXT_PUBLIC_*` é inlinado no bundle **em tempo de build**, editar o `crm.env`
+  da VPS **não** muda o idioma — é preciso alterar `deploy.yml`/`docker-stack.yml`
+  e **rebuildar a imagem**. Isso já mordeu: até 2026-07-25 os dois arquivos
+  fixavam `en` e a produção inteira servia inglês, enquanto o dev local (que lê
+  `.env.local`, com `pt-BR`) parecia certo. Ao investigar "produção está
+  diferente do meu local", checar build-arg antes de env de runtime.
 - Segredos de runtime vivem em `crm.env` **na VPS** (fora do git), espelhando o
   `.env.local`. A Evolution API roda como serviço `evolution_evolution` no mesmo
   Swarm.

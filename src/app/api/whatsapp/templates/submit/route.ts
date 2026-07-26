@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { resolveMetaChannel } from '@/lib/cb-channels/resolve-meta'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
@@ -58,18 +59,37 @@ function buildUpsertRow(
 
 async function upsertTemplateRow(
   supabase: SupabaseClient,
-  row: ReturnType<typeof buildUpsertRow>,
+  row: ReturnType<typeof buildUpsertRow> & { channel_id?: string | null },
 ) {
-  // TODO(account-sharing): conflict target is still scoped to
-  // user_id. Once a follow-up migration drops the legacy unique
-  // index on (user_id, name, language) and adds (account_id,
-  // name, language), switch `onConflict` here so two teammates
-  // can't shadow each other's same-named template.
-  return supabase
+  // ⚠️ NAO usa `.upsert(..., { onConflict })`. A migration 903 trocou o unico
+  // indice (user_id, name, language) por DOIS indices PARCIAIS — um para os
+  // modelos globais (channel_id IS NULL) e um por canal — porque o mesmo nome
+  // de modelo passa a ser legitimo em dois WABAs. Indice parcial nao serve
+  // como alvo de ON CONFLICT, entao o upsert quebraria.
+  //
+  // Lookup + insert/update escopado ao canal, no mesmo formato que a rota de
+  // sync ja usa.
+  let lookup = supabase
     .from('message_templates')
-    .upsert(row, { onConflict: 'user_id,name,language' })
-    .select()
-    .single()
+    .select('id')
+    .eq('user_id', row.user_id)
+    .eq('name', row.name)
+    .eq('language', row.language)
+  lookup = row.channel_id
+    ? lookup.eq('channel_id', row.channel_id)
+    : lookup.is('channel_id', null)
+
+  const { data: existente } = await lookup.maybeSingle()
+
+  if (existente?.id) {
+    return supabase
+      .from('message_templates')
+      .update(row)
+      .eq('id', existente.id)
+      .select()
+      .single()
+  }
+  return supabase.from('message_templates').insert(row).select().single()
 }
 
 /**
@@ -145,35 +165,41 @@ export async function POST(request: Request) {
     let metaTemplateId: string
     let metaStatus: string
 
+    // Canal escolhido no corpo; o modelo nasce carimbado com ele.
+    const canalPedido =
+      typeof (payload as { channel_id?: unknown }).channel_id === 'string'
+        ? ((payload as { channel_id?: string }).channel_id as string)
+        : null
+    let canalDoModelo: string | null = canalPedido
+
     if (dryRun) {
       metaTemplateId = `dry-run-${crypto.randomUUID()}`
       metaStatus = 'PENDING'
     } else {
-      const { data: config, error: configError } = await supabase
-        .from('whatsapp_config')
-        .select('*')
-        .eq('account_id', accountId)
-        .single()
-      if (configError || !config) {
+      // Multi-canal: cria o modelo no WABA do canal PEDIDO. Antes ia sempre
+      // para o WABA do espelho — o operador cadastrava o 2o numero, criava um
+      // modelo achando que era "do numero 2", e ele nascia no WABA do 1o.
+      const canal = await resolveMetaChannel(supabase, accountId, canalPedido)
+      if (!canal) {
         return NextResponse.json(
           {
             error:
-              'WhatsApp not configured. Connect your WhatsApp Business account in Settings first.',
+              'WhatsApp not configured. Connect an official Meta (Cloud API) number in Settings > Connections first.',
           },
           { status: 400 },
         )
       }
-      if (!config.waba_id) {
+      if (!canal.wabaId) {
         return NextResponse.json(
           {
-            error:
-              'WABA (WhatsApp Business Account) ID missing. Re-connect your account in Settings.',
+            error: `WABA (WhatsApp Business Account) ID missing for "${canal.label}". Re-connect that number in Settings.`,
           },
           { status: 400 },
         )
       }
+      canalDoModelo = canal.channelId
 
-      const accessToken = decrypt(config.access_token)
+      const accessToken = decrypt(canal.accessToken)
 
       // Image headers need a Resumable-Upload handle (Meta rejects a
       // plain URL at creation). Derive it from header_media_url before
@@ -191,7 +217,7 @@ export async function POST(request: Request) {
       const metaPayload = buildMetaTemplatePayload(payload)
       try {
         const meta = await submitMessageTemplate({
-          wabaId: config.waba_id,
+          wabaId: canal.wabaId,
           accessToken,
           payload: metaPayload,
         })
@@ -203,11 +229,14 @@ export async function POST(request: Request) {
         // until they fix and re-submit.
         await upsertTemplateRow(
           supabase,
-          buildUpsertRow(accountId, user.id, payload, {
-            status: 'DRAFT',
-            metaTemplateId: null,
-            submissionError: message,
-          }),
+          {
+            ...buildUpsertRow(accountId, user.id, payload, {
+              status: 'DRAFT',
+              metaTemplateId: null,
+              submissionError: message,
+            }),
+            channel_id: canalDoModelo,
+          },
         )
         const isRateLimit = /\b429\b/.test(message)
         return NextResponse.json(
@@ -223,11 +252,14 @@ export async function POST(request: Request) {
 
     const { data: row, error: upsertErr } = await upsertTemplateRow(
       supabase,
-      buildUpsertRow(accountId, user.id, payload, {
-        status: normalizeStatus(metaStatus),
-        metaTemplateId,
-        submissionError: null,
-      }),
+      {
+        ...buildUpsertRow(accountId, user.id, payload, {
+          status: normalizeStatus(metaStatus),
+          metaTemplateId,
+          submissionError: null,
+        }),
+        channel_id: canalDoModelo,
+      },
     )
 
     if (upsertErr) {

@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useChannels } from "@/hooks/use-channels";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -71,6 +72,12 @@ export function ConversationList({
   // Broadcast audience filtering. Company is an exact match on the field.
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  // Filtro por canal. `null` = todos. Só aparece com 2+ canais: numa conta de
+  // um número o seletor seria ruído puro.
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+  // Conta sem canais (ou deploy pré-901): a lista fica vazia e o seletor
+  // simplesmente não aparece.
+  const { channels } = useChannels();
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
 
   // Keep the latest callback in a ref so the fetch effect below can
@@ -167,6 +174,13 @@ export function ConversationList({
       result = result.filter((c) => c.status === filter);
     }
 
+    // Canal: `channel_id` já vem de graça no CONVERSATION_SELECT ('*').
+    // Conversas sem carimbo (anteriores à Fase 3) só aparecem em "Todos" —
+    // incluí-las em todo canal faria o filtro mentir.
+    if (selectedChannelId) {
+      result = result.filter((c) => c.channel_id === selectedChannelId);
+    }
+
     // Contact-based filters (tags via OR logic, exact company match).
     if (selectedTagIds.length > 0 || selectedCompany !== null) {
       result = result.filter((c) =>
@@ -188,7 +202,7 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, search, selectedTagIds, selectedCompany]);
+  }, [conversations, filter, search, selectedTagIds, selectedCompany, selectedChannelId]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -199,9 +213,11 @@ export function ConversationList({
   const clearContactFilters = useCallback(() => {
     setSelectedTagIds([]);
     setSelectedCompany(null);
+    setSelectedChannelId(null);
   }, []);
 
-  const hasContactFilters = selectedTagIds.length > 0 || selectedCompany !== null;
+  const hasContactFilters =
+    selectedTagIds.length > 0 || selectedCompany !== null || selectedChannelId !== null;
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -262,6 +278,53 @@ export function ConversationList({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Canal: só com 2+ números. Numa conta de um número o seletor
+              seria ruído puro. */}
+          {channels.length >= 2 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(
+                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                  selectedChannelId
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {selectedChannelId
+                  ? (channels.find((c) => c.id === selectedChannelId)?.label ??
+                    t("channelFilter"))
+                  : t("channelFilter")}
+                <ChevronDown className="h-3 w-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="max-h-64 w-56 border-border bg-popover"
+              >
+                <DropdownMenuItem
+                  onClick={() => setSelectedChannelId(null)}
+                  className={cn(
+                    "text-sm text-popover-foreground",
+                    selectedChannelId === null && "text-primary"
+                  )}
+                >
+                  {t("channelFilterAll")}
+                </DropdownMenuItem>
+                {channels.map((c) => (
+                  <DropdownMenuItem
+                    key={c.id}
+                    onClick={() => setSelectedChannelId(c.id)}
+                    className={cn(
+                      "text-sm text-popover-foreground",
+                      selectedChannelId === c.id && "text-primary"
+                    )}
+                  >
+                    <span className="truncate">{c.label}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {tags.length > 0 && (
             <DropdownMenu>
