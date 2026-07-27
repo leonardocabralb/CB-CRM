@@ -31,6 +31,9 @@ export async function GET(
       .select('id')
       .eq('id', id)
       .eq('account_id', ctx.accountId)
+      // Mesmo motivo do GET da conversa: grupo não existe para a v1, então o
+      // histórico dele também não. Este gate é o que impede o vazamento.
+      .is('group_id', null)
       .maybeSingle();
     if (!conv) return fail('not_found', 'Conversation not found', 404);
 

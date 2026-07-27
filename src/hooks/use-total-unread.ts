@@ -25,10 +25,16 @@ export function useTotalUnread(): number {
 
     // Initial load. RLS scopes this to the signed-in user automatically —
     // no explicit user_id filter needed here.
+    //
+    // Grupo fica FORA deste contador (ver 904_cb_grupos). O badge significa
+    // "tem cliente esperando resposta"; um grupo ativo o deixaria aceso o dia
+    // inteiro e ele pararia de significar qualquer coisa. Grupo mostra o
+    // próprio contador na linha dele, dentro da lista.
     (async () => {
       const { data, error } = await supabase
         .from("conversations")
-        .select("id, unread_count");
+        .select("id, unread_count")
+        .is("group_id", null);
       if (cancelled || error || !data) return;
 
       const map = new Map<string, number>();
@@ -54,6 +60,10 @@ export function useTotalUnread(): number {
             if (oldRow.id) map.delete(oldRow.id);
           } else {
             const row = payload.new as Conversation;
+            // O filtro do `select` acima não alcança o tempo real: sem esta
+            // linha, a primeira mensagem de qualquer grupo entraria no mapa
+            // pelo evento e acenderia o badge assim mesmo.
+            if (row.group_id) return;
             map.set(row.id, row.unread_count ?? 0);
           }
           // Recompute — cheap, conversations per user stay small.

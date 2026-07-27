@@ -25,6 +25,9 @@ export async function GET(
       .select(CONVERSATION_SELECT)
       .eq('id', id)
       .eq('account_id', ctx.accountId)
+      // Grupo é 404 aqui, não um objeto meio preenchido: filtrar só a
+      // listagem deixaria quem tem o id contornar o recorte.
+      .is('group_id', null)
       .maybeSingle();
 
     if (error) {

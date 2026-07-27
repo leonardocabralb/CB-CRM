@@ -98,7 +98,7 @@ export async function POST(request: Request) {
 
     const { data: conversation, error: convError } = await supabase
       .from('conversations')
-      .select('id, account_id, contact:contacts(phone)')
+      .select('id, account_id, group_id, contact:contacts(phone)')
       .eq('id', targetMessage.conversation_id)
       .eq('account_id', accountId)
       .maybeSingle();
@@ -107,6 +107,17 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Conversation not found' },
         { status: 404 },
+      );
+    }
+
+    // Reagir em grupo ficou fora do v1: a chave da Baileys precisa do
+    // `participant` de quem escreveu, e `message_reactions` guarda o autor
+    // como `contact_id` — que em grupo é NULL. Sem os dois, a reação não tem
+    // nem destinatário nem autor. A UI esconde o botão; isto é a 2a tranca.
+    if (conversation.group_id) {
+      return NextResponse.json(
+        { error: 'Reactions are not supported in group conversations yet' },
+        { status: 400 },
       );
     }
 

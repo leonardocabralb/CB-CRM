@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     // row means "not yours / not found" either way.
     const { data: conversation, error: convErr } = await supabase
       .from('conversations')
-      .select('id')
+      .select('id, group_id')
       .eq('id', conversationId)
       .maybeSingle()
     if (convErr) {
@@ -56,6 +56,16 @@ export async function POST(request: Request) {
     }
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    }
+    // Grupo está fora da IA por decisão de produto (migration 904). A UI
+    // esconde o botão; isto é a segunda tranca. 400 explícito e não 404: quem
+    // bater aqui precisa saber que a conversa existe e o recurso é que não
+    // vale para ela.
+    if (conversation.group_id) {
+      return NextResponse.json(
+        { error: 'AI drafting is not available in group conversations' },
+        { status: 400 },
+      )
     }
 
     const config = await loadAiConfig(supabase, accountId).catch((err) => {

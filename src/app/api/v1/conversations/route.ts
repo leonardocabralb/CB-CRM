@@ -31,7 +31,12 @@ export async function GET(request: Request) {
     let query = ctx.supabase
       .from('conversations')
       .select(CONVERSATION_SELECT)
-      .eq('account_id', ctx.accountId);
+      .eq('account_id', ctx.accountId)
+      // Grupos não existem para a v1 (migration 904). Sem isto quem integra
+      // passaria a receber conversas com `contact` nulo — um formato que o
+      // contrato publicado nunca prometeu e que quebraria integração alheia
+      // sem aviso.
+      .is('group_id', null);
 
     if (status) query = query.eq('status', status);
     if (contactId) query = query.eq('contact_id', contactId);

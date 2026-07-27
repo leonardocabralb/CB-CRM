@@ -160,7 +160,13 @@ export type ConversationStatus = 'open' | 'pending' | 'closed';
 export interface Conversation {
   id: string;
   user_id: string;
-  contact_id: string;
+  /**
+   * NULL em conversa de GRUPO (migration 904 tirou o NOT NULL). O tipo é
+   * anulável de propósito: fingir que sempre existe daria um `string` que na
+   * verdade é null em tempo de execução, sem o compilador avisar ninguém.
+   * O par contato/grupo é exclusivo — ver `group_id` abaixo.
+   */
+  contact_id: string | null;
   status: ConversationStatus;
   assigned_agent_id?: string;
   last_message_text?: string;
@@ -189,6 +195,12 @@ export interface Conversation {
    */
   channel_id?: string | null;
   channel_pinned?: boolean;
+  /**
+   * Grupos (migration 904): preenchido quando a conversa é de um grupo de
+   * WhatsApp. O banco garante o ou-um-ou-outro pelo CHECK
+   * `cb_conv_contato_xor_grupo` — ver `contact_id` acima.
+   */
+  group_id?: string | null;
 }
 
 // ============================================================

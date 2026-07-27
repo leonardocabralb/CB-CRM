@@ -12,7 +12,13 @@ import type { Conversation, Message } from '@/types';
 
 export interface ApiConversation {
   id: string;
-  contact_id: string;
+  /**
+   * Na prática SEMPRE preenchido: as rotas da v1 filtram `.is('group_id',
+   * null)`, e só conversa de grupo tem contato nulo (migration 904). O tipo
+   * acompanha a coluna, que é anulável — mentir aqui daria um `string` que o
+   * compilador garante e o banco não.
+   */
+  contact_id: string | null;
   /**
    * Canal (número de WhatsApp) por onde esta conversa está ativa. `null` em
    * conversas anteriores ao multi-canal ou ainda sem carimbo — quem integra

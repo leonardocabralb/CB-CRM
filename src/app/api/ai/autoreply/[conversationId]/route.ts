@@ -47,7 +47,7 @@ export async function POST(request: Request, { params }: Params) {
     // Confirm the conversation is in the caller's account before writing.
     const { data: conv, error: convErr } = await supabase
       .from('conversations')
-      .select('id')
+      .select('id, group_id')
       .eq('id', conversationId)
       .eq('account_id', accountId)
       .maybeSingle()
@@ -56,6 +56,14 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json(
         { error: 'Failed to load conversation' },
         { status: 500 },
+      )
+    }
+    // Grupo está fora da IA por decisão de produto (migration 904). A UI
+    // esconde o interruptor; isto é a segunda tranca.
+    if (conv?.group_id) {
+      return NextResponse.json(
+        { error: 'AI auto-reply is not available in group conversations' },
+        { status: 400 },
       )
     }
     if (!conv) {

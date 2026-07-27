@@ -67,6 +67,36 @@ export function porCanal<Q>(query: Q, channelId?: string | null): Q {
   )
 }
 
+// ------------------------------------------------------------
+// GRUPOS FORA DO PAINEL
+//
+// O painel fala de ATENDIMENTO 1:1. Um grupo ativo tem 10–50× o tráfego de
+// uma conversa: deixá-lo entrar sequestra "mensagens hoje", a série e o tempo
+// médio de resposta. Pior, a atividade recente lê `conversations.contacts` —
+// que em grupo é NULL — e viraria uma lista de linhas sem nome.
+//
+// Em `conversations` o filtro é direto: `.is('group_id', null)`, escrito no
+// próprio call site porque é auto-explicativo.
+//
+// Em `messages` NÃO existe a coluna — o recorte tem que ir pelo pai, e no
+// PostgREST isso são DUAS peças que andam juntas:
+//   1. o embed EMBED_SEM_GRUPO no `.select(...)`, e
+//   2. o `semGrupo(...)` na query.
+// Sem o embed `!inner` o filtro não recorta nada. Por isso as duas moram aqui
+// lado a lado: quem copiar uma lembra da outra.
+// ------------------------------------------------------------
+
+/** Vai no `.select(...)` de toda consulta a `messages` que passe por `semGrupo`. */
+const EMBED_SEM_GRUPO = 'conversations!inner(group_id)'
+
+/** Descarta mensagens cuja conversa é de grupo. Exige EMBED_SEM_GRUPO no select. */
+function semGrupo<Q>(query: Q): Q {
+  return (query as { is: (coluna: string, valor: null) => Q }).is(
+    'conversations.group_id',
+    null,
+  )
+}
+
 // --- 1. Metric cards ---------------------------------------------------
 
 export async function loadMetrics(
@@ -87,7 +117,11 @@ export async function loadMetrics(
     messagesYesterday,
   ] = await Promise.all([
     porCanal(
-      db.from('conversations').select('id', { count: 'exact', head: true }).eq('status', 'open'),
+      db
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'open')
+        .is('group_id', null),
       channelId,
     ),
     porCanal(
@@ -95,6 +129,7 @@ export async function loadMetrics(
         .from('conversations')
         .select('id', { count: 'exact', head: true })
         .eq('status', 'open')
+        .is('group_id', null)
         .gte('created_at', todayStart),
       channelId,
     ),
@@ -103,6 +138,7 @@ export async function loadMetrics(
         .from('conversations')
         .select('id', { count: 'exact', head: true })
         .eq('status', 'open')
+        .is('group_id', null)
         .gte('created_at', yesterdayStart)
         .lt('created_at', todayStart),
       channelId,
@@ -115,20 +151,24 @@ export async function loadMetrics(
       .lt('created_at', todayStart),
     porCanal(db.from('deals').select('value, status').eq('status', 'open'), channelId),
     porCanal(
-      db
-        .from('messages')
-        .select('id', { count: 'exact', head: true })
-        .eq('sender_type', 'agent')
-        .gte('created_at', todayStart),
+      semGrupo(
+        db
+          .from('messages')
+          .select(`id, ${EMBED_SEM_GRUPO}`, { count: 'exact', head: true })
+          .eq('sender_type', 'agent')
+          .gte('created_at', todayStart),
+      ),
       channelId,
     ),
     porCanal(
-      db
-        .from('messages')
-        .select('id', { count: 'exact', head: true })
-        .eq('sender_type', 'agent')
-        .gte('created_at', yesterdayStart)
-        .lt('created_at', todayStart),
+      semGrupo(
+        db
+          .from('messages')
+          .select(`id, ${EMBED_SEM_GRUPO}`, { count: 'exact', head: true })
+          .eq('sender_type', 'agent')
+          .gte('created_at', yesterdayStart)
+          .lt('created_at', todayStart),
+      ),
       channelId,
     ),
   ])
@@ -183,10 +223,12 @@ export async function loadConversationsSeries(
 ): Promise<ConversationsSeriesPoint[]> {
   const start = daysAgoStart(rangeDays - 1).toISOString()
   const { data, error } = await porCanal(
-    db
-      .from('messages')
-      .select('created_at, sender_type')
-      .gte('created_at', start),
+    semGrupo(
+      db
+        .from('messages')
+        .select(`created_at, sender_type, ${EMBED_SEM_GRUPO}`)
+        .gte('created_at', start),
+    ),
     channelId,
   ).order('created_at', { ascending: true })
   if (error) throw error
@@ -265,10 +307,12 @@ export async function loadResponseTime(
   // Monday.
   const fourteenDaysAgo = daysAgoStart(13).toISOString()
   const { data, error } = await porCanal(
-    db
-      .from('messages')
-      .select('conversation_id, sender_type, created_at')
-      .gte('created_at', fourteenDaysAgo),
+    semGrupo(
+      db
+        .from('messages')
+        .select(`conversation_id, sender_type, created_at, ${EMBED_SEM_GRUPO}`)
+        .gte('created_at', fourteenDaysAgo),
+    ),
     channelId,
   )
     .order('conversation_id', { ascending: true })
@@ -371,10 +415,17 @@ export async function loadActivity(
   const semCanal = !channelId
   const [msgs, contacts, deals, broadcasts, autoLogs] = await Promise.all([
     porCanal(
-      db
-        .from('messages')
-        .select('id, content_text, sender_type, created_at, conversation_id, conversations(contact_id, contacts(name, phone))')
-        .eq('sender_type', 'customer'),
+      // `conversations` já era embutido aqui; vira `!inner` e ganha `group_id`
+      // para o semGrupo poder recortar. Sem isso o feed listaria mensagem de
+      // grupo com `contacts` NULL — uma linha sem nome nenhum na tela.
+      semGrupo(
+        db
+          .from('messages')
+          .select(
+            'id, content_text, sender_type, created_at, conversation_id, conversations!inner(group_id, contact_id, contacts(name, phone))',
+          )
+          .eq('sender_type', 'customer'),
+      ),
       channelId,
     )
       .order('created_at', { ascending: false })
