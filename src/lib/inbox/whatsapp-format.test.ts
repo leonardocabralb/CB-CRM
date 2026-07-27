@@ -58,7 +58,33 @@ describe('parseWhatsAppFormat', () => {
 
   it('marcador colado a espaço não formata', () => {
     expect(resumo(parseWhatsAppFormat('* nao *'))).toBe('* nao *');
-    expect(resumo(parseWhatsAppFormat('a_b_c'))).toBe('a' + 'italico(b)' + 'c');
+  });
+
+  // A REGRA MAIS CARA DO ARQUIVO: marcador no MEIO DE PALAVRA não formata.
+  //
+  // Sem ela o interpretador comia caracteres da mensagem do cliente e a tela
+  // mostrava um valor diferente do que foi enviado — perda de dado silenciosa,
+  // porque o original só existe no WhatsApp. Cada caso abaixo é um formato
+  // real que aparece em conversa de escritório.
+  it('não formata marcador no meio de palavra (não come caractere)', () => {
+    expect(resumo(parseWhatsAppFormat('a_b_c'))).toBe('a_b_c');
+    expect(resumo(parseWhatsAppFormat('R$ 1.500_00 por parcela'))).toBe(
+      'R$ 1.500_00 por parcela',
+    );
+    expect(resumo(parseWhatsAppFormat('processo 0001234_56.2026'))).toBe(
+      'processo 0001234_56.2026',
+    );
+    expect(resumo(parseWhatsAppFormat('arquivo_final_v2.pdf'))).toBe('arquivo_final_v2.pdf');
+    expect(resumo(parseWhatsAppFormat('2*3*4'))).toBe('2*3*4');
+    expect(resumo(parseWhatsAppFormat('a~b~c'))).toBe('a~b~c');
+  });
+
+  it('mas formata quando o marcador está na fronteira', () => {
+    expect(resumo(parseWhatsAppFormat('valor *R$ 1.500* hoje'))).toBe(
+      'valor negrito(R$ 1.500) hoje',
+    );
+    // Depois de pontuação também abre — é o caso de "(*urgente*)".
+    expect(resumo(parseWhatsAppFormat('(*urgente*)'))).toBe('(negrito(urgente))');
   });
 
   it('bloco e monoespaçado são literais por dentro', () => {
@@ -138,6 +164,23 @@ describe('alternarMarcador', () => {
     const r = alternarMarcador('*bom* dia', 1, 4, 'negrito');
     expect(r.texto).toBe('bom dia');
     expect(r.texto.slice(r.inicio, r.fim)).toBe('bom');
+  });
+
+  // Selecionar tudo e clicar em negrito é o caminho mais natural do mundo,
+  // e era exatamente o que corrompia: primeiro e último caractere eram
+  // marcadores, mas de PARES DIFERENTES.
+  it('selecionar tudo com formatação mista não destrói o que já existe', () => {
+    const texto = '*a* e *b*';
+    const r = alternarMarcador(texto, 0, texto.length, 'negrito');
+    // Tem de ENVOLVER, não desmontar os pares existentes.
+    expect(r.texto).toBe('**a* e *b**');
+    expect(r.texto).not.toBe('a* e *b');
+  });
+
+  it('desfaz apenas quando a seleção inteira é um único trecho do estilo', () => {
+    expect(alternarMarcador('*abc*', 0, 5, 'negrito').texto).toBe('abc');
+    // Estilo diferente do selecionado → envolve, não desfaz.
+    expect(alternarMarcador('*abc*', 0, 5, 'italico').texto).toBe('_*abc*_');
   });
 
   it('ida e volta devolve o texto original', () => {

@@ -166,11 +166,17 @@ export function MessageComposer({
   const [text, setText] = useState("");
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  /** Mensagem escrita, ainda segurável. `null` = nada esperando. */
+  /**
+   * Mensagem escrita, ainda segurável. `null` = nada esperando.
+   *
+   * `enviar` é o despachante da conversa de ORIGEM, capturado no instante em
+   * que a mensagem foi retida — ver a nota extensa em `handleSend`.
+   */
   const [pendente, setPendente] = useState<{
     texto: string;
     replyToId?: string;
     expiraEm: number;
+    enviar: (texto: string, replyToId?: string) => void;
   } | null>(null);
   const timerDesfazerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -252,10 +258,13 @@ export function MessageComposer({
   // resta apagar, o que o cliente vê. A mensagem fica retida por
   // SEGUNDOS_DESFAZER e um "Desfazer" a traz de volta ao campo.
   //
-  // A regra que não pode ser quebrada: NUNCA perder a mensagem em silêncio.
-  // Trocar de conversa, desmontar o componente ou mandar outra mensagem
-  // ENVIAM a pendente imediatamente em vez de descartá-la — o operador
-  // apertou Enter, a intenção dele foi enviar.
+  // Duas regras, e as duas já foram violadas por engano antes:
+  //
+  // 1. NUNCA perder a mensagem em silêncio. Trocar de conversa, desmontar o
+  //    componente ou mandar outra ENVIAM a pendente em vez de descartá-la —
+  //    o operador apertou Enter, a intenção dele foi enviar.
+  // 2. NUNCA entregar a quem não era o destinatário. O despachante é preso
+  //    quando a mensagem é retida, não quando ela sai.
 
   // `onSend` por REF, não por dependência.
   //
@@ -270,10 +279,6 @@ export function MessageComposer({
     onSendRef.current = onSend;
   }, [onSend]);
 
-  const enviarAgora = useCallback((p: { texto: string; replyToId?: string }) => {
-    onSendRef.current(p.texto, p.replyToId);
-  }, []);
-
   // Mesmo motivo do `onSendRef`: usado dentro de callbacks que não podem
   // trocar de identidade a cada render do pai.
   const onClearReplyRef = useRef(onClearReply);
@@ -283,9 +288,15 @@ export function MessageComposer({
 
   // Ref espelhando a pendente: o cleanup do efeito de desmontagem precisa do
   // valor mais recente sem re-registrar o efeito a cada tecla.
-  const pendenteRef = useRef<{ texto: string; replyToId?: string } | null>(null);
+  const pendenteRef = useRef<{
+    texto: string;
+    replyToId?: string;
+    enviar: (texto: string, replyToId?: string) => void;
+  } | null>(null);
   useEffect(() => {
-    pendenteRef.current = pendente ? { texto: pendente.texto, replyToId: pendente.replyToId } : null;
+    pendenteRef.current = pendente
+      ? { texto: pendente.texto, replyToId: pendente.replyToId, enviar: pendente.enviar }
+      : null;
   }, [pendente]);
 
   const descartarTimer = useCallback(() => {
@@ -302,13 +313,15 @@ export function MessageComposer({
     pendenteRef.current = null;
     setPendente(null);
     if (p) {
-      enviarAgora(p);
+      // `p.enviar`, NUNCA `onSendRef.current`: o segundo já aponta para a
+      // conversa que está na tela AGORA, que pode não ser a de origem.
+      p.enviar(p.texto, p.replyToId);
       // A citação some só quando a mensagem SAI. Limpando no Enter, desfazer
       // devolvia o texto mas perdia a resposta citada — e o operador teria de
       // procurar de novo a mensagem que estava respondendo.
       onClearReplyRef.current?.();
     }
-  }, [descartarTimer, enviarAgora]);
+  }, [descartarTimer]);
 
   const desfazerEnvio = useCallback(() => {
     descartarTimer();
@@ -335,12 +348,23 @@ export function MessageComposer({
     // conversa do cliente ser a mesma em que foram escritas.
     liberarPendente();
 
+    // O DESPACHANTE É CAPTURADO AQUI, e isto é a correção inteira.
+    //
+    // O pai reconstrói `onSend` amarrado à conversa aberta. Resolvendo o
+    // despachante só na hora de disparar, uma mensagem escrita para o
+    // cliente A e retida por 5s era entregue ao cliente B se o operador
+    // clicasse em outra conversa nesse intervalo — o compositor NÃO
+    // remonta na troca, então nada interrompia a espera. Num escritório de
+    // advocacia isso é quebra de sigilo, e silenciosa: some do histórico de
+    // A e aparece no de B.
+    const despachante = onSendRef.current;
     setPendente({
       texto: trimmed,
       replyToId: replyTo?.id,
       expiraEm: Date.now() + SEGUNDOS_DESFAZER * 1000,
+      enviar: despachante,
     });
-    pendenteRef.current = { texto: trimmed, replyToId: replyTo?.id };
+    pendenteRef.current = { texto: trimmed, replyToId: replyTo?.id, enviar: despachante };
     timerDesfazerRef.current = setTimeout(liberarPendente, SEGUNDOS_DESFAZER * 1000);
 
     setText("");
@@ -348,6 +372,20 @@ export function MessageComposer({
       textareaRef.current.style.height = "auto";
     }
   }, [text, sessionExpired, replyTo?.id, liberarPendente]);
+
+  // Trocar de conversa solta a pendente na hora.
+  //
+  // O compositor NÃO remonta nessa troca (o pai só troca o objeto da
+  // conversa, sem `key`), então sem isto a barra de "enviando" ficaria
+  // pendurada na thread do cliente errado, e o "Desfazer" dali jogaria o
+  // texto de um cliente no campo de outro. A mensagem em si já vai para o
+  // lugar certo — `enviar` está preso à origem.
+  const conversaAnteriorRef = useRef(conversationId);
+  useEffect(() => {
+    if (conversaAnteriorRef.current === conversationId) return;
+    conversaAnteriorRef.current = conversationId;
+    liberarPendente();
+  }, [conversationId, liberarPendente]);
 
   // Contagem regressiva da barra. Sem isto o rótulo diria "5s" o tempo todo,
   // inclusive no último instante antes de sair.
@@ -368,7 +406,7 @@ export function MessageComposer({
       const p = pendenteRef.current;
       if (p) {
         pendenteRef.current = null;
-        onSendRef.current(p.texto, p.replyToId);
+        p.enviar(p.texto, p.replyToId);
       }
       if (timerDesfazerRef.current) clearTimeout(timerDesfazerRef.current);
     };

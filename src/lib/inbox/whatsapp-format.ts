@@ -34,20 +34,37 @@ const MARCADORES: Record<string, 'negrito' | 'italico' | 'riscado'> = {
 };
 
 const ESPACO = /\s/;
+/** Letra ou dígito, em qualquer alfabeto. */
+const ALFANUM = /[\p{L}\p{N}]/u;
 
 /**
- * Um marcador só ABRE quando o que vem depois dele não é espaço nem fim —
- * e só FECHA quando o que vem antes não é espaço. É essa regra que impede
- * "2 * 3 * 4" de virar negrito.
+ * FRONTEIRA DE PALAVRA — a regra que impede o interpretador de comer
+ * caracteres da mensagem do cliente.
+ *
+ * Não basta o vizinho de dentro não ser espaço: o vizinho de FORA também
+ * não pode ser letra nem dígito. O WhatsApp real não formata marcador no
+ * meio de palavra, e sem essa metade da regra o CRM apagava caracteres que
+ * o remetente nunca quis como formatação:
+ *
+ *   "R$ 1.500_00 por parcela"      → os dois `_` sumiam da tela
+ *   "processo 0001234_56.2026"     → idem
+ *   "arquivo_final_v2.pdf"         → virava "arquivofinalv2.pdf" em itálico
+ *
+ * Num CRM jurídico isso é perda de dado silenciosa: o número aparece errado
+ * e ninguém percebe, porque a mensagem original só existe no WhatsApp.
  */
 function podeAbrir(texto: string, i: number): boolean {
-  const proximo = texto[i + 1];
-  return proximo !== undefined && !ESPACO.test(proximo);
+  const depois = texto[i + 1];
+  if (depois === undefined || ESPACO.test(depois)) return false;
+  const antes = texto[i - 1];
+  return antes === undefined || !ALFANUM.test(antes);
 }
 
 function podeFechar(texto: string, i: number): boolean {
-  const anterior = texto[i - 1];
-  return anterior !== undefined && !ESPACO.test(anterior);
+  const antes = texto[i - 1];
+  if (antes === undefined || ESPACO.test(antes)) return false;
+  const depois = texto[i + 1];
+  return depois === undefined || !ALFANUM.test(depois);
 }
 
 /**
@@ -194,11 +211,17 @@ export function alternarMarcador(
   }
 
   // Já marcado por dentro da seleção → tira.
-  if (
-    selecionado.length >= marca.length * 2 &&
-    selecionado.startsWith(marca) &&
-    selecionado.endsWith(marca)
-  ) {
+  //
+  // Olhar só o primeiro e o último caractere NÃO serve: em "*a* e *b*" eles
+  // são marcadores, mas de PARES DIFERENTES. Removê-los deixava "a* e *b",
+  // destruindo a formatação do meio e entregando asteriscos crus ao cliente.
+  // Selecionar tudo e clicar em negrito é o caminho mais natural do mundo
+  // para cair nisso.
+  //
+  // Perguntar ao próprio interpretador resolve com exatidão: só é "já
+  // marcado" quando a seleção inteira é UM único trecho daquele estilo.
+  const arvore = parseWhatsAppFormat(selecionado);
+  if (arvore.length === 1 && arvore[0].tipo === estilo) {
     const miolo = selecionado.slice(marca.length, -marca.length);
     return {
       texto: texto.slice(0, inicio) + miolo + texto.slice(fim),
