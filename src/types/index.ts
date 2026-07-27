@@ -262,6 +262,14 @@ export interface Message {
   ai_generated?: boolean;
   /** Canal (cb_channels) por onde esta mensagem entrou/saiu. Migration 902. */
   channel_id?: string | null;
+  /**
+   * Enviada pelo APARELHO pareado (WhatsApp no celular), não pelo CRM. Só
+   * acontece em canal Evolution, onde os dois dividem a mesma conta de
+   * WhatsApp. A bolha marca essas mensagens porque, num número atendido por
+   * várias pessoas, importa saber que aquela resposta não passou pelo
+   * sistema. Migration 904.
+   */
+  from_device?: boolean;
 }
 
 export type ReactionActor = 'customer' | 'agent';

@@ -32,6 +32,13 @@ export interface NormalizedInbound {
    * fallback de transição (whatsapp_config) — aí não há carimbo nem follow.
    */
   channelId?: string | null;
+  /**
+   * A mensagem saiu DESTA conta de WhatsApp — ou é o eco do que o CRM
+   * enviou, ou foi digitada no celular pareado. Quem chama resolve a
+   * ambiguidade pelo `providerMessageId` e usa `persistDeviceMessage` no
+   * segundo caso; `persistInboundMessage` assume mensagem DO CLIENTE.
+   */
+  fromMe?: boolean;
   /** Sender phone (any form — normalized on store). */
   phone: string;
   /** Display name (pushName / profile name), falls back to phone. */
@@ -146,6 +153,88 @@ async function findOrCreateConversation(
 export interface PersistedInbound {
   messageId: string;
   conversationId: string;
+}
+
+/**
+ * Grava uma mensagem que o operador enviou PELO CELULAR pareado, não pelo
+ * CRM. Existe separada de `persistInboundMessage` de propósito, e a
+ * diferença não é cosmética:
+ *
+ *  - **Nenhum fan-out.** Automação, flow e resposta de IA não podem
+ *    disparar aqui. Se disparassem, o assistente responderia ao próprio
+ *    advogado, e uma automação de "primeira mensagem" contaria a resposta
+ *    dele como se fosse do cliente.
+ *  - **Não mexe em `unread_count`.** O operador acabou de escrever aquilo;
+ *    marcar como não lido é o contrário do que aconteceu.
+ *  - **`sender_type='agent'`**, com `from_device` para a bolha marcar a
+ *    origem.
+ *
+ * Um flag dentro de `persistInboundMessage` foi descartado justamente
+ * porque o risco é o esquecimento: uma função que NÃO chama o fan-out não
+ * tem como fanar por engano.
+ */
+export async function persistDeviceMessage(
+  db: SupabaseClient,
+  m: NormalizedInbound
+): Promise<PersistedInbound | null> {
+  const contactOutcome = await findOrCreateContact(
+    db,
+    m.accountId,
+    m.configOwnerUserId,
+    m.phone,
+    // O `pushName` de uma mensagem `fromMe` é o nome do PRÓPRIO operador,
+    // não o do cliente — usá-lo renomearia o contato para "Leonardo".
+    ''
+  );
+  if (!contactOutcome) return null;
+
+  const convResult = await findOrCreateConversation(
+    db,
+    m.accountId,
+    m.configOwnerUserId,
+    contactOutcome.contact.id
+  );
+  if (!convResult) return null;
+  const conversation = convResult.conversation;
+
+  const contentType = ALLOWED_CONTENT_TYPES.has(m.contentType) ? m.contentType : 'text';
+
+  const { data: insertedMsg, error } = await db
+    .from('messages')
+    .insert({
+      conversation_id: conversation.id,
+      sender_type: 'agent',
+      content_type: contentType,
+      content_text: m.text,
+      media_url: m.mediaUrl ?? null,
+      message_id: m.providerMessageId,
+      remote_jid: m.remoteJid ?? null,
+      from_me: true,
+      from_device: true,
+      // Saiu do aparelho, logo o WhatsApp já a entregou à rede. O ACK
+      // (messages.update) refina para delivered/read depois.
+      status: 'sent',
+      channel_id: m.channelId ?? null,
+      created_at: new Date(m.timestamp * 1000).toISOString(),
+    })
+    .select('id')
+    .single();
+
+  if (error || !insertedMsg) {
+    console.error('[inbound-store] insert device message failed:', error);
+    return null;
+  }
+
+  await db
+    .from('conversations')
+    .update({
+      last_message_text: m.text || `[${m.contentType}]`,
+      last_message_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', conversation.id);
+
+  return { messageId: insertedMsg.id, conversationId: conversation.id };
 }
 
 /**

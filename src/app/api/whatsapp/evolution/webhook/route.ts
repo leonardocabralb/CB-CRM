@@ -2,8 +2,13 @@ import { NextResponse, after } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { timingSafeEqual } from 'crypto';
 
-import { normalizeUpsert, type EvolutionUpsert } from '@/lib/whatsapp/transport/evolution-inbound';
-import { persistInboundMessage } from '@/lib/whatsapp/inbound-store';
+import {
+  isReaction,
+  normalizeUpsert,
+  unwrapMessage,
+  type EvolutionUpsert,
+} from '@/lib/whatsapp/transport/evolution-inbound';
+import { persistDeviceMessage, persistInboundMessage } from '@/lib/whatsapp/inbound-store';
 import { resolveInboundEvolutionChannel } from '@/lib/cb-channels/resolve-inbound';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
@@ -114,15 +119,31 @@ export async function POST(request: Request) {
       }[] = [];
 
       for (const item of items) {
-        const normalized = normalizeUpsert(
-          item,
-          route.accountId,
-          route.ownerUserId,
-          route.channelId,
-        );
-        if (!normalized) continue;
         try {
-          const gravada = await persistInboundMessage(supabaseAdmin(), normalized);
+          // Reação não é mensagem: vira estado em `message_reactions`,
+          // pendurado na bolha da mensagem reagida.
+          if (isReaction(item.message)) {
+            await registrarReacao(item);
+            continue;
+          }
+
+          const normalized = normalizeUpsert(
+            item,
+            route.accountId,
+            route.ownerUserId,
+            route.channelId,
+          );
+          if (!normalized) continue;
+
+          if (await jaGravada(normalized.providerMessageId, normalized.fromMe)) continue;
+
+          // `fromMe` que sobreviveu ao teste acima não é eco nosso — foi
+          // digitado no celular pareado, que divide a conta de WhatsApp
+          // com o CRM. Caminho separado: sem fan-out e sem não-lido.
+          const gravada = normalized.fromMe
+            ? await persistDeviceMessage(supabaseAdmin(), normalized)
+            : await persistInboundMessage(supabaseAdmin(), normalized);
+
           if (gravada && normalized.contentType !== 'text' && !normalized.mediaUrl) {
             semAnexo.push({
               item,
@@ -265,6 +286,98 @@ export async function POST(request: Request) {
 
   // Any other event (qrcode.updated, send.message echo, …) — just ack.
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * A mensagem já está no banco? Faz dois trabalhos com uma consulta:
+ *
+ *  1. **Idempotência.** A Evolution REENTREGA o webhook quando não recebe
+ *     200 a tempo, com o mesmo `key.id` da Baileys. Sem isto a mesma
+ *     mensagem entra duas vezes no histórico — já aconteceu em produção.
+ *  2. **Distinguir o eco do aparelho.** Tudo que sai desta conta chega com
+ *     `fromMe`. Se o id já existe, foi o CRM que enviou (gravamos no
+ *     momento do envio). Se não existe, foi digitado no celular.
+ *
+ * `esperarCorrida` cobre o intervalo em que o CRM já mandou para a
+ * Evolution mas ainda não gravou a linha: o envio grava DEPOIS de receber
+ * o id de volta, então o eco pode chegar primeiro. Sem essa espera, o
+ * próprio envio do operador viraria uma segunda bolha "pelo celular".
+ */
+async function jaGravada(providerMessageId: string, esperarCorrida = false): Promise<boolean> {
+  const existe = async () => {
+    const { data } = await supabaseAdmin()
+      .from('messages')
+      .select('id')
+      .eq('message_id', providerMessageId)
+      .limit(1)
+      .maybeSingle();
+    return !!data;
+  };
+
+  if (await existe()) return true;
+  if (!esperarCorrida) return false;
+
+  await new Promise((r) => setTimeout(r, 2_000));
+  return existe();
+}
+
+/**
+ * Reação recebida (`👍` numa mensagem). Não é mensagem: vira estado em
+ * `message_reactions`, a mesma tabela que o lado Meta e o botão de reagir
+ * do inbox já usam, então a bolha exibe sem nenhuma mudança de UI.
+ *
+ * Texto vazio significa REMOÇÃO da reação, igual à especificação da Meta.
+ *
+ * ⚠️ Reação feita no CELULAR pareado é ignorada de propósito. A chave é
+ * `(message_id, actor_type, actor_id)` e não há como saber QUAL usuário do
+ * CRM reagiu pelo aparelho compartilhado — atribuir a um chute poria o
+ * nome de uma pessoa numa ação que não foi dela.
+ */
+async function registrarReacao(item: EvolutionUpsert): Promise<void> {
+  if (item.key?.fromMe) return;
+
+  const reacao = unwrapMessage(item.message)?.reactionMessage as
+    | { key?: { id?: string }; text?: unknown }
+    | undefined;
+  const alvoProviderId = reacao?.key?.id;
+  if (!alvoProviderId) return;
+
+  const { data: alvo } = await supabaseAdmin()
+    .from('messages')
+    .select('id, conversation_id, conversations(contact_id)')
+    .eq('message_id', alvoProviderId)
+    .limit(1)
+    .maybeSingle();
+
+  // Reação a mensagem anterior à integração: não há bolha onde pendurar.
+  if (!alvo) return;
+  const contactId = (alvo.conversations as { contact_id: string } | null)?.contact_id;
+  if (!contactId) return;
+
+  const emoji = typeof reacao?.text === 'string' ? reacao.text : '';
+
+  if (!emoji) {
+    const { error } = await supabaseAdmin()
+      .from('message_reactions')
+      .delete()
+      .eq('message_id', alvo.id)
+      .eq('actor_type', 'customer')
+      .eq('actor_id', contactId);
+    if (error) console.error('[evolution/webhook] remover reação falhou:', error.message);
+    return;
+  }
+
+  const { error } = await supabaseAdmin().from('message_reactions').upsert(
+    {
+      message_id: alvo.id,
+      conversation_id: alvo.conversation_id,
+      actor_type: 'customer',
+      actor_id: contactId,
+      emoji,
+    },
+    { onConflict: 'message_id,actor_type,actor_id' },
+  );
+  if (error) console.error('[evolution/webhook] gravar reação falhou:', error.message);
 }
 
 /**
