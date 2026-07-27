@@ -218,6 +218,48 @@ describe('normalizeUpsert', () => {
   });
 });
 
+// Este bloco existe por causa de um bug que CHEGOU A PRODUÇÃO: o eco das
+// mensagens enviadas pelo celular vinha com `@lid` (identificador interno do
+// WhatsApp, não telefone), o contato era procurado por telefone, não achava,
+// e a conversa do cliente se partia em duas — uma com o que ele escreveu,
+// outra com nome de número sem sentido contendo as respostas do advogado.
+describe('@lid — endereçamento novo do WhatsApp', () => {
+  const LID = '71176265142382@lid';
+  const TEL = '558393124441@s.whatsapp.net';
+
+  it('LID sozinho é DESCARTADO: melhor não gravar que inventar contato', () => {
+    const it0 = item({ conversation: 'oi' }, { key: { remoteJid: LID, fromMe: true, id: 'X' } });
+    expect(normalizeUpsert(it0, 'conta', 'dono', 'canal')).toBeNull();
+  });
+
+  it('LID com o telefone ao lado usa o TELEFONE', () => {
+    for (const campo of ['remoteJidAlt', 'senderPn', 'participantPn', 'participantAlt']) {
+      const it0 = item(
+        { conversation: 'respondi pelo celular' },
+        { key: { remoteJid: LID, fromMe: true, id: 'X', [campo]: TEL } },
+      );
+      const out = normalizeUpsert(it0, 'conta', 'dono', 'canal');
+      expect(out, `campo ${campo}`).not.toBeNull();
+      // O telefone REAL, para cair na conversa que já existe.
+      expect(out!.phone, `campo ${campo}`).toBe('558393124441');
+      expect(out!.remoteJid, `campo ${campo}`).toBe(TEL);
+    }
+  });
+
+  it('a contrapartida não pode ser outro LID', () => {
+    const it0 = item(
+      { conversation: 'oi' },
+      { key: { remoteJid: LID, fromMe: true, id: 'X', remoteJidAlt: '999@lid' } },
+    );
+    expect(normalizeUpsert(it0, 'conta', 'dono', 'canal')).toBeNull();
+  });
+
+  it('conversa normal segue intocada', () => {
+    const it0 = item({ conversation: 'oi' }, { key: { remoteJid: TEL, fromMe: false, id: 'X' } });
+    expect(normalizeUpsert(it0, 'conta', 'dono', 'canal')!.phone).toBe('558393124441');
+  });
+});
+
 describe('phoneFromJid', () => {
   it('reduz o JID a dígitos', () => {
     expect(phoneFromJid('5511999998888@s.whatsapp.net')).toBe('5511999998888');

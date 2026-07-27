@@ -16,6 +16,16 @@ export interface EvolutionMessageKey {
   fromMe?: boolean;
   id?: string;
   participant?: string;
+  /**
+   * Contrapartida em TELEFONE do `remoteJid` quando ele vem como `@lid`.
+   * O WhatsApp está migrando o endereçamento para LID e a Baileys expõe o
+   * número real num destes campos — os nomes variam entre versões, por isso
+   * todos são aceitos.
+   */
+  remoteJidAlt?: string;
+  senderPn?: string;
+  participantPn?: string;
+  participantAlt?: string;
 }
 
 export interface EvolutionUpsert {
@@ -52,6 +62,39 @@ export function phoneFromJid(jid: string): string {
     .replace(/@s\.whatsapp\.net$|@lid$|@g\.us$/, '')
     .replace(/:.*/, '')
     .replace(/\D/g, '');
+}
+
+export function isLidJid(jid: string): boolean {
+  return jid.endsWith('@lid');
+}
+
+/**
+ * JID de TELEFONE da conversa. Devolve `null` quando só existe o LID.
+ *
+ * ⚠️ Esta função existe por causa de um bug que chegou a produção: o
+ * WhatsApp está migrando o endereçamento para LID (`71176265142382@lid`),
+ * um identificador interno que NÃO é telefone. Em produção o eco das
+ * mensagens que o operador mandava do celular chegava com LID enquanto as
+ * mensagens recebidas do MESMO cliente chegavam com o telefone — e como o
+ * contato é procurado por telefone, o LID virava um contato novo. Resultado:
+ * a conversa se partia em duas, uma com o que o cliente escreveu e outra,
+ * com nome de número sem sentido, com o que o advogado respondeu.
+ *
+ * A regra: sem telefone de verdade, NÃO se inventa contato. Descartar é
+ * ruim (a mensagem do celular não aparece), mas partir a conversa de um
+ * cliente ao meio e criar um contato falso na base é pior — e some no
+ * meio dos contatos reais.
+ */
+export function phoneJidFromKey(key: EvolutionMessageKey | undefined): string | null {
+  const principal = key?.remoteJid;
+  if (principal && !isLidJid(principal)) return principal;
+
+  // A Baileys mudou o nome deste campo entre versões; aceitar todos evita
+  // que um upgrade do servidor Evolution volte a partir as conversas.
+  for (const alt of [key?.remoteJidAlt, key?.senderPn, key?.participantPn, key?.participantAlt]) {
+    if (alt && !isLidJid(alt) && /\d/.test(alt)) return alt;
+  }
+  return null;
 }
 
 function asRecord(v: unknown): Record<string, unknown> | undefined {
@@ -142,11 +185,17 @@ export function normalizeUpsert(
   configOwnerUserId: string,
   channelId: string | null = null
 ): NormalizedInbound | null {
-  const jid = item.key?.remoteJid;
+  const bruto = item.key?.remoteJid;
   const id = item.key?.id;
-  if (!jid || !id) return null;
-  if (isNonChatJid(jid)) return null; // grupo, canal, status: não é 1:1
+  if (!bruto || !id) return null;
+  if (isNonChatJid(bruto)) return null; // grupo, canal, status: não é 1:1
   if (isReaction(item.message)) return null; // reação não é mensagem (ver isReaction)
+
+  // Endereço de TELEFONE da conversa. Um `@lid` sem contrapartida devolve
+  // null e a mensagem é descartada — ver `phoneJidFromKey` para o porquê:
+  // gravá-la criaria um contato falso e partiria a conversa do cliente.
+  const jid = phoneJidFromKey(item.key);
+  if (!jid) return null;
 
   const phone = phoneFromJid(jid);
   if (!phone) return null;
