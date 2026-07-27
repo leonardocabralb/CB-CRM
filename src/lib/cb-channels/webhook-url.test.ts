@@ -152,19 +152,34 @@ describe('motivoParaRecusar', () => {
     expect(motivoParaRecusar({ url: PUBLICA }, { url: LOCAL, secret: 'novo' }, doLocal)).not.toBeNull();
   });
 
+  // ⚠️ O valor que a PRODUÇÃO realmente produz. O servidor standalone do
+  // Next escuta em HOSTNAME=0.0.0.0, então `new URL(request.url).origin` dá
+  // `http://0.0.0.0:3000` — foi assim que a isenção de rotação nasceu morta.
+  // Hoje a origem vem do header Host; este caso trava a regressão.
+  it('origem 0.0.0.0 NÃO conta como produção', () => {
+    expect(
+      motivoParaRecusar(atual, { url: PUBLICA, secret: 'novo' }, { origemDoPedido: 'http://0.0.0.0:3000' }),
+    ).not.toBeNull();
+  });
+
   // Leitura falhada não pode desarmar a guarda: o GET tem teto de 15s e o
   // laço do QR consulta a cada 5s, então "timeout" é evento corriqueiro.
   describe('quando não foi possível ler o webhook atual', () => {
-    const cego = { leituraFalhou: true, origemDoPedido: 'http://localhost:3000' };
+    const doLocalCego = { leituraFalhou: true, origemDoPedido: 'http://localhost:3000' };
+    const daProducaoCego = { leituraFalhou: true, origemDoPedido: PROD_ORIGEM };
 
     it('BARRA registrar URL local', () => {
-      expect(motivoParaRecusar(null, { url: LOCAL, secret: 'x' }, cego)).toContain(
-        'NEXT_PUBLIC_SITE_URL',
-      );
+      expect(motivoParaRecusar(null, { url: LOCAL, secret: 'x' }, doLocalCego)).not.toBeNull();
     });
 
-    it('deixa passar URL pública — reaplicação legítima sempre traz uma', () => {
-      expect(motivoParaRecusar(null, { url: PUBLICA, secret: SEGREDO }, cego)).toBeNull();
+    // Sem saber o segredo registrado, não dá para compará-lo — o único sinal
+    // que resta é de onde veio o clique.
+    it('BARRA pedido vindo de fora, mesmo com URL pública', () => {
+      expect(motivoParaRecusar(null, { url: PUBLICA, secret: 'x' }, doLocalCego)).not.toBeNull();
+    });
+
+    it('deixa a produção reaplicar a si mesma', () => {
+      expect(motivoParaRecusar(null, { url: PUBLICA, secret: SEGREDO }, daProducaoCego)).toBeNull();
     });
   });
 });

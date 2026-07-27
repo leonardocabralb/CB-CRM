@@ -27,6 +27,30 @@ import {
  *  folga para recarregar e para dois admins pareando ao mesmo tempo. */
 const CONNECT_LIMIT = { limit: 60, windowMs: 60_000 };
 
+/**
+ * De qual endereço o operador clicou.
+ *
+ * ⚠️ NÃO use `new URL(request.url).origin` para isto. O servidor standalone
+ * do Next escuta em `HOSTNAME=0.0.0.0` (Dockerfile), e é isso que aparece
+ * ali: em produção o valor é `http://0.0.0.0:3000`, nunca o domínio público.
+ * A guarda de reaplicação do webhook usa esta origem para distinguir "a
+ * produção reaplicando a si mesma" de "uma máquina de fora mexendo no webhook
+ * dela" — com `0.0.0.0` a distinção nunca acontecia.
+ *
+ * O Traefik publica o serviço com `passHostHeader=true` (docker-stack.yml),
+ * então o `Host` real chega intacto. Mesma abordagem que
+ * `src/app/api/account/invitations/route.ts` já usava para montar links.
+ */
+function origemDoPedido(request: Request): string | undefined {
+  const host =
+    request.headers.get('x-forwarded-host')?.split(',')[0]?.trim() ||
+    request.headers.get('host')?.trim();
+  if (!host) return undefined;
+  const proto =
+    request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || 'https';
+  return `${proto}://${host}`;
+}
+
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -77,7 +101,7 @@ export async function POST(
     // exclusão feita pelo cliente segue invisível e ninguém descobre.
     let webhookError: string | null = null;
     try {
-      await reaplicarWebhook(channel.instance_name, new URL(_request.url).origin);
+      await reaplicarWebhook(channel.instance_name, origemDoPedido(_request));
     } catch (err) {
       webhookError = err instanceof Error ? err.message : String(err);
       console.warn('[cb/channels/connect] não foi possível reaplicar o webhook:', webhookError);

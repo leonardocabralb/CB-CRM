@@ -123,14 +123,19 @@ export function motivoParaRecusar(
 ): string | null {
   const urlNovaOk = ehUrlAlcancavel(nova.url);
 
-  // Não conseguimos ler o que está registrado. Antes isto DESARMAVA a
-  // guarda inteira: um timeout de 15s no GET — e o laço do QR consulta a
-  // cada 5s — deixava passar o registro de uma URL local. Agora a dúvida
-  // vale como "pode haver algo bom aí", e só o que é inútil de qualquer
-  // forma (URL inalcançável) é barrado. Reaplicação legítima sempre traz
-  // URL pública, então nada muda para ela.
+  // Não conseguimos ler o que está registrado. Antes isto DESARMAVA a guarda
+  // inteira: um timeout de 15s no GET — e o laço do QR consulta a cada 5s —
+  // deixava passar o registro de uma URL local.
+  //
+  // Sem saber o que existe do outro lado, sobra UM sinal: de onde veio o
+  // clique. Pedido vindo de um endereço público é o CRM implantado
+  // reaplicando a si mesmo; vindo de `localhost`, é a máquina de alguém
+  // mexendo num webhook que ela não recebe. Na dúvida, só o segundo é
+  // barrado — a reaplicação legítima sempre parte de um host público.
   if (ctx.leituraFalhou) {
-    return urlNovaOk ? null : motivoDeUrl('o endereço atual (não foi possível lê-lo)', nova.url);
+    if (!urlNovaOk) return motivoCego(nova.url);
+    if (!ehUrlAlcancavel(ctx.origemDoPedido)) return motivoCego(nova.url);
+    return null;
   }
 
   // Nada registrado, ou registrado num endereço que já era inalcançável:
@@ -161,6 +166,15 @@ export function motivoParaRecusar(
   }
 
   return null;
+}
+
+function motivoCego(nova: string): string {
+  return (
+    `Não foi possível ler o webhook atual deste canal, e o pedido não veio do ` +
+    `endereço público do CRM (a reaplicação registraria ${nova}). Sem saber o ` +
+    `que está registrado, reaplicar poderia derrubar o recebimento do número. ` +
+    `Tente de novo a partir do CRM em produção.`
+  );
 }
 
 function motivoDeUrl(atual: string, nova: string): string {
