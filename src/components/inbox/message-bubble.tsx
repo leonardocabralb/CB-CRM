@@ -15,6 +15,8 @@ import {
   CornerDownLeft,
   Sparkles,
   Smartphone,
+  Trash2,
+  Pencil,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -357,6 +359,7 @@ export function MessageBubble({
 
   const isAgent = message.sender_type === "agent" || message.sender_type === "bot";
   const time = format(new Date(message.created_at), "HH:mm");
+  const apagada = !!message.deleted_at;
 
   // Row alignment + width cap are owned by <MessageActions> so its hover
   // group matches the bubble's content area, not the full row.
@@ -375,6 +378,17 @@ export function MessageBubble({
             : "rounded-bl-md bg-muted text-foreground",
         )}
       >
+        {apagada && (
+          <span
+            className={cn(
+              "mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase leading-none tracking-wide",
+              isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
+            )}
+          >
+            <Trash2 className="h-2.5 w-2.5" />
+            {message.deleted_by === "customer" ? t("deletedByCustomer") : t("deletedByUs")}
+          </span>
+        )}
         {reply && (
           <ReplyQuote
             authorLabel={reply.authorLabel}
@@ -382,7 +396,17 @@ export function MessageBubble({
             onPrimary={isAgent}
           />
         )}
-        <MessageContent message={message} t={t} />
+        {/* O estilo de apagada fica NESTE invólucro, não no contêiner da
+            bolha: o visualizador de mídia em tela cheia é renderizado como
+            descendente e herdaria o `opacity-60`, deixando a foto ampliada
+            desbotada sem motivo. */}
+        <div
+          className={cn(
+            apagada && "opacity-60 [&_p]:line-through [&_a]:line-through [&_code]:line-through",
+          )}
+        >
+          <MessageContent message={message} t={t} />
+        </div>
         <div
           className={cn(
             "mt-1 flex items-center gap-1",
@@ -393,6 +417,24 @@ export function MessageBubble({
               (always outbound, so it sits on the primary fill). Lets
               agents tell an AI reply from their own / a Flow's at a
               glance. */}
+          {message.edited_at && !apagada && (
+            <span
+              className={cn(
+                "inline-flex items-center gap-0.5 text-[9px]",
+                isAgent ? "text-primary-foreground/60" : "text-muted-foreground",
+              )}
+              // O texto anterior só existe aqui: o WhatsApp não guarda
+              // histórico de edição.
+              title={
+                message.text_before_edit
+                  ? t("editedWas", { text: message.text_before_edit })
+                  : t("edited")
+              }
+            >
+              <Pencil className="h-2.5 w-2.5" />
+              {t("edited")}
+            </span>
+          )}
           {message.ai_generated && (
             <span
               className="inline-flex items-center gap-0.5 rounded-full bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-primary-foreground"

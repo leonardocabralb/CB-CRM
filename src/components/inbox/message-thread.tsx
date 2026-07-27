@@ -55,6 +55,14 @@ import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface ReplyDraft {
   id: string;
@@ -185,6 +193,7 @@ export function MessageThread({
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
   const tQuote = useTranslations("Inbox.replyQuote");
+  const tActions = useTranslations("Inbox.actions");
 
   const { user } = useAuth();
   const { getPresence, getRow, now } = usePresence();
@@ -827,6 +836,86 @@ export function MessageThread({
   // The "toggle" semantic (pill click) is computed at the call site where the
   // current reactions for the bubble are already in scope — keeps this
   // function dependency-free w.r.t. the reaction list.
+  // ---- Apagar / editar ------------------------------------------------
+  //
+  // Só chegam aqui em canal Evolution e dentro do prazo do WhatsApp — o
+  // MessageActions esconde os botões fora disso. A rota revalida mesmo
+  // assim: o prazo pode estourar entre o render e o clique.
+
+  /** Mensagem em edição, ou null. */
+  const [editando, setEditando] = useState<Message | null>(null);
+  const [textoEdicao, setTextoEdicao] = useState("");
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
+  useEffect(() => {
+    setTextoEdicao(editando?.content_text ?? "");
+  }, [editando]);
+
+  const apagarMensagem = useCallback(
+    async (msg: Message) => {
+      if (!window.confirm(tActions("deleteConfirm"))) return;
+      // Otimista: a bolha risca na hora. O realtime confirma; falhando,
+      // desfazemos abaixo.
+      onUpdateMessage(msg.id, { deleted_at: new Date().toISOString(), deleted_by: "agent" });
+      try {
+        const res = await fetch("/api/whatsapp/message", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message_id: msg.id }),
+        });
+        if (!res.ok) {
+          const { error, code } = await res.json().catch(() => ({ error: "", code: "" }));
+          // `whatsapp_done`: a Evolution APAGOU e só a gravação no CRM
+          // falhou. Desfazer a marca aqui faria a tela afirmar que a
+          // mensagem existe quando ela não existe mais em lugar nenhum —
+          // exatamente a mentira que a ordem das operações na rota evita.
+          // Mantemos riscada e avisamos.
+          if (code === "whatsapp_done") {
+            toast.warning(error);
+            return;
+          }
+          throw new Error(error || String(res.status));
+        }
+        toast.success(tActions("deleted"));
+      } catch (err) {
+        // Falhou ANTES de a Evolution apagar: a mensagem continua viva no
+        // celular do cliente, então a bolha volta ao normal.
+        onUpdateMessage(msg.id, { deleted_at: null, deleted_by: null });
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [onUpdateMessage, tActions],
+  );
+
+  const salvarEdicao = useCallback(async () => {
+    const alvo = editando;
+    const texto = textoEdicao.trim();
+    if (!alvo || !texto || salvandoEdicao) return;
+    setSalvandoEdicao(true);
+    try {
+      const res = await fetch("/api/whatsapp/message", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message_id: alvo.id, text: texto }),
+      });
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({ error: "" }));
+        throw new Error(error || String(res.status));
+      }
+      onUpdateMessage(alvo.id, {
+        content_text: texto,
+        text_before_edit: alvo.content_text,
+        edited_at: new Date().toISOString(),
+      });
+      toast.success(tActions("edited"));
+      setEditando(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  }, [editando, textoEdicao, salvandoEdicao, onUpdateMessage, tActions]);
+
   const postReaction = useCallback(
     async (messageId: string, emoji: string) => {
       if (!user?.id || !conversation) {
@@ -1290,6 +1379,9 @@ export function MessageThread({
                         onReact={(emoji) => {
                           if (emoji) void postReaction(msg.id, emoji);
                         }}
+                        channelKind={activeChannel?.kind ?? null}
+                        onDelete={() => void apagarMensagem(msg)}
+                        onEdit={() => setEditando(msg)}
                       >
                         <MessageBubble
                           message={msg}
@@ -1338,6 +1430,34 @@ export function MessageThread({
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
       />
+
+      {/* Diálogo de edição. O WhatsApp só permite editar por ~15 minutos;
+          passado isso o botão nem aparece, e a rota recusa mesmo assim. */}
+      <Dialog open={!!editando} onOpenChange={(o) => !o && setEditando(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{tActions("editTitle")}</DialogTitle>
+          </DialogHeader>
+          <textarea
+            value={textoEdicao}
+            onChange={(e) => setTextoEdicao(e.target.value)}
+            rows={4}
+            autoFocus
+            className="w-full resize-none rounded-lg border border-input bg-transparent p-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditando(null)}>
+              {tActions("cancel")}
+            </Button>
+            <Button
+              onClick={() => void salvarEdicao()}
+              disabled={!textoEdicao.trim() || salvandoEdicao}
+            >
+              {tActions("save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <TemplatePicker
         channelId={activeChannel?.id ?? null}

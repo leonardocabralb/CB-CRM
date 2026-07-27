@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { timingSafeEqual } from 'crypto';
 
 import {
+  extractText,
   isReaction,
   normalizeUpsert,
   unwrapMessage,
@@ -235,6 +236,79 @@ export async function POST(request: Request) {
               channel_id: msgRow.channel_id ?? null,
             },
           );
+        }
+      });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // A outra ponta apagou a mensagem ("apagar para todos").
+  //
+  // O conteúdo NÃO é removido do banco: fica marcado e a bolha o mostra
+  // riscado. É divergência deliberada do WhatsApp — o escritório precisa do
+  // registro do que foi dito, inclusive do que o cliente apagou depois.
+  if (event === 'messages.delete') {
+    const d = (body.data ?? {}) as { id?: string; keyId?: string; fromMe?: boolean };
+    const providerId = d.keyId ?? d.id;
+    if (providerId) {
+      after(async () => {
+        const { error } = await supabaseAdmin()
+          .from('messages')
+          .update({
+            deleted_at: new Date().toISOString(),
+            // `fromMe` na exclusão significa que a mensagem apagada era
+            // NOSSA (apagada pelo celular pareado ou por outro cliente do
+            // WhatsApp); sem isso, é o cliente quem apagou.
+            deleted_by: d.fromMe ? 'agent' : 'customer',
+          })
+          .eq('message_id', providerId)
+          .is('deleted_at', null);
+        if (error) {
+          console.error('[evolution/webhook] marcar exclusão falhou:', error.message);
+        }
+      });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // A outra ponta editou a mensagem. Guardamos o texto anterior: o WhatsApp
+  // não mantém histórico de edição, então este é o único registro de que a
+  // mensagem dizia outra coisa.
+  if (event === 'messages.edited') {
+    const d = (body.data ?? {}) as {
+      key?: { id?: string };
+      message?: Record<string, unknown> | null;
+      editedMessage?: Record<string, unknown> | null;
+    };
+    const providerId = d.key?.id;
+    const novoTexto = extractText(d.editedMessage ?? d.message);
+    if (providerId && novoTexto) {
+      after(async () => {
+        const { data: atual } = await supabaseAdmin()
+          .from('messages')
+          .select('id, content_text')
+          .eq('message_id', providerId)
+          .limit(1)
+          .maybeSingle();
+        if (!atual) return; // edição de mensagem anterior à integração
+
+        // IDEMPOTÊNCIA. A Evolution reentrega o webhook quando não recebe
+        // 200 a tempo. Na segunda passada `content_text` JÁ é o texto novo,
+        // e gravá-lo em `text_before_edit` apagaria o original — que é o
+        // único registro que existe, já que o WhatsApp não guarda histórico
+        // de edição. Texto igual = nada mudou = reentrega.
+        if (atual.content_text === novoTexto) return;
+
+        const { error } = await supabaseAdmin()
+          .from('messages')
+          .update({
+            content_text: novoTexto,
+            text_before_edit: atual.content_text,
+            edited_at: new Date().toISOString(),
+          })
+          .eq('id', atual.id);
+        if (error) {
+          console.error('[evolution/webhook] aplicar edição falhou:', error.message);
         }
       });
     }

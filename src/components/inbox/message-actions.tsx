@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { CornerUpLeft, Copy, SmilePlus } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { CornerUpLeft, Copy, SmilePlus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useCan } from "@/hooks/use-can";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -20,8 +21,20 @@ interface MessageActionsProps {
   message: Message;
   onReply: () => void;
   onReact: (emoji: string) => void;
+  /**
+   * Apagar/editar só existem em canal EVOLUTION — a API oficial da Meta não
+   * expõe nenhum dos dois. Sem esta informação os botões apareceriam numa
+   * conta Meta e o operador tentaria uma ação que não pode dar certo.
+   */
+  channelKind?: "meta" | "evolution" | null;
+  onDelete?: () => void;
+  onEdit?: () => void;
   children: ReactNode;
 }
+
+/** Prazos do WhatsApp. Fora deles a Evolution recusa, então o botão some. */
+const MINUTOS_PARA_EDITAR = 15;
+const HORAS_PARA_APAGAR = 48;
 
 /**
  * Hover/long-press toolbar wrapper around a `<MessageBubble>`. The bubble
@@ -32,9 +45,70 @@ export function MessageActions({
   message,
   onReply,
   onReact,
+  channelKind = null,
+  onDelete,
+  onEdit,
   children,
 }: MessageActionsProps) {
   const t = useTranslations("Inbox.actions");
+
+  // Só mensagem NOSSA, em canal Evolution, dentro do prazo do WhatsApp, e
+  // que ainda não tenha sido apagada. Esconder é melhor que deixar tentar e
+  // receber erro — o operador não tem como saber os prazos de cabeça.
+  const nossa = message.sender_type !== "customer";
+  // Viewer não apaga nem edita. A rota também barra (é ela que protege de
+  // verdade), mas mostrar um botão que sempre falha é enganar o operador.
+  const podeAgir = useCan("send-messages");
+  // `message_id` é o identificador NA EVOLUTION. A bolha otimista (id
+  // `temp-…`) e a mensagem que falhou no envio não têm um — sem ele a
+  // Evolution não tem o que apagar, e o botão só produziria erro.
+  const existeNoWhatsApp = !!message.message_id && !message.id.startsWith("temp-");
+  const podeMexer =
+    podeAgir &&
+    existeNoWhatsApp &&
+    message.status !== "failed" &&
+    channelKind === "evolution" &&
+    nossa &&
+    !message.deleted_at;
+
+  // Os prazos são ABSOLUTOS, derivados de `created_at` — puro, sem relógio
+  // no render. Chamar `Date.now()` ali deixaria o botão "Editar" visível
+  // depois dos 15 minutos até algo forçar um novo render por acaso.
+  const enviadaEm = new Date(message.created_at).getTime();
+  const prazoEditar = enviadaEm + MINUTOS_PARA_EDITAR * 60_000;
+  const prazoApagar = enviadaEm + HORAS_PARA_APAGAR * 3_600_000;
+
+  // O relógio entra UMA vez, no inicializador — nunca no corpo do render.
+  // Cada mensagem tem sua própria instância (o thread usa `key={msg.id}`),
+  // então este estado nunca precisa ser recalculado para outra mensagem.
+  const [vencido, setVencido] = useState(() => ({
+    editar: Date.now() > prazoEditar,
+    apagar: Date.now() > prazoApagar,
+  }));
+
+  // Temporizadores que disparam EXATAMENTE na virada de cada prazo, e só
+  // enquanto a mensagem ainda está dentro dele. Sem relógio global e sem
+  // intervalo por mensagem — numa conversa longa isso pesaria.
+  useEffect(() => {
+    if (!podeMexer) return;
+    const agora = Date.now();
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    if (agora <= prazoEditar) {
+      timers.push(
+        setTimeout(() => setVencido((v) => ({ ...v, editar: true })), prazoEditar - agora),
+      );
+    }
+    if (agora <= prazoApagar) {
+      timers.push(
+        setTimeout(() => setVencido((v) => ({ ...v, apagar: true })), prazoApagar - agora),
+      );
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [podeMexer, prazoEditar, prazoApagar]);
+
+  const podeApagar = !!onDelete && podeMexer && !vencido.apagar;
+  const podeEditar =
+    !!onEdit && podeMexer && !vencido.editar && message.content_type === "text";
 
   // Touch devices have no hover. Long-press fires `contextmenu`; we capture
   // it, suppress the native menu, and pin the toolbar open until the user
@@ -144,6 +218,32 @@ export function MessageActions({
         >
           <Copy className="h-3.5 w-3.5" />
         </button>
+        {podeEditar && (
+          <button
+            type="button"
+            onClick={() => {
+              onEdit!();
+              setTouchOpen(false);
+            }}
+            className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
+            aria-label={t("edit")}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {podeApagar && (
+          <button
+            type="button"
+            onClick={() => {
+              onDelete!();
+              setTouchOpen(false);
+            }}
+            className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-destructive/15 hover:text-destructive"
+            aria-label={t("deleteForEveryone")}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
       </div>
     </div>

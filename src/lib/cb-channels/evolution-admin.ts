@@ -22,6 +22,7 @@ import {
 import {
   evolutionGlobalConfig,
   provisionEvolutionInstance,
+  WEBHOOK_EVENTS,
   type ProvisionResult,
   type WebhookConfig,
 } from '@/lib/whatsapp/transport/evolution-provision';
@@ -141,4 +142,27 @@ export async function deleteChannelInstance(instanceName: string): Promise<void>
       err instanceof Error ? err.message : err,
     );
   }
+}
+
+/**
+ * Reaplica o webhook (URL + eventos + segredo) numa instância que já existe.
+ *
+ * A Evolution guarda a lista de eventos no momento do registro, então
+ * assinar um evento novo no código não alcança quem já está conectado. Sem
+ * esta reparação, `MESSAGES_DELETE` e `MESSAGES_EDITED` nunca chegariam ao
+ * canal em produção — a exclusão feita pelo cliente ficaria invisível para
+ * sempre, que foi exatamente o sintoma relatado.
+ */
+export async function reaplicarWebhook(
+  instanceName: string,
+  requestOrigin?: string,
+): Promise<void> {
+  const webhook = evolutionWebhookConfig(requestOrigin);
+  const { baseUrl, apikey } = evolutionGlobalConfig();
+  const client = new EvolutionClient({ baseUrl, apikey, instance: instanceName });
+  await client.setWebhook({
+    url: webhook.url,
+    events: WEBHOOK_EVENTS,
+    headers: { Authorization: `Bearer ${webhook.secret}` },
+  });
 }

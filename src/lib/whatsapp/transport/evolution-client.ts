@@ -297,6 +297,43 @@ export class EvolutionClient {
     await this.request('POST', 'chat/markMessageAsRead', { readMessages });
   }
 
+  /**
+   * Apaga a mensagem para TODOS — o "apagar para todos" do WhatsApp.
+   *
+   * ⚠️ Só funciona dentro do prazo do WhatsApp (hoje ~2 dias); passado isso
+   * a Evolution recusa. O prazo é regra do WhatsApp, não nossa, e quem chama
+   * deve esconder o botão em vez de deixar o operador tentar e receber erro.
+   *
+   * É DELETE COM CORPO — é assim que o roteador da Evolution registra a rota.
+   */
+  async deleteMessageForEveryone(key: EvolutionMessageKey): Promise<void> {
+    await this.request('DELETE', 'chat/deleteMessageForEveryone', {
+      id: key.id,
+      remoteJid: key.remoteJid,
+      fromMe: key.fromMe,
+      ...(key.participant ? { participant: key.participant } : {}),
+    });
+  }
+
+  /**
+   * Edita uma mensagem já enviada.
+   *
+   * ⚠️ O WhatsApp só permite editar por ~15 minutos, e só mensagem PRÓPRIA.
+   * Mesma observação do apagar: o prazo é deles, e a interface deve refletir
+   * isso escondendo a ação em vez de produzir um erro.
+   */
+  async updateMessage(args: {
+    number: string;
+    key: EvolutionMessageKey;
+    text: string;
+  }): Promise<void> {
+    await this.request('POST', 'chat/updateMessage', {
+      number: args.number,
+      key: args.key,
+      text: args.text,
+    });
+  }
+
   async sendPresence(args: {
     number: string;
     presence: 'composing' | 'recording' | 'paused';
