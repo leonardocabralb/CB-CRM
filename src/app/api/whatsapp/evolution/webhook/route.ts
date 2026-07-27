@@ -4,6 +4,7 @@ import { timingSafeEqual } from 'crypto';
 
 import {
   extractText,
+  isLidJid,
   isReaction,
   normalizeUpsert,
   parseDeleteEvent,
@@ -136,7 +137,10 @@ export async function POST(request: Request) {
             route.ownerUserId,
             route.channelId,
           );
-          if (!normalized) continue;
+          if (!normalized) {
+            registrarDescartePorLid(item, route.channelId);
+            continue;
+          }
 
           if (await jaGravada(normalized.providerMessageId, normalized.fromMe)) continue;
 
@@ -402,6 +406,40 @@ export async function POST(request: Request) {
 
   // Any other event (qrcode.updated, send.message echo, …) — just ack.
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * Deixa rastro quando uma mensagem é descartada por vir endereçada só por
+ * `@lid`.
+ *
+ * O descarte em si é deliberado e continua: um `@lid` sem telefone não tem
+ * como ser ligado a uma conversa, e gravá-lo cria contato fantasma — em
+ * 26/07 isso produziu 4 fantasmas com 24 mensagens, e a dedup por 8 dígitos
+ * chegou a fundir um deles com um cliente real (commit 9606636).
+ *
+ * O que NÃO era deliberado é o silêncio. Medido em 27/07 na Evolution de
+ * produção: de 143 ecos do aparelho em ~29h, 119 foram descartados assim —
+ * 83% —, e não havia log, contador nem qualquer sinal. A perda só apareceu
+ * porque o operador comparou o celular com a tela do CRM.
+ *
+ * Isto não muda comportamento nenhum: só torna a perda contável no log do
+ * contêiner, para dimensionar o problema enquanto a saída definitiva (mapa
+ * telefone↔LID, ou versão da Evolution que preencha `remoteJidAlt`) não
+ * existe.
+ */
+function registrarDescartePorLid(item: EvolutionUpsert, channelId: string | null): void {
+  const jid = item.key?.remoteJid;
+  if (!jid || !isLidJid(jid)) return; // descarte por outro motivo
+  console.warn(
+    '[evolution/webhook] mensagem DESCARTADA: endereçada por @lid sem telefone.',
+    JSON.stringify({
+      canal: channelId,
+      remoteJid: jid,
+      messageId: item.key?.id,
+      fromMe: item.key?.fromMe === true,
+      tipo: Object.keys(item.message ?? {})[0] ?? null,
+    }),
+  );
 }
 
 /**
