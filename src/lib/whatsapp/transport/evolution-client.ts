@@ -48,6 +48,18 @@ interface EvolutionErrorBody {
   response?: { message?: string | string[] };
 }
 
+/**
+ * Resposta do apagar-para-todos. A Evolution devolve a MENSAGEM DE
+ * REVOGAÇÃO que acabou de enviar: um `protocolMessage` cujo `key.id` é o id
+ * da mensagem ALVO. É só isso que dá para verificar do nosso lado.
+ */
+export interface EvolutionRevokeResponse {
+  message?: {
+    protocolMessage?: { key?: { id?: string }; type?: string | number };
+  } | null;
+  key?: { id?: string };
+}
+
 /** A send returns the created message; we only need its `key.id`. */
 interface EvolutionSendResponse {
   key?: { id?: string; remoteJid?: string; fromMe?: boolean };
@@ -305,14 +317,30 @@ export class EvolutionClient {
    * deve esconder o botão em vez de deixar o operador tentar e receber erro.
    *
    * É DELETE COM CORPO — é assim que o roteador da Evolution registra a rota.
+   *
+   * ⚠️ DEVOLVE O CORPO DA RESPOSTA, e quem chama precisa olhar para ele.
+   * A Evolution responde 2xx assim que escreve o pacote no socket; isso
+   * significa "aceitei o pedido", NUNCA "a mensagem sumiu do aparelho do
+   * destinatário" — o WhatsApp não emite confirmação de revogação. Tratar o
+   * 2xx como sucesso foi exatamente o que fez o CRM marcar "Apagada" em
+   * mensagens que seguiam íntegras no celular do cliente.
+   *
+   * O máximo que a resposta prova é que a Evolution montou a revogação
+   * apontando para a chave certa — o que já pega chave errada e no-op.
    */
-  async deleteMessageForEveryone(key: EvolutionMessageKey): Promise<void> {
-    await this.request('DELETE', 'chat/deleteMessageForEveryone', {
-      id: key.id,
-      remoteJid: key.remoteJid,
-      fromMe: key.fromMe,
-      ...(key.participant ? { participant: key.participant } : {}),
-    });
+  async deleteMessageForEveryone(
+    key: EvolutionMessageKey,
+  ): Promise<EvolutionRevokeResponse> {
+    return this.request<EvolutionRevokeResponse>(
+      'DELETE',
+      'chat/deleteMessageForEveryone',
+      {
+        id: key.id,
+        remoteJid: key.remoteJid,
+        fromMe: key.fromMe,
+        ...(key.participant ? { participant: key.participant } : {}),
+      },
+    );
   }
 
   /**

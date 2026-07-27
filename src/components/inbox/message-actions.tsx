@@ -69,7 +69,11 @@ export function MessageActions({
     message.status !== "failed" &&
     channelKind === "evolution" &&
     nossa &&
-    !message.deleted_at;
+    // Vale para a confirmada E para a que só foi PEDIDA: nos dois casos já
+    // existe uma revogação a caminho, e oferecer "apagar" ou "editar" de
+    // novo só produz um segundo pedido para a mesma mensagem.
+    !message.deleted_at &&
+    !message.delete_requested_at;
 
   // Os prazos são ABSOLUTOS, derivados de `created_at` — puro, sem relógio
   // no render. Chamar `Date.now()` ali deixaria o botão "Editar" visível

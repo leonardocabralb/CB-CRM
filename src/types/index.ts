@@ -277,6 +277,15 @@ export interface Message {
    * depois. Divergência deliberada do WhatsApp. Migration 905.
    */
   deleted_at?: string | null;
+  /**
+   * O CRM PEDIU a revogação e ainda não teve confirmação. Migration 907.
+   *
+   * Não é sinônimo de `deleted_at`: o WhatsApp não confirma revogação, e a
+   * resposta 2xx da Evolution só diz que ela aceitou o pedido. A bolha risca
+   * nos dois casos, mas só `deleted_at` autoriza escrever "Apagada" — com
+   * este campo sozinho, o texto honesto é "Exclusão solicitada".
+   */
+  delete_requested_at?: string | null;
   /** Quem apagou: 'customer' = o cliente; 'agent' = nós. Migration 905. */
   deleted_by?: 'customer' | 'agent' | null;
   /** Editada no WhatsApp. Migration 905. */

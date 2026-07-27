@@ -6,6 +6,7 @@ import {
   extractText,
   isReaction,
   normalizeUpsert,
+  parseDeleteEvent,
   unwrapMessage,
   type EvolutionUpsert,
 } from '@/lib/whatsapp/transport/evolution-inbound';
@@ -248,23 +249,32 @@ export async function POST(request: Request) {
   // riscado. É divergência deliberada do WhatsApp — o escritório precisa do
   // registro do que foi dito, inclusive do que o cliente apagou depois.
   if (event === 'messages.delete') {
-    const d = (body.data ?? {}) as { id?: string; keyId?: string; fromMe?: boolean };
-    const providerId = d.keyId ?? d.id;
-    if (providerId) {
+    // As duas formas de payload e o motivo da precedência estão em
+    // `parseDeleteEvent` — ler só uma delas fazia o UPDATE acertar zero
+    // linhas em silêncio.
+    const exclusoes = parseDeleteEvent(body.data);
+    if (exclusoes.length) {
       after(async () => {
-        const { error } = await supabaseAdmin()
-          .from('messages')
-          .update({
-            deleted_at: new Date().toISOString(),
-            // `fromMe` na exclusão significa que a mensagem apagada era
-            // NOSSA (apagada pelo celular pareado ou por outro cliente do
-            // WhatsApp); sem isso, é o cliente quem apagou.
-            deleted_by: d.fromMe ? 'agent' : 'customer',
-          })
-          .eq('message_id', providerId)
-          .is('deleted_at', null);
-        if (error) {
-          console.error('[evolution/webhook] marcar exclusão falhou:', error.message);
+        for (const { providerMessageId, fromMe } of exclusoes) {
+          const { error } = await supabaseAdmin()
+            .from('messages')
+            .update({
+              // Este é o ÚNICO lugar que pode preencher `deleted_at`: é a
+              // única confirmação que existe de que a mensagem foi mesmo
+              // revogada. O nosso botão de apagar só registra o PEDIDO, em
+              // `delete_requested_at` — ver a nota na rota
+              // /api/whatsapp/message.
+              deleted_at: new Date().toISOString(),
+              // `fromMe` na exclusão significa que a mensagem apagada era
+              // NOSSA (apagada pelo celular pareado, por outro cliente do
+              // WhatsApp ou pelo próprio CRM); sem isso, foi o contato.
+              deleted_by: fromMe ? 'agent' : 'customer',
+            })
+            .eq('message_id', providerMessageId)
+            .is('deleted_at', null);
+          if (error) {
+            console.error('[evolution/webhook] marcar exclusão falhou:', error.message);
+          }
         }
       });
     }

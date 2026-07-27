@@ -229,3 +229,49 @@ export function normalizeUpsert(
     mediaUrl: null,
   };
 }
+
+/** Uma exclusão anunciada pelo webhook `messages.delete`. */
+export interface ExclusaoRecebida {
+  /** Id da mensagem NO WHATSAPP — o que casa com `messages.message_id`. */
+  providerMessageId: string;
+  /** A mensagem apagada era nossa (`true`) ou do contato (`false`). */
+  fromMe: boolean;
+}
+
+/**
+ * Lê o `data` de um `messages.delete` da Evolution.
+ *
+ * ⚠️ A Evolution emite este evento em DUAS formas, e ler só uma delas é o
+ * defeito que deixou a exclusão passar em branco:
+ *
+ *   1. Exclusão feita no CELULAR (ou em outro cliente do WhatsApp) — a chave
+ *      vem achatada: `{ id, remoteJid, fromMe }`. Aqui `id` É o id do
+ *      WhatsApp.
+ *   2. Exclusão feita pela API DELA — isto é, pelo nosso botão de apagar — a
+ *      chave vem aninhada em `key`, e o `id` de fora é o identificador
+ *      INTERNO do banco da Evolution, que não casa com nada nosso. Usar o
+ *      `id` de fora nessa forma faz o UPDATE acertar zero linhas em silêncio.
+ *
+ * Por isso `key.id` tem precedência sobre qualquer id de primeiro nível.
+ *
+ * Devolve lista porque o campo `data` também chega como array em lote; um
+ * `data` que não contenha id nenhum vira lista vazia, nunca exceção.
+ */
+export function parseDeleteEvent(data: unknown): ExclusaoRecebida[] {
+  const itens = Array.isArray(data) ? data : [data];
+  const saida: ExclusaoRecebida[] = [];
+  for (const bruto of itens) {
+    if (!bruto || typeof bruto !== 'object') continue;
+    const d = bruto as {
+      id?: unknown;
+      keyId?: unknown;
+      fromMe?: unknown;
+      key?: { id?: unknown; fromMe?: unknown } | null;
+    };
+    const candidato = d.key?.id ?? d.keyId ?? d.id;
+    if (typeof candidato !== 'string' || !candidato) continue;
+    const fromMe = d.key?.fromMe ?? d.fromMe;
+    saida.push({ providerMessageId: candidato, fromMe: fromMe === true });
+  }
+  return saida;
+}

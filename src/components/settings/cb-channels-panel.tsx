@@ -33,6 +33,7 @@ import {
   Pencil,
   Plus,
   QrCode,
+  RefreshCw,
   Smartphone,
   Star,
   Trash2,
@@ -265,6 +266,10 @@ export function CbChannelsPanel() {
           return;
         }
         setQrError(null);
+        // A reaplicação do webhook é best-effort na rota, mas o operador
+        // precisa saber quando ela não pegou: sem os eventos, exclusão e
+        // edição feitas pelo cliente somem sem deixar rastro no CRM.
+        if (payload.webhookError) toast.warning(t('webhookRepairFailed'));
         if (payload.connected) {
           setQrConnected(true);
           setQrImage(null);
@@ -436,10 +441,23 @@ export function CbChannelsPanel() {
 
                 <RequireRole min="admin">
                   <div className="flex items-center gap-2">
-                    {channel.kind === 'evolution' && channel.status !== 'connected' && (
+                    {/* Também aparece com o canal CONECTADO, de propósito.
+                        Este botão é o único caminho que reaplica o webhook —
+                        e a Evolution congela a lista de eventos por
+                        instância no registro, então um evento novo no código
+                        (foi o caso de MESSAGES_DELETE) não alcança quem já
+                        está conectado. Escondê-lo aqui deixava o reparo
+                        inalcançável exatamente quando ele era necessário.
+                        Com a instância aberta não há QR: a rota responde
+                        "conectado" na primeira consulta e o diálogo fecha. */}
+                    {channel.kind === 'evolution' && (
                       <Button variant="outline" size="sm" onClick={() => openQrFor(channel.id, null)}>
-                        <QrCode className="mr-2 h-4 w-4" />
-                        {t('connect')}
+                        {channel.status === 'connected' ? (
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                        ) : (
+                          <QrCode className="mr-2 h-4 w-4" />
+                        )}
+                        {channel.status === 'connected' ? t('resyncAction') : t('connect')}
                       </Button>
                     )}
                     <Button

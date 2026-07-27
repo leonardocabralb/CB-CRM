@@ -18,7 +18,7 @@ import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
-import { resolveEngineChannel } from '@/lib/cb-channels/engine-send';
+import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
@@ -47,6 +47,16 @@ interface Alvo {
   conversation_id: string;
   remote_jid: string | null;
   deleted_at: string | null;
+  delete_requested_at: string | null;
+  /**
+   * Canal por onde a mensagem SAIU. Numa conta com dois números, resolver o
+   * canal pela CONVERSA manda a revogação pela instância errada — e a
+   * Evolution responde 2xx assim mesmo, então o CRM riscaria a bolha e nada
+   * aconteceria no aparelho do cliente.
+   */
+  channel_id: string | null;
+  /** O que o PROVEDOR disse, quando disse. Melhor que deduzir do papel. */
+  from_me: boolean | null;
 }
 
 /** Sessão + PAPEL + conta + mensagem, com tudo validado. */
@@ -88,7 +98,7 @@ async function resolverAlvo(messageId: unknown) {
   const { data: msg } = await supabase
     .from('messages')
     .select(
-      'id, message_id, sender_type, content_text, created_at, conversation_id, remote_jid, deleted_at',
+      'id, message_id, sender_type, content_text, created_at, conversation_id, remote_jid, deleted_at, delete_requested_at, channel_id, from_me',
     )
     .eq('id', messageId)
     .maybeSingle();
@@ -107,7 +117,29 @@ async function resolverAlvo(messageId: unknown) {
     };
   }
 
-  const canal = await resolveEngineChannel(admin(), accountId, alvo.conversation_id);
+  // Sem endereço da conversa não há o que revogar. A validação da Evolution
+  // ACEITA `remoteJid` vazio (o schema só exige que o campo exista) e o erro
+  // só aparece lá dentro, como um 500 que chega ao operador na forma
+  // "Erro da Evolution: Cannot destructure property 'user' of undefined".
+  // Barrar aqui troca isso por uma frase que diz o que aconteceu.
+  if (!alvo.remote_jid) {
+    return {
+      erro: NextResponse.json(
+        { error: 'Esta mensagem não guarda o endereço da conversa no WhatsApp.' },
+        { status: 409 },
+      ),
+    };
+  }
+
+  // Canal DA MENSAGEM, não o da conversa. Uma conversa pode ter migrado de
+  // número; revogar por outra instância não apaga nada e ainda responde 2xx.
+  // Cai no canal da conversa quando a mensagem é anterior à 903.
+  const canal = await resolveEngineChannelPreferring(
+    admin(),
+    accountId,
+    alvo.conversation_id,
+    alvo.channel_id,
+  );
   if (!canal) {
     return { erro: NextResponse.json({ error: 'Canal não encontrado.' }, { status: 409 }) };
   }
@@ -138,17 +170,35 @@ async function resolverAlvo(messageId: unknown) {
     apikey: decrypt(canal.api_key),
   });
 
-  return { alvo, cliente, accountId };
+  // As duas guardas acima já provaram que estes dois campos não são nulos;
+  // repeti-los aqui é o que leva essa prova para o sistema de tipos, sem
+  // `!` espalhado pelas rotas.
+  const pronto: AlvoPronto = {
+    ...alvo,
+    message_id: alvo.message_id,
+    remote_jid: alvo.remote_jid,
+  };
+
+  return { alvo: pronto, cliente, accountId };
 }
 
+/**
+ * Alvo já validado: passou pelas guardas de `resolverAlvo`, então os dois
+ * campos sem os quais não há revogação possível são garantidamente strings.
+ */
+type AlvoPronto = Alvo & { message_id: string; remote_jid: string };
+
 /** Chave Baileys da mensagem, para a Evolution localizá-la. */
-function chaveBaileys(alvo: Alvo) {
+function chaveBaileys(alvo: AlvoPronto) {
   return {
-    id: alvo.message_id!,
-    remoteJid: alvo.remote_jid ?? '',
-    // Só mensagem NOSSA pode ser apagada para todos ou editada. O
-    // `sender_type` é a fonte da verdade: 'customer' nunca chega aqui.
-    fromMe: alvo.sender_type !== 'customer',
+    id: alvo.message_id,
+    remoteJid: alvo.remote_jid,
+    // `from_me` é o que o PROVEDOR disse quando gravamos a mensagem — é o
+    // mesmo campo que a rota de reação já usa. Deduzir de `sender_type` é
+    // aproximação: bate hoje, mas erra no dia em que existir mensagem
+    // gravada por um caminho que não distinga os dois. Só cai na dedução
+    // quando a coluna é nula (mensagem anterior à coluna existir).
+    fromMe: alvo.from_me ?? alvo.sender_type !== 'customer',
   };
 }
 
@@ -189,7 +239,7 @@ export async function DELETE(request: Request) {
     if ('erro' in r) return r.erro;
     const { alvo, cliente } = r;
 
-    if (alvo.deleted_at) {
+    if (alvo.deleted_at || alvo.delete_requested_at) {
       return NextResponse.json({ ok: true, already: true });
     }
     if (alvo.sender_type === 'customer') {
@@ -208,32 +258,57 @@ export async function DELETE(request: Request) {
       );
     }
 
-    await cliente.deleteMessageForEveryone(chaveBaileys(alvo));
+    const resposta = await cliente.deleteMessageForEveryone(chaveBaileys(alvo));
 
-    // Só marca DEPOIS de a Evolution confirmar. Marcando antes, uma falha
-    // deixaria o CRM dizendo "apagada" com a mensagem viva no celular do
-    // cliente — a mentira mais cara possível aqui.
+    // A Evolution devolve a revogação que MONTOU. Se ela aponta para outro
+    // id, mandamos apagar a mensagem errada — isso é falha, não sucesso, e
+    // precisa parar aqui antes de qualquer marca no banco.
+    const alvoDaRevogacao = resposta?.message?.protocolMessage?.key?.id;
+    if (alvoDaRevogacao && alvoDaRevogacao !== alvo.message_id) {
+      console.error(
+        '[whatsapp/message] revogação apontou para outra mensagem:',
+        alvoDaRevogacao,
+        '≠',
+        alvo.message_id,
+      );
+      return NextResponse.json(
+        { error: 'O WhatsApp respondeu sobre outra mensagem. Nada foi apagado.' },
+        { status: 502 },
+      );
+    }
+
+    // ⚠️ AQUI SE REGISTRA UM PEDIDO, NÃO UM FATO.
+    //
+    // A Evolution responde 2xx assim que escreve a revogação no socket, e o
+    // WhatsApp não emite confirmação de revogação. A única confirmação que
+    // existe é o webhook `messages.delete` voltar — e é ELE quem preenche
+    // `deleted_at`. Enquanto não voltar, tudo o que o CRM pode afirmar com
+    // honestidade é "pedimos".
+    //
+    // A versão anterior gravava `deleted_at` aqui, com um comentário
+    // dizendo que só marcava depois da confirmação. Não havia confirmação
+    // nenhuma: mensagens apareciam "Apagada" no CRM e seguiam íntegras no
+    // celular do cliente. Num escritório, essa é a afirmação mais cara que
+    // o sistema pode fazer errado.
     const { error } = await admin()
       .from('messages')
-      .update({ deleted_at: new Date().toISOString(), deleted_by: 'agent' })
+      .update({ delete_requested_at: new Date().toISOString(), deleted_by: 'agent' })
       .eq('id', alvo.id);
     if (error) {
-      console.error('[whatsapp/message] marcar exclusão falhou:', error.message);
-      // `whatsapp_done`: a mensagem JÁ SUMIU do celular do cliente. O
-      // cliente da UI usa este código para NÃO desfazer a marca — desfazer
-      // faria o CRM afirmar que a mensagem existe quando ela não existe
-      // mais em lugar nenhum.
+      console.error('[whatsapp/message] registrar pedido de exclusão falhou:', error.message);
+      // `whatsapp_done`: o pedido JÁ SAIU para o WhatsApp; só a gravação
+      // local falhou. A UI usa este código para não desfazer a marca —
+      // desfazer faria a tela afirmar que nada foi pedido.
       return NextResponse.json(
         {
-          error: 'Apagada no WhatsApp, mas o CRM não registrou. Recarregue.',
+          error: 'Pedido enviado ao WhatsApp, mas o CRM não registrou. Recarregue.',
           code: 'whatsapp_done',
         },
         { status: 500 },
       );
     }
 
-    await atualizarPrevia(alvo.conversation_id);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, confirmado: false });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro desconhecido';
     console.error('[whatsapp/message] DELETE falhou:', msg);
@@ -253,7 +328,10 @@ export async function PATCH(request: Request) {
     if (!texto) {
       return NextResponse.json({ error: 'O texto não pode ficar vazio.' }, { status: 400 });
     }
-    if (alvo.deleted_at) {
+    // Também barra a que só foi PEDIDA para apagar: editar depois disso
+    // deixaria o CRM com um pedido de exclusão e um texto novo ao mesmo
+    // tempo, sem ordem definida entre os dois no aparelho do cliente.
+    if (alvo.deleted_at || alvo.delete_requested_at) {
       return NextResponse.json(
         { error: 'Não dá para editar uma mensagem apagada.' },
         { status: 400 },
@@ -275,7 +353,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const numero = (alvo.remote_jid ?? '').split('@')[0];
+    const numero = alvo.remote_jid.split('@')[0];
     await cliente.updateMessage({ number: numero, key: chaveBaileys(alvo), text: texto });
 
     const { error } = await admin()
