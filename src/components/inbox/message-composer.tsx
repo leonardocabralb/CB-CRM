@@ -164,7 +164,6 @@ export function MessageComposer({
   const t = useTranslations("Inbox.composer");
 
   const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   /** Mensagem escrita, ainda segurável. `null` = nada esperando. */
@@ -258,12 +257,29 @@ export function MessageComposer({
   // ENVIAM a pendente imediatamente em vez de descartá-la — o operador
   // apertou Enter, a intenção dele foi enviar.
 
-  const enviarAgora = useCallback(
-    (p: { texto: string; replyToId?: string }) => {
-      onSend(p.texto, p.replyToId);
-    },
-    [onSend],
-  );
+  // `onSend` por REF, não por dependência.
+  //
+  // O pai o memoiza com `conversation` na lista de dependências, e esse
+  // objeto ganha identidade nova a cada atualização em tempo real. Se o
+  // efeito de desmontagem dependesse de `onSend`, uma mensagem do cliente
+  // chegando durante a janela re-registraria o efeito, o cleanup rodaria e a
+  // pendente sairia antes da hora — o "Desfazer" só funcionaria em conversa
+  // parada, que é justamente quando ninguém precisa dele.
+  const onSendRef = useRef(onSend);
+  useEffect(() => {
+    onSendRef.current = onSend;
+  }, [onSend]);
+
+  const enviarAgora = useCallback((p: { texto: string; replyToId?: string }) => {
+    onSendRef.current(p.texto, p.replyToId);
+  }, []);
+
+  // Mesmo motivo do `onSendRef`: usado dentro de callbacks que não podem
+  // trocar de identidade a cada render do pai.
+  const onClearReplyRef = useRef(onClearReply);
+  useEffect(() => {
+    onClearReplyRef.current = onClearReply;
+  }, [onClearReply]);
 
   // Ref espelhando a pendente: o cleanup do efeito de desmontagem precisa do
   // valor mais recente sem re-registrar o efeito a cada tecla.
@@ -285,7 +301,13 @@ export function MessageComposer({
     const p = pendenteRef.current;
     pendenteRef.current = null;
     setPendente(null);
-    if (p) enviarAgora(p);
+    if (p) {
+      enviarAgora(p);
+      // A citação some só quando a mensagem SAI. Limpando no Enter, desfazer
+      // devolvia o texto mas perdia a resposta citada — e o operador teria de
+      // procurar de novo a mensagem que estava respondendo.
+      onClearReplyRef.current?.();
+    }
   }, [descartarTimer, enviarAgora]);
 
   const desfazerEnvio = useCallback(() => {
@@ -307,13 +329,17 @@ export function MessageComposer({
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending || sessionExpired) return;
+    if (!trimmed || sessionExpired) return;
 
     // Já havia uma esperando: ela vai AGORA, para a ordem das mensagens na
     // conversa do cliente ser a mesma em que foram escritas.
     liberarPendente();
 
-    setPendente({ texto: trimmed, replyToId: replyTo?.id, expiraEm: Date.now() + SEGUNDOS_DESFAZER * 1000 });
+    setPendente({
+      texto: trimmed,
+      replyToId: replyTo?.id,
+      expiraEm: Date.now() + SEGUNDOS_DESFAZER * 1000,
+    });
     pendenteRef.current = { texto: trimmed, replyToId: replyTo?.id };
     timerDesfazerRef.current = setTimeout(liberarPendente, SEGUNDOS_DESFAZER * 1000);
 
@@ -321,20 +347,32 @@ export function MessageComposer({
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-    onClearReply?.();
-  }, [text, sending, sessionExpired, replyTo?.id, liberarPendente, onClearReply]);
+  }, [text, sessionExpired, replyTo?.id, liberarPendente]);
+
+  // Contagem regressiva da barra. Sem isto o rótulo diria "5s" o tempo todo,
+  // inclusive no último instante antes de sair.
+  const [restam, setRestam] = useState(SEGUNDOS_DESFAZER);
+  useEffect(() => {
+    if (!pendente) return;
+    const tick = () =>
+      setRestam(Math.max(0, Math.ceil((pendente.expiraEm - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [pendente]);
 
   // Desmontagem (trocou de conversa, saiu da rota): envia em vez de perder.
+  // Lista de dependências VAZIA de propósito — ver a nota em `onSendRef`.
   useEffect(() => {
     return () => {
       const p = pendenteRef.current;
       if (p) {
         pendenteRef.current = null;
-        enviarAgora(p);
+        onSendRef.current(p.texto, p.replyToId);
       }
       if (timerDesfazerRef.current) clearTimeout(timerDesfazerRef.current);
     };
-  }, [enviarAgora]);
+  }, []);
 
   // Fechar a aba é o único caso que não dá para salvar: a requisição não
   // sobrevive. Avisar é o melhor disponível.
@@ -698,7 +736,7 @@ export function MessageComposer({
         <div className="mb-2 flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2">
           <div className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-transparent" />
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-            {t("sendingIn", { seconds: SEGUNDOS_DESFAZER })} &mdash; {pendente.texto}
+            {t("sendingIn", { seconds: restam })} &mdash; {pendente.texto}
           </span>
           <button
             type="button"
@@ -934,7 +972,7 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            disabled={!text.trim() || sessionExpired || sending}
+            disabled={!text.trim() || sessionExpired}
             onClick={handleSend}
             className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
           >
