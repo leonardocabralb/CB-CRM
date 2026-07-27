@@ -75,10 +75,14 @@ const MAX_RECORDING_SECONDS = 5 * 60;
 
 /**
  * Janela para desfazer um envio. Mensagem errada no WhatsApp não tem volta:
- * só resta apagar, e o cliente vê que algo foi apagado. Cinco segundos dão
- * tempo de reler; menos que isso só pega o arrependimento imediato.
+ * só resta apagar, e o cliente vê que algo foi apagado.
+ *
+ * Três segundos por escolha do operador: a janela ATRASA a chegada no celular
+ * do cliente, então cada segundo aqui é um segundo de silêncio no atendimento.
+ * Pega o arrependimento imediato — que é a maioria — sem fazer o cliente
+ * achar que o atendente sumiu.
  */
-const SEGUNDOS_DESFAZER = 5;
+const SEGUNDOS_DESFAZER = 3;
 
 export interface SendMediaPayload {
   kind: ComposerMediaKind;
@@ -387,8 +391,8 @@ export function MessageComposer({
     liberarPendente();
   }, [conversationId, liberarPendente]);
 
-  // Contagem regressiva da barra. Sem isto o rótulo diria "5s" o tempo todo,
-  // inclusive no último instante antes de sair.
+  // Contagem regressiva da barra. Sem isto o rótulo repetiria o valor cheio
+  // o tempo todo, inclusive no último instante antes de a mensagem sair.
   const [restam, setRestam] = useState(SEGUNDOS_DESFAZER);
   useEffect(() => {
     if (!pendente) return;
