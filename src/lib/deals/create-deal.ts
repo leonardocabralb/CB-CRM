@@ -1,0 +1,154 @@
+// ============================================================
+// Onde nasce negócio criado por regra do CB (roteador de funil por conexão,
+// e o que vier depois).
+//
+// ⚠️ NÃO é o único insert em `deals` do servidor: o passo `create_deal` do
+// motor de automações (`src/lib/automations/engine.ts`) continua com insert
+// próprio, porque é código do upstream e trocá-lo aqui aumentaria a
+// superfície de merge. Consequência prática: as validações abaixo NÃO valem
+// para automação. Regra nova aqui exige decidir se vale lá também.
+//
+// O QUE ESTE MÓDULO GARANTE, e a rota/motor não precisa repetir:
+//  - o funil é DA CONTA (a ingestão roda em service-role e ignora RLS);
+//  - a etapa é DO funil (`pipeline_stages` não tem `account_id` — a tenancy
+//    dela é indireta, via `pipeline_id`);
+//  - a moeda é a da conta, não o default estático da coluna;
+//  - colisão do índice único do roteador vira SUCESSO, não erro.
+// ============================================================
+
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+import { isUniqueViolation } from '@/lib/contacts/dedupe';
+
+/** Quem criou o card. Espelha o CHECK de `deals.source` (migration 908). */
+export type DealSource = 'manual' | 'automation' | 'channel';
+
+export interface CreateDealArgs {
+  db: SupabaseClient;
+  accountId: string;
+  /**
+   * Dono de registro. Anulável desde a 908 — a FK virou `ON DELETE SET NULL`
+   * justamente porque os cards automáticos pertencem todos à mesma pessoa, e
+   * o CASCADE anterior apagaria o funil inteiro se ela saísse do `auth.users`.
+   */
+  ownerUserId: string | null;
+  contactId: string;
+  pipelineId: string;
+  /** Quando ausente, cai na etapa de menor `position`. */
+  stageId?: string | null;
+  channelId?: string | null;
+  title: string;
+  value?: number;
+  source: DealSource;
+}
+
+export type CreateDealResult =
+  /** `created: false` = já existia (colisão do índice único) — não é erro. */
+  | { ok: true; created: boolean }
+  | {
+      ok: false;
+      code: 'pipeline_not_found' | 'stage_not_found' | 'no_stage' | 'insert_failed';
+      message: string;
+    };
+
+export async function createDeal(args: CreateDealArgs): Promise<CreateDealResult> {
+  const { db, accountId, ownerUserId, contactId, pipelineId, channelId, source } = args;
+
+  // 1. O funil é desta conta? Filtro explícito por `account_id` — a FK
+  //    composta da 908 já barraria no banco, mas assim o erro é legível em
+  //    vez de um 23503 cru vindo do PostgREST.
+  const { data: funil, error: funilErr } = await db
+    .from('pipelines')
+    .select('id')
+    .eq('id', pipelineId)
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  if (funilErr) {
+    return { ok: false, code: 'insert_failed', message: funilErr.message };
+  }
+  if (!funil) {
+    return {
+      ok: false,
+      code: 'pipeline_not_found',
+      message: 'Funil não encontrado nesta conta.',
+    };
+  }
+
+  // 2. A etapa. Explícita → confere que pertence ao funil; ausente → a de
+  //    menor `position`. Um funil pode ficar SEM nenhuma etapa (a tela
+  //    permite apagar todas) e `deals.stage_id` é NOT NULL, então isto é um
+  //    caminho real, não defesa em profundidade.
+  let stageId = args.stageId ?? null;
+
+  if (stageId) {
+    const { data: etapa, error: etapaErr } = await db
+      .from('pipeline_stages')
+      .select('id')
+      .eq('id', stageId)
+      .eq('pipeline_id', pipelineId)
+      .maybeSingle();
+    if (etapaErr) {
+      return { ok: false, code: 'insert_failed', message: etapaErr.message };
+    }
+    if (!etapa) {
+      return {
+        ok: false,
+        code: 'stage_not_found',
+        message: 'A etapa escolhida não pertence a este funil.',
+      };
+    }
+  } else {
+    const { data: primeira, error: primeiraErr } = await db
+      .from('pipeline_stages')
+      .select('id')
+      .eq('pipeline_id', pipelineId)
+      .order('position', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (primeiraErr) {
+      return { ok: false, code: 'insert_failed', message: primeiraErr.message };
+    }
+    if (!primeira) {
+      return {
+        ok: false,
+        code: 'no_stage',
+        message: 'Este funil não tem nenhuma etapa. Crie uma etapa antes.',
+      };
+    }
+    stageId = primeira.id as string;
+  }
+
+  // 3. Moeda da conta, não o default estático de `deals.currency` — mantém a
+  //    regra de uma moeda por conta. Mesma leitura que o motor já fazia.
+  const { data: conta } = await db
+    .from('accounts')
+    .select('default_currency')
+    .eq('id', accountId)
+    .maybeSingle();
+
+  const { error: insertErr } = await db.from('deals').insert({
+    account_id: accountId,
+    user_id: ownerUserId,
+    pipeline_id: pipelineId,
+    stage_id: stageId,
+    contact_id: contactId,
+    channel_id: channelId ?? null,
+    title: args.title,
+    value: args.value ?? 0,
+    currency: (conta?.default_currency as string | undefined) ?? 'USD',
+    status: 'open',
+    source,
+  });
+
+  if (insertErr) {
+    // `cb_deals_canal_idx` (908) barra o segundo insert de uma corrida — duas
+    // mensagens do mesmo cliente chegando juntas, ou a reentrega do webhook
+    // da Meta quando ela não recebe 200 a tempo. O card que interessa já
+    // existe, então isto é o resultado desejado, não uma falha.
+    if (isUniqueViolation(insertErr)) return { ok: true, created: false };
+    return { ok: false, code: 'insert_failed', message: insertErr.message };
+  }
+
+  return { ok: true, created: true };
+}

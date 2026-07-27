@@ -215,3 +215,47 @@ export async function reaplicarWebhook(
     headers: { Authorization: `Bearer ${webhook.secret}` },
   });
 }
+
+/**
+ * REPAREAMENTO: derruba a sessão do aparelho e devolve um QR novo.
+ *
+ * É o degrau acima de "Ressincronizar". A diferença importa:
+ *
+ *  - Ressincronizar reaplica o webhook e consulta o estado. Não desconecta
+ *    ninguém, e resolve o caso comum ("parou de entregar depois de um
+ *    deploy"). Mas NÃO cura instância zumbi: `channelConnectionState` sai
+ *    cedo quando a Evolution responde 'open', sem nunca pedir QR — a
+ *    instância que se diz aberta e não entrega continua exatamente igual.
+ *  - Repareamento força o ciclo: `logout` leva o estado a 'close' e
+ *    `connect` devolve o QR. É o único caminho para a instância travada.
+ *
+ * ⚠️ NUNCA implementar isto como deleteInstance + createInstance. Aquilo
+ * devolve um `hash` novo (obrigando a regravar `cb_channels.api_key`
+ * criptografada) e, se o nome mudar, quebra o roteamento de entrada, que
+ * casa o webhook por `instance_name`. A linha de `cb_channels` também não
+ * pode ser recriada: apagá-la desativaria em silêncio toda automação
+ * restrita ao canal (trigger `cb_channels_drop_from_automations`, 903) e
+ * levaria junto o funil padrão da conexão.
+ *
+ * O `logout` engole o próprio erro: instância já deslogada devolve erro e
+ * mesmo assim queremos seguir para o `connect`, que é o que produz o QR.
+ */
+export async function repairChannelPairing(instanceName: string): Promise<{
+  qrBase64?: string;
+  pairingCode?: string;
+}> {
+  const { baseUrl, apikey } = evolutionGlobalConfig();
+  const client = new EvolutionClient({ baseUrl, apikey, instance: instanceName });
+
+  try {
+    await client.logout();
+  } catch (err) {
+    console.warn(
+      '[cb-channels] logout no repareamento falhou (seguindo para o QR):',
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  const conn = await client.connect();
+  return { qrBase64: conn.base64, pairingCode: conn.pairingCode };
+}

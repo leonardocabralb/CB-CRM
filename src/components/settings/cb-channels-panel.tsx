@@ -32,6 +32,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  RotateCcw,
   QrCode,
   RefreshCw,
   Smartphone,
@@ -61,6 +62,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RequireRole } from '@/components/auth/require-role';
+import { createClient } from '@/lib/supabase/client';
+import { ehUrlAlcancavel } from '@/lib/cb-channels/webhook-url';
 import { SettingsPanelHead } from './settings-panel-head';
 
 interface CbChannel {
@@ -71,6 +74,21 @@ interface CbChannel {
   is_default: boolean;
   status: 'disconnected' | 'connecting' | 'connected';
   last_error: string | null;
+  /** Funil em que cai quem escrever neste número (migration 908). */
+  default_pipeline_id: string | null;
+  default_stage_id: string | null;
+}
+
+interface PipelineOption {
+  id: string;
+  name: string;
+}
+
+interface StageOption {
+  id: string;
+  name: string;
+  pipeline_id: string;
+  position: number;
 }
 
 type AddStep = 'choose' | 'evolution' | 'meta';
@@ -118,15 +136,33 @@ export function CbChannelsPanel() {
   const [qrConnected, setQrConnected] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
 
-  const [renameTarget, setRenameTarget] = useState<CbChannel | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const [renaming, setRenaming] = useState(false);
+  // "Configurar" — o antigo "Renomear", que agora também escolhe o funil.
+  const [configTarget, setConfigTarget] = useState<CbChannel | null>(null);
+  const [configLabel, setConfigLabel] = useState('');
+  const [configPipeline, setConfigPipeline] = useState('');
+  const [configStage, setConfigStage] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const [pipelines, setPipelines] = useState<PipelineOption[]>([]);
+  const [stages, setStages] = useState<StageOption[]>([]);
+  /**
+   * A busca de funis TERMINOU BEM. Distingue "ainda não sei" de "não existe":
+   * sem isso, uma falha de rede na listagem faria toda conexão configurada
+   * anunciar "o funil foi apagado", e o operador iria reconfigurar algo que
+   * está intacto no banco.
+   */
+  const [pipelinesCarregados, setPipelinesCarregados] = useState(false);
 
   const [confirmDelete, setConfirmDelete] = useState<CbChannel | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  /** Sucessor escolhido quando o canal a remover é o padrão. */
+  const [successorId, setSuccessorId] = useState('');
 
   const [promotingId, setPromotingId] = useState<string | null>(null);
   const [resyncing, setResyncing] = useState<string | null>(null);
+
+  const [confirmRestart, setConfirmRestart] = useState<CbChannel | null>(null);
+  const [restarting, setRestarting] = useState(false);
 
   const webhookUrl =
     typeof window !== 'undefined'
@@ -153,6 +189,31 @@ export function CbChannelsPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Funis e etapas para o seletor de "Configurar". Vêm pelo client do
+  // Supabase, sob RLS — mesmo caminho do construtor de automações. Falha
+  // silenciosa de propósito: sem a lista o diálogo ainda renomeia, que é o
+  // que ele já fazia antes desta tela ganhar funil.
+  useEffect(() => {
+    let cancelado = false;
+    void (async () => {
+      const supabase = createClient();
+      const [funisRes, etapasRes] = await Promise.all([
+        supabase.from('pipelines').select('id, name').order('name'),
+        supabase
+          .from('pipeline_stages')
+          .select('id, name, pipeline_id, position')
+          .order('position'),
+      ]);
+      if (cancelado) return;
+      setPipelines((funisRes.data as PipelineOption[] | null) ?? []);
+      setStages((etapasRes.data as StageOption[] | null) ?? []);
+      if (!funisRes.error) setPipelinesCarregados(true);
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
 
   const resetAdd = () => {
     setAddStep('choose');
@@ -346,46 +407,106 @@ export function CbChannelsPanel() {
     };
   }, [qrChannelId, qrConnected, load, t]);
 
-  const handleRename = async () => {
-    if (!renameTarget) return;
-    setRenaming(true);
+  const abrirConfig = (channel: CbChannel) => {
+    setConfigTarget(channel);
+    setConfigLabel(channel.label);
+    setConfigPipeline(channel.default_pipeline_id ?? '');
+    setConfigStage(channel.default_stage_id ?? '');
+  };
+
+  const handleConfigure = async () => {
+    if (!configTarget) return;
+    setSaving(true);
     try {
-      const res = await fetch(`/api/cb/channels/${renameTarget.id}`, {
+      const res = await fetch(`/api/cb/channels/${configTarget.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: renameValue }),
+        body: JSON.stringify({
+          label: configLabel,
+          // Sempre enviado (a chave presente é o que autoriza a rota a mexer
+          // no roteamento). String vazia = "sem funil".
+          default_pipeline_id: configPipeline || null,
+          default_stage_id: configPipeline ? configStage || null : null,
+        }),
       });
       const payload = await res.json();
       if (!res.ok) {
-        toast.error(payload.error || t('renameFailed'));
+        toast.error(payload.error || t('configureFailed'));
         return;
       }
-      toast.success(t('renamed'));
-      setRenameTarget(null);
+      toast.success(t('configureSaved'));
+      setConfigTarget(null);
       await load();
     } catch {
       toast.error(t('networkError'));
     } finally {
-      setRenaming(false);
+      setSaving(false);
     }
   };
 
   const handleDelete = async (channel: CbChannel) => {
     setDeletingId(channel.id);
     try {
-      const res = await fetch(`/api/cb/channels/${channel.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/cb/channels/${channel.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        // O sucessor só importa quando o canal removido é o padrão; a rota
+        // ignora o campo nos outros casos.
+        body: JSON.stringify({ promote_to: successorId || null }),
+      });
       const payload = await res.json();
       if (!res.ok) {
-        toast.error(payload.error || t('deleteFailed'));
+        toast.error(payload.error || t('deleteFailed'), { duration: 10_000 });
         return;
       }
-      toast.success(t('deleted', { label: channel.label }));
+      // O espelho pode ter ficado para trás na promoção do sucessor. O canal
+      // já foi removido, então isto não é erro — mas disparos e modelos
+      // podem estar apontando para a credencial que acabou de ser destruída.
+      if (payload.warning) {
+        toast.warning(payload.warning, { duration: 15_000 });
+      } else {
+        toast.success(t('deleted', { label: channel.label }));
+      }
       setConfirmDelete(null);
+      setSuccessorId('');
       await load();
     } catch {
       toast.error(t('networkError'));
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  /**
+   * REPAREAR: derruba a sessão e abre o QR novo.
+   *
+   * Diferente de "Ressincronizar", que reaplica o webhook sem desconectar
+   * ninguém. Este é o remédio da instância zumbi — a que a Evolution ainda
+   * reporta como 'open' e que não entrega nada, e que por isso nem oferece
+   * o botão de parear.
+   */
+  const handleRestart = async () => {
+    if (!confirmRestart) return;
+    const channelId = confirmRestart.id;
+    setRestarting(true);
+    try {
+      const res = await fetch(`/api/cb/channels/${channelId}/restart`, {
+        method: 'POST',
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        toast.error(payload.error || t('restartFailed'), { duration: 10_000 });
+        return;
+      }
+      setConfirmRestart(null);
+      await load();
+      // Cai direto no diálogo do QR: a sessão JÁ caiu, então mandar o
+      // operador procurar o botão de parear seria deixá-lo no escuro.
+      openQrFor(channelId, payload.qr ?? null);
+    } catch {
+      toast.error(t('networkError'));
+    } finally {
+      setRestarting(false);
     }
   };
 
@@ -457,7 +578,11 @@ export function CbChannelsPanel() {
           {channels.map((channel) => (
             <Card key={channel.id}>
               <CardContent className="flex flex-wrap items-center gap-3 py-4">
-                <div className="min-w-0 flex-1">
+                {/* Piso de largura: sem ele o `flex-1 min-w-0` encolhe até o
+                    número e o funil saírem uma palavra por linha quando a
+                    linha de botões cresce (são quatro agora). Com o piso, o
+                    `flex-wrap` do pai joga os botões para baixo. */}
+                <div className="min-w-56 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium text-foreground">{channel.label}</span>
                     {channel.kind === 'meta' ? (
@@ -487,6 +612,26 @@ export function CbChannelsPanel() {
                     />
                     {t(`status_${channel.status}`)}
                   </p>
+                  {/* O funil configurado, LIDO DE VOLTA. Apagar o funil na
+                      tela de Funis zera `default_pipeline_id` (ON DELETE SET
+                      NULL) e o roteamento para em silêncio — sem esta linha,
+                      "parou de entrar gente no funil" não teria nenhum
+                      sintoma visível. Por isso resolvemos o nome contra a
+                      lista, em vez de confiar no id salvo. */}
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {(() => {
+                      if (!channel.default_pipeline_id) return t('noPipeline');
+                      const funil = pipelines.find(
+                        (p) => p.id === channel.default_pipeline_id,
+                      );
+                      if (funil) return t('pipelineBadge', { pipeline: funil.name });
+                      // Sem a lista não dá para afirmar que sumiu. E com a
+                      // lista carregada isto é quase impossível: a FK da 908
+                      // zera a coluna quando o funil é apagado. Sobra o caso
+                      // raro de outra aba ter apagado agora há pouco.
+                      return pipelinesCarregados ? t('pipelineMissing') : t('pipelineUnknown');
+                    })()}
+                  </p>
                   {channel.last_error && (
                     <p className="mt-1 truncate text-xs text-destructive">
                       {t('lastError', { error: channel.last_error })}
@@ -495,7 +640,7 @@ export function CbChannelsPanel() {
                 </div>
 
                 <RequireRole min="admin">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {/* Canal Evolution tem botão em QUALQUER estado, e são
                         dois gestos diferentes:
 
@@ -529,16 +674,28 @@ export function CbChannelsPanel() {
                           {t('connect')}
                         </Button>
                       ))}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={t('renameAction')}
-                      onClick={() => {
-                        setRenameTarget(channel);
-                        setRenameValue(channel.label);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" />
+                    {/* REPAREAR. Sem condição de status de propósito: o caso
+                        que ele existe para resolver é justamente o canal que
+                        SE DIZ conectado e não entrega nada. Amarrá-lo a
+                        `status !== 'connected'` o esconderia exatamente
+                        quando é necessário — o erro que já escondia o botão
+                        de parear. */}
+                    {channel.kind === 'evolution' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={t('restartAction')}
+                        title={t('restartHint')}
+                        onClick={() => setConfirmRestart(channel)}
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {/* Texto visível, não só ícone: quem procura "funil" não
+                        adivinha que ele mora atrás de um lápis mudo. */}
+                    <Button variant="outline" size="sm" onClick={() => abrirConfig(channel)}>
+                      <Pencil className="mr-2 h-4 w-4" />
+                      {t('configureAction')}
                     </Button>
                     {!channel.is_default && (
                       <Button
@@ -556,21 +713,30 @@ export function CbChannelsPanel() {
                         {t('setDefaultAction')}
                       </Button>
                     )}
-                    {!channel.is_default && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={t('deleteAction')}
-                        disabled={deletingId === channel.id}
-                        onClick={() => setConfirmDelete(channel)}
-                      >
-                        {deletingId === channel.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </Button>
-                    )}
+                    {/* SEM `!channel.is_default`. Toda conta hoje tem uma
+                        conexão só, e ela é a padrão — a condição antiga fazia
+                        a lixeira desaparecer justamente de todo canal
+                        existente. A regra de negócio (não deixar a conta sem
+                        WhatsApp, nomear o sucessor) mora no servidor e no
+                        diálogo, que é onde dá para explicá-la. */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={t('deleteAction')}
+                      disabled={deletingId === channel.id}
+                      onClick={() => {
+                        setConfirmDelete(channel);
+                        setSuccessorId(
+                          channels.find((c) => c.id !== channel.id)?.id ?? '',
+                        );
+                      }}
+                    >
+                      {deletingId === channel.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
                 </RequireRole>
               </CardContent>
@@ -867,32 +1033,129 @@ export function CbChannelsPanel() {
         </DialogContent>
       </Dialog>
 
-      {/* Renomear */}
+      {/* Configurar — nome + funil padrão */}
       <Dialog
-        open={renameTarget !== null}
+        open={configTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setRenameTarget(null);
+          if (!open) setConfigTarget(null);
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t('renameTitle')}</DialogTitle>
+            <DialogTitle>{t('configureTitle')}</DialogTitle>
           </DialogHeader>
-          <div>
-            <Label htmlFor="cb-rename-label">{t('labelField')}</Label>
-            <Input
-              id="cb-rename-label"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-            />
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="cb-config-label">{t('labelField')}</Label>
+              <Input
+                id="cb-config-label"
+                value={configLabel}
+                onChange={(e) => setConfigLabel(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="cb-config-pipeline">{t('pipelineField')}</Label>
+              <select
+                id="cb-config-pipeline"
+                value={configPipeline}
+                onChange={(e) => {
+                  setConfigPipeline(e.target.value);
+                  // Etapa pertence ao funil: a FK composta da 908 rejeita o
+                  // par órfão, então trocar de funil tem de limpar a etapa.
+                  setConfigStage('');
+                }}
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+              >
+                <option value="">{t('pipelineNone')}</option>
+                {pipelines.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">{t('pipelineHint')}</p>
+            </div>
+
+            {configPipeline && (
+              <div>
+                <Label htmlFor="cb-config-stage">{t('stageField')}</Label>
+                <select
+                  id="cb-config-stage"
+                  value={configStage}
+                  onChange={(e) => setConfigStage(e.target.value)}
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+                >
+                  <option value="">{t('stageAuto')}</option>
+                  {stages
+                    .filter((s) => s.pipeline_id === configPipeline)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                </select>
+                {/* A etapa explícita importa: a de menor posição costuma ser
+                    faixa de estacionamento ("Contato Avulso"), não a entrada
+                    do processo. */}
+                <p className="mt-1 text-xs text-muted-foreground">{t('stageHint')}</p>
+              </div>
+            )}
+
+            {configPipeline && (
+              <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+                {t('pipelineWarning')}
+              </p>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameTarget(null)}>
+            <Button variant="outline" onClick={() => setConfigTarget(null)}>
               {t('cancel')}
             </Button>
-            <Button onClick={handleRename} disabled={renaming || !renameValue.trim()}>
-              {renaming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t('renameSave')}
+            <Button onClick={handleConfigure} disabled={saving || !configLabel.trim()}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('configureSave')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reparear — derruba a sessão e pede QR novo */}
+      <Dialog
+        open={confirmRestart !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRestart(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirmRestart ? t('restartTitle', { label: confirmRestart.label }) : ''}
+            </DialogTitle>
+            <DialogDescription>{t('restartConfirmDesc')}</DialogDescription>
+          </DialogHeader>
+          {/* O CRM local roda contra a MESMA conta de produção (é assim de
+              propósito, para desenvolver com o número real). Repareamento
+              disparado da máquina do desenvolvedor derruba o WhatsApp DO
+              ESCRITÓRIO — mesmo raio de alcance que a PR do webhook blindou,
+              só que mais destrutivo. Aviso, não bloqueio: o QR aparece aqui
+              mesmo e o conserto funciona daqui; travar deixaria o operador
+              sem saída quando ele estivesse legitimamente em dev. */}
+          {typeof window !== 'undefined' && !ehUrlAlcancavel(window.location.origin) && (
+            <div className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+              {t('restartLocalWarning')}
+            </div>
+          )}
+          <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+            {t('restartKeepsData')}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmRestart(null)}>
+              {t('cancel')}
+            </Button>
+            <Button variant="destructive" onClick={handleRestart} disabled={restarting}>
+              {restarting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('restartConfirmAction')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -916,13 +1179,70 @@ export function CbChannelsPanel() {
                 : t('deleteConfirmMetaDesc')}
             </DialogDescription>
           </DialogHeader>
+
+          <div className="space-y-3 text-sm">
+            {/* O que NÃO se perde — é a metade tranquilizadora, e as 12 FKs
+                que apontam para cb_channels são TODAS ON DELETE SET NULL:
+                nenhuma conversa, mensagem ou contato vai junto. */}
+            <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+              {t('deleteKeepsHistory')}
+            </p>
+
+            {/* Efeito colateral que nada na tela avisava: o trigger
+                `cb_channels_drop_from_automations` (903) tira o canal do
+                escopo e DESATIVA a automação que só valia para ele. */}
+            <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+              {t('deleteDisablesAutomations')}
+            </p>
+
+            {/* Canal padrão: a conta não pode ficar sem espelho, e trocar o
+                número de envio do escritório não pode ser efeito colateral
+                silencioso de um clique em "excluir". Quem sucede vai nomeado. */}
+            {confirmDelete?.is_default &&
+              (channels.filter((c) => c.id !== confirmDelete.id).length === 0 ? (
+                <p className="rounded-md border border-destructive/40 p-2 text-xs text-destructive">
+                  {/* "Use Reparear" só vale para Evolution — canal Meta não
+                      tem sessão de QR e nem desenha esse botão. Mandar o
+                      operador procurá-lo seria beco sem saída. */}
+                  {confirmDelete.kind === 'evolution'
+                    ? t('deleteLastChannel')
+                    : t('deleteLastChannelMeta')}
+                </p>
+              ) : (
+                <div>
+                  <Label htmlFor="cb-successor">{t('successorField')}</Label>
+                  <select
+                    id="cb-successor"
+                    value={successorId}
+                    onChange={(e) => setSuccessorId(e.target.value)}
+                    className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+                  >
+                    {channels
+                      .filter((c) => c.id !== confirmDelete.id)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      ))}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">{t('successorHint')}</p>
+                </div>
+              ))}
+          </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmDelete(null)}>
               {t('cancel')}
             </Button>
             <Button
               variant="destructive"
-              disabled={deletingId !== null}
+              disabled={
+                deletingId !== null ||
+                // Última conexão da conta: o servidor recusa (409), então o
+                // botão não deve nem prometer.
+                (confirmDelete?.is_default === true &&
+                  channels.filter((c) => c.id !== confirmDelete.id).length === 0)
+              }
               onClick={() => confirmDelete && void handleDelete(confirmDelete)}
             >
               {deletingId !== null ? (

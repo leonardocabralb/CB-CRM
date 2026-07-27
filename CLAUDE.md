@@ -155,7 +155,8 @@ upstream sobrescrevê-los:
 | `src/lib/whatsapp/send-message.ts` | resolve o canal, carimba `channel_id`, devolve `channelId` no resultado, e busca o template **filtrando por canal** |
 | `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
 | `src/lib/whatsapp/inbound-store.ts` | idem, no lado Evolution |
-| `src/lib/automations/engine.ts` | `channelInScope`, condição `channel`, canal de saída por passo |
+| `src/lib/automations/engine.ts` | `channelInScope`, condição `channel`, canal de saída por passo, e o `create_deal` que agora **lê o erro do insert** (antes devolvia `'deal created'` incondicionalmente) |
+| `src/app/api/whatsapp/webhook/route.ts` e `src/lib/whatsapp/inbound-store.ts` | além do carimbo de canal, a chamada de uma linha a `routeInboundToPipeline` no fan-out. ⚠️ São **dois** call sites porque não há função compartilhada de abrir conversa — enxertar só num deles faz a feature valer só num transporte, e produção roda Evolution |
 | `src/lib/flows/engine.ts` | `findEntryFlow` por canal, `flow_runs.channel_id`, try/catch nos nós interativos |
 | `src/lib/ai/{auto-reply,config,knowledge,usage}.ts` | agente por canal, interruptor, RAG por canal |
 | `src/lib/whatsapp/broadcast-core.ts` + rotas de template | `resolveMetaChannel` no lugar do espelho |
@@ -202,6 +203,34 @@ mostra o rótulo certo sem mudar nada. Ao mesclar upstream, manter o wrapper.
   é o que `channel-select.tsx` faz, para o gatilho mostrar só o nome do canal
   em vez da linha inteira com bolinha e telefone.
 
+⚠️ **Negócio (`deals`) só nasce por `src/lib/deals/create-deal.ts` no servidor.**
+A 908 deu à conexão um funil padrão, e o roteador de entrada
+(`src/lib/cb-channels/pipeline-routing.ts`) seria o terceiro escritor de deal
+— por isso a regra foi consolidada num módulo só. Quem for criar negócio em
+código novo chama `createDeal`, não `.from('deals').insert(...)`. O formulário
+da tela de Funis é a exceção (roda no client, sob RLS).
+
+Coisas da 908 que mordem código novo:
+
+- **A etapa de entrada é explícita (`default_stage_id`), nunca `MIN(position)`.**
+  O funil real desta conta tem `position` 0 = "Contato Avulso" e 1 =
+  "Desqualificado"; a entrada é "Lead", na 2. Resolver por posição despeja o
+  cliente numa faixa de estacionamento — e com negócio parado lá,
+  `deals_stage_pipeline_fkey` (NO ACTION) trava reestruturar aquela etapa.
+- **As FKs de `deals` para funil/etapa/canal são COMPOSTAS** (`(pipeline_id,
+  account_id)`, `(stage_id, pipeline_id)`, `(channel_id, account_id)`), na
+  mesma forma que a 903 deu a `conversations`. A ingestão roda em service-role
+  e ignora RLS: FK simples só garante "existe uma linha com esse id".
+- **`deals.user_id` virou anulável com `ON DELETE SET NULL`.** Os cards
+  automáticos pertencem todos ao dono da conta; o CASCADE anterior apagaria o
+  funil inteiro se essa pessoa saísse do `auth.users`.
+- **`deals.contact_id` é NULLABLE** (a 001 diz NOT NULL, mas a 004 dropou), e
+  `routeInboundToPipeline` depende disso: sem a guarda `if (!contactId)`, uma
+  conversa de grupo criaria card órfão que renderiza em branco no Kanban.
+- O roteador dispara por **estado**, não por evento. `first_inbound_message`
+  não serve: é contado por conversa e há uma conversa por contato por conta
+  (036), então cliente que muda de número nunca dispararia.
+
 ⚠️ **A 903 removeu dois índices únicos.** `message_templates(user_id, name,
 language)` e `ai_configs(account_id)` viraram pares de índices **parciais**
 (global + por canal). Consequências que já morderam durante a implementação e
@@ -239,7 +268,15 @@ mordem de novo em qualquer código novo:
   aplicada e no `main` — **não renumerar**. É exceção conhecida; daqui em diante
   seguir o `900+`. Se o upstream um dia criar um `037_*`, resolver o conflito de
   número renomeando o **do upstream** no merge, nunca o nosso já aplicado.
-  ⚠️ Aplicadas até aqui: `900`, `901`, `902` e `903_cb_multicanal`.
+  ⚠️ Aplicadas até aqui (conferido em 2026-07-27 via `list_migrations`):
+  `900`, `901`, `902`, `903_cb_multicanal`, `904_cb_mensagem_do_aparelho`,
+  `904_cb_grupos` (⚠️ **número 904 DUPLICADO** — o arquivo local foi
+  renumerado para `906_cb_grupos.sql` numa branch, mas o histórico do banco
+  guarda o nome antigo), `905_cb_mensagem_apagada_editada`,
+  `907_cb_exclusao_solicitada` e `908_cb_funil_por_canal`.
+  ⚠️ **Nunca deduzir o próximo número desta lista** — ela envelhece a cada
+  branch em paralelo. Rodar `ls supabase/migrations/` **e** `list_migrations`
+  imediatamente antes de criar o arquivo; os dois, porque já divergiram.
   ⚠️ A `037` é a **única** aplicada *sem* registro no histórico do Supabase: as
   colunas dela existem no banco (`whatsapp_config.provider`, `base_url`,
   `instance_name`, `api_key`, `instance_state`, …), mas `list_migrations` não a

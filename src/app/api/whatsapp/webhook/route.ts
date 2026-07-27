@@ -5,6 +5,7 @@ import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
+import { routeInboundToPipeline } from '@/lib/cb-channels/pipeline-routing'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
@@ -902,8 +903,20 @@ async function processMessage(
   // listens to only one trigger runs only when that trigger matches.
   if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
   if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
+  // ⚠️ AGUARDADAS, não fire-and-forget, por causa do roteador de funil logo
+  // abaixo. O passo `create_deal` de automação não tem dedup própria, e a
+  // guarda do roteador é read-then-write: solto, o SELECT do roteador corre
+  // antes do INSERT da automação (ele chega ao banco com uma consulta, a
+  // automação com quatro) e os dois criam card no mesmo funil — o índice
+  // único não barra, porque o predicado dele é `source = 'channel'`.
+  // Aguardar torna o resultado determinístico. Não atrasa o provedor: todo
+  // este bloco já roda dentro do `after()`, com o 200 devolvido antes. E o
+  // passo `wait` é ponto de suspensão (enfileira em
+  // automation_pending_executions e retorna), então nada fica preso aqui.
+  const disparosDeAutomacao: Promise<void>[] = []
   for (const triggerType of automationTriggers) {
-    runAutomationsForTrigger({
+    disparosDeAutomacao.push(
+      runAutomationsForTrigger({
       accountId,
       triggerType,
       contactId: contactRecord.id,
@@ -917,8 +930,24 @@ async function processMessage(
         // gravado intacto como JSONB em automation_pending_executions.
         channel_id: channelId,
       },
-    }).catch((err) => console.error('[automations] dispatch failed:', err))
+      }).catch((err) => console.error('[automations] dispatch failed:', err)),
+    )
   }
+  await Promise.allSettled(disparosDeAutomacao)
+
+  // Funil padrão da conexão. Fora do laço de automações de propósito: o
+  // gatilho aqui é por ESTADO ("este contato já tem card neste funil?"), não
+  // por evento, porque `first_inbound_message` é contado por conversa e há
+  // uma conversa por contato — o cliente que muda de número nunca dispararia.
+  // `routeInboundToPipeline` nunca lança e sai no primeiro SELECT quando a
+  // conexão não tem funil configurado.
+  await routeInboundToPipeline({
+    db: supabaseAdmin(),
+    accountId,
+    channelId,
+    contactId: contactRecord.id,
+    contactName: contactRecord.name ?? null,
+  })
 
   // AI auto-reply. Runs only for plain-text inbound the deterministic
   // flow runner did NOT consume (flows win over the LLM), and only when
