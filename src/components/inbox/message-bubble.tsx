@@ -14,9 +14,11 @@ import {
   ImageOff,
   CornerDownLeft,
   Sparkles,
+  Smartphone,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
+import { MediaViewer } from "./media-viewer";
 import { MessageReactions } from "./message-reactions";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
 import { useTranslations } from "next-intl";
@@ -52,6 +54,34 @@ function StatusIcon({ status }: { status: Message["status"] }) {
   }
 }
 
+/**
+ * Anexo ainda em trânsito. O webhook grava a MENSAGEM primeiro e busca o
+ * arquivo depois (assim uma falha no download não leva a mensagem junto),
+ * então existe uma janela de segundos em que a bolha tem tipo de mídia e
+ * `media_url` nulo. Sem distinguir, essa janela mostrava "indisponível" —
+ * dizendo que o anexo se perdeu quando ele estava a caminho.
+ *
+ * A janela é decidida pela idade da mensagem porque não há estado no banco
+ * para consultar: recém-chegada = baixando; antiga = o download falhou
+ * mesmo. O teto é generoso (o download tem 30s de teto, mais a fila).
+ */
+const JANELA_DOWNLOAD_MS = 2 * 60 * 1000;
+
+function anexoAindaChegando(message: Message): boolean {
+  if (message.media_url) return false;
+  const idade = Date.now() - new Date(message.created_at).getTime();
+  return idade >= 0 && idade < JANELA_DOWNLOAD_MS;
+}
+
+function MediaLoading({ t }: { t: ReturnType<typeof useTranslations> }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+      <div className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-transparent" />
+      <span>{t("attachmentLoading")}</span>
+    </div>
+  );
+}
+
 function MediaUnavailable({ label, t }: { label: string, t: ReturnType<typeof useTranslations> }) {
   return (
     <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
@@ -61,10 +91,53 @@ function MediaUnavailable({ label, t }: { label: string, t: ReturnType<typeof us
   );
 }
 
-function MediaImage({ url, alt }: { url: string; alt: string }) {
+/** Falta o anexo: ou está baixando, ou se perdeu. */
+function MediaPendente({
+  message,
+  label,
+  t,
+}: {
+  message: Message;
+  label: string;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const [chegando, setChegando] = useState(() => anexoAindaChegando(message));
+
+  // A janela expira sozinha: sem isto a bolha ficaria girando para sempre
+  // quando o download realmente falhasse, porque nada a re-renderiza.
+  useEffect(() => {
+    if (!chegando) return;
+    const restante =
+      JANELA_DOWNLOAD_MS - (Date.now() - new Date(message.created_at).getTime());
+    const timer = setTimeout(() => setChegando(false), Math.max(0, restante));
+    return () => clearTimeout(timer);
+  }, [chegando, message.created_at]);
+
+  return chegando ? <MediaLoading t={t} /> : <MediaUnavailable label={label} t={t} />;
+}
+
+/**
+ * Nome sugerido no download. O caminho no bucket já carrega o nome original
+ * do arquivo (`buildMediaPath` prefixa um carimbo de tempo), então o
+ * basename é o melhor palpite disponível sem consultar mais nada.
+ */
+function nomeDeArquivo(message: Message): string | undefined {
+  if (!message.media_url) return undefined;
+  try {
+    const caminho = new URL(message.media_url, window.location.origin).pathname;
+    const base = decodeURIComponent(caminho.split("/").pop() ?? "");
+    return base || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function MediaImage({ url, alt, fileName }: { url: string; alt: string; fileName?: string }) {
+  const tv = useTranslations("Inbox.mediaViewer");
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [ampliada, setAmpliada] = useState(false);
 
   const loadImage = useCallback(async () => {
     if (!url) return;
@@ -115,12 +188,30 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
   }
 
   return (
-    <img
-      src={src ?? ""}
-      alt={alt}
-      className="max-h-64 max-w-60 rounded-lg object-cover"
-      onError={() => setError(true)}
-    />
+    <>
+      <button
+        type="button"
+        onClick={() => setAmpliada(true)}
+        title={tv("open")}
+        aria-label={tv("open")}
+        className="block cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <img
+          src={src ?? ""}
+          alt={alt}
+          className="max-h-64 max-w-60 rounded-lg object-cover"
+          onError={() => setError(true)}
+        />
+      </button>
+      {ampliada && src && (
+        <MediaViewer
+          src={src}
+          alt={alt}
+          fileName={fileName}
+          onClose={() => setAmpliada(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -137,9 +228,13 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
       return (
         <div>
           {message.media_url ? (
-            <MediaImage url={message.media_url} alt="Shared image" />
+            <MediaImage
+              url={message.media_url}
+              alt={message.content_text || t("photo")}
+              fileName={nomeDeArquivo(message)}
+            />
           ) : (
-            <MediaUnavailable label={t("photo")} t={t} />
+            <MediaPendente message={message} label={t("photo")} t={t} />
           )}
           {message.content_text && (
             <p className="mt-1 whitespace-pre-wrap break-words text-sm">
@@ -159,7 +254,7 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
               className="max-h-64 max-w-60 rounded-lg"
             />
           ) : (
-            <MediaUnavailable label={t("video")} t={t} />
+            <MediaPendente message={message} label={t("video")} t={t} />
           )}
           {message.content_text && (
             <p className="mt-1 whitespace-pre-wrap break-words text-sm">
@@ -175,14 +270,14 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
           {message.media_url ? (
             <audio src={message.media_url} controls className="max-w-60" />
           ) : (
-            <MediaUnavailable label={t("audio")} t={t} />
+            <MediaPendente message={message} label={t("audio")} t={t} />
           )}
         </div>
       );
 
     case "document":
       if (!message.media_url) {
-        return <MediaUnavailable label={message.content_text || t("document")} t={t} />;
+        return <MediaPendente message={message} label={message.content_text || t("document")} t={t} />;
       }
       return (
         <a
@@ -318,6 +413,20 @@ export function MessageBubble({
             >
               <Sparkles className="h-2.5 w-2.5" />
               {t("aiBadge")}
+            </span>
+          )}
+          {/* Enviada pelo celular pareado, não pelo CRM. Num número
+              atendido por várias pessoas isso importa: sem a marca, a
+              equipe não tem como saber que aquela resposta não passou
+              pelo sistema (e portanto não gerou registro, automação nem
+              atribuição). */}
+          {message.from_device && (
+            <span
+              className="inline-flex items-center gap-0.5 rounded-full bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-primary-foreground"
+              title={t("fromDeviceTitle")}
+            >
+              <Smartphone className="h-2.5 w-2.5" />
+              {t("fromDevice")}
             </span>
           )}
           {channelLabel && (

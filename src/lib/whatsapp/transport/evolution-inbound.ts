@@ -145,9 +145,8 @@ export function normalizeUpsert(
   const jid = item.key?.remoteJid;
   const id = item.key?.id;
   if (!jid || !id) return null;
-  if (item.key?.fromMe) return null; // our own send, echoed back
   if (isNonChatJid(jid)) return null; // grupo, canal, status: não é 1:1
-  if (isReaction(item.message)) return null; // reação não é mensagem
+  if (isReaction(item.message)) return null; // reação não é mensagem (ver isReaction)
 
   const phone = phoneFromJid(jid);
   if (!phone) return null;
@@ -163,6 +162,12 @@ export function normalizeUpsert(
     accountId,
     configOwnerUserId,
     channelId,
+    // `fromMe` significa "saiu desta conta de WhatsApp" — o que engloba
+    // DUAS origens que o chamador precisa separar: o eco do que o próprio
+    // CRM enviou (já gravado, descartar) e o que o operador digitou no
+    // celular pareado (tem de aparecer). Só o `message_id` distingue,
+    // e isso exige ir ao banco — por isso a decisão não é tomada aqui.
+    fromMe: item.key?.fromMe === true,
     phone,
     name: item.pushName || phone,
     providerMessageId: id,

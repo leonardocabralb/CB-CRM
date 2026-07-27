@@ -240,7 +240,10 @@
       "unsupported": "[Tipo de mensagem não suportado]",
       "aiBadge": "IA",
       "aiBadgeTitle": "Enviada automaticamente pelo assistente de IA",
-      "viaChannel": "via {label}"
+      "viaChannel": "via {label}",
+      "fromDevice": "Celular",
+      "fromDeviceTitle": "Enviada pelo celular pareado, não pelo CRM",
+      "attachmentLoading": "Baixando anexo…"
     },
     "actions": {
       "reply": "Responder",
@@ -296,6 +299,15 @@
       "resumed": "IA retomada.",
       "updateError": "Não foi possível atualizar o assistente de IA.",
       "networkError": "Não foi possível conectar ao servidor."
+    },
+    "mediaViewer": {
+      "open": "Ampliar imagem",
+      "close": "Fechar",
+      "download": "Baixar",
+      "rotateLeft": "Girar à esquerda",
+      "rotateRight": "Girar à direita",
+      "zoomIn": "Aproximar",
+      "zoomOut": "Afastar"
     }
   },
   "Contacts": {

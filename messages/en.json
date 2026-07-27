@@ -240,7 +240,10 @@
       "unsupported": "[Unsupported message type]",
       "aiBadge": "AI",
       "aiBadgeTitle": "Sent automatically by the AI assistant",
-      "viaChannel": "via {label}"
+      "viaChannel": "via {label}",
+      "fromDevice": "Phone",
+      "fromDeviceTitle": "Sent from the paired phone, not from the CRM",
+      "attachmentLoading": "Downloading attachment…"
     },
     "actions": {
       "reply": "Reply",
@@ -296,6 +299,15 @@
       "resumed": "AI resumed.",
       "updateError": "Couldn’t update the AI assistant.",
       "networkError": "Couldn’t reach the server."
+    },
+    "mediaViewer": {
+      "open": "Open image",
+      "close": "Close",
+      "download": "Download",
+      "rotateLeft": "Rotate left",
+      "rotateRight": "Rotate right",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out"
     }
   },
   "Contacts": {

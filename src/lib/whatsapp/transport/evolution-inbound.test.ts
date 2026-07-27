@@ -176,11 +176,33 @@ describe('normalizeUpsert', () => {
     }
   });
 
-  it('descarta o eco do que nós mesmos enviamos', () => {
-    const eco = item(IMAGEM, {
+  it('NÃO descarta fromMe — marca a origem e deixa o chamador decidir', () => {
+    // `fromMe` engloba duas coisas: o eco do que o CRM enviou (descartar) e
+    // o que o operador digitou no celular pareado (tem de aparecer). Só o
+    // `message_id` distingue, e isso exige ir ao banco — então descartar
+    // aqui apagava metade do histórico da conversa.
+    const doAparelho = item(IMAGEM, {
       key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: true, id: 'X' },
     });
-    expect(normalizeUpsert(eco, 'conta', 'dono', 'canal')).toBeNull();
+    const out = normalizeUpsert(doAparelho, 'conta', 'dono', 'canal');
+    expect(out).not.toBeNull();
+    expect(out!.fromMe).toBe(true);
+    expect(out!.contentType).toBe('image');
+  });
+
+  it('mensagem do cliente vem com fromMe falso', () => {
+    const out = normalizeUpsert(item({ conversation: 'Oi' }), 'conta', 'dono', 'canal');
+    expect(out!.fromMe).toBe(false);
+  });
+
+  it('o telefone continua sendo o do cliente mesmo em fromMe', () => {
+    // O JID é sempre o do OUTRO lado da conversa, inclusive quando fomos
+    // nós que escrevemos. Se isto virasse o número do escritório, a
+    // mensagem do celular abriria uma conversa do escritório com ele mesmo.
+    const doAparelho = item({ conversation: 'respondi pelo celular' }, {
+      key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: true, id: 'Y' },
+    });
+    expect(normalizeUpsert(doAparelho, 'conta', 'dono', 'canal')!.phone).toBe('5511999998888');
   });
 
   it('descarta item sem key/id', () => {
