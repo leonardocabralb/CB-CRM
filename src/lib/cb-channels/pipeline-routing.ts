@@ -32,6 +32,12 @@ export interface RouteInboundArgs {
   /** Contato dono da conversa. Nulo em grupo (ver guarda 2). */
   contactId: string | null | undefined;
   contactName?: string | null;
+  /**
+   * Conversa que originou o card. Os dois call sites já a têm em mão — é a
+   * mesma que passam no contexto das automações —, então isto não custa
+   * consulta nenhuma. É o que dá ao card um caminho de volta ao atendimento.
+   */
+  conversationId?: string | null;
 }
 
 /**
@@ -116,6 +122,7 @@ export async function routeInboundToPipeline(args: RouteInboundArgs): Promise<vo
       pipelineId,
       stageId: (canal.default_stage_id as string | null) ?? null,
       channelId,
+      conversationId: args.conversationId ?? null,
       title: titulo,
       source: 'channel',
     });

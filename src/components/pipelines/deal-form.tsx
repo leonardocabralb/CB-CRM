@@ -195,9 +195,18 @@ export function DealForm({
         setSaving(false);
         return;
       }
-      const { error } = await supabase
-        .from("deals")
-        .insert({ ...payload, user_id: user.id, account_id: accountId, status: "open" });
+      // `conversation_id` entra SÓ na criação, nunca no `payload` acima: o
+      // ramo de edição usa o mesmo objeto no `.update()`, e incluí-lo ali
+      // reescreveria o vínculo histórico toda vez que alguém salvasse uma
+      // nota — apontando o card para a conversa mais recente do contato em
+      // vez daquela de onde ele nasceu.
+      const { error } = await supabase.from("deals").insert({
+        ...payload,
+        user_id: user.id,
+        account_id: accountId,
+        status: "open",
+        conversation_id: linkedConversation?.id ?? null,
+      });
       if (error) {
         toast.error(t("toastFailedCreate"));
         setSaving(false);
@@ -284,9 +293,20 @@ export function DealForm({
                 ))}
               </select>
 
-              {linkedConversation && (
+              {/* O caminho de volta do card para o atendimento.
+                  Duas correções aqui:
+                  · o href era "/inbox" puro — sem o `?c=`, o operador caía na
+                    caixa genérica e tinha de procurar a conversa na mão;
+                  · a condição olhava só `linkedConversation` (a conversa ATUAL
+                    do contato), então o link sumia justamente no caso que a
+                    910 existe para tolerar: negócio com conversa gravada cujo
+                    contato foi apagado — aí `contact_id` é NULL, a busca por
+                    contato não acha nada, e o vínculo real ficava inalcançável.
+                  Preferimos o vínculo gravado no negócio (histórico) e caímos
+                  na conversa do contato para cards anteriores à 910. */}
+              {(deal?.conversation_id ?? linkedConversation?.id) && (
                 <Link
-                  href="/inbox"
+                  href={`/inbox?c=${deal?.conversation_id ?? linkedConversation!.id}`}
                   className="mt-1 inline-flex items-center gap-1.5 self-start rounded-md bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
                 >
                   <MessageSquare className="h-3 w-3" />

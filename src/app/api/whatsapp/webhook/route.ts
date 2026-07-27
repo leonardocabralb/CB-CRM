@@ -947,6 +947,7 @@ async function processMessage(
     channelId,
     contactId: contactRecord.id,
     contactName: contactRecord.name ?? null,
+    conversationId: conversation.id,
   })
 
   // AI auto-reply. Runs only for plain-text inbound the deterministic

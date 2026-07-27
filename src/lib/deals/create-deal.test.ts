@@ -142,7 +142,13 @@ describe('createDeal', () => {
       account: { default_currency: 'BRL' },
     });
 
-    await createDeal({ db, ...BASE, stageId: 'etapa-lead', channelId: 'canal-1' });
+    await createDeal({
+      db,
+      ...BASE,
+      stageId: 'etapa-lead',
+      channelId: 'canal-1',
+      conversationId: 'conversa-1',
+    });
 
     expect(inserts[0]).toMatchObject({
       account_id: 'conta-1',
@@ -151,10 +157,24 @@ describe('createDeal', () => {
       stage_id: 'etapa-lead',
       contact_id: 'contato-1',
       channel_id: 'canal-1',
+      conversation_id: 'conversa-1',
       currency: 'BRL',
       status: 'open',
       source: 'channel',
     });
+  });
+
+  it('sem conversa, grava o vínculo como nulo em vez de omitir a coluna', async () => {
+    // A coluna precisa ir explícita: negócio criado por caminho que não tem
+    // conversa (import, regra futura) fica com NULL, não com lixo herdado.
+    const { db, inserts } = makeDb({
+      pipeline: { id: 'funil-1' },
+      firstStage: { id: 'etapa-zero' },
+    });
+
+    await createDeal({ db, ...BASE });
+
+    expect(inserts[0]).toHaveProperty('conversation_id', null);
   });
 
   it('cai em USD quando a conta não tem moeda configurada', async () => {
