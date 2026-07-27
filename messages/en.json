@@ -2044,5 +2044,25 @@
     "creatingAccount": "Creating account...",
     "alreadyHaveAccount": "Already have an account?",
     "signIn": "Sign in"
+  },
+  "ChannelHealth": {
+    "title": "WhatsApp connections",
+    "summary": "{total, plural, =1 {1 connection} other {# connections}}{ruins, plural, =0 {, all healthy} other {, # with problems}}",
+    "tone_ok": "Working",
+    "tone_warn": "Needs attention",
+    "tone_down": "Down",
+    "tone_unknown": "Not configured",
+    "detail_stale": "not confirmed for too long",
+    "detail_pairing": "waiting for the QR code scan",
+    "detail_closed": "disconnected on the server",
+    "detail_disconnected": "disconnected",
+    "detail_webhook": "connected, but the CRM is not receiving",
+    "detail_lastError": "last error recorded",
+    "detail_incomplete": "missing credentials — set the connection up again",
+    "kind_meta": "Official API · Meta",
+    "kind_evolution": "Unofficial · QR Code",
+    "connectedFor": "connected for {tempo}",
+    "checkedAgo": "checked {tempo} ago",
+    "neverChecked": "not checked yet"
   }
 }
