@@ -195,8 +195,13 @@ export function CbChannelsPanel() {
         toast.error(payload.error || t('connectFailed'));
         return;
       }
-      if (payload.webhookError) toast.warning(t('webhookRepairFailed'));
-      else toast.success(t('resyncedToast'));
+      // O detalhe do servidor vai junto: a recusa mais provável aqui é a
+      // guarda de URL não-pública, e ela diz exatamente o que ajustar.
+      if (payload.webhookError) {
+        toast.warning(t('webhookRepairFailed'), { description: payload.webhookError });
+      } else {
+        toast.success(t('resyncedToast'));
+      }
       // A conexão pode ter caído entre a listagem e o clique. Aí o gesto
       // certo passa a ser parear, e o QR é o caminho.
       if (!payload.connected) openQrFor(channelId, payload.qr ?? null);
@@ -314,7 +319,11 @@ export function CbChannelsPanel() {
         // cada 5 segundos vira ruído que o operador aprende a ignorar.
         if (payload.webhookError && !avisouWebhookRef.current) {
           avisouWebhookRef.current = true;
-          toast.warning(t('webhookRepairFailed'));
+          // Com a explicação junto: quando a recusa vem da guarda, é ela que
+          // diz qual env ajustar — e este é o único caminho na tela quando o
+          // canal está desconectado, porque aí o botão "Ressincronizar" nem
+          // aparece.
+          toast.warning(t('webhookRepairFailed'), { description: payload.webhookError });
         }
         if (payload.connected) {
           setQrConnected(true);
