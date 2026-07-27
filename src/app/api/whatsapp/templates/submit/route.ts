@@ -11,6 +11,7 @@ import {
 import { buildMetaTemplatePayload } from '@/lib/whatsapp/template-components'
 import { ensureImageHeaderHandle } from '@/lib/whatsapp/template-header-handle'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
+import { barrarPorPapel } from '@/lib/auth/barrar-por-papel'
 
 /**
  * Shared upsert payload builder — both the Meta-failure path and the
@@ -121,7 +122,7 @@ export async function POST(request: Request) {
     // message_templates row are account-scoped post-multi-user.
     const { data: profile } = await supabase
       .from('profiles')
-      .select('account_id')
+      .select('account_id, account_role')
       .eq('user_id', user.id)
       .maybeSingle()
     const accountId = profile?.account_id as string | undefined
@@ -131,6 +132,13 @@ export async function POST(request: Request) {
         { status: 403 },
       )
     }
+
+    // Papel, não só sessão: sem isto um `viewer` — que existe para ser
+    // somente-leitura — executava esta ação. O efeito colateral (chamada
+    // à Meta/Evolution) acontece antes de qualquer gravação, então a RLS
+    // nunca entraria no caminho.
+    const barrado = barrarPorPapel(profile?.account_role, 'admin');
+    if (barrado) return barrado;
 
     let payload: TemplatePayload
     try {

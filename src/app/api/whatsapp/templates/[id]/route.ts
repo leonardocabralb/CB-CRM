@@ -12,6 +12,7 @@ import {
 } from '@/lib/whatsapp/template-validators'
 import { buildMetaTemplatePayload } from '@/lib/whatsapp/template-components'
 import { ensureImageHeaderHandle } from '@/lib/whatsapp/template-header-handle'
+import { barrarPorPapel } from '@/lib/auth/barrar-por-papel'
 
 /**
  * Per-template lifecycle endpoint.
@@ -70,7 +71,7 @@ export async function PATCH(
     // lookups work for teammates who didn't author the row.
     const { data: profile } = await supabase
       .from('profiles')
-      .select('account_id')
+      .select('account_id, account_role')
       .eq('user_id', user.id)
       .maybeSingle()
     const accountId = profile?.account_id as string | undefined
@@ -80,6 +81,13 @@ export async function PATCH(
         { status: 403 },
       )
     }
+
+    // Papel, não só sessão: sem isto um `viewer` — que existe para ser
+    // somente-leitura — executava esta ação. O efeito colateral (chamada
+    // à Meta/Evolution) acontece antes de qualquer gravação, então a RLS
+    // nunca entraria no caminho.
+    const barrado = barrarPorPapel(profile?.account_role, 'admin');
+    if (barrado) return barrado;
 
     let payload: TemplatePayload
     try {
@@ -259,7 +267,7 @@ export async function DELETE(
     // the shared whatsapp_config.
     const { data: profile } = await supabase
       .from('profiles')
-      .select('account_id')
+      .select('account_id, account_role')
       .eq('user_id', user.id)
       .maybeSingle()
     const accountId = profile?.account_id as string | undefined
@@ -269,6 +277,13 @@ export async function DELETE(
         { status: 403 },
       )
     }
+
+    // Papel, não só sessão: sem isto um `viewer` — que existe para ser
+    // somente-leitura — executava esta ação. O efeito colateral (chamada
+    // à Meta/Evolution) acontece antes de qualquer gravação, então a RLS
+    // nunca entraria no caminho.
+    const barrado = barrarPorPapel(profile?.account_role, 'admin');
+    if (barrado) return barrado;
 
     const { data: existing, error: lookupErr } = await supabase
       .from('message_templates')

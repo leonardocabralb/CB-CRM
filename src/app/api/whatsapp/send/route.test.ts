@@ -28,6 +28,9 @@ const CONTACT = {
 // Chainable Supabase mock. A fresh builder per `.from()` call tracks whether
 // `.insert()` ran so the terminal resolves to the inserted row for creates
 // and the canned select row otherwise.
+/** Papel do usuário autenticado no mock. Reposto a cada teste. */
+let papelDoChamador = 'agent'
+
 function makeSupabaseMock() {
   function builder(table: string) {
     let didInsert = false
@@ -35,7 +38,7 @@ function makeSupabaseMock() {
     const selectResult = () => {
       switch (table) {
         case 'profiles':
-          return { data: { account_id: 'acct-1' }, error: null }
+          return { data: { account_id: 'acct-1', account_role: papelDoChamador }, error: null }
         case 'contacts':
           return { data: contactRow, error: null }
         case 'conversations':
@@ -258,4 +261,28 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
     )
     expect(res.status).toBe(400)
   })
+
+  // A guarda de papel: até ela existir, um convidado somente-leitura
+  // ENVIAVA mensagem para o cliente. A RLS não protegia — o efeito
+  // colateral (chamada à Meta/Evolution) acontece antes de qualquer
+  // gravação, então o banco nunca entrava no caminho.
+  it('403s para viewer, sem chegar a enviar nada', async () => {
+    papelDoChamador = 'viewer'
+    try {
+      const { POST } = await import('./route')
+      const res = await POST(
+        new Request('http://localhost/api/whatsapp/send', {
+          method: 'POST',
+          body: JSON.stringify({ conversation_id: 'conv-1', content: 'oi' }),
+        }),
+      )
+      // 403 ANTES de qualquer envio: a guarda é a primeira coisa depois de
+      // resolver a conta, então um 403 aqui significa que nada saiu para o
+      // cliente. Antes dela, este mesmo pedido entregava a mensagem.
+      expect(res.status).toBe(403)
+    } finally {
+      papelDoChamador = 'agent'
+    }
+  })
 })
+

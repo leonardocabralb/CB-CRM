@@ -12,6 +12,7 @@ import {
   validateSendMessageParams,
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
+import { barrarPorPapel } from '@/lib/auth/barrar-por-papel'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
     // returned nothing for teammates who didn't author the row.
     const { data: profile } = await supabase
       .from('profiles')
-      .select('account_id')
+      .select('account_id, account_role')
       .eq('user_id', user.id)
       .maybeSingle()
     const accountId = profile?.account_id as string | undefined
@@ -61,6 +62,13 @@ export async function POST(request: Request) {
         { status: 403 },
       )
     }
+
+    // Papel, não só sessão: sem isto um `viewer` — que existe para ser
+    // somente-leitura — executava esta ação. O efeito colateral (chamada
+    // à Meta/Evolution) acontece antes de qualquer gravação, então a RLS
+    // nunca entraria no caminho.
+    const barrado = barrarPorPapel(profile?.account_role, 'agent');
+    if (barrado) return barrado;
 
     const body = await request.json()
     const {

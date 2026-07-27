@@ -11,6 +11,7 @@ import {
   syncDefaultMetaChannelFromConfig,
   flagDefaultMetaChannelRemoved,
 } from '@/lib/cb-channels/legacy-mirror'
+import { barrarPorPapel } from '@/lib/auth/barrar-por-papel'
 
 /**
  * Resolve the caller's account_id from their profile. Inlined here
@@ -25,14 +26,14 @@ import {
 async function resolveAccountId(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
-): Promise<string | null> {
+): Promise<{ accountId: string; papel: unknown } | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('account_id')
+    .select('account_id, account_role')
     .eq('user_id', userId)
     .maybeSingle()
   if (error || !data?.account_id) return null
-  return data.account_id as string
+  return { accountId: data.account_id as string, papel: data.account_role }
 }
 
 // Lazy-initialised service-role client. We need it to detect a
@@ -77,7 +78,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const accountId = await resolveAccountId(supabase, user.id)
+    const conta = await resolveAccountId(supabase, user.id)
+    const accountId = conta?.accountId
     if (!accountId) {
       return NextResponse.json(
         {
@@ -88,6 +90,10 @@ export async function GET() {
         { status: 200 },
       )
     }
+
+    // LEITURA é permitida a qualquer membro, inclusive `viewer`: a tela de
+    // Configurações precisa mostrar o estado da conexão para quem só observa.
+    // A guarda de papel fica nos handlers de ESCRITA (POST e DELETE).
 
     const { data: config, error: configError } = await supabase
       .from('whatsapp_config')
@@ -180,13 +186,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const accountId = await resolveAccountId(supabase, user.id)
+    const conta = await resolveAccountId(supabase, user.id)
+    const accountId = conta?.accountId
     if (!accountId) {
       return NextResponse.json(
         { error: 'Your profile is not linked to an account.' },
         { status: 403 },
       )
     }
+
+    // Papel, não só sessão: sem isto um `viewer` — que existe para ser
+    // somente-leitura — executava esta ação. O efeito colateral (chamada
+    // à Meta/Evolution) acontece antes de qualquer gravação, então a RLS
+    // nunca entraria no caminho.
+    const barrado = barrarPorPapel(conta?.papel, 'admin');
+    if (barrado) return barrado;
 
     const body = await request.json()
     const { phone_number_id, waba_id, access_token, verify_token, pin } = body
@@ -216,7 +230,7 @@ export async function POST(request: Request) {
     // all share one config; the conflict is between accounts.
     const { data: claimed, error: claimedError } = await supabaseAdmin()
       .from('whatsapp_config')
-      .select('account_id')
+      .select('account_id, account_role')
       .eq('phone_number_id', phone_number_id)
       .neq('account_id', accountId)
       .maybeSingle()
@@ -466,13 +480,21 @@ export async function DELETE() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const accountId = await resolveAccountId(supabase, user.id)
+    const conta = await resolveAccountId(supabase, user.id)
+    const accountId = conta?.accountId
     if (!accountId) {
       return NextResponse.json(
         { error: 'Your profile is not linked to an account.' },
         { status: 403 },
       )
     }
+
+    // Papel, não só sessão: sem isto um `viewer` — que existe para ser
+    // somente-leitura — executava esta ação. O efeito colateral (chamada
+    // à Meta/Evolution) acontece antes de qualquer gravação, então a RLS
+    // nunca entraria no caminho.
+    const barrado = barrarPorPapel(conta?.papel, 'admin');
+    if (barrado) return barrado;
 
     const { error: deleteError } = await supabase
       .from('whatsapp_config')
