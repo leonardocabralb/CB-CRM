@@ -376,10 +376,6 @@ export function MessageBubble({
           isAgent
             ? "rounded-br-md bg-primary text-primary-foreground"
             : "rounded-bl-md bg-muted text-foreground",
-          // Apagada: desbotada e riscada, mas o conteúdo continua legível.
-          // No WhatsApp ele evaporaria; aqui o escritório precisa do
-          // registro do que foi dito, inclusive do que o cliente apagou.
-          apagada && "opacity-60 [&_p]:line-through [&_a]:line-through",
         )}
       >
         {apagada && (
@@ -400,7 +396,17 @@ export function MessageBubble({
             onPrimary={isAgent}
           />
         )}
-        <MessageContent message={message} t={t} />
+        {/* O estilo de apagada fica NESTE invólucro, não no contêiner da
+            bolha: o visualizador de mídia em tela cheia é renderizado como
+            descendente e herdaria o `opacity-60`, deixando a foto ampliada
+            desbotada sem motivo. */}
+        <div
+          className={cn(
+            apagada && "opacity-60 [&_p]:line-through [&_a]:line-through [&_code]:line-through",
+          )}
+        >
+          <MessageContent message={message} t={t} />
+        </div>
         <div
           className={cn(
             "mt-1 flex items-center gap-1",

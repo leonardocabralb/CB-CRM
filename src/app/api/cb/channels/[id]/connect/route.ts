@@ -18,7 +18,10 @@ import {
   getChannelWithSecrets,
   CB_CHANNEL_SAFE_COLUMNS,
 } from '@/lib/cb-channels/repo';
-import { channelConnectionState } from '@/lib/cb-channels/evolution-admin';
+import {
+  channelConnectionState,
+  reaplicarWebhook,
+} from '@/lib/cb-channels/evolution-admin';
 
 /** A UI faz polling enquanto o QR está na tela (~12/min a 5s). 60/min dá
  *  folga para recarregar e para dois admins pareando ao mesmo tempo. */
@@ -49,6 +52,30 @@ export async function POST(
       return NextResponse.json(
         { error: 'Canal Evolution sem instância — recrie o canal.' },
         { status: 400 },
+      );
+    }
+
+    // REAPLICA O WEBHOOK antes de consultar o estado.
+    //
+    // A Evolution congela a lista de eventos no momento em que o webhook é
+    // registrado. Quando o CRM passa a assinar um evento novo, a instância
+    // JÁ EXISTENTE continua sem recebê-lo — foi assim que `MESSAGES_DELETE`
+    // e `MESSAGES_EDITED` ficaram sem chegar: a exclusão feita pelo cliente
+    // simplesmente não era avisada, e a mensagem seguia intacta no CRM.
+    //
+    // Antes disto o único caminho que registrava webhook era a CRIAÇÃO do
+    // canal — ou seja, só um canal novo ganhava eventos novos. Reconectar é
+    // o gesto natural para "consertar a conexão", então é aqui que a
+    // reparação pertence.
+    //
+    // Best-effort de propósito: falhar aqui não pode impedir o operador de
+    // ver o QR e reconectar.
+    try {
+      await reaplicarWebhook(channel.instance_name, new URL(_request.url).origin);
+    } catch (err) {
+      console.warn(
+        '[cb/channels/connect] não foi possível reaplicar o webhook:',
+        err instanceof Error ? err.message : err,
       );
     }
 

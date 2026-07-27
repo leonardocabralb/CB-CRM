@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { CornerUpLeft, Copy, SmilePlus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useCan } from "@/hooks/use-can";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -55,7 +56,20 @@ export function MessageActions({
   // que ainda não tenha sido apagada. Esconder é melhor que deixar tentar e
   // receber erro — o operador não tem como saber os prazos de cabeça.
   const nossa = message.sender_type !== "customer";
-  const podeMexer = channelKind === "evolution" && nossa && !message.deleted_at;
+  // Viewer não apaga nem edita. A rota também barra (é ela que protege de
+  // verdade), mas mostrar um botão que sempre falha é enganar o operador.
+  const podeAgir = useCan("send-messages");
+  // `message_id` é o identificador NA EVOLUTION. A bolha otimista (id
+  // `temp-…`) e a mensagem que falhou no envio não têm um — sem ele a
+  // Evolution não tem o que apagar, e o botão só produziria erro.
+  const existeNoWhatsApp = !!message.message_id && !message.id.startsWith("temp-");
+  const podeMexer =
+    podeAgir &&
+    existeNoWhatsApp &&
+    message.status !== "failed" &&
+    channelKind === "evolution" &&
+    nossa &&
+    !message.deleted_at;
 
   // Os prazos são ABSOLUTOS, derivados de `created_at` — puro, sem relógio
   // no render. Chamar `Date.now()` ali deixaria o botão "Editar" visível

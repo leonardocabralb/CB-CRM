@@ -15,7 +15,7 @@ import { NextResponse } from 'next/server';
 
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 
-import { createClient } from '@/lib/supabase/server';
+import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
 import { resolveEngineChannel } from '@/lib/cb-channels/engine-send';
@@ -49,34 +49,33 @@ interface Alvo {
   deleted_at: string | null;
 }
 
-/** Sessão + conta + mensagem, com tudo validado. */
-async function resolverAlvo(request: Request, messageId: unknown) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return { erro: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+/** Sessão + PAPEL + conta + mensagem, com tudo validado. */
+async function resolverAlvo(messageId: unknown) {
+  // `requireRole('agent')`, não só "tem sessão".
+  //
+  // Estas duas rotas são DESTRUTIVAS e irreversíveis: apagam e reescrevem
+  // mensagem no WhatsApp de um cliente real. Sem esta linha, um convidado
+  // com papel `viewer` — estagiário, cliente olhando o histórico — via os
+  // botões e conseguia apagar a comunicação do escritório.
+  //
+  // A RLS não cobria: `messages_select` aceita viewer (é leitura), e as
+  // gravações usam service-role, que a ignora por definição. Pior, a
+  // chamada irreversível à Evolution acontece ANTES de qualquer escrita —
+  // então nenhuma policy do banco jamais entraria no caminho.
+  //
+  // O try/catch fica AQUI de propósito: os catch de DELETE/PATCH traduzem
+  // qualquer throw em `502 Erro da Evolution`, o que transformaria um 403
+  // de permissão numa mensagem errada com status errado.
+  let ctx;
+  try {
+    ctx = await requireRole('agent');
+  } catch (err) {
+    return { erro: toErrorResponse(err) };
   }
+  const { supabase, userId, accountId } = ctx;
 
-  const limite = checkRateLimit(`msgedit:${user.id}`, RATE_LIMITS.react);
+  const limite = checkRateLimit(`msgedit:${userId}`, RATE_LIMITS.react);
   if (!limite.success) return { erro: rateLimitResponse(limite) };
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('account_id')
-    .eq('user_id', user.id)
-    .maybeSingle();
-  const accountId = profile?.account_id as string | undefined;
-  if (!accountId) {
-    return {
-      erro: NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 },
-      ),
-    };
-  }
 
   if (typeof messageId !== 'string' || !messageId) {
     return { erro: NextResponse.json({ error: 'message_id is required' }, { status: 400 }) };
@@ -153,13 +152,40 @@ function chaveBaileys(alvo: Alvo) {
   };
 }
 
+
+/**
+ * Reescreve a prévia da conversa quando a mensagem alterada é a ÚLTIMA.
+ *
+ * Sem isto a lista do inbox continua mostrando o texto antigo de uma
+ * mensagem editada, ou o conteúdo de uma que foi apagada — e a lista é
+ * justamente onde o operador decide qual conversa abrir.
+ */
+async function atualizarPrevia(conversationId: string) {
+  const db = admin();
+  const { data: ultima } = await db
+    .from('messages')
+    .select('content_text, content_type, deleted_at, created_at')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!ultima) return;
+  const previa = ultima.deleted_at
+    ? '[mensagem apagada]'
+    : ultima.content_text || `[${ultima.content_type}]`;
+  await db
+    .from('conversations')
+    .update({ last_message_text: previa, updated_at: new Date().toISOString() })
+    .eq('id', conversationId);
+}
+
 const minutosDesde = (iso: string) => (Date.now() - new Date(iso).getTime()) / 60_000;
 
 /** DELETE — apagar para todos. */
 export async function DELETE(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const r = await resolverAlvo(request, body?.message_id);
+    const r = await resolverAlvo(body?.message_id);
     if ('erro' in r) return r.erro;
     const { alvo, cliente } = r;
 
@@ -193,12 +219,20 @@ export async function DELETE(request: Request) {
       .eq('id', alvo.id);
     if (error) {
       console.error('[whatsapp/message] marcar exclusão falhou:', error.message);
+      // `whatsapp_done`: a mensagem JÁ SUMIU do celular do cliente. O
+      // cliente da UI usa este código para NÃO desfazer a marca — desfazer
+      // faria o CRM afirmar que a mensagem existe quando ela não existe
+      // mais em lugar nenhum.
       return NextResponse.json(
-        { error: 'Apagada no WhatsApp, mas o CRM não registrou. Recarregue.' },
+        {
+          error: 'Apagada no WhatsApp, mas o CRM não registrou. Recarregue.',
+          code: 'whatsapp_done',
+        },
         { status: 500 },
       );
     }
 
+    await atualizarPrevia(alvo.conversation_id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -211,7 +245,7 @@ export async function DELETE(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const r = await resolverAlvo(request, body?.message_id);
+    const r = await resolverAlvo(body?.message_id);
     if ('erro' in r) return r.erro;
     const { alvo, cliente } = r;
 
@@ -255,11 +289,15 @@ export async function PATCH(request: Request) {
     if (error) {
       console.error('[whatsapp/message] aplicar edição falhou:', error.message);
       return NextResponse.json(
-        { error: 'Editada no WhatsApp, mas o CRM não registrou. Recarregue.' },
+        {
+          error: 'Editada no WhatsApp, mas o CRM não registrou. Recarregue.',
+          code: 'whatsapp_done',
+        },
         { status: 500 },
       );
     }
 
+    await atualizarPrevia(alvo.conversation_id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro desconhecido';

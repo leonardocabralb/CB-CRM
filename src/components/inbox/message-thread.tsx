@@ -864,13 +864,22 @@ export function MessageThread({
           body: JSON.stringify({ message_id: msg.id }),
         });
         if (!res.ok) {
-          const { error } = await res.json().catch(() => ({ error: "" }));
+          const { error, code } = await res.json().catch(() => ({ error: "", code: "" }));
+          // `whatsapp_done`: a Evolution APAGOU e só a gravação no CRM
+          // falhou. Desfazer a marca aqui faria a tela afirmar que a
+          // mensagem existe quando ela não existe mais em lugar nenhum —
+          // exatamente a mentira que a ordem das operações na rota evita.
+          // Mantemos riscada e avisamos.
+          if (code === "whatsapp_done") {
+            toast.warning(error);
+            return;
+          }
           throw new Error(error || String(res.status));
         }
         toast.success(tActions("deleted"));
       } catch (err) {
-        // Devolve a bolha ao estado anterior: dizer "apagada" com a
-        // mensagem viva no celular do cliente é a pior saída possível.
+        // Falhou ANTES de a Evolution apagar: a mensagem continua viva no
+        // celular do cliente, então a bolha volta ao normal.
         onUpdateMessage(msg.id, { deleted_at: null, deleted_by: null });
         toast.error(err instanceof Error ? err.message : String(err));
       }

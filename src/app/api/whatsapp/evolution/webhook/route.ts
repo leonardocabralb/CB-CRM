@@ -291,6 +291,14 @@ export async function POST(request: Request) {
           .limit(1)
           .maybeSingle();
         if (!atual) return; // edição de mensagem anterior à integração
+
+        // IDEMPOTÊNCIA. A Evolution reentrega o webhook quando não recebe
+        // 200 a tempo. Na segunda passada `content_text` JÁ é o texto novo,
+        // e gravá-lo em `text_before_edit` apagaria o original — que é o
+        // único registro que existe, já que o WhatsApp não guarda histórico
+        // de edição. Texto igual = nada mudou = reentrega.
+        if (atual.content_text === novoTexto) return;
+
         const { error } = await supabaseAdmin()
           .from('messages')
           .update({

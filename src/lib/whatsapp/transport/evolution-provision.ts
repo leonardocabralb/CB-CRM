@@ -16,7 +16,7 @@
 import { EvolutionClient } from './evolution-client';
 
 /** Events the CRM needs: inbound messages, delivery/read acks, connection + QR. */
-const WEBHOOK_EVENTS = [
+export const WEBHOOK_EVENTS = [
   'MESSAGES_UPSERT',
   'MESSAGES_UPDATE',
   'CONNECTION_UPDATE',
