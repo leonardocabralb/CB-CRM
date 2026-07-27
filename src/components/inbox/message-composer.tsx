@@ -47,6 +47,10 @@ import {
   MEDIA_MAX_BYTES_BY_KIND,
 } from "@/lib/storage/upload-media";
 import { ReplyQuote } from "./reply-quote";
+import {
+  alternarMarcador,
+  type EstiloFormatacao,
+} from "@/lib/inbox/whatsapp-format";
 import { useTranslations } from "next-intl";
 import {
   InteractiveBuilder,
@@ -68,6 +72,13 @@ export const MEDIA_CAPTION_MAX = 1024;
 /** Hard cap on a single voice recording so it can't blow the upload/
  *  transcode limits — auto-stops the recorder when reached. */
 const MAX_RECORDING_SECONDS = 5 * 60;
+
+/**
+ * Janela para desfazer um envio. Mensagem errada no WhatsApp não tem volta:
+ * só resta apagar, e o cliente vê que algo foi apagado. Cinco segundos dão
+ * tempo de reler; menos que isso só pega o arrependimento imediato.
+ */
+const SEGUNDOS_DESFAZER = 5;
 
 export interface SendMediaPayload {
   kind: ComposerMediaKind;
@@ -153,9 +164,21 @@ export function MessageComposer({
   const t = useTranslations("Inbox.composer");
 
   const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  /**
+   * Mensagem escrita, ainda segurável. `null` = nada esperando.
+   *
+   * `enviar` é o despachante da conversa de ORIGEM, capturado no instante em
+   * que a mensagem foi retida — ver a nota extensa em `handleSend`.
+   */
+  const [pendente, setPendente] = useState<{
+    texto: string;
+    replyToId?: string;
+    expiraEm: number;
+    enviar: (texto: string, replyToId?: string) => void;
+  } | null>(null);
+  const timerDesfazerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Interactive-message builder dialog + quick-reply picker.
   const [interactiveOpen, setInteractiveOpen] = useState(false);
@@ -229,30 +252,223 @@ export function MessageComposer({
     el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
   }, []);
 
+  // ---- Envio com janela de arrependimento ----------------------------
+  //
+  // Enter enviava na hora, e mensagem errada no WhatsApp não tem volta: só
+  // resta apagar, o que o cliente vê. A mensagem fica retida por
+  // SEGUNDOS_DESFAZER e um "Desfazer" a traz de volta ao campo.
+  //
+  // Duas regras, e as duas já foram violadas por engano antes:
+  //
+  // 1. NUNCA perder a mensagem em silêncio. Trocar de conversa, desmontar o
+  //    componente ou mandar outra ENVIAM a pendente em vez de descartá-la —
+  //    o operador apertou Enter, a intenção dele foi enviar.
+  // 2. NUNCA entregar a quem não era o destinatário. O despachante é preso
+  //    quando a mensagem é retida, não quando ela sai.
+
+  // `onSend` por REF, não por dependência.
+  //
+  // O pai o memoiza com `conversation` na lista de dependências, e esse
+  // objeto ganha identidade nova a cada atualização em tempo real. Se o
+  // efeito de desmontagem dependesse de `onSend`, uma mensagem do cliente
+  // chegando durante a janela re-registraria o efeito, o cleanup rodaria e a
+  // pendente sairia antes da hora — o "Desfazer" só funcionaria em conversa
+  // parada, que é justamente quando ninguém precisa dele.
+  const onSendRef = useRef(onSend);
+  useEffect(() => {
+    onSendRef.current = onSend;
+  }, [onSend]);
+
+  // Mesmo motivo do `onSendRef`: usado dentro de callbacks que não podem
+  // trocar de identidade a cada render do pai.
+  const onClearReplyRef = useRef(onClearReply);
+  useEffect(() => {
+    onClearReplyRef.current = onClearReply;
+  }, [onClearReply]);
+
+  // Ref espelhando a pendente: o cleanup do efeito de desmontagem precisa do
+  // valor mais recente sem re-registrar o efeito a cada tecla.
+  const pendenteRef = useRef<{
+    texto: string;
+    replyToId?: string;
+    enviar: (texto: string, replyToId?: string) => void;
+  } | null>(null);
+  useEffect(() => {
+    pendenteRef.current = pendente
+      ? { texto: pendente.texto, replyToId: pendente.replyToId, enviar: pendente.enviar }
+      : null;
+  }, [pendente]);
+
+  const descartarTimer = useCallback(() => {
+    if (timerDesfazerRef.current) {
+      clearTimeout(timerDesfazerRef.current);
+      timerDesfazerRef.current = null;
+    }
+  }, []);
+
+  /** Manda a pendente na hora (sem esperar o relógio) e limpa o estado. */
+  const liberarPendente = useCallback(() => {
+    descartarTimer();
+    const p = pendenteRef.current;
+    pendenteRef.current = null;
+    setPendente(null);
+    if (p) {
+      // `p.enviar`, NUNCA `onSendRef.current`: o segundo já aponta para a
+      // conversa que está na tela AGORA, que pode não ser a de origem.
+      p.enviar(p.texto, p.replyToId);
+      // A citação some só quando a mensagem SAI. Limpando no Enter, desfazer
+      // devolvia o texto mas perdia a resposta citada — e o operador teria de
+      // procurar de novo a mensagem que estava respondendo.
+      onClearReplyRef.current?.();
+    }
+  }, [descartarTimer]);
+
+  const desfazerEnvio = useCallback(() => {
+    descartarTimer();
+    const p = pendenteRef.current;
+    pendenteRef.current = null;
+    setPendente(null);
+    if (!p) return;
+    // Devolve o texto ao campo para o operador corrigir em vez de redigitar.
+    setText(p.texto);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(p.texto.length, p.texto.length);
+      adjustHeight();
+    });
+  }, [descartarTimer, adjustHeight]);
+
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending || sessionExpired) return;
+    if (!trimmed || sessionExpired) return;
 
-    setSending(true);
-    try {
-      onSend(trimmed, replyTo?.id);
-      setText("");
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
-      }
-    } finally {
-      setSending(false);
+    // Já havia uma esperando: ela vai AGORA, para a ordem das mensagens na
+    // conversa do cliente ser a mesma em que foram escritas.
+    liberarPendente();
+
+    // O DESPACHANTE É CAPTURADO AQUI, e isto é a correção inteira.
+    //
+    // O pai reconstrói `onSend` amarrado à conversa aberta. Resolvendo o
+    // despachante só na hora de disparar, uma mensagem escrita para o
+    // cliente A e retida por 5s era entregue ao cliente B se o operador
+    // clicasse em outra conversa nesse intervalo — o compositor NÃO
+    // remonta na troca, então nada interrompia a espera. Num escritório de
+    // advocacia isso é quebra de sigilo, e silenciosa: some do histórico de
+    // A e aparece no de B.
+    const despachante = onSendRef.current;
+    setPendente({
+      texto: trimmed,
+      replyToId: replyTo?.id,
+      expiraEm: Date.now() + SEGUNDOS_DESFAZER * 1000,
+      enviar: despachante,
+    });
+    pendenteRef.current = { texto: trimmed, replyToId: replyTo?.id, enviar: despachante };
+    timerDesfazerRef.current = setTimeout(liberarPendente, SEGUNDOS_DESFAZER * 1000);
+
+    setText("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
     }
-  }, [text, sending, sessionExpired, onSend, replyTo?.id]);
+  }, [text, sessionExpired, replyTo?.id, liberarPendente]);
+
+  // Trocar de conversa solta a pendente na hora.
+  //
+  // O compositor NÃO remonta nessa troca (o pai só troca o objeto da
+  // conversa, sem `key`), então sem isto a barra de "enviando" ficaria
+  // pendurada na thread do cliente errado, e o "Desfazer" dali jogaria o
+  // texto de um cliente no campo de outro. A mensagem em si já vai para o
+  // lugar certo — `enviar` está preso à origem.
+  const conversaAnteriorRef = useRef(conversationId);
+  useEffect(() => {
+    if (conversaAnteriorRef.current === conversationId) return;
+    conversaAnteriorRef.current = conversationId;
+    liberarPendente();
+  }, [conversationId, liberarPendente]);
+
+  // Contagem regressiva da barra. Sem isto o rótulo diria "5s" o tempo todo,
+  // inclusive no último instante antes de sair.
+  const [restam, setRestam] = useState(SEGUNDOS_DESFAZER);
+  useEffect(() => {
+    if (!pendente) return;
+    const tick = () =>
+      setRestam(Math.max(0, Math.ceil((pendente.expiraEm - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [pendente]);
+
+  // Desmontagem (trocou de conversa, saiu da rota): envia em vez de perder.
+  // Lista de dependências VAZIA de propósito — ver a nota em `onSendRef`.
+  useEffect(() => {
+    return () => {
+      const p = pendenteRef.current;
+      if (p) {
+        pendenteRef.current = null;
+        p.enviar(p.texto, p.replyToId);
+      }
+      if (timerDesfazerRef.current) clearTimeout(timerDesfazerRef.current);
+    };
+  }, []);
+
+  // Fechar a aba é o único caso que não dá para salvar: a requisição não
+  // sobrevive. Avisar é o melhor disponível.
+  useEffect(() => {
+    if (!pendente) return;
+    const aviso = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", aviso);
+    return () => window.removeEventListener("beforeunload", aviso);
+  }, [pendente]);
+
+  /**
+   * Aplica um estilo à seleção do campo. Mexe no valor e RESTAURA a seleção:
+   * sem isso o cursor pula para o fim a cada clique e formatar duas palavras
+   * seguidas vira um exercício de paciência.
+   */
+  const formatar = useCallback(
+    (estilo: EstiloFormatacao) => {
+      const el = textareaRef.current;
+      if (!el) return;
+      const r = alternarMarcador(text, el.selectionStart, el.selectionEnd, estilo);
+      setText(r.texto);
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(r.inicio, r.fim);
+        adjustHeight();
+      });
+    },
+    [text, adjustHeight],
+  );
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      // Atalhos iguais aos do WhatsApp Web, para não haver o que reaprender.
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && !e.altKey) {
+        const k = e.key.toLowerCase();
+        if (k === "b") {
+          e.preventDefault();
+          formatar("negrito");
+          return;
+        }
+        if (k === "i") {
+          e.preventDefault();
+          formatar("italico");
+          return;
+        }
+        if (e.shiftKey && k === "x") {
+          e.preventDefault();
+          formatar("riscado");
+          return;
+        }
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
       }
     },
-    [handleSend]
+    [handleSend, formatar]
   );
 
   const handleChange = useCallback(
@@ -553,6 +769,22 @@ export function MessageComposer({
 
   return (
     <div className="border-t border-border bg-card p-3">
+      {/* Mensagem retida: enquanto esta barra estiver visível, nada saiu. */}
+      {pendente && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2">
+          <div className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-transparent" />
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {t("sendingIn", { seconds: restam })} &mdash; {pendente.texto}
+          </span>
+          <button
+            type="button"
+            onClick={desfazerEnvio}
+            className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/10"
+          >
+            {t("undoSend")}
+          </button>
+        </div>
+      )}
       {replyTo && (
         <div className="mb-2">
           <ReplyQuote
@@ -778,7 +1010,7 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            disabled={!text.trim() || sessionExpired || sending}
+            disabled={!text.trim() || sessionExpired}
             onClick={handleSend}
             className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
           >
@@ -791,9 +1023,24 @@ export function MessageComposer({
           `items-end` buttons below the textarea. Indented to line up
           under the textarea left edge. */}
       {!draft && !recording && (
-        <p className="mt-1 pl-[5.5rem] text-[10px] text-muted-foreground">
-          {t("draftHint")}
-        </p>
+        <div className="mt-1 flex items-center gap-1 pl-[5.5rem]">
+          {/* Inserem os marcadores do WhatsApp na seleção. O texto enviado
+              continua sendo `*assim*` — é o próprio WhatsApp que formata do
+              outro lado; os botões só poupam decorar a sintaxe. */}
+          <BotaoFormato onClick={() => formatar("negrito")} title={t("bold")}>
+            <span className="font-bold">N</span>
+          </BotaoFormato>
+          <BotaoFormato onClick={() => formatar("italico")} title={t("italic")}>
+            <span className="italic">I</span>
+          </BotaoFormato>
+          <BotaoFormato onClick={() => formatar("riscado")} title={t("strike")}>
+            <span className="line-through">S</span>
+          </BotaoFormato>
+          <BotaoFormato onClick={() => formatar("mono")} title={t("mono")}>
+            <span className="font-mono text-[10px]">{"</>"}</span>
+          </BotaoFormato>
+          <p className="ml-1 text-[10px] text-muted-foreground">{t("draftHint")}</p>
+        </div>
       )}
 
       {/* Interactive-message builder dialog. */}
@@ -928,5 +1175,32 @@ function MediaDraftPreview({
         </GatedButton>
       </div>
     </div>
+  );
+}
+
+/** Botãozinho da barra de formatação. */
+function BotaoFormato({
+  onClick,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      // `onMouseDown` com preventDefault: sem isso o clique tira o foco do
+      // campo e a seleção some ANTES de o handler rodar — o botão formataria
+      // um trecho vazio.
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className="flex h-5 w-5 items-center justify-center rounded text-[11px] leading-none text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      {children}
+    </button>
   );
 }
