@@ -502,7 +502,12 @@ export class EvolutionClient {
     );
   }
 
-  async fetchInstances(): Promise<unknown[]> {
-    return this.request('GET', 'instance/fetchInstances', undefined, false);
+  /**
+   * `timeoutMs` opcional para a sonda de saúde: ela roda no caminho da tela
+   * e a cada 30s, então o teto padrão de 15s a faria segurar o cabeçalho por
+   * quinze segundos toda vez que o servidor engasgasse.
+   */
+  async fetchInstances(timeoutMs?: number): Promise<unknown[]> {
+    return this.request('GET', 'instance/fetchInstances', undefined, false, timeoutMs);
   }
 }
