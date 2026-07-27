@@ -319,7 +319,11 @@ export function CbChannelsPanel() {
         // cada 5 segundos vira ruído que o operador aprende a ignorar.
         if (payload.webhookError && !avisouWebhookRef.current) {
           avisouWebhookRef.current = true;
-          toast.warning(t('webhookRepairFailed'));
+          // Com a explicação junto: quando a recusa vem da guarda, é ela que
+          // diz qual env ajustar — e este é o único caminho na tela quando o
+          // canal está desconectado, porque aí o botão "Ressincronizar" nem
+          // aparece.
+          toast.warning(t('webhookRepairFailed'), { description: payload.webhookError });
         }
         if (payload.connected) {
           setQrConnected(true);

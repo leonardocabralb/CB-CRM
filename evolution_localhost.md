@@ -223,7 +223,8 @@ removido em Configurações → Conexões.
 | App em inglês | `NEXT_PUBLIC_APP_LOCALE` — produção builda com `pt-BR`. |
 | `Bind for 0.0.0.0:8080 failed` | Porta ocupada. Troque `8088:8080` no compose e ajuste `EVOLUTION_BASE_URL`. |
 | Modo isolado envia mas não recebe | `NEXT_PUBLIC_SITE_URL` não está como `host.docker.internal:3000`. Ajuste e recrie o canal `Dev local`. |
-| `401` no webhook | `EVOLUTION_WEBHOOK_SECRET` do CRM diferente do registrado na instância. Ressincronize. |
+| `401` no webhook do canal **local** | `EVOLUTION_WEBHOOK_SECRET` diferente do registrado na instância. Ressincronize — a guarda não barra, porque a URL registrada é local. |
+| `401` no webhook de **produção** | Só acontece se o segredo do `crm.env` da VPS divergir do registrado. O conserto é ressincronizar **a partir de `crm.cbadvogados.com`**, nunca do local: a guarda só libera a troca de segredo para o próprio host que recebe os eventos. |
 
 ---
 

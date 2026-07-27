@@ -178,6 +178,7 @@ export async function reaplicarWebhook(
   // reaplicação é o caminho de conserto — travá-la por um GET que não
   // respondeu seria pior que o risco que ela evita.
   let atual: WebhookRegistrado | null = null;
+  let leituraFalhou = false;
   try {
     const bruto = (await client.findWebhook()) as Record<string, unknown> | null;
     const w = ((bruto?.webhook as Record<string, unknown>) ?? bruto ?? {}) as {
@@ -188,10 +189,24 @@ export async function reaplicarWebhook(
       url: w.url ?? null,
       secret: segredoDoHeader(w.headers?.Authorization ?? w.headers?.authorization),
     };
-  } catch {
-    atual = null;
+  } catch (err) {
+    // "Não consegui saber" ≠ "não há webhook". A distinção existe porque o
+    // GET tem teto de 15s e o laço do QR consulta a cada 5s: engolir o erro
+    // como "instância limpa" desarmava a guarda justamente no clique que ela
+    // deveria cobrir. O aviso é distinto de propósito — se um upgrade da
+    // Evolution mover este endpoint, a guarda ficaria desarmada para sempre
+    // e sem nenhum sinal.
+    leituraFalhou = true;
+    console.warn(
+      '[cb-channels] não foi possível ler o webhook atual; guarda em modo cauteloso:',
+      err instanceof Error ? err.message : err,
+    );
   }
-  const recusa = motivoParaRecusar(atual, { url: webhook.url, secret: webhook.secret });
+  const recusa = motivoParaRecusar(
+    atual,
+    { url: webhook.url, secret: webhook.secret },
+    { origemDoPedido: requestOrigin, leituraFalhou },
+  );
   if (recusa) throw new Error(recusa);
 
   await client.setWebhook({

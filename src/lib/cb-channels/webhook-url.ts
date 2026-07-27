@@ -13,19 +13,47 @@
 // para de receber mensagem.
 //
 //   1. Trocar a URL por um endereço que só existe na máquina de alguém.
-//      A Evolution passa a entregar num lugar que ela não alcança.
-//   2. Trocar o segredo por um diferente do que o CRM de produção espera.
-//      A Evolution entrega, e a produção responde 401 em tudo.
+//   2. Trocar o segredo por um diferente do que o receptor espera — a
+//      Evolution entrega e o CRM responde 401 em tudo.
 //
-// Esta guarda cobre as duas. Ela nunca impede o CAMINHO DE CONSERTO
-// (local → público), e nunca atrapalha instância nova, que não tem o que
-// perder.
+// ⚠️ REGRA DE PROJETO: esta guarda NUNCA pode trancar o conserto. Ela está
+// no caminho do único gesto de emergência que existe na interface
+// ("Ressincronizar"), e uma guarda que impede o reparo é pior que a falha
+// que ela evita. Toda regra aqui tem a sua isenção correspondente, e elas
+// são tão importantes quanto as regras.
 // ============================================================
 
 /** O que a Evolution já tem registrado para a instância. */
 export interface WebhookRegistrado {
   url?: string | null;
   secret?: string | null;
+}
+
+export interface ContextoDaReaplicacao {
+  /**
+   * Origem HTTP de quem pediu — de qual endereço o operador clicou.
+   *
+   * É o que separa "a produção reaplicando a si mesma" de "uma máquina de
+   * fora mexendo no webhook da produção". Sem isso, o dois são o mesmo
+   * código rodando com envs diferentes.
+   */
+  origemDoPedido?: string;
+  /**
+   * A leitura do webhook atual FALHOU (timeout, 5xx). Diferente de "não há
+   * webhook": aqui não sabemos o que existe do outro lado.
+   */
+  leituraFalhou?: boolean;
+}
+
+function hostnameDe(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    // Ponto final é FQDN absoluto: `localhost.` e `localhost` são o mesmo
+    // host para o resolvedor, e sem normalizar aqui a comparação erra.
+    return new URL(url).hostname.toLowerCase().replace(/\.$/, '') || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -37,29 +65,31 @@ export interface WebhookRegistrado {
  * `false`.
  */
 export function ehUrlAlcancavel(url: string | null | undefined): boolean {
-  if (!url) return false;
-  let host: string;
-  try {
-    host = new URL(url).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
+  const host = hostnameDe(url);
   // `new URL('localhost:3000')` NÃO lança: vira protocolo `localhost:` com
-  // hostname vazio. Sem esta linha, uma URL escrita sem esquema passava por
-  // alcançável — exatamente o engano de digitação mais provável no
-  // `.env.local`.
+  // hostname vazio — o engano de digitação mais provável no `.env.local`.
   if (!host) return false;
 
   // Nomes que só existem para quem está na própria máquina.
   if (
     host === 'localhost' ||
-    host === '::1' ||
-    host === '[::1]' ||
     host === 'host.docker.internal' ||
     host.endsWith('.localhost') ||
     host.endsWith('.local')
   ) {
     return false;
+  }
+
+  // IPv6 chega entre colchetes. Loopback, não-especificado, link-local
+  // (fe80::/10), ULA (fc00::/7) e o loopback IPv4 mapeado não saem da
+  // máquina nem da rede local.
+  if (host.startsWith('[')) {
+    const v6 = host.slice(1, -1);
+    if (v6 === '::1' || v6 === '::') return false;
+    if (/^f[cd]/.test(v6)) return false;
+    if (/^fe[89ab]/.test(v6)) return false;
+    if (v6.startsWith('::ffff:')) return false;
+    return true;
   }
 
   // Faixas privadas e de loopback do IPv4.
@@ -70,44 +100,76 @@ export function ehUrlAlcancavel(url: string | null | undefined): boolean {
     if (a === 192 && b === 168) return false;
     if (a === 172 && b >= 16 && b <= 31) return false;
     if (a === 169 && b === 254) return false; // link-local
+    return true;
   }
+
+  // Rótulo único (`http://meu-linux:3000`) só resolve dentro de uma LAN.
+  // Aqui a URL do webhook é sempre um domínio público — se um dia alguém
+  // usar nome de serviço interno, a recusa aparece na tela em vez de virar
+  // uma entrega perdida em silêncio.
+  if (!host.includes('.')) return false;
 
   return true;
 }
 
 /**
  * Devolve o motivo para RECUSAR a reaplicação, ou `null` quando ela pode
- * seguir.
- *
- * O texto do motivo vai parar na tela do operador, então diz o que ajustar.
+ * seguir. O texto vai para a tela do operador, então diz o que ajustar.
  */
 export function motivoParaRecusar(
   atual: WebhookRegistrado | null | undefined,
   nova: { url: string; secret: string },
+  ctx: ContextoDaReaplicacao = {},
 ): string | null {
+  const urlNovaOk = ehUrlAlcancavel(nova.url);
+
+  // Não conseguimos ler o que está registrado. Antes isto DESARMAVA a
+  // guarda inteira: um timeout de 15s no GET — e o laço do QR consulta a
+  // cada 5s — deixava passar o registro de uma URL local. Agora a dúvida
+  // vale como "pode haver algo bom aí", e só o que é inútil de qualquer
+  // forma (URL inalcançável) é barrado. Reaplicação legítima sempre traz
+  // URL pública, então nada muda para ela.
+  if (ctx.leituraFalhou) {
+    return urlNovaOk ? null : motivoDeUrl('o endereço atual (não foi possível lê-lo)', nova.url);
+  }
+
   // Nada registrado, ou registrado num endereço que já era inalcançável:
   // não há o que proteger, e barrar aqui travaria o conserto.
   if (!ehUrlAlcancavel(atual?.url)) return null;
 
-  if (!ehUrlAlcancavel(nova.url)) {
-    return (
-      `Este canal recebe mensagens em ${atual!.url}, e a reaplicação tentaria ` +
-      `trocar por ${nova.url}, que só existe na máquina local. O número ` +
-      `pararia de receber mensagem. Ajuste NEXT_PUBLIC_SITE_URL para a URL ` +
-      `pública do CRM e tente de novo.`
-    );
-  }
+  if (!urlNovaOk) return motivoDeUrl(atual!.url!, nova.url);
 
   if (atual!.secret && atual!.secret !== nova.secret) {
-    return (
-      `O segredo do webhook deste canal é diferente do configurado aqui. ` +
-      `Reaplicar trocaria o segredo registrado, e o CRM de produção passaria ` +
-      `a recusar todos os eventos (401). Ajuste EVOLUTION_WEBHOOK_SECRET ` +
-      `para o mesmo valor do ambiente que recebe os webhooks.`
-    );
+    // ISENÇÃO: quando o pedido vem do MESMO host que hoje recebe os
+    // webhooks, quem está reaplicando é o próprio destinatário — e o
+    // segredo dele é, por definição, o certo. É o caso da rotação: o
+    // `crm.env` da VPS muda, a produção passa a responder 401 a tudo, e o
+    // conserto é exatamente reaplicar com o segredo novo. Sem esta isenção
+    // a guarda mandava DESFAZER a rotação, e não havia saída pela
+    // interface.
+    const mesmoDestinatario =
+      !!ctx.origemDoPedido && hostnameDe(atual!.url) === hostnameDe(ctx.origemDoPedido);
+    if (!mesmoDestinatario) {
+      return (
+        `O segredo do webhook deste canal é diferente do configurado aqui, e ` +
+        `este ambiente não é o que recebe os eventos (${hostnameDe(atual!.url)}). ` +
+        `Reaplicar faria o CRM de produção recusar todos os eventos (401). ` +
+        `Ajuste EVOLUTION_WEBHOOK_SECRET para o mesmo valor de lá, ou reaplique ` +
+        `a partir do próprio ${hostnameDe(atual!.url)}.`
+      );
+    }
   }
 
   return null;
+}
+
+function motivoDeUrl(atual: string, nova: string): string {
+  return (
+    `Este canal recebe mensagens em ${atual}, e a reaplicação tentaria trocar ` +
+    `por ${nova}, que só existe na máquina local. O número pararia de receber ` +
+    `mensagem. Ajuste NEXT_PUBLIC_SITE_URL para a URL pública do CRM e tente ` +
+    `de novo.`
+  );
 }
 
 /** `Bearer abc` → `abc`. Qualquer outra forma volta como veio. */
