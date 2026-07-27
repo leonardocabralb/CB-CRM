@@ -195,8 +195,13 @@ export function CbChannelsPanel() {
         toast.error(payload.error || t('connectFailed'));
         return;
       }
-      if (payload.webhookError) toast.warning(t('webhookRepairFailed'));
-      else toast.success(t('resyncedToast'));
+      // O detalhe do servidor vai junto: a recusa mais provável aqui é a
+      // guarda de URL não-pública, e ela diz exatamente o que ajustar.
+      if (payload.webhookError) {
+        toast.warning(t('webhookRepairFailed'), { description: payload.webhookError });
+      } else {
+        toast.success(t('resyncedToast'));
+      }
       // A conexão pode ter caído entre a listagem e o clique. Aí o gesto
       // certo passa a ser parear, e o QR é o caminho.
       if (!payload.connected) openQrFor(channelId, payload.qr ?? null);
