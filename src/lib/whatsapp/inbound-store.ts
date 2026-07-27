@@ -13,6 +13,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
+import { routeInboundToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
@@ -369,6 +370,20 @@ export async function persistInboundMessage(
       },
     }).catch((err) => console.error('[inbound-store] automation dispatch failed:', err));
   }
+
+  // Funil padrão da conexão. Fora do laço de automações de propósito: o
+  // gatilho aqui é por ESTADO ("este contato já tem card neste funil?"), não
+  // por evento, porque `first_inbound_message` é contado por conversa e há
+  // uma conversa por contato — o cliente que muda de número nunca dispararia.
+  // `routeInboundToPipeline` nunca lança e sai no primeiro SELECT quando a
+  // conexão não tem funil configurado.
+  await routeInboundToPipeline({
+    db,
+    accountId: m.accountId,
+    channelId: m.channelId ?? null,
+    contactId: contact.id,
+    contactName: contact.name ?? null,
+  });
 
   if (!flowConsumed && inboundText.trim()) {
     await dispatchInboundToAiReply({
