@@ -586,7 +586,12 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         .select('default_currency')
         .eq('id', args.automation.account_id)
         .maybeSingle()
-      await db.from('deals').insert({
+      // O erro do insert PRECISA ser lido. Sem isto o passo devolvia
+      // 'deal created' incondicionalmente: funil ou etapa apagados faziam o
+      // insert falhar e o log da automação registrava sucesso, então o
+      // negócio não existia e ninguém ficava sabendo. Este é o único insert
+      // server-side em `deals`, logo era a única versão da verdade.
+      const { error: dealError } = await db.from('deals').insert({
         // Tenancy + audit, same split as automation_logs above.
         account_id: args.automation.account_id,
         user_id: args.automation.user_id,
@@ -598,6 +603,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         currency: acct?.default_currency ?? 'USD',
         status: 'open',
       })
+      if (dealError) throw new Error(`create_deal falhou: ${dealError.message}`)
       return 'deal created'
     }
 
