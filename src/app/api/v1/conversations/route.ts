@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       .from('conversations')
       .select(CONVERSATION_SELECT)
       .eq('account_id', ctx.accountId)
-      // Grupos não existem para a v1 (migration 904). Sem isto quem integra
+      // Grupos não existem para a v1 (migration 906). Sem isto quem integra
       // passaria a receber conversas com `contact` nulo — um formato que o
       // contrato publicado nunca prometeu e que quebraria integração alheia
       // sem aviso.

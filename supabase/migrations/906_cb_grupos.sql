@@ -1,5 +1,5 @@
 -- ============================================================
--- 904_cb_grupos — grupos de WhatsApp no inbox
+-- 906_cb_grupos — grupos de WhatsApp no inbox
 --
 -- POR QUE UMA TABELA NOVA (e não uma linha em `contacts`)
 -- A saída barata seria gravar o grupo como contato com `phone` = JID. Três

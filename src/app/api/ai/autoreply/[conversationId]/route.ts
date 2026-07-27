@@ -58,16 +58,18 @@ export async function POST(request: Request, { params }: Params) {
         { status: 500 },
       )
     }
-    // Grupo está fora da IA por decisão de produto (migration 904). A UI
-    // esconde o interruptor; isto é a segunda tranca.
-    if (conv?.group_id) {
+    if (!conv) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    }
+    // Grupo está fora da IA por decisão de produto (migration 906). A UI
+    // esconde o interruptor; isto é a segunda tranca. Depois do not-found:
+    // antes dele, a checagem só não estourava por causa do `?.`, e bastava
+    // alguém "limpar" o encadeamento opcional para virar crash.
+    if (conv.group_id) {
       return NextResponse.json(
         { error: 'AI auto-reply is not available in group conversations' },
         { status: 400 },
       )
-    }
-    if (!conv) {
-      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
     }
 
     const update: Record<string, unknown> = { ai_autoreply_disabled: paused }

@@ -26,7 +26,7 @@ export function useTotalUnread(): number {
     // Initial load. RLS scopes this to the signed-in user automatically —
     // no explicit user_id filter needed here.
     //
-    // Grupo fica FORA deste contador (ver 904_cb_grupos). O badge significa
+    // Grupo fica FORA deste contador (ver 906_cb_grupos). O badge significa
     // "tem cliente esperando resposta"; um grupo ativo o deixaria aceso o dia
     // inteiro e ele pararia de significar qualquer coisa. Grupo mostra o
     // próprio contador na linha dele, dentro da lista.

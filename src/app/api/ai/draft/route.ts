@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
     }
-    // Grupo está fora da IA por decisão de produto (migration 904). A UI
+    // Grupo está fora da IA por decisão de produto (migration 906). A UI
     // esconde o botão; isto é a segunda tranca. 400 explícito e não 404: quem
     // bater aqui precisa saber que a conversa existe e o recurso é que não
     // vale para ela.
