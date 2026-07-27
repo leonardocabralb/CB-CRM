@@ -249,7 +249,11 @@
       "viaChannel": "via {label}",
       "fromDevice": "Celular",
       "fromDeviceTitle": "Enviada pelo celular pareado, não pelo CRM",
-      "attachmentLoading": "Baixando anexo…"
+      "attachmentLoading": "Baixando anexo…",
+      "deletedByCustomer": "Apagada pelo contato",
+      "deletedByUs": "Apagada",
+      "edited": "editada",
+      "editedWas": "Antes da edição: {text}"
     },
     "actions": {
       "reply": "Responder",
@@ -259,7 +263,15 @@
       "reactWith": "Reagir com {emoji}",
       "nothingToCopy": "Nada para copiar",
       "copied": "Copiado",
-      "copyFailed": "Falha ao copiar"
+      "copyFailed": "Falha ao copiar",
+      "edit": "Editar",
+      "deleteForEveryone": "Apagar para todos",
+      "deleteConfirm": "Apagar esta mensagem para todos? Ela continua visível no CRM, riscada.",
+      "deleted": "Mensagem apagada",
+      "edited": "Mensagem editada",
+      "editTitle": "Editar mensagem",
+      "save": "Salvar",
+      "cancel": "Cancelar"
     },
     "replyQuote": {
       "photo": "[Foto]",

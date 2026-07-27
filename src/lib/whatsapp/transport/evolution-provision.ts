@@ -21,6 +21,15 @@ const WEBHOOK_EVENTS = [
   'MESSAGES_UPDATE',
   'CONNECTION_UPDATE',
   'QRCODE_UPDATED',
+  // Apagar e editar. ⚠️ Acrescentar aqui só vale para instância NOVA — a
+  // Evolution guarda a lista no momento em que o webhook é registrado.
+  // Instância já existente continua sem receber estes eventos até o webhook
+  // ser reaplicado (o que `provisionEvolutionInstance` faz sempre que roda,
+  // inclusive na reconexão). Sem essa reaplicação, a mensagem que o cliente
+  // apagar continua aparecendo intacta no CRM, como se nada tivesse
+  // acontecido — foi exatamente o sintoma relatado.
+  'MESSAGES_DELETE',
+  'MESSAGES_EDITED',
 ];
 
 export function evolutionGlobalConfig(): { baseUrl: string; apikey: string } {

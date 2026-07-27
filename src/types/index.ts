@@ -270,6 +270,19 @@ export interface Message {
    * sistema. Migration 904.
    */
   from_device?: boolean;
+  /**
+   * Apagada no WhatsApp. O conteúdo PERMANECE em `content_text` de
+   * propósito: o CRM mostra riscado em vez de esconder, porque o escritório
+   * precisa do registro do que foi dito — inclusive do que o cliente apagou
+   * depois. Divergência deliberada do WhatsApp. Migration 905.
+   */
+  deleted_at?: string | null;
+  /** Quem apagou: 'customer' = o cliente; 'agent' = nós. Migration 905. */
+  deleted_by?: 'customer' | 'agent' | null;
+  /** Editada no WhatsApp. Migration 905. */
+  edited_at?: string | null;
+  /** Texto anterior à última edição — o WhatsApp não guarda histórico. */
+  text_before_edit?: string | null;
 }
 
 export type ReactionActor = 'customer' | 'agent';

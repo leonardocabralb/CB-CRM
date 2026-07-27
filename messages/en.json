@@ -249,7 +249,11 @@
       "viaChannel": "via {label}",
       "fromDevice": "Phone",
       "fromDeviceTitle": "Sent from the paired phone, not from the CRM",
-      "attachmentLoading": "Downloading attachment…"
+      "attachmentLoading": "Downloading attachment…",
+      "deletedByCustomer": "Deleted by contact",
+      "deletedByUs": "Deleted",
+      "edited": "edited",
+      "editedWas": "Before editing: {text}"
     },
     "actions": {
       "reply": "Reply",
@@ -259,7 +263,15 @@
       "reactWith": "React with {emoji}",
       "nothingToCopy": "Nothing to copy",
       "copied": "Copied",
-      "copyFailed": "Copy failed"
+      "copyFailed": "Copy failed",
+      "edit": "Edit",
+      "deleteForEveryone": "Delete for everyone",
+      "deleteConfirm": "Delete this message for everyone? It stays visible in the CRM, struck through.",
+      "deleted": "Message deleted",
+      "edited": "Message edited",
+      "editTitle": "Edit message",
+      "save": "Save",
+      "cancel": "Cancel"
     },
     "replyQuote": {
       "photo": "[Photo]",
