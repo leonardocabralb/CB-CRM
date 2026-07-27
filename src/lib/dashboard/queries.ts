@@ -31,15 +31,23 @@ type DB = SupabaseClient
 // FILTRO POR CANAL — o que dá e o que NÃO dá para recortar.
 //
 // `conversations`, `messages`, `broadcasts` e `automation_logs` têm
-// `channel_id` desde as migrations 902/903. `contacts`, `deals` e
-// `pipeline_stages` NÃO têm, e nem faria sentido: um contato pertence ao
-// escritório, não a um número, e um negócio pode nascer numa conversa e
-// fechar noutra.
+// `channel_id` desde as migrations 902/903. `deals` ganhou o seu na 908.
+// `contacts` e `pipeline_stages` continuam sem, e nem faria sentido: um
+// contato pertence ao escritório, não a um número, e uma etapa é do funil.
 //
-// Por isso o filtro é PARCIAL por natureza, e a tela precisa dizer quais
-// cartões ele não alcança. Um número da conta inteira exibido sob um
-// filtro de canal seria lido como "isto é do Comercial" — a mentira mais
-// cara que um painel pode contar.
+// ⚠️ EM `deals` O RECORTE TEM OUTRO SIGNIFICADO, e a tela precisa dizê-lo.
+// `deals.channel_id` é carimbado no NASCIMENTO do card, pelo roteador de
+// entrada (e pelo passo de automação). Ele responde "por qual número este
+// cliente CHEGOU", não "quanto este número tem em aberto agora" — o negócio
+// segue vivo mesmo que a conversa migre para outro número depois. Daí a
+// etiqueta ser "Originados neste número", e não "Conta inteira".
+// Negócio criado à mão no formulário fica com a coluna NULA e, portanto,
+// fora de qualquer recorte por canal.
+//
+// Por isso o filtro continua PARCIAL, e a tela precisa dizer quais cartões
+// ele não alcança. Um número da conta inteira exibido sob um filtro de canal
+// seria lido como "isto é do Comercial" — a mentira mais cara que um painel
+// pode contar.
 // ------------------------------------------------------------
 
 /**
@@ -105,7 +113,7 @@ export async function loadMetrics(
       .select('id', { count: 'exact', head: true })
       .gte('created_at', yesterdayStart)
       .lt('created_at', todayStart),
-    db.from('deals').select('value, status').eq('status', 'open'),
+    porCanal(db.from('deals').select('value, status').eq('status', 'open'), channelId),
     porCanal(
       db
         .from('messages')
@@ -200,10 +208,17 @@ export async function loadConversationsSeries(
 
 // --- 3. Pipeline donut -------------------------------------------------
 
-export async function loadPipelineDonut(db: DB): Promise<PipelineDonutData> {
+export async function loadPipelineDonut(
+  db: DB,
+  channelId?: string | null,
+): Promise<PipelineDonutData> {
   const [stagesRes, dealsRes] = await Promise.all([
+    // Etapas NÃO se filtram por canal: elas são do funil, não do número.
     db.from('pipeline_stages').select('id, name, color, pipeline_id, position').order('position'),
-    db.from('deals').select('stage_id, value, status').eq('status', 'open'),
+    porCanal(
+      db.from('deals').select('stage_id, value, status').eq('status', 'open'),
+      channelId,
+    ),
   ])
 
   const stages =
@@ -371,13 +386,14 @@ export async function loadActivity(
           .order('created_at', { ascending: false })
           .limit(10)
       : Promise.resolve({ data: [] }),
-    semCanal
-      ? db
-          .from('deals')
-          .select('id, title, updated_at, stage:pipeline_stages(name)')
-          .order('updated_at', { ascending: false })
-          .limit(10)
-      : Promise.resolve({ data: [] }),
+    // Negócios voltaram ao feed sob filtro: desde a 908 eles têm canal.
+    // (`contacts` acima continua fora — contato não pertence a um número.)
+    porCanal(
+      db.from('deals').select('id, title, updated_at, stage:pipeline_stages(name)'),
+      channelId,
+    )
+      .order('updated_at', { ascending: false })
+      .limit(10),
     porCanal(
       db.from('broadcasts').select('id, name, status, total_recipients, created_at'),
       channelId,

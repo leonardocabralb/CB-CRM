@@ -12,7 +12,8 @@
     "outboundLabel": "Enviar por",
     "metaOnlyNone": "Nenhum número oficial da Meta está conectado. Conecte um em Ajustes › Conexões.",
     "accountWide": "Conta inteira",
-    "noneOnChannel": "Nada neste canal. Limpe o filtro para ver tudo."
+    "noneOnChannel": "Nada neste canal. Limpe o filtro para ver tudo.",
+    "channelOriginated": "Originados neste número"
   },
   "LoginPage": {
     "titleAccept": "Entre para aceitar",

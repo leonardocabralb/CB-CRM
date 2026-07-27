@@ -20,10 +20,15 @@ interface MetricCardProps {
   /** Used instead of `delta` when the metric has a static subtitle. */
   subtitle?: string
   /**
-   * Marca o cartão como "conta inteira" quando há filtro de canal ativo mas
-   * este número NÃO é filtrável (contatos e negócios não têm `channel_id` no
-   * schema). Sem a marca, o operador leria um total do escritório como se
-   * fosse daquele número.
+   * Ressalva exibida no cartão quando há filtro de canal ativo. Duas usam
+   * esta prop, por motivos diferentes:
+   *  · "Conta inteira" — o número NÃO é filtrável (contatos não têm
+   *    `channel_id`, e nem faria sentido: contato é do escritório).
+   *  · "Originados neste número" — o número É filtrável, mas o recorte
+   *    significa outra coisa: `deals.channel_id` (908) marca por onde o
+   *    cliente CHEGOU, não onde o negócio está agora.
+   * Sem a ressalva, o operador lê qualquer um dos dois como "isto é do
+   * Comercial".
    */
   accountWideNote?: string
 }
