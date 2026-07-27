@@ -33,6 +33,7 @@ import {
   Pencil,
   Plus,
   QrCode,
+  RefreshCw,
   Smartphone,
   Star,
   Trash2,
@@ -125,6 +126,7 @@ export function CbChannelsPanel() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [promotingId, setPromotingId] = useState<string | null>(null);
+  const [resyncing, setResyncing] = useState<string | null>(null);
 
   const webhookUrl =
     typeof window !== 'undefined'
@@ -168,6 +170,42 @@ export function CbChannelsPanel() {
     setQrImage(qr);
     setQrConnected(false);
     setQrError(null);
+    avisouWebhookRef.current = false;
+  };
+
+  /**
+   * Ressincroniza um canal que JÁ ESTÁ conectado.
+   *
+   * Existe separado do pareamento porque o diálogo do QR conta outra
+   * história: ele abre em "Gerando o QR Code…", termina em "Número
+   * conectado" e exige um clique em "Concluir" — tudo isso para uma ação em
+   * que nada conectou. O que aconteceu de fato foi a reaplicação do webhook,
+   * e é isso que o operador precisa ler.
+   *
+   * A rota é a mesma (`/connect`), porque é ela que reaplica a lista de
+   * eventos — a Evolution congela essa lista por instância no registro, e
+   * este é o único caminho que a atualiza numa instância que já existe.
+   */
+  const ressincronizar = async (channelId: string) => {
+    setResyncing(channelId);
+    try {
+      const res = await fetch(`/api/cb/channels/${channelId}/connect`, { method: 'POST' });
+      const payload = await res.json();
+      if (!res.ok) {
+        toast.error(payload.error || t('connectFailed'));
+        return;
+      }
+      if (payload.webhookError) toast.warning(t('webhookRepairFailed'));
+      else toast.success(t('resyncedToast'));
+      // A conexão pode ter caído entre a listagem e o clique. Aí o gesto
+      // certo passa a ser parear, e o QR é o caminho.
+      if (!payload.connected) openQrFor(channelId, payload.qr ?? null);
+      void load();
+    } catch {
+      toast.error(t('networkError'));
+    } finally {
+      setResyncing(null);
+    }
   };
 
   const handleCreateEvolution = async () => {
@@ -248,6 +286,8 @@ export function CbChannelsPanel() {
   // Laço de pareamento. Ref para o id, senão o intervalo lê o valor velho.
   const qrChannelIdRef = useRef<string | null>(null);
   qrChannelIdRef.current = qrChannelId;
+  /** Trava do aviso de webhook: um por abertura do diálogo, não um por tick. */
+  const avisouWebhookRef = useRef(false);
 
   useEffect(() => {
     if (!qrChannelId || qrConnected) return;
@@ -265,6 +305,17 @@ export function CbChannelsPanel() {
           return;
         }
         setQrError(null);
+        // A reaplicação do webhook é best-effort na rota, mas o operador
+        // precisa saber quando ela não pegou: sem os eventos, exclusão e
+        // edição feitas pelo cliente somem sem deixar rastro no CRM.
+        //
+        // UMA vez por diálogo. Este laço repete a cada POLL_MS enquanto o
+        // pareamento não conclui, e um aviso empilhando por cima do QR a
+        // cada 5 segundos vira ruído que o operador aprende a ignorar.
+        if (payload.webhookError && !avisouWebhookRef.current) {
+          avisouWebhookRef.current = true;
+          toast.warning(t('webhookRepairFailed'));
+        }
         if (payload.connected) {
           setQrConnected(true);
           setQrImage(null);
@@ -436,12 +487,39 @@ export function CbChannelsPanel() {
 
                 <RequireRole min="admin">
                   <div className="flex items-center gap-2">
-                    {channel.kind === 'evolution' && channel.status !== 'connected' && (
-                      <Button variant="outline" size="sm" onClick={() => openQrFor(channel.id, null)}>
-                        <QrCode className="mr-2 h-4 w-4" />
-                        {t('connect')}
-                      </Button>
-                    )}
+                    {/* Canal Evolution tem botão em QUALQUER estado, e são
+                        dois gestos diferentes:
+
+                        - desconectado → parear pelo QR;
+                        - conectado    → RESSINCRONIZAR, que reaplica a lista
+                          de eventos do webhook. A Evolution congela essa
+                          lista por instância no registro, então um evento
+                          novo no código (foi o caso de MESSAGES_DELETE) não
+                          alcança quem já está conectado. Esconder o botão
+                          com o canal conectado deixava esse reparo
+                          inalcançável justamente quando era necessário. */}
+                    {channel.kind === 'evolution' &&
+                      (channel.status === 'connected' ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={resyncing === channel.id}
+                          onClick={() => void ressincronizar(channel.id)}
+                          title={t('resyncHint')}
+                        >
+                          {resyncing === channel.id ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                          )}
+                          {t('resyncAction')}
+                        </Button>
+                      ) : (
+                        <Button variant="outline" size="sm" onClick={() => openQrFor(channel.id, null)}>
+                          <QrCode className="mr-2 h-4 w-4" />
+                          {t('connect')}
+                        </Button>
+                      ))}
                     <Button
                       variant="ghost"
                       size="sm"

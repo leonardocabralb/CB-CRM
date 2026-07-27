@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  parseDeleteEvent,
   detectContentType,
   extractText,
   isNonChatJid,
@@ -267,5 +268,61 @@ describe('phoneFromJid', () => {
 
   it('descarta a parte do aparelho', () => {
     expect(phoneFromJid('5511999998888:12@s.whatsapp.net')).toBe('5511999998888');
+  });
+});
+
+// ============================================================
+// `messages.delete` — as DUAS formas de payload.
+//
+// Bug real de produção (27/07/2026): o handler lia só o id de primeiro
+// nível. Na exclusão vinda da API da Evolution esse campo é o id INTERNO do
+// banco dela, então o UPDATE acertava zero linhas em silêncio — e era
+// justamente a forma que fecharia o ciclo do nosso próprio botão de apagar.
+// ============================================================
+describe('parseDeleteEvent', () => {
+  // Forma 1: exclusão feita no celular / em outro cliente do WhatsApp.
+  it('lê a chave achatada', () => {
+    expect(parseDeleteEvent({ id: '3EB0AAA', remoteJid: '55@s.whatsapp.net', fromMe: false })).toEqual([
+      { providerMessageId: '3EB0AAA', fromMe: false },
+    ]);
+    expect(parseDeleteEvent({ keyId: '3EB0BBB', fromMe: true })).toEqual([
+      { providerMessageId: '3EB0BBB', fromMe: true },
+    ]);
+  });
+
+  // Forma 2 — a que estava sendo perdida. O `id` de fora é lixo para nós.
+  it('prefere key.id ao id de primeiro nível, que é o UUID interno da Evolution', () => {
+    expect(
+      parseDeleteEvent({
+        id: '0c2a1f5e-8b3d-4a11-9f6c-2b7e5d9a1c34',
+        key: { id: '3EB0CCC', fromMe: true, remoteJid: '55@s.whatsapp.net' },
+      }),
+    ).toEqual([{ providerMessageId: '3EB0CCC', fromMe: true }]);
+  });
+
+  it('aceita lote em array', () => {
+    expect(
+      parseDeleteEvent([{ keyId: 'A', fromMe: true }, { key: { id: 'B' } }]),
+    ).toEqual([
+      { providerMessageId: 'A', fromMe: true },
+      { providerMessageId: 'B', fromMe: false },
+    ]);
+  });
+
+  // `fromMe` decide QUEM apagou, e o rótulo na bolha sai daí. Ausente tem de
+  // significar "o contato", nunca "nós" — atribuir a nós uma exclusão do
+  // cliente reescreve o histórico do atendimento.
+  it('fromMe ausente ou não-booleano vira false', () => {
+    expect(parseDeleteEvent({ keyId: 'A' })[0].fromMe).toBe(false);
+    expect(parseDeleteEvent({ keyId: 'A', fromMe: 'true' })[0].fromMe).toBe(false);
+    expect(parseDeleteEvent({ key: { id: 'A', fromMe: null } })[0].fromMe).toBe(false);
+  });
+
+  // Nada aqui pode lançar: é um webhook, e uma exceção vira 500 que faz a
+  // Evolution reentregar o lote inteiro para sempre.
+  it('payload sem id utilizável devolve lista vazia, nunca exceção', () => {
+    for (const lixo of [null, undefined, {}, [], 42, 'texto', { id: 7 }, { key: {} }, [null, {}]]) {
+      expect(parseDeleteEvent(lixo), JSON.stringify(lixo)).toEqual([]);
+    }
   });
 });

@@ -854,9 +854,14 @@ export function MessageThread({
   const apagarMensagem = useCallback(
     async (msg: Message) => {
       if (!window.confirm(tActions("deleteConfirm"))) return;
-      // Otimista: a bolha risca na hora. O realtime confirma; falhando,
-      // desfazemos abaixo.
-      onUpdateMessage(msg.id, { deleted_at: new Date().toISOString(), deleted_by: "agent" });
+      // Otimista: a bolha risca na hora como "exclusão solicitada" — que é
+      // o que de fato acontece. `deleted_at` (= "Apagada") só é escrito pelo
+      // webhook do WhatsApp confirmando a revogação; se marcássemos aqui, a
+      // tela afirmaria uma remoção que ninguém verificou.
+      onUpdateMessage(msg.id, {
+        delete_requested_at: new Date().toISOString(),
+        deleted_by: "agent",
+      });
       try {
         const res = await fetch("/api/whatsapp/message", {
           method: "DELETE",
@@ -865,22 +870,23 @@ export function MessageThread({
         });
         if (!res.ok) {
           const { error, code } = await res.json().catch(() => ({ error: "", code: "" }));
-          // `whatsapp_done`: a Evolution APAGOU e só a gravação no CRM
-          // falhou. Desfazer a marca aqui faria a tela afirmar que a
-          // mensagem existe quando ela não existe mais em lugar nenhum —
-          // exatamente a mentira que a ordem das operações na rota evita.
-          // Mantemos riscada e avisamos.
-          if (code === "whatsapp_done") {
+          // `talvez_enviado`: a revogação pode ter saído — o servidor
+          // deliberadamente MANTEVE o pedido registrado. Desfazer a marca
+          // aqui faria a tela contradizer o banco e afirmar que nada foi
+          // pedido, quando talvez tenha sido.
+          if (code === "talvez_enviado") {
             toast.warning(error);
             return;
           }
           throw new Error(error || String(res.status));
         }
-        toast.success(tActions("deleted"));
+        // "Solicitada", não "apagada": o WhatsApp não confirma revogação na
+        // resposta, e a confirmação — quando vem — chega pelo webhook.
+        toast.success(tActions("deleteRequested"));
       } catch (err) {
-        // Falhou ANTES de a Evolution apagar: a mensagem continua viva no
-        // celular do cliente, então a bolha volta ao normal.
-        onUpdateMessage(msg.id, { deleted_at: null, deleted_by: null });
+        // Falhou ANTES de o pedido sair: nada foi pedido, a bolha volta ao
+        // normal.
+        onUpdateMessage(msg.id, { delete_requested_at: null, deleted_by: null });
         toast.error(err instanceof Error ? err.message : String(err));
       }
     },

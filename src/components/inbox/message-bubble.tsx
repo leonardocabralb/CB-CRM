@@ -359,7 +359,12 @@ export function MessageBubble({
 
   const isAgent = message.sender_type === "agent" || message.sender_type === "bot";
   const time = format(new Date(message.created_at), "HH:mm");
-  const apagada = !!message.deleted_at;
+  // Confirmada pelo WhatsApp × só pedida por nós. As duas riscam a bolha,
+  // mas dizem coisas diferentes — e a diferença importa: um pedido sem
+  // confirmação pode significar que a mensagem segue no celular do cliente.
+  const confirmada = !!message.deleted_at;
+  const soPedida = !confirmada && !!message.delete_requested_at;
+  const apagada = confirmada || soPedida;
 
   // Row alignment + width cap are owned by <MessageActions> so its hover
   // group matches the bubble's content area, not the full row.
@@ -384,9 +389,19 @@ export function MessageBubble({
               "mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase leading-none tracking-wide",
               isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
             )}
+            title={soPedida ? t("deleteRequestedHint") : undefined}
           >
             <Trash2 className="h-2.5 w-2.5" />
-            {message.deleted_by === "customer" ? t("deletedByCustomer") : t("deletedByUs")}
+            {soPedida
+              ? t("deleteRequested")
+              : message.deleted_by === "customer"
+                ? t("deletedByCustomer")
+                : message.deleted_by === "agent"
+                  ? t("deletedByUs")
+                  : // Sem autor registrado, não se afirma quem apagou. O
+                    // rótulo antigo dizia "Apagada" (= por nós) em qualquer
+                    // caso que não fosse o cliente, inclusive neste.
+                    t("deletedUnknown")}
           </span>
         )}
         {reply && (

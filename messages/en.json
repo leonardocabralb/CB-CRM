@@ -251,9 +251,12 @@
       "fromDeviceTitle": "Sent from the paired phone, not from the CRM",
       "attachmentLoading": "Downloading attachment…",
       "deletedByCustomer": "Deleted by contact",
-      "deletedByUs": "Deleted",
+      "deletedByUs": "Deleted by you",
       "edited": "edited",
-      "editedWas": "Before editing: {text}"
+      "editedWas": "Before editing: {text}",
+      "deleteRequested": "Deletion requested",
+      "deleteRequestedHint": "The CRM asked WhatsApp to delete this and has not been confirmed yet. Until then there is no guarantee it left the contact's phone.",
+      "deletedUnknown": "Deleted"
     },
     "actions": {
       "reply": "Reply",
@@ -266,12 +269,12 @@
       "copyFailed": "Copy failed",
       "edit": "Edit",
       "deleteForEveryone": "Delete for everyone",
-      "deleteConfirm": "Delete this message for everyone? It stays visible in the CRM, struck through.",
-      "deleted": "Message deleted",
+      "deleteConfirm": "Delete this message for everyone? It stays visible in the CRM, struck through. WhatsApp does not confirm deletion right away — the CRM shows \"Deletion requested\" until confirmation arrives.",
       "edited": "Message edited",
       "editTitle": "Edit message",
       "save": "Save",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "deleteRequested": "Deletion requested"
     },
     "replyQuote": {
       "photo": "[Photo]",
@@ -1662,7 +1665,11 @@
       "createFailed": "Could not create the connection.",
       "connectFailed": "Could not reach the Evolution server.",
       "deleteFailed": "Could not remove the connection.",
-      "networkError": "Network error. Check your connection and try again."
+      "networkError": "Network error. Check your connection and try again.",
+      "resyncAction": "Resync",
+      "webhookRepairFailed": "Could not re-apply the webhook events. Deletions and edits made by the contact may not show up in the CRM.",
+      "resyncedToast": "Connection resynced. Webhook events were re-applied.",
+      "resyncHint": "Re-applies the webhook event list on this instance. Use it when deletions or edits made by the contact are not showing up."
     },
     "profile": {
       "title": "Your profile",

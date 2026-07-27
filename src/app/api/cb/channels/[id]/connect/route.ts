@@ -70,13 +70,17 @@ export async function POST(
     //
     // Best-effort de propósito: falhar aqui não pode impedir o operador de
     // ver o QR e reconectar.
+    //
+    // ⚠️ Mas a falha VOLTA na resposta, em vez de morrer num console que
+    // ninguém lê. Este é o único caminho que conserta a assinatura de
+    // eventos, e o operador precisa saber quando ele não pegou — senão a
+    // exclusão feita pelo cliente segue invisível e ninguém descobre.
+    let webhookError: string | null = null;
     try {
       await reaplicarWebhook(channel.instance_name, new URL(_request.url).origin);
     } catch (err) {
-      console.warn(
-        '[cb/channels/connect] não foi possível reaplicar o webhook:',
-        err instanceof Error ? err.message : err,
-      );
+      webhookError = err instanceof Error ? err.message : String(err);
+      console.warn('[cb/channels/connect] não foi possível reaplicar o webhook:', webhookError);
     }
 
     let res;
@@ -95,7 +99,7 @@ export async function POST(
           .eq('id', channel.id)
           .eq('account_id', ctx.accountId);
       }
-      return NextResponse.json({ connected: false, qr: res.qrBase64 ?? null });
+      return NextResponse.json({ connected: false, qr: res.qrBase64 ?? null, webhookError });
     }
 
     // Conectou.
@@ -134,7 +138,7 @@ export async function POST(
         .eq('account_id', ctx.accountId);
     }
 
-    return NextResponse.json({ connected: true, qr: null, channel: updated });
+    return NextResponse.json({ connected: true, qr: null, channel: updated, webhookError });
   } catch (err) {
     return toErrorResponse(err);
   }

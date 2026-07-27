@@ -21,13 +21,19 @@ export const WEBHOOK_EVENTS = [
   'MESSAGES_UPDATE',
   'CONNECTION_UPDATE',
   'QRCODE_UPDATED',
-  // Apagar e editar. ⚠️ Acrescentar aqui só vale para instância NOVA — a
-  // Evolution guarda a lista no momento em que o webhook é registrado.
-  // Instância já existente continua sem receber estes eventos até o webhook
-  // ser reaplicado (o que `provisionEvolutionInstance` faz sempre que roda,
-  // inclusive na reconexão). Sem essa reaplicação, a mensagem que o cliente
-  // apagar continua aparecendo intacta no CRM, como se nada tivesse
-  // acontecido — foi exatamente o sintoma relatado.
+  // Apagar e editar. ⚠️ Acrescentar um evento AQUI só vale para instância
+  // NOVA — a Evolution guarda a lista no momento em que o webhook é
+  // registrado, e `provisionEvolutionInstance` só roda na CRIAÇÃO do canal.
+  //
+  // Instância já existente continua sem receber o evento até alguém chamar
+  // `reaplicarWebhook` (src/lib/cb-channels/evolution-admin.ts), o que hoje
+  // acontece por um caminho só: o botão "Ressincronizar" no painel de
+  // conexões, que bate em POST /api/cb/channels/[id]/connect.
+  //
+  // Sem essa reaplicação, a mensagem que o contato apagar continua
+  // aparecendo intacta no CRM, como se nada tivesse acontecido — foi
+  // exatamente o sintoma relatado em produção, e ele durou porque o botão
+  // que consertava era escondido enquanto o canal estivesse conectado.
   'MESSAGES_DELETE',
   'MESSAGES_EDITED',
 ];
