@@ -251,7 +251,7 @@
       "fromDeviceTitle": "Enviada pelo celular pareado, não pelo CRM",
       "attachmentLoading": "Baixando anexo…",
       "deletedByCustomer": "Apagada pelo contato",
-      "deletedByUs": "Apagada",
+      "deletedByUs": "Apagada por você",
       "edited": "editada",
       "editedWas": "Antes da edição: {text}",
       "deleteRequested": "Exclusão solicitada",
@@ -1667,7 +1667,9 @@
       "deleteFailed": "Não foi possível remover a conexão.",
       "networkError": "Erro de rede. Verifique sua conexão e tente novamente.",
       "resyncAction": "Ressincronizar",
-      "webhookRepairFailed": "Não foi possível reaplicar os eventos do webhook. Exclusões e edições feitas pelo contato podem não aparecer no CRM."
+      "webhookRepairFailed": "Não foi possível reaplicar os eventos do webhook. Exclusões e edições feitas pelo contato podem não aparecer no CRM.",
+      "resyncedToast": "Conexão ressincronizada. Os eventos do webhook foram reaplicados.",
+      "resyncHint": "Reaplica a lista de eventos do webhook nesta instância. Use quando exclusões ou edições feitas pelo contato não estiverem aparecendo."
     },
     "profile": {
       "title": "Seu perfil",

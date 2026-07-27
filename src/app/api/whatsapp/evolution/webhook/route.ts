@@ -11,6 +11,7 @@ import {
   type EvolutionUpsert,
 } from '@/lib/whatsapp/transport/evolution-inbound';
 import { persistDeviceMessage, persistInboundMessage } from '@/lib/whatsapp/inbound-store';
+import { atualizarPreviaDaConversa } from '@/lib/inbox/conversation-preview';
 import { resolveInboundEvolutionChannel } from '@/lib/cb-channels/resolve-inbound';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
@@ -255,26 +256,57 @@ export async function POST(request: Request) {
     const exclusoes = parseDeleteEvent(body.data);
     if (exclusoes.length) {
       after(async () => {
+        // Este é o ÚNICO lugar que pode preencher `deleted_at`: é a única
+        // confirmação que existe de que a mensagem foi mesmo revogada. O
+        // botão de apagar do CRM só registra o PEDIDO, em
+        // `delete_requested_at` — ver a nota na rota /api/whatsapp/message.
+        //
+        // São dois UPDATEs porque a AUTORIA tem duas origens diferentes, e
+        // misturá-las reescreve o histórico do atendimento.
+        const conversasAtingidas = new Set<string>();
         for (const { providerMessageId, fromMe } of exclusoes) {
-          const { error } = await supabaseAdmin()
+          const agora = new Date().toISOString();
+
+          // (1) Confirmação de exclusão que NÓS pedimos. Só carimba a
+          // confirmação: `deleted_by` já é 'agent' e não pode ser rebaixado.
+          // A Evolution nem sempre manda `fromMe` neste payload, e sem esta
+          // separação a exclusão feita pelo escritório passaria a aparecer
+          // como "Apagada pelo contato".
+          const { data: nossas, error: erroNosso } = await supabaseAdmin()
             .from('messages')
-            .update({
-              // Este é o ÚNICO lugar que pode preencher `deleted_at`: é a
-              // única confirmação que existe de que a mensagem foi mesmo
-              // revogada. O nosso botão de apagar só registra o PEDIDO, em
-              // `delete_requested_at` — ver a nota na rota
-              // /api/whatsapp/message.
-              deleted_at: new Date().toISOString(),
-              // `fromMe` na exclusão significa que a mensagem apagada era
-              // NOSSA (apagada pelo celular pareado, por outro cliente do
-              // WhatsApp ou pelo próprio CRM); sem isso, foi o contato.
-              deleted_by: fromMe ? 'agent' : 'customer',
-            })
+            .update({ deleted_at: agora })
             .eq('message_id', providerMessageId)
-            .is('deleted_at', null);
-          if (error) {
-            console.error('[evolution/webhook] marcar exclusão falhou:', error.message);
+            .is('deleted_at', null)
+            .not('delete_requested_at', 'is', null)
+            .select('conversation_id');
+
+          // (2) Exclusão que veio de fora — o contato, o celular pareado ou
+          // outro cliente do WhatsApp. Aqui `fromMe` é a única fonte sobre
+          // a autoria, e ausente significa "o contato".
+          const { data: externas, error: erroExterno } = await supabaseAdmin()
+            .from('messages')
+            .update({ deleted_at: agora, deleted_by: fromMe ? 'agent' : 'customer' })
+            .eq('message_id', providerMessageId)
+            .is('deleted_at', null)
+            .is('delete_requested_at', null)
+            .select('conversation_id');
+
+          const falha = erroNosso ?? erroExterno;
+          if (falha) {
+            console.error('[evolution/webhook] marcar exclusão falhou:', falha.message);
           }
+          // O casamento é por `message_id` sem escopo de conta, então pode
+          // atingir mais de uma linha — daí o Set em vez de uma variável.
+          for (const linha of [...(nossas ?? []), ...(externas ?? [])]) {
+            if (linha?.conversation_id) conversasAtingidas.add(linha.conversation_id);
+          }
+        }
+
+        // A prévia é onde o operador decide qual conversa abrir. Sem isto a
+        // bolha vira "Apagada" e a lista segue exibindo o texto retratado
+        // como última mensagem — inclusive quando quem apagou foi o contato.
+        for (const conversationId of conversasAtingidas) {
+          await atualizarPreviaDaConversa(supabaseAdmin(), conversationId);
         }
       });
     }

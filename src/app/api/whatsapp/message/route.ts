@@ -17,8 +17,9 @@ import { createClient as createServiceClient } from '@supabase/supabase-js';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { decrypt } from '@/lib/whatsapp/encryption';
-import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
+import { EvolutionApiError, EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
 import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
+import { atualizarPreviaDaConversa } from '@/lib/inbox/conversation-preview';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
@@ -203,32 +204,6 @@ function chaveBaileys(alvo: AlvoPronto) {
 }
 
 
-/**
- * Reescreve a prévia da conversa quando a mensagem alterada é a ÚLTIMA.
- *
- * Sem isto a lista do inbox continua mostrando o texto antigo de uma
- * mensagem editada, ou o conteúdo de uma que foi apagada — e a lista é
- * justamente onde o operador decide qual conversa abrir.
- */
-async function atualizarPrevia(conversationId: string) {
-  const db = admin();
-  const { data: ultima } = await db
-    .from('messages')
-    .select('content_text, content_type, deleted_at, created_at')
-    .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!ultima) return;
-  const previa = ultima.deleted_at
-    ? '[mensagem apagada]'
-    : ultima.content_text || `[${ultima.content_type}]`;
-  await db
-    .from('conversations')
-    .update({ last_message_text: previa, updated_at: new Date().toISOString() })
-    .eq('id', conversationId);
-}
-
 const minutosDesde = (iso: string) => (Date.now() - new Date(iso).getTime()) / 60_000;
 
 /** DELETE — apagar para todos. */
@@ -239,7 +214,12 @@ export async function DELETE(request: Request) {
     if ('erro' in r) return r.erro;
     const { alvo, cliente } = r;
 
-    if (alvo.deleted_at || alvo.delete_requested_at) {
+    // Só a exclusão CONFIRMADA encerra o assunto. Um pedido sem confirmação
+    // pode ser repetido de propósito: a revogação da Evolution falha em
+    // silêncio com frequência conhecida, e sem uma segunda tentativa o
+    // operador ficaria sem saída dentro do prazo do WhatsApp. Revogar duas
+    // vezes a mesma mensagem é inócuo.
+    if (alvo.deleted_at) {
       return NextResponse.json({ ok: true, already: true });
     }
     if (alvo.sender_type === 'customer') {
@@ -258,11 +238,75 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const resposta = await cliente.deleteMessageForEveryone(chaveBaileys(alvo));
+    // ⚠️ REGISTRA O PEDIDO **ANTES** DE CHAMAR A EVOLUTION.
+    //
+    // Abortar do nosso lado não cancela nada do outro: se o teto de tempo
+    // estourar depois de a revogação já ter saído, a mensagem pode ter sido
+    // revogada de verdade e o CRM não teria rastro nenhum — nem para o
+    // operador, nem para o webhook casar quando a confirmação chegasse.
+    // (É a mesma assimetria que obrigou o teto folgado no envio de mídia.)
+    //
+    // Gravar antes troca "posso perder o registro de algo que aconteceu" por
+    // "posso registrar um pedido que a Evolution recusou". O segundo é
+    // reversível e está tratado logo abaixo; o primeiro, não.
+    //
+    // E o que se grava é um PEDIDO, não um fato: a Evolution responde 2xx ao
+    // escrever a revogação no socket, e o WhatsApp não emite confirmação de
+    // revogação. Só o webhook `messages.delete` preenche `deleted_at`.
+    const marcadoEm = new Date().toISOString();
+    const { error } = await admin()
+      .from('messages')
+      .update({ delete_requested_at: marcadoEm, deleted_by: 'agent' })
+      .eq('id', alvo.id);
+    if (error) {
+      console.error('[whatsapp/message] registrar pedido de exclusão falhou:', error.message);
+      return NextResponse.json(
+        { error: 'O CRM não conseguiu registrar o pedido. Nada foi enviado.' },
+        { status: 500 },
+      );
+    }
+
+    /** Desfaz a marca quando fica provado que nada saiu. */
+    const desfazerMarca = async () => {
+      const { error: erroVolta } = await admin()
+        .from('messages')
+        .update({ delete_requested_at: null, deleted_by: null })
+        .eq('id', alvo.id)
+        .eq('delete_requested_at', marcadoEm);
+      if (erroVolta) {
+        console.error('[whatsapp/message] desfazer pedido falhou:', erroVolta.message);
+      }
+    };
+
+    let resposta;
+    try {
+      resposta = await cliente.deleteMessageForEveryone(chaveBaileys(alvo));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+      // Recusa da Evolution (4xx) = validação dela; a revogação NÃO saiu,
+      // então a marca some e o operador vê a bolha intacta.
+      if (err instanceof EvolutionApiError && err.status >= 400 && err.status < 500) {
+        await desfazerMarca();
+        console.error('[whatsapp/message] Evolution recusou a revogação:', msg);
+        return NextResponse.json({ error: `Erro da Evolution: ${msg}` }, { status: 400 });
+      }
+      // Timeout (504) ou erro do servidor dela (5xx): NÃO sabemos se a
+      // revogação saiu. A marca FICA — "solicitada" é verdade nos dois
+      // desfechos, e apagar o rastro de algo que pode ter acontecido é o
+      // único erro irrecuperável aqui. `talvez_enviado` avisa a interface a
+      // não desfazer a marca.
+      console.error('[whatsapp/message] revogação sem confirmação:', msg);
+      return NextResponse.json(
+        {
+          error: 'Não deu para confirmar com o WhatsApp. O pedido pode ter saído — confira a conversa.',
+          code: 'talvez_enviado',
+        },
+        { status: 502 },
+      );
+    }
 
     // A Evolution devolve a revogação que MONTOU. Se ela aponta para outro
-    // id, mandamos apagar a mensagem errada — isso é falha, não sucesso, e
-    // precisa parar aqui antes de qualquer marca no banco.
+    // id, mandamos apagar a mensagem errada — isso é falha, não sucesso.
     const alvoDaRevogacao = resposta?.message?.protocolMessage?.key?.id;
     if (alvoDaRevogacao && alvoDaRevogacao !== alvo.message_id) {
       console.error(
@@ -271,40 +315,10 @@ export async function DELETE(request: Request) {
         '≠',
         alvo.message_id,
       );
+      // A marca fica: uma revogação saiu, ainda que para o alvo errado.
       return NextResponse.json(
-        { error: 'O WhatsApp respondeu sobre outra mensagem. Nada foi apagado.' },
+        { error: 'O WhatsApp respondeu sobre outra mensagem. Confira a conversa.' },
         { status: 502 },
-      );
-    }
-
-    // ⚠️ AQUI SE REGISTRA UM PEDIDO, NÃO UM FATO.
-    //
-    // A Evolution responde 2xx assim que escreve a revogação no socket, e o
-    // WhatsApp não emite confirmação de revogação. A única confirmação que
-    // existe é o webhook `messages.delete` voltar — e é ELE quem preenche
-    // `deleted_at`. Enquanto não voltar, tudo o que o CRM pode afirmar com
-    // honestidade é "pedimos".
-    //
-    // A versão anterior gravava `deleted_at` aqui, com um comentário
-    // dizendo que só marcava depois da confirmação. Não havia confirmação
-    // nenhuma: mensagens apareciam "Apagada" no CRM e seguiam íntegras no
-    // celular do cliente. Num escritório, essa é a afirmação mais cara que
-    // o sistema pode fazer errado.
-    const { error } = await admin()
-      .from('messages')
-      .update({ delete_requested_at: new Date().toISOString(), deleted_by: 'agent' })
-      .eq('id', alvo.id);
-    if (error) {
-      console.error('[whatsapp/message] registrar pedido de exclusão falhou:', error.message);
-      // `whatsapp_done`: o pedido JÁ SAIU para o WhatsApp; só a gravação
-      // local falhou. A UI usa este código para não desfazer a marca —
-      // desfazer faria a tela afirmar que nada foi pedido.
-      return NextResponse.json(
-        {
-          error: 'Pedido enviado ao WhatsApp, mas o CRM não registrou. Recarregue.',
-          code: 'whatsapp_done',
-        },
-        { status: 500 },
       );
     }
 
@@ -375,7 +389,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    await atualizarPrevia(alvo.conversation_id);
+    await atualizarPreviaDaConversa(admin(), alvo.conversation_id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro desconhecido';

@@ -251,7 +251,7 @@
       "fromDeviceTitle": "Sent from the paired phone, not from the CRM",
       "attachmentLoading": "Downloading attachment…",
       "deletedByCustomer": "Deleted by contact",
-      "deletedByUs": "Deleted",
+      "deletedByUs": "Deleted by you",
       "edited": "edited",
       "editedWas": "Before editing: {text}",
       "deleteRequested": "Deletion requested",
@@ -1667,7 +1667,9 @@
       "deleteFailed": "Could not remove the connection.",
       "networkError": "Network error. Check your connection and try again.",
       "resyncAction": "Resync",
-      "webhookRepairFailed": "Could not re-apply the webhook events. Deletions and edits made by the contact may not show up in the CRM."
+      "webhookRepairFailed": "Could not re-apply the webhook events. Deletions and edits made by the contact may not show up in the CRM.",
+      "resyncedToast": "Connection resynced. Webhook events were re-applied.",
+      "resyncHint": "Re-applies the webhook event list on this instance. Use it when deletions or edits made by the contact are not showing up."
     },
     "profile": {
       "title": "Your profile",

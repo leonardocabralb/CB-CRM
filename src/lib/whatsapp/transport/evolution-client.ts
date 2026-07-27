@@ -325,8 +325,11 @@ export class EvolutionClient {
    * 2xx como sucesso foi exatamente o que fez o CRM marcar "Apagada" em
    * mensagens que seguiam íntegras no celular do cliente.
    *
-   * O máximo que a resposta prova é que a Evolution montou a revogação
-   * apontando para a chave certa — o que já pega chave errada e no-op.
+   * O máximo que a resposta permite verificar é se a revogação que a
+   * Evolution montou aponta para a chave que pedimos. Isso pega o caso de
+   * ela responder sobre OUTRA mensagem — e só isso. Resposta coerente NÃO
+   * significa que o aparelho do contato aplicou a revogação; a confirmação
+   * é o webhook `messages.delete` voltar.
    */
   async deleteMessageForEveryone(
     key: EvolutionMessageKey,

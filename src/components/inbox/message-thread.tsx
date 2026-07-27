@@ -870,10 +870,11 @@ export function MessageThread({
         });
         if (!res.ok) {
           const { error, code } = await res.json().catch(() => ({ error: "", code: "" }));
-          // `whatsapp_done`: o pedido JÁ SAIU para o WhatsApp e só a
-          // gravação no CRM falhou. Desfazer a marca aqui faria a tela
-          // afirmar que nada foi pedido, quando foi. Mantemos riscada.
-          if (code === "whatsapp_done") {
+          // `talvez_enviado`: a revogação pode ter saído — o servidor
+          // deliberadamente MANTEVE o pedido registrado. Desfazer a marca
+          // aqui faria a tela contradizer o banco e afirmar que nada foi
+          // pedido, quando talvez tenha sido.
+          if (code === "talvez_enviado") {
             toast.warning(error);
             return;
           }

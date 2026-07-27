@@ -69,11 +69,7 @@ export function MessageActions({
     message.status !== "failed" &&
     channelKind === "evolution" &&
     nossa &&
-    // Vale para a confirmada E para a que só foi PEDIDA: nos dois casos já
-    // existe uma revogação a caminho, e oferecer "apagar" ou "editar" de
-    // novo só produz um segundo pedido para a mesma mensagem.
-    !message.deleted_at &&
-    !message.delete_requested_at;
+    !message.deleted_at;
 
   // Os prazos são ABSOLUTOS, derivados de `created_at` — puro, sem relógio
   // no render. Chamar `Date.now()` ali deixaria o botão "Editar" visível
@@ -110,9 +106,22 @@ export function MessageActions({
     return () => timers.forEach(clearTimeout);
   }, [podeMexer, prazoEditar, prazoApagar]);
 
+  // Apagar CONTINUA disponível depois de um pedido sem confirmação, e isso é
+  // deliberado: a revogação da Evolution falha em silêncio com frequência
+  // conhecida (ela responde 2xx e a mensagem sobrevive no aparelho do
+  // contato). Se o botão sumisse ao primeiro clique, uma tentativa que não
+  // pegou deixaria o operador sem nenhuma saída dentro do prazo do WhatsApp.
+  // Repetir a revogação da mesma mensagem é inócuo.
   const podeApagar = !!onDelete && podeMexer && !vencido.apagar;
+  // Editar, não: com um pedido de exclusão em voo, uma edição deixaria o CRM
+  // com "vou apagar" e um texto novo ao mesmo tempo, sem ordem definida
+  // entre os dois no aparelho do contato. A rota também recusa.
   const podeEditar =
-    !!onEdit && podeMexer && !vencido.editar && message.content_type === "text";
+    !!onEdit &&
+    podeMexer &&
+    !vencido.editar &&
+    !message.delete_requested_at &&
+    message.content_type === "text";
 
   // Touch devices have no hover. Long-press fires `contextmenu`; we capture
   // it, suppress the native menu, and pin the toolbar open until the user
