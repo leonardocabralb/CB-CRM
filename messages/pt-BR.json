@@ -1691,7 +1691,8 @@
       "deleteDisablesAutomations": "Automações que valiam só para este número são desativadas automaticamente.",
       "deleteLastChannel": "Esta é a única conexão da conta. Apagá-la deixaria o CRM sem WhatsApp — use \"Reparear\" para reconectar o número.",
       "successorField": "Qual conexão passa a ser a padrão?",
-      "successorHint": "A conexão padrão é a usada em disparos, modelos e na API. Escolha com atenção: o escritório passa a enviar por ela."
+      "successorHint": "A conexão padrão é a usada em disparos, modelos e na API. Escolha com atenção: o escritório passa a enviar por ela.",
+      "restartLocalWarning": "Você está acessando o CRM por um endereço local, mas este número é o de PRODUÇÃO. Reparear daqui derruba o WhatsApp do escritório de verdade."
     },
     "profile": {
       "title": "Seu perfil",

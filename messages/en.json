@@ -1691,7 +1691,8 @@
       "deleteDisablesAutomations": "Automations restricted to this number are disabled automatically.",
       "deleteLastChannel": "This is the account only connection. Deleting it would leave the CRM without WhatsApp — use \"Re-pair\" to reconnect the number.",
       "successorField": "Which connection becomes the default?",
-      "successorHint": "The default connection is used for broadcasts, templates and the API. Choose carefully: the office starts sending through it."
+      "successorHint": "The default connection is used for broadcasts, templates and the API. Choose carefully: the office starts sending through it.",
+      "restartLocalWarning": "You are accessing the CRM from a local address, but this number is the PRODUCTION one. Re-pairing from here takes the real office WhatsApp down."
     },
     "profile": {
       "title": "Your profile",

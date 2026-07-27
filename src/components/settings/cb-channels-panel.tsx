@@ -63,6 +63,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RequireRole } from '@/components/auth/require-role';
 import { createClient } from '@/lib/supabase/client';
+import { ehUrlAlcancavel } from '@/lib/cb-channels/webhook-url';
 import { SettingsPanelHead } from './settings-panel-head';
 
 interface CbChannel {
@@ -1115,6 +1116,18 @@ export function CbChannelsPanel() {
             </DialogTitle>
             <DialogDescription>{t('restartConfirmDesc')}</DialogDescription>
           </DialogHeader>
+          {/* O CRM local roda contra a MESMA conta de produção (é assim de
+              propósito, para desenvolver com o número real). Repareamento
+              disparado da máquina do desenvolvedor derruba o WhatsApp DO
+              ESCRITÓRIO — mesmo raio de alcance que a PR do webhook blindou,
+              só que mais destrutivo. Aviso, não bloqueio: o QR aparece aqui
+              mesmo e o conserto funciona daqui; travar deixaria o operador
+              sem saída quando ele estivesse legitimamente em dev. */}
+          {typeof window !== 'undefined' && !ehUrlAlcancavel(window.location.origin) && (
+            <div className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+              {t('restartLocalWarning')}
+            </div>
+          )}
           <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
             {t('restartKeepsData')}
           </div>
