@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
+import { FormattedText } from "./formatted-text";
 import { MediaViewer } from "./media-viewer";
 import { MessageReactions } from "./message-reactions";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
@@ -219,9 +220,7 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
   switch (message.content_type) {
     case "text":
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
-          {message.content_text}
-        </p>
+        <FormattedText texto={message.content_text} />
       );
 
     case "image":
@@ -237,9 +236,7 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
             <MediaPendente message={message} label={t("photo")} t={t} />
           )}
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
-              {message.content_text}
-            </p>
+            <FormattedText texto={message.content_text} className="mt-1" />
           )}
         </div>
       );
@@ -257,9 +254,7 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
             <MediaPendente message={message} label={t("video")} t={t} />
           )}
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
-              {message.content_text}
-            </p>
+            <FormattedText texto={message.content_text} className="mt-1" />
           )}
         </div>
       );
@@ -301,9 +296,7 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
             {t("template")}
           </span>
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
-              {message.content_text}
-            </p>
+            <FormattedText texto={message.content_text} className="mt-1" />
           )}
         </div>
       );
@@ -336,24 +329,18 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
               <CornerDownLeft className="h-3 w-3" />
               {t("buttonReply")}
             </span>
-            <p className="whitespace-pre-wrap break-words text-sm">
-              {message.content_text || t("interactiveReply")}
-            </p>
+            <FormattedText texto={message.content_text || t("interactiveReply")} />
           </div>
         );
       }
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
-          {message.content_text || t("interactiveReply")}
-        </p>
+        <FormattedText texto={message.content_text || t("interactiveReply")} />
       );
     }
 
     default:
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
-          {message.content_text || t("unsupported")}
-        </p>
+        <FormattedText texto={message.content_text || t("unsupported")} />
       );
   }
 }

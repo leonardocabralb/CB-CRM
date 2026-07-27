@@ -225,7 +225,13 @@
       "send": "Send",
       "quickReplyNamePrompt": "Name this quick reply:",
       "quickReplySaved": "Saved as a quick reply.",
-      "quickReplySaveError": "Couldn't save the quick reply."
+      "quickReplySaveError": "Couldn't save the quick reply.",
+      "bold": "Bold (Ctrl+B)",
+      "italic": "Italic (Ctrl+I)",
+      "strike": "Strikethrough (Ctrl+Shift+X)",
+      "mono": "Monospace",
+      "undoSend": "Undo",
+      "sendingIn": "Sending in {seconds}s"
     },
     "bubble": {
       "photo": "Photo",
