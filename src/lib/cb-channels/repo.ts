@@ -17,10 +17,15 @@ export type CbChannelKind = 'meta' | 'evolution';
 export type CbChannelStatus = 'disconnected' | 'connecting' | 'connected';
 
 /** O que o browser pode ver. Note a ausência dos segredos. */
+// ⚠️ Coluna de configuração por canal que não entrar AQUI salva no banco e
+// nunca reaparece na tela — o valor some no reload e o operador conclui que
+// não salvou. Já aconteceu com `default_agent_id` (903) e `groups_enabled`
+// (906), que até hoje não têm um único leitor em src/.
 export const CB_CHANNEL_SAFE_COLUMNS =
   'id, account_id, kind, label, display_phone, is_default, status, ' +
   'connected_at, last_error, phone_number_id, waba_id, server_url, ' +
-  'instance_name, created_at, updated_at';
+  'instance_name, default_pipeline_id, default_stage_id, ' +
+  'created_at, updated_at';
 
 /** Canal como o client o enxerga. */
 export interface CbChannel {
@@ -37,6 +42,14 @@ export interface CbChannel {
   waba_id: string | null;
   server_url: string | null;
   instance_name: string | null;
+  /**
+   * Funil em que cai quem escrever neste número, e a etapa de entrada
+   * (migration 908). `null` = a conexão não roteia nada. A etapa é explícita
+   * porque a de menor `position` costuma ser faixa de estacionamento
+   * ("Contato Avulso"), não a entrada do processo.
+   */
+  default_pipeline_id: string | null;
+  default_stage_id: string | null;
   created_at: string;
   updated_at: string;
 }

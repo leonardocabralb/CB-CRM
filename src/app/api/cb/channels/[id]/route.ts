@@ -22,8 +22,14 @@ import {
   CB_CHANNEL_SAFE_COLUMNS,
 } from '@/lib/cb-channels/repo';
 import { deleteChannelInstance } from '@/lib/cb-channels/evolution-admin';
+import { setDefaultChannel } from '@/lib/cb-channels/set-default';
 
 const MAX_LABEL_LEN = 60;
+
+/** String vazia e `null` viram `null` (= "sem funil"); resto passa como veio. */
+function asUuidOrNull(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
 
 export async function PATCH(
   request: Request,
@@ -35,7 +41,11 @@ export async function PATCH(
     if (!limit.success) return rateLimitResponse(limit);
 
     const { id } = await params;
-    const body = (await request.json().catch(() => null)) as { label?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as {
+      label?: unknown;
+      default_pipeline_id?: unknown;
+      default_stage_id?: unknown;
+    } | null;
     const label = typeof body?.label === 'string' ? body.label.trim() : '';
 
     if (!label) {
@@ -48,9 +58,57 @@ export async function PATCH(
       );
     }
 
+    // Funil padrão. Só entra no UPDATE quando a chave veio no corpo — assim
+    // um PATCH que só renomeia (o comportamento antigo, e o que outras telas
+    // fazem) não apaga o roteamento sem querer.
+    const patch: Record<string, unknown> = { label };
+    if ('default_pipeline_id' in (body ?? {})) {
+      const pipelineId = asUuidOrNull(body?.default_pipeline_id);
+      const stageId = asUuidOrNull(body?.default_stage_id);
+
+      if (pipelineId) {
+        // ⚠️ O `.eq('account_id')` do UPDATE protege QUAL LINHA muda, não o
+        // VALOR do campo. A FK composta da 908 barraria um funil de outra
+        // conta no banco, mas com um 23503 cru; aqui o erro é legível.
+        const { data: funil, error: funilErr } = await ctx.supabase
+          .from('pipelines')
+          .select('id')
+          .eq('id', pipelineId)
+          .eq('account_id', ctx.accountId)
+          .maybeSingle();
+        if (funilErr) {
+          console.error('[cb/channels PATCH] leitura do funil falhou:', funilErr.message);
+          return NextResponse.json({ error: 'Falha ao atualizar o canal.' }, { status: 500 });
+        }
+        if (!funil) {
+          return NextResponse.json({ error: 'Funil não encontrado nesta conta.' }, { status: 400 });
+        }
+
+        if (stageId) {
+          const { data: etapa } = await ctx.supabase
+            .from('pipeline_stages')
+            .select('id')
+            .eq('id', stageId)
+            .eq('pipeline_id', pipelineId)
+            .maybeSingle();
+          if (!etapa) {
+            return NextResponse.json(
+              { error: 'A etapa escolhida não pertence a esse funil.' },
+              { status: 400 },
+            );
+          }
+        }
+      }
+
+      patch.default_pipeline_id = pipelineId;
+      // Sem funil não há etapa. Zerar junto é obrigatório: a FK composta
+      // (default_stage_id, default_pipeline_id) rejeitaria o par órfão.
+      patch.default_stage_id = pipelineId ? stageId : null;
+    }
+
     const { data, error } = await ctx.supabase
       .from('cb_channels')
-      .update({ label })
+      .update(patch)
       .eq('id', id)
       .eq('account_id', ctx.accountId)
       .select(CB_CHANNEL_SAFE_COLUMNS)
@@ -70,7 +128,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -83,11 +141,77 @@ export async function DELETE(
     if (!channel) {
       return NextResponse.json({ error: 'Canal não encontrado.' }, { status: 404 });
     }
+
+    // ---- Canal PADRÃO: precisa de sucessor NOMEADO ----
+    //
+    // Antes daqui saía um 400 seco e a UI nem mostrava o botão, então numa
+    // conta de uma conexão só (todas, hoje) excluir era simplesmente
+    // impossível. Mas promover outro canal em silêncio é pior: `whatsapp_config`
+    // é o espelho que broadcast, modelos, proxy de mídia e a API v1 leem, e o
+    // operador que clicou em "excluir Bancário" veria o escritório começar a
+    // disparar pelo Trabalhista sem nunca ter pedido isso.
+    //
+    // Então o sucessor vem no corpo, escolhido na tela.
     if (channel.is_default) {
-      return NextResponse.json(
-        { error: 'O canal padrão não pode ser removido. Torne outro canal o padrão primeiro.' },
-        { status: 400 },
+      const body = (await request.json().catch(() => null)) as {
+        promote_to?: unknown;
+      } | null;
+      const promoteTo =
+        typeof body?.promote_to === 'string' && body.promote_to.trim()
+          ? body.promote_to.trim()
+          : null;
+
+      const { data: outros, error: outrosErr } = await ctx.supabase
+        .from('cb_channels')
+        .select('id')
+        .eq('account_id', ctx.accountId)
+        .neq('id', id);
+
+      if (outrosErr) {
+        console.error('[cb/channels DELETE] contagem falhou:', outrosErr.message);
+        return NextResponse.json({ error: 'Falha ao remover o canal.' }, { status: 500 });
+      }
+
+      // Única conexão da conta. Apagar aqui deixaria o CRM mudo, e na prática
+      // quem clica nisso está tentando CONSERTAR, não desligar o WhatsApp.
+      if ((outros ?? []).length === 0) {
+        return NextResponse.json(
+          {
+            error:
+              'Esta é a única conexão da conta. Apagá-la deixaria o CRM sem WhatsApp. Use "Reparear" para reconectar o número.',
+            code: 'last_channel',
+          },
+          { status: 409 },
+        );
+      }
+
+      if (!promoteTo) {
+        return NextResponse.json(
+          {
+            error: 'Escolha qual conexão passa a ser a padrão antes de remover esta.',
+            code: 'needs_successor',
+          },
+          { status: 400 },
+        );
+      }
+      if (!(outros ?? []).some((c) => c.id === promoteTo)) {
+        return NextResponse.json(
+          { error: 'A conexão escolhida para virar padrão não existe nesta conta.' },
+          { status: 400 },
+        );
+      }
+
+      // Promove ANTES de apagar. Se falhar, nada é removido — a conta fica
+      // exatamente como estava, e o operador lê o motivo.
+      const promocao = await setDefaultChannel(
+        ctx.supabase,
+        ctx.accountId,
+        ctx.userId,
+        promoteTo,
       );
+      if (!promocao.ok) {
+        return NextResponse.json({ error: promocao.message }, { status: 400 });
+      }
     }
 
     // Remove a instância no servidor ANTES de apagar a linha (depois
