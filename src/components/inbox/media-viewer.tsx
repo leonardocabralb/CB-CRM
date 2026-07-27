@@ -13,7 +13,7 @@
 // grande e porque vídeo e documento também vão querer isto depois.
 // ============================================================
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Download, RotateCcw, RotateCw, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -60,9 +60,32 @@ export function MediaViewer({ src, fileName, alt, onClose }: MediaViewerProps) {
   const t = useTranslations("Inbox.mediaViewer");
   const [giro, setGiro] = useState(0);
   const [zoom, setZoom] = useState(1);
+  // Deslocamento arrastável.
+  //
+  // A versão anterior confiava em `overflow-auto` para alcançar o que
+  // transbordava, e isso NÃO funciona: `transform` não altera a caixa de
+  // layout, então a área rolável de um contêiner centralizado nunca inclui
+  // o que sai pela borda de cima ou da esquerda. Medido: girando 90°, ~104px
+  // do topo ficavam inalcançáveis em qualquer posição da barra; com zoom 5×,
+  // mais de 1300px. E a barra de rolagem aparecia, sinalizando conteúdo que
+  // rolar não trazia. Arrastar resolve giro e ampliação de uma vez.
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [arrastando, setArrastando] = useState(false);
+  const inicio = useRef<{ x: number; y: number } | null>(null);
 
   const girar = useCallback((graus: number) => {
     setGiro((atual) => (atual + graus + 360) % 360);
+    // Sem zerar, a imagem reaparece deslocada num eixo que acabou de mudar.
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  const aplicarZoom = useCallback((delta: number) => {
+    setZoom((z) => {
+      const novo = Math.min(5, Math.max(0.25, z + delta));
+      // Voltando a caber, o deslocamento perde sentido e só atrapalha.
+      if (novo <= 1) setPan({ x: 0, y: 0 });
+      return novo;
+    });
   }, []);
 
   useEffect(() => {
@@ -96,10 +119,10 @@ export function MediaViewer({ src, fileName, alt, onClose }: MediaViewerProps) {
         className="flex items-center justify-end gap-1 p-2"
         onClick={(e) => e.stopPropagation()}
       >
-        <BotaoBarra onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))} title={t("zoomOut")}>
+        <BotaoBarra onClick={() => aplicarZoom(-0.25)} title={t("zoomOut")}>
           <ZoomOut className="h-4 w-4" />
         </BotaoBarra>
-        <BotaoBarra onClick={() => setZoom((z) => Math.min(5, z + 0.25))} title={t("zoomIn")}>
+        <BotaoBarra onClick={() => aplicarZoom(0.25)} title={t("zoomIn")}>
           <ZoomIn className="h-4 w-4" />
         </BotaoBarra>
         <BotaoBarra onClick={() => girar(-90)} title={t("rotateLeft")}>
@@ -116,14 +139,45 @@ export function MediaViewer({ src, fileName, alt, onClose }: MediaViewerProps) {
         </BotaoBarra>
       </div>
 
-      <div className="flex flex-1 items-center justify-center overflow-auto p-4">
+      {/* `overflow-hidden`, não `auto`: a barra de rolagem aqui era pura
+          desinformação — aparecia e não alcançava o que estava fora. */}
+      <div className="flex flex-1 items-center justify-center overflow-hidden p-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
           alt={alt}
+          draggable={false}
           onClick={(e) => e.stopPropagation()}
-          className="max-h-full max-w-full object-contain transition-transform duration-150"
-          style={{ transform: `rotate(${giro}deg) scale(${zoom})` }}
+          onPointerDown={(e) => {
+            // Captura o ponteiro para o arraste sobreviver a sair da imagem.
+            e.currentTarget.setPointerCapture(e.pointerId);
+            inicio.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+            setArrastando(true);
+          }}
+          onPointerMove={(e) => {
+            if (!inicio.current) return;
+            setPan({ x: e.clientX - inicio.current.x, y: e.clientY - inicio.current.y });
+          }}
+          onPointerUp={() => {
+            inicio.current = null;
+            setArrastando(false);
+          }}
+          onPointerCancel={() => {
+            inicio.current = null;
+            setArrastando(false);
+          }}
+          className={cn(
+            "max-h-full max-w-full touch-none object-contain select-none",
+            arrastando ? "cursor-grabbing" : "cursor-grab",
+            // A transição faz cada quadro do arraste interpolar 150ms e o
+            // movimento fica pastoso — só vale para giro e zoom.
+            !arrastando && "transition-transform duration-150",
+          )}
+          // `translate` ANTES de `rotate`: assim o arraste segue o eixo da
+          // tela, não o eixo já girado da imagem.
+          style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) rotate(${giro}deg) scale(${zoom})`,
+          }}
         />
       </div>
     </div>
