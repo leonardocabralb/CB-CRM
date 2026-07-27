@@ -83,8 +83,17 @@ BEGIN
   ) THEN
     -- Amarra a etapa ao funil configurado: trocar o funil sem trocar a etapa
     -- passa a ser IMPOSSÍVEL no banco, não só desaconselhado no código.
-    -- Apagar o funil cascateia nas etapas (`pipeline_stages_pipeline_id_fkey`
-    -- é CASCADE), e este SET NULL limpa o ponteiro junto.
+    --
+    -- ⚠️ Apagar o FUNIL, porém, NÃO limpa esta coluna. O Postgres enfileira
+    -- o CASCADE de `pipeline_stages` e o SET NULL de `default_pipeline_id` na
+    -- mesma passada; quando o SET NULL desta FK é avaliado, `default_pipeline_id`
+    -- já é NULL, e MATCH SIMPLE dá a constraint por satisfeita com uma coluna
+    -- nula. Resultado: `default_stage_id` fica apontando para uma etapa que
+    -- não existe mais.
+    -- É inofensivo, e de propósito: o roteador decide por `default_pipeline_id`
+    -- (guarda 3 de pipeline-routing.ts), que ficou NULL, então o roteamento
+    -- para como deve; e o PATCH da rota zera a etapa junto sempre que o funil
+    -- muda. O lixo some no próximo "Configurar". Não vale uma trigger.
     ALTER TABLE cb_channels
       ADD CONSTRAINT cb_channels_default_stage_fkey
       FOREIGN KEY (default_stage_id, default_pipeline_id)

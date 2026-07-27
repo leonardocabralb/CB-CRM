@@ -85,12 +85,19 @@ export async function PATCH(
         }
 
         if (stageId) {
-          const { data: etapa } = await ctx.supabase
+          const { data: etapa, error: etapaErr } = await ctx.supabase
             .from('pipeline_stages')
             .select('id')
             .eq('id', stageId)
             .eq('pipeline_id', pipelineId)
             .maybeSingle();
+          // "Não consegui ler" ≠ "não pertence ao funil". Sem esta distinção
+          // uma queda momentânea do PostgREST acusa erro de configuração do
+          // operador, e ele vai mexer no que estava certo.
+          if (etapaErr) {
+            console.error('[cb/channels PATCH] leitura da etapa falhou:', etapaErr.message);
+            return NextResponse.json({ error: 'Falha ao atualizar o canal.' }, { status: 500 });
+          }
           if (!etapa) {
             return NextResponse.json(
               { error: 'A etapa escolhida não pertence a esse funil.' },
@@ -141,6 +148,9 @@ export async function DELETE(
     if (!channel) {
       return NextResponse.json({ error: 'Canal não encontrado.' }, { status: 404 });
     }
+
+    /** Espelho whatsapp_config ficou para trás na promoção do sucessor. */
+    let mirrorWarning: string | null = null;
 
     // ---- Canal PADRÃO: precisa de sucessor NOMEADO ----
     //
@@ -212,6 +222,12 @@ export async function DELETE(
       if (!promocao.ok) {
         return NextResponse.json({ error: promocao.message }, { status: 400 });
       }
+      // ⚠️ `ok: true` com aviso é SUCESSO PARCIAL: o flag `is_default` trocou
+      // mas o espelho `whatsapp_config` não. Engolir isto aqui é pior que na
+      // rota de promoção, porque logo abaixo a credencial do canal antigo é
+      // destruída — o espelho ficaria apontando para uma conexão que não
+      // existe mais, e disparos/modelos/API sairiam por ela.
+      mirrorWarning = promocao.mirrorWarning;
     }
 
     // Remove a instância no servidor ANTES de apagar a linha (depois
@@ -248,7 +264,7 @@ export async function DELETE(
       console.error('[cb/channels DELETE] erro:', error.message);
       return NextResponse.json({ error: 'Falha ao remover o canal.' }, { status: 500 });
     }
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, warning: mirrorWarning });
   } catch (err) {
     return toErrorResponse(err);
   }

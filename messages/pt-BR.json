@@ -1676,7 +1676,7 @@
       "pipelineBadge": "Entra no funil {pipeline}",
       "pipelineMissing": "O funil configurado foi apagado — escolha outro.",
       "noPipeline": "Sem funil — não cria negócio",
-      "pipelineWarning": "Vale para quem ainda não tem negócio neste funil. Cada cliente que escrever a seguir vira um card.",
+      "pipelineWarning": "Vale para quem ainda não tem negócio neste funil. Cada cliente que escrever a seguir vira um card — e apagar um card à mão não impede o cliente de voltar na próxima mensagem: para tirá-lo do funil, marque ganho ou perdido.",
       "stageField": "Etapa de entrada",
       "stageAuto": "Primeira etapa do funil",
       "stageHint": "Escolha a etapa em que o cliente deve entrar. A primeira do quadro nem sempre é a entrada do processo.",
@@ -1692,7 +1692,9 @@
       "deleteLastChannel": "Esta é a única conexão da conta. Apagá-la deixaria o CRM sem WhatsApp — use \"Reparear\" para reconectar o número.",
       "successorField": "Qual conexão passa a ser a padrão?",
       "successorHint": "A conexão padrão é a usada em disparos, modelos e na API. Escolha com atenção: o escritório passa a enviar por ela.",
-      "restartLocalWarning": "Você está acessando o CRM por um endereço local, mas este número é o de PRODUÇÃO. Reparear daqui derruba o WhatsApp do escritório de verdade."
+      "restartLocalWarning": "Você está acessando o CRM por um endereço local, mas este número é o de PRODUÇÃO. Reparear daqui derruba o WhatsApp do escritório de verdade.",
+      "pipelineUnknown": "Funil configurado — não foi possível carregar o nome.",
+      "deleteLastChannelMeta": "Esta é a única conexão da conta. Apagá-la deixaria o CRM sem WhatsApp. Para reconectar um número oficial, refaça a conexão em \"Conectar um número\" — nada muda na sua conta da Meta."
     },
     "profile": {
       "title": "Seu perfil",

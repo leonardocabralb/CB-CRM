@@ -589,8 +589,15 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       // O erro do insert PRECISA ser lido. Sem isto o passo devolvia
       // 'deal created' incondicionalmente: funil ou etapa apagados faziam o
       // insert falhar e o log da automação registrava sucesso, então o
-      // negócio não existia e ninguém ficava sabendo. Este é o único insert
-      // server-side em `deals`, logo era a única versão da verdade.
+      // negócio não existia e ninguém ficava sabendo.
+      //
+      // ⚠️ Este insert é irmão de `src/lib/deals/create-deal.ts`, que é o
+      // caminho de todo o resto. Ele sobreviveu aqui porque é código do
+      // upstream e trocá-lo por `createDeal` mudaria a superfície de merge;
+      // a consequência é que as validações de lá (posse do funil, etapa
+      // pertencente ao funil, moeda da conta) NÃO valem para automação. Quem
+      // acrescentar regra em `createDeal` precisa decidir conscientemente se
+      // ela vale aqui também.
       const { error: dealError } = await db.from('deals').insert({
         // Tenancy + audit, same split as automation_logs above.
         account_id: args.automation.account_id,
@@ -602,6 +609,10 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         value: cfg.value ?? 0,
         currency: acct?.default_currency ?? 'USD',
         status: 'open',
+        // Sem isto a linha cai no DEFAULT 'manual' e o card de automação fica
+        // indistinguível do digitado à mão — justamente a distinção que a
+        // coluna existe para fazer (migration 908).
+        source: 'automation',
       })
       if (dealError) throw new Error(`create_deal falhou: ${dealError.message}`)
       return 'deal created'

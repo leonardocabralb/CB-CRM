@@ -1,11 +1,12 @@
 // ============================================================
-// O ÚNICO lugar que cria negócio no servidor.
+// Onde nasce negócio criado por regra do CB (roteador de funil por conexão,
+// e o que vier depois).
 //
-// Antes disto havia dois escritores: o formulário da tela de Funis (client,
-// sob RLS) e o passo `create_deal` do motor de automações — e o segundo não
-// lia o erro do insert, então reportava sucesso quando o funil ou a etapa
-// tinham sido apagados. Com o roteador de entrada por conexão viria um
-// terceiro. Regra de negócio em três lugares diverge; aqui ela é uma.
+// ⚠️ NÃO é o único insert em `deals` do servidor: o passo `create_deal` do
+// motor de automações (`src/lib/automations/engine.ts`) continua com insert
+// próprio, porque é código do upstream e trocá-lo aqui aumentaria a
+// superfície de merge. Consequência prática: as validações abaixo NÃO valem
+// para automação. Regra nova aqui exige decidir se vale lá também.
 //
 // O QUE ESTE MÓDULO GARANTE, e a rota/motor não precisa repetir:
 //  - o funil é DA CONTA (a ingestão roda em service-role e ignora RLS);

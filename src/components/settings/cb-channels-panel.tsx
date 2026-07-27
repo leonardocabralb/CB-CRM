@@ -145,6 +145,13 @@ export function CbChannelsPanel() {
 
   const [pipelines, setPipelines] = useState<PipelineOption[]>([]);
   const [stages, setStages] = useState<StageOption[]>([]);
+  /**
+   * A busca de funis TERMINOU BEM. Distingue "ainda não sei" de "não existe":
+   * sem isso, uma falha de rede na listagem faria toda conexão configurada
+   * anunciar "o funil foi apagado", e o operador iria reconfigurar algo que
+   * está intacto no banco.
+   */
+  const [pipelinesCarregados, setPipelinesCarregados] = useState(false);
 
   const [confirmDelete, setConfirmDelete] = useState<CbChannel | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -201,6 +208,7 @@ export function CbChannelsPanel() {
       if (cancelado) return;
       setPipelines((funisRes.data as PipelineOption[] | null) ?? []);
       setStages((etapasRes.data as StageOption[] | null) ?? []);
+      if (!funisRes.error) setPipelinesCarregados(true);
     })();
     return () => {
       cancelado = true;
@@ -451,7 +459,14 @@ export function CbChannelsPanel() {
         toast.error(payload.error || t('deleteFailed'), { duration: 10_000 });
         return;
       }
-      toast.success(t('deleted', { label: channel.label }));
+      // O espelho pode ter ficado para trás na promoção do sucessor. O canal
+      // já foi removido, então isto não é erro — mas disparos e modelos
+      // podem estar apontando para a credencial que acabou de ser destruída.
+      if (payload.warning) {
+        toast.warning(payload.warning, { duration: 15_000 });
+      } else {
+        toast.success(t('deleted', { label: channel.label }));
+      }
       setConfirmDelete(null);
       setSuccessorId('');
       await load();
@@ -604,15 +619,18 @@ export function CbChannelsPanel() {
                       sintoma visível. Por isso resolvemos o nome contra a
                       lista, em vez de confiar no id salvo. */}
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {channel.default_pipeline_id
-                      ? (pipelines.find((p) => p.id === channel.default_pipeline_id)?.name
-                          ? t('pipelineBadge', {
-                              pipeline: pipelines.find(
-                                (p) => p.id === channel.default_pipeline_id,
-                              )!.name,
-                            })
-                          : t('pipelineMissing'))
-                      : t('noPipeline')}
+                    {(() => {
+                      if (!channel.default_pipeline_id) return t('noPipeline');
+                      const funil = pipelines.find(
+                        (p) => p.id === channel.default_pipeline_id,
+                      );
+                      if (funil) return t('pipelineBadge', { pipeline: funil.name });
+                      // Sem a lista não dá para afirmar que sumiu. E com a
+                      // lista carregada isto é quase impossível: a FK da 908
+                      // zera a coluna quando o funil é apagado. Sobra o caso
+                      // raro de outra aba ter apagado agora há pouco.
+                      return pipelinesCarregados ? t('pipelineMissing') : t('pipelineUnknown');
+                    })()}
                   </p>
                   {channel.last_error && (
                     <p className="mt-1 truncate text-xs text-destructive">
@@ -1183,7 +1201,12 @@ export function CbChannelsPanel() {
             {confirmDelete?.is_default &&
               (channels.filter((c) => c.id !== confirmDelete.id).length === 0 ? (
                 <p className="rounded-md border border-destructive/40 p-2 text-xs text-destructive">
-                  {t('deleteLastChannel')}
+                  {/* "Use Reparear" só vale para Evolution — canal Meta não
+                      tem sessão de QR e nem desenha esse botão. Mandar o
+                      operador procurá-lo seria beco sem saída. */}
+                  {confirmDelete.kind === 'evolution'
+                    ? t('deleteLastChannel')
+                    : t('deleteLastChannelMeta')}
                 </p>
               ) : (
                 <div>
