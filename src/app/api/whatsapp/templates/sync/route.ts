@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
 import type { TemplateButton, TemplateSampleValues } from '@/types'
+import { barrarPorPapel } from '@/lib/auth/barrar-por-papel'
 
 /**
  * Sync message templates from Meta → local message_templates table.
@@ -140,7 +141,7 @@ export async function POST(request: Request) {
     // the message_templates we sync into are account-scoped.
     const { data: profile } = await supabase
       .from('profiles')
-      .select('account_id')
+      .select('account_id, account_role')
       .eq('user_id', user.id)
       .maybeSingle()
     const accountId = profile?.account_id as string | undefined
@@ -150,6 +151,13 @@ export async function POST(request: Request) {
         { status: 403 },
       )
     }
+
+    // Papel, não só sessão: sem isto um `viewer` — que existe para ser
+    // somente-leitura — executava esta ação. O efeito colateral (chamada
+    // à Meta/Evolution) acontece antes de qualquer gravação, então a RLS
+    // nunca entraria no caminho.
+    const barrado = barrarPorPapel(profile?.account_role, 'admin');
+    if (barrado) return barrado;
 
     // Multi-canal: sincroniza o catalogo do canal PEDIDO, ou do primeiro
     // canal Meta utilizavel. Antes lia so o espelho e perguntava se o PADRAO

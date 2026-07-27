@@ -12,6 +12,7 @@ import {
   rateLimitResponse,
   RATE_LIMITS,
 } from '@/lib/rate-limit';
+import { barrarPorPapel } from '@/lib/auth/barrar-por-papel';
 
 /**
  * POST /api/whatsapp/react
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
     // lookups work for teammates who didn't author the rows directly.
     const { data: profile } = await supabase
       .from('profiles')
-      .select('account_id')
+      .select('account_id, account_role')
       .eq('user_id', user.id)
       .maybeSingle();
     const accountId = profile?.account_id as string | undefined;
@@ -54,6 +55,13 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
+
+    // Papel, não só sessão: sem isto um `viewer` — que existe para ser
+    // somente-leitura — executava esta ação. O efeito colateral (chamada
+    // à Meta/Evolution) acontece antes de qualquer gravação, então a RLS
+    // nunca entraria no caminho.
+    const barrado = barrarPorPapel(profile?.account_role, 'agent');
+    if (barrado) return barrado;
 
     const body = await request.json();
     const { message_id, emoji } = body as {
