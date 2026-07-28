@@ -146,6 +146,10 @@
       "whatsappNotConnected": "O WhatsApp® não está conectado. Acesse Configurações para conectar sua conta."
     },
     "conversationList": {
+      "typeAll": "Todos os tipos",
+      "typeDirect": "Conversas",
+      "typeGroups": "Grupos",
+      "groupNoName": "Grupo sem nome",
       "searchPlaceholder": "Buscar conversas...",
       "filterAll": "Todas",
       "filterUnread": "Não lidas",
