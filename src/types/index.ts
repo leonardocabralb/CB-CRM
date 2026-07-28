@@ -776,3 +776,71 @@ export interface QuickReply {
   created_at: string;
   updated_at: string;
 }
+
+// ============================================================
+// Histórico de atividade do lead (migration 912)
+//
+// Trilha append-only escrita por trigger no Postgres. `authenticated` só tem
+// SELECT — nenhum código do app escreve aqui, e tentar escrever devolve 42501.
+// ============================================================
+
+export type LeadEventType =
+  | 'deal_created'
+  | 'stage_changed'
+  | 'pipeline_changed'
+  | 'status_changed'
+  | 'deal_deleted'
+  | 'tag_added'
+  | 'tag_removed';
+
+/**
+ * De onde partiu a mudança. `sistema` é escrita server-side sem ator
+ * identificável (API pública, fluxo, manutenção) — o trigger não consegue
+ * distinguir esses casos por dentro, e a trilha não deve prometer mais do que
+ * sabe. `retroativo` é linha reconstruída pela própria migration.
+ */
+export type LeadEventOrigin =
+  | 'usuario'
+  | 'conexao'
+  | 'automacao'
+  | 'sistema'
+  | 'retroativo';
+
+export interface LeadEvent {
+  id: string;
+  account_id: string;
+  /** `null` depois que o contato é apagado — o rótulo abaixo sobrevive. */
+  contact_id: string | null;
+  contact_label: string | null;
+  /** Sem FK: `deal_deleted` aponta para um negócio que já não existe. */
+  deal_id: string | null;
+  conversation_id: string | null;
+  event_type: LeadEventType;
+  occurred_at: string;
+  actor_user_id: string | null;
+  /** Nome de quem agiu, congelado no momento do evento. */
+  actor_label: string | null;
+  origin: LeadEventOrigin;
+  from_pipeline_id: string | null;
+  from_pipeline_label: string | null;
+  to_pipeline_id: string | null;
+  to_pipeline_label: string | null;
+  from_stage_id: string | null;
+  from_stage_label: string | null;
+  /** Responde "foi avanço ou foi volta?" — o rótulo sozinho não responde. */
+  from_stage_position: number | null;
+  to_stage_id: string | null;
+  to_stage_label: string | null;
+  to_stage_position: number | null;
+  from_status: string | null;
+  to_status: string | null;
+  tag_id: string | null;
+  tag_label: string | null;
+  tag_color: string | null;
+  channel_id: string | null;
+  channel_label: string | null;
+  /** `true` = linha reconstruída do estado atual, não observada acontecendo. */
+  reconstructed: boolean;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}

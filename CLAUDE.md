@@ -165,7 +165,8 @@ upstream sobrescrevê-los:
 | páginas de `automations`, `flows`, `broadcasts`, `dashboard` | etiqueta e filtro de canal, coluna de canal nos históricos, filtro do painel |
 | `src/components/broadcasts/step{1,4}-*.tsx`, `src/hooks/use-broadcast-sending.ts` | canal escolhido no passo 1, `channel_id` no corpo da API e na linha de `broadcasts` |
 | `src/components/settings/template-manager.tsx` | seletor de WABA para criar/sincronizar, etiqueta de canal por modelo |
-| `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato, canal da conversa na ficha |
+| `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato, canal da conversa na ficha, e a seção/aba **Histórico** (912). No detail view a `TabsList` ganhou `flex-wrap h-auto` — com 5 abas ela já estourava a largura do painel e escondia "Negócios" |
+| `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 
@@ -247,6 +248,43 @@ Coisas da 908 que mordem código novo:
   também. As funções `channelsUsingPipeline`/`channelsUsingStage` de
   `display.ts` respondem quem depende do quê.
 
+⚠️ **A trilha de auditoria (912) é escrita por TRIGGER, não por código.**
+`cb_lead_events` registra criação/exclusão de negócio, mudança de etapa, de
+funil, de status e tag aplicada/removida. Foi para o banco porque há **6
+escritores de `deals` e 9 de `contact_tags`**, metade no navegador direto
+contra a tabela sob RLS — e porque já existiam dois helpers centrais de tag
+(`tag-write.ts`, `tag-events.ts`) com **três** call sites de produção passando
+por fora deles. O que morde código novo:
+
+- **Não chame nenhum "logger" — não existe.** Insert/update/delete normal em
+  `deals` ou `contact_tags` já gera o evento. Código que tentar gravar em
+  `cb_lead_events` pelo cliente leva **42501**: `authenticated` só tem SELECT,
+  e o REVOKE é essencial — sem ele um DELETE volta "0 linhas" (a RLS filtra) e
+  parece ter dado certo.
+- **Transferência entre funis tem de ser UM `UPDATE` só** (`pipeline_id` e
+  `stage_id` juntos, como `deal-form.tsx` faz). Em dois updates a trilha grava
+  duas linhas e conta a história errada: que o lead saiu e voltou.
+- **A política de falha é assimétrica.** Erro ao gravar o evento **estoura**
+  quando `auth.uid()` existe (ação de gente, erro aparece na tela) e é
+  **engolido com WARNING** quando não existe (ingestão/automação) — porque
+  `routeInboundToPipeline` captura tudo e o lead simplesmente não viraria card,
+  em silêncio.
+- **`AFTER UPDATE OF pipeline_id, stage_id, status`** dispara quando a coluna é
+  *mencionada*, mesmo sem mudar — e o formulário manda as três em todo save. O
+  `IS NOT DISTINCT FROM` no topo do trigger é o que evita linha falsa a cada
+  edição de anotação; não remova.
+- **Rótulos são gravados junto com os IDs, de propósito.** Etapa que o lead já
+  deixou pode ser apagada, e renomear reescreveria o passado em silêncio.
+  `from/to_stage_position` existe para responder "foi avanço?" — comparar
+  posição **entre funis diferentes** é comparar réguas distintas, e
+  `direcaoDoMovimento` devolve `null` nesse caso.
+- **`deal_deleted` não aparece no chat**, só na ficha: apagar um funil
+  cascateia todos os negócios dele e despejaria uma linha solta em centenas de
+  conversas sem relação. Linha `reconstructed` também fica fora do chat.
+- **CHECK de forma não pode exigir `contact_id`**: apagar contato faz SET NULL
+  nessa coluna, que é um UPDATE, e UPDATE revalida CHECK — exigir o contato
+  faria a exclusão de contato falhar.
+
 ⚠️ **A 903 removeu dois índices únicos.** `message_templates(user_id, name,
 language)` e `ai_configs(account_id)` viraram pares de índices **parciais**
 (global + por canal). Consequências que já morderam durante a implementação e
@@ -290,7 +328,8 @@ mordem de novo em qualquer código novo:
   renumerado para `906_cb_grupos.sql` numa branch, mas o histórico do banco
   guarda o nome antigo), `905_cb_mensagem_apagada_editada`,
   `907_cb_exclusao_solicitada`, `908_cb_funil_por_canal`,
-  `909_cb_saude_das_conexoes` e `910_cb_negocio_e_conversa`.
+  `909_cb_saude_das_conexoes`, `910_cb_negocio_e_conversa`,
+  `911_cb_um_funil_por_vez` e `912_cb_historico_de_atividade`.
   ⚠️ O **906 não é buraco livre** — a branch `feat/grupos-whatsapp`, ainda
   não mesclada, reivindica `906_cb_grupos.sql`.
   ⚠️ **Nunca deduzir o próximo número desta lista** — ela envelhece a cada

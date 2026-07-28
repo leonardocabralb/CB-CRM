@@ -2073,5 +2073,27 @@
     "connectedFor": "conectada há {tempo}",
     "checkedAgo": "verificada há {tempo}",
     "neverChecked": "ainda não verificada"
+  },
+  "LeadEvents": {
+    "title": "Histórico",
+    "loading": "Carregando histórico…",
+    "empty": "Nenhuma atividade registrada.",
+    "reconstructedBadge": "retroativo",
+    "dealCreated": "Negócio criado em {pipeline} · {stage}",
+    "dealDeleted": "Negócio excluído de {pipeline}",
+    "stageAdvanced": "Avançou de {from} para {to}",
+    "stageReturned": "Voltou de {from} para {to}",
+    "stageChanged": "Mudou de {from} para {to}",
+    "pipelineChanged": "Transferido de {fromPipeline} ({fromStage}) para {toPipeline} ({toStage})",
+    "statusWon": "Marcado como ganho",
+    "statusLost": "Marcado como perdido",
+    "statusReopened": "Negócio reaberto",
+    "tagAdded": "Etiqueta {tag} aplicada",
+    "tagRemoved": "Etiqueta {tag} removida",
+    "actorPerson": "por {name}",
+    "actorChannel": "pela conexão {name}",
+    "actorAutomation": "por uma automação",
+    "actorSystem": "pelo sistema",
+    "actorReconstructed": "registro retroativo"
   }
 }

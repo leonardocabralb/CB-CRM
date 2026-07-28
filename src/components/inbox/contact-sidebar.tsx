@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useChannels } from "@/hooks/use-channels";
 import { ChannelCell } from "@/components/channels/channel-badge";
+import { ActivityHistory } from "@/components/lead-events/activity-history";
 import { cn } from "@/lib/utils";
 import type { Contact, Deal, ContactNote, Tag } from "@/types";
 import {
@@ -276,6 +277,16 @@ export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
               )}
             </div>
           </div>
+
+          {/* Divider */}
+          <div className="my-4 border-t border-border" />
+
+          {/* Histórico de atividade — o registro completo (migration 912).
+              Fica aqui, e não só na conversa, porque é esta a tela que
+              responde à pergunta de auditoria: a conversa mostra o que é
+              relevante para o atendimento, esta mostra tudo, inclusive
+              exclusão de negócio e linhas retroativas. */}
+          <ActivityHistory contactId={contact.id} />
 
           {/* Divider */}
           <div className="my-4 border-t border-border" />

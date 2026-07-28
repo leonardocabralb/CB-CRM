@@ -2073,5 +2073,27 @@
     "connectedFor": "connected for {tempo}",
     "checkedAgo": "checked {tempo} ago",
     "neverChecked": "not checked yet"
+  },
+  "LeadEvents": {
+    "title": "History",
+    "loading": "Loading history…",
+    "empty": "No activity recorded yet.",
+    "reconstructedBadge": "backfilled",
+    "dealCreated": "Deal created in {pipeline} · {stage}",
+    "dealDeleted": "Deal deleted from {pipeline}",
+    "stageAdvanced": "Advanced from {from} to {to}",
+    "stageReturned": "Moved back from {from} to {to}",
+    "stageChanged": "Moved from {from} to {to}",
+    "pipelineChanged": "Transferred from {fromPipeline} ({fromStage}) to {toPipeline} ({toStage})",
+    "statusWon": "Marked as won",
+    "statusLost": "Marked as lost",
+    "statusReopened": "Deal reopened",
+    "tagAdded": "Tag {tag} applied",
+    "tagRemoved": "Tag {tag} removed",
+    "actorPerson": "by {name}",
+    "actorChannel": "by connection {name}",
+    "actorAutomation": "by an automation",
+    "actorSystem": "by the system",
+    "actorReconstructed": "backfilled record"
   }
 }
