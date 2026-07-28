@@ -155,6 +155,37 @@ export interface ContactNote {
   created_at: string;
 }
 
+/**
+ * Grupo de WhatsApp (migration 906). Existe só no transporte Evolution — a
+ * API oficial da Meta não entrega mensagem de grupo.
+ */
+export interface CbGroup {
+  id: string;
+  account_id: string;
+  /** Por qual número vimos este grupo. */
+  channel_id: string | null;
+  /** `120363…@g.us`. */
+  jid: string;
+  /** Nome REAL, como está no WhatsApp. NULL até a sincronização resolver. */
+  subject: string | null;
+  /**
+   * Apelido só nosso, invisível para os participantes. Tem precedência sobre
+   * `subject` na exibição — ver `nomeDoGrupo`.
+   */
+  alias: string | null;
+  description: string | null;
+  picture_url: string | null;
+  owner_jid: string | null;
+  participant_count: number | null;
+  /** "Só administradores podem enviar". */
+  is_announce: boolean | null;
+  /** Libera renomear de verdade. NULL = ainda não sincronizamos. */
+  we_are_admin: boolean | null;
+  synced_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type ConversationStatus = 'open' | 'pending' | 'closed';
 
 export interface Conversation {
@@ -201,6 +232,8 @@ export interface Conversation {
    * `cb_conv_contato_xor_grupo` — ver `contact_id` acima.
    */
   group_id?: string | null;
+  /** Hidratado pelo `CONVERSATION_SELECT`, do mesmo jeito que `contact`. */
+  group?: CbGroup | null;
 }
 
 // ============================================================
