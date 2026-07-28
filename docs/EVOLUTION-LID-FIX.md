@@ -170,6 +170,89 @@ O que **não** fazer nesse cenário, e o porquê:
 
 ---
 
+## Estado do deploy da Evolution (medido em 28/07/2026)
+
+Registrado aqui porque **não está no git**: o stack da Evolution vive na VPS,
+fora deste repositório, e nada além desta seção guarda essa informação.
+
+| | |
+| --- | --- |
+| Definição do stack | `/root/evolution.yaml` na VPS |
+| Quem administra | `docker stack deploy` na mão — **não** o Portainer |
+| Serviço | `evolution_evolution`, atrás do Traefik em `api.cbadvogados.com` |
+| Volume | `evolution_instances` (as sessões pareadas vivem aqui) |
+| Rede | `CBAdvNet` |
+
+O Portainer roda na VPS e administra outros stacks, mas **não este**: as
+etiquetas do serviço têm só `com.docker.stack.namespace`, nenhuma
+`io.portainer`. Ou seja, o arquivo é fonte única — não há segunda cópia
+escondida na base do Portainer.
+
+### A armadilha que estava armada, e foi desarmada
+
+Até 28/07/2026 o arquivo dizia:
+
+```yaml
+image: atendai/evolution-api:latest
+```
+
+Enquanto o serviço rodava `evoapicloud/evolution-api:latest@sha256:3e30bb…`.
+**Repositório diferente**, não só tag flutuante — `atendai` é o repositório
+antigo do projeto. Um `docker stack deploy` teria trocado a Evolution por uma
+imagem de outra origem e versão desconhecida, levando junto o patch do `@lid`.
+
+Hoje a linha está fixada na imagem patcheada, **com digest**, e com o aviso
+colado nela. O arquivo passou a ser rede de proteção em vez de gatilho.
+
+### ⚠️ O arquivo AINDA está incompleto — não rode `stack deploy`
+
+A suspeita se confirmou. Comparando o serviço em execução com o arquivo em
+28/07/2026, **sete variáveis existem no serviço e não no arquivo**:
+
+```
+S3_ACCESS_KEY   S3_BUCKET   S3_ENABLED   S3_ENDPOINT
+S3_PORT         S3_SECRET_KEY   S3_USE_SSL
+```
+
+São a configuração de armazenamento de mídia da Evolution, ajustada direto no
+serviço e nunca devolvida ao arquivo. **Um `stack deploy` as apagaria**, e a
+Evolution perderia o S3 sem nenhum erro visível.
+
+Ou seja: hoje o arquivo protege a IMAGEM (o patch do `@lid`) mas quebraria o
+S3. Enquanto essas sete linhas não voltarem para ele, o arquivo **não é
+seguro de aplicar**.
+
+Para completá-lo, leia os valores do serviço e acrescente-os ao bloco
+`environment:`, com a mesma indentação das demais:
+
+```bash
+docker service inspect evolution_evolution \
+  --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | grep '^S3_'
+```
+
+⚠️ `S3_SECRET_KEY` e `S3_ACCESS_KEY` são credenciais. Edite direto na VPS; não
+passe por chat, e-mail ou histórico de shell.
+
+Depois, repita a comparação abaixo até dar "sem divergência".
+
+### Como comparar arquivo × serviço
+
+```bash
+docker service inspect evolution_evolution \
+  --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' \
+  | cut -d= -f1 | sort > /tmp/rodando.txt
+grep -oE "^[[:space:]]+- [A-Z_]+=" /root/evolution.yaml | tr -d ' -' | cut -d= -f1 | sort > /tmp/arquivo.txt
+diff /tmp/rodando.txt /tmp/arquivo.txt && echo "sem divergência"
+```
+
+E, como a imagem no GHCR é **privada** (`401` sem autenticação), o deploy
+exige `--with-registry-auth` — ou tornar o pacote público, o que elimina a
+pegadinha:
+
+```bash
+docker stack deploy -c /root/evolution.yaml --with-registry-auth evolution
+```
+
 ## Dois avisos que valem independentemente disto
 
 **A imagem não está fixada.** A Evolution 2.3.2 declara a biblioteca como
