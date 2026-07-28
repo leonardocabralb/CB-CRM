@@ -43,8 +43,34 @@ CB CRM já lê esse campo. **Nenhuma mudança no CRM é necessária.**
 docker service inspect evolution_evolution --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
 ```
 
-Guarde a saída inteira, com o `@sha256:...` se aparecer. É ela que vai como
+Guarde a saída **inteira, com o `@sha256:...`**. É ela que vai como
 `base_image`, e é para ela que se volta se algo der errado.
+
+Medido em **28/07/2026**:
+
+```
+evoapicloud/evolution-api:latest@sha256:3e30bb3dd00d0347430f3609722db6e50e5cd66df4acfbc3777ff8330f2bc2d7
+```
+
+Essa imagem foi criada em **2025-09-02** — o dia da tag 2.3.2 —, é Alpine com
+node 20.19.4, roda como root e tem `WorkingDir` `/evolution`.
+
+> ⚠️ **A tag `:latest` já andou.** No mesmo dia, `:latest` no Docker Hub
+> apontava para `sha256:966625…`, **diferente** do que a VPS roda. Ou seja: um
+> `docker stack deploy` que resolva `:latest` troca a versão da Evolution
+> sozinho, sem ninguém revisar — e a versão nova é da linha que tem a falha de
+> entrega descrita em "Se não funcionar". **Vale fixar o serviço por digest
+> independentemente deste patch.**
+
+**1b. Confirme o que está lá dentro** (leitura pura, não muda nada):
+
+```bash
+docker exec $(docker ps -q -f name=evolution_evolution | head -1) sh -c 'grep -m1 "\"version\"" /evolution/node_modules/baileys/package.json; grep -n "sender_pn" /evolution/node_modules/baileys/lib/Utils/decode-wa-message.js'
+```
+
+Esperado: versão `6.7.19` e a linha `senderPn: stanza?.attrs?.sender_pn,`.
+Se vier outra coisa, **pare** — o build falharia de qualquer forma, mas é
+melhor saber antes do que depois.
 
 **2. Confirme que a VPS consegue puxar do GHCR.** Ela já puxa a imagem do CRM
 de lá, então normalmente sim. Para ter certeza:

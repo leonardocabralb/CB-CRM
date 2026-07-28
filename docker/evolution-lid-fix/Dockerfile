@@ -51,11 +51,22 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
-# O patch roda como root porque mexe em node_modules. Se a imagem base usar
-# outro usuário, o build falha aqui com "permission denied" — nesse caso
-# descubra o usuário original (`docker inspect --format '{{.Config.User}}'`) e
-# acrescente um `USER <original>` no fim deste arquivo.
-USER root
+# ── A imagem base, medida em 28/07/2026 no registro ─────────
+#
+#   evoapicloud/evolution-api:latest
+#   @sha256:3e30bb3dd00d0347430f3609722db6e50e5cd66df4acfbc3777ff8330f2bc2d7
+#   criada 2025-09-02 (o dia da tag 2.3.2) · revision c2085b59
+#   Alpine · node 20.19.4 · WorkingDir /evolution · User "" (root)
+#
+# ⚠️ NÃO existe `USER root` aqui de propósito. A base já roda como root, então
+# a linha seria redundante — e, no dia em que a base virar não-root, ela faria
+# a imagem patcheada rodar como root em silêncio, trocando o usuário do
+# serviço sem ninguém decidir isso. Sem ela, esse dia vira um "permission
+# denied" no build, que é uma decisão humana e não um efeito colateral.
+#
+# ⚠️ A tag `:latest` JÁ ANDOU: em 28/07/2026 ela apontava para
+# sha256:966625…, diferente do digest acima. Por isso o `BASE_IMAGE` deve vir
+# sempre COM digest, lido do serviço em execução — nunca `:latest` solto.
 
 # ⚠️ CADA `grep` ABAIXO É UMA TRAVA, NÃO ENFEITE.
 #
