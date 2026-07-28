@@ -1496,11 +1496,28 @@ function StepEditor({
               // Grava em `operand` — é o que o motor lê (cfg.operand ?? cfg.value)
               // e o que `validate.ts` exige não-vazio. Sem `allowAll`: aqui a
               // condição é "veio DESTE número", não um escopo.
-              <ChannelSelect
-                channels={channels}
-                value={(cfg.operand as string) || null}
-                onChange={(id) => set({ operand: id ?? "" })}
-              />
+              <>
+                <ChannelSelect
+                  channels={channels}
+                  value={(cfg.operand as string) || null}
+                  onChange={(id) => set({ operand: id ?? "" })}
+                />
+                {/* CANAL APAGADO. O trigger `cb_drop_channel_from_automations`
+                    (903) limpa `automations.channel_ids`, mas NÃO toca em
+                    `step_config` — nenhum trigger toca. O UUID fica pendurado,
+                    a condição passa a ser sempre falsa e a automação segue
+                    ATIVA, sem nada na tela nem no log dizendo por quê.
+                    Dívida que a própria opção "canal" criou: antes dela não
+                    havia o que orfanar. O seletor sozinho não denunciaria —
+                    ele só mostraria o placeholder, indistinguível de "ainda
+                    não escolhi". */}
+                {!!cfg.operand &&
+                  !channels.some((c) => c.id === cfg.operand) && (
+                    <p className="mt-1 text-xs text-destructive">
+                      {t("config.channelGone")}
+                    </p>
+                  )}
+              </>
             ) : (
             <Input
               placeholder={
