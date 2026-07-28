@@ -603,7 +603,8 @@
       "toastMarkedLost": "Marcado como perdido",
       "toastReopened": "Negócio reaberto",
       "toastFailedDelete": "Falha ao excluir o negócio",
-      "toastDeleted": "Negócio excluído"
+      "toastDeleted": "Negócio excluído",
+      "pipeline": "Funil"
     },
     "settings": {
       "managePipeline": "Gerenciar funil",

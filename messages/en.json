@@ -603,7 +603,8 @@
       "toastMarkedLost": "Marked as lost",
       "toastReopened": "Deal reopened",
       "toastFailedDelete": "Failed to delete deal",
-      "toastDeleted": "Deal deleted"
+      "toastDeleted": "Deal deleted",
+      "pipeline": "Pipeline"
     },
     "settings": {
       "managePipeline": "Manage Pipeline",

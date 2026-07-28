@@ -28,16 +28,22 @@ function makeDb(cfg: Cfg): {
   db: SupabaseClient;
   inserts: Record<string, unknown>[];
   tabelas: string[];
+  /** Colunas usadas em `.eq()`, por tabela — para afirmar a FORMA da consulta. */
+  filtros: Record<string, string[]>;
 } {
   const inserts: Record<string, unknown>[] = [];
   const tabelas: string[] = [];
+  const filtros: Record<string, string[]> = {};
   let table = '';
 
   const make = () => {
     let ordenado = false;
     const chain: Record<string, unknown> = {
       select: () => chain,
-      eq: () => chain,
+      eq: (coluna: string) => {
+        (filtros[table] ??= []).push(coluna);
+        return chain;
+      },
       limit: () => chain,
       order: () => {
         ordenado = true;
@@ -85,7 +91,7 @@ function makeDb(cfg: Cfg): {
     },
   } as unknown as SupabaseClient;
 
-  return { db, inserts, tabelas };
+  return { db, inserts, tabelas, filtros };
 }
 
 const CANAL_CONFIGURADO = {
@@ -136,17 +142,36 @@ describe('routeInboundToPipeline', () => {
     expect(tabelas).toEqual(['cb_channels']);
   });
 
-  it('não duplica quando o contato já tem card naquele funil', async () => {
-    // Larga de propósito: vale para card criado à mão, por automação ou por
-    // aqui, aberto ou fechado.
+  it('não duplica quando o contato já tem card em QUALQUER funil', async () => {
+    // Larga em dois eixos: vale para card criado à mão, por automação ou por
+    // aqui, aberto ou fechado — e vale em qualquer funil, não só no da
+    // conexão. O segundo eixo é o que sustenta a transferência: card movido
+    // do Bancário para o Trabalhista não pode ser recriado no Bancário na
+    // próxima mensagem do cliente.
     const { db, inserts } = makeDb({
       channel: CANAL_CONFIGURADO,
-      existingDeal: { id: 'negocio-existente' },
+      existingDeal: { id: 'negocio-em-outro-funil' },
     });
 
     await routeInboundToPipeline({ db, ...BASE });
 
     expect(inserts).toHaveLength(0);
+  });
+
+  it('a checagem de duplicata NÃO filtra por funil', async () => {
+    // Blindagem contra regressão: se alguém reintroduzir `.eq('pipeline_id')`
+    // aqui, a transferência entre funis volta a ser desfeita pelo roteador e
+    // o lead termina em dois funis — sem erro nenhum na tela.
+    const { db, filtros } = makeDb({
+      channel: CANAL_CONFIGURADO,
+      existingDeal: null,
+      account: { owner_user_id: 'dono-da-conta' },
+    });
+
+    await routeInboundToPipeline({ db, ...BASE });
+
+    expect(filtros.deals).toContain('contact_id');
+    expect(filtros.deals).not.toContain('pipeline_id');
   });
 
   it('cria o negócio com canal, etapa configurada, origem e dono da conta', async () => {

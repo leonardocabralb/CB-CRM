@@ -78,18 +78,29 @@ export async function routeInboundToPipeline(args: RouteInboundArgs): Promise<vo
 
     const pipelineId = canal.default_pipeline_id as string;
 
-    // ---- Guarda 4: o contato já está neste funil? ----
-    // Larga de propósito: QUALQUER card daquele contato naquele funil conta,
-    // seja ele aberto ou fechado, criado à mão, por automação ou por aqui.
-    // Se olhasse só os que a regra criou, o card que a atendente abriu na mão
-    // não impediria nada e o cliente ganharia um segundo card no mesmo funil
-    // na mensagem seguinte — o cenário mais provável do primeiro dia.
+    // ---- Guarda 4: este contato já tem card? ----
+    //
+    // ⚠️ EM QUALQUER FUNIL, de propósito — e isto é o coração da regra.
+    //
+    // O modelo do produto é UM CARD POR CONTATO, que TRANSITA entre funis: o
+    // operador move o lead do Bancário para o Trabalhista quando o assunto
+    // muda. A conexão coloca o cliente num funil apenas na PRIMEIRA vez;
+    // depois disso, quem manda é a decisão de quem moveu.
+    //
+    // A versão anterior filtrava por `pipeline_id`, e por isso desfazia a
+    // transferência: card movido para o Trabalhista, cliente escreve de novo,
+    // o roteador procura card no funil da CONEXÃO (Bancário), não acha, e
+    // cria um segundo. O lead terminava nos dois — exatamente o que "um funil
+    // por vez" existe para impedir.
+    //
+    // Continua larga quanto à origem: card aberto ou fechado, criado à mão,
+    // por automação ou por aqui, todos contam. Quem já está no funil de
+    // alguém não é problema desta função.
     const { data: existente, error: existenteErr } = await db
       .from('deals')
       .select('id')
       .eq('account_id', accountId)
       .eq('contact_id', contactId)
-      .eq('pipeline_id', pipelineId)
       .limit(1)
       .maybeSingle();
 

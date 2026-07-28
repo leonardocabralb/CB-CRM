@@ -66,6 +66,13 @@ export function DealForm({
   const [expectedCloseDate, setExpectedCloseDate] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Funil ESCOLHIDO — o card transita entre funis, então isto é estado, não
+  // mais a propriedade fixa do quadro aberto. `pipelineId` vira só o valor
+  // inicial de quem cria a partir de um quadro.
+  const [selectedPipelineId, setSelectedPipelineId] = useState(pipelineId);
+  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
+  const [allStages, setAllStages] = useState<PipelineStage[]>([]);
+
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [linkedConversation, setLinkedConversation] =
@@ -91,6 +98,7 @@ export function DealForm({
       // (migration 004: ON DELETE SET NULL). "" means "no selection".
       setContactId(deal.contact_id ?? "");
       setStageId(deal.stage_id);
+      setSelectedPipelineId(deal.pipeline_id);
       setAssignedTo(deal.assigned_to ?? "");
       setExpectedCloseDate(deal.expected_close_date ?? "");
       setNotes(deal.notes ?? "");
@@ -100,11 +108,12 @@ export function DealForm({
       setCurrency(defaultCurrency);
       setContactId("");
       setStageId(defaultStageId || stages[0]?.id || "");
+      setSelectedPipelineId(pipelineId);
       setAssignedTo("");
       setExpectedCloseDate("");
       setNotes("");
     }
-  }, [open, deal, defaultStageId, stages, defaultCurrency]);
+  }, [open, deal, defaultStageId, stages, defaultCurrency, pipelineId]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Load supporting data once the sheet is open
@@ -112,13 +121,19 @@ export function DealForm({
     if (!open) return;
     let cancelled = false;
     (async () => {
-      const [c, p] = await Promise.all([
+      // Etapas de TODOS os funis, não só do quadro aberto: mover o card
+      // exige oferecer as etapas do funil de destino.
+      const [c, p, funis, etapas] = await Promise.all([
         supabase.from("contacts").select("*").order("name"),
         supabase.from("profiles").select("*").order("full_name"),
+        supabase.from("pipelines").select("id, name").order("name"),
+        supabase.from("pipeline_stages").select("*").order("position"),
       ]);
       if (cancelled) return;
       setContacts((c.data ?? []) as Contact[]);
       setProfiles((p.data ?? []) as Profile[]);
+      setPipelines((funis.data ?? []) as { id: string; name: string }[]);
+      setAllStages((etapas.data ?? []) as PipelineStage[]);
     })();
     return () => {
       cancelled = true;
@@ -163,7 +178,7 @@ export function DealForm({
       value: parseFloat(value) || 0,
       currency,
       contact_id: contactId,
-      pipeline_id: pipelineId,
+      pipeline_id: selectedPipelineId,
       stage_id: stageId,
       assigned_to: assignedTo || null,
       notes: notes.trim() || null,
@@ -355,6 +370,32 @@ export function DealForm({
               />
             </div>
 
+            {/* TRANSFERIR ENTRE FUNIS. Some com um funil só — ali não decide
+                nada. Trocar o funil TEM de trocar a etapa junto: a FK composta
+                (stage_id, pipeline_id) da 908 recusa o par órfão no banco, e
+                sem isto o operador só descobriria ao salvar. */}
+            {pipelines.length > 1 && (
+              <div className="grid gap-2">
+                <Label className="text-muted-foreground">{t("pipeline")}</Label>
+                <select
+                  value={selectedPipelineId}
+                  onChange={(e) => {
+                    const novo = e.target.value;
+                    setSelectedPipelineId(novo);
+                    const primeira = allStages.find((s) => s.pipeline_id === novo);
+                    setStageId(primeira?.id ?? "");
+                  }}
+                  className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
+                >
+                  {pipelines.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="grid gap-2">
               <Label className="text-muted-foreground">{t("stage")}</Label>
               <select
@@ -362,7 +403,13 @@ export function DealForm({
                 onChange={(e) => setStageId(e.target.value)}
                 className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
               >
-                {stages.map((s) => (
+                {/* Etapas do funil ESCOLHIDO. Cai no `stages` do quadro
+                    enquanto a busca não voltou, para o seletor nunca ficar
+                    vazio ao abrir. */}
+                {(allStages.length > 0
+                  ? allStages.filter((s) => s.pipeline_id === selectedPipelineId)
+                  : stages
+                ).map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                   </option>
