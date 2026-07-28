@@ -11,7 +11,17 @@ import {
   unwrapMessage,
   type EvolutionUpsert,
 } from '@/lib/whatsapp/transport/evolution-inbound';
+import {
+  isGroupJid,
+  normalizeGroupUpsert,
+} from '@/lib/whatsapp/transport/evolution-group-inbound';
 import { persistDeviceMessage, persistInboundMessage } from '@/lib/whatsapp/inbound-store';
+import {
+  aprenderNossoLid,
+  persistGroupDeviceMessage,
+  persistGroupMessage,
+  LIMITE_DOWNLOAD_AUTOMATICO_BYTES,
+} from '@/lib/cb-groups/persist';
 import { atualizarPreviaDaConversa } from '@/lib/inbox/conversation-preview';
 import { resolveInboundEvolutionChannel } from '@/lib/cb-channels/resolve-inbound';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
@@ -120,6 +130,10 @@ export async function POST(request: Request) {
         item: EvolutionUpsert;
         contentType: string;
         messageId: string;
+        /** Bytes declarados (só em grupo); decide baixar agora ou sob demanda. */
+        bytes?: number | null;
+        /** Mensagem de grupo — só nela mexemos em `media_state`. */
+        ehGrupo?: boolean;
       }[] = [];
 
       for (const item of items) {
@@ -128,6 +142,48 @@ export async function POST(request: Request) {
           // pendurado na bolha da mensagem reagida.
           if (isReaction(item.message)) {
             await registrarReacao(item);
+            continue;
+          }
+
+          // ---- GRUPO ----
+          // A bifurcação vem ANTES do normalizeUpsert porque ele barra `@g.us`
+          // de propósito: o que ele produz é conversa de CONTATO, e grupo não
+          // é contato (ver 906_cb_grupos). Caminho próprio, sem fan-out.
+          if (isGroupJid(item.key?.remoteJid)) {
+            if (!route.groupsEnabled) continue; // interruptor por canal
+            const g = normalizeGroupUpsert(
+              item,
+              route.accountId,
+              route.ownerUserId,
+              route.channelId,
+            );
+            if (!g) continue;
+            if (await jaGravada(g.providerMessageId, g.fromMe)) continue;
+
+            // A nossa própria mensagem no grupo é a fonte mais barata do
+            // nosso LID — sem ele, menção a nós nunca acende (916).
+            if (g.fromMe && route.channelId) {
+              await aprenderNossoLid(supabaseAdmin(), route.channelId, g.senderJid);
+            }
+
+            const gravadaGrupo = g.fromMe
+              ? await persistGroupDeviceMessage({ db: supabaseAdmin(), m: g, mediaRef: item })
+              : await persistGroupMessage({
+                  db: supabaseAdmin(),
+                  m: g,
+                  ownLid: route.ownLid,
+                  mediaRef: item,
+                });
+
+            if (gravadaGrupo && g.contentType !== 'text' && g.contentType !== 'location') {
+              semAnexo.push({
+                item,
+                contentType: g.contentType,
+                messageId: gravadaGrupo.messageId,
+                bytes: g.mediaBytes,
+                ehGrupo: true,
+              });
+            }
             continue;
           }
 
@@ -165,16 +221,47 @@ export async function POST(request: Request) {
 
       for (const pendente of semAnexo) {
         try {
+          // Em GRUPO o anexo grande fica sob demanda ("toque para baixar"),
+          // e só ele: no 1:1 o comportamento segue exatamente como era.
+          // Tamanho desconhecido conta como pequeno de propósito — o WhatsApp
+          // expira a mídia no servidor dele, então na dúvida é melhor gastar
+          // banda agora do que descobrir semanas depois que o comprovante do
+          // cliente não existe mais em lugar nenhum.
+          if (
+            pendente.ehGrupo &&
+            pendente.bytes != null &&
+            pendente.bytes > LIMITE_DOWNLOAD_AUTOMATICO_BYTES
+          ) {
+            continue; // fica com media_state='pending'
+          }
+
           const mediaUrl = await resolveEvolutionMedia(
             route.accountId,
             route.channelId,
             pendente.item,
             pendente.contentType,
           );
-          if (!mediaUrl) continue;
+
+          if (!mediaUrl) {
+            // Só a mensagem de grupo tem `media_state`; marcar a de 1:1
+            // mudaria o comportamento de um caminho que não está em jogo aqui.
+            if (pendente.ehGrupo) {
+              await supabaseAdmin()
+                .from('messages')
+                .update({ media_state: 'failed' })
+                .eq('id', pendente.messageId);
+            }
+            continue;
+          }
+
           const { error } = await supabaseAdmin()
             .from('messages')
-            .update({ media_url: mediaUrl })
+            .update({
+              media_url: mediaUrl,
+              // Baixou: o anexo está no nosso Storage e o balão para de
+              // oferecer o botão.
+              ...(pendente.ehGrupo ? { media_state: null } : {}),
+            })
             .eq('id', pendente.messageId);
           if (error) {
             console.error(
@@ -185,6 +272,13 @@ export async function POST(request: Request) {
         } catch (err) {
           // A mensagem já está gravada — aqui só se perde o anexo.
           console.error('[evolution/webhook] anexo falhou:', err);
+          if (pendente.ehGrupo) {
+            await supabaseAdmin()
+              .from('messages')
+              .update({ media_state: 'failed' })
+              .eq('id', pendente.messageId)
+              .then(undefined, () => {});
+          }
         }
       }
     });

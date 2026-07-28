@@ -26,6 +26,18 @@ export interface InboundEvolutionRoute {
   ownerUserId: string;
   /** `cb_channels.id`; NULL no fallback `whatsapp_config` (transição). */
   channelId: string | null;
+  /**
+   * Este canal recebe mensagem de GRUPO? (906). Padrão FALSE, inclusive no
+   * fallback de transição: sem canal em `cb_channels` não há onde o operador
+   * ligar o interruptor, e ligar por omissão despejaria todos os grupos do
+   * número no inbox — incluindo os pessoais de quem pareou o QR.
+   */
+  groupsEnabled: boolean;
+  /**
+   * LID do próprio número (916), para detectar menções a nós em grupos.
+   * NULL enquanto não descoberto — aí `mentions_us` fica false.
+   */
+  ownLid: string | null;
 }
 
 /**
@@ -41,7 +53,7 @@ export async function resolveInboundEvolutionChannel(
   // 1. cb_channels por instance_name (chave de roteamento única global).
   const { data: channel } = await db
     .from('cb_channels')
-    .select('id, account_id, created_by')
+    .select('id, account_id, created_by, groups_enabled, own_lid')
     .eq('instance_name', instanceName)
     .eq('kind', 'evolution')
     .maybeSingle();
@@ -65,7 +77,13 @@ export async function resolveInboundEvolutionChannel(
       );
       return null;
     }
-    return { accountId: channel.account_id, ownerUserId, channelId: channel.id };
+    return {
+      accountId: channel.account_id,
+      ownerUserId,
+      channelId: channel.id,
+      groupsEnabled: channel.groups_enabled === true,
+      ownLid: channel.own_lid ?? null,
+    };
   }
 
   // 2. Fallback de transição: whatsapp_config por instance_name (Gabriel).
@@ -85,6 +103,10 @@ export async function resolveInboundEvolutionChannel(
       accountId: cfg.account_id,
       ownerUserId: cfg.user_id,
       channelId: null,
+      // Fallback de transição não tem canal em cb_channels, logo não tem onde
+      // ligar grupos — e o padrão seguro é não receber.
+      groupsEnabled: false,
+      ownLid: null,
     };
   }
 
