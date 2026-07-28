@@ -1,0 +1,94 @@
+# ============================================================
+# Constrói a imagem da Evolution com o conserto do eco do celular (@lid).
+#
+# NÃO roda sozinho. É `workflow_dispatch` de propósito: mexe no transporte de
+# WhatsApp do escritório, e a imagem base tem de ser a que está REALMENTE
+# rodando na VPS — coisa que só se sabe consultando a VPS.
+#
+# Este workflow só CONSTRÓI e PUBLICA. Ele não faz rollout: quem troca a
+# imagem do serviço é um comando na VPS, feito por gente, com a saída deste
+# workflow em mãos. Ver docs/EVOLUTION-LID-FIX.md.
+#
+# Por que não reaproveitar o deploy.yml: aquele publica o CRM e faz rollout
+# por SSH. Aqui o artefato é outro (a Evolution, de terceiro), o gatilho é
+# outro (manual) e o rollout é deliberadamente humano.
+# ============================================================
+name: evolution-lid-fix
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_image:
+        description: >-
+          Imagem da Evolution que está rodando na VPS. Pegue com:
+          docker service inspect evolution_evolution
+          --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+          — inclua o digest (@sha256:...) se aparecer.
+        required: true
+      tag:
+        description: 'Tag de saída (ex.: 2.3.2-lidfix)'
+        required: true
+        default: '2.3.2-lidfix'
+
+env:
+  IMAGE: ghcr.io/leonardocabralb/evolution-api-lidfix
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Sem cache de propósito: o build é uma verificação, e cache mascararia
+      # uma base trocada. São segundos.
+      - name: Build e publicar
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: docker/evolution-lid-fix
+          push: true
+          no-cache: true
+          provenance: false
+          build-args: |
+            BASE_IMAGE=${{ inputs.base_image }}
+          tags: ${{ env.IMAGE }}:${{ inputs.tag }}
+
+      # O digest é o que deve ir para a VPS. Tag é mutável; digest não —
+      # e a lição de "não fixar a versão" é justamente o que produziu este
+      # problema (a Evolution 2.3.2 aponta para uma branch flutuante).
+      - name: Como aplicar
+        run: |
+          {
+            echo '## Imagem pronta'
+            echo
+            echo '```'
+            echo '${{ env.IMAGE }}:${{ inputs.tag }}@${{ steps.build.outputs.digest }}'
+            echo '```'
+            echo
+            echo 'Na VPS, para aplicar:'
+            echo
+            echo '```bash'
+            echo 'docker service update --image ${{ env.IMAGE }}:${{ inputs.tag }}@${{ steps.build.outputs.digest }} evolution_evolution'
+            echo '```'
+            echo
+            echo 'Para voltar atrás:'
+            echo
+            echo '```bash'
+            echo 'docker service update --image ${{ inputs.base_image }} evolution_evolution'
+            echo '```'
+            echo
+            echo 'Procedimento completo e como verificar: `docs/EVOLUTION-LID-FIX.md`.'
+          } >> "$GITHUB_STEP_SUMMARY"
