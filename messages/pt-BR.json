@@ -167,6 +167,8 @@
       "channelFilterAll": "Todos os canais"
     },
     "messageThread": {
+      "groupNoName": "Grupo sem nome",
+      "groupParticipants": "{count, plural, one {# participante} other {# participantes}}",
       "backToConversations": "Voltar para as conversas",
       "hideContactPanel": "Ocultar painel do contato",
       "showContactPanel": "Exibir painel do contato",
