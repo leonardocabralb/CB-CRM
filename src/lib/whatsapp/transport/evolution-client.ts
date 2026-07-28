@@ -40,6 +40,15 @@ export interface EvolutionMessageKey {
   fromMe: boolean;
   id: string;
   participant?: string;
+  /**
+   * O endereço que `remoteJid` tinha ANTES de a Evolution reescrevê-lo.
+   *
+   * Ela troca `@lid` pelo telefone quando consegue resolvê-lo — e é isso que
+   * permite reconhecer a conversa. Mas do lado do WhatsApp a conversa
+   * continua endereçada por `@lid`, e é esse o endereço necessário para
+   * REVOGAR ou EDITAR a mensagem. Ver migration 917.
+   */
+  previousRemoteJid?: string;
 }
 
 interface EvolutionErrorBody {

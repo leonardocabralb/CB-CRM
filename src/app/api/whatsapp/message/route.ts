@@ -47,6 +47,11 @@ interface Alvo {
   created_at: string;
   conversation_id: string;
   remote_jid: string | null;
+  /**
+   * Endereço `@lid` da conversa, quando ela migrou. É por ELE que se revoga
+   * e se edita — ver `chaveBaileys` e a migration 917.
+   */
+  remote_jid_lid: string | null;
   deleted_at: string | null;
   delete_requested_at: string | null;
   /**
@@ -99,7 +104,7 @@ async function resolverAlvo(messageId: unknown) {
   const { data: msg } = await supabase
     .from('messages')
     .select(
-      'id, message_id, sender_type, content_text, created_at, conversation_id, remote_jid, deleted_at, delete_requested_at, channel_id, from_me',
+      'id, message_id, sender_type, content_text, created_at, conversation_id, remote_jid, remote_jid_lid, deleted_at, delete_requested_at, channel_id, from_me',
     )
     .eq('id', messageId)
     .maybeSingle();
@@ -193,7 +198,20 @@ type AlvoPronto = Alvo & { message_id: string; remote_jid: string };
 function chaveBaileys(alvo: AlvoPronto) {
   return {
     id: alvo.message_id,
-    remoteJid: alvo.remote_jid,
+    // ⚠️ O `@lid` VEM PRIMEIRO, e a ordem é o conserto.
+    //
+    // `remote_jid` é o endereço por onde RECONHECEMOS a conversa (a Evolution
+    // o reescreve de `@lid` para telefone, e é isso que faz a mensagem
+    // aparecer no CRM). Mas no WhatsApp a conversa migrada continua
+    // endereçada por `@lid` — e revogar é procurar a mensagem NAQUELE
+    // endereço.
+    //
+    // Medido em produção em 28/07/2026: apagar pelo CRM uma mensagem enviada
+    // pelo CELULAR não fazia nada, porque a revogação ia para a conversa
+    // "telefone" e a mensagem vive na "@lid". Mensagem enviada pelo CRM
+    // apagava normalmente — essa vive na conversa "telefone" dos dois lados.
+    // Ver migration 917.
+    remoteJid: alvo.remote_jid_lid ?? alvo.remote_jid,
     // `from_me` é o que o PROVEDOR disse quando gravamos a mensagem — é o
     // mesmo campo que a rota de reação já usa. Deduzir de `sender_type` é
     // aproximação: bate hoje, mas erra no dia em que existir mensagem

@@ -326,3 +326,68 @@ describe('parseDeleteEvent', () => {
     }
   });
 });
+
+// ============================================================
+// `previousRemoteJid` — o endereço para AGIR sobre a mensagem.
+//
+// Bug real de produção (28/07/2026): depois que a Evolution passou a
+// reescrever `@lid` → telefone (patch da baileys), apagar pelo CRM uma
+// mensagem enviada pelo CELULAR deixou de fazer efeito. A revogação ia para a
+// conversa "telefone" e a mensagem vive na "@lid". O endereço original chega
+// em `key.previousRemoteJid` e estava sendo descartado. Ver migration 917.
+// ============================================================
+describe('normalizeUpsert — endereço @lid da conversa', () => {
+  const TEXTO = { conversation: 'oi' };
+
+  it('guarda o @lid quando a Evolution reescreveu o endereço', () => {
+    const out = normalizeUpsert(
+      item(TEXTO, {
+        key: {
+          remoteJid: '5511964102992@s.whatsapp.net',
+          previousRemoteJid: '192603597332721@lid',
+          fromMe: true,
+          id: '3A65CF57',
+        },
+      }),
+      'conta',
+      'dono',
+      'canal',
+    );
+    // O telefone continua sendo quem IDENTIFICA a conversa...
+    expect(out!.remoteJid).toBe('5511964102992@s.whatsapp.net');
+    expect(out!.phone).toBe('5511964102992');
+    // ...e o @lid é quem permite AGIR sobre a mensagem.
+    expect(out!.remoteJidLid).toBe('192603597332721@lid');
+  });
+
+  it('conversa não migrada não tem @lid — e null aqui é o caso normal', () => {
+    const out = normalizeUpsert(item(TEXTO), 'conta', 'dono', 'canal');
+    expect(out!.remoteJidLid).toBeNull();
+  });
+
+  // A guarda importa: se o campo vier com um telefone (ou lixo), gravá-lo
+  // faria a revogação sair para um endereço inventado. Só LID entra.
+  it('ignora previousRemoteJid que NÃO seja um @lid', () => {
+    for (const bruto of [
+      '5511964102992@s.whatsapp.net',
+      '120363000000000000@g.us',
+      '',
+      'lixo',
+    ]) {
+      const out = normalizeUpsert(
+        item(TEXTO, {
+          key: {
+            remoteJid: '5511964102992@s.whatsapp.net',
+            previousRemoteJid: bruto,
+            fromMe: true,
+            id: 'X',
+          },
+        }),
+        'conta',
+        'dono',
+        'canal',
+      );
+      expect(out!.remoteJidLid, bruto).toBeNull();
+    }
+  });
+});
