@@ -19,12 +19,14 @@ export type CbChannelStatus = 'disconnected' | 'connecting' | 'connected';
 /** O que o browser pode ver. Note a ausência dos segredos. */
 // ⚠️ Coluna de configuração por canal que não entrar AQUI salva no banco e
 // nunca reaparece na tela — o valor some no reload e o operador conclui que
-// não salvou. Já aconteceu com `default_agent_id` (903) e `groups_enabled`
-// (906), que até hoje não têm um único leitor em src/.
+// não salvou. Já aconteceu com `default_agent_id` (903).
+//
+// `own_lid` (916) fica de fora de propósito: não é configuração, é um
+// identificador interno descoberto sozinho, e nenhuma tela precisa dele.
 export const CB_CHANNEL_SAFE_COLUMNS =
   'id, account_id, kind, label, display_phone, is_default, status, ' +
   'connected_at, last_error, phone_number_id, waba_id, server_url, ' +
-  'instance_name, default_pipeline_id, default_stage_id, ' +
+  'instance_name, default_pipeline_id, default_stage_id, groups_enabled, ' +
   'created_at, updated_at';
 
 /** Canal como o client o enxerga. */
@@ -50,6 +52,16 @@ export interface CbChannel {
    */
   default_pipeline_id: string | null;
   default_stage_id: string | null;
+  /**
+   * Este número recebe mensagem de grupo (migration 906). FALSE por padrão —
+   * ligar é decisão explícita do operador, canal a canal, senão o primeiro
+   * deploy despejaria todos os grupos ativos do número no inbox, inclusive os
+   * pessoais de quem pareou o QR.
+   *
+   * ⚠️ Ligar aqui não basta: a instância já conectada só passa a receber os
+   * eventos de grupo depois que o webhook é reaplicado ("Ressincronizar").
+   */
+  groups_enabled: boolean;
   created_at: string;
   updated_at: string;
 }

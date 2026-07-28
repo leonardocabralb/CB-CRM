@@ -142,34 +142,56 @@ export async function sincronizarListaDeGrupos(
 ): Promise<{ grupos: GrupoDaLista[]; gravados: number }> {
   const chats = await args.client.findChats();
   const grupos = parseChatsParaGrupos(chats);
+  if (!grupos.length) return { grupos, gravados: 0 };
 
-  let gravados = 0;
-  for (const g of grupos) {
-    const { data: existente } = await db
-      .from('cb_groups')
-      .select('id')
-      .eq('account_id', args.accountId)
-      .eq('jid', g.jid)
-      .maybeSingle();
+  // DUAS idas ao banco, não duas por grupo. A versão anterior fazia um SELECT
+  // e um write para cada grupo: com os 58 grupos do número de produção deram
+  // 116 viagens e 11,9s de espera com o operador olhando um botão girar.
+  // Agora é uma leitura em bloco + um upsert em bloco (~2s).
+  const jids = grupos.map((g) => g.jid);
+  const { data: existentes } = await db
+    .from('cb_groups')
+    .select('jid, subject, picture_url')
+    .eq('account_id', args.accountId)
+    .in('jid', jids);
 
-    const campos: Record<string, unknown> = { synced_at: new Date().toISOString() };
-    if (g.nome) campos.subject = g.nome;
-    if (g.fotoUrl) campos.picture_url = g.fotoUrl;
-
-    const { error } = existente
-      ? await db.from('cb_groups').update(campos).eq('id', (existente as { id: string }).id)
-      : await db.from('cb_groups').insert({
-          account_id: args.accountId,
-          channel_id: args.channelId,
-          jid: g.jid,
-          ...campos,
-        });
-
-    if (error) console.error('[cb-groups sync] gravar grupo falhou:', error.message);
-    else gravados++;
+  const anterior = new Map<string, { subject: string | null; picture_url: string | null }>();
+  for (const e of (existentes ?? []) as {
+    jid: string;
+    subject: string | null;
+    picture_url: string | null;
+  }[]) {
+    anterior.set(e.jid, { subject: e.subject, picture_url: e.picture_url });
   }
 
-  return { grupos, gravados };
+  // ⚠️ O upsert em bloco exige colunas UNIFORMES, então cada linha precisa
+  // trazer um valor para `subject`/`picture_url`. Por isso o valor anterior é
+  // repetido quando o WhatsApp não mandou nada agora: sem esse cuidado, o
+  // upsert gravaria NULL e o grupo PERDERIA o nome que já tínhamos a cada
+  // sincronização — exatamente o que a versão por linha evitava omitindo a
+  // coluna.
+  const agora = new Date().toISOString();
+  const linhas = grupos.map((g) => ({
+    account_id: args.accountId,
+    channel_id: args.channelId,
+    jid: g.jid,
+    subject: g.nome ?? anterior.get(g.jid)?.subject ?? null,
+    picture_url: g.fotoUrl ?? anterior.get(g.jid)?.picture_url ?? null,
+    synced_at: agora,
+  }));
+
+  // `cb_groups_account_jid_idx` é único e NÃO é parcial, então serve de alvo
+  // para o ON CONFLICT (ver a nota do CLAUDE.md sobre índices parciais, que
+  // não valem como alvo — este não é o caso).
+  const { error } = await db
+    .from('cb_groups')
+    .upsert(linhas, { onConflict: 'account_id,jid' });
+
+  if (error) {
+    console.error('[cb-groups sync] gravar grupos falhou:', error.message);
+    return { grupos, gravados: 0 };
+  }
+  return { grupos, gravados: linhas.length };
 }
 
 /**

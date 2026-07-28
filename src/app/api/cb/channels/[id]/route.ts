@@ -45,6 +45,7 @@ export async function PATCH(
       label?: unknown;
       default_pipeline_id?: unknown;
       default_stage_id?: unknown;
+      groups_enabled?: unknown;
     } | null;
     const label = typeof body?.label === 'string' ? body.label.trim() : '';
 
@@ -111,6 +112,18 @@ export async function PATCH(
       // Sem funil não há etapa. Zerar junto é obrigatório: a FK composta
       // (default_stage_id, default_pipeline_id) rejeitaria o par órfão.
       patch.default_stage_id = pipelineId ? stageId : null;
+    }
+
+    // Grupos de WhatsApp neste número (906). Mesma disciplina do funil: só
+    // entra no UPDATE quando a chave veio no corpo, senão um PATCH que apenas
+    // renomeia desligaria os grupos sem querer.
+    //
+    // ⚠️ LIGAR NÃO BASTA. A instância que já está conectada só passa a receber
+    // os eventos de grupo depois que o webhook é reaplicado — o que acontece
+    // pelo botão "Ressincronizar" do painel de conexões. Sem isso, mensagem de
+    // grupo chega mas aviso de entrada/saída não.
+    if ('groups_enabled' in (body ?? {})) {
+      patch.groups_enabled = body?.groups_enabled === true;
     }
 
     const { data, error } = await ctx.supabase
