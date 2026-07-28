@@ -76,10 +76,13 @@ export default function DashboardPage() {
   const [activityLoading, setActivityLoading] = useState(true)
 
   // Filtro de canal. `null` = conta inteira, exatamente o painel de antes.
-  // ⚠️ O filtro é PARCIAL por natureza: contatos, negócios e funil não têm
-  // `channel_id` no schema. Os cartões que ele não alcança ganham a marca
-  // "conta inteira" abaixo — mostrar número da conta toda sob um recorte de
-  // canal seria pior do que não filtrar.
+  // ⚠️ O filtro continua PARCIAL: `contacts` e `pipeline_stages` não têm
+  // `channel_id`, e nem faria sentido — contato é do escritório, etapa é do
+  // funil. Esses cartões ganham a marca "conta inteira".
+  // ⚠️ `deals` TEM canal desde a 908, mas o significado é outro: a coluna é
+  // carimbada no NASCIMENTO do card, então o recorte responde "quanto ENTROU
+  // por este número". Por isso a marca ali é "Originados neste número".
+  // Mostrar qualquer um dos dois sem ressalva seria pior do que não filtrar.
   const { channels } = useChannels()
   const [canalFiltro, setCanalFiltro] = useState<string | null>(null)
 
