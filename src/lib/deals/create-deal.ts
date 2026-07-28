@@ -37,6 +37,14 @@ export interface CreateDealArgs {
   /** Quando ausente, cai na etapa de menor `position`. */
   stageId?: string | null;
   channelId?: string | null;
+  /**
+   * Conversa de onde o negócio nasceu — é o caminho de volta do card para o
+   * atendimento. Só pôde passar a ser gravado depois da 910: até lá a FK era
+   * NO ACTION e preenchê-la fazia apagar contato (e remover membro da equipe)
+   * estourar violação. A FK composta de lá já barra conversa de outra conta,
+   * então aqui não há validação a repetir.
+   */
+  conversationId?: string | null;
   title: string;
   value?: number;
   source: DealSource;
@@ -134,6 +142,7 @@ export async function createDeal(args: CreateDealArgs): Promise<CreateDealResult
     stage_id: stageId,
     contact_id: contactId,
     channel_id: channelId ?? null,
+    conversation_id: args.conversationId ?? null,
     title: args.title,
     value: args.value ?? 0,
     currency: (conta?.default_currency as string | undefined) ?? 'USD',

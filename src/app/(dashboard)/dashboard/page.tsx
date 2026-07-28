@@ -76,10 +76,13 @@ export default function DashboardPage() {
   const [activityLoading, setActivityLoading] = useState(true)
 
   // Filtro de canal. `null` = conta inteira, exatamente o painel de antes.
-  // ⚠️ O filtro é PARCIAL por natureza: contatos, negócios e funil não têm
-  // `channel_id` no schema. Os cartões que ele não alcança ganham a marca
-  // "conta inteira" abaixo — mostrar número da conta toda sob um recorte de
-  // canal seria pior do que não filtrar.
+  // ⚠️ O filtro continua PARCIAL: `contacts` e `pipeline_stages` não têm
+  // `channel_id`, e nem faria sentido — contato é do escritório, etapa é do
+  // funil. Esses cartões ganham a marca "conta inteira".
+  // ⚠️ `deals` TEM canal desde a 908, mas o significado é outro: a coluna é
+  // carimbada no NASCIMENTO do card, então o recorte responde "quanto ENTROU
+  // por este número". Por isso a marca ali é "Originados neste número".
+  // Mostrar qualquer um dos dois sem ressalva seria pior do que não filtrar.
   const { channels } = useChannels()
   const [canalFiltro, setCanalFiltro] = useState<string | null>(null)
 
@@ -113,7 +116,7 @@ export default function DashboardPage() {
       .catch((err) => console.error('[dashboard] series failed:', err))
       .finally(() => atual() && setSeriesLoading(false))
 
-    void loadPipelineDonut(db)
+    void loadPipelineDonut(db, canalFiltro)
       .then((p) => atual() && setPipeline(p))
       .catch((err) => console.error('[dashboard] pipeline failed:', err))
       .finally(() => atual() && setPipelineLoading(false))
@@ -178,6 +181,10 @@ export default function DashboardPage() {
             setSeriesLoading(true)
             setResponseTimeLoading(true)
             setActivityLoading(true)
+            // A rosca passou a recarregar com o filtro (908 deu canal a deals).
+            // Sem este esqueleto ela exibiria os números do canal anterior
+            // como se fossem do novo, sem nenhum sinal de que está velha.
+            setPipelineLoading(true)
           }}
         />
       </div>
@@ -217,7 +224,11 @@ export default function DashboardPage() {
               }}
             />
             <MetricCard
-              accountWideNote={canalFiltro ? tCanais('accountWide') : undefined}
+              // "Originados neste número", não "Conta inteira": desde a 908 o
+              // cartão RESPEITA o filtro, mas o canal do negócio é do
+              // nascimento do card — é quanto entrou por aqui, não o total
+              // que este número tem em aberto.
+              accountWideNote={canalFiltro ? tCanais('channelOriginated') : undefined}
               title={t('openDealsValue')}
               value={formatCurrency(metrics.openDealsValue, defaultCurrency)}
               icon={DollarSign}
@@ -260,13 +271,15 @@ export default function DashboardPage() {
             onRangeChange={handleRangeChange}
           />
         </div>
-        {/* O funil é da conta inteira: negócio não tem canal, e um negócio
-            pode nascer numa conversa e fechar noutra. Com filtro ativo a
-            marca aparece sobre o cartão. */}
+        {/* A rosca agora recorta por canal — mas o significado é OUTRO: o
+            canal do negócio é carimbado no NASCIMENTO do card, então isto
+            responde "quanto ENTROU por este número", não "quanto este número
+            tem em aberto". Negócio criado à mão fica sem canal e some do
+            recorte. Daí a marca "Originados neste número". */}
         <div className="relative h-full lg:col-span-2">
           {canalFiltro && (
             <span className="absolute right-4 top-4 z-10 rounded border border-border bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              {tCanais('accountWide')}
+              {tCanais('channelOriginated')}
             </span>
           )}
           <PipelineDonut

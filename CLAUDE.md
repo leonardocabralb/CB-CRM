@@ -230,6 +230,22 @@ Coisas da 908 que mordem código novo:
 - O roteador dispara por **estado**, não por evento. `first_inbound_message`
   não serve: é contado por conversa e há uma conversa por contato por conta
   (036), então cliente que muda de número nunca dispararia.
+- **`deals.channel_id` é do NASCIMENTO do card**, não de onde ele está agora.
+  Recorte por canal responde "por qual número o cliente chegou". Negócio
+  criado à mão fica com a coluna nula e some de qualquer filtro por canal —
+  por isso a etiqueta do painel é "Originados neste número", não "Conta
+  inteira".
+- **`deals.conversation_id` passou a ser escrito (910).** A FK virou
+  `(conversation_id, account_id)` com `ON DELETE SET NULL (conversation_id)`
+  — antes era NO ACTION, e preencher a coluna fazia **apagar contato** e
+  **remover membro da equipe** estourarem violação (os dois cascateiam em
+  `conversations`). Quem for gravar essa coluna em código novo não precisa
+  validar posse: a FK composta já barra conversa de outra conta.
+- **Apagar funil ou etapa mexe em conexão.** `cb_channels.default_pipeline_id`
+  e `default_stage_id` zeram via SET NULL, e o roteamento para em silêncio. A
+  tela de Funis avisa; quem criar outro caminho de exclusão precisa avisar
+  também. As funções `channelsUsingPipeline`/`channelsUsingStage` de
+  `display.ts` respondem quem depende do quê.
 
 ⚠️ **A 903 removeu dois índices únicos.** `message_templates(user_id, name,
 language)` e `ai_configs(account_id)` viraram pares de índices **parciais**
@@ -273,7 +289,10 @@ mordem de novo em qualquer código novo:
   `904_cb_grupos` (⚠️ **número 904 DUPLICADO** — o arquivo local foi
   renumerado para `906_cb_grupos.sql` numa branch, mas o histórico do banco
   guarda o nome antigo), `905_cb_mensagem_apagada_editada`,
-  `907_cb_exclusao_solicitada` e `908_cb_funil_por_canal`.
+  `907_cb_exclusao_solicitada`, `908_cb_funil_por_canal`,
+  `909_cb_saude_das_conexoes` e `910_cb_negocio_e_conversa`.
+  ⚠️ O **906 não é buraco livre** — a branch `feat/grupos-whatsapp`, ainda
+  não mesclada, reivindica `906_cb_grupos.sql`.
   ⚠️ **Nunca deduzir o próximo número desta lista** — ela envelhece a cada
   branch em paralelo. Rodar `ls supabase/migrations/` **e** `list_migrations`
   imediatamente antes de criar o arquivo; os dois, porque já divergiram.

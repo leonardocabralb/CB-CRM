@@ -598,7 +598,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       // pertencente ao funil, moeda da conta) NÃO valem para automação. Quem
       // acrescentar regra em `createDeal` precisa decidir conscientemente se
       // ela vale aqui também.
-      const { error: dealError } = await db.from('deals').insert({
+      const dealBase = {
         // Tenancy + audit, same split as automation_logs above.
         account_id: args.automation.account_id,
         user_id: args.automation.user_id,
@@ -613,7 +613,34 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         // indistinguível do digitado à mão — justamente a distinção que a
         // coluna existe para fazer (migration 908).
         source: 'automation',
-      })
+        // Canal do disparo, mesmo carimbo que a linha de automation_logs já
+        // recebe. Sem ele o card de automação some de qualquer recorte por
+        // número no painel.
+        channel_id: args.context.channel_id ?? null,
+      }
+
+      // A conversa vem do contexto, que é JSONB persistido e SOBREVIVE ao
+      // passo `wait`. Num passo retomado horas depois, ela pode não existir
+      // mais (apagar o contato cascateia nas conversas) — e a FK da 910
+      // recusaria o insert inteiro. O card importa mais que o vínculo, então
+      // violação de FK vira "grava sem conversa" em vez de derrubar o passo.
+      const conversationId =
+        typeof args.context.conversation_id === 'string' ? args.context.conversation_id : null
+
+      let { error: dealError } = await db
+        .from('deals')
+        .insert({ ...dealBase, conversation_id: conversationId })
+
+      if (dealError && conversationId && dealError.code === '23503') {
+        console.warn(
+          '[automations] conversa do contexto não existe mais; gravando negócio sem vínculo:',
+          dealError.message,
+        )
+        ;({ error: dealError } = await db
+          .from('deals')
+          .insert({ ...dealBase, conversation_id: null }))
+      }
+
       if (dealError) throw new Error(`create_deal falhou: ${dealError.message}`)
       return 'deal created'
     }

@@ -106,6 +106,37 @@ export function preferredChannel(elegiveis: CbChannel[]): CbChannel | null {
   );
 }
 
+/**
+ * Quais conexões colocam clientes NESTE funil (migration 908).
+ *
+ * Existe para a tela de Funis conseguir avisar antes de apagar: sem isto,
+ * apagar o funil zera `default_pipeline_id` via ON DELETE SET NULL e o
+ * roteamento para em SILÊNCIO — o sintoma ("parou de entrar gente no funil")
+ * aparece dias depois, longe da causa.
+ */
+export function channelsUsingPipeline(
+  channels: CbChannel[],
+  pipelineId: string | null | undefined,
+): CbChannel[] {
+  if (!pipelineId) return [];
+  return channels.filter((c) => c.default_pipeline_id === pipelineId);
+}
+
+/**
+ * Quais conexões usam ESTA etapa como entrada.
+ *
+ * A guarda de apagar etapa hoje é a contagem de negócios — e a etapa
+ * recém-configurada como entrada tem exatamente ZERO negócios. Ou seja: o
+ * caso perigoso é justamente o que passa pela guarda existente.
+ */
+export function channelsUsingStage(
+  channels: CbChannel[],
+  stageId: string | null | undefined,
+): CbChannel[] {
+  if (!stageId) return [];
+  return channels.filter((c) => c.default_stage_id === stageId);
+}
+
 /** Cor do pontinho de status, igual à do painel de Conexões. */
 export const CHANNEL_STATUS_DOT: Record<CbChannel['status'], string> = {
   connected: 'bg-emerald-500',

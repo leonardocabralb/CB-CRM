@@ -17,6 +17,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { createClient } from "@/lib/supabase/client";
+import { useChannels } from "@/hooks/use-channels";
+import {
+  channelsUsingPipeline,
+  channelsUsingStage,
+} from "@/lib/cb-channels/display";
 import type { Pipeline, PipelineStage } from "@/types";
 import {
   Dialog,
@@ -71,6 +76,11 @@ export function PipelineSettings({
 }: PipelineSettingsProps) {
   const t = useTranslations("Pipelines.settings");
   const supabase = createClient();
+  // Uma busca por montagem, falha silenciosa → lista vazia. É fail-open
+  // consciente: sem os canais o operador perde o AVISO, não a ação — travar
+  // a exclusão porque um GET não respondeu seria pior que o risco que o
+  // aviso evita.
+  const { channels } = useChannels();
 
   const [name, setName] = useState(pipeline.name);
   const [localStages, setLocalStages] = useState<PipelineStage[]>(stages);
@@ -162,6 +172,23 @@ export function PipelineSettings({
   }
 
   async function handleRemoveStage(stageId: string) {
+    // Esta etapa é a ENTRADA de alguma conexão? (migration 908)
+    //
+    // A guarda de baixo — contagem de negócios — não cobre este caso: a etapa
+    // recém-configurada como entrada tem exatamente ZERO negócios, então o
+    // caso perigoso é justamente o que passa. Apagá-la zeraria
+    // `cb_channels.default_stage_id` (ON DELETE SET NULL) e o roteamento
+    // passaria a despejar todo cliente novo na etapa de menor `position` —
+    // que neste banco é "Contato Avulso", uma faixa de estacionamento.
+    const entradaDe = channelsUsingStage(channels, stageId);
+    if (entradaDe.length > 0) {
+      toast.error(
+        t("toastStageIsChannelEntry", {
+          channels: entradaDe.map((c) => c.label).join(", "),
+        }),
+      );
+      return;
+    }
     // Refuse to delete if deals still reference the stage (FK would fail).
     const { count } = await supabase
       .from("deals")
@@ -217,6 +244,19 @@ export function PipelineSettings({
                 <p className="mt-1 text-xs text-muted-foreground">
                   {t("deletePipelineDesc")}
                 </p>
+                {/* Conexões que despejam clientes AQUI. Apagar o funil zera
+                    `default_pipeline_id` (ON DELETE SET NULL) e elas param de
+                    criar negócio sem avisar ninguém — o operador só descobre
+                    dias depois, olhando um Kanban que não enche mais. */}
+                {channelsUsingPipeline(channels, pipeline.id).length > 0 && (
+                  <p className="mt-2 text-xs font-medium text-red-400">
+                    {t("deletePipelineChannels", {
+                      channels: channelsUsingPipeline(channels, pipeline.id)
+                        .map((c) => c.label)
+                        .join(", "),
+                    })}
+                  </p>
+                )}
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">

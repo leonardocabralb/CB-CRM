@@ -64,7 +64,8 @@ import { interactivePayloadPreviewText } from "@/lib/whatsapp/interactive"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import { useChannels } from "@/hooks/use-channels"
-import { ChannelMultiSelect } from "@/components/channels/channel-select"
+import type { CbChannel } from "@/lib/cb-channels/repo"
+import { ChannelMultiSelect, ChannelSelect } from "@/components/channels/channel-select"
 
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
@@ -219,6 +220,8 @@ interface AutomationResources {
   customFields: CustomField[]
   pipelines: PipelineOption[]
   stages: PipelineStageOption[]
+  /** Canais da conta — para a condição por canal do passo Condição. */
+  channels: CbChannel[]
 }
 
 interface PipelineOption {
@@ -240,6 +243,7 @@ const ResourcesContext = createContext<AutomationResources>({
   customFields: [],
   pipelines: [],
   stages: [],
+  channels: [],
 })
 
 function useResources(): AutomationResources {
@@ -253,6 +257,9 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
   const [customFields, setCustomFields] = useState<CustomField[]>([])
   const [pipelines, setPipelines] = useState<PipelineOption[]>([])
   const [stages, setStages] = useState<PipelineStageOption[]>([])
+  // No provider, e não dentro do StepEditor: aquele monta uma vez por passo
+  // aberto, e cada montagem seria um GET novo.
+  const { channels } = useChannels()
 
   useEffect(() => {
     let cancelled = false
@@ -307,7 +314,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
 
   return (
     <ResourcesContext.Provider
-      value={{ tags, members, templates, customFields, pipelines, stages }}
+      value={{ tags, members, templates, customFields, pipelines, stages, channels }}
     >
       {children}
     </ResourcesContext.Provider>
@@ -1316,6 +1323,7 @@ function StepEditor({
   onChange: (s: BuilderStep) => void
 }) {
   const t = useTranslations("Automations.builder")
+  const { channels } = useResources()
   const cfg = step.step_config
   const set = (patch: Record<string, unknown>) =>
     onChange({ ...step, step_config: { ...cfg, ...patch } })
@@ -1472,9 +1480,28 @@ function StepEditor({
               <option value="contact_field">{t("config.subjects.contact_field")}</option>
               <option value="message_content">{t("config.subjects.message_content")}</option>
               <option value="time_of_day">{t("config.subjects.time_of_day")}</option>
+              {/* Por canal: o motor ramifica assim desde a 903, mas a tela
+                  nunca ofereceu. Some com um canal só (não decide nada), e
+                  reaparece se a condição JÁ estiver gravada — senão o select
+                  ficaria vazio e o primeiro clique trocaria o critério
+                  mantendo o UUID no operando, deixando a condição
+                  permanentemente falsa em silêncio. */}
+              {(channels.length >= 2 || cfg.subject === "channel") && (
+                <option value="channel">{t("config.subjects.channel")}</option>
+              )}
             </select>
           </FieldBlock>
           <FieldBlock label={t("config.operandLabel")}>
+            {cfg.subject === "channel" && channels.length > 0 ? (
+              // Grava em `operand` — é o que o motor lê (cfg.operand ?? cfg.value)
+              // e o que `validate.ts` exige não-vazio. Sem `allowAll`: aqui a
+              // condição é "veio DESTE número", não um escopo.
+              <ChannelSelect
+                channels={channels}
+                value={(cfg.operand as string) || null}
+                onChange={(id) => set({ operand: id ?? "" })}
+              />
+            ) : (
             <Input
               placeholder={
                 cfg.subject === "time_of_day"
@@ -1489,6 +1516,7 @@ function StepEditor({
               onChange={(e) => set({ operand: e.target.value })}
               className="bg-muted text-foreground"
             />
+            )}
           </FieldBlock>
           {(cfg.subject === "contact_field" || cfg.subject === "message_content") && (
             <FieldBlock label="Value">

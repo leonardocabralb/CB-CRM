@@ -171,6 +171,20 @@ describe('routeInboundToPipeline', () => {
     });
   });
 
+  it('repassa a conversa que originou o card', async () => {
+    // É o caminho de volta do Kanban para o atendimento. Os dois call sites
+    // da ingestão já têm a conversa em mão — se este repasse cair, o card
+    // nasce órfão e ninguém percebe até alguém clicar.
+    const { db, inserts } = makeDb({
+      channel: CANAL_CONFIGURADO,
+      account: { owner_user_id: 'dono-da-conta' },
+    });
+
+    await routeInboundToPipeline({ db, ...BASE, conversationId: 'conversa-9' });
+
+    expect(inserts[0]).toMatchObject({ conversation_id: 'conversa-9' });
+  });
+
   it('o título junta o canal e o contato', async () => {
     // `contact_id` é SET NULL quando o contato é apagado — sem o nome no
     // título o card ficaria sem nenhuma identificação.

@@ -390,6 +390,7 @@ export async function persistInboundMessage(
     channelId: m.channelId ?? null,
     contactId: contact.id,
     contactName: contact.name ?? null,
+    conversationId: conversation.id,
   });
 
   if (!flowConsumed && inboundText.trim()) {

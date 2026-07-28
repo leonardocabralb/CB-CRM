@@ -46,3 +46,8 @@ next-env.d.ts
 # --- CB Advogados (customizacoes do fork) ---
 # Config local do Claude Code (launch.json p/ subir o dev server, settings locais)
 .claude/
+
+# Capturas e logs do Playwright MCP. Sem isto elas poluem o `git status`
+# a cada sessao — foi assim que um `channel-select 2.tsx` (copia do Finder)
+# passou despercebido e acabou commitado.
+.playwright-mcp/
