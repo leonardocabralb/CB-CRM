@@ -608,7 +608,7 @@
     "settings": {
       "managePipeline": "Gerenciar funil",
       "deletePipeline": "Excluir funil",
-      "deletePipelineDesc": "Isso arquivará todos os negócios deste funil. Não é possível desfazer.",
+      "deletePipelineDesc": "Todos os negócios deste funil são apagados junto com ele. Não é possível desfazer.",
       "cancel": "Cancelar",
       "deleting": "Excluindo...",
       "deletePipelineBtn": "Excluir funil",
@@ -627,7 +627,9 @@
       "toastMoveOrDeleteDeals": "Mova ou exclua os negócios desta etapa primeiro",
       "toastFailedDeleteStage": "Falha ao excluir a etapa",
       "toastFailedDeletePipeline": "Falha ao excluir o funil",
-      "toastDeleted": "Funil excluído"
+      "toastDeleted": "Funil excluído",
+      "deletePipelineChannels": "Estas conexões colocam clientes neste funil: {channels}. Depois de apagar, elas param de criar negócios até você apontá-las para outro funil em Configurações › Conexões.",
+      "toastStageIsChannelEntry": "Esta etapa é a entrada de {channels}. Escolha outra etapa de entrada em Configurações › Conexões antes de apagá-la."
     },
     "analytics": {
       "totalDeals": "Total de negócios",

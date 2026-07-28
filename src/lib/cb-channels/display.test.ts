@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   channelLabel,
+  channelsUsingPipeline,
+  channelsUsingStage,
   findChannel,
   formatChannelPhone,
   metaChannels,
@@ -142,5 +144,33 @@ describe('preferredChannel', () => {
 
   it('lista vazia devolve null', () => {
     expect(preferredChannel([])).toBeNull();
+  });
+});
+
+describe('channelsUsingPipeline / channelsUsingStage', () => {
+  const canais = [
+    canal({ id: 'trabalhista', default_pipeline_id: 'f1', default_stage_id: 'e-lead' }),
+    canal({ id: 'bancario', default_pipeline_id: 'f2', default_stage_id: 'e-novo' }),
+    canal({ id: 'sem-funil' }),
+  ];
+
+  it('acha as conexões que apontam para o funil', () => {
+    expect(channelsUsingPipeline(canais, 'f1').map((c) => c.id)).toEqual(['trabalhista']);
+  });
+
+  it('funil que ninguém usa devolve vazio', () => {
+    expect(channelsUsingPipeline(canais, 'f9')).toEqual([]);
+  });
+
+  it('id nulo devolve vazio em vez de casar com conexão sem funil', () => {
+    // `default_pipeline_id` é NULL na maioria das conexões. Sem esta guarda,
+    // um id ausente casaria com TODAS elas e a tela acusaria dependência
+    // onde não há nenhuma.
+    expect(channelsUsingPipeline(canais, null)).toEqual([]);
+    expect(channelsUsingStage(canais, undefined)).toEqual([]);
+  });
+
+  it('acha as conexões que entram por aquela etapa', () => {
+    expect(channelsUsingStage(canais, 'e-lead').map((c) => c.id)).toEqual(['trabalhista']);
   });
 });

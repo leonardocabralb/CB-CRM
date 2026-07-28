@@ -608,7 +608,7 @@
     "settings": {
       "managePipeline": "Manage Pipeline",
       "deletePipeline": "Delete Pipeline",
-      "deletePipelineDesc": "This will archive all deals in this pipeline. This cannot be undone.",
+      "deletePipelineDesc": "All deals in this pipeline are deleted along with it. This cannot be undone.",
       "cancel": "Cancel",
       "deleting": "Deleting...",
       "deletePipelineBtn": "Delete Pipeline",
@@ -627,7 +627,9 @@
       "toastMoveOrDeleteDeals": "Move or delete deals in this stage first",
       "toastFailedDeleteStage": "Failed to delete stage",
       "toastFailedDeletePipeline": "Failed to delete pipeline",
-      "toastDeleted": "Pipeline deleted"
+      "toastDeleted": "Pipeline deleted",
+      "deletePipelineChannels": "These connections put clients into this pipeline: {channels}. Once deleted, they stop creating deals until you point them at another pipeline in Settings › Connections.",
+      "toastStageIsChannelEntry": "This stage is the entry point for {channels}. Pick another entry stage in Settings › Connections before deleting it."
     },
     "analytics": {
       "totalDeals": "Total Deals",
