@@ -54,6 +54,11 @@ describe('resolveInboundEvolutionChannel', () => {
       accountId: 'acc1',
       ownerUserId: 'user1',
       channelId: 'ch1',
+      // Coluna ausente/nula = grupos DESLIGADOS. O padrão seguro importa:
+      // ligado por omissão despejaria todos os grupos do número no inbox no
+      // primeiro deploy (906).
+      groupsEnabled: false,
+      ownLid: null,
     });
     // Não consultou whatsapp_config: created_by resolveu o dono.
     expect(db.calls.map((c) => c.table)).toEqual(['cb_channels']);
@@ -72,6 +77,8 @@ describe('resolveInboundEvolutionChannel', () => {
       accountId: 'acc1',
       ownerUserId: 'owner2',
       channelId: 'ch1',
+      groupsEnabled: false,
+      ownLid: null,
     });
     // Consultou cb_channels e depois whatsapp_config por account_id.
     expect(db.calls.map((c) => c.table)).toEqual(['cb_channels', 'whatsapp_config']);
@@ -91,6 +98,8 @@ describe('resolveInboundEvolutionChannel', () => {
       accountId: 'accG',
       ownerUserId: 'userG',
       channelId: null,
+      groupsEnabled: false,
+      ownLid: null,
     });
   });
 
@@ -107,6 +116,27 @@ describe('resolveInboundEvolutionChannel', () => {
       accountId: 'accG',
       ownerUserId: 'userG',
       channelId: null,
+      groupsEnabled: false,
+      ownLid: null,
+    });
+  });
+
+  it('canal com grupos LIGADOS propaga o interruptor e o nosso lid', async () => {
+    const db = makeDb({
+      cb_channels: () => ({
+        data: {
+          id: 'ch1',
+          account_id: 'acc1',
+          created_by: 'user1',
+          groups_enabled: true,
+          own_lid: '1438000009152@lid',
+        },
+      }),
+    });
+    const route = await resolveInboundEvolutionChannel(db, 'cbcrm-acc1-abc');
+    expect(route).toMatchObject({
+      groupsEnabled: true,
+      ownLid: '1438000009152@lid',
     });
   });
 

@@ -13,6 +13,7 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
+import { GroupSidebar } from "@/components/inbox/group-sidebar";
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -587,6 +588,25 @@ function InboxPageInner() {
     [activeConversation]
   );
 
+  /**
+   * Apelido ou nome do grupo mudou no painel lateral. Espelha nas DUAS
+   * cópias — a conversa aberta e a linha da lista — senão o nome muda no
+   * painel e a lista continua mostrando o antigo até recarregar.
+   */
+  const handleGroupUpdated = useCallback(
+    (patch: Partial<NonNullable<Conversation["group"]>>) => {
+      const convId = activeConversation?.id;
+      if (!convId) return;
+      const aplicar = (c: Conversation): Conversation =>
+        c.group ? { ...c, group: { ...c.group, ...patch } } : c;
+      setConversations((prev) =>
+        prev.map((c) => (c.id === convId ? aplicar(c) : c))
+      );
+      setActiveConversation((prev) => (prev ? aplicar(prev) : prev));
+    },
+    [activeConversation?.id]
+  );
+
   // On mobile (<lg) we show a SINGLE pane — either the list or the
   // thread — rather than cramming both side-by-side. Selecting a
   // conversation slides the thread in; the thread's back button pops
@@ -666,10 +686,19 @@ function InboxPageInner() {
             toggle — which is itself desktop-only — never affects it. */}
         {contactPanelOpen && (
           <div className="hidden lg:block">
-            <ContactSidebar
-              contact={activeContact}
-              channelId={activeConversation?.channel_id ?? null}
-            />
+            {activeConversation?.group_id ? (
+              // Painel próprio: a ficha de contato é etiquetas, negócios,
+              // anotações e histórico do lead — nada disso existe num grupo.
+              <GroupSidebar
+                grupo={activeConversation.group ?? null}
+                onGrupoAtualizado={handleGroupUpdated}
+              />
+            ) : (
+              <ContactSidebar
+                contact={activeContact}
+                channelId={activeConversation?.channel_id ?? null}
+              />
+            )}
           </div>
         )}
       </div>

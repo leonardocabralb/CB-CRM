@@ -17,7 +17,9 @@ import {
   Smartphone,
   Trash2,
   Pencil,
+  Download,
 } from "lucide-react";
+import { corDoRemetente, podeBaixarAnexo } from "@/lib/cb-groups/display";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
 import { FormattedText } from "./formatted-text";
@@ -38,7 +40,33 @@ interface MessageBubbleProps {
    * o preenche em conta multi-canal (2+ números) — senão é ruído.
    */
   channelLabel?: string | null;
+  /**
+   * A conversa é de grupo. Muda três coisas: mostra quem falou, destaca
+   * menção a nós, e oferece baixar anexo pendente.
+   */
+  emGrupo?: boolean;
+  /** Busca o anexo sob demanda. Só em grupo — ver `podeBaixarAnexo`. */
+  onBaixarAnexo?: () => void;
+  /** Enquanto a busca do anexo está em andamento. */
+  baixandoAnexo?: boolean;
 }
+
+/**
+ * Cores do nome de quem falou, dentro do grupo. Num grupo de 180 pessoas a
+ * cor é o que permite seguir quem disse o quê no paredão de texto — e ela é
+ * estável por JID (`corDoRemetente`), não sorteada: o mesmo participante
+ * mudando de cor a cada render seria pior que cor nenhuma.
+ */
+const CORES_DE_REMETENTE = [
+  "text-sky-600 dark:text-sky-400",
+  "text-emerald-600 dark:text-emerald-400",
+  "text-violet-600 dark:text-violet-400",
+  "text-amber-600 dark:text-amber-400",
+  "text-rose-600 dark:text-rose-400",
+  "text-teal-600 dark:text-teal-400",
+  "text-indigo-600 dark:text-indigo-400",
+  "text-orange-600 dark:text-orange-400",
+];
 
 function StatusIcon({ status }: { status: Message["status"] }) {
   switch (status) {
@@ -354,10 +382,37 @@ export function MessageBubble({
   currentUserId,
   onToggleReaction,
   channelLabel,
+  emGrupo = false,
+  onBaixarAnexo,
+  baixandoAnexo = false,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
 
+  // Aviso do próprio WhatsApp ("Fulano entrou"). Não é mensagem de ninguém:
+  // sai do fluxo de bolhas e vira faixa centralizada, como no WhatsApp. O
+  // `return` cedo é o que dispensa alinhamento, horário, status, reação e o
+  // menu de ações — nada disso faz sentido num aviso do sistema.
+  if (message.content_type === "system") {
+    return (
+      <div className="flex justify-center py-1">
+        <span className="max-w-[85%] rounded-full bg-muted/70 px-3 py-1 text-center text-[11px] leading-snug text-muted-foreground">
+          {message.content_text}
+        </span>
+      </div>
+    );
+  }
+
   const isAgent = message.sender_type === "agent" || message.sender_type === "bot";
+  // Quem falou, só em grupo e só do lado de quem recebeu: numa mensagem
+  // nossa o nome seria o do próprio operador, que a bolha já identifica pelo
+  // lado em que está.
+  const remetente = emGrupo && !isAgent ? message.group_sender_name : null;
+  const corDoNome =
+    CORES_DE_REMETENTE[
+      corDoRemetente(message.group_sender_jid, CORES_DE_REMETENTE.length)
+    ];
+  const mencionaNos = emGrupo && message.mentions_us === true;
+  const anexoPendente = emGrupo && podeBaixarAnexo(message);
   const time = format(new Date(message.created_at), "HH:mm");
   // Confirmada pelo WhatsApp × só pedida por nós. As duas riscam a bolha,
   // mas dizem coisas diferentes — e a diferença importa: um pedido sem
@@ -381,8 +436,31 @@ export function MessageBubble({
           isAgent
             ? "rounded-br-md bg-primary text-primary-foreground"
             : "rounded-bl-md bg-muted text-foreground",
+          // Marcaram o nosso número. Num grupo movimentado é a diferença
+          // entre "alguém falou" e "alguém falou COM VOCÊ".
+          mencionaNos && "ring-2 ring-primary/60",
         )}
       >
+        {remetente && (
+          <span className={cn("mb-0.5 block text-xs font-semibold", corDoNome)}>
+            {remetente}
+          </span>
+        )}
+        {anexoPendente && (
+          <button
+            type="button"
+            onClick={onBaixarAnexo}
+            disabled={baixandoAnexo}
+            className="mb-1 flex items-center gap-1.5 rounded-md bg-background/60 px-2 py-1 text-xs text-foreground hover:bg-background disabled:opacity-60"
+          >
+            <Download className="h-3 w-3" />
+            {baixandoAnexo
+              ? t("groupMediaDownloading")
+              : message.media_state === "failed"
+                ? t("groupMediaRetry")
+                : t("groupMediaTap")}
+          </button>
+        )}
         {apagada && (
           <span
             className={cn(

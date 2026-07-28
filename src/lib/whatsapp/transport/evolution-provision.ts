@@ -36,6 +36,18 @@ export const WEBHOOK_EVENTS = [
   // que consertava era escondido enquanto o canal estivesse conectado.
   'MESSAGES_DELETE',
   'MESSAGES_EDITED',
+  // Grupos (906): sustentam a faixa cinza de aviso no meio do histórico.
+  // Valem o mesmo aviso de reaplicação acima.
+  //
+  // ⚠️ `GROUPS_UPDATE` NÃO ENTRA AQUI. Ele não existe nesta versão da
+  // Evolution (2.3.2) e o enum recusa o pedido INTEIRO — ou seja, incluí-lo
+  // derrubaria junto os eventos válidos da mesma lista, e a instância ficaria
+  // sem receber nada. Conferido em 2026-07-28 numa instância descartável.
+  //
+  // Consequência aceita: "mudou o nome do grupo" pode não ter evento. O
+  // caminho confiável para o nome é a sincronização sob demanda.
+  'GROUPS_UPSERT',
+  'GROUP_PARTICIPANTS_UPDATE',
 ];
 
 export function evolutionGlobalConfig(): { baseUrl: string; apikey: string } {

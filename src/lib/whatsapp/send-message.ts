@@ -49,7 +49,7 @@ import {
   phoneVariants,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils';
-import type { MessageTemplate } from '@/types';
+import type { CbGroup, MessageTemplate } from '@/types';
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
@@ -230,10 +230,10 @@ export async function sendMessageToConversation(
 
   const isMediaKind = (MEDIA_KINDS as readonly string[]).includes(messageType);
 
-  // Conversation + contact, account-scoped.
+  // Conversation + contact (ou grupo), account-scoped.
   const { data: conversation, error: convError } = await db
     .from('conversations')
-    .select('*, contact:contacts(*)')
+    .select('*, contact:contacts(*), group:cb_groups(*)')
     .eq('id', conversationId)
     .eq('account_id', accountId)
     .single();
@@ -242,23 +242,45 @@ export async function sendMessageToConversation(
     throw new SendMessageError('not_found', 'Conversation not found', 404);
   }
 
+  // GRUPO (906). O destinatário é o JID do grupo, não um telefone — e é por
+  // isso que as duas validações abaixo passam a ser condicionais:
+  // `sanitizePhoneForMeta` + `isValidE164` reprovariam `120363…@g.us` antes
+  // de qualquer envio. Era exatamente esta guarda que barrava grupo até aqui.
+  const grupo = (conversation as { group?: CbGroup | null }).group ?? null;
+  const ehGrupo = !!conversation.group_id;
+
   const contact = conversation.contact;
-  if (!contact?.phone) {
+  if (!ehGrupo && !contact?.phone) {
     throw new SendMessageError(
       'bad_request',
       'Contact phone number not found',
       400
     );
   }
+  if (ehGrupo && !grupo?.jid) {
+    // Conversa de grupo sem a linha do grupo: só acontece com dado
+    // inconsistente, e enviar às cegas não é opção — não há para onde.
+    throw new SendMessageError(
+      'bad_request',
+      'Group not found for this conversation',
+      400
+    );
+  }
 
-  const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
-  if (!isValidE164(sanitizedPhone)) {
+  const sanitizedPhone = ehGrupo ? '' : sanitizePhoneForMeta(contact!.phone);
+  if (!ehGrupo && !isValidE164(sanitizedPhone)) {
     throw new SendMessageError(
       'bad_request',
       'Invalid phone number format',
       400
     );
   }
+
+  /**
+   * Para onde a mensagem vai. Em grupo é o JID; `toEvolutionNumber` preserva
+   * o sufixo `@g.us` intacto de propósito — ver o comentário lá.
+   */
+  const destinatario = ehGrupo ? grupo!.jid : sanitizedPhone;
 
   // Which number (channel) this conversation replies through. Resolves
   // the conversation's channel → the account default → whatsapp_config
@@ -277,6 +299,31 @@ export async function sendMessageToConversation(
   }
 
   const provider = channel.provider;
+
+  // ⚠️ Grupo NÃO existe na API oficial da Meta — não é limitação nossa nem
+  // configuração faltando. A conversa chega aqui com canal Meta quando o
+  // atendente fixou o canal na mão, e o texto precisa dizer o que fazer
+  // (trocar de canal), não um "não suportado" que deixa ele sem saída.
+  if (ehGrupo && provider === 'meta') {
+    throw new SendMessageError(
+      'not_supported',
+      'Grupos não funcionam pela API oficial da Meta. Troque o canal desta conversa para uma conexão por QR Code antes de enviar.',
+      400
+    );
+  }
+
+  // Grupo com "só administradores podem enviar". Barrar aqui dá uma mensagem
+  // legível; deixar seguir devolveria o erro cru da Evolution depois de a
+  // mídia já ter subido. `is_announce` nulo (ainda não sincronizado) NÃO
+  // bloqueia: no escuro, impedir de responder num grupo comum é pior que
+  // deixar a própria Evolution recusar.
+  if (ehGrupo && grupo?.is_announce === true && grupo?.we_are_admin !== true) {
+    throw new SendMessageError(
+      'not_allowed',
+      'Neste grupo só administradores podem enviar mensagens.',
+      403
+    );
+  }
 
   if (provider === 'meta' && (!channel.phone_number_id || !channel.access_token)) {
     throw new SendMessageError(
@@ -415,7 +462,7 @@ export async function sendMessageToConversation(
     try {
       const res = isMediaKind
         ? await transport.sendMedia({
-            to: sanitizedPhone,
+            to: destinatario,
             kind: messageType as MediaKind,
             media: mediaUrl!,
             caption: contentText || undefined,
@@ -423,7 +470,7 @@ export async function sendMessageToConversation(
             quoted: evolutionQuoted,
           })
         : await transport.sendText({
-            to: sanitizedPhone,
+            to: destinatario,
             text: contentText!,
             quoted: evolutionQuoted,
           });
@@ -438,7 +485,12 @@ export async function sendMessageToConversation(
         502
       );
     }
-    outboundRemoteJid = `${toEvolutionNumber(sanitizedPhone)}@s.whatsapp.net`;
+    // Chave da Baileys para citar/reagir depois. Em grupo o JID JÁ é o
+    // endereço final — pendurar `@s.whatsapp.net` nele produziria um JID
+    // inválido e quebraria a citação de toda mensagem que enviarmos ao grupo.
+    outboundRemoteJid = ehGrupo
+      ? destinatario
+      : `${toEvolutionNumber(sanitizedPhone)}@s.whatsapp.net`;
   } else {
     const attempt = async (phone: string): Promise<string> => {
       if (messageType === 'template') {
@@ -543,10 +595,13 @@ export async function sendMessageToConversation(
       console.log(
         `[send-message] Auto-corrected contact phone: ${sanitizedPhone} → ${workingPhone}`
       );
+      // `contact!` é seguro: este ramo inteiro é do provider Meta, e grupo
+      // com canal Meta já foi recusado lá atrás — só conversa de contato
+      // chega até aqui.
       await db
         .from('contacts')
         .update({ phone: workingPhone })
-        .eq('id', contact.id);
+        .eq('id', contact!.id);
     }
   }
 
@@ -610,19 +665,26 @@ export async function sendMessageToConversation(
 
   // Pause any active Flow run for this contact — the agent stepping in
   // is the strongest "yield, human is here" signal. Best-effort.
+  //
+  // ⚠️ Pulado em GRUPO, e não é otimização: `flow_runs` é indexado por
+  // contato, e grupo não tem um. Sem esta guarda, `contact.id` estoura em
+  // todo envio para grupo — e como o bloco roda DEPOIS de a mensagem já ter
+  // saído para o WhatsApp, o cliente receberia e o operador veria erro.
   try {
-    const { error: pauseErr } = await supabaseAdmin()
-      .from('flow_runs')
-      .update({
-        status: 'paused_by_agent',
-        ended_at: new Date().toISOString(),
-        end_reason: 'agent_replied',
-      })
-      .eq('account_id', accountId)
-      .eq('contact_id', contact.id)
-      .eq('status', 'active');
-    if (pauseErr) {
-      console.error('[flows] pause-on-agent-send failed:', pauseErr.message);
+    if (!ehGrupo) {
+      const { error: pauseErr } = await supabaseAdmin()
+        .from('flow_runs')
+        .update({
+          status: 'paused_by_agent',
+          ended_at: new Date().toISOString(),
+          end_reason: 'agent_replied',
+        })
+        .eq('account_id', accountId)
+        .eq('contact_id', contact!.id)
+        .eq('status', 'active');
+      if (pauseErr) {
+        console.error('[flows] pause-on-agent-send failed:', pauseErr.message);
+      }
     }
   } catch (err) {
     console.error(

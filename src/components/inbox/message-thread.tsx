@@ -33,7 +33,9 @@ import {
   PanelRightClose,
   BadgeCheck,
   QrCode,
+  Users,
 } from "lucide-react";
+import { nomeDoGrupo } from "@/lib/cb-groups/display";
 import type { CbChannel } from "@/lib/cb-channels/repo";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -235,6 +237,43 @@ export function MessageThread({
     }, 700);
   }, [isRefreshing, onRefresh]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
+  /** Id da mensagem cujo anexo de grupo está sendo buscado agora. */
+  const [anexoEmCurso, setAnexoEmCurso] = useState<string | null>(null);
+
+  /**
+   * Busca sob demanda o anexo de uma mensagem de grupo.
+   *
+   * ⚠️ O erro é mostrado como veio da rota, e não trocado por um "tente mais
+   * tarde" genérico: mídia antiga EXPIRA no servidor do WhatsApp, e nesse caso
+   * nenhuma tentativa futura vai funcionar. Dizer "tente depois" faria o
+   * operador insistir por dias num arquivo que não existe mais.
+   */
+  const baixarAnexoDoGrupo = useCallback(
+    async (messageId: string) => {
+      setAnexoEmCurso(messageId);
+      try {
+        const res = await fetch(`/api/cb/groups/media/${messageId}`, {
+          method: "POST",
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast.error(payload.error ?? t("groupMediaFailed"));
+          return;
+        }
+        if (payload.media_url) {
+          onUpdateMessage(messageId, {
+            media_url: payload.media_url,
+            media_state: null,
+          });
+        }
+      } catch {
+        toast.error(t("groupMediaFailed"));
+      } finally {
+        setAnexoEmCurso(null);
+      }
+    },
+    [onUpdateMessage, t],
+  );
 
   // Profiles are bounded by RLS to rows the current user is allowed to
   // see — today that's just the current user, but the dropdown keeps the
@@ -830,11 +869,16 @@ export function MessageThread({
 
   // Author label for a quoted message: "You" when we sent the parent,
   // contact name when the customer sent it.
+  //
+  // ⚠️ Em GRUPO o autor é o participante, não "o contato" — que nem existe.
+  // Sem este ramo, citar a mensagem de qualquer participante mostrava o
+  // literal "Customer" (texto fixo em inglês) para todo mundo.
   const authorLabelFor = useCallback(
     (m: Message): string => {
       const isAgentMsg =
         m.sender_type === "agent" || m.sender_type === "bot";
-      return isAgentMsg ? "You" : contactDisplayName;
+      if (isAgentMsg) return "You";
+      return m.group_sender_name || contactDisplayName;
     },
     [contactDisplayName],
   );
@@ -1053,7 +1097,12 @@ export function MessageThread({
   // Empty state — same WhatsApp-style doodle background as the active
   // thread below, so swapping between empty/selected doesn't change the
   // pattern under the user's eye.
-  if (!conversation || !contact) {
+  // ⚠️ A condição era `!conversation || !contact`, e era ELA que impedia
+  // qualquer conversa de grupo de abrir: grupo não tem contato (o CHECK
+  // `cb_conv_contato_xor_grupo` garante um ou outro), então toda conversa de
+  // grupo caía no estado vazio, como se nada estivesse selecionado.
+  const ehGrupo = !!conversation?.group_id;
+  if (!conversation || (!contact && !ehGrupo)) {
     return (
       <div className={cn("flex flex-1 flex-col items-center justify-center", DOODLE_BG_CLASSES)}>
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
@@ -1069,7 +1118,18 @@ export function MessageThread({
     );
   }
 
-  const displayName = contact.name || contact.phone;
+  const grupo = conversation.group ?? null;
+  const displayName = ehGrupo
+    ? nomeDoGrupo(grupo, t("groupNoName"))
+    : (contact?.name || contact?.phone) ?? "";
+  // Linha de baixo do cabeçalho: no 1:1 é o telefone; num grupo, quantas
+  // pessoas estão nele — que é a informação equivalente ("com quem eu estou
+  // falando"). Fica vazia enquanto a sincronização não trouxe o número.
+  const subtituloDoCabecalho = ehGrupo
+    ? grupo?.participant_count
+      ? t("groupParticipants", { count: grupo.participant_count })
+      : ""
+    : (contact?.phone ?? "");
   const messageGroups = groupTimelineByDate(intercalar(messages, leadEvents));
   const currentStatus = STATUS_OPTIONS.find(
     (s) => s.value === conversation.status
@@ -1110,8 +1170,15 @@ export function MessageThread({
             {displayName.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
-            <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
+            <h2 className="flex min-w-0 items-center gap-1.5 truncate text-sm font-semibold text-foreground">
+              {ehGrupo && <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+              <span className="truncate">{displayName}</span>
+            </h2>
+            {subtituloDoCabecalho && (
+              <p className="truncate text-xs text-muted-foreground">
+                {subtituloDoCabecalho}
+              </p>
+            )}
           </div>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. Canal Evolution não
@@ -1247,7 +1314,11 @@ export function MessageThread({
             </DropdownMenu>
           )}
 
-          {/* Status dropdown */}
+          {/* Status dropdown — escondido em grupo. Aberta/pendente/encerrada
+              descreve um ATENDIMENTO, que começa e termina; um grupo não
+              fecha. A conversa continua com `status='open'` no banco (a
+              coluna é NOT NULL), só não se oferece o controle. */}
+          {!ehGrupo && (
           <DropdownMenu>
             <DropdownMenuTrigger className={cn(
                   "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
@@ -1271,8 +1342,10 @@ export function MessageThread({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
 
-          {/* Assign dropdown */}
+          {/* Assign dropdown — SEGUE valendo em grupo: atribuir um grupo a
+              alguém foi decisão explícita do operador. */}
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
@@ -1374,6 +1447,14 @@ export function MessageThread({
                       return <LeadEventLine key={item.chave} evento={item.evento} />;
                     }
                     const msg = item.mensagem!;
+                    // Aviso do WhatsApp dentro do grupo ("Fulano entrou").
+                    // Mesmo tratamento do evento de lead logo acima: a bolha
+                    // se desenha sozinha como faixa, e NÃO passa pelo
+                    // MessageActions — responder, reagir ou apagar um aviso
+                    // do sistema não quer dizer nada.
+                    if (msg.content_type === "system") {
+                      return <MessageBubble key={msg.id} message={msg} emGrupo />;
+                    }
                     const parent = msg.reply_to_message_id
                       ? messagesById.get(msg.reply_to_message_id)
                       : null;
@@ -1381,8 +1462,14 @@ export function MessageThread({
                       ? {
                           authorLabel:
                             parent.sender_type === "agent" || parent.sender_type === "bot"
-                              ? t("me") 
-                              : contact?.name || contact?.phone || "Unknown",
+                              ? t("me")
+                              // Em grupo o autor citado é o participante.
+                              // Sem isto, citar qualquer um mostrava o
+                              // literal "Unknown" — texto fixo em inglês.
+                              : parent.group_sender_name ||
+                                contact?.name ||
+                                contact?.phone ||
+                                t("unknownAuthor"),
                           preview: buildReplyPreview(parent, tQuote),
                         }
                       : null;
@@ -1423,6 +1510,9 @@ export function MessageThread({
                           currentUserId={user?.id}
                           onToggleReaction={handlePillToggle}
                           channelLabel={channelLabel}
+                          emGrupo={ehGrupo}
+                          baixandoAnexo={anexoEmCurso === msg.id}
+                          onBaixarAnexo={() => baixarAnexoDoGrupo(msg.id)}
                         />
                       </MessageActions>
                     );
@@ -1437,6 +1527,9 @@ export function MessageThread({
       {/* AI auto-reply banner — take over an active bot, or resume it
           after a handoff. Renders nothing unless the account has
           auto-reply configured. */}
+      {/* IA não atua em grupo (906). O `/api/ai/autoreply` recusa com 400;
+          esconder a faixa evita oferecer um controle que só daria erro. */}
+      {!ehGrupo && (
       <AiThreadBanner
         conversationId={conversation.id}
         disabled={conversation.ai_autoreply_disabled ?? false}
@@ -1449,6 +1542,7 @@ export function MessageThread({
           }
         }}
       />
+      )}
 
       {/* Composer — canal Evolution não tem janela de 24h (sessionExpired
           neutralizado) nem templates/interativas (channelKind esconde). */}

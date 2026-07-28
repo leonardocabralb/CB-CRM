@@ -115,6 +115,14 @@ const MEDIA_DOWNLOAD_TIMEOUT_MS = 30_000;
 const MEDIA_SEND_TIMEOUT_MS = 90_000;
 
 /**
+ * Listagem de chats. Mais folgado que o padrão porque a resposta cresce com o
+ * histórico inteiro da instância — 550 chats no número de produção — e uma
+ * conta grande passaria dos 15s do padrão. Continua sendo teto: sem ele, um
+ * servidor mudo prende a invocação.
+ */
+const GROUP_LIST_TIMEOUT_MS = 30_000;
+
+/**
  * Validate the Evolution base URL. Both http and https are accepted:
  * Evolution is expected to be co-located with the CRM on the same VPS
  * and reached over the loopback / private interface (e.g.
@@ -400,6 +408,61 @@ export class EvolutionClient {
       },
       true,
       MEDIA_DOWNLOAD_TIMEOUT_MS
+    );
+  }
+
+  // ----------------------------------------------------------
+  // Grupos
+  //
+  // ⚠️ `group/fetchAllGroups` NÃO ganha método aqui, de propósito. Ele é o
+  // endpoint "óbvio" para listar grupos e ESTOURA: numa conta com 57 grupos
+  // não respondeu nem em 90s (medido em produção, 2026-07-28). `findChats`
+  // devolve tudo em segundos e ainda traz o nome e a foto de cada grupo —
+  // justamente o que o `fetchAllGroups` prometia.
+  // ----------------------------------------------------------
+
+  /**
+   * Todos os chats da instância — 1:1 e grupos misturados. Quem quer só
+   * grupo filtra pelo sufixo `@g.us`.
+   */
+  async findChats(): Promise<unknown[]> {
+    const r = await this.request<unknown>(
+      'POST',
+      'chat/findChats',
+      {},
+      true,
+      GROUP_LIST_TIMEOUT_MS,
+    );
+    if (Array.isArray(r)) return r;
+    const rec = r as { records?: unknown } | null;
+    return Array.isArray(rec?.records) ? rec.records : [];
+  }
+
+  /**
+   * Metadados de um grupo: nome, descrição, `announce` e a lista completa de
+   * participantes — que é onde vive o mapeamento LID → telefone
+   * (`participants[].jid` traz o número real).
+   *
+   * O JID vai na query, então a instância é montada à mão e `appendInstance`
+   * fica false: o construtor de URL do `request` só sabe pendurar a instância
+   * no fim do caminho.
+   */
+  async findGroupInfos(groupJid: string): Promise<unknown> {
+    return this.request(
+      'GET',
+      `group/findGroupInfos/${encodeURIComponent(this.instance)}?groupJid=${encodeURIComponent(groupJid)}`,
+      undefined,
+      false,
+    );
+  }
+
+  /** Renomeia o grupo NO WHATSAPP — todo participante vê. Exige ser admin. */
+  async updateGroupSubject(groupJid: string, subject: string): Promise<unknown> {
+    return this.request(
+      'POST',
+      `group/updateGroupSubject/${encodeURIComponent(this.instance)}?groupJid=${encodeURIComponent(groupJid)}`,
+      { subject },
+      false,
     );
   }
 

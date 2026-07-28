@@ -248,6 +248,57 @@ Coisas da 908 que mordem código novo:
   também. As funções `channelsUsingPipeline`/`channelsUsingStage` de
   `display.ts` respondem quem depende do quê.
 
+⚠️ **Grupo de WhatsApp (906/916) NÃO é contato, e a distinção é load-bearing.**
+`cb_groups` + `conversations.group_id`, com CHECK XOR contra `contact_id` (que
+perdeu o NOT NULL). Só existe no transporte Evolution — a Cloud API da Meta não
+entrega mensagem de grupo. O que morde código novo:
+
+- **Nunca gravar grupo em `contacts`.** `findExistingContact` casa por LIKE nos
+  ÚLTIMOS 8 DÍGITOS com `phonesMatch` tolerante a tronco; um JID de grupo tem
+  ~18 dígitos e pode FUNDIR silenciosamente com o celular de um cliente real.
+- **`conversations.contact_id` é NULLABLE.** Código novo que leia
+  `conversation.contact.algo` precisa do caminho de grupo — hoje não há nenhum
+  acesso não-opcional no repo, e vale manter assim.
+- **Grupo não dispara automação, flow nem IA.** A garantia é ESTRUTURAL:
+  `src/lib/cb-groups/persist.ts` não importa os motores, e há teste lendo o
+  próprio fonte. Se um dia grupos entrarem nas automações, o import entra ali,
+  visível na revisão — não atrás de uma flag.
+- **A regra do `@lid` do 1:1 NÃO vale em grupo.** Lá o LID sem telefone é
+  descartado para não criar contato falso; aqui o remetente é desnormalizado em
+  `messages.group_sender_*`, sem FK e sem criar contato. Em produção 100% dos
+  participantes chegam em `@lid`, então aplicar a regra do 1:1 esvaziaria o
+  recurso.
+- **`group/fetchAllGroups` da Evolution ESTOURA** (>90s com 58 grupos). Use
+  `chat/findChats` filtrando `@g.us` — rápido e já traz nome e foto.
+  `findGroupInfos` custa ~650ms/grupo e serve só para participantes, announce,
+  admin e o nosso LID.
+- **`GROUPS_UPDATE` não existe** na Evolution 2.3.2 e o enum recusa o pedido
+  INTEIRO — incluí-lo derruba junto os eventos válidos da mesma lista.
+  Assináveis: `GROUPS_UPSERT` e `GROUP_PARTICIPANTS_UPDATE`.
+- **Ligar `cb_channels.groups_enabled` não basta**: instância já conectada só
+  recebe os eventos novos depois de reaplicar o webhook ("Ressincronizar").
+- **Menção chega em `@lid`, nunca em telefone** — daí `cb_channels.own_lid`
+  (916), aprendido na 1ª mensagem nossa dentro de um grupo. Sem ele
+  `messages.mentions_us` seria false para sempre.
+- **`nullsFirst: false` na ordenação do inbox é load-bearing**: grupo
+  sincronizado sem mensagem tem `last_message_at` NULL, e em DESC o Postgres
+  põe NULL primeiro — 58 grupos vazios empurrariam as conversas ativas para
+  baixo no instante em que o operador liga o recurso.
+- **`CB_CHANNEL_SAFE_COLUMNS` precisa listar toda coluna de configuração** —
+  fora dela o valor salva e some no reload (já mordeu com `default_agent_id`).
+- **Insert em BLOCO preenche coluna ausente com NULL**, então `from_device` e
+  `mentions_us` (NOT NULL) estouram se as linhas do lote não forem uniformes.
+  O caminho de produção grava uma linha por vez e não é afetado.
+
+⚠️ **PENDENTE — verificar na VPS se `maxDuration = 60` é aplicado de fato.**
+É convenção de plataforma serverless (Vercel/Lambda); num Next.js self-hosted
+em container provavelmente ninguém lê esse número. Se FOR aplicado, o que
+passar do teto é morto no meio e **a mensagem do cliente pode não existir** —
+sem erro, sem log. Com grupo o risco deixa de ser teórico (mais tráfego, e o
+download de mídia até 5 MB volta para dentro do orçamento). Conferir com:
+`docker service inspect crm_crm --format '{{json .Spec.TaskTemplate.ContainerSpec.Command}}{{json .Spec.TaskTemplate.ContainerSpec.Args}}'`
+Se for `node server.js` (standalone do Next), o teto não vale e o item morre.
+
 ⚠️ **A trilha de auditoria (912) é escrita por TRIGGER, não por código.**
 `cb_lead_events` registra criação/exclusão de negócio, mudança de etapa, de
 funil, de status e tag aplicada/removida. Foi para o banco porque há **6
@@ -363,9 +414,13 @@ mordem de novo em qualquer código novo:
   `909_cb_saude_das_conexoes`, `910_cb_negocio_e_conversa`,
   `911_cb_um_funil_por_vez`, `912_cb_historico_de_atividade`,
   `913_cb_revoke_de_public`, `914_cb_fecha_rpc_de_manutencao` e
-  `915_cb_fecha_rpc_de_manutencao_de_fato`.
-  ⚠️ O **906 não é buraco livre** — a branch `feat/grupos-whatsapp`, ainda
-  não mesclada, reivindica `906_cb_grupos.sql`.
+  `915_cb_fecha_rpc_de_manutencao_de_fato`, `906_cb_grupos` e
+  `916_cb_lid_do_canal`.
+  ⚠️ A `906` foi aplicada FORA DE ORDEM (antes da 907), e o histórico do
+  Supabase a registra com o nome antigo `904_cb_grupos` — ela nasceu numerada
+  como 904, colidiu com `904_cb_mensagem_do_aparelho` e o ARQUIVO foi
+  renumerado para 906; a entrada no histórico não foi mexida de propósito, por
+  ser metadado compartilhado com outra sessão ativa no mesmo banco.
   ⚠️ **Nunca deduzir o próximo número desta lista** — ela envelhece a cada
   branch em paralelo. Rodar `ls supabase/migrations/` **e** `list_migrations`
   imediatamente antes de criar o arquivo; os dois, porque já divergiram.

@@ -146,6 +146,10 @@
       "whatsappNotConnected": "WhatsApp® is not connected. Go to Settings to connect your account."
     },
     "conversationList": {
+      "typeAll": "All types",
+      "typeDirect": "Direct chats",
+      "typeGroups": "Groups",
+      "groupNoName": "Unnamed group",
       "searchPlaceholder": "Search conversations...",
       "filterAll": "All",
       "filterUnread": "Unread",
@@ -163,6 +167,10 @@
       "channelFilterAll": "All channels"
     },
     "messageThread": {
+      "unknownAuthor": "Unknown",
+      "groupMediaFailed": "Could not download the attachment.",
+      "groupNoName": "Unnamed group",
+      "groupParticipants": "{count, plural, one {# participant} other {# participants}}",
       "backToConversations": "Back to conversations",
       "hideContactPanel": "Hide contact panel",
       "showContactPanel": "Show contact panel",
@@ -235,6 +243,9 @@
       "sendingIn": "Sending in {seconds}s"
     },
     "bubble": {
+      "groupMediaTap": "Tap to download",
+      "groupMediaDownloading": "Downloading…",
+      "groupMediaRetry": "Try downloading again",
       "photo": "Photo",
       "video": "Video",
       "audio": "Audio",
@@ -330,6 +341,30 @@
       "rotateRight": "Rotate right",
       "zoomIn": "Zoom in",
       "zoomOut": "Zoom out"
+    },
+    "groupSidebar": {
+      "empty": "No group selected.",
+      "noName": "Unnamed group",
+      "participants": "{count, plural, one {# participant} other {# participants}}",
+      "announceOnly": "Admins only",
+      "weAreAdmin": "We're admin",
+      "aliasTitle": "Internal nickname",
+      "aliasHint": "Only your team sees it. Nobody in the group is notified.",
+      "aliasPlaceholder": "e.g. Silva case",
+      "aliasEmpty": "Set a nickname",
+      "realNameTitle": "Name on WhatsApp",
+      "realNameHint": "Changes the name for EVERY participant in the group.",
+      "realNameBlocked": "Only group admins can change this name.",
+      "realNamePlaceholder": "Group name",
+      "realNameAction": "Rename on WhatsApp",
+      "realNameDone": "Group name changed on WhatsApp.",
+      "channelTitle": "Connection",
+      "channelUnknown": "Unknown",
+      "syncAction": "Sync group data",
+      "syncing": "Syncing…",
+      "syncStarted": "Sync started. Details arrive shortly.",
+      "syncFailed": "Could not sync.",
+      "saveFailed": "Could not save."
     }
   },
   "Contacts": {
@@ -1705,7 +1740,10 @@
       "pipelineUnknown": "Pipeline configured — could not load its name.",
       "deleteLastChannelMeta": "This is the account only connection. Deleting it would leave the CRM without WhatsApp. To reconnect an official number, set it up again under \"Connect a number\" — nothing changes in your Meta account.",
       "deleteStopsPipeline": "The {pipeline} pipeline stops receiving new clients from this number — the setting is removed along with the connection.",
-      "deleteDealsLoseOrigin": "Deals created by this number stay in their pipeline but lose their origin record, disappearing from the dashboard breakdown by number."
+      "deleteDealsLoseOrigin": "Deals created by this number stay in their pipeline but lose their origin record, disappearing from the dashboard breakdown by number.",
+      "groupsLabel": "Receive group messages",
+      "groupsHint": "This number's groups start showing in the inbox alongside chats. No automation, flow or AI reply acts in a group.",
+      "groupsResyncWarning": "After saving, click Resync on this connection. Without it, messages arrive but join/leave notices don't."
     },
     "profile": {
       "title": "Your profile",

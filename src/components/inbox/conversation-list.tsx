@@ -5,12 +5,15 @@ import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
   matchesContactFilters,
+  matchesTypeFilter,
   normalizeConversations,
+  type TipoDeConversa,
 } from "@/lib/inbox/conversations";
+import { tituloDaConversa } from "@/lib/cb-groups/display";
 import { stripWhatsAppFormat } from "@/lib/inbox/whatsapp-format";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X } from "lucide-react";
+import { Search, ChevronDown, X, Users } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
@@ -67,6 +70,10 @@ export function ConversationList({
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
+  // Todas / só diretas / só grupos. Começa em "todas" porque grupo entra no
+  // mesmo inbox por decisão de produto — o filtro serve para focar, não para
+  // esconder por padrão.
+  const [tipo, setTipo] = useState<TipoDeConversa>("todas");
   const [loading, setLoading] = useState(true);
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
   // matches if its contact carries any selected tag), consistent with
@@ -106,7 +113,14 @@ export function ConversationList({
       const { data, error } = await supabase
         .from("conversations")
         .select(CONVERSATION_SELECT)
-        .order("last_message_at", { ascending: false });
+        // ⚠️ `nullsFirst: false` é load-bearing desde os grupos (906). Em
+        // ordem DECRESCENTE o Postgres põe NULL PRIMEIRO por padrão, e um
+        // grupo sincronizado em que ninguém falou ainda tem
+        // `last_message_at` nulo. Sem isto, ligar o interruptor num número
+        // com 58 grupos empurra as conversas ativas para baixo de 58 linhas
+        // vazias — o inbox vira inútil no exato instante em que o operador
+        // liga o recurso.
+        .order("last_message_at", { ascending: false, nullsFirst: false });
 
       if (cancelled) return;
 
@@ -160,6 +174,15 @@ export function ConversationList({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [conversations]);
 
+  // O seletor de tipo só aparece quando existe grupo. Numa conta sem nenhum —
+  // que é toda conta até alguém ligar o interruptor — ele não decide nada e
+  // só ocupa espaço. Mesma convenção do filtro de canal, que some com menos
+  // de 2 canais.
+  const temGrupos = useMemo(
+    () => conversations.some((c) => !!c.group_id),
+    [conversations],
+  );
+
   const tagsById = useMemo(() => {
     const m = new Map<string, Tag>();
     for (const t of tags) m.set(t.id, t);
@@ -168,6 +191,12 @@ export function ConversationList({
 
   const filtered = useMemo(() => {
     let result = conversations;
+
+    // Tipo (todas / diretas / grupos). Ortogonal ao resto — ver
+    // `matchesTypeFilter`.
+    if (tipo !== "todas") {
+      result = result.filter((c) => matchesTypeFilter(c, tipo));
+    }
 
     if (filter === "unread") {
       result = result.filter((c) => c.unread_count > 0);
@@ -197,13 +226,23 @@ export function ConversationList({
       result = result.filter((c) => {
         const name = c.contact?.name?.toLowerCase() ?? "";
         const phone = c.contact?.phone?.toLowerCase() ?? "";
+        // Sem isto, buscar não acha grupo NENHUM: grupo não tem contato, e
+        // os dois campos acima ficam vazios.
+        const grupo = c.group_id
+          ? `${c.group?.alias ?? ""} ${c.group?.subject ?? ""}`.toLowerCase()
+          : "";
         const lastMsg = stripWhatsAppFormat(c.last_message_text).toLowerCase();
-        return name.includes(q) || phone.includes(q) || lastMsg.includes(q);
+        return (
+          name.includes(q) ||
+          phone.includes(q) ||
+          grupo.includes(q) ||
+          lastMsg.includes(q)
+        );
       });
     }
 
     return result;
-  }, [conversations, filter, search, selectedTagIds, selectedCompany, selectedChannelId]);
+  }, [conversations, filter, tipo, search, selectedTagIds, selectedCompany, selectedChannelId]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -279,6 +318,47 @@ export function ConversationList({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Tipo: só aparece quando existe grupo na lista. */}
+          {temGrupos && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(
+                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                  tipo !== "todas"
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {tipo === "grupos"
+                  ? t("typeGroups")
+                  : tipo === "diretas"
+                    ? t("typeDirect")
+                    : t("typeAll")}
+                <ChevronDown className="h-3 w-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="border-border bg-popover">
+                {(
+                  [
+                    ["todas", t("typeAll")],
+                    ["diretas", t("typeDirect")],
+                    ["grupos", t("typeGroups")],
+                  ] as [TipoDeConversa, string][]
+                ).map(([valor, rotulo]) => (
+                  <DropdownMenuItem
+                    key={valor}
+                    onClick={() => setTipo(valor)}
+                    className={cn(
+                      "text-sm",
+                      tipo === valor ? "text-primary" : "text-popover-foreground",
+                    )}
+                  >
+                    {rotulo}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {/* Canal: só com 2+ números. Numa conta de um número o seletor
               seria ruído puro. */}
@@ -501,8 +581,15 @@ function ConversationItem({
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
-  const displayName = contact?.name || contact?.phone || t("unknown");
+  const ehGrupo = !!conversation.group_id;
+  const displayName = tituloDaConversa(conversation, {
+    semNome: t("groupNoName"),
+    desconhecido: t("unknown"),
+  });
   const initials = displayName.charAt(0).toUpperCase();
+  // Foto do grupo quando houver; senão o ícone de grupo faz o trabalho de
+  // dizer, à distância, que aquela linha não é um cliente.
+  const avatarUrl = ehGrupo ? conversation.group?.picture_url : contact?.avatar_url;
 
   const handleClick = useCallback(() => {
     onSelect(conversation);
@@ -524,12 +611,14 @@ function ConversationItem({
     >
       {/* Avatar */}
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-        {contact?.avatar_url ? (
+        {avatarUrl ? (
           <img
-            src={contact.avatar_url}
+            src={avatarUrl}
             alt={displayName}
             className="h-10 w-10 rounded-full object-cover"
           />
+        ) : ehGrupo ? (
+          <Users className="h-5 w-5 text-muted-foreground" />
         ) : (
           initials
         )}
@@ -538,8 +627,15 @@ function ConversationItem({
       {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
-            {displayName}
+          <span className="flex min-w-0 items-center gap-1.5">
+            {/* Ícone junto do nome mesmo quando há foto: com foto de grupo o
+                avatar sozinho não distingue de uma foto de perfil. */}
+            {ehGrupo && (
+              <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            )}
+            <span className="truncate text-sm font-medium text-foreground">
+              {displayName}
+            </span>
           </span>
           <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
         </div>

@@ -7,7 +7,7 @@ import type { Conversation, Contact, Tag } from "@/types";
  * flattens them onto `contact.tags`.
  */
 export const CONVERSATION_SELECT =
-  "*, contact:contacts(*, contact_tags(tags(*)))";
+  "*, contact:contacts(*, contact_tags(tags(*))), group:cb_groups(*)";
 
 /** Raw shape returned by {@link CONVERSATION_SELECT} before flattening. */
 type RawContact = Contact & { contact_tags?: { tags: Tag | null }[] };
@@ -58,6 +58,9 @@ export function matchesContactFilters(
   conversation: Conversation,
   { tagIds, company }: ContactFilters,
 ): boolean {
+  // Conversa de GRUPO não tem contato, então nunca casa com filtro de
+  // etiqueta ou empresa — e isso está certo: o filtro pergunta algo sobre uma
+  // PESSOA, e um grupo não é uma. Sair do resultado é a resposta honesta.
   if (tagIds.length > 0) {
     const contactTagIds = conversation.contact?.tags ?? [];
     if (!contactTagIds.some((t) => tagIds.includes(t.id))) return false;
@@ -68,4 +71,21 @@ export function matchesContactFilters(
   }
 
   return true;
+}
+
+/** O que a lista do inbox está mostrando. */
+export type TipoDeConversa = "todas" | "diretas" | "grupos";
+
+/**
+ * Recorte por tipo. Fica separado dos filtros de contato porque é ortogonal a
+ * eles: "só grupos" + "etiqueta VIP" não faz sentido nenhum (grupo não tem
+ * etiqueta), e misturar os dois num filtro só esconderia isso do operador.
+ */
+export function matchesTypeFilter(
+  conversation: Conversation,
+  tipo: TipoDeConversa,
+): boolean {
+  if (tipo === "todas") return true;
+  const ehGrupo = !!conversation.group_id;
+  return tipo === "grupos" ? ehGrupo : !ehGrupo;
 }
