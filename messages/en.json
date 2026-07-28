@@ -561,7 +561,8 @@
     "card": {
       "noContact": "No contact",
       "won": "Won",
-      "lost": "Lost"
+      "lost": "Lost",
+      "cameFrom": "Arrived through {channel}"
     },
     "form": {
       "editDeal": "Edit Deal",
@@ -603,7 +604,8 @@
       "toastMarkedLost": "Marked as lost",
       "toastReopened": "Deal reopened",
       "toastFailedDelete": "Failed to delete deal",
-      "toastDeleted": "Deal deleted"
+      "toastDeleted": "Deal deleted",
+      "pipeline": "Pipeline"
     },
     "settings": {
       "managePipeline": "Manage Pipeline",
@@ -1033,7 +1035,8 @@
         "matchType": "Match type",
         "matchContains": "Contains",
         "matchExact": "Exact",
-        "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed."
+        "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed.",
+        "channelGone": "The connection in this condition was removed — until you pick another, this condition will never be true."
       }
     }
   },
@@ -1698,7 +1701,9 @@
       "successorHint": "The default connection is used for broadcasts, templates and the API. Choose carefully: the office starts sending through it.",
       "restartLocalWarning": "You are accessing the CRM from a local address, but this number is the PRODUCTION one. Re-pairing from here takes the real office WhatsApp down.",
       "pipelineUnknown": "Pipeline configured — could not load its name.",
-      "deleteLastChannelMeta": "This is the account only connection. Deleting it would leave the CRM without WhatsApp. To reconnect an official number, set it up again under \"Connect a number\" — nothing changes in your Meta account."
+      "deleteLastChannelMeta": "This is the account only connection. Deleting it would leave the CRM without WhatsApp. To reconnect an official number, set it up again under \"Connect a number\" — nothing changes in your Meta account.",
+      "deleteStopsPipeline": "The {pipeline} pipeline stops receiving new clients from this number — the setting is removed along with the connection.",
+      "deleteDealsLoseOrigin": "Deals created by this number stay in their pipeline but lose their origin record, disappearing from the dashboard breakdown by number."
     },
     "profile": {
       "title": "Your profile",

@@ -59,7 +59,7 @@ type DB = SupabaseClient
  * profundamente genérico. O cast local resolve sem contaminar o tipo de
  * retorno — quem chama continua recebendo o builder original.
  */
-function porCanal<Q>(query: Q, channelId?: string | null): Q {
+export function porCanal<Q>(query: Q, channelId?: string | null): Q {
   if (!channelId) return query
   return (query as { eq: (coluna: string, valor: string) => Q }).eq(
     'channel_id',

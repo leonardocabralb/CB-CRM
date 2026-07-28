@@ -561,7 +561,8 @@
     "card": {
       "noContact": "Sem contato",
       "won": "Ganho",
-      "lost": "Perdido"
+      "lost": "Perdido",
+      "cameFrom": "Chegou pelo número {channel}"
     },
     "form": {
       "editDeal": "Editar negócio",
@@ -603,7 +604,8 @@
       "toastMarkedLost": "Marcado como perdido",
       "toastReopened": "Negócio reaberto",
       "toastFailedDelete": "Falha ao excluir o negócio",
-      "toastDeleted": "Negócio excluído"
+      "toastDeleted": "Negócio excluído",
+      "pipeline": "Funil"
     },
     "settings": {
       "managePipeline": "Gerenciar funil",
@@ -1033,7 +1035,8 @@
         "matchType": "Tipo de correspondência",
         "matchContains": "Contém",
         "matchExact": "Exata",
-        "closeConversationHint": "Define o status da conversa como \"encerrada\". Nenhuma configuração necessária."
+        "closeConversationHint": "Define o status da conversa como \"encerrada\". Nenhuma configuração necessária.",
+        "channelGone": "A conexão desta condição foi removida — enquanto ela não for trocada, esta condição nunca será verdadeira."
       }
     }
   },
@@ -1698,7 +1701,9 @@
       "successorHint": "A conexão padrão é a usada em disparos, modelos e na API. Escolha com atenção: o escritório passa a enviar por ela.",
       "restartLocalWarning": "Você está acessando o CRM por um endereço local, mas este número é o de PRODUÇÃO. Reparear daqui derruba o WhatsApp do escritório de verdade.",
       "pipelineUnknown": "Funil configurado — não foi possível carregar o nome.",
-      "deleteLastChannelMeta": "Esta é a única conexão da conta. Apagá-la deixaria o CRM sem WhatsApp. Para reconectar um número oficial, refaça a conexão em \"Conectar um número\" — nada muda na sua conta da Meta."
+      "deleteLastChannelMeta": "Esta é a única conexão da conta. Apagá-la deixaria o CRM sem WhatsApp. Para reconectar um número oficial, refaça a conexão em \"Conectar um número\" — nada muda na sua conta da Meta.",
+      "deleteStopsPipeline": "O funil {pipeline} para de receber clientes novos por este número — a configuração some junto com a conexão.",
+      "deleteDealsLoseOrigin": "Os negócios criados por este número continuam no funil, mas perdem o registro de origem e deixam de aparecer no recorte por número do painel."
     },
     "profile": {
       "title": "Seu perfil",

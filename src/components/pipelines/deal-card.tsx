@@ -4,6 +4,8 @@ import type { Deal, PipelineStage } from "@/types";
 import { Calendar, Check, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
+import { useChannels } from "@/hooks/use-channels";
+import { findChannel } from "@/lib/cb-channels/display";
 
 interface DealCardProps {
   deal: Deal;
@@ -39,6 +41,15 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
   const t = useTranslations("Pipelines.card");
   const contactLabel = deal.contact?.name || deal.contact?.phone || t("noContact");
   const assigneeLabel = deal.assignee?.full_name || null;
+
+  // Por qual número o cliente CHEGOU (908). Com um canal só a etiqueta não
+  // responde nada e vira poluição em todo card — mesma convenção do seletor
+  // de canal. Card sem `channel_id` (criado à mão, ou anterior à 908)
+  // simplesmente não exibe: inventar o canal padrão seria mentir sobre a
+  // origem, que é justamente o que esta etiqueta existe para contar.
+  const { channels } = useChannels();
+  const canalDeOrigem =
+    channels.length > 1 ? findChannel(channels, deal.channel_id) : null;
 
   return (
     <button
@@ -87,6 +98,14 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
           {initials(deal.contact?.name, deal.contact?.phone)}
         </span>
         <span className="truncate text-xs text-muted-foreground">{contactLabel}</span>
+        {canalDeOrigem && (
+          <span
+            title={t("cameFrom", { channel: canalDeOrigem.label })}
+            className="ml-auto shrink-0 truncate rounded border border-border bg-background/60 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+          >
+            {canalDeOrigem.label}
+          </span>
+        )}
       </div>
 
       <div className="mt-2 flex items-center justify-between">

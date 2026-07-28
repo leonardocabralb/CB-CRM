@@ -1195,6 +1195,28 @@ export function CbChannelsPanel() {
               {t('deleteDisablesAutomations')}
             </p>
 
+            {/* O funil desta conexão para de receber. `default_pipeline_id` é
+                a coluna dela, então some junto com a linha — e o roteamento
+                acaba sem nenhum sinal. Só aparece quando há funil configurado:
+                aviso sobre algo que não existe é ruído. */}
+            {confirmDelete?.default_pipeline_id && (
+              <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+                {t('deleteStopsPipeline', {
+                  pipeline:
+                    pipelines.find((p) => p.id === confirmDelete.default_pipeline_id)
+                      ?.name ?? '',
+                })}
+              </p>
+            )}
+
+            {/* E os negócios que ela criou perdem a origem: a FK da 908 é
+                ON DELETE SET NULL em `deals.channel_id`. Eles continuam no
+                funil — mas somem de qualquer recorte por número no painel,
+                que é o que a etiqueta "Originados neste número" mede. */}
+            <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+              {t('deleteDealsLoseOrigin')}
+            </p>
+
             {/* Canal padrão: a conta não pode ficar sem espelho, e trocar o
                 número de envio do escritório não pode ser efeito colateral
                 silencioso de um clique em "excluir". Quem sucede vai nomeado. */}

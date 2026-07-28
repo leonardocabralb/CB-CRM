@@ -425,9 +425,17 @@ export interface PipelineStage {
 
 export type DealStatus = 'open' | 'won' | 'lost';
 
+/** Quem criou o negócio. Espelha o CHECK de `deals.source` (migration 908). */
+export type DealSource = 'manual' | 'automation' | 'channel';
+
 export interface Deal {
   id: string;
-  user_id: string;
+  /**
+   * Anulável desde a 908 (`ON DELETE SET NULL`): os cards criados pelo
+   * roteador pertencem todos ao dono da conta, e o CASCADE anterior apagaria
+   * o funil inteiro se essa pessoa saísse do `auth.users`.
+   */
+  user_id: string | null;
   pipeline_id: string;
   stage_id: string;
   /**
@@ -435,7 +443,19 @@ export interface Deal {
    * contact is deleted (ON DELETE SET NULL). History preserved.
    */
   contact_id: string | null;
-  conversation_id?: string;
+  /**
+   * Conversa de onde o card nasceu (escrito desde a 910) — é o caminho de
+   * volta do Kanban para o atendimento. `null` em negócio criado à mão antes
+   * da 910 e quando a conversa é apagada.
+   */
+  conversation_id?: string | null;
+  /**
+   * Por qual número o cliente CHEGOU (migration 908). É histórico: NÃO muda
+   * quando o card é movido para outro funil. `null` em negócio criado à mão.
+   */
+  channel_id?: string | null;
+  /** Quem criou o card (migration 908). */
+  source?: DealSource;
   assigned_to?: string;
   title: string;
   value: number;
