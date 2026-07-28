@@ -47,7 +47,7 @@ export async function POST(request: Request, { params }: Params) {
     // Confirm the conversation is in the caller's account before writing.
     const { data: conv, error: convErr } = await supabase
       .from('conversations')
-      .select('id')
+      .select('id, group_id')
       .eq('id', conversationId)
       .eq('account_id', accountId)
       .maybeSingle()
@@ -60,6 +60,16 @@ export async function POST(request: Request, { params }: Params) {
     }
     if (!conv) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    }
+    // Grupo está fora da IA por decisão de produto (migration 906). A UI
+    // esconde o interruptor; isto é a segunda tranca. Depois do not-found:
+    // antes dele, a checagem só não estourava por causa do `?.`, e bastava
+    // alguém "limpar" o encadeamento opcional para virar crash.
+    if (conv.group_id) {
+      return NextResponse.json(
+        { error: 'AI auto-reply is not available in group conversations' },
+        { status: 400 },
+      )
     }
 
     const update: Record<string, unknown> = { ai_autoreply_disabled: paused }

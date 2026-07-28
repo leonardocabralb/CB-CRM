@@ -41,6 +41,25 @@ describe('serializeConversation', () => {
     const semCanal = base as unknown as Conversation;
     expect(serializeConversation(semCanal).channel_id).toBeNull();
   });
+
+  it('não explode com conversa de grupo (contato nulo)', () => {
+    // As rotas da v1 filtram `.is('group_id', null)`, então isto NÃO deve
+    // acontecer. O teste existe para a rota nova que alguém escrever amanhã
+    // esquecendo o filtro: o pior caso tem que ser um campo nulo no JSON, não
+    // um 500 derrubando a integração de quem consome.
+    const grupo = {
+      id: 'conv-grupo',
+      contact_id: null,
+      group_id: 'g1',
+      status: 'open',
+      contact: null,
+    } as unknown as Conversation;
+
+    const out = serializeConversation(grupo);
+    expect(out.contact_id).toBeNull();
+    expect(out.contact).toBeNull();
+    expect(out.id).toBe('conv-grupo');
+  });
 });
 
 describe('serializeMessage', () => {

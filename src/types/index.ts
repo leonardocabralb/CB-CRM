@@ -160,7 +160,13 @@ export type ConversationStatus = 'open' | 'pending' | 'closed';
 export interface Conversation {
   id: string;
   user_id: string;
-  contact_id: string;
+  /**
+   * NULL em conversa de GRUPO (migration 906 tirou o NOT NULL). O tipo é
+   * anulável de propósito: fingir que sempre existe daria um `string` que na
+   * verdade é null em tempo de execução, sem o compilador avisar ninguém.
+   * O par contato/grupo é exclusivo — ver `group_id` abaixo.
+   */
+  contact_id: string | null;
   status: ConversationStatus;
   assigned_agent_id?: string;
   last_message_text?: string;
@@ -168,7 +174,7 @@ export interface Conversation {
   unread_count: number;
   created_at: string;
   updated_at: string;
-  contact?: Contact;
+  contact?: Contact | null;
   /**
    * AI auto-reply state for this thread (migration 029 + 033):
    *  - `ai_autoreply_disabled` — the bot is paused here (a human took
@@ -189,6 +195,12 @@ export interface Conversation {
    */
   channel_id?: string | null;
   channel_pinned?: boolean;
+  /**
+   * Grupos (migration 906): preenchido quando a conversa é de um grupo de
+   * WhatsApp. O banco garante o ou-um-ou-outro pelo CHECK
+   * `cb_conv_contato_xor_grupo` — ver `contact_id` acima.
+   */
+  group_id?: string | null;
 }
 
 // ============================================================
@@ -223,7 +235,13 @@ export type ContentType =
   | 'location'
   | 'template'
   /** Customer tapped a reply button or list row on a message we sent. */
-  | 'interactive';
+  | 'interactive'
+  /**
+   * Aviso do próprio WhatsApp dentro de um grupo ("Fulano entrou", "o nome
+   * mudou"). Não é mensagem de ninguém: renderiza como faixa cinza no meio da
+   * conversa, em ordem cronológica. Migration 906.
+   */
+  | 'system';
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface Message {
@@ -292,6 +310,23 @@ export interface Message {
   edited_at?: string | null;
   /** Texto anterior à última edição — o WhatsApp não guarda histórico. */
   text_before_edit?: string | null;
+  /**
+   * Quem falou, quando a conversa é de GRUPO. Desnormalizado de propósito —
+   * sem FK para `contacts`, senão um grupo de 80 pessoas criaria 80 contatos
+   * no CRM na primeira mensagem. Ambos NULL em conversa 1:1. Migration 906.
+   */
+  group_sender_jid?: string | null;
+  group_sender_name?: string | null;
+  /** Marcaram o nosso número nesta mensagem de grupo. Migration 906. */
+  mentions_us?: boolean;
+  /**
+   * Estado do anexo quando ele NÃO está no nosso Storage. `null` = sem mídia
+   * ou já baixada (aí `media_url` está preenchido); `'pending'` = dá para
+   * buscar sob demanda; `'failed'` = tentou e falhou, dá para tentar de novo;
+   * `'too_large'` = acima do teto de 16 MB do bucket, não adianta tentar.
+   * Migration 906.
+   */
+  media_state?: 'pending' | 'failed' | 'too_large' | null;
 }
 
 export type ReactionActor = 'customer' | 'agent';
