@@ -77,6 +77,11 @@ interface CbChannel {
   /** Funil em que cai quem escrever neste número (migration 908). */
   default_pipeline_id: string | null;
   default_stage_id: string | null;
+  /**
+   * Recebe mensagem de grupo (migration 906). Só existe em conexão por QR
+   * Code — a API oficial da Meta não entrega grupo.
+   */
+  groups_enabled?: boolean;
 }
 
 interface PipelineOption {
@@ -141,6 +146,9 @@ export function CbChannelsPanel() {
   const [configLabel, setConfigLabel] = useState('');
   const [configPipeline, setConfigPipeline] = useState('');
   const [configStage, setConfigStage] = useState('');
+  // Grupos neste canal (906). Padrão vem do banco; ver o aviso de
+  // ressincronização no diálogo.
+  const [configGrupos, setConfigGrupos] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [pipelines, setPipelines] = useState<PipelineOption[]>([]);
@@ -412,6 +420,7 @@ export function CbChannelsPanel() {
     setConfigLabel(channel.label);
     setConfigPipeline(channel.default_pipeline_id ?? '');
     setConfigStage(channel.default_stage_id ?? '');
+    setConfigGrupos(channel.groups_enabled === true);
   };
 
   const handleConfigure = async () => {
@@ -427,6 +436,7 @@ export function CbChannelsPanel() {
           // no roteamento). String vazia = "sem funil".
           default_pipeline_id: configPipeline || null,
           default_stage_id: configPipeline ? configStage || null : null,
+          groups_enabled: configGrupos,
         }),
       });
       const payload = await res.json();
@@ -1137,6 +1147,40 @@ export function CbChannelsPanel() {
               <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
                 {t('pipelineWarning')}
               </p>
+            )}
+
+            {/* Grupos (906). Só em conexão por QR Code: a API oficial da Meta
+                não entrega mensagem de grupo, então oferecer o interruptor num
+                canal Meta prometeria algo impossível. */}
+            {configTarget?.kind === 'evolution' && (
+              <div className="rounded-md border border-border p-3">
+                <label className="flex cursor-pointer items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={configGrupos}
+                    onChange={(e) => setConfigGrupos(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-foreground">
+                      {t('groupsLabel')}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {t('groupsHint')}
+                    </span>
+                  </span>
+                </label>
+                {/* Ligar a coluna não basta: a instância JÁ conectada só passa
+                    a receber os eventos de grupo depois que o webhook é
+                    reaplicado, e quem faz isso é o botão Ressincronizar. Sem
+                    este aviso, entra mensagem de grupo mas não entra aviso de
+                    quem entrou ou saiu — e ninguém liga uma coisa à outra. */}
+                {configGrupos && !configTarget.groups_enabled && (
+                  <p className="mt-2 rounded-md bg-amber-500/10 p-2 text-xs text-amber-600 dark:text-amber-400">
+                    {t('groupsResyncWarning')}
+                  </p>
+                )}
+              </div>
             )}
           </div>
           <DialogFooter>

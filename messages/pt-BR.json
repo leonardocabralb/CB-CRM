@@ -341,6 +341,30 @@
       "rotateRight": "Girar à direita",
       "zoomIn": "Aproximar",
       "zoomOut": "Afastar"
+    },
+    "groupSidebar": {
+      "empty": "Nenhum grupo selecionado.",
+      "noName": "Grupo sem nome",
+      "participants": "{count, plural, one {# participante} other {# participantes}}",
+      "announceOnly": "Só admins enviam",
+      "weAreAdmin": "Somos admin",
+      "aliasTitle": "Apelido interno",
+      "aliasHint": "Só o escritório vê. Ninguém no grupo é notificado.",
+      "aliasPlaceholder": "Ex.: Caso Silva",
+      "aliasEmpty": "Definir um apelido",
+      "realNameTitle": "Nome no WhatsApp",
+      "realNameHint": "Muda o nome para TODOS os participantes do grupo.",
+      "realNameBlocked": "Só administradores do grupo podem mudar este nome.",
+      "realNamePlaceholder": "Nome do grupo",
+      "realNameAction": "Renomear no WhatsApp",
+      "realNameDone": "Nome do grupo alterado no WhatsApp.",
+      "channelTitle": "Conexão",
+      "channelUnknown": "Não identificada",
+      "syncAction": "Sincronizar dados do grupo",
+      "syncing": "Sincronizando…",
+      "syncStarted": "Sincronização iniciada. Os detalhes chegam em instantes.",
+      "syncFailed": "Não foi possível sincronizar.",
+      "saveFailed": "Não foi possível salvar."
     }
   },
   "Contacts": {
@@ -1716,7 +1740,10 @@
       "pipelineUnknown": "Funil configurado — não foi possível carregar o nome.",
       "deleteLastChannelMeta": "Esta é a única conexão da conta. Apagá-la deixaria o CRM sem WhatsApp. Para reconectar um número oficial, refaça a conexão em \"Conectar um número\" — nada muda na sua conta da Meta.",
       "deleteStopsPipeline": "O funil {pipeline} para de receber clientes novos por este número — a configuração some junto com a conexão.",
-      "deleteDealsLoseOrigin": "Os negócios criados por este número continuam no funil, mas perdem o registro de origem e deixam de aparecer no recorte por número do painel."
+      "deleteDealsLoseOrigin": "Os negócios criados por este número continuam no funil, mas perdem o registro de origem e deixam de aparecer no recorte por número do painel.",
+      "groupsLabel": "Receber mensagens de grupo",
+      "groupsHint": "Os grupos deste número passam a aparecer no inbox, junto das conversas. Nenhuma automação, fluxo ou resposta de IA age em grupo.",
+      "groupsResyncWarning": "Depois de salvar, clique em Ressincronizar nesta conexão. Sem isso, as mensagens chegam mas os avisos de quem entrou ou saiu não."
     },
     "profile": {
       "title": "Seu perfil",
