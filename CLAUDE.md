@@ -285,27 +285,37 @@ por fora deles. O que morde código novo:
   nessa coluna, que é um UPDATE, e UPDATE revalida CHECK — exigir o contato
   faria a exclusão de contato falhar.
 
-⚠️ **`REVOKE EXECUTE ... FROM anon, authenticated` NÃO REVOGA NADA.** No
-Postgres, `EXECUTE` em função nasce concedido a **PUBLIC**; `anon` e
-`authenticated` nunca têm concessão própria, herdam de PUBLIC. Revogar de quem
-não tem remove zero privilégios — e o `proacl` continua com `=X/postgres`, onde
-o `=X` sem papel antes do `=` é justamente PUBLIC. A 903 fez isso, a 912
-repetiu, e as cinco funções seguiram executáveis até a **913** corrigir com
-`FROM PUBLIC`. Em função nova, escreva sempre:
+⚠️ **Fechar `EXECUTE` de função exige revogar de PUBLIC *e* dos papéis — e
+conferir depois.** A forma da concessão **varia por função**, conforme o
+`ALTER DEFAULT PRIVILEGES` que valia quando ela nasceu, e olhar só uma das duas
+engana. Os dois formatos que existem hoje neste banco:
 
-```sql
-REVOKE EXECUTE ON FUNCTION minha_funcao(args) FROM PUBLIC;
+```
+funções cb_* (901/903/912)
+  {=X/postgres, postgres=X/postgres, service_role=X/postgres}
+   ^^ `=X` sem papel antes do `=` é PUBLIC — `FROM anon, authenticated` não tira nada
+
+merge_duplicate_* (upstream 022/036)
+  {postgres=X/postgres, anon=X/postgres, authenticated=X/postgres, ...}
+   ^^ concessão explícita por papel, sem PUBLIC — `FROM PUBLIC` não tira nada
 ```
 
-- Conferir o resultado, não a intenção:
-  `SELECT has_function_privilege('authenticated', 'minha_funcao(uuid)', 'EXECUTE');`
-  Ou rodar `get_advisors(type: 'security')` — os lints 0028/0029 pegam
-  exatamente isto, inclusive em função que retorna `trigger`.
-- Revogar de PUBLIC **não impede o trigger de disparar**: o privilégio é
-  checado no `CREATE TRIGGER`, não a cada disparo. Verificado com
-  insert/update/delete reais.
-- `service_role` tem concessão **explícita** (`service_role=X`) e não é
-  atingido — o caminho server-side continua funcionando.
+Este erro já foi cometido **três** vezes: a 903 e a 912 revogaram só dos papéis
+(sem efeito, cinco funções seguiram abertas até a **913**); a 914 revogou só de
+PUBLIC (sem efeito, corrigido pela **915**). Escreva sempre as duas metades:
+
+```sql
+REVOKE EXECUTE ON FUNCTION minha_funcao(args) FROM PUBLIC, anon, authenticated;
+SELECT has_function_privilege('anon', 'minha_funcao(uuid)', 'EXECUTE');  -- tem de dar false
+```
+
+- **Confira o resultado, nunca a intenção.** Só o teste pegou os dois enganos.
+  `get_advisors(type: 'security')` também pega (lints 0028/0029), inclusive em
+  função que retorna `trigger`.
+- Revogar **não impede o trigger de disparar**: o privilégio é checado no
+  `CREATE TRIGGER`, não a cada disparo. Verificado com escritas reais.
+- `service_role` tem concessão explícita e não é atingido — o caminho
+  server-side continua funcionando.
 
 ⚠️ **A 903 removeu dois índices únicos.** `message_templates(user_id, name,
 language)` e `ai_configs(account_id)` viraram pares de índices **parciais**
@@ -351,8 +361,9 @@ mordem de novo em qualquer código novo:
   guarda o nome antigo), `905_cb_mensagem_apagada_editada`,
   `907_cb_exclusao_solicitada`, `908_cb_funil_por_canal`,
   `909_cb_saude_das_conexoes`, `910_cb_negocio_e_conversa`,
-  `911_cb_um_funil_por_vez`, `912_cb_historico_de_atividade` e
-  `913_cb_revoke_de_public`.
+  `911_cb_um_funil_por_vez`, `912_cb_historico_de_atividade`,
+  `913_cb_revoke_de_public`, `914_cb_fecha_rpc_de_manutencao` e
+  `915_cb_fecha_rpc_de_manutencao_de_fato`.
   ⚠️ O **906 não é buraco livre** — a branch `feat/grupos-whatsapp`, ainda
   não mesclada, reivindica `906_cb_grupos.sql`.
   ⚠️ **Nunca deduzir o próximo número desta lista** — ela envelhece a cada

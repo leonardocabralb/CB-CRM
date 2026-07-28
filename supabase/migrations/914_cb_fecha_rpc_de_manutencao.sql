@@ -1,0 +1,34 @@
+-- ============================================================
+-- 914 — Fecha as RPCs de manutenção do upstream para `anon`/`authenticated`
+--
+-- ⚠️ ACHADO: `merge_duplicate_contacts()` e `merge_duplicate_conversations()`
+-- (upstream, migrations 022 e 036) são `SECURITY DEFINER`, **não recebem
+-- argumento nenhum** e **não checam quem está chamando** — nem `auth.uid()`,
+-- nem papel, nem conta. Por dentro elas varrem `GROUP BY account_id` e
+-- fundem duplicatas em TODAS as contas do banco.
+--
+-- Como `EXECUTE` nasce concedido a PUBLIC (ver a 913 e a regra no CLAUDE.md),
+-- elas estavam publicadas pelo PostgREST em
+--     POST /rest/v1/rpc/merge_duplicate_contacts
+--     POST /rest/v1/rpc/merge_duplicate_conversations
+-- alcançáveis com a chave `anon` — que é pública por definição, vai no bundle
+-- do navegador. Ou seja: **escrita não autenticada que altera contatos e
+-- conversas de todas as contas**. Não é vazamento (nada é devolvido além da
+-- contagem), é integridade: um estranho podia forçar a fusão de contatos do
+-- escritório.
+--
+-- São funções de manutenção de uma vez só: as próprias migrations 022 e 036 as
+-- chamam depois de criar. **Nenhum call site em `src/`** (conferido com grep em
+-- src/, mcp-server/ e scripts/), então fechar não tira nada do app.
+--
+-- `service_role` mantém a concessão explícita — se um dia for preciso rodar a
+-- deduplicação de novo, o caminho server-side (ou o SQL Editor, como postgres)
+-- continua aberto.
+--
+-- `rls_auto_enable()` fica de fora de propósito: retorna `event_trigger`, e o
+-- Postgres recusa chamá-la fora de um evento de DDL. O lint 0028 a aponta, mas
+-- ali não há caminho de chamada.
+-- ============================================================
+
+REVOKE EXECUTE ON FUNCTION merge_duplicate_contacts() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION merge_duplicate_conversations() FROM PUBLIC;
