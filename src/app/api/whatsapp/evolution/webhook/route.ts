@@ -22,6 +22,13 @@ import {
   persistGroupMessage,
   LIMITE_DOWNLOAD_AUTOMATICO_BYTES,
 } from '@/lib/cb-groups/persist';
+import {
+  descreverParticipantes,
+  nomesConhecidos,
+  parseGroupsUpsert,
+  parseParticipantsUpdate,
+  registrarAvisoDeSistema,
+} from '@/lib/cb-groups/system-events';
 import { atualizarPreviaDaConversa } from '@/lib/inbox/conversation-preview';
 import { resolveInboundEvolutionChannel } from '@/lib/cb-channels/resolve-inbound';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
@@ -268,16 +275,35 @@ export async function POST(request: Request) {
               '[evolution/webhook] anexo baixado mas não pôde ser ligado à mensagem:',
               error.message,
             );
+            continue;
+          }
+
+          // Ponteiro cumpriu o papel: o arquivo está no nosso Storage e não
+          // se busca de novo. Apagar não é faxina — o payload do Baileys
+          // carrega as CHAVES DE DECIFRAGEM da mídia, e guardá-las depois de
+          // não precisar mais é superfície de risco de graça. Sobram na
+          // tabela só os anexos realmente pendentes ou falhos.
+          if (pendente.ehGrupo) {
+            await supabaseAdmin()
+              .from('cb_message_media_ref')
+              .delete()
+              .eq('message_id', pendente.messageId);
           }
         } catch (err) {
           // A mensagem já está gravada — aqui só se perde o anexo.
           console.error('[evolution/webhook] anexo falhou:', err);
           if (pendente.ehGrupo) {
-            await supabaseAdmin()
-              .from('messages')
-              .update({ media_state: 'failed' })
-              .eq('id', pendente.messageId)
-              .then(undefined, () => {});
+            // O `catch` de fora não protege o que roda DENTRO dele: sem este
+            // try, uma falha aqui escaparia do laço e mataria os anexos dos
+            // itens seguintes.
+            try {
+              await supabaseAdmin()
+                .from('messages')
+                .update({ media_state: 'failed' })
+                .eq('id', pendente.messageId);
+            } catch {
+              // Nada a fazer: o anexo já estava perdido.
+            }
           }
         }
       }
@@ -495,6 +521,65 @@ export async function POST(request: Request) {
         );
       }
     });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ---- GRUPOS ----
+  // Os dois eventos abaixo só valem quando o canal tem grupos ligados. Sem o
+  // interruptor a gente nem consulta o banco: um número com grupos desligados
+  // não deve gastar trabalho com movimentação de grupo nenhuma.
+
+  if (event === 'group.participants.update' && route.groupsEnabled) {
+    const atualizacao = parseParticipantsUpdate(body.data);
+    if (atualizacao) {
+      after(async () => {
+        try {
+          const nomes = await nomesConhecidos(
+            supabaseAdmin(),
+            route.accountId,
+            atualizacao.jids,
+          );
+          const texto = descreverParticipantes(atualizacao.acao, atualizacao.jids, nomes);
+          if (!texto) return;
+          await registrarAvisoDeSistema(supabaseAdmin(), {
+            accountId: route.accountId,
+            groupJid: atualizacao.groupJid,
+            texto,
+            channelId: route.channelId,
+          });
+        } catch (err) {
+          // Aviso é acessório: perdê-lo não pode derrubar nada.
+          console.error('[evolution/webhook] aviso de participantes falhou:', err);
+        }
+      });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (event === 'groups.upsert' && route.groupsEnabled) {
+    const grupos = parseGroupsUpsert(body.data);
+    if (grupos.length) {
+      after(async () => {
+        for (const g of grupos) {
+          if (!g.subject) continue;
+          try {
+            // Só ATUALIZA o nome de grupo que já conhecemos. Criar a linha
+            // aqui poria no inbox um grupo em que ninguém nunca falou — e o
+            // que povoa a lista é a sincronização, não este evento.
+            const { error } = await supabaseAdmin()
+              .from('cb_groups')
+              .update({ subject: g.subject, synced_at: new Date().toISOString() })
+              .eq('account_id', route.accountId)
+              .eq('jid', g.jid);
+            if (error) {
+              console.warn('[evolution/webhook] atualizar nome do grupo falhou:', error.message);
+            }
+          } catch (err) {
+            console.error('[evolution/webhook] groups.upsert falhou:', err);
+          }
+        }
+      });
+    }
     return NextResponse.json({ ok: true });
   }
 
