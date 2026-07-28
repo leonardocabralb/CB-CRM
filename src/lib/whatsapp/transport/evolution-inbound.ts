@@ -26,6 +26,13 @@ export interface EvolutionMessageKey {
   senderPn?: string;
   participantPn?: string;
   participantAlt?: string;
+  /**
+   * O endereço que `remoteJid` tinha ANTES de a Evolution reescrevê-lo de
+   * `@lid` para telefone. Serve para AGIR sobre a mensagem (revogar, editar):
+   * do lado do WhatsApp a conversa continua endereçada por LID, e a
+   * revogação mandada para o telefone não acha nada. Ver migration 917.
+   */
+  previousRemoteJid?: string;
 }
 
 export interface EvolutionUpsert {
@@ -221,6 +228,14 @@ export function normalizeUpsert(
     name: item.pushName || phone,
     providerMessageId: id,
     remoteJid: jid,
+    // O endereço ORIGINAL, antes de a Evolution reescrever `@lid` → telefone.
+    // Sem ele não dá para revogar nem editar mensagem de conversa migrada: a
+    // revogação sairia para a conversa "telefone" e a mensagem vive na
+    // "@lid". Só grava quando é de fato um LID — em conversa não migrada o
+    // campo nem vem. Ver migration 917.
+    remoteJidLid: isLidJid(item.key?.previousRemoteJid ?? '')
+      ? (item.key?.previousRemoteJid ?? null)
+      : null,
     timestamp: ts,
     contentType: detectContentType(item.message),
     text: extractText(item.message),

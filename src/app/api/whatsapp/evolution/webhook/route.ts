@@ -380,48 +380,46 @@ export async function POST(request: Request) {
     const exclusoes = parseDeleteEvent(body.data);
     if (exclusoes.length) {
       after(async () => {
-        // Este é o ÚNICO lugar que pode preencher `deleted_at`: é a única
-        // confirmação que existe de que a mensagem foi mesmo revogada. O
-        // botão de apagar do CRM só registra o PEDIDO, em
-        // `delete_requested_at` — ver a nota na rota /api/whatsapp/message.
+        // ⚠️ SÓ CONFIRMA EXCLUSÃO QUE VEIO DE FORA.
         //
-        // São dois UPDATEs porque a AUTORIA tem duas origens diferentes, e
-        // misturá-las reescreve o histórico do atendimento.
+        // Havia aqui um segundo UPDATE que carimbava `deleted_at` nas
+        // exclusões que o PRÓPRIO CRM tinha pedido, tratando este evento
+        // como confirmação. Não é: quando o pedido parte da API da Evolution,
+        // ela emite `messages.delete` como ECO do próprio pedido — antes e
+        // independentemente de o WhatsApp ter revogado coisa alguma.
+        //
+        // Medido em produção em 28/07/2026: uma mensagem enviada pelo celular,
+        // apagada pelo CRM, ficou com `deleted_at` preenchido e seguiu
+        // intacta no aparelho. O eco confirmou uma revogação que não
+        // aconteceu — exatamente a mentira que a separação
+        // "solicitada × apagada" existe para impedir.
+        //
+        // Consequência aceita: exclusão pedida pelo CRM fica em "Exclusão
+        // solicitada" e não vira "Apagada" sozinha. É a verdade — o WhatsApp
+        // não emite confirmação de revogação para quem a pediu. Prometer
+        // menos e cumprir vale mais que o contrário.
         const conversasAtingidas = new Set<string>();
         for (const { providerMessageId, fromMe } of exclusoes) {
-          const agora = new Date().toISOString();
-
-          // (1) Confirmação de exclusão que NÓS pedimos. Só carimba a
-          // confirmação: `deleted_by` já é 'agent' e não pode ser rebaixado.
-          // A Evolution nem sempre manda `fromMe` neste payload, e sem esta
-          // separação a exclusão feita pelo escritório passaria a aparecer
-          // como "Apagada pelo contato".
-          const { data: nossas, error: erroNosso } = await supabaseAdmin()
+          const { data: externas, error } = await supabaseAdmin()
             .from('messages')
-            .update({ deleted_at: agora })
+            .update({
+              deleted_at: new Date().toISOString(),
+              // `fromMe` é a única fonte sobre a autoria aqui, e ausente
+              // significa "o contato".
+              deleted_by: fromMe ? 'agent' : 'customer',
+            })
             .eq('message_id', providerMessageId)
             .is('deleted_at', null)
-            .not('delete_requested_at', 'is', null)
-            .select('conversation_id');
-
-          // (2) Exclusão que veio de fora — o contato, o celular pareado ou
-          // outro cliente do WhatsApp. Aqui `fromMe` é a única fonte sobre
-          // a autoria, e ausente significa "o contato".
-          const { data: externas, error: erroExterno } = await supabaseAdmin()
-            .from('messages')
-            .update({ deleted_at: agora, deleted_by: fromMe ? 'agent' : 'customer' })
-            .eq('message_id', providerMessageId)
-            .is('deleted_at', null)
+            // O filtro que faz o eco do nosso próprio pedido ser ignorado.
             .is('delete_requested_at', null)
             .select('conversation_id');
 
-          const falha = erroNosso ?? erroExterno;
-          if (falha) {
-            console.error('[evolution/webhook] marcar exclusão falhou:', falha.message);
+          if (error) {
+            console.error('[evolution/webhook] marcar exclusão falhou:', error.message);
           }
           // O casamento é por `message_id` sem escopo de conta, então pode
           // atingir mais de uma linha — daí o Set em vez de uma variável.
-          for (const linha of [...(nossas ?? []), ...(externas ?? [])]) {
+          for (const linha of externas ?? []) {
             if (linha?.conversation_id) conversasAtingidas.add(linha.conversation_id);
           }
         }

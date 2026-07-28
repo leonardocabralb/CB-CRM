@@ -48,6 +48,12 @@ export interface NormalizedInbound {
   providerMessageId: string;
   /** Baileys chat JID, for later reaction/reply-key reconstruction. */
   remoteJid?: string;
+  /**
+   * Endereço `@lid` da conversa, quando a Evolution reescreveu `remoteJid`
+   * para o telefone. É o endereço para AGIR sobre a mensagem (revogar,
+   * editar); `remoteJid` é o para IDENTIFICAR a conversa. Migration 917.
+   */
+  remoteJidLid?: string | null;
   /** Unix seconds. */
   timestamp: number;
   contentType: 'text' | 'image' | 'video' | 'audio' | 'document' | 'location';
@@ -210,6 +216,9 @@ export async function persistDeviceMessage(
       media_url: m.mediaUrl ?? null,
       message_id: m.providerMessageId,
       remote_jid: m.remoteJid ?? null,
+      // Endereço para AGIR sobre a mensagem quando a conversa migrou para
+      // LID — ver migration 917. NULL é o caso normal.
+      remote_jid_lid: m.remoteJidLid ?? null,
       from_me: true,
       from_device: true,
       // Saiu do aparelho, logo o WhatsApp já a entregou à rede. O ACK
@@ -300,6 +309,9 @@ export async function persistInboundMessage(
       media_url: m.mediaUrl ?? null,
       message_id: m.providerMessageId,
       remote_jid: m.remoteJid ?? null,
+      // Endereço para AGIR sobre a mensagem quando a conversa migrou para
+      // LID — ver migration 917. NULL é o caso normal.
+      remote_jid_lid: m.remoteJidLid ?? null,
       from_me: false,
       status: 'delivered',
       created_at: new Date(m.timestamp * 1000).toISOString(),
