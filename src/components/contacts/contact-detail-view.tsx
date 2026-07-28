@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useChannels } from '@/hooks/use-channels';
 import { metaChannels, preferredChannel } from '@/lib/cb-channels/display';
 import { ChannelSelect } from '@/components/channels/channel-select';
+import { ActivityHistory } from '@/components/lead-events/activity-history';
 import { formatCurrency } from '@/lib/currency';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag, ContactNote, CustomField, ContactCustomValue, Deal, MessageTemplate } from '@/types';
@@ -59,6 +60,7 @@ export function ContactDetailView({
   onUpdated,
 }: ContactDetailViewProps) {
   const t = useTranslations('Contacts.detailView');
+  const tEventos = useTranslations('LeadEvents');
   const supabase = createClient();
   const { accountId, defaultCurrency } = useAuth();
 
@@ -478,7 +480,13 @@ export function ContactDetailView({
 
             {/* Tabs */}
             <Tabs defaultValue="details" className="flex-1 flex flex-col min-h-0">
-              <TabsList className="bg-muted/50 border-b border-border mx-4 mt-3">
+              {/* `flex-wrap h-auto`: com 5 abas a lista JÁ estourava a largura
+                  do painel e cortava "Campos personalizados" pela metade; a
+                  aba de Histórico levaria "Negócios" junto para fora de vista.
+                  Quebrar em duas linhas mostra todas — a barra rolar
+                  horizontalmente esconderia abas sem nenhuma pista de que
+                  existem. */}
+              <TabsList className="bg-muted/50 border-b border-border mx-4 mt-3 flex-wrap h-auto">
                 <TabsTrigger
                   value="details"
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
@@ -508,6 +516,12 @@ export function ContactDetailView({
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
                 >
                   {t('tabs.deals')}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="history"
+                  className="data-active:bg-muted data-active:text-primary text-muted-foreground"
+                >
+                  {tEventos('title')}
                 </TabsTrigger>
               </TabsList>
 
@@ -770,6 +784,14 @@ export function ContactDetailView({
                     ))}
                   </div>
                 )}
+              </TabsContent>
+
+              {/* Histórico — a trilha auditável completa (migration 912).
+                  Aba própria em vez de rodapé da aba de Negócios porque ela
+                  cobre também as tags, e porque é a tela para onde se vai
+                  quando a pergunta é "quem mudou isso, e de quê para quê". */}
+              <TabsContent value="history" className="flex-1 overflow-y-auto px-4 py-3">
+                <ActivityHistory contactId={contactId} />
               </TabsContent>
             </Tabs>
           </div>

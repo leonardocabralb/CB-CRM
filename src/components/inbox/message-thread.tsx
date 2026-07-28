@@ -5,6 +5,9 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { usePresence } from "@/hooks/use-presence";
 import { useChannels } from "@/hooks/use-channels";
+import { useLeadEvents } from "@/hooks/use-lead-events";
+import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
+import { LeadEventLine } from "@/components/lead-events/lead-event-line";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
@@ -139,17 +142,24 @@ function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslatio
   return format(date, "MMMM d, yyyy");
 }
 
-function groupMessagesByDate(messages: Message[]) {
-  const groups: { date: string; messages: Message[] }[] = [];
+/**
+ * Agrupa por dia a linha do tempo já intercalada (mensagens + eventos do
+ * lead). Substituiu o `groupMessagesByDate` do upstream, que só conhecia
+ * mensagem: os separadores de data precisam contar os eventos também, senão um
+ * dia em que só houve mudança de funil apareceria sem cabeçalho — ou pior,
+ * dentro do cabeçalho do dia anterior.
+ */
+function groupTimelineByDate(itens: ItemDaLinhaDoTempo<Message>[]) {
+  const groups: { date: string; itens: ItemDaLinhaDoTempo<Message>[] }[] = [];
   let currentDate = "";
 
-  for (const msg of messages) {
-    const day = format(new Date(msg.created_at), "yyyy-MM-dd");
+  for (const item of itens) {
+    const day = format(new Date(item.quando), "yyyy-MM-dd");
     if (day !== currentDate) {
       currentDate = day;
-      groups.push({ date: msg.created_at, messages: [msg] });
+      groups.push({ date: item.quando, itens: [item] });
     } else {
-      groups[groups.length - 1].messages.push(msg);
+      groups[groups.length - 1].itens.push(item);
     }
   }
 
@@ -493,13 +503,21 @@ export function MessageThread({
       });
   }, [conversationId, hasUnread]);
 
-  // Auto-scroll to bottom on new messages
+  // Trilha de atividade do lead (migration 912) — mudança de funil, etapa,
+  // status e tags aparecem intercaladas na conversa. `resyncToken` entra como
+  // gatilho para o botão de atualizar da thread arrastar a trilha junto.
+  const { eventos: leadEvents } = useLeadEvents(contact?.id, resyncToken);
+
+  // Auto-scroll to bottom on new messages.
+  // `leadEvents` entra na lista de dependências porque a trilha chega numa
+  // busca própria, depois das mensagens: sem isso o conteúdo cresce embaixo do
+  // usuário e a conversa deixa de abrir no fim.
   useEffect(() => {
     if (scrollRef.current) {
       const el = scrollRef.current;
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, leadEvents]);
 
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
@@ -1052,7 +1070,7 @@ export function MessageThread({
   }
 
   const displayName = contact.name || contact.phone;
-  const messageGroups = groupMessagesByDate(messages);
+  const messageGroups = groupTimelineByDate(intercalar(messages, leadEvents));
   const currentStatus = STATUS_OPTIONS.find(
     (s) => s.value === conversation.status
   );
@@ -1327,7 +1345,10 @@ export function MessageThread({
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
-        ) : messages.length === 0 ? (
+        ) : /* `messageGroups`, não `messages`: uma conversa sem mensagem mas
+              com evento de funil registrado mostraria "nenhuma mensagem" e
+              engoliria o evento. */
+        messageGroups.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
             <p className="text-sm text-muted-foreground">{t("noMessagesYet")}</p>
             <p className="text-xs text-muted-foreground">
@@ -1346,7 +1367,13 @@ export function MessageThread({
                 </div>
                 {/* Messages */}
                 <div className="space-y-2">
-                  {group.messages.map((msg) => {
+                  {group.itens.map((item) => {
+                    // Evento da trilha do lead — aviso de sistema, não
+                    // mensagem: sem bolha, sem ações, sem reação.
+                    if (item.evento) {
+                      return <LeadEventLine key={item.chave} evento={item.evento} />;
+                    }
+                    const msg = item.mensagem!;
                     const parent = msg.reply_to_message_id
                       ? messagesById.get(msg.reply_to_message_id)
                       : null;

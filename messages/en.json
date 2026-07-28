@@ -1681,6 +1681,8 @@
       "pipelineNone": "None — do not create a deal",
       "pipelineHint": "Anyone who writes to this number is added to this pipeline automatically.",
       "pipelineBadge": "Enters the {pipeline} pipeline",
+      "pipelineStageBadge": "Enters pipeline {pipeline} · stage {stage}",
+      "pipelineNoStage": "Enters pipeline {pipeline}, but no entry stage is set — leads land in whichever stage comes first. Pick one under Configure.",
       "pipelineMissing": "The configured pipeline was deleted — pick another one.",
       "noPipeline": "No pipeline — no deal created",
       "pipelineWarning": "Applies to contacts without a deal in this pipeline. Every client who writes next becomes a card — and deleting a card by hand does not stop the client from coming back on their next message: to take them out of the pipeline, mark it won or lost.",
@@ -2073,5 +2075,27 @@
     "connectedFor": "connected for {tempo}",
     "checkedAgo": "checked {tempo} ago",
     "neverChecked": "not checked yet"
+  },
+  "LeadEvents": {
+    "title": "History",
+    "loading": "Loading history…",
+    "empty": "No activity recorded yet.",
+    "reconstructedBadge": "backfilled",
+    "dealCreated": "Deal created in {pipeline} · {stage}",
+    "dealDeleted": "Deal deleted from {pipeline}",
+    "stageAdvanced": "Advanced from {from} to {to}",
+    "stageReturned": "Moved back from {from} to {to}",
+    "stageChanged": "Moved from {from} to {to}",
+    "pipelineChanged": "Transferred from {fromPipeline} ({fromStage}) to {toPipeline} ({toStage})",
+    "statusWon": "Marked as won",
+    "statusLost": "Marked as lost",
+    "statusReopened": "Deal reopened",
+    "tagAdded": "Tag {tag} applied",
+    "tagRemoved": "Tag {tag} removed",
+    "actorPerson": "by {name}",
+    "actorChannel": "by connection {name}",
+    "actorAutomation": "by an automation",
+    "actorSystem": "by the system",
+    "actorReconstructed": "backfilled record"
   }
 }
