@@ -285,6 +285,28 @@ por fora deles. O que morde código novo:
   nessa coluna, que é um UPDATE, e UPDATE revalida CHECK — exigir o contato
   faria a exclusão de contato falhar.
 
+⚠️ **`REVOKE EXECUTE ... FROM anon, authenticated` NÃO REVOGA NADA.** No
+Postgres, `EXECUTE` em função nasce concedido a **PUBLIC**; `anon` e
+`authenticated` nunca têm concessão própria, herdam de PUBLIC. Revogar de quem
+não tem remove zero privilégios — e o `proacl` continua com `=X/postgres`, onde
+o `=X` sem papel antes do `=` é justamente PUBLIC. A 903 fez isso, a 912
+repetiu, e as cinco funções seguiram executáveis até a **913** corrigir com
+`FROM PUBLIC`. Em função nova, escreva sempre:
+
+```sql
+REVOKE EXECUTE ON FUNCTION minha_funcao(args) FROM PUBLIC;
+```
+
+- Conferir o resultado, não a intenção:
+  `SELECT has_function_privilege('authenticated', 'minha_funcao(uuid)', 'EXECUTE');`
+  Ou rodar `get_advisors(type: 'security')` — os lints 0028/0029 pegam
+  exatamente isto, inclusive em função que retorna `trigger`.
+- Revogar de PUBLIC **não impede o trigger de disparar**: o privilégio é
+  checado no `CREATE TRIGGER`, não a cada disparo. Verificado com
+  insert/update/delete reais.
+- `service_role` tem concessão **explícita** (`service_role=X`) e não é
+  atingido — o caminho server-side continua funcionando.
+
 ⚠️ **A 903 removeu dois índices únicos.** `message_templates(user_id, name,
 language)` e `ai_configs(account_id)` viraram pares de índices **parciais**
 (global + por canal). Consequências que já morderam durante a implementação e
@@ -329,7 +351,8 @@ mordem de novo em qualquer código novo:
   guarda o nome antigo), `905_cb_mensagem_apagada_editada`,
   `907_cb_exclusao_solicitada`, `908_cb_funil_por_canal`,
   `909_cb_saude_das_conexoes`, `910_cb_negocio_e_conversa`,
-  `911_cb_um_funil_por_vez` e `912_cb_historico_de_atividade`.
+  `911_cb_um_funil_por_vez`, `912_cb_historico_de_atividade` e
+  `913_cb_revoke_de_public`.
   ⚠️ O **906 não é buraco livre** — a branch `feat/grupos-whatsapp`, ainda
   não mesclada, reivindica `906_cb_grupos.sql`.
   ⚠️ **Nunca deduzir o próximo número desta lista** — ela envelhece a cada
