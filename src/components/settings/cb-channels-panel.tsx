@@ -618,20 +618,51 @@ export function CbChannelsPanel() {
                       "parou de entrar gente no funil" não teria nenhum
                       sintoma visível. Por isso resolvemos o nome contra a
                       lista, em vez de confiar no id salvo. */}
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {(() => {
-                      if (!channel.default_pipeline_id) return t('noPipeline');
-                      const funil = pipelines.find(
-                        (p) => p.id === channel.default_pipeline_id,
-                      );
-                      if (funil) return t('pipelineBadge', { pipeline: funil.name });
+                  {(() => {
+                    const classe = 'mt-1 text-xs text-muted-foreground';
+                    if (!channel.default_pipeline_id) {
+                      return <p className={classe}>{t('noPipeline')}</p>;
+                    }
+                    const funil = pipelines.find(
+                      (p) => p.id === channel.default_pipeline_id,
+                    );
+                    if (!funil) {
                       // Sem a lista não dá para afirmar que sumiu. E com a
                       // lista carregada isto é quase impossível: a FK da 908
                       // zera a coluna quando o funil é apagado. Sobra o caso
                       // raro de outra aba ter apagado agora há pouco.
-                      return pipelinesCarregados ? t('pipelineMissing') : t('pipelineUnknown');
-                    })()}
-                  </p>
+                      return (
+                        <p className={classe}>
+                          {pipelinesCarregados ? t('pipelineMissing') : t('pipelineUnknown')}
+                        </p>
+                      );
+                    }
+                    const etapa = channel.default_stage_id
+                      ? stages.find((s) => s.id === channel.default_stage_id)
+                      : null;
+                    if (etapa) {
+                      return (
+                        <p className={classe}>
+                          {t('pipelineStageBadge', {
+                            pipeline: funil.name,
+                            stage: etapa.name,
+                          })}
+                        </p>
+                      );
+                    }
+                    // ⚠️ Funil escolhido SEM etapa de entrada não é "quase
+                    // configurado": `createDeal` cai na etapa de menor
+                    // `position`, e no funil real desta conta a posição 0 é
+                    // "Contato Avulso" — uma faixa de estacionamento. O lead
+                    // entra, mas no lugar errado, e a etiqueta antiga dizia só
+                    // "Entra no funil Bancário", como se estivesse pronto.
+                    // Este é o único sintoma visível de uma meia-configuração.
+                    return (
+                      <p className="mt-1 text-xs text-amber-500">
+                        {t('pipelineNoStage', { pipeline: funil.name })}
+                      </p>
+                    );
+                  })()}
                   {channel.last_error && (
                     <p className="mt-1 truncate text-xs text-destructive">
                       {t('lastError', { error: channel.last_error })}

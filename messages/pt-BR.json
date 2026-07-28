@@ -1681,6 +1681,8 @@
       "pipelineNone": "Nenhum — não criar negócio",
       "pipelineHint": "Quem escrever neste número entra automaticamente neste funil.",
       "pipelineBadge": "Entra no funil {pipeline}",
+      "pipelineStageBadge": "Entra no funil {pipeline} · etapa {stage}",
+      "pipelineNoStage": "Entra no funil {pipeline}, mas sem etapa de entrada — os leads caem na primeira etapa da lista. Escolha a etapa em Configurar.",
       "pipelineMissing": "O funil configurado foi apagado — escolha outro.",
       "noPipeline": "Sem funil — não cria negócio",
       "pipelineWarning": "Vale para quem ainda não tem negócio neste funil. Cada cliente que escrever a seguir vira um card — e apagar um card à mão não impede o cliente de voltar na próxima mensagem: para tirá-lo do funil, marque ganho ou perdido.",

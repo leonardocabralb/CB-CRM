@@ -1681,6 +1681,8 @@
       "pipelineNone": "None — do not create a deal",
       "pipelineHint": "Anyone who writes to this number is added to this pipeline automatically.",
       "pipelineBadge": "Enters the {pipeline} pipeline",
+      "pipelineStageBadge": "Enters pipeline {pipeline} · stage {stage}",
+      "pipelineNoStage": "Enters pipeline {pipeline}, but no entry stage is set — leads land in whichever stage comes first. Pick one under Configure.",
       "pipelineMissing": "The configured pipeline was deleted — pick another one.",
       "noPipeline": "No pipeline — no deal created",
       "pipelineWarning": "Applies to contacts without a deal in this pipeline. Every client who writes next becomes a card — and deleting a card by hand does not stop the client from coming back on their next message: to take them out of the pipeline, mark it won or lost.",
