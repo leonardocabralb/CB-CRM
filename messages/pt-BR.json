@@ -167,6 +167,8 @@
       "channelFilterAll": "Todos os canais"
     },
     "messageThread": {
+      "unknownAuthor": "Desconhecido",
+      "groupMediaFailed": "Não foi possível baixar o anexo.",
       "groupNoName": "Grupo sem nome",
       "groupParticipants": "{count, plural, one {# participante} other {# participantes}}",
       "backToConversations": "Voltar para as conversas",
@@ -241,6 +243,9 @@
       "sendingIn": "Enviando em {seconds}s"
     },
     "bubble": {
+      "groupMediaTap": "Toque para baixar",
+      "groupMediaDownloading": "Baixando…",
+      "groupMediaRetry": "Tentar baixar de novo",
       "photo": "Foto",
       "video": "Vídeo",
       "audio": "Áudio",

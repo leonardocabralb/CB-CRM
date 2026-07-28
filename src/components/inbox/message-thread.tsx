@@ -237,6 +237,43 @@ export function MessageThread({
     }, 700);
   }, [isRefreshing, onRefresh]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
+  /** Id da mensagem cujo anexo de grupo está sendo buscado agora. */
+  const [anexoEmCurso, setAnexoEmCurso] = useState<string | null>(null);
+
+  /**
+   * Busca sob demanda o anexo de uma mensagem de grupo.
+   *
+   * ⚠️ O erro é mostrado como veio da rota, e não trocado por um "tente mais
+   * tarde" genérico: mídia antiga EXPIRA no servidor do WhatsApp, e nesse caso
+   * nenhuma tentativa futura vai funcionar. Dizer "tente depois" faria o
+   * operador insistir por dias num arquivo que não existe mais.
+   */
+  const baixarAnexoDoGrupo = useCallback(
+    async (messageId: string) => {
+      setAnexoEmCurso(messageId);
+      try {
+        const res = await fetch(`/api/cb/groups/media/${messageId}`, {
+          method: "POST",
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast.error(payload.error ?? t("groupMediaFailed"));
+          return;
+        }
+        if (payload.media_url) {
+          onUpdateMessage(messageId, {
+            media_url: payload.media_url,
+            media_state: null,
+          });
+        }
+      } catch {
+        toast.error(t("groupMediaFailed"));
+      } finally {
+        setAnexoEmCurso(null);
+      }
+    },
+    [onUpdateMessage, t],
+  );
 
   // Profiles are bounded by RLS to rows the current user is allowed to
   // see — today that's just the current user, but the dropdown keeps the
@@ -832,11 +869,16 @@ export function MessageThread({
 
   // Author label for a quoted message: "You" when we sent the parent,
   // contact name when the customer sent it.
+  //
+  // ⚠️ Em GRUPO o autor é o participante, não "o contato" — que nem existe.
+  // Sem este ramo, citar a mensagem de qualquer participante mostrava o
+  // literal "Customer" (texto fixo em inglês) para todo mundo.
   const authorLabelFor = useCallback(
     (m: Message): string => {
       const isAgentMsg =
         m.sender_type === "agent" || m.sender_type === "bot";
-      return isAgentMsg ? "You" : contactDisplayName;
+      if (isAgentMsg) return "You";
+      return m.group_sender_name || contactDisplayName;
     },
     [contactDisplayName],
   );
@@ -1405,6 +1447,14 @@ export function MessageThread({
                       return <LeadEventLine key={item.chave} evento={item.evento} />;
                     }
                     const msg = item.mensagem!;
+                    // Aviso do WhatsApp dentro do grupo ("Fulano entrou").
+                    // Mesmo tratamento do evento de lead logo acima: a bolha
+                    // se desenha sozinha como faixa, e NÃO passa pelo
+                    // MessageActions — responder, reagir ou apagar um aviso
+                    // do sistema não quer dizer nada.
+                    if (msg.content_type === "system") {
+                      return <MessageBubble key={msg.id} message={msg} emGrupo />;
+                    }
                     const parent = msg.reply_to_message_id
                       ? messagesById.get(msg.reply_to_message_id)
                       : null;
@@ -1412,8 +1462,14 @@ export function MessageThread({
                       ? {
                           authorLabel:
                             parent.sender_type === "agent" || parent.sender_type === "bot"
-                              ? t("me") 
-                              : contact?.name || contact?.phone || "Unknown",
+                              ? t("me")
+                              // Em grupo o autor citado é o participante.
+                              // Sem isto, citar qualquer um mostrava o
+                              // literal "Unknown" — texto fixo em inglês.
+                              : parent.group_sender_name ||
+                                contact?.name ||
+                                contact?.phone ||
+                                t("unknownAuthor"),
                           preview: buildReplyPreview(parent, tQuote),
                         }
                       : null;
@@ -1454,6 +1510,9 @@ export function MessageThread({
                           currentUserId={user?.id}
                           onToggleReaction={handlePillToggle}
                           channelLabel={channelLabel}
+                          emGrupo={ehGrupo}
+                          baixandoAnexo={anexoEmCurso === msg.id}
+                          onBaixarAnexo={() => baixarAnexoDoGrupo(msg.id)}
                         />
                       </MessageActions>
                     );

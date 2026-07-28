@@ -167,6 +167,8 @@
       "channelFilterAll": "All channels"
     },
     "messageThread": {
+      "unknownAuthor": "Unknown",
+      "groupMediaFailed": "Could not download the attachment.",
       "groupNoName": "Unnamed group",
       "groupParticipants": "{count, plural, one {# participant} other {# participants}}",
       "backToConversations": "Back to conversations",
@@ -241,6 +243,9 @@
       "sendingIn": "Sending in {seconds}s"
     },
     "bubble": {
+      "groupMediaTap": "Tap to download",
+      "groupMediaDownloading": "Downloading…",
+      "groupMediaRetry": "Try downloading again",
       "photo": "Photo",
       "video": "Video",
       "audio": "Audio",
