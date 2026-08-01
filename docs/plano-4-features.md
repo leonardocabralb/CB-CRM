@@ -485,23 +485,110 @@ dois casos já estão cobertos.
 - **Nome:** primeiro nome, com `coalesce(nullif(full_name,''), email)` (P1.6). O trigger de
   signup grava `COALESCE(..., '')`, então `NOT NULL` **não** garante não-vazio — sem isso a
   assinatura sai `*:*`.
-- **Interruptor por conta, nascendo desligado** (P1.8) → migration `919_cb_assinatura`.
+- **Interruptor por conta, nascendo desligado** (P1.8) → migration `923_cb_assinatura`.
+
+### ⚠️ Revisão prévia (passo 1 do fluxo) — feita em 2026-08-01, contra `main` @ `9bc27fb`
+
+O plano acima estava **errado em cinco pontos**, três deles capazes de deixar mensagem
+sem assinatura em produção. O que foi medido no código:
+
+**1. Não existe um caminho de envio. Existem CINCO escritores de saída.**
+E `sendMessageToConversation` **não é o funil**: automação, fluxo e IA passam **ao lado**
+dele, com cliente service-role.
+
+| # | Onde | `sender_type` | Quem chega ali |
+| --- | --- | --- | --- |
+| A | `whatsapp/send-message.ts:616` | `agent` | painel, API v1 pública, MCP |
+| B | `flows/meta-send.ts:153` (`engineSendText`) | `bot` | fluxos **e IA** |
+| C | `flows/meta-send.ts:305` (`engineSendMedia`) | `bot` | fluxos |
+| D | `flows/meta-send.ts:524` (interativo) | `bot` | fluxos e automações |
+| E | `automations/meta-send.ts:235` | `bot` | **automações** |
+
+⚠️ **Existem DUAS funções `engineSendText` diferentes** — `flows/meta-send.ts:74` e
+`automations/meta-send.ts:61`. Assinar só a dos fluxos deixa **toda automação sem
+assinatura**. O plano falava de uma só.
+
+Mais dois escritores de saída que **não** se assinam por construção (a mensagem já saiu
+do celular pareado): `persistDeviceMessage` (1:1) e `persistGroupDeviceMessage`.
+
+**2. Broadcast NÃO escreve em `messages`.** O plano o listava. `broadcast-core.ts` só toca
+`broadcasts`/`broadcast_recipients` — disparo nunca aparece no fio, e modelo aprovado pela
+Meta não aceitaria prefixo mesmo. Sai da lista.
+
+**3. Não há tabela de configuração, e nenhuma migration `9xx` mexe em `accounts`.** O
+precedente é `accounts.default_currency`, da **021** — coluna com `NOT NULL DEFAULT`, sem
+mudança de RLS (a policy de 017 já restringe a admin+), lida em `use-auth.tsx:172` e
+escrita direto sob RLS em `deals-settings.tsx:58`. É esse molde que a 923 copia.
+
+**4. O teto de 1024 roda em TRÊS lugares, todos antes do prefixo.** `send-message.ts:181`
+via `validateSendMessageParams`, chamado de `send/route.ts:113`, `v1/messages/route.ts:94`
+e do próprio núcleo em `:223`. Uma legenda de 1020 caracteres passa na validação e a Meta
+recusa a versão prefixada — o operador leva **502 em vez de 400**. Vale igual para o corpo
+interativo (`interactive.ts:35`).
+
+**5. `sender_id` é coluna morta e de graça.** Existe desde a 001, é `UUID` anulável, tem
+**zero escritas e zero leituras** no repositório, e o serializer público a exclui por
+allowlist. Preencher não precisa de migration.
 
 ### Armadilhas específicas
 
+- ⚠️ **A bolha otimista é montada no cliente com o texto SEM assinatura**
+  (`message-thread.tsx:640`, `:725`, `:789`, `:868`). Se só o servidor prefixa, o texto
+  **muda na frente do operador** quando o realtime reconcilia. A rota hoje devolve só
+  `message_id`/`whatsapp_message_id` (`send/route.ts:261`) — ou ela passa a devolver o
+  texto final, ou o cliente prefixa igual.
+- ⚠️ **`last_message_text` é escrito em CINCO lugares, sem helper comum**
+  (`send-message.ts:646`, `flows/meta-send.ts:176`/`:326`/`:544`,
+  `automations/meta-send.ts:260`), e há um sexto que o re-deriva do `content_text` depois
+  de editar ou apagar (`conversation-preview.ts:26`). A decisão sobre assinar a prévia tem
+  de ser repetida em todos.
+- ⚠️ **A IA passa a LER a própria assinatura.** `ai/context.ts:26,38` monta o histórico do
+  modelo a partir do `content_text`. Com o prefixo gravado ali, o modelo vê `*Nome:*` nas
+  mensagens anteriores e tende a imitar — gerando assinatura dentro do texto que já vai ser
+  prefixado de novo. **Tirar a assinatura ao montar o contexto da IA.**
 - ⚠️ **Editar mensagem assinada** (P1.3). O diálogo é pré-preenchido com o `content_text`
-  inteiro: o operador veria `*Leonardo Cabral:*` cru e poderia apagar, e a rota grava de
-  volta o que voltou. → **Esconder o prefixo do campo de edição e reaplicá-lo no servidor.**
-- ⚠️ **A IA não é caminho próprio.** `auto-reply.ts` importa `engineSendText` de
-  `flows/meta-send` — uma regra de assinatura escrita ali **assina resposta de robô com
-  nome de gente**. A separação entre a peça 1 e a peça 2 tem que ser explícita no código.
-- ⚠️ **Terceiro escritor sem sender:** `persistGroupDeviceMessage`.
-- **Bordas do nome:** nome iniciado por espaço vira asterisco cru para o cliente; nome com
-  `*` fecha o negrito cedo. Sanear na entrada.
-- **Teto de 1024 da legenda** é validado **antes** do prefixo hoje (`send-message.ts`) —
-  inverter a ordem (P1.7). Áudio não tem legenda: sai sem assinatura, por construção.
-- **O negrito não é trabalho:** `parseWhatsAppFormat` já renderiza `*Nome:*` em negrito de
-  verdade na bolha, e `stripWhatsAppFormat` já o remove da prévia da lista.
+  inteiro (`message-thread.tsx:984`) e o PATCH grava verbatim
+  (`api/whatsapp/message/route.ts:394`): o operador veria `*Leonardo Cabral:*` cru e poderia
+  apagar. → **Esconder o prefixo do campo e reaplicá-lo no servidor.**
+- ⚠️ **API v1 e MCP não têm pessoa.** `v1/messages/route.ts:137` chama o núcleo com contexto
+  de chave de API, sem `user`. → Assinam com o **nome do escritório**, mesma regra do robô
+  (P1.5): envio sem gente não pode levar nome de gente.
+  ⚠️ Pelo mesmo motivo, **não** usar `configOwnerUserId` (`ai/auto-reply.ts:19`) nem
+  `run.user_id` (`flows/engine.ts:1103`) como autor: são o dono da configuração, não quem
+  respondeu.
+- ⚠️ **Os motores já recebem um `userId` e o IGNORAM** (`flows/meta-send.ts:48`,
+  `automations/meta-send.ts:40`). Tentador usá-lo — é a mesma armadilha do item acima.
+- **Bordas do nome:** nome com `*`, `_`, `~` ou crase corrompe o parse do WhatsApp; nome
+  iniciado por espaço vira asterisco cru. Sanear na entrada.
+- **A prévia da lista fica `Nome: corpo`.** `stripWhatsAppFormat` tira os asteriscos, não o
+  nome (`conversation-list.tsx:644`). ⚠️ Em grupo isso **colide** com a convenção que já
+  existe: `previaDaMensagem` (`cb-groups/persist.ts:333`) já monta `Nome: corpo`.
+- **O negrito não é trabalho:** `parseWhatsAppFormat` (`inbox/whatsapp-format.ts:102`)
+  renderiza `*Nome:*` em negrito de verdade — conferido caractere a caractere, o `:` antes
+  do `*` de fechamento e o `\n` depois satisfazem `podeFechar`.
+- **Áudio não tem legenda:** sai sem assinatura, por construção.
+- **`messages` não tem policy de UPDATE garantida para o cliente do painel** — por isso
+  `stampMessageChannel` usa `supabaseAdmin()` (`send-message.ts:660`). Qualquer update
+  pós-insert segue a mesma regra.
+
+### O que a assinatura no `content_text` contamina (P1.2, decisão mantida)
+
+Gravar o prefixo no texto foi decisão do operador — um CRM jurídico precisa mostrar
+exatamente o que o cliente recebeu. O preço, medido, são **seis** consumidores do mesmo
+campo: citação de resposta, copiar para a área de transferência, contexto da IA (acima),
+relatórios (`dashboard/queries.ts:425`), busca (`conversation-list.tsx:234`) e o
+`content_text` da **API pública** — que passa a expor o nome do atendente mesmo com
+`sender_id` protegido por allowlist. Registrado aqui para não ser redescoberto como bug.
+
+### Commits previstos
+
+| # | Commit | Conteúdo |
+| --- | --- | --- |
+| 1 | `feat(mensagens): registrar quem enviou` | `sender_id` preenchido (sem migration) + teste do serializer v1 |
+| 2 | `feat(inbox): marcar mensagem de automação` | peça 2 — selo de robô na bolha, i18n nos dois dicionários |
+| 3 | `feat(assinatura): prefixo do membro no envio` | migration 923 + módulo próprio + interruptor + **os cinco escritores** |
+| 4 | `fix(inbox): editar não expõe nem apaga a assinatura` | esconder no diálogo, reaplicar no servidor |
+| 5 | `fix(assinatura): achados das revisões` | correções |
 
 ### Commits previstos
 
