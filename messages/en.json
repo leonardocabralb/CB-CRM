@@ -246,7 +246,8 @@
       "noteBoxHint": "The note is not visible to the customer.",
       "notePlaceholder": "Write the note…",
       "saveNote": "Save Note",
-      "noteSaveError": "Could not save the note."
+      "noteSaveError": "Could not save the note.",
+      "noteMentionHint": "Type @ to mention a teammate"
     },
     "bubble": {
       "groupMediaTap": "Tap to download",
@@ -2077,11 +2078,11 @@
   },
   "NotificationsPage": {
     "title": "Notifications",
-    "subtitle": "Conversations other teammates assign to you show up here.",
+    "subtitle": "Conversations teammates assign to you, and notes that mention you, show up here.",
     "markAllAsRead": "Mark all as read",
     "retry": "Retry",
     "emptyTitle": "No notifications yet",
-    "emptyDescription": "You'll see an alert here when someone assigns you a conversation.",
+    "emptyDescription": "You'll see a notice here when someone assigns you a conversation or mentions you in a note.",
     "unread": "Unread",
     "markReadError": "Failed to mark notification as read",
     "markAllReadError": "Failed to mark all as read"

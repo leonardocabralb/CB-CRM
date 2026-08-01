@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/dialog";
 import { useCan } from "@/hooks/use-can";
 import type { ConversationNote } from "@/types";
+import { InternalNoteBox } from "./internal-note-box";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -238,10 +239,11 @@ export function MessageComposer({
   // ⚠️ Permissão PRÓPRIA, e de propósito mais frouxa que `canSend`: anotação
   // interna não sai para o cliente, então `viewer` também anota.
   const podeAnotar = useCan("write-notes");
+  // Só o "está aberta ou não" mora aqui. Texto, menção e teclado vivem dentro
+  // do `InternalNoteBox` — este arquivo é do upstream, e cada linha nossa a
+  // mais é superfície de conflito no merge.
   const [anotando, setAnotando] = useState(false);
-  const [textoDaNota, setTextoDaNota] = useState("");
-  const [salvandoNota, setSalvandoNota] = useState(false);
-  const notaRef = useRef<HTMLTextAreaElement>(null);
+  const fecharNota = useCallback(() => setAnotando(false), []);
   // Media (like free-form text) is only allowed inside the 24h window.
   const inputsDisabled = readOnly || sessionExpired;
 
@@ -361,81 +363,6 @@ export function MessageComposer({
     });
   }, [descartarTimer, adjustHeight]);
 
-  const mudarTextoDaNota = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => setTextoDaNota(e.target.value),
-    [],
-  );
-
-  /**
-   * ⚠️ Foco por REF num efeito, e NÃO pelo atributo `autoFocus`.
-   *
-   * Com `autoFocus` o texto digitado saía embaralhado: escrever "Teste da
-   * anotação interna" gravava "teTeste da anotação internaste". O React
-   * reaplica o foco durante o commit da caixa, e o cursor volta para o começo
-   * no meio da digitação — os primeiros caracteres acabam remontados fora de
-   * ordem. Focar depois da montagem, com o cursor posto no fim de propósito,
-   * é o mesmo padrão que `desfazerEnvio` já usa neste arquivo.
-   */
-  useEffect(() => {
-    if (!anotando) return;
-    const el = notaRef.current;
-    if (!el) return;
-    el.focus();
-    el.setSelectionRange(el.value.length, el.value.length);
-  }, [anotando]);
-
-  /**
-   * Salva a anotação interna.
-   *
-   * ⚠️ Vai por ROTA, não por insert direto: `cb_conversation_notes` não tem
-   * policy de INSERT e `authenticated` teve o INSERT revogado. O servidor é
-   * quem carimba o autor e (mais adiante) notifica os mencionados.
-   *
-   * ⚠️ NÃO passa pela janela de desfazer. Aquela janela existe para o que sai
-   * para o cliente e não tem volta; anotação é interna e tem lixeira própria.
-   * Misturar as duas coisas faria o `setPendente` disparar um ENVIO.
-   */
-  const salvarNota = useCallback(async () => {
-    const texto = textoDaNota.trim();
-    if (!texto || salvandoNota) return;
-    setSalvandoNota(true);
-    try {
-      const res = await fetch("/api/cb/notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: conversationId, texto }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(json?.error || t("noteSaveError"));
-        return;
-      }
-      onNoteCreated?.(json.note as ConversationNote);
-      setTextoDaNota("");
-      setAnotando(false);
-    } catch {
-      toast.error(t("noteSaveError"));
-    } finally {
-      setSalvandoNota(false);
-    }
-  }, [textoDaNota, salvandoNota, conversationId, onNoteCreated, t]);
-
-  const teclaNaNota = useCallback(
-    (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      // Enter quebra linha aqui, ao contrário do compositor — anotação longa é
-      // o caso normal. Ctrl/⌘+Enter salva, Esc fecha.
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        void salvarNota();
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setAnotando(false);
-      }
-    },
-    [salvarNota],
-  );
-
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed || sessionExpired) return;
@@ -479,17 +406,17 @@ export function MessageComposer({
   //
   // ⚠️ E fecha a caixa de anotação junto, pelo MESMO motivo. Como o
   // compositor não remonta, a caixa aberta com texto dentro sobrevivia à
-  // troca — e `salvarNota` lê o `conversationId` do render atual, então
+  // troca — e ela salva contra o `conversationId` do render atual, então
   // clicar em Salvar depois de trocar gravaria a anotação de um cliente na
   // conversa de outro. Numa anotação interna de escritório de advocacia isso
-  // é vazamento de informação entre casos, não só um erro de UI.
+  // é vazamento de informação entre casos, não só um erro de UI. Fechar
+  // desmonta o `InternalNoteBox`, e o texto que estava dentro vai junto.
   const conversaAnteriorRef = useRef(conversationId);
   useEffect(() => {
     if (conversaAnteriorRef.current === conversationId) return;
     conversaAnteriorRef.current = conversationId;
     liberarPendente();
     setAnotando(false);
-    setTextoDaNota("");
   }, [conversationId, liberarPendente]);
 
   // Contagem regressiva da barra. Sem isto o rótulo repetiria o valor cheio
@@ -916,47 +843,16 @@ export function MessageComposer({
         </div>
       )}
 
-      {/* Caixa de anotação interna (918).
-          ⚠️ <textarea> PRÓPRIA, nunca a do compositor: o `handleKeyDown` de
-          lá manda Enter para `handleSend`, e a anotação sairia como mensagem
-          para o cliente. Aqui Enter quebra linha e Ctrl/⌘+Enter salva. */}
+      {/* Caixa de anotação interna (918/919) — componente próprio.
+          ⚠️ Ela tem <textarea> PRÓPRIA, nunca a do compositor: o
+          `handleKeyDown` de lá manda Enter para `handleSend`, e a anotação
+          sairia como mensagem para o cliente. */}
       {anotando && (
-        <div className="mb-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 dark:border-amber-700/50 dark:bg-amber-950/40">
-          <p className="mb-2 text-xs text-amber-950 dark:text-amber-50">
-            <span className="font-semibold">{t("noteBoxTitle")}</span>{" "}
-            <span className="opacity-80">{t("noteBoxHint")}</span>
-          </p>
-          <textarea
-            ref={notaRef}
-            value={textoDaNota}
-            onChange={mudarTextoDaNota}
-            onKeyDown={teclaNaNota}
-            rows={3}
-            placeholder={t("notePlaceholder")}
-            className="w-full resize-none rounded-md border border-amber-300/60 bg-amber-100/60 px-3 py-2 text-sm text-amber-950 outline-none placeholder:text-amber-900/50 focus:border-amber-500 dark:border-amber-700/50 dark:bg-amber-900/30 dark:text-amber-50 dark:placeholder:text-amber-100/40"
-          />
-          <div className="mt-2 flex items-center gap-2">
-            <Button
-              size="sm"
-              onClick={() => void salvarNota()}
-              disabled={!textoDaNota.trim() || salvandoNota}
-              className="h-8 bg-emerald-600 text-white hover:bg-emerald-700"
-            >
-              {salvandoNota ? (
-                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-              ) : null}
-              {t("saveNote")}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setAnotando(false)}
-              className="h-8"
-            >
-              {t("cancel")}
-            </Button>
-          </div>
-        </div>
+        <InternalNoteBox
+          conversationId={conversationId}
+          onSaved={onNoteCreated}
+          onClose={fecharNota}
+        />
       )}
 
       {/* Hidden file inputs driven by the attach menu. */}

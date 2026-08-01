@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 
 import { createClient } from '@/lib/supabase/client';
 import type { ConversationNote } from '@/types';
@@ -30,6 +30,22 @@ export function useConversationNotes(
 ) {
   const [notas, setNotas] = useState<ConversationNote[]>([]);
   const [carregando, setCarregando] = useState(false);
+
+  /**
+   * ⚠️ Identidade DESTA montagem do hook, no nome do canal de realtime.
+   *
+   * O cliente do Supabase indexa canal por tópico: pedir
+   * `supabase.channel('notas:X')` uma segunda vez devolve o MESMO objeto, já
+   * inscrito — e aí o `.on()` estoura com "cannot add postgres_changes
+   * callbacks after subscribe()". Como é erro não capturado dentro de um
+   * efeito, ele não fica num canto da tela: derruba a página inteira.
+   *
+   * Aconteceu de verdade assim que o hook passou a ser usado em dois lugares
+   * ao mesmo tempo (o fio do chat e a seção "Notas" da ficha) para a mesma
+   * conversa. Com o sufixo, cada montagem tem tópico próprio e as duas
+   * recebem o INSERT normalmente.
+   */
+  const instancia = useId();
 
   const buscar = useCallback(async () => {
     if (!conversationId) {
@@ -68,7 +84,7 @@ export function useConversationNotes(
     const supabase = createClient();
 
     const channel = supabase
-      .channel(`notas:${conversationId}`)
+      .channel(`notas:${conversationId}:${instancia}`)
       .on(
         'postgres_changes',
         {
@@ -93,7 +109,7 @@ export function useConversationNotes(
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [conversationId]);
+  }, [conversationId, instancia]);
 
   /** Tira a anotação da lista local. Quem apaga vê sumir na hora. */
   const remover = useCallback((id: string) => {

@@ -266,7 +266,15 @@ export interface Conversation {
 // Notifications (migration 027)
 // ============================================================
 
-export type NotificationType = 'conversation_assigned';
+/**
+ * ⚠️ Espelha o CHECK de `notifications.type`. Alargar aqui sem alargar o
+ * banco (ou o contrário) só aparece em runtime, como violação de constraint.
+ * Os literais vivem na 027 (`conversation_assigned`) e na 919 (`note_mention`).
+ *
+ * ⚠️ Não confundir com o `'conversation_assigned'` homônimo mais abaixo neste
+ * arquivo, que é gatilho de AUTOMAÇÃO. São coisas diferentes com o mesmo nome.
+ */
+export type NotificationType = 'conversation_assigned' | 'note_mention';
 
 export interface Notification {
   id: string;

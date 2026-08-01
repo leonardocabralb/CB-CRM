@@ -24,6 +24,16 @@ import { canWriteNotes, isAccountRole } from '@/lib/auth/roles'
  * daqui. Apagar, sim, continua indo direto do navegador — lá a RLS decide
  * sozinha (autor ou admin) e não há o que validar no meio.
  */
+/**
+ * Teto do texto da anotação.
+ *
+ * A coluna é `text` e não tem limite no banco, então sem isto um POST fora da
+ * tela grava megabytes numa linha que o fio do chat renderiza inteira. 4000
+ * é folgado para o uso real (o campo tem 3 linhas) e ainda cabe confortável
+ * numa bolha.
+ */
+const MAX_TEXTO = 4000
+
 export async function POST(request: Request) {
   const supabase = await createClient()
 
@@ -63,9 +73,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { conversation_id, texto } = (body ?? {}) as {
+  const { conversation_id, texto, mencionados } = (body ?? {}) as {
     conversation_id?: unknown
     texto?: unknown
+    mencionados?: unknown
   }
 
   if (typeof conversation_id !== 'string' || !conversation_id) {
@@ -74,6 +85,13 @@ export async function POST(request: Request) {
   if (typeof texto !== 'string' || !texto.trim()) {
     return NextResponse.json({ error: 'texto is required' }, { status: 400 })
   }
+  if (texto.length > MAX_TEXTO) {
+    return NextResponse.json({ error: 'Note is too long' }, { status: 400 })
+  }
+
+  const pedidos = Array.isArray(mencionados)
+    ? [...new Set(mencionados.filter((m): m is string => typeof m === 'string'))]
+    : []
 
   // ⚠️ Lido com o cliente DO USUÁRIO, sob RLS: é o que garante que a conversa
   // é de uma conta que ele enxerga. O insert logo abaixo roda em service-role
@@ -95,6 +113,26 @@ export async function POST(request: Request) {
   // trigger de signup grava `COALESCE(..., '')`, então vazio é possível.
   const autorNome = profile?.full_name?.trim() || profile?.email || null
 
+  // ⚠️ Os mencionados são VALIDADOS contra a conta, e é o motivo número 3 de
+  // esta rota existir. Quem chama manda uma lista de uuids; sem conferir,
+  // bastaria trocar o corpo do POST para notificar qualquer usuário do
+  // sistema — inclusive de outro escritório. A leitura vai pelo cliente do
+  // usuário, sob RLS, então nem a existência de gente de outra conta vaza.
+  //
+  // O próprio autor sai da lista: mencionar a si mesmo é comum ao escrever
+  // ("@fulano e eu vimos isso") e ninguém quer sino do que acabou de digitar.
+  let validos: string[] = []
+  if (pedidos.length > 0) {
+    const { data: membros } = await supabase
+      .from('profiles')
+      .select('user_id')
+      .eq('account_id', accountId)
+      .in('user_id', pedidos)
+    validos = (membros ?? [])
+      .map((m) => m.user_id as string)
+      .filter((id) => id !== user.id)
+  }
+
   const admin = supabaseAdmin()
   const { data: nota, error } = await admin
     .from('cb_conversation_notes')
@@ -106,12 +144,40 @@ export async function POST(request: Request) {
       author_user_id: user.id,
       autor_nome: autorNome,
       texto: texto.trim(),
+      mencionados: validos,
     })
     .select('*')
     .single()
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // ⚠️ Depois da anotação, e sem derrubá-la se falhar. A anotação é o ato; o
+  // sino é aviso sobre ele. Perder o aviso é chato, perder a anotação que a
+  // pessoa acabou de escrever é inaceitável — e o `type` novo depende da 919
+  // ter sido aplicada, que é justamente o tipo de coisa que pode faltar num
+  // ambiente e não em outro.
+  if (validos.length > 0) {
+    const { error: erroSino } = await admin.from('notifications').insert(
+      validos.map((destinatario) => ({
+        account_id: accountId,
+        user_id: destinatario,
+        type: 'note_mention',
+        conversation_id,
+        contact_id: conversa.contact_id ?? null,
+        actor_user_id: user.id,
+        // ⚠️ Texto CRU, sem passar pelo dicionário: `notifications.title` e
+        // `body` são colunas TEXT, gravadas no idioma de quem escreveu. É o
+        // mesmo que o trigger da 027 faz (em inglês). Unificar os dois
+        // idiomas do sino é assunto de outra passada.
+        title: `${autorNome ?? 'Alguém da equipe'} mencionou você numa anotação`,
+        body: texto.trim().slice(0, 280),
+      })),
+    )
+    if (erroSino) {
+      console.error('[POST /api/cb/notes] falha ao notificar menção:', erroSino.message)
+    }
   }
 
   return NextResponse.json({ note: nota }, { status: 201 })
