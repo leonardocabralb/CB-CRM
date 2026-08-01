@@ -13,9 +13,10 @@ import { tituloDaConversa } from "@/lib/cb-groups/display";
 import { stripWhatsAppFormat } from "@/lib/inbox/whatsapp-format";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X, Users } from "lucide-react";
+import { Search, ChevronDown, X, Users, Star } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -26,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useChannels } from "@/hooks/use-channels";
+import { useFavoritas } from "@/hooks/use-favoritas";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -87,6 +89,8 @@ export function ConversationList({
   // simplesmente não aparece.
   const { channels } = useChannels();
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  // Favoritas são de CADA MEMBRO (migration 924) — o hook já lê só as minhas.
+  const { favoritas, alternar: alternarFavorita } = useFavoritas();
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
@@ -271,6 +275,16 @@ export function ConversationList({
       onSelect(conv);
     },
     [onSelect]
+  );
+
+  const handleToggleFavorita = useCallback(
+    async (conversationId: string) => {
+      const ok = await alternarFavorita(conversationId);
+      // A estrela já voltou sozinha (o hook faz rollback); o aviso existe
+      // porque um marcador que se apaga sem explicação parece bug da tela.
+      if (!ok) toast.error(t("favoriteFailed"));
+    },
+    [alternarFavorita, t]
   );
 
   const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
@@ -557,6 +571,8 @@ export function ConversationList({
                 conversation={conv}
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
+                favorita={favoritas.has(conv.id)}
+                onToggleFavorita={handleToggleFavorita}
                 t={t}
               />
             ))}
@@ -571,6 +587,8 @@ interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
+  favorita: boolean;
+  onToggleFavorita: (conversationId: string) => void;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -578,6 +596,8 @@ function ConversationItem({
   conversation,
   isActive,
   onSelect,
+  favorita,
+  onToggleFavorita,
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
@@ -595,6 +615,10 @@ function ConversationItem({
     onSelect(conversation);
   }, [onSelect, conversation]);
 
+  const handleFavorita = useCallback(() => {
+    onToggleFavorita(conversation.id);
+  }, [onToggleFavorita, conversation.id]);
+
   const timeAgo = conversation.last_message_at
     ? formatDistanceToNow(new Date(conversation.last_message_at), {
         addSuffix: false,
@@ -602,63 +626,89 @@ function ConversationItem({
     : "";
 
   return (
-    <button
-      onClick={handleClick}
-      className={cn(
-        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50",
-        isActive && "border-l-2 border-primary bg-muted/70"
-      )}
-    >
-      {/* Avatar */}
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt={displayName}
-            className="h-10 w-10 rounded-full object-cover"
-          />
-        ) : ehGrupo ? (
-          <Users className="h-5 w-5 text-muted-foreground" />
-        ) : (
-          initials
+    // ⚠️ A estrela NÃO pode ficar dentro do botão da linha: `<button>` dentro
+    // de `<button>` é HTML inválido, e o React nem sempre avisa — o navegador
+    // desmonta a árvore sozinho e o clique passa a chegar no elemento errado.
+    // Por isso ela é irmã do botão, sobreposta numa faixa que o `pr-9` abaixo
+    // reserva para ela.
+    <div className="relative">
+      <button
+        onClick={handleClick}
+        className={cn(
+          "flex w-full items-start gap-3 py-3 pl-3 pr-9 text-left transition-colors hover:bg-muted/50",
+          isActive && "border-l-2 border-primary bg-muted/70"
         )}
-      </div>
-
-      {/* Content */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="flex min-w-0 items-center gap-1.5">
-            {/* Ícone junto do nome mesmo quando há foto: com foto de grupo o
-                avatar sozinho não distingue de uma foto de perfil. */}
-            {ehGrupo && (
-              <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            )}
-            <span className="truncate text-sm font-medium text-foreground">
-              {displayName}
-            </span>
-          </span>
-          <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
-        </div>
-        <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className="truncate text-xs text-muted-foreground">
-            {stripWhatsAppFormat(conversation.last_message_text) || t("noMessagesYet")}
-          </p>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {conversation.unread_count > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                {conversation.unread_count}
-              </span>
-            )}
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                STATUS_COLORS[conversation.status]
-              )}
-              title={conversation.status}
+      >
+        {/* Avatar */}
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={displayName}
+              className="h-10 w-10 rounded-full object-cover"
             />
+          ) : ehGrupo ? (
+            <Users className="h-5 w-5 text-muted-foreground" />
+          ) : (
+            initials
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-1.5">
+              {/* Ícone junto do nome mesmo quando há foto: com foto de grupo o
+                  avatar sozinho não distingue de uma foto de perfil. */}
+              {ehGrupo && (
+                <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              )}
+              <span className="truncate text-sm font-medium text-foreground">
+                {displayName}
+              </span>
+            </span>
+            <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
+          </div>
+          <div className="mt-0.5 flex items-center justify-between gap-2">
+            <p className="truncate text-xs text-muted-foreground">
+              {stripWhatsAppFormat(conversation.last_message_text) || t("noMessagesYet")}
+            </p>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {conversation.unread_count > 0 && (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                  {conversation.unread_count}
+                </span>
+              )}
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  STATUS_COLORS[conversation.status]
+                )}
+                title={conversation.status}
+              />
+            </div>
           </div>
         </div>
-      </div>
-    </button>
+      </button>
+
+      {/* A estrela fica SEMPRE visível, e não só no hover: metade do uso do
+          inbox é em tela de toque, onde hover não existe — um controle que só
+          aparece ao passar o mouse simplesmente não existe no celular. */}
+      <button
+        type="button"
+        onClick={handleFavorita}
+        aria-pressed={favorita}
+        title={favorita ? t("unfavorite") : t("favorite")}
+        aria-label={favorita ? t("unfavorite") : t("favorite")}
+        className={cn(
+          "absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md transition-colors hover:bg-muted",
+          favorita
+            ? "text-amber-500"
+            : "text-muted-foreground/40 hover:text-muted-foreground"
+        )}
+      >
+        <Star className={cn("h-4 w-4", favorita && "fill-current")} />
+      </button>
+    </div>
   );
 }

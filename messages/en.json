@@ -164,7 +164,10 @@
       "noMessagesYet": "No messages yet",
       "unknown": "Unknown",
       "channelFilter": "Channel",
-      "channelFilterAll": "All channels"
+      "channelFilterAll": "All channels",
+      "favorite": "Add to favourites",
+      "unfavorite": "Remove from favourites",
+      "favoriteFailed": "Could not save the favourite. Try again."
     },
     "messageThread": {
       "unknownAuthor": "Unknown",
