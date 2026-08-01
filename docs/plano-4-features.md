@@ -24,7 +24,7 @@
 | --- | --- | --- | --- | --- |
 | **0** | Decisões de produto | ✅ respondida 2026-08-01 | — | — |
 | **1** | F3 — anotação interna no fio | ✅ **concluída 2026-08-01** | `918`, `919`, `920`, `921`, `922` (todas aplicadas e conferidas) | `feat/notas-na-conversa` |
-| **2** | F1 — assinatura por membro | ⬜ pendente | `923_cb_assinatura` | — |
+| **2** | F1 — assinatura por membro | 🔄 código pronto, revisões rodando | `923_cb_assinatura` (aplicada) | `feat/assinatura-do-membro` |
 | **3** | F2 fatia A — filtros | ⬜ pendente | `924_cb_favoritar` | — |
 | **4** | F4 — mensagem agendada | ⬜ pendente | `925_cb_mensagens_agendadas` | — |
 | **5** | F2 fatia B — busca full-text | ⬜ pendente | `926_cb_busca_em_mensagens` | — |
@@ -491,6 +491,33 @@ dois casos já estão cobertos.
   signup grava `COALESCE(..., '')`, então `NOT NULL` **não** garante não-vazio — sem isso a
   assinatura sai `*:*`.
 - **Interruptor por conta, nascendo desligado** (P1.8) → migration `923_cb_assinatura`.
+
+
+### Commits da Fase 2 (branch `feat/assinatura-do-membro`, de `main` @ `9bc27fb`)
+
+| Commit | O quê |
+| --- | --- |
+| `d808ea3` | plano revisado contra o código — os cinco erros |
+| `94c7daf` | conserto do build (Tailwind varrendo a saída de build) |
+| `a555d81` | `sender_id` preenchido |
+| `37fbb6c` | selo de robô na bolha |
+| `2edc977` | a assinatura nos cinco escritores + migration 923 |
+| `41b567a` | nome completo, tela de configuração, edição |
+| `b3c15c6` + `1435b66` | a bolha otimista (duas passadas — ver abaixo) |
+| `77fe13a` | correção do diagnóstico do build |
+
+⚠️ **A bolha otimista precisou de DOIS commits, e o motivo vale para qualquer feature
+que mude texto enviado.** O primeiro fez a rota devolver o texto final e o fio corrigir a
+bolha ao receber a resposta — o que **encurtou** a janela em vez de fechá-la, porque o
+navegador desenha antes de falar com o servidor. O operador testou e ainda viu a mensagem
+piscar sem o nome. Só fechou quando o cliente passou a desenhar já assinado, usando as
+**mesmas funções puras** do envio. Lição: "corrigir depois que a resposta chega" não é o
+mesmo que "nascer certo", e só o teste de gente pega a diferença.
+
+⚠️ **Também registrado: eu diagnostiquei o bug do build errado.** Ver o cabeçalho de
+`src/app/globals.css` — o `.gitignore` já resolvia, o Tailwind não segue o symlink, e o
+que realmente abre a porta é a cópia de conflito do iCloud (`.next 2`). Verifiquei que o
+sintoma sumiu e concluí que foi por minha causa; o sintoma era real, a explicação não.
 
 ### ⚠️ Revisão prévia (passo 1 do fluxo) — feita em 2026-08-01, contra `main` @ `9bc27fb`
 
