@@ -24,10 +24,10 @@
 | --- | --- | --- | --- | --- |
 | **0** | Decisões de produto | ✅ respondida 2026-08-01 | — | — |
 | **1** | F3 — anotação interna no fio | ✅ **concluída 2026-08-01** | `918`, `919`, `920`, `921`, `922` (todas aplicadas e conferidas) | `feat/notas-na-conversa` |
-| **2** | F1 — assinatura por membro | 🔄 código pronto, revisões rodando | `923_cb_assinatura` (aplicada) | `feat/assinatura-do-membro` |
-| **3** | F2 fatia A — filtros | ⬜ pendente | `924_cb_favoritar` | — |
-| **4** | F4 — mensagem agendada | ⬜ pendente | `925_cb_mensagens_agendadas` | — |
-| **5** | F2 fatia B — busca full-text | ⬜ pendente | `926_cb_busca_em_mensagens` | — |
+| **2** | F1 — assinatura por membro | ✅ **concluída 2026-08-01** — no ar | `923_cb_assinatura` (aplicada) | [#30](https://github.com/leonardocabralb/CB-CRM/pull/30) → `de3ced2` |
+| **3** | F2 fatia A — filtros | 🔄 em andamento | `924_cb_favoritar` (aplicada e conferida) | `feat/filtros-do-inbox` |
+| **4** | F4 — mensagem agendada | ⬜ pendente | ~~`925`~~ conferir na hora | — |
+| **5** | F2 fatia B — busca full-text | ⬜ pendente | ~~`926`~~ conferir na hora | — |
 | **6** | Revisão final (2 passadas + testes) | ⬜ pendente | — | — |
 
 ⚠️ **Os números das fases 2–5 andaram um.** A menção precisou de migration própria (a 918
@@ -716,6 +716,28 @@ entra na lista de filtros do painel, que o plano tinha esquecido.
    (`api/v1/conversations/route.ts:33`). Embutir `deals` ali mudaria o contrato público —
    por isso a busca de etapa é separada, como o plano já dizia.
 
+### Remedição antes de codar (2026-08-01, já com a Fase 2 no ar)
+
+O passo 1 do fluxo foi refeito contra `main` @ `de3ced2`. **A revisão prévia acima
+continua valendo inteira** — nada do que ela descreve mudou no código. O que mudou são
+dois números, e os dois mexem no que dá para testar:
+
+| | Na revisão prévia | Agora | O que muda |
+| --- | --- | --- | --- |
+| Canais | 1 na conta ativa | **2 no banco, mas 1 por conta** | o filtro de canal **continua invisível** — o gate é 2+ *na conta*, e nenhuma tem |
+| Conversas com responsável | — | **1 de 64** | o filtro de responsável nasce quase sem discriminar |
+
+O resto bateu exatamente: 64 conversas, 49 não lidas, 0 arquivadas, 0 de grupo, 0
+etiquetas, 55 negócios em 1 etapa só, 9 conversas sem negócio, 2 membros em 2 contas
+(1 cada).
+
+⚠️ **Consequência prática, e é a mesma da revisão prévia:** dos filtros desta fase, os
+que hoje separam alguma coisa de verdade são **status, não lidas e favoritas**. Canal,
+etiqueta, empresa, tipo e etapa nascem invisíveis ou inertes. Isso **não** é motivo para
+cortá-los — entra gente na conta agora (P1.1) e os dados chegam junto —, mas é motivo
+para **não** aceitar "abri a tela e funcionou" como teste. Cada um precisa ser
+exercitado com dado criado à mão.
+
 ### ⚠️ A armadilha silenciosa que vale mais que todas as outras
 
 `.eq()` em campo do contato **produz resultado errado, não erro** — e erra nos DOIS
@@ -769,7 +791,7 @@ cliente; a fatia B move **tudo** de uma vez para uma RPC.
 Estender as funções puras de `src/lib/inbox/conversations.ts` (que são **nossas**, já
 testadas) em vez de reescrever `conversation-list.tsx` (que é do **upstream**).
 
-### Schema — `920_cb_favoritar.sql`
+### Schema — `924_cb_favoritar.sql` ✅ aplicada
 
 **Arquivada = `status='closed'`** (P2.3). Não é coluna nova — o operador definiu que
 arquivar *é* encerrar. Isso encolhe a migration e elimina a objeção do CHECK.
@@ -804,7 +826,7 @@ já resolve todas / diretas / grupos (P2.6). Reusar, não reescrever.
 
 | # | Commit | Conteúdo |
 | --- | --- | --- |
-| 1 | `feat(inbox): favoritar conversa` | migration 920 + ação na UI |
+| 1 | `feat(inbox): favoritar conversa` ✅ `7b72b60` | migration **924** + estrela na lista |
 | 2 | `feat(inbox): painel de filtros` | painel colapsável, contador "Exibindo N", filtros no cliente |
 | 3 | `fix(inbox): "não lidas" vira toggle independente` | separado por ser mudança de comportamento |
 | 4 | `fix(inbox): achados da passada fria` | correções |
