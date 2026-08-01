@@ -7,7 +7,7 @@ import { useChannels } from "@/hooks/use-channels";
 import { ChannelCell } from "@/components/channels/channel-badge";
 import { ActivityHistory } from "@/components/lead-events/activity-history";
 import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag } from "@/types";
+import type { Contact, Deal, ConversationNote, Tag } from "@/types";
 import {
   Phone,
   Mail,
@@ -28,6 +28,12 @@ import { useTranslations } from "next-intl";
 interface ContactSidebarProps {
   contact: Contact | null;
   /**
+   * Conversa aberta. A anotação é chaveada pela CONVERSA desde a 918 — sem
+   * ela dá para LER as anotações do contato (a coluna `contact_id` é
+   * desnormalizada justamente para isso), mas não para escrever.
+   */
+  conversationId?: string | null;
+  /**
    * Canal em que a conversa aberta corre. Sem isto a ficha do contato não
    * dizia por qual dos números do escritório aquela conversa acontece — a
    * informação existia só no cabeçalho da thread, que fica fora de vista
@@ -36,7 +42,7 @@ interface ContactSidebarProps {
   channelId?: string | null;
 }
 
-export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
+export function ContactSidebar({ contact, conversationId, channelId }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
   const tCanais = useTranslations("Channels");
@@ -45,7 +51,7 @@ export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
   const { accountId } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
-  const [notes, setNotes] = useState<ContactNote[]>([]);
+  const [notes, setNotes] = useState<ConversationNote[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
@@ -63,7 +69,7 @@ export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: false }),
       supabase
-        .from("contact_notes")
+        .from("cb_conversation_notes")
         .select("*")
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: false }),
@@ -103,34 +109,33 @@ export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
     // fixes the `preserve-manual-memoization` lint error.
   }, [contact]);
 
+  /**
+   * ⚠️ Vai pela ROTA, não por insert direto. `cb_conversation_notes` não tem
+   * policy de INSERT e o papel `authenticated` teve o INSERT revogado — a
+   * anotação nasce no servidor, que carimba o autor e valida as menções.
+   * O insert direto que existia aqui (na `contact_notes`) agora daria 42501.
+   */
   const handleAddNote = useCallback(async () => {
-    if (!contact || !newNote.trim()) return;
-    if (!accountId) return;
+    if (!contact || !newNote.trim() || !conversationId) return;
     setAddingNote(true);
-
-    const supabase = createClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    const user = session?.user;
-
-    const { data, error } = await supabase
-      .from("contact_notes")
-      .insert({
-        contact_id: contact.id,
-        account_id: accountId,
-        user_id: user?.id,
-        note_text: newNote.trim(),
-      })
-      .select()
-      .single();
-
-    if (!error && data) {
-      setNotes((prev) => [data, ...prev]);
-      setNewNote("");
+    try {
+      const res = await fetch("/api/cb/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          texto: newNote.trim(),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.note) {
+        setNotes((prev) => [json.note as ConversationNote, ...prev]);
+        setNewNote("");
+      }
+    } finally {
+      setAddingNote(false);
     }
-    setAddingNote(false);
-  }, [contact, newNote, accountId]);
+  }, [contact, newNote, conversationId]);
 
   if (!contact) {
     return (
@@ -310,7 +315,7 @@ export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
                   size="sm"
                   className="h-auto bg-primary px-2 hover:bg-primary/90"
                   onClick={handleAddNote}
-                  disabled={!newNote.trim() || addingNote}
+                  disabled={!newNote.trim() || addingNote || !conversationId}
                 >
                   <Plus className="h-3 w-3" />
                 </Button>
@@ -323,7 +328,7 @@ export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
                     className="rounded-lg bg-muted px-3 py-2"
                   >
                     <p className="whitespace-pre-wrap text-xs text-muted-foreground">
-                      {note.note_text}
+                      {note.texto}
                     </p>
                     <p className="mt-1 text-[10px] text-muted-foreground">
                       {format(new Date(note.created_at), "MMM d, yyyy HH:mm")}

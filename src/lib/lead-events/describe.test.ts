@@ -8,7 +8,7 @@ import {
   intercalar,
   ordenarPorTempo,
 } from './describe';
-import type { LeadEvent } from '@/types';
+import type { LeadEvent, ConversationNote } from '@/types';
 
 function evento(patch: Partial<LeadEvent>): LeadEvent {
   return {
@@ -207,6 +207,17 @@ describe('ordenarPorTempo', () => {
 
 describe('intercalar', () => {
   const msg = (id: string, created_at: string) => ({ id, created_at });
+  const nota = (id: string, created_at: string): ConversationNote => ({
+    id,
+    account_id: 'conta',
+    conversation_id: 'conversa',
+    contact_id: null,
+    author_user_id: 'quem',
+    autor_nome: 'Alguém',
+    texto: 'anotação',
+    mencionados: [],
+    created_at,
+  });
 
   it('põe o evento entre as mensagens certas', () => {
     const itens = intercalar(

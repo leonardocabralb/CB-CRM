@@ -361,6 +361,29 @@ export function MessageComposer({
     });
   }, [descartarTimer, adjustHeight]);
 
+  const mudarTextoDaNota = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => setTextoDaNota(e.target.value),
+    [],
+  );
+
+  /**
+   * ⚠️ Foco por REF num efeito, e NÃO pelo atributo `autoFocus`.
+   *
+   * Com `autoFocus` o texto digitado saía embaralhado: escrever "Teste da
+   * anotação interna" gravava "teTeste da anotação internaste". O React
+   * reaplica o foco durante o commit da caixa, e o cursor volta para o começo
+   * no meio da digitação — os primeiros caracteres acabam remontados fora de
+   * ordem. Focar depois da montagem, com o cursor posto no fim de propósito,
+   * é o mesmo padrão que `desfazerEnvio` já usa neste arquivo.
+   */
+  useEffect(() => {
+    if (!anotando) return;
+    const el = notaRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, [anotando]);
+
   /**
    * Salva a anotação interna.
    *
@@ -396,6 +419,22 @@ export function MessageComposer({
       setSalvandoNota(false);
     }
   }, [textoDaNota, salvandoNota, conversationId, onNoteCreated, t]);
+
+  const teclaNaNota = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      // Enter quebra linha aqui, ao contrário do compositor — anotação longa é
+      // o caso normal. Ctrl/⌘+Enter salva, Esc fecha.
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        void salvarNota();
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setAnotando(false);
+      }
+    },
+    [salvarNota],
+  );
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
@@ -880,19 +919,9 @@ export function MessageComposer({
           </p>
           <textarea
             ref={notaRef}
-            autoFocus
             value={textoDaNota}
-            onChange={(e) => setTextoDaNota(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                void salvarNota();
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                setAnotando(false);
-              }
-            }}
+            onChange={mudarTextoDaNota}
+            onKeyDown={teclaNaNota}
             rows={3}
             placeholder={t("notePlaceholder")}
             className="w-full resize-none rounded-md border border-amber-300/60 bg-amber-100/60 px-3 py-2 text-sm text-amber-950 outline-none placeholder:text-amber-900/50 focus:border-amber-500 dark:border-amber-700/50 dark:bg-amber-900/30 dark:text-amber-50 dark:placeholder:text-amber-100/40"
