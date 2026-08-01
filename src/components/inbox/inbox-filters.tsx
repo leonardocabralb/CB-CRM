@@ -23,7 +23,7 @@
 // ============================================================
 
 import { useState } from "react";
-import { ChevronDown, SlidersHorizontal, Star, X } from "lucide-react";
+import { ChevronDown, MailOpen, SlidersHorizontal, Star, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { ChannelFilter } from "@/components/channels/channel-filter";
@@ -122,6 +122,27 @@ export function InboxFilters({
           <ChevronDown
             className={cn("h-3 w-3 transition-transform", aberto && "rotate-180")}
           />
+        </button>
+
+        {/* ⚠️ "Não lidas" DEIXOU de ser uma opção do menu de situação e virou
+            botão próprio — é mudança de comportamento, não adição. Antes,
+            escolhê-la SUBSTITUÍA o status (mostrava não lida encerrada
+            junto); agora ela soma com o resto, como o operador pediu. Fica
+            fora do painel junto com Favoritas pelo mesmo motivo: são os dois
+            recortes que se ligam e desligam o dia inteiro. */}
+        <button
+          type="button"
+          onClick={() => mexer({ naoLidas: !filtros.naoLidas })}
+          aria-pressed={filtros.naoLidas}
+          className={cn(
+            "inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-muted",
+            filtros.naoLidas
+              ? "text-primary"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <MailOpen className="h-3.5 w-3.5" />
+          {t("filterUnread")}
         </button>
 
         {/* Favoritas fica FORA do painel: é o único recorte de uso diário que

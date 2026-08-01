@@ -211,6 +211,10 @@ describe("contarFiltrosAtivos", () => {
     ).toBe(0);
   });
 
+  it("conta 'não lidas' como faceta própria", () => {
+    expect(contarFiltrosAtivos({ ...FILTROS_VAZIOS, naoLidas: true })).toBe(1);
+  });
+
   it("soma um por faceta escolhida", () => {
     expect(
       contarFiltrosAtivos({
@@ -290,6 +294,34 @@ describe("aplicarFiltros", () => {
       ctx(),
     );
     expect(saida).toHaveLength(0);
+  });
+
+  it("'não lidas' SOMA com a situação, em vez de substituí-la", () => {
+    // Este é o teste da mudança de comportamento do commit 3. Antes, escolher
+    // "não lidas" no menu de situação substituía o status — a encerrada não
+    // lida aparecia junto. Agora os dois se aplicam, e sobra só a aberta e
+    // não lida.
+    const abertaNaoLida = conversa({ id: "c1", status: "open", unread_count: 3 });
+    const abertaLida = conversa({ id: "c2", status: "open", unread_count: 0 });
+    const encerradaNaoLida = conversa({
+      id: "c3",
+      status: "closed",
+      unread_count: 5,
+    });
+
+    const so = aplicarFiltros(
+      [abertaNaoLida, abertaLida, encerradaNaoLida],
+      { ...FILTROS_VAZIOS, naoLidas: true },
+      ctx(),
+    );
+    expect(so.map((c) => c.id)).toEqual(["c1", "c3"]);
+
+    const comSituacao = aplicarFiltros(
+      [abertaNaoLida, abertaLida, encerradaNaoLida],
+      { ...FILTROS_VAZIOS, naoLidas: true, status: "open" },
+      ctx(),
+    );
+    expect(comSituacao.map((c) => c.id)).toEqual(["c1"]);
   });
 
   it("a busca continua valendo junto com os filtros", () => {

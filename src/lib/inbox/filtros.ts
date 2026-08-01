@@ -60,6 +60,20 @@ export interface FiltrosDoInbox {
   etapaId: string | null;
   /** Só as que EU marquei. */
   favoritas: boolean;
+  /**
+   * Só as que têm mensagem não lida.
+   *
+   * ⚠️ **É da CONTA INTEIRA, não "as que eu não li".** `unread_count` é uma
+   * coluna da conversa, zerada por quem abrir primeiro — quem quer "as minhas
+   * não lidas" combina este botão com o filtro de responsável, que é
+   * exatamente o que o operador descreveu. Tornar por pessoa seria mudança de
+   * schema, não de tela.
+   *
+   * ⚠️ E é INDEPENDENTE da situação. Antes "não lidas" era uma opção DENTRO do
+   * menu de situação e escolhê-la SUBSTITUÍA o status — mostrava não lida
+   * encerrada junto. Agora soma como todo o resto.
+   */
+  naoLidas: boolean;
 }
 
 export const FILTROS_VAZIOS: FiltrosDoInbox = {
@@ -72,6 +86,7 @@ export const FILTROS_VAZIOS: FiltrosDoInbox = {
   empresa: null,
   etapaId: null,
   favoritas: false,
+  naoLidas: false,
 };
 
 /**
@@ -91,6 +106,7 @@ export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
   if (f.empresa !== null) n++;
   if (f.etapaId) n++;
   if (f.favoritas) n++;
+  if (f.naoLidas) n++;
   return n;
 }
 
@@ -205,6 +221,7 @@ export function aplicarFiltros(
 
     if (!casaComOResponsavel(c, f.responsavelId)) return false;
     if (f.favoritas && !ctx.favoritas.has(c.id)) return false;
+    if (f.naoLidas && c.unread_count <= 0) return false;
     if (!casaComAEtapa(c, f.etapaId, ctx.etapaPorContato)) return false;
 
     if (f.etiquetaIds.length > 0 || f.empresa !== null) {
