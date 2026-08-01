@@ -4,27 +4,30 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
-  matchesContactFilters,
-  matchesTypeFilter,
   normalizeConversations,
-  type TipoDeConversa,
 } from "@/lib/inbox/conversations";
+import {
+  aplicarFiltros,
+  FILTROS_VAZIOS,
+  mapaDeEtapasPorContato,
+  type FiltrosDoInbox,
+} from "@/lib/inbox/filtros";
+import { InboxFilters } from "@/components/inbox/inbox-filters";
 import { tituloDaConversa } from "@/lib/cb-groups/display";
 import { stripWhatsAppFormat } from "@/lib/inbox/whatsapp-format";
 import { cn } from "@/lib/utils";
-import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X, Users, Star } from "lucide-react";
+import type {
+  Conversation,
+  ConversationStatus,
+  PipelineStage,
+  Profile,
+  Tag,
+} from "@/types";
+import { Search, Users, Star } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useChannels } from "@/hooks/use-channels";
 import { useFavoritas } from "@/hooks/use-favoritas";
@@ -51,8 +54,6 @@ const STATUS_COLORS: Record<ConversationStatus, string> = {
 
 
 
-type InboxFilter = ConversationStatus | "all" | "unread";
-
 export function ConversationList({
   activeConversationId,
   onSelect,
@@ -61,34 +62,28 @@ export function ConversationList({
   resyncToken = 0,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
-  
-  const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
-    { label: t("filterAll"), value: "all" },
-    { label: t("filterUnread"), value: "unread" },
-    { label: t("filterOpen"), value: "open" },
-    { label: t("filterPending"), value: "pending" },
-    { label: t("filterClosed"), value: "closed" },
-  ], [t]);
 
+  // ⚠️ A busca fica SEPARADA dos filtros, e de propósito. Ela responde "onde
+  // está aquela conversa" (nome, telefone, nome do grupo, texto da última
+  // mensagem); os filtros respondem "quais conversas se parecem com isto".
+  // Trocar uma pela outra apagaria a busca por texto de mensagem e por nome
+  // de grupo, que é o que a revisão prévia desta fase encontrou.
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<InboxFilter>("all");
-  // Todas / só diretas / só grupos. Começa em "todas" porque grupo entra no
-  // mesmo inbox por decisão de produto — o filtro serve para focar, não para
-  // esconder por padrão.
-  const [tipo, setTipo] = useState<TipoDeConversa>("todas");
+  const [filtros, setFiltros] = useState<FiltrosDoInbox>(FILTROS_VAZIOS);
   const [loading, setLoading] = useState(true);
-  // Contact-based filters (issue #272). Tags use OR logic (a conversation
-  // matches if its contact carries any selected tag), consistent with
-  // Broadcast audience filtering. Company is an exact match on the field.
   const [tags, setTags] = useState<Tag[]>([]);
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  // Filtro por canal. `null` = todos. Só aparece com 2+ canais: numa conta de
-  // um número o seletor seria ruído puro.
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [etapas, setEtapas] = useState<PipelineStage[]>([]);
+  // `contact_id` → etapas dos negócios dele. Busca separada porque `deals` NÃO
+  // vem no CONVERSATION_SELECT — e não pode vir: aquele select é compartilhado
+  // com a API pública v1, e embutir negócio ali mudaria o contrato público.
+  // ⚠️ Esta segunda busca MORRE na fatia B, quando tudo virar uma consulta só.
+  const [etapaPorContato, setEtapaPorContato] = useState<Map<string, Set<string>>>(
+    new Map(),
+  );
   // Conta sem canais (ou deploy pré-901): a lista fica vazia e o seletor
   // simplesmente não aparece.
   const { channels } = useChannels();
-  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   // Favoritas são de CADA MEMBRO (migration 924) — o hook já lê só as minhas.
   const { favoritas, alternar: alternarFavorita } = useFavoritas();
 
@@ -154,17 +149,44 @@ export function ConversationList({
 
   // Tag definitions for the filter picker — loaded once so labels/colours
   // stay stable regardless of which conversations happen to be loaded.
+  //
+  // As três buscas abaixo alimentam SÓ os rótulos do painel de filtros. Todas
+  // falham em silêncio: sem elas o filtro correspondente simplesmente não
+  // aparece (o gate cuida disso), e o inbox continua inteiro. Rodam sob RLS,
+  // então já vêm escopadas à conta.
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false;
     (async () => {
-      const { data } = await supabase.from("tags").select("*").order("name");
-      if (!cancelled && data) setTags(data as Tag[]);
+      const [tagsRes, profilesRes, etapasRes, dealsRes] = await Promise.all([
+        supabase.from("tags").select("*").order("name"),
+        supabase.from("profiles").select("*").order("full_name"),
+        supabase
+          .from("pipeline_stages")
+          .select("*")
+          .order("position", { ascending: true }),
+        supabase.from("deals").select("contact_id, stage_id"),
+      ]);
+      if (cancelled) return;
+      if (tagsRes.data) setTags(tagsRes.data as Tag[]);
+      if (profilesRes.data) setProfiles(profilesRes.data as Profile[]);
+      if (etapasRes.data) setEtapas(etapasRes.data as PipelineStage[]);
+      if (dealsRes.data) {
+        setEtapaPorContato(
+          mapaDeEtapasPorContato(
+            dealsRes.data as { contact_id: string | null; stage_id: string | null }[],
+          ),
+        );
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+    // `resyncToken` porque negócio muda de etapa e etiqueta é criada em OUTRA
+    // tela: `contacts`, `contact_tags` e `deals` não estão na publication do
+    // realtime, então sem isto a aba aberta do inbox filtraria por um mundo
+    // congelado no momento em que foi aberta.
+  }, [resyncToken]);
 
   // Company options are derived from the loaded conversations — there's no
   // separate companies table, and only companies with a live conversation
@@ -187,81 +209,17 @@ export function ConversationList({
     [conversations],
   );
 
-  const tagsById = useMemo(() => {
-    const m = new Map<string, Tag>();
-    for (const t of tags) m.set(t.id, t);
-    return m;
-  }, [tags]);
-
-  const filtered = useMemo(() => {
-    let result = conversations;
-
-    // Tipo (todas / diretas / grupos). Ortogonal ao resto — ver
-    // `matchesTypeFilter`.
-    if (tipo !== "todas") {
-      result = result.filter((c) => matchesTypeFilter(c, tipo));
-    }
-
-    if (filter === "unread") {
-      result = result.filter((c) => c.unread_count > 0);
-    } else if (filter !== "all") {
-      result = result.filter((c) => c.status === filter);
-    }
-
-    // Canal: `channel_id` já vem de graça no CONVERSATION_SELECT ('*').
-    // Conversas sem carimbo (anteriores à Fase 3) só aparecem em "Todos" —
-    // incluí-las em todo canal faria o filtro mentir.
-    if (selectedChannelId) {
-      result = result.filter((c) => c.channel_id === selectedChannelId);
-    }
-
-    // Contact-based filters (tags via OR logic, exact company match).
-    if (selectedTagIds.length > 0 || selectedCompany !== null) {
-      result = result.filter((c) =>
-        matchesContactFilters(c, {
-          tagIds: selectedTagIds,
-          company: selectedCompany,
-        })
-      );
-    }
-
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter((c) => {
-        const name = c.contact?.name?.toLowerCase() ?? "";
-        const phone = c.contact?.phone?.toLowerCase() ?? "";
-        // Sem isto, buscar não acha grupo NENHUM: grupo não tem contato, e
-        // os dois campos acima ficam vazios.
-        const grupo = c.group_id
-          ? `${c.group?.alias ?? ""} ${c.group?.subject ?? ""}`.toLowerCase()
-          : "";
-        const lastMsg = stripWhatsAppFormat(c.last_message_text).toLowerCase();
-        return (
-          name.includes(q) ||
-          phone.includes(q) ||
-          grupo.includes(q) ||
-          lastMsg.includes(q)
-        );
-      });
-    }
-
-    return result;
-  }, [conversations, filter, tipo, search, selectedTagIds, selectedCompany, selectedChannelId]);
-
-  const toggleTag = useCallback((id: string) => {
-    setSelectedTagIds((prev) =>
-      prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]
-    );
-  }, []);
-
-  const clearContactFilters = useCallback(() => {
-    setSelectedTagIds([]);
-    setSelectedCompany(null);
-    setSelectedChannelId(null);
-  }, []);
-
-  const hasContactFilters =
-    selectedTagIds.length > 0 || selectedCompany !== null || selectedChannelId !== null;
+  // Todo o recorte mora em `src/lib/inbox/filtros.ts`, testado lá. Aqui só
+  // fica o estado e o que a tela precisa para desenhar os rótulos.
+  const filtered = useMemo(
+    () =>
+      aplicarFiltros(conversations, filtros, {
+        favoritas,
+        etapaPorContato,
+        busca: search,
+      }),
+    [conversations, filtros, favoritas, etapaPorContato, search],
+  );
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -287,14 +245,12 @@ export function ConversationList({
     [alternarFavorita, t]
   );
 
-  const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
-
   return (
     // w-full on mobile so the list occupies the whole viewport when it's
     // the single pane showing; fixed 320px on desktop where it shares the
     // row with the thread + contact sidebar.
     <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
-      {/* Search + Filter */}
+      {/* Busca + filtros */}
       <div className="space-y-2 border-b border-border p-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -306,247 +262,20 @@ export function ConversationList({
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted">
-                {activeFilter?.label ?? t("filterAll")}
-                <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="border-border bg-popover"
-            >
-              {FILTER_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.value}
-                  onClick={() => setFilter(opt.value)}
-                  className={cn(
-                    "text-sm",
-                    filter === opt.value
-                      ? "text-primary"
-                      : "text-popover-foreground"
-                  )}
-                >
-                  {opt.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Tipo: só aparece quando existe grupo na lista. */}
-          {temGrupos && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  tipo !== "todas"
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {tipo === "grupos"
-                  ? t("typeGroups")
-                  : tipo === "diretas"
-                    ? t("typeDirect")
-                    : t("typeAll")}
-                <ChevronDown className="h-3 w-3" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="border-border bg-popover">
-                {(
-                  [
-                    ["todas", t("typeAll")],
-                    ["diretas", t("typeDirect")],
-                    ["grupos", t("typeGroups")],
-                  ] as [TipoDeConversa, string][]
-                ).map(([valor, rotulo]) => (
-                  <DropdownMenuItem
-                    key={valor}
-                    onClick={() => setTipo(valor)}
-                    className={cn(
-                      "text-sm",
-                      tipo === valor ? "text-primary" : "text-popover-foreground",
-                    )}
-                  >
-                    {rotulo}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {/* Canal: só com 2+ números. Numa conta de um número o seletor
-              seria ruído puro. */}
-          {channels.length >= 2 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  selectedChannelId
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {selectedChannelId
-                  ? (channels.find((c) => c.id === selectedChannelId)?.label ??
-                    t("channelFilter"))
-                  : t("channelFilter")}
-                <ChevronDown className="h-3 w-3" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                className="max-h-64 w-56 border-border bg-popover"
-              >
-                <DropdownMenuItem
-                  onClick={() => setSelectedChannelId(null)}
-                  className={cn(
-                    "text-sm text-popover-foreground",
-                    selectedChannelId === null && "text-primary"
-                  )}
-                >
-                  {t("channelFilterAll")}
-                </DropdownMenuItem>
-                {channels.map((c) => (
-                  <DropdownMenuItem
-                    key={c.id}
-                    onClick={() => setSelectedChannelId(c.id)}
-                    className={cn(
-                      "text-sm text-popover-foreground",
-                      selectedChannelId === c.id && "text-primary"
-                    )}
-                  >
-                    <span className="truncate">{c.label}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {tags.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  selectedTagIds.length > 0
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {t("tags")}
-                {selectedTagIds.length > 0 && (
-                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                    {selectedTagIds.length}
-                  </span>
-                )}
-                <ChevronDown className="h-3 w-3" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                className="max-h-64 w-56 border-border bg-popover"
-              >
-                {tags.map((t) => (
-                  <DropdownMenuCheckboxItem
-                    key={t.id}
-                    checked={selectedTagIds.includes(t.id)}
-                    onCheckedChange={() => toggleTag(t.id)}
-                    className="text-sm text-popover-foreground"
-                  >
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: t.color }}
-                      />
-                      <span className="truncate">{t.name}</span>
-                    </span>
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {companies.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={cn(
-                  "inline-flex max-w-40 items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  selectedCompany
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <span className="truncate">{selectedCompany ?? t("company")}</span>
-                <ChevronDown className="h-3 w-3 shrink-0" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                className="max-h-64 w-56 border-border bg-popover"
-              >
-                <DropdownMenuItem
-                  onClick={() => setSelectedCompany(null)}
-                  className={cn(
-                    "text-sm",
-                    selectedCompany === null
-                      ? "text-primary"
-                      : "text-popover-foreground"
-                  )}
-                >
-                  {t("allCompanies")}
-                </DropdownMenuItem>
-                {companies.map((co) => (
-                  <DropdownMenuItem
-                    key={co}
-                    onClick={() => setSelectedCompany(co)}
-                    className={cn(
-                      "text-sm",
-                      selectedCompany === co
-                        ? "text-primary"
-                        : "text-popover-foreground"
-                    )}
-                  >
-                    <span className="truncate">{co}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
-
-        {hasContactFilters && (
-          <div className="flex flex-wrap items-center gap-1">
-            {selectedTagIds.map((id) => {
-              const tag = tagsById.get(id);
-              return (
-                <button
-                  key={id}
-                  onClick={() => toggleTag(id)}
-                  className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground hover:bg-muted/70"
-                >
-                  <span
-                    className="h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: tag?.color ?? "var(--muted-foreground)" }}
-                  />
-                  <span className="max-w-24 truncate">{tag?.name ?? t("tags")}</span>
-                  <X className="h-3 w-3" />
-                </button>
-              );
-            })}
-            {selectedCompany && (
-              <button
-                onClick={() => setSelectedCompany(null)}
-                className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground hover:bg-muted/70"
-              >
-                <span className="max-w-24 truncate">{selectedCompany}</span>
-                <X className="h-3 w-3" />
-              </button>
-            )}
-            <button
-              onClick={clearContactFilters}
-              className="px-1 text-[11px] text-muted-foreground hover:text-foreground"
-            >
-              {t("clearAll")}
-            </button>
-          </div>
-        )}
+        <InboxFilters
+          filtros={filtros}
+          onChange={setFiltros}
+          canais={channels}
+          etiquetas={tags}
+          empresas={companies}
+          responsaveis={profiles}
+          etapas={etapas}
+          temGrupos={temGrupos}
+          exibindo={filtered.length}
+          total={conversations.length}
+        />
       </div>
+
 
       {/* Conversation Items.
           `min-h-0` is load-bearing: a flex child defaults to
