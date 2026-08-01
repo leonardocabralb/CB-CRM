@@ -327,7 +327,11 @@ export async function engineSendMedia(
   // messages_content_type_check constraint (migration 001 + 010).
   // content_text carries the caption (or empty) so the conversation
   // list preview shows something meaningful when the user glances at it.
-  const preview = args.caption?.trim() || `[${args.kind}]`
+    // ⚠️ `legendaFinal`, não `args.caption`: a linha gravada leva a legenda
+  // ASSINADA, e a prévia lia a crua. A lista de conversas e o fio mostravam
+  // textos diferentes para a mesma mensagem. O `engineSendText` logo acima já
+  // usava o texto final — as duas funções do mesmo arquivo discordavam.
+const preview = legendaFinal?.trim() || `[${args.kind}]`
   const { data: insertedMsg, error: msgErr } = await db
     .from('messages')
     .insert({

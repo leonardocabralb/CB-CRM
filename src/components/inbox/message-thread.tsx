@@ -11,6 +11,7 @@ import { useCan } from "@/hooks/use-can";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
 import {
   aplicarAssinatura,
+  assinaturaExistente,
   nomeDePessoa,
   removerAssinatura,
 } from "@/lib/assinatura/assinatura";
@@ -649,6 +650,27 @@ export function MessageThread({
     }
   }, [messages, leadEvents, notas]);
 
+  /**
+   * Fecha a bolha otimista com o que o SERVIDOR gravou.
+   *
+   * ⚠️ Existe para os quatro caminhos de envio usarem a mesma regra. O de
+   * texto já corrigia o texto; mídia, template e interativa só marcavam
+   * "enviada" e deixavam o texto otimista de pé até o realtime chegar —
+   * então uma legenda assinada aparecia sem o nome por segundos. A rota
+   * devolve `content_text` para todos eles desde a 923.
+   */
+  const marcarEnviada = useCallback(
+    (tempId: string, payload: { content_text?: unknown }) => {
+      onUpdateMessage(tempId, {
+        status: "sent",
+        ...(typeof payload?.content_text === "string"
+          ? { content_text: payload.content_text }
+          : {}),
+      });
+    },
+    [onUpdateMessage],
+  );
+
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
       if (!conversation) return;
@@ -725,12 +747,7 @@ export function MessageThread({
         // realtime chegasse — parecendo que o sistema reescreveu o que ele
         // escreveu. Trocar aqui, na mesma resposta, faz a assinatura
         // aparecer de uma vez.
-        onUpdateMessage(tempId, {
-          status: "sent",
-          ...(typeof payload?.content_text === "string"
-            ? { content_text: payload.content_text }
-            : {}),
-        });
+        marcarEnviada(tempId, payload);
       } catch (err) {
         console.error("Failed to send message:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -741,7 +758,18 @@ export function MessageThread({
     // `activeChannel` e `channels` são load-bearing aqui: um closure obsoleto
     // mandaria o assert com o canal ERRADO, que é justamente o bug que ele
     // existe para impedir.
-    [conversation, onNewMessage, onUpdateMessage, activeChannel?.id, channels, t]
+    // `nomeQueAssina` nas deps: sem ele a bolha otimista continuaria assinando
+    // com o nome de antes depois de o interruptor mudar ou a sessão trocar.
+    [
+      conversation,
+      onNewMessage,
+      onUpdateMessage,
+      activeChannel?.id,
+      channels,
+      t,
+      marcarEnviada,
+      nomeQueAssina,
+    ]
   );
 
   const handleSendMedia = useCallback(
@@ -798,7 +826,8 @@ export function MessageThread({
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        // `data` e a resposta; `payload` aqui e o CORPO da requisicao.
+        marcarEnviada(tempId, data);
       } catch (err) {
         console.error("Failed to send media:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -807,7 +836,7 @@ export function MessageThread({
         void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
       }
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [conversation, onNewMessage, onUpdateMessage, marcarEnviada],
   );
 
   const handleSendInteractive = useCallback(
@@ -852,7 +881,8 @@ export function MessageThread({
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        // `data` e a resposta; `payload` aqui e o payload interativo.
+        marcarEnviada(tempId, data);
       } catch (err) {
         console.error("Failed to send interactive message:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -860,7 +890,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [conversation, onNewMessage, onUpdateMessage, marcarEnviada],
   );
 
   const handleStatusChange = useCallback(
@@ -941,7 +971,7 @@ export function MessageThread({
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        marcarEnviada(tempId, payload);
       } catch (err) {
         console.error("Failed to send template:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -949,7 +979,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [conversation, onNewMessage, onUpdateMessage, marcarEnviada],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without
@@ -1084,7 +1114,11 @@ export function MessageThread({
         throw new Error(error || String(res.status));
       }
       onUpdateMessage(alvo.id, {
-        content_text: texto,
+        // ⚠️ Recompõe com a assinatura ORIGINAL, igual ao servidor faz. Sem
+        // isto a bolha ficava sem o nome logo depois de editar — batendo nem
+        // com o banco nem com a tela do cliente — e só se corrigia quando o
+        // realtime chegasse, que este código trata como perdível.
+        content_text: assinaturaExistente(alvo.content_text) + texto,
         text_before_edit: alvo.content_text,
         edited_at: new Date().toISOString(),
       });

@@ -1986,7 +1986,8 @@
       "save": "Save",
       "saving": "Saving…",
       "saveSuccess": "Signature settings saved.",
-      "saveFailed": "Could not save the signature settings."
+      "saveFailed": "Could not save the signature settings.",
+      "loadFailed": "Could not load the signature settings. Reload the page — saving now could overwrite what is currently configured."
     }
   },
   "roles": {

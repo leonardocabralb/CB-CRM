@@ -36,20 +36,33 @@ export function AssinaturaSettings() {
   const [ativa, setAtiva] = useState(false);
   const [nomeAutomatico, setNomeAutomatico] = useState("");
   const [carregando, setCarregando] = useState(true);
+  const [falhouAoCarregar, setFalhouAoCarregar] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
     if (!accountId) return;
     let vivo = true;
     void (async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("accounts")
         .select("assinatura_ativa, assinatura_nome_automatica")
         .eq("id", accountId)
         .maybeSingle();
       if (!vivo) return;
-      setAtiva(Boolean(data?.assinatura_ativa));
-      setNomeAutomatico((data?.assinatura_nome_automatica as string) ?? "");
+      if (error || !data) {
+        // ⚠️ NÃO renderizar os controles com valores inventados.
+        //
+        // Engolir este erro era pior que parecer quebrado: a tela mostrava
+        // "desligada, sem nome" — uma mentira sobre o estado real — e o
+        // primeiro Save gravava justamente isso, APAGANDO o nome do
+        // escritório que ninguém tinha tocado. Automação, fluxo e IA parariam
+        // de assinar a partir dali, sem nada na tela dizendo por quê.
+        setFalhouAoCarregar(true);
+        setCarregando(false);
+        return;
+      }
+      setAtiva(Boolean(data.assinatura_ativa));
+      setNomeAutomatico((data.assinatura_nome_automatica as string) ?? "");
       setCarregando(false);
     })();
     return () => {
@@ -91,6 +104,10 @@ export function AssinaturaSettings() {
 
       {carregando ? (
         <p className="text-sm text-muted-foreground">{t("loading")}</p>
+      ) : falhouAoCarregar ? (
+        <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+          {t("loadFailed")}
+        </p>
       ) : (
         <div className="space-y-6">
           <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-4">

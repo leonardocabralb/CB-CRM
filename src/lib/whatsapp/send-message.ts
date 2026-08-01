@@ -314,7 +314,35 @@ export async function sendMessageToConversation(
    * `nomeParaAssinar` assina esses com o nome do escritório, nunca com o de
    * uma pessoa.
    */
-  const nomeQueAssina = await nomeParaAssinar(db, accountId, senderUserId);
+  /**
+   * ⚠️ SÓ ASSINA O QUE REALMENTE SAI ASSINADO.
+   *
+   * A regra da P1.2 é "o CRM mostra exatamente o que o cliente recebeu". Ela
+   * corta nos dois sentidos, e o caso abaixo violava justamente o lado que
+   * importa num escritório de advocacia — o registro afirmando algo que não
+   * aconteceu:
+   *
+   *  · TEMPLATE — o compositor manda `content_text` com o corpo já renderizado
+   *    (`message-thread.tsx`), mas o envio à Meta é montado a partir do NOME
+   *    do modelo e dos parâmetros; o texto daqui nunca é lido. Assinar fazia
+   *    a Meta entregar o modelo aprovado LIMPO e o CRM gravar a versão
+   *    assinada — uma atribuição fabricada, que não se corrige sozinha nunca
+   *    (modelo não é editável e fica fora do contexto da IA).
+   *  · INTERATIVA — o corpo vai no payload estruturado, e `interactiveBody`
+   *    ganha do texto no insert. Além disso o operador decidiu não assinar
+   *    menu de botões.
+   *  · ÁUDIO — não tem legenda.
+   *
+   * Sobra o que de fato viaja como texto: mensagem de texto e legenda de
+   * mídia. `podeAssinar` é a lista explícita disso.
+   */
+  const podeAssinar =
+    messageType === 'text' ||
+    (isMediaKind && messageType !== 'audio' && !!contentText?.trim());
+
+  const nomeQueAssina = podeAssinar
+    ? await nomeParaAssinar(db, accountId, senderUserId)
+    : null;
   const textoFinal = aplicarAssinatura(contentText, nomeQueAssina);
 
   /**

@@ -1986,7 +1986,8 @@
       "save": "Salvar",
       "saving": "Salvando…",
       "saveSuccess": "Configuração da assinatura salva.",
-      "saveFailed": "Não foi possível salvar a configuração da assinatura."
+      "saveFailed": "Não foi possível salvar a configuração da assinatura.",
+      "loadFailed": "Não foi possível carregar a configuração da assinatura. Recarregue a página — salvar agora poderia sobrescrever o que está configurado."
     }
   },
   "roles": {

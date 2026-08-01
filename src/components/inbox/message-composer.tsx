@@ -40,6 +40,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useCan } from "@/hooks/use-can";
+import { useAuth } from "@/hooks/use-auth";
+import { custoDaAssinatura, nomeDePessoa } from "@/lib/assinatura/assinatura";
 import type { ConversationNote } from "@/types";
 import { InternalNoteBox } from "./internal-note-box";
 import { cn } from "@/lib/utils";
@@ -1158,6 +1160,24 @@ export function MessageComposer({
  * across the parent's re-renders — a nested component would remount the
  * caption input on every keystroke and drop focus.
  */
+/**
+ * Quanto o operador pode digitar de legenda.
+ *
+ * ⚠️ A Meta corta em 1024 o texto FINAL, e desde a 923 o servidor prefixa a
+ * assinatura antes de mandar. Enquanto o contador daqui dizia 1024 e o
+ * servidor exigia 1024 menos o prefixo, dava para escrever uma legenda que o
+ * campo aceitava e o envio recusava — depois de o arquivo já ter subido, que
+ * é o momento mais caro possível para descobrir: a mídia é descartada do
+ * bucket e o operador reanexa e redigita tudo.
+ */
+function useTetoDaLegenda(): number {
+  const { profile, assinaturaAtiva } = useAuth();
+  const nome = assinaturaAtiva
+    ? nomeDePessoa(profile?.full_name, profile?.email)
+    : null;
+  return MEDIA_CAPTION_MAX - custoDaAssinatura(nome);
+}
+
 function MediaDraftPreview({
   draft,
   busy,
@@ -1175,6 +1195,7 @@ function MediaDraftPreview({
   onSend: () => void;
   t: ReturnType<typeof useTranslations>;
 }) {
+  const tetoDaLegenda = useTetoDaLegenda();
   return (
     <div className="rounded-xl border border-border bg-muted/40 p-3">
       <div className="flex items-start gap-3">
@@ -1214,7 +1235,7 @@ function MediaDraftPreview({
         {draft.kind !== "audio" && (
           <input
             value={draft.caption}
-            maxLength={MEDIA_CAPTION_MAX}
+            maxLength={tetoDaLegenda}
             onChange={(e) => onCaptionChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
