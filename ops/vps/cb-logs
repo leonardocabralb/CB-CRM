@@ -1,0 +1,5 @@
+#!/bin/sh
+svc=$1; min=${2:-10}; pat=$3
+case "$svc" in crm_crm|evolution_evolution) ;; *) echo "servico nao permitido: $svc"; exit 1;; esac
+if [ -n "$pat" ]; then docker service logs "$svc" --since "${min}m" 2>&1 | grep -- "$pat"
+else docker service logs "$svc" --since "${min}m" 2>&1 | tail -200; fi
