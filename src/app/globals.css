@@ -2,6 +2,40 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Tira a saída de build da varredura do Tailwind.
+
+   ⚠️ CORRIGINDO O QUE ESTAVA ESCRITO AQUI ANTES. A primeira versão deste
+   comentário afirmava três coisas que a verificação depois desmentiu, e vale
+   registrar porque cada uma leva a uma conclusão errada:
+
+     · "o build quebra sem isto" — não quebra. O `.gitignore` já cobre
+       `.next.nosync`, e o Tailwind o respeita. Medido rodando o scanner real
+       com e sem estas linhas: mesmos 577 arquivos, mesmos candidatos.
+     · "o Tailwind resolve o symlink" — não resolve. Ele alcança
+       `.next.nosync` direto, como diretório irmão. A linha do `.next` sozinha
+       não protege nada NESTA máquina (protege no Docker, onde `.next` é
+       diretório de verdade).
+     · "qualquer um dos dois sozinho deixa a porta aberta" — ao contrário: a
+       linha do `.next.nosync` sozinha fecha.
+
+   O QUE REALMENTE ABRE A PORTA é a cópia de conflito do iCloud. O projeto
+   vive em ~/Documents, e o iCloud cria duplicatas com sufixo " 2" quando vê
+   conflito — existe `/.next 2` na raiz, criado um minuto depois do symlink, e
+   ele NÃO é ignorado pelo git (`git check-ignore` sai 1). Está vazio hoje; no
+   instante em que ganhar saída de build, o bug volta idêntico:
+
+     Module not found: Can't resolve '; ??'
+     .bg-\[url\(\'\;\1 ...\'\)\]  { background-image: url('; ...'); }
+
+   Ele nasce do `bg-[url('/inbox-doodle.svg')]` legítimo do fio do chat, lido
+   de dentro de um SOURCE MAP (`.js.map` é JSON com o código escapado) em vez
+   do `.tsx`. A classe verdadeira está certa; o que quebra é a cópia escapada.
+
+   Daí o curinga: `.next*` cobre o diretório, o symlink, o alvo `.nosync` e
+   qualquer duplicata futura do iCloud de uma vez. Conferido que ele NÃO pega
+   `next.config.ts` nem `next-env.d.ts` — esses não começam com ponto. */
+@source not "../../.next*";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

@@ -24,7 +24,7 @@
 | --- | --- | --- | --- | --- |
 | **0** | Decisões de produto | ✅ respondida 2026-08-01 | — | — |
 | **1** | F3 — anotação interna no fio | ✅ **concluída 2026-08-01** | `918`, `919`, `920`, `921`, `922` (todas aplicadas e conferidas) | `feat/notas-na-conversa` |
-| **2** | F1 — assinatura por membro | ⬜ pendente | `923_cb_assinatura` | — |
+| **2** | F1 — assinatura por membro | 🔄 código pronto, revisões rodando | `923_cb_assinatura` (aplicada) | `feat/assinatura-do-membro` |
 | **3** | F2 fatia A — filtros | ⬜ pendente | `924_cb_favoritar` | — |
 | **4** | F4 — mensagem agendada | ⬜ pendente | `925_cb_mensagens_agendadas` | — |
 | **5** | F2 fatia B — busca full-text | ⬜ pendente | `926_cb_busca_em_mensagens` | — |
@@ -482,26 +482,160 @@ dois casos já estão cobertos.
   ganhou o ramo de grupo internamente. ⚠️ Consequência a vigiar: no grupo o WhatsApp já
   identifica o remetente, e se houver menção `@participante` o texto fica com **duas
   camadas de metadado** antes do conteúdo útil.
-- **Nome:** primeiro nome, com `coalesce(nullif(full_name,''), email)` (P1.6). O trigger de
+- ⚠️ **Nome COMPLETO** — o operador reverteu a P1.6 em 2026-08-01, depois de ver a
+  implementação. Motivo dele: num escritório de advocacia o cliente precisa saber com qual
+  advogado falou, e o primeiro nome não identifica ninguém quando há mais de um Leonardo;
+  o nome completo é o que ele vê na procuração e no processo. (Texto original da decisão
+  abaixo, mantido para quem for ler o Anexo B.)
+- ~~**Nome:** primeiro nome~~, com `coalesce(nullif(full_name,''), email)` (P1.6). O trigger de
   signup grava `COALESCE(..., '')`, então `NOT NULL` **não** garante não-vazio — sem isso a
   assinatura sai `*:*`.
-- **Interruptor por conta, nascendo desligado** (P1.8) → migration `919_cb_assinatura`.
+- **Interruptor por conta, nascendo desligado** (P1.8) → migration `923_cb_assinatura`.
+
+
+### Commits da Fase 2 (branch `feat/assinatura-do-membro`, de `main` @ `9bc27fb`)
+
+| Commit | O quê |
+| --- | --- |
+| `d808ea3` | plano revisado contra o código — os cinco erros |
+| `94c7daf` | conserto do build (Tailwind varrendo a saída de build) |
+| `a555d81` | `sender_id` preenchido |
+| `37fbb6c` | selo de robô na bolha |
+| `2edc977` | a assinatura nos cinco escritores + migration 923 |
+| `41b567a` | nome completo, tela de configuração, edição |
+| `b3c15c6` + `1435b66` | a bolha otimista (duas passadas — ver abaixo) |
+| `77fe13a` | correção do diagnóstico do build |
+
+⚠️ **A bolha otimista precisou de DOIS commits, e o motivo vale para qualquer feature
+que mude texto enviado.** O primeiro fez a rota devolver o texto final e o fio corrigir a
+bolha ao receber a resposta — o que **encurtou** a janela em vez de fechá-la, porque o
+navegador desenha antes de falar com o servidor. O operador testou e ainda viu a mensagem
+piscar sem o nome. Só fechou quando o cliente passou a desenhar já assinado, usando as
+**mesmas funções puras** do envio. Lição: "corrigir depois que a resposta chega" não é o
+mesmo que "nascer certo", e só o teste de gente pega a diferença.
+
+⚠️ **Também registrado: eu diagnostiquei o bug do build errado.** Ver o cabeçalho de
+`src/app/globals.css` — o `.gitignore` já resolvia, o Tailwind não segue o symlink, e o
+que realmente abre a porta é a cópia de conflito do iCloud (`.next 2`). Verifiquei que o
+sintoma sumiu e concluí que foi por minha causa; o sintoma era real, a explicação não.
+
+### ⚠️ Revisão prévia (passo 1 do fluxo) — feita em 2026-08-01, contra `main` @ `9bc27fb`
+
+O plano acima estava **errado em cinco pontos**, três deles capazes de deixar mensagem
+sem assinatura em produção. O que foi medido no código:
+
+**1. Não existe um caminho de envio. Existem CINCO escritores de saída.**
+E `sendMessageToConversation` **não é o funil**: automação, fluxo e IA passam **ao lado**
+dele, com cliente service-role.
+
+| # | Onde | `sender_type` | Quem chega ali |
+| --- | --- | --- | --- |
+| A | `whatsapp/send-message.ts:616` | `agent` | painel, API v1 pública, MCP |
+| B | `flows/meta-send.ts:153` (`engineSendText`) | `bot` | fluxos **e IA** |
+| C | `flows/meta-send.ts:305` (`engineSendMedia`) | `bot` | fluxos |
+| D | `flows/meta-send.ts:524` (interativo) | `bot` | fluxos e automações |
+| E | `automations/meta-send.ts:235` | `bot` | **automações** |
+
+⚠️ **Existem DUAS funções `engineSendText` diferentes** — `flows/meta-send.ts:74` e
+`automations/meta-send.ts:61`. Assinar só a dos fluxos deixa **toda automação sem
+assinatura**. O plano falava de uma só.
+
+Mais dois escritores de saída que **não** se assinam por construção (a mensagem já saiu
+do celular pareado): `persistDeviceMessage` (1:1) e `persistGroupDeviceMessage`.
+
+**2. Broadcast NÃO escreve em `messages`.** O plano o listava. `broadcast-core.ts` só toca
+`broadcasts`/`broadcast_recipients` — disparo nunca aparece no fio, e modelo aprovado pela
+Meta não aceitaria prefixo mesmo. Sai da lista.
+
+**3. Não há tabela de configuração, e nenhuma migration `9xx` mexe em `accounts`.** O
+precedente é `accounts.default_currency`, da **021** — coluna com `NOT NULL DEFAULT`, sem
+mudança de RLS (a policy de 017 já restringe a admin+), lida em `use-auth.tsx:172` e
+escrita direto sob RLS em `deals-settings.tsx:58`. É esse molde que a 923 copia.
+
+**4. O teto de 1024 roda em TRÊS lugares, todos antes do prefixo.** `send-message.ts:181`
+via `validateSendMessageParams`, chamado de `send/route.ts:113`, `v1/messages/route.ts:94`
+e do próprio núcleo em `:223`. Uma legenda de 1020 caracteres passa na validação e a Meta
+recusa a versão prefixada — o operador leva **502 em vez de 400**. Vale igual para o corpo
+interativo (`interactive.ts:35`).
+
+**5. `sender_id` é coluna morta e de graça.** Existe desde a 001, é `UUID` anulável, tem
+**zero escritas e zero leituras** no repositório, e o serializer público a exclui por
+allowlist. Preencher não precisa de migration.
 
 ### Armadilhas específicas
 
+- ⚠️ **A bolha otimista é montada no cliente com o texto SEM assinatura**
+  (`message-thread.tsx:640`, `:725`, `:789`, `:868`). Se só o servidor prefixa, o texto
+  **muda na frente do operador** quando o realtime reconcilia. A rota hoje devolve só
+  `message_id`/`whatsapp_message_id` (`send/route.ts:261`) — ou ela passa a devolver o
+  texto final, ou o cliente prefixa igual.
+- ⚠️ **`last_message_text` é escrito em CINCO lugares, sem helper comum**
+  (`send-message.ts:646`, `flows/meta-send.ts:176`/`:326`/`:544`,
+  `automations/meta-send.ts:260`), e há um sexto que o re-deriva do `content_text` depois
+  de editar ou apagar (`conversation-preview.ts:26`). A decisão sobre assinar a prévia tem
+  de ser repetida em todos.
+- ⚠️ **A IA passa a LER a própria assinatura.** `ai/context.ts:26,38` monta o histórico do
+  modelo a partir do `content_text`. Com o prefixo gravado ali, o modelo vê `*Nome:*` nas
+  mensagens anteriores e tende a imitar — gerando assinatura dentro do texto que já vai ser
+  prefixado de novo. **Tirar a assinatura ao montar o contexto da IA.**
 - ⚠️ **Editar mensagem assinada** (P1.3). O diálogo é pré-preenchido com o `content_text`
-  inteiro: o operador veria `*Leonardo Cabral:*` cru e poderia apagar, e a rota grava de
-  volta o que voltou. → **Esconder o prefixo do campo de edição e reaplicá-lo no servidor.**
-- ⚠️ **A IA não é caminho próprio.** `auto-reply.ts` importa `engineSendText` de
-  `flows/meta-send` — uma regra de assinatura escrita ali **assina resposta de robô com
-  nome de gente**. A separação entre a peça 1 e a peça 2 tem que ser explícita no código.
-- ⚠️ **Terceiro escritor sem sender:** `persistGroupDeviceMessage`.
-- **Bordas do nome:** nome iniciado por espaço vira asterisco cru para o cliente; nome com
-  `*` fecha o negrito cedo. Sanear na entrada.
-- **Teto de 1024 da legenda** é validado **antes** do prefixo hoje (`send-message.ts`) —
-  inverter a ordem (P1.7). Áudio não tem legenda: sai sem assinatura, por construção.
-- **O negrito não é trabalho:** `parseWhatsAppFormat` já renderiza `*Nome:*` em negrito de
-  verdade na bolha, e `stripWhatsAppFormat` já o remove da prévia da lista.
+  inteiro (`message-thread.tsx:984`) e o PATCH grava verbatim
+  (`api/whatsapp/message/route.ts:394`): o operador veria `*Leonardo Cabral:*` cru e poderia
+  apagar. → **Esconder o prefixo do campo e reaplicá-lo no servidor.**
+- ⚠️ **API v1 e MCP não têm pessoa.** `v1/messages/route.ts:137` chama o núcleo com contexto
+  de chave de API, sem `user`. → Assinam com o **nome do escritório**, mesma regra do robô
+  (P1.5): envio sem gente não pode levar nome de gente.
+  ⚠️ Pelo mesmo motivo, **não** usar `configOwnerUserId` (`ai/auto-reply.ts:19`) nem
+  `run.user_id` (`flows/engine.ts:1103`) como autor: são o dono da configuração, não quem
+  respondeu.
+- ⚠️ **Os motores já recebem um `userId` e o IGNORAM** (`flows/meta-send.ts:48`,
+  `automations/meta-send.ts:40`). Tentador usá-lo — é a mesma armadilha do item acima.
+- **Bordas do nome:** nome com `*`, `_`, `~` ou crase corrompe o parse do WhatsApp; nome
+  iniciado por espaço vira asterisco cru. Sanear na entrada.
+- **A prévia da lista fica `Nome: corpo`.** `stripWhatsAppFormat` tira os asteriscos, não o
+  nome (`conversation-list.tsx:644`). ⚠️ Em grupo isso **colide** com a convenção que já
+  existe: `previaDaMensagem` (`cb-groups/persist.ts:333`) já monta `Nome: corpo`.
+- **O negrito não é trabalho:** `parseWhatsAppFormat` (`inbox/whatsapp-format.ts:102`)
+  renderiza `*Nome:*` em negrito de verdade — conferido caractere a caractere, o `:` antes
+  do `*` de fechamento e o `\n` depois satisfazem `podeFechar`.
+- **Áudio não tem legenda:** sai sem assinatura, por construção.
+- **`messages` não tem policy de UPDATE garantida para o cliente do painel** — por isso
+  `stampMessageChannel` usa `supabaseAdmin()` (`send-message.ts:660`). Qualquer update
+  pós-insert segue a mesma regra.
+
+### Mensagem interativa NÃO é assinada — decisão do operador (2026-08-01)
+
+Menu com botões sai sem prefixo. Levantei como pendência porque o plano listava o caminho
+interativo entre os escritores a assinar, e deixá-lo de fora cria inconsistência ("por que
+o texto tem nome e o menu não?").
+
+Motivo aceito: a assinatura ficaria **dentro do corpo do card**, colada num menu de botões
+— visualmente lê como erro, não como identificação. E o menu já é obviamente o robô
+perguntando; a equipe tem o selo ROBÔ na bolha, e o cliente não está falando com uma pessoa
+naquele momento.
+
+⚠️ Consequência a lembrar em qualquer revisão futura: `flows/meta-send.ts` tem um insert de
+mensagem interativa que **não** passa por `aplicarAssinatura`. Isso é intencional, não um
+escritor esquecido.
+
+### O que a assinatura no `content_text` contamina (P1.2, decisão mantida)
+
+Gravar o prefixo no texto foi decisão do operador — um CRM jurídico precisa mostrar
+exatamente o que o cliente recebeu. O preço, medido, são **seis** consumidores do mesmo
+campo: citação de resposta, copiar para a área de transferência, contexto da IA (acima),
+relatórios (`dashboard/queries.ts:425`), busca (`conversation-list.tsx:234`) e o
+`content_text` da **API pública** — que passa a expor o nome do atendente mesmo com
+`sender_id` protegido por allowlist. Registrado aqui para não ser redescoberto como bug.
+
+### Commits previstos
+
+| # | Commit | Conteúdo |
+| --- | --- | --- |
+| 1 | `feat(mensagens): registrar quem enviou` | `sender_id` preenchido (sem migration) + teste do serializer v1 |
+| 2 | `feat(inbox): marcar mensagem de automação` | peça 2 — selo de robô na bolha, i18n nos dois dicionários |
+| 3 | `feat(assinatura): prefixo do membro no envio` | migration 923 + módulo próprio + interruptor + **os cinco escritores** |
+| 4 | `fix(inbox): editar não expõe nem apaga a assinatura` | esconder no diálogo, reaplicar no servidor |
+| 5 | `fix(assinatura): achados das revisões` | correções |
 
 ### Commits previstos
 
@@ -538,6 +672,93 @@ significa que **o teste não pode ser "abri e funcionou"** — é preciso criar 
 mover negócio de etapa à mão para exercitar de verdade.
 
 **Fora do escopo:** busca no corpo das mensagens (é a fatia B, exige índice e RPC).
+
+### ⚠️ Revisão prévia (passo 1 do fluxo) — feita em 2026-08-01
+
+**O achado que muda o desenho: o painel, como planejado, APAGARIA TRÊS COISAS QUE JÁ
+FUNCIONAM.** O plano lista os campos do painel como se a lista não filtrasse nada hoje.
+Ela filtra:
+
+| Já existe | Onde | O que se perde se o painel "substituir" |
+| --- | --- | --- |
+| Busca no **texto da última mensagem** | `conversation-list.tsx:224-242` (`stripWhatsAppFormat(c.last_message_text)`) | achar conversa pelo que foi dito |
+| Busca por **nome do grupo** (alias e assunto) | mesma função | achar grupo por nome |
+| Facet de **empresa** | `matchesContactFilters` + UI em `:452-496` | filtrar por empresa do contato |
+
+→ **A caixa de busca atual FICA como está** (nome, telefone, grupo e última mensagem numa
+só). Os filtros estruturados entram **ao lado** dela, não no lugar. E o campo de empresa
+entra na lista de filtros do painel, que o plano tinha esquecido.
+
+**Outras oito divergências medidas:**
+
+1. **`matchesTypeFilter` NÃO tem teste** — o plano dizia que as funções puras eram
+   testadas. `conversations.test.ts` tem 7 casos, todos de `matchesContactFilters` e
+   `normalizeConversation`. Escrever teste antes de mexer.
+2. **O modo "Todas" de etiqueta é NOVO.** Hoje é OR puro e fixo
+   (`contactTagIds.some(...)`, `conversations.ts:66`).
+3. **`unread_count` é POR CONTA, não por pessoa** — confirma a decisão do operador. Quem
+   abrir primeiro zera para a equipe inteira. Tornar por pessoa seria mudança de schema,
+   não de tela.
+4. **Hoje "não lidas" IGNORA o status por completo** (`else if`, `:201-205`) — inclui
+   conversa encerrada. Separar os controles muda o que 49 das 64 conversas mostram.
+5. **Três filtros nascem invisíveis ou vazios**, e os gates são deliberados (convenção do
+   `CLAUDE.md`): canal só aparece com **2+ canais** (`:365`) e cada conta tem **1**;
+   etiqueta só aparece com **1+ etiqueta** (`:410`) e há **0 no banco inteiro**; o tipo
+   (diretas/grupos) só aparece com grupo carregado, e há **0** — os 58 grupos estão em
+   `cb_groups` esperando `groups_enabled`. **Manter os gates**; um seletor de uma opção só
+   ocupa espaço sem decidir nada.
+6. **Arquivadas nasce vazia:** 0 conversas com `status='closed'`.
+7. **"Etapa do contato" não é valor único.** O índice único da 911 só cobre
+   `source='channel'`; negócio manual ou de automação pode duplicar. E **9 das 64
+   conversas não têm negócio nenhum** — precisa de uma opção explícita "sem etapa", ou
+   essas somem de qualquer recorte por etapa.
+8. **`CONVERSATION_SELECT` é compartilhado com a API PÚBLICA v1**
+   (`api/v1/conversations/route.ts:33`). Embutir `deals` ali mudaria o contrato público —
+   por isso a busca de etapa é separada, como o plano já dizia.
+
+### ⚠️ A armadilha silenciosa que vale mais que todas as outras
+
+`.eq()` em campo do contato **produz resultado errado, não erro** — e erra nos DOIS
+sentidos:
+
+- **Com o embed atual (LEFT):** o PostgREST aplica o filtro só ao recurso embutido. As
+  conversas que não casam **continuam vindo**, com `contact: null` — a lista mostra tudo,
+  com metade dos nomes virando "Desconhecido". Parece um filtro que não faz nada.
+- **Trocando para `contacts!inner`:** vira INNER JOIN e **apaga toda conversa de grupo**
+  (`contact_id IS NULL`), inclusive com o filtro vazio.
+
+Nenhum dos dois dá erro, e **os dois passam em revisão de código**. → Filtrar em JS, como
+o arquivo já faz.
+
+**E uma segunda, do mesmo tipo:** `contacts` e `contact_tags` **não estão na publication
+do realtime**, e a hidratação nunca atualiza contato já presente
+(`{ ...c, contact: c.contact ?? fetched.contact }`, `inbox/page.tsx:163-167`). Etiqueta
+criada em outra tela é **invisível para a aba aberta do inbox** até um resync — filtrar
+por ela não acha a conversa. Sem erro. ⚠️ Isso morde exatamente o teste desta fase, que
+depende de criar etiqueta à mão.
+
+### ⚠️ Como os filtros se combinam — decisão do operador (2026-08-01)
+
+**Todos os filtros do painel se aplicam JUNTOS (E lógico).** Não há filtro que substitua
+outro nem que "ganhe" do resto. Marcar responsável = Ana e depois clicar em "não lidas"
+mostra *as não lidas da Ana*, não todas as não lidas.
+
+**"Não lido" é da CONTA INTEIRA, não por pessoa.** Uma conversa está não lida se ninguém
+da equipe a leu — não "se eu não li". O recorte por pessoa sai do filtro de responsável,
+que é o que o operador combina com ele quando quer "as minhas".
+
+⚠️ **É por isso que o commit 3 é uma mudança de comportamento, e não uma adição.** Hoje
+"não lidas" é uma opção *dentro* do dropdown de status, e escolhê-la SUBSTITUI o status.
+Virando botão independente ela passa a somar. Quem hoje clica em "não lidas" esperando
+ver todas vai passar a ver só as que sobrevivem aos outros filtros ativos — o que é o
+comportamento pedido, mas muda o que um controle de uso diário faz. Por isso o contador
+"Exibindo N chat(s)" importa: ele é o que explica um resultado vazio.
+
+✅ **"Departamento" era exemplo genérico** — confirmado pelo operador em 2026-08-01.
+Não existe e **não entra no escopo**. Fica registrado porque o termo aparece na conversa
+que originou esta seção: quem reler daqui a um ano não deve sair procurando a tabela de
+departamentos nem construir uma. Os filtros da fase são os listados no Escopo, e nada
+além.
 
 ### Decisão de arquitetura
 
@@ -740,7 +961,7 @@ Duas passadas sobre o conjunto das fases entregues, procurando o que escapou fas
 | P1.4 | Mensagem para **grupo** leva assinatura? (vai de graça; não assinar exige guarda) | **Não** — o WhatsApp já identifica o remetente no grupo | ⚠️ **Sim, assina em grupo** (contraria a recomendação) |
 | P1.5 | Automação, fluxo e IA (`sender_type='bot'`) assinam? | **Nada automático assina** — assinar robô com nome de gente é o pior resultado numa conversa jurídica | ⚠️ **Assina, com interruptor** — e identificação interna de bot/IA **sempre** |
 | **P1.5b** | Com o interruptor ligado, que nome o cliente vê numa mensagem automática? | — | ✅ **Nome do escritório, fixo** — nunca nome de pessoa |
-| P1.6 | Nome inteiro, primeiro nome, ou apelido configurável? E o fallback quando `full_name` for vazio? | Primeiro nome, `coalesce(nullif(full_name,''), email)` — e recusar nome com `*` ou espaço inicial | ✅ Primeiro nome + fallback |
+| P1.6 | Nome inteiro, primeiro nome, ou apelido configurável? E o fallback quando `full_name` for vazio? | Primeiro nome, `coalesce(nullif(full_name,''), email)` — e recusar nome com `*` ou espaço inicial | ⚠️ **REVERTIDO em 2026-08-01: nome COMPLETO** (fallback e saneamento mantidos) |
 | P1.7 | Assinatura vai na **legenda de mídia**? | Sim em imagem/vídeo/documento, validando o teto de 1024 **depois** de somar o prefixo; áudio não tem legenda | ✅ Legenda sim, áudio não |
 | P1.8 | O interruptor é por conta, canal ou membro? Nasce ligado? | Por conta, nascendo **desligado** — mudança visível para o cliente não deve acontecer sem alguém pedir | ✅ Por conta, desligado |
 

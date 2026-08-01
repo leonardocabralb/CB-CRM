@@ -276,7 +276,9 @@
       "editedWas": "Antes da edição: {text}",
       "deleteRequested": "Exclusão solicitada",
       "deleteRequestedHint": "O CRM pediu a exclusão ao WhatsApp e ainda não recebeu confirmação. Até lá, não dá para garantir que a mensagem saiu do aparelho do contato.",
-      "deletedUnknown": "Apagada"
+      "deletedUnknown": "Apagada",
+      "botBadge": "Robô",
+      "botBadgeTitle": "Enviada automaticamente por uma automação ou fluxo — não foi escrita por uma pessoa"
     },
     "actions": {
       "reply": "Responder",
@@ -1631,6 +1633,7 @@
       "quick-replies": "Respostas rápidas",
       "fields": "Campos e etiquetas",
       "deals": "Negócios e moeda",
+      "assinatura": "Assinatura",
       "members": "Membros da equipe",
       "api": "Chaves de API"
     },
@@ -1964,6 +1967,27 @@
       "createdToast": "Resposta rápida criada.",
       "confirmDelete": "Excluir esta resposta rápida?",
       "deleteError": "Não foi possível excluir a resposta rápida."
+    },
+    "assinatura": {
+      "title": "Assinatura nas mensagens",
+      "description": "Põe o nome de quem enviou no topo de cada mensagem que o CRM manda.",
+      "loading": "Carregando…",
+      "toggleLabel": "Assinar as mensagens enviadas",
+      "toggleHint": "Muda o texto que o cliente recebe. Nasce desligada.",
+      "autoNameLabel": "Nome para mensagens automáticas",
+      "autoNameHint": "Automação, fluxo e IA não têm autor humano — assinam com o nome do escritório. Nunca ponha o nome de uma pessoa aqui: uma resposta automática às 3h da manhã sairia assinada por quem estava dormindo. Deixe vazio para essas saírem sem assinatura.",
+      "autoNamePlaceholder": "ex.: CB Advogados",
+      "previewTitle": "O que o cliente vê",
+      "previewPersonLabel": "Enviada por uma pessoa",
+      "previewAutoLabel": "Enviada por automação, fluxo ou IA",
+      "previewBody": "Bom dia, seguindo com o seu caso.",
+      "previewBodyAuto": "Recebemos sua mensagem e retornaremos em breve.",
+      "previewOff": "A assinatura está desligada — as mensagens saem exatamente como digitadas.",
+      "save": "Salvar",
+      "saving": "Salvando…",
+      "saveSuccess": "Configuração da assinatura salva.",
+      "saveFailed": "Não foi possível salvar a configuração da assinatura.",
+      "loadFailed": "Não foi possível carregar a configuração da assinatura. Recarregue a página — salvar agora poderia sobrescrever o que está configurado."
     }
   },
   "roles": {

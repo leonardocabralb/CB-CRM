@@ -276,7 +276,9 @@
       "editedWas": "Before editing: {text}",
       "deleteRequested": "Deletion requested",
       "deleteRequestedHint": "The CRM asked WhatsApp to delete this and has not been confirmed yet. Until then there is no guarantee it left the contact's phone.",
-      "deletedUnknown": "Deleted"
+      "deletedUnknown": "Deleted",
+      "botBadge": "Bot",
+      "botBadgeTitle": "Sent automatically by an automation or flow — not written by a person"
     },
     "actions": {
       "reply": "Reply",
@@ -1631,6 +1633,7 @@
       "quick-replies": "Quick replies",
       "fields": "Fields & tags",
       "deals": "Deals & currency",
+      "assinatura": "Message signature",
       "members": "Team members",
       "api": "API keys"
     },
@@ -1964,6 +1967,27 @@
       "createdToast": "Quick reply created.",
       "confirmDelete": "Delete this quick reply?",
       "deleteError": "Couldn't delete the quick reply."
+    },
+    "assinatura": {
+      "title": "Message signature",
+      "description": "Add the sender name to the top of every message the CRM sends.",
+      "loading": "Loading…",
+      "toggleLabel": "Sign outgoing messages",
+      "toggleHint": "Changes the text the customer receives. Off by default.",
+      "autoNameLabel": "Name for automatic messages",
+      "autoNameHint": "Automations, flows and the AI have no human author — they sign with the firm name. Never put a person here: an automatic reply at 3am would go out signed by someone who was asleep. Leave empty to send those unsigned.",
+      "autoNamePlaceholder": "e.g. CB Advogados",
+      "previewTitle": "What the customer sees",
+      "previewPersonLabel": "Sent by a person",
+      "previewAutoLabel": "Sent by an automation, flow or the AI",
+      "previewBody": "Good morning, following up on your case.",
+      "previewBodyAuto": "We received your message and will reply shortly.",
+      "previewOff": "The signature is off — messages go out exactly as typed.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saveSuccess": "Signature settings saved.",
+      "saveFailed": "Could not save the signature settings.",
+      "loadFailed": "Could not load the signature settings. Reload the page — saving now could overwrite what is currently configured."
     }
   },
   "roles": {

@@ -9,6 +9,12 @@ import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useCan } from "@/hooks/use-can";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
+import {
+  aplicarAssinatura,
+  assinaturaExistente,
+  nomeDePessoa,
+  removerAssinatura,
+} from "@/lib/assinatura/assinatura";
 import { LeadEventLine } from "@/components/lead-events/lead-event-line";
 import { NoteLine } from "./note-line";
 import { PresenceDot } from "@/components/presence/presence-dot";
@@ -212,7 +218,21 @@ export function MessageThread({
   const tActions = useTranslations("Inbox.actions");
   const tNote = useTranslations("Inbox.note");
 
-  const { user } = useAuth();
+  const { user, profile, assinaturaAtiva } = useAuth();
+
+  /**
+   * O nome com que ESTA pessoa assina, ou null. Só para desenhar a bolha
+   * otimista já assinada — quem assina de verdade é o servidor.
+   *
+   * ⚠️ Usa as MESMAS funções puras do envio (`nomeDePessoa`,
+   * `aplicarAssinatura`). Reimplementar a regra aqui faria a bolha e a
+   * mensagem real divergirem no dia em que a regra mudasse, que é o pior
+   * jeito possível de errar isto: o operador veria uma coisa e o cliente
+   * receberia outra.
+   */
+  const nomeQueAssina = assinaturaAtiva
+    ? nomeDePessoa(profile?.full_name, profile?.email)
+    : null;
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -630,6 +650,27 @@ export function MessageThread({
     }
   }, [messages, leadEvents, notas]);
 
+  /**
+   * Fecha a bolha otimista com o que o SERVIDOR gravou.
+   *
+   * ⚠️ Existe para os quatro caminhos de envio usarem a mesma regra. O de
+   * texto já corrigia o texto; mídia, template e interativa só marcavam
+   * "enviada" e deixavam o texto otimista de pé até o realtime chegar —
+   * então uma legenda assinada aparecia sem o nome por segundos. A rota
+   * devolve `content_text` para todos eles desde a 923.
+   */
+  const marcarEnviada = useCallback(
+    (tempId: string, payload: { content_text?: unknown }) => {
+      onUpdateMessage(tempId, {
+        status: "sent",
+        ...(typeof payload?.content_text === "string"
+          ? { content_text: payload.content_text }
+          : {}),
+      });
+    },
+    [onUpdateMessage],
+  );
+
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
       if (!conversation) return;
@@ -642,7 +683,10 @@ export function MessageThread({
         conversation_id: conversation.id,
         sender_type: "agent",
         content_type: "text",
-        content_text: text,
+        // ⚠️ Já nasce ASSINADA. Sem isto a mensagem aparece sem o nome e
+        // muda sozinha um instante depois, quando a resposta do servidor
+        // chega — parecendo que o sistema reescreveu o que foi digitado.
+        content_text: aplicarAssinatura(text, nomeQueAssina) ?? text,
         status: "sending",
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
@@ -696,7 +740,14 @@ export function MessageThread({
         // Success — the realtime INSERT event will replace the temp bubble
         // with the real DB row. If realtime hasn't arrived yet, at least
         // flip status to 'sent' so the UI stops showing "sending".
-        onUpdateMessage(tempId, { status: "sent" });
+        //
+        // ⚠️ E corrige o TEXTO junto. A bolha foi desenhada com o que o
+        // atendente digitou; com a assinatura ligada (923) o servidor
+        // prefixa, e sem isto a mensagem mudaria sozinha na tela quando o
+        // realtime chegasse — parecendo que o sistema reescreveu o que ele
+        // escreveu. Trocar aqui, na mesma resposta, faz a assinatura
+        // aparecer de uma vez.
+        marcarEnviada(tempId, payload);
       } catch (err) {
         console.error("Failed to send message:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -707,7 +758,18 @@ export function MessageThread({
     // `activeChannel` e `channels` são load-bearing aqui: um closure obsoleto
     // mandaria o assert com o canal ERRADO, que é justamente o bug que ele
     // existe para impedir.
-    [conversation, onNewMessage, onUpdateMessage, activeChannel?.id, channels, t]
+    // `nomeQueAssina` nas deps: sem ele a bolha otimista continuaria assinando
+    // com o nome de antes depois de o interruptor mudar ou a sessão trocar.
+    [
+      conversation,
+      onNewMessage,
+      onUpdateMessage,
+      activeChannel?.id,
+      channels,
+      t,
+      marcarEnviada,
+      nomeQueAssina,
+    ]
   );
 
   const handleSendMedia = useCallback(
@@ -764,7 +826,8 @@ export function MessageThread({
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        // `data` e a resposta; `payload` aqui e o CORPO da requisicao.
+        marcarEnviada(tempId, data);
       } catch (err) {
         console.error("Failed to send media:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -773,7 +836,7 @@ export function MessageThread({
         void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
       }
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [conversation, onNewMessage, onUpdateMessage, marcarEnviada],
   );
 
   const handleSendInteractive = useCallback(
@@ -818,7 +881,8 @@ export function MessageThread({
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        // `data` e a resposta; `payload` aqui e o payload interativo.
+        marcarEnviada(tempId, data);
       } catch (err) {
         console.error("Failed to send interactive message:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -826,7 +890,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [conversation, onNewMessage, onUpdateMessage, marcarEnviada],
   );
 
   const handleStatusChange = useCallback(
@@ -907,7 +971,7 @@ export function MessageThread({
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        marcarEnviada(tempId, payload);
       } catch (err) {
         console.error("Failed to send template:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -915,7 +979,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [conversation, onNewMessage, onUpdateMessage, marcarEnviada],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without
@@ -981,8 +1045,15 @@ export function MessageThread({
   const [textoEdicao, setTextoEdicao] = useState("");
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
 
+  // ⚠️ O campo de edição recebe o corpo SEM a assinatura (923).
+  //
+  // Ele era pré-preenchido com o `content_text` inteiro, e com a assinatura
+  // gravada ali o operador veria `*Leonardo Cabral Baptista:*` cru dentro do
+  // campo — podendo apagar sem querer, ou "corrigir" o nome. O servidor
+  // recoloca a assinatura ORIGINAL ao salvar, então o que se edita aqui é só
+  // o que se quis dizer.
   useEffect(() => {
-    setTextoEdicao(editando?.content_text ?? "");
+    setTextoEdicao(removerAssinatura(editando?.content_text) ?? "");
   }, [editando]);
 
   const apagarMensagem = useCallback(
@@ -1043,7 +1114,11 @@ export function MessageThread({
         throw new Error(error || String(res.status));
       }
       onUpdateMessage(alvo.id, {
-        content_text: texto,
+        // ⚠️ Recompõe com a assinatura ORIGINAL, igual ao servidor faz. Sem
+        // isto a bolha ficava sem o nome logo depois de editar — batendo nem
+        // com o banco nem com a tela do cliente — e só se corrigia quando o
+        // realtime chegasse, que este código trata como perdível.
+        content_text: assinaturaExistente(alvo.content_text) + texto,
         text_before_edit: alvo.content_text,
         edited_at: new Date().toISOString(),
       });

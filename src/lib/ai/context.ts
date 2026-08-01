@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { removerAssinatura } from '@/lib/assinatura/assinatura'
 import type { ChatMessage } from './types'
 import { aiContextMessageLimit } from './defaults'
 
@@ -36,6 +37,17 @@ export async function buildConversationContext(
     .filter((m) => m.content_text && m.content_text.trim())
     .map((m) => ({
       role: m.sender_type === 'customer' ? 'user' : 'assistant',
-      content: m.content_text!.trim(),
+      // ⚠️ A assinatura SAI do historico do modelo (923).
+      //
+      // O prefixo `*Nome:*` e gravado no `content_text` porque o CRM tem de
+      // mostrar o que o cliente recebeu — mas o modelo le este mesmo campo.
+      // Vendo `*CB Advogados:*` no comeco de cada resposta anterior, ele
+      // aprende que aquilo faz parte da resposta e passa a escreve-lo dentro
+      // do texto que gera. Esse texto e entao prefixado DE NOVO no envio, e o
+      // cliente recebe a assinatura duas vezes.
+      //
+      // Tirar aqui tambem deixa o historico mais limpo: o modelo nao precisa
+      // gastar atencao com quem assinou o que.
+      content: (removerAssinatura(m.content_text) ?? '').trim(),
     }))
 }

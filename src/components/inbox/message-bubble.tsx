@@ -15,6 +15,7 @@ import {
   CornerDownLeft,
   Sparkles,
   Smartphone,
+  Bot,
   Trash2,
   Pencil,
   Download,
@@ -535,6 +536,27 @@ export function MessageBubble({
             >
               <Sparkles className="h-2.5 w-2.5" />
               {t("aiBadge")}
+            </span>
+          )}
+          {/* Automação ou fluxo — robô que NÃO é a IA.
+              ⚠️ Este era o único caminho de saída sem marca nenhuma. Resposta
+              de IA já tinha o selo ✨ e o eco do celular tinha o dele, mas
+              `sender_type='bot'` com `ai_generated=false` saía visualmente
+              IDÊNTICO a uma mensagem escrita por gente — mesmo lado, mesma
+              cor, nada. A equipe não tinha como saber que aquilo foi uma
+              regra disparando de madrugada, e o cliente respondia achando
+              que falou com alguém.
+              Sem interruptor, de propósito (P1.5): a identificação interna
+              de robô existe mesmo com a assinatura desligada. E é excludente
+              com o selo de IA acima — os dois juntos seriam ruído, e
+              `ai_generated` é a informação mais específica. */}
+          {message.sender_type === "bot" && !message.ai_generated && (
+            <span
+              className="inline-flex items-center gap-0.5 rounded-full bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-primary-foreground"
+              title={t("botBadgeTitle")}
+            >
+              <Bot className="h-2.5 w-2.5" />
+              {t("botBadge")}
             </span>
           )}
           {/* Enviada pelo celular pareado, não pelo CRM. Num número

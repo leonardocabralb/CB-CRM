@@ -12,6 +12,7 @@
 // ============================================================
 
 import { NextResponse } from 'next/server';
+import { assinaturaExistente } from '@/lib/assinatura/assinatura'
 
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 
@@ -385,13 +386,33 @@ export async function PATCH(request: Request) {
       );
     }
 
+    /**
+     * ⚠️ A assinatura ORIGINAL volta ao texto aqui, no servidor.
+     *
+     * O campo de edição entrega só o corpo (o cliente tira o prefixo antes de
+     * mostrar). Sem recolocar, editar uma mensagem assinada a mandaria para o
+     * cliente SEM assinatura — e o WhatsApp mostraria a mensagem editada com
+     * o autor tendo sumido.
+     *
+     * Reaproveita o prefixo que JÁ está gravado, em vez de recalcular quem
+     * assina. Recalcular erraria de três jeitos: quem escreveu pode ter saído
+     * da equipe, o interruptor pode ter sido desligado desde o envio, e quem
+     * edita pode não ser quem escreveu. Editar o corpo não reescreve a
+     * história de quem falou.
+     */
+    const textoComAssinatura = assinaturaExistente(alvo.content_text) + texto;
+
     const numero = alvo.remote_jid.split('@')[0];
-    await cliente.updateMessage({ number: numero, key: chaveBaileys(alvo), text: texto });
+    await cliente.updateMessage({
+      number: numero,
+      key: chaveBaileys(alvo),
+      text: textoComAssinatura,
+    });
 
     const { error } = await admin()
       .from('messages')
       .update({
-        content_text: texto,
+        content_text: textoComAssinatura,
         text_before_edit: alvo.content_text,
         edited_at: new Date().toISOString(),
       })

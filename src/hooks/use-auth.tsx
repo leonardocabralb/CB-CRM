@@ -43,6 +43,17 @@ interface AccountSummary {
   /** Default deal currency (ISO-4217). NOT NULL DEFAULT 'USD' in the
    *  DB (migration 021); narrowed to DEFAULT_CURRENCY when absent. */
   default_currency: string;
+  /**
+   * Assinatura ligada (migration 923). Vem para o cliente por UM motivo:
+   * a bolha otimista precisa nascer assinada. O compositor desenha a
+   * mensagem antes de falar com o servidor — sem saber disto, ela aparece
+   * sem o nome e muda sozinha um instante depois, parecendo que o sistema
+   * reescreveu o que o atendente digitou.
+   *
+   * ⚠️ NÃO é a fonte da verdade do envio: quem assina de fato é o servidor
+   * (`send-message.ts`). Este valor só desenha.
+   */
+  assinatura_ativa: boolean;
 }
 
 interface AuthContextValue {
@@ -88,6 +99,8 @@ interface AuthContextValue {
    *  while loading or when no account is resolved, so callers can use
    *  it unconditionally. */
   defaultCurrency: string;
+  /** Assinatura ligada — só para a bolha otimista nascer certa. */
+  assinaturaAtiva: boolean;
   /** True if `accountRole === 'owner'`. */
   isOwner: boolean;
   /** True if `accountRole === 'admin'` (does NOT include owner — use canManageMembers for "admin or above"). */
@@ -171,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .from("accounts")
             // default_currency added in migration 021; narrowed to the
             // USD fallback below for older schemas where it reads null.
-            .select("id, name, default_currency")
+            .select("id, name, default_currency, assinatura_ativa")
             .eq("id", data.account_id)
             .maybeSingle();
           if (accountErr) {
@@ -186,6 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               id: account.id,
               name: account.name,
               default_currency: account.default_currency ?? DEFAULT_CURRENCY,
+              assinatura_ativa: Boolean(account.assinatura_ativa),
             };
           }
         }
@@ -344,6 +358,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshProfile,
         account,
         defaultCurrency: account?.default_currency ?? DEFAULT_CURRENCY,
+        assinaturaAtiva: account?.assinatura_ativa ?? false,
         ...derived,
       }}
     >
@@ -374,6 +389,9 @@ export function useAuth(): AuthContextValue {
       refreshProfile: async () => {},
       account: null,
       defaultCurrency: DEFAULT_CURRENCY,
+      // Fecha em falso como todo o resto do fallback: sem provider a bolha
+      // nasce sem assinatura, e o servidor decide.
+      assinaturaAtiva: false,
       accountId: null,
       accountRole: null,
       isOwner: false,

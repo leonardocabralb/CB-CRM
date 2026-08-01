@@ -21,6 +21,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { aplicarAssinatura, custoDaAssinatura } from '@/lib/assinatura/assinatura';
+import { nomeParaAssinar } from '@/lib/assinatura/resolver';
+
 import {
   sendTextMessage,
   sendTemplateMessage,
@@ -91,6 +94,19 @@ export interface SendMessageParams {
   /** Structured payload for `messageType === 'interactive'`. */
   interactivePayload?: InteractiveMessagePayload | null;
   replyToMessageId?: string | null;
+  /**
+   * Quem apertou "enviar", quando foi gente. Vai para `messages.sender_id`.
+   *
+   * ⚠️ Fica NULO de propósito quando não há pessoa: envio pela API pública
+   * (chave de API, sem usuário — `api/v1/messages/route.ts`) e pelo MCP. Nulo
+   * ali significa "não foi uma pessoa desta conta", que é a verdade; preencher
+   * com o dono da conta inventaria um autor que não apertou nada.
+   *
+   * ⚠️ Nunca chega ao cliente nem à API pública: `serializeMessage`
+   * (`lib/api/v1/conversations.ts`) monta a resposta por allowlist de campos,
+   * e há teste travando isso.
+   */
+  senderUserId?: string | null;
 }
 
 export interface SendMessageResult {
@@ -104,6 +120,12 @@ export interface SendMessageResult {
    * cliente". `null` no fallback do espelho `whatsapp_config`.
    */
   channelId: string | null;
+  /**
+   * O texto como ficou GRAVADO — já com a assinatura, quando ligada (923).
+   * Quem desenhou uma bolha otimista com o texto cru precisa disto para
+   * corrigi-la sem esperar o realtime.
+   */
+  contentText: string | null;
 }
 
 /**
@@ -210,6 +232,7 @@ export async function sendMessageToConversation(
     templateMessageParams,
     interactivePayload,
     replyToMessageId,
+    senderUserId,
   } = params;
 
   if (!conversationId) {
@@ -281,6 +304,68 @@ export async function sendMessageToConversation(
    * o sufixo `@g.us` intacto de propósito — ver o comentário lá.
    */
   const destinatario = ehGrupo ? grupo!.jid : sanitizedPhone;
+
+  /**
+   * ASSINATURA (923). Resolvida aqui — depois de a conversa existir e antes
+   * de qualquer envio — porque daqui para baixo `contentText` não é mais o
+   * texto que vai ao cliente: `textoFinal` é.
+   *
+   * ⚠️ `senderUserId` nulo é envio por CHAVE DE API (v1/MCP), não por gente:
+   * `nomeParaAssinar` assina esses com o nome do escritório, nunca com o de
+   * uma pessoa.
+   */
+  /**
+   * ⚠️ SÓ ASSINA O QUE REALMENTE SAI ASSINADO.
+   *
+   * A regra da P1.2 é "o CRM mostra exatamente o que o cliente recebeu". Ela
+   * corta nos dois sentidos, e o caso abaixo violava justamente o lado que
+   * importa num escritório de advocacia — o registro afirmando algo que não
+   * aconteceu:
+   *
+   *  · TEMPLATE — o compositor manda `content_text` com o corpo já renderizado
+   *    (`message-thread.tsx`), mas o envio à Meta é montado a partir do NOME
+   *    do modelo e dos parâmetros; o texto daqui nunca é lido. Assinar fazia
+   *    a Meta entregar o modelo aprovado LIMPO e o CRM gravar a versão
+   *    assinada — uma atribuição fabricada, que não se corrige sozinha nunca
+   *    (modelo não é editável e fica fora do contexto da IA).
+   *  · INTERATIVA — o corpo vai no payload estruturado, e `interactiveBody`
+   *    ganha do texto no insert. Além disso o operador decidiu não assinar
+   *    menu de botões.
+   *  · ÁUDIO — não tem legenda.
+   *
+   * Sobra o que de fato viaja como texto: mensagem de texto e legenda de
+   * mídia. `podeAssinar` é a lista explícita disso.
+   */
+  const podeAssinar =
+    messageType === 'text' ||
+    (isMediaKind && messageType !== 'audio' && !!contentText?.trim());
+
+  const nomeQueAssina = podeAssinar
+    ? await nomeParaAssinar(db, accountId, senderUserId)
+    : null;
+  const textoFinal = aplicarAssinatura(contentText, nomeQueAssina);
+
+  /**
+   * ⚠️ O teto de 1024 é revalidado AQUI, com a assinatura já contada.
+   *
+   * `validateSendMessageParams` roda três vezes antes disto (as duas rotas e
+   * o topo desta função) e sempre sobre o texto CRU — nenhuma delas sabe que
+   * um prefixo vai aparecer. Sem esta segunda checagem, uma legenda de 1020
+   * caracteres passa em todas, e quem recusa é a Meta: o operador recebe 502
+   * de erro de servidor onde devia ler "sua legenda e longa demais".
+   */
+  if (
+    isMediaKind &&
+    messageType !== 'audio' &&
+    typeof textoFinal === 'string' &&
+    textoFinal.length > 1024
+  ) {
+    throw new SendMessageError(
+      'bad_request',
+      `Caption exceeds the 1024-character limit (the signature uses ${custoDaAssinatura(nomeQueAssina)} of them)`,
+      400
+    );
+  }
 
   // Which number (channel) this conversation replies through. Resolves
   // the conversation's channel → the account default → whatsapp_config
@@ -465,13 +550,13 @@ export async function sendMessageToConversation(
             to: destinatario,
             kind: messageType as MediaKind,
             media: mediaUrl!,
-            caption: contentText || undefined,
+            caption: textoFinal || undefined,
             filename: filename || undefined,
             quoted: evolutionQuoted,
           })
         : await transport.sendText({
             to: destinatario,
-            text: contentText!,
+            text: textoFinal!,
             quoted: evolutionQuoted,
           });
       waMessageId = res.providerMessageId;
@@ -514,7 +599,7 @@ export async function sendMessageToConversation(
           to: phone,
           kind: messageType as MediaKind,
           link: mediaUrl!,
-          caption: contentText || undefined,
+          caption: textoFinal || undefined,
           filename: filename || undefined,
           contextMessageId,
         });
@@ -552,7 +637,7 @@ export async function sendMessageToConversation(
         phoneNumberId: channel.phone_number_id!,
         accessToken,
         to: phone,
-        text: contentText!,
+        text: textoFinal!,
         contextMessageId,
       });
       return result.messageId;
@@ -618,8 +703,16 @@ export async function sendMessageToConversation(
     .insert({
       conversation_id: conversationId,
       sender_type: 'agent',
+      // ⚠️ Coluna que existe desde a 001 e nunca foi escrita — 894 mensagens
+      // com `sender_id` nulo em produção. Sem ela não há como responder "quem
+      // mandou isso" numa conta com mais de uma pessoa, que é o caso a partir
+      // de agora. Nulo continua sendo resposta legítima: envio por chave de
+      // API não teve gente.
+      sender_id: senderUserId ?? null,
       content_type: messageType,
-      content_text: interactiveBody ?? contentText ?? null,
+      // O texto ASSINADO — e o que o cliente recebeu, e o CRM tem de
+      // mostrar exatamente isso (P1.2).
+      content_text: interactiveBody ?? textoFinal ?? null,
       media_url: mediaUrl || null,
       template_name: templateName || null,
       interactive_payload:
@@ -646,7 +739,7 @@ export async function sendMessageToConversation(
   const lastMessageText =
     messageType === 'interactive'
       ? interactivePayloadPreviewText(interactivePayload!)
-      : contentText || `[${messageType}]`;
+      : textoFinal || `[${messageType}]`;
 
   await db
     .from('conversations')
@@ -697,5 +790,7 @@ export async function sendMessageToConversation(
     messageId: messageRecord.id,
     whatsappMessageId: waMessageId,
     channelId: channel.channelId,
+    // O que ficou gravado — com assinatura, se ligada.
+    contentText: (messageRecord.content_text as string | null) ?? null,
   };
 }
