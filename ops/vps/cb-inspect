@@ -1,0 +1,7 @@
+#!/bin/sh
+svc=$1
+case "$svc" in crm_crm|evolution_evolution) ;; *) echo "servico nao permitido: $svc"; exit 1;; esac
+echo "== imagem =="; docker service inspect "$svc" --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+echo; echo "== variaveis (so nomes) =="
+docker service inspect "$svc" --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | cut -d= -f1 | sort
+echo; echo "== tarefas =="; docker service ps "$svc" --no-trunc | head -5

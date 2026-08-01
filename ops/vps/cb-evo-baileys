@@ -1,0 +1,4 @@
+#!/bin/sh
+cid=$(docker ps -q -f name=evolution_evolution | head -1)
+[ -n "$cid" ] || { echo "evolution nao esta rodando"; exit 1; }
+docker exec "$cid" sh -c 'grep -m1 "\"version\"" /evolution/node_modules/baileys/package.json; grep -n "sender_pn" /evolution/node_modules/baileys/lib/Utils/decode-wa-message.js'
