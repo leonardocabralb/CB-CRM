@@ -673,6 +673,29 @@ mover negócio de etapa à mão para exercitar de verdade.
 
 **Fora do escopo:** busca no corpo das mensagens (é a fatia B, exige índice e RPC).
 
+### ⚠️ Como os filtros se combinam — decisão do operador (2026-08-01)
+
+**Todos os filtros do painel se aplicam JUNTOS (E lógico).** Não há filtro que substitua
+outro nem que "ganhe" do resto. Marcar responsável = Ana e depois clicar em "não lidas"
+mostra *as não lidas da Ana*, não todas as não lidas.
+
+**"Não lido" é da CONTA INTEIRA, não por pessoa.** Uma conversa está não lida se ninguém
+da equipe a leu — não "se eu não li". O recorte por pessoa sai do filtro de responsável,
+que é o que o operador combina com ele quando quer "as minhas".
+
+⚠️ **É por isso que o commit 3 é uma mudança de comportamento, e não uma adição.** Hoje
+"não lidas" é uma opção *dentro* do dropdown de status, e escolhê-la SUBSTITUI o status.
+Virando botão independente ela passa a somar. Quem hoje clica em "não lidas" esperando
+ver todas vai passar a ver só as que sobrevivem aos outros filtros ativos — o que é o
+comportamento pedido, mas muda o que um controle de uso diário faz. Por isso o contador
+"Exibindo N chat(s)" importa: ele é o que explica um resultado vazio.
+
+⚠️ **PENDENTE — "departamento" não existe no sistema.** O operador citou "um filtro de
+departamento" ao explicar a regra de combinação. Não há coluna, tabela nem conceito de
+departamento no schema (conferir antes de qualquer decisão: não é `tags`, não é
+`cb_channels`, não é papel de membro). Ou era exemplo genérico, ou é uma feature nova a
+ser especificada. **Perguntar antes de construir** — não inventar um conceito.
+
 ### Decisão de arquitetura
 
 ⚠️ **Não misturar filtro-cliente com filtro-servidor no mesmo painel.** Produz resultado
