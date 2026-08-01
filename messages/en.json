@@ -276,7 +276,9 @@
       "editedWas": "Before editing: {text}",
       "deleteRequested": "Deletion requested",
       "deleteRequestedHint": "The CRM asked WhatsApp to delete this and has not been confirmed yet. Until then there is no guarantee it left the contact's phone.",
-      "deletedUnknown": "Deleted"
+      "deletedUnknown": "Deleted",
+      "botBadge": "Bot",
+      "botBadgeTitle": "Sent automatically by an automation or flow — not written by a person"
     },
     "actions": {
       "reply": "Reply",

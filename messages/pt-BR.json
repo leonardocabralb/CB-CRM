@@ -276,7 +276,9 @@
       "editedWas": "Antes da edição: {text}",
       "deleteRequested": "Exclusão solicitada",
       "deleteRequestedHint": "O CRM pediu a exclusão ao WhatsApp e ainda não recebeu confirmação. Até lá, não dá para garantir que a mensagem saiu do aparelho do contato.",
-      "deletedUnknown": "Apagada"
+      "deletedUnknown": "Apagada",
+      "botBadge": "Robô",
+      "botBadgeTitle": "Enviada automaticamente por uma automação ou fluxo — não foi escrita por uma pessoa"
     },
     "actions": {
       "reply": "Responder",
