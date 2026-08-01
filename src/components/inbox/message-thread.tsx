@@ -9,7 +9,11 @@ import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useCan } from "@/hooks/use-can";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
-import { removerAssinatura } from "@/lib/assinatura/assinatura";
+import {
+  aplicarAssinatura,
+  nomeDePessoa,
+  removerAssinatura,
+} from "@/lib/assinatura/assinatura";
 import { LeadEventLine } from "@/components/lead-events/lead-event-line";
 import { NoteLine } from "./note-line";
 import { PresenceDot } from "@/components/presence/presence-dot";
@@ -213,7 +217,21 @@ export function MessageThread({
   const tActions = useTranslations("Inbox.actions");
   const tNote = useTranslations("Inbox.note");
 
-  const { user } = useAuth();
+  const { user, profile, assinaturaAtiva } = useAuth();
+
+  /**
+   * O nome com que ESTA pessoa assina, ou null. Só para desenhar a bolha
+   * otimista já assinada — quem assina de verdade é o servidor.
+   *
+   * ⚠️ Usa as MESMAS funções puras do envio (`nomeDePessoa`,
+   * `aplicarAssinatura`). Reimplementar a regra aqui faria a bolha e a
+   * mensagem real divergirem no dia em que a regra mudasse, que é o pior
+   * jeito possível de errar isto: o operador veria uma coisa e o cliente
+   * receberia outra.
+   */
+  const nomeQueAssina = assinaturaAtiva
+    ? nomeDePessoa(profile?.full_name, profile?.email)
+    : null;
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -643,7 +661,10 @@ export function MessageThread({
         conversation_id: conversation.id,
         sender_type: "agent",
         content_type: "text",
-        content_text: text,
+        // ⚠️ Já nasce ASSINADA. Sem isto a mensagem aparece sem o nome e
+        // muda sozinha um instante depois, quando a resposta do servidor
+        // chega — parecendo que o sistema reescreveu o que foi digitado.
+        content_text: aplicarAssinatura(text, nomeQueAssina) ?? text,
         status: "sending",
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
