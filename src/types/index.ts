@@ -176,6 +176,51 @@ export interface ConversationNote {
 }
 
 /**
+ * Situação de uma mensagem agendada (migration 925).
+ *
+ * ⚠️ `sending` parado é o estado que engana. Ele significa "o worker
+ * reivindicou a linha e não voltou" — o processo morreu no meio, e a mensagem
+ * PODE ter saído para o cliente. Por isso não existe retentativa a partir
+ * dele: a saída é a pessoa apagar e reagendar, decidindo com o que vê na
+ * conversa. Retentar dali é a receita para o cliente receber duas vezes.
+ */
+export type ScheduledMessageStatus = 'pending' | 'sending' | 'sent' | 'failed';
+
+/**
+ * Mensagem escrita agora para sair na hora marcada (migration 925). Só texto
+ * na v1 (P4.6).
+ *
+ * ⚠️ Nada dispara sozinho: a linha só sai porque alguém de fora bate em
+ * `/api/cb/scheduled/cron`. Sem o agendador na VPS esta tabela é uma coluna
+ * morta, exatamente como `broadcasts.scheduled_at` é desde a 001.
+ */
+export interface ScheduledMessage {
+  id: string;
+  account_id: string;
+  /** A chave é a CONVERSA — é a única que cobre 1:1 e grupo. */
+  conversation_id: string;
+  /**
+   * O número por onde ESTA mensagem sai, fixado no agendamento. Não segue a
+   * conversa: se o cliente escrever por outro número no meio-tempo, a
+   * agendada continua saindo por este (P4.3).
+   */
+  channel_id: string;
+  body: string;
+  scheduled_for: string;
+  status: ScheduledMessageStatus;
+  /** Motivo da falha, em texto para o operador ler (P4.9). */
+  error: string | null;
+  /** `messages.id` do que realmente saiu. */
+  message_id: string | null;
+  /** Nulo quando quem agendou saiu do `auth.users`. */
+  created_by: string | null;
+  /** Carimbado na escrita — sobrevive à saída do membro. */
+  autor_nome: string;
+  created_at: string;
+  sent_at: string | null;
+}
+
+/**
  * Grupo de WhatsApp (migration 906). Existe só no transporte Evolution — a
  * API oficial da Meta não entrega mensagem de grupo.
  */

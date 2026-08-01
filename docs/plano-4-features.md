@@ -24,9 +24,9 @@
 | --- | --- | --- | --- | --- |
 | **0** | Decisões de produto | ✅ respondida 2026-08-01 | — | — |
 | **1** | F3 — anotação interna no fio | ✅ **concluída 2026-08-01** | `918`, `919`, `920`, `921`, `922` (todas aplicadas e conferidas) | `feat/notas-na-conversa` |
-| **2** | F1 — assinatura por membro | 🔄 código pronto, revisões rodando | `923_cb_assinatura` (aplicada) | `feat/assinatura-do-membro` |
-| **3** | F2 fatia A — filtros | ⬜ pendente | `924_cb_favoritar` | — |
-| **4** | F4 — mensagem agendada | ⬜ pendente | `925_cb_mensagens_agendadas` | — |
+| **2** | F1 — assinatura por membro | ✅ **concluída 2026-08-01** — no ar | `923_cb_assinatura` (aplicada) | [#30](https://github.com/leonardocabralb/CB-CRM/pull/30) → `de3ced2` |
+| **3** | F2 fatia A — filtros | ✅ **código pronto 2026-08-01** — revisado (fria + morna), verde, ⚠️ **não mergeado** | `924_cb_favoritar` (aplicada e conferida) | `feat/filtros-do-inbox` (5 commits) |
+| **4** | F4 — mensagem agendada | 🔄 em andamento | `925_cb_mensagem_agendada` | `feat/mensagem-agendada` (de `main` @ `de3ced2`) |
 | **5** | F2 fatia B — busca full-text | ⬜ pendente | `926_cb_busca_em_mensagens` | — |
 | **6** | Revisão final (2 passadas + testes) | ⬜ pendente | — | — |
 
@@ -813,9 +813,10 @@ já resolve todas / diretas / grupos (P2.6). Reusar, não reescrever.
 
 ## Fase 4 — F4: mensagem agendada
 
-⚠️ **Bloqueada pela P4.1.** Não existe agendador nenhum no projeto: sem `vercel.json`, sem
-`schedule:` em workflow, sem serviço no Swarm, e `pg_cron`/`pg_net` não instalados
-(o schema `cron` sequer existe no banco).
+⚠️ **A P4.1 respondeu ("cron na VPS com `x-cron-secret`"), mas o agendador continua não
+existindo:** sem `vercel.json`, sem `schedule:` em workflow, sem serviço no Swarm, e
+`pg_cron`/`pg_net` disponíveis porém **não instalados** (o schema `cron` sequer existe no
+banco). Reconferido em 2026-08-01.
 
 **O plano antigo dizia "basta copiar o padrão do cron das automações". Isso morreu:** o
 padrão existe como *código* e nunca como *operação*. `automation_pending_executions` tem
@@ -858,15 +859,78 @@ removendo o stub). F4 sem executor repetiria exatamente esse erro.
 - **Vocabulário:** "Excluir" na aba colide com "Apagar para todos" da bolha. O texto de
   confirmação precisa dizer *"cancelar o envio agendado"*.
 
-### Commits previstos
+### ⚠️ Revisão prévia (passo 1 do fluxo) — feita em 2026-08-01, contra `main` @ `de3ced2`
+
+Sete achados. Os quatro primeiros **mudam o plano**; os três últimos confirmam-no.
+
+**1. O CI não consegue subir o agendador — nenhum deploy nosso sobe serviço novo.**
+`.github/workflows/deploy.yml` termina em `docker service update --image … crm_crm`, e
+**não** em `docker stack deploy`. Serviço acrescentado ao `docker-stack.yml` fica no
+arquivo e nunca nasce na VPS. Some com ele a leitura de que "o commit do cron liga o
+cron": o commit **prepara**, e alguém roda **um comando na VPS**. Meu acesso por SSH é
+deliberadamente somente-leitura (quatro programas de escopo fixo, `ops/vps/README.md`) —
+não dá para fazer, e não é para dar.
+→ **O commit do cron foi de 1º para 4º**, imediatamente antes do merge, para ser a última
+coisa em vista e não uma pendência esquecida no meio. O motivo original de pô-lo em
+primeiro (não repetir o `broadcasts.scheduled_at` morto) continua honrado: **o merge não
+acontece sem ele**.
+
+**2. A "aba AGENDADAS" não existe como aba em lugar nenhum.** `contact-sidebar.tsx` é uma
+coluna rolável de **seções** — o "Histórico" da 912 é seção, não aba. E como a P4.7 deixa
+grupo receber agendada, a peça entra em **duas** fichas (`contact-sidebar` e
+`group-sidebar`).
+→ Vira **componente próprio** usado nos dois lugares, não aba.
+
+**3. O núcleo de envio não aceita "sai por este canal".** `sendMessageToConversation`
+chama `resolveChannelForConversation` por dentro, que degrada em silêncio para o padrão.
+Fixar o canal pinando a conversa (o que a rota `/api/whatsapp/send` faz com `channel_id`)
+está **errado aqui**: mudaria o número de toda a conversa às 3h da manhã.
+→ Dois parâmetros **opcionais** novos no núcleo, ambos aditivos (o padrão preserva o
+comportamento atual): `channelId` (exige exatamente aquele canal, **falha fechado**) e
+`pauseFlows` (a agendada passa `false`, P4.5).
+
+**4. `messages.sender_id` saiu de 0 para 5** — a Fase 2 começou a carimbar autor. Isso
+levanta uma pergunta que o plano não fazia: **a agendada leva a assinatura de quem
+agendou?** Sim. A pessoa escreveu o texto; a hora é que foi adiada. O disparo passa
+`senderUserId = quem agendou`, e a 923 prefixa o nome dela — coerente com a P4.11
+("gravar e mostrar quem agendou").
+
+**5–7. Confirmados, sem mudança:** `automation_pending_executions` segue em **0 linhas** e
+`broadcasts.scheduled_at` em **0 preenchidas** (o argumento da P4.1 continua de pé);
+`messages_status_check` aceita exatamente `sending|sent|delivered|read|failed`, sem
+`scheduled` (tabela própria está certa); `conversations_id_account_key` e
+`cb_channels_id_account_key` existem, então as **duas** FKs compostas saem de graça.
+
+**Números conferidos na hora:** última migration aplicada e em disco = `924` → a nova é a
+**925**. `pg_cron` e `pg_net` seguem disponíveis e **não instalados**.
+
+### Decisões que esta fase fecha (não estavam no plano)
+
+- **`channel_id` é NOT NULL.** Falhar fechado começa na porta de entrada: conta sem
+  conexão em `cb_channels` não agenda, com recado claro, em vez de agendar contra o
+  fallback `whatsapp_config` e descobrir isso de madrugada.
+- **`autor_nome` gravado junto do `created_by`**, mesma lição da anotação (918): a autoria
+  precisa sobreviver à saída do membro. `created_by` é `ON DELETE SET NULL` — `CASCADE`
+  apagaria agendamentos de um cliente porque um funcionário saiu.
+- **Sem retentativa automática, e sem retentativa a partir de `sending`.** Linha travada
+  em `sending` significa que o processo morreu no meio: a mensagem **pode** ter saído. Só
+  o operador decide, e a saída dele é apagar e reagendar. Retentar dali é a receita para
+  o cliente receber a mesma coisa duas vezes.
+- **UPDATE não existe para o navegador.** Criar, executar agora e retentar passam por
+  rota (o servidor carimba autor e resolve canal); apagar vai direto sob RLS, que é o
+  molde da anotação.
+- **A lista mora na ficha da conversa, e só lá.** Não há tela global de agendadas na v1 —
+  agendada em conversa que ninguém abre fica invisível até a hora. Limitação conhecida.
+
+### Commits previstos (revisados)
 
 | # | Commit | Conteúdo |
 | --- | --- | --- |
-| 1 | `chore(deploy): agendador que bate nas rotas de cron` | cron na VPS + `docs/DEPLOY-VPS.md` na mesma passada |
-| 2 | `feat(agendadas): schema da mensagem agendada` | migration 921 + RLS + tipos |
-| 3 | `feat(agendadas): worker de disparo` | rota + claim em dois passos + falha fechada no canal |
-| 4 | `feat(agendadas): agendar pelo compositor` | diálogo, aba AGENDADAS, Executar/Excluir, i18n |
-| 5 | `fix(agendadas): achados da passada fria` | correções |
+| 1 | `feat(agendadas): schema da mensagem agendada` | migration **925** + RLS + REVOKE + tipos |
+| 2 | `feat(agendadas): worker de disparo` | rota de cron + claim em dois passos + canal fixo com falha fechada + `pauseFlows` |
+| 3 | `feat(agendadas): agendar pelo compositor` | diálogo, seção nas duas fichas, Executar/Apagar, i18n |
+| 4 | `chore(deploy): agendador que bate na rota` | serviço no `docker-stack.yml` + `docs/DEPLOY-VPS.md` — ⚠️ **exige um comando do operador na VPS** |
+| 5 | `fix(agendadas): achados das revisões fria e morna` | correções |
 
 ---
 
