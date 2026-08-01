@@ -247,7 +247,8 @@
       "notePlaceholder": "Write the note…",
       "saveNote": "Save Note",
       "noteSaveError": "Could not save the note.",
-      "noteMentionHint": "Type @ to mention a teammate"
+      "noteMentionHint": "Type @ to mention a teammate",
+      "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified."
     },
     "bubble": {
       "groupMediaTap": "Tap to download",

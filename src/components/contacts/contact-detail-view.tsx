@@ -62,7 +62,9 @@ export function ContactDetailView({
   const t = useTranslations('Contacts.detailView');
   const tEventos = useTranslations('LeadEvents');
   const supabase = createClient();
-  const { accountId, defaultCurrency } = useAuth();
+  // `accountId` saiu com o insert direto: a anotação agora nasce na rota,
+  // que resolve a conta no servidor a partir da sessão.
+  const { defaultCurrency } = useAuth();
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(false);

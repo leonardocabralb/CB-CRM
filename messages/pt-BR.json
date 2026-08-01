@@ -247,7 +247,8 @@
       "notePlaceholder": "Escreva a anotação…",
       "saveNote": "Salvar Anotação",
       "noteSaveError": "Não foi possível salvar a anotação.",
-      "noteMentionHint": "Digite @ para mencionar um colega"
+      "noteMentionHint": "Digite @ para mencionar um colega",
+      "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou."
     },
     "bubble": {
       "groupMediaTap": "Toque para baixar",

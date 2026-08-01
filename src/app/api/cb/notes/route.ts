@@ -217,7 +217,11 @@ export async function POST(request: Request) {
         account_id: accountId,
         user_id: destinatario,
         type: 'note_mention',
-        conversation_id,
+        // `conversa.id`, pelo mesmo motivo do insert acima: chamada pela
+        // ficha do contato, o corpo não traz `conversation_id`. Aqui a coluna
+        // é ANULÁVEL, então não estouraria — o aviso é que ficaria sem
+        // destino, e clicar nele no sino não abriria conversa nenhuma.
+        conversation_id: conversa.id,
         contact_id: conversa.contact_id ?? null,
         actor_user_id: user.id,
         // ⚠️ Texto CRU, sem passar pelo dicionário: `notifications.title` e
@@ -230,8 +234,16 @@ export async function POST(request: Request) {
     )
     if (erroSino) {
       console.error('[POST /api/cb/notes] falha ao notificar menção:', erroSino.message)
+      mencoesOk = false
     }
   }
 
-  return NextResponse.json({ note: nota }, { status: 201 })
+  // 201 mesmo quando o aviso falhou — a anotação existe, e é ela que importa.
+  // Mas `mencoesNotificadas` vai junto para a tela poder dizer "salvei, só não
+  // consegui avisar", em vez de deixar quem escreveu supondo que o colega foi
+  // chamado. Só é `false` quando havia menção para entregar e algo falhou.
+  return NextResponse.json(
+    { note: nota, mencoesNotificadas: mencoesOk },
+    { status: 201 },
+  )
 }

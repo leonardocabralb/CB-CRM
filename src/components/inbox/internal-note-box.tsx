@@ -158,6 +158,10 @@ export function InternalNoteBox({
         toast.error(json?.error || t("noteSaveError"));
         return;
       }
+      // A anotação foi salva; o aviso ao colega pode não ter saído. Dizer
+      // isso é o ponto: quem escreveu "@fulano confere esse prazo" e some da
+      // tela precisa saber se o fulano foi mesmo chamado.
+      if (json?.mencoesNotificadas === false) toast.warning(t("noteMentionFailed"));
       onSaved?.(json.note as ConversationNote);
       setTexto("");
       onClose();
