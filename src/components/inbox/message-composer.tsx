@@ -476,11 +476,20 @@ export function MessageComposer({
   // pendurada na thread do cliente errado, e o "Desfazer" dali jogaria o
   // texto de um cliente no campo de outro. A mensagem em si já vai para o
   // lugar certo — `enviar` está preso à origem.
+  //
+  // ⚠️ E fecha a caixa de anotação junto, pelo MESMO motivo. Como o
+  // compositor não remonta, a caixa aberta com texto dentro sobrevivia à
+  // troca — e `salvarNota` lê o `conversationId` do render atual, então
+  // clicar em Salvar depois de trocar gravaria a anotação de um cliente na
+  // conversa de outro. Numa anotação interna de escritório de advocacia isso
+  // é vazamento de informação entre casos, não só um erro de UI.
   const conversaAnteriorRef = useRef(conversationId);
   useEffect(() => {
     if (conversaAnteriorRef.current === conversationId) return;
     conversaAnteriorRef.current = conversationId;
     liberarPendente();
+    setAnotando(false);
+    setTextoDaNota("");
   }, [conversationId, liberarPendente]);
 
   // Contagem regressiva da barra. Sem isto o rótulo repetiria o valor cheio

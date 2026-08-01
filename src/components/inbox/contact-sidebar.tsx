@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
 import { useChannels } from "@/hooks/use-channels";
+import { useConversationNotes } from "@/hooks/use-conversation-notes";
+import { toast } from "sonner";
 import { ChannelCell } from "@/components/channels/channel-badge";
 import { ActivityHistory } from "@/components/lead-events/activity-history";
 import { cn } from "@/lib/utils";
@@ -48,29 +49,53 @@ export function ContactSidebar({ contact, conversationId, channelId }: ContactSi
   const tCanais = useTranslations("Channels");
   const { channels } = useChannels();
 
-  const { accountId } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
-  const [notes, setNotes] = useState<ConversationNote[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+
+  /**
+   * ⚠️ O MESMO hook que o fio do chat usa, e de propósito.
+   *
+   * Antes esta seção buscava as anotações uma vez, ao trocar de contato. O
+   * resultado é que a anotação escrita no compositor — logo ali, na mesma
+   * tela — não aparecia aqui até recarregar a página, e a P3.3 pede que ela
+   * apareça nas três superfícies. Compartilhar o hook resolve pelo realtime
+   * que ele já traz, em vez de inventar um segundo caminho de sincronia.
+   *
+   * Chaveia por CONVERSA, e não pelo `contact_id` que esta ficha usava:
+   * `idx_conversations_account_contact` é UNIQUE em (account_id, contact_id),
+   * então para conversa 1:1 os dois recortes devolvem o mesmo conjunto. A
+   * ficha de fora do inbox (`contact-detail-view`) continua lendo por contato
+   * porque lá não existe conversa aberta.
+   */
+  const { notas, acrescentar: acrescentarNota } =
+    useConversationNotes(conversationId);
+
+  // O hook devolve na ordem que o `intercalar` prefere (o fio reordena tudo).
+  // Aqui a lista é lida direto, e a seção sempre mostrou a mais recente no
+  // topo — ordenar é responsabilidade de quem exibe.
+  const notes = useMemo(
+    () =>
+      [...notas].sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      ),
+    [notas],
+  );
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
 
     const supabase = createClient();
 
-    // Fetch deals, notes, and tags in parallel
-    const [dealsRes, notesRes, tagsRes] = await Promise.all([
+    // Fetch deals and tags in parallel. As anotações saem daqui de propósito:
+    // vêm do `useConversationNotes` acima, que traz realtime junto.
+    const [dealsRes, tagsRes] = await Promise.all([
       supabase
         .from("deals")
         .select("*, stage:pipeline_stages(*)")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("cb_conversation_notes")
-        .select("*")
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: false }),
       supabase
@@ -80,7 +105,6 @@ export function ContactSidebar({ contact, conversationId, channelId }: ContactSi
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
-    if (notesRes.data) setNotes(notesRes.data);
     if (tagsRes.data) {
       const mapped = tagsRes.data
         .filter((ct: Record<string, unknown>) => ct.tags)
@@ -114,6 +138,12 @@ export function ContactSidebar({ contact, conversationId, channelId }: ContactSi
    * policy de INSERT e o papel `authenticated` teve o INSERT revogado — a
    * anotação nasce no servidor, que carimba o autor e valida as menções.
    * O insert direto que existia aqui (na `contact_notes`) agora daria 42501.
+   *
+   * ⚠️ E AVISA quando falha. A versão anterior (`if (!error && data)`) engolia
+   * o erro: o texto continuava no campo, nada aparecia na lista, e não havia
+   * como distinguir "falhou" de "ainda salvando". Com a rota no meio isso
+   * ficou mais provável, não menos — 401 de sessão expirada e 403 de papel
+   * passam por aqui.
    */
   const handleAddNote = useCallback(async () => {
     if (!contact || !newNote.trim() || !conversationId) return;
@@ -129,13 +159,17 @@ export function ContactSidebar({ contact, conversationId, channelId }: ContactSi
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json?.note) {
-        setNotes((prev) => [json.note as ConversationNote, ...prev]);
+        acrescentarNota(json.note as ConversationNote);
         setNewNote("");
+      } else {
+        toast.error(json?.error || tSidebar("noteSaveError"));
       }
+    } catch {
+      toast.error(tSidebar("noteSaveError"));
     } finally {
       setAddingNote(false);
     }
-  }, [contact, newNote, conversationId]);
+  }, [contact, newNote, conversationId, acrescentarNota, tSidebar]);
 
   if (!contact) {
     return (

@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { createClient } from '@/lib/supabase/server'
-import { canWriteNotes } from '@/lib/auth/roles'
-import { isAccountRole } from '@/lib/auth/roles'
+import { canWriteNotes, isAccountRole } from '@/lib/auth/roles'
 
 /**
  * Criação de anotação interna (migration 918).

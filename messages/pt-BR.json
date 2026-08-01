@@ -327,7 +327,8 @@
       "deals": "Negócios",
       "noTags": "Nenhuma etiqueta",
       "noDeals": "Nenhum negócio",
-      "addNotePlaceholder": "Adicionar uma nota..."
+      "addNotePlaceholder": "Adicionar uma nota...",
+      "noteSaveError": "Não foi possível salvar a anotação."
     },
     "aiBanner": {
       "pausedTitle": "O assistente de IA está pausado aqui",

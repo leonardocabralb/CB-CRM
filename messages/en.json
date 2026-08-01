@@ -327,7 +327,8 @@
       "deals": "Deals",
       "noTags": "No tags",
       "noDeals": "No deals",
-      "addNotePlaceholder": "Add a note..."
+      "addNotePlaceholder": "Add a note...",
+      "noteSaveError": "Could not save the note."
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",
