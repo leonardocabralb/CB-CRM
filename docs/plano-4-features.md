@@ -673,6 +673,70 @@ mover negócio de etapa à mão para exercitar de verdade.
 
 **Fora do escopo:** busca no corpo das mensagens (é a fatia B, exige índice e RPC).
 
+### ⚠️ Revisão prévia (passo 1 do fluxo) — feita em 2026-08-01
+
+**O achado que muda o desenho: o painel, como planejado, APAGARIA TRÊS COISAS QUE JÁ
+FUNCIONAM.** O plano lista os campos do painel como se a lista não filtrasse nada hoje.
+Ela filtra:
+
+| Já existe | Onde | O que se perde se o painel "substituir" |
+| --- | --- | --- |
+| Busca no **texto da última mensagem** | `conversation-list.tsx:224-242` (`stripWhatsAppFormat(c.last_message_text)`) | achar conversa pelo que foi dito |
+| Busca por **nome do grupo** (alias e assunto) | mesma função | achar grupo por nome |
+| Facet de **empresa** | `matchesContactFilters` + UI em `:452-496` | filtrar por empresa do contato |
+
+→ **A caixa de busca atual FICA como está** (nome, telefone, grupo e última mensagem numa
+só). Os filtros estruturados entram **ao lado** dela, não no lugar. E o campo de empresa
+entra na lista de filtros do painel, que o plano tinha esquecido.
+
+**Outras oito divergências medidas:**
+
+1. **`matchesTypeFilter` NÃO tem teste** — o plano dizia que as funções puras eram
+   testadas. `conversations.test.ts` tem 7 casos, todos de `matchesContactFilters` e
+   `normalizeConversation`. Escrever teste antes de mexer.
+2. **O modo "Todas" de etiqueta é NOVO.** Hoje é OR puro e fixo
+   (`contactTagIds.some(...)`, `conversations.ts:66`).
+3. **`unread_count` é POR CONTA, não por pessoa** — confirma a decisão do operador. Quem
+   abrir primeiro zera para a equipe inteira. Tornar por pessoa seria mudança de schema,
+   não de tela.
+4. **Hoje "não lidas" IGNORA o status por completo** (`else if`, `:201-205`) — inclui
+   conversa encerrada. Separar os controles muda o que 49 das 64 conversas mostram.
+5. **Três filtros nascem invisíveis ou vazios**, e os gates são deliberados (convenção do
+   `CLAUDE.md`): canal só aparece com **2+ canais** (`:365`) e cada conta tem **1**;
+   etiqueta só aparece com **1+ etiqueta** (`:410`) e há **0 no banco inteiro**; o tipo
+   (diretas/grupos) só aparece com grupo carregado, e há **0** — os 58 grupos estão em
+   `cb_groups` esperando `groups_enabled`. **Manter os gates**; um seletor de uma opção só
+   ocupa espaço sem decidir nada.
+6. **Arquivadas nasce vazia:** 0 conversas com `status='closed'`.
+7. **"Etapa do contato" não é valor único.** O índice único da 911 só cobre
+   `source='channel'`; negócio manual ou de automação pode duplicar. E **9 das 64
+   conversas não têm negócio nenhum** — precisa de uma opção explícita "sem etapa", ou
+   essas somem de qualquer recorte por etapa.
+8. **`CONVERSATION_SELECT` é compartilhado com a API PÚBLICA v1**
+   (`api/v1/conversations/route.ts:33`). Embutir `deals` ali mudaria o contrato público —
+   por isso a busca de etapa é separada, como o plano já dizia.
+
+### ⚠️ A armadilha silenciosa que vale mais que todas as outras
+
+`.eq()` em campo do contato **produz resultado errado, não erro** — e erra nos DOIS
+sentidos:
+
+- **Com o embed atual (LEFT):** o PostgREST aplica o filtro só ao recurso embutido. As
+  conversas que não casam **continuam vindo**, com `contact: null` — a lista mostra tudo,
+  com metade dos nomes virando "Desconhecido". Parece um filtro que não faz nada.
+- **Trocando para `contacts!inner`:** vira INNER JOIN e **apaga toda conversa de grupo**
+  (`contact_id IS NULL`), inclusive com o filtro vazio.
+
+Nenhum dos dois dá erro, e **os dois passam em revisão de código**. → Filtrar em JS, como
+o arquivo já faz.
+
+**E uma segunda, do mesmo tipo:** `contacts` e `contact_tags` **não estão na publication
+do realtime**, e a hidratação nunca atualiza contato já presente
+(`{ ...c, contact: c.contact ?? fetched.contact }`, `inbox/page.tsx:163-167`). Etiqueta
+criada em outra tela é **invisível para a aba aberta do inbox** até um resync — filtrar
+por ela não acha a conversa. Sem erro. ⚠️ Isso morde exatamente o teste desta fase, que
+depende de criar etiqueta à mão.
+
 ### ⚠️ Como os filtros se combinam — decisão do operador (2026-08-01)
 
 **Todos os filtros do painel se aplicam JUNTOS (E lógico).** Não há filtro que substitua
