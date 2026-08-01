@@ -6,8 +6,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { usePresence } from "@/hooks/use-presence";
 import { useChannels } from "@/hooks/use-channels";
 import { useLeadEvents } from "@/hooks/use-lead-events";
+import { useConversationNotes } from "@/hooks/use-conversation-notes";
+import { useCan } from "@/hooks/use-can";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
 import { LeadEventLine } from "@/components/lead-events/lead-event-line";
+import { NoteLine } from "./note-line";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
@@ -20,6 +23,7 @@ import type {
   MessageTemplate,
   Profile,
   InteractiveMessagePayload,
+  ConversationNote,
 } from "@/types";
 import {
   MessageSquare,
@@ -206,6 +210,7 @@ export function MessageThread({
   const tTimer = useTranslations("Inbox.sessionTimer");
   const tQuote = useTranslations("Inbox.replyQuote");
   const tActions = useTranslations("Inbox.actions");
+  const tNote = useTranslations("Inbox.note");
 
   const { user } = useAuth();
   const { getPresence, getRow, now } = usePresence();
@@ -547,16 +552,83 @@ export function MessageThread({
   // gatilho para o botão de atualizar da thread arrastar a trilha junto.
   const { eventos: leadEvents } = useLeadEvents(contact?.id, resyncToken);
 
+  // Anotações internas (migration 918). Chaveadas pela CONVERSA, não pelo
+  // contato como a trilha acima — é a única chave que existe em grupo.
+  //
+  // ⚠️ Chamado aqui em cima, junto dos outros hooks, e não perto de
+  // `messageGroups`: aquele trecho vem DEPOIS do early return da conversa
+  // inexistente, e um hook ali violaria a regra dos hooks.
+  const {
+    notas,
+    remover: removerNotaLocal,
+    acrescentar: acrescentarNota,
+    recarregar: recarregarNotas,
+  } = useConversationNotes(conversationId, resyncToken);
+  const podeAdministrar = useCan("manage-members");
+
+  /**
+   * ⚠️ Confere a conversa antes de pôr a anotação no fio.
+   *
+   * A anotação é GRAVADA no lugar certo — a caixa manda o `conversationId`
+   * que ela capturou. Mas esta thread não remonta ao trocar de conversa, e
+   * quem responde ao POST é o render atual: trocar de cliente enquanto o
+   * salvamento está no ar faria a anotação de um aparecer na tela do outro.
+   * Some ao recarregar, mas até lá o operador lê a anotação de um cliente
+   * dentro da conversa de outro — que é a coisa que esta feature inteira não
+   * pode fazer.
+   */
+  const acrescentarNotaDaConversa = useCallback(
+    (nota: ConversationNote) => {
+      if (nota.conversation_id !== conversationId) return;
+      acrescentarNota(nota);
+    },
+    [acrescentarNota, conversationId],
+  );
+
+  /**
+   * Apagar anotação. Vai direto do navegador — ao contrário de criar, que
+   * precisa da rota de servidor por causa da notificação da menção. Aqui a
+   * própria RLS decide (autor ou admin), então não há o que validar no meio.
+   *
+   * ⚠️ Some da tela ANTES da confirmação do banco e volta se der errado. A
+   * `cb_conversation_notes` tem REVOKE de UPDATE mas mantém DELETE, então um
+   * erro aqui é erro de verdade — não o "0 linhas afetadas" silencioso que a
+   * ausência de policy produziria.
+   */
+  const handleApagarNota = useCallback(
+    async (id: string) => {
+      const supabase = createClient();
+      removerNotaLocal(id);
+      const { error, count } = await supabase
+        .from("cb_conversation_notes")
+        .delete({ count: "exact" })
+        .eq("id", id);
+      // ⚠️ `count` e não só `error`. A policy é "autor OU admin", e RLS que
+      // barra DELETE não devolve erro — devolve **0 linhas**, que aqui
+      // pareceria sucesso. Sem isto a anotação sumia da tela, continuava no
+      // banco e reaparecia na próxima abertura da conversa, sem explicação.
+      // O botão já é escondido por `podeApagar`, então isto só dispara se a
+      // tela e a RLS discordarem — que é exatamente quando não dá para calar.
+      if (error || !count) {
+        toast.error(tNote("deleteFailed"));
+        void recarregarNotas();
+      }
+    },
+    [removerNotaLocal, recarregarNotas, tNote],
+  );
+
   // Auto-scroll to bottom on new messages.
-  // `leadEvents` entra na lista de dependências porque a trilha chega numa
-  // busca própria, depois das mensagens: sem isso o conteúdo cresce embaixo do
-  // usuário e a conversa deixa de abrir no fim.
+  // `leadEvents` e `notas` entram na lista de dependências porque chegam em
+  // buscas próprias, depois das mensagens: sem isso o conteúdo cresce embaixo
+  // do usuário e a conversa deixa de abrir no fim. Vale também para a
+  // anotação recém-escrita, que sem isto nasceria abaixo da dobra — o autor
+  // salvaria e não veria o que acabou de escrever.
   useEffect(() => {
     if (scrollRef.current) {
       const el = scrollRef.current;
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages, leadEvents]);
+  }, [messages, leadEvents, notas]);
 
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
@@ -1130,7 +1202,9 @@ export function MessageThread({
       ? t("groupParticipants", { count: grupo.participant_count })
       : ""
     : (contact?.phone ?? "");
-  const messageGroups = groupTimelineByDate(intercalar(messages, leadEvents));
+  const messageGroups = groupTimelineByDate(
+    intercalar(messages, leadEvents, notas)
+  );
   const currentStatus = STATUS_OPTIONS.find(
     (s) => s.value === conversation.status
   );
@@ -1446,6 +1520,22 @@ export function MessageThread({
                     if (item.evento) {
                       return <LeadEventLine key={item.chave} evento={item.evento} />;
                     }
+                    // ⚠️ A anotação interna tem de ser tratada AQUI, antes do
+                    // `item.mensagem!` logo abaixo. Aquele `!` desliga a
+                    // checagem do TypeScript, então um item de nota cairia no
+                    // ramo de mensagem e derrubaria o fio inteiro em runtime.
+                    if (item.nota) {
+                      return (
+                        <NoteLine
+                          key={item.chave}
+                          nota={item.nota}
+                          podeApagar={
+                            item.nota.author_user_id === user?.id || podeAdministrar
+                          }
+                          onApagar={handleApagarNota}
+                        />
+                      );
+                    }
                     const msg = item.mensagem!;
                     // Aviso do WhatsApp dentro do grupo ("Fulano entrou").
                     // Mesmo tratamento do evento de lead logo acima: a bolha
@@ -1556,6 +1646,7 @@ export function MessageThread({
         onOpenTemplates={handleOpenTemplates}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
+        onNoteCreated={acrescentarNotaDaConversa}
       />
 
       {/* Diálogo de edição. O WhatsApp só permite editar por ~15 minutos;

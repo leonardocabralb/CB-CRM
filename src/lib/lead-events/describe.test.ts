@@ -8,7 +8,7 @@ import {
   intercalar,
   ordenarPorTempo,
 } from './describe';
-import type { LeadEvent } from '@/types';
+import type { LeadEvent, ConversationNote } from '@/types';
 
 function evento(patch: Partial<LeadEvent>): LeadEvent {
   return {
@@ -207,6 +207,17 @@ describe('ordenarPorTempo', () => {
 
 describe('intercalar', () => {
   const msg = (id: string, created_at: string) => ({ id, created_at });
+  const nota = (id: string, created_at: string): ConversationNote => ({
+    id,
+    account_id: 'conta',
+    conversation_id: 'conversa',
+    contact_id: null,
+    author_user_id: 'quem',
+    autor_nome: 'Alguém',
+    texto: 'anotação',
+    mencionados: [],
+    created_at,
+  });
 
   it('põe o evento entre as mensagens certas', () => {
     const itens = intercalar(
@@ -237,15 +248,55 @@ describe('intercalar', () => {
     expect(itens.every((i) => i.evento === undefined)).toBe(true);
   });
 
-  it('cada item carrega OU mensagem OU evento, nunca os dois', () => {
-    // O render usa `item.evento` como discriminante e faz `item.mensagem!`
-    // no outro ramo — se um item vier com os dois, aquele `!` vira crash.
+  it('cada item carrega EXATAMENTE UMA das três fatias', () => {
+    // O render discrimina por truthiness e termina em `item.mensagem!` — um
+    // item com duas fatias, ou com nenhuma, vira crash naquele `!`.
+    //
+    // ⚠️ Escrito como contagem, e não como XOR de dois: a versão anterior era
+    // `Boolean(mensagem) !== Boolean(evento)`, que passa a dar FALSO
+    // NEGATIVO assim que existe uma terceira fatia — um item só com nota dá
+    // `false !== false`. Se uma quarta fatia aparecer, este teste continua
+    // certo sem ser reescrito.
     const itens = intercalar(
       [msg('m1', '2026-07-27T09:00:00+00:00')],
       [evento({ id: 'e1', occurred_at: '2026-07-27T10:00:00+00:00' })],
+      [nota('n1', '2026-07-27T10:30:00+00:00')],
     );
+    expect(itens).toHaveLength(3);
     for (const item of itens) {
-      expect(Boolean(item.mensagem) !== Boolean(item.evento)).toBe(true);
+      const preenchidas = [item.mensagem, item.evento, item.nota].filter(Boolean);
+      expect(preenchidas).toHaveLength(1);
     }
+  });
+
+  it('intercala a anotação na hora certa, entre mensagem e evento', () => {
+    const itens = intercalar(
+      [msg('m1', '2026-07-27T09:00:00+00:00'), msg('m2', '2026-07-27T12:00:00+00:00')],
+      [evento({ id: 'e1', occurred_at: '2026-07-27T11:00:00+00:00' })],
+      [nota('n1', '2026-07-27T10:00:00+00:00')],
+    );
+    expect(itens.map((i) => i.chave)).toEqual(['m:m1', 'n:n1', 'e:e1', 'm:m2']);
+  });
+
+  it('a anotação é opcional — quem não passa notas continua funcionando', () => {
+    // Garante que acrescentar a fatia não obrigou os call sites antigos a
+    // mudar. Se o parâmetro deixar de ter default, isto quebra.
+    const itens = intercalar([msg('m1', '2026-07-27T09:00:00+00:00')], []);
+    expect(itens.map((i) => i.chave)).toEqual(['m:m1']);
+    expect(itens.every((i) => i.nota === undefined)).toBe(true);
+  });
+
+  it('empate exato de horário não troca de lugar entre renderizações', () => {
+    // A chave é o único desempate. Com prefixos distintos a ordem é estável e
+    // determinística: 'e:' < 'm:' < 'n:' byte a byte.
+    const mesmo = '2026-07-27T10:00:00+00:00';
+    const primeira = intercalar([msg('x', mesmo)], [evento({ id: 'x', occurred_at: mesmo })], [
+      nota('x', mesmo),
+    ]);
+    const segunda = intercalar([msg('x', mesmo)], [evento({ id: 'x', occurred_at: mesmo })], [
+      nota('x', mesmo),
+    ]);
+    expect(primeira.map((i) => i.chave)).toEqual(['e:x', 'm:x', 'n:x']);
+    expect(primeira.map((i) => i.chave)).toEqual(segunda.map((i) => i.chave));
   });
 });

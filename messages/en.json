@@ -240,7 +240,15 @@
       "strike": "Strikethrough (Ctrl+Shift+X)",
       "mono": "Monospace",
       "undoSend": "Undo",
-      "sendingIn": "Sending in {seconds}s"
+      "sendingIn": "Sending in {seconds}s",
+      "internalNote": "Internal note",
+      "noteBoxTitle": "Write an internal note:",
+      "noteBoxHint": "The note is not visible to the customer.",
+      "notePlaceholder": "Write the note…",
+      "saveNote": "Save Note",
+      "noteSaveError": "Could not save the note.",
+      "noteMentionHint": "Type @ to mention a teammate",
+      "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified."
     },
     "bubble": {
       "groupMediaTap": "Tap to download",
@@ -321,7 +329,8 @@
       "deals": "Deals",
       "noTags": "No tags",
       "noDeals": "No deals",
-      "addNotePlaceholder": "Add a note..."
+      "addNotePlaceholder": "Add a note...",
+      "noteSaveError": "Could not save the note."
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",
@@ -365,6 +374,14 @@
       "syncStarted": "Sync started. Details arrive shortly.",
       "syncFailed": "Could not sync.",
       "saveFailed": "Could not save."
+    },
+    "note": {
+      "wrote": "{autor} noted:",
+      "unknownAuthor": "Someone on the team",
+      "delete": "Delete note",
+      "confirmDelete": "Delete",
+      "cancelDelete": "Cancel",
+      "deleteFailed": "Could not delete the note."
     }
   },
   "Contacts": {
@@ -503,7 +520,9 @@
       "toastCustomFieldsSaved": "Custom fields saved",
       "toastCustomFieldsFailed": "Failed to save custom fields",
       "toastTemplateSent": "Template \"{name}\" sent",
-      "toastTemplateFailed": "Failed to send template: {reason}"
+      "toastTemplateFailed": "Failed to send template: {reason}",
+      "toastNoteNeedsConversation": "This contact has no conversation yet, so there is nowhere to attach the note. Send a message first.",
+      "toastNoteDeleteForbidden": "Only the author or an admin can delete this note."
     },
     "importModal": {
       "title": "Import Contacts",
@@ -2062,11 +2081,11 @@
   },
   "NotificationsPage": {
     "title": "Notifications",
-    "subtitle": "Conversations other teammates assign to you show up here.",
+    "subtitle": "Conversations teammates assign to you, and notes that mention you, show up here.",
     "markAllAsRead": "Mark all as read",
     "retry": "Retry",
     "emptyTitle": "No notifications yet",
-    "emptyDescription": "You'll see an alert here when someone assigns you a conversation.",
+    "emptyDescription": "You'll see a notice here when someone assigns you a conversation or mentions you in a note.",
     "unread": "Unread",
     "markReadError": "Failed to mark notification as read",
     "markAllReadError": "Failed to mark all as read"

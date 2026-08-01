@@ -22,6 +22,7 @@ import {
   Plus,
   MessageSquareDashed,
   Zap,
+  StickyNote,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -39,6 +40,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useCan } from "@/hooks/use-can";
+import type { ConversationNote } from "@/types";
+import { InternalNoteBox } from "./internal-note-box";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -141,6 +144,12 @@ interface MessageComposerProps {
   onOpenTemplates: () => void;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
+  /**
+   * Anotação interna recém-criada (migration 918). O compositor chama a rota
+   * e devolve a linha pronta para o pai pôr no fio sem esperar o realtime —
+   * quem escreve precisa ver o que escreveu na hora.
+   */
+  onNoteCreated?: (nota: ConversationNote) => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -164,6 +173,7 @@ export function MessageComposer({
   onOpenTemplates,
   replyTo,
   onClearReply,
+  onNoteCreated,
 }: MessageComposerProps) {
   const t = useTranslations("Inbox.composer");
 
@@ -225,6 +235,15 @@ export function MessageComposer({
   // every capability — so the disabled branch is a no-op there.
   const canSend = useCan("send-messages");
   const readOnly = !canSend;
+
+  // ⚠️ Permissão PRÓPRIA, e de propósito mais frouxa que `canSend`: anotação
+  // interna não sai para o cliente, então `viewer` também anota.
+  const podeAnotar = useCan("write-notes");
+  // Só o "está aberta ou não" mora aqui. Texto, menção e teclado vivem dentro
+  // do `InternalNoteBox` — este arquivo é do upstream, e cada linha nossa a
+  // mais é superfície de conflito no merge.
+  const [anotando, setAnotando] = useState(false);
+  const fecharNota = useCallback(() => setAnotando(false), []);
   // Media (like free-form text) is only allowed inside the 24h window.
   const inputsDisabled = readOnly || sessionExpired;
 
@@ -384,11 +403,20 @@ export function MessageComposer({
   // pendurada na thread do cliente errado, e o "Desfazer" dali jogaria o
   // texto de um cliente no campo de outro. A mensagem em si já vai para o
   // lugar certo — `enviar` está preso à origem.
+  //
+  // ⚠️ E fecha a caixa de anotação junto, pelo MESMO motivo. Como o
+  // compositor não remonta, a caixa aberta com texto dentro sobrevivia à
+  // troca — e ela salva contra o `conversationId` do render atual, então
+  // clicar em Salvar depois de trocar gravaria a anotação de um cliente na
+  // conversa de outro. Numa anotação interna de escritório de advocacia isso
+  // é vazamento de informação entre casos, não só um erro de UI. Fechar
+  // desmonta o `InternalNoteBox`, e o texto que estava dentro vai junto.
   const conversaAnteriorRef = useRef(conversationId);
   useEffect(() => {
     if (conversaAnteriorRef.current === conversationId) return;
     conversaAnteriorRef.current = conversationId;
     liberarPendente();
+    setAnotando(false);
   }, [conversationId, liberarPendente]);
 
   // Contagem regressiva da barra. Sem isto o rótulo repetiria o valor cheio
@@ -815,6 +843,18 @@ export function MessageComposer({
         </div>
       )}
 
+      {/* Caixa de anotação interna (918/919) — componente próprio.
+          ⚠️ Ela tem <textarea> PRÓPRIA, nunca a do compositor: o
+          `handleKeyDown` de lá manda Enter para `handleSend`, e a anotação
+          sairia como mensagem para o cliente. */}
+      {anotando && (
+        <InternalNoteBox
+          conversationId={conversationId}
+          onSaved={onNoteCreated}
+          onClose={fecharNota}
+        />
+      )}
+
       {/* Hidden file inputs driven by the attach menu. */}
       <input
         ref={imageInputRef}
@@ -985,6 +1025,28 @@ export function MessageComposer({
               <Sparkles className="h-4 w-4" />
             )}
           </GatedButton>
+
+          {/* Anotação interna.
+              ⚠️ NÃO usa `inputsDisabled`. Aquele sinalizador carrega o
+              `sessionExpired`, que é a janela de 24h da Meta — regra de envio
+              ao CLIENTE. Anotação não sai daqui: travá-la quando a janela
+              fecha mataria a feature justamente na conversa parada, que é
+              onde mais se anota ("liguei, não atendeu"). Só o papel decide, e
+              o papel aqui inclui `viewer`. */}
+          {podeAnotar && (
+            <Button
+              variant="ghost"
+              size="sm"
+              title={t("internalNote")}
+              onClick={() => setAnotando((v) => !v)}
+              className={cn(
+                "h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-amber-600",
+                anotando && "text-amber-600",
+              )}
+            >
+              <StickyNote className="h-4 w-4" />
+            </Button>
+          )}
 
           <textarea
             ref={textareaRef}

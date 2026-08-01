@@ -1,0 +1,821 @@
+# Plano — 4 features novas no inbox
+
+> **O que é este arquivo.** É o guia retomável das 4 features pedidas em 2026-07-27:
+> assinatura por membro, filtros de pesquisa, anotação interna no fio e agendamento de
+> mensagem. Serve para qualquer sessão futura saber **o que já foi feito, o que está
+> pendente e por quê cada decisão foi tomada** — sem precisar reconstruir o raciocínio.
+>
+> **Como usar:** comece pela tabela de Estado. Antes de tocar em qualquer fase, leia o
+> Fluxo de trabalho e execute o passo 1 (revisar o plano contra o código atual).
+>
+> ⚠️ **Este documento envelhece.** Vale a mesma regra do `CLAUDE.md`: antes de decidir com
+> base em algo aqui, confirme contra a realidade (grep, leitura do arquivo, query no
+> banco). Ao achar divergência, corrija este arquivo no mesmo PR. **Nota mentindo é pior
+> que ausência de nota.**
+
+- **Criado:** 2026-07-27 · **Revalidado:** 2026-08-01 contra `main` @ `8c02731`
+- **Método:** 16 agentes de reconhecimento em duas rodadas + verificação direta no banco
+
+---
+
+## Estado
+
+| Fase | Escopo | Estado | Migration | PR |
+| --- | --- | --- | --- | --- |
+| **0** | Decisões de produto | ✅ respondida 2026-08-01 | — | — |
+| **1** | F3 — anotação interna no fio | ✅ **concluída 2026-08-01** | `918`, `919`, `920`, `921`, `922` (todas aplicadas e conferidas) | `feat/notas-na-conversa` |
+| **2** | F1 — assinatura por membro | ⬜ pendente | `923_cb_assinatura` | — |
+| **3** | F2 fatia A — filtros | ⬜ pendente | `924_cb_favoritar` | — |
+| **4** | F4 — mensagem agendada | ⬜ pendente | `925_cb_mensagens_agendadas` | — |
+| **5** | F2 fatia B — busca full-text | ⬜ pendente | `926_cb_busca_em_mensagens` | — |
+| **6** | Revisão final (2 passadas + testes) | ⬜ pendente | — | — |
+
+⚠️ **Os números das fases 2–5 andaram um.** A menção precisou de migration própria (a 918
+criou a coluna `mencionados` mas deixou fechado o CHECK de `notifications.type`), e ela
+levou o 919 que estava reservado para a assinatura. Vale de novo o aviso abaixo: conferir
+com `ls` **e** `list_migrations` antes de criar, não deduzir desta tabela.
+
+### Fase 1 — commits (branch `feat/notas-na-conversa`, saída de `main` @ `efdfbdf`)
+
+| Commit | O quê |
+| --- | --- |
+| `a42abed` | migration 918 aplicada e conferida, tipos, capability `write-notes` |
+| `12fbbd0` | a anotação no fio, reusando `intercalar()`, teste da invariante reescrito |
+| `5ba6865` | botão e caixa amarela no compositor + `POST /api/cb/notes` |
+| `5a959af` | as fichas leem a tabela nova + correção do embaralhamento do `autoFocus` |
+| `4cfdb06` | três achados da revisão própria (ver "Achados" abaixo) |
+| `283eabb` | menção de colega, sino, e a página branca do realtime |
+
+⚠️ **A ordem mudou em 2026-08-01, depois das respostas da Fase 0.** A F1 subiu de última
+para segunda: a resposta da **P1.1 foi "sim, imediatamente"** — entra gente na conta agora,
+o que dá público à assinatura e, mais importante, **corrige sozinho o problema que a tinha
+derrubado**. Os 90,6% de mensagens saindo pelo celular pareado existem porque *uma pessoa*
+atende de *um aparelho*; com mais gente, o tráfego migra mecanicamente para o CRM, porque
+o aparelho pareado é um só. A F1 continua em segundo e não em primeiro porque a F3 é
+inteiramente aditiva (tabela nova + mecanismo pronto) e não encosta no caminho de envio,
+enquanto a F1 muda **o texto que o cliente recebe** e mexe no núcleo compartilhado.
+
+Legenda: ⬜ pendente · 🔄 em andamento · ✅ concluída · ⏸️ adiada · ❌ descartada
+
+⚠️ **Os números de migration acima são intenção, não reserva.** A faixa `900+` é
+compartilhada com toda branch em paralelo, e a colisão **já aconteceu uma vez** (dois
+`904_`). Rodar `ls supabase/migrations/` **e** `list_migrations` imediatamente antes de
+criar o arquivo — os dois, porque já divergiram (as 916 e 917 existiram no banco antes de
+existirem em `main`).
+
+---
+
+## Fluxo de trabalho — vale para toda fase
+
+Cada fase percorre o ciclo abaixo. **Nenhuma fase começa antes da anterior fechar.**
+
+1. **Revisar o plano contra o código.** Ler o que esta fase diz que vai fazer e conferir
+   arquivo por arquivo se ainda é verdade. Se divergir, **corrigir este documento antes de
+   codar** e avisar o operador do que mudou.
+2. **Executar.** Implementar a fase, com os commits separados como listado nela.
+3. **Testar.** `npm run typecheck`, `npm run lint`, `npm run test`. Testes novos para o que
+   a fase introduziu.
+4. **Revisão fria.** Revisores independentes que **não recebem o plano** — só o diff e o
+   código. Procuram bug do zero, sem saber qual era a intenção. É o que pega o que ninguém
+   pensou. (Mesmo método de `e44aa08` e `aec6389`.)
+5. **Revisão morna.** Revisores **com** o plano e a intenção em mãos. Conferem se o que foi
+   feito é o que foi combinado, e se as armadilhas já documentadas no `CLAUDE.md` foram
+   respeitadas. É o que pega desvio de escopo e regressão conhecida.
+6. **Corrigir os achados**, atualizar a tabela de Estado e este documento.
+7. **Seguir para a próxima fase**, repetindo do passo 1.
+
+Ao fim de todas as fases, a **Fase 6** faz mais **duas** passadas sobre o conjunto inteiro,
+procurando o que escapou fase a fase, e roda os testes de novo.
+
+> **Sobre "fria" e "morna":** a distinção é o **contexto que o revisor recebe**, não o
+> rigor. O revisor frio não sabe o que era esperado — por isso acha o que o plano não
+> previu. O revisor morno sabe — por isso acha o que o plano previu e a implementação não
+> cumpriu. Os dois são necessários; nenhum substitui o outro.
+
+### Regras que valem em todas as fases
+
+- Branch sai de `main` atualizado, nunca de outra branch de feature (`CLAUDE.md`).
+- ⚠️ **`git push origin main` dispara deploy de produção** e o DNS já está virado —
+  `crm.cbadvogados.com` serve a VPS e atende cliente real. Nenhum merge sem o operador
+  saber que aquilo vai ao ar naquele instante.
+- Toda chave nova de i18n entra em **`en.json` e `pt-BR.json` na mesma passada** — o
+  fallback do next-intl é por arquivo, não por chave; chave faltando vira `MISSING_MESSAGE`
+  cru na tela.
+- Preferir **módulo novo** a reescrever arquivo do core (reduz conflito com o upstream).
+- Antes da primeira branch: **confirmar que `main` está verde** no `typecheck` e no `lint`.
+  Uma sessão anterior não conseguiu terminar o `tsc --noEmit`; sem baseline não dá para
+  saber se o erro é nosso.
+- Apagar `src/components/channels/channel-select 2.tsx` — untracked, byte-idêntico ao
+  original, e um `git add -A` o commitaria como um segundo componente com os mesmos exports.
+
+---
+
+## Ground truth (medido em 2026-08-01, produção `hxnhakmyxyhalbsktzwe`)
+
+| Métrica | 27/07 | 01/08 | Consequência |
+| --- | --- | --- | --- |
+| Mensagens | 121 | **894** | |
+| Mensagens de saída | 30 | **234** | |
+| **…digitadas no celular pareado** | — | **212 (90,6%)** | a assinatura alcançaria 1 em 10 — ver Fase 2 |
+| `sender_id` preenchido | 0 | **0 de 894** | ninguém sabe quem enviou o quê |
+| Conversas | 15 | **64** | |
+| **Grupos já sincronizados** | 0 | **58** | ligar o interruptor soma 58 conversas de uma vez |
+| Conversas de grupo ativas | 0 | **0** | `groups_enabled` está desligado |
+| Membros / contas | 2 / 2 | **2 / 2** | ⚠️ **entra gente imediatamente** (P1.1) — remedir |
+| Etiquetas | 0 | **0** | filtro de etiqueta não tem o que filtrar |
+| Negócios | 0 | **55** | o funil passou a ser usado |
+| **Etapas ocupadas** | — | **1 de 9** | filtro de etapa não discrimina nada hoje |
+| Automações pendentes de cron | — | **0** | o cron nunca rodou; nada dependeu dele |
+
+---
+
+## Fase 0 — Decisões ✅
+
+Respondida pelo operador em **2026-08-01**. As respostas estão registradas uma a uma no
+Anexo B. As que **contrariaram** a recomendação e mudaram o plano:
+
+| # | Recomendação | Decisão | Efeito |
+| --- | --- | --- | --- |
+| **P1.1** | Adiar a F1 se não entrar gente | **Entra gente imediatamente** | F1 sobe de 5ª para 2ª fase |
+| **P1.4** | Não assinar em grupo | **Assina em grupo** | some a guarda; grupo entra pelo caminho comum |
+| **P1.5** | Nada automático assina | **Assina, com interruptor** — e identificação interna de bot/IA **sempre** | vira duas peças; ver Fase 2 |
+| **P2.3** | Arquivada = coluna nova | **Arquivada = `status='closed'`** | migration encolhe; some a coluna |
+| **P2.6** | Regra de grupo por filtro | **Grupo tem filtro próprio** | `matchesTypeFilter` já existe — reusar |
+| **P2.11** | Adiar tags e etapa para a fatia B | **Construir as duas agora** | Fase 3 cresce; ver a consequência lá |
+| **P1.5b** | — | Mensagem automática assina com o **nome do escritório, fixo** | texto configurável, um só; nunca nome de pessoa |
+
+Confirmaram a recomendação: **P1.2** (grava no banco), **P1.3** (esconde e reaplica),
+**P1.6**, **P1.7**, **P1.8**, **P2.1**, **P2.2**, **P2.4**, **P2.5** (etapa do contato),
+**P2.7** a **P2.10**, **P3.1** (tabela própria), **P3.2** (chave por conversa), **P3.3**,
+**P3.4** (notifica), **P3.5** (menção por nome), **P3.6** a **P3.9**, e toda a F4.
+
+---
+
+## Fase 1 — F3: anotação interna no fio
+
+**Por que primeiro:** é a feature com maior valor por unidade de risco. Toda a mecânica
+difícil já existe no repositório — a fase é *estender*, não construir.
+
+### O que mudou desde o plano original
+
+A migration **912** (histórico de atividade) entregou de graça o mecanismo que o plano
+antigo ia construir do zero: `intercalar()` + `ItemDaLinhaDoTempo<M>` +
+`groupTimelineByDate` já misturam itens que **não são mensagem** no fio do chat, em ordem
+cronológica, com desempate estável — puro e testado.
+
+→ **A parte mais cara do plano antigo morreu.** F3 acrescenta uma fatia ao tipo existente.
+
+### Decisão de arquitetura
+
+**Tabela própria `cb_conversation_notes`, chaveada por `conversation_id`** — não linha em
+`messages`.
+
+Motivos, em ordem de peso:
+
+1. **`conversation_id` é a única chave que cobre 1:1 e grupo.** `contact_notes.contact_id`
+   é `NOT NULL` e conversa de grupo tem `contact_id` nulo — reusar aquela tabela deixaria
+   grupo sem nota, em silêncio. Com 58 grupos esperando o interruptor, isso vira queixa no
+   primeiro dia.
+2. **Nota em `messages` vaza para a API pública v1.** `serializeMessage` deriva a direção
+   de `sender_type`, então a nota sairia rotulada como *mensagem enviada ao cliente* — e
+   `content_type` é `string` no tipo público, então **nada acusa**.
+3. **Exigiria alargar dois CHECKs do upstream** (`sender_type` e `content_type`), que é
+   superfície de conflito no merge.
+
+Dois vazamentos que o plano antigo previa **não existem** e saem da lista: webhooks de
+saída (o dispatch é explícito nos caminhos de ingestão, não há trigger em `messages`) e
+contexto da IA (some desde que a nota não use `content_type='text'`).
+
+⚠️ **`cb_lead_events` é precedente de EXIBIÇÃO, não de ESCRITA.** Ele é evento *derivado*,
+sem autor, gravado por trigger porque havia 6 escritores espalhados. A nota é ato
+*primário*: tem autor, tem intenção, tem um caminho só, e precisa ser apagável por gente.
+Copiar o padrão de escrita dele seria errado.
+
+### Schema — `918_cb_notas_na_conversa.sql`
+
+```sql
+create table cb_conversation_notes (
+  id              uuid primary key default gen_random_uuid(),
+  account_id      uuid not null references accounts(id) on delete cascade,
+  conversation_id uuid not null,
+  -- Desnormalizado para as duas fichas lerem por contato sem join.
+  -- NULO em conversa de grupo (grupo não tem contato).
+  contact_id      uuid references contacts(id) on delete cascade,
+  author_user_id  uuid references auth.users(id) on delete set null,
+  autor_nome      text,                  -- congelado: o membro pode sair da conta
+  texto           text not null,
+  mencionados     uuid[] not null default '{}',
+  created_at      timestamptz not null default now(),
+  -- FK COMPOSTA: garante que a conversa é da mesma conta sem validar em código.
+  -- O índice único (id, account_id) nasceu na 910.
+  constraint cb_conversation_notes_conversa_fkey
+    foreign key (conversation_id, account_id)
+    references conversations(id, account_id) on delete cascade
+);
+create index cb_conversation_notes_conv_idx
+  on cb_conversation_notes (conversation_id, created_at);
+create index cb_conversation_notes_contato_idx
+  on cb_conversation_notes (contact_id, created_at) where contact_id is not null;
+
+alter table cb_conversation_notes enable row level security;
+-- policies: SELECT/INSERT para is_account_member(account_id, 'viewer')  [P3.11]
+--           DELETE para o autor OU admin da conta  [ver armadilha do SET NULL]
+-- ⚠️ E o REVOKE, porque sem policy de UPDATE a RLS apenas FILTRA:
+REVOKE UPDATE ON cb_conversation_notes FROM authenticated, anon;
+
+-- Migração dos dados (P3.10): as notas de contato viram notas da conversa daquele
+-- contato. É 1:1 — `idx_conversations_account_contact` é UNIQUE (account_id, contact_id).
+-- Medido antes: 2 notas, 0 delas de contato sem conversa. Sem perda.
+INSERT INTO cb_conversation_notes (account_id, conversation_id, contact_id,
+                                   author_user_id, texto, created_at)
+SELECT n.account_id, v.id, n.contact_id, n.user_id, n.note_text, n.created_at
+FROM contact_notes n
+JOIN conversations v ON v.contact_id = n.contact_id AND v.account_id = n.account_id;
+
+DROP TABLE contact_notes;
+```
+
+⚠️ **`DROP TABLE contact_notes` só depois de as duas telas de ficha já lerem a tabela
+nova** — senão o deploy quebra a ficha entre a migration e o código novo. Como a migration
+é aplicada à mão (MCP do Supabase) e o deploy é separado, **aplicar a migration por último**
+nesta fase, ou dividir em duas (criar+copiar agora, dropar depois do merge).
+
+⚠️ **Adicionar a tabela à publication do realtime.** `contact_notes` e `cb_lead_events`
+não estão. O argumento documentado para a trilha não ter realtime ("nenhuma ação que gera
+evento acontece na tela onde ela é lida") **se inverte na nota**: ela é escrita exatamente
+ali, no compositor, e dois atendentes na mesma conversa é o caso normal.
+
+**A migration também alarga `notifications_type_check`** (P3.4 = sim, notifica): hoje ele
+aceita o literal único `'conversation_assigned'`. ⚠️ Escrever a notificação **por código**,
+não por trigger — a menção é intenção do autor, não efeito derivado. (É a diferença que
+separa esta tabela de `cb_lead_events`.)
+
+**A menção é por NOME** (P3.5), não por e-mail como o print de referência mostrava. Motivo
+medido: agents e viewers **não enxergam o e-mail dos colegas** — a menção por e-mail
+ficaria vazia justamente para o perfil que mais usa o inbox. Usar o `memberLabel` que já
+existe (`full_name` → email → id). O texto de ajuda da caixa amarela muda junto: não pode
+dizer "digitando @+email".
+
+### Armadilhas específicas
+
+- **Prefixo de chave próprio (`n:`)** na fatia nova de `ItemDaLinhaDoTempo`. Reusar `m:` ou
+  `e:` colide e a ordem passa a variar entre renderizações.
+- **O ramo da nota tem de vir ANTES da linha `const msg = item.mensagem!`** no laço de
+  render. O `!` desliga a checagem e o TypeScript não avisa — toda nota derrubaria o fio
+  com `TypeError` em runtime.
+- **Existem dois escritores de `contact_notes` hoje**, ambos direto do navegador sob RLS.
+  Qualquer campo novo tem de ser aplicado nos dois na mesma passada, ou eles divergem.
+- **Molde visual pronto:** a faixa de `content_type='system'` (aviso de grupo) já é
+  renderizada no fio deliberadamente **fora** do `MessageActions` — sem responder, reagir
+  ou apagar. A nota segue o mesmo padrão.
+
+### ⚠️ Revisão prévia (passo 1 do fluxo) — feita em 2026-08-01
+
+Três agentes conferiram o plano contra o código. **O mecanismo do fio foi confirmado
+inteiro** (`intercalar` em `describe.ts:145`, tipo em `:131`, ramificação do render em
+`message-thread.tsx:1446`, e a linha perigosa `const msg = item.mensagem!` é a **1449**).
+Mas nove coisas divergiram, e três mudam o desenho:
+
+**1. A notificação da menção NÃO pode ser escrita do navegador.** `notifications` **não tem
+policy de INSERT** — a 027 diz por escrito que as linhas são criadas *exclusivamente* pelo
+trigger `SECURITY DEFINER`. Um insert do cliente dá **42501**.
+→ **A nota passa a ser criada por uma rota de servidor** (`POST /api/cb/notes`), que grava
+nota + notificação na mesma passada. Isso contraria o precedente de `contact_notes`
+(insert direto do navegador) **de propósito**, e traz de brinde: validação das menções,
+`autor_nome` carimbado no servidor, e o gate por papel no lugar certo.
+
+**2. O teste existente quebra.** `describe.test.ts:248` afirma a invariante como **XOR de
+duas fatias**: `Boolean(item.mensagem) !== Boolean(item.evento)`. Um item que só tem nota
+dá `false !== false` → falha. → Reescrever para "exatamente uma das três" no **commit 2**,
+não depois.
+
+**3. A P3.3 não é implementável com o schema proposto.** A resposta foi "a nota do fio
+aparece nas três superfícies", mas a sidebar e a ficha leem `contact_notes` **por
+`contact_id`** (`contact-sidebar.tsx:68`, `contact-detail-view.tsx:159`), e a nota nova é
+por `conversation_id` — e nota de grupo não tem contato. → **Decisão pendente**, ver
+"Pendências" abaixo.
+
+Divergências menores, já incorporadas:
+
+- **`REVOKE UPDATE ... FROM authenticated, anon`** na migration. Sem policy de UPDATE a RLS
+  apenas *filtra*: um bug de UI que tente editar volta "0 linhas" e **parece sucesso**. É o
+  mesmo argumento escrito na 912:173-178.
+- ⚠️ **`author_user_id ON DELETE SET NULL` + policy `author_user_id = auth.uid()` se
+  anulam**: quando o autor sai do `auth.users`, a comparação vira NULL e a nota fica
+  **indelevável para sempre**. → somar `OR is_account_member(account_id,'admin')`.
+- **O botão não pode herdar `inputsDisabled`** (`message-composer.tsx:229` =
+  `readOnly || sessionExpired`). `sessionExpired` é a janela de 24h da Meta, regra de envio
+  ao *cliente*. Anotação interna travada quando a janela fecha mata a feature justamente na
+  conversa parada, que é onde mais se anota. Botão próprio, gate só de papel.
+- **Não reaproveitar a `<textarea>` do compositor:** o `handleKeyDown` (448-476) manda Enter
+  para `handleSend` — a anotação interna sairia como mensagem para o cliente.
+- **O auto-scroll depende de `[messages, leadEvents]`** (`message-thread.tsx:554`). Sem
+  somar as notas ali, o autor não vê a nota que acabou de escrever.
+- **O hook novo tem de ser chamado junto do `useLeadEvents` (linha 548)**, não perto do
+  `messageGroups` (1133) — este vem *depois* do early return de 1105, e chamar hook ali
+  viola a regra dos hooks e derruba conversa de grupo.
+- **Alargar `NotificationType`** (`src/types/index.ts:243`) **quebra o typecheck** em
+  `notifications/page.tsx:17`, onde `TYPE_ICON` é `Record<Notification["type"], …>`.
+  ⚠️ Há um **homônimo** em `types/index.ts:603` — outro `'conversation_assigned'` que é
+  gatilho de *automação*. Alargar o errado inventa um gatilho inexistente.
+- **`useCan` tem união fechada `CanAction`** — não existe capability para nota.
+- **Não dá para testar a caixa amarela com testing-library:** `vitest.config.ts:8` fixa
+  `environment: "node"` e não há jsdom nem `@testing-library`. O teste da fase cobre as
+  **funções puras** (intercalar com a terceira fatia, parsing da menção); a UI é verificada
+  no navegador.
+- **O texto da notificação não passa pelo dicionário** — `notifications.title/body` são
+  colunas TEXT. O trigger existente grava em inglês cru; a nossa nasce em pt-BR e o sino
+  fica com dois idiomas até alguém unificar.
+
+Referências corrigidas no Anexo A: `describe.ts:131`/`:145` (não 129),
+`members.ts:23` (não :5), `groupTimelineByDate` definida em `message-thread.tsx:154`.
+
+### Pendências antes do commit 1
+
+| # | Pergunta | ➡️ Recomendação | Resposta |
+| --- | --- | --- | --- |
+| **P3.10** | A nota do fio aparece na sidebar e na ficha do contato (P3.3), ou vive só no fio? | Somar `contact_id` nullable e mesclar as duas fontes | ✅ **Migrar tudo para a tabela nova** — `contact_notes` é aposentada |
+| **P3.11** | Quem pode anotar: só quem pode enviar mensagem (agent+), ou **viewer** também? | **Viewer também** | ✅ **Viewer também** — capability nova em `CanAction` |
+
+⚠️ **A P3.10 aumentou a Fase 1.** Migrar tudo significa que a fase deixa de ser aditiva e
+passa a **reescrever duas telas fora do inbox** (`contact-sidebar.tsx:66` e
+`contact-detail-view.tsx:157`) e a **mover os dados** de `contact_notes`.
+
+Medido antes de decidir: **65 contatos, 1 sem conversa** · **2 notas, nenhuma delas de
+contato sem conversa** → a migração dos dados é **sem perda**.
+
+⚠️ **Capacidade que se perde, registrada de propósito:** com a nota chaveada por conversa,
+**não dá mais para anotar um contato que ainda não tem conversa** — hoje dá. Atinge 1
+contato dos 65, e nenhuma nota existente. Se um dia incomodar, a saída é a ficha criar a
+conversa sob demanda (já existe `findOrCreateConversation`), não mudar o schema.
+
+### Commits previstos
+
+| # | Commit | Conteúdo |
+| --- | --- | --- |
+| 1 | `feat(notas): schema da anotação por conversa` | migration 918 (tabela + RLS + REVOKE UPDATE + realtime + cópia dos dados) + tipos + capability nova |
+| 2 | `feat(notas): a nota entra no fio do chat` | fatia `nota?`, `intercalar` + **teste reescrito**, balão, auto-scroll, hook novo |
+| 3 | `feat(notas): escrever anotação no compositor` | botão próprio, caixa amarela, **rota `POST /api/cb/notes`**, i18n nos dois dicionários |
+| 4 | `feat(notas): a ficha lê as anotações da conversa` | **P3.10** — `contact-sidebar` e `contact-detail-view` passam para a tabela nova; `DROP TABLE contact_notes` |
+| 5 | `feat(notas): menção de colega` | autocomplete **construído do zero**, `NotificationType` + `TYPE_ICON`, notificação na rota |
+| 6 | `fix(notas): achados da passada fria` | correções da revisão |
+
+### ⚠️ Achados da execução — o que divergiu do plano acima
+
+Escrito **depois** de codar, para a próxima sessão não repetir o caminho errado.
+
+**1. `DROP TABLE contact_notes` — feito na 922, autorizado pelo operador, e por muito
+pouco não levou duas funções vivas junto.**
+
+⚠️ **A lição que vale para qualquer DROP futuro neste banco:** `DROP TABLE` **não**
+reclama de referência dentro de corpo de função. O PL/pgSQL só resolve o nome da tabela
+na hora de executar, então o DROP passa limpo e o estrago aparece depois, em produção,
+como `relation ... does not exist` no meio de uma operação. Duas funções vivas citavam
+`contact_notes`:
+
+| Função | O que quebraria |
+| --- | --- |
+| `merge_duplicate_contacts` (022/036) | a deduplicação de contato por telefone — a ingestão de cliente repetido |
+| `redeem_invitation` (019) | **aceitar convite para a conta** — gente nova não entraria no escritório, justo agora (P1.1) |
+
+E havia um segundo estrago, mais silencioso: aquela linha em `merge_duplicate_contacts`
+**repontava** a anotação para o contato sobrevivente. `cb_conversation_notes.contact_id`
+é `ON DELETE CASCADE` e o laço termina apagando o contato perdedor — sem a linha
+equivalente na tabela nova, juntar dois cadastros do mesmo cliente **apagaria as
+anotações internas** dele, sem erro e sem aviso.
+
+Antes de qualquer `DROP TABLE`, rodar:
+
+```sql
+SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'public' AND pg_get_functiondef(p.oid) ILIKE '%nome_da_tabela%';
+```
+
+A 922 recria as duas funções **antes** do DROP, na mesma transação, e assere no fim que
+nenhuma função sobrou citando a tabela morta.
+
+⚠️ **Esta nota mentiu por um commit, e o erro vale mais que o acerto.** Ela afirmava que
+"as duas telas de ficha já leem a tabela nova" quando só a `contact-sidebar` tinha sido
+migrada — `contact-detail-view.tsx` continuou lendo, escrevendo E APAGANDO
+`contact_notes` (linhas 157, 281, 300). Com as duas tabelas vivas e as mesmas 2 linhas
+copiadas nas duas, a tela de Contatos apagava a cópia velha, dizia "excluída", e o texto
+seguia legível no fio do chat. Foi a **revisão fria de segurança** que pegou, não eu, não
+o typecheck e não os testes — porque nada aqui é erro de tipo: as duas tabelas existem e
+as duas consultas são válidas. Corrigido no commit `fix(notas): achados das revisões`.
+
+Lição para as próximas fases: ao trocar uma tabela por outra, `grep` do nome antigo no
+repositório inteiro é passo obrigatório do commit, não da revisão.
+
+**2. A menção precisou de migration própria (919).** O plano dizia que a 918 alargaria o
+`notifications_type_check` junto. Ela não alargou — e como as duas foram aplicadas em
+momentos diferentes, virou arquivo separado. Efeito colateral: as fases 2–5 andaram um
+número.
+
+**3. `NotificationType` está na linha 269, não na 243.** A referência do plano envelheceu.
+O homônimo de automação segue existindo mais abaixo no mesmo arquivo — o aviso continua
+válido, só a linha mudou.
+
+**4. `autoFocus` numa `<textarea>` controlada EMBARALHA o texto digitado.** Escrever
+"Teste da anotação interna" gravava `teTeste da anotação internaste`. O React reaplica o
+foco durante o commit e o cursor volta ao começo no meio da digitação. A saída é focar por
+ref num efeito, com `setSelectionRange` no fim — o padrão que o `desfazerEnvio` já usava.
+⚠️ Vale para qualquer caixa nova das próximas fases (o agendamento tem uma).
+
+**5. Dois consumidores do mesmo hook de realtime derrubam a página.** O cliente do Supabase
+indexa canal por tópico: pedir `channel('x')` duas vezes devolve o objeto já inscrito, e o
+`.on()` seguinte estoura. Dentro de efeito, isso é erro não capturado — **página branca**,
+não aviso no console. Todo hook novo com realtime tem de pôr o `useId()` da montagem no
+nome do canal.
+
+**6. Medir a UI com `javascript_tool` no meio da digitação MENTE.** A avaliação tira o foco
+do campo, o que fecha o autocomplete e zera o `selectionStart` — cheguei a diagnosticar um
+bug de cursor que não existe. Para conferir caixa com foco e teclado: só `computer` (type,
+key, click) e **screenshot**, sem JS entre os passos.
+
+**7. A conta tem 1 membro, não 2.** O "2 membros / 2 contas" do Ground truth é 1 membro em
+cada conta. Consequência: a menção só pôde ser exercitada até a validação (o autor sai da
+lista de notificados de propósito), e o caminho do sino foi conferido inserindo a linha à
+mão e apagando depois. Refazer quando entrar a segunda pessoa (P1.1).
+
+**8. `authenticated` tinha GRANT de INSERT em `notifications`.** Achado ao conferir o
+resultado da 919. A 027 confiou só na ausência de policy. Revogado na 919, com as duas
+metades e verificação — o padrão que o `CLAUDE.md` descreve.
+
+---
+
+## Fase 2 — F1: assinatura por membro
+
+**Duas peças, decididas na P1.5:**
+
+1. **Assinatura visível ao cliente** — `*Nome:*\n` no topo do texto enviado, com interruptor.
+   Vale para mensagem de gente **e** para automação/fluxo/IA.
+   ⚠️ **Mensagem automática assina com o nome do ESCRITÓRIO, fixo** (`*CB Advogados:*`),
+   nunca com o nome de uma pessoa — uma resposta automática de madrugada sairia com o nome
+   de quem não escreveu nada. Texto configurável, um só, ao lado do interruptor.
+2. **Identificação interna de bot/IA — sempre, sem interruptor.** Não vai para o cliente:
+   é marca na bolha, para a equipe saber que aquela resposta não foi escrita por gente.
+   Existe mesmo com a peça 1 desligada, e mesmo com ela ligada (o cliente vê o nome do
+   escritório; a equipe precisa ver que foi robô).
+
+### Estado da peça 2 (medido)
+
+| Origem | Selo hoje | Falta |
+| --- | --- | --- |
+| Resposta de IA (`ai_generated`) | ✅ selo com ✨ em `message-bubble.tsx:531` | — |
+| Celular pareado (`from_device`) | ✅ selo próprio | — |
+| **Automação / fluxo** (`sender_type='bot'`, `ai_generated=false`) | ❌ **nenhum** | **é o buraco** |
+
+→ A peça 2 é pequena: um selo novo para `sender_type='bot'` sem `ai_generated`. Os outros
+dois casos já estão cobertos.
+
+### Decisão de arquitetura
+
+- **O prefixo é gravado em `content_text`** (P1.2). Um CRM jurídico precisa mostrar
+  exatamente o que o cliente recebeu; aplicar só no wire criaria duas verdades sobre a
+  mesma mensagem.
+- **`sender_id` passa a ser preenchido.** Campo novo em `SendMessageParams` (que hoje não
+  tem nenhum campo de usuário) — o `user.id` já existe em
+  `src/app/api/whatsapp/send/route.ts` e morre ali. ⚠️ `src/lib/api/v1/conversations.ts:5`
+  avisa por escrito que `sender_id` **não pode vazar** no serializer público: conferir no
+  mesmo PR.
+- **Assina em grupo** (P1.4). Vai de graça pelo mesmo `sendMessageToConversation`, que
+  ganhou o ramo de grupo internamente. ⚠️ Consequência a vigiar: no grupo o WhatsApp já
+  identifica o remetente, e se houver menção `@participante` o texto fica com **duas
+  camadas de metadado** antes do conteúdo útil.
+- **Nome:** primeiro nome, com `coalesce(nullif(full_name,''), email)` (P1.6). O trigger de
+  signup grava `COALESCE(..., '')`, então `NOT NULL` **não** garante não-vazio — sem isso a
+  assinatura sai `*:*`.
+- **Interruptor por conta, nascendo desligado** (P1.8) → migration `919_cb_assinatura`.
+
+### Armadilhas específicas
+
+- ⚠️ **Editar mensagem assinada** (P1.3). O diálogo é pré-preenchido com o `content_text`
+  inteiro: o operador veria `*Leonardo Cabral:*` cru e poderia apagar, e a rota grava de
+  volta o que voltou. → **Esconder o prefixo do campo de edição e reaplicá-lo no servidor.**
+- ⚠️ **A IA não é caminho próprio.** `auto-reply.ts` importa `engineSendText` de
+  `flows/meta-send` — uma regra de assinatura escrita ali **assina resposta de robô com
+  nome de gente**. A separação entre a peça 1 e a peça 2 tem que ser explícita no código.
+- ⚠️ **Terceiro escritor sem sender:** `persistGroupDeviceMessage`.
+- **Bordas do nome:** nome iniciado por espaço vira asterisco cru para o cliente; nome com
+  `*` fecha o negrito cedo. Sanear na entrada.
+- **Teto de 1024 da legenda** é validado **antes** do prefixo hoje (`send-message.ts`) —
+  inverter a ordem (P1.7). Áudio não tem legenda: sai sem assinatura, por construção.
+- **O negrito não é trabalho:** `parseWhatsAppFormat` já renderiza `*Nome:*` em negrito de
+  verdade na bolha, e `stripWhatsAppFormat` já o remove da prévia da lista.
+
+### Commits previstos
+
+| # | Commit | Conteúdo |
+| --- | --- | --- |
+| 1 | `feat(mensagens): registrar quem enviou` | `sender_id` preenchido + guarda no serializer da API v1 |
+| 2 | `feat(inbox): marcar mensagem de automação` | peça 2 — selo de bot na bolha, i18n nos dois dicionários |
+| 3 | `feat(assinatura): prefixo do membro no envio` | migration 919 + módulo próprio + interruptor |
+| 4 | `fix(inbox): editar não expõe nem apaga a assinatura` | esconder no diálogo, reaplicar no servidor |
+| 5 | `fix(assinatura): achados da passada fria` | correções |
+
+---
+
+## Fase 3 — F2 fatia A: filtros
+
+**Escopo:** nome, telefone, canal, status, responsável, os 3 toggles (não lidas /
+arquivadas / favoritas) e o filtro de tipo (todas / diretas / grupos). **Tudo no cliente**
+(P2.2), como já é hoje.
+
+**Mais etiquetas (modo Qualquer/Todas) e etapa do funil** — a P2.11 foi confirmada como
+"construir as duas agora".
+
+⚠️ **Consequência da etapa vir para cá:** etiqueta já vem hidratada de graça
+(`CONVERSATION_SELECT` embute `contact_tags(tags(*))`), mas **etapa não** — ela mora em
+`deals.stage_id` e a lista de conversas não carrega `deals`. Filtrar no cliente exige uma
+segunda busca: `deals(contact_id, stage_id)` da conta inteira, montando um mapa
+`contact_id → etapa`. Com 55 negócios isso é irrelevante em custo, e é bem mais simples
+que antecipar a RPC. Registrar que **essa segunda busca morre na fatia B**, quando tudo
+virar uma query só.
+
+⚠️ **Os dois filtros nascem sem discriminar nada:** 0 etiquetas criadas e 55 de 55
+negócios na mesma etapa. Isso é aceitável porque entra gente na conta agora (P1.1), mas
+significa que **o teste não pode ser "abri e funcionou"** — é preciso criar etiqueta e
+mover negócio de etapa à mão para exercitar de verdade.
+
+**Fora do escopo:** busca no corpo das mensagens (é a fatia B, exige índice e RPC).
+
+### Decisão de arquitetura
+
+⚠️ **Não misturar filtro-cliente com filtro-servidor no mesmo painel.** Produz resultado
+inconsistente (um filtro vê 64 conversas, outro vê a página carregada). A fatia A é 100%
+cliente; a fatia B move **tudo** de uma vez para uma RPC.
+
+Estender as funções puras de `src/lib/inbox/conversations.ts` (que são **nossas**, já
+testadas) em vez de reescrever `conversation-list.tsx` (que é do **upstream**).
+
+### Schema — `920_cb_favoritar.sql`
+
+**Arquivada = `status='closed'`** (P2.3). Não é coluna nova — o operador definiu que
+arquivar *é* encerrar. Isso encolhe a migration e elimina a objeção do CHECK.
+⚠️ Consequência a registrar: como é o mesmo campo, **uma conversa não pode estar
+"encerrada mas não arquivada"**. Se um dia essas duas ideias precisarem se separar, é
+migration nova, não ajuste de tela.
+
+**Favorita por membro** (P2.3) → tabela de junção `(conversation_id, user_id)` com
+`account_id` e FK composta. É o único item de schema desta fase.
+
+**Filtro de grupo já existe:** `matchesTypeFilter` (`src/lib/inbox/conversations.ts:84`)
+já resolve todas / diretas / grupos (P2.6). Reusar, não reescrever.
+
+### Armadilhas específicas
+
+- ⚠️ **Grupo some em silêncio.** `conversations.contact_id` é nullable com CHECK XOR contra
+  `group_id`. Um filtro com `contacts!inner` vira INNER JOIN e **apaga toda conversa de
+  grupo**; sem `!inner` o filtro não filtra a linha-pai. Nenhum dos dois é o certo. E isso
+  **passa em todo teste manual hoje**, porque `groups_enabled` está desligado — só quebra
+  quando alguém ligar o interruptor. **Testar obrigatoriamente com uma conversa de grupo
+  criada à mão.**
+- ⚠️ **"Não lidas" é reescrita, não adição.** Hoje é opção *mutuamente exclusiva* do mesmo
+  dropdown de status. Virar toggle independente muda o comportamento de um controle que o
+  operador usa todo dia.
+- **Grupo tem filtro próprio** (P2.6), então a pergunta "grupo casa com este filtro?" deixa
+  de ser decidida caso a caso: quem quer grupo escolhe grupo. Os filtros que perguntam algo
+  sobre uma *pessoa* (etiqueta, empresa, etapa) continuam não casando com grupo por
+  construção — grupo não tem contato.
+- **Ligar grupos soma ~58 conversas de uma vez** — a lista carrega tudo sem `limit`.
+
+### Commits previstos
+
+| # | Commit | Conteúdo |
+| --- | --- | --- |
+| 1 | `feat(inbox): favoritar conversa` | migration 920 + ação na UI |
+| 2 | `feat(inbox): painel de filtros` | painel colapsável, contador "Exibindo N", filtros no cliente |
+| 3 | `fix(inbox): "não lidas" vira toggle independente` | separado por ser mudança de comportamento |
+| 4 | `fix(inbox): achados da passada fria` | correções |
+
+---
+
+## Fase 4 — F4: mensagem agendada
+
+⚠️ **Bloqueada pela P4.1.** Não existe agendador nenhum no projeto: sem `vercel.json`, sem
+`schedule:` em workflow, sem serviço no Swarm, e `pg_cron`/`pg_net` não instalados
+(o schema `cron` sequer existe no banco).
+
+**O plano antigo dizia "basta copiar o padrão do cron das automações". Isso morreu:** o
+padrão existe como *código* e nunca como *operação*. `automation_pending_executions` tem
+**0 linhas desde sempre** — automação com delay e flow com espera já estão mortos em
+produção, e ninguém notou porque ninguém dependeu deles.
+
+→ Ligar o agendador **conserta também automações e flows**. É bônus, mas é preciso saber
+que vai acontecer: regras paradas há semanas podem drenar de uma vez.
+
+### Decisão de arquitetura
+
+Tabela `cb_scheduled_messages` chaveada por **`conversation_id`** (única chave que cobre
+1:1 e grupo), com FK composta `(conversation_id, account_id)` — de graça, o índice único
+nasceu na 910.
+
+**Não estacionar a agendada como linha de `messages`:** o CHECK de `status` não aceita nada
+como `scheduled`.
+
+⚠️ **Já existe uma coluna de agendamento morta no projeto:** `broadcasts.scheduled_at`
+existe desde a 001, está tipada, e **nenhum código a lê ou escreve** (o upstream tem branch
+removendo o stub). F4 sem executor repetiria exatamente esse erro.
+
+### Armadilhas específicas
+
+- ⚠️ **O relógio NÃO pode ser um "modo" sobre o botão Enviar.** A janela de desfazer tem
+  **três saídas que disparam imediatamente**: trocar de conversa, desmontar o componente e
+  apertar Enter de novo. Um modo ligado no mesmo botão sai na hora por qualquer uma delas.
+  → O agendamento é um **diálogo** que produz a linha no confirmar, com caminho próprio que
+  **não chama `setPendente`**.
+- ⚠️ **Falhar FECHADO no canal.** `resolveEngineChannelPreferring` degrada em silêncio para
+  o canal padrão — certo para engine, errado aqui: a mensagem sairia pelo número errado,
+  sozinha, sem ninguém na tela. Num escritório de advocacia isso mistura identidades.
+- ⚠️ **O envio pausa flows.** `sendMessageToConversation` pausa toda `flow_run` ativa do
+  contato. Numa agendada isso aconteceria horas depois, sem operador na tela. Passar um
+  sinalizador ao núcleo em vez de herdar o efeito.
+- **Sem date picker no projeto.** Usar dois inputs nativos (`type="date"` + `type="time"`),
+  único precedente (`deal-form.tsx`). ⚠️ Compor data+hora em horário **local** antes do
+  `toISOString()` — nunca concatenar e entregar cru ao `new Date()` (a armadilha do `DATE`
+  já mordeu em `expected_close_date`).
+- **Vocabulário:** "Excluir" na aba colide com "Apagar para todos" da bolha. O texto de
+  confirmação precisa dizer *"cancelar o envio agendado"*.
+
+### Commits previstos
+
+| # | Commit | Conteúdo |
+| --- | --- | --- |
+| 1 | `chore(deploy): agendador que bate nas rotas de cron` | cron na VPS + `docs/DEPLOY-VPS.md` na mesma passada |
+| 2 | `feat(agendadas): schema da mensagem agendada` | migration 921 + RLS + tipos |
+| 3 | `feat(agendadas): worker de disparo` | rota + claim em dois passos + falha fechada no canal |
+| 4 | `feat(agendadas): agendar pelo compositor` | diálogo, aba AGENDADAS, Executar/Excluir, i18n |
+| 5 | `fix(agendadas): achados da passada fria` | correções |
+
+---
+
+## Fase 5 — F2 fatia B: busca full-text
+
+**Escopo:** busca no corpo das mensagens e a migração de **todo** o painel para uma RPC
+única — inclusive os filtros que a Fase 3 entregou no cliente. Etiquetas e etapa **já
+estarão prontas** (P2.11), então aqui elas mudam de lugar, não de comportamento: a
+segunda busca de `deals` da Fase 3 morre, absorvida pelo join da RPC.
+
+**Etapa é a do contato como um todo** (P2.5) — `deals.contact_id`, não
+`deals.conversation_id`.
+
+### Decisão de arquitetura
+
+RPC `SECURITY INVOKER` que faz join + dedup + ordenação + contagem janelada + LIMIT/OFFSET
+numa query só. **Molde pronto:** `025_filter_contacts_by_tags.sql` — que devolve `contacts`,
+não conversas, então é molde e não peça, mas resolve os dois limites do PostgREST que
+quebram a alternativa client-side (modo "todas" em tags, e `.or()` que não atravessa dois
+embeds).
+
+⚠️ **`SECURITY INVOKER`, e o par REVOKE completo.** A migration 032 do upstream foi
+correção de CVE justamente por `SECURITY DEFINER` sem checagem de conta. E revogar exige as
+**duas metades** — `FROM PUBLIC, anon, authenticated` — mais a conferência com
+`has_function_privilege`; o erro já foi cometido **três vezes** neste banco.
+
+### Índice — `922_cb_busca_em_mensagens.sql`
+
+`messages` tem nove índices e **todos são btree**; nenhum de texto. `pg_trgm` e `unaccent`
+estão disponíveis e não instalados. A escolha (trigrama vs `tsvector`) muda a forma da
+query **e** do índice — decidir na fase, não depois. Teto real: `authenticated` roda com
+`statement_timeout = 8s`.
+
+### Armadilhas específicas
+
+- **A busca casa em mensagem apagada / texto anterior à edição?** O escritório guardou os
+  dois de propósito. Ver P2.7.
+- **A F1 entra antes** (Fase 2), então o prefixo de assinatura já está dentro de
+  `content_text` e o nome do membro vira termo de busca. Isso é desejável — "achar tudo que
+  a Dra. Ana mandou" passa a funcionar — mas precisa ser dito na tela, senão buscar um nome
+  devolve resultado que o operador não entende.
+- **Paginação** precisa nascer junto com a RPC.
+
+---
+
+## Fase 6 — Revisão final
+
+Duas passadas sobre o conjunto das fases entregues, procurando o que escapou fase a fase:
+
+1. **Passada fria de conjunto** — revisores sem o plano, sobre o diff acumulado
+   `main...` da última fase.
+2. **Passada morna de conjunto** — com este documento em mãos: cada decisão registrada
+   aqui foi mesmo implementada assim? Cada armadilha listada foi respeitada?
+3. **Testes:** suíte completa + teste manual do fluxo ponta a ponta, incluindo o caso que
+   nenhuma fase exercita sozinha — **uma conversa de grupo**, com `groups_enabled` ligado
+   numa conta de teste.
+4. Atualizar o `CLAUDE.md` com o que virou regra permanente.
+
+---
+
+## Anexo A — Mecanismos a reusar (não reconstruir)
+
+| Mecanismo | Onde | Para |
+| --- | --- | --- |
+| `intercalar()` + `ItemDaLinhaDoTempo<M>` + `groupTimelineByDate` | `src/lib/lead-events/describe.ts:129`, `message-thread.tsx:1133` | **F3** — é literalmente a mecânica pedida |
+| Faixa de `content_type='system'` fora do `MessageActions` | `message-thread.tsx:1455`, `cb-groups/system-events.ts:155` | **F3** — molde visual do balão |
+| `parseWhatsAppFormat` / `stripWhatsAppFormat` | `src/lib/inbox/whatsapp-format.ts` | **F1** — negrito já funciona |
+| `resolveEngineChannel*`, `evolutionTransportFor` | `src/lib/cb-channels/engine-send.ts` | **F4** — "por qual número isto sai" |
+| RPC com join + dedup + contagem janelada | `025_filter_contacts_by_tags.sql` | **F2 fatia B** — molde |
+| `matchesContactFilters`, `matchesTypeFilter`, `CONVERSATION_SELECT` | `src/lib/inbox/conversations.ts` | **F2 fatia A** — estender, são nossos |
+| Auth de cron + claim em dois passos | `src/app/api/automations/cron/route.ts:18` | **F4** — só o código; o agendador não existe |
+| Índice único `(id, account_id)` → FK composta | migration `910` | **F3 e F4** — posse de graça |
+| `memberLabel` (`full_name` → email → id) | `src/lib/account/members.ts:23` | **F3** menção, **F1** fallback |
+| Polling com backoff + "aba oculta não pede nada" | `src/hooks/use-channel-health.ts` | **F4** — aba AGENDADAS |
+| `barrarPorPapel` + `GatedButton` | `src/lib/auth/barrar-por-papel.ts` | **F3** e **F4** — permissão |
+| `atualizarPreviaDaConversa` | `src/lib/inbox/conversation-preview.ts:26` | ponto único da prévia |
+| Par REVOKE completo + `has_function_privilege` | migrations `913` e `915` | **F2 fatia B** |
+
+---
+
+## Anexo B — Perguntas de produto
+
+🚧 = bloqueia a Fase 0. **➡️** = minha recomendação. Registrar a resposta na coluna própria.
+
+### F1 — Assinatura
+
+| # | Pergunta | ➡️ Recomendação | Resposta |
+| --- | --- | --- | --- |
+| 🚧 **P1.1** | A conta vai ter mais de um membro, e em que prazo? | Se não entrar gente em semanas, **adiar a F1 inteira** — assinatura por membro com um membro só é decoração | ✅ **Sim, imediatamente** — F1 sobe para a Fase 2 |
+| 🚧 **P1.2** | O prefixo é **gravado** em `content_text` (aparece no histórico, prévia e busca) ou aplicado **só no texto que vai ao transporte** (banco limpo, mas o CRM não mostra o que o cliente recebeu)? | **Gravar** — CRM jurídico precisa mostrar exatamente o que o cliente recebeu; "só no wire" cria duas verdades sobre a mesma mensagem | ✅ Gravar no banco |
+| 🚧 **P1.3** | Ao **editar** mensagem assinada: reassinar automaticamente, deixar o texto cru, ou proibir editar? | Esconder o prefixo do campo e reaplicar no servidor — deixar cru convida a apagar o próprio nome | ✅ Esconder e reaplicar no servidor |
+| P1.4 | Mensagem para **grupo** leva assinatura? (vai de graça; não assinar exige guarda) | **Não** — o WhatsApp já identifica o remetente no grupo | ⚠️ **Sim, assina em grupo** (contraria a recomendação) |
+| P1.5 | Automação, fluxo e IA (`sender_type='bot'`) assinam? | **Nada automático assina** — assinar robô com nome de gente é o pior resultado numa conversa jurídica | ⚠️ **Assina, com interruptor** — e identificação interna de bot/IA **sempre** |
+| **P1.5b** | Com o interruptor ligado, que nome o cliente vê numa mensagem automática? | — | ✅ **Nome do escritório, fixo** — nunca nome de pessoa |
+| P1.6 | Nome inteiro, primeiro nome, ou apelido configurável? E o fallback quando `full_name` for vazio? | Primeiro nome, `coalesce(nullif(full_name,''), email)` — e recusar nome com `*` ou espaço inicial | ✅ Primeiro nome + fallback |
+| P1.7 | Assinatura vai na **legenda de mídia**? | Sim em imagem/vídeo/documento, validando o teto de 1024 **depois** de somar o prefixo; áudio não tem legenda | ✅ Legenda sim, áudio não |
+| P1.8 | O interruptor é por conta, canal ou membro? Nasce ligado? | Por conta, nascendo **desligado** — mudança visível para o cliente não deve acontecer sem alguém pedir | ✅ Por conta, desligado |
+
+### F2 — Filtros
+
+| # | Pergunta | ➡️ Recomendação | Resposta |
+| --- | --- | --- | --- |
+| 🚧 **P2.1** | A busca no corpo devolve **conversas** ou **mensagens** (com salto para o trecho)? | **Conversas** na v1 — "saltar para o trecho" exige âncora e scroll no fio, é outra feature | ✅ Conversas |
+| 🚧 **P2.2** | O painel filtra no **cliente** ou no **servidor**? | Cliente na fatia A, **tudo** na RPC na fatia B — nunca meio a meio | ✅ Cliente na A, RPC na B |
+| 🚧 **P2.3** | "Arquivada" é conceito novo ou o `status='closed'` existente? "Favorita" é por conversa ou por membro? | Arquivada = coluna nova (o CHECK de status só admite um valor por linha); favorita **por membro** | ⚠️ **Arquivada = `closed`** (contraria); favorita **por membro** (confirma) |
+| P2.4 | "Responsável" é `conversations.assigned_agent_id` ou `deals.assigned_to`? | `assigned_agent_id` — o filtro está no inbox, a pergunta é quem atende a conversa | ✅ `assigned_agent_id` |
+| P2.5 | "Etapa" é a do card do **contato** ou do card nascido **daquela conversa**? | Adiar para a fatia B; quando chegar, usar o card do contato. Hoje não discrimina: 55/55 na mesma etapa | ✅ **Etapa do contato como um todo** |
+| P2.6 | Grupo entra ou sai de cada filtro? | Não casa com etiqueta/empresa/etapa (perguntas sobre pessoa); casa com favorita/arquivada/não-lida | ⚠️ **Grupo tem filtro próprio** — `matchesTypeFilter` já existe |
+| P2.7 | A busca casa em mensagem **apagada** e no texto **antes da edição**? | Só o texto vigente na v1 — achar por texto retratado é decisão jurídica, não default acidental | ✅ Só o texto vigente |
+| P2.8 | Buscar sem acento acha com acento ("Joao" → "João")? | **Sim** — expectativa básica em português; `pg_trgm` + `unaccent` na mesma migration do índice | ✅ Sim — `pg_trgm` + `unaccent` |
+| P2.9 | "Não lidas" vira toggle independente? | Sim, mas **tratar como reescrita** de um controle que o operador já usa | ✅ Toggle, tratado como reescrita |
+| P2.10 | A lista ganha paginação? | Continuar carregando tudo na fatia A (64 cabem); paginação junto com a RPC. ⚠️ ligar grupos soma 58 | ✅ Tudo na A, paginação na B |
+| P2.11 | Construir "tags qualquer/todas" com **0 etiquetas** e "etapa" com 55/55 na mesma etapa? | **Não** — mandar as duas para a fatia B; construir agora é abstração para futuro hipotético | ⚠️ **Construir as duas agora**, na Fase 3 |
+
+### F3 — Anotações
+
+| # | Pergunta | ➡️ Recomendação | Resposta |
+| --- | --- | --- | --- |
+| 🚧 **P3.1** | Nota como linha de `messages` (realtime e ordenação de graça, mas polui prévia/painel/API) ou **tabela própria** intercalada? | **Tabela própria** — `messages` cobra pedágio em 4 lugares e exige alargar 2 CHECKs do upstream; e o mecanismo de intercalar já existe | ✅ Tabela própria |
+| 🚧 **P3.2** | Nota em conversa de **grupo** precisa existir? | **Sim** → chavear por `conversation_id`. 58 grupos esperam o interruptor | ✅ Sim → `conversation_id` |
+| P3.3 | As 2 notas de `contact_notes` sobem retroativamente para o fio? A nota do fio aparece no painel lateral? | Nota do fio aparece nas três superfícies; notas antigas **não** sobem — foram escritas em contexto de ficha | ✅ Três superfícies; antigas não sobem |
+| P3.4 | A @menção **notifica**? | Alargar `notifications_type_check` e notificar pelo sino, escrevendo **por código** (a menção é intenção, não efeito derivado) | ✅ **Sim, notifica** — alarga o CHECK |
+| P3.5 | Menção por **e-mail** (como pedido) ou por **nome**? | Por nome, via `memberLabel` — agents e viewers **não enxergam o e-mail** dos colegas | ✅ **Por nome**, via `memberLabel` |
+| P3.6 | Quem apaga a nota? Exclusão física ou marca? | **Só o autor**, física, com confirmação — a RLS atual deixaria qualquer agent apagar a de qualquer um, sem trilha | ✅ Só o autor, física, com confirmação |
+| P3.7 | A nota é editável? | Só criar e apagar — o balão do print tem lixeira, não lápis | ✅ Só criar e apagar |
+| P3.8 | A nota sobe a conversa no topo / muda a prévia / marca não lida? | **Não** — mesma decisão que o aviso de sistema de grupo já tomou | ✅ Não mexe na lista |
+| P3.9 | Precisa aparecer em tempo real para o colega com a conversa aberta? | **Sim** — adicionar à publication; o argumento da trilha se inverte aqui | ✅ Sim — entra na publication |
+
+### F4 — Agendamento
+
+| # | Pergunta | ➡️ Recomendação | Resposta |
+| --- | --- | --- | --- |
+| 🚧 **P4.1** | **Quem chama a rota de disparo?** Não existe agendador nenhum | Cron na VPS batendo no endpoint com `x-cron-secret` — a VPS já existe, o segredo já é padrão do projeto, sem jitter do GitHub Actions nem extensão no Postgres gerenciado | ✅ Cron na VPS com `x-cron-secret` |
+| P4.2 | Que granularidade prometer? | Ciclo de 1 minuto e prometer "no minuto", escrito na tela | ✅ 1 minuto |
+| P4.3 | Sai pelo número **escolhido** ou pelo que a conversa usar na hora? | **Fixar**, gravar `channel_id`, mostrar no card, e **falhar fechado** se o canal sumiu | ✅ Fixar + falhar fechado |
+| P4.4 | E se o cliente responder antes da hora? | Sai assim mesmo na v1, mas **destacar na aba** as agendadas cujo contato escreveu depois | ✅ Sai, mas destaca na aba |
+| P4.5 | O disparo **pausa** automações/fluxos como o envio manual? | **Não** — a pausa existe porque "tem gente aqui agora"; passar sinalizador em vez de herdar | ✅ Não pausa |
+| P4.6 | Agendar mídia? | Só texto na v1 — mídia dobra a superfície sem dobrar o valor | ✅ Só texto na v1 |
+| P4.7 | Grupo pode receber agendada? | **Sim** — agendada é ato de gente com hora marcada, não motor automático | ✅ Sim, grupo pode |
+| P4.8 | Date picker novo ou inputs nativos? | **Nativos** — único precedente do projeto, e sem conflito de `package.json` com o upstream | ✅ Inputs nativos |
+| P4.9 | O que a aba mostra quando o disparo **falha**? | Fica na aba com o motivo em texto claro + botão de tentar de novo **manual** — retry automático manda a mesma coisa três vezes às 3 da manhã | ✅ Fica com o motivo + retry manual |
+| P4.10 | "Executar agora" passa pela janela de desfazer? "Excluir" pede confirmação? | Executar vai direto; Excluir confirma com o texto *"cancelar o envio agendado"* | ✅ Executar direto; Excluir confirma |
+| P4.11 | Quem vê e cancela a agendada de outro membro? | Todo mundo vê e cancela (a mensagem sai em nome do escritório), mas **gravar e mostrar quem agendou** | ✅ Todos veem e cancelam; grava quem agendou |
+
+---
+
+## Anexo C — O que morreu do plano de 27/07
+
+| Item | Por quê |
+| --- | --- |
+| "Fundação" como fase de código | A maior parte chegou de graça nos ~40 commits (fio intercalado, parser de negrito, `engine-send`). Sobrou decisão, não código |
+| "A faixa 910–919 está livre" | `main` e o banco já vão até **917**. Próximo livre: **918** |
+| F1 em primeiro *por dependência técnica* | A fundação que ela ia pagar chegou de graça. Foi para **última** na revalidação (sem público) e voltou para **segunda** em 01/08, quando a P1.1 respondeu que entra gente imediatamente |
+| F3 "construir o merge no fio" | A 912 já entregou `intercalar()` inteiro, puro e testado |
+| F3 — vazamento por webhooks e por contexto da IA | Não existem: não há trigger em `messages`, e o da IA some se a nota não usar `content_type='text'` |
+| F4 "copiar o padrão do cron" | O padrão existe como código e **nunca como operação** — `automation_pending_executions` tem 0 linhas desde sempre |
+| F2 "etapa do funil é o filtro mais difícil" | A 911 ("um funil por vez") resolveu a ambiguidade. Mas agora é **inútil**: 55/55 na mesma etapa |
+| F2 "cortar etapa do funil por falta de dado" | Retirado — havia 0 negócios em 27/07, hoje há 55. Volta ao escopo na fatia B |
+| F1 "a IA é caminho de envio próprio" | Deixou de ser: entra pelo `engineSendText` dos flows |
+
+---
+
+## Anexo D — Divergências encontradas no `CLAUDE.md`
+
+Achados durante a revalidação, a corrigir no arquivo (regra do próprio `CLAUDE.md`:
+"nota mentindo é pior que ausência de nota"):
+
+- A seção da 908 afirma que a etapa de entrada é explícita via `default_stage_id`,
+  "nunca `MIN(position)`". **Medido: os dois canais têm `default_stage_id` nulo** — e um
+  deles também não tem `default_pipeline_id`. Como existem 55 negócios criados, ou o
+  roteamento tem um caminho de fallback que a nota não descreve, ou os cards vieram por
+  outra via. **Investigar antes da Fase 2** — a F2 filtra por etapa e herdaria o engano.
+- A lista de migrations aplicadas está desatualizada (para em 915; o banco tem 917).

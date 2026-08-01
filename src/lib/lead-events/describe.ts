@@ -5,9 +5,15 @@
 // componente: a mesma linha aparece em três telas (thread do chat, ficha do
 // contato no inbox, ficha de contato inteira) e três cópias da regra
 // divergiriam. Aqui dá para testar sem montar React.
+//
+// Mora aqui também a montagem da LINHA DO TEMPO do chat (`intercalar`), que
+// hoje mistura três coisas: mensagens, eventos do lead (912) e anotações
+// internas (918). A anotação não é evento derivado — é ato de gente, com
+// autor e intenção —, mas a mecânica de ordenar e desempatar é a mesma, e
+// duplicá-la produziria duas ordens diferentes para o mesmo fio.
 // ============================================================
 
-import type { LeadEvent, LeadEventType } from '@/types';
+import type { ConversationNote, LeadEvent, LeadEventType } from '@/types';
 
 /**
  * Direção do movimento entre etapas.
@@ -128,29 +134,48 @@ function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/**
+ * Um item do fio do chat. Exatamente UMA das três fatias vem preenchida.
+ *
+ * ⚠️ Não é união discriminada — são campos opcionais, e quem renderiza
+ * discrimina por truthiness. Ao acrescentar uma fatia, o ramo dela no laço de
+ * render tem de vir ANTES do `item.mensagem!` (message-thread.tsx), porque o
+ * `!` desliga a checagem e o TypeScript não avisa: o item novo cairia no ramo
+ * de mensagem e derrubaria o fio com TypeError em runtime.
+ */
 export interface ItemDaLinhaDoTempo<M> {
   chave: string;
   quando: string;
   mensagem?: M;
   evento?: LeadEvent;
+  nota?: ConversationNote;
 }
 
 /**
- * Intercala mensagens e eventos numa lista só, em ordem cronológica.
+ * Intercala mensagens, eventos do lead e anotações internas numa lista só,
+ * em ordem cronológica.
  *
  * Genérico na mensagem de propósito: o módulo não precisa conhecer o tipo
  * `Message` do inbox para ordenar por data, e assim o teste roda sem arrastar
- * meio `src/types` junto.
+ * meio `src/types` junto. `LeadEvent` e `ConversationNote` são concretos
+ * porque são tipos nossos e pequenos.
+ *
+ * ⚠️ Cada fatia tem PREFIXO DE CHAVE próprio (`m:`, `e:`, `n:`). A chave tem
+ * dois papéis — key do React e desempate da ordenação — e ids de tabelas
+ * diferentes podem coincidir. Sem prefixo distinto, dois itens do mesmo
+ * instante trocariam de lugar entre renderizações.
  */
 export function intercalar<M extends { id: string; created_at: string }>(
   mensagens: readonly M[],
   eventos: readonly LeadEvent[],
+  notas: readonly ConversationNote[] = [],
 ): ItemDaLinhaDoTempo<M>[] {
   const itens: ItemDaLinhaDoTempo<M>[] = [
     ...mensagens.map((m) => ({ chave: `m:${m.id}`, quando: m.created_at, mensagem: m })),
     ...eventos
       .filter(apareceNaConversa)
       .map((e) => ({ chave: `e:${e.id}`, quando: e.occurred_at, evento: e })),
+    ...notas.map((n) => ({ chave: `n:${n.id}`, quando: n.created_at, nota: n })),
   ];
 
   return itens.sort((a, b) => cmp(a.quando, b.quando) || cmp(a.chave, b.chave));

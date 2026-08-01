@@ -240,7 +240,15 @@
       "strike": "Riscado (Ctrl+Shift+X)",
       "mono": "Monoespaçado",
       "undoSend": "Desfazer",
-      "sendingIn": "Enviando em {seconds}s"
+      "sendingIn": "Enviando em {seconds}s",
+      "internalNote": "Anotação interna",
+      "noteBoxTitle": "Escrever anotação interna:",
+      "noteBoxHint": "A anotação não é visível para o cliente.",
+      "notePlaceholder": "Escreva a anotação…",
+      "saveNote": "Salvar Anotação",
+      "noteSaveError": "Não foi possível salvar a anotação.",
+      "noteMentionHint": "Digite @ para mencionar um colega",
+      "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou."
     },
     "bubble": {
       "groupMediaTap": "Toque para baixar",
@@ -321,7 +329,8 @@
       "deals": "Negócios",
       "noTags": "Nenhuma etiqueta",
       "noDeals": "Nenhum negócio",
-      "addNotePlaceholder": "Adicionar uma nota..."
+      "addNotePlaceholder": "Adicionar uma nota...",
+      "noteSaveError": "Não foi possível salvar a anotação."
     },
     "aiBanner": {
       "pausedTitle": "O assistente de IA está pausado aqui",
@@ -365,6 +374,14 @@
       "syncStarted": "Sincronização iniciada. Os detalhes chegam em instantes.",
       "syncFailed": "Não foi possível sincronizar.",
       "saveFailed": "Não foi possível salvar."
+    },
+    "note": {
+      "wrote": "{autor} anotou:",
+      "unknownAuthor": "Alguém da equipe",
+      "delete": "Excluir anotação",
+      "confirmDelete": "Excluir",
+      "cancelDelete": "Cancelar",
+      "deleteFailed": "Não foi possível excluir a anotação."
     }
   },
   "Contacts": {
@@ -503,7 +520,9 @@
       "toastCustomFieldsSaved": "Campos personalizados salvos",
       "toastCustomFieldsFailed": "Falha ao salvar campos personalizados",
       "toastTemplateSent": "Modelo \"{name}\" enviado",
-      "toastTemplateFailed": "Falha ao enviar o modelo: {reason}"
+      "toastTemplateFailed": "Falha ao enviar o modelo: {reason}",
+      "toastNoteNeedsConversation": "Este contato ainda não tem conversa, então não há onde prender a anotação. Envie uma mensagem primeiro.",
+      "toastNoteDeleteForbidden": "Só o autor ou um admin pode excluir esta anotação."
     },
     "importModal": {
       "title": "Importar contatos",
@@ -2062,11 +2081,11 @@
   },
   "NotificationsPage": {
     "title": "Notificações",
-    "subtitle": "Conversas que outros membros da equipe atribuem a você aparecem aqui.",
+    "subtitle": "Conversas que a equipe atribui a você e anotações que mencionam você aparecem aqui.",
     "markAllAsRead": "Marcar todas como lidas",
     "retry": "Tentar novamente",
     "emptyTitle": "Nenhuma notificação ainda",
-    "emptyDescription": "Você verá um aviso aqui quando alguém atribuir uma conversa a você.",
+    "emptyDescription": "Você verá um aviso aqui quando alguém atribuir uma conversa a você ou mencionar você numa anotação.",
     "unread": "Não lida",
     "markReadError": "Não foi possível marcar a notificação como lida",
     "markAllReadError": "Não foi possível marcar todas como lidas"

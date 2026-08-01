@@ -147,11 +147,31 @@ export interface ContactCustomValue {
   value?: string;
 }
 
-export interface ContactNote {
+/**
+ * Anotação interna da conversa (migration 918). Nunca sai para o cliente:
+ * aparece no fio do chat e nas duas fichas do contato.
+ *
+ * Aposentou a `ContactNote`/`contact_notes`, que saiu daqui junto com o
+ * último call site — tipo sem dono descrevendo tabela sem leitor é convite
+ * para alguém "consertar" a tela errada. A chave é a CONVERSA porque é a
+ * única que cobre conversa 1:1 e conversa de grupo (grupo não tem contato).
+ *
+ * ⚠️ Não tem `updated_at` de propósito: a anotação é criada e apagada, nunca
+ * editada. O banco reforça isso com `REVOKE UPDATE`.
+ */
+export interface ConversationNote {
   id: string;
-  contact_id: string;
-  user_id: string;
-  note_text: string;
+  account_id: string;
+  conversation_id: string;
+  /** Nulo em conversa de grupo. */
+  contact_id: string | null;
+  /** Nulo quando o autor saiu do `auth.users`. */
+  author_user_id: string | null;
+  /** Carimbado na escrita — o autor pode sair da conta e sumir do `profiles`. */
+  autor_nome: string | null;
+  texto: string;
+  /** `auth.users.id` dos colegas mencionados. */
+  mencionados: string[];
   created_at: string;
 }
 
@@ -240,7 +260,15 @@ export interface Conversation {
 // Notifications (migration 027)
 // ============================================================
 
-export type NotificationType = 'conversation_assigned';
+/**
+ * ⚠️ Espelha o CHECK de `notifications.type`. Alargar aqui sem alargar o
+ * banco (ou o contrário) só aparece em runtime, como violação de constraint.
+ * Os literais vivem na 027 (`conversation_assigned`) e na 919 (`note_mention`).
+ *
+ * ⚠️ Não confundir com o `'conversation_assigned'` homônimo mais abaixo neste
+ * arquivo, que é gatilho de AUTOMAÇÃO. São coisas diferentes com o mesmo nome.
+ */
+export type NotificationType = 'conversation_assigned' | 'note_mention';
 
 export interface Notification {
   id: string;

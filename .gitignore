@@ -15,6 +15,9 @@
 
 # next.js
 /.next/
+# `.next` também pode ser um SYMLINK para `.next.nosync` (ver abaixo) — a
+# regra com barra só casa com diretório, e sem esta linha o link é commitado.
+/.next
 /out/
 
 # production
@@ -51,3 +54,9 @@ next-env.d.ts
 # a cada sessao — foi assim que um `channel-select 2.tsx` (copia do Finder)
 # passou despercebido e acabou commitado.
 .playwright-mcp/
+
+# Pasta de build do Next, fora do iCloud (~/Documents é sincronizado).
+# O iCloud ignora nomes terminados em .nosync; `.next` é um atalho para cá.
+# Sem isso o fileproviderd sincroniza cada arquivo que o Turbopack reescreve,
+# e compilar passa de 20s por rota — já travou o dev server duas vezes.
+.next.nosync

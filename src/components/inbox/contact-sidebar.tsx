@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
 import { useChannels } from "@/hooks/use-channels";
+import { useConversationNotes } from "@/hooks/use-conversation-notes";
+import { toast } from "sonner";
 import { ChannelCell } from "@/components/channels/channel-badge";
 import { ActivityHistory } from "@/components/lead-events/activity-history";
 import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag } from "@/types";
+import type { Contact, Deal, ConversationNote, Tag } from "@/types";
 import {
   Phone,
   Mail,
@@ -28,6 +29,12 @@ import { useTranslations } from "next-intl";
 interface ContactSidebarProps {
   contact: Contact | null;
   /**
+   * Conversa aberta. A anotação é chaveada pela CONVERSA desde a 918 — sem
+   * ela dá para LER as anotações do contato (a coluna `contact_id` é
+   * desnormalizada justamente para isso), mas não para escrever.
+   */
+  conversationId?: string | null;
+  /**
    * Canal em que a conversa aberta corre. Sem isto a ficha do contato não
    * dizia por qual dos números do escritório aquela conversa acontece — a
    * informação existia só no cabeçalho da thread, que fica fora de vista
@@ -36,35 +43,76 @@ interface ContactSidebarProps {
   channelId?: string | null;
 }
 
-export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
+export function ContactSidebar({ contact, conversationId, channelId }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
   const tCanais = useTranslations("Channels");
   const { channels } = useChannels();
 
-  const { accountId } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
-  const [notes, setNotes] = useState<ContactNote[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+
+  /**
+   * ⚠️ O rascunho MORRE ao trocar de conversa. Mesmo perigo, mesma correção
+   * que a caixa do compositor.
+   *
+   * Esta ficha é renderizada sem `key`, numa posição fixa da página — trocar
+   * de conversa a re-renderiza, nunca a remonta. O texto do campo só era
+   * limpo quando o salvamento dava certo. Então: escrever "cliente mentiu
+   * sobre a data do acidente" na conversa do cliente A, clicar no cliente B
+   * na lista (a ficha passa a mostrar o nome e o telefone de B, com o texto
+   * de A ainda no campo) e clicar em `+` gravava aquilo na conversa de B,
+   * visível para toda a equipe. Não é hipótese: é o caminho de escrita que
+   * sobrou depois de a caixa do compositor ganhar a guarda dela.
+   */
+  useEffect(() => {
+    setNewNote("");
+  }, [conversationId]);
+
+  /**
+   * ⚠️ O MESMO hook que o fio do chat usa, e de propósito.
+   *
+   * Antes esta seção buscava as anotações uma vez, ao trocar de contato. O
+   * resultado é que a anotação escrita no compositor — logo ali, na mesma
+   * tela — não aparecia aqui até recarregar a página, e a P3.3 pede que ela
+   * apareça nas três superfícies. Compartilhar o hook resolve pelo realtime
+   * que ele já traz, em vez de inventar um segundo caminho de sincronia.
+   *
+   * Chaveia por CONVERSA, e não pelo `contact_id` que esta ficha usava:
+   * `idx_conversations_account_contact` é UNIQUE em (account_id, contact_id),
+   * então para conversa 1:1 os dois recortes devolvem o mesmo conjunto. A
+   * ficha de fora do inbox (`contact-detail-view`) continua lendo por contato
+   * porque lá não existe conversa aberta.
+   */
+  const { notas, acrescentar: acrescentarNota } =
+    useConversationNotes(conversationId);
+
+  // O hook devolve na ordem que o `intercalar` prefere (o fio reordena tudo).
+  // Aqui a lista é lida direto, e a seção sempre mostrou a mais recente no
+  // topo — ordenar é responsabilidade de quem exibe.
+  const notes = useMemo(
+    () =>
+      [...notas].sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      ),
+    [notas],
+  );
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
 
     const supabase = createClient();
 
-    // Fetch deals, notes, and tags in parallel
-    const [dealsRes, notesRes, tagsRes] = await Promise.all([
+    // Fetch deals and tags in parallel. As anotações saem daqui de propósito:
+    // vêm do `useConversationNotes` acima, que traz realtime junto.
+    const [dealsRes, tagsRes] = await Promise.all([
       supabase
         .from("deals")
         .select("*, stage:pipeline_stages(*)")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("contact_notes")
-        .select("*")
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: false }),
       supabase
@@ -74,7 +122,6 @@ export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
-    if (notesRes.data) setNotes(notesRes.data);
     if (tagsRes.data) {
       const mapped = tagsRes.data
         .filter((ct: Record<string, unknown>) => ct.tags)
@@ -89,7 +136,6 @@ export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
   // Load on contact change. setContactData/setTags run inside async
   // Supabase callbacks, not synchronously in the effect body.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchContactData();
   }, [fetchContactData]);
 
@@ -103,34 +149,48 @@ export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
     // fixes the `preserve-manual-memoization` lint error.
   }, [contact]);
 
+  /**
+   * ⚠️ Vai pela ROTA, não por insert direto. `cb_conversation_notes` não tem
+   * policy de INSERT e o papel `authenticated` teve o INSERT revogado — a
+   * anotação nasce no servidor, que carimba o autor e valida as menções.
+   * O insert direto que existia aqui (na `contact_notes`) agora daria 42501.
+   *
+   * ⚠️ E AVISA quando falha. A versão anterior (`if (!error && data)`) engolia
+   * o erro: o texto continuava no campo, nada aparecia na lista, e não havia
+   * como distinguir "falhou" de "ainda salvando". Com a rota no meio isso
+   * ficou mais provável, não menos — 401 de sessão expirada e 403 de papel
+   * passam por aqui.
+   */
   const handleAddNote = useCallback(async () => {
-    if (!contact || !newNote.trim()) return;
-    if (!accountId) return;
+    if (!contact || !newNote.trim() || !conversationId) return;
     setAddingNote(true);
-
-    const supabase = createClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    const user = session?.user;
-
-    const { data, error } = await supabase
-      .from("contact_notes")
-      .insert({
-        contact_id: contact.id,
-        account_id: accountId,
-        user_id: user?.id,
-        note_text: newNote.trim(),
-      })
-      .select()
-      .single();
-
-    if (!error && data) {
-      setNotes((prev) => [data, ...prev]);
-      setNewNote("");
+    try {
+      const res = await fetch("/api/cb/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          texto: newNote.trim(),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.note) {
+        const nota = json.note as ConversationNote;
+        // Mesma guarda do fio: a anotação foi GRAVADA no lugar certo (a
+        // requisição levou o `conversationId` daquele render), mas quem
+        // recebe a resposta é o render de agora. Trocar de conversa com o
+        // salvamento no ar poria a anotação de um cliente na ficha de outro.
+        if (nota.conversation_id === conversationId) acrescentarNota(nota);
+        setNewNote("");
+      } else {
+        toast.error(json?.error || tSidebar("noteSaveError"));
+      }
+    } catch {
+      toast.error(tSidebar("noteSaveError"));
+    } finally {
+      setAddingNote(false);
     }
-    setAddingNote(false);
-  }, [contact, newNote, accountId]);
+  }, [contact, newNote, conversationId, acrescentarNota, tSidebar]);
 
   if (!contact) {
     return (
@@ -310,7 +370,7 @@ export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
                   size="sm"
                   className="h-auto bg-primary px-2 hover:bg-primary/90"
                   onClick={handleAddNote}
-                  disabled={!newNote.trim() || addingNote}
+                  disabled={!newNote.trim() || addingNote || !conversationId}
                 >
                   <Plus className="h-3 w-3" />
                 </Button>
@@ -323,7 +383,7 @@ export function ContactSidebar({ contact, channelId }: ContactSidebarProps) {
                     className="rounded-lg bg-muted px-3 py-2"
                   >
                     <p className="whitespace-pre-wrap text-xs text-muted-foreground">
-                      {note.note_text}
+                      {note.texto}
                     </p>
                     <p className="mt-1 text-[10px] text-muted-foreground">
                       {format(new Date(note.created_at), "MMM d, yyyy HH:mm")}
