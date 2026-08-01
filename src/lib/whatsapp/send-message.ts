@@ -21,6 +21,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { aplicarAssinatura, custoDaAssinatura } from '@/lib/assinatura/assinatura';
+import { nomeParaAssinar } from '@/lib/assinatura/resolver';
+
 import {
   sendTextMessage,
   sendTemplateMessage,
@@ -296,6 +299,40 @@ export async function sendMessageToConversation(
    */
   const destinatario = ehGrupo ? grupo!.jid : sanitizedPhone;
 
+  /**
+   * ASSINATURA (923). Resolvida aqui — depois de a conversa existir e antes
+   * de qualquer envio — porque daqui para baixo `contentText` não é mais o
+   * texto que vai ao cliente: `textoFinal` é.
+   *
+   * ⚠️ `senderUserId` nulo é envio por CHAVE DE API (v1/MCP), não por gente:
+   * `nomeParaAssinar` assina esses com o nome do escritório, nunca com o de
+   * uma pessoa.
+   */
+  const nomeQueAssina = await nomeParaAssinar(db, accountId, senderUserId);
+  const textoFinal = aplicarAssinatura(contentText, nomeQueAssina);
+
+  /**
+   * ⚠️ O teto de 1024 é revalidado AQUI, com a assinatura já contada.
+   *
+   * `validateSendMessageParams` roda três vezes antes disto (as duas rotas e
+   * o topo desta função) e sempre sobre o texto CRU — nenhuma delas sabe que
+   * um prefixo vai aparecer. Sem esta segunda checagem, uma legenda de 1020
+   * caracteres passa em todas, e quem recusa é a Meta: o operador recebe 502
+   * de erro de servidor onde devia ler "sua legenda e longa demais".
+   */
+  if (
+    isMediaKind &&
+    messageType !== 'audio' &&
+    typeof textoFinal === 'string' &&
+    textoFinal.length > 1024
+  ) {
+    throw new SendMessageError(
+      'bad_request',
+      `Caption exceeds the 1024-character limit (the signature uses ${custoDaAssinatura(nomeQueAssina)} of them)`,
+      400
+    );
+  }
+
   // Which number (channel) this conversation replies through. Resolves
   // the conversation's channel → the account default → whatsapp_config
   // fallback. Field names mirror whatsapp_config so the branches below
@@ -479,13 +516,13 @@ export async function sendMessageToConversation(
             to: destinatario,
             kind: messageType as MediaKind,
             media: mediaUrl!,
-            caption: contentText || undefined,
+            caption: textoFinal || undefined,
             filename: filename || undefined,
             quoted: evolutionQuoted,
           })
         : await transport.sendText({
             to: destinatario,
-            text: contentText!,
+            text: textoFinal!,
             quoted: evolutionQuoted,
           });
       waMessageId = res.providerMessageId;
@@ -528,7 +565,7 @@ export async function sendMessageToConversation(
           to: phone,
           kind: messageType as MediaKind,
           link: mediaUrl!,
-          caption: contentText || undefined,
+          caption: textoFinal || undefined,
           filename: filename || undefined,
           contextMessageId,
         });
@@ -566,7 +603,7 @@ export async function sendMessageToConversation(
         phoneNumberId: channel.phone_number_id!,
         accessToken,
         to: phone,
-        text: contentText!,
+        text: textoFinal!,
         contextMessageId,
       });
       return result.messageId;
@@ -639,7 +676,9 @@ export async function sendMessageToConversation(
       // API não teve gente.
       sender_id: senderUserId ?? null,
       content_type: messageType,
-      content_text: interactiveBody ?? contentText ?? null,
+      // O texto ASSINADO — e o que o cliente recebeu, e o CRM tem de
+      // mostrar exatamente isso (P1.2).
+      content_text: interactiveBody ?? textoFinal ?? null,
       media_url: mediaUrl || null,
       template_name: templateName || null,
       interactive_payload:
@@ -666,7 +705,7 @@ export async function sendMessageToConversation(
   const lastMessageText =
     messageType === 'interactive'
       ? interactivePayloadPreviewText(interactivePayload!)
-      : contentText || `[${messageType}]`;
+      : textoFinal || `[${messageType}]`;
 
   await db
     .from('conversations')

@@ -18,6 +18,8 @@ import {
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
 import { supabaseAdmin } from './admin-client'
+import { aplicarAssinatura } from '@/lib/assinatura/assinatura'
+import { nomeAutomaticoParaAssinar } from '@/lib/assinatura/resolver'
 
 // ------------------------------------------------------------
 // Automation-side Meta sender.
@@ -157,6 +159,22 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error('WhatsApp not configured for this account')
   }
 
+  /**
+   * ASSINATURA (923) — automacao NUNCA assina com nome de gente.
+   *
+   * ⚠️ `nomeAutomaticoParaAssinar`, e nao o `input.userId` que esta bem ali
+   * na mao. Aquele campo e o AUTOR DA REGRA, nao quem respondeu: assinar com
+   * ele diria ao cliente que aquela pessoa leu o caso e escreveu, quando na
+   * verdade uma regra disparou sozinha — possivelmente de madrugada, meses
+   * depois de a regra ter sido criada. Num escritorio de advocacia isso e uma
+   * afirmacao seria, e falsa. Quem assina e o escritorio (P1.5).
+   */
+  const nomeQueAssina = await nomeAutomaticoParaAssinar(db, input.accountId)
+  const textoFinal =
+    input.kind === 'text'
+      ? (aplicarAssinatura(input.text, nomeQueAssina) as string)
+      : null
+
   let waMessageId = ''
   let workingPhone = sanitized
   let outboundRemoteJid: string | null = null
@@ -171,7 +189,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     }
     // Texto sai pelo transport da Evolution (Baileys) — sem janela de 24h.
     const transport = evolutionTransportFor(channel)
-    const res = await transport.sendText({ to: sanitized, text: input.text })
+    const res = await transport.sendText({ to: sanitized, text: textoFinal! })
     waMessageId = res.providerMessageId
     outboundRemoteJid = evolutionRemoteJid(sanitized)
   } else {
@@ -196,7 +214,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         phoneNumberId: channel.phone_number_id!,
         accessToken,
         to: phone,
-        text: input.text,
+        text: textoFinal!,
       })
       return r.messageId
     }
@@ -229,7 +247,8 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // provider message id. sender_type='bot' distinguishes automation sends
   // from manual agent sends.
   const content_type = input.kind === 'template' ? 'template' : 'text'
-  const content_text = input.kind === 'text' ? input.text : null
+  // O texto ASSINADO: e o que o cliente recebeu.
+  const content_text = input.kind === 'text' ? textoFinal : null
   const template_name = input.kind === 'template' ? input.templateName : null
 
   const { data: insertedMsg, error: msgErr } = await db
@@ -261,7 +280,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     .from('conversations')
     .update({
       last_message_text:
-        input.kind === 'template' ? `[template:${input.templateName}]` : input.text,
+        input.kind === 'template' ? `[template:${input.templateName}]` : textoFinal!,
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })

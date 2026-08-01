@@ -22,6 +22,8 @@ import {
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
 import { supabaseAdmin } from './admin-client'
+import { aplicarAssinatura } from '@/lib/assinatura/assinatura'
+import { nomeAutomaticoParaAssinar } from '@/lib/assinatura/resolver'
 
 // ------------------------------------------------------------
 // Flows-side Meta sender (interactive variants).
@@ -76,6 +78,20 @@ export async function engineSendText(
 ): Promise<{ whatsapp_message_id: string }> {
   const db = supabaseAdmin()
 
+  /**
+   * ASSINATURA (923) — fluxo e IA NUNCA assinam com nome de gente.
+   *
+   * ⚠️ Este caminho serve os DOIS: `engineSendText` e chamado pelo motor de
+   * fluxos e tambem pela resposta automatica da IA (`ai/auto-reply.ts`). Nem
+   * um nem outro tem autor humano — o `userId` que chega aqui e o dono da
+   * configuracao, nao quem respondeu. Assinar com ele diria ao cliente que
+   * aquela pessoa leu o caso. Quem assina e o escritorio (P1.5), e o selo de
+   * robo na bolha conta a verdade para a equipe.
+   */
+  const nomeQueAssina = await nomeAutomaticoParaAssinar(db, args.accountId)
+  const textoFinal = aplicarAssinatura(args.text, nomeQueAssina) as string
+
+
   const { data: contact, error: contactErr } = await db
     .from('contacts')
     .select('id, phone')
@@ -110,7 +126,7 @@ export async function engineSendText(
   if (channel.provider === 'evolution') {
     // Texto sai pelo transport da Evolution (Baileys) — sem janela de 24h.
     const transport = evolutionTransportFor(channel)
-    const res = await transport.sendText({ to: sanitized, text: args.text })
+    const res = await transport.sendText({ to: sanitized, text: textoFinal })
     waMessageId = res.providerMessageId
     outboundRemoteJid = evolutionRemoteJid(sanitized)
   } else {
@@ -124,7 +140,7 @@ export async function engineSendText(
         phoneNumberId: channel.phone_number_id!,
         accessToken,
         to: phone,
-        text: args.text,
+        text: textoFinal,
       })
       return r.messageId
     }
@@ -156,7 +172,8 @@ export async function engineSendText(
       conversation_id: args.conversationId,
       sender_type: 'bot',
       content_type: 'text',
-      content_text: args.text,
+      // O texto ASSINADO: e o que o cliente recebeu.
+      content_text: textoFinal,
       message_id: waMessageId,
       // Partes da chave Baileys — só Evolution (NULL no Meta).
       remote_jid: outboundRemoteJid,
@@ -176,7 +193,7 @@ export async function engineSendText(
   await db
     .from('conversations')
     .update({
-      last_message_text: args.text,
+      last_message_text: textoFinal,
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
@@ -215,6 +232,15 @@ export async function engineSendMedia(
 ): Promise<{ whatsapp_message_id: string }> {
   const db = supabaseAdmin()
 
+  /**
+   * A LEGENDA tambem e assinada — mesma regra de robo do texto acima.
+   * `aplicarAssinatura` devolve legenda vazia intacta, entao midia sem
+   * legenda continua saindo sem assinatura (e audio nem tem legenda).
+   */
+  const nomeQueAssina = await nomeAutomaticoParaAssinar(db, args.accountId)
+  const legendaFinal = aplicarAssinatura(args.caption, nomeQueAssina) ?? undefined
+
+
   const { data: contact, error: contactErr } = await db
     .from('contacts')
     .select('id, phone')
@@ -252,7 +278,7 @@ export async function engineSendMedia(
       to: sanitized,
       kind: args.kind,
       media: args.link,
-      caption: args.caption,
+      caption: legendaFinal,
       filename: args.filename,
     })
     waMessageId = res.providerMessageId
@@ -270,7 +296,7 @@ export async function engineSendMedia(
         to: phone,
         kind: args.kind,
         link: args.link,
-        caption: args.caption,
+        caption: legendaFinal,
         filename: args.filename,
       })
       return r.messageId
@@ -308,7 +334,7 @@ export async function engineSendMedia(
       conversation_id: args.conversationId,
       sender_type: 'bot',
       content_type: args.kind,
-      content_text: args.caption ?? null,
+      content_text: legendaFinal ?? null,
       message_id: waMessageId,
       remote_jid: outboundRemoteJid,
       from_me: channel.provider === 'evolution' ? true : null,
