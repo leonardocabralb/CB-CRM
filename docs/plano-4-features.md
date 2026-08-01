@@ -690,11 +690,11 @@ ver todas vai passar a ver só as que sobrevivem aos outros filtros ativos — o
 comportamento pedido, mas muda o que um controle de uso diário faz. Por isso o contador
 "Exibindo N chat(s)" importa: ele é o que explica um resultado vazio.
 
-⚠️ **PENDENTE — "departamento" não existe no sistema.** O operador citou "um filtro de
-departamento" ao explicar a regra de combinação. Não há coluna, tabela nem conceito de
-departamento no schema (conferir antes de qualquer decisão: não é `tags`, não é
-`cb_channels`, não é papel de membro). Ou era exemplo genérico, ou é uma feature nova a
-ser especificada. **Perguntar antes de construir** — não inventar um conceito.
+✅ **"Departamento" era exemplo genérico** — confirmado pelo operador em 2026-08-01.
+Não existe e **não entra no escopo**. Fica registrado porque o termo aparece na conversa
+que originou esta seção: quem reler daqui a um ano não deve sair procurando a tabela de
+departamentos nem construir uma. Os filtros da fase são os listados no Escopo, e nada
+além.
 
 ### Decisão de arquitetura
 
