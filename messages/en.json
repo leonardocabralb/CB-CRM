@@ -240,7 +240,13 @@
       "strike": "Strikethrough (Ctrl+Shift+X)",
       "mono": "Monospace",
       "undoSend": "Undo",
-      "sendingIn": "Sending in {seconds}s"
+      "sendingIn": "Sending in {seconds}s",
+      "internalNote": "Internal note",
+      "noteBoxTitle": "Write an internal note:",
+      "noteBoxHint": "The note is not visible to the customer.",
+      "notePlaceholder": "Write the note…",
+      "saveNote": "Save Note",
+      "noteSaveError": "Could not save the note."
     },
     "bubble": {
       "groupMediaTap": "Tap to download",
@@ -365,6 +371,14 @@
       "syncStarted": "Sync started. Details arrive shortly.",
       "syncFailed": "Could not sync.",
       "saveFailed": "Could not save."
+    },
+    "note": {
+      "wrote": "{autor} noted:",
+      "unknownAuthor": "Someone on the team",
+      "delete": "Delete note",
+      "confirmDelete": "Delete",
+      "cancelDelete": "Cancel",
+      "deleteFailed": "Could not delete the note."
     }
   },
   "Contacts": {

@@ -240,7 +240,13 @@
       "strike": "Riscado (Ctrl+Shift+X)",
       "mono": "Monoespaçado",
       "undoSend": "Desfazer",
-      "sendingIn": "Enviando em {seconds}s"
+      "sendingIn": "Enviando em {seconds}s",
+      "internalNote": "Anotação interna",
+      "noteBoxTitle": "Escrever anotação interna:",
+      "noteBoxHint": "A anotação não é visível para o cliente.",
+      "notePlaceholder": "Escreva a anotação…",
+      "saveNote": "Salvar Anotação",
+      "noteSaveError": "Não foi possível salvar a anotação."
     },
     "bubble": {
       "groupMediaTap": "Toque para baixar",
@@ -365,6 +371,14 @@
       "syncStarted": "Sincronização iniciada. Os detalhes chegam em instantes.",
       "syncFailed": "Não foi possível sincronizar.",
       "saveFailed": "Não foi possível salvar."
+    },
+    "note": {
+      "wrote": "{autor} anotou:",
+      "unknownAuthor": "Alguém da equipe",
+      "delete": "Excluir anotação",
+      "confirmDelete": "Excluir",
+      "cancelDelete": "Cancelar",
+      "deleteFailed": "Não foi possível excluir a anotação."
     }
   },
   "Contacts": {
