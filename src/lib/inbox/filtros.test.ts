@@ -273,7 +273,7 @@ describe("aplicarFiltros", () => {
     expect(todas.map((c) => c.id)).toEqual(["c2"]);
   });
 
-  it("filtro de canal não engole conversa sem carimbo", () => {
+  it("filtro de canal não engole conversa 1:1 sem carimbo", () => {
     // Conversa anterior à 903 tem `channel_id` nulo. Ela só aparece em
     // "Todos" — incluí-la em todo canal faria o filtro mentir sobre por qual
     // número aquela conversa correu.
@@ -285,6 +285,36 @@ describe("aplicarFiltros", () => {
       ctx(),
     );
     expect(saida.map((c) => c.id)).toEqual(["c2"]);
+  });
+
+  it("⚠️ GRUPO tem o número em cb_groups, não na conversa", () => {
+    // Este teste existe por causa de um achado da revisão: a versão anterior
+    // lia `conversations.channel_id` direto, e `persist.ts` NUNCA grava essa
+    // coluna em conversa de grupo. Resultado: escolher um número APAGAVA
+    // TODOS OS GRUPOS daquele número, em silêncio — e o teste antigo dizia,
+    // errado, que o nulo era coisa de conversa pré-903.
+    const doCanal = grupo({ id: "g1" }); // group.channel_id = 'ch1'
+    const deOutro = grupo({
+      id: "g2",
+      group: { ...grupo().group!, channel_id: "ch2" },
+    });
+
+    const saida = aplicarFiltros(
+      [doCanal, deOutro],
+      { ...FILTROS_VAZIOS, canalId: "ch1" },
+      ctx(),
+    );
+    expect(saida.map((c) => c.id)).toEqual(["g1"]);
+  });
+
+  it("grupo sem número conhecido não entra em recorte por número", () => {
+    const semNumero = grupo({
+      id: "g1",
+      group: { ...grupo().group!, channel_id: null },
+    });
+    expect(
+      aplicarFiltros([semNumero], { ...FILTROS_VAZIOS, canalId: "ch1" }, ctx()),
+    ).toHaveLength(0);
   });
 
   it("grupo some do filtro de etiqueta, e isso é a resposta honesta", () => {

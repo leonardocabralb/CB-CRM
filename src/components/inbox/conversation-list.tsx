@@ -74,6 +74,18 @@ export function ConversationList({
   const [tags, setTags] = useState<Tag[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [etapas, setEtapas] = useState<PipelineStage[]>([]);
+  // Nome do funil de cada etapa — só é usado quando há mais de um funil, e aí
+  // vira load-bearing: dois funis costumam ter "Lead" e "Qualificado" com o
+  // mesmo nome, e o seletor mostraria dois itens idênticos ordenados por
+  // posição, sem o operador poder distingui-los.
+  const [funis, setFunis] = useState<Map<string, string>>(new Map());
+  // ⚠️ Sem isto o filtro de etapa RESPONDE ERRADO em vez de sumir. O gate dele
+  // olha `pipeline_stages`, que é OUTRA consulta: se `deals` falhar sozinha, o
+  // seletor aparece completo, escolher qualquer etapa devolve zero e escolher
+  // "Sem negócio" devolve as 64 — a resposta exatamente invertida, sem erro na
+  // tela.
+  const [etapasUsaveis, setEtapasUsaveis] = useState(false);
+  const [temPerfis, setTemPerfis] = useState(false);
   // `contact_id` → etapas dos negócios dele. Busca separada porque `deals` NÃO
   // vem no CONVERSATION_SELECT — e não pode vir: aquele select é compartilhado
   // com a API pública v1, e embutir negócio ali mudaria o contrato público.
@@ -85,7 +97,14 @@ export function ConversationList({
   // simplesmente não aparece.
   const { channels } = useChannels();
   // Favoritas são de CADA MEMBRO (migration 924) — o hook já lê só as minhas.
-  const { favoritas, alternar: alternarFavorita } = useFavoritas();
+  // `resyncToken` porque `cb_conversation_favorites` não está no realtime:
+  // marcar no celular não apareceria nesta aba até recarregar a página.
+  const {
+    favoritas,
+    pronto: favoritasProntas,
+    falhouAoCarregar: falhouFavoritas,
+    alternar: alternarFavorita,
+  } = useFavoritas(resyncToken);
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
@@ -147,37 +166,64 @@ export function ConversationList({
     // up on any events sent while the WS was disconnected or throttled.
   }, [resyncToken]);
 
-  // Tag definitions for the filter picker — loaded once so labels/colours
-  // stay stable regardless of which conversations happen to be loaded.
+  // As buscas abaixo alimentam SÓ o painel de filtros. Rodam sob RLS, então já
+  // vêm escopadas à conta.
   //
-  // As três buscas abaixo alimentam SÓ os rótulos do painel de filtros. Todas
-  // falham em silêncio: sem elas o filtro correspondente simplesmente não
-  // aparece (o gate cuida disso), e o inbox continua inteiro. Rodam sob RLS,
-  // então já vêm escopadas à conta.
+  // ⚠️ NENHUMA delas pode falhar "em silêncio" de verdade. Um filtro que
+  // aparece sem os dados por trás não some: ele RESPONDE ERRADO, com cara de
+  // resposta certa. Por isso cada uma tem um sinalizador próprio, e o painel
+  // esconde o campo cujo dado não chegou — some é honesto, mentir não é.
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false;
     (async () => {
-      const [tagsRes, profilesRes, etapasRes, dealsRes] = await Promise.all([
-        supabase.from("tags").select("*").order("name"),
-        supabase.from("profiles").select("*").order("full_name"),
-        supabase
-          .from("pipeline_stages")
-          .select("*")
-          .order("position", { ascending: true }),
-        supabase.from("deals").select("contact_id, stage_id"),
-      ]);
+      const [tagsRes, profilesRes, etapasRes, funisRes, dealsRes] =
+        await Promise.all([
+          supabase.from("tags").select("*").order("name"),
+          supabase.from("profiles").select("*").order("full_name"),
+          supabase
+            .from("pipeline_stages")
+            .select("*")
+            .order("position", { ascending: true }),
+          supabase.from("pipelines").select("id, name"),
+          // `count: 'exact'` para detectar TRUNCAGEM: o PostgREST tem teto de
+          // linhas por resposta, e passando dele os negócios cortados migram
+          // em silêncio para "Sem negócio" — de novo a resposta invertida.
+          // Hoje são 55 e não chega perto; a checagem é o que mantém isso
+          // verdadeiro sem ninguém precisar lembrar.
+          supabase
+            .from("deals")
+            .select("contact_id, stage_id", { count: "exact" }),
+        ]);
       if (cancelled) return;
+
       if (tagsRes.data) setTags(tagsRes.data as Tag[]);
+
+      setTemPerfis(!profilesRes.error && (profilesRes.data?.length ?? 0) > 0);
       if (profilesRes.data) setProfiles(profilesRes.data as Profile[]);
+
       if (etapasRes.data) setEtapas(etapasRes.data as PipelineStage[]);
-      if (dealsRes.data) {
-        setEtapaPorContato(
-          mapaDeEtapasPorContato(
-            dealsRes.data as { contact_id: string | null; stage_id: string | null }[],
+      if (funisRes.data) {
+        setFunis(
+          new Map(
+            (funisRes.data as { id: string; name: string }[]).map((p) => [
+              p.id,
+              p.name,
+            ]),
           ),
         );
       }
+
+      const linhas = dealsRes.data as
+        | { contact_id: string | null; stage_id: string | null }[]
+        | null;
+      const completo =
+        !dealsRes.error &&
+        !!linhas &&
+        !!etapasRes.data &&
+        (dealsRes.count == null || dealsRes.count === linhas.length);
+      setEtapasUsaveis(completo);
+      if (linhas) setEtapaPorContato(mapaDeEtapasPorContato(linhas));
     })();
     return () => {
       cancelled = true;
@@ -245,6 +291,17 @@ export function ConversationList({
     [alternarFavorita, t]
   );
 
+  // ⚠️ Avisa UMA vez quando a leitura das favoritas falhou. Sem isto a tela
+  // mostra todas as estrelas apagadas e "Favoritas" não acha nada — que, para
+  // quem marcou vinte conversas ontem, lê como "o sistema perdeu as minhas".
+  const jaAvisouFavoritas = useRef(false);
+  useEffect(() => {
+    if (falhouFavoritas && !jaAvisouFavoritas.current) {
+      jaAvisouFavoritas.current = true;
+      toast.error(t("favoritesLoadFailed"));
+    }
+  }, [falhouFavoritas, t]);
+
   return (
     // w-full on mobile so the list occupies the whole viewport when it's
     // the single pane showing; fixed 320px on desktop where it shares the
@@ -268,9 +325,12 @@ export function ConversationList({
           canais={channels}
           etiquetas={tags}
           empresas={companies}
-          responsaveis={profiles}
-          etapas={etapas}
+          responsaveis={temPerfis ? profiles : []}
+          etapas={etapasUsaveis ? etapas : []}
+          funis={funis}
           temGrupos={temGrupos}
+          busca={search}
+          onLimparBusca={() => setSearch("")}
           exibindo={filtered.length}
           total={conversations.length}
         />
@@ -302,6 +362,7 @@ export function ConversationList({
                 onSelect={handleSelect}
                 favorita={favoritas.has(conv.id)}
                 onToggleFavorita={handleToggleFavorita}
+                favoritaHabilitada={favoritasProntas}
                 t={t}
               />
             ))}
@@ -318,6 +379,8 @@ interface ConversationItemProps {
   onSelect: (conversation: Conversation) => void;
   favorita: boolean;
   onToggleFavorita: (conversationId: string) => void;
+  /** `false` enquanto a sessão/conta não resolveu — ver `useFavoritas`. */
+  favoritaHabilitada: boolean;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -327,6 +390,7 @@ function ConversationItem({
   onSelect,
   favorita,
   onToggleFavorita,
+  favoritaHabilitada,
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
@@ -364,7 +428,7 @@ function ConversationItem({
       <button
         onClick={handleClick}
         className={cn(
-          "flex w-full items-start gap-3 py-3 pl-3 pr-9 text-left transition-colors hover:bg-muted/50",
+          "flex w-full items-start gap-3 py-3 pl-3 pr-10 text-left transition-colors hover:bg-muted/50",
           isActive && "border-l-2 border-primary bg-muted/70"
         )}
       >
@@ -423,14 +487,22 @@ function ConversationItem({
       {/* A estrela fica SEMPRE visível, e não só no hover: metade do uso do
           inbox é em tela de toque, onde hover não existe — um controle que só
           aparece ao passar o mouse simplesmente não existe no celular. */}
+      {/* ⚠️ `disabled` enquanto a sessão/conta não resolveu. Sem isso, clicar
+          nos primeiros instantes cai fora e o operador leva um "não deu,
+          tente de novo" sem que NADA tenha sido enviado ao banco — e se o
+          perfil falhar ao carregar, esse erro falso se repetiria a sessão
+          inteira. */}
       <button
         type="button"
         onClick={handleFavorita}
+        disabled={!favoritaHabilitada}
         aria-pressed={favorita}
         title={favorita ? t("unfavorite") : t("favorite")}
         aria-label={favorita ? t("unfavorite") : t("favorite")}
         className={cn(
-          "absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md transition-colors hover:bg-muted",
+          // 36px de alvo: o de 28 ficava a 4px do botão da linha, e num toque
+          // impreciso o dedo abria a conversa em vez de favoritar.
+          "absolute right-0.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40",
           favorita
             ? "text-amber-500"
             : "text-muted-foreground/40 hover:text-muted-foreground"

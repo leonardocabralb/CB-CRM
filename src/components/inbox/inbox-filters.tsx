@@ -59,8 +59,13 @@ interface InboxFiltersProps {
   empresas: string[];
   responsaveis: Profile[];
   etapas: PipelineStage[];
+  /** `pipeline_id` → nome do funil. Só usado quando há mais de um funil. */
+  funis: Map<string, string>;
   /** Existe conversa de grupo carregada? Sem isso o recorte por tipo não decide nada. */
   temGrupos: boolean;
+  /** A caixa de busca, que vive fora daqui — o "Limpar tudo" precisa dela. */
+  busca: string;
+  onLimparBusca: () => void;
   exibindo: number;
   total: number;
 }
@@ -73,7 +78,10 @@ export function InboxFilters({
   empresas,
   responsaveis,
   etapas,
+  funis,
   temGrupos,
+  busca,
+  onLimparBusca,
   exibindo,
   total,
 }: InboxFiltersProps) {
@@ -95,6 +103,103 @@ export function InboxFilters({
     (p) => p.user_id === filtros.responsavelId,
   );
   const etapaAtual = etapas.find((e) => e.id === filtros.etapaId);
+
+  const nomeDoResponsavel = (id: string) => {
+    if (id === SEM_RESPONSAVEL) return t("assigneeNone");
+    const p = responsaveis.find((x) => x.user_id === id);
+    return p?.full_name || p?.email || t("assigneeUnnamed");
+  };
+
+  /**
+   * Uma pastilha por recorte ativo, cada uma removível sozinha. A ordem é a
+   * mesma dos campos no painel, para o olho não precisar procurar.
+   */
+  const pastilhas: {
+    chave: string;
+    texto: string;
+    cor?: string;
+    aoRemover: () => void;
+  }[] = [];
+
+  if (filtros.tipo !== "todas") {
+    pastilhas.push({
+      chave: "tipo",
+      texto: filtros.tipo === "grupos" ? t("typeGroups") : t("typeDirect"),
+      aoRemover: () => mexer({ tipo: "todas" }),
+    });
+  }
+  if (filtros.status !== "todos") {
+    pastilhas.push({
+      chave: "status",
+      texto:
+        filtros.status === "open"
+          ? t("filterOpen")
+          : filtros.status === "pending"
+            ? t("filterPending")
+            : t("filterClosed"),
+      aoRemover: () => mexer({ status: "todos" }),
+    });
+  }
+  if (filtros.canalId) {
+    pastilhas.push({
+      chave: "canal",
+      texto:
+        canais.find((c) => c.id === filtros.canalId)?.label ?? t("channelFilter"),
+      aoRemover: () => mexer({ canalId: null }),
+    });
+  }
+  if (filtros.responsavelId) {
+    pastilhas.push({
+      chave: "responsavel",
+      texto: nomeDoResponsavel(filtros.responsavelId),
+      aoRemover: () => mexer({ responsavelId: null }),
+    });
+  }
+  if (filtros.etapaId) {
+    pastilhas.push({
+      chave: "etapa",
+      texto:
+        filtros.etapaId === SEM_ETAPA
+          ? t("stageNone")
+          : etapaAtual
+            ? nomeDaEtapa(etapaAtual, funis)
+            : t("stageAll"),
+      aoRemover: () => mexer({ etapaId: null }),
+    });
+  }
+  if (filtros.empresa !== null) {
+    pastilhas.push({
+      chave: "empresa",
+      texto: filtros.empresa,
+      aoRemover: () => mexer({ empresa: null }),
+    });
+  }
+  // Uma pastilha POR ETIQUETA, e não uma só dizendo "3 etiquetas": tirar uma
+  // etiqueta do recorte era um clique antes deste painel, e sem isto viraria
+  // três (abrir painel → abrir a lista → desmarcar).
+  for (const id of filtros.etiquetaIds) {
+    const tag = etiquetas.find((x) => x.id === id);
+    pastilhas.push({
+      chave: `etiqueta:${id}`,
+      texto: tag?.name ?? t("tags"),
+      cor: tag?.color,
+      aoRemover: () => alternarEtiqueta(id),
+    });
+  }
+  if (filtros.naoLidas) {
+    pastilhas.push({
+      chave: "naoLidas",
+      texto: t("filterUnread"),
+      aoRemover: () => mexer({ naoLidas: false }),
+    });
+  }
+  if (filtros.favoritas) {
+    pastilhas.push({
+      chave: "favoritas",
+      texto: t("favorites"),
+      aoRemover: () => mexer({ favoritas: false }),
+    });
+  }
 
   return (
     <div className="space-y-2">
@@ -163,10 +268,16 @@ export function InboxFilters({
           {t("favorites")}
         </button>
 
-        {ativos > 0 && (
+        {/* Limpa também a BUSCA: ela recorta a lista igual aos filtros, e um
+            "limpar tudo" que deixa a busca de pé não limpou tudo. Por isso
+            aparece com busca preenchida mesmo sem nenhum filtro. */}
+        {(ativos > 0 || busca.trim().length > 0) && (
           <button
             type="button"
-            onClick={() => onChange(FILTROS_VAZIOS)}
+            onClick={() => {
+              onChange(FILTROS_VAZIOS);
+              onLimparBusca();
+            }}
             className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <X className="h-3 w-3" />
@@ -184,8 +295,49 @@ export function InboxFilters({
         )}
       </div>
 
+      {/* ⚠️ AS PASTILHAS DO FILTRO ATIVO, VISÍVEIS COM O PAINEL FECHADO.
+          Antes deste painel, o rótulo de cada filtro escolhido ficava escrito
+          na barra o tempo todo, e cada etiqueta tinha um X próprio. Sem isto
+          o operador abre o inbox, vê 8 de 64 conversas e um "Filtros ①" que
+          diz que EXISTE um filtro, não QUAL — e a única saída seria limpar
+          todos de uma vez.
+
+          Também é o que salva o caso do filtro cujo campo sumiu: se o último
+          grupo sair da lista com "só grupos" marcado, o campo Tipo some do
+          painel mas o recorte continua valendo. A pastilha continua ali, com
+          o X. */}
+      {ativos > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          {pastilhas.map((p) => (
+            <button
+              key={p.chave}
+              type="button"
+              onClick={p.aoRemover}
+              title={t("removeFilter", { filtro: p.texto })}
+              className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground transition-colors hover:bg-muted/70"
+            >
+              {p.cor && (
+                <span
+                  className="h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: p.cor }}
+                />
+              )}
+              <span className="max-w-32 truncate">{p.texto}</span>
+              <X className="h-3 w-3 shrink-0" />
+            </button>
+          ))}
+        </div>
+      )}
+
       {aberto && (
-        <div className="grid gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-2">
+        // ⚠️ UMA coluna, e `sm:grid-cols-2` seria errado aqui: `sm:` olha a
+        // LARGURA DA JANELA, mas esta barra tem largura FIXA de 320px no
+        // desktop (`lg:w-80`). Duas colunas dariam ~129px cada, e "Recebeu
+        // link de agendamento" ou "Leonardo Cabral Baptista" truncariam no
+        // próprio gatilho — o operador não conseguiria ler o filtro que
+        // escolheu. E o efeito era invertido: no celular, onde a lista ocupa
+        // a tela toda, ele caía para uma coluna larga.
+        <div className="grid gap-3 rounded-lg border border-border bg-muted/30 p-3">
           {temGrupos && (
             <Campo rotulo={t("labelType")}>
               <Escolha
@@ -245,7 +397,7 @@ export function InboxFilters({
           </Campo>
 
           {canais.length >= 2 && (
-            <Campo rotulo={t("labelChannel")}>
+            <Campo rotulo={t("channelFilter")}>
               {/* Peça compartilhada: ela já traz o gate de 2+ e o rótulo do
                   canal com bolinha de estado. */}
               <ChannelFilter
@@ -264,9 +416,13 @@ export function InboxFilters({
                   ? t("assigneeAll")
                   : filtros.responsavelId === SEM_RESPONSAVEL
                     ? t("assigneeNone")
-                    : (responsavelAtual?.full_name ??
-                      responsavelAtual?.email ??
-                      t("assigneeAll"))
+                    : // ⚠️ `||`, não `??`: `profiles.full_name` é NOT NULL
+                      // mas SEM default — pode ser string vazia, e com `??` o
+                      // gatilho ficaria em branco enquanto o filtro está
+                      // pegando.
+                      (responsavelAtual?.full_name ||
+                      responsavelAtual?.email ||
+                      t("assigneeUnnamed"))
               }
               ativo={filtros.responsavelId !== null}
               opcoes={[
@@ -285,7 +441,9 @@ export function InboxFilters({
                 },
                 ...responsaveis.map((p) => ({
                   chave: p.user_id,
-                  texto: p.full_name || p.email || p.user_id,
+                  // Nunca o `user_id`: um UUID cru na frente do operador não
+                  // identifica ninguém.
+                  texto: p.full_name || p.email || t("assigneeUnnamed"),
                   escolhido: filtros.responsavelId === p.user_id,
                   aoEscolher: () => mexer({ responsavelId: p.user_id }),
                 })),
@@ -301,7 +459,9 @@ export function InboxFilters({
                     ? t("stageAll")
                     : filtros.etapaId === SEM_ETAPA
                       ? t("stageNone")
-                      : (etapaAtual?.name ?? t("stageAll"))
+                      : etapaAtual
+                        ? nomeDaEtapa(etapaAtual, funis)
+                        : t("stageAll")
                 }
                 ativo={filtros.etapaId !== null}
                 opcoes={[
@@ -322,7 +482,7 @@ export function InboxFilters({
                   },
                   ...etapas.map((e) => ({
                     chave: e.id,
-                    texto: e.name,
+                    texto: nomeDaEtapa(e, funis),
                     escolhido: filtros.etapaId === e.id,
                     aoEscolher: () => mexer({ etapaId: e.id }),
                   })),
@@ -421,6 +581,19 @@ export function InboxFilters({
       )}
     </div>
   );
+}
+
+/**
+ * O nome da etapa, com o funil na frente quando há mais de um.
+ *
+ * ⚠️ Com dois funis os nomes se repetem — "Lead", "Qualificado" — e o menu
+ * mostraria itens idênticos intercalados por `position`, sem o operador poder
+ * distinguir. Hoje há um funil só e o prefixo não aparece.
+ */
+function nomeDaEtapa(etapa: PipelineStage, funis: Map<string, string>): string {
+  if (funis.size < 2) return etapa.name;
+  const funil = funis.get(etapa.pipeline_id);
+  return funil ? `${funil} · ${etapa.name}` : etapa.name;
 }
 
 function Campo({

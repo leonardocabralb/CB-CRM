@@ -167,8 +167,34 @@ upstream sobrescrevê-los:
 | `src/components/settings/template-manager.tsx` | seletor de WABA para criar/sincronizar, etiqueta de canal por modelo |
 | `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato, canal da conversa na ficha, e a seção/aba **Histórico** (912). No detail view a `TabsList` ganhou `flex-wrap h-auto` — com 5 abas ela já estourava a largura do painel e escondia "Negócios" |
 | `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
+| `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele |
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
+
+⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
+`src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
+e `src/hooks/use-favoritas.ts`. Quem for mexer em filtro de conversa mexe lá,
+não dentro da lista. O que morde código novo:
+
+- ⚠️ **Filtrar conversa por campo do contato NA CONSULTA dá resultado errado
+  sem dar erro.** Com o embed LEFT atual, `.eq('contact.algo', …)` filtra só o
+  recurso embutido e as conversas que não casam **continuam vindo** com
+  `contact: null`; trocando para `contacts!inner` vira INNER JOIN e **apaga
+  toda conversa de grupo**. Nenhum dos dois estoura e os dois passam em
+  revisão. Filtre em JS enquanto a lista for carregada inteira.
+- ⚠️ **Conversa de grupo tem `conversations.channel_id` NULO — sempre.**
+  `src/lib/cb-groups/persist.ts` não grava a coluna; quem sabe o número é
+  `cb_groups.channel_id`. Recorte por canal precisa de `canalDaConversa()`,
+  senão apaga todos os grupos daquele número em silêncio. **Vale para
+  qualquer código novo que agrupe ou conte conversa por canal**, não só para
+  o filtro do inbox (o painel, por exemplo, ainda não foi conferido).
+- **Escopo vazio = TUDO**, igual ao resto do projeto: `FILTROS_VAZIOS` não
+  recorta nada, e "sem responsável"/"sem negócio" são opções explícitas, não
+  a ausência de filtro.
+- **Filtro cujo dado não carregou some da tela.** Um seletor sem os dados por
+  trás não fica inerte: ele responde ERRADO com cara de certo (o de etapa
+  chegaria a dizer que 55 negócios não existem). Cada busca do painel tem
+  sinalizador próprio.
 
 ⚠️ **UI de canal: peças próprias, prefira reusá-las.** `src/hooks/use-channels.ts`
 (uma busca por montagem, falha silenciosa), `src/lib/cb-channels/display.ts`
@@ -415,7 +441,11 @@ mordem de novo em qualquer código novo:
   `911_cb_um_funil_por_vez`, `912_cb_historico_de_atividade`,
   `913_cb_revoke_de_public`, `914_cb_fecha_rpc_de_manutencao` e
   `915_cb_fecha_rpc_de_manutencao_de_fato`, `906_cb_grupos` e
-  `916_cb_lid_do_canal`.
+  `916_cb_lid_do_canal`. Depois disso (conferido em 2026-08-01):
+  `917_cb_endereco_lid_da_mensagem`, `918_cb_notas_na_conversa`,
+  `919_cb_mencao_na_anotacao`, `920_cb_fecha_grants_das_anotacoes`,
+  `921_cb_anotacao_apagada_em_tempo_real`, `922_cb_aposenta_contact_notes`,
+  `923_cb_assinatura` e `924_cb_favoritar`.
   ⚠️ A `906` foi aplicada FORA DE ORDEM (antes da 907), e o histórico do
   Supabase a registra com o nome antigo `904_cb_grupos` — ela nasceu numerada
   como 904, colidiu com `904_cb_mensagem_do_aparelho` e o ARQUIVO foi

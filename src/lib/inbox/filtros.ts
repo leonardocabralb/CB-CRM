@@ -179,6 +179,27 @@ export function casaComOResponsavel(
   return atual === responsavelId;
 }
 
+/**
+ * Por qual número esta conversa corre.
+ *
+ * ⚠️ **Conversa de GRUPO tem `conversations.channel_id` NULO — sempre, e não
+ * por ser antiga.** `src/lib/cb-groups/persist.ts` cria a conversa do grupo
+ * com `{ account_id, user_id, group_id }` e nenhum dos dois `update` seguintes
+ * preenche a coluna; quem guarda o número é `cb_groups.channel_id` ("por qual
+ * número vimos este grupo"). Sem esta função, escolher um número no filtro
+ * APAGARIA TODOS OS GRUPOS daquele número, em silêncio — que é exatamente a
+ * armadilha "grupo some sem erro" que o CLAUDE.md descreve, só que por um
+ * caminho diferente do `!inner`.
+ *
+ * ⚠️ Não confundir com o outro NULO legítimo: conversa 1:1 anterior à 903 não
+ * tem carimbo nenhum, e essa continua aparecendo só em "Todos" — incluí-la em
+ * todo número faria o filtro afirmar algo que ninguém sabe.
+ */
+export function canalDaConversa(conversation: Conversation): string | null {
+  if (conversation.group_id) return conversation.group?.channel_id ?? null;
+  return conversation.channel_id ?? null;
+}
+
 export function casaComAEtapa(
   conversation: Conversation,
   etapaId: string | null,
@@ -198,6 +219,20 @@ export function casaComAEtapa(
 }
 
 /**
+ * ⚠️ CONSEQUÊNCIA A VIGIAR QUANDO `groups_enabled` FOR LIGADO.
+ *
+ * Grupo não tem responsável nem contato, então ele casa com "Sem responsável"
+ * E com "Sem negócio" ao mesmo tempo. As duas opções existem para responder
+ * "quem ninguém pegou ainda" — e no dia em que os 58 grupos já sincronizados
+ * entrarem na lista, as duas passam a devolver os 58 junto com as pessoas.
+ *
+ * Não há conserto certo aqui: as duas respostas são literalmente verdadeiras.
+ * A saída é o filtro de TIPO, que existe exatamente para isso — quem quer
+ * gente escolhe "diretas". Fica escrito para quem for ligar o interruptor não
+ * achar que é bug.
+ */
+
+/**
  * O recorte inteiro.
  *
  * ⚠️ **Todos os filtros se aplicam JUNTOS (E lógico)** — decisão do operador em
@@ -214,10 +249,9 @@ export function aplicarFiltros(
     if (!matchesTypeFilter(c, f.tipo)) return false;
     if (f.status !== "todos" && c.status !== f.status) return false;
 
-    // Conversa sem carimbo de canal (anterior à 903) só aparece em "Todos":
-    // incluí-la em todo canal faria o filtro mentir sobre por qual número
-    // aquela conversa correu.
-    if (f.canalId && c.channel_id !== f.canalId) return false;
+    // Ver `canalDaConversa`: em grupo o número mora em `cb_groups`, não na
+    // conversa.
+    if (f.canalId && canalDaConversa(c) !== f.canalId) return false;
 
     if (!casaComOResponsavel(c, f.responsavelId)) return false;
     if (f.favoritas && !ctx.favoritas.has(c.id)) return false;
