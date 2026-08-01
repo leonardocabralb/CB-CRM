@@ -23,11 +23,11 @@
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
 | **0** | Decisões de produto | ✅ respondida 2026-08-01 | — | — |
-| **1** | F3 — anotação interna no fio | 🔄 código pronto, faltam as duas revisões | `918_cb_notas_na_conversa` + `919_cb_mencao_na_anotacao` (**ambas aplicadas**) | branch `feat/notas-na-conversa` |
-| **2** | F1 — assinatura por membro | ⬜ pendente | `920_cb_assinatura` (era 919) | — |
-| **3** | F2 fatia A — filtros | ⬜ pendente | `921_cb_favoritar` | — |
-| **4** | F4 — mensagem agendada | ⬜ pendente | `922_cb_mensagens_agendadas` | — |
-| **5** | F2 fatia B — busca full-text | ⬜ pendente | `923_cb_busca_em_mensagens` | — |
+| **1** | F3 — anotação interna no fio | ✅ **concluída 2026-08-01** | `918`, `919`, `920`, `921`, `922` (todas aplicadas e conferidas) | `feat/notas-na-conversa` |
+| **2** | F1 — assinatura por membro | ⬜ pendente | `923_cb_assinatura` | — |
+| **3** | F2 fatia A — filtros | ⬜ pendente | `924_cb_favoritar` | — |
+| **4** | F4 — mensagem agendada | ⬜ pendente | `925_cb_mensagens_agendadas` | — |
+| **5** | F2 fatia B — busca full-text | ⬜ pendente | `926_cb_busca_em_mensagens` | — |
 | **6** | Revisão final (2 passadas + testes) | ⬜ pendente | — | — |
 
 ⚠️ **Os números das fases 2–5 andaram um.** A menção precisou de migration própria (a 918
@@ -364,11 +364,35 @@ conversa sob demanda (já existe `findOrCreateConversation`), não mudar o schem
 
 Escrito **depois** de codar, para a próxima sessão não repetir o caminho errado.
 
-**1. `DROP TABLE contact_notes` NÃO foi executado.** O plano previa no commit 4. É ação
-destrutiva e exige autorização explícita do operador na conversa (`CLAUDE.md`), que não
-foi pedida ainda. Estado atual: os dados foram **copiados** para `cb_conversation_notes`
-(2 de 2, conferido) e nenhuma tela lê ou escreve a tabela antiga. Fica como migration
-própria, depois do merge, com o operador ciente do que se perde.
+**1. `DROP TABLE contact_notes` — feito na 922, autorizado pelo operador, e por muito
+pouco não levou duas funções vivas junto.**
+
+⚠️ **A lição que vale para qualquer DROP futuro neste banco:** `DROP TABLE` **não**
+reclama de referência dentro de corpo de função. O PL/pgSQL só resolve o nome da tabela
+na hora de executar, então o DROP passa limpo e o estrago aparece depois, em produção,
+como `relation ... does not exist` no meio de uma operação. Duas funções vivas citavam
+`contact_notes`:
+
+| Função | O que quebraria |
+| --- | --- |
+| `merge_duplicate_contacts` (022/036) | a deduplicação de contato por telefone — a ingestão de cliente repetido |
+| `redeem_invitation` (019) | **aceitar convite para a conta** — gente nova não entraria no escritório, justo agora (P1.1) |
+
+E havia um segundo estrago, mais silencioso: aquela linha em `merge_duplicate_contacts`
+**repontava** a anotação para o contato sobrevivente. `cb_conversation_notes.contact_id`
+é `ON DELETE CASCADE` e o laço termina apagando o contato perdedor — sem a linha
+equivalente na tabela nova, juntar dois cadastros do mesmo cliente **apagaria as
+anotações internas** dele, sem erro e sem aviso.
+
+Antes de qualquer `DROP TABLE`, rodar:
+
+```sql
+SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'public' AND pg_get_functiondef(p.oid) ILIKE '%nome_da_tabela%';
+```
+
+A 922 recria as duas funções **antes** do DROP, na mesma transação, e assere no fim que
+nenhuma função sobrou citando a tabela morta.
 
 ⚠️ **Esta nota mentiu por um commit, e o erro vale mais que o acerto.** Ela afirmava que
 "as duas telas de ficha já leem a tabela nova" quando só a `contact-sidebar` tinha sido
