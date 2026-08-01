@@ -60,3 +60,12 @@ next-env.d.ts
 # Sem isso o fileproviderd sincroniza cada arquivo que o Turbopack reescreve,
 # e compilar passa de 20s por rota — já travou o dev server duas vezes.
 .next.nosync
+
+# Cópias de conflito do iCloud. O projeto vive em ~/Documents, e o iCloud
+# duplica arquivo/pasta com sufixo " 2" quando acha que houve conflito — já
+# apareceram `.next 2`, `BUILD_ID 2` e `channel-select 2.tsx`. Nenhuma delas
+# deve ser commitada, e a `.next 2` chegou a entrar na varredura do Tailwind
+# (ver o comentário no topo de `src/app/globals.css`).
+* 2
+* 2.*
+*\ 2
