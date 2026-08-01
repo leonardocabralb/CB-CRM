@@ -56,6 +56,24 @@ export function ContactSidebar({ contact, conversationId, channelId }: ContactSi
   const [addingNote, setAddingNote] = useState(false);
 
   /**
+   * ⚠️ O rascunho MORRE ao trocar de conversa. Mesmo perigo, mesma correção
+   * que a caixa do compositor.
+   *
+   * Esta ficha é renderizada sem `key`, numa posição fixa da página — trocar
+   * de conversa a re-renderiza, nunca a remonta. O texto do campo só era
+   * limpo quando o salvamento dava certo. Então: escrever "cliente mentiu
+   * sobre a data do acidente" na conversa do cliente A, clicar no cliente B
+   * na lista (a ficha passa a mostrar o nome e o telefone de B, com o texto
+   * de A ainda no campo) e clicar em `+` gravava aquilo na conversa de B,
+   * visível para toda a equipe. Não é hipótese: é o caminho de escrita que
+   * sobrou depois de a caixa do compositor ganhar a guarda dela.
+   */
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNewNote("");
+  }, [conversationId]);
+
+  /**
    * ⚠️ O MESMO hook que o fio do chat usa, e de propósito.
    *
    * Antes esta seção buscava as anotações uma vez, ao trocar de contato. O
@@ -159,7 +177,12 @@ export function ContactSidebar({ contact, conversationId, channelId }: ContactSi
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json?.note) {
-        acrescentarNota(json.note as ConversationNote);
+        const nota = json.note as ConversationNote;
+        // Mesma guarda do fio: a anotação foi GRAVADA no lugar certo (a
+        // requisição levou o `conversationId` daquele render), mas quem
+        // recebe a resposta é o render de agora. Trocar de conversa com o
+        // salvamento no ar poria a anotação de um cliente na ficha de outro.
+        if (nota.conversation_id === conversationId) acrescentarNota(nota);
         setNewNote("");
       } else {
         toast.error(json?.error || tSidebar("noteSaveError"));

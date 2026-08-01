@@ -34,6 +34,15 @@ import { canWriteNotes, isAccountRole } from '@/lib/auth/roles'
  */
 const MAX_TEXTO = 4000
 
+/**
+ * Teto de menções por anotação. Uma conta real tem uma dezena de pessoas; o
+ * número existe para o array não chegar sem tamanho no `.in(...)`.
+ */
+const MAX_MENCOES = 50
+
+/** Forma de UUID — o que o Postgres aceita em `uuid`. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function POST(request: Request) {
   const supabase = await createClient()
 
@@ -73,14 +82,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { conversation_id, texto, mencionados } = (body ?? {}) as {
+  const { conversation_id, contact_id, texto, mencionados } = (body ?? {}) as {
     conversation_id?: unknown
+    contact_id?: unknown
     texto?: unknown
     mencionados?: unknown
   }
 
-  if (typeof conversation_id !== 'string' || !conversation_id) {
-    return NextResponse.json({ error: 'conversation_id is required' }, { status: 400 })
+  // Aceita os dois caminhos de entrada. O inbox sabe a conversa; a ficha do
+  // contato, na tela de Contatos, não tem conversa nenhuma à mão — resolver
+  // ali no cliente exigiria uma segunda ida ao banco em toda tela que quiser
+  // anotar, e é justamente o tipo de regra que tem de morar num lugar só.
+  const porConversa = typeof conversation_id === 'string' && conversation_id
+  const porContato = typeof contact_id === 'string' && contact_id
+  if (!porConversa && !porContato) {
+    return NextResponse.json(
+      { error: 'conversation_id or contact_id is required' },
+      { status: 400 },
+    )
   }
   if (typeof texto !== 'string' || !texto.trim()) {
     return NextResponse.json({ error: 'texto is required' }, { status: 400 })
@@ -91,22 +110,42 @@ export async function POST(request: Request) {
 
   const pedidos = Array.isArray(mencionados)
     ? [...new Set(mencionados.filter((m): m is string => typeof m === 'string'))]
+        // ⚠️ Teto e forma. Sem os dois, um POST fora da tela manda um array de
+        // tamanho arbitrário direto para o `.in(...)`, e um único valor que
+        // não seja UUID faz o PostgREST devolver 22P02 — erro que, engolido,
+        // derrubaria TODAS as menções da anotação em silêncio.
+        .filter((m) => UUID.test(m))
+        .slice(0, MAX_MENCOES)
     : []
 
   // ⚠️ Lido com o cliente DO USUÁRIO, sob RLS: é o que garante que a conversa
   // é de uma conta que ele enxerga. O insert logo abaixo roda em service-role
   // e ignoraria RLS — sem esta leitura, um `conversation_id` de outra conta
   // passaria pela FK composta (que só confere conversa+conta batendo entre si)
-  // e a anotação nasceria no lugar errado.
-  const { data: conversa } = await supabase
+  // e a anotação nasceria no lugar errado. Pelo contato vale o mesmo: o filtro
+  // por `account_id` é o que impede anotar contato de outro escritório.
+  const busca = supabase
     .from('conversations')
     .select('id, contact_id, account_id')
-    .eq('id', conversation_id)
     .eq('account_id', accountId)
-    .maybeSingle()
+  const { data: conversa } = porConversa
+    ? await busca.eq('id', conversation_id).maybeSingle()
+    : // `idx_conversations_account_contact` é UNIQUE em (account_id,
+      // contact_id) desde a 036, então isto devolve no máximo uma linha.
+      await busca.eq('contact_id', contact_id).maybeSingle()
 
   if (!conversa) {
-    return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    return NextResponse.json(
+      {
+        error: porConversa
+          ? 'Conversation not found'
+          : // Caso real e não um erro do chamador: contato cadastrado à mão
+            // que nunca trocou mensagem não tem conversa, e a anotação é
+            // chaveada por conversa. Quem chama traduz este código.
+            'CONTACT_WITHOUT_CONVERSATION',
+      },
+      { status: porConversa ? 404 : 409 },
+    )
   }
 
   // Mesma cascata do `memberLabel` e da 912 — `full_name` é NOT NULL mas o
@@ -122,12 +161,22 @@ export async function POST(request: Request) {
   // O próprio autor sai da lista: mencionar a si mesmo é comum ao escrever
   // ("@fulano e eu vimos isso") e ninguém quer sino do que acabou de digitar.
   let validos: string[] = []
+  // ⚠️ `mencoesOk` acompanha se a menção realmente chegou ao destino. Sem
+  // ele, os dois tropeços possíveis daqui para baixo (a consulta de membros
+  // falhar, o insert no sino falhar) somem: a anotação salva, a resposta é
+  // 201, e quem escreveu vai embora certo de que o colega foi avisado. Numa
+  // anotação de "confere esse prazo comigo", esse silêncio é o pior desfecho.
+  let mencoesOk = true
   if (pedidos.length > 0) {
-    const { data: membros } = await supabase
+    const { data: membros, error: erroMembros } = await supabase
       .from('profiles')
       .select('user_id')
       .eq('account_id', accountId)
       .in('user_id', pedidos)
+    if (erroMembros) {
+      console.error('[POST /api/cb/notes] falha ao validar menções:', erroMembros.message)
+      mencoesOk = false
+    }
     validos = (membros ?? [])
       .map((m) => m.user_id as string)
       .filter((id) => id !== user.id)
@@ -138,7 +187,11 @@ export async function POST(request: Request) {
     .from('cb_conversation_notes')
     .insert({
       account_id: accountId,
-      conversation_id,
+      // ⚠️ `conversa.id`, NUNCA o `conversation_id` do corpo: quando a ficha
+      // do contato chama, o corpo traz `contact_id` e aquele campo vem
+      // `undefined`. A coluna é NOT NULL, então isso seria erro na cara — mas
+      // o tipo não acusa, porque o campo é opcional no corpo.
+      conversation_id: conversa.id,
       // Nulo em conversa de grupo — grupo não tem contato.
       contact_id: conversa.contact_id ?? null,
       author_user_id: user.id,

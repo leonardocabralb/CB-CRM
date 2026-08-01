@@ -147,20 +147,14 @@ export interface ContactCustomValue {
   value?: string;
 }
 
-export interface ContactNote {
-  id: string;
-  contact_id: string;
-  user_id: string;
-  note_text: string;
-  created_at: string;
-}
-
 /**
  * Anotação interna da conversa (migration 918). Nunca sai para o cliente:
- * aparece no fio do chat e na ficha do contato.
+ * aparece no fio do chat e nas duas fichas do contato.
  *
- * Substitui `ContactNote` — a chave é a CONVERSA porque é a única que cobre
- * conversa 1:1 e conversa de grupo (grupo não tem contato).
+ * Aposentou a `ContactNote`/`contact_notes`, que saiu daqui junto com o
+ * último call site — tipo sem dono descrevendo tabela sem leitor é convite
+ * para alguém "consertar" a tela errada. A chave é a CONVERSA porque é a
+ * única que cobre conversa 1:1 e conversa de grupo (grupo não tem contato).
  *
  * ⚠️ Não tem `updated_at` de propósito: a anotação é criada e apagada, nunca
  * editada. O banco reforça isso com `REVOKE UPDATE`.

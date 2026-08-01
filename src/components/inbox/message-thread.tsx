@@ -23,6 +23,7 @@ import type {
   MessageTemplate,
   Profile,
   InteractiveMessagePayload,
+  ConversationNote,
 } from "@/types";
 import {
   MessageSquare,
@@ -566,6 +567,25 @@ export function MessageThread({
   const podeAdministrar = useCan("manage-members");
 
   /**
+   * ⚠️ Confere a conversa antes de pôr a anotação no fio.
+   *
+   * A anotação é GRAVADA no lugar certo — a caixa manda o `conversationId`
+   * que ela capturou. Mas esta thread não remonta ao trocar de conversa, e
+   * quem responde ao POST é o render atual: trocar de cliente enquanto o
+   * salvamento está no ar faria a anotação de um aparecer na tela do outro.
+   * Some ao recarregar, mas até lá o operador lê a anotação de um cliente
+   * dentro da conversa de outro — que é a coisa que esta feature inteira não
+   * pode fazer.
+   */
+  const acrescentarNotaDaConversa = useCallback(
+    (nota: ConversationNote) => {
+      if (nota.conversation_id !== conversationId) return;
+      acrescentarNota(nota);
+    },
+    [acrescentarNota, conversationId],
+  );
+
+  /**
    * Apagar anotação. Vai direto do navegador — ao contrário de criar, que
    * precisa da rota de servidor por causa da notificação da menção. Aqui a
    * própria RLS decide (autor ou admin), então não há o que validar no meio.
@@ -579,11 +599,17 @@ export function MessageThread({
     async (id: string) => {
       const supabase = createClient();
       removerNotaLocal(id);
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from("cb_conversation_notes")
-        .delete()
+        .delete({ count: "exact" })
         .eq("id", id);
-      if (error) {
+      // ⚠️ `count` e não só `error`. A policy é "autor OU admin", e RLS que
+      // barra DELETE não devolve erro — devolve **0 linhas**, que aqui
+      // pareceria sucesso. Sem isto a anotação sumia da tela, continuava no
+      // banco e reaparecia na próxima abertura da conversa, sem explicação.
+      // O botão já é escondido por `podeApagar`, então isto só dispara se a
+      // tela e a RLS discordarem — que é exatamente quando não dá para calar.
+      if (error || !count) {
         toast.error(tNote("deleteFailed"));
         void recarregarNotas();
       }
@@ -1620,7 +1646,7 @@ export function MessageThread({
         onOpenTemplates={handleOpenTemplates}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
-        onNoteCreated={acrescentarNota}
+        onNoteCreated={acrescentarNotaDaConversa}
       />
 
       {/* Diálogo de edição. O WhatsApp só permite editar por ~15 minutos;

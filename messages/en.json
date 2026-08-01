@@ -519,7 +519,9 @@
       "toastCustomFieldsSaved": "Custom fields saved",
       "toastCustomFieldsFailed": "Failed to save custom fields",
       "toastTemplateSent": "Template \"{name}\" sent",
-      "toastTemplateFailed": "Failed to send template: {reason}"
+      "toastTemplateFailed": "Failed to send template: {reason}",
+      "toastNoteNeedsConversation": "This contact has no conversation yet, so there is nowhere to attach the note. Send a message first.",
+      "toastNoteDeleteForbidden": "Only the author or an admin can delete this note."
     },
     "importModal": {
       "title": "Import Contacts",

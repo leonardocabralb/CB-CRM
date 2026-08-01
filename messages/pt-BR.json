@@ -519,7 +519,9 @@
       "toastCustomFieldsSaved": "Campos personalizados salvos",
       "toastCustomFieldsFailed": "Falha ao salvar campos personalizados",
       "toastTemplateSent": "Modelo \"{name}\" enviado",
-      "toastTemplateFailed": "Falha ao enviar o modelo: {reason}"
+      "toastTemplateFailed": "Falha ao enviar o modelo: {reason}",
+      "toastNoteNeedsConversation": "Este contato ainda não tem conversa, então não há onde prender a anotação. Envie uma mensagem primeiro.",
+      "toastNoteDeleteForbidden": "Só o autor ou um admin pode excluir esta anotação."
     },
     "importModal": {
       "title": "Importar contatos",

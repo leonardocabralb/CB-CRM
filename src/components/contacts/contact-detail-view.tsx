@@ -10,7 +10,7 @@ import { ChannelSelect } from '@/components/channels/channel-select';
 import { ActivityHistory } from '@/components/lead-events/activity-history';
 import { formatCurrency } from '@/lib/currency';
 import { toast } from 'sonner';
-import type { Contact, Tag, ContactTag, ContactNote, CustomField, ContactCustomValue, Deal, MessageTemplate } from '@/types';
+import type { Contact, Tag, ContactTag, ConversationNote, CustomField, ContactCustomValue, Deal, MessageTemplate } from '@/types';
 import {
   TemplatePicker,
   type TemplateSendValues,
@@ -100,7 +100,7 @@ export function ContactDetailView({
   const [savingTags, setSavingTags] = useState(false);
 
   // Notes tab
-  const [notes, setNotes] = useState<ContactNote[]>([]);
+  const [notes, setNotes] = useState<ConversationNote[]>([]);
   const [newNote, setNewNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [loadingNotes, setLoadingNotes] = useState(false);
@@ -153,8 +153,11 @@ export function ContactDetailView({
     if (!contactId) return;
     setLoadingNotes(true);
 
+    // Desde a 918 a anotação vive em `cb_conversation_notes`, chaveada pela
+    // CONVERSA. A coluna `contact_id` é desnormalizada exatamente para esta
+    // tela, que fica fora do inbox e não tem conversa aberta à mão.
     const { data } = await supabase
-      .from('contact_notes')
+      .from('cb_conversation_notes')
       .select('*')
       .eq('contact_id', contactId)
       .order('created_at', { ascending: false });
@@ -264,45 +267,64 @@ export function ContactDetailView({
     setSavingTags(false);
   }
 
+  /**
+   * ⚠️ Vai pela ROTA, não por insert direto. `cb_conversation_notes` não tem
+   * policy de INSERT e `authenticated` teve o INSERT revogado — o insert
+   * direto que existia aqui (na `contact_notes`) daria 42501.
+   *
+   * Manda o `contact_id`: esta tela vive fora do inbox e não tem conversa
+   * aberta. O servidor resolve qual é a conversa daquele contato (uma só, por
+   * `idx_conversations_account_contact`) e devolve `CONTACT_WITHOUT_
+   * CONVERSATION` quando não há nenhuma — contato cadastrado à mão que nunca
+   * trocou mensagem. É a capacidade que se perdeu ao chavear a anotação pela
+   * conversa, e o operador precisa ler o motivo em vez de ver um erro seco.
+   */
   async function addNote() {
     if (!contactId || !newNote.trim()) return;
     setSavingNote(true);
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    const user = session?.user;
-    if (!user || !accountId) {
-      toast.error(t('toastNotAuthenticated'));
-      setSavingNote(false);
-      return;
-    }
-
-    const { error } = await supabase.from('contact_notes').insert({
-      contact_id: contactId,
-      account_id: accountId,
-      user_id: user.id,
-      note_text: newNote.trim(),
-    });
-
-    if (error) {
+    try {
+      const res = await fetch('/api/cb/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact_id: contactId, texto: newNote.trim() }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setNewNote('');
+        fetchNotes();
+        toast.success(t('toastNoteAdded'));
+      } else if (json?.error === 'CONTACT_WITHOUT_CONVERSATION') {
+        toast.error(t('toastNoteNeedsConversation'));
+      } else {
+        toast.error(t('toastNoteAddFailed'));
+      }
+    } catch {
       toast.error(t('toastNoteAddFailed'));
-    } else {
-      setNewNote('');
-      fetchNotes();
-      toast.success(t('toastNoteAdded'));
+    } finally {
+      setSavingNote(false);
     }
-    setSavingNote(false);
   }
 
+  /**
+   * ⚠️ A política de exclusão MUDOU com a 918, e o silêncio é a armadilha.
+   *
+   * Na `contact_notes` qualquer `agent` apagava qualquer anotação. Na tabela
+   * nova a policy é "autor OU admin" — e RLS que barra DELETE não devolve
+   * erro: devolve **0 linhas**, que aqui pareceria sucesso. Por isso o
+   * `count`: sem ele a anotação sumia da tela, continuava no banco e voltava
+   * no próximo carregamento, sem nada explicando.
+   */
   async function deleteNote(noteId: string) {
-    const { error } = await supabase
-      .from('contact_notes')
-      .delete()
+    const { error, count } = await supabase
+      .from('cb_conversation_notes')
+      .delete({ count: 'exact' })
       .eq('id', noteId);
 
     if (error) {
       toast.error(t('toastNoteDeleteFailed'));
+    } else if (!count) {
+      toast.error(t('toastNoteDeleteForbidden'));
     } else {
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
       toast.success(t('toastNoteDeleted'));
@@ -658,7 +680,7 @@ export function ContactDetailView({
                       >
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm text-muted-foreground whitespace-pre-wrap flex-1">
-                            {note.note_text}
+                            {note.texto}
                           </p>
                           <button
                             onClick={() => deleteNote(note.id)}

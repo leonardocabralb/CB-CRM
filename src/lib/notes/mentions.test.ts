@@ -139,6 +139,30 @@ describe('mencionadosNoTexto', () => {
     expect(mencionadosNoTexto('o Leonardo Cabral ligou', EQUIPE)).toEqual([]);
   });
 
+  it('NÃO menciona quem só é PREFIXO de outro colega', () => {
+    // Regressão: com "Ana" e "Ana Cabral" na equipe, `@Ana Cabral` casava
+    // com os dois, e a Ana levava no sino uma anotação sobre caso alheio.
+    // Sobrenome repetido é o caso comum num escritório de família.
+    const ana: MembroMencionavel = { user_id: 'u-ana-curta', rotulo: 'Ana' };
+    const equipe = [ana, ANA]; // ANA = 'Ana Cabral'
+    expect(mencionadosNoTexto('@Ana Cabral confere isso', equipe)).toEqual([
+      'u-ana',
+    ]);
+  });
+
+  it('menciona a curta quando é ela mesma que está escrita', () => {
+    const ana: MembroMencionavel = { user_id: 'u-ana-curta', rotulo: 'Ana' };
+    expect(mencionadosNoTexto('@Ana confere isso', [ana, ANA])).toEqual([
+      'u-ana-curta',
+    ]);
+  });
+
+  it('acha as duas quando as duas estão escritas', () => {
+    const ana: MembroMencionavel = { user_id: 'u-ana-curta', rotulo: 'Ana' };
+    const r = mencionadosNoTexto('@Ana Cabral e @Ana veem isso', [ana, ANA]);
+    expect(r.sort()).toEqual(['u-ana', 'u-ana-curta']);
+  });
+
   it('ignora membro sem rótulo em vez de casar com todo mundo', () => {
     // `memberLabel` cai para o id quando não há nome nem e-mail, mas um
     // rótulo vazio faria `texto.includes('@')` casar com qualquer menção.

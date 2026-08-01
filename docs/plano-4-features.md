@@ -367,9 +367,20 @@ Escrito **depois** de codar, para a próxima sessão não repetir o caminho erra
 **1. `DROP TABLE contact_notes` NÃO foi executado.** O plano previa no commit 4. É ação
 destrutiva e exige autorização explícita do operador na conversa (`CLAUDE.md`), que não
 foi pedida ainda. Estado atual: os dados foram **copiados** para `cb_conversation_notes`
-(2 de 2, conferido) e as duas telas de ficha já leem a tabela nova — `contact_notes`
-existe, mas **nada no código a lê ou escreve**. Fica como migration própria, depois do
-merge, com o operador ciente do que se perde.
+(2 de 2, conferido) e nenhuma tela lê ou escreve a tabela antiga. Fica como migration
+própria, depois do merge, com o operador ciente do que se perde.
+
+⚠️ **Esta nota mentiu por um commit, e o erro vale mais que o acerto.** Ela afirmava que
+"as duas telas de ficha já leem a tabela nova" quando só a `contact-sidebar` tinha sido
+migrada — `contact-detail-view.tsx` continuou lendo, escrevendo E APAGANDO
+`contact_notes` (linhas 157, 281, 300). Com as duas tabelas vivas e as mesmas 2 linhas
+copiadas nas duas, a tela de Contatos apagava a cópia velha, dizia "excluída", e o texto
+seguia legível no fio do chat. Foi a **revisão fria de segurança** que pegou, não eu, não
+o typecheck e não os testes — porque nada aqui é erro de tipo: as duas tabelas existem e
+as duas consultas são válidas. Corrigido no commit `fix(notas): achados das revisões`.
+
+Lição para as próximas fases: ao trocar uma tabela por outra, `grep` do nome antigo no
+repositório inteiro é passo obrigatório do commit, não da revisão.
 
 **2. A menção precisou de migration própria (919).** O plano dizia que a 918 alargaria o
 `notifications_type_check` junto. Ela não alargou — e como as duas foram aplicadas em
