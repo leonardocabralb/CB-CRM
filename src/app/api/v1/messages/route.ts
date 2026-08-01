@@ -134,6 +134,12 @@ export async function POST(request: Request) {
       }
     }
 
+    // ⚠️ SEM `senderUserId`, de propósito. Aqui quem autentica é uma CHAVE DE
+    // API: `ctx` não tem `user` porque não houve pessoa. `messages.sender_id`
+    // fica nulo, que é a informação verdadeira — "não foi ninguém desta
+    // equipe". Não substituir pelo dono da conta nem pelo criador da chave:
+    // isso inventaria um autor que não apertou nada, e é justamente o que a
+    // coluna existe para desmentir.
     const result = await sendMessageToConversation(
       ctx.supabase,
       ctx.accountId,

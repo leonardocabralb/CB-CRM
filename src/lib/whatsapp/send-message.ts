@@ -91,6 +91,19 @@ export interface SendMessageParams {
   /** Structured payload for `messageType === 'interactive'`. */
   interactivePayload?: InteractiveMessagePayload | null;
   replyToMessageId?: string | null;
+  /**
+   * Quem apertou "enviar", quando foi gente. Vai para `messages.sender_id`.
+   *
+   * ⚠️ Fica NULO de propósito quando não há pessoa: envio pela API pública
+   * (chave de API, sem usuário — `api/v1/messages/route.ts`) e pelo MCP. Nulo
+   * ali significa "não foi uma pessoa desta conta", que é a verdade; preencher
+   * com o dono da conta inventaria um autor que não apertou nada.
+   *
+   * ⚠️ Nunca chega ao cliente nem à API pública: `serializeMessage`
+   * (`lib/api/v1/conversations.ts`) monta a resposta por allowlist de campos,
+   * e há teste travando isso.
+   */
+  senderUserId?: string | null;
 }
 
 export interface SendMessageResult {
@@ -210,6 +223,7 @@ export async function sendMessageToConversation(
     templateMessageParams,
     interactivePayload,
     replyToMessageId,
+    senderUserId,
   } = params;
 
   if (!conversationId) {
@@ -618,6 +632,12 @@ export async function sendMessageToConversation(
     .insert({
       conversation_id: conversationId,
       sender_type: 'agent',
+      // ⚠️ Coluna que existe desde a 001 e nunca foi escrita — 894 mensagens
+      // com `sender_id` nulo em produção. Sem ela não há como responder "quem
+      // mandou isso" numa conta com mais de uma pessoa, que é o caso a partir
+      // de agora. Nulo continua sendo resposta legítima: envio por chave de
+      // API não teve gente.
+      sender_id: senderUserId ?? null,
       content_type: messageType,
       content_text: interactiveBody ?? contentText ?? null,
       media_url: mediaUrl || null,

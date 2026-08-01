@@ -83,6 +83,32 @@ describe('serializeMessage', () => {
     expect(serializeMessage(agent).direction).toBe('outbound');
   });
 
+  it('NÃO vaza sender_id nem as outras colunas internas', () => {
+    // A partir de agora `sender_id` é PREENCHIDO (era coluna morta), então a
+    // garantia de não vazar deixou de ser teórica: existe um uuid de gente
+    // real na linha. O serializer monta por allowlist, e este teste é o que
+    // trava isso — quem trocar a projeção por um spread quebra aqui.
+    const linha = {
+      id: 'm1',
+      conversation_id: 'conv1',
+      account_id: 'acc-secreta',
+      user_id: 'user-secreto',
+      sender_id: 'quem-enviou-de-verdade',
+      sender_type: 'agent',
+      content_type: 'text',
+      content_text: 'oi',
+      created_at: '2026-01-01T00:00:00Z',
+    } as unknown as Message;
+
+    const publico = serializeMessage(linha);
+    for (const interno of ['sender_id', 'account_id', 'user_id']) {
+      expect(publico).not.toHaveProperty(interno);
+    }
+    // E o que É público continua saindo.
+    expect(publico.content_text).toBe('oi');
+    expect(publico.direction).toBe('outbound');
+  });
+
   it('expõe channel_id, e null quando a mensagem é pré-multi-canal', () => {
     const base = {
       id: 'm1',
