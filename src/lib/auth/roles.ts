@@ -98,6 +98,22 @@ export function canViewOnly(role: AccountRole): boolean {
   return role === "viewer";
 }
 
+/**
+ * Todos os papéis, inclusive `viewer`: escrever anotação interna na conversa.
+ *
+ * É deliberadamente mais permissivo que `canSendMessages`. A anotação NÃO
+ * fala com o cliente — fica só dentro do CRM —, e quem acompanha sem atender
+ * costuma ser justamente quem tem o que registrar ("liguei, não atendeu",
+ * "processo distribuído"). Amarrar a anotação à permissão de enviar mensagem
+ * mataria isso sem nenhum ganho de segurança.
+ *
+ * Existe como predicado próprio, e não como `true` no call site, para que
+ * mudar a política um dia seja um diff de uma linha.
+ */
+export function canWriteNotes(role: AccountRole): boolean {
+  return hasMinRole(role, "viewer");
+}
+
 /** Owner only: irreversible destructive operations. */
 export function canDeleteAccount(role: AccountRole): boolean {
   return role === "owner";

@@ -6,6 +6,7 @@ import {
   canEditSettings,
   canManageMembers,
   canSendMessages,
+  canWriteNotes,
   canTransferOwnership,
   canViewOnly,
   hasMinRole,
@@ -104,6 +105,17 @@ describe("capability predicates", () => {
     expect(canSendMessages("owner")).toBe(true);
     expect(canSendMessages("admin")).toBe(true);
     expect(canSendMessages("agent")).toBe(true);
+    expect(canSendMessages("viewer")).toBe(false);
+  });
+
+  it("canWriteNotes: todos os papéis, INCLUSIVE viewer", () => {
+    // Anotação interna não fala com o cliente. Este teste existe para que
+    // alinhar `canWriteNotes` com `canSendMessages` (o engano natural) fique
+    // vermelho: é o `viewer` que separa os dois.
+    expect(canWriteNotes("owner")).toBe(true);
+    expect(canWriteNotes("admin")).toBe(true);
+    expect(canWriteNotes("agent")).toBe(true);
+    expect(canWriteNotes("viewer")).toBe(true);
     expect(canSendMessages("viewer")).toBe(false);
   });
 

@@ -156,6 +156,32 @@ export interface ContactNote {
 }
 
 /**
+ * Anotação interna da conversa (migration 918). Nunca sai para o cliente:
+ * aparece no fio do chat e na ficha do contato.
+ *
+ * Substitui `ContactNote` — a chave é a CONVERSA porque é a única que cobre
+ * conversa 1:1 e conversa de grupo (grupo não tem contato).
+ *
+ * ⚠️ Não tem `updated_at` de propósito: a anotação é criada e apagada, nunca
+ * editada. O banco reforça isso com `REVOKE UPDATE`.
+ */
+export interface ConversationNote {
+  id: string;
+  account_id: string;
+  conversation_id: string;
+  /** Nulo em conversa de grupo. */
+  contact_id: string | null;
+  /** Nulo quando o autor saiu do `auth.users`. */
+  author_user_id: string | null;
+  /** Carimbado na escrita — o autor pode sair da conta e sumir do `profiles`. */
+  autor_nome: string | null;
+  texto: string;
+  /** `auth.users.id` dos colegas mencionados. */
+  mencionados: string[];
+  created_at: string;
+}
+
+/**
  * Grupo de WhatsApp (migration 906). Existe só no transporte Evolution — a
  * API oficial da Meta não entrega mensagem de grupo.
  */
