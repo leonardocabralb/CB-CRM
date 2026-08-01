@@ -22,6 +22,7 @@ import {
   Plus,
   MessageSquareDashed,
   Zap,
+  StickyNote,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -39,6 +40,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useCan } from "@/hooks/use-can";
+import type { ConversationNote } from "@/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -141,6 +143,12 @@ interface MessageComposerProps {
   onOpenTemplates: () => void;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
+  /**
+   * Anotação interna recém-criada (migration 918). O compositor chama a rota
+   * e devolve a linha pronta para o pai pôr no fio sem esperar o realtime —
+   * quem escreve precisa ver o que escreveu na hora.
+   */
+  onNoteCreated?: (nota: ConversationNote) => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -164,6 +172,7 @@ export function MessageComposer({
   onOpenTemplates,
   replyTo,
   onClearReply,
+  onNoteCreated,
 }: MessageComposerProps) {
   const t = useTranslations("Inbox.composer");
 
@@ -225,6 +234,14 @@ export function MessageComposer({
   // every capability — so the disabled branch is a no-op there.
   const canSend = useCan("send-messages");
   const readOnly = !canSend;
+
+  // ⚠️ Permissão PRÓPRIA, e de propósito mais frouxa que `canSend`: anotação
+  // interna não sai para o cliente, então `viewer` também anota.
+  const podeAnotar = useCan("write-notes");
+  const [anotando, setAnotando] = useState(false);
+  const [textoDaNota, setTextoDaNota] = useState("");
+  const [salvandoNota, setSalvandoNota] = useState(false);
+  const notaRef = useRef<HTMLTextAreaElement>(null);
   // Media (like free-form text) is only allowed inside the 24h window.
   const inputsDisabled = readOnly || sessionExpired;
 
@@ -343,6 +360,42 @@ export function MessageComposer({
       adjustHeight();
     });
   }, [descartarTimer, adjustHeight]);
+
+  /**
+   * Salva a anotação interna.
+   *
+   * ⚠️ Vai por ROTA, não por insert direto: `cb_conversation_notes` não tem
+   * policy de INSERT e `authenticated` teve o INSERT revogado. O servidor é
+   * quem carimba o autor e (mais adiante) notifica os mencionados.
+   *
+   * ⚠️ NÃO passa pela janela de desfazer. Aquela janela existe para o que sai
+   * para o cliente e não tem volta; anotação é interna e tem lixeira própria.
+   * Misturar as duas coisas faria o `setPendente` disparar um ENVIO.
+   */
+  const salvarNota = useCallback(async () => {
+    const texto = textoDaNota.trim();
+    if (!texto || salvandoNota) return;
+    setSalvandoNota(true);
+    try {
+      const res = await fetch("/api/cb/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversationId, texto }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(json?.error || t("noteSaveError"));
+        return;
+      }
+      onNoteCreated?.(json.note as ConversationNote);
+      setTextoDaNota("");
+      setAnotando(false);
+    } catch {
+      toast.error(t("noteSaveError"));
+    } finally {
+      setSalvandoNota(false);
+    }
+  }, [textoDaNota, salvandoNota, conversationId, onNoteCreated, t]);
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
@@ -815,6 +868,59 @@ export function MessageComposer({
         </div>
       )}
 
+      {/* Caixa de anotação interna (918).
+          ⚠️ <textarea> PRÓPRIA, nunca a do compositor: o `handleKeyDown` de
+          lá manda Enter para `handleSend`, e a anotação sairia como mensagem
+          para o cliente. Aqui Enter quebra linha e Ctrl/⌘+Enter salva. */}
+      {anotando && (
+        <div className="mb-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 dark:border-amber-700/50 dark:bg-amber-950/40">
+          <p className="mb-2 text-xs text-amber-950 dark:text-amber-50">
+            <span className="font-semibold">{t("noteBoxTitle")}</span>{" "}
+            <span className="opacity-80">{t("noteBoxHint")}</span>
+          </p>
+          <textarea
+            ref={notaRef}
+            autoFocus
+            value={textoDaNota}
+            onChange={(e) => setTextoDaNota(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                void salvarNota();
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setAnotando(false);
+              }
+            }}
+            rows={3}
+            placeholder={t("notePlaceholder")}
+            className="w-full resize-none rounded-md border border-amber-300/60 bg-amber-100/60 px-3 py-2 text-sm text-amber-950 outline-none placeholder:text-amber-900/50 focus:border-amber-500 dark:border-amber-700/50 dark:bg-amber-900/30 dark:text-amber-50 dark:placeholder:text-amber-100/40"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => void salvarNota()}
+              disabled={!textoDaNota.trim() || salvandoNota}
+              className="h-8 bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {salvandoNota ? (
+                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+              ) : null}
+              {t("saveNote")}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setAnotando(false)}
+              className="h-8"
+            >
+              {t("cancel")}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Hidden file inputs driven by the attach menu. */}
       <input
         ref={imageInputRef}
@@ -985,6 +1091,28 @@ export function MessageComposer({
               <Sparkles className="h-4 w-4" />
             )}
           </GatedButton>
+
+          {/* Anotação interna.
+              ⚠️ NÃO usa `inputsDisabled`. Aquele sinalizador carrega o
+              `sessionExpired`, que é a janela de 24h da Meta — regra de envio
+              ao CLIENTE. Anotação não sai daqui: travá-la quando a janela
+              fecha mataria a feature justamente na conversa parada, que é
+              onde mais se anota ("liguei, não atendeu"). Só o papel decide, e
+              o papel aqui inclui `viewer`. */}
+          {podeAnotar && (
+            <Button
+              variant="ghost"
+              size="sm"
+              title={t("internalNote")}
+              onClick={() => setAnotando((v) => !v)}
+              className={cn(
+                "h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-amber-600",
+                anotando && "text-amber-600",
+              )}
+            >
+              <StickyNote className="h-4 w-4" />
+            </Button>
+          )}
 
           <textarea
             ref={textareaRef}
