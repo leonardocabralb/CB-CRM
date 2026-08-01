@@ -266,6 +266,12 @@ export async function POST(request: Request) {
         success: true,
         message_id: result.messageId,
         whatsapp_message_id: result.whatsappMessageId,
+        // ⚠️ O texto COMO FICOU, que pode não ser o que veio no corpo: com a
+        // assinatura ligada (923) o servidor prefixa. A bolha otimista foi
+        // desenhada com o texto cru, então sem devolver isto ela mostraria
+        // uma versão que nunca existiu até o realtime chegar e trocar o
+        // texto na frente do operador.
+        content_text: result.contentText,
       })
     } catch (err) {
       if (err instanceof SendMessageError) {

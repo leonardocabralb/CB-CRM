@@ -120,6 +120,12 @@ export interface SendMessageResult {
    * cliente". `null` no fallback do espelho `whatsapp_config`.
    */
   channelId: string | null;
+  /**
+   * O texto como ficou GRAVADO — já com a assinatura, quando ligada (923).
+   * Quem desenhou uma bolha otimista com o texto cru precisa disto para
+   * corrigi-la sem esperar o realtime.
+   */
+  contentText: string | null;
 }
 
 /**
@@ -756,5 +762,7 @@ export async function sendMessageToConversation(
     messageId: messageRecord.id,
     whatsappMessageId: waMessageId,
     channelId: channel.channelId,
+    // O que ficou gravado — com assinatura, se ligada.
+    contentText: (messageRecord.content_text as string | null) ?? null,
   };
 }

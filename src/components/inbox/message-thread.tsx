@@ -697,7 +697,19 @@ export function MessageThread({
         // Success — the realtime INSERT event will replace the temp bubble
         // with the real DB row. If realtime hasn't arrived yet, at least
         // flip status to 'sent' so the UI stops showing "sending".
-        onUpdateMessage(tempId, { status: "sent" });
+        //
+        // ⚠️ E corrige o TEXTO junto. A bolha foi desenhada com o que o
+        // atendente digitou; com a assinatura ligada (923) o servidor
+        // prefixa, e sem isto a mensagem mudaria sozinha na tela quando o
+        // realtime chegasse — parecendo que o sistema reescreveu o que ele
+        // escreveu. Trocar aqui, na mesma resposta, faz a assinatura
+        // aparecer de uma vez.
+        onUpdateMessage(tempId, {
+          status: "sent",
+          ...(typeof payload?.content_text === "string"
+            ? { content_text: payload.content_text }
+            : {}),
+        });
       } catch (err) {
         console.error("Failed to send message:", err);
         const reason = err instanceof Error ? err.message : "network error";
