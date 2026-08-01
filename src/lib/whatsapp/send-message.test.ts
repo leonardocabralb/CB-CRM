@@ -7,6 +7,12 @@ import {
   type SendMessageParams,
 } from './send-message';
 
+// Só o resolvedor de canal é substituído — os testes de `channelId` no fim
+// do arquivo precisam mandar nele. Os demais estouram antes de chegar lá.
+vi.mock('@/lib/cb-channels/resolve', () => ({
+  resolveChannelForConversation: vi.fn(),
+}));
+
 // A db that explodes if touched — these tests cover the param
 // validation that MUST short-circuit before any query runs.
 function noDb(): SupabaseClient {
@@ -155,5 +161,77 @@ describe('SendMessageError', () => {
     expect(e.code).toBe('meta_error');
     expect(e.status).toBe(502);
     expect(e).toBeInstanceOf(Error);
+  });
+});
+
+// ------------------------------------------------------------
+// `channelId` — o canal EXIGIDO (925, mensagem agendada).
+//
+// A propriedade que estes dois testes travam é a razão de o parâmetro
+// existir: `resolveChannelForConversation` cai para o canal padrão da conta
+// quando o id pedido não resolve, e ele faz isso EM SILÊNCIO. No envio
+// manual está certo — tem gente na tela vendo. Numa agendada é a mensagem
+// saindo pelo número errado às 9 da manhã, e num escritório de advocacia
+// isso mistura identidades sem ninguém perceber.
+// ------------------------------------------------------------
+describe('sendMessageToConversation — canal exigido', () => {
+  function dbComConversa(): SupabaseClient {
+    return {
+      from: (tabela: string) => {
+        if (tabela !== 'conversations') {
+          throw new Error(`não devia consultar ${tabela}`);
+        }
+        const chain: Record<string, unknown> = {
+          select: () => chain,
+          eq: () => chain,
+          single: () =>
+            Promise.resolve({
+              data: {
+                id: 'cv-1',
+                account_id: 'acct-1',
+                group_id: null,
+                group: null,
+                contact: { id: 'ct-1', phone: '+5511999998888' },
+              },
+              error: null,
+            }),
+        };
+        return chain;
+      },
+    } as unknown as SupabaseClient;
+  }
+
+  it('recusa quando o canal pedido não é o que resolveu', async () => {
+    const { resolveChannelForConversation } = await import(
+      '@/lib/cb-channels/resolve'
+    );
+    vi.mocked(resolveChannelForConversation).mockResolvedValue({
+      channelId: 'outro-canal',
+    } as Awaited<ReturnType<typeof resolveChannelForConversation>>);
+
+    await expect(
+      sendMessageToConversation(dbComConversa(), 'acct-1', {
+        conversationId: 'cv-1',
+        messageType: 'text',
+        contentText: 'oi',
+        channelId: 'canal-que-sumiu',
+      })
+    ).rejects.toMatchObject({ code: 'channel_unavailable', status: 409 });
+  });
+
+  it('recusa quando o canal pedido não resolve para nada', async () => {
+    const { resolveChannelForConversation } = await import(
+      '@/lib/cb-channels/resolve'
+    );
+    vi.mocked(resolveChannelForConversation).mockResolvedValue(null);
+
+    await expect(
+      sendMessageToConversation(dbComConversa(), 'acct-1', {
+        conversationId: 'cv-1',
+        messageType: 'text',
+        contentText: 'oi',
+        channelId: 'canal-que-sumiu',
+      })
+    ).rejects.toMatchObject({ code: 'channel_unavailable', status: 409 });
   });
 });

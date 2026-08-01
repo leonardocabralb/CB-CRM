@@ -107,6 +107,29 @@ export interface SendMessageParams {
    * e há teste travando isso.
    */
   senderUserId?: string | null;
+  /**
+   * Sai por ESTE canal, e por nenhum outro (925).
+   *
+   * ⚠️ Não confundir com o `channel_id` da rota `/api/whatsapp/send`, que
+   * FIXA a conversa naquele número (`channel_pinned`) e portanto muda o
+   * rumo de tudo o que vier depois. Aqui é só desta mensagem: a conversa
+   * continua respondendo pelo canal dela.
+   *
+   * ⚠️ E a diferença que importa: sem este parâmetro o núcleo resolve o
+   * canal e DEGRADA EM SILÊNCIO para o padrão da conta. Com ele, canal que
+   * não resolve exatamente para o id pedido é erro — a mensagem não sai.
+   * Quem agenda um envio para as 9h da manhã não está na tela para ver
+   * saindo pelo número errado.
+   *
+   * Ausente/nulo = comportamento de sempre (resolve pela conversa).
+   */
+  channelId?: string | null;
+  /**
+   * Pausar os fluxos ativos do contato (o padrão, e o que o envio manual
+   * sempre fez). A agendada passa `false` (P4.5): a pausa existe para dizer
+   * "tem gente aqui agora", e às 3 da manhã não tem.
+   */
+  pauseFlows?: boolean;
 }
 
 export interface SendMessageResult {
@@ -233,6 +256,8 @@ export async function sendMessageToConversation(
     interactivePayload,
     replyToMessageId,
     senderUserId,
+    channelId: canalExigido,
+    pauseFlows = true,
   } = params;
 
   if (!conversationId) {
@@ -373,7 +398,26 @@ export async function sendMessageToConversation(
   // read the same. Behaviour is unchanged while only the default channel
   // exists (every conversation.channel_id is NULL → the default, which
   // the 901 backfill mirrored from whatsapp_config).
-  const channel = await resolveChannelForConversation(db, accountId, conversation);
+  //
+  // ⚠️ Com `channelId` (mensagem agendada, 925) o caminho é OUTRO e não tem
+  // degradação: pede-se aquele canal e confere-se que foi ele que voltou. O
+  // `resolveChannelForConversation` cai para o padrão da conta quando o id
+  // não resolve — silêncio que aqui vira "a mensagem saiu pelo número
+  // errado". A comparação de id é o mesmo idioma de
+  // `resolveEngineChannelPreferring`.
+  const channel = canalExigido
+    ? await resolveChannelForConversation(db, accountId, {
+        channel_id: canalExigido,
+      })
+    : await resolveChannelForConversation(db, accountId, conversation);
+
+  if (canalExigido && channel?.channelId !== canalExigido) {
+    throw new SendMessageError(
+      'channel_unavailable',
+      'A conexão escolhida para esta mensagem não existe mais.',
+      409
+    );
+  }
 
   if (!channel) {
     throw new SendMessageError(
@@ -763,8 +807,13 @@ export async function sendMessageToConversation(
   // contato, e grupo não tem um. Sem esta guarda, `contact.id` estoura em
   // todo envio para grupo — e como o bloco roda DEPOIS de a mensagem já ter
   // saído para o WhatsApp, o cliente receberia e o operador veria erro.
+  //
+  // ⚠️ Pulado também na mensagem AGENDADA (`pauseFlows: false`, 925). O
+  // sinal é "tem gente aqui agora", e quem escreveu ontem à noite não está.
+  // Uma agendada matando o fluxo de madrugada deixaria o cliente sem
+  // resposta automática sem ninguém ter decidido isso.
   try {
-    if (!ehGrupo) {
+    if (pauseFlows && !ehGrupo) {
       const { error: pauseErr } = await supabaseAdmin()
         .from('flow_runs')
         .update({

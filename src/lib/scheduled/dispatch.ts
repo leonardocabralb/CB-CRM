@@ -1,0 +1,244 @@
+// ============================================================
+// Disparo das mensagens agendadas (migration 925).
+//
+// Duas entradas, com regras deliberadamente diferentes:
+//
+//  · `dispararVencidas` — o worker. Roda sem ninguém na tela, a cada ciclo
+//    do agendador. É conservador: recusa o que está atrasado demais.
+//  · `dispararUma` — "Executar agora" e "Tentar de novo". Uma pessoa está
+//    pedindo, olhando a conversa. Não tem guarda de atraso: a hora marcada
+//    deixou de importar no instante em que alguém clicou.
+//
+// Módulo próprio, fora de `lib/whatsapp/`, porque não é um jeito novo de
+// enviar — é uma fila em cima do envio que já existe. O envio continua sendo
+// `sendMessageToConversation`, com dois parâmetros a mais.
+// ============================================================
+
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+import {
+  sendMessageToConversation,
+  SendMessageError,
+} from '@/lib/whatsapp/send-message';
+import type { ScheduledMessage } from '@/types';
+
+/**
+ * Quantas linhas um ciclo processa.
+ *
+ * Cada uma é uma chamada de rede à Meta/Evolution — o teto existe para o
+ * ciclo caber no orçamento de uma requisição, não porque haja volume. Com
+ * ciclo de 1 minuto isto são 1.200 mensagens por hora, folgado para o uso
+ * real de um escritório.
+ */
+const POR_CICLO = 20;
+
+/**
+ * A partir de quanto tempo de atraso a mensagem deixa de sair sozinha.
+ *
+ * ⚠️ Esta guarda é a peça mais importante deste arquivo, e ela existe por um
+ * cenário que este projeto JÁ VIVEU: o cron das automações nunca rodou em
+ * produção e ninguém percebeu, porque nada dependia dele. Aqui vai depender.
+ * Se o agendador ficar dias fora do ar, o conserto dispararia toda a fila de
+ * uma vez — dezenas de mensagens de "bom dia" chegando às 2 da manhã, para
+ * clientes de um escritório de advocacia.
+ *
+ * Uma hora é a linha: um envio marcado para as 9h saindo às 9h45 continua
+ * fazendo sentido; às 11h já não. Passado o prazo a linha vira `failed` com
+ * o motivo escrito, e a pessoa decide — que é exatamente o que a P4.9 pediu
+ * para o caso de falha.
+ */
+const ATRASO_MAXIMO_MS = 60 * 60_000;
+
+/** Teto do texto do erro guardado — a coluna é `text` e sem limite. */
+const MAX_ERRO = 500;
+
+export interface ResultadoDoCiclo {
+  /** Quantas saíram para o WhatsApp. */
+  enviadas: number;
+  /** Quantas tentaram e falharam. */
+  falhas: number;
+  /** Quantas foram recusadas por atraso, sem sequer tentar. */
+  atrasadas: number;
+}
+
+type LinhaAgendada = Pick<
+  ScheduledMessage,
+  'id' | 'account_id' | 'conversation_id' | 'channel_id' | 'body' | 'created_by'
+>;
+
+const COLUNAS = 'id, account_id, conversation_id, channel_id, body, created_by';
+
+/**
+ * Um ciclo do agendador: recusa o que envelheceu, dispara o que venceu.
+ *
+ * `agora` entra por parâmetro para o teste poder mover o relógio.
+ */
+export async function dispararVencidas(
+  admin: SupabaseClient,
+  agora: Date = new Date(),
+): Promise<ResultadoDoCiclo> {
+  const atrasadas = await recusarAtrasadas(admin, agora);
+
+  const { data, error } = await admin
+    .from('cb_scheduled_messages')
+    .select(COLUNAS)
+    .eq('status', 'pending')
+    .lte('scheduled_for', agora.toISOString())
+    .order('scheduled_for', { ascending: true })
+    .limit(POR_CICLO);
+
+  if (error) throw new Error(error.message);
+
+  let enviadas = 0;
+  let falhas = 0;
+
+  for (const linha of (data ?? []) as LinhaAgendada[]) {
+    // Reivindicação em dois passos, como no cron das automações: o UPDATE
+    // condicionado a `status = 'pending'` é o cadeado. Dois ciclos que se
+    // sobreponham não mandam a mesma mensagem duas vezes — o segundo não
+    // acha linha e segue adiante.
+    if (!(await reivindicar(admin, linha.id, ['pending']))) continue;
+    const ok = await enviarEFinalizar(admin, linha);
+    if (ok) enviadas++;
+    else falhas++;
+  }
+
+  return { enviadas, falhas, atrasadas };
+}
+
+/**
+ * "Executar agora" e "Tentar de novo", os dois pedidos de gente.
+ *
+ * ⚠️ Aceita `pending` e `failed`, e NÃO aceita `sending`. Linha em `sending`
+ * é uma que o worker reivindicou e não devolveu — o processo morreu no meio,
+ * e a mensagem pode ter saído. Reenviar dali é a receita para o cliente
+ * receber duas vezes; a saída é a pessoa apagar e reagendar, decidindo com o
+ * que ela vê na conversa.
+ *
+ * Devolve `null` quando não havia o que reivindicar (já saiu, já está
+ * saindo, ou alguém apagou) — o chamador transforma isso em 409.
+ */
+export async function dispararUma(
+  admin: SupabaseClient,
+  accountId: string,
+  id: string,
+): Promise<{ enviada: boolean; erro: string | null } | null> {
+  const { data } = await admin
+    .from('cb_scheduled_messages')
+    .select(COLUNAS)
+    .eq('id', id)
+    .eq('account_id', accountId)
+    .in('status', ['pending', 'failed'])
+    .maybeSingle();
+
+  if (!data) return null;
+  if (!(await reivindicar(admin, id, ['pending', 'failed']))) return null;
+
+  const linha = data as LinhaAgendada;
+  const ok = await enviarEFinalizar(admin, linha);
+  if (ok) return { enviada: true, erro: null };
+
+  const { data: depois } = await admin
+    .from('cb_scheduled_messages')
+    .select('error')
+    .eq('id', id)
+    .maybeSingle();
+  return {
+    enviada: false,
+    erro: (depois as { error?: string | null } | null)?.error ?? null,
+  };
+}
+
+/**
+ * Marca como falha tudo que passou do prazo, numa tacada só.
+ *
+ * Em bloco, e antes de qualquer envio, para uma fila represada não consumir
+ * o orçamento do ciclo linha a linha.
+ */
+async function recusarAtrasadas(
+  admin: SupabaseClient,
+  agora: Date,
+): Promise<number> {
+  const limite = new Date(agora.getTime() - ATRASO_MAXIMO_MS).toISOString();
+  const { data, error } = await admin
+    .from('cb_scheduled_messages')
+    .update({
+      status: 'failed',
+      error:
+        'Não saiu na hora marcada: o agendador ficou fora do ar e o atraso passou de uma hora. Confira o texto antes de enviar de novo.',
+    })
+    .eq('status', 'pending')
+    .lt('scheduled_for', limite)
+    .select('id');
+
+  if (error) {
+    console.error('[agendadas] recusa por atraso falhou:', error.message);
+    return 0;
+  }
+  return (data ?? []).length;
+}
+
+/** O cadeado. `true` = esta chamada é a dona da linha agora. */
+async function reivindicar(
+  admin: SupabaseClient,
+  id: string,
+  de: string[],
+): Promise<boolean> {
+  const { data } = await admin
+    .from('cb_scheduled_messages')
+    .update({ status: 'sending' })
+    .eq('id', id)
+    .in('status', de)
+    .select('id')
+    .maybeSingle();
+  return !!data;
+}
+
+/**
+ * Envia e grava o desfecho. Nunca lança: a linha tem de sair de `sending`
+ * mesmo quando o envio explode, senão ela trava para sempre.
+ */
+async function enviarEFinalizar(
+  admin: SupabaseClient,
+  linha: LinhaAgendada,
+): Promise<boolean> {
+  try {
+    const r = await sendMessageToConversation(admin, linha.account_id, {
+      conversationId: linha.conversation_id,
+      messageType: 'text',
+      contentText: linha.body,
+      // Quem agendou é quem assina (923). A pessoa escreveu o texto; só a
+      // hora foi adiada. Nulo quando ela já saiu da conta — que é a verdade,
+      // e a 923 cai no nome do escritório.
+      senderUserId: linha.created_by,
+      // ⚠️ Os dois parâmetros que fazem esta chamada ser diferente do envio
+      // manual: o canal é o do agendamento (falha fechada se sumiu) e os
+      // fluxos NÃO param, porque não tem gente aqui agora (P4.5).
+      channelId: linha.channel_id,
+      pauseFlows: false,
+    });
+
+    await admin
+      .from('cb_scheduled_messages')
+      .update({
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+        message_id: r.messageId,
+        error: null,
+      })
+      .eq('id', linha.id);
+    return true;
+  } catch (err) {
+    const motivo =
+      err instanceof SendMessageError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : 'Falha desconhecida ao enviar.';
+    await admin
+      .from('cb_scheduled_messages')
+      .update({ status: 'failed', error: motivo.slice(0, MAX_ERRO) })
+      .eq('id', linha.id);
+    return false;
+  }
+}
