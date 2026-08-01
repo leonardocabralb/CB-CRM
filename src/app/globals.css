@@ -2,6 +2,34 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* ⚠️ Tira a saída de build da varredura do Tailwind. NÃO é redundante com o
+   `.gitignore`, e o build quebra sem isto.
+
+   O Tailwind v4 descobre as fontes sozinho e normalmente respeita o
+   `.gitignore` — que aqui ignora tanto `/.next` quanto `.next.nosync`
+   (conferido com `git check-ignore`). Só que `.next` é um SYMLINK para
+   `.next.nosync` (o truque que tira a pasta de build do iCloud, senão o
+   `fileproviderd` sincroniza cada arquivo temporário e trava a máquina). O
+   Tailwind resolve o link e entra no diretório real por um caminho que já não
+   casa com a regra de ignore.
+
+   Lá dentro ele encontra os SOURCE MAPS (`.js.map`), que são JSON com o
+   código-fonte escapado. Ao extrair "classes" dali ele inventa nomes a partir
+   de texto escapado e gera CSS inválido — o erro real foi:
+
+     Module not found: Can't resolve '; ��'
+     .bg-\[url\(\'\;\1 ...\'\)\]  { background-image: url('; ...'); }
+
+   que vem do `bg-[url('/inbox-doodle.svg')]` legítimo do fio do chat, lido de
+   dentro de um source map em vez do `.tsx`. Ou seja: a classe verdadeira está
+   certa; o que quebra é a cópia escapada.
+
+   Os dois caminhos ficam listados de propósito — o symlink e o alvo — porque
+   qualquer um dos dois sozinho deixa a porta aberta dependendo de como a
+   varredura resolve o link. */
+@source not "../../.next";
+@source not "../../.next.nosync";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
