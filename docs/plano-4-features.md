@@ -482,7 +482,12 @@ dois casos já estão cobertos.
   ganhou o ramo de grupo internamente. ⚠️ Consequência a vigiar: no grupo o WhatsApp já
   identifica o remetente, e se houver menção `@participante` o texto fica com **duas
   camadas de metadado** antes do conteúdo útil.
-- **Nome:** primeiro nome, com `coalesce(nullif(full_name,''), email)` (P1.6). O trigger de
+- ⚠️ **Nome COMPLETO** — o operador reverteu a P1.6 em 2026-08-01, depois de ver a
+  implementação. Motivo dele: num escritório de advocacia o cliente precisa saber com qual
+  advogado falou, e o primeiro nome não identifica ninguém quando há mais de um Leonardo;
+  o nome completo é o que ele vê na procuração e no processo. (Texto original da decisão
+  abaixo, mantido para quem for ler o Anexo B.)
+- ~~**Nome:** primeiro nome~~, com `coalesce(nullif(full_name,''), email)` (P1.6). O trigger de
   signup grava `COALESCE(..., '')`, então `NOT NULL` **não** garante não-vazio — sem isso a
   assinatura sai `*:*`.
 - **Interruptor por conta, nascendo desligado** (P1.8) → migration `923_cb_assinatura`.
@@ -570,6 +575,21 @@ allowlist. Preencher não precisa de migration.
 - **`messages` não tem policy de UPDATE garantida para o cliente do painel** — por isso
   `stampMessageChannel` usa `supabaseAdmin()` (`send-message.ts:660`). Qualquer update
   pós-insert segue a mesma regra.
+
+### Mensagem interativa NÃO é assinada — decisão do operador (2026-08-01)
+
+Menu com botões sai sem prefixo. Levantei como pendência porque o plano listava o caminho
+interativo entre os escritores a assinar, e deixá-lo de fora cria inconsistência ("por que
+o texto tem nome e o menu não?").
+
+Motivo aceito: a assinatura ficaria **dentro do corpo do card**, colada num menu de botões
+— visualmente lê como erro, não como identificação. E o menu já é obviamente o robô
+perguntando; a equipe tem o selo ROBÔ na bolha, e o cliente não está falando com uma pessoa
+naquele momento.
+
+⚠️ Consequência a lembrar em qualquer revisão futura: `flows/meta-send.ts` tem um insert de
+mensagem interativa que **não** passa por `aplicarAssinatura`. Isso é intencional, não um
+escritor esquecido.
 
 ### O que a assinatura no `content_text` contamina (P1.2, decisão mantida)
 
@@ -827,7 +847,7 @@ Duas passadas sobre o conjunto das fases entregues, procurando o que escapou fas
 | P1.4 | Mensagem para **grupo** leva assinatura? (vai de graça; não assinar exige guarda) | **Não** — o WhatsApp já identifica o remetente no grupo | ⚠️ **Sim, assina em grupo** (contraria a recomendação) |
 | P1.5 | Automação, fluxo e IA (`sender_type='bot'`) assinam? | **Nada automático assina** — assinar robô com nome de gente é o pior resultado numa conversa jurídica | ⚠️ **Assina, com interruptor** — e identificação interna de bot/IA **sempre** |
 | **P1.5b** | Com o interruptor ligado, que nome o cliente vê numa mensagem automática? | — | ✅ **Nome do escritório, fixo** — nunca nome de pessoa |
-| P1.6 | Nome inteiro, primeiro nome, ou apelido configurável? E o fallback quando `full_name` for vazio? | Primeiro nome, `coalesce(nullif(full_name,''), email)` — e recusar nome com `*` ou espaço inicial | ✅ Primeiro nome + fallback |
+| P1.6 | Nome inteiro, primeiro nome, ou apelido configurável? E o fallback quando `full_name` for vazio? | Primeiro nome, `coalesce(nullif(full_name,''), email)` — e recusar nome com `*` ou espaço inicial | ⚠️ **REVERTIDO em 2026-08-01: nome COMPLETO** (fallback e saneamento mantidos) |
 | P1.7 | Assinatura vai na **legenda de mídia**? | Sim em imagem/vídeo/documento, validando o teto de 1024 **depois** de somar o prefixo; áudio não tem legenda | ✅ Legenda sim, áudio não |
 | P1.8 | O interruptor é por conta, canal ou membro? Nasce ligado? | Por conta, nascendo **desligado** — mudança visível para o cliente não deve acontecer sem alguém pedir | ✅ Por conta, desligado |
 

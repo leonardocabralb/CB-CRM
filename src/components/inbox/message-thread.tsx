@@ -9,6 +9,7 @@ import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useCan } from "@/hooks/use-can";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
+import { removerAssinatura } from "@/lib/assinatura/assinatura";
 import { LeadEventLine } from "@/components/lead-events/lead-event-line";
 import { NoteLine } from "./note-line";
 import { PresenceDot } from "@/components/presence/presence-dot";
@@ -981,8 +982,15 @@ export function MessageThread({
   const [textoEdicao, setTextoEdicao] = useState("");
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
 
+  // ⚠️ O campo de edição recebe o corpo SEM a assinatura (923).
+  //
+  // Ele era pré-preenchido com o `content_text` inteiro, e com a assinatura
+  // gravada ali o operador veria `*Leonardo Cabral Baptista:*` cru dentro do
+  // campo — podendo apagar sem querer, ou "corrigir" o nome. O servidor
+  // recoloca a assinatura ORIGINAL ao salvar, então o que se edita aqui é só
+  // o que se quis dizer.
   useEffect(() => {
-    setTextoEdicao(editando?.content_text ?? "");
+    setTextoEdicao(removerAssinatura(editando?.content_text) ?? "");
   }, [editando]);
 
   const apagarMensagem = useCallback(

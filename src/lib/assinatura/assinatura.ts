@@ -36,9 +36,14 @@ export function saneiaNome(bruto: string | null | undefined): string | null {
 }
 
 /**
- * O nome que aparece para o cliente quando quem envia é GENTE: só o primeiro
- * nome (P1.6). "Leonardo Cabral Baptista" vira "Leonardo" — numa conversa de
- * WhatsApp o nome completo soa como formulário, não como pessoa.
+ * O nome que aparece para o cliente quando quem envia é GENTE: o nome
+ * COMPLETO.
+ *
+ * ⚠️ Decisão do operador em 2026-08-01, revertendo a P1.6 original (que pedia
+ * só o primeiro nome). O contexto é um escritório de advocacia: quem recebe
+ * precisa saber com qual advogado falou, e "Leonardo" não identifica ninguém
+ * num escritório com mais de um Leonardo — enquanto "Leonardo Cabral
+ * Baptista" é o nome que o cliente vê na procuração e no processo.
  *
  * Cai para o e-mail quando não há nome; nesse caso usa o trecho antes do `@`,
  * porque o domínio não diz nada a quem lê.
@@ -48,7 +53,7 @@ export function nomeDePessoa(
   email: string | null | undefined,
 ): string | null {
   const nome = saneiaNome(fullName);
-  if (nome) return nome.split(' ')[0];
+  if (nome) return nome;
 
   const doEmail = saneiaNome(email?.split('@')[0]);
   return doEmail ?? null;
@@ -111,6 +116,21 @@ export function removerAssinatura(
 ): string | null | undefined {
   if (texto === null || texto === undefined) return texto;
   return texto.replace(ASSINATURA_NO_COMECO, '');
+}
+
+/**
+ * A assinatura que JÁ está num texto, literal (com o `\n`), ou `''`.
+ *
+ * ⚠️ É o que a edição usa para recolocar o prefixo, em vez de recalcular quem
+ * assina. Recalcular estaria errado de três jeitos ao mesmo tempo: a pessoa
+ * pode ter saído da equipe, o interruptor pode ter sido desligado desde o
+ * envio, e quem edita pode não ser quem escreveu. A mensagem que o cliente
+ * recebeu foi assinada por alguém — editar o corpo não reescreve a história
+ * de quem falou.
+ */
+export function assinaturaExistente(texto: string | null | undefined): string {
+  if (!texto) return '';
+  return texto.match(ASSINATURA_NO_COMECO)?.[0] ?? '';
 }
 
 /**

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   aplicarAssinatura,
+  assinaturaExistente,
   custoDaAssinatura,
   nomeDePessoa,
   prefixoDeAssinatura,
@@ -33,8 +34,17 @@ describe('saneiaNome', () => {
 });
 
 describe('nomeDePessoa', () => {
-  it('usa só o PRIMEIRO nome', () => {
-    expect(nomeDePessoa('Leonardo Cabral Baptista', null)).toBe('Leonardo');
+  it('usa o nome COMPLETO', () => {
+    // Decisão do operador (2026-08-01): num escritório de advocacia o cliente
+    // precisa saber com qual advogado falou, e o primeiro nome não identifica
+    // ninguém. É o nome que ele vê na procuração.
+    expect(nomeDePessoa('Leonardo Cabral Baptista', null)).toBe(
+      'Leonardo Cabral Baptista',
+    );
+  });
+
+  it('normaliza o espaço do nome completo', () => {
+    expect(nomeDePessoa('  Ana   Paula  Souza ', null)).toBe('Ana Paula Souza');
   });
 
   it('cai para o e-mail sem o domínio quando não há nome', () => {
@@ -128,6 +138,31 @@ describe('removerAssinatura', () => {
   it('atravessa null e undefined sem quebrar', () => {
     expect(removerAssinatura(null)).toBeNull();
     expect(removerAssinatura(undefined)).toBeUndefined();
+  });
+});
+
+describe('assinaturaExistente', () => {
+  it('devolve a assinatura literal, com a quebra de linha', () => {
+    expect(assinaturaExistente('*Leonardo Cabral Baptista:*\nBom dia')).toBe(
+      '*Leonardo Cabral Baptista:*\n',
+    );
+  });
+
+  it('devolve vazio quando não há assinatura', () => {
+    expect(assinaturaExistente('Bom dia')).toBe('');
+    expect(assinaturaExistente(null)).toBe('');
+    expect(assinaturaExistente('')).toBe('');
+  });
+
+  it('recompõe a mensagem editada preservando QUEM assinou', () => {
+    // O caso real da edição: o operador recebe só o corpo, edita, e o
+    // servidor recoloca a assinatura ORIGINAL — mesmo que quem edita seja
+    // outra pessoa, ou que o interruptor tenha sido desligado desde o envio.
+    const original = '*Ana Paula Souza:*\nBom dia';
+    const corpoEditado = 'Bom dia, corrigido';
+    expect(assinaturaExistente(original) + corpoEditado).toBe(
+      '*Ana Paula Souza:*\nBom dia, corrigido',
+    );
   });
 });
 
