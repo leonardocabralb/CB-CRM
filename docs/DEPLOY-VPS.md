@@ -91,6 +91,51 @@ A partir daí, todo push na `main` builda a imagem, publica no GHCR e faz
 o **rolling update** do serviço (`start-first`, com rollback automático se
 o container novo não ficar saudável).
 
+⚠️ **O CI só troca a IMAGEM de `crm_crm`.** O último passo do workflow é
+`docker service update --image … crm_crm`. Serviço **novo** no
+`docker-stack.yml` (como o `agendador` abaixo) não nasce por push nenhum —
+precisa de um `docker stack deploy` à mão, uma vez.
+
+## 6. Agendador  *(na VPS, uma vez)*
+
+⚠️ **Sem este serviço, mensagem agendada não sai.** A migration `925` guarda
+a linha; quem a transforma em mensagem é `/api/cb/scheduled/cron`, e nada no
+projeto chama essa rota sozinho: o Next não tem agendador embutido, não há
+`vercel.json` e o `pg_cron` não está instalado no Supabase. A tabela ficaria
+enchendo em silêncio, que é exatamente o que `broadcasts.scheduled_at` faz
+desde a migration 001.
+
+```bash
+set -a && source crm.env && set +a
+docker stack deploy -c docker-stack.yml crm     # sobe o `agendador` sem mexer no crm_crm
+docker service logs -f crm_agendador
+```
+
+Conferir que ele **alcança** o CRM — o serviço subir não prova nada, porque
+o laço engole erro de curl de propósito (para o CRM reiniciando não derrubar
+o agendador):
+
+```bash
+# Tem de responder {"enviadas":0,"falhas":0,"atrasadas":0}
+docker run --rm --network CBAdvNet curlimages/curl:8.11.1 \
+  -sS -H "x-cron-secret: $AUTOMATION_CRON_SECRET" \
+  http://crm_crm:3000/api/cb/scheduled/cron
+```
+
+- `401` → o `AUTOMATION_CRON_SECRET` do agendador não bate com o do `crm.env`.
+- `503` → o CRM subiu sem a variável.
+- Erro de DNS → o nome do serviço não é `crm_crm` nesta máquina. Confira com
+  `docker service ls` e ajuste o `command` do agendador no
+  `docker-stack.yml`.
+
+⚠️ **Ele também ressuscita automações e fluxos.** O laço bate em
+`/api/flows/cron` e `/api/automations/cron` junto — duas rotas que existem
+desde o upstream e **nunca foram chamadas em produção**. Automação com
+espera e fluxo com timeout estão parados desde sempre, e ninguém percebeu
+porque nada dependia deles. Medido em 2026-08-01, antes de ligar:
+`automation_pending_executions` com **0 linhas** e **nenhuma** `flow_runs`
+ativa — não há fila represada para drenar de uma vez no primeiro ciclo.
+
 ## Notas
 
 - O `HEALTHCHECK` do container bate em `/login`; o Swarm só troca o
