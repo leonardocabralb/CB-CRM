@@ -52,6 +52,69 @@ services:
         - traefik.http.services.crm.loadbalancer.server.port=3000
         - traefik.http.services.crm.loadbalancer.passHostHeader=true
 
+  # ============================================================
+  # O agendador. Bate nas rotas de cron do CRM de 15 em 15 minutos.
+  #
+  # ⚠️ SEM ESTE SERVIÇO, MENSAGEM AGENDADA NÃO SAI. A migration 925 guarda a
+  # linha; quem a transforma em mensagem é `/api/cb/scheduled/cron`, e nada
+  # no projeto chama essa rota sozinho — Next.js não tem agendador embutido,
+  # não há `vercel.json`, e `pg_cron` não está instalado no Supabase.
+  #
+  # ⚠️ O CI NÃO SOBE ESTE SERVIÇO. O `deploy.yml` termina em
+  # `docker service update … crm_crm`, que só troca a imagem do serviço que
+  # já existe. Serviço novo exige UM `docker stack deploy` na VPS, à mão —
+  # ver `docs/DEPLOY-VPS.md`.
+  #
+  # ⚠️ ELE TAMBÉM RESSUSCITA AUTOMAÇÕES E FLUXOS. As duas rotas abaixo
+  # existem no código desde o upstream e nunca foram chamadas em produção:
+  # automação com espera e fluxo com timeout estão mortos desde sempre, e
+  # ninguém percebeu porque nada dependia deles. Ligar aqui os conserta.
+  # Medido em 2026-08-01, antes de escrever isto: `automation_pending_
+  # executions` tem 0 linhas e não há nenhuma `flow_runs` ativa — ou seja,
+  # não há fila represada para drenar de uma vez no primeiro ciclo.
+  agendador:
+    # Imagem minúscula (~10 MB) que já traz curl e um shell. Fixada por
+    # versão: `:latest` faria o agendador mudar sozinho num restart.
+    image: curlimages/curl:8.11.1
+    environment:
+      AUTOMATION_CRON_SECRET: ${AUTOMATION_CRON_SECRET}
+    # `crm_crm` é o nome DNS do serviço dentro da rede (<stack>_<serviço>).
+    # Por dentro da overlay: sem sair para a internet, sem TLS, sem depender
+    # do Traefik nem do certificado.
+    #
+    # ⚠️ O ciclo de 15 minutos é decisão do operador, e o número TEM de bater
+    # com `CICLO_MINUTOS` em `src/lib/scheduled/display.ts` — é ele que define
+    # a grade de horários que a tela oferece e o texto "sai em até 15 min".
+    # Mudar um sem o outro faz a tela prometer o que o servidor não cumpre.
+    #
+    # ⚠️ A agendada vem PRIMEIRO no laço, e não é ordem alfabética: as outras
+    # duas rotas varrem automações e fluxos, e uma delas lenta faria a
+    # mensagem do cliente esperar atrás. O `-m 120` corta cada chamada bem
+    # antes do ciclo seguinte; o `|| true` existe para que o CRM reiniciando
+    # não derrube o laço.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "[agendador] ciclo de 15min contra crm_crm:3000"
+        while true; do
+          for rota in cb/scheduled flows automations; do
+            curl -fsS -m 120 -o /dev/null \
+              -H "x-cron-secret: $$AUTOMATION_CRON_SECRET" \
+              "http://crm_crm:3000/api/$$rota/cron" || true
+          done
+          sleep 900
+        done
+    networks:
+      - CBAdvNet
+    deploy:
+      # ⚠️ UMA réplica, e não é detalhe de custo. Duas fariam dois ciclos
+      # simultâneos; a reivindicação em dois passos (`UPDATE … WHERE status
+      # = 'pending'`) impede o envio dobrado, mas não há motivo para
+      # depender dela a cada ciclo.
+      replicas: 1
+      restart_policy:
+        condition: any
+
 networks:
   CBAdvNet:
     external: true # the overlay Traefik + Evolution already share

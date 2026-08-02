@@ -152,7 +152,9 @@ upstream sobrescrevê-los:
 
 | Arquivo do upstream | O que é nosso |
 | --- | --- |
-| `src/lib/whatsapp/send-message.ts` | resolve o canal, carimba `channel_id`, devolve `channelId` no resultado, e busca o template **filtrando por canal** |
+| `src/lib/whatsapp/send-message.ts` | resolve o canal, carimba `channel_id`, devolve `channelId` no resultado, busca o template **filtrando por canal**, e os dois parâmetros da agendada (925): `channelId` (exige aquele canal, **falha fechada**) e `pauseFlows` |
+| `src/components/inbox/message-composer.tsx` | anotação interna (918) e o **agendamento** (925): o relógio abre um seletor, e com hora escolhida o `handleSend` DESVIA antes da janela de desfazer |
+| `src/components/inbox/message-thread.tsx` | além do fio intercalado, renderiza a faixa `ScheduledBar` logo acima do compositor e guarda o contador que a liga ao compositor |
 | `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
 | `src/lib/whatsapp/inbound-store.ts` | idem, no lado Evolution |
 | `src/lib/automations/engine.ts` | `channelInScope`, condição `channel`, canal de saída por passo, e o `create_deal` que agora **lê o erro do insert** (antes devolvia `'deal created'` incondicionalmente) |
@@ -170,6 +172,31 @@ upstream sobrescrevê-los:
 | `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele |
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
+| `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
+
+⚠️ **Mensagem agendada (925/926): NADA dispara sozinho.** A tabela guarda a
+linha; quem a transforma em mensagem é um agendador EXTERNO batendo em
+`/api/cb/scheduled/cron`. Sem ele, `cb_scheduled_messages` só enche — o mesmo
+destino de `broadcasts.scheduled_at`, viva e sem leitor desde a 001. O que
+morde código novo:
+
+- **Agendar não passa pela janela de desfazer.** Ela tem três saídas que
+  disparam na hora (trocar de conversa, desmontar, Enter de novo); um "modo"
+  pendurado no botão Enviar mandaria em 3s a mensagem marcada para amanhã. O
+  desvio é a primeira coisa do `handleSend`, antes de qualquer `setPendente`.
+- **`failed` NÃO quer dizer "não saiu".** `db_error` e tempo esgotado da
+  Evolution estouram DEPOIS de o WhatsApp aceitar — daí `entrega_incerta`
+  (926). Nada reenvia a partir dela nem de `sending`: retentar manda duas
+  vezes ao cliente. Quem criar outro caminho de reenvio precisa da mesma
+  guarda (`podeDispararAgora`).
+- **O canal é FIXADO no agendamento e falha fechado.** O núcleo degrada em
+  silêncio para o padrão da conta, e numa agendada isso é a mensagem saindo
+  pelo número errado, de madrugada, sem ninguém na tela.
+- ⚠️ **Grupo lê `cb_groups.channel_id`**, nunca `conversations.channel_id`,
+  que é sempre NULO ali — a mesma armadilha do recorte por canal.
+- **Guarda de atraso de 1h no worker.** Agendador dias fora do ar + conserto
+  despejaria a fila inteira de uma vez, às 2 da manhã. Passado o prazo a linha
+  vira `failed` com o motivo escrito e espera decisão de gente.
 
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
@@ -441,11 +468,13 @@ mordem de novo em qualquer código novo:
   `911_cb_um_funil_por_vez`, `912_cb_historico_de_atividade`,
   `913_cb_revoke_de_public`, `914_cb_fecha_rpc_de_manutencao` e
   `915_cb_fecha_rpc_de_manutencao_de_fato`, `906_cb_grupos` e
-  `916_cb_lid_do_canal`. Depois disso (conferido em 2026-08-01):
+  `916_cb_lid_do_canal`. Depois disso (conferido em 2026-08-02):
   `917_cb_endereco_lid_da_mensagem`, `918_cb_notas_na_conversa`,
   `919_cb_mencao_na_anotacao`, `920_cb_fecha_grants_das_anotacoes`,
   `921_cb_anotacao_apagada_em_tempo_real`, `922_cb_aposenta_contact_notes`,
-  `923_cb_assinatura` e `924_cb_favoritar`.
+  `923_cb_assinatura`, `924_cb_favoritar`, `925_cb_mensagem_agendada`,
+  `926_cb_entrega_incerta`, `927_cb_batimento_do_agendador` e
+  `928_cb_quando_reivindicou`.
   ⚠️ A `906` foi aplicada FORA DE ORDEM (antes da 907), e o histórico do
   Supabase a registra com o nome antigo `904_cb_grupos` — ela nasceu numerada
   como 904, colidiu com `904_cb_mensagem_do_aparelho` e o ARQUIVO foi

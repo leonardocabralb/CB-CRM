@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/layout/mode-toggle";
 import { ChannelHealthIndicator } from "@/components/channels/channel-health-indicator";
+import { SchedulerHealthIndicator } from "@/components/scheduled/scheduler-health-indicator";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "dashboard",
@@ -76,6 +77,8 @@ export function Header({ onOpenSidebar }: HeaderProps) {
 
       <div className="flex items-center gap-1 sm:gap-2">
         <ChannelHealthIndicator />
+        {/* Some sozinho quando não há nada a dizer — ver o componente. */}
+        <SchedulerHealthIndicator />
         <ModeToggle />
 
         <DropdownMenu>

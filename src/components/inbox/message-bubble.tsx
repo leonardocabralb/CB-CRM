@@ -404,6 +404,14 @@ export function MessageBubble({
   }
 
   const isAgent = message.sender_type === "agent" || message.sender_type === "bot";
+  /**
+   * A mensagem saiu do CRM e NÃO chegou ao destinatário.
+   *
+   * ⚠️ Só vale para o que nós mandamos: `status` de mensagem recebida não
+   * descreve entrega nenhuma. Sem a guarda de `isAgent`, um valor estranho
+   * numa mensagem do cliente pintaria a bolha dele de vermelho.
+   */
+  const naoEntregue = isAgent && message.status === "failed";
   // Quem falou, só em grupo e só do lado de quem recebeu: numa mensagem
   // nossa o nome seria o do próprio operador, que a bolha já identifica pelo
   // lado em que está.
@@ -440,6 +448,18 @@ export function MessageBubble({
           // Marcaram o nosso número. Num grupo movimentado é a diferença
           // entre "alguém falou" e "alguém falou COM VOCÊ".
           mencionaNos && "ring-2 ring-primary/60",
+          // ⚠️ NÃO CHEGOU AO CLIENTE. O ícone de 12px no rodapé não dava conta
+          // disso: numa conversa longa ele passa despercebido, e o operador
+          // segue achando que respondeu. A mensagem que falhou tem de ser
+          // impossível de confundir com uma que saiu — daí a bolha inteira
+          // mudar, e não só o ✓.
+          // ⚠️ `[&_*]:!text-foreground` porque os filhos (hora, rótulo de
+          // canal, nome do remetente) carregam `text-primary-foreground`
+          // condicionado a `isAgent` — que continua verdadeiro aqui. Trocar só
+          // o fundo do contêiner deixava texto claro sobre fundo claro, ilegível
+          // no tema claro. A exceção é o próprio aviso, que é vermelho.
+          naoEntregue &&
+            "bg-destructive/10 text-foreground ring-2 ring-destructive/60 [&_*:not(.aviso-falha):not(.aviso-falha_*)]:!text-foreground",
         )}
       >
         {remetente && (
@@ -598,6 +618,16 @@ export function MessageBubble({
           </span>
           {isAgent && <StatusIcon status={message.status} />}
         </div>
+
+        {/* ⚠️ Em PALAVRAS, não só em cor. Cor sozinha não diz o que houve, e
+            não alcança quem não distingue vermelho. A frase é a única coisa
+            que faz o operador entender que precisa mandar de novo. */}
+        {naoEntregue && (
+          <p className="aviso-falha mt-1 flex items-center gap-1 text-[11px] font-medium !text-destructive">
+            <XCircle className="h-3 w-3 shrink-0" />
+            {t("naoEntregue")}
+          </p>
+        )}
       </div>
       {reactions && reactions.length > 0 && onToggleReaction && (
         <MessageReactions
