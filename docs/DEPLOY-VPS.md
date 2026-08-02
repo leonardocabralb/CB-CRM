@@ -107,9 +107,17 @@ desde a migration 001.
 
 ```bash
 set -a && source crm.env && set +a
-docker stack deploy -c docker-stack.yml crm     # sobe o `agendador` sem mexer no crm_crm
+export CRM_IMAGE=$(docker service inspect crm_crm \
+  --format '{{index .Spec.TaskTemplate.ContainerSpec.Image}}' | cut -d@ -f1)
+docker stack deploy -c docker-stack.yml crm
 docker service logs -f crm_agendador
 ```
+
+⚠️ **O `export CRM_IMAGE` não é enfeite.** `docker stack deploy` reconcilia
+**todos** os serviços do arquivo, não só o novo. Sem essa linha o `crm_crm`
+volta do `:<sha>` que o CI fixou para o `:latest` do arquivo e reinicia. Hoje
+o conteúdo é o mesmo (o CI publica as duas tags no mesmo build), mas o
+serviço deixa de estar preso à versão que foi testada.
 
 Conferir que ele **alcança** o CRM — o serviço subir não prova nada, porque
 o laço engole erro de curl de propósito (para o CRM reiniciando não derrubar

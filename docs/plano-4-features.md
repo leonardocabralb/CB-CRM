@@ -876,10 +876,39 @@ primeiro (não repetir o `broadcasts.scheduled_at` morto) continua honrado: **o 
 acontece sem ele**.
 
 **2. A "aba AGENDADAS" não existe como aba em lugar nenhum.** `contact-sidebar.tsx` é uma
-coluna rolável de **seções** — o "Histórico" da 912 é seção, não aba. E como a P4.7 deixa
-grupo receber agendada, a peça entra em **duas** fichas (`contact-sidebar` e
-`group-sidebar`).
-→ Vira **componente próprio** usado nos dois lugares, não aba.
+coluna rolável de **seções** — o "Histórico" da 912 é seção, não aba.
+
+⚠️ **Corrigido pelo operador durante a execução (2026-08-01), e o achado acima estava
+respondendo à pergunta errada.** A questão não era "aba ou seção", era **onde**. A resposta
+dele: nem modal para agendar, nem lista na coluna da direita. O agendamento é um **campo**
+que o relógio do compositor revela, e a lista é uma **faixa expansível logo acima do
+compositor, dentro do fio** — "eu preciso entrar no lead e saber que ele tem mensagens
+agendadas". O motivo é de uso, e é o mais forte de toda a fase: quem abre a conversa precisa
+**esbarrar** no que já está marcado antes de escrever, senão escreve por cima e o cliente
+recebe duas. Na ficha lateral a informação existia e ninguém tropeçava nela.
+
+Consequências que só apareceram por causa dessa troca:
+
+- **A ficha lateral não recebe nada.** As mudanças em `contact-sidebar`, `group-sidebar` e
+  na página do inbox foram revertidas — a faixa é irmã do compositor, então o contador que
+  liga os dois mora em `message-thread.tsx` e não sobe até a página.
+- **Grupo continua coberto de graça**, sem a peça duplicada: a faixa está no fio, e o fio é
+  o mesmo para conversa 1:1 e de grupo.
+- **A faixa só lista o que ainda espera decisão** (`pending`, `sending`, `failed`) e some
+  quando não há fila. Agendada já enviada sai dali de propósito: virou uma bolha no fio logo
+  acima, e repeti-la numa faixa permanente seria a mesma mensagem contada duas vezes, para
+  sempre. Com isso o histórico de agendadas passou a ser o próprio fio.
+- ⚠️ **Hora escolhida tem de estar VISÍVEL.** Com ela preenchida o botão de enviar AGENDA em
+  vez de mandar; escondida, o atendente digitaria uma resposta urgente e ela sairia amanhã.
+  Daí a etiqueta âmbar ao lado do botão, e daí a limpeza na troca de conversa.
+- ⚠️ **O campo cru não cabe na linha do compositor**, e a razão é medida: com a ficha do
+  contato aberta a linha tem ~576px, e um `datetime-local` de 168px derrubava a caixa de
+  mensagem de 312px para **136px** — menor que o próprio campo, na tela em que se escreve.
+  Por isso ele virou um **seletor que abre ACIMA do botão** (`Popover side="top"`, porque o
+  compositor mora no rodapé), com `date` + `time` separados.
+- **Abrir já vem com "24 h" marcado** — amanhã, na hora de agora — e há cinco atalhos
+  (24 h · 72 h · 7 · 15 · 30 dias). Não é só conveniência: abrindo em "hoje, agora" o
+  estado inicial nasceria no PASSADO e o botão apareceria armado para recusar.
 
 **3. O núcleo de envio não aceita "sai por este canal".** `sendMessageToConversation`
 chama `resolveChannelForConversation` por dentro, que degrada em silêncio para o padrão.
@@ -924,13 +953,51 @@ agendou?** Sim. A pessoa escreveu o texto; a hora é que foi adiada. O disparo p
 
 ### Commits previstos (revisados)
 
-| # | Commit | Conteúdo |
+| # | Commit | Conteúdo | Feito |
+| --- | --- | --- | --- |
+| 1 | `feat(agendadas): schema da mensagem agendada` | migration **925** + RLS + REVOKE + tipos | `5164f31` |
+| 2 | `feat(agendadas): worker de disparo` | rota de cron + claim em dois passos + canal fixo com falha fechada + `pauseFlows` | `7738fc2` |
+| 3 | `feat(agendadas): agendar pelo compositor` | ~~diálogo, seção nas duas fichas~~ (ver o achado 2 acima), Executar/Apagar, i18n | `8d12e4a` |
+| 4 | `chore(deploy): agendador que bate na rota` | serviço no `docker-stack.yml` + `docs/DEPLOY-VPS.md` — ⚠️ **exige um comando do operador na VPS** | `1a732ff` |
+| 5 | `fix(agendadas): a UI que o operador pediu` | sem modal, faixa no fio, campo revelado pelo relógio | `953977e` |
+| 6 | `fix(agendadas): achados das revisões + atalhos de prazo` | migration **926** + 11 correções | — |
+
+### O que as três revisões acharam (passos 4 e 5 do fluxo)
+
+Duas passadas frias (uma de bugs, uma de segurança/RLS) e uma morna. O que
+sobreviveu à verificação, e o que foi feito:
+
+| Achado | Gravidade | Correção |
 | --- | --- | --- |
-| 1 | `feat(agendadas): schema da mensagem agendada` | migration **925** + RLS + REVOKE + tipos |
-| 2 | `feat(agendadas): worker de disparo` | rota de cron + claim em dois passos + canal fixo com falha fechada + `pauseFlows` |
-| 3 | `feat(agendadas): agendar pelo compositor` | diálogo, seção nas duas fichas, Executar/Apagar, i18n |
-| 4 | `chore(deploy): agendador que bate na rota` | serviço no `docker-stack.yml` + `docs/DEPLOY-VPS.md` — ⚠️ **exige um comando do operador na VPS** |
-| 5 | `fix(agendadas): achados das revisões fria e morna` | correções |
+| `failed` mistura "não saiu" com "saiu e não foi gravado", e "Tentar de novo" reenvia os dois | **alta** | migration **926**: `entrega_incerta`. `db_error` e tempo esgotado da Evolution marcam a coluna; `podeDispararAgora` e `dispararUma` recusam |
+| Enter duas vezes grava DUAS agendadas do mesmo texto | **alta** | trava de reentrância por `ref` — estado não fecha a janela de dois Enter no mesmo tique |
+| A hora escolhida sobrevive à troca de conversa | **alta** | `limparAgendamento()` no efeito de troca, junto com a pendente |
+| Grupo resolvia para o canal PADRÃO (achado meu, antes das revisões) | **alta** | lê `cb_groups.channel_id`; grupo sem canal conhecido não agenda |
+| Resposta atrasada de outra conversa se pinta na ficha errada | média | contador de geração — `vivoRef` não cobre troca de conversa |
+| Apagar conexão engolia agendada criada na janela da corrida | média | `.in('status', ['sent','failed'])` — o RESTRICT passa a expor a corrida |
+| "Cancelar" prometia "a mensagem não vai sair" mesmo em `sending` | média | texto próprio para o caso incerto + conferência do resultado do DELETE |
+| Canal não aparecia no card (P4.3 pedia) | média | rótulo do canal, só em conta com 2+ números |
+| Citação continuava na tela depois de agendar | média | `onClearReply()` — a agendada não leva citação na v1 |
+| Sem teto para `scheduled_for` (ano digitado errado trava a conexão) | baixa | 365 dias |
+| Erro cru do Postgres na tela de todo membro | baixa | texto próprio para `db_error` |
+| `docker stack deploy` reseta a imagem do `crm_crm` para `:latest` | baixa | `export CRM_IMAGE` no doc, com o porquê |
+
+**Achado registrado e NÃO corrigido:** a FK `RESTRICT` do canal quebraria o
+CASCADE vindo de `accounts` — apagar uma conta estouraria 23503, porque o
+gatilho de `cb_channels` (901) ordena antes do de `cb_scheduled_messages`
+(925). **Não há caminho de exclusão de conta no aplicativo**, então é latente;
+trocar para `NO ACTION` daria a mesma proteção sem travar a cascata, e fica
+para quando esse caminho existir.
+
+### ⚠️ Antes do merge — o que NÃO está feito
+
+- **O agendador não existe em produção.** Sem o `docker stack deploy` da seção 6 de
+  `docs/DEPLOY-VPS.md`, a tabela 925 só enche: nada dispara. É a condição do merge.
+- **Conversa de grupo não foi exercitada:** `groups_enabled` está desligado e não há
+  conversa de grupo em produção. O caminho existe (a faixa mora no fio, que é o mesmo para
+  1:1 e grupo), mas não foi visto rodando.
+- **`AUTOMATION_CRON_SECRET` em produção não foi conferido.** O acesso por SSH desta
+  sessão foi bloqueado; o comando de conferência está na seção 6 do doc de deploy.
 
 ---
 

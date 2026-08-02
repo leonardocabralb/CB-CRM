@@ -210,6 +210,14 @@ export interface ScheduledMessage {
   status: ScheduledMessageStatus;
   /** Motivo da falha, em texto para o operador ler (P4.9). */
   error: string | null;
+  /**
+   * O envio falhou DEPOIS de o WhatsApp já ter aceitado a mensagem (926).
+   *
+   * ⚠️ É o que separa "não saiu" de "saiu e não foi gravado". Com isto
+   * ligado, a tela NÃO oferece "Tentar de novo": um clique mandaria a mesma
+   * coisa duas vezes para o cliente.
+   */
+  entrega_incerta: boolean;
   /** `messages.id` do que realmente saiu. */
   message_id: string | null;
   /** Nulo quando quem agendou saiu do `auth.users`. */

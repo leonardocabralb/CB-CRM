@@ -34,6 +34,17 @@ import {
 /** Mesmo teto do CHECK da 925 e da anotação. */
 const MAX_TEXTO = 4000;
 
+/**
+ * Teto de quanto tempo à frente se pode agendar.
+ *
+ * ⚠️ Sem ele, um erro de digitação no ano (2226 em vez de 2026) estaciona uma
+ * linha `pending` para sempre — e ela não é inofensiva: a FK do canal é
+ * RESTRICT, então aquela linha esquecida torna a conexão impossível de
+ * remover. Como a faixa só mostra a fila da conversa ABERTA, ninguém acharia
+ * a linha para apagar. Um ano é folgado para follow-up de escritório.
+ */
+const MAX_DIAS_A_FRENTE = 365;
+
 export async function POST(request: Request) {
   try {
     // `agent`, como enviar: a agendada É uma mensagem ao cliente, só que
@@ -82,12 +93,20 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+    if (data.getTime() > Date.now() + MAX_DIAS_A_FRENTE * 86_400_000) {
+      return NextResponse.json(
+        { error: `Não dá para agendar com mais de ${MAX_DIAS_A_FRENTE} dias de antecedência.` },
+        { status: 400 },
+      );
+    }
 
     // Conversa desta conta. A FK composta barraria de qualquer forma, mas o
     // erro dela é 23503 cru; aqui o operador ouve o que aconteceu.
+    //
+    // ⚠️ O `group:cb_groups(channel_id)` não é enfeite — ver o bloco abaixo.
     const { data: conversa } = await ctx.supabase
       .from('conversations')
-      .select('id, channel_id')
+      .select('id, channel_id, group_id, group:cb_groups(channel_id)')
       .eq('id', conversationId)
       .eq('account_id', ctx.accountId)
       .maybeSingle();
@@ -99,6 +118,35 @@ export async function POST(request: Request) {
       );
     }
 
+    // ⚠️ CONVERSA DE GRUPO TEM `conversations.channel_id` NULO — SEMPRE.
+    // `cb-groups/persist.ts` não grava a coluna; quem sabe por qual número o
+    // grupo é visto é `cb_groups.channel_id`. Lendo a coluna da conversa,
+    // `resolveChannelForConversation` cairia no canal PADRÃO da conta, e numa
+    // conta de dois números a agendada de um grupo do número B sairia
+    // carimbada com o número A — que não está naquele grupo. O envio falharia
+    // horas depois, sem ninguém na tela, com um erro que não explica nada.
+    const linha = conversa as {
+      channel_id?: string | null;
+      group_id?: string | null;
+      group?: { channel_id?: string | null } | null;
+    };
+    const ehGrupo = !!linha.group_id;
+    const canalDaConversa = ehGrupo
+      ? (linha.group?.channel_id ?? null)
+      : (linha.channel_id ?? null);
+
+    // Grupo sem número conhecido não agenda. Cair no padrão da conta aqui
+    // seria justamente o engano descrito acima.
+    if (ehGrupo && !canalDaConversa) {
+      return NextResponse.json(
+        {
+          error:
+            'Não dá para saber por qual número este grupo é atendido. Ressincronize os grupos em Configurações → Conexões antes de agendar.',
+        },
+        { status: 409 },
+      );
+    }
+
     // ⚠️ FALHA FECHADA (P4.3). `resolveChannelForConversation` devolve
     // `channelId: null` no fallback de transição do `whatsapp_config` — e é
     // justamente esse caso que não pode agendar: sem uma linha em
@@ -107,7 +155,7 @@ export async function POST(request: Request) {
     const canal = await resolveChannelForConversation(
       ctx.supabase,
       ctx.accountId,
-      conversa as { channel_id?: string | null },
+      { channel_id: canalDaConversa },
     );
     if (!canal?.channelId) {
       return NextResponse.json(

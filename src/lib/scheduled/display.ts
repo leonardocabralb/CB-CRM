@@ -44,28 +44,52 @@ export function comporHorario(data: string, hora: string): Date | null {
   return composta;
 }
 
-/**
- * Lê o valor de um `<input type="datetime-local">` (`2026-08-05T14:30`).
- *
- * ⚠️ Passa por `comporHorario` de propósito, em vez de entregar a string ao
- * `new Date()`. O motor até acerta neste formato — string com hora e sem
- * fuso é local por especificação —, mas a regra vira "depende do formato
- * exato que o navegador devolveu": basta um `:00` de segundos a mais, ou um
- * valor vindo de outro lugar sem hora, para cair na regra do date-only, que
- * é UTC e no Brasil retrocede um dia. Um caminho só, testado, não tem essa
- * borda.
- */
-export function comporDeInputLocal(valor: string): Date | null {
-  const partes = valor.split('T');
-  if (partes.length !== 2) return null;
-  return comporHorario(partes[0], partes[1].slice(0, 5));
-}
-
 /** Data de hoje no formato do `<input type="date">`, em horário local. */
 export function hojeParaInput(agora: Date = new Date()): string {
   const mm = String(agora.getMonth() + 1).padStart(2, '0');
   const dd = String(agora.getDate()).padStart(2, '0');
   return `${agora.getFullYear()}-${mm}-${dd}`;
+}
+
+/** Hora atual no formato do `<input type="time">`, em horário local. */
+export function horaParaInput(agora: Date = new Date()): string {
+  const hh = String(agora.getHours()).padStart(2, '0');
+  const mi = String(agora.getMinutes()).padStart(2, '0');
+  return `${hh}:${mi}`;
+}
+
+/**
+ * Atalhos do seletor, em horas. "Daqui a 24h", "daqui a 7 dias".
+ *
+ * ⚠️ Em HORAS, e não somando dias no calendário. No Brasil dá no mesmo — o
+ * horário de verão acabou em 2019 —, e horas têm uma propriedade que dias
+ * não têm: "daqui a 24 horas" é sempre 24 horas. Somando dias, uma virada de
+ * fuso faria "7 dias" chegar uma hora antes ou depois do combinado, e uma
+ * mensagem de escritório marcada para as 9h sairia às 8h.
+ */
+export const ATALHOS_DE_PRAZO = [
+  { chave: 'h24', horas: 24 },
+  { chave: 'h72', horas: 72 },
+  { chave: 'd7', horas: 24 * 7 },
+  { chave: 'd15', horas: 24 * 15 },
+  { chave: 'd30', horas: 24 * 30 },
+] as const;
+
+export type ChaveDeAtalho = (typeof ATALHOS_DE_PRAZO)[number]['chave'];
+
+/**
+ * Daqui a N horas, já partido nas duas strings que os campos nativos usam.
+ *
+ * Passa pelos componentes LOCAIS (`getHours`, `getDate`) de propósito: é a
+ * mesma regra do `comporHorario`, e é o que impede o valor de voltar para a
+ * tela deslocado pelo fuso.
+ */
+export function daquiAHoras(
+  horas: number,
+  agora: Date = new Date(),
+): { data: string; hora: string } {
+  const alvo = new Date(agora.getTime() + horas * 60 * 60 * 1000);
+  return { data: hojeParaInput(alvo), hora: horaParaInput(alvo) };
 }
 
 /**
@@ -77,14 +101,24 @@ export function estaNaFila(status: ScheduledMessageStatus): boolean {
 }
 
 /**
- * Dá para mandar agora (botão "Enviar agora" / "Tentar de novo")?
+ * Dá para mandar agora (botão "Executar" / "Tentar de novo")?
  *
- * ⚠️ `sending` fica de fora, e não é descuido: a linha travada ali é a que o
- * worker reivindicou e não devolveu — a mensagem PODE já ter saído para o
- * cliente. Ver a nota em `dispararUma`.
+ * Duas exclusões, pelo MESMO motivo — a mensagem pode já ter chegado ao
+ * cliente, e um clique mandaria de novo:
+ *
+ * - `sending`: o worker reivindicou a linha e não devolveu; o processo morreu
+ *   no meio do envio.
+ * - `entrega_incerta` (926): o envio estourou DEPOIS de o WhatsApp aceitar —
+ *   gravação no banco falhando, ou tempo esgotado na Evolution, que não
+ *   cancela o envio já em curso.
+ *
+ * Nos dois casos a saída é humana: olhar a conversa e decidir.
  */
-export function podeDispararAgora(status: ScheduledMessageStatus): boolean {
-  return status === 'pending' || status === 'failed';
+export function podeDispararAgora(
+  agendada: Pick<ScheduledMessage, 'status' | 'entrega_incerta'>,
+): boolean {
+  if (agendada.entrega_incerta) return false;
+  return agendada.status === 'pending' || agendada.status === 'failed';
 }
 
 /**

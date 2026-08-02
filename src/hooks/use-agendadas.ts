@@ -50,12 +50,25 @@ export function useAgendadas(conversationId: string | null): Agendadas {
   const [falhou, setFalhou] = useState(false);
   const vivoRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Geração da busca. Sobe a cada troca de conversa.
+   *
+   * ⚠️ `vivoRef` sozinho NÃO resolve a troca: o cleanup põe `false` e o
+   * efeito seguinte põe `true` no MESMO commit, antes de a busca antiga
+   * responder. Sem este contador, a lista do cliente A chega atrasada e se
+   * pinta dentro da ficha do cliente B — com "Executar agora" e a lixeira
+   * agindo sobre agendadas de OUTRO caso. E numa conversa sem fila não há
+   * laço de 30s para corrigir, então o quadro errado fica até alguém trocar
+   * de aba.
+   */
+  const geracaoRef = useRef(0);
 
   const buscar = useCallback(async () => {
     // ⚠️ Sai sem tocar em estado. Um `setState` síncrono aqui faria desta
     // função algo que o React Compiler recusa dentro de efeito — e o estado
     // de "sem conversa" já é resolvido no ajuste de render abaixo.
     if (!conversationId) return;
+    const minhaGeracao = geracaoRef.current;
     const supabase = createClient();
     const [lista, entrada] = await Promise.all([
       supabase
@@ -76,7 +89,8 @@ export function useAgendadas(conversationId: string | null): Agendadas {
         .maybeSingle(),
     ]);
 
-    if (!vivoRef.current) return;
+    // Chegou tarde e a tela já é de outra conversa: descarta.
+    if (!vivoRef.current || geracaoRef.current !== minhaGeracao) return;
     if (lista.error) {
       setFalhou(true);
     } else {
@@ -112,6 +126,7 @@ export function useAgendadas(conversationId: string | null): Agendadas {
 
   useEffect(() => {
     vivoRef.current = true;
+    geracaoRef.current += 1;
     // Assíncrona declarada aqui dentro, mesma forma do `use-channel-health`.
     // Chamando `buscar` direto, o React Compiler acusa escrita síncrona de
     // estado dentro do efeito — o que não acontece de fato (toda escrita do

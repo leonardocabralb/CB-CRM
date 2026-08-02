@@ -14,6 +14,8 @@ import { toast } from "sonner";
 
 import { createClient } from "@/lib/supabase/client";
 import { useAgendadas } from "@/hooks/use-agendadas";
+import { useChannels } from "@/hooks/use-channels";
+import { channelLabel } from "@/lib/cb-channels/display";
 import {
   clienteEscreveuDepois,
   estaAtrasada,
@@ -54,6 +56,10 @@ export function ScheduledBar({
     useAgendadas(conversationId);
   const [aberta, setAberta] = useState(false);
   const [ocupada, setOcupada] = useState<string | null>(null);
+  // P4.3 pediu o canal no card. Só aparece com 2+ números: num só ele não
+  // informa nada e ocupa a linha que carrega o texto da mensagem.
+  const { channels } = useChannels();
+  const mostrarCanal = channels.length > 1;
 
   // Refaz a busca quando o compositor agenda. `resyncToken` muda de valor;
   // o hook não sabe nada sobre o compositor.
@@ -89,15 +95,29 @@ export function ScheduledBar({
     // mensagem": na bolha do chat "Apagar" quer dizer revogar no WhatsApp do
     // cliente, e confundir os dois faz alguém achar que está desfazendo algo
     // que o cliente já viu.
-    if (!window.confirm(t("cancelConfirm"))) return;
+    //
+    // ⚠️ E o texto MUDA em `sending`/entrega incerta. Ali a promessa "a
+    // mensagem não vai sair" seria falsa: o worker já reivindicou a linha, ou
+    // o WhatsApp já aceitou. Apagar continua permitido — é a única saída para
+    // uma linha travada —, mas quem aperta precisa saber o que está e o que
+    // não está desfazendo.
+    const incerta = a.status === "sending" || a.entrega_incerta;
+    if (!window.confirm(t(incerta ? "cancelConfirmUncertain" : "cancelConfirm"))) {
+      return;
+    }
     setOcupada(a.id);
     const supabase = createClient();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("cb_scheduled_messages")
       .delete()
-      .eq("id", a.id);
+      .eq("id", a.id)
+      .select("id");
     setOcupada(null);
+    // ⚠️ Conferir o RESULTADO, não só o erro. Sem policy que case, a RLS
+    // devolve zero linhas SEM erro — e um toast de sucesso mentiria. É a
+    // armadilha que o CLAUDE.md descreve.
     if (error) toast.error(t("cancelFailed"));
+    else if (!data?.length) toast.error(t("cancelNothing"));
     else toast.success(t("canceled"));
     recarregar();
   }
@@ -178,6 +198,12 @@ export function ScheduledBar({
                   </p>
                   <p className="mt-0.5 text-[10px] text-muted-foreground">
                     {t("scheduledBy", { name: a.autor_nome })}
+                    {mostrarCanal && (
+                      <>
+                        {" · "}
+                        {channelLabel(channels, a.channel_id) ?? t("channelGone")}
+                      </>
+                    )}
                   </p>
 
                   {a.error && (
@@ -195,6 +221,17 @@ export function ScheduledBar({
                     </p>
                   )}
 
+                  {/* ⚠️ 926: falhou DEPOIS de o WhatsApp aceitar. Sem esta
+                      linha, "Falhou" convida a mandar de novo — e o cliente
+                      recebe duas vezes. O botão de retentar já sumiu; o
+                      recado explica por quê. */}
+                  {a.entrega_incerta && (
+                    <p className="mt-1 flex items-center gap-1 text-[10px] text-amber-600">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      {t("uncertainDelivery")}
+                    </p>
+                  )}
+
                   {/* P4.4: não impede o envio, só avisa. */}
                   {respondeu && (
                     <p className="mt-1 flex items-center gap-1 text-[10px] text-amber-600">
@@ -206,7 +243,7 @@ export function ScheduledBar({
 
                 {podeAgir && (
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {podeDispararAgora(a.status) && (
+                    {podeDispararAgora(a) && (
                       <button
                         type="button"
                         onClick={() => void enviarAgora(a)}

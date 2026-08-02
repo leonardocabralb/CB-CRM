@@ -307,7 +307,13 @@ export async function DELETE(
       .from('cb_scheduled_messages')
       .delete()
       .eq('channel_id', id)
-      .eq('account_id', ctx.accountId);
+      .eq('account_id', ctx.accountId)
+      // ⚠️ SÓ o acervo. Sem este filtro, uma agendada criada entre a
+      // contagem lá em cima e este delete — janela real, porque no meio
+      // acontecem a destruição da instância Evolution e a promoção do canal
+      // padrão — seria apagada em silêncio. Com ele, a FK RESTRICT estoura e
+      // a corrida aparece, que é exatamente para isso que ela foi escolhida.
+      .in('status', ['sent', 'failed']);
     if (acervoErr) {
       console.error('[cb/channels DELETE] acervo de agendadas:', acervoErr.message);
       return NextResponse.json({ error: 'Falha ao remover o canal.' }, { status: 500 });

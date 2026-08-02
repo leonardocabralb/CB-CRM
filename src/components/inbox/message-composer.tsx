@@ -66,7 +66,18 @@ import {
 import { validateInteractivePayload } from "@/lib/whatsapp/interactive";
 import type { InteractiveMessagePayload, QuickReply } from "@/types";
 import { QuickReplyPicker } from "./quick-reply-picker";
-import { comporDeInputLocal } from "@/lib/scheduled/display";
+import {
+  ATALHOS_DE_PRAZO,
+  comporHorario,
+  daquiAHoras,
+  hojeParaInput,
+  type ChaveDeAtalho,
+} from "@/lib/scheduled/display";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 /** Media content types an agent can send from the composer. */
 export type ComposerMediaKind = "image" | "video" | "document" | "audio";
@@ -258,29 +269,64 @@ export function MessageComposer({
   // mais é superfície de conflito no merge.
   const [anotando, setAnotando] = useState(false);
   const fecharNota = useCallback(() => setAnotando(false), []);
-  // Agendar (925). `quando` é o valor cru do `<input type="datetime-local">`
-  // ao lado do botão de enviar; preenchido, ele DESVIA o envio.
-  const [quando, setQuando] = useState("");
+  // Agendar (925). Data e hora em campos separados, como no seletor que o
+  // operador desenhou — e é a dupla que `comporHorario` (testada) recebe.
+  const [dataAg, setDataAg] = useState("");
+  const [horaAg, setHoraAg] = useState("");
+  const [seletorAberto, setSeletorAberto] = useState(false);
   const [agendando, setAgendando] = useState(false);
   /**
-   * O campo de hora está à mostra?
-   *
-   * ⚠️ Ele NÃO fica sempre visível porque come a caixa de texto: com a ficha
-   * do contato aberta a linha do compositor tem ~576px, e um campo de 168px
-   * fixos derrubava a caixa de mensagem de ~348px para 180px — menor que o
-   * campo de data, na tela em que se escreve.
-   *
-   * ⚠️ E fechar LIMPA a hora, sempre. Hora guardada num campo escondido
-   * mudaria em silêncio o que o botão de enviar faz: o atendente digitaria
-   * uma resposta urgente, apertaria enviar e ela sairia amanhã.
+   * ⚠️ Ref, não estado: dois Enter no mesmo tique leem `agendando === false`
+   * nos dois, e o `setText("")` só acontece depois do `await`. Sem esta
+   * trava, segurar Enter grava DUAS agendadas do mesmo texto e o cliente
+   * recebe a mesma mensagem duas vezes no minuto marcado. O `disabled` do
+   * botão protege só o clique.
    */
-  const [agendarAberto, setAgendarAberto] = useState(false);
-  const alternarAgendar = useCallback(() => {
-    setAgendarAberto((v) => {
-      if (v) setQuando("");
-      return !v;
-    });
+  const agendandoRef = useRef(false);
+
+  /**
+   * A hora escolhida, ou `null` enquanto falta metade.
+   *
+   * ⚠️ É esta variável que DESVIA o envio: com ela preenchida, o botão de
+   * enviar agenda em vez de mandar agora. Por isso limpar os dois campos é a
+   * única forma de voltar ao envio imediato — e por isso a etiqueta ao lado
+   * do botão existe: hora escolhida tem de estar VISÍVEL, senão o atendente
+   * digita uma resposta urgente, aperta enviar e ela sai amanhã.
+   */
+  const quandoAg = dataAg && horaAg ? comporHorario(dataAg, horaAg) : null;
+  /** Qual atalho pintou os campos — só para destacar o botão. */
+  const [atalhoAtivo, setAtalhoAtivo] = useState<ChaveDeAtalho | null>(null);
+
+  const limparAgendamento = useCallback(() => {
+    setDataAg("");
+    setHoraAg("");
+    setAtalhoAtivo(null);
   }, []);
+
+  const aplicarAtalho = useCallback((chave: ChaveDeAtalho, horas: number) => {
+    const { data, hora } = daquiAHoras(horas);
+    setDataAg(data);
+    setHoraAg(hora);
+    setAtalhoAtivo(chave);
+  }, []);
+
+  /**
+   * Abrir o seletor já deixa "24 horas" escolhido: amanhã, na hora de agora.
+   *
+   * ⚠️ Não é só conveniência — é o que faz o estado inicial ser VÁLIDO.
+   * Abrindo em "hoje, agora", a hora já nasce no passado (por milissegundos),
+   * e o botão de enviar apareceria armado para recusar. Um dia à frente é
+   * também o piso real de uso: agendar é para depois, não para daqui a pouco.
+   */
+  const abrirSeletor = useCallback(
+    (aberto: boolean) => {
+      setSeletorAberto(aberto);
+      if (aberto && !dataAg && !horaAg) {
+        aplicarAtalho(ATALHOS_DE_PRAZO[0].chave, ATALHOS_DE_PRAZO[0].horas);
+      }
+    },
+    [dataAg, horaAg, aplicarAtalho],
+  );
   // Media (like free-form text) is only allowed inside the 24h window.
   const inputsDisabled = readOnly || sessionExpired;
 
@@ -411,7 +457,7 @@ export function MessageComposer({
    */
   const agendar = useCallback(
     async (texto: string) => {
-      const data = comporDeInputLocal(quando);
+      const data = quandoAg;
       if (!data) {
         toast.error(tAgendadas("scheduleInvalid"));
         return;
@@ -420,6 +466,8 @@ export function MessageComposer({
         toast.error(tAgendadas("scheduleInThePast"));
         return;
       }
+      if (agendandoRef.current) return;
+      agendandoRef.current = true;
       setAgendando(true);
       try {
         const res = await fetch("/api/cb/scheduled", {
@@ -443,17 +491,22 @@ export function MessageComposer({
         // imediato por padrão — hora esquecida no campo transformaria uma
         // resposta urgente em algo que sai amanhã.
         setText("");
-        setQuando("");
-        setAgendarAberto(false);
+        limparAgendamento();
+        // ⚠️ A agendada NÃO leva citação: a coluna não existe na 925 e a v1 é
+        // só texto (P4.6). Limpar aqui é obrigatório — a citação continuando
+        // na tela diria que a mensagem marcada responde àquela bolha, o que
+        // não vai acontecer.
+        onClearReply?.();
         if (textareaRef.current) textareaRef.current.style.height = "auto";
         onScheduled?.();
       } catch {
         toast.error(tAgendadas("scheduleFailed"));
       } finally {
+        agendandoRef.current = false;
         setAgendando(false);
       }
     },
-    [quando, conversationId, onScheduled, tAgendadas],
+    [quandoAg, conversationId, onScheduled, onClearReply, tAgendadas, limparAgendamento],
   );
 
   const handleSend = useCallback(async () => {
@@ -463,7 +516,7 @@ export function MessageComposer({
     // ⚠️ DESVIO ANTES DE QUALQUER COISA. Com hora no campo, esta mensagem
     // não passa pela janela de desfazer nem pelo despachante — vai para a
     // fila e pronto. Ver a nota em `agendar`.
-    if (quando) {
+    if (quandoAg) {
       await agendar(trimmed);
       return;
     }
@@ -495,7 +548,7 @@ export function MessageComposer({
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [text, sessionExpired, replyTo?.id, liberarPendente, quando, agendar]);
+  }, [text, sessionExpired, replyTo?.id, liberarPendente, quandoAg, agendar]);
 
   // Trocar de conversa solta a pendente na hora.
   //
@@ -517,8 +570,14 @@ export function MessageComposer({
     if (conversaAnteriorRef.current === conversationId) return;
     conversaAnteriorRef.current = conversationId;
     liberarPendente();
+    // ⚠️ E a hora escolhida vai junto. O compositor não remonta na troca, e
+    // uma hora esquecida transforma a próxima mensagem — que pode ser "estou
+    // ligando agora" para OUTRO cliente — em algo que sai amanhã. A etiqueta
+    // âmbar avisa, mas avisar não é impedir.
+    limparAgendamento();
+    setSeletorAberto(false);
     setAnotando(false);
-  }, [conversationId, liberarPendente]);
+  }, [conversationId, liberarPendente, limparAgendamento]);
 
   // Contagem regressiva da barra. Sem isto o rótulo repetiria o valor cheio
   // o tempo todo, inclusive no último instante antes de a mensagem sair.
@@ -1022,7 +1081,7 @@ export function MessageComposer({
           </Button>
         </div>
       ) : (
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-0.5">
           {/* Attach menu — photo / video / document / voice. */}
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -1173,29 +1232,128 @@ export function MessageComposer({
             )}
           />
 
-          {/* Agendar (925) — abre a tira de hora logo abaixo, NÃO um
-              diálogo. O campo não fica nesta linha porque come a caixa de
-              texto: com a ficha aberta ela cai de 312px para 136px, e é
-              nela que se escreve.
+          {/* Agendar (925) — SELETOR que abre ACIMA do botão, nunca um
+              diálogo, e a hora escolhida vira uma etiqueta enxuta aqui do
+              lado. O campo cru não cabe nesta linha: medido com a ficha do
+              contato aberta, um `datetime-local` de 168px derrubava a caixa
+              de mensagem de 312px para 136px — menor que o próprio campo, na
+              tela em que se escreve.
               ⚠️ `inputsDisabled` (e não só o papel): agendar É enviar ao
               cliente, com atraso. Fora da janela de 24h da Meta a mensagem
               não sairia de jeito nenhum. */}
           {!readOnly && (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={inputsDisabled}
-              title={tAgendadas("scheduleField")}
-              aria-label={tAgendadas("scheduleField")}
-              aria-pressed={agendarAberto}
-              onClick={alternarAgendar}
-              className={cn(
-                "h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground",
-                agendarAberto && "text-amber-600",
+            <>
+              {/* A etiqueta é a peça de segurança desta tela, não enfeite:
+                  com hora escolhida o botão ao lado AGENDA em vez de enviar,
+                  e isso precisa estar visível. Escondido, o atendente
+                  digitaria uma resposta urgente e ela sairia amanhã. */}
+              {quandoAg && (
+                <button
+                  type="button"
+                  onClick={() => setSeletorAberto(true)}
+                  title={tAgendadas("scheduleField")}
+                  className="inline-flex h-9 shrink-0 items-center gap-1 rounded-xl border border-amber-500 bg-amber-500/10 px-2 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+                >
+                  {quandoAg.toLocaleString(undefined, {
+                    day: "2-digit",
+                    month: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    aria-label={tAgendadas("scheduleClear")}
+                    title={tAgendadas("scheduleClear")}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      limparAgendamento();
+                    }}
+                    className="rounded p-0.5 hover:bg-amber-500/20"
+                  >
+                    <X className="h-3 w-3" />
+                  </span>
+                </button>
               )}
-            >
-              <Clock className="h-4 w-4" />
-            </Button>
+
+              <Popover open={seletorAberto} onOpenChange={abrirSeletor}>
+                <PopoverTrigger
+                  disabled={inputsDisabled}
+                  title={tAgendadas("scheduleField")}
+                  aria-label={tAgendadas("scheduleField")}
+                  className={cn(
+                    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
+                    quandoAg && "text-amber-600",
+                  )}
+                >
+                  <Clock className="h-4 w-4" />
+                </PopoverTrigger>
+                {/* `side="top"`: o compositor mora no rodapé da tela, e um
+                    seletor abrindo para baixo nasceria fora da janela. */}
+                <PopoverContent side="top" align="end" sideOffset={8} className="w-72">
+                  <p className="px-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {tAgendadas("scheduleTitle")}
+                  </p>
+                  {/* Os cinco prazos que o operador pediu. Pintam os dois
+                      campos de uma vez; editar qualquer campo na mão apaga o
+                      destaque, porque aí o valor deixou de ser o do atalho. */}
+                  <div className="flex flex-nowrap gap-1">
+                    {ATALHOS_DE_PRAZO.map((a) => (
+                      <button
+                        key={a.chave}
+                        type="button"
+                        onClick={() => aplicarAtalho(a.chave, a.horas)}
+                        className={cn(
+                          "shrink-0 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] transition-colors",
+                          atalhoAtivo === a.chave
+                            ? "border-amber-500 bg-amber-500/15 font-medium text-amber-700 dark:text-amber-400"
+                            : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        {tAgendadas(`preset_${a.chave}`)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="date"
+                      value={dataAg}
+                      min={hojeParaInput()}
+                      onChange={(e) => {
+                        setDataAg(e.target.value);
+                        setAtalhoAtivo(null);
+                      }}
+                      aria-label={tAgendadas("date")}
+                      className="h-9 flex-1 rounded-lg border border-border bg-muted px-2 text-xs text-foreground outline-none focus:border-primary/50"
+                    />
+                    <input
+                      type="time"
+                      value={horaAg}
+                      onChange={(e) => {
+                        setHoraAg(e.target.value);
+                        setAtalhoAtivo(null);
+                      }}
+                      aria-label={tAgendadas("time")}
+                      className="h-9 w-[5.5rem] rounded-lg border border-border bg-muted px-2 text-xs text-foreground outline-none focus:border-primary/50"
+                    />
+                  </div>
+                  {/* A promessa do ciclo de 1 minuto (P4.2), escrita na tela. */}
+                  <p className="text-[11px] text-muted-foreground">
+                    {quandoAg ? tAgendadas("scheduleHint") : tAgendadas("schedulePick")}
+                  </p>
+                  {quandoAg && (
+                    <button
+                      type="button"
+                      onClick={limparAgendamento}
+                      className="self-start text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                    >
+                      {tAgendadas("scheduleClear")}
+                    </button>
+                  )}
+                </PopoverContent>
+              </Popover>
+            </>
           )}
 
           <GatedButton
@@ -1204,19 +1362,19 @@ export function MessageComposer({
             gateReason="send messages"
             disabled={!text.trim() || sessionExpired || agendando}
             onClick={handleSend}
-            // O rótulo muda junto com o campo: o mesmo botão faz coisas
+            // O rótulo muda junto com a etiqueta: o mesmo botão faz coisas
             // diferentes, e quem passa o mouse tem de saber qual.
-            title={quando ? tAgendadas("scheduleAction") : undefined}
+            title={quandoAg ? tAgendadas("scheduleAction") : undefined}
             className={cn(
               "h-9 w-9 shrink-0 p-0 disabled:opacity-40",
-              quando
+              quandoAg
                 ? "bg-amber-500 hover:bg-amber-600"
                 : "bg-primary hover:bg-primary/90",
             )}
           >
             {agendando ? (
               <Loader2 className="h-4 w-4 animate-spin" />
-            ) : quando ? (
+            ) : quandoAg ? (
               <CalendarClock className="h-4 w-4" />
             ) : (
               <Send className="h-4 w-4" />
@@ -1246,35 +1404,6 @@ export function MessageComposer({
             <span className="font-mono text-[10px]">{"</>"}</span>
           </BotaoFormato>
           <p className="ml-1 text-[10px] text-muted-foreground">{t("draftHint")}</p>
-        </div>
-      )}
-
-      {/* A tira de agendar (925). Linha própria porque na linha do
-          compositor o campo comeria a caixa de texto — ver a nota no
-          botão-relógio. Some junto com o botão quando o papel é só-leitura. */}
-      {!draft && !recording && !readOnly && agendarAberto && (
-        <div className="mt-1 flex items-center gap-2 pl-[5.5rem]">
-          <Clock className="h-3.5 w-3.5 shrink-0 text-amber-600" />
-          <input
-            type="datetime-local"
-            value={quando}
-            min={minimoParaAgendar()}
-            onChange={(e) => setQuando(e.target.value)}
-            disabled={inputsDisabled}
-            autoFocus
-            aria-label={tAgendadas("scheduleField")}
-            className={cn(
-              "h-7 w-[10.5rem] shrink-0 rounded-lg border bg-muted px-2 text-xs text-foreground outline-none transition-colors",
-              quando ? "border-amber-500" : "border-border focus:border-primary/50",
-              inputsDisabled && "cursor-not-allowed opacity-50",
-            )}
-          />
-          {/* A promessa do ciclo de 1 minuto (P4.2), escrita na tela e não
-              só no tooltip — o botão de enviar mudou de função e isto é o
-              que diz, em palavras, o que ele vai fazer. */}
-          <p className="text-[10px] font-medium text-amber-600">
-            {quando ? tAgendadas("scheduleHint") : tAgendadas("schedulePick")}
-          </p>
         </div>
       )}
 
@@ -1325,19 +1454,6 @@ export function MessageComposer({
   );
 }
 
-/**
- * Piso do `<input type="datetime-local">`: agora, em horário local.
- *
- * Impede escolher o passado no próprio campo, antes de qualquer viagem ao
- * servidor. ⚠️ Montado por componentes locais — `toISOString()` daria UTC, e
- * no Brasil o piso apareceria três horas à frente, escondendo o resto de
- * hoje.
- */
-function minimoParaAgendar(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
 
 /**
  * Staged-attachment preview with caption + send/discard. Declared at

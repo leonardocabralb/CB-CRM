@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import type { ScheduledMessage } from '@/types';
 import {
+  ATALHOS_DE_PRAZO,
   clienteEscreveuDepois,
-  comporDeInputLocal,
   comporHorario,
+  daquiAHoras,
   estaAtrasada,
   estaNaFila,
   hojeParaInput,
+  horaParaInput,
   ordenarParaTela,
   podeDispararAgora,
 } from './display';
@@ -27,6 +29,7 @@ function ag(over: Partial<ScheduledMessage> = {}): ScheduledMessage {
     autor_nome: 'Dra. Ana',
     created_at: '2026-08-01T12:00:00.000Z',
     sent_at: null,
+    entrega_incerta: false,
     ...over,
   };
 }
@@ -69,35 +72,60 @@ describe('comporHorario', () => {
   });
 });
 
-describe('comporDeInputLocal', () => {
-  it('lê o valor do campo nativo em horário local', () => {
-    const d = comporDeInputLocal('2026-08-05T14:30')!;
-    expect(d.getDate()).toBe(5);
-    expect(d.getHours()).toBe(14);
-    expect(d.getMinutes()).toBe(30);
-  });
-
-  it('aceita o formato com segundos, que alguns navegadores devolvem', () => {
-    const d = comporDeInputLocal('2026-08-05T14:30:00')!;
-    expect(d.getHours()).toBe(14);
-    expect(d.getMinutes()).toBe(30);
-  });
-
-  it('⚠️ recusa valor sem hora — é o caminho que vira meia-noite UTC', () => {
-    expect(comporDeInputLocal('2026-08-05')).toBeNull();
-    expect(comporDeInputLocal('')).toBeNull();
-    expect(comporDeInputLocal('2026-08-05T')).toBeNull();
-  });
-
-  it('recusa data impossível, como o `comporHorario`', () => {
-    expect(comporDeInputLocal('2026-02-31T10:00')).toBeNull();
-  });
-});
-
-describe('hojeParaInput', () => {
+describe('hojeParaInput / horaParaInput', () => {
   it('usa o dia LOCAL, com dois dígitos', () => {
     expect(hojeParaInput(new Date(2026, 7, 5, 23, 30))).toBe('2026-08-05');
     expect(hojeParaInput(new Date(2026, 0, 9, 1, 0))).toBe('2026-01-09');
+  });
+
+  it('a hora também é local, com dois dígitos', () => {
+    expect(horaParaInput(new Date(2026, 7, 5, 9, 5))).toBe('09:05');
+    expect(horaParaInput(new Date(2026, 7, 5, 21, 0))).toBe('21:00');
+    expect(horaParaInput(new Date(2026, 7, 5, 0, 0))).toBe('00:00');
+  });
+});
+
+describe('daquiAHoras', () => {
+  it('24 horas = amanhã, na MESMA hora', () => {
+    // É a regra que o operador pediu para o padrão do seletor: abrir já
+    // marcando o dia seguinte no relógio de agora.
+    const r = daquiAHoras(24, new Date(2026, 7, 5, 21, 0));
+    expect(r).toEqual({ data: '2026-08-06', hora: '21:00' });
+  });
+
+  it('atravessa a virada do mês e do ano', () => {
+    expect(daquiAHoras(24, new Date(2026, 7, 31, 14, 0)).data).toBe('2026-09-01');
+    expect(daquiAHoras(24, new Date(2026, 11, 31, 14, 0)).data).toBe('2027-01-01');
+  });
+
+  it('72 horas e os prazos em dias', () => {
+    const agora = new Date(2026, 7, 5, 9, 30);
+    expect(daquiAHoras(72, agora)).toEqual({ data: '2026-08-08', hora: '09:30' });
+    expect(daquiAHoras(24 * 7, agora).data).toBe('2026-08-12');
+    expect(daquiAHoras(24 * 15, agora).data).toBe('2026-08-20');
+    expect(daquiAHoras(24 * 30, agora).data).toBe('2026-09-04');
+  });
+
+  it('o resultado sempre volta a virar a MESMA data pelo comporHorario', () => {
+    // Ida e volta: sem isto, um atalho poderia produzir uma string que o
+    // caminho de gravação recusa, e o botão simplesmente não faria nada.
+    const agora = new Date(2026, 7, 5, 21, 0);
+    for (const { horas } of ATALHOS_DE_PRAZO) {
+      const { data, hora } = daquiAHoras(horas, agora);
+      const volta = comporHorario(data, hora);
+      expect(volta).not.toBeNull();
+      expect(volta!.getTime()).toBe(agora.getTime() + horas * 3600_000);
+    }
+  });
+
+  it('os cinco atalhos pedidos, nesta ordem', () => {
+    expect(ATALHOS_DE_PRAZO.map((a) => a.chave)).toEqual([
+      'h24',
+      'h72',
+      'd7',
+      'd15',
+      'd30',
+    ]);
   });
 });
 
@@ -110,10 +138,21 @@ describe('estaNaFila / podeDispararAgora', () => {
   });
 
   it('⚠️ `sending` NÃO pode ser disparada de novo — mandaria duas vezes', () => {
-    expect(podeDispararAgora('pending')).toBe(true);
-    expect(podeDispararAgora('failed')).toBe(true);
-    expect(podeDispararAgora('sending')).toBe(false);
-    expect(podeDispararAgora('sent')).toBe(false);
+    expect(podeDispararAgora(ag({ status: 'pending' }))).toBe(true);
+    expect(podeDispararAgora(ag({ status: 'failed' }))).toBe(true);
+    expect(podeDispararAgora(ag({ status: 'sending' }))).toBe(false);
+    expect(podeDispararAgora(ag({ status: 'sent' }))).toBe(false);
+  });
+
+  it('⚠️ entrega incerta trava a retentativa mesmo com status `failed` (926)', () => {
+    // "Falhou" ali quer dizer "o WhatsApp aceitou e a gravação estourou".
+    // Sem esta linha, um clique manda a mesma coisa ao cliente duas vezes.
+    expect(
+      podeDispararAgora(ag({ status: 'failed', entrega_incerta: true })),
+    ).toBe(false);
+    expect(
+      podeDispararAgora(ag({ status: 'pending', entrega_incerta: true })),
+    ).toBe(false);
   });
 });
 

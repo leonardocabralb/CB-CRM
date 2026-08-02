@@ -69,6 +69,21 @@ type LinhaAgendada = Pick<
 const COLUNAS = 'id, account_id, conversation_id, channel_id, body, created_by';
 
 /**
+ * Códigos de erro que significam "o WhatsApp JÁ ACEITOU a mensagem".
+ *
+ * ⚠️ São os dois casos em que 'falhou' mente. `db_error` é lançado depois do
+ * envio — a própria mensagem dele diz "sent to Meta but failed to save to
+ * DB". `evolution_error` cobre o tempo esgotado, e abortar do nosso lado NÃO
+ * cancela o envio já em curso, coisa que este projeto já registrou.
+ *
+ * `evolution_error` também aparece em falhas honestas (instância caída), e
+ * marcar essas como incertas é o erro BARATO: o operador perde o botão de um
+ * clique e manda de novo pelo campo normal. O erro caro é o contrário — o
+ * cliente do escritório recebendo a mesma mensagem duas vezes.
+ */
+const CODIGOS_POS_ENTREGA = new Set(['db_error', 'evolution_error']);
+
+/**
  * Um ciclo do agendador: recusa o que envelheceu, dispara o que venceu.
  *
  * `agora` entra por parâmetro para o teste poder mover o relógio.
@@ -128,11 +143,16 @@ export async function dispararUma(
     .select(COLUNAS)
     .eq('id', id)
     .eq('account_id', accountId)
+    // ⚠️ `entrega_incerta` fora, e é o ponto da 926: aquela linha falhou
+    // DEPOIS de o WhatsApp aceitar a mensagem. Reenviar manda duas vezes.
+    .eq('entrega_incerta', false)
     .in('status', ['pending', 'failed'])
     .maybeSingle();
 
   if (!data) return null;
-  if (!(await reivindicar(admin, id, ['pending', 'failed']))) return null;
+  if (!(await reivindicar(admin, id, ['pending', 'failed'], accountId))) {
+    return null;
+  }
 
   const linha = data as LinhaAgendada;
   const ok = await enviarEFinalizar(admin, linha);
@@ -183,14 +203,18 @@ async function reivindicar(
   admin: SupabaseClient,
   id: string,
   de: string[],
+  /** Escopo de conta. O worker varre todas e não passa; a rota passa. */
+  accountId?: string,
 ): Promise<boolean> {
-  const { data } = await admin
+  let q = admin
     .from('cb_scheduled_messages')
     .update({ status: 'sending' })
     .eq('id', id)
-    .in('status', de)
-    .select('id')
-    .maybeSingle();
+    .in('status', de);
+  // O `select` anterior já filtrou por conta, mas quem lê esta função não vê
+  // aquele bloco — e ela roda em service-role, sem RLS por baixo.
+  if (accountId) q = q.eq('account_id', accountId);
+  const { data } = await q.select('id').maybeSingle();
   return !!data;
 }
 
@@ -229,15 +253,27 @@ async function enviarEFinalizar(
       .eq('id', linha.id);
     return true;
   } catch (err) {
+    const posEntrega =
+      err instanceof SendMessageError && CODIGOS_POS_ENTREGA.has(err.code);
+    // ⚠️ `db_error` embute a mensagem CRUA do Postgres ("violates constraint
+    // cb_..."), e este texto vai para a tela de todo membro, inclusive
+    // `viewer`. Nome de constraint e de coluna não dizem nada a quem atende e
+    // dizem demais a quem não deveria ver.
     const motivo =
-      err instanceof SendMessageError
-        ? err.message
-        : err instanceof Error
+      err instanceof SendMessageError && err.code === 'db_error'
+        ? 'O WhatsApp aceitou a mensagem, mas o CRM não conseguiu gravá-la. Confira a conversa.'
+        : err instanceof SendMessageError
           ? err.message
-          : 'Falha desconhecida ao enviar.';
+          : err instanceof Error
+            ? err.message
+            : 'Falha desconhecida ao enviar.';
     await admin
       .from('cb_scheduled_messages')
-      .update({ status: 'failed', error: motivo.slice(0, MAX_ERRO) })
+      .update({
+        status: 'failed',
+        error: motivo.slice(0, MAX_ERRO),
+        entrega_incerta: posEntrega,
+      })
       .eq('id', linha.id);
     return false;
   }

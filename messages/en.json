@@ -410,7 +410,20 @@
       "cancelConfirm": "Cancel this scheduled send? The message will not go out.",
       "canceled": "Scheduled send canceled.",
       "cancelFailed": "Couldn't cancel the scheduled send.",
-      "schedulePick": "Pick a date and time."
+      "schedulePick": "Pick a date and time.",
+      "scheduleTitle": "Schedule send",
+      "scheduleClear": "Clear the time",
+      "date": "Date",
+      "time": "Time",
+      "preset_h24": "24 h",
+      "preset_h72": "72 h",
+      "preset_d7": "7 days",
+      "preset_d15": "15 days",
+      "preset_d30": "30 days",
+      "cancelConfirmUncertain": "This message may already have gone out — the send was in progress. Deleting only removes the schedule record; it does NOT recall anything on WhatsApp. Continue?",
+      "cancelNothing": "Nothing was canceled — reopen the conversation.",
+      "uncertainDelivery": "WhatsApp accepted this message before the error, so it may already have arrived. Check the conversation before sending again.",
+      "channelGone": "connection removed"
     }
   },
   "Contacts": {
