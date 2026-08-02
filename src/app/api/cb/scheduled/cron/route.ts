@@ -38,8 +38,29 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const admin = supabaseAdmin();
   try {
-    const r = await dispararVencidas(supabaseAdmin());
+    const r = await dispararVencidas(admin);
+
+    // ⚠️ O BATIMENTO (927). Sem ele, "agendador morto" e "dia sem mensagem"
+    // produzem o mesmo silêncio — e é assim que o cron das automações passou
+    // semanas parado neste projeto sem ninguém notar. Escrito DEPOIS do ciclo,
+    // de propósito: o carimbo significa "um ciclo inteiro terminou", não
+    // "alguém bateu na porta".
+    //
+    // Best-effort: falhar aqui não pode desfazer envios que já saíram. Um
+    // batimento perdido só adianta o aviso na tela, que é o lado seguro.
+    const { error: batErr } = await admin
+      .from('cb_agendador_batimento')
+      .update({
+        ultimo_ciclo: new Date().toISOString(),
+        enviadas_no_ultimo: r.enviadas,
+        falhas_no_ultimo: r.falhas,
+      })
+      .eq('id', true);
+    if (batErr) {
+      console.error('[agendadas] batimento não gravou:', batErr.message);
+    }
     // Registrado no log só quando houve o que fazer — um ciclo por minuto,
     // 24h por dia, encheria o log de zeros e esconderia o que importa.
     if (r.enviadas || r.falhas || r.atrasadas) {

@@ -298,7 +298,8 @@
       "deleteRequestedHint": "O CRM pediu a exclusão ao WhatsApp e ainda não recebeu confirmação. Até lá, não dá para garantir que a mensagem saiu do aparelho do contato.",
       "deletedUnknown": "Apagada",
       "botBadge": "Robô",
-      "botBadgeTitle": "Enviada automaticamente por uma automação ou fluxo — não foi escrita por uma pessoa"
+      "botBadgeTitle": "Enviada automaticamente por uma automação ou fluxo — não foi escrita por uma pessoa",
+      "naoEntregue": "Não entregue — o destinatário não recebeu. Envie de novo."
     },
     "actions": {
       "reply": "Responder",
@@ -410,7 +411,7 @@
       "loadFailed": "Não deu para carregar as mensagens agendadas. Reabra a conversa.",
       "scheduleField": "Agendar — a mensagem sai dentro do minuto escolhido.",
       "scheduleAction": "Agendar",
-      "scheduleHint": "Sai dentro do minuto escolhido.",
+      "scheduleHint": "Sai em até {min} minutos depois da hora escolhida.",
       "scheduleInvalid": "Escolha uma data e hora válidas.",
       "scheduleInThePast": "Essa hora já passou.",
       "scheduled": "Mensagem agendada.",
@@ -443,7 +444,17 @@
       "cancelConfirmUncertain": "Esta mensagem pode já ter saído — o envio estava em curso. Apagar só remove o registro do agendamento; NÃO desfaz nada no WhatsApp. Continuar?",
       "cancelNothing": "Nada foi cancelado — reabra a conversa.",
       "uncertainDelivery": "O WhatsApp aceitou esta mensagem antes do erro, então ela pode já ter chegado. Confira a conversa antes de enviar de novo.",
-      "channelGone": "conexão removida"
+      "channelGone": "conexão removida",
+      "saude": {
+        "rotulo": "Mensagens agendadas",
+        "paradoComFila": "O agendador não está rodando. {fila} mensagem(ns) agendada(s) NÃO vão sair enquanto ele não voltar.",
+        "paradoSemFila": "O agendador não está rodando. Não há nada na fila agora, mas o que você agendar não vai sair.",
+        "nuncaRodou": "O agendador nunca rodou. Mensagem agendada não vai sair.",
+        "falhas": "{n} mensagem(ns) agendada(s) falharam e esperam decisão.",
+        "ultimoCiclo": "Último ciclo há {min} minutos.",
+        "comoResolverParado": "Ele deveria rodar a cada {ciclo} minutos. Peça a quem cuida do servidor para conferir o serviço \"agendador\" (ver docs/DEPLOY-VPS.md).",
+        "comoResolverFalhas": "Abra cada conversa: a faixa AGENDADAS mostra o motivo e deixa reenviar ou cancelar."
+      }
     }
   },
   "Contacts": {

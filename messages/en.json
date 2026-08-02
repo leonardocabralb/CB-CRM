@@ -298,7 +298,8 @@
       "deleteRequestedHint": "The CRM asked WhatsApp to delete this and has not been confirmed yet. Until then there is no guarantee it left the contact's phone.",
       "deletedUnknown": "Deleted",
       "botBadge": "Bot",
-      "botBadgeTitle": "Sent automatically by an automation or flow — not written by a person"
+      "botBadgeTitle": "Sent automatically by an automation or flow — not written by a person",
+      "naoEntregue": "Not delivered — the recipient did not receive this. Send it again."
     },
     "actions": {
       "reply": "Reply",
@@ -410,7 +411,7 @@
       "loadFailed": "Couldn't load the scheduled messages. Reopen the conversation.",
       "scheduleField": "Schedule — the message goes out within the minute you pick.",
       "scheduleAction": "Schedule",
-      "scheduleHint": "It goes out within the minute you picked.",
+      "scheduleHint": "It goes out within {min} minutes of the time you picked.",
       "scheduleInvalid": "Pick a valid date and time.",
       "scheduleInThePast": "That time has already passed.",
       "scheduled": "Message scheduled.",
@@ -443,7 +444,17 @@
       "cancelConfirmUncertain": "This message may already have gone out — the send was in progress. Deleting only removes the schedule record; it does NOT recall anything on WhatsApp. Continue?",
       "cancelNothing": "Nothing was canceled — reopen the conversation.",
       "uncertainDelivery": "WhatsApp accepted this message before the error, so it may already have arrived. Check the conversation before sending again.",
-      "channelGone": "connection removed"
+      "channelGone": "connection removed",
+      "saude": {
+        "rotulo": "Scheduled messages",
+        "paradoComFila": "The scheduler is not running. {fila} scheduled message(s) will NOT go out until it is back.",
+        "paradoSemFila": "The scheduler is not running. Nothing is queued right now, but anything you schedule will not go out.",
+        "nuncaRodou": "The scheduler has never run. Scheduled messages will not go out.",
+        "falhas": "{n} scheduled message(s) failed and are waiting for a decision.",
+        "ultimoCiclo": "Last cycle {min} minutes ago.",
+        "comoResolverParado": "It should run every {ciclo} minutes. Ask whoever maintains the server to check the \"agendador\" service (see docs/DEPLOY-VPS.md).",
+        "comoResolverFalhas": "Open each conversation: the SCHEDULED bar shows the reason and lets you resend or cancel."
+      }
     }
   },
   "Contacts": {

@@ -59,6 +59,38 @@ export function horaParaInput(agora: Date = new Date()): string {
 }
 
 /**
+ * De quanto em quanto tempo o agendador acorda, em minutos — e, por
+ * consequência, a grade em que a tela deixa escolher a hora.
+ *
+ * ⚠️ Os dois números são O MESMO por decisão do operador: verificar de minuto
+ * em minuto é carga de servidor que não compra nada para um escritório, e
+ * oferecer um horário mais fino que o ciclo é prometer o que não se cumpre. A
+ * tela arredonda para a grade e diz, em palavras, o atraso máximo.
+ *
+ * ⚠️ Mudar aqui NÃO muda o agendador: o intervalo real está no `sleep` do
+ * serviço `agendador` em `docker-stack.yml`. Os dois têm de andar juntos, e é
+ * por isso que o número mora numa constante com este aviso.
+ */
+export const CICLO_MINUTOS = 15;
+
+/**
+ * Sobe a data para o próximo ponto da grade de 15 minutos.
+ *
+ * Sempre para CIMA: descer poria a hora no passado em relação ao que a pessoa
+ * pediu, e "adiantar" mensagem para cliente é pior que atrasar.
+ */
+export function arredondarParaGrade(
+  d: Date,
+  minutos: number = CICLO_MINUTOS,
+): Date {
+  const r = new Date(d.getTime());
+  r.setSeconds(0, 0);
+  const resto = r.getMinutes() % minutos;
+  if (resto !== 0) r.setMinutes(r.getMinutes() + (minutos - resto));
+  return r;
+}
+
+/**
  * Atalhos do seletor, em horas. "Daqui a 24h", "daqui a 7 dias".
  *
  * ⚠️ Em HORAS, e não somando dias no calendário. No Brasil dá no mesmo — o
@@ -88,7 +120,10 @@ export function daquiAHoras(
   horas: number,
   agora: Date = new Date(),
 ): { data: string; hora: string } {
-  const alvo = new Date(agora.getTime() + horas * 60 * 60 * 1000);
+  // Arredondado para a grade: o campo de hora só oferece :00/:15/:30/:45, e um
+  // atalho que preenchesse 21:37 deixaria o campo com um valor que a própria
+  // tela não deixa digitar.
+  const alvo = arredondarParaGrade(new Date(agora.getTime() + horas * 60 * 60 * 1000));
   return { data: hojeParaInput(alvo), hora: horaParaInput(alvo) };
 }
 

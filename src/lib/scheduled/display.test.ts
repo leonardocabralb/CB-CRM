@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import type { ScheduledMessage } from '@/types';
 import {
+  arredondarParaGrade,
   ATALHOS_DE_PRAZO,
+  CICLO_MINUTOS,
   clienteEscreveuDepois,
   comporHorario,
   daquiAHoras,
@@ -85,12 +87,57 @@ describe('hojeParaInput / horaParaInput', () => {
   });
 });
 
+describe('arredondarParaGrade', () => {
+  it('sobe para o próximo ponto da grade de 15 minutos', () => {
+    const r = arredondarParaGrade(new Date(2026, 7, 5, 21, 37, 42));
+    expect(r.getHours()).toBe(21);
+    expect(r.getMinutes()).toBe(45);
+    expect(r.getSeconds()).toBe(0);
+  });
+
+  it('⚠️ sempre para CIMA — descer adiantaria a mensagem para o cliente', () => {
+    expect(arredondarParaGrade(new Date(2026, 7, 5, 9, 1)).getMinutes()).toBe(15);
+    expect(arredondarParaGrade(new Date(2026, 7, 5, 9, 14)).getMinutes()).toBe(15);
+    expect(arredondarParaGrade(new Date(2026, 7, 5, 9, 16)).getMinutes()).toBe(30);
+  });
+
+  it('quem já está na grade não se mexe', () => {
+    for (const m of [0, 15, 30, 45]) {
+      const r = arredondarParaGrade(new Date(2026, 7, 5, 9, m));
+      expect(r.getMinutes()).toBe(m);
+      expect(r.getHours()).toBe(9);
+    }
+  });
+
+  it('atravessa a hora, o dia e o ano', () => {
+    const h = arredondarParaGrade(new Date(2026, 7, 5, 9, 50));
+    expect([h.getHours(), h.getMinutes()]).toEqual([10, 0]);
+    const d = arredondarParaGrade(new Date(2026, 7, 5, 23, 50));
+    expect([d.getDate(), d.getHours(), d.getMinutes()]).toEqual([6, 0, 0]);
+    const a = arredondarParaGrade(new Date(2026, 11, 31, 23, 50));
+    expect([a.getFullYear(), a.getMonth(), a.getDate()]).toEqual([2027, 0, 1]);
+  });
+
+  it('zera os segundos — o campo nativo não os tem', () => {
+    expect(arredondarParaGrade(new Date(2026, 7, 5, 9, 0, 59)).getSeconds()).toBe(0);
+    expect(arredondarParaGrade(new Date(2026, 7, 5, 9, 0, 59)).getMinutes()).toBe(0);
+  });
+});
+
 describe('daquiAHoras', () => {
   it('24 horas = amanhã, na MESMA hora', () => {
     // É a regra que o operador pediu para o padrão do seletor: abrir já
     // marcando o dia seguinte no relógio de agora.
     const r = daquiAHoras(24, new Date(2026, 7, 5, 21, 0));
     expect(r).toEqual({ data: '2026-08-06', hora: '21:00' });
+  });
+
+  it('⚠️ o atalho cai na GRADE, senão preenche um valor que o campo recusa', () => {
+    // 21:37 + 24h = 21:37 de amanhã, que não existe no seletor de 15 em 15.
+    expect(daquiAHoras(24, new Date(2026, 7, 5, 21, 37))).toEqual({
+      data: '2026-08-06',
+      hora: '21:45',
+    });
   });
 
   it('atravessa a virada do mês e do ano', () => {
@@ -114,7 +161,9 @@ describe('daquiAHoras', () => {
       const { data, hora } = daquiAHoras(horas, agora);
       const volta = comporHorario(data, hora);
       expect(volta).not.toBeNull();
+      // O relógio 21:00 já está na grade, então o arredondamento é neutro.
       expect(volta!.getTime()).toBe(agora.getTime() + horas * 3600_000);
+      expect(volta!.getMinutes() % CICLO_MINUTOS).toBe(0);
     }
   });
 

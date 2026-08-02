@@ -71,13 +71,36 @@ function isAuthorized(request: Request): boolean {
 }
 
 // Baileys ACK ints/enums → our messages.status ladder (CHECK-constrained).
-function ackToStatus(status: unknown): 'sent' | 'delivered' | 'read' | null {
+//
+// ⚠️ `ERROR` (0) VIRA `failed`, e a ausência disso era um buraco caro: até
+// aqui o mapeador devolvia `null` para o erro, então uma mensagem que NÃO
+// chegou ao cliente ficava com ✓ para sempre. Como produção roda Evolution, na
+// prática o CRM nunca soube dizer "esta não foi entregue".
+//
+// ⚠️ NÃO confundir `ERROR`(0) com `PENDING`(1). São ints vizinhos com sentidos
+// opostos — 1 é "ainda em trânsito", e mapeá-lo para falha pintaria de vermelho
+// toda mensagem no primeiro instante de vida.
+function ackToStatus(
+  status: unknown,
+): 'sent' | 'delivered' | 'read' | 'failed' | null {
   const s = String(status).toUpperCase();
+  if (s === 'ERROR' || s === '0') return 'failed';
   if (s === 'SERVER_ACK' || s === '2') return 'sent';
   if (s === 'DELIVERY_ACK' || s === '3') return 'delivered';
   if (s === 'READ' || s === 'PLAYED' || s === '4' || s === '5') return 'read';
   return null;
 }
+
+/**
+ * Situações a partir das quais `failed` é crível.
+ *
+ * ⚠️ A escada de status é de mão única, e `failed` é um desvio terminal válido
+ * só no começo dela. Um `ERROR` que chegue DEPOIS de a mensagem ter sido
+ * entregue ou lida é ruído da Baileys — aplicá-lo pintaria de "não entregue"
+ * uma mensagem que o cliente comprovadamente leu. O lado Meta já tem essa
+ * guarda (`isValidStatusTransition`); aqui não tinha.
+ */
+const ACEITA_FALHA = ['sending', 'sent'] as const;
 
 interface EvolutionWebhookBody {
   event?: string;
@@ -325,11 +348,16 @@ export async function POST(request: Request) {
         // 'agent' é o envio manual do inbox; 'bot' é o que IA, flows e
         // automações gravam. Filtrar só por 'agent' deixava toda resposta
         // automática presa em "enviado", sem nunca virar entregue/lido.
-        const { error } = await supabaseAdmin()
+        let q = supabaseAdmin()
           .from('messages')
           .update({ status })
           .eq('message_id', d.keyId)
           .in('sender_type', ['agent', 'bot']);
+        // Ver `ACEITA_FALHA`: só marca falha o que ainda não passou de
+        // "enviado". O resto da escada continua sem guarda porque ela já é
+        // monotônica na prática (a Baileys não volta de READ para SENT).
+        if (status === 'failed') q = q.in('status', ACEITA_FALHA);
+        const { error } = await q;
         if (error) {
           console.error('[evolution/webhook] status update failed:', error);
           return;

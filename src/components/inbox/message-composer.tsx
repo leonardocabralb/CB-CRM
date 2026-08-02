@@ -67,10 +67,13 @@ import { validateInteractivePayload } from "@/lib/whatsapp/interactive";
 import type { InteractiveMessagePayload, QuickReply } from "@/types";
 import { QuickReplyPicker } from "./quick-reply-picker";
 import {
+  arredondarParaGrade,
   ATALHOS_DE_PRAZO,
+  CICLO_MINUTOS,
   comporHorario,
   daquiAHoras,
   hojeParaInput,
+  horaParaInput,
   type ChaveDeAtalho,
 } from "@/lib/scheduled/display";
 import {
@@ -1330,8 +1333,17 @@ export function MessageComposer({
                     <input
                       type="time"
                       value={horaAg}
+                      // ⚠️ `step` em SEGUNDOS. 900 = 15 min, e é o que faz o
+                      // seletor nativo oferecer só :00/:15/:30/:45 — a mesma
+                      // grade do ciclo do agendador.
+                      step={CICLO_MINUTOS * 60}
                       onChange={(e) => {
-                        setHoraAg(e.target.value);
+                        // Teclado ignora o `step`: quem digitar 21:37 tem o
+                        // valor subido para 21:45. Arredondar aqui evita
+                        // prometer uma precisão que o ciclo não entrega.
+                        const bruto = e.target.value;
+                        const composto = dataAg && bruto ? comporHorario(dataAg, bruto) : null;
+                        setHoraAg(composto ? horaParaInput(arredondarParaGrade(composto)) : bruto);
                         setAtalhoAtivo(null);
                       }}
                       aria-label={tAgendadas("time")}
@@ -1340,7 +1352,9 @@ export function MessageComposer({
                   </div>
                   {/* A promessa do ciclo de 1 minuto (P4.2), escrita na tela. */}
                   <p className="text-[11px] text-muted-foreground">
-                    {quandoAg ? tAgendadas("scheduleHint") : tAgendadas("schedulePick")}
+                    {quandoAg
+                      ? tAgendadas("scheduleHint", { min: CICLO_MINUTOS })
+                      : tAgendadas("schedulePick")}
                   </p>
                   {quandoAg && (
                     <button
