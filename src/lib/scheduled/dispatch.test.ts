@@ -35,6 +35,8 @@ interface Cfg {
   vencidas?: Record<string, unknown>[];
   /** Linhas que a recusa em bloco diz ter marcado. */
   atrasadas?: { id: string }[];
+  /** Linhas que o recolhedor de travadas diz ter marcado. */
+  travadas?: { id: string }[];
   /** Ids que a reivindicação CONSEGUE pegar. Ausente = pega todos. */
   reivindicaveis?: string[];
   /** Linha devolvida pela busca de `dispararUma`. */
@@ -49,6 +51,10 @@ function makeDb(cfg: Cfg) {
     if (op.verb === 'update') {
       updates.push(op);
       const status = op.payload?.status;
+      // O recolhedor é o único UPDATE que filtra por `status = 'sending'`.
+      if (status === 'failed' && op.eq.status === 'sending') {
+        return { data: cfg.travadas ?? [], error: null };
+      }
       if (status === 'failed' && op.lt) {
         return { data: cfg.atrasadas ?? [], error: null };
       }
@@ -150,7 +156,7 @@ describe('dispararVencidas', () => {
 
     const r = await dispararVencidas(db);
 
-    expect(r).toEqual({ enviadas: 1, falhas: 0, atrasadas: 0 });
+    expect(r).toEqual({ enviadas: 1, falhas: 0, atrasadas: 0, travadas: 0 });
     expect(enviar).toHaveBeenCalledTimes(1);
     const gravado = desfechos()[0].payload!;
     expect(gravado.status).toBe('sent');
@@ -208,7 +214,7 @@ describe('dispararVencidas', () => {
     const r = await dispararVencidas(db);
 
     expect(enviar).not.toHaveBeenCalled();
-    expect(r).toEqual({ enviadas: 0, falhas: 0, atrasadas: 0 });
+    expect(r).toEqual({ enviadas: 0, falhas: 0, atrasadas: 0, travadas: 0 });
     expect(desfechos()).toHaveLength(0);
   });
 
@@ -231,13 +237,62 @@ describe('dispararVencidas', () => {
     const r = await dispararVencidas(db, new Date('2026-08-01T12:00:00Z'));
 
     expect(r.atrasadas).toBe(2);
-    const recusa = updates[0];
+    // Achado pelo FILTRO, não pela posição: o recolhedor de travadas roda
+    // antes, e amarrar no índice quebra o teste sem nada ter quebrado.
+    const recusa = updates.find(
+      (u) => u.payload?.status === 'failed' && u.eq.status === 'pending',
+    )!;
+    expect(recusa).toBeDefined();
     expect(recusa.payload!.status).toBe('failed');
-    expect(recusa.eq.status).toBe('pending');
     // Uma hora antes do relógio informado. Sem esta linha, o conserto do
     // agendador depois de dias fora do ar despejaria a fila inteira de uma
     // vez — dezenas de "bom dia" às 2 da manhã.
     expect(recusa.lt).toEqual(['scheduled_for', '2026-08-01T11:00:00.000Z']);
+  });
+
+  it('⚠️ recolhe o que travou em `sending` — o único caminho de duplicata', async () => {
+    const { db, updates } = makeDb({
+      vencidas: [],
+      travadas: [{ id: 'presa-1' }],
+    });
+
+    const r = await dispararVencidas(db, new Date('2026-08-02T12:00:00Z'));
+
+    expect(r.travadas).toBe(1);
+    const recolher = updates.find((u) => u.eq.status === 'sending')!;
+    expect(recolher).toBeDefined();
+    expect(recolher.payload!.status).toBe('failed');
+    // ⚠️ SEMPRE incerta: o processo morreu depois de reivindicar, e ninguém
+    // sabe se foi antes ou depois de o WhatsApp aceitar. Sem isto, a tela
+    // ofereceria "Tentar de novo" e o cliente receberia duas vezes.
+    expect(recolher.payload!.entrega_incerta).toBe(true);
+    expect(String(recolher.payload!.error)).toMatch(/PODE ter chegado/);
+  });
+
+  it('o recolhimento usa janela de 10 min, acima da duração de um ciclo', async () => {
+    const { db, updates } = makeDb({ travadas: [] });
+
+    await dispararVencidas(db, new Date('2026-08-02T12:00:00Z'));
+
+    const recolher = updates.find((u) => u.eq.status === 'sending')!;
+    // 10 minutos antes do relógio informado. Tem de ficar ACIMA da duração
+    // máxima de um ciclo (~5 min), senão recolheria um envio em curso.
+    expect(recolher.lt).toEqual(['created_at', '2026-08-02T11:50:00.000Z']);
+  });
+
+  it('recolher travadas roda ANTES da recusa por atraso', async () => {
+    // Ordem load-bearing: quanto antes a travada virar `failed` visível,
+    // menor a janela em que alguém tenta consertar mexendo no banco.
+    const { db, updates } = makeDb({ travadas: [], atrasadas: [] });
+
+    await dispararVencidas(db);
+
+    const iRecolher = updates.findIndex((u) => u.eq.status === 'sending');
+    const iRecusa = updates.findIndex(
+      (u) => u.payload?.status === 'failed' && u.eq.status === 'pending',
+    );
+    expect(iRecolher).toBeGreaterThanOrEqual(0);
+    expect(iRecusa).toBeGreaterThan(iRecolher);
   });
 
   it('a busca do ciclo é limitada e ordenada pela hora marcada', async () => {
@@ -266,7 +321,7 @@ describe('dispararVencidas', () => {
 
     const r = await dispararVencidas(db);
 
-    expect(r).toEqual({ enviadas: 1, falhas: 1, atrasadas: 0 });
+    expect(r).toEqual({ enviadas: 1, falhas: 1, atrasadas: 0, travadas: 0 });
   });
 });
 

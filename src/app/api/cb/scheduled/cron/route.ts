@@ -63,9 +63,9 @@ export async function GET(request: Request) {
     }
     // Registrado no log só quando houve o que fazer — um ciclo por minuto,
     // 24h por dia, encheria o log de zeros e esconderia o que importa.
-    if (r.enviadas || r.falhas || r.atrasadas) {
+    if (r.enviadas || r.falhas || r.atrasadas || r.travadas) {
       console.log(
-        `[agendadas] ciclo: ${r.enviadas} enviada(s), ${r.falhas} falha(s), ${r.atrasadas} recusada(s) por atraso`,
+        `[agendadas] ciclo: ${r.enviadas} enviada(s), ${r.falhas} falha(s), ${r.atrasadas} recusada(s) por atraso, ${r.travadas} recolhida(s) de travamento`,
       );
     }
     return NextResponse.json(r);

@@ -52,6 +52,30 @@ const ATRASO_MAXIMO_MS = 60 * 60_000;
 /** Teto do texto do erro guardado — a coluna é `text` e sem limite. */
 const MAX_ERRO = 500;
 
+/**
+ * A partir de quantos minutos em `sending` a linha é dada como perdida.
+ *
+ * ⚠️ ISTO CONSERTA O ÚNICO CAMINHO DE MENSAGEM DUPLICADA QUE EXISTE.
+ * `sending` significa "o worker reivindicou e ainda não devolveu". Se o
+ * processo morre no meio — e ele morre A CADA PUBLICAÇÃO DE CÓDIGO, que
+ * reinicia o contêiner —, a linha ficava ali para sempre: a tela mostrava
+ * "Enviando", que parece progresso; o aviso de atraso não acendia (ele só
+ * olha `pending`); não havia botão; e a linha ainda travava a remoção daquela
+ * conexão de WhatsApp, com um erro que ninguém liga à causa. A saída que
+ * sobrava era alguém mexer no banco à mão para "destravar" — e aí TUDO que já
+ * tinha saído sairia de novo, para clientes do escritório.
+ *
+ * ⚠️ Dez minutos é folgado de propósito: um ciclo inteiro é limitado por 20
+ * envios, cada um com o tempo de espera do transporte (~15s), ou seja ~5
+ * minutos no pior caso. O número tem de ficar ACIMA disso, senão um ciclo
+ * lento recolheria uma linha que está sendo enviada NESTE instante.
+ *
+ * E o desfecho é sempre `entrega_incerta` (926): a mensagem PODE ter chegado
+ * ao cliente. A tela então mostra o motivo e NÃO oferece "Tentar de novo" —
+ * quem decide é gente, olhando a conversa.
+ */
+const TRAVADA_MINUTOS = 10;
+
 export interface ResultadoDoCiclo {
   /** Quantas saíram para o WhatsApp. */
   enviadas: number;
@@ -59,6 +83,8 @@ export interface ResultadoDoCiclo {
   falhas: number;
   /** Quantas foram recusadas por atraso, sem sequer tentar. */
   atrasadas: number;
+  /** Quantas estavam travadas em `sending` e foram recolhidas. */
+  travadas: number;
 }
 
 type LinhaAgendada = Pick<
@@ -92,6 +118,11 @@ export async function dispararVencidas(
   admin: SupabaseClient,
   agora: Date = new Date(),
 ): Promise<ResultadoDoCiclo> {
+  // ⚠️ PRIMEIRO recolhe o que travou, DEPOIS o resto. A ordem importa: uma
+  // linha travada em `sending` bloqueia a remoção da conexão e some da tela,
+  // e quanto mais cedo ela virar `failed` visível, menor a janela em que
+  // alguém tenta "consertar" mexendo no banco.
+  const travadas = await recolherTravadas(admin, agora);
   const atrasadas = await recusarAtrasadas(admin, agora);
 
   const { data, error } = await admin
@@ -118,7 +149,7 @@ export async function dispararVencidas(
     else falhas++;
   }
 
-  return { enviadas, falhas, atrasadas };
+  return { enviadas, falhas, atrasadas, travadas };
 }
 
 /**
@@ -167,6 +198,44 @@ export async function dispararUma(
     enviada: false,
     erro: (depois as { error?: string | null } | null)?.error ?? null,
   };
+}
+
+/**
+ * Recolhe as linhas presas em `sending` — ver `TRAVADA_MINUTOS`.
+ *
+ * ⚠️ Usa `created_at` como referência de tempo, e não um carimbo de quando a
+ * reivindicação aconteceu, porque esse carimbo não existe na 925. É uma
+ * aproximação SEGURA na direção certa: `created_at` é sempre ANTERIOR à
+ * reivindicação, então a conta superestima a idade e o recolhimento só pode
+ * acontecer mais tarde do que o necessário — nunca mais cedo, que é o lado
+ * que recolheria um envio em curso. Também exige que a hora marcada já tenha
+ * passado, porque `sending` antes dela é impossível.
+ */
+async function recolherTravadas(
+  admin: SupabaseClient,
+  agora: Date,
+): Promise<number> {
+  const limite = new Date(agora.getTime() - TRAVADA_MINUTOS * 60_000).toISOString();
+  const { data, error } = await admin
+    .from('cb_scheduled_messages')
+    .update({
+      status: 'failed',
+      // Sempre incerta: o processo morreu DEPOIS de reivindicar, e ninguém
+      // sabe se foi antes ou depois de o WhatsApp aceitar.
+      entrega_incerta: true,
+      error:
+        'O envio começou e não terminou — o CRM foi reiniciado no meio. A mensagem PODE ter chegado ao cliente: confira a conversa antes de enviar de novo.',
+    })
+    .eq('status', 'sending')
+    .lt('scheduled_for', limite)
+    .lt('created_at', limite)
+    .select('id');
+
+  if (error) {
+    console.error('[agendadas] recolher travadas falhou:', error.message);
+    return 0;
+  }
+  return (data ?? []).length;
 }
 
 /**
