@@ -7,8 +7,6 @@ import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { toast } from "sonner";
 import { ChannelCell } from "@/components/channels/channel-badge";
 import { ActivityHistory } from "@/components/lead-events/activity-history";
-import { ScheduledList } from "@/components/inbox/scheduled-list";
-import { useCan } from "@/hooks/use-can";
 import { cn } from "@/lib/utils";
 import type { Contact, Deal, ConversationNote, Tag } from "@/types";
 import {
@@ -43,23 +41,13 @@ interface ContactSidebarProps {
    * quando o atendente está lendo a ficha.
    */
   channelId?: string | null;
-  /** Muda quando o compositor agenda — a lista de agendadas se refaz (925). */
-  agendadasToken?: number;
 }
 
-export function ContactSidebar({
-  contact,
-  conversationId,
-  channelId,
-  agendadasToken,
-}: ContactSidebarProps) {
+export function ContactSidebar({ contact, conversationId, channelId }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
   const tCanais = useTranslations("Channels");
   const { channels } = useChannels();
-  // Agendar é enviar com hora marcada — mesma permissão. `viewer` vê a
-  // lista (a mensagem sai em nome do escritório) mas não mexe.
-  const podeAgendar = useCan("send-messages");
 
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -359,17 +347,6 @@ export function ContactSidebar({
               relevante para o atendimento, esta mostra tudo, inclusive
               exclusão de negócio e linhas retroativas. */}
           <ActivityHistory contactId={contact.id} />
-
-          {/* Divider */}
-          <div className="my-4 border-t border-border" />
-
-          {/* Mensagens agendadas desta conversa (925). É a ÚNICA tela onde
-              elas aparecem — não há lista global na v1. */}
-          <ScheduledList
-            conversationId={conversationId ?? null}
-            podeAgir={podeAgendar}
-            resyncToken={agendadasToken}
-          />
 
           {/* Divider */}
           <div className="my-4 border-t border-border" />

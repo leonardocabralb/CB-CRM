@@ -44,6 +44,23 @@ export function comporHorario(data: string, hora: string): Date | null {
   return composta;
 }
 
+/**
+ * Lê o valor de um `<input type="datetime-local">` (`2026-08-05T14:30`).
+ *
+ * ⚠️ Passa por `comporHorario` de propósito, em vez de entregar a string ao
+ * `new Date()`. O motor até acerta neste formato — string com hora e sem
+ * fuso é local por especificação —, mas a regra vira "depende do formato
+ * exato que o navegador devolveu": basta um `:00` de segundos a mais, ou um
+ * valor vindo de outro lugar sem hora, para cair na regra do date-only, que
+ * é UTC e no Brasil retrocede um dia. Um caminho só, testado, não tem essa
+ * borda.
+ */
+export function comporDeInputLocal(valor: string): Date | null {
+  const partes = valor.split('T');
+  if (partes.length !== 2) return null;
+  return comporHorario(partes[0], partes[1].slice(0, 5));
+}
+
 /** Data de hoje no formato do `<input type="date">`, em horário local. */
 export function hojeParaInput(agora: Date = new Date()): string {
   const mm = String(agora.getMonth() + 1).padStart(2, '0');

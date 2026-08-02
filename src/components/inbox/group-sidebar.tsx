@@ -15,10 +15,8 @@ import { toast } from "sonner";
 import { Users, RefreshCw, Pencil, Megaphone, ShieldCheck, Check, X } from "lucide-react";
 
 import type { CbGroup } from "@/types";
-import { useCan } from "@/hooks/use-can";
 import { useChannels } from "@/hooks/use-channels";
 import { nomeDoGrupo, podeRenomearNoWhatsApp } from "@/lib/cb-groups/display";
-import { ScheduledList } from "@/components/inbox/scheduled-list";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -29,21 +27,11 @@ interface GroupSidebarProps {
   grupo: CbGroup | null;
   /** Reflete no estado do pai o que a rota devolveu. */
   onGrupoAtualizado?: (patch: Partial<CbGroup>) => void;
-  /** Conversa aberta — a agendada é chaveada por ela (925). */
-  conversationId?: string | null;
-  /** Muda quando o compositor agenda; a lista se refaz. */
-  agendadasToken?: number;
 }
 
-export function GroupSidebar({
-  grupo,
-  onGrupoAtualizado,
-  conversationId,
-  agendadasToken,
-}: GroupSidebarProps) {
+export function GroupSidebar({ grupo, onGrupoAtualizado }: GroupSidebarProps) {
   const t = useTranslations("Inbox.groupSidebar");
   const { channels } = useChannels();
-  const podeAgendar = useCan("send-messages");
 
   const [editandoApelido, setEditandoApelido] = useState(false);
   const [apelido, setApelido] = useState("");
@@ -245,17 +233,6 @@ export function GroupSidebar({
               {sincronizando ? t("syncing") : t("syncAction")}
             </Button>
           </Secao>
-
-          {/* Agendadas (925). Grupo recebe agendada (P4.7) — a mensagem
-              marcada é ato de gente com hora marcada, não motor automático,
-              e a proibição de grupo vale só para automação/flow/IA. */}
-          <div className="mt-6">
-            <ScheduledList
-              conversationId={conversationId ?? null}
-              podeAgir={podeAgendar}
-              resyncToken={agendadasToken}
-            />
-          </div>
         </div>
       </ScrollArea>
     </div>

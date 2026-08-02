@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ScheduledMessage } from '@/types';
 import {
   clienteEscreveuDepois,
+  comporDeInputLocal,
   comporHorario,
   estaAtrasada,
   estaNaFila,
@@ -65,6 +66,31 @@ describe('comporHorario', () => {
     // 2028 é bissexto — 29/02 existe e tem de passar.
     expect(comporHorario('2028-02-29', '10:00')).not.toBeNull();
     expect(comporHorario('2026-02-29', '10:00')).toBeNull();
+  });
+});
+
+describe('comporDeInputLocal', () => {
+  it('lê o valor do campo nativo em horário local', () => {
+    const d = comporDeInputLocal('2026-08-05T14:30')!;
+    expect(d.getDate()).toBe(5);
+    expect(d.getHours()).toBe(14);
+    expect(d.getMinutes()).toBe(30);
+  });
+
+  it('aceita o formato com segundos, que alguns navegadores devolvem', () => {
+    const d = comporDeInputLocal('2026-08-05T14:30:00')!;
+    expect(d.getHours()).toBe(14);
+    expect(d.getMinutes()).toBe(30);
+  });
+
+  it('⚠️ recusa valor sem hora — é o caminho que vira meia-noite UTC', () => {
+    expect(comporDeInputLocal('2026-08-05')).toBeNull();
+    expect(comporDeInputLocal('')).toBeNull();
+    expect(comporDeInputLocal('2026-08-05T')).toBeNull();
+  });
+
+  it('recusa data impossível, como o `comporHorario`', () => {
+    expect(comporDeInputLocal('2026-02-31T10:00')).toBeNull();
   });
 });
 

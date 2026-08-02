@@ -248,8 +248,7 @@
       "saveNote": "Salvar Anotação",
       "noteSaveError": "Não foi possível salvar a anotação.",
       "noteMentionHint": "Digite @ para mencionar um colega",
-      "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou.",
-      "scheduleMessage": "Agendar mensagem"
+      "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou."
     },
     "bubble": {
       "groupMediaTap": "Toque para baixar",
@@ -388,18 +387,12 @@
     },
     "scheduled": {
       "sectionTitle": "Agendadas",
-      "loading": "Carregando…",
       "loadFailed": "Não deu para carregar as mensagens agendadas. Reabra a conversa.",
-      "empty": "Nada agendado nesta conversa.",
-      "scheduleTitle": "Agendar mensagem",
-      "message": "Mensagem",
-      "date": "Data",
-      "time": "Hora",
-      "schedule": "Agendar",
-      "cancel": "Cancelar",
-      "inThePast": "Essa hora já passou.",
-      "withinTheMinute": "Sai dentro do minuto escolhido.",
-      "willSendVia": "Sai pelo {channel}, dentro do minuto escolhido.",
+      "scheduleField": "Agendar — a mensagem sai dentro do minuto escolhido.",
+      "scheduleAction": "Agendar",
+      "scheduleHint": "Sai dentro do minuto escolhido.",
+      "scheduleInvalid": "Escolha uma data e hora válidas.",
+      "scheduleInThePast": "Essa hora já passou.",
       "scheduled": "Mensagem agendada.",
       "scheduleFailed": "Não deu para agendar a mensagem.",
       "scheduledBy": "Agendada por {name}",
@@ -409,13 +402,15 @@
       "status_failed": "Falhou",
       "overdue": "Passou da hora e não saiu — o agendador pode estar fora do ar.",
       "customerRepliedSince": "O cliente escreveu depois de isto ser agendado.",
-      "sendNow": "Enviar agora",
+      "sendNow": "Executar",
       "retry": "Tentar de novo",
       "sentNow": "Mensagem enviada.",
       "sendNowFailed": "Não deu para enviar a mensagem.",
+      "cancel": "Cancelar envio agendado",
       "cancelConfirm": "Cancelar este envio agendado? A mensagem não vai sair.",
       "canceled": "Envio agendado cancelado.",
-      "cancelFailed": "Não deu para cancelar o envio agendado."
+      "cancelFailed": "Não deu para cancelar o envio agendado.",
+      "schedulePick": "Escolha a data e a hora."
     }
   },
   "Contacts": {

@@ -248,8 +248,7 @@
       "saveNote": "Save Note",
       "noteSaveError": "Could not save the note.",
       "noteMentionHint": "Type @ to mention a teammate",
-      "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified.",
-      "scheduleMessage": "Schedule message"
+      "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified."
     },
     "bubble": {
       "groupMediaTap": "Tap to download",
@@ -388,18 +387,12 @@
     },
     "scheduled": {
       "sectionTitle": "Scheduled",
-      "loading": "Loading…",
       "loadFailed": "Couldn't load the scheduled messages. Reopen the conversation.",
-      "empty": "Nothing scheduled for this conversation.",
-      "scheduleTitle": "Schedule message",
-      "message": "Message",
-      "date": "Date",
-      "time": "Time",
-      "schedule": "Schedule",
-      "cancel": "Cancel",
-      "inThePast": "That time has already passed.",
-      "withinTheMinute": "It goes out within the minute you picked.",
-      "willSendVia": "It goes out through {channel}, within the minute you picked.",
+      "scheduleField": "Schedule — the message goes out within the minute you pick.",
+      "scheduleAction": "Schedule",
+      "scheduleHint": "It goes out within the minute you picked.",
+      "scheduleInvalid": "Pick a valid date and time.",
+      "scheduleInThePast": "That time has already passed.",
       "scheduled": "Message scheduled.",
       "scheduleFailed": "Couldn't schedule the message.",
       "scheduledBy": "Scheduled by {name}",
@@ -409,13 +402,15 @@
       "status_failed": "Failed",
       "overdue": "Past its time and still unsent — the scheduler may be down.",
       "customerRepliedSince": "The customer wrote after this was scheduled.",
-      "sendNow": "Send now",
+      "sendNow": "Run now",
       "retry": "Try again",
       "sentNow": "Message sent.",
       "sendNowFailed": "Couldn't send the message.",
+      "cancel": "Cancel scheduled send",
       "cancelConfirm": "Cancel this scheduled send? The message will not go out.",
       "canceled": "Scheduled send canceled.",
-      "cancelFailed": "Couldn't cancel the scheduled send."
+      "cancelFailed": "Couldn't cancel the scheduled send.",
+      "schedulePick": "Pick a date and time."
     }
   },
   "Contacts": {

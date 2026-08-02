@@ -79,14 +79,6 @@ function InboxPageInner() {
     }
   }, []);
 
-  // Agendou pelo compositor (925). O compositor e a ficha são irmãos na
-  // árvore: um contador aqui é o caminho mais curto entre os dois, e evita
-  // que a ficha fique dizendo "nada agendado" logo depois de alguém agendar.
-  const [agendadasToken, setAgendadasToken] = useState(0);
-  const handleScheduled = useCallback(() => {
-    setAgendadasToken((n) => n + 1);
-  }, []);
-
   const handleToggleContactPanel = useCallback(() => {
     setContactPanelOpen((prev) => {
       const next = !prev;
@@ -685,7 +677,6 @@ function InboxPageInner() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
-            onScheduled={handleScheduled}
           />
         </div>
 
@@ -701,15 +692,12 @@ function InboxPageInner() {
               <GroupSidebar
                 grupo={activeConversation.group ?? null}
                 onGrupoAtualizado={handleGroupUpdated}
-                conversationId={activeConversation.id}
-                agendadasToken={agendadasToken}
               />
             ) : (
               <ContactSidebar
                 contact={activeContact}
                 conversationId={activeConversation?.id ?? null}
                 channelId={activeConversation?.channel_id ?? null}
-                agendadasToken={agendadasToken}
               />
             )}
           </div>

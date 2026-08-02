@@ -24,6 +24,7 @@ import {
   Zap,
   StickyNote,
   Clock,
+  CalendarClock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -65,7 +66,7 @@ import {
 import { validateInteractivePayload } from "@/lib/whatsapp/interactive";
 import type { InteractiveMessagePayload, QuickReply } from "@/types";
 import { QuickReplyPicker } from "./quick-reply-picker";
-import { ScheduleDialog } from "./schedule-dialog";
+import { comporDeInputLocal } from "@/lib/scheduled/display";
 
 /** Media content types an agent can send from the composer. */
 export type ComposerMediaKind = "image" | "video" | "document" | "audio";
@@ -155,14 +156,8 @@ interface MessageComposerProps {
    */
   onNoteCreated?: (nota: ConversationNote) => void;
   /**
-   * Rótulo do número por onde a conversa responde. Só para MOSTRAR no
-   * diálogo de agendar — quem resolve o canal de verdade é o servidor, e
-   * ele grava o id. Null em conta de um número só.
-   */
-  channelLabel?: string | null;
-  /**
-   * Agendou uma mensagem (migration 925). O pai usa para mandar a ficha
-   * recarregar a lista.
+   * Agendou uma mensagem (migration 925). O pai usa para mandar a faixa
+   * AGENDADAS, logo acima, recarregar a lista.
    */
   onScheduled?: () => void;
 }
@@ -189,10 +184,12 @@ export function MessageComposer({
   replyTo,
   onClearReply,
   onNoteCreated,
-  channelLabel,
   onScheduled,
 }: MessageComposerProps) {
   const t = useTranslations("Inbox.composer");
+  // Namespace próprio: os textos de agendar são compartilhados com a
+  // faixa AGENDADAS, que é outro componente.
+  const tAgendadas = useTranslations("Inbox.scheduled");
 
   const [text, setText] = useState("");
   const [drafting, setDrafting] = useState(false);
@@ -261,10 +258,29 @@ export function MessageComposer({
   // mais é superfície de conflito no merge.
   const [anotando, setAnotando] = useState(false);
   const fecharNota = useCallback(() => setAnotando(false), []);
-  // Agendar (925). Só o "está aberto ou não" mora aqui, mesma razão da
-  // anotação: este arquivo é do upstream e cada linha nossa a mais é
-  // superfície de conflito no merge.
+  // Agendar (925). `quando` é o valor cru do `<input type="datetime-local">`
+  // ao lado do botão de enviar; preenchido, ele DESVIA o envio.
+  const [quando, setQuando] = useState("");
   const [agendando, setAgendando] = useState(false);
+  /**
+   * O campo de hora está à mostra?
+   *
+   * ⚠️ Ele NÃO fica sempre visível porque come a caixa de texto: com a ficha
+   * do contato aberta a linha do compositor tem ~576px, e um campo de 168px
+   * fixos derrubava a caixa de mensagem de ~348px para 180px — menor que o
+   * campo de data, na tela em que se escreve.
+   *
+   * ⚠️ E fechar LIMPA a hora, sempre. Hora guardada num campo escondido
+   * mudaria em silêncio o que o botão de enviar faz: o atendente digitaria
+   * uma resposta urgente, apertaria enviar e ela sairia amanhã.
+   */
+  const [agendarAberto, setAgendarAberto] = useState(false);
+  const alternarAgendar = useCallback(() => {
+    setAgendarAberto((v) => {
+      if (v) setQuando("");
+      return !v;
+    });
+  }, []);
   // Media (like free-form text) is only allowed inside the 24h window.
   const inputsDisabled = readOnly || sessionExpired;
 
@@ -384,9 +400,73 @@ export function MessageComposer({
     });
   }, [descartarTimer, adjustHeight]);
 
+  /**
+   * Agenda o texto para a hora do campo (925).
+   *
+   * ⚠️ Não encosta em `setPendente`, e isso é a regra inteira. A janela de
+   * desfazer tem TRÊS saídas que disparam na hora — trocar de conversa,
+   * desmontar o componente e apertar Enter de novo. Um "modo agendar" que
+   * passasse por ela mandaria em três segundos a mensagem marcada para
+   * amanhã, e o operador só descobriria pela resposta do cliente.
+   */
+  const agendar = useCallback(
+    async (texto: string) => {
+      const data = comporDeInputLocal(quando);
+      if (!data) {
+        toast.error(tAgendadas("scheduleInvalid"));
+        return;
+      }
+      if (data.getTime() <= Date.now()) {
+        toast.error(tAgendadas("scheduleInThePast"));
+        return;
+      }
+      setAgendando(true);
+      try {
+        const res = await fetch("/api/cb/scheduled", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversation_id: conversationId,
+            body: texto,
+            scheduled_for: data.toISOString(),
+          }),
+        });
+        const json = (await res.json()) as { error?: string };
+        if (!res.ok) {
+          toast.error(json.error ?? tAgendadas("scheduleFailed"));
+          return;
+        }
+        toast.success(tAgendadas("scheduled"));
+        // Limpa os dois: o campo de texto porque a mensagem já está
+        // comprometida (senão o operador manda a mesma coisa agora e de novo
+        // na hora marcada), e a hora porque o próximo envio tem de ser
+        // imediato por padrão — hora esquecida no campo transformaria uma
+        // resposta urgente em algo que sai amanhã.
+        setText("");
+        setQuando("");
+        setAgendarAberto(false);
+        if (textareaRef.current) textareaRef.current.style.height = "auto";
+        onScheduled?.();
+      } catch {
+        toast.error(tAgendadas("scheduleFailed"));
+      } finally {
+        setAgendando(false);
+      }
+    },
+    [quando, conversationId, onScheduled, tAgendadas],
+  );
+
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed || sessionExpired) return;
+
+    // ⚠️ DESVIO ANTES DE QUALQUER COISA. Com hora no campo, esta mensagem
+    // não passa pela janela de desfazer nem pelo despachante — vai para a
+    // fila e pronto. Ver a nota em `agendar`.
+    if (quando) {
+      await agendar(trimmed);
+      return;
+    }
 
     // Já havia uma esperando: ela vai AGORA, para a ordem das mensagens na
     // conversa do cliente ser a mesma em que foram escritas.
@@ -415,7 +495,7 @@ export function MessageComposer({
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [text, sessionExpired, replyTo?.id, liberarPendente]);
+  }, [text, sessionExpired, replyTo?.id, liberarPendente, quando, agendar]);
 
   // Trocar de conversa solta a pendente na hora.
   //
@@ -1047,28 +1127,6 @@ export function MessageComposer({
             )}
           </GatedButton>
 
-          {/* Agendar (925).
-              ⚠️ Abre um DIÁLOGO; NÃO é um modo do botão Enviar. A janela de
-              desfazer tem três saídas que disparam na hora (trocar de
-              conversa, desmontar, apertar Enter de novo) — um modo pendurado
-              no mesmo botão mandaria em três segundos a mensagem marcada
-              para amanhã. Este caminho não encosta no `setPendente`.
-              Usa `inputsDisabled` (e não só o papel) porque agendar É enviar
-              ao cliente, só que depois: fora da janela de 24h da Meta a
-              mensagem não sairia de qualquer jeito. */}
-          <GatedButton
-            variant="ghost"
-            size="sm"
-            canAct={!readOnly}
-            gateReason="send messages"
-            disabled={inputsDisabled}
-            title={readOnly ? undefined : t("scheduleMessage")}
-            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-            onClick={() => setAgendando(true)}
-          >
-            <Clock className="h-4 w-4" />
-          </GatedButton>
-
           {/* Anotação interna.
               ⚠️ NÃO usa `inputsDisabled`. Aquele sinalizador carrega o
               `sessionExpired`, que é a janela de 24h da Meta — regra de envio
@@ -1115,15 +1173,54 @@ export function MessageComposer({
             )}
           />
 
+          {/* Agendar (925) — abre a tira de hora logo abaixo, NÃO um
+              diálogo. O campo não fica nesta linha porque come a caixa de
+              texto: com a ficha aberta ela cai de 312px para 136px, e é
+              nela que se escreve.
+              ⚠️ `inputsDisabled` (e não só o papel): agendar É enviar ao
+              cliente, com atraso. Fora da janela de 24h da Meta a mensagem
+              não sairia de jeito nenhum. */}
+          {!readOnly && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={inputsDisabled}
+              title={tAgendadas("scheduleField")}
+              aria-label={tAgendadas("scheduleField")}
+              aria-pressed={agendarAberto}
+              onClick={alternarAgendar}
+              className={cn(
+                "h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground",
+                agendarAberto && "text-amber-600",
+              )}
+            >
+              <Clock className="h-4 w-4" />
+            </Button>
+          )}
+
           <GatedButton
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            disabled={!text.trim() || sessionExpired}
+            disabled={!text.trim() || sessionExpired || agendando}
             onClick={handleSend}
-            className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
+            // O rótulo muda junto com o campo: o mesmo botão faz coisas
+            // diferentes, e quem passa o mouse tem de saber qual.
+            title={quando ? tAgendadas("scheduleAction") : undefined}
+            className={cn(
+              "h-9 w-9 shrink-0 p-0 disabled:opacity-40",
+              quando
+                ? "bg-amber-500 hover:bg-amber-600"
+                : "bg-primary hover:bg-primary/90",
+            )}
           >
-            <Send className="h-4 w-4" />
+            {agendando ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : quando ? (
+              <CalendarClock className="h-4 w-4" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </GatedButton>
         </div>
       )}
@@ -1149,6 +1246,35 @@ export function MessageComposer({
             <span className="font-mono text-[10px]">{"</>"}</span>
           </BotaoFormato>
           <p className="ml-1 text-[10px] text-muted-foreground">{t("draftHint")}</p>
+        </div>
+      )}
+
+      {/* A tira de agendar (925). Linha própria porque na linha do
+          compositor o campo comeria a caixa de texto — ver a nota no
+          botão-relógio. Some junto com o botão quando o papel é só-leitura. */}
+      {!draft && !recording && !readOnly && agendarAberto && (
+        <div className="mt-1 flex items-center gap-2 pl-[5.5rem]">
+          <Clock className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+          <input
+            type="datetime-local"
+            value={quando}
+            min={minimoParaAgendar()}
+            onChange={(e) => setQuando(e.target.value)}
+            disabled={inputsDisabled}
+            autoFocus
+            aria-label={tAgendadas("scheduleField")}
+            className={cn(
+              "h-7 w-[10.5rem] shrink-0 rounded-lg border bg-muted px-2 text-xs text-foreground outline-none transition-colors",
+              quando ? "border-amber-500" : "border-border focus:border-primary/50",
+              inputsDisabled && "cursor-not-allowed opacity-50",
+            )}
+          />
+          {/* A promessa do ciclo de 1 minuto (P4.2), escrita na tela e não
+              só no tooltip — o botão de enviar mudou de função e isto é o
+              que diz, em palavras, o que ele vai fazer. */}
+          <p className="text-[10px] font-medium text-amber-600">
+            {quando ? tAgendadas("scheduleHint") : tAgendadas("schedulePick")}
+          </p>
         </div>
       )}
 
@@ -1195,20 +1321,22 @@ export function MessageComposer({
       {/* Agendar (925). Leva o texto que está no campo; agendar LIMPA o
           campo, do mesmo jeito que enviar — senão o operador manda a mesma
           coisa duas vezes, uma agora e outra na hora marcada. */}
-      <ScheduleDialog
-        open={agendando}
-        onOpenChange={setAgendando}
-        conversationId={conversationId}
-        textoInicial={text}
-        canalLabel={channelLabel}
-        onAgendada={() => {
-          setText("");
-          if (textareaRef.current) textareaRef.current.style.height = "auto";
-          onScheduled?.();
-        }}
-      />
     </div>
   );
+}
+
+/**
+ * Piso do `<input type="datetime-local">`: agora, em horário local.
+ *
+ * Impede escolher o passado no próprio campo, antes de qualquer viagem ao
+ * servidor. ⚠️ Montado por componentes locais — `toISOString()` daria UTC, e
+ * no Brasil o piso apareceria três horas à frente, escondendo o resto de
+ * hoje.
+ */
+function minimoParaAgendar(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 /**

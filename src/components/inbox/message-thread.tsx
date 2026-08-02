@@ -8,6 +8,7 @@ import { useChannels } from "@/hooks/use-channels";
 import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useCan } from "@/hooks/use-can";
+import { ScheduledBar } from "./scheduled-bar";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
 import {
   aplicarAssinatura,
@@ -145,11 +146,6 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
-  /**
-   * O compositor agendou uma mensagem (925). A thread só repassa: quem
-   * mostra a lista é a ficha, e ela é irmã desta na árvore.
-   */
-  onScheduled?: () => void;
 }
 
 function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
@@ -216,7 +212,6 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
-  onScheduled,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -591,6 +586,10 @@ export function MessageThread({
     recarregar: recarregarNotas,
   } = useConversationNotes(conversationId, resyncToken);
   const podeAdministrar = useCan("manage-members");
+  // Agendadas (925): a faixa acima do compositor e o compositor são
+  // irmãos aqui, então o contador que os liga mora nesta tela mesmo.
+  const podeEnviar = useCan("send-messages");
+  const [agendadasResync, setAgendadasResync] = useState(0);
 
   /**
    * ⚠️ Confere a conversa antes de pôr a anotação no fio.
@@ -1715,6 +1714,16 @@ export function MessageThread({
       />
       )}
 
+      {/* Faixa AGENDADAS (925), colada no compositor e dentro do fio.
+          ⚠️ Fica AQUI, e não na ficha lateral: quem abre a conversa precisa
+          esbarrar no que já está marcado ANTES de escrever, senão escreve
+          por cima e o cliente recebe duas. Some sozinha quando não há fila. */}
+      <ScheduledBar
+        conversationId={conversation.id}
+        podeAgir={podeEnviar}
+        resyncToken={agendadasResync}
+      />
+
       {/* Composer — canal Evolution não tem janela de 24h (sessionExpired
           neutralizado) nem templates/interativas (channelKind esconde). */}
       <MessageComposer
@@ -1728,11 +1737,7 @@ export function MessageThread({
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
         onNoteCreated={acrescentarNotaDaConversa}
-        // Só em conta com 2+ números: com um só, dizer "vai sair pelo
-        // 11 9xxxx" não informa nada e ocupa a linha que explica o ciclo
-        // de um minuto. Mesma regra do seletor de canal acima.
-        channelLabel={channels.length > 1 ? (activeChannel?.label ?? null) : null}
-        onScheduled={onScheduled}
+        onScheduled={() => setAgendadasResync((n) => n + 1)}
       />
 
       {/* Diálogo de edição. O WhatsApp só permite editar por ~15 minutos;
