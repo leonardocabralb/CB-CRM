@@ -248,7 +248,8 @@
       "saveNote": "Save Note",
       "noteSaveError": "Could not save the note.",
       "noteMentionHint": "Type @ to mention a teammate",
-      "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified."
+      "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified.",
+      "scheduleMessage": "Schedule message"
     },
     "bubble": {
       "groupMediaTap": "Tap to download",
@@ -384,6 +385,37 @@
       "confirmDelete": "Delete",
       "cancelDelete": "Cancel",
       "deleteFailed": "Could not delete the note."
+    },
+    "scheduled": {
+      "sectionTitle": "Scheduled",
+      "loading": "Loading…",
+      "loadFailed": "Couldn't load the scheduled messages. Reopen the conversation.",
+      "empty": "Nothing scheduled for this conversation.",
+      "scheduleTitle": "Schedule message",
+      "message": "Message",
+      "date": "Date",
+      "time": "Time",
+      "schedule": "Schedule",
+      "cancel": "Cancel",
+      "inThePast": "That time has already passed.",
+      "withinTheMinute": "It goes out within the minute you picked.",
+      "willSendVia": "It goes out through {channel}, within the minute you picked.",
+      "scheduled": "Message scheduled.",
+      "scheduleFailed": "Couldn't schedule the message.",
+      "scheduledBy": "Scheduled by {name}",
+      "status_pending": "Scheduled",
+      "status_sending": "Sending",
+      "status_sent": "Sent",
+      "status_failed": "Failed",
+      "overdue": "Past its time and still unsent — the scheduler may be down.",
+      "customerRepliedSince": "The customer wrote after this was scheduled.",
+      "sendNow": "Send now",
+      "retry": "Try again",
+      "sentNow": "Message sent.",
+      "sendNowFailed": "Couldn't send the message.",
+      "cancelConfirm": "Cancel this scheduled send? The message will not go out.",
+      "canceled": "Scheduled send canceled.",
+      "cancelFailed": "Couldn't cancel the scheduled send."
     }
   },
   "Contacts": {

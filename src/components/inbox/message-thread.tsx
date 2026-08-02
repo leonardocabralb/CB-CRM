@@ -145,6 +145,11 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  /**
+   * O compositor agendou uma mensagem (925). A thread só repassa: quem
+   * mostra a lista é a ficha, e ela é irmã desta na árvore.
+   */
+  onScheduled?: () => void;
 }
 
 function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
@@ -211,6 +216,7 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  onScheduled,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -1722,6 +1728,11 @@ export function MessageThread({
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
         onNoteCreated={acrescentarNotaDaConversa}
+        // Só em conta com 2+ números: com um só, dizer "vai sair pelo
+        // 11 9xxxx" não informa nada e ocupa a linha que explica o ciclo
+        // de um minuto. Mesma regra do seletor de canal acima.
+        channelLabel={channels.length > 1 ? (activeChannel?.label ?? null) : null}
+        onScheduled={onScheduled}
       />
 
       {/* Diálogo de edição. O WhatsApp só permite editar por ~15 minutos;

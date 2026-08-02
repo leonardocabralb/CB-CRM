@@ -162,6 +162,37 @@ export async function DELETE(
       return NextResponse.json({ error: 'Canal não encontrado.' }, { status: 404 });
     }
 
+    // ---- Mensagens agendadas nesta conexão (925) ----
+    //
+    // ⚠️ TEM de vir ANTES de qualquer passo destrutivo. A FK
+    // `cb_scheduled_messages_canal_fkey` é RESTRICT, então o DELETE lá
+    // embaixo estouraria de qualquer forma — mas àquela altura a instância
+    // da Evolution já foi destruída e o canal padrão já foi promovido. O
+    // operador ficaria com a conta remexida e um erro de banco cru na tela.
+    //
+    // Só a FILA barra. Enviadas e falhadas são acervo, e são apagadas junto
+    // com a conexão logo abaixo — a mensagem em si continua em `messages`.
+    const { count: naFila, error: filaErr } = await ctx.supabase
+      .from('cb_scheduled_messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('channel_id', id)
+      .eq('account_id', ctx.accountId)
+      .in('status', ['pending', 'sending']);
+
+    if (filaErr) {
+      console.error('[cb/channels DELETE] contagem de agendadas falhou:', filaErr.message);
+      return NextResponse.json({ error: 'Falha ao remover o canal.' }, { status: 500 });
+    }
+    if ((naFila ?? 0) > 0) {
+      return NextResponse.json(
+        {
+          error: `Há ${naFila} mensagem(ns) agendada(s) para sair por esta conexão. Envie ou cancele essas mensagens antes de removê-la.`,
+          code: 'scheduled_pending',
+        },
+        { status: 409 },
+      );
+    }
+
     /** Espelho whatsapp_config ficou para trás na promoção do sucessor. */
     let mirrorWarning: string | null = null;
 
@@ -265,6 +296,21 @@ export async function DELETE(
         '[cb/channels DELETE] falha ao soltar o pino das conversas:',
         unpinError.message,
       );
+    }
+
+    // Acervo de agendadas desta conexão. A FK é RESTRICT — a fila já foi
+    // barrada lá em cima, e o que sobrou (enviadas/falhadas) é registro de
+    // fila, não a mensagem: essa continua em `messages`. Apagar aqui, de
+    // forma explícita, é o que permite RESTRICT ser a garantia forte para a
+    // fila sem tornar a conexão indelével para sempre.
+    const { error: acervoErr } = await ctx.supabase
+      .from('cb_scheduled_messages')
+      .delete()
+      .eq('channel_id', id)
+      .eq('account_id', ctx.accountId);
+    if (acervoErr) {
+      console.error('[cb/channels DELETE] acervo de agendadas:', acervoErr.message);
+      return NextResponse.json({ error: 'Falha ao remover o canal.' }, { status: 500 });
     }
 
     const { error } = await ctx.supabase

@@ -23,6 +23,7 @@ import {
   MessageSquareDashed,
   Zap,
   StickyNote,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -64,6 +65,7 @@ import {
 import { validateInteractivePayload } from "@/lib/whatsapp/interactive";
 import type { InteractiveMessagePayload, QuickReply } from "@/types";
 import { QuickReplyPicker } from "./quick-reply-picker";
+import { ScheduleDialog } from "./schedule-dialog";
 
 /** Media content types an agent can send from the composer. */
 export type ComposerMediaKind = "image" | "video" | "document" | "audio";
@@ -152,6 +154,17 @@ interface MessageComposerProps {
    * quem escreve precisa ver o que escreveu na hora.
    */
   onNoteCreated?: (nota: ConversationNote) => void;
+  /**
+   * Rótulo do número por onde a conversa responde. Só para MOSTRAR no
+   * diálogo de agendar — quem resolve o canal de verdade é o servidor, e
+   * ele grava o id. Null em conta de um número só.
+   */
+  channelLabel?: string | null;
+  /**
+   * Agendou uma mensagem (migration 925). O pai usa para mandar a ficha
+   * recarregar a lista.
+   */
+  onScheduled?: () => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -176,6 +189,8 @@ export function MessageComposer({
   replyTo,
   onClearReply,
   onNoteCreated,
+  channelLabel,
+  onScheduled,
 }: MessageComposerProps) {
   const t = useTranslations("Inbox.composer");
 
@@ -246,6 +261,10 @@ export function MessageComposer({
   // mais é superfície de conflito no merge.
   const [anotando, setAnotando] = useState(false);
   const fecharNota = useCallback(() => setAnotando(false), []);
+  // Agendar (925). Só o "está aberto ou não" mora aqui, mesma razão da
+  // anotação: este arquivo é do upstream e cada linha nossa a mais é
+  // superfície de conflito no merge.
+  const [agendando, setAgendando] = useState(false);
   // Media (like free-form text) is only allowed inside the 24h window.
   const inputsDisabled = readOnly || sessionExpired;
 
@@ -1028,6 +1047,28 @@ export function MessageComposer({
             )}
           </GatedButton>
 
+          {/* Agendar (925).
+              ⚠️ Abre um DIÁLOGO; NÃO é um modo do botão Enviar. A janela de
+              desfazer tem três saídas que disparam na hora (trocar de
+              conversa, desmontar, apertar Enter de novo) — um modo pendurado
+              no mesmo botão mandaria em três segundos a mensagem marcada
+              para amanhã. Este caminho não encosta no `setPendente`.
+              Usa `inputsDisabled` (e não só o papel) porque agendar É enviar
+              ao cliente, só que depois: fora da janela de 24h da Meta a
+              mensagem não sairia de qualquer jeito. */}
+          <GatedButton
+            variant="ghost"
+            size="sm"
+            canAct={!readOnly}
+            gateReason="send messages"
+            disabled={inputsDisabled}
+            title={readOnly ? undefined : t("scheduleMessage")}
+            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+            onClick={() => setAgendando(true)}
+          >
+            <Clock className="h-4 w-4" />
+          </GatedButton>
+
           {/* Anotação interna.
               ⚠️ NÃO usa `inputsDisabled`. Aquele sinalizador carrega o
               `sessionExpired`, que é a janela de 24h da Meta — regra de envio
@@ -1149,6 +1190,22 @@ export function MessageComposer({
         open={quickReplyOpen}
         onOpenChange={setQuickReplyOpen}
         onPick={handlePickQuickReply}
+      />
+
+      {/* Agendar (925). Leva o texto que está no campo; agendar LIMPA o
+          campo, do mesmo jeito que enviar — senão o operador manda a mesma
+          coisa duas vezes, uma agora e outra na hora marcada. */}
+      <ScheduleDialog
+        open={agendando}
+        onOpenChange={setAgendando}
+        conversationId={conversationId}
+        textoInicial={text}
+        canalLabel={channelLabel}
+        onAgendada={() => {
+          setText("");
+          if (textareaRef.current) textareaRef.current.style.height = "auto";
+          onScheduled?.();
+        }}
       />
     </div>
   );

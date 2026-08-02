@@ -248,7 +248,8 @@
       "saveNote": "Salvar Anotação",
       "noteSaveError": "Não foi possível salvar a anotação.",
       "noteMentionHint": "Digite @ para mencionar um colega",
-      "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou."
+      "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou.",
+      "scheduleMessage": "Agendar mensagem"
     },
     "bubble": {
       "groupMediaTap": "Toque para baixar",
@@ -384,6 +385,37 @@
       "confirmDelete": "Excluir",
       "cancelDelete": "Cancelar",
       "deleteFailed": "Não foi possível excluir a anotação."
+    },
+    "scheduled": {
+      "sectionTitle": "Agendadas",
+      "loading": "Carregando…",
+      "loadFailed": "Não deu para carregar as mensagens agendadas. Reabra a conversa.",
+      "empty": "Nada agendado nesta conversa.",
+      "scheduleTitle": "Agendar mensagem",
+      "message": "Mensagem",
+      "date": "Data",
+      "time": "Hora",
+      "schedule": "Agendar",
+      "cancel": "Cancelar",
+      "inThePast": "Essa hora já passou.",
+      "withinTheMinute": "Sai dentro do minuto escolhido.",
+      "willSendVia": "Sai pelo {channel}, dentro do minuto escolhido.",
+      "scheduled": "Mensagem agendada.",
+      "scheduleFailed": "Não deu para agendar a mensagem.",
+      "scheduledBy": "Agendada por {name}",
+      "status_pending": "Agendada",
+      "status_sending": "Enviando",
+      "status_sent": "Enviada",
+      "status_failed": "Falhou",
+      "overdue": "Passou da hora e não saiu — o agendador pode estar fora do ar.",
+      "customerRepliedSince": "O cliente escreveu depois de isto ser agendado.",
+      "sendNow": "Enviar agora",
+      "retry": "Tentar de novo",
+      "sentNow": "Mensagem enviada.",
+      "sendNowFailed": "Não deu para enviar a mensagem.",
+      "cancelConfirm": "Cancelar este envio agendado? A mensagem não vai sair.",
+      "canceled": "Envio agendado cancelado.",
+      "cancelFailed": "Não deu para cancelar o envio agendado."
     }
   },
   "Contacts": {
