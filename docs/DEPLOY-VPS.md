@@ -124,7 +124,7 @@ o laço engole erro de curl de propósito (para o CRM reiniciando não derrubar
 o agendador):
 
 ```bash
-# Tem de responder {"enviadas":0,"falhas":0,"atrasadas":0}
+# Tem de responder {"enviadas":0,"falhas":0,"atrasadas":0,"travadas":0}
 docker run --rm --network CBAdvNet curlimages/curl:8.11.1 \
   -sS -H "x-cron-secret: $AUTOMATION_CRON_SECRET" \
   http://crm_crm:3000/api/cb/scheduled/cron

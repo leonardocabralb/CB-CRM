@@ -269,15 +269,38 @@ describe('dispararVencidas', () => {
     expect(String(recolher.payload!.error)).toMatch(/PODE ter chegado/);
   });
 
-  it('o recolhimento usa janela de 10 min, acima da duração de um ciclo', async () => {
+  it('⚠️ o recolhimento mede pelo CARIMBO da reivindicação, não por outra coluna', async () => {
     const { db, updates } = makeDb({ travadas: [] });
 
     await dispararVencidas(db, new Date('2026-08-02T12:00:00Z'));
 
     const recolher = updates.find((u) => u.eq.status === 'sending')!;
-    // 10 minutos antes do relógio informado. Tem de ficar ACIMA da duração
-    // máxima de um ciclo (~5 min), senão recolheria um envio em curso.
-    expect(recolher.lt).toEqual(['created_at', '2026-08-02T11:50:00.000Z']);
+    // ⚠️ `sending_desde` (928), e nenhuma outra. As duas colunas que eu tinha
+    // usado antes erram para lados opostos: `created_at` recolheria um envio
+    // EM CURSO, e `scheduled_for` deixaria a linha de "Executar agora"
+    // travada até a data marcada — que pode ser daqui a 30 dias.
+    expect(recolher.lt).toEqual(['sending_desde', '2026-08-02T11:50:00.000Z']);
+  });
+
+  it('⚠️ reivindicar CARIMBA a hora — sem isso o recolhimento fica cego', async () => {
+    const { db, updates } = makeDb({ vencidas: [LINHA] });
+
+    await dispararVencidas(db);
+
+    const claim = updates.find((u) => u.payload?.status === 'sending')!;
+    expect(typeof claim.payload!.sending_desde).toBe('string');
+  });
+
+  it('a linha reivindicada por "Executar agora" também é carimbada', async () => {
+    // Era o buraco: `dispararUma` reivindica sem olhar `scheduled_for`, então
+    // a linha marcada para daqui a 30 dias ficava fora de qualquer janela de
+    // recolhimento baseada naquela coluna.
+    const { db, updates } = makeDb({ uma: LINHA });
+
+    await dispararUma(db, 'conta-1', 'ag-1');
+
+    const claim = updates.find((u) => u.payload?.status === 'sending')!;
+    expect(typeof claim.payload!.sending_desde).toBe('string');
   });
 
   it('recolher travadas roda ANTES da recusa por atraso', async () => {

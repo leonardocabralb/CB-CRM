@@ -409,7 +409,7 @@
     "scheduled": {
       "sectionTitle": "Scheduled",
       "loadFailed": "Couldn't load the scheduled messages. Reopen the conversation.",
-      "scheduleField": "Schedule — the message goes out within the minute you pick.",
+      "scheduleField": "Schedule — the message goes out within {min} minutes of the time you pick.",
       "scheduleAction": "Schedule",
       "scheduleHint": "It goes out within {min} minutes of the time you picked.",
       "scheduleInvalid": "Pick a valid date and time.",

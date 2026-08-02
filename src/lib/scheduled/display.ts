@@ -176,6 +176,15 @@ export function clienteEscreveuDepois(
 }
 
 /**
+ * Folga antes de acusar atraso numa linha. Dois ciclos mais um respiro — o
+ * mesmo critério do indicador do cabeçalho.
+ *
+ * ⚠️ Mora aqui, e não em `saude.ts`, para não criar dependência circular:
+ * `saude.ts` já importa deste arquivo.
+ */
+export const TOLERANCIA_ATRASO_MS = (CICLO_MINUTOS * 2 + 5) * 60_000;
+
+/**
  * Passou da hora e ninguém mandou? Enquanto isso for verdade, o agendador
  * não está rodando — e é a única pista que o operador tem disso.
  *
@@ -183,13 +192,22 @@ export function clienteEscreveuDepois(
  * linhas ficam eternamente "Agendada para as 9h", e a mensagem nunca sai. É
  * exatamente o que aconteceu com o cron das automações neste projeto, onde
  * ninguém percebeu por semanas.
+ *
+ * ⚠️ MAS COM TOLERÂNCIA, e isso é metade da função. O ciclo é de 15 minutos e
+ * não anda alinhado ao relógio de parede, então TODA agendada saudável passa
+ * alguns minutos com a hora vencida. Sem folga, o aviso "o agendador pode
+ * estar fora do ar" aparecia em todo agendamento, todo dia — e alarme falso
+ * treina o operador a ignorar exatamente o aviso que importa. É a mesma
+ * política do indicador do cabeçalho (`TOLERANCIA_MINUTOS` em `saude.ts`),
+ * que aqui não tinha sido aplicada.
  */
 export function estaAtrasada(
   agendada: Pick<ScheduledMessage, 'scheduled_for' | 'status'>,
   agora: Date = new Date(),
 ): boolean {
   if (agendada.status !== 'pending') return false;
-  return new Date(agendada.scheduled_for).getTime() < agora.getTime();
+  const atrasoMs = agora.getTime() - new Date(agendada.scheduled_for).getTime();
+  return atrasoMs > TOLERANCIA_ATRASO_MS;
 }
 
 /**

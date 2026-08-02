@@ -453,7 +453,13 @@ export function MessageBubble({
           // segue achando que respondeu. A mensagem que falhou tem de ser
           // impossível de confundir com uma que saiu — daí a bolha inteira
           // mudar, e não só o ✓.
-          naoEntregue && "bg-destructive/10 text-foreground ring-2 ring-destructive/60",
+          // ⚠️ `[&_*]:!text-foreground` porque os filhos (hora, rótulo de
+          // canal, nome do remetente) carregam `text-primary-foreground`
+          // condicionado a `isAgent` — que continua verdadeiro aqui. Trocar só
+          // o fundo do contêiner deixava texto claro sobre fundo claro, ilegível
+          // no tema claro. A exceção é o próprio aviso, que é vermelho.
+          naoEntregue &&
+            "bg-destructive/10 text-foreground ring-2 ring-destructive/60 [&_*:not(.aviso-falha):not(.aviso-falha_*)]:!text-foreground",
         )}
       >
         {remetente && (
@@ -617,7 +623,7 @@ export function MessageBubble({
             não alcança quem não distingue vermelho. A frase é a única coisa
             que faz o operador entender que precisa mandar de novo. */}
         {naoEntregue && (
-          <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-destructive">
+          <p className="aviso-falha mt-1 flex items-center gap-1 text-[11px] font-medium !text-destructive">
             <XCircle className="h-3 w-3 shrink-0" />
             {t("naoEntregue")}
           </p>

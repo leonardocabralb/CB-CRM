@@ -26,9 +26,12 @@ import type { ScheduledMessage } from '@/types';
  * Quantas linhas um ciclo processa.
  *
  * Cada uma é uma chamada de rede à Meta/Evolution — o teto existe para o
- * ciclo caber no orçamento de uma requisição, não porque haja volume. Com
- * ciclo de 1 minuto isto são 1.200 mensagens por hora, folgado para o uso
- * real de um escritório.
+ * ciclo caber no orçamento de uma requisição, não porque haja volume. Com o
+ * ciclo de 15 minutos isto são 80 mensagens por hora. Folgado para o uso real
+ * (o pico histórico desta conta é 25 mensagens de atendente numa hora, e só
+ * se agenda uma por vez, à mão), mas é MENOS folga do que o ciclo de 1 minuto
+ * dava — se um dia houver criação em lote de agendadas, este número tem de
+ * subir junto.
  */
 const POR_CICLO = 20;
 
@@ -203,13 +206,16 @@ export async function dispararUma(
 /**
  * Recolhe as linhas presas em `sending` — ver `TRAVADA_MINUTOS`.
  *
- * ⚠️ Usa `created_at` como referência de tempo, e não um carimbo de quando a
- * reivindicação aconteceu, porque esse carimbo não existe na 925. É uma
- * aproximação SEGURA na direção certa: `created_at` é sempre ANTERIOR à
- * reivindicação, então a conta superestima a idade e o recolhimento só pode
- * acontecer mais tarde do que o necessário — nunca mais cedo, que é o lado
- * que recolheria um envio em curso. Também exige que a hora marcada já tenha
- * passado, porque `sending` antes dela é impossível.
+ * ⚠️ Mede pelo carimbo de reivindicação (`sending_desde`, 928) — a única
+ * medida correta. As duas aproximações que eu tinha usado antes erravam para
+ * lados opostos: `created_at` é anterior demais (recolheria envio EM CURSO) e
+ * `scheduled_for` não vale para "Executar agora" (a linha marcada para daqui
+ * a 30 dias ficaria travada por 30 dias). Ver a migration 928.
+ *
+ * ⚠️ `sending_desde` nulo com status `sending` não existe: a 928 carimbou o
+ * que havia e `reivindicar` carimba daqui em diante. O filtro por nulo NÃO é
+ * acrescentado de propósito — uma linha assim seria um defeito, e escondê-la
+ * do recolhimento é o que criou este problema em primeiro lugar.
  */
 async function recolherTravadas(
   admin: SupabaseClient,
@@ -227,8 +233,7 @@ async function recolherTravadas(
         'O envio começou e não terminou — o CRM foi reiniciado no meio. A mensagem PODE ter chegado ao cliente: confira a conversa antes de enviar de novo.',
     })
     .eq('status', 'sending')
-    .lt('scheduled_for', limite)
-    .lt('created_at', limite)
+    .lt('sending_desde', limite)
     .select('id');
 
   if (error) {
@@ -277,7 +282,10 @@ async function reivindicar(
 ): Promise<boolean> {
   let q = admin
     .from('cb_scheduled_messages')
-    .update({ status: 'sending' })
+    // ⚠️ O carimbo (928) é o que torna o recolhimento correto. Sem ele a
+    // idade do travamento só podia ser estimada, e as duas estimativas
+    // possíveis erravam para lados opostos — ver a migration.
+    .update({ status: 'sending', sending_desde: new Date().toISOString() })
     .eq('id', id)
     .in('status', de);
   // O `select` anterior já filtrou por conta, mas quem lê esta função não vê

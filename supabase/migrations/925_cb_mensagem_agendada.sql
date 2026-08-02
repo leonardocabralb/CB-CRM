@@ -114,7 +114,7 @@ COMMENT ON COLUMN cb_scheduled_messages.status IS
 CREATE INDEX IF NOT EXISTS cb_scheduled_messages_conversa_idx
   ON cb_scheduled_messages (conversation_id, account_id, scheduled_for);
 
--- A consulta do worker, que roda a cada minuto e atravessa TODAS as contas.
+-- A consulta do worker, que roda a cada ciclo e atravessa TODAS as contas.
 -- Parcial porque `sent` e `failed` são o acervo que só cresce, e ele não
 -- interessa a quem procura o que está vencendo.
 CREATE INDEX IF NOT EXISTS cb_scheduled_messages_vencendo_idx

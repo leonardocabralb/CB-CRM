@@ -1153,7 +1153,7 @@ Duas passadas sobre o conjunto das fases entregues, procurando o que escapou fas
 | # | Pergunta | ➡️ Recomendação | Resposta |
 | --- | --- | --- | --- |
 | 🚧 **P4.1** | **Quem chama a rota de disparo?** Não existe agendador nenhum | Cron na VPS batendo no endpoint com `x-cron-secret` — a VPS já existe, o segredo já é padrão do projeto, sem jitter do GitHub Actions nem extensão no Postgres gerenciado | ✅ Cron na VPS com `x-cron-secret` |
-| P4.2 | Que granularidade prometer? | Ciclo de 1 minuto e prometer "no minuto", escrito na tela | ✅ 1 minuto |
+| P4.2 | Que granularidade prometer? | Ciclo de 1 minuto e prometer "no minuto", escrito na tela | ⚠️ **REVISTO em 2026-08-02: 15 minutos.** O operador trocou para reduzir carga de servidor. A tela arredonda para a grade de 15 min e promete "sai em até 15 minutos". Ver `CICLO_MINUTOS` |
 | P4.3 | Sai pelo número **escolhido** ou pelo que a conversa usar na hora? | **Fixar**, gravar `channel_id`, mostrar no card, e **falhar fechado** se o canal sumiu | ✅ Fixar + falhar fechado |
 | P4.4 | E se o cliente responder antes da hora? | Sai assim mesmo na v1, mas **destacar na aba** as agendadas cujo contato escreveu depois | ✅ Sai, mas destaca na aba |
 | P4.5 | O disparo **pausa** automações/fluxos como o envio manual? | **Não** — a pausa existe porque "tem gente aqui agora"; passar sinalizador em vez de herdar | ✅ Não pausa |

@@ -409,7 +409,7 @@
     "scheduled": {
       "sectionTitle": "Agendadas",
       "loadFailed": "Não deu para carregar as mensagens agendadas. Reabra a conversa.",
-      "scheduleField": "Agendar — a mensagem sai dentro do minuto escolhido.",
+      "scheduleField": "Agendar — a mensagem sai em até {min} minutos depois da hora escolhida.",
       "scheduleAction": "Agendar",
       "scheduleHint": "Sai em até {min} minutos depois da hora escolhida.",
       "scheduleInvalid": "Escolha uma data e hora válidas.",

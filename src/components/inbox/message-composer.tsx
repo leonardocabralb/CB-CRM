@@ -1254,7 +1254,7 @@ export function MessageComposer({
                 <button
                   type="button"
                   onClick={() => setSeletorAberto(true)}
-                  title={tAgendadas("scheduleField")}
+                  title={tAgendadas("scheduleField", { min: CICLO_MINUTOS })}
                   className="inline-flex h-9 shrink-0 items-center gap-1 rounded-xl border border-amber-500 bg-amber-500/10 px-2 text-[11px] font-medium text-amber-700 dark:text-amber-400"
                 >
                   {quandoAg.toLocaleString(undefined, {
@@ -1282,8 +1282,8 @@ export function MessageComposer({
               <Popover open={seletorAberto} onOpenChange={abrirSeletor}>
                 <PopoverTrigger
                   disabled={inputsDisabled}
-                  title={tAgendadas("scheduleField")}
-                  aria-label={tAgendadas("scheduleField")}
+                  title={tAgendadas("scheduleField", { min: CICLO_MINUTOS })}
+                  aria-label={tAgendadas("scheduleField", { min: CICLO_MINUTOS })}
                   className={cn(
                     "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
                     quandoAg && "text-amber-600",
@@ -1341,16 +1341,29 @@ export function MessageComposer({
                         // Teclado ignora o `step`: quem digitar 21:37 tem o
                         // valor subido para 21:45. Arredondar aqui evita
                         // prometer uma precisão que o ciclo não entrega.
+                        //
+                        // ⚠️ E a DATA anda junto. Arredondar 23:50 dá 00:00 do
+                        // dia SEGUINTE; gravando só a hora, o par virava
+                        // "00:00 de hoje" — ou seja, a escolha da pessoa
+                        // pulava para o passado e o servidor recusava com
+                        // "essa hora já passou", sem ela entender por quê.
                         const bruto = e.target.value;
                         const composto = dataAg && bruto ? comporHorario(dataAg, bruto) : null;
-                        setHoraAg(composto ? horaParaInput(arredondarParaGrade(composto)) : bruto);
+                        if (!composto) {
+                          setHoraAg(bruto);
+                        } else {
+                          const arredondado = arredondarParaGrade(composto);
+                          setHoraAg(horaParaInput(arredondado));
+                          setDataAg(hojeParaInput(arredondado));
+                        }
                         setAtalhoAtivo(null);
                       }}
                       aria-label={tAgendadas("time")}
                       className="h-9 w-[5.5rem] rounded-lg border border-border bg-muted px-2 text-xs text-foreground outline-none focus:border-primary/50"
                     />
                   </div>
-                  {/* A promessa do ciclo de 1 minuto (P4.2), escrita na tela. */}
+                  {/* A promessa do ciclo (P4.2, hoje 15 min), escrita na tela e presa
+                      à mesma constante que o agendador usa. */}
                   <p className="text-[11px] text-muted-foreground">
                     {quandoAg
                       ? tAgendadas("scheduleHint", { min: CICLO_MINUTOS })

@@ -110,7 +110,7 @@ services:
       # ⚠️ UMA réplica, e não é detalhe de custo. Duas fariam dois ciclos
       # simultâneos; a reivindicação em dois passos (`UPDATE … WHERE status
       # = 'pending'`) impede o envio dobrado, mas não há motivo para
-      # depender dela todo minuto.
+      # depender dela a cada ciclo.
       replicas: 1
       restart_policy:
         condition: any

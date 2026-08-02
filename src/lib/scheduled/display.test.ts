@@ -14,6 +14,7 @@ import {
   horaParaInput,
   ordenarParaTela,
   podeDispararAgora,
+  TOLERANCIA_ATRASO_MS,
 } from './display';
 
 function ag(over: Partial<ScheduledMessage> = {}): ScheduledMessage {
@@ -233,10 +234,11 @@ describe('clienteEscreveuDepois', () => {
 });
 
 describe('estaAtrasada', () => {
-  it('passou da hora e continua pendente = o agendador não está rodando', () => {
-    expect(
-      estaAtrasada(ag(), new Date('2026-08-05T18:00:00.000Z')),
-    ).toBe(true);
+  it('passou MUITO da hora e continua pendente = o agendador não está rodando', () => {
+    // A hora marcada é 17:30. 18:00 (30 min) ainda está DENTRO da folga de
+    // 35; 19:00 (90 min) não tem desculpa — o ciclo é de 15 minutos.
+    expect(estaAtrasada(ag(), new Date('2026-08-05T18:00:00.000Z'))).toBe(false);
+    expect(estaAtrasada(ag(), new Date('2026-08-05T19:00:00.000Z'))).toBe(true);
   });
 
   it('antes da hora não está atrasada', () => {
@@ -245,17 +247,33 @@ describe('estaAtrasada', () => {
     ).toBe(false);
   });
 
+  it('⚠️ atraso NORMAL do ciclo não acusa — senão é alarme falso todo dia', () => {
+    // O ciclo é de 15 min e não anda alinhado ao relógio de parede, então
+    // toda agendada saudável passa alguns minutos com a hora vencida. Sem
+    // folga, o aviso "o agendador pode estar fora do ar" apareceria em todo
+    // agendamento — e alarme falso treina a ignorar o aviso que importa.
+    expect(estaAtrasada(ag(), new Date('2026-08-05T17:30:30.000Z'))).toBe(false);
+    expect(estaAtrasada(ag(), new Date('2026-08-05T17:44:00.000Z'))).toBe(false);
+    expect(estaAtrasada(ag(), new Date('2026-08-05T18:04:00.000Z'))).toBe(false);
+  });
+
+  it('a folga é a MESMA do indicador do cabeçalho', () => {
+    // Duas telas com critérios diferentes para a mesma pergunta seriam duas
+    // verdades sobre o mesmo fato.
+    expect(TOLERANCIA_ATRASO_MS).toBe((CICLO_MINUTOS * 2 + 5) * 60_000);
+  });
+
   it('só `pending` atrasa — `sending` já está sendo cuidada', () => {
     expect(
       estaAtrasada(
         ag({ status: 'sending' }),
-        new Date('2026-08-05T18:00:00.000Z'),
+        new Date('2026-08-05T19:00:00.000Z'),
       ),
     ).toBe(false);
     expect(
       estaAtrasada(
         ag({ status: 'failed' }),
-        new Date('2026-08-05T18:00:00.000Z'),
+        new Date('2026-08-05T19:00:00.000Z'),
       ),
     ).toBe(false);
   });

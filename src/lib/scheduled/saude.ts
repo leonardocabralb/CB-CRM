@@ -8,7 +8,7 @@
 // envio que não vem.
 // ============================================================
 
-import { CICLO_MINUTOS } from './display';
+import { CICLO_MINUTOS, TOLERANCIA_ATRASO_MS } from './display';
 
 /**
  * Quantos minutos sem batimento até a tela acusar.
@@ -18,7 +18,7 @@ import { CICLO_MINUTOS } from './display';
  * falso — que treina o operador a ignorar o aviso, que é pior que não ter
  * aviso nenhum.
  */
-export const TOLERANCIA_MINUTOS = CICLO_MINUTOS * 2 + 5;
+export const TOLERANCIA_MINUTOS = TOLERANCIA_ATRASO_MS / 60_000;
 
 export type TomDoAgendador = 'ok' | 'warn' | 'down';
 

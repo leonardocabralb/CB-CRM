@@ -50,17 +50,26 @@ export function useAgendadorSaude(): SaudeDoAgendador | null {
 
     if (!vivoRef.current) return;
 
-    // ⚠️ Falha de leitura NÃO pode virar "tudo certo". Sem batimento legível a
-    // conta cai em `nuncaRodou`, que acende o aviso — o lado seguro. Silenciar
-    // aqui reproduziria exatamente a mentira que este indicador existe para
-    // desfazer.
-    setSaude(
+    // ⚠️ Contagem que FALHOU não pode virar zero. `count` vem nulo tanto em
+    // "não há nenhuma" quanto em "a consulta deu erro", e tratar os dois igual
+    // faria a fila sumir do cálculo — o vermelho de "há mensagem que não vai
+    // sair" viraria âmbar de "nada em risco", que é a mentira que este
+    // indicador existe para desfazer. Sem número confiável, mantém o anterior.
+    const contar = (
+      r: { count: number | null; error: unknown },
+      anterior: number,
+    ) => (r.error ? anterior : (r.count ?? 0));
+
+    setSaude((antes) =>
       avaliarAgendador({
-        ultimoCiclo:
-          (batimento.data as { ultimo_ciclo?: string } | null)?.ultimo_ciclo ??
-          null,
-        pendentes: pendentes.count ?? 0,
-        falhas: falhas.count ?? 0,
+        ultimoCiclo: batimento.error
+          ? // Batimento ilegível cai em `nuncaRodou`, que ACENDE. É o lado
+            // seguro: silenciar aqui esconderia um agendador morto.
+            null
+          : ((batimento.data as { ultimo_ciclo?: string } | null)
+              ?.ultimo_ciclo ?? null),
+        pendentes: contar(pendentes, antes?.pendentes ?? 0),
+        falhas: contar(falhas, antes?.falhas ?? 0),
       }),
     );
   }, []);

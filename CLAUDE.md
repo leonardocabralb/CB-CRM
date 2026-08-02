@@ -472,8 +472,9 @@ mordem de novo em qualquer código novo:
   `917_cb_endereco_lid_da_mensagem`, `918_cb_notas_na_conversa`,
   `919_cb_mencao_na_anotacao`, `920_cb_fecha_grants_das_anotacoes`,
   `921_cb_anotacao_apagada_em_tempo_real`, `922_cb_aposenta_contact_notes`,
-  `923_cb_assinatura`, `924_cb_favoritar`, `925_cb_mensagem_agendada` e
-  `926_cb_entrega_incerta`.
+  `923_cb_assinatura`, `924_cb_favoritar`, `925_cb_mensagem_agendada`,
+  `926_cb_entrega_incerta`, `927_cb_batimento_do_agendador` e
+  `928_cb_quando_reivindicou`.
   ⚠️ A `906` foi aplicada FORA DE ORDEM (antes da 907), e o histórico do
   Supabase a registra com o nome antigo `904_cb_grupos` — ela nasceu numerada
   como 904, colidiu com `904_cb_mensagem_do_aparelho` e o ARQUIVO foi
