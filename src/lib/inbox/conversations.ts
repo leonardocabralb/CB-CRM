@@ -42,9 +42,21 @@ export function normalizeConversations(
   return rows.map(normalizeConversation);
 }
 
+/**
+ * Como combinar as etiquetas escolhidas.
+ *
+ * ⚠️ `qualquer` é o comportamento do upstream (OR) e continua sendo o padrão —
+ * por isso `tagMode` é opcional. `todas` (AND) é nosso, e a diferença é a
+ * pergunta que o operador faz: "quem é VIP OU inadimplente" contra "quem é
+ * VIP E inadimplente ao mesmo tempo".
+ */
+export type ModoDeEtiqueta = "qualquer" | "todas";
+
 export interface ContactFilters {
   /** Tag ids; a conversation matches if its contact has ANY of them (OR). */
   tagIds: string[];
+  /** `qualquer` (OR, padrão) ou `todas` (AND). */
+  tagMode?: ModoDeEtiqueta;
   /** Exact company match, or null for no company filter. */
   company: string | null;
 }
@@ -52,18 +64,25 @@ export interface ContactFilters {
 /**
  * Whether a conversation passes the contact-based Inbox filters (issue #272).
  * Empty `tagIds` and null `company` are no-ops, so the default (no filters)
- * always matches. Tags use OR logic, consistent with Broadcast audiences.
+ * always matches. Tags default to OR logic, consistent with Broadcast
+ * audiences; `tagMode: 'todas'` switches to AND.
  */
 export function matchesContactFilters(
   conversation: Conversation,
-  { tagIds, company }: ContactFilters,
+  { tagIds, tagMode = "qualquer", company }: ContactFilters,
 ): boolean {
   // Conversa de GRUPO não tem contato, então nunca casa com filtro de
   // etiqueta ou empresa — e isso está certo: o filtro pergunta algo sobre uma
   // PESSOA, e um grupo não é uma. Sair do resultado é a resposta honesta.
   if (tagIds.length > 0) {
-    const contactTagIds = conversation.contact?.tags ?? [];
-    if (!contactTagIds.some((t) => tagIds.includes(t.id))) return false;
+    const doContato = new Set(
+      (conversation.contact?.tags ?? []).map((t) => t.id),
+    );
+    const casou =
+      tagMode === "todas"
+        ? tagIds.every((id) => doContato.has(id))
+        : tagIds.some((id) => doContato.has(id));
+    if (!casou) return false;
   }
 
   if (company !== null && conversation.contact?.company?.trim() !== company) {
