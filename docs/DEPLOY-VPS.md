@@ -123,18 +123,41 @@ Conferir que ele **alcança** o CRM — o serviço subir não prova nada, porque
 o laço engole erro de curl de propósito (para o CRM reiniciando não derrubar
 o agendador):
 
-```bash
-# Tem de responder {"enviadas":0,"falhas":0,"atrasadas":0,"travadas":0}
-docker run --rm --network CBAdvNet curlimages/curl:8.11.1 \
-  -sS -H "x-cron-secret: $AUTOMATION_CRON_SECRET" \
-  http://crm_crm:3000/api/cb/scheduled/cron
+⚠️ **NÃO use `docker run --network CBAdvNet`.** A rede foi criada sem
+`--attachable`, então contêiner avulso é recusado com *"network CBAdvNet not
+manually attachable"* — só serviço do Swarm entra nela. (Este comando já
+esteve escrito aqui e falhou em produção.)
+
+Duas formas que funcionam, em ordem de preferência:
+
+**1. Pelo batimento, sem tocar na VPS.** É a melhor: prova a corrente
+inteira — o agendador subiu, alcançou o CRM pela rede interna, o segredo
+bateu, e o ciclo terminou. Basta abrir o CRM: **o aviso âmbar no cabeçalho
+some sozinho** em até um ciclo. Por SQL, no Supabase:
+
+```sql
+select ultimo_ciclo, now() - ultimo_ciclo as ha_quanto_tempo
+  from cb_agendador_batimento;
 ```
 
-- `401` → o `AUTOMATION_CRON_SECRET` do agendador não bate com o do `crm.env`.
-- `503` → o CRM subiu sem a variável.
-- Erro de DNS → o nome do serviço não é `crm_crm` nesta máquina. Confira com
-  `docker service ls` e ajuste o `command` do agendador no
-  `docker-stack.yml`.
+`ultimo_ciclo` em `1970-01-01` = nunca rodou.
+
+**2. Por dentro do próprio contêiner do CRM**, quando quiser ver a resposta
+crua. Usa a variável de ambiente do contêiner, então também confere o
+segredo:
+
+```bash
+docker exec $(docker ps -q -f name=crm_crm | head -1) node -e \
+  "fetch('http://localhost:3000/api/cb/scheduled/cron',{headers:{'x-cron-secret':process.env.AUTOMATION_CRON_SECRET}}).then(r=>r.text()).then(console.log)"
+```
+
+Tem de responder `{"enviadas":0,"falhas":0,"atrasadas":0,"travadas":0}`.
+
+- `{"error":"Unauthorized"}` → o segredo do agendador não bate com o do CRM.
+- `{"error":"cron not configured"}` → o CRM subiu sem `AUTOMATION_CRON_SECRET`.
+- Erro de DNS no log do agendador → o serviço não se chama `crm_crm` nesta
+  máquina. Confira com `docker service ls` e ajuste o `command` do agendador
+  no `docker-stack.yml`.
 
 ⚠️ **Ele também ressuscita automações e fluxos.** O laço bate em
 `/api/flows/cron` e `/api/automations/cron` junto — duas rotas que existem
