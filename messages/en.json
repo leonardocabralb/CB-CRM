@@ -54,7 +54,8 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Profile",
     "menuSettings": "Settings",
-    "menuSignOut": "Sign out"
+    "menuSignOut": "Sign out",
+    "scheduled": "Scheduled"
   },
   "Header": {
     "dashboard": "Dashboard",
@@ -71,7 +72,10 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Profile",
     "menuSettings": "Settings",
-    "menuSignOut": "Sign out"
+    "menuSignOut": "Sign out",
+    "scheduled": "Scheduled messages",
+    "flows": "Flows",
+    "aiAgents": "AI Agents"
   },
   "ModeToggle": {
     "switchMode": "Switch to {mode} mode"
@@ -449,7 +453,7 @@
       "preset_d15": "15 days",
       "preset_d30": "30 days",
       "cancelConfirmUncertain": "This message may already have gone out — the send was in progress. Deleting only removes the schedule record; it does NOT recall anything on WhatsApp. Continue?",
-      "cancelNothing": "Nothing was canceled — reopen the conversation.",
+      "cancelNothing": "Nothing was canceled. Reload: this message may already have gone out, or someone else canceled it.",
       "uncertainDelivery": "WhatsApp accepted this message before the error, so it may already have arrived. Check the conversation before sending again.",
       "channelGone": "connection removed",
       "saude": {
@@ -458,10 +462,17 @@
         "paradoSemFila": "The scheduler is not running. Nothing is queued right now, but anything you schedule will not go out.",
         "nuncaRodou": "The scheduler has never run. Scheduled messages will not go out.",
         "falhas": "{n} scheduled message(s) failed and are waiting for a decision.",
-        "ultimoCiclo": "Last cycle {min} minutes ago.",
+        "ultimoCiclo": "Last cycle {min, plural, =0 {just now} =1 {1 minute ago} other {# minutes ago}}.",
         "comoResolverParado": "It should run every {ciclo} minutes. Ask whoever maintains the server to check the \"agendador\" service (see docs/DEPLOY-VPS.md).",
-        "comoResolverFalhas": "Open each conversation: the SCHEDULED bar shows the reason and lets you resend or cancel."
-      }
+        "comoResolverFalhas": "See them all under Scheduled in the sidebar: the Failed tab shows why each one failed and lets you resend or cancel."
+      },
+      "attachment_image": "Photo",
+      "attachment_video": "Video",
+      "attachment_audio": "Audio",
+      "attachment_document": "Document",
+      "replyingTo": "Replying to: {trecho}",
+      "quotedDeleted": "The quoted message was deleted — this will go out without the quote.",
+      "quotedWasLost": "Sent without the quote: the quoted message had been deleted."
     }
   },
   "Contacts": {
@@ -2256,5 +2267,23 @@
     "actorAutomation": "by an automation",
     "actorSystem": "by the system",
     "actorReconstructed": "backfilled record"
+  },
+  "Scheduled": {
+    "title": "Scheduled messages",
+    "subtitle": "Everything queued to go out, and everything that already did.",
+    "tab_todas": "All",
+    "tab_fila": "Queue",
+    "tab_enviadas": "Sent",
+    "tab_falhas": "Failed",
+    "healthOk": "The scheduler is running.",
+    "capReached": "There are more queued or failed messages than this screen shows. Clear the visible ones to see the rest.",
+    "loadFailed": "Could not load the scheduled messages. This screen is not showing what exists — reload before scheduling anything.",
+    "emptyAll": "No scheduled messages in this account.",
+    "emptyFiltered": "No scheduled messages in this state.",
+    "loadMore": "Load more sent",
+    "openConversation": "Open the conversation",
+    "groupNoName": "Unnamed group",
+    "unknownRecipient": "Unnamed contact",
+    "conversationUnavailable": "Conversation not loaded"
   }
 }

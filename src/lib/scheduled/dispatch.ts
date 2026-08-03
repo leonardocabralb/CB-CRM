@@ -16,10 +16,12 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { CHAT_MEDIA_BUCKET } from '@/lib/storage/buckets';
 import {
   sendMessageToConversation,
   SendMessageError,
 } from '@/lib/whatsapp/send-message';
+import { citacaoAindaVale, temAnexo } from './midia';
 import type { ScheduledMessage } from '@/types';
 
 /**
@@ -92,10 +94,31 @@ export interface ResultadoDoCiclo {
 
 type LinhaAgendada = Pick<
   ScheduledMessage,
-  'id' | 'account_id' | 'conversation_id' | 'channel_id' | 'body' | 'created_by'
+  | 'id'
+  | 'account_id'
+  | 'conversation_id'
+  | 'channel_id'
+  | 'body'
+  | 'created_by'
+  | 'media_url'
+  | 'media_path'
+  | 'media_kind'
+  | 'media_filename'
+  | 'reply_to_message_id'
 >;
 
-const COLUNAS = 'id, account_id, conversation_id, channel_id, body, created_by';
+const COLUNAS =
+  'id, account_id, conversation_id, channel_id, body, created_by, media_url, media_path, media_kind, media_filename, reply_to_message_id';
+
+/**
+ * O que o operador lê quando o arquivo sumiu do bucket entre agendar e enviar.
+ *
+ * ⚠️ Recado escrito à mão, e não a mensagem crua do Storage ("Object not
+ * found"), porque quem lê isto é quem atende — e a ação certa (reanexar e
+ * reagendar) não sai de um erro técnico.
+ */
+const ANEXO_SUMIU =
+  'O arquivo anexado não está mais disponível e a mensagem não foi enviada. Anexe o arquivo de novo e reagende.';
 
 /**
  * Códigos de erro que significam "o WhatsApp JÁ ACEITOU a mensagem".
@@ -109,6 +132,13 @@ const COLUNAS = 'id, account_id, conversation_id, channel_id, body, created_by';
  * marcar essas como incertas é o erro BARATO: o operador perde o botão de um
  * clique e manda de novo pelo campo normal. O erro caro é o contrário — o
  * cliente do escritório recebendo a mesma mensagem duas vezes.
+ *
+ * ⚠️ `evolution_rejected` fica DE FORA, e a 932 é quem criou a distinção: um
+ * 4xx é a Evolution processando o pedido e recusando ANTES de mandar (mime que
+ * o WhatsApp não aceita, arquivo grande demais, URL do anexo que ela não
+ * conseguiu baixar). Nada saiu — e chamar isso de "pode ter chegado" esconde o
+ * botão de tentar de novo sobre uma mensagem que comprovadamente não foi.
+ * Com texto puro isso quase não acontecia; com anexo é o modo de falha comum.
  */
 const CODIGOS_POS_ENTREGA = new Set(['db_error', 'evolution_error']);
 
@@ -142,6 +172,17 @@ export async function dispararVencidas(
   let falhas = 0;
 
   for (const linha of (data ?? []) as LinhaAgendada[]) {
+    // ⚠️ ANTES de reivindicar, e é de propósito (932). Reivindicar põe a linha
+    // em `sending`, que é o estado do qual NADA pode ser reenviado — se o
+    // arquivo sumiu, a linha ficaria presa lá até o recolhimento de 10
+    // minutos e sairia como "entrega incerta", que é mentira: não saiu nada.
+    // Falhando antes, ela vira `failed` com motivo legível e o botão de
+    // tentar de novo continua valendo depois de reanexar.
+    if (!(await anexoAindaExiste(admin, linha))) {
+      await falharSemTentar(admin, linha.id, ANEXO_SUMIU);
+      falhas++;
+      continue;
+    }
     // Reivindicação em dois passos, como no cron das automações: o UPDATE
     // condicionado a `status = 'pending'` é o cadeado. Dois ciclos que se
     // sobreponham não mandam a mesma mensagem duas vezes — o segundo não
@@ -184,11 +225,20 @@ export async function dispararUma(
     .maybeSingle();
 
   if (!data) return null;
+
+  const linha = data as LinhaAgendada;
+
+  // Mesma conferência do worker (932), e aqui ela vale ainda mais: há alguém
+  // esperando o resultado do clique. Sem isto, "Tentar de novo" numa linha
+  // cujo arquivo sumiu devolveria erro de provedor, em inglês.
+  if (!(await anexoAindaExiste(admin, linha))) {
+    await falharSemTentar(admin, id, ANEXO_SUMIU);
+    return { enviada: false, erro: ANEXO_SUMIU };
+  }
+
   if (!(await reivindicar(admin, id, ['pending', 'failed'], accountId))) {
     return null;
   }
-
-  const linha = data as LinhaAgendada;
   const ok = await enviarEFinalizar(admin, linha);
   if (ok) return { enviada: true, erro: null };
 
@@ -272,6 +322,127 @@ async function recusarAtrasadas(
   return (data ?? []).length;
 }
 
+/**
+ * O arquivo anexado ainda está no bucket? (932)
+ *
+ * ⚠️ Esta pergunta só existe porque passam HORAS entre anexar e enviar. No
+ * envio normal o arquivo acabou de subir; aqui ele pode ter sido removido —
+ * por limpeza, por engano, por uma rotina futura de retenção — e a falha
+ * aconteceria às 3 da manhã, com a mensagem que o cliente esperava.
+ *
+ * ⚠️ Falha do Storage NÃO conta como "sumiu". Se a consulta em si der erro
+ * (rede, indisponibilidade), a resposta é "existe": o pior desfecho de um
+ * falso positivo é uma tentativa de envio que falha com o erro de verdade;
+ * o de um falso negativo é cancelar uma mensagem que estava perfeita, e
+ * escrever na tela que o arquivo sumiu quando ele está lá.
+ *
+ * Linha sem anexo devolve `true` de imediato — não há o que conferir, e este
+ * continua sendo o caso comum.
+ */
+async function anexoAindaExiste(
+  admin: SupabaseClient,
+  linha: LinhaAgendada,
+): Promise<boolean> {
+  if (!temAnexo(linha) || !linha.media_path) return true;
+  try {
+    const { data, error } = await admin.storage
+      .from(CHAT_MEDIA_BUCKET)
+      .exists(linha.media_path);
+
+    // ⚠️⚠️ A ORDEM DESTES DOIS `if` É A GUARDA INTEIRA, e ela já esteve
+    // invertida — com o `error` primeiro, esta função respondia "existe" para
+    // TODO arquivo sumido, que é o único caso para o qual ela existe.
+    //
+    // O motivo é uma armadilha da própria biblioteca: quando o objeto não
+    // está lá, `exists()` devolve **`data: false` E `error` preenchido, ao
+    // mesmo tempo** — o 400/404 do HEAD vira `StorageError` e ele volta junto
+    // com a resposta. (Ver o `[400, 404].includes(status)` em
+    // `storage-js/src/packages/StorageFileApi.ts`; a própria assinatura de
+    // tipo tem `{ data: boolean; error: StorageError }`.) Só erro de outra
+    // natureza é LANÇADO, e cai no `catch` abaixo.
+    //
+    // Medido em produção antes do conserto: apaguei o objeto de uma agendada,
+    // apertei "Executar agora", e o log disse "não deu para conferir o anexo,
+    // seguindo como se existisse" — a mensagem seguiu para a Evolution, que
+    // recusou com 400, e a linha terminou como `entrega_incerta`, ou seja
+    // afirmando ao operador que a mensagem PODE ter chegado ao cliente. Era o
+    // contrário do que esta fase existe para fazer.
+    if (data === false) return false;
+
+    if (error) {
+      console.warn(
+        '[agendadas] não deu para conferir o anexo, seguindo como se existisse:',
+        error.message,
+      );
+      return true;
+    }
+    return true;
+  } catch (err) {
+    // Aqui sim é "não deu para saber": rede, Storage fora do ar, 5xx. Falso
+    // negativo cancelaria uma mensagem perfeita.
+    console.warn('[agendadas] conferência do anexo estourou:', err);
+    return true;
+  }
+}
+
+/**
+ * Marca a linha como falha SEM tê-la reivindicado.
+ *
+ * ⚠️ Condicionada a `pending`/`failed` — a mesma proteção do cadeado. Sem
+ * isso, uma linha que outro ciclo acabou de pôr em `sending` (ou que já saiu)
+ * seria sobrescrita para `failed`, e o registro passaria a mentir sobre uma
+ * mensagem que o cliente recebeu.
+ */
+async function falharSemTentar(
+  admin: SupabaseClient,
+  id: string,
+  motivo: string,
+): Promise<void> {
+  const { error } = await admin
+    .from('cb_scheduled_messages')
+    .update({ status: 'failed', error: motivo.slice(0, MAX_ERRO) })
+    .eq('id', id)
+    .in('status', ['pending', 'failed']);
+  if (error) {
+    console.error('[agendadas] não deu para marcar a falha:', error.message);
+  }
+}
+
+/**
+ * A citação ainda vale? Devolve o id a usar (ou `null`) e se ela se perdeu.
+ *
+ * ⚠️ É a metade "citação" desta fase inteira, e a regra não é óbvia: apagar
+ * mensagem NESTE CRM é apagar MOLE (905) — a linha continua no banco, então
+ * `send-message.ts` citaria alegremente algo que o cliente vê como "Esta
+ * mensagem foi apagada". A decisão do escritório foi **sair sem a citação**,
+ * nunca deixar de enviar por causa disso.
+ */
+async function resolverCitacao(
+  admin: SupabaseClient,
+  linha: LinhaAgendada,
+): Promise<{ citar: string | null; perdida: boolean }> {
+  if (!linha.reply_to_message_id) return { citar: null, perdida: false };
+
+  const { data, error } = await admin
+    .from('messages')
+    .select('id, deleted_at')
+    .eq('id', linha.reply_to_message_id)
+    .eq('conversation_id', linha.conversation_id)
+    .maybeSingle();
+
+  // ⚠️ Erro de leitura cai no lado de NÃO citar, ao contrário da conferência
+  // do anexo. A assimetria é deliberada: citar errado é conteúdo errado no
+  // WhatsApp do cliente e não tem volta; não citar é uma mensagem que sai
+  // completa, só sem a linha de contexto acima.
+  if (error) {
+    console.warn('[agendadas] não deu para conferir a citação:', error.message);
+    return { citar: null, perdida: true };
+  }
+
+  const vale = citacaoAindaVale(data as { deleted_at?: string | null } | null);
+  return { citar: vale ? linha.reply_to_message_id : null, perdida: !vale };
+}
+
 /** O cadeado. `true` = esta chamada é a dona da linha agora. */
 async function reivindicar(
   admin: SupabaseClient,
@@ -296,6 +467,34 @@ async function reivindicar(
 }
 
 /**
+ * As recusas do núcleo de envio que uma AGENDADA consegue provocar, em
+ * português.
+ *
+ * ⚠️ `SendMessageError.message` é escrito em inglês, para log e para a API
+ * pública. No envio manual isso nunca aparece assim: a rota traduz e o
+ * operador está na tela. Aqui o texto vai direto para a coluna `error`, que a
+ * faixa da conversa e a tela de agendadas mostram cru — então sem isto o
+ * escritório leria "Caption exceeds the 1024-character limit".
+ *
+ * ⚠️ A do teto de legenda não é hipótese: a validação do agendamento desconta
+ * a assinatura VIGENTE, e ela pode ser LIGADA depois — ou quem agendou pode
+ * sair da conta, e aí quem assina passa a ser o nome do escritório, que pode
+ * ser mais longo que o primeiro nome da pessoa.
+ *
+ * Devolve `null` quando não reconhece, e aí o inglês original é melhor que um
+ * genérico: pelo menos dá para pesquisar.
+ */
+function traduzirRecusa(mensagem: string): string | null {
+  if (mensagem.includes('Caption exceeds')) {
+    return 'A legenda ficou longa demais depois de somar a assinatura, e a mensagem não foi enviada. Encurte a legenda e reagende.';
+  }
+  if (mensagem.includes('reply_to_message_id not found')) {
+    return 'A mensagem citada não existe mais nesta conversa.';
+  }
+  return null;
+}
+
+/**
  * Envia e grava o desfecho. Nunca lança: a linha tem de sair de `sending`
  * mesmo quando o envio explode, senão ela trava para sempre.
  */
@@ -303,11 +502,20 @@ async function enviarEFinalizar(
   admin: SupabaseClient,
   linha: LinhaAgendada,
 ): Promise<boolean> {
+  const citacao = await resolverCitacao(admin, linha);
   try {
     const r = await sendMessageToConversation(admin, linha.account_id, {
       conversationId: linha.conversation_id,
-      messageType: 'text',
-      contentText: linha.body,
+      // 932: o tipo vem do anexo. Sem anexo continua sendo texto, que é o
+      // caso comum e o único que existia até aqui.
+      messageType: linha.media_kind ?? 'text',
+      // ⚠️ Vazio vira NULO, não string vazia. Com anexo sem legenda o corpo é
+      // `''` (o CHECK da 932 permite), e `''` chegaria ao transporte como
+      // legenda vazia; nulo é o que o envio normal manda.
+      contentText: linha.body || null,
+      mediaUrl: linha.media_url,
+      filename: linha.media_filename,
+      replyToMessageId: citacao.citar,
       // Quem agendou é quem assina (923). A pessoa escreveu o texto; só a
       // hora foi adiada. Nulo quando ela já saiu da conta — que é a verdade,
       // e a 923 cai no nome do escritório.
@@ -326,6 +534,8 @@ async function enviarEFinalizar(
         sent_at: new Date().toISOString(),
         message_id: r.messageId,
         error: null,
+        // Fica registrado no acervo: esta saiu sem a citação que tinha.
+        citacao_perdida: citacao.perdida,
       })
       .eq('id', linha.id);
     return true;
@@ -340,7 +550,7 @@ async function enviarEFinalizar(
       err instanceof SendMessageError && err.code === 'db_error'
         ? 'O WhatsApp aceitou a mensagem, mas o CRM não conseguiu gravá-la. Confira a conversa.'
         : err instanceof SendMessageError
-          ? err.message
+          ? (traduzirRecusa(err.message) ?? err.message)
           : err instanceof Error
             ? err.message
             : 'Falha desconhecida ao enviar.';

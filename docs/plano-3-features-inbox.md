@@ -18,9 +18,12 @@
 
 | Fase | Escopo | Estado | Migration |
 | --- | --- | --- | --- |
-| **A** | Busca salta para a mensagem, e percorre os achados | ✅ **no ar** (2026-08-03) | **nenhuma** |
-| **B** | Agendar mídia e levar citação | ⬜ pendente | `932` |
-| **C** | Tela global de agendadas | ⬜ pendente | nenhuma |
+| **A** | Busca salta para a mensagem, e percorre os achados | ✅ **feita** (2026-08-03) | **nenhuma** |
+| **C** | Tela global de agendadas | ✅ **feita** (2026-08-03) | **nenhuma** |
+| **B** | Agendar mídia e levar citação | ✅ **feita** (2026-08-03) | `932` **aplicada** |
+
+⚠️ **Feitas, mas ainda NÃO em produção.** As duas estão em `main` local; `origin/main`
+segue em `c4384c9`. Empurrar dispara o deploy.
 
 ✅ **Decisões do operador (2026-08-03):** percorrer os achados com ↑/↓ · tela global mostra
 tudo com filtro · anexo sumido **falha e espera gente** · citação apagada **sai sem a
@@ -151,6 +154,26 @@ verificador que **mede** em vez de argumentar. Nenhum achado caiu; os que mordia
 - **Um byte U+0000 cru no fonte** deixava `message-thread.tsx` **binário** para o `grep`
   e o `file` — as buscas devolviam zero linhas em silêncio.
 
+### O que a 2ª revisão (fria + morna, 2026-08-03) pegou
+
+- ⚠️ **Rolar à mão não contava como "o operador agiu" — e isso prendia a tela.**
+  Medido: com o salto valendo, rolei o fio para `2000` e a próxima troca de
+  `messages` devolveu para `10772`, o achado. Ou seja: quem saltasse para um
+  achado de três meses atrás e rolasse até o fim para ver o estado atual da
+  conversa era **arrastado de volta ao passado** a cada mensagem nova. Agora
+  `onWheel`/`onTouchMove` soltam a rolagem, como enviar e anotar já soltavam.
+- ⚠️ **A primeira versão dessa correção não funcionava, e passava em revisão.**
+  Era um `addEventListener` dentro de efeito com dependência estável: ele roda
+  **uma vez**, na montagem, quando ainda não há conversa aberta e
+  `scrollRef.current` é nulo — e não volta mais. O ouvinte nunca chegava a ser
+  pendurado. Só a medição pegou; virou `onWheel`/`onTouchMove` na própria JSX.
+- ⚠️ **Um resync não pode re-armar o salto.** Voltar para a aba refaz a busca
+  das mensagens, e o efeito que re-arma disparava de novo — desfazendo a
+  decisão de quem já tinha tomado a rolagem para si. Agora ele guarda sobre
+  qual alvo o operador já agiu (`alvoLiberadoRef`) e só re-arma quando o alvo é
+  **outro** — zerando essa memória ao armar, senão sair do achado 5 e voltar a
+  ele com as setas ficaria sem salto para sempre.
+
 ### Armadilhas
 
 - **Destacar é obrigatório, não enfeite.** Rolar sem destacar deixa o operador olhando uma
@@ -222,6 +245,55 @@ existem na faixa e devem ser extraídos, não reescritos.
 - **Situação `sending` e `entrega_incerta` não podem oferecer "tentar de novo"** — a mesma
   guarda `podeDispararAgora` da faixa, senão o cliente recebe duas vezes.
 - **A tela nasce com 1 linha.** Não aceitar "abri e funcionou" como teste.
+
+### O que a implementação mudou em relação a este plano
+
+- ⚠️ **`canalDaConversa()` seria ERRADO aqui**, ao contrário do que a armadilha acima
+  manda. Aquela regra existe porque conversa de grupo tem `conversations.channel_id`
+  nulo — mas a agendada tem `channel_id` **próprio, NOT NULL**, fixado no agendamento
+  justamente para não seguir a conversa (P4.3). A tela mostra o canal *da agendada*.
+- **São TRÊS consultas, não uma.** Fila e acervo têm ordens opostas; numa consulta só
+  com teto, o `ORDER BY` teria de escolher uma — e a errada engoliria a outra inteira.
+- **Só as enviadas paginam.** Fila e falhas vêm completas: uma falha de seis meses
+  atrás continua esperando decisão, e é ela que a paginação empurraria para fora.
+- **A ordenação não foi reescrita.** `ordenarParaTela` já existia e é testada; ganhou
+  só o `sent_at` no acervo — sem isso, uma mensagem antecipada pelo "Executar agora"
+  aparecia no acervo com data futura.
+- **As contagens das abas vêm do banco** (`count: 'exact'`), não de contar a lista
+  carregada. Contando em JS, a aba "Enviadas" diria 50 numa conta com 300.
+
+### O que a revisão pegou depois de pronto
+
+- ⚠️ **O aviso "o cliente escreveu depois" (P4.4) tinha ficado de fora** — e ele pesa
+  MAIS aqui que na faixa: quem está nesta tela decide "Executar agora" sem ver a
+  conversa. Sem ele, mandaria "confirmo nosso horário de amanhã" para quem cancelou
+  de madrugada.
+- **Linha enviada mostrava a hora MARCADA**, não a hora em que saiu.
+- **As abas afirmavam "Falhas 0" enquanto a carga falhava** — quatro zeros logo acima
+  da caixa que admite não saber de nada.
+- **A faixa de saúde não recarregava com as ações**: cancelar a última falha zerava a
+  aba e a faixa seguia dizendo que havia uma esperando decisão.
+- **A saúde contava só `pending`**, então dizia "não há nada na fila" com uma linha
+  travada em `sending` visível logo abaixo.
+- **`temMaisEnviadas` comparava com o limite pedido**, e morria no teto de 1000 linhas
+  do PostgREST — o acervo além disso ficaria inalcançável, em silêncio.
+- **`temMais` e `contarPorSituacao` nasceram com teste e sem chamador** (a regra viva
+  estava inline no hook). Saíram.
+
+### O que a 2ª revisão (fria + morna, 2026-08-03) pegou
+
+- **`estourouOTeto` acusava corte onde não houve.** Comparava o carregado com o
+  teto (`>= 200`), então uma conta com exatamente 200 na fila — todas
+  carregadas — veria "há mais do que cabe". O `count: 'exact'` já estava ali:
+  passou a comparar com o **total**.
+- ⚠️ **O `CLAUDE.md` não tinha sido atualizado por nenhuma das duas fases.** É a
+  regra do projeto ("ao achar divergência, corrija no mesmo PR") e ele é o que
+  segura o merge com o upstream. Entraram os dois blocos novos e três linhas na
+  tabela de arquivos nossos.
+- **Fica sabido, não consertado:** "carregar mais" não tem estado de ocupado
+  (`carregando` só é verdadeiro na primeira carga) e o texto de erro da linha
+  não tem `line-clamp`. Os dois só aparecem numa conta com acervo grande, e
+  esta tem 1 linha.
 
 ✅ **Decidido: tudo — fila em cima, com filtro de situação.** Consequências a respeitar:
 
@@ -297,11 +369,134 @@ envio de amanhã se a assinatura for ligada nesse meio-tempo. →
   de escrever. É a mesma lição da `entrega_incerta` (926): `failed` sozinho não dizia se a
   mensagem tinha saído.
 
-### 🚧 Pendente
+### ✅ Áudio: decidido pelo operador (2026-08-03)
 
-**Áudio gravado na hora entra?** Ele não tem legenda e é o caso mais estranho de "gravei
-agora para mandar semana que vem". Fica para decidir na hora de codar a fase — não muda
-nada nas outras duas.
+**Entra, e sai como áudio gravado na hora.** A intenção é literal: "gravo agora, mando
+depois, e o cliente pensa que gravei naquele momento para ele".
+
+Isso **já é o que o transporte faz** — `evolution-transport.sendMedia` desvia
+`kind === 'audio'` para `message/sendWhatsAppAudio`, o endpoint de nota de voz, e o
+carimbo de hora que o WhatsApp mostra é o do envio. Não houve o que construir; houve o que
+não estragar. E a consequência dura: **áudio não tem legenda**, e é isso que obrigou o
+CHECK do corpo a ser afrouxado.
+
+### O que a medição mudou em relação ao plano acima
+
+- ⚠️ **A mídia JÁ está no bucket quando se agenda.** O compositor sobe o arquivo no
+  instante em que ele é ANEXADO, não no envio. Então não houve caminho de upload novo —
+  houve guardar o endereço do que hoje era descartado.
+- ⚠️ **Mensagem apagada aqui é apagada MOLE** (`messages.deleted_at`, 905): a linha
+  continua no banco. O `ON DELETE SET NULL` que o plano pedia praticamente nunca
+  dispararia, e "a citada sumiu" não é FK quebrada — é uma coluna de data que o
+  **disparador** tem de ler.
+- ⚠️ **`send-message.ts` já revalida o teto de 1024 com a assinatura somada.** O que
+  faltava não era a regra: era ela valer no agendamento, e o recado dela estar em
+  português (o núcleo escreve em inglês, e o texto cai cru na coluna que as duas telas
+  mostram).
+- **Sem FK na citação**, e as três formas foram descartadas com motivo escrito na
+  migration: `RESTRICT` faria apagar mensagem falhar, `CASCADE` apagaria a agendada
+  inteira, e `SET NULL` apagaria justamente a informação de que houve citação. Preço: o
+  PostgREST não embute sem FK, então as telas leem as citadas numa busca própria
+  (`useCitadas`).
+- **Um quarto risco apareceu:** cancelar agendada tem de apagar o objeto do bucket —
+  **menos** em linha `sent`, onde o arquivo já pertence à mensagem que está no fio do
+  cliente.
+
+### Peças construídas
+
+| Onde | O quê |
+| --- | --- |
+| `932_cb_agendada_com_midia_e_citacao.sql` | colunas + 5 CHECKs, com bloco que EXERCITA cada um |
+| `src/lib/scheduled/midia.ts` | regras puras (23 testes): posse do arquivo, teto da legenda, "áudio não leva legenda", "a citação ainda vale?" |
+| `api/cb/scheduled/route.ts` | confere o que só ela pode: arquivo da CONTA, citada da CONVERSA, teto com assinatura |
+| `src/lib/scheduled/dispatch.ts` | confere o objeto ANTES de reivindicar; derruba citação apagada; traduz as recusas do núcleo |
+| `message-composer.tsx` | `<SeletorDeHorario>` extraído para módulo e reusado dentro da prévia do anexo |
+| `use-citadas-da-agendada.ts` · `components/scheduled/anexo-e-citacao.tsx` | a linha nova das duas telas |
+| `use-acoes-da-agendada.ts` | cancelar apaga o objeto — menos em `sent` |
+
+### O que foi verificado com o sistema rodando
+
+Anexo de 1 pixel, agendado para daqui a 300 dias na conversa de teste do escritório, e
+cancelado em seguida (autorizado pelo operador; o disparador só pega hora vencida):
+
+- linha criada com `media_kind='image'`, caminho sob `account-<id>/`, legenda guardada;
+- faixa da conversa e tela global mostrando **miniatura + "Foto"** e **"Respondendo: …"**;
+- ponteiro da citação quebrado à mão → as duas telas passaram a mostrar **"A mensagem
+  citada foi apagada — vai sair sem a citação."**;
+- as **seis recusas da rota** disparando com texto em português (áudio com legenda,
+  arquivo de outra conta, meio anexo, tipo inválido, sem texto e sem anexo, citada de
+  outra conversa);
+- cancelamento **apagou a linha e o objeto do bucket** — conferido em `storage.objects`.
+
+⚠️ **E a medição pegou um defeito que os testes e o `i18n-parity.mjs` não pegariam:** o
+`alt` da miniatura chamava `attachmentImage`, chave que não existe em dicionário nenhum.
+Paridade passa (falta nos DOIS), typecheck passa, teste passa — e a tela mostrava
+`Inbox.scheduled.attachmentImage`.
+
+### O que a revisão (fria + morna) pegou depois de pronto
+
+Cinco lentes independentes sobre o diff, cada achado passando por dois céticos com lentes
+diferentes (correção e consequência), mais um crítico de completude. E, em paralelo, teste
+manual em produção — que foi quem pegou o pior.
+
+- ⚠️⚠️ **A GUARDA CENTRAL DA FASE NUNCA DISPARAVA.** `storage.exists()` do
+  `@supabase/storage-js` devolve **`data: false` E `error` preenchido ao mesmo tempo**
+  quando o objeto não existe (o 400/404 do HEAD vira `StorageError` e volta junto com a
+  resposta). O código lia o `error` primeiro e concluía "não deu para conferir, siga como
+  se existisse" — exatamente para o único caso que a função existe para pegar.
+  **Medido em produção:** apaguei o objeto de uma agendada e apertei "Executar agora". A
+  mensagem foi até a Evolution, que recusou com 400, e a linha terminou como
+  `entrega_incerta` — ou seja, afirmando ao operador que a mensagem **pode ter chegado ao
+  cliente**, e escondendo o botão de tentar de novo. O contrário do que a fase existe para
+  fazer. Depois do conserto, mesma linha e mesmo botão: não sai do CRM, motivo em
+  português, "Tentar de novo" disponível.
+  ⚠️ **O teste unitário passava verde o tempo todo**, porque o stub devolvia a forma que eu
+  SUPUS (`{data:false, error:null}`) em vez da real. O stub foi corrigido para imitar a
+  biblioteca, e conferi que os três testes agora FALHAM se a ordem dos `if` for invertida.
+- ⚠️ **A URL do anexo era aceita crua do cliente** e nunca amarrada ao caminho conferido: a
+  posse era checada no `media_path` e o envio usava a `media_url`. Dava para mandar um
+  caminho legítimo desta conta com uma URL apontando para qualquer lugar da internet, e o
+  CRM entregaria aquele conteúdo ao cliente. Agora a rota **deriva** a URL do caminho, com
+  `getPublicUrl`, e o campo saiu do corpo do POST.
+- ⚠️ **Cancelar decidia o destino do arquivo pelo status EM MEMÓRIA.** A lista é uma foto
+  de segundos atrás; entre a carga e o clique o worker pode ter enviado. O teste passou a
+  ser `message_id` — "existe linha em `messages` usando este arquivo?" — e as duas colunas
+  vêm do RETORNO do `delete`, não do objeto da tela.
+- ⚠️ **Sair da tela durante o POST apagava o anexo da agendada recém-criada.** A limpeza de
+  desmonte recolhe o objeto do rascunho, e o rascunho só some depois da resposta. O
+  caminho passa a ser marcado como entregue ANTES do POST (e desmarcado se ele falhar).
+- **`caminhoEhDaConta` deixava passar `..` depois do prefixo** (`account-<id>/../outra/…`),
+  que só seria normalizado depois, na montagem da URL. E não havia teto de tamanho.
+- **`useCitadas` não tinha contador de geração:** duas buscas no ar, a velha chegando
+  depois, e a linha da citação sumia da tela sem voltar.
+- **Agendar um anexo apagava o texto digitado na caixa principal**, que não tem relação com
+  a legenda do rascunho.
+- ⚠️ **Recusa da Evolution (4xx) virava "entrega incerta".** Um 4xx é ela processando o
+  pedido e recusando ANTES de mandar — mime que o WhatsApp não aceita, arquivo grande
+  demais, URL do anexo que ela não conseguiu baixar. Nada saiu, e mesmo assim a tela dizia
+  "pode ter chegado ao cliente" e escondia o "Tentar de novo". Com texto puro era raro; com
+  anexo é o modo de falha comum. `send-message.ts` passou a distinguir
+  `evolution_rejected` de `evolution_error`.
+- **Cancelar linha em `sending` ou com entrega incerta** também não pode apagar o arquivo:
+  na primeira a Evolution ainda está baixando a URL, na segunda pode existir linha em
+  `messages` gravada antes de o processo morrer.
+- **A tela global buscava as citações das ENVIADAS**, que nunca as usam (elas decidem pelo
+  `citacao_perdida` gravado) — a consulta crescia 50 ids a cada "carregar mais".
+
+### O que fica sabido, e não foi feito
+
+- **Trocar o anexo de uma agendada já criada** não existe: editar é cancelar e reagendar.
+- **Não há limpeza de órfãos no bucket.** Se o cancelamento falhar em apagar o objeto (ele
+  é silencioso, de propósito), o arquivo fica lá. ⚠️ **E apagar uma CONEXÃO apaga o acervo
+  de agendadas daquele canal sem passar pelo bucket** — o anexo de uma `failed` fica
+  público lá para sempre. Levantado pela revisão, não consertado: mexe na rota de exclusão
+  de canal, que é outro assunto.
+- ⚠️ **`maxDuration = 60` versus 90 s de espera da Evolution para mídia.** O `PENDENTE` que
+  o CLAUDE.md já registra deixou de ser teórico com esta fase: um vídeo de 16 MB pode
+  passar do teto declarado. Se ele for aplicado de fato na VPS, o processo morre no meio,
+  a linha fica em `sending` e é recolhida como entrega incerta. A conferência
+  (`docker service inspect`) continua pendente.
+- **Template e mensagem interativa** continuam fora do agendamento.
 
 ---
 

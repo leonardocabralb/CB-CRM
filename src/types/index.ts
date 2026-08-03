@@ -218,6 +218,32 @@ export interface ScheduledMessage {
    * coisa duas vezes para o cliente.
    */
   entrega_incerta: boolean;
+  /**
+   * Anexo (932). Os três primeiros andam juntos — CHECK de forma no banco.
+   *
+   * ⚠️ O arquivo já está no bucket desde o momento em que foi ANEXADO, não do
+   * envio. Entre uma coisa e outra passam horas, e o objeto pode sumir: quem
+   * confere é o disparador, antes de reivindicar a linha.
+   */
+  media_url: string | null;
+  /** Caminho no bucket `chat-media` — para conferir e para apagar ao cancelar. */
+  media_path: string | null;
+  media_kind: 'image' | 'video' | 'document' | 'audio' | null;
+  /** Só o documento mostra o nome ao destinatário. */
+  media_filename: string | null;
+  /**
+   * A mensagem que esta agendada responde (932). Sem FK, de propósito — ver a
+   * migration.
+   */
+  reply_to_message_id: string | null;
+  /**
+   * A citada não existia mais na hora do envio, e a mensagem saiu SEM ela.
+   *
+   * ⚠️ Existe porque o `NULL` sozinho não distingue "nunca citou" de "citava e
+   * perdeu" — e é a segunda que precisa aparecer na tela. Mesma lição da
+   * `entrega_incerta`.
+   */
+  citacao_perdida: boolean;
   /** `messages.id` do que realmente saiu. */
   message_id: string | null;
   /** Nulo quando quem agendou saiu do `auth.users`. */

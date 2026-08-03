@@ -153,7 +153,8 @@ upstream sobrescrevê-los:
 | Arquivo do upstream | O que é nosso |
 | --- | --- |
 | `src/lib/whatsapp/send-message.ts` | resolve o canal, carimba `channel_id`, devolve `channelId` no resultado, busca o template **filtrando por canal**, e os dois parâmetros da agendada (925): `channelId` (exige aquele canal, **falha fechada**) e `pauseFlows` |
-| `src/components/inbox/message-composer.tsx` | anotação interna (918) e o **agendamento** (925): o relógio abre um seletor, e com hora escolhida o `handleSend` DESVIA antes da janela de desfazer |
+| `src/components/inbox/message-composer.tsx` | anotação interna (918) e o **agendamento** (925): o relógio abre um seletor, e com hora escolhida o `handleSend` DESVIA antes da janela de desfazer. Mais a 932: `sendDraft` desvia igual (anexo agendado), o seletor virou `<SeletorDeHorario>` de módulo — reusado dentro do `MediaDraftPreview`, que SUBSTITUI o compositor — e `entreguesRef` impede a limpeza de desmonte de apagar arquivo que já é de uma agendada |
+| `src/lib/whatsapp/send-message.ts` (2ª linha nossa) | a 932 separou `evolution_rejected` (4xx: a Evolution recusou, nada saiu) de `evolution_error` (tempo esgotado/5xx: pode ter saído). Só o segundo vira `entrega_incerta` |
 | `src/components/inbox/message-thread.tsx` | além do fio intercalado, renderiza a faixa `ScheduledBar` logo acima do compositor e guarda o contador que a liga ao compositor |
 | `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
 | `src/lib/whatsapp/inbound-store.ts` | idem, no lado Evolution |
@@ -169,7 +170,9 @@ upstream sobrescrevê-los:
 | `src/components/settings/template-manager.tsx` | seletor de WABA para criar/sincronizar, etiqueta de canal por modelo |
 | `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato, canal da conversa na ficha, e a seção/aba **Histórico** (912). No detail view a `TabsList` ganhou `flex-wrap h-auto` — com 5 abas ela já estourava a largura do painel e escondia "Negócios" |
 | `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
-| `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele |
+| `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página |
+| `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDaMensagem>` envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo), a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef` |
+| `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles |
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
@@ -197,6 +200,53 @@ morde código novo:
 - **Guarda de atraso de 1h no worker.** Agendador dias fora do ar + conserto
   despejaria a fila inteira de uma vez, às 2 da manhã. Passado o prazo a linha
   vira `failed` com o motivo escrito e espera decisão de gente.
+
+⚠️ **Agendada com ANEXO e CITAÇÃO (932): tudo aqui existe porque passam HORAS
+entre escrever e enviar.** `src/lib/scheduled/midia.ts` (puro, com teste),
+`dispatch.ts`, a rota `api/cb/scheduled` e
+`src/components/scheduled/anexo-e-citacao.tsx`. O que morde código novo:
+
+- ⚠️ **Áudio NÃO leva legenda, e o dano é silencioso.** A nota de voz sai por
+  `message/sendWhatsAppAudio`, que não tem campo de legenda: um texto ali
+  seria gravado em `messages.content_text`, apareceria no fio para a equipe e
+  **não viajaria**. A regra está em três lugares de propósito (CHECK da 932,
+  rota, tela).
+- ⚠️ **O arquivo é conferido ANTES de reivindicar a linha.** Reivindicar põe em
+  `sending`, o estado do qual nada pode ser reenviado — a linha ficaria presa
+  até o recolhimento de 10 min e sairia como "entrega incerta", que seria
+  mentira. E **Storage fora do ar não conta como "sumiu"**: falso negativo
+  cancelaria uma mensagem perfeita.
+- ⚠️⚠️ **`storage.exists()` devolve `data: false` E `error` PREENCHIDO quando o
+  objeto não existe** — os dois juntos, porque o 400/404 do HEAD vira
+  `StorageError` e volta com a resposta. Ler o `error` primeiro faz a função
+  responder "existe" para todo arquivo sumido, que é o único caso para o qual
+  ela serve. Já foi cometido, e só a medição em produção pegou: o teste
+  passava porque o stub imitava a forma SUPOSTA. **Quem usar `exists()` em
+  código novo confere `data === false` antes do `error`.**
+- ⚠️ **A URL do anexo é DERIVADA do caminho (`getPublicUrl`), nunca aceita do
+  cliente.** Aceitando-a, a conferência de posse olha um campo (`media_path`) e
+  o envio usa outro (`media_url`), sem nada amarrando os dois — dá para casar
+  um caminho legítimo da conta com uma URL de fora e o CRM entrega aquilo ao
+  cliente.
+- ⚠️ **Cancelar apaga o objeto do bucket — MENOS quando há `message_id`.** O
+  teste é a coluna, não o status, e as duas vêm do RETORNO do `delete`: a lista
+  da tela é uma foto de segundos atrás, e entre a carga e o clique o worker
+  pode ter enviado. Com `message_id` preenchido o arquivo já é da mensagem que
+  está no fio do cliente.
+- ⚠️ **`reply_to_message_id` não tem FK**, e as três formas foram descartadas
+  com motivo na migration (`RESTRICT` faria apagar mensagem falhar, `CASCADE`
+  apagaria a agendada, `SET NULL` apagaria a informação de que houve citação).
+  Preço: **sem FK o PostgREST não embute** — quem precisar da citada busca por
+  id (`useCitadas`), e precisa do sinalizador de "já carregou", senão a tela
+  avisa "citação apagada" sobre citação viva.
+- ⚠️ **Apagar mensagem aqui é apagar MOLE**, então o núcleo citaria alegremente
+  o que o cliente vê como "Esta mensagem foi apagada". Quem enviar citação em
+  código novo precisa checar `deleted_at` — `send-message.ts` não checa.
+- **O teto da legenda é 1024 MENOS a assinatura**, e a validação do
+  agendamento não é garantia: a assinatura pode ser ligada depois, ou quem
+  agendou sai da conta e passa a assinar o nome do escritório. Por isso o
+  núcleo revalida e o disparador **traduz** — `SendMessageError.message` é
+  escrito em inglês e cai cru na coluna que as duas telas mostram.
 
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
@@ -250,6 +300,61 @@ O que morde código novo:
 - **Só o texto vigente:** `deleted_at IS NULL`, e `text_before_edit` fora.
 - **A prévia da linha MENTE durante a busca** (mostra a última mensagem). Por
   isso a RPC devolve o trecho que casou, e a linha o exibe no lugar da prévia.
+
+⚠️ **O salto da busca dentro do fio roda em JS, e isso tem prazo de validade.**
+`src/lib/inbox/achados-no-fio.ts` (puro, 15 testes) enumera as mensagens que
+casam DENTRO da conversa aberta; a rolagem, o destaque e o ↑/↓ estão em
+`message-thread.tsx`. O que morde código novo:
+
+- ⚠️ **Só funciona porque o fio carrega a conversa INTEIRA** (`.eq(...)
+  .order(...)`, sem `limit`; a maior tem 158 mensagens). Pôr paginação ali
+  faz o contador "2 de 5" mentir em silêncio — nada aqui percebe que faltou
+  mensagem. **O teto de 1000 linhas do PostgREST chega sozinho**, por
+  crescimento de dados, sem ninguém mudar código.
+- ⚠️ **`semAcento()` usa `\p{Mn}`, nunca `\p{Diacritic}`.** A segunda faixa
+  inclui o acento que existe SOZINHO (`^`, `` ` ``, `´`, `¨`, `~`): buscar
+  `^^^` virava agulha vazia, e `includes("")` é verdadeiro para tudo —
+  acendia todas as bolhas da conversa e o contador dizia "113 de 113".
+- ⚠️ **As duas normalizações são próximas, NÃO idênticas, e nos dois
+  sentidos.** Medido: o `unaccent` do Postgres dobra `…`, `–` e `×`; o JS
+  não. Há teste fixando a divergência — replicar a tabela do `unaccent` faria
+  o código AFIRMAR uma equivalência que não teria.
+- ⚠️ **O piso de 3 caracteres é medido no termo NORMALIZADO**, como no banco,
+  e o termo vai `.trim()`ado para a RPC (o `btrim` do Postgres apara só o
+  U+0020).
+- ⚠️ **A supressão do auto-scroll é solta por AÇÃO do operador** — enviar,
+  anotar **e rolar à mão** (`wheel`/`touchmove`, nunca `scroll`: o próprio
+  salto escreve `scrollTop` e dispararia um). Suprimir para sempre fazia a
+  mensagem recém-enviada nascer abaixo da dobra sem nada rolar até ela; não
+  soltar na rolagem fazia a chegada de mensagem nova arrastar de volta quem
+  estava lendo o contexto em volta do achado.
+- ⚠️ **`messages` nas dependências do efeito que centraliza é load-bearing:**
+  no resync o fio vira spinner, o `scrollHeight` desaba e o navegador grampeia
+  o `scrollTop` em zero — sem isso ninguém re-centraliza, porque o `alvoId`
+  não mudou.
+- **A âncora é `messages.id`**, nunca `message_id` (o wamid).
+
+⚠️ **A tela global de agendadas (`/agendadas`) é irmã da faixa do fio, não
+substituta.** `src/hooks/use-agendadas-da-conta.ts`,
+`src/lib/scheduled/tela-global.ts` (puro, com teste) e
+`src/hooks/use-acoes-da-agendada.ts`. O que morde código novo:
+
+- ⚠️ **As ações ("Executar agora" e "Cancelar") moram no hook, não na tela.**
+  Elas mandam mensagem a cliente e apagam registro; duas cópias divergindo nas
+  guardas (`podeDispararAgora`) fazem o cliente receber duas vezes.
+- ⚠️ **São TRÊS consultas.** Fila e acervo têm ordens opostas; numa consulta
+  só com teto, o `ORDER BY` errado engoliria um dos dois inteiro. E **só as
+  enviadas paginam** — falha de seis meses atrás ainda espera decisão, e é ela
+  que a paginação empurraria para fora da tela.
+- ⚠️ **O acervo ordena por `sent_at`**, não por `scheduled_for`: depois de um
+  "Executar agora" as duas se separam de vez.
+- ⚠️ **O canal exibido é o `channel_id` DA AGENDADA**, fixado no agendamento —
+  aqui `canalDaConversa()` seria ERRADO, ao contrário do resto do projeto.
+- **Contagem de aba vem do `count: 'exact'`** (viaja no cabeçalho, de graça),
+  nunca de contar a lista carregada: com o acervo paginado, "Enviadas" diria
+  50 numa conta com 300.
+- **Números somem enquanto a carga falha.** Quatro zeros ao lado das abas
+  afirmariam "não há nada" logo acima da caixa que admite não saber de nada.
 
 ⚠️ **UI de canal: peças próprias, prefira reusá-las.** `src/hooks/use-channels.ts`
 (uma busca por montagem, falha silenciosa), `src/lib/cb-channels/display.ts`
@@ -529,6 +634,8 @@ mordem de novo em qualquer código novo:
   `928_cb_quando_reivindicou`. Depois disso (conferido em 2026-08-03):
   `929_cb_busca_em_mensagens`, `930_cb_reticencia_no_trecho` e
   `931_cb_fecha_anon_nas_tabelas_antigas`.
+  Depois disso (conferido em 2026-08-03):
+  `932_cb_agendada_com_midia_e_citacao`.
   ⚠️ A `906` foi aplicada FORA DE ORDEM (antes da 907), e o histórico do
   Supabase a registra com o nome antigo `904_cb_grupos` — ela nasceu numerada
   como 904, colidiu com `904_cb_mensagem_do_aparelho` e o ARQUIVO foi

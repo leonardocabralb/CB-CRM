@@ -27,7 +27,15 @@ const pageTitles: Record<string, string> = {
   "/contacts": "contacts",
   "/pipelines": "pipelines",
   "/broadcasts": "broadcasts",
+  "/agendadas": "scheduled",
   "/automations": "automations",
+  // ⚠️ `/flows` e `/agents` faltavam aqui desde que as telas nasceram, e o
+  // `getPageTitleKey` abaixo cai em "dashboard" para rota desconhecida — as
+  // duas mostravam "Painel" no cabeçalho. Entram junto porque o defeito é
+  // deste mapa, e deixar dois errados enquanto se acrescenta um certo é o jeito
+  // de ninguém nunca consertar.
+  "/flows": "flows",
+  "/agents": "aiAgents",
   "/settings": "settings",
 };
 

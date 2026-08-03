@@ -211,6 +211,19 @@ export function estaAtrasada(
 }
 
 /**
+ * Quando esta linha ACONTECEU, para efeito de ordenar o acervo.
+ *
+ * ⚠️ `sent_at` na frente de `scheduled_for`, e a diferença só aparece depois de
+ * um "Executar agora": ali a mensagem sai HOJE e continua marcada para daqui a
+ * um mês. Ordenando pela marcação, ela iria parar no fim do acervo com data
+ * futura, enquanto a pergunta do acervo é "o que saiu por último".
+ * `scheduled_for` fica de reserva porque linha que FALHOU nunca tem `sent_at`.
+ */
+function quandoAconteceu(a: Pick<ScheduledMessage, 'sent_at' | 'scheduled_for'>): number {
+  return new Date(a.sent_at ?? a.scheduled_for).getTime();
+}
+
+/**
  * Ordem da lista: primeiro o que ainda vai sair (a mais próxima no topo),
  * depois o acervo (a mais recente no topo).
  *
@@ -224,8 +237,13 @@ export function ordenarParaTela(
     const naFilaA = estaNaFila(a.status);
     const naFilaB = estaNaFila(b.status);
     if (naFilaA !== naFilaB) return naFilaA ? -1 : 1;
-    const ta = new Date(a.scheduled_for).getTime();
-    const tb = new Date(b.scheduled_for).getTime();
-    return naFilaA ? ta - tb : tb - ta;
+    // Na FILA a pergunta é "o que sai primeiro", e aí só `scheduled_for`
+    // responde — `sent_at` é nulo em tudo que ainda não saiu.
+    if (naFilaA) {
+      return (
+        new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime()
+      );
+    }
+    return quandoAconteceu(b) - quandoAconteceu(a);
   });
 }

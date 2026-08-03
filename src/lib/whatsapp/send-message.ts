@@ -43,6 +43,7 @@ import {
   toEvolutionNumber,
   type ProviderMessageRef,
 } from '@/lib/whatsapp/transport';
+import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client';
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
 import { stampMessageChannel } from '@/lib/cb-channels/stamp';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
@@ -608,8 +609,29 @@ export async function sendMessageToConversation(
       const message =
         err instanceof Error ? err.message : 'Unknown Evolution error';
       console.error('[send-message] Evolution send failed:', message);
+      /**
+       * ⚠️ RECUSA (4xx) É DIFERENTE DE "NÃO SEI" (tempo esgotado, 5xx, rede),
+       * e a diferença só passou a doer com a agendada de mídia (932).
+       *
+       * Quem consome isto é `CODIGOS_POS_ENTREGA` no disparador: `evolution_error`
+       * significa "o WhatsApp pode já ter aceitado", e a linha vira
+       * `entrega_incerta` — a tela então diz ao operador que a mensagem PODE
+       * ter chegado e ESCONDE o "Tentar de novo".
+       *
+       * Um 4xx não é isso. A Evolution processou o pedido e recusou antes de
+       * mandar: mime que o WhatsApp não aceita, arquivo grande demais, a URL
+       * do anexo que ela não conseguiu baixar, chave inválida. Nada saiu.
+       * Medido: agendei um anexo, apaguei o objeto do bucket e disparei — veio
+       * `Request failed with status code 400` e a linha terminou afirmando que
+       * o cliente podia ter recebido.
+       *
+       * Antes da 932 isto era raro (texto puro quase não é recusado); com
+       * anexo passa a ser o modo de falha comum.
+       */
+      const recusa =
+        err instanceof EvolutionApiError && err.status >= 400 && err.status < 500;
       throw new SendMessageError(
-        'evolution_error',
+        recusa ? 'evolution_rejected' : 'evolution_error',
         `Evolution API error: ${message}`,
         502
       );
