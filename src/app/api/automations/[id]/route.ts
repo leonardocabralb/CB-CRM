@@ -87,6 +87,7 @@ export async function PATCH(
     'trigger_config',
     'is_active',
     'channel_ids',
+    'stage_ids',
   ] as const) {
     if (k in body) update[k] = body[k]
   }
@@ -94,6 +95,10 @@ export async function PATCH(
   // "sem restricao" — normaliza para null, a mesma regra da migration 903.
   if (Array.isArray(update.channel_ids) && update.channel_ids.length === 0) {
     update.channel_ids = null
+  }
+  // Mesma normalização para o recorte por etapa (933).
+  if (Array.isArray(update.stage_ids) && update.stage_ids.length === 0) {
+    update.stage_ids = null
   }
 
   // If this PATCH leaves the automation active (either explicitly

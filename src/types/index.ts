@@ -712,7 +712,19 @@ export type AutomationTriggerType =
   | 'time_based'
   /** Customer tapped a reply button / list row whose id matches; lets
    *  multi-step menus be chained across automations. */
-  | 'interactive_reply';
+  | 'interactive_reply'
+  /**
+   * Card entrou numa etapa do funil — movido OU criado nela (migration 933).
+   * É o padrão central do Kommo: cada coluna do quadro carrega suas
+   * automações.
+   *
+   * ⚠️ Troca de FUNIL também dispara este gatilho. A trilha da 912 emite
+   * `pipeline_changed` e NUNCA `stage_changed` nesse caso; escutar só
+   * "mudou de etapa" perderia o movimento entre funis.
+   */
+  | 'deal_stage_changed'
+  /** Negócio virou ganho/perdido/reaberto (migration 933). */
+  | 'deal_status_changed';
 
 export type AutomationStepType =
   | 'send_message'
@@ -752,13 +764,67 @@ export interface InteractiveReplyTriggerConfig {
   reply_ids: string[];
 }
 
+/**
+ * Config do gatilho `deal_stage_changed` (migration 933).
+ *
+ * ⚠️ Vazio = QUALQUER etapa, nunca "nenhuma" — a convenção do projeto inteiro
+ * (`channelInScope`, `findEntryFlow`, `FILTROS_VAZIOS` do inbox). Uma tela que
+ * disser "nenhuma etapa" onde o motor lê "todas" faz o operador desativar a
+ * regra errada.
+ *
+ * Só a etapa de DESTINO importa: "quando o card entrar em Proposta". De onde
+ * ele veio fica no contexto, para quem quiser ramificar por condição.
+ */
+export interface DealStageTriggerConfig {
+  /** Etapas de destino que disparam. Vazio/ausente = todas. */
+  stage_ids?: string[];
+}
+
+/** Config do gatilho `deal_status_changed` (migration 933). */
+export interface DealStatusTriggerConfig {
+  /** Status de destino que disparam (`won` | `lost` | `open`). Vazio = todos. */
+  statuses?: string[];
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
   | TagTriggerConfig
   | TimeBasedTriggerConfig
   | InteractiveReplyTriggerConfig
+  | DealStageTriggerConfig
+  | DealStatusTriggerConfig
   | Record<string, unknown>;
+
+/**
+ * Uma linha da fila `cb_automation_events` (migration 933).
+ *
+ * Existe porque quem move card está no NAVEGADOR, sob RLS, em dois caminhos
+ * diferentes (arrastar no Kanban e o formulário de negócio), sem função
+ * compartilhada no servidor. Um trigger de banco enche a fila; o motor drena.
+ */
+export interface CbAutomationEvent {
+  id: string;
+  account_id: string;
+  tipo: 'deal_stage_changed' | 'deal_status_changed';
+  /** Sem FK: apagar o negócio não pode derrubar o evento que o descreve. */
+  deal_id: string | null;
+  contact_id: string | null;
+  /** Canal da CONVERSA do contato, não o do nascimento do card (D9). */
+  channel_id: string | null;
+  from_pipeline_id: string | null;
+  to_pipeline_id: string | null;
+  from_stage_id: string | null;
+  to_stage_id: string | null;
+  from_status: string | null;
+  to_status: string | null;
+  origem: 'usuario' | 'conexao' | 'automacao' | 'sistema';
+  criado_em: string;
+  /** NULL = pendente. É o que a reivindicação em dois passos testa. */
+  processado_em: string | null;
+  tentativas: number;
+  erro: string | null;
+}
 
 /**
  * Canal de SAÍDA opcional, comum a todo passo que envia mensagem.
@@ -885,6 +951,21 @@ export interface Automation {
    * e DESATIVA a automação quando o último canal do escopo é removido.
    */
   channel_ids?: string[] | null;
+  /**
+   * Etapas (`pipeline_stages.id`) em que esta automação pode disparar
+   * (migration 933). `null`/vazio = TODAS as etapas — mesma convenção de
+   * `channel_ids`, nunca "nenhuma".
+   *
+   * Recorta os gatilhos EXISTENTES pelo estado do funil ("só responda quem
+   * está na etapa Proposta"), e é diferente do `stage_ids` do
+   * `trigger_config` do gatilho `deal_stage_changed`, que diz para QUAL etapa
+   * o card precisa ter entrado.
+   *
+   * O trigger `cb_stages_drop_from_automations` (933) remove a etapa apagada
+   * e DESATIVA a automação se o escopo ficar vazio — array vazio seria lido
+   * como "todas", o oposto do que o operador pediu.
+   */
+  stage_ids?: string[] | null;
   is_active: boolean;
   execution_count: number;
   last_executed_at?: string | null;

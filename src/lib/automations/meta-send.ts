@@ -89,12 +89,20 @@ interface SendInteractiveArgs {
  * `messages` insert with `interactive_payload` + `sender_type='bot'`.
  * Both engines want identical behaviour here, so there's one
  * implementation rather than a second hand-rolled copy that could drift.
+ *
+ * ⚠️ `preferredChannelId` PRECISA entrar no `common`. Ele já era declarado em
+ * `SendInteractiveArgs` e já era calculado pelo motor (`stepChannel`), mas
+ * ficava de fora do objeto repassado — e como os dois destinos aceitam o campo
+ * como opcional, o compilador não reclamava. Resultado: botão e lista eram os
+ * únicos envios que ignoravam tanto a escolha do passo quanto o canal do
+ * DISPARO, saindo sempre pelo canal atual da conversa. É o mesmo bug que
+ * apagaria o follow-up de 24h do número certo — só que calado.
  */
 export async function engineSendInteractive(
   args: SendInteractiveArgs,
 ): Promise<{ whatsapp_message_id: string }> {
-  const { payload, accountId, userId, conversationId, contactId } = args
-  const common = { accountId, userId, conversationId, contactId }
+  const { payload, accountId, userId, conversationId, contactId, preferredChannelId } = args
+  const common = { accountId, userId, conversationId, contactId, preferredChannelId }
   if (payload.kind === 'buttons') {
     return engineSendInteractiveButtons({
       ...common,

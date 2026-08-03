@@ -13,7 +13,9 @@
     "metaOnlyNone": "No official Meta number is connected. Connect one under Settings › Connections.",
     "accountWide": "Whole account",
     "noneOnChannel": "Nothing on this channel. Clear the filter to see everything.",
-    "channelOriginated": "Started on this number"
+    "channelOriginated": "Started on this number",
+    "outboundInherit": "Same as the trigger",
+    "outboundHelp": "Leave as is and the reply goes out through the number the customer wrote to."
   },
   "LoginPage": {
     "titleAccept": "Sign in to accept",
@@ -1076,6 +1078,14 @@
         "time_based": {
           "label": "Time-Based",
           "hint": "On a recurring schedule"
+        },
+        "deal_stage_changed": {
+          "label": "Deal moved to stage",
+          "hint": "When a deal is moved into a stage — or created in it."
+        },
+        "deal_status_changed": {
+          "label": "Deal won or lost",
+          "hint": "When the deal is marked won, lost, or reopened."
         }
       },
       "trigger": "Trigger",
@@ -1181,7 +1191,22 @@
         "matchContains": "Contains",
         "matchExact": "Exact",
         "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed.",
-        "channelGone": "The connection in this condition was removed — until you pick another, this condition will never be true."
+        "channelGone": "The connection in this condition was removed — until you pick another, this condition will never be true.",
+        "outboundChannelGone": "The connection picked for this step was removed. Until you pick another one, the message still goes out — through the conversation's connection, not the one you chose."
+      },
+      "delete": "Delete",
+      "stages": {
+        "triggerLabel": "Entered this stage",
+        "triggerHelpAll": "With no stage picked it runs for any stage.",
+        "scopeLabel": "Only for contacts in this stage",
+        "scopeHelpAll": "With no stage picked it runs whatever stage the contact is in.",
+        "selectedCount": "{count} stage(s) picked",
+        "stageGone": "{count} stage(s) in this rule were removed — until you pick another, this rule never fires.",
+        "statusLabel": "Which change",
+        "statusHelpAll": "With nothing ticked it runs for any status change.",
+        "status_won": "Won",
+        "status_lost": "Lost",
+        "status_open": "Reopened"
       }
     }
   },

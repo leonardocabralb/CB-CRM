@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react"
@@ -66,6 +67,7 @@ import { cn } from "@/lib/utils"
 import { useChannels } from "@/hooks/use-channels"
 import type { CbChannel } from "@/lib/cb-channels/repo"
 import { ChannelMultiSelect, ChannelSelect } from "@/components/channels/channel-select"
+import { validateChannelScopeForActivation } from "@/lib/automations/validate"
 
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
@@ -92,6 +94,11 @@ export interface BuilderInitial {
    * estado do formulário com um tipo só, sem `undefined` a cada patch.
    */
   channel_ids: string[]
+  /**
+   * Etapas em que a automação vale (933). Mesma convenção do canal: `[]` na
+   * tela = "todas", e o save converte para `null`.
+   */
+  stage_ids: string[]
   is_active: boolean
   steps: BuilderStep[]
 }
@@ -139,15 +146,34 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "close_conversation",
 ]
 
+/**
+ * Gatilhos OFERECIDOS na tela.
+ *
+ * ⚠️ Não é a lista de `AutomationTriggerType` — é a lista do que DISPARA.
+ * Dois tipos existem no banco e no seletor desde o upstream sem nunca terem
+ * sido despachados por lugar nenhum:
+ *
+ * - `time_based`: nada além do cron o leria, e o cron só drena esperas
+ *   parqueadas. Além disso ele não tem alvo — o motor roda por contato e
+ *   "todo dia às 9h" não diz para qual. Substituído pelo gatilho relativo a
+ *   data de campo personalizado (lembrete de reunião), que dispara POR
+ *   contato — ver `docs/PLANO-automacoes-multicanal-e-funil.md` §4.6.
+ * - `conversation_assigned`: volta junto com a caixa de saída da Fase 2, que é
+ *   o que consegue observar os 6 escritores de `assigned_agent_id` (um deles no
+ *   navegador).
+ *
+ * Os dois seguem no union de tipos: automação antiga gravada com eles continua
+ * carregando e salvando. Só não se oferece o que não acontece — opção que não
+ * dispara é pior que opção ausente, porque o operador monta a regra, ativa, e
+ * espera.
+ */
 const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "new_message_received" },
   { value: "first_inbound_message" },
   { value: "keyword_match" },
   { value: "interactive_reply" },
   { value: "new_contact_created" },
-  { value: "conversation_assigned" },
   { value: "tag_added" },
-  { value: "time_based" },
 ]
 
 function cid(): string {
@@ -688,6 +714,9 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
         // mas mandar `[]` seria pedir para a 903 desativar a automação
         // (o trigger trata array vazio como escopo órfão).
         channel_ids: state.channel_ids.length > 0 ? state.channel_ids : null,
+        // Mesma regra: vazio vira `null` ("todas as etapas"). Mandar `[]`
+        // seria pedir para o trigger da 933 tratar como escopo órfão.
+        stage_ids: state.stage_ids.length > 0 ? state.stage_ids : null,
         is_active: state.is_active,
         steps: toApiSteps(state.steps),
       }
@@ -772,13 +801,16 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
         <div className="absolute inset-0 bg-[radial-gradient(circle,var(--border)_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none" />
         <div className="relative mx-auto flex max-w-2xl flex-col items-center gap-0 px-4 py-10">
           <ResourcesProvider>
+            <AvisosDeCanal steps={state.steps} channelIds={state.channel_ids} />
             <TriggerCard
               type={state.trigger_type}
               config={state.trigger_config}
               channelIds={state.channel_ids}
+              stageIds={state.stage_ids}
               onTypeChange={(tVal) => patchTop("trigger_type", tVal)}
               onConfigChange={(c) => patchTop("trigger_config", c)}
               onChannelIdsChange={(ids) => patchTop("channel_ids", ids)}
+              onStageIdsChange={(ids) => patchTop("stage_ids", ids)}
               t={t}
             />
             <StepList
@@ -806,22 +838,42 @@ function TriggerCard({
   type,
   config,
   channelIds,
+  stageIds,
   onTypeChange,
   onConfigChange,
   onChannelIdsChange,
+  onStageIdsChange,
   t,
 }: {
   type: AutomationTriggerType
   config: Record<string, unknown>
   channelIds: string[]
+  stageIds: string[]
   onTypeChange: (t: AutomationTriggerType) => void
   onConfigChange: (c: Record<string, unknown>) => void
   onChannelIdsChange: (ids: string[]) => void
+  onStageIdsChange: (ids: string[]) => void
   t: ReturnType<typeof useTranslations>
 }) {
   const [open, setOpen] = useState(false)
   const tCanais = useTranslations("Channels")
-  const { channels } = useChannels()
+  // Do contexto, NÃO um `useChannels()` próprio. `useChannels` não tem cache
+  // nem dedup: cada chamada é um GET /api/cb/channels por montagem, e este
+  // card monta junto com o provider que já busca a mesma lista. Mesmo motivo
+  // que levou os fluxos a buscarem uma vez só no editor.
+  const { channels } = useResources()
+  // Um gatilho aposentado (§TRIGGER_OPTIONS) some da lista, mas se a automação
+  // JÁ estiver gravada com ele a opção volta — só para esta automação. Sem
+  // isto o `<select>` fica sem opção casando com `value` e o navegador mostra a
+  // primeira da lista: a tela diria "Nova mensagem recebida" sobre uma regra
+  // gravada como agendamento, e o primeiro save gravaria essa mentira.
+  const opcoesDeGatilho = useMemo(
+    () =>
+      TRIGGER_OPTIONS.some((o) => o.value === type)
+        ? TRIGGER_OPTIONS
+        : [...TRIGGER_OPTIONS, { value: type }],
+    [type],
+  )
   return (
     // Card width: full on mobile, fixed 320px on sm+. The canvas wrapper
     // (max-w-2xl + px-4) keeps this tidy on tablet/desktop.
@@ -856,7 +908,7 @@ function TriggerCard({
                 onChange={(e) => onTypeChange(e.target.value as AutomationTriggerType)}
                 className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
               >
-                {TRIGGER_OPTIONS.map((o) => (
+                {opcoesDeGatilho.map((o) => (
                   <option key={o.value} value={o.value}>
                     {t(`triggers.${o.value}.label`)}
                   </option>
@@ -885,6 +937,26 @@ function TriggerCard({
                 </p>
               </div>
             )}
+            {/* Recorte por ETAPA: "responda, mas só para quem está na etapa
+                Proposta". É o análogo do escopo de canal, e é diferente da
+                config do gatilho de funil acima — aqui a pergunta é onde o
+                contato ESTÁ, não para onde ele acabou de ir.
+
+                Escondido no gatilho de funil: ali a etapa já é a config do
+                próprio gatilho, e dois seletores de etapa no mesmo card com
+                significados diferentes é convite a erro. */}
+            {type !== "deal_stage_changed" && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  {t("stages.scopeLabel")}
+                </label>
+                <SeletorDeEtapas
+                  value={stageIds}
+                  onChange={onStageIdsChange}
+                  vazioLabel={t("stages.scopeHelpAll")}
+                />
+              </div>
+            )}
             {type === "keyword_match" && (
               <KeywordMatchConfig
                 config={config as unknown as KeywordMatchTriggerConfig}
@@ -905,6 +977,57 @@ function TriggerCard({
                   onChange={(v) => onConfigChange({ ...config, tag_id: v })}
                   t={t}
                 />
+              </div>
+            )}
+            {/* Config do gatilho de funil: PARA QUAL etapa o card tem de
+                entrar. Não confundir com o recorte por etapa logo abaixo, que
+                pergunta onde o contato ESTÁ. */}
+            {type === "deal_stage_changed" && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  {t("stages.triggerLabel")}
+                </label>
+                <SeletorDeEtapas
+                  value={(config.stage_ids as string[] | undefined) ?? []}
+                  onChange={(ids) => onConfigChange({ ...config, stage_ids: ids })}
+                  vazioLabel={t("stages.triggerHelpAll")}
+                />
+              </div>
+            )}
+            {type === "deal_status_changed" && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  {t("stages.statusLabel")}
+                </label>
+                <div className="flex gap-3">
+                  {(["won", "lost", "open"] as const).map((s) => {
+                    const atuais = (config.statuses as string[] | undefined) ?? []
+                    return (
+                      <label
+                        key={s}
+                        className="flex cursor-pointer items-center gap-1.5 text-xs text-foreground"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={atuais.includes(s)}
+                          onChange={() =>
+                            onConfigChange({
+                              ...config,
+                              statuses: atuais.includes(s)
+                                ? atuais.filter((v) => v !== s)
+                                : [...atuais, s],
+                            })
+                          }
+                          className="h-3.5 w-3.5 accent-primary"
+                        />
+                        {t(`stages.status_${s}`)}
+                      </label>
+                    )
+                  })}
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {t("stages.statusHelpAll")}
+                </p>
               </div>
             )}
             {type === "time_based" && (
@@ -1201,7 +1324,11 @@ function StepRenderer({
                   onClick={() => props.deleteStepAt(path)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  {t("delete", { defaultValue: "Delete" })}
+                  {/* Sem `defaultValue`: o 2º argumento do next-intl são os
+                      VALORES de interpolação, não um fallback. Ele nunca foi
+                      lido, e a chave não existia em nenhum dicionário — o
+                      botão mostrava "Automations.builder.delete" cru. */}
+                  {t("delete")}
                 </Button>
               </div>
             </div>
@@ -1312,6 +1439,220 @@ function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
 }
 
 // ------------------------------------------------------------
+// Seletor de ETAPAS do funil (migration 933).
+//
+// Usado em dois lugares com significados DIFERENTES, e por isso recebe o
+// texto de ajuda de fora:
+//   - no gatilho `deal_stage_changed`: "para QUAL etapa o card tem de entrar";
+//   - no recorte da automação (`stage_ids`): "o contato precisa ESTAR nesta
+//     etapa" — o análogo do escopo de canal.
+//
+// ⚠️ Em ambos, vazio = TODAS as etapas, nunca "nenhuma". É a convenção do
+// projeto inteiro, e uma tela que disser o contrário faz o operador desativar
+// a regra errada.
+//
+// Agrupa por funil porque etapa só faz sentido dentro do seu funil: "Contato
+// Acordo" existe em mais de um quadro e o nome sozinho não distingue.
+// ------------------------------------------------------------
+
+function SeletorDeEtapas({
+  value,
+  onChange,
+  vazioLabel,
+}: {
+  value: string[]
+  onChange: (ids: string[]) => void
+  vazioLabel: string
+}) {
+  const { pipelines, stages } = useResources()
+  const tEtapas = useTranslations("Automations.builder.stages")
+
+  const porFunil = useMemo(() => {
+    return pipelines
+      .map((p) => ({
+        funil: p,
+        etapas: stages.filter((s) => s.pipeline_id === p.id),
+      }))
+      .filter((g) => g.etapas.length > 0)
+  }, [pipelines, stages])
+
+  const alternar = (id: string) =>
+    onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id])
+
+  // Etapa apagada entre editar e salvar. O trigger da 933 limpa o array em
+  // `automations.stage_ids`, mas não o `trigger_config` — mesma dívida do
+  // canal órfão, e a tela é quem denuncia.
+  const orfaos = value.filter((id) => !stages.some((s) => s.id === id))
+
+  if (porFunil.length === 0) return null
+
+  return (
+    <div className="rounded-md border border-border bg-muted/40 p-2">
+      <p className="mb-1.5 text-[11px] text-muted-foreground">
+        {value.length === 0
+          ? vazioLabel
+          : tEtapas("selectedCount", { count: value.length })}
+      </p>
+      <div className="max-h-52 space-y-2 overflow-y-auto">
+        {porFunil.map((g) => (
+          <div key={g.funil.id}>
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {g.funil.name}
+            </div>
+            {g.etapas.map((s) => (
+              <label
+                key={s.id}
+                className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs text-foreground hover:bg-muted"
+              >
+                <input
+                  type="checkbox"
+                  checked={value.includes(s.id)}
+                  onChange={() => alternar(s.id)}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                <span className="truncate">{s.name}</span>
+              </label>
+            ))}
+          </div>
+        ))}
+      </div>
+      {orfaos.length > 0 && (
+        <p className="mt-1 text-[11px] text-destructive">
+          {tEtapas("stageGone", { count: orfaos.length })}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ------------------------------------------------------------
+// Aviso AO VIVO de canal impossível.
+//
+// A mesma função que o servidor roda na ativação, rodando enquanto o operador
+// edita. Antes, a única forma de descobrir "botões não existem no QR Code" era
+// ligar o interruptor, salvar, e ler um toast — depois de já ter montado a
+// automação inteira. Os fluxos já faziam assim (`flow-editor-state.tsx`); as
+// automações só tinham a metade do servidor.
+//
+// Uma função só nas duas pontas é o ponto: duas cópias divergem, e a que
+// diverge é sempre a da tela — que passa a liberar o que o servidor recusa.
+// ------------------------------------------------------------
+
+function AvisosDeCanal({
+  steps,
+  channelIds,
+}: {
+  steps: BuilderStep[]
+  channelIds: string[]
+}) {
+  const { channels } = useResources()
+  const issues = useMemo(
+    () =>
+      channels.length === 0
+        ? []
+        : validateChannelScopeForActivation(
+            toApiSteps(steps),
+            channelIds.length > 0 ? channelIds : null,
+            channels.map((c) => ({ id: c.id, label: c.label, kind: c.kind })),
+          ),
+    [steps, channelIds, channels],
+  )
+  if (issues.length === 0) return null
+  return (
+    <div className="z-10 mb-4 w-full max-w-[320px] rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 sm:w-80">
+      <ul className="space-y-1">
+        {issues.map((issue) => (
+          <li key={issue.path} className="text-[11px] leading-snug text-destructive">
+            {issue.message}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+// ------------------------------------------------------------
+// Canal de SAÍDA do passo
+//
+// Grava `step_config.channel_id`, que o motor já lia desde a 903
+// (`stepChannel`, engine.ts) sem nenhuma tela para preenchê-lo — dava para
+// escolher POR ONDE a automação escuta, não por onde ela responde.
+//
+// ⚠️ Vazio NÃO é "todos", como no escopo do gatilho: aqui uma mensagem sai por
+// UM número só. Vazio = herda o canal do DISPARO (com queda para o canal atual
+// da conversa). Daí o rótulo próprio em vez do `allLabel` padrão "Todos os
+// canais", que aqui seria mentira.
+//
+// ⚠️ A herança é o que faz o follow-up de 24h sair pelo número certo: o canal
+// do disparo viaja no contexto JSONB e sobrevive ao passo `wait`. Fixar um
+// canal à toa joga essa propriedade fora, então o padrão continua sendo herdar.
+// ------------------------------------------------------------
+
+function CanalDeSaida({
+  value,
+  onChange,
+  t,
+}: {
+  value: string | null
+  onChange: (id: string | null) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const tCanais = useTranslations("Channels")
+  const { channels } = useResources()
+
+  // CONEXÃO APAGADA. Nenhum trigger limpa `step_config` — o da 903 só toca em
+  // `automations.channel_ids` —, e a validação de ativação ignora id
+  // desconhecido de propósito (e nem olha passo que não seja só-Meta). Então o
+  // UUID morto fica pendurado, `resolveEngineChannelPreferring` não casa, cai
+  // no canal da conversa, e a promessa do seletor ("sai SEMPRE por este
+  // número") deixa de valer sem erro, sem log e sem marca na tela. É a mesma
+  // dívida que a condição por canal já paga logo abaixo — o seletor sozinho
+  // não denuncia nada: mostra o placeholder, indistinguível de "ainda não
+  // escolhi".
+  //
+  // `channels.length > 0` é load-bearing: a lista nasce vazia e só enche
+  // depois do fetch, e sem essa guarda todo passo já salvo piscaria o aviso na
+  // montagem.
+  const orfao = !!value && channels.length > 0 && !channels.some((c) => c.id === value)
+
+  // Com um número só não há o que decidir — mesma regra do resto do projeto.
+  // MAS o órfão precisa aparecer para poder ser trocado: apagar uma conexão de
+  // uma conta de duas deixa UMA, que é exatamente quando o aviso importa.
+  if (channels.length < 2 && !orfao) return null
+
+  return (
+    <FieldBlock label={tCanais("outboundLabel")}>
+      <ChannelSelect
+        channels={channels}
+        value={value}
+        onChange={onChange}
+        allowAll
+        allLabel={tCanais("outboundInherit")}
+      />
+      {orfao ? (
+        // Texto diz que a mensagem CONTINUA saindo, por outro número — o
+        // oposto do `channelGone` da condição, que fica inerte. Confundir os
+        // dois faria o operador achar que a automação parou, quando ela está
+        // entregando pelo número errado, que é pior.
+        <p className="mt-1 text-xs text-destructive">
+          {t("config.outboundChannelGone")}
+        </p>
+      ) : (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {tCanais("outboundHelp")}
+        </p>
+      )}
+    </FieldBlock>
+  )
+}
+
+/** Lê o canal do passo tolerando config antiga (campo ausente) e `""`. */
+function canalDoPasso(cfg: Record<string, unknown>): string | null {
+  const v = cfg.channel_id
+  return typeof v === "string" && v ? v : null
+}
+
+// ------------------------------------------------------------
 // Per-step config editor
 // ------------------------------------------------------------
 
@@ -1331,35 +1672,67 @@ function StepEditor({
   switch (step.step_type) {
     case "send_message":
       return (
-        <FieldBlock label={t("config.messageText")}>
-          <Textarea
-            value={(cfg.text as string) ?? ""}
-            onChange={(e) => set({ text: e.target.value })}
-            placeholder={t("config.placeholderMessageText")}
-            className="min-h-24 bg-muted text-foreground"
+        <>
+          <FieldBlock label={t("config.messageText")}>
+            <Textarea
+              value={(cfg.text as string) ?? ""}
+              onChange={(e) => set({ text: e.target.value })}
+              placeholder={t("config.placeholderMessageText")}
+              className="min-h-24 bg-muted text-foreground"
+            />
+          </FieldBlock>
+          <CanalDeSaida
+            value={canalDoPasso(cfg)}
+            onChange={(id) => set({ channel_id: id })}
+            t={t}
           />
-        </FieldBlock>
+        </>
       )
     case "send_buttons":
     case "send_list":
       // The whole step_config IS the interactive payload; the shared
       // builder edits it in place (and enforces Meta's limits + preview).
       return (
-        <InteractiveBuilder
-          value={asInteractive(cfg)}
-          onChange={(payload) =>
-            onChange({ ...step, step_config: toStepConfig(payload) })
-          }
-        />
+        <>
+          <InteractiveBuilder
+            value={asInteractive(cfg)}
+            onChange={(payload) =>
+              onChange({
+                ...step,
+                // ⚠️ `toStepConfig(payload)` SUBSTITUI o config inteiro — o
+                // payload interativo É o config. Sem recolocar o canal aqui,
+                // qualquer toque num botão apagaria a escolha de saída em
+                // silêncio, e o operador só descobriria pelo número errado
+                // chegando ao cliente.
+                step_config: {
+                  ...toStepConfig(payload),
+                  ...(canalDoPasso(cfg) ? { channel_id: canalDoPasso(cfg) } : {}),
+                },
+              })
+            }
+          />
+          <CanalDeSaida
+            value={canalDoPasso(cfg)}
+            onChange={(id) => set({ channel_id: id })}
+            t={t}
+          />
+        </>
       )
     case "send_template":
       return (
-        <SendTemplateFields
-          templateName={(cfg.template_name as string) ?? ""}
-          language={(cfg.language as string) ?? ""}
-          onChange={(patch) => set(patch)}
-          t={t}
-        />
+        <>
+          <SendTemplateFields
+            templateName={(cfg.template_name as string) ?? ""}
+            language={(cfg.language as string) ?? ""}
+            onChange={(patch) => set(patch)}
+            t={t}
+          />
+          <CanalDeSaida
+            value={canalDoPasso(cfg)}
+            onChange={(id) => set({ channel_id: id })}
+            t={t}
+          />
+        </>
       )
     case "add_tag":
     case "remove_tag":
@@ -1568,7 +1941,9 @@ function StepEditor({
     case "close_conversation":
       return (
         <p className="text-xs text-muted-foreground">
-          {t("config.closeConversationHint", { defaultValue: "Sets the conversation status to \"closed\". No configuration needed." })}
+          {/* Idem: a chave existe nos dois dicionários, então o `defaultValue`
+              só enganava quem lesse. */}
+          {t("config.closeConversationHint")}
         </p>
       )
     default:

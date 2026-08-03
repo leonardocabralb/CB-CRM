@@ -13,7 +13,9 @@
     "metaOnlyNone": "Nenhum número oficial da Meta está conectado. Conecte um em Ajustes › Conexões.",
     "accountWide": "Conta inteira",
     "noneOnChannel": "Nada neste canal. Limpe o filtro para ver tudo.",
-    "channelOriginated": "Originados neste número"
+    "channelOriginated": "Originados neste número",
+    "outboundInherit": "A mesma do disparo",
+    "outboundHelp": "Deixando assim, a resposta sai pelo número por onde o cliente escreveu."
   },
   "LoginPage": {
     "titleAccept": "Entre para aceitar",
@@ -1076,6 +1078,14 @@
         "time_based": {
           "label": "Por horário",
           "hint": "Em um agendamento recorrente"
+        },
+        "deal_stage_changed": {
+          "label": "Card mudou de etapa",
+          "hint": "Quando um negócio for movido para uma etapa — ou criado nela."
+        },
+        "deal_status_changed": {
+          "label": "Negócio ganho ou perdido",
+          "hint": "Quando o negócio for marcado como ganho, perdido ou reaberto."
         }
       },
       "trigger": "Gatilho",
@@ -1181,7 +1191,22 @@
         "matchContains": "Contém",
         "matchExact": "Exata",
         "closeConversationHint": "Define o status da conversa como \"encerrada\". Nenhuma configuração necessária.",
-        "channelGone": "A conexão desta condição foi removida — enquanto ela não for trocada, esta condição nunca será verdadeira."
+        "channelGone": "A conexão desta condição foi removida — enquanto ela não for trocada, esta condição nunca será verdadeira.",
+        "outboundChannelGone": "A conexão escolhida para este envio foi removida. Enquanto outra não for escolhida, a mensagem continua saindo — mas pela conexão da conversa, não pela que você escolheu."
+      },
+      "delete": "Excluir",
+      "stages": {
+        "triggerLabel": "Entrou nesta etapa",
+        "triggerHelpAll": "Sem etapa escolhida, vale para qualquer etapa.",
+        "scopeLabel": "Só para quem está nesta etapa",
+        "scopeHelpAll": "Sem etapa escolhida, vale para o contato em qualquer etapa.",
+        "selectedCount": "{count} etapa(s) escolhida(s)",
+        "stageGone": "{count} etapa(s) desta regra foi(ram) removida(s) — enquanto não forem trocadas, esta regra não dispara.",
+        "statusLabel": "Qual mudança",
+        "statusHelpAll": "Sem nada marcado, vale para qualquer mudança de status.",
+        "status_won": "Ganho",
+        "status_lost": "Perdido",
+        "status_open": "Reaberto"
       }
     }
   },

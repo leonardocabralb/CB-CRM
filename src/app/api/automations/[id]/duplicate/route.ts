@@ -50,6 +50,9 @@ export async function POST(
       // devolvia uma automação que responde por todos os números do
       // escritório, inclusive o celular pessoal do sócio.
       channel_ids: original.channel_ids ?? null,
+      // Mesma armadilha, mesma correção, para o recorte por etapa (933):
+      // escopo ausente é lido como "todas as etapas".
+      stage_ids: original.stage_ids ?? null,
       is_active: false,
     })
     .select()

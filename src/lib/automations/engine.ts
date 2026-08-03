@@ -7,6 +7,8 @@ import type {
   KeywordMatchTriggerConfig,
   InteractiveReplyTriggerConfig,
   TagTriggerConfig,
+  DealStageTriggerConfig,
+  DealStatusTriggerConfig,
   SendMessageStepConfig,
   SendButtonsStepConfig,
   SendListStepConfig,
@@ -52,6 +54,21 @@ export interface AutomationContext {
    * cliente usou nesse meio-tempo, e não pelo canal do disparo original.
    */
   channel_id?: string | null
+  /**
+   * Negócio que este disparo diz respeito (migration 933). Vem preenchido nos
+   * gatilhos de funil, onde o evento carrega o card EXATO — o que evita a
+   * pergunta "qual card?" quando o contato tem mais de um aberto.
+   *
+   * Sobrevive ao passo `wait` de graça, como o `channel_id`: o contexto é
+   * JSONB em `automation_pending_executions.context`.
+   */
+  deal_id?: string | null
+  /** Etapa de destino do evento de funil — a que o card ACABOU de entrar. */
+  to_stage_id?: string | null
+  /** Etapa de origem. Nula quando o card foi CRIADO na etapa. */
+  from_stage_id?: string | null
+  /** Status de destino, para `deal_status_changed` (`won` | `lost` | `open`). */
+  to_status?: string | null
 }
 
 export interface DispatchInput {
@@ -118,6 +135,10 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
     for (const automation of automations as Automation[]) {
       if (!channelInScope(automation, input.context)) continue
       if (!triggerMatches(automation, input.context)) continue
+      // Depois do casamento de gatilho, e não antes: `stageInScope` pode
+      // consultar o banco, e não faz sentido perguntar em que etapa o contato
+      // está para uma automação que nem era desta palavra-chave.
+      if (!(await stageInScope(db, automation, input.contactId, input.context))) continue
       try {
         await executeAutomation(automation, input)
       } catch (err) {
@@ -732,10 +753,22 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
  *   com valores  -> só os canais listados
  *
  * ⚠️ Contexto SEM canal (`channel_id` null/ausente) passa em qualquer
- * escopo. É o caso dos disparos que não vêm de mensagem (tag_added,
- * conversation_assigned, gatilhos por tempo) e do inbound anterior à Fase 3.
- * Barrá-los faria uma automação restrita a um canal parar de funcionar
- * nesses gatilhos — regressão silenciosa pior que o excesso de disparo.
+ * escopo — e desde a Fase 1 sobra POUCO caso. `tag_added` passou a carregar
+ * canal (`canalDoContato`, em `src/lib/contacts/tag-events.ts`, resolve a
+ * conversa mais recente do contato; fluxo e automação já trazem o canal da
+ * run/do disparo), então automação de etiqueta restrita a um canal É filtrada
+ * aqui — de propósito: antes o escopo era inerte nela, e a condição `channel`,
+ * que falha FECHADA, dava sempre falso.
+ *
+ * O passe livre vale para o resíduo, e ele é real: contato sem nenhuma
+ * conversa com canal, falha na busca do canal (best-effort, engolida com
+ * warning), inbound anterior à 903 e o POST manual em `/api/automations/engine`.
+ * Barrá-los faria a automação parar sem erro e sem log — regressão silenciosa
+ * pior que o excesso de disparo.
+ *
+ * `conversation_assigned` e `time_based` não entram na lista: não têm call site
+ * nenhum e saíram do seletor da tela (voltam com a caixa de saída da Fase 2 e
+ * com o gatilho por data, respectivamente).
  */
 export function channelInScope(
   automation: Automation,
@@ -746,6 +779,58 @@ export function channelInScope(
   const canal = ctx?.channel_id
   if (!canal) return true
   return escopo.includes(canal)
+}
+
+/**
+ * A automação pode disparar para o negócio em que este contato está?
+ *
+ * Recorta os gatilhos EXISTENTES pelo estado do funil: "responda automático,
+ * mas só para quem está na etapa Proposta". Sem isto, a única forma de
+ * restringir por etapa seria uma condição no primeiro passo — que executa a
+ * automação, escreve no log e só então descobre que não era para agir.
+ *
+ * ⚠️ Assíncrona, e de propósito: precisa perguntar ao banco em que etapa o
+ * contato está. Por isso o dispatch só chama quando HÁ escopo (a maioria das
+ * automações não tem), e uma vez por automação com escopo — não por passo.
+ *
+ * Semântica igual à do canal: escopo vazio/nulo = TODAS as etapas.
+ *
+ * ⚠️ Falha ABERTA, como `channelInScope`: sem contato, sem negócio ou com
+ * erro na consulta, deixa passar. Barrar faria a automação parar sem erro e
+ * sem log — o modo de falha que este projeto trata como o pior de todos.
+ */
+export async function stageInScope(
+  db: ReturnType<typeof supabaseAdmin>,
+  automation: Automation,
+  contactId: string | null | undefined,
+  ctx: AutomationContext | undefined,
+): Promise<boolean> {
+  const escopo = automation.stage_ids
+  if (!escopo || escopo.length === 0) return true
+
+  // Gatilho de funil já traz a etapa no evento — não custa consulta nenhuma.
+  if (ctx?.to_stage_id) return escopo.includes(ctx.to_stage_id)
+
+  if (!contactId) return true
+
+  const { data, error } = await db
+    .from('deals')
+    .select('stage_id')
+    .eq('account_id', automation.account_id)
+    .eq('contact_id', contactId)
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('[automations] stageInScope: consulta falhou, deixando passar', error)
+    return true
+  }
+  // Contato sem negócio aberto NÃO está em etapa nenhuma. Aqui a resposta
+  // honesta é não — diferente do erro acima, isto não é ignorância, é fato.
+  if (!data?.stage_id) return false
+  return escopo.includes(data.stage_id as string)
 }
 
 export function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
@@ -777,6 +862,27 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
     const cfg = automation.trigger_config as TagTriggerConfig
     const tagId = ctx?.tag_id
     return Boolean(tagId && cfg?.tag_id && cfg.tag_id === tagId)
+  }
+
+  // Card entrou numa etapa — movido OU criado nela (933).
+  //
+  // ⚠️ Config vazia = QUALQUER etapa, igual ao resto do projeto. É o que faz
+  // "toda vez que um card se mexer" ser exprimível sem listar as 9 etapas.
+  if (automation.trigger_type === 'deal_stage_changed') {
+    const cfg = automation.trigger_config as DealStageTriggerConfig
+    const alvo = ctx?.to_stage_id
+    if (!Array.isArray(cfg?.stage_ids) || cfg.stage_ids.length === 0) return true
+    // Sem etapa no contexto não há como afirmar que é ESTA etapa. Falha
+    // fechada, ao contrário do escopo: aqui a pergunta é "entrou na etapa X?",
+    // e a resposta honesta para um disparo sem etapa é não.
+    return Boolean(alvo && cfg.stage_ids.includes(alvo))
+  }
+
+  if (automation.trigger_type === 'deal_status_changed') {
+    const cfg = automation.trigger_config as DealStatusTriggerConfig
+    const alvo = ctx?.to_status
+    if (!Array.isArray(cfg?.statuses) || cfg.statuses.length === 0) return true
+    return Boolean(alvo && cfg.statuses.includes(alvo))
   }
 
   return true

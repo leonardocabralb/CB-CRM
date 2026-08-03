@@ -30,6 +30,7 @@ import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
 import { GatedButton } from "@/components/ui/gated-button";
 import { useTranslations } from "next-intl";
+import { avisarDrenagemDeFunil } from "@/lib/automations/avisar-drenagem";
 
 // Pipeline creation is admin-class (settings-tier write under
 // the new RLS); deal creation is operational and only requires
@@ -227,7 +228,13 @@ export default function PipelinesPage() {
       if (error) {
         toast.error(t("toastFailedMoveDeal"));
         refreshDeals();
+        return;
       }
+      // O trigger da 933 já enfileirou o evento. Este aviso só antecipa a
+      // drenagem: sem ele a automação da etapa sairia no ciclo de 15 min do
+      // agendador, e "arrastou → mandou a mensagem" viraria "arrastou →
+      // mandou a mensagem daqui a um quarto de hora".
+      avisarDrenagemDeFunil();
     },
     [supabase, refreshDeals, t],
   );

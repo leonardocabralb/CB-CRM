@@ -68,6 +68,11 @@ export async function POST(request: Request) {
   const channelIds = Array.isArray(body.channel_ids)
     ? (body.channel_ids as unknown[]).filter((v): v is string => typeof v === 'string')
     : null
+  // Recorte por etapa do funil (933). Mesma semântica e mesma normalização do
+  // canal: vazio = TODAS as etapas, e `[]` vira `null` no insert.
+  const stageIds = Array.isArray(body.stage_ids)
+    ? (body.stage_ids as unknown[]).filter((v): v is string => typeof v === 'string')
+    : null
 
   let effectiveSteps: BuilderStepInput[] | undefined = steps
   let effectiveName = name
@@ -128,6 +133,7 @@ export async function POST(request: Request) {
       trigger_type: effectiveTriggerType,
       trigger_config: effectiveTriggerConfig ?? {},
       channel_ids: channelIds && channelIds.length > 0 ? channelIds : null,
+      stage_ids: stageIds && stageIds.length > 0 ? stageIds : null,
       is_active: !!is_active,
     })
     .select()

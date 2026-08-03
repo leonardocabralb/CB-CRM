@@ -101,6 +101,7 @@ vi.mock("./meta-send", () => ({
 }));
 
 import { runAutomationsForTrigger, triggerMatches } from "./engine";
+import { engineSendText } from "./meta-send";
 import type { Automation } from "@/types";
 
 const ACCOUNT = "acct-1";
@@ -268,6 +269,78 @@ function webhookStep(url: string) {
     step_config: { url, headers: { "Metadata-Flavor": "Google" }, body_template: "{}" },
   };
 }
+
+// ------------------------------------------------------------
+// Canal de SAÍDA por passo — a precedência que o seletor "Enviar por" promete.
+//
+// stepChannel é privado, então o teste passa pelo motor de verdade e observa o
+// que chega ao sender. Nenhuma conta tem 2 conexões hoje, então esta é a única
+// forma de provar a regra.
+// ------------------------------------------------------------
+
+function sendStep(step_config: Record<string, unknown>) {
+  return {
+    id: "s1",
+    automation_id: "a1",
+    step_type: "send_message",
+    position: 0,
+    parent_step_id: null,
+    step_config,
+  };
+}
+
+async function dispararEnvio(
+  step_config: Record<string, unknown>,
+  context: Record<string, unknown>,
+) {
+  h.state.owned = { id: "c1" };
+  h.state.automations = [automationWithUpdateStep()];
+  h.state.steps = [sendStep(step_config)];
+  await runAutomationsForTrigger({
+    accountId: ACCOUNT,
+    triggerType: "new_message_received",
+    contactId: "c1",
+    // conversation_id no contexto evita a busca de conversa em `resolveConversationId`.
+    context: { conversation_id: "conv1", ...context },
+  });
+  const chamadas = vi.mocked(engineSendText).mock.calls;
+  return chamadas[0]?.[0];
+}
+
+describe("send_message — canal de saída por passo", () => {
+  beforeEach(() => vi.mocked(engineSendText).mockClear());
+
+  it("CRÍTICO: o canal do PASSO vence o canal do disparo", async () => {
+    // "o cliente escreveu no pessoal, mas a confirmação sai pelo oficial".
+    const args = await dispararEnvio(
+      { text: "oi", channel_id: "ch-oficial" },
+      { channel_id: "ch-pessoal" },
+    );
+    expect(args?.preferredChannelId).toBe("ch-oficial");
+  });
+
+  it("sem canal no passo, herda o canal do DISPARO", async () => {
+    // É o que faz o follow-up parado num `wait` de 24h voltar pelo número por
+    // onde o cliente escreveu, e não pelo que ele usou no meio-tempo.
+    const args = await dispararEnvio({ text: "oi" }, { channel_id: "ch-pessoal" });
+    expect(args?.preferredChannelId).toBe("ch-pessoal");
+  });
+
+  it("sem canal em lugar nenhum, o sender cai na conversa (undefined)", async () => {
+    const args = await dispararEnvio({ text: "oi" }, {});
+    expect(args?.preferredChannelId).toBeUndefined();
+  });
+
+  it("channel_id nulo no passo (config antiga) não apaga o canal do disparo", async () => {
+    // `??` e não `||`: um `null` gravado por config antiga tem de cair para o
+    // disparo, não virar "sem canal".
+    const args = await dispararEnvio(
+      { text: "oi", channel_id: null },
+      { channel_id: "ch-pessoal" },
+    );
+    expect(args?.preferredChannelId).toBe("ch-pessoal");
+  });
+});
 
 function automationWithUpdateStep() {
   return {
