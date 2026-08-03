@@ -1044,7 +1044,9 @@
         "wait": "Wait",
         "condition": "Condition (If/Else)",
         "send_webhook": "Send Webhook",
-        "close_conversation": "Close Conversation"
+        "close_conversation": "Close Conversation",
+        "move_deal_stage": "Move deal to stage",
+        "set_deal_status": "Mark won or lost"
       },
       "triggers": {
         "new_message_received": {
@@ -1206,7 +1208,10 @@
         "statusHelpAll": "With nothing ticked it runs for any status change.",
         "status_won": "Won",
         "status_lost": "Lost",
-        "status_open": "Reopened"
+        "status_open": "Reopened",
+        "moveToLabel": "Move to stage",
+        "pickStage": "Pick a stage",
+        "moveHelp": "Moves the trigger's deal. With no deal on the trigger, it moves the contact's most recent open deal."
       }
     }
   },

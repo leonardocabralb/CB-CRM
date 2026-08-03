@@ -54,6 +54,22 @@ function walk(steps: StepLike[], prefix: string, issues: ValidationIssue[]): voi
 function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): void {
   const c = step.step_config ?? {}
   switch (step.step_type) {
+    case 'move_deal_stage':
+      // A etapa é obrigatória: sem ela o passo não sabe para onde mover, e o
+      // motor estouraria em execução — o tipo de falha que esta validação
+      // existe para antecipar.
+      if (!nonEmpty(c.stage_id)) {
+        issues.push({ path: `${path}.stage_id`, message: 'stage is required' })
+      }
+      break
+    case 'set_deal_status':
+      if (c.status !== 'won' && c.status !== 'lost' && c.status !== 'open') {
+        issues.push({
+          path: `${path}.status`,
+          message: 'status must be "won", "lost" or "open"',
+        })
+      }
+      break
     case 'send_message':
       if (!nonEmpty(c.text)) {
         issues.push({ path: `${path}.text`, message: 'message text is required' })

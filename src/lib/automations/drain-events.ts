@@ -41,7 +41,39 @@ const IDADE_MAXIMA_MS = 60 * 60 * 1000
  * enxerga: qual canal a automação vai considerar, e qual card as ações vão
  * mexer. Testável sem banco.
  */
+/**
+ * Chave deste evento na cadeia: o par (negócio, destino).
+ *
+ * É o par, e não só o negócio, que define o ciclo. Uma esteira legítima passa
+ * o MESMO card por muitas etapas — barrar por negócio cortaria toda esteira no
+ * segundo passo. O que não pode acontecer é o card VOLTAR a uma etapa por onde
+ * este mesmo encadeamento já o levou.
+ */
+export function chaveDoEvento(
+  evento: Pick<CbAutomationEvent, 'deal_id' | 'to_stage_id' | 'to_status' | 'tipo'>,
+): string {
+  const destino =
+    evento.tipo === 'deal_status_changed' ? `status:${evento.to_status ?? ''}` : `stage:${evento.to_stage_id ?? ''}`
+  return `deal:${evento.deal_id ?? ''}|${destino}`
+}
+
+/**
+ * Este evento fecha um ciclo?
+ *
+ * ⚠️ SEM TETO DE PROFUNDIDADE, por decisão do operador (D13): esteira longa é
+ * legítima e um teto a cortaria no meio, em silêncio. A guarda é a repetição —
+ * um encadeamento que revisita um par (negócio, destino) já visitado está
+ * girando, e girar aqui significa mandar mensagem ao cliente a cada volta.
+ *
+ * Cadeia vazia = ação de gente ou de conexão: começo novo, nunca é ciclo.
+ */
+export function fechaCiclo(evento: CbAutomationEvent): boolean {
+  const cadeia = Array.isArray(evento.cadeia) ? evento.cadeia : []
+  return cadeia.includes(chaveDoEvento(evento))
+}
+
 export function contextoDoEvento(evento: CbAutomationEvent): AutomationContext {
+  const cadeia = Array.isArray(evento.cadeia) ? evento.cadeia : []
   return {
     // Canal da CONVERSA (D9), resolvido pelo trigger. Pode ser nulo — e aí
     // `channelInScope` deixa passar, como em todo disparo sem canal.
@@ -52,6 +84,16 @@ export function contextoDoEvento(evento: CbAutomationEvent): AutomationContext {
     to_stage_id: evento.to_stage_id,
     from_stage_id: evento.from_stage_id,
     to_status: evento.to_status,
+    vars: {
+      // ⚠️ A cadeia CRESCE aqui, num lugar só. Se o motor também acrescentasse,
+      // as duas pontas divergiriam e a guarda passaria a depender de qual
+      // delas escreveu por último. O motor só lê e devolve ao banco.
+      //
+      // Viaja como `vars` porque é assim que o contexto sobrevive ao passo
+      // `wait` — JSONB intacto em `automation_pending_executions.context`,
+      // o mesmo transporte do `_tag_chain_depth`.
+      _cadeia: [...cadeia, chaveDoEvento(evento)],
+    },
   }
 }
 
@@ -141,7 +183,11 @@ export async function drenarEventosDeFunil(): Promise<ResultadoDaDrenagem> {
       // Outra ponta pegou este evento primeiro. Não é erro.
       if (!reivindicado) continue
 
-      const motivo = motivoParaNaoDisparar(linha, agora)
+      // Ciclo antes de idade: um encadeamento girando produz eventos frescos,
+      // então a guarda de atraso nunca o pegaria.
+      const motivo = fechaCiclo(linha)
+        ? `ciclo detectado (${chaveDoEvento(linha)} já visitado neste encadeamento) — não disparado`
+        : motivoParaNaoDisparar(linha, agora)
       if (motivo) {
         await db
           .from('cb_automation_events')

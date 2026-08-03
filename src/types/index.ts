@@ -736,6 +736,10 @@ export type AutomationStepType =
   | 'assign_conversation'
   | 'update_contact_field'
   | 'create_deal'
+  /** Move o card para outra etapa (e outro funil, se for o caso) — 934. */
+  | 'move_deal_stage'
+  /** Marca o negócio ganho / perdido / reaberto — 934. */
+  | 'set_deal_status'
   | 'wait'
   | 'condition'
   | 'send_webhook'
@@ -819,6 +823,16 @@ export interface CbAutomationEvent {
   from_status: string | null;
   to_status: string | null;
   origem: 'usuario' | 'conexao' | 'automacao' | 'sistema';
+  /**
+   * Por onde este encadeamento já passou (migration 934), como chaves
+   * `deal:<id>|stage:<id>`. Vazia = ação de gente/conexão, cadeia nova.
+   *
+   * ⚠️ É a guarda ANTI-CICLO, e não um contador: o operador recusou teto de
+   * profundidade porque esteira longa é legítima. O drenador recusa o evento
+   * cuja chave já esteja aqui — X→Y→X para na segunda volta, e uma esteira de
+   * 20 etapas passa inteira.
+   */
+  cadeia: string[];
   criado_em: string;
   /** NULL = pendente. É o que a reivindicação em dois passos testa. */
   processado_em: string | null;
@@ -885,6 +899,25 @@ export interface CreateDealStepConfig {
   value?: number;
 }
 
+/**
+ * Config de `move_deal_stage` e `set_deal_status` (migration 934).
+ *
+ * Uma forma só para os dois passos: o motor decide qual campo ler pelo
+ * `step_type`. Dois tipos quase idênticos custariam mais em ruído do que
+ * ganham em precisão.
+ *
+ * ⚠️ NÃO tem `pipeline_id`. A etapa já identifica o funil
+ * (`(stage_id, pipeline_id)` é único desde a 908), e a RPC descobre o funil a
+ * partir dela — que é o que permite mover entre funis num UPDATE só, como a
+ * trilha da 912 exige.
+ */
+export interface MoveDealStepConfig {
+  /** Etapa de destino, para `move_deal_stage`. */
+  stage_id?: string;
+  /** Status de destino, para `set_deal_status`. */
+  status?: 'open' | 'won' | 'lost';
+}
+
 export interface WaitStepConfig {
   amount: number;
   unit: 'minutes' | 'hours' | 'days';
@@ -921,6 +954,7 @@ export type AutomationStepConfig =
   | AssignConversationStepConfig
   | UpdateContactFieldStepConfig
   | CreateDealStepConfig
+  | MoveDealStepConfig
   | WaitStepConfig
   | ConditionStepConfig
   | SendWebhookStepConfig

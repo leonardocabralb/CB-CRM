@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { Automation, CbAutomationEvent } from '@/types';
 
 import { triggerMatches } from './engine';
-import { contextoDoEvento, motivoParaNaoDisparar } from './drain-events';
+import {
+  contextoDoEvento,
+  motivoParaNaoDisparar,
+  chaveDoEvento,
+  fechaCiclo,
+} from './drain-events';
 
 // ------------------------------------------------------------
 // Gatilho de funil (migration 933).
@@ -85,6 +90,7 @@ const evento = (over: Partial<CbAutomationEvent> = {}): CbAutomationEvent =>
     from_status: null,
     to_status: null,
     origem: 'usuario',
+    cadeia: [],
     criado_em: new Date('2026-08-03T12:00:00Z').toISOString(),
     processado_em: null,
     tentativas: 0,
@@ -102,6 +108,9 @@ describe('contextoDoEvento', () => {
       to_stage_id: 'st-depois',
       from_stage_id: 'st-antes',
       to_status: null,
+      // A cadeia começa aqui, com este próprio evento — ver a suíte
+      // "cadeia anti-ciclo" abaixo.
+      vars: { _cadeia: ['deal:deal-1|stage:st-depois'] },
     });
   });
 
@@ -113,6 +122,75 @@ describe('contextoDoEvento', () => {
 
   it('canal nulo é preservado — o escopo deixa passar, como todo disparo sem canal', () => {
     expect(contextoDoEvento(evento({ channel_id: null })).channel_id).toBeNull();
+  });
+});
+
+// ------------------------------------------------------------
+// Cadeia anti-ciclo (migration 934).
+//
+// O operador RECUSOU teto de profundidade: esteira longa é legítima e um teto
+// a cortaria no meio, em silêncio. A guarda é a repetição de um par
+// (negócio, destino) dentro do MESMO encadeamento.
+// ------------------------------------------------------------
+
+describe('cadeia anti-ciclo', () => {
+  it('a chave é o par negócio+destino, não só o negócio', () => {
+    // Se fosse só o negócio, toda esteira morreria no segundo passo — é o
+    // mesmo card atravessando o funil.
+    expect(chaveDoEvento(evento({ deal_id: 'd1', to_stage_id: 's1' }))).toBe(
+      'deal:d1|stage:s1',
+    );
+    expect(chaveDoEvento(evento({ deal_id: 'd1', to_stage_id: 's2' }))).not.toBe(
+      chaveDoEvento(evento({ deal_id: 'd1', to_stage_id: 's1' })),
+    );
+  });
+
+  it('status usa chave própria — ganhar não colide com uma etapa', () => {
+    expect(
+      chaveDoEvento(
+        evento({ tipo: 'deal_status_changed', deal_id: 'd1', to_status: 'won' }),
+      ),
+    ).toBe('deal:d1|status:won');
+  });
+
+  it('cadeia vazia nunca é ciclo — ação de gente começa de novo', () => {
+    expect(fechaCiclo(evento({ cadeia: [] }))).toBe(false);
+  });
+
+  it('CRÍTICO: revisitar par já visitado É ciclo', () => {
+    // X→Y→X: sem esta guarda, duas automações apontando uma para a outra
+    // mandariam mensagem ao cliente a cada volta, para sempre.
+    const e = evento({
+      deal_id: 'd1',
+      to_stage_id: 's1',
+      cadeia: ['deal:d1|stage:s1', 'deal:d1|stage:s2'],
+    });
+    expect(fechaCiclo(e)).toBe(true);
+  });
+
+  it('CRÍTICO: esteira LONGA passa — é o que o teto quebraria', () => {
+    // 20 etapas seguidas, nenhuma repetida: legítimo, e um teto de
+    // profundidade cortaria isto no terceiro passo.
+    const longa = Array.from({ length: 20 }, (_, i) => `deal:d1|stage:s${i}`);
+    expect(fechaCiclo(evento({ deal_id: 'd1', to_stage_id: 's99', cadeia: longa }))).toBe(
+      false,
+    );
+  });
+
+  it('cadeia de OUTRO negócio não barra este', () => {
+    expect(
+      fechaCiclo(
+        evento({ deal_id: 'd2', to_stage_id: 's1', cadeia: ['deal:d1|stage:s1'] }),
+      ),
+    ).toBe(false);
+  });
+
+  it('o contexto entregue ao motor CRESCE a cadeia com este evento', () => {
+    // Quem acrescenta é o drenador, num lugar só. O motor lê e devolve.
+    const ctx = contextoDoEvento(
+      evento({ deal_id: 'd1', to_stage_id: 's2', cadeia: ['deal:d1|stage:s1'] }),
+    );
+    expect(ctx.vars?._cadeia).toEqual(['deal:d1|stage:s1', 'deal:d1|stage:s2']);
   });
 });
 

@@ -1044,7 +1044,9 @@
         "wait": "Aguardar",
         "condition": "Condição (Se/Senão)",
         "send_webhook": "Enviar webhook",
-        "close_conversation": "Encerrar conversa"
+        "close_conversation": "Encerrar conversa",
+        "move_deal_stage": "Mover card de etapa",
+        "set_deal_status": "Marcar ganho ou perdido"
       },
       "triggers": {
         "new_message_received": {
@@ -1206,7 +1208,10 @@
         "statusHelpAll": "Sem nada marcado, vale para qualquer mudança de status.",
         "status_won": "Ganho",
         "status_lost": "Perdido",
-        "status_open": "Reaberto"
+        "status_open": "Reaberto",
+        "moveToLabel": "Mover para a etapa",
+        "pickStage": "Escolha a etapa",
+        "moveHelp": "Move o card do gatilho. Sem card no gatilho, move o negócio aberto mais recente do contato."
       }
     }
   },

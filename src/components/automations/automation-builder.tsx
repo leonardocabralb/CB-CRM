@@ -24,6 +24,8 @@ import {
   UserCheck,
   PencilLine,
   Briefcase,
+  MoveRight,
+  Trophy,
   Hourglass,
   GitBranch,
   Webhook,
@@ -124,6 +126,8 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   assign_conversation: { label: "assign_conversation", icon: UserCheck, border: "border-l-primary" },
   update_contact_field: { label: "update_contact_field", icon: PencilLine, border: "border-l-primary" },
   create_deal: { label: "create_deal", icon: Briefcase, border: "border-l-primary" },
+  move_deal_stage: { label: "move_deal_stage", icon: MoveRight, border: "border-l-emerald-500" },
+  set_deal_status: { label: "set_deal_status", icon: Trophy, border: "border-l-emerald-500" },
   wait: { label: "wait", icon: Hourglass, border: "border-l-border" },
   condition: { label: "condition", icon: GitBranch, border: "border-l-amber-500" },
   send_webhook: { label: "send_webhook", icon: Webhook, border: "border-l-primary" },
@@ -140,6 +144,8 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "assign_conversation",
   "update_contact_field",
   "create_deal",
+  "move_deal_stage",
+  "set_deal_status",
   "wait",
   "condition",
   "send_webhook",
@@ -216,6 +222,10 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return { field: "name", value: "" }
     case "create_deal":
       return { pipeline_id: "", stage_id: "", title: "", value: 0 }
+    case "move_deal_stage":
+      return { stage_id: "" }
+    case "set_deal_status":
+      return { status: "won" }
     case "wait":
       return { amount: 1, unit: "hours" }
     case "condition":
@@ -1664,7 +1674,16 @@ function StepEditor({
   onChange: (s: BuilderStep) => void
 }) {
   const t = useTranslations("Automations.builder")
-  const { channels } = useResources()
+  const { channels, pipelines, stages } = useResources()
+  // Mesmo agrupamento do seletor do gatilho: "Contato Acordo" existe em mais
+  // de um quadro, e o nome sozinho não distingue.
+  const stagesPorFunil = useMemo(
+    () =>
+      pipelines
+        .map((p) => ({ funil: p, etapas: stages.filter((s) => s.pipeline_id === p.id) }))
+        .filter((g) => g.etapas.length > 0),
+    [pipelines, stages],
+  )
   const cfg = step.step_config
   const set = (patch: Record<string, unknown>) =>
     onChange({ ...step, step_config: { ...cfg, ...patch } })
@@ -1814,6 +1833,46 @@ function StepEditor({
             />
           </FieldBlock>
         </>
+      )
+    case "move_deal_stage":
+      return (
+        <FieldBlock label={t("stages.moveToLabel")}>
+          {/* Uma etapa só, não várias: mover é para UM lugar. Por isso um
+              seletor plano em vez do multi-select do gatilho. */}
+          <select
+            value={(cfg.stage_id as string) ?? ""}
+            onChange={(e) => set({ stage_id: e.target.value })}
+            className={SELECT_CLASS}
+          >
+            <option value="">{t("stages.pickStage")}</option>
+            {stagesPorFunil.map((g) => (
+              <optgroup key={g.funil.id} label={g.funil.name}>
+                {g.etapas.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {t("stages.moveHelp")}
+          </p>
+        </FieldBlock>
+      )
+    case "set_deal_status":
+      return (
+        <FieldBlock label={t("stages.statusLabel")}>
+          <select
+            value={(cfg.status as string) ?? "won"}
+            onChange={(e) => set({ status: e.target.value })}
+            className={SELECT_CLASS}
+          >
+            <option value="won">{t("stages.status_won")}</option>
+            <option value="lost">{t("stages.status_lost")}</option>
+            <option value="open">{t("stages.status_open")}</option>
+          </select>
+        </FieldBlock>
       )
     case "wait":
       return (

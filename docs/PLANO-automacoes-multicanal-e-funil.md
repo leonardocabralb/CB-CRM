@@ -561,16 +561,25 @@ verdade, pelo WhatsApp. Todo o resto da corrente está provado.
 
 - [ ] **B3** — gatilho `conversation_assigned` pela caixa de saída (trigger em
       `conversations`; só atribuição real, desatribuir não conta)
-- [ ] Ações `move_deal_stage` (via RPC) e `set_deal_status`; `create_deal`
-      passa a usar `createDeal`; `assign_conversation` mira a conversa do
-      contexto, não todas as do contato
+- [x] **Cadeia anti-ciclo (D13)**, migration **934**. Sem teto de
+      profundidade, como o operador pediu: a chave é o par
+      `deal:<id>|stage:<id>`, e o drenador recusa evento que revisite par já
+      visitado NESTE encadeamento. Viaja por GUC transacional
+      (`set_config('cb.cadeia', …, true)`) porque quem escreve o evento é o
+      TRIGGER, que não recebe parâmetros — o UPDATE e o trigger estão na mesma
+      transação, dentro da RPC. Escrita de gente não define nada e o trigger lê
+      cadeia vazia: ação humana começa cadeia nova. **A trava provisória da 933
+      saiu junto.**
+- [x] Ações `move_deal_stage` e `set_deal_status`, via a RPC
+      `cb_atualizar_negocio` (um `UPDATE` só com funil+etapa, exigência da 912;
+      a etapa identifica o funil, então mover entre funis funciona). A RPC
+      confere posse por conta — o motor roda em service-role e ignora RLS.
+- [x] Alvo da ação: `context.deal_id` vence sempre (o evento carrega o card
+      exato); sem ele, o negócio ABERTO mais recente (D8).
+- [ ] `create_deal` passa a usar `createDeal`; `assign_conversation` mira a
+      conversa do contexto, não todas as do contato
 - [ ] Condições `deal_stage` e `deal_status` (§4.3 — o padrão "depois de X
       horas, se ainda está na etapa")
-- [ ] **Cadeia anti-ciclo (D13)** e, com ela, remover a trava provisória do
-      trigger da 933 que impede card criado por automação de re-enfileirar.
-      Ela existe porque o passo `create_deal` já pode girar hoje ("criou card
-      na etapa X → cria negócio") e não há guarda ainda.
-- [ ] Tela: seletores de funil/etapa nas condições e nas ações
 
 **Pronto quando:** arrastar um card no Kanban dispara a automação em segundos
 (não em 15 min); um card criado pelo roteador de entrada dispara "criado na
@@ -789,3 +798,21 @@ gatilho a tinha descartado.
 'automation'`) NÃO re-enfileira. O passo `create_deal` já existe e giraria
 para sempre ("criou card na etapa X → cria negócio"), e a cadeia anti-ciclo
 (D13) só chega com as ações de funil. A linha sai junto com ela.
+*(Saiu na 934, no mesmo dia.)*
+
+**2026-08-03 — Fase 2, parte B2: as ações e a cadeia.** Migration **934**
+aplicada. `move_deal_stage` e `set_deal_status` via RPC, e a guarda anti-ciclo
+**sem teto** que o operador pediu.
+
+Provado montando o laço de propósito, em produção: duas automações apontando
+uma para a outra (Avulso→Qualificado, Qualificado→Avulso), as duas ativas.
+Drenando em sequência, a cadeia cresceu 0 → 1 → 2 e a volta seguinte foi
+barrada, com o motivo escrito na coluna `erro`:
+*"ciclo detectado (deal:…|stage:… já visitado neste encadeamento)"*.
+Três voltas e parou — não quatro, não infinitas. Tudo apagado depois.
+
+⚠️ **Efeito colateral do teste, ainda não limpo:** as idas e voltas geraram
+**9 linhas `stage_changed` em `cb_lead_events`** no negócio de uma cliente
+real, todas com `origin = 'sistema'`. O card voltou à etapa original, mas o
+histórico dela mostra movimentos que ninguém fez. Pendente de decisão do
+operador — apagar linha de auditoria é destrutivo e não se faz sem aval.

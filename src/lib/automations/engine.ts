@@ -18,6 +18,7 @@ import type {
   UpdateContactFieldStepConfig,
   WaitStepConfig,
   CreateDealStepConfig,
+  MoveDealStepConfig,
   AssignConversationStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
@@ -666,6 +667,36 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       return 'deal created'
     }
 
+    case 'move_deal_stage':
+    case 'set_deal_status': {
+      const cfg = step.step_config as MoveDealStepConfig
+      const alvo = await negocioAlvo(db, args)
+      if (!alvo) throw new Error('nenhum negócio aberto para este contato')
+
+      const ehMover = step.step_type === 'move_deal_stage'
+      if (ehMover && !cfg.stage_id) throw new Error('move_deal_stage precisa de etapa')
+      if (!ehMover && !cfg.status) throw new Error('set_deal_status precisa de status')
+
+      // ⚠️ Vai por RPC, e não por `.update()` direto, por DOIS motivos que se
+      // somam: (1) a trilha da 912 exige que funil e etapa mudem no MESMO
+      // update, senão ela grava que o lead saiu e voltou; (2) só de dentro da
+      // transação dá para carimbar a cadeia que o trigger copia para o evento
+      // — é ela que impede X→Y→X de girar para sempre.
+      const { data, error } = await db.rpc('cb_atualizar_negocio', {
+        p_deal_id: alvo,
+        p_account_id: args.automation.account_id,
+        p_pipeline_id: null,
+        p_stage_id: ehMover ? cfg.stage_id : null,
+        p_status: ehMover ? null : cfg.status,
+        p_cadeia: cadeiaDoContexto(args),
+      })
+      if (error) throw new Error(`${step.step_type} falhou: ${error.message}`)
+      const r = Array.isArray(data) ? data[0] : data
+      if (!r?.ok) throw new Error(`${step.step_type} recusado: ${r?.motivo ?? 'motivo desconhecido'}`)
+
+      return ehMover ? `negócio movido para ${cfg.stage_id}` : `negócio marcado ${cfg.status}`
+    }
+
     case 'send_webhook': {
       const cfg = step.step_config as SendWebhookStepConfig
       if (!cfg.url) throw new Error('send_webhook needs url')
@@ -964,6 +995,51 @@ function stepChannel(
   args: ExecuteArgs,
 ): string | null | undefined {
   return cfg?.channel_id ?? args.context.channel_id ?? undefined
+}
+
+/**
+ * Qual negócio esta ação vai mexer.
+ *
+ * ⚠️ O contexto vence sempre. Num gatilho de funil o evento carrega o card
+ * EXATO que se moveu — e é o único jeito de acertar quando o contato tem mais
+ * de um negócio aberto (o CRM permite; só a 911 garante unicidade para card
+ * nascido de conexão).
+ *
+ * Sem card no contexto (ex.: "quando chegar mensagem → mova o card"), a regra
+ * é o negócio ABERTO mais recente (D8). Fechado fica de fora de propósito:
+ * mexer sozinho num negócio que alguém deu por encerrado é surpresa ruim.
+ */
+async function negocioAlvo(
+  db: ReturnType<typeof supabaseAdmin>,
+  args: ExecuteArgs,
+): Promise<string | null> {
+  if (args.context.deal_id) return args.context.deal_id
+  if (!args.contactId) return null
+  const { data, error } = await db
+    .from('deals')
+    .select('id')
+    .eq('account_id', args.automation.account_id)
+    .eq('contact_id', args.contactId)
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`busca do negócio falhou: ${error.message}`)
+  return (data?.id as string | undefined) ?? null
+}
+
+/**
+ * A cadeia deste encadeamento, para repassar ao banco.
+ *
+ * Quem a ACRESCENTA é o drenador (`drain-events.ts`), ao entregar o evento —
+ * um lugar só, senão as duas pontas divergem e a guarda anti-ciclo passa a
+ * depender de qual delas escreveu. Aqui ela só é lida e devolvida.
+ *
+ * Vazia = ação de gente ou de conexão: cadeia nova, nada a barrar.
+ */
+function cadeiaDoContexto(args: ExecuteArgs): string[] {
+  const bruta = args.context.vars?._cadeia
+  return Array.isArray(bruta) ? bruta.filter((v): v is string => typeof v === 'string') : []
 }
 
 function waitMs(cfg: WaitStepConfig): number {
