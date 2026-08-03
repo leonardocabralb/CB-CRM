@@ -35,6 +35,31 @@ describe("acharNoFio", () => {
     expect(acharNoFio(msgs, "")).toEqual([]);
   });
 
+  it("⚠️ o piso vale sobre o termo NORMALIZADO, como no banco", () => {
+    // O banco mede `length(cb_texto_para_busca(btrim(p_termo))) >= 3`, não o
+    // comprimento do texto cru. Texto colado em NFD tem a letra e o acento
+    // como caracteres separados: "ré" pode chegar com TRÊS caracteres crus e
+    // dois depois de normalizar. Medindo no cru, o banco recusaria buscar e o
+    // fio buscaria assim mesmo, com uma agulha menor que o piso.
+    const nfd = "ré"; // r + e + acento agudo combinante = 3 crus, 2 normalizados
+    expect(nfd).toHaveLength(3);
+    expect(acharNoFio(fio("o réu compareceu"), nfd)).toEqual([]);
+  });
+
+  it("⚠️ agulha que normaliza para VAZIO não pode casar com tudo", () => {
+    // `^`, `` ` ``, `´` e `¨` existem sozinhos como caractere. Com
+    // `\\p{Diacritic}` — a faixa que o `semAcento` usava — eles sumiam na
+    // normalização, a agulha virava "" e `includes("")` é verdadeiro para
+    // QUALQUER texto: buscar "^^^" acendia todas as bolhas da conversa e o
+    // contador dizia "113 de 113", enquanto o banco não achava nenhuma.
+    const msgs = fio("primeira", "segunda", "terceira");
+    for (const agulha of ["^^^", "```", "´´´", "¨¨¨", "~~~"]) {
+      expect(acharNoFio(msgs, agulha)).toEqual([]);
+    }
+    // E o acento sozinho continua sendo procurado quando ele existe mesmo.
+    expect(acharNoFio(fio("a^b^c"), "a^b")).toEqual(["m1"]);
+  });
+
   it("apara o termo nas pontas, como o `btrim(p_termo)` da RPC", () => {
     expect(acharNoFio(fio("o contrato"), "  contrato  ")).toEqual(["m1"]);
   });

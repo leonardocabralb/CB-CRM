@@ -48,12 +48,12 @@ export interface BuscaEmMensagens {
    */
   falhou: boolean;
   /**
-   * O termo com que os `achados` foram pedidos — já passado pela espera de
-   * 300 ms e pelo piso de 3 caracteres. `""` quando não vale.
+   * O termo com que os `achados` de agora foram buscados. `""` quando não vale
+   * ou quando a consulta falhou.
    *
    * ⚠️ EXISTE PARA O FIO CONCORDAR COM A LISTA. Quem destaca as mensagens
    * dentro da conversa (`acharNoFio`) precisa usar o MESMO termo que produziu
-   * os achados aqui — usar o texto cru da caixa faria, durante os ~300 ms de
+   * estes achados — usar o texto cru da caixa faria, durante os ~300 ms de
    * espera, a lista mostrar o resultado de "contrato" e o fio destacar
    * "contratos", com contadores diferentes lado a lado.
    *
@@ -88,14 +88,14 @@ export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
 
     const perguntar = async () => {
       setBuscando(true);
-      // Carimba o termo desta consulta ANTES de ir ao banco: é ele que o fio
-      // usa para destacar, e o destaque deve acompanhar o pedido, não a
-      // resposta — senão a bolha só acende quando o banco responde.
-      setTermoAplicado(busca.trim());
       const supabase = createClient();
+      // ⚠️ Vai APARADO para o banco. O `btrim` do Postgres tira só o espaço
+      // U+0020; o `.trim()` do JS tira NBSP, tabulação e quebra de linha
+      // também. Mandando o cru, um termo colado com NBSP na ponta viraria duas
+      // agulhas diferentes — o banco procurando com o branco, o fio sem ele.
       const { data, error } = await supabase.rpc(
         "cb_buscar_conversas_por_texto",
-        { p_termo: busca },
+        { p_termo: busca.trim() },
       );
 
       // ⚠️ Resposta velha para aqui, e de propósito ela NÃO desliga o
@@ -116,12 +116,24 @@ export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
         });
         setFalhou(true);
         setAchados(SEM_ACHADOS);
+        // Sem resultado do banco, o fio não destaca nada. Deixar o termo de pé
+        // aqui poria a faixa "3 de 3" na tela ao lado do aviso da lista de que
+        // a busca dentro das mensagens FALHOU — duas afirmações contrárias
+        // sobre a mesma busca, ao mesmo tempo.
+        setTermoAplicado("");
         setBuscando(false);
         return;
       }
 
       setFalhou(false);
       setAchados(montarAchados(data as LinhaDaBusca[] | null));
+      // ⚠️ Carimbado JUNTO com os achados, e depois da guarda de geração. O
+      // primeiro desenho carimbava antes de ir ao banco, para o destaque
+      // acender mais cedo — mas isso abria uma janela em que a lista mostrava o
+      // resultado do termo ANTERIOR e o fio já destacava o NOVO, com os dois
+      // contadores discordando na tela. Os dois números têm de vir da mesma
+      // resposta.
+      setTermoAplicado(busca.trim());
       setBuscando(false);
     };
 

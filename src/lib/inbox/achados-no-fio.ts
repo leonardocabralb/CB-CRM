@@ -15,14 +15,23 @@
 // só a enumeração dentro de uma conversa inteiramente carregada — as duas
 // pontas enxergam o mesmo universo, que é a regra que a Fase 5 fixou.
 //
-// ⚠️ ISTO SÓ VALE ENQUANTO O FIO CARREGAR TUDO. No dia em que a busca de
-// mensagens ganhar `limit` ou paginação, este arquivo passa a enxergar menos
-// que o banco e o contador "2 de 5" começa a mentir — em silêncio, porque
-// nada aqui tem como perceber que faltou mensagem. Quem paginar o fio precisa
-// voltar aqui.
+// ⚠️ ISTO SÓ VALE ENQUANTO O FIO CARREGAR TUDO, e ele tem DOIS jeitos de
+// deixar de carregar — um por decisão, outro sozinho:
+//
+//   1. alguém pôr `limit` ou paginação na busca de mensagens do fio;
+//   2. o TETO DO POSTGREST, que ninguém escreveu: a resposta é cortada em
+//      1000 linhas por padrão, sem erro e sem aviso. Este chega por CRESCIMENTO
+//      DE DADOS, sem mudança de código nenhuma. A maior conversa da conta tem
+//      158 mensagens hoje, então está longe — mas é a mesma armadilha que a
+//      migration 929 evitou colapsando a busca com `DISTINCT ON` dentro do
+//      banco.
+//
+// Nos dois casos este arquivo passa a enxergar menos que o banco e o contador
+// "2 de 5" começa a mentir em silêncio, porque nada aqui tem como perceber que
+// faltou mensagem.
 // ============================================================
 
-import { semAcento, termoBuscavel } from "./busca-em-mensagens";
+import { semAcento, TERMO_MINIMO } from "./busca-em-mensagens";
 
 /**
  * O mínimo que uma mensagem precisa ter para entrar na conta.
@@ -46,7 +55,7 @@ export interface MensagemBuscavel {
  * regra que divirja produz dois números diferentes para a mesma pergunta, lado
  * a lado, sem nada explicando qual está certo.
  *
- * 1. **piso de 3 caracteres** — `termoBuscavel`, o mesmo da caixa e o mesmo do
+ * 1. **piso de 3 caracteres**, medido sobre o termo já normalizado, como o
  *    `length(termo.normalizado) >= 3` da RPC;
  * 2. **mensagem apagada fica de fora** (`deleted_at IS NULL`). O fio RENDERIZA
  *    a apagada, como "mensagem apagada", então sem esta guarda o ↑/↓ pararia
@@ -65,11 +74,16 @@ export interface MensagemBuscavel {
  *
  *     …  (U+2026) → '...'      –  (U+2013) → '-'      ×  (U+00D7) → '*'
  *
- * Como o banco dobra MAIS, o conjunto do JS é subconjunto do dele: o fio pode
- * achar MENOS que a lista, nunca mais. Na prática é preciso que o trecho
- * casado contenha um desses caracteres — hoje 5 mensagens em 784 os têm.
- * Quando acontece, o pior caso é o contador do fio ficar abaixo do "N msgs" da
- * linha, ou a faixa sumir (o caso zero está tratado em `message-thread.tsx`).
+ * Na prática é preciso que o TRECHO CASADO contenha um desses caracteres —
+ * hoje 5 mensagens em 784 os têm. Quando acontece, o contador do fio fica
+ * abaixo do "N msgs" da linha, ou a faixa some (o caso zero está tratado em
+ * `message-thread.tsx`).
+ *
+ * ⚠️ E a diferença NÃO É de mão única — dizer que "o banco sempre dobra mais"
+ * seria confortável e falso. O `semAcento` já dobrou coisas que o `unaccent`
+ * preserva; foi assim que ele apagava `^` e `` ` `` inteiros até a troca de
+ * `\p{Diacritic}` por `\p{Mn}`. Cada mudança em qualquer das duas pontas pode
+ * abrir a diferença de novo, nos dois sentidos.
  *
  * Deliberadamente NÃO replicamos a tabela do `unaccent` aqui: ela tem centenas
  * de entradas, e uma cópia parcial passaria a AFIRMAR uma equivalência que não
@@ -84,9 +98,18 @@ export function acharNoFio(
   mensagens: readonly MensagemBuscavel[],
   termo: string,
 ): string[] {
-  if (!termoBuscavel(termo)) return [];
-
   const alvo = semAcento(termo.trim());
+
+  // ⚠️ O piso é medido sobre o termo JÁ NORMALIZADO, como no banco
+  // (`length(termo.normalizado) >= 3`, e não sobre o `p_termo` cru). Medir no
+  // cru — que é o que `termoBuscavel` faz, e serve bem à caixa da lista —
+  // discorda em dois casos reais: texto colado em NFD ("e"+U+0301 são DOIS
+  // caracteres crus e UM normalizado) e caractere que a normalização apaga.
+  // Nos dois o banco recusaria buscar e o fio buscaria assim mesmo, com uma
+  // agulha menor que o piso — no limite, uma agulha VAZIA, que casa com todas
+  // as mensagens da conversa.
+  if (alvo.length < TERMO_MINIMO) return [];
+
   const ids: string[] = [];
 
   for (const m of mensagens) {

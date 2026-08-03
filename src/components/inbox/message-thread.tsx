@@ -287,6 +287,64 @@ export function MessageThread({
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * O salto da busca está mandando na rolagem agora?
+   *
+   * Vale de quando há alvo ATÉ O OPERADOR AGIR. Enquanto vale, o auto-scroll
+   * fica calado e o efeito que centraliza o alvo tem a palavra final — os dois
+   * ficam mais abaixo, junto com o resto do salto.
+   *
+   * ⚠️ AS DUAS METADES DESTA REGRA SÃO LOAD-BEARING, e cada uma conserta um
+   * defeito diferente:
+   *
+   * 1. **Enquanto vale**, as anotações e os eventos do lead — que chegam em
+   *    buscas PRÓPRIAS, depois das mensagens — não desfazem o salto. Sem isto o
+   *    salto era desmanchado alguns milissegundos depois, e o sintoma seria
+   *    "às vezes funciona".
+   * 2. **Deixa de valer quando o operador age.** Suprimir para sempre foi o
+   *    primeiro desenho, e quebrava algo pior do que consertava: com a busca
+   *    ainda na caixa — ela é da LISTA, do outro lado da tela, não há por que
+   *    apagá-la para responder —, a mensagem recém-enviada e a anotação
+   *    recém-escrita nasciam abaixo da dobra e NADA rolava até elas. O autor
+   *    mandava e não via.
+   *
+   * Mora aqui em cima, longe do resto do salto, por uma razão chata e real: o
+   * `liberarSalto` é dependência de um `useCallback` declarado poucas linhas
+   * abaixo, e uma `const` referenciada numa lista de dependências antes de ser
+   * inicializada estoura em tempo de render.
+   */
+  const saltoAtivoRef = useRef(false);
+
+  /**
+   * O operador agiu — o salto solta a rolagem.
+   *
+   * ⚠️ Tem de ser chamado ANTES de a bolha otimista (ou a anotação) entrar na
+   * lista: quem lê o sinalizador é o efeito que roda DEPOIS do commit, então
+   * liberar tarde deixaria justamente o primeiro render — o que contém a coisa
+   * nova — ainda sob a supressão.
+   */
+  const liberarSalto = useCallback(() => {
+    saltoAtivoRef.current = false;
+  }, []);
+
+  /**
+   * Toda bolha que NASCE de um envio daqui passa por aqui.
+   *
+   * São quatro caminhos de envio (texto, mídia, template, interativa) e o único
+   * ponto em comum é a bolha otimista. Chamar `liberarSalto` nos quatro à mão
+   * daria certo hoje e envelheceria mal: um quinto caminho nasceria sem a
+   * liberação, e o defeito — "mandei e não vi" — só aparece com busca ativa,
+   * que é justamente quando ninguém testa.
+   */
+  const publicarMensagemOtimista = useCallback(
+    (msg: Message) => {
+      liberarSalto();
+      onNewMessage(msg);
+    },
+    [liberarSalto, onNewMessage],
+  );
+
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
@@ -655,9 +713,12 @@ export function MessageThread({
   const acrescentarNotaDaConversa = useCallback(
     (nota: ConversationNote) => {
       if (nota.conversation_id !== conversationId) return;
+      // Escrever anotação é agir: solta a rolagem do salto da busca, senão o
+      // autor salva e não vê o que acabou de escrever.
+      liberarSalto();
       acrescentarNota(nota);
     },
-    [acrescentarNota, conversationId],
+    [acrescentarNota, conversationId, liberarSalto],
   );
 
   /**
@@ -721,7 +782,11 @@ export function MessageThread({
     id: string;
   } | null>(null);
 
-  const assinaturaDaBusca = `${conversationId ?? ""} ${termoDaBusca}`;
+  // `|` separa porque `conversationId` é um UUID e nunca o contém — então não
+  // há termo capaz de forjar a assinatura de outra conversa. (Aqui já morou um
+  // U+0000 CRU, que deixava este arquivo BINÁRIO para o `grep` e o `file`: as
+  // buscas passavam a devolver zero linhas em silêncio.)
+  const assinaturaDaBusca = `${conversationId ?? ""}|${termoDaBusca}`;
   const escolhido =
     escolhaNaBusca?.assinatura === assinaturaDaBusca ? escolhaNaBusca.id : null;
 
@@ -750,15 +815,12 @@ export function MessageThread({
     [posicaoDoAlvo, achadosNoFio, assinaturaDaBusca],
   );
 
-  /**
-   * Há salto valendo agora? Lido pelo auto-scroll logo abaixo.
-   *
-   * ⚠️ EM `ref`, E DECLARADO ANTES DELE, porque a ordem importa: os efeitos
-   * disparam na ordem em que foram declarados, e este precisa ter atualizado
-   * o sinalizador antes de o auto-scroll decidir se rola.
-   */
-  const saltoAtivoRef = useRef(false);
+  // O espelho de `alvoId` no sinalizador. Declarado AQUI, e não junto do
+  // `saltoAtivoRef` lá em cima, por causa da ordem: os efeitos disparam na
+  // ordem em que foram declarados, e este precisa ter atualizado o sinalizador
+  // antes de o auto-scroll logo abaixo decidir se rola.
   useEffect(() => {
+    // Trocar de alvo (as setas) RE-ARMA o salto.
     saltoAtivoRef.current = alvoId !== null;
   }, [alvoId]);
 
@@ -769,10 +831,6 @@ export function MessageThread({
   // anotação recém-escrita, que sem isto nasceria abaixo da dobra — o autor
   // salvaria e não veria o que acabou de escrever.
   useEffect(() => {
-    // ⚠️ ESTA GUARDA É O QUE FAZ O SALTO FUNCIONAR SEMPRE, e não "às vezes".
-    // As anotações e os eventos do lead chegam em buscas PRÓPRIAS, depois das
-    // mensagens: cada chegada refaz este efeito e desfaria o salto alguns
-    // milissegundos depois, sem nada na tela explicando o pulo.
     if (saltoAtivoRef.current) return;
     if (scrollRef.current) {
       const el = scrollRef.current;
@@ -791,9 +849,21 @@ export function MessageThread({
    * primeira medida (fonte, bolha de mídia que só então ganhou altura).
    * ⚠️ Não cobre imagem que demora a carregar — nesse caso o alvo pode ficar
    * alguns pixels fora do centro. Continua destacado, então dá para achar.
+   *
+   * ⚠️ `messages` PRECISA estar nas dependências, e não é enfeite. Voltar para
+   * a aba do navegador, apertar o atualizar do cabeçalho ou o realtime
+   * reconectar incrementam o `resyncToken`: o fio troca todo o conteúdo por um
+   * spinner de ~100 px, o `scrollHeight` desaba abaixo do `clientHeight` e o
+   * navegador GRAMPEIA o `scrollTop` em zero. Quando as mensagens voltam, o
+   * `alvoId` é a MESMA string (os ids não mudaram), então sem `messages` aqui
+   * nada re-centraliza — e o operador cai no começo da conversa, com a faixa
+   * acima ainda dizendo "11 de 11" sobre uma bolha a meses de rolagem.
+   *
+   * A guarda do `saltoAtivoRef` é o que impede este efeito de puxar o operador
+   * de volta ao alvo depois de ele ter mandado uma mensagem.
    */
   useEffect(() => {
-    if (!alvoId) return;
+    if (!alvoId || !saltoAtivoRef.current) return;
 
     const centralizar = () => {
       const cont = scrollRef.current;
@@ -811,7 +881,7 @@ export function MessageThread({
     centralizar();
     const quadro = requestAnimationFrame(centralizar);
     return () => cancelAnimationFrame(quadro);
-  }, [alvoId]);
+  }, [alvoId, messages]);
 
   /**
    * Fecha a bolha otimista com o que o SERVIDOR gravou.
@@ -854,7 +924,7 @@ export function MessageThread({
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
       };
-      onNewMessage(optimisticMsg);
+      publicarMensagemOtimista(optimisticMsg);
       setReplyTo(null);
 
       try {
@@ -925,6 +995,10 @@ export function MessageThread({
     // com o nome de antes depois de o interruptor mudar ou a sessão trocar.
     [
       conversation,
+      publicarMensagemOtimista,
+      // `onNewMessage` continua aqui porque o caminho do 409 acima reescreve a
+      // bolha já publicada — ali não há salto para liberar, a mensagem não é
+      // nova.
       onNewMessage,
       onUpdateMessage,
       activeChannel?.id,
@@ -959,7 +1033,7 @@ export function MessageThread({
         created_at: new Date().toISOString(),
         reply_to_message_id: payload.replyToId,
       };
-      onNewMessage(optimisticMsg);
+      publicarMensagemOtimista(optimisticMsg);
       setReplyTo(null);
 
       try {
@@ -999,7 +1073,7 @@ export function MessageThread({
         void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, marcarEnviada],
+    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada],
   );
 
   const handleSendInteractive = useCallback(
@@ -1020,7 +1094,7 @@ export function MessageThread({
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
       };
-      onNewMessage(optimisticMsg);
+      publicarMensagemOtimista(optimisticMsg);
 
       try {
         const res = await fetch("/api/whatsapp/send", {
@@ -1053,7 +1127,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, marcarEnviada],
+    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada],
   );
 
   const handleStatusChange = useCallback(
@@ -1099,7 +1173,7 @@ export function MessageThread({
         status: "sending",
         created_at: new Date().toISOString(),
       };
-      onNewMessage(optimisticMsg);
+      publicarMensagemOtimista(optimisticMsg);
 
       try {
         const res = await fetch("/api/whatsapp/send", {
@@ -1142,7 +1216,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, marcarEnviada],
+    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without

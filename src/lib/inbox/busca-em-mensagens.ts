@@ -62,12 +62,21 @@ export function termoBuscavel(busca: string): boolean {
  * o CONTATO chamado "Ação" — duas regras diferentes no mesmo campo de texto,
  * sem nada na tela explicando qual está valendo em cada linha.
  *
- * `NFD` separa a letra do acento e a faixa `\p{Diacritic}` remove só o acento.
+ * `NFD` separa a letra do acento e a faixa `\p{Mn}` (marca que NÃO ocupa espaço
+ * próprio) remove só o acento solto que a decomposição produziu.
+ *
+ * ⚠️ ERA `\p{Diacritic}`, e a diferença não é cosmética. Aquela propriedade
+ * inclui os acentos que existem SOZINHOS como caractere — `^`, `` ` ``, `´`,
+ * `¨`, `~` —, então `semAcento('^^^')` devolvia STRING VAZIA. E `includes('')`
+ * é verdadeiro para qualquer texto: buscar `^^^` acendia TODAS as mensagens da
+ * conversa, com o contador dizendo "113 de 113", enquanto o banco (que não
+ * dobra esses caracteres) não achava nenhuma. `\p{Mn}` remove só marca
+ * combinante, que é o que "tirar acento" quer dizer.
  */
 export function semAcento(texto: string): string {
   return texto
     .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\p{Mn}/gu, "")
     .toLowerCase();
 }
 
