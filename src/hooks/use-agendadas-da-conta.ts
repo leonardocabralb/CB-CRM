@@ -65,6 +65,21 @@ export interface AgendadasDaConta {
    * de novo o que já estava agendado.
    */
   falhou: boolean;
+  /**
+   * Quantas existem em cada grupo NA CONTA — não quantas foram carregadas.
+   *
+   * ⚠️ Vem do `count: 'exact'` do PostgREST, que viaja no mesmo cabeçalho da
+   * resposta e não custa consulta a mais. Contar em JS sobre a lista carregada
+   * parecia mais simples e mentia: o grupo `sent` é paginado, então a aba
+   * "Enviadas" mostraria 50 numa conta com 300 — um número com cara de total,
+   * exibido numa tela que se anuncia como "tudo o que já saiu".
+   */
+  contagem: { todas: number; fila: number; enviadas: number; falhas: number };
+  /**
+   * Quando o cliente falou pela última vez, por conversa da FILA. Alimenta o
+   * aviso da P4.4 (`clienteEscreveuDepois`).
+   */
+  ultimaEntradaPorConversa: Map<string, string>;
   /** O acervo tem mais do que o carregado — o botão "carregar mais" aparece. */
   temMaisEnviadas: boolean;
   /** Um dos grupos completos bateu no para-choque. */
@@ -73,10 +88,16 @@ export interface AgendadasDaConta {
   recarregar: () => void;
 }
 
+const SEM_CONTAGEM = { todas: 0, fila: 0, enviadas: 0, falhas: 0 };
+const SEM_ENTRADAS: Map<string, string> = new Map();
+
 export function useAgendadasDaConta(): AgendadasDaConta {
   const [agendadas, setAgendadas] = useState<AgendadaDaConta[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [falhou, setFalhou] = useState(false);
+  const [contagem, setContagem] = useState(SEM_CONTAGEM);
+  const [ultimaEntradaPorConversa, setUltimaEntradaPorConversa] =
+    useState<Map<string, string>>(SEM_ENTRADAS);
   const [temMaisEnviadas, setTemMaisEnviadas] = useState(false);
   const [estourouOTeto, setEstourouOTeto] = useState(false);
   const [limiteEnviadas, setLimiteEnviadas] = useState(PAGINA);
@@ -96,20 +117,29 @@ export function useAgendadasDaConta(): AgendadasDaConta {
     const [fila, falhas, enviadas] = await Promise.all([
       supabase
         .from('cb_scheduled_messages')
-        .select(SELECT_COM_CONVERSA)
+        // ⚠️ `count: 'exact'` em todas as três: é o total NA CONTA, não o
+        // tamanho da página, e vem no mesmo cabeçalho da resposta — de graça.
+        // É o que faz as abas contarem a verdade mesmo com o acervo paginado.
+        .select(SELECT_COM_CONVERSA, { count: 'exact' })
         .in('status', ['pending', 'sending'])
         .order('scheduled_for', { ascending: true })
         .limit(TETO_COMPLETO),
       supabase
         .from('cb_scheduled_messages')
-        .select(SELECT_COM_CONVERSA)
+        .select(SELECT_COM_CONVERSA, { count: 'exact' })
         .eq('status', 'failed')
         .order('scheduled_for', { ascending: false })
         .limit(TETO_COMPLETO),
       supabase
         .from('cb_scheduled_messages')
-        .select(SELECT_COM_CONVERSA)
+        .select(SELECT_COM_CONVERSA, { count: 'exact' })
         .eq('status', 'sent')
+        // ⚠️ Ordena por `sent_at` com `scheduled_for` de reserva: no acervo a
+        // pergunta é "o que saiu por último", e `scheduled_for` responde "para
+        // quando estava marcado". Depois de um "Executar agora" as duas se
+        // separam de vez — uma mensagem marcada para daqui a um mês e
+        // antecipada hoje apareceria no fim do acervo, um mês à frente.
+        .order('sent_at', { ascending: false, nullsFirst: false })
         .order('scheduled_for', { ascending: false })
         .limit(limiteEnviadas),
     ]);
@@ -136,9 +166,56 @@ export function useAgendadasDaConta(): AgendadasDaConta {
     const linhasFalhas = (falhas.data ?? []) as unknown as AgendadaDaConta[];
     const linhasEnviadas = (enviadas.data ?? []) as unknown as AgendadaDaConta[];
 
+    const nFila = fila.count ?? linhasFila.length;
+    const nFalhas = falhas.count ?? linhasFalhas.length;
+    const nEnviadas = enviadas.count ?? linhasEnviadas.length;
+
+    // ⚠️ A última fala DO CLIENTE, só das conversas que têm algo na FILA — é o
+    // único grupo em que o aviso da P4.4 vale (`clienteEscreveuDepois` já
+    // devolve false fora dela). Sem ele, esta tela ofereceria "Executar agora"
+    // sem o aviso que a faixa da conversa dá há duas fases; e aqui pesa mais,
+    // porque quem está nesta tela NÃO está vendo a conversa.
+    //
+    // ⚠️ Uma consulta por CONVERSA, e não uma só com `in(...)`: o que se quer é
+    // o máximo por conversa, que o PostgREST não agrupa. Numa consulta única a
+    // conversa mais falante encheria o limite sozinha e as outras voltariam
+    // sem nada — errando para o lado silencioso, que é o de não avisar.
+    // O número de consultas é o de conversas com fila, limitado pelo
+    // `TETO_COMPLETO`; na prática são unidades.
+    const idsDaFila = [...new Set(linhasFila.map((a) => a.conversation_id))];
+    const entradas = await Promise.all(
+      idsDaFila.map((id) =>
+        supabase
+          .from('messages')
+          .select('created_at')
+          .eq('conversation_id', id)
+          .eq('sender_type', 'customer')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+          .then((r) => [id, (r.data as { created_at?: string } | null)?.created_at] as const),
+      ),
+    );
+
+    if (!vivoRef.current || geracaoRef.current !== minhaGeracao) return;
+
+    const mapa = new Map<string, string>();
+    for (const [id, quando] of entradas) if (quando) mapa.set(id, quando);
+
     setFalhou(false);
     setAgendadas([...linhasFila, ...linhasFalhas, ...linhasEnviadas]);
-    setTemMaisEnviadas(linhasEnviadas.length >= limiteEnviadas);
+    setContagem({
+      todas: nFila + nFalhas + nEnviadas,
+      fila: nFila,
+      falhas: nFalhas,
+      enviadas: nEnviadas,
+    });
+    setUltimaEntradaPorConversa(mapa);
+    // ⚠️ Compara com o TOTAL do banco, nunca com o limite pedido. Com
+    // `carregadas >= limite` o botão morreria no teto de 1000 linhas do
+    // PostgREST: pedindo 1050 e recebendo 1000, `1000 >= 1050` é falso e o
+    // resto do acervo ficaria inalcançável, em silêncio.
+    setTemMaisEnviadas(linhasEnviadas.length < nEnviadas);
     setEstourouOTeto(
       linhasFila.length >= TETO_COMPLETO || linhasFalhas.length >= TETO_COMPLETO,
     );
@@ -187,6 +264,8 @@ export function useAgendadasDaConta(): AgendadasDaConta {
     agendadas,
     carregando,
     falhou,
+    contagem,
+    ultimaEntradaPorConversa,
     temMaisEnviadas,
     estourouOTeto,
     carregarMais,

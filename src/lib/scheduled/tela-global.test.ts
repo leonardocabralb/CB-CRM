@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ordenarParaTela } from './display';
-import {
-  contarPorSituacao,
-  filtrarPorSituacao,
-  situacaoDe,
-  temMais,
-  PAGINA,
-} from './tela-global';
+import { filtrarPorSituacao, situacaoDe } from './tela-global';
 import type { ScheduledMessage, ScheduledMessageStatus } from '@/types';
 
 function agendada(
@@ -91,30 +85,6 @@ describe('filtrarPorSituacao', () => {
   });
 });
 
-describe('contarPorSituacao', () => {
-  it('conta cada grupo, e `todas` é o total', () => {
-    const c = contarPorSituacao([
-      agendada('a', 'pending', '2026-08-10T10:00:00Z'),
-      agendada('b', 'sending', '2026-08-09T10:00:00Z'),
-      agendada('c', 'sent', '2026-08-01T10:00:00Z'),
-      agendada('d', 'failed', '2026-08-02T10:00:00Z'),
-      agendada('e', 'failed', '2026-08-03T10:00:00Z', { entrega_incerta: true }),
-    ]);
-    expect(c).toEqual({ todas: 5, fila: 2, enviadas: 1, falhas: 2 });
-  });
-
-  it('lista vazia zera tudo em vez de faltar chave', () => {
-    // A tela lê `contagem[situacao]` direto para desenhar a aba; chave
-    // faltando viraria `undefined` no rótulo.
-    expect(contarPorSituacao([])).toEqual({
-      todas: 0,
-      fila: 0,
-      enviadas: 0,
-      falhas: 0,
-    });
-  });
-});
-
 describe('ordenarParaTela + filtrarPorSituacao juntos', () => {
   it('⚠️ a fila fica em cima e cresce para o futuro; o acervo desce do mais recente', () => {
     // É a razão de a tela global existir: "o que sai primeiro" e "o que saiu
@@ -134,26 +104,35 @@ describe('ordenarParaTela + filtrarPorSituacao juntos', () => {
     ]);
   });
 
+  it('⚠️ no acervo vale a hora em que SAIU, não a hora para que estava marcada', () => {
+    // O caso que separa as duas: uma mensagem marcada para daqui a um mês e
+    // ANTECIPADA hoje pelo "Executar agora". Ordenando pela marcação, ela iria
+    // parar no topo do acervo com data futura, acima de coisas que saíram
+    // depois dela — e a pergunta do acervo é "o que saiu por último".
+    const ordenada = ordenarParaTela([
+      agendada('antecipada', 'sent', '2026-09-30T10:00:00Z', {
+        sent_at: '2026-08-01T09:00:00Z',
+      }),
+      agendada('saiu-ontem', 'sent', '2026-08-02T10:00:00Z', {
+        sent_at: '2026-08-02T10:01:00Z',
+      }),
+    ]);
+    expect(ordenada.map((a) => a.id)).toEqual(['saiu-ontem', 'antecipada']);
+  });
+
+  it('linha que FALHOU não tem `sent_at`, e cai de volta na hora marcada', () => {
+    const ordenada = ordenarParaTela([
+      agendada('falha-velha', 'failed', '2026-03-01T10:00:00Z'),
+      agendada('falha-nova', 'failed', '2026-07-01T10:00:00Z'),
+    ]);
+    expect(ordenada.map((a) => a.id)).toEqual(['falha-nova', 'falha-velha']);
+  });
+
   it('filtrar depois de ordenar preserva a ordem', () => {
     const ordenada = ordenarParaTela([
       agendada('b', 'pending', '2026-09-01T10:00:00Z'),
       agendada('a', 'pending', '2026-08-10T10:00:00Z'),
     ]);
     expect(filtrarPorSituacao(ordenada, 'fila').map((a) => a.id)).toEqual(['a', 'b']);
-  });
-});
-
-describe('temMais', () => {
-  it('só avisa quando a busca encheu o teto', () => {
-    expect(temMais(PAGINA, PAGINA)).toBe(true);
-    expect(temMais(PAGINA - 1, PAGINA)).toBe(false);
-    expect(temMais(0, PAGINA)).toBe(false);
-  });
-
-  it('⚠️ voltar EXATAMENTE o teto conta como "pode haver mais"', () => {
-    // Com 50 linhas e teto 50 não dá para saber se a 51ª existe. Dizer "é só
-    // isso" seria afirmar o que não se sabe; oferecer "carregar mais" custa um
-    // clique que devolve zero.
-    expect(temMais(50, 50)).toBe(true);
   });
 });

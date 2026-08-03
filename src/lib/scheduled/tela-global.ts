@@ -51,29 +51,6 @@ export function filtrarPorSituacao(
   return lista.filter((a) => situacaoDe(a) === situacao);
 }
 
-export type ContagemPorSituacao = Record<Situacao, number>;
-
-/**
- * Quantas em cada grupo — os números das abas.
- *
- * ⚠️ Conta sobre a lista INTEIRA que veio do banco, nunca sobre o que está
- * filtrado na tela. Contar o filtrado faria toda aba mostrar o mesmo número da
- * que está aberta, e as outras zerarem — o operador leria "não há falhas"
- * enquanto olha a aba Fila.
- */
-export function contarPorSituacao(
-  lista: readonly ScheduledMessage[],
-): ContagemPorSituacao {
-  const c: ContagemPorSituacao = {
-    todas: lista.length,
-    fila: 0,
-    enviadas: 0,
-    falhas: 0,
-  };
-  for (const a of lista) c[situacaoDe(a)] += 1;
-  return c;
-}
-
 /**
  * Quantas linhas a tela mostra antes de pedir "carregar mais".
  *
@@ -83,15 +60,3 @@ export function contarPorSituacao(
  * sempre —, então carregar tudo é uma conta que piora todo dia.
  */
 export const PAGINA = 50;
-
-/**
- * O aviso "a lista tem mais do que isto".
- *
- * ⚠️ Existe porque a alternativa é pior que feia: uma lista cortada em 50 sem
- * nada dizendo tem exatamente a cara de uma lista completa. O operador
- * procuraria uma agendada que existe, não acharia, e concluiria que ela foi
- * apagada.
- */
-export function temMais(carregadas: number, limite: number): boolean {
-  return carregadas >= limite;
-}

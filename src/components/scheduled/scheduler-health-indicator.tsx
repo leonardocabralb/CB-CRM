@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils';
  */
 export function SchedulerHealthIndicator() {
   const t = useTranslations('Inbox.scheduled.saude');
-  const saude = useAgendadorSaude();
+  const { saude } = useAgendadorSaude();
 
   if (!saude || !deveAparecer(saude)) return null;
 

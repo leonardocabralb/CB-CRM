@@ -85,9 +85,13 @@ export function useAcoesDaAgendada(aoMudar: () => void): AcoesDaAgendada {
       setOcupada(null);
       // ⚠️ Conferir o RESULTADO, não só o erro. Sem policy que case, a RLS
       // devolve zero linhas SEM erro — e um toast de sucesso mentiria. É a
-      // armadilha que o CLAUDE.md descreve. Vale mais aqui do que na faixa:
-      // `viewer` não tem a policy de DELETE, e é justamente quem mais vai
-      // abrir uma tela de consulta.
+      // armadilha que o CLAUDE.md descreve.
+      //
+      // O caso vivo NÃO é o `viewer` (as duas telas escondem o botão dele por
+      // `useCan('send-messages')`): é a corrida. Duas pessoas na mesma linha,
+      // ou o worker enviando enquanto alguém cancela — a linha some, o DELETE
+      // não acha nada, e sem esta checagem a tela diria "cancelada" sobre uma
+      // mensagem que acabou de chegar ao cliente.
       if (error) toast.error(t('cancelFailed'));
       else if (!data?.length) toast.error(t('cancelNothing'));
       else toast.success(t('canceled'));

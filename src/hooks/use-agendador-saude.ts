@@ -24,7 +24,21 @@ import {
  */
 const RECONFERIR_MS = 5 * 60_000;
 
-export function useAgendadorSaude(): SaudeDoAgendador | null {
+export interface SaudeDoAgendadorNaTela {
+  saude: SaudeDoAgendador | null;
+  /**
+   * Reconfere agora.
+   *
+   * ⚠️ Existe porque este hook tem estado PRÓPRIO e cadência própria (5 min).
+   * Quem AGE sobre uma agendada — cancelar a última que falhou, por exemplo —
+   * muda os números que ele conta, e sem uma recarga a mesma tela passaria a
+   * afirmar duas coisas contrárias: a lista sem nenhuma falha e esta faixa
+   * dizendo que há uma esperando decisão.
+   */
+  recarregar: () => void;
+}
+
+export function useAgendadorSaude(): SaudeDoAgendadorNaTela {
   const [saude, setSaude] = useState<SaudeDoAgendador | null>(null);
   const vivoRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -38,10 +52,16 @@ export function useAgendadorSaude(): SaudeDoAgendador | null {
         .maybeSingle(),
       // ⚠️ `head: true` + `count`: só o número volta, sem trazer linha nenhuma.
       // A RLS já recorta por conta, então isto é a fila DESTA conta.
+      //
+      // ⚠️ `pending` E `sending`, a mesma definição de fila que o `estaNaFila`
+      // usa na tela. Contando só `pending`, uma linha travada em `sending` — o
+      // worker morreu no meio do envio — fazia esta faixa dizer "não há nada na
+      // fila agora" logo acima de uma aba "Fila 1" com a linha travada dentro.
+      // E é justamente a linha travada que precisa de gente.
       supabase
         .from('cb_scheduled_messages')
         .select('id', { count: 'exact', head: true })
-        .eq('status', 'pending'),
+        .in('status', ['pending', 'sending']),
       supabase
         .from('cb_scheduled_messages')
         .select('id', { count: 'exact', head: true })
@@ -105,5 +125,9 @@ export function useAgendadorSaude(): SaudeDoAgendador | null {
     };
   }, [buscar]);
 
-  return saude;
+  const recarregar = useCallback(() => {
+    void buscar();
+  }, [buscar]);
+
+  return { saude, recarregar };
 }

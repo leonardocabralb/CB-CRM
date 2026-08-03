@@ -18,9 +18,12 @@
 
 | Fase | Escopo | Estado | Migration |
 | --- | --- | --- | --- |
-| **A** | Busca salta para a mensagem, e percorre os achados | ✅ **no ar** (2026-08-03) | **nenhuma** |
+| **A** | Busca salta para a mensagem, e percorre os achados | ✅ **feita** (2026-08-03) | **nenhuma** |
+| **C** | Tela global de agendadas | ✅ **feita** (2026-08-03) | **nenhuma** |
 | **B** | Agendar mídia e levar citação | ⬜ pendente | `932` |
-| **C** | Tela global de agendadas | ⬜ pendente | nenhuma |
+
+⚠️ **Feitas, mas ainda NÃO em produção.** As duas estão em `main` local; `origin/main`
+segue em `c4384c9`. Empurrar dispara o deploy.
 
 ✅ **Decisões do operador (2026-08-03):** percorrer os achados com ↑/↓ · tela global mostra
 tudo com filtro · anexo sumido **falha e espera gente** · citação apagada **sai sem a
@@ -222,6 +225,40 @@ existem na faixa e devem ser extraídos, não reescritos.
 - **Situação `sending` e `entrega_incerta` não podem oferecer "tentar de novo"** — a mesma
   guarda `podeDispararAgora` da faixa, senão o cliente recebe duas vezes.
 - **A tela nasce com 1 linha.** Não aceitar "abri e funcionou" como teste.
+
+### O que a implementação mudou em relação a este plano
+
+- ⚠️ **`canalDaConversa()` seria ERRADO aqui**, ao contrário do que a armadilha acima
+  manda. Aquela regra existe porque conversa de grupo tem `conversations.channel_id`
+  nulo — mas a agendada tem `channel_id` **próprio, NOT NULL**, fixado no agendamento
+  justamente para não seguir a conversa (P4.3). A tela mostra o canal *da agendada*.
+- **São TRÊS consultas, não uma.** Fila e acervo têm ordens opostas; numa consulta só
+  com teto, o `ORDER BY` teria de escolher uma — e a errada engoliria a outra inteira.
+- **Só as enviadas paginam.** Fila e falhas vêm completas: uma falha de seis meses
+  atrás continua esperando decisão, e é ela que a paginação empurraria para fora.
+- **A ordenação não foi reescrita.** `ordenarParaTela` já existia e é testada; ganhou
+  só o `sent_at` no acervo — sem isso, uma mensagem antecipada pelo "Executar agora"
+  aparecia no acervo com data futura.
+- **As contagens das abas vêm do banco** (`count: 'exact'`), não de contar a lista
+  carregada. Contando em JS, a aba "Enviadas" diria 50 numa conta com 300.
+
+### O que a revisão pegou depois de pronto
+
+- ⚠️ **O aviso "o cliente escreveu depois" (P4.4) tinha ficado de fora** — e ele pesa
+  MAIS aqui que na faixa: quem está nesta tela decide "Executar agora" sem ver a
+  conversa. Sem ele, mandaria "confirmo nosso horário de amanhã" para quem cancelou
+  de madrugada.
+- **Linha enviada mostrava a hora MARCADA**, não a hora em que saiu.
+- **As abas afirmavam "Falhas 0" enquanto a carga falhava** — quatro zeros logo acima
+  da caixa que admite não saber de nada.
+- **A faixa de saúde não recarregava com as ações**: cancelar a última falha zerava a
+  aba e a faixa seguia dizendo que havia uma esperando decisão.
+- **A saúde contava só `pending`**, então dizia "não há nada na fila" com uma linha
+  travada em `sending` visível logo abaixo.
+- **`temMaisEnviadas` comparava com o limite pedido**, e morria no teto de 1000 linhas
+  do PostgREST — o acervo além disso ficaria inalcançável, em silêncio.
+- **`temMais` e `contarPorSituacao` nasceram com teste e sem chamador** (a regra viva
+  estava inline no hook). Saíram.
 
 ✅ **Decidido: tudo — fila em cima, com filtro de situação.** Consequências a respeitar:
 

@@ -15,7 +15,7 @@
 // duas).
 // ============================================================
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -38,12 +38,12 @@ import { useChannels } from '@/hooks/use-channels';
 import { channelLabel } from '@/lib/cb-channels/display';
 import { tituloDaConversa } from '@/lib/cb-groups/display';
 import {
+  clienteEscreveuDepois,
   estaAtrasada,
   ordenarParaTela,
   podeDispararAgora,
 } from '@/lib/scheduled/display';
 import {
-  contarPorSituacao,
   filtrarPorSituacao,
   SITUACOES,
   type Situacao,
@@ -62,14 +62,24 @@ export default function AgendadasPage() {
     agendadas,
     carregando,
     falhou,
+    contagem,
+    ultimaEntradaPorConversa,
     temMaisEnviadas,
     estourouOTeto,
     carregarMais,
     recarregar,
   } = useAgendadasDaConta();
-  const { ocupada, enviarAgora, cancelar } = useAcoesDaAgendada(recarregar);
+  const { saude, recarregar: recarregarSaude } = useAgendadorSaude();
+  // ⚠️ As duas recargas juntas. A faixa de saúde tem estado PRÓPRIO e só
+  // reconfere de 5 em 5 minutos; sem isto, cancelar a última falha zerava a aba
+  // "Falhas" logo abaixo enquanto a faixa continuava anunciando "1 mensagem
+  // falhou e espera decisão" — a mesma tela afirmando as duas coisas.
+  const aoMudar = useCallback(() => {
+    recarregar();
+    recarregarSaude();
+  }, [recarregar, recarregarSaude]);
+  const { ocupada, enviarAgora, cancelar } = useAcoesDaAgendada(aoMudar);
   const { channels } = useChannels();
-  const saude = useAgendadorSaude();
   const podeAgir = useCan('send-messages');
   const [situacao, setSituacao] = useState<Situacao>('todas');
 
@@ -80,7 +90,6 @@ export default function AgendadasPage() {
   // saiu por último logo abaixo"), não um efeito colateral de como a busca foi
   // escrita — e ela é testada em `display.test.ts`.
   const ordenadas = useMemo(() => ordenarParaTela(agendadas), [agendadas]);
-  const contagem = useMemo(() => contarPorSituacao(ordenadas), [ordenadas]);
   const visiveis = useMemo(
     () => filtrarPorSituacao(ordenadas, situacao) as AgendadaDaConta[],
     [ordenadas, situacao],
@@ -134,8 +143,12 @@ export default function AgendadasPage() {
         </div>
       )}
 
-      {/* Abas de situação. Os números vêm da lista INTEIRA carregada, nunca do
-          que está filtrado — ver `contarPorSituacao`. */}
+      {/* Abas de situação. Os números são os TOTAIS DA CONTA (`count: 'exact'`
+          no hook), não o tamanho da página.
+          ⚠️ Os números somem quando a busca falhou: com a lista vazia por erro,
+          quatro zeros ao lado das abas afirmariam "não há nada" logo acima da
+          caixa que admite não saber de nada — a tela dizendo duas coisas
+          contrárias ao mesmo tempo. */}
       <div className="flex flex-wrap gap-2">
         {SITUACOES.map((s) => (
           <button
@@ -151,7 +164,9 @@ export default function AgendadasPage() {
             )}
           >
             {t(`tab_${s}`)}
-            <span className="ml-1.5 opacity-70">{contagem[s]}</span>
+            {!falhou && !carregando && (
+              <span className="ml-1.5 opacity-70">{contagem[s]}</span>
+            )}
           </button>
         ))}
       </div>
@@ -178,6 +193,10 @@ export default function AgendadasPage() {
         <div className="space-y-2">
           {visiveis.map((a) => {
             const atrasada = estaAtrasada(a);
+            const respondeu = clienteEscreveuDepois(
+              a,
+              ultimaEntradaPorConversa.get(a.conversation_id) ?? null,
+            );
             // ⚠️ `tituloDaConversa` é a MESMA regra da lista do inbox e do
             // cabeçalho do fio, e é ela que faz conversa de GRUPO aparecer com
             // nome: grupo não tem contato (`conversations.contact_id` é nulo
@@ -220,7 +239,7 @@ export default function AgendadasPage() {
                     {/* `undefined` como locale, nunca 'pt-BR' fixo: é a regra
                         do projeto para data não sair em inglês nem ignorar o
                         fuso de quem olha. */}
-                    {new Date(a.scheduled_for).toLocaleString(undefined, {
+                    {new Date(a.sent_at ?? a.scheduled_for).toLocaleString(undefined, {
                       day: '2-digit',
                       month: '2-digit',
                       year: '2-digit',
@@ -283,6 +302,17 @@ export default function AgendadasPage() {
                     <p className="mt-1 flex items-center gap-1 text-[10px] text-amber-600">
                       <AlertTriangle className="h-3 w-3 shrink-0" />
                       {tInbox('uncertainDelivery')}
+                    </p>
+                  )}
+                  {/* ⚠️ P4.4, e AQUI ele pesa mais que na faixa da conversa: lá
+                      o operador tem o fio na frente e vê a resposta do cliente
+                      sozinho. Nesta tela ele decide "Executar agora" sem ver
+                      conversa nenhuma — sem este aviso, mandaria um "confirmo
+                      nosso horário de amanhã" para quem cancelou de madrugada. */}
+                  {respondeu && (
+                    <p className="mt-1 flex items-center gap-1 text-[10px] text-amber-600">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      {tInbox('customerRepliedSince')}
                     </p>
                   )}
                 </div>
