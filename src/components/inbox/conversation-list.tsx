@@ -50,6 +50,18 @@ interface ConversationListProps {
    * or the tab was throttled. Optional so existing callers keep working.
    */
   resyncToken?: number;
+  /**
+   * O termo da busca, já assentado (ver `termoAplicado` em
+   * `useBuscaEmMensagens`), para quem estiver fora desta lista.
+   *
+   * ⚠️ Existe porque a caixa de busca mora AQUI e o fio da conversa é irmão,
+   * não filho: sem este aviso ao pai, o fio não tem como saber que existe uma
+   * busca em curso — e é ele quem precisa rolar até a mensagem e destacá-la.
+   * O estado continua sendo desta lista; o pai só ESPELHA, para repassar.
+   * Subir o `useState` da caixa para a página faria o fio inteiro
+   * re-renderizar a cada tecla digitada.
+   */
+  onTermoDeBusca?: (termo: string) => void;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -66,6 +78,7 @@ export function ConversationList({
   conversations,
   onConversationsLoaded,
   resyncToken = 0,
+  onTermoDeBusca,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
 
@@ -268,7 +281,14 @@ export function ConversationList({
     achados: achadosNoTexto,
     buscando: buscandoNoTexto,
     falhou: falhouBuscaNoTexto,
+    termoAplicado,
   } = useBuscaEmMensagens(search);
+
+  // Espelha o termo assentado para quem estiver fora da lista (o fio da
+  // conversa, que precisa dele para destacar as mensagens que casaram).
+  useEffect(() => {
+    onTermoDeBusca?.(termoAplicado);
+  }, [termoAplicado, onTermoDeBusca]);
 
   // `aplicarFiltros` só precisa saber QUAIS conversas casaram; o trecho é da
   // linha. Memoizado pela identidade do mapa, que só muda quando a resposta

@@ -221,7 +221,10 @@
       "today": "Hoje",
       "yesterday": "Ontem",
       "channelChangedWhileTyping": "Não enviado. O cliente escreveu por outro número enquanto você digitava e a conversa passou para {channel}. Confira o canal acima e envie de novo.",
-      "channelChangedUnknown": "outro número"
+      "channelChangedUnknown": "outro número",
+      "searchInThread": "“{termo}” — {atual} de {total}",
+      "searchPrevHit": "Achado anterior",
+      "searchNextHit": "Próximo achado"
     },
     "sessionTimer": {
       "expired": "Expirada",

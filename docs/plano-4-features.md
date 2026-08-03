@@ -1198,7 +1198,7 @@ reler o documento inteiro para descobrir o que o sistema **não** faz.
 
 | O que não faz | Decidido em | Por quê |
 | --- | --- | --- |
-| **Saltar para a mensagem** que casou na busca | P2.1 | Devolve conversas. Ancorar e rolar até o trecho no fio é outra feature |
+| ~~**Saltar para a mensagem** que casou na busca~~ | P2.1 | ✅ **Deixou de valer em 2026-08-03.** Era "outra feature", e virou a Fase A de `docs/plano-3-features-inbox.md` — o fio abre parado na mensagem, com ↑/↓ para percorrer os achados |
 | **Paginação** da lista de conversas | Fase 5 | A lista carrega tudo (64 hoje, 122 ligando grupos). Vira necessidade real com milhares — e aí precisa ser revista **junto** com o realtime, não sozinha |
 | **Painel de filtros no servidor** (RPC única) | Fase 5 | Exigiria reescrever a camada de dados do inbox sem mudar nada na tela. Medição na revisão prévia da Fase 5 |
 | Busca em mensagem **apagada** e no texto **antes da edição** | P2.7 | Achar por texto retratado é decisão jurídica, não default acidental |

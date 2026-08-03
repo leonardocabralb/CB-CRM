@@ -47,12 +47,26 @@ export interface BuscaEmMensagens {
    * resultado legítimo. O operador concluiria que aquela mensagem não existe.
    */
   falhou: boolean;
+  /**
+   * O termo com que os `achados` de agora foram buscados. `""` quando não vale
+   * ou quando a consulta falhou.
+   *
+   * ⚠️ EXISTE PARA O FIO CONCORDAR COM A LISTA. Quem destaca as mensagens
+   * dentro da conversa (`acharNoFio`) precisa usar o MESMO termo que produziu
+   * estes achados — usar o texto cru da caixa faria, durante os ~300 ms de
+   * espera, a lista mostrar o resultado de "contrato" e o fio destacar
+   * "contratos", com contadores diferentes lado a lado.
+   *
+   * De quebra, é o que impede o fio inteiro de re-renderizar a cada tecla.
+   */
+  termoAplicado: string;
 }
 
 export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
   const [achados, setAchados] = useState<AchadosNoTexto>(SEM_ACHADOS);
   const [buscando, setBuscando] = useState(false);
   const [falhou, setFalhou] = useState(false);
+  const [termoAplicado, setTermoAplicado] = useState("");
 
   // ⚠️ Contador de geração, e não um sinalizador de "cancelado". Digitar rápido
   // deixa várias consultas no ar ao mesmo tempo, e elas NÃO voltam em ordem: a
@@ -75,9 +89,13 @@ export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
     const perguntar = async () => {
       setBuscando(true);
       const supabase = createClient();
+      // ⚠️ Vai APARADO para o banco. O `btrim` do Postgres tira só o espaço
+      // U+0020; o `.trim()` do JS tira NBSP, tabulação e quebra de linha
+      // também. Mandando o cru, um termo colado com NBSP na ponta viraria duas
+      // agulhas diferentes — o banco procurando com o branco, o fio sem ele.
       const { data, error } = await supabase.rpc(
         "cb_buscar_conversas_por_texto",
-        { p_termo: busca },
+        { p_termo: busca.trim() },
       );
 
       // ⚠️ Resposta velha para aqui, e de propósito ela NÃO desliga o
@@ -98,12 +116,24 @@ export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
         });
         setFalhou(true);
         setAchados(SEM_ACHADOS);
+        // Sem resultado do banco, o fio não destaca nada. Deixar o termo de pé
+        // aqui poria a faixa "3 de 3" na tela ao lado do aviso da lista de que
+        // a busca dentro das mensagens FALHOU — duas afirmações contrárias
+        // sobre a mesma busca, ao mesmo tempo.
+        setTermoAplicado("");
         setBuscando(false);
         return;
       }
 
       setFalhou(false);
       setAchados(montarAchados(data as LinhaDaBusca[] | null));
+      // ⚠️ Carimbado JUNTO com os achados, e depois da guarda de geração. O
+      // primeiro desenho carimbava antes de ir ao banco, para o destaque
+      // acender mais cedo — mas isso abria uma janela em que a lista mostrava o
+      // resultado do termo ANTERIOR e o fio já destacava o NOVO, com os dois
+      // contadores discordando na tela. Os dois números têm de vir da mesma
+      // resposta.
+      setTermoAplicado(busca.trim());
       setBuscando(false);
     };
 
@@ -130,5 +160,6 @@ export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
     achados: vale ? achados : SEM_ACHADOS,
     buscando: vale && buscando,
     falhou: vale && falhou,
+    termoAplicado: vale ? termoAplicado : "",
   };
 }

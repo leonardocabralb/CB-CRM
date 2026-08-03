@@ -10,6 +10,7 @@ import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useCan } from "@/hooks/use-can";
 import { ScheduledBar } from "./scheduled-bar";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
+import { acharNoFio } from "@/lib/inbox/achados-no-fio";
 import {
   aplicarAssinatura,
   assinaturaExistente,
@@ -45,6 +46,8 @@ import {
   BadgeCheck,
   QrCode,
   Users,
+  Search,
+  ChevronUp,
 } from "lucide-react";
 import { nomeDoGrupo } from "@/lib/cb-groups/display";
 import type { CbChannel } from "@/lib/cb-channels/repo";
@@ -146,6 +149,52 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  /**
+   * O termo da busca do inbox, já assentado (ver `termoAplicado` em
+   * `useBuscaEmMensagens`). Vazio quando não há busca.
+   *
+   * Com ele o fio abre PARADO na mensagem que casou, em vez de abrir no fim e
+   * deixar o operador rolando atrás do trecho que a lista acabou de mostrar.
+   * Opcional para os callers existentes.
+   */
+  termoDaBusca?: string;
+}
+
+/**
+ * Âncora do salto da busca, e o destaque do achado em que o operador está.
+ *
+ * ⚠️ Envolve a bolha em vez de marcá-la por dentro porque o fio tem DOIS
+ * caminhos de mensagem — a bolha comum (dentro do `MessageActions`) e o aviso
+ * de sistema do grupo (bolha crua). Marcando por dentro, a segunda ficaria sem
+ * âncora e o ↑/↓ pularia por cima dela sem rolar a tela.
+ *
+ * ⚠️ `data-message-id` é `messages.id`, NUNCA `message_id` — este é o wamid do
+ * WhatsApp, existe na mesma tabela e um salto atrás dele não acharia nada.
+ *
+ * O destaque fica de pé enquanto aquele for o achado corrente (some quando a
+ * busca é apagada), e não por alguns segundos: com ↑/↓ é ele que responde "em
+ * qual dos cinco eu estou" a cada passo.
+ */
+function LinhaDaMensagem({
+  id,
+  destacada,
+  children,
+}: {
+  id: string;
+  destacada: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      data-message-id={id}
+      className={cn(
+        "rounded-lg transition-colors",
+        destacada && "bg-primary/10 ring-1 ring-primary/40",
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
 function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
@@ -212,6 +261,7 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  termoDaBusca = "",
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -237,6 +287,64 @@ export function MessageThread({
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * O salto da busca está mandando na rolagem agora?
+   *
+   * Vale de quando há alvo ATÉ O OPERADOR AGIR. Enquanto vale, o auto-scroll
+   * fica calado e o efeito que centraliza o alvo tem a palavra final — os dois
+   * ficam mais abaixo, junto com o resto do salto.
+   *
+   * ⚠️ AS DUAS METADES DESTA REGRA SÃO LOAD-BEARING, e cada uma conserta um
+   * defeito diferente:
+   *
+   * 1. **Enquanto vale**, as anotações e os eventos do lead — que chegam em
+   *    buscas PRÓPRIAS, depois das mensagens — não desfazem o salto. Sem isto o
+   *    salto era desmanchado alguns milissegundos depois, e o sintoma seria
+   *    "às vezes funciona".
+   * 2. **Deixa de valer quando o operador age.** Suprimir para sempre foi o
+   *    primeiro desenho, e quebrava algo pior do que consertava: com a busca
+   *    ainda na caixa — ela é da LISTA, do outro lado da tela, não há por que
+   *    apagá-la para responder —, a mensagem recém-enviada e a anotação
+   *    recém-escrita nasciam abaixo da dobra e NADA rolava até elas. O autor
+   *    mandava e não via.
+   *
+   * Mora aqui em cima, longe do resto do salto, por uma razão chata e real: o
+   * `liberarSalto` é dependência de um `useCallback` declarado poucas linhas
+   * abaixo, e uma `const` referenciada numa lista de dependências antes de ser
+   * inicializada estoura em tempo de render.
+   */
+  const saltoAtivoRef = useRef(false);
+
+  /**
+   * O operador agiu — o salto solta a rolagem.
+   *
+   * ⚠️ Tem de ser chamado ANTES de a bolha otimista (ou a anotação) entrar na
+   * lista: quem lê o sinalizador é o efeito que roda DEPOIS do commit, então
+   * liberar tarde deixaria justamente o primeiro render — o que contém a coisa
+   * nova — ainda sob a supressão.
+   */
+  const liberarSalto = useCallback(() => {
+    saltoAtivoRef.current = false;
+  }, []);
+
+  /**
+   * Toda bolha que NASCE de um envio daqui passa por aqui.
+   *
+   * São quatro caminhos de envio (texto, mídia, template, interativa) e o único
+   * ponto em comum é a bolha otimista. Chamar `liberarSalto` nos quatro à mão
+   * daria certo hoje e envelheceria mal: um quinto caminho nasceria sem a
+   * liberação, e o defeito — "mandei e não vi" — só aparece com busca ativa,
+   * que é justamente quando ninguém testa.
+   */
+  const publicarMensagemOtimista = useCallback(
+    (msg: Message) => {
+      liberarSalto();
+      onNewMessage(msg);
+    },
+    [liberarSalto, onNewMessage],
+  );
+
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
@@ -605,9 +713,12 @@ export function MessageThread({
   const acrescentarNotaDaConversa = useCallback(
     (nota: ConversationNote) => {
       if (nota.conversation_id !== conversationId) return;
+      // Escrever anotação é agir: solta a rolagem do salto da busca, senão o
+      // autor salva e não vê o que acabou de escrever.
+      liberarSalto();
       acrescentarNota(nota);
     },
-    [acrescentarNota, conversationId],
+    [acrescentarNota, conversationId, liberarSalto],
   );
 
   /**
@@ -642,6 +753,77 @@ export function MessageThread({
     [removerNotaLocal, recarregarNotas, tNote],
   );
 
+  // ============================================================
+  // Salto da busca — a conversa abre parada na mensagem que casou
+  // ============================================================
+
+  /**
+   * As mensagens desta conversa que casam com o termo, em ordem cronológica.
+   *
+   * Roda em JS porque o fio já carregou a conversa inteira; o porquê disso não
+   * ser "meio a meio" com o banco está em `achados-no-fio.ts`.
+   */
+  const achadosNoFio = useMemo(
+    () => acharNoFio(messages, termoDaBusca),
+    [messages, termoDaBusca],
+  );
+
+  /**
+   * O achado escolhido com as setas, CARIMBADO com a busca que o produziu.
+   *
+   * ⚠️ A assinatura (conversa + termo) faz parte do estado de propósito. Sem
+   * ela seria preciso zerar a escolha num efeito ao trocar de conversa ou de
+   * termo — e por um quadro o fio saltaria para o alvo velho antes de corrigir,
+   * com o destaque piscando de uma bolha para outra. Guardando junto, uma busca
+   * diferente simplesmente não reconhece a escolha antiga.
+   */
+  const [escolhaNaBusca, setEscolhaNaBusca] = useState<{
+    assinatura: string;
+    id: string;
+  } | null>(null);
+
+  // `|` separa porque `conversationId` é um UUID e nunca o contém — então não
+  // há termo capaz de forjar a assinatura de outra conversa. (Aqui já morou um
+  // U+0000 CRU, que deixava este arquivo BINÁRIO para o `grep` e o `file`: as
+  // buscas passavam a devolver zero linhas em silêncio.)
+  const assinaturaDaBusca = `${conversationId ?? ""}|${termoDaBusca}`;
+  const escolhido =
+    escolhaNaBusca?.assinatura === assinaturaDaBusca ? escolhaNaBusca.id : null;
+
+  // Sem escolha (ou com escolha que não casa mais — a mensagem pode ter sido
+  // apagada), o alvo é o achado MAIS RECENTE. É o mesmo que a linha da lista
+  // mostrou no trecho: a RPC 929 recorta o `DISTINCT ON ... ORDER BY
+  // created_at DESC`, ou seja, também o último. Abrir noutro lugar mostraria
+  // um trecho na lista e destacaria outro no fio.
+  const posicaoEscolhida = escolhido ? achadosNoFio.indexOf(escolhido) : -1;
+  const posicaoDoAlvo =
+    posicaoEscolhida >= 0 ? posicaoEscolhida : achadosNoFio.length - 1;
+  const alvoId = posicaoDoAlvo >= 0 ? achadosNoFio[posicaoDoAlvo] : null;
+
+  const irParaAchado = useCallback(
+    (passo: 1 | -1) => {
+      const proxima = posicaoDoAlvo + passo;
+      // ⚠️ Para nas pontas, não dá a volta. Os botões já ficam desabilitados
+      // ali; esta guarda é a que garante o índice válido mesmo que a lista
+      // encolha entre o render e o clique (mensagem apagada por outra pessoa).
+      if (proxima < 0 || proxima >= achadosNoFio.length) return;
+      setEscolhaNaBusca({
+        assinatura: assinaturaDaBusca,
+        id: achadosNoFio[proxima],
+      });
+    },
+    [posicaoDoAlvo, achadosNoFio, assinaturaDaBusca],
+  );
+
+  // O espelho de `alvoId` no sinalizador. Declarado AQUI, e não junto do
+  // `saltoAtivoRef` lá em cima, por causa da ordem: os efeitos disparam na
+  // ordem em que foram declarados, e este precisa ter atualizado o sinalizador
+  // antes de o auto-scroll logo abaixo decidir se rola.
+  useEffect(() => {
+    // Trocar de alvo (as setas) RE-ARMA o salto.
+    saltoAtivoRef.current = alvoId !== null;
+  }, [alvoId]);
+
   // Auto-scroll to bottom on new messages.
   // `leadEvents` e `notas` entram na lista de dependências porque chegam em
   // buscas próprias, depois das mensagens: sem isso o conteúdo cresce embaixo
@@ -649,11 +831,57 @@ export function MessageThread({
   // anotação recém-escrita, que sem isto nasceria abaixo da dobra — o autor
   // salvaria e não veria o que acabou de escrever.
   useEffect(() => {
+    if (saltoAtivoRef.current) return;
     if (scrollRef.current) {
       const el = scrollRef.current;
       el.scrollTop = el.scrollHeight;
     }
   }, [messages, leadEvents, notas]);
+
+  /**
+   * Rola até o alvo e o deixa no meio da tela.
+   *
+   * Mede pela diferença entre os retângulos em vez de usar `offsetTop`: o
+   * contêiner de rolagem não é `relative`, então `offsetTop` seria contado a
+   * partir de um ancestral qualquer e o salto pararia no lugar errado.
+   *
+   * O segundo passo, no quadro seguinte, corrige o que assentou depois da
+   * primeira medida (fonte, bolha de mídia que só então ganhou altura).
+   * ⚠️ Não cobre imagem que demora a carregar — nesse caso o alvo pode ficar
+   * alguns pixels fora do centro. Continua destacado, então dá para achar.
+   *
+   * ⚠️ `messages` PRECISA estar nas dependências, e não é enfeite. Voltar para
+   * a aba do navegador, apertar o atualizar do cabeçalho ou o realtime
+   * reconectar incrementam o `resyncToken`: o fio troca todo o conteúdo por um
+   * spinner de ~100 px, o `scrollHeight` desaba abaixo do `clientHeight` e o
+   * navegador GRAMPEIA o `scrollTop` em zero. Quando as mensagens voltam, o
+   * `alvoId` é a MESMA string (os ids não mudaram), então sem `messages` aqui
+   * nada re-centraliza — e o operador cai no começo da conversa, com a faixa
+   * acima ainda dizendo "11 de 11" sobre uma bolha a meses de rolagem.
+   *
+   * A guarda do `saltoAtivoRef` é o que impede este efeito de puxar o operador
+   * de volta ao alvo depois de ele ter mandado uma mensagem.
+   */
+  useEffect(() => {
+    if (!alvoId || !saltoAtivoRef.current) return;
+
+    const centralizar = () => {
+      const cont = scrollRef.current;
+      if (!cont) return;
+      const el = cont.querySelector<HTMLElement>(
+        `[data-message-id="${alvoId}"]`,
+      );
+      if (!el) return;
+      const rCont = cont.getBoundingClientRect();
+      const rAlvo = el.getBoundingClientRect();
+      cont.scrollTop +=
+        rAlvo.top - rCont.top - (cont.clientHeight - rAlvo.height) / 2;
+    };
+
+    centralizar();
+    const quadro = requestAnimationFrame(centralizar);
+    return () => cancelAnimationFrame(quadro);
+  }, [alvoId, messages]);
 
   /**
    * Fecha a bolha otimista com o que o SERVIDOR gravou.
@@ -696,7 +924,7 @@ export function MessageThread({
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
       };
-      onNewMessage(optimisticMsg);
+      publicarMensagemOtimista(optimisticMsg);
       setReplyTo(null);
 
       try {
@@ -767,6 +995,10 @@ export function MessageThread({
     // com o nome de antes depois de o interruptor mudar ou a sessão trocar.
     [
       conversation,
+      publicarMensagemOtimista,
+      // `onNewMessage` continua aqui porque o caminho do 409 acima reescreve a
+      // bolha já publicada — ali não há salto para liberar, a mensagem não é
+      // nova.
       onNewMessage,
       onUpdateMessage,
       activeChannel?.id,
@@ -801,7 +1033,7 @@ export function MessageThread({
         created_at: new Date().toISOString(),
         reply_to_message_id: payload.replyToId,
       };
-      onNewMessage(optimisticMsg);
+      publicarMensagemOtimista(optimisticMsg);
       setReplyTo(null);
 
       try {
@@ -841,7 +1073,7 @@ export function MessageThread({
         void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, marcarEnviada],
+    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada],
   );
 
   const handleSendInteractive = useCallback(
@@ -862,7 +1094,7 @@ export function MessageThread({
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
       };
-      onNewMessage(optimisticMsg);
+      publicarMensagemOtimista(optimisticMsg);
 
       try {
         const res = await fetch("/api/whatsapp/send", {
@@ -895,7 +1127,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, marcarEnviada],
+    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada],
   );
 
   const handleStatusChange = useCallback(
@@ -941,7 +1173,7 @@ export function MessageThread({
         status: "sending",
         created_at: new Date().toISOString(),
       };
-      onNewMessage(optimisticMsg);
+      publicarMensagemOtimista(optimisticMsg);
 
       try {
         const res = await fetch("/api/whatsapp/send", {
@@ -984,7 +1216,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, marcarEnviada],
+    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without
@@ -1566,6 +1798,49 @@ export function MessageThread({
         </div>
       </div>
 
+      {/* Faixa do salto da busca.
+          ⚠️ Só aparece com achado NESTE fio. Uma conversa pode ter entrado no
+          resultado pelo nome do contato, sem nenhuma mensagem casando — e uma
+          faixa dizendo "0 de 0" ali seria pior que faixa nenhuma. É também
+          onde a divergência improvável entre o banco e o JS (caractere exótico
+          que o `unaccent` do Postgres trate diferente) falha para o lado
+          silencioso, em vez de mostrar um contador zerado. */}
+      {achadosNoFio.length > 0 && alvoId && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/60 px-3 py-1.5">
+          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {t("searchInThread", {
+              termo: termoDaBusca,
+              atual: posicaoDoAlvo + 1,
+              total: achadosNoFio.length,
+            })}
+          </p>
+          {/* ⚠️ Desabilitados nas pontas, e é assim que "não dá a volta" fica
+              garantido na tela: um botão que sempre responde faria o operador
+              acreditar que ainda há achados adiante. */}
+          <button
+            type="button"
+            onClick={() => irParaAchado(-1)}
+            disabled={posicaoDoAlvo <= 0}
+            aria-label={t("searchPrevHit")}
+            title={t("searchPrevHit")}
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+          >
+            <ChevronUp className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => irParaAchado(1)}
+            disabled={posicaoDoAlvo >= achadosNoFio.length - 1}
+            aria-label={t("searchNextHit")}
+            title={t("searchNextHit")}
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Messages Area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {loading ? (
@@ -1622,8 +1897,17 @@ export function MessageThread({
                     // se desenha sozinha como faixa, e NÃO passa pelo
                     // MessageActions — responder, reagir ou apagar um aviso
                     // do sistema não quer dizer nada.
+                    const destacada = msg.id === alvoId;
                     if (msg.content_type === "system") {
-                      return <MessageBubble key={msg.id} message={msg} emGrupo />;
+                      return (
+                        <LinhaDaMensagem
+                          key={msg.id}
+                          id={msg.id}
+                          destacada={destacada}
+                        >
+                          <MessageBubble message={msg} emGrupo />
+                        </LinhaDaMensagem>
+                      );
                     }
                     const parent = msg.reply_to_message_id
                       ? messagesById.get(msg.reply_to_message_id)
@@ -1662,8 +1946,12 @@ export function MessageThread({
                       void postReaction(msg.id, next);
                     };
                     return (
-                      <MessageActions
+                      <LinhaDaMensagem
                         key={msg.id}
+                        id={msg.id}
+                        destacada={destacada}
+                      >
+                      <MessageActions
                         message={msg}
                         onReply={() => handleStartReply(msg)}
                         onReact={(emoji) => {
@@ -1685,6 +1973,7 @@ export function MessageThread({
                           onBaixarAnexo={() => baixarAnexoDoGrupo(msg.id)}
                         />
                       </MessageActions>
+                      </LinhaDaMensagem>
                     );
                   })}
                 </div>

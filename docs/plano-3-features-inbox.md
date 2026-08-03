@@ -18,7 +18,7 @@
 
 | Fase | Escopo | Estado | Migration |
 | --- | --- | --- | --- |
-| **A** | Busca salta para a mensagem, e percorre os achados | ⬜ pendente | **nenhuma** |
+| **A** | Busca salta para a mensagem, e percorre os achados | ✅ **no ar** (2026-08-03) | **nenhuma** |
 | **B** | Agendar mídia e levar citação | ⬜ pendente | `932` |
 | **C** | Tela global de agendadas | ⬜ pendente | nenhuma |
 
@@ -106,14 +106,50 @@ pontas enxergam o mesmo universo, que é a regra que a Fase 5 fixou.
 - **Se o JS não achar nada** onde o banco achou, não mostrar a barra com "0 de 0": esconder.
   É a divergência improvável (caractere exótico) falhando para o lado silencioso.
 
-### Peças
+### Peças — o que foi construído de fato
 
 | Onde | O quê |
 | --- | --- |
-| `src/lib/inbox/achados-no-fio.ts` | função PURA: mensagens + termo → ids que casam, em ordem. É onde mora a guarda da apagada. Testável sem tela |
-| `message-thread.tsx` | âncora `data-message-id` em cada bolha; barra "2 de 5" com ↑/↓; efeito de salto; supressão do auto-scroll; destaque temporário |
-| `inbox/page.tsx` | leva o **termo de busca** até o fio (hoje o fio não sabe que existe busca) e o id-alvo inicial |
-| `conversation-list.tsx` | o clique num resultado sinaliza "abriu pela busca" |
+| `src/lib/inbox/achados-no-fio.ts` | função PURA: mensagens + termo → ids que casam, em ordem. É onde moram as três guardas da RPC. 15 testes |
+| `message-thread.tsx` | âncora `data-message-id` em cada bolha (via `LinhaDaMensagem`); faixa "2 de 5" com ↑/↓; efeito de salto; supressão do auto-scroll **até o operador agir**; destaque enquanto for o achado corrente |
+| `use-busca-em-mensagens.ts` | passou a expor `termoAplicado` — o termo que produziu os achados vigentes |
+| `inbox/page.tsx` | espelha o termo da lista para o fio (são irmãos; a página é o único caminho entre eles) |
+| `conversation-list.tsx` | avisa a página quando o termo assenta (`onTermoDeBusca`) |
+
+⚠️ **Três coisas saíram diferentes do previsto acima**, e vale saber por quê:
+
+- **Não existe sinal de "abriu pela busca".** Com a busca ativa a lista já está
+  recortada, então toda conversa aberta ali É um resultado — o gatilho é a mudança do
+  alvo, e ele cobre também "digitei o termo com a conversa já aberta".
+- **O destaque não é temporário.** Com ↑/↓ é ele que responde "em qual dos onze eu
+  estou"; apagar depois de alguns segundos deixaria a pergunta sem resposta.
+- **O termo que chega ao fio é o ASSENTADO**, não o texto cru da caixa. Com o cru, a
+  lista mostraria o resultado de "contrato" enquanto o fio destacava "contratos", e a
+  página inteira re-renderizaria a cada tecla.
+
+### O que a revisão pegou depois de pronto
+
+Cinco lentes independentes sobre o commit, cada achado passando por um refutador e um
+verificador que **mede** em vez de argumentar. Nenhum achado caiu; os que mordiam:
+
+- ⚠️ **A supressão do auto-scroll não podia ser permanente.** O primeiro desenho a
+  mantinha por toda a vida da busca — e a caixa de busca é da LISTA, do outro lado da
+  tela, então não há por que apagá-la para responder ao cliente. Resultado: a mensagem
+  recém-enviada e a anotação recém-escrita nasciam abaixo da dobra e **nada rolava até
+  elas**. Agora o salto solta a rolagem quando o operador age.
+- ⚠️ **Voltar para a aba jogava o operador para o TOPO da conversa.** O `resyncToken`
+  troca o fio por um spinner, o `scrollHeight` desaba e o navegador grampeia o
+  `scrollTop` em zero; como o `alvoId` continua o mesmo, nada re-centralizava — e a
+  faixa seguia dizendo "11 de 11" sobre uma bolha a meses de rolagem. Corrigido pondo
+  `messages` nas dependências do efeito que centraliza.
+- ⚠️ **`semAcento` apagava `^`, `` ` ``, `´` e `¨` inteiros** (`\p{Diacritic}` inclui o
+  acento que existe sozinho). Buscar `^^^` virava agulha VAZIA, e `includes("")` é
+  verdadeiro para tudo: acendia **todas** as bolhas da conversa. Virou `\p{Mn}`.
+- **O piso de 3 letras era medido no texto cru**, e o banco mede no normalizado.
+- **`btrim` do Postgres apara só o espaço U+0020**; o `.trim()` do JS apara NBSP e
+  quebra de linha também. Agora o termo vai aparado para as duas pontas.
+- **Um byte U+0000 cru no fonte** deixava `message-thread.tsx` **binário** para o `grep`
+  e o `file` — as buscas devolviam zero linhas em silêncio.
 
 ### Armadilhas
 
@@ -131,6 +167,21 @@ pontas enxergam o mesmo universo, que é a regra que a Fase 5 fixou.
   a volta em silêncio faz parecer que há mais achados do que há.
 
 ✅ **Decidido:** entra na mais recente e permite percorrer todas com ↑/↓ e contador.
+
+### O que fica sabido, e não foi consertado
+
+- ⚠️ **As duas normalizações não são idênticas, nos DOIS sentidos.** O `unaccent` do
+  Postgres dobra `…`, `–` e `×`; o `semAcento` não. Replicar a tabela do `unaccent` (são
+  centenas de entradas) faria o código AFIRMAR uma equivalência que não teria — pior que
+  a diferença medida e escrita. Exposição: 5 mensagens em 784, e ainda é preciso que o
+  trecho procurado contenha o caractere.
+- ⚠️ **O teto de 1000 linhas do PostgREST chega sozinho.** A busca de mensagens do fio não
+  tem `limit`, mas a resposta é cortada em 1000 sem erro e sem aviso. A maior conversa tem
+  158 mensagens hoje; passando disso, o contador começa a mentir por crescimento de dados,
+  sem ninguém mudar código.
+- **Mensagem nova do cliente não puxa mais a tela enquanto o salto vale.** É melhor que o
+  contrário (perder o lugar que se estava lendo), mas é mudança de comportamento.
+- **Conversa de grupo segue sem poder ser exercitada** — `groups_enabled` desligado.
 
 ---
 
