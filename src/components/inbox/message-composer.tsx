@@ -77,6 +77,11 @@ import {
   type ChaveDeAtalho,
 } from "@/lib/scheduled/display";
 import {
+  podeTerLegenda,
+  tetoDaLegenda,
+  TETO_DA_LEGENDA_META,
+} from "@/lib/scheduled/midia";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -88,8 +93,14 @@ export type ComposerMediaKind = "image" | "video" | "document" | "audio";
 /** Supabase Storage bucket holding agent-sent chat attachments (migration 023). */
 export const CHAT_MEDIA_BUCKET = "chat-media";
 
-/** Meta caps media captions at 1024 chars. Enforced here and in the send route. */
-export const MEDIA_CAPTION_MAX = 1024;
+/**
+ * Meta caps media captions at 1024 chars. Enforced here and in the send route.
+ *
+ * ⚠️ O número mora em `lib/scheduled/midia.ts` desde a 932: agendar mídia
+ * precisa da mesma regra no servidor, e um `1024` escrito de novo aqui viraria
+ * a segunda cópia a envelhecer sozinha.
+ */
+export const MEDIA_CAPTION_MAX = TETO_DA_LEGENDA_META;
 
 /** Hard cap on a single voice recording so it can't blow the upload/
  *  transcode limits — auto-stops the recorder when reached. */
@@ -940,8 +951,7 @@ export function MessageComposer({
       path: draft.path,
       // Audio takes no caption (Meta rejects it). Everything else: the
       // trimmed caption, or undefined when blank.
-      caption:
-        draft.kind === "audio" ? undefined : draft.caption.trim() || undefined,
+      caption: podeTerLegenda(draft.kind) ? draft.caption.trim() || undefined : undefined,
       filename: draft.kind === "document" ? draft.filename : undefined,
       replyToId: replyTo?.id,
     });
@@ -1503,7 +1513,7 @@ function useTetoDaLegenda(): number {
   const nome = assinaturaAtiva
     ? nomeDePessoa(profile?.full_name, profile?.email)
     : null;
-  return MEDIA_CAPTION_MAX - custoDaAssinatura(nome);
+  return tetoDaLegenda(custoDaAssinatura(nome));
 }
 
 function MediaDraftPreview({
@@ -1560,7 +1570,7 @@ function MediaDraftPreview({
       </div>
 
       <div className="mt-2 flex items-end gap-2">
-        {draft.kind !== "audio" && (
+        {podeTerLegenda(draft.kind) && (
           <input
             value={draft.caption}
             maxLength={tetoDaLegenda}

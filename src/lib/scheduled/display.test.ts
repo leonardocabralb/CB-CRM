@@ -32,6 +32,14 @@ function ag(over: Partial<ScheduledMessage> = {}): ScheduledMessage {
     autor_nome: 'Dra. Ana',
     created_at: '2026-08-01T12:00:00.000Z',
     sent_at: null,
+    // Anexo e citação (932). Nulos aqui: estes testes são sobre ordem e
+    // situação, que não mudam com o anexo.
+    media_url: null,
+    media_path: null,
+    media_kind: null,
+    media_filename: null,
+    reply_to_message_id: null,
+    citacao_perdida: false,
     entrega_incerta: false,
     ...over,
   };

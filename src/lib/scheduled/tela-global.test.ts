@@ -25,6 +25,14 @@ function agendada(
     autor_nome: 'Fulano',
     created_at: '2026-08-01T10:00:00Z',
     sent_at: null,
+    // Anexo e citação (932). Nulos aqui: estes testes são sobre ordem e
+    // situação, que não mudam com o anexo.
+    media_url: null,
+    media_path: null,
+    media_kind: null,
+    media_filename: null,
+    reply_to_message_id: null,
+    citacao_perdida: false,
     ...extra,
   };
 }
