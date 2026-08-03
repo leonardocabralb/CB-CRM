@@ -316,6 +316,19 @@ export function MessageThread({
    */
   const saltoAtivoRef = useRef(false);
 
+  /** O alvo de agora, legível de dentro de um `useCallback` sem dependências. */
+  const alvoAtualRef = useRef<string | null>(null);
+  /**
+   * O alvo sobre o qual o operador JÁ tomou a rolagem para si.
+   *
+   * ⚠️ Sem esta memória, "liberar" durava até o próximo resync. Voltar para a
+   * aba, apertar o atualizar ou o realtime reconectar ESVAZIA `messages`: o
+   * alvo vira `null` e volta a ser o MESMO id, e o efeito que re-arma o salto
+   * não tinha como saber que aquilo não era um passo de seta — re-armava, e
+   * quem tinha subido para ler o contexto era arrastado de volta.
+   */
+  const alvoLiberadoRef = useRef<string | null>(null);
+
   /**
    * O operador agiu — o salto solta a rolagem.
    *
@@ -326,6 +339,7 @@ export function MessageThread({
    */
   const liberarSalto = useCallback(() => {
     saltoAtivoRef.current = false;
+    alvoLiberadoRef.current = alvoAtualRef.current;
   }, []);
 
   /**
@@ -820,8 +834,18 @@ export function MessageThread({
   // ordem em que foram declarados, e este precisa ter atualizado o sinalizador
   // antes de o auto-scroll logo abaixo decidir se rola.
   useEffect(() => {
-    // Trocar de alvo (as setas) RE-ARMA o salto.
-    saltoAtivoRef.current = alvoId !== null;
+    alvoAtualRef.current = alvoId;
+    // Trocar de alvo (as setas) RE-ARMA o salto — mas só quando o alvo é
+    // OUTRO. Voltar ao mesmo id depois de um resync não é um passo de seta, e
+    // re-armar ali desfaria a decisão de quem já tinha tomado a rolagem.
+    if (alvoId !== null && alvoId !== alvoLiberadoRef.current) {
+      // Zerado ao armar: senão, sair do achado 5 e voltar a ele com as setas
+      // ficaria sem salto para sempre.
+      alvoLiberadoRef.current = null;
+      saltoAtivoRef.current = true;
+    } else if (alvoId === null) {
+      saltoAtivoRef.current = false;
+    }
   }, [alvoId]);
 
   // Auto-scroll to bottom on new messages.
@@ -882,6 +906,7 @@ export function MessageThread({
     const quadro = requestAnimationFrame(centralizar);
     return () => cancelAnimationFrame(quadro);
   }, [alvoId, messages]);
+
 
   /**
    * Fecha a bolha otimista com o que o SERVIDOR gravou.
@@ -1842,7 +1867,32 @@ export function MessageThread({
       )}
 
       {/* Messages Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+      {/* ⚠️ Rolar à mão TAMBÉM é agir, e sem isto o salto da busca vira uma
+          coleira: medido, o operador saltava para o achado, subia para ler o
+          contexto em volta, e a chegada de mensagem nova (que troca
+          `messages`) o arrastava de volta ao achado. "Enviar" e "anotar" já
+          soltavam a rolagem; ler não soltava.
+
+          ⚠️ `onWheel`/`onTouchMove`, NUNCA `onScroll`: o `scroll` não
+          distingue quem rolou — o próprio efeito que centraliza escreve
+          `scrollTop` e dispara um, então a coleira se soltaria sozinha no
+          primeiro salto. Estes dois só existem quando há roda ou dedo.
+
+          ⚠️ E aqui na JSX, não num `addEventListener` dentro de efeito. Este
+          contêiner só existe DEPOIS de haver conversa aberta; um efeito com
+          dependência estável roda uma vez, com `scrollRef.current` ainda nulo,
+          e não volta mais — o ouvinte nunca chegava a ser pendurado. Foi assim
+          que a primeira versão desta correção passou em revisão e falhou na
+          medição.
+
+          As setas continuam mandando: elas trocam o `alvoId`, e o efeito que
+          re-arma o salto dispara com isso. */}
+      <div
+        ref={scrollRef}
+        onWheel={liberarSalto}
+        onTouchMove={liberarSalto}
+        className="flex-1 overflow-y-auto px-4 py-4"
+      >
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />

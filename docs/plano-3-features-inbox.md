@@ -154,6 +154,26 @@ verificador que **mede** em vez de argumentar. Nenhum achado caiu; os que mordia
 - **Um byte U+0000 cru no fonte** deixava `message-thread.tsx` **binário** para o `grep`
   e o `file` — as buscas devolviam zero linhas em silêncio.
 
+### O que a 2ª revisão (fria + morna, 2026-08-03) pegou
+
+- ⚠️ **Rolar à mão não contava como "o operador agiu" — e isso prendia a tela.**
+  Medido: com o salto valendo, rolei o fio para `2000` e a próxima troca de
+  `messages` devolveu para `10772`, o achado. Ou seja: quem saltasse para um
+  achado de três meses atrás e rolasse até o fim para ver o estado atual da
+  conversa era **arrastado de volta ao passado** a cada mensagem nova. Agora
+  `onWheel`/`onTouchMove` soltam a rolagem, como enviar e anotar já soltavam.
+- ⚠️ **A primeira versão dessa correção não funcionava, e passava em revisão.**
+  Era um `addEventListener` dentro de efeito com dependência estável: ele roda
+  **uma vez**, na montagem, quando ainda não há conversa aberta e
+  `scrollRef.current` é nulo — e não volta mais. O ouvinte nunca chegava a ser
+  pendurado. Só a medição pegou; virou `onWheel`/`onTouchMove` na própria JSX.
+- ⚠️ **Um resync não pode re-armar o salto.** Voltar para a aba refaz a busca
+  das mensagens, e o efeito que re-arma disparava de novo — desfazendo a
+  decisão de quem já tinha tomado a rolagem para si. Agora ele guarda sobre
+  qual alvo o operador já agiu (`alvoLiberadoRef`) e só re-arma quando o alvo é
+  **outro** — zerando essa memória ao armar, senão sair do achado 5 e voltar a
+  ele com as setas ficaria sem salto para sempre.
+
 ### Armadilhas
 
 - **Destacar é obrigatório, não enfeite.** Rolar sem destacar deixa o operador olhando uma
@@ -259,6 +279,21 @@ existem na faixa e devem ser extraídos, não reescritos.
   do PostgREST — o acervo além disso ficaria inalcançável, em silêncio.
 - **`temMais` e `contarPorSituacao` nasceram com teste e sem chamador** (a regra viva
   estava inline no hook). Saíram.
+
+### O que a 2ª revisão (fria + morna, 2026-08-03) pegou
+
+- **`estourouOTeto` acusava corte onde não houve.** Comparava o carregado com o
+  teto (`>= 200`), então uma conta com exatamente 200 na fila — todas
+  carregadas — veria "há mais do que cabe". O `count: 'exact'` já estava ali:
+  passou a comparar com o **total**.
+- ⚠️ **O `CLAUDE.md` não tinha sido atualizado por nenhuma das duas fases.** É a
+  regra do projeto ("ao achar divergência, corrija no mesmo PR") e ele é o que
+  segura o merge com o upstream. Entraram os dois blocos novos e três linhas na
+  tabela de arquivos nossos.
+- **Fica sabido, não consertado:** "carregar mais" não tem estado de ocupado
+  (`carregando` só é verdadeiro na primeira carga) e o texto de erro da linha
+  não tem `line-clamp`. Os dois só aparecem numa conta com acervo grande, e
+  esta tem 1 linha.
 
 ✅ **Decidido: tudo — fila em cima, com filtro de situação.** Consequências a respeitar:
 

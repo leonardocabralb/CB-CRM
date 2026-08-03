@@ -216,8 +216,13 @@ export function useAgendadasDaConta(): AgendadasDaConta {
     // PostgREST: pedindo 1050 e recebendo 1000, `1000 >= 1050` é falso e o
     // resto do acervo ficaria inalcançável, em silêncio.
     setTemMaisEnviadas(linhasEnviadas.length < nEnviadas);
+    // ⚠️ Compara o carregado com o TOTAL, não com o teto. Com
+    // `length >= TETO_COMPLETO` a tela avisaria "há mais do que cabe" numa
+    // conta com exatamente 200 na fila — todas carregadas, nada cortado. Aviso
+    // que aparece sem haver o que avisar é o que treina o operador a ignorar o
+    // aviso do dia em que houver.
     setEstourouOTeto(
-      linhasFila.length >= TETO_COMPLETO || linhasFalhas.length >= TETO_COMPLETO,
+      linhasFila.length < nFila || linhasFalhas.length < nFalhas,
     );
     setCarregando(false);
   }, [limiteEnviadas]);
