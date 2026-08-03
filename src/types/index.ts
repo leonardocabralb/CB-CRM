@@ -724,7 +724,16 @@ export type AutomationTriggerType =
    */
   | 'deal_stage_changed'
   /** Negócio virou ganho/perdido/reaberto (migration 933). */
-  | 'deal_status_changed';
+  | 'deal_status_changed'
+  /**
+   * Lembrete relativo a uma data guardada num campo personalizado do contato
+   * (migration 935) — "24 horas antes da reunião".
+   *
+   * ⚠️ Substitui na prática o `time_based`, que nunca disparou e nem tinha
+   * alvo: o motor roda por contato e "todo dia às 9h" não diz para qual.
+   * Aqui a hora vem do próprio contato, então o alvo é ele.
+   */
+  | 'date_field_offset';
 
 export type AutomationStepType =
   | 'send_message'
@@ -784,6 +793,21 @@ export interface DealStageTriggerConfig {
   stage_ids?: string[];
 }
 
+/**
+ * Config do gatilho `date_field_offset` (migration 935).
+ *
+ * ⚠️ `direction: 'antes'` significa disparar ANTES do valor — logo o motor
+ * procura valores no FUTURO. Ver `janelaDeBusca` em
+ * `src/lib/automations/lembretes.ts`, onde o sinal é tratado num lugar só.
+ */
+export interface DateFieldTriggerConfig {
+  /** `custom_fields.id` do campo de data. */
+  custom_field_id?: string;
+  /** Quantas horas de distância do valor. */
+  offset_hours?: number;
+  direction?: 'antes' | 'depois';
+}
+
 /** Config do gatilho `deal_status_changed` (migration 933). */
 export interface DealStatusTriggerConfig {
   /** Status de destino que disparam (`won` | `lost` | `open`). Vazio = todos. */
@@ -798,6 +822,7 @@ export type AutomationTriggerConfig =
   | InteractiveReplyTriggerConfig
   | DealStageTriggerConfig
   | DealStatusTriggerConfig
+  | DateFieldTriggerConfig
   | Record<string, unknown>;
 
 /**

@@ -9,6 +9,11 @@ import { metaChannels, preferredChannel } from '@/lib/cb-channels/display';
 import { ChannelSelect } from '@/components/channels/channel-select';
 import { ActivityHistory } from '@/components/lead-events/activity-history';
 import { formatCurrency } from '@/lib/currency';
+import {
+  TIPO_DATA,
+  paraEntradaLocal,
+  deEntradaLocal,
+} from '@/lib/contacts/campo-data';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag, ConversationNote, CustomField, ContactCustomValue, Deal, MessageTemplate } from '@/types';
 import {
@@ -723,17 +728,35 @@ export function ContactDetailView({
                         <Label className="text-muted-foreground text-xs capitalize">
                           {field.field_name}
                         </Label>
-                        <Input
-                          value={customValues[field.id] ?? ''}
-                          onChange={(e) =>
-                            setCustomValues((prev) => ({
-                              ...prev,
-                              [field.id]: e.target.value,
-                            }))
-                          }
-                          placeholder={t('enterCustomField', { name: field.field_name })}
-                          className="bg-muted border-border text-foreground h-8 text-sm placeholder:text-muted-foreground"
-                        />
+                        {field.field_type === TIPO_DATA ? (
+                          /* ⚠️ Grava ISO absoluto, exibe hora local. O
+                             contêiner roda em UTC e quem digita está em
+                             Brasília: sem essa conversão o lembrete de "24h
+                             antes" erraria por 3 horas, sem erro nenhum. */
+                          <Input
+                            type="datetime-local"
+                            value={paraEntradaLocal(customValues[field.id])}
+                            onChange={(e) =>
+                              setCustomValues((prev) => ({
+                                ...prev,
+                                [field.id]: deEntradaLocal(e.target.value),
+                              }))
+                            }
+                            className="bg-muted border-border text-foreground h-8 text-sm"
+                          />
+                        ) : (
+                          <Input
+                            value={customValues[field.id] ?? ''}
+                            onChange={(e) =>
+                              setCustomValues((prev) => ({
+                                ...prev,
+                                [field.id]: e.target.value,
+                              }))
+                            }
+                            placeholder={t('enterCustomField', { name: field.field_name })}
+                            className="bg-muted border-border text-foreground h-8 text-sm placeholder:text-muted-foreground"
+                          />
+                        )}
                       </div>
                     ))}
                     <Button

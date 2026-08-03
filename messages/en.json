@@ -676,7 +676,10 @@
       "toastCreated": "Created \"{name}\".",
       "toastRenameFailed": "Could not rename field.",
       "toastDeleteFailed": "Could not delete field.",
-      "toastDeleted": "Deleted \"{name}\"."
+      "toastDeleted": "Deleted \"{name}\".",
+      "fieldType": "Type",
+      "typeText": "Text",
+      "typeDate": "Date"
     }
   },
   "Pipelines": {
@@ -1088,6 +1091,10 @@
         "deal_status_changed": {
           "label": "Deal won or lost",
           "hint": "When the deal is marked won, lost, or reopened."
+        },
+        "date_field_offset": {
+          "label": "Date reminder",
+          "hint": "Before or after a date stored in a contact field — e.g. 24h before the meeting."
         }
       },
       "trigger": "Trigger",
@@ -1214,6 +1221,15 @@
         "moveToLabel": "Move to stage",
         "pickStage": "Pick a stage",
         "moveHelp": "Moves the trigger's deal. With no deal on the trigger, it moves the contact's most recent open deal."
+      },
+      "lembrete": {
+        "campoLabel": "Date field",
+        "escolhaCampo": "Pick the field",
+        "semCampoDeData": "No Date field exists yet. Create one in Settings › Fields and tags.",
+        "horasLabel": "Hours",
+        "antes": "before the date",
+        "depois": "after the date",
+        "ajuda": "Fires once per contact. If the date changes, the reminder re-arms."
       }
     }
   },

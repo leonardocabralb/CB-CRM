@@ -1,5 +1,6 @@
 import type { AutomationTriggerType } from '@/types'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
+import { motivoDeConfigInvalida } from './lembretes'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -231,6 +232,15 @@ export function validateTriggerForActivation(
         path: 'trigger.stage_ids',
         message: 'stage ids cannot be empty strings',
       })
+    }
+  } else if (triggerType === 'date_field_offset') {
+    // ⚠️ Aqui a config é OBRIGATÓRIA, ao contrário dos gatilhos de funil.
+    // Lá, vazio quer dizer "qualquer etapa" — uma regra legítima. Aqui, sem
+    // campo de data não existe nem alvo nem instante: a automação ficaria
+    // ativa e muda para sempre.
+    const motivo = motivoDeConfigInvalida(cfg as never)
+    if (motivo) {
+      issues.push({ path: 'trigger.custom_field_id', message: motivo })
     }
   } else if (triggerType === 'deal_status_changed') {
     const st = cfg.statuses

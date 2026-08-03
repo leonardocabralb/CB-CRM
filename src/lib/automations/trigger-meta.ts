@@ -47,6 +47,10 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Deal Won / Lost',
     pillClass: 'border-orange-500/30 bg-orange-500/10 text-orange-300',
   },
+  date_field_offset: {
+    label: 'Date Reminder',
+    pillClass: 'border-violet-500/30 bg-violet-500/10 text-violet-300',
+  },
 }
 
 export function triggerMeta(t: AutomationTriggerType | string): TriggerMeta {

@@ -70,6 +70,7 @@ import { useChannels } from "@/hooks/use-channels"
 import type { CbChannel } from "@/lib/cb-channels/repo"
 import { ChannelMultiSelect, ChannelSelect } from "@/components/channels/channel-select"
 import { validateChannelScopeForActivation } from "@/lib/automations/validate"
+import { TIPO_DATA } from "@/lib/contacts/campo-data"
 
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
@@ -180,6 +181,7 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "interactive_reply" },
   { value: "new_contact_created" },
   { value: "tag_added" },
+  { value: "date_field_offset" },
 ]
 
 function cid(): string {
@@ -871,7 +873,13 @@ function TriggerCard({
   // nem dedup: cada chamada é um GET /api/cb/channels por montagem, e este
   // card monta junto com o provider que já busca a mesma lista. Mesmo motivo
   // que levou os fluxos a buscarem uma vez só no editor.
-  const { channels } = useResources()
+  const { channels, customFields } = useResources()
+  // Só campos de data: oferecer um campo de texto aqui faria a automação
+  // nascer muda, procurando hora onde não há.
+  const camposDeData = useMemo(
+    () => customFields.filter((f) => f.field_type === TIPO_DATA),
+    [customFields],
+  )
   // Um gatilho aposentado (§TRIGGER_OPTIONS) some da lista, mas se a automação
   // JÁ estiver gravada com ele a opção volta — só para esta automação. Sem
   // isto o `<select>` fica sem opção casando com `value` e o navegador mostra a
@@ -1002,6 +1010,70 @@ function TriggerCard({
                   onChange={(ids) => onConfigChange({ ...config, stage_ids: ids })}
                   vazioLabel={t("stages.triggerHelpAll")}
                 />
+              </div>
+            )}
+            {/* Lembrete por data (935): "24 horas ANTES da reunião". A hora
+                vem de um campo do contato, e é isso que dá alvo ao gatilho. */}
+            {type === "date_field_offset" && (
+              <div className="space-y-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    {t("lembrete.campoLabel")}
+                  </label>
+                  <select
+                    value={(config.custom_field_id as string) ?? ""}
+                    onChange={(e) =>
+                      onConfigChange({ ...config, custom_field_id: e.target.value })
+                    }
+                    className={SELECT_CLASS}
+                  >
+                    <option value="">{t("lembrete.escolhaCampo")}</option>
+                    {camposDeData.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.field_name}
+                      </option>
+                    ))}
+                  </select>
+                  {camposDeData.length === 0 && (
+                    // Sem campo de data não há o que escolher, e o operador
+                    // ficaria diante de um seletor vazio sem saber por quê.
+                    <p className="mt-1 text-[11px] text-destructive">
+                      {t("lembrete.semCampoDeData")}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="w-20">
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                      {t("lembrete.horasLabel")}
+                    </label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={(config.offset_hours as number) ?? 24}
+                      onChange={(e) =>
+                        onConfigChange({
+                          ...config,
+                          offset_hours: Number(e.target.value),
+                        })
+                      }
+                      className="bg-muted text-foreground"
+                    />
+                  </div>
+                  <select
+                    value={(config.direction as string) ?? "antes"}
+                    onChange={(e) =>
+                      onConfigChange({ ...config, direction: e.target.value })
+                    }
+                    className={cn(SELECT_CLASS, "flex-1")}
+                  >
+                    <option value="antes">{t("lembrete.antes")}</option>
+                    <option value="depois">{t("lembrete.depois")}</option>
+                  </select>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {t("lembrete.ajuda")}
+                </p>
               </div>
             )}
             {type === "deal_status_changed" && (

@@ -4,8 +4,9 @@
 > [Registro de progresso](#registro-de-progresso) e marca os itens feitos.
 > Uma sessão nova deve **ler este arquivo primeiro** para saber onde paramos.
 >
-> **Última atualização:** 2026-08-03 — **Fase 1 implementada** (não commitada,
-> não mesclada). Nenhuma pergunta pendente.
+> **Última atualização:** 2026-08-03 — **Fases 1, 2 e 2b implementadas e
+> commitadas** na branch (não mescladas em `main`). Nenhuma pergunta pendente.
+> Próximo: Fase 3 (orquestração — acionar/parar automação, robô e IA).
 > **Branch de trabalho:** `feat/automacoes-canal-por-passo`, saída de `main`.
 
 ---
@@ -42,7 +43,7 @@ trás. O operador pediu:
 | Funis / etapas | **1 / 9** |
 | Etiquetas / campos personalizados | **0 / 0** |
 | Automações / fluxos | **0 / 0** |
-| Negócios | 56 |
+| Negócios | 56 (59 em 2026-08-03 à noite, com o tráfego real do dia) |
 
 ⚠️⚠️ **NENHUMA CONTA É MULTI-CANAL HOJE — e isto explica o pedido original.**
 Medido em 2026-08-03: `38f38852…` tem só "WhatsApp (QR Code)" e `a3af0191…`
@@ -629,19 +630,49 @@ depois — 0 automações, 0 logs, 0 eventos, card de volta na etapa original):
 | Migration | tabela de dedup de disparos (faixa 900+) |
 | Arquivos-chave | migration nova, `src/lib/automations/engine.ts`, `src/app/api/automations/cron/route.ts`, `docker-stack.yml`, `docs/DEPLOY-VPS.md`, `src/components/contacts/custom-fields-manager.tsx`, builder |
 
-- [ ] Gatilho `date_field_offset` (§4.6b): varredura no cron + dedup por
-      `(automation_id, contact_id, valor_do_campo)` + guarda de atraso de 1h
-- [ ] Tipo `datetime` no gerenciador de campos personalizados (valor ISO com
-      fuso — ⚠️ container em UTC, operador em Brasília)
-- [ ] Laço de 60 s para `/api/automations/cron` no agendador (§4.6a) + piso de
-      1 min no seletor do `wait` (⚠️ infra manual na VPS — o CI não sobe serviço)
-- [ ] Tela: seletor de campo de data + offset (antes/depois) no card do gatilho
-- [ ] Verificações de sempre (i18n-parity, typecheck, lint, test)
+- [x] Gatilho `date_field_offset` (migration **935**): varredura no cron,
+      dedup por `(automation_id, contact_id, valor)` — **o valor na chave é o
+      que faz reunião remarcada re-armar** — e guarda de atraso de 1h.
+- [x] `cb_para_timestamp`: casamento SEGURO de texto para data. `value` é TEXT
+      livre e um `::timestamptz` cru derrubaria a varredura inteira por causa
+      de uma linha com "amanhã de tarde" escrito.
+- [x] A janela é feita **no banco** (`cb_alvos_de_lembrete`). Ler
+      `contact_custom_values` inteiro e filtrar em JS esbarraria no teto de
+      1000 linhas do PostgREST sem avisar — varredura incompleta com cara de
+      completa.
+- [x] Tipo `datetime` no gerenciador de campos + input `datetime-local` na
+      ficha do contato. `src/lib/contacts/campo-data.ts` guarda a conversão
+      nos dois sentidos: **banco em ISO absoluto, tela em hora local**.
+- [x] Dois laços no agendador (§4.6a): **60 s** para automações, **900 s** para
+      agendadas e fluxos. ⚠️ O de 900 s não pode encolher — o número tem de
+      bater com `CICLO_MINUTOS` de `src/lib/scheduled/display.ts`.
+      ⚠️ **Exige `docker stack deploy` à mão na VPS**; o CI só troca a imagem.
+- [x] Tela: seletor de campo de data + horas + antes/depois no card do gatilho,
+      com aviso quando não existe campo do tipo Data.
+- [x] Verificações de sempre (i18n-parity 2019/2019, typecheck, lint, 1317 testes)
 
 **Pronto quando:** contato com "Reunião" amanhã às 10h, numa automação "24h
 antes → enviar mensagem", recebe hoje às ~10h (± um ciclo); remarcar re-arma o
 lembrete; reunião passada não dispara; e um `wait` de 2 minutos resume em ~2
 minutos, não em 15.
+
+**Verificado em 2026-08-03**, com campo, contato e valor DESCARTÁVEIS, tudo
+apagado depois (0 campos personalizados, 69 contatos e 59 negócios reais):
+
+- Reunião daqui a 23h40, automação "24h antes": ciclo 1 disparou; ciclos 2 e 3
+  responderam `repetidos: 1` e não dispararam de novo.
+- **Remarquei** a reunião (valor novo, ainda na janela) → disparou outra vez.
+  É o valor na chave da trava fazendo seu trabalho.
+- **Reunião 30h no passado** → `disparados: 0`. Ninguém recebe "faltam 24h"
+  depois da reunião.
+- ⚠️ **Um erro meu de montagem virou prova de outra coisa:** criei o campo com
+  `accounts limit 1` e a automação na conta do operador — contas diferentes. A
+  varredura respondeu `disparados: 0`, ou seja, **o filtro por conta da
+  `cb_alvos_de_lembrete` recusou cruzar contas**, que é a única barreira ali
+  (o motor roda em service-role e ignora RLS).
+- Mutação conferida no sinal do deslocamento: invertendo `antes`/`depois`, dois
+  testes falham. É o defeito mais provável e mais silencioso da feature —
+  mandaria a confirmação 24h DEPOIS da reunião.
 
 ### Fase 3 — Orquestração (acionar/parar) — **PR 3**
 
@@ -709,7 +740,7 @@ de ofício pela implementação e estão sinalizados para veto: a guarda
 | 0 — investigação | — | ✅ concluída | — | 2026-08-03 |
 | 1 — conexão | 1 (parte A) | 🟡 código pronto, **não commitado** | `feat/automacoes-canal-por-passo` | 2026-08-03 |
 | 2 — funil | 1 (parte B) | ✅ concluída | `feat/automacoes-canal-por-passo` | 2026-08-03 |
-| 2b — tempo (lembretes) | 2 | ⬜ não iniciada | — | — |
+| 2b — tempo (lembretes) | 2 | ✅ concluída | `feat/automacoes-canal-por-passo` | 2026-08-03 |
 | 3 — orquestração | 3 | ⬜ não iniciada | — | — |
 | 4 — mídia | 4 | ⬜ não iniciada | — | — |
 | 5 — builder por etapa | 5 | ⬜ não iniciada | — | — |
