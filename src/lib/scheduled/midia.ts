@@ -111,7 +111,13 @@ export function lerAnexo(
     media_filename?: unknown;
   },
   accountId: string,
-): { anexo: AnexoDaAgendada | null; erro?: undefined } | { erro: string } {
+):
+  | { anexo: AnexoDaAgendada | null; erro?: never }
+  // `anexo?: never` é o que faz o `if (lido.erro)` do chamador estreitar de
+  // verdade: sem ele, o TypeScript não descarta este ramo (uma `string` pode
+  // ser `''`, que é falso) e o acesso a `.anexo` depois do `return` não
+  // compila.
+  | { anexo?: never; erro: string } {
   const url = typeof cru.media_url === 'string' ? cru.media_url.trim() : '';
   const path = typeof cru.media_path === 'string' ? cru.media_path.trim() : '';
   const kind = cru.media_kind;

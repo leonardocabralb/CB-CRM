@@ -81,6 +81,7 @@ import {
   tetoDaLegenda,
   TETO_DA_LEGENDA_META,
 } from "@/lib/scheduled/midia";
+import { CHAT_MEDIA_BUCKET } from "@/lib/storage/buckets";
 import {
   Popover,
   PopoverContent,
@@ -90,8 +91,15 @@ import {
 /** Media content types an agent can send from the composer. */
 export type ComposerMediaKind = "image" | "video" | "document" | "audio";
 
-/** Supabase Storage bucket holding agent-sent chat attachments (migration 023). */
-export const CHAT_MEDIA_BUCKET = "chat-media";
+/**
+ * Supabase Storage bucket holding agent-sent chat attachments (migration 023).
+ *
+ * ⚠️ O valor mora em `lib/storage/buckets.ts` desde a 932: o disparador das
+ * agendadas roda no servidor e precisa do mesmo nome para conferir se o
+ * arquivo ainda existe. Re-exportado aqui só para os call sites existentes
+ * continuarem funcionando.
+ */
+export { CHAT_MEDIA_BUCKET };
 
 /**
  * Meta caps media captions at 1024 chars. Enforced here and in the send route.

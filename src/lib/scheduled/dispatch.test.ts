@@ -21,6 +21,8 @@ const enviar = vi.mocked(sendMessageToConversation);
 // devolve exatamente o mesmo `{enviadas: 0}` de uma que virou `failed`.
 // ------------------------------------------------------------
 interface Op {
+  /** A tabela — desde a 932 o disparador lê `messages` para a citação. */
+  tabela: string;
   verb: 'select' | 'update';
   payload: Record<string, unknown> | null;
   eq: Record<string, unknown>;
@@ -41,6 +43,12 @@ interface Cfg {
   reivindicaveis?: string[];
   /** Linha devolvida pela busca de `dispararUma`. */
   uma?: Record<string, unknown> | null;
+  /** O que o Storage responde ao `exists` do anexo (932). */
+  anexoExiste?: boolean;
+  /** Erro do Storage — separado de "não existe", e tratado diferente. */
+  storageFalhou?: boolean;
+  /** A mensagem citada, como o banco a devolve. `null` = sumiu. */
+  citada?: { id: string; deleted_at: string | null } | null;
 }
 
 function makeDb(cfg: Cfg) {
@@ -66,14 +74,22 @@ function makeDb(cfg: Cfg) {
       return { data: null, error: null };
     }
     selects.push(op);
+    // A citação (932) é a única leitura em `messages`.
+    if (op.tabela === 'messages') {
+      return {
+        data: 'citada' in cfg ? cfg.citada : { id: 'msg-citada', deleted_at: null },
+        error: null,
+      };
+    }
     if (op.eq.status === 'pending') return { data: cfg.vencidas ?? [], error: null };
     if (op.in.status) return { data: cfg.uma ?? null, error: null };
     // Releitura do motivo, depois da falha.
     return { data: { error: 'motivo relido' }, error: null };
   };
 
-  const make = () => {
+  const make = (tabela: string) => {
     const op: Op = {
+      tabela,
       verb: 'select',
       payload: null,
       eq: {},
@@ -119,8 +135,19 @@ function makeDb(cfg: Cfg) {
     return chain;
   };
 
+  const storage = {
+    from: () => ({
+      exists: () =>
+        Promise.resolve(
+          cfg.storageFalhou
+            ? { data: null, error: { message: 'storage fora do ar' } }
+            : { data: cfg.anexoExiste ?? true, error: null },
+        ),
+    }),
+  };
+
   return {
-    db: { from: () => make() } as unknown as SupabaseClient,
+    db: { from: (t: string) => make(t), storage } as unknown as SupabaseClient,
     updates,
     selects,
     /** Os `update` que gravaram desfecho (nem reivindicação, nem recusa). */
@@ -394,5 +421,201 @@ describe('dispararUma', () => {
 
     expect(r).toBeNull();
     expect(enviar).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================
+// Anexo e citação (932) — o que só existe porque passam HORAS entre agendar
+// e enviar.
+// ============================================================
+
+const COM_ANEXO = {
+  ...LINHA,
+  body: '',
+  media_url: 'https://x/foto.png',
+  media_path: 'account-conta-1/foto.png',
+  media_kind: 'image',
+  media_filename: null,
+};
+
+const COM_AUDIO = {
+  ...LINHA,
+  body: '',
+  media_url: 'https://x/voz.ogg',
+  media_path: 'account-conta-1/voz.ogg',
+  media_kind: 'audio',
+  media_filename: null,
+};
+
+describe('anexo (932)', () => {
+  it('manda o tipo, a URL e o nome do arquivo para o núcleo de envio', async () => {
+    const { db } = makeDb({ vencidas: [{ ...COM_ANEXO, media_filename: 'contrato.pdf' }] });
+
+    await dispararVencidas(db);
+
+    const args = enviar.mock.calls[0][2];
+    expect(args.messageType).toBe('image');
+    expect(args.mediaUrl).toBe('https://x/foto.png');
+    expect(args.filename).toBe('contrato.pdf');
+  });
+
+  it('⚠️ corpo vazio vira NULO, não string vazia', async () => {
+    // Anexo sem legenda tem `body = ''` (o CHECK da 932 permite). Passando a
+    // string vazia adiante, ela chegaria ao transporte como legenda — e o
+    // envio normal manda nulo.
+    const { db } = makeDb({ vencidas: [COM_ANEXO] });
+
+    await dispararVencidas(db);
+
+    expect(enviar.mock.calls[0][2].contentText).toBeNull();
+  });
+
+  it('áudio agendado sai como áudio — o transporte é que faz dele nota de voz', async () => {
+    const { db } = makeDb({ vencidas: [COM_AUDIO] });
+
+    await dispararVencidas(db);
+
+    expect(enviar.mock.calls[0][2].messageType).toBe('audio');
+  });
+
+  it('⚠️ arquivo sumido falha ANTES de reivindicar, e nem tenta enviar', async () => {
+    // Reivindicar põe a linha em `sending`, o estado do qual nada pode ser
+    // reenviado: ela ficaria presa até o recolhimento de 10 minutos e sairia
+    // como "entrega incerta" — mentira, porque não saiu nada.
+    const { db, updates, desfechos } = makeDb({
+      vencidas: [COM_ANEXO],
+      anexoExiste: false,
+    });
+
+    const r = await dispararVencidas(db);
+
+    expect(enviar).not.toHaveBeenCalled();
+    expect(r.falhas).toBe(1);
+    expect(updates.some((u) => u.payload?.status === 'sending')).toBe(false);
+    const gravado = desfechos()[0].payload!;
+    expect(gravado.status).toBe('failed');
+    expect(String(gravado.error)).toContain('não está mais disponível');
+  });
+
+  it('⚠️ a falha sem tentativa é condicionada ao status, como o cadeado', async () => {
+    // Sem o `in(['pending','failed'])`, uma linha que outro ciclo acabou de
+    // pôr em `sending` seria sobrescrita para `failed` — e o registro passaria
+    // a mentir sobre uma mensagem que o cliente recebeu.
+    const { db, desfechos } = makeDb({ vencidas: [COM_ANEXO], anexoExiste: false });
+
+    await dispararVencidas(db);
+
+    expect(desfechos()[0].in.status).toEqual(['pending', 'failed']);
+  });
+
+  it('⚠️ Storage FORA DO AR não é "sumiu" — segue e tenta enviar', async () => {
+    // Falso negativo cancelaria uma mensagem perfeita e escreveria na tela que
+    // o arquivo sumiu quando ele está lá. Falso positivo, no pior caso, é uma
+    // tentativa que falha com o erro de verdade.
+    const { db } = makeDb({ vencidas: [COM_ANEXO], storageFalhou: true });
+
+    await dispararVencidas(db);
+
+    expect(enviar).toHaveBeenCalledTimes(1);
+  });
+
+  it('linha sem anexo não consulta o Storage', async () => {
+    const { db } = makeDb({ vencidas: [LINHA], anexoExiste: false });
+
+    const r = await dispararVencidas(db);
+
+    expect(r.enviadas).toBe(1);
+  });
+
+  it('"Executar agora" com arquivo sumido devolve o motivo em português', async () => {
+    const { db } = makeDb({ uma: COM_ANEXO, anexoExiste: false });
+
+    const r = await dispararUma(db, 'conta-1', 'ag-1');
+
+    expect(enviar).not.toHaveBeenCalled();
+    expect(r?.enviada).toBe(false);
+    expect(String(r?.erro)).toContain('não está mais disponível');
+  });
+});
+
+describe('citação (932)', () => {
+  const CITANDO = { ...LINHA, reply_to_message_id: 'msg-citada' };
+
+  it('cita quando a mensagem ainda está viva', async () => {
+    const { db, desfechos } = makeDb({ vencidas: [CITANDO] });
+
+    await dispararVencidas(db);
+
+    expect(enviar.mock.calls[0][2].replyToMessageId).toBe('msg-citada');
+    expect(desfechos()[0].payload!.citacao_perdida).toBe(false);
+  });
+
+  it('⚠️ citada APAGADA: sai sem a citação, e fica registrado', async () => {
+    // Apagar aqui é apagar MOLE (905) — a linha continua no banco, então o
+    // núcleo citaria alegremente algo que o cliente vê como "Esta mensagem foi
+    // apagada". A decisão foi enviar sem a citação, nunca deixar de enviar.
+    const { db, desfechos } = makeDb({
+      vencidas: [CITANDO],
+      citada: { id: 'msg-citada', deleted_at: '2026-08-03T10:00:00Z' },
+    });
+
+    const r = await dispararVencidas(db);
+
+    expect(r.enviadas).toBe(1);
+    expect(enviar.mock.calls[0][2].replyToMessageId).toBeNull();
+    expect(desfechos()[0].payload!.citacao_perdida).toBe(true);
+  });
+
+  it('citada que sumiu de vez cai no mesmo lugar', async () => {
+    const { db, desfechos } = makeDb({ vencidas: [CITANDO], citada: null });
+
+    const r = await dispararVencidas(db);
+
+    expect(r.enviadas).toBe(1);
+    expect(enviar.mock.calls[0][2].replyToMessageId).toBeNull();
+    expect(desfechos()[0].payload!.citacao_perdida).toBe(true);
+  });
+
+  it('linha sem citação não marca nada e não vai ao banco por isso', async () => {
+    const { db, desfechos } = makeDb({ vencidas: [LINHA] });
+
+    await dispararVencidas(db);
+
+    expect(enviar.mock.calls[0][2].replyToMessageId).toBeNull();
+    expect(desfechos()[0].payload!.citacao_perdida).toBe(false);
+  });
+});
+
+describe('recusa do núcleo em português', () => {
+  it('⚠️ o teto da legenda estourando no ENVIO vira recado legível', async () => {
+    // Não é hipótese: o agendamento desconta a assinatura VIGENTE, e ela pode
+    // ser ligada depois — ou quem agendou sai da conta e passa a assinar o
+    // nome do escritório, que pode ser mais longo. Sem tradução, a tela
+    // mostraria "Caption exceeds the 1024-character limit".
+    enviar.mockRejectedValue(
+      new SendMessageError(
+        'bad_request',
+        'Caption exceeds the 1024-character limit (the signature uses 12 of them)',
+        400,
+      ),
+    );
+    const { db, desfechos } = makeDb({ vencidas: [COM_ANEXO] });
+
+    await dispararVencidas(db);
+
+    const gravado = String(desfechos()[0].payload!.error);
+    expect(gravado).toContain('legenda');
+    expect(gravado).not.toContain('Caption');
+  });
+
+  it('recusa que não sabemos traduzir mantém o texto original', async () => {
+    enviar.mockRejectedValue(
+      new SendMessageError('bad_request', 'Something else entirely', 400),
+    );
+    const { db, desfechos } = makeDb({ vencidas: [LINHA] });
+
+    await dispararVencidas(db);
+
+    expect(desfechos()[0].payload!.error).toBe('Something else entirely');
   });
 });
