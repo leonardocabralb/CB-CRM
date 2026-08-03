@@ -465,7 +465,14 @@
         "ultimoCiclo": "Last cycle {min, plural, =0 {just now} =1 {1 minute ago} other {# minutes ago}}.",
         "comoResolverParado": "It should run every {ciclo} minutes. Ask whoever maintains the server to check the \"agendador\" service (see docs/DEPLOY-VPS.md).",
         "comoResolverFalhas": "See them all under Scheduled in the sidebar: the Failed tab shows why each one failed and lets you resend or cancel."
-      }
+      },
+      "attachment_image": "Photo",
+      "attachment_video": "Video",
+      "attachment_audio": "Audio",
+      "attachment_document": "Document",
+      "replyingTo": "Replying to: {trecho}",
+      "quotedDeleted": "The quoted message was deleted — this will go out without the quote.",
+      "quotedWasLost": "Sent without the quote: the quoted message had been deleted."
     }
   },
   "Contacts": {

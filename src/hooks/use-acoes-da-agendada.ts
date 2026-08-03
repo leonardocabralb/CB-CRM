@@ -19,6 +19,8 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { createClient } from '@/lib/supabase/client';
+import { CHAT_MEDIA_BUCKET } from '@/lib/storage/buckets';
+import { deleteAccountMedia } from '@/lib/storage/upload-media';
 import type { ScheduledMessage } from '@/types';
 
 export interface AcoesDaAgendada {
@@ -94,7 +96,21 @@ export function useAcoesDaAgendada(aoMudar: () => void): AcoesDaAgendada {
       // mensagem que acabou de chegar ao cliente.
       if (error) toast.error(t('cancelFailed'));
       else if (!data?.length) toast.error(t('cancelNothing'));
-      else toast.success(t('canceled'));
+      else {
+        toast.success(t('canceled'));
+        // ⚠️ O arquivo sai junto — MENOS quando a mensagem já foi enviada
+        // (932). Numa linha `sent` o objeto deixou de ser da agendada e passou
+        // a ser da mensagem que está no fio: apagá-lo quebraria a mídia de uma
+        // conversa que o cliente já recebeu. Sem esta distinção, "limpar o
+        // acervo de agendadas" viraria "apagar anexos de mensagens antigas".
+        //
+        // Silencioso e sem `await`: o cancelamento já deu certo, e um erro de
+        // limpeza vira lixo no bucket, não um recado que o operador possa
+        // resolver.
+        if (a.media_path && a.status !== 'sent') {
+          void deleteAccountMedia(CHAT_MEDIA_BUCKET, a.media_path).catch(() => {});
+        }
+      }
       aoMudar();
     },
     [t, aoMudar],

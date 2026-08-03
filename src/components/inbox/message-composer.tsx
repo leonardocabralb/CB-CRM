@@ -349,6 +349,30 @@ export function MessageComposer({
     },
     [dataAg, horaAg, aplicarAtalho],
   );
+
+  /**
+   * O estado do agendamento, empacotado para o `<SeletorDeHorario>`.
+   *
+   * ⚠️ Objeto cru, sem `useMemo`: `quandoAg` é uma `Date` NOVA a cada render
+   * (nasce de `comporHorario`), então memoizar não evitaria identidade nova —
+   * só somaria uma lista de dependências para envelhecer errado. O consumidor
+   * não é memoizado.
+   */
+  const ag: Agendamento = {
+    quandoAg,
+    dataAg,
+    horaAg,
+    setDataAg,
+    setHoraAg,
+    atalhoAtivo,
+    setAtalhoAtivo,
+    aplicarAtalho,
+    limparAgendamento,
+    seletorAberto,
+    setSeletorAberto,
+    abrirSeletor,
+  };
+
   // Media (like free-form text) is only allowed inside the 24h window.
   const inputsDisabled = readOnly || sessionExpired;
 
@@ -478,20 +502,27 @@ export function MessageComposer({
    * amanhã, e o operador só descobriria pela resposta do cliente.
    */
   const agendar = useCallback(
-    async (texto: string) => {
+    async (
+      texto: string,
+      // 932: o anexo já subiu para o bucket quando foi ANEXADO — aqui só se
+      // guarda o endereço dele. `replyToId` é a citação, que a 925 não
+      // levava.
+      extra?: { anexo?: MediaDraft | null; replyToId?: string },
+    ): Promise<boolean> => {
       const data = quandoAg;
       if (!data) {
         toast.error(tAgendadas("scheduleInvalid"));
-        return;
+        return false;
       }
       if (data.getTime() <= Date.now()) {
         toast.error(tAgendadas("scheduleInThePast"));
-        return;
+        return false;
       }
-      if (agendandoRef.current) return;
+      if (agendandoRef.current) return false;
       agendandoRef.current = true;
       setAgendando(true);
       try {
+        const anexo = extra?.anexo ?? null;
         const res = await fetch("/api/cb/scheduled", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -499,12 +530,19 @@ export function MessageComposer({
             conversation_id: conversationId,
             body: texto,
             scheduled_for: data.toISOString(),
+            media_url: anexo?.mediaUrl,
+            media_path: anexo?.path,
+            media_kind: anexo?.kind,
+            // Só o documento mostra o nome ao destinatário; mandar sempre
+            // encheria a coluna com `voice-172….ogg`.
+            media_filename: anexo?.kind === "document" ? anexo.filename : undefined,
+            reply_to_message_id: extra?.replyToId,
           }),
         });
         const json = (await res.json()) as { error?: string };
         if (!res.ok) {
           toast.error(json.error ?? tAgendadas("scheduleFailed"));
-          return;
+          return false;
         }
         toast.success(tAgendadas("scheduled"));
         // Limpa os dois: o campo de texto porque a mensagem já está
@@ -514,15 +552,16 @@ export function MessageComposer({
         // resposta urgente em algo que sai amanhã.
         setText("");
         limparAgendamento();
-        // ⚠️ A agendada NÃO leva citação: a coluna não existe na 925 e a v1 é
-        // só texto (P4.6). Limpar aqui é obrigatório — a citação continuando
-        // na tela diria que a mensagem marcada responde àquela bolha, o que
-        // não vai acontecer.
+        // ⚠️ A citação sai da tela porque já está GUARDADA na agendada (932):
+        // deixá-la ali diria que a próxima coisa digitada também responde
+        // àquela bolha.
         onClearReply?.();
         if (textareaRef.current) textareaRef.current.style.height = "auto";
         onScheduled?.();
+        return true;
       } catch {
         toast.error(tAgendadas("scheduleFailed"));
+        return false;
       } finally {
         agendandoRef.current = false;
         setAgendando(false);
@@ -539,7 +578,9 @@ export function MessageComposer({
     // não passa pela janela de desfazer nem pelo despachante — vai para a
     // fila e pronto. Ver a nota em `agendar`.
     if (quandoAg) {
-      await agendar(trimmed);
+      // 932: a citação vai junto. Antes ela era descartada, e a agendada
+      // chegava ao cliente como uma frase solta.
+      await agendar(trimmed, { replyToId: replyTo?.id });
       return;
     }
 
@@ -951,8 +992,22 @@ export function MessageComposer({
 
   // ---- Draft send / discard -----------------------------------------
 
-  const sendDraft = useCallback(() => {
+  const sendDraft = useCallback(async () => {
     if (!draft || busy) return;
+
+    // ⚠️ DESVIO ANTES DE QUALQUER COISA, igual ao do texto (925). Com hora
+    // escolhida, o anexo vai para a fila em vez de sair agora.
+    if (quandoAg) {
+      const legenda = podeTerLegenda(draft.kind) ? draft.caption.trim() : "";
+      const ok = await agendar(legenda, { anexo: draft, replyToId: replyTo?.id });
+      // ⚠️ Só limpa o rascunho quando DEU CERTO, e sem apagar o objeto do
+      // bucket: ele passou a pertencer à agendada, e o disparador vai buscá-lo
+      // lá daqui a horas. Falhou? O rascunho fica na tela, com o arquivo já
+      // subido, e a pessoa tenta de novo sem reanexar.
+      if (ok) setDraft(null);
+      return;
+    }
+
     onSendMedia({
       kind: draft.kind,
       mediaUrl: draft.mediaUrl,
@@ -966,7 +1021,7 @@ export function MessageComposer({
     // The object is now owned by the sent message — clear without GC.
     setDraft(null);
     onClearReply?.();
-  }, [draft, busy, onSendMedia, replyTo?.id, onClearReply]);
+  }, [draft, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar]);
 
   // Discard GCs the staged object — it was uploaded but never sent.
   const discardDraft = useCallback(() => {
@@ -1075,7 +1130,14 @@ export function MessageComposer({
           readOnly={readOnly}
           onCaptionChange={setCaption}
           onDiscard={discardDraft}
-          onSend={sendDraft}
+          onSend={() => void sendDraft()}
+          // 932: a prévia SUBSTITUI o compositor, então o relógio precisa
+          // existir aqui também — senão anexar um arquivo tira a opção de
+          // agendar da tela.
+          ag={ag}
+          agendando={agendando}
+          inputsDisabled={inputsDisabled}
+          tAgendadas={tAgendadas}
           t={t}
         />
       ) : recording ? (
@@ -1263,142 +1325,7 @@ export function MessageComposer({
               cliente, com atraso. Fora da janela de 24h da Meta a mensagem
               não sairia de jeito nenhum. */}
           {!readOnly && (
-            <>
-              {/* A etiqueta é a peça de segurança desta tela, não enfeite:
-                  com hora escolhida o botão ao lado AGENDA em vez de enviar,
-                  e isso precisa estar visível. Escondido, o atendente
-                  digitaria uma resposta urgente e ela sairia amanhã. */}
-              {quandoAg && (
-                <button
-                  type="button"
-                  onClick={() => setSeletorAberto(true)}
-                  title={tAgendadas("scheduleField", { min: CICLO_MINUTOS })}
-                  className="inline-flex h-9 shrink-0 items-center gap-1 rounded-xl border border-amber-500 bg-amber-500/10 px-2 text-[11px] font-medium text-amber-700 dark:text-amber-400"
-                >
-                  {quandoAg.toLocaleString(undefined, {
-                    day: "2-digit",
-                    month: "2-digit",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                  <span
-                    role="button"
-                    tabIndex={-1}
-                    aria-label={tAgendadas("scheduleClear")}
-                    title={tAgendadas("scheduleClear")}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      limparAgendamento();
-                    }}
-                    className="rounded p-0.5 hover:bg-amber-500/20"
-                  >
-                    <X className="h-3 w-3" />
-                  </span>
-                </button>
-              )}
-
-              <Popover open={seletorAberto} onOpenChange={abrirSeletor}>
-                <PopoverTrigger
-                  disabled={inputsDisabled}
-                  title={tAgendadas("scheduleField", { min: CICLO_MINUTOS })}
-                  aria-label={tAgendadas("scheduleField", { min: CICLO_MINUTOS })}
-                  className={cn(
-                    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
-                    quandoAg && "text-amber-600",
-                  )}
-                >
-                  <Clock className="h-4 w-4" />
-                </PopoverTrigger>
-                {/* `side="top"`: o compositor mora no rodapé da tela, e um
-                    seletor abrindo para baixo nasceria fora da janela. */}
-                <PopoverContent side="top" align="end" sideOffset={8} className="w-72">
-                  <p className="px-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {tAgendadas("scheduleTitle")}
-                  </p>
-                  {/* Os cinco prazos que o operador pediu. Pintam os dois
-                      campos de uma vez; editar qualquer campo na mão apaga o
-                      destaque, porque aí o valor deixou de ser o do atalho. */}
-                  <div className="flex flex-nowrap gap-1">
-                    {ATALHOS_DE_PRAZO.map((a) => (
-                      <button
-                        key={a.chave}
-                        type="button"
-                        onClick={() => aplicarAtalho(a.chave, a.horas)}
-                        className={cn(
-                          "shrink-0 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] transition-colors",
-                          atalhoAtivo === a.chave
-                            ? "border-amber-500 bg-amber-500/15 font-medium text-amber-700 dark:text-amber-400"
-                            : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
-                        )}
-                      >
-                        {tAgendadas(`preset_${a.chave}`)}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-2">
-                    <input
-                      type="date"
-                      value={dataAg}
-                      min={hojeParaInput()}
-                      onChange={(e) => {
-                        setDataAg(e.target.value);
-                        setAtalhoAtivo(null);
-                      }}
-                      aria-label={tAgendadas("date")}
-                      className="h-9 flex-1 rounded-lg border border-border bg-muted px-2 text-xs text-foreground outline-none focus:border-primary/50"
-                    />
-                    <input
-                      type="time"
-                      value={horaAg}
-                      // ⚠️ `step` em SEGUNDOS. 900 = 15 min, e é o que faz o
-                      // seletor nativo oferecer só :00/:15/:30/:45 — a mesma
-                      // grade do ciclo do agendador.
-                      step={CICLO_MINUTOS * 60}
-                      onChange={(e) => {
-                        // Teclado ignora o `step`: quem digitar 21:37 tem o
-                        // valor subido para 21:45. Arredondar aqui evita
-                        // prometer uma precisão que o ciclo não entrega.
-                        //
-                        // ⚠️ E a DATA anda junto. Arredondar 23:50 dá 00:00 do
-                        // dia SEGUINTE; gravando só a hora, o par virava
-                        // "00:00 de hoje" — ou seja, a escolha da pessoa
-                        // pulava para o passado e o servidor recusava com
-                        // "essa hora já passou", sem ela entender por quê.
-                        const bruto = e.target.value;
-                        const composto = dataAg && bruto ? comporHorario(dataAg, bruto) : null;
-                        if (!composto) {
-                          setHoraAg(bruto);
-                        } else {
-                          const arredondado = arredondarParaGrade(composto);
-                          setHoraAg(horaParaInput(arredondado));
-                          setDataAg(hojeParaInput(arredondado));
-                        }
-                        setAtalhoAtivo(null);
-                      }}
-                      aria-label={tAgendadas("time")}
-                      className="h-9 w-[5.5rem] rounded-lg border border-border bg-muted px-2 text-xs text-foreground outline-none focus:border-primary/50"
-                    />
-                  </div>
-                  {/* A promessa do ciclo (P4.2, hoje 15 min), escrita na tela e presa
-                      à mesma constante que o agendador usa. */}
-                  <p className="text-[11px] text-muted-foreground">
-                    {quandoAg
-                      ? tAgendadas("scheduleHint", { min: CICLO_MINUTOS })
-                      : tAgendadas("schedulePick")}
-                  </p>
-                  {quandoAg && (
-                    <button
-                      type="button"
-                      onClick={limparAgendamento}
-                      className="self-start text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                    >
-                      {tAgendadas("scheduleClear")}
-                    </button>
-                  )}
-                </PopoverContent>
-              </Popover>
-            </>
+            <SeletorDeHorario ag={ag} disabled={inputsDisabled} t={tAgendadas} />
           )}
 
           <GatedButton
@@ -1531,6 +1458,10 @@ function MediaDraftPreview({
   onCaptionChange,
   onDiscard,
   onSend,
+  ag,
+  agendando,
+  inputsDisabled,
+  tAgendadas,
   t,
 }: {
   draft: MediaDraft;
@@ -1539,6 +1470,10 @@ function MediaDraftPreview({
   onCaptionChange: (caption: string) => void;
   onDiscard: () => void;
   onSend: () => void;
+  ag: Agendamento;
+  agendando: boolean;
+  inputsDisabled: boolean;
+  tAgendadas: ReturnType<typeof useTranslations>;
   t: ReturnType<typeof useTranslations>;
 }) {
   const tetoDaLegenda = useTetoDaLegenda();
@@ -1593,18 +1528,44 @@ function MediaDraftPreview({
             className="flex-1 rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50"
           />
         )}
+        {/* ⚠️ O mesmo seletor da linha normal, não uma cópia: a prévia
+            SUBSTITUI o compositor, e sem ele anexar um arquivo tirava a opção
+            de agendar da tela. */}
+        {!readOnly && (
+          <div
+            className={cn(
+              "flex shrink-0 items-center gap-1",
+              // Sem legenda (áudio) não há campo empurrando: o bloco vai para
+              // a direita sozinho.
+              !podeTerLegenda(draft.kind) && "ml-auto",
+            )}
+          >
+            <SeletorDeHorario ag={ag} disabled={inputsDisabled} t={tAgendadas} />
+          </div>
+        )}
         <GatedButton
           size="sm"
           canAct={!readOnly}
           gateReason="send messages"
-          disabled={busy}
+          disabled={busy || agendando}
           onClick={onSend}
+          // O mesmo botão faz coisas diferentes conforme a hora esteja
+          // escolhida ou não — e quem passa o mouse tem de saber qual.
+          title={ag.quandoAg ? tAgendadas("scheduleAction") : undefined}
           className={cn(
-            "h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40",
-            draft.kind === "audio" && "ml-auto",
+            "h-9 w-9 shrink-0 p-0 disabled:opacity-40",
+            ag.quandoAg
+              ? "bg-amber-500 hover:bg-amber-600"
+              : "bg-primary hover:bg-primary/90",
           )}
         >
-          <Send className="h-4 w-4" />
+          {agendando ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : ag.quandoAg ? (
+            <CalendarClock className="h-4 w-4" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
         </GatedButton>
       </div>
     </div>
@@ -1635,5 +1596,192 @@ function BotaoFormato({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * O estado do agendamento, num objeto só.
+ *
+ * ⚠️ Existe desde a 932 porque o seletor de horário passou a ter DOIS lugares:
+ * a linha normal do compositor e a prévia do anexo — que substitui o
+ * compositor inteiro quando há arquivo anexado. Sem isto, agendar mídia
+ * exigiria uma segunda cópia de ~130 linhas de seletor, e as duas
+ * envelheceriam separadas.
+ */
+interface Agendamento {
+  quandoAg: Date | null;
+  dataAg: string;
+  horaAg: string;
+  setDataAg: (v: string) => void;
+  setHoraAg: (v: string) => void;
+  atalhoAtivo: ChaveDeAtalho | null;
+  setAtalhoAtivo: (v: ChaveDeAtalho | null) => void;
+  aplicarAtalho: (chave: ChaveDeAtalho, horas: number) => void;
+  limparAgendamento: () => void;
+  seletorAberto: boolean;
+  setSeletorAberto: (v: boolean) => void;
+  abrirSeletor: (aberto: boolean) => void;
+}
+
+/**
+ * Agendar (925) — SELETOR que abre ACIMA do botão, nunca um diálogo, e a hora
+ * escolhida vira uma etiqueta enxuta aqui do lado. O campo cru não cabe nesta
+ * linha: medido com a ficha do contato aberta, um `datetime-local` de 168px
+ * derrubava a caixa de mensagem de 312px para 136px — menor que o próprio
+ * campo, na tela em que se escreve.
+ *
+ * ⚠️ `disabled` recebe `inputsDisabled` (e não só o papel): agendar É enviar
+ * ao cliente, com atraso. Fora da janela de 24h da Meta a mensagem não sairia
+ * de jeito nenhum.
+ *
+ * ⚠️ Módulo, não aninhado: aninhado, os campos de data e hora remontariam a
+ * cada tecla do compositor e perderiam o foco.
+ */
+function SeletorDeHorario({
+  ag,
+  disabled,
+  t,
+}: {
+  ag: Agendamento;
+  disabled: boolean;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  return (
+    <>
+      {/* A etiqueta é a peça de segurança desta tela, não enfeite:
+          com hora escolhida o botão ao lado AGENDA em vez de enviar,
+          e isso precisa estar visível. Escondido, o atendente
+          digitaria uma resposta urgente e ela sairia amanhã. */}
+      {ag.quandoAg && (
+        <button
+          type="button"
+          onClick={() => ag.setSeletorAberto(true)}
+          title={t("scheduleField", { min: CICLO_MINUTOS })}
+          className="inline-flex h-9 shrink-0 items-center gap-1 rounded-xl border border-amber-500 bg-amber-500/10 px-2 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+        >
+          {ag.quandoAg.toLocaleString(undefined, {
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+          <span
+            role="button"
+            tabIndex={-1}
+            aria-label={t("scheduleClear")}
+            title={t("scheduleClear")}
+            onClick={(e) => {
+              e.stopPropagation();
+              ag.limparAgendamento();
+            }}
+            className="rounded p-0.5 hover:bg-amber-500/20"
+          >
+            <X className="h-3 w-3" />
+          </span>
+        </button>
+      )}
+
+      <Popover open={ag.seletorAberto} onOpenChange={ag.abrirSeletor}>
+        <PopoverTrigger
+          disabled={disabled}
+          title={t("scheduleField", { min: CICLO_MINUTOS })}
+          aria-label={t("scheduleField", { min: CICLO_MINUTOS })}
+          className={cn(
+            "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
+            ag.quandoAg && "text-amber-600",
+          )}
+        >
+          <Clock className="h-4 w-4" />
+        </PopoverTrigger>
+        {/* `side="top"`: o compositor mora no rodapé da tela, e um
+            seletor abrindo para baixo nasceria fora da janela. */}
+        <PopoverContent side="top" align="end" sideOffset={8} className="w-72">
+          <p className="px-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t("scheduleTitle")}
+          </p>
+          {/* Os cinco prazos que o operador pediu. Pintam os dois
+              campos de uma vez; editar qualquer campo na mão apaga o
+              destaque, porque aí o valor deixou de ser o do atalho. */}
+          <div className="flex flex-nowrap gap-1">
+            {ATALHOS_DE_PRAZO.map((a) => (
+              <button
+                key={a.chave}
+                type="button"
+                onClick={() => ag.aplicarAtalho(a.chave, a.horas)}
+                className={cn(
+                  "shrink-0 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] transition-colors",
+                  ag.atalhoAtivo === a.chave
+                    ? "border-amber-500 bg-amber-500/15 font-medium text-amber-700 dark:text-amber-400"
+                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                {t(`preset_${a.chave}`)}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={ag.dataAg}
+              min={hojeParaInput()}
+              onChange={(e) => {
+                ag.setDataAg(e.target.value);
+                ag.setAtalhoAtivo(null);
+              }}
+              aria-label={t("date")}
+              className="h-9 flex-1 rounded-lg border border-border bg-muted px-2 text-xs text-foreground outline-none focus:border-primary/50"
+            />
+            <input
+              type="time"
+              value={ag.horaAg}
+              // ⚠️ `step` em SEGUNDOS. 900 = 15 min, e é o que faz o
+              // seletor nativo oferecer só :00/:15/:30/:45 — a mesma
+              // grade do ciclo do agendador.
+              step={CICLO_MINUTOS * 60}
+              onChange={(e) => {
+                // Teclado ignora o `step`: quem digitar 21:37 tem o
+                // valor subido para 21:45. Arredondar aqui evita
+                // prometer uma precisão que o ciclo não entrega.
+                //
+                // ⚠️ E a DATA anda junto. Arredondar 23:50 dá 00:00 do
+                // dia SEGUINTE; gravando só a hora, o par virava
+                // "00:00 de hoje" — ou seja, a escolha da pessoa
+                // pulava para o passado e o servidor recusava com
+                // "essa hora já passou", sem ela entender por quê.
+                const bruto = e.target.value;
+                const composto = ag.dataAg && bruto ? comporHorario(ag.dataAg, bruto) : null;
+                if (!composto) {
+                  ag.setHoraAg(bruto);
+                } else {
+                  const arredondado = arredondarParaGrade(composto);
+                  ag.setHoraAg(horaParaInput(arredondado));
+                  ag.setDataAg(hojeParaInput(arredondado));
+                }
+                ag.setAtalhoAtivo(null);
+              }}
+              aria-label={t("time")}
+              className="h-9 w-[5.5rem] rounded-lg border border-border bg-muted px-2 text-xs text-foreground outline-none focus:border-primary/50"
+            />
+          </div>
+          {/* A promessa do ciclo (P4.2, hoje 15 min), escrita na tela e presa
+              à mesma constante que o agendador usa. */}
+          <p className="text-[11px] text-muted-foreground">
+            {ag.quandoAg
+              ? t("scheduleHint", { min: CICLO_MINUTOS })
+              : t("schedulePick")}
+          </p>
+          {ag.quandoAg && (
+            <button
+              type="button"
+              onClick={ag.limparAgendamento}
+              className="self-start text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              {t("scheduleClear")}
+            </button>
+          )}
+        </PopoverContent>
+      </Popover>
+    </>
   );
 }

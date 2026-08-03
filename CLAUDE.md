@@ -200,6 +200,39 @@ morde código novo:
   despejaria a fila inteira de uma vez, às 2 da manhã. Passado o prazo a linha
   vira `failed` com o motivo escrito e espera decisão de gente.
 
+⚠️ **Agendada com ANEXO e CITAÇÃO (932): tudo aqui existe porque passam HORAS
+entre escrever e enviar.** `src/lib/scheduled/midia.ts` (puro, com teste),
+`dispatch.ts`, a rota `api/cb/scheduled` e
+`src/components/scheduled/anexo-e-citacao.tsx`. O que morde código novo:
+
+- ⚠️ **Áudio NÃO leva legenda, e o dano é silencioso.** A nota de voz sai por
+  `message/sendWhatsAppAudio`, que não tem campo de legenda: um texto ali
+  seria gravado em `messages.content_text`, apareceria no fio para a equipe e
+  **não viajaria**. A regra está em três lugares de propósito (CHECK da 932,
+  rota, tela).
+- ⚠️ **O arquivo é conferido ANTES de reivindicar a linha.** Reivindicar põe em
+  `sending`, o estado do qual nada pode ser reenviado — a linha ficaria presa
+  até o recolhimento de 10 min e sairia como "entrega incerta", que seria
+  mentira. E **Storage fora do ar não conta como "sumiu"**: falso negativo
+  cancelaria uma mensagem perfeita.
+- ⚠️ **Cancelar apaga o objeto do bucket — MENOS em linha `sent`.** Ali o
+  arquivo deixou de ser da agendada e passou a ser da mensagem que está no fio
+  do cliente.
+- ⚠️ **`reply_to_message_id` não tem FK**, e as três formas foram descartadas
+  com motivo na migration (`RESTRICT` faria apagar mensagem falhar, `CASCADE`
+  apagaria a agendada, `SET NULL` apagaria a informação de que houve citação).
+  Preço: **sem FK o PostgREST não embute** — quem precisar da citada busca por
+  id (`useCitadas`), e precisa do sinalizador de "já carregou", senão a tela
+  avisa "citação apagada" sobre citação viva.
+- ⚠️ **Apagar mensagem aqui é apagar MOLE**, então o núcleo citaria alegremente
+  o que o cliente vê como "Esta mensagem foi apagada". Quem enviar citação em
+  código novo precisa checar `deleted_at` — `send-message.ts` não checa.
+- **O teto da legenda é 1024 MENOS a assinatura**, e a validação do
+  agendamento não é garantia: a assinatura pode ser ligada depois, ou quem
+  agendou sai da conta e passa a assinar o nome do escritório. Por isso o
+  núcleo revalida e o disparador **traduz** — `SendMessageError.message` é
+  escrito em inglês e cai cru na coluna que as duas telas mostram.
+
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
 e `src/hooks/use-favoritas.ts`. Quem for mexer em filtro de conversa mexe lá,
@@ -586,6 +619,8 @@ mordem de novo em qualquer código novo:
   `928_cb_quando_reivindicou`. Depois disso (conferido em 2026-08-03):
   `929_cb_busca_em_mensagens`, `930_cb_reticencia_no_trecho` e
   `931_cb_fecha_anon_nas_tabelas_antigas`.
+  Depois disso (conferido em 2026-08-03):
+  `932_cb_agendada_com_midia_e_citacao`.
   ⚠️ A `906` foi aplicada FORA DE ORDEM (antes da 907), e o histórico do
   Supabase a registra com o nome antigo `904_cb_grupos` — ela nasceu numerada
   como 904, colidiu com `904_cb_mensagem_do_aparelho` e o ARQUIVO foi

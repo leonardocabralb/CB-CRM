@@ -11,9 +11,11 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { AnexoECitacao } from "@/components/scheduled/anexo-e-citacao";
 import { useAcoesDaAgendada } from "@/hooks/use-acoes-da-agendada";
 import { useAgendadas } from "@/hooks/use-agendadas";
 import { useChannels } from "@/hooks/use-channels";
+import { useCitadas } from "@/hooks/use-citadas-da-agendada";
 import { channelLabel } from "@/lib/cb-channels/display";
 import {
   clienteEscreveuDepois,
@@ -73,6 +75,10 @@ export function ScheduledBar({
   }
 
   const naFila = ordenarParaTela(agendadas.filter((a) => a.status !== "sent"));
+  // 932: as mensagens citadas vêm em busca própria (a coluna não tem FK, então
+  // não há embed). É o que deixa a faixa avisar que a citada foi apagada
+  // ENQUANTO ainda dá para cancelar.
+  const citadas = useCitadas(naFila.map((a) => a.reply_to_message_id));
 
   if (!conversationId) return null;
 
@@ -148,6 +154,15 @@ export function ScheduledBar({
                   <p className="whitespace-pre-wrap break-words text-xs text-foreground">
                     {a.body}
                   </p>
+                  <AnexoECitacao
+                    agendada={a}
+                    citada={
+                      a.reply_to_message_id
+                        ? citadas.porId.get(a.reply_to_message_id)
+                        : undefined
+                    }
+                    citadaCarregada={citadas.prontas}
+                  />
                   <p className="mt-0.5 text-[10px] text-muted-foreground">
                     {t("scheduledBy", { name: a.autor_nome })}
                     {mostrarCanal && (

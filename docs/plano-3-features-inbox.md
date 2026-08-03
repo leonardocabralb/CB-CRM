@@ -20,7 +20,7 @@
 | --- | --- | --- | --- |
 | **A** | Busca salta para a mensagem, e percorre os achados | ✅ **feita** (2026-08-03) | **nenhuma** |
 | **C** | Tela global de agendadas | ✅ **feita** (2026-08-03) | **nenhuma** |
-| **B** | Agendar mídia e levar citação | ⬜ pendente | `932` |
+| **B** | Agendar mídia e levar citação | ✅ **feita** (2026-08-03) | `932` **aplicada** |
 
 ⚠️ **Feitas, mas ainda NÃO em produção.** As duas estão em `main` local; `origin/main`
 segue em `c4384c9`. Empurrar dispara o deploy.
@@ -369,11 +369,76 @@ envio de amanhã se a assinatura for ligada nesse meio-tempo. →
   de escrever. É a mesma lição da `entrega_incerta` (926): `failed` sozinho não dizia se a
   mensagem tinha saído.
 
-### 🚧 Pendente
+### ✅ Áudio: decidido pelo operador (2026-08-03)
 
-**Áudio gravado na hora entra?** Ele não tem legenda e é o caso mais estranho de "gravei
-agora para mandar semana que vem". Fica para decidir na hora de codar a fase — não muda
-nada nas outras duas.
+**Entra, e sai como áudio gravado na hora.** A intenção é literal: "gravo agora, mando
+depois, e o cliente pensa que gravei naquele momento para ele".
+
+Isso **já é o que o transporte faz** — `evolution-transport.sendMedia` desvia
+`kind === 'audio'` para `message/sendWhatsAppAudio`, o endpoint de nota de voz, e o
+carimbo de hora que o WhatsApp mostra é o do envio. Não houve o que construir; houve o que
+não estragar. E a consequência dura: **áudio não tem legenda**, e é isso que obrigou o
+CHECK do corpo a ser afrouxado.
+
+### O que a medição mudou em relação ao plano acima
+
+- ⚠️ **A mídia JÁ está no bucket quando se agenda.** O compositor sobe o arquivo no
+  instante em que ele é ANEXADO, não no envio. Então não houve caminho de upload novo —
+  houve guardar o endereço do que hoje era descartado.
+- ⚠️ **Mensagem apagada aqui é apagada MOLE** (`messages.deleted_at`, 905): a linha
+  continua no banco. O `ON DELETE SET NULL` que o plano pedia praticamente nunca
+  dispararia, e "a citada sumiu" não é FK quebrada — é uma coluna de data que o
+  **disparador** tem de ler.
+- ⚠️ **`send-message.ts` já revalida o teto de 1024 com a assinatura somada.** O que
+  faltava não era a regra: era ela valer no agendamento, e o recado dela estar em
+  português (o núcleo escreve em inglês, e o texto cai cru na coluna que as duas telas
+  mostram).
+- **Sem FK na citação**, e as três formas foram descartadas com motivo escrito na
+  migration: `RESTRICT` faria apagar mensagem falhar, `CASCADE` apagaria a agendada
+  inteira, e `SET NULL` apagaria justamente a informação de que houve citação. Preço: o
+  PostgREST não embute sem FK, então as telas leem as citadas numa busca própria
+  (`useCitadas`).
+- **Um quarto risco apareceu:** cancelar agendada tem de apagar o objeto do bucket —
+  **menos** em linha `sent`, onde o arquivo já pertence à mensagem que está no fio do
+  cliente.
+
+### Peças construídas
+
+| Onde | O quê |
+| --- | --- |
+| `932_cb_agendada_com_midia_e_citacao.sql` | colunas + 5 CHECKs, com bloco que EXERCITA cada um |
+| `src/lib/scheduled/midia.ts` | regras puras (23 testes): posse do arquivo, teto da legenda, "áudio não leva legenda", "a citação ainda vale?" |
+| `api/cb/scheduled/route.ts` | confere o que só ela pode: arquivo da CONTA, citada da CONVERSA, teto com assinatura |
+| `src/lib/scheduled/dispatch.ts` | confere o objeto ANTES de reivindicar; derruba citação apagada; traduz as recusas do núcleo |
+| `message-composer.tsx` | `<SeletorDeHorario>` extraído para módulo e reusado dentro da prévia do anexo |
+| `use-citadas-da-agendada.ts` · `components/scheduled/anexo-e-citacao.tsx` | a linha nova das duas telas |
+| `use-acoes-da-agendada.ts` | cancelar apaga o objeto — menos em `sent` |
+
+### O que foi verificado com o sistema rodando
+
+Anexo de 1 pixel, agendado para daqui a 300 dias na conversa de teste do escritório, e
+cancelado em seguida (autorizado pelo operador; o disparador só pega hora vencida):
+
+- linha criada com `media_kind='image'`, caminho sob `account-<id>/`, legenda guardada;
+- faixa da conversa e tela global mostrando **miniatura + "Foto"** e **"Respondendo: …"**;
+- ponteiro da citação quebrado à mão → as duas telas passaram a mostrar **"A mensagem
+  citada foi apagada — vai sair sem a citação."**;
+- as **seis recusas da rota** disparando com texto em português (áudio com legenda,
+  arquivo de outra conta, meio anexo, tipo inválido, sem texto e sem anexo, citada de
+  outra conversa);
+- cancelamento **apagou a linha e o objeto do bucket** — conferido em `storage.objects`.
+
+⚠️ **E a medição pegou um defeito que os testes e o `i18n-parity.mjs` não pegariam:** o
+`alt` da miniatura chamava `attachmentImage`, chave que não existe em dicionário nenhum.
+Paridade passa (falta nos DOIS), typecheck passa, teste passa — e a tela mostrava
+`Inbox.scheduled.attachmentImage`.
+
+### O que fica sabido, e não foi feito
+
+- **Trocar o anexo de uma agendada já criada** não existe: editar é cancelar e reagendar.
+- **Não há limpeza de órfãos no bucket.** Se o cancelamento falhar em apagar o objeto (ele
+  é silencioso, de propósito), o arquivo fica lá.
+- **Template e mensagem interativa** continuam fora do agendamento.
 
 ---
 

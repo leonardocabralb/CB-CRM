@@ -27,12 +27,14 @@ import {
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+import { AnexoECitacao } from '@/components/scheduled/anexo-e-citacao';
 import { useAcoesDaAgendada } from '@/hooks/use-acoes-da-agendada';
 import {
   useAgendadasDaConta,
   type AgendadaDaConta,
 } from '@/hooks/use-agendadas-da-conta';
 import { useAgendadorSaude } from '@/hooks/use-agendador-saude';
+import { useCitadas } from '@/hooks/use-citadas-da-agendada';
 import { useCan } from '@/hooks/use-can';
 import { useChannels } from '@/hooks/use-channels';
 import { channelLabel } from '@/lib/cb-channels/display';
@@ -94,6 +96,11 @@ export default function AgendadasPage() {
     () => filtrarPorSituacao(ordenadas, situacao) as AgendadaDaConta[],
     [ordenadas, situacao],
   );
+
+  // 932: busca própria porque `reply_to_message_id` não tem FK — sem embed
+  // possível. Só das VISÍVEIS: o acervo pode ter centenas, e a pergunta "a
+  // citada ainda existe?" só é acionável no que está na tela.
+  const citadas = useCitadas(visiveis.map((a) => a.reply_to_message_id));
 
   return (
     <div className="space-y-4">
@@ -269,6 +276,15 @@ export default function AgendadasPage() {
                   <p className="mt-0.5 line-clamp-2 whitespace-pre-wrap break-words text-xs text-muted-foreground">
                     {a.body}
                   </p>
+                  <AnexoECitacao
+                    agendada={a}
+                    citada={
+                      a.reply_to_message_id
+                        ? citadas.porId.get(a.reply_to_message_id)
+                        : undefined
+                    }
+                    citadaCarregada={citadas.prontas}
+                  />
                   <p className="mt-1 text-[10px] text-muted-foreground">
                     {tInbox('scheduledBy', { name: a.autor_nome })}
                     {mostrarCanal && (

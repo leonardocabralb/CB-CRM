@@ -465,7 +465,14 @@
         "ultimoCiclo": "Último ciclo {min, plural, =0 {agora mesmo} =1 {há 1 minuto} other {há # minutos}}.",
         "comoResolverParado": "Ele deveria rodar a cada {ciclo} minutos. Peça a quem cuida do servidor para conferir o serviço \"agendador\" (ver docs/DEPLOY-VPS.md).",
         "comoResolverFalhas": "Veja todas em Agendadas, no menu lateral: a aba Falhas mostra o motivo de cada uma e deixa reenviar ou cancelar."
-      }
+      },
+      "attachment_image": "Foto",
+      "attachment_video": "Vídeo",
+      "attachment_audio": "Áudio",
+      "attachment_document": "Documento",
+      "replyingTo": "Respondendo: {trecho}",
+      "quotedDeleted": "A mensagem citada foi apagada — vai sair sem a citação.",
+      "quotedWasLost": "Saiu sem a citação: a mensagem citada tinha sido apagada."
     }
   },
   "Contacts": {
