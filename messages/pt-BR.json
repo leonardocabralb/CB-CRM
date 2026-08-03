@@ -54,7 +54,8 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Perfil",
     "menuSettings": "Configurações",
-    "menuSignOut": "Sair"
+    "menuSignOut": "Sair",
+    "scheduled": "Agendadas"
   },
   "Header": {
     "dashboard": "Painel",
@@ -71,7 +72,10 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Perfil",
     "menuSettings": "Configurações",
-    "menuSignOut": "Sair"
+    "menuSignOut": "Sair",
+    "scheduled": "Mensagens agendadas",
+    "flows": "Fluxos",
+    "aiAgents": "Agentes de IA"
   },
   "ModeToggle": {
     "switchMode": "Alternar para o modo {mode}"
@@ -458,9 +462,9 @@
         "paradoSemFila": "O agendador não está rodando. Não há nada na fila agora, mas o que você agendar não vai sair.",
         "nuncaRodou": "O agendador nunca rodou. Mensagem agendada não vai sair.",
         "falhas": "{n} mensagem(ns) agendada(s) falharam e esperam decisão.",
-        "ultimoCiclo": "Último ciclo há {min} minutos.",
+        "ultimoCiclo": "Último ciclo {min, plural, =0 {agora mesmo} =1 {há 1 minuto} other {há # minutos}}.",
         "comoResolverParado": "Ele deveria rodar a cada {ciclo} minutos. Peça a quem cuida do servidor para conferir o serviço \"agendador\" (ver docs/DEPLOY-VPS.md).",
-        "comoResolverFalhas": "Abra cada conversa: a faixa AGENDADAS mostra o motivo e deixa reenviar ou cancelar."
+        "comoResolverFalhas": "Veja todas em Agendadas, no menu lateral: a aba Falhas mostra o motivo de cada uma e deixa reenviar ou cancelar."
       }
     }
   },
@@ -2256,5 +2260,23 @@
     "actorAutomation": "por uma automação",
     "actorSystem": "pelo sistema",
     "actorReconstructed": "registro retroativo"
+  },
+  "Scheduled": {
+    "title": "Mensagens agendadas",
+    "subtitle": "Tudo que está marcado para sair, e o que já saiu.",
+    "tab_todas": "Todas",
+    "tab_fila": "Fila",
+    "tab_enviadas": "Enviadas",
+    "tab_falhas": "Falhas",
+    "healthOk": "O agendador está rodando.",
+    "capReached": "Há mais agendadas na fila ou em falha do que esta tela mostra. Resolva as visíveis para enxergar as demais.",
+    "loadFailed": "Não foi possível carregar as mensagens agendadas. Esta tela não está mostrando o que existe — recarregue antes de agendar qualquer coisa.",
+    "emptyAll": "Nenhuma mensagem agendada nesta conta.",
+    "emptyFiltered": "Nenhuma mensagem agendada nesta situação.",
+    "loadMore": "Carregar mais enviadas",
+    "openConversation": "Abrir a conversa",
+    "groupNoName": "Grupo sem nome",
+    "unknownRecipient": "Contato sem nome",
+    "conversationUnavailable": "Conversa não carregada"
   }
 }

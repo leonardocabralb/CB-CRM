@@ -54,7 +54,8 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Profile",
     "menuSettings": "Settings",
-    "menuSignOut": "Sign out"
+    "menuSignOut": "Sign out",
+    "scheduled": "Scheduled"
   },
   "Header": {
     "dashboard": "Dashboard",
@@ -71,7 +72,10 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Profile",
     "menuSettings": "Settings",
-    "menuSignOut": "Sign out"
+    "menuSignOut": "Sign out",
+    "scheduled": "Scheduled messages",
+    "flows": "Flows",
+    "aiAgents": "AI Agents"
   },
   "ModeToggle": {
     "switchMode": "Switch to {mode} mode"
@@ -458,9 +462,9 @@
         "paradoSemFila": "The scheduler is not running. Nothing is queued right now, but anything you schedule will not go out.",
         "nuncaRodou": "The scheduler has never run. Scheduled messages will not go out.",
         "falhas": "{n} scheduled message(s) failed and are waiting for a decision.",
-        "ultimoCiclo": "Last cycle {min} minutes ago.",
+        "ultimoCiclo": "Last cycle {min, plural, =0 {just now} =1 {1 minute ago} other {# minutes ago}}.",
         "comoResolverParado": "It should run every {ciclo} minutes. Ask whoever maintains the server to check the \"agendador\" service (see docs/DEPLOY-VPS.md).",
-        "comoResolverFalhas": "Open each conversation: the SCHEDULED bar shows the reason and lets you resend or cancel."
+        "comoResolverFalhas": "See them all under Scheduled in the sidebar: the Failed tab shows why each one failed and lets you resend or cancel."
       }
     }
   },
@@ -2256,5 +2260,23 @@
     "actorAutomation": "by an automation",
     "actorSystem": "by the system",
     "actorReconstructed": "backfilled record"
+  },
+  "Scheduled": {
+    "title": "Scheduled messages",
+    "subtitle": "Everything queued to go out, and everything that already did.",
+    "tab_todas": "All",
+    "tab_fila": "Queue",
+    "tab_enviadas": "Sent",
+    "tab_falhas": "Failed",
+    "healthOk": "The scheduler is running.",
+    "capReached": "There are more queued or failed messages than this screen shows. Clear the visible ones to see the rest.",
+    "loadFailed": "Could not load the scheduled messages. This screen is not showing what exists — reload before scheduling anything.",
+    "emptyAll": "No scheduled messages in this account.",
+    "emptyFiltered": "No scheduled messages in this state.",
+    "loadMore": "Load more sent",
+    "openConversation": "Open the conversation",
+    "groupNoName": "Unnamed group",
+    "unknownRecipient": "Unnamed contact",
+    "conversationUnavailable": "Conversation not loaded"
   }
 }

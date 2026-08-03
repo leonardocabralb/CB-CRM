@@ -40,7 +40,12 @@ export function nomeDoGrupo(
  * discordarem entre si com o tempo.
  */
 export function tituloDaConversa(
-  conversa: Conversation,
+  // Só os três campos que a regra usa, e não a `Conversation` inteira: a tela
+  // global de agendadas embute a conversa com um `select` estreito (sem
+  // etiquetas, sem contadores), e exigir o tipo cheio ali obrigaria ou a
+  // engordar aquela consulta ou a reescrever esta regra num segundo lugar —
+  // que é exatamente o que esta função existe para impedir.
+  conversa: Pick<Conversation, 'group_id' | 'group' | 'contact'>,
   textos: { semNome: string; desconhecido: string },
 ): string {
   if (conversa.group_id) return nomeDoGrupo(conversa.group, textos.semNome);

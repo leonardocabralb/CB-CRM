@@ -10,9 +10,8 @@ import {
   Zap,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { toast } from "sonner";
 
-import { createClient } from "@/lib/supabase/client";
+import { useAcoesDaAgendada } from "@/hooks/use-acoes-da-agendada";
 import { useAgendadas } from "@/hooks/use-agendadas";
 import { useChannels } from "@/hooks/use-channels";
 import { channelLabel } from "@/lib/cb-channels/display";
@@ -23,7 +22,6 @@ import {
   podeDispararAgora,
 } from "@/lib/scheduled/display";
 import { cn } from "@/lib/utils";
-import type { ScheduledMessage } from "@/types";
 
 interface ScheduledBarProps {
   conversationId: string | null;
@@ -55,7 +53,10 @@ export function ScheduledBar({
   const { agendadas, ultimaEntradaEm, falhou, recarregar } =
     useAgendadas(conversationId);
   const [aberta, setAberta] = useState(false);
-  const [ocupada, setOcupada] = useState<string | null>(null);
+  // ⚠️ As ações moram fora desta faixa desde a Fase C: a tela global usa as
+  // MESMAS. Duas cópias divergiriam justamente nas guardas que impedem o
+  // cliente de receber a mensagem duas vezes.
+  const { ocupada, enviarAgora, cancelar } = useAcoesDaAgendada(recarregar);
   // P4.3 pediu o canal no card. Só aparece com 2+ números: num só ele não
   // informa nada e ocupa a linha que carrega o texto da mensagem.
   const { channels } = useChannels();
@@ -72,55 +73,6 @@ export function ScheduledBar({
   }
 
   const naFila = ordenarParaTela(agendadas.filter((a) => a.status !== "sent"));
-
-  async function enviarAgora(a: ScheduledMessage) {
-    setOcupada(a.id);
-    try {
-      const res = await fetch(`/api/cb/scheduled/${a.id}/run`, {
-        method: "POST",
-      });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) toast.error(json.error ?? t("sendNowFailed"));
-      else toast.success(t("sentNow"));
-    } catch {
-      toast.error(t("sendNowFailed"));
-    } finally {
-      setOcupada(null);
-      recarregar();
-    }
-  }
-
-  async function apagar(a: ScheduledMessage) {
-    // ⚠️ O texto fala em "cancelar o envio agendado", nunca em "apagar
-    // mensagem": na bolha do chat "Apagar" quer dizer revogar no WhatsApp do
-    // cliente, e confundir os dois faz alguém achar que está desfazendo algo
-    // que o cliente já viu.
-    //
-    // ⚠️ E o texto MUDA em `sending`/entrega incerta. Ali a promessa "a
-    // mensagem não vai sair" seria falsa: o worker já reivindicou a linha, ou
-    // o WhatsApp já aceitou. Apagar continua permitido — é a única saída para
-    // uma linha travada —, mas quem aperta precisa saber o que está e o que
-    // não está desfazendo.
-    const incerta = a.status === "sending" || a.entrega_incerta;
-    if (!window.confirm(t(incerta ? "cancelConfirmUncertain" : "cancelConfirm"))) {
-      return;
-    }
-    setOcupada(a.id);
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("cb_scheduled_messages")
-      .delete()
-      .eq("id", a.id)
-      .select("id");
-    setOcupada(null);
-    // ⚠️ Conferir o RESULTADO, não só o erro. Sem policy que case, a RLS
-    // devolve zero linhas SEM erro — e um toast de sucesso mentiria. É a
-    // armadilha que o CLAUDE.md descreve.
-    if (error) toast.error(t("cancelFailed"));
-    else if (!data?.length) toast.error(t("cancelNothing"));
-    else toast.success(t("canceled"));
-    recarregar();
-  }
 
   if (!conversationId) return null;
 
@@ -260,7 +212,7 @@ export function ScheduledBar({
                     )}
                     <button
                       type="button"
-                      onClick={() => void apagar(a)}
+                      onClick={() => void cancelar(a)}
                       disabled={ocupada === a.id}
                       title={t("cancel")}
                       aria-label={t("cancel")}

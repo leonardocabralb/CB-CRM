@@ -10,6 +10,7 @@ import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import {
   Bell,
   Bot,
+  CalendarClock,
   Crown,
   GitBranch,
   LayoutDashboard,
@@ -96,6 +97,11 @@ const navItems: NavItem[] = [
   { href: "/contacts", labelKey: "contacts", icon: Users },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
+  // Ao lado de Disparos, e não do inbox: as duas telas respondem à mesma
+  // pergunta ("o que sai daqui, e quando"). Dentro da conversa a agendada
+  // continua aparecendo na faixa acima do compositor — esta entrada é para
+  // olhar o conjunto, não uma conversa.
+  { href: "/agendadas", labelKey: "scheduled", icon: CalendarClock },
   { href: "/automations", labelKey: "automations", icon: Zap },
   { href: "/flows", labelKey: "flows", icon: Workflow, beta: true },
   { href: "/agents", labelKey: "aiAgents", icon: Bot },
