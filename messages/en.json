@@ -150,7 +150,7 @@
       "typeDirect": "Direct chats",
       "typeGroups": "Groups",
       "groupNoName": "Unnamed group",
-      "searchPlaceholder": "Search conversations...",
+      "searchPlaceholder": "Search name, number or message...",
       "filterAll": "All",
       "filterUnread": "Unread",
       "filterOpen": "Open",
@@ -184,7 +184,11 @@
       "tagModeAll": "All of them",
       "favoritesLoadFailed": "Could not load your favourite conversations.",
       "assigneeUnnamed": "Unnamed member",
-      "removeFilter": "Remove the {filtro} filter"
+      "removeFilter": "Remove the {filtro} filter",
+      "searchMinChars": "Type {n} letters to also search inside messages.",
+      "searchingInMessages": "Searching inside messages...",
+      "searchInMessagesFailed": "Could not search inside messages. Only names and numbers were searched.",
+      "searchHitCount": "{n, plural, =1 {1 msg} other {# msgs}}"
     },
     "messageThread": {
       "unknownAuthor": "Unknown",

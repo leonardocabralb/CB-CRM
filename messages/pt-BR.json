@@ -150,7 +150,7 @@
       "typeDirect": "Conversas",
       "typeGroups": "Grupos",
       "groupNoName": "Grupo sem nome",
-      "searchPlaceholder": "Buscar conversas...",
+      "searchPlaceholder": "Buscar nome, número ou mensagem...",
       "filterAll": "Todas",
       "filterUnread": "Não lidas",
       "filterOpen": "Abertas",
@@ -184,7 +184,11 @@
       "tagModeAll": "Todas elas",
       "favoritesLoadFailed": "Não deu para carregar as suas conversas favoritas.",
       "assigneeUnnamed": "Membro sem nome",
-      "removeFilter": "Remover o filtro {filtro}"
+      "removeFilter": "Remover o filtro {filtro}",
+      "searchMinChars": "Digite {n} letras para buscar também dentro das mensagens.",
+      "searchingInMessages": "Buscando dentro das mensagens...",
+      "searchInMessagesFailed": "Não foi possível buscar dentro das mensagens. A busca olhou só nomes e números.",
+      "searchHitCount": "{n, plural, =1 {1 msg} other {# msgs}}"
     },
     "messageThread": {
       "unknownAuthor": "Desconhecido",
