@@ -18,9 +18,13 @@
 
 | Fase | Escopo | Estado | Migration |
 | --- | --- | --- | --- |
-| **A** | Busca salta para a mensagem | ⬜ pendente | `932` (1 coluna na RPC) |
-| **B** | Agendar mídia e levar citação | ⬜ pendente | `933` |
+| **A** | Busca salta para a mensagem, e percorre os achados | ⬜ pendente | **nenhuma** |
+| **B** | Agendar mídia e levar citação | ⬜ pendente | `932` |
 | **C** | Tela global de agendadas | ⬜ pendente | nenhuma |
+
+✅ **Decisões do operador (2026-08-03):** percorrer os achados com ↑/↓ · tela global mostra
+tudo com filtro · anexo sumido **falha e espera gente** · citação apagada **sai sem a
+citação, com aviso**.
 
 **Ordem recomendada: A → C → B.** A é a menor e a mais contida. C não precisa de
 migration nenhuma e responde de quebra a uma pergunta que o operador já fez ("como eu
@@ -77,15 +81,39 @@ liberar depois que o alvo entrar em quadro.
 sempre que chega mensagem nova**, mesmo que ele esteja lendo histórico. É defeito
 pré-existente e independente; consertar junto misturaria duas coisas.
 
+### ⚠️ Percorrer os achados NÃO custa uma segunda consulta — e isso mudou o desenho
+
+O operador escolheu ↑/↓ com contador ("2 de 5"), e a leitura óbvia disso seria "uma RPC
+nova que devolve todos os ids que casaram na conversa". **Não precisa, e a razão vale
+registrar:**
+
+- o fio **já tem todas as mensagens da conversa carregadas** (sem `limit`);
+- a regra de casamento do banco é `lower(unaccent(x))` — e o `semAcento()` que a Fase 5
+  criou em `busca-em-mensagens.ts` faz **exatamente a mesma coisa**, com teste de
+  equivalência já escrito.
+
+Então a lista de achados **dentro** da conversa se calcula em JS, sobre dados completos, e
+o ↑/↓ fica instantâneo em vez de ir ao banco a cada passo. **A Fase A não precisa de
+migration nenhuma.**
+
+⚠️ **Isto não é "meio a meio".** Quais CONVERSAS casam continua vindo do banco, completo.
+O que roda em JS é só a enumeração dentro de uma conversa inteiramente carregada — as duas
+pontas enxergam o mesmo universo, que é a regra que a Fase 5 fixou.
+
+⚠️ **Duas guardas obrigatórias:**
+- **Excluir mensagem apagada**, como a RPC faz (`deleted_at IS NULL`) — o fio renderiza a
+  apagada como "mensagem apagada", e sem a guarda o ↑/↓ pararia nela.
+- **Se o JS não achar nada** onde o banco achou, não mostrar a barra com "0 de 0": esconder.
+  É a divergência improvável (caractere exótico) falhando para o lado silencioso.
+
 ### Peças
 
 | Onde | O quê |
 | --- | --- |
-| `932_cb_id_da_mensagem_achada.sql` | `CREATE OR REPLACE` da RPC devolvendo também `message_id` do achado mais recente. Uma coluna; índice e privilégios intactos |
-| `message-thread.tsx` | âncora `data-message-id` em cada bolha; efeito de salto; supressão do auto-scroll; destaque temporário |
-| `conversation-list.tsx` | o clique num resultado leva o `message_id` junto |
-| `inbox/page.tsx` | estado `saltarParaMensagemId`, limpo depois de usado |
-| `busca-em-mensagens.ts` | `AchadoNoTexto` ganha `mensagemId` |
+| `src/lib/inbox/achados-no-fio.ts` | função PURA: mensagens + termo → ids que casam, em ordem. É onde mora a guarda da apagada. Testável sem tela |
+| `message-thread.tsx` | âncora `data-message-id` em cada bolha; barra "2 de 5" com ↑/↓; efeito de salto; supressão do auto-scroll; destaque temporário |
+| `inbox/page.tsx` | leva o **termo de busca** até o fio (hoje o fio não sabe que existe busca) e o id-alvo inicial |
+| `conversation-list.tsx` | o clique num resultado sinaliza "abriu pela busca" |
 
 ### Armadilhas
 
@@ -97,12 +125,12 @@ pré-existente e independente; consertar junto misturaria duas coisas.
   testado enquanto `groups_enabled` estiver desligado.
 - **A âncora é `messages.id`**, nunca `message_id` (o wamid do WhatsApp) — os dois existem
   na mesma tabela e confundi-los daria salto para lugar nenhum.
+- **Apagar a busca com a conversa aberta tem de sumir com a barra.** Um "2 de 5" pendurado
+  sobre um termo que não está mais na caixa é pior que não ter contador.
+- **Chegar ao fim da lista:** dar a volta ou parar? Parar, com as setas desabilitadas — dar
+  a volta em silêncio faz parecer que há mais achados do que há.
 
-### 🚧 Decisão pendente
-
-**Com 3 mensagens casando na mesma conversa, salta para qual?** A recomendação é **a mais
-recente**, que é o que a lista já mostra no trecho — e é o menor caminho. Percorrer os
-achados (↑/↓ como no WhatsApp) exige uma segunda RPC e navegação própria.
+✅ **Decidido:** entra na mais recente e permite percorrer todas com ↑/↓ e contador.
 
 ---
 
@@ -144,11 +172,16 @@ existem na faixa e devem ser extraídos, não reescritos.
   guarda `podeDispararAgora` da faixa, senão o cliente recebe duas vezes.
 - **A tela nasce com 1 linha.** Não aceitar "abri e funcionou" como teste.
 
-### 🚧 Decisão pendente
+✅ **Decidido: tudo — fila em cima, com filtro de situação.** Consequências a respeitar:
 
-**A tela mostra só a fila, ou também o histórico (enviadas e falhas)?** Recomendação:
-**tudo, com a fila em cima e filtro de situação** — "o que saiu ontem?" é a segunda
-pergunta natural de quem abre essa tela.
+- **Ordenação é por situação primeiro, não por data.** A fila ordena por `scheduled_for`
+  crescente ("o que sai primeiro"); o histórico, por `sent_at` decrescente ("o que saiu por
+  último"). Uma ordem só para as duas responde mal a uma das perguntas.
+- **A tela cresce sem teto.** Hoje é 1 linha, mas histórico só acumula. Nasce com um teto
+  de linhas e um "carregar mais" — diferente da lista de conversas, aqui não há motivo para
+  carregar tudo.
+- **Falha antiga não é falha nova.** A contagem que o cabeçalho já usa não distingue; a
+  tela precisa deixar claro o que ainda espera decisão.
 
 ---
 
@@ -156,7 +189,7 @@ pergunta natural de quem abre essa tela.
 
 É a maior e a única que **cria dado que pode apodrecer** entre o agendamento e o envio.
 
-### Schema — `933_cb_agendada_com_midia_e_citacao.sql`
+### Schema — `932_cb_agendada_com_midia_e_citacao.sql`
 
 - `media_url`, `media_path`, `media_kind`, `media_filename`
 - `reply_to_message_id`
@@ -189,21 +222,35 @@ envio de amanhã se a assinatura for ligada nesse meio-tempo. →
 
 | Onde | O quê |
 | --- | --- |
-| `933_cb_...sql` | colunas + CHECK relaxado + FK da citação |
+| `932_cb_...sql` | colunas + CHECK relaxado + FK da citação com `ON DELETE SET NULL` |
 | `message-composer.tsx` | o relógio passa a valer com anexo e com citação na tela |
 | `api/cb/scheduled/route.ts` | aceita mídia e citação; valida o teto certo |
 | `scheduled/dispatch.ts` | envia mídia; confere objeto e citação antes |
 | `scheduled-bar.tsx` | miniatura do anexo e marca de citação na linha |
 
-### 🚧 Decisões pendentes
+### ✅ Decidido, e o que cada escolha obriga
 
-1. **Se o arquivo sumiu na hora do envio:** falhar e esperar gente (recomendado), ou enviar
-   só a legenda?
-2. **Se a mensagem citada foi apagada:** enviar sem a citação, ou falhar? Recomendação:
-   **enviar sem a citação, com aviso visível na faixa** — o texto que a pessoa escreveu
-   continua valendo por si.
-3. **Áudio gravado na hora entra?** Ele não tem legenda e é o caso mais estranho de
-   "gravei agora para mandar semana que vem".
+**1. Arquivo sumido → falha e espera uma pessoa.** Nada sai pela metade. Obriga:
+
+- conferência do objeto **antes** de reivindicar a linha, com motivo legível
+  (`anexo_sumiu`), e não a mensagem crua do storage;
+- a falha entra na contagem que acende o aviso do cabeçalho — senão "falhou às 3h" só se
+  descobre abrindo a conversa.
+
+**2. Citação apagada → sai sem a citação, com aviso na faixa.** Obriga:
+
+- FK `ON DELETE SET NULL` (nunca RESTRICT: apagar mensagem não pode falhar por causa de uma
+  agendada);
+- ⚠️ **uma coluna própria para "havia citação e ela sumiu"**. Só o `NULL` não distingue
+  "nunca citou" de "citava e perdeu" — e sem essa distinção o aviso na faixa é impossível
+  de escrever. É a mesma lição da `entrega_incerta` (926): `failed` sozinho não dizia se a
+  mensagem tinha saído.
+
+### 🚧 Pendente
+
+**Áudio gravado na hora entra?** Ele não tem legenda e é o caso mais estranho de "gravei
+agora para mandar semana que vem". Fica para decidir na hora de codar a fase — não muda
+nada nas outras duas.
 
 ---
 
