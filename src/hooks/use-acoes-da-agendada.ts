@@ -83,7 +83,13 @@ export function useAcoesDaAgendada(aoMudar: () => void): AcoesDaAgendada {
         .from('cb_scheduled_messages')
         .delete()
         .eq('id', a.id)
-        .select('id');
+        // ⚠️ Devolve as colunas que decidem o destino do ARQUIVO, e elas vêm
+        // da linha como ela estava no banco no instante do DELETE — nunca do
+        // objeto em memória. A lista desta tela é uma foto de segundos atrás:
+        // o worker pode ter enviado a mensagem nesse meio-tempo, e decidir
+        // pelo `a.status` que a tela guarda apagaria o anexo de uma mensagem
+        // que já está no fio do cliente.
+        .select('id, message_id, media_path, status, entrega_incerta');
       setOcupada(null);
       // ⚠️ Conferir o RESULTADO, não só o erro. Sem policy que case, a RLS
       // devolve zero linhas SEM erro — e um toast de sucesso mentiria. É a
@@ -98,17 +104,41 @@ export function useAcoesDaAgendada(aoMudar: () => void): AcoesDaAgendada {
       else if (!data?.length) toast.error(t('cancelNothing'));
       else {
         toast.success(t('canceled'));
-        // ⚠️ O arquivo sai junto — MENOS quando a mensagem já foi enviada
-        // (932). Numa linha `sent` o objeto deixou de ser da agendada e passou
-        // a ser da mensagem que está no fio: apagá-lo quebraria a mídia de uma
-        // conversa que o cliente já recebeu. Sem esta distinção, "limpar o
-        // acervo de agendadas" viraria "apagar anexos de mensagens antigas".
+        // ⚠️ O arquivo só sai junto quando NADA MAIS pode estar usando ele —
+        // e são três perguntas, não uma (932). Errar aqui não deixa lixo: deixa
+        // um anexo quebrado numa conversa que o cliente já teve.
+        //
+        // ⚠️ E os campos vêm do RETORNO do delete, nunca do objeto em memória:
+        // a lista da tela é uma foto de segundos atrás, e entre a carga e o
+        // clique o worker pode ter enviado.
+        //
+        //  · `message_id` preenchido → existe linha em `messages` apontando
+        //    para o arquivo. É a bolha que está no fio do escritório.
+        //  · `sending` → o worker está esperando a Evolution NESTE instante
+        //    (até 90s num envio de mídia), e ela precisa baixar a URL. Apagar
+        //    no meio derruba um envio em curso.
+        //  · `entrega_incerta` → o processo morreu depois de reivindicar.
+        //    Pode existir linha em `messages` gravada antes da queda, sem o
+        //    `message_id` ter chegado a ser carimbado de volta.
         //
         // Silencioso e sem `await`: o cancelamento já deu certo, e um erro de
         // limpeza vira lixo no bucket, não um recado que o operador possa
-        // resolver.
-        if (a.media_path && a.status !== 'sent') {
-          void deleteAccountMedia(CHAT_MEDIA_BUCKET, a.media_path).catch(() => {});
+        // resolver. Lixo raro é mais barato que anexo quebrado.
+        const apagada = data[0] as {
+          message_id?: string | null;
+          media_path?: string | null;
+          status?: string | null;
+          entrega_incerta?: boolean | null;
+        };
+        const podeApagarArquivo =
+          !!apagada?.media_path &&
+          !apagada.message_id &&
+          !apagada.entrega_incerta &&
+          apagada.status !== 'sending';
+        if (podeApagarArquivo) {
+          void deleteAccountMedia(CHAT_MEDIA_BUCKET, apagada.media_path!).catch(
+            () => {},
+          );
         }
       }
       aoMudar();

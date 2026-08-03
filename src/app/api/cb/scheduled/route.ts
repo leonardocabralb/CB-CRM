@@ -11,6 +11,7 @@ import {
   RATE_LIMITS,
 } from '@/lib/rate-limit';
 import { lerAnexo, podeTerLegenda, tetoDaLegenda } from '@/lib/scheduled/midia';
+import { CHAT_MEDIA_BUCKET } from '@/lib/storage/buckets';
 
 /**
  * POST /api/cb/scheduled — agenda uma mensagem de texto (migration 925).
@@ -289,7 +290,16 @@ export async function POST(request: Request) {
         autor_nome: autorNome,
         // 932. `media_url` nulo é o caso comum (texto puro) e o CHECK de forma
         // exige que os três andem juntos.
-        media_url: anexo?.url ?? null,
+        // ⚠️ A URL é DERIVADA do caminho já conferido, nunca aceita do
+        // cliente. Aceitando-a crua, a conferência de posse olhava o
+        // `media_path` e o envio usava a `media_url` — dois campos sem nada
+        // amarrando um ao outro, e o CRM entregaria ao cliente o conteúdo de
+        // qualquer endereço da internet.
+        media_url: anexo
+          ? supabaseAdmin()
+              .storage.from(CHAT_MEDIA_BUCKET)
+              .getPublicUrl(anexo.path).data.publicUrl
+          : null,
         media_path: anexo?.path ?? null,
         media_kind: anexo?.kind ?? null,
         media_filename: anexo?.filename ?? null,

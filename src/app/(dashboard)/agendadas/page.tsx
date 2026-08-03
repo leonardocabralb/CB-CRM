@@ -98,9 +98,15 @@ export default function AgendadasPage() {
   );
 
   // 932: busca própria porque `reply_to_message_id` não tem FK — sem embed
-  // possível. Só das VISÍVEIS: o acervo pode ter centenas, e a pergunta "a
-  // citada ainda existe?" só é acionável no que está na tela.
-  const citadas = useCitadas(visiveis.map((a) => a.reply_to_message_id));
+  // possível.
+  //
+  // ⚠️ Só das que AINDA NÃO SAÍRAM. A linha enviada decide pelo
+  // `citacao_perdida` que já está gravado nela e nunca olha este mapa —
+  // incluí-la só engordava a consulta, e o acervo cresce 50 ids a cada
+  // "carregar mais" até bater no teto do `.in(...)`.
+  const citadas = useCitadas(
+    visiveis.filter((a) => a.status !== 'sent').map((a) => a.reply_to_message_id),
+  );
 
   return (
     <div className="space-y-4">

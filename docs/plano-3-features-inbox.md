@@ -433,11 +433,69 @@ cancelado em seguida (autorizado pelo operador; o disparador só pega hora venci
 Paridade passa (falta nos DOIS), typecheck passa, teste passa — e a tela mostrava
 `Inbox.scheduled.attachmentImage`.
 
+### O que a revisão (fria + morna) pegou depois de pronto
+
+Cinco lentes independentes sobre o diff, cada achado passando por dois céticos com lentes
+diferentes (correção e consequência), mais um crítico de completude. E, em paralelo, teste
+manual em produção — que foi quem pegou o pior.
+
+- ⚠️⚠️ **A GUARDA CENTRAL DA FASE NUNCA DISPARAVA.** `storage.exists()` do
+  `@supabase/storage-js` devolve **`data: false` E `error` preenchido ao mesmo tempo**
+  quando o objeto não existe (o 400/404 do HEAD vira `StorageError` e volta junto com a
+  resposta). O código lia o `error` primeiro e concluía "não deu para conferir, siga como
+  se existisse" — exatamente para o único caso que a função existe para pegar.
+  **Medido em produção:** apaguei o objeto de uma agendada e apertei "Executar agora". A
+  mensagem foi até a Evolution, que recusou com 400, e a linha terminou como
+  `entrega_incerta` — ou seja, afirmando ao operador que a mensagem **pode ter chegado ao
+  cliente**, e escondendo o botão de tentar de novo. O contrário do que a fase existe para
+  fazer. Depois do conserto, mesma linha e mesmo botão: não sai do CRM, motivo em
+  português, "Tentar de novo" disponível.
+  ⚠️ **O teste unitário passava verde o tempo todo**, porque o stub devolvia a forma que eu
+  SUPUS (`{data:false, error:null}`) em vez da real. O stub foi corrigido para imitar a
+  biblioteca, e conferi que os três testes agora FALHAM se a ordem dos `if` for invertida.
+- ⚠️ **A URL do anexo era aceita crua do cliente** e nunca amarrada ao caminho conferido: a
+  posse era checada no `media_path` e o envio usava a `media_url`. Dava para mandar um
+  caminho legítimo desta conta com uma URL apontando para qualquer lugar da internet, e o
+  CRM entregaria aquele conteúdo ao cliente. Agora a rota **deriva** a URL do caminho, com
+  `getPublicUrl`, e o campo saiu do corpo do POST.
+- ⚠️ **Cancelar decidia o destino do arquivo pelo status EM MEMÓRIA.** A lista é uma foto
+  de segundos atrás; entre a carga e o clique o worker pode ter enviado. O teste passou a
+  ser `message_id` — "existe linha em `messages` usando este arquivo?" — e as duas colunas
+  vêm do RETORNO do `delete`, não do objeto da tela.
+- ⚠️ **Sair da tela durante o POST apagava o anexo da agendada recém-criada.** A limpeza de
+  desmonte recolhe o objeto do rascunho, e o rascunho só some depois da resposta. O
+  caminho passa a ser marcado como entregue ANTES do POST (e desmarcado se ele falhar).
+- **`caminhoEhDaConta` deixava passar `..` depois do prefixo** (`account-<id>/../outra/…`),
+  que só seria normalizado depois, na montagem da URL. E não havia teto de tamanho.
+- **`useCitadas` não tinha contador de geração:** duas buscas no ar, a velha chegando
+  depois, e a linha da citação sumia da tela sem voltar.
+- **Agendar um anexo apagava o texto digitado na caixa principal**, que não tem relação com
+  a legenda do rascunho.
+- ⚠️ **Recusa da Evolution (4xx) virava "entrega incerta".** Um 4xx é ela processando o
+  pedido e recusando ANTES de mandar — mime que o WhatsApp não aceita, arquivo grande
+  demais, URL do anexo que ela não conseguiu baixar. Nada saiu, e mesmo assim a tela dizia
+  "pode ter chegado ao cliente" e escondia o "Tentar de novo". Com texto puro era raro; com
+  anexo é o modo de falha comum. `send-message.ts` passou a distinguir
+  `evolution_rejected` de `evolution_error`.
+- **Cancelar linha em `sending` ou com entrega incerta** também não pode apagar o arquivo:
+  na primeira a Evolution ainda está baixando a URL, na segunda pode existir linha em
+  `messages` gravada antes de o processo morrer.
+- **A tela global buscava as citações das ENVIADAS**, que nunca as usam (elas decidem pelo
+  `citacao_perdida` gravado) — a consulta crescia 50 ids a cada "carregar mais".
+
 ### O que fica sabido, e não foi feito
 
 - **Trocar o anexo de uma agendada já criada** não existe: editar é cancelar e reagendar.
 - **Não há limpeza de órfãos no bucket.** Se o cancelamento falhar em apagar o objeto (ele
-  é silencioso, de propósito), o arquivo fica lá.
+  é silencioso, de propósito), o arquivo fica lá. ⚠️ **E apagar uma CONEXÃO apaga o acervo
+  de agendadas daquele canal sem passar pelo bucket** — o anexo de uma `failed` fica
+  público lá para sempre. Levantado pela revisão, não consertado: mexe na rota de exclusão
+  de canal, que é outro assunto.
+- ⚠️ **`maxDuration = 60` versus 90 s de espera da Evolution para mídia.** O `PENDENTE` que
+  o CLAUDE.md já registra deixou de ser teórico com esta fase: um vídeo de 16 MB pode
+  passar do teto declarado. Se ele for aplicado de fato na VPS, o processo morre no meio,
+  a linha fica em `sending` e é recolhida como entrega incerta. A conferência
+  (`docker service inspect`) continua pendente.
 - **Template e mensagem interativa** continuam fora do agendamento.
 
 ---

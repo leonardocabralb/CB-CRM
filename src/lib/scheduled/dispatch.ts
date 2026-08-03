@@ -132,6 +132,13 @@ const ANEXO_SUMIU =
  * marcar essas como incertas é o erro BARATO: o operador perde o botão de um
  * clique e manda de novo pelo campo normal. O erro caro é o contrário — o
  * cliente do escritório recebendo a mesma mensagem duas vezes.
+ *
+ * ⚠️ `evolution_rejected` fica DE FORA, e a 932 é quem criou a distinção: um
+ * 4xx é a Evolution processando o pedido e recusando ANTES de mandar (mime que
+ * o WhatsApp não aceita, arquivo grande demais, URL do anexo que ela não
+ * conseguiu baixar). Nada saiu — e chamar isso de "pode ter chegado" esconde o
+ * botão de tentar de novo sobre uma mensagem que comprovadamente não foi.
+ * Com texto puro isso quase não acontecia; com anexo é o modo de falha comum.
  */
 const CODIGOS_POS_ENTREGA = new Set(['db_error', 'evolution_error']);
 
@@ -341,6 +348,27 @@ async function anexoAindaExiste(
     const { data, error } = await admin.storage
       .from(CHAT_MEDIA_BUCKET)
       .exists(linha.media_path);
+
+    // ⚠️⚠️ A ORDEM DESTES DOIS `if` É A GUARDA INTEIRA, e ela já esteve
+    // invertida — com o `error` primeiro, esta função respondia "existe" para
+    // TODO arquivo sumido, que é o único caso para o qual ela existe.
+    //
+    // O motivo é uma armadilha da própria biblioteca: quando o objeto não
+    // está lá, `exists()` devolve **`data: false` E `error` preenchido, ao
+    // mesmo tempo** — o 400/404 do HEAD vira `StorageError` e ele volta junto
+    // com a resposta. (Ver o `[400, 404].includes(status)` em
+    // `storage-js/src/packages/StorageFileApi.ts`; a própria assinatura de
+    // tipo tem `{ data: boolean; error: StorageError }`.) Só erro de outra
+    // natureza é LANÇADO, e cai no `catch` abaixo.
+    //
+    // Medido em produção antes do conserto: apaguei o objeto de uma agendada,
+    // apertei "Executar agora", e o log disse "não deu para conferir o anexo,
+    // seguindo como se existisse" — a mensagem seguiu para a Evolution, que
+    // recusou com 400, e a linha terminou como `entrega_incerta`, ou seja
+    // afirmando ao operador que a mensagem PODE ter chegado ao cliente. Era o
+    // contrário do que esta fase existe para fazer.
+    if (data === false) return false;
+
     if (error) {
       console.warn(
         '[agendadas] não deu para conferir o anexo, seguindo como se existisse:',
@@ -348,8 +376,10 @@ async function anexoAindaExiste(
       );
       return true;
     }
-    return data !== false;
+    return true;
   } catch (err) {
+    // Aqui sim é "não deu para saber": rede, Storage fora do ar, 5xx. Falso
+    // negativo cancelaria uma mensagem perfeita.
     console.warn('[agendadas] conferência do anexo estourou:', err);
     return true;
   }

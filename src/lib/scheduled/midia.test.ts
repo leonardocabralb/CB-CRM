@@ -86,14 +86,24 @@ describe('caminhoEhDaConta', () => {
     expect(caminhoEhDaConta(`account-${CONTA}/x.png`, '')).toBe(false);
   });
 
-  it('não deixa subir de pasta', () => {
+  it('⚠️ não deixa subir de pasta — nem antes NEM DEPOIS do prefixo', () => {
+    // O segundo caso e o que mordia: `account-<id>/../outra/x.png` passava no
+    // `startsWith` e so era normalizado depois, na montagem da URL. A
+    // conferencia de posse aprovava um caminho que aponta para fora da pasta.
     expect(caminhoEhDaConta(`../account-${CONTA}/x.png`, CONTA)).toBe(false);
+    expect(caminhoEhDaConta(`account-${CONTA}/../account-${OUTRA}/x.png`, CONTA)).toBe(
+      false,
+    );
+    expect(caminhoEhDaConta(`account-${CONTA}/sub/../x.png`, CONTA)).toBe(false);
+  });
+
+  it('recusa caminho absurdamente longo — a coluna é `text` e sem limite', () => {
+    expect(caminhoEhDaConta(`account-${CONTA}/` + 'a'.repeat(500), CONTA)).toBe(false);
   });
 });
 
 describe('lerAnexo', () => {
   const inteiro = {
-    media_url: 'https://x.supabase.co/storage/v1/object/public/chat-media/a.png',
     media_path: `account-${CONTA}/a.png`,
     media_kind: 'image',
   };
@@ -104,24 +114,35 @@ describe('lerAnexo', () => {
 
   it('anexo inteiro vira o objeto pronto', () => {
     expect(lerAnexo(inteiro, CONTA)).toEqual({
-      anexo: {
-        url: inteiro.media_url,
-        path: inteiro.media_path,
-        kind: 'image',
-        filename: null,
-      },
+      anexo: { path: inteiro.media_path, kind: 'image', filename: null },
     });
   });
 
+  it('⚠️ a URL do cliente é IGNORADA — a rota deriva do caminho conferido', () => {
+    // O primeiro desenho conferia a posse do `media_path` e ENVIAVA a
+    // `media_url` crua: dava para mandar um caminho legítimo desta conta com
+    // uma URL apontando para qualquer lugar da internet, e o CRM entregaria
+    // aquele conteúdo ao cliente.
+    const r = lerAnexo(
+      { ...inteiro, media_url: 'https://site-de-terceiro/qualquer.png' } as never,
+      CONTA,
+    );
+    expect(r).toEqual({
+      anexo: { path: inteiro.media_path, kind: 'image', filename: null },
+    });
+    expect(JSON.stringify(r)).not.toContain('site-de-terceiro');
+  });
+
   it('⚠️ meio anexo é RECUSADO, não completado', () => {
-    // URL sem caminho é uma linha que o disparador não consegue conferir e o
-    // cancelamento não consegue limpar — as duas falhas seriam silenciosas.
-    expect(lerAnexo({ media_url: inteiro.media_url }, CONTA)).toMatchObject({
+    // Caminho sem tipo o disparador não sabe enviar; tipo sem caminho ele não
+    // consegue conferir nem o cancelamento limpar — as duas falhas seriam
+    // silenciosas.
+    expect(lerAnexo({ media_path: inteiro.media_path }, CONTA)).toMatchObject({
       erro: expect.stringContaining('incompleto'),
     });
-    expect(
-      lerAnexo({ media_url: inteiro.media_url, media_path: inteiro.media_path }, CONTA),
-    ).toMatchObject({ erro: expect.stringContaining('incompleto') });
+    expect(lerAnexo({ media_kind: 'image' }, CONTA)).toMatchObject({
+      erro: expect.stringContaining('incompleto'),
+    });
   });
 
   it('tipo desconhecido é recusado aqui, não no provedor', () => {
@@ -179,5 +200,14 @@ describe('citacaoAindaVale', () => {
   it('linha que sumiu de vez cai no mesmo lugar', () => {
     expect(citacaoAindaVale(null)).toBe(false);
     expect(citacaoAindaVale(undefined)).toBe(false);
+  });
+});
+
+describe('caminhoEhDaConta — escapes codificados', () => {
+  it('⚠️ recusa `%`, que desfaria a guarda do `..` do outro lado', () => {
+    // O caminho é interpolado CRU na URL do Storage: `%2e%2e` chegaria
+    // decodificado como `..` no servidor. `buildMediaPath` nunca produz `%`.
+    expect(caminhoEhDaConta(`account-${CONTA}/%2e%2e/x.png`, CONTA)).toBe(false);
+    expect(caminhoEhDaConta(`account-${CONTA}/a%20b.png`, CONTA)).toBe(false);
   });
 });

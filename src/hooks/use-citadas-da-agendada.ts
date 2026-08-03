@@ -52,6 +52,16 @@ export function useCitadas(ids: readonly (string | null)[]): Citadas {
     { chave: '', porId: new Map() },
   );
   const vivoRef = useRef(true);
+  /**
+   * Contador de geração — a mesma proteção dos outros hooks deste projeto.
+   *
+   * ⚠️ Duas buscas podem estar no ar ao mesmo tempo (a lista muda, a aba
+   * troca) e elas NÃO voltam em ordem. Sem isto, a resposta VELHA chegando
+   * depois carimbaria o estado com a chave antiga: `prontas` ficaria falso
+   * para a lista de agora, e como o efeito daquela chave já rodou, ninguém
+   * buscaria de novo — a linha da citação sumiria da tela e não voltaria.
+   */
+  const geracaoRef = useRef(0);
 
   // Chave estável: a identidade do array muda a cada render da lista, e sem
   // isto a busca dispararia em laço.
@@ -59,6 +69,7 @@ export function useCitadas(ids: readonly (string | null)[]): Citadas {
 
   useEffect(() => {
     vivoRef.current = true;
+    const minhaGeracao = ++geracaoRef.current;
     const buscar = async () => {
       if (!chave) return;
       const supabase = createClient();
@@ -66,7 +77,7 @@ export function useCitadas(ids: readonly (string | null)[]): Citadas {
         .from('messages')
         .select('id, content_text, content_type, deleted_at')
         .in('id', chave.split(','));
-      if (!vivoRef.current) return;
+      if (!vivoRef.current || geracaoRef.current !== minhaGeracao) return;
       if (error) {
         // ⚠️ Falha NÃO vira "todas as citações sumiram": sem mudar a chave, a
         // tela segue tratando estes ids como não-carregados e não afirma nada.

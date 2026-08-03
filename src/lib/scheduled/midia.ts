@@ -75,13 +75,33 @@ export function tetoDaLegenda(custoDaAssinatura: number): number {
  */
 export function caminhoEhDaConta(path: string, accountId: string): boolean {
   if (!path || !accountId) return false;
+  if (path.length > MAX_CAMINHO) return false;
+  // ⚠️ `..` em QUALQUER posição derruba o caminho, inclusive depois do
+  // prefixo. Sem isto, `account-<id>/../outra-conta/x.png` passava no
+  // `startsWith` e só era normalizado depois, na montagem da URL — a
+  // conferência de posse teria aprovado um caminho que aponta para fora da
+  // pasta da conta.
+  if (path.includes('..')) return false;
+  // ⚠️ `%` também sai: o caminho é interpolado CRU na URL do Storage, então
+  // `%2e%2e` chegaria decodificado do outro lado e desfaria a linha acima.
+  // `buildMediaPath` troca tudo que não é letra, número, `.`, `-` ou `_` por
+  // `_`, então um `%` legítimo não existe.
+  if (path.includes('%')) return false;
   // `startsWith` da pasta INTEIRA, com a barra. Sem ela, a conta
   // `account-11111111…` casaria com `account-11111111…-outra/`.
   return path.startsWith(`account-${accountId}/`);
 }
 
+/**
+ * Teto do caminho do objeto.
+ *
+ * `buildMediaPath` produz ~110 caracteres (`account-<uuid>/<ts>-<40 chars>.<ext>`).
+ * O teto existe porque a coluna é `text` e sem limite: um POST fora da tela
+ * gravaria megabytes numa linha que duas telas renderizam.
+ */
+const MAX_CAMINHO = 400;
+
 export interface AnexoDaAgendada {
-  url: string;
   path: string;
   kind: TipoDeMidia;
   filename: string | null;
@@ -102,10 +122,17 @@ export function temAnexo(a: {
  * que continua sendo o caso comum), o anexo pronto quando está inteiro, ou uma
  * mensagem em português quando está errado — a rota devolve essa mensagem tal
  * como está, porque quem a lê é o operador.
+ *
+ * ⚠️ **A URL NÃO ENTRA POR AQUI, e isso é a correção de um buraco real.** O
+ * primeiro desenho aceitava `media_url` crua do cliente e conferia a posse do
+ * `media_path` — ou seja, checava um campo e ENVIAVA outro. Nada amarrava os
+ * dois: dava para mandar um caminho legítimo desta conta e uma URL apontando
+ * para qualquer lugar da internet, e o CRM entregaria aquele conteúdo ao
+ * cliente. Agora a rota DERIVA a URL do caminho já conferido, com
+ * `getPublicUrl`, e o que o cliente mandar em `media_url` é ignorado.
  */
 export function lerAnexo(
   cru: {
-    media_url?: unknown;
     media_path?: unknown;
     media_kind?: unknown;
     media_filename?: unknown;
@@ -118,17 +145,17 @@ export function lerAnexo(
   // ser `''`, que é falso) e o acesso a `.anexo` depois do `return` não
   // compila.
   | { anexo?: never; erro: string } {
-  const url = typeof cru.media_url === 'string' ? cru.media_url.trim() : '';
   const path = typeof cru.media_path === 'string' ? cru.media_path.trim() : '';
   const kind = cru.media_kind;
 
-  if (!url && !path && !kind) return { anexo: null };
+  if (!path && !kind) return { anexo: null };
 
-  // ⚠️ Meio anexo é recusado em vez de completado. Uma URL sem caminho é uma
-  // linha que o disparador não consegue conferir e o cancelamento não
-  // consegue limpar — e as duas falhas seriam silenciosas.
-  if (!url || !path || !ehTipoDeMidia(kind)) {
-    return { erro: 'Anexo incompleto: faltou o arquivo, o caminho ou o tipo.' };
+  // ⚠️ Meio anexo é recusado em vez de completado. Um caminho sem tipo é uma
+  // linha que o disparador não sabe enviar, e um tipo sem caminho é uma que
+  // ele não consegue conferir nem o cancelamento limpar — as duas falhas
+  // seriam silenciosas.
+  if (!path || !ehTipoDeMidia(kind)) {
+    return { erro: 'Anexo incompleto: faltou o arquivo ou o tipo.' };
   }
   if (!caminhoEhDaConta(path, accountId)) {
     return { erro: 'Este arquivo não pertence a esta conta.' };
@@ -139,7 +166,7 @@ export function lerAnexo(
       ? cru.media_filename.trim().slice(0, 255)
       : null;
 
-  return { anexo: { url, path, kind, filename } };
+  return { anexo: { path, kind, filename } };
 }
 
 /**

@@ -263,9 +263,27 @@ export function MessageComposer({
     draftRef.current = draft;
   }, [draft]);
 
+  /**
+   * Caminhos que JÁ pertencem a outra coisa e não podem mais ser recolhidos.
+   *
+   * ⚠️ Existe por causa do agendamento (932). A limpeza de desmonte acima
+   * apaga o objeto do rascunho — certo para um anexo que ficou na tela e nunca
+   * foi mandado. Mas agendar cria a linha no servidor e o arquivo passa a ser
+   * DELA: se o operador trocar de tela enquanto o POST está no ar (ou no
+   * quadro seguinte ao sucesso, antes de o rascunho sumir), a limpeza apagaria
+   * o arquivo de uma agendada recém-criada — e o defeito só apareceria horas
+   * depois, na hora do envio.
+   *
+   * Marcado ANTES do POST, de propósito: a janela perigosa é justamente a
+   * espera. Se o agendamento falhar, o caminho sai daqui e volta a ser
+   * recolhível.
+   */
+  const entreguesRef = useRef<Set<string>>(new Set());
+
   // Best-effort GC of a staged object the user never sent. Fire-and-forget.
   const removeStaged = useCallback((path: string | undefined) => {
     if (!path) return;
+    if (entreguesRef.current.has(path)) return;
     void deleteAccountMedia(CHAT_MEDIA_BUCKET, path).catch(() => {});
   }, []);
 
@@ -521,8 +539,10 @@ export function MessageComposer({
       if (agendandoRef.current) return false;
       agendandoRef.current = true;
       setAgendando(true);
+      const anexo = extra?.anexo ?? null;
+      // O arquivo passa a ser da agendada a partir daqui — ver `entreguesRef`.
+      if (anexo) entreguesRef.current.add(anexo.path);
       try {
-        const anexo = extra?.anexo ?? null;
         const res = await fetch("/api/cb/scheduled", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -530,7 +550,9 @@ export function MessageComposer({
             conversation_id: conversationId,
             body: texto,
             scheduled_for: data.toISOString(),
-            media_url: anexo?.mediaUrl,
+            // ⚠️ A URL NÃO vai — o servidor a deriva do caminho conferido.
+            // Mandá-la daqui seria oferecer um campo que ele ignora, e a
+            // próxima pessoa a ler isto acharia que ela importa.
             media_path: anexo?.path,
             media_kind: anexo?.kind,
             // Só o documento mostra o nome ao destinatário; mandar sempre
@@ -541,25 +563,35 @@ export function MessageComposer({
         });
         const json = (await res.json()) as { error?: string };
         if (!res.ok) {
+          // Falhou: o arquivo volta a ser do rascunho, e volta a poder ser
+          // recolhido se o operador sair da tela sem tentar de novo.
+          if (anexo) entreguesRef.current.delete(anexo.path);
           toast.error(json.error ?? tAgendadas("scheduleFailed"));
           return false;
         }
         toast.success(tAgendadas("scheduled"));
-        // Limpa os dois: o campo de texto porque a mensagem já está
-        // comprometida (senão o operador manda a mesma coisa agora e de novo
-        // na hora marcada), e a hora porque o próximo envio tem de ser
-        // imediato por padrão — hora esquecida no campo transformaria uma
-        // resposta urgente em algo que sai amanhã.
-        setText("");
+        // ⚠️ O campo de texto só é limpo quando ELE é o que foi agendado.
+        // Agendando um ANEXO, a legenda vem do rascunho e a caixa de mensagem
+        // pode ter outra coisa sendo escrita — apagá-la seria destruir, em
+        // silêncio, texto que ninguém mandou apagar.
+        //
+        // Quando é o texto mesmo, limpar é obrigatório: senão o operador manda
+        // a mesma coisa agora e de novo na hora marcada.
+        if (!anexo) setText("");
+        // A hora sempre sai: o próximo envio tem de ser imediato por padrão —
+        // hora esquecida no campo transformaria uma resposta urgente em algo
+        // que sai amanhã.
         limparAgendamento();
         // ⚠️ A citação sai da tela porque já está GUARDADA na agendada (932):
         // deixá-la ali diria que a próxima coisa digitada também responde
         // àquela bolha.
         onClearReply?.();
-        if (textareaRef.current) textareaRef.current.style.height = "auto";
+        // A altura só volta ao normal quando o campo foi esvaziado.
+        if (!anexo && textareaRef.current) textareaRef.current.style.height = "auto";
         onScheduled?.();
         return true;
       } catch {
+        if (anexo) entreguesRef.current.delete(anexo.path);
         toast.error(tAgendadas("scheduleFailed"));
         return false;
       } finally {

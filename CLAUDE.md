@@ -153,7 +153,8 @@ upstream sobrescrevê-los:
 | Arquivo do upstream | O que é nosso |
 | --- | --- |
 | `src/lib/whatsapp/send-message.ts` | resolve o canal, carimba `channel_id`, devolve `channelId` no resultado, busca o template **filtrando por canal**, e os dois parâmetros da agendada (925): `channelId` (exige aquele canal, **falha fechada**) e `pauseFlows` |
-| `src/components/inbox/message-composer.tsx` | anotação interna (918) e o **agendamento** (925): o relógio abre um seletor, e com hora escolhida o `handleSend` DESVIA antes da janela de desfazer |
+| `src/components/inbox/message-composer.tsx` | anotação interna (918) e o **agendamento** (925): o relógio abre um seletor, e com hora escolhida o `handleSend` DESVIA antes da janela de desfazer. Mais a 932: `sendDraft` desvia igual (anexo agendado), o seletor virou `<SeletorDeHorario>` de módulo — reusado dentro do `MediaDraftPreview`, que SUBSTITUI o compositor — e `entreguesRef` impede a limpeza de desmonte de apagar arquivo que já é de uma agendada |
+| `src/lib/whatsapp/send-message.ts` (2ª linha nossa) | a 932 separou `evolution_rejected` (4xx: a Evolution recusou, nada saiu) de `evolution_error` (tempo esgotado/5xx: pode ter saído). Só o segundo vira `entrega_incerta` |
 | `src/components/inbox/message-thread.tsx` | além do fio intercalado, renderiza a faixa `ScheduledBar` logo acima do compositor e guarda o contador que a liga ao compositor |
 | `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
 | `src/lib/whatsapp/inbound-store.ts` | idem, no lado Evolution |
@@ -215,9 +216,23 @@ entre escrever e enviar.** `src/lib/scheduled/midia.ts` (puro, com teste),
   até o recolhimento de 10 min e sairia como "entrega incerta", que seria
   mentira. E **Storage fora do ar não conta como "sumiu"**: falso negativo
   cancelaria uma mensagem perfeita.
-- ⚠️ **Cancelar apaga o objeto do bucket — MENOS em linha `sent`.** Ali o
-  arquivo deixou de ser da agendada e passou a ser da mensagem que está no fio
-  do cliente.
+- ⚠️⚠️ **`storage.exists()` devolve `data: false` E `error` PREENCHIDO quando o
+  objeto não existe** — os dois juntos, porque o 400/404 do HEAD vira
+  `StorageError` e volta com a resposta. Ler o `error` primeiro faz a função
+  responder "existe" para todo arquivo sumido, que é o único caso para o qual
+  ela serve. Já foi cometido, e só a medição em produção pegou: o teste
+  passava porque o stub imitava a forma SUPOSTA. **Quem usar `exists()` em
+  código novo confere `data === false` antes do `error`.**
+- ⚠️ **A URL do anexo é DERIVADA do caminho (`getPublicUrl`), nunca aceita do
+  cliente.** Aceitando-a, a conferência de posse olha um campo (`media_path`) e
+  o envio usa outro (`media_url`), sem nada amarrando os dois — dá para casar
+  um caminho legítimo da conta com uma URL de fora e o CRM entrega aquilo ao
+  cliente.
+- ⚠️ **Cancelar apaga o objeto do bucket — MENOS quando há `message_id`.** O
+  teste é a coluna, não o status, e as duas vêm do RETORNO do `delete`: a lista
+  da tela é uma foto de segundos atrás, e entre a carga e o clique o worker
+  pode ter enviado. Com `message_id` preenchido o arquivo já é da mensagem que
+  está no fio do cliente.
 - ⚠️ **`reply_to_message_id` não tem FK**, e as três formas foram descartadas
   com motivo na migration (`RESTRICT` faria apagar mensagem falhar, `CASCADE`
   apagaria a agendada, `SET NULL` apagaria a informação de que houve citação).

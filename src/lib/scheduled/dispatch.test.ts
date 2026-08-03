@@ -135,14 +135,23 @@ function makeDb(cfg: Cfg) {
     return chain;
   };
 
+  // ⚠️ ESTE STUB IMITA O `exists()` DE VERDADE, e a diferença já custou caro.
+  // A primeira versão devolvia `{data: false, error: null}` para "sumiu" — a
+  // forma que eu SUPUS —, o teste passava verde, e em produção a guarda nunca
+  // disparava. O `exists()` do `@supabase/storage-js` devolve **`data: false`
+  // com `error` PREENCHIDO** quando o objeto não está lá (o 400/404 do HEAD
+  // vira StorageError e volta junto). Erro de outra natureza é LANÇADO, não
+  // devolvido — por isso `storageFalhou` faz `reject`.
   const storage = {
     from: () => ({
       exists: () =>
-        Promise.resolve(
-          cfg.storageFalhou
-            ? { data: null, error: { message: 'storage fora do ar' } }
-            : { data: cfg.anexoExiste ?? true, error: null },
-        ),
+        cfg.storageFalhou
+          ? Promise.reject(new Error('storage fora do ar'))
+          : Promise.resolve(
+              (cfg.anexoExiste ?? true)
+                ? { data: true, error: null }
+                : { data: false, error: { message: 'Object not found' } },
+            ),
     }),
   };
 
@@ -617,5 +626,40 @@ describe('recusa do núcleo em português', () => {
     await dispararVencidas(db);
 
     expect(desfechos()[0].payload!.error).toBe('Something else entirely');
+  });
+});
+
+describe('recusa determinística vs "não sei" (932)', () => {
+  it('⚠️ 4xx da Evolution NÃO é entrega incerta — nada saiu', async () => {
+    // O 4xx é a Evolution processando o pedido e recusando ANTES de mandar:
+    // mime que o WhatsApp não aceita, arquivo grande demais, a URL do anexo
+    // que ela não conseguiu baixar. Chamar isso de "pode ter chegado" faz a
+    // tela esconder o "Tentar de novo" sobre uma mensagem que
+    // comprovadamente não foi — e com anexo esse é o modo de falha comum.
+    enviar.mockRejectedValue(
+      new SendMessageError(
+        'evolution_rejected',
+        'Evolution API error: Request failed with status code 400',
+        502,
+      ),
+    );
+    const { db, desfechos } = makeDb({ vencidas: [COM_ANEXO] });
+
+    await dispararVencidas(db);
+
+    const gravado = desfechos()[0].payload!;
+    expect(gravado.status).toBe('failed');
+    expect(gravado.entrega_incerta).toBe(false);
+  });
+
+  it('tempo esgotado continua sendo incerto — abortar não cancela o envio', async () => {
+    enviar.mockRejectedValue(
+      new SendMessageError('evolution_error', 'Evolution API error: aborted', 502),
+    );
+    const { db, desfechos } = makeDb({ vencidas: [COM_ANEXO] });
+
+    await dispararVencidas(db);
+
+    expect(desfechos()[0].payload!.entrega_incerta).toBe(true);
   });
 });
