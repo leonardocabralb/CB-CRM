@@ -27,8 +27,12 @@
 | **2** | F1 — assinatura por membro | ✅ **concluída 2026-08-01** — no ar | `923_cb_assinatura` (aplicada) | [#30](https://github.com/leonardocabralb/CB-CRM/pull/30) → `de3ced2` |
 | **3** | F2 fatia A — filtros | ✅ **no ar 2026-08-02** — revisada (fria + morna), mergeada e deployada (`b7eba08`) | `924_cb_favoritar` (aplicada e conferida) | `feat/filtros-do-inbox` (5 commits) |
 | **4** | F4 — mensagem agendada | ✅ **no ar 2026-08-02** — agendador rodando na VPS, disparo real conferido | `925`, `926`, `927_cb_batimento_do_agendador`, `928_cb_quando_reivindicou` | [#31](https://github.com/leonardocabralb/CB-CRM/pull/31) → `13ce47e` |
-| **5** | F2 fatia B — busca no corpo das mensagens | 🔄 em andamento | `929_cb_busca_em_mensagens` (aplicada e conferida) | `feat/busca-nas-mensagens` |
+| **5** | F2 fatia B — busca no corpo das mensagens | ✅ **no ar 2026-08-03** — conferida rodando em `crm.cbadvogados.com` | `929_cb_busca_em_mensagens`, `930_cb_reticencia_no_trecho` (aplicadas e conferidas) | `feat/busca-nas-mensagens` → `915c6ad` |
 | **6** | Revisão final (2 passadas + testes) | ⬜ pendente | — | — |
+
+✅ **As quatro features pedidas em 2026-07-27 estão entregues e no ar.** O que resta na
+Fase 6 é revisão de conjunto, não feature nova. O escopo cortado de propósito, fase a
+fase, está na seção "O que ficou de fora, e por quê" no fim deste documento.
 
 ⚠️ **A Fase 4 só ficou completa fora do repositório.** O agendador é um serviço
 `crm_agendador` no Swarm da VPS, criado à mão a partir da seção 6 de `docs/DEPLOY-VPS.md`;
@@ -1016,15 +1020,19 @@ gatilho de `cb_channels` (901) ordena antes do de `cb_scheduled_messages`
 trocar para `NO ACTION` daria a mesma proteção sem travar a cascata, e fica
 para quando esse caminho existir.
 
-### ⚠️ Antes do merge — o que NÃO está feito
+### ✅ O que estava aberto no merge, e como fechou (2026-08-02)
 
-- **O agendador não existe em produção.** Sem o `docker stack deploy` da seção 6 de
-  `docs/DEPLOY-VPS.md`, a tabela 925 só enche: nada dispara. É a condição do merge.
-- **Conversa de grupo não foi exercitada:** `groups_enabled` está desligado e não há
-  conversa de grupo em produção. O caminho existe (a faixa mora no fio, que é o mesmo para
-  1:1 e grupo), mas não foi visto rodando.
-- **`AUTOMATION_CRON_SECRET` em produção não foi conferido.** O acesso por SSH desta
-  sessão foi bloqueado; o comando de conferência está na seção 6 do doc de deploy.
+- ~~**O agendador não existe em produção.**~~ **Resolvido.** O serviço `crm_agendador`
+  subiu no Swarm pela seção 6 de `docs/DEPLOY-VPS.md`. Prova: o batimento saiu de `epoch`
+  ("nunca rodou") para a hora corrente, e o aviso âmbar sumiu do cabeçalho sozinho.
+- ~~**`AUTOMATION_CRON_SECRET` não foi conferido.**~~ **Resolvido pelo mesmo fato** — se o
+  segredo não batesse, a rota devolveria 401 e o batimento não teria andado.
+- ✅ **Disparo real de ponta a ponta, conferido.** Uma agendada do operador para 23:45 saiu
+  às **23:48:28**, status `sent`, sem erro — dentro do ciclo de 15 min prometido na tela.
+- ⚠️ **Conversa de grupo continua NÃO exercitada:** `groups_enabled` segue desligado e há 0
+  conversas de grupo. Vale para a F4 **e** para a F2 fatia B. O caminho existe nos dois
+  casos (o fio é o mesmo para 1:1 e grupo; a busca olha `messages.conversation_id`, que
+  grupo também tem), mas não foi visto rodando.
 
 ---
 
@@ -1179,6 +1187,38 @@ segundo bloco que faz `SET LOCAL ROLE authenticated` antes de testar.
 - **Normalização que muda o comprimento.** O recorte do trecho usa posição sobre o texto
   normalizado. Em português `unaccent` é 1:1 e há teste disso; num caractere exótico
   (`Æ` → `AE`) a janela sairia deslocada. É cosmético — nunca devolve dado errado.
+
+---
+
+## O que ficou de fora, e por quê
+
+Nenhuma das 4 features ficou pendente. O que segue foi **cortado ou adiado de propósito**,
+com a decisão registrada na fase que o cortou. Está aqui junto para que ninguém precise
+reler o documento inteiro para descobrir o que o sistema **não** faz.
+
+| O que não faz | Decidido em | Por quê |
+| --- | --- | --- |
+| **Saltar para a mensagem** que casou na busca | P2.1 | Devolve conversas. Ancorar e rolar até o trecho no fio é outra feature |
+| **Paginação** da lista de conversas | Fase 5 | A lista carrega tudo (64 hoje, 122 ligando grupos). Vira necessidade real com milhares — e aí precisa ser revista **junto** com o realtime, não sozinha |
+| **Painel de filtros no servidor** (RPC única) | Fase 5 | Exigiria reescrever a camada de dados do inbox sem mudar nada na tela. Medição na revisão prévia da Fase 5 |
+| Busca em mensagem **apagada** e no texto **antes da edição** | P2.7 | Achar por texto retratado é decisão jurídica, não default acidental |
+| Busca nas **anotações internas** (F3) | Fase 5 | Outra tabela; o escopo era o corpo das mensagens. Pendência consciente |
+| **Agendar mídia** | P4.6 | Só texto: mídia dobra a superfície sem dobrar o valor |
+| Agendada com **citação** de mensagem | Fase 4 | A citação some ao agendar, de propósito |
+| **Tela global** de agendadas | Fase 4 | A lista mora na ficha da conversa, e só lá |
+| "Não lido" **por pessoa** | P2.9 | `unread_count` é da conta. Por pessoa seria mudança de schema, não de tela |
+| Anotar contato **sem conversa** | P3.10 | Atinge 1 contato dos 65. A saída seria a ficha criar a conversa sob demanda |
+| **Departamento** como filtro | Fase 3 | Não existe no sistema; era exemplo genérico |
+
+### Pontas soltas fora do plano
+
+- **O agendador não é criado pelo CI.** `crm_agendador` foi criado à mão no Swarm; o
+  workflow só faz `docker service update`, que não cria serviço. Um `docker stack rm`
+  derruba os dois.
+- **"Está tudo bem?" só se responde por ausência.** O indicador de saúde do agendador só
+  aparece quando há problema. Não há onde conferir, sob demanda, que ele está vivo.
+- **Nunca exercitado:** conversa de grupo (`groups_enabled` desligado, 0 conversas) e
+  volume (963 mensagens, 64 conversas).
 
 ---
 
