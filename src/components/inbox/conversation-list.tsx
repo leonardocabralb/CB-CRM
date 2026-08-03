@@ -12,6 +12,11 @@ import {
   mapaDeEtapasPorContato,
   type FiltrosDoInbox,
 } from "@/lib/inbox/filtros";
+import {
+  TERMO_MINIMO,
+  termoBuscavel,
+  type AchadoNoTexto,
+} from "@/lib/inbox/busca-em-mensagens";
 import { InboxFilters } from "@/components/inbox/inbox-filters";
 import { tituloDaConversa } from "@/lib/cb-groups/display";
 import { stripWhatsAppFormat } from "@/lib/inbox/whatsapp-format";
@@ -23,12 +28,13 @@ import type {
   Profile,
   Tag,
 } from "@/types";
-import { Search, Users, Star } from "lucide-react";
+import { Search, Users, Star, MessageSquareText } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useBuscaEmMensagens } from "@/hooks/use-busca-em-mensagens";
 import { useChannels } from "@/hooks/use-channels";
 import { useFavoritas } from "@/hooks/use-favoritas";
 
@@ -255,6 +261,23 @@ export function ConversationList({
     [conversations],
   );
 
+  // A metade da busca que mora no banco: quais conversas têm alguma mensagem
+  // com este texto, no histórico inteiro (RPC 929). A outra metade — nome,
+  // telefone, grupo, última mensagem — continua sendo resolvida em JS.
+  const {
+    achados: achadosNoTexto,
+    buscando: buscandoNoTexto,
+    falhou: falhouBuscaNoTexto,
+  } = useBuscaEmMensagens(search);
+
+  // `aplicarFiltros` só precisa saber QUAIS conversas casaram; o trecho é da
+  // linha. Memoizado pela identidade do mapa, que só muda quando a resposta
+  // muda.
+  const idsAchadosNoTexto = useMemo(
+    () => new Set(achadosNoTexto.keys()),
+    [achadosNoTexto],
+  );
+
   // Todo o recorte mora em `src/lib/inbox/filtros.ts`, testado lá. Aqui só
   // fica o estado e o que a tela precisa para desenhar os rótulos.
   const filtered = useMemo(
@@ -263,8 +286,16 @@ export function ConversationList({
         favoritas,
         etapaPorContato,
         busca: search,
+        achadasNoTexto: idsAchadosNoTexto,
       }),
-    [conversations, filtros, favoritas, etapaPorContato, search],
+    [
+      conversations,
+      filtros,
+      favoritas,
+      etapaPorContato,
+      search,
+      idsAchadosNoTexto,
+    ],
   );
 
   const handleSearchChange = useCallback(
@@ -319,6 +350,26 @@ export function ConversationList({
           />
         </div>
 
+        {/* O que está acontecendo com a metade da busca que mora no banco.
+            ⚠️ As três linhas existem porque, sem elas, os três estados são
+            indistinguíveis de "não existe mensagem com esse texto" — e o
+            operador conclui que a conversa que ele procura não existe. */}
+        {search.trim().length > 0 && !termoBuscavel(search) && (
+          <p className="px-0.5 text-[11px] text-muted-foreground">
+            {t("searchMinChars", { n: TERMO_MINIMO })}
+          </p>
+        )}
+        {falhouBuscaNoTexto && (
+          <p className="px-0.5 text-[11px] text-destructive">
+            {t("searchInMessagesFailed")}
+          </p>
+        )}
+        {buscandoNoTexto && !falhouBuscaNoTexto && (
+          <p className="px-0.5 text-[11px] text-muted-foreground">
+            {t("searchingInMessages")}
+          </p>
+        )}
+
         <InboxFilters
           filtros={filtros}
           onChange={setFiltros}
@@ -363,6 +414,7 @@ export function ConversationList({
                 favorita={favoritas.has(conv.id)}
                 onToggleFavorita={handleToggleFavorita}
                 favoritaHabilitada={favoritasProntas}
+                achado={achadosNoTexto.get(conv.id)}
                 t={t}
               />
             ))}
@@ -381,6 +433,11 @@ interface ConversationItemProps {
   onToggleFavorita: (conversationId: string) => void;
   /** `false` enquanto a sessão/conta não resolveu — ver `useFavoritas`. */
   favoritaHabilitada: boolean;
+  /**
+   * Presente quando esta conversa entrou no resultado pelo CORPO das mensagens
+   * (RPC 929). `undefined` no uso normal, sem busca.
+   */
+  achado?: AchadoNoTexto;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -391,6 +448,7 @@ function ConversationItem({
   favorita,
   onToggleFavorita,
   favoritaHabilitada,
+  achado,
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
@@ -463,9 +521,30 @@ function ConversationItem({
             <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
           </div>
           <div className="mt-0.5 flex items-center justify-between gap-2">
-            <p className="truncate text-xs text-muted-foreground">
-              {stripWhatsAppFormat(conversation.last_message_text) || t("noMessagesYet")}
-            </p>
+            {/* ⚠️ Durante a busca, a prévia de sempre MENTE. Ela mostra a
+                ÚLTIMA mensagem da conversa; se o que casou foi uma mensagem de
+                três meses atrás, a linha aparece no resultado exibindo um texto
+                que não contém o termo — e o operador lê aquilo como defeito da
+                busca. Por isso, quando o achado veio do corpo, a prévia dá
+                lugar ao trecho que casou de verdade. */}
+            {achado ? (
+              <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+                <MessageSquareText className="h-3 w-3 shrink-0 text-primary" />
+                <span className="truncate">
+                  {stripWhatsAppFormat(achado.trecho)}
+                </span>
+                {achado.quantas > 1 && (
+                  <span className="shrink-0 text-[10px] text-muted-foreground/70">
+                    {t("searchHitCount", { n: achado.quantas })}
+                  </span>
+                )}
+              </p>
+            ) : (
+              <p className="truncate text-xs text-muted-foreground">
+                {stripWhatsAppFormat(conversation.last_message_text) ||
+                  t("noMessagesYet")}
+              </p>
+            )}
             <div className="flex shrink-0 items-center gap-1.5">
               {conversation.unread_count > 0 && (
                 <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">

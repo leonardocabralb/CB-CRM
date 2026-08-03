@@ -26,9 +26,14 @@
 | **1** | F3 — anotação interna no fio | ✅ **concluída 2026-08-01** | `918`, `919`, `920`, `921`, `922` (todas aplicadas e conferidas) | `feat/notas-na-conversa` |
 | **2** | F1 — assinatura por membro | ✅ **concluída 2026-08-01** — no ar | `923_cb_assinatura` (aplicada) | [#30](https://github.com/leonardocabralb/CB-CRM/pull/30) → `de3ced2` |
 | **3** | F2 fatia A — filtros | ✅ **no ar 2026-08-02** — revisada (fria + morna), mergeada e deployada (`b7eba08`) | `924_cb_favoritar` (aplicada e conferida) | `feat/filtros-do-inbox` (5 commits) |
-| **4** | F4 — mensagem agendada | 🔄 revisada e verde; **aguardando o agendador** | `925_cb_mensagem_agendada`, `926_cb_entrega_incerta` | [#31](https://github.com/leonardocabralb/CB-CRM/pull/31) |
-| **5** | F2 fatia B — busca full-text | ⬜ pendente | ⚠️ **a `926` foi tomada** pela entrega incerta — conferir na hora |
+| **4** | F4 — mensagem agendada | ✅ **no ar 2026-08-02** — agendador rodando na VPS, disparo real conferido | `925`, `926`, `927_cb_batimento_do_agendador`, `928_cb_quando_reivindicou` | [#31](https://github.com/leonardocabralb/CB-CRM/pull/31) → `13ce47e` |
+| **5** | F2 fatia B — busca no corpo das mensagens | 🔄 em andamento | `929_cb_busca_em_mensagens` (aplicada e conferida) | `feat/busca-nas-mensagens` |
 | **6** | Revisão final (2 passadas + testes) | ⬜ pendente | — | — |
+
+⚠️ **A Fase 4 só ficou completa fora do repositório.** O agendador é um serviço
+`crm_agendador` no Swarm da VPS, criado à mão a partir da seção 6 de `docs/DEPLOY-VPS.md`;
+o CI **não o cria nem o atualiza** (`docker service update` só mexe em serviço que já
+existe). Um `docker stack rm` derruba o agendador junto, e a tela volta a acusar.
 
 ⚠️ **Os números das fases 2–5 andaram um.** A menção precisou de migration própria (a 918
 criou a coluna `mencionados` mas deixou fechado o CHECK de `notifications.type`), e ela
@@ -1023,45 +1028,157 @@ para quando esse caminho existir.
 
 ---
 
-## Fase 5 — F2 fatia B: busca full-text
+## Fase 5 — F2 fatia B: busca no corpo das mensagens
 
-**Escopo:** busca no corpo das mensagens e a migração de **todo** o painel para uma RPC
-única — inclusive os filtros que a Fase 3 entregou no cliente. Etiquetas e etapa **já
-estarão prontas** (P2.11), então aqui elas mudam de lugar, não de comportamento: a
-segunda busca de `deals` da Fase 3 morre, absorvida pelo join da RPC.
+**Escopo entregue:** achar conversa pelo texto de **qualquer** mensagem do histórico, e não
+só da última. Migration `929_cb_busca_em_mensagens` (índice de trigrama + RPC) mais a
+ligação com a caixa de busca que já existe.
 
-**Etapa é a do contato como um todo** (P2.5) — `deals.contact_id`, não
-`deals.conversation_id`.
+### ⚠️ Revisão prévia (passo 1 do fluxo) — feita em 2026-08-02, contra `main` @ `fd4ba4c`
+
+**O achado que muda o desenho: a "RPC única para o painel inteiro" foi CORTADA.** O plano
+mandava mover *todos* os filtros da Fase 3 para o servidor, com paginação. Medindo contra o
+código que a Fase 3 deixou no ar, isso deixou de ser a coisa certa a fazer:
+
+| O que o plano supunha | O que está medido (2026-08-02) |
+| --- | --- |
+| A busca no corpo exige mover o painel para o servidor | Não exige. O painel filtra uma lista **carregada inteira**; a busca no corpo só precisa devolver o **conjunto completo** de conversas que casam, e o cruzamento acontece em JS sobre o mesmo universo |
+| Cliente + servidor no mesmo painel produz resultado inconsistente | Produz **quando o cliente só tem uma página**. Não há página: `conversation-list.tsx` carrega tudo, sem `limit`. Os dois lados enxergam as mesmas 64 conversas |
+| Paginação nasce junto | Paginação é necessidade **futura e independente** desta feature — a lista já carrega tudo desde antes da Fase 3, com ou sem busca |
+| O custo é reorganizar consultas | O custo real é **reescrever a camada de dados do inbox**: as ~600 linhas de realtime de `inbox/page.tsx` presumem "tenho a lista toda". Com filtro no servidor, todo evento de realtime passa a exigir uma pergunta nova ao banco ("esta conversa ainda casa? em que página ela entra?") |
+
+→ **Decisão: a Fase 5 é ADITIVA.** A busca no corpo entra ao lado do que existe, o painel
+continua no cliente, e não há paginação. Reverte a metade "RPC" da **P2.2** e adia a
+**P2.10** — as duas eram respostas do operador, e ficam registradas aqui como revertidas
+por medição, não por conveniência. O que sobrevive da P2.2 é o essencial: **nada de meio a
+meio** — a busca no corpo devolve o conjunto COMPLETO, nunca uma página.
+
+⚠️ **Consequência a vigiar:** o dia em que a lista precisar paginar (milhares de conversas),
+esta decisão precisa ser revista **junto** com o realtime, não isoladamente. Hoje são 64
+conversas e 122 no pior caso (ligando os 58 grupos).
+
+### Ground truth desta fase (medido em 2026-08-02, produção)
+
+| Métrica | Valor | Consequência |
+| --- | --- | --- |
+| Mensagens | **963** | |
+| …com texto e não apagadas | **773** | é o que o índice cobre |
+| Texto somado | **38 KB** | o índice é irrelevante para desempenho hoje; existe pelo crescimento (~150 msg/dia) |
+| Mensagens apagadas | 12 (7 ainda com texto) | ficam **fora** da busca (P2.7) |
+| Mensagens editadas | **0** | `text_before_edit` fica fora pelo mesmo motivo |
+| Maiores que 240 caracteres | 17 | por isso o trecho é uma **janela ao redor do termo**, não o começo do texto |
+| Conversas com alguma mensagem de texto | 57 de 64 | |
+| `statement_timeout` de `authenticated` | **8s** | confirmado |
+| `pg_trgm` / `unaccent` | disponíveis, **não instalados** | a 929 instala as duas em `extensions` |
 
 ### Decisão de arquitetura
 
-RPC `SECURITY INVOKER` que faz join + dedup + ordenação + contagem janelada + LIMIT/OFFSET
-numa query só. **Molde pronto:** `025_filter_contacts_by_tags.sql` — que devolve `contacts`,
-não conversas, então é molde e não peça, mas resolve os dois limites do PostgREST que
-quebram a alternativa client-side (modo "todas" em tags, e `.or()` que não atravessa dois
-embeds).
+**RPC `cb_buscar_conversas_por_texto(p_termo)`**, `SECURITY INVOKER`, uma linha por
+CONVERSA (`DISTINCT ON`), devolvendo também o **trecho** que casou e **quantas** mensagens
+casaram.
 
-⚠️ **`SECURITY INVOKER`, e o par REVOKE completo.** A migration 032 do upstream foi
-correção de CVE justamente por `SECURITY DEFINER` sem checagem de conta. E revogar exige as
-**duas metades** — `FROM PUBLIC, anon, authenticated` — mais a conferência com
-`has_function_privilege`; o erro já foi cometido **três vezes** neste banco.
+⚠️ **Por que RPC e não consulta direta:** `select conversation_id from messages where
+content_text ilike …` devolve uma linha por MENSAGEM, e o PostgREST **corta em 1000 linhas
+sem avisar** — um termo comum devolveria busca incompleta com cara de completa. É o mesmo
+motivo que fez a 025 do upstream virar RPC. O `DISTINCT ON` colapsa no banco.
 
-### Índice — `922_cb_busca_em_mensagens.sql`
+⚠️ **Trigrama, não `tsvector` — e a razão é coerência, não desempenho.** A mesma caixa já
+busca nome e telefone por PEDAÇO (`includes` em JS). Com `tsvector`, o corpo passaria a
+casar por palavra inteira com radicalização: digitar "advog" acharia o contato "Advogados"
+e **não** acharia a mensagem "advogado", no mesmo campo, sem nada na tela explicando qual
+regra está valendo.
 
-`messages` tem nove índices e **todos são btree**; nenhum de texto. `pg_trgm` e `unaccent`
-estão disponíveis e não instalados. A escolha (trigrama vs `tsvector`) muda a forma da
-query **e** do índice — decidir na fase, não depois. Teto real: `authenticated` roda com
-`statement_timeout = 8s`.
+### Migration `929_cb_busca_em_mensagens.sql` ✅ aplicada e conferida
+
+- `pg_trgm` e `unaccent` em `extensions` (onde `pgcrypto` e `uuid-ossp` já moram).
+- `cb_texto_para_busca(text)` — `IMMUTABLE`, minúsculas + sem acento. **Uma função para as
+  duas pontas**: índice e consulta. Expressões diferentes nas duas pontas desligariam o
+  índice em silêncio (resultado certo, só lento).
+- Índice GIN de trigrama, parcial em `deleted_at IS NULL AND content_text IS NOT NULL`.
+  288 kB. **Conferido em uso:** `Bitmap Index Scan on messages_busca_trgm_idx`.
+- Par REVOKE completo + `has_function_privilege`.
+
+⚠️ **Defeito pego antes de aplicar, e vale para toda função `SECURITY INVOKER` nova:** o
+Postgres checa o privilégio de **tudo que roda dentro** como o usuário que chamou. Fechar a
+função auxiliar `cb_texto_para_busca` derrubaria a busca inteira para todo mundo logado —
+e o bloco de conferência, que roda como dono, **passaria verde**. Por isso a 929 tem um
+segundo bloco que faz `SET LOCAL ROLE authenticated` antes de testar.
 
 ### Armadilhas específicas
 
-- **A busca casa em mensagem apagada / texto anterior à edição?** O escritório guardou os
-  dois de propósito. Ver P2.7.
-- **A F1 entra antes** (Fase 2), então o prefixo de assinatura já está dentro de
-  `content_text` e o nome do membro vira termo de busca. Isso é desejável — "achar tudo que
-  a Dra. Ana mandou" passa a funcionar — mas precisa ser dito na tela, senão buscar um nome
-  devolve resultado que o operador não entende.
-- **Paginação** precisa nascer junto com a RPC.
+- **Piso de 3 caracteres, e ele mora no BANCO.** Abaixo disso o trigrama não indexa e o
+  resultado seria "quase tudo". Como a caixa continua achando por nome/telefone com 1 e 2
+  caracteres, a tela **precisa dizer** que a parte do corpo só começa no terceiro — senão a
+  diferença é invisível e parece defeito.
+- **`%` e `_` digitados são texto, não curinga.** Sem escapar, digitar `%` "acharia" a conta
+  inteira. Conferido: devolve zero.
+- **A assinatura (F1) está dentro de `content_text`**, então o nome do membro vira termo de
+  busca — desejável ("achar tudo que a Dra. Ana mandou"), mas precisa ser dito na tela.
+- **A prévia da linha mente durante a busca.** A lista mostra a ÚLTIMA mensagem; se a
+  conversa casou por uma mensagem de três meses atrás, a prévia não contém o termo e o
+  operador lê aquilo como defeito. Por isso a RPC devolve o **trecho**, e a linha o mostra
+  no lugar da prévia enquanto a busca estiver ativa.
+- **Anotação interna (F3) NÃO entra na busca.** `cb_conversation_notes` é outra tabela e o
+  escopo desta fase é o corpo das mensagens. Fica registrado como pendência consciente, não
+  como esquecimento.
+
+### Commits
+
+| # | Commit | Conteúdo |
+| --- | --- | --- |
+| 1 | `feat(busca): indice e RPC…` ✅ `807af40` | migration 929 + a revisão prévia acima |
+| 2 | `feat(inbox): a busca acha pelo texto…` ✅ `aee8b82` | migration 930, hook, funções puras, ligação na lista, i18n, 18 testes |
+| 3 | `fix(busca): achados da revisão` | o que a releitura achou (abaixo) |
+
+### O que a verificação e a releitura acharam
+
+**Conferido rodando, não só lido** (dev local contra a base de produção):
+
+| O que | Resultado |
+| --- | --- |
+| Índice de fato usado | `Bitmap Index Scan on messages_busca_trgm_idx` |
+| Conversa achada SÓ pelo corpo | 64 → 1, com o trecho certo e "3 msgs" |
+| Acento nos dois sentidos | "solucao" e "solução" devolvem o mesmo 1 |
+| Piso de 3 letras | "do" mantém os 23 achados por nome e mostra o aviso |
+| `%` e `_` digitados | zero resultados — são texto, não curinga |
+| Limpar a caixa | volta aos 64 |
+| **RLS** | quem não é membro recebe **0** onde o dono recebe 5 |
+| **Falha da RPC** | `fetch` derrubado só para a busca: aviso vermelho, lista cai para nome/telefone, e recupera sozinha |
+| Console | sem erro |
+
+**Achados corrigidos:**
+
+1. ⚠️ **`SECURITY INVOKER` teria derrubado a busca para todo mundo.** Pego antes de
+   aplicar — ver a nota na 929. Vale para qualquer função nova nesse modo.
+2. **O trecho começava no meio de uma palavra** (`az só um ajuste…`, onde "az" é o fim de
+   "Faz"). Texto truncado sem marca se lê como texto corrompido. → migration **930**.
+3. **Comentário no lugar errado no hook**, descrevendo o descarte por geração ao lado do
+   `setTimeout`.
+
+**Decisões conscientes, não esquecimentos:**
+
+- **A janela do trecho fica velha por ~350 ms** enquanto a próxima resposta não chega
+  (digitando "contrato" → "contratos"). Limpar a cada tecla faria as linhas piscarem para
+  fora e para dentro a cada letra — muito pior de usar. O aviso "buscando" cobre o vão.
+- ✅ **A exigência do plano "o nome do membro vira termo de busca, e isso precisa ser dito
+  na tela" foi cumprida pelo TRECHO, não por um aviso.** A assinatura **está ligada** numa
+  das duas contas e **28 mensagens** já carregam o prefixo `*Nome:*`; buscar "leonardo"
+  devolve 14 conversas, das quais 5 casam só pela assinatura. Como cada linha mostra o
+  pedaço que casou, o operador vê a diferença entre "o cliente escreveu o nome" e "foi a
+  assinatura" sem ler aviso nenhum — e aviso genérico ninguém lê.
+- **Sem tempo-limite no cliente.** Consulta pendurada deixaria "buscando" na tela para
+  sempre; a `statement_timeout` de `authenticated` (8s) já é o teto real.
+
+**O que NÃO foi exercitado:**
+
+- **Conversa de grupo.** `groups_enabled` segue desligado e há 0 conversas de grupo. A
+  mecânica não distingue (a RPC olha `messages.conversation_id`, que grupo também tem),
+  mas não foi visto rodando.
+- **Volume.** 963 mensagens e 38 KB de texto. O índice existe e é usado, mas nada aqui foi
+  medido sob carga.
+- **Normalização que muda o comprimento.** O recorte do trecho usa posição sobre o texto
+  normalizado. Em português `unaccent` é 1:1 e há teste disso; num caractere exótico
+  (`Æ` → `AE`) a janela sairia deslocada. É cosmético — nunca devolve dado errado.
 
 ---
 

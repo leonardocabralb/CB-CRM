@@ -22,6 +22,7 @@
 // um filtro enxergando 64 conversas e outro enxergando a página carregada.
 // ============================================================
 
+import { semAcento } from "@/lib/inbox/busca-em-mensagens";
 import {
   matchesContactFilters,
   matchesTypeFilter,
@@ -138,27 +139,47 @@ export interface ContextoDosFiltros {
   etapaPorContato: Map<string, Set<string>>;
   /** O texto da caixa de busca, cru. */
   busca: string;
+  /**
+   * Conversas que a RPC 929 achou pelo CORPO das mensagens.
+   *
+   * ⚠️ Obrigatório de propósito, mesmo sendo quase sempre vazio. Esquecê-lo não
+   * daria erro nenhum: a busca simplesmente voltaria a olhar só a última
+   * mensagem, silenciosamente, e a feature inteira sumiria sem deixar rastro.
+   * Campo exigido faz o compilador cobrar.
+   */
+  achadasNoTexto: Set<string>;
 }
 
 /**
- * A busca livre: nome, telefone, nome do grupo e texto da última mensagem.
+ * A busca livre que roda AQUI, sobre o que a lista já tem na mão: nome,
+ * telefone, nome do grupo e texto da última mensagem.
  *
  * ⚠️ Os quatro campos são load-bearing e nenhum é decorativo. Sem o do grupo,
  * buscar não acha grupo NENHUM (grupo não tem contato, então nome e telefone
- * ficam vazios); sem o da última mensagem, some a única forma de achar uma
- * conversa pelo que foi dito nela — que é como se procura quando não se lembra
- * do nome de quem falou.
+ * ficam vazios); sem o da última mensagem, a lista pisca — a conversa cujo
+ * último texto casa apareceria só depois da volta do banco, e sumiria de novo
+ * a cada letra digitada.
+ *
+ * ⚠️ Isto NÃO é a busca inteira. O corpo das mensagens é respondido pelo banco
+ * (RPC 929) e entra em `aplicarFiltros` como um OU — ver lá.
+ *
+ * ⚠️ `semAcento` nas DUAS pontas: a busca do banco ignora acento, e sem isto a
+ * mesma palavra digitada acharia a mensagem e não acharia o contato homônimo.
  */
 export function casaComABusca(conversation: Conversation, busca: string): boolean {
-  const q = busca.trim().toLowerCase();
+  const q = semAcento(busca.trim());
   if (!q) return true;
 
-  const nome = conversation.contact?.name?.toLowerCase() ?? "";
-  const telefone = conversation.contact?.phone?.toLowerCase() ?? "";
+  const nome = semAcento(conversation.contact?.name ?? "");
+  const telefone = semAcento(conversation.contact?.phone ?? "");
   const grupo = conversation.group_id
-    ? `${conversation.group?.alias ?? ""} ${conversation.group?.subject ?? ""}`.toLowerCase()
+    ? semAcento(
+        `${conversation.group?.alias ?? ""} ${conversation.group?.subject ?? ""}`,
+      )
     : "";
-  const ultima = stripWhatsAppFormat(conversation.last_message_text).toLowerCase();
+  const ultima = semAcento(
+    stripWhatsAppFormat(conversation.last_message_text),
+  );
 
   return (
     nome.includes(q) ||
@@ -270,6 +291,16 @@ export function aplicarFiltros(
       }
     }
 
-    return casaComABusca(c, ctx.busca);
+    // ⚠️ A busca é a ÚLTIMA pergunta, e é um OU entre duas fontes: o que esta
+    // máquina já sabe (nome, telefone, grupo, última mensagem) e o que o banco
+    // achou dentro do histórico (RPC 929).
+    //
+    // ⚠️ O OU vale só AQUI DENTRO. Uma conversa achada pelo corpo continua
+    // tendo de passar por todos os filtros acima — buscar "contrato" com o
+    // filtro "Favoritas" ligado devolve as favoritas que falam em contrato, não
+    // todas que falam em contrato. Tirar esta linha de dentro do `.filter()`
+    // faria a busca ATROPELAR o painel, que é o oposto do combinado (E lógico
+    // entre todos os filtros).
+    return casaComABusca(c, ctx.busca) || ctx.achadasNoTexto.has(c.id);
   });
 }

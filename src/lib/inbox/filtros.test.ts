@@ -77,6 +77,7 @@ const ctx = (patch: Partial<ContextoDosFiltros> = {}): ContextoDosFiltros => ({
   favoritas: new Set<string>(),
   etapaPorContato: new Map<string, Set<string>>(),
   busca: "",
+  achadasNoTexto: new Set<string>(),
   ...patch,
 });
 
@@ -118,6 +119,23 @@ describe("casaComABusca", () => {
   it("acha pelo texto da última mensagem, sem os marcadores do WhatsApp", () => {
     const c = conversa({ last_message_text: "O *contrato* foi assinado" });
     expect(casaComABusca(c, "contrato foi")).toBe(true);
+  });
+
+  it("⚠️ ignora acento nos DOIS sentidos — a busca do banco também ignora", () => {
+    // Sem isto, a mesma palavra digitada acharia a MENSAGEM que fala em "ação"
+    // (o Postgres aplica `unaccent`) e não acharia o CONTATO chamado "Ação".
+    // Duas regras diferentes no mesmo campo de texto, sem nada explicando qual
+    // vale em cada linha.
+    const c = conversa({ last_message_text: "Petição protocolada" });
+    expect(casaComABusca(c, "peticao")).toBe(true);
+    expect(casaComABusca(c, "PETIÇÃO")).toBe(true);
+
+    const base = conversa();
+    const comAcento = conversa({
+      contact: { ...base.contact!, name: "Conceição Ramos" },
+    });
+    expect(casaComABusca(comAcento, "conceicao")).toBe(true);
+    expect(casaComABusca(comAcento, "Conceição")).toBe(true);
   });
 });
 
@@ -224,6 +242,63 @@ describe("contarFiltrosAtivos", () => {
         etiquetaIds: ["t1", "t2"],
       }),
     ).toBe(3);
+  });
+});
+
+describe("aplicarFiltros — a busca somada com o que o banco achou", () => {
+  /** Conversa cujo texto NÃO casa por nenhum campo que a lista tem na mão. */
+  const antiga = () =>
+    conversa({
+      id: "c-antiga",
+      last_message_text: "combinado, até segunda",
+      contact: { ...conversa().contact!, name: "Bruno Lima", phone: "551188" },
+    });
+
+  it("⚠️ conversa achada SÓ pelo corpo entra no resultado", () => {
+    // É a feature inteira: o termo não está no nome, nem no telefone, nem na
+    // última mensagem — está numa mensagem antiga, que só o banco enxerga.
+    const semAchado = aplicarFiltros([antiga()], FILTROS_VAZIOS, ctx({
+      busca: "usucapião",
+    }));
+    expect(semAchado).toHaveLength(0);
+
+    const comAchado = aplicarFiltros([antiga()], FILTROS_VAZIOS, ctx({
+      busca: "usucapião",
+      achadasNoTexto: new Set(["c-antiga"]),
+    }));
+    expect(comAchado).toHaveLength(1);
+  });
+
+  it("⚠️ o achado do banco NÃO atropela os outros filtros", () => {
+    // O OU vale só entre as duas metades da BUSCA. Uma conversa achada pelo
+    // corpo continua tendo de passar por status, responsável, favoritas etc.
+    // Se a busca ganhasse do painel, ligar "Favoritas" e buscar devolveria
+    // conversas não favoritas — e o operador leria isso como o filtro tendo
+    // sido ignorado.
+    const saida = aplicarFiltros(
+      [antiga()],
+      { ...FILTROS_VAZIOS, favoritas: true },
+      ctx({ busca: "usucapião", achadasNoTexto: new Set(["c-antiga"]) }),
+    );
+    expect(saida).toHaveLength(0);
+  });
+
+  it("achado de OUTRA conversa não arrasta esta", () => {
+    const saida = aplicarFiltros(
+      [antiga()],
+      FILTROS_VAZIOS,
+      ctx({ busca: "usucapião", achadasNoTexto: new Set(["c-outra"]) }),
+    );
+    expect(saida).toHaveLength(0);
+  });
+
+  it("com busca vazia o conjunto do banco é irrelevante", () => {
+    // Enquanto a resposta do banco não chega, `achadasNoTexto` pode estar
+    // vazio; com a caixa vazia a lista tem de continuar inteira.
+    const lista = [conversa(), grupo()];
+    expect(
+      aplicarFiltros(lista, FILTROS_VAZIOS, ctx({ busca: "" })),
+    ).toHaveLength(2);
   });
 });
 
