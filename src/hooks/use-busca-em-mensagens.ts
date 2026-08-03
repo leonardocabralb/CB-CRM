@@ -80,6 +80,11 @@ export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
         { p_termo: busca },
       );
 
+      // ⚠️ Resposta velha para aqui, e de propósito ela NÃO desliga o
+      // `buscando`. Lido isolado isso parece esquecimento; não é: quem manda na
+      // tela é a derivação no fim do arquivo, e a consulta seguinte reescreve o
+      // valor. Desligar aqui apagaria o "buscando" da consulta que ainda está
+      // em curso.
       if (geracao !== geracaoRef.current) return;
 
       if (error) {
@@ -102,12 +107,12 @@ export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
       setBuscando(false);
     };
 
-    // ⚠️ `buscando` pode ficar preso em `true` quando uma resposta é descartada
-    // por geração velha. Não vaza para a tela: o valor devolvido lá embaixo é
-    // derivado, e a próxima consulta o reescreve. Documentado porque, lido
-    // isolado, o `setBuscando(false)` que "falta" no caminho de descarte
-    // parece esquecimento.
-
+    // ⚠️ Entre uma letra e a resposta seguinte, a lista mostra o resultado do
+    // termo ANTERIOR. Digitando "contrato" → "contratos", por ~350 ms
+    // aparecem conversas que casam só com o termo curto. É deliberado: limpar
+    // a cada tecla faria as linhas PISCAREM para fora e para dentro a cada
+    // letra digitada, que é muito pior de usar. O aviso "buscando" é o que
+    // conta ao operador que a lista ainda vai assentar.
     const timer = setTimeout(() => {
       void perguntar();
     }, ESPERA_MS);

@@ -1122,13 +1122,63 @@ segundo bloco que faz `SET LOCAL ROLE authenticated` antes de testar.
   escopo desta fase é o corpo das mensagens. Fica registrado como pendência consciente, não
   como esquecimento.
 
-### Commits previstos
+### Commits
 
 | # | Commit | Conteúdo |
 | --- | --- | --- |
-| 1 | `feat(busca): indice e RPC de busca no corpo das mensagens` | migration 929 + este registro |
-| 2 | `feat(inbox): a busca acha pelo texto de qualquer mensagem` | hook, funções puras, ligação na lista, i18n, testes |
-| 3 | `fix(busca): achados das revisões` | correções das passadas fria e morna |
+| 1 | `feat(busca): indice e RPC…` ✅ `807af40` | migration 929 + a revisão prévia acima |
+| 2 | `feat(inbox): a busca acha pelo texto…` ✅ `aee8b82` | migration 930, hook, funções puras, ligação na lista, i18n, 18 testes |
+| 3 | `fix(busca): achados da revisão` | o que a releitura achou (abaixo) |
+
+### O que a verificação e a releitura acharam
+
+**Conferido rodando, não só lido** (dev local contra a base de produção):
+
+| O que | Resultado |
+| --- | --- |
+| Índice de fato usado | `Bitmap Index Scan on messages_busca_trgm_idx` |
+| Conversa achada SÓ pelo corpo | 64 → 1, com o trecho certo e "3 msgs" |
+| Acento nos dois sentidos | "solucao" e "solução" devolvem o mesmo 1 |
+| Piso de 3 letras | "do" mantém os 23 achados por nome e mostra o aviso |
+| `%` e `_` digitados | zero resultados — são texto, não curinga |
+| Limpar a caixa | volta aos 64 |
+| **RLS** | quem não é membro recebe **0** onde o dono recebe 5 |
+| **Falha da RPC** | `fetch` derrubado só para a busca: aviso vermelho, lista cai para nome/telefone, e recupera sozinha |
+| Console | sem erro |
+
+**Achados corrigidos:**
+
+1. ⚠️ **`SECURITY INVOKER` teria derrubado a busca para todo mundo.** Pego antes de
+   aplicar — ver a nota na 929. Vale para qualquer função nova nesse modo.
+2. **O trecho começava no meio de uma palavra** (`az só um ajuste…`, onde "az" é o fim de
+   "Faz"). Texto truncado sem marca se lê como texto corrompido. → migration **930**.
+3. **Comentário no lugar errado no hook**, descrevendo o descarte por geração ao lado do
+   `setTimeout`.
+
+**Decisões conscientes, não esquecimentos:**
+
+- **A janela do trecho fica velha por ~350 ms** enquanto a próxima resposta não chega
+  (digitando "contrato" → "contratos"). Limpar a cada tecla faria as linhas piscarem para
+  fora e para dentro a cada letra — muito pior de usar. O aviso "buscando" cobre o vão.
+- ✅ **A exigência do plano "o nome do membro vira termo de busca, e isso precisa ser dito
+  na tela" foi cumprida pelo TRECHO, não por um aviso.** A assinatura **está ligada** numa
+  das duas contas e **28 mensagens** já carregam o prefixo `*Nome:*`; buscar "leonardo"
+  devolve 14 conversas, das quais 5 casam só pela assinatura. Como cada linha mostra o
+  pedaço que casou, o operador vê a diferença entre "o cliente escreveu o nome" e "foi a
+  assinatura" sem ler aviso nenhum — e aviso genérico ninguém lê.
+- **Sem tempo-limite no cliente.** Consulta pendurada deixaria "buscando" na tela para
+  sempre; a `statement_timeout` de `authenticated` (8s) já é o teto real.
+
+**O que NÃO foi exercitado:**
+
+- **Conversa de grupo.** `groups_enabled` segue desligado e há 0 conversas de grupo. A
+  mecânica não distingue (a RPC olha `messages.conversation_id`, que grupo também tem),
+  mas não foi visto rodando.
+- **Volume.** 963 mensagens e 38 KB de texto. O índice existe e é usado, mas nada aqui foi
+  medido sob carga.
+- **Normalização que muda o comprimento.** O recorte do trecho usa posição sobre o texto
+  normalizado. Em português `unaccent` é 1:1 e há teste disso; num caractere exótico
+  (`Æ` → `AE`) a janela sairia deslocada. É cosmético — nunca devolve dado errado.
 
 ---
 
