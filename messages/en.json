@@ -221,7 +221,10 @@
       "today": "Today",
       "yesterday": "Yesterday",
       "channelChangedWhileTyping": "Not sent. {channel} messaged you from a different number while you were typing — the thread moved there. Check the channel above and send again.",
-      "channelChangedUnknown": "The customer"
+      "channelChangedUnknown": "The customer",
+      "searchInThread": "“{termo}” — {atual} of {total}",
+      "searchPrevHit": "Previous match",
+      "searchNextHit": "Next match"
     },
     "sessionTimer": {
       "expired": "Expired",

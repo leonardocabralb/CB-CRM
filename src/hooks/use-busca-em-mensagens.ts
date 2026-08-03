@@ -47,12 +47,26 @@ export interface BuscaEmMensagens {
    * resultado legítimo. O operador concluiria que aquela mensagem não existe.
    */
   falhou: boolean;
+  /**
+   * O termo com que os `achados` foram pedidos — já passado pela espera de
+   * 300 ms e pelo piso de 3 caracteres. `""` quando não vale.
+   *
+   * ⚠️ EXISTE PARA O FIO CONCORDAR COM A LISTA. Quem destaca as mensagens
+   * dentro da conversa (`acharNoFio`) precisa usar o MESMO termo que produziu
+   * os achados aqui — usar o texto cru da caixa faria, durante os ~300 ms de
+   * espera, a lista mostrar o resultado de "contrato" e o fio destacar
+   * "contratos", com contadores diferentes lado a lado.
+   *
+   * De quebra, é o que impede o fio inteiro de re-renderizar a cada tecla.
+   */
+  termoAplicado: string;
 }
 
 export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
   const [achados, setAchados] = useState<AchadosNoTexto>(SEM_ACHADOS);
   const [buscando, setBuscando] = useState(false);
   const [falhou, setFalhou] = useState(false);
+  const [termoAplicado, setTermoAplicado] = useState("");
 
   // ⚠️ Contador de geração, e não um sinalizador de "cancelado". Digitar rápido
   // deixa várias consultas no ar ao mesmo tempo, e elas NÃO voltam em ordem: a
@@ -74,6 +88,10 @@ export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
 
     const perguntar = async () => {
       setBuscando(true);
+      // Carimba o termo desta consulta ANTES de ir ao banco: é ele que o fio
+      // usa para destacar, e o destaque deve acompanhar o pedido, não a
+      // resposta — senão a bolha só acende quando o banco responde.
+      setTermoAplicado(busca.trim());
       const supabase = createClient();
       const { data, error } = await supabase.rpc(
         "cb_buscar_conversas_por_texto",
@@ -130,5 +148,6 @@ export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
     achados: vale ? achados : SEM_ACHADOS,
     buscando: vale && buscando,
     falhou: vale && falhou,
+    termoAplicado: vale ? termoAplicado : "",
   };
 }

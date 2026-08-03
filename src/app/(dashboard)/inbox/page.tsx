@@ -62,6 +62,18 @@ function InboxPageInner() {
   const [resyncToken, setResyncToken] = useState(0);
 
   /**
+   * O termo da busca, espelhado da lista para o fio.
+   *
+   * ⚠️ A caixa de busca é da LISTA e continua sendo; esta página só repassa. O
+   * fio precisa do termo para rolar até a mensagem que casou e destacá-la — e
+   * lista e fio são irmãos, então a página é o único caminho entre eles. É o
+   * termo já assentado (300 ms de espera + piso de 3 letras), não o texto cru
+   * da caixa: com o texto cru, esta página re-renderizaria — e o fio junto — a
+   * cada tecla digitada.
+   */
+  const [termoDaBusca, setTermoDaBusca] = useState("");
+
+  /**
    * Whether the desktop contact sidebar (tags / deals / notes) is shown.
    * Defaults to `true` (the historical behaviour) and is restored from
    * localStorage after mount. We deliberately do NOT read localStorage in
@@ -643,6 +655,7 @@ function InboxPageInner() {
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
+            onTermoDeBusca={setTermoDaBusca}
           />
         </div>
 
@@ -677,6 +690,7 @@ function InboxPageInner() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
+            termoDaBusca={termoDaBusca}
           />
         </div>
 
