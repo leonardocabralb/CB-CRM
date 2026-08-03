@@ -1178,7 +1178,9 @@
           "contact_field": "Contact field",
           "message_content": "Message content",
           "time_of_day": "Time of day",
-          "channel": "Channel"
+          "channel": "Channel",
+          "deal_stage": "Deal is in stage",
+          "deal_status": "Deal is"
         },
         "operandLabel": "Operand",
         "placeholderTime": "HH:mm-HH:mm",

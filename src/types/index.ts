@@ -929,7 +929,16 @@ export type ConditionSubject =
   | 'message_content'
   | 'time_of_day'
   /** Compara o canal do disparo com `operand` (um cb_channels.id). */
-  | 'channel';
+  | 'channel'
+  /**
+   * O negócio está NESTA etapa agora? (934) `operand` = `pipeline_stages.id`.
+   *
+   * ⚠️ Lê o banco, não o contexto — é o que permite "depois de X horas, SE
+   * ainda estiver na etapa", o padrão central do funil com espera.
+   */
+  | 'deal_stage'
+  /** O negócio está ganho/perdido/aberto agora? `operand` = o status. */
+  | 'deal_status';
 
 export interface ConditionStepConfig {
   subject: ConditionSubject;

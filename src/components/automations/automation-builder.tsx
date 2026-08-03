@@ -1921,10 +1921,44 @@ function StepEditor({
               {(channels.length >= 2 || cfg.subject === "channel") && (
                 <option value="channel">{t("config.subjects.channel")}</option>
               )}
+              {/* Estado ATUAL do negócio (934). Some sem funil configurado —
+                  perguntar "está na etapa X" numa conta sem etapas ofereceria
+                  um seletor vazio. */}
+              {(stagesPorFunil.length > 0 || cfg.subject === "deal_stage") && (
+                <option value="deal_stage">{t("config.subjects.deal_stage")}</option>
+              )}
+              <option value="deal_status">{t("config.subjects.deal_status")}</option>
             </select>
           </FieldBlock>
           <FieldBlock label={t("config.operandLabel")}>
-            {cfg.subject === "channel" && channels.length > 0 ? (
+            {cfg.subject === "deal_stage" ? (
+              <select
+                value={(cfg.operand as string) ?? ""}
+                onChange={(e) => set({ operand: e.target.value })}
+                className={SELECT_CLASS}
+              >
+                <option value="">{t("stages.pickStage")}</option>
+                {stagesPorFunil.map((g) => (
+                  <optgroup key={g.funil.id} label={g.funil.name}>
+                    {g.etapas.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            ) : cfg.subject === "deal_status" ? (
+              <select
+                value={(cfg.operand as string) ?? "won"}
+                onChange={(e) => set({ operand: e.target.value })}
+                className={SELECT_CLASS}
+              >
+                <option value="won">{t("stages.status_won")}</option>
+                <option value="lost">{t("stages.status_lost")}</option>
+                <option value="open">{t("stages.status_open")}</option>
+              </select>
+            ) : cfg.subject === "channel" && channels.length > 0 ? (
               // Grava em `operand` — é o que o motor lê (cfg.operand ?? cfg.value)
               // e o que `validate.ts` exige não-vazio. Sem `allowAll`: aqui a
               // condição é "veio DESTE número", não um escopo.

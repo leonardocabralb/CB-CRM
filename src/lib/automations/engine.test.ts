@@ -33,6 +33,20 @@ vi.mock("./admin-client", () => {
       // ownership guard / condition read
       return { data: state.owned, error: null };
     }
+    if (table === "conversations") {
+      // O passo assign_conversation escreve aqui, e QUAIS filtros ele usa é
+      // justamente o que se quer observar (a conversa do disparo vs. todas as
+      // do contato).
+      if (type === "update") {
+        state.updateCalls.push({ table, filters: ops.filters });
+        return { data: null, error: null };
+      }
+      return { data: null, error: null };
+    }
+    if (table === "profiles") {
+      // round_robin resolve um membro da conta por aqui.
+      return { data: [{ user_id: "agente-fallback" }], error: null };
+    }
     if (table === "custom_fields") {
       // account-scoped ownership lookup for a custom field definition
       return { data: state.ownedCustomField, error: null };
@@ -339,6 +353,63 @@ describe("send_message — canal de saída por passo", () => {
       { channel_id: "ch-pessoal" },
     );
     expect(args?.preferredChannelId).toBe("ch-pessoal");
+  });
+});
+
+// ------------------------------------------------------------
+// assign_conversation: a conversa DO DISPARO, não todas as do contato.
+//
+// O codigo anterior filtrava so por conta+contato, entao um contato com tres
+// conversas tinha as tres atribuidas de uma vez — inclusive as de outro
+// numero, atropelando o recorte por conexao.
+// ------------------------------------------------------------
+
+describe("assign_conversation — alvo", () => {
+  const passoAtribuir = {
+    id: "s1",
+    automation_id: "a1",
+    step_type: "assign_conversation",
+    position: 0,
+    parent_step_id: null,
+    step_config: { mode: "specific", agent_id: "agente-1" },
+  };
+
+  it("CRÍTICO: mira a conversa do contexto, não o contato inteiro", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passoAtribuir];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: { conversation_id: "conv-do-disparo" },
+    });
+
+    const conversas = h.state.updateCalls.filter((u) => u.table === "conversations");
+    expect(conversas).toHaveLength(1);
+    const colunas = conversas[0].filters.map((f) => f[1]);
+    expect(colunas).toContain("id");
+    expect(colunas).not.toContain("contact_id");
+  });
+
+  it("sem conversa no disparo, cai em todas as do contato (como antes)", async () => {
+    // É o caso da etiqueta adicionada na ficha: não há conversa no contexto,
+    // e não atribuir nada seria pior que atribuir todas.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passoAtribuir];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: {},
+    });
+
+    const conversas = h.state.updateCalls.filter((u) => u.table === "conversations");
+    expect(conversas).toHaveLength(1);
+    expect(conversas[0].filters.map((f) => f[1])).toContain("contact_id");
   });
 });
 

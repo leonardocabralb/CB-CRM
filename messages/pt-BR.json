@@ -1178,7 +1178,9 @@
           "contact_field": "Campo do contato",
           "message_content": "Conteúdo da mensagem",
           "time_of_day": "Hora do dia",
-          "channel": "Canal de entrada"
+          "channel": "Canal de entrada",
+          "deal_stage": "Negócio está na etapa",
+          "deal_status": "Negócio está"
         },
         "operandLabel": "Operando",
         "placeholderTime": "HH:mm-HH:mm",

@@ -576,10 +576,20 @@ verdade, pelo WhatsApp. Todo o resto da corrente está provado.
       confere posse por conta — o motor roda em service-role e ignora RLS.
 - [x] Alvo da ação: `context.deal_id` vence sempre (o evento carrega o card
       exato); sem ele, o negócio ABERTO mais recente (D8).
-- [ ] `create_deal` passa a usar `createDeal`; `assign_conversation` mira a
-      conversa do contexto, não todas as do contato
-- [ ] Condições `deal_stage` e `deal_status` (§4.3 — o padrão "depois de X
-      horas, se ainda está na etapa")
+- [x] `create_deal` passa a usar `createDeal` — o insert direto herdado do
+      upstream não validava posse do funil, pertencimento da etapa nem moeda
+      da conta, e o próprio cabeçalho de `create-deal.ts` avisava disso.
+      Colisão do índice único da 911 deixa de ser erro: vira
+      "deal already existed", que é a regra "um funil por vez" funcionando.
+- [x] `assign_conversation` mira a conversa do CONTEXTO. Antes filtrava só por
+      conta+contato, então um contato com três conversas tinha as três
+      atribuídas — inclusive as de outro número, atropelando o recorte por
+      conexão. Sem conversa no disparo (etiqueta na ficha), cai em todas, como
+      antes. 2 testes.
+- [x] Condições `deal_stage` e `deal_status` — **leem o banco, não o
+      contexto**. É a razão de existirem: depois de um `wait` de 240 horas o
+      `to_stage_id` do contexto é história, e agir por ele mandaria ao cliente
+      a cobrança de uma proposta que ele já aceitou.
 
 **Pronto quando:** arrastar um card no Kanban dispara a automação em segundos
 (não em 15 min); um card criado pelo roteador de entrada dispara "criado na
@@ -698,7 +708,7 @@ de ofício pela implementação e estão sinalizados para veto: a guarda
 |---|---|---|---|---|
 | 0 — investigação | — | ✅ concluída | — | 2026-08-03 |
 | 1 — conexão | 1 (parte A) | 🟡 código pronto, **não commitado** | `feat/automacoes-canal-por-passo` | 2026-08-03 |
-| 2 — funil | 1 (parte B) | 🟡 gatilho pronto; **faltam as ações** | `feat/automacoes-canal-por-passo` | 2026-08-03 |
+| 2 — funil | 1 (parte B) | ✅ concluída | `feat/automacoes-canal-por-passo` | 2026-08-03 |
 | 2b — tempo (lembretes) | 2 | ⬜ não iniciada | — | — |
 | 3 — orquestração | 3 | ⬜ não iniciada | — | — |
 | 4 — mídia | 4 | ⬜ não iniciada | — | — |
@@ -811,8 +821,22 @@ barrada, com o motivo escrito na coluna `erro`:
 *"ciclo detectado (deal:…|stage:… já visitado neste encadeamento)"*.
 Três voltas e parou — não quatro, não infinitas. Tudo apagado depois.
 
-⚠️ **Efeito colateral do teste, ainda não limpo:** as idas e voltas geraram
-**9 linhas `stage_changed` em `cb_lead_events`** no negócio de uma cliente
-real, todas com `origin = 'sistema'`. O card voltou à etapa original, mas o
-histórico dela mostra movimentos que ninguém fez. Pendente de decisão do
-operador — apagar linha de auditoria é destrutivo e não se faz sem aval.
+⚠️ **Efeito colateral do teste:** as idas e voltas geraram **9 linhas
+`stage_changed` em `cb_lead_events`** no negócio de uma cliente real (Erika
+Meireles), em 2026-08-03 entre ~19:58 e ~20:41, todas com `origin = 'sistema'`.
+O card voltou à etapa original. **Decisão do operador (2026-08-03): ficam como
+estão** — nada de auditoria foi apagado. Quem estranhar movimentações de etapa
+nessa ficha naquela noite, é isto.
+**Lição para o próximo teste de funil: usar um negócio descartável, criado
+para o teste e apagado depois — não um card de cliente real.**
+*(Aplicada no teste seguinte, das condições: contato e negócio "ZZ …" criados
+e apagados, sem tocar em cliente nenhum.)*
+
+**2026-08-03 — Fase 2 fechada.** `create_deal` pelo criador central,
+`assign_conversation` mirando a conversa certa, e as condições `deal_stage` /
+`deal_status`. 1304 testes.
+
+O padrão do print do Kommo foi provado inteiro, com dado descartável: gatilho
+"entrou em Qualificado" → condição "está em Qualificado?" (lida do banco) →
+ação "mover para Desqualificado". O log registrou `branch=yes` e
+`move_deal_stage` com sucesso, e o card chegou onde devia. Tudo apagado.
