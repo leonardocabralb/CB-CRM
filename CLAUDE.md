@@ -223,6 +223,34 @@ não dentro da lista. O que morde código novo:
   chegaria a dizer que 55 negócios não existem). Cada busca do painel tem
   sinalizador próprio.
 
+⚠️ **A caixa de busca do inbox tem DUAS metades, e elas se somam com um OU
+(929/930).** Nome, telefone, grupo e última mensagem são resolvidos em JS
+(`casaComABusca`); o corpo do histórico é respondido pelo banco
+(`cb_buscar_conversas_por_texto`), consumido por `use-busca-em-mensagens.ts`.
+O que morde código novo:
+
+- ⚠️ **O OU vale só entre as duas metades da busca, dentro do `.filter()`.**
+  Tirá-lo de lá faria a busca ATROPELAR o painel — buscar "contrato" com
+  "Favoritas" ligado passaria a devolver conversa não favorita.
+- ⚠️ **A busca do banco devolve o conjunto COMPLETO, nunca uma página.** É o
+  que permite os filtros continuarem no cliente sem resultado inconsistente. Se
+  um dia a lista paginar, isto tem de ser revisto **junto** com o realtime.
+- ⚠️ **Consulta direta a `messages` para buscar texto é armadilha:** uma linha
+  por MENSAGEM estoura o teto de 1000 linhas do PostgREST **sem avisar**, e a
+  busca fica incompleta com cara de completa. A RPC colapsa com `DISTINCT ON`
+  antes de sair do banco.
+- **Uma função para as duas pontas** (`cb_texto_para_busca`, minúsculas + sem
+  acento). Índice e consulta com expressões diferentes desligam o índice em
+  silêncio — resultado certo, só lento.
+- **`%` e `_` digitados são escapados** no SQL. Sem isso, `%` "acha" a conta
+  inteira.
+- **Piso de 3 caracteres, e ele mora no BANCO.** Abaixo disso a caixa ainda
+  acha por nome/telefone, então a tela **precisa dizer** que só a parte do corpo
+  ficou de fora.
+- **Só o texto vigente:** `deleted_at IS NULL`, e `text_before_edit` fora.
+- **A prévia da linha MENTE durante a busca** (mostra a última mensagem). Por
+  isso a RPC devolve o trecho que casou, e a linha o exibe no lugar da prévia.
+
 ⚠️ **UI de canal: peças próprias, prefira reusá-las.** `src/hooks/use-channels.ts`
 (uma busca por montagem, falha silenciosa), `src/lib/cb-channels/display.ts`
 (funções puras, com teste) e `src/components/channels/` (`ChannelBadge`,
@@ -420,6 +448,30 @@ SELECT has_function_privilege('anon', 'minha_funcao(uuid)', 'EXECUTE');  -- tem 
   `CREATE TRIGGER`, não a cada disparo. Verificado com escritas reais.
 - `service_role` tem concessão explícita e não é atingido — o caminho
   server-side continua funcionando.
+- ⚠️ **`SECURITY INVOKER` checa o privilégio de TUDO que roda dentro**, como o
+  usuário que chamou. Fechar uma função auxiliar derruba a função principal
+  para todo mundo logado — e o bloco de conferência da migration, que roda como
+  DONO, **passa verde**. Quem escrever função `SECURITY INVOKER` nova precisa
+  testar trocando de papel:
+  ```sql
+  DO $$ BEGIN
+    SET LOCAL ROLE authenticated;
+    PERFORM 1 FROM public.minha_funcao('x');
+    RESET ROLE;
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE EXCEPTION 'authenticated não consegue executar: %', SQLERRM;
+  END $$;
+  ```
+  Pego antes de aplicar na 929; sem esse bloco teria ido para produção verde.
+
+⚠️ **Tabela `cb_*` nova nasce SEM nada para `anon` — e as antigas foram
+fechadas na 931.** `REVOKE ALL ON TABLE ... FROM anon`, sempre. Não é teoria: a
+901, a 906 e a 912 deixaram concessão aberta (a `cb_channels` chegava a dar
+INSERT/UPDATE/DELETE ao `anon`), e a única coisa entre um pedido anônimo e o
+dado era a RLS. Nunca houve vazamento — medido com `SET ROLE anon`, dava 0
+linhas em todas —, mas era **uma** barreira onde as tabelas novas têm duas.
+Confira as duas metades, como no caso das funções: que o `anon` perdeu, **e**
+que `authenticated`/`service_role` não perderam.
 
 ⚠️ **A 903 removeu dois índices únicos.** `message_templates(user_id, name,
 language)` e `ai_configs(account_id)` viraram pares de índices **parciais**
@@ -474,7 +526,9 @@ mordem de novo em qualquer código novo:
   `921_cb_anotacao_apagada_em_tempo_real`, `922_cb_aposenta_contact_notes`,
   `923_cb_assinatura`, `924_cb_favoritar`, `925_cb_mensagem_agendada`,
   `926_cb_entrega_incerta`, `927_cb_batimento_do_agendador` e
-  `928_cb_quando_reivindicou`.
+  `928_cb_quando_reivindicou`. Depois disso (conferido em 2026-08-03):
+  `929_cb_busca_em_mensagens`, `930_cb_reticencia_no_trecho` e
+  `931_cb_fecha_anon_nas_tabelas_antigas`.
   ⚠️ A `906` foi aplicada FORA DE ORDEM (antes da 907), e o histórico do
   Supabase a registra com o nome antigo `904_cb_grupos` — ela nasceu numerada
   como 904, colidiu com `904_cb_mensagem_do_aparelho` e o ARQUIVO foi

@@ -28,7 +28,7 @@
 | **3** | F2 fatia A — filtros | ✅ **no ar 2026-08-02** — revisada (fria + morna), mergeada e deployada (`b7eba08`) | `924_cb_favoritar` (aplicada e conferida) | `feat/filtros-do-inbox` (5 commits) |
 | **4** | F4 — mensagem agendada | ✅ **no ar 2026-08-02** — agendador rodando na VPS, disparo real conferido | `925`, `926`, `927_cb_batimento_do_agendador`, `928_cb_quando_reivindicou` | [#31](https://github.com/leonardocabralb/CB-CRM/pull/31) → `13ce47e` |
 | **5** | F2 fatia B — busca no corpo das mensagens | ✅ **no ar 2026-08-03** — conferida rodando em `crm.cbadvogados.com` | `929_cb_busca_em_mensagens`, `930_cb_reticencia_no_trecho` (aplicadas e conferidas) | `feat/busca-nas-mensagens` → `915c6ad` |
-| **6** | Revisão final (2 passadas + testes) | ⬜ pendente | — | — |
+| **6** | Revisão final (2 passadas + testes) | ✅ **2026-08-03** — achou o `anon` aberto em 4 tabelas | `931_cb_fecha_anon_nas_tabelas_antigas` | — |
 
 ✅ **As quatro features pedidas em 2026-07-27 estão entregues e no ar.** O que resta na
 Fase 6 é revisão de conjunto, não feature nova. O escopo cortado de propósito, fase a
@@ -1222,18 +1222,65 @@ reler o documento inteiro para descobrir o que o sistema **não** faz.
 
 ---
 
-## Fase 6 — Revisão final
+## Fase 6 — Revisão final ✅ (2026-08-03)
 
-Duas passadas sobre o conjunto das fases entregues, procurando o que escapou fase a fase:
+Diff acumulado revisado: `efdfbdf..main` — **81 arquivos, +11.474 / −571**.
 
-1. **Passada fria de conjunto** — revisores sem o plano, sobre o diff acumulado
-   `main...` da última fase.
-2. **Passada morna de conjunto** — com este documento em mãos: cada decisão registrada
-   aqui foi mesmo implementada assim? Cada armadilha listada foi respeitada?
-3. **Testes:** suíte completa + teste manual do fluxo ponta a ponta, incluindo o caso que
-   nenhuma fase exercita sozinha — **uma conversa de grupo**, com `groups_enabled` ligado
-   numa conta de teste.
-4. Atualizar o `CLAUDE.md` com o que virou regra permanente.
+⚠️ **Método, dito em voz alta:** as passadas foram feitas **pela própria sessão**, não por
+revisores independentes como o fluxo prevê. O foco escolhido foi o que passada isolada
+**não pode** achar: as **costuras entre as fases**. Cada fase já teve revisão fria e morna
+própria; o que sobra para o conjunto é o que só existe no encontro delas.
+
+### Costuras conferidas
+
+| Costura | Veredito |
+| --- | --- |
+| **F1 assinatura × F4 agendada** — quem assina uma mensagem que sai sozinha às 3h? | ✅ `senderUserId: linha.created_by`; se a pessoa saiu da conta, cai no nome do escritório (P1.5b). Já estava pensado |
+| **F1 × F4, teto de caracteres** | ⚠️ **Folga não declarada.** Agendada aceita 4000 caracteres e o teto do WhatsApp é 4096; a assinatura entra só na hora do envio. Estoura com nome > ~90 caracteres. Maior nome real hoje: **24**. Registrado, não consertado — consertar exigiria validar no agendamento um dado que só existe no envio |
+| **F1 × F2B busca** | ✅ Resolvido pelo trecho, não por aviso (ver Fase 5) |
+| **F3 anotação × F2B busca** | ✅ Fora do escopo, e registrado como tal |
+| **F3 × prévia/lista** | ✅ Anotação não mexe na lista (P3.8) |
+| **F2A filtros × F2B busca** | ✅ OU só entre as metades da busca; testado |
+| **F4 × exclusão de canal** | ✅ FK RESTRICT + guarda no DELETE |
+| **Grupo × motores** | ✅ O teste estrutural que lê o próprio fonte continua lá |
+| **Realtime** | ✅ `cb_channels` e `cb_conversation_notes` na publication (P3.9); favoritas fora de propósito — daí o `resyncToken` |
+| **Índice novo × webhook** | ✅ GIN com `fastupdate`; 38 KB indexados. Sem efeito mensurável na entrada |
+
+### ⚠️ O achado da passada: `anon` tinha acesso a quatro tabelas nossas
+
+Invisível fase a fase, óbvio olhando as oito tabelas `cb_*` lado a lado:
+
+| Tabela | anon tinha | Fase |
+| --- | --- | --- |
+| `cb_channels` | SELECT INSERT UPDATE DELETE | 901 |
+| `cb_groups` | SELECT INSERT UPDATE DELETE | 906 |
+| `cb_message_media_ref` | SELECT INSERT UPDATE DELETE | 906 |
+| `cb_lead_events` | SELECT | 912 |
+
+As quatro tabelas das fases novas (918, 924, 925, 927) já revogavam.
+
+**Não era vazamento** — medido com `SET ROLE anon`: 0 linhas em todas, porque toda política
+passa por `is_account_member(account_id)` e `cb_message_media_ref` nem política tem. Era
+**uma** barreira onde as novas têm duas, na tabela que guarda a configuração dos números
+de WhatsApp do escritório. → migration **931**, conferida nas duas metades (o `anon`
+perdeu; `authenticated` e `service_role` não perderam) e com a produção respondendo 64
+conversas depois.
+
+### Testes
+
+- Suíte completa: **1190 testes, 102 arquivos, verdes**. `typecheck` e `lint` limpos.
+- `get_advisors(security)`: **nenhuma função das 4 fases aparece**. Os avisos são todos do
+  upstream (`is_account_member`, `peek_invitation`, `redeem_invitation`, …) e o de senha
+  vazada do Auth. Pré-existentes, fora do escopo destas fases.
+- ⚠️ **Conversa de grupo continua NÃO exercitada.** Ligar `groups_enabled` despeja 58
+  grupos no inbox de produção — é decisão do operador, não da revisão.
+
+### O que esta revisão NÃO fez
+
+- Não releu linha a linha as 11.474 linhas do diff. Focou nas costuras, porque cada fase
+  já teve suas duas passadas.
+- Não teve revisor independente. Se o operador quiser a passada fria de verdade, ela ainda
+  cabe — e o diff está congelado em `efdfbdf..main`.
 
 ---
 
