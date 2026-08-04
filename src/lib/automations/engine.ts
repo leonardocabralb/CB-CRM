@@ -23,11 +23,16 @@ import type {
   AutomationRefStepConfig,
   RunFlowStepConfig,
   SetAiStepConfig,
+  SendMediaStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
+// ⚠️ Direto dos FLUXOS, como `engineSendInteractive*` já faz em
+// `automations/meta-send.ts`. Não há ciclo: `flows/meta-send` só depende de
+// `whatsapp/*` e `cb-channels/*`, nunca das automações.
+import { engineSendMedia } from '@/lib/flows/meta-send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 import { createDeal } from '@/lib/deals/create-deal'
@@ -922,6 +927,35 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (upErr) throw new Error(`set_ai falhou: ${upErr.message}`)
 
       return cfg.enabled ? 'IA ligada na conversa' : 'IA desligada na conversa'
+    }
+
+    case 'send_media': {
+      const cfg = step.step_config as SendMediaStepConfig
+      if (!args.contactId) throw new Error('send_media precisa de um contato')
+      if (!cfg.url) throw new Error('send_media precisa de um arquivo')
+
+      // ⚠️ ÁUDIO NÃO LEVA LEGENDA, e o dano é silencioso: a nota de voz sai por
+      // `sendWhatsAppAudio`, que não tem campo de legenda. O texto seria
+      // gravado em `messages.content_text`, apareceria no fio para a equipe e
+      // NÃO viajaria ao cliente — a equipe leria uma conversa que o cliente
+      // nunca teve. Mesma guarda da 932, aqui em terceiro lugar (banco, tela,
+      // motor), porque a config pode ter sido gravada antes desta regra.
+      const legenda = cfg.kind === 'audio' ? undefined : interpolate(cfg.caption ?? '', args) || undefined
+
+      const conversationId = await resolveConversationId(args)
+      const { whatsapp_message_id } = await engineSendMedia({
+        accountId: args.automation.account_id,
+        userId: args.automation.user_id,
+        conversationId,
+        contactId: args.contactId,
+        kind: cfg.kind,
+        link: cfg.url,
+        caption: legenda,
+        // Só documento; o WhatsApp ignora nos demais.
+        filename: cfg.kind === 'document' ? cfg.filename : undefined,
+        preferredChannelId: stepChannel(cfg, args),
+      })
+      return `${cfg.kind} enviado (${whatsapp_message_id})`
     }
 
     case 'send_webhook': {

@@ -40,6 +40,8 @@ import {
   Bot,
   BotOff,
   Sparkles,
+  Paperclip,
+  Upload,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -75,6 +77,11 @@ import type { CbChannel } from "@/lib/cb-channels/repo"
 import { ChannelMultiSelect, ChannelSelect } from "@/components/channels/channel-select"
 import { validateChannelScopeForActivation } from "@/lib/automations/validate"
 import { TIPO_DATA } from "@/lib/contacts/campo-data"
+import { uploadAccountMedia, MEDIA_MAX_BYTES_BY_KIND } from "@/lib/storage/upload-media"
+import { CHAT_MEDIA_BUCKET } from "@/lib/storage/buckets"
+
+/** Os quatro tipos que o passo `send_media` oferece. */
+type MediaKindUI = "image" | "video" | "document" | "audio"
 
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
@@ -141,6 +148,7 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   run_flow: { label: "run_flow", icon: Bot, border: "border-l-violet-500" },
   stop_flow: { label: "stop_flow", icon: BotOff, border: "border-l-violet-500" },
   set_ai: { label: "set_ai", icon: Sparkles, border: "border-l-violet-500" },
+  send_media: { label: "send_media", icon: Paperclip, border: "border-l-primary" },
   wait: { label: "wait", icon: Hourglass, border: "border-l-border" },
   condition: { label: "condition", icon: GitBranch, border: "border-l-amber-500" },
   send_webhook: { label: "send_webhook", icon: Webhook, border: "border-l-primary" },
@@ -152,6 +160,7 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "send_buttons",
   "send_list",
   "send_template",
+  "send_media",
   "add_tag",
   "remove_tag",
   "assign_conversation",
@@ -250,6 +259,10 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return { automation_id: "" }
     case "run_flow":
       return { flow_id: "" }
+    // Imagem por padrão: é o anexo mais comum e o único cujo preenchimento
+    // errado não tem dano silencioso (áudio com legenda tem — ver a config).
+    case "send_media":
+      return { kind: "image", url: "" }
     case "stop_flow":
       return {}
     // Nasce LIGANDO a IA: é o caso que a maioria monta ("cliente respondeu ao
@@ -1852,6 +1865,132 @@ function canalDoPasso(cfg: Record<string, unknown>): string | null {
 //      Sem o aviso, o passo pareceria montado e certo, e não faria nada.
 // ------------------------------------------------------------
 
+/**
+ * Editor do passo "Enviar arquivo".
+ *
+ * O arquivo sobe UMA vez, aqui, para o bucket `chat-media`, e a URL pública
+ * fica gravada na config. **Não há coleta de lixo** — o mesmo objeto serve
+ * toda execução da automação, para sempre; apagá-lo no envio (como a mensagem
+ * agendada faz) quebraria a automação a partir do segundo disparo.
+ */
+function EditorDeMidia({
+  cfg,
+  set,
+  t,
+}: {
+  cfg: Record<string, unknown>
+  set: (patch: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const [enviando, setEnviando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const kind = (cfg.kind as MediaKindUI) ?? "image"
+  const url = (cfg.url as string) ?? ""
+
+  async function aoEscolher(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = "" // permite reescolher o MESMO arquivo depois de um erro
+    if (!file) return
+    const max = MEDIA_MAX_BYTES_BY_KIND[kind]
+    if (file.size > max) {
+      setErro(t("midia.grandeDemais", { mb: Math.floor(max / 1024 / 1024) }))
+      return
+    }
+    setErro(null)
+    setEnviando(true)
+    try {
+      const { publicUrl } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file)
+      // O nome só é usado em documento, mas guardar sempre custa nada e evita
+      // perder a informação se o operador trocar o tipo depois.
+      set({ url: publicUrl, filename: file.name })
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : String(err))
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <>
+      <FieldBlock label={t("midia.tipoLabel")}>
+        <select
+          value={kind}
+          onChange={(e) => {
+            const novo = e.target.value as MediaKindUI
+            // ⚠️ Trocar para ÁUDIO limpa a legenda. Sem isso ela ficaria
+            // gravada na config, invisível na tela (o campo some), e a
+            // validação recusaria a ativação sem o operador ver o porquê.
+            set(novo === "audio" ? { kind: novo, caption: "" } : { kind: novo })
+          }}
+          className={SELECT_CLASS}
+        >
+          <option value="image">{t("midia.image")}</option>
+          <option value="video">{t("midia.video")}</option>
+          <option value="document">{t("midia.document")}</option>
+          <option value="audio">{t("midia.audio")}</option>
+        </select>
+      </FieldBlock>
+
+      <FieldBlock label={t("midia.arquivoLabel")}>
+        <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-muted px-3 py-2 text-sm text-muted-foreground hover:border-primary">
+          {enviando ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Upload className="h-4 w-4" />
+          )}
+          <span className="truncate">
+            {enviando
+              ? t("midia.enviando")
+              : url
+                ? ((cfg.filename as string) || url.split("/").pop() || url)
+                : t("midia.escolher")}
+          </span>
+          <input type="file" className="hidden" onChange={aoEscolher} disabled={enviando} />
+        </label>
+        {erro && <p className="mt-1 text-[11px] text-destructive">{erro}</p>}
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 block truncate text-[11px] text-primary hover:underline"
+          >
+            {t("midia.abrir")}
+          </a>
+        )}
+      </FieldBlock>
+
+      {kind === "document" && (
+        <FieldBlock label={t("midia.nomeLabel")}>
+          <Input
+            value={(cfg.filename as string) ?? ""}
+            onChange={(e) => set({ filename: e.target.value })}
+            className="bg-muted text-foreground"
+          />
+          <p className="mt-1 text-[11px] text-muted-foreground">{t("midia.nomeHelp")}</p>
+        </FieldBlock>
+      )}
+
+      {/* ⚠️ ÁUDIO NÃO TEM LEGENDA. O campo não fica desabilitado — ele SOME, e
+          no lugar entra a explicação. Um campo inerte convida a digitar; o
+          texto digitado seria gravado, apareceria no fio para a equipe e não
+          viajaria ao cliente. */}
+      {kind === "audio" ? (
+        <p className="text-[11px] text-muted-foreground">{t("midia.audioSemLegenda")}</p>
+      ) : (
+        <FieldBlock label={t("midia.legendaLabel")}>
+          <Textarea
+            value={(cfg.caption as string) ?? ""}
+            onChange={(e) => set({ caption: e.target.value })}
+            rows={2}
+            className="bg-muted text-foreground"
+          />
+        </FieldBlock>
+      )}
+    </>
+  )
+}
+
 function SeletorDeAutomacao({
   value,
   onChange,
@@ -2187,6 +2326,8 @@ function StepEditor({
           {t("orquestracao.stopFlowHelp")}
         </p>
       )
+    case "send_media":
+      return <EditorDeMidia cfg={cfg} set={set} t={t} />
     case "set_ai":
       return (
         <FieldBlock label={t("orquestracao.aiLabel")}>

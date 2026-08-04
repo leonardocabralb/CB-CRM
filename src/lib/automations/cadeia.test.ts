@@ -168,3 +168,74 @@ describe('validateSteps — orquestração', () => {
     ).toHaveLength(0);
   });
 });
+
+// ------------------------------------------------------------
+// Passo `send_media` (Fase 4).
+//
+// ⚠️ A regra que MAIS importa aqui é a do áudio, e o motivo é o dano ser
+// silencioso: a nota de voz sai por `sendWhatsAppAudio`, que não tem campo de
+// legenda. Um texto ali seria gravado em `messages.content_text`, apareceria
+// no fio para a EQUIPE e nunca chegaria ao cliente — a equipe leria uma
+// conversa que o cliente não teve.
+// ------------------------------------------------------------
+
+describe('validateStepsForActivation — send_media', () => {
+  it('sem arquivo é recusado', () => {
+    const issues = validateStepsForActivation([
+      { step_type: 'send_media', step_config: { kind: 'image' } },
+    ]);
+    expect(issues.map((i) => i.message).join(' ')).toContain('file is required');
+  });
+
+  it('tipo inválido é recusado', () => {
+    const issues = validateStepsForActivation([
+      { step_type: 'send_media', step_config: { kind: 'sticker', url: 'https://x/y.webp' } },
+    ]);
+    expect(issues.map((i) => i.message).join(' ')).toContain('kind must be');
+  });
+
+  it('CRÍTICO: áudio COM legenda é recusado', () => {
+    const issues = validateStepsForActivation([
+      {
+        step_type: 'send_media',
+        step_config: { kind: 'audio', url: 'https://x/y.ogg', caption: 'segue o áudio' },
+      },
+    ]);
+    expect(issues.map((i) => i.message).join(' ')).toContain('audio has no caption');
+  });
+
+  it('áudio SEM legenda passa', () => {
+    expect(
+      validateStepsForActivation([
+        { step_type: 'send_media', step_config: { kind: 'audio', url: 'https://x/y.ogg' } },
+      ]),
+    ).toHaveLength(0);
+    // Legenda vazia também: é o que a tela grava ao trocar o tipo para áudio.
+    expect(
+      validateStepsForActivation([
+        { step_type: 'send_media', step_config: { kind: 'audio', url: 'https://x/y.ogg', caption: '' } },
+      ]),
+    ).toHaveLength(0);
+  });
+
+  it('legenda acima de 1024 é recusada', () => {
+    const issues = validateStepsForActivation([
+      {
+        step_type: 'send_media',
+        step_config: { kind: 'image', url: 'https://x/y.png', caption: 'a'.repeat(1025) },
+      },
+    ]);
+    expect(issues.map((i) => i.message).join(' ')).toContain('1024');
+  });
+
+  it('imagem com legenda passa', () => {
+    expect(
+      validateStepsForActivation([
+        {
+          step_type: 'send_media',
+          step_config: { kind: 'image', url: 'https://x/y.png', caption: 'segue a proposta' },
+        },
+      ]),
+    ).toHaveLength(0);
+  });
+});

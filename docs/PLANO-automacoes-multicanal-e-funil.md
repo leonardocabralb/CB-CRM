@@ -686,11 +686,11 @@ apagado depois (0 campos personalizados, 69 contatos e 59 negócios reais):
       contador** (D10); slot `agent_id` reservado (D7)
 - [x] Guarda anti-ciclo unificada (D13) para automação→automação→fluxo
 
-### Fase 4 — Mídia — **PR 4**
+### Fase 4 — Mídia — **PR 4** ✅
 
-- [ ] Passo `send_media` (imagem, vídeo, documento, áudio) com upload no builder
+- [x] Passo `send_media` (imagem, vídeo, documento, áudio) com upload no builder
       (bucket `chat-media`; URL pública aceita — D12)
-- [ ] Corrigir `media_url` não gravado por `engineSendMedia` (defeito herdado dos fluxos)
+- [x] Corrigir `media_url` não gravado por `engineSendMedia` (defeito herdado dos fluxos)
 
 ### Fase 5 — Builder por etapa, estilo Kommo — **PR 5**
 
@@ -794,7 +794,7 @@ de ofício pela implementação e estão sinalizados para veto: a guarda
 | 2 — funil | 1 (parte B) | ✅ concluída, **em produção** | `main` | 2026-08-04 |
 | 2b — tempo (lembretes) | 2 | ✅ concluída, **em produção** | `main` | 2026-08-04 |
 | 3 — orquestração | 3 | ✅ concluída | `feat/automacoes-orquestracao` | 2026-08-04 |
-| 4 — mídia | 4 | ⬜ não iniciada | — | — |
+| 4 — mídia | 4 | ✅ concluída | `feat/automacoes-orquestracao` | 2026-08-04 |
 | 5 — builder por etapa | 5 | ⬜ não iniciada | — | — |
 | 6 — `docs/INFRA-VPS.md` | 6 | ✅ concluída | `feat/automacoes-orquestracao` | 2026-08-04 |
 
@@ -1128,3 +1128,36 @@ Achados que a Fase 6 registrou e ninguém sabia: **10 stacks, 16 serviços** na
 máquina; **nenhum backup de nada**; **9 das 10 definições de stack existem só em
 `/root/`, fora do git**; a Evolution é um **fork nosso** (`-lidfix`) que o label
 da stack não reflete; e 3,7 GB de volumes órfãos do Chatwoot.
+
+**2026-08-04 — Fase 4: mídia.** Passo `send_media` (imagem, vídeo, documento e
+áudio) com upload no builder, e o defeito herdado dos fluxos corrigido.
+**Sem migration** — `automation_steps` não tem CHECK em `step_type`. 1353 testes.
+
+⚠️ **O defeito herdado era pior do que "faltava um campo".** `engineSendMedia`
+gravava a linha em `messages` com `content_type = 'image'` e **`media_url`
+nulo**: o cliente recebia a imagem pelo WhatsApp e a EQUIPE via uma bolha vazia
+no CRM. É o pior formato de defeito — ninguém desconfia do que já saiu. O envio
+manual sempre gravou (`send-message.ts:783`); só este caminho não. A correção
+vale para os FLUXOS também, que usavam o mesmo sender.
+
+⚠️ **Áudio não leva legenda, e o dano é silencioso.** A nota de voz sai por
+`sendWhatsAppAudio`, que não tem campo de legenda: o texto seria gravado em
+`messages.content_text`, apareceria no fio para a equipe e **não viajaria** ao
+cliente — a equipe leria uma conversa que o cliente nunca teve. A guarda está
+em três lugares, como na 932: validação, tela e motor (a config pode ter sido
+gravada antes da regra). Conferido por mutação.
+
+Decisões da implementação:
+
+- **Na tela, o campo de legenda SOME no áudio** — não fica desabilitado. Campo
+  inerte convida a digitar; ausente, com o porquê no lugar, ensina. E trocar o
+  tipo para áudio **limpa** a legenda já digitada, senão ela ficaria gravada,
+  invisível, e a ativação seria recusada sem o operador ver o motivo.
+- **Sem coleta de lixo do arquivo.** O mesmo objeto serve toda execução; apagar
+  no envio (como a agendada faz) quebraria a automação no segundo disparo.
+- **`engineSendMedia` vem dos FLUXOS**, como `engineSendInteractive*` já fazia
+  em `automations/meta-send.ts`. Sem ciclo: `flows/meta-send` só depende de
+  `whatsapp/*` e `cb-channels/*`.
+
+Verificado na tela: o passo aparece no menu, o editor nasce em Imagem com
+legenda, e trocar para Áudio faz o campo sumir e a explicação aparecer.

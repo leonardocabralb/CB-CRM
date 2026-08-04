@@ -104,6 +104,33 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({ path: `${path}.enabled`, message: 'enabled must be true or false' })
       }
       break
+    case 'send_media': {
+      if (!nonEmpty(c.url)) {
+        issues.push({ path: `${path}.url`, message: 'a file is required' })
+      }
+      const tipos = ['image', 'video', 'document', 'audio']
+      if (typeof c.kind !== 'string' || !tipos.includes(c.kind)) {
+        issues.push({ path: `${path}.kind`, message: 'kind must be image, video, document or audio' })
+      }
+      // ⚠️ ÁUDIO COM LEGENDA É RECUSADO, e não é preciosismo. A nota de voz sai
+      // por `sendWhatsAppAudio`, que não tem campo de legenda: o texto seria
+      // gravado na mensagem, apareceria no fio para a EQUIPE e não chegaria ao
+      // cliente. Barrar aqui é a diferença entre o operador descobrir agora,
+      // montando a regra, e descobrir depois de o cliente dizer que não
+      // recebeu.
+      if (c.kind === 'audio' && nonEmpty(c.caption)) {
+        issues.push({
+          path: `${path}.caption`,
+          message: 'audio has no caption — WhatsApp voice notes cannot carry text',
+        })
+      }
+      // Teto do WhatsApp. A assinatura automática ainda entra por cima no
+      // envio, então o núcleo revalida — isto só evita o erro óbvio.
+      if (typeof c.caption === 'string' && c.caption.length > 1024) {
+        issues.push({ path: `${path}.caption`, message: 'caption is longer than 1024 characters' })
+      }
+      break
+    }
     case 'send_message':
       if (!nonEmpty(c.text)) {
         issues.push({ path: `${path}.text`, message: 'message text is required' })

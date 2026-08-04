@@ -1058,7 +1058,8 @@
         "stop_automation": "Stop automation",
         "run_flow": "Run bot",
         "stop_flow": "Stop bot",
-        "set_ai": "AI assistant"
+        "set_ai": "AI assistant",
+        "send_media": "Send file"
       },
       "triggers": {
         "new_message_received": {
@@ -1261,6 +1262,22 @@
         "rawIdPlaceholder": "Paste the id",
         "inactiveSuffix": "(off)",
         "selfSuffix": "(this one)"
+      },
+      "midia": {
+        "tipoLabel": "File type",
+        "image": "Image",
+        "video": "Video",
+        "document": "Document",
+        "audio": "Audio (voice note)",
+        "arquivoLabel": "File",
+        "escolher": "Choose a file…",
+        "enviando": "Uploading…",
+        "abrir": "Open the uploaded file",
+        "grandeDemais": "File is too large. The limit for this type is {mb} MB.",
+        "nomeLabel": "Filename shown to the recipient",
+        "nomeHelp": "Documents only — WhatsApp ignores it for the other types.",
+        "legendaLabel": "Caption (optional)",
+        "audioSemLegenda": "Audio has no caption. WhatsApp voice notes carry no text — anything written here would show in the thread for your team and never reach the client."
       }
     }
   },

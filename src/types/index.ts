@@ -759,6 +759,8 @@ export type AutomationStepType =
   | 'stop_flow'
   /** Liga ou desliga a resposta automática da IA nesta conversa — 936. */
   | 'set_ai'
+  /** Envia imagem, vídeo, documento ou áudio (Fase 4). */
+  | 'send_media'
   | 'wait'
   | 'condition'
   | 'send_webhook'
@@ -1018,6 +1020,37 @@ export interface RunFlowStepConfig {
 }
 
 /**
+ * Config de `send_media` — enviar imagem, vídeo, documento ou áudio.
+ *
+ * O arquivo é enviado uma vez pelo builder para o bucket `chat-media` e a URL
+ * pública fica gravada aqui. **URL pública permanente foi aceita pelo operador
+ * (D12)** — sem URL assinada.
+ *
+ * ⚠️ **NÃO há coleta de lixo do arquivo.** O mesmo objeto serve toda execução
+ * da automação, para sempre. Apagar no envio (como a agendada faz) deixaria a
+ * automação quebrada a partir do segundo disparo.
+ */
+export interface SendMediaStepConfig {
+  kind: 'image' | 'video' | 'document' | 'audio';
+  /** URL pública que o WhatsApp busca no momento do envio. */
+  url: string;
+  /**
+   * Legenda sob a mídia.
+   *
+   * ⚠️ **ÁUDIO NÃO TEM LEGENDA, e o dano é silencioso.** A nota de voz sai por
+   * `message/sendWhatsAppAudio`, que não possui campo de legenda: um texto
+   * aqui seria gravado em `messages.content_text`, apareceria no fio para a
+   * equipe e **não viajaria** ao cliente. A regra é barrada na validação e na
+   * tela — mesma decisão da migration 932 para a mensagem agendada.
+   */
+  caption?: string;
+  /** Nome exibido ao destinatário. Só documentos; o WhatsApp ignora nos demais. */
+  filename?: string;
+  /** Canal de saída deste passo. Lido por `stepChannel`. */
+  channel_id?: string | null;
+}
+
+/**
  * Config de `set_ai` (migration 936).
  *
  * ⚠️ **Religar zera o contador de respostas da IA** (`ai_reply_count`), por
@@ -1050,6 +1083,7 @@ export type AutomationStepConfig =
   | AutomationRefStepConfig
   | RunFlowStepConfig
   | SetAiStepConfig
+  | SendMediaStepConfig
   | WaitStepConfig
   | ConditionStepConfig
   | SendWebhookStepConfig
