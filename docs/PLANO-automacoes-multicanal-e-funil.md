@@ -698,6 +698,58 @@ apagado depois (0 campos personalizados, 69 contatos e 59 negócios reais):
       automações de `deal_stage_changed` daquela etapa
 - [ ] Só faz sentido depois da Fase 2 (o gatilho) e da Fase 3 (o "acionar robô")
 
+### Fase 6 — `docs/INFRA-VPS.md`: o que o banco tem e a VPS não — **PR 6**
+
+Não é feature de automação; entrou aqui porque **esta série criou a dependência**.
+O laço rápido de 60 s do agendador não nasce por push nenhum (o CI só troca a
+imagem do `crm_crm`), então "lembrete de reunião" e passo "Aguardar" passaram a
+depender de um `docker stack deploy` feito à mão, que hoje não está registrado
+em lugar nenhum. Pedido pelo operador em 2026-08-04.
+
+**O problema em uma frase:** o schema do banco tem migrations, um histórico e
+uma ordem de aplicação; a VPS não tem nada disso. Se a máquina morrer, o que
+existe para reconstruí-la é `docs/DEPLOY-VPS.md` — que documenta **só a stack do
+CRM** e assume de pé tudo que está por baixo.
+
+O que **não** está escrito em lugar nenhum (levantado em 2026-08-04):
+
+| Camada | Onde está hoje |
+|---|---|
+| Stack do CRM (`crm_crm` + `crm_agendador`) | ✅ `docker-stack.yml`, versionado |
+| CI/CD e segredos do GitHub | ✅ cabeçalho do `deploy.yml` |
+| Variáveis do `crm.env` | 🟡 a lista real é o bloco `environment:` do `docker-stack.yml`; o §3 do `DEPLOY-VPS.md` está atrasado |
+| **Traefik** (config, entrypoints, store do Let's Encrypt) | ❌ nada |
+| **Rede `CBAdvNet`** | ❌ só a nota de armadilha (`not manually attachable`), não como criar |
+| **Evolution API** (imagem, banco, Redis, volumes, env, rota `api.cbadvogados.com`) | ❌ **nada** |
+| Registros DNS (`crm`, `api`, `vps`) | ❌ nada |
+| `docker login ghcr.io` na VPS (pull da imagem privada) | 🟡 uma linha solta |
+| Backup de qualquer coisa | ❌ nada, e não se sabe se existe |
+
+⚠️ **O que dói de verdade é a sessão do WhatsApp.** O Supabase é gerenciado e
+mora fora da VPS, então contato, conversa, mensagem e funil **sobrevivem** à
+máquina morrer — a VPS não guarda dado de negócio nenhum. Mas o pareamento do
+número (o QR lido uma vez) vive nos volumes da Evolution, dentro dela. Sem
+backup, migrar quer dizer **reler o QR em cada número**, com o escritório sem
+WhatsApp até alguém com o celular na mão refazer isso. O resto (Traefik,
+certificado, rede) reconstrói em minutos — desde que alguém saiba os valores
+exatos, que hoje existem só na cabeça de quem configurou.
+
+- [ ] **Uma passada de leitura na VPS** — `docker service ls`, `docker service
+      inspect` de cada serviço, `docker volume ls`, `docker network inspect
+      CBAdvNet` e o arquivo de stack da Evolution. ⚠️ **Bloqueador:** em
+      2026-08-04 o SSH foi recusado pelo classificador de permissões do Claude
+      Code. Sem liberar isso, o documento sai do repositório e da memória — ou
+      seja, sai **adivinhado**, que é pior que não existir
+- [ ] `docs/INFRA-VPS.md` = inventário do que existe + runbook de reconstrução do
+      zero, na ordem em que as camadas dependem umas das outras
+- [ ] Responder explicitamente **o que tem backup e o que não tem** (hoje ninguém
+      sabe), e o custo de perder cada coisa
+- [ ] Regra de manutenção, no molde das migrations: **toda mudança na VPS ganha
+      uma linha ali, no mesmo PR** — documento que mente é pior que ausente
+- [ ] Corrigir o `DEPLOY-VPS.md`, que ainda abre dizendo que
+      `crm.cbadvogados.com` aponta para a Hostinger. O cutover de DNS foi feito
+      em 2026-07-25; o passo 1 dele descreve trabalho que já está pronto
+
 ---
 
 ## 6. Armadilhas que valem para qualquer fase
@@ -738,12 +790,18 @@ de ofício pela implementação e estão sinalizados para veto: a guarda
 | Fase | PR | Estado | Branch | Quando |
 |---|---|---|---|---|
 | 0 — investigação | — | ✅ concluída | — | 2026-08-03 |
-| 1 — conexão | 1 (parte A) | 🟡 código pronto, **não commitado** | `feat/automacoes-canal-por-passo` | 2026-08-03 |
-| 2 — funil | 1 (parte B) | ✅ concluída | `feat/automacoes-canal-por-passo` | 2026-08-03 |
-| 2b — tempo (lembretes) | 2 | ✅ concluída | `feat/automacoes-canal-por-passo` | 2026-08-03 |
-| 3 — orquestração | 3 | ⬜ não iniciada | — | — |
+| 1 — conexão | 1 (parte A) | ✅ concluída, **em produção** | `main` | 2026-08-04 |
+| 2 — funil | 1 (parte B) | ✅ concluída, **em produção** | `main` | 2026-08-04 |
+| 2b — tempo (lembretes) | 2 | ✅ concluída, **em produção** | `main` | 2026-08-04 |
+| 3 — orquestração | 3 | 🟡 em andamento | `feat/automacoes-orquestracao` | 2026-08-04 |
 | 4 — mídia | 4 | ⬜ não iniciada | — | — |
 | 5 — builder por etapa | 5 | ⬜ não iniciada | — | — |
+| 6 — `docs/INFRA-VPS.md` | 6 | ⬜ não iniciada (bloqueada: SSH) | — | — |
+
+⚠️ **Pendência de operador, aberta desde 2026-08-04:** o laço rápido de 60 s
+exige **um `docker stack deploy` à mão na VPS** — o CI só troca a imagem do
+`crm_crm`. Enquanto não subir, lembrete por data e passo "Aguardar" funcionam,
+mas no ritmo antigo de 15 em 15 minutos. Comandos em `docs/DEPLOY-VPS.md` §6.
 
 ### Histórico
 
@@ -871,3 +929,51 @@ O padrão do print do Kommo foi provado inteiro, com dado descartável: gatilho
 "entrou em Qualificado" → condição "está em Qualificado?" (lida do banco) →
 ação "mover para Desqualificado". O log registrou `branch=yes` e
 `move_deal_stage` com sucesso, e o card chegou onde devia. Tudo apagado.
+
+**2026-08-03 — Fase 2b: lembrete por data.** Migration **935** aplicada.
+`cb_para_timestamp` (cast que devolve NULL em vez de estourar), `cb_alvos_de_
+lembrete` (a janela resolvida em SQL, para não esbarrar no teto de 1000 linhas
+do PostgREST), `cb_automation_reminders` com `UNIQUE (automation_id,
+contact_id, valor)`, o tipo **Data** no campo personalizado e o seletor na
+ficha do contato. 1317 testes.
+
+Três armadilhas tratadas, todas silenciosas: (1) **fuso** — contêiner em UTC,
+operador em Brasília; sem conversão explícita *todo* lembrete erraria por 3h
+sem erro nenhum, então as duas conversões vivem num módulo só
+(`campo-data.ts`); (2) **reunião remarcada** — o valor da data entra na chave
+única, então remarcar re-arma e o mesmo horário nunca dispara duas vezes;
+(3) **texto que não é data** — o campo é livre, e um cast cru derrubaria a
+varredura inteira por causa de uma linha, deixando todo mundo sem lembrete.
+
+Provado em produção com dado descartável: reunião a 23h40 disparou no ciclo 1
+e respondeu `repetidos: 1` nos ciclos 2 e 3; remarcar re-armou; reunião 30h no
+passado não disparou. Conferido por mutação que inverter `antes`/`depois`
+quebra o teste crítico — é o defeito mais provável da feature, e mandaria a
+confirmação **depois** da reunião.
+
+Um erro meu de montagem virou prova de outra coisa: criei o campo numa conta e
+a automação em outra, e a varredura devolveu zero. Ou seja, o filtro por conta
+de `cb_alvos_de_lembrete` **recusou cruzar contas** — a única barreira ali,
+já que o motor roda em service-role e ignora RLS.
+
+**2026-08-04 — PRs 1 e 2 em produção; Fase 6 entra no plano.** As Fases 1, 2 e
+2b foram para o `main` (4 commits) e o CI rolou a imagem. Migrations 933/934/935
+já estavam aplicadas desde 2026-08-03.
+
+⚠️ **Estado que existiu entre as duas datas, e a lição:** as migrations foram
+para produção um dia antes do código. O gatilho do banco ficou vivo sem
+consumidor — **cada card arrastado gravava uma linha em `cb_automation_events`
+que ninguém drenava**. Foi inofensivo por desenho (a guarda de atraso de 1h
+descarta com o motivo escrito, em vez de despejar), e a fila estava em 0 no
+momento do push. Mas a ordem certa é código antes de trigger, ou os dois
+juntos: uma migration que instala um produtor sem instalar o consumidor deixa
+produção acumulando em silêncio.
+
+**Fase 6 nasceu de um pedido do operador**, ao perguntar se existia para a VPS
+algo equivalente às migrations do banco. Não existe — levantamento na §5. O que
+tornou a pergunta urgente foi esta própria série: o laço de 60 s do agendador
+não sobe por push, então "lembrete de reunião" passou a depender de um
+`docker stack deploy` manual que não estava registrado em lugar nenhum.
+A resposta curta: **o banco sobrevive à VPS morrer** (Supabase é gerenciado e
+fica fora), **a sessão do WhatsApp não** — ela vive nos volumes da Evolution, e
+sem backup migrar significa reler o QR de cada número.
