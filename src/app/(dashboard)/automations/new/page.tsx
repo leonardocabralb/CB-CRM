@@ -46,6 +46,7 @@ function NewAutomationPageInner() {
         // Automação nova nasce sem escopo = vale para todos os números,
         // que é o comportamento de antes do multi-canal.
         channel_ids: [],
+        stage_ids: [],
         is_active: false,
         steps,
       }
@@ -56,6 +57,7 @@ function NewAutomationPageInner() {
       trigger_type: "new_message_received" as AutomationTriggerType,
       trigger_config: {},
       channel_ids: [],
+      stage_ids: [],
       is_active: false,
       steps: [],
     }

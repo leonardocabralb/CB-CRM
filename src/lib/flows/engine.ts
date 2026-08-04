@@ -753,6 +753,12 @@ async function advanceFromNodeKey(
             tagId: cfg.tag_id,
             context: {
               conversation_id: run.conversation_id ?? undefined,
+              // O canal da RUN, não o da conversa mais recente: a run foi
+              // amarrada a um número no início e o `tag_added` que ela dispara
+              // pertence àquele mesmo número. Sem isto, `addContactTagAndDispatch`
+              // cairia na busca por conversa — uma consulta a mais e uma resposta
+              // pior se o contato escreveu por outro número no meio da run.
+              channel_id: run.channel_id ?? undefined,
               vars: run.vars,
             },
           });

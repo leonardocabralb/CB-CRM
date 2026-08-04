@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import { avisarDrenagemDeFunil } from "@/lib/automations/avisar-drenagem";
 
 interface DealFormProps {
   open: boolean;
@@ -230,6 +231,10 @@ export function DealForm({
     }
 
     setSaving(false);
+    // Cobre criar card e mover de etapa pelo formulário. O trigger da 933 já
+    // decidiu se havia o que enfileirar — salvar só a anotação não gera
+    // evento —, então avisar aqui sempre é barato e não dispara nada à toa.
+    avisarDrenagemDeFunil();
     toast.success(deal ? t("toastUpdated") : t("toastCreated"));
     onOpenChange(false);
     onSaved();
@@ -247,6 +252,8 @@ export function DealForm({
       toast.error(t("toastFailedStatus"));
       return;
     }
+    // Ganhou / perdeu / reabriu → gatilho `deal_status_changed`.
+    avisarDrenagemDeFunil();
     toast.success(
       status === "won" ? t("toastMarkedWon") : status === "lost" ? t("toastMarkedLost") : t("toastReopened"),
     );

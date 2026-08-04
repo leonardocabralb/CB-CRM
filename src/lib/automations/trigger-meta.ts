@@ -39,6 +39,18 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Button / List Reply',
     pillClass: 'border-pink-500/30 bg-pink-500/10 text-pink-300',
   },
+  deal_stage_changed: {
+    label: 'Deal Stage',
+    pillClass: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+  },
+  deal_status_changed: {
+    label: 'Deal Won / Lost',
+    pillClass: 'border-orange-500/30 bg-orange-500/10 text-orange-300',
+  },
+  date_field_offset: {
+    label: 'Date Reminder',
+    pillClass: 'border-violet-500/30 bg-violet-500/10 text-violet-300',
+  },
 }
 
 export function triggerMeta(t: AutomationTriggerType | string): TriggerMeta {

@@ -92,12 +92,34 @@ services:
     # mensagem do cliente esperar atrás. O `-m 120` corta cada chamada bem
     # antes do ciclo seguinte; o `|| true` existe para que o CRM reiniciando
     # não derrube o laço.
+    # ⚠️ DOIS LAÇOS, e a separação é load-bearing.
+    #
+    # O laço de 15 min NÃO PODE encolher: o número tem de bater com
+    # `CICLO_MINUTOS` em `src/lib/scheduled/display.ts`, que define a grade de
+    # horários que a tela de agendadas oferece e o texto "sai em até 15 min".
+    # Mudar um sem o outro faz a tela prometer o que o servidor não cumpre.
+    #
+    # Já as automações precisam do oposto. Desde a 933 o cron delas também
+    # drena a fila de eventos de funil e varre os lembretes por data, e desde
+    # sempre é ele que acorda o passo "Aguardar". Num ciclo de 15 minutos,
+    # "esperar 2 minutos" vira "esperar até 15", e o lembrete de reunião erra
+    # a hora pelo mesmo tanto. Daí um laço próprio, curto.
+    #
+    # (A fila de funil tem ainda um aviso imediato disparado por quem move o
+    # card, então o caso comum já sai em segundos; este laço é a rede de
+    # segurança e o relógio das esperas.)
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        echo "[agendador] ciclo de 15min contra crm_crm:3000"
+        echo "[agendador] laço rápido (60s) para automações + laço de 15min para agendadas e fluxos"
         while true; do
-          for rota in cb/scheduled flows automations; do
+          curl -fsS -m 50 -o /dev/null \
+            -H "x-cron-secret: $$AUTOMATION_CRON_SECRET" \
+            "http://crm_crm:3000/api/automations/cron" || true
+          sleep 60
+        done &
+        while true; do
+          for rota in cb/scheduled flows; do
             curl -fsS -m 120 -o /dev/null \
               -H "x-cron-secret: $$AUTOMATION_CRON_SECRET" \
               "http://crm_crm:3000/api/$$rota/cron" || true

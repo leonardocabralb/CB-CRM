@@ -105,4 +105,66 @@ describe('validateChannelScopeForActivation', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0].path).toContain('yes');
   });
+
+  // ----------------------------------------------------------
+  // Canal de SAÍDA por passo (`step_config.channel_id`).
+  //
+  // O motor lia esse campo desde a 903, mas nenhuma tela o escrevia — então
+  // a validação nunca precisou olhar para dentro do passo. Com o seletor
+  // "Enviar por" na tela, ele passa a mandar mais que o escopo do gatilho.
+  // ----------------------------------------------------------
+  const botoesPeloCanal = (channel_id: string) => [
+    { step_type: 'send_buttons', step_config: { channel_id } },
+  ];
+
+  it('CRÍTICO: passo fixado num canal Evolution é recusado mesmo SEM escopo', () => {
+    // O buraco que a tela nova abriria: a versão anterior desta função
+    // retornava cedo quando `channelIds` era vazio e nunca olhava o passo.
+    // "Vale para todos os números" + "enviar botões pelo QR Code" ativava
+    // liso e falhava no cliente.
+    const issues = validateChannelScopeForActivation(
+      botoesPeloCanal('ch-evo'),
+      null,
+      CANAIS,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toContain('channel_id');
+    expect(issues[0].message).toContain('Dr. Leonardo');
+  });
+
+  it('passo fixado num canal Meta passa mesmo com o escopo só em Evolution', () => {
+    // O caso inverso, e é o motivo de o seletor existir: "escute o WhatsApp
+    // pessoal, mas responda o menu pelo número oficial".
+    expect(
+      validateChannelScopeForActivation(botoesPeloCanal('ch-meta'), ['ch-evo'], CANAIS),
+    ).toHaveLength(0);
+  });
+
+  it('canal do passo manda mais que o escopo: escopo Meta não salva passo fixado em Evolution', () => {
+    const issues = validateChannelScopeForActivation(
+      botoesPeloCanal('ch-evo'),
+      ['ch-meta'],
+      CANAIS,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toContain('channel_id');
+  });
+
+  it('canal de saída apagado não trava a ativação (mesma escolha dos fluxos)', () => {
+    expect(
+      validateChannelScopeForActivation(botoesPeloCanal('ch-que-sumiu'), null, CANAIS),
+    ).toHaveLength(0);
+  });
+
+  it('channel_id vazio conta como herança, não como canal desconhecido', () => {
+    // `""` é o que um seletor mal resetado grava; tem de cair na regra do
+    // escopo, senão um escopo só-Evolution passaria despercebido.
+    const issues = validateChannelScopeForActivation(
+      [{ step_type: 'send_buttons', step_config: { channel_id: '' } }],
+      ['ch-evo'],
+      CANAIS,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toContain('step_type');
+  });
 });

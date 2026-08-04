@@ -167,6 +167,18 @@ porque nada dependia deles. Medido em 2026-08-01, antes de ligar:
 `automation_pending_executions` com **0 linhas** e **nenhuma** `flow_runs`
 ativa — não há fila represada para drenar de uma vez no primeiro ciclo.
 
+⚠️ **São DOIS laços desde 2026-08-03, e a separação é proposital.**
+
+| Laço | Bate em | Cada | Por quê |
+| --- | --- | --- | --- |
+| rápido | `/api/automations/cron` | **60 s** | Acorda o passo "Aguardar", drena a fila de eventos de funil (933) e varre os lembretes por data (935). Num ciclo de 15 min, "esperar 2 minutos" viraria "esperar até 15", e o lembrete de reunião erraria a hora pelo mesmo tanto |
+| lento | `/api/cb/scheduled/cron`, `/api/flows/cron` | **900 s** | O número **tem** de bater com `CICLO_MINUTOS` em `src/lib/scheduled/display.ts`, que define a grade de horários que a tela de agendadas oferece. Encolher aqui faz a tela prometer o que o servidor não cumpre |
+
+**Subir os dois exige `docker stack deploy` à mão na VPS** — o `deploy.yml`
+só troca a imagem do serviço `crm_crm` e não mexe no `agendador`. Enquanto o
+laço rápido não subir, automação com espera e lembrete por data continuam
+saindo no ritmo antigo, de 15 em 15 minutos: funcionam, só chegam atrasados.
+
 ## Notas
 
 - O `HEALTHCHECK` do container bate em `/login`; o Swarm só troca o

@@ -1,5 +1,6 @@
 import type { AutomationTriggerType } from '@/types'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
+import { motivoDeConfigInvalida } from './lembretes'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -54,6 +55,22 @@ function walk(steps: StepLike[], prefix: string, issues: ValidationIssue[]): voi
 function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): void {
   const c = step.step_config ?? {}
   switch (step.step_type) {
+    case 'move_deal_stage':
+      // A etapa é obrigatória: sem ela o passo não sabe para onde mover, e o
+      // motor estouraria em execução — o tipo de falha que esta validação
+      // existe para antecipar.
+      if (!nonEmpty(c.stage_id)) {
+        issues.push({ path: `${path}.stage_id`, message: 'stage is required' })
+      }
+      break
+    case 'set_deal_status':
+      if (c.status !== 'won' && c.status !== 'lost' && c.status !== 'open') {
+        issues.push({
+          path: `${path}.status`,
+          message: 'status must be "won", "lost" or "open"',
+        })
+      }
+      break
     case 'send_message':
       if (!nonEmpty(c.text)) {
         issues.push({ path: `${path}.text`, message: 'message text is required' })
@@ -198,6 +215,46 @@ export function validateTriggerForActivation(
         message: 'reply ids cannot be empty strings',
       })
     }
+  } else if (triggerType === 'deal_stage_changed') {
+    // ⚠️ NÃO exige etapa: vazio significa "qualquer etapa", que é uma regra
+    // legítima ("toda vez que um card se mexer, avise o responsável") e a
+    // convenção do projeto para escopo vazio. Só o lixo é recusado — string
+    // vazia é o que um seletor mal resetado grava, e ela nunca casaria com
+    // etapa nenhuma, deixando a automação ativa e muda.
+    const ids = cfg.stage_ids
+    if (ids != null && !Array.isArray(ids)) {
+      issues.push({ path: 'trigger.stage_ids', message: 'stage_ids must be a list' })
+    } else if (
+      Array.isArray(ids) &&
+      ids.some((v) => typeof v !== 'string' || v.trim() === '')
+    ) {
+      issues.push({
+        path: 'trigger.stage_ids',
+        message: 'stage ids cannot be empty strings',
+      })
+    }
+  } else if (triggerType === 'date_field_offset') {
+    // ⚠️ Aqui a config é OBRIGATÓRIA, ao contrário dos gatilhos de funil.
+    // Lá, vazio quer dizer "qualquer etapa" — uma regra legítima. Aqui, sem
+    // campo de data não existe nem alvo nem instante: a automação ficaria
+    // ativa e muda para sempre.
+    const motivo = motivoDeConfigInvalida(cfg as never)
+    if (motivo) {
+      issues.push({ path: 'trigger.custom_field_id', message: motivo })
+    }
+  } else if (triggerType === 'deal_status_changed') {
+    const st = cfg.statuses
+    if (st != null && !Array.isArray(st)) {
+      issues.push({ path: 'trigger.statuses', message: 'statuses must be a list' })
+    } else if (
+      Array.isArray(st) &&
+      st.some((v) => v !== 'won' && v !== 'lost' && v !== 'open')
+    ) {
+      issues.push({
+        path: 'trigger.statuses',
+        message: 'status must be "won", "lost" or "open"',
+      })
+    }
   }
 
   return issues
@@ -229,12 +286,24 @@ export interface ChannelForValidation {
 }
 
 /**
- * Recusa a automação quando ela usa passo exclusivo da API oficial e o
- * escopo de canais NÃO contém nenhum canal Meta.
+ * Recusa a automação quando um passo exclusivo da API oficial não tem como
+ * cair num canal Meta.
  *
- * `channelIds` vazio/nulo = "todos os canais": aí a automação pode cair num
- * canal Meta e a ativação passa — barrar seria regressão para toda automação
- * existente, que nasceu sem escopo.
+ * São DUAS perguntas, e por muito tempo só a segunda era feita:
+ *
+ * 1. **O passo fixa um canal de saída?** (`step_config.channel_id`, que ganhou
+ *    tela agora). Então é ELE quem manda, e o escopo do gatilho não importa —
+ *    o passo vai sair por aquele número, ponto. Canal Evolution aqui é erro
+ *    mesmo com escopo vazio: era o buraco que a tela nova abriria, porque a
+ *    versão anterior desta função retornava cedo quando `channelIds` era
+ *    vazio e nunca chegava a olhar dentro dos passos.
+ * 2. **Senão, o passo HERDA** o canal do disparo, que fica dentro do escopo.
+ *    Aí basta o escopo conter algum canal Meta para a combinação ser possível
+ *    — e escopo vazio ("todos") sempre é possível.
+ *
+ * Canal desconhecido (apagado entre editar e salvar) nunca trava a ativação:
+ * o trigger da 903 limpa `channel_ids`, e para o `step_config` o builder já
+ * avisa na tela. Mesma escolha de `validateFlowChannelForActivation`.
  */
 export function validateChannelScopeForActivation(
   steps: StepLike[],
@@ -242,23 +311,37 @@ export function validateChannelScopeForActivation(
   contasCanais: ChannelForValidation[],
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  if (!channelIds || channelIds.length === 0) return issues;
+  const porId = new Map(contasCanais.map((c) => [c.id, c]));
 
-  const escopo = contasCanais.filter((c) => channelIds.includes(c.id));
-  // Ids desconhecidos (canal apagado entre a edição e o save) não devem
-  // travar a ativação — o trigger da 903 já cuida do array órfão.
-  if (escopo.length === 0) return issues;
-  if (escopo.some((c) => c.kind === 'meta')) return issues;
+  // Herança: o escopo consegue alcançar um canal Meta?
+  const escopo =
+    channelIds && channelIds.length > 0
+      ? contasCanais.filter((c) => channelIds.includes(c.id))
+      : [];
+  // Escopo vazio, ou só com ids desconhecidos, = "todos os canais".
+  const herancaPodeSerMeta = escopo.length === 0 || escopo.some((c) => c.kind === 'meta');
+  const nomesDoEscopo = escopo.map((c) => c.label).join(', ');
 
-  const nomes = escopo.map((c) => c.label).join(', ');
   const visitar = (lista: StepLike[], prefixo: string) => {
     lista.forEach((s, i) => {
       const path = `${prefixo}steps[${i}]`;
       if (META_ONLY_STEPS.has(s.step_type)) {
-        issues.push({
-          path: `${path}.step_type`,
-          message: `"${s.step_type}" só funciona em número oficial da Meta, e esta automação está restrita a ${nomes}. Inclua um canal oficial no escopo ou troque o passo por uma mensagem de texto.`,
-        });
+        const fixado = s.step_config?.channel_id;
+        const canalFixado = typeof fixado === 'string' && fixado ? porId.get(fixado) : undefined;
+
+        if (canalFixado) {
+          if (canalFixado.kind !== 'meta') {
+            issues.push({
+              path: `${path}.channel_id`,
+              message: `"${s.step_type}" só funciona em número oficial da Meta, e este passo está fixado para enviar por "${canalFixado.label}", que é um número não oficial (QR Code). Troque a conexão de saída deste passo ou use uma mensagem de texto.`,
+            });
+          }
+        } else if (!herancaPodeSerMeta) {
+          issues.push({
+            path: `${path}.step_type`,
+            message: `"${s.step_type}" só funciona em número oficial da Meta, e esta automação está restrita a ${nomesDoEscopo}. Inclua um canal oficial no escopo ou troque o passo por uma mensagem de texto.`,
+          });
+        }
       }
       if (s.step_type === 'condition' && s.branches) {
         if (s.branches.yes) visitar(s.branches.yes, `${path}.yes.`);

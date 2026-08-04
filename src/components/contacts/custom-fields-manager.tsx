@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { TIPO_DATA } from '@/lib/contacts/campo-data';
 import { useAuth } from '@/hooks/use-auth';
 import { toast } from 'sonner';
 import type { CustomField } from '@/types';
@@ -62,6 +63,10 @@ export function CustomFieldsPanel() {
   const [fields, setFields] = useState<CustomField[]>([]);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
+  // Tipo do campo. Até a 935 todo campo nascia 'text' e a coluna era
+  // decorativa; agora 'datetime' é o que o gatilho de lembrete lê para saber
+  // onde procurar a hora da reunião.
+  const [newType, setNewType] = useState<string>('text');
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -109,7 +114,7 @@ export function CustomFieldsPanel() {
     setCreating(true);
     const { error } = await supabase.from('custom_fields').insert({
       field_name: name,
-      field_type: 'text',
+      field_type: newType,
       user_id: user.id,
       account_id: accountId,
     });
@@ -121,6 +126,7 @@ export function CustomFieldsPanel() {
     }
     toast.success(t('toastCreated', { name }));
     setNewName('');
+    setNewType('text');
     await fetchFields();
   }
 
@@ -188,6 +194,15 @@ export function CustomFieldsPanel() {
           placeholder={t('fieldName')}
           className="bg-muted text-foreground"
         />
+        <select
+          value={newType}
+          onChange={(e) => setNewType(e.target.value)}
+          className="shrink-0 rounded-md border border-border bg-muted px-2 py-2 text-sm text-foreground"
+          aria-label={t('fieldType')}
+        >
+          <option value="text">{t('typeText')}</option>
+          <option value={TIPO_DATA}>{t('typeDate')}</option>
+        </select>
         <Button
           onClick={handleCreate}
           disabled={creating || !newName.trim()}

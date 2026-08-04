@@ -7,6 +7,8 @@ import type {
   KeywordMatchTriggerConfig,
   InteractiveReplyTriggerConfig,
   TagTriggerConfig,
+  DealStageTriggerConfig,
+  DealStatusTriggerConfig,
   SendMessageStepConfig,
   SendButtonsStepConfig,
   SendListStepConfig,
@@ -16,6 +18,7 @@ import type {
   UpdateContactFieldStepConfig,
   WaitStepConfig,
   CreateDealStepConfig,
+  MoveDealStepConfig,
   AssignConversationStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
@@ -24,6 +27,7 @@ import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
+import { createDeal } from '@/lib/deals/create-deal'
 
 // ------------------------------------------------------------
 // Public API
@@ -52,6 +56,21 @@ export interface AutomationContext {
    * cliente usou nesse meio-tempo, e não pelo canal do disparo original.
    */
   channel_id?: string | null
+  /**
+   * Negócio que este disparo diz respeito (migration 933). Vem preenchido nos
+   * gatilhos de funil, onde o evento carrega o card EXATO — o que evita a
+   * pergunta "qual card?" quando o contato tem mais de um aberto.
+   *
+   * Sobrevive ao passo `wait` de graça, como o `channel_id`: o contexto é
+   * JSONB em `automation_pending_executions.context`.
+   */
+  deal_id?: string | null
+  /** Etapa de destino do evento de funil — a que o card ACABOU de entrar. */
+  to_stage_id?: string | null
+  /** Etapa de origem. Nula quando o card foi CRIADO na etapa. */
+  from_stage_id?: string | null
+  /** Status de destino, para `deal_status_changed` (`won` | `lost` | `open`). */
+  to_status?: string | null
 }
 
 export interface DispatchInput {
@@ -118,6 +137,10 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
     for (const automation of automations as Automation[]) {
       if (!channelInScope(automation, input.context)) continue
       if (!triggerMatches(automation, input.context)) continue
+      // Depois do casamento de gatilho, e não antes: `stageInScope` pode
+      // consultar o banco, e não faz sentido perguntar em que etapa o contato
+      // está para uma automação que nem era desta palavra-chave.
+      if (!(await stageInScope(db, automation, input.contactId, input.context))) continue
       try {
         await executeAutomation(automation, input)
       } catch (err) {
@@ -513,12 +536,29 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         agentId = profiles?.[0]?.user_id
       }
       if (!agentId) return 'no agent resolved'
-      await db
+
+      // ⚠️ A conversa DO DISPARO, não todas as do contato. O código anterior
+      // filtrava só por conta+contato, então um contato com três conversas
+      // tinha as três atribuídas de uma vez — inclusive as de outro número, o
+      // que atropela o recorte por conexão que a Fase 1 acabou de fechar.
+      // Cai para "todas" só quando o disparo não tem conversa (etiqueta
+      // adicionada na ficha, por exemplo), que é o comportamento de antes.
+      const conversaDoDisparo =
+        typeof args.context.conversation_id === 'string' ? args.context.conversation_id : null
+
+      let q = db
         .from('conversations')
         .update({ assigned_agent_id: agentId })
         .eq('account_id', args.automation.account_id)
-        .eq('contact_id', args.contactId)
-      return `assigned to ${agentId}`
+      q = conversaDoDisparo
+        ? q.eq('id', conversaDoDisparo)
+        : q.eq('contact_id', args.contactId)
+      const { error: assignErr } = await q
+      if (assignErr) throw new Error(`assign_conversation falhou: ${assignErr.message}`)
+
+      return conversaDoDisparo
+        ? `assigned to ${agentId}`
+        : `assigned to ${agentId} (todas as conversas do contato)`
     }
 
     case 'update_contact_field': {
@@ -581,68 +621,72 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       // created deals consistent with the one-currency-per-account
       // rule (issue #218). Fall back to USD if the row is somehow
       // missing the value (pre-021 forks).
-      const { data: acct } = await db
-        .from('accounts')
-        .select('default_currency')
-        .eq('id', args.automation.account_id)
-        .maybeSingle()
-      // O erro do insert PRECISA ser lido. Sem isto o passo devolvia
-      // 'deal created' incondicionalmente: funil ou etapa apagados faziam o
-      // insert falhar e o log da automação registrava sucesso, então o
-      // negócio não existia e ninguém ficava sabendo.
-      //
-      // ⚠️ Este insert é irmão de `src/lib/deals/create-deal.ts`, que é o
-      // caminho de todo o resto. Ele sobreviveu aqui porque é código do
-      // upstream e trocá-lo por `createDeal` mudaria a superfície de merge;
-      // a consequência é que as validações de lá (posse do funil, etapa
-      // pertencente ao funil, moeda da conta) NÃO valem para automação. Quem
-      // acrescentar regra em `createDeal` precisa decidir conscientemente se
-      // ela vale aqui também.
-      const dealBase = {
-        // Tenancy + audit, same split as automation_logs above.
-        account_id: args.automation.account_id,
-        user_id: args.automation.user_id,
-        pipeline_id: cfg.pipeline_id,
-        stage_id: cfg.stage_id,
-        contact_id: args.contactId,
-        title: interpolate(cfg.title, args),
-        value: cfg.value ?? 0,
-        currency: acct?.default_currency ?? 'USD',
-        status: 'open',
-        // Sem isto a linha cai no DEFAULT 'manual' e o card de automação fica
-        // indistinguível do digitado à mão — justamente a distinção que a
-        // coluna existe para fazer (migration 908).
-        source: 'automation',
-        // Canal do disparo, mesmo carimbo que a linha de automation_logs já
-        // recebe. Sem ele o card de automação some de qualquer recorte por
-        // número no painel.
-        channel_id: args.context.channel_id ?? null,
-      }
+      if (!args.contactId) throw new Error('create_deal needs a contact')
 
-      // A conversa vem do contexto, que é JSONB persistido e SOBREVIVE ao
-      // passo `wait`. Num passo retomado horas depois, ela pode não existir
-      // mais (apagar o contato cascateia nas conversas) — e a FK da 910
-      // recusaria o insert inteiro. O card importa mais que o vínculo, então
-      // violação de FK vira "grava sem conversa" em vez de derrubar o passo.
-      const conversationId =
+      // ⚠️ Passa a usar o criador CENTRAL. O insert direto que estava aqui era
+      // herança do upstream e não validava nada: funil de outra conta, etapa
+      // que não pertence ao funil e moeda da conta passavam batido, e o
+      // cabeçalho de `create-deal.ts` já avisava que as regras de lá NÃO
+      // valiam para automação. Agora valem, e a mensagem de recusa é
+      // específica em vez de um código de FK cru no log.
+      const conversationIdParaCard =
         typeof args.context.conversation_id === 'string' ? args.context.conversation_id : null
 
-      let { error: dealError } = await db
-        .from('deals')
-        .insert({ ...dealBase, conversation_id: conversationId })
+      const criado = await createDeal({
+        db,
+        accountId: args.automation.account_id,
+        // Autor da REGRA como dono de registro — a coluna é anulável e
+        // `ON DELETE SET NULL` desde a 908 justamente por causa destes cards.
+        ownerUserId: args.automation.user_id,
+        contactId: args.contactId,
+        pipelineId: cfg.pipeline_id,
+        stageId: cfg.stage_id,
+        title: interpolate(cfg.title, args),
+        value: cfg.value ?? 0,
+        // Canal do disparo, mesmo carimbo que a linha de automation_logs
+        // recebe. Sem ele o card some de qualquer recorte por número.
+        channelId: args.context.channel_id ?? null,
+        conversationId: conversationIdParaCard,
+        // Sem isto a linha cai no DEFAULT 'manual' e o card de automação fica
+        // indistinguível do digitado à mão — a distinção que a coluna existe
+        // para fazer (908).
+        source: 'automation',
+      })
 
-      if (dealError && conversationId && dealError.code === '23503') {
-        console.warn(
-          '[automations] conversa do contexto não existe mais; gravando negócio sem vínculo:',
-          dealError.message,
-        )
-        ;({ error: dealError } = await db
-          .from('deals')
-          .insert({ ...dealBase, conversation_id: null }))
-      }
+      if (!criado.ok) throw new Error(`create_deal falhou: ${criado.message}`)
+      // `created: false` = o índice único da 911 barrou porque o contato já
+      // tem card. Não é erro: é a regra "um funil por vez" funcionando.
+      return criado.created ? 'deal created' : 'deal already existed'
+    }
 
-      if (dealError) throw new Error(`create_deal falhou: ${dealError.message}`)
-      return 'deal created'
+    case 'move_deal_stage':
+    case 'set_deal_status': {
+      const cfg = step.step_config as MoveDealStepConfig
+      const alvo = await negocioAlvo(db, args)
+      if (!alvo) throw new Error('nenhum negócio aberto para este contato')
+
+      const ehMover = step.step_type === 'move_deal_stage'
+      if (ehMover && !cfg.stage_id) throw new Error('move_deal_stage precisa de etapa')
+      if (!ehMover && !cfg.status) throw new Error('set_deal_status precisa de status')
+
+      // ⚠️ Vai por RPC, e não por `.update()` direto, por DOIS motivos que se
+      // somam: (1) a trilha da 912 exige que funil e etapa mudem no MESMO
+      // update, senão ela grava que o lead saiu e voltou; (2) só de dentro da
+      // transação dá para carimbar a cadeia que o trigger copia para o evento
+      // — é ela que impede X→Y→X de girar para sempre.
+      const { data, error } = await db.rpc('cb_atualizar_negocio', {
+        p_deal_id: alvo,
+        p_account_id: args.automation.account_id,
+        p_pipeline_id: null,
+        p_stage_id: ehMover ? cfg.stage_id : null,
+        p_status: ehMover ? null : cfg.status,
+        p_cadeia: cadeiaDoContexto(args),
+      })
+      if (error) throw new Error(`${step.step_type} falhou: ${error.message}`)
+      const r = Array.isArray(data) ? data[0] : data
+      if (!r?.ok) throw new Error(`${step.step_type} recusado: ${r?.motivo ?? 'motivo desconhecido'}`)
+
+      return ehMover ? `negócio movido para ${cfg.stage_id}` : `negócio marcado ${cfg.status}`
     }
 
     case 'send_webhook': {
@@ -732,10 +776,22 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
  *   com valores  -> só os canais listados
  *
  * ⚠️ Contexto SEM canal (`channel_id` null/ausente) passa em qualquer
- * escopo. É o caso dos disparos que não vêm de mensagem (tag_added,
- * conversation_assigned, gatilhos por tempo) e do inbound anterior à Fase 3.
- * Barrá-los faria uma automação restrita a um canal parar de funcionar
- * nesses gatilhos — regressão silenciosa pior que o excesso de disparo.
+ * escopo — e desde a Fase 1 sobra POUCO caso. `tag_added` passou a carregar
+ * canal (`canalDoContato`, em `src/lib/contacts/tag-events.ts`, resolve a
+ * conversa mais recente do contato; fluxo e automação já trazem o canal da
+ * run/do disparo), então automação de etiqueta restrita a um canal É filtrada
+ * aqui — de propósito: antes o escopo era inerte nela, e a condição `channel`,
+ * que falha FECHADA, dava sempre falso.
+ *
+ * O passe livre vale para o resíduo, e ele é real: contato sem nenhuma
+ * conversa com canal, falha na busca do canal (best-effort, engolida com
+ * warning), inbound anterior à 903 e o POST manual em `/api/automations/engine`.
+ * Barrá-los faria a automação parar sem erro e sem log — regressão silenciosa
+ * pior que o excesso de disparo.
+ *
+ * `conversation_assigned` e `time_based` não entram na lista: não têm call site
+ * nenhum e saíram do seletor da tela (voltam com a caixa de saída da Fase 2 e
+ * com o gatilho por data, respectivamente).
  */
 export function channelInScope(
   automation: Automation,
@@ -746,6 +802,58 @@ export function channelInScope(
   const canal = ctx?.channel_id
   if (!canal) return true
   return escopo.includes(canal)
+}
+
+/**
+ * A automação pode disparar para o negócio em que este contato está?
+ *
+ * Recorta os gatilhos EXISTENTES pelo estado do funil: "responda automático,
+ * mas só para quem está na etapa Proposta". Sem isto, a única forma de
+ * restringir por etapa seria uma condição no primeiro passo — que executa a
+ * automação, escreve no log e só então descobre que não era para agir.
+ *
+ * ⚠️ Assíncrona, e de propósito: precisa perguntar ao banco em que etapa o
+ * contato está. Por isso o dispatch só chama quando HÁ escopo (a maioria das
+ * automações não tem), e uma vez por automação com escopo — não por passo.
+ *
+ * Semântica igual à do canal: escopo vazio/nulo = TODAS as etapas.
+ *
+ * ⚠️ Falha ABERTA, como `channelInScope`: sem contato, sem negócio ou com
+ * erro na consulta, deixa passar. Barrar faria a automação parar sem erro e
+ * sem log — o modo de falha que este projeto trata como o pior de todos.
+ */
+export async function stageInScope(
+  db: ReturnType<typeof supabaseAdmin>,
+  automation: Automation,
+  contactId: string | null | undefined,
+  ctx: AutomationContext | undefined,
+): Promise<boolean> {
+  const escopo = automation.stage_ids
+  if (!escopo || escopo.length === 0) return true
+
+  // Gatilho de funil já traz a etapa no evento — não custa consulta nenhuma.
+  if (ctx?.to_stage_id) return escopo.includes(ctx.to_stage_id)
+
+  if (!contactId) return true
+
+  const { data, error } = await db
+    .from('deals')
+    .select('stage_id')
+    .eq('account_id', automation.account_id)
+    .eq('contact_id', contactId)
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('[automations] stageInScope: consulta falhou, deixando passar', error)
+    return true
+  }
+  // Contato sem negócio aberto NÃO está em etapa nenhuma. Aqui a resposta
+  // honesta é não — diferente do erro acima, isto não é ignorância, é fato.
+  if (!data?.stage_id) return false
+  return escopo.includes(data.stage_id as string)
 }
 
 export function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
@@ -777,6 +885,27 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
     const cfg = automation.trigger_config as TagTriggerConfig
     const tagId = ctx?.tag_id
     return Boolean(tagId && cfg?.tag_id && cfg.tag_id === tagId)
+  }
+
+  // Card entrou numa etapa — movido OU criado nela (933).
+  //
+  // ⚠️ Config vazia = QUALQUER etapa, igual ao resto do projeto. É o que faz
+  // "toda vez que um card se mexer" ser exprimível sem listar as 9 etapas.
+  if (automation.trigger_type === 'deal_stage_changed') {
+    const cfg = automation.trigger_config as DealStageTriggerConfig
+    const alvo = ctx?.to_stage_id
+    if (!Array.isArray(cfg?.stage_ids) || cfg.stage_ids.length === 0) return true
+    // Sem etapa no contexto não há como afirmar que é ESTA etapa. Falha
+    // fechada, ao contrário do escopo: aqui a pergunta é "entrou na etapa X?",
+    // e a resposta honesta para um disparo sem etapa é não.
+    return Boolean(alvo && cfg.stage_ids.includes(alvo))
+  }
+
+  if (automation.trigger_type === 'deal_status_changed') {
+    const cfg = automation.trigger_config as DealStatusTriggerConfig
+    const alvo = ctx?.to_status
+    if (!Array.isArray(cfg?.statuses) || cfg.statuses.length === 0) return true
+    return Boolean(alvo && cfg.statuses.includes(alvo))
   }
 
   return true
@@ -838,9 +967,60 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       const t = parse(to)
       return f <= t ? mins >= f && mins < t : mins >= f || mins < t
     }
+    /**
+     * O negócio está NESTA etapa AGORA? (934)
+     *
+     * ⚠️ Lê o banco, não o contexto — e é essa a razão de existir. O padrão
+     * central do print do Kommo é "movido para a etapa DEPOIS DE 240 horas →
+     * agir", que aqui se escreve gatilho de etapa → `wait` → esta condição →
+     * ação. Sem ela, o `wait` acordaria e agiria às cegas sobre um card que o
+     * operador já moveu nesse meio-tempo — mandando ao cliente a cobrança de
+     * uma proposta que ele já aceitou.
+     *
+     * `operand` guarda a etapa, como na condição de canal.
+     */
+    case 'deal_stage': {
+      const alvo = cfg.operand ?? cfg.value
+      if (!alvo) return false
+      const deal = await negocioAtualDoContexto(args)
+      return deal?.stage_id === alvo
+    }
+    /** O negócio está ganho/perdido/aberto AGORA? Mesma leitura fresca. */
+    case 'deal_status': {
+      const alvo = cfg.operand ?? cfg.value
+      if (!alvo) return false
+      const deal = await negocioAtualDoContexto(args)
+      return deal?.status === alvo
+    }
     default:
       return false
   }
+}
+
+/**
+ * O estado ATUAL do negócio deste disparo — lido agora, não o do contexto.
+ *
+ * ⚠️ O contexto guarda `to_stage_id`, que é onde o card estava quando o evento
+ * nasceu. Depois de um `wait` de 240 horas isso é história, não fato. Estas
+ * condições existem justamente para perguntar ao banco.
+ */
+async function negocioAtualDoContexto(
+  args: ExecuteArgs,
+): Promise<{ stage_id: string; status: string } | null> {
+  const db = supabaseAdmin()
+  const id = await negocioAlvo(db, args)
+  if (!id) return null
+  const { data, error } = await db
+    .from('deals')
+    .select('stage_id, status')
+    .eq('id', id)
+    .eq('account_id', args.automation.account_id)
+    .maybeSingle()
+  if (error) {
+    console.warn('[automations] condição de funil: leitura do negócio falhou', error)
+    return null
+  }
+  return (data as { stage_id: string; status: string } | null) ?? null
 }
 
 /**
@@ -858,6 +1038,51 @@ function stepChannel(
   args: ExecuteArgs,
 ): string | null | undefined {
   return cfg?.channel_id ?? args.context.channel_id ?? undefined
+}
+
+/**
+ * Qual negócio esta ação vai mexer.
+ *
+ * ⚠️ O contexto vence sempre. Num gatilho de funil o evento carrega o card
+ * EXATO que se moveu — e é o único jeito de acertar quando o contato tem mais
+ * de um negócio aberto (o CRM permite; só a 911 garante unicidade para card
+ * nascido de conexão).
+ *
+ * Sem card no contexto (ex.: "quando chegar mensagem → mova o card"), a regra
+ * é o negócio ABERTO mais recente (D8). Fechado fica de fora de propósito:
+ * mexer sozinho num negócio que alguém deu por encerrado é surpresa ruim.
+ */
+async function negocioAlvo(
+  db: ReturnType<typeof supabaseAdmin>,
+  args: ExecuteArgs,
+): Promise<string | null> {
+  if (args.context.deal_id) return args.context.deal_id
+  if (!args.contactId) return null
+  const { data, error } = await db
+    .from('deals')
+    .select('id')
+    .eq('account_id', args.automation.account_id)
+    .eq('contact_id', args.contactId)
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`busca do negócio falhou: ${error.message}`)
+  return (data?.id as string | undefined) ?? null
+}
+
+/**
+ * A cadeia deste encadeamento, para repassar ao banco.
+ *
+ * Quem a ACRESCENTA é o drenador (`drain-events.ts`), ao entregar o evento —
+ * um lugar só, senão as duas pontas divergem e a guarda anti-ciclo passa a
+ * depender de qual delas escreveu. Aqui ela só é lida e devolvida.
+ *
+ * Vazia = ação de gente ou de conexão: cadeia nova, nada a barrar.
+ */
+function cadeiaDoContexto(args: ExecuteArgs): string[] {
+  const bruta = args.context.vars?._cadeia
+  return Array.isArray(bruta) ? bruta.filter((v): v is string => typeof v === 'string') : []
 }
 
 function waitMs(cfg: WaitStepConfig): number {

@@ -712,7 +712,28 @@ export type AutomationTriggerType =
   | 'time_based'
   /** Customer tapped a reply button / list row whose id matches; lets
    *  multi-step menus be chained across automations. */
-  | 'interactive_reply';
+  | 'interactive_reply'
+  /**
+   * Card entrou numa etapa do funil — movido OU criado nela (migration 933).
+   * É o padrão central do Kommo: cada coluna do quadro carrega suas
+   * automações.
+   *
+   * ⚠️ Troca de FUNIL também dispara este gatilho. A trilha da 912 emite
+   * `pipeline_changed` e NUNCA `stage_changed` nesse caso; escutar só
+   * "mudou de etapa" perderia o movimento entre funis.
+   */
+  | 'deal_stage_changed'
+  /** Negócio virou ganho/perdido/reaberto (migration 933). */
+  | 'deal_status_changed'
+  /**
+   * Lembrete relativo a uma data guardada num campo personalizado do contato
+   * (migration 935) — "24 horas antes da reunião".
+   *
+   * ⚠️ Substitui na prática o `time_based`, que nunca disparou e nem tinha
+   * alvo: o motor roda por contato e "todo dia às 9h" não diz para qual.
+   * Aqui a hora vem do próprio contato, então o alvo é ele.
+   */
+  | 'date_field_offset';
 
 export type AutomationStepType =
   | 'send_message'
@@ -724,6 +745,10 @@ export type AutomationStepType =
   | 'assign_conversation'
   | 'update_contact_field'
   | 'create_deal'
+  /** Move o card para outra etapa (e outro funil, se for o caso) — 934. */
+  | 'move_deal_stage'
+  /** Marca o negócio ganho / perdido / reaberto — 934. */
+  | 'set_deal_status'
   | 'wait'
   | 'condition'
   | 'send_webhook'
@@ -752,13 +777,93 @@ export interface InteractiveReplyTriggerConfig {
   reply_ids: string[];
 }
 
+/**
+ * Config do gatilho `deal_stage_changed` (migration 933).
+ *
+ * ⚠️ Vazio = QUALQUER etapa, nunca "nenhuma" — a convenção do projeto inteiro
+ * (`channelInScope`, `findEntryFlow`, `FILTROS_VAZIOS` do inbox). Uma tela que
+ * disser "nenhuma etapa" onde o motor lê "todas" faz o operador desativar a
+ * regra errada.
+ *
+ * Só a etapa de DESTINO importa: "quando o card entrar em Proposta". De onde
+ * ele veio fica no contexto, para quem quiser ramificar por condição.
+ */
+export interface DealStageTriggerConfig {
+  /** Etapas de destino que disparam. Vazio/ausente = todas. */
+  stage_ids?: string[];
+}
+
+/**
+ * Config do gatilho `date_field_offset` (migration 935).
+ *
+ * ⚠️ `direction: 'antes'` significa disparar ANTES do valor — logo o motor
+ * procura valores no FUTURO. Ver `janelaDeBusca` em
+ * `src/lib/automations/lembretes.ts`, onde o sinal é tratado num lugar só.
+ */
+export interface DateFieldTriggerConfig {
+  /** `custom_fields.id` do campo de data. */
+  custom_field_id?: string;
+  /** Quantas horas de distância do valor. */
+  offset_hours?: number;
+  direction?: 'antes' | 'depois';
+}
+
+/** Config do gatilho `deal_status_changed` (migration 933). */
+export interface DealStatusTriggerConfig {
+  /** Status de destino que disparam (`won` | `lost` | `open`). Vazio = todos. */
+  statuses?: string[];
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
   | TagTriggerConfig
   | TimeBasedTriggerConfig
   | InteractiveReplyTriggerConfig
+  | DealStageTriggerConfig
+  | DealStatusTriggerConfig
+  | DateFieldTriggerConfig
   | Record<string, unknown>;
+
+/**
+ * Uma linha da fila `cb_automation_events` (migration 933).
+ *
+ * Existe porque quem move card está no NAVEGADOR, sob RLS, em dois caminhos
+ * diferentes (arrastar no Kanban e o formulário de negócio), sem função
+ * compartilhada no servidor. Um trigger de banco enche a fila; o motor drena.
+ */
+export interface CbAutomationEvent {
+  id: string;
+  account_id: string;
+  tipo: 'deal_stage_changed' | 'deal_status_changed';
+  /** Sem FK: apagar o negócio não pode derrubar o evento que o descreve. */
+  deal_id: string | null;
+  contact_id: string | null;
+  /** Canal da CONVERSA do contato, não o do nascimento do card (D9). */
+  channel_id: string | null;
+  from_pipeline_id: string | null;
+  to_pipeline_id: string | null;
+  from_stage_id: string | null;
+  to_stage_id: string | null;
+  from_status: string | null;
+  to_status: string | null;
+  origem: 'usuario' | 'conexao' | 'automacao' | 'sistema';
+  /**
+   * Por onde este encadeamento já passou (migration 934), como chaves
+   * `deal:<id>|stage:<id>`. Vazia = ação de gente/conexão, cadeia nova.
+   *
+   * ⚠️ É a guarda ANTI-CICLO, e não um contador: o operador recusou teto de
+   * profundidade porque esteira longa é legítima. O drenador recusa o evento
+   * cuja chave já esteja aqui — X→Y→X para na segunda volta, e uma esteira de
+   * 20 etapas passa inteira.
+   */
+  cadeia: string[];
+  criado_em: string;
+  /** NULL = pendente. É o que a reivindicação em dois passos testa. */
+  processado_em: string | null;
+  tentativas: number;
+  erro: string | null;
+}
 
 /**
  * Canal de SAÍDA opcional, comum a todo passo que envia mensagem.
@@ -819,6 +924,25 @@ export interface CreateDealStepConfig {
   value?: number;
 }
 
+/**
+ * Config de `move_deal_stage` e `set_deal_status` (migration 934).
+ *
+ * Uma forma só para os dois passos: o motor decide qual campo ler pelo
+ * `step_type`. Dois tipos quase idênticos custariam mais em ruído do que
+ * ganham em precisão.
+ *
+ * ⚠️ NÃO tem `pipeline_id`. A etapa já identifica o funil
+ * (`(stage_id, pipeline_id)` é único desde a 908), e a RPC descobre o funil a
+ * partir dela — que é o que permite mover entre funis num UPDATE só, como a
+ * trilha da 912 exige.
+ */
+export interface MoveDealStepConfig {
+  /** Etapa de destino, para `move_deal_stage`. */
+  stage_id?: string;
+  /** Status de destino, para `set_deal_status`. */
+  status?: 'open' | 'won' | 'lost';
+}
+
 export interface WaitStepConfig {
   amount: number;
   unit: 'minutes' | 'hours' | 'days';
@@ -830,7 +954,16 @@ export type ConditionSubject =
   | 'message_content'
   | 'time_of_day'
   /** Compara o canal do disparo com `operand` (um cb_channels.id). */
-  | 'channel';
+  | 'channel'
+  /**
+   * O negócio está NESTA etapa agora? (934) `operand` = `pipeline_stages.id`.
+   *
+   * ⚠️ Lê o banco, não o contexto — é o que permite "depois de X horas, SE
+   * ainda estiver na etapa", o padrão central do funil com espera.
+   */
+  | 'deal_stage'
+  /** O negócio está ganho/perdido/aberto agora? `operand` = o status. */
+  | 'deal_status';
 
 export interface ConditionStepConfig {
   subject: ConditionSubject;
@@ -855,6 +988,7 @@ export type AutomationStepConfig =
   | AssignConversationStepConfig
   | UpdateContactFieldStepConfig
   | CreateDealStepConfig
+  | MoveDealStepConfig
   | WaitStepConfig
   | ConditionStepConfig
   | SendWebhookStepConfig
@@ -885,6 +1019,21 @@ export interface Automation {
    * e DESATIVA a automação quando o último canal do escopo é removido.
    */
   channel_ids?: string[] | null;
+  /**
+   * Etapas (`pipeline_stages.id`) em que esta automação pode disparar
+   * (migration 933). `null`/vazio = TODAS as etapas — mesma convenção de
+   * `channel_ids`, nunca "nenhuma".
+   *
+   * Recorta os gatilhos EXISTENTES pelo estado do funil ("só responda quem
+   * está na etapa Proposta"), e é diferente do `stage_ids` do
+   * `trigger_config` do gatilho `deal_stage_changed`, que diz para QUAL etapa
+   * o card precisa ter entrado.
+   *
+   * O trigger `cb_stages_drop_from_automations` (933) remove a etapa apagada
+   * e DESATIVA a automação se o escopo ficar vazio — array vazio seria lido
+   * como "todas", o oposto do que o operador pediu.
+   */
+  stage_ids?: string[] | null;
   is_active: boolean;
   execution_count: number;
   last_executed_at?: string | null;

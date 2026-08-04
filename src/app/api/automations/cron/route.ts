@@ -3,6 +3,14 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { resumePendingExecution } from '@/lib/automations/engine'
 import type { AutomationContext } from '@/lib/automations/engine'
+import {
+  drenarEventosDeFunil,
+  podarEventosAntigos,
+} from '@/lib/automations/drain-events'
+import {
+  varrerLembretes,
+  podarLembretesAntigos,
+} from '@/lib/automations/varrer-lembretes'
 
 /**
  * Drain due `automation_pending_executions` rows. Meant to be hit
@@ -30,6 +38,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Fila de eventos de funil (933) — a REDE DE SEGURANÇA. O caminho normal é
+  // o aviso imediato que quem moveu o card dispara; este ciclo pega o que não
+  // chegou lá (aba fechada, rede caindo, SQL na mão). Vem primeiro e é
+  // independente: uma falha aqui não pode impedir as esperas de resumirem.
+  const funil = await drenarEventosDeFunil()
+  const podados = await podarEventosAntigos()
+
+  // Lembretes por data (935). Não passam pela fila do funil: aquela existe
+  // porque o gatilho nasce de uma escrita feita no navegador; este nasce da
+  // passagem do tempo, e o cron já é onde o tempo passa.
+  const lembretes = await varrerLembretes()
+  const lembretesPodados = await podarLembretesAntigos()
+
   const admin = supabaseAdmin()
   const { data: due, error } = await admin
     .from('automation_pending_executions')
@@ -40,7 +61,9 @@ export async function GET(request: Request) {
     .limit(50)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!due || due.length === 0) return NextResponse.json({ processed: 0 })
+  if (!due || due.length === 0) {
+    return NextResponse.json({ processed: 0, funil, podados, lembretes, lembretesPodados })
+  }
 
   let processed = 0
   for (const row of due) {
@@ -70,5 +93,5 @@ export async function GET(request: Request) {
     processed++
   }
 
-  return NextResponse.json({ processed })
+  return NextResponse.json({ processed, funil, podados, lembretes, lembretesPodados })
 }
