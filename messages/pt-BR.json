@@ -1049,7 +1049,12 @@
         "send_webhook": "Enviar webhook",
         "close_conversation": "Encerrar conversa",
         "move_deal_stage": "Mover card de etapa",
-        "set_deal_status": "Marcar ganho ou perdido"
+        "set_deal_status": "Marcar ganho ou perdido",
+        "run_automation": "Acionar automação",
+        "stop_automation": "Parar automação",
+        "run_flow": "Acionar robô",
+        "stop_flow": "Parar robô",
+        "set_ai": "Assistente de IA"
       },
       "triggers": {
         "new_message_received": {
@@ -1230,6 +1235,27 @@
         "antes": "antes da data",
         "depois": "depois da data",
         "ajuda": "Dispara uma vez por contato. Se a data for alterada, o lembrete é rearmado."
+      },
+      "orquestracao": {
+        "runAutomationLabel": "Automação a acionar",
+        "stopAutomationLabel": "Automação a parar",
+        "pickAutomation": "Escolha uma automação…",
+        "runAutomationHelp": "Aciona a automação escolhida para este mesmo contato. Um encadeamento que voltaria a passar por onde já passou é recusado — é isso que impede duas automações que se chamam de girar para sempre.",
+        "stopAutomationHelp": "Cancela as esperas pendentes DESTE contato na automação escolhida. Os outros contatos não são afetados.",
+        "automationGone": "Esta automação não existe mais. Escolha outra, ou o passo vai falhar quando rodar.",
+        "automationInactive": "Esta automação está desativada, e o motor recusa acioná-la. Ative-a, ou o passo vai falhar.",
+        "runFlowLabel": "Robô a acionar",
+        "pickFlow": "Escolha um robô…",
+        "runFlowHelp": "Inicia o robô para este contato. Se já houver outro robô rodando com ele, o novo substitui.",
+        "flowGone": "Este robô não existe mais. Escolha outro, ou o passo vai falhar quando rodar.",
+        "flowInactive": "Este robô está desativado, e o motor recusa acioná-lo. Ative-o, ou o passo vai falhar. Robô que só deve começar sob demanda pode ficar ativo com gatilho 'manual'.",
+        "stopFlowHelp": "Para o robô que estiver rodando com este contato. Não faz nada se não houver nenhum.",
+        "aiLabel": "IA nesta conversa",
+        "aiOn": "Ligar",
+        "aiOff": "Desligar",
+        "aiResetWarning": "Religar também zera o contador de respostas desta conversa e solta quem estiver atribuído. Cuidado ao ligar a partir de um gatilho que dispara a cada mensagem — o teto de respostas por conversa deixa de valer.",
+        "rawIdPlaceholder": "Cole o id",
+        "inactiveSuffix": "(desativada)"
       }
     }
   },
@@ -1289,7 +1315,8 @@
       "statusHandedOff": "Transferida",
       "statusTimedOut": "Expirada",
       "statusPaused": "Pausada pelo atendente",
-      "statusFailed": "Falhou"
+      "statusFailed": "Falhou",
+      "statusStoppedByAutomation": "Parado por automação"
     },
     "builder": {
       "triggerTitle": "Gatilho",

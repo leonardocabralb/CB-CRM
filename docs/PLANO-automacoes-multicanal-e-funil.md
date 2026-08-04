@@ -674,17 +674,17 @@ apagado depois (0 campos personalizados, 69 contatos e 59 negócios reais):
   testes falham. É o defeito mais provável e mais silencioso da feature —
   mandaria a confirmação 24h DEPOIS da reunião.
 
-### Fase 3 — Orquestração (acionar/parar) — **PR 3**
+### Fase 3 — Orquestração (acionar/parar) — **PR 3** ✅
 
-- [ ] `runAutomationById` + ação `run_automation`
-- [ ] `'cancelled'` em `automation_pending_executions` + ação `stop_automation`
-- [ ] **Corrigir:** desativar automação passa a impedir o resume de execução parada
-- [ ] `abortActiveRunsForContact()` extraído + ação `stop_flow`
-- [ ] `startNewRun` exportável + ação `run_flow` (o "Executar Robô X" do print) —
+- [x] `runAutomationById` + ação `run_automation`
+- [x] `'cancelled'` em `automation_pending_executions` + ação `stop_automation`
+- [x] **Corrigir:** desativar automação passa a impedir o resume de execução parada
+- [x] `abortActiveRunsForContact()` extraído + ação `stop_flow`
+- [x] `startNewRun` exportável + ação `run_flow` (o "Executar Robô X" do print) —
       **substitui** a run ativa (D11)
-- [ ] Ação `set_ai` — desligar/religar IA na conversa; religar **zera o
+- [x] Ação `set_ai` — desligar/religar IA na conversa; religar **zera o
       contador** (D10); slot `agent_id` reservado (D7)
-- [ ] Guarda anti-ciclo unificada (D13) para automação→automação→fluxo
+- [x] Guarda anti-ciclo unificada (D13) para automação→automação→fluxo
 
 ### Fase 4 — Mídia — **PR 4**
 
@@ -793,7 +793,7 @@ de ofício pela implementação e estão sinalizados para veto: a guarda
 | 1 — conexão | 1 (parte A) | ✅ concluída, **em produção** | `main` | 2026-08-04 |
 | 2 — funil | 1 (parte B) | ✅ concluída, **em produção** | `main` | 2026-08-04 |
 | 2b — tempo (lembretes) | 2 | ✅ concluída, **em produção** | `main` | 2026-08-04 |
-| 3 — orquestração | 3 | 🟡 em andamento | `feat/automacoes-orquestracao` | 2026-08-04 |
+| 3 — orquestração | 3 | ✅ concluída | `feat/automacoes-orquestracao` | 2026-08-04 |
 | 4 — mídia | 4 | ⬜ não iniciada | — | — |
 | 5 — builder por etapa | 5 | ⬜ não iniciada | — | — |
 | 6 — `docs/INFRA-VPS.md` | 6 | ⬜ não iniciada (bloqueada: SSH) | — | — |
@@ -977,3 +977,72 @@ não sobe por push, então "lembrete de reunião" passou a depender de um
 A resposta curta: **o banco sobrevive à VPS morrer** (Supabase é gerenciado e
 fica fora), **a sessão do WhatsApp não** — ela vive nos volumes da Evolution, e
 sem backup migrar significa reler o QR de cada número.
+
+**2026-08-04 — Fase 3: orquestração.** Migration **936** aplicada (`ls` +
+`list_migrations` conferidos: os dois diziam 935). Cinco passos novos —
+`run_automation`, `stop_automation`, `run_flow`, `stop_flow`, `set_ai` —, a
+guarda anti-ciclo unificada e o defeito do resume corrigido. 1339 testes.
+
+**A migration é pequena de propósito.** Os passos novos NÃO precisaram de
+schema: `automation_steps` não tem CHECK em `step_type`. As duas linhas que
+entraram existem porque "parar" não tinha como ser REGISTRADO, e o motor teria
+de mentir sobre o que aconteceu: execução cancelada viraria `failed` (o painel
+diria que quebrou) e robô parado por regra viraria `paused_by_agent` (a tela
+diria que uma PESSOA interveio, quando não houve pessoa nenhuma).
+
+Decisões tomadas pela implementação, sinalizadas para veto:
+
+- ⚠️ **`run_automation` e `run_flow` EXIGEM o alvo ativo.** A alternativa
+  ("é uma ordem explícita, obedeça") deixa o interruptor da tela de ser freio:
+  com algo saindo errado, o operador desliga e a peça continua rodando,
+  acionada por uma regra que ele talvez nem lembre que existe. Robô sob
+  demanda não precisa ficar inativo para isso — é para isso que existe
+  `trigger_type: 'manual'`, que já não parte de mensagem nenhuma
+  (`findEntryFlow`).
+- **`stop_automation` é recortado por CONTATO.** Cancelar as esperas da
+  automação alvo para a conta inteira faria um cliente entrando numa etapa
+  apagar o follow-up de 24h de todos os outros, em silêncio e sem desfazer.
+
+Dois achados de arquitetura durante a implementação:
+
+1. ⚠️ **Ciclo de import iminente.** `flows/engine → contacts/tag-events →
+   automations/engine`; o motor de automações importar `flows/engine` fecharia
+   o ciclo. (O `automations/engine` já desviava disto de propósito ao importar
+   `tag-write` em vez de `tag-events` — o desvio estava lá, sem nota.) Resolvido
+   com `flows/parar-run.ts`, que não depende de nada, mais **um import dinâmico**
+   para `startFlowForContact`, que precisa do laço de avanço.
+2. ⚠️ **A etiqueta é um segundo caminho de recursão**, e ele não passa por
+   `run_automation`: "A aciona B, B aplica etiqueta, a etiqueta dispara A". O
+   que salva é o `...input.context` de `tag-events.ts`, que carrega a cadeia
+   para dentro do disparo novo. Era load-bearing e não tinha nota; tem agora.
+   Sem ele o único freio seria `MAX_TAG_CHAIN_DEPTH = 3`, ou seja, o cliente
+   ainda receberia 3 rajadas.
+
+**Provado em produção, com dado descartável** (contato, etiqueta, robô e
+automações "ZZ …", todos apagados depois; nenhum passo manda mensagem, os
+observáveis são etiqueta, registro e coluna):
+
+- **Laço pelos DOIS caminhos ao mesmo tempo** — A aciona B por
+  `run_automation`, B aplica a etiqueta que A escuta. Parou na 2ª volta, com o
+  motivo escrito nos dois logs: *"ciclo detectado (automation:… já visitado
+  neste encadeamento)"*. 3,3 segundos, 2 execuções, 1 etiqueta aplicada.
+- **Desativar PARA o que está parado** — automação inativa com espera vencida
+  → `cancelled`, e nem chegou a buscar os passos. Conferido por mutação: sem a
+  guarda, o teste falha.
+- **`run_flow` substitui a run ativa** — a antiga virou
+  `stopped_by_automation` / `replaced_by_automation` e a nova nasceu. É a
+  prova da ordem "encerrar ANTES de inserir": ao contrário, o INSERT bateria no
+  índice único parcial e voltaria 23505, que `startNewRun` engole como
+  duplicata — o robô novo simplesmente não nasceria, sem erro na tela.
+- **`set_ai` religando** zerou os quatro campos (`ai_autoreply_disabled`,
+  `ai_reply_count` 7→0, `ai_handoff_summary`, `assigned_agent_id`).
+
+Efeito colateral do dia, **em dado real e benigno**: a fila de funil tinha 3
+eventos de cards criados por clientes que chegaram, e o mais antigo foi
+descartado pela guarda de atraso com o motivo escrito — *"evento atrasado 1h —
+não disparado para não despejar fila represada"*. É a guarda funcionando em
+produção, em dado real, pela primeira vez.
+
+⚠️ **Pendência que a Fase 3 herda e não resolve:** o passo `wait` e tudo que
+depende do cron continuam no ritmo de 15 min até o `docker stack deploy` do
+laço rápido ser feito na VPS.

@@ -105,6 +105,16 @@ export async function addContactTagAndDispatch(
     input.context?.channel_id ??
     (await canalDoContato(input.db, input.accountId, input.contactId));
 
+  // ⚠️ O `...input.context` (e o `...vars` abaixo) são LOAD-BEARING para a
+  // guarda anti-ciclo da 936, não só para o canal. Etiqueta é um caminho de
+  // recursão que NÃO passa por `run_automation`: "A aciona B, B aplica
+  // etiqueta, a etiqueta dispara A". É este spread que carrega `_cadeia` para
+  // dentro do disparo novo e faz a segunda volta ser recusada.
+  //
+  // Trocar por um contexto montado do zero aqui devolveria esse laço, e o
+  // único freio passaria a ser `MAX_TAG_CHAIN_DEPTH` — que corta em 3 voltas,
+  // ou seja, o cliente ainda receberia 3 rajadas. Medido em produção
+  // (2026-08-04): com os dois caminhos armados, para na 2ª volta.
   await runAutomationsForTrigger({
     accountId: input.accountId,
     triggerType: 'tag_added',

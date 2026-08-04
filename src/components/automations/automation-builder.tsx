@@ -36,6 +36,10 @@ import {
   ArrowUp,
   MousePointerClick,
   List,
+  OctagonX,
+  Bot,
+  BotOff,
+  Sparkles,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -129,6 +133,14 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   create_deal: { label: "create_deal", icon: Briefcase, border: "border-l-primary" },
   move_deal_stage: { label: "move_deal_stage", icon: MoveRight, border: "border-l-emerald-500" },
   set_deal_status: { label: "set_deal_status", icon: Trophy, border: "border-l-emerald-500" },
+  // Orquestração (936): borda própria porque estes passos não falam com o
+  // cliente — eles ligam e desligam OUTRAS peças. Quem lê a árvore precisa
+  // ver de longe onde o controle sai desta automação.
+  run_automation: { label: "run_automation", icon: Zap, border: "border-l-violet-500" },
+  stop_automation: { label: "stop_automation", icon: OctagonX, border: "border-l-violet-500" },
+  run_flow: { label: "run_flow", icon: Bot, border: "border-l-violet-500" },
+  stop_flow: { label: "stop_flow", icon: BotOff, border: "border-l-violet-500" },
+  set_ai: { label: "set_ai", icon: Sparkles, border: "border-l-violet-500" },
   wait: { label: "wait", icon: Hourglass, border: "border-l-border" },
   condition: { label: "condition", icon: GitBranch, border: "border-l-amber-500" },
   send_webhook: { label: "send_webhook", icon: Webhook, border: "border-l-primary" },
@@ -147,6 +159,11 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "create_deal",
   "move_deal_stage",
   "set_deal_status",
+  "run_automation",
+  "stop_automation",
+  "run_flow",
+  "stop_flow",
+  "set_ai",
   "wait",
   "condition",
   "send_webhook",
@@ -228,6 +245,18 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return { stage_id: "" }
     case "set_deal_status":
       return { status: "won" }
+    case "run_automation":
+    case "stop_automation":
+      return { automation_id: "" }
+    case "run_flow":
+      return { flow_id: "" }
+    case "stop_flow":
+      return {}
+    // Nasce LIGANDO a IA: é o caso que a maioria monta ("cliente respondeu ao
+    // menu, devolve para o robô"). Nascer desligando faria o passo, aceito
+    // sem abrir a config, calar o robô — o oposto do que quem o arrastou quis.
+    case "set_ai":
+      return { enabled: true }
     case "wait":
       return { amount: 1, unit: "hours" }
     case "condition":
@@ -260,6 +289,29 @@ interface AutomationResources {
   stages: PipelineStageOption[]
   /** Canais da conta — para a condição por canal do passo Condição. */
   channels: CbChannel[]
+  /**
+   * Outras automações da conta, para `run_automation` / `stop_automation`.
+   *
+   * ⚠️ A automação sendo editada **já sai daqui** (`automacaoAtualId`).
+   * Oferecê-la seria oferecer um laço garantido: o motor barraria na hora
+   * (`encadear` põe a origem na cadeia antes de conferir), mas só depois de
+   * o operador montar, salvar, ativar e esperar.
+   */
+  automations: AutomationOption[]
+  /** Robôs (fluxos) da conta, para `run_flow`. */
+  flows: FlowOption[]
+}
+
+interface AutomationOption {
+  id: string
+  name: string
+  is_active: boolean
+}
+
+interface FlowOption {
+  id: string
+  name: string
+  status: string
 }
 
 interface PipelineOption {
@@ -282,19 +334,30 @@ const ResourcesContext = createContext<AutomationResources>({
   pipelines: [],
   stages: [],
   channels: [],
+  automations: [],
+  flows: [],
 })
 
 function useResources(): AutomationResources {
   return useContext(ResourcesContext)
 }
 
-function ResourcesProvider({ children }: { children: ReactNode }) {
+function ResourcesProvider({
+  children,
+  automacaoAtualId,
+}: {
+  children: ReactNode
+  /** `undefined` numa automação nova — ela ainda não tem id para se excluir. */
+  automacaoAtualId?: string
+}) {
   const [tags, setTags] = useState<TagRecord[]>([])
   const [members, setMembers] = useState<AccountMember[]>([])
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
   const [customFields, setCustomFields] = useState<CustomField[]>([])
   const [pipelines, setPipelines] = useState<PipelineOption[]>([])
   const [stages, setStages] = useState<PipelineStageOption[]>([])
+  const [automations, setAutomations] = useState<AutomationOption[]>([])
+  const [flows, setFlows] = useState<FlowOption[]>([])
   // No provider, e não dentro do StepEditor: aquele monta uma vez por passo
   // aberto, e cada montagem seria um GET novo.
   const { channels } = useChannels()
@@ -308,27 +371,46 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
     // actually be sent (anything else 400s at send time), matching the
     // broadcast picker.
     void (async () => {
-      const [tagsRes, templatesRes, customFieldsRes, pipelinesRes, stagesRes] =
-        await Promise.all([
-          supabase.from("tags").select("*").order("name"),
-          supabase
-            .from("message_templates")
-            .select("*")
-            .eq("status", "APPROVED")
-            .order("name"),
-          supabase.from("custom_fields").select("*").order("field_name"),
-          supabase.from("pipelines").select("id, name").order("name"),
-          supabase
-            .from("pipeline_stages")
-            .select("id, name, pipeline_id, position")
-            .order("position"),
-        ])
+      const [
+        tagsRes,
+        templatesRes,
+        customFieldsRes,
+        pipelinesRes,
+        stagesRes,
+        automationsRes,
+        flowsRes,
+      ] = await Promise.all([
+        supabase.from("tags").select("*").order("name"),
+        supabase
+          .from("message_templates")
+          .select("*")
+          .eq("status", "APPROVED")
+          .order("name"),
+        supabase.from("custom_fields").select("*").order("field_name"),
+        supabase.from("pipelines").select("id, name").order("name"),
+        supabase
+          .from("pipeline_stages")
+          .select("id, name, pipeline_id, position")
+          .order("position"),
+        // Orquestração (936). Traz INATIVAS também: o motor recusa acionar
+        // automação desligada, e a tela precisa poder dizer isso ao operador
+        // — some da lista seria pior, porque ele procuraria a automação que
+        // sabe que existe e concluiria que a feature está quebrada.
+        supabase.from("automations").select("id, name, is_active").order("name"),
+        supabase.from("flows").select("id, name, status").order("name"),
+      ])
       if (cancelled) return
       setTags((tagsRes.data as TagRecord[] | null) ?? [])
       setTemplates((templatesRes.data as MessageTemplate[] | null) ?? [])
       setCustomFields((customFieldsRes.data as CustomField[] | null) ?? [])
       setPipelines((pipelinesRes.data as PipelineOption[] | null) ?? [])
       setStages((stagesRes.data as PipelineStageOption[] | null) ?? [])
+      setAutomations(
+        ((automationsRes.data as AutomationOption[] | null) ?? []).filter(
+          (a) => a.id !== automacaoAtualId,
+        ),
+      )
+      setFlows((flowsRes.data as FlowOption[] | null) ?? [])
     })()
 
     // Members go through the API so we inherit its email-visibility
@@ -348,11 +430,21 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [automacaoAtualId])
 
   return (
     <ResourcesContext.Provider
-      value={{ tags, members, templates, customFields, pipelines, stages, channels }}
+      value={{
+        tags,
+        members,
+        templates,
+        customFields,
+        pipelines,
+        stages,
+        channels,
+        automations,
+        flows,
+      }}
     >
       {children}
     </ResourcesContext.Provider>
@@ -812,7 +904,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
       <div className="relative flex-1 overflow-y-auto">
         <div className="absolute inset-0 bg-[radial-gradient(circle,var(--border)_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none" />
         <div className="relative mx-auto flex max-w-2xl flex-col items-center gap-0 px-4 py-10">
-          <ResourcesProvider>
+          <ResourcesProvider automacaoAtualId={initial.id}>
             <AvisosDeCanal steps={state.steps} channelIds={state.channel_ids} />
             <TriggerCard
               type={state.trigger_type}
@@ -1738,6 +1830,122 @@ function canalDoPasso(cfg: Record<string, unknown>): string | null {
 // Per-step config editor
 // ------------------------------------------------------------
 
+// ------------------------------------------------------------
+// Seletores da orquestração (936).
+//
+// Os dois seguem a mesma convenção do resto do builder — lista vazia cai
+// para entrada crua, para a automação nunca ficar inautorável — e os dois
+// carregam DOIS avisos que não são enfeite:
+//
+//   1. **alvo apagado** (o id ficou órfão no JSONB). Não há FK dentro de
+//      `step_config`, então apagar a automação/robô não limpa nada: o passo
+//      continua ali apontando para o nada, e falharia só na hora do disparo,
+//      no log, longe de quem montou.
+//   2. **alvo desativado**. O motor RECUSA acionar peça desligada — de
+//      propósito, para o interruptor continuar sendo freio de emergência.
+//      Sem o aviso, o passo pareceria montado e certo, e não faria nada.
+// ------------------------------------------------------------
+
+function SeletorDeAutomacao({
+  value,
+  onChange,
+  acionar,
+  t,
+}: {
+  value: string
+  onChange: (v: string) => void
+  /** `true` = `run_automation` (o alvo precisa estar ativo para rodar). */
+  acionar: boolean
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { automations } = useResources()
+  const escolhida = automations.find((a) => a.id === value)
+  const orfa = !!value && !escolhida
+  return (
+    <FieldBlock label={t(acionar ? "orquestracao.runAutomationLabel" : "orquestracao.stopAutomationLabel")}>
+      {automations.length === 0 ? (
+        <Input
+          placeholder={t("orquestracao.rawIdPlaceholder")}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="bg-muted text-foreground"
+        />
+      ) : (
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={SELECT_CLASS}
+        >
+          <option value="">{t("orquestracao.pickAutomation")}</option>
+          {automations.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+              {a.is_active ? "" : ` ${t("orquestracao.inactiveSuffix")}`}
+            </option>
+          ))}
+        </select>
+      )}
+      {orfa && (
+        <p className="mt-1 text-[11px] text-amber-500">{t("orquestracao.automationGone")}</p>
+      )}
+      {/* Só em `run_automation`: `stop_automation` cancela as esperas de uma
+          automação desligada normalmente — é justamente o caso em que se
+          quer parar o que ficou parado. */}
+      {acionar && escolhida && !escolhida.is_active && (
+        <p className="mt-1 text-[11px] text-amber-500">{t("orquestracao.automationInactive")}</p>
+      )}
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        {t(acionar ? "orquestracao.runAutomationHelp" : "orquestracao.stopAutomationHelp")}
+      </p>
+    </FieldBlock>
+  )
+}
+
+function SeletorDeRobo({
+  value,
+  onChange,
+  t,
+}: {
+  value: string
+  onChange: (v: string) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { flows } = useResources()
+  const escolhido = flows.find((f) => f.id === value)
+  const orfao = !!value && !escolhido
+  return (
+    <FieldBlock label={t("orquestracao.runFlowLabel")}>
+      {flows.length === 0 ? (
+        <Input
+          placeholder={t("orquestracao.rawIdPlaceholder")}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="bg-muted text-foreground"
+        />
+      ) : (
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={SELECT_CLASS}
+        >
+          <option value="">{t("orquestracao.pickFlow")}</option>
+          {flows.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name}
+              {f.status === "active" ? "" : ` ${t("orquestracao.inactiveSuffix")}`}
+            </option>
+          ))}
+        </select>
+      )}
+      {orfao && <p className="mt-1 text-[11px] text-amber-500">{t("orquestracao.flowGone")}</p>}
+      {escolhido && escolhido.status !== "active" && (
+        <p className="mt-1 text-[11px] text-amber-500">{t("orquestracao.flowInactive")}</p>
+      )}
+      <p className="mt-1 text-[11px] text-muted-foreground">{t("orquestracao.runFlowHelp")}</p>
+    </FieldBlock>
+  )
+}
+
 function StepEditor({
   step,
   onChange,
@@ -1944,6 +2152,51 @@ function StepEditor({
             <option value="lost">{t("stages.status_lost")}</option>
             <option value="open">{t("stages.status_open")}</option>
           </select>
+        </FieldBlock>
+      )
+    case "run_automation":
+    case "stop_automation":
+      return (
+        <SeletorDeAutomacao
+          value={(cfg.automation_id as string) ?? ""}
+          onChange={(v) => set({ automation_id: v })}
+          acionar={step.step_type === "run_automation"}
+          t={t}
+        />
+      )
+    case "run_flow":
+      return (
+        <SeletorDeRobo
+          value={(cfg.flow_id as string) ?? ""}
+          onChange={(v) => set({ flow_id: v })}
+          t={t}
+        />
+      )
+    case "stop_flow":
+      return (
+        <p className="text-[11px] text-muted-foreground">
+          {t("orquestracao.stopFlowHelp")}
+        </p>
+      )
+    case "set_ai":
+      return (
+        <FieldBlock label={t("orquestracao.aiLabel")}>
+          <select
+            value={cfg.enabled === false ? "off" : "on"}
+            onChange={(e) => set({ enabled: e.target.value === "on" })}
+            className={SELECT_CLASS}
+          >
+            <option value="on">{t("orquestracao.aiOn")}</option>
+            <option value="off">{t("orquestracao.aiOff")}</option>
+          </select>
+          {/* ⚠️ O aviso só aparece ao LIGAR, que é quando o contador zera.
+              Mostrá-lo sempre transformaria em ruído o único texto da tela
+              que explica como o teto da IA pode ser furado. */}
+          {cfg.enabled !== false && (
+            <p className="mt-1 text-[11px] text-amber-500">
+              {t("orquestracao.aiResetWarning")}
+            </p>
+          )}
         </FieldBlock>
       )
     case "wait":

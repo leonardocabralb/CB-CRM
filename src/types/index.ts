@@ -749,6 +749,16 @@ export type AutomationStepType =
   | 'move_deal_stage'
   /** Marca o negócio ganho / perdido / reaberto — 934. */
   | 'set_deal_status'
+  /** Aciona outra automação para o mesmo contato — 936. */
+  | 'run_automation'
+  /** Cancela as esperas paradas de uma automação para este contato — 936. */
+  | 'stop_automation'
+  /** Inicia um robô (fluxo); substitui o robô ativo, se houver — 936 (D11). */
+  | 'run_flow'
+  /** Para o robô que estiver rodando com este contato — 936. */
+  | 'stop_flow'
+  /** Liga ou desliga a resposta automática da IA nesta conversa — 936. */
+  | 'set_ai'
   | 'wait'
   | 'condition'
   | 'send_webhook'
@@ -979,6 +989,54 @@ export interface SendWebhookStepConfig {
   body_template?: string;
 }
 
+/**
+ * Config de `run_automation` e `stop_automation` (migration 936).
+ *
+ * Uma forma para os dois, como `MoveDealStepConfig`: o motor decide o que
+ * fazer pelo `step_type`.
+ *
+ * ⚠️ `stop_automation` age **só sobre este contato**. Cancelar as esperas da
+ * automação alvo para a conta inteira seria um estrago desproporcional: um
+ * cliente entrando numa etapa apagaria o follow-up de 24h de todos os outros,
+ * sem nada na tela dizendo que isso aconteceu.
+ */
+export interface AutomationRefStepConfig {
+  automation_id: string;
+}
+
+/**
+ * Config de `run_flow` (migration 936) — o "Executar Robô X".
+ *
+ * ⚠️ Com robô já ativo no contato, o novo **substitui** o atual (D11): o
+ * anterior é encerrado como `stopped_by_automation` /
+ * `end_reason = 'replaced_by_automation'`. O invariante de uma run ativa por
+ * contato (`idx_one_active_run_per_contact`) continua de pé — e é justamente
+ * ele que obriga a encerrar antes de iniciar, senão o INSERT volta 23505.
+ */
+export interface RunFlowStepConfig {
+  flow_id: string;
+}
+
+/**
+ * Config de `set_ai` (migration 936).
+ *
+ * ⚠️ **Religar zera o contador de respostas da IA** (`ai_reply_count`), por
+ * decisão do operador (D10). O comentário da rota manual dizia que isso era
+ * "não-automatizável de propósito", porque o contador é o teto que impede o
+ * robô de responder para sempre numa conversa — e a ação humana, sendo lenta,
+ * era a proteção. Automatizado, o teto passa a depender de quem monta a
+ * automação: "a cada mensagem recebida, religar a IA" fura o teto para sempre.
+ * A decisão é do operador; o aviso fica aqui e na tela.
+ *
+ * `agent_id` é o encaixe reservado para os agentes de IA nomeados (D7/§4.7 do
+ * plano) — hoje o motor o IGNORA. Existe para que a config gravada agora não
+ * precise de migração de dados quando a feature chegar.
+ */
+export interface SetAiStepConfig {
+  enabled: boolean;
+  agent_id?: string;
+}
+
 export type AutomationStepConfig =
   | SendMessageStepConfig
   | SendButtonsStepConfig
@@ -989,6 +1047,9 @@ export type AutomationStepConfig =
   | UpdateContactFieldStepConfig
   | CreateDealStepConfig
   | MoveDealStepConfig
+  | AutomationRefStepConfig
+  | RunFlowStepConfig
+  | SetAiStepConfig
   | WaitStepConfig
   | ConditionStepConfig
   | SendWebhookStepConfig

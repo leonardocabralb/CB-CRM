@@ -85,10 +85,17 @@ export async function POST(request: Request, { params }: Params) {
       // the bot muted and make "Resume AI" a no-op. This is the explicit
       // choice to let the bot own the thread again.
       update.assigned_agent_id = null
-      // Give the bot a fresh reply budget on this thread. This is a
-      // deliberate, manual, rate-limited action (not automatable), so it
-      // can't be used to bypass the per-conversation cap at scale — it's
-      // a human choosing to re-engage the assistant.
+      // Give the bot a fresh reply budget on this thread.
+      //
+      // ⚠️ Isto JÁ NÃO é exclusivo de gente. Até a migration 936 o comentário
+      // aqui dizia que zerar o contador era "deliberadamente não-automatizável"
+      // — a lentidão humana era o que impedia o teto por conversa de ser
+      // furado em escala. O passo `set_ai` das automações passou a fazer o
+      // mesmo, por decisão do operador (D10).
+      //
+      // Quem for mexer no teto precisa saber: ele agora depende de quem monta
+      // a automação. "A cada mensagem recebida, religar a IA" fura o teto para
+      // sempre, e o robô responde sem limite naquela conversa.
       update.ai_reply_count = 0
       update.ai_handoff_summary = null
     }

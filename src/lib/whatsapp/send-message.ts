@@ -47,6 +47,7 @@ import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client';
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
 import { stampMessageChannel } from '@/lib/cb-channels/stamp';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
+import { abortActiveRunsForContact } from '@/lib/flows/parar-run';
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -834,27 +835,14 @@ export async function sendMessageToConversation(
   // sinal é "tem gente aqui agora", e quem escreveu ontem à noite não está.
   // Uma agendada matando o fluxo de madrugada deixaria o cliente sem
   // resposta automática sem ninguém ter decidido isso.
-  try {
-    if (pauseFlows && !ehGrupo) {
-      const { error: pauseErr } = await supabaseAdmin()
-        .from('flow_runs')
-        .update({
-          status: 'paused_by_agent',
-          ended_at: new Date().toISOString(),
-          end_reason: 'agent_replied',
-        })
-        .eq('account_id', accountId)
-        .eq('contact_id', contact!.id)
-        .eq('status', 'active');
-      if (pauseErr) {
-        console.error('[flows] pause-on-agent-send failed:', pauseErr.message);
-      }
-    }
-  } catch (err) {
-    console.error(
-      '[flows] pause-on-agent-send threw:',
-      err instanceof Error ? err.message : err
-    );
+  if (pauseFlows && !ehGrupo) {
+    await abortActiveRunsForContact({
+      db: supabaseAdmin(),
+      accountId,
+      contactId: contact!.id,
+      status: 'paused_by_agent',
+      reason: 'agent_replied',
+    });
   }
 
   return {

@@ -1049,7 +1049,12 @@
         "send_webhook": "Send Webhook",
         "close_conversation": "Close Conversation",
         "move_deal_stage": "Move deal to stage",
-        "set_deal_status": "Mark won or lost"
+        "set_deal_status": "Mark won or lost",
+        "run_automation": "Run automation",
+        "stop_automation": "Stop automation",
+        "run_flow": "Run bot",
+        "stop_flow": "Stop bot",
+        "set_ai": "AI assistant"
       },
       "triggers": {
         "new_message_received": {
@@ -1230,6 +1235,27 @@
         "antes": "before the date",
         "depois": "after the date",
         "ajuda": "Fires once per contact. If the date changes, the reminder re-arms."
+      },
+      "orquestracao": {
+        "runAutomationLabel": "Automation to run",
+        "stopAutomationLabel": "Automation to stop",
+        "pickAutomation": "Pick an automation…",
+        "runAutomationHelp": "Runs the chosen automation for this same contact. A chain that would revisit a step it already passed is refused — that is what keeps two automations calling each other from looping forever.",
+        "stopAutomationHelp": "Cancels this contact's pending waits in the chosen automation. Other contacts are untouched.",
+        "automationGone": "This automation no longer exists. Pick another one, or the step will fail when it runs.",
+        "automationInactive": "This automation is turned off, and the engine refuses to run it. Turn it on, or the step will fail.",
+        "runFlowLabel": "Bot to run",
+        "pickFlow": "Pick a bot…",
+        "runFlowHelp": "Starts the bot for this contact. If another bot is already running with them, it is replaced.",
+        "flowGone": "This bot no longer exists. Pick another one, or the step will fail when it runs.",
+        "flowInactive": "This bot is turned off, and the engine refuses to run it. Turn it on, or the step will fail. A bot that should only start on demand can stay active with a 'manual' trigger.",
+        "stopFlowHelp": "Stops whatever bot is running with this contact. Does nothing if none is.",
+        "aiLabel": "AI on this conversation",
+        "aiOn": "Turn on",
+        "aiOff": "Turn off",
+        "aiResetWarning": "Turning it back on also resets this conversation's reply counter and releases whoever is assigned. Beware of turning it on from a trigger that fires on every message — the per-conversation reply cap stops applying.",
+        "rawIdPlaceholder": "Paste the id",
+        "inactiveSuffix": "(off)"
       }
     }
   },
@@ -1289,7 +1315,8 @@
       "statusHandedOff": "Handed off",
       "statusTimedOut": "Timed out",
       "statusPaused": "Paused by agent",
-      "statusFailed": "Failed"
+      "statusFailed": "Failed",
+      "statusStoppedByAutomation": "Stopped by automation"
     },
     "builder": {
       "triggerTitle": "Trigger",

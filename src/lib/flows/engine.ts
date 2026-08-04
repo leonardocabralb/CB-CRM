@@ -40,6 +40,7 @@ import {
   engineSendText,
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
+import { abortActiveRunsForContact } from "./parar-run";
 import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
 import {
@@ -1142,7 +1143,10 @@ async function handleReplyForActiveRun(
 async function startNewRun(
   db: AdminClient,
   flow: FlowRow,
-  input: DispatchInboundInput,
+  // `message` é OPCIONAL desde a 936: o robô também nasce sem mensagem de
+  // entrada, quando uma automação o aciona (`run_flow`). O corpo só o usa
+  // para carimbar `meta_message_id` no evento de auditoria.
+  input: Omit<DispatchInboundInput, "message"> & { message?: ParsedInbound },
   nodes: Map<string, FlowNodeRow>,
 ): Promise<DispatchInboundResult> {
   // INSERT — partial unique index `idx_one_active_run_per_contact`
@@ -1185,7 +1189,7 @@ async function startNewRun(
   await logEvent(db, run.id, "started", flow.entry_node_id, {
     flow_id: flow.id,
     trigger_type: flow.trigger_type,
-    meta_message_id: input.message.meta_message_id,
+    meta_message_id: input.message?.meta_message_id ?? null,
   });
   // Bump the flow's execution counter — used by the builder UI to
   // surface "X runs since activation" on the flow card.
@@ -1209,5 +1213,93 @@ async function startNewRun(
     consumed: true,
     flow_run_id: run.id,
     outcome: outcome.outcome === "advanced" ? "started" : outcome.outcome,
+  };
+}
+
+// ============================================================
+// Controle externo do robô (migration 936).
+//
+// As automações precisam poder PARAR e ACIONAR um robô, e as duas coisas
+// mexem no mesmo invariante: `idx_one_active_run_per_contact` só admite uma
+// run ativa por contato. Por isso as duas moram aqui, dentro do módulo que
+// já é dono desse invariante — e não do lado das automações, onde virariam
+// uma segunda escrita concorrente em `flow_runs`.
+// ============================================================
+
+/**
+ * Inicia um robô para o contato, sem mensagem de entrada — o "Executar
+ * Robô X" acionado por automação (D11).
+ *
+ * ⚠️ **Substitui o robô ativo**, e a ordem importa: encerrar ANTES de
+ * inserir. Ao contrário, o INSERT bate no índice único parcial e volta
+ * 23505 — que `startNewRun` interpreta como "outro webhook está começando
+ * esta run" e engole como duplicata. O robô novo simplesmente não nasceria,
+ * sem erro nenhum na tela.
+ *
+ * ⚠️ **Exige o robô ATIVO**, e isso é deliberado. A tentação é dizer "a
+ * automação é uma ordem explícita, obedeça" — mas aí o interruptor da tela
+ * deixa de ser freio: com algo saindo errado, o operador desliga o robô e ele
+ * continua rodando, acionado por uma regra que talvez ele nem lembre que
+ * existe, sem nenhum outro jeito de parar além de caçar a automação que
+ * chama. Robô sob demanda não precisa ficar inativo para isso — é para isso
+ * que existe `trigger_type: 'manual'`, que já não parte de mensagem nenhuma
+ * (`findEntryFlow`).
+ *
+ * Confere também a CONTA: o motor roda em service-role e ignora RLS, então um
+ * `flow_id` de outra conta entraria sem barreira nenhuma.
+ */
+export async function startFlowForContact(args: {
+  accountId: string;
+  userId: string;
+  contactId: string;
+  conversationId: string;
+  flowId: string;
+  channelId?: string | null;
+}): Promise<{ ok: boolean; detail: string; flowRunId?: string }> {
+  const db = supabaseAdmin();
+
+  const flow = await loadFlow(db, args.flowId);
+  if (!flow) return { ok: false, detail: "robô não encontrado" };
+  if (flow.account_id !== args.accountId) {
+    // Silencioso quanto ao motivo real, como o resto do motor: dizer
+    // "existe, mas é de outra conta" confirmaria a existência do id.
+    return { ok: false, detail: "robô não encontrado" };
+  }
+  if (flow.status !== "active") {
+    return { ok: false, detail: "robô está desativado" };
+  }
+  if (!flow.entry_node_id) return { ok: false, detail: "robô sem nó de entrada" };
+
+  const nodes = await loadAllNodes(db, flow.id);
+  if (nodes.size === 0) return { ok: false, detail: "robô sem nós" };
+
+  const encerradas = await abortActiveRunsForContact({
+    db,
+    accountId: args.accountId,
+    contactId: args.contactId,
+    status: "stopped_by_automation",
+    reason: "replaced_by_automation",
+  });
+
+  const resultado = await startNewRun(
+    db,
+    flow,
+    {
+      accountId: args.accountId,
+      userId: args.userId,
+      contactId: args.contactId,
+      conversationId: args.conversationId,
+      channelId: args.channelId ?? null,
+    },
+    nodes,
+  );
+
+  if (!resultado.flow_run_id) {
+    return { ok: false, detail: `robô não iniciou (${resultado.outcome ?? "sem motivo"})` };
+  }
+  return {
+    ok: true,
+    flowRunId: resultado.flow_run_id,
+    detail: encerradas > 0 ? "robô iniciado (substituiu o anterior)" : "robô iniciado",
   };
 }
