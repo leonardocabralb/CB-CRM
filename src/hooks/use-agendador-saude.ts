@@ -48,7 +48,7 @@ export function useAgendadorSaude(): SaudeDoAgendadorNaTela {
     const [batimento, pendentes, falhas] = await Promise.all([
       supabase
         .from('cb_agendador_batimento')
-        .select('ultimo_ciclo')
+        .select('ultimo_ciclo, ultimo_ciclo_automacoes')
         .maybeSingle(),
       // ⚠️ `head: true` + `count`: só o número volta, sem trazer linha nenhuma.
       // A RLS já recorta por conta, então isto é a fila DESTA conta.
@@ -88,6 +88,15 @@ export function useAgendadorSaude(): SaudeDoAgendadorNaTela {
             null
           : ((batimento.data as { ultimo_ciclo?: string } | null)
               ?.ultimo_ciclo ?? null),
+        // Laço rápido (937). ⚠️ `undefined` quando a leitura falhou, e é
+        // proposital: neste caso o `ultimoCiclo` acima já vira `null` e
+        // acende sozinho. Mandar `null` aqui TAMBÉM acenderia um segundo
+        // alarme pelo mesmo motivo, e a tela passaria a acusar o laço rápido
+        // com base em nada — o operador iria caçar um defeito que não existe.
+        ultimoCicloAutomacoes: batimento.error
+          ? undefined
+          : ((batimento.data as { ultimo_ciclo_automacoes?: string } | null)
+              ?.ultimo_ciclo_automacoes ?? null),
         pendentes: contar(pendentes, antes?.pendentes ?? 0),
         falhas: contar(falhas, antes?.falhas ?? 0),
       }),

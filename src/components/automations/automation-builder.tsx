@@ -36,6 +36,12 @@ import {
   ArrowUp,
   MousePointerClick,
   List,
+  OctagonX,
+  Bot,
+  BotOff,
+  Sparkles,
+  Paperclip,
+  Upload,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -71,6 +77,11 @@ import type { CbChannel } from "@/lib/cb-channels/repo"
 import { ChannelMultiSelect, ChannelSelect } from "@/components/channels/channel-select"
 import { validateChannelScopeForActivation } from "@/lib/automations/validate"
 import { TIPO_DATA } from "@/lib/contacts/campo-data"
+import { uploadAccountMedia, MEDIA_MAX_BYTES_BY_KIND } from "@/lib/storage/upload-media"
+import { CHAT_MEDIA_BUCKET } from "@/lib/storage/buckets"
+
+/** Os quatro tipos que o passo `send_media` oferece. */
+type MediaKindUI = "image" | "video" | "document" | "audio"
 
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
@@ -129,6 +140,15 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   create_deal: { label: "create_deal", icon: Briefcase, border: "border-l-primary" },
   move_deal_stage: { label: "move_deal_stage", icon: MoveRight, border: "border-l-emerald-500" },
   set_deal_status: { label: "set_deal_status", icon: Trophy, border: "border-l-emerald-500" },
+  // Orquestração (936): borda própria porque estes passos não falam com o
+  // cliente — eles ligam e desligam OUTRAS peças. Quem lê a árvore precisa
+  // ver de longe onde o controle sai desta automação.
+  run_automation: { label: "run_automation", icon: Zap, border: "border-l-violet-500" },
+  stop_automation: { label: "stop_automation", icon: OctagonX, border: "border-l-violet-500" },
+  run_flow: { label: "run_flow", icon: Bot, border: "border-l-violet-500" },
+  stop_flow: { label: "stop_flow", icon: BotOff, border: "border-l-violet-500" },
+  set_ai: { label: "set_ai", icon: Sparkles, border: "border-l-violet-500" },
+  send_media: { label: "send_media", icon: Paperclip, border: "border-l-primary" },
   wait: { label: "wait", icon: Hourglass, border: "border-l-border" },
   condition: { label: "condition", icon: GitBranch, border: "border-l-amber-500" },
   send_webhook: { label: "send_webhook", icon: Webhook, border: "border-l-primary" },
@@ -140,6 +160,7 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "send_buttons",
   "send_list",
   "send_template",
+  "send_media",
   "add_tag",
   "remove_tag",
   "assign_conversation",
@@ -147,6 +168,11 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "create_deal",
   "move_deal_stage",
   "set_deal_status",
+  "run_automation",
+  "stop_automation",
+  "run_flow",
+  "stop_flow",
+  "set_ai",
   "wait",
   "condition",
   "send_webhook",
@@ -228,6 +254,22 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return { stage_id: "" }
     case "set_deal_status":
       return { status: "won" }
+    case "run_automation":
+    case "stop_automation":
+      return { automation_id: "" }
+    case "run_flow":
+      return { flow_id: "" }
+    // Imagem por padrão: é o anexo mais comum e o único cujo preenchimento
+    // errado não tem dano silencioso (áudio com legenda tem — ver a config).
+    case "send_media":
+      return { kind: "image", url: "" }
+    case "stop_flow":
+      return {}
+    // Nasce LIGANDO a IA: é o caso que a maioria monta ("cliente respondeu ao
+    // menu, devolve para o robô"). Nascer desligando faria o passo, aceito
+    // sem abrir a config, calar o robô — o oposto do que quem o arrastou quis.
+    case "set_ai":
+      return { enabled: true }
     case "wait":
       return { amount: 1, unit: "hours" }
     case "condition":
@@ -260,6 +302,38 @@ interface AutomationResources {
   stages: PipelineStageOption[]
   /** Canais da conta — para a condição por canal do passo Condição. */
   channels: CbChannel[]
+  /**
+   * Automações da conta, para `run_automation` / `stop_automation`.
+   *
+   * ⚠️ Inclui a que está sendo editada, e quem filtra é cada seletor —
+   * porque as duas ações querem coisas opostas dela:
+   *
+   * - `run_automation` a EXCLUI: acionar a si mesma é laço garantido, e o
+   *   motor barraria na hora, mas só depois de o operador montar, salvar,
+   *   ativar e esperar.
+   * - `stop_automation` a MANTÉM: "cancele a minha própria espera pendente
+   *   e comece a contar de novo" é legítimo, e some do seletor seria uma
+   *   limitação que ninguém descobre. A execução em curso não se
+   *   autocancela — o cron já a marcou `running`, e o passo só atinge
+   *   `pending`.
+   */
+  automations: AutomationOption[]
+  /** `undefined` numa automação nova — ela ainda não tem id. */
+  automacaoAtualId?: string
+  /** Robôs (fluxos) da conta, para `run_flow`. */
+  flows: FlowOption[]
+}
+
+interface AutomationOption {
+  id: string
+  name: string
+  is_active: boolean
+}
+
+interface FlowOption {
+  id: string
+  name: string
+  status: string
 }
 
 interface PipelineOption {
@@ -282,19 +356,30 @@ const ResourcesContext = createContext<AutomationResources>({
   pipelines: [],
   stages: [],
   channels: [],
+  automations: [],
+  flows: [],
 })
 
 function useResources(): AutomationResources {
   return useContext(ResourcesContext)
 }
 
-function ResourcesProvider({ children }: { children: ReactNode }) {
+function ResourcesProvider({
+  children,
+  automacaoAtualId,
+}: {
+  children: ReactNode
+  /** `undefined` numa automação nova — ela ainda não tem id para se excluir. */
+  automacaoAtualId?: string
+}) {
   const [tags, setTags] = useState<TagRecord[]>([])
   const [members, setMembers] = useState<AccountMember[]>([])
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
   const [customFields, setCustomFields] = useState<CustomField[]>([])
   const [pipelines, setPipelines] = useState<PipelineOption[]>([])
   const [stages, setStages] = useState<PipelineStageOption[]>([])
+  const [automations, setAutomations] = useState<AutomationOption[]>([])
+  const [flows, setFlows] = useState<FlowOption[]>([])
   // No provider, e não dentro do StepEditor: aquele monta uma vez por passo
   // aberto, e cada montagem seria um GET novo.
   const { channels } = useChannels()
@@ -308,27 +393,42 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
     // actually be sent (anything else 400s at send time), matching the
     // broadcast picker.
     void (async () => {
-      const [tagsRes, templatesRes, customFieldsRes, pipelinesRes, stagesRes] =
-        await Promise.all([
-          supabase.from("tags").select("*").order("name"),
-          supabase
-            .from("message_templates")
-            .select("*")
-            .eq("status", "APPROVED")
-            .order("name"),
-          supabase.from("custom_fields").select("*").order("field_name"),
-          supabase.from("pipelines").select("id, name").order("name"),
-          supabase
-            .from("pipeline_stages")
-            .select("id, name, pipeline_id, position")
-            .order("position"),
-        ])
+      const [
+        tagsRes,
+        templatesRes,
+        customFieldsRes,
+        pipelinesRes,
+        stagesRes,
+        automationsRes,
+        flowsRes,
+      ] = await Promise.all([
+        supabase.from("tags").select("*").order("name"),
+        supabase
+          .from("message_templates")
+          .select("*")
+          .eq("status", "APPROVED")
+          .order("name"),
+        supabase.from("custom_fields").select("*").order("field_name"),
+        supabase.from("pipelines").select("id, name").order("name"),
+        supabase
+          .from("pipeline_stages")
+          .select("id, name, pipeline_id, position")
+          .order("position"),
+        // Orquestração (936). Traz INATIVAS também: o motor recusa acionar
+        // automação desligada, e a tela precisa poder dizer isso ao operador
+        // — some da lista seria pior, porque ele procuraria a automação que
+        // sabe que existe e concluiria que a feature está quebrada.
+        supabase.from("automations").select("id, name, is_active").order("name"),
+        supabase.from("flows").select("id, name, status").order("name"),
+      ])
       if (cancelled) return
       setTags((tagsRes.data as TagRecord[] | null) ?? [])
       setTemplates((templatesRes.data as MessageTemplate[] | null) ?? [])
       setCustomFields((customFieldsRes.data as CustomField[] | null) ?? [])
       setPipelines((pipelinesRes.data as PipelineOption[] | null) ?? [])
       setStages((stagesRes.data as PipelineStageOption[] | null) ?? [])
+      setAutomations((automationsRes.data as AutomationOption[] | null) ?? [])
+      setFlows((flowsRes.data as FlowOption[] | null) ?? [])
     })()
 
     // Members go through the API so we inherit its email-visibility
@@ -352,7 +452,18 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
 
   return (
     <ResourcesContext.Provider
-      value={{ tags, members, templates, customFields, pipelines, stages, channels }}
+      value={{
+        tags,
+        members,
+        templates,
+        customFields,
+        pipelines,
+        stages,
+        channels,
+        automations,
+        automacaoAtualId,
+        flows,
+      }}
     >
       {children}
     </ResourcesContext.Provider>
@@ -812,7 +923,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
       <div className="relative flex-1 overflow-y-auto">
         <div className="absolute inset-0 bg-[radial-gradient(circle,var(--border)_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none" />
         <div className="relative mx-auto flex max-w-2xl flex-col items-center gap-0 px-4 py-10">
-          <ResourcesProvider>
+          <ResourcesProvider automacaoAtualId={initial.id}>
             <AvisosDeCanal steps={state.steps} channelIds={state.channel_ids} />
             <TriggerCard
               type={state.trigger_type}
@@ -1738,6 +1849,251 @@ function canalDoPasso(cfg: Record<string, unknown>): string | null {
 // Per-step config editor
 // ------------------------------------------------------------
 
+// ------------------------------------------------------------
+// Seletores da orquestração (936).
+//
+// Os dois seguem a mesma convenção do resto do builder — lista vazia cai
+// para entrada crua, para a automação nunca ficar inautorável — e os dois
+// carregam DOIS avisos que não são enfeite:
+//
+//   1. **alvo apagado** (o id ficou órfão no JSONB). Não há FK dentro de
+//      `step_config`, então apagar a automação/robô não limpa nada: o passo
+//      continua ali apontando para o nada, e falharia só na hora do disparo,
+//      no log, longe de quem montou.
+//   2. **alvo desativado**. O motor RECUSA acionar peça desligada — de
+//      propósito, para o interruptor continuar sendo freio de emergência.
+//      Sem o aviso, o passo pareceria montado e certo, e não faria nada.
+// ------------------------------------------------------------
+
+/**
+ * Editor do passo "Enviar arquivo".
+ *
+ * O arquivo sobe UMA vez, aqui, para o bucket `chat-media`, e a URL pública
+ * fica gravada na config. **Não há coleta de lixo** — o mesmo objeto serve
+ * toda execução da automação, para sempre; apagá-lo no envio (como a mensagem
+ * agendada faz) quebraria a automação a partir do segundo disparo.
+ */
+function EditorDeMidia({
+  cfg,
+  set,
+  t,
+}: {
+  cfg: Record<string, unknown>
+  set: (patch: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const [enviando, setEnviando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const kind = (cfg.kind as MediaKindUI) ?? "image"
+  const url = (cfg.url as string) ?? ""
+
+  async function aoEscolher(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = "" // permite reescolher o MESMO arquivo depois de um erro
+    if (!file) return
+    const max = MEDIA_MAX_BYTES_BY_KIND[kind]
+    if (file.size > max) {
+      setErro(t("midia.grandeDemais", { mb: Math.floor(max / 1024 / 1024) }))
+      return
+    }
+    setErro(null)
+    setEnviando(true)
+    try {
+      const { publicUrl } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file)
+      // O nome só é usado em documento, mas guardar sempre custa nada e evita
+      // perder a informação se o operador trocar o tipo depois.
+      set({ url: publicUrl, filename: file.name })
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : String(err))
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <>
+      <FieldBlock label={t("midia.tipoLabel")}>
+        <select
+          value={kind}
+          onChange={(e) => {
+            const novo = e.target.value as MediaKindUI
+            // ⚠️ Trocar para ÁUDIO limpa a legenda. Sem isso ela ficaria
+            // gravada na config, invisível na tela (o campo some), e a
+            // validação recusaria a ativação sem o operador ver o porquê.
+            set(novo === "audio" ? { kind: novo, caption: "" } : { kind: novo })
+          }}
+          className={SELECT_CLASS}
+        >
+          <option value="image">{t("midia.image")}</option>
+          <option value="video">{t("midia.video")}</option>
+          <option value="document">{t("midia.document")}</option>
+          <option value="audio">{t("midia.audio")}</option>
+        </select>
+      </FieldBlock>
+
+      <FieldBlock label={t("midia.arquivoLabel")}>
+        <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-muted px-3 py-2 text-sm text-muted-foreground hover:border-primary">
+          {enviando ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Upload className="h-4 w-4" />
+          )}
+          <span className="truncate">
+            {enviando
+              ? t("midia.enviando")
+              : url
+                ? ((cfg.filename as string) || url.split("/").pop() || url)
+                : t("midia.escolher")}
+          </span>
+          <input type="file" className="hidden" onChange={aoEscolher} disabled={enviando} />
+        </label>
+        {erro && <p className="mt-1 text-[11px] text-destructive">{erro}</p>}
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 block truncate text-[11px] text-primary hover:underline"
+          >
+            {t("midia.abrir")}
+          </a>
+        )}
+      </FieldBlock>
+
+      {kind === "document" && (
+        <FieldBlock label={t("midia.nomeLabel")}>
+          <Input
+            value={(cfg.filename as string) ?? ""}
+            onChange={(e) => set({ filename: e.target.value })}
+            className="bg-muted text-foreground"
+          />
+          <p className="mt-1 text-[11px] text-muted-foreground">{t("midia.nomeHelp")}</p>
+        </FieldBlock>
+      )}
+
+      {/* ⚠️ ÁUDIO NÃO TEM LEGENDA. O campo não fica desabilitado — ele SOME, e
+          no lugar entra a explicação. Um campo inerte convida a digitar; o
+          texto digitado seria gravado, apareceria no fio para a equipe e não
+          viajaria ao cliente. */}
+      {kind === "audio" ? (
+        <p className="text-[11px] text-muted-foreground">{t("midia.audioSemLegenda")}</p>
+      ) : (
+        <FieldBlock label={t("midia.legendaLabel")}>
+          <Textarea
+            value={(cfg.caption as string) ?? ""}
+            onChange={(e) => set({ caption: e.target.value })}
+            rows={2}
+            className="bg-muted text-foreground"
+          />
+        </FieldBlock>
+      )}
+    </>
+  )
+}
+
+function SeletorDeAutomacao({
+  value,
+  onChange,
+  acionar,
+  t,
+}: {
+  value: string
+  onChange: (v: string) => void
+  /** `true` = `run_automation` (o alvo precisa estar ativo para rodar). */
+  acionar: boolean
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { automations, automacaoAtualId } = useResources()
+  // Só `run_automation` esconde a si mesma — ver a nota em `AutomationResources`.
+  const lista = acionar ? automations.filter((a) => a.id !== automacaoAtualId) : automations
+  const escolhida = lista.find((a) => a.id === value)
+  const orfa = !!value && !escolhida
+  return (
+    <FieldBlock label={t(acionar ? "orquestracao.runAutomationLabel" : "orquestracao.stopAutomationLabel")}>
+      {lista.length === 0 ? (
+        <Input
+          placeholder={t("orquestracao.rawIdPlaceholder")}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="bg-muted text-foreground"
+        />
+      ) : (
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={SELECT_CLASS}
+        >
+          <option value="">{t("orquestracao.pickAutomation")}</option>
+          {lista.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+              {a.id === automacaoAtualId ? ` ${t("orquestracao.selfSuffix")}` : ""}
+              {a.is_active ? "" : ` ${t("orquestracao.inactiveSuffix")}`}
+            </option>
+          ))}
+        </select>
+      )}
+      {orfa && (
+        <p className="mt-1 text-[11px] text-amber-500">{t("orquestracao.automationGone")}</p>
+      )}
+      {/* Só em `run_automation`: `stop_automation` cancela as esperas de uma
+          automação desligada normalmente — é justamente o caso em que se
+          quer parar o que ficou parado. */}
+      {acionar && escolhida && !escolhida.is_active && (
+        <p className="mt-1 text-[11px] text-amber-500">{t("orquestracao.automationInactive")}</p>
+      )}
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        {t(acionar ? "orquestracao.runAutomationHelp" : "orquestracao.stopAutomationHelp")}
+      </p>
+    </FieldBlock>
+  )
+}
+
+function SeletorDeRobo({
+  value,
+  onChange,
+  t,
+}: {
+  value: string
+  onChange: (v: string) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { flows } = useResources()
+  const escolhido = flows.find((f) => f.id === value)
+  const orfao = !!value && !escolhido
+  return (
+    <FieldBlock label={t("orquestracao.runFlowLabel")}>
+      {flows.length === 0 ? (
+        <Input
+          placeholder={t("orquestracao.rawIdPlaceholder")}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="bg-muted text-foreground"
+        />
+      ) : (
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={SELECT_CLASS}
+        >
+          <option value="">{t("orquestracao.pickFlow")}</option>
+          {flows.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name}
+              {f.status === "active" ? "" : ` ${t("orquestracao.inactiveSuffix")}`}
+            </option>
+          ))}
+        </select>
+      )}
+      {orfao && <p className="mt-1 text-[11px] text-amber-500">{t("orquestracao.flowGone")}</p>}
+      {escolhido && escolhido.status !== "active" && (
+        <p className="mt-1 text-[11px] text-amber-500">{t("orquestracao.flowInactive")}</p>
+      )}
+      <p className="mt-1 text-[11px] text-muted-foreground">{t("orquestracao.runFlowHelp")}</p>
+    </FieldBlock>
+  )
+}
+
 function StepEditor({
   step,
   onChange,
@@ -1944,6 +2300,53 @@ function StepEditor({
             <option value="lost">{t("stages.status_lost")}</option>
             <option value="open">{t("stages.status_open")}</option>
           </select>
+        </FieldBlock>
+      )
+    case "run_automation":
+    case "stop_automation":
+      return (
+        <SeletorDeAutomacao
+          value={(cfg.automation_id as string) ?? ""}
+          onChange={(v) => set({ automation_id: v })}
+          acionar={step.step_type === "run_automation"}
+          t={t}
+        />
+      )
+    case "run_flow":
+      return (
+        <SeletorDeRobo
+          value={(cfg.flow_id as string) ?? ""}
+          onChange={(v) => set({ flow_id: v })}
+          t={t}
+        />
+      )
+    case "stop_flow":
+      return (
+        <p className="text-[11px] text-muted-foreground">
+          {t("orquestracao.stopFlowHelp")}
+        </p>
+      )
+    case "send_media":
+      return <EditorDeMidia cfg={cfg} set={set} t={t} />
+    case "set_ai":
+      return (
+        <FieldBlock label={t("orquestracao.aiLabel")}>
+          <select
+            value={cfg.enabled === false ? "off" : "on"}
+            onChange={(e) => set({ enabled: e.target.value === "on" })}
+            className={SELECT_CLASS}
+          >
+            <option value="on">{t("orquestracao.aiOn")}</option>
+            <option value="off">{t("orquestracao.aiOff")}</option>
+          </select>
+          {/* ⚠️ O aviso só aparece ao LIGAR, que é quando o contador zera.
+              Mostrá-lo sempre transformaria em ruído o único texto da tela
+              que explica como o teto da IA pode ser furado. */}
+          {cfg.enabled !== false && (
+            <p className="mt-1 text-[11px] text-amber-500">
+              {t("orquestracao.aiResetWarning")}
+            </p>
+          )}
         </FieldBlock>
       )
     case "wait":

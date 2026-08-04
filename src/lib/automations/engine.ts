@@ -20,14 +20,24 @@ import type {
   CreateDealStepConfig,
   MoveDealStepConfig,
   AssignConversationStepConfig,
+  AutomationRefStepConfig,
+  RunFlowStepConfig,
+  SetAiStepConfig,
+  SendMediaStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
+// ⚠️ Direto dos FLUXOS, como `engineSendInteractive*` já faz em
+// `automations/meta-send.ts`. Não há ciclo: `flows/meta-send` só depende de
+// `whatsapp/*` e `cb-channels/*`, nunca das automações.
+import { engineSendMedia } from '@/lib/flows/meta-send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 import { createDeal } from '@/lib/deals/create-deal'
+import { abortActiveRunsForContact } from '@/lib/flows/parar-run'
+import { chaveDeAutomacao, chaveDeFluxo, encadear, lerCadeia } from './cadeia'
 
 // ------------------------------------------------------------
 // Public API
@@ -142,7 +152,7 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
       // está para uma automação que nem era desta palavra-chave.
       if (!(await stageInScope(db, automation, input.contactId, input.context))) continue
       try {
-        await executeAutomation(automation, input)
+        await executeAutomation(input, automation)
       } catch (err) {
         console.error('[automations] execute failed:', automation.id, err)
       }
@@ -185,6 +195,23 @@ export async function resumePendingExecution(pending: {
     return
   }
 
+  // ⚠️ DESATIVAR A AUTOMAÇÃO PARA O QUE ESTÁ PARADO (migration 936).
+  //
+  // Até aqui este bloco não existia: o resume relia a automação por id e
+  // nunca olhava `is_active`. Uma automação desligada na tela continuava
+  // acordando execuções paradas em "Aguardar" — ou seja, o interruptor não
+  // era freio. O defeito ficou invisível porque o cron NUNCA foi chamado em
+  // produção (nada resumia coisa nenhuma); ligar o laço de 60 s o tornaria
+  // real no mesmo dia, com o "follow-up de 24h" saindo para clientes de uma
+  // regra que o operador desligou ontem.
+  //
+  // `cancelled`, não `failed`: cancelamento não é erro e não deve alimentar
+  // o painel de falhas.
+  if (!automation.is_active) {
+    await markPending(pending.id, 'cancelled')
+    return
+  }
+
   try {
     await executeStepsFrom({
       automation: automation as Automation,
@@ -203,11 +230,75 @@ export async function resumePendingExecution(pending: {
   }
 }
 
+/**
+ * Roda UMA automação, por id — o passo `run_automation` (migration 936).
+ *
+ * Não passa por `triggerMatches` nem pelos recortes de canal/etapa, e isso é
+ * o ponto: quem aciona é outra automação, explicitamente. Filtrar de novo
+ * pelo gatilho da alvo seria pedir que ela também "casasse" com um evento que
+ * não é o dela — e nunca rodaria.
+ *
+ * ⚠️ **Exige a automação ATIVA.** Mesmo raciocínio de `startFlowForContact`:
+ * o interruptor da tela precisa continuar sendo o freio de emergência. Sem
+ * isto, desligar uma automação que está mandando mensagem errada não a para,
+ * e o operador não tem como saber que o freio está em outra regra.
+ *
+ * ⚠️ **Exige a mesma CONTA.** O motor roda em service-role e ignora RLS: sem
+ * o `eq('account_id')`, um id de outra conta rodaria a automação dela, com os
+ * contatos desta.
+ *
+ * Nunca lança — devolve o motivo, que o passo grava no registro.
+ */
+export async function runAutomationById(args: {
+  automationId: string
+  accountId: string
+  contactId: string | null
+  context: AutomationContext
+  /** Gatilho do disparo que chegou até aqui, só para rastreabilidade. */
+  triggerType: AutomationTriggerType
+}): Promise<{ ok: boolean; detail: string }> {
+  const db = supabaseAdmin()
+  const { data, error } = await db
+    .from('automations')
+    .select('*')
+    .eq('id', args.automationId)
+    .eq('account_id', args.accountId)
+    .maybeSingle()
+
+  if (error) return { ok: false, detail: `busca da automação falhou: ${error.message}` }
+  if (!data) return { ok: false, detail: 'automação não encontrada' }
+
+  const alvo = data as Automation
+  if (!alvo.is_active) return { ok: false, detail: 'automação alvo está desativada' }
+
+  await executeAutomation(
+    {
+      accountId: args.accountId,
+      triggerType: args.triggerType,
+      contactId: args.contactId,
+      context: args.context,
+    },
+    alvo,
+    'run_automation',
+  )
+  return { ok: true, detail: `automação "${alvo.name}" acionada` }
+}
+
 // ------------------------------------------------------------
 // Internal execution
 // ------------------------------------------------------------
 
-async function executeAutomation(automation: Automation, input: DispatchInput) {
+async function executeAutomation(
+  input: DispatchInput,
+  automation: Automation,
+  /**
+   * O que vai para `automation_logs.trigger_event`. Por padrão é o gatilho
+   * que disparou; `run_automation` sobrescreve, senão o registro diria que
+   * esta automação respondeu a uma mensagem — quando na verdade outra
+   * automação a chamou, e a diferença é tudo ao investigar um laço.
+   */
+  rotuloDoDisparo?: string,
+) {
   const db = supabaseAdmin()
 
   const { data: log, error: logErr } = await db
@@ -221,7 +312,7 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
       // after teammates join the account.
       user_id: automation.user_id,
       contact_id: input.contactId ?? null,
-      trigger_event: input.triggerType,
+      trigger_event: rotuloDoDisparo ?? input.triggerType,
       // Sem isto, "por que isso respondeu pelo numero errado?" nao tem
       // resposta na tela de logs.
       channel_id: input.context?.channel_id ?? null,
@@ -244,7 +335,7 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
     branch: null,
     startPosition: 0,
     logId: log.id,
-    triggerEvent: input.triggerType,
+    triggerEvent: rotuloDoDisparo ?? input.triggerType,
   })
 
   // Atomic counter update via the SQL function from migration 007.
@@ -689,6 +780,184 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       return ehMover ? `negócio movido para ${cfg.stage_id}` : `negócio marcado ${cfg.status}`
     }
 
+    // ------------------------------------------------------------
+    // Orquestração (migration 936) — acionar e parar.
+    //
+    // Os quatro primeiros passam pela guarda anti-ciclo. Não é zelo
+    // decorativo: "A aciona B, B aciona A" manda mensagem ao cliente a cada
+    // volta, para sempre. O teto de profundidade foi recusado pelo operador
+    // (esteira comercial longa é legítima), então a guarda é anti-ciclo —
+    // ver `cadeia.ts`.
+    // ------------------------------------------------------------
+
+    case 'run_automation': {
+      const cfg = step.step_config as AutomationRefStepConfig
+      if (!cfg.automation_id) throw new Error('run_automation precisa de uma automação')
+
+      const passo = encadear(
+        cadeiaDoContexto(args),
+        chaveDeAutomacao(args.automation.id),
+        chaveDeAutomacao(cfg.automation_id),
+      )
+      if (!passo.ok) throw new Error(`run_automation recusado: ${passo.motivo}`)
+
+      const r = await runAutomationById({
+        automationId: cfg.automation_id,
+        accountId: args.automation.account_id,
+        contactId: args.contactId,
+        // A cadeia viaja no contexto porque é assim que ela atravessa o passo
+        // "Aguardar" da automação acionada: o contexto inteiro vira JSONB em
+        // `automation_pending_executions.context`. Sem isso, "aguardar 1 min e
+        // acionar A" driblaria a guarda em toda volta.
+        context: {
+          ...args.context,
+          vars: { ...(args.context.vars ?? {}), _cadeia: passo.cadeia },
+        },
+        triggerType: args.automation.trigger_type,
+      })
+      if (!r.ok) throw new Error(r.detail)
+      return r.detail
+    }
+
+    case 'stop_automation': {
+      const cfg = step.step_config as AutomationRefStepConfig
+      if (!cfg.automation_id) throw new Error('stop_automation precisa de uma automação')
+      if (!args.contactId) throw new Error('stop_automation precisa de um contato')
+
+      // ⚠️ Recortado por CONTATO, sempre. Sem o `.eq('contact_id')` isto
+      // cancelaria as esperas da automação alvo para a conta inteira: um
+      // cliente entrando numa etapa apagaria o follow-up de 24h de todos os
+      // outros, em silêncio e sem desfazer.
+      const { data, error } = await db
+        .from('automation_pending_executions')
+        .update({ status: 'cancelled' })
+        .eq('automation_id', cfg.automation_id)
+        .eq('account_id', args.automation.account_id)
+        .eq('contact_id', args.contactId)
+        .eq('status', 'pending')
+        .select('id')
+      if (error) throw new Error(`stop_automation falhou: ${error.message}`)
+
+      const n = (data ?? []).length
+      return n === 0 ? 'nada parado (nenhuma espera pendente)' : `${n} espera(s) cancelada(s)`
+    }
+
+    case 'run_flow': {
+      const cfg = step.step_config as RunFlowStepConfig
+      if (!cfg.flow_id) throw new Error('run_flow precisa de um robô')
+      if (!args.contactId) throw new Error('run_flow precisa de um contato')
+
+      const passo = encadear(
+        cadeiaDoContexto(args),
+        chaveDeAutomacao(args.automation.id),
+        chaveDeFluxo(cfg.flow_id),
+      )
+      if (!passo.ok) throw new Error(`run_flow recusado: ${passo.motivo}`)
+
+      const conversationId = await resolveConversationId(args)
+      // ⚠️ Import DINÂMICO, e é load-bearing: `flows/engine` importa
+      // `contacts/tag-events`, que importa ESTE módulo. Um import estático
+      // fecharia o ciclo. (`parar-run.ts` foi separado justamente para não
+      // precisar disto no caminho de parar.)
+      const { startFlowForContact } = await import('@/lib/flows/engine')
+      const r = await startFlowForContact({
+        accountId: args.automation.account_id,
+        userId: args.automation.user_id,
+        contactId: args.contactId,
+        conversationId,
+        flowId: cfg.flow_id,
+        channelId: args.context.channel_id ?? null,
+      })
+      if (!r.ok) throw new Error(`run_flow falhou: ${r.detail}`)
+      return r.detail
+    }
+
+    case 'stop_flow': {
+      if (!args.contactId) throw new Error('stop_flow precisa de um contato')
+      const n = await abortActiveRunsForContact({
+        db,
+        accountId: args.automation.account_id,
+        contactId: args.contactId,
+        status: 'stopped_by_automation',
+        reason: 'stopped_by_automation',
+      })
+      return n === 0 ? 'nenhum robô ativo' : 'robô parado'
+    }
+
+    case 'set_ai': {
+      const cfg = step.step_config as SetAiStepConfig
+      const conversationId = await resolveConversationId(args)
+
+      // Grupo está fora da IA por decisão de produto (906). Automação não
+      // dispara em grupo hoje (garantia estrutural em `cb-groups/persist.ts`),
+      // então isto é a segunda tranca — barata, e o dia em que a primeira cair
+      // é justamente o dia em que ninguém vai lembrar desta regra.
+      const { data: conv, error: convErr } = await db
+        .from('conversations')
+        .select('group_id')
+        .eq('id', conversationId)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle()
+      if (convErr) throw new Error(`set_ai falhou ao ler a conversa: ${convErr.message}`)
+      if (!conv) throw new Error('set_ai: conversa não encontrada nesta conta')
+      if (conv.group_id) throw new Error('set_ai não vale em conversa de grupo')
+
+      const update: Record<string, unknown> = { ai_autoreply_disabled: !cfg.enabled }
+      if (cfg.enabled) {
+        // Espelha a rota manual: devolver o fio ao robô exige soltar QUALQUER
+        // atribuição, não só a de quem clicou — a IA fica muda enquanto houver
+        // humano atribuído, então um responsável esquecido faria "religar" ser
+        // um nada silencioso.
+        update.assigned_agent_id = null
+        // ⚠️ Zera o teto de respostas da IA nesta conversa, por decisão do
+        // operador (D10). O comentário da rota manual dizia que isso era
+        // "não-automatizável de propósito": o contador é o que impede o robô
+        // de responder para sempre, e a lentidão humana era a proteção.
+        // Automatizado, o teto passa a depender de quem monta a regra — "a
+        // cada mensagem recebida, religar a IA" fura o teto para sempre.
+        update.ai_reply_count = 0
+        update.ai_handoff_summary = null
+      }
+
+      const { error: upErr } = await db
+        .from('conversations')
+        .update(update)
+        .eq('id', conversationId)
+        .eq('account_id', args.automation.account_id)
+      if (upErr) throw new Error(`set_ai falhou: ${upErr.message}`)
+
+      return cfg.enabled ? 'IA ligada na conversa' : 'IA desligada na conversa'
+    }
+
+    case 'send_media': {
+      const cfg = step.step_config as SendMediaStepConfig
+      if (!args.contactId) throw new Error('send_media precisa de um contato')
+      if (!cfg.url) throw new Error('send_media precisa de um arquivo')
+
+      // ⚠️ ÁUDIO NÃO LEVA LEGENDA, e o dano é silencioso: a nota de voz sai por
+      // `sendWhatsAppAudio`, que não tem campo de legenda. O texto seria
+      // gravado em `messages.content_text`, apareceria no fio para a equipe e
+      // NÃO viajaria ao cliente — a equipe leria uma conversa que o cliente
+      // nunca teve. Mesma guarda da 932, aqui em terceiro lugar (banco, tela,
+      // motor), porque a config pode ter sido gravada antes desta regra.
+      const legenda = cfg.kind === 'audio' ? undefined : interpolate(cfg.caption ?? '', args) || undefined
+
+      const conversationId = await resolveConversationId(args)
+      const { whatsapp_message_id } = await engineSendMedia({
+        accountId: args.automation.account_id,
+        userId: args.automation.user_id,
+        conversationId,
+        contactId: args.contactId,
+        kind: cfg.kind,
+        link: cfg.url,
+        caption: legenda,
+        // Só documento; o WhatsApp ignora nos demais.
+        filename: cfg.kind === 'document' ? cfg.filename : undefined,
+        preferredChannelId: stepChannel(cfg, args),
+      })
+      return `${cfg.kind} enviado (${whatsapp_message_id})`
+    }
+
     case 'send_webhook': {
       const cfg = step.step_config as SendWebhookStepConfig
       if (!cfg.url) throw new Error('send_webhook needs url')
@@ -1081,8 +1350,7 @@ async function negocioAlvo(
  * Vazia = ação de gente ou de conexão: cadeia nova, nada a barrar.
  */
 function cadeiaDoContexto(args: ExecuteArgs): string[] {
-  const bruta = args.context.vars?._cadeia
-  return Array.isArray(bruta) ? bruta.filter((v): v is string => typeof v === 'string') : []
+  return lerCadeia(args.context.vars)
 }
 
 function waitMs(cfg: WaitStepConfig): number {
@@ -1140,7 +1408,7 @@ async function finalizeLog(
     .eq('id', logId)
 }
 
-async function markPending(id: string, status: 'done' | 'failed') {
+async function markPending(id: string, status: 'done' | 'failed' | 'cancelled') {
   await supabaseAdmin()
     .from('automation_pending_executions')
     .update({ status })

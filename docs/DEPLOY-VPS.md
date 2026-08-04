@@ -179,6 +179,34 @@ só troca a imagem do serviço `crm_crm` e não mexe no `agendador`. Enquanto o
 laço rápido não subir, automação com espera e lembrete por data continuam
 saindo no ritmo antigo, de 15 em 15 minutos: funcionam, só chegam atrasados.
 
+✅ **Feito em 2026-08-04 17:10 UTC.** Confere assim (a linha do banner só é
+impressa quando a tarefa nasce, então use `--since`):
+
+```bash
+docker service logs --since 10m -t crm_agendador
+```
+
+Tem de aparecer `[agendador] laço rápido (60s) para automações + laço de 15min…`.
+Depois disso, **silêncio no log é sinal de saúde**: o `curl -fsS` só imprime
+quando falha.
+
+⚠️ **`Could not resolve host: crm_crm` logo após um deploy é normal** e passa
+sozinho — o agendador reinicia junto com o `crm_crm` e passa alguns segundos
+sem DNS. Só investigue se persistir depois que o rollout terminar; aí sim é o
+caso do `docker service ls` descrito acima.
+
+⚠️ **O laço rápido pode morrer em silêncio.** Ele roda em segundo plano (`&`);
+o lento, em primeiro. Se o lento cair, o contêiner cai e o Swarm reinicia — dá
+para ver. Se o rápido cair sozinho, o contêiner segue de pé fazendo metade do
+trabalho e **nada avisa**: só a rota de agendadas tem batimento. Até existir um
+carimbo próprio para `/api/automations/cron`, a conferência é manual:
+
+```bash
+docker service logs --since 3m -t crm_agendador
+```
+
+Três minutos sem nenhuma linha de erro = os dois laços passando.
+
 ## Notas
 
 - O `HEALTHCHECK` do container bate em `/login`; o Swarm só troca o

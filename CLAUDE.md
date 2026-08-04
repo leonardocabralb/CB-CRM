@@ -176,6 +176,52 @@ upstream sobrescrevê-los:
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
+| `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil |
+| `src/app/(dashboard)/automations/new/page.tsx` | o `?stage=` que faz a automação nascer com o gatilho de funil já apontando para a etapa clicada |
+| `src/lib/automations/trigger-meta.ts` | `formatRelative` passou a usar `Intl.RelativeTimeFormat` e a receber o texto de "nunca" — devolvia `5m ago`/`never` em inglês nas três telas |
+
+⚠️ **A visão "Automações" do funil (grade estilo Kommo) é desenho de dado, não
+tela nova.** `src/lib/automations/grade-do-funil.ts` e
+`descrever-passo.ts` (puros, com teste), `por-etapa.ts` (a classificação),
+`src/components/pipelines/automations-board.tsx`. Quem for mexer em recorte de
+automação por etapa mexe nos módulos, não dentro do componente.
+
+⚠️ **A LARGURA DO CARTÃO É O `trigger_config.stage_ids`.** "Expandir" grava
+mais etapas; sem etapa nenhuma o cartão atravessa o quadro. Não há coluna de
+banco para isso e não deve haver. O que morde código novo:
+
+- ⚠️ **Automação com `trigger_config.stage_ids` VAZIO dispara em TODA etapa**
+  (`engine.ts`, `triggerMatches`). Uma tela que listasse só quem NOMEIA a
+  coluna diria "nada acontece nesta etapa" enquanto o motor dispara a cada
+  card que entra. É o cartão de largura total, em roxo.
+- ⚠️ **Etapas NÃO vizinhas viram VÁRIOS cartões.** Um retângulo da coluna 1
+  até a 3 afirmaria que a regra vale na 2 — e ela não vale. Cada trecho
+  contínuo é um cartão, e os dois carregam o aviso "também vale em outras
+  etapas", senão parecem automações diferentes.
+- ⚠️ **`descrever-passo.ts` devolve CHAVE + valores, nunca texto pronto**, e há
+  teste lendo `messages/*.json` que COBRA uma chave por tipo de passo. Sem
+  ele, adicionar um passo ao motor sem tocar no dicionário põe
+  `Pipelines.automacoes.resumo.send_x`, cru, dentro do cartão — o fallback do
+  next-intl é por arquivo, não por chave.
+- **Id órfão vira "(apagado)", nunca o UUID**: impresso, o operador o lê como
+  se fosse o nome da tag.
+- **A consulta de automações NÃO filtra por funil**, de propósito: a regra
+  irrestrita vale para toda etapa de todo funil, e filtrar a esconderia.
+- ⚠️ **São DUAS listas de etapa com significados opostos**, e trocá-las é o
+  erro fácil: `trigger_config.stage_ids` é "para qual etapa o card tem de
+  ENTRAR"; `automations.stage_ids` é "em qual etapa o contato precisa ESTAR"
+  (o escopo). O gatilho alcançar a etapa e o escopo barrá-la é estado
+  alcançável pela tela — trocar o tipo de gatilho para "mudou de etapa"
+  esconde o seletor de escopo mas **não limpa o valor**. Daí o grupo "Nunca
+  dispara aqui": ligada, configurada e incapaz de rodar.
+- ⚠️ **Criar pela grade preenche só o GATILHO, nunca o escopo.** Preencher os
+  dois funciona hoje e vira armadilha amanhã — é exatamente como se fabrica
+  uma automação morta.
+- **A etiqueta do raio conta só o que dispara E está LIGADO.** Contar a pausada
+  põe um número numa coluna onde nada acontece, e o operador vai caçar defeito
+  no motor.
+- **Há teste comparando `classificarNaEtapa` com o `triggerMatches` de
+  verdade**, importado do `engine.ts`. Se a regra do motor mudar, ele quebra.
 
 ⚠️ **Mensagem agendada (925/926): NADA dispara sozinho.** A tabela guarda a
 linha; quem a transforma em mensagem é um agendador EXTERNO batendo em

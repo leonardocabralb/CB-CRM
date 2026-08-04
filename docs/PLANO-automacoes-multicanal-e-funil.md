@@ -674,29 +674,29 @@ apagado depois (0 campos personalizados, 69 contatos e 59 negócios reais):
   testes falham. É o defeito mais provável e mais silencioso da feature —
   mandaria a confirmação 24h DEPOIS da reunião.
 
-### Fase 3 — Orquestração (acionar/parar) — **PR 3**
+### Fase 3 — Orquestração (acionar/parar) — **PR 3** ✅
 
-- [ ] `runAutomationById` + ação `run_automation`
-- [ ] `'cancelled'` em `automation_pending_executions` + ação `stop_automation`
-- [ ] **Corrigir:** desativar automação passa a impedir o resume de execução parada
-- [ ] `abortActiveRunsForContact()` extraído + ação `stop_flow`
-- [ ] `startNewRun` exportável + ação `run_flow` (o "Executar Robô X" do print) —
+- [x] `runAutomationById` + ação `run_automation`
+- [x] `'cancelled'` em `automation_pending_executions` + ação `stop_automation`
+- [x] **Corrigir:** desativar automação passa a impedir o resume de execução parada
+- [x] `abortActiveRunsForContact()` extraído + ação `stop_flow`
+- [x] `startNewRun` exportável + ação `run_flow` (o "Executar Robô X" do print) —
       **substitui** a run ativa (D11)
-- [ ] Ação `set_ai` — desligar/religar IA na conversa; religar **zera o
+- [x] Ação `set_ai` — desligar/religar IA na conversa; religar **zera o
       contador** (D10); slot `agent_id` reservado (D7)
-- [ ] Guarda anti-ciclo unificada (D13) para automação→automação→fluxo
+- [x] Guarda anti-ciclo unificada (D13) para automação→automação→fluxo
 
-### Fase 4 — Mídia — **PR 4**
+### Fase 4 — Mídia — **PR 4** ✅
 
-- [ ] Passo `send_media` (imagem, vídeo, documento, áudio) com upload no builder
+- [x] Passo `send_media` (imagem, vídeo, documento, áudio) com upload no builder
       (bucket `chat-media`; URL pública aceita — D12)
-- [ ] Corrigir `media_url` não gravado por `engineSendMedia` (defeito herdado dos fluxos)
+- [x] Corrigir `media_url` não gravado por `engineSendMedia` (defeito herdado dos fluxos)
 
 ### Fase 5 — Builder por etapa, estilo Kommo — **PR 5**
 
-- [ ] Painel por etapa dentro de `src/components/pipelines/`, listando e criando
+- [x] Painel por etapa dentro de `src/components/pipelines/`, listando e criando
       automações de `deal_stage_changed` daquela etapa
-- [ ] Só faz sentido depois da Fase 2 (o gatilho) e da Fase 3 (o "acionar robô")
+- [x] Só faz sentido depois da Fase 2 (o gatilho) e da Fase 3 (o "acionar robô")
 
 ### Fase 6 — `docs/INFRA-VPS.md`: o que o banco tem e a VPS não — **PR 6**
 
@@ -793,15 +793,38 @@ de ofício pela implementação e estão sinalizados para veto: a guarda
 | 1 — conexão | 1 (parte A) | ✅ concluída, **em produção** | `main` | 2026-08-04 |
 | 2 — funil | 1 (parte B) | ✅ concluída, **em produção** | `main` | 2026-08-04 |
 | 2b — tempo (lembretes) | 2 | ✅ concluída, **em produção** | `main` | 2026-08-04 |
-| 3 — orquestração | 3 | 🟡 em andamento | `feat/automacoes-orquestracao` | 2026-08-04 |
-| 4 — mídia | 4 | ⬜ não iniciada | — | — |
+| 3 — orquestração | 3 | ✅ concluída | `feat/automacoes-orquestracao` | 2026-08-04 |
+| 4 — mídia | 4 | ✅ concluída | `feat/automacoes-orquestracao` | 2026-08-04 |
 | 5 — builder por etapa | 5 | ⬜ não iniciada | — | — |
-| 6 — `docs/INFRA-VPS.md` | 6 | ⬜ não iniciada (bloqueada: SSH) | — | — |
+| 6 — `docs/INFRA-VPS.md` | 6 | ✅ concluída | `feat/automacoes-orquestracao` | 2026-08-04 |
 
-⚠️ **Pendência de operador, aberta desde 2026-08-04:** o laço rápido de 60 s
-exige **um `docker stack deploy` à mão na VPS** — o CI só troca a imagem do
-`crm_crm`. Enquanto não subir, lembrete por data e passo "Aguardar" funcionam,
-mas no ritmo antigo de 15 em 15 minutos. Comandos em `docs/DEPLOY-VPS.md` §6.
+✅ **Laço rápido de 60 s no ar desde 2026-08-04 17:10 UTC.** O operador rodou o
+`docker stack deploy` na VPS (o CI só troca a imagem do `crm_crm`, nunca sobe
+serviço novo). Confirmado pela linha `[agendador] laço rápido (60s)…` na tarefa
+`ipc58leozeq9` e pelo `cb_agendador_batimento` respondendo 1 s depois. "Aguardar",
+lembretes por data e a fila do funil saíram do ritmo de 15 min.
+
+⚠️ **Dívida que isso deixou: o laço rápido pode morrer em SILÊNCIO.** Ele roda
+em segundo plano (`&`) e o lento em primeiro plano. Se o lento cair, o contêiner
+cai junto e o Swarm reinicia — visível. Se o rápido cair sozinho, o contêiner
+segue de pé fazendo metade do trabalho, e **nada percebe**: só a rota de
+agendadas tem batimento (`cb_agendador_batimento`, migration 927). É exatamente
+o modo de falha que aquele batimento foi criado para eliminar do outro lado.
+
+Conserto proposto (migration própria, PR à parte): um segundo carimbo na mesma
+forma, escrito por `/api/automations/cron`, com o mesmo aviso âmbar no cabeçalho
+quando envelhecer. Barato e mecânico — não entrou no PR 3 por ser schema fora do
+escopo de orquestração.
+
+✅ **CAUSA IDENTIFICADA (mesmo dia, mais tarde).** Aquele `crm_agendador` que
+"morreu sozinho" às ~17:03 UTC não teve causa misteriosa: **a VPS inteira
+reiniciou** às ~17:02. Quase todo serviço da máquina tem um `Failed` com exit
+255 no mesmo instante, e o erro de DNS da tarefa seguinte é o mesmo sintoma que
+manteve a Evolution fora do ar por uma hora. Registrado em
+[`docs/INFRA-VPS.md`](INFRA-VPS.md) §8.
+
+**Lição:** "causa não identificada" num serviço isolado, com erro de rede logo
+depois, merece um olhar no uptime da máquina antes de virar mistério.
 
 ### Histórico
 
@@ -977,3 +1000,249 @@ não sobe por push, então "lembrete de reunião" passou a depender de um
 A resposta curta: **o banco sobrevive à VPS morrer** (Supabase é gerenciado e
 fica fora), **a sessão do WhatsApp não** — ela vive nos volumes da Evolution, e
 sem backup migrar significa reler o QR de cada número.
+
+**2026-08-04 — Fase 3: orquestração.** Migration **936** aplicada (`ls` +
+`list_migrations` conferidos: os dois diziam 935). Cinco passos novos —
+`run_automation`, `stop_automation`, `run_flow`, `stop_flow`, `set_ai` —, a
+guarda anti-ciclo unificada e o defeito do resume corrigido. 1339 testes.
+
+**A migration é pequena de propósito.** Os passos novos NÃO precisaram de
+schema: `automation_steps` não tem CHECK em `step_type`. As duas linhas que
+entraram existem porque "parar" não tinha como ser REGISTRADO, e o motor teria
+de mentir sobre o que aconteceu: execução cancelada viraria `failed` (o painel
+diria que quebrou) e robô parado por regra viraria `paused_by_agent` (a tela
+diria que uma PESSOA interveio, quando não houve pessoa nenhuma).
+
+Decisões tomadas pela implementação, sinalizadas para veto:
+
+- ⚠️ **`run_automation` e `run_flow` EXIGEM o alvo ativo.** A alternativa
+  ("é uma ordem explícita, obedeça") deixa o interruptor da tela de ser freio:
+  com algo saindo errado, o operador desliga e a peça continua rodando,
+  acionada por uma regra que ele talvez nem lembre que existe. Robô sob
+  demanda não precisa ficar inativo para isso — é para isso que existe
+  `trigger_type: 'manual'`, que já não parte de mensagem nenhuma
+  (`findEntryFlow`).
+- **`stop_automation` é recortado por CONTATO.** Cancelar as esperas da
+  automação alvo para a conta inteira faria um cliente entrando numa etapa
+  apagar o follow-up de 24h de todos os outros, em silêncio e sem desfazer.
+
+Dois achados de arquitetura durante a implementação:
+
+1. ⚠️ **Ciclo de import iminente.** `flows/engine → contacts/tag-events →
+   automations/engine`; o motor de automações importar `flows/engine` fecharia
+   o ciclo. (O `automations/engine` já desviava disto de propósito ao importar
+   `tag-write` em vez de `tag-events` — o desvio estava lá, sem nota.) Resolvido
+   com `flows/parar-run.ts`, que não depende de nada, mais **um import dinâmico**
+   para `startFlowForContact`, que precisa do laço de avanço.
+2. ⚠️ **A etiqueta é um segundo caminho de recursão**, e ele não passa por
+   `run_automation`: "A aciona B, B aplica etiqueta, a etiqueta dispara A". O
+   que salva é o `...input.context` de `tag-events.ts`, que carrega a cadeia
+   para dentro do disparo novo. Era load-bearing e não tinha nota; tem agora.
+   Sem ele o único freio seria `MAX_TAG_CHAIN_DEPTH = 3`, ou seja, o cliente
+   ainda receberia 3 rajadas.
+
+**Provado em produção, com dado descartável** (contato, etiqueta, robô e
+automações "ZZ …", todos apagados depois; nenhum passo manda mensagem, os
+observáveis são etiqueta, registro e coluna):
+
+- **Laço pelos DOIS caminhos ao mesmo tempo** — A aciona B por
+  `run_automation`, B aplica a etiqueta que A escuta. Parou na 2ª volta, com o
+  motivo escrito nos dois logs: *"ciclo detectado (automation:… já visitado
+  neste encadeamento)"*. 3,3 segundos, 2 execuções, 1 etiqueta aplicada.
+- **Desativar PARA o que está parado** — automação inativa com espera vencida
+  → `cancelled`, e nem chegou a buscar os passos. Conferido por mutação: sem a
+  guarda, o teste falha.
+- **`run_flow` substitui a run ativa** — a antiga virou
+  `stopped_by_automation` / `replaced_by_automation` e a nova nasceu. É a
+  prova da ordem "encerrar ANTES de inserir": ao contrário, o INSERT bateria no
+  índice único parcial e voltaria 23505, que `startNewRun` engole como
+  duplicata — o robô novo simplesmente não nasceria, sem erro na tela.
+- **`set_ai` religando** zerou os quatro campos (`ai_autoreply_disabled`,
+  `ai_reply_count` 7→0, `ai_handoff_summary`, `assigned_agent_id`).
+
+Efeito colateral do dia, **em dado real e benigno**: a fila de funil tinha 3
+eventos de cards criados por clientes que chegaram, e o mais antigo foi
+descartado pela guarda de atraso com o motivo escrito — *"evento atrasado 1h —
+não disparado para não despejar fila represada"*. É a guarda funcionando em
+produção, em dado real, pela primeira vez.
+
+⚠️ **Pendência que a Fase 3 herda e não resolve:** o passo `wait` e tudo que
+depende do cron continuam no ritmo de 15 min até o `docker stack deploy` do
+laço rápido ser feito na VPS.
+
+**2026-08-04 — Batimento do laço rápido (migration 937).** A dívida registrada
+horas antes, paga no mesmo dia: o laço de 60 s podia morrer em silêncio, e a
+tela continuaria dizendo "agendador OK" com o passo "Aguardar" sem acordar e o
+lembrete de reunião sem sair. Agora `/api/automations/cron` carimba
+`cb_agendador_batimento.ultimo_ciclo_automacoes`, e o aviso do cabeçalho ganhou
+o recado próprio. 1347 testes.
+
+**Coluna, não tabela nova.** A 927 já é "sinais vitais do agendador" com todo o
+aparato de RLS e REVOKE; um segundo laço do MESMO processo é a mesma coisa.
+
+O que morde código novo:
+
+- ⚠️ **O carimbo fica ANTES dos `return` da rota, num call site só.** O caminho
+  comum sai pelo `return` do meio ("não havia execução parada"); carimbar no
+  fim faria o batimento só bater quando houvesse trabalho — o defeito exato que
+  a 927 nasceu para consertar do outro lado. E protege de quem vier depois: um
+  `return` novo não tem como pular um carimbo já feito.
+- ⚠️ **`undefined` (a tela não perguntou pela coluna) NÃO acende**, e é
+  diferente de `null`/epoch (perguntou, nunca rodou). Tratar os dois igual faria
+  toda chamada antiga de `avaliarAgendador` acusar um laço morto que está vivo.
+  Quando a LEITURA falha o hook manda `undefined` de propósito: ali o
+  `ultimoCiclo` já vira `null` e acende sozinho, e um segundo alarme pela mesma
+  causa mandaria o operador caçar defeito inexistente.
+- ⚠️ **O recado do laço rápido vem DEPOIS dos de agendador parado.** Contêiner
+  morto envelhece os dois batimentos juntos, e o recado de cima é mais grave
+  porque sabe da fila. Este é para o caso novo: lento vivo, rápido morto.
+- **Tolerância de 5 min** (cinco ciclos), contra 35 do laço lento. Não é
+  derivada de `CICLO_MINUTOS`: a cadência do laço rápido vive no
+  `docker-stack.yml`, fora do código.
+
+Achado na verificação visual, com o cenário plantado em produção (lento fresco,
+rápido em `epoch`): o título da caixa dizia **"MENSAGENS AGENDADAS"** enquanto o
+corpo dizia "as mensagens agendadas não são afetadas". O título passou a seguir
+o recado — e o rótulo acessível junto, senão quem usa leitor de tela ouviria o
+assunto errado antes de abrir. Conferido por mutação que os testes pegam a
+remoção da checagem (3 falham).
+
+**2026-08-04 — Fase 6 concluída, e ela achou um incidente em produção.**
+`docs/INFRA-VPS.md` escrito a partir de `scripts/vps-inventario.sh`, rodado de
+verdade contra a máquina (o operador autorizou a chave de leitura no mesmo dia).
+
+⚠️ **O levantamento descobriu que o WhatsApp do escritório estava fora do ar
+havia uma hora.** A VPS reiniciou às ~17:02 UTC; `evolution_evolution` e os três
+serviços do `n8n` ficaram em laço de reinício por não resolverem `postgres:5432`
+— a rede overlay do Swarm volta pela metade depois de reboot. Curado com
+`docker service update --force`, e confirmado pelo fluxo de mensagens voltando
+ao ritmo normal.
+
+**A lição de monitoramento vale para este plano inteiro:** o CRM respondeu 200
+o tempo todo, então qualquer monitor de "o site está no ar?" teria dito que
+estava tudo bem. O sinal honesto é o **fluxo de mensagens no Supabase**. E o
+cabeçalho do CRM chegou a exibir "1 conexão, 1 com problema" uma hora antes,
+visto e ignorado numa verificação de outra feature.
+
+Achados que a Fase 6 registrou e ninguém sabia: **10 stacks, 16 serviços** na
+máquina; **nenhum backup de nada**; **9 das 10 definições de stack existem só em
+`/root/`, fora do git**; a Evolution é um **fork nosso** (`-lidfix`) que o label
+da stack não reflete; e 3,7 GB de volumes órfãos do Chatwoot.
+
+**2026-08-04 — Fase 4: mídia.** Passo `send_media` (imagem, vídeo, documento e
+áudio) com upload no builder, e o defeito herdado dos fluxos corrigido.
+**Sem migration** — `automation_steps` não tem CHECK em `step_type`. 1353 testes.
+
+⚠️ **O defeito herdado era pior do que "faltava um campo".** `engineSendMedia`
+gravava a linha em `messages` com `content_type = 'image'` e **`media_url`
+nulo**: o cliente recebia a imagem pelo WhatsApp e a EQUIPE via uma bolha vazia
+no CRM. É o pior formato de defeito — ninguém desconfia do que já saiu. O envio
+manual sempre gravou (`send-message.ts:783`); só este caminho não. A correção
+vale para os FLUXOS também, que usavam o mesmo sender.
+
+⚠️ **Áudio não leva legenda, e o dano é silencioso.** A nota de voz sai por
+`sendWhatsAppAudio`, que não tem campo de legenda: o texto seria gravado em
+`messages.content_text`, apareceria no fio para a equipe e **não viajaria** ao
+cliente — a equipe leria uma conversa que o cliente nunca teve. A guarda está
+em três lugares, como na 932: validação, tela e motor (a config pode ter sido
+gravada antes da regra). Conferido por mutação.
+
+Decisões da implementação:
+
+- **Na tela, o campo de legenda SOME no áudio** — não fica desabilitado. Campo
+  inerte convida a digitar; ausente, com o porquê no lugar, ensina. E trocar o
+  tipo para áudio **limpa** a legenda já digitada, senão ela ficaria gravada,
+  invisível, e a ativação seria recusada sem o operador ver o motivo.
+- **Sem coleta de lixo do arquivo.** O mesmo objeto serve toda execução; apagar
+  no envio (como a agendada faz) quebraria a automação no segundo disparo.
+- **`engineSendMedia` vem dos FLUXOS**, como `engineSendInteractive*` já fazia
+  em `automations/meta-send.ts`. Sem ciclo: `flows/meta-send` só depende de
+  `whatsapp/*` e `cb-channels/*`.
+
+Verificado na tela: o passo aparece no menu, o editor nasce em Imagem com
+legenda, e trocar para Áudio faz o campo sumir e a explicação aparecer.
+
+**2026-08-04 — Fase 5: o painel por etapa.** O raio no cabeçalho de cada coluna
+do Kanban abre a lista de automações daquela etapa e cria a próxima já com o
+gatilho apontando para ela. **Sem migration** — a Fase 2 já tinha o gatilho e o
+recorte. 1381 testes.
+
+A regra de classificação ficou fora da tela, em `src/lib/automations/por-etapa.ts`,
+pelo mesmo motivo dos filtros do inbox: a resposta tem de ser a MESMA que o
+motor dá, e a única forma de garantir isso é ter um lugar só, testado.
+
+⚠️ **O painel mostra TRÊS grupos, e o segundo é a razão de ele existir.**
+Automação com `trigger_config.stage_ids` vazio dispara em TODA etapa. Um painel
+que listasse só quem NOMEIA a coluna diria "nada acontece nesta etapa" enquanto
+o motor manda mensagem a cada card que entra — o formato de defeito que este
+projeto trata como o pior, porque a tela parece certa. Conferido na produção: a
+coluna "Desqualificado", jamais nomeada na automação de teste, exibiu o grupo
+"De todas as etapas" com a explicação.
+
+⚠️ **O terceiro grupo, "Nunca dispara aqui", nomeia um estado alcançável pela
+tela de hoje.** São duas listas de etapa com significados opostos —
+`trigger_config.stage_ids` ("entrou nesta") e `automations.stage_ids` ("está
+nesta", o escopo). Trocar o tipo de gatilho para "mudou de etapa" ESCONDE o
+seletor de escopo e não limpa o valor: a automação fica ligada, configurada e
+incapaz de rodar, sem nada na tela dizendo isso. Por isso o botão "Nova
+automação nesta etapa" preenche só o gatilho — preencher os dois funciona hoje
+e fabrica a armadilha para amanhã.
+
+Decisões da implementação:
+
+- **A etiqueta conta só o que dispara E está ligado.** Contar a pausada põe um
+  número numa coluna onde nada acontece, e o operador vai caçar defeito no motor.
+- **O raio aparece com zero.** É por ali que se cria a primeira automação da
+  etapa; um botão que só nasce depois de já existir automação não ensina ninguém.
+- **A consulta não filtra por funil.** A regra irrestrita vale para toda etapa
+  de todo funil — filtrar por `pipeline_id` a esconderia.
+- **Há teste comparando `classificarNaEtapa` com o `triggerMatches` de verdade**,
+  importado do `engine.ts`. Se a regra do motor mudar, ele quebra aqui.
+
+Achado durante a verificação visual: `formatRelative` devolvia `5m ago` e
+`never` **em inglês**, cru, nas TRÊS telas que a usam (lista de automações,
+histórico e o painel novo) — a mesma família de erro que o CLAUDE.md já proíbe
+para `toLocaleDateString('en-US')`. Passou a usar `Intl.RelativeTimeFormat` e a
+receber o texto de "nunca" de fora, já traduzido. Ganhou 9 testes (não tinha
+nenhum), e a inversão do sinal foi conferida por mutação — sem ela a tela diria
+"daqui a 10 minutos" sobre um disparo que já aconteceu, e ninguém questiona um
+relógio.
+
+**2026-08-04 — A visão "Automações" do funil (estilo Kommo).** Pedida pelo
+operador com prints do Kommo, logo depois da Fase 5. Alternador
+**Leads | Automações** na página de funis; na visão nova as colunas continuam
+sendo as etapas e cada cartão ocupa aquelas em que a regra dispara.
+
+⚠️ **Sem migration, e isso não é sorte:** a largura do cartão É o
+`trigger_config.stage_ids` que a Fase 5 já usava. "Expandir" grava mais etapas;
+sem etapa nenhuma o cartão atravessa o quadro — que é exatamente o "Webhook"
+roxo de largura total no print do Kommo, e o grupo "De todas as etapas" da
+caixa que a grade substituiu.
+
+Duas peças puras, com teste, pelo mesmo motivo dos filtros do inbox:
+
+- `grade-do-funil.ts` (19 testes) — quais colunas o cartão ocupa e como
+  empilhar sem sobrepor. ⚠️ **Etapas não vizinhas viram VÁRIOS cartões**: um
+  retângulo da coluna 1 até a 3 afirmaria que a regra vale na 2, e ela não
+  vale. Cada trecho contínuo é um cartão, e os dois levam o aviso de que há
+  mais da mesma regra em outro lugar.
+- `descrever-passo.ts` (18 testes) — o resumo em negrito. Devolve **chave +
+  valores**, nunca texto pronto, e há teste lendo os DOIS dicionários que cobra
+  uma chave por tipo de passo (21 tipos, 29 chaves com as variantes). Sem ele,
+  um passo novo no motor põe `Pipelines.automacoes.resumo.send_x`, cru, dentro
+  do cartão.
+
+A caixa por coluna da Fase 5 foi **removida** — decisão do operador entre
+manter as duas ou substituir. Duas telas dizendo a mesma coisa divergem na
+primeira mudança; o raio da coluna agora leva para a grade. As 19 chaves i18n
+dela saíram junto.
+
+Verificado na produção com 5 automações de teste (todas pausadas, apagadas em
+seguida): cartão de uma coluna, de três, de largura total, um de etapas
+separadas com o aviso, o empilhamento em linhas, o "(apagado)" no lugar de um
+UUID órfão, o "+1 ação", o expandir (incluindo desmarcar tudo, que a caixa
+anuncia como "vale para TODAS as etapas" antes de salvar) e o duplicar.
+
+**Fica em inglês, e não foi tocado:** o sufixo `(Copy)` no nome da automação
+duplicada vem da rota `/api/automations/[id]/duplicate`, que não tem contexto
+de i18n. Aparece agora com mais frequência, porque duplicar virou um botão.

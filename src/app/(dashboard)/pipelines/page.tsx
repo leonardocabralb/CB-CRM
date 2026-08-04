@@ -2,9 +2,16 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Pipeline, PipelineStage, Deal } from "@/types";
+import type {
+  Automation,
+  AutomationStep,
+  Pipeline,
+  PipelineStage,
+  Deal,
+} from "@/types";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
+import { AutomationsBoard } from "@/components/pipelines/automations-board";
 import { DealForm } from "@/components/pipelines/deal-form";
 import { PipelineAnalytics } from "@/components/pipelines/pipeline-analytics";
 import { Button } from "@/components/ui/button";
@@ -48,6 +55,7 @@ const SPEC_DEFAULT_STAGES = [
 
 export default function PipelinesPage() {
   const t = useTranslations("Pipelines.page");
+  const tAuto = useTranslations("Pipelines.automacoes");
   const supabase = createClient();
   const canEditSettings = useCan("edit-settings");
   const canCreateDeals = useCan("send-messages");
@@ -58,6 +66,24 @@ export default function PipelinesPage() {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Automações de funil da conta inteira (Fase 5). Não é por funil de
+  // propósito: a regra de gatilho VAZIO vale para toda etapa de todo funil, e
+  // filtrar por `pipeline_id` aqui a esconderia — a automação existe, dispara,
+  // e a coluna diria que não há nada.
+  const [automations, setAutomations] = useState<Automation[]>([]);
+  /** Passos por automação, para o resumo do cartão ("Adicionar tag: X"). */
+  const [steps, setSteps] = useState<Record<string, AutomationStep[]>>({});
+  /** Nomes de tag/etapa/robô, para o cartão não exibir UUID. */
+  const [nomes, setNomes] = useState<{
+    tags: Record<string, string>;
+    etapas: Record<string, string>;
+    fluxos: Record<string, string>;
+    automacoes: Record<string, string>;
+  }>({ tags: {}, etapas: {}, fluxos: {}, automacoes: {} });
+
+  /** "leads" = o Kanban de sempre; "automacoes" = a grade estilo Kommo. */
+  const [vista, setVista] = useState<"leads" | "automacoes">("leads");
 
   // Dialog / sheet state
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
@@ -106,6 +132,70 @@ export default function PipelinesPage() {
         .eq("pipeline_id", pipelineId)
         .order("created_at", { ascending: false });
       return (data ?? []) as Deal[];
+    },
+    [supabase],
+  );
+
+  // Falha em silêncio → lista vazia. A etiqueta some e o painel diz "nenhuma";
+  // é fail-open consciente, igual ao `useChannels`: sem as automações o
+  // operador perde a INFORMAÇÃO, não o quadro. Travar o Kanban porque um GET
+  // não respondeu seria pior.
+  const loadAutomations = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("automations")
+      .select("*")
+      .eq("trigger_type", "deal_stage_changed")
+      .order("created_at", { ascending: false });
+    if (error) {
+      console.error("Failed to load stage automations:", error.message);
+      return [];
+    }
+    return (data ?? []) as Automation[];
+  }, [supabase]);
+
+  /**
+   * Passos + os nomes que os cartões exibem.
+   *
+   * ⚠️ Só o PRIMEIRO passo aparece no cartão, mas a consulta traz todos —
+   * é a contagem ("+2 ações") que precisa do resto, e limitar a 1 por
+   * automação exigiria uma consulta por linha.
+   *
+   * Falha em silêncio, como o resto desta página: sem os passos o cartão
+   * mostra "sem ações", que é menos ruim que um quadro que não abre.
+   */
+  const loadPassosENomes = useCallback(
+    async (lista: Automation[]) => {
+      const ids = lista.map((a) => a.id);
+      const [passosRes, tagsRes, etapasRes, fluxosRes] = await Promise.all([
+        ids.length
+          ? supabase
+              .from("automation_steps")
+              .select("*")
+              .in("automation_id", ids)
+              .order("position")
+          : Promise.resolve({ data: [], error: null }),
+        supabase.from("tags").select("id, name"),
+        supabase.from("pipeline_stages").select("id, name"),
+        supabase.from("flows").select("id, name"),
+      ]);
+
+      const porAutomacao: Record<string, AutomationStep[]> = {};
+      for (const p of (passosRes.data ?? []) as AutomationStep[]) {
+        (porAutomacao[p.automation_id] ??= []).push(p);
+      }
+
+      const mapear = (linhas: { id: string; name: string }[] | null) =>
+        Object.fromEntries((linhas ?? []).map((r) => [r.id, r.name]));
+
+      return {
+        passos: porAutomacao,
+        nomes: {
+          tags: mapear(tagsRes.data as { id: string; name: string }[] | null),
+          etapas: mapear(etapasRes.data as { id: string; name: string }[] | null),
+          fluxos: mapear(fluxosRes.data as { id: string; name: string }[] | null),
+          automacoes: Object.fromEntries(lista.map((a) => [a.id, a.name])),
+        },
+      };
     },
     [supabase],
   );
@@ -196,6 +286,32 @@ export default function PipelinesPage() {
       cancelled = true;
     };
   }, [selectedPipelineId, loadStages, loadDeals]);
+
+  const refreshAutomations = useCallback(async () => {
+    const lista = await loadAutomations();
+    setAutomations(lista);
+    const extra = await loadPassosENomes(lista);
+    setSteps(extra.passos);
+    setNomes(extra.nomes);
+  }, [loadAutomations, loadPassosENomes]);
+
+  // Uma vez por montagem: automação de funil não muda enquanto se arrasta
+  // card. A grade recarrega sozinha depois de duplicar ou trocar as etapas.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const lista = await loadAutomations();
+      if (cancelled) return;
+      setAutomations(lista);
+      const extra = await loadPassosENomes(lista);
+      if (cancelled) return;
+      setSteps(extra.passos);
+      setNomes(extra.nomes);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAutomations, loadPassosENomes]);
 
   const refreshPipelines = useCallback(async () => {
     const list = await loadPipelines();
@@ -374,6 +490,23 @@ export default function PipelinesPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Leads | Automações — as duas leituras do mesmo funil. */}
+          <div className="flex rounded-lg border border-border bg-card p-0.5">
+            {(["leads", "automacoes"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setVista(v)}
+                className={
+                  vista === v
+                    ? "rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+                    : "rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                }
+              >
+                {tAuto(v === "leads" ? "abaLeads" : "abaAutomacoes")}
+              </button>
+            ))}
+          </div>
           <GatedButton
             variant="outline"
             canAct={canEditSettings}
@@ -417,15 +550,29 @@ export default function PipelinesPage() {
             {t("createPipeline")}
           </GatedButton>
         </div>
+      ) : vista === "automacoes" ? (
+        <AutomationsBoard
+          stages={stages}
+          automations={automations}
+          steps={steps}
+          nomes={nomes}
+          onChanged={refreshAutomations}
+        />
       ) : (
         <>
           <PipelineAnalytics stages={stages} deals={deals} />
           <PipelineBoard
             stages={stages}
             deals={deals}
+            automations={automations}
             onDealMoved={handleDealMoved}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}
+            // O raio da coluna agora LEVA para a grade em vez de abrir uma
+            // caixa: duas telas dizendo a mesma coisa divergem na primeira
+            // mudança, e a grade mostra tudo que a caixa mostrava mais o
+            // resto do funil.
+            onOpenAutomations={() => setVista("automacoes")}
           />
         </>
       )}

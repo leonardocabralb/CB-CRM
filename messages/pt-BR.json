@@ -466,7 +466,11 @@
         "falhas": "{n} mensagem(ns) agendada(s) falharam e esperam decisão.",
         "ultimoCiclo": "Último ciclo {min, plural, =0 {agora mesmo} =1 {há 1 minuto} other {há # minutos}}.",
         "comoResolverParado": "Ele deveria rodar a cada {ciclo} minutos. Peça a quem cuida do servidor para conferir o serviço \"agendador\" (ver docs/DEPLOY-VPS.md).",
-        "comoResolverFalhas": "Veja todas em Agendadas, no menu lateral: a aba Falhas mostra o motivo de cada uma e deixa reenviar ou cancelar."
+        "comoResolverFalhas": "Veja todas em Agendadas, no menu lateral: a aba Falhas mostra o motivo de cada uma e deixa reenviar ou cancelar.",
+        "automacoesParadas": "O laço das automações parou. As esperas não estão acordando e os lembretes por data não estão saindo — as mensagens agendadas não são afetadas.",
+        "automacoesNuncaRodaram": "Ele nunca rodou nesta instalação.",
+        "comoResolverAutomacoes": "O agendador roda dois laços e só este morreu. Na VPS: docker service logs --since 5m -t crm_agendador e depois docker stack deploy -c docker-stack.yml crm.",
+        "rotuloAutomacoes": "Automações"
       },
       "attachment_image": "Foto",
       "attachment_video": "Vídeo",
@@ -706,7 +710,8 @@
     },
     "board": {
       "dropDealHere": "Solte um negócio aqui",
-      "addDeal": "Adicionar negócio"
+      "addDeal": "Adicionar negócio",
+      "stageAutomations": "{count, plural, =0 {Automações desta etapa} one {Automações desta etapa (# ativa)} other {Automações desta etapa (# ativas)}}"
     },
     "card": {
       "noContact": "Sem contato",
@@ -782,6 +787,61 @@
       "toastDeleted": "Funil excluído",
       "deletePipelineChannels": "Estas conexões colocam clientes neste funil: {channels}. Depois de apagar, elas param de criar negócios até você apontá-las para outro funil em Configurações › Conexões.",
       "toastStageIsChannelEntry": "Esta etapa é a entrada de {channels}. Escolha outra etapa de entrada em Configurações › Conexões antes de apagá-la."
+    },
+    "automacoes": {
+      "abaLeads": "Leads",
+      "abaAutomacoes": "Automações",
+      "quandoEntra": "Quando o card entra nesta etapa",
+      "quandoEntraVarias": "Quando o card entra em qualquer uma destas etapas",
+      "todasAsEtapas": "Vale para TODAS as etapas, de todos os funis",
+      "temOutrosTrechos": "Esta automação também vale em outras etapas",
+      "maisAcoes": "{count, plural, one {+# ação} other {+# ações}}",
+      "semAcoes": "Sem nenhuma ação ainda",
+      "alvoSumiu": "(apagado)",
+      "pausada": "Pausada",
+      "copiar": "Duplicar",
+      "expandir": "Escolher etapas",
+      "novaAqui": "Nova automação",
+      "vazio": "Nenhuma automação neste funil",
+      "vazioDesc": "As automações aparecem sob as etapas em que disparam.",
+      "toastCopiada": "Automação duplicada",
+      "toastCopiaFalhou": "Não foi possível duplicar",
+      "toastEtapasSalvas": "Etapas atualizadas",
+      "toastEtapasFalhou": "Não foi possível salvar as etapas",
+      "resumo": {
+        "send_message": "Enviar mensagem: {alvo}",
+        "send_buttons": "Enviar botões",
+        "send_list": "Enviar lista",
+        "send_template": "Enviar modelo: {alvo}",
+        "add_tag": "Adicionar tag: {alvo}",
+        "remove_tag": "Excluir tag: {alvo}",
+        "assign_conversation": "Atribuir a conversa",
+        "update_contact_field": "Alterar campo do contato: {alvo}",
+        "create_deal": "Criar negócio: {alvo}",
+        "move_deal_stage": "Mover para a etapa: {alvo}",
+        "set_deal_status_won": "Marcar o negócio como ganho",
+        "set_deal_status_lost": "Marcar o negócio como perdido",
+        "set_deal_status_open": "Reabrir o negócio",
+        "run_automation": "Acionar a automação: {alvo}",
+        "stop_automation": "Parar a automação: {alvo}",
+        "run_flow": "Executar o robô: {alvo}",
+        "stop_flow": "Parar o robô",
+        "set_ai_on": "Ligar a resposta da IA",
+        "set_ai_off": "Desligar a resposta da IA",
+        "send_media_image": "Enviar imagem",
+        "send_media_video": "Enviar vídeo",
+        "send_media_document": "Enviar documento",
+        "send_media_audio": "Enviar áudio",
+        "wait_minutes": "Aguardar {quantidade} min",
+        "wait_hours": "Aguardar {quantidade} h",
+        "wait_days": "Aguardar {quantidade} dias",
+        "condition": "Verificar uma condição",
+        "send_webhook": "Disparar webhook",
+        "close_conversation": "Encerrar a conversa"
+      },
+      "cancelar": "Cancelar",
+      "salvar": "Salvar",
+      "salvando": "Salvando…"
     },
     "analytics": {
       "totalDeals": "Total de negócios",
@@ -1009,7 +1069,8 @@
         "updateError": "Falha ao atualizar",
         "duplicateError": "Falha ao duplicar",
         "deleteError": "Falha ao excluir"
-      }
+      },
+      "never": "nunca"
     },
     "edit": {
       "loading": "Carregando...",
@@ -1049,7 +1110,13 @@
         "send_webhook": "Enviar webhook",
         "close_conversation": "Encerrar conversa",
         "move_deal_stage": "Mover card de etapa",
-        "set_deal_status": "Marcar ganho ou perdido"
+        "set_deal_status": "Marcar ganho ou perdido",
+        "run_automation": "Acionar automação",
+        "stop_automation": "Parar automação",
+        "run_flow": "Acionar robô",
+        "stop_flow": "Parar robô",
+        "set_ai": "Assistente de IA",
+        "send_media": "Enviar arquivo"
       },
       "triggers": {
         "new_message_received": {
@@ -1230,6 +1297,44 @@
         "antes": "antes da data",
         "depois": "depois da data",
         "ajuda": "Dispara uma vez por contato. Se a data for alterada, o lembrete é rearmado."
+      },
+      "orquestracao": {
+        "runAutomationLabel": "Automação a acionar",
+        "stopAutomationLabel": "Automação a parar",
+        "pickAutomation": "Escolha uma automação…",
+        "runAutomationHelp": "Aciona a automação escolhida para este mesmo contato. Um encadeamento que voltaria a passar por onde já passou é recusado — é isso que impede duas automações que se chamam de girar para sempre.",
+        "stopAutomationHelp": "Cancela as esperas pendentes DESTE contato na automação escolhida. Os outros contatos não são afetados.",
+        "automationGone": "Esta automação não existe mais. Escolha outra, ou o passo vai falhar quando rodar.",
+        "automationInactive": "Esta automação está desativada, e o motor recusa acioná-la. Ative-a, ou o passo vai falhar.",
+        "runFlowLabel": "Robô a acionar",
+        "pickFlow": "Escolha um robô…",
+        "runFlowHelp": "Inicia o robô para este contato. Se já houver outro robô rodando com ele, o novo substitui.",
+        "flowGone": "Este robô não existe mais. Escolha outro, ou o passo vai falhar quando rodar.",
+        "flowInactive": "Este robô está desativado, e o motor recusa acioná-lo. Ative-o, ou o passo vai falhar. Robô que só deve começar sob demanda pode ficar ativo com gatilho 'manual'.",
+        "stopFlowHelp": "Para o robô que estiver rodando com este contato. Não faz nada se não houver nenhum.",
+        "aiLabel": "IA nesta conversa",
+        "aiOn": "Ligar",
+        "aiOff": "Desligar",
+        "aiResetWarning": "Religar também zera o contador de respostas desta conversa e solta quem estiver atribuído. Cuidado ao ligar a partir de um gatilho que dispara a cada mensagem — o teto de respostas por conversa deixa de valer.",
+        "rawIdPlaceholder": "Cole o id",
+        "inactiveSuffix": "(desativada)",
+        "selfSuffix": "(esta)"
+      },
+      "midia": {
+        "tipoLabel": "Tipo de arquivo",
+        "image": "Imagem",
+        "video": "Vídeo",
+        "document": "Documento",
+        "audio": "Áudio (nota de voz)",
+        "arquivoLabel": "Arquivo",
+        "escolher": "Escolher um arquivo…",
+        "enviando": "Enviando…",
+        "abrir": "Abrir o arquivo enviado",
+        "grandeDemais": "Arquivo grande demais. O limite para este tipo é {mb} MB.",
+        "nomeLabel": "Nome exibido para quem recebe",
+        "nomeHelp": "Só documentos — o WhatsApp ignora nos outros tipos.",
+        "legendaLabel": "Legenda (opcional)",
+        "audioSemLegenda": "Áudio não tem legenda. A nota de voz do WhatsApp não carrega texto — o que fosse escrito aqui apareceria no fio para a sua equipe e nunca chegaria ao cliente."
       }
     }
   },
@@ -1289,7 +1394,8 @@
       "statusHandedOff": "Transferida",
       "statusTimedOut": "Expirada",
       "statusPaused": "Pausada pelo atendente",
-      "statusFailed": "Falhou"
+      "statusFailed": "Falhou",
+      "statusStoppedByAutomation": "Parado por automação"
     },
     "builder": {
       "triggerTitle": "Gatilho",

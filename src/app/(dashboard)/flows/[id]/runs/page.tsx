@@ -11,6 +11,7 @@ import {
   UserPlus,
   PlayCircle,
   PauseCircle,
+  OctagonX,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
@@ -43,6 +44,11 @@ interface RunRow {
     | "handed_off"
     | "timed_out"
     | "paused_by_agent"
+    // Uma AUTOMAÇÃO mandou parar (936) — distinto de `paused_by_agent`, que
+    // quer dizer que uma pessoa entrou na conversa. O motivo fino
+    // (`stopped_by_automation` vs `replaced_by_automation`) fica no
+    // `end_reason`, logo abaixo na linha.
+    | "stopped_by_automation"
     | "failed";
   current_node_key: string | null;
   started_at: string;
@@ -95,6 +101,11 @@ const STATUS_META: Record<
     label: "Paused by agent",
     classes: "border-border bg-muted text-muted-foreground",
     icon: PauseCircle,
+  },
+  stopped_by_automation: {
+    label: "Stopped by automation",
+    classes: "border-violet-600/40 bg-violet-500/10 text-violet-300",
+    icon: OctagonX,
   },
   failed: {
     label: "Failed",
@@ -275,6 +286,8 @@ function RunCard({
                   ? "statusTimedOut"
                   : run.status === "paused_by_agent"
                   ? "statusPaused"
+                  : run.status === "stopped_by_automation"
+                  ? "statusStoppedByAutomation"
                   : "statusFailed"
               )}
             </Badge>

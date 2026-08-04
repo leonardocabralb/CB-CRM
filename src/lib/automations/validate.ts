@@ -71,6 +71,66 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         })
       }
       break
+    // Orquestração (936). Os três exigem o alvo pelo mesmo motivo do
+    // `move_deal_stage`: sem ele o passo não sabe o que acionar/parar, e a
+    // falha só apareceria em execução, no log, longe de quem montou.
+    //
+    // ⚠️ NÃO se valida aqui se o alvo existe, é da conta ou está ativo. Isso
+    // é estado do banco no momento do DISPARO, não do save: a automação alvo
+    // pode ser desativada depois, e uma validação que passou ontem afirmaria
+    // hoje uma coisa falsa. O motor confere na hora, e a tela avisa enquanto
+    // se edita.
+    case 'run_automation':
+    case 'stop_automation':
+      if (!nonEmpty(c.automation_id)) {
+        issues.push({ path: `${path}.automation_id`, message: 'automation is required' })
+      }
+      break
+    case 'run_flow':
+      if (!nonEmpty(c.flow_id)) {
+        issues.push({ path: `${path}.flow_id`, message: 'flow is required' })
+      }
+      break
+    case 'stop_flow':
+      // Sem config: para o robô que estiver rodando com o contato, qualquer
+      // que seja. Só existe uma run ativa por contato, então não há o que
+      // escolher.
+      break
+    case 'set_ai':
+      // `enabled` é booleano e a tela sempre manda um dos dois. Um valor
+      // ausente ou de outro tipo viraria "desligar" em silêncio (o motor lê
+      // `!cfg.enabled`), que é o oposto do padrão do passo recém-criado.
+      if (typeof c.enabled !== 'boolean') {
+        issues.push({ path: `${path}.enabled`, message: 'enabled must be true or false' })
+      }
+      break
+    case 'send_media': {
+      if (!nonEmpty(c.url)) {
+        issues.push({ path: `${path}.url`, message: 'a file is required' })
+      }
+      const tipos = ['image', 'video', 'document', 'audio']
+      if (typeof c.kind !== 'string' || !tipos.includes(c.kind)) {
+        issues.push({ path: `${path}.kind`, message: 'kind must be image, video, document or audio' })
+      }
+      // ⚠️ ÁUDIO COM LEGENDA É RECUSADO, e não é preciosismo. A nota de voz sai
+      // por `sendWhatsAppAudio`, que não tem campo de legenda: o texto seria
+      // gravado na mensagem, apareceria no fio para a EQUIPE e não chegaria ao
+      // cliente. Barrar aqui é a diferença entre o operador descobrir agora,
+      // montando a regra, e descobrir depois de o cliente dizer que não
+      // recebeu.
+      if (c.kind === 'audio' && nonEmpty(c.caption)) {
+        issues.push({
+          path: `${path}.caption`,
+          message: 'audio has no caption — WhatsApp voice notes cannot carry text',
+        })
+      }
+      // Teto do WhatsApp. A assinatura automática ainda entra por cima no
+      // envio, então o núcleo revalida — isto só evita o erro óbvio.
+      if (typeof c.caption === 'string' && c.caption.length > 1024) {
+        issues.push({ path: `${path}.caption`, message: 'caption is longer than 1024 characters' })
+      }
+      break
+    }
     case 'send_message':
       if (!nonEmpty(c.text)) {
         issues.push({ path: `${path}.text`, message: 'message text is required' })

@@ -339,6 +339,12 @@ const preview = legendaFinal?.trim() || `[${args.kind}]`
       sender_type: 'bot',
       content_type: args.kind,
       content_text: legendaFinal ?? null,
+      // ⚠️ SEM ISTO A MÍDIA SOME DO FIO. A linha nascia com
+      // `content_type = 'image'` e `media_url` nulo, então o cliente recebia a
+      // imagem pelo WhatsApp e a EQUIPE via uma bolha vazia no CRM — o pior
+      // formato de defeito, porque ninguém desconfia do que já saiu. O envio
+      // manual sempre gravou (`send-message.ts:783`); só este caminho não.
+      media_url: args.link,
       message_id: waMessageId,
       remote_jid: outboundRemoteJid,
       from_me: channel.provider === 'evolution' ? true : null,

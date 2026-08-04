@@ -358,7 +358,11 @@ function AutomationCard({
                 : t("runsPlural", { count: automation.execution_count })}
             </span>
             <span aria-hidden>·</span>
-            <span>{t("lastRun", { time: formatRelative(automation.last_executed_at) })}</span>
+            <span>
+              {t("lastRun", {
+                time: formatRelative(automation.last_executed_at, t("never")),
+              })}
+            </span>
             {/* Só as restritas ganham etiqueta: "todos os canais" em cada
                 linha viraria ruído, e é quem TEM escopo que precisa saltar. */}
             <ChannelScopeBadge channels={channels} scope={automation.channel_ids} />

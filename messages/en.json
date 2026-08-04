@@ -466,7 +466,11 @@
         "falhas": "{n} scheduled message(s) failed and are waiting for a decision.",
         "ultimoCiclo": "Last cycle {min, plural, =0 {just now} =1 {1 minute ago} other {# minutes ago}}.",
         "comoResolverParado": "It should run every {ciclo} minutes. Ask whoever maintains the server to check the \"agendador\" service (see docs/DEPLOY-VPS.md).",
-        "comoResolverFalhas": "See them all under Scheduled in the sidebar: the Failed tab shows why each one failed and lets you resend or cancel."
+        "comoResolverFalhas": "See them all under Scheduled in the sidebar: the Failed tab shows why each one failed and lets you resend or cancel.",
+        "automacoesParadas": "The automation loop has stopped. Waits are not waking up and date reminders are not going out — scheduled messages are unaffected.",
+        "automacoesNuncaRodaram": "It has never run on this installation.",
+        "comoResolverAutomacoes": "The scheduler runs two loops and only this one died. On the VPS: docker service logs --since 5m -t crm_agendador, then docker stack deploy -c docker-stack.yml crm.",
+        "rotuloAutomacoes": "Automations"
       },
       "attachment_image": "Photo",
       "attachment_video": "Video",
@@ -706,7 +710,8 @@
     },
     "board": {
       "dropDealHere": "Drop a deal here",
-      "addDeal": "Add Deal"
+      "addDeal": "Add Deal",
+      "stageAutomations": "{count, plural, =0 {Automations for this stage} one {Automations for this stage (# active)} other {Automations for this stage (# active)}}"
     },
     "card": {
       "noContact": "No contact",
@@ -782,6 +787,61 @@
       "toastDeleted": "Pipeline deleted",
       "deletePipelineChannels": "These connections put clients into this pipeline: {channels}. Once deleted, they stop creating deals until you point them at another pipeline in Settings › Connections.",
       "toastStageIsChannelEntry": "This stage is the entry point for {channels}. Pick another entry stage in Settings › Connections before deleting it."
+    },
+    "automacoes": {
+      "abaLeads": "Leads",
+      "abaAutomacoes": "Automations",
+      "quandoEntra": "When a card enters this stage",
+      "quandoEntraVarias": "When a card enters any of these stages",
+      "todasAsEtapas": "Applies to EVERY stage, in every pipeline",
+      "temOutrosTrechos": "This automation also applies to other stages",
+      "maisAcoes": "{count, plural, one {+# action} other {+# actions}}",
+      "semAcoes": "No actions yet",
+      "alvoSumiu": "(deleted)",
+      "pausada": "Paused",
+      "copiar": "Duplicate",
+      "expandir": "Pick stages",
+      "novaAqui": "New automation",
+      "vazio": "No automations in this pipeline",
+      "vazioDesc": "Automations appear under the stages where they fire.",
+      "toastCopiada": "Automation duplicated",
+      "toastCopiaFalhou": "Could not duplicate",
+      "toastEtapasSalvas": "Stages updated",
+      "toastEtapasFalhou": "Could not save the stages",
+      "resumo": {
+        "send_message": "Send message: {alvo}",
+        "send_buttons": "Send buttons",
+        "send_list": "Send list",
+        "send_template": "Send template: {alvo}",
+        "add_tag": "Add tag: {alvo}",
+        "remove_tag": "Remove tag: {alvo}",
+        "assign_conversation": "Assign the conversation",
+        "update_contact_field": "Update contact field: {alvo}",
+        "create_deal": "Create deal: {alvo}",
+        "move_deal_stage": "Move to stage: {alvo}",
+        "set_deal_status_won": "Mark deal as won",
+        "set_deal_status_lost": "Mark deal as lost",
+        "set_deal_status_open": "Reopen the deal",
+        "run_automation": "Run automation: {alvo}",
+        "stop_automation": "Stop automation: {alvo}",
+        "run_flow": "Run bot: {alvo}",
+        "stop_flow": "Stop the bot",
+        "set_ai_on": "Turn AI replies on",
+        "set_ai_off": "Turn AI replies off",
+        "send_media_image": "Send image",
+        "send_media_video": "Send video",
+        "send_media_document": "Send document",
+        "send_media_audio": "Send audio",
+        "wait_minutes": "Wait {quantidade} min",
+        "wait_hours": "Wait {quantidade} h",
+        "wait_days": "Wait {quantidade} days",
+        "condition": "Check a condition",
+        "send_webhook": "Call webhook",
+        "close_conversation": "Close the conversation"
+      },
+      "cancelar": "Cancel",
+      "salvar": "Save",
+      "salvando": "Saving…"
     },
     "analytics": {
       "totalDeals": "Total Deals",
@@ -1009,7 +1069,8 @@
         "updateError": "Failed to update",
         "duplicateError": "Failed to duplicate",
         "deleteError": "Failed to delete"
-      }
+      },
+      "never": "never"
     },
     "edit": {
       "loading": "Loading...",
@@ -1049,7 +1110,13 @@
         "send_webhook": "Send Webhook",
         "close_conversation": "Close Conversation",
         "move_deal_stage": "Move deal to stage",
-        "set_deal_status": "Mark won or lost"
+        "set_deal_status": "Mark won or lost",
+        "run_automation": "Run automation",
+        "stop_automation": "Stop automation",
+        "run_flow": "Run bot",
+        "stop_flow": "Stop bot",
+        "set_ai": "AI assistant",
+        "send_media": "Send file"
       },
       "triggers": {
         "new_message_received": {
@@ -1230,6 +1297,44 @@
         "antes": "before the date",
         "depois": "after the date",
         "ajuda": "Fires once per contact. If the date changes, the reminder re-arms."
+      },
+      "orquestracao": {
+        "runAutomationLabel": "Automation to run",
+        "stopAutomationLabel": "Automation to stop",
+        "pickAutomation": "Pick an automation…",
+        "runAutomationHelp": "Runs the chosen automation for this same contact. A chain that would revisit a step it already passed is refused — that is what keeps two automations calling each other from looping forever.",
+        "stopAutomationHelp": "Cancels this contact's pending waits in the chosen automation. Other contacts are untouched.",
+        "automationGone": "This automation no longer exists. Pick another one, or the step will fail when it runs.",
+        "automationInactive": "This automation is turned off, and the engine refuses to run it. Turn it on, or the step will fail.",
+        "runFlowLabel": "Bot to run",
+        "pickFlow": "Pick a bot…",
+        "runFlowHelp": "Starts the bot for this contact. If another bot is already running with them, it is replaced.",
+        "flowGone": "This bot no longer exists. Pick another one, or the step will fail when it runs.",
+        "flowInactive": "This bot is turned off, and the engine refuses to run it. Turn it on, or the step will fail. A bot that should only start on demand can stay active with a 'manual' trigger.",
+        "stopFlowHelp": "Stops whatever bot is running with this contact. Does nothing if none is.",
+        "aiLabel": "AI on this conversation",
+        "aiOn": "Turn on",
+        "aiOff": "Turn off",
+        "aiResetWarning": "Turning it back on also resets this conversation's reply counter and releases whoever is assigned. Beware of turning it on from a trigger that fires on every message — the per-conversation reply cap stops applying.",
+        "rawIdPlaceholder": "Paste the id",
+        "inactiveSuffix": "(off)",
+        "selfSuffix": "(this one)"
+      },
+      "midia": {
+        "tipoLabel": "File type",
+        "image": "Image",
+        "video": "Video",
+        "document": "Document",
+        "audio": "Audio (voice note)",
+        "arquivoLabel": "File",
+        "escolher": "Choose a file…",
+        "enviando": "Uploading…",
+        "abrir": "Open the uploaded file",
+        "grandeDemais": "File is too large. The limit for this type is {mb} MB.",
+        "nomeLabel": "Filename shown to the recipient",
+        "nomeHelp": "Documents only — WhatsApp ignores it for the other types.",
+        "legendaLabel": "Caption (optional)",
+        "audioSemLegenda": "Audio has no caption. WhatsApp voice notes carry no text — anything written here would show in the thread for your team and never reach the client."
       }
     }
   },
@@ -1289,7 +1394,8 @@
       "statusHandedOff": "Handed off",
       "statusTimedOut": "Timed out",
       "statusPaused": "Paused by agent",
-      "statusFailed": "Failed"
+      "statusFailed": "Failed",
+      "statusStoppedByAutomation": "Stopped by automation"
     },
     "builder": {
       "triggerTitle": "Trigger",

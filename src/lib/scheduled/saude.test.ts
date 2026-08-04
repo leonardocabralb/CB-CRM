@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { CICLO_MINUTOS } from './display';
-import { avaliarAgendador, deveAparecer, TOLERANCIA_MINUTOS } from './saude';
+import {
+  avaliarAgendador,
+  deveAparecer,
+  TOLERANCIA_MINUTOS,
+  TOLERANCIA_AUTOMACOES_MINUTOS,
+} from './saude';
 
 const AGORA = new Date('2026-08-02T12:00:00.000Z');
 /** Um carimbo de N minutos atrás, em ISO. */
@@ -146,5 +151,117 @@ describe('avaliarAgendador', () => {
 describe('TOLERANCIA_MINUTOS', () => {
   it('acompanha o ciclo — mudar um sem o outro faria alarme falso', () => {
     expect(TOLERANCIA_MINUTOS).toBe(CICLO_MINUTOS * 2 + 5);
+  });
+});
+
+// ------------------------------------------------------------
+// Batimento do laço RÁPIDO (migration 937).
+//
+// ⚠️ O caso que isto existe para pegar é ESPECÍFICO: o agendador roda dois
+// laços, o rápido em segundo plano (`&`) e o lento em primeiro. Se o rápido
+// morre sozinho, o contêiner segue de pé, o batimento do lento continua
+// fresco, e a tela dizia "agendador OK" enquanto o passo "Aguardar" nunca
+// acordava e o lembrete de reunião nunca saía.
+// ------------------------------------------------------------
+
+describe('avaliarAgendador — laço das automações', () => {
+  it('CRÍTICO: lento vivo + rápido morto ACENDE', () => {
+    // O caso silencioso. Antes da 937 isto devolvia `ok`.
+    const s = avaliarAgendador({
+      ultimoCiclo: atras(1),
+      ultimoCicloAutomacoes: atras(30),
+      pendentes: 0,
+      falhas: 0,
+      agora: AGORA,
+    });
+    expect(s.recado).toBe('automacoesParadas');
+    expect(s.tom).toBe('warn');
+    expect(deveAparecer(s)).toBe(true);
+    expect(s.minutosSemAutomacoes).toBe(30);
+  });
+
+  it('os dois vivos = silêncio', () => {
+    const s = avaliarAgendador({
+      ultimoCiclo: atras(1),
+      ultimoCicloAutomacoes: atras(1),
+      pendentes: 0,
+      falhas: 0,
+      agora: AGORA,
+    });
+    expect(s.tom).toBe('ok');
+    expect(s.recado).toBeNull();
+  });
+
+  it('CRÍTICO: não perguntar pela coluna NÃO acende', () => {
+    // `undefined` = a tela não buscou o campo. Tratar isso como falha faria
+    // toda chamada antiga acusar um laço morto que está vivo.
+    const s = avaliarAgendador({
+      ultimoCiclo: atras(1),
+      pendentes: 0,
+      falhas: 0,
+      agora: AGORA,
+    });
+    expect(s.tom).toBe('ok');
+    expect(s.minutosSemAutomacoes).toBeNull();
+  });
+
+  it('nunca rodou (epoch) acende, com minutos nulos', () => {
+    // Instalação que ainda não recebeu o `docker stack deploy` de dois laços.
+    const s = avaliarAgendador({
+      ultimoCiclo: atras(1),
+      ultimoCicloAutomacoes: new Date(0).toISOString(),
+      pendentes: 0,
+      falhas: 0,
+      agora: AGORA,
+    });
+    expect(s.recado).toBe('automacoesParadas');
+    expect(s.minutosSemAutomacoes).toBeNull();
+  });
+
+  it('CRÍTICO: com o agendador INTEIRO parado, quem fala é o recado do lento', () => {
+    // Contêiner morto envelhece os dois batimentos juntos. O recado de cima
+    // sabe da fila e é mais grave; dois avisos para uma causa só confundem.
+    const s = avaliarAgendador({
+      ultimoCiclo: atras(TOLERANCIA_MINUTOS + 10),
+      ultimoCicloAutomacoes: atras(TOLERANCIA_MINUTOS + 10),
+      pendentes: 3,
+      falhas: 0,
+      agora: AGORA,
+    });
+    expect(s.recado).toBe('paradoComFila');
+    expect(s.tom).toBe('down');
+  });
+
+  it('o laço rápido ganha das falhas acumuladas', () => {
+    // Falha de envio tem motivo escrito na conversa e espera decisão; laço
+    // morto é coisa acontecendo agora, em silêncio.
+    const s = avaliarAgendador({
+      ultimoCiclo: atras(1),
+      ultimoCicloAutomacoes: atras(30),
+      pendentes: 0,
+      falhas: 2,
+      agora: AGORA,
+    });
+    expect(s.recado).toBe('automacoesParadas');
+  });
+
+  it('atraso dentro da tolerância não acende', () => {
+    const s = avaliarAgendador({
+      ultimoCiclo: atras(1),
+      ultimoCicloAutomacoes: atras(TOLERANCIA_AUTOMACOES_MINUTOS),
+      pendentes: 0,
+      falhas: 0,
+      agora: AGORA,
+    });
+    expect(s.tom).toBe('ok');
+  });
+});
+
+describe('TOLERANCIA_AUTOMACOES_MINUTOS', () => {
+  it('e apertada — o laco bate a cada 60s', () => {
+    // Cinco ciclos perdidos. Bem menor que a do laço lento, e tem de ser: a
+    // diferença entre "o lembrete atrasou" e "o lembrete não vai sair".
+    expect(TOLERANCIA_AUTOMACOES_MINUTOS).toBe(5);
+    expect(TOLERANCIA_AUTOMACOES_MINUTOS).toBeLessThan(TOLERANCIA_MINUTOS);
   });
 });

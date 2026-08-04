@@ -14,28 +14,34 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import type { Deal, PipelineStage } from "@/types";
+import type { Automation, Deal, PipelineStage } from "@/types";
 import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, Zap } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { formatCurrency } from "@/lib/currency";
+import { contarAtivasNaEtapa } from "@/lib/automations/por-etapa";
 import { useTranslations } from "next-intl";
 
 interface PipelineBoardProps {
   stages: PipelineStage[];
   deals: Deal[];
+  /** Automações da conta, para a etiqueta por coluna (Fase 5). */
+  automations: Automation[];
   onDealMoved: (dealId: string, newStageId: string) => void;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  onOpenAutomations: (stage: PipelineStage) => void;
 }
 
 export function PipelineBoard({
   stages,
   deals,
+  automations,
   onDealMoved,
   onAddDeal,
   onEditDeal,
+  onOpenAutomations,
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
@@ -117,8 +123,10 @@ export function PipelineBoard({
               deals={stageDeals}
               totalValue={totalValue}
               currency={defaultCurrency}
+              automacoesAtivas={contarAtivasNaEtapa(automations, stage.id)}
               onAddDeal={onAddDeal}
               onEditDeal={onEditDeal}
+              onOpenAutomations={onOpenAutomations}
             />
           );
         })}
@@ -191,15 +199,19 @@ function StageColumn({
   deals,
   totalValue,
   currency,
+  automacoesAtivas,
   onAddDeal,
   onEditDeal,
+  onOpenAutomations,
 }: {
   stage: PipelineStage;
   deals: Deal[];
   totalValue: number;
   currency: string;
+  automacoesAtivas: number;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  onOpenAutomations: (stage: PipelineStage) => void;
 }) {
   const t = useTranslations("Pipelines.board");
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
@@ -217,13 +229,38 @@ function StageColumn({
         className="-mx-4 -mt-4 h-[3px] rounded-t-xl"
         style={{ backgroundColor: stage.color }}
       />
-      <div className="flex items-center justify-between pt-3">
+      <div className="flex items-center justify-between gap-1 pt-3">
         <h3 className="truncate text-sm font-semibold text-foreground">
           {stage.name}
         </h3>
-        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-          {deals.length}
-        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          {/* Automações desta coluna (Fase 5). Fica visível mesmo com zero:
+              é por aqui que se CRIA a primeira, e um botão que só aparece
+              depois de já existir automação não ensina ninguém.
+
+              ⚠️ O número conta o que dispara e está LIGADO — inclusive as
+              regras de etapa nenhuma, que valem para todas. Ver
+              `contarAtivasNaEtapa`. */}
+          <button
+            type="button"
+            onClick={() => onOpenAutomations(stage)}
+            aria-label={t("stageAutomations", { count: automacoesAtivas })}
+            title={t("stageAutomations", { count: automacoesAtivas })}
+            className={
+              automacoesAtivas > 0
+                ? "inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                : "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
+            }
+          >
+            <Zap className="h-3 w-3" />
+            {automacoesAtivas > 0 && (
+              <span className="tabular-nums">{automacoesAtivas}</span>
+            )}
+          </button>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+            {deals.length}
+          </span>
+        </div>
       </div>
       <p className="text-xs text-muted-foreground">
         {formatCurrency(totalValue, currency)}
