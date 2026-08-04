@@ -25,6 +25,11 @@ export default function NewAutomationPage() {
 function NewAutomationPageInner() {
   const params = useSearchParams()
   const template = params.get("template") as TemplateSlug | null
+  // Veio do painel de uma etapa do funil (Fase 5). O construtor nasce com o
+  // gatilho de funil já apontando para ela — sem isso, "criar automação desta
+  // coluna" faria o operador reescolher à mão a etapa em que acabou de
+  // clicar, e errar essa escolha é silencioso.
+  const stage = params.get("stage")
 
   const initial: BuilderInitial = useMemo(() => {
     if (template && AUTOMATION_TEMPLATES[template]) {
@@ -51,6 +56,24 @@ function NewAutomationPageInner() {
         steps,
       }
     }
+    if (stage) {
+      return {
+        name: "",
+        description: "",
+        trigger_type: "deal_stage_changed" as AutomationTriggerType,
+        trigger_config: { stage_ids: [stage] },
+        channel_ids: [],
+        // ⚠️ Escopo VAZIO, e não `[stage]`. São perguntas diferentes: o
+        // gatilho é "entrou nesta etapa", o escopo é "está nesta etapa". Com
+        // os dois preenchidos a regra continua funcionando hoje e vira uma
+        // armadilha amanhã — mudar o gatilho para outra etapa a deixaria
+        // configurada, ligada e incapaz de disparar, que é exatamente a
+        // categoria "nunca dispara aqui" do painel.
+        stage_ids: [],
+        is_active: false,
+        steps: [],
+      }
+    }
     return {
       name: "",
       description: "",
@@ -61,7 +84,7 @@ function NewAutomationPageInner() {
       is_active: false,
       steps: [],
     }
-  }, [template])
+  }, [template, stage])
 
   return <AutomationBuilder initial={initial} />
 }

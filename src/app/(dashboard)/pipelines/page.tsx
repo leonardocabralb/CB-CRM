@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Pipeline, PipelineStage, Deal } from "@/types";
+import type { Automation, Pipeline, PipelineStage, Deal } from "@/types";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
+import { StageAutomations } from "@/components/pipelines/stage-automations";
 import { DealForm } from "@/components/pipelines/deal-form";
 import { PipelineAnalytics } from "@/components/pipelines/pipeline-analytics";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,15 @@ export default function PipelinesPage() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Automações de funil da conta inteira (Fase 5). Não é por funil de
+  // propósito: a regra de gatilho VAZIO vale para toda etapa de todo funil, e
+  // filtrar por `pipeline_id` aqui a esconderia — a automação existe, dispara,
+  // e a coluna diria que não há nada.
+  const [automations, setAutomations] = useState<Automation[]>([]);
+  const [automationsStage, setAutomationsStage] = useState<PipelineStage | null>(
+    null,
+  );
+
   // Dialog / sheet state
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
   const [newPipelineName, setNewPipelineName] = useState("");
@@ -109,6 +119,23 @@ export default function PipelinesPage() {
     },
     [supabase],
   );
+
+  // Falha em silêncio → lista vazia. A etiqueta some e o painel diz "nenhuma";
+  // é fail-open consciente, igual ao `useChannels`: sem as automações o
+  // operador perde a INFORMAÇÃO, não o quadro. Travar o Kanban porque um GET
+  // não respondeu seria pior.
+  const loadAutomations = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("automations")
+      .select("*")
+      .eq("trigger_type", "deal_stage_changed")
+      .order("created_at", { ascending: false });
+    if (error) {
+      console.error("Failed to load stage automations:", error.message);
+      return [];
+    }
+    return (data ?? []) as Automation[];
+  }, [supabase]);
 
   const seedDefaultPipeline = useCallback(async (): Promise<Pipeline | null> => {
     const {
@@ -196,6 +223,22 @@ export default function PipelinesPage() {
       cancelled = true;
     };
   }, [selectedPipelineId, loadStages, loadDeals]);
+
+  // Uma vez por montagem: automação de funil não muda enquanto se arrasta
+  // card. O painel recarrega sozinho ao ligar/desligar uma.
+  useEffect(() => {
+    let cancelled = false;
+    loadAutomations().then((list) => {
+      if (!cancelled) setAutomations(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAutomations]);
+
+  const refreshAutomations = useCallback(async () => {
+    setAutomations(await loadAutomations());
+  }, [loadAutomations]);
 
   const refreshPipelines = useCallback(async () => {
     const list = await loadPipelines();
@@ -423,9 +466,11 @@ export default function PipelinesPage() {
           <PipelineBoard
             stages={stages}
             deals={deals}
+            automations={automations}
             onDealMoved={handleDealMoved}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}
+            onOpenAutomations={setAutomationsStage}
           />
         </>
       )}
@@ -483,6 +528,17 @@ export default function PipelinesPage() {
             setSettingsOpen(false);
             setNewPipelineOpen(true);
           }}
+        />
+      )}
+
+      {/* Automações da etapa (Fase 5) */}
+      {automationsStage && (
+        <StageAutomations
+          open={!!automationsStage}
+          onOpenChange={(v) => !v && setAutomationsStage(null)}
+          stage={automationsStage}
+          automations={automations}
+          onChanged={refreshAutomations}
         />
       )}
 

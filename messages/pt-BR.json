@@ -710,7 +710,8 @@
     },
     "board": {
       "dropDealHere": "Solte um negócio aqui",
-      "addDeal": "Adicionar negócio"
+      "addDeal": "Adicionar negócio",
+      "stageAutomations": "{count, plural, =0 {Automações desta etapa} one {Automações desta etapa (# ativa)} other {Automações desta etapa (# ativas)}}"
     },
     "card": {
       "noContact": "Sem contato",
@@ -786,6 +787,27 @@
       "toastDeleted": "Funil excluído",
       "deletePipelineChannels": "Estas conexões colocam clientes neste funil: {channels}. Depois de apagar, elas param de criar negócios até você apontá-las para outro funil em Configurações › Conexões.",
       "toastStageIsChannelEntry": "Esta etapa é a entrada de {channels}. Escolha outra etapa de entrada em Configurações › Conexões antes de apagá-la."
+    },
+    "stageAutomations": {
+      "title": "Automações — {stage}",
+      "intro": "O que acontece quando um card entra nesta etapa.",
+      "groupThisStage": "Desta etapa",
+      "groupAllStages": "De todas as etapas",
+      "groupAllStagesHint": "Estas não têm etapa escolhida, então valem para toda etapa de todo funil — inclusive esta.",
+      "groupNeverFires": "Nunca dispara aqui",
+      "groupNeverFiresHint": "O gatilho aponta para esta etapa, mas a automação está restrita a outras — então nada acontece aqui. Abra e tire a restrição de etapa.",
+      "emptyTitle": "Nada acontece nesta etapa",
+      "emptyDesc": "Crie uma automação para mandar mensagem, mover o card ou iniciar um robô assim que um negócio chegar aqui.",
+      "create": "Nova automação nesta etapa",
+      "runs": "{count, plural, one {# disparo} other {# disparos}}",
+      "lastRun": "último disparo {time}",
+      "neverRun": "nunca disparou",
+      "edit": "Editar",
+      "activate": "Ativar",
+      "deactivate": "Pausar",
+      "toastActivated": "Automação ativada",
+      "toastPaused": "Automação pausada",
+      "toastUpdateError": "Não foi possível atualizar a automação"
     },
     "analytics": {
       "totalDeals": "Total de negócios",
@@ -1013,7 +1035,8 @@
         "updateError": "Falha ao atualizar",
         "duplicateError": "Falha ao duplicar",
         "deleteError": "Falha ao excluir"
-      }
+      },
+      "never": "nunca"
     },
     "edit": {
       "loading": "Carregando...",

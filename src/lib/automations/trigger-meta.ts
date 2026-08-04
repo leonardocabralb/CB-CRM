@@ -62,14 +62,31 @@ export function triggerMeta(t: AutomationTriggerType | string): TriggerMeta {
   )
 }
 
-export function formatRelative(iso: string | null | undefined): string {
-  if (!iso) return 'never'
+/**
+ * "há 5 minutos", na língua de quem está olhando.
+ *
+ * ⚠️ Usa `Intl.RelativeTimeFormat` em vez de montar a string à mão. As três
+ * telas que chamam isto rodam num app em português, e o que aparecia no meio
+ * da frase era `5m ago` — mesmo tipo de armadilha do `toLocaleDateString`
+ * com locale fixo, que o CLAUDE.md já proíbe.
+ *
+ * O texto de "nunca" não sai do `Intl`: vem de fora, já traduzido. O padrão
+ * em inglês existe só para o chamador cujo valor nunca é nulo (o histórico,
+ * onde `created_at` é NOT NULL) — não é permissão para deixar em inglês numa
+ * tela onde a data pode faltar.
+ */
+export function formatRelative(
+  iso: string | null | undefined,
+  nunca = 'never',
+): string {
+  if (!iso) return nunca
   const then = new Date(iso).getTime()
-  if (Number.isNaN(then)) return 'never'
+  if (Number.isNaN(then)) return nunca
   const diffSec = Math.round((Date.now() - then) / 1000)
-  if (diffSec < 60) return 'just now'
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`
-  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`
-  if (diffSec < 2_592_000) return `${Math.floor(diffSec / 86400)}d ago`
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+  if (diffSec < 60) return rtf.format(-diffSec, 'second')
+  if (diffSec < 3600) return rtf.format(-Math.floor(diffSec / 60), 'minute')
+  if (diffSec < 86400) return rtf.format(-Math.floor(diffSec / 3600), 'hour')
+  if (diffSec < 2_592_000) return rtf.format(-Math.floor(diffSec / 86400), 'day')
   return new Date(iso).toLocaleDateString()
 }

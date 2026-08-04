@@ -694,9 +694,9 @@ apagado depois (0 campos personalizados, 69 contatos e 59 negócios reais):
 
 ### Fase 5 — Builder por etapa, estilo Kommo — **PR 5**
 
-- [ ] Painel por etapa dentro de `src/components/pipelines/`, listando e criando
+- [x] Painel por etapa dentro de `src/components/pipelines/`, listando e criando
       automações de `deal_stage_changed` daquela etapa
-- [ ] Só faz sentido depois da Fase 2 (o gatilho) e da Fase 3 (o "acionar robô")
+- [x] Só faz sentido depois da Fase 2 (o gatilho) e da Fase 3 (o "acionar robô")
 
 ### Fase 6 — `docs/INFRA-VPS.md`: o que o banco tem e a VPS não — **PR 6**
 
@@ -1161,3 +1161,49 @@ Decisões da implementação:
 
 Verificado na tela: o passo aparece no menu, o editor nasce em Imagem com
 legenda, e trocar para Áudio faz o campo sumir e a explicação aparecer.
+
+**2026-08-04 — Fase 5: o painel por etapa.** O raio no cabeçalho de cada coluna
+do Kanban abre a lista de automações daquela etapa e cria a próxima já com o
+gatilho apontando para ela. **Sem migration** — a Fase 2 já tinha o gatilho e o
+recorte. 1381 testes.
+
+A regra de classificação ficou fora da tela, em `src/lib/automations/por-etapa.ts`,
+pelo mesmo motivo dos filtros do inbox: a resposta tem de ser a MESMA que o
+motor dá, e a única forma de garantir isso é ter um lugar só, testado.
+
+⚠️ **O painel mostra TRÊS grupos, e o segundo é a razão de ele existir.**
+Automação com `trigger_config.stage_ids` vazio dispara em TODA etapa. Um painel
+que listasse só quem NOMEIA a coluna diria "nada acontece nesta etapa" enquanto
+o motor manda mensagem a cada card que entra — o formato de defeito que este
+projeto trata como o pior, porque a tela parece certa. Conferido na produção: a
+coluna "Desqualificado", jamais nomeada na automação de teste, exibiu o grupo
+"De todas as etapas" com a explicação.
+
+⚠️ **O terceiro grupo, "Nunca dispara aqui", nomeia um estado alcançável pela
+tela de hoje.** São duas listas de etapa com significados opostos —
+`trigger_config.stage_ids` ("entrou nesta") e `automations.stage_ids` ("está
+nesta", o escopo). Trocar o tipo de gatilho para "mudou de etapa" ESCONDE o
+seletor de escopo e não limpa o valor: a automação fica ligada, configurada e
+incapaz de rodar, sem nada na tela dizendo isso. Por isso o botão "Nova
+automação nesta etapa" preenche só o gatilho — preencher os dois funciona hoje
+e fabrica a armadilha para amanhã.
+
+Decisões da implementação:
+
+- **A etiqueta conta só o que dispara E está ligado.** Contar a pausada põe um
+  número numa coluna onde nada acontece, e o operador vai caçar defeito no motor.
+- **O raio aparece com zero.** É por ali que se cria a primeira automação da
+  etapa; um botão que só nasce depois de já existir automação não ensina ninguém.
+- **A consulta não filtra por funil.** A regra irrestrita vale para toda etapa
+  de todo funil — filtrar por `pipeline_id` a esconderia.
+- **Há teste comparando `classificarNaEtapa` com o `triggerMatches` de verdade**,
+  importado do `engine.ts`. Se a regra do motor mudar, ele quebra aqui.
+
+Achado durante a verificação visual: `formatRelative` devolvia `5m ago` e
+`never` **em inglês**, cru, nas TRÊS telas que a usam (lista de automações,
+histórico e o painel novo) — a mesma família de erro que o CLAUDE.md já proíbe
+para `toLocaleDateString('en-US')`. Passou a usar `Intl.RelativeTimeFormat` e a
+receber o texto de "nunca" de fora, já traduzido. Ganhou 9 testes (não tinha
+nenhum), e a inversão do sinal foi conferida por mutação — sem ela a tela diria
+"daqui a 10 minutos" sobre um disparo que já aconteceu, e ninguém questiona um
+relógio.
