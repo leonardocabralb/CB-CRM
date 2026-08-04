@@ -1207,3 +1207,42 @@ receber o texto de "nunca" de fora, já traduzido. Ganhou 9 testes (não tinha
 nenhum), e a inversão do sinal foi conferida por mutação — sem ela a tela diria
 "daqui a 10 minutos" sobre um disparo que já aconteceu, e ninguém questiona um
 relógio.
+
+**2026-08-04 — A visão "Automações" do funil (estilo Kommo).** Pedida pelo
+operador com prints do Kommo, logo depois da Fase 5. Alternador
+**Leads | Automações** na página de funis; na visão nova as colunas continuam
+sendo as etapas e cada cartão ocupa aquelas em que a regra dispara.
+
+⚠️ **Sem migration, e isso não é sorte:** a largura do cartão É o
+`trigger_config.stage_ids` que a Fase 5 já usava. "Expandir" grava mais etapas;
+sem etapa nenhuma o cartão atravessa o quadro — que é exatamente o "Webhook"
+roxo de largura total no print do Kommo, e o grupo "De todas as etapas" da
+caixa que a grade substituiu.
+
+Duas peças puras, com teste, pelo mesmo motivo dos filtros do inbox:
+
+- `grade-do-funil.ts` (19 testes) — quais colunas o cartão ocupa e como
+  empilhar sem sobrepor. ⚠️ **Etapas não vizinhas viram VÁRIOS cartões**: um
+  retângulo da coluna 1 até a 3 afirmaria que a regra vale na 2, e ela não
+  vale. Cada trecho contínuo é um cartão, e os dois levam o aviso de que há
+  mais da mesma regra em outro lugar.
+- `descrever-passo.ts` (18 testes) — o resumo em negrito. Devolve **chave +
+  valores**, nunca texto pronto, e há teste lendo os DOIS dicionários que cobra
+  uma chave por tipo de passo (21 tipos, 29 chaves com as variantes). Sem ele,
+  um passo novo no motor põe `Pipelines.automacoes.resumo.send_x`, cru, dentro
+  do cartão.
+
+A caixa por coluna da Fase 5 foi **removida** — decisão do operador entre
+manter as duas ou substituir. Duas telas dizendo a mesma coisa divergem na
+primeira mudança; o raio da coluna agora leva para a grade. As 19 chaves i18n
+dela saíram junto.
+
+Verificado na produção com 5 automações de teste (todas pausadas, apagadas em
+seguida): cartão de uma coluna, de três, de largura total, um de etapas
+separadas com o aviso, o empilhamento em linhas, o "(apagado)" no lugar de um
+UUID órfão, o "+1 ação", o expandir (incluindo desmarcar tudo, que a caixa
+anuncia como "vale para TODAS as etapas" antes de salvar) e o duplicar.
+
+**Fica em inglês, e não foi tocado:** o sufixo `(Copy)` no nome da automação
+duplicada vem da rota `/api/automations/[id]/duplicate`, que não tem contexto
+de i18n. Aparece agora com mais frequência, porque duplicar virou um botão.
