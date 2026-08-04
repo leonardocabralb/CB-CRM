@@ -59,6 +59,22 @@ next-env.d.ts
 # O iCloud ignora nomes terminados em .nosync; `.next` é um atalho para cá.
 # Sem isso o fileproviderd sincroniza cada arquivo que o Turbopack reescreve,
 # e compilar passa de 20s por rota — já travou o dev server duas vezes.
+#
+# ⚠️ O arranjo JÁ FOI DESFEITO uma vez (2026-08-04): `.next` voltou a ser
+# pasta real, com 1,6 GB dentro do iCloud, e o estrago foram 3.175 cópias de
+# conflito — incluindo um `src/types/index 2.ts` velho de 5 horas, que uma
+# busca no código devolveu ANTES do arquivo verdadeiro. Se o dev server
+# voltar a engasgar, conferir isto primeiro:
+#     readlink .next        # tem de responder .next.nosync
+#
+# ⚠️⚠️ **`node_modules` NÃO entra neste arranjo, e não é esquecimento.**
+# Medido em 2026-08-04: com `node_modules` virado symlink para
+# `node_modules.nosync`, o `tsc --noEmit` passou de 3s para MAIS DE 7 MINUTOS,
+# parado em 0% de CPU — o TypeScript resolve cada módulo pelo caminho real e
+# o desvio o mata. O `vitest` continuava rápido, o que despista: o sintoma é
+# só do tsc. Desfazer o symlink devolveu os 3s na hora.
+# `node_modules` muda uma vez por `npm install`; o `.next` é reescrito a cada
+# tecla. É o segundo que precisava sair do iCloud, não o primeiro.
 .next.nosync
 
 # Cópias de conflito do iCloud. O projeto vive em ~/Documents, e o iCloud
