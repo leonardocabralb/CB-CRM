@@ -796,7 +796,7 @@ de ofício pela implementação e estão sinalizados para veto: a guarda
 | 3 — orquestração | 3 | ✅ concluída | `feat/automacoes-orquestracao` | 2026-08-04 |
 | 4 — mídia | 4 | ⬜ não iniciada | — | — |
 | 5 — builder por etapa | 5 | ⬜ não iniciada | — | — |
-| 6 — `docs/INFRA-VPS.md` | 6 | ⬜ não iniciada (bloqueada: SSH) | — | — |
+| 6 — `docs/INFRA-VPS.md` | 6 | ✅ concluída | `feat/automacoes-orquestracao` | 2026-08-04 |
 
 ✅ **Laço rápido de 60 s no ar desde 2026-08-04 17:10 UTC.** O operador rodou o
 `docker stack deploy` na VPS (o CI só troca a imagem do `crm_crm`, nunca sobe
@@ -816,12 +816,15 @@ forma, escrito por `/api/automations/cron`, com o mesmo aviso âmbar no cabeçal
 quando envelhecer. Barato e mecânico — não entrou no PR 3 por ser schema fora do
 escopo de orquestração.
 
-⚠️ Registrar também: em 2026-08-04 ~17:03 UTC o serviço `crm_agendador` **morreu
-sozinho** (`Failed`, exit 255) e voltou pela política de reinício; a tarefa
-seguinte passou uma volta inteira com `curl: (6) Could not resolve host: crm_crm`
-antes de normalizar. Causa não identificada. Se repetir, olhar `docker events` e
-a rede `CBAdvNet` no momento — e é mais um item para o `docs/INFRA-VPS.md`
-(Fase 6).
+✅ **CAUSA IDENTIFICADA (mesmo dia, mais tarde).** Aquele `crm_agendador` que
+"morreu sozinho" às ~17:03 UTC não teve causa misteriosa: **a VPS inteira
+reiniciou** às ~17:02. Quase todo serviço da máquina tem um `Failed` com exit
+255 no mesmo instante, e o erro de DNS da tarefa seguinte é o mesmo sintoma que
+manteve a Evolution fora do ar por uma hora. Registrado em
+[`docs/INFRA-VPS.md`](INFRA-VPS.md) §8.
+
+**Lição:** "causa não identificada" num serviço isolado, com erro de rede logo
+depois, merece um olhar no uptime da máquina antes de virar mistério.
 
 ### Histórico
 
@@ -1103,3 +1106,25 @@ corpo dizia "as mensagens agendadas não são afetadas". O título passou a segu
 o recado — e o rótulo acessível junto, senão quem usa leitor de tela ouviria o
 assunto errado antes de abrir. Conferido por mutação que os testes pegam a
 remoção da checagem (3 falham).
+
+**2026-08-04 — Fase 6 concluída, e ela achou um incidente em produção.**
+`docs/INFRA-VPS.md` escrito a partir de `scripts/vps-inventario.sh`, rodado de
+verdade contra a máquina (o operador autorizou a chave de leitura no mesmo dia).
+
+⚠️ **O levantamento descobriu que o WhatsApp do escritório estava fora do ar
+havia uma hora.** A VPS reiniciou às ~17:02 UTC; `evolution_evolution` e os três
+serviços do `n8n` ficaram em laço de reinício por não resolverem `postgres:5432`
+— a rede overlay do Swarm volta pela metade depois de reboot. Curado com
+`docker service update --force`, e confirmado pelo fluxo de mensagens voltando
+ao ritmo normal.
+
+**A lição de monitoramento vale para este plano inteiro:** o CRM respondeu 200
+o tempo todo, então qualquer monitor de "o site está no ar?" teria dito que
+estava tudo bem. O sinal honesto é o **fluxo de mensagens no Supabase**. E o
+cabeçalho do CRM chegou a exibir "1 conexão, 1 com problema" uma hora antes,
+visto e ignorado numa verificação de outra feature.
+
+Achados que a Fase 6 registrou e ninguém sabia: **10 stacks, 16 serviços** na
+máquina; **nenhum backup de nada**; **9 das 10 definições de stack existem só em
+`/root/`, fora do git**; a Evolution é um **fork nosso** (`-lidfix`) que o label
+da stack não reflete; e 3,7 GB de volumes órfãos do Chatwoot.
