@@ -1255,7 +1255,8 @@
         "aiOff": "Turn off",
         "aiResetWarning": "Turning it back on also resets this conversation's reply counter and releases whoever is assigned. Beware of turning it on from a trigger that fires on every message — the per-conversation reply cap stops applying.",
         "rawIdPlaceholder": "Paste the id",
-        "inactiveSuffix": "(off)"
+        "inactiveSuffix": "(off)",
+        "selfSuffix": "(this one)"
       }
     }
   },

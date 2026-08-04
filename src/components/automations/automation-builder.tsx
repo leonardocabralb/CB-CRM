@@ -290,14 +290,23 @@ interface AutomationResources {
   /** Canais da conta — para a condição por canal do passo Condição. */
   channels: CbChannel[]
   /**
-   * Outras automações da conta, para `run_automation` / `stop_automation`.
+   * Automações da conta, para `run_automation` / `stop_automation`.
    *
-   * ⚠️ A automação sendo editada **já sai daqui** (`automacaoAtualId`).
-   * Oferecê-la seria oferecer um laço garantido: o motor barraria na hora
-   * (`encadear` põe a origem na cadeia antes de conferir), mas só depois de
-   * o operador montar, salvar, ativar e esperar.
+   * ⚠️ Inclui a que está sendo editada, e quem filtra é cada seletor —
+   * porque as duas ações querem coisas opostas dela:
+   *
+   * - `run_automation` a EXCLUI: acionar a si mesma é laço garantido, e o
+   *   motor barraria na hora, mas só depois de o operador montar, salvar,
+   *   ativar e esperar.
+   * - `stop_automation` a MANTÉM: "cancele a minha própria espera pendente
+   *   e comece a contar de novo" é legítimo, e some do seletor seria uma
+   *   limitação que ninguém descobre. A execução em curso não se
+   *   autocancela — o cron já a marcou `running`, e o passo só atinge
+   *   `pending`.
    */
   automations: AutomationOption[]
+  /** `undefined` numa automação nova — ela ainda não tem id. */
+  automacaoAtualId?: string
   /** Robôs (fluxos) da conta, para `run_flow`. */
   flows: FlowOption[]
 }
@@ -405,11 +414,7 @@ function ResourcesProvider({
       setCustomFields((customFieldsRes.data as CustomField[] | null) ?? [])
       setPipelines((pipelinesRes.data as PipelineOption[] | null) ?? [])
       setStages((stagesRes.data as PipelineStageOption[] | null) ?? [])
-      setAutomations(
-        ((automationsRes.data as AutomationOption[] | null) ?? []).filter(
-          (a) => a.id !== automacaoAtualId,
-        ),
-      )
+      setAutomations((automationsRes.data as AutomationOption[] | null) ?? [])
       setFlows((flowsRes.data as FlowOption[] | null) ?? [])
     })()
 
@@ -430,7 +435,7 @@ function ResourcesProvider({
     return () => {
       cancelled = true
     }
-  }, [automacaoAtualId])
+  }, [])
 
   return (
     <ResourcesContext.Provider
@@ -443,6 +448,7 @@ function ResourcesProvider({
         stages,
         channels,
         automations,
+        automacaoAtualId,
         flows,
       }}
     >
@@ -1858,12 +1864,14 @@ function SeletorDeAutomacao({
   acionar: boolean
   t: ReturnType<typeof useTranslations>
 }) {
-  const { automations } = useResources()
-  const escolhida = automations.find((a) => a.id === value)
+  const { automations, automacaoAtualId } = useResources()
+  // Só `run_automation` esconde a si mesma — ver a nota em `AutomationResources`.
+  const lista = acionar ? automations.filter((a) => a.id !== automacaoAtualId) : automations
+  const escolhida = lista.find((a) => a.id === value)
   const orfa = !!value && !escolhida
   return (
     <FieldBlock label={t(acionar ? "orquestracao.runAutomationLabel" : "orquestracao.stopAutomationLabel")}>
-      {automations.length === 0 ? (
+      {lista.length === 0 ? (
         <Input
           placeholder={t("orquestracao.rawIdPlaceholder")}
           value={value}
@@ -1877,9 +1885,10 @@ function SeletorDeAutomacao({
           className={SELECT_CLASS}
         >
           <option value="">{t("orquestracao.pickAutomation")}</option>
-          {automations.map((a) => (
+          {lista.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
+              {a.id === automacaoAtualId ? ` ${t("orquestracao.selfSuffix")}` : ""}
               {a.is_active ? "" : ` ${t("orquestracao.inactiveSuffix")}`}
             </option>
           ))}

@@ -1255,7 +1255,8 @@
         "aiOff": "Desligar",
         "aiResetWarning": "Religar também zera o contador de respostas desta conversa e solta quem estiver atribuído. Cuidado ao ligar a partir de um gatilho que dispara a cada mensagem — o teto de respostas por conversa deixa de valer.",
         "rawIdPlaceholder": "Cole o id",
-        "inactiveSuffix": "(desativada)"
+        "inactiveSuffix": "(desativada)",
+        "selfSuffix": "(esta)"
       }
     }
   },
