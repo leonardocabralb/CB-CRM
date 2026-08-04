@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertTriangle, CalendarClock } from 'lucide-react';
+import { AlertTriangle, CalendarClock, Zap } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import {
@@ -34,11 +34,18 @@ export function SchedulerHealthIndicator() {
   if (!saude || !deveAparecer(saude)) return null;
 
   const grave = saude.tom === 'down';
+  // ⚠️ O título segue o RECADO, não o componente. Com "Mensagens agendadas"
+  // fixo, o aviso do laço das automações se contradizia na própria caixa: o
+  // título dizia "mensagens agendadas" e o corpo, "as agendadas não são
+  // afetadas". Vale para o rótulo acessível também — quem usa leitor de tela
+  // ouviria o assunto errado antes de abrir.
+  const daAutomacao = saude.recado === 'automacoesParadas';
+  const titulo = daAutomacao ? t('rotuloAutomacoes') : t('rotulo');
 
   return (
     <Popover>
       <PopoverTrigger
-        aria-label={t('rotulo')}
+        aria-label={titulo}
         className={cn(
           'inline-flex items-center gap-1 rounded-md px-1.5 py-1 transition-colors',
           grave
@@ -54,8 +61,12 @@ export function SchedulerHealthIndicator() {
 
       <PopoverContent align="end" sideOffset={8} className="w-80">
         <p className="flex items-center gap-1.5 px-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          <CalendarClock className="h-3.5 w-3.5" />
-          {t('rotulo')}
+          {daAutomacao ? (
+            <Zap className="h-3.5 w-3.5" />
+          ) : (
+            <CalendarClock className="h-3.5 w-3.5" />
+          )}
+          {titulo}
         </p>
 
         <p
@@ -68,21 +79,37 @@ export function SchedulerHealthIndicator() {
             t('paradoComFila', { fila: saude.pendentes })}
           {saude.recado === 'paradoSemFila' && t('paradoSemFila')}
           {saude.recado === 'nuncaRodou' && t('nuncaRodou')}
+          {saude.recado === 'automacoesParadas' && t('automacoesParadas')}
           {saude.recado === 'falhas' && t('falhas', { n: saude.falhas })}
         </p>
 
         {/* O número cru importa: "parado há 4 horas" e "parado há 40 minutos"
-            pedem reações diferentes. */}
-        {saude.minutosSemCiclo !== null && saude.recado !== 'falhas' && (
+            pedem reações diferentes.
+
+            ⚠️ No recado do laço rápido mostra o minuto DELE, não o do lento —
+            que ali está fresco, e exibi-lo diria "último ciclo há 0 min"
+            logo abaixo de "as automações pararam". */}
+        {saude.recado === 'automacoesParadas' ? (
           <p className="text-xs text-muted-foreground">
-            {t('ultimoCiclo', { min: saude.minutosSemCiclo })}
+            {saude.minutosSemAutomacoes === null
+              ? t('automacoesNuncaRodaram')
+              : t('ultimoCiclo', { min: saude.minutosSemAutomacoes })}
           </p>
+        ) : (
+          saude.minutosSemCiclo !== null &&
+          saude.recado !== 'falhas' && (
+            <p className="text-xs text-muted-foreground">
+              {t('ultimoCiclo', { min: saude.minutosSemCiclo })}
+            </p>
+          )
         )}
 
         <p className="text-xs text-muted-foreground">
           {saude.recado === 'falhas'
             ? t('comoResolverFalhas')
-            : t('comoResolverParado', { ciclo: CICLO_MINUTOS })}
+            : saude.recado === 'automacoesParadas'
+              ? t('comoResolverAutomacoes')
+              : t('comoResolverParado', { ciclo: CICLO_MINUTOS })}
         </p>
       </PopoverContent>
     </Popover>

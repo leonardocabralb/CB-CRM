@@ -466,7 +466,11 @@
         "falhas": "{n} mensagem(ns) agendada(s) falharam e esperam decisão.",
         "ultimoCiclo": "Último ciclo {min, plural, =0 {agora mesmo} =1 {há 1 minuto} other {há # minutos}}.",
         "comoResolverParado": "Ele deveria rodar a cada {ciclo} minutos. Peça a quem cuida do servidor para conferir o serviço \"agendador\" (ver docs/DEPLOY-VPS.md).",
-        "comoResolverFalhas": "Veja todas em Agendadas, no menu lateral: a aba Falhas mostra o motivo de cada uma e deixa reenviar ou cancelar."
+        "comoResolverFalhas": "Veja todas em Agendadas, no menu lateral: a aba Falhas mostra o motivo de cada uma e deixa reenviar ou cancelar.",
+        "automacoesParadas": "O laço das automações parou. As esperas não estão acordando e os lembretes por data não estão saindo — as mensagens agendadas não são afetadas.",
+        "automacoesNuncaRodaram": "Ele nunca rodou nesta instalação.",
+        "comoResolverAutomacoes": "O agendador roda dois laços e só este morreu. Na VPS: docker service logs --since 5m -t crm_agendador e depois docker stack deploy -c docker-stack.yml crm.",
+        "rotuloAutomacoes": "Automações"
       },
       "attachment_image": "Foto",
       "attachment_video": "Vídeo",

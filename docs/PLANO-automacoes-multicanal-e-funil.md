@@ -1066,3 +1066,40 @@ produção, em dado real, pela primeira vez.
 ⚠️ **Pendência que a Fase 3 herda e não resolve:** o passo `wait` e tudo que
 depende do cron continuam no ritmo de 15 min até o `docker stack deploy` do
 laço rápido ser feito na VPS.
+
+**2026-08-04 — Batimento do laço rápido (migration 937).** A dívida registrada
+horas antes, paga no mesmo dia: o laço de 60 s podia morrer em silêncio, e a
+tela continuaria dizendo "agendador OK" com o passo "Aguardar" sem acordar e o
+lembrete de reunião sem sair. Agora `/api/automations/cron` carimba
+`cb_agendador_batimento.ultimo_ciclo_automacoes`, e o aviso do cabeçalho ganhou
+o recado próprio. 1347 testes.
+
+**Coluna, não tabela nova.** A 927 já é "sinais vitais do agendador" com todo o
+aparato de RLS e REVOKE; um segundo laço do MESMO processo é a mesma coisa.
+
+O que morde código novo:
+
+- ⚠️ **O carimbo fica ANTES dos `return` da rota, num call site só.** O caminho
+  comum sai pelo `return` do meio ("não havia execução parada"); carimbar no
+  fim faria o batimento só bater quando houvesse trabalho — o defeito exato que
+  a 927 nasceu para consertar do outro lado. E protege de quem vier depois: um
+  `return` novo não tem como pular um carimbo já feito.
+- ⚠️ **`undefined` (a tela não perguntou pela coluna) NÃO acende**, e é
+  diferente de `null`/epoch (perguntou, nunca rodou). Tratar os dois igual faria
+  toda chamada antiga de `avaliarAgendador` acusar um laço morto que está vivo.
+  Quando a LEITURA falha o hook manda `undefined` de propósito: ali o
+  `ultimoCiclo` já vira `null` e acende sozinho, e um segundo alarme pela mesma
+  causa mandaria o operador caçar defeito inexistente.
+- ⚠️ **O recado do laço rápido vem DEPOIS dos de agendador parado.** Contêiner
+  morto envelhece os dois batimentos juntos, e o recado de cima é mais grave
+  porque sabe da fila. Este é para o caso novo: lento vivo, rápido morto.
+- **Tolerância de 5 min** (cinco ciclos), contra 35 do laço lento. Não é
+  derivada de `CICLO_MINUTOS`: a cadência do laço rápido vive no
+  `docker-stack.yml`, fora do código.
+
+Achado na verificação visual, com o cenário plantado em produção (lento fresco,
+rápido em `epoch`): o título da caixa dizia **"MENSAGENS AGENDADAS"** enquanto o
+corpo dizia "as mensagens agendadas não são afetadas". O título passou a seguir
+o recado — e o rótulo acessível junto, senão quem usa leitor de tela ouviria o
+assunto errado antes de abrir. Conferido por mutação que os testes pegam a
+remoção da checagem (3 falham).

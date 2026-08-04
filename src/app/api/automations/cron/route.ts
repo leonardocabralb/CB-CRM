@@ -52,6 +52,29 @@ export async function GET(request: Request) {
   const lembretesPodados = await podarLembretesAntigos()
 
   const admin = supabaseAdmin()
+
+  // ⚠️ SINAL DE VIDA DO LAÇO RÁPIDO (migration 937), e o LUGAR é load-bearing.
+  //
+  // Fica aqui, num call site só, ANTES dos três `return` abaixo. A tentação é
+  // carimbar no fim, junto do resultado — mas o caminho comum sai pelo
+  // `return` do meio ("não havia execução parada"), e o carimbo nunca
+  // aconteceria. Seria o defeito exato que a 927 nasceu para consertar do
+  // outro lado: um batimento que só bate quando há trabalho não distingue
+  // "parado" de "sem serviço hoje".
+  //
+  // Também protege de quem vier depois: um `return` novo mais abaixo não tem
+  // como pular um carimbo que já foi feito.
+  //
+  // Best-effort. Falhar aqui não pode derrubar o ciclo — o preço de um
+  // batimento perdido é a tela adiantar um aviso, que é o lado seguro.
+  const { error: batErr } = await admin
+    .from('cb_agendador_batimento')
+    .update({ ultimo_ciclo_automacoes: new Date().toISOString() })
+    .eq('id', true)
+  if (batErr) {
+    console.error('[automations] batimento não gravou:', batErr.message)
+  }
+
   const { data: due, error } = await admin
     .from('automation_pending_executions')
     .select('*')

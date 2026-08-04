@@ -466,7 +466,11 @@
         "falhas": "{n} scheduled message(s) failed and are waiting for a decision.",
         "ultimoCiclo": "Last cycle {min, plural, =0 {just now} =1 {1 minute ago} other {# minutes ago}}.",
         "comoResolverParado": "It should run every {ciclo} minutes. Ask whoever maintains the server to check the \"agendador\" service (see docs/DEPLOY-VPS.md).",
-        "comoResolverFalhas": "See them all under Scheduled in the sidebar: the Failed tab shows why each one failed and lets you resend or cancel."
+        "comoResolverFalhas": "See them all under Scheduled in the sidebar: the Failed tab shows why each one failed and lets you resend or cancel.",
+        "automacoesParadas": "The automation loop has stopped. Waits are not waking up and date reminders are not going out — scheduled messages are unaffected.",
+        "automacoesNuncaRodaram": "It has never run on this installation.",
+        "comoResolverAutomacoes": "The scheduler runs two loops and only this one died. On the VPS: docker service logs --since 5m -t crm_agendador, then docker stack deploy -c docker-stack.yml crm.",
+        "rotuloAutomacoes": "Automations"
       },
       "attachment_image": "Photo",
       "attachment_video": "Video",
