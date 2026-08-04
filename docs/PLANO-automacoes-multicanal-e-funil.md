@@ -798,10 +798,30 @@ de ofício pela implementação e estão sinalizados para veto: a guarda
 | 5 — builder por etapa | 5 | ⬜ não iniciada | — | — |
 | 6 — `docs/INFRA-VPS.md` | 6 | ⬜ não iniciada (bloqueada: SSH) | — | — |
 
-⚠️ **Pendência de operador, aberta desde 2026-08-04:** o laço rápido de 60 s
-exige **um `docker stack deploy` à mão na VPS** — o CI só troca a imagem do
-`crm_crm`. Enquanto não subir, lembrete por data e passo "Aguardar" funcionam,
-mas no ritmo antigo de 15 em 15 minutos. Comandos em `docs/DEPLOY-VPS.md` §6.
+✅ **Laço rápido de 60 s no ar desde 2026-08-04 17:10 UTC.** O operador rodou o
+`docker stack deploy` na VPS (o CI só troca a imagem do `crm_crm`, nunca sobe
+serviço novo). Confirmado pela linha `[agendador] laço rápido (60s)…` na tarefa
+`ipc58leozeq9` e pelo `cb_agendador_batimento` respondendo 1 s depois. "Aguardar",
+lembretes por data e a fila do funil saíram do ritmo de 15 min.
+
+⚠️ **Dívida que isso deixou: o laço rápido pode morrer em SILÊNCIO.** Ele roda
+em segundo plano (`&`) e o lento em primeiro plano. Se o lento cair, o contêiner
+cai junto e o Swarm reinicia — visível. Se o rápido cair sozinho, o contêiner
+segue de pé fazendo metade do trabalho, e **nada percebe**: só a rota de
+agendadas tem batimento (`cb_agendador_batimento`, migration 927). É exatamente
+o modo de falha que aquele batimento foi criado para eliminar do outro lado.
+
+Conserto proposto (migration própria, PR à parte): um segundo carimbo na mesma
+forma, escrito por `/api/automations/cron`, com o mesmo aviso âmbar no cabeçalho
+quando envelhecer. Barato e mecânico — não entrou no PR 3 por ser schema fora do
+escopo de orquestração.
+
+⚠️ Registrar também: em 2026-08-04 ~17:03 UTC o serviço `crm_agendador` **morreu
+sozinho** (`Failed`, exit 255) e voltou pela política de reinício; a tarefa
+seguinte passou uma volta inteira com `curl: (6) Could not resolve host: crm_crm`
+antes de normalizar. Causa não identificada. Se repetir, olhar `docker events` e
+a rede `CBAdvNet` no momento — e é mais um item para o `docs/INFRA-VPS.md`
+(Fase 6).
 
 ### Histórico
 
