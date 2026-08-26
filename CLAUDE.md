@@ -68,8 +68,12 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API.
   parte das nossas integrações próprias deve viver, em módulos novos.
 - `src/components/`, `src/hooks/`, `src/i18n/`, `src/types/` — UI, hooks, i18n e
   tipos compartilhados.
-- `supabase/migrations/` — migrations SQL (ver seção própria). **Não há
-  `config.toml`** — a CLI do Supabase ainda não está linkada neste repo.
+- `supabase/migrations/` — migrations SQL (ver seção própria). ⚠️ **Passou a
+  existir um `supabase/config.toml`** (veio do upstream #498, junto com
+  `.github/workflows/migrations.yml` e `supabase/ci/verify-schema.sql`): ele
+  serve ao CI que replaya as migrations contra um Postgres limpo. **A CLI
+  continua não-linkada** — o `config.toml` não muda a regra de nunca usar
+  `supabase db push` (ver seção de migrations).
 - `messages/` — dicionários i18n: `en.json` (referência), `pt-BR.json` (o que o
   app usa hoje) e `ko.json` (veio do upstream, não usamos). Ver seção "i18n".
 - `mcp-server/` — subprojeto separado (tem `package.json` próprio) que expõe o
@@ -145,6 +149,30 @@ deploy** (`Dockerfile`, `docker-stack.yml`, `.github/workflows/deploy.yml`,
 `docs/DEPLOY-VPS.md`) e os componentes que internacionalizamos (o upstream tem
 string literal onde nós temos `t('chave')` — ao resolver, manter a nossa forma e
 levar o texto novo dele para os **dois** dicionários).
+
+**Decisões fixadas no merge de 2026-08-26** (releia antes do próximo merge, são
+as que voltam a conflitar):
+
+- **`resolveTemplateRow` (`src/lib/whatsapp/template-body.ts`) ganhou um 5º
+  parâmetro nosso, `channelId`.** O catálogo da Meta é POR WABA. A versão do
+  upstream busca só por `(account_id, name)`; sem o recorte, numa conta com dois
+  números o atendente vê o preview de um modelo e o cliente recebe outro. Os
+  **5** call sites passam o canal — conferir todos a cada merge.
+- **Guarda de papel: adotamos o `requireRole` deles nas 5 rotas que ambos
+  cobriam** (`send`, `react`, `broadcast`, `templates/submit`, `templates/sync`),
+  com os mesmos níveis. O nosso `barrarPorPapel` **continua** nas 2 rotas que só
+  nós cobrimos: `whatsapp/config` e `whatsapp/templates/[id]`. Se um merge
+  futuro trouxer a versão deles crua nessas duas, um `viewer` volta a
+  reconfigurar a conexão.
+- **`src/components/inbox/message-bubble.tsx` e `message-thread.tsx` ficam
+  NOSSOS, inteiros.** O visualizador de mídia do upstream (#467) foi descartado:
+  o nosso `media-viewer.tsx` tem giro e zoom, que a versão deles não tem. Os
+  arquivos `media-lightbox.tsx`, `message-media.tsx` e `lib/media/*` vieram no
+  merge mas **não estão ligados** — se um merge futuro os religar, o inbox passa
+  a ter dois visualizadores.
+- **`src/i18n/messages.test.ts` checa `pt-BR`, não `ko`.** O upstream o escreveu
+  para `ko`, que não servimos; deixar assim daria um teste permanentemente
+  vermelho sobre um idioma que ninguém usa. Ao mesclar, ele volta com `['ko']`.
 
 ⚠️ **Vários arquivos do upstream ganharam mudanças NOSSAS para o multi-canal —
 cuidado no merge.** Ao mesclar upstream, manter os nossos trechos e não deixar o
@@ -661,6 +689,12 @@ mordem de novo em qualquer código novo:
   aplicada e no `main` — **não renumerar**. É exceção conhecida; daqui em diante
   seguir o `900+`. Se o upstream um dia criar um `037_*`, resolver o conflito de
   número renomeando o **do upstream** no merge, nunca o nosso já aplicado.
+  ✅ **Isso aconteceu no merge de 2026-08-26.** O upstream criou
+  `037_webhook_broadcast_reliability.sql`, colidindo com a nossa. As **três**
+  dele foram renumeradas — `037→040`, `038→041`, `039→042` — e não só a que
+  colidia: a `041` dropa a função que a `040` cria, então a ordem relativa
+  tinha de ser preservada. ⚠️ O Git **não** reporta essa colisão como
+  conflito (são nomes de arquivo diferentes) — conferir à mão a cada merge.
   ⚠️ Aplicadas até aqui (conferido em 2026-07-27 via `list_migrations`):
   `900`, `901`, `902`, `903_cb_multicanal`, `904_cb_mensagem_do_aparelho`,
   `904_cb_grupos` (⚠️ **número 904 DUPLICADO** — o arquivo local foi
