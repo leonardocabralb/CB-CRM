@@ -55,7 +55,11 @@ import {
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils';
 import type { CbGroup, MessageTemplate } from '@/types';
-import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
+import {
+  resolveTemplateRow,
+  templateBodyParams,
+  templateContentText,
+} from '@/lib/whatsapp/template-body';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
 export const VALID_MESSAGE_TYPES = [
@@ -523,41 +527,33 @@ export async function sendMessageToConversation(
     }
   }
 
-  // Template row (for header + button components). isMessageTemplate
-  // guards against a malformed local row crashing the send-builder.
+  // Template row — needed for the send-builder's header + button
+  // components AND for the body we persist. The lookup tolerates the
+  // en / en_US split so a caller that omits the language still resolves
+  // a row (see resolveTemplateRow).
   let templateRow: MessageTemplate | null = null;
+  let sendLanguage = templateLanguage || 'en_US';
   if (messageType === 'template' && templateName) {
-    // Multi-canal: o catalogo da Meta e POR WABA, entao o modelo tem que ser
-    // o DAQUELE numero. Sem o filtro, numa conversa fixada no 2o numero Meta o
-    // atendente via o preview certo e o cliente recebia outro texto — ou nada,
-    // com a Meta devolvendo "template does not exist".
-    //
-    // Modelos com channel_id NULL sao globais (anteriores a 903) e continuam
-    // valendo; o do canal tem prioridade, resolvida em memoria porque o
-    // PostgREST nao ordena por "NOT NULL primeiro" sem SQL cru.
-    let q = db
-      .from('message_templates')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('name', templateName)
-      .eq('language', templateLanguage || 'en_US');
-    if (channel.channelId) {
-      q = q.or(`channel_id.eq.${channel.channelId},channel_id.is.null`);
-    }
-    const { data: candidatos } = await q;
-    const lista = (candidatos ?? []) as Record<string, unknown>[];
-    const data =
-      lista.find((t) => t.channel_id === channel.channelId) ??
-      lista.find((t) => t.channel_id == null) ??
-      null;
-    if (data && !isMessageTemplate(data)) {
+    // O 5o argumento e nosso: o catalogo da Meta e POR WABA, entao o modelo
+    // tem que ser o DAQUELE numero. Sem o recorte, numa conversa fixada no 2o
+    // numero Meta o atendente via o preview certo e o cliente recebia outro
+    // texto — ou nada, com a Meta devolvendo "template does not exist".
+    const resolved = await resolveTemplateRow(
+      db,
+      accountId,
+      templateName,
+      templateLanguage,
+      channel.channelId
+    );
+    if (resolved.malformed) {
       throw new SendMessageError(
         'template_malformed',
         'Template row is malformed locally — run "Sync from Meta" in Settings to repair it.',
         500
       );
     }
-    templateRow = data ?? null;
+    templateRow = resolved.row;
+    sendLanguage = resolved.language;
   }
 
   let waMessageId = '';
@@ -651,7 +647,7 @@ export async function sendMessageToConversation(
           accessToken,
           to: phone,
           templateName: templateName!,
-          language: templateLanguage || 'en_US',
+          language: sendLanguage,
           template: templateRow ?? undefined,
           messageParams: templateMessageParams ?? undefined,
           params: templateParams || [],
@@ -762,8 +758,21 @@ export async function sendMessageToConversation(
   // Interactive messages persist the body as content_text (so the
   // conversation-list preview reads sensibly) plus the full structured
   // payload so the thread can re-render the buttons / rows.
-  const interactiveBody =
-    messageType === 'interactive' ? interactivePayload!.body : null;
+  //
+  // Templates persist the *substituted* body. The composer pre-renders
+  // and posts it as contentText; every other caller (the public API,
+  // most importantly) sends none, and storing null there left the
+  // Inbox rendering an empty bubble — issue #483.
+  const persistedText =
+    messageType === 'interactive'
+      ? interactivePayload!.body
+      : messageType === 'template'
+        ? templateContentText(
+            templateRow,
+            templateBodyParams(templateParams, templateMessageParams),
+            contentText
+          )
+        : (textoFinal ?? contentText ?? null);
 
   const { data: messageRecord, error: msgError } = await db
     .from('messages')
@@ -777,9 +786,11 @@ export async function sendMessageToConversation(
       // API não teve gente.
       sender_id: senderUserId ?? null,
       content_type: messageType,
-      // O texto ASSINADO — e o que o cliente recebeu, e o CRM tem de
-      // mostrar exatamente isso (P1.2).
-      content_text: interactiveBody ?? textoFinal ?? null,
+      // `persistedText` cobre os tres casos: corpo da interativa, corpo
+      // SUBSTITUIDO do modelo (upstream #483) e, para texto, o `textoFinal`
+      // ASSINADO — que e o que o cliente recebeu e o que o CRM tem de mostrar
+      // (P1.2).
+      content_text: persistedText,
       media_url: mediaUrl || null,
       template_name: templateName || null,
       interactive_payload:
@@ -806,7 +817,7 @@ export async function sendMessageToConversation(
   const lastMessageText =
     messageType === 'interactive'
       ? interactivePayloadPreviewText(interactivePayload!)
-      : textoFinal || `[${messageType}]`;
+      : persistedText || `[${messageType}]`;
 
   await db
     .from('conversations')

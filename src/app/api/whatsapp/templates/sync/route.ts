@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server'
 import { resolveMetaChannel } from '@/lib/cb-channels/resolve-meta'
-import { createClient } from '@/lib/supabase/server'
+import {
+  ForbiddenError,
+  UnauthorizedError,
+  requireRole,
+  toErrorResponse,
+} from '@/lib/auth/account'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
 import type { TemplateButton, TemplateSampleValues } from '@/types'
-import { barrarPorPapel } from '@/lib/auth/barrar-por-papel'
 
 /**
  * Sync message templates from Meta → local message_templates table.
@@ -126,38 +130,11 @@ function extractSampleValues(
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Resolve the caller's account_id — both whatsapp_config and
-    // the message_templates we sync into are account-scoped.
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('account_id, account_role')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    const accountId = profile?.account_id as string | undefined
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 },
-      )
-    }
-
-    // Papel, não só sessão: sem isto um `viewer` — que existe para ser
-    // somente-leitura — executava esta ação. O efeito colateral (chamada
-    // à Meta/Evolution) acontece antes de qualquer gravação, então a RLS
-    // nunca entraria no caminho.
-    const barrado = barrarPorPapel(profile?.account_role, 'admin');
-    if (barrado) return barrado;
+    // Syncing rewrites the account-wide template catalog, which is
+    // settings-class data: `canEditSettings` and the message_templates
+    // insert/update RLS policies (migration 017) both require 'admin'.
+    // Resolving account_id off the profile only proved membership.
+    const { supabase, accountId, userId } = await requireRole('admin')
 
     // Multi-canal: sincroniza o catalogo do canal PEDIDO, ou do primeiro
     // canal Meta utilizavel. Antes lia so o espelho e perguntava se o PADRAO
@@ -248,7 +225,7 @@ export async function POST(request: Request) {
         // route. account_id is NOT NULL on message_templates
         // post-017, so an INSERT without it errors.
         account_id: accountId,
-        user_id: user.id,
+        user_id: userId,
         // Multi-canal: o catalogo da Meta e POR WABA. Carimbar a origem e o
         // que impede o modelo de um numero ser usado no outro — o atendente
         // via o preview certo e o cliente recebia outra coisa.
@@ -331,6 +308,14 @@ export async function POST(request: Request) {
       truncated: pageCount >= PAGE_CAP && nextUrl !== null,
     })
   } catch (error) {
+    // Auth failures map to 401/403 rather than being folded into the
+    // generic 500 below, which surfaces `error.message` as a sync failure.
+    if (
+      error instanceof UnauthorizedError ||
+      error instanceof ForbiddenError
+    ) {
+      return toErrorResponse(error)
+    }
     console.error('Error syncing WhatsApp templates:', error)
     return NextResponse.json(
       {

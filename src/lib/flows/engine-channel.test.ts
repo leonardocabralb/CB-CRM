@@ -264,3 +264,75 @@ describe("findEntryFlow — prioridade de canal", () => {
     expect(estado.runInserido?.flow_id).toBe("f-socio");
   });
 });
+
+// ============================================================
+// REGRESSÃO DO MERGE (upstream 2026-08-26) — toque em botão E canal, juntos.
+//
+// O upstream (#490) fez o toque num botão poder INICIAR um flow por
+// palavra-chave: antes, `findEntryFlow` recusava tudo que não fosse texto
+// digitado. A correção deles é um laço com `return flow`; a nossa base tem um
+// PREDICADO booleano, porque o casamento de canal precisa decidir antes.
+// Traduzir uma coisa na outra foi resolução à mão, não composição.
+//
+// Os casos acima cobrem canal com texto digitado; os do `dispatch.test.ts`
+// cobrem toque sem canal. O que nenhum dos dois cobre — e é onde a tradução
+// erraria — é o cruzamento.
+// ============================================================
+describe("regressão de merge: toque em botão respeita o canal", () => {
+  const TOQUE = {
+    ...INPUT,
+    message: {
+      kind: "interactive_reply" as const,
+      reply_id: "btn_oi",
+      reply_title: "oi",
+      meta_message_id: "wamid.tap",
+    },
+  };
+
+  it("um toque INICIA o flow do canal certo", async () => {
+    // Metade deles (#490) + metade nossa (canal), na mesma decisão.
+    sendInteractiveButtons.mockResolvedValue({ whatsapp_message_id: "w" });
+    flowsNoBanco = [{ ...FLOW_BASE, id: "f-socio", channel_id: "ch-socio" }];
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    await dispatchInboundToFlows({ ...TOQUE, channelId: "ch-socio" });
+
+    expect(estado.runInserido?.flow_id).toBe("f-socio");
+  });
+
+  it("o MESMO toque não inicia o flow de outro canal", async () => {
+    // Se a tradução tivesse perdido o `casaCanal`, este caso passaria a
+    // iniciar o flow do sócio para quem escreveu no comercial — e ninguém
+    // notaria até existir o segundo número.
+    flowsNoBanco = [{ ...FLOW_BASE, id: "f-socio", channel_id: "ch-socio" }];
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    const r = await dispatchInboundToFlows({ ...TOQUE, channelId: "ch-comercial" });
+
+    expect(r.consumed).toBe(false);
+    expect(estado.runInserido).toBeNull();
+  });
+
+  it("o toque casa pelo reply_id, e ainda assim respeita o canal", async () => {
+    // `entryTriggerTexts` oferece rótulo E id. O recorte de canal tem que
+    // valer para os dois — não só para o rótulo.
+    sendInteractiveButtons.mockResolvedValue({ whatsapp_message_id: "w" });
+    flowsNoBanco = [
+      {
+        ...FLOW_BASE,
+        id: "f-por-id",
+        channel_id: "ch-socio",
+        trigger_config: { keywords: ["btn_oi"], match_type: "contains" },
+      },
+    ];
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    await dispatchInboundToFlows({
+      ...TOQUE,
+      message: { ...TOQUE.message, reply_title: "Sim, quero" },
+      channelId: "ch-socio",
+    });
+
+    expect(estado.runInserido?.flow_id).toBe("f-por-id");
+  });
+});

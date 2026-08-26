@@ -312,7 +312,12 @@
       "deletedUnknown": "Apagada",
       "botBadge": "Robô",
       "botBadgeTitle": "Enviada automaticamente por uma automação ou fluxo — não foi escrita por uma pessoa",
-      "naoEntregue": "Não entregue — o destinatário não recebeu. Envie de novo."
+      "naoEntregue": "Não entregue — o destinatário não recebeu. Envie de novo.",
+      "download": "Baixar",
+      "downloadFailed": "Não foi possível baixar o anexo",
+      "viewImage": "Ver imagem",
+      "expandVideo": "Ampliar vídeo",
+      "imageAlt": "Imagem enviada"
     },
     "actions": {
       "reply": "Responder",
@@ -619,7 +624,8 @@
       "toastTemplateSent": "Modelo \"{name}\" enviado",
       "toastTemplateFailed": "Falha ao enviar o modelo: {reason}",
       "toastNoteNeedsConversation": "Este contato ainda não tem conversa, então não há onde prender a anotação. Envie uma mensagem primeiro.",
-      "toastNoteDeleteForbidden": "Só o autor ou um admin pode excluir esta anotação."
+      "toastNoteDeleteForbidden": "Só o autor ou um admin pode excluir esta anotação.",
+      "name": "Nome"
     },
     "importModal": {
       "title": "Importar contatos",
@@ -927,7 +933,16 @@
         "failed": "Falhas"
       },
       "toastFailedDelete": "Falha ao excluir: {error}",
-      "toastDeleted": "Disparo excluído"
+      "toastDeleted": "Disparo excluído",
+      "resumeTitle": "Alguns destinatários precisam de nova tentativa",
+      "resumeStalledTitle": "Esta campanha parou no meio",
+      "resumeHint": "{count} destinatários falharam. Tentar de novo os reenvia a partir do servidor.",
+      "resumeStalledHint": "{count} destinatários nunca receberam — a aba do navegador que rodava esta campanha foi fechada antes do fim. Retomar conclui o envio pelo servidor.",
+      "resumePending": "Retomar envio ({count})",
+      "retryFailed": "Tentar de novo os que falharam ({count})",
+      "toastResumeStarted": "Enviando para {count} destinatários em segundo plano.",
+      "toastResumeStartedCapped": "Enviando para {count} destinatários em segundo plano. Outros {remaining} vão precisar de mais uma rodada.",
+      "toastResumeFailed": "Não foi possível retomar: {error}"
     },
     "new": {
       "title": "Novo Disparo",
@@ -1270,7 +1285,9 @@
         "matchExact": "Exata",
         "closeConversationHint": "Define o status da conversa como \"encerrada\". Nenhuma configuração necessária.",
         "channelGone": "A conexão desta condição foi removida — enquanto ela não for trocada, esta condição nunca será verdadeira.",
-        "outboundChannelGone": "A conexão escolhida para este envio foi removida. Enquanto outra não for escolhida, a mensagem continua saindo — mas pela conexão da conversa, não pela que você escolheu."
+        "outboundChannelGone": "A conexão escolhida para este envio foi removida. Enquanto outra não for escolhida, a mensagem continua saindo — mas pela conexão da conversa, não pela que você escolheu.",
+        "matchWord": "Palavra inteira",
+        "matchWordHint": "Casa a palavra-chave apenas como palavra isolada, então \"k\" deixa de disparar em \"obrigada\". Ideal para palavras-chave curtas; use Contém para idiomas escritos sem espaços."
       },
       "delete": "Excluir",
       "stages": {
@@ -1864,7 +1881,13 @@
       "step4_3": "Cole a <strong class=\"text-foreground\">Webhook Callback URL</strong> exibida acima",
       "step4_4": "Informe o mesmo <strong class=\"text-foreground\">Verify Token</strong> definido aqui",
       "step4_5": "Inscreva-se no campo de webhook \"messages\"",
-      "metaDocs": "Documentação da Meta WhatsApp API"
+      "metaDocs": "Documentação da Meta WhatsApp API",
+      "mediaTitle": "Armazenamento de anexos",
+      "mediaDesc": "A Meta apaga a mídia recebida cerca de 30 dias depois que ela chega. Os anexos podem ser copiados para o seu próprio armazenamento, para continuarem visíveis.",
+      "mirrorInbound": "Guardar anexos recebidos",
+      "mirrorInboundDesc": "Salva uma cópia de cada foto, vídeo, áudio e documento que os clientes enviam. Usa o seu armazenamento do Supabase; arquivos acima de 16 MB são ignorados.",
+      "mirrorInboundOffWarning": "Os novos anexos deixarão de ser copiados e ficarão indisponíveis cerca de 30 dias depois de chegarem.",
+      "mirrorInboundSaveFailed": "Não foi possível atualizar a configuração de anexos."
     },
     "sections": {
       "overview": "Visão geral",
@@ -2439,5 +2462,12 @@
     "groupNoName": "Grupo sem nome",
     "unknownRecipient": "Contato sem nome",
     "conversationUnavailable": "Conversa não carregada"
+  },
+  "AccountAccess": {
+    "unlinkedTitle": "Este usuário não está vinculado a uma conta",
+    "unlinkedBody": "Enquanto isso não for resolvido, nada do que você alterar será salvo — o banco recusa toda gravação de um usuário sem conta ou sem papel. Se você foi convidado para uma equipe, peça ao responsável para reenviar o convite.",
+    "errorTitle": "Não foi possível carregar suas permissões",
+    "errorBody": "Seu papel na conta não carregou, então tudo é tratado como somente leitura e as alterações não serão salvas. Verifique a conexão e tente novamente.",
+    "retry": "Tentar de novo"
   }
 }

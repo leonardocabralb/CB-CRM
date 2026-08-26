@@ -17,6 +17,10 @@ import {
   phoneVariants,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
+import {
+  resolveTemplateRow,
+  templateContentText,
+} from '@/lib/whatsapp/template-body'
 import { supabaseAdmin } from './admin-client'
 import { aplicarAssinatura } from '@/lib/assinatura/assinatura'
 import { nomeAutomaticoParaAssinar } from '@/lib/assinatura/resolver'
@@ -183,10 +187,33 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       ? (aplicarAssinatura(input.text, nomeQueAssina) as string)
       : null
 
+  // Local template row — read for the body we persist below, not for
+  // the Meta payload (the wire shape is deliberately unchanged here).
+  // A missing row is fine: the send still goes out, we just can't
+  // reconstruct the text the customer saw.
+  //
+  // O 5o argumento e nosso: o catalogo da Meta e POR WABA, entao o modelo tem
+  // que ser o do canal por onde o passo sai.
+  const templateRow =
+    input.kind === 'template'
+      ? (
+          await resolveTemplateRow(
+            db,
+            input.accountId,
+            input.templateName,
+            input.language,
+            channel.channelId,
+          )
+        ).row
+      : null
+
   let waMessageId = ''
   let workingPhone = sanitized
   let outboundRemoteJid: string | null = null
 
+  // O `const attempt` que o upstream abre aqui nao entra: nesta base o envio
+  // tem DOIS caminhos (Evolution e Meta), e o `attempt` equivalente ja vive
+  // dentro do ramo Meta, mais abaixo.
   if (channel.provider === 'evolution') {
     if (input.kind === 'template') {
       // Template é conceito da API oficial — falha CLARA em canal Evolution
@@ -255,8 +282,14 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // provider message id. sender_type='bot' distinguishes automation sends
   // from manual agent sends.
   const content_type = input.kind === 'template' ? 'template' : 'text'
-  // O texto ASSINADO: e o que o cliente recebeu.
-  const content_text = input.kind === 'text' ? textoFinal : null
+  // O que o cliente recebeu, nos dois casos:
+  //  - texto  -> o ASSINADO (nosso `textoFinal`, P1.5), nao o cru `input.text`
+  //  - modelo -> o corpo SUBSTITUIDO (upstream #483); antes ficava null e a
+  //              bolha do template nascia vazia no inbox
+  const content_text =
+    input.kind === 'text'
+      ? textoFinal
+      : templateContentText(templateRow, input.params ?? [])
   const template_name = input.kind === 'template' ? input.templateName : null
 
   const { data: insertedMsg, error: msgErr } = await db
@@ -288,7 +321,9 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     .from('conversations')
     .update({
       last_message_text:
-        input.kind === 'template' ? `[template:${input.templateName}]` : textoFinal!,
+        input.kind === 'template'
+          ? (content_text ?? `[template:${input.templateName}]`)
+          : textoFinal!,
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })

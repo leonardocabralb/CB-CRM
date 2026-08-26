@@ -112,6 +112,28 @@ export function matchesKeywordTrigger(
   return false;
 }
 
+/**
+ * The strings an inbound message offers to a flow's *entry* trigger.
+ *
+ * Typed text offers itself. A button / list tap offers two: the visible
+ * title — what the customer would have typed had the button not been
+ * there — and the stable reply_id, because the automation engine's
+ * `interactive_reply` trigger routes on the id, so an author moving a
+ * menu into a flow reaches for the same value.
+ *
+ * Matching the id does mean a keyword that happens to be a substring of
+ * an id can fire (ids are author-controlled slugs, defaulting to
+ * `btn_1`). That is the same substring semantic keyword triggers
+ * already have for typed text, and the alternative — ignoring the id —
+ * silently breaks the author who keyed on it.
+ */
+export function entryTriggerTexts(message: ParsedInbound): string[] {
+  if (message.kind === "text") return [message.text];
+  return [...new Set([message.reply_title, message.reply_id])].filter(
+    (v): v is string => Boolean(v && v.trim()),
+  );
+}
+
 /** Nodes that advance to a next_node_key without waiting for input. */
 export function isAutoAdvancing(node_type: string): boolean {
   return (
@@ -318,9 +340,15 @@ async function findEntryFlow(
   isFirstInbound: boolean,
   channelId: string | null,
 ): Promise<FlowRow | null> {
-  // Only text messages can match an entry trigger. Interactive replies
-  // are responses to existing prompts; they never start a new flow.
-  if (message.kind !== "text") return null;
+  // A tap used to be rejected outright here, on the reasoning that
+  // interactive replies are responses to existing prompts. That holds
+  // only while a prompt is outstanding — and this function runs solely
+  // when the contact has NO active run, so there is nothing the tap
+  // could be answering. What it actually blocked was issue #490: an
+  // *automation* sends the buttons, the customer taps one, and the flow
+  // whose keyword matches that button never starts. Retyping the label
+  // by hand worked, which is the tell — same words, different envelope.
+  const candidates = entryTriggerTexts(message);
 
   // Pull all active flows for this account. Active set is bounded
   // (the builder discourages double-trigger overlap; partial index
@@ -347,10 +375,13 @@ async function findEntryFlow(
   const casa = (flow: FlowRow): boolean => {
     if (!casaCanal(flow)) return false;
     if (flow.trigger_type === "keyword") {
-      return matchesKeywordTrigger(
-        message.text,
-        flow.trigger_config as KeywordTriggerConfig,
-      );
+      // Upstream #490: o gatilho passa a receber os DOIS textos que um toque
+      // oferece (rotulo visivel e reply_id), nao so `message.text`. Traduzido
+      // para o nosso formato: la e um laco com `return flow`, aqui e um
+      // predicado booleano, porque o casamento de CANAL decide antes. O ramo
+      // `first_inbound_message` que eles acrescentam ja existe logo abaixo.
+      const cfg = flow.trigger_config as KeywordTriggerConfig;
+      return candidates.some((text) => matchesKeywordTrigger(text, cfg));
     }
     if (flow.trigger_type === "first_inbound_message") return isFirstInbound;
     // 'manual' triggers do not auto-start from inbound messages.
