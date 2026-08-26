@@ -82,20 +82,45 @@ DO $$
 DECLARE
   v_trecho text;
   v_curto  text;
+  v_termo  text;
 BEGIN
   -- Mensagem longa com o termo lá pelo meio: tem de vir com reticência na
   -- frente. A busca roda como dono aqui (ignora RLS) — a pergunta é sobre o
   -- recorte, não sobre escopo.
-  SELECT t.trecho INTO v_trecho
-    FROM public.cb_buscar_conversas_por_texto('docker') t
+  --
+  -- ⚠️ O termo sai do DADO, não é literal. Antes era 'docker', que só achava
+  -- alguma coisa porque ESTE banco tem uma mensagem com essa palavra. Num banco
+  -- recém-criado — o do CI, que reaplica tudo do zero — não achava nada, e a
+  -- conferência reprovava por falta de dado, não por defeito no recorte.
+  --
+  -- Posição 60 numa mensagem de 120+: a janela começa em `strpos - 40`, então o
+  -- termo precisa estar além do caractere 41 para que `inicio > 1` e a
+  -- reticência da esquerda apareça. 60 dá margem folgada.
+  SELECT substr(m.content_text, 60, 8) INTO v_termo
+    FROM public.messages m
+   WHERE m.deleted_at IS NULL
+     AND length(m.content_text) >= 120
+     -- Termo com '%' ou quase todo em branco não serve de prova: o primeiro
+     -- testaria curinga (assunto da 929), o segundo não casa nada.
+     AND substr(m.content_text, 60, 8) NOT LIKE '%\%%'
+     AND length(btrim(substr(m.content_text, 60, 8))) >= 4
+   ORDER BY m.created_at DESC
    LIMIT 1;
 
-  IF v_trecho IS NULL THEN
-    RAISE EXCEPTION '930: o termo de prova não achou nada — o teste não vale.';
-  END IF;
+  IF v_termo IS NULL THEN
+    RAISE NOTICE '930: sem mensagem longa para provar o recorte — banco vazio, nada a provar.';
+  ELSE
+    SELECT t.trecho INTO v_trecho
+      FROM public.cb_buscar_conversas_por_texto(v_termo) t
+     LIMIT 1;
 
-  IF left(v_trecho, 1) <> '…' THEN
-    RAISE EXCEPTION '930: trecho cortado no início veio sem reticência: %', left(v_trecho, 30);
+    IF v_trecho IS NULL THEN
+      RAISE EXCEPTION '930: o termo de prova (%) não achou nada — o teste não vale.', v_termo;
+    END IF;
+
+    IF left(v_trecho, 1) <> '…' THEN
+      RAISE EXCEPTION '930: trecho cortado no início veio sem reticência: %', left(v_trecho, 30);
+    END IF;
   END IF;
 
   -- E o contrário: termo no COMEÇO de uma mensagem curta não pode ganhar
