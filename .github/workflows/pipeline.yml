@@ -1,0 +1,212 @@
+# ============================================================
+# Pipeline único: verificar → replay das migrations → publicar.
+#
+# POR QUE UM ARQUIVO SÓ
+# Antes eram três workflows (`ci`, `migrations`, `deploy`), os três com
+# `push: branches: [main]`. Um merge disparava os três EM PARALELO, e o
+# cabeçalho do deploy dizia "runs after CI passes" — o que nunca foi
+# verdade: não havia `needs:` nem `workflow_run:` ligando um ao outro.
+# Na prática, um CI vermelho não impedia nada; a imagem já tinha subido
+# para a VPS enquanto o teste ainda rodava.
+#
+# Aqui `deploy` depende de `verificar` — o portão que o comentário antigo
+# prometia e nunca teve. A etapa `migrations` roda junto, mas como SINAL,
+# não como portão; o porquê está na nota dela.
+#
+# ⚠️ DIVERGÊNCIA DO UPSTREAM. `ci.yml` e `migrations.yml` eram DELES e
+# foram removidos em favor deste arquivo. Um merge futuro vai trazê-los
+# de volta — apagar de novo, senão as etapas passam a rodar duas vezes.
+# Registrado no CLAUDE.md.
+#
+# Segredos necessários (Settings → Secrets → Actions):
+#   NEXT_PUBLIC_SUPABASE_URL      — inlinado no bundle do cliente no build
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY — idem
+#   VPS_SSH_HOST / VPS_SSH_USER / VPS_SSH_KEY — acesso à VPS
+#
+# Os segredos de RUNTIME (service-role, ENCRYPTION_KEY, credenciais da
+# Evolution) vivem no `crm.env` da VPS e NÃO passam por aqui: o deploy só
+# troca a imagem, o stack mantém o próprio ambiente. O primeiro deploy é
+# manual (ver docs/DEPLOY-VPS.md); daqui pra frente é rolling update.
+# ============================================================
+name: pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pipeline-${{ github.ref }}
+  # ⚠️ Cancela em PR, NUNCA no main. Cancelar uma execução do main
+  # interromperia um `docker service update` no meio do rollout, com a
+  # VPS a meio caminho entre duas imagens. Em PR é só tempo de runner.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Nome da imagem no GHCR precisa ser minúsculo; o repositório é
+# leonardocabralb/CB-CRM.
+env:
+  IMAGE: ghcr.io/leonardocabralb/cb-crm
+
+jobs:
+  # ------------------------------------------------------------
+  # Etapa 1 — o código está de pé?
+  # ------------------------------------------------------------
+  verificar:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    # Variáveis de fachada para o `next build` não morrer ao ler a config
+    # pública do Supabase em tempo de build. Nunca saem do runner e nunca
+    # tocam serviço real — só satisfazem as asserções de não-nulo nas
+    # fábricas de client. ENCRYPTION_KEY e META_APP_SECRET são lidas na
+    # carga do módulo por lib/whatsapp/*; a suíte testa comportamento em
+    # torno desses valores, então qualquer placeholder não-vazio serve,
+    # desde que continue igual ao do vitest.config.ts.
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://ci.example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-dummy-anon-key
+      ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
+      META_APP_SECRET: 'ci-dummy-meta-secret'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  # ------------------------------------------------------------
+  # Etapa 2 — as migrations aplicam num banco vazio?
+  # ------------------------------------------------------------
+  # ⚠️ NÃO BLOQUEIA O DEPLOY, de propósito. Esta etapa é valiosa — foi ela
+  # que achou o privilégio herdado que quatro migrations nossas assumiam e
+  # a conferência da 922 que acusava o próprio comentário. Mas as migrations
+  # históricas deste repositório nunca foram escritas para reaplicar do
+  # zero: elas cresceram contra um banco que já existia, e várias conferem
+  # DADOS de produção. Pôr o deploy atrás disso transforma uma dívida antiga
+  # em impedimento de publicar, o que é o trade errado — o que precisa
+  # gatear o deploy é o código, e disso cuida a etapa `verificar`.
+  #
+  # Enquanto a dívida não for paga, esta etapa é SINAL, não portão: falha
+  # aqui aparece vermelha no PR e merece conserto, mas não segura a
+  # publicação. Quando as migrations replayarem limpas, basta acrescentá-la
+  # de volta ao `needs` do deploy.
+  #
+  # Sem filtro de caminho: como job, um filtro a deixaria "skipped", e job
+  # pulado dentro de `needs` pula quem depende dele.
+  migrations:
+    name: Apply to a clean database
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          # Fixada em vez de `latest`: isto é infraestrutura, e uma versão
+          # nova mudando comportamento deve ser um bump deliberado num PR,
+          # não uma terça-feira em que o main fica vermelho.
+          version: 2.113.0
+
+      - name: Start Postgres
+        run: supabase db start
+
+      # `db start` já aplica as migrations, mas só em volume frio — contra
+      # um banco que já existe ele é no-op. `db reset` derruba e reconstrói
+      # incondicionalmente, então é ESTE passo, não o de cima, que garante
+      # que toda migration rodou em ordem de nome contra o nada. Ele falha
+      # no primeiro comando que o Postgres recusar. `--no-seed` porque não
+      # há script de seed e isto é sobre schema, não dado.
+      - name: Replay every migration from scratch
+        run: supabase db reset --local --no-seed
+
+      # Uma migration pode aplicar "com sucesso" e não fazer nada: todo DDL
+      # aqui é guardado por IF NOT EXISTS, o que transforma um nome digitado
+      # errado em no-op silencioso. Conferir o RESULTADO, não a ausência de
+      # erro.
+      - name: Verify the resulting schema
+        run: supabase db query --local --file supabase/ci/verify-schema.sql
+
+  # ------------------------------------------------------------
+  # Etapa 3 — publicar
+  # ------------------------------------------------------------
+  # ⚠️ Só no main, e só depois de `verificar` passar. Em PR os
+  # jobs acima rodam e este é pulado — é o que separa "validar" de
+  # "publicar".
+  deploy:
+    name: Build image and roll out on the VPS
+    # Só `verificar`. Ver a nota na etapa `migrations` sobre por que ela
+    # não entra aqui.
+    needs: [verificar]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          # ⚠️ NEXT_PUBLIC_* é build-arg, não env de runtime: tudo que tem
+          # esse prefixo é inlinado no bundle EM TEMPO DE BUILD. Mudar o
+          # `crm.env` da VPS não muda nada aqui — o idioma, por exemplo,
+          # só troca alterando esta linha e rebuildando.
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_SITE_URL=https://crm.cbadvogados.com
+            NEXT_PUBLIC_APP_LOCALE=pt-BR
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Roll out on the VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_SSH_HOST }}
+          username: ${{ secrets.VPS_SSH_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            if docker service inspect crm_crm >/dev/null 2>&1; then
+              docker service update \
+                --image ${{ env.IMAGE }}:${{ github.sha }} \
+                --with-registry-auth \
+                crm_crm
+            else
+              echo "Service crm_crm not found yet."
+              echo "Do the one-time manual deploy on the VPS first (see docs/DEPLOY-VPS.md),"
+              echo "then this workflow will roll out updates automatically."
+            fi

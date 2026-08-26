@@ -85,3 +85,6 @@ next-env.d.ts
 * 2
 * 2.*
 *\ 2
+
+# Temporários da CLI do Supabase (entraram por engano num `git add -A`).
+supabase/.temp/

@@ -61,7 +61,10 @@ BEGIN
     -- re-point is what saves its rows (and their messages) from
     -- being deleted with the loser contact.
     UPDATE conversations                 SET contact_id = v_survivor WHERE contact_id = ANY(v_losers);
-    -- 922: era `contact_notes`. Mesma função, tabela nova.
+    -- 922: aqui era a tabela antiga de anotacoes por contato. Mesma
+    -- funcao, tabela nova. (O nome antigo nao pode ser escrito neste
+    -- comentario: a conferencia no fim do arquivo le o corpo da funcao
+    -- inteiro, comentarios inclusive, e acusaria a propria explicacao.)
     UPDATE cb_conversation_notes         SET contact_id = v_survivor WHERE contact_id = ANY(v_losers);
     UPDATE deals                         SET contact_id = v_survivor WHERE contact_id = ANY(v_losers);
     UPDATE broadcast_recipients          SET contact_id = v_survivor WHERE contact_id = ANY(v_losers);
@@ -191,7 +194,8 @@ BEGIN
     UNION ALL SELECT 1 FROM message_templates WHERE account_id = v_old_account_id
     UNION ALL SELECT 1 FROM tags WHERE account_id = v_old_account_id
     UNION ALL SELECT 1 FROM custom_fields WHERE account_id = v_old_account_id
-    -- 922: era `contact_notes`.
+    -- 922: aqui era a tabela antiga de anotacoes por contato. O nome dela
+    -- nao pode ser escrito aqui — ver a nota no primeiro UPDATE acima.
     UNION ALL SELECT 1 FROM cb_conversation_notes WHERE account_id = v_old_account_id
     UNION ALL SELECT 1 FROM whatsapp_config WHERE account_id = v_old_account_id
     LIMIT 1
@@ -224,17 +228,28 @@ END;
 $function$;
 
 -- ------------------------------------------------------------
--- 3. Só agora, o DROP
+-- 3. O DROP e a conferência, no mesmo bloco
 -- ------------------------------------------------------------
-DROP TABLE IF EXISTS contact_notes;
-
--- ------------------------------------------------------------
--- 4. Conferência
--- ------------------------------------------------------------
+-- Andam juntos porque a conferência precisa da contagem de ANTES para
+-- perguntar a coisa certa: "o DROP levou anotação junto?". Perguntar por um
+-- número absoluto — o que ela fazia — só funciona contra ESTE banco, com
+-- ESTES dados; num banco novo, onde não há nada a preservar, ela reprovava
+-- por não achar linhas que nunca existiram.
+--
+-- ⚠️ Tudo num bloco só, sem tabela temporária de apoio: `CREATE TEMP TABLE`
+-- sem guarda estoura se a migration rodar duas vezes na mesma sessão, e
+-- migration aqui é idempotente por regra. Uma variável não tem esse problema
+-- e não deixa objeto para trás.
 DO $$
 DECLARE
-  n_refs integer;
+  n_refs  integer;
+  n_antes integer;
 BEGIN
+  SELECT count(*) INTO n_antes FROM cb_conversation_notes;
+
+  -- `IF EXISTS` porque numa segunda passada a tabela já não está lá.
+  EXECUTE 'DROP TABLE IF EXISTS contact_notes';
+
   IF to_regclass('public.contact_notes') IS NOT NULL THEN
     RAISE EXCEPTION '922: contact_notes continua existindo';
   END IF;
@@ -263,8 +278,12 @@ BEGIN
     RAISE EXCEPTION '922: authenticated perdeu redeem_invitation — ninguem entra na conta';
   END IF;
 
-  -- E as anotações seguem lá.
-  IF (SELECT count(*) FROM cb_conversation_notes) < 2 THEN
-    RAISE EXCEPTION '922: as anotacoes copiadas sumiram';
+  -- E as anotações seguem lá — TODAS as que havia antes do DROP. Esta
+  -- migration não copia nada (a cópia foi na 918); o que ela precisa provar é
+  -- que derrubar a tabela velha não levou a nova junto, por uma FK ou um
+  -- CASCADE esquecido. Comparar com o antes responde isso em qualquer banco.
+  IF (SELECT count(*) FROM cb_conversation_notes) < n_antes THEN
+    RAISE EXCEPTION '922: o DROP levou anotacoes junto (antes=%, depois=%)',
+      n_antes, (SELECT count(*) FROM cb_conversation_notes);
   END IF;
 END $$;
