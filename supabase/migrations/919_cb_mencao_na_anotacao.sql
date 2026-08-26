@@ -47,6 +47,24 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_type_check
 --     faz SELECT e UPDATE (read_at) — o GRANT de coluna da 027 fica de pé.
 REVOKE INSERT, DELETE ON notifications FROM PUBLIC, anon, authenticated;
 
+-- ⚠️ O SELECT tem de ser ESCRITO, não herdado (achado pelo CI de migrations,
+-- 2026-08-26).
+--
+-- A tela de notificações lê esta tabela como `authenticated`, e esse SELECT
+-- nunca foi concedido por nenhuma migration: ele vinha do *default privilege*
+-- do Supabase, que dá tudo a anon/authenticated/service_role para tabela nova
+-- criada por `postgres`. Em produção isso valeu — daí a conferência abaixo ter
+-- passado quando esta migration foi aplicada.
+--
+-- Num banco NOVO esse ambiente não se repete, e aí a conferência reprovava com
+-- "o REVOKE derrubou o SELECT" — mensagem enganosa: o REVOKE acima só nomeia
+-- INSERT e DELETE, e o SELECT simplesmente nunca existiu ali. É o mesmo
+-- princípio que esta migration aplica ao INSERT, agora na direção contrária:
+-- não confiar em privilégio ambiente, nem para fechar nem para abrir.
+--
+-- Em produção é no-op — o privilégio já está lá.
+GRANT SELECT ON notifications TO authenticated;
+
 -- ------------------------------------------------------------
 -- 3. Índice para achar as menções de uma anotação
 -- ------------------------------------------------------------
