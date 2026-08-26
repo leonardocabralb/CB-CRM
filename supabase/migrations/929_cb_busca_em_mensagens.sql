@@ -262,6 +262,16 @@ BEGIN
   END IF;
 END $$;
 
+-- ⚠️ O SELECT em `messages` tem de ser ESCRITO, não herdado (mesma causa da
+-- 919). A busca é `SECURITY INVOKER`: o Postgres checa, DENTRO dela, o
+-- privilégio de quem chamou. Em produção o `authenticated` tem esse SELECT
+-- pelo *default privilege* do Supabase, que nunca foi escrito por migration
+-- nenhuma — num banco novo ele não existe, e a conferência abaixo reprovava
+-- com "permission denied for table messages".
+--
+-- Concedido o que a produção já tem; lá é no-op.
+GRANT SELECT ON TABLE public.messages TO authenticated;
+
 -- ⚠️ A conferência que só existe trocando de papel.
 --
 -- Tudo acima roda como dono e enxerga tudo. O modo de falha real desta
