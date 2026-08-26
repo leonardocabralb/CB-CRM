@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { pinConversationChannel } from '@/lib/cb-channels/stamp'
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve'
 import { createClient } from '@/lib/supabase/server'
+import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -12,7 +13,6 @@ import {
   validateSendMessageParams,
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
-import { barrarPorPapel } from '@/lib/auth/barrar-por-papel'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -25,51 +25,28 @@ import { barrarPorPapel } from '@/lib/auth/barrar-por-papel'
 // dashboard's internal `{ error }` shape.
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    // Requires the 'agent' role, matching both `canSendMessages` and the
+    // `messages_modify` RLS policy (migration 017).
+    //
+    // Resolving `account_id` off the profile — which any 'viewer' has —
+    // was previously the only gate. RLS did block the message INSERT, but
+    // the send core calls Meta BEFORE it persists, so a viewer's request
+    // still delivered a real WhatsApp message to the customer and merely
+    // failed to record it (surfacing as "sent to Meta but failed to save
+    // to DB"). RLS can't un-send that, so the role check belongs here.
+    const { supabase, accountId, userId } = await requireRole('agent')
 
     // Per-user rate limit. Bucket key is scoped to this route so
     // `/broadcast` has an independent budget.
-    const limit = checkRateLimit(`send:${user.id}`, RATE_LIMITS.send)
+    const limit = checkRateLimit(`send:${userId}`, RATE_LIMITS.send)
     if (!limit.success) {
       return rateLimitResponse(limit)
     }
 
-    // Resolve the caller's account_id. Every downstream lookup
-    // (conversation, whatsapp_config, message_templates) is account-
-    // scoped post-multi-user, so the previous `user_id` filters
-    // returned nothing for teammates who didn't author the row.
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('account_id, account_role')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    const accountId = profile?.account_id as string | undefined
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 },
-      )
-    }
-
-    // Papel, não só sessão: sem isto um `viewer` — que existe para ser
-    // somente-leitura — executava esta ação. O efeito colateral (chamada
-    // à Meta/Evolution) acontece antes de qualquer gravação, então a RLS
-    // nunca entraria no caminho.
-    const barrado = barrarPorPapel(profile?.account_role, 'agent');
-    if (barrado) return barrado;
-
+      // Nota de merge (upstream #448): o `requireRole('agent')` acima exige
+      // exatamente o mesmo papel que o nosso `barrarPorPapel` exigia aqui, e
+      // ainda resolve o account_id. O bloco saiu por redundancia, nao por
+      // abrir mao da guarda.
     const body = await request.json()
     const {
       // `conversation_id` targets an existing thread (inbox). `contact_id`
@@ -165,7 +142,7 @@ export async function POST(request: Request) {
       const resolved = await findOrCreateConversation(
         supabase,
         accountId,
-        user.id,
+        userId,
         contact_id
       )
       if (!resolved) {
@@ -257,9 +234,9 @@ export async function POST(request: Request) {
         interactivePayload: interactive_payload,
         replyToMessageId: reply_to_message_id,
         // Este é o único caminho de envio que tem uma PESSOA identificada. O
-        // `user` já estava aqui (chave do rate limit, `findOrCreateConversation`)
-        // e morria antes do insert.
-        senderUserId: user.id,
+        // `userId` (do requireRole) já estava aqui — chave do rate limit e do
+        // findOrCreateConversation — e morria antes do insert.
+        senderUserId: userId,
       })
 
       return NextResponse.json({
@@ -283,11 +260,10 @@ export async function POST(request: Request) {
       throw err
     }
   } catch (error) {
+    // requireRole throws Unauthorized/Forbidden; toErrorResponse maps
+    // those to 401/403 and collapses anything else to a generic 500.
     console.error('Error in WhatsApp send POST:', error)
-    return NextResponse.json(
-      { error: 'Failed to send message' },
-      { status: 500 }
-    )
+    return toErrorResponse(error)
   }
 }
 

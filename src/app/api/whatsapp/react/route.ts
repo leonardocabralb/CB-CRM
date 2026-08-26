@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { sendReactionMessage } from '@/lib/whatsapp/meta-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils';
@@ -12,7 +12,6 @@ import {
   rateLimitResponse,
   RATE_LIMITS,
 } from '@/lib/rate-limit';
-import { barrarPorPapel } from '@/lib/auth/barrar-por-papel';
 
 /**
  * POST /api/whatsapp/react
@@ -25,44 +24,21 @@ import { barrarPorPapel } from '@/lib/auth/barrar-por-papel';
  */
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
+    // Reacting is a write operation (`canSendMessages`), and it pushes the
+    // reaction to Meta before mirroring it locally — so, as on /send, a
+    // missing role check let a read-only viewer put a visible reaction on
+    // the customer's message even though RLS blocked the local mirror.
+    const { supabase, accountId, userId } = await requireRole('agent');
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const limit = checkRateLimit(`react:${user.id}`, RATE_LIMITS.react);
+    const limit = checkRateLimit(`react:${userId}`, RATE_LIMITS.react);
     if (!limit.success) {
       return rateLimitResponse(limit);
     }
 
-    // Resolve the caller's account_id so conversation + whatsapp_config
-    // lookups work for teammates who didn't author the rows directly.
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('account_id, account_role')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    const accountId = profile?.account_id as string | undefined;
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 },
-      );
-    }
-
-    // Papel, não só sessão: sem isto um `viewer` — que existe para ser
-    // somente-leitura — executava esta ação. O efeito colateral (chamada
-    // à Meta/Evolution) acontece antes de qualquer gravação, então a RLS
-    // nunca entraria no caminho.
-    const barrado = barrarPorPapel(profile?.account_role, 'agent');
-    if (barrado) return barrado;
-
+      // Nota de merge (upstream #448): o `requireRole('agent')` acima exige
+      // exatamente o mesmo papel que o nosso `barrarPorPapel` exigia aqui, e
+      // ainda resolve o account_id. O bloco saiu por redundancia, nao por
+      // abrir mao da guarda.
     const body = await request.json();
     const { message_id, emoji } = body as {
       message_id?: string;
@@ -199,7 +175,7 @@ export async function POST(request: Request) {
         .delete()
         .eq('message_id', targetMessage.id)
         .eq('actor_type', 'agent')
-        .eq('actor_id', user.id);
+        .eq('actor_id', userId);
 
       if (delError) {
         console.error('[whatsapp/react] DB delete failed:', delError.message);
@@ -216,7 +192,7 @@ export async function POST(request: Request) {
           message_id: targetMessage.id,
           conversation_id: targetMessage.conversation_id,
           actor_type: 'agent',
-          actor_id: user.id,
+          actor_id: userId,
           emoji,
         },
         { onConflict: 'message_id,actor_type,actor_id' },
@@ -233,10 +209,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    // requireRole throws Unauthorized/Forbidden; toErrorResponse maps
+    // those to 401/403 and collapses anything else to a generic 500.
     console.error('Error in WhatsApp react POST:', error);
-    return NextResponse.json(
-      { error: 'Failed to react to message' },
-      { status: 500 },
-    );
+    return toErrorResponse(error);
   }
 }

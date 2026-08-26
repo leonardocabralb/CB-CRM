@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
 import { resolveMetaChannel } from '@/lib/cb-channels/resolve-meta'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { createClient } from '@/lib/supabase/server'
+import {
+  ForbiddenError,
+  UnauthorizedError,
+  requireRole,
+  toErrorResponse,
+} from '@/lib/auth/account'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { submitMessageTemplate } from '@/lib/whatsapp/meta-api'
 import {
@@ -11,7 +16,6 @@ import {
 import { buildMetaTemplatePayload } from '@/lib/whatsapp/template-components'
 import { ensureImageHeaderHandle } from '@/lib/whatsapp/template-header-handle'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
-import { barrarPorPapel } from '@/lib/auth/barrar-por-papel'
 
 /**
  * Shared upsert payload builder — both the Meta-failure path and the
@@ -109,36 +113,13 @@ async function upsertTemplateRow(
  */
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Resolve the caller's account_id — whatsapp_config + the
-    // message_templates row are account-scoped post-multi-user.
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('account_id, account_role')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    const accountId = profile?.account_id as string | undefined
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 },
-      )
-    }
-
-    // Papel, não só sessão: sem isto um `viewer` — que existe para ser
-    // somente-leitura — executava esta ação. O efeito colateral (chamada
-    // à Meta/Evolution) acontece antes de qualquer gravação, então a RLS
-    // nunca entraria no caminho.
-    const barrado = barrarPorPapel(profile?.account_role, 'admin');
-    if (barrado) return barrado;
+    // Message templates are settings-class data: `canEditSettings` and the
+    // message_templates_insert/update RLS policies (migration 017) both
+    // require 'admin'. Resolving account_id off the profile only proved
+    // membership, so a viewer or agent could push a template to Meta for
+    // approval — an external side effect RLS can't roll back — before the
+    // local upsert was refused.
+    const { supabase, accountId, userId } = await requireRole('admin')
 
     let payload: TemplatePayload
     try {
@@ -238,7 +219,7 @@ export async function POST(request: Request) {
         await upsertTemplateRow(
           supabase,
           {
-            ...buildUpsertRow(accountId, user.id, payload, {
+            ...buildUpsertRow(accountId, userId, payload, {
               status: 'DRAFT',
               metaTemplateId: null,
               submissionError: message,
@@ -261,7 +242,7 @@ export async function POST(request: Request) {
     const { data: row, error: upsertErr } = await upsertTemplateRow(
       supabase,
       {
-        ...buildUpsertRow(accountId, user.id, payload, {
+        ...buildUpsertRow(accountId, userId, payload, {
           status: normalizeStatus(metaStatus),
           metaTemplateId,
           submissionError: null,
@@ -289,6 +270,16 @@ export async function POST(request: Request) {
       dry_run: dryRun,
     })
   } catch (error) {
+    // Auth failures map to 401/403. Handled before the generic branch
+    // below, which surfaces `error.message` as a 500 — reporting "you
+    // aren't an admin" as a template submission failure would send the
+    // user chasing the wrong problem.
+    if (
+      error instanceof UnauthorizedError ||
+      error instanceof ForbiddenError
+    ) {
+      return toErrorResponse(error)
+    }
     console.error('Error submitting template:', error)
     return NextResponse.json(
       {
