@@ -170,6 +170,15 @@ as que voltam a conflitar):
   arquivos `media-lightbox.tsx`, `message-media.tsx` e `lib/media/*` vieram no
   merge mas **não estão ligados** — se um merge futuro os religar, o inbox passa
   a ter dois visualizadores.
+- ⚠️ **Um workflow só: `.github/workflows/pipeline.yml`.** O `ci.yml` e o
+  `migrations.yml` eram DO UPSTREAM e foram removidos; as três etapas
+  (verificar → migrations → deploy) viraram jobs de um arquivo nosso, com o
+  `deploy` dependendo das outras duas. Antes os três rodavam **em paralelo** no
+  push do `main`, e o cabeçalho do deploy dizia "after CI passes" sem que
+  existisse `needs:` — um CI vermelho não impedia a publicação. **Todo merge do
+  upstream vai trazer `ci.yml` e `migrations.yml` de volta: apagar de novo**, ou
+  as etapas passam a rodar duas vezes por push.
+
 - **`src/i18n/messages.test.ts` checa `pt-BR`, não `ko`.** O upstream o escreveu
   para `ko`, que não servimos; deixar assim daria um teste permanentemente
   vermelho sobre um idioma que ninguém usa. Ao mesclar, ele volta com `['ko']`.
