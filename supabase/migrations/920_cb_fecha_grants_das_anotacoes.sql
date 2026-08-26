@@ -44,6 +44,17 @@ REVOKE ALL ON cb_conversation_notes FROM anon;
 REVOKE ALL ON notifications FROM anon;
 REVOKE TRUNCATE ON notifications FROM authenticated;
 
+-- ⚠️ O acesso do `service_role` tem de ser ESCRITO, não herdado (achado pelo CI
+-- de migrations, 2026-08-26 — mesma causa da 919). Ele vinha do *default
+-- privilege* do Supabase, que num banco novo não se repete, e a conferência
+-- abaixo reprovaria por um motivo que não é o que ela investiga. Concedido o
+-- que a produção já tem; lá é no-op.
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.cb_conversation_notes TO service_role;
+-- E em `notifications`, que a conferência abaixo também exige: é o
+-- `service_role` que grava a notificação de menção (a rota escreve com ele,
+-- porque a 027 não deixou policy de INSERT para ninguém no navegador).
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.notifications TO service_role;
+
 -- ------------------------------------------------------------
 -- 3. Devolve a autoria das anotações copiadas pela 918
 -- ------------------------------------------------------------

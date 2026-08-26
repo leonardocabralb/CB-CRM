@@ -313,6 +313,13 @@ CREATE TRIGGER cb_stages_drop_from_automations_trg
 -- Só o teste pegou os enganos de REVOKE das migrations 903, 912 e 914.
 -- ------------------------------------------------------------
 
+-- ⚠️ O acesso do `service_role` tem de ser ESCRITO, não herdado (achado pelo CI
+-- de migrations, 2026-08-26 — mesma causa da 919). Ele vinha do *default
+-- privilege* do Supabase, que num banco novo não se repete, e a conferência
+-- abaixo reprovaria por um motivo que não é o que ela investiga. Concedido o
+-- que a produção já tem; lá é no-op.
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.cb_automation_events TO service_role;
+
 DO $$
 BEGIN
   IF has_function_privilege('anon', 'cb_enfileira_evento_de_funil()', 'EXECUTE') THEN

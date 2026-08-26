@@ -37,6 +37,29 @@ REVOKE ALL ON TABLE public.cb_message_media_ref FROM anon;
 REVOKE ALL ON TABLE public.cb_lead_events       FROM anon;
 
 -- ------------------------------------------------------------
+-- ⚠️ O acesso do `authenticated` a estas três tem de ser ESCRITO, não herdado
+-- (achado pelo CI de migrations, 2026-08-26 — mesma causa da 919).
+--
+-- `cb_channels`, `cb_groups` e `cb_message_media_ref` nunca receberam GRANT em
+-- nenhuma migration: o acesso vinha do *default privilege* do Supabase. Em
+-- produção valeu; num banco novo não se repete, e a conferência abaixo — que
+-- existe para provar que a revogação do `anon` não levou junto o
+-- `authenticated` — reprovaria por um motivo que não é o que ela investiga.
+--
+-- Concedido exatamente o que a produção já tem (conferido em
+-- `role_table_grants`) e o que a conferência exige. Lá é no-op.
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON TABLE public.cb_channels, public.cb_groups, public.cb_message_media_ref
+  TO authenticated;
+
+-- Idem para o `service_role`, que o laço de conferência também exige (o motor,
+-- o webhook e o cron escrevem por ele).
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON TABLE public.cb_channels, public.cb_groups,
+           public.cb_message_media_ref, public.cb_lead_events
+  TO service_role;
+
+-- ------------------------------------------------------------
 -- Conferir o RESULTADO, nunca a intenção
 --
 -- ⚠️ As duas metades importam igualmente. A primeira prova que o `anon` perdeu
