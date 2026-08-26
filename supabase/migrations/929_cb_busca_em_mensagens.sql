@@ -270,7 +270,13 @@ END $$;
 -- com "permission denied for table messages".
 --
 -- Concedido o que a produção já tem; lá é no-op.
-GRANT SELECT ON TABLE public.messages TO authenticated;
+GRANT SELECT ON TABLE public.messages, public.conversations TO authenticated;
+--
+-- `conversations` entra junto porque a POLÍTICA de `messages` a consulta:
+--   messages_select → EXISTS (SELECT 1 FROM conversations c WHERE ...)
+-- e RLS é avaliada com o privilégio de quem chamou. A cadeia para aí:
+-- `is_account_member`, que a política usa em seguida, é SECURITY DEFINER —
+-- roda como dono e não exige mais nada do chamador.
 
 -- ⚠️ A conferência que só existe trocando de papel.
 --
