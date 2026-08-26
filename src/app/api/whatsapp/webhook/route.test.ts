@@ -216,6 +216,22 @@ vi.mock('@/lib/flows/engine', () => ({
 vi.mock('@/lib/ai/auto-reply', () => ({
   dispatchInboundToAiReply: h.dispatchInboundToAiReply,
 }))
+// Multi-canal: o carimbo e a resolucao do canal de entrada sao NOSSOS. Sao
+// substituidos aqui para que os casos de regressao no fim do arquivo possam
+// observar se o webhook realmente os chama — e com quais argumentos.
+vi.mock('@/lib/cb-channels/stamp', () => ({
+  stampMessageChannel: vi.fn(async () => {}),
+  followConversationChannel: vi.fn(async () => {}),
+  pinConversationChannel: vi.fn(async () => {}),
+}))
+vi.mock('@/lib/cb-channels/resolve-inbound', () => ({
+  resolveInboundMetaChannelId: vi.fn(async () => null),
+  resolveInboundMetaChannel: vi.fn(async () => null),
+}))
+vi.mock('@/lib/cb-channels/pipeline-routing', () => ({
+  routeInboundToPipeline: vi.fn(async () => {}),
+}))
+
 vi.mock('@/lib/webhooks/deliver', () => ({
   dispatchWebhookEvent: h.dispatchWebhookEvent,
 }))
@@ -554,5 +570,77 @@ describe('inbound webhook: after() awaits automations (#368)', () => {
     // If the dispatches were fire-and-forget, completed would still be 0
     // here — the callback would have resolved before the timers fired.
     expect(h.state.automationCompleted).toBe(3)
+  })
+})
+
+// ============================================================
+// REGRESSÃO DO MERGE (upstream 2026-08-26) — o NOSSO lado do webhook.
+//
+// Os 15 casos acima vieram do upstream e cobrem a metade DELES da
+// composição: idempotência, bump atômico, toque em botão, espelho de mídia.
+// Nenhum deles olharia para o carimbo de canal — e o carimbo é a peça que
+// um "aceitar a versão deles" apagaria sem quebrar nada visível.
+//
+// O conflito #4 do webhook trocou o nosso `.insert()` pelo `.upsert()`
+// idempotente deles, e o carimbo que vinha logo abaixo lia `insertedMsg`,
+// uma variável que deixou de existir. Passou a ler `insertedRows`. Se
+// alguém reverter isso num merge futuro, TODA mensagem recebida deixa de
+// registrar por qual número entrou — e a conversa para de seguir o cliente.
+// ============================================================
+describe('regressão de merge: carimbo de canal na entrada (multi-canal)', () => {
+  it('carimba o canal da mensagem recém-inserida, lendo o retorno do upsert', async () => {
+    const { stampMessageChannel, followConversationChannel } = await import(
+      '@/lib/cb-channels/stamp'
+    )
+    const { resolveInboundMetaChannelId } = await import(
+      '@/lib/cb-channels/resolve-inbound'
+    )
+    vi.mocked(resolveInboundMetaChannelId).mockResolvedValue('canal-1')
+    h.state.messageUpsertResult = [{ id: 'msg-77' }]
+
+    await runWebhook()
+
+    // O id tem que vir do retorno do UPSERT. Antes do merge vinha de
+    // `insertedMsg`; ler a variável errada não quebra o build, só deixa de
+    // carimbar — silenciosamente.
+    expect(stampMessageChannel).toHaveBeenCalledWith(
+      expect.anything(),
+      'msg-77',
+      'canal-1'
+    )
+    // E a conversa segue o número por onde o cliente escreveu.
+    expect(followConversationChannel).toHaveBeenCalledWith(
+      expect.anything(),
+      'conv-1',
+      'canal-1'
+    )
+  })
+
+  it('numa REENTREGA não carimba nada — o upsert já barrou antes', async () => {
+    const { stampMessageChannel } = await import('@/lib/cb-channels/stamp')
+    const { resolveInboundMetaChannelId } = await import(
+      '@/lib/cb-channels/resolve-inbound'
+    )
+    vi.mocked(resolveInboundMetaChannelId).mockResolvedValue('canal-1')
+    // Upsert com conflito: a Meta reentregou a mesma mensagem.
+    h.state.messageUpsertResult = []
+
+    await runWebhook()
+
+    expect(stampMessageChannel).not.toHaveBeenCalled()
+  })
+
+  it('conta de um número só: sem canal resolvido, nada é carimbado', async () => {
+    // O comportamento anterior ao multi-canal, que precisa continuar
+    // existindo — carimbar um canal inventado seria pior que não carimbar.
+    const { stampMessageChannel } = await import('@/lib/cb-channels/stamp')
+    const { resolveInboundMetaChannelId } = await import(
+      '@/lib/cb-channels/resolve-inbound'
+    )
+    vi.mocked(resolveInboundMetaChannelId).mockResolvedValue(null)
+
+    await runWebhook()
+
+    expect(stampMessageChannel).not.toHaveBeenCalled()
   })
 })

@@ -92,18 +92,12 @@ function makeDb(rpcResult: { data: unknown; error: unknown }) {
           order: () => chain,
           limit: () => chain,
           maybeSingle: () =>
-            Promise.resolve({
-              data: {
-                id: 'canal-1',
-                kind: 'meta',
-                is_default: true,
-                status: 'connected',
-                phone_number_id: 'pn-1',
-                waba_id: 'waba-1',
-                access_token: 'enc',
-              },
-              error: null,
-            }),
+            Promise.resolve({ data: CANAL_META, error: null }),
+          // Sem canal pedido, `resolveMetaChannel` LISTA (eq/eq/order/order)
+          // e aguarda — não usa maybeSingle. Sem este `then`, a fake caía no
+          // espelho legado e `channelId` vinha null.
+          then: (resolve: (r: { data: unknown[]; error: null }) => unknown) =>
+            resolve({ data: [CANAL_META], error: null }),
         };
         return chain;
       }
@@ -138,6 +132,16 @@ function makeDb(rpcResult: { data: unknown; error: unknown }) {
   } as unknown as SupabaseClient;
   return { db: database, calls };
 }
+
+const CANAL_META = {
+  id: 'canal-1',
+  kind: 'meta',
+  is_default: true,
+  status: 'connected',
+  phone_number_id: 'pn-1',
+  waba_id: 'waba-1',
+  access_token: 'enc',
+};
 
 describe('createBroadcast atomicity (#370)', () => {
   it('creates parent + recipients through the atomic RPC, never a bare parent insert', async () => {
@@ -253,5 +257,35 @@ describe('finalizeBroadcastStatus', () => {
       'b-1',
     );
     expect(writes.update?.status).toBe('sent');
+  });
+});
+
+// ============================================================
+// REGRESSÃO DO MERGE (upstream 2026-08-26) — o canal na criação da campanha.
+//
+// A `create_broadcast_with_recipients` que o upstream trouxe (#370) insere em
+// `broadcasts` SEM `channel_id`. Adotá-la crua faria toda campanha nascer sem
+// registro de origem: o envio continuaria saindo pelo número certo (quem
+// decide isso é o `resolveMetaChannel` na aplicação), mas o histórico
+// mostraria travessão no lugar do número — que é exatamente o que a migration
+// 903 veio consertar.
+//
+// A nossa 940 recria a função com `p_channel_id`. Este caso trava o lado da
+// aplicação: se alguém voltar a chamar a RPC sem o canal, falha aqui.
+// ============================================================
+describe('regressão de merge: a campanha nasce carimbada com o canal', () => {
+  it('passa p_channel_id para a RPC atômica', async () => {
+    const { db, calls } = makeDb({
+      data: [{ broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c1' }],
+      error: null,
+    });
+
+    await createBroadcast(db, 'acc', 'user', {
+      templateName: 'promo',
+      recipients: [{ to: '+14155550123' }],
+    });
+
+    const args = calls.rpc[0].args as Record<string, unknown>;
+    expect(args.p_channel_id).toBe('canal-1');
   });
 });

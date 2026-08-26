@@ -260,6 +260,14 @@ vi.mock('@/lib/whatsapp/encryption', () => ({
   isLegacyFormat: () => false,
 }));
 
+// A assinatura (P1.2/923) é o que separa "o cliente recebeu" de "o CRM
+// mostra". O resolvedor do nome é substituído para que os casos de regressão
+// no fim do arquivo possam provar que o texto PERSISTIDO é o assinado.
+vi.mock('@/lib/assinatura/resolver', () => ({
+  nomeAutomaticoParaAssinar: vi.fn(async () => null),
+  nomeParaAssinar: vi.fn(async () => null),
+}));
+
 vi.mock('@/lib/flows/admin-client', () => ({
   // Only used for the best-effort "pause active flow run" write.
   supabaseAdmin: () => ({
@@ -438,5 +446,90 @@ describe('sendMessageToConversation — template persistence (#483)', () => {
     // name rather than inventing a body.
     expect(captured.message?.content_text).toBeNull();
     expect(captured.conversation?.last_message_text).toBe('[template]');
+  });
+});
+
+// ============================================================
+// REGRESSÃO DO MERGE (upstream 2026-08-26) — a assinatura sobreviveu ao
+// `persistedText`.
+//
+// O upstream (#483) introduziu `persistedText` para consertar a bolha vazia
+// do template. A versão deles termina em `contentText ?? null` — o texto CRU
+// que o chamador mandou. Nesta base o que vale é o `textoFinal`, o texto
+// ASSINADO (P1.2/923): é o que o cliente recebeu, e o CRM tem de mostrar
+// exatamente isso.
+//
+// Aceitar `persistedText` cru não quebraria nada visível de imediato: o envio
+// sairia assinado e a gravação não. A divergência só apareceria quando
+// alguém comparasse o WhatsApp com o CRM e visse dois textos diferentes para
+// a mesma mensagem — num escritório de advocacia, uma discrepância de
+// registro.
+// ============================================================
+describe('regressão de merge: o texto persistido é o ASSINADO', () => {
+  beforeEach(async () => {
+    const { resolveChannelForConversation } = await import(
+      '@/lib/cb-channels/resolve'
+    );
+    vi.mocked(resolveChannelForConversation).mockResolvedValue({
+      channelId: 'canal-1',
+      provider: 'meta',
+      phone_number_id: 'pn-1',
+      access_token: 'tok-1',
+    } as unknown as Awaited<ReturnType<typeof resolveChannelForConversation>>);
+  });
+
+  it('grava o texto com o prefixo da assinatura, não o texto cru', async () => {
+    const { nomeParaAssinar } = await import('@/lib/assinatura/resolver');
+    vi.mocked(nomeParaAssinar).mockResolvedValue('Dra. Ana');
+
+    const captured: CapturedWrites = {};
+    await sendMessageToConversation(sendPathDb([], captured), 'acct-1', {
+      conversationId: 'cv-1',
+      messageType: 'text',
+      contentText: 'Bom dia',
+      senderUserId: 'user-1',
+    });
+
+    const gravado = String(captured.message?.content_text ?? '');
+    expect(gravado).toContain('Dra. Ana');
+    expect(gravado).toContain('Bom dia');
+    // E não é o cru: se `persistedText` tivesse ficado com `contentText`,
+    // isto seria exatamente 'Bom dia'.
+    expect(gravado).not.toBe('Bom dia');
+  });
+
+  it('a prévia da conversa também usa o texto assinado', async () => {
+    // `last_message_text` alimenta a lista do inbox. Divergir dela do corpo
+    // da bolha é o mesmo problema, num lugar mais visível.
+    const { nomeParaAssinar } = await import('@/lib/assinatura/resolver');
+    vi.mocked(nomeParaAssinar).mockResolvedValue('Dra. Ana');
+
+    const captured: CapturedWrites = {};
+    await sendMessageToConversation(sendPathDb([], captured), 'acct-1', {
+      conversationId: 'cv-1',
+      messageType: 'text',
+      contentText: 'Bom dia',
+      senderUserId: 'user-1',
+    });
+
+    expect(String(captured.conversation?.last_message_text ?? '')).toContain(
+      'Dra. Ana'
+    );
+  });
+
+  it('sem assinatura configurada, grava o texto como veio', async () => {
+    // O caminho de quem nunca ligou a assinatura não pode ganhar prefixo.
+    const { nomeParaAssinar } = await import('@/lib/assinatura/resolver');
+    vi.mocked(nomeParaAssinar).mockResolvedValue(null);
+
+    const captured: CapturedWrites = {};
+    await sendMessageToConversation(sendPathDb([], captured), 'acct-1', {
+      conversationId: 'cv-1',
+      messageType: 'text',
+      contentText: 'Bom dia',
+      senderUserId: 'user-1',
+    });
+
+    expect(captured.message?.content_text).toBe('Bom dia');
   });
 });

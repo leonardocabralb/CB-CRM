@@ -204,3 +204,103 @@ describe('templateContentText', () => {
     expect(templateContentText(null, ['A123'])).toBeNull();
   });
 });
+
+// ============================================================
+// REGRESSÃO DO MERGE (upstream 2026-08-26) — recorte por canal.
+//
+// `resolveTemplateRow` chegou do upstream conhecendo só `(account_id, name)`.
+// O catálogo da Meta é POR WABA, então sem recorte de canal, numa conta com
+// dois números, o atendente vê o preview de um modelo e o cliente recebe o
+// texto de outro — ou nada, com a Meta devolvendo "template does not exist".
+//
+// Cinco call sites dependem deste comportamento (send-message, meta-send,
+// broadcast-core, broadcast-resume e a rota de broadcast). Estes casos
+// existem para que um merge futuro que reintroduza a versão do upstream
+// falhe aqui, em vez de falhar em produção meses depois.
+// ============================================================
+describe('resolveTemplateRow — recorte por canal (multi-canal, 903)', () => {
+  const doCanal = row({
+    id: 'tpl-canal',
+    body_text: 'Do canal',
+    channel_id: 'canal-1',
+  } as Partial<MessageTemplate>);
+  const global = row({
+    id: 'tpl-global',
+    body_text: 'Global',
+    channel_id: null,
+  } as Partial<MessageTemplate>);
+  const deOutro = row({
+    id: 'tpl-outro',
+    body_text: 'De outro numero',
+    channel_id: 'canal-2',
+  } as Partial<MessageTemplate>);
+
+  it('prefere o modelo do canal ao global de mesmo nome', async () => {
+    const r = await resolveTemplateRow(
+      dbReturning([global, doCanal]),
+      'acct-1',
+      'order_update',
+      'en_US',
+      'canal-1'
+    );
+    expect(r.row?.id).toBe('tpl-canal');
+  });
+
+  it('cai para o global quando o canal não tem modelo próprio', async () => {
+    // Modelo anterior à 903 (channel_id NULL) continua valendo como reserva —
+    // o oposto esconderia o catálogo inteiro de quem já tinha campanhas.
+    const r = await resolveTemplateRow(
+      dbReturning([global]),
+      'acct-1',
+      'order_update',
+      'en_US',
+      'canal-1'
+    );
+    expect(r.row?.id).toBe('tpl-global');
+  });
+
+  it('NUNCA usa o modelo de outro canal', async () => {
+    // O caso que motiva tudo: com o modelo do canal-2 disponível e nada para
+    // o canal-1, a resposta certa é "não tenho", não "usa o do vizinho".
+    const r = await resolveTemplateRow(
+      dbReturning([deOutro]),
+      'acct-1',
+      'order_update',
+      'en_US',
+      'canal-1'
+    );
+    expect(r.row).toBeNull();
+  });
+
+  it('sem canal informado, enxerga tudo — o comportamento do upstream', async () => {
+    // Conta de um número só, e todo caminho anterior à 903. Se este caso
+    // quebrar, a regressão é no sentido oposto: passamos a esconder modelo
+    // de quem nunca teve canal.
+    const r = await resolveTemplateRow(
+      dbReturning([global]),
+      'acct-1',
+      'order_update',
+      'en_US'
+    );
+    expect(r.row?.id).toBe('tpl-global');
+  });
+
+  it('o recorte de canal não atropela o fallback en / en_US do upstream', async () => {
+    // As duas correções coexistem: primeiro estreita por canal, depois
+    // resolve idioma dentro do que sobrou.
+    const bare = row({
+      id: 'tpl-canal-en',
+      language: 'en',
+      channel_id: 'canal-1',
+    } as Partial<MessageTemplate>);
+    const r = await resolveTemplateRow(
+      dbReturning([bare, deOutro]),
+      'acct-1',
+      'order_update',
+      'en_US',
+      'canal-1'
+    );
+    expect(r.row?.id).toBe('tpl-canal-en');
+    expect(r.language).toBe('en_US');
+  });
+});

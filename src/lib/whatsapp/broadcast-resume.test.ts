@@ -180,6 +180,24 @@ function planDb(fx: PlanFixture, writes: PlanWrites = {}): SupabaseClient {
           error: null,
         }),
         then: (resolve: (r: { data: unknown[]; error: null }) => unknown) => {
+          // Lista de canais: `resolveMetaChannel` sem canal pedido usa
+          // eq/eq/order/order + await, nunca maybeSingle.
+          if (table === 'cb_channels') {
+            return resolve({
+              data: [
+                {
+                  id: 'canal-1',
+                  kind: 'meta',
+                  is_default: true,
+                  status: 'connected',
+                  phone_number_id: 'pn-1',
+                  waba_id: 'waba-1',
+                  access_token: 'tok',
+                },
+              ],
+              error: null,
+            });
+          }
           if (table === 'broadcast_recipients') {
             return resolve({ data: fx.recipients ?? [], error: null });
           }
@@ -394,5 +412,55 @@ describe('planBroadcastResume', () => {
       'pending',
     );
     expect(plan.templateRow?.language).toBe('en');
+  });
+});
+
+// ============================================================
+// REGRESSÃO DO MERGE (upstream 2026-08-26) — a retomada sai pelo número
+// ORIGINAL da campanha.
+//
+// `broadcast-resume.ts` chegou pronto do upstream e montava o plano com
+// `whatsapp_config` — o espelho do canal PADRÃO da conta. Numa conta com dois
+// números isso significa: a campanha começa pelo Comercial, a aba do
+// navegador fecha, alguém clica em Retomar, e o restante sai pelo número do
+// sócio. Do ponto de vista do cliente, uma conversa que começou com um
+// contato e continuou com outro.
+//
+// A correção lê `broadcasts.channel_id` (903) e resolve AQUELE canal.
+// ============================================================
+describe('regressão de merge: a retomada usa o canal da campanha', () => {
+  it('resolve o canal a partir de broadcasts.channel_id, não do padrão da conta', async () => {
+    const { plan } = await planBroadcastResume(
+      planDb({
+        broadcast: { ...BROADCAST, channel_id: 'canal-da-campanha' },
+        config: CONFIG,
+        recipients: [recipient('r1', '+15551234567')],
+      }),
+      'acct-1',
+      'bc-1',
+      'pending',
+    );
+
+    // O plano carrega o canal, e é ele que o fan-out usa para carimbar cada
+    // mensagem reenviada.
+    expect(plan.channelId).toBe('canal-1');
+    expect(plan.phoneNumberId).toBe('pn-1');
+  });
+
+  it('campanha anterior à 903 (sem channel_id) ainda é retomável', async () => {
+    // Não pode virar erro: o `resolveMetaChannel` cai para o canal padrão,
+    // que é o comportamento do upstream e o único disponível para essas
+    // linhas antigas.
+    const { plan } = await planBroadcastResume(
+      planDb({
+        broadcast: BROADCAST,
+        config: CONFIG,
+        recipients: [recipient('r1', '+15551234567')],
+      }),
+      'acct-1',
+      'bc-1',
+      'pending',
+    );
+    expect(plan.channelId).toBe('canal-1');
   });
 });
