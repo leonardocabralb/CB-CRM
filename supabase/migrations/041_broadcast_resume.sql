@@ -1,5 +1,11 @@
 -- ============================================================
--- 038_broadcast_resume
+-- 041_broadcast_resume
+--
+-- ⚠️ RENUMERADA NO MERGE DO UPSTREAM (2026-08-26). Chegou como
+-- `038_broadcast_resume.sql` e colidia com a nossa `037_evolution_transport`, ja
+-- aplicada. As tres do upstream (037/038/039) viraram 040/041/042 juntas,
+-- porque a 041 dropa a funcao que a 040 cria — a ordem relativa tinha de
+-- ser preservada.
 --
 -- Issue #472. A dashboard campaign's send loop runs in the browser tab
 -- that started it. Close the tab and the remaining recipients are

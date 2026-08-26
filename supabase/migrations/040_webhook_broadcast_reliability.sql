@@ -1,5 +1,11 @@
 -- ============================================================
--- 037_webhook_broadcast_reliability
+-- 040_webhook_broadcast_reliability
+--
+-- ⚠️ RENUMERADA NO MERGE DO UPSTREAM (2026-08-26). Chegou como
+-- `037_webhook_broadcast_reliability.sql` e colidia com a nossa `037_evolution_transport`, ja
+-- aplicada. As tres do upstream (037/038/039) viraram 040/041/042 juntas,
+-- porque a 041 dropa a funcao que a 040 cria — a ordem relativa tinha de
+-- ser preservada.
 --
 -- Three independent reliability fixes that all need a DB-level
 -- guarantee the application layer can't provide on its own:

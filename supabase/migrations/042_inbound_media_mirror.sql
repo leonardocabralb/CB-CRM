@@ -1,5 +1,11 @@
 -- ============================================================
--- 039_inbound_media_mirror
+-- 042_inbound_media_mirror
+--
+-- ⚠️ RENUMERADA NO MERGE DO UPSTREAM (2026-08-26). Chegou como
+-- `039_inbound_media_mirror.sql` e colidia com a nossa `037_evolution_transport`, ja
+-- aplicada. As tres do upstream (037/038/039) viraram 040/041/042 juntas,
+-- porque a 041 dropa a funcao que a 040 cria — a ordem relativa tinha de
+-- ser preservada.
 --
 -- Issue #466. Inbound media is never persisted. The webhook verifies
 -- the Meta media id and stores a POINTER — `/api/whatsapp/media/<id>`
