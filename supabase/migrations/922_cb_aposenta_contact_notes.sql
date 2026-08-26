@@ -228,25 +228,28 @@ END;
 $function$;
 
 -- ------------------------------------------------------------
--- 3. Só agora, o DROP
+-- 3. O DROP e a conferência, no mesmo bloco
 -- ------------------------------------------------------------
--- A contagem de anotações fica guardada ANTES, para a conferência abaixo
--- poder perguntar a coisa certa: "o DROP levou alguma junto?". Perguntar
--- por um número absoluto (o que ela fazia) só funciona contra ESTE banco,
--- com ESTES dados — num banco novo, onde não há nada a preservar, a
--- conferência reprovava por não achar linhas que nunca existiram.
-CREATE TEMP TABLE cb_922_antes AS
-  SELECT count(*) AS n FROM cb_conversation_notes;
-
-DROP TABLE IF EXISTS contact_notes;
-
--- ------------------------------------------------------------
--- 4. Conferência
--- ------------------------------------------------------------
+-- Andam juntos porque a conferência precisa da contagem de ANTES para
+-- perguntar a coisa certa: "o DROP levou anotação junto?". Perguntar por um
+-- número absoluto — o que ela fazia — só funciona contra ESTE banco, com
+-- ESTES dados; num banco novo, onde não há nada a preservar, ela reprovava
+-- por não achar linhas que nunca existiram.
+--
+-- ⚠️ Tudo num bloco só, sem tabela temporária de apoio: `CREATE TEMP TABLE`
+-- sem guarda estoura se a migration rodar duas vezes na mesma sessão, e
+-- migration aqui é idempotente por regra. Uma variável não tem esse problema
+-- e não deixa objeto para trás.
 DO $$
 DECLARE
-  n_refs integer;
+  n_refs  integer;
+  n_antes integer;
 BEGIN
+  SELECT count(*) INTO n_antes FROM cb_conversation_notes;
+
+  -- `IF EXISTS` porque numa segunda passada a tabela já não está lá.
+  EXECUTE 'DROP TABLE IF EXISTS contact_notes';
+
   IF to_regclass('public.contact_notes') IS NOT NULL THEN
     RAISE EXCEPTION '922: contact_notes continua existindo';
   END IF;
@@ -279,12 +282,8 @@ BEGIN
   -- migration não copia nada (a cópia foi na 918); o que ela precisa provar é
   -- que derrubar a tabela velha não levou a nova junto, por uma FK ou um
   -- CASCADE esquecido. Comparar com o antes responde isso em qualquer banco.
-  IF (SELECT count(*) FROM cb_conversation_notes)
-     < (SELECT n FROM cb_922_antes) THEN
+  IF (SELECT count(*) FROM cb_conversation_notes) < n_antes THEN
     RAISE EXCEPTION '922: o DROP levou anotacoes junto (antes=%, depois=%)',
-      (SELECT n FROM cb_922_antes),
-      (SELECT count(*) FROM cb_conversation_notes);
+      n_antes, (SELECT count(*) FROM cb_conversation_notes);
   END IF;
 END $$;
-
-DROP TABLE IF EXISTS cb_922_antes;
