@@ -229,6 +229,18 @@ $$;
 REVOKE EXECUTE ON FUNCTION cb_atualizar_negocio(uuid, uuid, uuid, uuid, text, jsonb)
   FROM PUBLIC, anon, authenticated;
 
+-- ⚠️ E o `service_role` precisa ganhar de volta, EXPLICITAMENTE. Em Postgres o
+-- EXECUTE de função nasce concedido a PUBLIC; revogar de PUBLIC tira de todo
+-- mundo que dependia disso — inclusive dele. Em produção não se notou porque o
+-- Supabase concede EXECUTE ao service_role por *default privilege*, que nenhuma
+-- migration escreveu. Num banco novo esse default não existe, e a conferência
+-- logo abaixo reprovava com "service_role NAO executa".
+--
+-- É o motor/cron/webhook que chama esta função, sempre com service_role.
+-- Em produção é no-op; GRANT é idempotente.
+GRANT EXECUTE ON FUNCTION cb_atualizar_negocio(uuid, uuid, uuid, uuid, text, jsonb)
+  TO service_role;
+
 -- ------------------------------------------------------------
 -- 4) Conferência — o resultado, nunca a intenção
 -- ------------------------------------------------------------
