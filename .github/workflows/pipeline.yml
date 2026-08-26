@@ -9,8 +9,9 @@
 # Na prática, um CI vermelho não impedia nada; a imagem já tinha subido
 # para a VPS enquanto o teste ainda rodava.
 #
-# Aqui `deploy` depende de `verificar` e de `migrations`. O portão que o
-# comentário antigo prometia agora existe de fato.
+# Aqui `deploy` depende de `verificar` — o portão que o comentário antigo
+# prometia e nunca teve. A etapa `migrations` roda junto, mas como SINAL,
+# não como portão; o porquê está na nota dela.
 #
 # ⚠️ DIVERGÊNCIA DO UPSTREAM. `ci.yml` e `migrations.yml` eram DELES e
 # foram removidos em favor deste arquivo. Um merge futuro vai trazê-los
@@ -93,11 +94,22 @@ jobs:
   # ------------------------------------------------------------
   # Etapa 2 — as migrations aplicam num banco vazio?
   # ------------------------------------------------------------
-  # Roda SEMPRE, sem filtro de caminho. O filtro existia quando isto era
-  # um workflow separado; aqui ele criaria um job "skipped", e um job
-  # pulado faz o `needs` do deploy ser pulado junto — o clássico tiro no
-  # pé do GitHub Actions. São ~1,5 min por execução, e foi esta etapa que
-  # achou o privilégio herdado que quatro migrations nossas assumiam.
+  # ⚠️ NÃO BLOQUEIA O DEPLOY, de propósito. Esta etapa é valiosa — foi ela
+  # que achou o privilégio herdado que quatro migrations nossas assumiam e
+  # a conferência da 922 que acusava o próprio comentário. Mas as migrations
+  # históricas deste repositório nunca foram escritas para reaplicar do
+  # zero: elas cresceram contra um banco que já existia, e várias conferem
+  # DADOS de produção. Pôr o deploy atrás disso transforma uma dívida antiga
+  # em impedimento de publicar, o que é o trade errado — o que precisa
+  # gatear o deploy é o código, e disso cuida a etapa `verificar`.
+  #
+  # Enquanto a dívida não for paga, esta etapa é SINAL, não portão: falha
+  # aqui aparece vermelha no PR e merece conserto, mas não segura a
+  # publicação. Quando as migrations replayarem limpas, basta acrescentá-la
+  # de volta ao `needs` do deploy.
+  #
+  # Sem filtro de caminho: como job, um filtro a deixaria "skipped", e job
+  # pulado dentro de `needs` pula quem depende dele.
   migrations:
     name: Apply to a clean database
     runs-on: ubuntu-latest
@@ -134,12 +146,14 @@ jobs:
   # ------------------------------------------------------------
   # Etapa 3 — publicar
   # ------------------------------------------------------------
-  # ⚠️ Só no main, e só depois das duas etapas acima passarem. Em PR os
+  # ⚠️ Só no main, e só depois de `verificar` passar. Em PR os
   # jobs acima rodam e este é pulado — é o que separa "validar" de
   # "publicar".
   deploy:
     name: Build image and roll out on the VPS
-    needs: [verificar, migrations]
+    # Só `verificar`. Ver a nota na etapa `migrations` sobre por que ela
+    # não entra aqui.
+    needs: [verificar]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
