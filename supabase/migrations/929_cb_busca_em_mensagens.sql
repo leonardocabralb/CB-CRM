@@ -188,6 +188,7 @@ GRANT EXECUTE ON FUNCTION public.cb_texto_para_busca(text) TO authenticated;
 DO $$
 DECLARE
   v_achou int;
+  v_termo text;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'
@@ -225,17 +226,29 @@ BEGIN
     RAISE EXCEPTION '929: authenticated perdeu a busca — a tela depende dela.';
   END IF;
 
-  -- Prova de vida: procurar as três primeiras letras de alguma mensagem real
-  -- tem de devolver pelo menos aquela conversa. Roda como dono (ignora RLS), o
-  -- que aqui é o que se quer: a pergunta é sobre a MECÂNICA, não sobre escopo.
-  SELECT count(*) INTO v_achou
-    FROM public.cb_buscar_conversas_por_texto(
-      (SELECT substr(content_text, 1, 6) FROM public.messages
-        WHERE deleted_at IS NULL AND length(content_text) >= 6
-        ORDER BY created_at DESC LIMIT 1)
-    );
-  IF v_achou < 1 THEN
-    RAISE EXCEPTION '929: a busca não achou nem a mensagem de onde o termo saiu.';
+  -- Prova de vida: procurar as primeiras letras de alguma mensagem real tem de
+  -- devolver pelo menos aquela conversa. Roda como dono (ignora RLS), o que
+  -- aqui é o que se quer: a pergunta é sobre a MECÂNICA, não sobre escopo.
+  --
+  -- ⚠️ Só faz sentido se HOUVER mensagem. Num banco recém-criado — o do CI, que
+  -- reaplica tudo do zero — a subconsulta devolve NULL, a busca não acha nada e
+  -- a conferência reprovava por não encontrar uma linha que nunca existiu. O
+  -- termo vai para uma variável justamente para poder distinguir "a busca está
+  -- quebrada" de "não há o que buscar".
+  SELECT substr(content_text, 1, 6) INTO v_termo
+    FROM public.messages
+   WHERE deleted_at IS NULL AND length(content_text) >= 6
+   ORDER BY created_at DESC
+   LIMIT 1;
+
+  IF v_termo IS NULL THEN
+    RAISE NOTICE '929: sem mensagem para a prova de vida — banco vazio, nada a provar.';
+  ELSE
+    SELECT count(*) INTO v_achou
+      FROM public.cb_buscar_conversas_por_texto(v_termo);
+    IF v_achou < 1 THEN
+      RAISE EXCEPTION '929: a busca não achou nem a mensagem de onde o termo saiu (termo=%).', v_termo;
+    END IF;
   END IF;
 
   -- Termo curto não pode devolver nada, senão o piso de 3 caracteres é decoração.
