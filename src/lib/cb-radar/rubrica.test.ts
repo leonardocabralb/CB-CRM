@@ -88,16 +88,19 @@ describe('montarTranscrito', () => {
     expect(t.linhas.map((l) => l.autor)).toEqual([null, 'Ana Souza', null])
   })
 
-  it('fala repetida do ROBÔ entra uma vez só e é contada', () => {
+  it('fala repetida do ROBÔ entra uma vez só — e sobrevive a mais RECENTE', () => {
     // Fluxo reapresenta o mesmo menu a cada tentativa do cliente — pagar
     // tokens pelo texto idêntico de novo não acrescenta nada à análise.
+    // A cópia mantida é a mais recente, como nos tetos: mantendo a
+    // primeira, o corte de cauda de uma conversa acima do teto a
+    // derrubava e o menu sumia inteiro do transcrito.
     const t = montarTranscrito([
       msg('a', 'bot', '10:00', 'Escolha: 1) Boleto 2) Atendente'),
       msg('b', 'customer', '10:01', 'quero boleto'),
       msg('c', 'bot', '10:02', 'Escolha: 1) Boleto 2) Atendente'),
       msg('d', 'bot', '10:03', 'Segunda via enviada.'),
     ])
-    expect(t.linhas.map((l) => l.mensagemId)).toEqual(['a', 'b', 'd'])
+    expect(t.linhas.map((l) => l.mensagemId)).toEqual(['b', 'c', 'd'])
     expect(t.botRepetidas).toBe(1)
     // Colapso não é corte: o conteúdo omitido é idêntico ao que ficou.
     expect(t.cortadas).toBe(0)
@@ -172,7 +175,7 @@ describe('montarPromptDoRadar', () => {
     })
     expect(transcrito.botRepetidas).toBe(1)
     expect(userContent).toContain('repetição exata')
-    expect(userContent).toContain('1 — só a primeira ocorrência')
+    expect(userContent).toContain('1 — só a ocorrência mais recente')
   })
 })
 
@@ -310,6 +313,20 @@ describe('interpretarAnalise', () => {
     it('campo ausente (análise antiga) vira lista vazia, sem descarte', () => {
       const r = interpretarAnalise(base, linhasComAutor)!
       expect(r.observacoesPorAtendente).toEqual([])
+      expect(r.sinaisDescartados).toBe(0)
+    })
+
+    it('o teto de 2 por atendente prometido no prompt é IMPOSTO pelo parser', () => {
+      const r = obs([
+        { atendente: 'Ana Souza', observacao: 'Obs 1.', evidencias: [2] },
+        { atendente: 'ana souza', observacao: 'Obs 2.', evidencias: [2] },
+        { atendente: 'Ana Souza', observacao: 'Obs 3 (verborragia).', evidencias: [2] },
+      ])
+      expect(r.observacoesPorAtendente.map((o) => o.observacao)).toEqual([
+        'Obs 1.',
+        'Obs 2.',
+      ])
+      // Excedente é poda de verborragia, não sinal inválido — não conta.
       expect(r.sinaisDescartados).toBe(0)
     })
   })

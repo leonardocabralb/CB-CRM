@@ -21,8 +21,11 @@
  *  parede de São Paulo (o carimbo das linhas do transcrito, na rubrica).
  *  Fora deste arquivo, use `horaSp` — não o offset cru. */
 export const OFFSET_SP_MS = -3 * 3_600_000
-const ABRE_HORA = 8
-const FECHA_HORA = 19
+/** Exportadas para a legenda do painel imprimir o expediente REAL — o
+ *  backlog prevê expediente configurável, e um "08h–19h" digitado no
+ *  dicionário mentiria na primeira conta que o mudasse. */
+export const ABRE_HORA = 8
+export const FECHA_HORA = 19
 const DIA_MS = 24 * 3_600_000
 
 /** "26/08 14:32" — o instante no relógio de parede de São Paulo. */

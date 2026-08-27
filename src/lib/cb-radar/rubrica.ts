@@ -53,10 +53,11 @@ export interface Transcrito {
   texto: string
   /** Mensagens que ficaram de fora por teto (não por falta de texto). */
   cortadas: number
-  /** Falas do robô omitidas por serem repetição EXATA de uma anterior na
-   *  janela (fluxo que reapresenta o mesmo menu). Só a 1ª ocorrência
-   *  entra; fala repetida de HUMANO (cliente ou equipe) nunca é
-   *  colapsada — insistência é exatamente o sinal que o Radar caça. */
+  /** Falas do robô omitidas por serem repetição EXATA de outra na janela
+   *  (fluxo que reapresenta o mesmo menu). Sobrevive a ocorrência mais
+   *  RECENTE — a mesma regra dos tetos; fala repetida de HUMANO (cliente
+   *  ou equipe) nunca é colapsada: insistência é o sinal que o Radar
+   *  caça. */
   botRepetidas: number
 }
 
@@ -107,17 +108,27 @@ export function montarTranscrito(mensagens: MensagemParaTranscrito[]): Transcrit
   // por igualdade exata (menu de fluxo é gerado por programa, repete
   // byte a byte). O colapso vem ANTES dos tetos, para a vaga liberada
   // acomodar conteúdo real.
+  //
+  // ⚠️ Sobrevive a ocorrência mais RECENTE — o mesmo princípio dos tetos
+  // ("o recente decide, nunca o começo"). Mantendo a primeira, numa
+  // conversa acima do teto o corte de cauda a derrubava e o menu sumia
+  // INTEIRO do transcrito, com o metadado ainda jurando que ele estava lá
+  // (revisão 2026-08-27).
   const vistasDoRobo = new Set<string>()
   let botRepetidas = 0
-  const semRepeticao = ordenadas.filter((m) => {
-    if (m.senderType !== 'bot') return true
-    if (vistasDoRobo.has(m.texto)) {
-      botRepetidas += 1
-      return false
+  const semRepeticao: typeof ordenadas = []
+  for (let i = ordenadas.length - 1; i >= 0; i--) {
+    const m = ordenadas[i]
+    if (m.senderType === 'bot') {
+      if (vistasDoRobo.has(m.texto)) {
+        botRepetidas += 1
+        continue
+      }
+      vistasDoRobo.add(m.texto)
     }
-    vistasDoRobo.add(m.texto)
-    return true
-  })
+    semRepeticao.push(m)
+  }
+  semRepeticao.reverse()
 
   const recorte = semRepeticao.slice(-TETO_MENSAGENS)
   let cortadas = semRepeticao.length - recorte.length
@@ -297,7 +308,7 @@ export function montarPromptDoRadar(ctx: ContextoDoPrompt): {
       ? `Atenção: as ${ctx.transcrito.cortadas} mensagens mais antigas da janela ficaram fora do transcrito por limite de tamanho.`
       : null,
     ctx.transcrito.botRepetidas > 0
-      ? `Mensagens automáticas (Robô) omitidas por serem repetição exata de uma anterior: ${ctx.transcrito.botRepetidas} — só a primeira ocorrência de cada uma aparece no transcrito.`
+      ? `Mensagens automáticas (Robô) omitidas por serem repetição exata de outra: ${ctx.transcrito.botRepetidas} — só a ocorrência mais recente de cada uma aparece no transcrito.`
       : null,
   ]
     .filter(Boolean)
@@ -452,6 +463,7 @@ export function interpretarAnalise(
     })
 
   const nomeNormalizado = (s: string) => s.trim().toLowerCase()
+  const porAtendente = new Map<string, number>()
   const observacoesPorAtendente = (Array.isArray(o.observacoes_por_atendente)
     ? o.observacoes_por_atendente
     : []
@@ -482,7 +494,15 @@ export function interpretarAnalise(
       if (!ok && (p.atendente.length > 0 || p.observacao.length > 0)) {
         descartados += 1
       }
-      return ok
+      if (!ok) return false
+      // O prompt promete "no máximo 2 por atendente" — quem garante é o
+      // parser, como em toda regra anunciada ao modelo. Excedente não é
+      // sinal inválido, é verborragia: poda sem contar em `descartados`.
+      const chave = nomeNormalizado(p.atendente)
+      const usadas = porAtendente.get(chave) ?? 0
+      if (usadas >= 2) return false
+      porAtendente.set(chave, usadas + 1)
+      return true
     })
 
   return {

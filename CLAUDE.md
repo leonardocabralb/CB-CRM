@@ -471,6 +471,13 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   auditoria da Ana. Nome não resolvido → rótulo genérico "Equipe" e a IA é
   instruída a não avaliar. Na tela, a seção só aparece para
   `useCan('manage-members')` — é avaliação de pessoa, não de conversa.
+  ⚠️ **O gate é SÓ de renderização**: o dado viaja em `detalhes.analise`
+  e a policy da 941 dá SELECT a qualquer membro — um `agent` lê a própria
+  avaliação pela aba Network. Barreira real (pendente, migration `943`):
+  coluna separada sem GRANT ao `authenticated` + rota server-side com
+  `requireRole` + trocar o `select('*')` do hook por colunas nomeadas
+  (senão a coluna sem grant derruba a consulta inteira). Decisão do
+  operador se isso bloqueia o merge.
 - **`generateStructured` (`src/lib/ai/structured.ts`) é separado de
   `generateReply` DE PROPÓSITO.** Não fundir: o caminho do
   auto-reply/draft não pode herdar regressão do caminho de análise.
@@ -506,10 +513,21 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   onde só nós falamos. Janela COM fala do cliente reanalisa mesmo quando a
   novidade é só nossa — a resposta da equipe resolve pendência/pedido, e
   congelar a análise deixava alarme velho na tela. Não "otimizar" isso.
+- ⚠️ **Nesse caminho, saída AUTOMÁTICA não fecha pendência.** Se a janela só
+  tem máquina (nenhum cliente, nenhum `agent` com `sender_id` — broadcast,
+  agendada, automação e fluxo mandam sem gente) e a linha JÁ tem análise
+  completa, o worker faz um UPDATE preservador: avança só `janela_fim` e
+  mantém a análise congelada INTEIRA (`aguardando_desde` incluído). Sem
+  isso, um broadcast apagava o alarme do cliente esquecido — o caso que a
+  exceção do painel existe para proteger. Resposta HUMANA na janela cai no
+  UPDATE completo e fecha a pendência normalmente.
 - **O transcrito colapsa repetição EXATA do robô** (`botRepetidas`, rubrica):
-  fluxo reapresentando o mesmo menu entra uma vez só, e o prompt declara a
-  omissão. HUMANO (cliente OU equipe) nunca é colapsado — insistência é
-  exatamente o sinal que o Radar caça. Colapso não marca `janela_cortada`.
+  fluxo reapresentando o mesmo menu entra uma vez só — **sobrevive a
+  ocorrência mais RECENTE**, a mesma regra dos tetos (mantendo a primeira,
+  o corte de cauda de conversa acima do teto a derrubava e o menu sumia
+  inteiro). O prompt declara a omissão. HUMANO (cliente OU equipe) nunca é
+  colapsado — insistência é exatamente o sinal que o Radar caça. Colapso
+  não marca `janela_cortada`.
 - **A legenda da tela (`como-funciona.tsx`) IMPORTA as constantes reais**
   (`JANELA_DIAS`/`THROTTLE_MS` de `ordenacao.ts`, `TETO_MENSAGENS` da
   rubrica, `CICLO_MINUTOS`) — por isso `THROTTLE_MS` mora em `ordenacao.ts`

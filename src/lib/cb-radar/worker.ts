@@ -514,6 +514,44 @@ export async function analisarConversaReivindicada(
   }
 
   const semIa = config === null
+
+  // ⚠️ Saída AUTOMÁTICA não fecha pendência (revisão 2026-08-27, dois
+  // ângulos): broadcast, agendada, automação e fluxo também atualizam
+  // `last_message_at`, então uma pendência congelada (cliente esquecido
+  // além da janela) voltava à candidatura e o UPDATE completo zerava
+  // `aguardando_desde` — o alarme sumia sem nenhum humano ter respondido.
+  // O discriminador é `sender_id`: gente que aperta enviar o tem;
+  // broadcast/automação/API mandam com ele nulo, e fluxo é `bot`.
+  // Quando a janela só tem máquina (nenhum cliente, nenhum humano) e a
+  // linha JÁ completou uma análise, esta análise é um NO-OP: avança só a
+  // marca d'água (`janela_fim`) e preserva a análise congelada inteira —
+  // que é exatamente o que o painel promete exibir. Resposta HUMANA na
+  // janela segue fechando a pendência pelo UPDATE completo abaixo.
+  const houveHumanoNaJanela = comData.some(
+    (m) => m.sender_type === 'agent' && m.sender_id !== null,
+  )
+  if (semClienteNaJanela && !houveHumanoNaJanela) {
+    const { data: preservado, error: presErr } = await admin
+      .from('cb_conversation_insights')
+      .update({
+        janela_fim: janelaFim.toISOString(),
+        status: 'done',
+        running_desde: null,
+        erro: null,
+        tentativas: 0,
+      })
+      .eq('id', args.insightId)
+      .eq('status', 'running')
+      .eq('running_desde', args.claimIso)
+      // Só preserva quem TEM análise completa a preservar — linha nova
+      // (primeiro contato foi um broadcast) cai no UPDATE completo.
+      .not('janela_fim', 'is', null)
+      .select('id')
+      .maybeSingle()
+    if (presErr) throw new Error(`falha preservando o insight: ${presErr.message}`)
+    if (preservado) return { semIa }
+  }
+
   const ultima = comData[comData.length - 1]
   const { data: gravado, error: upErr } = await admin
     .from('cb_conversation_insights')

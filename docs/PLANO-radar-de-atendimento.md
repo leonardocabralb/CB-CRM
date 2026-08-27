@@ -65,7 +65,8 @@ agendador (VPS, laço lento 900s)
 5. **Janela em que o cliente não falou não chama a IA** (broadcast e
    abordagem ativa ficam só com métricas) — o envio também atualiza
    `last_message_at`, e sem esse pulo cada broadcast disparava dezenas de
-   análises pagas.
+   análises pagas. Se a janela só tem saída de MÁQUINA, a análise anterior
+   é preservada inteira (mensagem automática não fecha pendência).
 6. Saída: `maxOutputTokens` 2048; trechos de evidência limitados no parser.
 
 A tela explica tudo isso ao operador no botão **"Como funciona"** (os
@@ -110,7 +111,10 @@ congelada segue fiel) e os cartões contam só a pendência dela.
   mecanismo de salto existe; falta a entrada por URL).
 - Visão AGREGADA por atendente (nota média, tempos, padrões recorrentes).
   O feedback POR CONVERSA já existe: `observacoes_por_atendente` na
-  análise, com autoria validada, visível só a quem gerencia a equipe.
+  análise, com autoria validada. ⚠️ A restrição a quem gerencia a equipe
+  é DE TELA — o dado bruto viaja a qualquer membro logado (policy da 941
+  é por conta, sem papel). Barreira real = migration `943` (coluna sem
+  grant + rota server-side), desenhada no CLAUDE.md, ainda não feita.
 - Notificação no sino para urgência alta.
 - Tendência da nota por semana; expediente configurável por conta
   (hoje: constante em `src/lib/cb-radar/horario-comercial.ts`).

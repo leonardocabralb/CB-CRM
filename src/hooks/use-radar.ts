@@ -100,7 +100,7 @@ export function useRadar(): RadarDaConta {
     const minhaGeracao = ++geracaoRef.current;
     const supabase = createClient();
 
-    const [lista, batimento] = await Promise.all([
+    const [lista, pendentes, batimento] = await Promise.all([
       supabase
         .from('cb_conversation_insights')
         .select(SELECT_COM_CONVERSA, { count: 'exact' })
@@ -110,6 +110,20 @@ export function useRadar(): RadarDaConta {
         .eq('account_id', accountId)
         .order('analisado_em', { ascending: false, nullsFirst: false })
         .limit(TETO),
+      // ⚠️ Consulta DEDICADA às pendências abertas (revisão 2026-08-27):
+      // a pendência congelada (cliente esquecido além da janela) nunca é
+      // reanalisada, então seu `analisado_em` envelhece e, com o acervo
+      // acima do teto, ela seria a PRIMEIRA linha a cair do SELECT
+      // principal — a garantia "não expira" expiraria em silêncio. São
+      // poucas linhas por construção; a mescla abaixo deduplica por id.
+      supabase
+        .from('cb_conversation_insights')
+        .select(SELECT_COM_CONVERSA)
+        .eq('account_id', accountId)
+        .eq('estado', 'aberto')
+        .not('aguardando_desde', 'is', null)
+        .order('aguardando_desde', { ascending: true })
+        .limit(100),
       supabase
         .from('cb_agendador_batimento')
         .select('ultimo_ciclo_radar')
@@ -130,10 +144,18 @@ export function useRadar(): RadarDaConta {
       return;
     }
 
-    const linhas = (lista.data ?? []) as unknown as InsightDaConta[];
+    const principais = (lista.data ?? []) as unknown as InsightDaConta[];
+    // Best-effort como o batimento: se a consulta de pendências falhar, a
+    // tela perde só a blindagem contra o teto — não a lista.
+    const dePendencia = (pendentes.data ?? []) as unknown as InsightDaConta[];
+    const vistos = new Set(principais.map((i) => i.id));
+    const linhas = [
+      ...principais,
+      ...dePendencia.filter((i) => !vistos.has(i.id)),
+    ];
     setFalhou(false);
     setInsights(linhas);
-    setEstourouOTeto(linhas.length < (lista.count ?? linhas.length));
+    setEstourouOTeto(principais.length < (lista.count ?? principais.length));
     // Best-effort: sem o batimento a tela só perde o aviso de saúde.
     setUltimoCicloRadar(
       (batimento.data as { ultimo_ciclo_radar?: string } | null)?.ultimo_ciclo_radar,

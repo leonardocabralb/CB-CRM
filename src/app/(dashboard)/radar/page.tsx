@@ -420,7 +420,10 @@ function LinhaDoRadar({
 }) {
   const t = useTranslations('Radar');
   // Feedback por atendente é avaliação de PESSOA — só quem gerencia a
-  // equipe (admin/dono) vê; o restante do cartão é igual para todos.
+  // equipe (admin/dono) VÊ NA TELA; o restante do cartão é igual para
+  // todos. ⚠️ Isto é arrumação de interface, não barreira: o dado viaja
+  // em `detalhes.analise` para qualquer membro (ver CLAUDE.md, pendência
+  // da migration 943 para a barreira real).
   const podeVerEquipe = useCan('manage-members');
   const contato = i.conversation?.contact;
   const nome = contato?.name || contato?.phone || t('contatoSemNome');
