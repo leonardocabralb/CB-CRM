@@ -473,7 +473,8 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   `useCan('manage-members')` — é avaliação de pessoa, não de conversa.
   ⚠️ **O gate é SÓ de renderização**: o dado viaja em `detalhes.analise`
   e a policy da 941 dá SELECT a qualquer membro — um `agent` lê a própria
-  avaliação pela aba Network. Barreira real (pendente, migration `943`):
+  avaliação pela aba Network. Barreira real (pendente, na PRÓXIMA migration
+  livre — a 943 virou a transcrição de áudio):
   coluna separada sem GRANT ao `authenticated` + rota server-side com
   `requireRole` + trocar o `select('*')` do hook por colunas nomeadas
   (senão a coluna sem grant derruba a consulta inteira). Decisão do
@@ -552,6 +553,41 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
 - `ai_usage_log.mode` ganhou `'radar'` e os CHECKs de `provider` ganharam
   `'gemini'` (941) — modo/provedor novo exige migration no CHECK, senão o
   `logAiUsage` engole o erro e o custo some do painel de uso.
+
+⚠️ **Transcrição de áudio (943): função ÚNICA, Gemini-only, chave BYO.**
+`src/lib/transcricao/transcrever.ts` (testado), rota
+`POST /api/cb/transcricao/[messageId]`, colunas `transcricao_*` em
+`messages`. Três chamadores da MESMA função idempotente: botão da bolha,
+worker do Radar e (futuro) auto-reply. O que morde código novo:
+
+- **A transcrição NUNCA vai para `content_text`** — o que o cliente
+  escreveu e o que a máquina ouviu são coisas diferentes, e sobrescrever é
+  irreversível (o original é NULL). Num CRM jurídico isso é inegociável.
+- ⚠️ **O cadeado `UPDATE…RETURNING` não é opcional**: no deploy
+  (`start-first`) há DOIS processos Node vivos e o rate limit é um Map em
+  memória por processo — só o banco impede pagar o mesmo áudio duas vezes.
+  Teto de tentativas DENTRO do WHERE; travada de 10 min recolhida pelo
+  próprio cadeado. Escrita final e falha com cerca (`transcricao_desde`).
+- ⚠️ **Sem chave Gemini (ou provedor ≠ gemini) devolve `recusada` SEM
+  GRAVAR** — gravar o estado terminal mataria o botão para sempre por um
+  problema de configuração passageiro. `recusada` GRAVADA é só para o
+  irreversível: URL relativa (proxy Meta exige sessão), áudio grande
+  demais, tentativas esgotadas, mensagem apagada.
+- **O modelo é FIXADO em `MODELO_TRANSCRICAO`** (`gemini-3.5-flash-lite`),
+  separado do modelo de chat/análise da conta — transcrever não precisa de
+  raciocínio e o Lite custa ~metade. Trocar de modelo/provedor é mexer SÓ
+  neste módulo (plano B documentado: ElevenLabs, único com `audio/opus`
+  por escrito — a doc do Gemini lista "OGG Vorbis" e a nota do WhatsApp é
+  Opus; funciona em relatos, o 1º teste real em produção é o go/no-go).
+- **O worker do Radar transcreve SÓ áudio do CLIENTE**, até 5 novos por
+  análise e dentro do `deadlineMs` do ciclo (reserva 2× o timeout de IA
+  antes de cada uma). Falha/recusa NÃO derruba a análise — o áudio segue
+  como lacuna declarada. O texto entra no transcrito com prefixo
+  `[áudio] `.
+- **A transcrição NÃO entra no índice GIN da busca (929)** — trade-off
+  aceito no plano; busca por conteúdo de áudio é migration futura.
+- O mime enviado é `messages.media_type` (042) → `Content-Type` do
+  Storage → `audio/ogg`, nesta ordem.
 
 ⚠️ **UI de canal: peças próprias, prefira reusá-las.** `src/hooks/use-channels.ts`
 (uma busca por montagem, falha silenciosa), `src/lib/cb-channels/display.ts`
@@ -842,8 +878,11 @@ mordem de novo em qualquer código novo:
   `933_cb_gatilho_de_funil`, `934_cb_acoes_de_funil`,
   `935_cb_lembrete_por_data`, `936_cb_orquestracao`,
   `937_cb_batimento_das_automacoes`, as três do upstream renumeradas
-  (`040`/`041`/`042`), `940_cb_broadcast_com_canal` e
-  `941_cb_radar_de_atendimento`.
+  (`040`/`041`/`042`), `940_cb_broadcast_com_canal`,
+  `941_cb_radar_de_atendimento` e `942_cb_indices_do_radar`.
+  ⚠️ A `943_cb_transcricao_de_audio` está CRIADA na branch do Radar e
+  **ainda não aplicada** — aplicar ANTES do deploy do merge (o worker do
+  Radar seleciona as colunas novas; sem elas, toda análise falha).
   ⚠️ A `906` foi aplicada FORA DE ORDEM (antes da 907), e o histórico do
   Supabase a registra com o nome antigo `904_cb_grupos` — ela nasceu numerada
   como 904, colidiu com `904_cb_mensagem_do_aparelho` e o ARQUIVO foi

@@ -286,6 +286,12 @@
       "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou."
     },
     "bubble": {
+      "transcricao": "Transcrição",
+      "transcrever": "Transcrever áudio",
+      "transcrevendo": "Transcrevendo…",
+      "transcricaoTentarDeNovo": "Tentar transcrever de novo",
+      "transcricaoRecusada": "Transcrição indisponível para este áudio",
+      "transcricaoRede": "sem conexão — tente de novo",
       "groupMediaTap": "Toque para baixar",
       "groupMediaDownloading": "Baixando…",
       "groupMediaRetry": "Tentar baixar de novo",
@@ -2293,6 +2299,7 @@
       "llmCalls": "Chamadas de LLM",
       "autoReply": "Resposta automática",
       "radar": "Radar",
+      "transcricao": "Transcrição",
       "drafts": "Rascunhos",
       "tokensPerDay": "Tokens por dia",
       "byModel": "Por modelo",

@@ -293,6 +293,12 @@
       "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified."
     },
     "bubble": {
+      "transcricao": "Transcript",
+      "transcrever": "Transcribe audio",
+      "transcrevendo": "Transcribing…",
+      "transcricaoTentarDeNovo": "Try transcribing again",
+      "transcricaoRecusada": "Transcription unavailable for this audio",
+      "transcricaoRede": "no connection — try again",
       "groupMediaTap": "Tap to download",
       "groupMediaDownloading": "Downloading…",
       "groupMediaRetry": "Try downloading again",
@@ -2314,6 +2320,7 @@
       "llmCalls": "LLM calls",
       "autoReply": "Auto-reply",
       "radar": "Radar",
+      "transcricao": "Transcription",
       "drafts": "Drafts",
       "tokensPerDay": "Tokens per day",
       "byModel": "By model",

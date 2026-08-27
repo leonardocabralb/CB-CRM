@@ -12,7 +12,7 @@ const DEFAULT_WINDOW_DAYS = 30
 
 interface UsageRow {
   created_at: string
-  mode: 'auto_reply' | 'draft' | 'radar'
+  mode: 'auto_reply' | 'draft' | 'radar' | 'transcricao'
   provider: string
   model: string
   prompt_tokens: number
@@ -83,6 +83,7 @@ export async function GET(request: Request) {
       auto_reply: { calls: 0, tokens: 0 },
       draft: { calls: 0, tokens: 0 },
       radar: { calls: 0, tokens: 0 },
+      transcricao: { calls: 0, tokens: 0 },
     }
     const modelMap = new Map<
       string,

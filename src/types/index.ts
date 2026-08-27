@@ -398,6 +398,17 @@ export interface Message {
    * Null on every row written before migration 042.
    */
   media_type?: string | null;
+  /**
+   * Transcrição da nota de voz (migration 943) — NUNCA em `content_text`:
+   * o que o cliente escreveu e o que a máquina ouviu são coisas
+   * diferentes, e num CRM jurídico a distinção é permanente. Estados:
+   * NULL (nunca pedida) → transcrevendo → pronta | falhou (retentável) |
+   * recusada (terminal, sem botão).
+   */
+  transcricao?: string | null;
+  transcricao_status?: 'transcrevendo' | 'pronta' | 'falhou' | 'recusada' | null;
+  transcricao_erro?: string | null;
+  transcricao_em?: string | null;
   template_name?: string;
   message_id?: string;
   status: MessageStatus;

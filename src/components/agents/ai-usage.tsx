@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Activity, BarChart3, Bot, PencilLine } from 'lucide-react';
+import { Activity, BarChart3, Bot, Mic, PencilLine } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 import {
@@ -39,6 +39,7 @@ interface UsageResponse {
     draft: { calls: number; tokens: number };
     /** Ausente em resposta de deploy anterior à 941 — ler com `?.`. */
     radar?: { calls: number; tokens: number };
+    transcricao?: { calls: number; tokens: number };
   };
   by_model: {
     model: string;
@@ -144,7 +145,7 @@ export function AiUsageCard() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               <Stat label={t('totalTokens')} value={formatCompactNumber(data.totals.total_tokens)} />
               <Stat label={t('llmCalls')} value={String(data.totals.calls)} />
               <Stat
@@ -161,6 +162,11 @@ export function AiUsageCard() {
                 label={t('radar')}
                 value={formatCompactNumber(data.by_mode.radar?.tokens ?? 0)}
                 icon={Activity}
+              />
+              <Stat
+                label={t('transcricao')}
+                value={formatCompactNumber(data.by_mode.transcricao?.tokens ?? 0)}
+                icon={Mic}
               />
             </div>
 

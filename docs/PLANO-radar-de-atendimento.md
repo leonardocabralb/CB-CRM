@@ -79,6 +79,10 @@ congelada segue fiel) e os cartões contam só a pendência dela.
 
 ## Para LIGAR em produção (runbook)
 
+0. ⚠️ **Aplicar a migration `943_cb_transcricao_de_audio` ANTES do
+   merge** (MCP `apply_migration` ou SQL Editor — as 941/942 já estão
+   aplicadas). O worker seleciona as colunas novas de `messages`; sem
+   elas, toda análise falha no deploy.
 1. **Deploy normal** (merge → push main). ✅ **O passo manual da VPS JÁ
    FOI FEITO** (2026-08-27): o `agendador` foi reimplantado com `cb/radar`
    no laço lento, com a imagem do `crm_crm` pinada no digest vigente
@@ -118,6 +122,9 @@ congelada segue fiel) e os cartões contam só a pendência dela.
 - Notificação no sino para urgência alta.
 - Tendência da nota por semana; expediente configurável por conta
   (hoje: constante em `src/lib/cb-radar/horario-comercial.ts`).
-- Transcrição de áudio (docs/PLANO-transcricao-e-midia-na-ia.md) — ~20%
-  das mensagens não têm texto e a análise declara essa lacuna.
+- ~~Transcrição de áudio~~ — ✅ FEITA (2026-08-27): o worker transcreve os
+  áudios do CLIENTE da janela (até 5 novos por análise, função idempotente
+  da 943) e o texto entra no transcrito como `[áudio] …`. Áudio da equipe
+  segue como lacuna declarada. Ver o adendo em
+  docs/PLANO-transcricao-e-midia-na-ia.md.
 - Grupos (exigiria `cb_groups.channel_id` — ver CLAUDE.md).

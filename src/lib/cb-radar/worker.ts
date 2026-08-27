@@ -29,6 +29,7 @@ import { generateStructured } from '@/lib/ai/structured'
 import { logAiUsage } from '@/lib/ai/usage'
 import { aiRequestTimeoutMs } from '@/lib/ai/defaults'
 import type { AiUsage } from '@/lib/ai/types'
+import { transcreverAudio } from '@/lib/transcricao/transcrever'
 import { calcularMetricas, type MensagemParaMetricas } from './metricas'
 import { JANELA_DIAS, THROTTLE_MS } from './ordenacao'
 import { extrairNumerosDeProcesso } from './processos'
@@ -64,6 +65,10 @@ const TEMPO_LIMITE_MS = 45_000
 const TETO_ABSOLUTO_MS = 110_000
 const MAX_TOKENS_RADAR = 2048
 const TETO_MENSAGENS_JANELA = 1000
+/** Áudios do cliente transcritos por ANÁLISE (novos; os prontos são
+ *  leitura grátis). Teto de custo e de tempo — o que passar fica como
+ *  lacuna declarada e entra na próxima análise. */
+const TRANSCRICOES_POR_ANALISE = 5
 
 export interface ResultadoDoCiclo {
   candidatas: number
@@ -183,6 +188,7 @@ export async function rodarCicloDoRadar(
         conversationId: conversa.id,
         accountId: conversa.account_id,
         channelId: conversa.channel_id,
+        deadlineMs: inicioCiclo + TETO_ABSOLUTO_MS,
       })
       resultado.analisadas += 1
     } catch (err) {
@@ -348,6 +354,8 @@ interface MensagemDaJanela {
   sender_id: string | null
   content_type: string
   content_text: string | null
+  transcricao: string | null
+  transcricao_status: string | null
   created_at: string | null
 }
 
@@ -367,6 +375,10 @@ export async function analisarConversaReivindicada(
     conversationId: string
     accountId: string
     channelId: string | null
+    /** Instante-limite ABSOLUTO do chamador (o ciclo passa o teto do
+     *  curl do agendador). As transcrições de áudio respeitam este
+     *  orçamento, reservando o tempo da análise que ainda vem. */
+    deadlineMs?: number
   },
 ): Promise<{ semIa: boolean }> {
   const janelaFim = new Date()
@@ -379,7 +391,7 @@ export async function analisarConversaReivindicada(
   // esperando resposta (revisão 2026-08-27: quatro ângulos).
   const { data: mensagens, error: msgErr } = await admin
     .from('messages')
-    .select('id, sender_type, sender_id, content_type, content_text, created_at')
+    .select('id, sender_type, sender_id, content_type, content_text, transcricao, transcricao_status, created_at')
     .eq('conversation_id', args.conversationId)
     .gte('created_at', janelaInicio.toISOString())
     .is('deleted_at', null)
@@ -406,7 +418,47 @@ export async function analisarConversaReivindicada(
     ),
   )
 
-  const comTexto = comData.filter((m) => m.content_text && m.content_text.trim())
+  // Áudio do CLIENTE vira texto ANTES do transcrito, pela MESMA função
+  // idempotente do botão da bolha: quem já foi transcrito é leitura
+  // grátis; o novo paga UMA vez e serve a todas as análises futuras. Só
+  // cliente — é a fala dele que decide pedido/urgência/nota; áudio da
+  // equipe segue como lacuna declarada. Best-effort com teto duplo
+  // (quantidade + prazo): transcrição indisponível NÃO derruba a análise,
+  // o áudio só continua contando como "fora do transcrito".
+  const deadlineMs = args.deadlineMs ?? Date.now() + TETO_ABSOLUTO_MS
+  const transcricoes = new Map<string, string>()
+  for (const m of comData) {
+    if (m.transcricao) transcricoes.set(m.id, m.transcricao)
+  }
+  const audiosPendentes = comData.filter(
+    (m) =>
+      m.content_type === 'audio' &&
+      m.sender_type === 'customer' &&
+      !m.transcricao &&
+      m.transcricao_status !== 'recusada',
+  )
+  let tentativasDeAudio = 0
+  for (const m of audiosPendentes) {
+    if (tentativasDeAudio >= TRANSCRICOES_POR_ANALISE) break
+    // Reserva o tempo DESTA transcrição + o da análise que ainda vem.
+    if (Date.now() + aiRequestTimeoutMs() * 2 > deadlineMs) break
+    tentativasDeAudio += 1
+    const r = await transcreverAudio(admin, {
+      accountId: args.accountId,
+      messageId: m.id,
+    })
+    if (r.status === 'pronta') transcricoes.set(m.id, r.transcricao)
+  }
+
+  // O texto que o transcrito vê: o que o cliente ESCREVEU, ou — para
+  // áudio transcrito — o que ele DISSE, com o rótulo `[áudio]` para o
+  // modelo (e a evidência na tela) saberem a origem.
+  const textoDe = (m: MensagemDaJanela): string | null => {
+    if (m.content_text && m.content_text.trim()) return m.content_text
+    const t = transcricoes.get(m.id)
+    return t ? `[áudio] ${t}` : null
+  }
+  const comTexto = comData.filter((m) => textoDe(m) !== null)
   const semTexto = comData.length - comTexto.length
 
   // Quem da equipe falou, por nome — o transcrito rotula "Equipe (Ana)" e
@@ -449,12 +501,12 @@ export async function analisarConversaReivindicada(
             ? (nomePorAtendente.get(m.sender_id) ?? null)
             : null,
         createdAt: new Date(m.created_at as string),
-        texto: m.content_text as string,
+        texto: textoDe(m) as string,
       }),
     ),
   )
   const processosPorRegex = extrairNumerosDeProcesso(
-    comTexto.map((m) => m.content_text).join('\n'),
+    comTexto.map((m) => textoDe(m)).join('\n'),
   )
 
   // Agente do canal com queda para o padrão da conta — a resolução da
@@ -705,6 +757,7 @@ export async function reanalisarConversa(
       conversationId: conversa.id,
       accountId: conversa.account_id,
       channelId: conversa.channel_id,
+      deadlineMs: Date.now() + TETO_ABSOLUTO_MS,
     })
   } catch (err) {
     const motivo = err instanceof Error ? err.message : 'erro desconhecido'

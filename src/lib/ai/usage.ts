@@ -7,7 +7,7 @@ export interface LogAiUsageArgs {
    *  deleted between generation and logging. */
   conversationId: string | null
   /** 'radar' = análise em lote do Radar de Atendimento (941 ampliou o CHECK). */
-  mode: 'auto_reply' | 'draft' | 'radar'
+  mode: 'auto_reply' | 'draft' | 'radar' | 'transcricao'
   /** Canal por onde a conversa corre — atribui o custo por numero. */
   channelId?: string | null
   provider: AiProvider
