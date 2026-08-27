@@ -27,9 +27,12 @@ export async function POST(request: Request) {
     }
 
     const provider = body.provider as AiProvider
-    if (provider !== 'openai' && provider !== 'anthropic') {
+    // Guarda gêmea da de /api/ai/config — as duas têm de aceitar os
+    // MESMOS provedores, senão o "Testar chave" recusa o que o seletor
+    // da tela acabou de oferecer (mordeu com o gemini, revisão 941).
+    if (provider !== 'openai' && provider !== 'anthropic' && provider !== 'gemini') {
       return NextResponse.json(
-        { error: 'provider must be "openai" or "anthropic"' },
+        { error: 'provider must be "openai", "anthropic" or "gemini"' },
         { status: 400 },
       )
     }

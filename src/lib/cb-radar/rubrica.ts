@@ -15,7 +15,8 @@
 import { removerAssinatura } from '@/lib/assinatura/assinatura'
 import type { JsonSchema } from '@/lib/ai/structured'
 import type { MetricasDaConversa } from './metricas'
-import { formatarDuracaoUtil } from './horario-comercial'
+import { formatarDuracaoUtil, horaSp } from './horario-comercial'
+import { URGENCIAS, type Urgencia } from './ordenacao'
 
 // Tetos do transcrito. A maior conversa real tem ~208 mensagens; os tetos
 // existem para o dia em que uma não for assim — mantendo o FIM (o recente
@@ -23,8 +24,6 @@ import { formatarDuracaoUtil } from './horario-comercial'
 const TETO_MENSAGENS = 200
 const TETO_CHARS_POR_MENSAGEM = 500
 const TETO_CHARS_TOTAL = 60_000
-
-const OFFSET_SP_MS = -3 * 3_600_000
 
 export interface MensagemParaTranscrito {
   id: string
@@ -52,13 +51,22 @@ function rotulo(senderType: MensagemParaTranscrito['senderType']): string {
   return 'Equipe'
 }
 
-function horaSp(d: Date): string {
-  const w = new Date(d.getTime() + OFFSET_SP_MS)
-  const dd = String(w.getUTCDate()).padStart(2, '0')
-  const mm = String(w.getUTCMonth() + 1).padStart(2, '0')
-  const hh = String(w.getUTCHours()).padStart(2, '0')
-  const mi = String(w.getUTCMinutes()).padStart(2, '0')
-  return `${dd}/${mm} ${hh}:${mi}`
+/**
+ * Normaliza o texto de UMA mensagem para o transcrito.
+ *
+ * - A assinatura `*Nome:*` sai SÓ das mensagens da equipe/robô (923) —
+ *   cliente que abre com `*URGENTE:*` casa a mesma regex, e apagar isso
+ *   perderia a ênfase que o Radar existe para pegar, além de fazer o
+ *   trecho da evidência divergir do que está no inbox.
+ * - ⚠️ Quebra de linha vira "⏎": o transcrito usa "\n" como delimitador e
+ *   "#N [hora] Rótulo:" como moldura — um cliente que digite a moldura no
+ *   meio de uma mensagem de duas linhas fabricaria uma fala que a equipe
+ *   nunca disse, e o parser de evidências a aceitaria (o índice existe).
+ */
+function limparTexto(m: MensagemParaTranscrito): string {
+  const bruto =
+    m.senderType === 'customer' ? m.texto : (removerAssinatura(m.texto) ?? '')
+  return bruto.replace(/\s*\n+\s*/g, ' ⏎ ').trim()
 }
 
 /**
@@ -69,7 +77,11 @@ function horaSp(d: Date): string {
  */
 export function montarTranscrito(mensagens: MensagemParaTranscrito[]): Transcrito {
   const ordenadas = [...mensagens]
-    .filter((m) => m.texto && m.texto.trim())
+    .map((m) => ({ ...m, texto: limparTexto(m) }))
+    // Depois da limpeza: mensagem que era SÓ assinatura vira vazia e sai —
+    // senão entrava no transcrito como linha numerada em branco, citável
+    // como "evidência" que renderiza "" na tela.
+    .filter((m) => m.texto)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
 
   const recorte = ordenadas.slice(-TETO_MENSAGENS)
@@ -82,11 +94,10 @@ export function montarTranscrito(mensagens: MensagemParaTranscrito[]): Transcrit
   // mensagens mais ANTIGAS, nunca as recentes.
   for (let i = recorte.length - 1; i >= 0; i--) {
     const m = recorte[i]
-    const textoLimpo = (removerAssinatura(m.texto) ?? '').trim()
     const texto =
-      textoLimpo.length > TETO_CHARS_POR_MENSAGEM
-        ? `${textoLimpo.slice(0, TETO_CHARS_POR_MENSAGEM)}…`
-        : textoLimpo
+      m.texto.length > TETO_CHARS_POR_MENSAGEM
+        ? `${m.texto.slice(0, TETO_CHARS_POR_MENSAGEM)}…`
+        : m.texto
     const linha = `[${horaSp(m.createdAt)}] ${rotulo(m.senderType)}: ${texto}`
     if (total + linha.length > TETO_CHARS_TOTAL && linhas.length > 0) {
       cortadas += i + 1
@@ -123,7 +134,7 @@ export const RADAR_SCHEMA: JsonSchema = {
       type: 'string',
       description: 'Resumo objetivo do que aconteceu na conversa, em até 3 frases, em português.',
     },
-    urgencia: { type: 'string', enum: ['nenhuma', 'baixa', 'media', 'alta'] },
+    urgencia: { type: 'string', enum: [...URGENCIAS] },
     urgencia_motivo: {
       type: 'string',
       description: 'Por que é urgente, em uma frase. Vazio quando urgencia = nenhuma.',
@@ -186,6 +197,10 @@ export interface ContextoDoPrompt {
   metricas: MetricasDaConversa
   mensagensSemTexto: number
   processosPorRegex: string[]
+  /** Tamanho REAL da janela analisada (o worker manda a dele) — o prompt
+   *  interpola em vez de afirmar "7 dias" de cor: mudar a janela sem
+   *  mudar o texto faria o modelo julgar 14 dias achando que vê 7. */
+  janelaDias: number
 }
 
 /** O prompt fixo (cacheável) + o conteúdo variável da conversa. */
@@ -195,7 +210,7 @@ export function montarPromptDoRadar(ctx: ContextoDoPrompt): {
 } {
   const systemPrompt = [
     'Você é um auditor de qualidade de atendimento de um escritório de advocacia brasileiro que atende clientes por WhatsApp. ' +
-      'Você recebe o transcrito de UMA conversa (janela dos últimos 7 dias) com linhas numeradas (#1, #2, …) e responde APENAS o JSON pedido, com todos os textos em português.',
+      `Você recebe o transcrito de UMA conversa (janela dos últimos ${ctx.janelaDias} dias) com linhas numeradas (#1, #2, …) e responde APENAS o JSON pedido, com todos os textos em português.`,
     'Rubrica da nota (0–10): parta de 10 e desconte por — demora injustificada de resposta em horário comercial; pedido do cliente ignorado ou respondido pela metade; tom seco, impaciente ou desatento; falta de proatividade (não confirmar recebimento, não dar prazo, não fazer follow-up prometido). ' +
       'Os tempos de resposta já calculados (em horas ÚTEIS, seg–sex 08h–19h) vêm nos metadados — use-os; não estime tempos por conta própria. ' +
       'Nota alta (9–10) é atendimento exemplar; 7–8 é bom com deslizes; 5–6 é mediano; abaixo de 5 há falha clara. Conversa sem interação suficiente para julgar (só uma saudação, por exemplo) recebe nota justa pelo pouco que há, sem punir o que não aconteceu.',
@@ -243,7 +258,7 @@ export interface Evidencia {
 export interface AnaliseInterpretada {
   nota: number | null
   resumo: string
-  urgencia: 'nenhuma' | 'baixa' | 'media' | 'alta'
+  urgencia: Urgencia
   urgenciaMotivo: string
   urgenciaEvidencias: Evidencia[]
   insatisfacao: boolean
@@ -311,8 +326,8 @@ export function interpretarAnalise(
   const urgenciaEvidencias = evidencias(o.urgencia_evidencias)
   const urgenciaCrua =
     typeof o.urgencia === 'string' &&
-    ['nenhuma', 'baixa', 'media', 'alta'].includes(o.urgencia)
-      ? (o.urgencia as AnaliseInterpretada['urgencia'])
+    (URGENCIAS as readonly string[]).includes(o.urgencia)
+      ? (o.urgencia as Urgencia)
       : 'nenhuma'
   let urgencia = urgenciaCrua
   if (urgencia !== 'nenhuma' && urgenciaEvidencias.length === 0) {

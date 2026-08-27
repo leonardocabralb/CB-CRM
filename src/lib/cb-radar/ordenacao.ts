@@ -9,8 +9,21 @@
 // entra como BÔNUS, não como corte: recente sobe, antigo não some.
 // ============================================================
 
-export type Urgencia = 'nenhuma' | 'baixa' | 'media' | 'alta'
-export type EstadoDoInsight = 'aberto' | 'tratado' | 'descartado'
+// As DUAS listas canônicas destes enums no TypeScript — rota, rubrica e
+// tela derivam daqui (o CHECK da 941 é o espelho no banco). Valor novo
+// entra AQUI + migration no CHECK; redeclarar por camada era o jeito de
+// a rota recusar um valor que o banco aceita.
+export const URGENCIAS = ['nenhuma', 'baixa', 'media', 'alta'] as const
+export type Urgencia = (typeof URGENCIAS)[number]
+
+export const ESTADOS_DO_INSIGHT = ['aberto', 'tratado', 'descartado'] as const
+export type EstadoDoInsight = (typeof ESTADOS_DO_INSIGHT)[number]
+
+/** A janela do Radar. Mora AQUI (módulo puro, seguro no cliente) porque
+ *  worker E painel precisam dela — o painel esconde insight de conversa
+ *  que saiu da janela, senão um "aguardando" de março continuaria vivo e
+ *  crescendo na tela em agosto. */
+export const JANELA_DIAS = 7
 
 /** Abaixo disso, "aguardando resposta" ainda não é pendência — meia hora
  *  útil de fila é operação normal, não sinal. */
@@ -67,14 +80,24 @@ export function ordenarPorSeveridade<T>(
   agora: Date,
 ): T[] {
   const rank = (e: EstadoDoInsight) => (e === 'aberto' ? 0 : 1)
-  return [...itens].sort((a, b) => {
-    const ia = chave(a)
-    const ib = chave(b)
-    if (rank(ia.estado) !== rank(ib.estado)) return rank(ia.estado) - rank(ib.estado)
-    const diff = pontuacaoDeSeveridade(ib, agora) - pontuacaoDeSeveridade(ia, agora)
-    if (diff !== 0) return diff
-    return (ib.ultimaAtividade?.getTime() ?? 0) - (ia.ultimaAtividade?.getTime() ?? 0)
-  })
+  // Decora UMA vez por item antes de ordenar (transformada de Schwartz):
+  // `chave` roda `segundosUteisEntre` (laço dia a dia) — dentro do
+  // comparador ela executaria ~2× por comparação, milhares de vezes numa
+  // lista de 200.
+  return itens
+    .map((item) => {
+      const ord = chave(item)
+      return {
+        item,
+        rank: rank(ord.estado),
+        score: pontuacaoDeSeveridade(ord, agora),
+        atividade: ord.ultimaAtividade?.getTime() ?? 0,
+      }
+    })
+    .sort(
+      (a, b) => a.rank - b.rank || b.score - a.score || b.atividade - a.atividade,
+    )
+    .map((d) => d.item)
 }
 
 export interface CartoesDoRadar {

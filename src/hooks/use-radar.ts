@@ -12,27 +12,23 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useAuth } from '@/hooks/use-auth';
 import { createClient } from '@/lib/supabase/client';
 import type {
   EstadoDoInsight,
   Urgencia,
 } from '@/lib/cb-radar/ordenacao';
-import type { Evidencia } from '@/lib/cb-radar/rubrica';
+import type { AnaliseInterpretada } from '@/lib/cb-radar/rubrica';
 
-/** O JSON gravado em `detalhes` pelo worker. */
+/** O JSON gravado em `detalhes` pelo worker. `analise` é o MESMO tipo
+ *  que o parser da rubrica devolve — redeclarar os campos aqui fazia um
+ *  sinal novo ser gravado pelo worker e nunca aparecer na tela, sem o
+ *  TypeScript acusar nada. */
 export interface DetalhesDoInsight {
   sem_ia?: boolean;
+  janela_cortada?: boolean;
   processos?: string[];
-  analise?: {
-    urgenciaMotivo?: string;
-    urgenciaEvidencias?: Evidencia[];
-    insatisfacaoMotivo?: string;
-    insatisfacaoEvidencias?: Evidencia[];
-    pedidosNaoAtendidos?: { pedido: string; evidencias: Evidencia[] }[];
-    mencaoProcessoEvidencias?: Evidencia[];
-    pontosDeAtencao?: { titulo: string; detalhe: string; evidencias: Evidencia[] }[];
-    sinaisDescartados?: number;
-  } | null;
+  analise?: AnaliseInterpretada | null;
 }
 
 export interface InsightDaConta {
@@ -76,46 +72,71 @@ export interface RadarDaConta {
    *  "está tudo tratado". */
   falhou: boolean;
   estourouOTeto: boolean;
+  /**
+   * `cb_agendador_batimento.ultimo_ciclo_radar` (941). O epoch semeado
+   * significa "o ciclo NUNCA rodou" — é o que deixa a tela dizer "o
+   * agendador não está batendo aqui" em vez de um vazio genérico.
+   * `undefined` = a leitura falhou/não voltou (não afirmar nada).
+   */
+  ultimoCicloRadar: string | undefined;
   recarregar: () => void;
 }
 
 export function useRadar(): RadarDaConta {
+  const { accountId } = useAuth();
   const [insights, setInsights] = useState<InsightDaConta[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [falhou, setFalhou] = useState(false);
   const [estourouOTeto, setEstourouOTeto] = useState(false);
+  const [ultimoCicloRadar, setUltimoCicloRadar] = useState<string | undefined>(undefined);
   const vivoRef = useRef(true);
   const geracaoRef = useRef(0);
 
   const buscar = useCallback(async () => {
+    if (!accountId) return;
     const minhaGeracao = ++geracaoRef.current;
     const supabase = createClient();
 
-    const { data, error, count } = await supabase
-      .from('cb_conversation_insights')
-      .select(SELECT_COM_CONVERSA, { count: 'exact' })
-      .order('analisado_em', { ascending: false, nullsFirst: false })
-      .limit(TETO);
+    const [lista, batimento] = await Promise.all([
+      supabase
+        .from('cb_conversation_insights')
+        .select(SELECT_COM_CONVERSA, { count: 'exact' })
+        // O recorte já viria da RLS; o `.eq` explícito existe para o
+        // planner usar o índice (account_id, analisado_em DESC) da 941 —
+        // sem a coluna-líder na consulta ele não serve nem para o ORDER.
+        .eq('account_id', accountId)
+        .order('analisado_em', { ascending: false, nullsFirst: false })
+        .limit(TETO),
+      supabase
+        .from('cb_agendador_batimento')
+        .select('ultimo_ciclo_radar')
+        .eq('id', true)
+        .maybeSingle(),
+    ]);
 
     if (!vivoRef.current || geracaoRef.current !== minhaGeracao) return;
 
-    if (error) {
+    if (lista.error) {
       console.error('Falha ao carregar o Radar:', {
-        message: error.message,
-        details: error.details,
-        code: error.code,
+        message: lista.error.message,
+        details: lista.error.details,
+        code: lista.error.code,
       });
       setFalhou(true);
       setCarregando(false);
       return;
     }
 
-    const linhas = (data ?? []) as unknown as InsightDaConta[];
+    const linhas = (lista.data ?? []) as unknown as InsightDaConta[];
     setFalhou(false);
     setInsights(linhas);
-    setEstourouOTeto(linhas.length < (count ?? linhas.length));
+    setEstourouOTeto(linhas.length < (lista.count ?? linhas.length));
+    // Best-effort: sem o batimento a tela só perde o aviso de saúde.
+    setUltimoCicloRadar(
+      (batimento.data as { ultimo_ciclo_radar?: string } | null)?.ultimo_ciclo_radar,
+    );
     setCarregando(false);
-  }, []);
+  }, [accountId]);
 
   useEffect(() => {
     vivoRef.current = true;
@@ -146,7 +167,7 @@ export function useRadar(): RadarDaConta {
     void buscar();
   }, [buscar]);
 
-  return { insights, carregando, falhou, estourouOTeto, recarregar };
+  return { insights, carregando, falhou, estourouOTeto, ultimoCicloRadar, recarregar };
 }
 
 // ------------------------------------------------------------

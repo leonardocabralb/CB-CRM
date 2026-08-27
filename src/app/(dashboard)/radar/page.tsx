@@ -16,7 +16,7 @@
 //     úteis — o valor gravado no banco envelhece entre análises.
 // ============================================================
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -47,6 +47,7 @@ import {
   segundosUteisEntre,
 } from '@/lib/cb-radar/horario-comercial';
 import {
+  JANELA_DIAS,
   LIMIAR_PENDENCIA_SEG,
   ordenarPorSeveridade,
   resumirCartoes,
@@ -57,72 +58,115 @@ import { cn } from '@/lib/utils';
 
 type Aba = 'abertos' | 'todos';
 
-/** Segundos úteis aguardando AGORA (null = ninguém aguardando). */
-function aguardandoSegUteis(i: InsightDaConta, agora: Date): number | null {
-  if (!i.aguardando_desde) return null;
-  return segundosUteisEntre(new Date(i.aguardando_desde), agora);
-}
+const MS_JANELA = JANELA_DIAS * 86_400_000;
 
-function paraOrdenacao(i: InsightDaConta, agora: Date): InsightParaOrdenacao {
-  return {
-    urgencia: i.urgencia,
-    insatisfacao: i.insatisfacao,
-    pedidosAbertos: i.pedidos_abertos,
-    aguardandoSegUteis: aguardandoSegUteis(i, agora),
-    nota: i.nota,
-    estado: i.estado,
-    ultimaAtividade: i.conversation?.last_message_at
-      ? new Date(i.conversation.last_message_at)
-      : null,
-  };
+/** Os motivos tipados de `ErroDoRadar` — cada um tem chave `erro_<motivo>`
+ *  no dicionário; slug desconhecido cai no `acaoFalhou` genérico. */
+const MOTIVOS_DE_ERRO = [
+  'conversa_nao_encontrada',
+  'grupo_fora_do_radar',
+  'conversa_sem_canal',
+  'radar_desligado_no_canal',
+  'ja_em_analise',
+] as const;
+
+/** Um insight decorado UMA vez por render com tudo que ordenação, cartões
+ *  e a própria linha precisam — a transformada de Schwartz que evita
+ *  recalcular `segundosUteisEntre` por comparação. */
+interface Decorado {
+  insight: InsightDaConta;
+  ord: InsightParaOrdenacao;
+  aguardandoSeg: number | null;
 }
 
 export default function RadarPage() {
   const t = useTranslations('Radar');
-  const { insights, carregando, falhou, estourouOTeto, recarregar } = useRadar();
+  const { insights, carregando, falhou, estourouOTeto, ultimoCicloRadar, recarregar } =
+    useRadar();
   const { channels } = useChannels();
   const podeAgir = useCan('send-messages');
   const { ocupada, mudarEstado, reanalisar } = useAcoesDoRadar(recarregar);
   const [canalFiltro, setCanalFiltro] = useState<string | null>(null);
   const [aba, setAba] = useState<Aba>('abertos');
   const [expandida, setExpandida] = useState<string | null>(null);
+  // Relógio vivo: numa aba deixada aberta "de olho", sem o tick os
+  // cartões e o "aguardando há X" congelariam no instante do último
+  // render — a tela contradizia a si mesma na fronteira do limiar.
+  const [, setTique] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTique((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const mostrarCanal = channels.length > 1;
-  // O "agora" da pendência ao vivo e do bônus de 72h. Por render, sem
-  // memo: a lista tem ≤200 linhas e recomputar é mais barato que manter
-  // um relógio consistente entre memos.
+  // UM relógio por render, para tudo — três `new Date()` espalhados em
+  // memos davam três respostas diferentes na mesma tela.
   const agora = new Date();
 
-  const doCanal = useMemo(
-    () =>
-      canalFiltro
-        ? insights.filter((i) => i.channel_id === canalFiltro)
-        : insights,
-    [insights, canalFiltro],
-  );
+  // Opt-in vale também na LEITURA: canal com Radar desligado sai da tela
+  // (o caso nomeado na 941 é o canal pessoal ligado por engano — desligar
+  // tem de sumir com as análises antigas dele, não só parar as novas).
+  const canalDesligado = new Map(channels.map((c) => [c.id, c.radar_enabled !== true]));
 
-  const cartoes = useMemo(() => {
-    const ag = new Date();
-    return resumirCartoes(doCanal.map((i) => paraOrdenacao(i, ag)));
-  }, [doCanal]);
+  const decorados: Decorado[] = [];
+  for (const i of insights) {
+    // Fora da janela do Radar = fora do painel, a MESMA régua do worker:
+    // sem este corte, um "aguardando" de março seguiria vivo (e
+    // crescendo ao vivo) na tela em agosto, dentro de um cartão rotulado
+    // "7 dias".
+    const atividadeMs = i.conversation?.last_message_at
+      ? Date.parse(i.conversation.last_message_at)
+      : null;
+    if (!atividadeMs || agora.getTime() - atividadeMs > MS_JANELA) continue;
+    if (i.channel_id && canalDesligado.get(i.channel_id)) continue;
+    if (canalFiltro && i.channel_id !== canalFiltro) continue;
 
-  const ordenados = useMemo(() => {
-    const ag = new Date();
-    return ordenarPorSeveridade(doCanal, (i) => paraOrdenacao(i, ag), ag);
-  }, [doCanal]);
-  const visiveis = useMemo(
-    () => (aba === 'abertos' ? ordenados.filter((i) => i.estado === 'aberto') : ordenados),
-    [ordenados, aba],
-  );
-  const nAbertos = useMemo(
-    () => doCanal.filter((i) => i.estado === 'aberto').length,
-    [doCanal],
-  );
+    const aguardandoSeg = i.aguardando_desde
+      ? segundosUteisEntre(new Date(i.aguardando_desde), agora)
+      : null;
+    decorados.push({
+      insight: i,
+      aguardandoSeg,
+      ord: {
+        urgencia: i.urgencia,
+        insatisfacao: i.insatisfacao,
+        pedidosAbertos: i.pedidos_abertos,
+        aguardandoSegUteis: aguardandoSeg,
+        nota: i.nota,
+        estado: i.estado,
+        ultimaAtividade: new Date(atividadeMs),
+      },
+    });
+  }
+
+  const cartoes = resumirCartoes(decorados.map((d) => d.ord));
+  const ordenados = ordenarPorSeveridade(decorados, (d) => d.ord, agora);
+  const visiveis =
+    aba === 'abertos' ? ordenados.filter((d) => d.insight.estado === 'aberto') : ordenados;
+  const nAbertos = decorados.filter((d) => d.insight.estado === 'aberto').length;
+
+  // Saúde do ciclo: o epoch semeado na 941 = "nunca rodou" (o agendador
+  // da VPS ainda não bate na rota — o passo manual do runbook); parado
+  // além de 3 ciclos = quebrou depois de funcionar.
+  const cicloTs = ultimoCicloRadar ? Date.parse(ultimoCicloRadar) : NaN;
+  const cicloRecado = !Number.isFinite(cicloTs)
+    ? null
+    : cicloTs < Date.parse('2001-01-01T00:00:00Z')
+      ? ({ tipo: 'nunca' } as const)
+      : agora.getTime() - cicloTs > 45 * 60_000
+        ? ({ tipo: 'parado', min: Math.round((agora.getTime() - cicloTs) / 60_000) } as const)
+        : null;
 
   const agir = useCallback(
     async (acao: Promise<{ ok: boolean; erro?: string }>) => {
       const r = await acao;
-      if (!r.ok) toast.error(t('acaoFalhou', { erro: r.erro ?? '?' }));
+      if (r.ok) return;
+      const erro = r.erro ?? '?';
+      toast.error(
+        (MOTIVOS_DE_ERRO as readonly string[]).includes(erro)
+          ? t(`erro_${erro}`)
+          : t('acaoFalhou', { erro }),
+      );
     },
     [t],
   );
@@ -192,6 +236,20 @@ export default function RadarPage() {
         <p className="text-xs text-muted-foreground">{t('estourouOTeto')}</p>
       )}
 
+      {/* Saúde do ciclo — sem isto, "agendador parado" e "semana calma"
+          pintavam a mesma tela, e o passo manual da VPS (runbook) é
+          exatamente o que mais provavelmente falta num deploy novo. */}
+      {cicloRecado && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p>
+            {cicloRecado.tipo === 'nunca'
+              ? t('cicloNuncaRodou')
+              : t('cicloParado', { min: cicloRecado.min })}
+          </p>
+        </div>
+      )}
+
       <div className="flex items-center gap-1 border-b border-border">
         {(['abertos', 'todos'] as const).map((opcao) => (
           <button
@@ -207,7 +265,7 @@ export default function RadarPage() {
           >
             {opcao === 'abertos'
               ? t('tab_abertos', { n: nAbertos })
-              : t('tab_todos', { n: doCanal.length })}
+              : t('tab_todos', { n: decorados.length })}
           </button>
         ))}
       </div>
@@ -218,7 +276,10 @@ export default function RadarPage() {
         </div>
       ) : visiveis.length === 0 && !falhou ? (
         <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-          {insights.length === 0 ? (
+          {/* ⚠️ A base é a lista FILTRADA (decorados), não a bruta: com o
+              filtro num canal nunca analisado, a bruta dizia "tudo
+              tratado" — afirmando em dia um canal que nunca rodou. */}
+          {decorados.length === 0 ? (
             <>
               <p className="font-medium text-foreground">{t('vazioTitulo')}</p>
               <p className="mx-auto mt-2 max-w-md">{t('vazioNuncaAnalisado')}</p>
@@ -229,11 +290,11 @@ export default function RadarPage() {
         </div>
       ) : (
         <ul className="space-y-2">
-          {visiveis.map((i) => (
+          {visiveis.map(({ insight: i, aguardandoSeg }) => (
             <LinhaDoRadar
               key={i.id}
               insight={i}
-              agora={agora}
+              aguardandoSeg={aguardandoSeg}
               mostrarCanal={mostrarCanal}
               canais={channels}
               podeAgir={podeAgir}
@@ -306,7 +367,7 @@ function CorDaNota(nota: number): string {
 
 function LinhaDoRadar({
   insight: i,
-  agora,
+  aguardandoSeg,
   mostrarCanal,
   canais,
   podeAgir,
@@ -317,7 +378,8 @@ function LinhaDoRadar({
   aoReanalisar,
 }: {
   insight: InsightDaConta;
-  agora: Date;
+  /** Já em segundos ÚTEIS, calculado uma vez no passe decorado do pai. */
+  aguardandoSeg: number | null;
   mostrarCanal: boolean;
   canais: CbChannel[];
   podeAgir: boolean;
@@ -330,7 +392,6 @@ function LinhaDoRadar({
   const t = useTranslations('Radar');
   const contato = i.conversation?.contact;
   const nome = contato?.name || contato?.phone || t('contatoSemNome');
-  const aguardandoSeg = aguardandoSegUteis(i, agora);
   const detalhes = i.detalhes;
   const analise = detalhes?.analise ?? null;
   const processos = detalhes?.processos ?? [];
@@ -428,6 +489,7 @@ function LinhaDoRadar({
             {i.mensagens_sem_texto > 0 && (
               <> · {t('audioAviso', { count: i.mensagens_sem_texto })}</>
             )}
+            {detalhes?.janela_cortada && <> · {t('janelaCortada')}</>}
             {i.analisado_em && (
               <>
                 {' · '}

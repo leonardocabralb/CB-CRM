@@ -43,20 +43,23 @@ agendador (VPS, laço lento 900s)
   header `x-goog-api-key`, nunca na URL. Embeddings (RAG) continuam
   exigindo chave OpenAI.
 - **Ciclo de vida do sinal**: aberto → tratado | descartado (rota PATCH,
-  papel `agent`+). Reanálise com mensagem nova **reseta para aberto**.
-  Descartado = dado de calibração (falso positivo).
+  papel `agent`+). `tratado` reabre SÓ com mensagem **do cliente**
+  posterior ao tratamento (a resposta do operador não reabre, e um clique
+  durante a análise não é atropelado); `descartado` **nunca** reabre
+  sozinho — é o dado de calibração (falso positivo) e volta só pelo botão.
 - **Migration 941**: tabela + índices, `messages (conversation_id,
   created_at)`, `cb_channels.radar_enabled` (default FALSE),
   `'gemini'`/`'radar'` nos CHECKs, `ultimo_ciclo_radar` no batimento.
 
 ## Para LIGAR em produção (runbook)
 
-1. **Deploy normal** (merge → push main). ⚠️ O CI **não** relê o
-   `command` do serviço `agendador` — a inclusão de `cb/radar` no laço
-   lento exige, uma vez, na VPS:
-   `export CRM_IMAGE=<imagem atual> && docker stack deploy -c docker-stack.yml crm`
-   (ver docs/DEPLOY-VPS.md §6). Sem isso, só o botão "Reanalisar agora"
-   alimenta o Radar.
+1. **Deploy normal** (merge → push main). ✅ **O passo manual da VPS JÁ
+   FOI FEITO** (2026-08-27): o `agendador` foi reimplantado com `cb/radar`
+   no laço lento, com a imagem do `crm_crm` pinada no digest vigente
+   (conferido idêntico antes/depois). Até o merge, o curl recebe 404
+   inofensivo; no instante em que o CI publicar a imagem nova, o ciclo
+   passa a rodar sozinho. Backup do stack file antigo em
+   `/root/docker-stack.yml.bak-2026-08-27`.
 2. **Chave de IA**: Configurações → Assistente de IA → provedor Gemini
    (ou OpenAI/Anthropic), modelo (sugerido `gemini-3.7-flash`), chave do
    **tier pago** (a faixa gratuita do Google pode usar os dados) e

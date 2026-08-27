@@ -2175,7 +2175,7 @@
     },
     "aiConfig": {
       "title": "Agent setup",
-      "description": "Bring your own OpenAI or Anthropic key. wacrm calls the provider directly with your key — no per-seat AI fees, and your data stays yours. This powers AI-drafted replies in the inbox, the auto-reply bot, and the Playground.",
+      "description": "Bring your own OpenAI, Anthropic or Google (Gemini) key. wacrm calls the provider directly with your key — no per-seat AI fees, and your data stays yours. This powers AI-drafted replies in the inbox, the auto-reply bot, the Playground and the Service Radar.",
       "adminOnlyConfig": "Only admins and owners can change the AI configuration.",
       "loadFailed": "Failed to load AI configuration",
       "providerAndKey": "Provider & key",
@@ -2313,6 +2313,7 @@
       "totalTokens": "Total tokens",
       "llmCalls": "LLM calls",
       "autoReply": "Auto-reply",
+      "radar": "Radar",
       "drafts": "Drafts",
       "tokensPerDay": "Tokens per day",
       "byModel": "By model",
@@ -2512,7 +2513,15 @@
     "descartar": "Dismiss",
     "descartarTitulo": "Dismiss = the AI got it wrong; this calibrates the Radar",
     "reabrir": "Reopen",
-    "reanalisar": "Re-analyze"
+    "reanalisar": "Re-analyze",
+    "erro_conversa_nao_encontrada": "Conversation not found.",
+    "erro_grupo_fora_do_radar": "Groups are outside the Radar.",
+    "erro_conversa_sem_canal": "This conversation has no channel on record — the Radar can't tell which number it belongs to.",
+    "erro_radar_desligado_no_canal": "The Radar is off for this number. Enable it under Settings → Connections → Configure.",
+    "erro_ja_em_analise": "This conversation is already being analyzed — try again in a few seconds.",
+    "cicloNuncaRodou": "The Radar's automatic cycle has never run. The VPS scheduler isn't hitting the new route yet — that's the manual runbook step (docs/PLANO-radar-de-atendimento.md). Until then, use \"Re-analyze\" on conversations.",
+    "cicloParado": "The Radar's automatic cycle has been stopped for {min} min. The analyses below may be stale.",
+    "janelaCortada": "conversation larger than the cap — the window's oldest messages were left out"
   },
   "Scheduled": {
     "title": "Scheduled messages",

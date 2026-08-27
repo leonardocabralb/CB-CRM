@@ -109,6 +109,21 @@ function parseJsonOuErro(raw: string, provider: string): unknown {
 }
 
 /**
+ * ⚠️ Resposta CORTADA pelo teto de tokens tem de virar erro EXPLÍCITO.
+ * Sem esta checagem, cada provedor falha de um jeito pior que o outro:
+ * OpenAI/Gemini devolvem JSON pela metade → `invalid_json`, que aponta
+ * para "o modelo quebrou" quando o problema é o teto local; e o
+ * Anthropic devolve um `tool_use.input` PARCIAL porém válido — que
+ * passaria como análise concluída com as listas silenciosamente vazias.
+ */
+function erroDeCorte(provider: string): AiError {
+  return new AiError(
+    `${provider} hit the max output token limit before finishing the structured response — raise maxOutputTokens or shrink the input.`,
+    { code: 'output_truncated' },
+  )
+}
+
+/**
  * Gera um objeto JSON validado pelo provedor configurado na conta.
  * Lança `AiError` em qualquer falha (rede, chave, JSON inválido) — o
  * chamador decide retentar (o worker do Radar retenta via `tentativas`).
@@ -162,9 +177,12 @@ async function structuredOpenAi(args: StructuredArgs): Promise<StructuredResult>
   if (!res.ok) throw await providerHttpError('OpenAI', res)
 
   const data = (await res.json().catch(() => null)) as {
-    choices?: { message?: { content?: string } }[]
+    choices?: { message?: { content?: string }; finish_reason?: string }[]
     usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
   } | null
+  if (data?.choices?.[0]?.finish_reason === 'length') {
+    throw erroDeCorte('OpenAI')
+  }
   const raw = data?.choices?.[0]?.message?.content
   if (!raw || !raw.trim()) {
     throw new AiError('OpenAI returned an empty structured response.', {
@@ -217,8 +235,14 @@ async function structuredAnthropic(args: StructuredArgs): Promise<StructuredResu
 
   const data = (await res.json().catch(() => null)) as {
     content?: { type?: string; input?: unknown }[]
+    stop_reason?: string
     usage?: { input_tokens?: number; output_tokens?: number }
   } | null
+  if (data?.stop_reason === 'max_tokens') {
+    // O caso mais traiçoeiro dos três: o `input` parcial ainda é um
+    // objeto válido e seguiria adiante como análise "concluída".
+    throw erroDeCorte('Anthropic')
+  }
   const toolUse = data?.content?.find((b) => b.type === 'tool_use')
   if (!toolUse || toolUse.input === undefined || toolUse.input === null) {
     throw new AiError('Anthropic returned no structured tool call.', {
@@ -261,6 +285,9 @@ async function structuredGemini(args: StructuredArgs): Promise<StructuredResult>
   if (!res.ok) throw await providerHttpError('Gemini', res)
 
   const data = (await res.json().catch(() => null)) as GeminiResponse | null
+  if (data?.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+    throw erroDeCorte('Gemini')
+  }
   const raw = geminiText(data)
   if (!raw) {
     throw new AiError('Gemini returned an empty structured response.', {

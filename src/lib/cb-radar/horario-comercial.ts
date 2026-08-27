@@ -17,10 +17,23 @@
 // arquivo é o único a mudar.
 // ============================================================
 
-const OFFSET_MS = -3 * 3_600_000
+/** Exportado para quem mais precisa converter instante → relógio de
+ *  parede de São Paulo (o carimbo das linhas do transcrito, na rubrica).
+ *  Fora deste arquivo, use `horaSp` — não o offset cru. */
+export const OFFSET_SP_MS = -3 * 3_600_000
 const ABRE_HORA = 8
 const FECHA_HORA = 19
 const DIA_MS = 24 * 3_600_000
+
+/** "26/08 14:32" — o instante no relógio de parede de São Paulo. */
+export function horaSp(d: Date): string {
+  const w = new Date(d.getTime() + OFFSET_SP_MS)
+  const dd = String(w.getUTCDate()).padStart(2, '0')
+  const mm = String(w.getUTCMonth() + 1).padStart(2, '0')
+  const hh = String(w.getUTCHours()).padStart(2, '0')
+  const mi = String(w.getUTCMinutes()).padStart(2, '0')
+  return `${dd}/${mm} ${hh}:${mi}`
+}
 
 /**
  * Segundos de expediente entre dois instantes. Zero quando `fim` não é
@@ -29,11 +42,18 @@ const DIA_MS = 24 * 3_600_000
  * e o Postgres carimba `now()` na saída).
  */
 export function segundosUteisEntre(inicio: Date, fim: Date): number {
-  const inicioMs = inicio.getTime() + OFFSET_MS
-  const fimMs = fim.getTime() + OFFSET_MS
+  let inicioMs = inicio.getTime() + OFFSET_SP_MS
+  const fimMs = fim.getTime() + OFFSET_SP_MS
   if (!Number.isFinite(inicioMs) || !Number.isFinite(fimMs) || fimMs <= inicioMs) {
     return 0
   }
+  // O laço abaixo anda um dia por volta. O Radar só mede dentro da janela
+  // de 7 dias, mas esta função roda no navegador por linha por render —
+  // um carimbo corrompido (epoch, por exemplo) custaria ~20 mil voltas
+  // por chamada e travaria a aba. Um ano de teto preserva qualquer uso
+  // legítimo e limita o pior caso.
+  const TETO_MS = 366 * DIA_MS
+  if (fimMs - inicioMs > TETO_MS) inicioMs = fimMs - TETO_MS
 
   let total = 0
   // Cursor na meia-noite (relógio de parede) do dia do início.

@@ -9,21 +9,28 @@
 // Desenho herdado das mensagens agendadas (925–928):
 //   - reivindicação por `status='running'` + `running_desde`;
 //   - recolhedor de linhas travadas no começo de cada ciclo;
-//   - lote pequeno e parada antecipada por tempo (cada conversa é UMA
-//     chamada de rede a um LLM com timeout de 30s — 5 já enche o
-//     maxDuration de 60s da rota).
+//   - lote pequeno e parada antecipada por tempo.
 //
 // Diferença deliberada: aqui retentar é SEGURO (nada sai para o
 // cliente), então falha vira `failed` + `tentativas`, sem análogo de
 // `entrega_incerta`.
+//
+// ⚠️ CERCA DE POSSE em toda escrita pós-claim: os UPDATEs de sucesso e
+// de falha filtram por `status='running'` E `running_desde=<carimbo do
+// próprio claim>`. Sem a cerca, um worker que estourou o tempo e foi
+// "recolhido" aos 10min continuava com direito de escrita e atropelava
+// a análise seguinte da mesma conversa (revisão 2026-08-27).
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { loadAiConfig } from '@/lib/ai/config'
 import { generateStructured } from '@/lib/ai/structured'
 import { logAiUsage } from '@/lib/ai/usage'
+import { aiRequestTimeoutMs } from '@/lib/ai/defaults'
 import type { AiUsage } from '@/lib/ai/types'
+import { CICLO_MINUTOS } from '@/lib/scheduled/display'
 import { calcularMetricas, type MensagemParaMetricas } from './metricas'
+import { JANELA_DIAS } from './ordenacao'
 import { extrairNumerosDeProcesso } from './processos'
 import {
   RADAR_SCHEMA,
@@ -34,20 +41,34 @@ import {
   type MensagemParaTranscrito,
 } from './rubrica'
 
-export const JANELA_DIAS = 7
+export { JANELA_DIAS }
 /** Conversas por ciclo. Bem abaixo dos 20 das agendadas: lá cada item é
  *  um POST à Evolution; aqui é uma geração de LLM. */
 const POR_CICLO = 5
-/** Não reanalisar a mesma conversa antes disso, mesmo com mensagem nova —
- *  o laço lento do agendador bate a cada 15min e sem isso toda conversa
- *  ativa seria reanalisada 4x/hora. */
-const THROTTLE_MS = 30 * 60_000
+/**
+ * Não reanalisar a mesma conversa antes disso, mesmo com mensagem nova.
+ * DERIVADO da cadência real do agendador (o laço lento bate a cada
+ * `CICLO_MINUTOS`): dois ciclos de folga. Amarrar os dois é o que impede
+ * o throttle de virar letra morta se a cadência mudar na VPS.
+ */
+export const THROTTLE_MS = CICLO_MINUTOS * 2 * 60_000
 /** `running` mais velho que isto é worker que morreu no meio. Acima do
- *  pior caso de uma análise (timeout de 30s + escritas). */
+ *  pior caso de uma análise (timeout de rede + escritas). */
 const TRAVADA_MIN = 10
 const TENTATIVAS_MAX = 3
-/** Orçamento padrão do ciclo — folga sob o `maxDuration = 60` da rota. */
+/** Alvo "confortável" do ciclo — a partir daqui, não se COMEÇA item novo. */
 const TEMPO_LIMITE_MS = 45_000
+/**
+ * Teto ABSOLUTO: nenhum item novo começa se `gasto + timeout da chamada`
+ * puder passar disto. O limite real em produção é o `curl -m 120` do
+ * agendador (o `maxDuration` da rota é convenção serverless e NÃO é
+ * aplicado no VPS — o container roda `node server.js`, conferido no
+ * Dockerfile e no serviço em 2026-08-27). 110s deixa folga para as
+ * escritas finais. Importante porque `AI_REQUEST_TIMEOUT_MS` é env livre:
+ * um operador que a suba para acomodar um modelo lento não pode, sem
+ * querer, fazer o ciclo estourar o curl e órfã linhas em `running`.
+ */
+const TETO_ABSOLUTO_MS = 110_000
 const MAX_TOKENS_RADAR = 2048
 const TETO_MENSAGENS_JANELA = 1000
 
@@ -55,6 +76,7 @@ export interface ResultadoDoCiclo {
   candidatas: number
   analisadas: number
   falhas: number
+  puladas: number
   travadasRecolhidas: number
 }
 
@@ -74,6 +96,17 @@ interface InsightExistente {
   tentativas: number
 }
 
+interface Reivindicacao {
+  id: string
+  /** O carimbo que ESTE claim gravou em `running_desde` — a cerca de
+   *  posse de toda escrita subsequente. */
+  claimIso: string
+  /** `tentativas` FRESCO, lido pelo RETURNING do próprio claim — o valor
+   *  do retrato pré-claim pode ter envelhecido (reanálise manual no
+   *  meio) e faria o contador andar para trás. */
+  tentativas: number
+}
+
 /** Um ciclo completo: recolhe travadas, escolhe o lote e analisa. */
 export async function rodarCicloDoRadar(
   admin: SupabaseClient,
@@ -85,6 +118,7 @@ export async function rodarCicloDoRadar(
     candidatas: 0,
     analisadas: 0,
     falhas: 0,
+    puladas: 0,
     travadasRecolhidas: 0,
   }
 
@@ -128,14 +162,31 @@ export async function rodarCicloDoRadar(
   resultado.candidatas = candidatas.length
 
   for (const conversa of candidatas.slice(0, POR_CICLO)) {
-    if (Date.now() - inicioCiclo > tempoLimiteMs) break
+    // Dois relógios: o alvo do ciclo, e o teto absoluto que soma o custo
+    // do item QUE VAI COMEÇAR — conferir só o passado deixava um item
+    // iniciado aos 44s estourar o curl do agendador (revisão 2026-08-27).
+    const gastoMs = Date.now() - inicioCiclo
+    if (gastoMs > tempoLimiteMs) break
+    if (gastoMs + aiRequestTimeoutMs() > TETO_ABSOLUTO_MS) break
+
     const existente = porConversa.get(conversa.id)
-    const reivindicado = await reivindicar(admin, conversa, existente)
-    if (!reivindicado) continue
+    // Reivindicação COM revalidação de throttle: o retrato lá de cima
+    // envelhece (uma reanálise manual pode ter concluído no meio do
+    // ciclo), e a CAS de "ninguém rodando" não substitui a regra de
+    // negócio. A condição extra no próprio UPDATE fecha a janela sem
+    // segunda leitura.
+    const reivindicado = await reivindicar(admin, conversa, existente, {
+      respeitarThrottle: true,
+    })
+    if (!reivindicado) {
+      resultado.puladas += 1
+      continue
+    }
 
     try {
       await analisarConversaReivindicada(admin, {
         insightId: reivindicado.id,
+        claimIso: reivindicado.claimIso,
         conversationId: conversa.id,
         accountId: conversa.account_id,
         channelId: conversa.channel_id,
@@ -145,22 +196,18 @@ export async function rodarCicloDoRadar(
       resultado.falhas += 1
       const motivo = err instanceof Error ? err.message : 'erro desconhecido'
       console.error(`[radar] análise da conversa ${conversa.id} falhou:`, motivo)
-      await admin
-        .from('cb_conversation_insights')
-        .update({
-          status: 'failed',
-          erro: motivo.slice(0, 500),
-          tentativas: (existente?.tentativas ?? 0) + 1,
-          running_desde: null,
-        })
-        .eq('id', reivindicado.id)
+      await marcarFalha(admin, reivindicado, motivo)
     }
   }
 
   return resultado
 }
 
-function precisaDeAnalise(
+/**
+ * Exportada para o teste — as regras daqui já produziram o bug mais caro
+ * da revisão (retentativa infinita) e precisam de regressão coberta.
+ */
+export function precisaDeAnalise(
   conversa: ConversaCandidata,
   insight: InsightExistente | undefined,
   agoraMs: number,
@@ -168,14 +215,19 @@ function precisaDeAnalise(
   if (!insight) return true
   if (insight.status === 'running') return false
 
+  // ⚠️ "Mensagem nova" exige uma MARCA D'ÁGUA REAL. `janela_fim` nulo
+  // significa "nunca completou uma análise" — tratá-lo como "tem coisa
+  // nova" fazia toda linha que só falhou passar por cima do teto de
+  // tentativas e virar retentativa paga a cada ciclo, para sempre
+  // (revisão 2026-08-27: quatro ângulos acharam este bug).
   const temMsgNova =
-    !insight.janela_fim ||
-    (conversa.last_message_at !== null &&
-      conversa.last_message_at > insight.janela_fim)
+    insight.janela_fim !== null &&
+    conversa.last_message_at !== null &&
+    conversa.last_message_at > insight.janela_fim
 
   if (insight.status === 'failed') {
-    // Retentável até o teto; mensagem nova zera a conversa de qualquer
-    // teto — o conteúdo mudou, a falha antiga não conta mais a história.
+    // Retentável até o teto; mensagem nova DE VERDADE zera a régua — o
+    // conteúdo mudou, a falha antiga não conta mais a história.
     return temMsgNova || insight.tentativas < TENTATIVAS_MAX
   }
 
@@ -195,8 +247,17 @@ async function recolherTravadas(admin: SupabaseClient): Promise<number> {
     .from('cb_conversation_insights')
     .select('id, tentativas')
     .eq('status', 'running')
-    .lt('running_desde', corte)
-  if (error || !presas || presas.length === 0) return 0
+    // `running_desde` nulo com status `running` é inalcançável pelo
+    // código — mas se aparecer (escrita manual, versão antiga), `.lt()`
+    // sozinho nunca casa NULL e a linha ficaria presa para sempre.
+    .or(`running_desde.lt.${corte},running_desde.is.null`)
+  if (error) {
+    // "A consulta falhou" ≠ "não havia nada preso": engolir o erro faria
+    // linhas travadas sumirem do Radar em silêncio.
+    console.error('[radar] recolhedor não conseguiu ler as travadas:', error.message)
+    return 0
+  }
+  if (!presas || presas.length === 0) return 0
 
   let recolhidas = 0
   for (const p of presas as { id: string; tentativas: number }[]) {
@@ -210,7 +271,11 @@ async function recolherTravadas(admin: SupabaseClient): Promise<number> {
       })
       .eq('id', p.id)
       .eq('status', 'running')
-    if (!upErr) recolhidas += 1
+    if (upErr) {
+      console.error(`[radar] recolhedor não gravou a travada ${p.id}:`, upErr.message)
+    } else {
+      recolhidas += 1
+    }
   }
   return recolhidas
 }
@@ -219,17 +284,21 @@ async function reivindicar(
   admin: SupabaseClient,
   conversa: ConversaCandidata,
   existente: InsightExistente | undefined,
-): Promise<{ id: string } | null> {
-  const agora = new Date().toISOString()
+  opts: { respeitarThrottle: boolean },
+): Promise<Reivindicacao | null> {
+  const claimIso = new Date().toISOString()
   if (existente) {
-    const { data } = await admin
+    let query = admin
       .from('cb_conversation_insights')
-      .update({ status: 'running', running_desde: agora })
+      .update({ status: 'running', running_desde: claimIso })
       .eq('id', existente.id)
       .neq('status', 'running')
-      .select('id')
-      .maybeSingle()
-    return data ?? null
+    if (opts.respeitarThrottle) {
+      const corte = new Date(Date.now() - THROTTLE_MS).toISOString()
+      query = query.or(`analisado_em.is.null,analisado_em.lt.${corte}`)
+    }
+    const { data } = await query.select('id, tentativas').maybeSingle()
+    return data ? { id: data.id, claimIso, tentativas: data.tentativas ?? 0 } : null
   }
   // Linha nova. `ignoreDuplicates` + índice ÚNICO TOTAL (941): se outro
   // ciclo inseriu no meio-tempo, volta vazio e este pula a conversa.
@@ -241,13 +310,43 @@ async function reivindicar(
         account_id: conversa.account_id,
         channel_id: conversa.channel_id,
         status: 'running',
-        running_desde: agora,
+        running_desde: claimIso,
       },
       { onConflict: 'conversation_id', ignoreDuplicates: true },
     )
     .select('id')
     .maybeSingle()
-  return data ?? null
+  return data ? { id: data.id, claimIso, tentativas: 0 } : null
+}
+
+/** O UPDATE de falha, com a cerca de posse. Três chamadores (ciclo,
+ *  reanálise manual e — sem cerca, porque ele É o ladrão — o recolhedor
+ *  tem o dele próprio); uma política de retentativa só. */
+async function marcarFalha(
+  admin: SupabaseClient,
+  claim: Reivindicacao,
+  motivo: string,
+): Promise<void> {
+  const { data, error } = await admin
+    .from('cb_conversation_insights')
+    .update({
+      status: 'failed',
+      erro: motivo.slice(0, 500),
+      tentativas: claim.tentativas + 1,
+      running_desde: null,
+    })
+    .eq('id', claim.id)
+    .eq('status', 'running')
+    .eq('running_desde', claim.claimIso)
+    .select('id')
+    .maybeSingle()
+  if (error) {
+    console.error(`[radar] não gravou a falha do insight ${claim.id}:`, error.message)
+  } else if (!data) {
+    // Outro ator (recolhedor + novo claim) assumiu a linha no meio-tempo;
+    // o estado dele é mais novo que o nosso erro — não atropelar.
+    console.warn(`[radar] falha do insight ${claim.id} descartada: linha reivindicada por outro worker`)
+  }
 }
 
 interface MensagemDaJanela {
@@ -262,14 +361,15 @@ interface MensagemDaJanela {
  * A análise de UMA conversa já reivindicada. Grava `done` no sucesso;
  * quem chama trata o erro (ciclo marca `failed`, rota devolve 502).
  *
- * Sem IA configurada a análise NÃO falha: grava as métricas
- * determinísticas e os processos por regex — o painel funciona no dia 1,
- * sem chave, e diz o que falta.
+ * Sem chave de IA a análise NÃO falha: grava as métricas determinísticas
+ * e os processos por regex — o painel funciona no dia 1, sem chave, e
+ * diz o que falta.
  */
 export async function analisarConversaReivindicada(
   admin: SupabaseClient,
   args: {
     insightId: string
+    claimIso: string
     conversationId: string
     accountId: string
     channelId: string | null
@@ -278,6 +378,11 @@ export async function analisarConversaReivindicada(
   const janelaFim = new Date()
   const janelaInicio = new Date(janelaFim.getTime() - JANELA_DIAS * 86_400_000)
 
+  // ⚠️ DESC + reverse: com mais mensagens que o teto, quem cai é o
+  // COMEÇO da janela, nunca o fim — o recente é o que decide urgência e
+  // pendência. Com ASC, o corte jogava fora exatamente as mensagens de
+  // hoje e `aguardando_desde` afirmava "ninguém aguardando" numa conversa
+  // esperando resposta (revisão 2026-08-27: quatro ângulos).
   const { data: mensagens, error: msgErr } = await admin
     .from('messages')
     .select('id, sender_type, content_type, content_text, created_at')
@@ -285,11 +390,17 @@ export async function analisarConversaReivindicada(
     .gte('created_at', janelaInicio.toISOString())
     .is('deleted_at', null)
     .neq('content_type', 'system')
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(TETO_MENSAGENS_JANELA)
   if (msgErr) throw new Error(`falha lendo mensagens: ${msgErr.message}`)
 
-  const linhas = (mensagens ?? []) as MensagemDaJanela[]
+  const linhas = ((mensagens ?? []) as MensagemDaJanela[]).reverse()
+  const janelaCortada = linhas.length >= TETO_MENSAGENS_JANELA
+  if (janelaCortada) {
+    console.warn(
+      `[radar] conversa ${args.conversationId} tem mais de ${TETO_MENSAGENS_JANELA} mensagens na janela — as mais antigas ficaram fora`,
+    )
+  }
   const comData = linhas.filter((m) => m.created_at !== null)
 
   const metricas = calcularMetricas(
@@ -317,22 +428,25 @@ export async function analisarConversaReivindicada(
     comTexto.map((m) => m.content_text).join('\n'),
   )
 
-  // Agente do canal com queda para o padrão da conta — a MESMA semântica
-  // do auto-reply (loadAiConfig resolve; ver 903).
+  // Agente do canal com queda para o padrão da conta — a resolução da
+  // 903, MAS com `requireActive: false`: o Radar precisa da CREDENCIAL;
+  // `is_active` é o interruptor do assistente DE CONVERSA (auto-reply/
+  // rascunho). Amarrar os dois fazia "desliguei as respostas automáticas
+  // deste número" silenciar a análise sem nenhum aviso na tela.
   const config = await loadAiConfig(admin, args.accountId, {
-    requireActive: true,
+    requireActive: false,
     channelId: args.channelId,
   })
 
   let analise: AnaliseInterpretada | null = null
   let usage: AiUsage | null = null
-  const temIa = config !== null && transcrito.linhas.length > 0
-  if (config && temIa) {
+  if (config && transcrito.linhas.length > 0) {
     const { systemPrompt, userContent } = montarPromptDoRadar({
       transcrito,
       metricas,
       mensagensSemTexto: semTexto,
       processosPorRegex,
+      janelaDias: JANELA_DIAS,
     })
     const resposta = await generateStructured({
       config,
@@ -342,10 +456,10 @@ export async function analisarConversaReivindicada(
       maxOutputTokens: MAX_TOKENS_RADAR,
     })
     usage = resposta.usage
-    analise = interpretarAnalise(resposta.object, transcrito.linhas)
-    if (!analise) {
-      throw new Error('a IA respondeu num formato que não é um objeto de análise')
-    }
+    // ⚠️ O uso é registrado ANTES de interpretar: os tokens já foram
+    // COBRADOS na chave da conta mesmo que a resposta seja lixo — jogar o
+    // custo fora junto com a resposta subnotificava exatamente as
+    // análises que mais custaram.
     void logAiUsage(admin, {
       accountId: args.accountId,
       conversationId: args.conversationId,
@@ -355,10 +469,15 @@ export async function analisarConversaReivindicada(
       model: config.model,
       usage,
     })
+    analise = interpretarAnalise(resposta.object, transcrito.linhas)
+    if (!analise) {
+      throw new Error('a IA respondeu num formato que não é um objeto de análise')
+    }
   }
 
+  const semIa = config === null
   const ultima = comData[comData.length - 1]
-  const { error: upErr } = await admin
+  const { data: gravado, error: upErr } = await admin
     .from('cb_conversation_insights')
     .update({
       channel_id: args.channelId,
@@ -375,7 +494,15 @@ export async function analisarConversaReivindicada(
       pedidos_abertos: analise?.pedidosNaoAtendidos.length ?? 0,
       resumo: analise?.resumo || null,
       detalhes: {
-        sem_ia: !temIa,
+        // Só "sem chave de IA". Conversa com chave mas sem NENHUM texto
+        // (só áudio/mídia) não leva o selo — `mensagens_sem_texto` já
+        // conta essa lacuna com o rótulo certo; misturar as duas causas
+        // mandava o operador caçar defeito na chave que está funcionando.
+        sem_ia: semIa,
+        // Cobre os DOIS cortes: o teto de 1000 linhas da leitura do banco
+        // e o teto de 200 mensagens/60k chars do transcrito — em ambos, a
+        // análise não viu a janela inteira e a tela tem de dizer isso.
+        janela_cortada: janelaCortada || transcrito.cortadas > 0,
         processos: processosPorRegex,
         analise,
       },
@@ -383,12 +510,6 @@ export async function analisarConversaReivindicada(
       primeira_resposta_seg: metricas.primeiraRespostaSeg,
       resposta_mediana_seg: metricas.respostaMedianaSeg,
       aguardando_desde: metricas.aguardandoDesde?.toISOString() ?? null,
-
-      // Reanálise volta para 'aberto': houve mensagem nova, a situação
-      // mudou e o "tratado" anterior não vale mais.
-      estado: 'aberto',
-      estado_por: null,
-      estado_em: null,
 
       status: 'done',
       running_desde: null,
@@ -402,16 +523,53 @@ export async function analisarConversaReivindicada(
       completion_tokens: usage?.completionTokens ?? 0,
     })
     .eq('id', args.insightId)
+    // A cerca de posse: se o recolhedor nos deu por mortos e outro claim
+    // assumiu, este resultado é o mais VELHO dos dois — vira no-op.
+    .eq('status', 'running')
+    .eq('running_desde', args.claimIso)
+    .select('id')
+    .maybeSingle()
   if (upErr) throw new Error(`falha gravando o insight: ${upErr.message}`)
+  if (!gravado) {
+    console.warn(
+      `[radar] resultado do insight ${args.insightId} descartado: linha reivindicada por outro worker durante a análise`,
+    )
+    return { semIa }
+  }
 
-  return { semIa: !temIa }
+  // ⚠️ CICLO DE VIDA DO SINAL — o reset de `estado` é CONDICIONAL e
+  // separado do UPDATE principal, de propósito:
+  //   - `tratado` reabre SÓ se o CLIENTE falou depois do tratamento
+  //     (`estado_em < última mensagem do cliente`). A resposta do próprio
+  //     operador não reabre, e um clique dado DURANTE a análise
+  //     (estado_em > toda mensagem da janela) também não é atropelado.
+  //   - `descartado` NUNCA reabre sozinho: descartar = "a IA errou aqui";
+  //     reanálise repetiria o mesmo falso positivo e o operador o
+  //     descartaria de novo a cada mensagem — a fadiga de alarme que a
+  //     tela promete combater. Reabre só à mão (botão Reabrir).
+  const ultimaDoCliente = [...comData]
+    .reverse()
+    .find((m) => m.sender_type === 'customer')
+  if (ultimaDoCliente?.created_at) {
+    const { error: estadoErr } = await admin
+      .from('cb_conversation_insights')
+      .update({ estado: 'aberto', estado_por: null, estado_em: null })
+      .eq('id', args.insightId)
+      .eq('estado', 'tratado')
+      .lt('estado_em', ultimaDoCliente.created_at)
+    if (estadoErr) {
+      console.error('[radar] reset de estado não gravou:', estadoErr.message)
+    }
+  }
+
+  return { semIa }
 }
 
 /**
  * Reanálise manual de UMA conversa (botão "Reanalisar agora"). Respeita o
  * opt-in por canal — reanálise manual não é licença para analisar canal
- * que o operador deixou desligado — mas ignora o throttle de 30min.
- * Lança Error com `code` simples para a rota traduzir em HTTP.
+ * que o operador deixou desligado — mas ignora o throttle.
+ * Lança Error com `motivo` tipado para a rota traduzir em HTTP.
  */
 export async function reanalisarConversa(
   admin: SupabaseClient,
@@ -451,27 +609,21 @@ export async function reanalisarConversa(
       last_message_at: null,
     },
     (existente as InsightExistente | null) ?? undefined,
+    { respeitarThrottle: false },
   )
   if (!reivindicado) throw new ErroDoRadar('ja_em_analise')
 
   try {
     return await analisarConversaReivindicada(admin, {
       insightId: reivindicado.id,
+      claimIso: reivindicado.claimIso,
       conversationId: conversa.id,
       accountId: conversa.account_id,
       channelId: conversa.channel_id,
     })
   } catch (err) {
     const motivo = err instanceof Error ? err.message : 'erro desconhecido'
-    await admin
-      .from('cb_conversation_insights')
-      .update({
-        status: 'failed',
-        erro: motivo.slice(0, 500),
-        tentativas: ((existente as InsightExistente | null)?.tentativas ?? 0) + 1,
-        running_desde: null,
-      })
-      .eq('id', reivindicado.id)
+    await marcarFalha(admin, reivindicado, motivo)
     throw err
   }
 }

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
+import { ESTADOS_DO_INSIGHT, type EstadoDoInsight } from '@/lib/cb-radar/ordenacao';
 
 /**
  * PATCH /api/cb/radar/[conversationId]/estado — o ciclo de vida do sinal:
@@ -18,9 +19,6 @@ import { supabaseAdmin } from '@/lib/automations/admin-client';
  * operador disse que não era nada" é exatamente a taxa de falso positivo.
  */
 
-const ESTADOS = ['aberto', 'tratado', 'descartado'] as const;
-type Estado = (typeof ESTADOS)[number];
-
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ conversationId: string }> },
@@ -32,7 +30,10 @@ export async function PATCH(
 
     const body = (await request.json().catch(() => null)) as { estado?: unknown } | null;
     const estado = body?.estado;
-    if (typeof estado !== 'string' || !ESTADOS.includes(estado as Estado)) {
+    if (
+      typeof estado !== 'string' ||
+      !ESTADOS_DO_INSIGHT.includes(estado as EstadoDoInsight)
+    ) {
       return NextResponse.json(
         { error: 'estado deve ser "aberto", "tratado" ou "descartado"' },
         { status: 400 },

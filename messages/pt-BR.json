@@ -2154,7 +2154,7 @@
     },
     "aiConfig": {
       "title": "Configuração do agente de IA",
-      "description": "Use sua própria chave da OpenAI ou da Anthropic. O wacrm chama o provedor diretamente com a sua chave — sem cobrança de IA por usuário, e seus dados continuam sendo seus. Isso alimenta as respostas sugeridas por IA na caixa de entrada, o bot de resposta automática e o Playground.",
+      "description": "Use sua própria chave da OpenAI, da Anthropic ou do Google (Gemini). O wacrm chama o provedor diretamente com a sua chave — sem cobrança de IA por usuário, e seus dados continuam sendo seus. Isso alimenta as respostas sugeridas por IA na caixa de entrada, o bot de resposta automática, o Playground e o Radar do atendimento.",
       "adminOnlyConfig": "Apenas administradores e proprietários podem alterar a configuração de IA.",
       "loadFailed": "Falha ao carregar a configuração de IA",
       "providerAndKey": "Provedor e chave",
@@ -2292,6 +2292,7 @@
       "totalTokens": "Total de tokens",
       "llmCalls": "Chamadas de LLM",
       "autoReply": "Resposta automática",
+      "radar": "Radar",
       "drafts": "Rascunhos",
       "tokensPerDay": "Tokens por dia",
       "byModel": "Por modelo",
@@ -2491,7 +2492,15 @@
     "descartar": "Descartar",
     "descartarTitulo": "Descartar = a IA errou; isso calibra o Radar",
     "reabrir": "Reabrir",
-    "reanalisar": "Reanalisar"
+    "reanalisar": "Reanalisar",
+    "erro_conversa_nao_encontrada": "Conversa não encontrada.",
+    "erro_grupo_fora_do_radar": "Grupos ficam fora do Radar.",
+    "erro_conversa_sem_canal": "Esta conversa não tem canal registrado — o Radar não sabe a qual número ela pertence.",
+    "erro_radar_desligado_no_canal": "O Radar está desligado neste número. Ligue em Configurações → Conexões → Configurar.",
+    "erro_ja_em_analise": "Esta conversa já está sendo analisada — aguarde alguns segundos.",
+    "cicloNuncaRodou": "O ciclo automático do Radar nunca rodou. O agendador da VPS ainda não bate na rota nova — é o passo manual do runbook (docs/PLANO-radar-de-atendimento.md). Até lá, use \"Reanalisar\" nas conversas.",
+    "cicloParado": "O ciclo automático do Radar está parado há {min} min. As análises abaixo podem estar desatualizadas.",
+    "janelaCortada": "conversa maior que o teto — as mensagens mais antigas da janela ficaram fora"
   },
   "Scheduled": {
     "title": "Mensagens agendadas",

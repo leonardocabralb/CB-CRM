@@ -474,8 +474,30 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   horário de verão desde 2019) — `horario-comercial.ts` é o único arquivo
   a mudar se isso um dia voltar. Intervalo negativo (relógio do WhatsApp
   na entrada vs `now()` do banco na saída) vira zero lá dentro.
-- **Reanálise reseta `estado` para `'aberto'`** — mensagem nova invalida o
-  "tratado" anterior, de propósito.
+- ⚠️ **Ciclo de vida do sinal tem TRÊS regras assimétricas, todas com motivo:**
+  `tratado` reabre SÓ com mensagem DO CLIENTE posterior ao `estado_em` (a
+  resposta do próprio operador não reabre, e um clique dado durante a análise
+  não é atropelado — o reset é um UPDATE condicional separado);
+  `descartado` NUNCA reabre sozinho (descartar = "a IA errou"; reanálise
+  repetiria o falso positivo a cada mensagem — reabre só pelo botão);
+  `aberto` fica. Quem mexer no reset mexe no UPDATE condicional do worker,
+  não no UPDATE principal.
+- ⚠️ **Toda escrita pós-claim do worker tem CERCA DE POSSE**
+  (`.eq('status','running').eq('running_desde', <carimbo do próprio claim>)`).
+  Sem ela, um worker recolhido como travado continuava com direito de escrita
+  e atropelava a análise seguinte. E **"mensagem nova" exige `janela_fim` NÃO
+  NULO** — tratá-lo nulo como "tem novidade" furava o teto de tentativas e
+  virava retentativa paga infinita (4 ângulos da revisão acharam).
+- **A janela de mensagens lê DESC + reverse** — com mais linhas que o teto,
+  quem cai é o COMEÇO da janela. Com ASC, o corte descartava as mensagens de
+  HOJE e `aguardando_desde` mentia "ninguém aguardando".
+- **`loadAiConfig` do Radar usa `requireActive: false`** — o Radar precisa da
+  CREDENCIAL; `is_active` é o interruptor do assistente DE CONVERSA. Amarrar
+  os dois silenciava a análise quando o operador desligava o auto-reply.
+- **O painel aplica a MESMA régua do worker na leitura**: esconde insight de
+  conversa fora da janela de 7 dias e de canal com `radar_enabled` desligado
+  (desligar o canal tem de sumir com as análises antigas dele — o caso
+  nomeado é o canal pessoal ligado por engano).
 - **O upsert em `cb_conversation_insights` FUNCIONA** porque o UNIQUE de
   `conversation_id` é TOTAL — não é o caso dos índices parciais da 903.
 - `ai_usage_log.mode` ganhou `'radar'` e os CHECKs de `provider` ganharam
@@ -602,14 +624,13 @@ entrega mensagem de grupo. O que morde código novo:
   `mentions_us` (NOT NULL) estouram se as linhas do lote não forem uniformes.
   O caminho de produção grava uma linha por vez e não é afetado.
 
-⚠️ **PENDENTE — verificar na VPS se `maxDuration = 60` é aplicado de fato.**
-É convenção de plataforma serverless (Vercel/Lambda); num Next.js self-hosted
-em container provavelmente ninguém lê esse número. Se FOR aplicado, o que
-passar do teto é morto no meio e **a mensagem do cliente pode não existir** —
-sem erro, sem log. Com grupo o risco deixa de ser teórico (mais tráfego, e o
-download de mídia até 5 MB volta para dentro do orçamento). Conferir com:
-`docker service inspect crm_crm --format '{{json .Spec.TaskTemplate.ContainerSpec.Command}}{{json .Spec.TaskTemplate.ContainerSpec.Args}}'`
-Se for `node server.js` (standalone do Next), o teto não vale e o item morre.
+✅ **RESOLVIDO (2026-08-27) — `maxDuration` NÃO é aplicado em produção.**
+Conferido na VPS: `docker service inspect crm_crm` mostra Command/Args nulos e
+o Dockerfile termina em `CMD ["node", "server.js"]` (standalone do Next) — o
+`maxDuration` das rotas é decorativo aqui. **O teto real de cada rota de cron
+é o `-m` do curl do agendador** (50s no laço rápido, 120s no lento; ver
+`docker-stack.yml`). Quem escrever worker novo orça o ciclo contra o curl,
+não contra o `maxDuration` — o worker do Radar faz isso (`TETO_ABSOLUTO_MS`).
 
 ⚠️ **A trilha de auditoria (912) é escrita por TRIGGER, não por código.**
 `cb_lead_events` registra criação/exclusão de negócio, mudança de etapa, de
@@ -947,9 +968,10 @@ mesma passada** (help/config no app, `docs/`, ou README do módulo). Doc obsolet
 - **Supabase:** Postgres + Auth + Storage + RLS. `SUPABASE_SERVICE_ROLE_KEY`
   ignora RLS e só pode ser usada em código server-side (webhook, automações,
   auth da API pública). Nunca no client.
-- **Assistente de IA:** bring-your-own-key (OpenAI/Anthropic) — cada conta cola
-  sua chave em Settings → AI Assistant, guardada criptografada com
-  `ENCRYPTION_KEY`. Não há env var global de provider.
+- **Assistente de IA:** bring-your-own-key (OpenAI/Anthropic/Gemini, desde a
+  941) — cada conta cola sua chave em Settings → AI Assistant, guardada
+  criptografada com `ENCRYPTION_KEY`. Não há env var global de provider.
+  Embeddings (RAG) continuam exigindo chave OpenAI (modelo fixo, vector 1536).
 
 ## Antes de aplicar mudanças
 
