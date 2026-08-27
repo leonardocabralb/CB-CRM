@@ -419,6 +419,9 @@ function LinhaDoRadar({
   aoReanalisar: () => void;
 }) {
   const t = useTranslations('Radar');
+  // Feedback por atendente é avaliação de PESSOA — só quem gerencia a
+  // equipe (admin/dono) vê; o restante do cartão é igual para todos.
+  const podeVerEquipe = useCan('manage-members');
   const contato = i.conversation?.contact;
   const nome = contato?.name || contato?.phone || t('contatoSemNome');
   const detalhes = i.detalhes;
@@ -554,6 +557,15 @@ function LinhaDoRadar({
           {(analise?.pontosDeAtencao ?? []).map((p, idx) => (
             <Sinal key={idx} titulo={p.titulo} detalhe={p.detalhe} evidencias={p.evidencias} />
           ))}
+          {podeVerEquipe &&
+            (analise?.observacoesPorAtendente ?? []).map((o, idx) => (
+              <Sinal
+                key={`atendente-${idx}`}
+                titulo={t('atendenteTitulo', { nome: o.atendente })}
+                detalhe={o.observacao}
+                evidencias={o.evidencias}
+              />
+            ))}
           {processos.length > 0 && (
             <p className="text-xs text-muted-foreground">
               {t('processosTitulo')}{' '}

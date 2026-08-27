@@ -23,6 +23,7 @@
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { nomeDePessoa } from '@/lib/assinatura/assinatura'
 import { loadAiConfig } from '@/lib/ai/config'
 import { generateStructured } from '@/lib/ai/structured'
 import { logAiUsage } from '@/lib/ai/usage'
@@ -344,6 +345,7 @@ async function marcarFalha(
 interface MensagemDaJanela {
   id: string
   sender_type: 'customer' | 'agent' | 'bot'
+  sender_id: string | null
   content_type: string
   content_text: string | null
   created_at: string | null
@@ -377,7 +379,7 @@ export async function analisarConversaReivindicada(
   // esperando resposta (revisão 2026-08-27: quatro ângulos).
   const { data: mensagens, error: msgErr } = await admin
     .from('messages')
-    .select('id, sender_type, content_type, content_text, created_at')
+    .select('id, sender_type, sender_id, content_type, content_text, created_at')
     .eq('conversation_id', args.conversationId)
     .gte('created_at', janelaInicio.toISOString())
     .is('deleted_at', null)
@@ -406,11 +408,46 @@ export async function analisarConversaReivindicada(
 
   const comTexto = comData.filter((m) => m.content_text && m.content_text.trim())
   const semTexto = comData.length - comTexto.length
+
+  // Quem da equipe falou, por nome — o transcrito rotula "Equipe (Ana)" e
+  // a análise pode observar o atendimento POR PESSOA (feedback de equipe).
+  // Falha ABERTA: sem nome resolvido a linha volta ao rótulo genérico
+  // "Equipe", e o prompt instrui a só avaliar atendente NOMEADO — perder
+  // o feedback é aceitável, derrubar a análise por causa dele não.
+  const idsDeAtendentes = [
+    ...new Set(
+      comTexto
+        .filter((m) => m.sender_type === 'agent' && m.sender_id)
+        .map((m) => m.sender_id as string),
+    ),
+  ]
+  const nomePorAtendente = new Map<string, string>()
+  if (idsDeAtendentes.length > 0) {
+    const { data: perfis, error: perfisErr } = await admin
+      .from('profiles')
+      .select('user_id, full_name, email')
+      .in('user_id', idsDeAtendentes)
+    if (perfisErr) {
+      console.warn('[radar] não resolveu nomes de atendentes:', perfisErr.message)
+    }
+    for (const p of perfis ?? []) {
+      const nome = nomeDePessoa(
+        p.full_name as string | null,
+        p.email as string | null,
+      )
+      if (nome) nomePorAtendente.set(p.user_id as string, nome)
+    }
+  }
+
   const transcrito = montarTranscrito(
     comTexto.map(
       (m): MensagemParaTranscrito => ({
         id: m.id,
         senderType: m.sender_type,
+        autor:
+          m.sender_type === 'agent' && m.sender_id
+            ? (nomePorAtendente.get(m.sender_id) ?? null)
+            : null,
         createdAt: new Date(m.created_at as string),
         texto: m.content_text as string,
       }),

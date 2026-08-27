@@ -108,7 +108,9 @@ congelada segue fiel) e os cartões contam só a pendência dela.
 
 - Salto até a **mensagem** citada dentro do fio (`/inbox?c=…&m=…` — o
   mecanismo de salto existe; falta a entrada por URL).
-- Recorte por atendente (`messages.sender_id` já é gravado nas novas).
+- Visão AGREGADA por atendente (nota média, tempos, padrões recorrentes).
+  O feedback POR CONVERSA já existe: `observacoes_por_atendente` na
+  análise, com autoria validada, visível só a quem gerencia a equipe.
 - Notificação no sino para urgência alta.
 - Tendência da nota por semana; expediente configurável por conta
   (hoje: constante em `src/lib/cb-radar/horario-comercial.ts`).

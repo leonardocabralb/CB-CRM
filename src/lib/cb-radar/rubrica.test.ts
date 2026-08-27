@@ -12,9 +12,11 @@ const msg = (
   senderType: MensagemParaTranscrito['senderType'],
   hora: string,
   texto: string,
+  autor?: string | null,
 ): MensagemParaTranscrito => ({
   id,
   senderType,
+  autor,
   createdAt: new Date(`2026-08-26T${hora}:00-03:00`),
   texto,
 })
@@ -73,6 +75,17 @@ describe('montarTranscrito', () => {
     expect(t.linhas[0].texto).toBe(
       'preciso do contrato ⏎ #2 [26/08 10:01] Equipe: já enviamos',
     )
+  })
+
+  it('atendente nomeado vira rótulo "Equipe (Nome)" e autor da linha', () => {
+    const t = montarTranscrito([
+      msg('a', 'customer', '10:00', 'Oi'),
+      msg('b', 'agent', '10:05', 'Olá!', 'Ana Souza'),
+      msg('c', 'agent', '10:10', 'Do aparelho'), // sem autor resolvido
+    ])
+    expect(t.texto).toContain('Equipe (Ana Souza): Olá!')
+    expect(t.texto).toContain('] Equipe: Do aparelho')
+    expect(t.linhas.map((l) => l.autor)).toEqual([null, 'Ana Souza', null])
   })
 
   it('fala repetida do ROBÔ entra uma vez só e é contada', () => {
@@ -134,6 +147,7 @@ describe('montarPromptDoRadar', () => {
       janelaDias: 7,
     })
     expect(systemPrompt).toContain('auditor de qualidade')
+    expect(systemPrompt).toContain('observacoes_por_atendente')
     // A janela é interpolada, nunca afirmada de cor — mudar JANELA_DIAS
     // sem mudar o texto faria o modelo julgar 14 dias achando que vê 7.
     expect(systemPrompt).toContain('últimos 7 dias')
@@ -239,5 +253,64 @@ describe('interpretarAnalise', () => {
     expect(interpretarAnalise('texto solto', linhas)).toBeNull()
     expect(interpretarAnalise([1, 2], linhas)).toBeNull()
     expect(interpretarAnalise(null, linhas)).toBeNull()
+  })
+
+  describe('observações por atendente', () => {
+    const linhasComAutor = montarTranscrito([
+      msg('c1', 'customer', '10:00', 'Qual o andamento? E a procuração?'),
+      msg('a1', 'agent', '10:30', 'O andamento está em análise.', 'Ana Souza'),
+      msg('c2', 'customer', '11:00', 'E a procuração??'),
+    ]).linhas
+
+    const obs = (observacoes: unknown) =>
+      interpretarAnalise({ ...base, observacoes_por_atendente: observacoes }, linhasComAutor)!
+
+    it('aceita observação que cita linha ESCRITA pelo atendente nomeado', () => {
+      const r = obs([
+        {
+          atendente: 'ana souza', // case-insensitive de propósito
+          observacao: 'Respondeu só metade dos questionamentos.',
+          evidencias: [1, 2],
+        },
+      ])
+      expect(r.observacoesPorAtendente).toHaveLength(1)
+      expect(r.observacoesPorAtendente[0].atendente).toBe('ana souza')
+      expect(r.observacoesPorAtendente[0].evidencias.map((e) => e.mensagemId)).toEqual([
+        'c1',
+        'a1',
+      ])
+    })
+
+    it('DESCARTA observação cujas evidências são só falas do cliente', () => {
+      // Cliente que escreve "a Ana demorou" não pode virar auditoria da
+      // Ana sem nenhuma linha DELA citada.
+      const r = obs([
+        { atendente: 'Ana Souza', observacao: 'Demorou.', evidencias: [1, 3] },
+      ])
+      expect(r.observacoesPorAtendente).toEqual([])
+      expect(r.sinaisDescartados).toBe(1)
+    })
+
+    it('DESCARTA nome que não é autor de nenhuma linha citada', () => {
+      const r = obs([
+        { atendente: 'Dr. Carlos', observacao: 'Foi seco.', evidencias: [2] },
+      ])
+      expect(r.observacoesPorAtendente).toEqual([])
+      expect(r.sinaisDescartados).toBe(1)
+    })
+
+    it('sem evidência nenhuma, cai como os demais sinais', () => {
+      const r = obs([
+        { atendente: 'Ana Souza', observacao: 'Mensagens longas.', evidencias: [] },
+      ])
+      expect(r.observacoesPorAtendente).toEqual([])
+      expect(r.sinaisDescartados).toBe(1)
+    })
+
+    it('campo ausente (análise antiga) vira lista vazia, sem descarte', () => {
+      const r = interpretarAnalise(base, linhasComAutor)!
+      expect(r.observacoesPorAtendente).toEqual([])
+      expect(r.sinaisDescartados).toBe(0)
+    })
   })
 })

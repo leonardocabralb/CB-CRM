@@ -463,6 +463,14 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   rubrica.ts). É o princípio do produto — evidência = índice de linha do
   transcrito, mapeado para `messages.id`. Quem mexer na rubrica mantém a
   regra, senão o painel vira gerador de alarme falso.
+- **Feedback por atendente exige AUTORIA, não só evidência**: a observação
+  em `observacoes_por_atendente` só passa se citar linha ESCRITA pelo
+  atendente nomeado (o transcrito rotula "Equipe (Nome)" via
+  `messages.sender_id` → `profiles`; `LinhaDoTranscrito.autor` é o que o
+  parser confere). Sem isso, cliente que digita "a Ana demorou" viraria
+  auditoria da Ana. Nome não resolvido → rótulo genérico "Equipe" e a IA é
+  instruída a não avaliar. Na tela, a seção só aparece para
+  `useCan('manage-members')` — é avaliação de pessoa, não de conversa.
 - **`generateStructured` (`src/lib/ai/structured.ts`) é separado de
   `generateReply` DE PROPÓSITO.** Não fundir: o caminho do
   auto-reply/draft não pode herdar regressão do caminho de análise.
