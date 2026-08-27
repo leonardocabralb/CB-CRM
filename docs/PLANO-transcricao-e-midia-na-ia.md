@@ -7,6 +7,38 @@
 > **Fora de escopo, por decisão do operador:** a IA executar ferramentas
 > (adicionar tag, mover card, etc.). Isso é uma etapa posterior; ver o apêndice.
 
+## ⚠️ ADENDO 2026-08-27 — Fase 1 IMPLEMENTADA, com três decisões novas
+
+A fase 1 foi implementada na branch `feat/radar-de-atendimento` (junto com o
+Radar, de que depende). O que mudou em relação ao texto original abaixo:
+
+1. **Provedor: Gemini, não ElevenLabs.** Com o Gemini no projeto (Radar), a
+   transcrição usa a MESMA chave BYO da conta — zero segredo novo, zero ida à
+   VPS — com modelo próprio FIXADO em código (`MODELO_TRANSCRICAO =
+   'gemini-3.5-flash-lite'`, ~US$ 0,07/h vs US$ 0,22/h do Scribe; transcrever
+   não precisa de raciocínio). Sem chave Gemini (ou provedor ≠ gemini), a
+   função devolve `recusada` **sem gravar estado** — cadastrar a chave reativa
+   o botão. **Plano B continua sendo o ElevenLabs** (único com `audio/opus`
+   por escrito): trocar é reescrever só o miolo de `transcreverAudio`.
+   ⚠️ **Risco aberto**: a doc do Gemini lista "OGG Vorbis" e a nota de voz do
+   WhatsApp é OGG **Opus** — funciona em relatos práticos; o 1º teste em
+   produção com uma nota real é o go/no-go.
+2. **O custo ENTROU em `ai_usage_log`** (modo `transcricao`, migration 943) —
+   o §3.4 original dizia o contrário porque a chave era da casa; com a chave
+   BYO da conta, o gasto aparece no painel de uso como os demais modos.
+3. **O Radar transcreve sozinho os áudios DO CLIENTE da janela** (até 5 novos
+   por análise, dentro do orçamento de tempo do ciclo), chamando a MESMA
+   função idempotente do botão — pago uma vez, o texto entra como linha
+   `[áudio] …` em toda análise futura. Áudio da equipe segue como lacuna
+   declarada, e o botão da bolha aparece só na fala do cliente.
+
+Migration: **943_cb_transcricao_de_audio.sql** (colunas `transcricao_*` em
+`messages` + `transcricao` no CHECK de `mode`). ⚠️ Aplicar ANTES do deploy do
+merge — o worker do Radar passa a selecionar as colunas novas.
+
+A **fase 2** (IA enxergar imagem/PDF na conversa) segue NÃO implementada e o
+texto dela abaixo continua valendo.
+
 ---
 
 ## 1. Resumo
@@ -37,7 +69,9 @@ automática exigiria:
 - **Nenhum worker novo, nenhum cron, nenhuma fila a drenar.** O laço do
   `agendador` não muda.
 - **Uma ida pequena à VPS, uma vez só** — não zero, como uma versão anterior
-  deste plano afirmou. O `docker-stack.yml` injeta cada segredo explicitamente
+  deste plano afirmou. *(⚠️ SUPERADO pelo adendo 2026-08-27: com o Gemini e a
+  chave BYO da conta, a ida à VPS caiu — não há `ELEVENLABS_API_KEY` para
+  provisionar. O parágrafo fica como registro do desenho ElevenLabs/plano B.)* O `docker-stack.yml` injeta cada segredo explicitamente
   no bloco `environment:` (o `crm.env` é `source`ado no `docker stack deploy`),
   então a `ELEVENLABS_API_KEY` exige: linha nova no `crm.env` da VPS, linha nova
   no `environment:` do stack (essa vai no repo) e um `docker stack deploy` à
@@ -212,6 +246,10 @@ Ordem das guardas (cada uma com motivo escrito, antes de gastar dinheiro):
 4. Reivindica (o `UPDATE` acima). Zero linhas → sai sem cobrar.
 5. Baixa do bucket, confere tamanho, chama o provedor, grava.
 
+> ⚠️ **SUPERADO PELO ADENDO 2026-08-27** — o provedor implementado é o
+> Gemini com a chave BYO da conta; os dois blocos abaixo (provedor e
+> chave) ficam registrados como **plano B**.
+
 **Provedor: ElevenLabs Scribe v2.**
 
 - Aceita `audio/ogg` e `audio/opus` **na entrada** — exatamente o que a nota de
@@ -237,7 +275,9 @@ molde existe — `ai_configs` já guarda duas chaves cifradas (`api_key` e
 não escopa o canal e, com uma segunda linha em `ai_configs`, responde "não há
 chave, e não está corrompida" — degradar silencioso, não erro visível.
 
-**Custo não entra em `ai_usage_log` — de propósito.** Os CHECKs de `mode` e
+**Custo não entra em `ai_usage_log` — de propósito.** *(⚠️ SUPERADO pelo
+adendo: com a chave BYO, o custo PASSOU a ser registrado — modo
+`transcricao`, CHECK ampliado na 943.)* Os CHECKs de `mode` e
 `provider` da tabela rejeitariam a linha, e o gasto é da chave da casa, não da
 chave BYO da conta. Se um dia precisar de contabilidade, é migration — registrar
 a decisão aqui evita que alguém "conserte" enfiando um valor inválido no CHECK.

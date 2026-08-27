@@ -128,6 +128,58 @@ describe('generateReply — OpenAI', () => {
   })
 })
 
+describe('generateReply — Gemini', () => {
+  it('chama generateContent com a chave no header e mapeia papéis', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        candidates: [{ content: { parts: [{ text: 'Olá!' }] } }],
+        usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 3, totalTokenCount: 15 },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await generateReply({
+      config: config({ provider: 'gemini', apiKey: 'g-key', model: 'gemini-test' }),
+      systemPrompt: 'sys',
+      messages: [
+        { role: 'user', content: 'Oi' },
+        { role: 'assistant', content: 'Bom dia' },
+        { role: 'user', content: 'Tudo bem?' },
+      ],
+    })
+
+    expect(res.text).toBe('Olá!')
+    expect(res.usage).toEqual({ promptTokens: 12, completionTokens: 3, totalTokens: 15 })
+
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toContain('generativelanguage.googleapis.com')
+    // A chave vai no header, nunca na URL.
+    expect(url).not.toContain('g-key')
+    expect(opts.headers['x-goog-api-key']).toBe('g-key')
+    const body = JSON.parse(opts.body)
+    expect(body.contents.map((c: { role: string }) => c.role)).toEqual([
+      'user',
+      'model',
+      'user',
+    ])
+    expect(body.systemInstruction.parts[0].text).toBe('sys')
+  })
+
+  it('resposta vazia vira AiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(okResponse({ candidates: [{ content: { parts: [] } }] })),
+    )
+    await expect(
+      generateReply({
+        config: config({ provider: 'gemini' }),
+        systemPrompt: 'sys',
+        messages: [{ role: 'user', content: 'Oi' }],
+      }),
+    ).rejects.toBeInstanceOf(AiError)
+  })
+})
+
 describe('generateReply — Anthropic', () => {
   it('calls the messages endpoint with the version header and parses text blocks', async () => {
     const fetchMock = vi.fn().mockResolvedValue(

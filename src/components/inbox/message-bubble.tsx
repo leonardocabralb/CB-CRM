@@ -264,6 +264,117 @@ function MediaImage({
   );
 }
 
+/**
+ * A transcrição da nota de voz (943): "pronta" aparece para todos num
+ * bloco expansível; o BOTÃO só existe na fala do CLIENTE — nosso áudio a
+ * equipe já sabe o que diz, e é o do cliente que o Radar analisa. O
+ * estado local cobre o retorno imediato do POST; o realtime de
+ * `messages` (UPDATE mesclando a linha inteira) cobre os demais viewers.
+ */
+function TranscricaoDeAudio({
+  message,
+  t,
+}: {
+  message: Message;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const [local, setLocal] = useState<{
+    status: string;
+    transcricao?: string;
+    erro?: string;
+  } | null>(null);
+  const [pedindo, setPedindo] = useState(false);
+
+  // O banco é sempre a verdade mais NOVA: quando o realtime traz um
+  // status diferente, o retrato local do POST solta — sem isto, um
+  // "transcrevendo" local (corrida de claim perdida) escondia o `falhou`
+  // do dono real para sempre.
+  useEffect(() => {
+    setLocal(null);
+  }, [message.transcricao_status, message.transcricao]);
+
+  const transcricao = local?.transcricao ?? message.transcricao ?? null;
+  const status = local?.status ?? message.transcricao_status ?? null;
+  const erro = (local?.erro ?? message.transcricao_erro) || null;
+
+  const pedir = useCallback(async () => {
+    setPedindo(true);
+    try {
+      const res = await fetch(`/api/cb/transcricao/${message.id}`, {
+        method: "POST",
+      });
+      const corpo = (await res.json().catch(() => null)) as {
+        status?: string;
+        transcricao?: string;
+        erro?: string;
+        error?: string;
+      } | null;
+      if (res.ok && corpo?.status) {
+        setLocal({ status: corpo.status, transcricao: corpo.transcricao, erro: corpo.erro });
+      } else {
+        setLocal({ status: "falhou", erro: corpo?.error ?? `HTTP ${res.status}` });
+      }
+    } catch {
+      setLocal({ status: "falhou", erro: t("transcricaoRede") });
+    } finally {
+      setPedindo(false);
+    }
+  }, [message.id, t]);
+
+  if (transcricao) {
+    return (
+      <details className="mt-1 max-w-60 rounded-md bg-card px-2 py-1 text-xs ring-1 ring-border">
+        <summary className="cursor-pointer select-none text-muted-foreground">
+          {t("transcricao")}
+        </summary>
+        <FormattedText texto={transcricao} className="mt-1" />
+      </details>
+    );
+  }
+  if (message.sender_type !== "customer") return null;
+
+  // "Transcrevendo" órfão (processo morto no meio, deploy start-first):
+  // depois do prazo do cadeado, a bolha REOFERECE o botão — o resgate da
+  // travada mora no WHERE do servidor e precisa de um chamador; sem isto,
+  // o estado ficava eterno na tela. 10 min = TRAVADA_MIN de
+  // src/lib/transcricao/transcrever.ts (server-only, não importável aqui).
+  const desdeMs = message.transcricao_desde
+    ? Date.parse(message.transcricao_desde)
+    : NaN;
+  const claimTravado =
+    status === "transcrevendo" &&
+    Number.isFinite(desdeMs) &&
+    Date.now() - desdeMs > 10 * 60_000;
+
+  if (pedindo || (status === "transcrevendo" && !claimTravado)) {
+    return (
+      <p className="mt-1 text-xs text-muted-foreground">{t("transcrevendo")}</p>
+    );
+  }
+  if (status === "recusada") {
+    // Terminal SEM botão, de propósito — o motivo explica no hover.
+    return (
+      <p className="mt-1 text-xs text-muted-foreground" title={erro ?? undefined}>
+        {t("transcricaoRecusada")}
+      </p>
+    );
+  }
+  return (
+    <div className="mt-1">
+      {status === "falhou" && erro && (
+        <p className="text-xs text-destructive">{erro}</p>
+      )}
+      <button
+        type="button"
+        onClick={pedir}
+        className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      >
+        {status === "falhou" ? t("transcricaoTentarDeNovo") : t("transcrever")}
+      </button>
+    </div>
+  );
+}
+
 function MessageContent({
   message,
   t,
@@ -322,7 +433,10 @@ function MessageContent({
       return (
         <div>
           {message.media_url ? (
-            <audio src={message.media_url} controls className="max-w-60" />
+            <>
+              <audio src={message.media_url} controls className="max-w-60" />
+              <TranscricaoDeAudio message={message} t={t} />
+            </>
           ) : (
             <MediaPendente message={message} label={t("audio")} t={t} />
           )}

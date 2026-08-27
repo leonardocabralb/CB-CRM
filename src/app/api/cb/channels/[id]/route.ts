@@ -46,6 +46,7 @@ export async function PATCH(
       default_pipeline_id?: unknown;
       default_stage_id?: unknown;
       groups_enabled?: unknown;
+      radar_enabled?: unknown;
     } | null;
     const label = typeof body?.label === 'string' ? body.label.trim() : '';
 
@@ -124,6 +125,14 @@ export async function PATCH(
     // grupo chega mas aviso de entrada/saída não.
     if ('groups_enabled' in (body ?? {})) {
       patch.groups_enabled = body?.groups_enabled === true;
+    }
+
+    // Radar de Atendimento neste número (941). Mesma disciplina: a chave
+    // presente é o que autoriza mexer. `=== true` fecha o padrão em
+    // DESLIGADO — este interruptor manda conversa de cliente para um
+    // provedor de IA, e ligar tem de ser um ato, nunca um efeito.
+    if ('radar_enabled' in (body ?? {})) {
+      patch.radar_enabled = body?.radar_enabled === true;
     }
 
     const { data, error } = await ctx.supabase

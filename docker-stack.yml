@@ -119,7 +119,7 @@ services:
           sleep 60
         done &
         while true; do
-          for rota in cb/scheduled flows; do
+          for rota in cb/scheduled flows cb/radar; do
             curl -fsS -m 120 -o /dev/null \
               -H "x-cron-secret: $$AUTOMATION_CRON_SECRET" \
               "http://crm_crm:3000/api/$$rota/cron" || true

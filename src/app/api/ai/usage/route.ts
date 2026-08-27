@@ -12,7 +12,7 @@ const DEFAULT_WINDOW_DAYS = 30
 
 interface UsageRow {
   created_at: string
-  mode: 'auto_reply' | 'draft'
+  mode: 'auto_reply' | 'draft' | 'radar' | 'transcricao'
   provider: string
   model: string
   prompt_tokens: number
@@ -82,6 +82,8 @@ export async function GET(request: Request) {
     const byMode = {
       auto_reply: { calls: 0, tokens: 0 },
       draft: { calls: 0, tokens: 0 },
+      radar: { calls: 0, tokens: 0 },
+      transcricao: { calls: 0, tokens: 0 },
     }
     const modelMap = new Map<
       string,
@@ -101,9 +103,14 @@ export async function GET(request: Request) {
       completionTokens += r.completion_tokens
       totalTokens += r.total_tokens
 
-      // `mode` is DB-CHECK-constrained to these two values.
-      byMode[r.mode].calls += 1
-      byMode[r.mode].tokens += r.total_tokens
+      // ⚠️ `mode` é restringido pelo CHECK do banco, e a 941 o ampliou
+      // para incluir 'radar'. Modo novo no CHECK sem entrada aqui não é
+      // linha ignorada: `byMode[r.mode]` vira undefined e o `.calls`
+      // derruba a rota inteira com 500 — o painel de uso fica
+      // inacessível por 30 dias, até a linha sair da janela.
+      const balde = byMode[r.mode] ?? (byMode[r.mode] = { calls: 0, tokens: 0 })
+      balde.calls += 1
+      balde.tokens += r.total_tokens
 
       const mk = `${r.provider}:${r.model}`
       const m =

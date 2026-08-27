@@ -173,6 +173,12 @@ export const RATE_LIMITS = {
    *  capping a stampede; excess inbounds simply don't get an auto-reply
    *  (they still land in the inbox for a human). */
   aiAutoReplyAccount: { limit: 30, windowMs: 60_000 },
+  /** Transcrição de áudio sob demanda, por usuário. Cada clique é uma
+   *  chamada paga na chave BYO — 20/min cobre uso humano real. */
+  transcricao: { limit: 20, windowMs: 60_000 },
+  /** Transcrição por conta: o par do de cima, porque N agentes sob o
+   *  limite pessoal ainda estouram a mesma chave (molde aiDraft). */
+  transcricaoConta: { limit: 60, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

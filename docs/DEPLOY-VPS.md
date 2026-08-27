@@ -172,7 +172,7 @@ ativa — não há fila represada para drenar de uma vez no primeiro ciclo.
 | Laço | Bate em | Cada | Por quê |
 | --- | --- | --- | --- |
 | rápido | `/api/automations/cron` | **60 s** | Acorda o passo "Aguardar", drena a fila de eventos de funil (933) e varre os lembretes por data (935). Num ciclo de 15 min, "esperar 2 minutos" viraria "esperar até 15", e o lembrete de reunião erraria a hora pelo mesmo tanto |
-| lento | `/api/cb/scheduled/cron`, `/api/flows/cron` | **900 s** | O número **tem** de bater com `CICLO_MINUTOS` em `src/lib/scheduled/display.ts`, que define a grade de horários que a tela de agendadas oferece. Encolher aqui faz a tela prometer o que o servidor não cumpre |
+| lento | `/api/cb/scheduled/cron`, `/api/flows/cron`, `/api/cb/radar/cron` | **900 s** | O número **tem** de bater com `CICLO_MINUTOS` em `src/lib/scheduled/display.ts`, que define a grade de horários que a tela de agendadas oferece. Encolher aqui faz a tela prometer o que o servidor não cumpre. O Radar (941) pega carona no mesmo laço: o throttle de 30 min por conversa mora no worker, então os 96 toques/dia não custam análise repetida |
 
 **Subir os dois exige `docker stack deploy` à mão na VPS** — o `deploy.yml`
 só troca a imagem do serviço `crm_crm` e não mexe no `agendador`. Enquanto o

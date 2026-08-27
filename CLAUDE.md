@@ -216,6 +216,10 @@ upstream sobrescrevê-los:
 | `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil |
 | `src/app/(dashboard)/automations/new/page.tsx` | o `?stage=` que faz a automação nascer com o gatilho de funil já apontando para a etapa clicada |
 | `src/lib/automations/trigger-meta.ts` | `formatRelative` passou a usar `Intl.RelativeTimeFormat` e a receber o texto de "nunca" — devolvia `5m ago`/`never` em inglês nas três telas |
+| `src/lib/ai/types.ts`, `generate.ts`, `defaults.ts`, `config.ts`, `usage.ts`, `providers/` | o TERCEIRO provedor (`gemini`, 941) e o modo `'radar'` no log de uso — o upstream conhece só openai/anthropic. `structured.ts` e `providers/gemini.ts` são arquivos NOSSOS |
+| `src/components/settings/ai-config.tsx`, `src/app/api/ai/config/route.ts` | a opção Gemini no seletor e na validação do provider |
+| `src/components/settings/cb-channels-panel.tsx`, `src/app/api/cb/channels/[id]/route.ts`, `src/lib/cb-channels/repo.ts` | o toggle `radar_enabled` por canal (dialog, PATCH allowlist e SAFE_COLUMNS) |
+| `src/components/layout/sidebar.tsx`, `header.tsx`, `src/middleware.ts` | a aba `/radar` (item de navegação, título do cabeçalho e rota protegida) |
 
 ⚠️ **A visão "Automações" do funil (grade estilo Kommo) é desenho de dado, não
 tela nova.** `src/lib/automations/grade-do-funil.ts` e
@@ -439,6 +443,162 @@ substituta.** `src/hooks/use-agendadas-da-conta.ts`,
 - **Números somem enquanto a carga falha.** Quatro zeros ao lado das abas
   afirmariam "não há nada" logo acima da caixa que admite não saber de nada.
 
+⚠️ **Radar de Atendimento (941): worker + tabela + aba `/radar`.** A IA lê as
+conversas dos últimos 7 dias e grava `cb_conversation_insights` (UMA linha
+viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
+`worker.ts` server-side, rotas em `api/cb/radar/`. O que morde código novo:
+
+- **NADA dispara sozinho** — mesma classe da 925: quem move é o agendador
+  batendo em `/api/cb/radar/cron` (incluído no laço LENTO do
+  `docker-stack.yml`). ⚠️ O CI não relê o `command` do `agendador`: a
+  inclusão só vale depois de `docker stack deploy` manual na VPS.
+- ⚠️ **`cb_channels.radar_enabled` nasce FALSE e é `=== true` na rota** — a
+  exceção DELIBERADA à convenção "escopo vazio = todos": o Radar manda
+  conversa de cliente para provedor de IA externo, e há canal de uso
+  PESSOAL conectado na conta. Não "corrigir" para a convenção.
+- **`authenticated` só tem SELECT na tabela.** Tratar/descartar passa por
+  `PATCH /api/cb/radar/[conversationId]/estado` (service-role). UPDATE do
+  navegador volta "0 linhas" com cara de sucesso — é o REVOKE da 941 agindo.
+- **Sinal sem evidência é DESCARTADO pelo parser** (`interpretarAnalise`,
+  rubrica.ts). É o princípio do produto — evidência = índice de linha do
+  transcrito, mapeado para `messages.id`. Quem mexer na rubrica mantém a
+  regra, senão o painel vira gerador de alarme falso.
+- **Feedback por atendente exige AUTORIA, não só evidência**: a observação
+  em `observacoes_por_atendente` só passa se citar linha ESCRITA pelo
+  atendente nomeado (o transcrito rotula "Equipe (Nome)" via
+  `messages.sender_id` → `profiles`; `LinhaDoTranscrito.autor` é o que o
+  parser confere). Sem isso, cliente que digita "a Ana demorou" viraria
+  auditoria da Ana. Nome não resolvido → rótulo genérico "Equipe" e a IA é
+  instruída a não avaliar. Na tela, a seção só aparece para
+  `useCan('manage-members')` — é avaliação de pessoa, não de conversa.
+  ⚠️ **O gate é SÓ de renderização**: o dado viaja em `detalhes.analise`
+  e a policy da 941 dá SELECT a qualquer membro — um `agent` lê a própria
+  avaliação pela aba Network. Barreira real (pendente, na PRÓXIMA migration
+  livre — a 943 virou a transcrição de áudio):
+  coluna separada sem GRANT ao `authenticated` + rota server-side com
+  `requireRole` + trocar o `select('*')` do hook por colunas nomeadas
+  (senão a coluna sem grant derruba a consulta inteira). Decisão do
+  operador se isso bloqueia o merge.
+- **`generateStructured` (`src/lib/ai/structured.ts`) é separado de
+  `generateReply` DE PROPÓSITO.** Não fundir: o caminho do
+  auto-reply/draft não pode herdar regressão do caminho de análise.
+- **Gemini**: chave SEMPRE no header `x-goog-api-key`, nunca `?key=` na
+  URL (vaza em log de proxy). Embeddings/RAG continuam exigindo chave
+  OpenAI (modelo fixo, `vector(1536)`). Em produção, chave do TIER PAGO —
+  a faixa gratuita do Google pode usar os dados enviados.
+- **Tempos em segundos ÚTEIS com fuso FIXO -03:00** (o Brasil não tem
+  horário de verão desde 2019) — `horario-comercial.ts` é o único arquivo
+  a mudar se isso um dia voltar. Intervalo negativo (relógio do WhatsApp
+  na entrada vs `now()` do banco na saída) vira zero lá dentro.
+- ⚠️ **Ciclo de vida do sinal tem TRÊS regras assimétricas, todas com motivo:**
+  `tratado` reabre SÓ com mensagem DO CLIENTE posterior ao `estado_em` (a
+  resposta do próprio operador não reabre, e um clique dado durante a análise
+  não é atropelado — o reset é um UPDATE condicional separado);
+  `descartado` NUNCA reabre sozinho (descartar = "a IA errou"; reanálise
+  repetiria o falso positivo a cada mensagem — reabre só pelo botão);
+  `aberto` fica. Quem mexer no reset mexe no UPDATE condicional do worker,
+  não no UPDATE principal.
+- ⚠️ **Toda escrita pós-claim do worker tem CERCA DE POSSE**
+  (`.eq('status','running').eq('running_desde', <carimbo do próprio claim>)`).
+  Sem ela, um worker recolhido como travado continuava com direito de escrita
+  e atropelava a análise seguinte. E **"mensagem nova" exige `janela_fim` NÃO
+  NULO** — tratá-lo nulo como "tem novidade" furava o teto de tentativas e
+  virava retentativa paga infinita (4 ângulos da revisão acharam).
+- **A janela de mensagens lê DESC + reverse** — com mais linhas que o teto,
+  quem cai é o COMEÇO da janela. Com ASC, o corte descartava as mensagens de
+  HOJE e `aguardando_desde` mentia "ninguém aguardando".
+- ⚠️ **Janela sem NENHUMA mensagem do cliente NÃO chama a IA** (só métricas;
+  `detalhes.sem_cliente_na_janela`). Existe porque o ENVIO também atualiza
+  `conversations.last_message_at`: sem o pulo, um broadcast tornava cada
+  destinatário candidato e disparava dezenas de análises pagas de conversas
+  onde só nós falamos. Janela COM fala do cliente reanalisa mesmo quando a
+  novidade é só nossa — a resposta da equipe resolve pendência/pedido, e
+  congelar a análise deixava alarme velho na tela. Não "otimizar" isso.
+- ⚠️ **Nesse caminho, saída AUTOMÁTICA não fecha pendência.** Se a janela só
+  tem máquina (nenhum cliente, nenhum `agent` com `sender_id` — broadcast,
+  agendada, automação e fluxo mandam sem gente) e a linha JÁ tem análise
+  completa, o worker faz um UPDATE preservador: avança só `janela_fim` e
+  mantém a análise congelada INTEIRA (`aguardando_desde` incluído). Sem
+  isso, um broadcast apagava o alarme do cliente esquecido — o caso que a
+  exceção do painel existe para proteger. Resposta HUMANA na janela cai no
+  UPDATE completo e fecha a pendência normalmente.
+- **O transcrito colapsa repetição EXATA do robô** (`botRepetidas`, rubrica):
+  fluxo reapresentando o mesmo menu entra uma vez só — **sobrevive a
+  ocorrência mais RECENTE**, a mesma regra dos tetos (mantendo a primeira,
+  o corte de cauda de conversa acima do teto a derrubava e o menu sumia
+  inteiro). O prompt declara a omissão. HUMANO (cliente OU equipe) nunca é
+  colapsado — insistência é exatamente o sinal que o Radar caça. Colapso
+  não marca `janela_cortada`.
+- **A legenda da tela (`como-funciona.tsx`) IMPORTA as constantes reais**
+  (`JANELA_DIAS`/`THROTTLE_MS` de `ordenacao.ts`, `TETO_MENSAGENS` da
+  rubrica, `CICLO_MINUTOS`) — por isso `THROTTLE_MS` mora em `ordenacao.ts`
+  (client-safe), não no worker. Número digitado à mão no dicionário mente na
+  primeira mudança de constante.
+- **`loadAiConfig` do Radar usa `requireActive: false`** — o Radar precisa da
+  CREDENCIAL; `is_active` é o interruptor do assistente DE CONVERSA. Amarrar
+  os dois silenciava a análise quando o operador desligava o auto-reply.
+- **O painel aplica a MESMA régua do worker na leitura**: esconde insight de
+  conversa fora da janela de 7 dias e de canal com `radar_enabled` desligado
+  (desligar o canal tem de sumir com as análises antigas dele — o caso
+  nomeado é o canal pessoal ligado por engano). ⚠️ **UMA exceção: pendência
+  aberta não expira.** Conversa parada além da janela com `aguardando_desde`
+  e `estado='aberto'` FICA no painel (selo "parada há mais de N dias") —
+  sumir com o cliente esquecido no 8º dia apagava o alarme quando ele fica
+  mais grave. A análise congelada é fiel (nada mudou na conversa; a primeira
+  resposta a reativa e o worker refaz), mas os CARTÕES ignoram
+  urgência/insatisfação/nota dessas linhas via `foraDaJanela` — só a
+  pendência conta.
+- **O upsert em `cb_conversation_insights` FUNCIONA** porque o UNIQUE de
+  `conversation_id` é TOTAL — não é o caso dos índices parciais da 903.
+- `ai_usage_log.mode` ganhou `'radar'` e os CHECKs de `provider` ganharam
+  `'gemini'` (941) — modo/provedor novo exige migration no CHECK, senão o
+  `logAiUsage` engole o erro e o custo some do painel de uso.
+
+⚠️ **Transcrição de áudio (943): função ÚNICA, Gemini-only, chave BYO.**
+`src/lib/transcricao/transcrever.ts` (testado), rota
+`POST /api/cb/transcricao/[messageId]`, colunas `transcricao_*` em
+`messages`. Três chamadores da MESMA função idempotente: botão da bolha,
+worker do Radar e (futuro) auto-reply. O que morde código novo:
+
+- **A transcrição NUNCA vai para `content_text`** — o que o cliente
+  escreveu e o que a máquina ouviu são coisas diferentes, e sobrescrever é
+  irreversível (o original é NULL). Num CRM jurídico isso é inegociável.
+- ⚠️ **O cadeado `UPDATE…RETURNING` não é opcional**: no deploy
+  (`start-first`) há DOIS processos Node vivos e o rate limit é um Map em
+  memória por processo — só o banco impede pagar o mesmo áudio duas vezes.
+  Teto de tentativas DENTRO do WHERE; travada de 10 min recolhida pelo
+  próprio cadeado. Escrita final e falha com cerca (`transcricao_desde`).
+- ⚠️ **Sem chave Gemini (ou provedor ≠ gemini) devolve `recusada` SEM
+  GRAVAR** — gravar o estado terminal mataria o botão para sempre por um
+  problema de configuração passageiro. Mensagem apagada, não-áudio, conta
+  errada e **áudio recém-chegado ainda sem `media_url`** (o webhook grava
+  a mensagem primeiro e o arquivo segundos depois — janela de 2 min)
+  também devolvem sem gravar. `recusada` GRAVADA é só para o irreversível
+  da PRÓPRIA mensagem: URL relativa (proxy Meta exige sessão) em mensagem
+  antiga, áudio grande demais, `MAX_TOKENS` (determinístico a temperatura
+  0 — retentar pagaria o mesmo corte de novo) e tentativas esgotadas.
+  A chave é resolvida PELO CANAL da conversa (como a análise) — sem isso,
+  canal apontado para outro provedor mandava o áudio ao Google.
+- **O modelo é FIXADO em `MODELO_TRANSCRICAO`** (`gemini-3.5-flash-lite`),
+  separado do modelo de chat/análise da conta — transcrever não precisa de
+  raciocínio e o Lite custa ~metade. Trocar de modelo/provedor é mexer SÓ
+  neste módulo (plano B documentado: ElevenLabs, único com `audio/opus`
+  por escrito — a doc do Gemini lista "OGG Vorbis" e a nota do WhatsApp é
+  Opus; funciona em relatos, o 1º teste real em produção é o go/no-go).
+- **O worker do Radar transcreve SÓ áudio do CLIENTE e SÓ nunca-tentado**
+  (`transcricao_status` nulo), até 5 por análise e dentro do `deadlineMs`
+  do ciclo (reserva download + 2× o timeout de IA). ⚠️ `falhou` fica para
+  o botão HUMANO — o retry automático a cada ciclo queimava o teto de 3
+  em ~45 min e uma cota estourada carimbava `recusada` terminal em tudo.
+  Falha/recusa NÃO derruba a análise — o áudio segue como lacuna
+  declarada. O texto entra com `PREFIXO_AUDIO` (contrato com a rubrica:
+  linha de áudio tem teto de 2.000 chars, não 500, e truncamento por
+  linha é declarado ao modelo via `truncadas`).
+- **A transcrição NÃO entra no índice GIN da busca (929)** — trade-off
+  aceito no plano; busca por conteúdo de áudio é migration futura.
+- O mime enviado é `messages.media_type` (042) → `Content-Type` do
+  Storage → `audio/ogg`, nesta ordem.
+
 ⚠️ **UI de canal: peças próprias, prefira reusá-las.** `src/hooks/use-channels.ts`
 (uma busca por montagem, falha silenciosa), `src/lib/cb-channels/display.ts`
 (funções puras, com teste) e `src/components/channels/` (`ChannelBadge`,
@@ -559,14 +719,13 @@ entrega mensagem de grupo. O que morde código novo:
   `mentions_us` (NOT NULL) estouram se as linhas do lote não forem uniformes.
   O caminho de produção grava uma linha por vez e não é afetado.
 
-⚠️ **PENDENTE — verificar na VPS se `maxDuration = 60` é aplicado de fato.**
-É convenção de plataforma serverless (Vercel/Lambda); num Next.js self-hosted
-em container provavelmente ninguém lê esse número. Se FOR aplicado, o que
-passar do teto é morto no meio e **a mensagem do cliente pode não existir** —
-sem erro, sem log. Com grupo o risco deixa de ser teórico (mais tráfego, e o
-download de mídia até 5 MB volta para dentro do orçamento). Conferir com:
-`docker service inspect crm_crm --format '{{json .Spec.TaskTemplate.ContainerSpec.Command}}{{json .Spec.TaskTemplate.ContainerSpec.Args}}'`
-Se for `node server.js` (standalone do Next), o teto não vale e o item morre.
+✅ **RESOLVIDO (2026-08-27) — `maxDuration` NÃO é aplicado em produção.**
+Conferido na VPS: `docker service inspect crm_crm` mostra Command/Args nulos e
+o Dockerfile termina em `CMD ["node", "server.js"]` (standalone do Next) — o
+`maxDuration` das rotas é decorativo aqui. **O teto real de cada rota de cron
+é o `-m` do curl do agendador** (50s no laço rápido, 120s no lento; ver
+`docker-stack.yml`). Quem escrever worker novo orça o ciclo contra o curl,
+não contra o `maxDuration` — o worker do Radar faz isso (`TETO_ABSOLUTO_MS`).
 
 ⚠️ **A trilha de auditoria (912) é escrita por TRIGGER, não por código.**
 `cb_lead_events` registra criação/exclusão de negócio, mudança de etapa, de
@@ -725,6 +884,15 @@ mordem de novo em qualquer código novo:
   `931_cb_fecha_anon_nas_tabelas_antigas`.
   Depois disso (conferido em 2026-08-03):
   `932_cb_agendada_com_midia_e_citacao`.
+  Depois disso (conferido em 2026-08-27 via `list_migrations`):
+  `933_cb_gatilho_de_funil`, `934_cb_acoes_de_funil`,
+  `935_cb_lembrete_por_data`, `936_cb_orquestracao`,
+  `937_cb_batimento_das_automacoes`, as três do upstream renumeradas
+  (`040`/`041`/`042`), `940_cb_broadcast_com_canal`,
+  `941_cb_radar_de_atendimento` e `942_cb_indices_do_radar`.
+  ✅ A `943_cb_transcricao_de_audio` foi **aplicada em 2026-08-27** (via
+  MCP, registrada no histórico; colunas e CHECKs conferidos) — o deploy
+  do merge já encontra o schema pronto.
   ⚠️ A `906` foi aplicada FORA DE ORDEM (antes da 907), e o histórico do
   Supabase a registra com o nome antigo `904_cb_grupos` — ela nasceu numerada
   como 904, colidiu com `904_cb_mensagem_do_aparelho` e o ARQUIVO foi
@@ -898,9 +1066,10 @@ mesma passada** (help/config no app, `docs/`, ou README do módulo). Doc obsolet
 - **Supabase:** Postgres + Auth + Storage + RLS. `SUPABASE_SERVICE_ROLE_KEY`
   ignora RLS e só pode ser usada em código server-side (webhook, automações,
   auth da API pública). Nunca no client.
-- **Assistente de IA:** bring-your-own-key (OpenAI/Anthropic) — cada conta cola
-  sua chave em Settings → AI Assistant, guardada criptografada com
-  `ENCRYPTION_KEY`. Não há env var global de provider.
+- **Assistente de IA:** bring-your-own-key (OpenAI/Anthropic/Gemini, desde a
+  941) — cada conta cola sua chave em Settings → AI Assistant, guardada
+  criptografada com `ENCRYPTION_KEY`. Não há env var global de provider.
+  Embeddings (RAG) continuam exigindo chave OpenAI (modelo fixo, vector 1536).
 
 ## Antes de aplicar mudanças
 
