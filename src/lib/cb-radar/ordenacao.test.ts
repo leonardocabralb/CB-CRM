@@ -89,4 +89,24 @@ describe('resumirCartoes', () => {
   it('sem nota nenhuma, média é null (não zero)', () => {
     expect(resumirCartoes([insight()]).notaMedia).toBeNull()
   })
+
+  it('fora da janela conta SÓ como pendência — sinais e nota são congelados', () => {
+    // Cliente esquecido além da janela fica no painel pela pendência,
+    // mas a urgência/insatisfação/nota dele vêm de análise velha e não
+    // podem inflar cartões rotulados "7 dias".
+    const r = resumirCartoes([
+      insight({
+        urgencia: 'alta',
+        insatisfacao: true,
+        nota: 2,
+        aguardandoSegUteis: 30 * 3600,
+        foraDaJanela: true,
+      }),
+      insight({ nota: 8 }),
+    ])
+    expect(r.urgencias).toBe(0)
+    expect(r.insatisfacoes).toBe(0)
+    expect(r.pendencias).toBe(1)
+    expect(r.notaMedia).toBe(8)
+  })
 })

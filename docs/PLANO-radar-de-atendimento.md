@@ -71,6 +71,11 @@ agendador (VPS, laço lento 900s)
 A tela explica tudo isso ao operador no botão **"Como funciona"** (os
 números são importados das constantes reais, nunca digitados no texto).
 
+Nota: **pendência aberta não expira no painel.** Conversa parada além da
+janela com cliente aguardando fica na tela (selo "parada há mais de N
+dias"), sem custo — o worker não a reanalisa (nada mudou; a análise
+congelada segue fiel) e os cartões contam só a pendência dela.
+
 ## Para LIGAR em produção (runbook)
 
 1. **Deploy normal** (merge → push main). ✅ **O passo manual da VPS JÁ

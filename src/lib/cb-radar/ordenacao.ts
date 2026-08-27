@@ -54,6 +54,11 @@ export interface InsightParaOrdenacao {
   nota: number | null
   estado: EstadoDoInsight
   ultimaAtividade: Date | null
+  /** Conversa cuja atividade saiu da janela do Radar, mantida no painel
+   *  SÓ porque o cliente segue aguardando resposta (pendência aberta).
+   *  A análise dela é congelada — por isso os cartões de urgência/
+   *  insatisfação/nota a ignoram; só a pendência conta. */
+  foraDaJanela?: boolean
 }
 
 export function pontuacaoDeSeveridade(i: InsightParaOrdenacao, agora: Date): number {
@@ -127,11 +132,19 @@ export interface CartoesDoRadar {
 
 export function resumirCartoes(itens: InsightParaOrdenacao[]): CartoesDoRadar {
   const abertos = itens.filter((i) => i.estado === 'aberto')
-  const notas = itens.map((i) => i.nota).filter((n): n is number => n !== null)
+  // Linha fora da janela entra SÓ na pendência: a urgência/insatisfação/
+  // nota dela vêm de uma análise congelada de dias atrás, e o cartão de
+  // nota promete "7 dias" — mas a pendência é ESTADO, não evento, e segue
+  // verdadeira enquanto ninguém responde.
+  const naJanela = abertos.filter((i) => !i.foraDaJanela)
+  const notas = itens
+    .filter((i) => !i.foraDaJanela)
+    .map((i) => i.nota)
+    .filter((n): n is number => n !== null)
   return {
-    urgencias: abertos.filter((i) => i.urgencia === 'alta' || i.urgencia === 'media')
+    urgencias: naJanela.filter((i) => i.urgencia === 'alta' || i.urgencia === 'media')
       .length,
-    insatisfacoes: abertos.filter((i) => i.insatisfacao).length,
+    insatisfacoes: naJanela.filter((i) => i.insatisfacao).length,
     pendencias: abertos.filter(
       (i) => (i.aguardandoSegUteis ?? 0) >= LIMIAR_PENDENCIA_SEG,
     ).length,

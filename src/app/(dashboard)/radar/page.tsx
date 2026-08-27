@@ -78,6 +78,8 @@ interface Decorado {
   insight: InsightDaConta;
   ord: InsightParaOrdenacao;
   aguardandoSeg: number | null;
+  /** Conversa parada além da janela, mantida só pela pendência aberta. */
+  foraDaJanela: boolean;
 }
 
 export default function RadarPage() {
@@ -111,16 +113,23 @@ export default function RadarPage() {
 
   const decorados: Decorado[] = [];
   for (const i of insights) {
-    // Fora da janela do Radar = fora do painel, a MESMA régua do worker:
-    // sem este corte, um "aguardando" de março seguiria vivo (e
-    // crescendo ao vivo) na tela em agosto, dentro de um cartão rotulado
-    // "7 dias".
     const atividadeMs = i.conversation?.last_message_at
       ? Date.parse(i.conversation.last_message_at)
       : null;
-    if (!atividadeMs || agora.getTime() - atividadeMs > MS_JANELA) continue;
+    if (!atividadeMs) continue;
     if (i.channel_id && canalDesligado.get(i.channel_id)) continue;
     if (canalFiltro && i.channel_id !== canalFiltro) continue;
+
+    // Fora da janela do Radar = fora do painel, a MESMA régua do worker —
+    // COM UMA exceção: pendência aberta. Cliente esquecido há 10 dias é o
+    // pior caso do produto, e sumir com ele no 8º dia era apagar o alarme
+    // exatamente quando ele fica mais grave. A análise congelada segue
+    // FIEL numa conversa parada (nada aconteceu para mudá-la; a primeira
+    // resposta reativa a conversa e o worker refaz tudo) — mas os cartões
+    // ignoram os sinais dela via `foraDaJanela` (só a pendência conta), e
+    // um "aguardando" tratado/descartado continua saindo da tela.
+    const foraDaJanela = agora.getTime() - atividadeMs > MS_JANELA;
+    if (foraDaJanela && !(i.aguardando_desde && i.estado === 'aberto')) continue;
 
     const aguardandoSeg = i.aguardando_desde
       ? segundosUteisEntre(new Date(i.aguardando_desde), agora)
@@ -128,6 +137,7 @@ export default function RadarPage() {
     decorados.push({
       insight: i,
       aguardandoSeg,
+      foraDaJanela,
       ord: {
         urgencia: i.urgencia,
         insatisfacao: i.insatisfacao,
@@ -136,6 +146,7 @@ export default function RadarPage() {
         nota: i.nota,
         estado: i.estado,
         ultimaAtividade: new Date(atividadeMs),
+        foraDaJanela,
       },
     });
   }
@@ -294,11 +305,12 @@ export default function RadarPage() {
         </div>
       ) : (
         <ul className="space-y-2">
-          {visiveis.map(({ insight: i, aguardandoSeg }) => (
+          {visiveis.map(({ insight: i, aguardandoSeg, foraDaJanela }) => (
             <LinhaDoRadar
               key={i.id}
               insight={i}
               aguardandoSeg={aguardandoSeg}
+              foraDaJanela={foraDaJanela}
               mostrarCanal={mostrarCanal}
               canais={channels}
               podeAgir={podeAgir}
@@ -382,6 +394,7 @@ function CorDaNota(nota: number): string {
 function LinhaDoRadar({
   insight: i,
   aguardandoSeg,
+  foraDaJanela,
   mostrarCanal,
   canais,
   podeAgir,
@@ -394,6 +407,8 @@ function LinhaDoRadar({
   insight: InsightDaConta;
   /** Já em segundos ÚTEIS, calculado uma vez no passe decorado do pai. */
   aguardandoSeg: number | null;
+  /** Conversa parada além da janela, viva só pela pendência aberta. */
+  foraDaJanela: boolean;
   mostrarCanal: boolean;
   canais: CbChannel[];
   podeAgir: boolean;
@@ -462,6 +477,11 @@ function LinhaDoRadar({
           <Etiqueta className={COR_URGENCIA.media}>
             <Clock className="h-3 w-3" />
             {t('aguardando', { tempo: formatarDuracaoUtil(aguardandoSeg) })}
+          </Etiqueta>
+        )}
+        {foraDaJanela && (
+          <Etiqueta className={COR_URGENCIA.media} title={t('foraDaJanelaTitulo')}>
+            {t('foraDaJanela', { dias: JANELA_DIAS })}
           </Etiqueta>
         )}
         {i.pedidos_abertos > 0 && (

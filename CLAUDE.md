@@ -513,7 +513,14 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
 - **O painel aplica a MESMA régua do worker na leitura**: esconde insight de
   conversa fora da janela de 7 dias e de canal com `radar_enabled` desligado
   (desligar o canal tem de sumir com as análises antigas dele — o caso
-  nomeado é o canal pessoal ligado por engano).
+  nomeado é o canal pessoal ligado por engano). ⚠️ **UMA exceção: pendência
+  aberta não expira.** Conversa parada além da janela com `aguardando_desde`
+  e `estado='aberto'` FICA no painel (selo "parada há mais de N dias") —
+  sumir com o cliente esquecido no 8º dia apagava o alarme quando ele fica
+  mais grave. A análise congelada é fiel (nada mudou na conversa; a primeira
+  resposta a reativa e o worker refaz), mas os CARTÕES ignoram
+  urgência/insatisfação/nota dessas linhas via `foraDaJanela` — só a
+  pendência conta.
 - **O upsert em `cb_conversation_insights` FUNCIONA** porque o UNIQUE de
   `conversation_id` é TOTAL — não é o caso dos índices parciais da 903.
 - `ai_usage_log.mode` ganhou `'radar'` e os CHECKs de `provider` ganharam
