@@ -890,9 +890,9 @@ mordem de novo em qualquer código novo:
   `937_cb_batimento_das_automacoes`, as três do upstream renumeradas
   (`040`/`041`/`042`), `940_cb_broadcast_com_canal`,
   `941_cb_radar_de_atendimento` e `942_cb_indices_do_radar`.
-  ⚠️ A `943_cb_transcricao_de_audio` está CRIADA na branch do Radar e
-  **ainda não aplicada** — aplicar ANTES do deploy do merge (o worker do
-  Radar seleciona as colunas novas; sem elas, toda análise falha).
+  ✅ A `943_cb_transcricao_de_audio` foi **aplicada em 2026-08-27** (via
+  MCP, registrada no histórico; colunas e CHECKs conferidos) — o deploy
+  do merge já encontra o schema pronto.
   ⚠️ A `906` foi aplicada FORA DE ORDEM (antes da 907), e o histórico do
   Supabase a registra com o nome antigo `904_cb_grupos` — ela nasceu numerada
   como 904, colidiu com `904_cb_mensagem_do_aparelho` e o ARQUIVO foi

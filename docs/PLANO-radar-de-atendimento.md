@@ -79,10 +79,8 @@ congelada segue fiel) e os cartões contam só a pendência dela.
 
 ## Para LIGAR em produção (runbook)
 
-0. ⚠️ **Aplicar a migration `943_cb_transcricao_de_audio` ANTES do
-   merge** (MCP `apply_migration` ou SQL Editor — as 941/942 já estão
-   aplicadas). O worker seleciona as colunas novas de `messages`; sem
-   elas, toda análise falha no deploy.
+0. ✅ **Migrations 941, 942 e 943 JÁ APLICADAS** (2026-08-27, via MCP,
+   conferidas no schema e no histórico) — nada a aplicar antes do merge.
 1. **Deploy normal** (merge → push main). ✅ **O passo manual da VPS JÁ
    FOI FEITO** (2026-08-27): o `agendador` foi reimplantado com `cb/radar`
    no laço lento, com a imagem do `crm_crm` pinada no digest vigente
