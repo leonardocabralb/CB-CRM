@@ -751,6 +751,77 @@ mordem de novo em qualquer código novo:
 - **Nunca renomear nem renumerar** migration já aplicada.
 - Antes de criar nova, **validar drift** entre local e o projeto Supabase.
 
+### ⚠️ Migration tem de aplicar num banco VAZIO, não só no nosso
+
+Desde o merge do upstream de 2026-08-26 existe um CI (`pipeline.yml`, etapa
+`Apply to a clean database`) que sobe um Postgres limpo e reaplica **todas** as
+migrations em ordem, do zero. Antes dele, nenhum `.sql` deste repositório tinha
+sido executado por CI nenhuma vez — as migrations foram escritas contra um banco
+que já existia, e **nove delas reprovaram** na primeira execução real.
+
+Foram só DUAS causas. Escrever migration nova sem cair nelas é a regra abaixo.
+
+**1. Privilégio herdado do Supabase não existe em banco novo.**
+
+Tabela criada por `postgres` no `public` recebe tudo para
+`anon`/`authenticated`/`service_role` por um *default privilege* que o Supabase
+configura (`pg_default_acl`). Isso é do AMBIENTE, não do nosso SQL. Num banco
+criado do zero ele não se repete. Duas consequências, ambas já morderam:
+
+- Uma conferência do tipo `IF NOT has_table_privilege('authenticated', …)`
+  reprova, porque o privilégio nunca foi concedido por escrito.
+- `REVOKE … FROM PUBLIC` numa FUNÇÃO tira o `EXECUTE` de quem dependia de
+  PUBLIC — **inclusive do `service_role`**, já que em Postgres o EXECUTE de
+  função nasce concedido a PUBLIC. Em produção não aparece; em banco novo, sim.
+
+  ✅ **Regra:** todo privilégio que a migration CONFERE, ela tem de CONCEDER.
+  Depois de qualquer `REVOKE`, escreva o `GRANT` de volta para quem precisa —
+  em produção é no-op, e `GRANT` é idempotente. Não confie no ambiente nem para
+  abrir nem para fechar.
+
+  Exemplo (939 em diante, siga este formato):
+  ```sql
+  REVOKE EXECUTE ON FUNCTION cb_minha_rpc(uuid) FROM PUBLIC, anon, authenticated;
+  -- O motor/cron chama com service_role, que perdeu o EXECUTE junto com PUBLIC.
+  GRANT  EXECUTE ON FUNCTION cb_minha_rpc(uuid) TO service_role;
+  ```
+
+  ⚠️ Vale também para RLS: política avaliada com o privilégio de QUEM CHAMOU.
+  A de `messages` consulta `conversations`, então `authenticated` precisa de
+  `SELECT` nas duas. A cadeia para em `is_account_member`, que é
+  `SECURITY DEFINER`.
+
+**2. Conferência não pode exigir dado que só existe aqui.**
+
+Várias conferências provavam mecânica usando dado de produção — uma busca pelo
+literal `'docker'`, `count(*) >= 2` numa tabela, "a busca tem de achar a
+mensagem de onde o termo saiu". Em banco vazio não há o que achar, e elas
+reprovavam por falta de dado, não por defeito.
+
+  ✅ **Regra:** conferência que precisa de dado deve DERIVAR o dado do banco e
+  **pular quando não houver**, com `RAISE NOTICE`. Afirmar ausência
+  (`IF EXISTS … THEN RAISE`) é sempre seguro — é verdade trivial num banco
+  vazio. Afirmar presença é que quebra.
+
+  ```sql
+  SELECT substr(content_text, 1, 6) INTO v_termo FROM messages LIMIT 1;
+  IF v_termo IS NULL THEN
+    RAISE NOTICE 'NNN: banco vazio, nada a provar.';
+  ELSE
+    -- a prova de verdade
+  END IF;
+  ```
+
+  Para "o DROP não levou nada junto", guarde a contagem ANTES numa **variável**
+  do bloco e compare — nunca um número absoluto, e nunca `CREATE TEMP TABLE`
+  (sem guarda ele estoura na segunda passada e quebra a idempotência).
+
+**Como conferir antes de abrir o PR:** `supabase db start` na raiz do projeto
+reaplica tudo do zero, igual ao CI. Exige Docker rodando e ~2 GB livres.
+
+**O replay NÃO trava o deploy** — ver a nota em `pipeline.yml`. Ele é sinal, não
+portão, justamente porque as migrations antigas ainda carregam essa dívida.
+
 ## i18n (armadilhas que já morderam)
 
 O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
@@ -836,6 +907,10 @@ mesma passada** (help/config no app, `docs/`, ou README do módulo). Doc obsolet
 - [ ] Estamos numa branch derivada de `main`? Não commitar direto no `main`.
 - [ ] Branch criada a partir de `main` atualizado (`git pull origin main`)?
 - [ ] Se mexer em schema: migration na faixa `900+`/`cb_` e check de drift.
+- [ ] A migration aplica num banco **VAZIO**? Todo `REVOKE` tem `GRANT` de volta
+      para quem precisa, e nenhuma conferência exige dado que só existe aqui?
+      (Ver "Migration tem de aplicar num banco VAZIO".) Conferir com
+      `supabase db start`, que é o que o CI faz.
 - [ ] Não commitar `.env.local` (confirmar com `git status`).
 - [ ] Rodar `npm run typecheck` e `npm run lint` antes de finalizar.
 
@@ -850,6 +925,12 @@ mesma passada** (help/config no app, `docs/`, ou README do módulo). Doc obsolet
 - ❌ Numerar migration nossa na sequência do upstream (`037`, `038`…) em vez da
   faixa reservada `900+`.
 - ❌ Renomear/renumerar migration já aplicada.
+- ❌ Conferir privilégio numa migration sem tê-lo CONCEDIDO ali. O que vem do
+  *default privilege* do Supabase não existe em banco novo — nove migrations
+  nossas reprovaram por isso na primeira vez que o CI as reaplicou do zero.
+- ❌ Conferência de migration que exige DADO presente (busca por literal,
+  `count(*) >= N`). Em banco vazio ela reprova por falta de dado, não por
+  defeito. Derive o dado e pule com `RAISE NOTICE` quando não houver.
 - ❌ Aplicar mudança de schema pela UI de tabelas em vez do comando canônico.
 - ❌ Usar `SUPABASE_SERVICE_ROLE_KEY` em código client-side.
 - ❌ Rotacionar `ENCRYPTION_KEY` sem avisar (invalida tokens do WhatsApp).
