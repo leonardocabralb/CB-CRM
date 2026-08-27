@@ -390,7 +390,12 @@
       "rotateLeft": "Girar à esquerda",
       "rotateRight": "Girar à direita",
       "zoomIn": "Aproximar",
-      "zoomOut": "Afastar"
+      "zoomOut": "Afastar",
+      "previous": "Anterior",
+      "next": "Próximo",
+      "counter": "{index} de {total}",
+      "failed": "Este anexo não está mais disponível",
+      "imageAlt": "Imagem compartilhada"
     },
     "groupSidebar": {
       "empty": "Nenhum grupo selecionado.",
