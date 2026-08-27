@@ -268,6 +268,14 @@ function TranscricaoDeAudio({
   } | null>(null);
   const [pedindo, setPedindo] = useState(false);
 
+  // O banco é sempre a verdade mais NOVA: quando o realtime traz um
+  // status diferente, o retrato local do POST solta — sem isto, um
+  // "transcrevendo" local (corrida de claim perdida) escondia o `falhou`
+  // do dono real para sempre.
+  useEffect(() => {
+    setLocal(null);
+  }, [message.transcricao_status, message.transcricao]);
+
   const transcricao = local?.transcricao ?? message.transcricao ?? null;
   const status = local?.status ?? message.transcricao_status ?? null;
   const erro = (local?.erro ?? message.transcricao_erro) || null;
@@ -308,7 +316,20 @@ function TranscricaoDeAudio({
   }
   if (message.sender_type !== "customer") return null;
 
-  if (pedindo || status === "transcrevendo") {
+  // "Transcrevendo" órfão (processo morto no meio, deploy start-first):
+  // depois do prazo do cadeado, a bolha REOFERECE o botão — o resgate da
+  // travada mora no WHERE do servidor e precisa de um chamador; sem isto,
+  // o estado ficava eterno na tela. 10 min = TRAVADA_MIN de
+  // src/lib/transcricao/transcrever.ts (server-only, não importável aqui).
+  const desdeMs = message.transcricao_desde
+    ? Date.parse(message.transcricao_desde)
+    : NaN;
+  const claimTravado =
+    status === "transcrevendo" &&
+    Number.isFinite(desdeMs) &&
+    Date.now() - desdeMs > 10 * 60_000;
+
+  if (pedindo || (status === "transcrevendo" && !claimTravado)) {
     return (
       <p className="mt-1 text-xs text-muted-foreground">{t("transcrevendo")}</p>
     );

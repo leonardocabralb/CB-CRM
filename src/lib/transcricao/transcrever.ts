@@ -39,7 +39,13 @@ const TRAVADA_MIN = 10
 /** Nota de voz real tem centenas de KB; 15 MB já é playlist encaminhada. */
 const TAMANHO_MAX_BYTES = 15 * 1024 * 1024
 const MAX_TOKENS_TRANSCRICAO = 4096
-const TIMEOUT_DOWNLOAD_MS = 20_000
+/** Exportado: o worker do Radar soma isto à reserva de prazo antes de
+ *  iniciar uma transcrição — sem somar, uma iniciada perto do teto do
+ *  ciclo estourava o `curl -m` do agendador. */
+export const TIMEOUT_DOWNLOAD_MS = 20_000
+/** Espelho da janela da bolha (`JANELA_DOWNLOAD_MS`): o webhook grava a
+ *  mensagem PRIMEIRO e o arquivo segundos depois. */
+const JANELA_DOWNLOAD_MS = 2 * 60_000
 
 const INSTRUCAO =
   'Transcreva o áudio a seguir fielmente, em português do Brasil. ' +
@@ -59,12 +65,13 @@ interface MensagemDeAudio {
   content_text: string | null
   media_url: string | null
   media_type: string | null
+  created_at: string | null
   deleted_at: string | null
   transcricao: string | null
   transcricao_status: string | null
   transcricao_erro: string | null
   transcricao_tentativas: number
-  conversation: { account_id: string } | null
+  conversation: { account_id: string; channel_id: string | null } | null
 }
 
 export async function transcreverAudio(
@@ -77,7 +84,7 @@ export async function transcreverAudio(
   const { data, error } = await admin
     .from('messages')
     .select(
-      'id, conversation_id, content_type, content_text, media_url, media_type, deleted_at, transcricao, transcricao_status, transcricao_erro, transcricao_tentativas, conversation:conversations!inner(account_id)',
+      'id, conversation_id, content_type, content_text, media_url, media_type, created_at, deleted_at, transcricao, transcricao_status, transcricao_erro, transcricao_tentativas, conversation:conversations!inner(account_id, channel_id)',
     )
     .eq('id', args.messageId)
     .maybeSingle()
@@ -107,12 +114,30 @@ export async function transcreverAudio(
   // `/api/whatsapp/media/<id>`, que exige sessão de usuário — um caminho
   // server-side buscaria a tela de login e transcreveria lixo.
   if (!msg.media_url || !msg.media_url.startsWith('https://')) {
+    // ⚠️ O webhook grava a mensagem PRIMEIRO e o arquivo segundos depois
+    // (o Radar prioriza a conversa mais recente, então ele CHEGA nessa
+    // janela). Recusar em definitivo aqui matava o áudio recém-chegado —
+    // dentro da janela de download é transitório: nada é gravado.
+    const idadeMs = msg.created_at
+      ? Date.now() - Date.parse(msg.created_at)
+      : Number.POSITIVE_INFINITY
+    if (idadeMs < JANELA_DOWNLOAD_MS) {
+      return { status: 'falhou', erro: 'o áudio ainda está sendo baixado — tente de novo em instantes' }
+    }
     await gravarTerminal(admin, msg.id, 'recusada', 'áudio sem arquivo acessível ao servidor')
     return { status: 'recusada', erro: 'áudio sem arquivo acessível ao servidor' }
   }
 
   // Chave ANTES do cadeado (ver cabeçalho: sem chave não se grava estado).
-  const config = await loadAiConfig(admin, args.accountId, { requireActive: false })
+  // ⚠️ Resolvida PELO CANAL da conversa, como a análise do Radar — sem o
+  // canal, conta com padrão OpenAI e agente Gemini no canal recusava tudo,
+  // e o INVERSO mandava o áudio ao Google num canal que o operador apontou
+  // para outro provedor (revisão 2026-08-27). Grupo tem canal nulo e cai
+  // no padrão da conta, como em todo o resto do projeto.
+  const config = await loadAiConfig(admin, args.accountId, {
+    requireActive: false,
+    channelId: msg.conversation?.channel_id ?? null,
+  })
   if (!config) {
     return { status: 'recusada', erro: 'sem chave de IA configurada — cadastre uma chave Gemini em Configurações → Assistente de IA' }
   }
@@ -137,6 +162,10 @@ export async function transcreverAudio(
     .is('deleted_at', null)
     .is('transcricao', null)
     .lt('transcricao_tentativas', TENTATIVAS_MAX)
+    // O incremento é leitura-então-escrita: sem amarrar o valor LIDO, um
+    // claim concorrente entre o SELECT do topo e este UPDATE faria o
+    // contador regredir e o teto virar 4+ chamadas pagas.
+    .eq('transcricao_tentativas', msg.transcricao_tentativas)
     .or(
       `transcricao_status.is.null,transcricao_status.eq.falhou,and(transcricao_status.eq.transcrevendo,transcricao_desde.lt.${corte})`,
     )
@@ -171,16 +200,20 @@ export async function transcreverAudio(
     // Download do bucket (público) com teto de tamanho e de tempo.
     const controle = new AbortController()
     const tDownload = setTimeout(() => controle.abort(), TIMEOUT_DOWNLOAD_MS)
-    let resp: Response
+    let bytes: Buffer
+    let mimeDoStorage: string | null
     try {
-      resp = await fetch(msg.media_url, { signal: controle.signal })
+      const resp = await fetch(msg.media_url, { signal: controle.signal })
+      if (!resp.ok) {
+        return await falhar(admin, msg.id, claimIso, `download do áudio falhou (HTTP ${resp.status})`)
+      }
+      mimeDoStorage = resp.headers.get('content-type')
+      // O corpo fica DENTRO do timeout: só os headers dentro dele deixava
+      // um body lento pendurar a chamada muito além dos 20s prometidos.
+      bytes = Buffer.from(await resp.arrayBuffer())
     } finally {
       clearTimeout(tDownload)
     }
-    if (!resp.ok) {
-      return await falhar(admin, msg.id, claimIso, `download do áudio falhou (HTTP ${resp.status})`)
-    }
-    const bytes = Buffer.from(await resp.arrayBuffer())
     if (bytes.byteLength > TAMANHO_MAX_BYTES) {
       await gravarTerminal(admin, msg.id, 'recusada', 'áudio grande demais para transcrever', claimIso)
       return { status: 'recusada', erro: 'áudio grande demais para transcrever' }
@@ -191,8 +224,7 @@ export async function transcreverAudio(
 
     // O mime REAL: a 042 gravou o da entrada; o Storage devolve o salvo.
     // `audio/ogg` é o fallback honesto — 100% do acervo real é ogg/opus.
-    const mime =
-      msg.media_type || resp.headers.get('content-type') || 'audio/ogg'
+    const mime = msg.media_type || mimeDoStorage || 'audio/ogg'
 
     const tGemini = new AbortController()
     const tHandle = setTimeout(() => tGemini.abort(), aiRequestTimeoutMs())
@@ -233,25 +265,32 @@ export async function transcreverAudio(
       )
     }
     const dataGemini = (await r.json().catch(() => null)) as GeminiResponse | null
-    const texto = geminiText(dataGemini).trim()
-    const finish = dataGemini?.candidates?.[0]?.finishReason
-    if (finish === 'MAX_TOKENS') {
-      return await falhar(admin, msg.id, claimIso, 'transcrição cortada por tamanho — áudio longo demais')
-    }
-    if (!texto) {
-      return await falhar(admin, msg.id, claimIso, 'o modelo devolveu resposta vazia')
-    }
 
-    // Custo registrado na chave da conta, como todo modo de IA.
-    const usage = geminiUsage(dataGemini)
+    // ⚠️ Custo registrado ANTES de julgar a resposta: um fim MAX_TOKENS ou
+    // uma resposta vazia já foram COBRADOS na chave da conta (o áudio de
+    // entrada é a parte cara), e `falhou` retenta até 3× — sem o log aqui,
+    // exatamente o áudio mais caro sumia do painel de uso (mesmo princípio
+    // gravado no worker do Radar).
     void logAiUsage(admin, {
       accountId: args.accountId,
       conversationId: msg.conversation_id,
       mode: 'transcricao',
       provider: 'gemini',
       model: MODELO_TRANSCRICAO,
-      usage,
+      usage: geminiUsage(dataGemini),
     })
+
+    const texto = geminiText(dataGemini).trim()
+    const finish = dataGemini?.candidates?.[0]?.finishReason
+    if (finish === 'MAX_TOKENS') {
+      // Determinístico a temperatura 0: retentar é pagar o MESMO áudio de
+      // novo pelo mesmo resultado — terminal, não `falhou`.
+      await gravarTerminal(admin, msg.id, 'recusada', 'áudio longo demais para transcrever', claimIso)
+      return { status: 'recusada', erro: 'áudio longo demais para transcrever' }
+    }
+    if (!texto) {
+      return await falhar(admin, msg.id, claimIso, 'o modelo devolveu resposta vazia')
+    }
 
     const { data: gravado } = await admin
       .from('messages')

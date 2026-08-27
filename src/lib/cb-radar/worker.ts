@@ -29,11 +29,12 @@ import { generateStructured } from '@/lib/ai/structured'
 import { logAiUsage } from '@/lib/ai/usage'
 import { aiRequestTimeoutMs } from '@/lib/ai/defaults'
 import type { AiUsage } from '@/lib/ai/types'
-import { transcreverAudio } from '@/lib/transcricao/transcrever'
+import { TIMEOUT_DOWNLOAD_MS, transcreverAudio } from '@/lib/transcricao/transcrever'
 import { calcularMetricas, type MensagemParaMetricas } from './metricas'
 import { JANELA_DIAS, THROTTLE_MS } from './ordenacao'
 import { extrairNumerosDeProcesso } from './processos'
 import {
+  PREFIXO_AUDIO,
   RADAR_SCHEMA,
   interpretarAnalise,
   montarPromptDoRadar,
@@ -430,18 +431,24 @@ export async function analisarConversaReivindicada(
   for (const m of comData) {
     if (m.transcricao) transcricoes.set(m.id, m.transcricao)
   }
+  // ⚠️ Só áudio NUNCA tentado (`status` nulo). Retentar `falhou`
+  // automaticamente a cada ciclo queimava o teto de 3 tentativas em ~45
+  // min — uma cota estourada no provedor carimbava `recusada` TERMINAL em
+  // todo áudio pendente antes de a cota voltar. Falha fica para o botão
+  // humano da bolha, que retenta com julgamento.
   const audiosPendentes = comData.filter(
     (m) =>
       m.content_type === 'audio' &&
       m.sender_type === 'customer' &&
       !m.transcricao &&
-      m.transcricao_status !== 'recusada',
+      m.transcricao_status === null,
   )
   let tentativasDeAudio = 0
   for (const m of audiosPendentes) {
     if (tentativasDeAudio >= TRANSCRICOES_POR_ANALISE) break
-    // Reserva o tempo DESTA transcrição + o da análise que ainda vem.
-    if (Date.now() + aiRequestTimeoutMs() * 2 > deadlineMs) break
+    // Reserva o tempo DESTA transcrição (download + geração) + o da
+    // análise que ainda vem.
+    if (Date.now() + TIMEOUT_DOWNLOAD_MS + aiRequestTimeoutMs() * 2 > deadlineMs) break
     tentativasDeAudio += 1
     const r = await transcreverAudio(admin, {
       accountId: args.accountId,
@@ -451,12 +458,13 @@ export async function analisarConversaReivindicada(
   }
 
   // O texto que o transcrito vê: o que o cliente ESCREVEU, ou — para
-  // áudio transcrito — o que ele DISSE, com o rótulo `[áudio]` para o
-  // modelo (e a evidência na tela) saberem a origem.
+  // áudio transcrito — o que ele DISSE, com o PREFIXO_AUDIO da rubrica
+  // (é o contrato que dá à linha o teto maior de caracteres e diz ao
+  // modelo e à evidência a origem).
   const textoDe = (m: MensagemDaJanela): string | null => {
     if (m.content_text && m.content_text.trim()) return m.content_text
     const t = transcricoes.get(m.id)
-    return t ? `[áudio] ${t}` : null
+    return t ? `${PREFIXO_AUDIO}${t}` : null
   }
   const comTexto = comData.filter((m) => textoDe(m) !== null)
   const semTexto = comData.length - comTexto.length

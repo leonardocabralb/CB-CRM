@@ -117,8 +117,9 @@ congelada segue fiel) e os cartões contam só a pendência dela.
   O feedback POR CONVERSA já existe: `observacoes_por_atendente` na
   análise, com autoria validada. ⚠️ A restrição a quem gerencia a equipe
   é DE TELA — o dado bruto viaja a qualquer membro logado (policy da 941
-  é por conta, sem papel). Barreira real = migration `943` (coluna sem
-  grant + rota server-side), desenhada no CLAUDE.md, ainda não feita.
+  é por conta, sem papel). Barreira real = a PRÓXIMA migration livre (a
+  943 virou a transcrição de áudio): coluna sem grant + rota server-side,
+  desenhada no CLAUDE.md, ainda não feita.
 - Notificação no sino para urgência alta.
 - Tendência da nota por semana; expediente configurável por conta
   (hoje: constante em `src/lib/cb-radar/horario-comercial.ts`).

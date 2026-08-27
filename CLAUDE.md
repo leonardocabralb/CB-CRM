@@ -570,20 +570,30 @@ worker do Radar e (futuro) auto-reply. O que morde código novo:
   próprio cadeado. Escrita final e falha com cerca (`transcricao_desde`).
 - ⚠️ **Sem chave Gemini (ou provedor ≠ gemini) devolve `recusada` SEM
   GRAVAR** — gravar o estado terminal mataria o botão para sempre por um
-  problema de configuração passageiro. `recusada` GRAVADA é só para o
-  irreversível: URL relativa (proxy Meta exige sessão), áudio grande
-  demais, tentativas esgotadas, mensagem apagada.
+  problema de configuração passageiro. Mensagem apagada, não-áudio, conta
+  errada e **áudio recém-chegado ainda sem `media_url`** (o webhook grava
+  a mensagem primeiro e o arquivo segundos depois — janela de 2 min)
+  também devolvem sem gravar. `recusada` GRAVADA é só para o irreversível
+  da PRÓPRIA mensagem: URL relativa (proxy Meta exige sessão) em mensagem
+  antiga, áudio grande demais, `MAX_TOKENS` (determinístico a temperatura
+  0 — retentar pagaria o mesmo corte de novo) e tentativas esgotadas.
+  A chave é resolvida PELO CANAL da conversa (como a análise) — sem isso,
+  canal apontado para outro provedor mandava o áudio ao Google.
 - **O modelo é FIXADO em `MODELO_TRANSCRICAO`** (`gemini-3.5-flash-lite`),
   separado do modelo de chat/análise da conta — transcrever não precisa de
   raciocínio e o Lite custa ~metade. Trocar de modelo/provedor é mexer SÓ
   neste módulo (plano B documentado: ElevenLabs, único com `audio/opus`
   por escrito — a doc do Gemini lista "OGG Vorbis" e a nota do WhatsApp é
   Opus; funciona em relatos, o 1º teste real em produção é o go/no-go).
-- **O worker do Radar transcreve SÓ áudio do CLIENTE**, até 5 novos por
-  análise e dentro do `deadlineMs` do ciclo (reserva 2× o timeout de IA
-  antes de cada uma). Falha/recusa NÃO derruba a análise — o áudio segue
-  como lacuna declarada. O texto entra no transcrito com prefixo
-  `[áudio] `.
+- **O worker do Radar transcreve SÓ áudio do CLIENTE e SÓ nunca-tentado**
+  (`transcricao_status` nulo), até 5 por análise e dentro do `deadlineMs`
+  do ciclo (reserva download + 2× o timeout de IA). ⚠️ `falhou` fica para
+  o botão HUMANO — o retry automático a cada ciclo queimava o teto de 3
+  em ~45 min e uma cota estourada carimbava `recusada` terminal em tudo.
+  Falha/recusa NÃO derruba a análise — o áudio segue como lacuna
+  declarada. O texto entra com `PREFIXO_AUDIO` (contrato com a rubrica:
+  linha de áudio tem teto de 2.000 chars, não 500, e truncamento por
+  linha é declarado ao modelo via `truncadas`).
 - **A transcrição NÃO entra no índice GIN da busca (929)** — trade-off
   aceito no plano; busca por conteúdo de áudio é migration futura.
 - O mime enviado é `messages.media_type` (042) → `Content-Type` do

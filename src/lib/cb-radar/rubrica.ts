@@ -25,7 +25,15 @@ import { URGENCIAS, type Urgencia } from './ordenacao'
  *  digitado à mão no dicionário mentiria na primeira mudança daqui. */
 export const TETO_MENSAGENS = 200
 const TETO_CHARS_POR_MENSAGEM = 500
+/** Fala transcrita é mais longa que texto digitado (~150 palavras/min):
+ *  500 chars cortariam a nota de 1 min pela metade — e o fim do áudio é
+ *  onde a urgência costuma ser dita. ~2 min de fala cabem aqui. */
+const TETO_CHARS_AUDIO = 2_000
 const TETO_CHARS_TOTAL = 60_000
+
+/** O contrato entre o worker (que monta a linha) e este módulo (que
+ *  escolhe o teto por tipo): linha de áudio transcrito começa com isto. */
+export const PREFIXO_AUDIO = '[áudio] '
 
 export interface MensagemParaTranscrito {
   id: string
@@ -59,6 +67,10 @@ export interface Transcrito {
    *  ou equipe) nunca é colapsada: insistência é o sinal que o Radar
    *  caça. */
   botRepetidas: number
+  /** Linhas cujo FINAL foi cortado pelo teto de caracteres (marcadas com
+   *  "…"). Declarado ao modelo no prompt — sem isso ele afirmaria que
+   *  algo "não foi dito" quando estava no trecho cortado. */
+  truncadas: number
 }
 
 function rotulo(m: Pick<MensagemParaTranscrito, 'senderType' | 'autor'>): string {
@@ -136,19 +148,26 @@ export function montarTranscrito(mensagens: MensagemParaTranscrito[]): Transcrit
   const linhas: LinhaDoTranscrito[] = []
   const partes: string[] = []
   let total = 0
+  let truncadas = 0
   // Monta de trás para a frente para que o teto de caracteres derrube as
   // mensagens mais ANTIGAS, nunca as recentes.
   for (let i = recorte.length - 1; i >= 0; i--) {
     const m = recorte[i]
+    const tetoDaLinha = m.texto.startsWith(PREFIXO_AUDIO)
+      ? TETO_CHARS_AUDIO
+      : TETO_CHARS_POR_MENSAGEM
     const texto =
-      m.texto.length > TETO_CHARS_POR_MENSAGEM
-        ? `${m.texto.slice(0, TETO_CHARS_POR_MENSAGEM)}…`
+      m.texto.length > tetoDaLinha
+        ? `${m.texto.slice(0, tetoDaLinha)}…`
         : m.texto
     const linha = `[${horaSp(m.createdAt)}] ${rotulo(m)}: ${texto}`
     if (total + linha.length > TETO_CHARS_TOTAL && linhas.length > 0) {
       cortadas += i + 1
       break
     }
+    // Só conta como truncada a linha que DE FATO entrou no transcrito —
+    // a que caiu no break acima já está em `cortadas`.
+    if (m.texto.length > tetoDaLinha) truncadas += 1
     total += linha.length
     linhas.unshift({
       indice: 0,
@@ -166,7 +185,7 @@ export function montarTranscrito(mensagens: MensagemParaTranscrito[]): Transcrit
   })
   const texto = partes.map((p, i) => `#${i + 1} ${p}`).join('\n')
 
-  return { linhas, texto, cortadas, botRepetidas }
+  return { linhas, texto, cortadas, botRepetidas, truncadas }
 }
 
 /**
@@ -309,6 +328,9 @@ export function montarPromptDoRadar(ctx: ContextoDoPrompt): {
       : null,
     ctx.transcrito.botRepetidas > 0
       ? `Mensagens automáticas (Robô) omitidas por serem repetição exata de outra: ${ctx.transcrito.botRepetidas} — só a ocorrência mais recente de cada uma aparece no transcrito.`
+      : null,
+    ctx.transcrito.truncadas > 0
+      ? `Atenção: ${ctx.transcrito.truncadas} linha(s) do transcrito estão cortadas no FINAL por limite de tamanho (marcadas com "…") — não afirme que algo "não foi dito" se puder estar no trecho cortado.`
       : null,
   ]
     .filter(Boolean)

@@ -63,12 +63,13 @@ const msgBase = {
   content_text: null,
   media_url: 'https://bucket.supabase.co/storage/v1/object/public/chat-media/a.ogg',
   media_type: 'audio/ogg',
+  created_at: '2026-08-01T12:00:00Z', // antiga — fora da janela de download
   deleted_at: null,
   transcricao: null,
   transcricao_status: null,
   transcricao_erro: null,
   transcricao_tentativas: 0,
-  conversation: { account_id: 'a1' },
+  conversation: { account_id: 'a1', channel_id: 'ch1' },
 }
 const configGemini = { provider: 'gemini', model: 'chat-model', apiKey: 'chave-g' }
 
@@ -124,11 +125,64 @@ describe('transcreverAudio', () => {
 
   it('conta errada = "não encontrada" (service-role ignora RLS; a guarda é o código)', async () => {
     const admin = fakeAdmin(
-      [{ data: { ...msgBase, conversation: { account_id: 'OUTRA' } } }],
+      [{ data: { ...msgBase, conversation: { account_id: 'OUTRA', channel_id: 'ch1' } } }],
       [],
     )
     const r = await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })
     expect(r.status).toBe('recusada')
+  })
+
+  it('a chave é resolvida PELO CANAL da conversa, como a análise do Radar', async () => {
+    // Sem o canal, conta com padrão OpenAI e agente Gemini no canal
+    // recusava tudo — e o inverso mandava o áudio ao Google num canal
+    // apontado para outro provedor.
+    const admin = fakeAdmin(
+      [{ data: msgBase }, { data: { id: 'm1' } }, { data: { id: 'm1' } }],
+      [],
+    )
+    vi.stubGlobal('fetch', fakeFetchOk())
+    await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })
+    expect(loadAiConfig).toHaveBeenCalledWith(expect.anything(), 'a1', {
+      requireActive: false,
+      channelId: 'ch1',
+    })
+  })
+
+  it('MAX_TOKENS registra o uso e vira recusada TERMINAL (determinístico)', async () => {
+    // A temperatura 0, o mesmo áudio dá o mesmo corte — retentar seria
+    // pagar de novo pelo mesmo resultado. E a chamada JÁ foi cobrada.
+    const admin = fakeAdmin(
+      [{ data: msgBase }, { data: { id: 'm1' } }, { error: null }],
+      [],
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('generativelanguage')) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => '',
+            json: async () => ({
+              candidates: [{ content: { parts: [{ text: 'metade da fala' }] }, finishReason: 'MAX_TOKENS' }],
+              usageMetadata: { promptTokenCount: 5000, candidatesTokenCount: 4096, totalTokenCount: 9096 },
+            }),
+          }
+        }
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => 'audio/ogg' },
+          arrayBuffer: async () => new ArrayBuffer(64),
+        }
+      }),
+    )
+    const r = await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })
+    expect(r.status).toBe('recusada')
+    expect(logAiUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ mode: 'transcricao' }),
+    )
   })
 
   it('áudio apagado não se transcreve — e nada é gravado', async () => {
@@ -152,6 +206,20 @@ describe('transcreverAudio', () => {
     expect(r.status).toBe('recusada')
     const grava = chamadas.find((c) => c.op === 'update')
     expect(grava?.payload?.transcricao_status).toBe('recusada')
+  })
+
+  it('áudio RECÉM-CHEGADO sem arquivo é transitório: falhou SEM gravar', async () => {
+    // O webhook grava a mensagem primeiro e o media_url segundos depois —
+    // o Radar chega nessa janela porque prioriza a conversa mais recente.
+    // Recusar em definitivo aqui matava o áudio para sempre.
+    const chamadas: Chamada[] = []
+    const admin = fakeAdmin(
+      [{ data: { ...msgBase, media_url: null, created_at: new Date().toISOString() } }],
+      chamadas,
+    )
+    const r = await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })
+    expect(r.status).toBe('falhou')
+    expect(chamadas.filter((c) => c.op === 'update')).toHaveLength(0)
   })
 
   it('SEM chave: recusada SEM gravar — configurar a chave reativa o botão', async () => {
@@ -237,6 +305,10 @@ describe('transcreverAudio', () => {
     // A cerca: só grava se AINDA formos os donos do claim.
     expect(grava.filtros.join(' ')).toContain('eq(transcricao_status|transcrevendo)')
     expect(grava.filtros.join(' ')).toContain('eq(transcricao_desde|')
+    // O claim amarra o contador LIDO — sem isto, claim concorrente entre o
+    // SELECT e o UPDATE fazia as tentativas regredirem (teto virava 4+).
+    const claim = chamadas.filter((c) => c.op === 'update').at(0)!
+    expect(claim.filtros.join(' ')).toContain('eq(transcricao_tentativas|0)')
 
     expect(logAiUsage).toHaveBeenCalledWith(
       expect.anything(),

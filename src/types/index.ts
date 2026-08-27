@@ -408,6 +408,9 @@ export interface Message {
   transcricao?: string | null;
   transcricao_status?: 'transcrevendo' | 'pronta' | 'falhou' | 'recusada' | null;
   transcricao_erro?: string | null;
+  /** Carimbo do claim — a bolha o usa para reoferecer o botão quando um
+   *  "transcrevendo" ficou órfão (processo morto no deploy). */
+  transcricao_desde?: string | null;
   transcricao_em?: string | null;
   template_name?: string;
   message_id?: string;

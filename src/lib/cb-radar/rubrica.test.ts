@@ -117,6 +117,22 @@ describe('montarTranscrito', () => {
     expect(t.botRepetidas).toBe(0)
   })
 
+  it('linha de ÁUDIO tem teto maior que texto digitado — e o corte é contado', () => {
+    // Fala transcrita é longa por natureza (~150 palavras/min); o teto de
+    // 500 do texto cortaria a nota de 1 min pela metade — e o fim do
+    // áudio é onde a urgência costuma ser dita.
+    const falaLonga = 'palavra '.repeat(150).trim() // ~1.200 chars
+    const textao = 'x'.repeat(600)
+    const t = montarTranscrito([
+      msg('a', 'customer', '10:00', `[áudio] ${falaLonga}`),
+      msg('b', 'customer', '10:01', textao),
+    ])
+    // O áudio de ~1.200 chars passa inteiro; o texto de 600 corta em 500.
+    expect(t.linhas[0].texto.endsWith('…')).toBe(false)
+    expect(t.linhas[1].texto.endsWith('…')).toBe(true)
+    expect(t.truncadas).toBe(1)
+  })
+
   it('descarta mensagem sem texto e conta os tetos derrubando as antigas', () => {
     const muitas: MensagemParaTranscrito[] = []
     for (let i = 0; i < 250; i++) {
@@ -158,6 +174,21 @@ describe('montarPromptDoRadar', () => {
     expect(userContent).toContain('Áudios/mídias sem texto (não visíveis no transcrito): 3')
     expect(userContent).toContain('0012345-89.2024.8.26.0100')
     expect(userContent).toContain('#1 ')
+  })
+
+  it('declara no prompt as linhas cortadas no final', () => {
+    const transcrito = montarTranscrito([
+      msg('a', 'customer', '10:00', 'y'.repeat(700)),
+    ])
+    const { userContent } = montarPromptDoRadar({
+      transcrito,
+      metricas: calcularMetricas([]),
+      mensagensSemTexto: 0,
+      processosPorRegex: [],
+      janelaDias: 7,
+    })
+    expect(transcrito.truncadas).toBe(1)
+    expect(userContent).toContain('cortadas no FINAL')
   })
 
   it('declara no prompt as repetições do robô que foram omitidas', () => {

@@ -69,7 +69,9 @@ automática exigiria:
 - **Nenhum worker novo, nenhum cron, nenhuma fila a drenar.** O laço do
   `agendador` não muda.
 - **Uma ida pequena à VPS, uma vez só** — não zero, como uma versão anterior
-  deste plano afirmou. O `docker-stack.yml` injeta cada segredo explicitamente
+  deste plano afirmou. *(⚠️ SUPERADO pelo adendo 2026-08-27: com o Gemini e a
+  chave BYO da conta, a ida à VPS caiu — não há `ELEVENLABS_API_KEY` para
+  provisionar. O parágrafo fica como registro do desenho ElevenLabs/plano B.)* O `docker-stack.yml` injeta cada segredo explicitamente
   no bloco `environment:` (o `crm.env` é `source`ado no `docker stack deploy`),
   então a `ELEVENLABS_API_KEY` exige: linha nova no `crm.env` da VPS, linha nova
   no `environment:` do stack (essa vai no repo) e um `docker stack deploy` à
