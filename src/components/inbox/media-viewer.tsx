@@ -14,18 +14,49 @@
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, RotateCcw, RotateCw, X, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  ImageOff,
+  RotateCcw,
+  RotateCw,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 
+/** Presente = modo galeria: ‹ › na tela, ←/→ no teclado e o contador. */
+export interface GaleriaDoViewer {
+  /** Posição do item aberto, base 0. */
+  indice: number;
+  total: number;
+  /** Chamado só com índice válido — o viewer desabilita nas pontas. */
+  onNavegar: (indice: number) => void;
+}
+
 interface MediaViewerProps {
-  /** URL já resolvida (pode ser `blob:` quando veio do proxy autenticado). */
-  src: string;
+  /**
+   * URL já resolvida (pode ser `blob:` quando veio do proxy autenticado).
+   * `null` = a galeria ainda está resolvendo o item ativo.
+   */
+  src: string | null;
+  /** A resolução da URL falhou — anexo expirado ou fora do ar. */
+  falhou?: boolean;
   /** Nome sugerido no download. */
   fileName?: string;
   alt: string;
+  /**
+   * Renderiza `<video controls>` no lugar de `<img>`. Giro, zoom e arraste
+   * somem: são ferramentas de LER imagem (foto de documento deitada), não
+   * de assistir vídeo — e o player já tem tela cheia própria.
+   */
+  video?: boolean;
   onClose: () => void;
+  galeria?: GaleriaDoViewer;
 }
 
 /** Roda o download por blob para o nome do arquivo ser respeitado. */
@@ -56,7 +87,15 @@ async function baixar(src: string, fileName: string) {
   }
 }
 
-export function MediaViewer({ src, fileName, alt, onClose }: MediaViewerProps) {
+export function MediaViewer({
+  src,
+  falhou = false,
+  fileName,
+  alt,
+  video = false,
+  onClose,
+  galeria,
+}: MediaViewerProps) {
   const t = useTranslations("Inbox.mediaViewer");
   const [giro, setGiro] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -88,11 +127,39 @@ export function MediaViewer({ src, fileName, alt, onClose }: MediaViewerProps) {
     });
   }, []);
 
+  // Navegação da galeria. `temAnterior`/`temProxima` também desenham os
+  // chevrons — ausentes nas pontas, em vez de dar a volta: numa conversa
+  // com 3 fotos, "voltar" da primeira para a última desorienta mais do que
+  // ajuda a folhear.
+  const temAnterior = galeria != null && galeria.indice > 0;
+  const temProxima = galeria != null && galeria.indice < galeria.total - 1;
+  const anterior = useCallback(() => {
+    if (galeria && galeria.indice > 0) galeria.onNavegar(galeria.indice - 1);
+  }, [galeria]);
+  const proxima = useCallback(() => {
+    if (galeria && galeria.indice < galeria.total - 1)
+      galeria.onNavegar(galeria.indice + 1);
+  }, [galeria]);
+
+  // Cada anexo começa do zero: giro e zoom são leitura DAQUELA imagem —
+  // herdar 90° de giro na foto seguinte a deixaria deitada sem motivo.
+  // Ajuste DURANTE o render (padrão "derived state" do react.dev), não em
+  // efeito: o lint barra setState síncrono em useEffect.
+  const [srcAnterior, setSrcAnterior] = useState(src);
+  if (src !== srcAnterior) {
+    setSrcAnterior(src);
+    setGiro(0);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
       if (e.key === "r") girar(90);
       if (e.key === "R") girar(-90);
+      if (e.key === "ArrowLeft") anterior();
+      if (e.key === "ArrowRight") proxima();
     };
     window.addEventListener("keydown", onKey);
     // Trava o scroll do fundo enquanto o visualizador está aberto.
@@ -102,7 +169,7 @@ export function MediaViewer({ src, fileName, alt, onClose }: MediaViewerProps) {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = overflowAnterior;
     };
-  }, [onClose, girar]);
+  }, [onClose, girar, anterior, proxima]);
 
   const nome = fileName || `${alt || "anexo"}.jpg`;
 
@@ -119,21 +186,32 @@ export function MediaViewer({ src, fileName, alt, onClose }: MediaViewerProps) {
         className="flex items-center justify-end gap-1 p-2"
         onClick={(e) => e.stopPropagation()}
       >
-        <BotaoBarra onClick={() => aplicarZoom(-0.25)} title={t("zoomOut")}>
-          <ZoomOut className="h-4 w-4" />
-        </BotaoBarra>
-        <BotaoBarra onClick={() => aplicarZoom(0.25)} title={t("zoomIn")}>
-          <ZoomIn className="h-4 w-4" />
-        </BotaoBarra>
-        <BotaoBarra onClick={() => girar(-90)} title={t("rotateLeft")}>
-          <RotateCcw className="h-4 w-4" />
-        </BotaoBarra>
-        <BotaoBarra onClick={() => girar(90)} title={t("rotateRight")}>
-          <RotateCw className="h-4 w-4" />
-        </BotaoBarra>
-        <BotaoBarra onClick={() => void baixar(src, nome)} title={t("download")}>
-          <Download className="h-4 w-4" />
-        </BotaoBarra>
+        {galeria && (
+          <span className="mr-auto px-2 text-sm tabular-nums text-white/80">
+            {t("counter", { index: galeria.indice + 1, total: galeria.total })}
+          </span>
+        )}
+        {!video && (
+          <>
+            <BotaoBarra onClick={() => aplicarZoom(-0.25)} title={t("zoomOut")}>
+              <ZoomOut className="h-4 w-4" />
+            </BotaoBarra>
+            <BotaoBarra onClick={() => aplicarZoom(0.25)} title={t("zoomIn")}>
+              <ZoomIn className="h-4 w-4" />
+            </BotaoBarra>
+            <BotaoBarra onClick={() => girar(-90)} title={t("rotateLeft")}>
+              <RotateCcw className="h-4 w-4" />
+            </BotaoBarra>
+            <BotaoBarra onClick={() => girar(90)} title={t("rotateRight")}>
+              <RotateCw className="h-4 w-4" />
+            </BotaoBarra>
+          </>
+        )}
+        {src && (
+          <BotaoBarra onClick={() => void baixar(src, nome)} title={t("download")}>
+            <Download className="h-4 w-4" />
+          </BotaoBarra>
+        )}
         <BotaoBarra onClick={onClose} title={t("close")}>
           <X className="h-4 w-4" />
         </BotaoBarra>
@@ -141,46 +219,112 @@ export function MediaViewer({ src, fileName, alt, onClose }: MediaViewerProps) {
 
       {/* `overflow-hidden`, não `auto`: a barra de rolagem aqui era pura
           desinformação — aparecia e não alcançava o que estava fora. */}
-      <div className="flex flex-1 items-center justify-center overflow-hidden p-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={src}
-          alt={alt}
-          draggable={false}
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => {
-            // Captura o ponteiro para o arraste sobreviver a sair da imagem.
-            e.currentTarget.setPointerCapture(e.pointerId);
-            inicio.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
-            setArrastando(true);
-          }}
-          onPointerMove={(e) => {
-            if (!inicio.current) return;
-            setPan({ x: e.clientX - inicio.current.x, y: e.clientY - inicio.current.y });
-          }}
-          onPointerUp={() => {
-            inicio.current = null;
-            setArrastando(false);
-          }}
-          onPointerCancel={() => {
-            inicio.current = null;
-            setArrastando(false);
-          }}
-          className={cn(
-            "max-h-full max-w-full touch-none object-contain select-none",
-            arrastando ? "cursor-grabbing" : "cursor-grab",
-            // A transição faz cada quadro do arraste interpolar 150ms e o
-            // movimento fica pastoso — só vale para giro e zoom.
-            !arrastando && "transition-transform duration-150",
-          )}
-          // `translate` ANTES de `rotate`: assim o arraste segue o eixo da
-          // tela, não o eixo já girado da imagem.
-          style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) rotate(${giro}deg) scale(${zoom})`,
-          }}
-        />
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden p-4">
+        {temAnterior && (
+          <BotaoLateral lado="esquerdo" onClick={anterior} title={t("previous")}>
+            <ChevronLeft className="h-6 w-6" />
+          </BotaoLateral>
+        )}
+        {falhou ? (
+          <div
+            className="flex items-center gap-2 rounded-lg bg-white/10 px-4 py-3 text-sm text-white/80"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ImageOff className="h-5 w-5 shrink-0" />
+            <span>{t("failed")}</span>
+          </div>
+        ) : !src ? (
+          <div
+            className="h-8 w-8 animate-spin rounded-full border-2 border-white/60 border-t-transparent"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : video ? (
+          <video
+            src={src}
+            controls
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-full max-w-full rounded-lg"
+          />
+        ) : (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={src}
+            alt={alt}
+            draggable={false}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => {
+              // Captura o ponteiro para o arraste sobreviver a sair da imagem.
+              e.currentTarget.setPointerCapture(e.pointerId);
+              inicio.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+              setArrastando(true);
+            }}
+            onPointerMove={(e) => {
+              if (!inicio.current) return;
+              setPan({ x: e.clientX - inicio.current.x, y: e.clientY - inicio.current.y });
+            }}
+            onPointerUp={() => {
+              inicio.current = null;
+              setArrastando(false);
+            }}
+            onPointerCancel={() => {
+              inicio.current = null;
+              setArrastando(false);
+            }}
+            className={cn(
+              "max-h-full max-w-full touch-none object-contain select-none",
+              arrastando ? "cursor-grabbing" : "cursor-grab",
+              // A transição faz cada quadro do arraste interpolar 150ms e o
+              // movimento fica pastoso — só vale para giro e zoom.
+              !arrastando && "transition-transform duration-150",
+            )}
+            // `translate` ANTES de `rotate`: assim o arraste segue o eixo da
+            // tela, não o eixo já girado da imagem.
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) rotate(${giro}deg) scale(${zoom})`,
+            }}
+          />
+        )}
+        {temProxima && (
+          <BotaoLateral lado="direito" onClick={proxima} title={t("next")}>
+            <ChevronRight className="h-6 w-6" />
+          </BotaoLateral>
+        )}
       </div>
     </div>
+  );
+}
+
+/** Chevron de navegação, flutuando sobre a borda da área da mídia. */
+function BotaoLateral({
+  lado,
+  onClick,
+  title,
+  children,
+}: {
+  lado: "esquerdo" | "direito";
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        // O fundo fecha no clique; o chevron navega, não fecha.
+        e.stopPropagation();
+        onClick();
+      }}
+      title={title}
+      aria-label={title}
+      className={cn(
+        "absolute top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/10 p-2",
+        "text-white/80 transition-colors hover:bg-white/25 hover:text-white",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+        lado === "esquerdo" ? "left-3" : "right-3",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

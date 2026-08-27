@@ -63,6 +63,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "./message-bubble";
+import { GaleriaDoFio } from "./media-gallery";
 import { MessageActions } from "./message-actions";
 import {
   MessageComposer,
@@ -387,6 +388,18 @@ export function MessageThread({
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   /** Id da mensagem cujo anexo de grupo está sendo buscado agora. */
   const [anexoEmCurso, setAnexoEmCurso] = useState<string | null>(null);
+  /**
+   * Anexo aberto na galeria do fio (`messages.id`), ou null. A galeria em
+   * si mora em media-gallery.tsx; aqui fica só o estado, porque é o fio
+   * quem tem a lista completa de mensagens que a navegação percorre.
+   */
+  const [galeriaAbertaEm, setGaleriaAbertaEm] = useState<string | null>(null);
+
+  // Trocar de conversa fecha a galeria: o id aberto é de OUTRO fio, e a
+  // galeria nova não o encontraria — sumiria sozinha, mas depois de piscar.
+  useEffect(() => {
+    setGaleriaAbertaEm(null);
+  }, [conversation?.id]);
 
   /**
    * Busca sob demanda o anexo de uma mensagem de grupo.
@@ -2021,6 +2034,7 @@ export function MessageThread({
                           emGrupo={ehGrupo}
                           baixandoAnexo={anexoEmCurso === msg.id}
                           onBaixarAnexo={() => baixarAnexoDoGrupo(msg.id)}
+                          onAbrirGaleria={setGaleriaAbertaEm}
                         />
                       </MessageActions>
                       </LinhaDaMensagem>
@@ -2052,6 +2066,14 @@ export function MessageThread({
         }}
       />
       )}
+
+      {/* Overlay de tela cheia — só monta com um anexo aberto. */}
+      <GaleriaDoFio
+        messages={messages}
+        abertaEm={galeriaAbertaEm}
+        onIrPara={setGaleriaAbertaEm}
+        onFechar={() => setGaleriaAbertaEm(null)}
+      />
 
       {/* Faixa AGENDADAS (925), colada no compositor e dentro do fio.
           ⚠️ Fica AQUI, e não na ficha lateral: quem abre a conversa precisa

@@ -50,6 +50,12 @@ interface MessageBubbleProps {
   onBaixarAnexo?: () => void;
   /** Enquanto a busca do anexo está em andamento. */
   baixandoAnexo?: boolean;
+  /**
+   * Abre a galeria do fio neste anexo (media-gallery.tsx), com navegação
+   * entre todos os anexos da conversa. Sem o callback, a imagem abre o
+   * visualizador solo de sempre — call sites fora do fio não mudam.
+   */
+  onAbrirGaleria?: (messageId: string) => void;
 }
 
 /**
@@ -164,7 +170,18 @@ function nomeDeArquivo(message: Message): string | undefined {
   }
 }
 
-function MediaImage({ url, alt, fileName }: { url: string; alt: string; fileName?: string }) {
+function MediaImage({
+  url,
+  alt,
+  fileName,
+  onAmpliar,
+}: {
+  url: string;
+  alt: string;
+  fileName?: string;
+  /** Quando presente, o clique abre a galeria do fio, não o viewer solo. */
+  onAmpliar?: () => void;
+}) {
   const tv = useTranslations("Inbox.mediaViewer");
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState(false);
@@ -223,7 +240,7 @@ function MediaImage({ url, alt, fileName }: { url: string; alt: string; fileName
     <>
       <button
         type="button"
-        onClick={() => setAmpliada(true)}
+        onClick={() => (onAmpliar ? onAmpliar() : setAmpliada(true))}
         title={tv("open")}
         aria-label={tv("open")}
         className="block cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -358,7 +375,15 @@ function TranscricaoDeAudio({
   );
 }
 
-function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof useTranslations> }) {
+function MessageContent({
+  message,
+  t,
+  onAbrirGaleria,
+}: {
+  message: Message;
+  t: ReturnType<typeof useTranslations>;
+  onAbrirGaleria?: (messageId: string) => void;
+}) {
   switch (message.content_type) {
     case "text":
       return (
@@ -373,6 +398,9 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
               url={message.media_url}
               alt={message.content_text || t("photo")}
               fileName={nomeDeArquivo(message)}
+              onAmpliar={
+                onAbrirGaleria ? () => onAbrirGaleria(message.id) : undefined
+              }
             />
           ) : (
             <MediaPendente message={message} label={t("photo")} t={t} />
@@ -500,6 +528,7 @@ export function MessageBubble({
   emGrupo = false,
   onBaixarAnexo,
   baixandoAnexo = false,
+  onAbrirGaleria,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
 
@@ -633,7 +662,11 @@ export function MessageBubble({
             apagada && "opacity-60 [&_p]:line-through [&_a]:line-through [&_code]:line-through",
           )}
         >
-          <MessageContent message={message} t={t} />
+          <MessageContent
+            message={message}
+            t={t}
+            onAbrirGaleria={onAbrirGaleria}
+          />
         </div>
         <div
           className={cn(
