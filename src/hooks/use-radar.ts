@@ -26,6 +26,9 @@ import type { AnaliseInterpretada } from '@/lib/cb-radar/rubrica';
  *  TypeScript acusar nada. */
 export interface DetalhesDoInsight {
   sem_ia?: boolean;
+  /** Janela sem NENHUMA mensagem do cliente (broadcast, abordagem ativa)
+   *  — a IA foi dispensada de propósito; não é falha nem falta de chave. */
+  sem_cliente_na_janela?: boolean;
   janela_cortada?: boolean;
   processos?: string[];
   analise?: AnaliseInterpretada | null;

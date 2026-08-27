@@ -2500,7 +2500,26 @@
     "erro_ja_em_analise": "Esta conversa já está sendo analisada — aguarde alguns segundos.",
     "cicloNuncaRodou": "O ciclo automático do Radar nunca rodou. O agendador da VPS ainda não bate na rota nova — é o passo manual do runbook (docs/PLANO-radar-de-atendimento.md). Até lá, use \"Reanalisar\" nas conversas.",
     "cicloParado": "O ciclo automático do Radar está parado há {min} min. As análises abaixo podem estar desatualizadas.",
-    "janelaCortada": "conversa maior que o teto — as mensagens mais antigas da janela ficaram fora"
+    "janelaCortada": "conversa maior que o teto — as mensagens mais antigas da janela ficaram fora",
+    "semCliente": "Só a equipe falou na janela",
+    "semClienteTitulo": "Sem mensagem do cliente no período analisado (broadcast ou abordagem ativa) — a análise de IA foi dispensada; valem as métricas.",
+    "legenda": {
+      "botao": "Como funciona",
+      "titulo": "Como o Radar funciona",
+      "intro": "O Radar sinaliza; a decisão é sempre do operador. Aqui está o que ele lê, o que calcula e quando roda.",
+      "escopoTitulo": "O que entra na análise",
+      "escopo": "Só canais com o Radar ligado (Configurações → Conexões) e só conversas 1:1 — grupos ficam de fora. A IA recebe apenas as mensagens dos últimos {dias} dias: o histórico antigo da conversa nunca é enviado, mesmo quando ela existe há meses. Mensagens apagadas ficam de fora; áudios e mídias sem texto não são lidos — o cartão declara quantos ficaram fora da análise.",
+      "limites": "Em conversa muito longa, entram as {mensagens} mensagens mais recentes da janela (o cartão avisa \"janela cortada\"). Menus e avisos automáticos que o robô repete entram uma vez só.",
+      "notaTitulo": "Como a nota nasce",
+      "nota": "A nota (0–10) parte de 10 e desconta por demora injustificada, pedido ignorado ou respondido pela metade, tom seco e falta de proatividade. Os tempos de resposta não são estimados pela IA: o sistema os calcula em horas úteis (seg–sex, 08h–19h, horário de São Paulo) — mensagem das 23h respondida às 8h30 não conta como \"9 horas sem resposta\".",
+      "sinaisTitulo": "De onde vêm os sinais",
+      "sinais": "Urgência, insatisfação, pedidos sem atendimento, menção a processo e pontos de atenção são identificados pela IA — e todo sinal exige evidência: o trecho real da mensagem que o justifica aparece no cartão. Sinal sem evidência é descartado automaticamente antes de chegar à tela. Números de processo (padrão CNJ) também são detectados por regra fixa, sem IA.",
+      "cicloTitulo": "Quando analisa",
+      "ciclo": "Ciclo automático a cada ~{ciclo} min, em lotes pequenos, começando pelas conversas com atividade mais recente. A mesma conversa espera ao menos {espera} min entre análises e só volta à fila quando há mensagem nova — conversa parada não gasta nada. Janela em que só a equipe falou (broadcast, abordagem ativa) não aciona a IA: ficam só as métricas. \"Reanalisar\" força uma análise na hora.",
+      "estadosTitulo": "Tratado e descartado",
+      "estados": "\"Tratado\" tira o cartão da frente e reabre sozinho se o cliente mandar mensagem depois disso. \"Descartado\" significa \"a IA errou aqui\": nunca reabre sozinho e fica registrado como falso positivo para a calibração.",
+      "custo": "O consumo de IA do Radar aparece em Configurações → Agentes de IA, no modo \"radar\"."
+    }
   },
   "Scheduled": {
     "title": "Mensagens agendadas",

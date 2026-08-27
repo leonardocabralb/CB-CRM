@@ -21,7 +21,9 @@ import { URGENCIAS, type Urgencia } from './ordenacao'
 // Tetos do transcrito. A maior conversa real tem ~208 mensagens; os tetos
 // existem para o dia em que uma não for assim — mantendo o FIM (o recente
 // decide urgência), nunca o começo.
-const TETO_MENSAGENS = 200
+/** Exportado para a legenda do painel imprimir o limite REAL — número
+ *  digitado à mão no dicionário mentiria na primeira mudança daqui. */
+export const TETO_MENSAGENS = 200
 const TETO_CHARS_POR_MENSAGEM = 500
 const TETO_CHARS_TOTAL = 60_000
 
@@ -43,6 +45,11 @@ export interface Transcrito {
   texto: string
   /** Mensagens que ficaram de fora por teto (não por falta de texto). */
   cortadas: number
+  /** Falas do robô omitidas por serem repetição EXATA de uma anterior na
+   *  janela (fluxo que reapresenta o mesmo menu). Só a 1ª ocorrência
+   *  entra; fala repetida de HUMANO (cliente ou equipe) nunca é
+   *  colapsada — insistência é exatamente o sinal que o Radar caça. */
+  botRepetidas: number
 }
 
 function rotulo(senderType: MensagemParaTranscrito['senderType']): string {
@@ -84,8 +91,26 @@ export function montarTranscrito(mensagens: MensagemParaTranscrito[]): Transcrit
     .filter((m) => m.texto)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
 
-  const recorte = ordenadas.slice(-TETO_MENSAGENS)
-  let cortadas = ordenadas.length - recorte.length
+  // Colapso de repetição do ROBÔ: fluxo que reapresenta o mesmo menu a
+  // cada tentativa do cliente enche a janela com texto idêntico — pagar
+  // tokens por ele de novo não acrescenta nada. Compara o texto JÁ limpo,
+  // por igualdade exata (menu de fluxo é gerado por programa, repete
+  // byte a byte). O colapso vem ANTES dos tetos, para a vaga liberada
+  // acomodar conteúdo real.
+  const vistasDoRobo = new Set<string>()
+  let botRepetidas = 0
+  const semRepeticao = ordenadas.filter((m) => {
+    if (m.senderType !== 'bot') return true
+    if (vistasDoRobo.has(m.texto)) {
+      botRepetidas += 1
+      return false
+    }
+    vistasDoRobo.add(m.texto)
+    return true
+  })
+
+  const recorte = semRepeticao.slice(-TETO_MENSAGENS)
+  let cortadas = semRepeticao.length - recorte.length
 
   const linhas: LinhaDoTranscrito[] = []
   const partes: string[] = []
@@ -115,7 +140,7 @@ export function montarTranscrito(mensagens: MensagemParaTranscrito[]): Transcrit
   })
   const texto = partes.map((p, i) => `#${i + 1} ${p}`).join('\n')
 
-  return { linhas, texto, cortadas }
+  return { linhas, texto, cortadas, botRepetidas }
 }
 
 /**
@@ -235,6 +260,9 @@ export function montarPromptDoRadar(ctx: ContextoDoPrompt): {
     `Números de processo já detectados por padrão CNJ: ${ctx.processosPorRegex.length > 0 ? ctx.processosPorRegex.join(', ') : 'nenhum'}`,
     ctx.transcrito.cortadas > 0
       ? `Atenção: as ${ctx.transcrito.cortadas} mensagens mais antigas da janela ficaram fora do transcrito por limite de tamanho.`
+      : null,
+    ctx.transcrito.botRepetidas > 0
+      ? `Mensagens automáticas (Robô) omitidas por serem repetição exata de uma anterior: ${ctx.transcrito.botRepetidas} — só a primeira ocorrência de cada uma aparece no transcrito.`
       : null,
   ]
     .filter(Boolean)

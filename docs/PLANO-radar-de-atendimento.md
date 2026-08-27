@@ -51,6 +51,26 @@ agendador (VPS, laço lento 900s)
   created_at)`, `cb_channels.radar_enabled` (default FALSE),
   `'gemini'`/`'radar'` nos CHECKs, `ultimo_ciclo_radar` no batimento.
 
+## O que limita o gasto de tokens (em camadas)
+
+1. Candidatura: só canal com Radar ligado, só 1:1, só conversa com
+   atividade nos últimos 7 dias E mensagem nova desde a última análise —
+   conversa parada custa zero.
+2. Throttle de 30 min por conversa + lote de 5 por ciclo + orçamento de
+   tempo do ciclo.
+3. Leitura: só as mensagens DA JANELA (7 dias) — o histórico antigo nunca
+   sai do banco —, sem apagadas/`system`, teto de 1000 linhas.
+4. Transcrito: 200 mensagens mais recentes, 500 chars/mensagem, 60k chars
+   no total; repetição EXATA do robô (menu de fluxo) entra uma vez só.
+5. **Janela em que o cliente não falou não chama a IA** (broadcast e
+   abordagem ativa ficam só com métricas) — o envio também atualiza
+   `last_message_at`, e sem esse pulo cada broadcast disparava dezenas de
+   análises pagas.
+6. Saída: `maxOutputTokens` 2048; trechos de evidência limitados no parser.
+
+A tela explica tudo isso ao operador no botão **"Como funciona"** (os
+números são importados das constantes reais, nunca digitados no texto).
+
 ## Para LIGAR em produção (runbook)
 
 1. **Deploy normal** (merge → push main). ✅ **O passo manual da VPS JÁ

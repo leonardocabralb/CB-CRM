@@ -75,6 +75,32 @@ describe('montarTranscrito', () => {
     )
   })
 
+  it('fala repetida do ROBÔ entra uma vez só e é contada', () => {
+    // Fluxo reapresenta o mesmo menu a cada tentativa do cliente — pagar
+    // tokens pelo texto idêntico de novo não acrescenta nada à análise.
+    const t = montarTranscrito([
+      msg('a', 'bot', '10:00', 'Escolha: 1) Boleto 2) Atendente'),
+      msg('b', 'customer', '10:01', 'quero boleto'),
+      msg('c', 'bot', '10:02', 'Escolha: 1) Boleto 2) Atendente'),
+      msg('d', 'bot', '10:03', 'Segunda via enviada.'),
+    ])
+    expect(t.linhas.map((l) => l.mensagemId)).toEqual(['a', 'b', 'd'])
+    expect(t.botRepetidas).toBe(1)
+    // Colapso não é corte: o conteúdo omitido é idêntico ao que ficou.
+    expect(t.cortadas).toBe(0)
+  })
+
+  it('repetição de HUMANO nunca é colapsada — insistência é sinal', () => {
+    const t = montarTranscrito([
+      msg('a', 'customer', '10:00', 'alô?'),
+      msg('b', 'customer', '14:00', 'alô?'),
+      msg('c', 'agent', '15:00', 'Oi!'),
+      msg('d', 'agent', '15:01', 'Oi!'),
+    ])
+    expect(t.linhas).toHaveLength(4)
+    expect(t.botRepetidas).toBe(0)
+  })
+
   it('descarta mensagem sem texto e conta os tetos derrubando as antigas', () => {
     const muitas: MensagemParaTranscrito[] = []
     for (let i = 0; i < 250; i++) {
@@ -115,6 +141,24 @@ describe('montarPromptDoRadar', () => {
     expect(userContent).toContain('Áudios/mídias sem texto (não visíveis no transcrito): 3')
     expect(userContent).toContain('0012345-89.2024.8.26.0100')
     expect(userContent).toContain('#1 ')
+  })
+
+  it('declara no prompt as repetições do robô que foram omitidas', () => {
+    const transcrito = montarTranscrito([
+      msg('a', 'bot', '10:00', 'Menu principal'),
+      msg('b', 'bot', '10:05', 'Menu principal'),
+      msg('c', 'customer', '10:06', 'oi'),
+    ])
+    const { userContent } = montarPromptDoRadar({
+      transcrito,
+      metricas: calcularMetricas([]),
+      mensagensSemTexto: 0,
+      processosPorRegex: [],
+      janelaDias: 7,
+    })
+    expect(transcrito.botRepetidas).toBe(1)
+    expect(userContent).toContain('repetição exata')
+    expect(userContent).toContain('1 — só a primeira ocorrência')
   })
 })
 

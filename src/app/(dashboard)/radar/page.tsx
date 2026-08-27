@@ -34,6 +34,7 @@ import { toast } from 'sonner';
 
 import { ChannelCell } from '@/components/channels/channel-badge';
 import { ChannelFilter } from '@/components/channels/channel-filter';
+import { ComoFunciona } from '@/components/radar/como-funciona';
 import type { CbChannel } from '@/lib/cb-channels/repo';
 import { useCan } from '@/hooks/use-can';
 import { useChannels } from '@/hooks/use-channels';
@@ -181,11 +182,14 @@ export default function RadarPage() {
             <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
           </div>
         </div>
-        <ChannelFilter
-          channels={channels}
-          value={canalFiltro}
-          onChange={setCanalFiltro}
-        />
+        <div className="flex items-center gap-2">
+          <ComoFunciona />
+          <ChannelFilter
+            channels={channels}
+            value={canalFiltro}
+            onChange={setCanalFiltro}
+          />
+        </div>
       </div>
 
       {/* Cartões-resumo: a visão de 5 segundos. Contam só o ABERTO — o
@@ -346,9 +350,19 @@ const COR_URGENCIA: Record<string, string> = {
   baixa: 'border-border bg-muted text-muted-foreground',
 };
 
-function Etiqueta({ className, children }: { className?: string; children: React.ReactNode }) {
+function Etiqueta({
+  className,
+  title,
+  children,
+}: {
+  className?: string;
+  /** Tooltip nativo — a explicação curta de por que o selo está ali. */
+  title?: string;
+  children: React.ReactNode;
+}) {
   return (
     <span
+      title={title}
       className={cn(
         'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium',
         className ?? 'border-border bg-muted text-muted-foreground',
@@ -460,6 +474,9 @@ function LinhaDoRadar({
           </Etiqueta>
         )}
         {detalhes?.sem_ia && <Etiqueta>{t('semIa')}</Etiqueta>}
+        {detalhes?.sem_cliente_na_janela && (
+          <Etiqueta title={t('semClienteTitulo')}>{t('semCliente')}</Etiqueta>
+        )}
         {i.status === 'failed' && (
           <Etiqueta className={COR_URGENCIA.alta}>{t('analiseFalhou')}</Etiqueta>
         )}

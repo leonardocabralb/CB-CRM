@@ -2521,7 +2521,26 @@
     "erro_ja_em_analise": "This conversation is already being analyzed — try again in a few seconds.",
     "cicloNuncaRodou": "The Radar's automatic cycle has never run. The VPS scheduler isn't hitting the new route yet — that's the manual runbook step (docs/PLANO-radar-de-atendimento.md). Until then, use \"Re-analyze\" on conversations.",
     "cicloParado": "The Radar's automatic cycle has been stopped for {min} min. The analyses below may be stale.",
-    "janelaCortada": "conversation larger than the cap — the window's oldest messages were left out"
+    "janelaCortada": "conversation larger than the cap — the window's oldest messages were left out",
+    "semCliente": "Only the team spoke in the window",
+    "semClienteTitulo": "No client messages in the analyzed period (broadcast or outreach) — the AI analysis was skipped on purpose; metrics still apply.",
+    "legenda": {
+      "botao": "How it works",
+      "titulo": "How the Radar works",
+      "intro": "The Radar flags; the operator always decides. Here is what it reads, what it computes and when it runs.",
+      "escopoTitulo": "What goes into the analysis",
+      "escopo": "Only channels with the Radar enabled (Settings → Connections) and only 1:1 conversations — groups stay out. The AI receives only the messages from the last {dias} days: a conversation's older history is never sent, even when it is months old. Deleted messages stay out; audio and media without text are not read — the card states how many were left out of the analysis.",
+      "limites": "In a very long conversation, the {mensagens} most recent messages of the window go in (the card shows \"window trimmed\"). Automated menus and notices the bot repeats go in only once.",
+      "notaTitulo": "Where the score comes from",
+      "nota": "The score (0–10) starts at 10 and deducts for unjustified delays, ignored or half-answered requests, curt tone and lack of proactivity. Response times are not estimated by the AI: the system computes them in business hours (Mon–Fri, 8am–7pm, São Paulo time) — a message at 11pm answered at 8:30am does not count as \"9 hours without a reply\".",
+      "sinaisTitulo": "Where the signals come from",
+      "sinais": "Urgency, dissatisfaction, unanswered requests, lawsuit mentions and attention points are identified by the AI — and every signal requires evidence: the actual message excerpt that justifies it is shown on the card. A signal without evidence is discarded automatically before reaching the screen. Case numbers (CNJ pattern) are also detected by a fixed rule, without AI.",
+      "cicloTitulo": "When it runs",
+      "ciclo": "Automatic cycle every ~{ciclo} min, in small batches, starting with the most recently active conversations. The same conversation waits at least {espera} min between analyses and only re-enters the queue when there is a new message — an idle conversation costs nothing. A window where only the team spoke (broadcast, outreach) does not trigger the AI: metrics only. \"Reanalyze\" forces an analysis right away.",
+      "estadosTitulo": "Handled and dismissed",
+      "estados": "\"Handled\" moves the card out of the way and reopens by itself if the client sends a message afterwards. \"Dismissed\" means \"the AI got this one wrong\": it never reopens on its own and is recorded as a false positive for calibration.",
+      "custo": "The Radar's AI usage shows up under Settings → AI Agents, as the \"radar\" mode."
+    }
   },
   "Scheduled": {
     "title": "Scheduled messages",

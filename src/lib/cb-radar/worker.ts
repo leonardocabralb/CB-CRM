@@ -28,9 +28,8 @@ import { generateStructured } from '@/lib/ai/structured'
 import { logAiUsage } from '@/lib/ai/usage'
 import { aiRequestTimeoutMs } from '@/lib/ai/defaults'
 import type { AiUsage } from '@/lib/ai/types'
-import { CICLO_MINUTOS } from '@/lib/scheduled/display'
 import { calcularMetricas, type MensagemParaMetricas } from './metricas'
-import { JANELA_DIAS } from './ordenacao'
+import { JANELA_DIAS, THROTTLE_MS } from './ordenacao'
 import { extrairNumerosDeProcesso } from './processos'
 import {
   RADAR_SCHEMA,
@@ -41,17 +40,10 @@ import {
   type MensagemParaTranscrito,
 } from './rubrica'
 
-export { JANELA_DIAS }
+export { JANELA_DIAS, THROTTLE_MS }
 /** Conversas por ciclo. Bem abaixo dos 20 das agendadas: lá cada item é
  *  um POST à Evolution; aqui é uma geração de LLM. */
 const POR_CICLO = 5
-/**
- * Não reanalisar a mesma conversa antes disso, mesmo com mensagem nova.
- * DERIVADO da cadência real do agendador (o laço lento bate a cada
- * `CICLO_MINUTOS`): dois ciclos de folga. Amarrar os dois é o que impede
- * o throttle de virar letra morta se a cadência mudar na VPS.
- */
-export const THROTTLE_MS = CICLO_MINUTOS * 2 * 60_000
 /** `running` mais velho que isto é worker que morreu no meio. Acima do
  *  pior caso de uma análise (timeout de rede + escritas). */
 const TRAVADA_MIN = 10
@@ -438,9 +430,18 @@ export async function analisarConversaReivindicada(
     channelId: args.channelId,
   })
 
+  // ⚠️ Janela em que o cliente NÃO falou (broadcast, abordagem ativa da
+  // equipe, follow-up sem resposta): não há atendimento a julgar — nota,
+  // pedido, insatisfação e urgência pressupõem fala do cliente. Pular a
+  // IA aqui é o que impede um broadcast de disparar dezenas de análises
+  // pagas de conversas onde só nós falamos: o ENVIO também atualiza
+  // `conversations.last_message_at` (send-message.ts), então cada saída
+  // torna a conversa candidata de novo. As métricas continuam gravadas.
+  const semClienteNaJanela = metricas.msgsCliente === 0
+
   let analise: AnaliseInterpretada | null = null
   let usage: AiUsage | null = null
-  if (config && transcrito.linhas.length > 0) {
+  if (config && transcrito.linhas.length > 0 && !semClienteNaJanela) {
     const { systemPrompt, userContent } = montarPromptDoRadar({
       transcrito,
       metricas,
@@ -499,9 +500,14 @@ export async function analisarConversaReivindicada(
         // conta essa lacuna com o rótulo certo; misturar as duas causas
         // mandava o operador caçar defeito na chave que está funcionando.
         sem_ia: semIa,
+        // A tela explica por que a linha não tem nota nem sinais — sem o
+        // selo, "broadcast ontem" e "análise quebrada" pintam igual.
+        sem_cliente_na_janela: semClienteNaJanela,
         // Cobre os DOIS cortes: o teto de 1000 linhas da leitura do banco
         // e o teto de 200 mensagens/60k chars do transcrito — em ambos, a
         // análise não viu a janela inteira e a tela tem de dizer isso.
+        // (Repetição de robô colapsada NÃO conta: conteúdo idêntico já
+        // visto não é lacuna.)
         janela_cortada: janelaCortada || transcrito.cortadas > 0,
         processos: processosPorRegex,
         analise,
@@ -517,8 +523,12 @@ export async function analisarConversaReivindicada(
       tentativas: 0,
       analisado_em: janelaFim.toISOString(),
 
-      provider: config?.provider ?? null,
-      model: config?.model ?? null,
+      // Carimbados só quando a IA RODOU (`analise` não-nula ⟺ o bloco da
+      // chamada executou e parseou): com o pulo de "só equipe" ou com
+      // transcrito vazio, gravar o provider afirmaria uma análise que não
+      // aconteceu.
+      provider: analise ? (config?.provider ?? null) : null,
+      model: analise ? (config?.model ?? null) : null,
       prompt_tokens: usage?.promptTokens ?? 0,
       completion_tokens: usage?.completionTokens ?? 0,
     })

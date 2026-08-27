@@ -491,6 +491,22 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
 - **A janela de mensagens lê DESC + reverse** — com mais linhas que o teto,
   quem cai é o COMEÇO da janela. Com ASC, o corte descartava as mensagens de
   HOJE e `aguardando_desde` mentia "ninguém aguardando".
+- ⚠️ **Janela sem NENHUMA mensagem do cliente NÃO chama a IA** (só métricas;
+  `detalhes.sem_cliente_na_janela`). Existe porque o ENVIO também atualiza
+  `conversations.last_message_at`: sem o pulo, um broadcast tornava cada
+  destinatário candidato e disparava dezenas de análises pagas de conversas
+  onde só nós falamos. Janela COM fala do cliente reanalisa mesmo quando a
+  novidade é só nossa — a resposta da equipe resolve pendência/pedido, e
+  congelar a análise deixava alarme velho na tela. Não "otimizar" isso.
+- **O transcrito colapsa repetição EXATA do robô** (`botRepetidas`, rubrica):
+  fluxo reapresentando o mesmo menu entra uma vez só, e o prompt declara a
+  omissão. HUMANO (cliente OU equipe) nunca é colapsado — insistência é
+  exatamente o sinal que o Radar caça. Colapso não marca `janela_cortada`.
+- **A legenda da tela (`como-funciona.tsx`) IMPORTA as constantes reais**
+  (`JANELA_DIAS`/`THROTTLE_MS` de `ordenacao.ts`, `TETO_MENSAGENS` da
+  rubrica, `CICLO_MINUTOS`) — por isso `THROTTLE_MS` mora em `ordenacao.ts`
+  (client-safe), não no worker. Número digitado à mão no dicionário mente na
+  primeira mudança de constante.
 - **`loadAiConfig` do Radar usa `requireActive: false`** — o Radar precisa da
   CREDENCIAL; `is_active` é o interruptor do assistente DE CONVERSA. Amarrar
   os dois silenciava a análise quando o operador desligava o auto-reply.

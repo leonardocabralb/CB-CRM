@@ -9,6 +9,8 @@
 // entra como BÔNUS, não como corte: recente sobe, antigo não some.
 // ============================================================
 
+import { CICLO_MINUTOS } from '@/lib/scheduled/display'
+
 // As DUAS listas canônicas destes enums no TypeScript — rota, rubrica e
 // tela derivam daqui (o CHECK da 941 é o espelho no banco). Valor novo
 // entra AQUI + migration no CHECK; redeclarar por camada era o jeito de
@@ -24,6 +26,17 @@ export type EstadoDoInsight = (typeof ESTADOS_DO_INSIGHT)[number]
  *  que saiu da janela, senão um "aguardando" de março continuaria vivo e
  *  crescendo na tela em agosto. */
 export const JANELA_DIAS = 7
+
+/**
+ * Espera mínima entre duas análises da MESMA conversa, mesmo com mensagem
+ * nova. DERIVADA da cadência real do agendador (o laço lento bate a cada
+ * `CICLO_MINUTOS`): dois ciclos de folga. Amarrar os dois é o que impede
+ * o throttle de virar letra morta se a cadência mudar na VPS. Mora aqui
+ * (puro, seguro no cliente) porque worker E legenda do painel a usam — a
+ * legenda imprime o valor, e um número digitado à mão mentiria na
+ * primeira mudança de cadência.
+ */
+export const THROTTLE_MS = CICLO_MINUTOS * 2 * 60_000
 
 /** Abaixo disso, "aguardando resposta" ainda não é pendência — meia hora
  *  útil de fila é operação normal, não sinal. */
