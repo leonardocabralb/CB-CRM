@@ -27,7 +27,7 @@ export const CB_CHANNEL_SAFE_COLUMNS =
   'id, account_id, kind, label, display_phone, is_default, status, ' +
   'connected_at, last_error, phone_number_id, waba_id, server_url, ' +
   'instance_name, default_pipeline_id, default_stage_id, groups_enabled, ' +
-  'created_at, updated_at';
+  'radar_enabled, created_at, updated_at';
 
 /** Canal como o client o enxerga. */
 export interface CbChannel {
@@ -62,6 +62,14 @@ export interface CbChannel {
    * eventos de grupo depois que o webhook é reaplicado ("Ressincronizar").
    */
   groups_enabled: boolean;
+  /**
+   * Radar de Atendimento analisa as conversas deste canal com IA (941).
+   * Nasce DESLIGADO de propósito — sigilo advogado-cliente: ligar é
+   * decisão explícita do operador, canal a canal (há canal de uso pessoal
+   * conectado nesta conta). É a exceção deliberada à convenção
+   * "escopo vazio = todos".
+   */
+  radar_enabled: boolean;
   created_at: string;
   updated_at: string;
 }

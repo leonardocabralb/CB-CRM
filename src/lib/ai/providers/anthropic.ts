@@ -8,8 +8,8 @@ import {
   type ProviderArgs,
 } from './shared'
 
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
-const ANTHROPIC_VERSION = '2023-06-01'
+export const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
+export const ANTHROPIC_VERSION = '2023-06-01'
 
 interface AnthropicResponse {
   content?: { type?: string; text?: string }[]

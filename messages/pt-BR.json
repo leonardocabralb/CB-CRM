@@ -57,7 +57,8 @@
     "menuProfile": "Perfil",
     "menuSettings": "Configurações",
     "menuSignOut": "Sair",
-    "scheduled": "Agendadas"
+    "scheduled": "Agendadas",
+    "radar": "Radar"
   },
   "Header": {
     "dashboard": "Painel",
@@ -77,7 +78,8 @@
     "menuSignOut": "Sair",
     "scheduled": "Mensagens agendadas",
     "flows": "Fluxos",
-    "aiAgents": "Agentes de IA"
+    "aiAgents": "Agentes de IA",
+    "radar": "Radar do atendimento"
   },
   "ModeToggle": {
     "switchMode": "Alternar para o modo {mode}"
@@ -2031,7 +2033,10 @@
       "deleteDealsLoseOrigin": "Os negócios criados por este número continuam no funil, mas perdem o registro de origem e deixam de aparecer no recorte por número do painel.",
       "groupsLabel": "Receber mensagens de grupo",
       "groupsHint": "Os grupos deste número passam a aparecer no inbox, junto das conversas. Nenhuma automação, fluxo ou resposta de IA age em grupo.",
-      "groupsResyncWarning": "Depois de salvar, clique em Ressincronizar nesta conexão. Sem isso, as mensagens chegam mas os avisos de quem entrou ou saiu não."
+      "groupsResyncWarning": "Depois de salvar, clique em Ressincronizar nesta conexão. Sem isso, as mensagens chegam mas os avisos de quem entrou ou saiu não.",
+      "radarLabel": "Radar de Atendimento neste número",
+      "radarHint": "A IA analisa as conversas deste número (últimos 7 dias): nota, urgências, insatisfação e pedidos sem resposta. Nasce desligado.",
+      "radarPrivacyWarning": "Ao ligar, o conteúdo das conversas deste número passa a ser enviado ao provedor de IA configurado na conta (chave própria). Use chave do plano pago do provedor e confirme a política de sigilo do escritório."
     },
     "profile": {
       "title": "Seu perfil",
@@ -2444,6 +2449,49 @@
     "actorAutomation": "por uma automação",
     "actorSystem": "pelo sistema",
     "actorReconstructed": "registro retroativo"
+  },
+  "Radar": {
+    "title": "Radar do atendimento",
+    "subtitle": "A IA lê as conversas dos últimos 7 dias e aponta o que merece atenção — a decisão é sua.",
+    "cardUrgencias": "Urgências abertas",
+    "cardInsatisfacoes": "Insatisfações",
+    "cardPendencias": "Sem resposta",
+    "cardNotaMedia": "Nota média (7 dias)",
+    "loadFailed": "Não foi possível carregar o Radar. O que aparece abaixo pode estar desatualizado.",
+    "tentarDeNovo": "Tentar de novo",
+    "estourouOTeto": "Há mais análises do que o painel carrega de uma vez — as mais recentes estão acima.",
+    "tab_abertos": "Abertos ({n})",
+    "tab_todos": "Todos ({n})",
+    "vazioTitulo": "Nenhuma conversa analisada ainda",
+    "vazioNuncaAnalisado": "Para o Radar funcionar: ligue-o na conexão desejada (Configurações → Conexões), cadastre uma chave de IA (Configurações → Assistente de IA) e aguarde o próximo ciclo do agendador. Sem chave de IA, o Radar ainda mostra tempos de resposta e pendências.",
+    "vazioSemAbertos": "Nada aberto por aqui — tudo tratado ou descartado.",
+    "acaoFalhou": "A ação falhou: {erro}",
+    "contatoSemNome": "Contato sem nome",
+    "notaTitulo": "Nota do atendimento (0–10)",
+    "nota": "{nota}/10",
+    "urgencia_baixa": "Urgência baixa",
+    "urgencia_media": "Urgência média",
+    "urgencia_alta": "Urgência alta",
+    "insatisfacao": "Insatisfação",
+    "aguardando": "Aguardando há {tempo}",
+    "pedidos": "{count, plural, =1 {1 pedido sem atendimento} other {# pedidos sem atendimento}}",
+    "mencaoProcesso": "Processo citado",
+    "semIa": "Sem IA — só métricas",
+    "analiseFalhou": "Análise falhou",
+    "estado_tratado": "Tratado",
+    "estado_descartado": "Descartado",
+    "metricasLinha": "1ª resposta: {primeira} · mediana: {mediana} · {mensagens} mensagens na janela",
+    "audioAviso": "{count, plural, =1 {1 áudio/mídia fora da análise} other {# áudios/mídias fora da análise}}",
+    "analisadoEm": "analisado em {quando}",
+    "urgenciaTitulo": "Urgência",
+    "pedidoTitulo": "Pedido sem atendimento",
+    "processosTitulo": "Processos citados:",
+    "verNoChat": "Ver no chat",
+    "tratar": "Tratado",
+    "descartar": "Descartar",
+    "descartarTitulo": "Descartar = a IA errou; isso calibra o Radar",
+    "reabrir": "Reabrir",
+    "reanalisar": "Reanalisar"
   },
   "Scheduled": {
     "title": "Mensagens agendadas",

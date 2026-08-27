@@ -216,6 +216,10 @@ upstream sobrescrevê-los:
 | `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil |
 | `src/app/(dashboard)/automations/new/page.tsx` | o `?stage=` que faz a automação nascer com o gatilho de funil já apontando para a etapa clicada |
 | `src/lib/automations/trigger-meta.ts` | `formatRelative` passou a usar `Intl.RelativeTimeFormat` e a receber o texto de "nunca" — devolvia `5m ago`/`never` em inglês nas três telas |
+| `src/lib/ai/types.ts`, `generate.ts`, `defaults.ts`, `config.ts`, `usage.ts`, `providers/` | o TERCEIRO provedor (`gemini`, 941) e o modo `'radar'` no log de uso — o upstream conhece só openai/anthropic. `structured.ts` e `providers/gemini.ts` são arquivos NOSSOS |
+| `src/components/settings/ai-config.tsx`, `src/app/api/ai/config/route.ts` | a opção Gemini no seletor e na validação do provider |
+| `src/components/settings/cb-channels-panel.tsx`, `src/app/api/cb/channels/[id]/route.ts`, `src/lib/cb-channels/repo.ts` | o toggle `radar_enabled` por canal (dialog, PATCH allowlist e SAFE_COLUMNS) |
+| `src/components/layout/sidebar.tsx`, `header.tsx`, `src/middleware.ts` | a aba `/radar` (item de navegação, título do cabeçalho e rota protegida) |
 
 ⚠️ **A visão "Automações" do funil (grade estilo Kommo) é desenho de dado, não
 tela nova.** `src/lib/automations/grade-do-funil.ts` e
@@ -438,6 +442,45 @@ substituta.** `src/hooks/use-agendadas-da-conta.ts`,
   50 numa conta com 300.
 - **Números somem enquanto a carga falha.** Quatro zeros ao lado das abas
   afirmariam "não há nada" logo acima da caixa que admite não saber de nada.
+
+⚠️ **Radar de Atendimento (941): worker + tabela + aba `/radar`.** A IA lê as
+conversas dos últimos 7 dias e grava `cb_conversation_insights` (UMA linha
+viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
+`worker.ts` server-side, rotas em `api/cb/radar/`. O que morde código novo:
+
+- **NADA dispara sozinho** — mesma classe da 925: quem move é o agendador
+  batendo em `/api/cb/radar/cron` (incluído no laço LENTO do
+  `docker-stack.yml`). ⚠️ O CI não relê o `command` do `agendador`: a
+  inclusão só vale depois de `docker stack deploy` manual na VPS.
+- ⚠️ **`cb_channels.radar_enabled` nasce FALSE e é `=== true` na rota** — a
+  exceção DELIBERADA à convenção "escopo vazio = todos": o Radar manda
+  conversa de cliente para provedor de IA externo, e há canal de uso
+  PESSOAL conectado na conta. Não "corrigir" para a convenção.
+- **`authenticated` só tem SELECT na tabela.** Tratar/descartar passa por
+  `PATCH /api/cb/radar/[conversationId]/estado` (service-role). UPDATE do
+  navegador volta "0 linhas" com cara de sucesso — é o REVOKE da 941 agindo.
+- **Sinal sem evidência é DESCARTADO pelo parser** (`interpretarAnalise`,
+  rubrica.ts). É o princípio do produto — evidência = índice de linha do
+  transcrito, mapeado para `messages.id`. Quem mexer na rubrica mantém a
+  regra, senão o painel vira gerador de alarme falso.
+- **`generateStructured` (`src/lib/ai/structured.ts`) é separado de
+  `generateReply` DE PROPÓSITO.** Não fundir: o caminho do
+  auto-reply/draft não pode herdar regressão do caminho de análise.
+- **Gemini**: chave SEMPRE no header `x-goog-api-key`, nunca `?key=` na
+  URL (vaza em log de proxy). Embeddings/RAG continuam exigindo chave
+  OpenAI (modelo fixo, `vector(1536)`). Em produção, chave do TIER PAGO —
+  a faixa gratuita do Google pode usar os dados enviados.
+- **Tempos em segundos ÚTEIS com fuso FIXO -03:00** (o Brasil não tem
+  horário de verão desde 2019) — `horario-comercial.ts` é o único arquivo
+  a mudar se isso um dia voltar. Intervalo negativo (relógio do WhatsApp
+  na entrada vs `now()` do banco na saída) vira zero lá dentro.
+- **Reanálise reseta `estado` para `'aberto'`** — mensagem nova invalida o
+  "tratado" anterior, de propósito.
+- **O upsert em `cb_conversation_insights` FUNCIONA** porque o UNIQUE de
+  `conversation_id` é TOTAL — não é o caso dos índices parciais da 903.
+- `ai_usage_log.mode` ganhou `'radar'` e os CHECKs de `provider` ganharam
+  `'gemini'` (941) — modo/provedor novo exige migration no CHECK, senão o
+  `logAiUsage` engole o erro e o custo some do painel de uso.
 
 ⚠️ **UI de canal: peças próprias, prefira reusá-las.** `src/hooks/use-channels.ts`
 (uma busca por montagem, falha silenciosa), `src/lib/cb-channels/display.ts`
@@ -725,6 +768,12 @@ mordem de novo em qualquer código novo:
   `931_cb_fecha_anon_nas_tabelas_antigas`.
   Depois disso (conferido em 2026-08-03):
   `932_cb_agendada_com_midia_e_citacao`.
+  Depois disso (conferido em 2026-08-27 via `list_migrations`):
+  `933_cb_gatilho_de_funil`, `934_cb_acoes_de_funil`,
+  `935_cb_lembrete_por_data`, `936_cb_orquestracao`,
+  `937_cb_batimento_das_automacoes`, as três do upstream renumeradas
+  (`040`/`041`/`042`), `940_cb_broadcast_com_canal` e
+  `941_cb_radar_de_atendimento`.
   ⚠️ A `906` foi aplicada FORA DE ORDEM (antes da 907), e o histórico do
   Supabase a registra com o nome antigo `904_cb_grupos` — ela nasceu numerada
   como 904, colidiu com `904_cb_mensagem_do_aparelho` e o ARQUIVO foi

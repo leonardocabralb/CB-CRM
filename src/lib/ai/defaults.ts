@@ -13,6 +13,8 @@ import type { AiProvider } from './types'
 export const AI_PROVIDER_DEFAULT_MODEL: Record<AiProvider, string> = {
   openai: 'gpt-5.4-mini',
   anthropic: 'claude-haiku-4-5-20251001',
+  // 3.7 e 3.6 custam o mesmo; o 3.7 é o Flash mais capaz (ago/2026).
+  gemini: 'gemini-3.7-flash',
 }
 
 /**

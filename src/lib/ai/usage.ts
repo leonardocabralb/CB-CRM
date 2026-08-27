@@ -6,7 +6,8 @@ export interface LogAiUsageArgs {
   /** Null for a draft not tied to one thread, or when the row was
    *  deleted between generation and logging. */
   conversationId: string | null
-  mode: 'auto_reply' | 'draft'
+  /** 'radar' = análise em lote do Radar de Atendimento (941 ampliou o CHECK). */
+  mode: 'auto_reply' | 'draft' | 'radar'
   /** Canal por onde a conversa corre — atribui o custo por numero. */
   channelId?: string | null
   provider: AiProvider

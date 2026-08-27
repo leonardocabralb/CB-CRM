@@ -82,6 +82,7 @@ interface CbChannel {
    * Code — a API oficial da Meta não entrega grupo.
    */
   groups_enabled?: boolean;
+  radar_enabled?: boolean;
 }
 
 interface PipelineOption {
@@ -149,6 +150,7 @@ export function CbChannelsPanel() {
   // Grupos neste canal (906). Padrão vem do banco; ver o aviso de
   // ressincronização no diálogo.
   const [configGrupos, setConfigGrupos] = useState(false);
+  const [configRadar, setConfigRadar] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [pipelines, setPipelines] = useState<PipelineOption[]>([]);
@@ -421,6 +423,7 @@ export function CbChannelsPanel() {
     setConfigPipeline(channel.default_pipeline_id ?? '');
     setConfigStage(channel.default_stage_id ?? '');
     setConfigGrupos(channel.groups_enabled === true);
+    setConfigRadar(channel.radar_enabled === true);
   };
 
   const handleConfigure = async () => {
@@ -437,6 +440,7 @@ export function CbChannelsPanel() {
           default_pipeline_id: configPipeline || null,
           default_stage_id: configPipeline ? configStage || null : null,
           groups_enabled: configGrupos,
+          radar_enabled: configRadar,
         }),
       });
       const payload = await res.json();
@@ -1182,6 +1186,34 @@ export function CbChannelsPanel() {
                 )}
               </div>
             )}
+
+            {/* Radar de Atendimento (941). Em QUALQUER tipo de conexão — a
+                análise lê o banco, não o transporte. Nasce desligado de
+                propósito: liga-se canal a canal, porque manda conversa de
+                cliente para o provedor de IA da conta (sigilo). */}
+            <div className="rounded-md border border-border p-3">
+              <label className="flex cursor-pointer items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={configRadar}
+                  onChange={(e) => setConfigRadar(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-foreground">
+                    {t('radarLabel')}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {t('radarHint')}
+                  </span>
+                </span>
+              </label>
+              {configRadar && !configTarget?.radar_enabled && (
+                <p className="mt-2 rounded-md bg-amber-500/10 p-2 text-xs text-amber-600 dark:text-amber-400">
+                  {t('radarPrivacyWarning')}
+                </p>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfigTarget(null)}>

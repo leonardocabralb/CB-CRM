@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import {
+  Activity,
   Bell,
   Bot,
   CalendarClock,
@@ -92,6 +93,9 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
+  // Logo abaixo do Painel: as duas telas são "visão do conjunto" — o
+  // Painel conta números, o Radar diz PARA ONDE olhar (e salta pro inbox).
+  { href: "/radar", labelKey: "radar", icon: Activity },
   { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
   { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/contacts", labelKey: "contacts", icon: Users },

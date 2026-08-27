@@ -57,7 +57,8 @@
     "menuProfile": "Profile",
     "menuSettings": "Settings",
     "menuSignOut": "Sign out",
-    "scheduled": "Scheduled"
+    "scheduled": "Scheduled",
+    "radar": "Radar"
   },
   "Header": {
     "dashboard": "Dashboard",
@@ -77,7 +78,8 @@
     "menuSignOut": "Sign out",
     "scheduled": "Scheduled messages",
     "flows": "Flows",
-    "aiAgents": "AI Agents"
+    "aiAgents": "AI Agents",
+    "radar": "Service radar"
   },
   "ModeToggle": {
     "switchMode": "Switch to {mode} mode"
@@ -2052,7 +2054,10 @@
       "deleteDealsLoseOrigin": "Deals created by this number stay in their pipeline but lose their origin record, disappearing from the dashboard breakdown by number.",
       "groupsLabel": "Receive group messages",
       "groupsHint": "This number's groups start showing in the inbox alongside chats. No automation, flow or AI reply acts in a group.",
-      "groupsResyncWarning": "After saving, click Resync on this connection. Without it, messages arrive but join/leave notices don't."
+      "groupsResyncWarning": "After saving, click Resync on this connection. Without it, messages arrive but join/leave notices don't.",
+      "radarLabel": "Service Radar on this number",
+      "radarHint": "AI analyzes this number's conversations (last 7 days): score, urgencies, dissatisfaction and unanswered requests. Off by default.",
+      "radarPrivacyWarning": "When enabled, this number's conversation content is sent to the account's configured AI provider (your own key). Use the provider's paid tier and confirm the firm's confidentiality policy."
     },
     "profile": {
       "title": "Your profile",
@@ -2465,6 +2470,49 @@
     "actorAutomation": "by an automation",
     "actorSystem": "by the system",
     "actorReconstructed": "backfilled record"
+  },
+  "Radar": {
+    "title": "Service radar",
+    "subtitle": "AI reads the last 7 days of conversations and flags what needs attention — the decision is yours.",
+    "cardUrgencias": "Open urgencies",
+    "cardInsatisfacoes": "Dissatisfaction",
+    "cardPendencias": "Awaiting reply",
+    "cardNotaMedia": "Average score (7 days)",
+    "loadFailed": "Could not load the Radar. What you see below may be stale.",
+    "tentarDeNovo": "Try again",
+    "estourouOTeto": "There are more analyses than the panel loads at once — the most recent are shown above.",
+    "tab_abertos": "Open ({n})",
+    "tab_todos": "All ({n})",
+    "vazioTitulo": "No conversations analyzed yet",
+    "vazioNuncaAnalisado": "To get the Radar running: enable it on the desired connection (Settings → Connections), add an AI key (Settings → AI Assistant) and wait for the next scheduler cycle. Without an AI key the Radar still shows response times and pending replies.",
+    "vazioSemAbertos": "Nothing open here — everything handled or dismissed.",
+    "acaoFalhou": "The action failed: {erro}",
+    "contatoSemNome": "Unnamed contact",
+    "notaTitulo": "Service score (0–10)",
+    "nota": "{nota}/10",
+    "urgencia_baixa": "Low urgency",
+    "urgencia_media": "Medium urgency",
+    "urgencia_alta": "High urgency",
+    "insatisfacao": "Dissatisfaction",
+    "aguardando": "Waiting for {tempo}",
+    "pedidos": "{count, plural, =1 {1 unmet request} other {# unmet requests}}",
+    "mencaoProcesso": "Lawsuit mentioned",
+    "semIa": "No AI — metrics only",
+    "analiseFalhou": "Analysis failed",
+    "estado_tratado": "Handled",
+    "estado_descartado": "Dismissed",
+    "metricasLinha": "First reply: {primeira} · median: {mediana} · {mensagens} messages in window",
+    "audioAviso": "{count, plural, =1 {1 audio/media not analyzed} other {# audios/media not analyzed}}",
+    "analisadoEm": "analyzed at {quando}",
+    "urgenciaTitulo": "Urgency",
+    "pedidoTitulo": "Unmet request",
+    "processosTitulo": "Cited lawsuits:",
+    "verNoChat": "Open chat",
+    "tratar": "Handled",
+    "descartar": "Dismiss",
+    "descartarTitulo": "Dismiss = the AI got it wrong; this calibrates the Radar",
+    "reabrir": "Reopen",
+    "reanalisar": "Re-analyze"
   },
   "Scheduled": {
     "title": "Scheduled messages",

@@ -8,7 +8,7 @@ import {
   type ProviderArgs,
 } from './shared'
 
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
+export const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
 
 interface OpenAiResponse {
   choices?: { message?: { content?: string } }[]
