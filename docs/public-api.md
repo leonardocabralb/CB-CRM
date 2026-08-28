@@ -381,9 +381,13 @@ Schedule a **text** message into an existing conversation. Scope:
 {
   "conversation_id": "<uuid>",              // required
   "body": "Bom dia! Passando para lembrar…", // required, ≤ 4000 chars
-  "scheduled_for": "2026-09-01T09:00:00-03:00" // required, ISO-8601, future, ≤ 365 days ahead
+  "scheduled_for": "2026-09-01T09:00:00-03:00" // required, ISO-8601 WITH offset, future, ≤ 365 days ahead
 }
 ```
+
+`scheduled_for` **must carry a timezone offset** (`Z` or `±HH:MM`) —
+without one, "14:00" would be read in the server's timezone and the
+message would fire at the wrong hour with no error anywhere.
 
 The sending channel is resolved **now** and frozen on the row (it does
 not follow the conversation later). Domain error codes: `no_channel`
@@ -413,12 +417,19 @@ filters: `?pipeline_id=`, `?stage_id=`, `?contact_id=`, `?status=`
 
 ### `POST /api/v1/deals`
 
-Create a deal. Scope: `deals:write`. `contact_id`, `pipeline_id` and
-`title` are required; `stage_id` is optional (defaults to the
-pipeline's first stage) and `value` is optional. API-created deals get
-`source: "manual"`, the account currency, and no `channel_id` (that
-column means "which number the customer arrived through"). Response:
-`201` with the deal.
+Create a deal. Scope: `deals:write`. `contact_id`, `pipeline_id`,
+`stage_id` and `title` are required (`value` is optional). `stage_id`
+is **deliberately not optional**: the entry stage is a product
+decision, not "the first column" — pick one from
+`GET /api/v1/pipelines`. API-created deals get `source: "manual"`, the
+account currency, and no `channel_id` (that column means "which number
+the customer arrived through").
+
+**One card per contact:** the product model is a single deal that
+moves between pipelines. A contact that already has a deal (open or
+closed, any pipeline) returns `409` with code
+`contact_already_has_deal` — move the existing deal with
+`PATCH /api/v1/deals/{id}` instead. Response: `201` with the deal.
 
 ### `GET` / `PATCH /api/v1/deals/{id}`
 
@@ -439,7 +450,8 @@ trail automatically.
 List calendar meetings, newest first. Scope: `meetings:read`.
 Paginated. Optional filters: `?owner_user_id=`, `?contact_id=`,
 `?status=` (`agendada` / `realizada` / `cancelada` / `falta`), and a
-window on the start time via `?from=` / `?to=` (ISO-8601 instants).
+window on the start time via `?from=` / `?to=` — ISO-8601 instants
+**with a timezone offset** (`Z` or `±HH:MM`), or the window shifts.
 
 ### `POST /api/v1/meetings`
 
@@ -461,7 +473,10 @@ Create a meeting. Scope: `meetings:write`.
 Timestamps **must include the timezone offset** (`Z` or `±HH:MM`) —
 without it "14:00" would silently shift by the server's UTC offset.
 Overlapping meetings for the same owner return `409` with code
-`overlap`. Response: `201` with the meeting.
+`overlap`. A malformed `owner_user_id` is a `400` (never a silent
+fallback), and if the account has no resolvable default owner the
+call returns `409` with code `no_default_owner` — pass
+`owner_user_id` explicitly. Response: `201` with the meeting.
 
 ### `GET /api/v1/meetings/{id}`
 

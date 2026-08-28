@@ -136,10 +136,16 @@ export async function POST(request: Request) {
       .from('conversations')
       .select('id, contact_id')
       .eq('account_id', ctx.accountId);
-    const { data: conversa } = porConversa
+    const { data: conversa, error: conversaErr } = porConversa
       ? await busca.eq('id', body.conversation_id as string).maybeSingle()
       : await busca.eq('contact_id', body.contact_id as string).maybeSingle();
 
+    if (conversaErr) {
+      // A DB error is NOT "no conversation" — answering 409 here would
+      // tell the integrator the contact never talked to us.
+      console.error('[api/v1/notes] conversation lookup error:', conversaErr);
+      return fail('internal', 'Failed to resolve the conversation', 500);
+    }
     if (!conversa) {
       if (porConversa) return fail('not_found', 'Conversation not found', 404);
       // A real case, not a caller error: a hand-created contact that
