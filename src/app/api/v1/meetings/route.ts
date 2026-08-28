@@ -59,12 +59,18 @@ export async function GET(request: Request) {
     if (status && !STATUS.includes(status as (typeof STATUS)[number])) {
       throw badRequest(`'status' must be one of: ${STATUS.join(', ')}`);
     }
+    // ⚠️ Same rule as the write path: the offset must be WRITTEN in
+    // the string. Without it Postgres reads the text as UTC and a
+    // day window comes back shifted by three hours — meetings
+    // silently missing from the morning (the 935 trap).
     for (const [name, value] of [
       ['from', from],
       ['to', to],
     ] as const) {
-      if (value && Number.isNaN(Date.parse(value))) {
-        throw badRequest(`'${name}' must be an ISO-8601 datetime`);
+      if (value && !instanteValido(value)) {
+        throw badRequest(
+          `'${name}' must be an ISO-8601 datetime WITH a timezone offset (Z or ±HH:MM)`
+        );
       }
     }
 
@@ -125,22 +131,51 @@ export async function POST(request: Request) {
       throw badRequest('Invalid meeting times');
     }
 
+    // ⚠️ A malformed owner is a 400, never a silent fallback: falling
+    // back would create the meeting on someone ELSE's calendar with a
+    // 201, and check the overlap constraint against the wrong person.
+    const temOwnerExplicito =
+      body.owner_user_id !== undefined && body.owner_user_id !== null;
+    if (temOwnerExplicito && !ehUuid(body.owner_user_id)) {
+      throw badRequest("'owner_user_id' must be a UUID");
+    }
+
     const author = await resolveApiAuthor(ctx.supabase, ctx.accountId);
 
-    // Owner defaults to the audit user; an explicit owner must be a
-    // member of this account.
-    const ownerId = ehUuid(body.owner_user_id)
-      ? (body.owner_user_id as string)
-      : author.userId;
-
-    const { data: dono } = await ctx.supabase
-      .from('profiles')
-      .select('user_id, full_name, email')
-      .eq('user_id', ownerId)
-      .eq('account_id', ctx.accountId)
-      .maybeSingle();
-    if (!dono) {
-      throw badRequest("'owner_user_id' is not a member of this account");
+    let ownerId: string;
+    let ownerNome: string;
+    if (temOwnerExplicito) {
+      ownerId = body.owner_user_id as string;
+      const { data: dono, error: donoErr } = await ctx.supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .eq('user_id', ownerId)
+        .eq('account_id', ctx.accountId)
+        .maybeSingle();
+      if (donoErr) {
+        console.error('[api/v1/meetings] owner lookup error:', donoErr);
+        return fail('internal', 'Failed to verify the owner', 500);
+      }
+      if (!dono) {
+        throw badRequest("'owner_user_id' is not a member of this account");
+      }
+      ownerNome =
+        (dono.full_name as string | null)?.trim() ||
+        (dono.email as string | null) ||
+        author.nome;
+    } else {
+      // Default owner = the API author, already resolved with its
+      // profile — but only when that author really is a member. A
+      // meeting owned by a ghost would block no one's calendar.
+      if (!author.membro) {
+        return fail(
+          'no_default_owner',
+          "Could not resolve a default meeting owner for this account — pass 'owner_user_id'",
+          409
+        );
+      }
+      ownerId = author.userId;
+      ownerNome = author.nome;
     }
 
     let contactId: string | null = null;
@@ -149,12 +184,16 @@ export async function POST(request: Request) {
       if (!ehUuid(body.contact_id)) {
         throw badRequest("'contact_id' must be a UUID");
       }
-      const { data: contato } = await ctx.supabase
+      const { data: contato, error: contatoErr } = await ctx.supabase
         .from('contacts')
         .select('id, name, phone')
         .eq('id', body.contact_id)
         .eq('account_id', ctx.accountId)
         .maybeSingle();
+      if (contatoErr) {
+        console.error('[api/v1/meetings] contact lookup error:', contatoErr);
+        return fail('internal', 'Failed to verify the contact', 500);
+      }
       if (!contato) return fail('not_found', 'Contact not found', 404);
       contactId = contato.id as string;
       contatoNome = (contato.name as string | null) ?? (contato.phone as string);
@@ -165,10 +204,7 @@ export async function POST(request: Request) {
       .insert({
         account_id: ctx.accountId,
         owner_user_id: ownerId,
-        owner_nome:
-          (dono.full_name as string | null)?.trim() ||
-          (dono.email as string | null) ||
-          author.nome,
+        owner_nome: ownerNome,
         contact_id: contactId,
         contato_nome: contatoNome,
         titulo: (body.titulo as string).trim(),

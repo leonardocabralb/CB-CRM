@@ -141,7 +141,7 @@ describe('createDeal', () => {
 
     const r = await createDeal({ db, ...BASE });
 
-    expect(r).toEqual({ ok: true, created: true, dealId: 'deal-novo' });
+    expect(r).toEqual({ ok: true, created: true, deal: { id: 'deal-novo' } });
     expect(inserts[0]).toMatchObject({ stage_id: 'etapa-zero' });
   });
 
@@ -211,7 +211,7 @@ describe('createDeal', () => {
 
     const r = await createDeal({ db, ...BASE });
 
-    expect(r).toEqual({ ok: true, created: false, dealId: null });
+    expect(r).toEqual({ ok: true, created: false, deal: null });
   });
 
   it('erro de insert que NÃO é colisão é reportado', async () => {

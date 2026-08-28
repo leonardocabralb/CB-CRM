@@ -17,6 +17,9 @@ export interface ApiPipeline {
   created_at: string;
 }
 
+/** Single source for the wire status values — GET filter and PATCH agree. */
+export const DEAL_STATUSES = ['open', 'won', 'lost'] as const;
+
 export interface ApiDeal {
   id: string;
   pipeline_id: string;
@@ -29,7 +32,7 @@ export interface ApiDeal {
   title: string;
   value: number;
   currency: string | null;
-  status: 'open' | 'won' | 'lost';
+  status: (typeof DEAL_STATUSES)[number];
   source: 'manual' | 'automation' | 'channel' | null;
   expected_close_date: string | null;
   created_at: string;

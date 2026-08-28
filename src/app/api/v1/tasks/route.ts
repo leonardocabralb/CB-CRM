@@ -128,13 +128,19 @@ export async function POST(request: Request) {
     const responsavelId = body.responsavel_user_id;
 
     // Service-role client: every ownership check is an explicit
-    // account filter, same discipline as the rest of v1.
-    const { data: contato } = await ctx.supabase
+    // account filter, same discipline as the rest of v1. A DB error is
+    // NOT "not found" — a 404 would tell the integrator the contact
+    // vanished and invite a duplicate re-create.
+    const { data: contato, error: contatoErr } = await ctx.supabase
       .from('contacts')
       .select('id')
       .eq('id', contactId)
       .eq('account_id', ctx.accountId)
       .maybeSingle();
+    if (contatoErr) {
+      console.error('[api/v1/tasks] contact lookup error:', contatoErr);
+      return fail('internal', 'Failed to verify the contact', 500);
+    }
     if (!contato) return fail('not_found', 'Contact not found', 404);
 
     // Membership check doubles as the frozen-name lookup, like the

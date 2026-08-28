@@ -53,10 +53,10 @@ export interface CreateDealArgs {
 export type CreateDealResult =
   /**
    * `created: false` = já existia (colisão do índice único) — não é erro.
-   * `dealId` vem preenchido quando o insert aconteceu de fato; na colisão
+   * `deal` é a linha inserida quando o insert aconteceu de fato; na colisão
    * ele é `null` (o card vencedor é o que já existia).
    */
-  | { ok: true; created: boolean; dealId: string | null }
+  | { ok: true; created: boolean; deal: Record<string, unknown> | null }
   | {
       ok: false;
       code: 'pipeline_not_found' | 'stage_not_found' | 'no_stage' | 'insert_failed';
@@ -155,16 +155,16 @@ export async function createDeal(args: CreateDealArgs): Promise<CreateDealResult
       status: 'open',
       source,
     })
-    .select('id')
+    .select('*')
     .maybeSingle();
 
   if (insertErr) {
-    // `cb_deals_canal_idx` (908) barra o segundo insert de uma corrida — duas
-    // mensagens do mesmo cliente chegando juntas, ou a reentrega do webhook
-    // da Meta quando ela não recebe 200 a tempo. O card que interessa já
-    // existe, então isto é o resultado desejado, não uma falha.
+    // `cb_deals_contato_canal_idx` (911) barra o segundo insert de uma
+    // corrida — duas mensagens do mesmo cliente chegando juntas, ou a
+    // reentrega do webhook da Meta quando ela não recebe 200 a tempo. O card
+    // que interessa já existe, então isto é o resultado desejado, não falha.
     if (isUniqueViolation(insertErr)) {
-      return { ok: true, created: false, dealId: null };
+      return { ok: true, created: false, deal: null };
     }
     return { ok: false, code: 'insert_failed', message: insertErr.message };
   }
@@ -172,6 +172,6 @@ export async function createDeal(args: CreateDealArgs): Promise<CreateDealResult
   return {
     ok: true,
     created: true,
-    dealId: (inserido?.id as string | undefined) ?? null,
+    deal: (inserido as Record<string, unknown> | null) ?? null,
   };
 }

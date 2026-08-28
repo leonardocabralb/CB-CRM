@@ -39,6 +39,7 @@ import {
 } from '@/lib/api/v1/pagination';
 import { resolveApiAuthor } from '@/lib/api/v1/authorship';
 import { serializeScheduled } from '@/lib/api/v1/scheduled';
+import { instanteValido } from '@/lib/agenda/validar';
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
 import { ehUuid } from '@/lib/tasks/validar';
 
@@ -120,12 +121,19 @@ export async function POST(request: Request) {
       throw badRequest(`'body' exceeds ${MAX_TEXTO} characters`);
     }
 
+    // ⚠️ The offset must be WRITTEN in the string (Z or ±HH:MM). The
+    // dashboard route can accept it loose because the browser always
+    // sends an offset; an API integrator sending "2026-09-01T14:00:00"
+    // would get the SERVER's interpretation of that wall time and the
+    // message would fire at the wrong hour, with no error anywhere.
     const quando =
       typeof body.scheduled_for === 'string' ? body.scheduled_for : '';
-    const data = new Date(quando);
-    if (!quando || Number.isNaN(data.getTime())) {
-      throw badRequest("'scheduled_for' must be an ISO-8601 datetime");
+    if (!instanteValido(quando)) {
+      throw badRequest(
+        "'scheduled_for' must be an ISO-8601 datetime WITH a timezone offset (Z or ±HH:MM)"
+      );
     }
+    const data = new Date(quando);
     // Server clock — the caller's clock can't turn "schedule" into
     // "send now".
     if (data.getTime() <= Date.now()) {
@@ -140,13 +148,17 @@ export async function POST(request: Request) {
     // ⚠️ The `group:cb_groups(channel_id)` join is load-bearing: group
     // conversations always have `conversations.channel_id` NULL, and
     // resolving via the account default would stamp the wrong number.
-    const { data: conversa } = await ctx.supabase
+    const { data: conversa, error: conversaErr } = await ctx.supabase
       .from('conversations')
       .select('id, channel_id, group_id, group:cb_groups(channel_id)')
       .eq('id', conversationId)
       .eq('account_id', ctx.accountId)
       .maybeSingle();
 
+    if (conversaErr) {
+      console.error('[api/v1/scheduled-messages] conversation lookup error:', conversaErr);
+      return fail('internal', 'Failed to verify the conversation', 500);
+    }
     if (!conversa) return fail('not_found', 'Conversation not found', 404);
 
     const linha = conversa as {

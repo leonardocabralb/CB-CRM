@@ -19,10 +19,9 @@
 
 import { requireApiKey } from '@/lib/auth/api-context';
 import { ok, fail, badRequest, toApiErrorResponse } from '@/lib/api/v1/respond';
-import { serializeDeal } from '@/lib/api/v1/deals';
+import { DEAL_STATUSES, serializeDeal } from '@/lib/api/v1/deals';
+import { drenarEventosDeFunil } from '@/lib/automations/drain-events';
 import { ehUuid } from '@/lib/tasks/validar';
-
-const STATUSES = ['open', 'won', 'lost'];
 
 export async function GET(
   request: Request,
@@ -91,8 +90,11 @@ export async function PATCH(
     }
 
     if (body.status !== undefined) {
-      if (typeof body.status !== 'string' || !STATUSES.includes(body.status)) {
-        throw badRequest(`'status' must be one of: ${STATUSES.join(', ')}`);
+      if (
+        typeof body.status !== 'string' ||
+        !DEAL_STATUSES.includes(body.status as (typeof DEAL_STATUSES)[number])
+      ) {
+        throw badRequest(`'status' must be one of: ${DEAL_STATUSES.join(', ')}`);
       }
       update.status = body.status;
     }
@@ -113,13 +115,19 @@ export async function PATCH(
           "moving to another pipeline requires 'stage_id' (a stage of the target pipeline)"
         );
       }
-      // Target pipeline must be this account's.
-      const { data: funil } = await ctx.supabase
+      // Target pipeline must be this account's. A DB error is not
+      // "not found" — don't invite the caller to conclude the
+      // pipeline vanished.
+      const { data: funil, error: funilErr } = await ctx.supabase
         .from('pipelines')
         .select('id')
         .eq('id', body.pipeline_id as string)
         .eq('account_id', ctx.accountId)
         .maybeSingle();
+      if (funilErr) {
+        console.error('[api/v1/deals/:id] pipeline lookup error:', funilErr);
+        return fail('internal', 'Failed to verify the pipeline', 500);
+      }
       if (!funil) return fail('not_found', 'Pipeline not found', 404);
       update.pipeline_id = body.pipeline_id;
     }
@@ -128,12 +136,16 @@ export async function PATCH(
       // The stage must belong to whichever pipeline the deal will be
       // in after this update.
       const targetPipeline = (update.pipeline_id as string) ?? atual.pipeline_id;
-      const { data: etapa } = await ctx.supabase
+      const { data: etapa, error: etapaErr } = await ctx.supabase
         .from('pipeline_stages')
         .select('id')
         .eq('id', body.stage_id as string)
         .eq('pipeline_id', targetPipeline)
         .maybeSingle();
+      if (etapaErr) {
+        console.error('[api/v1/deals/:id] stage lookup error:', etapaErr);
+        return fail('internal', 'Failed to verify the stage', 500);
+      }
       if (!etapa) {
         return fail(
           'stage_not_found',
@@ -159,6 +171,13 @@ export async function PATCH(
     if (error || !depois) {
       console.error('[api/v1/deals/:id] update error:', error);
       return fail('internal', 'Failed to update deal', 500);
+    }
+
+    // A stage/pipeline/status change enqueues funnel events (933
+    // trigger); wake the drain now instead of waiting for the 15-min
+    // cron — same optimization the dashboard applies after a move.
+    if (update.stage_id || update.pipeline_id || update.status) {
+      void drenarEventosDeFunil().catch(() => {});
     }
 
     return ok(serializeDeal(depois as Record<string, unknown>));

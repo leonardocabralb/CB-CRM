@@ -139,7 +139,7 @@ export function Calendario({
       onDragCancel={() => setArrastando(null)}
     >
       {visao !== 'dia' && (
-        <div className="grid grid-cols-7 gap-px border-b border-border">
+        <div className="grid shrink-0 grid-cols-7 gap-px border-b border-border">
           {nomesDosDias.map((nome) => (
             <div
               key={nome}
@@ -151,9 +151,12 @@ export function Calendario({
         </div>
       )}
 
+      {/* ⚠️ `flex-1` para a grade ocupar o que sobra. Sem isto, semana e dia
+          param na altura mínima da célula e deixam um bloco vazio embaixo —
+          com as divisórias entre os dias interrompidas no meio da tela. */}
       <div
         className={cn(
-          'grid gap-px bg-border',
+          'grid flex-1 gap-px bg-border',
           visao === 'dia' ? 'grid-cols-1' : 'grid-cols-7',
         )}
       >
@@ -207,7 +210,9 @@ function Celula({
       ref={setNodeRef}
       className={cn(
         'group flex flex-col gap-1 bg-background p-1.5',
-        visao === 'mes' ? 'min-h-24' : 'min-h-48',
+        // No mês a altura é fixa e a grade rola (6 semanas não cabem na tela).
+        // Na semana e no dia a célula cresce com a grade, que agora estica.
+        visao === 'mes' ? 'min-h-24' : 'min-h-48 h-full',
         !dia.doMesAtual && 'bg-muted/40',
         isOver && 'bg-primary/10 ring-1 ring-inset ring-primary/40',
       )}

@@ -6,12 +6,25 @@
 //        (open|won|lost).
 // POST (scope: deals:write) — create a deal via `createDeal`, the
 //        single server-side birthplace of deals: it validates the
-//        pipeline belongs to the account, the stage belongs to the
-//        pipeline (falling back to the lowest-position stage), and
-//        stamps the account currency. API-created deals get
-//        `source: 'manual'` and no channel (the channel column
-//        means "which number the customer arrived through", which
-//        an API call doesn't know).
+//        pipeline belongs to the account and the stage belongs to
+//        the pipeline, and stamps the account currency. API-created
+//        deals get `source: 'manual'` and no channel (the channel
+//        column means "which number the customer arrived through",
+//        which an API call doesn't know).
+//
+// ⚠️ `stage_id` is REQUIRED here even though `createDeal` can fall
+// back to the lowest-position stage. The entry stage is an explicit
+// product decision (this account's position 0 is a parking lane,
+// not the entry) — resolving by position would dump leads there,
+// and a deal parked in that stage blocks restructuring it (the
+// stage FK is NO ACTION).
+//
+// ⚠️ One card per contact (migration 911): the product model is a
+// single deal that TRANSITS between pipelines. The 911 index only
+// backstops `source: 'channel'` races, so this route re-states the
+// semantic rule the router applies — otherwise the API would be the
+// one door that mints duplicates, and the automations' "most recent
+// deal" targeting would silently switch cards.
 // ============================================================
 
 import { requireApiKey } from '@/lib/auth/api-context';
@@ -28,11 +41,10 @@ import {
   buildPage,
 } from '@/lib/api/v1/pagination';
 import { resolveAuditUserId } from '@/lib/api/v1/contacts';
-import { serializeDeal } from '@/lib/api/v1/deals';
+import { DEAL_STATUSES, serializeDeal } from '@/lib/api/v1/deals';
+import { drenarEventosDeFunil } from '@/lib/automations/drain-events';
 import { createDeal } from '@/lib/deals/create-deal';
 import { ehUuid } from '@/lib/tasks/validar';
-
-const STATUSES = ['open', 'won', 'lost'];
 
 export async function GET(request: Request) {
   try {
@@ -51,8 +63,8 @@ export async function GET(request: Request) {
     ] as const) {
       if (value && !ehUuid(value)) throw badRequest(`'${name}' must be a UUID`);
     }
-    if (status && !STATUSES.includes(status)) {
-      throw badRequest(`'status' must be one of: ${STATUSES.join(', ')}`);
+    if (status && !DEAL_STATUSES.includes(status as (typeof DEAL_STATUSES)[number])) {
+      throw badRequest(`'status' must be one of: ${DEAL_STATUSES.join(', ')}`);
     }
 
     let query = ctx.supabase
@@ -107,12 +119,12 @@ export async function POST(request: Request) {
 
     if (!ehUuid(body.contact_id)) throw badRequest("'contact_id' is required");
     if (!ehUuid(body.pipeline_id)) throw badRequest("'pipeline_id' is required");
-    if (
-      body.stage_id !== undefined &&
-      body.stage_id !== null &&
-      !ehUuid(body.stage_id)
-    ) {
-      throw badRequest("'stage_id' must be a UUID");
+    // Required — see the header note. `GET /api/v1/pipelines` lists the
+    // valid stages.
+    if (!ehUuid(body.stage_id)) {
+      throw badRequest(
+        "'stage_id' is required — pick one from GET /api/v1/pipelines"
+      );
     }
 
     const title = typeof body.title === 'string' ? body.title.trim() : '';
@@ -128,14 +140,40 @@ export async function POST(request: Request) {
 
     // `createDeal` validates pipeline/stage tenancy but takes the
     // contact on trust — the router already knows its contact. An API
-    // caller doesn't, so check it here.
-    const { data: contato } = await ctx.supabase
+    // caller doesn't, so check it here. A DB error is NOT "not found":
+    // a 404 here would tell the integrator to recreate the contact.
+    const { data: contato, error: contatoErr } = await ctx.supabase
       .from('contacts')
       .select('id')
       .eq('id', body.contact_id)
       .eq('account_id', ctx.accountId)
       .maybeSingle();
+    if (contatoErr) {
+      console.error('[api/v1/deals] contact lookup error:', contatoErr);
+      return fail('internal', 'Failed to verify the contact', 500);
+    }
     if (!contato) return fail('not_found', 'Contact not found', 404);
+
+    // One card per contact — same breadth as the router: open or
+    // closed, any pipeline, any source.
+    const { data: existente, error: existenteErr } = await ctx.supabase
+      .from('deals')
+      .select('id')
+      .eq('account_id', ctx.accountId)
+      .eq('contact_id', body.contact_id)
+      .limit(1)
+      .maybeSingle();
+    if (existenteErr) {
+      console.error('[api/v1/deals] duplicate check error:', existenteErr);
+      return fail('internal', 'Failed to check for an existing deal', 500);
+    }
+    if (existente) {
+      return fail(
+        'contact_already_has_deal',
+        `This contact already has a deal (${existente.id}); move it with PATCH /api/v1/deals/{id} instead`,
+        409
+      );
+    }
 
     const ownerUserId = await resolveAuditUserId(ctx.supabase, ctx.accountId);
 
@@ -145,7 +183,7 @@ export async function POST(request: Request) {
       ownerUserId,
       contactId: body.contact_id,
       pipelineId: body.pipeline_id,
-      stageId: ehUuid(body.stage_id) ? body.stage_id : null,
+      stageId: body.stage_id,
       title,
       value,
       source: 'manual',
@@ -161,26 +199,24 @@ export async function POST(request: Request) {
       console.error('[api/v1/deals] create error:', result.message);
       return fail('internal', 'Failed to create deal', 500);
     }
-
-    // `dealId` is null only on the router's unique-index collision,
-    // which requires `source: 'channel'` — unreachable here. Guard
-    // anyway rather than serialize a row we don't have.
-    if (!result.dealId) {
-      return fail('internal', 'Deal was created but could not be read back', 500);
+    if (!result.deal) {
+      // Only reachable on the router's unique-index collision, which
+      // requires `source: 'channel'` — but never answer 5xx for a row
+      // that exists: HTTP clients retry 5xx, and a retry here would be
+      // a duplicate attempt.
+      return fail(
+        'contact_already_has_deal',
+        'This contact already has a deal; move it with PATCH /api/v1/deals/{id} instead',
+        409
+      );
     }
 
-    const { data: deal, error } = await ctx.supabase
-      .from('deals')
-      .select('*')
-      .eq('id', result.dealId)
-      .eq('account_id', ctx.accountId)
-      .maybeSingle();
-    if (error || !deal) {
-      console.error('[api/v1/deals] readback error:', error);
-      return fail('internal', 'Deal was created but could not be read back', 500);
-    }
+    // Wake the automation queue now instead of waiting for the 15-min
+    // cron — same optimization the dashboard applies after a move.
+    // Fire-and-forget: the queue + cron are the correctness net.
+    void drenarEventosDeFunil().catch(() => {});
 
-    return ok(serializeDeal(deal as Record<string, unknown>), 201);
+    return ok(serializeDeal(result.deal), 201);
   } catch (err) {
     return toApiErrorResponse(err);
   }
