@@ -5,7 +5,15 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import type { Notification } from "@/types";
-import { AtSign, Bell, CheckCheck, Loader2, UserPlus } from "lucide-react";
+import {
+  AtSign,
+  Bell,
+  CheckCheck,
+  ListTodo,
+  Loader2,
+  Reply,
+  UserPlus,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -18,6 +26,11 @@ import { useTranslations } from "next-intl";
 const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   conversation_assigned: UserPlus,
   note_mention: AtSign,
+  // Tarefas (944). A navegação do clique entra junto com a tela `/tarefas`;
+  // até lá o clique só marca como lida, porque estas linhas não trazem
+  // `conversation_id` e o `handleClick` já não navega sem ele.
+  task_assigned: ListTodo,
+  task_reply: Reply,
 };
 
 export default function NotificationsPage() {
