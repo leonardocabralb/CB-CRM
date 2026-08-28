@@ -70,9 +70,14 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated
-  // (`/agendadas`, `/flows`, `/agents` e `/notifications` ainda faltam aqui —
-  // omissão acumulada, coberta pelo shell do cliente + RLS; corrigir à parte.)
-  const protectedPaths = ['/dashboard', '/radar', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings']
+  // (`/flows`, `/agents` e `/notifications` ainda faltam aqui — omissão
+  // acumulada, coberta pelo shell do cliente + RLS; corrigir à parte.)
+  //
+  // ⚠️ `/agenda` cobre `/agendadas` DE GRAÇA, porque o teste é `startsWith` —
+  // e é por isso mesmo que a página pública de auto-agendamento da Fase 2 vai
+  // se chamar `/marcar/<token>`, nunca `/agendar/<token>`: esta linha mandaria
+  // o cliente, que não tem login, para a tela de login.
+  const protectedPaths = ['/dashboard', '/radar', '/inbox', '/contacts', '/agenda', '/pipelines', '/broadcasts', '/automations', '/settings']
   if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'

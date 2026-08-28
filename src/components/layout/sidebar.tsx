@@ -13,6 +13,7 @@ import {
   Bell,
   Bot,
   CalendarClock,
+  CalendarDays,
   Crown,
   GitBranch,
   LayoutDashboard,
@@ -105,6 +106,10 @@ const navItems: NavItem[] = [
   // na ficha do cliente e na conversa — esta entrada é para olhar o conjunto.
   { href: "/tarefas", labelKey: "tasks", icon: ListTodo },
   { href: "/contacts", labelKey: "contacts", icon: Users },
+  // Acima dos Funis: a agenda é rotina diária de quem atende, os funis são
+  // acompanhamento de negócio. Reunião marcada é o compromisso que a pessoa
+  // precisa ver ao abrir o sistema de manhã.
+  { href: "/agenda", labelKey: "agenda", icon: CalendarDays },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
   // Ao lado de Disparos, e não do inbox: as duas telas respondem à mesma

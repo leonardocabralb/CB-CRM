@@ -1,0 +1,213 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+
+import { Calendario } from '@/components/agenda/calendario';
+import { ReuniaoForm } from '@/components/agenda/reuniao-form';
+import { Button } from '@/components/ui/button';
+import { useReunioes } from '@/hooks/use-reunioes';
+import { FUSO_PADRAO, diaNoFuso, horaNoFuso, paraInstante } from '@/lib/agenda/fuso';
+import {
+  hojeNoFuso,
+  navegar,
+  periodoDaVisao,
+  rotuloDoPeriodo,
+  type Visao,
+} from '@/lib/agenda/grade';
+import { cn } from '@/lib/utils';
+import type { Meeting } from '@/types';
+
+/**
+ * A agenda de reuniões (migration 945, Fase 1).
+ *
+ * ⚠️ TODA data desta tela passa por `FUSO_PADRAO`. O `Date` do navegador
+ * responde no fuso da máquina de quem olha, que pode não ser o do escritório —
+ * e a agenda do escritório é uma só.
+ */
+export default function AgendaPage() {
+  const t = useTranslations('Agenda');
+
+  const [visao, setVisao] = useState<Visao>('mes');
+  const [referencia, setReferencia] = useState(() =>
+    diaNoFuso(new Date(), FUSO_PADRAO),
+  );
+  const [token, setToken] = useState(0);
+
+  const [formAberto, setFormAberto] = useState(false);
+  const [emEdicao, setEmEdicao] = useState<Meeting | null>(null);
+  const [diaInicial, setDiaInicial] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  const hoje = hojeNoFuso(new Date(), FUSO_PADRAO);
+
+  const { de, ate } = useMemo(
+    () => periodoDaVisao(visao, referencia, FUSO_PADRAO),
+    [visao, referencia],
+  );
+
+  const { reunioes, carregando, erro, recarregar } = useReunioes(de, ate, token);
+
+  function abrirNovo(dia?: string) {
+    setEmEdicao(null);
+    setDiaInicial(dia ?? referencia);
+    setFormAberto(true);
+  }
+
+  function abrirEdicao(reuniao: Meeting) {
+    setEmEdicao(reuniao);
+    setDiaInicial(null);
+    setFormAberto(true);
+  }
+
+  /**
+   * Mover a reunião para outro dia, mantendo a hora.
+   *
+   * ⚠️ A recusa por sobreposição é ESPERADA aqui, não excepcional: é o que
+   * acontece ao soltar uma reunião num dia em que o responsável já tem outra no
+   * mesmo horário. A mensagem da rota é mostrada como aviso, e a lista é
+   * recarregada para a reunião voltar visualmente ao lugar de origem.
+   */
+  async function mover(reuniao: Meeting, novoDia: string) {
+    const inicio = new Date(reuniao.starts_at);
+    const fim = new Date(reuniao.ends_at);
+    const duracao = fim.getTime() - inicio.getTime();
+
+    // ⚠️ RECONSTRUÍDO PELA HORA DE PAREDE, não somando o deslocamento em
+    // milissegundos. Somar dias em ms preserva o INSTANTE, não a hora local:
+    // arrastar uma reunião das 14h para o outro lado de uma virada de horário
+    // de verão a deixaria às 13h ou 15h, sem que ninguém tivesse pedido. O
+    // Brasil não usa horário de verão desde 2019, então hoje as duas contas
+    // dão o mesmo número — a diferença aparece no dia em que um advogado
+    // estiver em outro país, e aí ninguém vai suspeitar desta linha.
+    const novoInicio = paraInstante(
+      novoDia,
+      horaNoFuso(inicio, FUSO_PADRAO),
+      FUSO_PADRAO,
+    );
+
+    setAviso(null);
+
+    const resposta = await fetch(`/api/cb/agenda/${reuniao.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        starts_at: novoInicio.toISOString(),
+        ends_at: new Date(novoInicio.getTime() + duracao).toISOString(),
+      }),
+    });
+
+    if (!resposta.ok) {
+      const dados = (await resposta.json().catch(() => ({}))) as { error?: string };
+      setAviso(dados.error ?? t('erroMover'));
+    }
+
+    void recarregar();
+  }
+
+  return (
+    <div className="flex h-full flex-col gap-4 p-4 md:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <CalendarDays className="size-5 text-muted-foreground" />
+          <h1 className="text-xl font-semibold">{t('titulo')}</h1>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+            {(['mes', 'semana', 'dia'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setVisao(v)}
+                className={cn(
+                  'rounded px-2.5 py-1 text-sm transition-colors',
+                  visao === v
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-muted',
+                )}
+              >
+                {t(v)}
+              </button>
+            ))}
+          </div>
+
+          <Button onClick={() => abrirNovo()}>
+            <Plus className="size-4" />
+            {t('novaReuniao')}
+          </Button>
+        </div>
+      </header>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setReferencia(navegar(visao, referencia, -1))}
+          aria-label={t('anterior')}
+        >
+          <ChevronLeft className="size-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setReferencia(navegar(visao, referencia, 1))}
+          aria-label={t('proximo')}
+        >
+          <ChevronRight className="size-4" />
+        </Button>
+        <Button variant="ghost" onClick={() => setReferencia(hoje)}>
+          {t('hoje')}
+        </Button>
+        {/* ⚠️ `first-letter:uppercase`, nunca `capitalize`: o segundo põe
+            maiúscula em TODA palavra, e o rótulo do mês em português vira
+            "Agosto De 2026". */}
+        <span className="ml-1 text-sm font-medium first-letter:uppercase">
+          {rotuloDoPeriodo(visao, referencia)}
+        </span>
+        {carregando && (
+          <span className="text-xs text-muted-foreground">{t('carregando')}</span>
+        )}
+      </div>
+
+      {aviso && (
+        <div
+          role="alert"
+          className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400"
+        >
+          {aviso}
+        </div>
+      )}
+
+      {erro && (
+        <div
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {t('erroCarregar')}
+        </div>
+      )}
+
+      <div className="flex-1 overflow-auto rounded-lg border border-border">
+        <Calendario
+          visao={visao}
+          referencia={referencia}
+          hoje={hoje}
+          reunioes={reunioes}
+          aoAbrirReuniao={abrirEdicao}
+          aoCriarNoDia={abrirNovo}
+          aoMover={mover}
+        />
+      </div>
+
+      <ReuniaoForm
+        aberto={formAberto}
+        aoFechar={() => setFormAberto(false)}
+        reuniao={emEdicao}
+        diaInicial={diaInicial}
+        aoSalvar={() => setToken((n) => n + 1)}
+      />
+    </div>
+  );
+}

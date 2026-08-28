@@ -29,6 +29,7 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { ReunioesDoContato } from '@/components/agenda/reunioes-do-contato';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -67,6 +68,7 @@ export function ContactDetailView({
 }: ContactDetailViewProps) {
   const t = useTranslations('Contacts.detailView');
   const tEventos = useTranslations('LeadEvents');
+  const tAgenda = useTranslations('Agenda');
   const supabase = createClient();
   // `accountId` saiu com o insert direto: a anotação agora nasce na rota,
   // que resolve a conta no servidor a partir da sessão.
@@ -561,6 +563,12 @@ export function ContactDetailView({
                   {t('tabs.tasks')}
                 </TabsTrigger>
                 <TabsTrigger
+                  value="meetings"
+                  className="data-active:bg-muted data-active:text-primary text-muted-foreground"
+                >
+                  {tAgenda('reunioesDoCliente')}
+                </TabsTrigger>
+                <TabsTrigger
                   value="history"
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
                 >
@@ -863,6 +871,11 @@ export function ContactDetailView({
                   Aba própria em vez de rodapé da aba de Negócios porque ela
                   cobre também as tags, e porque é a tela para onde se vai
                   quando a pergunta é "quem mudou isso, e de quê para quê". */}
+              {/* Meetings Tab — Fase 1 da agenda (945) */}
+              <TabsContent value="meetings" className="flex-1 overflow-y-auto px-4 py-3">
+                <ReunioesDoContato contactId={contact.id} />
+              </TabsContent>
+
               <TabsContent value="history" className="flex-1 overflow-y-auto px-4 py-3">
                 <ActivityHistory contactId={contactId} />
               </TabsContent>
