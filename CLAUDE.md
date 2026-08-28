@@ -1048,6 +1048,31 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
 - Segredos de runtime vivem em `crm.env` **na VPS** (fora do git), espelhando o
   `.env.local`. A Evolution API roda como serviço `evolution_evolution` no mesmo
   Swarm.
+- ⚠️⚠️ **`docker stack deploy` SEM carregar o `crm.env` ZERA TODOS os segredos
+  de produção — e o site continua respondendo 200.** O `docker-stack.yml` usa
+  `${VAR}`, que o Docker substitui pelo **ambiente do shell**: variável ausente
+  vira **string vazia**, sem erro nem aviso. O front sobrevive porque todo
+  `NEXT_PUBLIC_*` foi inlinado no build, então a tela de login pinta normal
+  enquanto o servidor inteiro está sem credencial — webhook não grava mensagem,
+  envio não sai, IA não roda, e **as quatro rotas de cron passam a devolver 503**
+  (`if (!expected) return 503`), o que derruba agendadas, automações, fluxos e
+  Radar de uma vez. Aconteceu em 2026-08-27 e passou despercebido por horas
+  porque as verificações usuais (site 200, digest da imagem intocado) **não
+  cobrem env vars**. A forma correta, sempre as três linhas juntas:
+  ```bash
+  set -a; . /root/crm.env; set +a          # sem isto, tudo vira ""
+  export CRM_IMAGE="$(docker service inspect crm_crm \
+    --format '{{index .Spec.Labels "com.docker.stack.image"}}')"   # senão volta para :latest
+  docker stack deploy -c /root/docker-stack.yml crm
+  ```
+  **Conferir DEPOIS, dentro do container** (o spec do serviço engana — mostra o
+  nome da variável mesmo com valor vazio):
+  ```bash
+  cid=$(docker ps --filter name=crm_crm --format '{{.ID}}' | head -1)
+  docker exec $cid printenv SUPABASE_SERVICE_ROLE_KEY | wc -c   # 0 = quebrado
+  curl -s -o /dev/null -w '%{http_code}\n' https://crm.cbadvogados.com/api/cb/scheduled/cron
+  # 401 = segredo no lugar · 503 = env vazia, produção cega
+  ```
 - Arquivos: `Dockerfile`, `docker-stack.yml`, `.github/workflows/deploy.yml`,
   `docs/DEPLOY-VPS.md`. (Trazidos pela integração da Evolution — ver abaixo.)
 - Restrição fixa: o webhook do WhatsApp **exige HTTPS** — o endpoint precisa de
