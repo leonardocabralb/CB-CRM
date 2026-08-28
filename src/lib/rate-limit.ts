@@ -179,6 +179,12 @@ export const RATE_LIMITS = {
   /** Transcrição por conta: o par do de cima, porque N agentes sob o
    *  limite pessoal ainda estouram a mesma chave (molde aiDraft). */
   transcricaoConta: { limit: 60, windowMs: 60_000 },
+  /** Escrita de tarefa (944), por usuário: criar, editar, concluir, marcar
+   *  lida. Escrita de UI humana e barata — não sai da conta e não chama
+   *  serviço pago —, então o molde é o do `send` e não o do `adminAction`:
+   *  60/min cobre alguém dando baixa numa fila inteira de manhã, e ainda
+   *  limita um script em laço. */
+  tarefa: { limit: 60, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

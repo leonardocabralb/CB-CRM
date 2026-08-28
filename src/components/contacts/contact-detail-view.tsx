@@ -8,6 +8,7 @@ import { useChannels } from '@/hooks/use-channels';
 import { metaChannels, preferredChannel } from '@/lib/cb-channels/display';
 import { ChannelSelect } from '@/components/channels/channel-select';
 import { ActivityHistory } from '@/components/lead-events/activity-history';
+import { ContactTasks } from '@/components/tasks/contact-tasks';
 import { formatCurrency } from '@/lib/currency';
 import {
   TIPO_DATA,
@@ -516,8 +517,15 @@ export function ContactDetailView({
                   aba de Histórico levaria "Negócios" junto para fora de vista.
                   Quebrar em duas linhas mostra todas — a barra rolar
                   horizontalmente esconderia abas sem nenhuma pista de que
-                  existem. */}
-              <TabsList className="bg-muted/50 border-b border-border mx-4 mt-3 flex-wrap h-auto">
+                  existem.
+
+                  ⚠️ `[&>button]:flex-none` é local, e não uma mudança no
+                  `TabsTrigger` (que ~20 telas usam). O `flex-1` do componente
+                  faz cada aba dividir a linha em partes iguais — ótimo com 3
+                  por linha, ruim quando a sétima sobra sozinha: ela esticava
+                  por toda a largura e passava a parecer um cabeçalho de seção,
+                  não uma aba. Com largura natural elas se acomodam sem sobra. */}
+              <TabsList className="bg-muted/50 border-b border-border mx-4 mt-3 flex-wrap h-auto justify-start gap-x-1 [&>button]:flex-none">
                 <TabsTrigger
                   value="details"
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
@@ -547,6 +555,12 @@ export function ContactDetailView({
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
                 >
                   {t('tabs.deals')}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="tasks"
+                  className="data-active:bg-muted data-active:text-primary text-muted-foreground"
+                >
+                  {t('tabs.tasks')}
                 </TabsTrigger>
                 <TabsTrigger
                   value="meetings"
@@ -839,6 +853,18 @@ export function ContactDetailView({
                     ))}
                   </div>
                 )}
+              </TabsContent>
+
+              {/* Tarefas (944) — o que falta fazer com este cliente. Fica ANTES
+                  do Histórico de propósito: as duas são listas cronológicas e
+                  parecidas de longe, mas uma olha para a frente e a outra para
+                  trás, e quem abre a ficha para agir quer a primeira. */}
+              <TabsContent value="tasks" className="flex-1 overflow-y-auto px-4 py-3">
+                {/* ⚠️ Guardado, e o componente exige `string` de propósito: não
+                    existe tarefa sem cliente (`contact_id` é NOT NULL), então
+                    aceitar nulo aqui só adiaria o problema para dentro do
+                    formulário, onde ele viraria um POST recusado. */}
+                {contactId ? <ContactTasks contactId={contactId} semTitulo /> : null}
               </TabsContent>
 
               {/* Histórico — a trilha auditável completa (migration 912).

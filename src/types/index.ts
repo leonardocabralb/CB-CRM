@@ -342,12 +342,17 @@ export interface Conversation {
 /**
  * ⚠️ Espelha o CHECK de `notifications.type`. Alargar aqui sem alargar o
  * banco (ou o contrário) só aparece em runtime, como violação de constraint.
- * Os literais vivem na 027 (`conversation_assigned`) e na 919 (`note_mention`).
+ * Os literais vivem na 027 (`conversation_assigned`), na 919 (`note_mention`)
+ * e na 944 (`task_assigned`, `task_reply`).
  *
  * ⚠️ Não confundir com o `'conversation_assigned'` homônimo mais abaixo neste
  * arquivo, que é gatilho de AUTOMAÇÃO. São coisas diferentes com o mesmo nome.
  */
-export type NotificationType = 'conversation_assigned' | 'note_mention';
+export type NotificationType =
+  | 'conversation_assigned'
+  | 'note_mention'
+  | 'task_assigned'
+  | 'task_reply';
 
 export interface Notification {
   id: string;
@@ -359,10 +364,84 @@ export interface Notification {
   contact_id?: string;
   /** Who triggered it. Null when an automation/system assigned it. */
   actor_user_id?: string;
+  /** A tarefa que o aviso abre (944). Só nos tipos `task_*`. */
+  task_id?: string;
   title: string;
   body?: string;
   read_at?: string;
   created_at: string;
+}
+
+// ============================================================
+// Tarefas (migration 944)
+// ============================================================
+
+/**
+ * ⚠️ Espelha o CHECK de `cb_tasks.status`. Duas situações só, de propósito:
+ * "em andamento" seria um terceiro estado que ninguém atualiza — quem está
+ * fazendo a tarefa está fazendo, não registrando que está.
+ */
+export type TaskStatus = 'aberta' | 'concluida';
+
+/**
+ * ⚠️ Espelha o CHECK de `cb_tasks.tipo`.
+ *
+ * `resposta` é a devolutiva que volta para quem delegou; `tarefa` cobre todo o
+ * resto, inclusive o desdobramento ("não atendeu, retentar terça"), que é
+ * tarefa de pleno direito — só que com `tarefa_pai_id` preenchido.
+ */
+export type TaskKind = 'tarefa' | 'resposta';
+
+/**
+ * Tarefa sobre um cliente, encaminhada a um colega (migration 944).
+ *
+ * ⚠️ O navegador só LÊ esta tabela. Toda escrita passa por `/api/cb/tasks`,
+ * porque criar tarefa grava em `notifications` (que não aceita INSERT do
+ * cliente desde a 027) e porque as regras de quem-pode-o-quê moram em
+ * `src/lib/tasks/permissoes.ts`, num lugar só.
+ *
+ * ⚠️ Não guarda `conversation_id`: a conversa é derivada do contato na tela
+ * (UNIQUE em `(account_id, contact_id)` desde a 036). Uma segunda cópia
+ * envelheceria quando a conversa fosse apagada e recriada.
+ */
+export interface Task {
+  id: string;
+  account_id: string;
+  /** O cliente de quem a tarefa fala. Nunca nulo — grupo não recebe tarefa. */
+  contact_id: string;
+  /** Nulo quando quem criou saiu do `auth.users`. */
+  criador_user_id: string | null;
+  /** Nulo quando o responsável saiu do `auth.users`. */
+  responsavel_user_id: string | null;
+  /** Carimbados na escrita — quem sai da conta some do `profiles`. */
+  criador_nome: string | null;
+  responsavel_nome: string | null;
+  titulo: string;
+  descricao: string | null;
+  /**
+   * `YYYY-MM-DD`, coluna `date` do Postgres.
+   *
+   * ⚠️ NUNCA passar por `new Date(vence_em)` direto: a string sem hora é
+   * interpretada como meia-noite UTC e no Brasil retrocede um dia — a
+   * armadilha que o CLAUDE.md documenta para `expected_close_date`. Use os
+   * helpers de `src/lib/tasks/prazo.ts`.
+   */
+  vence_em: string;
+  /** `HH:MM:SS` ou nulo — a hora é opcional por pedido do operador. */
+  vence_as: string | null;
+  status: TaskStatus;
+  /** Anda junto com `status` — CHECK de forma no banco. */
+  concluida_em: string | null;
+  /** Leitura DO RESPONSÁVEL, alternável nos dois sentidos. */
+  lida_em: string | null;
+  importante: boolean;
+  /** A tarefa de onde esta saiu. Nulo se não houve, ou se a origem foi apagada. */
+  tarefa_pai_id: string | null;
+  /** Congelado: sobrevive à exclusão da origem, que é `ON DELETE SET NULL`. */
+  tarefa_pai_titulo: string | null;
+  tipo: TaskKind;
+  created_at: string;
+  updated_at: string;
 }
 
 export type SenderType = 'customer' | 'agent' | 'bot';

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag } from '@/types';
@@ -82,8 +83,21 @@ export default function ContactsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editContact, setEditContact] = useState<Contact | null>(null);
   const [editContactTags, setEditContactTags] = useState<ContactTag[]>([]);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [detailContactId, setDetailContactId] = useState<string | null>(null);
+  // Deep link `?contact=<id>` — o caminho de volta para a ficha a partir de uma
+  // tarefa cujo cliente nunca trocou mensagem (e por isso não tem conversa
+  // para abrir no inbox).
+  //
+  // ⚠️ Resolvido no ESTADO INICIAL, não num efeito: a ficha só precisa do id
+  // para carregar sozinha, então não há nada a esperar. Num efeito, a lista
+  // pintaria uma vez com a gaveta fechada e ela abriria depois, com um salto
+  // visível. Consequência aceita: chegar a `/contacts` e depois trocar SÓ a
+  // query, sem remontar a página, não reabre a gaveta — não há caminho na
+  // interface que faça isso hoje.
+  const deepLinkContactId = useSearchParams().get('contact');
+  const [detailOpen, setDetailOpen] = useState(!!deepLinkContactId);
+  const [detailContactId, setDetailContactId] = useState<string | null>(
+    deepLinkContactId,
+  );
   const [importOpen, setImportOpen] = useState(false);
   const [customFieldsOpen, setCustomFieldsOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
