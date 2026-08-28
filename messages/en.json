@@ -2616,7 +2616,9 @@
     "semReunioes": "No meetings scheduled.",
     "reunioesDoCliente": "Meetings",
     "apagar": "Delete",
-    "confirmarApagar": "Delete this meeting?"
+    "confirmarApagar": "Confirm deletion",
+    "apagando": "Deleting…",
+    "erroApagar": "Could not delete the meeting."
   },
   "Tasks": {
     "title": "Tasks",

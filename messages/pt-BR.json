@@ -2616,7 +2616,9 @@
     "semReunioes": "Nenhuma reunião marcada.",
     "reunioesDoCliente": "Reuniões",
     "apagar": "Apagar",
-    "confirmarApagar": "Apagar esta reunião?"
+    "confirmarApagar": "Confirmar exclusão",
+    "apagando": "Apagando…",
+    "erroApagar": "Não foi possível apagar a reunião."
   },
   "Tasks": {
     "title": "Tarefas",
