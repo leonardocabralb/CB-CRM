@@ -4,6 +4,7 @@ import {
   KeyRound,
   LayoutGrid,
   Palette,
+  Plug,
   Shield,
   Smartphone,
   Tags,
@@ -34,6 +35,7 @@ export const SETTINGS_SECTIONS = [
   'deals',
   'assinatura',
   'members',
+  'integracoes',
   'api',
 ] as const;
 
@@ -65,6 +67,9 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   deals: { id: 'deals', label: 'Deals & currency', icon: Coins, group: 'workspace' },
   assinatura: { id: 'assinatura', label: 'Message signature', icon: PenLine, group: 'workspace' },
   members: { id: 'members', label: 'Team members', icon: UsersRound, group: 'workspace' },
+  // Integrações (CB Advogados) — chaves de IA, Google Agenda e o que
+  // vier (TLDV, Calendly…), com estado ao vivo por integração.
+  integracoes: { id: 'integracoes', label: 'Integrations', icon: Plug, group: 'workspace' },
   api: { id: 'api', label: 'API keys', icon: KeyRound, group: 'workspace' },
 };
 

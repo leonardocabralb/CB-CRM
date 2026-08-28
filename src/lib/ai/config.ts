@@ -133,10 +133,18 @@ export async function loadEmbeddingsKey(
   db: SupabaseClient,
   accountId: string,
 ): Promise<{ key: string | null; corrupt: boolean }> {
+  // ⚠️ `.is('channel_id', null)` é obrigatório desde a 903: `ai_configs`
+  // deixou de ter UNIQUE por conta (virou um par de índices parciais —
+  // agente padrão + um por canal), então filtrar só por `account_id` faz
+  // o `.maybeSingle()` ESTOURAR na conta que tem agente de canal. O erro
+  // era engolido logo abaixo e a base de conhecimento passava a indexar
+  // só lexical, em silêncio. A chave de embeddings é uma por conta e
+  // mora no agente padrão.
   const { data, error } = await db
     .from('ai_configs')
     .select('embeddings_api_key')
     .eq('account_id', accountId)
+    .is('channel_id', null)
     .maybeSingle()
   if (error || !data?.embeddings_api_key) return { key: null, corrupt: false }
   try {

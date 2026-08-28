@@ -18,6 +18,7 @@ import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel'
 import { DealsSettings } from '@/components/settings/deals-settings';
 import { AssinaturaSettings } from '@/components/settings/assinatura-settings';
 import { MembersTab } from '@/components/settings/members-tab';
+import { IntegracoesPanel } from '@/components/settings/integracoes-panel';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
 import {
   resolveSection,
@@ -82,6 +83,7 @@ function SettingsPageInner() {
     deals: <DealsSettings />,
     assinatura: <AssinaturaSettings />,
     members: <MembersTab />,
+    integracoes: <IntegracoesPanel />,
     api: <ApiKeysSettings />,
   };
 

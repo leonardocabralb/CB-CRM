@@ -185,6 +185,14 @@ export const RATE_LIMITS = {
    *  60/min cobre alguém dando baixa numa fila inteira de manhã, e ainda
    *  limita um script em laço. */
   tarefa: { limit: 60, windowMs: 60_000 },
+  /** Aba de Integrações COM ping, por usuário. Não é ação administrativa
+   *  barata: cada pedido dispara UMA GERAÇÃO PAGA por agente da conta
+   *  (mais o ping de embeddings), então numa conta com 5 agentes o balde
+   *  de 30/min do `adminAction` autorizaria 150 chamadas pagas por minuto
+   *  contra a chave BYO. 6/min cobre "abri a aba e cliquei em testar de
+   *  novo umas vezes" e barra um script com a sessão. A carga sem ping
+   *  (`?ping=0`) continua no `adminAction`, porque só lê o banco. */
+  integracoesPing: { limit: 6, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

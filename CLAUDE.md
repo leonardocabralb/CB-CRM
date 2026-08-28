@@ -221,6 +221,9 @@ upstream sobrescrevê-los:
 | `src/components/settings/ai-config.tsx`, `src/app/api/ai/config/route.ts` | a opção Gemini no seletor e na validação do provider |
 | `src/components/settings/cb-channels-panel.tsx`, `src/app/api/cb/channels/[id]/route.ts`, `src/lib/cb-channels/repo.ts` | o toggle `radar_enabled` por canal (dialog, PATCH allowlist e SAFE_COLUMNS) |
 | `src/components/layout/sidebar.tsx`, `header.tsx`, `src/middleware.ts` | a aba `/radar` (item de navegação, título do cabeçalho e rota protegida) |
+| `src/lib/api-keys/scopes.ts`, `docs/public-api.md`, `src/components/settings/api-keys-settings.tsx` | os dez escopos das features do fork (tarefas/agendadas/negócios/reuniões/anotações) e a rolagem da lista no diálogo — o upstream tem só os 8 originais |
+| `src/lib/deals/create-deal.ts` | devolve `deal` (a linha inserida), não só `ok/created` — a rota v1 serializa a resposta a partir dele |
+| `src/components/settings/settings-sections.ts`, `settings-chip.tsx`, `src/app/(dashboard)/settings/page.tsx` | a seção `integracoes` no rail e a variante `err` (vermelha) do chip |
 
 ⚠️ **A visão "Automações" do funil (grade estilo Kommo) é desenho de dado, não
 tela nova.** `src/lib/automations/grade-do-funil.ts` e
@@ -679,6 +682,62 @@ worker do Radar e (futuro) auto-reply. O que morde código novo:
   aceito no plano; busca por conteúdo de áudio é migration futura.
 - O mime enviado é `messages.media_type` (042) → `Content-Type` do
   Storage → `audio/ogg`, nesta ordem.
+
+⚠️ **Aba de Integrações: ESPELHO, não segundo cofre de chaves.**
+`src/lib/integracoes/montar.ts` (puro, com teste), a rota
+`GET /api/cb/integracoes/status` e `src/components/settings/integracoes-panel.tsx`.
+As chaves continuam em `ai_configs` (agente padrão + um por canal) e são
+editadas SÓ em Agentes de IA — a aba enxerga, testa e aponta. O que morde
+código novo:
+
+- ⚠️ **A resolução canal→credencial da tela TEM de espelhar `loadAiConfig`**
+  (config do canal, senão a padrão). É ela que responde "por qual chave o
+  Radar/transcrição deste canal sai"; divergir faz a tela mentir sobre onde
+  a credencial é usada — e o operador troca a chave errada.
+- ⚠️ **`?ping=0` existe porque cada ping é uma GERAÇÃO PAGA por agente.** A
+  tela carrega em dois tempos (config na hora, pings depois) e o botão
+  repete só os pings. Nada aqui pode entrar em laço: o `useEffect` dispara
+  uma vez por montagem e o botão fica desabilitado enquanto testa.
+- **Nenhuma chave sai da rota, nem mascarada** — a resposta é forma
+  (provedor/modelo/escopo) mais o resultado do teste.
+- **Radar exige `radar_enabled === true`** (exceção deliberada à convenção
+  "vazio = todos", acima); transcrição é Gemini-only; embeddings/RAG é
+  OpenAI-only e por isso aparece no cartão da OpenAI mesmo quando o chat da
+  conta é outro provedor.
+- **Google Agenda é cartão "não conectado" de propósito**: a integração não
+  existe no código (as colunas `google_*` da 945 nascem nulas). Quando ela
+  for construída, é este cartão que vira o ponto de conexão.
+
+⚠️ **API pública: as features do fork têm escopo E rota, sempre em par.**
+Escopo sem endpoint não faz nada, e endpoint sem escopo é buraco. Os dez
+escopos novos (`tasks|scheduled|deals|meetings|notes:read|write`) moram em
+`src/lib/api-keys/scopes.ts` (sem migration — a coluna é `text[]`) e as
+rotas em `src/app/api/v1/`. O que morde código novo:
+
+- ⚠️ **Toda rota v1 roda em SERVICE-ROLE e ignora RLS** — cada consulta
+  precisa do `.eq('account_id', ctx.accountId)` explícito, inclusive os
+  lookups secundários (`profiles`, `contacts`, `conversations`, `pipelines`).
+- ⚠️ **Erro de banco NÃO é "não encontrado".** Um `maybeSingle()` que
+  descarta o `error` transforma timeout do PostgREST em `404 Contact not
+  found` — e o integrador recria o contato, duplicando. Trate o erro antes
+  do vazio.
+- ⚠️ **Instante vindo da API exige OFFSET escrito** (`Z` ou `±HH:MM`) em
+  `scheduled_for` e na janela `from`/`to` das reuniões. O navegador sempre
+  manda; um integrador não, e sem offset o Postgres lê como UTC — a
+  armadilha de 3h da 935, que não estoura em lugar nenhum.
+- ⚠️ **`POST /api/v1/deals` exige `stage_id` e recusa segundo card do mesmo
+  contato** (409 `contact_already_has_deal`). Etapa por `MIN(position)`
+  despeja o lead na faixa de estacionamento, e o índice único da 911 só
+  cobre `source='channel'` — a regra semântica é de código.
+- **Escrita de negócio pela API chama `drenarEventosDeFunil()`** (fire-and-
+  forget), como a tela faz: sem isso a automação de etapa espera o ciclo de
+  15 min do cron.
+- **Nome carimbado vem de `resolveApiAuthor`** (`src/lib/api/v1/authorship.ts`):
+  usuário de auditoria da v1, com queda para o DONO da conta quando aquele
+  já saiu — e `membro: false` quando nem o dono resolve. Quem exigir um
+  membro de verdade (dono de reunião) confere esse sinalizador.
+- **Grupo continua fora da v1** (`.is('group_id', null)` nas conversas), e a
+  agendada resolve canal por `cb_groups` quando a conversa é de grupo.
 
 ⚠️ **UI de canal: peças próprias, prefira reusá-las.** `src/hooks/use-channels.ts`
 (uma busca por montagem, falha silenciosa), `src/lib/cb-channels/display.ts`
