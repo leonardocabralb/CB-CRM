@@ -26,9 +26,7 @@ import { useTranslations } from "next-intl";
 const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   conversation_assigned: UserPlus,
   note_mention: AtSign,
-  // Tarefas (944). A navegação do clique entra junto com a tela `/tarefas`;
-  // até lá o clique só marca como lida, porque estas linhas não trazem
-  // `conversation_id` e o `handleClick` já não navega sem ele.
+  // Tarefas (944). O clique leva a `/tarefas` — ver `handleClick`.
   task_assigned: ListTodo,
   task_reply: Reply,
 };
@@ -131,6 +129,15 @@ export default function NotificationsPage() {
   const handleClick = useCallback(
     (n: Notification) => {
       if (!n.read_at) markRead(n.id);
+      // ⚠️ `task_id` é testado ANTES de `conversation_id` (944). As linhas de
+      // tarefa nascem sem conversa justamente para não caírem no inbox, mas a
+      // ordem inversa aqui mandaria para o fio qualquer aviso que um dia
+      // ganhasse as duas colunas — e o destino de um aviso de tarefa é a
+      // tarefa.
+      if (n.task_id) {
+        router.push('/tarefas');
+        return;
+      }
       if (n.conversation_id) {
         router.push(`/inbox?c=${n.conversation_id}`);
       }

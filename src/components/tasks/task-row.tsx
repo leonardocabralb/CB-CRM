@@ -205,11 +205,17 @@ export function TaskRow({
             </span>
           ) : null}
 
-          <span>
-            {souResponsavel
-              ? t('fromWho', { nome: tarefa.criador_nome ?? t('someone') })
-              : t('toWho', { nome: tarefa.responsavel_nome ?? t('someone') })}
-          </span>
+          {/* ⚠️ Lembrete pessoal não leva autoria. Quem cria uma tarefa para si
+              mesmo lia "de Leonardo Cabral Baptista" na própria linha — o
+              formato que a tela usa para dizer "alguém te mandou isto", e que
+              ali faz procurar um remetente que não existe. */}
+          {tarefa.criador_user_id === tarefa.responsavel_user_id ? null : (
+            <span>
+              {souResponsavel
+                ? t('fromWho', { nome: tarefa.criador_nome ?? t('someone') })
+                : t('toWho', { nome: tarefa.responsavel_nome ?? t('someone') })}
+            </span>
+          )}
         </div>
 
         {tarefa.tarefa_pai_titulo ? (

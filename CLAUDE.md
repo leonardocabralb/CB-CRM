@@ -216,6 +216,7 @@ upstream sobrescrevê-los:
 | `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil |
 | `src/app/(dashboard)/automations/new/page.tsx` | o `?stage=` que faz a automação nascer com o gatilho de funil já apontando para a etapa clicada |
 | `src/lib/automations/trigger-meta.ts` | `formatRelative` passou a usar `Intl.RelativeTimeFormat` e a receber o texto de "nunca" — devolvia `5m ago`/`never` em inglês nas três telas |
+| `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx`, `src/app/(dashboard)/notifications/page.tsx`, `src/components/layout/{sidebar,header}.tsx`, `src/app/(dashboard)/contacts/page.tsx`, `src/lib/rate-limit.ts` | as tarefas (944): 7ª aba na ficha (com `[&>button]:flex-none` na TabsList), seção na barra da conversa, ícones/navegação dos tipos `task_*` no sino (o `TYPE_ICON` é exaustivo — merge que trouxer tipo novo sem ícone quebra o typecheck), item "Tarefas" com etiqueta realtime no menu, deep link `?contact=`, bucket `tarefa` |
 | `src/lib/ai/types.ts`, `generate.ts`, `defaults.ts`, `config.ts`, `usage.ts`, `providers/` | o TERCEIRO provedor (`gemini`, 941) e o modo `'radar'` no log de uso — o upstream conhece só openai/anthropic. `structured.ts` e `providers/gemini.ts` são arquivos NOSSOS |
 | `src/components/settings/ai-config.tsx`, `src/app/api/ai/config/route.ts` | a opção Gemini no seletor e na validação do provider |
 | `src/components/settings/cb-channels-panel.tsx`, `src/app/api/cb/channels/[id]/route.ts`, `src/lib/cb-channels/repo.ts` | o toggle `radar_enabled` por canal (dialog, PATCH allowlist e SAFE_COLUMNS) |
@@ -334,6 +335,43 @@ entre escrever e enviar.** `src/lib/scheduled/midia.ts` (puro, com teste),
   agendou sai da conta e passa a assinar o nome do escritório. Por isso o
   núcleo revalida e o disparador **traduz** — `SendMessageError.message` é
   escrito em inglês e cai cru na coluna que as duas telas mostram.
+
+⚠️ **Tarefas por cliente (944): o navegador NÃO escreve em `cb_tasks`.**
+`src/lib/tasks/` (puro, testado), rotas em `/api/cb/tasks`, telas em
+`src/components/tasks/`. O que morde código novo:
+
+- ⚠️ **Toda escrita passa pela API.** Não há policy de INSERT/UPDATE/DELETE e
+  o privilégio foi revogado — um `.from('cb_tasks').update()` do cliente leva
+  **42501**, e é assim que tem de ser: criar tarefa grava em `notifications`
+  (sem policy de INSERT desde a 027) e os nomes são carimbados no servidor.
+- ⚠️ **Quem-pode-o-quê mora em `permissoes.ts`, num lugar só** — a rota decide
+  com `podeNaTarefa` e a tela desabilita botão com a MESMA função. Não
+  reescrever a regra em RLS nem no componente: divergem na primeira mudança.
+  Só o destinatário marca lida (nem admin); editar/apagar é do criador; a
+  porta do admin existe para a tarefa ÓRFÃ (criador e responsável são
+  `ON DELETE SET NULL` — sem ela, ninguém alcança a tarefa de quem saiu).
+- ⚠️ **`vence_em date` + `vence_as time`, separadas e sem fuso.** Nunca
+  `new Date(vence_em)` — meia-noite UTC retrocede um dia no Brasil (armadilha
+  do CLAUDE.md para coluna DATE). Use `dataParaExibir`/`diaLocal`/
+  `situacaoDoPrazo` de `prazo.ts`; "venceu?" é respondido no NAVEGADOR.
+- ⚠️ **A resposta volta para quem pediu, e é o SERVIDOR que decide**: com
+  `tipo: 'resposta'`, a rota fixa o destinatário no `criador_user_id` do pai e
+  IGNORA `responsavel_user_id` e `contact_id` do corpo (o contato é herdado do
+  pai em qualquer derivada). Criador que saiu → 409 `PARENT_CREATOR_GONE`.
+- **`tarefa_pai_id` é SET NULL com `tarefa_pai_titulo` congelado** — apagar a
+  origem não apaga a derivada nem a informação de onde ela veio. Verificado em
+  produção.
+- **A etiqueta do menu depende de `REPLICA IDENTITY FULL`**: o contador deriva
+  o delta comparando a linha ANTES e DEPOIS de cada UPDATE (marcar não lida,
+  concluir, reabrir, redirecionar mudam a conta em sentidos diferentes).
+- **Aviso de tarefa nasce SEM `conversation_id`** e roteia por
+  `notifications.task_id` — em `notifications/page.tsx` o teste de `task_id`
+  vem ANTES do de `conversation_id`, senão o clique cairia no inbox.
+- **A conversa da linha é DERIVADA do contato na tela** (UNIQUE da 036), nunca
+  coluna: cliente sem conversa cai na ficha via `/contacts?contact=<id>`
+  (deep link resolvido no estado inicial da página de Contatos).
+- **Redirecionar zera `lida_em`** — a tarefa chega "não lida" para quem acabou
+  de recebê-la, senão some da contagem do menu da pessoa nova.
 
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
@@ -884,6 +922,10 @@ mordem de novo em qualquer código novo:
   `931_cb_fecha_anon_nas_tabelas_antigas`.
   Depois disso (conferido em 2026-08-03):
   `932_cb_agendada_com_midia_e_citacao`.
+  Depois disso (conferido em 2026-08-28 via `list_migrations`): `933` a `937`
+  e `940` a `943` (de outras branches — radar, broadcast, transcrição; as
+  renumeradas `040`–`042` do upstream também constam) e `944_cb_tarefas`.
+  ⚠️ Não existe 938/939 nem local nem no histórico — não "preencher" a lacuna.
   Depois disso (conferido em 2026-08-27 via `list_migrations`):
   `933_cb_gatilho_de_funil`, `934_cb_acoes_de_funil`,
   `935_cb_lembrete_por_data`, `936_cb_orquestracao`,

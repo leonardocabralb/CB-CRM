@@ -57,6 +57,12 @@ export function useTarefasDoContato(
   if (contactId !== contatoAnterior) {
     setContatoAnterior(contactId);
     setTarefas([]);
+    // ⚠️ `carregando` sobe JUNTO com a limpeza, e não só dentro do efeito.
+    // Efeito roda depois da pintura: sem isto, o quadro entre limpar e buscar
+    // tem lista vazia e `carregando` false — que é exatamente a condição do
+    // estado vazio. A ficha piscaria "Nenhuma tarefa para este cliente ainda"
+    // ao trocar de contato, afirmando o que ainda não foi consultado.
+    setCarregando(true);
   }
 
   useEffect(() => {
