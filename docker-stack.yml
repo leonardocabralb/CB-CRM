@@ -111,7 +111,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        echo "[agendador] laço rápido (60s) para automações + laço de 15min para agendadas e fluxos"
+        echo "[agendador] laço rápido (60s) para automações + laço de 15min para agendadas, fluxos e radar"
         while true; do
           curl -fsS -m 50 -o /dev/null \
             -H "x-cron-secret: $$AUTOMATION_CRON_SECRET" \
