@@ -2,6 +2,7 @@
 
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCorners,
@@ -10,8 +11,10 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 
 import { cn } from '@/lib/utils';
 import { FUSO_PADRAO } from '@/lib/agenda/fuso';
@@ -35,6 +38,14 @@ import type { Meeting } from '@/types';
  *
  * A distância de ativação de 5px é a mesma do Kanban de funis: sem ela, um
  * clique com o mouse tremendo vira arraste e a reunião muda de dia sozinha.
+ *
+ * ⚠️ O CARTÃO QUE SEGUE O CURSOR É UM `DragOverlay`, não o cartão original.
+ * Sem ele o `useDraggable` só marca o elemento como "sendo arrastado" — nada se
+ * move na tela, e o operador solta no lugar certo sem nunca ter visto o que
+ * estava carregando. Mesmo desenho do Kanban de funis.
+ *
+ * ⚠️ O cartão é uma `<div role="button">`, não um `<button>`: o elemento nativo
+ * tem arraste próprio no HTML e disputa o gesto com o dnd-kit.
  */
 
 interface Props {
@@ -65,6 +76,9 @@ export function Calendario({
 }: Props) {
   const t = useTranslations('Agenda');
 
+  // Qual reunião está na mão, para o overlay saber o que desenhar.
+  const [arrastando, setArrastando] = useState<string | null>(null);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor),
@@ -87,7 +101,12 @@ export function Calendario({
     else porDia.set(dia, [r]);
   }
 
+  function aoPegar(evento: DragStartEvent) {
+    setArrastando(String(evento.active.id));
+  }
+
   function aoSoltar(evento: DragEndEvent) {
+    setArrastando(null);
     const destino = evento.over?.id;
     if (typeof destino !== 'string') return;
 
@@ -112,7 +131,13 @@ export function Calendario({
   ];
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={aoSoltar}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={aoPegar}
+      onDragEnd={aoSoltar}
+      onDragCancel={() => setArrastando(null)}
+    >
       {visao !== 'dia' && (
         <div className="grid grid-cols-7 gap-px border-b border-border">
           {nomesDosDias.map((nome) => (
@@ -143,6 +168,18 @@ export function Calendario({
           />
         ))}
       </div>
+
+      <DragOverlay
+        dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.2, 0, 0, 1)' }}
+      >
+        {arrastando ? (
+          <Cartao
+            reuniao={reunioes.find((r) => r.id === arrastando)!}
+            aoAbrir={() => {}}
+            noOverlay
+          />
+        ) : null}
+      </DragOverlay>
     </DndContext>
   );
 }
@@ -208,32 +245,68 @@ function Celula({
 function Cartao({
   reuniao,
   aoAbrir,
+  noOverlay = false,
 }: {
   reuniao: Meeting;
   aoAbrir: (r: Meeting) => void;
+  /** `true` no clone que segue o cursor — ele não escuta nem é arrastável. */
+  noOverlay?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: reuniao.id,
+    disabled: noOverlay,
   });
 
-  return (
-    <button
-      ref={setNodeRef}
-      type="button"
-      {...listeners}
-      {...attributes}
-      onClick={() => aoAbrir(reuniao)}
-      className={cn(
-        'w-full truncate rounded border px-1.5 py-1 text-left text-xs transition-opacity',
-        CORES[reuniao.status] ?? CORES.agendada,
-        isDragging && 'opacity-40',
-      )}
-      title={`${horaDaReuniao(reuniao.starts_at, FUSO_PADRAO)} · ${reuniao.titulo}`}
-    >
+  const conteudo = (
+    <>
       <span className="font-medium tabular-nums">
         {horaDaReuniao(reuniao.starts_at, FUSO_PADRAO)}
       </span>{' '}
       {reuniao.titulo}
-    </button>
+    </>
+  );
+
+  if (noOverlay) {
+    return (
+      <div
+        className={cn(
+          'cursor-grabbing truncate rounded border px-1.5 py-1 text-left text-xs shadow-lg',
+          CORES[reuniao.status] ?? CORES.agendada,
+        )}
+      >
+        {conteudo}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      // ⚠️ `attributes` já traz `role="button"` e `tabIndex` — declarar os dois
+      // aqui em cima faz o spread sobrescrevê-los, e o TS acusa (TS2783).
+      {...listeners}
+      {...attributes}
+      onClick={() => aoAbrir(reuniao)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          aoAbrir(reuniao);
+        }
+      }}
+      // ⚠️ `touchAction: none` é o que faz o arraste funcionar no celular: sem
+      // ele o navegador entende o gesto como rolagem e o dnd-kit nunca recebe.
+      style={{ touchAction: 'none' }}
+      className={cn(
+        'w-full cursor-grab truncate rounded border px-1.5 py-1 text-left text-xs',
+        'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary',
+        CORES[reuniao.status] ?? CORES.agendada,
+        // O original some enquanto o clone está na mão — dois cartões iguais na
+        // tela fazem parecer que a reunião foi duplicada.
+        isDragging && 'opacity-30',
+      )}
+      title={`${horaDaReuniao(reuniao.starts_at, FUSO_PADRAO)} · ${reuniao.titulo}`}
+    >
+      {conteudo}
+    </div>
   );
 }
