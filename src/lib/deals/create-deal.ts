@@ -2,11 +2,14 @@
 // Onde nasce negócio criado por regra do CB (roteador de funil por conexão,
 // e o que vier depois).
 //
-// ⚠️ NÃO é o único insert em `deals` do servidor: o passo `create_deal` do
-// motor de automações (`src/lib/automations/engine.ts`) continua com insert
-// próprio, porque é código do upstream e trocá-lo aqui aumentaria a
-// superfície de merge. Consequência prática: as validações abaixo NÃO valem
-// para automação. Regra nova aqui exige decidir se vale lá também.
+// No servidor, todo nascimento passa por aqui: roteador, passo `create_deal`
+// do motor de automações e POST /api/v1/deals chamam esta função. (No client
+// resta o formulário da tela de Funis, sob RLS.)
+//
+// ⚠️ A regra "um card por contato" NÃO mora aqui, de propósito: cada chamador
+// a checa ANTES de chamar, porque a resposta certa difere (o roteador desiste
+// em silêncio, a rota devolve 409, o motor loga 'deal already existed') — e o
+// índice da 911 só cobre a corrida de `source: 'channel'`.
 //
 // O QUE ESTE MÓDULO GARANTE, e a rota/motor não precisa repetir:
 //  - o funil é DA CONTA (a ingestão roda em service-role e ignora RLS);

@@ -722,6 +722,22 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       // missing the value (pre-021 forks).
       if (!args.contactId) throw new Error('create_deal needs a contact')
 
+      // ⚠️ Um card por contato, checado AQUI porque o banco não cobre este
+      // caminho: o índice da 911 é parcial (WHERE source = 'channel') e o
+      // insert abaixo sai com source 'automation' — sem esta consulta, o
+      // contato que já tem card ganharia um segundo. Mesma largura do
+      // roteador (pipeline-routing.ts, guarda 4) e do POST /api/v1/deals:
+      // card aberto ou fechado, em qualquer funil, de qualquer origem.
+      const { data: cardExistente, error: cardErr } = await db
+        .from('deals')
+        .select('id')
+        .eq('account_id', args.automation.account_id)
+        .eq('contact_id', args.contactId)
+        .limit(1)
+        .maybeSingle()
+      if (cardErr) throw new Error(`create_deal falhou: ${cardErr.message}`)
+      if (cardExistente) return 'deal already existed'
+
       // ⚠️ Passa a usar o criador CENTRAL. O insert direto que estava aqui era
       // herança do upstream e não validava nada: funil de outra conta, etapa
       // que não pertence ao funil e moeda da conta passavam batido, e o
@@ -753,8 +769,10 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       })
 
       if (!criado.ok) throw new Error(`create_deal falhou: ${criado.message}`)
-      // `created: false` = o índice único da 911 barrou porque o contato já
-      // tem card. Não é erro: é a regra "um funil por vez" funcionando.
+      // `created: false` (colisão de índice único) não acontece com source
+      // 'automation' — o índice da 911 não alcança este insert. Quem barra
+      // duplicata aqui é a checagem acima; o ramo fica pelo contrato de
+      // createDeal.
       return criado.created ? 'deal created' : 'deal already existed'
     }
 

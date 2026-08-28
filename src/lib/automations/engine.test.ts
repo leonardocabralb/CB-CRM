@@ -6,6 +6,11 @@ const h = vi.hoisted(() => ({
   state: {
     owned: null as { id: string } | null,
     ownedCustomField: null as { id: string } | null,
+    pipeline: null as { id: string } | null,
+    stage: null as { id: string } | null,
+    dealExistente: null as { id: string } | null,
+    dealSelects: [] as [string, string, unknown][][],
+    dealInserts: [] as Record<string, unknown>[],
     automations: [] as Record<string, unknown>[],
     steps: [] as Record<string, unknown>[],
     fromCalls: [] as string[],
@@ -58,6 +63,19 @@ vi.mock("./admin-client", () => {
         return { data: null, error: null };
       }
       return { data: null, error: null };
+    }
+    if (table === "pipelines") return { data: state.pipeline, error: null };
+    if (table === "pipeline_stages") return { data: state.stage, error: null };
+    if (table === "deals") {
+      if (type === "insert") {
+        state.dealInserts.push(ops.payload as Record<string, unknown>);
+        return {
+          data: { id: "d-novo", ...(ops.payload as Record<string, unknown>) },
+          error: null,
+        };
+      }
+      state.dealSelects.push(ops.filters);
+      return { data: state.dealExistente, error: null };
     }
     if (table === "automations") return { data: state.automations, error: null };
     if (table === "automation_logs") {
@@ -127,6 +145,11 @@ const ACCOUNT = "acct-1";
 beforeEach(() => {
   h.state.owned = null;
   h.state.ownedCustomField = null;
+  h.state.pipeline = null;
+  h.state.stage = null;
+  h.state.dealExistente = null;
+  h.state.dealSelects = [];
+  h.state.dealInserts = [];
   h.state.automations = [];
   h.state.steps = [];
   h.state.fromCalls = [];
@@ -289,6 +312,80 @@ describe("update_contact_field — custom fields", () => {
 
     expect(h.state.upsertCalls).toHaveLength(0);
     expect(h.state.updateCalls).toHaveLength(0);
+  });
+});
+
+describe("create_deal — um card por contato", () => {
+  // O índice único da 911 é PARCIAL (WHERE source = 'channel') e este passo
+  // insere com source 'automation' — o banco não barra o duplicado, então a
+  // regra é uma checagem explícita no motor, antes do insert.
+  function dealStep() {
+    return {
+      id: "s1",
+      automation_id: "a1",
+      step_type: "create_deal",
+      position: 0,
+      parent_step_id: null,
+      step_config: { pipeline_id: "p1", stage_id: "st1", title: "Novo negócio" },
+    };
+  }
+
+  function executados() {
+    return h.state.logUpdates.flatMap(
+      (u) =>
+        (u.steps_executed as { status: string; detail: string }[] | undefined) ?? [],
+    );
+  }
+
+  beforeEach(() => {
+    h.state.owned = { id: "c1" };
+    h.state.pipeline = { id: "p1" };
+    h.state.stage = { id: "st1" };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [dealStep()];
+  });
+
+  it("desiste sem inserir quando o contato já tem card — qualquer funil, qualquer origem", async () => {
+    h.state.dealExistente = { id: "d-antigo" };
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: {},
+    });
+
+    expect(h.state.dealInserts).toHaveLength(0);
+    // A checagem roda em service-role (ignora RLS) — o escopo de conta é o filtro.
+    expect(h.state.dealSelects[0]).toContainEqual(["eq", "account_id", ACCOUNT]);
+    expect(h.state.dealSelects[0]).toContainEqual(["eq", "contact_id", "c1"]);
+    // Não é falha do passo: é a regra funcionando, com o log que a documenta.
+    expect(executados()).toContainEqual(
+      expect.objectContaining({ status: "success", detail: "deal already existed" }),
+    );
+  });
+
+  it("cria o card com source 'automation' quando o contato não tem nenhum", async () => {
+    h.state.dealExistente = null;
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: {},
+    });
+
+    expect(h.state.dealInserts).toHaveLength(1);
+    expect(h.state.dealInserts[0]).toMatchObject({
+      account_id: ACCOUNT,
+      contact_id: "c1",
+      pipeline_id: "p1",
+      stage_id: "st1",
+      source: "automation",
+    });
+    expect(executados()).toContainEqual(
+      expect.objectContaining({ status: "success", detail: "deal created" }),
+    );
   });
 });
 
