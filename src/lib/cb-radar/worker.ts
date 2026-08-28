@@ -538,7 +538,14 @@ export async function analisarConversaReivindicada(
 
   let analise: AnaliseInterpretada | null = null
   let usage: AiUsage | null = null
+  // ⚠️ O MODELO DO RADAR (946), derivado UMA vez — a chamada, o log de uso
+  // e a coluna do insight leem daqui. Uma segunda derivação solta é como o
+  // custo acaba atribuído ao modelo errado. `let` anulável + atribuição
+  // dentro do bloco, no molde de `analise`/`usage`: o fluxo do TS o
+  // estreita para `string` nos usos internos.
+  let modeloDoRadar: string | null = null
   if (config && transcrito.linhas.length > 0 && !semClienteNaJanela) {
+    modeloDoRadar = config.radarModel ?? config.model
     const { systemPrompt, userContent } = montarPromptDoRadar({
       transcrito,
       metricas,
@@ -552,6 +559,7 @@ export async function analisarConversaReivindicada(
       userContent,
       schema: RADAR_SCHEMA,
       maxOutputTokens: MAX_TOKENS_RADAR,
+      model: modeloDoRadar,
     })
     usage = resposta.usage
     // ⚠️ O uso é registrado ANTES de interpretar: os tokens já foram
@@ -564,7 +572,7 @@ export async function analisarConversaReivindicada(
       mode: 'radar',
       channelId: args.channelId,
       provider: config.provider,
-      model: config.model,
+      model: modeloDoRadar,
       usage,
     })
     analise = interpretarAnalise(resposta.object, transcrito.linhas)
@@ -663,7 +671,9 @@ export async function analisarConversaReivindicada(
       // transcrito vazio, gravar o provider afirmaria uma análise que não
       // aconteceu.
       provider: analise ? (config?.provider ?? null) : null,
-      model: analise ? (config?.model ?? null) : null,
+      // O modelo do Radar (946), não o do agente de conversa — a MESMA
+      // derivação da chamada e do log, nunca uma segunda expressão solta.
+      model: analise ? modeloDoRadar : null,
       prompt_tokens: usage?.promptTokens ?? 0,
       completion_tokens: usage?.completionTokens ?? 0,
     })

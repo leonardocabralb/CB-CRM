@@ -1955,14 +1955,42 @@
         "chave_ilegivel": "the stored key could not be read — re-enter it"
       },
       "usos": "Where it is used",
-      "usoRadar": "Service Radar",
-      "usoTranscricao": "Voice transcription",
-      "usoRag": "Knowledge base (RAG)",
-      "ragConfigurado": "Embeddings key set",
-      "naoConfiguradaDica": "Add the key in AI Agents — it powers the assistant, the Radar and transcription.",
+      "naoConfiguradaDica": "Paste the provider key below — transcription and the Radar use it as soon as it is saved. The conversation assistant is switched on in AI Agents.",
       "abrirAgentes": "Open AI Agents",
       "googleDesc": "Meeting sync with Google Calendar is not connected yet. The calendar already works internally; this card becomes the connection point once the integration ships.",
-      "emBreve": "Coming soon"
+      "emBreve": "Coming soon",
+      "modulo": {
+        "conversa": "Conversation assistant",
+        "radar": "Service Radar",
+        "transcricao": "Voice transcription",
+        "rag": "Knowledge base (RAG)"
+      },
+      "origem": {
+        "agente": "inherited from the agent",
+        "proprio": "its own model",
+        "fixo": "fixed in the system"
+      },
+      "indisponivel": {
+        "radar_sem_canal": "no connection has the Radar switched on",
+        "transcricao_exige_gemini": "does not use this key — transcription requires Gemini",
+        "conversa_desligada": "assistant switched off"
+      },
+      "emCanais": "switched on in {canais}",
+      "desligadoEm": "switched off in {canais}",
+      "campoChave": "API key",
+      "chaveGuardada": "•••••••• (stored — type to replace)",
+      "chaveVazia": "Paste the provider key",
+      "campoModeloRadar": "Radar model",
+      "modeloHerdado": "Same as the agent ({model})",
+      "modeloHerdadoVazio": "Same as the agent",
+      "modeloRadarDica": "Leave blank to use the same model as the conversation agent. The transcription model is fixed in the system and is not configurable.",
+      "salvar": "Save",
+      "salvando": "Saving…",
+      "salvo": "Saved.",
+      "salvarFalhou": "Could not save.",
+      "outroProvedorAtivo": "This account is currently using {atual}. Switch providers in AI Agents.",
+      "configFalhou": "Could not load the current configuration — reload the page before saving here.",
+      "recarregarFalhou": "Could not refresh the status — what you see may be stale."
     },
     "groups": {
       "account": "Account",
@@ -2249,7 +2277,9 @@
       "saveSuccess": "AI assistant saved.",
       "saveFailed": "Failed to save.",
       "removeSuccess": "AI configuration removed.",
-      "removeFailed": "Failed to remove."
+      "removeFailed": "Failed to remove.",
+      "modelScope": "Used by the inbox assistant, auto-reply and the Playground — not by the Radar or transcription, which have their own models.",
+      "modelScopeLink": "See every module in Integrations"
     },
     "aiKnowledge": {
       "loadFailed": "Failed to load knowledge base",
@@ -2524,7 +2554,7 @@
     "tab_abertos": "Open ({n})",
     "tab_todos": "All ({n})",
     "vazioTitulo": "No conversations analyzed yet",
-    "vazioNuncaAnalisado": "To get the Radar running: enable it on the desired connection (Settings → Connections), add an AI key (Settings → AI Assistant) and wait for the next scheduler cycle. Without an AI key the Radar still shows response times and pending replies.",
+    "vazioNuncaAnalisado": "To get the Radar running: enable it on the desired connection (Settings → Connections), add an AI key (Settings → Integrations) and wait for the next scheduler cycle. Without an AI key the Radar still shows response times and pending replies.",
     "vazioSemAbertos": "Nothing open here — everything handled or dismissed.",
     "acaoFalhou": "The action failed: {erro}",
     "contatoSemNome": "Unnamed contact",

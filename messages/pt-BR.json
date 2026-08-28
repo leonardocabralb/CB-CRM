@@ -1948,14 +1948,42 @@
         "chave_ilegivel": "a chave guardada não pôde ser lida — cadastre de novo"
       },
       "usos": "Onde é usada",
-      "usoRadar": "Radar de Atendimento",
-      "usoTranscricao": "Transcrição de áudio",
-      "usoRag": "Base de conhecimento (RAG)",
-      "ragConfigurado": "Chave de embeddings cadastrada",
-      "naoConfiguradaDica": "Cadastre a chave em Agentes de IA — ela alimenta o assistente, o Radar e a transcrição.",
+      "naoConfiguradaDica": "Cole a chave do provedor abaixo — a transcrição e o Radar a usam assim que ela é salva. O assistente de conversa se liga em Agentes de IA.",
       "abrirAgentes": "Abrir Agentes de IA",
       "googleDesc": "A sincronização das reuniões com o Google Agenda ainda não está conectada. A agenda já funciona internamente; este cartão vira o ponto de conexão quando a integração existir.",
-      "emBreve": "Em breve"
+      "emBreve": "Em breve",
+      "modulo": {
+        "conversa": "Assistente de conversa",
+        "radar": "Radar de Atendimento",
+        "transcricao": "Transcrição de áudio",
+        "rag": "Base de conhecimento (RAG)"
+      },
+      "origem": {
+        "agente": "herdado do agente",
+        "proprio": "modelo próprio",
+        "fixo": "fixo no sistema"
+      },
+      "indisponivel": {
+        "radar_sem_canal": "nenhuma conexão está com o Radar ligado",
+        "transcricao_exige_gemini": "não usa esta chave — a transcrição exige Gemini",
+        "conversa_desligada": "assistente desligado"
+      },
+      "emCanais": "ligado em {canais}",
+      "desligadoEm": "desligado em {canais}",
+      "campoChave": "Chave de API",
+      "chaveGuardada": "•••••••• (guardada — digite para trocar)",
+      "chaveVazia": "Cole a chave do provedor",
+      "campoModeloRadar": "Modelo do Radar",
+      "modeloHerdado": "Mesmo do agente ({model})",
+      "modeloHerdadoVazio": "Mesmo do agente",
+      "modeloRadarDica": "Em branco, o Radar usa o mesmo modelo do agente de conversa. O modelo da transcrição é fixo no sistema e não é configurável.",
+      "salvar": "Salvar",
+      "salvando": "Salvando…",
+      "salvo": "Salvo.",
+      "salvarFalhou": "Não foi possível salvar.",
+      "outroProvedorAtivo": "Esta conta está usando {atual} no momento. Troque de provedor em Agentes de IA.",
+      "configFalhou": "Não foi possível carregar a configuração atual — recarregue a página antes de salvar por aqui.",
+      "recarregarFalhou": "Não foi possível atualizar o estado — o que está na tela pode estar velho."
     },
     "groups": {
       "account": "Conta",
@@ -2242,7 +2270,9 @@
       "saveSuccess": "Assistente de IA salvo.",
       "saveFailed": "Falha ao salvar.",
       "removeSuccess": "Configuração de IA removida.",
-      "removeFailed": "Falha ao remover."
+      "removeFailed": "Falha ao remover.",
+      "modelScope": "Vale para o assistente da caixa de entrada, a resposta automática e o Playground — não para o Radar nem para a transcrição, que têm modelo próprio.",
+      "modelScopeLink": "Ver todos os módulos em Integrações"
     },
     "aiKnowledge": {
       "loadFailed": "Falha ao carregar a base de conhecimento",
@@ -2517,7 +2547,7 @@
     "tab_abertos": "Abertos ({n})",
     "tab_todos": "Todos ({n})",
     "vazioTitulo": "Nenhuma conversa analisada ainda",
-    "vazioNuncaAnalisado": "Para o Radar funcionar: ligue-o na conexão desejada (Configurações → Conexões), cadastre uma chave de IA (Configurações → Assistente de IA) e aguarde o próximo ciclo do agendador. Sem chave de IA, o Radar ainda mostra tempos de resposta e pendências.",
+    "vazioNuncaAnalisado": "Para o Radar funcionar: ligue-o na conexão desejada (Configurações → Conexões), cadastre uma chave de IA (Configurações → Integrações) e aguarde o próximo ciclo do agendador. Sem chave de IA, o Radar ainda mostra tempos de resposta e pendências.",
     "vazioSemAbertos": "Nada aberto por aqui — tudo tratado ou descartado.",
     "acaoFalhou": "A ação falhou: {erro}",
     "contatoSemNome": "Contato sem nome",

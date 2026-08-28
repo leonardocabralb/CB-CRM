@@ -8,7 +8,8 @@ import {
 } from '@/lib/rate-limit';
 import { listChannels } from '@/lib/cb-channels/repo';
 import { validateAiCredentials } from '@/lib/ai/validate';
-import { embedTexts } from '@/lib/ai/embeddings';
+import { embedTexts, EMBEDDING_MODEL } from '@/lib/ai/embeddings';
+import { MODELO_TRANSCRICAO } from '@/lib/transcricao/transcrever';
 import { AiError, type AiProvider } from '@/lib/ai/types';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import {
@@ -80,6 +81,7 @@ interface LinhaDeConfig {
   channel_id: string | null;
   provider: AiProvider;
   model: string;
+  radar_model: string | null;
   api_key: string | null;
   embeddings_api_key: string | null;
   is_active: boolean;
@@ -108,7 +110,7 @@ export async function GET(request: Request) {
       ctx.supabase
         .from('ai_configs')
         .select(
-          'id, channel_id, provider, model, api_key, embeddings_api_key, is_active'
+          'id, channel_id, provider, model, radar_model, api_key, embeddings_api_key, is_active'
         )
         .eq('account_id', ctx.accountId),
       listChannels(ctx.supabase, ctx.accountId),
@@ -150,7 +152,11 @@ export async function GET(request: Request) {
           try {
             await validateAiCredentials({
               provider: l.provider,
+              // ⚠️ O ping testa o modelo do CHAT. O do Radar é validado no
+              // SAVE (/api/ai/config) — pingá-lo aqui seria uma segunda
+              // chamada paga a cada carga desta tela.
               model: l.model,
+              radarModel: null,
               apiKey: chave,
               systemPrompt: null,
               isActive: true,
@@ -184,6 +190,7 @@ export async function GET(request: Request) {
           channelId: l.channel_id,
           provider: l.provider as ConfigParaMontar['provider'],
           model: l.model,
+          radarModel: l.radar_model,
           isActive: l.is_active,
           teste: testes[i],
           // Só a chave do agente PADRÃO conta como RAG configurado —
@@ -196,7 +203,12 @@ export async function GET(request: Request) {
         label: c.label,
         radarEnabled: c.radar_enabled === true,
       })),
-      embeddingsTeste
+      embeddingsTeste,
+      // ⚠️ As constantes REAIS, importadas de quem as usa — nunca
+      // redigitadas aqui nem no dicionário: a tela mentiria na primeira
+      // troca de modelo.
+      MODELO_TRANSCRICAO,
+      EMBEDDING_MODEL
     );
 
     return NextResponse.json({

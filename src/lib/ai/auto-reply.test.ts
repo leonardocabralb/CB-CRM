@@ -70,6 +70,7 @@ function aiConfig(overrides: Partial<AiConfig> = {}): AiConfig {
   return {
     provider: 'openai',
     model: 'gpt-test',
+    radarModel: null,
     apiKey: 'sk-test',
     systemPrompt: null,
     isActive: true,

@@ -5,6 +5,8 @@ import type { AiConfig } from './types'
 interface AiConfigRow {
   provider: 'openai' | 'anthropic' | 'gemini'
   model: string
+  /** Migration 946. NULL = herda `model`. Só o Radar lê. */
+  radar_model: string | null
   api_key: string
   system_prompt: string | null
   is_active: boolean
@@ -14,8 +16,13 @@ interface AiConfigRow {
   embeddings_api_key: string | null
 }
 
+// ⚠️ Colunas nomeadas, não `*`: uma coluna sem GRANT derrubaria a
+// consulta inteira. Acrescentar aqui exige que a migration correspondente
+// JÁ esteja aplicada em produção — o caminho do agente padrão faz
+// `throw` no erro, então uma coluna ausente derruba rascunho,
+// auto-reply, Radar e transcrição de uma vez.
 const CONFIG_COLUMNS =
-  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key'
+  'provider, model, radar_model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key'
 
 /**
  * Load and decrypt the account's AI config for *use* (draft or
@@ -108,6 +115,7 @@ function mapAiConfigRow(row: AiConfigRow, accountId: string): AiConfig | null {
   return {
     provider: row.provider,
     model: row.model,
+    radarModel: row.radar_model ?? null,
     apiKey: decrypt(row.api_key),
     systemPrompt: row.system_prompt,
     isActive: row.is_active,
