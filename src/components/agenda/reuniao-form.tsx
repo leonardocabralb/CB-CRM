@@ -76,6 +76,8 @@ export function ReuniaoForm({
   const [descricao, setDescricao] = useState('');
 
   const [salvando, setSalvando] = useState(false);
+  const [apagando, setApagando] = useState(false);
+  const [confirmandoApagar, setConfirmandoApagar] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   const editando = Boolean(reuniao);
@@ -124,6 +126,7 @@ export function ReuniaoForm({
       setDescricao('');
     }
     setErro(null);
+    setConfirmandoApagar(false);
   }, [aberto, reuniao, diaInicial]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -177,6 +180,44 @@ export function ReuniaoForm({
         error?: string;
       };
       setErro(dados.error ?? t('erroSalvar'));
+      return;
+    }
+
+    aoSalvar();
+    aoFechar();
+  }
+
+  /**
+   * Apagar a reunião.
+   *
+   * ⚠️ Em DOIS cliques, sem `window.confirm`: o diálogo nativo bloqueia a
+   * thread e, dentro de um modal, alguns navegadores o suprimem — o operador
+   * clicaria em "Apagar" e nada aconteceria. O segundo clique confirma no
+   * próprio botão, que passa a dizer o que vai acontecer.
+   */
+  async function apagar() {
+    if (!reuniao) return;
+
+    if (!confirmandoApagar) {
+      setConfirmandoApagar(true);
+      return;
+    }
+
+    setErro(null);
+    setApagando(true);
+
+    const resposta = await fetch(`/api/cb/agenda/${reuniao.id}`, {
+      method: 'DELETE',
+    });
+
+    setApagando(false);
+
+    if (!resposta.ok) {
+      const dados = (await resposta.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      setErro(dados.error ?? t('erroApagar'));
+      setConfirmandoApagar(false);
       return;
     }
 
@@ -333,13 +374,34 @@ export function ReuniaoForm({
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={aoFechar} disabled={salvando}>
-            {t('cancelar')}
-          </Button>
-          <Button onClick={salvar} disabled={salvando}>
-            {salvando ? t('salvando') : t('salvar')}
-          </Button>
+        <DialogFooter className="sm:justify-between">
+          {/* Apagar fica à ESQUERDA, longe de Salvar: são vizinhos com
+              consequências opostas, e a reunião apagada não volta. */}
+          {editando ? (
+            <Button
+              variant="ghost"
+              onClick={apagar}
+              disabled={salvando || apagando}
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              {apagando
+                ? t('apagando')
+                : confirmandoApagar
+                  ? t('confirmarApagar')
+                  : t('apagar')}
+            </Button>
+          ) : (
+            <span />
+          )}
+
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={aoFechar} disabled={salvando || apagando}>
+              {t('cancelar')}
+            </Button>
+            <Button onClick={salvar} disabled={salvando || apagando}>
+              {salvando ? t('salvando') : t('salvar')}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
