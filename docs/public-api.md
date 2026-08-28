@@ -51,6 +51,16 @@ it. Grant the minimum.
 | `channels:read`      | List the account's WhatsApp numbers      |
 | `broadcasts:send`    | Launch broadcast campaigns               |
 | `webhooks:manage`    | Register and manage outbound webhooks    |
+| `tasks:read`         | List and read tasks                      |
+| `tasks:write`        | Create tasks for team members            |
+| `scheduled:read`     | List scheduled messages                  |
+| `scheduled:write`    | Schedule text messages                   |
+| `deals:read`         | List pipelines, stages and deals         |
+| `deals:write`        | Create deals and move them between stages |
+| `meetings:read`      | List calendar meetings                   |
+| `meetings:write`     | Create calendar meetings                 |
+| `notes:read`         | Read internal conversation notes         |
+| `notes:write`        | Create internal conversation notes       |
 
 A key with **no scopes** still authenticates and can call
 `GET /api/v1/me` — useful for verifying a key works.
@@ -314,6 +324,164 @@ official Meta number (broadcasts are template-only). Omitted, it picks
 the first usable Meta number (account default first). If the account has
 none, the call returns `meta_channel_required`.
 
+### `GET /api/v1/tasks`
+
+List tasks, newest first. Scope: `tasks:read`. Paginated. Optional
+filters: `?contact_id=`, `?responsavel_user_id=`, `?status=`
+(`aberta` / `concluida`).
+
+Each task carries `vence_em` (`YYYY-MM-DD`, a plain calendar date with
+**no timezone** — don't feed it to `new Date()` as-is) and `vence_as`
+(`HH:MM:SS`, or `null` for an all-day task), plus the frozen
+`criador_nome` / `responsavel_nome` (they survive the member leaving
+the account).
+
+### `POST /api/v1/tasks`
+
+Create a task about a contact, assigned to a team member. Scope:
+`tasks:write`.
+
+```jsonc
+{
+  "contact_id": "<uuid>",            // required — who the task is about
+  "responsavel_user_id": "<uuid>",   // required — must be a member of the account
+  "titulo": "Ligar sobre o contrato", // required, 1–200 chars
+  "descricao": "…",                  // optional, ≤ 4000 chars
+  "vence_em": "2026-09-01",          // required, YYYY-MM-DD
+  "vence_as": "14:30",               // optional, HH:MM
+  "importante": true                 // optional
+}
+```
+
+The assignee is notified in-app (unless the task lands on the API's
+own audit user). Replies and sub-tasks (`tarefa_pai_id`) are
+dashboard-only. Response: `201` with the task.
+
+### `GET /api/v1/tasks/{id}`
+
+Read one task. Scope: `tasks:read`. `404` for another account's task.
+
+### `GET /api/v1/scheduled-messages`
+
+List scheduled messages, newest first. Scope: `scheduled:read`.
+Paginated. Optional filters: `?conversation_id=`, `?status=`
+(`pending` / `sending` / `sent` / `failed`).
+
+Two fields matter when reading failures: `error` (human-readable
+reason) and `entrega_incerta` — when `true`, the send failed *after*
+WhatsApp may have accepted the message, so **never re-send from such a
+row**; the customer could receive it twice.
+
+### `POST /api/v1/scheduled-messages`
+
+Schedule a **text** message into an existing conversation. Scope:
+`scheduled:write`. Attachments and quoted replies are dashboard-only.
+
+```jsonc
+{
+  "conversation_id": "<uuid>",              // required
+  "body": "Bom dia! Passando para lembrar…", // required, ≤ 4000 chars
+  "scheduled_for": "2026-09-01T09:00:00-03:00" // required, ISO-8601, future, ≤ 365 days ahead
+}
+```
+
+The sending channel is resolved **now** and frozen on the row (it does
+not follow the conversation later). Domain error codes: `no_channel`
+(409 — the account has no registered connection) and
+`group_channel_unknown` (409 — a group whose number isn't known yet).
+Response: `201` with the scheduled message.
+
+> Scheduled rows are dispatched by the external scheduler hitting the
+> cron endpoint — the API only enqueues.
+
+### `GET /api/v1/scheduled-messages/{id}`
+
+Read one scheduled message. Scope: `scheduled:read`. Read-only:
+cancelling / "send now" stay dashboard-only.
+
+### `GET /api/v1/pipelines`
+
+List the account's pipelines with their stages (ordered by
+`position`). Scope: `deals:read`. Not paginated. Every id returned
+here is a valid `pipeline_id` / `stage_id` for the deal endpoints.
+
+### `GET /api/v1/deals`
+
+List deals, newest first. Scope: `deals:read`. Paginated. Optional
+filters: `?pipeline_id=`, `?stage_id=`, `?contact_id=`, `?status=`
+(`open` / `won` / `lost`).
+
+### `POST /api/v1/deals`
+
+Create a deal. Scope: `deals:write`. `contact_id`, `pipeline_id` and
+`title` are required; `stage_id` is optional (defaults to the
+pipeline's first stage) and `value` is optional. API-created deals get
+`source: "manual"`, the account currency, and no `channel_id` (that
+column means "which number the customer arrived through"). Response:
+`201` with the deal.
+
+### `GET` / `PATCH /api/v1/deals/{id}`
+
+Read or update one deal. Scopes: `deals:read` / `deals:write`. `PATCH`
+accepts `title`, `value`, `status`, and stage moves:
+
+- `stage_id` alone moves the deal within its current pipeline (the
+  stage must belong to it — `stage_not_found` otherwise);
+- `pipeline_id` **plus** `stage_id` transfers it to another pipeline
+  in one operation. `pipeline_id` without `stage_id` is rejected: the
+  current stage belongs to the old pipeline.
+
+Stage/pipeline/status changes are recorded in the account's activity
+trail automatically.
+
+### `GET /api/v1/meetings`
+
+List calendar meetings, newest first. Scope: `meetings:read`.
+Paginated. Optional filters: `?owner_user_id=`, `?contact_id=`,
+`?status=` (`agendada` / `realizada` / `cancelada` / `falta`), and a
+window on the start time via `?from=` / `?to=` (ISO-8601 instants).
+
+### `POST /api/v1/meetings`
+
+Create a meeting. Scope: `meetings:write`.
+
+```jsonc
+{
+  "titulo": "Reunião de alinhamento",          // required, ≤ 200 chars
+  "starts_at": "2026-09-01T14:00:00-03:00",    // required — MUST carry a timezone offset
+  "ends_at": "2026-09-01T15:00:00-03:00",      // required, after starts_at, ≤ 24h long
+  "owner_user_id": "<uuid>",                   // optional — defaults to the API audit user
+  "contact_id": "<uuid>",                      // optional — internal meetings have none
+  "tipo": "outra",                             // optional: onboarding | atualizacao | outra
+  "status": "agendada",                        // optional
+  "descricao": "…", "local": "…"               // optional
+}
+```
+
+Timestamps **must include the timezone offset** (`Z` or `±HH:MM`) —
+without it "14:00" would silently shift by the server's UTC offset.
+Overlapping meetings for the same owner return `409` with code
+`overlap`. Response: `201` with the meeting.
+
+### `GET /api/v1/meetings/{id}`
+
+Read one meeting. Scope: `meetings:read`.
+
+### `GET /api/v1/notes`
+
+List internal conversation notes, newest first. Scope: `notes:read`.
+Paginated. Optional filters: `?conversation_id=`, `?contact_id=`.
+Notes are internal to the team — they are never sent to the customer.
+
+### `POST /api/v1/notes`
+
+Create an internal note on a conversation. Scope: `notes:write`. Pass
+`conversation_id`, **or** `contact_id` to note on that contact's
+conversation (each contact has at most one). `texto` is required
+(≤ 4000 chars). @-mentions are dashboard-only. A contact that never
+exchanged a message has no conversation: `409` with code
+`contact_without_conversation`. Response: `201` with the note.
+
 ## Pagination
 
 Every list endpoint pages the same way. Request a page size with
@@ -434,7 +602,9 @@ internal targets are refused at delivery time.
 ## Roadmap
 
 The public API now covers messaging, contacts, conversations,
-broadcasts, and outbound webhooks — the full scope of
-[#245](https://github.com/ArnasDon/wacrm/issues/245). Future ideas
-(deals/pipelines, templates, flows, a delivery queue for webhooks) are
-not yet scheduled.
+broadcasts, outbound webhooks — the full scope of
+[#245](https://github.com/ArnasDon/wacrm/issues/245) — plus this
+fork's additions: tasks, scheduled messages, deals/pipelines, calendar
+meetings, and internal notes. Future ideas (templates, flows, a
+delivery queue for webhooks, task/deal webhook events) are not yet
+scheduled.

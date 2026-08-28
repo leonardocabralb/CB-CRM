@@ -189,7 +189,11 @@ export default function AgendaPage() {
         </div>
       )}
 
-      <div className="flex-1 overflow-auto rounded-lg border border-border">
+      {/* ⚠️ `flex flex-col` + `min-h-0`: sem os dois a grade não tem como esticar
+          até o rodapé. `min-h-0` porque item de flex tem `min-height: auto` por
+          padrão, o que impede encolher e faz a grade transbordar em vez de
+          rolar por dentro. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto rounded-lg border border-border">
         <Calendario
           visao={visao}
           referencia={referencia}

@@ -22,6 +22,16 @@ export const API_SCOPES = [
   'channels:read',
   'broadcasts:send',
   'webhooks:manage',
+  'tasks:read',
+  'tasks:write',
+  'scheduled:read',
+  'scheduled:write',
+  'deals:read',
+  'deals:write',
+  'meetings:read',
+  'meetings:write',
+  'notes:read',
+  'notes:write',
 ] as const;
 
 export type ApiScope = (typeof API_SCOPES)[number];
@@ -36,6 +46,16 @@ export const SCOPE_DESCRIPTIONS: Record<ApiScope, string> = {
   'channels:read': 'List the account WhatsApp numbers (channels)',
   'broadcasts:send': 'Launch broadcast campaigns',
   'webhooks:manage': 'Register and manage outbound event webhooks',
+  'tasks:read': 'List and read tasks',
+  'tasks:write': 'Create tasks for team members',
+  'scheduled:read': 'List scheduled messages',
+  'scheduled:write': 'Schedule text messages',
+  'deals:read': 'List pipelines, stages and deals',
+  'deals:write': 'Create deals and move them between stages',
+  'meetings:read': 'List calendar meetings',
+  'meetings:write': 'Create calendar meetings',
+  'notes:read': 'Read internal conversation notes',
+  'notes:write': 'Create internal conversation notes',
 };
 
 /** Type-narrow an unknown value into a valid `ApiScope`. */

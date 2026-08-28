@@ -51,8 +51,12 @@ export interface CreateDealArgs {
 }
 
 export type CreateDealResult =
-  /** `created: false` = já existia (colisão do índice único) — não é erro. */
-  | { ok: true; created: boolean }
+  /**
+   * `created: false` = já existia (colisão do índice único) — não é erro.
+   * `deal` é a linha inserida quando o insert aconteceu de fato; na colisão
+   * ele é `null` (o card vencedor é o que já existia).
+   */
+  | { ok: true; created: boolean; deal: Record<string, unknown> | null }
   | {
       ok: false;
       code: 'pipeline_not_found' | 'stage_not_found' | 'no_stage' | 'insert_failed';
@@ -135,29 +139,39 @@ export async function createDeal(args: CreateDealArgs): Promise<CreateDealResult
     .eq('id', accountId)
     .maybeSingle();
 
-  const { error: insertErr } = await db.from('deals').insert({
-    account_id: accountId,
-    user_id: ownerUserId,
-    pipeline_id: pipelineId,
-    stage_id: stageId,
-    contact_id: contactId,
-    channel_id: channelId ?? null,
-    conversation_id: args.conversationId ?? null,
-    title: args.title,
-    value: args.value ?? 0,
-    currency: (conta?.default_currency as string | undefined) ?? 'USD',
-    status: 'open',
-    source,
-  });
+  const { data: inserido, error: insertErr } = await db
+    .from('deals')
+    .insert({
+      account_id: accountId,
+      user_id: ownerUserId,
+      pipeline_id: pipelineId,
+      stage_id: stageId,
+      contact_id: contactId,
+      channel_id: channelId ?? null,
+      conversation_id: args.conversationId ?? null,
+      title: args.title,
+      value: args.value ?? 0,
+      currency: (conta?.default_currency as string | undefined) ?? 'USD',
+      status: 'open',
+      source,
+    })
+    .select('*')
+    .maybeSingle();
 
   if (insertErr) {
-    // `cb_deals_canal_idx` (908) barra o segundo insert de uma corrida — duas
-    // mensagens do mesmo cliente chegando juntas, ou a reentrega do webhook
-    // da Meta quando ela não recebe 200 a tempo. O card que interessa já
-    // existe, então isto é o resultado desejado, não uma falha.
-    if (isUniqueViolation(insertErr)) return { ok: true, created: false };
+    // `cb_deals_contato_canal_idx` (911) barra o segundo insert de uma
+    // corrida — duas mensagens do mesmo cliente chegando juntas, ou a
+    // reentrega do webhook da Meta quando ela não recebe 200 a tempo. O card
+    // que interessa já existe, então isto é o resultado desejado, não falha.
+    if (isUniqueViolation(insertErr)) {
+      return { ok: true, created: false, deal: null };
+    }
     return { ok: false, code: 'insert_failed', message: insertErr.message };
   }
 
-  return { ok: true, created: true };
+  return {
+    ok: true,
+    created: true,
+    deal: (inserido as Record<string, unknown> | null) ?? null,
+  };
 }
