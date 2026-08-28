@@ -42,6 +42,8 @@ interface Props {
   reuniao?: Meeting | null;
   /** Dia pré-selecionado ao criar (`YYYY-MM-DD`), quando veio de uma célula. */
   diaInicial?: string | null;
+  /** Hora pré-selecionada (`HH:MM`), quando veio de um clique na grade. */
+  horaInicial?: string | null;
   /** Cliente pré-selecionado, quando veio da ficha dele. */
   contactId?: string | null;
   aoSalvar: () => void;
@@ -54,6 +56,7 @@ export function ReuniaoForm({
   aoFechar,
   reuniao,
   diaInicial,
+  horaInicial,
   contactId,
   aoSalvar,
 }: Props) {
@@ -119,7 +122,7 @@ export function ReuniaoForm({
       setTipo('outra');
       setStatus('agendada');
       setDia(diaInicial ?? diaNoFuso(new Date(), FUSO_PADRAO));
-      setHora('09:00');
+      setHora(horaInicial ?? '09:00');
       setDuracao(60);
       setResponsavel('');
       setLocal('');
@@ -127,7 +130,7 @@ export function ReuniaoForm({
     }
     setErro(null);
     setConfirmandoApagar(false);
-  }, [aberto, reuniao, diaInicial]);
+  }, [aberto, reuniao, diaInicial, horaInicial]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   async function salvar() {

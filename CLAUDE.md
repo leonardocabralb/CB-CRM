@@ -195,7 +195,7 @@ upstream sobrescrevê-los:
 | `src/components/inbox/message-thread.tsx` | além do fio intercalado, renderiza a faixa `ScheduledBar` logo acima do compositor e guarda o contador que a liga ao compositor |
 | `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
 | `src/lib/whatsapp/inbound-store.ts` | idem, no lado Evolution |
-| `src/lib/automations/engine.ts` | `channelInScope`, condição `channel`, canal de saída por passo, e o `create_deal` que agora **lê o erro do insert** (antes devolvia `'deal created'` incondicionalmente) |
+| `src/lib/automations/engine.ts` | `channelInScope`, condição `channel`, canal de saída por passo, e o `create_deal` que virou chamada a `createDeal` com a checagem "um card por contato" ANTES do insert — o índice da 911 é parcial (`source = 'channel'`) e não barra o insert da automação, então sem a checagem nasce card duplicado |
 | `src/app/api/whatsapp/webhook/route.ts` e `src/lib/whatsapp/inbound-store.ts` | além do carimbo de canal, a chamada de uma linha a `routeInboundToPipeline` no fan-out. ⚠️ São **dois** call sites porque não há função compartilhada de abrir conversa — enxertar só num deles faz a feature valer só num transporte, e produção roda Evolution |
 | `src/lib/flows/engine.ts` | `findEntryFlow` por canal, `flow_runs.channel_id`, try/catch nos nós interativos |
 | `src/lib/ai/{auto-reply,config,knowledge,usage}.ts` | agente por canal, interruptor, RAG por canal |
@@ -336,7 +336,6 @@ entre escrever e enviar.** `src/lib/scheduled/midia.ts` (puro, com teste),
   núcleo revalida e o disparador **traduz** — `SendMessageError.message` é
   escrito em inglês e cai cru na coluna que as duas telas mostram.
 
-<<<<<<< HEAD
 ⚠️ **Agenda de reuniões (945, Fase 1): o calendário é a parte fácil.**
 `src/lib/agenda/` — `fuso.ts`, `vagas.ts`, `grade.ts` e `validar.ts`, todos
 puros e com teste (85 casos); a tela é `/agenda`, e a escrita passa por
@@ -377,7 +376,7 @@ puros e com teste (85 casos); a tela é `/agenda`, e a escrita passa por
   na agenda de alguém de outro escritório.
 - **Fora da v1, por decisão:** recorrência. Reunião que repete é marcada de
   novo.
-=======
+
 ⚠️ **Tarefas por cliente (944): o navegador NÃO escreve em `cb_tasks`.**
 `src/lib/tasks/` (puro, testado), rotas em `/api/cb/tasks`, telas em
 `src/components/tasks/`. O que morde código novo:
@@ -414,7 +413,6 @@ puros e com teste (85 casos); a tela é `/agenda`, e a escrita passa por
   (deep link resolvido no estado inicial da página de Contatos).
 - **Redirecionar zera `lida_em`** — a tarefa chega "não lida" para quem acabou
   de recebê-la, senão some da contagem do menu da pessoa nova.
->>>>>>> main
 
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 
 import { Calendario } from '@/components/agenda/calendario';
+import { GradeDeHoras } from '@/components/agenda/grade-de-horas';
 import { ReuniaoForm } from '@/components/agenda/reuniao-form';
 import { Button } from '@/components/ui/button';
 import { useReunioes } from '@/hooks/use-reunioes';
@@ -38,6 +39,7 @@ export default function AgendaPage() {
   const [formAberto, setFormAberto] = useState(false);
   const [emEdicao, setEmEdicao] = useState<Meeting | null>(null);
   const [diaInicial, setDiaInicial] = useState<string | null>(null);
+  const [horaInicial, setHoraInicial] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
 
   const hoje = hojeNoFuso(new Date(), FUSO_PADRAO);
@@ -52,12 +54,21 @@ export default function AgendaPage() {
   function abrirNovo(dia?: string) {
     setEmEdicao(null);
     setDiaInicial(dia ?? referencia);
+    setHoraInicial(null);
+    setFormAberto(true);
+  }
+
+  function abrirNoHorario(dia: string, hora: string) {
+    setEmEdicao(null);
+    setDiaInicial(dia);
+    setHoraInicial(hora);
     setFormAberto(true);
   }
 
   function abrirEdicao(reuniao: Meeting) {
     setEmEdicao(reuniao);
     setDiaInicial(null);
+    setHoraInicial(null);
     setFormAberto(true);
   }
 
@@ -69,7 +80,7 @@ export default function AgendaPage() {
    * mesmo horário. A mensagem da rota é mostrada como aviso, e a lista é
    * recarregada para a reunião voltar visualmente ao lugar de origem.
    */
-  async function mover(reuniao: Meeting, novoDia: string) {
+  async function mover(reuniao: Meeting, novoDia: string, minutos = 0) {
     const inicio = new Date(reuniao.starts_at);
     const fim = new Date(reuniao.ends_at);
     const duracao = fim.getTime() - inicio.getTime();
@@ -81,11 +92,16 @@ export default function AgendaPage() {
     // Brasil não usa horário de verão desde 2019, então hoje as duas contas
     // dão o mesmo número — a diferença aparece no dia em que um advogado
     // estiver em outro país, e aí ninguém vai suspeitar desta linha.
-    const novoInicio = paraInstante(
+    //
+    // `minutos` é o deslocamento vertical na grade de horas (zero no mês, que
+    // não desenha hora). Aplicado DEPOIS da reconstrução, para o arrastar
+    // mudar a hora sem desfazer a proteção acima.
+    const base = paraInstante(
       novoDia,
       horaNoFuso(inicio, FUSO_PADRAO),
       FUSO_PADRAO,
     );
+    const novoInicio = new Date(base.getTime() + minutos * 60000);
 
     setAviso(null);
 
@@ -194,15 +210,27 @@ export default function AgendaPage() {
           padrão, o que impede encolher e faz a grade transbordar em vez de
           rolar por dentro. */}
       <div className="flex min-h-0 flex-1 flex-col overflow-auto rounded-lg border border-border">
-        <Calendario
-          visao={visao}
-          referencia={referencia}
-          hoje={hoje}
-          reunioes={reunioes}
-          aoAbrirReuniao={abrirEdicao}
-          aoCriarNoDia={abrirNovo}
-          aoMover={mover}
-        />
+        {visao === 'mes' ? (
+          <Calendario
+            visao={visao}
+            referencia={referencia}
+            hoje={hoje}
+            reunioes={reunioes}
+            aoAbrirReuniao={abrirEdicao}
+            aoCriarNoDia={abrirNovo}
+            aoMover={mover}
+          />
+        ) : (
+          <GradeDeHoras
+            visao={visao}
+            referencia={referencia}
+            hoje={hoje}
+            reunioes={reunioes}
+            aoAbrirReuniao={abrirEdicao}
+            aoCriarEm={abrirNoHorario}
+            aoMover={mover}
+          />
+        )}
       </div>
 
       <ReuniaoForm
@@ -210,6 +238,7 @@ export default function AgendaPage() {
         aoFechar={() => setFormAberto(false)}
         reuniao={emEdicao}
         diaInicial={diaInicial}
+        horaInicial={horaInicial}
         aoSalvar={() => setToken((n) => n + 1)}
       />
     </div>
