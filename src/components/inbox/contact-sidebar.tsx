@@ -7,6 +7,7 @@ import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { toast } from "sonner";
 import { ChannelCell } from "@/components/channels/channel-badge";
 import { ActivityHistory } from "@/components/lead-events/activity-history";
+import { ContactTasks } from "@/components/tasks/contact-tasks";
 import { cn } from "@/lib/utils";
 import type { Contact, Deal, ConversationNote, Tag } from "@/types";
 import {
@@ -337,6 +338,19 @@ export function ContactSidebar({ contact, conversationId, channelId }: ContactSi
               )}
             </div>
           </div>
+
+          {/* Divider */}
+          <div className="my-4 border-t border-border" />
+
+          {/* Tarefas (944) — o que ainda falta fazer com este cliente.
+              ⚠️ Fica ANTES do Histórico de propósito: as duas são listas
+              cronológicas e parecidas de longe, mas uma olha para a frente e a
+              outra para trás. Quem está com a conversa aberta e pensa "preciso
+              ligar para ele semana que vem" precisa da primeira ao alcance —
+              se tiver de sair para a tela de Contatos, não cria a tarefa.
+              `compacto` porque a barra lateral é estreita: as concluídas ficam
+              atrás de um botão em vez de empurrarem as pendentes para fora. */}
+          <ContactTasks contactId={contact.id} compacto />
 
           {/* Divider */}
           <div className="my-4 border-t border-border" />

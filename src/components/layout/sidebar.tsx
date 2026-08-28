@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
+import { useTarefasNaoLidas } from "@/hooks/use-tarefas-nao-lidas";
 import {
   Activity,
   Bell,
@@ -15,6 +16,7 @@ import {
   Crown,
   GitBranch,
   LayoutDashboard,
+  ListTodo,
   LogOut,
   MessageSquare,
   Radio,
@@ -98,6 +100,10 @@ const navItems: NavItem[] = [
   { href: "/radar", labelKey: "radar", icon: Activity },
   { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
   { href: "/notifications", labelKey: "notifications", icon: Bell },
+  // Ao lado de Notificações, e não do inbox: as duas respondem à mesma
+  // pergunta ("o que é meu, e o que ainda não vi"). A tarefa também aparece
+  // na ficha do cliente e na conversa — esta entrada é para olhar o conjunto.
+  { href: "/tarefas", labelKey: "tasks", icon: ListTodo },
   { href: "/contacts", labelKey: "contacts", icon: Users },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
@@ -129,6 +135,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const { profile, profileLoading, account, accountRole, signOut } = useAuth();
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
+  const tarefasNaoLidas = useTarefasNaoLidas();
   // Only surface the account-name strip when it actually carries
   // information. A solo user's personal account is named after them
   // (the 017 signup trigger seeds it from `full_name`), so showing it
@@ -233,6 +240,11 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               const showNotificationBadge =
                 item.href === "/notifications" && unreadNotifications > 0;
 
+              // Mesma regra da de notificações: continua visível na página
+              // ativa, porque conta estado (não lida) e não "estou aqui".
+              const showTaskBadge =
+                item.href === "/tarefas" && tarefasNaoLidas > 0;
+
               return (
                 <li key={item.href}>
                   <Link
@@ -262,6 +274,14 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                       >
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                      </span>
+                    )}
+                    {showTaskBadge && (
+                      <span
+                        aria-label={t("unreadTasks", { count: tarefasNaoLidas })}
+                        className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
+                      >
+                        {tarefasNaoLidas > 9 ? "9+" : tarefasNaoLidas}
                       </span>
                     )}
                     {showNotificationBadge && (

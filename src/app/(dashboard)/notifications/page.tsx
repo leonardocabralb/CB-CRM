@@ -5,7 +5,15 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import type { Notification } from "@/types";
-import { AtSign, Bell, CheckCheck, Loader2, UserPlus } from "lucide-react";
+import {
+  AtSign,
+  Bell,
+  CheckCheck,
+  ListTodo,
+  Loader2,
+  Reply,
+  UserPlus,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -18,6 +26,9 @@ import { useTranslations } from "next-intl";
 const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   conversation_assigned: UserPlus,
   note_mention: AtSign,
+  // Tarefas (944). O clique leva a `/tarefas` — ver `handleClick`.
+  task_assigned: ListTodo,
+  task_reply: Reply,
 };
 
 export default function NotificationsPage() {
@@ -118,6 +129,15 @@ export default function NotificationsPage() {
   const handleClick = useCallback(
     (n: Notification) => {
       if (!n.read_at) markRead(n.id);
+      // ⚠️ `task_id` é testado ANTES de `conversation_id` (944). As linhas de
+      // tarefa nascem sem conversa justamente para não caírem no inbox, mas a
+      // ordem inversa aqui mandaria para o fio qualquer aviso que um dia
+      // ganhasse as duas colunas — e o destino de um aviso de tarefa é a
+      // tarefa.
+      if (n.task_id) {
+        router.push('/tarefas');
+        return;
+      }
       if (n.conversation_id) {
         router.push(`/inbox?c=${n.conversation_id}`);
       }
