@@ -421,7 +421,9 @@ function CreateKeyDialog({
 
               <div className="space-y-2">
                 <Label className="text-muted-foreground">{t('scopesLabel')}</Label>
-                <div className="border-border space-y-2 rounded-md border p-3">
+                {/* 18 escopos desde a leva de recursos do fork — sem o teto
+                    com rolagem o diálogo estoura a altura da janela. */}
+                <div className="border-border max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
                   {API_SCOPES.map((scope) => (
                     <label
                       key={scope}

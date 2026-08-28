@@ -944,40 +944,22 @@ mordem de novo em qualquer código novo:
   colidia: a `041` dropa a função que a `040` cria, então a ordem relativa
   tinha de ser preservada. ⚠️ O Git **não** reporta essa colisão como
   conflito (são nomes de arquivo diferentes) — conferir à mão a cada merge.
-  ⚠️ Aplicadas até aqui (conferido em 2026-07-27 via `list_migrations`):
-  `900`, `901`, `902`, `903_cb_multicanal`, `904_cb_mensagem_do_aparelho`,
-  `904_cb_grupos` (⚠️ **número 904 DUPLICADO** — o arquivo local foi
-  renumerado para `906_cb_grupos.sql` numa branch, mas o histórico do banco
-  guarda o nome antigo), `905_cb_mensagem_apagada_editada`,
-  `907_cb_exclusao_solicitada`, `908_cb_funil_por_canal`,
-  `909_cb_saude_das_conexoes`, `910_cb_negocio_e_conversa`,
-  `911_cb_um_funil_por_vez`, `912_cb_historico_de_atividade`,
-  `913_cb_revoke_de_public`, `914_cb_fecha_rpc_de_manutencao` e
-  `915_cb_fecha_rpc_de_manutencao_de_fato`, `906_cb_grupos` e
-  `916_cb_lid_do_canal`. Depois disso (conferido em 2026-08-02):
-  `917_cb_endereco_lid_da_mensagem`, `918_cb_notas_na_conversa`,
-  `919_cb_mencao_na_anotacao`, `920_cb_fecha_grants_das_anotacoes`,
-  `921_cb_anotacao_apagada_em_tempo_real`, `922_cb_aposenta_contact_notes`,
-  `923_cb_assinatura`, `924_cb_favoritar`, `925_cb_mensagem_agendada`,
-  `926_cb_entrega_incerta`, `927_cb_batimento_do_agendador` e
-  `928_cb_quando_reivindicou`. Depois disso (conferido em 2026-08-03):
-  `929_cb_busca_em_mensagens`, `930_cb_reticencia_no_trecho` e
-  `931_cb_fecha_anon_nas_tabelas_antigas`.
-  Depois disso (conferido em 2026-08-03):
-  `932_cb_agendada_com_midia_e_citacao`.
-  Depois disso (conferido em 2026-08-28 via `list_migrations`): `933` a `937`
-  e `940` a `943` (de outras branches — radar, broadcast, transcrição; as
-  renumeradas `040`–`042` do upstream também constam) e `944_cb_tarefas`.
-  ⚠️ Não existe 938/939 nem local nem no histórico — não "preencher" a lacuna.
-  Depois disso (conferido em 2026-08-27 via `list_migrations`):
-  `933_cb_gatilho_de_funil`, `934_cb_acoes_de_funil`,
-  `935_cb_lembrete_por_data`, `936_cb_orquestracao`,
-  `937_cb_batimento_das_automacoes`, as três do upstream renumeradas
-  (`040`/`041`/`042`), `940_cb_broadcast_com_canal`,
-  `941_cb_radar_de_atendimento` e `942_cb_indices_do_radar`.
-  ✅ A `943_cb_transcricao_de_audio` foi **aplicada em 2026-08-27** (via
-  MCP, registrada no histórico; colunas e CHECKs conferidos) — o deploy
-  do merge já encontra o schema pronto.
+  ⚠️ **Aplicadas até aqui** (última conferência: 2026-08-28, via Management
+  API). A lista é acumulada e foi consolidada nesta data — antes tinha camadas
+  repetidas com datas fora de ordem:
+
+  - **900–932** — as nossas até a agendada com mídia (`932`).
+  - **933–937** — gatilho e ações de funil, lembrete por data, orquestração,
+    batimento das automações.
+  - **040/041/042** — as três do upstream renumeradas no merge de 2026-08-26.
+  - **940–943** — broadcast com canal, radar de atendimento, índices do radar,
+    transcrição de áudio.
+  - **944_cb_tarefas** — painel de tarefas (PR #39).
+  - **945_cb_agenda_de_reunioes** — agenda, Fase 1 (PR #40). Aplicada em
+    2026-08-28 e registrada no histórico como `20260828183655`.
+
+  ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
+  lacuna: a numeração é cronológica, não densa.
   ⚠️ A `906` foi aplicada FORA DE ORDEM (antes da 907), e o histórico do
   Supabase a registra com o nome antigo `904_cb_grupos` — ela nasceu numerada
   como 904, colidiu com `904_cb_mensagem_do_aparelho` e o ARQUIVO foi
@@ -992,6 +974,12 @@ mordem de novo em qualquer código novo:
   lista. Ou seja, **o histórico não é fonte de verdade completa** — para checar
   se algo foi aplicado, consultar o schema, não só o histórico.
 - Criar o arquivo de migration **antes** de aplicar.
+- ⚠️ **O projeto Supabase é `hxnhakmyxyhalbsktzwe`** (nome "CB CRM Whatsapp"),
+  e é o `project_id` de toda chamada do conector. O ref sai do
+  `NEXT_PUBLIC_SUPABASE_URL` do `.env.local`
+  (`https://<ref>.supabase.co`) — tirar de qualquer outro lugar já custou uma
+  sessão inteira de "permission denied" que **não era** falta de permissão, era
+  ref errado.
 - Aplicar em **ordem numérica** no projeto Supabase. Caminho preferido: o
   **conector MCP do Supabase** (`apply_migration` / `execute_sql`), que dispensa
   senha de banco. Alternativa: colar os SQL no **SQL Editor** em ordem. ⚠️ **Não**

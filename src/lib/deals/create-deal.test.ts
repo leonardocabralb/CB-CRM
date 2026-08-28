@@ -59,7 +59,17 @@ function makeDb(cfg: Cfg): {
       },
       insert: (payload: Record<string, unknown>) => {
         inserts.push(payload);
-        return Promise.resolve({ data: null, error: cfg.insertError ?? null });
+        // O módulo agora encadeia `.select('id').maybeSingle()` para devolver
+        // o id do card criado.
+        return {
+          select: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data: cfg.insertError ? null : { id: 'deal-novo' },
+                error: cfg.insertError ?? null,
+              }),
+          }),
+        };
       },
     };
     return chain;
@@ -131,7 +141,7 @@ describe('createDeal', () => {
 
     const r = await createDeal({ db, ...BASE });
 
-    expect(r).toEqual({ ok: true, created: true });
+    expect(r).toEqual({ ok: true, created: true, dealId: 'deal-novo' });
     expect(inserts[0]).toMatchObject({ stage_id: 'etapa-zero' });
   });
 
@@ -201,7 +211,7 @@ describe('createDeal', () => {
 
     const r = await createDeal({ db, ...BASE });
 
-    expect(r).toEqual({ ok: true, created: false });
+    expect(r).toEqual({ ok: true, created: false, dealId: null });
   });
 
   it('erro de insert que NÃO é colisão é reportado', async () => {
