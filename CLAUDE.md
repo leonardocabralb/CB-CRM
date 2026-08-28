@@ -335,6 +335,47 @@ entre escrever e enviar.** `src/lib/scheduled/midia.ts` (puro, com teste),
   núcleo revalida e o disparador **traduz** — `SendMessageError.message` é
   escrito em inglês e cai cru na coluna que as duas telas mostram.
 
+⚠️ **Agenda de reuniões (945, Fase 1): o calendário é a parte fácil.**
+`src/lib/agenda/` — `fuso.ts`, `vagas.ts`, `grade.ts` e `validar.ts`, todos
+puros e com teste (85 casos); a tela é `/agenda`, e a escrita passa por
+`/api/cb/agenda`. O que morde código novo:
+
+- ⚠️ **A SOBREPOSIÇÃO É BARRADA PELO BANCO**, por uma restrição `EXCLUDE
+  USING gist` sobre `tstzrange(starts_at, ends_at)` por advogado (exige
+  `btree_gist`). Conferir "está livre?" antes de inserir NÃO resolve: entre a
+  conferência e a inserção cabe a outra requisição, e é exatamente o que
+  acontece com dois operadores marcando ao mesmo tempo. Quem criar outro
+  caminho de escrita precisa traduzir o código **`23P01`** numa frase — cru,
+  ele chega ao operador como "conflicting key value violates exclusion
+  constraint".
+- ⚠️ **O `EXCLUDE` ignora `status = 'cancelada'`**, senão desmarcar não
+  liberaria o horário. `realizada` e `falta` continuam ocupando: aquele
+  horário foi consumido de fato.
+- ⚠️ **`cb_availability` guarda `time` + `timezone`, NUNCA `timestamptz`.**
+  "Nove da manhã" não é instante: é regra que só vira instante aplicada a um
+  dia num fuso. E o fuso **não é validado pelo banco** — `pg_timezone_names` é
+  view e CHECK exige IMMUTABLE —, então a validação mora em
+  `fusoValido()`. Ela recusa deslocamento fixo (`-03:00`), que o `Intl`
+  aceitaria: constante não sabe horário de verão.
+- ⚠️ **Mover reunião de dia RECONSTRÓI pela hora de parede**, nunca soma dias
+  em milissegundos. Somar preserva o instante, não a hora local — atravessar
+  uma virada de horário de verão mudaria a reunião das 14h para 13h sozinha.
+  Invisível no Brasil (sem DST desde 2019), real no dia em que houver advogado
+  em outro país.
+- ⚠️ **`/agenda` no `protectedPaths` cobre `/agendadas` DE GRAÇA** (o teste é
+  `startsWith`) — e é por isso que a página pública de auto-agendamento da
+  Fase 2 tem de se chamar **`/marcar/<token>`**, nunca `/agendar/<token>`:
+  aquela linha mandaria o cliente, que não tem login, para a tela de login.
+- **`contact_id` é NULLABLE** e não pode entrar em CHECK de forma: apagar
+  contato faz SET NULL, que é UPDATE, e UPDATE revalida CHECK — exigir o
+  contato faria a exclusão de contato falhar (lição da 912).
+- **A tela LÊ direto sob RLS; a escrita passa pela rota**, como em `cb_tasks`.
+  A rota carimba `autor_nome`/`owner_nome` e confere o responsável contra a
+  conta — `auth.users` é global, então a FK sozinha não impede marcar reunião
+  na agenda de alguém de outro escritório.
+- **Fora da v1, por decisão:** recorrência. Reunião que repete é marcada de
+  novo.
+
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
 e `src/hooks/use-favoritas.ts`. Quem for mexer em filtro de conversa mexe lá,

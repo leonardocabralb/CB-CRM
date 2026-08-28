@@ -1311,3 +1311,86 @@ export interface LeadEvent {
   details: Record<string, unknown> | null;
   created_at: string;
 }
+
+// ============================================================
+// Agenda de reuniões (migration 945)
+// ============================================================
+
+/** Onboarding, atualização, ou qualquer outra. */
+export type MeetingType = 'onboarding' | 'atualizacao' | 'outra';
+
+/**
+ * `falta` = o cliente não apareceu. Fica separado de `cancelada` porque as duas
+ * liberam o horário mas contam histórias diferentes sobre o cliente.
+ */
+export type MeetingStatus = 'agendada' | 'realizada' | 'cancelada' | 'falta';
+
+export interface Meeting {
+  id: string;
+  account_id: string;
+  /**
+   * O advogado que atende. Nulo quando ele saiu da conta — a reunião fica no
+   * histórico e para de bloquear horário.
+   */
+  owner_user_id: string | null;
+  /** Carimbado na escrita: sobrevive à saída do membro (molde da 925/918). */
+  owner_nome: string;
+  /**
+   * ⚠️ Nulo é caso normal, não defeito: apagar contato faz SET NULL aqui, e
+   * reunião interna nasce sem cliente.
+   */
+  contact_id: string | null;
+  contato_nome: string | null;
+  conversation_id: string | null;
+  /** Por onde avisar o cliente. Usado a partir da Fase 2. */
+  channel_id: string | null;
+  titulo: string;
+  descricao: string | null;
+  /** Sala física ou link de videochamada — texto livre. */
+  local: string | null;
+  tipo: MeetingType;
+  /** Instantes, sempre com fuso. Ver `src/lib/agenda/fuso.ts`. */
+  starts_at: string;
+  ends_at: string;
+  status: MeetingStatus;
+  /**
+   * Fase 4. Nascem nulas e ninguém escreve nelas até a integração com o Google
+   * existir.
+   */
+  google_event_id: string | null;
+  google_calendar_id: string | null;
+  google_sincronizado_em: string | null;
+  google_erro: string | null;
+  created_by: string | null;
+  autor_nome: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Uma FAIXA de atendimento de um advogado num dia da semana. "Seg a sex, 9h–12h
+ * e 14h–18h" são dez linhas destas.
+ */
+export interface Availability {
+  id: string;
+  account_id: string;
+  user_id: string;
+  /** 0 = domingo, 6 = sábado — mesma convenção de `Date.getDay()`. */
+  dia_da_semana: number;
+  /** `HH:MM:SS` no fuso de `timezone`, nunca um instante. */
+  hora_inicio: string;
+  hora_fim: string;
+  /**
+   * ⚠️ Nunca implícito. O contêiner roda em UTC; sem esta coluna "9h" viraria
+   * 6h em Brasília.
+   */
+  timezone: string;
+  duracao_minutos: number;
+  intervalo_minutos: number;
+  /** Usados a partir da Fase 2, quando o cliente escolhe sozinho. */
+  antecedencia_minima_horas: number;
+  janela_maxima_dias: number;
+  ativo: boolean;
+  created_at: string;
+  updated_at: string;
+}
