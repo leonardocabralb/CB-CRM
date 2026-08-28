@@ -230,7 +230,10 @@ export function useTarefas(visao: VisaoDeTarefas): TarefasDaTela {
     concluidas,
     carregando,
     falhou,
-    pendentesTruncadas: pendentes.length >= TETO_PENDENTES,
+    // ⚠️ Comparado com o TOTAL da conta (`count: exact`), não com o teto: com
+    // exatamente 500 pendentes, `length >= TETO` acusaria corte onde nada foi
+    // cortado — o aviso de lista incompleta em cima de uma lista completa.
+    pendentesTruncadas: totalPendentes > pendentes.length,
     totalPendentes,
     totalConcluidas,
     temMaisConcluidas: concluidas.length < totalConcluidas,

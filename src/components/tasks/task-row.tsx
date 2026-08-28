@@ -103,11 +103,15 @@ export function TaskRow({
   const ocupada = acoes.ocupada === tarefa.id;
   const hora = horaParaExibir(tarefa.vence_as);
 
+  // O ano só aparece quando NÃO é o corrente: "05 de jan." numa linha lida em
+  // dezembro é ambíguo — e prazo de escritório de advocacia cruza ano.
+  const mostrarAno =
+    tarefa.vence_em.slice(0, 4) !== String(new Date().getFullYear());
   const dataFormatada = dataParaExibir(tarefa.vence_em).toLocaleDateString(
     // ⚠️ `undefined` = locale do navegador. Fixar `'en-US'` faria a data sair
     // em inglês com o app em português — regra do CLAUDE.md.
     undefined,
-    { day: '2-digit', month: 'short' },
+    { day: '2-digit', month: 'short', ...(mostrarAno ? { year: 'numeric' } : {}) },
   );
 
   return (

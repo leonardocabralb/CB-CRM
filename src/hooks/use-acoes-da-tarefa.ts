@@ -170,6 +170,11 @@ export function useAcoesDaTarefa(aoMudar: () => void): AcoesDaTarefa {
 
   const apagar = useCallback(
     async (tarefa: Task) => {
+      // ⚠️ Mesma convenção do cancelar da agendada (`use-acoes-da-agendada`):
+      // apagar é irreversível e mora num menu onde o item vizinho é inofensivo
+      // — sem a pergunta, um clique 20px abaixo do pretendido some com a
+      // tarefa de outra pessoa sem deixar rastro na tela.
+      if (!window.confirm(t('deleteConfirm', { titulo: tarefa.titulo }))) return;
       setOcupada(tarefa.id);
       try {
         const res = await fetch(`/api/cb/tasks/${tarefa.id}`, { method: 'DELETE' });

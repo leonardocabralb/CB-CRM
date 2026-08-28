@@ -2627,6 +2627,7 @@
     "replyCreatorGone": "Quem encaminhou esta tarefa não está mais na conta, então não há para quem responder.",
     "emptyForContact": "Nenhuma tarefa para este cliente ainda.",
     "showDone": "Ver {count} concluída(s)",
-    "openCount": "{count, plural, =1 {1 tarefa aberta} other {# tarefas abertas}}"
+    "openCount": "{count, plural, =1 {1 tarefa aberta} other {# tarefas abertas}}",
+    "deleteConfirm": "Excluir \"{titulo}\"? Isso não pode ser desfeito."
   }
 }

@@ -2627,6 +2627,7 @@
     "replyCreatorGone": "Whoever assigned this task is no longer on the account, so there is nobody to reply to.",
     "emptyForContact": "No tasks for this client yet.",
     "showDone": "Show {count} done",
-    "openCount": "{count, plural, =1 {1 open task} other {# open tasks}}"
+    "openCount": "{count, plural, =1 {1 open task} other {# open tasks}}",
+    "deleteConfirm": "Delete \"{titulo}\"? This cannot be undone."
   }
 }
