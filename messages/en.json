@@ -593,6 +593,7 @@
         "notes": "Notes",
         "custom": "Custom Fields",
         "deals": "Deals",
+        "tasks": "Tasks",
         "tags": "Tags",
         "noTags": "No tags",
         "noDeals": "No deals",
@@ -2623,6 +2624,9 @@
     "actionFailed": "Could not complete the action.",
     "deleteFailed": "Could not delete the task.",
     "savedButNotNotified": "Saved, but we could not notify your teammate.",
-    "replyCreatorGone": "Whoever assigned this task is no longer on the account, so there is nobody to reply to."
+    "replyCreatorGone": "Whoever assigned this task is no longer on the account, so there is nobody to reply to.",
+    "emptyForContact": "No tasks for this client yet.",
+    "showDone": "Show {count} done",
+    "openCount": "{count, plural, =1 {1 open task} other {# open tasks}}"
   }
 }

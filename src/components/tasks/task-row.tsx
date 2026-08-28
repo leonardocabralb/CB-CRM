@@ -28,6 +28,7 @@ import {
   Plus,
   Star,
   Trash2,
+  User,
 } from 'lucide-react';
 
 import { Checkbox } from '@/components/ui/checkbox';
@@ -39,19 +40,31 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { TarefaNaTela } from '@/hooks/use-tarefas';
+import type { Task } from '@/types';
 import type { AcoesDaTarefa } from '@/hooks/use-acoes-da-tarefa';
 import { podeNaTarefa, type AtorDaTarefa } from '@/lib/tasks/permissoes';
 import { dataParaExibir, horaJaPassou, horaParaExibir } from '@/lib/tasks/prazo';
 import { cn } from '@/lib/utils';
 
+/**
+ * A linha aceita a tarefa CRUA ou a enriquecida.
+ *
+ * ⚠️ Na ficha do cliente e na conversa não há embed de contato nem conversa
+ * derivada — quem chama já está dentro do cliente e liga `ocultarCliente`.
+ * Exigir os dois campos ali obrigaria a buscar (e a inventar) informação que
+ * aquela tela não mostra.
+ */
+export type TarefaDaLinha = Task &
+  Partial<Pick<TarefaNaTela, 'contact' | 'conversation_id'>>;
+
 export interface TaskRowProps {
-  tarefa: TarefaNaTela;
+  tarefa: TarefaDaLinha;
   ator: AtorDaTarefa;
   acoes: AcoesDaTarefa;
   /** Abre o formulário em modo edição. */
-  aoEditar: (t: TarefaNaTela) => void;
+  aoEditar: (t: TarefaDaLinha) => void;
   /** Abre o formulário para criar a partir desta (`resposta` ou desdobramento). */
-  aoDerivar: (t: TarefaNaTela, tipo: 'tarefa' | 'resposta') => void;
+  aoDerivar: (t: TarefaDaLinha, tipo: 'tarefa' | 'resposta') => void;
   /** Esconde o nome do cliente — a ficha e a conversa já dizem de quem é. */
   ocultarCliente?: boolean;
 }
@@ -154,9 +167,11 @@ export function TaskRow({
 
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
           {!ocultarCliente ? (
-            // Sem conversa o nome vira texto simples: cliente cadastrado à mão
-            // que nunca trocou mensagem não tem fio para abrir, e um link que
-            // não leva a lugar nenhum é pior que nenhum link.
+            // ⚠️ Dois destinos, e o segundo não é consolo: cliente cadastrado à
+            // mão que nunca trocou mensagem não TEM conversa para abrir, e a
+            // ficha é o lugar certo para ele. Sem o segundo caminho, a linha
+            // ficaria sem clique justamente para o cliente sobre o qual alguém
+            // criou uma tarefa antes do primeiro contato.
             tarefa.conversation_id ? (
               <Link
                 href={`/inbox?c=${tarefa.conversation_id}`}
@@ -166,9 +181,13 @@ export function TaskRow({
                 {tarefa.contact?.name || tarefa.contact?.phone || t('unknownContact')}
               </Link>
             ) : (
-              <span className="text-foreground">
+              <Link
+                href={`/contacts?contact=${tarefa.contact_id}`}
+                className="inline-flex items-center gap-1 text-foreground hover:underline"
+              >
+                <User className="size-3" />
                 {tarefa.contact?.name || tarefa.contact?.phone || t('unknownContact')}
-              </span>
+              </Link>
             )
           ) : null}
 

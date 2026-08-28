@@ -151,11 +151,15 @@ export function compararConcluidas(a: Task, b: Task): number {
  * Devolve os quatro sempre, inclusive vazios: a tela decide o que esconder, e
  * um grupo ausente do objeto obrigaria toda leitura a testar `undefined`.
  */
-export function agruparPorPrazo(
-  tarefas: readonly Task[],
+// ⚠️ GENÉRICA em `T extends Task` de propósito: a tela passa tarefas
+// ENRIQUECIDAS (com o contato embutido e a conversa derivada), e um retorno
+// fixo em `Task` apagaria esses campos — a lista então não saberia mais o nome
+// do cliente que acabou de carregar.
+export function agruparPorPrazo<T extends Task>(
+  tarefas: readonly T[],
   agora: Date,
-): Record<GrupoDeTarefas, Task[]> {
-  const saida: Record<GrupoDeTarefas, Task[]> = {
+): Record<GrupoDeTarefas, T[]> {
+  const saida: Record<GrupoDeTarefas, T[]> = {
     vencidas: [],
     hoje: [],
     a_vencer: [],
@@ -167,4 +171,35 @@ export function agruparPorPrazo(
   saida.a_vencer.sort(compararPendentes);
   saida.concluidas.sort(compararConcluidas);
   return saida;
+}
+
+/**
+ * `YYYY-MM-DD` como um `Date` à meia-noite LOCAL, pronto para
+ * `toLocaleDateString`.
+ *
+ * ⚠️ Existe para que nenhuma tela precise lembrar de escrever
+ * `new Date(vence_em)` — que é a armadilha documentada no CLAUDE.md: a string
+ * sem hora é lida como meia-noite UTC e, no Brasil, o dia exibido volta um.
+ * Uma tarefa marcada para o dia 5 apareceria como "4 de agosto" na lista, e a
+ * conta que a tela faz para dizer "vencida" continuaria certa — o que é pior,
+ * porque só o número na tela estaria errado e ninguém desconfiaria da lógica.
+ *
+ * A construção por componentes não é ambígua: `new Date(2026, 7, 5)` é sempre
+ * 5 de agosto no fuso de quem lê.
+ */
+export function dataParaExibir(vence_em: string): Date {
+  const [ano, mes, dia] = vence_em.split('-').map(Number);
+  return new Date(ano, mes - 1, dia);
+}
+
+/**
+ * `HH:MM:SS` (ou `HH:MM`) reduzido ao que se mostra: `HH:MM`.
+ *
+ * Devolve `null` quando não há hora — tarefa sem hora vale o dia inteiro, e a
+ * tela omite o trecho em vez de escrever "00:00", que seria uma hora que
+ * ninguém marcou.
+ */
+export function horaParaExibir(vence_as: string | null): string | null {
+  if (!vence_as) return null;
+  return vence_as.slice(0, 5);
 }

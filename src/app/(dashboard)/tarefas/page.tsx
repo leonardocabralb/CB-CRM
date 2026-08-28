@@ -22,15 +22,14 @@ import { AlertTriangle, ListTodo, Loader2, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { TaskForm } from '@/components/tasks/task-form';
-import { TaskGroupHeading, TaskRow } from '@/components/tasks/task-row';
+import {
+  TaskGroupHeading,
+  TaskRow,
+  type TarefaDaLinha,
+} from '@/components/tasks/task-row';
 import { useAcoesDaTarefa } from '@/hooks/use-acoes-da-tarefa';
 import { useAuth } from '@/hooks/use-auth';
-import {
-  useTarefas,
-  VISOES,
-  type TarefaNaTela,
-  type VisaoDeTarefas,
-} from '@/hooks/use-tarefas';
+import { useTarefas, VISOES, type VisaoDeTarefas } from '@/hooks/use-tarefas';
 import { agruparPorPrazo } from '@/lib/tasks/prazo';
 import { cn } from '@/lib/utils';
 
@@ -54,17 +53,17 @@ export default function TarefasPage() {
   // mesmo tempo — e duas caixas abertas sobre a mesma tarefa é estado sem
   // significado.
   const [form, setForm] = useState<
-    | { modo: 'editar'; tarefa: TarefaNaTela }
-    | { modo: 'derivar'; pai: TarefaNaTela; tipo: 'tarefa' | 'resposta' }
+    | { modo: 'editar'; tarefa: TarefaDaLinha }
+    | { modo: 'derivar'; pai: TarefaDaLinha; tipo: 'tarefa' | 'resposta' }
     | null
   >(null);
 
-  const aoEditar = useCallback((tarefa: TarefaNaTela) => {
+  const aoEditar = useCallback((tarefa: TarefaDaLinha) => {
     setForm({ modo: 'editar', tarefa });
   }, []);
 
   const aoDerivar = useCallback(
-    (pai: TarefaNaTela, tipo: 'tarefa' | 'resposta') => {
+    (pai: TarefaDaLinha, tipo: 'tarefa' | 'resposta') => {
       setForm({ modo: 'derivar', pai, tipo });
     },
     [],

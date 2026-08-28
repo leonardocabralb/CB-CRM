@@ -4,9 +4,11 @@ import {
   agruparPorPrazo,
   compararConcluidas,
   compararPendentes,
+  dataParaExibir,
   diaLocal,
   grupoDaTarefa,
   horaJaPassou,
+  horaParaExibir,
   situacaoDoPrazo,
 } from './prazo';
 import type { Task } from '@/types';
@@ -270,5 +272,43 @@ describe('agruparPorPrazo', () => {
     const lista = [tarefa('b', '2026-09-01'), tarefa('a', '2026-08-01')];
     agruparPorPrazo(lista, agora);
     expect(lista.map((t) => t.id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('dataParaExibir', () => {
+  it('devolve o dia certo no fuso local', () => {
+    // ⚠️ O contraste que justifica a função: `new Date('2026-08-05')` é
+    // meia-noite UTC e, em qualquer fuso a oeste de Greenwich, `getDate()`
+    // devolve 4. A lista mostraria "4 de agosto" para uma tarefa do dia 5.
+    const d = dataParaExibir('2026-08-05');
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(7); // agosto
+    expect(d.getDate()).toBe(5);
+  });
+
+  it('não retrocede no primeiro dia do mês', () => {
+    // O caso em que o erro de fuso é mais visível: vira mês E ano.
+    const d = dataParaExibir('2026-01-01');
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(0);
+    expect(d.getDate()).toBe(1);
+  });
+
+  it('sobrevive à ida e volta por diaLocal', () => {
+    for (const iso of ['2026-01-01', '2026-08-05', '2026-12-31']) {
+      expect(diaLocal(dataParaExibir(iso))).toBe(iso);
+    }
+  });
+});
+
+describe('horaParaExibir', () => {
+  it('corta os segundos', () => {
+    expect(horaParaExibir('14:30:00')).toBe('14:30');
+    expect(horaParaExibir('09:05')).toBe('09:05');
+  });
+
+  it('sem hora é null, não "00:00"', () => {
+    // Escrever uma hora que ninguém marcou seria inventar informação.
+    expect(horaParaExibir(null)).toBeNull();
   });
 });

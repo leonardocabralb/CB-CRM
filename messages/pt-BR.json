@@ -586,6 +586,7 @@
         "notes": "Notas",
         "custom": "Campos personalizados",
         "deals": "Negócios",
+        "tasks": "Tarefas",
         "tags": "Etiquetas",
         "noTags": "Sem etiquetas",
         "noDeals": "Sem negócios",
@@ -2623,6 +2624,9 @@
     "actionFailed": "Não foi possível concluir a ação.",
     "deleteFailed": "Não foi possível excluir a tarefa.",
     "savedButNotNotified": "Salvei, mas não consegui avisar seu colega.",
-    "replyCreatorGone": "Quem encaminhou esta tarefa não está mais na conta, então não há para quem responder."
+    "replyCreatorGone": "Quem encaminhou esta tarefa não está mais na conta, então não há para quem responder.",
+    "emptyForContact": "Nenhuma tarefa para este cliente ainda.",
+    "showDone": "Ver {count} concluída(s)",
+    "openCount": "{count, plural, =1 {1 tarefa aberta} other {# tarefas abertas}}"
   }
 }
