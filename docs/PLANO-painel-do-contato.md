@@ -264,6 +264,21 @@ botão, trilha com "moveu"+"ganhou" no MESMO segundo (um update) · mover→
 neutra: selo FICOU · Reabrir: open · etiqueta da automação removida ·
 1945 testes · typecheck limpo · lint 0 erros · i18n-parity OK.
 
+**Auditoria completa (pedida pelo operador, 2026-08-29, pós-Fase 5):**
+CI replayou 948+949+950 em banco LIMPO ✓ · schema de produção 13/13 contra os
+arquivos (colunas, CHECKs, gatilhos, privilégios, ordem dos BEFORE em `deals`)
+✓ · raio de impacto medido: **fluxos** e **IA** têm ZERO ponto de contato com
+campos/negócios/nome; **motor de automações** — `update_contact_field` lista
+os 13 campos (traqueamento preenchível por automação HOJE), lembrete continua
+só-datetime, `create_deal` não fixa status (nasce carimbado se a etapa de
+entrada for marcada — config, não bug); **933** já separava etapa/status em
+DOIS eventos no mesmo save, então automação `deal_status_changed` dispara
+junto da de etapa, cada uma no seu tipo; **broadcasts** — filtros/merge-tags
+ganham os campos novos, valor segue TEXT; **API v1** — PATCH é um update só,
+etapa marcada vence. **UM VÃO ACHADO E CORRIGIDO:** o otimismo do arrasto no
+quadro só refletia `stage_id` — o selo Ganho não aparecia sem reload; agora o
+`handleDealMoved` usa o espelho (`statusAoEntrarNaEtapa`), verificado ao vivo.
+
 **Incidente no meio:** o deploy do #57 falhou no SSH da VPS (`dial tcp :22:
 i/o timeout` — runner do GitHub não alcançou a porta; CI e imagem OK).
 Retry do job resolveu. Se repetir, olhar firewall/rede da VPS, não o código.
