@@ -623,6 +623,26 @@ function InboxPageInner() {
     [activeConversation?.id]
   );
 
+  /**
+   * O painel renomeou o contato (Fase 2). A página é dona do `activeContact`
+   * e da lista — espelha o patch nos três lugares (contato ativo, contato
+   * embutido em CADA conversa daquele cliente, e o da conversa ativa), senão
+   * o nome novo aparece no painel e continua velho no cabeçalho do fio e na
+   * lista até o próximo refetch.
+   */
+  const handleContactUpdated = useCallback((patch: Partial<Contact>) => {
+    if (!patch.id) return;
+    setActiveContact((prev) =>
+      prev && prev.id === patch.id ? { ...prev, ...patch } : prev
+    );
+    const aplicar = (c: Conversation): Conversation =>
+      c.contact && c.contact.id === patch.id
+        ? { ...c, contact: { ...c.contact, ...patch } }
+        : c;
+    setConversations((prev) => prev.map(aplicar));
+    setActiveConversation((prev) => (prev ? aplicar(prev) : prev));
+  }, []);
+
   // On mobile (<lg) we show a SINGLE pane — either the list or the
   // thread — rather than cramming both side-by-side. Selecting a
   // conversation slides the thread in; the thread's back button pops
@@ -730,6 +750,7 @@ function InboxPageInner() {
                 channelId={activeConversation?.channel_id ?? null}
                 resyncToken={resyncToken}
                 onClose={handleToggleContactPanel}
+                onContactUpdated={handleContactUpdated}
               />
             )}
           </div>

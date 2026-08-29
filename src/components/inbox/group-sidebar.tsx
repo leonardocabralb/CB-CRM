@@ -18,8 +18,6 @@ import {
   Pencil,
   Megaphone,
   ShieldCheck,
-  Check,
-  X,
   PanelRightClose,
 } from "lucide-react";
 
@@ -27,8 +25,8 @@ import type { CbGroup } from "@/types";
 import { useChannels } from "@/hooks/use-channels";
 import { nomeDoGrupo, podeRenomearNoWhatsApp } from "@/lib/cb-groups/display";
 import { TituloDeSecao } from "@/components/inbox/painel/painel-do-contato";
+import { LinhaDeEdicao } from "@/components/inbox/painel/linha-de-edicao";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -292,40 +290,6 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
     <div className="mt-6">
       <TituloDeSecao className="mb-2">{titulo}</TituloDeSecao>
       {children}
-    </div>
-  );
-}
-
-function LinhaDeEdicao({
-  valor,
-  onChange,
-  placeholder,
-  salvando,
-  onSalvar,
-  onCancelar,
-}: {
-  valor: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-  salvando: boolean;
-  onSalvar: () => void;
-  onCancelar: () => void;
-}) {
-  return (
-    <div className="flex items-center gap-1">
-      <Input
-        value={valor}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="h-8 text-sm"
-        autoFocus
-      />
-      <Button size="icon" variant="ghost" className="h-8 w-8" disabled={salvando} onClick={onSalvar}>
-        <Check className="h-4 w-4" />
-      </Button>
-      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onCancelar}>
-        <X className="h-4 w-4" />
-      </Button>
     </div>
   );
 }

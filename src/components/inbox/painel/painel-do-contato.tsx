@@ -21,13 +21,19 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useChannels } from "@/hooks/use-channels";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
+import { useCan } from "@/hooks/use-can";
 import { toast } from "sonner";
 import { ChannelCell } from "@/components/channels/channel-badge";
 import { ActivityHistory } from "@/components/lead-events/activity-history";
 import { ContactTasks } from "@/components/tasks/contact-tasks";
+import { CustomFieldsManager } from "@/components/contacts/custom-fields-manager";
+import { CampoPersonalizadoInput } from "@/components/contacts/campo-personalizado-input";
+import { LinhaDeEdicao } from "@/components/inbox/painel/linha-de-edicao";
+import { addContactTag, deleteContactTag } from "@/lib/contacts/tag-api";
+import { salvarValoresDoContato } from "@/lib/contacts/custom-values";
 import { formatCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
-import type { Contact, Deal, ConversationNote, Tag } from "@/types";
+import type { Contact, CustomField, Deal, ConversationNote, Tag } from "@/types";
 import {
   Mail,
   Copy,
@@ -41,9 +47,19 @@ import {
   Building2,
   History,
   ListTodo,
+  Loader2,
   PanelRightClose,
+  Pencil,
+  Save,
+  Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -75,6 +91,13 @@ export interface PainelDoContatoProps {
    * controles, e o operador não o achava.
    */
   onClose?: () => void;
+  /**
+   * Avisa a página que o CONTATO mudou (ex.: nome renomeado aqui). A página
+   * é dona do `activeContact` e da lista de conversas — sem o aviso, o nome
+   * novo apareceria no painel e continuaria velho no cabeçalho do fio e na
+   * lista até o próximo refetch.
+   */
+  onContactUpdated?: (patch: Partial<Contact>) => void;
 }
 
 export function PainelDoContato({
@@ -83,17 +106,33 @@ export function PainelDoContato({
   channelId,
   resyncToken = 0,
   onClose,
+  onContactUpdated,
 }: PainelDoContatoProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
   const tCanais = useTranslations("Channels");
   const { channels } = useChannels();
+  // O mesmo gate da RLS: `agent`+ escreve contato/etiqueta/valores ("viewer"
+  // só olha). O catálogo de CAMPOS é admin — gate separado, mais abaixo.
+  const podeEditar = useCan("send-messages");
+  const podeGerirCampos = useCan("edit-settings");
 
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+
+  // ---- Fase 2: edição dentro da conversa --------------------------------
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [tagOcupada, setTagOcupada] = useState<string | null>(null);
+  const [editandoNome, setEditandoNome] = useState(false);
+  const [nomeEdit, setNomeEdit] = useState("");
+  const [salvandoNome, setSalvandoNome] = useState(false);
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  const [customValues, setCustomValues] = useState<Record<string, string>>({});
+  const [salvandoCampos, setSalvandoCampos] = useState(false);
+  const [gerirCamposAberto, setGerirCamposAberto] = useState(false);
 
   /**
    * ⚠️ O rascunho MORRE ao trocar de conversa. Mesmo perigo, mesma correção
@@ -147,19 +186,27 @@ export function PainelDoContato({
 
     const supabase = createClient();
 
-    // Fetch deals and tags in parallel. As anotações saem daqui de propósito:
-    // vêm do `useConversationNotes` acima, que traz realtime junto.
-    const [dealsRes, tagsRes] = await Promise.all([
-      supabase
-        .from("deals")
-        .select("*, stage:pipeline_stages(*)")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("contact_tags")
-        .select("id, tag_id, tags(*)")
-        .eq("contact_id", contact.id),
-    ]);
+    // Tudo em paralelo, NO TOPO do painel (trocar de aba não refaz query).
+    // As anotações saem daqui de propósito: vêm do `useConversationNotes`
+    // acima, que traz realtime junto.
+    const [dealsRes, tagsRes, allTagsRes, fieldsRes, valuesRes] =
+      await Promise.all([
+        supabase
+          .from("deals")
+          .select("*, stage:pipeline_stages(*)")
+          .eq("contact_id", contact.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("contact_tags")
+          .select("id, tag_id, tags(*)")
+          .eq("contact_id", contact.id),
+        supabase.from("tags").select("*").order("name"),
+        supabase.from("custom_fields").select("*").order("field_name"),
+        supabase
+          .from("contact_custom_values")
+          .select("*")
+          .eq("contact_id", contact.id),
+      ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
     if (tagsRes.data) {
@@ -171,6 +218,13 @@ export function PainelDoContato({
         }));
       setTags(mapped);
     }
+    if (allTagsRes.data) setAllTags(allTagsRes.data);
+    if (fieldsRes.data) setCustomFields(fieldsRes.data as CustomField[]);
+    if (valuesRes.data) {
+      const map: Record<string, string> = {};
+      for (const v of valuesRes.data) map[v.custom_field_id] = v.value ?? "";
+      setCustomValues(map);
+    }
   }, [contact]);
 
   // Load on contact change. setDeals/setTags run inside async
@@ -178,6 +232,81 @@ export function PainelDoContato({
   useEffect(() => {
     fetchContactData();
   }, [fetchContactData]);
+
+  // Trocar de conversa NO MEIO de uma edição de nome descartaria o texto no
+  // contato errado — mesma classe de bug do rascunho de nota, mesma guarda.
+  useEffect(() => {
+    setEditandoNome(false);
+  }, [contact?.id]);
+
+  /**
+   * Renomear o contato — escrita direta sob RLS (`agent`+), como as telas de
+   * contato já fazem. O aviso à página (`onContactUpdated`) é o que propaga o
+   * nome novo para o cabeçalho do fio e a lista de conversas sem refetch.
+   */
+  const salvarNome = useCallback(async () => {
+    if (!contact) return;
+    const nome = nomeEdit.trim();
+    setSalvandoNome(true);
+    const supabase = createClient();
+    // Nome vazio volta a NULL — a ficha então mostra o telefone, que é o
+    // comportamento de contato sem nome no resto do app.
+    const { error } = await supabase
+      .from("contacts")
+      .update({ name: nome === "" ? null : nome })
+      .eq("id", contact.id);
+    setSalvandoNome(false);
+    if (error) {
+      toast.error(tSidebar("nameSaveError"));
+      return;
+    }
+    setEditandoNome(false);
+    onContactUpdated?.({ id: contact.id, name: nome === "" ? null : nome } as Partial<Contact>);
+  }, [contact, nomeEdit, onContactUpdated, tSidebar]);
+
+  /**
+   * ⚠️ Etiqueta SÓ pelo `tag-api` (rota `/api/contacts/[id]/tags`): é o único
+   * caminho que dispara a automação `tag_added` e valida a posse. Um insert
+   * direto em `contact_tags` criaria etiqueta sem automação — e o evento da
+   * trilha (912) viria do trigger igual, mascarando a diferença.
+   */
+  const toggleTag = useCallback(
+    async (tag: Tag) => {
+      if (!contact) return;
+      const temTag = tags.some((t) => t.id === tag.id);
+      setTagOcupada(tag.id);
+      try {
+        if (temTag) {
+          await deleteContactTag(contact.id, tag.id);
+          setTags((prev) => prev.filter((t) => t.id !== tag.id));
+        } else {
+          await addContactTag(contact.id, tag.id);
+          // `contact_tag_id` de verdade só viria num refetch; para chave de
+          // lista o id da etiqueta serve (UNIQUE por contato+etiqueta).
+          setTags((prev) => [...prev, { ...tag, contact_tag_id: tag.id }]);
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : tSidebar("tagError"));
+      } finally {
+        setTagOcupada(null);
+      }
+    },
+    [contact, tags, tSidebar],
+  );
+
+  /** Valores dos campos — upsert compartilhado (nunca delete-all). */
+  const salvarCampos = useCallback(async () => {
+    if (!contact) return;
+    setSalvandoCampos(true);
+    const erro = await salvarValoresDoContato(
+      createClient(),
+      contact.id,
+      customValues,
+    );
+    setSalvandoCampos(false);
+    if (erro) toast.error(tSidebar("fieldsSaveError"));
+    else toast.success(tSidebar("fieldsSaved"));
+  }, [contact, customValues, tSidebar]);
 
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
@@ -266,21 +395,52 @@ export function PainelDoContato({
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-semibold text-foreground">
-            {displayName}
-          </h3>
-          <button
-            onClick={handleCopyPhone}
-            className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-            title={contact.phone}
-          >
-            <span className="truncate">{contact.phone}</span>
-            {copied ? (
-              <Check className="h-3 w-3 shrink-0 text-primary" />
-            ) : (
-              <Copy className="h-3 w-3 shrink-0" />
-            )}
-          </button>
+          {editandoNome ? (
+            <LinhaDeEdicao
+              valor={nomeEdit}
+              onChange={setNomeEdit}
+              placeholder={contact.phone}
+              salvando={salvandoNome}
+              onSalvar={() => void salvarNome()}
+              onCancelar={() => setEditandoNome(false)}
+            />
+          ) : (
+            <>
+              {/* Clicar no nome edita (pedido direto do operador). O lápis só
+                  aparece no hover para não poluir, mas o alvo de clique é o
+                  nome INTEIRO — um ícone de 12px sozinho seria mira de dardo. */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!podeEditar) return;
+                  setNomeEdit(contact.name ?? "");
+                  setEditandoNome(true);
+                }}
+                disabled={!podeEditar}
+                title={podeEditar ? tSidebar("editName") : undefined}
+                className="group/nome flex w-full min-w-0 items-center gap-1 text-left"
+              >
+                <h3 className="truncate text-sm font-semibold text-foreground">
+                  {displayName}
+                </h3>
+                {podeEditar && (
+                  <Pencil className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/nome:opacity-100" />
+                )}
+              </button>
+              <button
+                onClick={handleCopyPhone}
+                className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                title={contact.phone}
+              >
+                <span className="truncate">{contact.phone}</span>
+                {copied ? (
+                  <Check className="h-3 w-3 shrink-0 text-primary" />
+                ) : (
+                  <Copy className="h-3 w-3 shrink-0" />
+                )}
+              </button>
+            </>
+          )}
         </div>
       </CabecalhoDoPainel>
 
@@ -351,11 +511,52 @@ export function PainelDoContato({
             <div className="my-4 border-t border-border" />
           )}
 
-          {/* Etiquetas */}
+          {/* Etiquetas — clicar numa aplicada REMOVE; o "+" abre o catálogo
+              da conta para aplicar. Criar etiqueta nova fica nas telas de
+              Contatos/Configurações (catálogo é admin; aplicar é agent). */}
           <div>
-            <TituloDeSecao icon={<TagIcon className="h-3 w-3" />}>
-              {tSidebar("tags")}
-            </TituloDeSecao>
+            <div className="flex items-center justify-between">
+              <TituloDeSecao icon={<TagIcon className="h-3 w-3" />}>
+                {tSidebar("tags")}
+              </TituloDeSecao>
+              {podeEditar && allTags.length > 0 && (
+                <Popover>
+                  <PopoverTrigger
+                    className="flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    aria-label={tSidebar("addTag")}
+                  >
+                    <Plus className="h-3 w-3" />
+                    {tSidebar("addTag")}
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 p-2" sideOffset={6}>
+                    <div className="flex max-h-56 flex-wrap gap-1 overflow-y-auto">
+                      {allTags.map((tag) => {
+                        const aplicada = tags.some((t) => t.id === tag.id);
+                        return (
+                          <button
+                            key={tag.id}
+                            type="button"
+                            disabled={tagOcupada === tag.id}
+                            onClick={() => void toggleTag(tag)}
+                            className={cn(
+                              "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-opacity disabled:opacity-50",
+                              !aplicada && "opacity-50 hover:opacity-100",
+                            )}
+                            style={{
+                              backgroundColor: `${tag.color}20`,
+                              color: tag.color,
+                            }}
+                          >
+                            {aplicada && <Check className="h-2.5 w-2.5" />}
+                            {tag.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
             <div className="mt-2 flex flex-wrap gap-1">
               {tags.length === 0 ? (
                 <p className="px-1 text-xs text-muted-foreground">
@@ -363,16 +564,20 @@ export function PainelDoContato({
                 </p>
               ) : (
                 tags.map((tag) => (
-                  <span
+                  <button
                     key={tag.contact_tag_id}
-                    className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                    type="button"
+                    disabled={!podeEditar || tagOcupada === tag.id}
+                    onClick={() => void toggleTag(tag)}
+                    title={podeEditar ? tSidebar("removeTag") : undefined}
+                    className="rounded-full px-2 py-0.5 text-[10px] font-medium transition-opacity enabled:hover:opacity-70"
                     style={{
                       backgroundColor: `${tag.color}20`,
                       color: tag.color,
                     }}
                   >
                     {tag.name}
-                  </span>
+                  </button>
                 ))
               )}
             </div>
@@ -414,6 +619,71 @@ export function PainelDoContato({
                     </div>
                   </div>
                 ))
+              )}
+            </div>
+          </div>
+
+          <div className="my-4 border-t border-border" />
+
+          {/* Campos personalizados (948) — visíveis e editáveis DE DENTRO da
+              conversa, que era a queixa: existiam só na ficha de /contacts.
+              O catálogo (criar/renomear campo) abre o MESMO diálogo daquela
+              tela; fechar o diálogo refaz a busca para o painel enxergar o
+              campo recém-criado. */}
+          <div>
+            <div className="flex items-center justify-between">
+              <TituloDeSecao icon={<Settings2 className="h-3 w-3" />}>
+                {tSidebar("customFields")}
+              </TituloDeSecao>
+              {podeGerirCampos && (
+                <button
+                  type="button"
+                  onClick={() => setGerirCamposAberto(true)}
+                  className="flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Settings2 className="h-3 w-3" />
+                  {tSidebar("manageFields")}
+                </button>
+              )}
+            </div>
+            <div className="mt-2 space-y-3">
+              {customFields.length === 0 ? (
+                <p className="px-1 text-xs text-muted-foreground">
+                  {tSidebar("noFields")}
+                </p>
+              ) : (
+                <>
+                  {customFields.map((field) => (
+                    <div key={field.id} className="space-y-1">
+                      <Label className="text-xs capitalize text-muted-foreground">
+                        {field.field_name}
+                      </Label>
+                      <CampoPersonalizadoInput
+                        field={field}
+                        value={customValues[field.id] ?? ""}
+                        onChange={(v) =>
+                          setCustomValues((prev) => ({ ...prev, [field.id]: v }))
+                        }
+                        disabled={!podeEditar}
+                      />
+                    </div>
+                  ))}
+                  {podeEditar && (
+                    <Button
+                      size="sm"
+                      onClick={() => void salvarCampos()}
+                      disabled={salvandoCampos}
+                      className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                    >
+                      {salvandoCampos ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Save className="size-3.5" />
+                      )}
+                      {tSidebar("saveFields")}
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -475,6 +745,19 @@ export function PainelDoContato({
           <ContactTasks contactId={contact.id} />
         </TabsContent>
       </Tabs>
+
+      {/* O gerenciador do CATÁLOGO — o mesmo diálogo da tela de Contatos.
+          Fechar refaz a busca: o campo recém-criado tem de aparecer na seção
+          sem o operador precisar trocar de conversa. */}
+      {podeGerirCampos && (
+        <CustomFieldsManager
+          open={gerirCamposAberto}
+          onOpenChange={(aberto) => {
+            setGerirCamposAberto(aberto);
+            if (!aberto) void fetchContactData();
+          }}
+        />
+      )}
     </div>
   );
 }

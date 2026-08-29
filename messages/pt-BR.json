@@ -388,7 +388,18 @@
       "tabMain": "Principal",
       "tabHistory": "Histórico",
       "tabNotes": "Notas",
-      "tabTasks": "Tarefas"
+      "tabTasks": "Tarefas",
+      "editName": "Editar nome",
+      "nameSaveError": "Não foi possível salvar o nome.",
+      "addTag": "Adicionar",
+      "removeTag": "Clique para remover",
+      "tagError": "Não foi possível atualizar as etiquetas.",
+      "customFields": "Campos personalizados",
+      "manageFields": "Gerenciar",
+      "noFields": "Nenhum campo criado ainda.",
+      "saveFields": "Salvar campos",
+      "fieldsSaved": "Campos salvos.",
+      "fieldsSaveError": "Não foi possível salvar os campos."
     },
     "aiBanner": {
       "pausedTitle": "O assistente de IA está pausado aqui",
@@ -712,7 +723,16 @@
       "toastDeleted": "Campo \"{name}\" excluído.",
       "fieldType": "Tipo",
       "typeText": "Texto",
-      "typeDate": "Data"
+      "typeDate": "Data",
+      "typeSelect": "Lista",
+      "typeNumber": "Número",
+      "fieldKey": "Identificador",
+      "fieldKeyPlaceholder": "identificador_da_api",
+      "toastKeyTaken": "Esse identificador já está em uso.",
+      "optionsLabel": "Opções da lista",
+      "optionsPlaceholder": "Opção A, Opção B",
+      "toastOptionsFailed": "Não foi possível salvar as opções.",
+      "copyKeyTitle": "Copiar identificador"
     }
   },
   "Pipelines": {

@@ -22,8 +22,8 @@
 
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
-| **1** | Casca: largura 360px, sempre montado, botão junto, abas só-ícone | ✅ **feita** (2026-08-29) | nenhuma | `feat/painel-do-contato-fase-1` |
-| **2** | Edição: nome, etiquetas, campos personalizados (+ tipos novos, `field_key`) | ⬜ pendente | `9NN_cb_campos_personalizados` | — |
+| **1** | Casca: largura 360px, sempre montado, botão junto, abas só-ícone | ✅ **feita e mesclada** (PR #54, em produção 2026-08-29) | nenhuma | #54 |
+| **2** | Edição: nome, etiquetas, campos personalizados (+ tipos novos, `field_key`) | ✅ **feita** (2026-08-29) | `948` **aplicada** | `feat/painel-do-contato-fase-2` |
 | **3** | Negócio dentro da conversa (etapa/valor/ganho-perdido) | ⬜ pendente | nenhuma | — |
 
 **Decisões travadas com o operador (2026-08-29):** uma aba "Principal" com
@@ -83,42 +83,55 @@ duas classes na page.
 
 ---
 
-## ⬜ Fase 2 — Edição: nome, etiquetas, campos personalizados
+---
 
-> **Antes de começar: revisar esta seção contra o uso real da Fase 1** e
-> confirmar com o operador que tudo abaixo ainda é necessário.
+## ✅ Fase 2 — Edição (concluída em 2026-08-29)
 
-1. **Nome editável** no cabeçalho do painel: extrair `LinhaDeEdicao` de
-   `group-sidebar.tsx` (já pronta) e gravar `contacts.name` sob RLS.
-2. **Etiquetas editáveis** na aba Principal: chips liga/desliga escrevendo **só**
-   por `addContactTag`/`deleteContactTag` (`src/lib/contacts/tag-api.ts`) — é o
-   único caminho que dispara a automação `tag_added` e valida posse. "Criar
-   etiqueta nova" atrás de `useCan` (RLS: `contact_tags`=agent, `tags`=admin).
-3. **Campos personalizados** na aba Principal + tipos novos:
-   - Migration `9NN_cb_campos_personalizados.sql` (número conferido NA HORA com
-     `ls supabase/migrations/` **e** `list_migrations`): `field_key TEXT` com
-     backfill de `field_name` (minúsculas, sem acento, `_`, dedupe por sufixo) +
-     `UNIQUE (account_id, field_key)`; CHECK de `field_type` em
-     `('text','datetime','select','number')`. Opções da Lista na coluna
-     `field_options JSONB` (existe desde a 001, nunca usada). Todo REVOKE com
-     GRANT de volta; nenhuma conferência que exija dado (regra do banco vazio).
-   - **`value` continua TEXT** para todos os tipos — número/opção são convenção
-     de UI; é o que mantém automações e broadcasts intactos.
-   - Trocar `saveCustomFields` (delete-all + insert, destrutivo,
-     `contact-detail-view.tsx`) por **upsert + delete dos esvaziados** (padrão
-     do motor, `engine.ts:690`).
-   - Campo `datetime` SEMPRE via `paraEntradaLocal`/`deEntradaLocal`
-     (`src/lib/contacts/campo-data.ts`) — senão o lembrete da 935 erra 3h.
-   - Gerenciar campos: o painel abre o MESMO `CustomFieldsManager` num Sheet;
-     ele ganha o campo de chave e o editor de opções.
-   - ⚠️ `field_key` é ADITIVO: automações (`custom:<uuid>`), lembrete e
-     broadcast continuam por UUID. Nenhum consumidor migra.
-4. **Revisão + teste no preview** (1440×900): editar nome, aplicar/remover
-   etiqueta (conferir o evento em `cb_lead_events` via trigger), preencher campo
-   de cada tipo, criar campo com opções. Migration aplicada em **banco vazio**
-   (`supabase db start`) antes do PR; em produção via MCP.
-5. **Atualizar este plano** (mover Fase 2 para ✅ com arquivos/resultado) e
-   revisar a Fase 3 antes de a iniciar.
+**Objetivo:** o painel deixa de ser só-leitura — nome, etiquetas e campos
+personalizados editáveis de dentro da conversa, com identificador estável
+(`field_key`) e os tipos Lista/Número no catálogo.
+
+**Migration `948_cb_campos_personalizados` — APLICADA em produção
+(2026-08-29):** `field_key` NOT NULL + UNIQUE por conta; gatilho BEFORE INSERT
+gera a chave quando ausente (⚠️ deliberado: entre aplicar e o deploy, o código
+VELHO de produção insere campo sem chave — o gatilho cobre a janela, e cobre
+também merges futuros do upstream); CHECK de `field_type` em
+(text, datetime, select, number); opções do `select` na `field_options` JSONB
+(existia desde a 001, nunca usada). Backfill deu chave aos 3 campos reais;
+gatilho testado em produção com rollback proposital (gera, dedupa `_2`,
+normaliza chave explícita).
+
+**Arquivos:**
+
+| Arquivo | O que |
+| --- | --- |
+| `supabase/migrations/948_cb_campos_personalizados.sql` | acima |
+| `src/lib/contacts/chave-do-campo.ts` (+ teste) | gêmeo TS do gerador SQL — 7 pares medidos NO banco fixados em teste de paridade |
+| `src/lib/contacts/custom-values.ts` | `salvarValoresDoContato`: **upsert + delete dos esvaziados** — substitui o delete-all+insert destrutivo |
+| `src/components/contacts/campo-personalizado-input.tsx` | input por tipo (text/datetime/select/number), compartilhado ficha↔painel; `opcoesDoCampo` tolerante a lixo; valor herdado fora da lista continua selecionável |
+| `src/components/contacts/custom-fields-manager.tsx` | chave sugerida em tempo real (para de seguir o nome quando tocada), tipos Lista/Número, editor de opções na criação E por linha, chave copiável por linha, 23505→"identificador já em uso" |
+| `src/components/contacts/contact-detail-view.tsx` | aba de campos usa o input compartilhado + o save por upsert |
+| `src/components/inbox/painel/painel-do-contato.tsx` | nome editável no cabeçalho (clique no nome; gate `send-messages`), etiquetas com popover aplicar/remover (SÓ via `tag-api` — automação `tag_added` preservada), seção CAMPOS com save e "Gerenciar" (admin) abrindo o MESMO diálogo do catálogo (fechar refaz a busca) |
+| `src/components/inbox/painel/linha-de-edicao.tsx` | extraída do group-sidebar (+ Enter/Escape); grupo importa em vez de duplicar |
+| `src/app/(dashboard)/inbox/page.tsx` | `handleContactUpdated` espelha o rename no contato ativo, no fio e na lista sem refetch |
+| `messages/{en,pt-BR}.json` | 12 chaves `Inbox.sidebar.*` + 10 `Contacts.customFields.*` |
+
+**Resultado medido (produção via preview 1440×900, tudo revertido depois):**
+rename propagou às 3 superfícies na hora e foi revertido · etiqueta aplicada →
+`tag_added` origem `usuario` na trilha (trigger 912) → removida · valor salvo
+por upsert e a linha DELETADA ao limpar+salvar · campo Lista criado com chave
+`campo_teste_948` + opções `{Alfa,Beta,Gama}` → apareceu no painel como Select
+→ "Beta" salvo → campo de teste excluído · console limpo pós-restart ·
+typecheck limpo · lint 0 erros (40 avisos, baseline) · **1936 testes** (9 novos)
+· i18n-parity OK.
+
+**Não coberto / notas:** replay local em banco vazio não rodou (Docker
+inexistente nesta máquina) — o CI replaya; a migration só afirma schema e pula
+dados com NOTICE · ⚠️ os 3 campos de data reais são tipados `text` (nasceram
+antes da 935) — o painel os mostra como texto livre, e o gatilho de LEMBRETE
+por data não os enxerga; retipar é decisão do operador (não há editor de tipo,
+de propósito) · única automação viva é `deal_stage_changed` (webhook CB OS) —
+nenhuma em etiqueta, teste de tag foi seguro.
 
 ## ⬜ Fase 3 — O negócio dentro da conversa
 

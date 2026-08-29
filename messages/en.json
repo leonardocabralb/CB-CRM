@@ -395,7 +395,18 @@
       "tabMain": "Main",
       "tabHistory": "History",
       "tabNotes": "Notes",
-      "tabTasks": "Tasks"
+      "tabTasks": "Tasks",
+      "editName": "Edit name",
+      "nameSaveError": "Could not save the name.",
+      "addTag": "Add",
+      "removeTag": "Click to remove",
+      "tagError": "Could not update the tags.",
+      "customFields": "Custom fields",
+      "manageFields": "Manage",
+      "noFields": "No fields created yet.",
+      "saveFields": "Save fields",
+      "fieldsSaved": "Fields saved.",
+      "fieldsSaveError": "Could not save the fields."
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",
@@ -719,7 +730,16 @@
       "toastDeleted": "Deleted \"{name}\".",
       "fieldType": "Type",
       "typeText": "Text",
-      "typeDate": "Date"
+      "typeDate": "Date",
+      "typeSelect": "List",
+      "typeNumber": "Number",
+      "fieldKey": "Identifier",
+      "fieldKeyPlaceholder": "api_identifier",
+      "toastKeyTaken": "This identifier is already in use.",
+      "optionsLabel": "List options",
+      "optionsPlaceholder": "Option A, Option B",
+      "toastOptionsFailed": "Could not save the options.",
+      "copyKeyTitle": "Copy identifier"
     }
   },
   "Pipelines": {
