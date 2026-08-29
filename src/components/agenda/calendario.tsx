@@ -328,7 +328,14 @@ function Cartao({
         // tela fazem parecer que a reunião foi duplicada.
         isDragging && 'opacity-30',
       )}
-      title={`${horaDaReuniao(reuniao.starts_at, FUSO_PADRAO)} · ${reuniao.titulo} · ${reuniao.owner_nome}`}
+      title={[
+        horaDaReuniao(reuniao.starts_at, FUSO_PADRAO),
+        reuniao.titulo,
+        reuniao.contato_nome,
+        reuniao.owner_nome,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
     >
       {conteudo}
     </div>

@@ -2684,7 +2684,13 @@
     "confirmarApagar": "Confirm deletion",
     "apagando": "Deleting…",
     "erroApagar": "Could not delete the meeting.",
-    "todosOsResponsaveis": "All assignees"
+    "todosOsResponsaveis": "All assignees",
+    "cliente": "Client",
+    "buscarCliente": "Search by name or phone…",
+    "nenhumClienteEncontrado": "No client found.",
+    "desvincularCliente": "Unlink client",
+    "abrirConversa": "Open conversation",
+    "abrirFicha": "View profile"
   },
   "Tasks": {
     "title": "Tasks",

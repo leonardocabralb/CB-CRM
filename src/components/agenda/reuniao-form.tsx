@@ -22,9 +22,19 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { FUSO_PADRAO, diaNoFuso, horaNoFuso, paraInstante } from '@/lib/agenda/fuso';
+import Link from 'next/link';
+import { ExternalLink } from 'lucide-react';
+
+import { SeletorDeCliente } from '@/components/agenda/seletor-de-cliente';
 import { useAuth } from '@/hooks/use-auth';
 import { fetchAccountMembers } from '@/lib/account/members';
-import type { AccountMember, Meeting, MeetingStatus, MeetingType } from '@/types';
+import type {
+  AccountMember,
+  Contact,
+  Meeting,
+  MeetingStatus,
+  MeetingType,
+} from '@/types';
 
 /**
  * Criar e editar reunião (migration 945).
@@ -80,6 +90,11 @@ export function ReuniaoForm({
   const [local, setLocal] = useState('');
   const [descricao, setDescricao] = useState('');
 
+  // O cliente da reunião. `travado` quando o formulário foi aberto da ficha
+  // dele — ali o vínculo é o motivo de a reunião existir.
+  const [clienteId, setClienteId] = useState<string | null>(null);
+  const [clienteNome, setClienteNome] = useState<string | null>(null);
+
   const [salvando, setSalvando] = useState(false);
   const [apagando, setApagando] = useState(false);
   const [confirmandoApagar, setConfirmandoApagar] = useState(false);
@@ -119,6 +134,8 @@ export function ReuniaoForm({
       setResponsavel(reuniao.owner_user_id ?? '');
       setLocal(reuniao.local ?? '');
       setDescricao(reuniao.descricao ?? '');
+      setClienteId(reuniao.contact_id);
+      setClienteNome(reuniao.contato_nome);
     } else {
       setTitulo('');
       setTipo('outra');
@@ -131,12 +148,14 @@ export function ReuniaoForm({
       // abrir com um rótulo genérico em cinza, com cara de não preenchido —
       // e foi assim que a reunião pareceu "não ter responsável".
       setResponsavel(user?.id ?? '');
+      setClienteId(contactId ?? null);
+      setClienteNome(null);
       setLocal('');
       setDescricao('');
     }
     setErro(null);
     setConfirmandoApagar(false);
-  }, [aberto, reuniao, diaInicial, horaInicial, user?.id]);
+  }, [aberto, reuniao, diaInicial, horaInicial, contactId, user?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   async function salvar() {
@@ -169,7 +188,9 @@ export function ReuniaoForm({
     };
 
     if (responsavel) corpo.owner_user_id = responsavel;
-    if (!editando && contactId) corpo.contact_id = contactId;
+    // ⚠️ `null` explícito, nunca omitido: omitir significaria "não mexer", e
+    // desvincular o cliente não teria como ser gravado.
+    corpo.contact_id = clienteId;
 
     const resposta = await fetch(
       editando ? `/api/cb/agenda/${reuniao!.id}` : '/api/cb/agenda',
@@ -347,6 +368,39 @@ export function ReuniaoForm({
                 {reuniao?.owner_nome ?? t('euMesmo')}
               </p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>{t('cliente')}</Label>
+              {/* ⚠️ Só na edição, e só com cliente vinculado: é o atalho que
+                  leva da agenda para o atendimento. Prefere a CONVERSA quando
+                  a reunião nasceu de uma (`/inbox?c=`), e cai na ficha
+                  (`/contacts?contact=`) quando não — nem todo cliente tem
+                  conversa aberta, e a ficha também mostra nome e telefone. */}
+              {editando && clienteId && (
+                <Link
+                  href={
+                    reuniao?.conversation_id
+                      ? `/inbox?c=${reuniao.conversation_id}`
+                      : `/contacts?contact=${clienteId}`
+                  }
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  {reuniao?.conversation_id ? t('abrirConversa') : t('abrirFicha')}
+                  <ExternalLink className="size-3" />
+                </Link>
+              )}
+            </div>
+            <SeletorDeCliente
+              valor={clienteId}
+              nomeAtual={clienteNome}
+              travado={Boolean(contactId)}
+              aoEscolher={(c: Contact | null) => {
+                setClienteId(c?.id ?? null);
+                setClienteNome(c ? c.name || c.phone : null);
+              }}
+            />
           </div>
 
           {editando && (

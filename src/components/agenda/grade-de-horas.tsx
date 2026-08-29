@@ -346,16 +346,28 @@ function CartaoNaGrade({
         CORES[pos.reuniao.status] ?? CORES.agendada,
         isDragging && 'opacity-30',
       )}
-      title={`${horaDaReuniao(pos.reuniao.starts_at, FUSO_PADRAO)} · ${pos.reuniao.titulo} · ${pos.reuniao.owner_nome}`}
+      title={[
+        horaDaReuniao(pos.reuniao.starts_at, FUSO_PADRAO),
+        pos.reuniao.titulo,
+        pos.reuniao.contato_nome,
+        pos.reuniao.owner_nome,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
     >
       <div className="font-medium tabular-nums">
         {horaDaReuniao(pos.reuniao.starts_at, FUSO_PADRAO)}
       </div>
       <div className="truncate">{pos.reuniao.titulo}</div>
-      {/* O nome só entra quando a reunião é alta o bastante para ele caber —
-          abaixo de ~40px ele empurraria o título para fora. */}
-      {comResponsavel && pos.altura >= 40 && (
-        <div className="truncate opacity-70">{pos.reuniao.owner_nome}</div>
+      {/* ⚠️ As linhas extras só entram quando a reunião é alta o bastante —
+          abaixo de ~40px empurrariam o título para fora do retângulo.
+          O cliente vem antes do responsável: numa agenda de atendimento,
+          COM QUEM é a reunião importa mais do que quem do escritório atende. */}
+      {pos.altura >= 40 && pos.reuniao.contato_nome && (
+        <div className="truncate opacity-80">{pos.reuniao.contato_nome}</div>
+      )}
+      {comResponsavel && pos.altura >= 56 && (
+        <div className="truncate opacity-60">{pos.reuniao.owner_nome}</div>
       )}
     </div>
   );

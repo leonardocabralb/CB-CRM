@@ -2684,7 +2684,13 @@
     "confirmarApagar": "Confirmar exclusão",
     "apagando": "Apagando…",
     "erroApagar": "Não foi possível apagar a reunião.",
-    "todosOsResponsaveis": "Todos os responsáveis"
+    "todosOsResponsaveis": "Todos os responsáveis",
+    "cliente": "Cliente",
+    "buscarCliente": "Buscar por nome ou telefone…",
+    "nenhumClienteEncontrado": "Nenhum cliente encontrado.",
+    "desvincularCliente": "Desvincular cliente",
+    "abrirConversa": "Abrir conversa",
+    "abrirFicha": "Ver ficha"
   },
   "Tasks": {
     "title": "Tarefas",
