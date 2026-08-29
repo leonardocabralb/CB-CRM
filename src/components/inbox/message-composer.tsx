@@ -418,8 +418,15 @@ export function MessageComposer({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    // Max 4 lines (~96px)
-    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+    // ⚠️ A BORDA TEM DE VOLTAR À CONTA. `scrollHeight` é a caixa de PADDING
+    // (conteúdo + padding, sem borda), mas o preflight do Tailwind põe
+    // `box-sizing: border-box` em tudo — então o `height` que atribuímos aqui
+    // INCLUI a borda. Devolver o `scrollHeight` cru rouba 2px do texto e o
+    // navegador acende a barra de rolagem com UMA linha digitada (medido no
+    // app: `height: 40px` deixava 38px de conteúdo para uma linha de 20px).
+    const borda = el.offsetHeight - el.clientHeight;
+    // Max 4 lines (~96px), medidos na caixa de padding como o `scrollHeight`.
+    el.style.height = `${Math.min(el.scrollHeight, 96) + borda}px`;
   }, []);
 
   // ---- Envio com janela de arrependimento ----------------------------
