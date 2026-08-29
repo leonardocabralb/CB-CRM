@@ -39,6 +39,13 @@ export interface ContactTasksProps {
    */
   compacto?: boolean;
   /**
+   * Avisa quem monta a seção que ALGO mudou nas tarefas (criou, concluiu,
+   * reabriu, apagou…) — o painel do inbox usa para refazer o número da
+   * etiqueta da aba, que é contado fora daqui (o conteúdo da aba só monta
+   * quando aberta; a etiqueta existe antes).
+   */
+  aoAlterar?: () => void;
+  /**
    * Some com o título "Tarefas" do cabeçalho.
    *
    * ⚠️ Para a ABA da ficha, onde ele seria eco da aba que a pessoa acabou de
@@ -51,13 +58,21 @@ export interface ContactTasksProps {
 
 export function ContactTasks({
   contactId,
+  aoAlterar,
   compacto = false,
   semTitulo = false,
 }: ContactTasksProps) {
   const t = useTranslations('Tasks');
   const { user, accountRole } = useAuth();
   const dados = useTarefasDoContato(contactId);
-  const acoes = useAcoesDaTarefa(dados.recarregar);
+  // Dep é o objeto `dados` inteiro (não `dados.recarregar`) para a
+  // inferência do React Compiler concordar com a lista manual — o mesmo
+  // ajuste do `handleCopyPhone` do painel.
+  const recarregarEAvisar = useCallback(() => {
+    dados.recarregar();
+    aoAlterar?.();
+  }, [dados, aoAlterar]);
+  const acoes = useAcoesDaTarefa(recarregarEAvisar);
 
   const [form, setForm] = useState<
     | { modo: 'nova' }
@@ -75,17 +90,19 @@ export function ContactTasks({
     (pai: TarefaDaLinha, tipo: 'tarefa' | 'resposta') => {
       setForm({ modo: 'derivar', pai, tipo });
     },
-    [],
+    []
   );
 
   // `new Date()` a cada render é de propósito — ver a nota na página `/tarefas`.
   const grupos = useMemo(
     () => agruparPorPrazo(dados.tarefas, new Date()),
-    [dados.tarefas],
+    [dados.tarefas]
   );
 
-  const ator = user && accountRole ? { userId: user.id, papel: accountRole } : null;
-  const vazio = !dados.carregando && !dados.falhou && dados.tarefas.length === 0;
+  const ator =
+    user && accountRole ? { userId: user.id, papel: accountRole } : null;
+  const vazio =
+    !dados.carregando && !dados.falhou && dados.tarefas.length === 0;
 
   return (
     <div className="space-y-3">
@@ -93,21 +110,27 @@ export function ContactTasks({
         {semTitulo ? (
           // Mantém o contador visível mesmo sem o título: é ele que responde
           // "tem coisa aberta aqui?" antes de a lista ser lida.
-          <span className="text-xs text-muted-foreground">
-            {dados.abertas > 0 ? t('openCount', { count: dados.abertas }) : null}
+          <span className="text-muted-foreground text-xs">
+            {dados.abertas > 0
+              ? t('openCount', { count: dados.abertas })
+              : null}
           </span>
         ) : (
-          <h3 className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <ListTodo className="size-4 text-primary" />
+          <h3 className="text-foreground flex items-center gap-2 text-sm font-medium">
+            <ListTodo className="text-primary size-4" />
             {t('title')}
             {dados.abertas > 0 ? (
-              <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+              <span className="bg-primary/10 text-primary rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
                 {dados.abertas}
               </span>
             ) : null}
           </h3>
         )}
-        <Button size="sm" variant="ghost" onClick={() => setForm({ modo: 'nova' })}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setForm({ modo: 'nova' })}
+        >
           <Plus className="size-4" />
           {t('newTask')}
         </Button>
@@ -116,21 +139,21 @@ export function ContactTasks({
       {/* A falha tem aviso próprio: cair no vazio afirmaria "não há tarefa"
           logo depois de não ter conseguido descobrir isso. */}
       {dados.falhou ? (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+        <div className="border-destructive/40 bg-destructive/10 text-destructive flex items-center gap-2 rounded-lg border px-3 py-2 text-xs">
           <AlertTriangle className="size-4 shrink-0" />
           {t('loadFailed')}
         </div>
       ) : null}
 
       {dados.carregando ? (
-        <div className="flex items-center gap-2 py-4 text-xs text-muted-foreground">
+        <div className="text-muted-foreground flex items-center gap-2 py-4 text-xs">
           <Loader2 className="size-3.5 animate-spin" />
           {t('loading')}
         </div>
       ) : null}
 
       {vazio ? (
-        <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
+        <p className="border-border text-muted-foreground rounded-lg border border-dashed px-3 py-6 text-center text-xs">
           {t('emptyForContact')}
         </p>
       ) : null}
@@ -166,7 +189,7 @@ export function ContactTasks({
                   ))}
                 </ul>
               </section>
-            ) : null,
+            ) : null
           )}
 
           {grupos.concluidas.length > 0 ? (

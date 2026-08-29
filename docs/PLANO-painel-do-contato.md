@@ -459,6 +459,54 @@ Checks finais: typecheck limpo · lint 0 erros/40 avisos · **152 arquivos /
 1958 testes** · i18n-parity OK · preview verificado (ciclo de troca de
 contato medido, console limpo no compile atual).
 
+## ✅ Pós-plano — ajustes do operador (2026-08-29, noite)
+
+Seis pontos pedidos após o uso real do painel; entregues num PR único a partir
+do `main` já com o plano inteiro mergeado.
+
+**Diagnóstico antes do código (mudou dois pedidos):** medido em `profiles`,
+a conta tem UM membro — o "Gabriel" é OUTRA conta (workspace próprio, nunca
+convidado). Logo: não havia a quem atribuir tarefa nem quem mencionar, e
+menção a si mesmo NÃO notifica de propósito (rota de notas exclui automenção).
+Os dois "bugs" eram estado da conta + convenção "seletor some com <2". A
+correção de produto é convidar o colega em Configurações → Membros da equipe.
+
+**Entregue:**
+
+1. **Criação de tarefa na página /tarefas** — botão "Nova tarefa" no
+   cabeçalho; sem cliente por prop, o `TaskForm` abre seletor de contato
+   (carregado só nesse modo; teto de 1000 do PostgREST anotado no código).
+2. **Responsável SEMPRE visível** no `TaskForm` (pedido explícito):
+   desabilitado com "Você (único membro desta conta)" + dica de convite
+   quando não há escolha; seletor normal com 2+.
+3. **Etiqueta de tarefas abertas na aba do painel** — contagem por
+   `count: 'exact', head: true` (qualquer responsável), 8ª consulta do
+   fetch; a aba avisa via `aoAlterar` → `recontarTarefas` (o conteúdo da
+   aba só monta quando aberta; a etiqueta existe antes).
+4. **Linha "Canal" removida da Principal** — eco do seletor do cabeçalho
+   do fio (linha correspondente do CLAUDE.md atualizada).
+5. **Caixa de menção na aba Notas** — a MESMA `InternalNoteBox` do
+   compositor (keyed por conversa — rascunho morre na troca; `onClose`
+   virou opcional; lista de sugestões ganhou direção `listaParaBaixo`
+   porque no topo de um scroller a lista para cima seria cortada).
+6. **Nota fixada (migration 951)** — `fixada_em` + índice parcial ÚNICO
+   por contato (o banco desempata corrida, 23505 → 409); escrita só pela
+   rota `PATCH /api/cb/notes/[id]` (UPDATE segue revogado no navegador);
+   card sticky no topo da aba (medido: rolagem move a lista e o card fica);
+   hook ganhou realtime de UPDATE (REPLICA IDENTITY FULL da 921 já servia)
+   e `aplicarFixacao` local. Nota de grupo não fixa (contact_id nulo).
+
+**Verificado no preview:** etiqueta "2" no cliente com 2 tarefas abertas ·
+formulário global com 118 clientes e Criar travado sem escolha · responsável
+desabilitado + dica · menção abrindo para baixo na aba Notas · fixar/trocar/
+desafixar com estado conferido no banco a cada passo (sempre ≤1 fixada) ·
+datas de nota em pt-BR. Checks: typecheck limpo · lint 0 erros/40 avisos ·
+152 arquivos/1958 testes · paridade i18n.
+
+⚠️ Achado de infraestrutura no caminho: a **947 está aplicada mas sem
+registro no histórico** do Supabase (conferida no schema) — registrada no
+CLAUDE.md como segunda ocorrência do precedente da 037.
+
 ## Referências de exploração (2026-08-29)
 
 - 117 contatos · 107 negócios (~1/contato), todos em "Contato Avulso", 0

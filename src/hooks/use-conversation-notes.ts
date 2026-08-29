@@ -31,7 +31,7 @@ import type { ConversationNote } from '@/types';
  */
 export function useConversationNotes(
   conversationId: string | null | undefined,
-  token = 0,
+  token = 0
 ) {
   const [notas, setNotas] = useState<ConversationNote[]>([]);
   const [carregando, setCarregando] = useState(false);
@@ -95,7 +95,7 @@ export function useConversationNotes(
       }
       setCarregando(false);
     },
-    [conversationId],
+    [conversationId]
   );
 
   // Esvazia ao TROCAR DE CONVERSA (e só aí — não a cada resync, que
@@ -137,9 +137,28 @@ export function useConversationNotes(
             // guarda a anotação apareceria duas vezes para quem a escreveu.
             anteriores.some((n) => n.id === linha.id)
               ? anteriores
-              : [...anteriores, linha],
+              : [...anteriores, linha]
           );
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          // O primeiro UPDATE que esta tabela viu na vida é o fixar/desafixar
+          // da 951 (nota continua não-editável). A 921 já pôs REPLICA
+          // IDENTITY FULL, então o evento chega com a linha inteira e o
+          // filtro por conversa funciona.
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'cb_conversation_notes',
+          filter: `conversation_id=eq.${conversationId}`,
         },
+        (payload) => {
+          const linha = payload.new as ConversationNote;
+          setNotas((anteriores) =>
+            anteriores.map((n) => (n.id === linha.id ? linha : n))
+          );
+        }
       )
       .on(
         'postgres_changes',
@@ -153,7 +172,7 @@ export function useConversationNotes(
           const id = (payload.old as { id?: string }).id;
           if (!id) return;
           setNotas((anteriores) => anteriores.filter((n) => n.id !== id));
-        },
+        }
       )
       .subscribe();
 
@@ -167,12 +186,36 @@ export function useConversationNotes(
     setNotas((anteriores) => anteriores.filter((n) => n.id !== id));
   }, []);
 
-  /** Põe a anotação recém-criada na lista, sem esperar o realtime. */
-  const acrescentar = useCallback((nota: ConversationNote) => {
+  /**
+   * Aplica localmente o resultado do fixar/desafixar (951): a nota devolvida
+   * pela rota substitui a sua linha e QUALQUER outra fixada é zerada — o
+   * banco só permite uma por contato, e fixar a nova desafixou a antiga no
+   * servidor.
+   */
+  const aplicarFixacao = useCallback((nota: ConversationNote) => {
     setNotas((anteriores) =>
-      anteriores.some((n) => n.id === nota.id) ? anteriores : [...anteriores, nota],
+      anteriores.map((n) => {
+        if (n.id === nota.id) return nota;
+        return n.fixada_em ? { ...n, fixada_em: null } : n;
+      })
     );
   }, []);
 
-  return { notas, carregando, recarregar: buscar, remover, acrescentar };
+  /** Põe a anotação recém-criada na lista, sem esperar o realtime. */
+  const acrescentar = useCallback((nota: ConversationNote) => {
+    setNotas((anteriores) =>
+      anteriores.some((n) => n.id === nota.id)
+        ? anteriores
+        : [...anteriores, nota]
+    );
+  }, []);
+
+  return {
+    notas,
+    carregando,
+    recarregar: buscar,
+    remover,
+    acrescentar,
+    aplicarFixacao,
+  };
 }

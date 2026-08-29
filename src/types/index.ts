@@ -1,5 +1,5 @@
-import type { AccountRole } from "@/lib/auth/roles";
-import type { InteractiveMessagePayload } from "@/lib/whatsapp/interactive";
+import type { AccountRole } from '@/lib/auth/roles';
+import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive';
 
 export type {
   InteractiveMessagePayload,
@@ -8,7 +8,7 @@ export type {
   InteractiveButton,
   InteractiveListRow,
   InteractiveListSection,
-} from "@/lib/whatsapp/interactive";
+} from '@/lib/whatsapp/interactive';
 
 export interface Profile {
   id: string;
@@ -87,7 +87,7 @@ export interface AccountInvitation {
   id: string;
   account_id: string;
   /** Roles offered via invite — owner is never offered. */
-  role: Exclude<AccountRole, "owner">;
+  role: Exclude<AccountRole, 'owner'>;
   created_by_user_id: string | null;
   label: string | null;
   created_at: string;
@@ -190,6 +190,12 @@ export interface ConversationNote {
   texto: string;
   /** `auth.users.id` dos colegas mencionados. */
   mencionados: string[];
+  /**
+   * Quando a nota foi FIXADA no topo da ficha (951). NULL = comum. No
+   * máximo uma por contato — índice parcial no banco; a escrita é só pela
+   * rota `/api/cb/notes/[id]` (UPDATE segue revogado no navegador).
+   */
+  fixada_em: string | null;
   created_at: string;
 }
 
@@ -367,10 +373,7 @@ export interface Conversation {
  * arquivo, que é gatilho de AUTOMAÇÃO. São coisas diferentes com o mesmo nome.
  */
 export type NotificationType =
-  | 'conversation_assigned'
-  | 'note_mention'
-  | 'task_assigned'
-  | 'task_reply';
+  'conversation_assigned' | 'note_mention' | 'task_assigned' | 'task_reply';
 
 export interface Notification {
   id: string;
@@ -479,7 +482,8 @@ export type ContentType =
    * conversa, em ordem cronológica. Migration 906.
    */
   | 'system';
-export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+export type MessageStatus =
+  'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface Message {
   id: string;
@@ -503,7 +507,8 @@ export interface Message {
    * recusada (terminal, sem botão).
    */
   transcricao?: string | null;
-  transcricao_status?: 'transcrevendo' | 'pronta' | 'falhou' | 'recusada' | null;
+  transcricao_status?:
+    'transcrevendo' | 'pronta' | 'falhou' | 'recusada' | null;
   transcricao_erro?: string | null;
   /** Carimbo do claim — a bolha o usa para reoferecer o botão quando um
    *  "transcrevendo" ficou órfão (processo morto no deploy). */
@@ -776,8 +781,10 @@ export interface Deal {
   assignee?: Profile;
 }
 
-export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
-export type RecipientStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed';
+export type BroadcastStatus =
+  'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
+export type RecipientStatus =
+  'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed';
 
 export interface Broadcast {
   id: string;
@@ -1388,11 +1395,7 @@ export type LeadEventType =
  * sabe. `retroativo` é linha reconstruída pela própria migration.
  */
 export type LeadEventOrigin =
-  | 'usuario'
-  | 'conexao'
-  | 'automacao'
-  | 'sistema'
-  | 'retroativo';
+  'usuario' | 'conexao' | 'automacao' | 'sistema' | 'retroativo';
 
 export interface LeadEvent {
   id: string;

@@ -216,6 +216,7 @@ describe('intercalar', () => {
     autor_nome: 'Alguém',
     texto: 'anotação',
     mencionados: [],
+    fixada_em: null,
     created_at,
   });
 

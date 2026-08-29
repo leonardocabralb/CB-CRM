@@ -18,7 +18,13 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { AlertTriangle, ListTodo, Loader2, RefreshCw } from 'lucide-react';
+import {
+  AlertTriangle,
+  ListTodo,
+  Loader2,
+  Plus,
+  RefreshCw,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { TaskForm } from '@/components/tasks/task-form';
@@ -53,6 +59,7 @@ export default function TarefasPage() {
   // mesmo tempo — e duas caixas abertas sobre a mesma tarefa é estado sem
   // significado.
   const [form, setForm] = useState<
+    | { modo: 'nova' }
     | { modo: 'editar'; tarefa: TarefaDaLinha }
     | { modo: 'derivar'; pai: TarefaDaLinha; tipo: 'tarefa' | 'resposta' }
     | null
@@ -66,7 +73,7 @@ export default function TarefasPage() {
     (pai: TarefaDaLinha, tipo: 'tarefa' | 'resposta') => {
       setForm({ modo: 'derivar', pai, tipo });
     },
-    [],
+    []
   );
 
   const grupos = useMemo(
@@ -74,10 +81,11 @@ export default function TarefasPage() {
     // a tela recarrega a cada ação. Memoizar a data faria uma aba aberta desde
     // ontem continuar chamando de "hoje" o dia anterior.
     () => agruparPorPrazo(dados.pendentes, new Date()),
-    [dados.pendentes],
+    [dados.pendentes]
   );
 
-  const ator = user && accountRole ? { userId: user.id, papel: accountRole } : null;
+  const ator =
+    user && accountRole ? { userId: user.id, papel: accountRole } : null;
 
   const nadaPendente =
     !dados.carregando &&
@@ -89,22 +97,35 @@ export default function TarefasPage() {
     <div className="mx-auto max-w-4xl space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <ListTodo className="size-5 text-primary" />
-          <h1 className="text-lg font-semibold text-foreground">{t('title')}</h1>
+          <ListTodo className="text-primary size-5" />
+          <h1 className="text-foreground text-lg font-semibold">
+            {t('title')}
+          </h1>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={dados.recarregar}
-          disabled={dados.carregando}
-        >
-          <RefreshCw className={cn('size-4', dados.carregando && 'animate-spin')} />
-          {t('refresh')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={dados.recarregar}
+            disabled={dados.carregando}
+          >
+            <RefreshCw
+              className={cn('size-4', dados.carregando && 'animate-spin')}
+            />
+            {t('refresh')}
+          </Button>
+          {/* Criação GLOBAL (pedido do operador, 2026-08-29): antes só se
+              criava tarefa de dentro da conversa/ficha; sem cliente por prop
+              o formulário abre o seletor de contato. */}
+          <Button size="sm" onClick={() => setForm({ modo: 'nova' })}>
+            <Plus className="size-4" />
+            {t('newTask')}
+          </Button>
+        </div>
       </header>
 
       {/* Abas de visão */}
-      <div className="flex flex-wrap gap-1 border-b border-border">
+      <div className="border-border flex flex-wrap gap-1 border-b">
         {VISOES.map((v) => (
           <button
             key={v}
@@ -114,7 +135,7 @@ export default function TarefasPage() {
               '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
               v === visao
                 ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
+                : 'text-muted-foreground hover:text-foreground border-transparent'
             )}
           >
             {t(CHAVE_DA_VISAO[v])}
@@ -126,14 +147,14 @@ export default function TarefasPage() {
           há tarefa nenhuma" logo depois de não ter conseguido descobrir isso —
           e alguém iria embora achando que não tem nada para fazer. */}
       {dados.falhou ? (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="border-destructive/40 bg-destructive/10 text-destructive flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
           <AlertTriangle className="size-4 shrink-0" />
           {t('loadFailed')}
         </div>
       ) : null}
 
       {dados.carregando ? (
-        <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+        <div className="text-muted-foreground flex items-center justify-center gap-2 py-12 text-sm">
           <Loader2 className="size-4 animate-spin" />
           {t('loading')}
         </div>
@@ -146,11 +167,13 @@ export default function TarefasPage() {
       ) : null}
 
       {nadaPendente ? (
-        <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
-          <p className="text-sm text-muted-foreground">
+        <div className="border-border rounded-lg border border-dashed px-4 py-10 text-center">
+          <p className="text-muted-foreground text-sm">
             {visao === 'para-mim' ? t('emptyForMe') : t('empty')}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground/80">{t('emptyHint')}</p>
+          <p className="text-muted-foreground/80 mt-1 text-xs">
+            {t('emptyHint')}
+          </p>
         </div>
       ) : null}
 
@@ -183,7 +206,7 @@ export default function TarefasPage() {
                   ))}
                 </ul>
               </section>
-            ) : null,
+            ) : null
           )}
 
           {dados.concluidas.length > 0 ? (
