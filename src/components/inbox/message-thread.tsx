@@ -1,30 +1,27 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import { useAuth } from '@/hooks/use-auth';
-import { usePresence } from '@/hooks/use-presence';
-import { useChannels } from '@/hooks/use-channels';
-import { useLeadEvents } from '@/hooks/use-lead-events';
-import { useConversationNotes } from '@/hooks/use-conversation-notes';
-import { useCan } from '@/hooks/use-can';
-import { ScheduledBar } from './scheduled-bar';
-import {
-  intercalar,
-  type ItemDaLinhaDoTempo,
-} from '@/lib/lead-events/describe';
-import { acharNoFio } from '@/lib/inbox/achados-no-fio';
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
+import { usePresence } from "@/hooks/use-presence";
+import { useChannels } from "@/hooks/use-channels";
+import { useLeadEvents } from "@/hooks/use-lead-events";
+import { useConversationNotes } from "@/hooks/use-conversation-notes";
+import { useCan } from "@/hooks/use-can";
+import { ScheduledBar } from "./scheduled-bar";
+import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
+import { acharNoFio } from "@/lib/inbox/achados-no-fio";
 import {
   aplicarAssinatura,
   assinaturaExistente,
   nomeDePessoa,
   removerAssinatura,
-} from '@/lib/assinatura/assinatura';
-import { LeadEventLine } from '@/components/lead-events/lead-event-line';
-import { NoteLine } from './note-line';
-import { PresenceDot } from '@/components/presence/presence-dot';
-import { presenceLabel } from '@/lib/presence';
-import { cn } from '@/lib/utils';
+} from "@/lib/assinatura/assinatura";
+import { LeadEventLine } from "@/components/lead-events/lead-event-line";
+import { NoteLine } from "./note-line";
+import { PresenceDot } from "@/components/presence/presence-dot";
+import { presenceLabel } from "@/lib/presence";
+import { cn } from "@/lib/utils";
 import type {
   Conversation,
   Message,
@@ -35,7 +32,7 @@ import type {
   Profile,
   InteractiveMessagePayload,
   ConversationNote,
-} from '@/types';
+} from "@/types";
 import {
   MessageSquare,
   ChevronDown,
@@ -49,41 +46,41 @@ import {
   Users,
   Search,
   ChevronUp,
-} from 'lucide-react';
-import { nomeDoGrupo } from '@/lib/cb-groups/display';
-import type { CbChannel } from '@/lib/cb-channels/repo';
-import { format, isToday, isYesterday, differenceInHours } from 'date-fns';
-import { useTranslations } from 'next-intl';
-import { Badge } from '@/components/ui/badge';
+} from "lucide-react";
+import { nomeDoGrupo } from "@/lib/cb-groups/display";
+import type { CbChannel } from "@/lib/cb-channels/repo";
+import { format, isToday, isYesterday, differenceInHours } from "date-fns";
+import { useTranslations } from "next-intl";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageBubble } from './message-bubble';
-import { GaleriaDoFio } from './media-gallery';
-import { MessageActions } from './message-actions';
+} from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { MessageBubble } from "./message-bubble";
+import { GaleriaDoFio } from "./media-gallery";
+import { MessageActions } from "./message-actions";
 import {
   MessageComposer,
   CHAT_MEDIA_BUCKET,
   type SendMediaPayload,
-} from './message-composer';
-import { deleteAccountMedia } from '@/lib/storage/upload-media';
-import { TemplatePicker } from './template-picker';
-import { AiThreadBanner } from './ai-thread-banner';
-import { buildReplyPreview } from './reply-quote';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+} from "./message-composer";
+import { deleteAccountMedia } from "@/lib/storage/upload-media";
+import { TemplatePicker } from "./template-picker";
+import { AiThreadBanner } from "./ai-thread-banner";
+import { buildReplyPreview } from "./reply-quote";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 
 interface ReplyDraft {
   id: string;
@@ -108,7 +105,7 @@ interface MessageThreadProps {
   onStatusChange: (conversationId: string, status: ConversationStatus) => void;
   onAssignChange: (
     conversationId: string,
-    assignedAgentId: string | null
+    assignedAgentId: string | null,
   ) => void;
   /**
    * Multi-canal: o operador trocou o canal de resposta da conversa (ou
@@ -117,7 +114,7 @@ interface MessageThreadProps {
    */
   onChannelChange?: (
     conversationId: string,
-    patch: { channel_id?: string; channel_pinned: boolean }
+    patch: { channel_id?: string; channel_pinned: boolean },
   ) => void;
   /**
    * On mobile, the thread is shown full-screen with the conversation list
@@ -188,8 +185,8 @@ function LinhaDaMensagem({
     <div
       data-message-id={id}
       className={cn(
-        'rounded-lg transition-colors',
-        destacada && 'bg-primary/10 ring-primary/40 ring-1'
+        "rounded-lg transition-colors",
+        destacada && "bg-primary/10 ring-1 ring-primary/40",
       )}
     >
       {children}
@@ -197,14 +194,11 @@ function LinhaDaMensagem({
   );
 }
 
-function formatDateSeparator(
-  dateStr: string,
-  t: ReturnType<typeof useTranslations>
-): string {
+function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
   const date = new Date(dateStr);
-  if (isToday(date)) return t('today');
-  if (isYesterday(date)) return t('yesterday');
-  return format(date, 'MMMM d, yyyy');
+  if (isToday(date)) return t("today");
+  if (isYesterday(date)) return t("yesterday");
+  return format(date, "MMMM d, yyyy");
 }
 
 /**
@@ -216,10 +210,10 @@ function formatDateSeparator(
  */
 function groupTimelineByDate(itens: ItemDaLinhaDoTempo<Message>[]) {
   const groups: { date: string; itens: ItemDaLinhaDoTempo<Message>[] }[] = [];
-  let currentDate = '';
+  let currentDate = "";
 
   for (const item of itens) {
-    const day = format(new Date(item.quando), 'yyyy-MM-dd');
+    const day = format(new Date(item.quando), "yyyy-MM-dd");
     if (day !== currentDate) {
       currentDate = day;
       groups.push({ date: item.quando, itens: [item] });
@@ -231,14 +225,10 @@ function groupTimelineByDate(itens: ItemDaLinhaDoTempo<Message>[]) {
   return groups;
 }
 
-const STATUS_OPTIONS: {
-  label: string;
-  value: ConversationStatus;
-  color: string;
-}[] = [
-  { label: 'Open', value: 'open', color: 'text-primary' },
-  { label: 'Pending', value: 'pending', color: 'text-amber-400' },
-  { label: 'Closed', value: 'closed', color: 'text-muted-foreground' },
+const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string }[] = [
+  { label: "Open", value: "open", color: "text-primary" },
+  { label: "Pending", value: "pending", color: "text-amber-400" },
+  { label: "Closed", value: "closed", color: "text-muted-foreground" },
 ];
 
 /**
@@ -267,13 +257,13 @@ export function MessageThread({
   onOpenContactPanel,
   resyncToken = 0,
   onRefresh,
-  termoDaBusca = '',
+  termoDaBusca = "",
 }: MessageThreadProps) {
-  const t = useTranslations('Inbox.messageThread');
-  const tTimer = useTranslations('Inbox.sessionTimer');
-  const tQuote = useTranslations('Inbox.replyQuote');
-  const tActions = useTranslations('Inbox.actions');
-  const tNote = useTranslations('Inbox.note');
+  const t = useTranslations("Inbox.messageThread");
+  const tTimer = useTranslations("Inbox.sessionTimer");
+  const tQuote = useTranslations("Inbox.replyQuote");
+  const tActions = useTranslations("Inbox.actions");
+  const tNote = useTranslations("Inbox.note");
 
   const { user, profile, assinaturaAtiva } = useAuth();
 
@@ -362,7 +352,7 @@ export function MessageThread({
       liberarSalto();
       onNewMessage(msg);
     },
-    [liberarSalto, onNewMessage]
+    [liberarSalto, onNewMessage],
   );
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
@@ -419,11 +409,11 @@ export function MessageThread({
       setAnexoEmCurso(messageId);
       try {
         const res = await fetch(`/api/cb/groups/media/${messageId}`, {
-          method: 'POST',
+          method: "POST",
         });
         const payload = await res.json().catch(() => ({}));
         if (!res.ok) {
-          toast.error(payload.error ?? t('groupMediaFailed'));
+          toast.error(payload.error ?? t("groupMediaFailed"));
           return;
         }
         if (payload.media_url) {
@@ -433,12 +423,12 @@ export function MessageThread({
           });
         }
       } catch {
-        toast.error(t('groupMediaFailed'));
+        toast.error(t("groupMediaFailed"));
       } finally {
         setAnexoEmCurso(null);
       }
     },
-    [onUpdateMessage, t]
+    [onUpdateMessage, t],
   );
 
   // Profiles are bounded by RLS to rows the current user is allowed to
@@ -448,13 +438,13 @@ export function MessageThread({
     let cancelled = false;
     const supabase = createClient();
     supabase
-      .from('profiles')
-      .select('*')
-      .order('full_name')
+      .from("profiles")
+      .select("*")
+      .order("full_name")
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
-          console.error('Failed to fetch profiles:', error);
+          console.error("Failed to fetch profiles:", error);
           return;
         }
         setProfiles((data as Profile[]) ?? []);
@@ -485,7 +475,7 @@ export function MessageThread({
   const activeChannel = useMemo(() => {
     if (!channels.length) return null;
     return (
-      channelsById.get(conversation?.channel_id ?? '') ??
+      channelsById.get(conversation?.channel_id ?? "") ??
       channels.find((c) => c.is_default) ??
       null
     );
@@ -495,35 +485,31 @@ export function MessageThread({
   // No canal Evolution o atendente escolhe o número e conversa normalmente:
   // o cronômetro some, o aviso de "janela expirada" não aparece e o
   // compositor nunca trava (ver as props do MessageComposer).
-  const evolutionActive = activeChannel?.kind === 'evolution';
+  const evolutionActive = activeChannel?.kind === "evolution";
 
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
-    if (!messages.length) return { expired: false, remaining: '' };
+    if (!messages.length) return { expired: false, remaining: "" };
 
     // Find last customer message
     const lastCustomerMsg = [...messages]
       .reverse()
-      .find((m) => m.sender_type === 'customer');
+      .find((m) => m.sender_type === "customer");
 
-    if (!lastCustomerMsg)
-      return { expired: true, remaining: 'No customer messages' };
+    if (!lastCustomerMsg) return { expired: true, remaining: "No customer messages" };
 
-    const hoursSince = differenceInHours(
-      new Date(),
-      new Date(lastCustomerMsg.created_at)
-    );
+    const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
     const expired = hoursSince >= 24;
 
     if (expired) {
-      return { expired: true, remaining: tTimer('expired') };
+      return { expired: true, remaining: tTimer("expired") };
     }
 
     const hoursLeft = 24 - hoursSince;
     const remaining =
       hoursLeft >= 1
-        ? tTimer('xhRemaining', { hours: Math.floor(hoursLeft) })
-        : tTimer('xmRemaining', { minutes: Math.floor(hoursLeft * 60) });
+        ? tTimer("xhRemaining", { hours: Math.floor(hoursLeft) })
+        : tTimer("xmRemaining", { minutes: Math.floor(hoursLeft * 60) });
 
     return { expired, remaining };
   }, [messages, tTimer]);
@@ -557,15 +543,15 @@ export function MessageThread({
       setLoading(true);
 
       const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true });
 
       if (cancelled) return;
 
       if (error) {
-        console.error('Failed to fetch messages:', error);
+        console.error("Failed to fetch messages:", error);
       } else {
         onMessagesLoadedRef.current(data ?? []);
       }
@@ -596,12 +582,12 @@ export function MessageThread({
 
     (async () => {
       const { data, error } = await supabase
-        .from('message_reactions')
-        .select('*')
-        .eq('conversation_id', conversationId);
+        .from("message_reactions")
+        .select("*")
+        .eq("conversation_id", conversationId);
       if (cancelled) return;
       if (error) {
-        console.error('Failed to fetch reactions:', error);
+        console.error("Failed to fetch reactions:", error);
         return;
       }
       setReactions((data as MessageReaction[]) ?? []);
@@ -622,11 +608,11 @@ export function MessageThread({
     const channel = supabase
       .channel(`reactions:${conversationId}`)
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'message_reactions',
+          event: "INSERT",
+          schema: "public",
+          table: "message_reactions",
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
@@ -637,10 +623,10 @@ export function MessageThread({
             // the pill doesn't double up after a successful POST.
             const tempIdx = prev.findIndex(
               (r) =>
-                r.id.startsWith('temp-') &&
+                r.id.startsWith("temp-") &&
                 r.message_id === row.message_id &&
                 r.actor_type === row.actor_type &&
-                r.actor_id === row.actor_id
+                r.actor_id === row.actor_id,
             );
             if (tempIdx >= 0) {
               const copy = prev.slice();
@@ -649,34 +635,34 @@ export function MessageThread({
             }
             return [...prev, row];
           });
-        }
+        },
       )
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'message_reactions',
+          event: "UPDATE",
+          schema: "public",
+          table: "message_reactions",
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
           const row = payload.new as MessageReaction;
           setReactions((prev) => prev.map((r) => (r.id === row.id ? row : r)));
-        }
+        },
       )
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'message_reactions',
+          event: "DELETE",
+          schema: "public",
+          table: "message_reactions",
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
           const old = payload.old as Partial<MessageReaction>;
           if (!old?.id) return;
           setReactions((prev) => prev.filter((r) => r.id !== old.id));
-        }
+        },
       )
       .subscribe();
 
@@ -704,11 +690,11 @@ export function MessageThread({
     if (!conversationId || !hasUnread) return;
     const supabase = createClient();
     supabase
-      .from('conversations')
+      .from("conversations")
       .update({ unread_count: 0 })
-      .eq('id', conversationId)
+      .eq("id", conversationId)
       .then(({ error }) => {
-        if (error) console.error('Failed to reset unread_count:', error);
+        if (error) console.error("Failed to reset unread_count:", error);
       });
   }, [conversationId, hasUnread]);
 
@@ -729,10 +715,10 @@ export function MessageThread({
     acrescentar: acrescentarNota,
     recarregar: recarregarNotas,
   } = useConversationNotes(conversationId, resyncToken);
-  const podeAdministrar = useCan('manage-members');
+  const podeAdministrar = useCan("manage-members");
   // Agendadas (925): a faixa acima do compositor e o compositor são
   // irmãos aqui, então o contador que os liga mora nesta tela mesmo.
-  const podeEnviar = useCan('send-messages');
+  const podeEnviar = useCan("send-messages");
   const [agendadasResync, setAgendadasResync] = useState(0);
 
   /**
@@ -754,7 +740,7 @@ export function MessageThread({
       liberarSalto();
       acrescentarNota(nota);
     },
-    [acrescentarNota, conversationId, liberarSalto]
+    [acrescentarNota, conversationId, liberarSalto],
   );
 
   /**
@@ -772,9 +758,9 @@ export function MessageThread({
       const supabase = createClient();
       removerNotaLocal(id);
       const { error, count } = await supabase
-        .from('cb_conversation_notes')
-        .delete({ count: 'exact' })
-        .eq('id', id);
+        .from("cb_conversation_notes")
+        .delete({ count: "exact" })
+        .eq("id", id);
       // ⚠️ `count` e não só `error`. A policy é "autor OU admin", e RLS que
       // barra DELETE não devolve erro — devolve **0 linhas**, que aqui
       // pareceria sucesso. Sem isto a anotação sumia da tela, continuava no
@@ -782,11 +768,11 @@ export function MessageThread({
       // O botão já é escondido por `podeApagar`, então isto só dispara se a
       // tela e a RLS discordarem — que é exatamente quando não dá para calar.
       if (error || !count) {
-        toast.error(tNote('deleteFailed'));
+        toast.error(tNote("deleteFailed"));
         void recarregarNotas();
       }
     },
-    [removerNotaLocal, recarregarNotas, tNote]
+    [removerNotaLocal, recarregarNotas, tNote],
   );
 
   // ============================================================
@@ -801,7 +787,7 @@ export function MessageThread({
    */
   const achadosNoFio = useMemo(
     () => acharNoFio(messages, termoDaBusca),
-    [messages, termoDaBusca]
+    [messages, termoDaBusca],
   );
 
   /**
@@ -822,7 +808,7 @@ export function MessageThread({
   // há termo capaz de forjar a assinatura de outra conversa. (Aqui já morou um
   // U+0000 CRU, que deixava este arquivo BINÁRIO para o `grep` e o `file`: as
   // buscas passavam a devolver zero linhas em silêncio.)
-  const assinaturaDaBusca = `${conversationId ?? ''}|${termoDaBusca}`;
+  const assinaturaDaBusca = `${conversationId ?? ""}|${termoDaBusca}`;
   const escolhido =
     escolhaNaBusca?.assinatura === assinaturaDaBusca ? escolhaNaBusca.id : null;
 
@@ -848,7 +834,7 @@ export function MessageThread({
         id: achadosNoFio[proxima],
       });
     },
-    [posicaoDoAlvo, achadosNoFio, assinaturaDaBusca]
+    [posicaoDoAlvo, achadosNoFio, assinaturaDaBusca],
   );
 
   // O espelho de `alvoId` no sinalizador. Declarado AQUI, e não junto do
@@ -915,7 +901,7 @@ export function MessageThread({
       const cont = scrollRef.current;
       if (!cont) return;
       const el = cont.querySelector<HTMLElement>(
-        `[data-message-id="${alvoId}"]`
+        `[data-message-id="${alvoId}"]`,
       );
       if (!el) return;
       const rCont = cont.getBoundingClientRect();
@@ -929,6 +915,7 @@ export function MessageThread({
     return () => cancelAnimationFrame(quadro);
   }, [alvoId, messages]);
 
+
   /**
    * Fecha a bolha otimista com o que o SERVIDOR gravou.
    *
@@ -941,13 +928,13 @@ export function MessageThread({
   const marcarEnviada = useCallback(
     (tempId: string, payload: { content_text?: unknown }) => {
       onUpdateMessage(tempId, {
-        status: 'sent',
-        ...(typeof payload?.content_text === 'string'
+        status: "sent",
+        ...(typeof payload?.content_text === "string"
           ? { content_text: payload.content_text }
           : {}),
       });
     },
-    [onUpdateMessage]
+    [onUpdateMessage],
   );
 
   const handleSend = useCallback(
@@ -960,13 +947,13 @@ export function MessageThread({
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
-        sender_type: 'agent',
-        content_type: 'text',
+        sender_type: "agent",
+        content_type: "text",
         // ⚠️ Já nasce ASSINADA. Sem isto a mensagem aparece sem o nome e
         // muda sozinha um instante depois, quando a resposta do servidor
         // chega — parecendo que o sistema reescreveu o que foi digitado.
         content_text: aplicarAssinatura(text, nomeQueAssina) ?? text,
-        status: 'sending',
+        status: "sending",
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
       };
@@ -974,12 +961,12 @@ export function MessageThread({
       setReplyTo(null);
 
       try {
-        const res = await fetch('/api/whatsapp/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const res = await fetch("/api/whatsapp/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             conversation_id: conversation.id,
-            message_type: 'text',
+            message_type: "text",
             content_text: text,
             reply_to_message_id: replyToId,
             // Assert de canal: manda o número que ESTÁ NA TELA. Se o cliente
@@ -993,28 +980,26 @@ export function MessageThread({
 
         const payload = await res.json().catch(() => ({}));
 
-        if (res.status === 409 && payload?.code === 'channel_changed') {
+        if (res.status === 409 && payload?.code === "channel_changed") {
           // NÃO é erro: é uma pergunta. O cliente escreveu por outro número
           // enquanto o atendente digitava.
-          const novo = channels.find(
-            (c) => c.id === payload.current_channel_id
-          );
-          onNewMessage({ ...optimisticMsg, status: 'failed' });
+          const novo = channels.find((c) => c.id === payload.current_channel_id);
+          onNewMessage({ ...optimisticMsg, status: "failed" });
           toast.warning(
-            t('channelChangedWhileTyping', {
-              channel: novo?.label ?? t('channelChangedUnknown'),
+            t("channelChangedWhileTyping", {
+              channel: novo?.label ?? t("channelChangedUnknown"),
             }),
-            { duration: 12_000 }
+            { duration: 12_000 },
           );
           return;
         }
 
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
-          console.error('Failed to send message:', reason);
+          console.error("Failed to send message:", reason);
           toast.error(`Failed to send: ${reason}`);
           // Mark the optimistic bubble as failed so the user sees what happened
-          onUpdateMessage(tempId, { status: 'failed' });
+          onUpdateMessage(tempId, { status: "failed" });
           return;
         }
 
@@ -1030,10 +1015,10 @@ export function MessageThread({
         // aparecer de uma vez.
         marcarEnviada(tempId, payload);
       } catch (err) {
-        console.error('Failed to send message:', err);
-        const reason = err instanceof Error ? err.message : 'network error';
+        console.error("Failed to send message:", err);
+        const reason = err instanceof Error ? err.message : "network error";
         toast.error(`Failed to send: ${reason}`);
-        onUpdateMessage(tempId, { status: 'failed' });
+        onUpdateMessage(tempId, { status: "failed" });
       }
     },
     // `activeChannel` e `channels` são load-bearing aqui: um closure obsoleto
@@ -1065,19 +1050,19 @@ export function MessageThread({
       // recipient as the Meta caption when no caption was typed); other
       // kinds use the caption as-is. Audio carries no caption.
       const contentText =
-        payload.kind === 'document'
-          ? payload.caption || payload.filename || 'Document'
+        payload.kind === "document"
+          ? payload.caption || payload.filename || "Document"
           : payload.caption;
 
       const tempId = `temp-${Date.now()}`;
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
-        sender_type: 'agent',
+        sender_type: "agent",
         content_type: payload.kind,
         content_text: contentText,
         media_url: payload.mediaUrl,
-        status: 'sending',
+        status: "sending",
         created_at: new Date().toISOString(),
         reply_to_message_id: payload.replyToId,
       };
@@ -1085,9 +1070,9 @@ export function MessageThread({
       setReplyTo(null);
 
       try {
-        const res = await fetch('/api/whatsapp/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const res = await fetch("/api/whatsapp/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             conversation_id: conversation.id,
             message_type: payload.kind,
@@ -1102,30 +1087,26 @@ export function MessageThread({
 
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
-          console.error('Failed to send media:', reason);
+          console.error("Failed to send media:", reason);
           toast.error(`Failed to send: ${reason}`);
-          onUpdateMessage(tempId, { status: 'failed' });
+          onUpdateMessage(tempId, { status: "failed" });
           // The upload never reached the recipient — GC the orphaned
           // object rather than leaving it in the public bucket forever.
-          void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(
-            () => {}
-          );
+          void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
           return;
         }
 
         // `data` e a resposta; `payload` aqui e o CORPO da requisicao.
         marcarEnviada(tempId, data);
       } catch (err) {
-        console.error('Failed to send media:', err);
-        const reason = err instanceof Error ? err.message : 'network error';
+        console.error("Failed to send media:", err);
+        const reason = err instanceof Error ? err.message : "network error";
         toast.error(`Failed to send: ${reason}`);
-        onUpdateMessage(tempId, { status: 'failed' });
-        void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(
-          () => {}
-        );
+        onUpdateMessage(tempId, { status: "failed" });
+        void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
       }
     },
-    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada]
+    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada],
   );
 
   const handleSendInteractive = useCallback(
@@ -1138,23 +1119,23 @@ export function MessageThread({
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
-        sender_type: 'agent',
-        content_type: 'interactive',
+        sender_type: "agent",
+        content_type: "interactive",
         content_text: payload.body,
         interactive_payload: payload,
-        status: 'sending',
+        status: "sending",
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
       };
       publicarMensagemOtimista(optimisticMsg);
 
       try {
-        const res = await fetch('/api/whatsapp/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const res = await fetch("/api/whatsapp/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             conversation_id: conversation.id,
-            message_type: 'interactive',
+            message_type: "interactive",
             interactive_payload: payload,
             reply_to_message_id: replyToId,
           }),
@@ -1164,22 +1145,22 @@ export function MessageThread({
 
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
-          console.error('Failed to send interactive message:', reason);
+          console.error("Failed to send interactive message:", reason);
           toast.error(`Failed to send: ${reason}`);
-          onUpdateMessage(tempId, { status: 'failed' });
+          onUpdateMessage(tempId, { status: "failed" });
           return;
         }
 
         // `data` e a resposta; `payload` aqui e o payload interativo.
         marcarEnviada(tempId, data);
       } catch (err) {
-        console.error('Failed to send interactive message:', err);
-        const reason = err instanceof Error ? err.message : 'network error';
+        console.error("Failed to send interactive message:", err);
+        const reason = err instanceof Error ? err.message : "network error";
         toast.error(`Failed to send: ${reason}`);
-        onUpdateMessage(tempId, { status: 'failed' });
+        onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada]
+    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada],
   );
 
   const handleStatusChange = useCallback(
@@ -1188,9 +1169,9 @@ export function MessageThread({
 
       const supabase = createClient();
       await supabase
-        .from('conversations')
+        .from("conversations")
         .update({ status })
-        .eq('id', conversation.id);
+        .eq("id", conversation.id);
 
       onStatusChange(conversation.id, status);
     },
@@ -1208,7 +1189,7 @@ export function MessageThread({
         body: string[];
         headerText?: string;
         buttonParams?: Record<number, string>;
-      }
+      },
     ) => {
       if (!conversation) return;
 
@@ -1218,22 +1199,22 @@ export function MessageThread({
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
-        sender_type: 'agent',
-        content_type: 'template',
+        sender_type: "agent",
+        content_type: "template",
         content_text: renderedBody,
         template_name: template.name,
-        status: 'sending',
+        status: "sending",
         created_at: new Date().toISOString(),
       };
       publicarMensagemOtimista(optimisticMsg);
 
       try {
-        const res = await fetch('/api/whatsapp/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const res = await fetch("/api/whatsapp/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             conversation_id: conversation.id,
-            message_type: 'template',
+            message_type: "template",
             template_name: template.name,
             template_language: template.language,
             // Structured params drive the new send-builder path
@@ -1254,21 +1235,21 @@ export function MessageThread({
 
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
-          console.error('Failed to send template:', reason);
+          console.error("Failed to send template:", reason);
           toast.error(`Failed to send template: ${reason}`);
-          onUpdateMessage(tempId, { status: 'failed' });
+          onUpdateMessage(tempId, { status: "failed" });
           return;
         }
 
         marcarEnviada(tempId, payload);
       } catch (err) {
-        console.error('Failed to send template:', err);
-        const reason = err instanceof Error ? err.message : 'network error';
+        console.error("Failed to send template:", err);
+        const reason = err instanceof Error ? err.message : "network error";
         toast.error(`Failed to send template: ${reason}`);
-        onUpdateMessage(tempId, { status: 'failed' });
+        onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada]
+    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without
@@ -1290,7 +1271,7 @@ export function MessageThread({
     return map;
   }, [reactions]);
 
-  const contactDisplayName = contact?.name || contact?.phone || 'Customer';
+  const contactDisplayName = contact?.name || contact?.phone || "Customer";
 
   // Author label for a quoted message: "You" when we sent the parent,
   // contact name when the customer sent it.
@@ -1300,11 +1281,12 @@ export function MessageThread({
   // literal "Customer" (texto fixo em inglês) para todo mundo.
   const authorLabelFor = useCallback(
     (m: Message): string => {
-      const isAgentMsg = m.sender_type === 'agent' || m.sender_type === 'bot';
-      if (isAgentMsg) return 'You';
+      const isAgentMsg =
+        m.sender_type === "agent" || m.sender_type === "bot";
+      if (isAgentMsg) return "You";
       return m.group_sender_name || contactDisplayName;
     },
-    [contactDisplayName]
+    [contactDisplayName],
   );
 
   const handleStartReply = useCallback(
@@ -1315,7 +1297,7 @@ export function MessageThread({
         preview: buildReplyPreview(msg, tQuote),
       });
     },
-    [authorLabelFor]
+    [authorLabelFor],
   );
 
   // Single reaction-set primitive. emoji === "" removes; otherwise adds/swaps.
@@ -1330,7 +1312,7 @@ export function MessageThread({
 
   /** Mensagem em edição, ou null. */
   const [editando, setEditando] = useState<Message | null>(null);
-  const [textoEdicao, setTextoEdicao] = useState('');
+  const [textoEdicao, setTextoEdicao] = useState("");
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
 
   // ⚠️ O campo de edição recebe o corpo SEM a assinatura (923).
@@ -1341,35 +1323,33 @@ export function MessageThread({
   // recoloca a assinatura ORIGINAL ao salvar, então o que se edita aqui é só
   // o que se quis dizer.
   useEffect(() => {
-    setTextoEdicao(removerAssinatura(editando?.content_text) ?? '');
+    setTextoEdicao(removerAssinatura(editando?.content_text) ?? "");
   }, [editando]);
 
   const apagarMensagem = useCallback(
     async (msg: Message) => {
-      if (!window.confirm(tActions('deleteConfirm'))) return;
+      if (!window.confirm(tActions("deleteConfirm"))) return;
       // Otimista: a bolha risca na hora como "exclusão solicitada" — que é
       // o que de fato acontece. `deleted_at` (= "Apagada") só é escrito pelo
       // webhook do WhatsApp confirmando a revogação; se marcássemos aqui, a
       // tela afirmaria uma remoção que ninguém verificou.
       onUpdateMessage(msg.id, {
         delete_requested_at: new Date().toISOString(),
-        deleted_by: 'agent',
+        deleted_by: "agent",
       });
       try {
-        const res = await fetch('/api/whatsapp/message', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+        const res = await fetch("/api/whatsapp/message", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message_id: msg.id }),
         });
         if (!res.ok) {
-          const { error, code } = await res
-            .json()
-            .catch(() => ({ error: '', code: '' }));
+          const { error, code } = await res.json().catch(() => ({ error: "", code: "" }));
           // `talvez_enviado`: a revogação pode ter saído — o servidor
           // deliberadamente MANTEVE o pedido registrado. Desfazer a marca
           // aqui faria a tela contradizer o banco e afirmar que nada foi
           // pedido, quando talvez tenha sido.
-          if (code === 'talvez_enviado') {
+          if (code === "talvez_enviado") {
             toast.warning(error);
             return;
           }
@@ -1377,18 +1357,15 @@ export function MessageThread({
         }
         // "Solicitada", não "apagada": o WhatsApp não confirma revogação na
         // resposta, e a confirmação — quando vem — chega pelo webhook.
-        toast.success(tActions('deleteRequested'));
+        toast.success(tActions("deleteRequested"));
       } catch (err) {
         // Falhou ANTES de o pedido sair: nada foi pedido, a bolha volta ao
         // normal.
-        onUpdateMessage(msg.id, {
-          delete_requested_at: null,
-          deleted_by: null,
-        });
+        onUpdateMessage(msg.id, { delete_requested_at: null, deleted_by: null });
         toast.error(err instanceof Error ? err.message : String(err));
       }
     },
-    [onUpdateMessage, tActions]
+    [onUpdateMessage, tActions],
   );
 
   const salvarEdicao = useCallback(async () => {
@@ -1397,13 +1374,13 @@ export function MessageThread({
     if (!alvo || !texto || salvandoEdicao) return;
     setSalvandoEdicao(true);
     try {
-      const res = await fetch('/api/whatsapp/message', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/whatsapp/message", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message_id: alvo.id, text: texto }),
       });
       if (!res.ok) {
-        const { error } = await res.json().catch(() => ({ error: '' }));
+        const { error } = await res.json().catch(() => ({ error: "" }));
         throw new Error(error || String(res.status));
       }
       onUpdateMessage(alvo.id, {
@@ -1415,7 +1392,7 @@ export function MessageThread({
         text_before_edit: alvo.content_text,
         edited_at: new Date().toISOString(),
       });
-      toast.success(tActions('edited'));
+      toast.success(tActions("edited"));
       setEditando(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -1427,11 +1404,11 @@ export function MessageThread({
   const postReaction = useCallback(
     async (messageId: string, emoji: string) => {
       if (!user?.id || !conversation) {
-        console.warn('[reactions] missing user or conversation');
+        console.warn("[reactions] missing user or conversation");
         return;
       }
-      if (messageId.startsWith('temp-')) {
-        toast.error('Wait for the message to finish sending');
+      if (messageId.startsWith("temp-")) {
+        toast.error("Wait for the message to finish sending");
         return;
       }
 
@@ -1446,10 +1423,10 @@ export function MessageThread({
         const own = prev.find(
           (r) =>
             r.message_id === messageId &&
-            r.actor_type === 'agent' &&
-            r.actor_id === userId
+            r.actor_type === "agent" &&
+            r.actor_id === userId,
         );
-        if (emoji === '') return own ? prev.filter((r) => r !== own) : prev;
+        if (emoji === "") return own ? prev.filter((r) => r !== own) : prev;
         if (own) return prev.map((r) => (r === own ? { ...own, emoji } : r));
         return [
           ...prev,
@@ -1457,7 +1434,7 @@ export function MessageThread({
             id: `temp-${Date.now()}`,
             message_id: messageId,
             conversation_id: convId,
-            actor_type: 'agent',
+            actor_type: "agent",
             actor_id: userId,
             emoji,
             created_at: new Date().toISOString(),
@@ -1466,9 +1443,9 @@ export function MessageThread({
       });
 
       try {
-        const res = await fetch('/api/whatsapp/react', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const res = await fetch("/api/whatsapp/react", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message_id: messageId, emoji }),
         });
         if (!res.ok) {
@@ -1476,12 +1453,12 @@ export function MessageThread({
           throw new Error(payload?.error || `HTTP ${res.status}`);
         }
       } catch (err) {
-        const reason = err instanceof Error ? err.message : 'network error';
+        const reason = err instanceof Error ? err.message : "network error";
         toast.error(`Reaction failed: ${reason}`);
         setReactions(snapshot);
       }
     },
-    [conversation, user?.id]
+    [conversation, user?.id],
   );
 
   const handleAssignChange = useCallback(
@@ -1490,19 +1467,19 @@ export function MessageThread({
 
       const supabase = createClient();
       const { error } = await supabase
-        .from('conversations')
+        .from("conversations")
         .update({ assigned_agent_id: agentId })
-        .eq('id', conversation.id);
+        .eq("id", conversation.id);
 
       if (error) {
-        console.error('Failed to update assignment:', error);
-        toast.error('Failed to update assignment');
+        console.error("Failed to update assignment:", error);
+        toast.error("Failed to update assignment");
         return;
       }
 
       onAssignChange(conversation.id, agentId);
     },
-    [conversation, onAssignChange]
+    [conversation, onAssignChange],
   );
 
   const handleChannelChange = useCallback(
@@ -1519,19 +1496,19 @@ export function MessageThread({
 
       const supabase = createClient();
       const { error } = await supabase
-        .from('conversations')
+        .from("conversations")
         .update(patch)
-        .eq('id', conversation.id);
+        .eq("id", conversation.id);
 
       if (error) {
-        console.error('Failed to update channel:', error);
-        toast.error(t('channelUpdateFailed'));
+        console.error("Failed to update channel:", error);
+        toast.error(t("channelUpdateFailed"));
         return;
       }
 
       onChannelChange?.(conversation.id, patch);
     },
-    [conversation, onChannelChange, t]
+    [conversation, onChannelChange, t],
   );
 
   // Empty state — same WhatsApp-style doodle background as the active
@@ -1544,20 +1521,15 @@ export function MessageThread({
   const ehGrupo = !!conversation?.group_id;
   if (!conversation || (!contact && !ehGrupo)) {
     return (
-      <div
-        className={cn(
-          'flex flex-1 flex-col items-center justify-center',
-          DOODLE_BG_CLASSES
-        )}
-      >
-        <div className="bg-muted flex h-16 w-16 items-center justify-center rounded-full">
-          <MessageSquare className="text-muted-foreground h-8 w-8" />
+      <div className={cn("flex flex-1 flex-col items-center justify-center", DOODLE_BG_CLASSES)}>
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+          <MessageSquare className="h-8 w-8 text-muted-foreground" />
         </div>
-        <h3 className="text-muted-foreground mt-4 text-sm font-medium">
-          {t('selectConversation')}
+        <h3 className="mt-4 text-sm font-medium text-muted-foreground">
+          {t("selectConversation")}
         </h3>
-        <p className="text-muted-foreground mt-1 text-xs">
-          {t('selectConversationHint')}
+        <p className="mt-1 text-xs text-muted-foreground">
+          {t("selectConversationHint")}
         </p>
       </div>
     );
@@ -1565,16 +1537,16 @@ export function MessageThread({
 
   const grupo = conversation.group ?? null;
   const displayName = ehGrupo
-    ? nomeDoGrupo(grupo, t('groupNoName'))
-    : ((contact?.name || contact?.phone) ?? '');
+    ? nomeDoGrupo(grupo, t("groupNoName"))
+    : (contact?.name || contact?.phone) ?? "";
   // Linha de baixo do cabeçalho: no 1:1 é o telefone; num grupo, quantas
   // pessoas estão nele — que é a informação equivalente ("com quem eu estou
   // falando"). Fica vazia enquanto a sincronização não trouxe o número.
   const subtituloDoCabecalho = ehGrupo
     ? grupo?.participant_count
-      ? t('groupParticipants', { count: grupo.participant_count })
-      : ''
-    : (contact?.phone ?? '');
+      ? t("groupParticipants", { count: grupo.participant_count })
+      : ""
+    : (contact?.phone ?? "");
   const messageGroups = groupTimelineByDate(
     intercalar(messages, leadEvents, notas)
   );
@@ -1584,8 +1556,8 @@ export function MessageThread({
   const assignedAgentId = conversation.assigned_agent_id ?? null;
   const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
   const assignLabel = assignedAgentId
-    ? (currentAssignee?.full_name ?? t('assigned'))
-    : t('assign');
+    ? (currentAssignee?.full_name ?? t("assigned"))
+    : t("assign");
 
   return (
     // `min-w-0` is load-bearing: the page already puts min-w-0 on the
@@ -1596,10 +1568,10 @@ export function MessageThread({
     // clipped and the hover toolbar overlaps the Tags panel. Letting the
     // root shrink lets the bubbles' break-words / max-w caps apply.
     // Issue #257.
-    <div className={cn('flex min-w-0 flex-1 flex-col', DOODLE_BG_CLASSES)}>
+    <div className={cn("flex min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}>
       {/* Header — solid card surface sits on top of the doodle so the
           name/avatar/dropdowns stay legible. */}
-      <div className="border-border bg-card flex items-center justify-between gap-2 border-b px-3 py-3 sm:px-4">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-3 sm:px-4">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           {/* Back-to-list button — mobile only. Hidden on lg+ where the
               conversation list is always visible next to the thread. */}
@@ -1607,8 +1579,8 @@ export function MessageThread({
             <button
               type="button"
               onClick={onBack}
-              aria-label={t('backToConversations')}
-              className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md lg:hidden"
+              aria-label={t("backToConversations")}
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
@@ -1618,36 +1590,33 @@ export function MessageThread({
               fechada. O h2 ENVOLVE o botão (button é phrasing content, pode
               viver dentro de heading) — o fio mantém seu heading no outline.
               E sem `aria-label`: ele APAGAVA o nome do contato do nome
-              acessível ("Exibir painel, botão" — leitor de tela sem saber
-              com quem é a conversa); o conteúdo é o nome, o `title` diz a
-              ação. */}
-          {/* Sem `flex-1` no h2: ele assume o papel de item de flex que o
+              acessível ("Exibir painel, botão" — leitor de tela sem saber com
+              quem é a conversa); o conteúdo é o nome, o `title` diz a ação.
+              Sem `flex-1` no h2: ele assume o papel de item de flex que o
               botão tinha (largura pelo conteúdo, encolhe via min-w-0) —
-              crescer aqui mexeria na régua do justify-between do cabeçalho. */}
+              crescer mexeria na régua do justify-between do cabeçalho. */}
           <h2 className="flex min-w-0">
-            <button
-              type="button"
-              onClick={onOpenContactPanel}
-              title={t('showContact')}
-              className="hover:bg-muted/60 -m-1 flex min-w-0 items-center gap-2 rounded-md p-1 text-left text-sm font-normal transition-colors sm:gap-3"
-            >
-              <span className="bg-muted text-foreground flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-medium">
-                {displayName.charAt(0).toUpperCase()}
+          <button
+            type="button"
+            onClick={onOpenContactPanel}
+            title={t("showContact")}
+            className="-m-1 flex min-w-0 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-muted/60 sm:gap-3"
+          >
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+              {displayName.charAt(0).toUpperCase()}
+            </span>
+            <span className="block min-w-0">
+              <span className="flex min-w-0 items-center gap-1.5 truncate text-sm font-semibold text-foreground">
+                {ehGrupo && <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                <span className="truncate">{displayName}</span>
               </span>
-              <span className="block min-w-0">
-                <span className="text-foreground flex min-w-0 items-center gap-1.5 truncate text-sm font-semibold">
-                  {ehGrupo && (
-                    <Users className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-                  )}
-                  <span className="truncate">{displayName}</span>
+              {subtituloDoCabecalho && (
+                <span className="block truncate text-xs text-muted-foreground">
+                  {subtituloDoCabecalho}
                 </span>
-                {subtituloDoCabecalho && (
-                  <span className="text-muted-foreground block truncate text-xs">
-                    {subtituloDoCabecalho}
-                  </span>
-                )}
-              </span>
-            </button>
+              )}
+            </span>
+          </button>
           </h2>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. Canal Evolution não
@@ -1656,8 +1625,8 @@ export function MessageThread({
             <Badge
               variant="outline"
               className={cn(
-                'border-border ml-1 hidden gap-1 text-[10px] sm:ml-2 sm:inline-flex',
-                sessionInfo.expired ? 'text-red-400' : 'text-primary'
+                "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
+                sessionInfo.expired ? "text-red-400" : "text-primary"
               )}
             >
               <Clock className="h-3 w-3" />
@@ -1682,14 +1651,14 @@ export function MessageThread({
               type="button"
               onClick={handleRefreshClick}
               disabled={isRefreshing}
-              aria-label={t('refreshConversation')}
-              title={t('refresh')}
+              aria-label={t("refreshConversation")}
+              title={t("refresh")}
               className={cn(
-                'text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-60'
+                "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60",
               )}
             >
               <RefreshCw
-                className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')}
+                className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
               />
             </button>
           )}
@@ -1700,15 +1669,15 @@ export function MessageThread({
           {channels.length >= 2 && activeChannel && (
             <DropdownMenu>
               <DropdownMenuTrigger
-                title={t('channelTitle')}
+                title={t("channelTitle")}
                 className={cn(
-                  'hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs',
+                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
                   conversation.channel_pinned
-                    ? 'text-primary'
-                    : 'text-muted-foreground'
+                    ? "text-primary"
+                    : "text-muted-foreground",
                 )}
               >
-                {activeChannel.kind === 'meta' ? (
+                {activeChannel.kind === "meta" ? (
                   <BadgeCheck className="h-3 w-3" />
                 ) : (
                   <QrCode className="h-3 w-3" />
@@ -1718,10 +1687,7 @@ export function MessageThread({
                 </span>
                 <ChevronDown className="h-3 w-3" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="border-border bg-popover"
-              >
+              <DropdownMenuContent align="end" className="border-border bg-popover">
                 {channels.map((c) => {
                   const isSelected =
                     Boolean(conversation.channel_pinned) &&
@@ -1731,11 +1697,11 @@ export function MessageThread({
                       key={c.id}
                       onClick={() => handleChannelChange(c.id)}
                       className={cn(
-                        'text-sm',
-                        isSelected ? 'text-primary' : 'text-popover-foreground'
+                        "text-sm",
+                        isSelected ? "text-primary" : "text-popover-foreground",
                       )}
                     >
-                      {c.kind === 'meta' ? (
+                      {c.kind === "meta" ? (
                         <BadgeCheck className="mr-2 h-3.5 w-3.5" />
                       ) : (
                         <QrCode className="mr-2 h-3.5 w-3.5" />
@@ -1749,13 +1715,13 @@ export function MessageThread({
                 <DropdownMenuItem
                   onClick={() => handleChannelChange(null)}
                   className={cn(
-                    'text-sm',
+                    "text-sm",
                     conversation.channel_pinned
-                      ? 'text-muted-foreground'
-                      : 'text-primary'
+                      ? "text-muted-foreground"
+                      : "text-primary",
                   )}
                 >
-                  <span className="flex-1">{t('channelAuto')}</span>
+                  <span className="flex-1">{t("channelAuto")}</span>
                   {!conversation.channel_pinned && (
                     <Check className="ml-2 h-3 w-3" />
                   )}
@@ -1769,33 +1735,29 @@ export function MessageThread({
               fecha. A conversa continua com `status='open'` no banco (a
               coluna é NOT NULL), só não se oferece o controle. */}
           {!ehGrupo && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={cn(
-                  'hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs',
-                  currentStatus?.color ?? 'text-muted-foreground'
-                )}
-              >
-                {currentStatus
-                  ? t(`status${currentStatus.label}`)
-                  : t('status')}
+          <DropdownMenu>
+            <DropdownMenuTrigger className={cn(
+                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                  currentStatus?.color ?? "text-muted-foreground"
+                )}>
+                {currentStatus ? t(`status${currentStatus.label}`) : t("status")}
                 <ChevronDown className="h-3 w-3" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="border-border bg-popover"
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <DropdownMenuItem
-                    key={opt.value}
-                    onClick={() => handleStatusChange(opt.value)}
-                    className={cn('text-sm', opt.color)}
-                  >
-                    {t(`status${opt.label}`)}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="border-border bg-popover"
+            >
+              {STATUS_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.value}
+                  onClick={() => handleStatusChange(opt.value)}
+                  className={cn("text-sm", opt.color)}
+                >
+                  {t(`status${opt.label}`)}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           )}
 
           {/* Assign dropdown — SEGUE valendo em grupo: atribuir um grupo a
@@ -1803,8 +1765,8 @@ export function MessageThread({
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
-                'hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs',
-                assignedAgentId ? 'text-primary' : 'text-muted-foreground'
+                "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                assignedAgentId ? "text-primary" : "text-muted-foreground"
               )}
             >
               <UserPlus className="h-3 w-3" />
@@ -1816,11 +1778,8 @@ export function MessageThread({
               className="border-border bg-popover"
             >
               {profiles.length === 0 ? (
-                <DropdownMenuItem
-                  disabled
-                  className="text-muted-foreground text-sm"
-                >
-                  {t('noTeammates')}
+                <DropdownMenuItem disabled className="text-sm text-muted-foreground">
+                  {t("noTeammates")}
                 </DropdownMenuItem>
               ) : (
                 profiles.map((p) => {
@@ -1831,8 +1790,8 @@ export function MessageThread({
                       key={p.id}
                       onClick={() => handleAssignChange(p.user_id)}
                       className={cn(
-                        'text-sm',
-                        isSelected ? 'text-primary' : 'text-popover-foreground'
+                        "text-sm",
+                        isSelected ? "text-primary" : "text-popover-foreground"
                       )}
                     >
                       <PresenceDot
@@ -1846,7 +1805,7 @@ export function MessageThread({
                       />
                       <span className="flex-1">
                         {p.full_name}
-                        {p.user_id === user?.id ? t('me') : ''}
+                        {p.user_id === user?.id ? t("me") : ""}
                       </span>
                       {isSelected && <Check className="ml-2 h-3 w-3" />}
                     </DropdownMenuItem>
@@ -1858,9 +1817,9 @@ export function MessageThread({
                   <DropdownMenuSeparator className="bg-border" />
                   <DropdownMenuItem
                     onClick={() => handleAssignChange(null)}
-                    className="text-muted-foreground text-sm"
+                    className="text-sm text-muted-foreground"
                   >
-                    {t('unassign')}
+                    {t("unassign")}
                   </DropdownMenuItem>
                 </>
               )}
@@ -1877,10 +1836,10 @@ export function MessageThread({
           que o `unaccent` do Postgres trate diferente) falha para o lado
           silencioso, em vez de mostrar um contador zerado. */}
       {achadosNoFio.length > 0 && alvoId && (
-        <div className="border-border bg-muted/60 flex shrink-0 items-center gap-2 border-b px-3 py-1.5">
-          <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-          <p className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
-            {t('searchInThread', {
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/60 px-3 py-1.5">
+          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {t("searchInThread", {
               termo: termoDaBusca,
               atual: posicaoDoAlvo + 1,
               total: achadosNoFio.length,
@@ -1893,9 +1852,9 @@ export function MessageThread({
             type="button"
             onClick={() => irParaAchado(-1)}
             disabled={posicaoDoAlvo <= 0}
-            aria-label={t('searchPrevHit')}
-            title={t('searchPrevHit')}
-            className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-6 w-6 items-center justify-center rounded disabled:pointer-events-none disabled:opacity-30"
+            aria-label={t("searchPrevHit")}
+            title={t("searchPrevHit")}
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
           >
             <ChevronUp className="h-4 w-4" />
           </button>
@@ -1903,9 +1862,9 @@ export function MessageThread({
             type="button"
             onClick={() => irParaAchado(1)}
             disabled={posicaoDoAlvo >= achadosNoFio.length - 1}
-            aria-label={t('searchNextHit')}
-            title={t('searchNextHit')}
-            className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-6 w-6 items-center justify-center rounded disabled:pointer-events-none disabled:opacity-30"
+            aria-label={t("searchNextHit")}
+            title={t("searchNextHit")}
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
           >
             <ChevronDown className="h-4 w-4" />
           </button>
@@ -1941,18 +1900,16 @@ export function MessageThread({
       >
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="border-primary h-5 w-5 animate-spin rounded-full border-2 border-t-transparent" />
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
         ) : /* `messageGroups`, não `messages`: uma conversa sem mensagem mas
               com evento de funil registrado mostraria "nenhuma mensagem" e
               engoliria o evento. */
         messageGroups.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
-            <p className="text-muted-foreground text-sm">
-              {t('noMessagesYet')}
-            </p>
-            <p className="text-muted-foreground text-xs">
-              {t('sendTemplateHint')}
+            <p className="text-sm text-muted-foreground">{t("noMessagesYet")}</p>
+            <p className="text-xs text-muted-foreground">
+              {t("sendTemplateHint")}
             </p>
           </div>
         ) : (
@@ -1961,7 +1918,7 @@ export function MessageThread({
               <div key={group.date}>
                 {/* Date separator */}
                 <div className="mb-4 flex items-center justify-center">
-                  <span className="bg-muted text-muted-foreground rounded-full px-3 py-1 text-[10px] font-medium">
+                  <span className="rounded-full bg-muted px-3 py-1 text-[10px] font-medium text-muted-foreground">
                     {formatDateSeparator(group.date, t)}
                   </span>
                 </div>
@@ -1971,9 +1928,7 @@ export function MessageThread({
                     // Evento da trilha do lead — aviso de sistema, não
                     // mensagem: sem bolha, sem ações, sem reação.
                     if (item.evento) {
-                      return (
-                        <LeadEventLine key={item.chave} evento={item.evento} />
-                      );
+                      return <LeadEventLine key={item.chave} evento={item.evento} />;
                     }
                     // ⚠️ A anotação interna tem de ser tratada AQUI, antes do
                     // `item.mensagem!` logo abaixo. Aquele `!` desliga a
@@ -1985,8 +1940,7 @@ export function MessageThread({
                           key={item.chave}
                           nota={item.nota}
                           podeApagar={
-                            item.nota.author_user_id === user?.id ||
-                            podeAdministrar
+                            item.nota.author_user_id === user?.id || podeAdministrar
                           }
                           onApagar={handleApagarNota}
                         />
@@ -1999,7 +1953,7 @@ export function MessageThread({
                     // MessageActions — responder, reagir ou apagar um aviso
                     // do sistema não quer dizer nada.
                     const destacada = msg.id === alvoId;
-                    if (msg.content_type === 'system') {
+                    if (msg.content_type === "system") {
                       return (
                         <LinhaDaMensagem
                           key={msg.id}
@@ -2016,16 +1970,15 @@ export function MessageThread({
                     const reply = parent
                       ? {
                           authorLabel:
-                            parent.sender_type === 'agent' ||
-                            parent.sender_type === 'bot'
-                              ? t('me')
-                              : // Em grupo o autor citado é o participante.
-                                // Sem isto, citar qualquer um mostrava o
-                                // literal "Unknown" — texto fixo em inglês.
-                                parent.group_sender_name ||
+                            parent.sender_type === "agent" || parent.sender_type === "bot"
+                              ? t("me")
+                              // Em grupo o autor citado é o participante.
+                              // Sem isto, citar qualquer um mostrava o
+                              // literal "Unknown" — texto fixo em inglês.
+                              : parent.group_sender_name ||
                                 contact?.name ||
                                 contact?.phone ||
-                                t('unknownAuthor'),
+                                t("unknownAuthor"),
                           preview: buildReplyPreview(parent, tQuote),
                         }
                       : null;
@@ -2041,9 +1994,10 @@ export function MessageThread({
                     const handlePillToggle = (emoji: string) => {
                       const own = msgReactions?.find(
                         (r) =>
-                          r.actor_type === 'agent' && r.actor_id === user?.id
+                          r.actor_type === "agent" &&
+                          r.actor_id === user?.id,
                       );
-                      const next = own?.emoji === emoji ? '' : emoji;
+                      const next = own?.emoji === emoji ? "" : emoji;
                       void postReaction(msg.id, next);
                     };
                     return (
@@ -2052,29 +2006,29 @@ export function MessageThread({
                         id={msg.id}
                         destacada={destacada}
                       >
-                        <MessageActions
+                      <MessageActions
+                        message={msg}
+                        onReply={() => handleStartReply(msg)}
+                        onReact={(emoji) => {
+                          if (emoji) void postReaction(msg.id, emoji);
+                        }}
+                        channelKind={activeChannel?.kind ?? null}
+                        onDelete={() => void apagarMensagem(msg)}
+                        onEdit={() => setEditando(msg)}
+                      >
+                        <MessageBubble
                           message={msg}
-                          onReply={() => handleStartReply(msg)}
-                          onReact={(emoji) => {
-                            if (emoji) void postReaction(msg.id, emoji);
-                          }}
-                          channelKind={activeChannel?.kind ?? null}
-                          onDelete={() => void apagarMensagem(msg)}
-                          onEdit={() => setEditando(msg)}
-                        >
-                          <MessageBubble
-                            message={msg}
-                            reply={reply}
-                            reactions={msgReactions}
-                            currentUserId={user?.id}
-                            onToggleReaction={handlePillToggle}
-                            channelLabel={channelLabel}
-                            emGrupo={ehGrupo}
-                            baixandoAnexo={anexoEmCurso === msg.id}
-                            onBaixarAnexo={() => baixarAnexoDoGrupo(msg.id)}
-                            onAbrirGaleria={setGaleriaAbertaEm}
-                          />
-                        </MessageActions>
+                          reply={reply}
+                          reactions={msgReactions}
+                          currentUserId={user?.id}
+                          onToggleReaction={handlePillToggle}
+                          channelLabel={channelLabel}
+                          emGrupo={ehGrupo}
+                          baixandoAnexo={anexoEmCurso === msg.id}
+                          onBaixarAnexo={() => baixarAnexoDoGrupo(msg.id)}
+                          onAbrirGaleria={setGaleriaAbertaEm}
+                        />
+                      </MessageActions>
                       </LinhaDaMensagem>
                     );
                   })}
@@ -2091,18 +2045,18 @@ export function MessageThread({
       {/* IA não atua em grupo (906). O `/api/ai/autoreply` recusa com 400;
           esconder a faixa evita oferecer um controle que só daria erro. */}
       {!ehGrupo && (
-        <AiThreadBanner
-          conversationId={conversation.id}
-          disabled={conversation.ai_autoreply_disabled ?? false}
-          handoffSummary={conversation.ai_handoff_summary}
-          assignedAgentId={assignedAgentId}
-          currentUserId={user?.id}
-          onChange={(patch) => {
-            if ('assigned_agent_id' in patch) {
-              onAssignChange(conversation.id, patch.assigned_agent_id ?? null);
-            }
-          }}
-        />
+      <AiThreadBanner
+        conversationId={conversation.id}
+        disabled={conversation.ai_autoreply_disabled ?? false}
+        handoffSummary={conversation.ai_handoff_summary}
+        assignedAgentId={assignedAgentId}
+        currentUserId={user?.id}
+        onChange={(patch) => {
+          if ("assigned_agent_id" in patch) {
+            onAssignChange(conversation.id, patch.assigned_agent_id ?? null);
+          }
+        }}
+      />
       )}
 
       {/* Overlay de tela cheia — só monta com um anexo aberto. */}
@@ -2144,24 +2098,24 @@ export function MessageThread({
       <Dialog open={!!editando} onOpenChange={(o) => !o && setEditando(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{tActions('editTitle')}</DialogTitle>
+            <DialogTitle>{tActions("editTitle")}</DialogTitle>
           </DialogHeader>
           <textarea
             value={textoEdicao}
             onChange={(e) => setTextoEdicao(e.target.value)}
             rows={4}
             autoFocus
-            className="border-input focus-visible:border-ring focus-visible:ring-ring/50 w-full resize-none rounded-lg border bg-transparent p-2 text-sm outline-none focus-visible:ring-3"
+            className="w-full resize-none rounded-lg border border-input bg-transparent p-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditando(null)}>
-              {tActions('cancel')}
+              {tActions("cancel")}
             </Button>
             <Button
               onClick={() => void salvarEdicao()}
               disabled={!textoEdicao.trim() || salvandoEdicao}
             >
-              {tActions('save')}
+              {tActions("save")}
             </Button>
           </DialogFooter>
         </DialogContent>
