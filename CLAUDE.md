@@ -844,6 +844,24 @@ mostra o rótulo certo sem mudar nada. Ao mesclar upstream, manter o wrapper.
   é o que `channel-select.tsx` faz, para o gatilho mostrar só o nome do canal
   em vez da linha inteira com bolinha e telefone.
 
+⚠️ **Etapa com RESULTADO (950): quem carimba ganho/perdido é o BANCO.**
+`pipeline_stages.resultado` ('ganho'|'perdido'|null) + gatilho BEFORE em
+`deals`: ENTRAR numa etapa marcada grava o status — para os CINCO escritores
+de etapa (painel da conversa, arrasto, formulário, RPC das automações, API).
+O que morde código novo:
+
+- ⚠️ **SAIR de etapa marcada para etapa neutra NÃO reabre** — decisão do
+  operador (fluxo: fechou → transfere para o funil do jurídico → CONTINUA
+  ganho). Não "corrigir" para o modelo Kommo. Reabrir é só por botão ou por
+  entrar em etapa com outro resultado.
+- **Etapa marcada VENCE status explícito no mesmo update**; o Reabrir muda só
+  o status (sem tocar etapa) e o gatilho passa reto — de propósito.
+- **`src/lib/pipelines/resultado.ts` é ESPELHO do gatilho** (para o selo
+  aparecer sem refetch). Quem mudar a regra muda nos DOIS, e o teste fixa o
+  comportamento MEDIDO em produção.
+- Ganho/perdido **não some com nada**: card fica na coluna (selo), conversa
+  intocada; sai das métricas de aberto e entra em "Ganhos no mês".
+
 ⚠️ **Três armadilhas de LAYOUT que já quebraram tela e voltam a quebrar.** As
 três passam em revisão de código, em typecheck e em teste — só aparecem na tela,
 e as três já morderam de verdade.
