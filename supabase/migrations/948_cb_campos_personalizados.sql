@@ -29,7 +29,10 @@
 -- funcionando sem mexer em nada.
 --
 -- ⚠️ `field_options` (JSONB) existe desde a 001 e NUNCA foi usada — passa a
--- guardar as opções do tipo `select` como array JSON de strings. Nenhuma
+-- guardar as opções do tipo `select` como OBJETO `{"opcoes": ["A", "B"]}`
+-- (é o que todo escritor/leitor real usa: `custom-fields-manager`,
+-- `campo-opcoes.ts` e a serialização da API v1 — comentário corrigido na
+-- revisão de 2026-08-29; antes dizia "array de strings" e mentia). Nenhuma
 -- coluna nova além da chave.
 -- ============================================================
 

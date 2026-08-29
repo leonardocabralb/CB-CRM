@@ -10,6 +10,7 @@ import {
 } from "@/lib/inbox/conversations";
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
@@ -95,7 +96,31 @@ function InboxPageInner() {
     }
   }, []);
 
+  /**
+   * Superfície MOBILE do painel (<lg): overlay que desliza da direita,
+   * aberto tocando no nome/avatar no cabeçalho do fio — o padrão do
+   * WhatsApp. Estado PRÓPRIO, sempre nascendo fechado e sem persistência:
+   * o `contactPanelOpen` do desktop persiste aberto por padrão, e no
+   * celular isso significaria a ficha cobrindo o fio inteiro a cada
+   * conversa aberta.
+   *
+   * O breakpoint decide qual dos dois estados governa o `inert` e o botão
+   * de fechar — e é `64rem`, NÃO `1024px`, de propósito: o `lg:` das
+   * classes deste arquivo é o `--breakpoint-lg: 64rem` do Tailwind v4, e
+   * `rem` em media query segue o tamanho de fonte PADRÃO do navegador
+   * (ajuste de acessibilidade). Com `1024px` aqui, um operador com fonte
+   * grande a 1100px de janela ficava com o CSS no modo mobile e o JS no
+   * modo desktop: tocar no nome não abria nada e o `inert` liberava Tab
+   * para um painel invisível. Em fonte padrão (16px), 64rem = 1024px.
+   */
+  const ehDesktop = useMediaQuery("(min-width: 64rem)");
+  const [painelMobileAberto, setPainelMobileAberto] = useState(false);
+
   const handleToggleContactPanel = useCallback(() => {
+    if (!ehDesktop) {
+      setPainelMobileAberto((prev) => !prev);
+      return;
+    }
     setContactPanelOpen((prev) => {
       const next = !prev;
       try {
@@ -105,7 +130,23 @@ function InboxPageInner() {
       }
       return next;
     });
-  }, []);
+  }, [ehDesktop]);
+
+  // Abrir a ficha pelo cabeçalho do fio. No desktop também vale (clicar no
+  // nome com o painel já aberto é no-op) — o gesto fica idêntico nas duas
+  // superfícies.
+  const handleAbrirPainelDoContato = useCallback(() => {
+    if (ehDesktop) {
+      setContactPanelOpen(true);
+      try {
+        localStorage.setItem(CONTACT_PANEL_STORAGE_KEY, "true");
+      } catch {
+        // Persistence is best-effort; ignore storage failures.
+      }
+      return;
+    }
+    setPainelMobileAberto(true);
+  }, [ehDesktop]);
 
   // Fire the deep-link auto-select exactly once per URL — subsequent
   // list refreshes (realtime, manual refetch) must not snap the user
@@ -489,6 +530,9 @@ function InboxPageInner() {
       setActiveConversation(conv);
       setActiveContact(conv.contact ?? null);
       setMessages([]);
+      // Trocar de conversa fecha o overlay mobile — a ficha aberta é da
+      // conversa anterior, e no celular ela cobriria o fio novo.
+      setPainelMobileAberto(false);
       // Optimistically clear the unread badge for this conv. The
       // server-side reset is fired by the unread-reset effect inside
       // MessageThread (which reads activeConversation.unread_count, not
@@ -528,6 +572,7 @@ function InboxPageInner() {
     setActiveConversation(null);
     setActiveContact(null);
     setMessages([]);
+    setPainelMobileAberto(false);
     // Clearing the ref lets the deep-link auto-selector fire again if
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
@@ -710,14 +755,26 @@ function InboxPageInner() {
             onAssignChange={handleAssignChange}
             onChannelChange={handleChannelChange}
             onBack={handleCloseConversation}
+            onOpenContactPanel={handleAbrirPainelDoContato}
             resyncToken={resyncToken}
             onRefresh={handleManualRefresh}
             termoDaBusca={termoDaBusca}
           />
         </div>
 
-        {/* Right panel: ficha do contato/grupo — desktop only (mobile segue
-            sem superfície para ela, dívida registrada no plano).
+        {/* Backdrop do overlay mobile — mesmo padrão do drawer de navegação
+            (layout/sidebar.tsx): backdrop z-30, painel z-40. Tocar fora
+            fecha, que no celular é a saída mais à mão. */}
+        {painelMobileAberto && (
+          <button
+            type="button"
+            onClick={() => setPainelMobileAberto(false)}
+            aria-label={tThread("hideContactPanel")}
+            className="fixed inset-0 z-30 bg-background/70 backdrop-blur-sm lg:hidden"
+          />
+        )}
+
+        {/* Right panel: ficha do contato/grupo.
 
             ⚠️ SEMPRE MONTADO. Fechar não desmonta mais: vira `w-0` com
             `overflow-hidden` e transição de largura. Desmontar (o `{open &&}`
@@ -726,15 +783,35 @@ function InboxPageInner() {
             tornava a animação impossível. O `w-[360px]` interno é fixo para o
             conteúdo não reflowar durante a animação; `inert` tira o painel
             fechado da ordem de tabulação, senão ele vira armadilha de teclado
-            invisível. O botão de fechar mora DENTRO do painel, no cabeçalho. */}
+            invisível. O botão de fechar mora DENTRO do painel, no cabeçalho.
+
+            Abaixo de lg é a MESMA instância como overlay fixo deslizando da
+            direita (estado `painelMobileAberto`) — as duas variantes moram
+            nas classes, então o HTML do servidor está certo nos dois mundos
+            e trocar de superfície não desmonta nada. As larguras `sm:` e
+            `lg:` coexistem de propósito: prefixos diferentes não se
+            desempatam no tailwind-merge (armadilha do CLAUDE.md), mas aqui
+            o `lg:` vence por ordem de cascata — os dois são gerados e o
+            bloco lg vem depois. O `inert` segue o estado da superfície
+            ATIVA (`ehDesktop` reconcilia pós-mount; ver use-media-query).
+
+            ⚠️ O translate é confinado a `max-lg:` de propósito. No Tailwind
+            v4, `translate-x-*` usa a propriedade CSS `translate`, e QUALQUER
+            valor ≠ none cria containing block para descendente `fixed` — um
+            `lg:translate-x-0` deixaria isso ligado na coluna desktop, onde
+            nunca houve transform, e o primeiro filho `fixed` não-portalado
+            do painel nasceria posicionado contra o wrapper em vez do
+            viewport, sem erro nenhum. */}
         <div
           className={cn(
-            "hidden h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out lg:block",
-            contactPanelOpen ? "w-[360px]" : "w-0",
+            "fixed inset-y-0 right-0 z-40 h-full w-full shrink-0 overflow-hidden transition-transform duration-200 ease-in-out sm:w-[400px]",
+            painelMobileAberto ? "max-lg:translate-x-0" : "max-lg:translate-x-full",
+            "lg:static lg:z-auto lg:transition-[width]",
+            contactPanelOpen ? "lg:w-[360px]" : "lg:w-0",
           )}
-          inert={!contactPanelOpen}
+          inert={ehDesktop ? !contactPanelOpen : !painelMobileAberto}
         >
-          <div className="h-full w-[360px]">
+          <div className="h-full w-full lg:w-[360px]">
             {activeConversation?.group_id ? (
               // Painel próprio: a ficha de contato é etiquetas, negócios,
               // anotações e histórico do lead — nada disso existe num grupo.

@@ -45,7 +45,7 @@ redimensionar por arrasto (o pedido era abrir/fechar por botão) · abas
 Mídia/Reuniões (não pedidas) · hooks novos para tags/negócios (busca fica no
 topo do painel; trocar de aba não refaz query) · rota/RPC nova para mover etapa
 (o painel usa o MESMO caminho do quadro) · `UNIQUE(account_id, field_name)` ·
-superfície mobile (dívida registrada: no celular a ficha segue inalcançável).
+superfície mobile (dívida registrada à época; **paga no pós-plano**, abaixo).
 
 ---
 
@@ -137,7 +137,8 @@ inexistente nesta máquina) — o CI replaya; a migration só afirma schema e pu
 dados com NOTICE · ⚠️ os 3 campos de data reais são tipados `text` (nasceram
 antes da 935) — o painel os mostra como texto livre, e o gatilho de LEMBRETE
 por data não os enxerga; retipar é decisão do operador (não há editor de tipo,
-de propósito) · única automação viva é `deal_stage_changed` (webhook CB OS) —
+de propósito) — **retipados em 2026-08-29 a pedido do operador, ver
+Pós-plano** · única automação viva é `deal_stage_changed` (webhook CB OS) —
 nenhuma em etiqueta, teste de tag foi seguro.
 
 ## ✅ Fase 3 — Abas reordenadas + Traqueamento (concluída em 2026-08-29)
@@ -316,6 +317,147 @@ keys" ✓ · limpar → null (linhas deletadas) ✓ · contato inexistente → 4
 chave sem escopo → 403 ✓ · sem chave → 401 ✓ · chave revogada → 401 ✓ ·
 valores do contato zerados ao final · 1951 testes · typecheck limpo · lint 0
 erros · i18n-parity OK.
+
+## ✅ Pós-plano — retipar campos de data + superfície mobile (2026-08-29)
+
+Dois itens do backlog, executados a pedido do operador depois das 6 fases.
+
+**1. Retipar os 3 campos de data (`text` → `datetime`).** Feito por UPDATE
+direto em produção (dado de conta, não schema — nenhuma migration): "Data da
+Proposta", "Data de Fechamento do Contrato" e "Data do Primeiro Contato".
+Medido antes: `contact_custom_values` tinha **0 linhas** (nenhum valor jamais
+gravado em campo nenhum), então não houve conversão de formato — o campo nasce
+`datetime` limpo, o painel os rende como `datetime-local` (conferido no
+preview) e o gatilho de **lembrete por data** passa a listá-los
+(`automation-builder.tsx` filtra `field_type === TIPO_DATA`). Valores novos
+seguem a convenção da 935: ISO UTC no banco via `paraEntradaLocal`/
+`deEntradaLocal`. ⚠️ Quem gravar essas chaves pela API v1 (n8n) deve mandar
+ISO com offset — texto livre não quebra nada, mas o lembrete não dispara e o
+input aparece vazio (tolerância de `campo-data.ts`).
+
+**2. Superfície mobile do painel (`feat/painel-do-contato-mobile`).** A MESMA
+instância montada vira, abaixo de `lg`, um overlay `fixed` que desliza da
+direita (mesmo padrão do drawer de navegação: backdrop `z-30` + painel
+`z-40`), aberto **tocando no nome/avatar no cabeçalho do fio** (padrão
+WhatsApp) e fechado pelo backdrop ou pelo X do painel. Decisões que importam:
+
+- **Estado mobile próprio (`painelMobileAberto`), sempre nasce fechado e não
+  persiste** — o `contactPanelOpen` do desktop persiste "aberto" por padrão, e
+  no celular isso cobriria o fio a cada conversa. Trocar de conversa ou voltar
+  à lista fecha o overlay.
+- **As duas variantes moram nas classes** (`fixed`+`translate-x` no mobile,
+  `lg:static`+`lg:w-*` no desktop) — o HTML do servidor está certo nos dois
+  mundos, nada desmonta ao cruzar o breakpoint, realtime das notas sobrevive.
+  As larguras `sm:`/`lg:` coexistem por ordem de cascata (armadilha
+  tailwind-merge documentada no comentário do wrapper).
+- **`inert` segue a superfície ATIVA** via `useMediaQuery` novo
+  (`src/hooks/use-media-query.ts`, `useSyncExternalStore` com snapshot de
+  servidor `false`) — sem aviso de hidratação; primeiro paint assume mobile e
+  reconcilia. O lint novo (`react-hooks/set-state-in-effect`) derrubou a
+  primeira versão com setState em efeito.
+- **Nome/avatar do cabeçalho viraram um `<button>`** (h2/p → span: button só
+  aceita phrasing content). No desktop o mesmo toque reabre a coluna fechada —
+  gesto idêntico nas duas superfícies. Prop nova `onOpenContactPanel` em
+  `message-thread.tsx` (arquivo do upstream — camada nossa, ver CLAUDE.md).
+
+**Arquivos:** `src/hooks/use-media-query.ts` (novo) ·
+`src/app/(dashboard)/inbox/page.tsx` · `src/components/inbox/message-thread.tsx`
+· este plano. Nenhuma chave i18n nova (reusa `showContactPanel`/
+`hideContactPanel`).
+
+**Resultado medido (preview 375×812 e 1440×900):** overlay fecha/abre com
+classes+`inert` corretos, backdrop presente, 5 abas e ficha completa no
+celular (incl. os 3 campos retipados como data) · desktop intocado: coluna
+360px estática, X fecha (`lg:w-0` + tira de reabertura), clique no nome
+reabre e persiste no localStorage · typecheck limpo · lint 0 erros ·
+**1951 testes** · i18n-parity OK.
+
+## ✅ Pós-plano — revisão quente e fria completa (2026-08-29)
+
+Pedido do operador: revisar TUDO que o plano entregou (PRs #53–#59 + o #60),
+caçando o que passou batido. Revisão quente (própria, nas costuras) + fria
+(4 revisores adversariais independentes: painel/estado, banco/motor medido em
+produção, API v1, layout/i18n/mobile). **Todo achado foi verificado contra o
+código/banco/preview antes de aceito.** Correções no PR #60.
+
+**Corrigidos (13):**
+
+1. **CRÍTICO — rota v1 de campos importava de módulo `"use client"`.**
+   `serializeCustomFields` chamava `opcoesDoCampo` do
+   `campo-personalizado-input` — num route handler (layer RSC) o export vira
+   client-reference proxy que LANÇA ao ser chamado, com build/typecheck/vitest
+   verdes (reproduzido no Next 16.2.12; medido em produção: rota ainda carrega
+   e catálogo tem 0 `select` — bomba armada para o 1º campo de lista, e o
+   PATCH gravava ANTES de serializar → dado salvo + 500 no n8n). Função movida
+   para `src/lib/contacts/campo-opcoes.ts` (puro, testado); 3 importadores.
+2. **ALTA — troca de contato não invalidava o estado por-contato do painel.**
+   Deals/etiquetas/valores do contato ANTERIOR ficavam visíveis e EDITÁVEIS
+   sob o cabeçalho do novo até o fetch resolver (salvar gravava dado de A em
+   B), e resposta fora de ordem sobrescrevia o atual. Agora: efeito de
+   invalidação síncrono + `contactIdRef` (staleness) + gate `dadosProntos`
+   (spinner no cartão, salvar/inputs travados). Medido no preview: t+120ms
+   spinner + salvar desabilitado; t+2s liberado.
+3. Falha na query de valores + "Salvar" = DELETE silencioso dos valores reais
+   (o `?? ""` limpa o que não carregou) → all-or-nothing nas queries
+   por-contato + toast `loadError` + o mesmo gate do item 2.
+4. `dealAtivo` trocava de identidade no meio da interação ("Perdido" em X →
+   cartão salta para Y → "Reabrir" reabria o errado) → âncora
+   `ultimoNegocioMexido`.
+5. Update de negócio sem checagem de ROWCOUNT (painel + arrasto do quadro):
+   0 linhas com `error: null` (viewer sob RLS; negócio apagado por outro
+   operador) parecia sucesso — com o espelho da 950 chegava a carimbar
+   "Ganho" falso → `.select("id")` + rollback/refetch nos dois escritores.
+6. Save de negócio recusado deixava o input não-controlado exibindo o texto
+   não salvo (key derivada do valor, que não mudou) → nonce `resetNegocio`.
+7. PATCH v1 aceitava qualquer texto em campo `datetime` ("31/12/2026" → 200,
+   input vazio, lembrete da 935 nunca dispara) → exige ISO-8601 COM offset e
+   normaliza para UTC (400 caso contrário).
+8. `''` gravado pela automação saía como `""` onde a doc promete `null` →
+   serialização normaliza vazio para null.
+9. Sem teto de valor na v1 → `MAX_VALOR = 4000` (convenção das tarefas) e
+   listas de erro fatiadas em 20 na mensagem do 400.
+10. Breakpoint do JS em px vs `lg` do Tailwind v4 em rem: com fonte de
+    acessibilidade ≠16px as superfícies divergiam (nome não abria nada,
+    `inert` liberava painel invisível) → `useMediaQuery("(min-width: 64rem)")`.
+11. `aria-label` do botão do cabeçalho apagava o NOME do contato do acessível
+    e o fio perdeu o `h2` → h2 envolve o botão (button é phrasing), sem
+    aria-label (conteúdo = nome), `title` diz a ação.
+12. Data das anotações em inglês (`format` do date-fns sem locale) →
+    `toLocaleString(undefined, …)`, regra do CLAUDE.md.
+13. Chave de 60 chars estourava a linha do gerenciador (rolagem horizontal na
+    lista) → truncate; e o comentário da migration 948 mentia a forma de
+    `field_options` ("array" → objeto `{"opcoes": []}`) → corrigido.
+
+**Registrados, sem correção (com motivo):**
+
+- Negócio que NASCE em etapa marcada não emite `deal_status_changed` (ramo
+  INSERT da 934 só enfileira stage) — automação "quando ganhar" não roda para
+  card criado já em "Contrato Fechado". Decisão de produto + migration;
+  proposta pendente.
+- Trigger da chave (948) é só BEFORE INSERT — UPDATE via PostgREST pode
+  gravar `field_key` suja/vazia (nenhum escritor no app faz isso hoje).
+  Migration futura: estender a `BEFORE UPDATE OF field_key`.
+- `anon` mantém DML nas tabelas upstream que 948/949/950 tocaram (postura
+  pré-931, RLS segura tudo — medido 0 linhas) — REVOKE em migration futura.
+- Upsert+delete de valores sem transação e eco pós-escrita não-atômico —
+  aceito (retry converge; plano descartou RPC de propósito).
+- Espelho da 950 com `stages` velhos entre sessões (selo até o refetch) —
+  contrato sem realtime em `deals`, aceito.
+- Overlay mobile sem Esc/inert no fundo — mesmo padrão do drawer de
+  navegação (consistência da casa).
+- Chave só-write da v1 lê o estado no eco do PATCH — documentado na doc.
+
+**Limpos (verificados a fundo):** regra "um update só" nos 3 escritores ·
+`avisarDrenagemDeFunil` em todo caminho · espelho `resultado.ts` ≡ gatilho
+950 caso a caso (+ prova viva em `cb_lead_events`) · 950×933 sem disparo
+dobrado · replay das 3 migrations em banco vazio · gerador de chave SQL ≡ TS
+(24↔24) · tenancy da v1 (UUID de outra conta inalcançável) · erro de banco
+nunca vira 404 · twMerge medido em 5 combinações · i18n 2461/2461 · grants
+medidos em produção.
+
+Checks finais: typecheck limpo · lint 0 erros/40 avisos · **152 arquivos /
+1958 testes** · i18n-parity OK · preview verificado (ciclo de troca de
+contato medido, console limpo no compile atual).
 
 ## Referências de exploração (2026-08-29)
 

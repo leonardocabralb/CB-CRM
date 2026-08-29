@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 // ============================================================
 // Painel do contato — a coluna da direita do inbox (Fase 1).
@@ -17,32 +17,32 @@
 // sem desmontar) não derruba o realtime.
 // ============================================================
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { useChannels } from "@/hooks/use-channels";
-import { useConversationNotes } from "@/hooks/use-conversation-notes";
-import { useCan } from "@/hooks/use-can";
-import { toast } from "sonner";
-import { ChannelCell } from "@/components/channels/channel-badge";
-import { ActivityHistory } from "@/components/lead-events/activity-history";
-import { ContactTasks } from "@/components/tasks/contact-tasks";
-import { CustomFieldsManager } from "@/components/contacts/custom-fields-manager";
-import { DealForm } from "@/components/pipelines/deal-form";
-import { SeletorFunilEtapa } from "@/components/inbox/painel/seletor-funil-etapa";
-import { statusAoEntrarNaEtapa } from "@/lib/pipelines/resultado";
-import { avisarDrenagemDeFunil } from "@/lib/automations/avisar-drenagem";
-import { CampoPersonalizadoInput } from "@/components/contacts/campo-personalizado-input";
-import { LinhaDeEdicao } from "@/components/inbox/painel/linha-de-edicao";
-import { addContactTag, deleteContactTag } from "@/lib/contacts/tag-api";
-import { salvarValoresDoContato } from "@/lib/contacts/custom-values";
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { useChannels } from '@/hooks/use-channels';
+import { useConversationNotes } from '@/hooks/use-conversation-notes';
+import { useCan } from '@/hooks/use-can';
+import { toast } from 'sonner';
+import { ChannelCell } from '@/components/channels/channel-badge';
+import { ActivityHistory } from '@/components/lead-events/activity-history';
+import { ContactTasks } from '@/components/tasks/contact-tasks';
+import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
+import { DealForm } from '@/components/pipelines/deal-form';
+import { SeletorFunilEtapa } from '@/components/inbox/painel/seletor-funil-etapa';
+import { statusAoEntrarNaEtapa } from '@/lib/pipelines/resultado';
+import { avisarDrenagemDeFunil } from '@/lib/automations/avisar-drenagem';
+import { CampoPersonalizadoInput } from '@/components/contacts/campo-personalizado-input';
+import { LinhaDeEdicao } from '@/components/inbox/painel/linha-de-edicao';
+import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
+import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
 import {
   camposDeTraqueamento,
   camposFaltantes,
   camposGerais,
-} from "@/lib/contacts/campos-de-traqueamento";
-import { useAuth } from "@/hooks/use-auth";
-import { formatCurrency } from "@/lib/currency";
-import { cn } from "@/lib/utils";
+} from '@/lib/contacts/campos-de-traqueamento';
+import { useAuth } from '@/hooks/use-auth';
+import { formatCurrency } from '@/lib/currency';
+import { cn } from '@/lib/utils';
 import type {
   Contact,
   CustomField,
@@ -51,7 +51,7 @@ import type {
   ConversationNote,
   PipelineStage,
   Tag,
-} from "@/types";
+} from '@/types';
 import {
   Mail,
   Copy,
@@ -74,18 +74,17 @@ import {
   Pencil,
   Save,
   Settings2,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { format } from "date-fns";
-import { useTranslations } from "next-intl";
+} from '@/components/ui/popover';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { useTranslations } from 'next-intl';
 
 export interface PainelDoContatoProps {
   contact: Contact | null;
@@ -131,33 +130,49 @@ export function PainelDoContato({
   onClose,
   onContactUpdated,
 }: PainelDoContatoProps) {
-  const tSidebar = useTranslations("Inbox.sidebar");
-  const tThread = useTranslations("Inbox.messageThread");
-  const tCanais = useTranslations("Channels");
+  const tSidebar = useTranslations('Inbox.sidebar');
+  const tThread = useTranslations('Inbox.messageThread');
+  const tCanais = useTranslations('Channels');
   // Rótulos do negócio vêm do namespace do funil — mesmo texto nas duas
   // telas, de propósito (Marcar como ganho etc.).
-  const tForm = useTranslations("Pipelines.form");
-  const tCard = useTranslations("Pipelines.card");
+  const tForm = useTranslations('Pipelines.form');
+  const tCard = useTranslations('Pipelines.card');
   const { channels } = useChannels();
   // `user`/`accountId` só para o seed do catálogo de traqueamento — o insert
   // de `custom_fields` exige os dois carimbados à mão (NOT NULL sem default).
   const { user, accountId } = useAuth();
   // O mesmo gate da RLS: `agent`+ escreve contato/etiqueta/valores ("viewer"
   // só olha). O catálogo de CAMPOS é admin — gate separado, mais abaixo.
-  const podeEditar = useCan("send-messages");
-  const podeGerirCampos = useCan("edit-settings");
+  const podeEditar = useCan('send-messages');
+  const podeGerirCampos = useCan('edit-settings');
 
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
-  const [newNote, setNewNote] = useState("");
+  const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
+  /**
+   * `true` só depois que as consultas POR-CONTATO do contato ATUAL
+   * aterrissaram sem erro. Enquanto `false`, salvar campos e o cartão de
+   * negócio ficam travados: o painel re-renderiza com o nome do contato
+   * novo NA HORA da troca, mas os dados demoram um fetch — sem o gate,
+   * essa janela mostrava (e deixava salvar!) os valores do contato
+   * anterior sob o cabeçalho do novo.
+   */
+  const [dadosProntos, setDadosProntos] = useState(false);
+  /**
+   * Régua de staleness do fetch: as 7 queries podem resolver FORA de
+   * ordem numa rede lenta, e a resposta atrasada do contato anterior não
+   * pode sobrescrever os dados do atual. Atualizado no efeito de troca de
+   * contato (declarado antes do efeito que dispara o fetch).
+   */
+  const contactIdRef = useRef<string | null>(null);
 
   // ---- Fase 2: edição dentro da conversa --------------------------------
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [tagOcupada, setTagOcupada] = useState<string | null>(null);
   const [editandoNome, setEditandoNome] = useState(false);
-  const [nomeEdit, setNomeEdit] = useState("");
+  const [nomeEdit, setNomeEdit] = useState('');
   const [salvandoNome, setSalvandoNome] = useState(false);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
@@ -166,24 +181,45 @@ export function PainelDoContato({
   const [semeando, setSemeando] = useState(false);
 
   // ---- Fase 4: o negócio dentro da conversa ------------------------------
-  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
+  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>(
+    []
+  );
   const [allStages, setAllStages] = useState<PipelineStage[]>([]);
   /** null = fechado; "criar" = DealForm em modo criação; Deal = edição. */
-  const [dealFormAberto, setDealFormAberto] = useState<"criar" | Deal | null>(
-    null,
+  const [dealFormAberto, setDealFormAberto] = useState<'criar' | Deal | null>(
+    null
   );
   const [negocioOcupado, setNegocioOcupado] = useState(false);
   /** Detalhes do negócio (data, ganho/perdido, formulário) — só sob demanda. */
   const [detalhesAbertos, setDetalhesAbertos] = useState(false);
+  /**
+   * Âncora do cartão: o id do último negócio em que o operador MEXEU.
+   * Sem ela, marcar o negócio aberto como perdido fazia o `find(open)`
+   * re-eleger OUTRO card no mesmo clique — e o "Reabrir" seguinte, que o
+   * operador lê como "desfazer", reabria o negócio errado.
+   */
+  const [ultimoNegocioMexido, setUltimoNegocioMexido] = useState<string | null>(
+    null
+  );
+  /**
+   * Sobe quando um save do negócio FALHA. Entra na `key` dos inputs
+   * não-controlados (valor, data): a key deriva do VALOR salvo, e um save
+   * recusado devolve o mesmo valor — sem o nonce o input continuava
+   * exibindo o texto não salvo por cima do estado revertido.
+   */
+  const [resetNegocio, setResetNegocio] = useState(0);
 
   // Recortes por categoria (949): a seção CAMPOS da Principal mostra só os
   // gerais; a aba Traqueamento, só os de anúncio.
   const gerais = useMemo(() => camposGerais(customFields), [customFields]);
   const tracking = useMemo(
     () => camposDeTraqueamento(customFields),
-    [customFields],
+    [customFields]
   );
-  const faltantes = useMemo(() => camposFaltantes(customFields), [customFields]);
+  const faltantes = useMemo(
+    () => camposFaltantes(customFields),
+    [customFields]
+  );
 
   /**
    * O negócio que a seção edita: o ABERTO mais recente; sem nenhum aberto, o
@@ -191,10 +227,34 @@ export function PainelDoContato({
    * ~1 negócio por contato nesta conta — os demais ficam numa lista de
    * leitura abaixo do cartão.
    */
-  const dealAtivo = useMemo(
-    () => deals.find((d) => d.status === "open") ?? deals[0] ?? null,
-    [deals],
-  );
+  const dealAtivo = useMemo(() => {
+    // A âncora vence enquanto o negócio existir: depois de "Perdido" o
+    // cartão continua NELE (mostrando "Reabrir"), em vez de saltar para o
+    // próximo aberto no meio da interação.
+    const fixado = ultimoNegocioMexido
+      ? deals.find((d) => d.id === ultimoNegocioMexido)
+      : undefined;
+    return fixado ?? deals.find((d) => d.status === 'open') ?? deals[0] ?? null;
+  }, [deals, ultimoNegocioMexido]);
+
+  /**
+   * ⚠️ Trocar de CONTATO invalida tudo que é por-contato, NA HORA — sem
+   * isto os negócios/etiquetas/valores do anterior ficavam visíveis e
+   * EDITÁVEIS sob o cabeçalho do novo até o fetch resolver (salvar nessa
+   * janela gravava dado do contato A no contato B). O catálogo da conta
+   * (allTags, funis, etapas, campos) fica: não é por-contato e limpar só
+   * causaria flicker. Declarado ANTES do efeito que dispara o fetch, para
+   * o ref já apontar para o contato novo quando ele rodar.
+   */
+  useEffect(() => {
+    contactIdRef.current = contact?.id ?? null;
+    setDadosProntos(false);
+    setDeals([]);
+    setTags([]);
+    setCustomValues({});
+    setUltimoNegocioMexido(null);
+    setDetalhesAbertos(false);
+  }, [contact?.id]);
 
   /**
    * ⚠️ O rascunho MORRE ao trocar de conversa. Mesmo perigo, mesma correção
@@ -210,7 +270,7 @@ export function PainelDoContato({
    * sobrou depois de a caixa do compositor ganhar a guarda dela.
    */
   useEffect(() => {
-    setNewNote("");
+    setNewNote('');
   }, [conversationId]);
 
   /**
@@ -238,61 +298,83 @@ export function PainelDoContato({
     () =>
       [...notas].sort(
         (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       ),
-    [notas],
+    [notas]
   );
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
+    // Congela o alvo: quem valida a chegada é o ref, que o efeito de troca
+    // de contato mantém apontando para o contato ATUAL.
+    const idPedido = contact.id;
 
     const supabase = createClient();
 
     // Tudo em paralelo, NO TOPO do painel (trocar de aba não refaz query).
     // As anotações saem daqui de propósito: vêm do `useConversationNotes`
     // acima, que traz realtime junto.
-    const [dealsRes, tagsRes, allTagsRes, fieldsRes, valuesRes, funisRes, etapasRes] =
-      await Promise.all([
-        supabase
-          .from("deals")
-          .select("*, stage:pipeline_stages(*)")
-          .eq("contact_id", contact.id)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("contact_tags")
-          .select("id, tag_id, tags(*)")
-          .eq("contact_id", contact.id),
-        supabase.from("tags").select("*").order("name"),
-        supabase.from("custom_fields").select("*").order("field_name"),
-        supabase
-          .from("contact_custom_values")
-          .select("*")
-          .eq("contact_id", contact.id),
-        // Fase 4: os seletores de funil/etapa do cartão de negócio.
-        supabase.from("pipelines").select("id, name").order("name"),
-        supabase.from("pipeline_stages").select("*").order("position"),
-      ]);
+    const [
+      dealsRes,
+      tagsRes,
+      allTagsRes,
+      fieldsRes,
+      valuesRes,
+      funisRes,
+      etapasRes,
+    ] = await Promise.all([
+      supabase
+        .from('deals')
+        .select('*, stage:pipeline_stages(*)')
+        .eq('contact_id', contact.id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('contact_tags')
+        .select('id, tag_id, tags(*)')
+        .eq('contact_id', contact.id),
+      supabase.from('tags').select('*').order('name'),
+      supabase.from('custom_fields').select('*').order('field_name'),
+      supabase
+        .from('contact_custom_values')
+        .select('*')
+        .eq('contact_id', contact.id),
+      // Fase 4: os seletores de funil/etapa do cartão de negócio.
+      supabase.from('pipelines').select('id, name').order('name'),
+      supabase.from('pipeline_stages').select('*').order('position'),
+    ]);
 
-    if (dealsRes.data) setDeals(dealsRes.data);
-    if (tagsRes.data) {
-      const mapped = tagsRes.data
-        .filter((ct: Record<string, unknown>) => ct.tags)
-        .map((ct: Record<string, unknown>) => ({
-          ...(ct.tags as Tag),
-          contact_tag_id: ct.id as string,
-        }));
-      setTags(mapped);
+    // Resposta atrasada de OUTRO contato (ou de um refetch disparado antes
+    // da troca) morre aqui — senão ela sobrescrevia os dados do atual.
+    if (contactIdRef.current !== idPedido) return;
+
+    // Falha em qualquer consulta POR-CONTATO: nada de estado meio-carregado.
+    // Na 1ª carga `dadosProntos` fica false e a edição segue travada (um
+    // `customValues` vazio por falha + Salvar seria DELETE dos valores
+    // reais); num refetch o estado anterior — ainda deste contato — fica.
+    if (dealsRes.error || tagsRes.error || fieldsRes.error || valuesRes.error) {
+      toast.error(tSidebar('loadError'));
+      return;
     }
+    setDeals(dealsRes.data ?? []);
+    const mapped = (tagsRes.data ?? [])
+      .filter((ct: Record<string, unknown>) => ct.tags)
+      .map((ct: Record<string, unknown>) => ({
+        ...(ct.tags as Tag),
+        contact_tag_id: ct.id as string,
+      }));
+    setTags(mapped);
+    setCustomFields((fieldsRes.data ?? []) as CustomField[]);
+    const map: Record<string, string> = {};
+    for (const v of valuesRes.data ?? [])
+      map[v.custom_field_id] = v.value ?? '';
+    setCustomValues(map);
+    // Catálogo da CONTA: falha aqui não trava a edição do contato — segue
+    // tolerante, como antes (o estado anterior continua servindo).
     if (allTagsRes.data) setAllTags(allTagsRes.data);
-    if (fieldsRes.data) setCustomFields(fieldsRes.data as CustomField[]);
-    if (valuesRes.data) {
-      const map: Record<string, string> = {};
-      for (const v of valuesRes.data) map[v.custom_field_id] = v.value ?? "";
-      setCustomValues(map);
-    }
     if (funisRes.data) setPipelines(funisRes.data);
     if (etapasRes.data) setAllStages(etapasRes.data as PipelineStage[]);
-  }, [contact]);
+    setDadosProntos(true);
+  }, [contact, tSidebar]);
 
   // Load on contact change. setDeals/setTags run inside async
   // Supabase callbacks, not synchronously in the effect body.
@@ -319,16 +401,19 @@ export function PainelDoContato({
     // Nome vazio volta a NULL — a ficha então mostra o telefone, que é o
     // comportamento de contato sem nome no resto do app.
     const { error } = await supabase
-      .from("contacts")
-      .update({ name: nome === "" ? null : nome })
-      .eq("id", contact.id);
+      .from('contacts')
+      .update({ name: nome === '' ? null : nome })
+      .eq('id', contact.id);
     setSalvandoNome(false);
     if (error) {
-      toast.error(tSidebar("nameSaveError"));
+      toast.error(tSidebar('nameSaveError'));
       return;
     }
     setEditandoNome(false);
-    onContactUpdated?.({ id: contact.id, name: nome === "" ? null : nome } as Partial<Contact>);
+    onContactUpdated?.({
+      id: contact.id,
+      name: nome === '' ? null : nome,
+    } as Partial<Contact>);
   }, [contact, nomeEdit, onContactUpdated, tSidebar]);
 
   /**
@@ -353,12 +438,12 @@ export function PainelDoContato({
           setTags((prev) => [...prev, { ...tag, contact_tag_id: tag.id }]);
         }
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : tSidebar("tagError"));
+        toast.error(e instanceof Error ? e.message : tSidebar('tagError'));
       } finally {
         setTagOcupada(null);
       }
     },
-    [contact, tags, tSidebar],
+    [contact, tags, tSidebar]
   );
 
   /**
@@ -383,23 +468,38 @@ export function PainelDoContato({
       // mas o tipo `Deal` a declara só opcional — o `Omit` + reunião alarga
       // SÓ este campo, sem mexer no tipo compartilhado (interseção não
       // serviria: `string & (string|null)` volta a estreitar).
-      patch: Partial<Omit<Deal, "expected_close_date">> & {
+      patch: Partial<Omit<Deal, 'expected_close_date'>> & {
         expected_close_date?: string | null;
       },
-      drenar: boolean,
-    ) => {
+      drenar: boolean
+    ): Promise<boolean> => {
       setNegocioOcupado(true);
       const supabase = createClient();
-      const { error } = await supabase
-        .from("deals")
+      // `.select("id")` = checagem de ROWCOUNT: update que casa 0 linhas
+      // (negócio apagado por outro operador; RLS barrando) volta com
+      // `error: null` e cara de sucesso — a classe "0 linhas em silêncio"
+      // do CLAUDE.md. Sem isto o otimista carimbava um estado que o banco
+      // nunca gravou.
+      const { data: linhas, error } = await supabase
+        .from('deals')
         .update(patch)
-        .eq("id", deal.id);
+        .eq('id', deal.id)
+        .select('id');
       setNegocioOcupado(false);
-      if (error) {
-        toast.error(tSidebar("dealSaveError"));
+      if (error || !linhas || linhas.length === 0) {
+        toast.error(tSidebar('dealSaveError'));
+        // O nonce remonta os inputs não-controlados (valor/data): a key
+        // deriva do valor salvo, e um save recusado devolve o MESMO valor
+        // — sem isto o input seguia exibindo o texto não salvo.
+        setResetNegocio((n) => n + 1);
         void fetchContactData();
-        return;
+        // `false` = quem chamou NÃO pode anunciar sucesso — sem isto o
+        // `.then` do mudarStatus soltava "Reaberto ✓" em cima do toast de
+        // erro (achado da revisão de 2026-08-29).
+        return false;
       }
+      // Ancora o cartão no negócio mexido — ver `ultimoNegocioMexido`.
+      setUltimoNegocioMexido(deal.id);
       // Espelho do gatilho da 950: entrar em etapa marcada carimba o
       // status. O BANCO já gravou (BEFORE trigger, mesma escrita); aqui só
       // refletimos para o selo aparecer sem esperar refetch.
@@ -423,15 +523,17 @@ export function PainelDoContato({
                 // O badge da etapa lê o embed `stage` — sem re-hidratar aqui
                 // ele mostraria a etapa velha até o próximo refetch.
                 stage: patch.stage_id
-                  ? (allStages.find((st) => st.id === patch.stage_id) ?? d.stage)
+                  ? (allStages.find((st) => st.id === patch.stage_id) ??
+                    d.stage)
                   : d.stage,
               }
-            : d,
-        ),
+            : d
+        )
       );
       if (drenar) avisarDrenagemDeFunil();
+      return true;
     },
-    [allStages, fetchContactData, tSidebar],
+    [allStages, fetchContactData, tSidebar]
   );
 
   /**
@@ -450,21 +552,21 @@ export function PainelDoContato({
           : { pipeline_id: pipelineId, stage_id: stageId };
       void atualizarNegocio(deal, patch, true);
     },
-    [atualizarNegocio],
+    [atualizarNegocio]
   );
 
   const mudarStatus = useCallback(
     (deal: Deal, status: DealStatus) => {
       const toasts: Record<DealStatus, string> = {
-        won: tForm("toastMarkedWon"),
-        lost: tForm("toastMarkedLost"),
-        open: tForm("toastReopened"),
+        won: tForm('toastMarkedWon'),
+        lost: tForm('toastMarkedLost'),
+        open: tForm('toastReopened'),
       };
-      void atualizarNegocio(deal, { status }, true).then(() =>
-        toast.success(toasts[status]),
-      );
+      void atualizarNegocio(deal, { status }, true).then((ok) => {
+        if (ok) toast.success(toasts[status]);
+      });
     },
-    [atualizarNegocio, tForm],
+    [atualizarNegocio, tForm]
   );
 
   /**
@@ -475,21 +577,24 @@ export function PainelDoContato({
    */
   const salvarCampos = useCallback(
     async (campos: CustomField[]) => {
-      if (!contact) return;
+      // ⚠️ O gate de `dadosProntos` é de CORREÇÃO, não de conforto: com os
+      // valores ainda não carregados, o subconjunto sai todo `?? ""` — e
+      // `""` no upsert compartilhado significa DELETE do valor real.
+      if (!contact || !dadosProntos) return;
       setSalvandoCampos(true);
       const subconjunto = Object.fromEntries(
-        campos.map((f) => [f.id, customValues[f.id] ?? ""]),
+        campos.map((f) => [f.id, customValues[f.id] ?? ''])
       );
       const erro = await salvarValoresDoContato(
         createClient(),
         contact.id,
-        subconjunto,
+        subconjunto
       );
       setSalvandoCampos(false);
-      if (erro) toast.error(tSidebar("fieldsSaveError"));
-      else toast.success(tSidebar("fieldsSaved"));
+      if (erro) toast.error(tSidebar('fieldsSaveError'));
+      else toast.success(tSidebar('fieldsSaved'));
     },
-    [contact, customValues, tSidebar],
+    [contact, customValues, dadosProntos, tSidebar]
   );
 
   /**
@@ -502,22 +607,22 @@ export function PainelDoContato({
     if (!user || !accountId || faltantes.length === 0) return;
     setSemeando(true);
     const supabase = createClient();
-    const { error } = await supabase.from("custom_fields").insert(
+    const { error } = await supabase.from('custom_fields').insert(
       faltantes.map((c) => ({
         field_name: c.nome,
         field_key: c.key,
-        field_type: "text",
-        categoria: "tracking",
+        field_type: 'text',
+        categoria: 'tracking',
         user_id: user.id,
         account_id: accountId,
-      })),
+      }))
     );
     setSemeando(false);
     if (error) {
-      toast.error(tSidebar("seedError"));
+      toast.error(tSidebar('seedError'));
       return;
     }
-    toast.success(tSidebar("seedDone"));
+    toast.success(tSidebar('seedDone'));
     void fetchContactData();
   }, [user, accountId, faltantes, fetchContactData, tSidebar]);
 
@@ -547,9 +652,9 @@ export function PainelDoContato({
     if (!contact || !newNote.trim() || !conversationId) return;
     setAddingNote(true);
     try {
-      const res = await fetch("/api/cb/notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/cb/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conversation_id: conversationId,
           texto: newNote.trim(),
@@ -563,12 +668,12 @@ export function PainelDoContato({
         // recebe a resposta é o render de agora. Trocar de conversa com o
         // salvamento no ar poria a anotação de um cliente na ficha de outro.
         if (nota.conversation_id === conversationId) acrescentarNota(nota);
-        setNewNote("");
+        setNewNote('');
       } else {
-        toast.error(json?.error || tSidebar("noteSaveError"));
+        toast.error(json?.error || tSidebar('noteSaveError'));
       }
     } catch {
-      toast.error(tSidebar("noteSaveError"));
+      toast.error(tSidebar('noteSaveError'));
     } finally {
       setAddingNote(false);
     }
@@ -576,11 +681,11 @@ export function PainelDoContato({
 
   if (!contact) {
     return (
-      <div className="flex h-full w-full flex-col border-l border-border bg-card">
+      <div className="border-border bg-card flex h-full w-full flex-col border-l">
         <CabecalhoDoPainel onClose={onClose} tThread={tThread} />
         <div className="flex flex-1 items-center justify-center p-4">
-          <p className="text-center text-sm text-muted-foreground">
-            {tThread("selectConversation")}
+          <p className="text-muted-foreground text-center text-sm">
+            {tThread('selectConversation')}
           </p>
         </div>
       </div>
@@ -591,12 +696,12 @@ export function PainelDoContato({
   const initials = displayName.charAt(0).toUpperCase();
 
   return (
-    <div className="flex h-full w-full flex-col border-l border-border bg-card">
+    <div className="border-border bg-card flex h-full w-full flex-col border-l">
       {/* Cabeçalho compacto: fechar + avatar 40px + nome/telefone em linha.
           A identidade ocupava ~150px em três blocos centralizados; agora são
           ~60px, e o que sobrou de altura vai para o conteúdo das abas. */}
       <CabecalhoDoPainel onClose={onClose} tThread={tThread}>
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-foreground">
+        <div className="bg-muted text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold">
           {contact.avatar_url ? (
             <img
               src={contact.avatar_url}
@@ -626,28 +731,28 @@ export function PainelDoContato({
                 type="button"
                 onClick={() => {
                   if (!podeEditar) return;
-                  setNomeEdit(contact.name ?? "");
+                  setNomeEdit(contact.name ?? '');
                   setEditandoNome(true);
                 }}
                 disabled={!podeEditar}
-                title={podeEditar ? tSidebar("editName") : undefined}
+                title={podeEditar ? tSidebar('editName') : undefined}
                 className="group/nome flex w-full min-w-0 items-center gap-1 text-left"
               >
-                <h3 className="truncate text-sm font-semibold text-foreground">
+                <h3 className="text-foreground truncate text-sm font-semibold">
                   {displayName}
                 </h3>
                 {podeEditar && (
-                  <Pencil className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/nome:opacity-100" />
+                  <Pencil className="text-muted-foreground h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover/nome:opacity-100" />
                 )}
               </button>
               <button
                 onClick={handleCopyPhone}
-                className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs transition-colors"
                 title={contact.phone}
               >
                 <span className="truncate">{contact.phone}</span>
                 {copied ? (
-                  <Check className="h-3 w-3 shrink-0 text-primary" />
+                  <Check className="text-primary h-3 w-3 shrink-0" />
                 ) : (
                   <Copy className="h-3 w-3 shrink-0" />
                 )}
@@ -670,20 +775,20 @@ export function PainelDoContato({
         {/* Ordem definida pelo operador (2026-08-29): Principal, Notas,
             Tarefas, Traqueamento, e o Histórico POR ÚLTIMO — é a aba de
             auditoria, a que menos se abre no atendimento. */}
-        <TabsList className="w-full shrink-0 justify-start gap-x-1 rounded-none border-b border-border bg-muted/30 px-2 py-1 group-data-horizontal/tabs:h-auto [&>button]:h-8 [&>button]:flex-1">
-          <AbaDeIcone value="principal" label={tSidebar("tabMain")}>
+        <TabsList className="border-border bg-muted/30 w-full shrink-0 justify-start gap-x-1 rounded-none border-b px-2 py-1 group-data-horizontal/tabs:h-auto [&>button]:h-8 [&>button]:flex-1">
+          <AbaDeIcone value="principal" label={tSidebar('tabMain')}>
             <User className="h-4 w-4" />
           </AbaDeIcone>
-          <AbaDeIcone value="notas" label={tSidebar("tabNotes")}>
+          <AbaDeIcone value="notas" label={tSidebar('tabNotes')}>
             <StickyNote className="h-4 w-4" />
           </AbaDeIcone>
-          <AbaDeIcone value="tarefas" label={tSidebar("tabTasks")}>
+          <AbaDeIcone value="tarefas" label={tSidebar('tabTasks')}>
             <ListTodo className="h-4 w-4" />
           </AbaDeIcone>
-          <AbaDeIcone value="traqueamento" label={tSidebar("tabTracking")}>
+          <AbaDeIcone value="traqueamento" label={tSidebar('tabTracking')}>
             <Megaphone className="h-4 w-4" />
           </AbaDeIcone>
-          <AbaDeIcone value="historico" label={tSidebar("tabHistory")}>
+          <AbaDeIcone value="historico" label={tSidebar('tabHistory')}>
             <History className="h-4 w-4" />
           </AbaDeIcone>
         </TabsList>
@@ -705,28 +810,35 @@ export function PainelDoContato({
                `DealForm`, aberto pelo botão. ---- */}
           <div className="mb-4">
             <TituloDeSecao icon={<DollarSign className="h-3 w-3" />}>
-              {tSidebar("deals")}
+              {tSidebar('deals')}
             </TituloDeSecao>
 
-            {!dealAtivo ? (
+            {!dadosProntos ? (
+              /* Carregando o contato: mostrar "sem negócios" (ou o negócio
+                 do contato ANTERIOR) aqui seria mentira — e o botão de
+                 criar nasceria sobre dado ainda não conferido. */
+              <div className="mt-2 flex justify-center py-3">
+                <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+              </div>
+            ) : !dealAtivo ? (
               <div className="mt-2 space-y-2">
-                <p className="px-1 text-xs text-muted-foreground">
-                  {tSidebar("noDeals")}
+                <p className="text-muted-foreground px-1 text-xs">
+                  {tSidebar('noDeals')}
                 </p>
                 {podeEditar && (
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setDealFormAberto("criar")}
+                    onClick={() => setDealFormAberto('criar')}
                     className="w-full"
                   >
                     <Plus className="size-3.5" />
-                    {tForm("newDeal")}
+                    {tForm('newDeal')}
                   </Button>
                 )}
               </div>
             ) : (
-              <div className="mt-2 space-y-2 rounded-lg bg-muted px-3 py-2.5">
+              <div className="bg-muted mt-2 space-y-2 rounded-lg px-3 py-2.5">
                 {/* COMPACTO por pedido do operador: só ETAPA e VALOR à vista
                     ("ficou com muita informação"). O selo Ganho/Perdido é a
                     exceção — escondê-lo faria um negócio ganho parecer
@@ -738,46 +850,48 @@ export function PainelDoContato({
                   stageId={dealAtivo.stage_id}
                   onEscolher={(pId, sId) => moverPara(dealAtivo, pId, sId)}
                   disabled={!podeEditar || negocioOcupado}
-                  ariaLabel={tForm("stage")}
+                  ariaLabel={tForm('stage')}
                 />
 
                 <div className="flex items-center gap-2">
                   <Input
-                    key={`valor-${dealAtivo.id}-${dealAtivo.value}`}
+                    key={`valor-${dealAtivo.id}-${dealAtivo.value}-${resetNegocio}`}
                     type="number"
                     step="0.01"
                     min="0"
-                    defaultValue={dealAtivo.value || ""}
+                    defaultValue={dealAtivo.value || ''}
                     disabled={!podeEditar || negocioOcupado}
-                    aria-label={tForm("value")}
-                    placeholder={tForm("value")}
+                    aria-label={tForm('value')}
+                    placeholder={tForm('value')}
                     onBlur={(e) => {
                       const v = parseFloat(e.target.value) || 0;
                       if (v !== dealAtivo.value)
                         void atualizarNegocio(dealAtivo, { value: v }, false);
                     }}
-                    className="h-8 flex-1 bg-card text-sm"
+                    className="bg-card h-8 flex-1 text-sm"
                   />
-                  {dealAtivo.status !== "open" && (
+                  {dealAtivo.status !== 'open' && (
                     <span
                       className={cn(
-                        "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                        dealAtivo.status === "won" &&
-                          "bg-emerald-500/15 text-emerald-500",
-                        dealAtivo.status === "lost" &&
-                          "bg-destructive/15 text-destructive",
+                        'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                        dealAtivo.status === 'won' &&
+                          'bg-emerald-500/15 text-emerald-500',
+                        dealAtivo.status === 'lost' &&
+                          'bg-destructive/15 text-destructive'
                       )}
                     >
-                      {dealAtivo.status === "won" ? tCard("won") : tCard("lost")}
+                      {dealAtivo.status === 'won'
+                        ? tCard('won')
+                        : tCard('lost')}
                     </span>
                   )}
                   <button
                     type="button"
                     onClick={() => setDetalhesAbertos((v) => !v)}
                     aria-expanded={detalhesAbertos}
-                    aria-label={tSidebar("dealDetails")}
-                    title={tSidebar("dealDetails")}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+                    aria-label={tSidebar('dealDetails')}
+                    title={tSidebar('dealDetails')}
+                    className="text-muted-foreground hover:bg-card hover:text-foreground flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors"
                   >
                     {detalhesAbertos ? (
                       <ChevronUp className="h-4 w-4" />
@@ -788,19 +902,20 @@ export function PainelDoContato({
                 </div>
 
                 {detalhesAbertos && (
-                  <div className="space-y-2 border-t border-border pt-2">
-                    <p className="truncate text-xs text-muted-foreground">
-                      {dealAtivo.title} · {formatCurrency(dealAtivo.value, dealAtivo.currency)}
+                  <div className="border-border space-y-2 border-t pt-2">
+                    <p className="text-muted-foreground truncate text-xs">
+                      {dealAtivo.title} ·{' '}
+                      {formatCurrency(dealAtivo.value, dealAtivo.currency)}
                     </p>
 
                     <div className="space-y-1">
-                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                        {tForm("expectedCloseDate")}
+                      <Label className="text-muted-foreground text-[10px] tracking-wider uppercase">
+                        {tForm('expectedCloseDate')}
                       </Label>
                       <Input
-                        key={`fecha-${dealAtivo.id}-${dealAtivo.expected_close_date ?? ""}`}
+                        key={`fecha-${dealAtivo.id}-${dealAtivo.expected_close_date ?? ''}-${resetNegocio}`}
                         type="date"
-                        defaultValue={dealAtivo.expected_close_date ?? ""}
+                        defaultValue={dealAtivo.expected_close_date ?? ''}
                         disabled={!podeEditar || negocioOcupado}
                         onBlur={(e) => {
                           const v = e.target.value || null;
@@ -808,10 +923,10 @@ export function PainelDoContato({
                             void atualizarNegocio(
                               dealAtivo,
                               { expected_close_date: v },
-                              false,
+                              false
                             );
                         }}
-                        className="h-8 bg-card text-sm"
+                        className="bg-card h-8 text-sm"
                       />
                     </div>
 
@@ -820,25 +935,25 @@ export function PainelDoContato({
                         carimbar sozinha. Os MESMOS updates do deal-form; o
                         status também dispara automação (933). */}
                     {podeEditar &&
-                      (dealAtivo.status === "open" ? (
+                      (dealAtivo.status === 'open' ? (
                         <div className="grid grid-cols-2 gap-2">
                           <Button
                             size="sm"
                             variant="outline"
                             disabled={negocioOcupado}
-                            onClick={() => mudarStatus(dealAtivo, "won")}
+                            onClick={() => mudarStatus(dealAtivo, 'won')}
                             className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400"
                           >
-                            {tCard("won")}
+                            {tCard('won')}
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
                             disabled={negocioOcupado}
-                            onClick={() => mudarStatus(dealAtivo, "lost")}
+                            onClick={() => mudarStatus(dealAtivo, 'lost')}
                             className="border-destructive/40 text-destructive hover:bg-destructive/10"
                           >
-                            {tCard("lost")}
+                            {tCard('lost')}
                           </Button>
                         </div>
                       ) : (
@@ -846,10 +961,10 @@ export function PainelDoContato({
                           size="sm"
                           variant="outline"
                           disabled={negocioOcupado}
-                          onClick={() => mudarStatus(dealAtivo, "open")}
+                          onClick={() => mudarStatus(dealAtivo, 'open')}
                           className="w-full"
                         >
-                          {tForm("reopenDeal")}
+                          {tForm('reopenDeal')}
                         </Button>
                       ))}
 
@@ -857,10 +972,10 @@ export function PainelDoContato({
                       <button
                         type="button"
                         onClick={() => setDealFormAberto(dealAtivo)}
-                        className="flex w-full items-center justify-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+                        className="text-muted-foreground hover:bg-card hover:text-foreground flex w-full items-center justify-center gap-1 rounded-md px-1.5 py-1 text-xs transition-colors"
                       >
                         <Maximize2 className="h-3 w-3" />
-                        {tSidebar("openFullDeal")}
+                        {tSidebar('openFullDeal')}
                       </button>
                     )}
                   </div>
@@ -874,12 +989,12 @@ export function PainelDoContato({
               .map((deal) => (
                 <div
                   key={deal.id}
-                  className="mt-2 rounded-lg bg-muted/60 px-3 py-2"
+                  className="bg-muted/60 mt-2 rounded-lg px-3 py-2"
                 >
-                  <p className="truncate text-sm font-medium text-foreground">
+                  <p className="text-foreground truncate text-sm font-medium">
                     {deal.title}
                   </p>
-                  <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="text-muted-foreground mt-1 flex items-center justify-between text-xs">
                     <span>{formatCurrency(deal.value, deal.currency)}</span>
                     {deal.stage && (
                       <span
@@ -897,17 +1012,17 @@ export function PainelDoContato({
               ))}
           </div>
 
-          <div className="my-4 border-t border-border" />
+          <div className="border-border my-4 border-t" />
 
           <div className="space-y-1">
             {contact.email && (
-              <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground">
+              <div className="text-muted-foreground flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm">
                 <Mail className="h-4 w-4 shrink-0" />
                 <span className="truncate">{contact.email}</span>
               </div>
             )}
             {contact.company && (
-              <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground">
+              <div className="text-muted-foreground flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm">
                 <Building2 className="h-4 w-4 shrink-0" />
                 <span className="truncate">{contact.company}</span>
               </div>
@@ -915,9 +1030,9 @@ export function PainelDoContato({
             {/* Por qual número do escritório esta conversa corre. Só com 2+
                 canais — com um só a resposta é óbvia. */}
             {channels.length >= 2 && channelId && (
-              <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground">
+              <div className="text-muted-foreground flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm">
                 <Smartphone className="h-4 w-4 shrink-0" />
-                <span className="text-xs">{tCanais("label")}</span>
+                <span className="text-xs">{tCanais('label')}</span>
                 <ChannelCell
                   channels={channels}
                   channelId={channelId}
@@ -927,8 +1042,10 @@ export function PainelDoContato({
             )}
           </div>
 
-          {(contact.email || contact.company || (channels.length >= 2 && channelId)) && (
-            <div className="my-4 border-t border-border" />
+          {(contact.email ||
+            contact.company ||
+            (channels.length >= 2 && channelId)) && (
+            <div className="border-border my-4 border-t" />
           )}
 
           {/* Etiquetas — clicar numa aplicada REMOVE; o "+" abre o catálogo
@@ -937,16 +1054,16 @@ export function PainelDoContato({
           <div>
             <div className="flex items-center justify-between">
               <TituloDeSecao icon={<TagIcon className="h-3 w-3" />}>
-                {tSidebar("tags")}
+                {tSidebar('tags')}
               </TituloDeSecao>
               {podeEditar && allTags.length > 0 && (
                 <Popover>
                   <PopoverTrigger
-                    className="flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    aria-label={tSidebar("addTag")}
+                    className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-6 items-center gap-1 rounded-md px-1.5 text-xs transition-colors"
+                    aria-label={tSidebar('addTag')}
                   >
                     <Plus className="h-3 w-3" />
-                    {tSidebar("addTag")}
+                    {tSidebar('addTag')}
                   </PopoverTrigger>
                   <PopoverContent className="w-56 p-2" sideOffset={6}>
                     <div className="flex max-h-56 flex-wrap gap-1 overflow-y-auto">
@@ -959,8 +1076,8 @@ export function PainelDoContato({
                             disabled={tagOcupada === tag.id}
                             onClick={() => void toggleTag(tag)}
                             className={cn(
-                              "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-opacity disabled:opacity-50",
-                              !aplicada && "opacity-50 hover:opacity-100",
+                              'flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-opacity disabled:opacity-50',
+                              !aplicada && 'opacity-50 hover:opacity-100'
                             )}
                             style={{
                               backgroundColor: `${tag.color}20`,
@@ -979,8 +1096,8 @@ export function PainelDoContato({
             </div>
             <div className="mt-2 flex flex-wrap gap-1">
               {tags.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">
-                  {tSidebar("noTags")}
+                <p className="text-muted-foreground px-1 text-xs">
+                  {tSidebar('noTags')}
                 </p>
               ) : (
                 tags.map((tag) => (
@@ -989,7 +1106,7 @@ export function PainelDoContato({
                     type="button"
                     disabled={!podeEditar || tagOcupada === tag.id}
                     onClick={() => void toggleTag(tag)}
-                    title={podeEditar ? tSidebar("removeTag") : undefined}
+                    title={podeEditar ? tSidebar('removeTag') : undefined}
                     className="rounded-full px-2 py-0.5 text-[10px] font-medium transition-opacity enabled:hover:opacity-70"
                     style={{
                       backgroundColor: `${tag.color}20`,
@@ -1003,7 +1120,7 @@ export function PainelDoContato({
             </div>
           </div>
 
-          <div className="my-4 border-t border-border" />
+          <div className="border-border my-4 border-t" />
 
           {/* Campos personalizados (948) — visíveis e editáveis DE DENTRO da
               conversa, que era a queixa: existiam só na ficha de /contacts.
@@ -1013,38 +1130,41 @@ export function PainelDoContato({
           <div>
             <div className="flex items-center justify-between">
               <TituloDeSecao icon={<Settings2 className="h-3 w-3" />}>
-                {tSidebar("customFields")}
+                {tSidebar('customFields')}
               </TituloDeSecao>
               {podeGerirCampos && (
                 <button
                   type="button"
                   onClick={() => setGerirCamposAberto(true)}
-                  className="flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-6 items-center gap-1 rounded-md px-1.5 text-xs transition-colors"
                 >
                   <Settings2 className="h-3 w-3" />
-                  {tSidebar("manageFields")}
+                  {tSidebar('manageFields')}
                 </button>
               )}
             </div>
             <div className="mt-2 space-y-3">
               {gerais.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">
-                  {tSidebar("noFields")}
+                <p className="text-muted-foreground px-1 text-xs">
+                  {tSidebar('noFields')}
                 </p>
               ) : (
                 <>
                   {gerais.map((field) => (
                     <div key={field.id} className="space-y-1">
-                      <Label className="text-xs capitalize text-muted-foreground">
+                      <Label className="text-muted-foreground text-xs capitalize">
                         {field.field_name}
                       </Label>
                       <CampoPersonalizadoInput
                         field={field}
-                        value={customValues[field.id] ?? ""}
+                        value={customValues[field.id] ?? ''}
                         onChange={(v) =>
-                          setCustomValues((prev) => ({ ...prev, [field.id]: v }))
+                          setCustomValues((prev) => ({
+                            ...prev,
+                            [field.id]: v,
+                          }))
                         }
-                        disabled={!podeEditar}
+                        disabled={!podeEditar || !dadosProntos}
                       />
                     </div>
                   ))}
@@ -1052,15 +1172,15 @@ export function PainelDoContato({
                     <Button
                       size="sm"
                       onClick={() => void salvarCampos(gerais)}
-                      disabled={salvandoCampos}
-                      className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                      disabled={salvandoCampos || !dadosProntos}
+                      className="bg-primary text-primary-foreground hover:bg-primary/90 w-full"
                     >
                       {salvandoCampos ? (
                         <Loader2 className="size-3.5 animate-spin" />
                       ) : (
                         <Save className="size-3.5" />
                       )}
-                      {tSidebar("saveFields")}
+                      {tSidebar('saveFields')}
                     </Button>
                   )}
                 </>
@@ -1078,13 +1198,13 @@ export function PainelDoContato({
             <textarea
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
-              placeholder={tSidebar("addNotePlaceholder")}
+              placeholder={tSidebar('addNotePlaceholder')}
               rows={2}
-              className="flex-1 resize-none rounded-lg border border-border bg-muted px-3 py-2 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
+              className="border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 flex-1 resize-none rounded-lg border px-3 py-2 text-xs outline-none"
             />
             <Button
               size="sm"
-              className="h-auto bg-primary px-2 hover:bg-primary/90"
+              className="bg-primary hover:bg-primary/90 h-auto px-2"
               onClick={handleAddNote}
               disabled={!newNote.trim() || addingNote || !conversationId}
             >
@@ -1094,12 +1214,20 @@ export function PainelDoContato({
 
           <div className="mt-2 space-y-2">
             {notes.map((note) => (
-              <div key={note.id} className="rounded-lg bg-muted px-3 py-2">
-                <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+              <div key={note.id} className="bg-muted rounded-lg px-3 py-2">
+                <p className="text-muted-foreground text-xs whitespace-pre-wrap">
                   {note.texto}
                 </p>
-                <p className="mt-1 text-[10px] text-muted-foreground">
-                  {format(new Date(note.created_at), "MMM d, yyyy HH:mm")}
+                <p className="text-muted-foreground mt-1 text-[10px]">
+                  {/* Locale do NAVEGADOR (undefined), nunca fixo — o formato
+                      antigo do date-fns imprimia "Aug 29" num app pt-BR. */}
+                  {new Date(note.created_at).toLocaleString(undefined, {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
                 </p>
               </div>
             ))}
@@ -1127,8 +1255,8 @@ export function PainelDoContato({
         >
           <div className="space-y-3">
             {tracking.length === 0 && (
-              <p className="px-1 text-xs text-muted-foreground">
-                {tSidebar("noTrackingFields")}
+              <p className="text-muted-foreground px-1 text-xs">
+                {tSidebar('noTrackingFields')}
               </p>
             )}
             {podeGerirCampos && faltantes.length > 0 && (
@@ -1144,23 +1272,23 @@ export function PainelDoContato({
                 ) : (
                   <Plus className="size-3.5" />
                 )}
-                {tSidebar("seedTrackingFields", { count: faltantes.length })}
+                {tSidebar('seedTrackingFields', { count: faltantes.length })}
               </Button>
             )}
             {tracking.map((field) => (
               <div key={field.id} className="space-y-1">
                 {/* Sem `capitalize`: utm_source/fbclid são nomes TÉCNICOS e
                     mudá-los visualmente atrapalha quem confere o parâmetro. */}
-                <Label className="text-xs text-muted-foreground">
+                <Label className="text-muted-foreground text-xs">
                   {field.field_name}
                 </Label>
                 <CampoPersonalizadoInput
                   field={field}
-                  value={customValues[field.id] ?? ""}
+                  value={customValues[field.id] ?? ''}
                   onChange={(v) =>
                     setCustomValues((prev) => ({ ...prev, [field.id]: v }))
                   }
-                  disabled={!podeEditar}
+                  disabled={!podeEditar || !dadosProntos}
                 />
               </div>
             ))}
@@ -1168,15 +1296,15 @@ export function PainelDoContato({
               <Button
                 size="sm"
                 onClick={() => void salvarCampos(tracking)}
-                disabled={salvandoCampos}
-                className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                disabled={salvandoCampos || !dadosProntos}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 w-full"
               >
                 {salvandoCampos ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : (
                   <Save className="size-3.5" />
                 )}
-                {tSidebar("saveFields")}
+                {tSidebar('saveFields')}
               </Button>
             )}
           </div>
@@ -1216,16 +1344,16 @@ export function PainelDoContato({
           onOpenChange={(aberto) => {
             if (!aberto) setDealFormAberto(null);
           }}
-          deal={dealFormAberto === "criar" ? null : dealFormAberto}
+          deal={dealFormAberto === 'criar' ? null : dealFormAberto}
           pipelineId={
-            dealFormAberto === "criar"
-              ? (dealAtivo?.pipeline_id ?? pipelines[0]?.id ?? "")
+            dealFormAberto === 'criar'
+              ? (dealAtivo?.pipeline_id ?? pipelines[0]?.id ?? '')
               : dealFormAberto.pipeline_id
           }
           stages={allStages.filter((st) =>
-            dealFormAberto === "criar"
+            dealFormAberto === 'criar'
               ? st.pipeline_id === (dealAtivo?.pipeline_id ?? pipelines[0]?.id)
-              : st.pipeline_id === dealFormAberto.pipeline_id,
+              : st.pipeline_id === dealFormAberto.pipeline_id
           )}
           defaultContactId={contact.id}
           onSaved={() => {
@@ -1251,18 +1379,18 @@ function CabecalhoDoPainel({
   children,
 }: {
   onClose?: () => void;
-  tThread: ReturnType<typeof useTranslations<"Inbox.messageThread">>;
+  tThread: ReturnType<typeof useTranslations<'Inbox.messageThread'>>;
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-2">
+    <div className="border-border flex shrink-0 items-center gap-2 border-b px-2 py-2">
       {onClose && (
         <button
           type="button"
           onClick={onClose}
-          aria-label={tThread("hideContactPanel")}
-          title={tThread("hideContact")}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          aria-label={tThread('hideContactPanel')}
+          title={tThread('hideContact')}
+          className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors"
         >
           <PanelRightClose className="h-4 w-4" />
         </button>
@@ -1307,8 +1435,8 @@ export function TituloDeSecao({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground",
-        className,
+        'text-muted-foreground flex items-center gap-2 px-1 text-xs font-medium tracking-wider uppercase',
+        className
       )}
     >
       {icon}

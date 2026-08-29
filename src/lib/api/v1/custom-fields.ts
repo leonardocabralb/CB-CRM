@@ -11,7 +11,14 @@
 // serialização e a validação da escrita, que são o que merece teste.
 // ============================================================
 
-import { opcoesDoCampo } from '@/components/contacts/campo-personalizado-input';
+// ⚠️ Imports só de módulos PUROS. Este arquivo roda dentro de um route
+// handler (layer RSC): importar de um arquivo "use client" transformaria a
+// função num client-reference proxy que LANÇA ao ser chamado — com build,
+// typecheck e vitest verdes (só a requisição real quebra; reproduzido no
+// Next 16.2.12 em 2026-08-29, quando `opcoesDoCampo` ainda morava no
+// componente).
+import { opcoesDoCampo } from '@/lib/contacts/campo-opcoes';
+import { TIPO_DATA } from '@/lib/contacts/campo-data';
 import type { CustomField } from '@/types';
 
 export interface ApiCustomFieldValue {
@@ -35,15 +42,20 @@ export interface ApiCustomFieldValue {
  */
 export function serializeCustomFields(
   fields: CustomField[],
-  valuesByFieldId: Record<string, string>,
+  valuesByFieldId: Record<string, string>
 ): { fields: ApiCustomFieldValue[]; values: Record<string, string | null> } {
   const lista = fields.map((f) => {
+    // `''` no banco (a automação `update_contact_field` grava variável que
+    // resolveu vazia sem checar) sai como `null` no wire: a doc promete que
+    // campo vazio é null, e um n8n testando `value === null` não pode errar
+    // conforme QUEM escreveu o vazio.
+    const bruto = valuesByFieldId[f.id];
     const item: ApiCustomFieldValue = {
       key: f.field_key,
       name: f.field_name,
       type: f.field_type,
       category: f.categoria ?? 'geral',
-      value: valuesByFieldId[f.id] ?? null,
+      value: bruto !== undefined && bruto.trim() !== '' ? bruto : null,
     };
     if (f.field_type === 'select') item.options = opcoesDoCampo(f);
     return item;
@@ -55,6 +67,21 @@ export function serializeCustomFields(
 }
 
 /**
+ * Teto de UM valor. Espelha o `MAX_DESCRICAO` das tarefas — a mesma
+ * convenção "POST fora da tela não pode gravar um blob": sem teto, uma
+ * string de megabytes vira linha TEXT que todo GET (e a ficha do contato)
+ * arrasta para sempre.
+ */
+export const MAX_VALOR = 4000;
+
+/**
+ * Instante com OFFSET explícito (`Z` ou `±HH:MM`/`±HHMM`) — a regra da v1
+ * para datas (CLAUDE.md): sem offset o Postgres/JS lê como UTC e o
+ * lembrete erra 3h em silêncio.
+ */
+const COM_OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+
+/**
  * Valida o corpo do PATCH e traduz chaves → ids de campo.
  *
  * Regras do contrato:
@@ -62,41 +89,84 @@ export function serializeCustomFields(
  *   integrador manda `55` ou `true` sem cerimônia, o banco é TEXT mesmo;
  * - `""` e `null` LIMPAM o valor (viram `''`, que o
  *   `salvarValoresDoContato` traduz em DELETE da linha);
+ * - campo `datetime` só aceita instante ISO-8601 COM offset, e grava
+ *   NORMALIZADO em UTC (a forma que a tela grava e que `cb_para_timestamp`
+ *   lê). Sem isso, um `"31/12/2026"` do n8n respondia 200, o input da
+ *   ficha nascia vazio e o lembrete da 935 nunca disparava — dado morto
+ *   sem erro em lugar nenhum. `select`/`number` continuam texto livre,
+ *   como a UI (tolerância documentada);
  * - chave desconhecida é ERRO (400 com a lista), nunca ignorada em
  *   silêncio — um typo de `utm_sorce` no n8n tem de aparecer na primeira
  *   chamada, não meses depois na auditoria;
- * - objeto/array como valor é erro de tipo.
+ * - objeto/array como valor é erro de tipo; valor acima de `MAX_VALOR` é
+ *   erro de tamanho.
  */
 export function prepararEscritaPorChave(
-  fields: Pick<CustomField, 'id' | 'field_key'>[],
-  values: Record<string, unknown>,
+  fields: Pick<CustomField, 'id' | 'field_key' | 'field_type'>[],
+  values: Record<string, unknown>
 ):
   | { ok: true; porId: Record<string, string> }
-  | { ok: false; desconhecidas: string[]; invalidas: string[] } {
-  const porChave = new Map(fields.map((f) => [f.field_key, f.id]));
+  | {
+      ok: false;
+      desconhecidas: string[];
+      invalidas: string[];
+      datasInvalidas: string[];
+      longas: string[];
+    } {
+  const porChave = new Map(fields.map((f) => [f.field_key, f]));
   const porId: Record<string, string> = {};
   const desconhecidas: string[] = [];
   const invalidas: string[] = [];
+  const datasInvalidas: string[] = [];
+  const longas: string[] = [];
 
   for (const [chave, bruto] of Object.entries(values)) {
-    const id = porChave.get(chave);
-    if (!id) {
+    const field = porChave.get(chave);
+    if (!field) {
       desconhecidas.push(chave);
       continue;
     }
+
+    let texto: string;
     if (bruto === null || bruto === '') {
-      porId[id] = '';
+      porId[field.id] = '';
+      continue;
     } else if (typeof bruto === 'string') {
-      porId[id] = bruto.trim();
+      texto = bruto.trim();
     } else if (typeof bruto === 'number' || typeof bruto === 'boolean') {
-      porId[id] = String(bruto);
+      texto = String(bruto);
     } else {
       invalidas.push(chave);
+      continue;
     }
+
+    // `"   "` também limpa (o trim acima já a esvaziou) — documentado.
+    if (texto === '') {
+      porId[field.id] = '';
+      continue;
+    }
+    if (texto.length > MAX_VALOR) {
+      longas.push(chave);
+      continue;
+    }
+    if (field.field_type === TIPO_DATA) {
+      const instante = Date.parse(texto);
+      if (!COM_OFFSET.test(texto) || Number.isNaN(instante)) {
+        datasInvalidas.push(chave);
+        continue;
+      }
+      texto = new Date(instante).toISOString();
+    }
+    porId[field.id] = texto;
   }
 
-  if (desconhecidas.length > 0 || invalidas.length > 0) {
-    return { ok: false, desconhecidas, invalidas };
+  if (
+    desconhecidas.length > 0 ||
+    invalidas.length > 0 ||
+    datasInvalidas.length > 0 ||
+    longas.length > 0
+  ) {
+    return { ok: false, desconhecidas, invalidas, datasInvalidas, longas };
   }
   return { ok: true, porId };
 }

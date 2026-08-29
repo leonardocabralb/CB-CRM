@@ -124,6 +124,13 @@ interface MessageThreadProps {
    */
   onBack?: () => void;
   /**
+   * Abre a ficha do contato/grupo — chamado ao tocar no nome/avatar do
+   * cabeçalho. No celular a página abre o overlay do painel (única
+   * superfície da ficha abaixo de lg); no desktop reabre a coluna se o
+   * operador a tiver fechado.
+   */
+  onOpenContactPanel?: () => void;
+  /**
    * Increment to force the messages + reactions fetch effects to refire.
    * Parent bumps this on realtime reconnect / tab visibility → visible
    * so the open thread catches up on any events sent while the WS was
@@ -247,6 +254,7 @@ export function MessageThread({
   onAssignChange,
   onChannelChange,
   onBack,
+  onOpenContactPanel,
   resyncToken = 0,
   onRefresh,
   termoDaBusca = "",
@@ -1577,20 +1585,39 @@ export function MessageThread({
               <ArrowLeft className="h-5 w-5" />
             </button>
           )}
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-            {displayName.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <h2 className="flex min-w-0 items-center gap-1.5 truncate text-sm font-semibold text-foreground">
-              {ehGrupo && <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-              <span className="truncate">{displayName}</span>
-            </h2>
-            {subtituloDoCabecalho && (
-              <p className="truncate text-xs text-muted-foreground">
-                {subtituloDoCabecalho}
-              </p>
-            )}
-          </div>
+          {/* Nome/avatar são um BOTÃO: tocar abre a ficha — no celular é a
+              única porta para o painel (overlay), no desktop reabre a coluna
+              fechada. O h2 ENVOLVE o botão (button é phrasing content, pode
+              viver dentro de heading) — o fio mantém seu heading no outline.
+              E sem `aria-label`: ele APAGAVA o nome do contato do nome
+              acessível ("Exibir painel, botão" — leitor de tela sem saber com
+              quem é a conversa); o conteúdo é o nome, o `title` diz a ação.
+              Sem `flex-1` no h2: ele assume o papel de item de flex que o
+              botão tinha (largura pelo conteúdo, encolhe via min-w-0) —
+              crescer mexeria na régua do justify-between do cabeçalho. */}
+          <h2 className="flex min-w-0">
+          <button
+            type="button"
+            onClick={onOpenContactPanel}
+            title={t("showContact")}
+            className="-m-1 flex min-w-0 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-muted/60 sm:gap-3"
+          >
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+              {displayName.charAt(0).toUpperCase()}
+            </span>
+            <span className="block min-w-0">
+              <span className="flex min-w-0 items-center gap-1.5 truncate text-sm font-semibold text-foreground">
+                {ehGrupo && <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                <span className="truncate">{displayName}</span>
+              </span>
+              {subtituloDoCabecalho && (
+                <span className="block truncate text-xs text-muted-foreground">
+                  {subtituloDoCabecalho}
+                </span>
+              )}
+            </span>
+          </button>
+          </h2>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. Canal Evolution não
               tem janela de 24h, então o cronômetro some. */}

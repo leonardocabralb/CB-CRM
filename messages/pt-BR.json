@@ -400,6 +400,7 @@
       "saveFields": "Salvar campos",
       "fieldsSaved": "Campos salvos.",
       "fieldsSaveError": "Não foi possível salvar os campos.",
+      "loadError": "Não foi possível carregar os dados deste contato. Reabra a conversa para tentar de novo.",
       "tabTracking": "Traqueamento",
       "noTrackingFields": "Nenhum campo de traqueamento ainda.",
       "seedTrackingFields": "Criar os {count} campos padrão",
