@@ -135,7 +135,20 @@ export interface CustomField {
   /** Tenancy key — NOT NULL since migration 017. */
   account_id: string;
   field_name: string;
+  /**
+   * 'text' | 'datetime' | 'select' | 'number' — fechado por CHECK desde a
+   * 948. Fica `string` no tipo porque linhas antigas chegam do PostgREST
+   * antes de qualquer validação nossa.
+   */
   field_type: string;
+  /**
+   * Identificador estável por conta (migration 948) — o que a API pública
+   * usará para referenciar o campo. Gerado por gatilho quando ausente;
+   * NUNCA substitui o UUID nos consumidores internos (automações, lembrete,
+   * broadcast seguem por id).
+   */
+  field_key: string;
+  /** `{ opcoes: string[] }` num campo `select`; livre/nulo nos demais. */
   field_options?: Record<string, unknown>;
   created_at: string;
 }

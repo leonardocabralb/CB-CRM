@@ -10,11 +10,8 @@ import { ChannelSelect } from '@/components/channels/channel-select';
 import { ActivityHistory } from '@/components/lead-events/activity-history';
 import { ContactTasks } from '@/components/tasks/contact-tasks';
 import { formatCurrency } from '@/lib/currency';
-import {
-  TIPO_DATA,
-  paraEntradaLocal,
-  deEntradaLocal,
-} from '@/lib/contacts/campo-data';
+import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
+import { CampoPersonalizadoInput } from '@/components/contacts/campo-personalizado-input';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag, ConversationNote, CustomField, ContactCustomValue, Deal, MessageTemplate } from '@/types';
 import {
@@ -345,31 +342,15 @@ export function ContactDetailView({
     if (!contactId) return;
     setSavingCustom(true);
 
-    try {
-      // Delete existing values and re-insert
-      await supabase
-        .from('contact_custom_values')
-        .delete()
-        .eq('contact_id', contactId);
-
-      const rows = Object.entries(customValues)
-        .filter(([, val]) => val.trim())
-        .map(([fieldId, val]) => ({
-          contact_id: contactId,
-          custom_field_id: fieldId,
-          value: val.trim(),
-        }));
-
-      if (rows.length > 0) {
-        const { error } = await supabase
-          .from('contact_custom_values')
-          .insert(rows);
-        if (error) throw error;
-      }
-
-      toast.success(t('toastCustomFieldsSaved'));
-    } catch {
+    // ⚠️ UPSERT + delete dos esvaziados (helper compartilhado com o painel do
+    // inbox) — a versão antiga apagava TODAS as linhas do contato e reinseria
+    // as preenchidas: falha entre o delete e o insert perdia todos os
+    // valores, sem volta.
+    const erro = await salvarValoresDoContato(supabase, contactId, customValues);
+    if (erro) {
       toast.error(t('toastCustomFieldsFailed'));
+    } else {
+      toast.success(t('toastCustomFieldsSaved'));
     }
     setSavingCustom(false);
   }
@@ -786,35 +767,20 @@ export function ContactDetailView({
                         <Label className="text-muted-foreground text-xs capitalize">
                           {field.field_name}
                         </Label>
-                        {field.field_type === TIPO_DATA ? (
-                          /* ⚠️ Grava ISO absoluto, exibe hora local. O
-                             contêiner roda em UTC e quem digita está em
-                             Brasília: sem essa conversão o lembrete de "24h
-                             antes" erraria por 3 horas, sem erro nenhum. */
-                          <Input
-                            type="datetime-local"
-                            value={paraEntradaLocal(customValues[field.id])}
-                            onChange={(e) =>
-                              setCustomValues((prev) => ({
-                                ...prev,
-                                [field.id]: deEntradaLocal(e.target.value),
-                              }))
-                            }
-                            className="bg-muted border-border text-foreground h-8 text-sm"
-                          />
-                        ) : (
-                          <Input
-                            value={customValues[field.id] ?? ''}
-                            onChange={(e) =>
-                              setCustomValues((prev) => ({
-                                ...prev,
-                                [field.id]: e.target.value,
-                              }))
-                            }
-                            placeholder={t('enterCustomField', { name: field.field_name })}
-                            className="bg-muted border-border text-foreground h-8 text-sm placeholder:text-muted-foreground"
-                          />
-                        )}
+                        {/* Componente COMPARTILHADO com o painel do inbox
+                            (948): um input por tipo, com as conversões de
+                            fuso do campo de data dentro dele. */}
+                        <CampoPersonalizadoInput
+                          field={field}
+                          value={customValues[field.id] ?? ''}
+                          onChange={(v) =>
+                            setCustomValues((prev) => ({
+                              ...prev,
+                              [field.id]: v,
+                            }))
+                          }
+                          placeholder={t('enterCustomField', { name: field.field_name })}
+                        />
                       </div>
                     ))}
                     <Button
