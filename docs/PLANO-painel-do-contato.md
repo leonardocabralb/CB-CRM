@@ -45,7 +45,7 @@ redimensionar por arrasto (o pedido era abrir/fechar por botão) · abas
 Mídia/Reuniões (não pedidas) · hooks novos para tags/negócios (busca fica no
 topo do painel; trocar de aba não refaz query) · rota/RPC nova para mover etapa
 (o painel usa o MESMO caminho do quadro) · `UNIQUE(account_id, field_name)` ·
-superfície mobile (dívida registrada: no celular a ficha segue inalcançável).
+superfície mobile (dívida registrada à época; **paga no pós-plano**, abaixo).
 
 ---
 
@@ -137,7 +137,8 @@ inexistente nesta máquina) — o CI replaya; a migration só afirma schema e pu
 dados com NOTICE · ⚠️ os 3 campos de data reais são tipados `text` (nasceram
 antes da 935) — o painel os mostra como texto livre, e o gatilho de LEMBRETE
 por data não os enxerga; retipar é decisão do operador (não há editor de tipo,
-de propósito) · única automação viva é `deal_stage_changed` (webhook CB OS) —
+de propósito) — **retipados em 2026-08-29 a pedido do operador, ver
+Pós-plano** · única automação viva é `deal_stage_changed` (webhook CB OS) —
 nenhuma em etiqueta, teste de tag foi seguro.
 
 ## ✅ Fase 3 — Abas reordenadas + Traqueamento (concluída em 2026-08-29)
@@ -316,6 +317,60 @@ keys" ✓ · limpar → null (linhas deletadas) ✓ · contato inexistente → 4
 chave sem escopo → 403 ✓ · sem chave → 401 ✓ · chave revogada → 401 ✓ ·
 valores do contato zerados ao final · 1951 testes · typecheck limpo · lint 0
 erros · i18n-parity OK.
+
+## ✅ Pós-plano — retipar campos de data + superfície mobile (2026-08-29)
+
+Dois itens do backlog, executados a pedido do operador depois das 6 fases.
+
+**1. Retipar os 3 campos de data (`text` → `datetime`).** Feito por UPDATE
+direto em produção (dado de conta, não schema — nenhuma migration): "Data da
+Proposta", "Data de Fechamento do Contrato" e "Data do Primeiro Contato".
+Medido antes: `contact_custom_values` tinha **0 linhas** (nenhum valor jamais
+gravado em campo nenhum), então não houve conversão de formato — o campo nasce
+`datetime` limpo, o painel os rende como `datetime-local` (conferido no
+preview) e o gatilho de **lembrete por data** passa a listá-los
+(`automation-builder.tsx` filtra `field_type === TIPO_DATA`). Valores novos
+seguem a convenção da 935: ISO UTC no banco via `paraEntradaLocal`/
+`deEntradaLocal`. ⚠️ Quem gravar essas chaves pela API v1 (n8n) deve mandar
+ISO com offset — texto livre não quebra nada, mas o lembrete não dispara e o
+input aparece vazio (tolerância de `campo-data.ts`).
+
+**2. Superfície mobile do painel (`feat/painel-do-contato-mobile`).** A MESMA
+instância montada vira, abaixo de `lg`, um overlay `fixed` que desliza da
+direita (mesmo padrão do drawer de navegação: backdrop `z-30` + painel
+`z-40`), aberto **tocando no nome/avatar no cabeçalho do fio** (padrão
+WhatsApp) e fechado pelo backdrop ou pelo X do painel. Decisões que importam:
+
+- **Estado mobile próprio (`painelMobileAberto`), sempre nasce fechado e não
+  persiste** — o `contactPanelOpen` do desktop persiste "aberto" por padrão, e
+  no celular isso cobriria o fio a cada conversa. Trocar de conversa ou voltar
+  à lista fecha o overlay.
+- **As duas variantes moram nas classes** (`fixed`+`translate-x` no mobile,
+  `lg:static`+`lg:w-*` no desktop) — o HTML do servidor está certo nos dois
+  mundos, nada desmonta ao cruzar o breakpoint, realtime das notas sobrevive.
+  As larguras `sm:`/`lg:` coexistem por ordem de cascata (armadilha
+  tailwind-merge documentada no comentário do wrapper).
+- **`inert` segue a superfície ATIVA** via `useMediaQuery` novo
+  (`src/hooks/use-media-query.ts`, `useSyncExternalStore` com snapshot de
+  servidor `false`) — sem aviso de hidratação; primeiro paint assume mobile e
+  reconcilia. O lint novo (`react-hooks/set-state-in-effect`) derrubou a
+  primeira versão com setState em efeito.
+- **Nome/avatar do cabeçalho viraram um `<button>`** (h2/p → span: button só
+  aceita phrasing content). No desktop o mesmo toque reabre a coluna fechada —
+  gesto idêntico nas duas superfícies. Prop nova `onOpenContactPanel` em
+  `message-thread.tsx` (arquivo do upstream — camada nossa, ver CLAUDE.md).
+
+**Arquivos:** `src/hooks/use-media-query.ts` (novo) ·
+`src/app/(dashboard)/inbox/page.tsx` · `src/components/inbox/message-thread.tsx`
+· este plano. Nenhuma chave i18n nova (reusa `showContactPanel`/
+`hideContactPanel`).
+
+**Resultado medido (preview 375×812 e 1440×900):** overlay fecha/abre com
+classes+`inert` corretos, backdrop presente, 5 abas e ficha completa no
+celular (incl. os 3 campos retipados como data) · desktop intocado: coluna
+360px estática, X fecha (`lg:w-0` + tira de reabertura), clique no nome
+reabre e persiste no localStorage · typecheck limpo · lint 0 erros ·
+**1951 testes** · i18n-parity OK.
 
 ## Referências de exploração (2026-08-29)
 
