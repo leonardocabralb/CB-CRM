@@ -71,6 +71,7 @@ export async function POST(request: Request) {
       await validateAiCredentials({
         provider,
         model,
+        radarModel: null,
         apiKey: apiKeyPlain,
         systemPrompt: null,
         isActive: true,

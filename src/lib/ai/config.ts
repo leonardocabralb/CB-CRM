@@ -5,6 +5,8 @@ import type { AiConfig } from './types'
 interface AiConfigRow {
   provider: 'openai' | 'anthropic' | 'gemini'
   model: string
+  /** Migration 946. NULL = herda `model`. Só o Radar lê. */
+  radar_model: string | null
   api_key: string
   system_prompt: string | null
   is_active: boolean
@@ -14,8 +16,13 @@ interface AiConfigRow {
   embeddings_api_key: string | null
 }
 
+// ⚠️ Colunas nomeadas, não `*`: uma coluna sem GRANT derrubaria a
+// consulta inteira. Acrescentar aqui exige que a migration correspondente
+// JÁ esteja aplicada em produção — o caminho do agente padrão faz
+// `throw` no erro, então uma coluna ausente derruba rascunho,
+// auto-reply, Radar e transcrição de uma vez.
 const CONFIG_COLUMNS =
-  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key'
+  'provider, model, radar_model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key'
 
 /**
  * Load and decrypt the account's AI config for *use* (draft or
@@ -108,6 +115,7 @@ function mapAiConfigRow(row: AiConfigRow, accountId: string): AiConfig | null {
   return {
     provider: row.provider,
     model: row.model,
+    radarModel: row.radar_model ?? null,
     apiKey: decrypt(row.api_key),
     systemPrompt: row.system_prompt,
     isActive: row.is_active,
@@ -133,10 +141,18 @@ export async function loadEmbeddingsKey(
   db: SupabaseClient,
   accountId: string,
 ): Promise<{ key: string | null; corrupt: boolean }> {
+  // ⚠️ `.is('channel_id', null)` é obrigatório desde a 903: `ai_configs`
+  // deixou de ter UNIQUE por conta (virou um par de índices parciais —
+  // agente padrão + um por canal), então filtrar só por `account_id` faz
+  // o `.maybeSingle()` ESTOURAR na conta que tem agente de canal. O erro
+  // era engolido logo abaixo e a base de conhecimento passava a indexar
+  // só lexical, em silêncio. A chave de embeddings é uma por conta e
+  // mora no agente padrão.
   const { data, error } = await db
     .from('ai_configs')
     .select('embeddings_api_key')
     .eq('account_id', accountId)
+    .is('channel_id', null)
     .maybeSingle()
   if (error || !data?.embeddings_api_key) return { key: null, corrupt: false }
   try {

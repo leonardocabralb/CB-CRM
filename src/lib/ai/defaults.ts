@@ -18,6 +18,35 @@ export const AI_PROVIDER_DEFAULT_MODEL: Record<AiProvider, string> = {
 }
 
 /**
+ * Modelos SUGERIDOS por provedor — o que a tela oferece num `<datalist>`.
+ *
+ * ⚠️ NÃO é allow-list, e a distinção é deliberada: o campo continua
+ * aceitando qualquer texto e o servidor continua gravando qualquer string
+ * não vazia, pelo mesmo motivo escrito acima (os ids mudam depressa e uma
+ * lista fechada envelheceria para pior — o operador ficaria impedido de
+ * usar um modelo que a chave dele já tem).
+ *
+ * Recorte de agosto/2026: a família Flash do Gemini, que é a que atende
+ * assistente, Radar e transcrição com o melhor custo. A lista foi
+ * conferida contra o catálogo real da conta (`GET /v1beta/models`), não
+ * escrita de memória.
+ */
+export const AI_PROVIDER_MODELS: Record<AiProvider, readonly string[]> = {
+  openai: ['gpt-5.4-mini', 'gpt-5.4', 'gpt-5.4-nano'],
+  anthropic: [
+    'claude-haiku-4-5-20251001',
+    'claude-sonnet-4-5-20250929',
+  ],
+  gemini: [
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+  ],
+}
+
+/**
  * Sentinel the model is instructed to emit (in auto-reply mode) when it
  * can't confidently help and a human should take over. Parsed and
  * stripped by `generateReply`.

@@ -6,6 +6,7 @@ function config(overrides: Partial<AiConfig> = {}): AiConfig {
   return {
     provider: 'gemini',
     model: 'gemini-test',
+    radarModel: null,
     apiKey: 'key-test',
     systemPrompt: null,
     isActive: true,
@@ -177,4 +178,59 @@ describe('generateStructured — Anthropic', () => {
       generateStructured(args({ provider: 'anthropic' })),
     ).rejects.toMatchObject({ code: 'empty_response' })
   })
+})
+
+describe('generateStructured — o parâmetro model (o modelo do Radar, 946)', () => {
+  // ⚠️ Sem estas três asserções dava para reverter o recurso INTEIRO —
+  // apagar o `args.model` dos três ramos — com typecheck e a suíte toda
+  // verdes: nenhum outro teste olha o modelo que sai no corpo.
+  const RESPOSTAS: Record<string, unknown> = {
+    gemini: {
+      candidates: [
+        { content: { parts: [{ text: '{"nota":1,"sinais":[],"urgencia":"nenhuma"}' }] } },
+      ],
+    },
+    openai: {
+      choices: [{ message: { content: '{"nota":1,"sinais":[],"urgencia":"nenhuma"}' } }],
+    },
+    anthropic: {
+      content: [{ type: 'tool_use', input: { nota: 1, sinais: [], urgencia: 'nenhuma' } }],
+    },
+  }
+
+  for (const provider of ['gemini', 'openai', 'anthropic'] as const) {
+    it(`${provider}: args.model substitui config.model na requisição`, async () => {
+      const fetchMock = vi.fn().mockResolvedValue(okResponse(RESPOSTAS[provider]))
+      vi.stubGlobal('fetch', fetchMock)
+
+      await generateStructured({
+        ...args({ provider, model: 'modelo-do-chat' }),
+        model: 'modelo-do-radar',
+      })
+
+      const [url, opts] = fetchMock.mock.calls[0]
+      if (provider === 'gemini') {
+        // No Gemini o modelo entra na URL, não no corpo.
+        expect(url).toContain('modelo-do-radar')
+        expect(url).not.toContain('modelo-do-chat')
+      } else {
+        const body = JSON.parse(opts.body)
+        expect(body.model).toBe('modelo-do-radar')
+      }
+    })
+
+    it(`${provider}: sem args.model, cai no config.model`, async () => {
+      const fetchMock = vi.fn().mockResolvedValue(okResponse(RESPOSTAS[provider]))
+      vi.stubGlobal('fetch', fetchMock)
+
+      await generateStructured(args({ provider, model: 'modelo-do-chat' }))
+
+      const [url, opts] = fetchMock.mock.calls[0]
+      if (provider === 'gemini') {
+        expect(url).toContain('modelo-do-chat')
+      } else {
+        expect(JSON.parse(opts.body).model).toBe('modelo-do-chat')
+      }
+    })
+  }
 })

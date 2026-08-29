@@ -221,6 +221,11 @@ upstream sobrescrevê-los:
 | `src/components/settings/ai-config.tsx`, `src/app/api/ai/config/route.ts` | a opção Gemini no seletor e na validação do provider |
 | `src/components/settings/cb-channels-panel.tsx`, `src/app/api/cb/channels/[id]/route.ts`, `src/lib/cb-channels/repo.ts` | o toggle `radar_enabled` por canal (dialog, PATCH allowlist e SAFE_COLUMNS) |
 | `src/components/layout/sidebar.tsx`, `header.tsx`, `src/middleware.ts` | a aba `/radar` (item de navegação, título do cabeçalho e rota protegida) |
+| `src/lib/api-keys/scopes.ts`, `docs/public-api.md`, `src/components/settings/api-keys-settings.tsx` | os dez escopos das features do fork (tarefas/agendadas/negócios/reuniões/anotações) e a rolagem da lista no diálogo — o upstream tem só os 8 originais |
+| `src/lib/deals/create-deal.ts` | devolve `deal` (a linha inserida), não só `ok/created` — a rota v1 serializa a resposta a partir dele |
+| `src/components/settings/settings-sections.ts`, `settings-chip.tsx`, `src/app/(dashboard)/settings/page.tsx` | a seção `integracoes` no rail e a variante `err` (vermelha) do chip |
+| `src/lib/ai/types.ts`, `config.ts`, `structured.ts`, `defaults.ts`, `src/lib/cb-radar/worker.ts`, `src/app/api/ai/config/route.ts` | o modelo do Radar separado do modelo de chat (946): `radarModel` no tipo e em `CONFIG_COLUMNS`, o parâmetro `model` do `generateStructured`, `AI_PROVIDER_MODELS`, e a validação do modelo do Radar no save |
+| `src/components/settings/ai-config.tsx` | `<datalist>` de sugestão no campo Modelo e a frase de escopo com link para Integrações |
 
 ⚠️ **A visão "Automações" do funil (grade estilo Kommo) é desenho de dado, não
 tela nova.** `src/lib/automations/grade-do-funil.ts` e
@@ -677,6 +682,115 @@ worker do Radar e (futuro) auto-reply. O que morde código novo:
   aceito no plano; busca por conteúdo de áudio é migration futura.
 - O mime enviado é `messages.media_type` (042) → `Content-Type` do
   Storage → `audio/ogg`, nesta ordem.
+
+⚠️ **Integrações é o lar das CHAVES e dos modelos por MÓDULO; Agentes de IA
+ficou com o COMPORTAMENTO do agente de conversa.** `src/lib/integracoes/montar.ts`
+(puro, com teste), a rota `GET /api/cb/integracoes/status` e
+`src/components/settings/integracoes-panel.tsx`. A divisão nasceu de um engano
+real: um único campo "Modelo" servia ao assistente, à resposta automática, ao
+Playground **e ao Radar**, e o operador cadastrou um modelo "para o Radar"
+configurando outra coisa. O que morde código novo:
+
+- ⚠️ **Só o Radar tem coluna própria (`ai_configs.radar_model`, 946; NULL =
+  herda `model`).** Transcrição e RAG já tinham modelo próprio — constantes
+  no código (`MODELO_TRANSCRICAO`, `EMBEDDING_MODEL`). Nelas o problema era
+  VISIBILIDADE, não separação, e continuam não-configuráveis.
+- ⚠️ **O modelo do Radar aparece em TRÊS lugares do worker** — a chamada a
+  `generateStructured`, o `logAiUsage` e a coluna `model` do insight.
+  Resolver `config.radarModel ?? config.model` UMA vez e usar nos três;
+  deixar um para trás faz a aba Uso e o cartão atribuírem o custo ao modelo
+  errado, no exato lugar onde o operador iria conferir a separação.
+- ⚠️ **`generateStructured` recebe o modelo por PARÂMETRO explícito**, nunca
+  por `{...config, model}`: o spread não deixa rastro no tipo, e um merge do
+  upstream que reescreva `structured.ts` devolveria o Radar ao modelo do
+  chat sem quebrar o typecheck.
+- ⚠️ **O formulário de Integrações ECOA os campos que não edita.** `POST
+  /api/ai/config` reescreve a linha (`system_prompt` ausente vira NULL,
+  `is_active` ausente vira false): salvar a chave a partir de Integrações
+  sem devolver esses campos apagaria as instruções da empresa e desligaria o
+  assistente — a partir de uma tela que fala de outro assunto.
+- ⚠️ **`radar_model` ausente do corpo = "não mexe"** (mesma convenção de
+  `handoff_agent_id`), senão um save vindo de Agentes zeraria o modelo do
+  Radar configurado na outra tela.
+- ⚠️ **O modelo do Radar é validado no SAVE, contra o provedor** — inclusive
+  quando muda só o PROVEDOR (senão um `radar_model` do Gemini sobrevive à
+  troca para OpenAI e o Radar falha de madrugada). O ping da aba testa só o
+  modelo do CHAT, de propósito: pingar o do Radar custaria uma segunda
+  chamada paga a cada carga de tela.
+- ⚠️ **DECISÃO DE PRODUTO (operador, 2026-08-28): configuração POR MÓDULO,
+  uma para a conta inteira.** O modelo e a chave de cada módulo valem para
+  TODAS as conexões — nunca chave por conexão. Por isso `montar.ts` lê só o
+  agente PADRÃO e a lista de canais aparece SÓ no Radar, onde significa o
+  interruptor `radar_enabled` (privacidade, 941), não escopo de chave. A
+  transcrição não lista canal nenhum. ⚠️ O backend (`loadAiConfig`) ainda
+  resolve canal→padrão e o schema da 903 ainda permite linha por canal —
+  mas NÃO existe escritor de agente por canal no app. Se um dia esse
+  escritor nascer, `montar.ts` tem de voltar a espelhar a resolução do
+  backend, senão a tela mente.
+- ⚠️ **`?ping=0` existe porque cada ping é uma GERAÇÃO PAGA por agente.** A
+  tela carrega em dois tempos (config na hora, pings depois) e o botão
+  repete só os pings. O `useEffect` tem guarda própria (`disparouRef`)
+  porque o StrictMode do `next dev` dobraria as chamadas pagas.
+- **Nenhuma chave sai da rota de STATUS, nem mascarada** — ali a falha volta
+  como CÓDIGO, nunca como `AiError.message` (a mensagem da OpenAI ecoa a
+  chave enviada: "Incorrect API key provided: sk-…abcd"). ⚠️ O SAVE do
+  modelo do Radar (`/api/ai/config`) é DIFERENTE de propósito: devolve a
+  mensagem do provedor, porque é ela que diz "modelo não encontrado" —
+  EXCETO quando `code === 'invalid_key'`, o único caso que ecoa chave, que
+  vira texto genérico. Quem mexer ali preserva essa exceção.
+- **`MODELO_TRANSCRICAO` e `EMBEDDING_MODEL` entram em `montarCartoes` por
+  PARÂMETRO**, importados na rota — nunca redigitados no módulo puro nem no
+  dicionário, senão a tela mente na primeira troca.
+- **Radar exige `radar_enabled === true`** (exceção deliberada à convenção
+  "vazio = todos", acima); transcrição é Gemini-only; RAG é OpenAI-only e
+  aparece no cartão da OpenAI mesmo quando o chat da conta é outro provedor.
+- **Módulo sem uso ativo NÃO some da lista** — aparece marcado com o motivo.
+  Esconder era o que a primeira versão fazia, e é justamente o caso em que o
+  operador mais precisa da tela: ele acabou de cadastrar a chave e precisa
+  descobrir que o Radar está desligado na conexão.
+- **`AI_PROVIDER_MODELS` é SUGESTÃO (`<datalist>`), nunca allow-list**: o
+  campo continua aceitando qualquer id e o servidor gravando qualquer string
+  não vazia. Ids de modelo mudam mais rápido que a lista.
+- ⚠️ **MEDIDO em 2026-08-28: `gemini-3.5-transcribe` NÃO serve.** O modelo
+  dedicado existe no catálogo e responde HTTP 200, mas devolve `parts: [{}]`
+  e ZERO tokens de saída pelo `:generateContent` — testado em três formas de
+  chamada sobre cinco áudios reais, enquanto o `gemini-3.5-flash-lite`
+  transcreveu todos. Quem tentar de novo precisa de outra superfície de API,
+  não de outra configuração.
+- **Google Agenda é cartão "não conectado" de propósito**: a integração não
+  existe no código (as colunas `google_*` da 945 nascem nulas). Quando ela
+  for construída, é este cartão que vira o ponto de conexão.
+
+⚠️ **API pública: as features do fork têm escopo E rota, sempre em par.**
+Escopo sem endpoint não faz nada, e endpoint sem escopo é buraco. Os dez
+escopos novos (`tasks|scheduled|deals|meetings|notes:read|write`) moram em
+`src/lib/api-keys/scopes.ts` (sem migration — a coluna é `text[]`) e as
+rotas em `src/app/api/v1/`. O que morde código novo:
+
+- ⚠️ **Toda rota v1 roda em SERVICE-ROLE e ignora RLS** — cada consulta
+  precisa do `.eq('account_id', ctx.accountId)` explícito, inclusive os
+  lookups secundários (`profiles`, `contacts`, `conversations`, `pipelines`).
+- ⚠️ **Erro de banco NÃO é "não encontrado".** Um `maybeSingle()` que
+  descarta o `error` transforma timeout do PostgREST em `404 Contact not
+  found` — e o integrador recria o contato, duplicando. Trate o erro antes
+  do vazio.
+- ⚠️ **Instante vindo da API exige OFFSET escrito** (`Z` ou `±HH:MM`) em
+  `scheduled_for` e na janela `from`/`to` das reuniões. O navegador sempre
+  manda; um integrador não, e sem offset o Postgres lê como UTC — a
+  armadilha de 3h da 935, que não estoura em lugar nenhum.
+- ⚠️ **`POST /api/v1/deals` exige `stage_id` e recusa segundo card do mesmo
+  contato** (409 `contact_already_has_deal`). Etapa por `MIN(position)`
+  despeja o lead na faixa de estacionamento, e o índice único da 911 só
+  cobre `source='channel'` — a regra semântica é de código.
+- **Escrita de negócio pela API chama `drenarEventosDeFunil()`** (fire-and-
+  forget), como a tela faz: sem isso a automação de etapa espera o ciclo de
+  15 min do cron.
+- **Nome carimbado vem de `resolveApiAuthor`** (`src/lib/api/v1/authorship.ts`):
+  usuário de auditoria da v1, com queda para o DONO da conta quando aquele
+  já saiu — e `membro: false` quando nem o dono resolve. Quem exigir um
+  membro de verdade (dono de reunião) confere esse sinalizador.
+- **Grupo continua fora da v1** (`.is('group_id', null)` nas conversas), e a
+  agendada resolve canal por `cb_groups` quando a conversa é de grupo.
 
 ⚠️ **UI de canal: peças próprias, prefira reusá-las.** `src/hooks/use-channels.ts`
 (uma busca por montagem, falha silenciosa), `src/lib/cb-channels/display.ts`

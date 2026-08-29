@@ -55,6 +55,16 @@ export interface StructuredArgs {
   /** Esquema do objeto esperado. A raiz TEM de ser `object`. */
   schema: JsonSchema
   maxOutputTokens: number
+  /**
+   * Modelo a usar, quando não é o do agente de conversa. O Radar passa
+   * o dele aqui (migration 946); ausente, cai em `config.model`.
+   *
+   * ⚠️ Parâmetro explícito, e NUNCA um `{...config, model}` no chamador:
+   * o spread não deixa rastro no tipo, então um merge do upstream que
+   * reescreva este arquivo devolveria o Radar ao modelo do chat sem
+   * quebrar o typecheck — silenciosamente, e justamente na chamada paga.
+   */
+  model?: string
 }
 
 export interface StructuredResult {
@@ -149,6 +159,7 @@ export async function generateStructured(
 
 async function structuredOpenAi(args: StructuredArgs): Promise<StructuredResult> {
   const { config, systemPrompt, userContent, schema, maxOutputTokens } = args
+  const modelo = args.model ?? config.model
   let res: Response
   try {
     res = await fetch(OPENAI_URL, {
@@ -158,7 +169,7 @@ async function structuredOpenAi(args: StructuredArgs): Promise<StructuredResult>
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: config.model,
+        model: modelo,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userContent },
@@ -201,6 +212,7 @@ async function structuredOpenAi(args: StructuredArgs): Promise<StructuredResult>
 
 async function structuredAnthropic(args: StructuredArgs): Promise<StructuredResult> {
   const { config, systemPrompt, userContent, schema, maxOutputTokens } = args
+  const modelo = args.model ?? config.model
   let res: Response
   try {
     res = await fetch(ANTHROPIC_URL, {
@@ -211,7 +223,7 @@ async function structuredAnthropic(args: StructuredArgs): Promise<StructuredResu
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: config.model,
+        model: modelo,
         system: systemPrompt,
         max_tokens: maxOutputTokens,
         // A tool é o mecanismo de esquema: com tool_choice obrigando a
@@ -260,9 +272,10 @@ async function structuredAnthropic(args: StructuredArgs): Promise<StructuredResu
 
 async function structuredGemini(args: StructuredArgs): Promise<StructuredResult> {
   const { config, systemPrompt, userContent, schema, maxOutputTokens } = args
+  const modelo = args.model ?? config.model
   let res: Response
   try {
-    res = await fetch(geminiEndpoint(config.model), {
+    res = await fetch(geminiEndpoint(modelo), {
       method: 'POST',
       headers: {
         'x-goog-api-key': config.apiKey,

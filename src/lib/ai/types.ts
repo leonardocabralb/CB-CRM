@@ -15,7 +15,22 @@ export type AiProvider = 'openai' | 'anthropic' | 'gemini'
  */
 export interface AiConfig {
   provider: AiProvider
+  /**
+   * Modelo do agente de CONVERSA: rascunho, resposta automática e
+   * Playground. NÃO é o do Radar (ver `radarModel`) nem o da transcrição
+   * (fixo em `MODELO_TRANSCRICAO`).
+   */
   model: string
+  /**
+   * Modelo do Radar de Atendimento (migration 946). `null` = herda
+   * `model`, que era o comportamento antes da separação.
+   *
+   * ⚠️ Existe porque analisar conversa e responder ao cliente são
+   * trabalhos diferentes com custos diferentes, e antes disto os dois
+   * liam a MESMA coluna: trocar o modelo pensando num mudava o outro,
+   * sem aviso.
+   */
+  radarModel: string | null
   apiKey: string
   systemPrompt: string | null
   isActive: boolean

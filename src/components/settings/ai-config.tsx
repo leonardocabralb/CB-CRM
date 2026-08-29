@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { Loader2, Sparkles, CheckCircle2, Trash2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
@@ -26,7 +27,7 @@ import {
 } from '@/components/ui/select';
 import { SettingsPanelHead } from './settings-panel-head';
 import { AiKnowledgeCard } from './ai-knowledge';
-import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
+import { AI_PROVIDER_DEFAULT_MODEL, AI_PROVIDER_MODELS } from '@/lib/ai/defaults';
 import type { AiProvider } from '@/lib/ai/types';
 import type { AccountMember } from '@/types';
 import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
@@ -291,11 +292,35 @@ export function AiConfig() {
                 <Label htmlFor="ai-model">{t('model')}</Label>
                 <Input
                   id="ai-model"
+                  list="ai-model-sugestoes"
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
                   placeholder={AI_PROVIDER_DEFAULT_MODEL[provider]}
                   disabled={disabled}
                 />
+                {/* Sugestão, NUNCA allow-list — o campo continua aceitando
+                    qualquer id, porque os modelos mudam mais rápido que
+                    esta lista e a chave do escritório pode ter acesso a um
+                    que ela não conhece. */}
+                <datalist id="ai-model-sugestoes">
+                  {AI_PROVIDER_MODELS[provider].map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+                {/* ⚠️ O escopo deste campo escrito na tela. Ele serve ao
+                    assistente, à resposta automática e ao Playground — e
+                    NÃO ao Radar nem à transcrição, que têm modelo próprio.
+                    Sem esta frase o operador cadastra um modelo "para o
+                    Radar" e configura outra coisa. */}
+                <p className="text-xs text-muted-foreground">
+                  {t('modelScope')}{' '}
+                  <Link
+                    href="/settings?tab=integracoes"
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    {t('modelScopeLink')}
+                  </Link>
+                </p>
               </div>
             </div>
 
