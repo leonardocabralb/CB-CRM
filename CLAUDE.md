@@ -844,6 +844,55 @@ mostra o rótulo certo sem mudar nada. Ao mesclar upstream, manter o wrapper.
   é o que `channel-select.tsx` faz, para o gatilho mostrar só o nome do canal
   em vez da linha inteira com bolinha e telefone.
 
+⚠️ **Três armadilhas de LAYOUT que já quebraram tela e voltam a quebrar.** As
+três passam em revisão de código, em typecheck e em teste — só aparecem na tela,
+e as três já morderam de verdade.
+
+- ⚠️⚠️ **O tailwind-merge só desempata classes com o MESMO prefixo de
+  variante.** `cn("group-data-horizontal/tabs:h-8", "h-auto")` devolve as
+  **duas** (medido com o twMerge do projeto), e a variante vence quando o
+  seletor casa. Foi assim que a ficha do contato quebrou: o `TabsList` de
+  `src/components/ui/tabs.tsx` traz `group-data-horizontal/tabs:h-8`, o
+  `contact-detail-view.tsx` passava `h-auto` para poder usar `flex-wrap`, o
+  `h-8` sobreviveu — e as 8 abas, quebradas em 3 linhas dentro de uma caixa de
+  32px, foram renderizadas **por cima** dos campos do painel. A correção é
+  repetir o prefixo (`group-data-horizontal/tabs:h-auto`), não remover o
+  `h-auto`. **Vale para qualquer override de classe que o primitivo declare sob
+  variante** — `group-*`, `data-*`, `dark:`, `sm:`. Na dúvida, meça:
+  `node -e "console.log(require('tailwind-merge').twMerge('<a> <b>'))"`.
+  ⚠️ **A MESMA tela tinha a MESMA armadilha na largura**, e essa era a causa de
+  as abas precisarem de 3 linhas: o `sheet.tsx` traz
+  `data-[side=right]:sm:max-w-sm`, o call site pedia `sm:max-w-lg w-full` cru, e
+  o painel abria com **384px em vez de 512px** — aqui o override ainda perde por
+  ESPECIFICIDADE, porque a classe do primitivo carrega o seletor de atributo.
+  Com o prefixo (`data-[side=right]:sm:max-w-lg`), 512px e 2 linhas de aba. Ou
+  seja: quando uma tela parece "apertada demais", desconfie da largura ANTES de
+  reflowar o conteúdo — pode ser este bug, não falta de espaço.
+  ⚠️ **Prefixe só o `max-w`, NUNCA o `w-full` junto.** Prefixado, o `w-full`
+  passa a vencer o `data-[side=right]:w-3/4` do primitivo e abaixo de `sm` o
+  painel vira TELA CHEIA — sem fundo sobrando para fechar tocando fora, que no
+  celular é a única saída à mão. Com `w-3/4` o desktop dá os mesmos 512px (3/4
+  de 1440 estoura o teto de qualquer jeito) e o celular mantém a saída.
+  Os dois `SheetContent` do repo (`contact-detail-view.tsx` e
+  `pipelines/deal-form.tsx`) têm className idêntico e foram corrigidos juntos —
+  arrumar um só deixaria painéis irmãos com larguras diferentes.
+- ⚠️ **`<ScrollArea>` dentro de `flex-col` precisa de `min-h-0`, sempre.** Filho
+  de flex nasce com `min-height: auto`, e o Root do base-ui só põe
+  `position: relative` — o `overflow` fica `visible`, então o clamp não é
+  anulado e o painel **cresce** para caber o conteúdo em vez de encolher para o
+  espaço restante. O conteúdo vaza, é cortado por um `overflow-hidden` de
+  ancestral, e **não aparece barra nenhuma** (o base-ui esconde a barra nativa
+  por CSS e a própria é `position: absolute`) — o operador vê a informação
+  sumir, não uma barra que não rola. Já mordeu três vezes: `conversation-list`
+  (issue #229), `contact-sidebar` e `group-sidebar` (as notas do lead ficavam
+  fora de alcance).
+- ⚠️ **`scrollHeight` não inclui a borda, mas `style.height` sob `border-box`
+  inclui.** Autosize de `<textarea>` que faça `el.style.height = scrollHeight`
+  rouba a borda do espaço do texto e acende a barra de rolagem com UMA linha
+  digitada. Some a borda de volta: `el.offsetHeight - el.clientHeight` (medido
+  com `height: auto`). É o que `message-composer.tsx` faz — é o único autosize
+  do repo; os outros `<textarea>` têm `rows` fixo.
+
 ⚠️ **Negócio (`deals`) só nasce por `src/lib/deals/create-deal.ts` no servidor.**
 A 908 deu à conexão um funil padrão, e o roteador de entrada
 (`src/lib/cb-channels/pipeline-routing.ts`) seria o terceiro escritor de deal

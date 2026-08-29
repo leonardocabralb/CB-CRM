@@ -87,15 +87,18 @@ export function ScheduledBar({
   // justamente essa frase que faz o atendente escrever a mesma coisa de novo.
   if (falhou && naFila.length === 0) {
     return (
-      <div className="mx-3 mt-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+      <div className="mx-3 mt-2 mb-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
         {t("loadFailed")}
       </div>
     );
   }
   if (naFila.length === 0) return null;
 
+  // `mb-2` fecha o par com o `mt-2`: o compositor logo abaixo abre com
+  // `border-t`, e sem a margem de baixo a faixa encostava naquela linha —
+  // as duas caixas viravam uma só, e a de cima deixava de parecer um aviso.
   return (
-    <div className="mx-3 mt-2 overflow-hidden rounded-lg border border-border bg-muted/40">
+    <div className="mx-3 mt-2 mb-2 overflow-hidden rounded-lg border border-border bg-muted/40">
       <button
         type="button"
         onClick={() => setAberta((v) => !v)}
