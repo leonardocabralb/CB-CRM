@@ -384,7 +384,11 @@
       "noTags": "Nenhuma etiqueta",
       "noDeals": "Nenhum negócio",
       "addNotePlaceholder": "Adicionar uma nota...",
-      "noteSaveError": "Não foi possível salvar a anotação."
+      "noteSaveError": "Não foi possível salvar a anotação.",
+      "tabMain": "Principal",
+      "tabHistory": "Histórico",
+      "tabNotes": "Notas",
+      "tabTasks": "Tarefas"
     },
     "aiBanner": {
       "pausedTitle": "O assistente de IA está pausado aqui",

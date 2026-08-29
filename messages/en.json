@@ -391,7 +391,11 @@
       "noTags": "No tags",
       "noDeals": "No deals",
       "addNotePlaceholder": "Add a note...",
-      "noteSaveError": "Could not save the note."
+      "noteSaveError": "Could not save the note.",
+      "tabMain": "Main",
+      "tabHistory": "History",
+      "tabNotes": "Notes",
+      "tabTasks": "Tasks"
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",

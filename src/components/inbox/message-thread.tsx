@@ -41,8 +41,6 @@ import {
   Clock,
   ArrowLeft,
   RefreshCw,
-  PanelRightOpen,
-  PanelRightClose,
   BadgeCheck,
   QrCode,
   Users,
@@ -141,15 +139,6 @@ interface MessageThreadProps {
    * working; the button is only rendered when this is provided.
    */
   onRefresh?: () => void;
-  /**
-   * Desktop-only contact-panel toggle. The page owns the open/closed
-   * state (it's the one that renders the sidebar), so the thread just
-   * reflects it and asks the page to flip it. Both optional so existing
-   * callers keep working; the toggle button only renders when
-   * `onToggleContactPanel` is wired up.
-   */
-  contactPanelOpen?: boolean;
-  onToggleContactPanel?: () => void;
   /**
    * O termo da busca do inbox, já assentado (ver `termoAplicado` em
    * `useBuscaEmMensagens`). Vazio quando não há busca.
@@ -260,8 +249,6 @@ export function MessageThread({
   onBack,
   resyncToken = 0,
   onRefresh,
-  contactPanelOpen,
-  onToggleContactPanel,
   termoDaBusca = "",
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
@@ -1622,32 +1609,10 @@ export function MessageThread({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Contact-panel toggle — desktop only. The contact sidebar
-              eats a chunk of horizontal width that crowds the thread on
-              smaller laptops; this lets agents reclaim it when they just
-              want to read and reply. Hidden on mobile, where the sidebar
-              never renders as a permanent panel anyway. Issue #258. */}
-          {onToggleContactPanel && (
-            <button
-              type="button"
-              onClick={onToggleContactPanel}
-              aria-label={
-                contactPanelOpen ? t("hideContactPanel") : t("showContactPanel")
-              }
-              title={contactPanelOpen ? t("hideContact") : t("showContact")}
-              aria-pressed={contactPanelOpen}
-              className={cn(
-                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
-                contactPanelOpen ? "text-primary" : "text-muted-foreground",
-              )}
-            >
-              {contactPanelOpen ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRightOpen className="h-4 w-4" />
-              )}
-            </button>
-          )}
+          {/* O toggle do painel de contato MORAVA aqui (#258) e saiu de
+              propósito: ficava do outro lado de quatro controles, longe do
+              painel que controla. Hoje fechar mora no cabeçalho do próprio
+              painel e reabrir na tira fina da borda direita (inbox/page). */}
 
           {/* Manual refresh — forces a refetch of the messages + the
               conversation list (the parent bumps its resyncToken). Useful
