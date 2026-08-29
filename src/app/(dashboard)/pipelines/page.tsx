@@ -347,11 +347,18 @@ export default function PipelinesPage() {
             : d,
         ),
       );
-      const { error } = await supabase
+      // `.select("id")` = checagem de ROWCOUNT. Update que casa 0 linhas
+      // volta `error: null` com cara de sucesso — acontece quando a RLS
+      // barra (o arrasto não é desabilitado para `viewer`, e `deals_update`
+      // exige agent+) ou quando outro operador apagou o negócio entre a
+      // carga e o gesto. Sem a checagem, o otimista acima (com o carimbo da
+      // 950!) exibia um "Ganho" que o banco nunca gravou.
+      const { data: linhas, error } = await supabase
         .from("deals")
         .update({ stage_id: newStageId })
-        .eq("id", dealId);
-      if (error) {
+        .eq("id", dealId)
+        .select("id");
+      if (error || !linhas || linhas.length === 0) {
         toast.error(t("toastFailedMoveDeal"));
         refreshDeals();
         return;

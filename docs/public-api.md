@@ -242,11 +242,22 @@ lead and read it back later.
 `values` is the same data as a flat map — index it directly from an
 n8n expression. `value` is always the raw stored text (`type` tells
 you how the dashboard renders it; `datetime` values are ISO-8601 UTC).
+An empty value is always `null` on the wire, no matter which writer
+left it empty.
 
-`PATCH` writes by key. `""` or `null` **clears** a value. Numbers and
-booleans are stringified. An **unknown key fails the whole request**
-with `400` and the offending keys listed — a typo must surface on the
-first call, not months later. Response = the post-write `GET` payload.
+`PATCH` writes by key. `""`, `null` (or a whitespace-only string)
+**clears** a value. Numbers and booleans are stringified. Values are
+capped at **4000 characters**. `datetime` fields only accept an
+ISO-8601 instant **with an explicit offset** (`2026-08-30T14:00:00-03:00`
+or `…Z`) and are stored normalized to UTC — anything else is a `400`,
+because a date without an offset silently shifts by the server/client
+timezone gap and a non-ISO date would never fire the date reminder.
+`select` and `number` values are stored as free text (the dashboard
+tolerates values outside the option list). An **unknown key fails the
+whole request** with `400` and the offending keys listed — a typo must
+surface on the first call, not months later. Response = the post-write
+`GET` payload (note this means a write-only key sees the catalogue and
+current values in the response of its own writes).
 
 ```json
 { "values": { "utm_source": "facebook", "fbclid": "IwAR…", "utm_term": null } }

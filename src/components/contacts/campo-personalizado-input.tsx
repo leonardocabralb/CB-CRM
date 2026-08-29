@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 // ============================================================
 // O input de UM campo personalizado, tipado pelo `field_type`.
@@ -11,34 +11,27 @@
 // armazenamento.
 // ============================================================
 
-import { Input } from "@/components/ui/input";
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 import {
   TIPO_DATA,
   paraEntradaLocal,
   deEntradaLocal,
-} from "@/lib/contacts/campo-data";
-import type { CustomField } from "@/types";
+} from '@/lib/contacts/campo-data';
+// ⚠️ `opcoesDoCampo` MORAVA aqui e foi para a lib pura: a serialização da
+// API v1 também a usa, e importar de um arquivo "use client" dentro de um
+// route handler vira client-reference proxy que lança em runtime (achado
+// da revisão de 2026-08-29, reproduzido no Next 16.2.12).
+import { opcoesDoCampo } from '@/lib/contacts/campo-opcoes';
+import type { CustomField } from '@/types';
 
-/**
- * As opções de um campo `select`, lidas de `field_options` (JSONB).
- * Formato: `{ "opcoes": ["A", "B"] }`. Tolerante a lixo — a coluna existe
- * desde a 001 sem nunca ter sido validada, então qualquer forma inesperada
- * degrada para lista vazia em vez de quebrar a ficha.
- */
-export function opcoesDoCampo(field: CustomField): string[] {
-  const raw = field.field_options?.opcoes;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((o): o is string => typeof o === "string" && o.trim() !== "");
-}
-
-const LIMPAR = "__limpar__";
+const LIMPAR = '__limpar__';
 
 export function CampoPersonalizadoInput({
   field,
@@ -68,22 +61,22 @@ export function CampoPersonalizadoInput({
     );
   }
 
-  if (field.field_type === "select") {
+  if (field.field_type === 'select') {
     const opcoes = opcoesDoCampo(field);
     // Valor herdado que não está mais na lista (opção removida do catálogo)
     // continua VISÍVEL e selecionável — sumir com ele apagaria dado do
     // contato na primeira edição, sem ninguém pedir.
-    const foraDaLista = value.trim() !== "" && !opcoes.includes(value);
+    const foraDaLista = value.trim() !== '' && !opcoes.includes(value);
     return (
       <Select
-        value={value.trim() === "" ? null : value}
+        value={value.trim() === '' ? null : value}
         onValueChange={(v) =>
-          onChange(v == null || v === LIMPAR ? "" : String(v))
+          onChange(v == null || v === LIMPAR ? '' : String(v))
         }
         disabled={disabled}
       >
         <SelectTrigger className="bg-muted w-full">
-          <SelectValue placeholder={placeholder ?? "—"} />
+          <SelectValue placeholder={placeholder ?? '—'} />
         </SelectTrigger>
         <SelectContent className="max-h-64">
           {/* Limpar é opção explícita — sem ela, escolher errado seria
@@ -100,7 +93,7 @@ export function CampoPersonalizadoInput({
     );
   }
 
-  if (field.field_type === "number") {
+  if (field.field_type === 'number') {
     return (
       <Input
         type="number"

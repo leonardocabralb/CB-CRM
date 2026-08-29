@@ -104,10 +104,16 @@ function InboxPageInner() {
    * celular isso significaria a ficha cobrindo o fio inteiro a cada
    * conversa aberta.
    *
-   * O breakpoint (lg = 1024px, o mesmo das classes `lg:` deste arquivo)
-   * decide qual dos dois estados governa o `inert` e o botão de fechar.
+   * O breakpoint decide qual dos dois estados governa o `inert` e o botão
+   * de fechar — e é `64rem`, NÃO `1024px`, de propósito: o `lg:` das
+   * classes deste arquivo é o `--breakpoint-lg: 64rem` do Tailwind v4, e
+   * `rem` em media query segue o tamanho de fonte PADRÃO do navegador
+   * (ajuste de acessibilidade). Com `1024px` aqui, um operador com fonte
+   * grande a 1100px de janela ficava com o CSS no modo mobile e o JS no
+   * modo desktop: tocar no nome não abria nada e o `inert` liberava Tab
+   * para um painel invisível. Em fonte padrão (16px), 64rem = 1024px.
    */
-  const ehDesktop = useMediaQuery("(min-width: 1024px)");
+  const ehDesktop = useMediaQuery("(min-width: 64rem)");
   const [painelMobileAberto, setPainelMobileAberto] = useState(false);
 
   const handleToggleContactPanel = useCallback(() => {

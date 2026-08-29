@@ -407,6 +407,7 @@
       "saveFields": "Save fields",
       "fieldsSaved": "Fields saved.",
       "fieldsSaveError": "Could not save the fields.",
+      "loadError": "Could not load this contact's data. Reopen the conversation to try again.",
       "tabTracking": "Tracking",
       "noTrackingFields": "No tracking fields yet.",
       "seedTrackingFields": "Create the {count} default fields",

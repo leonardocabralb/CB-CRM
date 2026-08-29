@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { TIPO_DATA } from '@/lib/contacts/campo-data';
 import { gerarChaveDeCampo } from '@/lib/contacts/chave-do-campo';
-import { opcoesDoCampo } from '@/components/contacts/campo-personalizado-input';
+import { opcoesDoCampo } from '@/lib/contacts/campo-opcoes';
 import { useAuth } from '@/hooks/use-auth';
 import { toast } from 'sonner';
 import type { CustomField } from '@/types';
@@ -40,7 +40,9 @@ export function CustomFieldsManager({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="border-border bg-popover text-popover-foreground sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-popover-foreground">{t('title')}</DialogTitle>
+          <DialogTitle className="text-popover-foreground">
+            {t('title')}
+          </DialogTitle>
           <DialogDescription className="text-muted-foreground">
             {t('desc')}
           </DialogDescription>
@@ -115,7 +117,14 @@ export function CustomFieldsPanel() {
 
   /** "A, B , ,B" → ["A","B"] — apara, tira vazio e repetido. */
   function parseOpcoes(texto: string): string[] {
-    return [...new Set(texto.split(',').map((o) => o.trim()).filter(Boolean))];
+    return [
+      ...new Set(
+        texto
+          .split(',')
+          .map((o) => o.trim())
+          .filter(Boolean)
+      ),
+    ];
   }
 
   async function handleCreate() {
@@ -149,7 +158,7 @@ export function CustomFieldsPanel() {
     if (error) {
       // 23505 = o índice único da chave (948): identificador já usado na conta.
       toast.error(
-        error.code === '23505' ? t('toastKeyTaken') : t('toastCreateFailed'),
+        error.code === '23505' ? t('toastKeyTaken') : t('toastCreateFailed')
       );
       return;
     }
@@ -170,7 +179,7 @@ export function CustomFieldsPanel() {
    */
   async function handleSaveOptions(
     field: CustomField,
-    texto: string,
+    texto: string
   ): Promise<boolean> {
     setBusyId(field.id);
     const { error } = await supabase
@@ -213,11 +222,7 @@ export function CustomFieldsPanel() {
   }
 
   async function handleDelete(field: CustomField) {
-    if (
-      !window.confirm(
-        t('deleteConfirm', { name: field.field_name })
-      )
-    ) {
+    if (!window.confirm(t('deleteConfirm', { name: field.field_name }))) {
       return;
     }
     setBusyId(field.id);
@@ -258,7 +263,7 @@ export function CustomFieldsPanel() {
           <select
             value={newType}
             onChange={(e) => setNewType(e.target.value)}
-            className="shrink-0 rounded-md border border-border bg-muted px-2 py-2 text-sm text-foreground"
+            className="border-border bg-muted text-foreground shrink-0 rounded-md border px-2 py-2 text-sm"
             aria-label={t('fieldType')}
           >
             <option value="text">{t('typeText')}</option>
@@ -269,7 +274,7 @@ export function CustomFieldsPanel() {
           <select
             value={newCategoria}
             onChange={(e) => setNewCategoria(e.target.value)}
-            className="shrink-0 rounded-md border border-border bg-muted px-2 py-2 text-sm text-foreground"
+            className="border-border bg-muted text-foreground shrink-0 rounded-md border px-2 py-2 text-sm"
             aria-label={t('category')}
           >
             <option value="geral">{t('categoryGeneral')}</option>
@@ -294,7 +299,7 @@ export function CustomFieldsPanel() {
             descobriria a chave gerada depois, quando renomeá-la já não dá. */}
         {newName.trim() !== '' && (
           <div className="flex items-center gap-2">
-            <span className="shrink-0 text-xs text-muted-foreground">
+            <span className="text-muted-foreground shrink-0 text-xs">
               {t('fieldKey')}
             </span>
             <Input
@@ -305,7 +310,7 @@ export function CustomFieldsPanel() {
               }}
               onBlur={() => setNewKey(gerarChaveDeCampo(newKey))}
               placeholder={t('fieldKeyPlaceholder')}
-              className="h-8 bg-muted font-mono text-xs text-foreground"
+              className="bg-muted text-foreground h-8 font-mono text-xs"
             />
           </div>
         )}
@@ -322,18 +327,18 @@ export function CustomFieldsPanel() {
       </div>
 
       {/* List */}
-      <div className="max-h-72 overflow-y-auto rounded-md border border-border">
+      <div className="border-border max-h-72 overflow-y-auto rounded-md border">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+          <div className="text-muted-foreground flex items-center justify-center gap-2 py-8 text-sm">
             <Loader2 className="size-4 animate-spin" />
             {t('loading')}
           </div>
         ) : fields.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
+          <p className="text-muted-foreground py-8 text-center text-sm">
             {t('empty')}
           </p>
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="divide-border divide-y">
             {fields.map((field) => (
               <FieldRow
                 key={field.id}
@@ -408,7 +413,7 @@ function FieldRow({
             if (e.key === 'Enter') e.currentTarget.blur();
           }}
           aria-label={t('renameAria', { name: field.field_name })}
-          className="focus:border-primary h-8 border-transparent bg-transparent text-foreground hover:border-border"
+          className="focus:border-primary text-foreground hover:border-border h-8 border-transparent bg-transparent"
         />
         <Button
           variant="ghost"
@@ -416,7 +421,7 @@ function FieldRow({
           disabled={busy}
           onClick={() => onDelete(field)}
           title={t('deleteTitle')}
-          className="shrink-0 text-muted-foreground hover:text-red-400"
+          className="text-muted-foreground shrink-0 hover:text-red-400"
         >
           {busy ? (
             <Loader2 className="size-4 animate-spin" />
@@ -433,16 +438,18 @@ function FieldRow({
         type="button"
         onClick={copiarChave}
         title={t('copyKeyTitle')}
-        className="mt-0.5 flex items-center gap-1 px-1 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+        className="text-muted-foreground hover:text-foreground mt-0.5 flex max-w-full min-w-0 items-center gap-1 px-1 font-mono text-[11px] transition-colors"
       >
-        {field.field_key}
+        {/* truncate: chave pode ter 60 chars e o diálogo ~390px úteis —
+            sem isto a lista inteira ganhava rolagem horizontal. */}
+        <span className="min-w-0 truncate">{field.field_key}</span>
         {field.categoria === 'tracking' && (
-          <span className="rounded bg-muted px-1 font-sans text-[9px] uppercase tracking-wider">
+          <span className="bg-muted rounded px-1 font-sans text-[9px] tracking-wider uppercase">
             {t('categoryTracking')}
           </span>
         )}
         {copied ? (
-          <Check className="size-3 text-primary" />
+          <Check className="text-primary size-3" />
         ) : (
           <Copy className="size-3" />
         )}
@@ -459,7 +466,7 @@ function FieldRow({
           }}
           aria-label={t('optionsLabel')}
           placeholder={t('optionsPlaceholder')}
-          className="mt-1 h-8 bg-muted text-xs text-foreground"
+          className="bg-muted text-foreground mt-1 h-8 text-xs"
         />
       )}
     </li>
