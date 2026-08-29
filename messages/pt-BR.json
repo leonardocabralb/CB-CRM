@@ -2683,7 +2683,8 @@
     "apagar": "Apagar",
     "confirmarApagar": "Confirmar exclusão",
     "apagando": "Apagando…",
-    "erroApagar": "Não foi possível apagar a reunião."
+    "erroApagar": "Não foi possível apagar a reunião.",
+    "todosOsResponsaveis": "Todos os responsáveis"
   },
   "Tasks": {
     "title": "Tarefas",

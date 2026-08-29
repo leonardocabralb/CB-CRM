@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { FUSO_PADRAO, diaNoFuso, horaNoFuso, paraInstante } from '@/lib/agenda/fuso';
+import { useAuth } from '@/hooks/use-auth';
 import { fetchAccountMembers } from '@/lib/account/members';
 import type { AccountMember, Meeting, MeetingStatus, MeetingType } from '@/types';
 
@@ -61,6 +62,7 @@ export function ReuniaoForm({
   aoSalvar,
 }: Props) {
   const t = useTranslations('Agenda');
+  const { user } = useAuth();
 
   // ⚠️ Busca direta em vez de um hook `use-membros`: a branch de Tarefas cria
   // um com esse nome, e duas versões do mesmo hook conflitariam no merge sem
@@ -124,13 +126,17 @@ export function ReuniaoForm({
       setDia(diaInicial ?? diaNoFuso(new Date(), FUSO_PADRAO));
       setHora(horaInicial ?? '09:00');
       setDuracao(60);
-      setResponsavel('');
+      // ⚠️ Nasce com quem está criando, que é o mesmo padrão que a rota aplica
+      // quando o corpo não traz `owner_user_id`. Deixar vazio fazia o campo
+      // abrir com um rótulo genérico em cinza, com cara de não preenchido —
+      // e foi assim que a reunião pareceu "não ter responsável".
+      setResponsavel(user?.id ?? '');
       setLocal('');
       setDescricao('');
     }
     setErro(null);
     setConfirmandoApagar(false);
-  }, [aberto, reuniao, diaInicial, horaInicial]);
+  }, [aberto, reuniao, diaInicial, horaInicial, user?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   async function salvar() {
@@ -162,10 +168,8 @@ export function ReuniaoForm({
       descricao: descricao.trim() || null,
     };
 
-    if (!editando) {
-      if (responsavel) corpo.owner_user_id = responsavel;
-      if (contactId) corpo.contact_id = contactId;
-    }
+    if (responsavel) corpo.owner_user_id = responsavel;
+    if (!editando && contactId) corpo.contact_id = contactId;
 
     const resposta = await fetch(
       editando ? `/api/cb/agenda/${reuniao!.id}` : '/api/cb/agenda',
@@ -303,17 +307,26 @@ export function ReuniaoForm({
             </div>
           </div>
 
-          {/* ⚠️ O responsável só aparece na criação. Trocar o dono de uma
-              reunião existente é mudança de agenda de duas pessoas ao mesmo
-              tempo, e a restrição de sobreposição avaliaria o horário na agenda
-              do novo dono — recusa que a tela não teria como explicar bem. */}
-          {!editando && membros.length > 1 && (
-            <div className="space-y-2">
-              <Label>{t('responsavel')}</Label>
+          {/* ⚠️ SEMPRE VISÍVEL, inclusive na edição e com um membro só.
+              A primeira versão escondia o campo quando a conta tinha menos de
+              dois membros, copiando a convenção de canal ("seletor some quando
+              não decide nada"). A transposição estava errada: canal sem
+              alternativa não decide nada, mas o responsável SEMPRE decide de
+              quem é a reunião — e escondê-lo impedia até de ler. Com a conta
+              recém-criada, que tem um dono só, o campo simplesmente nunca
+              apareceu e a reunião parecia não ter responsável.
+
+              Trocar o dono na edição é permitido: a restrição de sobreposição
+              vai avaliar o horário na agenda do NOVO responsável, e a rota já
+              traduz esse conflito numa frase legível. */}
+          <div className="space-y-2">
+            <Label>{t('responsavel')}</Label>
+            {membros.length > 0 ? (
               <Select value={responsavel} onValueChange={(v) => setResponsavel(v ?? '')}>
                 <SelectTrigger className="w-full">
                   <SelectValue>
                     {membros.find((m) => m.user_id === responsavel)?.full_name ??
+                      reuniao?.owner_nome ??
                       t('euMesmo')}
                   </SelectValue>
                 </SelectTrigger>
@@ -325,8 +338,16 @@ export function ReuniaoForm({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          )}
+            ) : (
+              /* ⚠️ A busca de membros falhou (ela devolve `[]` em qualquer
+                 erro). Some o seletor, mas NÃO o dado: quem já é o responsável
+                 continua na tela como texto. Sumir com tudo faria uma falha de
+                 rede parecer "esta reunião não tem responsável". */
+              <p className="text-sm text-muted-foreground">
+                {reuniao?.owner_nome ?? t('euMesmo')}
+              </p>
+            )}
+          </div>
 
           {editando && (
             <div className="space-y-2">

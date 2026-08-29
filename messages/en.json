@@ -2683,7 +2683,8 @@
     "apagar": "Delete",
     "confirmarApagar": "Confirm deletion",
     "apagando": "Deleting…",
-    "erroApagar": "Could not delete the meeting."
+    "erroApagar": "Could not delete the meeting.",
+    "todosOsResponsaveis": "All assignees"
   },
   "Tasks": {
     "title": "Tasks",

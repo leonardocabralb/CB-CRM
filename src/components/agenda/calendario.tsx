@@ -26,6 +26,7 @@ import {
   type DiaDaGrade,
   type Visao,
 } from '@/lib/agenda/grade';
+import { mostrarResponsavel, primeiroNome } from '@/lib/agenda/responsaveis';
 import type { Meeting } from '@/types';
 
 /**
@@ -90,6 +91,10 @@ export function Calendario({
       : visao === 'semana'
         ? gradeDaSemana(referencia, hoje)
         : [{ dia: referencia, doMesAtual: true, ehHoje: referencia === hoje }];
+
+  // Uma decisão só para a grade inteira: com um responsável só, o nome em cada
+  // cartão é ruído. Ver `mostrarResponsavel`.
+  const comResponsavel = mostrarResponsavel(reunioes);
 
   // Agrupa uma vez, em vez de filtrar a lista inteira dentro de cada célula —
   // com 42 células isso seria 42 varreduras a cada render.
@@ -166,6 +171,7 @@ export function Calendario({
             dia={d}
             visao={visao}
             reunioes={porDia.get(d.dia) ?? []}
+            comResponsavel={comResponsavel}
             aoAbrirReuniao={aoAbrirReuniao}
             aoCriarNoDia={aoCriarNoDia}
           />
@@ -191,12 +197,14 @@ function Celula({
   dia,
   visao,
   reunioes,
+  comResponsavel,
   aoAbrirReuniao,
   aoCriarNoDia,
 }: {
   dia: DiaDaGrade;
   visao: Visao;
   reunioes: Meeting[];
+  comResponsavel: boolean;
   aoAbrirReuniao: (r: Meeting) => void;
   aoCriarNoDia: (dia: string) => void;
 }) {
@@ -240,7 +248,12 @@ function Celula({
 
       <div className="flex flex-col gap-1">
         {reunioes.map((r) => (
-          <Cartao key={r.id} reuniao={r} aoAbrir={aoAbrirReuniao} />
+          <Cartao
+            key={r.id}
+            reuniao={r}
+            comResponsavel={comResponsavel}
+            aoAbrir={aoAbrirReuniao}
+          />
         ))}
       </div>
     </div>
@@ -250,10 +263,13 @@ function Celula({
 function Cartao({
   reuniao,
   aoAbrir,
+  comResponsavel = false,
   noOverlay = false,
 }: {
   reuniao: Meeting;
   aoAbrir: (r: Meeting) => void;
+  /** Mostra o primeiro nome de quem atende — só quando há mais de um. */
+  comResponsavel?: boolean;
   /** `true` no clone que segue o cursor — ele não escuta nem é arrastável. */
   noOverlay?: boolean;
 }) {
@@ -268,6 +284,9 @@ function Cartao({
         {horaDaReuniao(reuniao.starts_at, FUSO_PADRAO)}
       </span>{' '}
       {reuniao.titulo}
+      {comResponsavel && (
+        <span className="opacity-70"> · {primeiroNome(reuniao.owner_nome)}</span>
+      )}
     </>
   );
 
@@ -309,7 +328,7 @@ function Cartao({
         // tela fazem parecer que a reunião foi duplicada.
         isDragging && 'opacity-30',
       )}
-      title={`${horaDaReuniao(reuniao.starts_at, FUSO_PADRAO)} · ${reuniao.titulo}`}
+      title={`${horaDaReuniao(reuniao.starts_at, FUSO_PADRAO)} · ${reuniao.titulo} · ${reuniao.owner_nome}`}
     >
       {conteudo}
     </div>

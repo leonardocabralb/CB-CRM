@@ -58,6 +58,9 @@ async function contexto() {
   return { user, accountId };
 }
 
+const UUID_OK = (v: unknown): v is string =>
+  typeof v === 'string' && UUID.test(v);
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -117,6 +120,40 @@ export async function PATCH(
   if (erro) return NextResponse.json({ error: erro }, { status: 400 });
 
   const mudancas: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+  // ------------------------------------------------------------
+  // Troca de responsável.
+  //
+  // ⚠️ `owner_nome` é RECARIMBADO junto, nunca deixado para trás. As duas
+  // colunas contam a mesma coisa: sem isto a reunião passaria a pertencer a
+  // uma pessoa e a exibir o nome de outra — e o nome é o que sobrevive quando
+  // o membro sai da conta e o id vira nulo.
+  //
+  // ⚠️ Conferido contra a conta, como no POST: `auth.users` é global, então a
+  // FK sozinha não impede pôr uma reunião na agenda de alguém de outro
+  // escritório.
+  // ------------------------------------------------------------
+  if (UUID_OK(corpo.owner_user_id)) {
+    const { data: dono } = await admin
+      .from('profiles')
+      .select('user_id, full_name, email')
+      .eq('user_id', corpo.owner_user_id)
+      .eq('account_id', ctx.accountId)
+      .maybeSingle();
+
+    if (!dono) {
+      return NextResponse.json(
+        { error: 'O responsável escolhido não faz parte desta conta.' },
+        { status: 400 },
+      );
+    }
+
+    mudancas.owner_user_id = dono.user_id;
+    mudancas.owner_nome =
+      (dono.full_name as string | null) ??
+      (dono.email as string | null) ??
+      'Alguém';
+  }
 
   for (const campo of CAMPOS_EDITAVEIS) {
     if (corpo[campo] === undefined) continue;
