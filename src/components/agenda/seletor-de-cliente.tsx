@@ -57,6 +57,9 @@ export function SeletorDeCliente({ valor, nomeAtual, aoEscolher, travado }: Prop
   useEffect(() => {
     const limpo = termo.trim();
     if (limpo.length < 2) {
+      // Mesmo padrão do `use-conversation-notes`: a regra aponta o `setState`
+      // de dentro do efeito, não a linha do `useEffect`.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAchados([]);
       return;
     }
