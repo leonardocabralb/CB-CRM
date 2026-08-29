@@ -411,7 +411,10 @@
       "noTrackingFields": "No tracking fields yet.",
       "seedTrackingFields": "Create the {count} default fields",
       "seedDone": "Tracking fields created.",
-      "seedError": "Could not create the tracking fields."
+      "seedError": "Could not create the tracking fields.",
+      "openFullDeal": "Open full deal",
+      "dealSaveError": "Could not update the deal.",
+      "statusOpen": "Open"
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",
