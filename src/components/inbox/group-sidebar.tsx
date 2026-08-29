@@ -12,11 +12,21 @@
 import { useCallback, useState } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Users, RefreshCw, Pencil, Megaphone, ShieldCheck, Check, X } from "lucide-react";
+import {
+  Users,
+  RefreshCw,
+  Pencil,
+  Megaphone,
+  ShieldCheck,
+  Check,
+  X,
+  PanelRightClose,
+} from "lucide-react";
 
 import type { CbGroup } from "@/types";
 import { useChannels } from "@/hooks/use-channels";
 import { nomeDoGrupo, podeRenomearNoWhatsApp } from "@/lib/cb-groups/display";
+import { TituloDeSecao } from "@/components/inbox/painel/painel-do-contato";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -27,10 +37,13 @@ interface GroupSidebarProps {
   grupo: CbGroup | null;
   /** Reflete no estado do pai o que a rota devolveu. */
   onGrupoAtualizado?: (patch: Partial<CbGroup>) => void;
+  /** Fecha o painel — mesmo botão, mesmo lugar que na ficha do contato. */
+  onClose?: () => void;
 }
 
-export function GroupSidebar({ grupo, onGrupoAtualizado }: GroupSidebarProps) {
+export function GroupSidebar({ grupo, onGrupoAtualizado, onClose }: GroupSidebarProps) {
   const t = useTranslations("Inbox.groupSidebar");
+  const tThread = useTranslations("Inbox.messageThread");
   const { channels } = useChannels();
 
   const [editandoApelido, setEditandoApelido] = useState(false);
@@ -91,11 +104,34 @@ export function GroupSidebar({ grupo, onGrupoAtualizado }: GroupSidebarProps) {
     }
   }, [grupo, t]);
 
+  /* Cabeçalho na MESMA forma da ficha do contato: fechar na ponta esquerda
+     (encostado na fronteira com o fio), avatar 40px, nome em linha. Aparece
+     também no estado vazio — painel sem grupo também precisa poder fechar. */
+  const cabecalho = (extra?: React.ReactNode) => (
+    <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-2">
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={tThread("hideContactPanel")}
+          title={tThread("hideContact")}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <PanelRightClose className="h-4 w-4" />
+        </button>
+      )}
+      {extra}
+    </div>
+  );
+
   if (!grupo) {
     return (
-      <div className="flex h-full w-70 flex-col items-center justify-center border-l border-border bg-card p-4 text-center">
-        <Users className="h-8 w-8 text-muted-foreground" />
-        <p className="mt-2 text-xs text-muted-foreground">{t("empty")}</p>
+      <div className="flex h-full w-full flex-col border-l border-border bg-card">
+        {cabecalho()}
+        <div className="flex flex-1 flex-col items-center justify-center p-4 text-center">
+          <Users className="h-8 w-8 text-muted-foreground" />
+          <p className="mt-2 text-xs text-muted-foreground">{t("empty")}</p>
+        </div>
       </div>
     );
   }
@@ -105,47 +141,57 @@ export function GroupSidebar({ grupo, onGrupoAtualizado }: GroupSidebarProps) {
   const podeRenomear = podeRenomearNoWhatsApp(grupo);
 
   return (
-    <div className="flex h-full w-70 flex-col border-l border-border bg-card">
-      <ScrollArea className="flex-1">
-        <div className="p-4">
-          <div className="flex flex-col items-center text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-              {grupo.picture_url ? (
-                <img
-                  src={grupo.picture_url}
-                  alt={nome}
-                  className="h-16 w-16 rounded-full object-cover"
-                />
-              ) : (
-                <Users className="h-7 w-7 text-muted-foreground" />
-              )}
-            </div>
-            <h3 className="mt-3 text-sm font-semibold text-foreground">{nome}</h3>
-            {/* Com apelido, o nome REAL vira legenda: o operador precisa
-                conseguir dizer a que grupo do WhatsApp aquele apelido
-                corresponde. */}
-            {grupo.alias && grupo.subject && (
-              <p className="text-xs text-muted-foreground">{grupo.subject}</p>
+    <div className="flex h-full w-full flex-col border-l border-border bg-card">
+      {cabecalho(
+        <>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted">
+            {grupo.picture_url ? (
+              <img
+                src={grupo.picture_url}
+                alt={nome}
+                className="h-10 w-10 rounded-full object-cover"
+              />
+            ) : (
+              <Users className="h-5 w-5 text-muted-foreground" />
             )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-sm font-semibold text-foreground">
+              {nome}
+            </h3>
             {grupo.participant_count != null && (
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="truncate text-xs text-muted-foreground">
                 {t("participants", { count: grupo.participant_count })}
               </p>
             )}
-            <div className="mt-2 flex flex-wrap justify-center gap-1">
-              {grupo.is_announce && (
-                <Badge variant="outline" className="gap-1 text-[10px]">
-                  <Megaphone className="h-3 w-3" />
-                  {t("announceOnly")}
-                </Badge>
-              )}
-              {grupo.we_are_admin && (
-                <Badge variant="outline" className="gap-1 text-[10px]">
-                  <ShieldCheck className="h-3 w-3" />
-                  {t("weAreAdmin")}
-                </Badge>
-              )}
-            </div>
+          </div>
+        </>,
+      )}
+
+      {/* `min-h-0` é load-bearing: filho de flex nasce com min-height:auto e
+          o Root do ScrollArea é overflow:visible — sem isto a coluna cresce
+          para caber tudo e o fim é cortado sem barra (issue #229). */}
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="p-4">
+          {/* Com apelido, o nome REAL vira legenda: o operador precisa
+              conseguir dizer a que grupo do WhatsApp aquele apelido
+              corresponde. */}
+          {grupo.alias && grupo.subject && (
+            <p className="text-xs text-muted-foreground">{grupo.subject}</p>
+          )}
+          <div className="mt-2 flex flex-wrap gap-1">
+            {grupo.is_announce && (
+              <Badge variant="outline" className="gap-1 text-[10px]">
+                <Megaphone className="h-3 w-3" />
+                {t("announceOnly")}
+              </Badge>
+            )}
+            {grupo.we_are_admin && (
+              <Badge variant="outline" className="gap-1 text-[10px]">
+                <ShieldCheck className="h-3 w-3" />
+                {t("weAreAdmin")}
+              </Badge>
+            )}
           </div>
 
           {/* Apelido interno */}
@@ -240,11 +286,11 @@ export function GroupSidebar({ grupo, onGrupoAtualizado }: GroupSidebarProps) {
 }
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  // A tipografia do título vem do painel do contato — as duas fichas já
+  // haviam divergido uma vez (semibold/wide aqui, medium/wider lá).
   return (
     <div className="mt-6">
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {titulo}
-      </h4>
+      <TituloDeSecao className="mb-2">{titulo}</TituloDeSecao>
       {children}
     </div>
   );

@@ -15,7 +15,7 @@ import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { GroupSidebar } from "@/components/inbox/group-sidebar";
 import { toast } from "sonner";
-import { WifiOff } from "lucide-react";
+import { WifiOff, PanelRightOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Remembers the agent's show/hide choice for the desktop contact panel
@@ -35,6 +35,10 @@ export default function InboxPage() {
 
 function InboxPageInner() {
   const t = useTranslations("Inbox.page");
+  // Rótulos do abrir/fechar do painel — as chaves moram no namespace do fio
+  // porque o botão nasceu lá (issue #258); o botão mudou de casa, as chaves
+  // ficaram.
+  const tThread = useTranslations("Inbox.messageThread");
   const router = useRouter();
   const searchParams = useSearchParams();
   /**
@@ -688,33 +692,62 @@ function InboxPageInner() {
             onBack={handleCloseConversation}
             resyncToken={resyncToken}
             onRefresh={handleManualRefresh}
-            contactPanelOpen={contactPanelOpen}
-            onToggleContactPanel={handleToggleContactPanel}
             termoDaBusca={termoDaBusca}
           />
         </div>
 
-        {/* Right panel: Contact sidebar — desktop only, and only when the
-            agent hasn't collapsed it via the thread-header toggle (#258).
-            On mobile it's always hidden (the `lg:block` below), so the
-            toggle — which is itself desktop-only — never affects it. */}
-        {contactPanelOpen && (
-          <div className="hidden lg:block">
+        {/* Right panel: ficha do contato/grupo — desktop only (mobile segue
+            sem superfície para ela, dívida registrada no plano).
+
+            ⚠️ SEMPRE MONTADO. Fechar não desmonta mais: vira `w-0` com
+            `overflow-hidden` e transição de largura. Desmontar (o `{open &&}`
+            que morava aqui, #258) derrubava a assinatura realtime das notas e
+            refazia as buscas de etiquetas/negócios a cada reabertura — e
+            tornava a animação impossível. O `w-[360px]` interno é fixo para o
+            conteúdo não reflowar durante a animação; `inert` tira o painel
+            fechado da ordem de tabulação, senão ele vira armadilha de teclado
+            invisível. O botão de fechar mora DENTRO do painel, no cabeçalho. */}
+        <div
+          className={cn(
+            "hidden h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-in-out lg:block",
+            contactPanelOpen ? "w-[360px]" : "w-0",
+          )}
+          inert={!contactPanelOpen}
+        >
+          <div className="h-full w-[360px]">
             {activeConversation?.group_id ? (
               // Painel próprio: a ficha de contato é etiquetas, negócios,
               // anotações e histórico do lead — nada disso existe num grupo.
               <GroupSidebar
                 grupo={activeConversation.group ?? null}
                 onGrupoAtualizado={handleGroupUpdated}
+                onClose={handleToggleContactPanel}
               />
             ) : (
               <ContactSidebar
                 contact={activeContact}
                 conversationId={activeConversation?.id ?? null}
                 channelId={activeConversation?.channel_id ?? null}
+                resyncToken={resyncToken}
+                onClose={handleToggleContactPanel}
               />
             )}
           </div>
+        </div>
+
+        {/* Painel fechado → tira fina de reabertura na borda direita. Sem
+            ela, fechar seria sem volta: o botão de reabrir morava no
+            cabeçalho do fio e saiu de lá junto com o de fechar. */}
+        {!contactPanelOpen && (
+          <button
+            type="button"
+            onClick={handleToggleContactPanel}
+            aria-label={tThread("showContactPanel")}
+            title={tThread("showContact")}
+            className="hidden h-full w-7 shrink-0 flex-col items-center border-l border-border bg-card pt-3 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:flex"
+          >
+            <PanelRightOpen className="h-4 w-4" />
+          </button>
         )}
       </div>
     </div>
