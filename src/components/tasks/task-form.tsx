@@ -36,6 +36,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useMembros } from '@/hooks/use-membros';
 import type { EdicaoDeTarefa, NovaTarefa } from '@/hooks/use-acoes-da-tarefa';
@@ -77,10 +78,20 @@ export function TaskForm({
 
   const editando = !!tarefa;
   const respondendo = tipo === 'resposta';
+  /**
+   * Criação GLOBAL (página de Tarefas): sem cliente vindo por prop nem
+   * herdado de um pai, o formulário mesmo oferece o seletor de contato.
+   */
+  const precisaCliente = !editando && !respondendo && !tarefaPai && !contactId;
 
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
   const [responsavel, setResponsavel] = useState('');
+  /** Catálogo de contatos — carregado SÓ na criação global (`null` = ainda não). */
+  const [contatos, setContatos] = useState<
+    { id: string; name: string | null; phone: string }[] | null
+  >(null);
+  const [contatoEscolhido, setContatoEscolhido] = useState('');
   const [venceEm, setVenceEm] = useState('');
   const [venceAs, setVenceAs] = useState('');
   const [importante, setImportante] = useState(false);
@@ -100,23 +111,46 @@ export function TaskForm({
       setVenceEm(tarefa?.vence_em ?? diaLocal(new Date()));
       setVenceAs(tarefa?.vence_as?.slice(0, 5) ?? '');
       setImportante(tarefa?.importante ?? false);
-    // ⚠️ O DESTINATÁRIO NASCE VAZIO quando há com quem escolher, e é uma
-    // decisão sobre erro silencioso: com o próprio usuário no padrão, quem
-    // esquece de trocar cria para si mesmo uma tarefa que queria delegar — e o
-    // colega nunca fica sabendo que havia algo para ele. Vazio, o formulário
-    // não deixa salvar sem escolher. Numa conta de uma pessoa só não há
-    // escolha a fazer, então cai nela mesma.
+      // ⚠️ O DESTINATÁRIO NASCE VAZIO quando há com quem escolher, e é uma
+      // decisão sobre erro silencioso: com o próprio usuário no padrão, quem
+      // esquece de trocar cria para si mesmo uma tarefa que queria delegar — e o
+      // colega nunca fica sabendo que havia algo para ele. Vazio, o formulário
+      // não deixa salvar sem escolher. Numa conta de uma pessoa só não há
+      // escolha a fazer, então cai nela mesma.
       setResponsavel(
-        tarefa?.responsavel_user_id ?? (membros.length <= 1 ? (user?.id ?? '') : ''),
+        tarefa?.responsavel_user_id ??
+          (membros.length <= 1 ? (user?.id ?? '') : '')
       );
+      setContatoEscolhido('');
     }
   }, [open, tarefa, membros.length, user?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // O catálogo de contatos só é buscado quando a criação é GLOBAL — no
+  // inbox/ficha o cliente vem por prop e a busca seria peso morto a cada
+  // abertura. Uma busca por montagem, RLS recorta a conta.
+  // ⚠️ Teto implícito de 1000 linhas do PostgREST: hoje são ~120 contatos;
+  // se a base passar de mil, este seletor precisa virar busca digitada.
+  useEffect(() => {
+    if (!open || !precisaCliente || contatos !== null) return;
+    let vivo = true;
+    void createClient()
+      .from('contacts')
+      .select('id, name, phone')
+      .order('name')
+      .then(({ data }) => {
+        if (vivo) setContatos(data ?? []);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [open, precisaCliente, contatos]);
 
   const podeSalvar =
     !!titulo.trim() &&
     !!venceEm &&
     (respondendo || editando || !!responsavel) &&
+    (!precisaCliente || !!contatoEscolhido) &&
     !salvando;
 
   async function submeter(e: React.FormEvent) {
@@ -142,7 +176,8 @@ export function TaskForm({
     const nova = await criar({
       // Com pai, a rota IGNORA o contato do corpo e herda o dele — a cadeia
       // inteira fala do mesmo cliente. Mandamos assim mesmo para o caso sem pai.
-      contact_id: tarefaPai?.contact_id ?? contactId,
+      contact_id:
+        tarefaPai?.contact_id ?? contactId ?? (contatoEscolhido || undefined),
       responsavel_user_id: respondendo ? undefined : responsavel,
       titulo: titulo.trim(),
       descricao: descricao.trim() || null,
@@ -178,6 +213,38 @@ export function TaskForm({
         </DialogHeader>
 
         <form onSubmit={submeter} className="space-y-4">
+          {precisaCliente ? (
+            <div className="space-y-2">
+              <Label className="text-muted-foreground">
+                {t('fieldContact')}
+              </Label>
+              <Select
+                value={contatoEscolhido === '' ? null : contatoEscolhido}
+                onValueChange={(v) =>
+                  setContatoEscolhido(v == null ? '' : String(v))
+                }
+                disabled={contatos === null}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      contatos === null
+                        ? t('loadingContacts')
+                        : t('contactPlaceholder')
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent className="max-h-64">
+                  {(contatos ?? []).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name || c.phone}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+
           <div className="space-y-2">
             <Label htmlFor="tf-titulo" className="text-muted-foreground">
               {t('fieldTitle')}
@@ -207,27 +274,49 @@ export function TaskForm({
             />
           </div>
 
-          {/* ⚠️ Escondido ao responder: quem recebe é quem pediu, e o servidor
-              é que decide. Escondido também numa conta de uma pessoa só, onde
-              não há nada a escolher — mesma convenção do seletor de canal. */}
-          {!respondendo && membros.length > 1 ? (
+          {/* ⚠️ Escondido só ao RESPONDER: quem recebe é quem pediu, e o
+              servidor é que decide. Numa conta de uma pessoa o campo FICA
+              (pedido do operador, 2026-08-29) — desabilitado, apontando para
+              você e com a dica de convidar a equipe: escondido, parecia que
+              delegar não existia no produto. */}
+          {!respondendo ? (
             <div className="space-y-2">
-              <Label className="text-muted-foreground">{t('fieldAssignee')}</Label>
-              <Select
-                value={responsavel}
-                onValueChange={(v) => setResponsavel(v ?? '')}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={t('assigneePlaceholder')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {membros.map((m) => (
-                    <SelectItem key={m.user_id} value={m.user_id}>
-                      {memberLabel(m)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label className="text-muted-foreground">
+                {t('fieldAssignee')}
+              </Label>
+              {membros.length > 1 ? (
+                <Select
+                  value={responsavel}
+                  onValueChange={(v) => setResponsavel(v ?? '')}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('assigneePlaceholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {membros.map((m) => (
+                      <SelectItem key={m.user_id} value={m.user_id}>
+                        {memberLabel(m)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <>
+                  <Select value="__eu__" disabled onValueChange={() => {}}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__eu__">
+                        {t('assigneeOnlyYou')}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-muted-foreground text-xs">
+                    {t('assigneeInviteHint')}
+                  </p>
+                </>
+              )}
             </div>
           ) : null}
 
@@ -256,12 +345,14 @@ export function TaskForm({
                 className="bg-muted border-border text-foreground"
               />
               {/* A hora é opcional por pedido do operador — a etiqueta diz. */}
-              <p className="text-xs text-muted-foreground">{t('dueTimeOptional')}</p>
+              <p className="text-muted-foreground text-xs">
+                {t('dueTimeOptional')}
+              </p>
             </div>
           </div>
 
           {!editando ? (
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <label className="text-muted-foreground flex items-center gap-2 text-sm">
               <Checkbox
                 checked={importante}
                 onCheckedChange={(v) => setImportante(v === true)}

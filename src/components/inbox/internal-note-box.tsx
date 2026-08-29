@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { Loader2 } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { Loader2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import {
   useCallback,
   useEffect,
@@ -9,20 +9,20 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
-} from "react";
-import { toast } from "sonner";
+} from 'react';
+import { toast } from 'sonner';
 
-import { Button } from "@/components/ui/button";
-import { fetchAccountMembers, memberLabel } from "@/lib/account/members";
+import { Button } from '@/components/ui/button';
+import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
 import {
   aplicarMencao,
   filtrarMembros,
   mencionadosNoTexto,
   tokenSobOCursor,
   type MembroMencionavel,
-} from "@/lib/notes/mentions";
-import { cn } from "@/lib/utils";
-import type { ConversationNote } from "@/types";
+} from '@/lib/notes/mentions';
+import { cn } from '@/lib/utils';
+import type { ConversationNote } from '@/types';
 
 /**
  * A caixa amarela de anotação interna (migrations 918/919).
@@ -42,21 +42,32 @@ export function InternalNoteBox({
   conversationId,
   onSaved,
   onClose,
+  listaParaBaixo = false,
 }: {
   conversationId: string;
   onSaved?: (nota: ConversationNote) => void;
-  onClose: () => void;
+  /**
+   * Fecha a caixa (compositor). AUSENTE na aba Notas do painel, onde a
+   * caixa é fixa: sem ele o botão Cancelar some e salvar só limpa o texto.
+   */
+  onClose?: () => void;
+  /**
+   * Abre a lista de sugestões PARA BAIXO. No compositor a caixa cola no
+   * rodapé da tela e a lista sobe; na aba Notas do painel ela fica no TOPO
+   * de um contêiner rolável — subir seria ser cortada pelo scroll.
+   */
+  listaParaBaixo?: boolean;
 }) {
-  const t = useTranslations("Inbox.composer");
+  const t = useTranslations('Inbox.composer');
 
-  const [texto, setTexto] = useState("");
+  const [texto, setTexto] = useState('');
   const [salvando, setSalvando] = useState(false);
   const areaRef = useRef<HTMLTextAreaElement>(null);
 
   // --- menção -------------------------------------------------------
   const [membros, setMembros] = useState<MembroMencionavel[]>([]);
   const [termo, setTermo] = useState<{ inicio: number; termo: string } | null>(
-    null,
+    null
   );
   const [destacado, setDestacado] = useState(0);
 
@@ -65,7 +76,7 @@ export function InternalNoteBox({
     void fetchAccountMembers().then((lista) => {
       if (!vivo) return;
       setMembros(
-        lista.map((m) => ({ user_id: m.user_id, rotulo: memberLabel(m) })),
+        lista.map((m) => ({ user_id: m.user_id, rotulo: memberLabel(m) }))
       );
     });
     return () => {
@@ -75,7 +86,7 @@ export function InternalNoteBox({
 
   const sugestoes = useMemo(
     () => (termo ? filtrarMembros(membros, termo.termo) : []),
-    [termo, membros],
+    [termo, membros]
   );
   const listaAberta = termo !== null && sugestoes.length > 0;
 
@@ -102,7 +113,7 @@ export function InternalNoteBox({
       setTermo(tokenSobOCursor(el.value, el.selectionStart));
       setDestacado(0);
     },
-    [],
+    []
   );
 
   /**
@@ -135,7 +146,7 @@ export function InternalNoteBox({
         alvo.setSelectionRange(r.cursor, r.cursor);
       });
     },
-    [termo, texto],
+    [termo, texto]
   );
 
   const salvar = useCallback(async () => {
@@ -143,9 +154,9 @@ export function InternalNoteBox({
     if (!limpo || salvando) return;
     setSalvando(true);
     try {
-      const res = await fetch("/api/cb/notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/cb/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conversation_id: conversationId,
           texto: limpo,
@@ -155,18 +166,19 @@ export function InternalNoteBox({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(json?.error || t("noteSaveError"));
+        toast.error(json?.error || t('noteSaveError'));
         return;
       }
       // A anotação foi salva; o aviso ao colega pode não ter saído. Dizer
       // isso é o ponto: quem escreveu "@fulano confere esse prazo" e some da
       // tela precisa saber se o fulano foi mesmo chamado.
-      if (json?.mencoesNotificadas === false) toast.warning(t("noteMentionFailed"));
+      if (json?.mencoesNotificadas === false)
+        toast.warning(t('noteMentionFailed'));
       onSaved?.(json.note as ConversationNote);
-      setTexto("");
-      onClose();
+      setTexto('');
+      onClose?.();
     } catch {
-      toast.error(t("noteSaveError"));
+      toast.error(t('noteSaveError'));
     } finally {
       setSalvando(false);
     }
@@ -178,53 +190,58 @@ export function InternalNoteBox({
       // coisa. Sem isto, Enter para escolher um colega quebraria linha e
       // Escape fecharia a caixa inteira com o texto dentro.
       if (listaAberta) {
-        if (e.key === "ArrowDown") {
+        if (e.key === 'ArrowDown') {
           e.preventDefault();
           setDestacado((i) => (i + 1) % sugestoes.length);
           return;
         }
-        if (e.key === "ArrowUp") {
+        if (e.key === 'ArrowUp') {
           e.preventDefault();
           setDestacado((i) => (i - 1 + sugestoes.length) % sugestoes.length);
           return;
         }
-        if (e.key === "Enter" || e.key === "Tab") {
+        if (e.key === 'Enter' || e.key === 'Tab') {
           e.preventDefault();
           escolher(sugestoes[destacado] ?? sugestoes[0]);
           return;
         }
-        if (e.key === "Escape") {
+        if (e.key === 'Escape') {
           e.preventDefault();
           setTermo(null);
           return;
         }
       }
 
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         void salvar();
         return;
       }
-      if (e.key === "Escape") {
+      if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onClose?.();
       }
     },
-    [listaAberta, sugestoes, destacado, escolher, salvar, onClose],
+    [listaAberta, sugestoes, destacado, escolher, salvar, onClose]
   );
 
   return (
     <div className="mb-2 rounded-lg border border-amber-300/60 bg-amber-50 p-3 dark:border-amber-700/50 dark:bg-amber-950/40">
       <p className="mb-2 text-xs text-amber-950 dark:text-amber-50">
-        <span className="font-semibold">{t("noteBoxTitle")}</span>{" "}
-        <span className="opacity-80">{t("noteBoxHint")}</span>
+        <span className="font-semibold">{t('noteBoxTitle')}</span>{' '}
+        <span className="opacity-80">{t('noteBoxHint')}</span>
       </p>
 
       <div className="relative">
         {/* A lista sobe, e não desce: a caixa fica colada no rodapé da tela,
             então para baixo ela sairia da área visível. */}
         {listaAberta && (
-          <ul className="absolute bottom-full left-0 z-20 mb-1 max-h-48 w-64 overflow-y-auto rounded-md border border-border bg-popover py-1 shadow-md">
+          <ul
+            className={cn(
+              'border-border bg-popover absolute left-0 z-20 max-h-48 w-64 overflow-y-auto rounded-md border py-1 shadow-md',
+              listaParaBaixo ? 'top-full mt-1' : 'bottom-full mb-1'
+            )}
+          >
             {sugestoes.map((m, i) => (
               <li key={m.user_id}>
                 <button
@@ -238,10 +255,10 @@ export function InternalNoteBox({
                   }}
                   onMouseEnter={() => setDestacado(i)}
                   className={cn(
-                    "w-full truncate px-3 py-1.5 text-left text-sm",
+                    'w-full truncate px-3 py-1.5 text-left text-sm',
                     i === destacado
-                      ? "bg-accent text-accent-foreground"
-                      : "text-popover-foreground",
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-popover-foreground'
                   )}
                 >
                   {m.rotulo}
@@ -260,7 +277,7 @@ export function InternalNoteBox({
           onSelect={moverCursor}
           onBlur={() => setTermo(null)}
           rows={3}
-          placeholder={t("notePlaceholder")}
+          placeholder={t('notePlaceholder')}
           className="w-full resize-none rounded-md border border-amber-300/60 bg-amber-100/60 px-3 py-2 text-sm text-amber-950 outline-none placeholder:text-amber-900/50 focus:border-amber-500 dark:border-amber-700/50 dark:bg-amber-900/30 dark:text-amber-50 dark:placeholder:text-amber-100/40"
         />
       </div>
@@ -272,14 +289,18 @@ export function InternalNoteBox({
           disabled={!texto.trim() || salvando}
           className="h-8 bg-emerald-600 text-white hover:bg-emerald-700"
         >
-          {salvando ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-          {t("saveNote")}
+          {salvando ? (
+            <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+          ) : null}
+          {t('saveNote')}
         </Button>
-        <Button size="sm" variant="ghost" onClick={onClose} className="h-8">
-          {t("cancel")}
-        </Button>
+        {onClose ? (
+          <Button size="sm" variant="ghost" onClick={onClose} className="h-8">
+            {t('cancel')}
+          </Button>
+        ) : null}
         <span className="ml-auto text-[10px] text-amber-900/60 dark:text-amber-100/50">
-          {t("noteMentionHint")}
+          {t('noteMentionHint')}
         </span>
       </div>
     </div>

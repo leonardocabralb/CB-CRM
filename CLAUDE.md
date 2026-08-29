@@ -205,7 +205,7 @@ upstream sobrescrevê-los:
 | páginas de `automations`, `flows`, `broadcasts`, `dashboard` | etiqueta e filtro de canal, coluna de canal nos históricos, filtro do painel |
 | `src/components/broadcasts/step{1,4}-*.tsx`, `src/hooks/use-broadcast-sending.ts` | canal escolhido no passo 1, `channel_id` no corpo da API e na linha de `broadcasts` |
 | `src/components/settings/template-manager.tsx` | seletor de WABA para criar/sincronizar, etiqueta de canal por modelo |
-| `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato, canal da conversa na ficha, e a seção/aba **Histórico** (912). No detail view a `TabsList` ganhou `flex-wrap h-auto` — com 5 abas ela já estourava a largura do painel e escondia "Negócios" |
+| `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato e a seção/aba **Histórico** (912). (A linha "canal da conversa" que o painel do inbox exibia foi REMOVIDA em 2026-08-29 a pedido do operador — o seletor do cabeçalho do fio já responde isso.) No detail view a `TabsList` ganhou `flex-wrap h-auto` — com 5 abas ela já estourava a largura do painel e escondia "Negócios" |
 | `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
 | `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página |
 | `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDaMensagem>` envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo), a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef` |
@@ -1154,6 +1154,14 @@ mordem de novo em qualquer código novo:
   - **944_cb_tarefas** — painel de tarefas (PR #39).
   - **945_cb_agenda_de_reunioes** — agenda, Fase 1 (PR #40). Aplicada em
     2026-08-28 e registrada no histórico como `20260828183655`.
+  - **946–947** — modelo do Radar e lembrete da reunião. ⚠️ A **947 está
+    aplicada mas SEM registro no histórico** (função
+    `cb_alvos_de_lembrete_reuniao` + índice conferidos no schema em
+    2026-08-29) — é a segunda da lista da 037: o histórico não é fonte de
+    verdade completa.
+  - **948–951** — plano do painel do contato (948 chave/tipos de campo, 949
+    categoria de traqueamento, 950 etapa com resultado) e **951_cb_nota_fixada**
+    (fixar anotação por cliente, 2026-08-29).
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

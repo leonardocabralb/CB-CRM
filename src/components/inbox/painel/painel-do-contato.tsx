@@ -19,11 +19,9 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { useChannels } from '@/hooks/use-channels';
 import { useConversationNotes } from '@/hooks/use-conversation-notes';
 import { useCan } from '@/hooks/use-can';
 import { toast } from 'sonner';
-import { ChannelCell } from '@/components/channels/channel-badge';
 import { ActivityHistory } from '@/components/lead-events/activity-history';
 import { ContactTasks } from '@/components/tasks/contact-tasks';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
@@ -33,6 +31,7 @@ import { statusAoEntrarNaEtapa } from '@/lib/pipelines/resultado';
 import { avisarDrenagemDeFunil } from '@/lib/automations/avisar-drenagem';
 import { CampoPersonalizadoInput } from '@/components/contacts/campo-personalizado-input';
 import { LinhaDeEdicao } from '@/components/inbox/painel/linha-de-edicao';
+import { InternalNoteBox } from '@/components/inbox/internal-note-box';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
 import {
@@ -61,7 +60,6 @@ import {
   DollarSign,
   StickyNote,
   Plus,
-  Smartphone,
   Building2,
   History,
   ListTodo,
@@ -72,6 +70,8 @@ import {
   Megaphone,
   PanelRightClose,
   Pencil,
+  Pin,
+  PinOff,
   Save,
   Settings2,
 } from 'lucide-react';
@@ -94,13 +94,6 @@ export interface PainelDoContatoProps {
    * desnormalizada justamente para isso), mas não para escrever.
    */
   conversationId?: string | null;
-  /**
-   * Canal em que a conversa aberta corre. Sem isto a ficha do contato não
-   * dizia por qual dos números do escritório aquela conversa acontece — a
-   * informação existia só no cabeçalho da thread, que fica fora de vista
-   * quando o atendente está lendo a ficha.
-   */
-  channelId?: string | null;
   /**
    * Contador de resync da página (reconexão de WS, aba voltou a ficar
    * visível). Repassado ao histórico de atividade, que sempre aceitou um
@@ -125,19 +118,16 @@ export interface PainelDoContatoProps {
 export function PainelDoContato({
   contact,
   conversationId,
-  channelId,
   resyncToken = 0,
   onClose,
   onContactUpdated,
 }: PainelDoContatoProps) {
   const tSidebar = useTranslations('Inbox.sidebar');
   const tThread = useTranslations('Inbox.messageThread');
-  const tCanais = useTranslations('Channels');
   // Rótulos do negócio vêm do namespace do funil — mesmo texto nas duas
   // telas, de propósito (Marcar como ganho etc.).
   const tForm = useTranslations('Pipelines.form');
   const tCard = useTranslations('Pipelines.card');
-  const { channels } = useChannels();
   // `user`/`accountId` só para o seed do catálogo de traqueamento — o insert
   // de `custom_fields` exige os dois carimbados à mão (NOT NULL sem default).
   const { user, accountId } = useAuth();
@@ -149,8 +139,15 @@ export function PainelDoContato({
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
-  const [newNote, setNewNote] = useState('');
-  const [addingNote, setAddingNote] = useState(false);
+  /** Nota com PATCH de fixação no ar (id) — trava o botão clicado. */
+  const [fixando, setFixando] = useState<string | null>(null);
+  /**
+   * Tarefas ABERTAS deste cliente (qualquer responsável) — o número da
+   * etiqueta na aba Tarefas. `null` = ainda não contado (etiqueta some).
+   * Contado aqui, e não dentro da aba: o conteúdo dela só monta quando é
+   * aberta, e a etiqueta precisa existir antes disso.
+   */
+  const [tarefasAbertas, setTarefasAbertas] = useState<number | null>(null);
   /**
    * `true` só depois que as consultas POR-CONTATO do contato ATUAL
    * aterrissaram sem erro. Enquanto `false`, salvar campos e o cartão de
@@ -254,24 +251,8 @@ export function PainelDoContato({
     setCustomValues({});
     setUltimoNegocioMexido(null);
     setDetalhesAbertos(false);
+    setTarefasAbertas(null);
   }, [contact?.id]);
-
-  /**
-   * ⚠️ O rascunho MORRE ao trocar de conversa. Mesmo perigo, mesma correção
-   * que a caixa do compositor.
-   *
-   * Este painel é renderizado sem `key`, numa posição fixa da página — trocar
-   * de conversa o re-renderiza, nunca o remonta. O texto do campo só era
-   * limpo quando o salvamento dava certo. Então: escrever "cliente mentiu
-   * sobre a data do acidente" na conversa do cliente A, clicar no cliente B
-   * na lista (o painel passa a mostrar o nome e o telefone de B, com o texto
-   * de A ainda no campo) e clicar em `+` gravava aquilo na conversa de B,
-   * visível para toda a equipe. Não é hipótese: é o caminho de escrita que
-   * sobrou depois de a caixa do compositor ganhar a guarda dela.
-   */
-  useEffect(() => {
-    setNewNote('');
-  }, [conversationId]);
 
   /**
    * ⚠️ O MESMO hook que o fio do chat usa, e de propósito.
@@ -288,8 +269,11 @@ export function PainelDoContato({
    * ficha de fora do inbox (`contact-detail-view`) continua lendo por contato
    * porque lá não existe conversa aberta.
    */
-  const { notas, acrescentar: acrescentarNota } =
-    useConversationNotes(conversationId);
+  const {
+    notas,
+    acrescentar: acrescentarNota,
+    aplicarFixacao,
+  } = useConversationNotes(conversationId);
 
   // O hook devolve na ordem que o `intercalar` prefere (o fio reordena tudo).
   // Aqui a lista é lida direto, e a seção sempre mostrou a mais recente no
@@ -301,6 +285,17 @@ export function PainelDoContato({
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       ),
     [notas]
+  );
+
+  // A fixada (951) sai do fluxo e vira o cartão sticky do topo. No máximo
+  // uma por cliente — o índice parcial garante; aqui é só find.
+  const notaFixada = useMemo(
+    () => notes.find((n) => n.fixada_em) ?? null,
+    [notes]
+  );
+  const notasComuns = useMemo(
+    () => (notaFixada ? notes.filter((n) => n.id !== notaFixada.id) : notes),
+    [notes, notaFixada]
   );
 
   const fetchContactData = useCallback(async () => {
@@ -322,6 +317,7 @@ export function PainelDoContato({
       valuesRes,
       funisRes,
       etapasRes,
+      tarefasRes,
     ] = await Promise.all([
       supabase
         .from('deals')
@@ -341,6 +337,13 @@ export function PainelDoContato({
       // Fase 4: os seletores de funil/etapa do cartão de negócio.
       supabase.from('pipelines').select('id, name').order('name'),
       supabase.from('pipeline_stages').select('*').order('position'),
+      // Só o NÚMERO (head:true viaja sem linhas): tarefas abertas deste
+      // cliente, de qualquer responsável — a etiqueta da aba.
+      supabase
+        .from('cb_tasks')
+        .select('id', { count: 'exact', head: true })
+        .eq('contact_id', contact.id)
+        .eq('status', 'aberta'),
     ]);
 
     // Resposta atrasada de OUTRO contato (ou de um refetch disparado antes
@@ -373,6 +376,7 @@ export function PainelDoContato({
     if (allTagsRes.data) setAllTags(allTagsRes.data);
     if (funisRes.data) setPipelines(funisRes.data);
     if (etapasRes.data) setAllStages(etapasRes.data as PipelineStage[]);
+    if (!tarefasRes.error) setTarefasAbertas(tarefasRes.count ?? 0);
     setDadosProntos(true);
   }, [contact, tSidebar]);
 
@@ -637,47 +641,51 @@ export function PainelDoContato({
   }, [contact]);
 
   /**
-   * ⚠️ Vai pela ROTA, não por insert direto. `cb_conversation_notes` não tem
-   * policy de INSERT e o papel `authenticated` teve o INSERT revogado — a
-   * anotação nasce no servidor, que carimba o autor e valida as menções.
-   * O insert direto que existia aqui (na `contact_notes`) agora daria 42501.
-   *
-   * ⚠️ E AVISA quando falha. A versão anterior (`if (!error && data)`) engolia
-   * o erro: o texto continuava no campo, nada aparecia na lista, e não havia
-   * como distinguir "falhou" de "ainda salvando". Com a rota no meio isso
-   * ficou mais provável, não menos — 401 de sessão expirada e 403 de papel
-   * passam por aqui.
+   * Refaz SÓ o número da aba Tarefas — chamado pela própria aba a cada
+   * criação/conclusão/reabertura lá dentro. A mesma régua de staleness do
+   * fetch grande: resposta de outro contato morre na chegada.
    */
-  const handleAddNote = useCallback(async () => {
-    if (!contact || !newNote.trim() || !conversationId) return;
-    setAddingNote(true);
-    try {
-      const res = await fetch('/api/cb/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversation_id: conversationId,
-          texto: newNote.trim(),
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (res.ok && json?.note) {
-        const nota = json.note as ConversationNote;
-        // Mesma guarda do fio: a anotação foi GRAVADA no lugar certo (a
-        // requisição levou o `conversationId` daquele render), mas quem
-        // recebe a resposta é o render de agora. Trocar de conversa com o
-        // salvamento no ar poria a anotação de um cliente na ficha de outro.
-        if (nota.conversation_id === conversationId) acrescentarNota(nota);
-        setNewNote('');
-      } else {
-        toast.error(json?.error || tSidebar('noteSaveError'));
+  const recontarTarefas = useCallback(async () => {
+    if (!contact) return;
+    const idPedido = contact.id;
+    const { count, error } = await createClient()
+      .from('cb_tasks')
+      .select('id', { count: 'exact', head: true })
+      .eq('contact_id', idPedido)
+      .eq('status', 'aberta');
+    if (contactIdRef.current !== idPedido || error) return;
+    setTarefasAbertas(count ?? 0);
+  }, [contact]);
+
+  /**
+   * Fixa/desafixa pela ROTA (`PATCH /api/cb/notes/[id]`): UPDATE segue
+   * revogado no navegador (918/920), e é o índice parcial da 951 que
+   * garante "uma por cliente". A resposta traz a nota carimbada e o
+   * `aplicarFixacao` zera a anterior no estado local.
+   */
+  const fixarNota = useCallback(
+    async (nota: ConversationNote, fixar: boolean) => {
+      setFixando(nota.id);
+      try {
+        const res = await fetch(`/api/cb/notes/${nota.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fixada: fixar }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.note) {
+          toast.error(tSidebar('pinError'));
+          return;
+        }
+        aplicarFixacao(json.note as ConversationNote);
+      } catch {
+        toast.error(tSidebar('pinError'));
+      } finally {
+        setFixando(null);
       }
-    } catch {
-      toast.error(tSidebar('noteSaveError'));
-    } finally {
-      setAddingNote(false);
-    }
-  }, [contact, newNote, conversationId, acrescentarNota, tSidebar]);
+    },
+    [aplicarFixacao, tSidebar]
+  );
 
   if (!contact) {
     return (
@@ -782,7 +790,11 @@ export function PainelDoContato({
           <AbaDeIcone value="notas" label={tSidebar('tabNotes')}>
             <StickyNote className="h-4 w-4" />
           </AbaDeIcone>
-          <AbaDeIcone value="tarefas" label={tSidebar('tabTasks')}>
+          <AbaDeIcone
+            value="tarefas"
+            label={tSidebar('tabTasks')}
+            badge={tarefasAbertas}
+          >
             <ListTodo className="h-4 w-4" />
           </AbaDeIcone>
           <AbaDeIcone value="traqueamento" label={tSidebar('tabTracking')}>
@@ -1027,24 +1039,12 @@ export function PainelDoContato({
                 <span className="truncate">{contact.company}</span>
               </div>
             )}
-            {/* Por qual número do escritório esta conversa corre. Só com 2+
-                canais — com um só a resposta é óbvia. */}
-            {channels.length >= 2 && channelId && (
-              <div className="text-muted-foreground flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm">
-                <Smartphone className="h-4 w-4 shrink-0" />
-                <span className="text-xs">{tCanais('label')}</span>
-                <ChannelCell
-                  channels={channels}
-                  channelId={channelId}
-                  className="ml-auto"
-                />
-              </div>
-            )}
+            {/* A linha "Canal" morava aqui e SAIU (pedido do operador,
+                2026-08-29): o seletor de canal no cabeçalho do fio já diz e
+                troca o número — aqui era eco. */}
           </div>
 
-          {(contact.email ||
-            contact.company ||
-            (channels.length >= 2 && channelId)) && (
+          {(contact.email || contact.company) && (
             <div className="border-border my-4 border-t" />
           )}
 
@@ -1194,28 +1194,83 @@ export function PainelDoContato({
           value="notas"
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
-          <div className="flex gap-2">
-            <textarea
-              value={newNote}
-              onChange={(e) => setNewNote(e.target.value)}
-              placeholder={tSidebar('addNotePlaceholder')}
-              rows={2}
-              className="border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 flex-1 resize-none rounded-lg border px-3 py-2 text-xs outline-none"
+          {/* A nota FIXADA (951) vem antes de tudo e é sticky: rolar a
+              lista não a leva embora. `top-0` gruda na borda do scrollport
+              — o padding do TabsContent rola junto com o conteúdo. */}
+          {notaFixada && (
+            <div className="border-primary/40 bg-card sticky top-0 z-10 mb-2 rounded-lg border px-3 py-2 shadow-sm">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-primary flex items-center gap-1 text-[10px] font-semibold tracking-wider uppercase">
+                  <Pin className="h-3 w-3" />
+                  {tSidebar('pinnedNote')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void fixarNota(notaFixada, false)}
+                  disabled={fixando === notaFixada.id}
+                  aria-label={tSidebar('unpinNote')}
+                  title={tSidebar('unpinNote')}
+                  className="text-muted-foreground hover:text-foreground -m-1 p-1 transition-colors disabled:opacity-50"
+                >
+                  <PinOff className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <p className="text-foreground mt-1 text-xs whitespace-pre-wrap">
+                {notaFixada.texto}
+              </p>
+              <p className="text-muted-foreground mt-1 text-[10px]">
+                {new Date(notaFixada.created_at).toLocaleString(undefined, {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </p>
+            </div>
+          )}
+
+          {/* A MESMA caixa amarela do compositor (918/919): menção por `@`
+              com autocomplete e aviso quando o sino de menção falha. `key`
+              pela conversa — a caixa guarda rascunho próprio, e sem o
+              remonte o texto escrito para um cliente sobreviveria à troca
+              e seria salvo no seguinte (a armadilha documentada do
+              rascunho de nota). Lista de sugestões para BAIXO: aqui a
+              caixa fica no topo do painel, não no rodapé da tela. */}
+          {conversationId ? (
+            <InternalNoteBox
+              key={conversationId}
+              conversationId={conversationId}
+              listaParaBaixo
+              onSaved={(nota) => {
+                if (nota.conversation_id === conversationId)
+                  acrescentarNota(nota);
+              }}
             />
-            <Button
-              size="sm"
-              className="bg-primary hover:bg-primary/90 h-auto px-2"
-              onClick={handleAddNote}
-              disabled={!newNote.trim() || addingNote || !conversationId}
-            >
-              <Plus className="h-3 w-3" />
-            </Button>
-          </div>
+          ) : null}
 
           <div className="mt-2 space-y-2">
-            {notes.map((note) => (
-              <div key={note.id} className="bg-muted rounded-lg px-3 py-2">
-                <p className="text-muted-foreground text-xs whitespace-pre-wrap">
+            {notasComuns.map((note) => (
+              <div
+                key={note.id}
+                className="bg-muted relative rounded-lg px-3 py-2"
+              >
+                {/* Fixar é para qualquer um que anota (viewer incluso — a
+                    rota decide); sem hover-para-aparecer, que não existe no
+                    toque do celular. */}
+                {note.contact_id && (
+                  <button
+                    type="button"
+                    onClick={() => void fixarNota(note, true)}
+                    disabled={fixando === note.id}
+                    aria-label={tSidebar('pinNote')}
+                    title={tSidebar('pinNote')}
+                    className="text-muted-foreground/60 hover:text-foreground absolute top-1.5 right-1.5 p-1 transition-colors disabled:opacity-50"
+                  >
+                    <Pin className="h-3 w-3" />
+                  </button>
+                )}
+                <p className="text-muted-foreground pr-5 text-xs whitespace-pre-wrap">
                   {note.texto}
                 </p>
                 <p className="text-muted-foreground mt-1 text-[10px]">
@@ -1240,7 +1295,7 @@ export function PainelDoContato({
           value="tarefas"
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
-          <ContactTasks contactId={contact.id} />
+          <ContactTasks contactId={contact.id} aoAlterar={recontarTarefas} />
         </TabsContent>
 
         {/* ---- Traqueamento (949) — os campos que o clique no anúncio
@@ -1404,20 +1459,28 @@ function CabecalhoDoPainel({
 function AbaDeIcone({
   value,
   label,
+  badge,
   children,
 }: {
   value: string;
   label: string;
+  /** Número ao lado do ícone (ex.: tarefas abertas). 0/null = sem etiqueta. */
+  badge?: number | null;
   children: React.ReactNode;
 }) {
   return (
     <TabsTrigger
       value={value}
       title={label}
-      aria-label={label}
+      aria-label={badge ? `${label} (${badge})` : label}
       className="text-muted-foreground data-active:bg-muted data-active:text-primary"
     >
       {children}
+      {badge ? (
+        <span className="bg-primary/15 text-primary ml-1 rounded-full px-1 text-[10px] leading-4 font-semibold">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      ) : null}
     </TabsTrigger>
   );
 }

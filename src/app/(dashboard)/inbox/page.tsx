@@ -824,7 +824,6 @@ function InboxPageInner() {
               <ContactSidebar
                 contact={activeContact}
                 conversationId={activeConversation?.id ?? null}
-                channelId={activeConversation?.channel_id ?? null}
                 resyncToken={resyncToken}
                 onClose={handleToggleContactPanel}
                 onContactUpdated={handleContactUpdated}
