@@ -32,6 +32,8 @@ export const API_SCOPES = [
   'meetings:write',
   'notes:read',
   'notes:write',
+  'custom_fields:read',
+  'custom_fields:write',
 ] as const;
 
 export type ApiScope = (typeof API_SCOPES)[number];
@@ -56,6 +58,8 @@ export const SCOPE_DESCRIPTIONS: Record<ApiScope, string> = {
   'meetings:write': 'Create calendar meetings',
   'notes:read': 'Read internal conversation notes',
   'notes:write': 'Create internal conversation notes',
+  'custom_fields:read': 'Read contact custom field values (by field key)',
+  'custom_fields:write': 'Write contact custom field values (by field key)',
 };
 
 /** Type-narrow an unknown value into a valid `ApiScope`. */
