@@ -33,13 +33,53 @@ import {
 } from './webhook-url';
 
 /**
- * Nome de instância para um canal ADICIONAL. O sufixo aleatório evita
- * colidir com o canal padrão da conta (`cbcrm-<accountId>`, criado pelo
- * fluxo single-channel do Gabriel) e com outros canais da mesma conta.
+ * Reduz o rótulo digitado pelo operador a um pedaço de nome de instância:
+ * minúsculas, sem acento, só `[a-z0-9-]`. Devolve string vazia quando não
+ * sobra nada (rótulo só de emoji, só de pontuação) — o chamador trata.
+ *
+ * ⚠️ `\p{Mn}` e não `\p{Diacritic}`: a segunda faixa inclui o acento que
+ * existe SOZINHO (`^`, `´`, `~`), e aí um rótulo como "~~~" viraria vazio por
+ * um motivo diferente do esperado. Mesma lição do `semAcento` da busca — que
+ * de propósito NÃO é reusado aqui: aquele espelha o `unaccent` do Postgres e
+ * pode ser ajustado por paridade de BUSCA; nome de instância é imutável e não
+ * pode depender daquele contrato.
  */
-export function buildChannelInstanceName(accountId: string): string {
+export function slugDoRotulo(label: string): string {
+  return label
+    .normalize('NFD')
+    .replace(/\p{Mn}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .slice(0, 32)
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * Nome de instância para um canal ADICIONAL, derivado do RÓTULO que o
+ * operador digitou — "CBAdv" vira `cbadv-3f2a91`. O nome aparece cru no
+ * gerenciador da Evolution, e antes ele era `cbcrm-<accountId>-<sufixo>`:
+ * três UUIDs indistinguíveis numa tela onde a coluna serve justamente para
+ * dizer qual número é qual.
+ *
+ * ⚠️ O SUFIXO ALEATÓRIO NÃO É ENFEITE. `provisionEvolutionInstance` é
+ * create-or-**adopt** por nome: sem o sufixo, um canal novo rótulado com o
+ * nome de uma instância que já existe no servidor compartilhado (o "CBAdv"
+ * pareado à mão, por exemplo) faria o CRM ASSUMIR aquela instância e
+ * reapontar o webhook dela, em silêncio e com 200 na resposta. O sufixo
+ * também separa dois canais de mesmo rótulo e mantém distância do padrão
+ * single-channel (`cbcrm-<accountId>`).
+ *
+ * ⚠️ O nome É FIXADO NA CRIAÇÃO. Renomear o canal depois (PATCH do `label`)
+ * não mexe aqui — `instance_name` é a chave de roteamento da entrada, e a
+ * Evolution não renomeia instância: seria apagar e recriar, perdendo o
+ * pareamento e a `api_key`. Ver `repairChannelPairing`.
+ */
+export function buildChannelInstanceName(accountId: string, label: string): string {
   const suffix = crypto.randomBytes(3).toString('hex');
-  return `cbcrm-${accountId}-${suffix}`;
+  const slug = slugDoRotulo(label);
+  // Rótulo sem nenhum caractere aproveitável cai no formato antigo: feio, mas
+  // válido e único. Nome de instância vazio a Evolution recusaria.
+  return slug ? `${slug}-${suffix}` : `cbcrm-${accountId}-${suffix}`;
 }
 
 /**

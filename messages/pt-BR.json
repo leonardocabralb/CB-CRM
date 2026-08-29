@@ -2020,6 +2020,7 @@
       "evolutionStepDescription": "Cria uma conexão nova de WhatsApp no seu servidor Evolution. Só dê um nome — você escaneia o QR Code no passo seguinte.",
       "labelField": "Nome do canal",
       "labelPlaceholder": "Comercial, Dr. Leonardo…",
+      "labelHelpEvolution": "Também dá nome à instância no servidor da Evolution, e isso é fixado agora — renomear o canal depois não renomeia a instância.",
       "cancel": "Cancelar",
       "createAndConnect": "Criar e exibir QR Code",
       "metaStepTitle": "Conectar um número oficial (API da Meta)",

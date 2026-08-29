@@ -825,6 +825,14 @@ rotas em `src/app/api/v1/`. O que morde código novo:
   registro anterior à 903 o disparo pode ter vindo de outro número.
 - **Filtro não esconde o irrestrito.** Uma automação sem escopo dispara em todos
   os números e continua visível sob qualquer filtro.
+- ⚠️ **O nome da instância Evolution é DERIVADO DO RÓTULO e fixado na criação**
+  (`buildChannelInstanceName`): "CBAdv" → `cbadv-3f2a91`. O **sufixo aleatório
+  não é enfeite** — `provisionEvolutionInstance` é create-or-**adopt** por
+  nome, então rótulo batendo com instância já existente no servidor
+  compartilhado faria o CRM assumi-la e reapontar o webhook dela, em silêncio
+  e com 200. Renomear o canal depois **não** renomeia a instância:
+  `instance_name` é a chave de roteamento da entrada e a Evolution não
+  renomeia (seria apagar e recriar, perdendo pareamento e `api_key`).
 
 ⚠️ **`src/components/ui/select.tsx` divergiu do upstream — não deixar sobrescrever.**
 O `<Select.Value />` do base-ui mostra o **valor cru** quando o `Root` não recebe
