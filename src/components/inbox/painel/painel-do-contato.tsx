@@ -28,6 +28,8 @@ import { ActivityHistory } from "@/components/lead-events/activity-history";
 import { ContactTasks } from "@/components/tasks/contact-tasks";
 import { CustomFieldsManager } from "@/components/contacts/custom-fields-manager";
 import { DealForm } from "@/components/pipelines/deal-form";
+import { SeletorFunilEtapa } from "@/components/inbox/painel/seletor-funil-etapa";
+import { statusAoEntrarNaEtapa } from "@/lib/pipelines/resultado";
 import { avisarDrenagemDeFunil } from "@/lib/automations/avisar-drenagem";
 import { CampoPersonalizadoInput } from "@/components/contacts/campo-personalizado-input";
 import { LinhaDeEdicao } from "@/components/inbox/painel/linha-de-edicao";
@@ -63,6 +65,8 @@ import {
   Building2,
   History,
   ListTodo,
+  ChevronDown,
+  ChevronUp,
   Loader2,
   Maximize2,
   Megaphone,
@@ -74,13 +78,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Popover,
   PopoverContent,
@@ -176,6 +173,8 @@ export function PainelDoContato({
     null,
   );
   const [negocioOcupado, setNegocioOcupado] = useState(false);
+  /** Detalhes do negócio (data, ganho/perdido, formulário) — só sob demanda. */
+  const [detalhesAbertos, setDetalhesAbertos] = useState(false);
 
   // Recortes por categoria (949): a seção CAMPOS da Principal mostra só os
   // gerais; a aba Traqueamento, só os de anúncio.
@@ -195,15 +194,6 @@ export function PainelDoContato({
   const dealAtivo = useMemo(
     () => deals.find((d) => d.status === "open") ?? deals[0] ?? null,
     [deals],
-  );
-  const etapasDoFunilAtivo = useMemo(
-    () =>
-      dealAtivo
-        ? allStages
-            .filter((s) => s.pipeline_id === dealAtivo.pipeline_id)
-            .sort((a, b) => a.position - b.position)
-        : [],
-    [allStages, dealAtivo],
   );
 
   /**
@@ -410,12 +400,19 @@ export function PainelDoContato({
         void fetchContactData();
         return;
       }
+      // Espelho do gatilho da 950: entrar em etapa marcada carimba o
+      // status. O BANCO já gravou (BEFORE trigger, mesma escrita); aqui só
+      // refletimos para o selo aparecer sem esperar refetch.
+      const carimbo = patch.stage_id
+        ? statusAoEntrarNaEtapa(allStages, patch.stage_id)
+        : null;
       setDeals((prev) =>
         prev.map((d) =>
           d.id === deal.id
             ? {
                 ...d,
                 ...patch,
+                ...(carimbo ? { status: carimbo } : {}),
                 // O NULL que o banco recebeu vira `undefined` no estado — o
                 // tipo `Deal` só conhece opcional, e para o render dá no
                 // mesmo (input vazio).
@@ -437,33 +434,23 @@ export function PainelDoContato({
     [allStages, fetchContactData, tSidebar],
   );
 
-  const mudarEtapa = useCallback(
-    (deal: Deal, stageId: string) => {
+  /**
+   * O seletor dois-níveis entrega funil E etapa escolhidos num gesto.
+   * ⚠️ Transferência entre funis é UM update com as DUAS colunas: em dois, a
+   * trilha (912) conta que o lead saiu e voltou, e a FK composta recusa o
+   * estado intermediário. E o lead chega na etapa ESCOLHIDA — não mais na
+   * primeira do funil novo.
+   */
+  const moverPara = useCallback(
+    (deal: Deal, pipelineId: string, stageId: string) => {
       if (stageId === deal.stage_id) return;
-      void atualizarNegocio(deal, { stage_id: stageId }, true);
+      const patch =
+        pipelineId === deal.pipeline_id
+          ? { stage_id: stageId }
+          : { pipeline_id: pipelineId, stage_id: stageId };
+      void atualizarNegocio(deal, patch, true);
     },
     [atualizarNegocio],
-  );
-
-  const mudarFunil = useCallback(
-    (deal: Deal, pipelineId: string) => {
-      if (pipelineId === deal.pipeline_id) return;
-      // ⚠️ UM update com as DUAS colunas: em dois, a trilha (912) conta que o
-      // lead saiu e voltou, e a FK composta recusa o estado intermediário.
-      // A etapa de chegada é a primeira do funil novo — mesma regra do
-      // `deal-form` ao trocar de funil (o operador ajusta em seguida se
-      // quiser outra).
-      const primeira = allStages
-        .filter((st) => st.pipeline_id === pipelineId)
-        .sort((a, b) => a.position - b.position)[0];
-      if (!primeira) return;
-      void atualizarNegocio(
-        deal,
-        { pipeline_id: pipelineId, stage_id: primeira.id },
-        true,
-      );
-    },
-    [allStages, atualizarNegocio],
   );
 
   const mudarStatus = useCallback(
@@ -717,22 +704,9 @@ export function PainelDoContato({
                `atualizarNegocio`); o formulário completo continua sendo o
                `DealForm`, aberto pelo botão. ---- */}
           <div className="mb-4">
-            <div className="flex items-center justify-between">
-              <TituloDeSecao icon={<DollarSign className="h-3 w-3" />}>
-                {tSidebar("deals")}
-              </TituloDeSecao>
-              {podeEditar && dealAtivo && (
-                <button
-                  type="button"
-                  onClick={() => setDealFormAberto(dealAtivo)}
-                  title={tForm("editDeal")}
-                  className="flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <Maximize2 className="h-3 w-3" />
-                  {tSidebar("openFullDeal")}
-                </button>
-              )}
-            </div>
+            <TituloDeSecao icon={<DollarSign className="h-3 w-3" />}>
+              {tSidebar("deals")}
+            </TituloDeSecao>
 
             {!dealAtivo ? (
               <div className="mt-2 space-y-2">
@@ -753,176 +727,144 @@ export function PainelDoContato({
               </div>
             ) : (
               <div className="mt-2 space-y-2 rounded-lg bg-muted px-3 py-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="min-w-0 truncate text-sm font-medium text-foreground">
-                    {dealAtivo.title}
-                  </p>
-                  <span
-                    className={cn(
-                      "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                      dealAtivo.status === "won" &&
-                        "bg-emerald-500/15 text-emerald-500",
-                      dealAtivo.status === "lost" &&
-                        "bg-destructive/15 text-destructive",
-                      dealAtivo.status === "open" &&
-                        "bg-primary/15 text-primary",
-                    )}
+                {/* COMPACTO por pedido do operador: só ETAPA e VALOR à vista
+                    ("ficou com muita informação"). O selo Ganho/Perdido é a
+                    exceção — escondê-lo faria um negócio ganho parecer
+                    aberto. O resto mora na expansão. */}
+                <SeletorFunilEtapa
+                  pipelines={pipelines}
+                  stages={allStages}
+                  pipelineId={dealAtivo.pipeline_id}
+                  stageId={dealAtivo.stage_id}
+                  onEscolher={(pId, sId) => moverPara(dealAtivo, pId, sId)}
+                  disabled={!podeEditar || negocioOcupado}
+                  ariaLabel={tForm("stage")}
+                />
+
+                <div className="flex items-center gap-2">
+                  <Input
+                    key={`valor-${dealAtivo.id}-${dealAtivo.value}`}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    defaultValue={dealAtivo.value || ""}
+                    disabled={!podeEditar || negocioOcupado}
+                    aria-label={tForm("value")}
+                    placeholder={tForm("value")}
+                    onBlur={(e) => {
+                      const v = parseFloat(e.target.value) || 0;
+                      if (v !== dealAtivo.value)
+                        void atualizarNegocio(dealAtivo, { value: v }, false);
+                    }}
+                    className="h-8 flex-1 bg-card text-sm"
+                  />
+                  {dealAtivo.status !== "open" && (
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                        dealAtivo.status === "won" &&
+                          "bg-emerald-500/15 text-emerald-500",
+                        dealAtivo.status === "lost" &&
+                          "bg-destructive/15 text-destructive",
+                      )}
+                    >
+                      {dealAtivo.status === "won" ? tCard("won") : tCard("lost")}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setDetalhesAbertos((v) => !v)}
+                    aria-expanded={detalhesAbertos}
+                    aria-label={tSidebar("dealDetails")}
+                    title={tSidebar("dealDetails")}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
                   >
-                    {dealAtivo.status === "won"
-                      ? tCard("won")
-                      : dealAtivo.status === "lost"
-                        ? tCard("lost")
-                        : tSidebar("statusOpen")}
-                  </span>
+                    {detalhesAbertos ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </button>
                 </div>
 
-                {/* Funil — só com 2+ (a mesma regra do deal-form: com um só,
-                    o seletor não decide nada). */}
-                {pipelines.length > 1 && (
-                  <div className="space-y-1">
-                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      {tForm("pipeline")}
-                    </Label>
-                    <Select
-                      value={dealAtivo.pipeline_id}
-                      onValueChange={(v) =>
-                        v != null && mudarFunil(dealAtivo, String(v))
-                      }
-                      disabled={!podeEditar || negocioOcupado}
-                    >
-                      <SelectTrigger className="h-8 w-full bg-card">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {pipelines.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                {detalhesAbertos && (
+                  <div className="space-y-2 border-t border-border pt-2">
+                    <p className="truncate text-xs text-muted-foreground">
+                      {dealAtivo.title} · {formatCurrency(dealAtivo.value, dealAtivo.currency)}
+                    </p>
+
+                    <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        {tForm("expectedCloseDate")}
+                      </Label>
+                      <Input
+                        key={`fecha-${dealAtivo.id}-${dealAtivo.expected_close_date ?? ""}`}
+                        type="date"
+                        defaultValue={dealAtivo.expected_close_date ?? ""}
+                        disabled={!podeEditar || negocioOcupado}
+                        onBlur={(e) => {
+                          const v = e.target.value || null;
+                          if (v !== (dealAtivo.expected_close_date ?? null))
+                            void atualizarNegocio(
+                              dealAtivo,
+                              { expected_close_date: v },
+                              false,
+                            );
+                        }}
+                        className="h-8 bg-card text-sm"
+                      />
+                    </div>
+
+                    {/* Ganho/Perdido continuam existindo, mas na expansão: o
+                        caminho principal do operador é a ETAPA marcada (950)
+                        carimbar sozinha. Os MESMOS updates do deal-form; o
+                        status também dispara automação (933). */}
+                    {podeEditar &&
+                      (dealAtivo.status === "open" ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={negocioOcupado}
+                            onClick={() => mudarStatus(dealAtivo, "won")}
+                            className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400"
+                          >
+                            {tCard("won")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={negocioOcupado}
+                            onClick={() => mudarStatus(dealAtivo, "lost")}
+                            className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                          >
+                            {tCard("lost")}
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={negocioOcupado}
+                          onClick={() => mudarStatus(dealAtivo, "open")}
+                          className="w-full"
+                        >
+                          {tForm("reopenDeal")}
+                        </Button>
+                      ))}
+
+                    {podeEditar && (
+                      <button
+                        type="button"
+                        onClick={() => setDealFormAberto(dealAtivo)}
+                        className="flex w-full items-center justify-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+                      >
+                        <Maximize2 className="h-3 w-3" />
+                        {tSidebar("openFullDeal")}
+                      </button>
+                    )}
                   </div>
                 )}
-
-                {/* Etapa — a cor da etapa na frente do nome, como no quadro. */}
-                <div className="space-y-1">
-                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                    {tForm("stage")}
-                  </Label>
-                  <Select
-                    value={dealAtivo.stage_id}
-                    onValueChange={(v) =>
-                      v != null && mudarEtapa(dealAtivo, String(v))
-                    }
-                    disabled={!podeEditar || negocioOcupado}
-                  >
-                    <SelectTrigger className="h-8 w-full bg-card">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-64">
-                      {etapasDoFunilAtivo.map((st) => (
-                        <SelectItem key={st.id} value={st.id}>
-                          <span className="flex items-center gap-2">
-                            <span
-                              className="h-2 w-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: st.color }}
-                            />
-                            {st.name}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Valor e fechamento previsto — salvos no blur. A `key`
-                    inclui o VALOR SALVO, não só o id: input não-controlado
-                    com `defaultValue` mutável faz o Base UI avisar no console
-                    a cada save; com o valor na chave, o save REMONTA o input
-                    já com o default novo (o foco já se foi — o save é no
-                    blur), e trocar de conversa remonta pelo id. */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      {tForm("value")}
-                    </Label>
-                    <Input
-                      key={`valor-${dealAtivo.id}-${dealAtivo.value}`}
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      defaultValue={dealAtivo.value || ""}
-                      disabled={!podeEditar || negocioOcupado}
-                      onBlur={(e) => {
-                        const v = parseFloat(e.target.value) || 0;
-                        if (v !== dealAtivo.value)
-                          void atualizarNegocio(dealAtivo, { value: v }, false);
-                      }}
-                      className="h-8 bg-card text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      {tForm("expectedCloseDate")}
-                    </Label>
-                    <Input
-                      key={`fecha-${dealAtivo.id}-${dealAtivo.expected_close_date ?? ""}`}
-                      type="date"
-                      defaultValue={dealAtivo.expected_close_date ?? ""}
-                      disabled={!podeEditar || negocioOcupado}
-                      onBlur={(e) => {
-                        const v = e.target.value || null;
-                        if (v !== (dealAtivo.expected_close_date ?? null))
-                          void atualizarNegocio(
-                            dealAtivo,
-                            { expected_close_date: v },
-                            false,
-                          );
-                      }}
-                      className="h-8 bg-card text-sm"
-                    />
-                  </div>
-                </div>
-
-                <p className="text-xs text-muted-foreground">
-                  {formatCurrency(dealAtivo.value, dealAtivo.currency)}
-                </p>
-
-                {/* Ganho / Perdido / Reabrir — os MESMOS updates do
-                    deal-form; o status também dispara automação (933). */}
-                {podeEditar &&
-                  (dealAtivo.status === "open" ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={negocioOcupado}
-                        onClick={() => mudarStatus(dealAtivo, "won")}
-                        className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400"
-                      >
-                        {tCard("won")}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={negocioOcupado}
-                        onClick={() => mudarStatus(dealAtivo, "lost")}
-                        className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                      >
-                        {tCard("lost")}
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={negocioOcupado}
-                      onClick={() => mudarStatus(dealAtivo, "open")}
-                      className="w-full"
-                    >
-                      {tForm("reopenDeal")}
-                    </Button>
-                  ))}
               </div>
             )}
 

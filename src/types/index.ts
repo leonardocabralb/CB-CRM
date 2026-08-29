@@ -719,6 +719,13 @@ export interface PipelineStage {
   name: string;
   position: number;
   color: string;
+  /**
+   * 'ganho' | 'perdido' | null (CHECK da 950). Entrar numa etapa marcada
+   * carimba `deals.status` por GATILHO no banco — vale para qualquer
+   * escritor. Sair para etapa neutra NÃO reabre (decisão do operador:
+   * fechou → transfere para outro funil → continua ganho).
+   */
+  resultado?: string | null;
   created_at: string;
 }
 

@@ -126,6 +126,8 @@ export function PipelineSettings({
       name: s.name,
       color: s.color,
       position: i,
+      // 950: etapa marcada carimba ganho/perdido por gatilho no banco.
+      resultado: s.resultado ?? null,
     }));
 
     const [renameRes, stagesRes] = await Promise.all([
@@ -314,6 +316,11 @@ export function PipelineSettings({
                             updated[index] = { ...updated[index], color: v };
                             setLocalStages(updated);
                           }}
+                          onResultadoChange={(v) => {
+                            const updated = [...localStages];
+                            updated[index] = { ...updated[index], resultado: v };
+                            setLocalStages(updated);
+                          }}
                           onRemove={() => handleRemoveStage(stage.id)}
                           colors={STAGE_COLORS}
                           t={t}
@@ -408,6 +415,7 @@ function SortableStageRow({
   stage,
   onNameChange,
   onColorChange,
+  onResultadoChange,
   onRemove,
   colors,
   t,
@@ -415,6 +423,7 @@ function SortableStageRow({
   stage: PipelineStage;
   onNameChange: (v: string) => void;
   onColorChange: (v: string) => void;
+  onResultadoChange: (v: string | null) => void;
   onRemove: () => void;
   colors: string[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -450,6 +459,20 @@ function SortableStageRow({
         onChange={(e) => onNameChange(e.target.value)}
         className="h-7 flex-1 border-transparent bg-transparent text-sm text-foreground focus:border-border"
       />
+      {/* 950: o RESULTADO da etapa. Entrar nela carimba o negócio como
+          ganho/perdido — por gatilho no banco, em qualquer caminho de
+          escrita. Sair para etapa neutra NÃO reabre (fluxo do jurídico). */}
+      <select
+        value={stage.resultado ?? ''}
+        onChange={(e) => onResultadoChange(e.target.value || null)}
+        aria-label={t('stageOutcome')}
+        title={t('stageOutcomeHint')}
+        className="h-7 shrink-0 rounded-md border border-border bg-card px-1 text-xs text-foreground"
+      >
+        <option value="">{t('outcomeNone')}</option>
+        <option value="ganho">{t('outcomeWon')}</option>
+        <option value="perdido">{t('outcomeLost')}</option>
+      </select>
       <Button
         variant="ghost"
         size="icon-xs"

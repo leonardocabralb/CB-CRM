@@ -38,6 +38,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { GatedButton } from "@/components/ui/gated-button";
 import { useTranslations } from "next-intl";
 import { avisarDrenagemDeFunil } from "@/lib/automations/avisar-drenagem";
+import { statusAoEntrarNaEtapa } from "@/lib/pipelines/resultado";
 
 // Pipeline creation is admin-class (settings-tier write under
 // the new RLS); deal creation is operational and only requires
@@ -334,8 +335,17 @@ export default function PipelinesPage() {
   const handleDealMoved = useCallback(
     async (dealId: string, newStageId: string) => {
       // Optimistic update — board already animated; just persist.
+      // ⚠️ Espelho do gatilho da 950: entrar numa etapa marcada carimba
+      // ganho/perdido NO BANCO (BEFORE trigger, mesma escrita). Sem refletir
+      // aqui, arrastar para "Contrato Fechado" gravava won mas o selo do
+      // card só aparecia no reload — achado da auditoria de 2026-08-29.
+      const carimbo = statusAoEntrarNaEtapa(stages, newStageId);
       setDeals((prev) =>
-        prev.map((d) => (d.id === dealId ? { ...d, stage_id: newStageId } : d)),
+        prev.map((d) =>
+          d.id === dealId
+            ? { ...d, stage_id: newStageId, ...(carimbo ? { status: carimbo } : {}) }
+            : d,
+        ),
       );
       const { error } = await supabase
         .from("deals")
@@ -352,7 +362,7 @@ export default function PipelinesPage() {
       // mandou a mensagem daqui a um quarto de hora".
       avisarDrenagemDeFunil();
     },
-    [supabase, refreshDeals, t],
+    [supabase, stages, refreshDeals, t],
   );
 
   const handleAddDeal = useCallback(

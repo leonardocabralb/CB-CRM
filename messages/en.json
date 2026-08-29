@@ -414,7 +414,8 @@
       "seedError": "Could not create the tracking fields.",
       "openFullDeal": "Open full deal",
       "dealSaveError": "Could not update the deal.",
-      "statusOpen": "Open"
+      "statusOpen": "Open",
+      "dealDetails": "Deal details"
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",
@@ -853,6 +854,11 @@
       "toastFailedDeleteStage": "Failed to delete stage",
       "toastFailedDeletePipeline": "Failed to delete pipeline",
       "toastDeleted": "Pipeline deleted",
+      "stageOutcome": "Stage outcome",
+      "stageOutcomeHint": "Deals entering this stage are automatically marked with this outcome. Leaving it does not reopen them.",
+      "outcomeNone": "—",
+      "outcomeWon": "Won",
+      "outcomeLost": "Lost",
       "deletePipelineChannels": "These connections put clients into this pipeline: {channels}. Once deleted, they stop creating deals until you point them at another pipeline in Settings › Connections.",
       "toastStageIsChannelEntry": "This stage is the entry point for {channels}. Pick another entry stage in Settings › Connections before deleting it."
     },

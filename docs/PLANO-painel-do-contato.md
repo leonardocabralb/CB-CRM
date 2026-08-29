@@ -25,7 +25,9 @@
 | **1** | Casca: largura 360px, sempre montado, botão junto, abas só-ícone | ✅ **feita e mesclada** (PR #54, em produção 2026-08-29) | nenhuma | #54 |
 | **2** | Edição: nome, etiquetas, campos personalizados (+ tipos novos, `field_key`) | ✅ **feita e mesclada** (PR #55, em produção 2026-08-29) | `948` aplicada | #55 |
 | **3** | Abas reordenadas + aba de **Traqueamento** (campos de anúncio) | ✅ **feita** (2026-08-29) | `949` **aplicada** | `feat/painel-do-contato-fase-3` |
-| **4** | Negócio dentro da conversa (etapa/valor/ganho-perdido) | ✅ **feita** (2026-08-29) | nenhuma | `feat/painel-do-contato-fase-4` |
+| **4** | Negócio dentro da conversa (etapa/valor/ganho-perdido) | ✅ **feita e mesclada** (PR #57, em produção 2026-08-29) | nenhuma | #57 |
+| **5** | Seletor dois-níveis (funil→etapas) · cartão compacto · **etapa com resultado** (entrar carimba ganho/perdido) | ✅ **feita** (2026-08-29) | `950` **aplicada** | `feat/painel-do-contato-fase-5` |
+| **6** | API pública dos campos personalizados (ler/escrever por `field_key` — para o n8n do gestor) | ⬜ pendente | nenhuma | — |
 
 **Decisões travadas com o operador (2026-08-29):** ordem das abas =
 Principal · Notas · Tarefas · Traqueamento · Histórico (Histórico por último;
@@ -217,6 +219,87 @@ conta tem um funil só, e o seletor oculto é a regra do `deal-form` agindo ·
 1940 testes · typecheck limpo · lint 0 erros · i18n-parity OK.
 
 ---
+
+## ✅ Fase 5 — Dois níveis, cartão compacto, etapa com resultado (2026-08-29)
+
+**Pedidos do operador (mensagem de 2026-08-29):** seletor que lista FUNIS e
+expande as etapas (referência Kommo), facilitando troca entre funis · cartão
+com MENOS informação (só etapa + valor à vista; data e Ganho/Perdido/Reabrir
+sob expansão) · etapa configurável como ganho/perdido — o fluxo dele não usa
+botão, usa a etapa.
+
+**Resposta dada antes de executar (verificada no código):** ganho/perdido NÃO
+some com nada — card fica na coluna (com selo), conversa intocada, negócio
+permanece; sai das métricas de aberto e entra em "Ganhos no mês".
+
+**Decisões travadas:** sair de etapa marcada para NEUTRA **não reabre** (o
+fluxo do jurídico: fechou → transfere → continua ganho); reabrir só por botão
+ou por entrar em etapa com outro resultado · etapa marcada VENCE status
+explícito no mesmo update · tudo num PR.
+
+**Migration `950_cb_etapa_com_resultado` — APLICADA:**
+`pipeline_stages.resultado` ('ganho'|'perdido'|null) + gatilho **BEFORE
+INSERT/UPDATE OF stage_id** em `deals` que carimba o status ao ENTRAR em
+etapa marcada. No banco porque há CINCO escritores de etapa — a mesma
+garantia de paridade da Fase 4. Testada com rollback: entrou→won, saiu para
+neutra→FICOU won, reabrir explícito→open (gatilho passa reto).
+
+**Arquivos:** `950_...sql` · `src/lib/pipelines/resultado.ts` (+5 testes:
+espelho client-side do gatilho para o selo aparecer sem refetch — fixado
+contra o comportamento MEDIDO) · `seletor-funil-etapa.tsx` (dois níveis;
+clicar no funil só expande; escolher etapa de outro funil = UM update com as
+duas colunas, chegando na etapa ESCOLHIDA; com 1 funil, lista direta) ·
+`painel-do-contato.tsx` (cartão compacto + expansão `detalhesAbertos`;
+`moverPara` substituiu mudarEtapa/mudarFunil) · `pipeline-settings.tsx`
+(seletor de resultado por etapa, upsert leva a coluna) · tipos + 6 chaves i18n.
+
+**Resultado medido (produção, preview 1440×900):** compacto = só seletor+valor
+(selo Ganho/Perdido é a exceção deliberada — escondê-lo faria ganho parecer
+aberto) · funil temporário criado via SQL para provar o dois-níveis:
+transferência Bancário→"Funil Teste 950/Andamento Teste" saiu como UMA linha
+`pipeline_changed` na etapa escolhida (funil de teste apagado depois) ·
+config salvo pela tela de Funis: **Contrato Fechado=ganho, Perdido=perdido
+(FICOU — é a entrega)** · mover→Contrato Fechado: selo GANHO apareceu SEM
+botão, trilha com "moveu"+"ganhou" no MESMO segundo (um update) · mover→
+neutra: selo FICOU · Reabrir: open · etiqueta da automação removida ·
+1945 testes · typecheck limpo · lint 0 erros · i18n-parity OK.
+
+**Auditoria completa (pedida pelo operador, 2026-08-29, pós-Fase 5):**
+CI replayou 948+949+950 em banco LIMPO ✓ · schema de produção 13/13 contra os
+arquivos (colunas, CHECKs, gatilhos, privilégios, ordem dos BEFORE em `deals`)
+✓ · raio de impacto medido: **fluxos** e **IA** têm ZERO ponto de contato com
+campos/negócios/nome; **motor de automações** — `update_contact_field` lista
+os 13 campos (traqueamento preenchível por automação HOJE), lembrete continua
+só-datetime, `create_deal` não fixa status (nasce carimbado se a etapa de
+entrada for marcada — config, não bug); **933** já separava etapa/status em
+DOIS eventos no mesmo save, então automação `deal_status_changed` dispara
+junto da de etapa, cada uma no seu tipo; **broadcasts** — filtros/merge-tags
+ganham os campos novos, valor segue TEXT; **API v1** — PATCH é um update só,
+etapa marcada vence. **UM VÃO ACHADO E CORRIGIDO:** o otimismo do arrasto no
+quadro só refletia `stage_id` — o selo Ganho não aparecia sem reload; agora o
+`handleDealMoved` usa o espelho (`statusAoEntrarNaEtapa`), verificado ao vivo.
+
+**Incidente no meio:** o deploy do #57 falhou no SSH da VPS (`dial tcp :22:
+i/o timeout` — runner do GitHub não alcançou a porta; CI e imagem OK).
+Retry do job resolveu. Se repetir, olhar firewall/rede da VPS, não o código.
+
+---
+
+## ⬜ Fase 6 — API pública dos campos personalizados (para o n8n)
+
+> Recado do operador (2026-08-29): captura automática do referral e envio à
+> API de Conversões da Meta **não serão feitos no CRM** — o gestor faz tudo
+> num n8n externo. O CRM só precisa expor os campos: **ler e escrever valores
+> de campos personalizados de um contato pela API pública, endereçados por
+> `field_key`** (é para isso que a 948 criou a chave).
+
+- `GET/PATCH /api/v1/contacts/{id}/custom-fields` — valores por `field_key`
+  (mapa chave→valor; escrever usa o upsert de `custom-values.ts`; `""` limpa).
+- Regras de toda rota v1 (CLAUDE.md): service-role com `.eq('account_id')`
+  explícito em TUDO; erro de banco ≠ 404; escopos em par com endpoint.
+- Decidir na hora: reusar `contacts:read/write` ou par novo
+  `custom_fields:read/write` (a coluna é `text[]`, sem migration).
+- Documentar em `docs/public-api.md` na mesma passada.
 
 ## Referências de exploração (2026-08-29)
 

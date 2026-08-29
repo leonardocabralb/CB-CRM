@@ -407,7 +407,8 @@
       "seedError": "Não foi possível criar os campos de traqueamento.",
       "openFullDeal": "Abrir negócio completo",
       "dealSaveError": "Não foi possível atualizar o negócio.",
-      "statusOpen": "Aberto"
+      "statusOpen": "Aberto",
+      "dealDetails": "Detalhes do negócio"
     },
     "aiBanner": {
       "pausedTitle": "O assistente de IA está pausado aqui",
@@ -846,6 +847,11 @@
       "toastFailedDeleteStage": "Falha ao excluir a etapa",
       "toastFailedDeletePipeline": "Falha ao excluir o funil",
       "toastDeleted": "Funil excluído",
+      "stageOutcome": "Resultado da etapa",
+      "stageOutcomeHint": "Negócio que entra nesta etapa é marcado com este resultado automaticamente. Sair dela não reabre.",
+      "outcomeNone": "—",
+      "outcomeWon": "Ganho",
+      "outcomeLost": "Perdido",
       "deletePipelineChannels": "Estas conexões colocam clientes neste funil: {channels}. Depois de apagar, elas param de criar negócios até você apontá-las para outro funil em Configurações › Conexões.",
       "toastStageIsChannelEntry": "Esta etapa é a entrada de {channels}. Escolha outra etapa de entrada em Configurações › Conexões antes de apagá-la."
     },
