@@ -61,6 +61,8 @@ it. Grant the minimum.
 | `meetings:write`     | Create calendar meetings                 |
 | `notes:read`         | Read internal conversation notes         |
 | `notes:write`        | Create internal conversation notes       |
+| `custom_fields:read` | Read contact custom field values         |
+| `custom_fields:write`| Write contact custom field values        |
 
 A key with **no scopes** still authenticates and can call
 `GET /api/v1/me` — useful for verifying a key works.
@@ -211,6 +213,44 @@ Read or update one contact. Scopes: `contacts:read` / `contacts:write`.
 `PATCH` updates only the fields you send (`name`, `email`, `company`);
 pass `tags` (an array of tag names) to replace the contact's tags. A
 contact in another account returns `404`.
+
+### `GET` / `PATCH /api/v1/contacts/{id}/custom-fields`
+
+Read or write the contact's **custom field values**, addressed by the
+stable `field_key` (shown in the field manager next to each field —
+e.g. `utm_source`, `ctwa_clid`, `data_da_proposta`). Scopes:
+`custom_fields:read` / `custom_fields:write`. This is the endpoint an
+external orchestrator (n8n etc.) uses to store ad-tracking data on the
+lead and read it back later.
+
+`GET` returns the whole account catalogue with this contact's values:
+
+```json
+{
+  "contact_id": "…",
+  "fields": [
+    { "key": "utm_source", "name": "utm_source", "type": "text",
+      "category": "tracking", "value": "facebook" },
+    { "key": "origem_da_divida", "name": "Origem da dívida",
+      "type": "select", "category": "geral",
+      "options": ["Apenas CPF", "CPF e CNPJ"], "value": null }
+  ],
+  "values": { "utm_source": "facebook", "origem_da_divida": null }
+}
+```
+
+`values` is the same data as a flat map — index it directly from an
+n8n expression. `value` is always the raw stored text (`type` tells
+you how the dashboard renders it; `datetime` values are ISO-8601 UTC).
+
+`PATCH` writes by key. `""` or `null` **clears** a value. Numbers and
+booleans are stringified. An **unknown key fails the whole request**
+with `400` and the offending keys listed — a typo must surface on the
+first call, not months later. Response = the post-write `GET` payload.
+
+```json
+{ "values": { "utm_source": "facebook", "fbclid": "IwAR…", "utm_term": null } }
+```
 
 ### `GET /api/v1/conversations`
 

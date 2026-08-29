@@ -27,7 +27,7 @@
 | **3** | Abas reordenadas + aba de **Traqueamento** (campos de anúncio) | ✅ **feita** (2026-08-29) | `949` **aplicada** | `feat/painel-do-contato-fase-3` |
 | **4** | Negócio dentro da conversa (etapa/valor/ganho-perdido) | ✅ **feita e mesclada** (PR #57, em produção 2026-08-29) | nenhuma | #57 |
 | **5** | Seletor dois-níveis (funil→etapas) · cartão compacto · **etapa com resultado** (entrar carimba ganho/perdido) | ✅ **feita** (2026-08-29) | `950` **aplicada** | `feat/painel-do-contato-fase-5` |
-| **6** | API pública dos campos personalizados (ler/escrever por `field_key` — para o n8n do gestor) | ⬜ pendente | nenhuma | — |
+| **6** | API pública dos campos personalizados (ler/escrever por `field_key` — para o n8n do gestor) | ✅ **feita** (2026-08-29) | nenhuma | `feat/painel-do-contato-fase-6` |
 
 **Decisões travadas com o operador (2026-08-29):** ordem das abas =
 Principal · Notas · Tarefas · Traqueamento · Histórico (Histórico por último;
@@ -285,21 +285,37 @@ Retry do job resolveu. Se repetir, olhar firewall/rede da VPS, não o código.
 
 ---
 
-## ⬜ Fase 6 — API pública dos campos personalizados (para o n8n)
+## ✅ Fase 6 — API pública dos campos personalizados (2026-08-29)
 
-> Recado do operador (2026-08-29): captura automática do referral e envio à
-> API de Conversões da Meta **não serão feitos no CRM** — o gestor faz tudo
-> num n8n externo. O CRM só precisa expor os campos: **ler e escrever valores
-> de campos personalizados de um contato pela API pública, endereçados por
-> `field_key`** (é para isso que a 948 criou a chave).
+**O contrato para o n8n do gestor** (captura de referral e envio à Meta ficam
+FORA do CRM, decisão do operador): os valores dos campos — traqueamento e
+gerais — são lidos e escritos pela API pública, endereçados pela CHAVE estável
+da 948, nunca por UUID.
 
-- `GET/PATCH /api/v1/contacts/{id}/custom-fields` — valores por `field_key`
-  (mapa chave→valor; escrever usa o upsert de `custom-values.ts`; `""` limpa).
-- Regras de toda rota v1 (CLAUDE.md): service-role com `.eq('account_id')`
-  explícito em TUDO; erro de banco ≠ 404; escopos em par com endpoint.
-- Decidir na hora: reusar `contacts:read/write` ou par novo
-  `custom_fields:read/write` (a coluna é `text[]`, sem migration).
-- Documentar em `docs/public-api.md` na mesma passada.
+- `GET  /api/v1/contacts/{id}/custom-fields` (escopo `custom_fields:read`) —
+  catálogo inteiro com os valores do contato: `fields` (metadados + valor) e
+  `values` (mapa chave→valor, para expressão de n8n indexar direto).
+- `PATCH` (escopo `custom_fields:write`) — grava por chave; `""`/null LIMPAM
+  (o upsert compartilhado deleta a linha); número/booleano viram string (o
+  banco é TEXT de propósito); **chave desconhecida falha a requisição com 400
+  e a lista** — typo do n8n aparece na primeira chamada, não na auditoria
+  meses depois. Resposta = estado pós-escrita.
+- Escrita REUSA `salvarValoresDoContato` — o mesmo caminho das telas.
+- Regras v1 respeitadas: service-role com `.eq(account_id)` em TUDO; erro de
+  banco vira 500 e nunca 404; escopo+rota em par (`scopes.ts` foi de 18→20).
+
+**Arquivos:** `src/lib/api/v1/custom-fields.ts` (puro, +6 testes) · rota
+`src/app/api/v1/contacts/[id]/custom-fields/route.ts` · `scopes.ts` ·
+`docs/public-api.md` (seção com exemplos de payload) · CLAUDE.md (contagem de
+escopos do fork).
+
+**Resultado medido (chamadas REAIS contra o dev apontando produção, com
+chave criada e revogada no fim):** GET 13 campos/13 nulos ✓ · PATCH gravou
+string e coagiu `98765`→"98765" ✓ · typo `utm_sorce` → 400 "unknown field
+keys" ✓ · limpar → null (linhas deletadas) ✓ · contato inexistente → 404 ✓ ·
+chave sem escopo → 403 ✓ · sem chave → 401 ✓ · chave revogada → 401 ✓ ·
+valores do contato zerados ao final · 1951 testes · typecheck limpo · lint 0
+erros · i18n-parity OK.
 
 ## Referências de exploração (2026-08-29)
 
