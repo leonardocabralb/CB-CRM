@@ -787,12 +787,20 @@ function InboxPageInner() {
             desempatam no tailwind-merge (armadilha do CLAUDE.md), mas aqui
             o `lg:` vence por ordem de cascata — os dois são gerados e o
             bloco lg vem depois. O `inert` segue o estado da superfície
-            ATIVA (`ehDesktop` reconcilia pós-mount; ver use-media-query). */}
+            ATIVA (`ehDesktop` reconcilia pós-mount; ver use-media-query).
+
+            ⚠️ O translate é confinado a `max-lg:` de propósito. No Tailwind
+            v4, `translate-x-*` usa a propriedade CSS `translate`, e QUALQUER
+            valor ≠ none cria containing block para descendente `fixed` — um
+            `lg:translate-x-0` deixaria isso ligado na coluna desktop, onde
+            nunca houve transform, e o primeiro filho `fixed` não-portalado
+            do painel nasceria posicionado contra o wrapper em vez do
+            viewport, sem erro nenhum. */}
         <div
           className={cn(
             "fixed inset-y-0 right-0 z-40 h-full w-full shrink-0 overflow-hidden transition-transform duration-200 ease-in-out sm:w-[400px]",
-            painelMobileAberto ? "translate-x-0" : "translate-x-full",
-            "lg:static lg:z-auto lg:translate-x-0 lg:transition-[width]",
+            painelMobileAberto ? "max-lg:translate-x-0" : "max-lg:translate-x-full",
+            "lg:static lg:z-auto lg:transition-[width]",
             contactPanelOpen ? "lg:w-[360px]" : "lg:w-0",
           )}
           inert={ehDesktop ? !contactPanelOpen : !painelMobileAberto}

@@ -387,7 +387,7 @@ export function PainelDoContato({
         expected_close_date?: string | null;
       },
       drenar: boolean,
-    ) => {
+    ): Promise<boolean> => {
       setNegocioOcupado(true);
       const supabase = createClient();
       const { error } = await supabase
@@ -398,7 +398,10 @@ export function PainelDoContato({
       if (error) {
         toast.error(tSidebar("dealSaveError"));
         void fetchContactData();
-        return;
+        // `false` = quem chamou NÃO pode anunciar sucesso — sem isto o
+        // `.then` do mudarStatus soltava "Reaberto ✓" em cima do toast de
+        // erro (achado da revisão de 2026-08-29).
+        return false;
       }
       // Espelho do gatilho da 950: entrar em etapa marcada carimba o
       // status. O BANCO já gravou (BEFORE trigger, mesma escrita); aqui só
@@ -430,6 +433,7 @@ export function PainelDoContato({
         ),
       );
       if (drenar) avisarDrenagemDeFunil();
+      return true;
     },
     [allStages, fetchContactData, tSidebar],
   );
@@ -460,9 +464,9 @@ export function PainelDoContato({
         lost: tForm("toastMarkedLost"),
         open: tForm("toastReopened"),
       };
-      void atualizarNegocio(deal, { status }, true).then(() =>
-        toast.success(toasts[status]),
-      );
+      void atualizarNegocio(deal, { status }, true).then((ok) => {
+        if (ok) toast.success(toasts[status]);
+      });
     },
     [atualizarNegocio, tForm],
   );
