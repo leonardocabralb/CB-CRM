@@ -89,11 +89,45 @@ export function SeletorDeCliente({ valor, nomeAtual, aoEscolher, travado }: Prop
     };
   }, [termo]);
 
+  /**
+   * ⚠️ Busca o nome quando só o id foi informado.
+   *
+   * É o caso de abrir o formulário pela ficha do cliente, que passa só o
+   * `contactId`. Sem isto o componente caía na caixa de busca vazia e a tela
+   * dizia que não havia cliente vinculado — enquanto o vínculo ia no corpo e
+   * era gravado.
+   */
+  const [nomeBuscado, setNomeBuscado] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!valor || nomeAtual) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setNomeBuscado(null);
+      return;
+    }
+    let vivo = true;
+    void createClient()
+      .from('contacts')
+      .select('name, phone')
+      .eq('id', valor)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (vivo && data) {
+          setNomeBuscado((data.name as string | null) || (data.phone as string));
+        }
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [valor, nomeAtual]);
+
+  const nomeExibido = nomeAtual ?? nomeBuscado;
+
   // Já escolhido: mostra quem é, com o botão de desfazer.
-  if (valor && nomeAtual) {
+  if (valor && nomeExibido) {
     return (
       <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2">
-        <span className="truncate text-sm">{nomeAtual}</span>
+        <span className="truncate text-sm">{nomeExibido}</span>
         {!travado && (
           <button
             type="button"
