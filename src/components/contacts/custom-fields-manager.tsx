@@ -79,6 +79,8 @@ export function CustomFieldsPanel() {
   const [keyTouched, setKeyTouched] = useState(false);
   /** Opções do tipo `select`, separadas por vírgula (viram JSON no banco). */
   const [newOptions, setNewOptions] = useState('');
+  /** 'geral' | 'tracking' (949) — traqueamento vive na aba própria do painel. */
+  const [newCategoria, setNewCategoria] = useState<string>('geral');
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -138,6 +140,7 @@ export function CustomFieldsPanel() {
       field_key: gerarChaveDeCampo(newKey.trim() || name) || null,
       field_options:
         newType === 'select' ? { opcoes: parseOpcoes(newOptions) } : null,
+      categoria: newCategoria,
       user_id: user.id,
       account_id: accountId,
     });
@@ -156,6 +159,7 @@ export function CustomFieldsPanel() {
     setNewKey('');
     setKeyTouched(false);
     setNewOptions('');
+    setNewCategoria('geral');
     await fetchFields();
   }
 
@@ -261,6 +265,15 @@ export function CustomFieldsPanel() {
             <option value={TIPO_DATA}>{t('typeDate')}</option>
             <option value="select">{t('typeSelect')}</option>
             <option value="number">{t('typeNumber')}</option>
+          </select>
+          <select
+            value={newCategoria}
+            onChange={(e) => setNewCategoria(e.target.value)}
+            className="shrink-0 rounded-md border border-border bg-muted px-2 py-2 text-sm text-foreground"
+            aria-label={t('category')}
+          >
+            <option value="geral">{t('categoryGeneral')}</option>
+            <option value="tracking">{t('categoryTracking')}</option>
           </select>
           <Button
             onClick={handleCreate}
@@ -423,6 +436,11 @@ function FieldRow({
         className="mt-0.5 flex items-center gap-1 px-1 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
         {field.field_key}
+        {field.categoria === 'tracking' && (
+          <span className="rounded bg-muted px-1 font-sans text-[9px] uppercase tracking-wider">
+            {t('categoryTracking')}
+          </span>
+        )}
         {copied ? (
           <Check className="size-3 text-primary" />
         ) : (

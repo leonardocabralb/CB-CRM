@@ -23,14 +23,19 @@
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
 | **1** | Casca: largura 360px, sempre montado, botão junto, abas só-ícone | ✅ **feita e mesclada** (PR #54, em produção 2026-08-29) | nenhuma | #54 |
-| **2** | Edição: nome, etiquetas, campos personalizados (+ tipos novos, `field_key`) | ✅ **feita** (2026-08-29) | `948` **aplicada** | `feat/painel-do-contato-fase-2` |
-| **3** | Negócio dentro da conversa (etapa/valor/ganho-perdido) | ⬜ pendente | nenhuma | — |
+| **2** | Edição: nome, etiquetas, campos personalizados (+ tipos novos, `field_key`) | ✅ **feita e mesclada** (PR #55, em produção 2026-08-29) | `948` aplicada | #55 |
+| **3** | Abas reordenadas + aba de **Traqueamento** (campos de anúncio) | ✅ **feita** (2026-08-29) | `949` **aplicada** | `feat/painel-do-contato-fase-3` |
+| **4** | Negócio dentro da conversa (etapa/valor/ganho-perdido) | ⬜ pendente | nenhuma | — |
 
-**Decisões travadas com o operador (2026-08-29):** uma aba "Principal" com
+**Decisões travadas com o operador (2026-08-29):** ordem das abas =
+Principal · Notas · Tarefas · Traqueamento · Histórico (Histórico por último;
+Traqueamento é aba nova, pedida em 2026-08-29) · o webhook "CB OS - Atlas"
+(única automação viva, `deal_stage_changed`) é **FAKE** — pode ser disparado
+sem medo no teste da Fase 4 · uma aba "Principal" com
 contato + negócio juntos · campos personalizados continuam no CONTATO, editáveis
 da conversa · tipos novos: Lista e Número/Moeda (mantendo Texto/Data) ·
 `field_key` estável para a API futura · **mudar etapa pela conversa = efeito
-idêntico ao arrasto no quadro** (garantido pelos triggers 912/933 — ver Fase 3)
+idêntico ao arrasto no quadro** (garantido pelos triggers 912/933 — ver Fase 4)
 · entrega em fases, um PR por fase.
 
 **Cortes deliberados (anti-overengineering, decididos na revisão do plano):**
@@ -133,10 +138,51 @@ por data não os enxerga; retipar é decisão do operador (não há editor de ti
 de propósito) · única automação viva é `deal_stage_changed` (webhook CB OS) —
 nenhuma em etiqueta, teste de tag foi seguro.
 
-## ⬜ Fase 3 — O negócio dentro da conversa
+## ✅ Fase 3 — Abas reordenadas + Traqueamento (concluída em 2026-08-29)
+
+**Objetivo:** Histórico vai para o fim da fileira e nasce a aba de
+**Traqueamento** — os campos que o clique no anúncio produz (UTMs, fbclid,
+ctwa_clid, nomes de campanha/conjunto/anúncio), recebidos hoje por
+preenchimento manual/automação e, no futuro, devolvidos à API de Conversões
+da Meta.
+
+**Decisão de desenho:** campo de traqueamento É campo personalizado comum
+(mesma tabela/RLS/valores TEXT), separado por `custom_fields.categoria`
+(`'geral' | 'tracking'`, migration **949, aplicada**). O que isso compra de
+graça: a ação de automação `update_contact_field` já os preenche, filtros de
+broadcast já os enxergam, e a futura API os lê pelo `field_key` da 948. **Sem
+seed em migration** — o catálogo padrão (10 campos) nasce pelo botão "Criar os
+10 campos padrão" na aba (admin), por conta.
+
+**Arquivos:** `supabase/migrations/949_cb_categoria_do_campo.sql` ·
+`src/lib/contacts/campos-de-traqueamento.ts` (+ teste: catálogo é ponto-fixo
+do gerador de chave da 948 — senão o seed divergiria do gatilho — e faltantes
+comparados por CHAVE em qualquer categoria) · `painel-do-contato.tsx` (ordem
+nova, aba com seed/save por SUBCONJUNTO — o Salvar da Principal não arrasta
+edição meio-feita do Traqueamento e vice-versa) · `custom-fields-manager.tsx`
+(seletor de categoria + etiqueta na linha) · `contact-detail-view.tsx` (aba de
+campos agrupada: gerais, depois subtítulo Traqueamento) · tipos + 10 chaves
+i18n.
+
+**Resultado medido (produção via preview 1440×900):** ordem das abas exata ·
+seed criou os 10 campos (**ficaram — são a entrega**) · "Nome da campanha"
+preenchido → salvo → conferido no banco pela chave `nome_da_campanha` →
+revertido · Principal continua só com os 3 gerais · 1940 testes (4 novos) ·
+typecheck limpo · lint 0 erros · i18n-parity OK. Rótulos técnicos
+(utm_source/fbclid) sem `capitalize` de propósito.
+
+**Fora do escopo desta fase (futuro):** captura AUTOMÁTICA do `referral` de
+click-to-WhatsApp no webhook (preencher ctwa_clid/utm sozinho na entrada) e o
+envio à API de Conversões — a aba é o depósito que essas duas pontas vão usar.
+
+---
+
+## ⬜ Fase 4 — O negócio dentro da conversa
 
 > **Antes de começar: revisar esta seção** — confirmar com o operador o formato
 > da seção NEGÓCIO e se o quadro de funis ganhou mudanças no meio-tempo.
+> ✅ Nota do operador (2026-08-29): o webhook "CB OS - Atlas" é FAKE — o teste
+> de "mesmo efeito que o arrasto" pode dispará-lo sem medo.
 
 Seção "NEGÓCIO" no topo da aba Principal (gate `useCan("send-messages")`, o
 mesmo `canCreateDeals` de `pipelines/page.tsx`):
