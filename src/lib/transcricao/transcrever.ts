@@ -10,10 +10,20 @@
 //
 // Provedor: GEMINI, com a chave BYO da conta (decisão 2026-08-27 — o
 // plano original previa ElevenLabs com chave da casa; com o Gemini no
-// projeto, a mesma chave do Radar transcreve por ~1/3 do preço e sem
-// segredo novo na VPS). O MODELO é fixado AQUI, separado do modelo de
-// análise/chat da conta: transcrever não precisa de raciocínio, e o
-// Flash-Lite custa ~metade do Flash.
+// projeto, a mesma chave do Radar transcreve sem segredo novo na VPS).
+// ⚠️ O PREÇO deixou de ser argumento nessa comparação: com o modelo
+// abaixo estamos em ~US$ 0,24/h de áudio, ACIMA dos ~US$ 0,22/h do
+// ElevenLabs Scribe — eram ~US$ 0,07/h no Flash-Lite, e é daí que vinha o
+// "1/3 do preço" que esta linha afirmava. Quem reabrir a escolha de
+// provedor decide por sigilo, qualidade ou latência, não por custo.
+// O MODELO é fixado AQUI, separado do modelo de
+// análise/chat da conta — e é UM para os dois chamadores, de propósito:
+// não existe "transcrever de novo" (a idempotência devolve o texto
+// gravado ANTES do cadeado, e a bolha troca o botão por um `<details>`
+// quando já há texto), então modelo por chamador só decidiria quem ganha
+// a corrida — sem deixar registro de qual escreveu o quê, e com o teto de
+// tentativas compartilhado entre os dois. Avaliado e descartado em
+// 2026-08-28; economia teto de R$ 4/mês.
 //
 // ⚠️ Sem chave Gemini NÃO se grava estado: devolvemos `recusada` sem
 // tocar na linha, para o botão voltar a funcionar no instante em que a
@@ -32,8 +42,57 @@ import {
 } from '@/lib/ai/providers/gemini'
 import { logAiUsage } from '@/lib/ai/usage'
 
-/** Fixo de propósito — ver o cabeçalho. Trocar de modelo é trocar aqui. */
-export const MODELO_TRANSCRICAO = 'gemini-3.5-flash-lite'
+/**
+ * Fixo de propósito — ver o cabeçalho. Trocar de modelo é trocar AQUI.
+ *
+ * `gemini-3.7-flash` desde 2026-08-28, escolhido por medição: 12 áudios
+ * REAIS do acervo (12 conversas, 8min30, de 1,5s a 2min54), mesmo prompt,
+ * temperatura 0, erro medido contra duas referências Pro de gerações
+ * diferentes — que discordam ENTRE SI em 9,4%, o piso de ruído da medida:
+ *
+ *   gemini-3.5-transcribe   11,3%   R$ 3,49/mês   ← outra API; ver 🔭 abaixo
+ *   gemini-3.7-flash        12,1%   R$ 5,45/mês   ← este
+ *   gemini-3.1-flash-lite   13,5%   R$ 1,31/mês
+ *   gemini-3.5-flash-lite   18,4%   R$ 1,25/mês   ← o anterior
+ *   whisper-large-v3        18,9%   local, ~5 min por áudio de 30s na VPS
+ *
+ * ⚠️ O que já foi transcrito FICA como está — não há caminho de refazer,
+ * nem pela tela nem por retentativa (ver o cabeçalho). `transcricao_em` é
+ * o único discriminador entre o texto do modelo velho e o do novo; nenhuma
+ * coluna guarda o modelo. Na troca eram poucas dezenas de áudios, todos de
+ * teste, e ficaram.
+ *
+ * A média não é o que decide: em áudio ruim o Flash-Lite devolvia
+ * português fluente e ERRADO — inverteu quem fazia o quê e inventou "para
+ * os capa doce" — sem nenhum sinal de baixa confiança para o atendente
+ * desconfiar. No volume real (~567 áudios/mês) a diferença de custo entre
+ * o melhor e o pior é de R$ 4, então qualidade decide sozinha.
+ *
+ * ⚠️ NÃO desligar o raciocínio (`thinkingConfig.thinkingBudget: 0`). É
+ * tentador — os tokens de "pensamento" são ~6× os da transcrição e cortam
+ * a conta pela metade —, mas o erro sobe para 13,9%, o nível de um modelo
+ * mais barato. Medido, não suposto.
+ *
+ * 🔭 CANDIDATO FUTURO — `gemini-3.5-transcribe` (especializado): mede
+ * melhor, responde mais rápido (p50 1,9s) e custa menos. NÃO atende no
+ * `generateContent`: devolve HTTP 200 com `parts: [{}]` vazio e cobra a
+ * entrada. Ele vive na API de Interações:
+ *
+ *     POST https://generativelanguage.googleapis.com/v1beta/interactions
+ *     { model, input: [{ type: 'audio', data: <base64>, mime_type }],
+ *       generation_config: { transcription_config: { language_codes: ['pt-BR'] } } }
+ *     → texto em steps[].content[].text
+ *
+ * Em 2026-08-28 ainda tinha duas arestas que o desqualificavam: o modo
+ * `smart` APAGOU uma frase inteira de fala (usar `verbatim`, o padrão) e
+ * `diarization_mode`/`timestamp_granularities` são aceitos sem erro mas
+ * devolvem ZERO anotações — justamente os recursos que justificariam a
+ * troca. Revisitar quando estabilizar: separar quem fala é algo que
+ * nenhum outro modelo daqui faz. Adotá-lo é um segundo caminho de escrita
+ * neste arquivo, com queda para o modelo acima quando a resposta vier
+ * vazia — não uma troca de constante.
+ */
+export const MODELO_TRANSCRICAO = 'gemini-3.7-flash'
 const TENTATIVAS_MAX = 3
 const TRAVADA_MIN = 10
 /** Nota de voz real tem centenas de KB; 15 MB já é playlist encaminhada. */

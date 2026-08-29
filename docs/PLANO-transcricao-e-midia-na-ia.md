@@ -16,13 +16,22 @@ Radar, de que depende). O que mudou em relação ao texto original abaixo:
    transcrição usa a MESMA chave BYO da conta — zero segredo novo, zero ida à
    VPS — com modelo próprio FIXADO em código (`MODELO_TRANSCRICAO =
    'gemini-3.5-flash-lite'`, ~US$ 0,07/h vs US$ 0,22/h do Scribe; transcrever
-   não precisa de raciocínio). Sem chave Gemini (ou provedor ≠ gemini), a
+   não precisa de raciocínio). **Atualização de 2026-08-28:** medição com 12
+   áudios reais mostrou o Flash-Lite em ÚLTIMO entre os candidatos (18,4% de
+   erro, inventando frases plausíveis em áudio ruim); a constante passou a
+   `gemini-3.7-flash` (12,1%), e o argumento "não precisa de raciocínio"
+   caiu — desligar o raciocínio piora o erro para 13,9%. Ver o comentário da
+   constante em `src/lib/transcricao/transcrever.ts`. Sem chave Gemini (ou provedor ≠ gemini), a
    função devolve `recusada` **sem gravar estado** — cadastrar a chave reativa
    o botão. **Plano B continua sendo o ElevenLabs** (único com `audio/opus`
    por escrito): trocar é reescrever só o miolo de `transcreverAudio`.
-   ⚠️ **Risco aberto**: a doc do Gemini lista "OGG Vorbis" e a nota de voz do
-   WhatsApp é OGG **Opus** — funciona em relatos práticos; o 1º teste em
-   produção com uma nota real é o go/no-go.
+   ⚠️ **Risco aberto** *(✅ FECHADO em 2026-08-28: 12 notas de voz REAIS do
+   acervo — todas OGG Opus do WhatsApp, enviadas como `audio/ogg` no
+   `inlineData`, o mesmo caminho de produção — foram transcritas por 9
+   modelos, 12 de 12 em todos. O go/no-go foi dado: o Gemini aceita Opus.)*:
+   a doc do Gemini lista "OGG Vorbis" e a nota de voz do WhatsApp é OGG
+   **Opus** — funciona em relatos práticos; o 1º teste em produção com uma
+   nota real é o go/no-go.
 2. **O custo ENTROU em `ai_usage_log`** (modo `transcricao`, migration 943) —
    o §3.4 original dizia o contrário porque a chave era da casa; com a chave
    BYO da conta, o gasto aparece no painel de uso como os demais modos.
