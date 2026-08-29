@@ -206,7 +206,13 @@ export function ContactSidebar({ contact, conversationId, channelId }: ContactSi
 
   return (
     <div className="flex h-full w-70 flex-col border-l border-border bg-card">
-      <ScrollArea className="flex-1">
+      {/* `min-h-0` é load-bearing: filho de flex nasce com
+          min-height:auto, então sem ele este ScrollArea CRESCE para
+          caber a ficha inteira em vez de encolher para o espaço que
+          sobra — a coluna transborda, o fim (notas) é cortado e não
+          aparece barra de rolagem nenhuma. Mesma causa da issue #229,
+          já documentada em `conversation-list.tsx`. */}
+      <ScrollArea className="min-h-0 flex-1">
         <div className="p-4">
           {/* Contact Info */}
           <div className="flex flex-col items-center text-center">

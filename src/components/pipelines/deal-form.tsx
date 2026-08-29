@@ -278,9 +278,15 @@ export function DealForm({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
+      {/* ⚠️ `data-[side=right]:` obrigatório — ver o comentário longo em
+          `contact-detail-view.tsx`. Sem o prefixo, o `sm:max-w-sm` do
+          `sheet.tsx` vence e este painel abre com 384px em vez dos 512px
+          pedidos aqui. Corrigido junto com o da ficha do contato porque são
+          painéis irmãos: com um só arrumado, os dois passariam a ter larguras
+          diferentes na mesma tela de Funis. */}
       <SheetContent
         side="right"
-        className="bg-popover border-border text-popover-foreground sm:max-w-lg w-full p-0"
+        className="bg-popover border-border text-popover-foreground data-[side=right]:sm:max-w-lg p-0"
       >
         <div className="flex h-full flex-col">
           <SheetHeader className="border-b border-border/50 p-4">

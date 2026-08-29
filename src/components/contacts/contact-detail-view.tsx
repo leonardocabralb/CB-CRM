@@ -432,9 +432,24 @@ export function ContactDetailView({
   return (
     <>
     <Sheet open={open} onOpenChange={onOpenChange}>
+      {/* ⚠️ A LARGURA TAMBÉM PRECISA DO PREFIXO DE VARIANTE — mesma armadilha
+          das abas, algumas linhas abaixo. O `sheet.tsx` traz
+          `data-[side=right]:w-3/4` e `data-[side=right]:sm:max-w-sm`; um
+          `sm:max-w-lg` cru não desempata no tailwind-merge (prefixos
+          diferentes) e ainda PERDE por especificidade, porque a classe do
+          primitivo carrega o seletor de atributo. Resultado medido: o painel
+          abria com 384px em vez dos 512px pedidos aqui — e é essa largura a
+          MENOR que obriga as 8 abas a quebrar em 3 linhas.
+
+          ⚠️ Só o `max-w`, e o `w-full` que estava aqui FOI EMBORA de
+          propósito: prefixado, ele venceria o `w-3/4` do primitivo e o painel
+          viraria tela cheia abaixo de `sm` — sem sobrar fundo para fechar
+          tocando fora. Com `w-3/4` o celular mantém a saída (medido: 281px de
+          painel em 375px de tela) e o desktop dá os mesmos 512px, porque 3/4
+          de 1440 estoura o teto de qualquer jeito. */}
       <SheetContent
         side="right"
-        className="bg-popover border-border text-popover-foreground sm:max-w-lg w-full p-0"
+        className="bg-popover border-border text-popover-foreground data-[side=right]:sm:max-w-lg p-0"
       >
         {loading || !contact ? (
           <div className="flex items-center justify-center h-full">
@@ -524,8 +539,29 @@ export function ContactDetailView({
                   faz cada aba dividir a linha em partes iguais — ótimo com 3
                   por linha, ruim quando a sétima sobra sozinha: ela esticava
                   por toda a largura e passava a parecer um cabeçalho de seção,
-                  não uma aba. Com largura natural elas se acomodam sem sobra. */}
-              <TabsList className="bg-muted/50 border-b border-border mx-4 mt-3 flex-wrap h-auto justify-start gap-x-1 [&>button]:flex-none">
+                  não uma aba. Com largura natural elas se acomodam sem sobra.
+
+                  ⚠️⚠️ A ALTURA PRECISA DO PREFIXO DE VARIANTE. `h-auto` cru
+                  NÃO desliga o `group-data-horizontal/tabs:h-8` do `TabsList`:
+                  o tailwind-merge só desempata classes com o MESMO prefixo, e
+                  como os prefixos diferem as duas sobrevivem — a variante
+                  vence (o `Tabs` sempre carimba `data-orientation`) e a lista
+                  fica travada em 32px. Com `flex-wrap` e 8 abas isso punha as
+                  linhas 2 e 3 POR CIMA do conteúdo do painel: as abas cobriam
+                  os campos personalizados. Medido com o twMerge do projeto:
+                  `twMerge('group-data-horizontal/tabs:h-8 h-auto')` devolve as
+                  DUAS; com o prefixo, devolve só a nossa. Se alguém "limpar"
+                  este prefixo achando-o redundante, a tela quebra de novo.
+
+                  ⚠️ `[&>button]:h-auto` é LOAD-BEARING, não enfeite: o
+                  `h-[calc(100%-1px)]` do `TabsTrigger` pede 100% da altura da
+                  LISTA, e agora que ela é automática cada aba pede TODAS as
+                  linhas para si. Medido no app com o override removido (lista
+                  de 73px, duas linhas): a aba de 30px vira 63px, a lista
+                  transborda 61px e as abas voltam a cobrir o painel — o mesmo
+                  defeito, por outro caminho, e ele PIORA a cada linha que a
+                  lista ganhar. `gap-y-1`/`py-1` aí sim são só respiro. */}
+              <TabsList className="bg-muted/50 border-b border-border mx-4 mt-3 flex-wrap group-data-horizontal/tabs:h-auto justify-start gap-x-1 gap-y-1 py-1 [&>button]:flex-none [&>button]:h-auto [&>button]:py-1">
                 <TabsTrigger
                   value="details"
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
