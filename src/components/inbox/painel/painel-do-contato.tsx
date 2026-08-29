@@ -31,6 +31,12 @@ import { CampoPersonalizadoInput } from "@/components/contacts/campo-personaliza
 import { LinhaDeEdicao } from "@/components/inbox/painel/linha-de-edicao";
 import { addContactTag, deleteContactTag } from "@/lib/contacts/tag-api";
 import { salvarValoresDoContato } from "@/lib/contacts/custom-values";
+import {
+  camposDeTraqueamento,
+  camposFaltantes,
+  camposGerais,
+} from "@/lib/contacts/campos-de-traqueamento";
+import { useAuth } from "@/hooks/use-auth";
 import { formatCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import type { Contact, CustomField, Deal, ConversationNote, Tag } from "@/types";
@@ -48,6 +54,7 @@ import {
   History,
   ListTodo,
   Loader2,
+  Megaphone,
   PanelRightClose,
   Pencil,
   Save,
@@ -112,6 +119,9 @@ export function PainelDoContato({
   const tThread = useTranslations("Inbox.messageThread");
   const tCanais = useTranslations("Channels");
   const { channels } = useChannels();
+  // `user`/`accountId` só para o seed do catálogo de traqueamento — o insert
+  // de `custom_fields` exige os dois carimbados à mão (NOT NULL sem default).
+  const { user, accountId } = useAuth();
   // O mesmo gate da RLS: `agent`+ escreve contato/etiqueta/valores ("viewer"
   // só olha). O catálogo de CAMPOS é admin — gate separado, mais abaixo.
   const podeEditar = useCan("send-messages");
@@ -133,6 +143,16 @@ export function PainelDoContato({
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [salvandoCampos, setSalvandoCampos] = useState(false);
   const [gerirCamposAberto, setGerirCamposAberto] = useState(false);
+  const [semeando, setSemeando] = useState(false);
+
+  // Recortes por categoria (949): a seção CAMPOS da Principal mostra só os
+  // gerais; a aba Traqueamento, só os de anúncio.
+  const gerais = useMemo(() => camposGerais(customFields), [customFields]);
+  const tracking = useMemo(
+    () => camposDeTraqueamento(customFields),
+    [customFields],
+  );
+  const faltantes = useMemo(() => camposFaltantes(customFields), [customFields]);
 
   /**
    * ⚠️ O rascunho MORRE ao trocar de conversa. Mesmo perigo, mesma correção
@@ -294,19 +314,59 @@ export function PainelDoContato({
     [contact, tags, tSidebar],
   );
 
-  /** Valores dos campos — upsert compartilhado (nunca delete-all). */
-  const salvarCampos = useCallback(async () => {
-    if (!contact) return;
-    setSalvandoCampos(true);
-    const erro = await salvarValoresDoContato(
-      createClient(),
-      contact.id,
-      customValues,
+  /**
+   * Valores dos campos — upsert compartilhado (nunca delete-all). Cada botão
+   * salva SÓ a própria seção (o subconjunto de ids que ela mostra): o Salvar
+   * da Principal não pode arrastar junto uma edição meio-feita na aba de
+   * Traqueamento, e vice-versa.
+   */
+  const salvarCampos = useCallback(
+    async (campos: CustomField[]) => {
+      if (!contact) return;
+      setSalvandoCampos(true);
+      const subconjunto = Object.fromEntries(
+        campos.map((f) => [f.id, customValues[f.id] ?? ""]),
+      );
+      const erro = await salvarValoresDoContato(
+        createClient(),
+        contact.id,
+        subconjunto,
+      );
+      setSalvandoCampos(false);
+      if (erro) toast.error(tSidebar("fieldsSaveError"));
+      else toast.success(tSidebar("fieldsSaved"));
+    },
+    [contact, customValues, tSidebar],
+  );
+
+  /**
+   * Semeia o catálogo padrão de traqueamento (949) — só os que FALTAM, e a
+   * falta é medida pela CHAVE em qualquer categoria: um `utm_source` já
+   * criado como campo geral não pode nascer de novo (chave é única por
+   * conta). Admin apenas, como todo o catálogo.
+   */
+  const semearTraqueamento = useCallback(async () => {
+    if (!user || !accountId || faltantes.length === 0) return;
+    setSemeando(true);
+    const supabase = createClient();
+    const { error } = await supabase.from("custom_fields").insert(
+      faltantes.map((c) => ({
+        field_name: c.nome,
+        field_key: c.key,
+        field_type: "text",
+        categoria: "tracking",
+        user_id: user.id,
+        account_id: accountId,
+      })),
     );
-    setSalvandoCampos(false);
-    if (erro) toast.error(tSidebar("fieldsSaveError"));
-    else toast.success(tSidebar("fieldsSaved"));
-  }, [contact, customValues, tSidebar]);
+    setSemeando(false);
+    if (error) {
+      toast.error(tSidebar("seedError"));
+      return;
+    }
+    toast.success(tSidebar("seedDone"));
+    void fetchContactData();
+  }, [user, accountId, faltantes, fetchContactData, tSidebar]);
 
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
@@ -454,18 +514,24 @@ export function PainelDoContato({
         defaultValue="principal"
         className="flex min-h-0 flex-1 flex-col gap-0"
       >
+        {/* Ordem definida pelo operador (2026-08-29): Principal, Notas,
+            Tarefas, Traqueamento, e o Histórico POR ÚLTIMO — é a aba de
+            auditoria, a que menos se abre no atendimento. */}
         <TabsList className="w-full shrink-0 justify-start gap-x-1 rounded-none border-b border-border bg-muted/30 px-2 py-1 group-data-horizontal/tabs:h-auto [&>button]:h-8 [&>button]:flex-1">
           <AbaDeIcone value="principal" label={tSidebar("tabMain")}>
             <User className="h-4 w-4" />
-          </AbaDeIcone>
-          <AbaDeIcone value="historico" label={tSidebar("tabHistory")}>
-            <History className="h-4 w-4" />
           </AbaDeIcone>
           <AbaDeIcone value="notas" label={tSidebar("tabNotes")}>
             <StickyNote className="h-4 w-4" />
           </AbaDeIcone>
           <AbaDeIcone value="tarefas" label={tSidebar("tabTasks")}>
             <ListTodo className="h-4 w-4" />
+          </AbaDeIcone>
+          <AbaDeIcone value="traqueamento" label={tSidebar("tabTracking")}>
+            <Megaphone className="h-4 w-4" />
+          </AbaDeIcone>
+          <AbaDeIcone value="historico" label={tSidebar("tabHistory")}>
+            <History className="h-4 w-4" />
           </AbaDeIcone>
         </TabsList>
 
@@ -647,13 +713,13 @@ export function PainelDoContato({
               )}
             </div>
             <div className="mt-2 space-y-3">
-              {customFields.length === 0 ? (
+              {gerais.length === 0 ? (
                 <p className="px-1 text-xs text-muted-foreground">
                   {tSidebar("noFields")}
                 </p>
               ) : (
                 <>
-                  {customFields.map((field) => (
+                  {gerais.map((field) => (
                     <div key={field.id} className="space-y-1">
                       <Label className="text-xs capitalize text-muted-foreground">
                         {field.field_name}
@@ -671,7 +737,7 @@ export function PainelDoContato({
                   {podeEditar && (
                     <Button
                       size="sm"
-                      onClick={() => void salvarCampos()}
+                      onClick={() => void salvarCampos(gerais)}
                       disabled={salvandoCampos}
                       className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
                     >
@@ -687,16 +753,6 @@ export function PainelDoContato({
               )}
             </div>
           </div>
-        </TabsContent>
-
-        {/* ---- Histórico de atividade (912) — o registro completo.
-             Numa aba própria, sob demanda: é a tela de auditoria, não a de
-             atendimento. `resyncToken` agora chega até ele. ---- */}
-        <TabsContent
-          value="historico"
-          className="min-h-0 flex-1 overflow-y-auto p-4"
-        >
-          <ActivityHistory contactId={contact.id} token={resyncToken} />
         </TabsContent>
 
         {/* ---- Notas ---- */}
@@ -743,6 +799,83 @@ export function PainelDoContato({
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
           <ContactTasks contactId={contact.id} />
+        </TabsContent>
+
+        {/* ---- Traqueamento (949) — os campos que o clique no anúncio
+             produz (UTMs, fbclid, ctwa_clid, nomes de campanha/conjunto/
+             anúncio). São campos personalizados comuns com categoria
+             'tracking': a automação `update_contact_field` já os preenche e
+             a futura integração com a API de Conversões da Meta os lê pelo
+             `field_key`. O seed cria só os que FALTAM (admin). ---- */}
+        <TabsContent
+          value="traqueamento"
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          <div className="space-y-3">
+            {tracking.length === 0 && (
+              <p className="px-1 text-xs text-muted-foreground">
+                {tSidebar("noTrackingFields")}
+              </p>
+            )}
+            {podeGerirCampos && faltantes.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void semearTraqueamento()}
+                disabled={semeando}
+                className="w-full"
+              >
+                {semeando ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Plus className="size-3.5" />
+                )}
+                {tSidebar("seedTrackingFields", { count: faltantes.length })}
+              </Button>
+            )}
+            {tracking.map((field) => (
+              <div key={field.id} className="space-y-1">
+                {/* Sem `capitalize`: utm_source/fbclid são nomes TÉCNICOS e
+                    mudá-los visualmente atrapalha quem confere o parâmetro. */}
+                <Label className="text-xs text-muted-foreground">
+                  {field.field_name}
+                </Label>
+                <CampoPersonalizadoInput
+                  field={field}
+                  value={customValues[field.id] ?? ""}
+                  onChange={(v) =>
+                    setCustomValues((prev) => ({ ...prev, [field.id]: v }))
+                  }
+                  disabled={!podeEditar}
+                />
+              </div>
+            ))}
+            {podeEditar && tracking.length > 0 && (
+              <Button
+                size="sm"
+                onClick={() => void salvarCampos(tracking)}
+                disabled={salvandoCampos}
+                className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                {salvandoCampos ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Save className="size-3.5" />
+                )}
+                {tSidebar("saveFields")}
+              </Button>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* ---- Histórico de atividade (912) — o registro completo, POR
+             ÚLTIMO na fileira: é a aba de auditoria, a que menos se abre no
+             atendimento. `resyncToken` chega até ele. ---- */}
+        <TabsContent
+          value="historico"
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          <ActivityHistory contactId={contact.id} token={resyncToken} />
         </TabsContent>
       </Tabs>
 

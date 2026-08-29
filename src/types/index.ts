@@ -150,6 +150,11 @@ export interface CustomField {
   field_key: string;
   /** `{ opcoes: string[] }` num campo `select`; livre/nulo nos demais. */
   field_options?: Record<string, unknown>;
+  /**
+   * 'geral' | 'tracking' (CHECK da 949). Traqueamento vive na aba própria
+   * do painel e fora da seção CAMPOS da aba Principal.
+   */
+  categoria: string;
   created_at: string;
 }
 

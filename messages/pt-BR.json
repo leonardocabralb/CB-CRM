@@ -399,7 +399,12 @@
       "noFields": "Nenhum campo criado ainda.",
       "saveFields": "Salvar campos",
       "fieldsSaved": "Campos salvos.",
-      "fieldsSaveError": "Não foi possível salvar os campos."
+      "fieldsSaveError": "Não foi possível salvar os campos.",
+      "tabTracking": "Traqueamento",
+      "noTrackingFields": "Nenhum campo de traqueamento ainda.",
+      "seedTrackingFields": "Criar os {count} campos padrão",
+      "seedDone": "Campos de traqueamento criados.",
+      "seedError": "Não foi possível criar os campos de traqueamento."
     },
     "aiBanner": {
       "pausedTitle": "O assistente de IA está pausado aqui",
@@ -623,6 +628,7 @@
       "createdAt": "Criado em",
       "customFields": "Campos personalizados",
       "noCustomFields": "Nenhum campo personalizado definido. Crie-os em Configurações.",
+      "trackingHeading": "Traqueamento",
       "manageFields": "Gerenciar campos",
       "enterCustomField": "Informe {name}...",
       "activityTab": {
@@ -732,7 +738,10 @@
       "optionsLabel": "Opções da lista",
       "optionsPlaceholder": "Opção A, Opção B",
       "toastOptionsFailed": "Não foi possível salvar as opções.",
-      "copyKeyTitle": "Copiar identificador"
+      "copyKeyTitle": "Copiar identificador",
+      "category": "Categoria",
+      "categoryGeneral": "Geral",
+      "categoryTracking": "Traqueamento"
     }
   },
   "Pipelines": {

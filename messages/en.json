@@ -406,7 +406,12 @@
       "noFields": "No fields created yet.",
       "saveFields": "Save fields",
       "fieldsSaved": "Fields saved.",
-      "fieldsSaveError": "Could not save the fields."
+      "fieldsSaveError": "Could not save the fields.",
+      "tabTracking": "Tracking",
+      "noTrackingFields": "No tracking fields yet.",
+      "seedTrackingFields": "Create the {count} default fields",
+      "seedDone": "Tracking fields created.",
+      "seedError": "Could not create the tracking fields."
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",
@@ -631,6 +636,7 @@
       "createdAt": "Created At",
       "customFields": "Custom Fields",
       "noCustomFields": "No custom fields defined. Create them in Settings.",
+      "trackingHeading": "Tracking",
       "manageFields": "Manage fields",
       "enterCustomField": "Enter {name}...",
       "activityTab": {
@@ -739,7 +745,10 @@
       "optionsLabel": "List options",
       "optionsPlaceholder": "Option A, Option B",
       "toastOptionsFailed": "Could not save the options.",
-      "copyKeyTitle": "Copy identifier"
+      "copyKeyTitle": "Copy identifier",
+      "category": "Category",
+      "categoryGeneral": "General",
+      "categoryTracking": "Tracking"
     }
   },
   "Pipelines": {

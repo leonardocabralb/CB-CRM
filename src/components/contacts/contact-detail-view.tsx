@@ -11,6 +11,10 @@ import { ActivityHistory } from '@/components/lead-events/activity-history';
 import { ContactTasks } from '@/components/tasks/contact-tasks';
 import { formatCurrency } from '@/lib/currency';
 import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
+import {
+  camposDeTraqueamento,
+  camposGerais,
+} from '@/lib/contacts/campos-de-traqueamento';
 import { CampoPersonalizadoInput } from '@/components/contacts/campo-personalizado-input';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag, ConversationNote, CustomField, ContactCustomValue, Deal, MessageTemplate } from '@/types';
@@ -762,7 +766,10 @@ export function ContactDetailView({
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {customFields.map((field) => (
+                    {/* Gerais primeiro; os de TRAQUEAMENTO (949) agrupados
+                        sob o próprio título — no inbox eles têm aba própria,
+                        aqui a separação visual cumpre o mesmo papel. */}
+                    {camposGerais(customFields).map((field) => (
                       <div key={field.id} className="space-y-1.5">
                         <Label className="text-muted-foreground text-xs capitalize">
                           {field.field_name}
@@ -770,6 +777,31 @@ export function ContactDetailView({
                         {/* Componente COMPARTILHADO com o painel do inbox
                             (948): um input por tipo, com as conversões de
                             fuso do campo de data dentro dele. */}
+                        <CampoPersonalizadoInput
+                          field={field}
+                          value={customValues[field.id] ?? ''}
+                          onChange={(v) =>
+                            setCustomValues((prev) => ({
+                              ...prev,
+                              [field.id]: v,
+                            }))
+                          }
+                          placeholder={t('enterCustomField', { name: field.field_name })}
+                        />
+                      </div>
+                    ))}
+                    {camposDeTraqueamento(customFields).length > 0 && (
+                      <p className="border-t border-border pt-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        {t('trackingHeading')}
+                      </p>
+                    )}
+                    {camposDeTraqueamento(customFields).map((field) => (
+                      <div key={field.id} className="space-y-1.5">
+                        {/* Sem `capitalize`: utm_source/fbclid são nomes
+                            técnicos. */}
+                        <Label className="text-muted-foreground text-xs">
+                          {field.field_name}
+                        </Label>
                         <CampoPersonalizadoInput
                           field={field}
                           value={customValues[field.id] ?? ''}
