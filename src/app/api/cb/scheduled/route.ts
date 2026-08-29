@@ -214,6 +214,10 @@ export async function POST(request: Request) {
       citadaId = (citada as { id: string }).id;
     }
 
+    // ⚠️ ESTE BLOCO TEM UM ESPELHO: `src/app/api/v1/scheduled-messages/
+    // route.ts` (API pública) repete a resolução de canal daqui. Quem mudar
+    // a regra de grupo/canal abaixo muda lá também.
+    //
     // ⚠️ CONVERSA DE GRUPO TEM `conversations.channel_id` NULO — SEMPRE.
     // `cb-groups/persist.ts` não grava a coluna; quem sabe por qual número o
     // grupo é visto é `cb_groups.channel_id`. Lendo a coluna da conversa,
