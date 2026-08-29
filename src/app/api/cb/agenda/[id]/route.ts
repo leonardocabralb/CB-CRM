@@ -88,7 +88,7 @@ export async function PATCH(
   // RLS, que o service-role ignora.
   const { data: atual } = await admin
     .from('cb_meetings')
-    .select('id, starts_at, ends_at')
+    .select('id, starts_at, ends_at, contact_id')
     .eq('id', id)
     .eq('account_id', ctx.accountId)
     .maybeSingle();
@@ -153,6 +153,46 @@ export async function PATCH(
       (dono.full_name as string | null) ??
       (dono.email as string | null) ??
       'Alguém';
+  }
+
+  // ------------------------------------------------------------
+  // Troca (ou remoção) do cliente vinculado.
+  //
+  // ⚠️ `contact_id` NÃO entra em `CAMPOS_EDITAVEIS` porque precisa de duas
+  // coisas que a cópia genérica não faz: conferir o contato contra a conta e
+  // recarimbar `contato_nome`. Sem este bloco a rota aceitava o campo, ignorava
+  // em silêncio e devolvia 200 — a tela mostrava sucesso e o vínculo não
+  // mudava. Foi assim que vincular cliente numa reunião existente não
+  // funcionava, sem erro em lugar nenhum.
+  //
+  // ⚠️ `null` explícito significa DESVINCULAR; ausente significa "não mexer".
+  // Colapsar os dois faria toda edição de título apagar o cliente.
+  // ------------------------------------------------------------
+  if (corpo.contact_id !== undefined) {
+    if (corpo.contact_id === null) {
+      mudancas.contact_id = null;
+      mudancas.contato_nome = null;
+    } else if (UUID_OK(corpo.contact_id)) {
+      const { data: contato } = await admin
+        .from('contacts')
+        .select('id, name, phone')
+        .eq('id', corpo.contact_id)
+        .eq('account_id', ctx.accountId)
+        .maybeSingle();
+
+      if (!contato) {
+        return NextResponse.json(
+          { error: 'Cliente não encontrado nesta conta.' },
+          { status: 400 },
+        );
+      }
+
+      mudancas.contact_id = contato.id;
+      mudancas.contato_nome =
+        (contato.name as string | null) ?? (contato.phone as string);
+    } else {
+      return NextResponse.json({ error: 'Cliente inválido.' }, { status: 400 });
+    }
   }
 
   for (const campo of CAMPOS_EDITAVEIS) {
