@@ -1339,7 +1339,11 @@
         "horasLabel": "Hours",
         "antes": "before the date",
         "depois": "after the date",
-        "ajuda": "Fires once per contact. If the date changes, the reminder re-arms."
+        "ajuda": "Fires once per contact. If the date changes, the reminder re-arms.",
+        "fonteLabel": "Where the date comes from",
+        "fonteCampo": "From a contact field",
+        "fonteReuniao": "From the meeting on the calendar",
+        "minutosLabel": "Minutes"
       },
       "orquestracao": {
         "runAutomationLabel": "Automation to run",

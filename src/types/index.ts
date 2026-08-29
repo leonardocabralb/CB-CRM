@@ -940,10 +940,27 @@ export interface DealStageTriggerConfig {
  * `src/lib/automations/lembretes.ts`, onde o sinal é tratado num lugar só.
  */
 export interface DateFieldTriggerConfig {
-  /** `custom_fields.id` do campo de data. */
+  /**
+   * De onde vem a data (947). Ausente = `'campo'`, para as automações que já
+   * existiam continuarem lendo o campo personalizado sem migração de dado.
+   *
+   * `'reuniao'` lê `cb_meetings.starts_at` — é o que faz a reunião marcada na
+   * agenda disparar lembrete sem depender de alguém preencher um campo de
+   * texto. As duas fontes convivem: enquanto o Calendly preencher o campo, a
+   * automação dele continua valendo.
+   */
+  fonte?: 'campo' | 'reuniao';
+  /** `custom_fields.id` do campo de data. Só usado com `fonte: 'campo'`. */
   custom_field_id?: string;
   /** Quantas horas de distância do valor. */
   offset_hours?: number;
+  /**
+   * Minutos, somados às horas (947).
+   *
+   * ⚠️ Não é cosmético: "10 minutos antes" não cabia em `offset_hours`, e é
+   * justamente o aviso de última hora que o escritório quer.
+   */
+  offset_minutes?: number;
   direction?: 'antes' | 'depois';
 }
 
