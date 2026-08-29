@@ -66,12 +66,32 @@ export async function varrerLembretes(): Promise<ResultadoDaVarredura> {
 
       const { de, ate } = janelaDeBusca(cfg, agora)
 
-      const { data: alvos, error: erroAlvos } = await db.rpc('cb_alvos_de_lembrete', {
-        p_account_id: bruta.account_id,
-        p_custom_field_id: cfg.custom_field_id,
-        p_de: de,
-        p_ate: ate,
-      })
+      // ------------------------------------------------------------
+      // De onde vem a data (947).
+      //
+      // ⚠️ A fonte AUSENTE é `campo`, nunca `reuniao`. As automações que já
+      // existem não têm o atributo, e tratá-las como agenda faria o lembrete do
+      // Calendly parar de sair no dia do deploy — sem erro em lugar nenhum,
+      // porque a varredura simplesmente não acharia mais alvo.
+      //
+      // As duas funções devolvem `(contact_id, valor)` de propósito: o resto do
+      // caminho — trava anti-repetição e disparo — é idêntico e não precisa
+      // saber de onde a data veio.
+      // ------------------------------------------------------------
+      const daAgenda = cfg.fonte === 'reuniao'
+
+      const { data: alvos, error: erroAlvos } = daAgenda
+        ? await db.rpc('cb_alvos_de_lembrete_reuniao', {
+            p_account_id: bruta.account_id,
+            p_de: de,
+            p_ate: ate,
+          })
+        : await db.rpc('cb_alvos_de_lembrete', {
+            p_account_id: bruta.account_id,
+            p_custom_field_id: cfg.custom_field_id,
+            p_de: de,
+            p_ate: ate,
+          })
 
       if (erroAlvos) {
         console.error('[automations] varredura: busca de alvos falhou', bruta.id, erroAlvos)

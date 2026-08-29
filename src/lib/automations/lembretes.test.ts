@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { janelaDeBusca, motivoDeConfigInvalida, LARGURA_MS } from './lembretes';
+import {
+  LARGURA_MS,
+  deslocamentoEmMs,
+  janelaDeBusca,
+  larguraDaJanela,
+  motivoDeConfigInvalida,
+} from './lembretes';
 import { paraEntradaLocal, deEntradaLocal } from '@/lib/contacts/campo-data';
 
 // Uma quinta-feira qualquer, às 12h UTC.
@@ -136,3 +142,118 @@ describe('campo de data — ida e volta', () => {
     expect(deEntradaLocal('')).toBe('');
   });
 });
+
+// ============================================================
+// Fonte "reunião" e deslocamento em minutos (migration 947).
+// ============================================================
+
+describe('deslocamento em minutos (947)', () => {
+  it('soma horas e minutos', () => {
+    expect(deslocamentoEmMs({ offset_hours: 1, offset_minutes: 30 })).toBe(
+      90 * 60_000,
+    )
+  })
+
+  it('aceita só minutos', () => {
+    expect(deslocamentoEmMs({ offset_minutes: 10 })).toBe(10 * 60_000)
+  })
+
+  it('config antiga, só com horas, continua valendo', () => {
+    expect(deslocamentoEmMs({ offset_hours: 24 })).toBe(24 * 3_600_000)
+  })
+
+  it('config vazia é zero, não NaN', () => {
+    expect(deslocamentoEmMs({})).toBe(0)
+    expect(deslocamentoEmMs({ offset_hours: NaN })).toBe(0)
+  })
+})
+
+describe('⚠️ largura da janela x deslocamento curto (947)', () => {
+  it('deslocamento longo mantém a guarda de 1 hora', () => {
+    expect(larguraDaJanela({ offset_hours: 24 })).toBe(LARGURA_MS)
+    expect(larguraDaJanela({ offset_hours: 4 })).toBe(LARGURA_MS)
+  })
+
+  it('⚠️ deslocamento de 10 min encolhe a janela para 10 min', () => {
+    // Com a largura fixa de 1h, este gatilho aceitaria disparar até 50 minutos
+    // DEPOIS de a reunião começar — a guarda contra atraso virando a causa do
+    // atraso, e o cliente lendo "sua reunião é em 10 minutos" com ela em curso.
+    expect(larguraDaJanela({ offset_minutes: 10 })).toBe(10 * 60_000)
+  })
+
+  it('a janela de um lembrete de 10 min nunca alcança o passado do alvo', () => {
+    const agora = new Date('2026-09-02T12:00:00.000Z').getTime()
+    const { de, ate } = janelaDeBusca(
+      { offset_minutes: 10, direction: 'antes' },
+      agora,
+    )
+    // O alvo é 12:10; a janela vai de 12:00 a 12:10 — nunca antes de agora.
+    expect(ate).toBe('2026-09-02T12:10:00.000Z')
+    expect(de).toBe('2026-09-02T12:00:00.000Z')
+    expect(new Date(de).getTime()).toBeGreaterThanOrEqual(agora)
+  })
+
+  it('deslocamento zero não zera a janela', () => {
+    // Sem o piso, a janela teria largura zero e nunca casaria com nada.
+    expect(larguraDaJanela({ offset_hours: 0 })).toBe(LARGURA_MS)
+  })
+})
+
+describe('validação com a fonte (947)', () => {
+  it('⚠️ fonte "reuniao" NÃO exige campo de data', () => {
+    // Exigir o campo aqui deixaria o gatilho novo permanentemente inválido.
+    expect(
+      motivoDeConfigInvalida({
+        fonte: 'reuniao',
+        offset_hours: 24,
+        direction: 'antes',
+      }),
+    ).toBeNull()
+  })
+
+  it('fonte "campo" (e a ausente) continuam exigindo o campo', () => {
+    expect(
+      motivoDeConfigInvalida({ fonte: 'campo', offset_hours: 24, direction: 'antes' }),
+    ).toMatch(/campo de data/)
+    expect(
+      motivoDeConfigInvalida({ offset_hours: 24, direction: 'antes' }),
+    ).toMatch(/campo de data/)
+  })
+
+  it('recusa fonte desconhecida', () => {
+    expect(
+      motivoDeConfigInvalida({
+        fonte: 'astrologia' as 'campo',
+        offset_hours: 1,
+        direction: 'antes',
+      }),
+    ).toMatch(/fonte/)
+  })
+
+  it('aceita só minutos, sem horas', () => {
+    expect(
+      motivoDeConfigInvalida({
+        fonte: 'reuniao',
+        offset_minutes: 10,
+        direction: 'antes',
+      }),
+    ).toBeNull()
+  })
+
+  it('recusa minutos negativos e mantém o teto de um ano', () => {
+    expect(
+      motivoDeConfigInvalida({
+        fonte: 'reuniao',
+        offset_minutes: -5,
+        direction: 'antes',
+      }),
+    ).toMatch(/inválido/)
+    expect(
+      motivoDeConfigInvalida({
+        fonte: 'reuniao',
+        offset_hours: 24 * 366,
+        direction: 'antes',
+      }),
+    ).toMatch(/um ano/)
+  })
+})

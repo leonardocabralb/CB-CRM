@@ -1133,10 +1133,32 @@ function TriggerCard({
                 />
               </div>
             )}
-            {/* Lembrete por data (935): "24 horas ANTES da reunião". A hora
-                vem de um campo do contato, e é isso que dá alvo ao gatilho. */}
+            {/* Lembrete por data (935): "24 horas ANTES da reunião". A hora vem
+                de um campo do contato — ou, desde a 947, da própria agenda. */}
             {type === "date_field_offset" && (
               <div className="space-y-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    {t("lembrete.fonteLabel")}
+                  </label>
+                  {/* ⚠️ Ausente = "campo", nunca "reuniao": as automações que já
+                      existem não têm o atributo, e tratá-las como agenda faria o
+                      lembrete do Calendly parar de sair sem erro nenhum. */}
+                  <select
+                    value={(config.fonte as string) ?? "campo"}
+                    onChange={(e) =>
+                      onConfigChange({ ...config, fonte: e.target.value })
+                    }
+                    className={SELECT_CLASS}
+                  >
+                    <option value="campo">{t("lembrete.fonteCampo")}</option>
+                    <option value="reuniao">{t("lembrete.fonteReuniao")}</option>
+                  </select>
+                </div>
+
+                {/* O campo de data só existe na fonte "campo" — na agenda a
+                    hora vem da própria reunião, e não há o que escolher. */}
+                {(config.fonte ?? "campo") === "campo" && (
                 <div>
                   <label className="mb-1 block text-xs font-medium text-muted-foreground">
                     {t("lembrete.campoLabel")}
@@ -1163,6 +1185,8 @@ function TriggerCard({
                     </p>
                   )}
                 </div>
+                )}
+
                 <div className="flex items-end gap-2">
                   <div className="w-20">
                     <label className="mb-1 block text-xs font-medium text-muted-foreground">
@@ -1176,6 +1200,24 @@ function TriggerCard({
                         onConfigChange({
                           ...config,
                           offset_hours: Number(e.target.value),
+                        })
+                      }
+                      className="bg-muted text-foreground"
+                    />
+                  </div>
+                  <div className="w-20">
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                      {t("lembrete.minutosLabel")}
+                    </label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={59}
+                      value={(config.offset_minutes as number) ?? 0}
+                      onChange={(e) =>
+                        onConfigChange({
+                          ...config,
+                          offset_minutes: Number(e.target.value),
                         })
                       }
                       className="bg-muted text-foreground"

@@ -50,14 +50,39 @@ export const LARGURA_MS = 60 * 60 * 1000
  * de agora. Trocar o sinal aqui manda a confirmação de reunião 24h DEPOIS
  * dela — o defeito mais provável desta feature inteira, e o mais silencioso.
  */
-export function janelaDeBusca(cfg: DateFieldTriggerConfig, agoraMs: number): Janela {
+export function deslocamentoEmMs(cfg: DateFieldTriggerConfig): number {
   const horas = Number(cfg.offset_hours)
-  const deslocamentoMs = (Number.isFinite(horas) ? horas : 0) * 3_600_000
+  const minutos = Number(cfg.offset_minutes)
+  return (
+    (Number.isFinite(horas) ? horas : 0) * 3_600_000 +
+    (Number.isFinite(minutos) ? minutos : 0) * 60_000
+  )
+}
+
+/**
+ * A largura da janela deste gatilho.
+ *
+ * ⚠️ NUNCA MAIOR QUE O PRÓPRIO DESLOCAMENTO, e é isso que torna o lembrete de
+ * minutos possível. Com a largura fixa de 1 hora, um gatilho de "10 minutos
+ * antes" aceitaria disparar até 50 minutos DEPOIS de a reunião começar — a
+ * guarda contra atraso viraria a causa do atraso, e o cliente receberia "sua
+ * reunião é em 10 minutos" com ela já em curso.
+ *
+ * Para os deslocamentos longos (24h, 4h) nada muda: continua 1 hora.
+ */
+export function larguraDaJanela(cfg: DateFieldTriggerConfig): number {
+  const deslocamento = deslocamentoEmMs(cfg)
+  if (deslocamento <= 0) return LARGURA_MS
+  return Math.min(LARGURA_MS, deslocamento)
+}
+
+export function janelaDeBusca(cfg: DateFieldTriggerConfig, agoraMs: number): Janela {
+  const deslocamentoMs = deslocamentoEmMs(cfg)
   // `antes`: alvo = valor - deslocamento  →  valor = alvo + deslocamento
   // `depois`: alvo = valor + deslocamento →  valor = alvo - deslocamento
   const sinal = cfg.direction === 'depois' ? -1 : 1
   const ate = agoraMs + sinal * deslocamentoMs
-  const de = ate - LARGURA_MS
+  const de = ate - larguraDaJanela(cfg)
   return { de: new Date(de).toISOString(), ate: new Date(ate).toISOString() }
 }
 
@@ -68,13 +93,31 @@ export function janelaDeBusca(cfg: DateFieldTriggerConfig, agoraMs: number): Jan
  * ter de adivinhar por que o lembrete não saiu.
  */
 export function motivoDeConfigInvalida(cfg: DateFieldTriggerConfig): string | null {
-  if (!cfg?.custom_field_id) return 'gatilho sem campo de data escolhido'
+  // ⚠️ Com a fonte `reuniao` NÃO há campo de data para escolher — a data vem de
+  // `cb_meetings.starts_at`. Exigir o campo aqui deixaria o gatilho novo
+  // permanentemente inválido, e o cron registraria "sem campo escolhido" para
+  // uma configuração correta.
+  const fonte = cfg?.fonte ?? 'campo'
+  if (fonte === 'campo' && !cfg?.custom_field_id) {
+    return 'gatilho sem campo de data escolhido'
+  }
+  if (fonte !== 'campo' && fonte !== 'reuniao') return 'fonte de data desconhecida'
+
   const horas = Number(cfg.offset_hours)
-  if (!Number.isFinite(horas) || horas < 0) return 'deslocamento inválido'
-  // Teto de um ano: `offset_hours` é digitado à mão, e um zero a mais faria a
+  const minutos = Number(cfg.offset_minutes)
+  if (cfg.offset_hours !== undefined && (!Number.isFinite(horas) || horas < 0)) {
+    return 'deslocamento inválido'
+  }
+  if (cfg.offset_minutes !== undefined && (!Number.isFinite(minutos) || minutos < 0)) {
+    return 'deslocamento inválido'
+  }
+
+  // Teto de um ano: o deslocamento é digitado à mão, e um zero a mais faria a
   // janela cair num passado/futuro sem sentido — buscando valores que nunca
   // existirão e escondendo o erro de digitação.
-  if (horas > 24 * 365) return 'deslocamento maior que um ano'
+  if (deslocamentoEmMs(cfg) > 365 * 24 * 3_600_000) {
+    return 'deslocamento maior que um ano'
+  }
   if (cfg.direction !== 'antes' && cfg.direction !== 'depois') {
     return 'direção inválida (use "antes" ou "depois")'
   }

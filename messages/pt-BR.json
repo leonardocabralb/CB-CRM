@@ -1332,7 +1332,11 @@
         "horasLabel": "Horas",
         "antes": "antes da data",
         "depois": "depois da data",
-        "ajuda": "Dispara uma vez por contato. Se a data for alterada, o lembrete é rearmado."
+        "ajuda": "Dispara uma vez por contato. Se a data for alterada, o lembrete é rearmado.",
+        "fonteLabel": "De onde vem a data",
+        "fonteCampo": "De um campo do cliente",
+        "fonteReuniao": "Da reunião marcada na agenda",
+        "minutosLabel": "Minutos"
       },
       "orquestracao": {
         "runAutomationLabel": "Automação a acionar",
