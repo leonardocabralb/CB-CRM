@@ -257,3 +257,27 @@ describe('validação com a fonte (947)', () => {
     ).toMatch(/um ano/)
   })
 })
+
+describe('⚠️ deslocamento ausente (regressão achada na revisão da 947)', () => {
+  it('recusa config sem horas E sem minutos', () => {
+    // Antes da 947 isto era recusado por `Number(undefined) = NaN`. Ao dividir
+    // o deslocamento em dois campos, a checagem passou a ignorar o caso — e a
+    // automação dispararia com deslocamento zero, avisando sobre reuniões que
+    // já começaram.
+    expect(motivoDeConfigInvalida({ fonte: 'reuniao', direction: 'antes' })).toMatch(
+      /sem deslocamento/,
+    )
+    expect(
+      motivoDeConfigInvalida({ custom_field_id: 'x', direction: 'antes' }),
+    ).toMatch(/sem deslocamento/)
+  })
+
+  it('mas ZERO explícito continua valendo — é "na hora exata"', () => {
+    expect(
+      motivoDeConfigInvalida({ fonte: 'reuniao', offset_hours: 0, direction: 'antes' }),
+    ).toBeNull()
+    expect(
+      motivoDeConfigInvalida({ fonte: 'reuniao', offset_minutes: 0, direction: 'antes' }),
+    ).toBeNull()
+  })
+})
