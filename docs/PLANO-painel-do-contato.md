@@ -25,7 +25,7 @@
 | **1** | Casca: largura 360px, sempre montado, botão junto, abas só-ícone | ✅ **feita e mesclada** (PR #54, em produção 2026-08-29) | nenhuma | #54 |
 | **2** | Edição: nome, etiquetas, campos personalizados (+ tipos novos, `field_key`) | ✅ **feita e mesclada** (PR #55, em produção 2026-08-29) | `948` aplicada | #55 |
 | **3** | Abas reordenadas + aba de **Traqueamento** (campos de anúncio) | ✅ **feita** (2026-08-29) | `949` **aplicada** | `feat/painel-do-contato-fase-3` |
-| **4** | Negócio dentro da conversa (etapa/valor/ganho-perdido) | ⬜ pendente | nenhuma | — |
+| **4** | Negócio dentro da conversa (etapa/valor/ganho-perdido) | ✅ **feita** (2026-08-29) | nenhuma | `feat/painel-do-contato-fase-4` |
 
 **Decisões travadas com o operador (2026-08-29):** ordem das abas =
 Principal · Notas · Tarefas · Traqueamento · Histórico (Histórico por último;
@@ -177,32 +177,44 @@ envio à API de Conversões — a aba é o depósito que essas duas pontas vão 
 
 ---
 
-## ⬜ Fase 4 — O negócio dentro da conversa
+## ✅ Fase 4 — O negócio dentro da conversa (concluída em 2026-08-29)
 
-> **Antes de começar: revisar esta seção** — confirmar com o operador o formato
-> da seção NEGÓCIO e se o quadro de funis ganhou mudanças no meio-tempo.
-> ✅ Nota do operador (2026-08-29): o webhook "CB OS - Atlas" é FAKE — o teste
-> de "mesmo efeito que o arrasto" pode dispará-lo sem medo.
+**Objetivo:** o operador toca o funil DE DENTRO da conversa — "o funil vai ser
+um reflexo da caixa de entrada". Cartão NEGÓCIO no topo da aba Principal:
+etapa (Select com a cor), funil (Select, só com 2+ funis — hoje a conta tem
+UM, então ele fica oculto por regra, não por falta), valor e fechamento
+previsto (salvos no blur), Ganho/Perdido/Reabrir, "Abrir negócio completo" e
+"Criar negócio" abrindo o `DealForm` existente (que ganhou o prop opcional
+`defaultContactId`, e resolve a conversa vinculada sozinho → `conversation_id`
+carimbado no nascimento, 910). Sem negócio, o cartão vira o botão de criar.
 
-Seção "NEGÓCIO" no topo da aba Principal (gate `useCan("send-messages")`, o
-mesmo `canCreateDeals` de `pipelines/page.tsx`):
+**Arquivos:** `painel-do-contato.tsx` (cartão + `atualizarNegocio`/
+`mudarEtapa`/`mudarFunil`/`mudarStatus`, espelhando `pipelines/page.tsx`:
+update direto sob RLS + `avisarDrenagemDeFunil`; UM update na troca de funil;
+estado local atualizado na mão — `deals` sem realtime; inputs de valor/data
+com o valor salvo NA `key`, senão o Base UI avisa de `defaultValue` mutável a
+cada save) · `deal-form.tsx` (`defaultContactId` opcional) · 3 chaves i18n
+(o resto reusa `Pipelines.form`/`Pipelines.card` — mesmo texto nas duas telas).
 
-- **Funil** (`Select`, só com 2+ funis) e **Etapa** (`Select` com a cor).
-  Escrita ESPELHANDO o quadro (`pipelines/page.tsx:334-357`): update direto sob
-  RLS + `avisarDrenagemDeFunil()` logo depois.
-  - ⚠️ Troca de funil = **UM update só** (`pipeline_id`+`stage_id` juntos).
-  - ⚠️ Nunca escrever em `cb_lead_events`/`cb_automation_events` (42501; os
-    triggers 912/933 cuidam — é ISSO que garante "mesmo efeito que o arrasto").
-- **Valor** (blur, `formatCurrency`) e **fechamento previsto**.
-- **Ganho / Perdido / Reabrir** — mesmos updates de `deal-form.tsx:243-262`.
-- **"Abrir negócio completo"** e **"Criar negócio"** → o `<DealForm>` existente
-  num Sheet (carrega funis/etapas sozinho; i18n pronto). Zero caminho novo de
-  criação. `conversation_id` grava **só no nascimento**, nunca no update.
-- `deals` não tem realtime → atualizar estado local após escrever.
-- **Teste que fecha o requisito:** mover o MESMO negócio de etapa pelo painel e
-  pelo arrasto e comparar no banco — linha `stage_changed` nos dois, evento
-  enfileirado nos dois, automação da etapa rodando nos dois.
-- **Atualizar este plano** ao concluir.
+**O TESTE DO REQUISITO 6 — paridade com o arrasto, medida em produção
+(webhook CB OS - Atlas é fake, confirmado pelo operador):**
+
+| | Painel (21:10) | Arrasto no quadro (21:14) |
+| --- | --- | --- |
+| Trilha 912 | `stage_changed` Avulso→Fechado, origem `usuario` | idêntico |
+| Fila 933 | evento criado e processado na hora | idêntico |
+| Automação | executou em +3s: `add_tag:success`, `send_webhook:failed` (destino fake barrado pela allowlist do motor) | executou em +1s, MESMOS passos |
+
+Mais: Ganho→Reabrir gravou 2 `status_changed` na trilha · valor 12.345,67
+salvo no blur e exibido `R$ 12.346` · data salva e limpa · tudo REVERTIDO
+(valor 0, sem data, Contato Avulso, etiqueta "Cliente Fechado" que a
+automação aplicou foi removida). O arrasto do teste foi por PointerEvents
+sintéticos (o KeyboardSensor congela com o painel do navegador oculto — as
+setas não avançam a colisão; anotado para testes futuros).
+
+**Notas:** o funil "Leads" visto na exploração foi APAGADO no meio-tempo — a
+conta tem um funil só, e o seletor oculto é a regra do `deal-form` agindo ·
+1940 testes · typecheck limpo · lint 0 erros · i18n-parity OK.
 
 ---
 

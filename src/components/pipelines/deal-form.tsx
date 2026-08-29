@@ -42,6 +42,14 @@ interface DealFormProps {
   pipelineId: string;
   stages: PipelineStage[];
   defaultStageId?: string;
+  /**
+   * Contato pré-selecionado ao CRIAR (Fase 4: o painel do inbox cria o
+   * negócio da conversa aberta). Só semente do formulário — o operador ainda
+   * pode trocar. Com o contato posto, o efeito de `linkedConversation` acha a
+   * conversa dele sozinho e o `conversation_id` é carimbado no nascimento,
+   * como manda a 910.
+   */
+  defaultContactId?: string;
   onSaved: () => void;
 }
 
@@ -52,6 +60,7 @@ export function DealForm({
   pipelineId,
   stages,
   defaultStageId,
+  defaultContactId,
   onSaved,
 }: DealFormProps) {
   const t = useTranslations("Pipelines.form");
@@ -107,14 +116,14 @@ export function DealForm({
       setTitle("");
       setValue("");
       setCurrency(defaultCurrency);
-      setContactId("");
+      setContactId(defaultContactId ?? "");
       setStageId(defaultStageId || stages[0]?.id || "");
       setSelectedPipelineId(pipelineId);
       setAssignedTo("");
       setExpectedCloseDate("");
       setNotes("");
     }
-  }, [open, deal, defaultStageId, stages, defaultCurrency, pipelineId]);
+  }, [open, deal, defaultStageId, defaultContactId, stages, defaultCurrency, pipelineId]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Load supporting data once the sheet is open
