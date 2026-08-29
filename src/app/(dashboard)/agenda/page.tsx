@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 
@@ -8,6 +8,13 @@ import { Calendario } from '@/components/agenda/calendario';
 import { GradeDeHoras } from '@/components/agenda/grade-de-horas';
 import { ReuniaoForm } from '@/components/agenda/reuniao-form';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useReunioes } from '@/hooks/use-reunioes';
 import { FUSO_PADRAO, diaNoFuso, horaNoFuso, paraInstante } from '@/lib/agenda/fuso';
 import {
@@ -17,8 +24,13 @@ import {
   rotuloDoPeriodo,
   type Visao,
 } from '@/lib/agenda/grade';
+import {
+  TODOS,
+  filtrarPorResponsavel,
+} from '@/lib/agenda/responsaveis';
+import { fetchAccountMembers } from '@/lib/account/members';
 import { cn } from '@/lib/utils';
-import type { Meeting } from '@/types';
+import type { AccountMember, Meeting } from '@/types';
 
 /**
  * A agenda de reuniões (migration 945, Fase 1).
@@ -42,6 +54,20 @@ export default function AgendaPage() {
   const [horaInicial, setHoraInicial] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
 
+  // Filtro por advogado — a linha do plano da Fase 1 que faltava.
+  const [membros, setMembros] = useState<AccountMember[]>([]);
+  const [responsavel, setResponsavel] = useState<string>(TODOS);
+
+  useEffect(() => {
+    let vivo = true;
+    void fetchAccountMembers().then((lista) => {
+      if (vivo) setMembros(lista);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
   const hoje = hojeNoFuso(new Date(), FUSO_PADRAO);
 
   const { de, ate } = useMemo(
@@ -49,7 +75,15 @@ export default function AgendaPage() {
     [visao, referencia],
   );
 
-  const { reunioes, carregando, erro, recarregar } = useReunioes(de, ate, token);
+  const { reunioes: todas, carregando, erro, recarregar } = useReunioes(de, ate, token);
+
+  // ⚠️ O recorte é no CLIENTE, sobre a lista já carregada — não na consulta.
+  // A janela é sempre um mês ou uma semana, então cabe inteira na memória, e
+  // filtrar aqui deixa a troca de advogado instantânea, sem ida ao banco.
+  const reunioes = useMemo(
+    () => filtrarPorResponsavel(todas, responsavel),
+    [todas, responsavel],
+  );
 
   function abrirNovo(dia?: string) {
     setEmEdicao(null);
@@ -184,6 +218,35 @@ export default function AgendaPage() {
         </span>
         {carregando && (
           <span className="text-xs text-muted-foreground">{t('carregando')}</span>
+        )}
+
+        {/* ⚠️ Só aparece com dois ou mais advogados na conta: um filtro que não
+            recorta nada é ruído. Diferente do seletor de responsável DENTRO do
+            formulário, que é dado e fica sempre — aqui é conveniência. */}
+        {membros.length > 1 && (
+          <div className="ml-auto flex items-center gap-2">
+            <Select
+              value={responsavel}
+              onValueChange={(v) => setResponsavel(v ?? TODOS)}
+            >
+              <SelectTrigger className="h-8 w-48">
+                <SelectValue>
+                  {responsavel === TODOS
+                    ? t('todosOsResponsaveis')
+                    : (membros.find((m) => m.user_id === responsavel)?.full_name ??
+                      t('todosOsResponsaveis'))}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TODOS}>{t('todosOsResponsaveis')}</SelectItem>
+                {membros.map((m) => (
+                  <SelectItem key={m.user_id} value={m.user_id}>
+                    {m.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         )}
       </div>
 

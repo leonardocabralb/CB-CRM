@@ -22,8 +22,19 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { FUSO_PADRAO, diaNoFuso, horaNoFuso, paraInstante } from '@/lib/agenda/fuso';
+import Link from 'next/link';
+import { ExternalLink } from 'lucide-react';
+
+import { SeletorDeCliente } from '@/components/agenda/seletor-de-cliente';
+import { useAuth } from '@/hooks/use-auth';
 import { fetchAccountMembers } from '@/lib/account/members';
-import type { AccountMember, Meeting, MeetingStatus, MeetingType } from '@/types';
+import type {
+  AccountMember,
+  Contact,
+  Meeting,
+  MeetingStatus,
+  MeetingType,
+} from '@/types';
 
 /**
  * Criar e editar reunião (migration 945).
@@ -61,6 +72,7 @@ export function ReuniaoForm({
   aoSalvar,
 }: Props) {
   const t = useTranslations('Agenda');
+  const { user } = useAuth();
 
   // ⚠️ Busca direta em vez de um hook `use-membros`: a branch de Tarefas cria
   // um com esse nome, e duas versões do mesmo hook conflitariam no merge sem
@@ -77,6 +89,11 @@ export function ReuniaoForm({
   const [responsavel, setResponsavel] = useState('');
   const [local, setLocal] = useState('');
   const [descricao, setDescricao] = useState('');
+
+  // O cliente da reunião. `travado` quando o formulário foi aberto da ficha
+  // dele — ali o vínculo é o motivo de a reunião existir.
+  const [clienteId, setClienteId] = useState<string | null>(null);
+  const [clienteNome, setClienteNome] = useState<string | null>(null);
 
   const [salvando, setSalvando] = useState(false);
   const [apagando, setApagando] = useState(false);
@@ -117,6 +134,8 @@ export function ReuniaoForm({
       setResponsavel(reuniao.owner_user_id ?? '');
       setLocal(reuniao.local ?? '');
       setDescricao(reuniao.descricao ?? '');
+      setClienteId(reuniao.contact_id);
+      setClienteNome(reuniao.contato_nome);
     } else {
       setTitulo('');
       setTipo('outra');
@@ -124,13 +143,19 @@ export function ReuniaoForm({
       setDia(diaInicial ?? diaNoFuso(new Date(), FUSO_PADRAO));
       setHora(horaInicial ?? '09:00');
       setDuracao(60);
-      setResponsavel('');
+      // ⚠️ Nasce com quem está criando, que é o mesmo padrão que a rota aplica
+      // quando o corpo não traz `owner_user_id`. Deixar vazio fazia o campo
+      // abrir com um rótulo genérico em cinza, com cara de não preenchido —
+      // e foi assim que a reunião pareceu "não ter responsável".
+      setResponsavel(user?.id ?? '');
+      setClienteId(contactId ?? null);
+      setClienteNome(null);
       setLocal('');
       setDescricao('');
     }
     setErro(null);
     setConfirmandoApagar(false);
-  }, [aberto, reuniao, diaInicial, horaInicial]);
+  }, [aberto, reuniao, diaInicial, horaInicial, contactId, user?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   async function salvar() {
@@ -162,10 +187,10 @@ export function ReuniaoForm({
       descricao: descricao.trim() || null,
     };
 
-    if (!editando) {
-      if (responsavel) corpo.owner_user_id = responsavel;
-      if (contactId) corpo.contact_id = contactId;
-    }
+    if (responsavel) corpo.owner_user_id = responsavel;
+    // ⚠️ `null` explícito, nunca omitido: omitir significaria "não mexer", e
+    // desvincular o cliente não teria como ser gravado.
+    corpo.contact_id = clienteId;
 
     const resposta = await fetch(
       editando ? `/api/cb/agenda/${reuniao!.id}` : '/api/cb/agenda',
@@ -303,17 +328,26 @@ export function ReuniaoForm({
             </div>
           </div>
 
-          {/* ⚠️ O responsável só aparece na criação. Trocar o dono de uma
-              reunião existente é mudança de agenda de duas pessoas ao mesmo
-              tempo, e a restrição de sobreposição avaliaria o horário na agenda
-              do novo dono — recusa que a tela não teria como explicar bem. */}
-          {!editando && membros.length > 1 && (
-            <div className="space-y-2">
-              <Label>{t('responsavel')}</Label>
+          {/* ⚠️ SEMPRE VISÍVEL, inclusive na edição e com um membro só.
+              A primeira versão escondia o campo quando a conta tinha menos de
+              dois membros, copiando a convenção de canal ("seletor some quando
+              não decide nada"). A transposição estava errada: canal sem
+              alternativa não decide nada, mas o responsável SEMPRE decide de
+              quem é a reunião — e escondê-lo impedia até de ler. Com a conta
+              recém-criada, que tem um dono só, o campo simplesmente nunca
+              apareceu e a reunião parecia não ter responsável.
+
+              Trocar o dono na edição é permitido: a restrição de sobreposição
+              vai avaliar o horário na agenda do NOVO responsável, e a rota já
+              traduz esse conflito numa frase legível. */}
+          <div className="space-y-2">
+            <Label>{t('responsavel')}</Label>
+            {membros.length > 0 ? (
               <Select value={responsavel} onValueChange={(v) => setResponsavel(v ?? '')}>
                 <SelectTrigger className="w-full">
                   <SelectValue>
                     {membros.find((m) => m.user_id === responsavel)?.full_name ??
+                      reuniao?.owner_nome ??
                       t('euMesmo')}
                   </SelectValue>
                 </SelectTrigger>
@@ -325,8 +359,49 @@ export function ReuniaoForm({
                   ))}
                 </SelectContent>
               </Select>
+            ) : (
+              /* ⚠️ A busca de membros falhou (ela devolve `[]` em qualquer
+                 erro). Some o seletor, mas NÃO o dado: quem já é o responsável
+                 continua na tela como texto. Sumir com tudo faria uma falha de
+                 rede parecer "esta reunião não tem responsável". */
+              <p className="text-sm text-muted-foreground">
+                {reuniao?.owner_nome ?? t('euMesmo')}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>{t('cliente')}</Label>
+              {/* ⚠️ Só na edição, e só com cliente vinculado: é o atalho que
+                  leva da agenda para o atendimento. Prefere a CONVERSA quando
+                  a reunião nasceu de uma (`/inbox?c=`), e cai na ficha
+                  (`/contacts?contact=`) quando não — nem todo cliente tem
+                  conversa aberta, e a ficha também mostra nome e telefone. */}
+              {editando && clienteId && (
+                <Link
+                  href={
+                    reuniao?.conversation_id
+                      ? `/inbox?c=${reuniao.conversation_id}`
+                      : `/contacts?contact=${clienteId}`
+                  }
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  {reuniao?.conversation_id ? t('abrirConversa') : t('abrirFicha')}
+                  <ExternalLink className="size-3" />
+                </Link>
+              )}
             </div>
-          )}
+            <SeletorDeCliente
+              valor={clienteId}
+              nomeAtual={clienteNome}
+              travado={Boolean(contactId)}
+              aoEscolher={(c: Contact | null) => {
+                setClienteId(c?.id ?? null);
+                setClienteNome(c ? c.name || c.phone : null);
+              }}
+            />
+          </div>
 
           {editando && (
             <div className="space-y-2">

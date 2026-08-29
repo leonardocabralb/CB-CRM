@@ -35,6 +35,7 @@ import {
   type Visao,
 } from '@/lib/agenda/grade';
 import { cn } from '@/lib/utils';
+import { mostrarResponsavel } from '@/lib/agenda/responsaveis';
 import type { Meeting } from '@/types';
 
 /**
@@ -102,6 +103,8 @@ export function GradeDeHoras({
       rolagem.current.scrollTop = (8 - HORA_INICIAL) * ALTURA_DA_HORA;
     }
   }, []);
+
+  const comResponsavel = mostrarResponsavel(reunioes);
 
   const porDia = new Map<string, Meeting[]>();
   for (const r of reunioes) {
@@ -194,6 +197,7 @@ export function GradeDeHoras({
               key={d.dia}
               dia={d}
               reunioes={porDia.get(d.dia) ?? []}
+              comResponsavel={comResponsavel}
               ehHoje={d.ehHoje}
               agora={agora}
               aoAbrirReuniao={aoAbrirReuniao}
@@ -225,6 +229,7 @@ export function GradeDeHoras({
 function ColunaDoDia({
   dia,
   reunioes,
+  comResponsavel,
   ehHoje,
   agora,
   aoAbrirReuniao,
@@ -232,6 +237,7 @@ function ColunaDoDia({
 }: {
   dia: DiaDaGrade;
   reunioes: Meeting[];
+  comResponsavel: boolean;
   ehHoje: boolean;
   agora: number | null;
   aoAbrirReuniao: (r: Meeting) => void;
@@ -291,7 +297,12 @@ function ColunaDoDia({
       )}
 
       {posicionadas.map((p) => (
-        <CartaoNaGrade key={p.reuniao.id} pos={p} aoAbrir={aoAbrirReuniao} />
+        <CartaoNaGrade
+          key={p.reuniao.id}
+          pos={p}
+          comResponsavel={comResponsavel}
+          aoAbrir={aoAbrirReuniao}
+        />
       ))}
     </div>
   );
@@ -299,9 +310,11 @@ function ColunaDoDia({
 
 function CartaoNaGrade({
   pos,
+  comResponsavel,
   aoAbrir,
 }: {
   pos: ReuniaoPosicionada;
+  comResponsavel: boolean;
   aoAbrir: (r: Meeting) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -333,12 +346,29 @@ function CartaoNaGrade({
         CORES[pos.reuniao.status] ?? CORES.agendada,
         isDragging && 'opacity-30',
       )}
-      title={`${horaDaReuniao(pos.reuniao.starts_at, FUSO_PADRAO)} · ${pos.reuniao.titulo}`}
+      title={[
+        horaDaReuniao(pos.reuniao.starts_at, FUSO_PADRAO),
+        pos.reuniao.titulo,
+        pos.reuniao.contato_nome,
+        pos.reuniao.owner_nome,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
     >
       <div className="font-medium tabular-nums">
         {horaDaReuniao(pos.reuniao.starts_at, FUSO_PADRAO)}
       </div>
       <div className="truncate">{pos.reuniao.titulo}</div>
+      {/* ⚠️ As linhas extras só entram quando a reunião é alta o bastante —
+          abaixo de ~40px empurrariam o título para fora do retângulo.
+          O cliente vem antes do responsável: numa agenda de atendimento,
+          COM QUEM é a reunião importa mais do que quem do escritório atende. */}
+      {pos.altura >= 40 && pos.reuniao.contato_nome && (
+        <div className="truncate opacity-80">{pos.reuniao.contato_nome}</div>
+      )}
+      {comResponsavel && pos.altura >= 56 && (
+        <div className="truncate opacity-60">{pos.reuniao.owner_nome}</div>
+      )}
     </div>
   );
 }
