@@ -658,12 +658,30 @@ worker do Radar e (futuro) auto-reply. O que morde código novo:
   0 — retentar pagaria o mesmo corte de novo) e tentativas esgotadas.
   A chave é resolvida PELO CANAL da conversa (como a análise) — sem isso,
   canal apontado para outro provedor mandava o áudio ao Google.
-- **O modelo é FIXADO em `MODELO_TRANSCRICAO`** (`gemini-3.5-flash-lite`),
-  separado do modelo de chat/análise da conta — transcrever não precisa de
-  raciocínio e o Lite custa ~metade. Trocar de modelo/provedor é mexer SÓ
-  neste módulo (plano B documentado: ElevenLabs, único com `audio/opus`
-  por escrito — a doc do Gemini lista "OGG Vorbis" e a nota do WhatsApp é
-  Opus; funciona em relatos, o 1º teste real em produção é o go/no-go).
+- **O modelo é FIXADO em `MODELO_TRANSCRICAO`** (`gemini-3.7-flash` desde
+  2026-08-28; era `gemini-3.5-flash-lite`), separado do modelo de
+  chat/análise da conta. Trocar de modelo/provedor é mexer SÓ neste módulo
+  (plano B documentado: ElevenLabs, único com `audio/opus` por escrito —
+  a doc do Gemini lista "OGG Vorbis" e a nota do WhatsApp é Opus).
+  ⚠️ **Um modelo para os DOIS chamadores, de propósito.** Modelo por
+  chamador (bom no botão, barato no Radar) foi avaliado e descartado em
+  2026-08-28: não existe "transcrever de novo" — a idempotência devolve o
+  texto gravado ANTES do cadeado e a bolha esconde o botão quando já há
+  texto —, então quem chega primeiro fixa o modelo daquele áudio para
+  sempre, nenhuma coluna registra qual escreveu o quê, e o teto de 3
+  tentativas é compartilhado (falha do barato num áudio difícil carimba
+  `recusada` terminal e mata o bom). Economia teto: R$ 4/mês.
+  ⚠️ **Não desligar o raciocínio** (`thinkingConfig.thinkingBudget: 0`):
+  corta a conta pela metade e piora o erro de 12,1% para 13,9% (medido).
+  ⚠️ **Trocar o modelo NÃO refaz o que já foi transcrito** — não existe
+  caminho de re-transcrição, e nenhuma coluna guarda o modelo (só dá para
+  inferir por `transcricao_em`). Quem trocar de modelo decide, na mesma
+  passada, se limpa `transcricao*` do acervo antigo para ele ser refeito.
+  🔭 O `gemini-3.5-transcribe` mede melhor e custa menos, mas **não atende
+  no `generateContent`** (200 com `parts: [{}]` vazio, cobrando a entrada)
+  — vive na API de Interações. Em 2026-08-28 o modo `smart` apagava fala e
+  diarização/timestamps devolviam zero anotações. Detalhes e a forma da
+  chamada estão no comentário da constante, em `transcrever.ts`.
 - **O worker do Radar transcreve SÓ áudio do CLIENTE e SÓ nunca-tentado**
   (`transcricao_status` nulo), até 5 por análise e dentro do `deadlineMs`
   do ciclo (reserva download + 2× o timeout de IA). ⚠️ `falhou` fica para

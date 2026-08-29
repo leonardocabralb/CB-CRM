@@ -5,7 +5,7 @@ vi.mock('@/lib/ai/usage', () => ({ logAiUsage: vi.fn(async () => {}) }))
 
 import { loadAiConfig } from '@/lib/ai/config'
 import { logAiUsage } from '@/lib/ai/usage'
-import { transcreverAudio } from './transcrever'
+import { MODELO_TRANSCRICAO, transcreverAudio } from './transcrever'
 
 // ------------------------------------------------------------
 // Stub do supabase: cada `from()` vira um registro (tabela, operação,
@@ -313,6 +313,42 @@ describe('transcreverAudio', () => {
     expect(logAiUsage).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ mode: 'transcricao', provider: 'gemini' }),
+    )
+  })
+
+  // Duas garantias diferentes, e as duas fazem falta:
+  //
+  // 1. O LITERAL escrito à mão. As asserções que comparam o código com a
+  //    própria constante são tautológicas — passam com ela mistypada.
+  //    Sem o literal, `gemini-3.7-flsah` atravessa typecheck, lint e a
+  //    suíte inteira e só aparece em produção: a URL dá 404, o áudio vira
+  //    `falhou` e, na 3ª tentativa, `recusada` TERMINAL, que não tem botão
+  //    na bolha. No caminho do Radar isso é silencioso. Trocar de modelo
+  //    de propósito passa a exigir editar aqui também — deliberado: a
+  //    escolha saiu de medição e está documentada na constante.
+  // 2. O PAR URL ↔ `logAiUsage`. Os dois lados são conferidos separados,
+  //    então chumbar um modelo diferente em qualquer um deles quebra —
+  //    é a armadilha que o CLAUDE.md registra para o worker do Radar
+  //    (custo atribuído ao modelo errado).
+  it('o modelo escolhido vai para a URL E para o registro de custo', async () => {
+    const admin = fakeAdmin(
+      [{ data: msgBase }, { data: { id: 'm1' } }, { data: { id: 'm1' } }],
+      [],
+    )
+    const fetchSpy = fakeFetchOk()
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })
+
+    expect(MODELO_TRANSCRICAO).toBe('gemini-3.7-flash')
+
+    const url = String(
+      fetchSpy.mock.calls.find((c) => String(c[0]).includes('generativelanguage'))![0],
+    )
+    expect(url).toContain(`/models/${MODELO_TRANSCRICAO}:generateContent`)
+    expect(logAiUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ model: MODELO_TRANSCRICAO }),
     )
   })
 
