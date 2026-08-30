@@ -1,7 +1,8 @@
 # Perfis de acesso — plano e estado da implementação
 
-> Estado: **Fase 1 concluída** (migrations 956 e 957 aplicadas em produção em
-> 2026-08-30; PR da fundação aberto). Fases 2 a 6 pendentes. Decisões travadas
+> Estado: **Fase 1 concluída** (migrations 956, 957 e 958 aplicadas em
+> produção em 2026-08-30; PR da fundação aberto e revisado — Codex + revisões
+> quente/fria, achados incorporados). Fases 2 a 6 pendentes. Decisões travadas
 > com o operador em 2026-08-30. Atualizar este arquivo a cada fase concluída.
 
 ## O que é
@@ -61,7 +62,7 @@ intocada por este plano):
 | `secoes_config` | text[] NOT NULL | ids de seção de Configurações visíveis |
 | `channel_ids` | uuid[] NOT NULL DEFAULT '{}' | **vazio = todas** |
 | `pipeline_ids` | uuid[] NOT NULL DEFAULT '{}' | **vazio = todos** |
-| `sistema` | boolean NOT NULL DEFAULT false | Dono/Administrador: não editável, não apagável |
+| `sistema` | boolean NOT NULL DEFAULT false | **só o Administrador**: não editável, não apagável. Não há perfil de Dono (CHECK barra `owner`), e o Observador é editável — o operador decidiu que as telas de cada perfil são configuráveis, e o cadeado contradiria isso |
 
 - `UNIQUE (account_id, nome)` — dois "Advogado Trabalhista" na mesma conta é
   sempre erro de digitação, nunca intenção.
@@ -80,6 +81,15 @@ intocada por este plano):
 comportamento de hoje para todo mundo que já está na conta, e o que impede que
 apagar um perfil tranque as pessoas dele para fora. A migration não precisa
 preencher nada.
+
+⚠️ **`perfil_id` está FORA do self-service (958).** A policy `profiles_update`
+deixa cada um editar a própria linha (certo, para nome e avatar), e RLS
+restringe linhas, não colunas — sem a 958, um membro restrito faria
+`PATCH { perfil_id: null }` em si mesmo e voltaria a ver tudo. O trigger da 034
+(que já protegia `account_role`/`account_id`) foi estendido para a coluna.
+Quem escreve `perfil_id` é a rota supervisionada, em service-role. Achado do
+review do Codex sobre a Fase 1, provado em produção: zerar o próprio
+`perfil_id` leva 42501, editar o próprio nome segue passando.
 
 ⚠️ **`account_role` continua sendo a fonte da verdade do que a pessoa PODE
 fazer.** O perfil não substitui o papel — ele acrescenta telas e escopo. Ao
@@ -196,7 +206,10 @@ Cada fase é um PR próprio, mergeável sozinho, sem quebrar a anterior.
   `cb_tasks`). ⚠️ `REVOKE ALL ON TABLE ... FROM anon`, e todo `REVOKE` com o
   `GRANT` de volta — a migration precisa aplicar num banco VAZIO (regra do CI).
 - `src/lib/perfis/` completo, com testes.
-- Hook `usePerfil()` + o perfil entra no `useAuth`.
+- O perfil entra no `useAuth` (campos `perfilDeAcesso` e `acesso`) — sem hook
+  separado: um contexto só, nenhum fetch extra. ⚠️ Durante `profileLoading` o
+  `acesso` é `{ papel: null, perfil: null }` = sem restrição; gate de menu/rota
+  confere `profileLoading` ANTES (fail-closed, como o `useCan`).
 - **Nada muda na tela.** Todo mundo com `perfil_id NULL` continua vendo tudo.
 
 ### Fase 2 — Menu e rotas
