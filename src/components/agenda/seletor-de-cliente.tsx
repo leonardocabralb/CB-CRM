@@ -70,15 +70,33 @@ export function SeletorDeCliente({ valor, nomeAtual, aoEscolher, travado }: Prop
     const timer = setTimeout(async () => {
       setBuscando(true);
       const supabase = createClient();
-      const escapado = limpo.replace(/[%_]/g, (c) => `\\${c}`);
-      const { data } = await supabase
+      // ⚠️ O valor viaja DENTRO da árvore do `.or()`, onde vírgula e
+      // parênteses são delimitadores — "(27) 9283" sem aspas vira filtro
+      // malformado, o erro era descartado e a tela mentia "nenhum cliente".
+      // Duas camadas de escape, nesta ordem: primeiro o do LIKE (\ % _),
+      // depois o das aspas do PostgREST (" e \).
+      const paraIlike = (v: string) => {
+        const like = v.replace(/[\\%_]/g, (c) => `\\${c}`);
+        return `"%${like.replace(/(["\\])/g, '\\$1')}%"`;
+      };
+      // Telefone casa por DÍGITOS: o banco guarda "5527…" sem máscara, e o
+      // operador digita "(27) 9283" — comparar o termo cru exigiria digitar
+      // exatamente como está gravado (mesma decisão do seletor de tarefas).
+      const digitos = limpo.replace(/\D/g, '');
+      const ramos = [`name.ilike.${paraIlike(limpo)}`];
+      if (digitos.length > 0) ramos.push(`phone.ilike.${paraIlike(digitos)}`);
+
+      const { data, error } = await supabase
         .from('contacts')
         .select('*')
-        .or(`name.ilike.%${escapado}%,phone.ilike.%${escapado}%`)
+        .or(ramos.join(','))
         .order('name', { nullsFirst: false })
         .limit(LIMITE);
 
       if (!vivo) return;
+      // Falha de consulta não é "não achei" — mas sem canal de erro na UI,
+      // ao menos deixa rastro para o diagnóstico.
+      if (error) console.warn('[agenda] busca de cliente falhou:', error.message);
       setAchados((data ?? []) as Contact[]);
       setBuscando(false);
     }, 250);
@@ -100,11 +118,12 @@ export function SeletorDeCliente({ valor, nomeAtual, aoEscolher, travado }: Prop
   const [nomeBuscado, setNomeBuscado] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!valor || nomeAtual) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setNomeBuscado(null);
-      return;
-    }
+    // ⚠️ Limpa SEMPRE, inclusive antes de buscar: com o seletor montado,
+    // trocar de um id para outro exibia o nome do ANTERIOR sobre o valor
+    // novo enquanto a consulta corria — e para sempre, se ela falhasse.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNomeBuscado(null);
+    if (!valor || nomeAtual) return;
     let vivo = true;
     void createClient()
       .from('contacts')
@@ -112,9 +131,13 @@ export function SeletorDeCliente({ valor, nomeAtual, aoEscolher, travado }: Prop
       .eq('id', valor)
       .maybeSingle()
       .then(({ data }) => {
-        if (vivo && data) {
-          setNomeBuscado((data.name as string | null) || (data.phone as string));
-        }
+        if (!vivo) return;
+        // Contato apagado ou consulta falhou: o travessão mantém o chip de
+        // pé (com o X de desvincular quando couber) em vez de degradar para
+        // a caixa de busca com um vínculo ainda gravado.
+        setNomeBuscado(
+          ((data?.name as string | null) || (data?.phone as string | undefined)) ?? '—'
+        );
       });
     return () => {
       vivo = false;
@@ -123,11 +146,17 @@ export function SeletorDeCliente({ valor, nomeAtual, aoEscolher, travado }: Prop
 
   const nomeExibido = nomeAtual ?? nomeBuscado;
 
-  // Já escolhido: mostra quem é, com o botão de desfazer.
-  if (valor && nomeExibido) {
+  // ⚠️ Vínculo existente = CHIP, sempre — mesmo sem nome ainda (a busca do
+  // nome corre acima). Cair na caixa de busca enquanto o nome não chegava
+  // deixava um seletor DESTRAVADO num formulário aberto pela ficha do
+  // cliente: dava para escolher outra pessoa e a reunião sumia da ficha
+  // onde nasceu.
+  if (valor) {
     return (
       <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2">
-        <span className="truncate text-sm">{nomeExibido}</span>
+        <span className="truncate text-sm">
+          {nomeExibido ?? t('carregando')}
+        </span>
         {!travado && (
           <button
             type="button"

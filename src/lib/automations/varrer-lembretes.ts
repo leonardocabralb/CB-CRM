@@ -85,6 +85,13 @@ export async function varrerLembretes(): Promise<ResultadoDaVarredura> {
             p_account_id: bruta.account_id,
             p_de: de,
             p_ate: ate,
+            // ⚠️ Follow-up ("depois") tem de aceitar reunião REALIZADA (952):
+            // a janela cai depois do início, e marcar `realizada` é
+            // exatamente o que o operador diligente faz nesse meio-tempo —
+            // só com `agendada`, o follow-up saía apenas para quem NÃO
+            // atualiza a agenda. `falta` e `cancelada` continuam fora nas
+            // duas direções: mensagem sobre reunião que não houve.
+            p_incluir_realizadas: cfg.direction === 'depois',
           })
         : await db.rpc('cb_alvos_de_lembrete', {
             p_account_id: bruta.account_id,
@@ -130,7 +137,15 @@ export async function varrerLembretes(): Promise<ResultadoDaVarredura> {
           // escopo de canal deixa passar (falha aberta, como todo disparo sem
           // canal) e o envio cai no canal da conversa do contato — que é o
           // número por onde ele fala, e é o certo aqui.
-          context: { vars: { _lembrete_valor: alvo.valor } },
+          //
+          // ⚠️ `automation_id` é o que impede o leque: o dispatch é por TIPO,
+          // e sem o carimbo o `triggerMatches` aceitava todas as automações
+          // de lembrete da conta — o alvo de uma executava as outras, fora
+          // das janelas delas. O motor só roda a carimbada (fail closed).
+          context: {
+            automation_id: bruta.id,
+            vars: { _lembrete_valor: alvo.valor },
+          },
         })
         saida.disparados += 1
       }

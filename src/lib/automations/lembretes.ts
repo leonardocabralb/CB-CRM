@@ -103,25 +103,29 @@ export function motivoDeConfigInvalida(cfg: DateFieldTriggerConfig): string | nu
   }
   if (fonte !== 'campo' && fonte !== 'reuniao') return 'fonte de data desconhecida'
 
-  // ⚠️ PELO MENOS UM DOS DOIS TEM DE VIR. Antes da 947 o deslocamento era só
-  // `offset_hours`, e a ausência caía em `Number(undefined) = NaN`, que a
-  // checagem recusava. Ao dividir em horas + minutos eu troquei a condição por
-  // `!== undefined` e abri a porta: config sem deslocamento nenhum passava a
-  // ser aceita, com deslocamento ZERO — e a janela `[agora-1h, agora]`
-  // avisaria sobre reuniões que JÁ COMEÇARAM, em vez de a automação ser
-  // recusada com motivo no log. Pela tela não acontece (o formulário manda 24
-  // por padrão), mas acontece por API, por importação de modelo, ou se alguém
-  // limpar os dois campos.
-  if (cfg.offset_hours === undefined && cfg.offset_minutes === undefined) {
+  // ⚠️ PELO MENOS UM DOS DOIS TEM DE VIR — e "vir" exclui `null` e `''`.
+  // Antes da 947 o deslocamento era só `offset_hours`, e a ausência caía em
+  // `Number(undefined) = NaN`, que a checagem recusava. Ao dividir em horas +
+  // minutos eu troquei a condição por `!== undefined` e abri a porta: config
+  // sem deslocamento nenhum passava a ser aceita, com deslocamento ZERO — e a
+  // janela `[agora-1h, agora]` avisaria sobre reuniões que JÁ COMEÇARAM, em
+  // vez de a automação ser recusada com motivo no log. E `undefined` não
+  // basta: campo "limpo" chega como `null` ou `''`, e os dois viram `0` no
+  // `Number()` — o mesmo zero disfarçado. O `0` NUMÉRICO explícito continua
+  // aceito ("na hora da reunião" é configuração legítima). Pela tela não
+  // acontece (o formulário manda 24 por padrão), mas acontece por API, por
+  // importação de modelo, ou se alguém limpar os dois campos.
+  const ausente = (v: unknown) => v === undefined || v === null || v === ''
+  if (ausente(cfg.offset_hours) && ausente(cfg.offset_minutes)) {
     return 'gatilho sem deslocamento (informe horas ou minutos)'
   }
 
   const horas = Number(cfg.offset_hours)
   const minutos = Number(cfg.offset_minutes)
-  if (cfg.offset_hours !== undefined && (!Number.isFinite(horas) || horas < 0)) {
+  if (!ausente(cfg.offset_hours) && (!Number.isFinite(horas) || horas < 0)) {
     return 'deslocamento inválido'
   }
-  if (cfg.offset_minutes !== undefined && (!Number.isFinite(minutos) || minutos < 0)) {
+  if (!ausente(cfg.offset_minutes) && (!Number.isFinite(minutos) || minutos < 0)) {
     return 'deslocamento inválido'
   }
 

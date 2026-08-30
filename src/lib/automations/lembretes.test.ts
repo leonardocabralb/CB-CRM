@@ -8,6 +8,7 @@ import {
   motivoDeConfigInvalida,
 } from './lembretes';
 import { paraEntradaLocal, deEntradaLocal } from '@/lib/contacts/campo-data';
+import type { DateFieldTriggerConfig } from '@/types';
 
 // Uma quinta-feira qualquer, às 12h UTC.
 const AGORA = new Date('2026-08-06T12:00:00.000Z').getTime();
@@ -279,5 +280,36 @@ describe('⚠️ deslocamento ausente (regressão achada na revisão da 947)', (
     expect(
       motivoDeConfigInvalida({ fonte: 'reuniao', offset_minutes: 0, direction: 'antes' }),
     ).toBeNull()
+  })
+})
+
+describe('⚠️ deslocamento "limpo" — null e string vazia (952)', () => {
+  // `Number(null)` e `Number('')` são 0 — o zero disfarçado que a guarda de
+  // `undefined` deixava passar: config sem deslocamento nenhum era aceita e a
+  // janela virava [agora-1h, agora], avisando sobre reunião que JÁ começou.
+  // O 0 NUMÉRICO explícito continua válido (teste acima).
+  const solto = (cfg: Record<string, unknown>) =>
+    motivoDeConfigInvalida(cfg as DateFieldTriggerConfig)
+
+  it('os dois ausentes como null/"" são recusados, como o undefined', () => {
+    expect(
+      solto({ fonte: 'reuniao', offset_hours: null, offset_minutes: null, direction: 'antes' }),
+    ).toMatch(/deslocamento/)
+    expect(
+      solto({ fonte: 'reuniao', offset_hours: '', offset_minutes: '', direction: 'antes' }),
+    ).toMatch(/deslocamento/)
+    expect(solto({ fonte: 'reuniao', direction: 'antes' })).toMatch(/deslocamento/)
+  })
+
+  it('um null com o outro preenchido vale — null é ausência, não zero inválido', () => {
+    expect(
+      solto({ fonte: 'reuniao', offset_hours: null, offset_minutes: 30, direction: 'antes' }),
+    ).toBeNull()
+  })
+
+  it('valor não numérico continua recusado', () => {
+    expect(solto({ fonte: 'reuniao', offset_hours: 'abc', direction: 'antes' })).toMatch(
+      /inválido/,
+    )
   })
 })
