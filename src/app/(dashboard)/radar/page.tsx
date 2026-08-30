@@ -10,6 +10,9 @@
 // Princípios que a tela sustenta:
 //   - todo sinal exibe a EVIDÊNCIA (trecho da mensagem) — sinal sem
 //     evidência nem chega aqui, o parser da rubrica descarta;
+//   - SÓ ENTRA AQUI QUEM TEM GATILHO (`temGatilho`) — a tela é a lista
+//     dos problemas, não das conversas. A análise da conversa saudável
+//     continua gravada (a nota média sai dela), mas não vira trabalho;
 //   - "tratado/descartado" tira da frente sem apagar (anti fadiga de
 //     alarme; o descarte é o dado de calibração);
 //   - a pendência ("aguardando há X") é calculada AO VIVO em horas
@@ -49,15 +52,15 @@ import {
 } from '@/lib/cb-radar/horario-comercial';
 import {
   JANELA_DIAS,
+  LIMIAR_ALARME_MS,
   LIMIAR_PENDENCIA_SEG,
   ordenarPorSeveridade,
   resumirCartoes,
+  temGatilho,
   type InsightParaOrdenacao,
 } from '@/lib/cb-radar/ordenacao';
 import type { Evidencia } from '@/lib/cb-radar/rubrica';
 import { cn } from '@/lib/utils';
-
-type Aba = 'abertos' | 'todos';
 
 const MS_JANELA = JANELA_DIAS * 86_400_000;
 
@@ -84,13 +87,19 @@ interface Decorado {
 
 export default function RadarPage() {
   const t = useTranslations('Radar');
-  const { insights, carregando, falhou, estourouOTeto, ultimoCicloRadar, recarregar } =
-    useRadar();
+  const {
+    insights,
+    carregando,
+    falhou,
+    estourouOTeto,
+    ultimoCicloRadar,
+    respondidas,
+    recarregar,
+  } = useRadar();
   const { channels } = useChannels();
   const podeAgir = useCan('send-messages');
   const { ocupada, mudarEstado, reanalisar } = useAcoesDoRadar(recarregar);
   const [canalFiltro, setCanalFiltro] = useState<string | null>(null);
-  const [aba, setAba] = useState<Aba>('abertos');
   const [expandida, setExpandida] = useState<string | null>(null);
   // Relógio vivo: numa aba deixada aberta "de olho", sem o tick os
   // cartões e o "aguardando há X" congelariam no instante do último
@@ -131,8 +140,20 @@ export default function RadarPage() {
     const foraDaJanela = agora.getTime() - atividadeMs > MS_JANELA;
     if (foraDaJanela && !(i.aguardando_desde && i.estado === 'aberto')) continue;
 
-    const aguardandoSeg = i.aguardando_desde
-      ? segundosUteisEntre(new Date(i.aguardando_desde), agora)
+    // ⚠️ A pendência morre quando GENTE responde, e o painel descobre isso
+    // ao vivo (`respondidas`) — o `aguardando_desde` da linha é o retrato
+    // da última análise e só é reescrito quando o worker volta, dois
+    // atrasos depois. Sem esta linha o cartão seguia na tela contando
+    // "aguardando há 26h" sobre um cliente já atendido.
+    const pendenciaViva =
+      i.aguardando_desde && !respondidas.has(i.conversation_id)
+        ? new Date(i.aguardando_desde)
+        : null;
+    const aguardandoSeg = pendenciaViva
+      ? segundosUteisEntre(pendenciaViva, agora)
+      : null;
+    const aguardandoMsCorridos = pendenciaViva
+      ? agora.getTime() - pendenciaViva.getTime()
       : null;
     decorados.push({
       insight: i,
@@ -143,6 +164,7 @@ export default function RadarPage() {
         insatisfacao: i.insatisfacao,
         pedidosAbertos: i.pedidos_abertos,
         aguardandoSegUteis: aguardandoSeg,
+        aguardandoMsCorridos,
         nota: i.nota,
         estado: i.estado,
         ultimaAtividade: new Date(atividadeMs),
@@ -151,11 +173,18 @@ export default function RadarPage() {
     });
   }
 
+  // Os cartões-resumo leem TODOS os decorados, não só os visíveis: a nota
+  // média é da semana inteira e não pode depender de quem tem alarme.
   const cartoes = resumirCartoes(decorados.map((d) => d.ord));
   const ordenados = ordenarPorSeveridade(decorados, (d) => d.ord, agora);
-  const visiveis =
-    aba === 'abertos' ? ordenados.filter((d) => d.insight.estado === 'aberto') : ordenados;
-  const nAbertos = decorados.filter((d) => d.insight.estado === 'aberto').length;
+  // A regra da tela, em uma linha: aberto E com gatilho. Análise de
+  // conversa saudável fica no banco, fora do caminho de quem trabalha.
+  const visiveis = ordenados.filter(
+    (d) => d.insight.estado === 'aberto' && temGatilho(d.ord),
+  );
+  // Separado de `visiveis` para o vazio saber distinguir "nada analisado"
+  // de "analisado e sem problema nenhum" — dizem coisas opostas.
+  const nAnalisados = decorados.length;
 
   // Saúde do ciclo: o epoch semeado na 941 = "nunca rodou" (o agendador
   // da VPS ainda não bate na rota — o passo manual do runbook); parado
@@ -172,15 +201,39 @@ export default function RadarPage() {
   const agir = useCallback(
     async (acao: Promise<{ ok: boolean; erro?: string }>) => {
       const r = await acao;
-      if (r.ok) return;
+      if (r.ok) return true;
       const erro = r.erro ?? '?';
       toast.error(
         (MOTIVOS_DE_ERRO as readonly string[]).includes(erro)
           ? t(`erro_${erro}`)
           : t('acaoFalhou', { erro }),
       );
+      return false;
     },
     [t],
+  );
+
+  /**
+   * Tratar/descartar COM desfazer.
+   *
+   * ⚠️ Sem a aba "Todos", o cartão desaparece da tela no instante do
+   * clique — e o botão "Reabrir" vai junto. O desfazer deixou de ser
+   * cortesia e virou a única saída para o clique errado: descartar é
+   * "a IA errou aqui" e nunca reabre sozinho, então um engano esconderia
+   * o alarme para sempre.
+   */
+  const mudar = useCallback(
+    async (conversationId: string, estado: 'aberto' | 'tratado' | 'descartado') => {
+      const ok = await agir(mudarEstado(conversationId, estado));
+      if (!ok || estado === 'aberto') return;
+      toast.success(t(estado === 'tratado' ? 'tratadoOk' : 'descartadoOk'), {
+        action: {
+          label: t('desfazer'),
+          onClick: () => void agir(mudarEstado(conversationId, 'aberto')),
+        },
+      });
+    },
+    [agir, mudarEstado, t],
   );
 
   return (
@@ -265,24 +318,15 @@ export default function RadarPage() {
         </div>
       )}
 
-      <div className="flex items-center gap-1 border-b border-border">
-        {(['abertos', 'todos'] as const).map((opcao) => (
-          <button
-            key={opcao}
-            type="button"
-            onClick={() => setAba(opcao)}
-            className={cn(
-              'border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-              aba === opcao
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {opcao === 'abertos'
-              ? t('tab_abertos', { n: nAbertos })
-              : t('tab_todos', { n: decorados.length })}
-          </button>
-        ))}
+      {/* A aba "Todos" foi removida em 2026-08-30 (decisão do operador):
+          listar toda conversa analisada era o próprio ruído que o painel
+          passou a filtrar. O que ficou de fora — análise sem gatilho,
+          tratada ou descartada — segue no banco e continua alimentando os
+          cartões acima. */}
+      <div className="flex items-center justify-between border-b border-border pb-2">
+        <p className="text-sm font-medium text-foreground">
+          {t('listaTitulo', { n: visiveis.length })}
+        </p>
       </div>
 
       {carregando ? (
@@ -294,22 +338,28 @@ export default function RadarPage() {
           {/* ⚠️ A base é a lista FILTRADA (decorados), não a bruta: com o
               filtro num canal nunca analisado, a bruta dizia "tudo
               tratado" — afirmando em dia um canal que nunca rodou. */}
-          {decorados.length === 0 ? (
+          {nAnalisados === 0 ? (
             <>
               <p className="font-medium text-foreground">{t('vazioTitulo')}</p>
               <p className="mx-auto mt-2 max-w-md">{t('vazioNuncaAnalisado')}</p>
             </>
           ) : (
-            <p>{t('vazioSemAbertos')}</p>
+            <>
+              <p className="font-medium text-foreground">{t('vazioSemSinal')}</p>
+              <p className="mx-auto mt-2 max-w-md">
+                {t('vazioSemSinalDetalhe', { n: nAnalisados })}
+              </p>
+            </>
           )}
         </div>
       ) : (
         <ul className="space-y-2">
-          {visiveis.map(({ insight: i, aguardandoSeg, foraDaJanela }) => (
+          {visiveis.map(({ insight: i, aguardandoSeg, foraDaJanela, ord }) => (
             <LinhaDoRadar
               key={i.id}
               insight={i}
               aguardandoSeg={aguardandoSeg}
+              esperaEmAlarme={(ord.aguardandoMsCorridos ?? 0) >= LIMIAR_ALARME_MS}
               foraDaJanela={foraDaJanela}
               mostrarCanal={mostrarCanal}
               canais={channels}
@@ -317,7 +367,7 @@ export default function RadarPage() {
               ocupada={ocupada === i.conversation_id}
               expandida={expandida === i.id}
               aoExpandir={() => setExpandida((atual) => (atual === i.id ? null : i.id))}
-              aoMudarEstado={(estado) => agir(mudarEstado(i.conversation_id, estado))}
+              aoMudarEstado={(estado) => void mudar(i.conversation_id, estado)}
               aoReanalisar={() => agir(reanalisar(i.conversation_id))}
             />
           ))}
@@ -394,6 +444,7 @@ function CorDaNota(nota: number): string {
 function LinhaDoRadar({
   insight: i,
   aguardandoSeg,
+  esperaEmAlarme,
   foraDaJanela,
   mostrarCanal,
   canais,
@@ -407,6 +458,11 @@ function LinhaDoRadar({
   insight: InsightDaConta;
   /** Já em segundos ÚTEIS, calculado uma vez no passe decorado do pai. */
   aguardandoSeg: number | null;
+  /** A espera passou de `LIMIAR_ALARME_MS` (24h CORRIDAS) — é ela que
+   *  sustenta o cartão sozinha, então ganha destaque. Abaixo disso a
+   *  etiqueta ainda aparece, mas como contexto de um cartão que existe
+   *  por outro motivo. */
+  esperaEmAlarme: boolean;
   /** Conversa parada além da janela, viva só pela pendência aberta. */
   foraDaJanela: boolean;
   mostrarCanal: boolean;
@@ -480,7 +536,7 @@ function LinhaDoRadar({
           </Etiqueta>
         )}
         {aguardandoSeg !== null && aguardandoSeg >= LIMIAR_PENDENCIA_SEG && (
-          <Etiqueta className={COR_URGENCIA.media}>
+          <Etiqueta className={esperaEmAlarme ? COR_URGENCIA.media : undefined}>
             <Clock className="h-3 w-3" />
             {t('aguardando', { tempo: formatarDuracaoUtil(aguardandoSeg) })}
           </Etiqueta>

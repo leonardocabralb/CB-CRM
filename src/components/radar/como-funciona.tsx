@@ -23,7 +23,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { ABRE_HORA, FECHA_HORA } from '@/lib/cb-radar/horario-comercial';
-import { JANELA_DIAS, THROTTLE_MS } from '@/lib/cb-radar/ordenacao';
+import { JANELA_DIAS, LIMIAR_ALARME_MS, THROTTLE_MS } from '@/lib/cb-radar/ordenacao';
 import { TETO_MENSAGENS } from '@/lib/cb-radar/rubrica';
 import { CICLO_MINUTOS } from '@/lib/scheduled/display';
 
@@ -47,6 +47,9 @@ export function ComoFunciona() {
           </Secao>
           <Secao titulo={t('notaTitulo')}>
             <p>{t('nota', { abre: ABRE_HORA, fecha: FECHA_HORA })}</p>
+          </Secao>
+          <Secao titulo={t('alarmeTitulo')}>
+            <p>{t('alarme', { horas: Math.round(LIMIAR_ALARME_MS / 3_600_000) })}</p>
           </Secao>
           <Secao titulo={t('sinaisTitulo')}>
             <p>{t('sinais')}</p>

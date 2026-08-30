@@ -267,6 +267,47 @@ describe('interpretarAnalise', () => {
     expect(r.sinaisDescartados).toBe(3)
   })
 
+  it('insatisfação ANTIGA é descartada; recente sobrevive', () => {
+    // A janela analisada tem 7 dias: sem a régua de recência, irritação de
+    // segunda já resolvida seguia acendendo o cartão no domingo. O corte
+    // sai da ÚLTIMA linha do transcrito, não do relógio.
+    const emDia = (dia: number, hora: string): MensagemParaTranscrito => ({
+      id: `d${dia}-${hora}`,
+      senderType: dia % 2 === 0 ? 'customer' : 'agent',
+      createdAt: new Date(`2026-08-2${dia}T${hora}:00-03:00`),
+      texto: `mensagem do dia ${dia} às ${hora}`,
+    })
+    // 6 dias de conversa: a irritação está no primeiro dia, a conversa
+    // seguiu e a última linha é 5 dias depois.
+    const doisDias = montarTranscrito([
+      emDia(2, '10:00'), // a "reclamação" — 6 dias antes do fim
+      emDia(4, '10:00'),
+      emDia(8, '10:00'), // última linha do transcrito
+    ]).linhas
+
+    const antiga = interpretarAnalise(
+      { ...base, insatisfacao: true, insatisfacao_evidencias: [1] },
+      doisDias,
+    )!
+    expect(antiga.insatisfacao).toBe(false)
+    expect(antiga.insatisfacaoMotivo).toBe('')
+
+    const recente = interpretarAnalise(
+      { ...base, insatisfacao: true, insatisfacao_evidencias: [3] },
+      doisDias,
+    )!
+    expect(recente.insatisfacao).toBe(true)
+
+    // Basta UMA evidência dentro da janela — as antigas seguem exibidas
+    // como contexto da história.
+    const mista = interpretarAnalise(
+      { ...base, insatisfacao: true, insatisfacao_evidencias: [1, 3] },
+      doisDias,
+    )!
+    expect(mista.insatisfacao).toBe(true)
+    expect(mista.insatisfacaoEvidencias).toHaveLength(2)
+  })
+
   it('clampa nota fora da escala e ignora nota não numérica', () => {
     expect(interpretarAnalise({ ...base, nota: 14 }, linhas)!.nota).toBe(10)
     expect(interpretarAnalise({ ...base, nota: -2 }, linhas)!.nota).toBe(0)

@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
+  LIMIAR_ALARME_MS,
   ordenarPorSeveridade,
   pontuacaoDeSeveridade,
   resumirCartoes,
+  temGatilho,
   type InsightParaOrdenacao,
 } from './ordenacao'
 
@@ -15,6 +17,7 @@ function insight(o: Partial<InsightParaOrdenacao> = {}): InsightParaOrdenacao {
     insatisfacao: false,
     pedidosAbertos: 0,
     aguardandoSegUteis: null,
+    aguardandoMsCorridos: null,
     nota: null,
     estado: 'aberto',
     ultimaAtividade: haHoras(1),
@@ -39,15 +42,64 @@ describe('pontuacaoDeSeveridade', () => {
     )
   })
 
-  it('pendência abaixo do limiar de 30min não pontua', () => {
-    const curta = insight({ aguardandoSegUteis: 10 * 60 })
-    const acima = insight({ aguardandoSegUteis: 45 * 60 })
+  it('espera abaixo de 24h corridas não pontua; acima, sim', () => {
+    // A régua do score é a CORRIDA, a mesma do alarme — com a útil, toda
+    // conversa do dia pontuava aqui e a espera deixava de ordenar nada.
+    const curta = insight({ aguardandoMsCorridos: 20 * 3_600_000 })
+    const acima = insight({ aguardandoMsCorridos: 30 * 3_600_000 })
     expect(pontuacaoDeSeveridade(curta, AGORA)).toBe(
       pontuacaoDeSeveridade(insight(), AGORA),
     )
     expect(pontuacaoDeSeveridade(acima, AGORA)).toBeGreaterThan(
       pontuacaoDeSeveridade(curta, AGORA),
     )
+  })
+
+  it('espera mais longa pontua mais (24h < 48h < 72h)', () => {
+    const p = (h: number) =>
+      pontuacaoDeSeveridade(insight({ aguardandoMsCorridos: h * 3_600_000 }), AGORA)
+    expect(p(24)).toBeLessThan(p(48))
+    expect(p(48)).toBeLessThan(p(72))
+  })
+})
+
+describe('temGatilho — a regra de entrada no painel', () => {
+  it('conversa saudável NÃO vira cartão, mesmo analisada e com nota alta', () => {
+    // O caso que motivou a mudança: em produção, 7 dos 8 cartões abertos
+    // eram conversas nota 9–10 sem nada a tratar.
+    expect(temGatilho(insight({ nota: 10 }))).toBe(false)
+    expect(temGatilho(insight({ nota: 4 }))).toBe(false)
+  })
+
+  it('os quatro gatilhos acionáveis abrem cartão', () => {
+    expect(temGatilho(insight({ insatisfacao: true }))).toBe(true)
+    expect(temGatilho(insight({ pedidosAbertos: 1 }))).toBe(true)
+    expect(temGatilho(insight({ urgencia: 'media' }))).toBe(true)
+    expect(temGatilho(insight({ urgencia: 'alta' }))).toBe(true)
+    expect(
+      temGatilho(insight({ aguardandoMsCorridos: LIMIAR_ALARME_MS })),
+    ).toBe(true)
+  })
+
+  it('espera de 23h ainda não abre cartão; 24h abre', () => {
+    expect(temGatilho(insight({ aguardandoMsCorridos: 23 * 3_600_000 }))).toBe(false)
+    expect(temGatilho(insight({ aguardandoMsCorridos: 24 * 3_600_000 }))).toBe(true)
+  })
+
+  it('a espera some quando a equipe responde — o cartão sai junto', () => {
+    // `aguardandoMsCorridos` nulo é como a tela representa "já respondido",
+    // conferido ao vivo antes de o worker reanalisar. Se este teste cair,
+    // o cartão volta a ficar na tela contando espera de cliente atendido.
+    const esperando = insight({ aguardandoMsCorridos: 30 * 3_600_000 })
+    expect(temGatilho(esperando)).toBe(true)
+    expect(temGatilho({ ...esperando, aguardandoMsCorridos: null })).toBe(false)
+  })
+
+  it('urgência baixa e menção a processo sozinhas NÃO abrem cartão', () => {
+    // Num escritório bancário quase toda conversa cita processo: como
+    // gatilho viraria ruído universal. `mencaoProcesso` nem entra no tipo
+    // de ordenação — este teste documenta que a omissão é deliberada.
+    expect(temGatilho(insight({ urgencia: 'baixa' }))).toBe(false)
   })
 })
 
@@ -77,8 +129,8 @@ describe('resumirCartoes', () => {
       insight({ urgencia: 'alta', nota: 4 }),
       insight({ urgencia: 'media', estado: 'tratado', nota: 8 }),
       insight({ insatisfacao: true, nota: 6 }),
-      insight({ aguardandoSegUteis: 2 * 3600 }),
-      insight({ aguardandoSegUteis: 5 * 60 }), // abaixo do limiar
+      insight({ aguardandoMsCorridos: 30 * 3_600_000 }),
+      insight({ aguardandoMsCorridos: 2 * 3_600_000 }), // abaixo do alarme
     ])
     expect(r.urgencias).toBe(1)
     expect(r.insatisfacoes).toBe(1)
@@ -99,7 +151,7 @@ describe('resumirCartoes', () => {
         urgencia: 'alta',
         insatisfacao: true,
         nota: 2,
-        aguardandoSegUteis: 30 * 3600,
+        aguardandoMsCorridos: 30 * 3_600_000,
         foraDaJanela: true,
       }),
       insight({ nota: 8 }),

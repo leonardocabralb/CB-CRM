@@ -38,9 +38,24 @@ export const JANELA_DIAS = 7
  */
 export const THROTTLE_MS = CICLO_MINUTOS * 2 * 60_000
 
-/** Abaixo disso, "aguardando resposta" ainda não é pendência — meia hora
- *  útil de fila é operação normal, não sinal. */
+/** Abaixo disso a espera nem é EXIBIDA — meia hora útil de fila é
+ *  operação normal. É régua de exibição, não de alarme: o cartão que já
+ *  existe por outro motivo mostra "aguardando há 40min" como contexto. */
 export const LIMIAR_PENDENCIA_SEG = 30 * 60
+
+/**
+ * A espera que, SOZINHA, faz a conversa virar cartão: 24h CORRIDAS.
+ *
+ * ⚠️ Corridas, não úteis — decisão do operador (2026-08-30). Em horas
+ * úteis (seg–sex 08h–19h = 11h/dia) "24h" seriam dois dias e meio de
+ * calendário, e "48h" quase uma semana: o alarme dispararia tarde demais
+ * para o cliente que escreveu na sexta. A EXIBIÇÃO segue em horas úteis
+ * (`LIMIAR_PENDENCIA_SEG`), que é a régua justa com a equipe — as duas
+ * réguas convivem de propósito, cada uma respondendo a sua pergunta:
+ * "há quanto tempo o cliente espera?" (corrido) e "quanto disso foi
+ * expediente?" (útil).
+ */
+export const LIMIAR_ALARME_MS = 24 * 3_600_000
 
 const MS_72H = 72 * 3_600_000
 
@@ -51,6 +66,12 @@ export interface InsightParaOrdenacao {
   /** Segundos ÚTEIS aguardando resposta AGORA (o chamador calcula ao
    *  vivo com `segundosUteisEntre` — o valor gravado no banco envelhece). */
   aguardandoSegUteis: number | null
+  /** Milissegundos CORRIDOS da mesma espera — a régua do ALARME
+   *  (`LIMIAR_ALARME_MS`). Separada da de cima porque as duas respondem
+   *  perguntas diferentes; ver o comentário do limiar. Null quando não há
+   *  pendência viva — inclusive quando a equipe JÁ respondeu e o painel
+   *  descobriu isso ao vivo, antes de o worker reanalisar. */
+  aguardandoMsCorridos: number | null
   nota: number | null
   estado: EstadoDoInsight
   ultimaAtividade: Date | null
@@ -59,6 +80,35 @@ export interface InsightParaOrdenacao {
    *  A análise dela é congelada — por isso os cartões de urgência/
    *  insatisfação/nota a ignoram; só a pendência conta. */
   foraDaJanela?: boolean
+}
+
+/**
+ * O ALARME: esta análise merece um cartão no painel?
+ *
+ * ⚠️ É a regra que separa o Radar de um boletim de todas as conversas.
+ * Antes dela (até 2026-08-30) o painel exibia TODA análise concluída, e
+ * conversa nota 10 sem sinal nenhum entrava na fila de tratar/descartar
+ * junto com o cliente irritado — medido em produção: 7 dos 8 cartões
+ * abertos não tinham nada a tratar. O Radar existe para apontar
+ * PROBLEMA; a análise de uma conversa saudável continua sendo gravada
+ * (a nota média da semana sai dela), só não vira trabalho para ninguém.
+ *
+ * São os quatro sinais que o escritório nomeou como acionáveis. O que
+ * deliberadamente NÃO entra:
+ *   - nota baixa sozinha — é julgamento de qualidade, não pendência; o
+ *     que houver de concreto já aparece como pedido/insatisfação;
+ *   - `mencaoProcesso` sozinha — num escritório bancário quase toda
+ *     conversa cita processo. É contexto, e como alarme viraria ruído
+ *     universal (3 das 14 primeiras análises acenderiam sem motivo);
+ *   - `pontosDeAtencao` — o campo que a IA usa para resumir o CASO do
+ *     cliente ("detalhamento de dívidas bancárias"). Segue visível no
+ *     cartão expandido, nunca como motivo para abrir um.
+ */
+export function temGatilho(i: InsightParaOrdenacao): boolean {
+  if (i.insatisfacao) return true
+  if (i.pedidosAbertos > 0) return true
+  if (i.urgencia === 'alta' || i.urgencia === 'media') return true
+  return (i.aguardandoMsCorridos ?? 0) >= LIMIAR_ALARME_MS
 }
 
 export function pontuacaoDeSeveridade(i: InsightParaOrdenacao, agora: Date): number {
@@ -70,10 +120,13 @@ export function pontuacaoDeSeveridade(i: InsightParaOrdenacao, agora: Date): num
   if (i.insatisfacao) score += 40
   score += Math.min(i.pedidosAbertos, 3) * 15
 
-  const aguardando = i.aguardandoSegUteis ?? 0
-  if (aguardando >= 4 * 3600) score += 50
-  else if (aguardando >= 3600) score += 25
-  else if (aguardando >= LIMIAR_PENDENCIA_SEG) score += 10
+  // Degraus na régua CORRIDA, a mesma do alarme — com os antigos (4h/1h/
+  // 30min ÚTEIS) toda conversa do dia pontuava aqui, e a espera deixava
+  // de ordenar coisa alguma justamente quando passava a ser o gatilho.
+  const esperaMs = i.aguardandoMsCorridos ?? 0
+  if (esperaMs >= 72 * 3_600_000) score += 50
+  else if (esperaMs >= 48 * 3_600_000) score += 35
+  else if (esperaMs >= LIMIAR_ALARME_MS) score += 20
 
   if (i.nota !== null) {
     if (i.nota <= 4) score += 20
@@ -123,7 +176,7 @@ export interface CartoesDoRadar {
   urgencias: number
   /** Insatisfações ainda abertas. */
   insatisfacoes: number
-  /** Conversas abertas com cliente aguardando acima do limiar. */
+  /** Conversas abertas com cliente aguardando além de `LIMIAR_ALARME_MS`. */
   pendencias: number
   /** Média das notas da janela (todas as analisadas, tratadas ou não —
    *  a qualidade da semana não muda porque alguém clicou em "tratado"). */
@@ -145,8 +198,10 @@ export function resumirCartoes(itens: InsightParaOrdenacao[]): CartoesDoRadar {
     urgencias: naJanela.filter((i) => i.urgencia === 'alta' || i.urgencia === 'media')
       .length,
     insatisfacoes: naJanela.filter((i) => i.insatisfacao).length,
+    // O MESMO limiar da lista: contado pela régua de exibição, o cartão
+    // dizia "6 sem resposta" sobre uma lista onde nenhuma delas aparecia.
     pendencias: abertos.filter(
-      (i) => (i.aguardandoSegUteis ?? 0) >= LIMIAR_PENDENCIA_SEG,
+      (i) => (i.aguardandoMsCorridos ?? 0) >= LIMIAR_ALARME_MS,
     ).length,
     notaMedia:
       notas.length > 0
