@@ -802,7 +802,6 @@
       "selectContact": "Select a contact",
       "linkToConversation": "Link to Conversation",
       "value": "Value",
-      "currency": "Currency",
       "expectedCloseDate": "Expected Close Date",
       "stage": "Stage",
       "assignedTo": "Assigned To",
@@ -1975,7 +1974,6 @@
       "templates": "Templates",
       "quick-replies": "Quick replies",
       "fields": "Fields & tags",
-      "deals": "Deals & currency",
       "assinatura": "Message signature",
       "members": "Team members",
       "integracoes": "Integrations",
@@ -2278,18 +2276,6 @@
       "newKeyDesc": "Name it after the integration that will use it, and grant only the scopes it needs.",
       "done": "Done",
       "networkError": "Could not reach the server"
-    },
-    "deals": {
-      "title": "Deals & currency",
-      "description": "The currency used for new deals and for pipeline and dashboard totals.",
-      "defaultCurrency": "Default currency",
-      "defaultCurrencyDesc": "New deals default to this currency, and pipeline and dashboard totals are shown in it. Existing deals keep the currency they were saved with.",
-      "currencyLabel": "Currency",
-      "adminOnlyHint": "Only account admins can change the default currency.",
-      "save": "Save",
-      "saving": "Saving...",
-      "saveFailed": "Failed to save default currency",
-      "saveSuccess": "Default currency updated"
     },
     "aiConfig": {
       "title": "Agent setup",

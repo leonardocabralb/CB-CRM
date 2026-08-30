@@ -1,5 +1,4 @@
 import {
-  Coins,
   FileText,
   KeyRound,
   LayoutGrid,
@@ -32,7 +31,6 @@ export const SETTINGS_SECTIONS = [
   'templates',
   'quick-replies',
   'fields',
-  'deals',
   'assinatura',
   'members',
   'integracoes',
@@ -64,7 +62,6 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   templates: { id: 'templates', label: 'Templates', icon: FileText, group: 'workspace' },
   'quick-replies': { id: 'quick-replies', label: 'Quick replies', icon: Zap, group: 'workspace' },
   fields: { id: 'fields', label: 'Fields & tags', icon: Tags, group: 'workspace' },
-  deals: { id: 'deals', label: 'Deals & currency', icon: Coins, group: 'workspace' },
   assinatura: { id: 'assinatura', label: 'Message signature', icon: PenLine, group: 'workspace' },
   members: { id: 'members', label: 'Team members', icon: UsersRound, group: 'workspace' },
   // Integrações (CB Advogados) — chaves de IA, Google Agenda e o que

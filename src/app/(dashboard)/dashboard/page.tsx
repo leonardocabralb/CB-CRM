@@ -43,7 +43,6 @@ type RangeDays = 7 | 30 | 90
 export default function DashboardPage() {
   const t = useTranslations('Dashboard.page')
   const tCanais = useTranslations('Channels')
-  const { defaultCurrency } = useAuth()
   const [metrics, setMetrics] = useState<MetricsBundle | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(true)
 
@@ -230,7 +229,7 @@ export default function DashboardPage() {
               // que este número tem em aberto.
               accountWideNote={canalFiltro ? tCanais('channelOriginated') : undefined}
               title={t('openDealsValue')}
-              value={formatCurrency(metrics.openDealsValue, defaultCurrency)}
+              value={formatCurrency(metrics.openDealsValue)}
               icon={DollarSign}
               subtitle={t('openDeals', { count: metrics.openDealsCount })}
             />
@@ -285,7 +284,6 @@ export default function DashboardPage() {
           <PipelineDonut
             data={pipeline}
             loading={pipelineLoading}
-            currency={defaultCurrency}
           />
         </div>
       </div>

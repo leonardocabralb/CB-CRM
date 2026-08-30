@@ -40,6 +40,7 @@ import {
   camposGerais,
 } from '@/lib/contacts/campos-de-traqueamento';
 import { useAuth } from '@/hooks/use-auth';
+import { ValorInput } from '@/components/valor/valor-input';
 import { formatCurrency } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import type {
@@ -897,20 +898,18 @@ export function PainelDoContato({
                 />
 
                 <div className="flex items-center gap-2">
-                  <Input
-                    key={`valor-${dealAtivo.id}-${dealAtivo.value}-${resetNegocio}`}
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    defaultValue={dealAtivo.value || ''}
+                  {/* Sem `key` de reset aqui, ao contrário da data logo
+                      abaixo: o campo de valor é CONTROLADO por
+                      `dealAtivo.value`, então um save recusado já o devolve
+                      ao valor salvo sozinho. */}
+                  <ValorInput
+                    valor={dealAtivo.value}
                     disabled={!podeEditar || negocioOcupado}
                     aria-label={tForm('value')}
                     placeholder={tForm('value')}
-                    onBlur={(e) => {
-                      const v = parseFloat(e.target.value) || 0;
-                      if (v !== dealAtivo.value)
-                        void atualizarNegocio(dealAtivo, { value: v }, false);
-                    }}
+                    aoConfirmar={(v) =>
+                      void atualizarNegocio(dealAtivo, { value: v }, false)
+                    }
                     className="bg-card h-8 flex-1 text-sm"
                   />
                   {dealAtivo.status !== 'open' && (
@@ -948,7 +947,7 @@ export function PainelDoContato({
                   <div className="border-border space-y-2 border-t pt-2">
                     <p className="text-muted-foreground truncate text-xs">
                       {dealAtivo.title} ·{' '}
-                      {formatCurrency(dealAtivo.value, dealAtivo.currency)}
+                      {formatCurrency(dealAtivo.value)}
                     </p>
 
                     <div className="space-y-1">
@@ -1038,7 +1037,7 @@ export function PainelDoContato({
                     {deal.title}
                   </p>
                   <div className="text-muted-foreground mt-1 flex items-center justify-between text-xs">
-                    <span>{formatCurrency(deal.value, deal.currency)}</span>
+                    <span>{formatCurrency(deal.value)}</span>
                     {deal.stage && (
                       <span
                         className="rounded-full px-1.5 py-0.5 text-[10px]"
