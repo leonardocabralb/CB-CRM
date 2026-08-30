@@ -78,10 +78,17 @@ export const PERFIS_DE_FABRICA: PerfilDeFabrica[] = [
     // Mesmas telas do advogado menos as que só fazem sentido para quem
     // escreve. O que o torna somente-leitura é o `papel_base: viewer`, que a
     // RLS já respeita — não esta lista.
+    //
+    // ⚠️ `sistema: false`, ao contrário do Administrador. O operador decidiu
+    // que as telas de cada perfil são CONFIGURÁVEIS na tela (2026-08-30), e o
+    // cadeado do `sistema` impediria exatamente isso. O cadeado só se
+    // justifica no Administrador, que "vê tudo" por definição do operador e é
+    // a saída anti-auto-bloqueio — o Observador não é nenhuma das duas
+    // coisas, então travá-lo seria contradizer a decisão para proteger nada.
     nome: "Observador",
     papel_base: "viewer",
     telas: TELAS_DO_ADVOGADO.filter((t) => t !== "agendadas"),
     secoes_config: SECOES_DO_ADVOGADO,
-    sistema: true,
+    sistema: false,
   },
 ];

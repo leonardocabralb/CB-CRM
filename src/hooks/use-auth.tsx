@@ -141,6 +141,12 @@ interface AuthContextValue {
    * `podeVerTela` / `podeVerSecao` / `conversaNoEscopo` — nunca leia
    * `perfilDeAcesso.telas` direto, ou as travas (dono vê tudo, admin não
    * perde Configurações) ficam de fora.
+   *
+   * ⚠️ Durante `profileLoading` este valor é `{ papel: null, perfil: null }`,
+   * e perfil nulo significa SEM RESTRIÇÃO — ou seja, `podeVerTela` responde
+   * `true` para tudo enquanto carrega. Gate de menu/rota tem de conferir
+   * `profileLoading` ANTES de decidir (fail-closed, como o `useCan` faz),
+   * senão o item proibido pisca na tela a cada carga e some em seguida.
    */
   acesso: ContextoDeAcesso;
   /** True if `accountRole === 'owner'`. */

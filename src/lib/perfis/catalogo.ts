@@ -39,6 +39,13 @@ export type SecaoId =
   | "channels"
   | "templates"
   | "quick-replies"
+  // ⚠️ `acervo` ainda NÃO existe no settings-sections do main — está declarada
+  // à frente, como `perfis` lá embaixo. A seção chega com a branch
+  // `feat/acervo-de-midias` (em voo, migrations 953/954 JÁ APLICADAS em
+  // produção). Removê-la aqui criaria a armadilha inversa: o merge do acervo
+  // entraria sem entrada no catálogo e a seção nasceria invisível para
+  // qualquer perfil restrito. Id declarado sem seção renderizada é inofensivo
+  // — `podeVerSecao` responde true para uma seção que a tela não lista.
   | "acervo"
   | "fields"
   | "deals"

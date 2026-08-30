@@ -360,4 +360,12 @@ describe("perfis de fábrica", () => {
     expect(obs.telas).not.toContain("agendadas");
     expect(obs.papel_base).toBe("viewer");
   });
+
+  it("SÓ o Administrador é sistema — os demais são editáveis", () => {
+    // Decisão do operador: as telas de cada perfil são configuráveis. O
+    // cadeado (`sistema`) contradiria isso, e só se justifica no
+    // Administrador ("vê tudo" por definição + saída anti-auto-bloqueio).
+    const travados = PERFIS_DE_FABRICA.filter((p) => p.sistema).map((p) => p.nome);
+    expect(travados).toEqual(["Administrador"]);
+  });
 });
