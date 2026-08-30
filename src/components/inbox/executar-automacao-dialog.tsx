@@ -186,11 +186,13 @@ export function ExecutarAutomacaoDialog({
   function LinhaDeItem({
     icone,
     nome,
+    descricao,
     fora,
     onClick,
   }: {
     icone: React.ReactNode;
     nome: string;
+    descricao?: string | null;
     fora: boolean;
     onClick: () => void;
   }) {
@@ -206,11 +208,17 @@ export function ExecutarAutomacaoDialog({
           <span className="text-foreground block truncate text-sm font-medium">
             {nome}
           </span>
-          {fora && (
+          {/* Fora do escopo, o MOTIVO ocupa a linha de baixo — é a
+              informação que decide, a descrição pode esperar. */}
+          {fora ? (
             <span className="text-muted-foreground block text-xs">
               {t("foraDoCanal")}
             </span>
-          )}
+          ) : descricao ? (
+            <span className="text-muted-foreground block truncate text-xs">
+              {descricao}
+            </span>
+          ) : null}
         </span>
       </button>
     );
@@ -286,6 +294,7 @@ export function ExecutarAutomacaoDialog({
                           key={a.id}
                           icone={<Zap className="text-primary h-4 w-4 shrink-0" />}
                           nome={a.name}
+                          descricao={a.description}
                           fora={automacaoForaDoCanal(a)}
                           onClick={() =>
                             setSelecao({ tipo: "automacao", id: a.id, nome: a.name })

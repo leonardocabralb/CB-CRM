@@ -9,31 +9,61 @@
 // do painel como as outras buscas — trocar de aba não refaz query, e a
 // etiqueta da aba precisa do número antes de a aba abrir).
 //
+// Cada automação expande numa LINHA DO TEMPO (pedido do mesmo dia): o que
+// já rodou (do log), onde está parada (a espera) e o que vem depois (os
+// passos do mesmo escopo). Os rótulos vêm de `descreverPasso` via as
+// chaves `Pipelines.automacoes.resumo.*` — o mesmo contrato, e o mesmo
+// teste de paridade, da grade do funil.
+//
 // Parar é DESTRUTIVO para o fluxo do cliente (as mensagens futuras deixam
 // de sair), então cada linha confirma em dois cliques, no lugar — sem
 // dialog: o contexto todo já está na linha.
 // ============================================================
 
 import { useState } from 'react';
-import { Bot, Loader2, RefreshCw, Zap } from 'lucide-react';
+import {
+  Bot,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Circle,
+  Clock,
+  GitBranch,
+  Loader2,
+  Minus,
+  RefreshCw,
+  X,
+  Zap,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { useCan } from '@/hooks/use-can';
-import type { RoboAtivo } from '@/hooks/use-execucoes-do-contato';
-import type { EsperaAgrupada } from '@/lib/execucoes/agrupar';
+import type {
+  GrupoDeEsperas,
+  RoboAtivo,
+} from '@/hooks/use-execucoes-do-contato';
+import type { ItemDaLinha } from '@/lib/execucoes/linha-do-tempo';
 import { relativoAoInstante } from '@/lib/execucoes/tempo';
 import { TituloDeSecao } from './painel-do-contato';
 
 interface AbaAutomacoesProps {
   contactId: string;
   robos: RoboAtivo[];
-  esperas: EsperaAgrupada[];
+  esperas: GrupoDeEsperas[];
   carregou: boolean;
   erro: boolean;
   recarregar: () => void;
 }
+
+const ICONE_POR_ESTADO: Record<ItemDaLinha['estado'], typeof Check> = {
+  feito: Check,
+  pulado: Minus,
+  falhou: X,
+  futuro: Circle,
+  condicional: GitBranch,
+};
 
 export function AbaAutomacoes({
   contactId,
@@ -44,12 +74,17 @@ export function AbaAutomacoes({
   recarregar,
 }: AbaAutomacoesProps) {
   const t = useTranslations('Inbox.execucoes');
+  // Rótulo de cada passo — MESMAS chaves do resumo da grade do funil, de
+  // propósito: uma tradução por tipo de passo, cobrada por teste.
+  const tAuto = useTranslations('Pipelines.automacoes');
   const podeAgir = useCan('send-messages');
 
   /** Chave da linha aguardando o segundo clique ('robo' | automationId). */
   const [confirmando, setConfirmando] = useState<string | null>(null);
   /** Chave da linha com POST no ar — trava o botão clicado. */
   const [ocupado, setOcupado] = useState<string | null>(null);
+  /** Automação com a linha do tempo aberta. */
+  const [expandida, setExpandida] = useState<string | null>(null);
 
   async function parar(chave: string, corpo: Record<string, string>, rota: string) {
     setOcupado(chave);
@@ -125,6 +160,55 @@ export function AbaAutomacoes({
       >
         {t('parar')}
       </Button>
+    );
+  }
+
+  function rotuloDoPasso(item: ItemDaLinha): string {
+    return tAuto(`resumo.${item.chave}`, {
+      ...item.valores,
+      alvo: item.alvoSumiu ? tAuto('alvoSumiu') : (item.valores.alvo ?? ''),
+    });
+  }
+
+  function PassoDaLinha({ item }: { item: ItemDaLinha }) {
+    const Icone = ICONE_POR_ESTADO[item.estado];
+    return (
+      <div className="flex items-start gap-2">
+        <Icone
+          className={
+            item.estado === 'falhou'
+              ? 'text-destructive mt-0.5 h-3 w-3 shrink-0'
+              : item.estado === 'feito'
+                ? 'text-primary mt-0.5 h-3 w-3 shrink-0'
+                : 'text-muted-foreground mt-0.5 h-3 w-3 shrink-0'
+          }
+        />
+        <div className="min-w-0 flex-1">
+          <p
+            className={
+              item.estado === 'futuro' || item.estado === 'condicional'
+                ? 'text-muted-foreground text-xs'
+                : 'text-foreground text-xs'
+            }
+          >
+            {rotuloDoPasso(item)}
+            {item.estado === 'condicional' && (
+              <span className="text-muted-foreground/70"> · {t('dependeDaCondicao')}</span>
+            )}
+            {item.estado === 'falhou' && (
+              <span className="text-destructive"> · {t('falhou')}</span>
+            )}
+            {item.estado === 'pulado' && (
+              <span className="text-muted-foreground/70"> · {t('pulado')}</span>
+            )}
+          </p>
+          {item.detalhe && (
+            <p className="text-muted-foreground/70 truncate text-[11px]">
+              {item.detalhe}
+            </p>
+          )}
+        </div>
+      </div>
     );
   }
 
@@ -211,40 +295,89 @@ export function AbaAutomacoes({
             {t('aguardando')}
           </TituloDeSecao>
           <div className="space-y-2">
-            {esperas.map((grupo) => (
-              <div
-                key={grupo.automationId}
-                className="border-border bg-muted/40 flex items-center gap-2 rounded-md border p-2.5"
-              >
-                <Zap className="text-primary h-4 w-4 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-foreground truncate text-sm font-medium">
-                    {grupo.nome ?? t('semNome')}
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    {t('proximoPasso', {
-                      quando: relativoAoInstante(grupo.proximaEm, agora),
-                    })}
-                    {grupo.esperas > 1
-                      ? ` · ${t('passos', { n: grupo.esperas })}`
-                      : ''}
-                  </p>
+            {esperas.map((grupo) => {
+              const aberta = expandida === grupo.automationId && !!grupo.linha;
+              return (
+                <div
+                  key={grupo.automationId}
+                  className="border-border bg-muted/40 rounded-md border p-2.5"
+                >
+                  <div className="flex items-center gap-2">
+                    <Zap className="text-primary h-4 w-4 shrink-0" />
+                    <button
+                      type="button"
+                      disabled={!grupo.linha}
+                      aria-expanded={aberta}
+                      onClick={() =>
+                        setExpandida(aberta ? null : grupo.automationId)
+                      }
+                      className="flex min-w-0 flex-1 items-center gap-1 text-left disabled:cursor-default"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="text-foreground block truncate text-sm font-medium">
+                          {grupo.nome ?? t('semNome')}
+                        </span>
+                        <span className="text-muted-foreground block text-xs">
+                          {t('proximoPasso', {
+                            quando: relativoAoInstante(grupo.proximaEm, agora),
+                          })}
+                          {grupo.esperas > 1
+                            ? ` · ${t('passos', { n: grupo.esperas })}`
+                            : ''}
+                        </span>
+                      </span>
+                      {grupo.linha &&
+                        (aberta ? (
+                          <ChevronUp className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                        ) : (
+                          <ChevronDown className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                        ))}
+                    </button>
+                    <BotaoParar
+                      chave={grupo.automationId}
+                      onParar={() =>
+                        void parar(
+                          grupo.automationId,
+                          {
+                            contact_id: contactId,
+                            automation_id: grupo.automationId,
+                          },
+                          '/api/cb/execucoes/parar-automacao',
+                        )
+                      }
+                    />
+                  </div>
+
+                  {aberta && grupo.linha && (
+                    <div className="border-border mt-2 space-y-1.5 border-t pt-2">
+                      {grupo.linha.feitos.map((item) => (
+                        <PassoDaLinha key={item.id} item={item} />
+                      ))}
+
+                      {/* Onde a execução ESTÁ: parada nesta espera. */}
+                      <div className="flex items-start gap-2">
+                        <Clock className="text-primary mt-0.5 h-3 w-3 shrink-0" />
+                        <p className="text-foreground text-xs font-medium">
+                          {t('agoraAguardando', {
+                            quando: relativoAoInstante(grupo.proximaEm, agora),
+                          })}
+                        </p>
+                      </div>
+
+                      {grupo.linha.proximos.length === 0 ? (
+                        <p className="text-muted-foreground/70 pl-5 text-[11px]">
+                          {t('semPassosFuturos')}
+                        </p>
+                      ) : (
+                        grupo.linha.proximos.map((item) => (
+                          <PassoDaLinha key={item.id} item={item} />
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
-                <BotaoParar
-                  chave={grupo.automationId}
-                  onParar={() =>
-                    void parar(
-                      grupo.automationId,
-                      {
-                        contact_id: contactId,
-                        automation_id: grupo.automationId,
-                      },
-                      '/api/cb/execucoes/parar-automacao',
-                    )
-                  }
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

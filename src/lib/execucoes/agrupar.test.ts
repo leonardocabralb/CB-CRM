@@ -67,4 +67,27 @@ describe('agruparEsperas', () => {
     ])
     expect(grupos[0].nome).toBe('Cobrança')
   })
+
+  it('a referência acompanha a espera mais PRÓXIMA, não a última lida', () => {
+    const tarde: EsperaPendente = {
+      ...linha('a', '2026-09-09T12:00:00Z'),
+      next_step_position: 7,
+      log_id: 'log-tarde',
+    }
+    const cedo: EsperaPendente = {
+      ...linha('a', '2026-09-02T12:00:00Z'),
+      next_step_position: 2,
+      parent_step_id: 'cond-1',
+      branch: 'yes',
+      log_id: 'log-cedo',
+    }
+    const grupos = agruparEsperas([tarde, cedo])
+    expect(grupos[0].proximaEm).toBe('2026-09-02T12:00:00Z')
+    expect(grupos[0].referencia).toEqual({
+      next_step_position: 2,
+      parent_step_id: 'cond-1',
+      branch: 'yes',
+      log_id: 'log-cedo',
+    })
+  })
 })

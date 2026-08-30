@@ -26,6 +26,10 @@ import { useCallback, useEffect, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
 import type { EsperaAgrupada } from "@/lib/execucoes/agrupar";
+import type { LinhaDoTempo } from "@/lib/execucoes/linha-do-tempo";
+
+/** Grupo de esperas + a linha do tempo que o GET monta para a expansão. */
+export type GrupoDeEsperas = EsperaAgrupada & { linha?: LinhaDoTempo };
 
 /**
  * Evento global disparado por quem MUDA o conjunto de execuções de fora da
@@ -49,7 +53,7 @@ export interface RoboAtivo {
 
 interface Resultado {
   robos: RoboAtivo[];
-  esperas: EsperaAgrupada[];
+  esperas: GrupoDeEsperas[];
   /** true depois que AS DUAS consultas do contato atual aterrissaram. */
   carregou: boolean;
   /** true quando alguma das duas falhou — a aba avisa em vez de dizer "nada". */
@@ -61,7 +65,7 @@ interface Resultado {
 interface Dados {
   contactId: string;
   robos: RoboAtivo[];
-  esperas: EsperaAgrupada[];
+  esperas: GrupoDeEsperas[];
   erro: boolean;
 }
 
@@ -83,7 +87,7 @@ function mapearRun(linha: LinhaDeRun): RoboAtivo {
 // Identidades estáveis para o estado "ainda não carregou" — sem elas, cada
 // render de contato-sem-dados devolveria arrays novos e re-renderizaria a aba.
 const SEM_ROBOS: RoboAtivo[] = [];
-const SEM_ESPERAS: EsperaAgrupada[] = [];
+const SEM_ESPERAS: GrupoDeEsperas[] = [];
 
 export function useExecucoesDoContato(contactId: string | null): Resultado {
   const [dados, setDados] = useState<Dados | null>(null);
@@ -119,7 +123,7 @@ export function useExecucoesDoContato(contactId: string | null): Resultado {
 
       let falhou = false;
       let robos: RoboAtivo[] = SEM_ROBOS;
-      let esperas: EsperaAgrupada[] = SEM_ESPERAS;
+      let esperas: GrupoDeEsperas[] = SEM_ESPERAS;
 
       if (runsRes.error) {
         console.error("[execucoes] flow_runs:", runsRes.error.message);
@@ -130,7 +134,7 @@ export function useExecucoesDoContato(contactId: string | null): Resultado {
 
       if (esperasRes?.ok) {
         const json = (await esperasRes.json().catch(() => null)) as {
-          grupos?: EsperaAgrupada[];
+          grupos?: GrupoDeEsperas[];
         } | null;
         if (cancelado) return;
         esperas = json?.grupos ?? SEM_ESPERAS;

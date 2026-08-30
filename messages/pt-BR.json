@@ -437,6 +437,11 @@
       "tentarDeNovo": "Tentar de novo",
       "semNome": "(apagada)",
       "somenteLeitura": "Somente leitura",
+      "agoraAguardando": "Aguardando — próximo passo {quando}",
+      "dependeDaCondicao": "depende da condição",
+      "falhou": "falhou",
+      "pulado": "pulado",
+      "semPassosFuturos": "Termina depois desta espera.",
       "executar": {
         "titulo": "Executar automação",
         "buscar": "Buscar pelo nome…",

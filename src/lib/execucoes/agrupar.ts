@@ -23,6 +23,19 @@ export interface EsperaPendente {
   run_at: string
   /** Embed do PostgREST — objeto na prática, mas defenda-se das duas formas. */
   automations?: { name: string | null } | { name: string | null }[] | null
+  /** Onde a execução retoma — alimenta a linha do tempo da mini-expansão. */
+  next_step_position?: number
+  parent_step_id?: string | null
+  branch?: 'yes' | 'no' | null
+  log_id?: string | null
+}
+
+/** A espera que a linha do tempo detalha (a mais próxima de acordar). */
+export interface ReferenciaDaEspera {
+  next_step_position: number
+  parent_step_id: string | null
+  branch: 'yes' | 'no' | null
+  log_id: string | null
 }
 
 /** Uma automação com pelo menos uma espera pendente para o contato. */
@@ -34,6 +47,8 @@ export interface EsperaAgrupada {
   proximaEm: string
   /** Quantas esperas pendentes esta automação tem para o contato. */
   esperas: number
+  /** Escopo/log da espera de `proximaEm` — é ELA que a expansão conta. */
+  referencia?: ReferenciaDaEspera
 }
 
 function nomeDoEmbed(e: EsperaPendente): string | null {
@@ -41,6 +56,16 @@ function nomeDoEmbed(e: EsperaPendente): string | null {
   if (!raw) return null
   const obj = Array.isArray(raw) ? raw[0] : raw
   return obj?.name ?? null
+}
+
+function referenciaDe(e: EsperaPendente): ReferenciaDaEspera | undefined {
+  if (typeof e.next_step_position !== 'number') return undefined
+  return {
+    next_step_position: e.next_step_position,
+    parent_step_id: e.parent_step_id ?? null,
+    branch: e.branch ?? null,
+    log_id: e.log_id ?? null,
+  }
 }
 
 /**
@@ -58,12 +83,16 @@ export function agruparEsperas(linhas: EsperaPendente[]): EsperaAgrupada[] {
         nome: nomeDoEmbed(linha),
         proximaEm: linha.run_at,
         esperas: 1,
+        referencia: referenciaDe(linha),
       })
       continue
     }
     atual.esperas += 1
     if (new Date(linha.run_at).getTime() < new Date(atual.proximaEm).getTime()) {
+      // A referência anda JUNTO com a proximaEm: a expansão detalha a espera
+      // que o operador está vendo, não uma irmã de outra data.
       atual.proximaEm = linha.run_at
+      atual.referencia = referenciaDe(linha)
     }
     // O nome pode ter vindo só em parte das linhas (corrida com a exclusão).
     if (atual.nome === null) atual.nome = nomeDoEmbed(linha)

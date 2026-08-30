@@ -444,6 +444,11 @@
       "tentarDeNovo": "Try again",
       "semNome": "(deleted)",
       "somenteLeitura": "Read-only",
+      "agoraAguardando": "Waiting — next step {quando}",
+      "dependeDaCondicao": "depends on the condition",
+      "falhou": "failed",
+      "pulado": "skipped",
+      "semPassosFuturos": "Ends after this wait.",
       "executar": {
         "titulo": "Run automation",
         "buscar": "Search by name…",
