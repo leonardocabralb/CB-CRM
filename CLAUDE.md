@@ -145,7 +145,7 @@ Também são nossos: `messages/pt-BR.json`, `CLAUDE.md`, `.gitignore`,
 `src/app/api/whatsapp/evolution/`, `src/components/settings/evolution-connect.tsx`,
 `src/lib/whatsapp/inbound-store.ts`), o **multi-canal** (`src/lib/cb-channels/`,
 `src/app/api/cb/`, `src/components/settings/cb-channels-panel.tsx`), a **infra de
-deploy** (`Dockerfile`, `docker-stack.yml`, `.github/workflows/deploy.yml`,
+deploy** (`Dockerfile`, `docker-stack.yml`, `.github/workflows/pipeline.yml`,
 `docs/DEPLOY-VPS.md`) e os componentes que internacionalizamos (o upstream tem
 string literal onde nós temos `t('chave')` — ao resolver, manter a nossa forma e
 levar o texto novo dele para os **dois** dicionários).
@@ -1307,18 +1307,29 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
 ## Deploy
 
 - ⚠️⚠️ **`git push origin main` DISPARA DEPLOY DE PRODUÇÃO.** O workflow
-  `.github/workflows/deploy.yml` roda a cada push no `main`: builda a imagem,
-  publica no GHCR (`ghcr.io/leonardocabralb/cb-crm`) e faz rollout no serviço do
-  **Docker Swarm da VPS** (`82.25.76.63` / `vps.cbadvogados.com`), atrás do
-  **Traefik** (TLS Let's Encrypt). **Nunca dar push no `main` sem o operador
-  saber que aquilo vai para produção.**
+  `.github/workflows/pipeline.yml` roda a cada push no `main`: verifica
+  (lint/typecheck/test/build), replaya as migrations num banco limpo e, com as
+  duas etapas verdes, builda a imagem, publica no GHCR
+  (`ghcr.io/leonardocabralb/cb-crm`) e faz rollout no serviço do **Docker Swarm
+  da VPS** (`82.25.76.63` / `vps.cbadvogados.com`), atrás do **Traefik** (TLS
+  Let's Encrypt). O rollout é `docker service update --image <repo>:<sha>` —
+  guardar isso, é a raiz da armadilha do `CRM_IMAGE` mais abaixo. **Nunca dar
+  push no `main` sem o operador saber que aquilo vai para produção.**
+  ⚠️ Mesclar vários PRs seguidos NÃO gera um deploy por PR. O
+  `cancel-in-progress` é `false` no `main` (run EM ANDAMENTO não é
+  interrompido), mas o GitHub guarda só **um** run pendente por grupo de
+  concorrência: o do meio é cancelado ainda na FILA. Observado em 2026-08-29
+  ao mesclar #43, #45 e #46 em sequência — o run do #45 morreu na fila. O
+  resultado fica correto (o último run constrói a partir do `main` já com
+  todos), mas os merges do meio não têm run próprio, e o histórico de
+  Actions passa a mentir sobre o que foi publicado quando.
 - Domínio: `crm.cbadvogados.com`. ✅ O cutover de DNS **já foi feito** (conferido
   em 2026-07-25): `crm.cbadvogados.com` → `vps.cbadvogados.com` → `82.25.76.63`,
   respondendo 200 com TLS do Traefik. Ou seja, o domínio público serve a VPS —
   **o push no `main` atinge usuário real**, não mais um serviço isolado.
 - ⚠️ **`NEXT_PUBLIC_APP_LOCALE` é build-arg, não env de runtime.** Como todo
   `NEXT_PUBLIC_*` é inlinado no bundle **em tempo de build**, editar o `crm.env`
-  da VPS **não** muda o idioma — é preciso alterar `deploy.yml`/`docker-stack.yml`
+  da VPS **não** muda o idioma — é preciso alterar `pipeline.yml`/`docker-stack.yml`
   e **rebuildar a imagem**. Isso já mordeu: até 2026-07-25 os dois arquivos
   fixavam `en` e a produção inteira servia inglês, enquanto o dev local (que lê
   `.env.local`, com `pt-BR`) parecia certo. Ao investigar "produção está
@@ -1340,9 +1351,20 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
   ```bash
   set -a; . /root/crm.env; set +a          # sem isto, tudo vira ""
   export CRM_IMAGE="$(docker service inspect crm_crm \
-    --format '{{index .Spec.Labels "com.docker.stack.image"}}')"   # senão volta para :latest
+    --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' | cut -d@ -f1)"  # senão volta para :latest
   docker stack deploy -c /root/docker-stack.yml crm
   ```
+  ⚠️ **A imagem sai de `.Spec.TaskTemplate.ContainerSpec.Image`, NUNCA do
+  rótulo `com.docker.stack.image`.** Esse rótulo só é reescrito por
+  `docker stack deploy`; o CI publica com `docker service update --image`
+  (`pipeline.yml`), que não o toca — então ele guarda a imagem do último
+  deploy MANUAL e envelhece a cada merge. Medido em 2026-08-29, minutos
+  depois de um deploy pelo CI: o rótulo dizia `30bf0b6` (PR #37, dois dias e
+  **dez merges** atrás) enquanto o serviço rodava `823061a`. Pinar pelo
+  rótulo aqui **rola a produção para trás em silêncio** — e esta é
+  justamente a receita que se roda quando algo já está quebrado. O
+  `docs/DEPLOY-VPS.md` já usava o campo certo; era esta seção que estava
+  fora de passo.
   **Conferir DEPOIS, dentro do container** (o spec do serviço engana — mostra o
   nome da variável mesmo com valor vazio):
   ```bash
@@ -1351,7 +1373,7 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
   curl -s -o /dev/null -w '%{http_code}\n' https://crm.cbadvogados.com/api/cb/scheduled/cron
   # 401 = segredo no lugar · 503 = env vazia, produção cega
   ```
-- Arquivos: `Dockerfile`, `docker-stack.yml`, `.github/workflows/deploy.yml`,
+- Arquivos: `Dockerfile`, `docker-stack.yml`, `.github/workflows/pipeline.yml`,
   `docs/DEPLOY-VPS.md`. (Trazidos pela integração da Evolution — ver abaixo.)
 - Restrição fixa: o webhook do WhatsApp **exige HTTPS** — o endpoint precisa de
   URL pública com SSL (o Traefik resolve isso na VPS).
