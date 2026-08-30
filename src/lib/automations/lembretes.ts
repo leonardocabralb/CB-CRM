@@ -115,7 +115,9 @@ export function motivoDeConfigInvalida(cfg: DateFieldTriggerConfig): string | nu
   // aceito ("na hora da reunião" é configuração legítima). Pela tela não
   // acontece (o formulário manda 24 por padrão), mas acontece por API, por
   // importação de modelo, ou se alguém limpar os dois campos.
-  const ausente = (v: unknown) => v === undefined || v === null || v === ''
+  // `' '` incluído: `Number(' ')` também é 0 — o trim pega a família toda.
+  const ausente = (v: unknown) =>
+    v === undefined || v === null || (typeof v === 'string' && v.trim() === '')
   if (ausente(cfg.offset_hours) && ausente(cfg.offset_minutes)) {
     return 'gatilho sem deslocamento (informe horas ou minutos)'
   }

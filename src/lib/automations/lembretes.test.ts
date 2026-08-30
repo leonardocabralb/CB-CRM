@@ -299,6 +299,10 @@ describe('⚠️ deslocamento "limpo" — null e string vazia (952)', () => {
       solto({ fonte: 'reuniao', offset_hours: '', offset_minutes: '', direction: 'antes' }),
     ).toMatch(/deslocamento/)
     expect(solto({ fonte: 'reuniao', direction: 'antes' })).toMatch(/deslocamento/)
+    // `Number(' ')` também é 0 — espaço não é deslocamento.
+    expect(
+      solto({ fonte: 'reuniao', offset_hours: '  ', direction: 'antes' }),
+    ).toMatch(/deslocamento/)
   })
 
   it('um null com o outro preenchido vale — null é ausência, não zero inválido', () => {
