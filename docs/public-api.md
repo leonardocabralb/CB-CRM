@@ -227,20 +227,23 @@ lead and read it back later.
 
 ```json
 {
-  "contact_id": "…",
-  "fields": [
-    { "key": "utm_source", "name": "utm_source", "type": "text",
-      "category": "tracking", "value": "facebook" },
-    { "key": "origem_da_divida", "name": "Origem da dívida",
-      "type": "select", "category": "geral",
-      "options": ["Apenas CPF", "CPF e CNPJ"], "value": null }
-  ],
-  "values": { "utm_source": "facebook", "origem_da_divida": null }
+  "data": {
+    "contact_id": "…",
+    "fields": [
+      { "key": "utm_source", "name": "utm_source", "type": "text",
+        "category": "tracking", "value": "facebook" },
+      { "key": "origem_da_divida", "name": "Origem da dívida",
+        "type": "select", "category": "geral",
+        "options": ["Apenas CPF", "CPF e CNPJ"], "value": null }
+    ],
+    "values": { "utm_source": "facebook", "origem_da_divida": null }
+  }
 }
 ```
 
-`values` is the same data as a flat map — index it directly from an
-n8n expression. `value` is always the raw stored text (`type` tells
+(Every success response is wrapped in the `data` envelope, like the
+rest of the v1 API.) `values` is the same payload as a flat map —
+index it from an n8n expression as `data.values.utm_source`. `value` is always the raw stored text (`type` tells
 you how the dashboard renders it; `datetime` values are ISO-8601 UTC).
 An empty value is always `null` on the wire, no matter which writer
 left it empty.

@@ -235,6 +235,23 @@ export function PainelDoContato({
   }, [deals, ultimoNegocioMexido]);
 
   /**
+   * ⚠️ Etapas do DealForm MEMOIZADAS, e a identidade é o ponto: o efeito de
+   * reset do formulário tem `stages` nas dependências, e um filtro inline
+   * criava array NOVO a cada render do painel — uma nota chegando por
+   * realtime, com o Sheet aberto, re-rodava o reset e apagava o que o
+   * operador tinha digitado (título, valor, anotação). O quadro de Funis
+   * nunca sofreu disso porque passa o próprio estado, estável.
+   */
+  const stagesDoForm = useMemo(() => {
+    if (dealFormAberto === null) return [];
+    const alvo =
+      dealFormAberto === 'criar'
+        ? (dealAtivo?.pipeline_id ?? pipelines[0]?.id)
+        : dealFormAberto.pipeline_id;
+    return allStages.filter((st) => st.pipeline_id === alvo);
+  }, [dealFormAberto, dealAtivo, pipelines, allStages]);
+
+  /**
    * ⚠️ Trocar de CONTATO invalida tudo que é por-contato, NA HORA — sem
    * isto os negócios/etiquetas/valores do anterior ficavam visíveis e
    * EDITÁVEIS sob o cabeçalho do novo até o fetch resolver (salvar nessa
@@ -611,7 +628,12 @@ export function PainelDoContato({
     if (!user || !accountId || faltantes.length === 0) return;
     setSemeando(true);
     const supabase = createClient();
-    const { error } = await supabase.from('custom_fields').insert(
+    // ⚠️ `ignoreDuplicates`, não insert seco: `faltantes` é foto de quando o
+    // painel carregou, e uma chave criada nesse meio-tempo (outra aba, outro
+    // admin) fazia o 23505 derrubar o LOTE inteiro — e o retry repetia a
+    // mesma falha até recarregar. Com DO NOTHING, a repetida é pulada e as
+    // demais nascem. O alvo é o índice único da 948 (conta + chave).
+    const { error } = await supabase.from('custom_fields').upsert(
       faltantes.map((c) => ({
         field_name: c.nome,
         field_key: c.key,
@@ -619,7 +641,8 @@ export function PainelDoContato({
         categoria: 'tracking',
         user_id: user.id,
         account_id: accountId,
-      }))
+      })),
+      { onConflict: 'account_id,field_key', ignoreDuplicates: true }
     );
     setSemeando(false);
     if (error) {
@@ -627,8 +650,16 @@ export function PainelDoContato({
       return;
     }
     toast.success(tSidebar('seedDone'));
-    void fetchContactData();
-  }, [user, accountId, faltantes, fetchContactData, tSidebar]);
+    // ⚠️ Recarrega SÓ o catálogo de definições. Semear não muda VALOR nenhum,
+    // e o `fetchContactData()` completo repunha `customValues` do banco —
+    // descartando, sem aviso, um rascunho digitado e ainda não salvo na
+    // outra aba de campos.
+    const { data: defs } = await supabase
+      .from('custom_fields')
+      .select('*')
+      .order('field_name');
+    if (defs) setCustomFields(defs as CustomField[]);
+  }, [user, accountId, faltantes, tSidebar]);
 
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
@@ -1406,11 +1437,7 @@ export function PainelDoContato({
               ? (dealAtivo?.pipeline_id ?? pipelines[0]?.id ?? '')
               : dealFormAberto.pipeline_id
           }
-          stages={allStages.filter((st) =>
-            dealFormAberto === 'criar'
-              ? st.pipeline_id === (dealAtivo?.pipeline_id ?? pipelines[0]?.id)
-              : st.pipeline_id === dealFormAberto.pipeline_id
-          )}
+          stages={stagesDoForm}
           defaultContactId={contact.id}
           onSaved={() => {
             setDealFormAberto(null);

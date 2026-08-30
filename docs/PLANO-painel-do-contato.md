@@ -550,3 +550,32 @@ lista fixa de colunas (nota no CLAUDE.md — armadilha para código futuro).
   (universo fechado só na UI).
 - Fluxos e Agentes de IA/Radar: **zero ponto de contato** com o painel.
 - Broadcasts: leem campos por UUID e tratam valor como texto — intactos.
+
+## Revisão externa (Codex, 2026-08-30) — o que entrou
+
+O Codex revisou os PRs no GitHub e deixou 22 apontamentos.8 já estavam
+resolvidos (nossa própria revisão chegou antes nos mesmos pontos — inclusive
+os três P1), 1 foi recusado (rotular seeds por locale: o app é pt-BR fixo) e
+13 viraram correção no PR desta seção. Os do painel:
+
+- **`stages` do DealForm memoizado** (`stagesDoForm`): o efeito de reset do
+  formulário tem `stages` nas dependências, e o filtro inline criava array
+  novo a cada render — uma nota chegando por realtime, com o Sheet aberto,
+  apagava o que o operador digitava.
+- **Semear traqueamento** ficou tolerante a catálogo velho
+  (`upsert ignoreDuplicates` no índice da 948) e **recarrega só as
+  definições** — o `fetchContactData()` completo descartava rascunho de
+  valor ainda não salvo.
+- **`__limpar__` virou valor reservado** (`OPCAO_RESERVADA` em
+  `campo-opcoes.ts`): opção de lista homônima era intraduzível em escolha
+  (virava "limpar valor"); o editor a filtra e o leitor também.
+- **Overlay mobile virou modal de verdade**: lista + fio ficam `inert` e o
+  foco entra no painel enquanto ele cobre a tela (medido: 2 inertes com ele
+  aberto, 1 — o próprio painel — com ele fechado).
+
+Fora do painel, no mesmo PR: o leque dos lembretes (`triggerMatches` sem caso
+para `date_field_offset` rodava TODAS as automações de lembrete da conta),
+`null`/`''` como deslocamento zero, a 952 (follow-up "depois" aceita reunião
+realizada), o PATCH da agenda apagando `contato_nome` histórico, o seletor de
+cliente da agenda (trava, nome velho, busca com máscara de telefone) e o
+envelope `data` no exemplo da doc da API.

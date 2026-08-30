@@ -116,6 +116,20 @@ function InboxPageInner() {
   const ehDesktop = useMediaQuery("(min-width: 64rem)");
   const [painelMobileAberto, setPainelMobileAberto] = useState(false);
 
+  /**
+   * O overlay mobile é MODAL, e modal de verdade inclui o teclado: abrir o
+   * painel move o foco para dentro dele, e a lista + o fio ficam `inert`
+   * enquanto ele cobre a tela — sem isto, Tab passeava pelos controles do
+   * inbox escondidos atrás do backdrop antes de alcançar a ficha. Fechar
+   * devolve o foco sozinho: o painel vira `inert` e o navegador o solta.
+   * (A navegação do layout, fora desta página, fica de fora do cerco.)
+   */
+  const painelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!ehDesktop && painelMobileAberto) painelRef.current?.focus();
+  }, [ehDesktop, painelMobileAberto]);
+  const fundoInerte = !ehDesktop && painelMobileAberto;
+
   const handleToggleContactPanel = useCallback(() => {
     if (!ehDesktop) {
       setPainelMobileAberto((prev) => !prev);
@@ -717,6 +731,7 @@ function InboxPageInner() {
             "flex h-full flex-1 lg:flex-none",
             hasActiveConv ? "hidden lg:flex" : "flex",
           )}
+          inert={fundoInerte}
         >
           <ConversationList
             activeConversationId={activeConversation?.id ?? null}
@@ -743,6 +758,7 @@ function InboxPageInner() {
             "flex h-full min-w-0 flex-1 lg:flex",
             hasActiveConv ? "flex" : "hidden lg:flex",
           )}
+          inert={fundoInerte}
         >
           <MessageThread
             conversation={activeConversation}
@@ -810,6 +826,8 @@ function InboxPageInner() {
             contactPanelOpen ? "lg:w-[360px]" : "lg:w-0",
           )}
           inert={ehDesktop ? !contactPanelOpen : !painelMobileAberto}
+          ref={painelRef}
+          tabIndex={-1}
         >
           <div className="h-full w-full lg:w-[360px]">
             {activeConversation?.group_id ? (
