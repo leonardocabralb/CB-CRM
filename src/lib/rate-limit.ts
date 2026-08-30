@@ -193,6 +193,12 @@ export const RATE_LIMITS = {
    *  novo umas vezes" e barra um script com a sessão. A carga sem ping
    *  (`?ping=0`) continua no `adminAction`, porque só lê o banco. */
   integracoesPing: { limit: 6, windowMs: 60_000 },
+  /** Ações de execução na conversa (955): executar/parar automação ou robô.
+   *  Mais apertado que o `send` porque UMA execução pode desdobrar em vários
+   *  envios ao cliente (a automação manda o que quiser); mais largo que o
+   *  `integracoesPing` porque parar espera pendente é barato e às vezes se
+   *  para meia dúzia de uma vez. */
+  execucao: { limit: 30, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

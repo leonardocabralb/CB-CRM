@@ -29,8 +29,16 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * entender por que o robô calou precisa saber qual dos dois foi.
  *
  * Ambos aceitos pelo CHECK de `flow_runs.status` desde a migration 936.
+ *
+ * `stopped_by_agent` (955) é a terceira história: uma PESSOA **decidiu**
+ * parar, pelo botão da aba Automações da conversa. Não confundir com
+ * `paused_by_agent`, que é a parada IMPLÍCITA de alguém respondendo — o
+ * botão é intenção declarada, e a investigação trata as duas diferente.
  */
-export type MotivoDeParada = 'paused_by_agent' | 'stopped_by_automation'
+export type MotivoDeParada =
+  | 'paused_by_agent'
+  | 'stopped_by_automation'
+  | 'stopped_by_agent'
 
 /**
  * Encerra a run ativa do contato, se houver. Devolve quantas encerrou.

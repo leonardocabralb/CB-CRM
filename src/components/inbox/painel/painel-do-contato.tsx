@@ -27,6 +27,8 @@ import { ContactTasks } from '@/components/tasks/contact-tasks';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { DealForm } from '@/components/pipelines/deal-form';
 import { SeletorFunilEtapa } from '@/components/inbox/painel/seletor-funil-etapa';
+import { AbaAutomacoes } from '@/components/inbox/painel/aba-automacoes';
+import { useExecucoesDoContato } from '@/hooks/use-execucoes-do-contato';
 import { statusAoEntrarNaEtapa } from '@/lib/pipelines/resultado';
 import { avisarDrenagemDeFunil } from '@/lib/automations/avisar-drenagem';
 import { CampoPersonalizadoInput } from '@/components/contacts/campo-personalizado-input';
@@ -74,6 +76,7 @@ import {
   PinOff,
   Save,
   Settings2,
+  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -148,6 +151,13 @@ export function PainelDoContato({
    * aberta, e a etiqueta precisa existir antes disso.
    */
   const [tarefasAbertas, setTarefasAbertas] = useState<number | null>(null);
+  /**
+   * Execuções vivas do cliente (955): robô ativo + esperas de automação.
+   * No TOPO como as outras buscas — a etiqueta da aba precisa do número
+   * antes de a aba abrir, e trocar de aba não refaz query. O hook zera
+   * sozinho na troca de contato (mesma régua de staleness das 7 queries).
+   */
+  const execucoes = useExecucoesDoContato(contact?.id ?? null);
   /**
    * `true` só depois que as consultas POR-CONTATO do contato ATUAL
    * aterrissaram sem erro. Enquanto `false`, salvar campos e o cartão de
@@ -831,6 +841,17 @@ export function PainelDoContato({
           <AbaDeIcone value="traqueamento" label={tSidebar('tabTracking')}>
             <Megaphone className="h-4 w-4" />
           </AbaDeIcone>
+          <AbaDeIcone
+            value="automacoes"
+            label={tSidebar('tabAutomations')}
+            badge={
+              execucoes.carregou && !execucoes.erro
+                ? execucoes.robos.length + execucoes.esperas.length
+                : null
+            }
+          >
+            <Zap className="h-4 w-4" />
+          </AbaDeIcone>
           <AbaDeIcone value="historico" label={tSidebar('tabHistory')}>
             <History className="h-4 w-4" />
           </AbaDeIcone>
@@ -1395,6 +1416,24 @@ export function PainelDoContato({
               </Button>
             )}
           </div>
+        </TabsContent>
+
+        {/* ---- Automações (955) — o que está RODANDO para o cliente: robô
+             ativo e esperas futuras de automação, com o botão de parar. Os
+             dados vêm do hook no topo (etiqueta da aba precisa do número
+             antes de a aba abrir). ---- */}
+        <TabsContent
+          value="automacoes"
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          <AbaAutomacoes
+            contactId={contact.id}
+            robos={execucoes.robos}
+            esperas={execucoes.esperas}
+            carregou={execucoes.carregou}
+            erro={execucoes.erro}
+            recarregar={execucoes.recarregar}
+          />
         </TabsContent>
 
         {/* ---- Histórico de atividade (912) — o registro completo, POR

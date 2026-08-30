@@ -420,7 +420,28 @@
       "openFullDeal": "Open full deal",
       "dealSaveError": "Could not update the deal.",
       "statusOpen": "Open",
-      "dealDetails": "Deal details"
+      "dealDetails": "Deal details",
+      "tabAutomations": "Automations"
+    },
+    "execucoes": {
+      "roboAtivo": "Active bot",
+      "aguardando": "Waiting automations",
+      "iniciado": "started {quando}",
+      "proximoPasso": "next step {quando}",
+      "passos": "{n, plural, one {# pending step} other {# pending steps}}",
+      "parar": "Stop",
+      "confirmarParar": "Confirm stop",
+      "cancelar": "Cancel",
+      "nadaRodando": "Nothing running for this client.",
+      "dica": "Active bots and scheduled automation steps show up here.",
+      "roboParado": "Bot stopped.",
+      "automacaoParada": "Automation stopped for this client.",
+      "nadaParaParar": "There was nothing left to stop — it had already finished.",
+      "erroParar": "Couldn't stop it. Try again.",
+      "erroCarregar": "Couldn't load what's running for this client.",
+      "tentarDeNovo": "Try again",
+      "semNome": "(deleted)",
+      "somenteLeitura": "Read-only"
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",
