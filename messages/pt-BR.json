@@ -404,7 +404,6 @@
       "pinNote": "Fixar nota",
       "unpinNote": "Desafixar nota",
       "pinnedNote": "Fixada",
-      "pinError": "Não foi possível fixar a nota.",
       "tabTracking": "Traqueamento",
       "noTrackingFields": "Nenhum campo de traqueamento ainda.",
       "seedTrackingFields": "Criar os {count} campos padrão",
@@ -469,7 +468,13 @@
       "delete": "Excluir anotação",
       "confirmDelete": "Excluir",
       "cancelDelete": "Cancelar",
-      "deleteFailed": "Não foi possível excluir a anotação."
+      "deleteFailed": "Não foi possível excluir a anotação.",
+      "pinnedBanner": "Anotação fixada",
+      "pin": "Fixar no topo da conversa",
+      "unpin": "Desafixar anotação",
+      "expand": "Ver a anotação inteira",
+      "collapse": "Recolher anotação",
+      "pinError": "Não foi possível fixar a nota."
     },
     "scheduled": {
       "sectionTitle": "Agendadas",

@@ -7,6 +7,7 @@ import { usePresence } from "@/hooks/use-presence";
 import { useChannels } from "@/hooks/use-channels";
 import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
+import { useFixarNota } from "@/hooks/use-fixar-nota";
 import { useCan } from "@/hooks/use-can";
 import { ScheduledBar } from "./scheduled-bar";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
@@ -19,6 +20,7 @@ import {
 } from "@/lib/assinatura/assinatura";
 import { LeadEventLine } from "@/components/lead-events/lead-event-line";
 import { NoteLine } from "./note-line";
+import { NotaFixadaBar } from "./nota-fixada-bar";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
@@ -714,7 +716,25 @@ export function MessageThread({
     remover: removerNotaLocal,
     acrescentar: acrescentarNota,
     recarregar: recarregarNotas,
+    aplicarFixacao,
   } = useConversationNotes(conversationId, resyncToken);
+  const { fixarNota, fixando } = useFixarNota(aplicarFixacao);
+  /**
+   * A anotação fixada da conversa (951), que vira a faixa do topo.
+   *
+   * ⚠️ Derivada das notas que o fio JÁ carregou — nenhuma consulta nova. O
+   * preço é o teto da janela do hook: fixada mais velha que as 200 notas
+   * mais recentes não entra e a faixa some em silêncio (o mesmo teto que a
+   * aba Notas do painel tem, e a mesma família de teto-que-chega-por-
+   * crescimento de 924/929). Hoje o máximo real é 2 notas por conversa.
+   *
+   * Em conversa de GRUPO isto é sempre nulo: nota de grupo não tem contato
+   * e a rota recusa fixá-la.
+   */
+  const notaFixada = useMemo(
+    () => notas.find((n) => n.fixada_em) ?? null,
+    [notas],
+  );
   const podeAdministrar = useCan("manage-members");
   // Agendadas (925): a faixa acima do compositor e o compositor são
   // irmãos aqui, então o contador que os liga mora nesta tela mesmo.
@@ -1828,6 +1848,18 @@ export function MessageThread({
         </div>
       </div>
 
+      {/* Anotação fixada (951) — presa logo abaixo do cabeçalho, ACIMA da
+          faixa da busca: esta é permanente e a da busca é passageira, então
+          é esta que tem de ficar sempre no mesmo lugar. */}
+      {notaFixada && (
+        <NotaFixadaBar
+          key={notaFixada.id}
+          nota={notaFixada}
+          onDesafixar={() => void fixarNota(notaFixada, false)}
+          desafixando={fixando === notaFixada.id}
+        />
+      )}
+
       {/* Faixa do salto da busca.
           ⚠️ Só aparece com achado NESTE fio. Uma conversa pode ter entrado no
           resultado pelo nome do contato, sem nenhuma mensagem casando — e uma
@@ -1943,6 +1975,17 @@ export function MessageThread({
                             item.nota.author_user_id === user?.id || podeAdministrar
                           }
                           onApagar={handleApagarNota}
+                          fixada={Boolean(item.nota.fixada_em)}
+                          fixando={fixando === item.nota.id}
+                          // Nota de grupo não fixa (sem contato, fora do
+                          // índice da 951): sem `onFixar`, o alfinete nem
+                          // aparece. Fixar é de quem anota — viewer incluso,
+                          // como no painel: a rota é quem decide.
+                          onFixar={
+                            item.nota.contact_id
+                              ? (fixar) => void fixarNota(item.nota!, fixar)
+                              : undefined
+                          }
                         />
                       );
                     }

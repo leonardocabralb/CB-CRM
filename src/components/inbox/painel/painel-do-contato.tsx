@@ -20,6 +20,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useConversationNotes } from '@/hooks/use-conversation-notes';
+import { useFixarNota } from '@/hooks/use-fixar-nota';
 import { useCan } from '@/hooks/use-can';
 import { toast } from 'sonner';
 import { ActivityHistory } from '@/components/lead-events/activity-history';
@@ -47,7 +48,6 @@ import type {
   CustomField,
   Deal,
   DealStatus,
-  ConversationNote,
   PipelineStage,
   Tag,
 } from '@/types';
@@ -139,8 +139,6 @@ export function PainelDoContato({
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
-  /** Nota com PATCH de fixação no ar (id) — trava o botão clicado. */
-  const [fixando, setFixando] = useState<string | null>(null);
   /**
    * Tarefas ABERTAS deste cliente (qualquer responsável) — o número da
    * etiqueta na aba Tarefas. `null` = ainda não contado (etiqueta some).
@@ -291,6 +289,12 @@ export function PainelDoContato({
     acrescentar: acrescentarNota,
     aplicarFixacao,
   } = useConversationNotes(conversationId);
+  /**
+   * Fixar/desafixar (951). ⚠️ A ação mora no hook porque a faixa do topo do
+   * fio faz a MESMA coisa: duas cópias das guardas divergiriam, e a
+   * divergência apareceria como duas anotações fixadas na tela.
+   */
+  const { fixarNota, fixando } = useFixarNota(aplicarFixacao);
 
   // O hook devolve na ordem que o `intercalar` prefere (o fio reordena tudo).
   // Aqui a lista é lida direto, e a seção sempre mostrou a mais recente no
@@ -687,36 +691,6 @@ export function PainelDoContato({
     if (contactIdRef.current !== idPedido || error) return;
     setTarefasAbertas(count ?? 0);
   }, [contact]);
-
-  /**
-   * Fixa/desafixa pela ROTA (`PATCH /api/cb/notes/[id]`): UPDATE segue
-   * revogado no navegador (918/920), e é o índice parcial da 951 que
-   * garante "uma por cliente". A resposta traz a nota carimbada e o
-   * `aplicarFixacao` zera a anterior no estado local.
-   */
-  const fixarNota = useCallback(
-    async (nota: ConversationNote, fixar: boolean) => {
-      setFixando(nota.id);
-      try {
-        const res = await fetch(`/api/cb/notes/${nota.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fixada: fixar }),
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || !json?.note) {
-          toast.error(tSidebar('pinError'));
-          return;
-        }
-        aplicarFixacao(json.note as ConversationNote);
-      } catch {
-        toast.error(tSidebar('pinError'));
-      } finally {
-        setFixando(null);
-      }
-    },
-    [aplicarFixacao, tSidebar]
-  );
 
   if (!contact) {
     return (
