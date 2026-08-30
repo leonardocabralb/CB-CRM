@@ -51,9 +51,27 @@ export function AcervoPicker({
   const [categoria, setCategoria] = useState<string | null>(null);
 
   const categorias = useMemo(() => categoriasDe(itens), [itens]);
+
+  /**
+   * A categoria escolhida, SE ela ainda existir.
+   *
+   * ⚠️ O seletor fica montado junto com o compositor: fechar o diálogo não
+   * apaga o estado. Se o admin renomear ou apagar a categoria escolhida (ou o
+   * item que a segurava), na próxima abertura o filtro apontaria para um
+   * rótulo que sumiu — lista vazia. E as abas só aparecem com mais de uma
+   * categoria, então sobrando uma ou nenhuma o atendente ficava sem o botão
+   * "Todas" para se soltar: o acervo parecia vazio até o compositor
+   * remontar. Derivar em vez de guardar cai de volta em "todas" sozinho.
+   * (Achado pela revisão do Codex no PR #65.)
+   */
+  const categoriaAtiva = useMemo(
+    () => (categoria && categorias.includes(categoria) ? categoria : null),
+    [categoria, categorias],
+  );
+
   const lista = useMemo(
-    () => filtrarAcervo(itens, { termo, categoria }),
-    [itens, termo, categoria],
+    () => filtrarAcervo(itens, { termo, categoria: categoriaAtiva }),
+    [itens, termo, categoriaAtiva],
   );
 
   return (
@@ -87,7 +105,7 @@ export function AcervoPicker({
               onClick={() => setCategoria(null)}
               className={cn(
                 "rounded-full px-2.5 py-1 text-xs transition-colors",
-                categoria === null
+                categoriaAtiva === null
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground hover:text-foreground",
               )}
@@ -101,7 +119,7 @@ export function AcervoPicker({
                 onClick={() => setCategoria(c)}
                 className={cn(
                   "rounded-full px-2.5 py-1 text-xs transition-colors",
-                  categoria === c
+                  categoriaAtiva === c
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:text-foreground",
                 )}

@@ -354,6 +354,17 @@ entre escrever e enviar.** `src/lib/scheduled/midia.ts` (puro, com teste),
   outra. Medido na tela: descartar o rascunho apaga a CÓPIA (400) e o
   original do acervo segue de pé (200). O segundo motivo é jurídico: o que
   FOI ENVIADO não pode mudar quando alguém troca o item.
+- ⚠️⚠️ **A guarda de papel do acervo mora em DUAS camadas (954).** A rota
+  exige admin para apagar, mas as policies de Storage da 023 conferiam só o
+  primeiro segmento do caminho: qualquer membro — `viewer` incluso — podia
+  chamar `storage.remove()` do navegador e apagar o arquivo do escritório, ou
+  dar UPDATE e TROCAR o conteúdo mantendo o nome, sem nada mudar na tela. O
+  `media_path` não é segredo: a policy de SELECT da 953 o mostra a todo mundo.
+  A 954 reescreveu INSERT/UPDATE/DELETE do `chat-media` com "não está em
+  `acervo/` OU é admin". ⚠️ Usa `IS DISTINCT FROM`, e não `<>`: em anexo comum
+  a segunda pasta é NULA, e com `<>` a expressão viraria NULL, a policy
+  reprovaria e ninguém mais apagaria rascunho descartado. Quem criar outra
+  subpasta com regra própria repete o par (rota + policy).
 - ⚠️ **É o bucket `chat-media` de sempre, na subpasta `acervo/`.** As policies
   da 020/023 casam só o PRIMEIRO segmento do caminho, então aninhar é de
   graça — e a subpasta é o que permite distinguir "arquivo do escritório" de
@@ -1226,6 +1237,8 @@ mordem de novo em qualquer código novo:
     muda a assinatura e o REPLACE deixaria um overload ambíguo para o RPC.
   - **953_cb_acervo_de_midias** — acervo de mídias da conta (`cb_media_library`),
     aplicada em 2026-08-30.
+  - **954_cb_acervo_so_admin_no_storage** — a guarda de papel do acervo também
+    nas policies de Storage do `chat-media`. Aplicada em 2026-08-30.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
