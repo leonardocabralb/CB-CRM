@@ -556,11 +556,34 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   o retrato da última análise: entre a resposta do atendente e a próxima
   passada do worker somam-se o ciclo do agendador e o throttle, e até lá o
   cartão ficava na tela com o contador "aguardando há 26h" CRESCENDO sobre
-  cliente já atendido. ⚠️ **Só resposta de GENTE fecha a pendência**
-  (`sender_type='agent'` COM `sender_id`) — a mesma regra do worker: se
-  qualquer saída contasse, um "recebemos seu contato" automático apagaria
-  da tela justamente o cliente esquecido. E a conferência **falha para o
-  lado do alarme**: erro de rede ou lista truncada mantêm o cartão.
+  cliente já atendido. A conferência **falha para o lado do alarme**: erro
+  de rede ou lista truncada mantêm o cartão.
+- ⚠️⚠️ **"Resposta de gente" NÃO é `sender_id IS NOT NULL`** — é
+  `sender_id` preenchido **OU `from_device = true`**. O celular pareado
+  (`persistDeviceMessage`) grava `sender_type='agent'` com `from_device`
+  true e `sender_id` NULO: não há usuário do CRM por trás, mas há um
+  advogado digitando. Medido em produção (2026-08-30): **948** mensagens
+  da equipe são `from_device` contra **8** digitadas dentro do CRM — a
+  versão só-`sender_id` reconhecia 8 de 978 e o alarme de 24h sobrevivia
+  ao atendimento em quase todo caso real (achado da revisão do PR #72).
+  Continuam NÃO fechando a pendência: broadcast, automação, fluxo e
+  agendada, que saem sem `sender_id` **e** sem `from_device`. ⚠️ O
+  `houveHumanoNaJanela` do worker usa a régua ANTIGA (só `sender_id`) —
+  lá ela decide outra coisa (se preserva a análise congelada quando a
+  janela não tem cliente), e uma saída `from_device` sozinha realmente não
+  deveria refazer a análise. Não unificar as duas sem entender qual
+  pergunta cada uma responde.
+- ⚠️ **Análise `failed` aparece no painel INDEPENDENTE de gatilho.** A
+  linha que esgotou as 3 tentativas fica com os defaults do schema
+  (`urgencia='nenhuma'`, sem insatisfação, sem pedido): pelo filtro comum
+  ela sumiria e o vazio afirmaria "nenhum sinal aberto" sobre conversa que
+  o Radar NÃO CONSEGUIU LER, com a etiqueta de falha e o botão
+  "Reanalisar" inalcançáveis.
+- ⚠️ **O painel recarrega sozinho a cada 2 min com a aba visível.** O
+  tique de 1 min só re-renderiza (reconta a espera); quem descobre que
+  alguém respondeu é a consulta de `respondidas`. Sem a recarga, o cartão
+  de cliente já atendido por um colega ficava na tela até o operador
+  trocar de aba e voltar.
 - ⚠️ **Insatisfação exige evidência nas últimas 48h do TRANSCRITO**
   (`JANELA_INSATISFACAO_MS`, validado no parser). A janela analisada tem 7
   dias: sem isso, irritação de terça já resolvida seguia acendendo cartão

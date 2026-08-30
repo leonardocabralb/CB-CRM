@@ -106,11 +106,19 @@ const TETO_RESPOSTAS = 1000;
  * cliente que já tinha sido atendido. Uma consulta a `messages` responde
  * isso de graça e na hora.
  *
- * ⚠️ SÓ resposta de GENTE fecha a pendência (`sender_type='agent'` COM
- * `sender_id`) — a mesma regra do worker. Broadcast, automação, fluxo e
- * mensagem agendada saem com `sender_id` nulo; se qualquer saída contasse,
- * um "recebemos seu contato" automático apagaria da tela justamente o
- * cliente esquecido que o Radar existe para achar.
+ * ⚠️ SÓ resposta de GENTE fecha a pendência — mas "gente" NÃO é
+ * `sender_id IS NOT NULL`. A resposta dada pelo CELULAR PAREADO
+ * (`persistDeviceMessage`) grava `sender_type='agent'` com `from_device`
+ * true e `sender_id` NULO: não há usuário do CRM por trás, mas há um
+ * advogado digitando. Medido em produção (2026-08-30): 948 mensagens da
+ * equipe são `from_device`, contra 8 digitadas dentro do CRM — exigir
+ * `sender_id` reconheceria 8 de 978 respostas e o alarme de 24h
+ * sobreviveria ao atendimento em quase todo caso real.
+ *
+ * O que continua NÃO fechando: broadcast, automação, fluxo e agendada,
+ * que saem sem `sender_id` E sem `from_device` (22 linhas). Se qualquer
+ * saída contasse, um "recebemos seu contato" automático apagaria da tela
+ * justamente o cliente esquecido que o Radar existe para achar.
  */
 async function respostasDepoisDaPendencia(
   supabase: ReturnType<typeof createClient>,
@@ -140,7 +148,7 @@ async function respostasDepoisDaPendencia(
       comPendencia.map((i) => i.conversation_id),
     )
     .eq('sender_type', 'agent')
-    .not('sender_id', 'is', null)
+    .or('sender_id.not.is.null,from_device.is.true')
     .gte('created_at', desde)
     .order('created_at', { ascending: false })
     .limit(TETO_RESPOSTAS);
@@ -284,6 +292,22 @@ export function useRadar(): RadarDaConta {
       document.removeEventListener('visibilitychange', aoVoltar);
       window.removeEventListener('focus', aoVoltar);
     };
+  }, [buscar]);
+
+  // ⚠️ Recarga periódica com a aba VISÍVEL. O relógio da tela (tique de
+  // 1 min) só re-renderiza: ele reconta a espera, mas não descobre que
+  // alguém respondeu — isso mora em `respondidas`, que só é recalculado
+  // aqui. Sem este intervalo, o operador que deixa o Radar aberto vê o
+  // cartão de um cliente JÁ ATENDIDO por um colega ficar na tela até ele
+  // trocar de aba e voltar, contradizendo a promessa de que responder
+  // tira o cartão. Dois minutos: consulta barata, e a alternativa
+  // (assinar `messages` no realtime) custa muito mais para ganhar
+  // segundos num alarme cuja régua é de 24 horas.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') void buscar();
+    }, 120_000);
+    return () => clearInterval(id);
   }, [buscar]);
 
   const recarregar = useCallback(() => {

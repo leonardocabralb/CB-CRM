@@ -177,10 +177,22 @@ export default function RadarPage() {
   // média é da semana inteira e não pode depender de quem tem alarme.
   const cartoes = resumirCartoes(decorados.map((d) => d.ord));
   const ordenados = ordenarPorSeveridade(decorados, (d) => d.ord, agora);
-  // A regra da tela, em uma linha: aberto E com gatilho. Análise de
-  // conversa saudável fica no banco, fora do caminho de quem trabalha.
+  // A regra da tela: aberto E (com gatilho OU com a análise quebrada).
+  // Análise de conversa saudável fica no banco, fora do caminho de quem
+  // trabalha.
+  //
+  // ⚠️ `status === 'failed'` entra INDEPENDENTE de gatilho. A linha que
+  // esgotou as 3 tentativas nunca preencheu sinal nenhum — fica com os
+  // defaults do schema (`urgencia='nenhuma'`, sem insatisfação, sem
+  // pedido) —, então o filtro a esconderia e o vazio afirmaria "nenhum
+  // sinal aberto" sobre uma conversa que o Radar NÃO CONSEGUIU LER. Com
+  // ela fora da lista, a etiqueta `analiseFalhou` e o botão "Reanalisar"
+  // ficariam inalcançáveis, e a falha viraria silêncio permanente — a
+  // mesma armadilha que o hook já evita ao separar `falhou` de "vazio".
   const visiveis = ordenados.filter(
-    (d) => d.insight.estado === 'aberto' && temGatilho(d.ord),
+    (d) =>
+      d.insight.estado === 'aberto' &&
+      (temGatilho(d.ord) || d.insight.status === 'failed'),
   );
   // Separado de `visiveis` para o vazio saber distinguir "nada analisado"
   // de "analisado e sem problema nenhum" — dizem coisas opostas.
