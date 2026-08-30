@@ -1170,6 +1170,11 @@ mordem de novo em qualquer código novo:
   - **948–951** — plano do painel do contato (948 chave/tipos de campo, 949
     categoria de traqueamento, 950 etapa com resultado) e **951_cb_nota_fixada**
     (fixar anotação por cliente, 2026-08-29).
+  - **952_cb_lembrete_depois_de_realizada** — recria
+    `cb_alvos_de_lembrete_reuniao` com `p_incluir_realizadas` (follow-up
+    "depois" tem de aceitar reunião realizada) e alarga o índice parcial.
+    Aplicada em 2026-08-30. ⚠️ DROP + CREATE, não REPLACE: parâmetro novo
+    muda a assinatura e o REPLACE deixaria um overload ambíguo para o RPC.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

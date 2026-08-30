@@ -170,8 +170,16 @@ export async function PATCH(
   // ------------------------------------------------------------
   if (corpo.contact_id !== undefined) {
     if (corpo.contact_id === null) {
-      mudancas.contact_id = null;
-      mudancas.contato_nome = null;
+      // ⚠️ Só desvincula quem TEM vínculo. Contato apagado deixa a FK nula
+      // (SET NULL) e `contato_nome` de pé como registro histórico — e o
+      // formulário sempre manda `contact_id` (null incluído), então editar o
+      // TÍTULO de uma reunião dessas cairia aqui e apagaria o nome que
+      // sobreviveu à exclusão. `null` sobre `null` não é um desvínculo; é a
+      // tela ecoando o estado que carregou.
+      if (atual.contact_id !== null) {
+        mudancas.contact_id = null;
+        mudancas.contato_nome = null;
+      }
     } else if (UUID_OK(corpo.contact_id)) {
       const { data: contato } = await admin
         .from('contacts')

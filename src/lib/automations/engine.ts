@@ -81,6 +81,16 @@ export interface AutomationContext {
   from_stage_id?: string | null
   /** Status de destino, para `deal_status_changed` (`won` | `lost` | `open`). */
   to_status?: string | null
+  /**
+   * A automação EXATA que este disparo diz respeito — hoje só o lembrete por
+   * data (`date_field_offset`) o carimba. O gatilho de lembrete é o único cujo
+   * "aconteceu?" é decidido FORA do motor (a varredura pergunta ao banco quem
+   * venceu a janela DESTA automação), então o dispatch por tipo não pode
+   * abrir o leque: sem o carimbo, o alvo de um lembrete executava TODOS os
+   * lembretes da conta — o de 48h saía junto com o de 24h, e depois de novo
+   * na própria janela.
+   */
+  automation_id?: string
 }
 
 export interface DispatchInput {
@@ -1245,6 +1255,21 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
     const alvo = ctx?.to_status
     if (!Array.isArray(cfg?.statuses) || cfg.statuses.length === 0) return true
     return Boolean(alvo && cfg.statuses.includes(alvo))
+  }
+
+  // Lembrete por data (935/947): SÓ a automação carimbada no contexto.
+  //
+  // ⚠️ Fail closed, ao contrário do `return true` final. Nos outros gatilhos o
+  // contexto carrega o EVENTO (palavra, tag, etapa) e cada automação decide se
+  // ele lhe diz respeito; aqui o evento é "a janela DESTA automação venceu
+  // para este contato" — decidido pela varredura, fora do motor. Sem o caso, o
+  // dispatch por tipo abria o leque: o alvo de um lembrete executava todos os
+  // lembretes da conta (o de 48h saía junto com o de 24h, e a trava
+  // anti-repetição, que é da varredura, não via nada). Dispatch manual
+  // (`POST /api/automations/engine`) sem `automation_id` no contexto não roda
+  // lembrete nenhum — e é o certo: rodar "todos, agora" ignoraria as datas.
+  if (automation.trigger_type === 'date_field_offset') {
+    return ctx?.automation_id === automation.id
   }
 
   return true

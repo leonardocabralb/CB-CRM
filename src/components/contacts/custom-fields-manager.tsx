@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { TIPO_DATA } from '@/lib/contacts/campo-data';
 import { gerarChaveDeCampo } from '@/lib/contacts/chave-do-campo';
-import { opcoesDoCampo } from '@/lib/contacts/campo-opcoes';
+import { OPCAO_RESERVADA, opcoesDoCampo } from '@/lib/contacts/campo-opcoes';
 import { useAuth } from '@/hooks/use-auth';
 import { toast } from 'sonner';
 import type { CustomField } from '@/types';
@@ -122,7 +122,10 @@ export function CustomFieldsPanel() {
         texto
           .split(',')
           .map((o) => o.trim())
-          .filter(Boolean)
+          // `Boolean` tira o vazio; a reservada é o sentinela do item
+          // "limpar" do Select — gravá-la criaria uma opção que o contato
+          // nunca consegue escolher (a escolha viraria "limpar valor").
+          .filter((o) => Boolean(o) && o !== OPCAO_RESERVADA)
       ),
     ];
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { opcoesDoCampo } from './campo-opcoes';
+import { OPCAO_RESERVADA, opcoesDoCampo } from './campo-opcoes';
 import type { CustomField } from '@/types';
 
 function campo(field_options: unknown): CustomField {
@@ -38,6 +38,15 @@ describe('opcoesDoCampo', () => {
   it('filtra entradas que não são texto útil', () => {
     expect(
       opcoesDoCampo(campo({ opcoes: ['CPF', '', '   ', 42, null, 'CNPJ'] }))
+    ).toEqual(['CPF', 'CNPJ']);
+  });
+
+  it('filtra a opção reservada — é o sentinela do item "limpar" do Select', () => {
+    // Escolhê-la seria traduzido para "limpar valor": uma opção que o
+    // contato nunca consegue guardar. O editor recusa na gravação; aqui é
+    // a segunda metade, para dado que já esteja no banco.
+    expect(
+      opcoesDoCampo(campo({ opcoes: ['CPF', OPCAO_RESERVADA, 'CNPJ'] }))
     ).toEqual(['CPF', 'CNPJ']);
   });
 });

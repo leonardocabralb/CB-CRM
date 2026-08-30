@@ -28,10 +28,12 @@ import {
 // API v1 também a usa, e importar de um arquivo "use client" dentro de um
 // route handler vira client-reference proxy que lança em runtime (achado
 // da revisão de 2026-08-29, reproduzido no Next 16.2.12).
-import { opcoesDoCampo } from '@/lib/contacts/campo-opcoes';
+import { OPCAO_RESERVADA, opcoesDoCampo } from '@/lib/contacts/campo-opcoes';
 import type { CustomField } from '@/types';
 
-const LIMPAR = '__limpar__';
+// O sentinela mora na lib junto de `opcoesDoCampo`, que filtra opção
+// homônima — os dois lados da reserva num lugar só.
+const LIMPAR = OPCAO_RESERVADA;
 
 export function CampoPersonalizadoInput({
   field,

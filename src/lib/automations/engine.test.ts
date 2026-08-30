@@ -657,6 +657,38 @@ describe("triggerMatches — tag_added", () => {
   });
 });
 
+describe("triggerMatches — date_field_offset (952)", () => {
+  function lembrete(id: string): Automation {
+    return {
+      id,
+      account_id: ACCOUNT,
+      user_id: "u1",
+      name: "lembrete",
+      trigger_type: "date_field_offset",
+      trigger_config: { fonte: "reuniao", offset_hours: 24, direction: "antes" },
+      is_active: true,
+      execution_count: 0,
+      created_at: "",
+      updated_at: "",
+    };
+  }
+
+  it("⚠️ roda SÓ a automação carimbada no contexto", () => {
+    // O "aconteceu?" deste gatilho é decidido pela varredura, fora do motor.
+    // Sem o recorte, o alvo de um lembrete executava TODOS os lembretes da
+    // conta — o de 48h saía junto com o de 24h, fora da própria janela.
+    expect(triggerMatches(lembrete("a1"), { automation_id: "a1" })).toBe(true);
+    expect(triggerMatches(lembrete("a2"), { automation_id: "a1" })).toBe(false);
+  });
+
+  it("fail closed: sem carimbo no contexto, nada roda", () => {
+    // Inclusive o dispatch manual (POST /api/automations/engine) sem
+    // automation_id — rodar "todos, agora" ignoraria as datas.
+    expect(triggerMatches(lembrete("a1"), {})).toBe(false);
+    expect(triggerMatches(lembrete("a1"), undefined)).toBe(false);
+  });
+});
+
 describe("tag_added — conversation policy", () => {
   it("records a clear failed step when the contact has no conversation", async () => {
     h.state.owned = { id: "c1" };
