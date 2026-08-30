@@ -25,6 +25,7 @@ import {
   StickyNote,
   Clock,
   CalendarClock,
+  Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -193,6 +194,13 @@ interface MessageComposerProps {
    * AGENDADAS, logo acima, recarregar a lista.
    */
   onScheduled?: () => void;
+  /**
+   * Abre o popup "Executar automação" (955). O DIALOG mora no fio — é ele
+   * quem tem conversa/contato/canal —, o compositor só oferece o item no
+   * menu +. Ausente = item some (conversa de GRUPO: automação não roda em
+   * grupo por decisão estrutural, cb-groups/persist.ts).
+   */
+  onExecutarAutomacao?: () => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -218,6 +226,7 @@ export function MessageComposer({
   onClearReply,
   onNoteCreated,
   onScheduled,
+  onExecutarAutomacao,
 }: MessageComposerProps) {
   const t = useTranslations("Inbox.composer");
   // Namespace próprio: os textos de agendar são compartilhados com a
@@ -1272,6 +1281,14 @@ export function MessageComposer({
                 <Zap className="mr-2 h-4 w-4" />
                 {t("quickReplies")}
               </DropdownMenuItem>
+              {/* Executar automação/robô para ESTE cliente (955). Só em
+                  conversa de contato — em grupo o fio não passa o callback. */}
+              {onExecutarAutomacao && (
+                <DropdownMenuItem onClick={onExecutarAutomacao}>
+                  <Play className="mr-2 h-4 w-4" />
+                  {t("runAutomation")}
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 

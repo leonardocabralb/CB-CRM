@@ -40,7 +40,7 @@ import {
   engineSendText,
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
-import { abortActiveRunsForContact } from "./parar-run";
+import { abortActiveRunsForContact, type MotivoDeParada } from "./parar-run";
 import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
 import {
@@ -1286,6 +1286,16 @@ export async function startFlowForContact(args: {
   conversationId: string;
   flowId: string;
   channelId?: string | null;
+  /**
+   * Como registrar a run ATIVA que este start substitui (D11: o novo robô
+   * SUBSTITUI o vigente). Default: regra
+   * (`stopped_by_automation`/`replaced_by_automation`) — o chamador clássico
+   * é o passo `run_flow`. A execução manual da conversa passa gente
+   * (`stopped_by_agent`/`replaced_by_agent`): a 936 fixou que "teve gente ou
+   * foi regra?" é a pergunta da auditoria, e este parâmetro existe para a
+   * resposta não se perder.
+   */
+  substituicao?: { status: MotivoDeParada; reason: string };
 }): Promise<{ ok: boolean; detail: string; flowRunId?: string }> {
   const db = supabaseAdmin();
 
@@ -1308,8 +1318,8 @@ export async function startFlowForContact(args: {
     db,
     accountId: args.accountId,
     contactId: args.contactId,
-    status: "stopped_by_automation",
-    reason: "replaced_by_automation",
+    status: args.substituicao?.status ?? "stopped_by_automation",
+    reason: args.substituicao?.reason ?? "replaced_by_automation",
   });
 
   const resultado = await startNewRun(

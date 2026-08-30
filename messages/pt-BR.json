@@ -269,6 +269,7 @@
       "interactiveMessage": "Mensagem interativa",
       "interactiveNotOnChannel": "Mensagens interativas não são suportadas em canais por QR Code.",
       "quickReplies": "Respostas rápidas",
+      "runAutomation": "Executar automação",
       "quickRepliesEmpty": "Nenhuma resposta rápida ainda. Adicione em Configurações → Respostas rápidas.",
       "saveAsQuickReply": "Salvar como resposta rápida",
       "send": "Enviar",
@@ -434,7 +435,25 @@
       "erroCarregar": "Não deu para carregar o que está em execução para este cliente.",
       "tentarDeNovo": "Tentar de novo",
       "semNome": "(apagada)",
-      "somenteLeitura": "Somente leitura"
+      "somenteLeitura": "Somente leitura",
+      "executar": {
+        "titulo": "Executar automação",
+        "buscar": "Buscar pelo nome…",
+        "grupoAutomacoes": "Automações",
+        "grupoRobos": "Robôs",
+        "nadaDisponivel": "Nenhuma automação ou robô ativo para executar.",
+        "nadaNaBusca": "Nada casa com a busca.",
+        "erroCarregar": "Não deu para carregar a lista. Feche e tente de novo.",
+        "foraDoCanal": "Não vale para o número desta conversa.",
+        "inativa": "Foi desligada nesse meio tempo.",
+        "confirmarTexto": "Executar \"{nome}\" para {contato}?",
+        "avisoEnvio": "Isso pode enviar mensagens reais ao cliente agora.",
+        "voltar": "Voltar",
+        "executar": "Executar",
+        "roboIniciado": "Robô iniciado para este cliente.",
+        "automacaoDisparada": "Automação disparada para este cliente.",
+        "erro": "Não deu para executar. Tente de novo."
+      }
     },
     "aiBanner": {
       "pausedTitle": "O assistente de IA está pausado aqui",

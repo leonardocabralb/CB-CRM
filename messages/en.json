@@ -276,6 +276,7 @@
       "interactiveMessage": "Interactive message",
       "interactiveNotOnChannel": "Interactive messages are not supported on QR-Code channels.",
       "quickReplies": "Quick replies",
+      "runAutomation": "Run automation",
       "quickRepliesEmpty": "No quick replies yet. Add some in Settings → Quick replies.",
       "saveAsQuickReply": "Save as quick reply",
       "send": "Send",
@@ -441,7 +442,25 @@
       "erroCarregar": "Couldn't load what's running for this client.",
       "tentarDeNovo": "Try again",
       "semNome": "(deleted)",
-      "somenteLeitura": "Read-only"
+      "somenteLeitura": "Read-only",
+      "executar": {
+        "titulo": "Run automation",
+        "buscar": "Search by name…",
+        "grupoAutomacoes": "Automations",
+        "grupoRobos": "Bots",
+        "nadaDisponivel": "No active automation or bot to run.",
+        "nadaNaBusca": "Nothing matches your search.",
+        "erroCarregar": "Couldn't load the list. Close and try again.",
+        "foraDoCanal": "Not available for this conversation's number.",
+        "inativa": "It has been turned off in the meantime.",
+        "confirmarTexto": "Run \"{nome}\" for {contato}?",
+        "avisoEnvio": "This can send real messages to the client right away.",
+        "voltar": "Back",
+        "executar": "Run",
+        "roboIniciado": "Bot started for this client.",
+        "automacaoDisparada": "Automation triggered for this client.",
+        "erro": "Couldn't run it. Try again."
+      }
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",

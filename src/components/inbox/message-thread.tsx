@@ -9,6 +9,7 @@ import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useCan } from "@/hooks/use-can";
 import { ScheduledBar } from "./scheduled-bar";
+import { ExecutarAutomacaoDialog } from "./executar-automacao-dialog";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
 import {
@@ -356,6 +357,8 @@ export function MessageThread({
   );
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  /** Popup "Executar automação" (955), aberto pelo menu + do compositor. */
+  const [executarAberto, setExecutarAberto] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   // Purely visual spin state for the manual-refresh button. The actual
@@ -2091,7 +2094,23 @@ export function MessageThread({
         onClearReply={() => setReplyTo(null)}
         onNoteCreated={acrescentarNotaDaConversa}
         onScheduled={() => setAgendadasResync((n) => n + 1)}
+        onExecutarAutomacao={
+          !ehGrupo && contact ? () => setExecutarAberto(true) : undefined
+        }
       />
+
+      {/* Popup de executar automação/robô (955) — mora AQUI, e não no
+          compositor, porque é o fio que tem contato e canal resolvido.
+          Grupo fica de fora: automação não roda em grupo (906). */}
+      {!ehGrupo && contact && (
+        <ExecutarAutomacaoDialog
+          open={executarAberto}
+          onOpenChange={setExecutarAberto}
+          conversationId={conversation.id}
+          contactName={contact.name || contact.phone}
+          channelId={activeChannel?.id ?? null}
+        />
+      )}
 
       {/* Diálogo de edição. O WhatsApp só permite editar por ~15 minutos;
           passado isso o botão nem aparece, e a rota recusa mesmo assim. */}
