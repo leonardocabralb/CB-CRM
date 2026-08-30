@@ -2872,7 +2872,7 @@
     "cancel": "Cancel",
     "save": "Save",
     "saveOk": "Profile saved",
-    "saveOkComMembros": "Profile saved — the role of {count} {count, plural, =1 {member was updated} other {members was updated}}",
+    "saveOkComMembros": "Profile saved — {count} {count, plural, =1 {member had their role updated} other {members had their role updated}}",
     "saveError": "Could not save the profile",
     "deleteTitle": "Delete the profile \"{nome}\"?",
     "deleteBody": "Only a profile with no members can be deleted. If people are on it, move them to another profile first.",

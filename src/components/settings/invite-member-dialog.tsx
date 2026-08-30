@@ -88,6 +88,10 @@ export function InviteMemberDialog({
     (PerfilParaResumo & { id: string })[]
   >([]);
   const [perfilId, setPerfilId] = useState<string>('');
+  // Achado de revisão: sem este sinalizador, um clique rápido em "Gerar
+  // link" ANTES de a busca dos perfis voltar cairia no ramo legado e criaria
+  // o convite SEM perfil, em silêncio — o convidado chegaria vendo tudo.
+  const [perfisCarregados, setPerfisCarregados] = useState(false);
   const [expiry, setExpiry] = useState<string>('7');
   const [label, setLabel] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -102,7 +106,9 @@ export function InviteMemberDialog({
         .select('id, nome, papel_base, telas, channel_ids, pipeline_ids')
         .order('sistema', { ascending: false })
         .order('nome');
-      if (cancelado || !data) return;
+      if (cancelado) return;
+      setPerfisCarregados(true);
+      if (!data) return;
       setPerfis(data as (PerfilParaResumo & { id: string })[]);
       // Pré-seleciona o primeiro perfil que NÃO é de admin: o convite típico
       // é para a equipe, e nascer com "Administrador" marcado transformaria
@@ -125,6 +131,7 @@ export function InviteMemberDialog({
     setLabel('');
     setResult(null);
     setSubmitting(false);
+    setPerfisCarregados(false);
   }
 
   async function handleCreate() {
@@ -409,7 +416,7 @@ export function InviteMemberDialog({
               </Button>
               <Button
                 onClick={handleCreate}
-                disabled={submitting}
+                disabled={submitting || !perfisCarregados}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 {submitting ? (

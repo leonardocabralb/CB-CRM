@@ -2872,7 +2872,7 @@
     "cancel": "Cancelar",
     "save": "Salvar",
     "saveOk": "Perfil salvo",
-    "saveOkComMembros": "Perfil salvo — o papel de {count} {count, plural, =1 {membro foi atualizado} other {membros foi atualizado}}",
+    "saveOkComMembros": "Perfil salvo — {count} {count, plural, =1 {membro teve o papel atualizado} other {membros tiveram o papel atualizado}}",
     "saveError": "Não foi possível salvar o perfil",
     "deleteTitle": "Apagar o perfil \"{nome}\"?",
     "deleteBody": "Só é possível apagar um perfil sem membros. Se houver gente nele, mova as pessoas para outro perfil antes.",
