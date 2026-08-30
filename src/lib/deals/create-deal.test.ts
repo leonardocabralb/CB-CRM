@@ -187,7 +187,10 @@ describe('createDeal', () => {
     expect(inserts[0]).toHaveProperty('conversation_id', null);
   });
 
-  it('cai em USD quando a conta não tem moeda configurada', async () => {
+  it('grava sempre em real, sem consultar a moeda da conta', async () => {
+    // `account: null` é o ponto: a moeda deixou de sair de
+    // `accounts.default_currency` — e com ela saiu um round-trip de TODA
+    // criação automática de negócio (ingestão, automação, API v1).
     const { db, inserts } = makeDb({
       pipeline: { id: 'funil-1' },
       firstStage: { id: 'etapa-zero' },
@@ -196,7 +199,7 @@ describe('createDeal', () => {
 
     await createDeal({ db, ...BASE });
 
-    expect(inserts[0]).toMatchObject({ currency: 'USD' });
+    expect(inserts[0]).toMatchObject({ currency: 'BRL' });
   });
 
   it('colisão do índice único vira sucesso idempotente, não erro', async () => {

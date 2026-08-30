@@ -12,7 +12,6 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
-import { DEFAULT_CURRENCY } from "@/lib/currency";
 import {
   canEditSettings as canEditSettingsFor,
   canManageMembers as canManageMembersFor,
@@ -40,9 +39,11 @@ interface Profile {
 interface AccountSummary {
   id: string;
   name: string;
-  /** Default deal currency (ISO-4217). NOT NULL DEFAULT 'USD' in the
-   *  DB (migration 021); narrowed to DEFAULT_CURRENCY when absent. */
-  default_currency: string;
+  // `default_currency` (migration 021) NÃO vem para o cliente: o CB
+  // Advogados fixou o real, os seletores de moeda saíram da interface e
+  // `formatCurrency` não recebe mais moeda nenhuma. A coluna continua no
+  // banco; carregá-la aqui só sugeriria uma escolha que não existe.
+
   /**
    * Assinatura ligada (migration 923). Vem para o cliente por UM motivo:
    * a bolha otimista precisa nascer assinada. O compositor desenha a
@@ -121,12 +122,8 @@ interface AuthContextValue {
   accountId: string | null;
   /** Role within that account. Null while loading. */
   accountRole: AccountRole | null;
-  /** Lightweight account meta — id + name + default_currency. Null while loading. */
+  /** Lightweight account meta — id + name + assinatura. Null while loading. */
   account: AccountSummary | null;
-  /** Account default deal currency. Falls back to DEFAULT_CURRENCY
-   *  while loading or when no account is resolved, so callers can use
-   *  it unconditionally. */
-  defaultCurrency: string;
   /** Assinatura ligada — só para a bolha otimista nascer certa. */
   assinaturaAtiva: boolean;
   /** True if `accountRole === 'owner'`. */
@@ -250,9 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (data.account_id) {
           const { data: account, error: accountErr } = await supabase
             .from("accounts")
-            // default_currency added in migration 021; narrowed to the
-            // USD fallback below for older schemas where it reads null.
-            .select("id, name, default_currency, assinatura_ativa")
+            .select("id, name, assinatura_ativa")
             .eq("id", data.account_id)
             .maybeSingle();
           if (accountErr) {
@@ -266,7 +261,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             accountRow = {
               id: account.id,
               name: account.name,
-              default_currency: account.default_currency ?? DEFAULT_CURRENCY,
               assinatura_ativa: Boolean(account.assinatura_ativa),
             };
           }
@@ -449,7 +443,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         refreshProfile,
         account,
-        defaultCurrency: account?.default_currency ?? DEFAULT_CURRENCY,
         assinaturaAtiva: account?.assinatura_ativa ?? false,
         accountStatus,
         accountStatusDetail: statusDetail,
@@ -482,7 +475,6 @@ export function useAuth(): AuthContextValue {
       },
       refreshProfile: async () => {},
       account: null,
-      defaultCurrency: DEFAULT_CURRENCY,
       // Fecha em falso como todo o resto do fallback: sem provider a bolha
       // nasce sem assinatura, e o servidor decide.
       assinaturaAtiva: false,

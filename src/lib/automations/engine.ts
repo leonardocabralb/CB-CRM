@@ -725,11 +725,10 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'create_deal': {
       const cfg = step.step_config as CreateDealStepConfig
       if (!cfg.pipeline_id || !cfg.stage_id) throw new Error('create_deal needs pipeline + stage')
-      // Match the account's configured default currency rather than
-      // the static `deals.currency` DB default — keeps automation-
-      // created deals consistent with the one-currency-per-account
-      // rule (issue #218). Fall back to USD if the row is somehow
-      // missing the value (pre-021 forks).
+      // A moeda não é decidida aqui: `createDeal` grava real, sempre. (Isto
+      // já descreveu uma leitura de `accounts.default_currency` com queda
+      // para USD — o modelo de uma-moeda-por-conta do upstream, issue #218.
+      // O CB Advogados fixou o real e os seletores saíram da interface.)
       if (!args.contactId) throw new Error('create_deal needs a contact')
 
       // ⚠️ Um card por contato, checado AQUI porque o banco não cobre este

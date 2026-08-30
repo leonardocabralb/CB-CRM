@@ -1,103 +1,86 @@
 /**
- * Currency — single source of truth for deal-value formatting and
- * the currency picker options.
+ * Dinheiro — fonte única do formato de valor de negócio.
  *
- * Before this module, ~6 components each defined their own
- * `Intl.NumberFormat(..., { currency: "USD" })` helper with USD
- * baked in. The default currency is now configurable per account
- * (accounts.default_currency, migration 021), so every formatter
- * takes a currency and falls back to DEFAULT_CURRENCY only when
- * nothing is known.
- */
-
-/** App-wide fallback when no account/deal currency is available. */
-export const DEFAULT_CURRENCY = "USD";
-
-export interface CurrencyOption {
-  /** ISO-4217 code, e.g. "USD". Stored verbatim in the DB. */
-  code: string;
-  /** Human label for the dropdown, e.g. "US Dollar". */
-  label: string;
-  /** Symbol for compact display, e.g. "$". */
-  symbol: string;
-}
-
-/**
- * The currencies offered in pickers. Codes must be valid ISO-4217 so
- * `Intl.NumberFormat` renders the right symbol/grouping. Extend this
- * list to offer more — nothing else needs to change.
- */
-export const CURRENCIES: CurrencyOption[] = [
-  { code: "USD", label: "US Dollar", symbol: "$" },
-  { code: "EUR", label: "Euro", symbol: "€" },
-  { code: "GBP", label: "British Pound", symbol: "£" },
-  { code: "INR", label: "Indian Rupee", symbol: "₹" },
-  { code: "AUD", label: "Australian Dollar", symbol: "A$" },
-  { code: "CAD", label: "Canadian Dollar", symbol: "C$" },
-  { code: "BRL", label: "Brazilian Real", symbol: "R$" },
-  { code: "JPY", label: "Japanese Yen", symbol: "¥" },
-  { code: "CNY", label: "Chinese Yuan", symbol: "¥" },
-  { code: "AED", label: "UAE Dirham", symbol: "د.إ" },
-  { code: "ZAR", label: "South African Rand", symbol: "R" },
-  { code: "NGN", label: "Nigerian Naira", symbol: "₦" },
-  { code: "SGD", label: "Singapore Dollar", symbol: "S$" },
-  { code: "MXN", label: "Mexican Peso", symbol: "$" },
-  { code: "COP", label: "Colombian Peso", symbol: "$" },
-];
-
-/**
- * Format a deal value as a currency string. Whole-number output
- * (no minor units) — deal values are tracked to the dollar across
- * the app. `currency` defaults to USD so callers with nothing better
- * stay safe, but pass the account/deal currency wherever known.
+ * ⚠️ FIXADO EM REAL (pt-BR / BRL) por decisão do operador em 2026-08-30.
+ * O upstream trata moeda como configurável (`accounts.default_currency`,
+ * migration 021, e `deals.currency` por negócio); no CB Advogados só existe
+ * uma moeda, então os dois seletores foram REMOVIDOS da interface e a
+ * formatação ignora as duas colunas. Elas continuam no banco, intocadas —
+ * apagá-las custaria migration e não devolve nada.
  *
- * Total by design: `Intl.NumberFormat` throws a RangeError on a
- * structurally invalid currency code, and `deals.currency` carries
- * NO DB CHECK (only `accounts.default_currency` does), so legacy
- * rows, imports, or hand-edited data can hold malformed values like
- * "United States". We never let that crash a render — on a bad code
- * we fall back to "CODE 1,234".
+ * Consequência prática: negócio antigo gravado com `currency = 'USD'` (o
+ * padrão que vinha do upstream) passa a ser LIDO como real. É o desejado —
+ * ninguém aqui fecha contrato em dólar, e o número gravado sempre foi
+ * pensado em reais.
+ *
+ * ⚠️ O separador entre `R$` e o número é NBSP (U+00A0), não espaço comum —
+ * é o que o ICU produz em pt-BR, e é bom que seja: evita `R$` órfão no fim
+ * da linha num card estreito. Quem for comparar essa saída com string
+ * literal (teste, busca, snapshot) precisa escrever ` `.
  */
-export function formatCurrency(
-  value: number,
-  currency: string = DEFAULT_CURRENCY,
-): string {
-  const code = (currency || DEFAULT_CURRENCY).trim();
-  const amount = Number(value) || 0;
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: code,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    // Invalid ISO code — show the raw code + grouped number so the
-    // value is still legible instead of throwing.
-    return `${code} ${new Intl.NumberFormat(undefined, {
-      maximumFractionDigits: 0,
-    }).format(amount)}`;
-  }
+
+/**
+ * ISO-4217 gravado em negócio novo. Continua exportado porque
+ * `deals.currency` é NOT NULL e segue sendo preenchido na escrita — só não é
+ * mais lido na exibição.
+ */
+export const DEFAULT_CURRENCY = 'BRL';
+
+/**
+ * As instâncias são criadas UMA vez no módulo, não por chamada.
+ * `Intl.NumberFormat` é caro de construir e o Kanban formata um valor por
+ * card — com centenas de cards em tela, construir por chamada aparece no
+ * perfil.
+ */
+const FORMATO = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const FORMATO_CURTO = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+  notation: 'compact',
+  // ⚠️ `minimumFractionDigits: 0` é OBRIGATÓRIO aqui, não enfeite. Sem ele o
+  // mínimo é herdado da moeda (2 casas do real), fica maior que o máximo
+  // pedido, e cada versão do V8 resolve esse conflito de um jeito: o CI
+  // (Node 20) devolvia `R$ 900,0` onde a máquina de desenvolvimento
+  // (Node 24) devolvia `R$ 900`. Medido nas duas. Declarado, as duas
+  // concordam.
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 1,
+});
+
+/**
+ * Valor de negócio por extenso: `R$ 40.000,00`.
+ *
+ * Sempre com centavos e com ponto de milhar. Total por construção — `null`,
+ * `undefined` e `NaN` viram `R$ 0,00` em vez de quebrar o render.
+ */
+export function formatCurrency(value: number | null | undefined): string {
+  return FORMATO.format(Number(value) || 0);
 }
 
 /**
- * Compact currency for tight spaces (donut center, legend rows):
- * "$1.2M" / "€34.5k" / "₹900". Uses the currency's symbol from
- * CURRENCIES, falling back to the code when we don't carry a symbol.
+ * Valor compacto para espaço apertado (centro do donut, linha de legenda):
+ * `R$ 128,5 mil`, `R$ 2,5 mi`, `R$ 900`.
+ *
+ * Os sufixos vêm do próprio ICU em pt-BR — escrevê-los à mão daria "128.5k"
+ * no meio de uma tela em português.
  */
-export function formatCurrencyShort(
-  value: number,
-  currency: string = DEFAULT_CURRENCY,
-): string {
-  const code = currency || DEFAULT_CURRENCY;
-  const symbol = CURRENCIES.find((c) => c.code === code)?.symbol ?? `${code} `;
-  return `${symbol}${formatCompactNumber(value)}`;
+export function formatCurrencyShort(value: number | null | undefined): string {
+  return FORMATO_CURTO.format(Number(value) || 0);
 }
 
 /**
- * Compact number for tight spaces (chart tiles, legends): 1_234 → "1.2k",
- * 1_200_000 → "1.2M", 900 → "900". The unit-less core shared with
- * {@link formatCurrencyShort}.
+ * Número compacto SEM moeda: 1_234 → "1.2k", 1_200_000 → "1.2M", 900 → "900".
+ *
+ * ⚠️ Não é dinheiro e não segue o formato acima de propósito: o único
+ * consumidor é a contagem de TOKENS de IA (`ai-usage.tsx`), onde "1.2k" é a
+ * notação da própria indústria e aparece ao lado de nomes de modelo em
+ * inglês. Trocar para "1,2 mil" ali seria localizar um número técnico.
  */
 export function formatCompactNumber(value: number): string {
   const v = Number(value || 0);

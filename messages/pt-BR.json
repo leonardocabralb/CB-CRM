@@ -811,7 +811,6 @@
       "selectContact": "Selecione um contato",
       "linkToConversation": "Vincular à conversa",
       "value": "Valor",
-      "currency": "Moeda",
       "expectedCloseDate": "Data prevista de fechamento",
       "stage": "Etapa",
       "assignedTo": "Atribuído a",
@@ -1984,7 +1983,6 @@
       "templates": "Modelos",
       "quick-replies": "Respostas rápidas",
       "fields": "Campos e etiquetas",
-      "deals": "Negócios e moeda",
       "assinatura": "Assinatura",
       "members": "Membros da equipe",
       "integracoes": "Integrações",
@@ -2288,18 +2286,6 @@
       "newKeyDesc": "Dê à chave o nome da integração que vai usá-la e conceda apenas os escopos necessários.",
       "done": "Concluído",
       "networkError": "Não foi possível conectar ao servidor"
-    },
-    "deals": {
-      "title": "Negócios e moeda",
-      "description": "Moeda usada em novos negócios e nos totais do funil e do painel.",
-      "defaultCurrency": "Moeda padrão",
-      "defaultCurrencyDesc": "Novos negócios usam esta moeda por padrão, e os totais do funil e do painel são exibidos nela. Negócios existentes mantêm a moeda com que foram salvos.",
-      "currencyLabel": "Moeda",
-      "adminOnlyHint": "Somente administradores da conta podem alterar a moeda padrão.",
-      "save": "Salvar",
-      "saving": "Salvando...",
-      "saveFailed": "Falha ao salvar a moeda padrão",
-      "saveSuccess": "Moeda padrão atualizada"
     },
     "aiConfig": {
       "title": "Configuração do agente de IA",
