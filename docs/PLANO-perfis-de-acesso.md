@@ -1,9 +1,9 @@
 # Perfis de acesso — plano e estado da implementação
 
-> Estado: **Fase 1 concluída** (migrations 956, 957 e 958 aplicadas em
-> produção em 2026-08-30; PR da fundação aberto e revisado — Codex + revisões
-> quente/fria, achados incorporados). Fases 2 a 6 pendentes. Decisões travadas
-> com o operador em 2026-08-30. Atualizar este arquivo a cada fase concluída.
+> Estado: **Fases 1 e 2 concluídas** (migrations 956–958 aplicadas em
+> produção em 2026-08-30; ambas no PR #69, revisadas — Codex + quente/fria —
+> e verificadas no preview com dois usuários reais). Fases 3 a 6 pendentes.
+> Decisões travadas com o operador em 2026-08-30. Atualizar a cada fase.
 
 ## O que é
 
@@ -212,7 +212,23 @@ Cada fase é um PR próprio, mergeável sozinho, sem quebrar a anterior.
   confere `profileLoading` ANTES (fail-closed, como o `useCan`).
 - **Nada muda na tela.** Todo mundo com `perfil_id NULL` continua vendo tudo.
 
-### Fase 2 — Menu e rotas
+### Fase 2 — Menu e rotas ✅ (2026-08-30)
+
+Entregue como desenhado, com dois desvios que valem registro:
+
+- **A guarda de tela é UMA, no `DashboardShell`** (`telaDoCaminho` +
+  `podeVerTela` + `<TelaBloqueada>`), não uma por page.tsx — rota nova cai na
+  guarda de graça. E o shell passou a segurar o spinner até `profileLoading`
+  resolver, matando o flash de menu nos dois sentidos.
+- ⚠️ **`automations/events/drain` FICOU em `agent`**, contrariando o review do
+  Codex — a auditoria dos chamadores reais mostrou que drenar a fila é ação de
+  QUALQUER operador movendo card (avisar-drenagem.ts); com `admin` ali, a
+  automação de funil do agent esperaria o cron de 15 min. Exceção documentada
+  na rota e em `canManageAutomations` (roles.ts), o predicado novo que gateia
+  servidor E botões das 4 telas. `guarda-de-papel.test.ts` fixa `admin` no
+  broadcast contra merge do upstream.
+
+### Fase 2 — plano original (histórico)
 
 - `sidebar.tsx` filtra itens por `podeVerTela`.
 - Guarda em cada página restrita, com a tela amigável ("Esta área não faz parte
