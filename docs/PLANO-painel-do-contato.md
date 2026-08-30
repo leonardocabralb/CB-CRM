@@ -553,7 +553,7 @@ lista fixa de colunas (nota no CLAUDE.md — armadilha para código futuro).
 
 ## Revisão externa (Codex, 2026-08-30) — o que entrou
 
-O Codex revisou os PRs no GitHub e deixou 22 apontamentos.8 já estavam
+O Codex revisou os PRs no GitHub e deixou 22 apontamentos. 8 já estavam
 resolvidos (nossa própria revisão chegou antes nos mesmos pontos — inclusive
 os três P1), 1 foi recusado (rotular seeds por locale: o app é pt-BR fixo) e
 13 viraram correção no PR desta seção. Os do painel:
