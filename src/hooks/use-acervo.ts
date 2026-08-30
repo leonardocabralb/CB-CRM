@@ -27,6 +27,15 @@ export function useAcervo(ativo = true) {
   const [itens, setItens] = useState<MediaLibraryItem[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [falhou, setFalhou] = useState(false);
+  /**
+   * ⚠️ Existe porque `carregando` nasce FALSO e o efeito que busca é PASSIVO:
+   * no primeiro render a tela teria lista vazia sem estar carregando, e
+   * mostraria "o acervo está vazio" — uma frase errada — antes de qualquer
+   * consulta sair. Com o seletor do compositor é pior: ele abre e fecha, e o
+   * operador leria "vazio" toda vez que abrisse. É a mesma armadilha de efeito
+   * passivo que a faixa da nota fixada teve (PR #64).
+   */
+  const [jaCarregou, setJaCarregou] = useState(false);
 
   const buscar = useCallback(async (vivo?: () => boolean) => {
     const valeAinda = () => (vivo ? vivo() : true);
@@ -54,6 +63,7 @@ export function useAcervo(ativo = true) {
       setItens((data ?? []) as MediaLibraryItem[]);
     }
     setCarregando(false);
+    setJaCarregou(true);
   }, []);
 
   useEffect(() => {
@@ -66,5 +76,5 @@ export function useAcervo(ativo = true) {
     };
   }, [ativo, buscar]);
 
-  return { itens, carregando, falhou, recarregar: buscar };
+  return { itens, carregando, jaCarregou, falhou, recarregar: buscar };
 }

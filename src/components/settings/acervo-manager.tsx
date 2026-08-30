@@ -61,7 +61,7 @@ const ICONE: Record<TipoDeMidia, typeof FileText> = {
 export function AcervoManager() {
   const t = useTranslations('Settings.acervo');
   const podeGerenciar = useCan('manage-members');
-  const { itens, carregando, falhou, recarregar } = useAcervo();
+  const { itens, jaCarregou, falhou, recarregar } = useAcervo();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [subindo, setSubindo] = useState(false);
@@ -113,7 +113,12 @@ export function AcervoManager() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            titulo: file.name.replace(/\.[^.]+$/, '').slice(0, 120),
+            // Sem a extensão — mas um arquivo chamado ".pdf" ficaria com
+            // título vazio, que a rota recusa com 400 e a tela reportaria
+            // como "não foi possível adicionar", sem dizer por quê.
+            titulo:
+              file.name.replace(/\.[^.]+$/, '').slice(0, 120) ||
+              file.name.slice(0, 120),
             media_path: path,
             mime_type: file.type,
             size_bytes: file.size,
@@ -253,7 +258,7 @@ export function AcervoManager() {
         }}
       />
 
-      {carregando && itens.length === 0 ? (
+      {!jaCarregou ? (
         <div className="flex justify-center py-10">
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
         </div>

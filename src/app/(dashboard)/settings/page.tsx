@@ -13,6 +13,7 @@ import { SecurityPanel } from '@/components/settings/security-panel';
 import { AppearancePanel } from '@/components/settings/appearance-panel';
 import { CbChannelsPanel } from '@/components/settings/cb-channels-panel';
 import { TemplateManager } from '@/components/settings/template-manager';
+import { AcervoManager } from '@/components/settings/acervo-manager';
 import { QuickRepliesManager } from '@/components/settings/quick-replies-manager';
 import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel';
 import { DealsSettings } from '@/components/settings/deals-settings';
@@ -79,6 +80,7 @@ function SettingsPageInner() {
     channels: <CbChannelsPanel />,
     templates: <TemplateManager />,
     'quick-replies': <QuickRepliesManager />,
+    acervo: <AcervoManager />,
     fields: <FieldsAndTagsPanel />,
     deals: <DealsSettings />,
     assinatura: <AssinaturaSettings />,

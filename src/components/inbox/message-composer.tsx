@@ -11,6 +11,7 @@ import {
   Send,
   LayoutTemplate,
   Paperclip,
+  Library,
   Image as ImageIcon,
   Video,
   FileText,
@@ -32,6 +33,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -44,7 +46,7 @@ import {
 import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
 import { custoDaAssinatura, nomeDePessoa } from "@/lib/assinatura/assinatura";
-import type { ConversationNote } from "@/types";
+import type { ConversationNote, MediaLibraryItem } from "@/types";
 import { InternalNoteBox } from "./internal-note-box";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -66,6 +68,7 @@ import {
 import { validateInteractivePayload } from "@/lib/whatsapp/interactive";
 import type { InteractiveMessagePayload, QuickReply } from "@/types";
 import { QuickReplyPicker } from "./quick-reply-picker";
+import { AcervoPicker } from "./acervo-picker";
 import {
   arredondarParaGrade,
   ATALHOS_DE_PRAZO,
@@ -247,6 +250,7 @@ export function MessageComposer({
     useState<InteractiveMessagePayload>(blankButtonsPayload);
   const [savingQuickReply, setSavingQuickReply] = useState(false);
   const [quickReplyOpen, setQuickReplyOpen] = useState(false);
+  const [acervoOpen, setAcervoOpen] = useState(false);
 
   // Media attachment state. `draft` holds an uploaded-but-not-yet-sent
   // attachment; `busy` covers the upload/transcode window.
@@ -944,6 +948,46 @@ export function MessageComposer({
     [stageUpload],
   );
 
+  /**
+   * Item do acervo (953) escolhido: vira o MESMO rascunho de um arquivo
+   * recém-subido — com legenda, prévia, envio agora ou agendamento.
+   *
+   * ⚠️ A rota COPIA o objeto e devolve o caminho da cópia. É por isso que o
+   * `removeStaged` daqui embaixo é seguro: o que ele pode vir a apagar é a
+   * cópia, nunca o arquivo do acervo. Enviar por referência faria um envio
+   * falho apagar o contrato-padrão do escritório inteiro — ver o cabeçalho de
+   * `api/cb/acervo/[id]/copiar`.
+   */
+  const escolherDoAcervo = useCallback(
+    async (item: MediaLibraryItem) => {
+      setAcervoOpen(false);
+      setBusy(true);
+      try {
+        const res = await fetch(`/api/cb/acervo/${item.id}/copiar`, {
+          method: "POST",
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.path) {
+          toast.error(t("acervoError"));
+          return;
+        }
+        removeStaged(draftRef.current?.path);
+        setDraft({
+          kind: json.kind as ComposerMediaKind,
+          mediaUrl: json.mediaUrl as string,
+          path: json.path as string,
+          filename: (json.filename as string) ?? item.filename,
+          caption: "",
+        });
+      } catch {
+        toast.error(t("acervoError"));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [removeStaged, t],
+  );
+
   // ---- Voice recording (client-side Ogg/Opus, no server transcode) ---
 
   // The encoded Ogg/Opus file from opus-recorder → upload as an audio
@@ -1224,6 +1268,13 @@ export function MessageComposer({
               )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="border-border bg-popover">
+              {/* O acervo vem PRIMEIRO: é o caminho curado, o que o escritório
+                  quer que a equipe use. Procurar no computador é a exceção. */}
+              <DropdownMenuItem onClick={() => setAcervoOpen(true)}>
+                <Library className="mr-2 h-4 w-4" />
+                {t("fromLibrary")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-border" />
               <DropdownMenuItem onClick={() => imageInputRef.current?.click()}>
                 <ImageIcon className="mr-2 h-4 w-4" />
                 {t("photo")}
@@ -1474,6 +1525,12 @@ export function MessageComposer({
         open={quickReplyOpen}
         onOpenChange={setQuickReplyOpen}
         onPick={handlePickQuickReply}
+      />
+
+      <AcervoPicker
+        open={acervoOpen}
+        onOpenChange={setAcervoOpen}
+        onPick={(item) => void escolherDoAcervo(item)}
       />
 
       {/* Agendar (925). Leva o texto que está no campo; agendar LIMPA o

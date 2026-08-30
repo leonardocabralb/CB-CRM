@@ -2,6 +2,7 @@ import {
   Coins,
   FileText,
   KeyRound,
+  Library,
   LayoutGrid,
   Palette,
   Plug,
@@ -31,6 +32,7 @@ export const SETTINGS_SECTIONS = [
   'channels',
   'templates',
   'quick-replies',
+  'acervo',
   'fields',
   'deals',
   'assinatura',
@@ -63,6 +65,11 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   channels: { id: 'channels', label: 'Connections', icon: Smartphone, group: 'workspace' },
   templates: { id: 'templates', label: 'Templates', icon: FileText, group: 'workspace' },
   'quick-replies': { id: 'quick-replies', label: 'Quick replies', icon: Zap, group: 'workspace' },
+  // Acervo (CB Advogados, 953) — os arquivos pré-selecionados que a equipe
+  // envia de dentro da conversa. Vizinho de Respostas rápidas de propósito:
+  // são a mesma ideia (conteúdo pronto para reusar), uma em texto e outra em
+  // arquivo.
+  acervo: { id: 'acervo', label: 'Media library', icon: Library, group: 'workspace' },
   fields: { id: 'fields', label: 'Fields & tags', icon: Tags, group: 'workspace' },
   deals: { id: 'deals', label: 'Deals & currency', icon: Coins, group: 'workspace' },
   assinatura: { id: 'assinatura', label: 'Message signature', icon: PenLine, group: 'workspace' },
