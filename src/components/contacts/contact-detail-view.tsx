@@ -74,7 +74,7 @@ export function ContactDetailView({
   const supabase = createClient();
   // `accountId` saiu com o insert direto: a anotação agora nasce na rota,
   // que resolve a conta no servidor a partir da sessão.
-  const { defaultCurrency, acesso } = useAuth();
+  const { acesso } = useAuth();
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(false);
@@ -874,10 +874,7 @@ export function ContactDetailView({
                         <div className="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <DollarSign className="size-3" />
-                            {formatCurrency(
-                              deal.value ?? 0,
-                              deal.currency || defaultCurrency,
-                            )}
+                            {formatCurrency(deal.value)}
                           </span>
                           {deal.status && deal.status !== 'open' && (
                             <span

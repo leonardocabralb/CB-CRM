@@ -1,0 +1,405 @@
+# Perfis de acesso — plano e estado da implementação
+
+> Estado: **TODAS AS 6 FASES CONCLUÍDAS** (2026-08-30; migrations 956–960
+> aplicadas em produção; tudo no PR #69, cada fase um commit revisável;
+> verificação de ponta a ponta no preview, incluindo o ciclo
+> convite-com-perfil → aceite → guarda de tela). Antes eram **Fases 1 a 3** (migrations 956–958 aplicadas em
+> produção em 2026-08-30; ambas no PR #69, revisadas — Codex + quente/fria —
+> e verificadas no preview com dois usuários reais). Fases 3 a 6 pendentes.
+> Decisões travadas com o operador em 2026-08-30. Atualizar a cada fase.
+
+## O que é
+
+Hoje o CRM tem **um eixo só** de permissão: a escada `owner > admin > agent >
+viewer`, de onde saem 7 capacidades fixas (`src/lib/auth/roles.ts`). Isso responde
+"o que a pessoa pode FAZER", mas não responde "sobre QUAL fatia do escritório" —
+e é essa segunda pergunta que separa a equipe do trabalhista da equipe do
+bancário.
+
+Este plano acrescenta o segundo eixo na forma de **perfis de acesso**: uma
+entidade que embute papel + telas visíveis + conexões + funis. Cadastrar alguém
+passa a ser um campo só ("João → Advogado Trabalhista").
+
+| Perfil | Papel base | Enxerga |
+| --- | --- | --- |
+| **Dono** | `owner` | tudo, sempre — não editável |
+| **Administrador** | `admin` | tudo, todas as áreas |
+| **Advogado \<Área\>** | `agent` | conexões + funis daquela área |
+| **Observador** | `viewer` | o que for marcado, só leitura |
+
+## ⚠️ Decisão de escopo: isto é restrição de VISUALIZAÇÃO, não de segurança
+
+**Decidido pelo operador em 2026-08-30, com o trade-off na mesa.** Não haverá RLS
+nova. As policies de `SELECT` continuam respondendo apenas "é membro desta
+conta?" — o que significa que **um `agent` do trabalhista continua conseguindo
+ler as conversas do bancário pela aba Network**, ou por uma chamada direta ao
+PostgREST.
+
+Isso é aceito porque o app é interno, usado só por funcionários do escritório, e
+o objetivo declarado é **organizar o que cada um vê e mexe**, não conter um
+adversário. Registrado aqui para que ninguém "conserte" isso depois achando que
+foi esquecimento, e para que ninguém escreva no futuro que o recorte por área é
+uma barreira de segurança — ele não é.
+
+O que **continua** sendo barreira de verdade (guarda de servidor já existente,
+intocada por este plano):
+
+| Operação | Guarda |
+| --- | --- |
+| Conexões: criar / editar / excluir | `requireRole('admin')` |
+| Membros: convidar / remover / mudar papel | `requireRole('admin')` |
+| Apagar conta · transferir posse | `owner` |
+| Escrita em geral (`viewer` não escreve) | RLS `_modify` (71 das 120 policies) |
+
+## Modelo de dados
+
+### Tabela nova: `cb_perfis_de_acesso`
+
+| Coluna | Tipo | Nota |
+| --- | --- | --- |
+| `id` | uuid PK | |
+| `account_id` | uuid NOT NULL | FK `accounts`, CASCADE |
+| `nome` | text NOT NULL | "Advogado Trabalhista" |
+| `papel_base` | `account_role_enum` NOT NULL | de onde vem a capacidade real |
+| `telas` | text[] NOT NULL | ids de tela visíveis (lista fechada) |
+| `secoes_config` | text[] NOT NULL | ids de seção de Configurações visíveis |
+| `channel_ids` | uuid[] NOT NULL DEFAULT '{}' | **vazio = todas** |
+| `pipeline_ids` | uuid[] NOT NULL DEFAULT '{}' | **vazio = todos** |
+| `sistema` | boolean NOT NULL DEFAULT false | **só o Administrador**: não editável, não apagável. Não há perfil de Dono (CHECK barra `owner`), e o Observador é editável — o operador decidiu que as telas de cada perfil são configuráveis, e o cadeado contradiria isso |
+
+- `UNIQUE (account_id, nome)` — dois "Advogado Trabalhista" na mesma conta é
+  sempre erro de digitação, nunca intenção.
+- `papel_base` **não pode ser `owner`** em perfil criado à mão (mesmo CHECK que
+  `account_invitations.role` já usa).
+- Arrays em vez de tabelas de vínculo: o dado é pequeno, sempre lido inteiro e
+  nunca consultado ao contrário ("quais perfis usam este funil?" é varredura
+  trivial numa conta com <20 perfis). Tabela de vínculo aqui seria três joins
+  para nada.
+
+### Coluna nova: `profiles.perfil_id`
+
+`uuid NULL REFERENCES cb_perfis_de_acesso(id) ON DELETE SET NULL`.
+
+⚠️ **`NULL` significa "sem restrição", não "sem acesso".** É o que preserva o
+comportamento de hoje para todo mundo que já está na conta, e o que impede que
+apagar um perfil tranque as pessoas dele para fora. A migration não precisa
+preencher nada.
+
+⚠️ **`perfil_id` está FORA do self-service (958).** A policy `profiles_update`
+deixa cada um editar a própria linha (certo, para nome e avatar), e RLS
+restringe linhas, não colunas — sem a 958, um membro restrito faria
+`PATCH { perfil_id: null }` em si mesmo e voltaria a ver tudo. O trigger da 034
+(que já protegia `account_role`/`account_id`) foi estendido para a coluna.
+Quem escreve `perfil_id` é a rota supervisionada, em service-role. Achado do
+review do Codex sobre a Fase 1, provado em produção: zerar o próprio
+`perfil_id` leva 42501, editar o próprio nome segue passando.
+
+⚠️ **`account_role` continua sendo a fonte da verdade do que a pessoa PODE
+fazer.** O perfil não substitui o papel — ele acrescenta telas e escopo. Ao
+atribuir um perfil a alguém, a rota grava também o `account_role = papel_base`,
+para que as guardas de servidor e a RLS continuem valendo sem conhecer perfis.
+Se as duas colunas divergirem, **quem manda é `account_role`**.
+
+### ⚠️ O convite tem de carregar o perfil (achado de revisão)
+
+`account_invitations` (017) guarda **só `role`**, e `redeem_invitation` copia
+**só** `account_role = v_inv.role` para o `profiles` de quem aceita. Conferido
+no arquivo da 017 e no corpo da função recriado pela 922.
+
+Sem tratar isso, o perfil escolhido na hora de convidar **não sobrevive** entre
+a criação do convite e o aceite — e como `perfil_id` nulo significa SEM
+RESTRIÇÃO, **todo membro novo entraria vendo tudo**. É o oposto exato do que
+esta feature existe para fazer, e apareceria justamente no caso que a motivou:
+convidar o advogado do trabalhista.
+
+O que a Fase 6 precisa incluir:
+
+- coluna `perfil_id` em `account_invitations`, com a mesma FK composta
+  `(perfil_id, account_id)` da 957;
+- `redeem_invitation` recriada para copiar `perfil_id` junto com o papel.
+
+⚠️ **Recriar `redeem_invitation` é operação de risco.** `CREATE OR REPLACE`
+substitui o corpo INTEIRO, e a função carrega as guardas que decidem quem entra
+na conta (sole-owner, conta-sem-dados, invite não expirado). Omitir um trecho
+apaga uma dessas guardas em silêncio — a 922 documenta esse mesmo cuidado ao
+recriá-la. Reproduzir o corpo vigente por inteiro e mudar só o `UPDATE profiles`.
+
+### ⚠️ Editar `papel_base` de um perfil já atribuído (achado de revisão)
+
+A regra "ao atribuir um perfil, a rota grava `account_role = papel_base`" cobre
+a ATRIBUIÇÃO e não cobre a EDIÇÃO. Se o operador mudar o `papel_base` de um
+perfil que já tem gente, cada membro mantém o `account_role` antigo — e como
+essa coluna é a fonte da verdade para as guardas de servidor e para a RLS, a
+mudança **não teria efeito nenhum sobre o que aquelas pessoas podem fazer**,
+enquanto a tela afirmaria que teve.
+
+Decisão para a Fase 5: ao salvar um perfil com `papel_base` diferente, a rota
+atualiza **na mesma transação** o `account_role` de todos os membros daquele
+perfil. Falhando a atualização, o save inteiro falha — perfil e membros
+divergentes é o estado que este plano existe para evitar.
+
+⚠️ E o salvamento nunca pode rebaixar o próprio operador a ponto de ele perder
+`manage-members`: mesma família da trava anti-auto-bloqueio.
+
+### FKs compostas
+
+`channel_ids` e `pipeline_ids` são arrays, então não têm FK. A consequência é
+id órfão quando uma conexão ou funil é apagado. Tratamento: a leitura resolve
+contra a lista viva e **ignora** id que não existe mais (mesma regra que
+`descrever-passo.ts` já usa para tag apagada). Não há limpeza automática — id
+órfão é inofensivo e some sozinho na próxima edição do perfil.
+
+## Módulo puro: `src/lib/perfis/`
+
+Toda a decisão mora aqui, testável sem banco e sem React — mesma forma de
+`src/lib/tasks/permissoes.ts`, que já resolve isso para tarefas.
+
+| Arquivo | Responde |
+| --- | --- |
+| `catalogo.ts` | catálogo fechado de telas e seções + as travas (`SECOES_PESSOAIS`, `TELAS_SEMPRE_VISIVEIS`, `SECOES_TRAVADAS_PARA_ADMIN`) |
+| `tipos.ts` | `PerfilDeAcesso`, `ContextoDeAcesso` |
+| `visibilidade.ts` | `podeVerTela(ctx, tela)`, `podeVerSecao(ctx, secao)`, `telaDoCaminho` |
+| `escopo.ts` | `canaisVisiveis`, `funisVisiveis`, `conversaNoEscopo`, `resumoDoEscopo` |
+| `padroes.ts` | os perfis de fábrica (Administrador, Advogado, Observador) |
+
+⚠️ **Não há perfil de "Dono".** O CHECK da 956 barra `papel_base = 'owner'` —
+perfil que promovesse alguém a dono seria transferência de posse por caminho
+lateral. O dono enxerga tudo por curto-circuito em `visibilidade.ts`.
+
+⚠️ **A regra tem de existir num lugar só.** A rota decide com a mesma função que
+desabilita o botão na tela — é a lição registrada no CLAUDE.md sobre
+`permissoes.ts` das tarefas: regra reescrita em dois lugares diverge na primeira
+mudança.
+
+## ⚠️ Armadilhas conhecidas (todas já documentadas no CLAUDE.md)
+
+Estas não são hipóteses — cada uma já mordeu neste repositório.
+
+- ⚠️⚠️ **Conversa de grupo tem `conversations.channel_id` NULO, sempre.** Quem
+  sabe o número é `cb_groups.channel_id`. Um filtro ingênuo por canal **apaga
+  todos os grupos da caixa de entrada, em silêncio**. Usar `canalDaConversa()`
+  de `src/lib/inbox/filtros.ts`, que já existe exatamente para isso.
+- ⚠️ **Não filtrar por canal na CONSULTA do PostgREST.** Com o embed LEFT atual,
+  `.eq('contact.algo', …)` filtra só o recurso embutido e as conversas que não
+  casam continuam vindo com `contact: null`; trocar para `!inner` vira INNER JOIN
+  e apaga toda conversa de grupo. Nenhum dos dois estoura e os dois passam em
+  revisão. **Filtrar em JS**, enquanto a lista for carregada inteira.
+- ⚠️ **Escopo vazio = TUDO**, alinhado a `channelInScope` e `findEntryFlow`. A
+  tela precisa DIZER isso ("sem marcação = vê todas as conexões"), senão o
+  operador lê "nenhuma".
+- ⚠️ **Trava anti-auto-bloqueio.** O Dono enxerga tudo sempre (curto-circuito
+  antes de qualquer consulta a perfil), e as seções `members` e `overview` não
+  podem ser desmarcadas de um perfil `admin`. Sem isso, um clique errado tranca
+  o operador para fora da única tela que desfaria o erro.
+- ⚠️ **Item de menu escondido ≠ rota protegida.** Esconder no `sidebar.tsx` não
+  impede digitar `/pipelines` na barra de endereço. Cada tela restrita precisa da
+  guarda no próprio componente, com a mensagem amigável — não um 404.
+- ⚠️ **`useCan` retorna `false` durante `profileLoading`.** O gate de perfil tem
+  de seguir a mesma regra (fail-closed), senão o menu pisca itens proibidos por
+  um instante a cada carga.
+
+## Fases
+
+Cada fase é um PR próprio, mergeável sozinho, sem quebrar a anterior.
+
+### Fase 1 — Fundação (sem efeito visível)
+
+- Migration `9NN_cb_perfis_de_acesso.sql`: tabela + coluna + RLS de leitura para
+  membros da conta + escrita só `service_role` (a tela escreve pela rota, como
+  `cb_tasks`). ⚠️ `REVOKE ALL ON TABLE ... FROM anon`, e todo `REVOKE` com o
+  `GRANT` de volta — a migration precisa aplicar num banco VAZIO (regra do CI).
+- `src/lib/perfis/` completo, com testes.
+- O perfil entra no `useAuth` (campos `perfilDeAcesso` e `acesso`) — sem hook
+  separado: um contexto só, nenhum fetch extra. ⚠️ Durante `profileLoading` o
+  `acesso` é `{ papel: null, perfil: null }` = sem restrição; gate de menu/rota
+  confere `profileLoading` ANTES (fail-closed, como o `useCan`).
+- **Nada muda na tela.** Todo mundo com `perfil_id NULL` continua vendo tudo.
+
+### Fase 2 — Menu e rotas ✅ (2026-08-30)
+
+Entregue como desenhado, com dois desvios que valem registro:
+
+- **A guarda de tela é UMA, no `DashboardShell`** (`telaDoCaminho` +
+  `podeVerTela` + `<TelaBloqueada>`), não uma por page.tsx — rota nova cai na
+  guarda de graça. E o shell passou a segurar o spinner até `profileLoading`
+  resolver, matando o flash de menu nos dois sentidos.
+- ⚠️ **`automations/events/drain` FICOU em `agent`**, contrariando o review do
+  Codex — a auditoria dos chamadores reais mostrou que drenar a fila é ação de
+  QUALQUER operador movendo card (avisar-drenagem.ts); com `admin` ali, a
+  automação de funil do agent esperaria o cron de 15 min. Exceção documentada
+  na rota e em `canManageAutomations` (roles.ts), o predicado novo que gateia
+  servidor E botões das 4 telas. `guarda-de-papel.test.ts` fixa `admin` no
+  broadcast contra merge do upstream.
+
+### Fase 2 — plano original (histórico)
+
+- `sidebar.tsx` filtra itens por `podeVerTela`.
+- Guarda em cada página restrita, com a tela amigável ("Esta área não faz parte
+  do seu perfil — falar com o administrador"), nunca 404.
+- Seções de Configurações filtradas por `podeVerSecao`.
+- Sobe **automações e fluxos** de `agent` para `admin`. ⚠️ São **8** rotas, não
+  4: esconder a página não impede ninguém de chamar o endpoint direto, então a
+  lista precisa ser a auditoria completa, não as rotas óbvias. Levantado com
+  `find src/app/api/{automations,flows} -name route.ts` em 2026-08-30:
+
+  | Rota | Guarda hoje |
+  | --- | --- |
+  | `automations/route.ts` | `agent` |
+  | `automations/[id]/route.ts` | `agent` |
+  | `automations/[id]/duplicate/route.ts` | `agent` |
+  | `automations/engine/route.ts` | `agent` |
+  | `automations/events/drain/route.ts` | `agent` |
+  | `flows/route.ts` | `agent` |
+  | `flows/[id]/route.ts` | `agent` |
+  | `flows/[id]/activate/route.ts` | `agent` |
+
+  As quatro do meio são as que passam despercebido: `duplicate` insere em
+  service-role e `activate` liga um fluxo que fala com cliente.
+
+  ⚠️ **`automations/cron`, `flows/cron` e `flows/[id]/runs` ficam de fora de
+  propósito** — as duas de cron são chamadas pelo agendador com segredo
+  próprio (`requireRole` ali quebraria o worker) e `runs` é leitura.
+
+- Confere `/api/whatsapp/broadcast`: hoje exige `agent`, e disparo em massa
+  ficou combinado como exclusivo do Administrador.
+
+### Fase 3 — Escopo na caixa de entrada ✅ (2026-08-30)
+
+Entregue como desenhado. Registros de implementação:
+
+- O recorte entra em `aplicarFiltros` como **predicado injetado**
+  (`ctx.foraDoPerfil`), não como import — `escopo.ts` importa
+  `canalDaConversa` de `filtros.ts`, e o import contrário fecharia ciclo.
+- A exceção da busca respeita o `trim` (termo só de espaços não reabre a
+  lista de outra área — teste fixa) e os demais filtros do painel.
+- `<ConversaForaDaArea>` SUBSTITUI o `MessageThread` (não embrulha): montar o
+  fio buscaria mensagens e zeraria não-lidas de conversa que ninguém leu. O
+  zero otimista da seleção é pulado e a ficha do painel direito rende null.
+- Nas Agendadas o recorte é NA CONSULTA (`recorteDeCanais` → `.in()`), porque
+  o acervo pagina no banco — e é seguro ali porque a tabela carrega o próprio
+  `channel_id`, fixado no agendamento (925).
+- ⚠️ Limitação conhecida: a bolinha de não lidas do menu (`useTotalUnread`)
+  conta a conta inteira — recortá-la exige espelhar canal no realtime; fica
+  para polimento. O widget de saúde das conexões no cabeçalho também lista
+  todas as conexões da conta.
+
+### Fase 3 — plano original (histórico)
+
+- `filtros.ts` ganha o recorte por perfil, ao lado dos filtros que já existem —
+  **com `canalDaConversa()`**, pela armadilha dos grupos.
+- Busca e notificações: o item aparece **completo** (decisão do operador), e a
+  mensagem amigável entra ao tentar **abrir** a conversa fora do escopo.
+- Agendadas: recorte por área, mantendo as de todos os colegas.
+
+### Fase 4 — Escopo nos funis ✅ (2026-08-30)
+
+Como desenhada, com um cuidado extra: em `/pipelines` o filtro entra DEPOIS
+da decisão de seed, sobre a lista crua — filtrando antes, um perfil sem funil
+no escopo leria "conta sem funis" e SEMEARIA um funil novo. O toggle da grade
+de automações some para quem não tem `manage-automations`.
+
+### Fase 4 — plano original (histórico)
+
+- `/pipelines` lista só os funis do perfil.
+- Aba **Negócios** da ficha do contato esconde negócio de funil fora do escopo.
+- ⚠️ Conferir o Painel: ele agrega a conta inteira. Para perfil restrito a tela
+  já estará escondida (Fase 2), então não há número pela metade — confirmar que
+  não sobrou nenhum widget de painel embutido em outra tela.
+
+### Fase 5 — Tela de perfis ✅ (2026-08-30)
+
+CRUD completo com as travas nas rotas (`/api/cb/perfis*`, service-role):
+sistema intocável, papel via RPC 959 (transacional com os membros),
+anti-auto-bloqueio (validar.ts, puro e testado), e **exclusão recusada com
+membros** — o SET NULL devolveria acesso TOTAL, o oposto de "revogar".
+Seed dos perfis de fábrica por botão explícito, pulando homônimos.
+⚠️ Pego no preview: o rótulo do rail vem do DICIONÁRIO
+(`Settings.sections.perfis`), não do `SECTION_META.label`.
+
+### Fase 5 — plano original (histórico)
+
+- CRUD, com **Duplicar** (o antídoto para a multiplicação por área).
+- Ao marcar conexões, **sugerir** os funis pelo `default_pipeline_id` de cada
+  uma — sugestão, nunca imposição.
+- Perfis `sistema` aparecem travados, com cadeado e explicação.
+
+### Fase 6 — Legenda em Membros e convite com perfil ✅ (2026-08-30)
+
+Migration 960 (invitations.perfil_id + redeem recriado com o corpo fiel da
+922), rota e diálogo de convite escolhendo PERFIL (papel derivado; primeiro
+não-admin pré-selecionado), chip + seletor de atribuição por membro (com
+perfil atribuído o seletor de papel some — o papel segue o perfil) e o
+quadro "O que cada perfil dá acesso", derivado da configuração real via
+`<PerfilResumo>`. Ciclo inteiro provado: convite → aceite → convidado chega
+com o perfil aplicado e a guarda de telas o recebe.
+🔭 Polimento futuro: o aceite redireciona para `/dashboard` fixo; poderia
+ir direto à primeira tela permitida (hoje o cartão com CTA resolve).
+
+**Revisão final (961/962):** a FK composta da 957 QUEBRAVA
+`remove_account_member` para membro com perfil (provado em produção — o
+perfil é da conta antiga, a conta destino é nova); a 961 zera `perfil_id` na
+remoção. E `set_member_role` passou a RECUSAR membro com perfil (962) — o
+papel segue o `papel_base`, e a troca por fora divergiria em silêncio. Quem
+criar OUTRO caminho que mova `profiles.account_id` precisa zerar `perfil_id`
+junto, ou a FK da 957 o quebra.
+
+### Fase 6 — plano original (histórico)
+
+- Resumo do perfil dentro do **diálogo de convite**, atualizando ao trocar a
+  seleção ("vê Caixa de entrada e Funis do trabalhista; não vê Painel, Radar,
+  Automações, Disparos nem Configurações da conta").
+- Cada linha da lista de membros mostra o **perfil**, não o papel cru.
+- Quadro comparativo dos perfis na própria aba — **derivado da configuração
+  real**, nunca texto fixo no dicionário: legenda escrita à mão mente na
+  primeira edição de perfil.
+
+## Catálogo de telas (lista fechada)
+
+`dashboard` · `radar` · `inbox` · `notifications` · `tarefas` · `contacts` ·
+`agenda` · `pipelines` · `broadcasts` · `agendadas` · `automations` · `flows` ·
+`agents` · `settings`
+
+Seções de Configurações: `overview` · `profile` · `security` · `appearance` ·
+`channels` · `templates` · `quick-replies` · `acervo` · `fields` · `deals` ·
+`assinatura` · `members` · `integracoes` · `api` · **`perfis`**
+
+⚠️ `perfis` é a seção que a Fase 5 cria, e está declarada **desde a Fase 1**: o
+catálogo é a lista fechada do que um perfil pode ligar, então seção ausente dele
+é seção que `podeVerSecao` nunca libera — a própria tela de perfis nasceria
+inalcançável para perfil restrito. Ela também entra em
+`SECOES_TRAVADAS_PARA_ADMIN`, pela mesma razão de `members`: é a tela que
+conserta perfil mal configurado.
+
+⚠️ Catálogo **fechado e exaustivo**: rota nova sem entrada aqui nasce invisível
+para todo perfil restrito. Quem criar tela nova acrescenta o id — e o typecheck
+cobra, porque `TelaId` é union de literais.
+
+## Matriz de fábrica
+
+Ponto de partida entregue pronto; tudo editável na Fase 5 (exceto o travado).
+
+| Tela | Administrador | Advogado \<Área\> | Observador |
+| --- | :---: | :---: | :---: |
+| Painel · Radar | ✅ | ❌ | ❌ |
+| Caixa de entrada | tudo | área | área (lê) |
+| Funis | todos | área | área (lê) |
+| Contatos | ✅ | ✅ (sem filtro) | lê |
+| Notificações · Tarefas · Agenda | ✅ | ✅ | ✅ |
+| Agendadas | ✅ | ✅ de todos, da área | ❌ |
+| Disparos em massa | ✅ | ❌ | ❌ |
+| Automações · Fluxos · Agentes de IA | ✅ | ❌ | ❌ |
+| Configurações → pessoais | ✅ | ✅ | ✅ |
+| Configurações → Respostas rápidas | edita | **usa** | **usa** |
+| Configurações → conta | ✅ | ❌ | ❌ |
+
+## Fora desta versão (decidido, não esquecido)
+
+- **RLS por área.** Ver a seção de escopo acima — decisão do operador.
+- **Filtro de Contatos por área.** Contato não tem conexão própria; derivar das
+  conversas esconderia cliente compartilhado entre duas áreas. O conteúdo
+  sensível está na conversa e no negócio, que já são recortados.
+- **Herança entre perfis.** "Advogado Trabalhista herda de Advogado" resolveria
+  a edição em massa, mas custa mais do que o botão Duplicar resolve com 2 a 5
+  áreas. Revisitar se passar de ~10 perfis.
+- **Escopo na API pública v1.** As chaves de API são de conta, não de pessoa;
+  perfil não se aplica.

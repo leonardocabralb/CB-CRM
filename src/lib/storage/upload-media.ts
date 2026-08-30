@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { buildMediaPath } from "./media-path";
 
 /**
  * Shared media-upload helper for Supabase Storage buckets that use the
@@ -34,47 +35,10 @@ export const MEDIA_MAX_BYTES_BY_KIND = {
 } as const;
 
 /**
- * Build the account-scoped object path for an upload. Pure + exported so
- * it can be unit-tested without a Supabase client.
- *
- * - `basename` is stripped of its extension, lower-cased non-safe chars
- *   are collapsed to `_`, and it's capped at 40 chars (falls back to
- *   "file" when empty).
- * - The timestamp + the original name keep collisions between two
- *   concurrent uploads astronomically unlikely.
- *
- * `now = null` omits the timestamp prefix entirely. That's for callers
- * whose name is already unique AND who need the path to be *stable*
- * across repeated calls — the inbound mirror (`@/lib/whatsapp/
- * mirror-inbound-media`) keys on Meta's media id so a redelivered
- * webhook rewrites one object instead of orphaning a second copy.
- *
- * `subfolder` inserts one level below `account-<id>`. The bucket's RLS
- * write policies only match the FIRST path segment (migrations 020/023),
- * so nesting below it is free.
+ * O construtor de caminho mudou para `media-path.ts` (server-safe) — ver o
+ * cabeçalho de lá. Reexportado aqui para os call sites e o teste existentes.
  */
-export function buildMediaPath(
-  accountId: string,
-  fileName: string,
-  now: number | null = Date.now(),
-  subfolder?: string,
-): string {
-  // Only treat the trailing segment as an extension when there's a real
-  // one — a bare name like "README" has no extension and falls back to
-  // "bin" rather than becoming "readme".
-  const hasExt = /\.[^.]+$/.test(fileName);
-  const ext = hasExt ? fileName.split(".").pop()!.toLowerCase() : "bin";
-  const safeBase =
-    fileName
-      .replace(/\.[^.]+$/, "")
-      .replace(/[^a-zA-Z0-9_-]+/g, "_")
-      .slice(0, 40) || "file";
-  const dir = subfolder
-    ? `account-${accountId}/${subfolder}`
-    : `account-${accountId}`;
-  const stamp = now === null ? "" : `${now}-`;
-  return `${dir}/${stamp}${safeBase}.${ext}`;
-}
+export { buildMediaPath } from "./media-path";
 
 export interface UploadAccountMediaResult {
   /** Public URL Meta can fetch at send time. */
@@ -94,6 +58,12 @@ export interface UploadAccountMediaResult {
 export async function uploadAccountMedia(
   bucket: string,
   file: File,
+  /**
+   * Pasta abaixo de `account-<id>`. As policies da 020/023 casam só o
+   * PRIMEIRO segmento, então aninhar é de graça — é o que separa o arquivo do
+   * acervo (953) de um anexo qualquer de mensagem dentro do mesmo bucket.
+   */
+  subfolder?: string,
 ): Promise<UploadAccountMediaResult> {
   const supabase = createClient();
 
@@ -117,7 +87,12 @@ export async function uploadAccountMedia(
     throw new Error("Could not resolve your account.");
   }
 
-  const path = buildMediaPath(profile.account_id as string, file.name);
+  const path = buildMediaPath(
+    profile.account_id as string,
+    file.name,
+    Date.now(),
+    subfolder,
+  );
   const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, {
     cacheControl: "3600",
     upsert: false,

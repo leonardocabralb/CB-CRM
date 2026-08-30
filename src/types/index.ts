@@ -177,6 +177,33 @@ export interface ContactCustomValue {
  * ⚠️ Não tem `updated_at` de propósito: a anotação é criada e apagada, nunca
  * editada. O banco reforça isso com `REVOKE UPDATE`.
  */
+/**
+ * Um item do acervo de mídias da conta (migration 953).
+ *
+ * ⚠️ `media_url` é DERIVADA de `media_path` no servidor — nunca aceita do
+ * navegador. Ver a rota `POST /api/cb/acervo`.
+ */
+export interface MediaLibraryItem {
+  id: string;
+  account_id: string;
+  titulo: string;
+  /** NULL = sem categoria; a tela mostra "Geral". */
+  categoria: string | null;
+  tipo: "image" | "video" | "document" | "audio";
+  /** Caminho no bucket `chat-media`, sob `account-<id>/acervo/`. */
+  media_path: string;
+  media_url: string;
+  mime_type: string;
+  size_bytes: number;
+  filename: string;
+  /** NULL quando quem subiu saiu da conta. */
+  criador_user_id: string | null;
+  /** Congelado na escrita — sobrevive à saída de quem subiu. */
+  criador_nome: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ConversationNote {
   id: string;
   account_id: string;

@@ -288,7 +288,9 @@
       "saveNote": "Salvar Anotação",
       "noteSaveError": "Não foi possível salvar a anotação.",
       "noteMentionHint": "Digite @ para mencionar um colega",
-      "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou."
+      "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou.",
+      "fromLibrary": "Do acervo",
+      "acervoError": "Não foi possível preparar o arquivo do acervo."
     },
     "bubble": {
       "transcricao": "Transcrição",
@@ -404,7 +406,6 @@
       "pinNote": "Fixar nota",
       "unpinNote": "Desafixar nota",
       "pinnedNote": "Fixada",
-      "pinError": "Não foi possível fixar a nota.",
       "tabTracking": "Traqueamento",
       "noTrackingFields": "Nenhum campo de traqueamento ainda.",
       "seedTrackingFields": "Criar os {count} campos padrão",
@@ -469,7 +470,13 @@
       "delete": "Excluir anotação",
       "confirmDelete": "Excluir",
       "cancelDelete": "Cancelar",
-      "deleteFailed": "Não foi possível excluir a anotação."
+      "deleteFailed": "Não foi possível excluir a anotação.",
+      "pinnedBanner": "Anotação fixada",
+      "pin": "Fixar no topo da conversa",
+      "unpin": "Desafixar anotação",
+      "expand": "Ver a anotação inteira",
+      "collapse": "Recolher anotação",
+      "pinError": "Não foi possível fixar a nota."
     },
     "scheduled": {
       "sectionTitle": "Agendadas",
@@ -531,6 +538,15 @@
       "replyingTo": "Respondendo: {trecho}",
       "quotedDeleted": "A mensagem citada foi apagada — vai sair sem a citação.",
       "quotedWasLost": "Saiu sem a citação: a mensagem citada tinha sido apagada."
+    },
+    "acervo": {
+      "title": "Acervo de mídias",
+      "searchPlaceholder": "Buscar por nome do item ou do arquivo",
+      "allCategories": "Todas",
+      "empty": "O acervo está vazio. Um administrador monta a lista em Configurações → Acervo de mídias.",
+      "noMatch": "Nenhum arquivo com esse termo.",
+      "loadError": "Não foi possível carregar o acervo.",
+      "asVoiceNote": "vai como nota de voz"
     }
   },
   "Contacts": {
@@ -795,7 +811,6 @@
       "selectContact": "Selecione um contato",
       "linkToConversation": "Vincular à conversa",
       "value": "Valor",
-      "currency": "Moeda",
       "expectedCloseDate": "Data prevista de fechamento",
       "stage": "Etapa",
       "assignedTo": "Atribuído a",
@@ -1974,12 +1989,12 @@
       "templates": "Modelos",
       "quick-replies": "Respostas rápidas",
       "fields": "Campos e etiquetas",
-      "deals": "Negócios e moeda",
       "assinatura": "Assinatura",
       "members": "Membros da equipe",
       "integracoes": "Integrações",
       "api": "Chaves de API",
-      "perfis": "Perfis de acesso"
+      "perfis": "Perfis de acesso",
+      "acervo": "Acervo de mídias"
     },
     "integracoes": {
       "title": "Integrações",
@@ -2279,18 +2294,6 @@
       "done": "Concluído",
       "networkError": "Não foi possível conectar ao servidor"
     },
-    "deals": {
-      "title": "Negócios e moeda",
-      "description": "Moeda usada em novos negócios e nos totais do funil e do painel.",
-      "defaultCurrency": "Moeda padrão",
-      "defaultCurrencyDesc": "Novos negócios usam esta moeda por padrão, e os totais do funil e do painel são exibidos nela. Negócios existentes mantêm a moeda com que foram salvos.",
-      "currencyLabel": "Moeda",
-      "adminOnlyHint": "Somente administradores da conta podem alterar a moeda padrão.",
-      "save": "Salvar",
-      "saving": "Salvando...",
-      "saveFailed": "Falha ao salvar a moeda padrão",
-      "saveSuccess": "Moeda padrão atualizada"
-    },
     "aiConfig": {
       "title": "Configuração do agente de IA",
       "description": "Use sua própria chave da OpenAI, da Anthropic ou do Google (Gemini). O wacrm chama o provedor diretamente com a sua chave — sem cobrança de IA por usuário, e seus dados continuam sendo seus. Isso alimenta as respostas sugeridas por IA na caixa de entrada, o bot de resposta automática, o Playground e o Radar do atendimento.",
@@ -2400,6 +2403,32 @@
       "saveSuccess": "Configuração da assinatura salva.",
       "saveFailed": "Não foi possível salvar a configuração da assinatura.",
       "loadFailed": "Não foi possível carregar a configuração da assinatura. Recarregue a página — salvar agora poderia sobrescrever o que está configurado."
+    },
+    "acervo": {
+      "title": "Acervo de mídias",
+      "description": "Arquivos que o escritório deixa prontos — contratos, imagens, áudios — para a equipe enviar de dentro da conversa, sem procurar no computador. Quem envia usa o clipe da caixa de mensagem → “Do acervo”.",
+      "add": "Adicionar arquivo",
+      "empty": "Nenhum arquivo no acervo ainda. Adicione o primeiro para a equipe usar nas conversas.",
+      "uncategorized": "Geral",
+      "preview": "Abrir",
+      "edit": "Renomear",
+      "delete": "Remover do acervo",
+      "editTitle": "Editar item do acervo",
+      "fieldTitle": "Nome",
+      "fieldCategory": "Categoria",
+      "categoryPlaceholder": "ex.: Contratos",
+      "cancel": "Cancelar",
+      "save": "Salvar",
+      "titleRequired": "Dê um nome ao item.",
+      "confirmDelete": "Remover “{titulo}” do acervo? As mensagens já enviadas com este arquivo não mudam — a equipe só deixa de poder enviá-lo de novo.",
+      "addedToast": "Arquivo adicionado ao acervo.",
+      "uploadError": "Não foi possível adicionar o arquivo.",
+      "unsupportedType": "Este tipo de arquivo não é aceito pelo WhatsApp.",
+      "tooBig": "O arquivo tem {tamanho} — o limite é {teto}.",
+      "alreadyInLibrary": "Este arquivo já está no acervo.",
+      "saveError": "Não foi possível salvar.",
+      "deleteError": "Não foi possível remover.",
+      "loadError": "Não foi possível carregar o acervo."
     }
   },
   "roles": {
@@ -2537,7 +2566,7 @@
     "title": "Criar conta",
     "titleInvite": "Criar conta e entrar na equipe",
     "description": "Comece a usar o CB Advogados CRM",
-    "descriptionInvite": "Confirme seu e-mail e depois aceite o convite para entrar na sua equipe.",
+    "descriptionInvite": "Crie sua conta e aceite o convite para entrar na sua equipe.",
     "fullNameLabel": "Nome completo",
     "fullNamePlaceholder": "João da Silva",
     "emailLabel": "E-mail",

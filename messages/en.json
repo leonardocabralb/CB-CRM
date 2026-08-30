@@ -295,7 +295,9 @@
       "saveNote": "Save Note",
       "noteSaveError": "Could not save the note.",
       "noteMentionHint": "Type @ to mention a teammate",
-      "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified."
+      "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified.",
+      "fromLibrary": "From library",
+      "acervoError": "Could not prepare the library file."
     },
     "bubble": {
       "transcricao": "Transcript",
@@ -411,7 +413,6 @@
       "pinNote": "Pin note",
       "unpinNote": "Unpin note",
       "pinnedNote": "Pinned",
-      "pinError": "Could not pin the note.",
       "tabTracking": "Tracking",
       "noTrackingFields": "No tracking fields yet.",
       "seedTrackingFields": "Create the {count} default fields",
@@ -476,7 +477,13 @@
       "delete": "Delete note",
       "confirmDelete": "Delete",
       "cancelDelete": "Cancel",
-      "deleteFailed": "Could not delete the note."
+      "deleteFailed": "Could not delete the note.",
+      "pinnedBanner": "Pinned note",
+      "pin": "Pin note to the top of the conversation",
+      "unpin": "Unpin note",
+      "expand": "Show the whole note",
+      "collapse": "Collapse note",
+      "pinError": "Could not pin the note."
     },
     "scheduled": {
       "sectionTitle": "Scheduled",
@@ -538,6 +545,15 @@
       "replyingTo": "Replying to: {trecho}",
       "quotedDeleted": "The quoted message was deleted — this will go out without the quote.",
       "quotedWasLost": "Sent without the quote: the quoted message had been deleted."
+    },
+    "acervo": {
+      "title": "Media library",
+      "searchPlaceholder": "Search by item or file name",
+      "allCategories": "All",
+      "empty": "The library is empty. An admin fills it in Settings → Media library.",
+      "noMatch": "No file matches that search.",
+      "loadError": "Could not load the library.",
+      "asVoiceNote": "sends as a voice note"
     }
   },
   "Contacts": {
@@ -802,7 +818,6 @@
       "selectContact": "Select a contact",
       "linkToConversation": "Link to Conversation",
       "value": "Value",
-      "currency": "Currency",
       "expectedCloseDate": "Expected Close Date",
       "stage": "Stage",
       "assignedTo": "Assigned To",
@@ -1981,12 +1996,12 @@
       "templates": "Templates",
       "quick-replies": "Quick replies",
       "fields": "Fields & tags",
-      "deals": "Deals & currency",
       "assinatura": "Message signature",
       "members": "Team members",
       "integracoes": "Integrations",
       "api": "API keys",
-      "perfis": "Access profiles"
+      "perfis": "Access profiles",
+      "acervo": "Media library"
     },
     "integracoes": {
       "title": "Integrations",
@@ -2286,18 +2301,6 @@
       "done": "Done",
       "networkError": "Could not reach the server"
     },
-    "deals": {
-      "title": "Deals & currency",
-      "description": "The currency used for new deals and for pipeline and dashboard totals.",
-      "defaultCurrency": "Default currency",
-      "defaultCurrencyDesc": "New deals default to this currency, and pipeline and dashboard totals are shown in it. Existing deals keep the currency they were saved with.",
-      "currencyLabel": "Currency",
-      "adminOnlyHint": "Only account admins can change the default currency.",
-      "save": "Save",
-      "saving": "Saving...",
-      "saveFailed": "Failed to save default currency",
-      "saveSuccess": "Default currency updated"
-    },
     "aiConfig": {
       "title": "Agent setup",
       "description": "Bring your own OpenAI, Anthropic or Google (Gemini) key. wacrm calls the provider directly with your key — no per-seat AI fees, and your data stays yours. This powers AI-drafted replies in the inbox, the auto-reply bot, the Playground and the Service Radar.",
@@ -2407,6 +2410,32 @@
       "saveSuccess": "Signature settings saved.",
       "saveFailed": "Could not save the signature settings.",
       "loadFailed": "Could not load the signature settings. Reload the page — saving now could overwrite what is currently configured."
+    },
+    "acervo": {
+      "title": "Media library",
+      "description": "Files the office keeps ready — contracts, images, audio — for the team to send from inside a conversation instead of hunting on their computer. Senders use the paperclip in the message box → “From library”.",
+      "add": "Add file",
+      "empty": "No files in the library yet. Add the first one for the team to use in conversations.",
+      "uncategorized": "General",
+      "preview": "Open",
+      "edit": "Rename",
+      "delete": "Remove from library",
+      "editTitle": "Edit library item",
+      "fieldTitle": "Name",
+      "fieldCategory": "Category",
+      "categoryPlaceholder": "e.g. Contracts",
+      "cancel": "Cancel",
+      "save": "Save",
+      "titleRequired": "Give the item a name.",
+      "confirmDelete": "Remove “{titulo}” from the library? Messages already sent with this file are unchanged — the team just can't send it again.",
+      "addedToast": "File added to the library.",
+      "uploadError": "Could not add the file.",
+      "unsupportedType": "WhatsApp doesn't accept this file type.",
+      "tooBig": "The file is {tamanho} — the limit is {teto}.",
+      "alreadyInLibrary": "This file is already in the library.",
+      "saveError": "Could not save.",
+      "deleteError": "Could not remove.",
+      "loadError": "Could not load the library."
     }
   },
   "roles": {
@@ -2544,7 +2573,7 @@
     "title": "Create account",
     "titleInvite": "Create account & join",
     "description": "Get started with CB Advogados CRM",
-    "descriptionInvite": "Verify your email, then accept the invitation to join your team.",
+    "descriptionInvite": "Create your account and accept the invitation to join your team.",
     "fullNameLabel": "Full name",
     "fullNamePlaceholder": "John Doe",
     "emailLabel": "Email",

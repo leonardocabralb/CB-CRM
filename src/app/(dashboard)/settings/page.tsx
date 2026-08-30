@@ -13,9 +13,9 @@ import { SecurityPanel } from '@/components/settings/security-panel';
 import { AppearancePanel } from '@/components/settings/appearance-panel';
 import { CbChannelsPanel } from '@/components/settings/cb-channels-panel';
 import { TemplateManager } from '@/components/settings/template-manager';
+import { AcervoManager } from '@/components/settings/acervo-manager';
 import { QuickRepliesManager } from '@/components/settings/quick-replies-manager';
 import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel';
-import { DealsSettings } from '@/components/settings/deals-settings';
 import { AssinaturaSettings } from '@/components/settings/assinatura-settings';
 import { MembersTab } from '@/components/settings/members-tab';
 import { IntegracoesPanel } from '@/components/settings/integracoes-panel';
@@ -47,7 +47,7 @@ export default function SettingsPage() {
 function SettingsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { defaultCurrency, acesso } = useAuth();
+  const { acesso } = useAuth();
   const { mode } = useTheme();
   const t = useTranslations('Settings');
 
@@ -77,9 +77,8 @@ function SettingsPageInner() {
   const hints: Partial<Record<SettingsSection, ReactNode>> = useMemo(
     () => ({
       appearance: mode.charAt(0).toUpperCase() + mode.slice(1),
-      deals: defaultCurrency,
     }),
-    [mode, defaultCurrency],
+    [mode],
   );
 
   const panel: Record<SettingsSection, ReactNode> = {
@@ -90,8 +89,8 @@ function SettingsPageInner() {
     channels: <CbChannelsPanel />,
     templates: <TemplateManager />,
     'quick-replies': <QuickRepliesManager />,
+    acervo: <AcervoManager />,
     fields: <FieldsAndTagsPanel />,
-    deals: <DealsSettings />,
     assinatura: <AssinaturaSettings />,
     members: <MembersTab />,
     integracoes: <IntegracoesPanel />,

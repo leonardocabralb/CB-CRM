@@ -15,13 +15,14 @@
 //  - o funil é DA CONTA (a ingestão roda em service-role e ignora RLS);
 //  - a etapa é DO funil (`pipeline_stages` não tem `account_id` — a tenancy
 //    dela é indireta, via `pipeline_id`);
-//  - a moeda é a da conta, não o default estático da coluna;
+//  - a moeda é o real, sempre (`DEFAULT_CURRENCY`);
 //  - colisão do índice único do roteador vira SUCESSO, não erro.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
+import { DEFAULT_CURRENCY } from '@/lib/currency';
 
 /** Quem criou o card. Espelha o CHECK de `deals.source` (migration 908). */
 export type DealSource = 'manual' | 'automation' | 'channel';
@@ -134,14 +135,10 @@ export async function createDeal(args: CreateDealArgs): Promise<CreateDealResult
     stageId = primeira.id as string;
   }
 
-  // 3. Moeda da conta, não o default estático de `deals.currency` — mantém a
-  //    regra de uma moeda por conta. Mesma leitura que o motor já fazia.
-  const { data: conta } = await db
-    .from('accounts')
-    .select('default_currency')
-    .eq('id', accountId)
-    .maybeSingle();
-
+  // 3. Moeda: constante. Aqui havia uma consulta a `accounts` só para ler
+  //    `default_currency` — um round-trip a mais em TODA criação automática
+  //    de negócio (ingestão, automação, API) para escolher entre uma opção
+  //    só. Com o real fixado, ela não decide mais nada.
   const { data: inserido, error: insertErr } = await db
     .from('deals')
     .insert({
@@ -154,7 +151,7 @@ export async function createDeal(args: CreateDealArgs): Promise<CreateDealResult
       conversation_id: args.conversationId ?? null,
       title: args.title,
       value: args.value ?? 0,
-      currency: (conta?.default_currency as string | undefined) ?? 'USD',
+      currency: DEFAULT_CURRENCY,
       status: 'open',
       source,
     })

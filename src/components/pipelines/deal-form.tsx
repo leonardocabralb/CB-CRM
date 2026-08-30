@@ -5,7 +5,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { CURRENCIES } from "@/lib/currency";
+import { DEFAULT_CURRENCY } from "@/lib/currency";
+import { ValorInput } from "@/components/valor/valor-input";
 import type {
   Contact,
   Conversation,
@@ -29,7 +30,6 @@ import {
   X,
   Trash2,
   MessageSquare,
-  DollarSign,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -66,11 +66,11 @@ export function DealForm({
 }: DealFormProps) {
   const t = useTranslations("Pipelines.form");
   const supabase = createClient();
-  const { accountId, defaultCurrency, acesso } = useAuth();
+  const { accountId, acesso } = useAuth();
 
   const [title, setTitle] = useState("");
-  const [value, setValue] = useState("");
-  const [currency, setCurrency] = useState(defaultCurrency);
+  // Número, não texto: quem converte o que foi digitado é o `ValorInput`.
+  const [value, setValue] = useState(0);
   const [contactId, setContactId] = useState("");
   const [stageId, setStageId] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
@@ -103,8 +103,7 @@ export function DealForm({
     setConfirmDelete(false);
     if (deal) {
       setTitle(deal.title);
-      setValue(String(deal.value ?? ""));
-      setCurrency(deal.currency || defaultCurrency);
+      setValue(deal.value ?? 0);
       // contact_id is nullable when the contact has been deleted
       // (migration 004: ON DELETE SET NULL). "" means "no selection".
       setContactId(deal.contact_id ?? "");
@@ -115,8 +114,7 @@ export function DealForm({
       setNotes(deal.notes ?? "");
     } else {
       setTitle("");
-      setValue("");
-      setCurrency(defaultCurrency);
+      setValue(0);
       setContactId(defaultContactId ?? "");
       setStageId(defaultStageId || stages[0]?.id || "");
       setSelectedPipelineId(pipelineId);
@@ -124,7 +122,7 @@ export function DealForm({
       setExpectedCloseDate("");
       setNotes("");
     }
-  }, [open, deal, defaultStageId, defaultContactId, stages, defaultCurrency, pipelineId]);
+  }, [open, deal, defaultStageId, defaultContactId, stages, pipelineId]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Load supporting data once the sheet is open
@@ -189,8 +187,10 @@ export function DealForm({
 
     const payload = {
       title: title.trim(),
-      value: parseFloat(value) || 0,
-      currency,
+      value,
+      // A coluna é NOT NULL e continua sendo preenchida, mesmo sem seletor:
+      // negócio novo nasce em real, que é a única moeda daqui.
+      currency: DEFAULT_CURRENCY,
       contact_id: contactId,
       pipeline_id: selectedPipelineId,
       stage_id: stageId,
@@ -356,34 +356,17 @@ export function DealForm({
               )}
             </div>
 
-            <div className="grid grid-cols-[1fr_110px] gap-3">
-              <div className="grid gap-2">
-                <Label className="text-muted-foreground">{t("value")}</Label>
-                <div className="relative">
-                  <DollarSign className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    type="number"
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    placeholder="0"
-                    className="border-border bg-muted pl-7 text-foreground"
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-muted-foreground">{t("currency")}</Label>
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
-                >
-                  {CURRENCIES.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.code}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* Sem seletor de moeda e sem ícone de cifrão: o valor é sempre
+                em real, e o próprio campo já mostra o `R$`. */}
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground">{t("value")}</Label>
+              <ValorInput
+                valor={value}
+                aoMudar={setValue}
+                placeholder={t("value")}
+                aria-label={t("value")}
+                className="border-border bg-muted text-foreground"
+              />
             </div>
 
             <div className="grid gap-2">
