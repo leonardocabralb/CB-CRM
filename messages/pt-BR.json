@@ -2796,6 +2796,8 @@
     "contactPlaceholder": "Escolha um cliente",
     "loadingContacts": "Carregando clientes…",
     "contactsLoadError": "Não foi possível carregar a lista de clientes. Feche e reabra para tentar de novo.",
+    "contactSearchPlaceholder": "Buscar por nome ou telefone…",
+    "contactSearchEmpty": "Nenhum cliente encontrado para a busca.",
     "fieldDueDate": "Data",
     "fieldDueTime": "Hora",
     "dueTimeOptional": "Opcional",

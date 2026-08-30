@@ -38,6 +38,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 
+import { SeletorDeContato } from '@/components/contacts/seletor-de-contato';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useMembros } from '@/hooks/use-membros';
@@ -239,30 +240,19 @@ export function TaskForm({
               <Label className="text-muted-foreground">
                 {t('fieldContact')}
               </Label>
-              <Select
-                value={contatoEscolhido === '' ? null : contatoEscolhido}
-                onValueChange={(v) =>
-                  setContatoEscolhido(v == null ? '' : String(v))
-                }
-                disabled={contatos === null}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      contatos === null
-                        ? t('loadingContacts')
-                        : t('contactPlaceholder')
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent className="max-h-64">
-                  {(contatos ?? []).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name || c.phone}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* PESQUISÁVEL (pedido do operador, 2026-08-30): 100+ clientes
+                  num drop-down comum era caça ao rolar. Busca por nome OU
+                  telefone — `filtrarContatos` ignora acento e máscara. */}
+              <SeletorDeContato
+                contatos={contatos}
+                value={contatoEscolhido}
+                onChange={setContatoEscolhido}
+                placeholder={t('contactPlaceholder')}
+                searchPlaceholder={t('contactSearchPlaceholder')}
+                emptyText={t('contactSearchEmpty')}
+                loadingText={t('loadingContacts')}
+                ariaLabel={t('fieldContact')}
+              />
             </div>
           ) : null}
 

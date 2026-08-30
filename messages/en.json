@@ -2796,6 +2796,8 @@
     "contactPlaceholder": "Choose a client",
     "loadingContacts": "Loading clients…",
     "contactsLoadError": "Could not load the client list. Close and reopen to retry.",
+    "contactSearchPlaceholder": "Search by name or phone…",
+    "contactSearchEmpty": "No client matches the search.",
     "fieldDueDate": "Date",
     "fieldDueTime": "Time",
     "dueTimeOptional": "Optional",
