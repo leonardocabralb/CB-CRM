@@ -295,7 +295,9 @@
       "saveNote": "Save Note",
       "noteSaveError": "Could not save the note.",
       "noteMentionHint": "Type @ to mention a teammate",
-      "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified."
+      "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified.",
+      "fromLibrary": "From library",
+      "acervoError": "Could not prepare the library file."
     },
     "bubble": {
       "transcricao": "Transcript",
@@ -543,6 +545,15 @@
       "replyingTo": "Replying to: {trecho}",
       "quotedDeleted": "The quoted message was deleted — this will go out without the quote.",
       "quotedWasLost": "Sent without the quote: the quoted message had been deleted."
+    },
+    "acervo": {
+      "title": "Media library",
+      "searchPlaceholder": "Search by item or file name",
+      "allCategories": "All",
+      "empty": "The library is empty. An admin fills it in Settings → Media library.",
+      "noMatch": "No file matches that search.",
+      "loadError": "Could not load the library.",
+      "asVoiceNote": "sends as a voice note"
     }
   },
   "Contacts": {
@@ -1984,7 +1995,8 @@
       "assinatura": "Message signature",
       "members": "Team members",
       "integracoes": "Integrations",
-      "api": "API keys"
+      "api": "API keys",
+      "acervo": "Media library"
     },
     "integracoes": {
       "title": "Integrations",
@@ -2405,6 +2417,32 @@
       "saveSuccess": "Signature settings saved.",
       "saveFailed": "Could not save the signature settings.",
       "loadFailed": "Could not load the signature settings. Reload the page — saving now could overwrite what is currently configured."
+    },
+    "acervo": {
+      "title": "Media library",
+      "description": "Files the office keeps ready — contracts, images, audio — for the team to send from inside a conversation instead of hunting on their computer. Senders use the paperclip in the message box → “From library”.",
+      "add": "Add file",
+      "empty": "No files in the library yet. Add the first one for the team to use in conversations.",
+      "uncategorized": "General",
+      "preview": "Open",
+      "edit": "Rename",
+      "delete": "Remove from library",
+      "editTitle": "Edit library item",
+      "fieldTitle": "Name",
+      "fieldCategory": "Category",
+      "categoryPlaceholder": "e.g. Contracts",
+      "cancel": "Cancel",
+      "save": "Save",
+      "titleRequired": "Give the item a name.",
+      "confirmDelete": "Remove “{titulo}” from the library? Messages already sent with this file are unchanged — the team just can't send it again.",
+      "addedToast": "File added to the library.",
+      "uploadError": "Could not add the file.",
+      "unsupportedType": "WhatsApp doesn't accept this file type.",
+      "tooBig": "The file is {tamanho} — the limit is {teto}.",
+      "alreadyInLibrary": "This file is already in the library.",
+      "saveError": "Could not save.",
+      "deleteError": "Could not remove.",
+      "loadError": "Could not load the library."
     }
   },
   "roles": {
