@@ -730,10 +730,22 @@ export function MessageThread({
    *
    * Em conversa de GRUPO isto é sempre nulo: nota de grupo não tem contato
    * e a rota recusa fixá-la.
+   *
+   * ⚠️ O `conversation_id === conversationId` NÃO é redundante, e aqui não é
+   * a guarda tautológica que o hook descreve. O `useConversationNotes` esvazia
+   * a lista num efeito, que é PASSIVO: no primeiro render depois de trocar de
+   * conversa, `notas` ainda é da conversa anterior. A faixa fica FORA do
+   * `loading` que esconde o fio, então sem esta comparação a anotação do
+   * cliente A apareceria sob o cabeçalho do cliente B — e o botão de
+   * desafixar dela agiria sobre a nota de A enquanto o operador olha B.
+   * A comparação vale porque é o PROP do render atual contra o ESTADO velho,
+   * não um id capturado em closure. (Achado pela revisão do Codex no PR #64.)
    */
   const notaFixada = useMemo(
-    () => notas.find((n) => n.fixada_em) ?? null,
-    [notas],
+    () =>
+      notas.find((n) => n.fixada_em && n.conversation_id === conversationId) ??
+      null,
+    [notas, conversationId],
   );
   const podeAdministrar = useCan("manage-members");
   // Agendadas (925): a faixa acima do compositor e o compositor são
