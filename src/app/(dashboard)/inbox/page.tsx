@@ -529,7 +529,11 @@ function InboxPageInner() {
           // does — the user just deep-linked into this conv, treat that the
           // same as a click. Leaves activeConversation.unread_count alone so
           // the MessageThread reset effect still fires the server UPDATE.
-          if (match.unread_count > 0) {
+          // ⚠️ MESMA guarda de escopo do clique (Fase 3): deep link de
+          // notificação pode apontar conversa de outra área — o fio não
+          // monta, o servidor não zera, e zerar só o espelho local mentiria
+          // "lida" até o próximo reload. Achado da revisão fria.
+          if (conversaNoEscopo(acesso, match) && match.unread_count > 0) {
             setConversations((prev) =>
               prev.map((c) =>
                 c.id === match.id ? { ...c, unread_count: 0 } : c,
@@ -539,7 +543,7 @@ function InboxPageInner() {
         }
       }
     },
-    [deepLinkConvId, activeConversation?.id]
+    [deepLinkConvId, activeConversation?.id, acesso]
   );
 
   const handleSelectConversation = useCallback(
