@@ -1236,10 +1236,6 @@ export function MessageComposer({
                 <FileText className="mr-2 h-4 w-4" />
                 {t("document")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void startRecording()}>
-                <Mic className="mr-2 h-4 w-4" />
-                {t("voiceNote")}
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -1353,6 +1349,28 @@ export function MessageComposer({
               (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
             )}
           />
+
+          {/* Gravar nota de voz.
+              ⚠️ Botão PRÓPRIO, fora do menu do clipe, a pedido do operador:
+              gravar voz é das ações mais repetidas do atendimento e estava a
+              dois cliques, escondida atrás de um ícone que anuncia "anexar
+              arquivo". Fica à direita, junto do relógio e do enviar, que é
+              onde a mão já está quando se termina de escrever.
+              ⚠️ `inputsDisabled` como o resto do que sai para o cliente: a
+              nota de voz é mensagem, e fora da janela de 24h da Meta ela não
+              sairia. `busy` porque um upload em curso já ocupa o compositor. */}
+          {!readOnly && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={inputsDisabled || busy}
+              title={t("voiceNote")}
+              onClick={() => void startRecording()}
+              className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Mic className="h-4 w-4" />
+            </Button>
+          )}
 
           {/* Agendar (925) — SELETOR que abre ACIMA do botão, nunca um
               diálogo, e a hora escolhida vira uma etiqueta enxuta aqui do
