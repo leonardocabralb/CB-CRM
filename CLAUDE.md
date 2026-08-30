@@ -209,8 +209,8 @@ upstream sobrescrevê-los:
 | `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
 | `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página |
 | `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDaMensagem>` envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo), a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef` |
-| `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (956): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
-| `src/components/inbox/message-thread.tsx` (955/956) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem contato e canal RESOLVIDO — `activeChannel`; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
+| `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (963): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
+| `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem contato e canal RESOLVIDO — `activeChannel`; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
@@ -345,7 +345,7 @@ entre escrever e enviar.** `src/lib/scheduled/midia.ts` (puro, com teste),
   núcleo revalida e o disparador **traduz** — `SendMessageError.message` é
   escrito em inglês e cai cru na coluna que as duas telas mostram.
 
-⚠️ **Execuções na conversa (955) e presença por conversa (956).** Aba
+⚠️ **Execuções na conversa (955) e presença por conversa (963).** Aba
 "Automações" no painel da conversa (robô ativo + esperas, com Parar e linha
 do tempo), item "Executar automação" no menu + do compositor, e avatares de
 quem mais está com a conversa aberta. `src/lib/execucoes/` e
@@ -1348,8 +1348,14 @@ mordem de novo em qualquer código novo:
   - **955_cb_robo_parado_pela_equipe** — `stopped_by_agent` no CHECK de
     `flow_runs.status` (parada DECIDIDA por gente, via aba da conversa).
     Aplicada em 2026-08-30.
-  - **956_cb_conversa_aberta** — presença por conversa (tabela + RPC +
-    realtime). Aplicada em 2026-08-30.
+  - **956_cb_perfis_de_acesso a 962_cb_papel_segue_o_perfil** — perfis de
+    acesso, Fases 1–6 (PR #69). Aplicadas em 2026-08-30.
+  - **963_cb_conversa_aberta** — presença por conversa (tabela + RPC +
+    realtime). Aplicada em 2026-08-30. ⚠️ NASCEU como `956` e COLIDIU com a
+    `956_cb_perfis_de_acesso` (duas branches em paralelo); o replay do CI
+    estoura com número duplicado, então o ARQUIVO foi renumerado no merge —
+    o da presença, porque as 957–962 dependem da de perfis. O histórico do
+    Supabase não muda (registra por timestamp), mesmo caso da 906.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
