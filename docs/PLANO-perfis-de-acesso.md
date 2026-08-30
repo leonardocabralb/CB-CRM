@@ -335,6 +335,14 @@ com o perfil aplicado e a guarda de telas o recebe.
 🔭 Polimento futuro: o aceite redireciona para `/dashboard` fixo; poderia
 ir direto à primeira tela permitida (hoje o cartão com CTA resolve).
 
+**Revisão final (961/962):** a FK composta da 957 QUEBRAVA
+`remove_account_member` para membro com perfil (provado em produção — o
+perfil é da conta antiga, a conta destino é nova); a 961 zera `perfil_id` na
+remoção. E `set_member_role` passou a RECUSAR membro com perfil (962) — o
+papel segue o `papel_base`, e a troca por fora divergiria em silêncio. Quem
+criar OUTRO caminho que mova `profiles.account_id` precisa zerar `perfil_id`
+junto, ou a FK da 957 o quebra.
+
 ### Fase 6 — plano original (histórico)
 
 - Resumo do perfil dentro do **diálogo de convite**, atualizando ao trocar a
