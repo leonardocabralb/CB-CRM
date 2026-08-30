@@ -507,6 +507,40 @@ datas de nota em pt-BR. Checks: typecheck limpo · lint 0 erros/40 avisos ·
 registro no histórico** do Supabase (conferida no schema) — registrada no
 CLAUDE.md como segunda ocorrência do precedente da 037.
 
+## ✅ Pós-plano — revisão dos ajustes (2026-08-30, PR de correções)
+
+Revisão quente + fria (2 revisores adversariais: cliente/UI e servidor/banco
+com medições em produção) sobre o PR #61. Nada corrompe DADO — os achados
+reais eram estado de TELA em corrida. Corrigidos:
+
+1. **Guarda tautológica de resposta em voo (alta)** — salvar nota e trocar de
+   conversa no sub-segundo fazia a nota do cliente A aparecer na lista do B
+   (o closure comparava A===A; herdado do caminho antigo e replicado). A
+   guarda agora é VIVA, no hook (`conversaAtualRef`), cobrindo todos os
+   chamadores — inclusive `aplicarFixacao`, cujo ramo de limpeza desafixava
+   localmente a nota do cliente novo.
+2. **Autofoco da caixa de menção no painel** — remontagem por troca de
+   conversa roubava o foco do compositor e abria teclado no celular só de
+   olhar as notas → prop `autoFocus` (off no painel; compositor intacto).
+3. **Busca de contatos do formulário global** — erro virava lista vazia com
+   cara de "não há clientes" e nunca retentava → toast + retry ao reabrir.
+4. **Reset do TaskForm** — a chegada da lista de membros com a caixa aberta
+   apagava título e cliente escolhido (pré-existente + novo) → efeito
+   dividido; e o ramo "único membro" não afirma mais nada enquanto os
+   membros CARREGAM (seletor neutro desabilitado).
+5. **Rota de fixar** — nota apagada entre a leitura e o update virava 500
+   com log de erro falso → `PGRST116` mapeado para 409 `NOTE_GONE` (a
+   limpeza da fixada anterior já commitou; o operador refaz o pin).
+
+Medido e LIMPO pelos revisores: realtime de UPDATE publicado de verdade
+(fixar numa sessão aparece na outra; `prattrs` NULL = todas as colunas);
+tenancy/papéis/grants da rota (anon sem NADA na tabela); índice parcial e
+corrida 23505 no lugar certo; migração 951 idempotente e registrada; RLS da
+contagem de tarefas. Registrados sem correção: fixada fora da janela de 200
+notas (teto latente, comentado no hook), etiqueta oculta ≠ zero em falha de
+contagem (convenção da casa), e `cb_channels` na publicação realtime com
+lista fixa de colunas (nota no CLAUDE.md — armadilha para código futuro).
+
 ## Referências de exploração (2026-08-29)
 
 - 117 contatos · 107 negócios (~1/contato), todos em "Contato Avulso", 0

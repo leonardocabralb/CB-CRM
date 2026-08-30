@@ -2795,6 +2795,7 @@
     "fieldContact": "Client",
     "contactPlaceholder": "Choose a client",
     "loadingContacts": "Loading clients…",
+    "contactsLoadError": "Could not load the client list. Close and reopen to retry.",
     "fieldDueDate": "Date",
     "fieldDueTime": "Time",
     "dueTimeOptional": "Optional",

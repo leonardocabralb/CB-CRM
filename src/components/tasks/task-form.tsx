@@ -36,6 +36,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { toast } from 'sonner';
+
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useMembros } from '@/hooks/use-membros';
@@ -74,7 +76,7 @@ export function TaskForm({
 }: TaskFormProps) {
   const t = useTranslations('Tasks');
   const { user } = useAuth();
-  const { membros } = useMembros();
+  const { membros, carregando: carregandoMembros } = useMembros();
 
   const editando = !!tarefa;
   const respondendo = tipo === 'resposta';
@@ -111,19 +113,29 @@ export function TaskForm({
       setVenceEm(tarefa?.vence_em ?? diaLocal(new Date()));
       setVenceAs(tarefa?.vence_as?.slice(0, 5) ?? '');
       setImportante(tarefa?.importante ?? false);
-      // ⚠️ O DESTINATÁRIO NASCE VAZIO quando há com quem escolher, e é uma
-      // decisão sobre erro silencioso: com o próprio usuário no padrão, quem
-      // esquece de trocar cria para si mesmo uma tarefa que queria delegar — e o
-      // colega nunca fica sabendo que havia algo para ele. Vazio, o formulário
-      // não deixa salvar sem escolher. Numa conta de uma pessoa só não há
-      // escolha a fazer, então cai nela mesma.
-      setResponsavel(
-        tarefa?.responsavel_user_id ??
-          (membros.length <= 1 ? (user?.id ?? '') : '')
-      );
+      setResponsavel(tarefa?.responsavel_user_id ?? '');
       setContatoEscolhido('');
     }
-  }, [open, tarefa, membros.length, user?.id]);
+    // ⚠️ SÓ por abertura/tarefa — `membros` fica FORA destas deps de
+    // propósito: com ele aqui, o fetch de membros resolvendo com a caixa
+    // aberta re-rodava o reset e apagava o título digitado e o cliente
+    // recém-escolhido (achado da revisão de 2026-08-30).
+  }, [open, tarefa]);
+
+  // ⚠️ O DESTINATÁRIO NASCE VAZIO quando há com quem escolher, e é uma
+  // decisão sobre erro silencioso: com o próprio usuário no padrão, quem
+  // esquece de trocar cria para si mesmo uma tarefa que queria delegar — e o
+  // colega nunca fica sabendo que havia algo para ele. Vazio, o formulário
+  // não deixa salvar sem escolher. Numa conta de uma pessoa só não há
+  // escolha a fazer, então cai nela mesma — inclusive quando a lista chega
+  // DEPOIS de a caixa abrir (efeito separado do reset acima: preencher o
+  // padrão não pode custar os outros campos).
+  useEffect(() => {
+    if (!open || tarefa || carregandoMembros) return;
+    if (membros.length <= 1) {
+      setResponsavel((atual) => atual || (user?.id ?? ''));
+    }
+  }, [open, tarefa, carregandoMembros, membros.length, user?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // O catálogo de contatos só é buscado quando a criação é GLOBAL — no
@@ -138,13 +150,22 @@ export function TaskForm({
       .from('contacts')
       .select('id, name, phone')
       .order('name')
-      .then(({ data }) => {
-        if (vivo) setContatos(data ?? []);
+      .then(({ data, error }) => {
+        if (!vivo) return;
+        // Erro NÃO vira lista vazia: `[]` habilitava o seletor com cara de
+        // "não há clientes" e o Criar ficava travado sem explicação — e o
+        // guard `contatos !== null` nunca mais tentava de novo. Mantendo
+        // null, fechar e reabrir refaz a busca; o toast diz o que houve.
+        if (error) {
+          toast.error(t('contactsLoadError'));
+          return;
+        }
+        setContatos(data ?? []);
       });
     return () => {
       vivo = false;
     };
-  }, [open, precisaCliente, contatos]);
+  }, [open, precisaCliente, contatos, t]);
 
   const podeSalvar =
     !!titulo.trim() &&
@@ -284,10 +305,15 @@ export function TaskForm({
               <Label className="text-muted-foreground">
                 {t('fieldAssignee')}
               </Label>
-              {membros.length > 1 ? (
+              {membros.length > 1 || carregandoMembros ? (
+                /* Enquanto a lista de membros CARREGA, mostrar o seletor
+                   neutro desabilitado — afirmar "único membro" antes de a
+                   resposta chegar seria mentira numa conta com equipe (o
+                   fetch engole erro devolvendo lista vazia). */
                 <Select
                   value={responsavel}
                   onValueChange={(v) => setResponsavel(v ?? '')}
+                  disabled={carregandoMembros}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder={t('assigneePlaceholder')} />

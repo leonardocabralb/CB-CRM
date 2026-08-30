@@ -2795,6 +2795,7 @@
     "fieldContact": "Cliente",
     "contactPlaceholder": "Escolha um cliente",
     "loadingContacts": "Carregando clientes…",
+    "contactsLoadError": "Não foi possível carregar a lista de clientes. Feche e reabra para tentar de novo.",
     "fieldDueDate": "Data",
     "fieldDueTime": "Hora",
     "dueTimeOptional": "Opcional",

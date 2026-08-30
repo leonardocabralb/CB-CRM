@@ -1242,6 +1242,7 @@ export function PainelDoContato({
               key={conversationId}
               conversationId={conversationId}
               listaParaBaixo
+              autoFocus={false}
               onSaved={(nota) => {
                 if (nota.conversation_id === conversationId)
                   acrescentarNota(nota);
