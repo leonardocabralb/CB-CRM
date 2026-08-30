@@ -1714,7 +1714,12 @@
       "removeDialogDesc": "Remover <bold>{name}</bold> da conta? A pessoa será desconectada desta conta e receberá uma nova conta pessoal no próximo acesso. O login dela não é excluído.",
       "cancel": "Cancelar",
       "removing": "Removendo...",
-      "removeBtn": "Remover membro"
+      "removeBtn": "Remover membro",
+      "semPerfil": "Sem perfil (acesso total)",
+      "perfilChanged": "Perfil atualizado",
+      "perfilChangeError": "Não foi possível atribuir o perfil",
+      "legendaTitle": "O que cada perfil dá acesso",
+      "legendaMembros": "{count} {count, plural, =1 {membro} other {membros}}"
     },
     "invite": {
       "inviteCreated": "Convite criado",
@@ -1742,7 +1747,8 @@
       "labelTooLong": "O rótulo deve ter no máximo {max} caracteres",
       "copied": "Link do convite copiado",
       "clipboardBlocked": "Área de transferência bloqueada — copie o link manualmente",
-      "whatsappMessage": "Entre em {accountName} no wacrm usando este link (válido por {expiresInDays} dias): {url}"
+      "whatsappMessage": "Entre em {accountName} no wacrm usando este link (válido por {expiresInDays} dias): {url}",
+      "perfilLabel": "Perfil de acesso"
     },
     "tagsAndFields": {
       "title": "Campos e etiquetas",

@@ -1721,7 +1721,12 @@
       "removeDialogDesc": "Remove <bold>{name}</bold> from the account? They'll be signed out of this account and given a fresh personal account on their next sign-in. Their login isn't deleted.",
       "cancel": "Cancel",
       "removing": "Removing...",
-      "removeBtn": "Remove member"
+      "removeBtn": "Remove member",
+      "semPerfil": "No profile (full access)",
+      "perfilChanged": "Profile updated",
+      "perfilChangeError": "Could not assign the profile",
+      "legendaTitle": "What each profile grants",
+      "legendaMembros": "{count} {count, plural, =1 {member} other {members}}"
     },
     "invite": {
       "inviteCreated": "Invite created",
@@ -1749,7 +1754,8 @@
       "labelTooLong": "Label must be {max} characters or fewer",
       "copied": "Invite link copied",
       "clipboardBlocked": "Clipboard blocked — copy the link manually",
-      "whatsappMessage": "Join {accountName} on wacrm using this link (valid for {expiresInDays} days): {url}"
+      "whatsappMessage": "Join {accountName} on wacrm using this link (valid for {expiresInDays} days): {url}",
+      "perfilLabel": "Access profile"
     },
     "tagsAndFields": {
       "title": "Fields & tags",
