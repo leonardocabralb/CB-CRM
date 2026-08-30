@@ -148,6 +148,18 @@ export interface ContextoDosFiltros {
    * Campo exigido faz o compilador cobrar.
    */
   achadasNoTexto: Set<string>;
+  /**
+   * O mapa contato→etapa acima está completo e utilizável?
+   *
+   * ⚠️ Obrigatório pela MESMA razão de `achadasNoTexto`: com o mapa ainda
+   * vazio (a busca de `deals` é outra consulta, que chega depois — ou falha),
+   * `casaComAEtapa` reprova TODA conversa, e um filtro de etapa ativo — o
+   * deep link `?etapa=` do quadro de funis chega antes dos dados — abriria
+   * "nenhuma conversa encontrada" com cara de resposta certa. Com `false`,
+   * o recorte de etapa é NEUTRALIZADO aqui dentro: a lista nunca responde
+   * errado, no máximo ainda não recorta (a tela mostra spinner/aviso).
+   */
+  recorteDeEtapaConfiavel: boolean;
 }
 
 /**
@@ -277,7 +289,10 @@ export function aplicarFiltros(
     if (!casaComOResponsavel(c, f.responsavelId)) return false;
     if (f.favoritas && !ctx.favoritas.has(c.id)) return false;
     if (f.naoLidas && c.unread_count <= 0) return false;
-    if (!casaComAEtapa(c, f.etapaId, ctx.etapaPorContato)) return false;
+    // Ver `recorteDeEtapaConfiavel`: sem os dados por trás, o recorte de
+    // etapa é neutralizado — nunca aplicado sobre um mapa incompleto.
+    const etapaEfetiva = ctx.recorteDeEtapaConfiavel ? f.etapaId : null;
+    if (!casaComAEtapa(c, etapaEfetiva, ctx.etapaPorContato)) return false;
 
     if (f.etiquetaIds.length > 0 || f.empresa !== null) {
       if (

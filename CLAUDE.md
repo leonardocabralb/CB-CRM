@@ -213,7 +213,9 @@ upstream sobrescrevê-los:
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
-| `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil. Mais o funil-com-conversas (PR #71): `deal-card.tsx` reestruturado (clique navega à conversa, lápis de editar IRMÃO do botão — button aninhado é inválido), campos por `CamposDoCard`, botão de conversas por coluna, `navegarParaInbox`/restauração de rolagem no board, select `DEAL_SELECT_DO_QUADRO` com plano B na página |
+| `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil. Mais o funil-com-conversas (PR #71): botão de conversas por coluna, `navegarParaInbox`/restauração de rolagem no board (quadroRef vem da página), `useChannels` içado, select `DEAL_SELECT_DO_QUADRO` com plano B, popover de campos |
+| `src/components/pipelines/deal-card.tsx` | ⚠️ **reestruturado inteiro no PR #71 — manter a NOSSA versão** (como `conversation-list.tsx`): wrapper + botão do corpo (abre a CONVERSA) + lápis IRMÃO (edita; button aninhado é inválido), campos por `CamposDoCard`, etiquetas/última mensagem/não lidas, `memo` + canais por prop, barra de cor com `pointer-events-none` |
+| `src/components/pipelines/deal-form.tsx` | além do que a linha antiga já dizia: o link "ver conversa" prefere a conversa do CONTATO (fallback no vínculo da 910), usa `urlDoInbox` e as props `origemFunil`/`aoIrParaConversa` da jornada do funil |
 | `src/app/(dashboard)/inbox/page.tsx`, `src/components/inbox/conversation-list.tsx`, `inbox-filters.tsx` | os params `?etapa=` (semeia o filtro de etapa UMA vez) e `?de=funil` (faixa "Voltar ao funil") — os `router.replace` usam `urlDoInbox`, que preserva `de` e derruba `etapa` DE PROPÓSITO; na lista, `etapaInicial` + `etapasResolvidas` e o recorte de etapa gateado por `etapasUsaveis`; nos filtros, o fallback da pastilha virou `labelStage` (era "Qualquer etapa" sobre filtro ativo) |
 | `src/app/(dashboard)/automations/new/page.tsx` | o `?stage=` que faz a automação nascer com o gatilho de funil já apontando para a etapa clicada |
 | `src/lib/automations/trigger-meta.ts` | `formatRelative` passou a usar `Intl.RelativeTimeFormat` e a receber o texto de "nunca" — devolvia `5m ago`/`never` em inglês nas três telas |
@@ -425,26 +427,51 @@ negócio.** `src/lib/pipelines/cartao.ts`, `campos-do-card.ts`, `retorno.ts` e
 `src/lib/inbox/url.ts` (puros, testados); editar o negócio é o lápis do card.
 O que morde código novo:
 
-- ⚠️ **O recorte por etapa vindo de `?etapa=` só é APLICADO com
-  `etapasUsaveis`** (`filtrosEfetivos` no memo da lista). Com o mapa
-  contato→etapa vazio, `casaComAEtapa` reprova TODA conversa — sem a guarda, o
-  deep link abre "nenhuma conversa encontrada" com cara de resposta certa (há
-  pino disso em `filtros.test.ts`). O painel esconder o campo NÃO protege o
-  deep link: ele fura o gate do painel.
+- ⚠️ **A conversa do CONTATO manda; `deals.conversation_id` é só fallback**
+  (`conversaDoCard`, e o link do `deal-form` segue a MESMA regra). Invertido,
+  trocar o contato do negócio deixava o card com a cara do contato novo e o
+  clique abrindo a conversa do antigo — o update nunca reescreve o vínculo
+  ("`conversation_id` só no NASCIMENTO"). O fallback cobre contato apagado e
+  o plano B do select.
+- ⚠️ **O recorte por etapa sem dados é neutralizado DENTRO de
+  `aplicarFiltros`**, por `ContextoDosFiltros.recorteDeEtapaConfiavel` —
+  campo OBRIGATÓRIO, como `achadasNoTexto`: o compilador cobra de qualquer
+  consumidor novo. Com o mapa contato→etapa vazio, `casaComAEtapa` reprova
+  toda conversa e o deep link `?etapa=` abriria "nenhuma conversa" com cara
+  de resposta certa (pino em `filtros.test.ts`). A lista pagina a consulta de
+  `deals` (o teto de ~1000 do PostgREST derrubava o filtro PARA SEMPRE ao
+  passar de 1000 negócios); o painel recebe `etapas` SEMPRE (dá nome à
+  pastilha) e `etapasConfiaveis` gateia só OFERECER o campo.
+- ⚠️ **O filtro SEMEADO por `?etapa=` morre com a jornada**: a página do
+  inbox NÃO remonta quando só a query muda (sidebar limpa a URL, a faixa
+  some) — sem o efeito de ciclo de vida na lista, o recorte ficava aplicado
+  sem nada na tela explicando. Etapa semeada que não existe mais também é
+  descartada. Só o seed: etapa escolhida à mão no painel não é tocada.
 - **`DEAL_SELECT_DO_QUADRO` é separado do `CONVERSATION_SELECT`** de
   propósito — o do inbox é contrato da API pública v1. Embed recusado pelo
-  PostgREST cai no `DEAL_SELECT_BASICO` (senão o Kanban abre VAZIO sem erro,
-  porque o `loadDeals` original descartava o `error`).
-- **A restauração de rolagem mora no BOARD, não na página**: o `loading` da
-  página cobre só a carga dos funis; restaurar com ele mediria um quadro sem
-  colunas e gramparia o scroll em zero. E o `scrollTo` usa
-  `behavior: "instant"` porque o `.pipeline-scroll` tem
-  `scroll-behavior: smooth` — sem isso a volta vira varredura animada.
-- **`urlDoInbox` preserva `de` e derruba `etapa` nos replaces, por decisão**:
-  `etapa` é porta de entrada que semeia o filtro uma vez; preservá-la faria o
-  filtro limpo no painel voltar no reload.
+  PostgREST cai no `DEAL_SELECT_BASICO` (lembrado em flag de módulo — recusa
+  é persistente) e a falha do PRÓPRIO plano B vira toast + lista vazia, nunca
+  quadro "vazio" com cara de funil sem negócio. `contact.tags` fica AUSENTE
+  no plano B (fabricar `[]` afirmaria "sem etiquetas" sobre dado não
+  carregado).
+- **O retorno de rolagem EXPIRA (10 min), não é apagado no consumo**
+  (`retorno.ts`): apagar antes dos rAF perdia a restauração se o quadro
+  desmontasse na janela, ir-e-voltar duas vezes teleportava para `list[0]`, e
+  funil sem etapas nunca consumia o registro. A restauração mora no BOARD
+  (o `loading` da página cobre só a carga dos funis) com `aplicadoRef`
+  marcado DENTRO do rAF (StrictMode) e cleanup cancelando os rAF; o
+  `scrollTo` usa `behavior: "instant"` porque o `.pipeline-scroll` tem
+  `scroll-behavior: smooth`. O `quadroRef` é criado na PÁGINA: o link "ver
+  conversa" do formulário grava o mesmo retorno (props `origemFunil`/
+  `aoIrParaConversa` do `DealForm` — o painel do inbox não as passa).
+- **`urlDoInbox` preserva `de` (só o valor "funil") e derruba `etapa` nos
+  replaces, por decisão**: `etapa` é porta de entrada que semeia o filtro uma
+  vez; preservá-la faria o filtro limpo no painel voltar no reload.
 - **Sem realtime no quadro, por desenho**: não lidas/última mensagem são foto
-  da carga, e voltar do inbox remonta a página e refaz o fetch.
+  da carga, e voltar do inbox remonta a página e refaz o fetch. Os canais são
+  buscados UMA vez no board (`useChannels` dentro do card custava um GET por
+  card) e o `DealCard` é `memo` com handlers `useCallback` — quem criar prop
+  nova instável quebra isso e volta a re-renderizar 120 cards por tecla.
 
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`

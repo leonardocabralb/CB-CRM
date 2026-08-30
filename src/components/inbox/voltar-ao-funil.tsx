@@ -15,10 +15,13 @@ import { useTranslations } from "next-intl";
  * graça. A rolagem do quadro é restaurada pelo próprio funil, que consome o
  * registro gravado na ida (sessionStorage).
  */
-export function VoltarAoFunil() {
+export function VoltarAoFunil({ inert }: { inert?: boolean }) {
   const t = useTranslations("Inbox.page");
   return (
-    <div className="flex shrink-0 items-center border-b border-border bg-card px-3 py-1.5">
+    <div
+      inert={inert}
+      className="flex shrink-0 items-center border-b border-border bg-card px-3 py-1.5"
+    >
       <Link
         href="/pipelines"
         className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 text-xs text-primary transition-colors hover:bg-primary/20"

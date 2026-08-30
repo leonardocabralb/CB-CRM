@@ -780,6 +780,7 @@
       "createPipelineBtn": "Create Pipeline",
       "toastFailedLoadPipelines": "Failed to load pipelines",
       "toastFailedMoveDeal": "Failed to move deal",
+      "toastFailedLoadDeals": "Failed to load deals — try refreshing the page",
       "toastFailedCreatePipeline": "Failed to create pipeline",
       "toastPipelineCreated": "Pipeline created",
       "toastNotLinkedToAccount": "Your profile is not linked to an account."

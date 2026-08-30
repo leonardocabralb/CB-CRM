@@ -1,16 +1,13 @@
 "use client";
 
+import { memo } from "react";
 import type { Deal, PipelineStage } from "@/types";
+import type { CbChannel } from "@/lib/cb-channels/repo";
 import { Calendar, Check, Pencil, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
-import { useChannels } from "@/hooks/use-channels";
 import { findChannel } from "@/lib/cb-channels/display";
-import {
-  conversaDoCard,
-  destinoDoCard,
-  type DealDoQuadro,
-} from "@/lib/pipelines/cartao";
+import { conversaDoCard, type DealDoQuadro } from "@/lib/pipelines/cartao";
 import type { CamposDoCard } from "@/lib/pipelines/campos-do-card";
 import { stripWhatsAppFormat } from "@/lib/inbox/whatsapp-format";
 
@@ -19,11 +16,21 @@ interface DealCardProps {
   stage: PipelineStage | null;
   /** O que o card exibe — escolha por dispositivo (popover da barra). */
   campos: CamposDoCard;
+  /** Carregados UMA vez pelo board — um hook aqui custaria um GET por card. */
+  channels: CbChannel[];
   onEdit: (deal: Deal) => void;
   /** Clique no corpo do card, quando há conversa para abrir. */
   onAbrirConversa: (conversationId: string) => void;
   isOverlay?: boolean;
 }
+
+// Um formatter de módulo: `toLocaleDateString` cria um Intl.DateTimeFormat a
+// cada chamada, e isso custava ~2,7ms por passe de 120 cards (medido).
+const FORMATO_DE_DATA = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
 
 function formatDate(dateStr: string) {
   // `expected_close_date` is a Postgres DATE, so PostgREST sends it as a
@@ -35,11 +42,7 @@ function formatDate(dateStr: string) {
   const local = /^\d{4}-\d{2}-\d{2}$/.test(dateStr)
     ? `${dateStr}T00:00:00`
     : dateStr;
-  return new Date(local).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return FORMATO_DE_DATA.format(new Date(local));
 }
 
 function initials(name?: string, fallback?: string) {
@@ -48,10 +51,14 @@ function initials(name?: string, fallback?: string) {
   return source.charAt(0).toUpperCase();
 }
 
-export function DealCard({
+// `memo` porque o board redesenha os ~120 cards a cada tecla digitada em
+// qualquer diálogo irmão — com props estáveis (o board usa useCallback nos
+// handlers), o card só re-renderiza quando o SEU dado muda.
+export const DealCard = memo(function DealCard({
   deal,
   stage,
   campos,
+  channels,
   onEdit,
   onAbrirConversa,
   isOverlay,
@@ -65,29 +72,30 @@ export function DealCard({
   // de canal. Card sem `channel_id` (criado à mão, ou anterior à 908)
   // simplesmente não exibe: inventar o canal padrão seria mentir sobre a
   // origem, que é justamente o que esta etiqueta existe para contar.
-  const { channels } = useChannels();
   const canalDeOrigem =
     campos.canal && channels.length > 1
       ? findChannel(channels, deal.channel_id)
       : null;
 
-  // Para onde o clique no corpo leva: a conversa quando existe; sem nenhuma
-  // (negócio sem contato, contato que nunca conversou), o formulário de
-  // sempre — o rótulo acompanha, para o controle prometer o que faz.
-  const destino = destinoDoCard(deal);
-  const resumo = conversaDoCard(deal)?.resumo ?? null;
+  // A conversa que o corpo abre (a do CONTATO; vínculo da 910 é fallback —
+  // ver conversaDoCard). Sem nenhuma, o clique cai no formulário de sempre.
+  const conversa = conversaDoCard(deal);
+  const resumo = conversa?.resumo ?? null;
 
   const etiquetas = campos.etiquetas ? (deal.contact?.tags ?? []) : [];
+  // Sem useMemo aqui de propósito: o React Compiler (ativo no projeto) já
+  // memoiza este componente e recusava preservar o memo manual.
   const ultimaMensagem =
     campos.ultimaMensagem && resumo?.last_message_text
       ? stripWhatsAppFormat(resumo.last_message_text)
       : null;
   const naoLidas = campos.naoLidas ? (resumo?.unread_count ?? 0) : 0;
 
-  const rotuloDoCorpo =
-    destino.tipo === "conversa"
-      ? t("openConversationOf", { titulo: deal.title })
-      : t("editDealTitled", { titulo: deal.title });
+  const editar = (e: React.MouseEvent) => {
+    if (isOverlay) return;
+    e.stopPropagation();
+    onEdit(deal);
+  };
 
   return (
     // ⚠️ O lápis NÃO pode ficar dentro do botão do card: `<button>` dentro de
@@ -95,28 +103,32 @@ export function DealCard({
     // Mesmo padrão da estrela de favoritar na lista do inbox: irmãos num
     // wrapper `relative`, com a linha do título reservando a faixa (pr-7).
     <div
-      className={`group relative rounded-xl border border-border/50 bg-muted/70 shadow-sm transition-all ${
+      className={`relative rounded-xl border border-border/50 bg-muted/70 shadow-sm transition-all ${
         isOverlay
           ? "shadow-xl"
           : "hover:-translate-y-0.5 hover:border-border hover:bg-muted hover:shadow-lg"
       }`}
     >
-      {/* 4px left accent bar using stage color */}
+      {/* 4px left accent bar using stage color. `pointer-events-none` é
+          load-bearing: como irmã POSICIONADA do botão, sem ele a barra ganha
+          o hit-test e os 4px da borda viram zona morta de clique. */}
       <span
         aria-hidden
-        className="absolute left-0 top-0 h-full w-1 rounded-l-xl"
+        className="pointer-events-none absolute left-0 top-0 h-full w-1 rounded-l-xl"
         style={{ backgroundColor: stage?.color ?? "#94a3b8" }}
       />
 
+      {/* Sem aria-label: o nome acessível vem do CONTEÚDO (título, selo,
+          contato, valor, não lidas…), como no card original — um rótulo fixo
+          esconderia de leitores de tela justamente os campos novos. */}
       <button
         type="button"
-        aria-label={rotuloDoCorpo}
         onClick={(e) => {
           // `onClick` still fires after a non-drag tap because the PointerSensor
           // requires 5px movement before it counts as a drag.
           if (isOverlay) return;
           e.stopPropagation();
-          if (destino.tipo === "conversa") onAbrirConversa(destino.conversationId);
+          if (conversa) onAbrirConversa(conversa.id);
           else onEdit(deal);
         }}
         className="block w-full cursor-pointer rounded-xl py-3 pl-4 pr-3 text-left"
@@ -175,9 +187,9 @@ export function DealCard({
           </div>
         )}
 
-        {/* Última mensagem + não lidas — o resumo vem da conversa do card
-            (conversaDoCard); quando o vínculo gravado diverge da conversa do
-            contato, resumo é null e nada aqui mente sobre outra linha. */}
+        {/* Última mensagem + não lidas — o resumo vem de `conversaDoCard`;
+            no fallback pelo vínculo histórico (contato apagado, plano B) ele
+            é null e nada aqui pinta dado de outra linha. */}
         {(ultimaMensagem || naoLidas > 0) && (
           <div className="mt-2 flex items-center justify-between gap-2">
             {ultimaMensagem ? (
@@ -235,15 +247,11 @@ export function DealCard({
         type="button"
         aria-label={t("editDealTitled", { titulo: deal.title })}
         title={t("editDeal")}
-        onClick={(e) => {
-          if (isOverlay) return;
-          e.stopPropagation();
-          onEdit(deal);
-        }}
+        onClick={editar}
         className="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>
     </div>
   );
-}
+});

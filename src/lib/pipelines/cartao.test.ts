@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import type { Tag } from "@/types";
 import {
   conversaDoCard,
-  destinoDoCard,
   normalizarDealDoQuadro,
   type RawDealDoQuadro,
   type ResumoDaConversa,
@@ -13,8 +12,8 @@ function resumo(id: string, at: string | null = null): ResumoDaConversa {
   return { id, unread_count: 0, last_message_text: null, last_message_at: at };
 }
 
-function tag(id: string): Tag {
-  return { id, user_id: "u1", name: `tag-${id}`, color: "#3b82f6", created_at: "2026-01-01" };
+function tag(id: string, name = `tag-${id}`): Tag {
+  return { id, user_id: "u1", name, color: "#3b82f6", created_at: "2026-01-01" };
 }
 
 function contato(
@@ -76,21 +75,30 @@ describe("normalizarDealDoQuadro — formas do embed", () => {
     expect(deal.conversa).toBeNull();
   });
 
-  it("achata contact_tags em contact.tags, descartando join órfão (tags: null)", () => {
+  it("achata contact_tags em contact.tags ORDENADAS POR NOME, descartando join órfão — sem ordem estável, o trio do card (slice 3) trocava de composição a cada refetch", () => {
     const deal = normalizarDealDoQuadro(
       dealCru({
         contact: contato({
-          contact_tags: [{ tags: tag("t1") }, { tags: null }, { tags: tag("t2") }],
+          contact_tags: [
+            { tags: tag("t1", "Zeta") },
+            { tags: null },
+            { tags: tag("t2", "Alfa") },
+          ],
         }),
       }),
     );
-    expect(deal.contact?.tags?.map((t) => t.id)).toEqual(["t1", "t2"]);
+    expect(deal.contact?.tags?.map((t) => t.name)).toEqual(["Alfa", "Zeta"]);
     expect(
       (deal.contact as unknown as Record<string, unknown>).contact_tags,
     ).toBeUndefined();
   });
 
-  it("várias conversas: vence a que casa com deal.conversation_id", () => {
+  it("⚠️ contact_tags AUSENTE (plano B do select) NÃO fabrica tags: [] — a UI não pode afirmar 'sem etiquetas' sobre dado que não carregou", () => {
+    const deal = normalizarDealDoQuadro(dealCru({ contact: contato() }));
+    expect(deal.contact?.tags).toBeUndefined();
+  });
+
+  it("várias conversas (sobra pré-036): vence a que casa com deal.conversation_id", () => {
     const deal = normalizarDealDoQuadro(
       dealCru({
         conversation_id: "cv2",
@@ -118,8 +126,8 @@ describe("normalizarDealDoQuadro — formas do embed", () => {
   });
 });
 
-describe("conversaDoCard — precedência do deal-form", () => {
-  it("deal.conversation_id vence a conversa do contato", () => {
+describe("conversaDoCard — a conversa do CONTATO manda", () => {
+  it("com conversa do contato, é ela que o card abre e exibe", () => {
     const deal = normalizarDealDoQuadro(
       dealCru({
         conversation_id: "cv1",
@@ -129,39 +137,29 @@ describe("conversaDoCard — precedência do deal-form", () => {
     expect(conversaDoCard(deal)).toEqual({ id: "cv1", resumo: resumo("cv1") });
   });
 
-  it("sem vínculo gravado, cai na conversa do contato (negócio pré-910)", () => {
-    const deal = normalizarDealDoQuadro(
-      dealCru({ contact: contato({ conversations: [resumo("cv1")] }) }),
-    );
-    expect(conversaDoCard(deal)?.id).toBe("cv1");
-  });
-
-  it("nenhuma conversa → null", () => {
-    const deal = normalizarDealDoQuadro(dealCru({ contact: contato() }));
-    expect(conversaDoCard(deal)).toBeNull();
-  });
-
-  it("⚠️ vínculo divergente da conversa do contato: navega para o GRAVADO e resumo null (não pintar a prévia de uma conversa e abrir outra)", () => {
+  it("⚠️ vínculo histórico DIVERGENTE (contato trocado no formulário): o card abre a conversa do contato ATUAL — abrir a antiga faria o operador responder à pessoa errada (achado da revisão do PR #71)", () => {
+    const doContato = resumo("cv-do-bruno");
     const deal = normalizarDealDoQuadro(
       dealCru({
-        conversation_id: "cv-historica",
-        contact: contato({ conversations: [resumo("cv-do-contato")] }),
+        conversation_id: "cv-da-ana",
+        contact: contato({ conversations: [doContato] }),
       }),
+    );
+    expect(conversaDoCard(deal)).toEqual({ id: "cv-do-bruno", resumo: doContato });
+  });
+
+  it("sem conversa do contato (contato apagado, ou plano B do select), cai no vínculo gravado da 910 — sem resumo, para não pintar prévia de dado não carregado", () => {
+    const deal = normalizarDealDoQuadro(
+      dealCru({ conversation_id: "cv-historica", contact: contato() }),
     );
     expect(conversaDoCard(deal)).toEqual({ id: "cv-historica", resumo: null });
   });
-});
 
-describe("destinoDoCard", () => {
-  it("com conversa → abre a conversa", () => {
-    const deal = normalizarDealDoQuadro(
-      dealCru({ conversation_id: "cv1", contact: contato() }),
-    );
-    expect(destinoDoCard(deal)).toEqual({ tipo: "conversa", conversationId: "cv1" });
-  });
-
-  it("sem conversa nenhuma → formulário (o comportamento de sempre)", () => {
-    const deal = normalizarDealDoQuadro(dealCru({ contact: null, contact_id: null }));
-    expect(destinoDoCard(deal)).toEqual({ tipo: "formulario" });
+  it("nenhuma conversa em lugar nenhum → null (o card cai no formulário)", () => {
+    const deal = normalizarDealDoQuadro(dealCru({ contact: contato() }));
+    expect(conversaDoCard(deal)).toBeNull();
+    expect(
+      conversaDoCard(normalizarDealDoQuadro(dealCru({ contact: null, contact_id: null }))),
+    ).toBeNull();
   });
 });

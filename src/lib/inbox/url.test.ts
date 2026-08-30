@@ -27,4 +27,9 @@ describe("urlDoInbox", () => {
   it("valores passam por encodeURIComponent", () => {
     expect(urlDoInbox({ c: "a&b" })).toBe("/inbox?c=a%26b");
   });
+
+  it("⚠️ `de` só sai com o valor que tem leitor — lixo de link colado não gruda nos replaces", () => {
+    expect(urlDoInbox({ c: "cv1", de: "whatsapp" })).toBe("/inbox?c=cv1");
+    expect(urlDoInbox({ de: "qualquer" })).toBe("/inbox");
+  });
 });

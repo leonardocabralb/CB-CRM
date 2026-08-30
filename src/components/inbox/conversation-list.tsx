@@ -65,11 +65,20 @@ interface ConversationListProps {
   /**
    * Etapa de funil vinda da URL (`?etapa=`, botão da coluna do quadro).
    * Semeia o filtro UMA vez, no estado inicial — a lista não remonta quando
-   * a URL muda, então não há como o seed reaplicar por cima de um filtro que
-   * o operador já limpou. O recorte em si espera `etapasUsaveis` (ver o memo
-   * de `filtered`).
+   * a URL muda (App Router preserva o state em navegação na mesma rota),
+   * então o seed não reaplica por cima de um filtro que o operador limpou.
+   * O recorte em si espera os dados (`recorteDeEtapaConfiavel` no ctx).
    */
   etapaInicial?: string | null;
+  /**
+   * `de === "funil"` na URL — a jornada quadro→inbox está viva. ⚠️ Quando ela
+   * MORRE (clique em "Caixa de entrada" na sidebar, numa notificação: a URL
+   * limpa, a faixa "Voltar ao funil" some), o filtro SEMEADO morre junto —
+   * sem isso, a página não remonta e a lista continuava recortada por uma
+   * etapa que nada na tela explicava. Só o seed é limpo: etapa escolhida à
+   * mão no painel não é tocada.
+   */
+  jornadaDoFunil?: boolean;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -88,6 +97,7 @@ export function ConversationList({
   resyncToken = 0,
   onTermoDeBusca,
   etapaInicial = null,
+  jornadaDoFunil = false,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
 
@@ -114,12 +124,14 @@ export function ConversationList({
   // seletor aparece completo, escolher qualquer etapa devolve zero e escolher
   // "Sem negócio" devolve as 64 — a resposta exatamente invertida, sem erro na
   // tela.
-  const [etapasUsaveis, setEtapasUsaveis] = useState(false);
-  // `etapasUsaveis` não distingue "carregando" de "carregou e não dá para
-  // usar" — e hoje isso não importava, porque só dava para ESCOLHER etapa com
-  // o painel visível (dados prontos). O deep link `?etapa=` fura esse gate:
-  // este sinalizador separa a espera (spinner) da falha (aviso inline).
-  const [etapasResolvidas, setEtapasResolvidas] = useState(false);
+  // O estado do PAR de consultas que sustenta o filtro de etapa
+  // (`pipeline_stages` + `deals`): "carregando" segura o spinner do deep
+  // link `?etapa=`, "ok" libera o recorte, "indisponivel" liga o aviso
+  // inline. Um enum, e não dois booleans, para o estado impossível
+  // (resolvido-mas-não-resolvido) não existir.
+  const [etapasStatus, setEtapasStatus] = useState<
+    "carregando" | "ok" | "indisponivel"
+  >("carregando");
   const [temPerfis, setTemPerfis] = useState(false);
   // `contact_id` → etapas dos negócios dele. Busca separada porque `deals` NÃO
   // vem no CONVERSATION_SELECT — e não pode vir: aquele select é compartilhado
@@ -211,6 +223,38 @@ export function ConversationList({
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false;
+    // TODOS os negócios da conta, PAGINANDO além do teto de ~1000 linhas do
+    // PostgREST. Antes a consulta era única e o `count: 'exact'` só DETECTAVA
+    // a truncagem — passar de 1000 negócios derrubava o filtro de etapa para
+    // sempre (achado da revisão do PR #71); agora o count fecha o laço.
+    // `linhas: null` = não dá para confiar (erro, ou dado mudando no meio).
+    const buscarDeals = async (): Promise<{
+      linhas: { contact_id: string | null; stage_id: string | null }[] | null;
+    }> => {
+      const PAGINA = 1000;
+      const acumulado: { contact_id: string | null; stage_id: string | null }[] =
+        [];
+      let total: number | null = null;
+      for (let pagina = 0; pagina < 25; pagina++) {
+        const de = pagina * PAGINA;
+        const { data, error, count } = await supabase
+          .from("deals")
+          .select("contact_id, stage_id", { count: "exact" })
+          .range(de, de + PAGINA - 1);
+        if (error || !data) return { linhas: null };
+        acumulado.push(...(data as typeof acumulado));
+        total = count ?? total;
+        if (total == null || acumulado.length >= total || data.length < PAGINA) {
+          return {
+            linhas:
+              total != null && acumulado.length < total ? null : acumulado,
+          };
+        }
+      }
+      // 25k+ negócios: admitir que não coube é melhor que recortar errado.
+      return { linhas: null };
+    };
+
     (async () => {
       const [tagsRes, profilesRes, etapasRes, funisRes, dealsRes] =
         await Promise.all([
@@ -221,14 +265,7 @@ export function ConversationList({
             .select("*")
             .order("position", { ascending: true }),
           supabase.from("pipelines").select("id, name"),
-          // `count: 'exact'` para detectar TRUNCAGEM: o PostgREST tem teto de
-          // linhas por resposta, e passando dele os negócios cortados migram
-          // em silêncio para "Sem negócio" — de novo a resposta invertida.
-          // Hoje são 55 e não chega perto; a checagem é o que mantém isso
-          // verdadeiro sem ninguém precisar lembrar.
-          supabase
-            .from("deals")
-            .select("contact_id, stage_id", { count: "exact" }),
+          buscarDeals(),
         ]);
       if (cancelled) return;
 
@@ -249,16 +286,8 @@ export function ConversationList({
         );
       }
 
-      const linhas = dealsRes.data as
-        | { contact_id: string | null; stage_id: string | null }[]
-        | null;
-      const completo =
-        !dealsRes.error &&
-        !!linhas &&
-        !!etapasRes.data &&
-        (dealsRes.count == null || dealsRes.count === linhas.length);
-      setEtapasUsaveis(completo);
-      setEtapasResolvidas(true);
+      const { linhas } = dealsRes;
+      setEtapasStatus(linhas && etapasRes.data ? "ok" : "indisponivel");
       if (linhas) setEtapaPorContato(mapaDeEtapasPorContato(linhas));
     })();
     return () => {
@@ -315,35 +344,59 @@ export function ConversationList({
     [achadosNoTexto],
   );
 
-  // Todo o recorte mora em `src/lib/inbox/filtros.ts`, testado lá. Aqui só
-  // fica o estado e o que a tela precisa para desenhar os rótulos.
-  //
-  // ⚠️ O filtro de etapa só é APLICADO com `etapasUsaveis`: com o mapa
-  // contato→etapa ainda vazio, `casaComAEtapa` reprova TODAS as conversas e o
-  // deep link `?etapa=` abriria "nenhuma conversa" com cara de resposta certa
-  // (há um pino disso em filtros.test.ts). Enquanto os dados não chegam, o
-  // spinner de `aguardandoEtapas` segura a tela; se chegarem inutilizáveis, o
-  // aviso inline abaixo da busca assume — o recorte nunca responde errado.
-  const filtered = useMemo(() => {
-    const filtrosEfetivos = etapasUsaveis
-      ? filtros
-      : { ...filtros, etapaId: null };
-    return aplicarFiltros(conversations, filtrosEfetivos, {
+  // Todo o recorte mora em `src/lib/inbox/filtros.ts`, testado lá — inclusive
+  // a neutralização do filtro de etapa sem dados: `recorteDeEtapaConfiavel` é
+  // campo OBRIGATÓRIO do ctx (como `achadasNoTexto`), então quem consumir
+  // `aplicarFiltros` em outra tela é cobrado pelo compilador. Enquanto os
+  // dados não chegam, o spinner de `aguardandoEtapas` segura a tela; se
+  // chegarem inutilizáveis, o aviso inline abaixo da busca assume.
+  const filtered = useMemo(
+    () =>
+      aplicarFiltros(conversations, filtros, {
+        favoritas,
+        etapaPorContato,
+        busca: search,
+        achadasNoTexto: idsAchadosNoTexto,
+        recorteDeEtapaConfiavel: etapasStatus === "ok",
+      }),
+    [
+      conversations,
+      filtros,
+      etapasStatus,
       favoritas,
       etapaPorContato,
-      busca: search,
-      achadasNoTexto: idsAchadosNoTexto,
-    });
-  }, [
-    conversations,
-    filtros,
-    etapasUsaveis,
-    favoritas,
-    etapaPorContato,
-    search,
-    idsAchadosNoTexto,
-  ]);
-  const aguardandoEtapas = filtros.etapaId !== null && !etapasResolvidas;
+      search,
+      idsAchadosNoTexto,
+    ],
+  );
+  const aguardandoEtapas =
+    filtros.etapaId !== null && etapasStatus === "carregando";
+
+  /**
+   * Ciclo de vida do filtro SEMEADO por `?etapa=` (e só dele — etapa
+   * escolhida à mão no painel não passa por aqui):
+   * · a jornada do funil acaba (URL limpa pela sidebar/notificação — a
+   *   página NÃO remonta) → o seed morre junto com a faixa, senão a lista
+   *   ficava recortada sem nada na tela explicando;
+   * · os dados chegam e a etapa semeada NÃO existe (link velho, etapa
+   *   apagada) → o seed é descartado, senão a lista abria "nenhuma
+   *   conversa" sem aviso.
+   */
+  const seedDeEtapaRef = useRef(etapaInicial);
+  const jornadaAnteriorRef = useRef(jornadaDoFunil);
+  useEffect(() => {
+    const seed = seedDeEtapaRef.current;
+    const jornadaAcabou = jornadaAnteriorRef.current && !jornadaDoFunil;
+    jornadaAnteriorRef.current = jornadaDoFunil;
+    if (!seed) return;
+    const seedSumiu =
+      etapasStatus === "ok" && !etapas.some((e) => e.id === seed);
+    if (!jornadaAcabou && !seedSumiu) return;
+    seedDeEtapaRef.current = null;
+    setFiltros((prev) =>
+      prev.etapaId === seed ? { ...prev, etapaId: null } : prev,
+    );
+  }, [jornadaDoFunil, etapasStatus, etapas]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -417,9 +470,9 @@ export function ConversationList({
           </p>
         )}
         {/* Filtro de etapa ativo com os dados por trás indisponíveis: o
-            recorte foi neutralizado (ver o memo de `filtered`) e isto é o
-            que impede a lista completa de passar por "filtrada". */}
-        {filtros.etapaId !== null && etapasResolvidas && !etapasUsaveis && (
+            recorte foi neutralizado (ver `recorteDeEtapaConfiavel`) e isto é
+            o que impede a lista completa de passar por "filtrada". */}
+        {filtros.etapaId !== null && etapasStatus === "indisponivel" && (
           <p className="px-0.5 text-[11px] text-destructive">
             {t("stageFilterUnavailable")}
           </p>
@@ -432,7 +485,12 @@ export function ConversationList({
           etiquetas={tags}
           empresas={companies}
           responsaveis={temPerfis ? profiles : []}
-          etapas={etapasUsaveis ? etapas : []}
+          // A lista COMPLETA sempre: é ela que resolve o NOME da pastilha de
+          // um filtro ativo (deep link chega antes dos dados; e etapas podem
+          // estar íntegras com só a consulta de deals quebrada). Quem gateia
+          // OFERECER o campo é `etapasConfiaveis`.
+          etapas={etapas}
+          etapasConfiaveis={etapasStatus === "ok"}
           funis={funis}
           temGrupos={temGrupos}
           busca={search}

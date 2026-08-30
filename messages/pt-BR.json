@@ -773,6 +773,7 @@
       "createPipelineBtn": "Criar funil",
       "toastFailedLoadPipelines": "Falha ao carregar os funis",
       "toastFailedMoveDeal": "Falha ao mover o negócio",
+      "toastFailedLoadDeals": "Não foi possível carregar os negócios — recarregue a página",
       "toastFailedCreatePipeline": "Falha ao criar o funil",
       "toastPipelineCreated": "Funil criado",
       "toastNotLinkedToAccount": "Seu perfil não está vinculado a uma conta."

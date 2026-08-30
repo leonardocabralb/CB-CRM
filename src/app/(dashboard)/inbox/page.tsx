@@ -60,7 +60,9 @@ function InboxPageInner() {
    * replaces — relido aqui a cada render e reescrito por `urlDoInbox`.
    */
   const etapaInicial = searchParams.get("etapa");
-  const de = searchParams.get("de");
+  // Só o valor com leitor viaja adiante: `urlDoInbox` também recusa outros,
+  // mas sanear aqui evita que um `de=` estranho de link colado circule.
+  const de = searchParams.get("de") === "funil" ? "funil" : null;
   const veioDoFunil = de === "funil";
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -728,8 +730,11 @@ function InboxPageInner() {
   return (
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
       {/* Volta da jornada funil → conversa. Irmã da faixa amarela abaixo,
-          pela mesma razão: empurra os painéis em vez de sobrepor. */}
-      {veioDoFunil && <VoltarAoFunil />}
+          pela mesma razão: empurra os painéis em vez de sobrepor. `inert`
+          junto com a lista e o fio: com o painel mobile aberto (modal de
+          verdade), Tab não pode alcançar um link invisível atrás do
+          backdrop. */}
+      {veioDoFunil && <VoltarAoFunil inert={fundoInerte} />}
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
       {whatsappConnected === false && (
@@ -756,6 +761,7 @@ function InboxPageInner() {
             activeConversationId={activeConversation?.id ?? null}
             onSelect={handleSelectConversation}
             etapaInicial={etapaInicial}
+            jornadaDoFunil={veioDoFunil}
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
