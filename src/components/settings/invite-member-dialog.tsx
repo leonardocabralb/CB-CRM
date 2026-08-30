@@ -14,7 +14,10 @@
 // shouts this in copy.
 // ============================================================
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+import { createClient } from '@/lib/supabase/client';
+import { PerfilResumo, type PerfilParaResumo } from './perfil-resumo';
 import { toast } from 'sonner';
 import { Copy, Loader2, MessageCircle, Sparkles } from 'lucide-react';
 
@@ -78,17 +81,57 @@ export function InviteMemberDialog({
   const tRoles = useTranslations('Settings.roles');
   const { account } = useAuth();
   const [role, setRole] = useState<InviteRole>('agent');
+  // Fase 6: o convite escolhe um PERFIL, não um papel cru — o papel vem do
+  // perfil. O select de papel continua existindo só como fallback quando a
+  // conta ainda não criou perfil nenhum.
+  const [perfis, setPerfis] = useState<
+    (PerfilParaResumo & { id: string })[]
+  >([]);
+  const [perfilId, setPerfilId] = useState<string>('');
+  // Achado de revisão: sem este sinalizador, um clique rápido em "Gerar
+  // link" ANTES de a busca dos perfis voltar cairia no ramo legado e criaria
+  // o convite SEM perfil, em silêncio — o convidado chegaria vendo tudo.
+  const [perfisCarregados, setPerfisCarregados] = useState(false);
   const [expiry, setExpiry] = useState<string>('7');
   const [label, setLabel] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CreatedInvite | null>(null);
 
+  useEffect(() => {
+    if (!open) return;
+    let cancelado = false;
+    (async () => {
+      const { data } = await createClient()
+        .from('cb_perfis_de_acesso')
+        .select('id, nome, papel_base, telas, channel_ids, pipeline_ids')
+        .order('sistema', { ascending: false })
+        .order('nome');
+      if (cancelado) return;
+      setPerfisCarregados(true);
+      if (!data) return;
+      setPerfis(data as (PerfilParaResumo & { id: string })[]);
+      // Pré-seleciona o primeiro perfil que NÃO é de admin: o convite típico
+      // é para a equipe, e nascer com "Administrador" marcado transformaria
+      // um clique apressado em promoção acidental.
+      const padrao =
+        (data as { id: string; papel_base: string }[]).find(
+          (p) => p.papel_base !== 'admin',
+        ) ?? (data as { id: string }[])[0];
+      setPerfilId((atual) => atual || padrao?.id || '');
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [open]);
+
   function reset() {
     setRole('agent');
+    setPerfilId('');
     setExpiry('7');
     setLabel('');
     setResult(null);
     setSubmitting(false);
+    setPerfisCarregados(false);
   }
 
   async function handleCreate() {
@@ -109,7 +152,9 @@ export function InviteMemberDialog({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          role,
+          // Com perfil escolhido o papel viaja DENTRO dele (a rota resolve
+          // papel_base); o `role` cru é só o caminho legado sem perfis.
+          ...(perfilId ? { perfilId } : { role }),
           expiresInDays: Number(expiry),
           label: trimmedLabel || undefined,
         }),
@@ -126,9 +171,10 @@ export function InviteMemberDialog({
         expiresInDays: number;
       };
 
+      const papelDoPerfil = perfis.find((p) => p.id === perfilId)?.papel_base;
       setResult({
         url: data.url,
-        role,
+        role: (papelDoPerfil ?? role) as InviteRole,
         expiresInDays: data.expiresInDays,
         // Snapshot the account name into the result so the wa.me
         // share message has team context. Falls back to a generic
@@ -267,6 +313,41 @@ export function InviteMemberDialog({
             </DialogHeader>
 
             <div className="space-y-4 py-2">
+              {perfis.length > 0 ? (
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">
+                    {t('perfilLabel')}
+                  </Label>
+                  <Select
+                    value={perfilId}
+                    onValueChange={(v) => v && setPerfilId(v)}
+                  >
+                    <SelectTrigger className="w-full bg-muted border-border text-foreground">
+                      <SelectValue>
+                        {perfis.find((p) => p.id === perfilId)?.nome ?? ''}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {perfis.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {/* A legenda pedida pelo operador: o que este perfil dá,
+                      derivado da configuração REAL — nunca texto fixo, que
+                      mentiria na primeira edição do perfil. */}
+                  {(() => {
+                    const escolhido = perfis.find((p) => p.id === perfilId);
+                    return escolhido ? (
+                      <div className="rounded-lg border border-border bg-muted/40 p-2.5">
+                        <PerfilResumo perfil={escolhido} />
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+              ) : (
               <div className="space-y-2">
                 <Label className="text-muted-foreground">{t('roleLabel')}</Label>
                 <Select
@@ -286,6 +367,7 @@ export function InviteMemberDialog({
                   {tRoles(`${role}Hint` as 'adminHint' | 'agentHint' | 'viewerHint')}
                 </p>
               </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-muted-foreground">{t('validForLabel')}</Label>
@@ -334,7 +416,7 @@ export function InviteMemberDialog({
               </Button>
               <Button
                 onClick={handleCreate}
-                disabled={submitting}
+                disabled={submitting || !perfisCarregados}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 {submitting ? (

@@ -70,7 +70,7 @@ function SignupPageInner() {
       ? `${window.location.origin}/join/${encodeURIComponent(inviteToken)}`
       : undefined;
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -84,6 +84,35 @@ function SignupPageInner() {
     if (error) {
       setError(error.message);
       setLoading(false);
+      return;
+    }
+
+    // Whether a verification email exists at all is a PROJECT setting
+    // ("Confirm email" in Supabase Auth), not something this page can
+    // assume. The two outcomes are told apart by `data.session`:
+    //
+    //   session !== null  → confirmation is OFF. The user is already
+    //                       signed in, right now. Showing them
+    //                       "check your email" strands them waiting
+    //                       for a message that is never sent — which
+    //                       is exactly what happened to the first
+    //                       teammate invited to this account
+    //                       (2026-08-30: signed up, auto-confirmed
+    //                       17ms later, never redeemed the invite).
+    //   session === null  → confirmation is ON. The card below is
+    //                       accurate; keep showing it.
+    //
+    // Hard navigation, not router.push: the session cookies were just
+    // written by the Supabase client, and the middleware only reads
+    // them on a fresh request. A client-side push can reach /join
+    // before the middleware sees the new session and get bounced.
+    if (data.session) {
+      window.location.href = inviteToken
+        ? `/join/${encodeURIComponent(inviteToken)}`
+        : "/dashboard";
+      // Deliberately leave `loading` true: the button stays disabled
+      // while the browser navigates, so an impatient second click
+      // can't fire a duplicate signUp.
       return;
     }
 

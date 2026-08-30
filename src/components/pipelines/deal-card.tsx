@@ -214,7 +214,7 @@ export const DealCard = memo(function DealCard({
           <div className="mt-2 flex items-center justify-between gap-2">
             {campos.valor ? (
               <span className="text-sm font-bold text-primary">
-                {formatCurrency(deal.value, deal.currency)}
+                {formatCurrency(deal.value)}
               </span>
             ) : (
               <span />

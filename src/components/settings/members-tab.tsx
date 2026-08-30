@@ -72,6 +72,8 @@ import {
   PRESENCE_DOT_CLASS,
   PresenceDot,
 } from '@/components/presence/presence-dot';
+import { createClient } from '@/lib/supabase/client';
+import { PerfilResumo, type PerfilParaResumo } from './perfil-resumo';
 import { InviteMemberDialog } from './invite-member-dialog';
 import { SettingsPanelHead } from './settings-panel-head';
 import { ROLE_META } from './role-meta';
@@ -132,6 +134,13 @@ export function MembersTab() {
 
   const [members, setMembers] = useState<Member[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  // Fase 6: perfis de acesso da conta + o perfil de cada membro. Leitura
+  // direta sob RLS (a 956 dá SELECT a qualquer membro) — é o que alimenta o
+  // chip por linha e o quadro "o que cada perfil dá".
+  const [perfis, setPerfis] = useState<(PerfilParaResumo & { id: string })[]>([]);
+  const [perfilPorMembro, setPerfilPorMembro] = useState<Map<string, string>>(
+    new Map(),
+  );
   const [loading, setLoading] = useState(true);
 
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -142,12 +151,30 @@ export function MembersTab() {
 
   const loadEverything = useCallback(async () => {
     try {
-      const [mres, ires] = await Promise.all([
+      const supabase = createClient();
+      const [mres, ires, perfisRes, vinculosRes] = await Promise.all([
         fetch('/api/account/members', { cache: 'no-store' }),
         canManageMembers
           ? fetch('/api/account/invitations', { cache: 'no-store' })
           : Promise.resolve(null),
+        supabase
+          .from('cb_perfis_de_acesso')
+          .select('id, nome, papel_base, telas, channel_ids, pipeline_ids')
+          .order('sistema', { ascending: false })
+          .order('nome'),
+        supabase.from('profiles').select('user_id, perfil_id'),
       ]);
+
+      if (perfisRes.data) {
+        setPerfis(perfisRes.data as (PerfilParaResumo & { id: string })[]);
+      }
+      if (vinculosRes.data) {
+        const mapa = new Map<string, string>();
+        for (const v of vinculosRes.data) {
+          if (v.perfil_id) mapa.set(v.user_id, v.perfil_id);
+        }
+        setPerfilPorMembro(mapa);
+      }
 
       if (!mres.ok) {
         const payload = await mres.json().catch(() => ({}));
@@ -179,6 +206,29 @@ export function MembersTab() {
   useEffect(() => {
     void loadEverything();
   }, [loadEverything]);
+
+  async function handlePerfilChange(member: Member, novoPerfilId: string) {
+    setPendingMemberAction(member.user_id);
+    try {
+      const res = await fetch('/api/cb/perfis/atribuir', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: member.user_id,
+          perfilId: novoPerfilId === '__sem__' ? null : novoPerfilId,
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(payload.error || t('perfilChangeError'));
+        return;
+      }
+      toast.success(t('perfilChanged'));
+      await loadEverything();
+    } finally {
+      setPendingMemberAction(null);
+    }
+  }
 
   async function handleRoleChange(member: Member, nextRole: AccountRole) {
     if (member.role === nextRole) return;
@@ -396,6 +446,21 @@ export function MembersTab() {
                           {member.email}
                         </p>
                       )}
+                      {(() => {
+                        const pid = perfilPorMembro.get(member.user_id);
+                        const perfil = pid
+                          ? perfis.find((p) => p.id === pid)
+                          : null;
+                        return perfil ? (
+                          <p className="truncate text-[11px] text-primary/90">
+                            {perfil.nome}
+                          </p>
+                        ) : !isOwnerRow ? (
+                          <p className="truncate text-[11px] text-muted-foreground/70">
+                            {t('semPerfil')}
+                          </p>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
 
@@ -410,10 +475,45 @@ export function MembersTab() {
                       inline. Items align to the start on mobile so the
                       role dropdown lines up under the avatar. */}
                   <div className="flex items-center gap-2 sm:gap-3">
+                    {/* Perfil de acesso (Fase 6). Admin atribui aqui; a rota
+                        /atribuir grava perfil_id + account_role JUNTOS, então
+                        depois de atribuir o select de papel some — o papel
+                        passa a seguir o perfil, e dois seletores decidindo a
+                        mesma coisa divergiriam no primeiro clique. */}
+                    {canManageMembers && !isOwnerRow && !isSelf && perfis.length > 0 && (
+                      <Select
+                        value={perfilPorMembro.get(member.user_id) ?? '__sem__'}
+                        onValueChange={(v) =>
+                          v && handlePerfilChange(member, v)
+                        }
+                      >
+                        <SelectTrigger
+                          className="w-40 bg-muted border-border text-foreground"
+                          disabled={isBusy}
+                        >
+                          <SelectValue>
+                            {perfis.find(
+                              (p) => p.id === perfilPorMembro.get(member.user_id),
+                            )?.nome ?? t('semPerfil')}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__sem__">{t('semPerfil')}</SelectItem>
+                          {perfis.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                     {/* Role display / editor. Inline Select is admin+
                         only AND not allowed on the owner row (owner
-                        changes go through transfer, which lands later). */}
-                    {canManageMembers && !isOwnerRow && !isSelf ? (
+                        changes go through transfer, which lands later).
+                        Com PERFIL atribuído o editor de papel some (o papel
+                        segue o perfil); fica só o chip. */}
+                    {canManageMembers && !isOwnerRow && !isSelf &&
+                    !perfilPorMembro.get(member.user_id) ? (
                       <Select
                         value={member.role}
                         onValueChange={(v) =>
@@ -472,6 +572,44 @@ export function MembersTab() {
           </ul>
         </CardContent>
       </Card>
+
+      {/* Quadro "o que cada perfil dá" (Fase 6) — a legenda pedida pelo
+          operador, DERIVADA da configuração real dos perfis: os chips vêm de
+          `telas`/escopo de cada linha, nunca de texto fixo no dicionário,
+          que mentiria na primeira edição. Visível a qualquer membro (a RLS
+          da 956 dá SELECT), até para quem não gerencia — saber o que o
+          próprio perfil cobre evita chamado ao admin. */}
+      {perfis.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-foreground">
+            {t('legendaTitle')}
+          </h3>
+          <Card>
+            <CardContent className="p-0">
+              <ul className="divide-y divide-border">
+                {perfis.map((p) => {
+                  const membrosNoPerfil = members.filter(
+                    (m) => perfilPorMembro.get(m.user_id) === p.id,
+                  ).length;
+                  return (
+                    <li key={p.id} className="flex flex-col gap-2 px-4 py-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-foreground">
+                          {p.nome}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {t('legendaMembros', { count: membrosNoPerfil })}
+                        </span>
+                      </div>
+                      <PerfilResumo perfil={p} />
+                    </li>
+                  );
+                })}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Pending invitations — admin+ only */}
       <RequireRole min="admin">

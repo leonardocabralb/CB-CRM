@@ -217,6 +217,7 @@
       "showContact": "Exibir contato",
       "refresh": "Atualizar",
       "refreshConversation": "Atualizar conversa",
+      "tambemNaConversa": "{nome} também está com esta conversa aberta",
       "status": "Status",
       "statusOpen": "Aberta",
       "statusPending": "Pendente",
@@ -271,6 +272,7 @@
       "interactiveMessage": "Mensagem interativa",
       "interactiveNotOnChannel": "Mensagens interativas não são suportadas em canais por QR Code.",
       "quickReplies": "Respostas rápidas",
+      "runAutomation": "Executar automação",
       "quickRepliesEmpty": "Nenhuma resposta rápida ainda. Adicione em Configurações → Respostas rápidas.",
       "saveAsQuickReply": "Salvar como resposta rápida",
       "send": "Enviar",
@@ -290,7 +292,9 @@
       "saveNote": "Salvar Anotação",
       "noteSaveError": "Não foi possível salvar a anotação.",
       "noteMentionHint": "Digite @ para mencionar um colega",
-      "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou."
+      "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou.",
+      "fromLibrary": "Do acervo",
+      "acervoError": "Não foi possível preparar o arquivo do acervo."
     },
     "bubble": {
       "transcricao": "Transcrição",
@@ -406,7 +410,6 @@
       "pinNote": "Fixar nota",
       "unpinNote": "Desafixar nota",
       "pinnedNote": "Fixada",
-      "pinError": "Não foi possível fixar a nota.",
       "tabTracking": "Traqueamento",
       "noTrackingFields": "Nenhum campo de traqueamento ainda.",
       "seedTrackingFields": "Criar os {count} campos padrão",
@@ -415,7 +418,51 @@
       "openFullDeal": "Abrir negócio completo",
       "dealSaveError": "Não foi possível atualizar o negócio.",
       "statusOpen": "Aberto",
-      "dealDetails": "Detalhes do negócio"
+      "dealDetails": "Detalhes do negócio",
+      "tabAutomations": "Automações"
+    },
+    "execucoes": {
+      "roboAtivo": "Robô ativo",
+      "aguardando": "Automações aguardando",
+      "iniciado": "iniciado {quando}",
+      "proximoPasso": "próximo passo {quando}",
+      "passos": "{n, plural, one {# passo pendente} other {# passos pendentes}}",
+      "parar": "Parar",
+      "confirmarParar": "Confirmar parada",
+      "cancelar": "Cancelar",
+      "nadaRodando": "Nada em execução para este cliente.",
+      "dica": "Robôs ativos e passos futuros de automações aparecem aqui.",
+      "roboParado": "Robô parado.",
+      "automacaoParada": "Automação parada para este cliente.",
+      "nadaParaParar": "Não havia mais nada para parar — já tinha terminado.",
+      "erroParar": "Não deu para parar. Tente de novo.",
+      "erroCarregar": "Não deu para carregar o que está em execução para este cliente.",
+      "tentarDeNovo": "Tentar de novo",
+      "semNome": "(apagada)",
+      "somenteLeitura": "Somente leitura",
+      "agoraAguardando": "Aguardando — próximo passo {quando}",
+      "dependeDaCondicao": "depende da condição",
+      "falhou": "falhou",
+      "pulado": "pulado",
+      "semPassosFuturos": "Termina depois desta espera.",
+      "executar": {
+        "titulo": "Executar automação",
+        "buscar": "Buscar pelo nome…",
+        "grupoAutomacoes": "Automações",
+        "grupoRobos": "Robôs",
+        "nadaDisponivel": "Nenhuma automação ou robô ativo para executar.",
+        "nadaNaBusca": "Nada casa com a busca.",
+        "erroCarregar": "Não deu para carregar a lista. Feche e tente de novo.",
+        "foraDoCanal": "Não vale para o número desta conversa.",
+        "inativa": "Foi desligada nesse meio tempo.",
+        "confirmarTexto": "Executar \"{nome}\" para {contato}?",
+        "avisoEnvio": "Isso pode enviar mensagens reais ao cliente agora.",
+        "voltar": "Voltar",
+        "executar": "Executar",
+        "roboIniciado": "Robô iniciado para este cliente.",
+        "automacaoDisparada": "Automação disparada para este cliente.",
+        "erro": "Não deu para executar. Tente de novo."
+      }
     },
     "aiBanner": {
       "pausedTitle": "O assistente de IA está pausado aqui",
@@ -471,7 +518,13 @@
       "delete": "Excluir anotação",
       "confirmDelete": "Excluir",
       "cancelDelete": "Cancelar",
-      "deleteFailed": "Não foi possível excluir a anotação."
+      "deleteFailed": "Não foi possível excluir a anotação.",
+      "pinnedBanner": "Anotação fixada",
+      "pin": "Fixar no topo da conversa",
+      "unpin": "Desafixar anotação",
+      "expand": "Ver a anotação inteira",
+      "collapse": "Recolher anotação",
+      "pinError": "Não foi possível fixar a nota."
     },
     "scheduled": {
       "sectionTitle": "Agendadas",
@@ -533,6 +586,15 @@
       "replyingTo": "Respondendo: {trecho}",
       "quotedDeleted": "A mensagem citada foi apagada — vai sair sem a citação.",
       "quotedWasLost": "Saiu sem a citação: a mensagem citada tinha sido apagada."
+    },
+    "acervo": {
+      "title": "Acervo de mídias",
+      "searchPlaceholder": "Buscar por nome do item ou do arquivo",
+      "allCategories": "Todas",
+      "empty": "O acervo está vazio. Um administrador monta a lista em Configurações → Acervo de mídias.",
+      "noMatch": "Nenhum arquivo com esse termo.",
+      "loadError": "Não foi possível carregar o acervo.",
+      "asVoiceNote": "vai como nota de voz"
     }
   },
   "Contacts": {
@@ -813,7 +875,6 @@
       "selectContact": "Selecione um contato",
       "linkToConversation": "Vincular à conversa",
       "value": "Valor",
-      "currency": "Moeda",
       "expectedCloseDate": "Data prevista de fechamento",
       "stage": "Etapa",
       "assignedTo": "Atribuído a",
@@ -1732,7 +1793,12 @@
       "removeDialogDesc": "Remover <bold>{name}</bold> da conta? A pessoa será desconectada desta conta e receberá uma nova conta pessoal no próximo acesso. O login dela não é excluído.",
       "cancel": "Cancelar",
       "removing": "Removendo...",
-      "removeBtn": "Remover membro"
+      "removeBtn": "Remover membro",
+      "semPerfil": "Sem perfil (acesso total)",
+      "perfilChanged": "Perfil atualizado",
+      "perfilChangeError": "Não foi possível atribuir o perfil",
+      "legendaTitle": "O que cada perfil dá acesso",
+      "legendaMembros": "{count} {count, plural, =1 {membro} other {membros}}"
     },
     "invite": {
       "inviteCreated": "Convite criado",
@@ -1760,7 +1826,8 @@
       "labelTooLong": "O rótulo deve ter no máximo {max} caracteres",
       "copied": "Link do convite copiado",
       "clipboardBlocked": "Área de transferência bloqueada — copie o link manualmente",
-      "whatsappMessage": "Entre em {accountName} no wacrm usando este link (válido por {expiresInDays} dias): {url}"
+      "whatsappMessage": "Entre em {accountName} no wacrm usando este link (válido por {expiresInDays} dias): {url}",
+      "perfilLabel": "Perfil de acesso"
     },
     "tagsAndFields": {
       "title": "Campos e etiquetas",
@@ -1986,11 +2053,12 @@
       "templates": "Modelos",
       "quick-replies": "Respostas rápidas",
       "fields": "Campos e etiquetas",
-      "deals": "Negócios e moeda",
       "assinatura": "Assinatura",
       "members": "Membros da equipe",
       "integracoes": "Integrações",
-      "api": "Chaves de API"
+      "api": "Chaves de API",
+      "perfis": "Perfis de acesso",
+      "acervo": "Acervo de mídias"
     },
     "integracoes": {
       "title": "Integrações",
@@ -2290,18 +2358,6 @@
       "done": "Concluído",
       "networkError": "Não foi possível conectar ao servidor"
     },
-    "deals": {
-      "title": "Negócios e moeda",
-      "description": "Moeda usada em novos negócios e nos totais do funil e do painel.",
-      "defaultCurrency": "Moeda padrão",
-      "defaultCurrencyDesc": "Novos negócios usam esta moeda por padrão, e os totais do funil e do painel são exibidos nela. Negócios existentes mantêm a moeda com que foram salvos.",
-      "currencyLabel": "Moeda",
-      "adminOnlyHint": "Somente administradores da conta podem alterar a moeda padrão.",
-      "save": "Salvar",
-      "saving": "Salvando...",
-      "saveFailed": "Falha ao salvar a moeda padrão",
-      "saveSuccess": "Moeda padrão atualizada"
-    },
     "aiConfig": {
       "title": "Configuração do agente de IA",
       "description": "Use sua própria chave da OpenAI, da Anthropic ou do Google (Gemini). O wacrm chama o provedor diretamente com a sua chave — sem cobrança de IA por usuário, e seus dados continuam sendo seus. Isso alimenta as respostas sugeridas por IA na caixa de entrada, o bot de resposta automática, o Playground e o Radar do atendimento.",
@@ -2411,6 +2467,32 @@
       "saveSuccess": "Configuração da assinatura salva.",
       "saveFailed": "Não foi possível salvar a configuração da assinatura.",
       "loadFailed": "Não foi possível carregar a configuração da assinatura. Recarregue a página — salvar agora poderia sobrescrever o que está configurado."
+    },
+    "acervo": {
+      "title": "Acervo de mídias",
+      "description": "Arquivos que o escritório deixa prontos — contratos, imagens, áudios — para a equipe enviar de dentro da conversa, sem procurar no computador. Quem envia usa o clipe da caixa de mensagem → “Do acervo”.",
+      "add": "Adicionar arquivo",
+      "empty": "Nenhum arquivo no acervo ainda. Adicione o primeiro para a equipe usar nas conversas.",
+      "uncategorized": "Geral",
+      "preview": "Abrir",
+      "edit": "Renomear",
+      "delete": "Remover do acervo",
+      "editTitle": "Editar item do acervo",
+      "fieldTitle": "Nome",
+      "fieldCategory": "Categoria",
+      "categoryPlaceholder": "ex.: Contratos",
+      "cancel": "Cancelar",
+      "save": "Salvar",
+      "titleRequired": "Dê um nome ao item.",
+      "confirmDelete": "Remover “{titulo}” do acervo? As mensagens já enviadas com este arquivo não mudam — a equipe só deixa de poder enviá-lo de novo.",
+      "addedToast": "Arquivo adicionado ao acervo.",
+      "uploadError": "Não foi possível adicionar o arquivo.",
+      "unsupportedType": "Este tipo de arquivo não é aceito pelo WhatsApp.",
+      "tooBig": "O arquivo tem {tamanho} — o limite é {teto}.",
+      "alreadyInLibrary": "Este arquivo já está no acervo.",
+      "saveError": "Não foi possível salvar.",
+      "deleteError": "Não foi possível remover.",
+      "loadError": "Não foi possível carregar o acervo."
     }
   },
   "roles": {
@@ -2548,7 +2630,7 @@
     "title": "Criar conta",
     "titleInvite": "Criar conta e entrar na equipe",
     "description": "Comece a usar o CB Advogados CRM",
-    "descriptionInvite": "Confirme seu e-mail e depois aceite o convite para entrar na sua equipe.",
+    "descriptionInvite": "Crie sua conta e aceite o convite para entrar na sua equipe.",
     "fullNameLabel": "Nome completo",
     "fullNamePlaceholder": "João da Silva",
     "emailLabel": "E-mail",
@@ -2834,5 +2916,61 @@
     "showDone": "Ver {count} concluída(s)",
     "openCount": "{count, plural, =1 {1 tarefa aberta} other {# tarefas abertas}}",
     "deleteConfirm": "Excluir \"{titulo}\"? Isso não pode ser desfeito."
+  },
+  "TelaBloqueada": {
+    "title": "Esta área não faz parte do seu perfil",
+    "body": "A página existe, mas o seu perfil de acesso não a inclui. Se você precisa dela para o seu trabalho, fale com o administrador da conta.",
+    "cta": "Ir para a minha área"
+  },
+  "ConversaForaDaArea": {
+    "title": "Esta conversa é de outra área",
+    "body": "Ela apareceu na sua busca ou nas notificações, mas está fora das conexões do seu perfil de acesso. Se você precisa dela, fale com o administrador da conta.",
+    "back": "Voltar às minhas conversas"
+  },
+  "PerfisPanel": {
+    "title": "Perfis de acesso",
+    "description": "Quem vê o quê. Cada membro recebe um perfil, e o perfil define papel, telas e área (conexões e funis).",
+    "newProfile": "Novo perfil",
+    "loading": "Carregando…",
+    "loadError": "Não foi possível carregar os perfis",
+    "emptyState": "Nenhum perfil ainda. Comece pelos perfis padrão — Administrador, Advogado e Observador — e ajuste como quiser.",
+    "seedButton": "Criar perfis padrão",
+    "seedOk": "{count} {count, plural, =1 {perfil criado} other {perfis criados}}",
+    "seedError": "Não foi possível criar os perfis padrão",
+    "rowSummary": "{telas} {telas, plural, =1 {tela} other {telas}} · {membros} {membros, plural, =1 {membro} other {membros}}",
+    "allChannels": "todas as conexões",
+    "someChannels": "{count} {count, plural, =1 {conexão} other {conexões}}",
+    "allPipelines": "todos os funis",
+    "somePipelines": "{count} {count, plural, =1 {funil} other {funis}}",
+    "duplicate": "Duplicar",
+    "edit": "Editar",
+    "delete": "Apagar",
+    "copyName": "{nome} (cópia)",
+    "createTitle": "Novo perfil de acesso",
+    "editTitle": "Editar perfil",
+    "editorDescription": "O papel define o que a pessoa PODE fazer; as telas e a área definem o que ela VÊ.",
+    "nameLabel": "Nome",
+    "namePlaceholder": "ex.: Advogado Trabalhista",
+    "roleLabel": "Papel",
+    "roleHint": "Trocar o papel de um perfil em uso atualiza o papel de todos os membros dele.",
+    "telasLabel": "Telas visíveis",
+    "telasHint": "Sem nenhuma marcada, o perfil vê só Configurações (o cadeado indica o que nenhum perfil esconde).",
+    "secoesLabel": "Seções de Configurações",
+    "secoesHint": "Perfil, senha e aparência aparecem sempre, para todo mundo — por isso não estão na lista.",
+    "secaoPerfis": "Perfis de acesso",
+    "canaisLabel": "Conexões da área",
+    "escopoVazioHint": "Sem nenhuma marcada, o perfil vê TODAS as conexões e funis — marque para restringir.",
+    "funisLabel": "Funis da área",
+    "sugerirFunis": "Sugerir pelos números marcados",
+    "cancel": "Cancelar",
+    "save": "Salvar",
+    "saveOk": "Perfil salvo",
+    "saveOkComMembros": "Perfil salvo — {count} {count, plural, =1 {membro teve o papel atualizado} other {membros tiveram o papel atualizado}}",
+    "saveError": "Não foi possível salvar o perfil",
+    "deleteTitle": "Apagar o perfil \"{nome}\"?",
+    "deleteBody": "Só é possível apagar um perfil sem membros. Se houver gente nele, mova as pessoas para outro perfil antes.",
+    "deleteConfirm": "Apagar perfil",
+    "deleteOk": "Perfil apagado",
+    "deleteError": "Não foi possível apagar o perfil"
   }
 }

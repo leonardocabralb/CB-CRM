@@ -36,6 +36,8 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useBuscaEmMensagens } from "@/hooks/use-busca-em-mensagens";
 import { useChannels } from "@/hooks/use-channels";
+import { useAuth } from "@/hooks/use-auth";
+import { canaisVisiveis, conversaNoEscopo } from "@/lib/perfis/escopo";
 import { useFavoritas } from "@/hooks/use-favoritas";
 
 interface ConversationListProps {
@@ -350,6 +352,15 @@ export function ConversationList({
   // `aplicarFiltros` em outra tela é cobrado pelo compilador. Enquanto os
   // dados não chegam, o spinner de `aguardandoEtapas` segura a tela; se
   // chegarem inutilizáveis, o aviso inline abaixo da busca assume.
+  // Recorte por perfil (Fase 3) como PREDICADO, não import dentro de
+  // filtros.ts — escopo.ts importa canalDaConversa de lá, e o import na
+  // direção contrária fecharia ciclo de módulos.
+  const { acesso } = useAuth();
+  const foraDoPerfil = useCallback(
+    (c: Conversation) => !conversaNoEscopo(acesso, c),
+    [acesso],
+  );
+
   const filtered = useMemo(
     () =>
       aplicarFiltros(conversations, filtros, {
@@ -358,6 +369,7 @@ export function ConversationList({
         busca: search,
         achadasNoTexto: idsAchadosNoTexto,
         recorteDeEtapaConfiavel: etapasStatus === "ok",
+        foraDoPerfil,
       }),
     [
       conversations,
@@ -367,6 +379,7 @@ export function ConversationList({
       etapaPorContato,
       search,
       idsAchadosNoTexto,
+      foraDoPerfil,
     ],
   );
   const aguardandoEtapas =
@@ -481,7 +494,11 @@ export function ConversationList({
         <InboxFilters
           filtros={filtros}
           onChange={setFiltros}
-          canais={channels}
+          // O seletor de canal só oferece as conexões DO PERFIL — oferecer
+          // as outras seria um filtro que devolve sempre vazio, com cara de
+          // "não há conversas". (As linhas de outra área que a BUSCA traz
+          // continuam aparecendo; isto recorta só as OPÇÕES do filtro.)
+          canais={canaisVisiveis(acesso, channels)}
           etiquetas={tags}
           empresas={companies}
           responsaveis={temPerfis ? profiles : []}

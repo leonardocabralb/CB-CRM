@@ -20,13 +20,17 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useConversationNotes } from '@/hooks/use-conversation-notes';
+import { useFixarNota } from '@/hooks/use-fixar-nota';
 import { useCan } from '@/hooks/use-can';
+import { funilNoEscopo, funisVisiveis } from '@/lib/perfis/escopo';
 import { toast } from 'sonner';
 import { ActivityHistory } from '@/components/lead-events/activity-history';
 import { ContactTasks } from '@/components/tasks/contact-tasks';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { DealForm } from '@/components/pipelines/deal-form';
 import { SeletorFunilEtapa } from '@/components/inbox/painel/seletor-funil-etapa';
+import { AbaAutomacoes } from '@/components/inbox/painel/aba-automacoes';
+import { useExecucoesDoContato } from '@/hooks/use-execucoes-do-contato';
 import { statusAoEntrarNaEtapa } from '@/lib/pipelines/resultado';
 import { avisarDrenagemDeFunil } from '@/lib/automations/avisar-drenagem';
 import { CampoPersonalizadoInput } from '@/components/contacts/campo-personalizado-input';
@@ -40,6 +44,7 @@ import {
   camposGerais,
 } from '@/lib/contacts/campos-de-traqueamento';
 import { useAuth } from '@/hooks/use-auth';
+import { ValorInput } from '@/components/valor/valor-input';
 import { formatCurrency } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import type {
@@ -47,7 +52,6 @@ import type {
   CustomField,
   Deal,
   DealStatus,
-  ConversationNote,
   PipelineStage,
   Tag,
 } from '@/types';
@@ -74,6 +78,7 @@ import {
   PinOff,
   Save,
   Settings2,
+  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -134,13 +139,12 @@ export function PainelDoContato({
   // O mesmo gate da RLS: `agent`+ escreve contato/etiqueta/valores ("viewer"
   // só olha). O catálogo de CAMPOS é admin — gate separado, mais abaixo.
   const podeEditar = useCan('send-messages');
+  const { acesso } = useAuth();
   const podeGerirCampos = useCan('edit-settings');
 
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
-  /** Nota com PATCH de fixação no ar (id) — trava o botão clicado. */
-  const [fixando, setFixando] = useState<string | null>(null);
   /**
    * Tarefas ABERTAS deste cliente (qualquer responsável) — o número da
    * etiqueta na aba Tarefas. `null` = ainda não contado (etiqueta some).
@@ -148,6 +152,13 @@ export function PainelDoContato({
    * aberta, e a etiqueta precisa existir antes disso.
    */
   const [tarefasAbertas, setTarefasAbertas] = useState<number | null>(null);
+  /**
+   * Execuções vivas do cliente (955): robô ativo + esperas de automação.
+   * No TOPO como as outras buscas — a etiqueta da aba precisa do número
+   * antes de a aba abrir, e trocar de aba não refaz query. O hook zera
+   * sozinho na troca de contato (mesma régua de staleness das 7 queries).
+   */
+  const execucoes = useExecucoesDoContato(contact?.id ?? null);
   /**
    * `true` só depois que as consultas POR-CONTATO do contato ATUAL
    * aterrissaram sem erro. Enquanto `false`, salvar campos e o cartão de
@@ -291,6 +302,12 @@ export function PainelDoContato({
     acrescentar: acrescentarNota,
     aplicarFixacao,
   } = useConversationNotes(conversationId);
+  /**
+   * Fixar/desafixar (951). ⚠️ A ação mora no hook porque a faixa do topo do
+   * fio faz a MESMA coisa: duas cópias das guardas divergiriam, e a
+   * divergência apareceria como duas anotações fixadas na tela.
+   */
+  const { fixarNota, fixando } = useFixarNota(aplicarFixacao);
 
   // O hook devolve na ordem que o `intercalar` prefere (o fio reordena tudo).
   // Aqui a lista é lida direto, e a seção sempre mostrou a mais recente no
@@ -375,7 +392,15 @@ export function PainelDoContato({
       toast.error(tSidebar('loadError'));
       return;
     }
-    setDeals(dealsRes.data ?? []);
+    // Recorte por perfil (Fase 4): negócio de funil fora do escopo não
+    // aparece na barra da conversa — mesmo cliente podendo ter caso nas duas
+    // áreas, cada equipe vê o seu. `pipeline_id` nulo (negócio órfão) passa,
+    // como todo "sem carimbo" do projeto.
+    setDeals(
+      ((dealsRes.data ?? []) as Deal[]).filter(
+        (d) => !d.pipeline_id || funilNoEscopo(acesso, d.pipeline_id),
+      ),
+    );
     const mapped = (tagsRes.data ?? [])
       .filter((ct: Record<string, unknown>) => ct.tags)
       .map((ct: Record<string, unknown>) => ({
@@ -391,11 +416,11 @@ export function PainelDoContato({
     // Catálogo da CONTA: falha aqui não trava a edição do contato — segue
     // tolerante, como antes (o estado anterior continua servindo).
     if (allTagsRes.data) setAllTags(allTagsRes.data);
-    if (funisRes.data) setPipelines(funisRes.data);
+    if (funisRes.data) setPipelines(funisVisiveis(acesso, funisRes.data));
     if (etapasRes.data) setAllStages(etapasRes.data as PipelineStage[]);
     if (!tarefasRes.error) setTarefasAbertas(tarefasRes.count ?? 0);
     setDadosProntos(true);
-  }, [contact, tSidebar]);
+  }, [contact, tSidebar, acesso]);
 
   // Load on contact change. setDeals/setTags run inside async
   // Supabase callbacks, not synchronously in the effect body.
@@ -688,36 +713,6 @@ export function PainelDoContato({
     setTarefasAbertas(count ?? 0);
   }, [contact]);
 
-  /**
-   * Fixa/desafixa pela ROTA (`PATCH /api/cb/notes/[id]`): UPDATE segue
-   * revogado no navegador (918/920), e é o índice parcial da 951 que
-   * garante "uma por cliente". A resposta traz a nota carimbada e o
-   * `aplicarFixacao` zera a anterior no estado local.
-   */
-  const fixarNota = useCallback(
-    async (nota: ConversationNote, fixar: boolean) => {
-      setFixando(nota.id);
-      try {
-        const res = await fetch(`/api/cb/notes/${nota.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fixada: fixar }),
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || !json?.note) {
-          toast.error(tSidebar('pinError'));
-          return;
-        }
-        aplicarFixacao(json.note as ConversationNote);
-      } catch {
-        toast.error(tSidebar('pinError'));
-      } finally {
-        setFixando(null);
-      }
-    },
-    [aplicarFixacao, tSidebar]
-  );
-
   if (!contact) {
     return (
       <div className="border-border bg-card flex h-full w-full flex-col border-l">
@@ -831,6 +826,17 @@ export function PainelDoContato({
           <AbaDeIcone value="traqueamento" label={tSidebar('tabTracking')}>
             <Megaphone className="h-4 w-4" />
           </AbaDeIcone>
+          <AbaDeIcone
+            value="automacoes"
+            label={tSidebar('tabAutomations')}
+            badge={
+              execucoes.carregou && !execucoes.erro
+                ? execucoes.robos.length + execucoes.esperas.length
+                : null
+            }
+          >
+            <Zap className="h-4 w-4" />
+          </AbaDeIcone>
           <AbaDeIcone value="historico" label={tSidebar('tabHistory')}>
             <History className="h-4 w-4" />
           </AbaDeIcone>
@@ -897,20 +903,18 @@ export function PainelDoContato({
                 />
 
                 <div className="flex items-center gap-2">
-                  <Input
-                    key={`valor-${dealAtivo.id}-${dealAtivo.value}-${resetNegocio}`}
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    defaultValue={dealAtivo.value || ''}
+                  {/* Sem `key` de reset aqui, ao contrário da data logo
+                      abaixo: o campo de valor é CONTROLADO por
+                      `dealAtivo.value`, então um save recusado já o devolve
+                      ao valor salvo sozinho. */}
+                  <ValorInput
+                    valor={dealAtivo.value}
                     disabled={!podeEditar || negocioOcupado}
                     aria-label={tForm('value')}
                     placeholder={tForm('value')}
-                    onBlur={(e) => {
-                      const v = parseFloat(e.target.value) || 0;
-                      if (v !== dealAtivo.value)
-                        void atualizarNegocio(dealAtivo, { value: v }, false);
-                    }}
+                    aoConfirmar={(v) =>
+                      void atualizarNegocio(dealAtivo, { value: v }, false)
+                    }
                     className="bg-card h-8 flex-1 text-sm"
                   />
                   {dealAtivo.status !== 'open' && (
@@ -948,7 +952,7 @@ export function PainelDoContato({
                   <div className="border-border space-y-2 border-t pt-2">
                     <p className="text-muted-foreground truncate text-xs">
                       {dealAtivo.title} ·{' '}
-                      {formatCurrency(dealAtivo.value, dealAtivo.currency)}
+                      {formatCurrency(dealAtivo.value)}
                     </p>
 
                     <div className="space-y-1">
@@ -1038,7 +1042,7 @@ export function PainelDoContato({
                     {deal.title}
                   </p>
                   <div className="text-muted-foreground mt-1 flex items-center justify-between text-xs">
-                    <span>{formatCurrency(deal.value, deal.currency)}</span>
+                    <span>{formatCurrency(deal.value)}</span>
                     {deal.stage && (
                       <span
                         className="rounded-full px-1.5 py-0.5 text-[10px]"
@@ -1395,6 +1399,24 @@ export function PainelDoContato({
               </Button>
             )}
           </div>
+        </TabsContent>
+
+        {/* ---- Automações (955) — o que está RODANDO para o cliente: robô
+             ativo e esperas futuras de automação, com o botão de parar. Os
+             dados vêm do hook no topo (etiqueta da aba precisa do número
+             antes de a aba abrir). ---- */}
+        <TabsContent
+          value="automacoes"
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          <AbaAutomacoes
+            contactId={contact.id}
+            robos={execucoes.robos}
+            esperas={execucoes.esperas}
+            carregou={execucoes.carregou}
+            erro={execucoes.erro}
+            recarregar={execucoes.recarregar}
+          />
         </TabsContent>
 
         {/* ---- Histórico de atividade (912) — o registro completo, POR

@@ -7,8 +7,12 @@ import { usePresence } from "@/hooks/use-presence";
 import { useChannels } from "@/hooks/use-channels";
 import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
+import { useFixarNota } from "@/hooks/use-fixar-nota";
 import { useCan } from "@/hooks/use-can";
 import { ScheduledBar } from "./scheduled-bar";
+import { ExecutarAutomacaoDialog } from "./executar-automacao-dialog";
+import { AvataresNaConversa } from "./avatares-na-conversa";
+import { useQuemVeAConversa } from "@/hooks/use-conversa-aberta";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
 import {
@@ -19,6 +23,7 @@ import {
 } from "@/lib/assinatura/assinatura";
 import { LeadEventLine } from "@/components/lead-events/lead-event-line";
 import { NoteLine } from "./note-line";
+import { NotaFixadaBar } from "./nota-fixada-bar";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
@@ -281,6 +286,8 @@ export function MessageThread({
     ? nomeDePessoa(profile?.full_name, profile?.email)
     : null;
   const { getPresence, getRow, now } = usePresence();
+  /** Quem MAIS está com esta conversa aberta (956) — avatares do cabeçalho. */
+  const vendoAgora = useQuemVeAConversa(conversation?.id ?? null);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -356,6 +363,8 @@ export function MessageThread({
   );
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  /** Popup "Executar automação" (955), aberto pelo menu + do compositor. */
+  const [executarAberto, setExecutarAberto] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   // Purely visual spin state for the manual-refresh button. The actual
@@ -714,7 +723,37 @@ export function MessageThread({
     remover: removerNotaLocal,
     acrescentar: acrescentarNota,
     recarregar: recarregarNotas,
+    aplicarFixacao,
   } = useConversationNotes(conversationId, resyncToken);
+  const { fixarNota, fixando } = useFixarNota(aplicarFixacao);
+  /**
+   * A anotação fixada da conversa (951), que vira a faixa do topo.
+   *
+   * ⚠️ Derivada das notas que o fio JÁ carregou — nenhuma consulta nova. O
+   * preço é o teto da janela do hook: fixada mais velha que as 200 notas
+   * mais recentes não entra e a faixa some em silêncio (o mesmo teto que a
+   * aba Notas do painel tem, e a mesma família de teto-que-chega-por-
+   * crescimento de 924/929). Hoje o máximo real é 2 notas por conversa.
+   *
+   * Em conversa de GRUPO isto é sempre nulo: nota de grupo não tem contato
+   * e a rota recusa fixá-la.
+   *
+   * ⚠️ O `conversation_id === conversationId` NÃO é redundante, e aqui não é
+   * a guarda tautológica que o hook descreve. O `useConversationNotes` esvazia
+   * a lista num efeito, que é PASSIVO: no primeiro render depois de trocar de
+   * conversa, `notas` ainda é da conversa anterior. A faixa fica FORA do
+   * `loading` que esconde o fio, então sem esta comparação a anotação do
+   * cliente A apareceria sob o cabeçalho do cliente B — e o botão de
+   * desafixar dela agiria sobre a nota de A enquanto o operador olha B.
+   * A comparação vale porque é o PROP do render atual contra o ESTADO velho,
+   * não um id capturado em closure. (Achado pela revisão do Codex no PR #64.)
+   */
+  const notaFixada = useMemo(
+    () =>
+      notas.find((n) => n.fixada_em && n.conversation_id === conversationId) ??
+      null,
+    [notas, conversationId],
+  );
   const podeAdministrar = useCan("manage-members");
   // Agendadas (925): a faixa acima do compositor e o compositor são
   // irmãos aqui, então o contador que os liga mora nesta tela mesmo.
@@ -1641,6 +1680,10 @@ export function MessageThread({
               painel que controla. Hoje fechar mora no cabeçalho do próprio
               painel e reabrir na tira fina da borda direita (inbox/page). */}
 
+          {/* Quem MAIS está com esta conversa aberta (956) — some quando
+              ninguém, que é o dia inteiro numa conta de um membro só. */}
+          <AvataresNaConversa userIds={vendoAgora} profiles={profiles} />
+
           {/* Manual refresh — forces a refetch of the messages + the
               conversation list (the parent bumps its resyncToken). Useful
               when realtime missed an event or the agent just wants to be
@@ -1828,6 +1871,18 @@ export function MessageThread({
         </div>
       </div>
 
+      {/* Anotação fixada (951) — presa logo abaixo do cabeçalho, ACIMA da
+          faixa da busca: esta é permanente e a da busca é passageira, então
+          é esta que tem de ficar sempre no mesmo lugar. */}
+      {notaFixada && (
+        <NotaFixadaBar
+          key={notaFixada.id}
+          nota={notaFixada}
+          onDesafixar={() => void fixarNota(notaFixada, false)}
+          desafixando={fixando === notaFixada.id}
+        />
+      )}
+
       {/* Faixa do salto da busca.
           ⚠️ Só aparece com achado NESTE fio. Uma conversa pode ter entrado no
           resultado pelo nome do contato, sem nenhuma mensagem casando — e uma
@@ -1943,6 +1998,17 @@ export function MessageThread({
                             item.nota.author_user_id === user?.id || podeAdministrar
                           }
                           onApagar={handleApagarNota}
+                          fixada={Boolean(item.nota.fixada_em)}
+                          fixando={fixando === item.nota.id}
+                          // Nota de grupo não fixa (sem contato, fora do
+                          // índice da 951): sem `onFixar`, o alfinete nem
+                          // aparece. Fixar é de quem anota — viewer incluso,
+                          // como no painel: a rota é quem decide.
+                          onFixar={
+                            item.nota.contact_id
+                              ? (fixar) => void fixarNota(item.nota!, fixar)
+                              : undefined
+                          }
                         />
                       );
                     }
@@ -2091,7 +2157,23 @@ export function MessageThread({
         onClearReply={() => setReplyTo(null)}
         onNoteCreated={acrescentarNotaDaConversa}
         onScheduled={() => setAgendadasResync((n) => n + 1)}
+        onExecutarAutomacao={
+          !ehGrupo && contact ? () => setExecutarAberto(true) : undefined
+        }
       />
+
+      {/* Popup de executar automação/robô (955) — mora AQUI, e não no
+          compositor, porque é o fio que tem contato e canal resolvido.
+          Grupo fica de fora: automação não roda em grupo (906). */}
+      {!ehGrupo && contact && (
+        <ExecutarAutomacaoDialog
+          open={executarAberto}
+          onOpenChange={setExecutarAberto}
+          conversationId={conversation.id}
+          contactName={contact.name || contact.phone}
+          channelId={activeChannel?.id ?? null}
+        />
+      )}
 
       {/* Diálogo de edição. O WhatsApp só permite editar por ~15 minutos;
           passado isso o botão nem aparece, e a rota recusa mesmo assim. */}

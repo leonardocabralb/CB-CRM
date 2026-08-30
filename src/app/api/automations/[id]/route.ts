@@ -55,7 +55,9 @@ export async function PATCH(
   // requires `agent`, but this route mutates via the service-role client
   // which bypasses RLS, so enforce the role here.
   try {
-    await requireRole('agent')
+    // Fase 2 dos perfis (2026-08-30): mutação de automação/fluxo/disparo subiu de
+    // 'agent' para 'admin' — decisão do operador; ver canManageAutomations em roles.ts.
+    await requireRole('admin')
   } catch (err) {
     return toErrorResponse(err)
   }
@@ -160,7 +162,7 @@ export async function DELETE(
   // Deleting an automation is a write — enforce `agent` (the service-role
   // client below bypasses the agent-gated automations_delete RLS).
   try {
-    await requireRole('agent')
+    await requireRole('admin')
   } catch (err) {
     return toErrorResponse(err)
   }

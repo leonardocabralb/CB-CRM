@@ -11,6 +11,7 @@ import {
   Send,
   LayoutTemplate,
   Paperclip,
+  Library,
   Image as ImageIcon,
   Video,
   FileText,
@@ -25,6 +26,7 @@ import {
   StickyNote,
   Clock,
   CalendarClock,
+  Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -32,6 +34,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -44,7 +47,7 @@ import {
 import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
 import { custoDaAssinatura, nomeDePessoa } from "@/lib/assinatura/assinatura";
-import type { ConversationNote } from "@/types";
+import type { ConversationNote, MediaLibraryItem } from "@/types";
 import { InternalNoteBox } from "./internal-note-box";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -66,6 +69,7 @@ import {
 import { validateInteractivePayload } from "@/lib/whatsapp/interactive";
 import type { InteractiveMessagePayload, QuickReply } from "@/types";
 import { QuickReplyPicker } from "./quick-reply-picker";
+import { AcervoPicker } from "./acervo-picker";
 import {
   arredondarParaGrade,
   ATALHOS_DE_PRAZO,
@@ -193,6 +197,13 @@ interface MessageComposerProps {
    * AGENDADAS, logo acima, recarregar a lista.
    */
   onScheduled?: () => void;
+  /**
+   * Abre o popup "Executar automação" (955). O DIALOG mora no fio — é ele
+   * quem tem conversa/contato/canal —, o compositor só oferece o item no
+   * menu +. Ausente = item some (conversa de GRUPO: automação não roda em
+   * grupo por decisão estrutural, cb-groups/persist.ts).
+   */
+  onExecutarAutomacao?: () => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -218,6 +229,7 @@ export function MessageComposer({
   onClearReply,
   onNoteCreated,
   onScheduled,
+  onExecutarAutomacao,
 }: MessageComposerProps) {
   const t = useTranslations("Inbox.composer");
   // Namespace próprio: os textos de agendar são compartilhados com a
@@ -247,6 +259,7 @@ export function MessageComposer({
     useState<InteractiveMessagePayload>(blankButtonsPayload);
   const [savingQuickReply, setSavingQuickReply] = useState(false);
   const [quickReplyOpen, setQuickReplyOpen] = useState(false);
+  const [acervoOpen, setAcervoOpen] = useState(false);
 
   // Media attachment state. `draft` holds an uploaded-but-not-yet-sent
   // attachment; `busy` covers the upload/transcode window.
@@ -944,6 +957,46 @@ export function MessageComposer({
     [stageUpload],
   );
 
+  /**
+   * Item do acervo (953) escolhido: vira o MESMO rascunho de um arquivo
+   * recém-subido — com legenda, prévia, envio agora ou agendamento.
+   *
+   * ⚠️ A rota COPIA o objeto e devolve o caminho da cópia. É por isso que o
+   * `removeStaged` daqui embaixo é seguro: o que ele pode vir a apagar é a
+   * cópia, nunca o arquivo do acervo. Enviar por referência faria um envio
+   * falho apagar o contrato-padrão do escritório inteiro — ver o cabeçalho de
+   * `api/cb/acervo/[id]/copiar`.
+   */
+  const escolherDoAcervo = useCallback(
+    async (item: MediaLibraryItem) => {
+      setAcervoOpen(false);
+      setBusy(true);
+      try {
+        const res = await fetch(`/api/cb/acervo/${item.id}/copiar`, {
+          method: "POST",
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.path) {
+          toast.error(t("acervoError"));
+          return;
+        }
+        removeStaged(draftRef.current?.path);
+        setDraft({
+          kind: json.kind as ComposerMediaKind,
+          mediaUrl: json.mediaUrl as string,
+          path: json.path as string,
+          filename: (json.filename as string) ?? item.filename,
+          caption: "",
+        });
+      } catch {
+        toast.error(t("acervoError"));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [removeStaged, t],
+  );
+
   // ---- Voice recording (client-side Ogg/Opus, no server transcode) ---
 
   // The encoded Ogg/Opus file from opus-recorder → upload as an audio
@@ -1224,6 +1277,13 @@ export function MessageComposer({
               )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="border-border bg-popover">
+              {/* O acervo vem PRIMEIRO: é o caminho curado, o que o escritório
+                  quer que a equipe use. Procurar no computador é a exceção. */}
+              <DropdownMenuItem onClick={() => setAcervoOpen(true)}>
+                <Library className="mr-2 h-4 w-4" />
+                {t("fromLibrary")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-border" />
               <DropdownMenuItem onClick={() => imageInputRef.current?.click()}>
                 <ImageIcon className="mr-2 h-4 w-4" />
                 {t("photo")}
@@ -1235,10 +1295,6 @@ export function MessageComposer({
               <DropdownMenuItem onClick={() => documentInputRef.current?.click()}>
                 <FileText className="mr-2 h-4 w-4" />
                 {t("document")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void startRecording()}>
-                <Mic className="mr-2 h-4 w-4" />
-                {t("voiceNote")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1272,6 +1328,14 @@ export function MessageComposer({
                 <Zap className="mr-2 h-4 w-4" />
                 {t("quickReplies")}
               </DropdownMenuItem>
+              {/* Executar automação/robô para ESTE cliente (955). Só em
+                  conversa de contato — em grupo o fio não passa o callback. */}
+              {onExecutarAutomacao && (
+                <DropdownMenuItem onClick={onExecutarAutomacao}>
+                  <Play className="mr-2 h-4 w-4" />
+                  {t("runAutomation")}
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -1353,6 +1417,28 @@ export function MessageComposer({
               (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
             )}
           />
+
+          {/* Gravar nota de voz.
+              ⚠️ Botão PRÓPRIO, fora do menu do clipe, a pedido do operador:
+              gravar voz é das ações mais repetidas do atendimento e estava a
+              dois cliques, escondida atrás de um ícone que anuncia "anexar
+              arquivo". Fica à direita, junto do relógio e do enviar, que é
+              onde a mão já está quando se termina de escrever.
+              ⚠️ `inputsDisabled` como o resto do que sai para o cliente: a
+              nota de voz é mensagem, e fora da janela de 24h da Meta ela não
+              sairia. `busy` porque um upload em curso já ocupa o compositor. */}
+          {!readOnly && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={inputsDisabled || busy}
+              title={t("voiceNote")}
+              onClick={() => void startRecording()}
+              className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Mic className="h-4 w-4" />
+            </Button>
+          )}
 
           {/* Agendar (925) — SELETOR que abre ACIMA do botão, nunca um
               diálogo, e a hora escolhida vira uma etiqueta enxuta aqui do
@@ -1456,6 +1542,12 @@ export function MessageComposer({
         open={quickReplyOpen}
         onOpenChange={setQuickReplyOpen}
         onPick={handlePickQuickReply}
+      />
+
+      <AcervoPicker
+        open={acervoOpen}
+        onOpenChange={setAcervoOpen}
+        onPick={(item) => void escolherDoAcervo(item)}
       />
 
       {/* Agendar (925). Leva o texto que está no campo; agendar LIMPA o

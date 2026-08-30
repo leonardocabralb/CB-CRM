@@ -469,3 +469,71 @@ describe("aplicarFiltros", () => {
     expect(saida.map((c) => c.id)).toEqual(["c2"]);
   });
 });
+
+// ============================================================
+// Recorte por perfil (Fase 3) — o predicado `foraDoPerfil` e a exceção
+// da busca, decidida pelo operador em 2026-08-30: a busca ACHA conversa
+// de outra área (a linha aparece completa); o que é barrado é ABRIR.
+// ============================================================
+describe("recorte por perfil (foraDoPerfil)", () => {
+  const daOutraArea = (c: Conversation) => c.id === "c-fora";
+  const fora = () =>
+    conversa({
+      id: "c-fora",
+      contact: { ...conversa().contact!, name: "Cliente do Bancário" },
+    });
+
+  it("sem termo de busca, a conversa fora do perfil SOME da lista", () => {
+    const saida = aplicarFiltros(
+      [conversa(), fora()],
+      FILTROS_VAZIOS,
+      ctx({ foraDoPerfil: daOutraArea }),
+    );
+    expect(saida.map((c) => c.id)).toEqual(["c1"]);
+  });
+
+  it("com termo que CASA, ela aparece — a busca acha outra área", () => {
+    const saida = aplicarFiltros(
+      [conversa(), fora()],
+      FILTROS_VAZIOS,
+      ctx({ foraDoPerfil: daOutraArea, busca: "bancário" }),
+    );
+    expect(saida.map((c) => c.id)).toEqual(["c-fora"]);
+  });
+
+  it("com termo que NÃO casa, ela continua fora", () => {
+    const saida = aplicarFiltros(
+      [fora()],
+      FILTROS_VAZIOS,
+      ctx({ foraDoPerfil: daOutraArea, busca: "trabalhista" }),
+    );
+    expect(saida).toHaveLength(0);
+  });
+
+  it("⚠️ termo só de espaços NÃO reabre a lista de outra área", () => {
+    // `busca: '  '` casa com tudo em casaComABusca — sem o trim no recorte,
+    // dois espaços na caixa devolveriam a conta inteira.
+    const saida = aplicarFiltros(
+      [fora()],
+      FILTROS_VAZIOS,
+      ctx({ foraDoPerfil: daOutraArea, busca: "   " }),
+    );
+    expect(saida).toHaveLength(0);
+  });
+
+  it("a busca de outra área ainda respeita os outros filtros", () => {
+    // Buscar com "Favoritas" ligado não traz não-favorita de outra área —
+    // mesma regra do OU da busca, que nunca atropela o painel.
+    const saida = aplicarFiltros(
+      [fora()],
+      { ...FILTROS_VAZIOS, favoritas: true },
+      ctx({ foraDoPerfil: daOutraArea, busca: "bancário" }),
+    );
+    expect(saida).toHaveLength(0);
+  });
+
+  it("predicado ausente = sem recorte (perfil nulo)", () => {
+    const saida = aplicarFiltros([conversa(), fora()], FILTROS_VAZIOS, ctx());
+    expect(saida).toHaveLength(2);
+  });
+});

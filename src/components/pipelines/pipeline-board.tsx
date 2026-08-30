@@ -20,7 +20,6 @@ import type { CbChannel } from "@/lib/cb-channels/repo";
 import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
 import { MessageSquare, Plus, Zap } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
 import { useChannels } from "@/hooks/use-channels";
 import { formatCurrency } from "@/lib/currency";
 import { contarAtivasNaEtapa } from "@/lib/automations/por-etapa";
@@ -63,7 +62,6 @@ export function PipelineBoard({
   onEditDeal,
   onOpenAutomations,
 }: PipelineBoardProps) {
-  const { defaultCurrency } = useAuth();
   const router = useRouter();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
   // UMA busca de canais para o quadro inteiro. Dentro do card, o hook
@@ -231,7 +229,6 @@ export function PipelineBoard({
               stage={stage}
               deals={stageDeals}
               totalValue={totalValue}
-              currency={defaultCurrency}
               automacoesAtivas={contarAtivasNaEtapa(automations, stage.id)}
               campos={campos}
               channels={channels}
@@ -314,7 +311,6 @@ function StageColumn({
   stage,
   deals,
   totalValue,
-  currency,
   automacoesAtivas,
   campos,
   channels,
@@ -327,7 +323,6 @@ function StageColumn({
   stage: PipelineStage;
   deals: DealDoQuadro[];
   totalValue: number;
-  currency: string;
   automacoesAtivas: number;
   campos: CamposDoCard;
   channels: CbChannel[];
@@ -399,7 +394,7 @@ function StageColumn({
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        {formatCurrency(totalValue, currency)}
+        {formatCurrency(totalValue)}
       </p>
 
       <div

@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { GitBranch, Plus, ChevronDown, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { useCan } from "@/hooks/use-can";
+import { funisVisiveis } from "@/lib/perfis/escopo";
 import { useAuth } from "@/hooks/use-auth";
 import { GatedButton } from "@/components/ui/gated-button";
 import { useTranslations } from "next-intl";
@@ -80,7 +81,8 @@ export default function PipelinesPage() {
   const supabase = createClient();
   const canEditSettings = useCan("edit-settings");
   const canCreateDeals = useCan("send-messages");
-  const { accountId } = useAuth();
+  const podeAutomacoes = useCan("manage-automations");
+  const { acesso, accountId } = useAuth();
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
@@ -343,16 +345,23 @@ export default function PipelinesPage() {
       }
 
       if (cancelled) return;
-      setPipelines(list);
-      if (list.length > 0) {
-        // A volta do inbox prefere o funil de onde o operador saiu. O
-        // registro tem prazo curto (ver retorno.ts) — vencido, cai no
+      // ⚠️ Recorte por perfil (Fase 4) DEPOIS da decisão de seed, sobre a
+      // lista CRUA: com o filtro antes, um perfil cujo escopo não alcança
+      // funil nenhum leria "conta sem funis" e SEMEARIA um funil novo na
+      // conta, do navegador de um usuário restrito.
+      const visiveis = funisVisiveis(acesso, list);
+      setPipelines(visiveis);
+      if (visiveis.length > 0) {
+        // A volta do inbox prefere o funil de onde o operador saiu — desde
+        // que o perfil o alcance (o retorno é conferido contra `visiveis`).
+        // O registro tem prazo curto (ver retorno.ts) — vencido, cai no
         // primeiro da lista como sempre.
         const doRetorno = lerRetorno()?.pipelineId;
         setSelectedPipelineId((prev) => {
-          if (prev && list.some((p) => p.id === prev)) return prev;
-          if (doRetorno && list.some((p) => p.id === doRetorno)) return doRetorno;
-          return list[0].id;
+          if (prev && visiveis.some((p) => p.id === prev)) return prev;
+          if (doRetorno && visiveis.some((p) => p.id === doRetorno))
+            return doRetorno;
+          return visiveis[0].id;
         });
       } else {
         setSelectedPipelineId("");
@@ -362,7 +371,7 @@ export default function PipelinesPage() {
     return () => {
       cancelled = true;
     };
-  }, [loadPipelines, seedDefaultPipeline]);
+  }, [loadPipelines, seedDefaultPipeline, acesso]);
 
   // Load stages + deals whenever selected pipeline changes.
   // Clearing on no-selection is a legitimate sync with URL/prop
@@ -418,12 +427,12 @@ export default function PipelinesPage() {
   }, [loadAutomations, loadPassosENomes]);
 
   const refreshPipelines = useCallback(async () => {
-    const list = await loadPipelines();
+    const list = funisVisiveis(acesso, await loadPipelines());
     setPipelines(list);
     if (list.length === 0) setSelectedPipelineId("");
     else if (!list.some((p) => p.id === selectedPipelineId))
       setSelectedPipelineId(list[0].id);
-  }, [loadPipelines, selectedPipelineId]);
+  }, [loadPipelines, selectedPipelineId, acesso]);
 
   const refreshStages = useCallback(async () => {
     if (!selectedPipelineId) return;
@@ -616,7 +625,12 @@ export default function PipelinesPage() {
           )}
           {/* Leads | Automações — as duas leituras do mesmo funil. */}
           <div className="flex rounded-lg border border-border bg-card p-0.5">
-            {(["leads", "automacoes"] as const).map((v) => (
+            {/* A grade de automações segue a regra da Fase 2: automação é
+                assunto de admin. Para os demais o toggle nem aparece — um
+                botão que abre uma grade somente-leitura de regras que a
+                pessoa não pode tocar seria convite a reportar "não consigo
+                editar" como defeito. */}
+            {(podeAutomacoes ? (["leads", "automacoes"] as const) : (["leads"] as const)).map((v) => (
               <button
                 key={v}
                 type="button"
@@ -674,7 +688,7 @@ export default function PipelinesPage() {
             {t("createPipeline")}
           </GatedButton>
         </div>
-      ) : vista === "automacoes" ? (
+      ) : vista === "automacoes" && podeAutomacoes ? (
         <AutomationsBoard
           stages={stages}
           automations={automations}
