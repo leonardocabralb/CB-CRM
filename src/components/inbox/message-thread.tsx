@@ -10,6 +10,8 @@ import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useCan } from "@/hooks/use-can";
 import { ScheduledBar } from "./scheduled-bar";
 import { ExecutarAutomacaoDialog } from "./executar-automacao-dialog";
+import { AvataresNaConversa } from "./avatares-na-conversa";
+import { useQuemVeAConversa } from "@/hooks/use-conversa-aberta";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
 import {
@@ -282,6 +284,8 @@ export function MessageThread({
     ? nomeDePessoa(profile?.full_name, profile?.email)
     : null;
   const { getPresence, getRow, now } = usePresence();
+  /** Quem MAIS está com esta conversa aberta (956) — avatares do cabeçalho. */
+  const vendoAgora = useQuemVeAConversa(conversation?.id ?? null);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -1643,6 +1647,10 @@ export function MessageThread({
               propósito: ficava do outro lado de quatro controles, longe do
               painel que controla. Hoje fechar mora no cabeçalho do próprio
               painel e reabrir na tira fina da borda direita (inbox/page). */}
+
+          {/* Quem MAIS está com esta conversa aberta (956) — some quando
+              ninguém, que é o dia inteiro numa conta de um membro só. */}
+          <AvataresNaConversa userIds={vendoAgora} profiles={profiles} />
 
           {/* Manual refresh — forces a refetch of the messages + the
               conversation list (the parent bumps its resyncToken). Useful

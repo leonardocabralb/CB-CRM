@@ -11,6 +11,7 @@ import {
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { useMarcarConversaAberta } from "@/hooks/use-conversa-aberta";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
@@ -53,6 +54,9 @@ function InboxPageInner() {
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
+  // Presença por conversa (956): marca no banco qual conversa ESTE membro
+  // está vendo — a página é a dona da seleção, então o escritor mora aqui.
+  useMarcarConversaAberta(activeConversation?.id ?? null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null

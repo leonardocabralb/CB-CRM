@@ -215,6 +215,7 @@
       "showContact": "Exibir contato",
       "refresh": "Atualizar",
       "refreshConversation": "Atualizar conversa",
+      "tambemNaConversa": "{nome} também está com esta conversa aberta",
       "status": "Status",
       "statusOpen": "Aberta",
       "statusPending": "Pendente",

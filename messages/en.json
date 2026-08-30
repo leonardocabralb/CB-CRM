@@ -222,6 +222,7 @@
       "showContact": "Show contact",
       "refresh": "Refresh",
       "refreshConversation": "Refresh conversation",
+      "tambemNaConversa": "{nome} is also viewing this conversation",
       "status": "Status",
       "statusOpen": "Open",
       "statusPending": "Pending",
