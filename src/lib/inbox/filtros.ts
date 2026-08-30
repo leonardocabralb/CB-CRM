@@ -133,6 +133,19 @@ export function mapaDeEtapasPorContato(
 }
 
 export interface ContextoDosFiltros {
+  /**
+   * Recorte por perfil de acesso (Fase 3). `true` = a conversa está FORA das
+   * conexões do perfil de quem olha.
+   *
+   * É um PREDICADO injetado, não um import de `@/lib/perfis/escopo` — aquele
+   * módulo importa `canalDaConversa` DAQUI, e importar na direção contrária
+   * fecharia um ciclo de módulos (TDZ aleatória em runtime, dependendo de
+   * quem carrega primeiro). Quem monta o contexto (conversation-list) liga o
+   * predicado em `conversaNoEscopo(acesso, ·)`.
+   *
+   * Ausente = sem recorte (mesma semântica de perfil nulo).
+   */
+  foraDoPerfil?: (c: Conversation) => boolean;
   /** Ids das conversas que ESTE membro marcou (migration 924). */
   favoritas: Set<string>;
   /** Saída de {@link mapaDeEtapasPorContato}. */
@@ -267,6 +280,16 @@ export function aplicarFiltros(
   ctx: ContextoDosFiltros,
 ): Conversation[] {
   return conversations.filter((c) => {
+    // ⚠️ Recorte por perfil ANTES de tudo — mas com a exceção da BUSCA,
+    // decidida pelo operador (2026-08-30): a busca ACHA conversa de outra
+    // área e mostra a linha completa; o que é barrado é ABRIR (guarda no
+    // fio). Sem termo digitado, a conversa fora do escopo simplesmente não
+    // participa da lista. Com termo, ela segue no pipeline e o OU da busca
+    // lá no fim decide se casou — passando ainda pelos outros filtros, como
+    // qualquer conversa (buscar "contrato" com "Favoritas" ligado não traz
+    // não-favorita de outra área).
+    if (ctx.foraDoPerfil?.(c) && ctx.busca.trim() === "") return false;
+
     if (!matchesTypeFilter(c, f.tipo)) return false;
     if (f.status !== "todos" && c.status !== f.status) return false;
 

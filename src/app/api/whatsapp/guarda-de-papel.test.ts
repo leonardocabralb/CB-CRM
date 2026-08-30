@@ -121,7 +121,11 @@ const ROTAS = [
   {
     nome: 'broadcast',
     modulo: () => import('./broadcast/route'),
-    papel: 'agent',
+    // 'agent' até a Fase 2 dos perfis (2026-08-30): disparo em massa virou
+    // exclusivo do admin, por decisão do operador — um clique atinge
+    // centenas de clientes. Se um merge do upstream devolver 'agent' à
+    // rota, este teste acusa.
+    papel: 'admin',
     corpo: {
       recipients: [{ phone: '+5511999998888', params: [] }],
       template_name: 'oi',

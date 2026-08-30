@@ -13,17 +13,20 @@ import { SecurityPanel } from '@/components/settings/security-panel';
 import { AppearancePanel } from '@/components/settings/appearance-panel';
 import { CbChannelsPanel } from '@/components/settings/cb-channels-panel';
 import { TemplateManager } from '@/components/settings/template-manager';
+import { AcervoManager } from '@/components/settings/acervo-manager';
 import { QuickRepliesManager } from '@/components/settings/quick-replies-manager';
 import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel';
-import { DealsSettings } from '@/components/settings/deals-settings';
 import { AssinaturaSettings } from '@/components/settings/assinatura-settings';
 import { MembersTab } from '@/components/settings/members-tab';
 import { IntegracoesPanel } from '@/components/settings/integracoes-panel';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
 import {
   resolveSection,
+  SETTINGS_SECTIONS,
   type SettingsSection,
 } from '@/components/settings/settings-sections';
+import { podeVerSecao } from '@/lib/perfis/visibilidade';
+import { PerfisPanel } from '@/components/settings/perfis-panel';
 
 // `useSearchParams` opts this page out of static prerendering unless it
 // sits under a Suspense boundary. Without one, the production build hits
@@ -44,7 +47,7 @@ export default function SettingsPage() {
 function SettingsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { defaultCurrency } = useAuth();
+  const { acesso } = useAuth();
   const { mode } = useTheme();
   const t = useTranslations('Settings');
 
@@ -52,7 +55,15 @@ function SettingsPageInner() {
   // section — deep-linkable, and it keeps the existing links in the
   // app sidebar/header working. Legacy tab values (tags, custom-fields)
   // resolve onto their new home; unknown/empty → the Overview landing.
-  const section = resolveSection(searchParams.get('tab'));
+  // Recorte por perfil (Fase 2): a seção pedida no `?tab=` pode estar fora
+  // do perfil de quem abriu — deep link antigo, favorito, ou alguém digitando.
+  // Cai na PRIMEIRA seção visível em vez de renderizar painel proibido. As
+  // seções pessoais são sempre visíveis (SECOES_PESSOAIS), então o find()
+  // nunca falha de verdade — o fallback é para o TypeScript.
+  const pedida = resolveSection(searchParams.get('tab'));
+  const section = podeVerSecao(acesso, pedida)
+    ? pedida
+    : (SETTINGS_SECTIONS.find((s) => podeVerSecao(acesso, s)) ?? 'profile');
 
   const go = (next: SettingsSection) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -66,9 +77,8 @@ function SettingsPageInner() {
   const hints: Partial<Record<SettingsSection, ReactNode>> = useMemo(
     () => ({
       appearance: mode.charAt(0).toUpperCase() + mode.slice(1),
-      deals: defaultCurrency,
     }),
-    [mode, defaultCurrency],
+    [mode],
   );
 
   const panel: Record<SettingsSection, ReactNode> = {
@@ -79,12 +89,13 @@ function SettingsPageInner() {
     channels: <CbChannelsPanel />,
     templates: <TemplateManager />,
     'quick-replies': <QuickRepliesManager />,
+    acervo: <AcervoManager />,
     fields: <FieldsAndTagsPanel />,
-    deals: <DealsSettings />,
     assinatura: <AssinaturaSettings />,
     members: <MembersTab />,
     integracoes: <IntegracoesPanel />,
     api: <ApiKeysSettings />,
+    perfis: <PerfisPanel />,
   };
 
   return (

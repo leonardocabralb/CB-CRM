@@ -190,7 +190,7 @@ upstream sobrescrevê-los:
 | Arquivo do upstream | O que é nosso |
 | --- | --- |
 | `src/lib/whatsapp/send-message.ts` | resolve o canal, carimba `channel_id`, devolve `channelId` no resultado, busca o template **filtrando por canal**, e os dois parâmetros da agendada (925): `channelId` (exige aquele canal, **falha fechada**) e `pauseFlows` |
-| `src/components/inbox/message-composer.tsx` | anotação interna (918) e o **agendamento** (925): o relógio abre um seletor, e com hora escolhida o `handleSend` DESVIA antes da janela de desfazer. Mais a 932: `sendDraft` desvia igual (anexo agendado), o seletor virou `<SeletorDeHorario>` de módulo — reusado dentro do `MediaDraftPreview`, que SUBSTITUI o compositor — e `entreguesRef` impede a limpeza de desmonte de apagar arquivo que já é de uma agendada. Mais o item **Executar automação** no menu + (955), atrás da prop opcional `onExecutarAutomacao` — o dialog mora no FIO, não aqui |
+| `src/components/inbox/message-composer.tsx` | o **acervo** no menu do clipe (953) e o botão de **gravar voz** fora dele, à direita da caixa — um merge que traga o menu do upstream cru devolve a gravação para dentro do menu e some com o acervo. Mais a anotação interna (918) e o **agendamento** (925): o relógio abre um seletor, e com hora escolhida o `handleSend` DESVIA antes da janela de desfazer. Mais a 932: `sendDraft` desvia igual (anexo agendado), o seletor virou `<SeletorDeHorario>` de módulo — reusado dentro do `MediaDraftPreview`, que SUBSTITUI o compositor — e `entreguesRef` impede a limpeza de desmonte de apagar arquivo que já é de uma agendada. Mais o item **Executar automação** no menu + (955), atrás da prop opcional `onExecutarAutomacao` — o dialog mora no FIO, não aqui |
 | `src/lib/whatsapp/send-message.ts` (2ª linha nossa) | a 932 separou `evolution_rejected` (4xx: a Evolution recusou, nada saiu) de `evolution_error` (tempo esgotado/5xx: pode ter saído). Só o segundo vira `entrega_incerta` |
 | `src/components/inbox/message-thread.tsx` | além do fio intercalado, renderiza a faixa `ScheduledBar` logo acima do compositor e guarda o contador que a liga ao compositor |
 | `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
@@ -384,6 +384,66 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
   atrasada vencer a intenção nova).
 - **Conta de UM membro**: a presença fica dormente em produção até o convite
   real — testada em 2026-08-30 com usuária fixture (criada e removida).
+
+⚠️ **Acervo de mídias (953): enviar do acervo COPIA o arquivo.** Tabela
+`cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
+`/api/cb/acervo`, painel em Configurações → Acervo e o seletor
+`acervo-picker.tsx` no clipe do compositor. O que morde código novo:
+
+- ⚠️⚠️ **A rota `copiar` existe para não destruir o arquivo do escritório.**
+  O compositor APAGA o objeto do bucket quando o envio falha ou o rascunho é
+  descartado (`deleteAccountMedia`), e cancelar uma agendada apaga também
+  (932). Enviando por referência, um envio falho de um estagiário levaria
+  junto o contrato-padrão de todo mundo — e ninguém ligaria uma coisa à
+  outra. Medido na tela: descartar o rascunho apaga a CÓPIA (400) e o
+  original do acervo segue de pé (200). O segundo motivo é jurídico: o que
+  FOI ENVIADO não pode mudar quando alguém troca o item.
+- ⚠️⚠️ **A guarda de papel do acervo mora em DUAS camadas (954).** A rota
+  exige admin para apagar, mas as policies de Storage da 023 conferiam só o
+  primeiro segmento do caminho: qualquer membro — `viewer` incluso — podia
+  chamar `storage.remove()` do navegador e apagar o arquivo do escritório, ou
+  dar UPDATE e TROCAR o conteúdo mantendo o nome, sem nada mudar na tela. O
+  `media_path` não é segredo: a policy de SELECT da 953 o mostra a todo mundo.
+  A 954 reescreveu INSERT/UPDATE/DELETE do `chat-media` com "não está em
+  `acervo/` OU é admin". ⚠️ Usa `IS DISTINCT FROM`, e não `<>`: em anexo comum
+  a segunda pasta é NULA, e com `<>` a expressão viraria NULL, a policy
+  reprovaria e ninguém mais apagaria rascunho descartado. Quem criar outra
+  subpasta com regra própria repete o par (rota + policy).
+- ⚠️ **É o bucket `chat-media` de sempre, na subpasta `acervo/`.** As policies
+  da 020/023 casam só o PRIMEIRO segmento do caminho, então aninhar é de
+  graça — e a subpasta é o que permite distinguir "arquivo do escritório" de
+  "anexo de mensagem" numa varredura futura de órfãos. Quem criar bucket novo
+  herda uma segunda RLS e uma segunda lista de mimes para manter em sincronia.
+- ⚠️ **`MIMES_POR_TIPO` (`lib/acervo/tipos.ts`) é ESPELHO da
+  `allowed_mime_types` da 023.** Alargar só no código faz o upload falhar no
+  Storage com "erro de upload"; alargar só na migration faz a tela recusar
+  arquivo que o WhatsApp aceita. Os dois, sempre.
+- ⚠️ **Toda escrita passa pela API** (sem policy de INSERT/UPDATE/DELETE, com
+  REVOKE): o papel é conferido lá (admin+ monta o acervo), `media_url` é
+  DERIVADA do caminho no servidor (aceitá-la do cliente casaria caminho
+  legítimo com URL de fora — lição da 932) e o caminho é exigido sob
+  `account-<conta>/acervo/`. LER é direto sob RLS.
+- ⚠️ **`storage.exists()` de novo**: a rota confere `data === false` ANTES do
+  `error`, pela armadilha já documentada na 932. Invertido, todo arquivo
+  ausente responderia "existe" e o acervo ganharia item que entrega 404 ao
+  cliente.
+- **`categoria` é texto livre**, não tabela de pastas, e NULL = "Geral" (que a
+  tela põe no fim). O conjunto real é meia dúzia de rótulos.
+- **Trocar o ARQUIVO de um item não existe**: o item mudaria de conteúdo sem
+  mudar de nome e ninguém na equipe saberia. Trocar é apagar e cadastrar.
+- **Áudio do acervo sai como NOTA DE VOZ** — é o mesmo caminho do gravador
+  (`sendWhatsAppAudio`, PTT na Evolution). O seletor diz isso na linha do
+  item, senão o operador manda "um arquivo" e o cliente recebe voz.
+
+⚠️ **Efeito passivo = o primeiro render mostra o estado VELHO.** Já mordeu
+duas vezes em 2026-08-30, nas duas features do dia: a faixa da nota fixada
+mostrava a anotação do cliente anterior sob o cabeçalho do novo (o
+`useConversationNotes` esvazia num efeito — achado do Codex no PR #64), e o
+seletor do acervo dizia "o acervo está vazio" antes de a primeira consulta
+sair (`carregando` nasce falso). As duas correções são do mesmo tipo:
+comparar contra o PROP do render atual (`conversation_id === conversationId`)
+ou esperar um sinalizador de "já carregou uma vez" — nunca confiar em que o
+efeito de limpeza já rodou.
 
 ⚠️ **Agenda de reuniões (945, Fase 1): o calendário é a parte fácil.**
 `src/lib/agenda/` — `fuso.ts`, `vagas.ts`, `grade.ts` e `validar.ts`, todos
@@ -1227,8 +1287,10 @@ mordem de novo em qualquer código novo:
     "depois" tem de aceitar reunião realizada) e alarga o índice parcial.
     Aplicada em 2026-08-30. ⚠️ DROP + CREATE, não REPLACE: parâmetro novo
     muda a assinatura e o REPLACE deixaria um overload ambíguo para o RPC.
-  - **953–954** — acervo de mídias (branch própria; aplicadas em produção em
-    2026-08-30 — os arquivos chegam com o PR do acervo).
+  - **953_cb_acervo_de_midias** — acervo de mídias da conta (`cb_media_library`),
+    aplicada em 2026-08-30.
+  - **954_cb_acervo_so_admin_no_storage** — a guarda de papel do acervo também
+    nas policies de Storage do `chat-media`. Aplicada em 2026-08-30.
   - **955_cb_robo_parado_pela_equipe** — `stopped_by_agent` no CHECK de
     `flow_runs.status` (parada DECIDIDA por gente, via aba da conversa).
     Aplicada em 2026-08-30.

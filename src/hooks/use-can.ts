@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import {
   canDeleteAccount,
   canEditSettings,
+  canManageAutomations,
   canManageMembers,
   canSendMessages,
   canTransferOwnership,
@@ -19,6 +20,7 @@ import {
  */
 export type CanAction =
   | "manage-members"
+  | "manage-automations"
   | "edit-settings"
   | "send-messages"
   | "write-notes"
@@ -46,6 +48,8 @@ export function useCan(action: CanAction): boolean {
   switch (action) {
     case "manage-members":
       return canManageMembers(accountRole);
+    case "manage-automations":
+      return canManageAutomations(accountRole);
     case "edit-settings":
       return canEditSettings(accountRole);
     case "send-messages":

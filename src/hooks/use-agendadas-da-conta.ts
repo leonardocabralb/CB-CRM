@@ -22,10 +22,12 @@
 // cara de resolvida.
 // ============================================================
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { createClient } from '@/lib/supabase/client';
 import { PAGINA } from '@/lib/scheduled/tela-global';
+import { useAuth } from '@/hooks/use-auth';
+import { recorteDeCanais } from '@/lib/perfis/escopo';
 import type { Conversation, ScheduledMessage } from '@/types';
 
 /**
@@ -110,12 +112,28 @@ export function useAgendadasDaConta(): AgendadasDaConta {
    */
   const geracaoRef = useRef(0);
 
+  // Recorte por perfil (Fase 3): aqui ele entra NA CONSULTA, ao contrário do
+  // inbox — o acervo pagina no banco, e filtrar página carregada em JS
+  // mostraria menos linhas que o `count: 'exact'` promete nas abas. É seguro
+  // nesta tabela porque `cb_scheduled_messages` carrega o próprio
+  // `channel_id`, FIXADO no agendamento (925) — inclusive para grupo, cujo
+  // canal foi resolvido por `cb_groups` na criação. `canalDaConversa()` aqui
+  // seria ERRADO (regra da tela, ver CLAUDE.md). Linha sem canal (legado
+  // improvável: o agendamento falha fechado) fica de fora do recorte — numa
+  // tela que mostra texto de mensagem a caminho de cliente, esconder é o
+  // lado certo do empate.
+  const { acesso } = useAuth();
+  const canaisDoRecorte = useMemo(() => recorteDeCanais(acesso), [acesso]);
+
   const buscar = useCallback(async () => {
     const minhaGeracao = ++geracaoRef.current;
     const supabase = createClient();
 
+    const comRecorte = <Q extends { in(col: string, vals: string[]): Q }>(q: Q): Q =>
+      canaisDoRecorte ? q.in('channel_id', canaisDoRecorte) : q;
+
     const [fila, falhas, enviadas] = await Promise.all([
-      supabase
+      comRecorte(supabase
         .from('cb_scheduled_messages')
         // ⚠️ `count: 'exact'` em todas as três: é o total NA CONTA, não o
         // tamanho da página, e vem no mesmo cabeçalho da resposta — de graça.
@@ -123,14 +141,14 @@ export function useAgendadasDaConta(): AgendadasDaConta {
         .select(SELECT_COM_CONVERSA, { count: 'exact' })
         .in('status', ['pending', 'sending'])
         .order('scheduled_for', { ascending: true })
-        .limit(TETO_COMPLETO),
-      supabase
+        .limit(TETO_COMPLETO)),
+      comRecorte(supabase
         .from('cb_scheduled_messages')
         .select(SELECT_COM_CONVERSA, { count: 'exact' })
         .eq('status', 'failed')
         .order('scheduled_for', { ascending: false })
-        .limit(TETO_COMPLETO),
-      supabase
+        .limit(TETO_COMPLETO)),
+      comRecorte(supabase
         .from('cb_scheduled_messages')
         .select(SELECT_COM_CONVERSA, { count: 'exact' })
         .eq('status', 'sent')
@@ -141,7 +159,7 @@ export function useAgendadasDaConta(): AgendadasDaConta {
         // antecipada hoje apareceria no fim do acervo, um mês à frente.
         .order('sent_at', { ascending: false, nullsFirst: false })
         .order('scheduled_for', { ascending: false })
-        .limit(limiteEnviadas),
+        .limit(limiteEnviadas)),
     ]);
 
     if (!vivoRef.current || geracaoRef.current !== minhaGeracao) return;
@@ -225,7 +243,7 @@ export function useAgendadasDaConta(): AgendadasDaConta {
       linhasFila.length < nFila || linhasFalhas.length < nFalhas,
     );
     setCarregando(false);
-  }, [limiteEnviadas]);
+  }, [limiteEnviadas, canaisDoRecorte]);
 
   useEffect(() => {
     vivoRef.current = true;

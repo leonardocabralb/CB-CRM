@@ -18,7 +18,6 @@ import type { Automation, Deal, PipelineStage } from "@/types";
 import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
 import { Plus, Zap } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
 import { formatCurrency } from "@/lib/currency";
 import { contarAtivasNaEtapa } from "@/lib/automations/por-etapa";
 import { useTranslations } from "next-intl";
@@ -43,7 +42,6 @@ export function PipelineBoard({
   onEditDeal,
   onOpenAutomations,
 }: PipelineBoardProps) {
-  const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
 
   const sortedStages = useMemo(
@@ -122,7 +120,6 @@ export function PipelineBoard({
               stage={stage}
               deals={stageDeals}
               totalValue={totalValue}
-              currency={defaultCurrency}
               automacoesAtivas={contarAtivasNaEtapa(automations, stage.id)}
               onAddDeal={onAddDeal}
               onEditDeal={onEditDeal}
@@ -198,7 +195,6 @@ function StageColumn({
   stage,
   deals,
   totalValue,
-  currency,
   automacoesAtivas,
   onAddDeal,
   onEditDeal,
@@ -207,7 +203,6 @@ function StageColumn({
   stage: PipelineStage;
   deals: Deal[];
   totalValue: number;
-  currency: string;
   automacoesAtivas: number;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
@@ -263,7 +258,7 @@ function StageColumn({
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        {formatCurrency(totalValue, currency)}
+        {formatCurrency(totalValue)}
       </p>
 
       <div

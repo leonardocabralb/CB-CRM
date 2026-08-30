@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     // to arbitrary phone numbers from the account's WhatsApp number.
     // Nothing about that is recoverable after the fact, so the check has
     // to happen here.
-    const { supabase, accountId, userId } = await requireRole('agent')
+    const { supabase, accountId, userId } = await requireRole('admin')  // disparo em massa é só do admin (perfis, 2026-08-30)
 
     // Per-user broadcast budget. Note: this limits how often a user
     // can *start* a campaign, not how many messages go out inside
@@ -83,10 +83,12 @@ export async function POST(request: Request) {
       return rateLimitResponse(limit)
     }
 
-    // Nota de merge (upstream #448): o `requireRole('agent')` acima faz
-    // exatamente o que o nosso `barrarPorPapel` fazia aqui — mesma exigência
-    // de papel, e ainda resolve o account_id. O bloco nosso saiu por ser
-    // redundante, não por abrir mão da guarda.
+    // Nota de merge (upstream #448): o `requireRole` acima faz exatamente o
+    // que o nosso `barrarPorPapel` fazia aqui — e ainda resolve o account_id.
+    // O bloco nosso saiu por ser redundante, não por abrir mão da guarda.
+    // (Era 'agent' até a Fase 2 dos perfis, 2026-08-30, quando disparo em
+    // massa virou exclusivo do admin — atenção ao mesclar upstream: manter
+    // 'admin'.)
     const body = await request.json()
     const {
       recipients: newRecipients,

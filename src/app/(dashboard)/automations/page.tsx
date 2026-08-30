@@ -64,7 +64,7 @@ const TEMPLATE_ICON: Record<TemplateSlug, typeof Zap> = {
 
 export default function AutomationsPage() {
   const router = useRouter()
-  const canCreate = useCan("send-messages")
+  const canCreate = useCan("manage-automations")
   const t = useTranslations("Automations.list")
   const tCanais = useTranslations("Channels")
   const [automations, setAutomations] = useState<Automation[] | null>(null)

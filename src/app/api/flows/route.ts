@@ -50,7 +50,9 @@ export async function POST(request: Request) {
   // `agent`, but this route inserts via the service-role client which
   // bypasses RLS, so the role must be enforced here.
   try {
-    await requireRole('agent')
+    // Fase 2 dos perfis (2026-08-30): mutação de automação/fluxo/disparo subiu de
+    // 'agent' para 'admin' — decisão do operador; ver canManageAutomations em roles.ts.
+    await requireRole('admin')
   } catch (err) {
     return toErrorResponse(err)
   }

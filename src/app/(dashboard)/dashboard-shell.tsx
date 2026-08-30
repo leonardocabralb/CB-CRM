@@ -1,20 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { AccountAccessAlert } from "@/components/layout/account-access-alert";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
+import { TelaBloqueada } from "@/components/auth/tela-bloqueada";
+import { ROTA_DA_TELA } from "@/lib/perfis/catalogo";
+import { podeVerTela, telaDoCaminho } from "@/lib/perfis/visibilidade";
 
 // Auth-gated dashboard shell. Extracted from the layout so the layout
 // itself can stay a server component and export metadata (noindex) —
 // client components can't export Next's metadata object.
 
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, profileLoading, acesso } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   // Sidebar drawer state — only used on mobile. On lg+ the sidebar is
   // always visible and this stays at `false` (ignored by the component).
@@ -27,7 +31,16 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, router]);
 
-  if (loading) {
+  // ⚠️ `profileLoading` entra no gate junto com a sessão (Fase 2 dos
+  // perfis). Enquanto o profile não chega, `acesso` é
+  // { papel: null, perfil: null } = SEM RESTRIÇÃO — renderizar o shell nesse
+  // estado faria o menu pintar completo e encolher meio segundo depois para
+  // quem tem perfil restrito (o flash que o JSDoc de `acesso` descreve).
+  // Segurar o spinner até o profile resolver mata o flash nos DOIS sentidos,
+  // ao custo de uma ida ao banco que o dashboard já fazia de qualquer forma.
+  // Falha de fetch não trava aqui: o finally do fetchProfile sempre derruba
+  // o profileLoading, e aí o acesso nulo = tudo visível (fail-open da 956).
+  if (loading || profileLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
@@ -53,7 +66,17 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
           {/* Above every page: writes are being rejected and here's why.
               Renders nothing unless the account/role failed to resolve. */}
           <AccountAccessAlert />
-          {children}
+          {/* Guarda de tela dos perfis (Fase 2) — UM ponto para todas as
+              páginas do dashboard, em vez de uma guarda por page.tsx: rota
+              nova cai aqui de graça, e a regra continua morando só em
+              `podeVerTela`. Caminho fora do catálogo (null) passa — não é
+              uma tela recortável. NUNCA 404: a pessoa precisa entender que
+              a página existe e está fora do perfil dela. */}
+          {(() => {
+            const tela = telaDoCaminho(pathname, ROTA_DA_TELA);
+            const bloqueada = tela !== null && !podeVerTela(acesso, tela);
+            return bloqueada ? <TelaBloqueada /> : children;
+          })()}
         </main>
       </div>
     </div>
