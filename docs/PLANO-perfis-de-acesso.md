@@ -1,6 +1,9 @@
 # Perfis de acesso — plano e estado da implementação
 
-> Estado: **Fases 1 a 3 concluídas** (migrations 956–958 aplicadas em
+> Estado: **TODAS AS 6 FASES CONCLUÍDAS** (2026-08-30; migrations 956–960
+> aplicadas em produção; tudo no PR #69, cada fase um commit revisável;
+> verificação de ponta a ponta no preview, incluindo o ciclo
+> convite-com-perfil → aceite → guarda de tela). Antes eram **Fases 1 a 3** (migrations 956–958 aplicadas em
 > produção em 2026-08-30; ambas no PR #69, revisadas — Codex + quente/fria —
 > e verificadas no preview com dois usuários reais). Fases 3 a 6 pendentes.
 > Decisões travadas com o operador em 2026-08-30. Atualizar a cada fase.
@@ -288,7 +291,14 @@ Entregue como desenhado. Registros de implementação:
   mensagem amigável entra ao tentar **abrir** a conversa fora do escopo.
 - Agendadas: recorte por área, mantendo as de todos os colegas.
 
-### Fase 4 — Escopo nos funis
+### Fase 4 — Escopo nos funis ✅ (2026-08-30)
+
+Como desenhada, com um cuidado extra: em `/pipelines` o filtro entra DEPOIS
+da decisão de seed, sobre a lista crua — filtrando antes, um perfil sem funil
+no escopo leria "conta sem funis" e SEMEARIA um funil novo. O toggle da grade
+de automações some para quem não tem `manage-automations`.
+
+### Fase 4 — plano original (histórico)
 
 - `/pipelines` lista só os funis do perfil.
 - Aba **Negócios** da ficha do contato esconde negócio de funil fora do escopo.
@@ -296,14 +306,36 @@ Entregue como desenhado. Registros de implementação:
   já estará escondida (Fase 2), então não há número pela metade — confirmar que
   não sobrou nenhum widget de painel embutido em outra tela.
 
-### Fase 5 — Tela de perfis (Configurações → Perfis de acesso)
+### Fase 5 — Tela de perfis ✅ (2026-08-30)
+
+CRUD completo com as travas nas rotas (`/api/cb/perfis*`, service-role):
+sistema intocável, papel via RPC 959 (transacional com os membros),
+anti-auto-bloqueio (validar.ts, puro e testado), e **exclusão recusada com
+membros** — o SET NULL devolveria acesso TOTAL, o oposto de "revogar".
+Seed dos perfis de fábrica por botão explícito, pulando homônimos.
+⚠️ Pego no preview: o rótulo do rail vem do DICIONÁRIO
+(`Settings.sections.perfis`), não do `SECTION_META.label`.
+
+### Fase 5 — plano original (histórico)
 
 - CRUD, com **Duplicar** (o antídoto para a multiplicação por área).
 - Ao marcar conexões, **sugerir** os funis pelo `default_pipeline_id` de cada
   uma — sugestão, nunca imposição.
 - Perfis `sistema` aparecem travados, com cadeado e explicação.
 
-### Fase 6 — Legenda em Membros
+### Fase 6 — Legenda em Membros e convite com perfil ✅ (2026-08-30)
+
+Migration 960 (invitations.perfil_id + redeem recriado com o corpo fiel da
+922), rota e diálogo de convite escolhendo PERFIL (papel derivado; primeiro
+não-admin pré-selecionado), chip + seletor de atribuição por membro (com
+perfil atribuído o seletor de papel some — o papel segue o perfil) e o
+quadro "O que cada perfil dá acesso", derivado da configuração real via
+`<PerfilResumo>`. Ciclo inteiro provado: convite → aceite → convidado chega
+com o perfil aplicado e a guarda de telas o recebe.
+🔭 Polimento futuro: o aceite redireciona para `/dashboard` fixo; poderia
+ir direto à primeira tela permitida (hoje o cartão com CTA resolve).
+
+### Fase 6 — plano original (histórico)
 
 - Resumo do perfil dentro do **diálogo de convite**, atualizando ao trocar a
   seleção ("vê Caixa de entrada e Funis do trabalhista; não vê Painel, Radar,
