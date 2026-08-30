@@ -34,13 +34,18 @@ type LinhaDePasso = PassoDaAutomacao & { automation_id: string }
 
 /**
  * Ids citados nos `step_config` → nomes legíveis, para o `descreverPasso`
- * não imprimir UUID nem carimbar "(apagado)" em alvo vivo. Os ids saem das
- * NOSSAS automações (config escrita por agent da conta), então a busca é
- * por id, sem cerca extra — é rótulo, não dado novo.
+ * não imprimir UUID nem carimbar "(apagado)" em alvo vivo.
+ *
+ * ⚠️ CADA lookup é cercado pela CONTA, mesmo sendo "só rótulo": o validador
+ * de ativação NÃO confere posse do alvo, então um agent pode gravar um UUID
+ * alheio no step_config de propósito — sem a cerca, esta rota viraria um
+ * oráculo de nomes de outras contas (achado da revisão do Codex no PR #70).
+ * `pipeline_stages` não tem account_id; a cerca vai pelo funil pai.
  */
 async function carregarNomes(
   db: ReturnType<typeof supabaseAdmin>,
   passos: LinhaDePasso[],
+  accountId: string,
 ): Promise<NomesConhecidos> {
   const tagIds = new Set<string>()
   const etapaIds = new Set<string>()
@@ -55,30 +60,50 @@ async function carregarNomes(
     if (typeof cfg.automation_id === 'string') autoIds.add(cfg.automation_id)
   }
 
-  const mapa = async (tabela: string, ids: Set<string>) => {
-    if (ids.size === 0) return {}
-    const { data, error } = await db
-      .from(tabela)
-      .select('id, name')
-      .in('id', [...ids])
-    if (error) {
+  const paraMapa = (
+    rotulo: string,
+    res: { data: unknown; error: { message: string } | null },
+  ) => {
+    if (res.error) {
       // Rótulo é decorativo: sem ele a linha mostra "(apagado)", que é
       // pior que o certo mas melhor que derrubar a aba inteira.
-      console.error(`[execucoes] nomes de ${tabela} falharam:`, error.message)
+      console.error(`[execucoes] nomes de ${rotulo} falharam:`, res.error.message)
       return {}
     }
     return Object.fromEntries(
-      ((data ?? []) as { id: string; name: string }[]).map((r) => [r.id, r.name]),
+      ((res.data ?? []) as { id: string; name: string }[]).map((r) => [
+        r.id,
+        r.name,
+      ]),
     )
   }
 
-  const [tags, etapas, fluxos, automacoes] = await Promise.all([
-    mapa('tags', tagIds),
-    mapa('pipeline_stages', etapaIds),
-    mapa('flows', fluxoIds),
-    mapa('automations', autoIds),
+  const vazio = { data: [], error: null } as const
+  const [tagsRes, etapasRes, fluxosRes, autosRes] = await Promise.all([
+    tagIds.size
+      ? db.from('tags').select('id, name').in('id', [...tagIds]).eq('account_id', accountId)
+      : Promise.resolve(vazio),
+    etapaIds.size
+      ? db
+          .from('pipeline_stages')
+          .select('id, name, pipelines!inner(account_id)')
+          .in('id', [...etapaIds])
+          .eq('pipelines.account_id', accountId)
+      : Promise.resolve(vazio),
+    fluxoIds.size
+      ? db.from('flows').select('id, name').in('id', [...fluxoIds]).eq('account_id', accountId)
+      : Promise.resolve(vazio),
+    autoIds.size
+      ? db.from('automations').select('id, name').in('id', [...autoIds]).eq('account_id', accountId)
+      : Promise.resolve(vazio),
   ])
-  return { tags, etapas, fluxos, automacoes }
+
+  return {
+    tags: paraMapa('tags', tagsRes),
+    etapas: paraMapa('pipeline_stages', etapasRes),
+    fluxos: paraMapa('flows', fluxosRes),
+    automacoes: paraMapa('automations', autosRes),
+  }
 }
 
 export async function GET(request: Request) {
@@ -144,7 +169,7 @@ export async function GET(request: Request) {
     }
 
     const passos = (stepsRes.data ?? []) as unknown as LinhaDePasso[]
-    const nomes = await carregarNomes(db, passos)
+    const nomes = await carregarNomes(db, passos, ctx.accountId)
     const executadosPorLog = new Map(
       ((logsRes.data ?? []) as { id: string; steps_executed: PassoExecutado[] }[]).map(
         (l) => [l.id, l.steps_executed ?? []],

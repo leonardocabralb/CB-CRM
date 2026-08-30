@@ -14,7 +14,7 @@ import { NextResponse } from 'next/server'
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
-import { abortActiveRunsForContact } from '@/lib/flows/parar-run'
+import { encerrarRunsAtivas } from '@/lib/flows/parar-run'
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -42,17 +42,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'invalid_body' }, { status: 400 })
     }
 
-    // Nunca lança; devolve quantas encerrou. 0 = o robô terminou entre a
-    // carga da aba e o clique (a lista é uma foto) — a tela avisa, não erra.
-    const paradas = await abortActiveRunsForContact({
+    // A variante ESTRITA, não o wrapper melhor-esforço do motor: aqui quem
+    // clicou é gente esperando confirmação, e falha de banco respondida como
+    // "0 paradas" viraria o toast "já tinha terminado" com o robô VIVO,
+    // ainda falando com o cliente (achado do Codex no PR #70). 0 de verdade
+    // continua legítimo: o robô pode ter terminado entre a carga e o clique.
+    const r = await encerrarRunsAtivas({
       db: supabaseAdmin(),
       accountId: ctx.accountId,
       contactId,
       status: 'stopped_by_agent',
       reason: 'stopped_by_agent',
     })
+    if (!r.ok) {
+      console.error('[execucoes] parar-robo falhou:', r.erro)
+      return NextResponse.json({ error: 'db_error' }, { status: 500 })
+    }
 
-    return NextResponse.json({ ok: true, paradas })
+    return NextResponse.json({ ok: true, paradas: r.paradas })
   } catch (err) {
     return toErrorResponse(err)
   }

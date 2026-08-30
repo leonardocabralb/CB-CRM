@@ -90,6 +90,20 @@ automação de teste e usuários de teste para medir na prática.
   do DOM. Limitação do harness de teste, não do produto (as abas existentes
   se comportam igual; usuários reais não passam por esse caminho).
 
+## Revisão do Codex no PR #70 (2026-08-30) — 2 achados, os 2 corrigidos
+
+- **P1 · parar-robo engolia falha de banco**: `abortActiveRunsForContact`
+  nunca lança e devolve 0 no erro (contrato certo para os call sites
+  melhor-esforço do MOTOR), mas na rota de AÇÃO isso virava toast "já tinha
+  terminado" com o robô vivo. Correção: `encerrarRunsAtivas` (variante
+  estrita em `parar-run.ts`, o UPDATE continua num lugar só; o wrapper
+  antigo vira casca) e a rota devolve 500 em falha.
+- **P2 · lookups de nome sem cerca de conta**: o validador de ativação não
+  confere posse do alvo, então um `step_config` com UUID alheio faria o GET
+  vazar o NOME de tag/etapa/robô/automação de outra conta. Correção: cada
+  lookup do `carregarNomes` cercado por `account_id` (etapas via
+  `pipelines!inner`, que não têm a coluna própria).
+
 ## O que JÁ existe (verificado em 2026-08-30 contra `329e743`)
 
 - **Esperas futuras** de automação (passo "Aguardar") viram linhas em
@@ -159,9 +173,9 @@ gravar parada humana como `stopped_by_automation` mentiria para o investigador.
 - Cada linha: nome, "próximo passo em <relativo>", botão Parar com confirmação
   inline (o que se perde: "as mensagens futuras desta automação para este
   cliente não sairão").
-- **Grupo**: aba mostra estado explicativo ("Automações não valem para
-  grupos") — `contact_id` é nulo e automação não roda em grupo (garantia
-  estrutural em `cb-groups/persist.ts`).
+- **Grupo**: acabou NÃO precisando de estado vazio na aba — conversa de
+  grupo usa o `group-sidebar`, o painel do contato (e a aba) nem montam.
+  O que precisou de gate foi o item do menu + no fio (Fase 2).
 - i18n nos DOIS dicionários na mesma passada.
 
 **Armadilhas herdadas (releia antes de codar):** `overflow-y-auto` +
