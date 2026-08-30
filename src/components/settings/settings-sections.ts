@@ -1,5 +1,6 @@
 import {
   Coins,
+  UserCog,
   FileText,
   KeyRound,
   LayoutGrid,
@@ -37,6 +38,9 @@ export const SETTINGS_SECTIONS = [
   'members',
   'integracoes',
   'api',
+  // Perfis de acesso (Fase 5) — quem vê o quê. Declarada no catálogo de
+  // perfis desde a Fase 1; aqui é a seção de verdade.
+  'perfis',
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
@@ -71,6 +75,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   // vier (TLDV, Calendly…), com estado ao vivo por integração.
   integracoes: { id: 'integracoes', label: 'Integrations', icon: Plug, group: 'workspace' },
   api: { id: 'api', label: 'API keys', icon: KeyRound, group: 'workspace' },
+  perfis: { id: 'perfis', label: 'Perfis de acesso', icon: UserCog, group: 'workspace' },
 };
 
 export const RAIL_GROUPS: { label: string | null; group: SectionMeta['group'] }[] = [

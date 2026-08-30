@@ -26,6 +26,7 @@ import {
   type SettingsSection,
 } from '@/components/settings/settings-sections';
 import { podeVerSecao } from '@/lib/perfis/visibilidade';
+import { PerfisPanel } from '@/components/settings/perfis-panel';
 
 // `useSearchParams` opts this page out of static prerendering unless it
 // sits under a Suspense boundary. Without one, the production build hits
@@ -95,6 +96,7 @@ function SettingsPageInner() {
     members: <MembersTab />,
     integracoes: <IntegracoesPanel />,
     api: <ApiKeysSettings />,
+    perfis: <PerfisPanel />,
   };
 
   return (
