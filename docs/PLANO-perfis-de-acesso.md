@@ -1,7 +1,8 @@
 # Perfis de acesso — plano e estado da implementação
 
-> Estado: **plano aprovado, nada implementado.** Decisões travadas com o
-> operador em 2026-08-30. Atualizar este arquivo a cada fase concluída.
+> Estado: **Fase 1 concluída** (migrations 956 e 957 aplicadas em produção em
+> 2026-08-30; PR da fundação aberto). Fases 2 a 6 pendentes. Decisões travadas
+> com o operador em 2026-08-30. Atualizar este arquivo a cada fase concluída.
 
 ## O que é
 
@@ -86,6 +87,47 @@ atribuir um perfil a alguém, a rota grava também o `account_role = papel_base`
 para que as guardas de servidor e a RLS continuem valendo sem conhecer perfis.
 Se as duas colunas divergirem, **quem manda é `account_role`**.
 
+### ⚠️ O convite tem de carregar o perfil (achado de revisão)
+
+`account_invitations` (017) guarda **só `role`**, e `redeem_invitation` copia
+**só** `account_role = v_inv.role` para o `profiles` de quem aceita. Conferido
+no arquivo da 017 e no corpo da função recriado pela 922.
+
+Sem tratar isso, o perfil escolhido na hora de convidar **não sobrevive** entre
+a criação do convite e o aceite — e como `perfil_id` nulo significa SEM
+RESTRIÇÃO, **todo membro novo entraria vendo tudo**. É o oposto exato do que
+esta feature existe para fazer, e apareceria justamente no caso que a motivou:
+convidar o advogado do trabalhista.
+
+O que a Fase 6 precisa incluir:
+
+- coluna `perfil_id` em `account_invitations`, com a mesma FK composta
+  `(perfil_id, account_id)` da 957;
+- `redeem_invitation` recriada para copiar `perfil_id` junto com o papel.
+
+⚠️ **Recriar `redeem_invitation` é operação de risco.** `CREATE OR REPLACE`
+substitui o corpo INTEIRO, e a função carrega as guardas que decidem quem entra
+na conta (sole-owner, conta-sem-dados, invite não expirado). Omitir um trecho
+apaga uma dessas guardas em silêncio — a 922 documenta esse mesmo cuidado ao
+recriá-la. Reproduzir o corpo vigente por inteiro e mudar só o `UPDATE profiles`.
+
+### ⚠️ Editar `papel_base` de um perfil já atribuído (achado de revisão)
+
+A regra "ao atribuir um perfil, a rota grava `account_role = papel_base`" cobre
+a ATRIBUIÇÃO e não cobre a EDIÇÃO. Se o operador mudar o `papel_base` de um
+perfil que já tem gente, cada membro mantém o `account_role` antigo — e como
+essa coluna é a fonte da verdade para as guardas de servidor e para a RLS, a
+mudança **não teria efeito nenhum sobre o que aquelas pessoas podem fazer**,
+enquanto a tela afirmaria que teve.
+
+Decisão para a Fase 5: ao salvar um perfil com `papel_base` diferente, a rota
+atualiza **na mesma transação** o `account_role` de todos os membros daquele
+perfil. Falhando a atualização, o save inteiro falha — perfil e membros
+divergentes é o estado que este plano existe para evitar.
+
+⚠️ E o salvamento nunca pode rebaixar o próprio operador a ponto de ele perder
+`manage-members`: mesma família da trava anti-auto-bloqueio.
+
 ### FKs compostas
 
 `channel_ids` e `pipeline_ids` são arrays, então não têm FK. A consequência é
@@ -101,10 +143,15 @@ Toda a decisão mora aqui, testável sem banco e sem React — mesma forma de
 
 | Arquivo | Responde |
 | --- | --- |
-| `telas.ts` | catálogo fechado das telas e seções (ids + rota + rótulo i18n) |
-| `visibilidade.ts` | `podeVerTela(perfil, telaId)`, `podeVerSecao(perfil, secaoId)` |
-| `escopo.ts` | `canaisVisiveis(perfil, todos)`, `funisVisiveis(perfil, todos)`, `conversaNoEscopo(conversa, perfil)` |
-| `padroes.ts` | os perfis de fábrica (Dono, Administrador, Observador, um Advogado de exemplo) |
+| `catalogo.ts` | catálogo fechado de telas e seções + as travas (`SECOES_PESSOAIS`, `TELAS_SEMPRE_VISIVEIS`, `SECOES_TRAVADAS_PARA_ADMIN`) |
+| `tipos.ts` | `PerfilDeAcesso`, `ContextoDeAcesso` |
+| `visibilidade.ts` | `podeVerTela(ctx, tela)`, `podeVerSecao(ctx, secao)`, `telaDoCaminho` |
+| `escopo.ts` | `canaisVisiveis`, `funisVisiveis`, `conversaNoEscopo`, `resumoDoEscopo` |
+| `padroes.ts` | os perfis de fábrica (Administrador, Advogado, Observador) |
+
+⚠️ **Não há perfil de "Dono".** O CHECK da 956 barra `papel_base = 'owner'` —
+perfil que promovesse alguém a dono seria transferência de posse por caminho
+lateral. O dono enxerga tudo por curto-circuito em `visibilidade.ts`.
 
 ⚠️ **A regra tem de existir num lugar só.** A rota decide com a mesma função que
 desabilita o botão na tela — é a lição registrada no CLAUDE.md sobre
@@ -158,9 +205,31 @@ Cada fase é um PR próprio, mergeável sozinho, sem quebrar a anterior.
 - Guarda em cada página restrita, com a tela amigável ("Esta área não faz parte
   do seu perfil — falar com o administrador"), nunca 404.
 - Seções de Configurações filtradas por `podeVerSecao`.
-- Sobe **automações e fluxos** de `agent` para `admin` nas 4 rotas
-  (`/api/automations`, `/api/automations/[id]`, `/api/flows`, `/api/flows/[id]`)
-  e confere se `/api/whatsapp/broadcast` já exige admin — hoje exige `agent`.
+- Sobe **automações e fluxos** de `agent` para `admin`. ⚠️ São **8** rotas, não
+  4: esconder a página não impede ninguém de chamar o endpoint direto, então a
+  lista precisa ser a auditoria completa, não as rotas óbvias. Levantado com
+  `find src/app/api/{automations,flows} -name route.ts` em 2026-08-30:
+
+  | Rota | Guarda hoje |
+  | --- | --- |
+  | `automations/route.ts` | `agent` |
+  | `automations/[id]/route.ts` | `agent` |
+  | `automations/[id]/duplicate/route.ts` | `agent` |
+  | `automations/engine/route.ts` | `agent` |
+  | `automations/events/drain/route.ts` | `agent` |
+  | `flows/route.ts` | `agent` |
+  | `flows/[id]/route.ts` | `agent` |
+  | `flows/[id]/activate/route.ts` | `agent` |
+
+  As quatro do meio são as que passam despercebido: `duplicate` insere em
+  service-role e `activate` liga um fluxo que fala com cliente.
+
+  ⚠️ **`automations/cron`, `flows/cron` e `flows/[id]/runs` ficam de fora de
+  propósito** — as duas de cron são chamadas pelo agendador com segredo
+  próprio (`requireRole` ali quebraria o worker) e `runs` é leitura.
+
+- Confere `/api/whatsapp/broadcast`: hoje exige `agent`, e disparo em massa
+  ficou combinado como exclusivo do Administrador.
 
 ### Fase 3 — Escopo na caixa de entrada
 
@@ -203,7 +272,14 @@ Cada fase é um PR próprio, mergeável sozinho, sem quebrar a anterior.
 
 Seções de Configurações: `overview` · `profile` · `security` · `appearance` ·
 `channels` · `templates` · `quick-replies` · `acervo` · `fields` · `deals` ·
-`assinatura` · `members` · `integracoes` · `api`
+`assinatura` · `members` · `integracoes` · `api` · **`perfis`**
+
+⚠️ `perfis` é a seção que a Fase 5 cria, e está declarada **desde a Fase 1**: o
+catálogo é a lista fechada do que um perfil pode ligar, então seção ausente dele
+é seção que `podeVerSecao` nunca libera — a própria tela de perfis nasceria
+inalcançável para perfil restrito. Ela também entra em
+`SECOES_TRAVADAS_PARA_ADMIN`, pela mesma razão de `members`: é a tela que
+conserta perfil mal configurado.
 
 ⚠️ Catálogo **fechado e exaustivo**: rota nova sem entrada aqui nasce invisível
 para todo perfil restrito. Quem criar tela nova acrescenta o id — e o typecheck
