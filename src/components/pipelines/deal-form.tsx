@@ -35,6 +35,7 @@ import {
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { avisarDrenagemDeFunil } from "@/lib/automations/avisar-drenagem";
+import { urlDoInbox } from "@/lib/inbox/url";
 
 interface DealFormProps {
   open: boolean;
@@ -52,6 +53,15 @@ interface DealFormProps {
    */
   defaultContactId?: string;
   onSaved: () => void;
+  /**
+   * O formulário foi aberto a partir do QUADRO de funis (lápis do card).
+   * Liga o link "ver conversa" à jornada do funil: `de=funil` na URL (a
+   * faixa "Voltar ao funil" do inbox) e o retorno de rolagem gravado por
+   * `aoIrParaConversa`. O painel do inbox NÃO passa os dois — lá o link é
+   * navegação interna do próprio inbox.
+   */
+  origemFunil?: boolean;
+  aoIrParaConversa?: () => void;
 }
 
 export function DealForm({
@@ -63,6 +73,8 @@ export function DealForm({
   defaultStageId,
   defaultContactId,
   onSaved,
+  origemFunil,
+  aoIrParaConversa,
 }: DealFormProps) {
   const t = useTranslations("Pipelines.form");
   const supabase = createClient();
@@ -335,19 +347,22 @@ export function DealForm({
               </select>
 
               {/* O caminho de volta do card para o atendimento.
-                  Duas correções aqui:
-                  · o href era "/inbox" puro — sem o `?c=`, o operador caía na
-                    caixa genérica e tinha de procurar a conversa na mão;
-                  · a condição olhava só `linkedConversation` (a conversa ATUAL
-                    do contato), então o link sumia justamente no caso que a
-                    910 existe para tolerar: negócio com conversa gravada cujo
-                    contato foi apagado — aí `contact_id` é NULL, a busca por
-                    contato não acha nada, e o vínculo real ficava inalcançável.
-                  Preferimos o vínculo gravado no negócio (histórico) e caímos
-                  na conversa do contato para cards anteriores à 910. */}
-              {(deal?.conversation_id ?? linkedConversation?.id) && (
+                  ⚠️ A conversa do CONTATO manda; o vínculo gravado
+                  (`deals.conversation_id`, 910) é fallback — mesma regra do
+                  `conversaDoCard` do quadro. Invertido, trocar o contato do
+                  negócio deixava o link (e o card) abrindo a conversa do
+                  contato ANTIGO com a cara do novo — achado da revisão do
+                  PR #71. O fallback continua cobrindo o caso que a 910
+                  existe para tolerar: contato apagado (contact_id NULL, a
+                  busca por contato não acha nada, e só o vínculo gravado
+                  alcança a conversa). */}
+              {(linkedConversation?.id ?? deal?.conversation_id) && (
                 <Link
-                  href={`/inbox?c=${deal?.conversation_id ?? linkedConversation!.id}`}
+                  href={urlDoInbox({
+                    c: linkedConversation?.id ?? deal?.conversation_id,
+                    de: origemFunil ? "funil" : null,
+                  })}
+                  onClick={aoIrParaConversa}
                   className="mt-1 inline-flex items-center gap-1.5 self-start rounded-md bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
                 >
                   <MessageSquare className="h-3 w-3" />

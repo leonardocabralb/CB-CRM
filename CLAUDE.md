@@ -209,12 +209,15 @@ upstream sobrescrevê-los:
 | `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
 | `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página |
 | `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDaMensagem>` envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo), a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef` |
-| `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (956): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
-| `src/components/inbox/message-thread.tsx` (955/956) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem contato e canal RESOLVIDO — `activeChannel`; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
+| `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (963): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
+| `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem contato e canal RESOLVIDO — `activeChannel`; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
-| `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil |
+| `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil. Mais o funil-com-conversas (PR #71): botão de conversas por coluna, `navegarParaInbox`/restauração de rolagem no board (quadroRef vem da página), `useChannels` içado, select `DEAL_SELECT_DO_QUADRO` com plano B, popover de campos |
+| `src/components/pipelines/deal-card.tsx` | ⚠️ **reestruturado inteiro no PR #71 — manter a NOSSA versão** (como `conversation-list.tsx`): wrapper + botão do corpo (abre a CONVERSA) + lápis IRMÃO (edita; button aninhado é inválido), campos por `CamposDoCard`, etiquetas/última mensagem/não lidas, `memo` + canais por prop, barra de cor com `pointer-events-none` |
+| `src/components/pipelines/deal-form.tsx` | além do que a linha antiga já dizia: o link "ver conversa" prefere a conversa do CONTATO (fallback no vínculo da 910), usa `urlDoInbox` e as props `origemFunil`/`aoIrParaConversa` da jornada do funil |
+| `src/app/(dashboard)/inbox/page.tsx`, `src/components/inbox/conversation-list.tsx`, `inbox-filters.tsx` | os params `?etapa=` (semeia o filtro de etapa UMA vez) e `?de=funil` (faixa "Voltar ao funil") — os `router.replace` usam `urlDoInbox`, que preserva `de` e derruba `etapa` DE PROPÓSITO; na lista, `etapaInicial` + `etapasResolvidas` e o recorte de etapa gateado por `etapasUsaveis`; nos filtros, o fallback da pastilha virou `labelStage` (era "Qualquer etapa" sobre filtro ativo) |
 | `src/app/(dashboard)/automations/new/page.tsx` | o `?stage=` que faz a automação nascer com o gatilho de funil já apontando para a etapa clicada |
 | `src/lib/automations/trigger-meta.ts` | `formatRelative` passou a usar `Intl.RelativeTimeFormat` e a receber o texto de "nunca" — devolvia `5m ago`/`never` em inglês nas três telas |
 | `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx`, `src/app/(dashboard)/notifications/page.tsx`, `src/components/layout/{sidebar,header}.tsx`, `src/app/(dashboard)/contacts/page.tsx`, `src/lib/rate-limit.ts` | as tarefas (944): 7ª aba na ficha (com `[&>button]:flex-none` na TabsList), seção na barra da conversa, ícones/navegação dos tipos `task_*` no sino (o `TYPE_ICON` é exaustivo — merge que trouxer tipo novo sem ícone quebra o typecheck), item "Tarefas" com etiqueta realtime no menu, deep link `?contact=`, bucket `tarefa` |
@@ -342,7 +345,7 @@ entre escrever e enviar.** `src/lib/scheduled/midia.ts` (puro, com teste),
   núcleo revalida e o disparador **traduz** — `SendMessageError.message` é
   escrito em inglês e cai cru na coluna que as duas telas mostram.
 
-⚠️ **Execuções na conversa (955) e presença por conversa (956).** Aba
+⚠️ **Execuções na conversa (955) e presença por conversa (963).** Aba
 "Automações" no painel da conversa (robô ativo + esperas, com Parar e linha
 do tempo), item "Executar automação" no menu + do compositor, e avatares de
 quem mais está com a conversa aberta. `src/lib/execucoes/` e
@@ -522,6 +525,57 @@ puros e com teste (85 casos); a tela é `/agenda`, e a escrita passa por
   (deep link resolvido no estado inicial da página de Contatos).
 - **Redirecionar zera `lida_em`** — a tarefa chega "não lida" para quem acabou
   de recebê-la, senão some da contagem do menu da pessoa nova.
+
+⚠️ **Funil-com-conversas (PR #71): o card do Kanban ABRE A CONVERSA, não o
+negócio.** `src/lib/pipelines/cartao.ts`, `campos-do-card.ts`, `retorno.ts` e
+`src/lib/inbox/url.ts` (puros, testados); editar o negócio é o lápis do card.
+O que morde código novo:
+
+- ⚠️ **A conversa do CONTATO manda; `deals.conversation_id` é só fallback**
+  (`conversaDoCard`, e o link do `deal-form` segue a MESMA regra). Invertido,
+  trocar o contato do negócio deixava o card com a cara do contato novo e o
+  clique abrindo a conversa do antigo — o update nunca reescreve o vínculo
+  ("`conversation_id` só no NASCIMENTO"). O fallback cobre contato apagado e
+  o plano B do select.
+- ⚠️ **O recorte por etapa sem dados é neutralizado DENTRO de
+  `aplicarFiltros`**, por `ContextoDosFiltros.recorteDeEtapaConfiavel` —
+  campo OBRIGATÓRIO, como `achadasNoTexto`: o compilador cobra de qualquer
+  consumidor novo. Com o mapa contato→etapa vazio, `casaComAEtapa` reprova
+  toda conversa e o deep link `?etapa=` abriria "nenhuma conversa" com cara
+  de resposta certa (pino em `filtros.test.ts`). A lista pagina a consulta de
+  `deals` (o teto de ~1000 do PostgREST derrubava o filtro PARA SEMPRE ao
+  passar de 1000 negócios); o painel recebe `etapas` SEMPRE (dá nome à
+  pastilha) e `etapasConfiaveis` gateia só OFERECER o campo.
+- ⚠️ **O filtro SEMEADO por `?etapa=` morre com a jornada**: a página do
+  inbox NÃO remonta quando só a query muda (sidebar limpa a URL, a faixa
+  some) — sem o efeito de ciclo de vida na lista, o recorte ficava aplicado
+  sem nada na tela explicando. Etapa semeada que não existe mais também é
+  descartada. Só o seed: etapa escolhida à mão no painel não é tocada.
+- **`DEAL_SELECT_DO_QUADRO` é separado do `CONVERSATION_SELECT`** de
+  propósito — o do inbox é contrato da API pública v1. Embed recusado pelo
+  PostgREST cai no `DEAL_SELECT_BASICO` (lembrado em flag de módulo — recusa
+  é persistente) e a falha do PRÓPRIO plano B vira toast + lista vazia, nunca
+  quadro "vazio" com cara de funil sem negócio. `contact.tags` fica AUSENTE
+  no plano B (fabricar `[]` afirmaria "sem etiquetas" sobre dado não
+  carregado).
+- **O retorno de rolagem EXPIRA (10 min), não é apagado no consumo**
+  (`retorno.ts`): apagar antes dos rAF perdia a restauração se o quadro
+  desmontasse na janela, ir-e-voltar duas vezes teleportava para `list[0]`, e
+  funil sem etapas nunca consumia o registro. A restauração mora no BOARD
+  (o `loading` da página cobre só a carga dos funis) com `aplicadoRef`
+  marcado DENTRO do rAF (StrictMode) e cleanup cancelando os rAF; o
+  `scrollTo` usa `behavior: "instant"` porque o `.pipeline-scroll` tem
+  `scroll-behavior: smooth`. O `quadroRef` é criado na PÁGINA: o link "ver
+  conversa" do formulário grava o mesmo retorno (props `origemFunil`/
+  `aoIrParaConversa` do `DealForm` — o painel do inbox não as passa).
+- **`urlDoInbox` preserva `de` (só o valor "funil") e derruba `etapa` nos
+  replaces, por decisão**: `etapa` é porta de entrada que semeia o filtro uma
+  vez; preservá-la faria o filtro limpo no painel voltar no reload.
+- **Sem realtime no quadro, por desenho**: não lidas/última mensagem são foto
+  da carga, e voltar do inbox remonta a página e refaz o fetch. Os canais são
+  buscados UMA vez no board (`useChannels` dentro do card custava um GET por
+  card) e o `DealCard` é `memo` com handlers `useCallback` — quem criar prop
+  nova instável quebra isso e volta a re-renderizar 120 cards por tecla.
 
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
@@ -1294,8 +1348,14 @@ mordem de novo em qualquer código novo:
   - **955_cb_robo_parado_pela_equipe** — `stopped_by_agent` no CHECK de
     `flow_runs.status` (parada DECIDIDA por gente, via aba da conversa).
     Aplicada em 2026-08-30.
-  - **956_cb_conversa_aberta** — presença por conversa (tabela + RPC +
-    realtime). Aplicada em 2026-08-30.
+  - **956_cb_perfis_de_acesso a 962_cb_papel_segue_o_perfil** — perfis de
+    acesso, Fases 1–6 (PR #69). Aplicadas em 2026-08-30.
+  - **963_cb_conversa_aberta** — presença por conversa (tabela + RPC +
+    realtime). Aplicada em 2026-08-30. ⚠️ NASCEU como `956` e COLIDIU com a
+    `956_cb_perfis_de_acesso` (duas branches em paralelo); o replay do CI
+    estoura com número duplicado, então o ARQUIVO foi renumerado no merge —
+    o da presença, porque as 957–962 dependem da de perfis. O histórico do
+    Supabase não muda (registra por timestamp), mesmo caso da 906.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

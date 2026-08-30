@@ -16,6 +16,20 @@ type RawConversation = Omit<Conversation, "contact"> & {
 };
 
 /**
+ * Achata o join `contact_tags(tags(*))` numa lista de tags, descartando o
+ * join órfão (`tags: null`). Compartilhado com o select do quadro de funis
+ * (`src/lib/pipelines/cartao.ts`) — duas cópias desta regra já divergiram na
+ * tipagem uma vez.
+ */
+export function achatarTags(
+  contact_tags: { tags: Tag | null }[] | null | undefined,
+): Tag[] {
+  return (contact_tags ?? [])
+    .map((ct) => ct.tags)
+    .filter((t): t is Tag => t != null);
+}
+
+/**
  * Flatten the embedded `contact_tags(tags(*))` join into `contact.tags`.
  * Safe to call on rows fetched with {@link CONVERSATION_SELECT}; a row with
  * no contact (e.g. a freshly-inserted conversation) passes through untouched.
@@ -29,9 +43,7 @@ export function normalizeConversation(raw: RawConversation): Conversation {
     ...raw,
     contact: {
       ...contact,
-      tags: (contact_tags ?? [])
-        .map((ct) => ct.tags)
-        .filter((t): t is Tag => t != null),
+      tags: achatarTags(contact_tags),
     },
   };
 }

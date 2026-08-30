@@ -78,6 +78,7 @@ const ctx = (patch: Partial<ContextoDosFiltros> = {}): ContextoDosFiltros => ({
   etapaPorContato: new Map<string, Set<string>>(),
   busca: "",
   achadasNoTexto: new Set<string>(),
+  recorteDeEtapaConfiavel: true,
   ...patch,
 });
 
@@ -212,6 +213,30 @@ describe("casaComAEtapa", () => {
   it("grupo cai em SEM_ETAPA — não tem contato, logo não tem negócio", () => {
     expect(casaComAEtapa(grupo(), SEM_ETAPA, mapa)).toBe(true);
     expect(casaComAEtapa(grupo(), "s1", mapa)).toBe(false);
+  });
+
+  it("⚠️ com o mapa VAZIO (deals ainda não carregados) conversa com contato reprova — é por isso que `recorteDeEtapaConfiavel` existe no ctx; sem a neutralização, o deep link ?etapa= abre 'nenhuma conversa' com cara de resposta certa", () => {
+    expect(casaComAEtapa(conversa(), "s1", new Map())).toBe(false);
+  });
+
+  it("⚠️ `recorteDeEtapaConfiavel: false` NEUTRALIZA o filtro de etapa dentro de aplicarFiltros — a lista nunca responde errado com o mapa incompleto", () => {
+    const c1 = conversa({ id: "c1" });
+    // Mapa vazio + filtro de etapa: sem a guarda, zero resultados.
+    expect(
+      aplicarFiltros(
+        [c1],
+        { ...FILTROS_VAZIOS, etapaId: "s1" },
+        ctx({ recorteDeEtapaConfiavel: false }),
+      ).map((c) => c.id),
+    ).toEqual(["c1"]);
+    // Com dados confiáveis, o recorte vale normalmente.
+    expect(
+      aplicarFiltros(
+        [c1],
+        { ...FILTROS_VAZIOS, etapaId: "s1" },
+        ctx({ recorteDeEtapaConfiavel: true }),
+      ),
+    ).toEqual([]);
   });
 });
 

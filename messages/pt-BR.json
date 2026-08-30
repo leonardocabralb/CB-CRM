@@ -156,7 +156,8 @@
   },
   "Inbox": {
     "page": {
-      "whatsappNotConnected": "O WhatsApp® não está conectado. Acesse Configurações para conectar sua conta."
+      "whatsappNotConnected": "O WhatsApp® não está conectado. Acesse Configurações para conectar sua conta.",
+      "backToPipeline": "Voltar ao funil"
     },
     "conversationList": {
       "typeAll": "Todos os tipos",
@@ -200,6 +201,7 @@
       "removeFilter": "Remover o filtro {filtro}",
       "searchMinChars": "Digite {n} letras para buscar também dentro das mensagens.",
       "searchingInMessages": "Buscando dentro das mensagens...",
+      "stageFilterUnavailable": "Não foi possível carregar as etapas — o recorte por etapa não está sendo aplicado.",
       "searchInMessagesFailed": "Não foi possível buscar dentro das mensagens. A busca olhou só nomes e números.",
       "searchHitCount": "{n, plural, =1 {1 msg} other {# msgs}}"
     },
@@ -833,6 +835,7 @@
       "createPipelineBtn": "Criar funil",
       "toastFailedLoadPipelines": "Falha ao carregar os funis",
       "toastFailedMoveDeal": "Falha ao mover o negócio",
+      "toastFailedLoadDeals": "Não foi possível carregar os negócios — recarregue a página",
       "toastFailedCreatePipeline": "Falha ao criar o funil",
       "toastPipelineCreated": "Funil criado",
       "toastNotLinkedToAccount": "Seu perfil não está vinculado a uma conta."
@@ -840,13 +843,28 @@
     "board": {
       "dropDealHere": "Solte um negócio aqui",
       "addDeal": "Adicionar negócio",
-      "stageAutomations": "{count, plural, =0 {Automações desta etapa} one {Automações desta etapa (# ativa)} other {Automações desta etapa (# ativas)}}"
+      "stageAutomations": "{count, plural, =0 {Automações desta etapa} one {Automações desta etapa (# ativa)} other {Automações desta etapa (# ativas)}}",
+      "stageConversations": "Ver as conversas desta etapa na caixa de entrada",
+      "cardFields": "Informações do card",
+      "cardFieldsTitle": "Exibir no card",
+      "cardFieldsHint": "Vale só neste dispositivo.",
+      "fieldValue": "Valor",
+      "fieldExpectedDate": "Data prevista",
+      "fieldAssignee": "Responsável",
+      "fieldChannel": "Canal",
+      "fieldTags": "Etiquetas do contato",
+      "fieldLastMessage": "Última mensagem",
+      "fieldUnread": "Indicador de não lidas"
     },
     "card": {
       "noContact": "Sem contato",
       "won": "Ganho",
       "lost": "Perdido",
-      "cameFrom": "Chegou pelo número {channel}"
+      "cameFrom": "Chegou pelo número {channel}",
+      "openConversationOf": "Abrir a conversa de {titulo}",
+      "editDeal": "Editar negócio",
+      "editDealTitled": "Editar o negócio {titulo}",
+      "unreadCount": "{count, plural, one {# mensagem não lida} other {# mensagens não lidas}}"
     },
     "form": {
       "editDeal": "Editar negócio",

@@ -59,6 +59,14 @@ interface InboxFiltersProps {
   empresas: string[];
   responsaveis: Profile[];
   etapas: PipelineStage[];
+  /**
+   * O mapa contato→etapa por trás do recorte está íntegro? Gateia OFERECER o
+   * campo de etapa — escolher sem os dados responderia errado. A lista
+   * `etapas` continua chegando inteira mesmo com `false`: é ela que dá NOME
+   * à pastilha de um filtro já ativo (o deep link `?etapa=` chega antes dos
+   * dados, e a consulta de `deals` pode falhar sozinha, com as etapas de pé).
+   */
+  etapasConfiaveis: boolean;
   /** `pipeline_id` → nome do funil. Só usado quando há mais de um funil. */
   funis: Map<string, string>;
   /** Existe conversa de grupo carregada? Sem isso o recorte por tipo não decide nada. */
@@ -78,6 +86,7 @@ export function InboxFilters({
   empresas,
   responsaveis,
   etapas,
+  etapasConfiaveis,
   funis,
   temGrupos,
   busca,
@@ -163,7 +172,11 @@ export function InboxFilters({
           ? t("stageNone")
           : etapaAtual
             ? nomeDaEtapa(etapaAtual, funis)
-            : t("stageAll"),
+            : // ⚠️ Filtro ativo cuja etapa não está na lista (dados ainda não
+              // carregados — o deep link ?etapa= chega antes deles — ou etapa
+              // apagada). "Qualquer etapa" aqui seria o OPOSTO do que está
+              // acontecendo; o rótulo genérico do campo é o honesto.
+              t("labelStage"),
       aoRemover: () => mexer({ etapaId: null }),
     });
   }
@@ -451,7 +464,7 @@ export function InboxFilters({
             />
           </Campo>
 
-          {etapas.length > 0 && (
+          {etapasConfiaveis && etapas.length > 0 && (
             <Campo rotulo={t("labelStage")}>
               <Escolha
                 rotulo={
@@ -461,7 +474,9 @@ export function InboxFilters({
                       ? t("stageNone")
                       : etapaAtual
                         ? nomeDaEtapa(etapaAtual, funis)
-                        : t("stageAll")
+                        : // Etapa escolhida que sumiu da lista (apagada):
+                          // "Qualquer etapa" mentiria sobre um filtro ativo.
+                          t("labelStage")
                 }
                 ativo={filtros.etapaId !== null}
                 opcoes={[

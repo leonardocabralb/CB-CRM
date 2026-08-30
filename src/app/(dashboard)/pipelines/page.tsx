@@ -40,11 +40,31 @@ import { GatedButton } from "@/components/ui/gated-button";
 import { useTranslations } from "next-intl";
 import { avisarDrenagemDeFunil } from "@/lib/automations/avisar-drenagem";
 import { statusAoEntrarNaEtapa } from "@/lib/pipelines/resultado";
+import {
+  DEAL_SELECT_BASICO,
+  DEAL_SELECT_DO_QUADRO,
+  normalizarDealDoQuadro,
+  type DealDoQuadro,
+  type RawDealDoQuadro,
+} from "@/lib/pipelines/cartao";
+import {
+  CAMPOS_PADRAO,
+  CHAVE_CAMPOS_DO_CARD,
+  normalizarCampos,
+  type CamposDoCard,
+} from "@/lib/pipelines/campos-do-card";
+import { gravarRetorno, lerRetorno } from "@/lib/pipelines/retorno";
+import { CamposDoCardPopover } from "@/components/pipelines/campos-do-card-popover";
 
 // Pipeline creation is admin-class (settings-tier write under
 // the new RLS); deal creation is operational and only requires
 // agent+. The two CTAs gate on different `useCan` capabilities,
 // not on different copy.
+
+// A recusa de embed pelo PostgREST (cache de schema velho pós-migration) é
+// PERSISTENTE, não transitória: lembrada aqui, as cargas seguintes vão direto
+// ao select básico em vez de pagar duas consultas por troca de funil.
+let embedDoQuadroRecusado = false;
 
 // Spec-defined seed — name and color per the product spec.
 const SPEC_DEFAULT_STAGES = [
@@ -67,8 +87,47 @@ export default function PipelinesPage() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
   const [stages, setStages] = useState<PipelineStage[]>([]);
-  const [deals, setDeals] = useState<Deal[]>([]);
+  const [deals, setDeals] = useState<DealDoQuadro[]>([]);
   const [loading, setLoading] = useState(true);
+
+  /**
+   * O que os cards exibem — escolha POR DISPOSITIVO (localStorage). Lida em
+   * efeito pós-mount, nunca no inicializador: esta página tem passe SSR, e
+   * ler storage síncrono produziria hydration mismatch (mesmo padrão do
+   * painel do inbox). O parse fica DENTRO do try — registro corrompido não
+   * pode derrubar a página.
+   */
+  const [campos, setCampos] = useState<CamposDoCard>(CAMPOS_PADRAO);
+  useEffect(() => {
+    try {
+      const cru = localStorage.getItem(CHAVE_CAMPOS_DO_CARD);
+      if (cru !== null) setCampos(normalizarCampos(JSON.parse(cru)));
+    } catch {
+      // Navegação privativa / JSON inválido — fica no padrão.
+    }
+  }, []);
+  const trocarCampos = useCallback((next: CamposDoCard) => {
+    setCampos(next);
+    try {
+      localStorage.setItem(CHAVE_CAMPOS_DO_CARD, JSON.stringify(next));
+    } catch {
+      // Persistência é melhor esforço; a escolha vale para a sessão.
+    }
+  }, []);
+
+  /**
+   * O `.pipeline-scroll` do quadro. Criado AQUI porque duas saídas para o
+   * inbox precisam medi-lo: as do board (card e coluna) e o link "ver
+   * conversa" do formulário de negócio — todas gravam o mesmo retorno.
+   */
+  const quadroRef = useRef<HTMLDivElement>(null);
+  const salvarRetornoDoQuadro = useCallback(() => {
+    gravarRetorno({
+      pipelineId: selectedPipelineId,
+      scrollLeft: quadroRef.current?.scrollLeft ?? 0,
+      scrollTop: quadroRef.current?.closest("main")?.scrollTop ?? 0,
+    });
+  }, [selectedPipelineId]);
 
   // Automações de funil da conta inteira (Fase 5). Não é por funil de
   // propósito: a regra de gatilho VAZIO vale para toda etapa de todo funil, e
@@ -128,15 +187,53 @@ export default function PipelinesPage() {
   );
 
   const loadDeals = useCallback(
-    async (pipelineId: string) => {
-      const { data } = await supabase
-        .from("deals")
-        .select("*, contact:contacts(*), assignee:profiles!deals_assigned_to_fkey(*)")
-        .eq("pipeline_id", pipelineId)
-        .order("created_at", { ascending: false });
-      return (data ?? []) as Deal[];
+    async (pipelineId: string): Promise<DealDoQuadro[]> => {
+      // A MESMA consulta para os dois selects: qualquer mudança de escopo
+      // (filtro, ordem) vale automaticamente no plano B — divergir os dois é
+      // exatamente o tipo de bug que só aparece quando ninguém está olhando.
+      const buscar = (select: string) =>
+        supabase
+          .from("deals")
+          .select(select)
+          .eq("pipeline_id", pipelineId)
+          .order("created_at", { ascending: false });
+      const mapear = (linhas: unknown) =>
+        ((linhas ?? []) as RawDealDoQuadro[]).map(normalizarDealDoQuadro);
+
+      if (!embedDoQuadroRecusado) {
+        const { data, error } = await buscar(DEAL_SELECT_DO_QUADRO);
+        if (!error) return mapear(data);
+        // ⚠️ Um embed recusado pelo PostgREST não pode derrubar o Kanban: sem
+        // este plano B o quadro abriria VAZIO, sem mensagem nenhuma. Loga (os
+        // campos do erro do Supabase não são enumeráveis) e refaz com o
+        // select antigo — o quadro fica de pé, sem conversa/etiquetas nos
+        // cards (e negócio pré-910 volta a abrir o formulário no clique).
+        console.error("Failed to load deals (select do quadro):", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        });
+        embedDoQuadroRecusado = true;
+      }
+
+      const { data: basico, error: erroBasico } = await buscar(DEAL_SELECT_BASICO);
+      if (erroBasico) {
+        // ⚠️ O plano B também pode falhar (rede, RLS) — descartar ESTE erro
+        // reproduzia o defeito original: colunas "vazias" com cara de funil
+        // sem negócio. Toast + lista vazia explícita, como o handleDealMoved.
+        console.error("Failed to load deals (select básico):", {
+          message: erroBasico.message,
+          details: erroBasico.details,
+          hint: erroBasico.hint,
+          code: erroBasico.code,
+        });
+        toast.error(t("toastFailedLoadDeals"));
+        return [];
+      }
+      return mapear(basico);
     },
-    [supabase],
+    [supabase, t],
   );
 
   // Falha em silêncio → lista vazia. A etiqueta some e o painel diz "nenhuma";
@@ -255,9 +352,17 @@ export default function PipelinesPage() {
       const visiveis = funisVisiveis(acesso, list);
       setPipelines(visiveis);
       if (visiveis.length > 0) {
-        setSelectedPipelineId((prev) =>
-          prev && visiveis.some((p) => p.id === prev) ? prev : visiveis[0].id,
-        );
+        // A volta do inbox prefere o funil de onde o operador saiu — desde
+        // que o perfil o alcance (o retorno é conferido contra `visiveis`).
+        // O registro tem prazo curto (ver retorno.ts) — vencido, cai no
+        // primeiro da lista como sempre.
+        const doRetorno = lerRetorno()?.pipelineId;
+        setSelectedPipelineId((prev) => {
+          if (prev && visiveis.some((p) => p.id === prev)) return prev;
+          if (doRetorno && visiveis.some((p) => p.id === doRetorno))
+            return doRetorno;
+          return visiveis[0].id;
+        });
       } else {
         setSelectedPipelineId("");
       }
@@ -514,6 +619,10 @@ export default function PipelinesPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* O que os cards exibem — só na vista de leads, onde há card. */}
+          {vista === "leads" && pipelines.length > 0 && (
+            <CamposDoCardPopover campos={campos} onChange={trocarCampos} />
+          )}
           {/* Leads | Automações — as duas leituras do mesmo funil. */}
           <div className="flex rounded-lg border border-border bg-card p-0.5">
             {/* A grade de automações segue a regra da Fase 2: automação é
@@ -594,6 +703,9 @@ export default function PipelinesPage() {
             stages={stages}
             deals={deals}
             automations={automations}
+            pipelineId={selectedPipelineId}
+            campos={campos}
+            quadroRef={quadroRef}
             onDealMoved={handleDealMoved}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}
@@ -671,6 +783,11 @@ export default function PipelinesPage() {
         stages={stages}
         defaultStageId={defaultStageId}
         onSaved={refreshDeals}
+        // O link "ver conversa" do formulário é a 3ª porta funil→inbox
+        // (alcançável pelo lápis do card): entra na mesma jornada — faixa
+        // de voltar e retorno de rolagem — que as portas do board.
+        origemFunil
+        aoIrParaConversa={salvarRetornoDoQuadro}
       />
     </div>
   );
