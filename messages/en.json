@@ -2821,5 +2821,10 @@
     "title": "This area is not part of your profile",
     "body": "The page exists, but your access profile does not include it. If you need it for your work, ask the account administrator.",
     "cta": "Go to my workspace"
+  },
+  "ConversaForaDaArea": {
+    "title": "This conversation belongs to another area",
+    "body": "It showed up in your search or notifications, but it is outside the connections of your access profile. If you need it, ask the account administrator.",
+    "back": "Back to my conversations"
   }
 }

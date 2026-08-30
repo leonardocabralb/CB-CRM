@@ -36,6 +36,8 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useBuscaEmMensagens } from "@/hooks/use-busca-em-mensagens";
 import { useChannels } from "@/hooks/use-channels";
+import { useAuth } from "@/hooks/use-auth";
+import { canaisVisiveis, conversaNoEscopo } from "@/lib/perfis/escopo";
 import { useFavoritas } from "@/hooks/use-favoritas";
 
 interface ConversationListProps {
@@ -300,6 +302,15 @@ export function ConversationList({
 
   // Todo o recorte mora em `src/lib/inbox/filtros.ts`, testado lá. Aqui só
   // fica o estado e o que a tela precisa para desenhar os rótulos.
+  // Recorte por perfil (Fase 3) como PREDICADO, não import dentro de
+  // filtros.ts — escopo.ts importa canalDaConversa de lá, e o import na
+  // direção contrária fecharia ciclo de módulos.
+  const { acesso } = useAuth();
+  const foraDoPerfil = useCallback(
+    (c: Conversation) => !conversaNoEscopo(acesso, c),
+    [acesso],
+  );
+
   const filtered = useMemo(
     () =>
       aplicarFiltros(conversations, filtros, {
@@ -307,6 +318,7 @@ export function ConversationList({
         etapaPorContato,
         busca: search,
         achadasNoTexto: idsAchadosNoTexto,
+        foraDoPerfil,
       }),
     [
       conversations,
@@ -315,6 +327,7 @@ export function ConversationList({
       etapaPorContato,
       search,
       idsAchadosNoTexto,
+      foraDoPerfil,
     ],
   );
 
@@ -393,7 +406,11 @@ export function ConversationList({
         <InboxFilters
           filtros={filtros}
           onChange={setFiltros}
-          canais={channels}
+          // O seletor de canal só oferece as conexões DO PERFIL — oferecer
+          // as outras seria um filtro que devolve sempre vazio, com cara de
+          // "não há conversas". (As linhas de outra área que a BUSCA traz
+          // continuam aparecendo; isto recorta só as OPÇÕES do filtro.)
+          canais={canaisVisiveis(acesso, channels)}
           etiquetas={tags}
           empresas={companies}
           responsaveis={temPerfis ? profiles : []}

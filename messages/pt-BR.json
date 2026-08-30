@@ -2821,5 +2821,10 @@
     "title": "Esta área não faz parte do seu perfil",
     "body": "A página existe, mas o seu perfil de acesso não a inclui. Se você precisa dela para o seu trabalho, fale com o administrador da conta.",
     "cta": "Ir para a minha área"
+  },
+  "ConversaForaDaArea": {
+    "title": "Esta conversa é de outra área",
+    "body": "Ela apareceu na sua busca ou nas notificações, mas está fora das conexões do seu perfil de acesso. Se você precisa dela, fale com o administrador da conta.",
+    "back": "Voltar às minhas conversas"
   }
 }

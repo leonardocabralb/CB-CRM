@@ -66,6 +66,24 @@ export function funilNoEscopo(ctx: ContextoDeAcesso, pipelineId: string): boolea
 }
 
 /**
+ * A lista de canais do recorte, para montar CONSULTA — ou `null` quando não
+ * há recorte nenhum (dono, sem perfil, ou lista vazia = todas).
+ *
+ * Existe porque nem todo consumidor filtra em JS: a tela de Agendadas pagina
+ * no banco, e filtrar página carregada em JS mostraria menos linhas que o
+ * `count: 'exact'` promete. Lá o recorte entra como `.in('channel_id', …)` NA
+ * CONSULTA — o que é seguro naquela tabela porque `cb_scheduled_messages`
+ * carrega o próprio `channel_id`, fixado no agendamento (925). ⚠️ NÃO usar
+ * este helper para filtrar `conversations` na consulta: lá vale a armadilha
+ * do embed/grupo documentada em `filtros.ts`, e o recorte é em JS via
+ * `conversaNoEscopo`.
+ */
+export function recorteDeCanais(ctx: ContextoDeAcesso): string[] | null {
+  if (semRecorteDeCanal(ctx)) return null;
+  return ctx.perfil!.channel_ids;
+}
+
+/**
  * A conversa entra no escopo?
  *
  * ⚠️⚠️ USA `canalDaConversa`, NUNCA `conversation.channel_id` direto. Conversa

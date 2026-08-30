@@ -14,6 +14,7 @@ import {
   conversaNoEscopo,
   funilNoEscopo,
   funisVisiveis,
+  recorteDeCanais,
   resumoDoEscopo,
 } from "./escopo";
 import { PERFIS_DE_FABRICA } from "./padroes";
@@ -280,6 +281,21 @@ describe("conversaNoEscopo", () => {
 });
 
 // ============================================================
+describe("recorteDeCanais", () => {
+  it("null quando não há recorte — dono, sem perfil, ou lista vazia", () => {
+    expect(recorteDeCanais(DONO)).toBeNull();
+    expect(recorteDeCanais(SEM_PERFIL)).toBeNull();
+    expect(recorteDeCanais(ctx({ channel_ids: [] }))).toBeNull();
+  });
+
+  it("devolve a lista quando há recorte (para .in() na consulta)", () => {
+    expect(recorteDeCanais(ctx({ channel_ids: ["ch1", "ch2"] }))).toEqual([
+      "ch1",
+      "ch2",
+    ]);
+  });
+});
+
 describe("resumoDoEscopo", () => {
   it("perfil nulo é 'tudo'", () => {
     expect(resumoDoEscopo(null)).toEqual({
