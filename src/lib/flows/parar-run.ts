@@ -29,24 +29,38 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * entender por que o robô calou precisa saber qual dos dois foi.
  *
  * Ambos aceitos pelo CHECK de `flow_runs.status` desde a migration 936.
- */
-export type MotivoDeParada = 'paused_by_agent' | 'stopped_by_automation'
-
-/**
- * Encerra a run ativa do contato, se houver. Devolve quantas encerrou.
  *
- * ⚠️ **Nunca lança.** As três pontas que chamam são melhor-esforço, e uma
- * delas é o envio de mensagem por um humano — onde o bloco roda DEPOIS de a
- * mensagem já ter saído para o WhatsApp. Estourar ali faria o cliente receber
- * a mensagem e o operador ver um erro.
+ * `stopped_by_agent` (955) é a terceira história: uma PESSOA **decidiu**
+ * parar, pelo botão da aba Automações da conversa. Não confundir com
+ * `paused_by_agent`, que é a parada IMPLÍCITA de alguém respondendo — o
+ * botão é intenção declarada, e a investigação trata as duas diferente.
  */
-export async function abortActiveRunsForContact(args: {
+export type MotivoDeParada =
+  | 'paused_by_agent'
+  | 'stopped_by_automation'
+  | 'stopped_by_agent'
+
+interface ArgsDeParada {
   db: SupabaseClient
   accountId: string
   contactId: string
   status: MotivoDeParada
   reason: string
-}): Promise<number> {
+}
+
+/**
+ * Encerra a run ativa do contato e DIZ se a escrita falhou.
+ *
+ * Existe separada de `abortActiveRunsForContact` por causa da rota
+ * `parar-robo` (955): ali quem clica é gente esperando confirmação, e
+ * traduzir falha de banco em "0 paradas" faria a tela dizer "o robô já
+ * tinha terminado" com o robô VIVO, ainda falando com o cliente (achado da
+ * revisão do Codex no PR #70). Não lança — devolve o erro por valor; quem
+ * é melhor-esforço usa o wrapper abaixo.
+ */
+export async function encerrarRunsAtivas(
+  args: ArgsDeParada,
+): Promise<{ ok: true; paradas: number } | { ok: false; erro: string }> {
   try {
     const { data, error } = await args.db
       .from('flow_runs')
@@ -59,16 +73,30 @@ export async function abortActiveRunsForContact(args: {
       .eq('contact_id', args.contactId)
       .eq('status', 'active')
       .select('id')
-    if (error) {
-      console.error('[flows] abortActiveRunsForContact failed:', error.message)
-      return 0
-    }
-    return (data ?? []).length
+    if (error) return { ok: false, erro: error.message }
+    return { ok: true, paradas: (data ?? []).length }
   } catch (err) {
-    console.error(
-      '[flows] abortActiveRunsForContact threw:',
-      err instanceof Error ? err.message : err,
-    )
+    return { ok: false, erro: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/**
+ * Encerra a run ativa do contato, se houver. Devolve quantas encerrou.
+ *
+ * ⚠️ **Nunca lança, e erro vira 0.** As três pontas do MOTOR que chamam são
+ * melhor-esforço, e uma delas é o envio de mensagem por um humano — onde o
+ * bloco roda DEPOIS de a mensagem já ter saído para o WhatsApp. Estourar ali
+ * faria o cliente receber a mensagem e o operador ver um erro. Ação de TELA
+ * que precisa distinguir "nada ativo" de "banco falhou" usa
+ * `encerrarRunsAtivas`.
+ */
+export async function abortActiveRunsForContact(
+  args: ArgsDeParada,
+): Promise<number> {
+  const r = await encerrarRunsAtivas(args)
+  if (!r.ok) {
+    console.error('[flows] abortActiveRunsForContact failed:', r.erro)
     return 0
   }
+  return r.paradas
 }

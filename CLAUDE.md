@@ -190,14 +190,14 @@ upstream sobrescrevê-los:
 | Arquivo do upstream | O que é nosso |
 | --- | --- |
 | `src/lib/whatsapp/send-message.ts` | resolve o canal, carimba `channel_id`, devolve `channelId` no resultado, busca o template **filtrando por canal**, e os dois parâmetros da agendada (925): `channelId` (exige aquele canal, **falha fechada**) e `pauseFlows` |
-| `src/components/inbox/message-composer.tsx` | o **acervo** no menu do clipe (953) e o botão de **gravar voz** fora dele, à direita da caixa — um merge que traga o menu do upstream cru devolve a gravação para dentro do menu e some com o acervo. Mais a anotação interna (918) e o **agendamento** (925): o relógio abre um seletor, e com hora escolhida o `handleSend` DESVIA antes da janela de desfazer. Mais a 932: `sendDraft` desvia igual (anexo agendado), o seletor virou `<SeletorDeHorario>` de módulo — reusado dentro do `MediaDraftPreview`, que SUBSTITUI o compositor — e `entreguesRef` impede a limpeza de desmonte de apagar arquivo que já é de uma agendada |
+| `src/components/inbox/message-composer.tsx` | o **acervo** no menu do clipe (953) e o botão de **gravar voz** fora dele, à direita da caixa — um merge que traga o menu do upstream cru devolve a gravação para dentro do menu e some com o acervo. Mais a anotação interna (918) e o **agendamento** (925): o relógio abre um seletor, e com hora escolhida o `handleSend` DESVIA antes da janela de desfazer. Mais a 932: `sendDraft` desvia igual (anexo agendado), o seletor virou `<SeletorDeHorario>` de módulo — reusado dentro do `MediaDraftPreview`, que SUBSTITUI o compositor — e `entreguesRef` impede a limpeza de desmonte de apagar arquivo que já é de uma agendada. Mais o item **Executar automação** no menu + (955), atrás da prop opcional `onExecutarAutomacao` — o dialog mora no FIO, não aqui |
 | `src/lib/whatsapp/send-message.ts` (2ª linha nossa) | a 932 separou `evolution_rejected` (4xx: a Evolution recusou, nada saiu) de `evolution_error` (tempo esgotado/5xx: pode ter saído). Só o segundo vira `entrega_incerta` |
 | `src/components/inbox/message-thread.tsx` | além do fio intercalado, renderiza a faixa `ScheduledBar` logo acima do compositor e guarda o contador que a liga ao compositor |
 | `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
 | `src/lib/whatsapp/inbound-store.ts` | idem, no lado Evolution |
-| `src/lib/automations/engine.ts` | `channelInScope`, condição `channel`, canal de saída por passo, e o `create_deal` que virou chamada a `createDeal` com a checagem "um card por contato" ANTES do insert — o índice da 911 é parcial (`source = 'channel'`) e não barra o insert da automação, então sem a checagem nasce card duplicado |
+| `src/lib/automations/engine.ts` | `channelInScope`, condição `channel`, canal de saída por passo, e o `create_deal` que virou chamada a `createDeal` com a checagem "um card por contato" ANTES do insert — o índice da 911 é parcial (`source = 'channel'`) e não barra o insert da automação, então sem a checagem nasce card duplicado. Mais o `rotuloDoDisparo` opcional de `runAutomationById` (955): a execução manual da conversa grava `'manual'` no log — sem ele, o registro diria que outra automação chamou |
 | `src/app/api/whatsapp/webhook/route.ts` e `src/lib/whatsapp/inbound-store.ts` | além do carimbo de canal, a chamada de uma linha a `routeInboundToPipeline` no fan-out. ⚠️ São **dois** call sites porque não há função compartilhada de abrir conversa — enxertar só num deles faz a feature valer só num transporte, e produção roda Evolution |
-| `src/lib/flows/engine.ts` | `findEntryFlow` por canal, `flow_runs.channel_id`, try/catch nos nós interativos |
+| `src/lib/flows/engine.ts` | `findEntryFlow` por canal, `flow_runs.channel_id`, try/catch nos nós interativos, e o parâmetro opcional `substituicao` de `startFlowForContact` (955): o start manual carimba a run substituída como gente (`stopped_by_agent`/`replaced_by_agent`), não como regra |
 | `src/lib/ai/{auto-reply,config,knowledge,usage}.ts` | agente por canal, interruptor, RAG por canal |
 | `src/lib/whatsapp/broadcast-core.ts` + rotas de template | `resolveMetaChannel` no lugar do espelho |
 | `src/lib/api/v1/conversations.ts`, `src/lib/api-keys/scopes.ts` | `channel_id` nos serializers, escopo `channels:read` |
@@ -209,7 +209,8 @@ upstream sobrescrevê-los:
 | `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
 | `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página |
 | `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDaMensagem>` envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo), a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef` |
-| `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles |
+| `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (956): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
+| `src/components/inbox/message-thread.tsx` (955/956) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem contato e canal RESOLVIDO — `activeChannel`; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
@@ -340,6 +341,49 @@ entre escrever e enviar.** `src/lib/scheduled/midia.ts` (puro, com teste),
   agendou sai da conta e passa a assinar o nome do escritório. Por isso o
   núcleo revalida e o disparador **traduz** — `SendMessageError.message` é
   escrito em inglês e cai cru na coluna que as duas telas mostram.
+
+⚠️ **Execuções na conversa (955) e presença por conversa (956).** Aba
+"Automações" no painel da conversa (robô ativo + esperas, com Parar e linha
+do tempo), item "Executar automação" no menu + do compositor, e avatares de
+quem mais está com a conversa aberta. `src/lib/execucoes/` e
+`src/lib/presenca-na-conversa.ts` (puros, com teste), rotas em
+`/api/cb/execucoes`, hooks `use-execucoes-do-contato` e
+`use-conversa-aberta`. O que morde código novo:
+
+- ⚠️ **As duas fontes da aba têm naturezas DIFERENTES, de propósito.**
+  `flow_runs` é lido direto sob RLS e tem realtime (010); as esperas vêm da
+  rota GET porque `automation_pending_executions` é service-role only desde
+  a 006 — **não abrir policy de SELECT** para ganhar o que a rota já dá. Sem
+  realtime nas esperas, a aba recarrega por ação e pelo evento global
+  `cb:execucoes-mudaram` (o dialog Executar vive em outra árvore).
+- ⚠️ **Parar espelha o motor, nunca inventa caminho novo**: esperas viram
+  `cancelled` com as MESMAS cercas do passo `stop_automation`
+  (automação+conta+**contato**+`status='pending'` — sem o contato, pararia a
+  conta inteira); robô encerra por `abortActiveRunsForContact` com
+  `stopped_by_agent` (955) — TERCEIRO status, pessoa que DECIDIU, distinto de
+  `paused_by_agent` (pessoa respondeu) e `stopped_by_automation` (regra).
+- ⚠️ **A rota `executar` checa o escopo de canal; o motor NÃO.**
+  `runAutomationById` pula recortes de propósito (chamador explícito), mas
+  "explícito" aqui é um clique — automação restrita ao número A executada na
+  conversa do número B sairia pelo número errado. Falha ABERTA como o motor:
+  conversa sem canal deixa passar. Grupo é recusado (automação não roda em
+  grupo, 906) e o log ganha `trigger_event='manual'`.
+- **Linha do tempo da expansão**: futuros são os passos do MESMO escopo da
+  espera (`parent_step_id`+`branch`, de `next_step_position` em diante);
+  condição aparece como "depende da condição" e os passos DENTRO dos ramos
+  ficam FORA — afirmar um ramo seria o cartão da grade mentindo de novo.
+  Rótulos por `descreverPasso` (`Pipelines.automacoes.resumo.*`, uma chave
+  por tipo, cobrada por teste).
+- **`cb_conversa_aberta` é clone deliberado da `member_presence` (024)**,
+  tabela NOSSA: escrita SÓ pela RPC `cb_marcar_conversa_aberta` (conta do
+  profile, conversa validada contra a conta — fora vira NULL em silêncio),
+  leitura por membro, realtime SEM lista de colunas. "Saiu" é staleness com
+  o MESMO limiar do roster (`OFFLINE_AFTER_MS`, 75s) — limiar próprio faria
+  bolinha e avatar discordarem sobre a mesma pessoa. O escritor serializa as
+  RPCs numa fila (troca rápida de conversa não pode deixar a resposta
+  atrasada vencer a intenção nova).
+- **Conta de UM membro**: a presença fica dormente em produção até o convite
+  real — testada em 2026-08-30 com usuária fixture (criada e removida).
 
 ⚠️ **Acervo de mídias (953): enviar do acervo COPIA o arquivo.** Tabela
 `cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
@@ -978,6 +1022,14 @@ e as três já morderam de verdade.
   digitada. Some a borda de volta: `el.offsetHeight - el.clientHeight` (medido
   com `height: auto`). É o que `message-composer.tsx` faz — é o único autosize
   do repo; os outros `<textarea>` têm `rows` fixo.
+- ⚠️ **Filho direto do `DialogContent` precisa de `min-w-0` quando carrega
+  texto com `truncate`.** O `DialogContent` é `grid`, e item de grid nasce
+  com `min-width: auto`; `truncate` é `nowrap`, então o intrínseco do filho
+  vira a largura do TEXTO INTEIRO numa linha — medido no dialog de executar
+  automação: card com 448px e conteúdo com 1124px, a busca atravessando a
+  tela. O `min-w-0` no wrapper direto devolve o clamp e o `truncate` volta a
+  funcionar. (Primo do caso `<ScrollArea>`/flex acima — mesma família:
+  `min-width: auto` anulando o limite do pai.)
 
 ⚠️ **Negócio (`deals`) só nasce por `src/lib/deals/create-deal.ts` no servidor.**
 A 908 deu à conexão um funil padrão, e o roteador de entrada
@@ -1239,6 +1291,11 @@ mordem de novo em qualquer código novo:
     aplicada em 2026-08-30.
   - **954_cb_acervo_so_admin_no_storage** — a guarda de papel do acervo também
     nas policies de Storage do `chat-media`. Aplicada em 2026-08-30.
+  - **955_cb_robo_parado_pela_equipe** — `stopped_by_agent` no CHECK de
+    `flow_runs.status` (parada DECIDIDA por gente, via aba da conversa).
+    Aplicada em 2026-08-30.
+  - **956_cb_conversa_aberta** — presença por conversa (tabela + RPC +
+    realtime). Aplicada em 2026-08-30.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

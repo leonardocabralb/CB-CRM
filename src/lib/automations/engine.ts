@@ -266,6 +266,14 @@ export async function runAutomationById(args: {
   context: AutomationContext
   /** Gatilho do disparo que chegou até aqui, só para rastreabilidade. */
   triggerType: AutomationTriggerType
+  /**
+   * O que gravar em `automation_logs.trigger_event`. Default
+   * `'run_automation'` — o chamador clássico é o passo homônimo. A execução
+   * manual da conversa (rota /api/cb/execucoes/executar) passa `'manual'`:
+   * sem rótulo próprio o registro diria que outra automação chamou, e essa
+   * diferença é tudo ao investigar quem disparou o quê.
+   */
+  rotuloDoDisparo?: string
 }): Promise<{ ok: boolean; detail: string }> {
   const db = supabaseAdmin()
   const { data, error } = await db
@@ -289,7 +297,7 @@ export async function runAutomationById(args: {
       context: args.context,
     },
     alvo,
-    'run_automation',
+    args.rotuloDoDisparo ?? 'run_automation',
   )
   return { ok: true, detail: `automação "${alvo.name}" acionada` }
 }
