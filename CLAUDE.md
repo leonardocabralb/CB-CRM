@@ -690,6 +690,69 @@ conversas dos últimos 7 dias e grava `cb_conversation_insights` (UMA linha
 viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
 `worker.ts` server-side, rotas em `api/cb/radar/`. O que morde código novo:
 
+- ⚠️⚠️ **O PAINEL SÓ MOSTRA QUEM TEM GATILHO (`temGatilho`, 2026-08-30).**
+  Até aqui a tela exibia TODA análise concluída, e o Radar virou boletim
+  de todas as conversas: medido em produção, 7 dos 8 cartões abertos eram
+  nota 9–10 sem nada a tratar ("resumos de conversas", nas palavras do
+  operador). São quatro gatilhos, e só eles: insatisfação, pedido sem
+  resposta, urgência média/alta, ou espera ≥ `LIMIAR_ALARME_MS`. Fora
+  ficaram, DE PROPÓSITO: nota baixa sozinha (é julgamento, não pendência),
+  `mencaoProcesso` sozinha (num escritório bancário quase toda conversa
+  cita processo — como alarme seria ruído universal) e `pontosDeAtencao`
+  (o campo que a IA usa para resumir o CASO: "detalhamento de dívidas
+  bancárias"). A análise da conversa saudável **continua sendo gravada** —
+  a nota média da semana sai dela; ela só não vira trabalho para ninguém.
+- ⚠️ **Duas réguas de espera, e trocá-las é o erro fácil.**
+  `LIMIAR_ALARME_MS` = 24h **CORRIDAS** decide se abre cartão;
+  `LIMIAR_PENDENCIA_SEG` = 30min **ÚTEIS** decide só se a etiqueta
+  aparece. Em horas úteis (11h/dia) "24h" seriam dois dias e meio de
+  calendário e "48h" quase uma semana — o alarme chegaria tarde para quem
+  escreveu na sexta. A exibição segue em horas úteis porque é a régua
+  justa com a equipe.
+- ⚠️ **A pendência é conferida AO VIVO na tela, não lida do banco**
+  (`respostasDepoisDaPendencia`, em `use-radar.ts`). `aguardando_desde` é
+  o retrato da última análise: entre a resposta do atendente e a próxima
+  passada do worker somam-se o ciclo do agendador e o throttle, e até lá o
+  cartão ficava na tela com o contador "aguardando há 26h" CRESCENDO sobre
+  cliente já atendido. A conferência **falha para o lado do alarme**: erro
+  de rede ou lista truncada mantêm o cartão.
+- ⚠️⚠️ **"Resposta de gente" NÃO é `sender_id IS NOT NULL`** — é
+  `sender_id` preenchido **OU `from_device = true`**. O celular pareado
+  (`persistDeviceMessage`) grava `sender_type='agent'` com `from_device`
+  true e `sender_id` NULO: não há usuário do CRM por trás, mas há um
+  advogado digitando. Medido em produção (2026-08-30): **948** mensagens
+  da equipe são `from_device` contra **8** digitadas dentro do CRM — a
+  versão só-`sender_id` reconhecia 8 de 978 e o alarme de 24h sobrevivia
+  ao atendimento em quase todo caso real (achado da revisão do PR #72).
+  Continuam NÃO fechando a pendência: broadcast, automação, fluxo e
+  agendada, que saem sem `sender_id` **e** sem `from_device`. ⚠️ O
+  `houveHumanoNaJanela` do worker usa a régua ANTIGA (só `sender_id`) —
+  lá ela decide outra coisa (se preserva a análise congelada quando a
+  janela não tem cliente), e uma saída `from_device` sozinha realmente não
+  deveria refazer a análise. Não unificar as duas sem entender qual
+  pergunta cada uma responde.
+- ⚠️ **Análise `failed` aparece no painel INDEPENDENTE de gatilho.** A
+  linha que esgotou as 3 tentativas fica com os defaults do schema
+  (`urgencia='nenhuma'`, sem insatisfação, sem pedido): pelo filtro comum
+  ela sumiria e o vazio afirmaria "nenhum sinal aberto" sobre conversa que
+  o Radar NÃO CONSEGUIU LER, com a etiqueta de falha e o botão
+  "Reanalisar" inalcançáveis.
+- ⚠️ **O painel recarrega sozinho a cada 2 min com a aba visível.** O
+  tique de 1 min só re-renderiza (reconta a espera); quem descobre que
+  alguém respondeu é a consulta de `respondidas`. Sem a recarga, o cartão
+  de cliente já atendido por um colega ficava na tela até o operador
+  trocar de aba e voltar.
+- ⚠️ **Insatisfação exige evidência nas últimas 48h do TRANSCRITO**
+  (`JANELA_INSATISFACAO_MS`, validado no parser). A janela analisada tem 7
+  dias: sem isso, irritação de terça já resolvida seguia acendendo cartão
+  no domingo. O corte sai da ÚLTIMA linha do transcrito, não do relógio —
+  mantém a função pura e mede a idade do sinal DENTRO da conversa.
+- ⚠️ **Não existe mais aba "Todos"** (decisão do operador): listar toda
+  conversa analisada era o próprio ruído que o filtro passou a cortar.
+  Consequência que o desenho tem de sustentar — o cartão some da lista no
+  instante do clique e o botão "Reabrir" vai junto, então **tratar e
+  descartar têm "Desfazer" no toast**. É a única saída para o clique
+  errado: descartado nunca reabre sozinho.
 - **NADA dispara sozinho** — mesma classe da 925: quem move é o agendador
   batendo em `/api/cb/radar/cron` (incluído no laço LENTO do
   `docker-stack.yml`). ⚠️ O CI não relê o `command` do `agendador`: a

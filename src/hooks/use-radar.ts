@@ -82,7 +82,105 @@ export interface RadarDaConta {
    * `undefined` = a leitura falhou/não voltou (não afirmar nada).
    */
   ultimoCicloRadar: string | undefined;
+  /**
+   * Conversas cuja pendência JÁ foi respondida por gente, conferido ao
+   * vivo contra `messages` — ver `respostasDepoisDaPendencia`. A tela
+   * zera a espera destas, e o cartão que existia só por causa dela sai
+   * da lista na hora, sem esperar o worker.
+   */
+  respondidas: Set<string>;
   recarregar: () => void;
+}
+
+/** Para-choque da conferência ao vivo (mesmo espírito do `TETO` acima). */
+const TETO_RESPOSTAS = 1000;
+
+/**
+ * Quais pendências a equipe JÁ respondeu — a pergunta que o campo
+ * gravado não sabe responder.
+ *
+ * ⚠️ `aguardando_desde` é um retrato da última análise. Entre a resposta
+ * do atendente e a próxima passada do worker somam-se dois atrasos (o
+ * ciclo do agendador e o throttle de reanálise): até lá o cartão ficava
+ * na tela com o contador "aguardando há 25h… 26h…" CRESCENDO sobre um
+ * cliente que já tinha sido atendido. Uma consulta a `messages` responde
+ * isso de graça e na hora.
+ *
+ * ⚠️ SÓ resposta de GENTE fecha a pendência — mas "gente" NÃO é
+ * `sender_id IS NOT NULL`. A resposta dada pelo CELULAR PAREADO
+ * (`persistDeviceMessage`) grava `sender_type='agent'` com `from_device`
+ * true e `sender_id` NULO: não há usuário do CRM por trás, mas há um
+ * advogado digitando. Medido em produção (2026-08-30): 948 mensagens da
+ * equipe são `from_device`, contra 8 digitadas dentro do CRM — exigir
+ * `sender_id` reconheceria 8 de 978 respostas e o alarme de 24h
+ * sobreviveria ao atendimento em quase todo caso real.
+ *
+ * O que continua NÃO fechando: broadcast, automação, fluxo e agendada,
+ * que saem sem `sender_id` E sem `from_device` (22 linhas). Se qualquer
+ * saída contasse, um "recebemos seu contato" automático apagaria da tela
+ * justamente o cliente esquecido que o Radar existe para achar.
+ */
+async function respostasDepoisDaPendencia(
+  supabase: ReturnType<typeof createClient>,
+  linhas: InsightDaConta[],
+): Promise<Set<string>> {
+  const vazio = new Set<string>();
+  const comPendencia = linhas.filter(
+    (i): i is InsightDaConta & { aguardando_desde: string } =>
+      i.aguardando_desde !== null && i.estado === 'aberto',
+  );
+  if (comPendencia.length === 0) return vazio;
+
+  // Uma consulta só, recortada pela pendência MAIS ANTIGA da tela.
+  // ⚠️ Comparação por INSTANTE, nunca lexicográfica: os dois lados são
+  // ISO do PostgREST hoje, mas `aguardando_desde` nasce de um
+  // `.toISOString()` do worker e basta um dos formatos ganhar um offset
+  // (`+00:00` vs `Z`) para a ordem por string silenciosamente inverter.
+  const desde = comPendencia.reduce(
+    (min, i) => (Date.parse(i.aguardando_desde) < Date.parse(min) ? i.aguardando_desde : min),
+    comPendencia[0].aguardando_desde,
+  );
+  const { data, error } = await supabase
+    .from('messages')
+    .select('conversation_id, created_at')
+    .in(
+      'conversation_id',
+      comPendencia.map((i) => i.conversation_id),
+    )
+    .eq('sender_type', 'agent')
+    .or('sender_id.not.is.null,from_device.is.true')
+    .gte('created_at', desde)
+    .order('created_at', { ascending: false })
+    .limit(TETO_RESPOSTAS);
+
+  // Na dúvida, MANTÉM o alarme. Falha de rede não pode apagar da tela um
+  // cliente sem resposta — errar para o lado do alarme é barulho; errar
+  // para o outro é o cliente esquecido sumindo em silêncio. Vale também
+  // para o teto: com a lista truncada não dá para afirmar quem respondeu.
+  if (error || !data) return vazio;
+  if (data.length >= TETO_RESPOSTAS) {
+    console.warn('[radar] conferência de pendências truncada — alarmes mantidos');
+    return vazio;
+  }
+
+  const ultimaRespostaHumana = new Map<string, number>();
+  for (const m of data as { conversation_id: string; created_at: string }[]) {
+    const quando = Date.parse(m.created_at);
+    if (Number.isNaN(quando)) continue;
+    const atual = ultimaRespostaHumana.get(m.conversation_id);
+    if (atual === undefined || quando > atual) {
+      ultimaRespostaHumana.set(m.conversation_id, quando);
+    }
+  }
+
+  const respondidas = new Set<string>();
+  for (const i of comPendencia) {
+    const resposta = ultimaRespostaHumana.get(i.conversation_id);
+    if (resposta !== undefined && resposta > Date.parse(i.aguardando_desde)) {
+      respondidas.add(i.conversation_id);
+    }
+  }
+  return respondidas;
 }
 
 export function useRadar(): RadarDaConta {
@@ -92,6 +190,7 @@ export function useRadar(): RadarDaConta {
   const [falhou, setFalhou] = useState(false);
   const [estourouOTeto, setEstourouOTeto] = useState(false);
   const [ultimoCicloRadar, setUltimoCicloRadar] = useState<string | undefined>(undefined);
+  const [respondidas, setRespondidas] = useState<Set<string>>(() => new Set());
   const vivoRef = useRef(true);
   const geracaoRef = useRef(0);
 
@@ -153,8 +252,15 @@ export function useRadar(): RadarDaConta {
       ...principais,
       ...dePendencia.filter((i) => !vistos.has(i.id)),
     ];
+    // Antes de publicar: quem já foi respondido. Publicar a lista primeiro
+    // e corrigir depois faria o cartão resolvido aparecer e sumir na cara
+    // do operador — a conferência é uma consulta curta, cabe aqui.
+    const jaRespondidas = await respostasDepoisDaPendencia(supabase, linhas);
+    if (!vivoRef.current || geracaoRef.current !== minhaGeracao) return;
+
     setFalhou(false);
     setInsights(linhas);
+    setRespondidas(jaRespondidas);
     setEstourouOTeto(principais.length < (lista.count ?? principais.length));
     // Best-effort: sem o batimento a tela só perde o aviso de saúde.
     setUltimoCicloRadar(
@@ -188,11 +294,35 @@ export function useRadar(): RadarDaConta {
     };
   }, [buscar]);
 
+  // ⚠️ Recarga periódica com a aba VISÍVEL. O relógio da tela (tique de
+  // 1 min) só re-renderiza: ele reconta a espera, mas não descobre que
+  // alguém respondeu — isso mora em `respondidas`, que só é recalculado
+  // aqui. Sem este intervalo, o operador que deixa o Radar aberto vê o
+  // cartão de um cliente JÁ ATENDIDO por um colega ficar na tela até ele
+  // trocar de aba e voltar, contradizendo a promessa de que responder
+  // tira o cartão. Dois minutos: consulta barata, e a alternativa
+  // (assinar `messages` no realtime) custa muito mais para ganhar
+  // segundos num alarme cuja régua é de 24 horas.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') void buscar();
+    }, 120_000);
+    return () => clearInterval(id);
+  }, [buscar]);
+
   const recarregar = useCallback(() => {
     void buscar();
   }, [buscar]);
 
-  return { insights, carregando, falhou, estourouOTeto, ultimoCicloRadar, recarregar };
+  return {
+    insights,
+    carregando,
+    falhou,
+    estourouOTeto,
+    ultimoCicloRadar,
+    respondidas,
+    recarregar,
+  };
 }
 
 // ------------------------------------------------------------
