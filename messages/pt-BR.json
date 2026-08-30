@@ -2816,5 +2816,10 @@
     "showDone": "Ver {count} concluída(s)",
     "openCount": "{count, plural, =1 {1 tarefa aberta} other {# tarefas abertas}}",
     "deleteConfirm": "Excluir \"{titulo}\"? Isso não pode ser desfeito."
+  },
+  "TelaBloqueada": {
+    "title": "Esta área não faz parte do seu perfil",
+    "body": "A página existe, mas o seu perfil de acesso não a inclui. Se você precisa dela para o seu trabalho, fale com o administrador da conta.",
+    "cta": "Ir para a minha área"
   }
 }

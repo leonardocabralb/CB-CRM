@@ -114,6 +114,26 @@ export function canWriteNotes(role: AccountRole): boolean {
   return hasMinRole(role, "viewer");
 }
 
+/**
+ * Owner / admin: criar, editar, duplicar, ativar e apagar automações,
+ * fluxos e disparos em massa.
+ *
+ * Decisão do operador (2026-08-30, plano de perfis de acesso): essas três
+ * features falam com o cliente SOZINHAS e em escala — automação dispara a
+ * cada card que entra, fluxo responde sem gente na tela, disparo atinge
+ * centenas de contatos num clique. Errar nelas não é errar UMA mensagem.
+ * Antes eram `agent` (canSendMessages); a subida para admin vale no
+ * servidor E nos botões, pela mesma função.
+ *
+ * ⚠️ NÃO cobre `automations/events/drain`: drenar a fila não EDITA nada —
+ * é o empurrão de latência que a tela dá quando qualquer operador move um
+ * card de negócio (ver avisar-drenagem.ts). Subir o drain para admin
+ * quebraria as automações de funil para agents.
+ */
+export function canManageAutomations(role: AccountRole): boolean {
+  return hasMinRole(role, "admin");
+}
+
 /** Owner only: irreversible destructive operations. */
 export function canDeleteAccount(role: AccountRole): boolean {
   return role === "owner";

@@ -2816,5 +2816,10 @@
     "showDone": "Show {count} done",
     "openCount": "{count, plural, =1 {1 open task} other {# open tasks}}",
     "deleteConfirm": "Delete \"{titulo}\"? This cannot be undone."
+  },
+  "TelaBloqueada": {
+    "title": "This area is not part of your profile",
+    "body": "The page exists, but your access profile does not include it. If you need it for your work, ask the account administrator.",
+    "cta": "Go to my workspace"
   }
 }

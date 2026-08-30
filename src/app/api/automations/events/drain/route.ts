@@ -29,6 +29,13 @@ export async function POST() {
   try {
     // `agent` é quem já pode mover card (a RLS de `deals` exige o mesmo
     // papel). Quem não pode mexer no funil não tem o que drenar.
+    // ⚠️ FICA em 'agent' DE PROPÓSITO — não subir para admin junto com as
+    // outras rotas de automação (Fase 2 dos perfis). Drenar a fila não EDITA
+    // automação nenhuma: é o empurrão de latência que a tela dá quando
+    // QUALQUER operador move um card (avisar-drenagem.ts, chamado pelo
+    // Kanban, pelo formulário de negócio e pelo painel do contato). Com
+    // 'admin' aqui, o agent que arrasta um card deixaria a automação de funil
+    // esperando o ciclo de 15 min do cron — regressão silenciosa.
     await requireRole('agent')
     const resultado = await drenarEventosDeFunil()
     return NextResponse.json({ ok: true, ...resultado })

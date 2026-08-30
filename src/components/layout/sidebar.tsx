@@ -32,6 +32,8 @@ import {
   Zap,
 } from "lucide-react";
 import type { AccountRole } from "@/lib/auth/roles";
+import { ROTA_DA_TELA } from "@/lib/perfis/catalogo";
+import { podeVerTela, telaDoCaminho } from "@/lib/perfis/visibilidade";
 
 // Per-role chip metadata used in the sidebar's account strip + the
 // Members tab roster. Keeping this near both consumers in a single
@@ -137,7 +139,7 @@ import { useTranslations } from "next-intl";
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
-  const { profile, profileLoading, account, accountRole, signOut } = useAuth();
+  const { profile, profileLoading, account, accountRole, signOut, acesso } = useAuth();
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
   const tarefasNaoLidas = useTarefasNaoLidas();
@@ -230,7 +232,16 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         {/* Main navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
-            {navItems.map((item) => {
+            {navItems
+              .filter((item) => {
+                // Recorte por perfil (Fase 2). O shell só renderiza depois
+                // de `profileLoading` resolver, então `acesso` aqui é final —
+                // sem flash. Item cujo href não resolve para tela do
+                // catálogo passa (não é recortável).
+                const tela = telaDoCaminho(item.href, ROTA_DA_TELA);
+                return tela === null || podeVerTela(acesso, tela);
+              })
+              .map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" && pathname.startsWith(item.href));
