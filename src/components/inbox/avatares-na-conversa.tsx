@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// Avatares de quem MAIS está com esta conversa aberta (956) — a pedido do
+// Avatares de quem MAIS está com esta conversa aberta (963) — a pedido do
 // operador, DISCRETO: fileira de bolinhas 20px sobrepostas no cabeçalho do
 // fio, com o nome no tooltip. Some por completo quando não há ninguém (o
 // caso de todo dia numa conta de um membro).

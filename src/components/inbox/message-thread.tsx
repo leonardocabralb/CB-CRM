@@ -286,7 +286,7 @@ export function MessageThread({
     ? nomeDePessoa(profile?.full_name, profile?.email)
     : null;
   const { getPresence, getRow, now } = usePresence();
-  /** Quem MAIS está com esta conversa aberta (956) — avatares do cabeçalho. */
+  /** Quem MAIS está com esta conversa aberta (963) — avatares do cabeçalho. */
   const vendoAgora = useQuemVeAConversa(conversation?.id ?? null);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1680,7 +1680,7 @@ export function MessageThread({
               painel que controla. Hoje fechar mora no cabeçalho do próprio
               painel e reabrir na tira fina da borda direita (inbox/page). */}
 
-          {/* Quem MAIS está com esta conversa aberta (956) — some quando
+          {/* Quem MAIS está com esta conversa aberta (963) — some quando
               ninguém, que é o dia inteiro numa conta de um membro só. */}
           <AvataresNaConversa userIds={vendoAgora} profiles={profiles} />
 

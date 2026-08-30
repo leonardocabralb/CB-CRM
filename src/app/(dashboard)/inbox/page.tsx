@@ -78,7 +78,7 @@ function InboxPageInner() {
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
-  // Presença por conversa (956): marca no banco qual conversa ESTE membro
+  // Presença por conversa (963): marca no banco qual conversa ESTE membro
   // está vendo — a página é a dona da seleção, então o escritor mora aqui.
   useMarcarConversaAberta(activeConversation?.id ?? null);
   const [messages, setMessages] = useState<Message[]>([]);
