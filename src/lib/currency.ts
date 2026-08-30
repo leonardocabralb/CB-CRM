@@ -43,6 +43,13 @@ const FORMATO_CURTO = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
   notation: 'compact',
+  // ⚠️ `minimumFractionDigits: 0` é OBRIGATÓRIO aqui, não enfeite. Sem ele o
+  // mínimo é herdado da moeda (2 casas do real), fica maior que o máximo
+  // pedido, e cada versão do V8 resolve esse conflito de um jeito: o CI
+  // (Node 20) devolvia `R$ 900,0` onde a máquina de desenvolvimento
+  // (Node 24) devolvia `R$ 900`. Medido nas duas. Declarado, as duas
+  // concordam.
+  minimumFractionDigits: 0,
   maximumFractionDigits: 1,
 });
 

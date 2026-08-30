@@ -53,6 +53,17 @@ describe('formatCurrencyShort', () => {
     expect(formatCurrencyShort(null)).toBe(`R$${NBSP}0`);
     expect(formatCurrencyShort(Number.NaN)).toBe(`R$${NBSP}0`);
   });
+
+  it('não arrasta casa decimal em valor pequeno, em NENHUMA versão do Node', () => {
+    // ⚠️ Este caso já quebrou o CI. Sem `minimumFractionDigits: 0` explícito
+    // no formatador, o mínimo herdado do real (2 casas) conflita com o máximo
+    // pedido (1), e o desempate varia por versão do V8: Node 20 devolvia
+    // `R$ 900,0`, Node 24 devolvia `R$ 900`. Rodar só na máquina de
+    // desenvolvimento não pega — o CI está em Node 20.
+    expect(formatCurrencyShort(900)).toBe(`R$${NBSP}900`);
+    expect(formatCurrencyShort(0)).toBe(`R$${NBSP}0`);
+    expect(formatCurrencyShort(1_000)).toBe(`R$${NBSP}1${NBSP}mil`);
+  });
 });
 
 describe('formatCompactNumber', () => {
