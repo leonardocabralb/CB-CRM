@@ -1,0 +1,145 @@
+// ============================================================
+// Catálogo de telas e seções — a lista FECHADA do que um perfil pode
+// ligar ou desligar.
+//
+// ⚠️ É exaustivo de propósito. Rota nova que não ganhe entrada aqui nasce
+// INVISÍVEL para todo perfil restrito, e o sintoma ("sumiu do menu de
+// alguns") aparece longe da causa. O typecheck cobra: `TelaId` é union de
+// literais, então o `Record<TelaId, …>` abaixo não compila com um id
+// faltando.
+//
+// Por que texto e não enum no banco: tela nasce e morre com a UI. Enum
+// obrigaria uma migration por rota nova, e `ALTER TYPE ... ADD VALUE` não
+// roda dentro de transação — exatamente o que o replay do CI faz.
+// ============================================================
+
+/** Itens do menu lateral que um perfil pode ver ou não. */
+export type TelaId =
+  | "dashboard"
+  | "radar"
+  | "inbox"
+  | "notifications"
+  | "tarefas"
+  | "contacts"
+  | "agenda"
+  | "pipelines"
+  | "broadcasts"
+  | "agendadas"
+  | "automations"
+  | "flows"
+  | "agents"
+  | "settings";
+
+/** Seções da tela de Configurações. Espelha `settings-sections.ts`. */
+export type SecaoId =
+  | "overview"
+  | "profile"
+  | "security"
+  | "appearance"
+  | "channels"
+  | "templates"
+  | "quick-replies"
+  | "acervo"
+  | "fields"
+  | "deals"
+  | "assinatura"
+  | "members"
+  | "integracoes"
+  | "api";
+
+/** Rota de cada tela — usada pelo menu e pela guarda de página. */
+export const ROTA_DA_TELA: Record<TelaId, string> = {
+  dashboard: "/dashboard",
+  radar: "/radar",
+  inbox: "/inbox",
+  notifications: "/notifications",
+  tarefas: "/tarefas",
+  contacts: "/contacts",
+  agenda: "/agenda",
+  pipelines: "/pipelines",
+  broadcasts: "/broadcasts",
+  agendadas: "/agendadas",
+  automations: "/automations",
+  flows: "/flows",
+  agents: "/agents",
+  settings: "/settings",
+};
+
+export const TODAS_AS_TELAS = Object.keys(ROTA_DA_TELA) as TelaId[];
+
+export const TODAS_AS_SECOES: SecaoId[] = [
+  "overview",
+  "profile",
+  "security",
+  "appearance",
+  "channels",
+  "templates",
+  "quick-replies",
+  "acervo",
+  "fields",
+  "deals",
+  "assinatura",
+  "members",
+  "integracoes",
+  "api",
+];
+
+// ============================================================
+// Trancas — o que NENHUM perfil consegue desligar
+// ============================================================
+
+/**
+ * Seções que todo mundo enxerga, sempre, em qualquer perfil.
+ *
+ * São as do próprio usuário: ver o próprio cadastro, trocar a própria senha,
+ * escolher o tema. Decisão do operador em 2026-08-30 ("eles só vão precisar
+ * ter acesso ao básico, que seria o próprio perfil dela para ela mudar sua
+ * própria senha"). Nada aqui expõe dado de outra área — é a pessoa
+ * administrando a si mesma.
+ *
+ * ⚠️ `security` fora desta lista significaria alguém sem caminho para trocar
+ * a própria senha dentro do app.
+ */
+export const SECOES_PESSOAIS: readonly SecaoId[] = [
+  "profile",
+  "security",
+  "appearance",
+] as const;
+
+/**
+ * Seções que um perfil `admin` enxerga mesmo desmarcadas.
+ *
+ * ⚠️ Isto é a trava anti-auto-bloqueio, e não é hipotética: sem ela, desmarcar
+ * "members" do perfil Administrador tranca o operador para fora da ÚNICA tela
+ * que desfaria o erro, e a saída seria eu mexer no banco. `overview` entra
+ * junto porque é a porta de entrada de Configurações — sem ela o rail abre
+ * numa seção vazia.
+ */
+export const SECOES_TRAVADAS_PARA_ADMIN: readonly SecaoId[] = [
+  "overview",
+  "members",
+] as const;
+
+/**
+ * Telas que TODO perfil enxerga, sempre.
+ *
+ * ⚠️ `settings` está aqui porque é o caminho até `SECOES_PESSOAIS`. Garantir
+ * "todo mundo troca a própria senha" no nível da SEÇÃO não serve de nada se a
+ * TELA que as contém puder ser desmarcada — a pessoa fica sem porta de entrada
+ * e a garantia vira letra morta. Quem não tem nenhuma seção de conta liberada
+ * abre Configurações e vê só o próprio cadastro, senha e tema, que é
+ * exatamente o combinado com o operador.
+ *
+ * Também é o que impede o auto-bloqueio do admin: sem Configurações não há
+ * como reabrir o que foi fechado.
+ */
+export const TELAS_SEMPRE_VISIVEIS: readonly TelaId[] = ["settings"] as const;
+
+/** Type guard — protege contra id órfão vindo do banco (tela removida do app). */
+export function ehTelaConhecida(valor: string): valor is TelaId {
+  return (TODAS_AS_TELAS as string[]).includes(valor);
+}
+
+export function ehSecaoConhecida(valor: string): valor is SecaoId {
+  return (TODAS_AS_SECOES as string[]).includes(valor);
+}
