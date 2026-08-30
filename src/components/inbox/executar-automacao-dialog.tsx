@@ -233,7 +233,10 @@ export function ExecutarAutomacaoDialog({
 
         {selecao ? (
           /* ---- Confirmação: mensagens reais podem sair daqui. ---- */
-          <div className="space-y-4">
+          /* min-w-0: filho de grid (DialogContent) nasce com min-width:auto,
+             e a descrição em `truncate` (nowrap) infla o intrínseco — o
+             card ficava com 448px e o conteúdo com 1124px (medido). */
+          <div className="min-w-0 space-y-4">
             <p className="text-foreground text-sm">
               {t("confirmarTexto", { nome: selecao.nome, contato: contactName })}
             </p>
@@ -258,7 +261,7 @@ export function ExecutarAutomacaoDialog({
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <div className="relative">
               <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />
               <Input

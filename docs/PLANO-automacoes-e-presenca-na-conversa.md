@@ -25,30 +25,70 @@
 
 ## Estado
 
-| Fase | Escopo | Estado | Migration | PR |
+| Fase | Escopo | Estado | Migration | Commit |
 | --- | --- | --- | --- | --- |
-| **1** | Aba **Automações** no painel da conversa: robô ativo + esperas pendentes, com "Parar" | ⬜ pendente | M-robo (CHECK `stopped_by_agent`) | — |
-| **2** | **Executar** automação/robô pelo menu **+** do compositor (popup com busca e confirmação) | ⬜ pendente | nenhuma | — |
-| **3** | **Presença por conversa**: avatares discretos de quem mais está com o chat aberto | ⬜ pendente | M-presenca (`cb_conversa_aberta`) | — |
-| **4** | Revisão final: CLAUDE.md (tabela de merge), i18n-parity, preview, limpeza | ⬜ pendente | nenhuma | — |
+| **1** | Aba **Automações** no painel da conversa: robô ativo + esperas pendentes, com "Parar" | ✅ **feita e medida no preview** (2026-08-30) | `955` **aplicada** | `519c260` |
+| **1b** | **Linha do tempo** na expansão de cada automação (pedido do operador durante o teste): feitos / onde está / próximos | ✅ **feita e medida no preview** (2026-08-30) | nenhuma | `0a86d96` |
+| **2** | **Executar** automação/robô pelo menu **+** do compositor (popup com busca e confirmação) | ✅ **feita e medida no preview** (2026-08-30) | nenhuma | `7d92827` |
+| **3** | **Presença por conversa**: avatares discretos de quem mais está com o chat aberto | ✅ **feita e medida no preview** (2026-08-30, com usuária fixture) | `956` **aplicada** | `89c5275` |
+| **4** | Revisão final: CLAUDE.md (tabela de merge + seção 955/956), i18n-parity, preview, limpeza | ✅ **feita** (2026-08-30) | nenhuma | (este commit) |
 
-⚠️ **Números de migration NÃO estão fixados aqui de propósito.** Há sessões
-paralelas criando migrations (a 953 nasceu ontem). Na hora de criar o arquivo:
-`ls supabase/migrations/` **e** `list_migrations` no MCP do Supabase, os dois.
+**Decisões confirmadas pelo operador em 2026-08-30** (mensagens durante a
+implementação): commits fase a fase · revisão + teste no preview ao final ·
+o "está rodando" precisa ser visível **sem abrir a aba** → é o badge no ícone
+(mesmo padrão do da aba Tarefas, carregado no topo do painel) · a expansão da
+automação mostra a **linha do tempo** da execução (Fase 1b) · autorizado criar
+automação de teste e usuários de teste para medir na prática.
 
-## Decisões a travar com o operador (recomendações já embutidas nas fases)
+1. **Parar espera de automação**: por **automação+contato** — espelha o passo
+   `stop_automation` do motor. ✅ implementado assim.
+2. **Robôs (flows) no popup de execução**: incluídos, em grupo separado. ✅
+3. **Papel mínimo para executar/parar**: `agent` (viewer vê a aba, botões
+   desabilitados com "Somente leitura"). ✅
+4. **Fora da v1** (anotado, não feito): presença na LISTA de conversas;
+   linha do tempo para ROBÔ (flow_run_events + current_node_key — os dados
+   existem, fica para quando houver robô em uso); executar em massa.
 
-1. **Parar espera de automação**: por **automação+contato** (cancela todas as
-   esperas pendentes daquela automação para aquele cliente — espelha o passo
-   `stop_automation` do motor). Alternativa descartada: por espera individual
-   (granularidade que o operador não pediu). **Recomendado: automação+contato.**
-2. **Robôs (flows) no popup de execução**: incluir, em grupo separado
-   ("Automações" / "Robôs"), como o Kommo separa Salesbot. **Recomendado: sim.**
-3. **Papel mínimo para executar/parar**: `agent` — o mesmo de enviar mensagem
-   (`requireRole('agent')`, como em `whatsapp/send`). Viewer só vê a aba.
-4. **Fora da v1** (anotar, não fazer): presença na LISTA de conversas; histórico
-   de execuções (`automation_logs`) dentro da aba; executar automação para
-   vários clientes de uma vez.
+## Resultados medidos (2026-08-30, preview 1440×900, produção)
+
+- **Aba**: 6ª `AbaDeIcone` (raio), entre Traqueamento e Histórico. Estado
+  vazio honesto ("Nada em execução…"). **Badge sem abrir a aba**: após
+  executar, o aria vira `Automações (1)` — exigência do operador atendida.
+- **Executar**: menu + → item novo (e "Mensagem interativa" some no canal
+  Evolution, como já era). Dialog lista automações ligadas com descrição;
+  confirmação avisa "pode enviar mensagens reais"; toast de sucesso.
+  Banco confirma: `automation_logs.trigger_event='manual'`, `channel_id`
+  carimbado, espera `pending` criada com `run_at` +30d.
+- **Linha do tempo**: expansão mostrou "Desligar a resposta da IA ✓ (IA
+  desligada na conversa)" → "Aguardar 30 dias ✓" → "🕐 Aguardando — próximo
+  passo em 29 dias" → "○ Enviar mensagem: …" → "○ Disparar webhook".
+- **Parar**: dois cliques (Parar → Confirmar parada) → toast, badge some,
+  banco confirma `status='cancelled'`. Repetido 3× sem surpresa.
+- **Presença**: a linha do operador apareceu em `cb_conversa_aberta`
+  apontando para a conversa aberta (batida de 44s). Com a usuária fixture
+  "Ana Teste Presenca" (criada sem senha via auth admin, movida para a conta,
+  presença semeada via service-role): avatar de 20px no cabeçalho do fio com
+  tooltip "Ana Teste Presenca também está com esta conversa aberta".
+  Fixture 100% removida depois (user, profile, presença, conta órfã do
+  signup — conferido por SELECT zerado).
+- **Bug achado e corrigido no preview**: filho de grid do `DialogContent`
+  sem `min-w-0` + descrição `truncate` (nowrap) → busca com 1124px num card
+  de 448px. Corrigido e re-medido (416px). Registrado como 4ª armadilha de
+  layout no CLAUDE.md.
+- **Limitações anotadas**: o `detail` dos passos concluídos vem do motor em
+  inglês ("waiting 30 days") — texto secundário, upstream; esperas não têm
+  realtime (recarga por ação/evento global); presença fica dormente em
+  produção até existir 2º membro real.
+- **Sobras deliberadas em produção**: a automação **"Teste do plano —
+  follow-up (pode apagar)"** ficou ATIVA de propósito — gatilho de
+  palavra-chave impossível (nunca dispara sozinha), único caminho é o menu
+  +; serve de demonstração. A espera do teste foi PARADA pela própria aba.
+  A IA da conversa de teste (Cabral Baptista Advogados) foi reativada pela
+  rota do app após o passo `set_ai(false)` do teste.
+- **Nota de teste**: os cliques sintéticos do painel de preview não ativam
+  gatilhos base-ui (abas/menus) — os testes acionaram por `element.click()`
+  do DOM. Limitação do harness de teste, não do produto (as abas existentes
+  se comportam igual; usuários reais não passam por esse caminho).
 
 ## O que JÁ existe (verificado em 2026-08-30 contra `329e743`)
 
