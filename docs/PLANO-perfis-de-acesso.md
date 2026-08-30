@@ -1,6 +1,6 @@
 # Perfis de acesso — plano e estado da implementação
 
-> Estado: **Fases 1 e 2 concluídas** (migrations 956–958 aplicadas em
+> Estado: **Fases 1 a 3 concluídas** (migrations 956–958 aplicadas em
 > produção em 2026-08-30; ambas no PR #69, revisadas — Codex + quente/fria —
 > e verificadas no preview com dois usuários reais). Fases 3 a 6 pendentes.
 > Decisões travadas com o operador em 2026-08-30. Atualizar a cada fase.
@@ -260,7 +260,27 @@ Entregue como desenhado, com dois desvios que valem registro:
 - Confere `/api/whatsapp/broadcast`: hoje exige `agent`, e disparo em massa
   ficou combinado como exclusivo do Administrador.
 
-### Fase 3 — Escopo na caixa de entrada
+### Fase 3 — Escopo na caixa de entrada ✅ (2026-08-30)
+
+Entregue como desenhado. Registros de implementação:
+
+- O recorte entra em `aplicarFiltros` como **predicado injetado**
+  (`ctx.foraDoPerfil`), não como import — `escopo.ts` importa
+  `canalDaConversa` de `filtros.ts`, e o import contrário fecharia ciclo.
+- A exceção da busca respeita o `trim` (termo só de espaços não reabre a
+  lista de outra área — teste fixa) e os demais filtros do painel.
+- `<ConversaForaDaArea>` SUBSTITUI o `MessageThread` (não embrulha): montar o
+  fio buscaria mensagens e zeraria não-lidas de conversa que ninguém leu. O
+  zero otimista da seleção é pulado e a ficha do painel direito rende null.
+- Nas Agendadas o recorte é NA CONSULTA (`recorteDeCanais` → `.in()`), porque
+  o acervo pagina no banco — e é seguro ali porque a tabela carrega o próprio
+  `channel_id`, fixado no agendamento (925).
+- ⚠️ Limitação conhecida: a bolinha de não lidas do menu (`useTotalUnread`)
+  conta a conta inteira — recortá-la exige espelhar canal no realtime; fica
+  para polimento. O widget de saúde das conexões no cabeçalho também lista
+  todas as conexões da conta.
+
+### Fase 3 — plano original (histórico)
 
 - `filtros.ts` ganha o recorte por perfil, ao lado dos filtros que já existem —
   **com `canalDaConversa()`**, pela armadilha dos grupos.
