@@ -45,7 +45,12 @@ export type SecaoId =
   | "assinatura"
   | "members"
   | "integracoes"
-  | "api";
+  | "api"
+  // ⚠️ Declarada ANTES de existir na tela (a seção chega na Fase 5). O
+  // catálogo é a lista fechada do que um perfil PODE ligar: seção ausente
+  // daqui é seção que `podeVerSecao` nunca libera, então declará-la depois
+  // faria a própria tela de perfis nascer inalcançável para perfil restrito.
+  | "perfis";
 
 /** Rota de cada tela — usada pelo menu e pela guarda de página. */
 export const ROTA_DA_TELA: Record<TelaId, string> = {
@@ -82,6 +87,7 @@ export const TODAS_AS_SECOES: SecaoId[] = [
   "members",
   "integracoes",
   "api",
+  "perfis",
 ];
 
 // ============================================================
@@ -118,6 +124,11 @@ export const SECOES_PESSOAIS: readonly SecaoId[] = [
 export const SECOES_TRAVADAS_PARA_ADMIN: readonly SecaoId[] = [
   "overview",
   "members",
+  // ⚠️ `perfis` entra pela MESMA razão de `members`: é a tela que conserta
+  // perfil mal configurado. Fora daqui, desmarcá-la do Administrador tranca o
+  // operador para fora do único lugar que desfaria o erro — e desta vez sem
+  // nem a rota de membros como saída, porque o estrago está no perfil.
+  "perfis",
 ] as const;
 
 /**

@@ -141,10 +141,20 @@ describe("podeVerSecao", () => {
     expect(podeVerSecao(c, "members")).toBe(false);
   });
 
-  it("admin nunca perde Membros nem a visão geral", () => {
+  it("admin nunca perde Membros, Perfis nem a visão geral", () => {
+    // `perfis` está aqui pelo mesmo motivo de `members`: é a tela que
+    // conserta perfil mal configurado. Sem ela, o erro que se quer desfazer é
+    // justamente o que tranca a porta.
     const c = ctx({ papel_base: "admin", secoes_config: [] });
     expect(podeVerSecao(c, "members")).toBe(true);
     expect(podeVerSecao(c, "overview")).toBe(true);
+    expect(podeVerSecao(c, "perfis")).toBe(true);
+  });
+
+  it("a seção de perfis NÃO vaza para agent nem viewer", () => {
+    for (const papel of ["agent", "viewer"] as const) {
+      expect(podeVerSecao(ctx({ papel_base: papel, secoes_config: [] }), "perfis")).toBe(false);
+    }
   });
 
   it("⚠️ a trava segue o PAPEL REAL, não o papel_base do perfil", () => {
