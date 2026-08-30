@@ -213,7 +213,8 @@ upstream sobrescrevê-los:
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
-| `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil |
+| `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil. Mais o funil-com-conversas (PR #71): `deal-card.tsx` reestruturado (clique navega à conversa, lápis de editar IRMÃO do botão — button aninhado é inválido), campos por `CamposDoCard`, botão de conversas por coluna, `navegarParaInbox`/restauração de rolagem no board, select `DEAL_SELECT_DO_QUADRO` com plano B na página |
+| `src/app/(dashboard)/inbox/page.tsx`, `src/components/inbox/conversation-list.tsx`, `inbox-filters.tsx` | os params `?etapa=` (semeia o filtro de etapa UMA vez) e `?de=funil` (faixa "Voltar ao funil") — os `router.replace` usam `urlDoInbox`, que preserva `de` e derruba `etapa` DE PROPÓSITO; na lista, `etapaInicial` + `etapasResolvidas` e o recorte de etapa gateado por `etapasUsaveis`; nos filtros, o fallback da pastilha virou `labelStage` (era "Qualquer etapa" sobre filtro ativo) |
 | `src/app/(dashboard)/automations/new/page.tsx` | o `?stage=` que faz a automação nascer com o gatilho de funil já apontando para a etapa clicada |
 | `src/lib/automations/trigger-meta.ts` | `formatRelative` passou a usar `Intl.RelativeTimeFormat` e a receber o texto de "nunca" — devolvia `5m ago`/`never` em inglês nas três telas |
 | `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx`, `src/app/(dashboard)/notifications/page.tsx`, `src/components/layout/{sidebar,header}.tsx`, `src/app/(dashboard)/contacts/page.tsx`, `src/lib/rate-limit.ts` | as tarefas (944): 7ª aba na ficha (com `[&>button]:flex-none` na TabsList), seção na barra da conversa, ícones/navegação dos tipos `task_*` no sino (o `TYPE_ICON` é exaustivo — merge que trouxer tipo novo sem ícone quebra o typecheck), item "Tarefas" com etiqueta realtime no menu, deep link `?contact=`, bucket `tarefa` |
@@ -418,6 +419,32 @@ puros e com teste (85 casos); a tela é `/agenda`, e a escrita passa por
   (deep link resolvido no estado inicial da página de Contatos).
 - **Redirecionar zera `lida_em`** — a tarefa chega "não lida" para quem acabou
   de recebê-la, senão some da contagem do menu da pessoa nova.
+
+⚠️ **Funil-com-conversas (PR #71): o card do Kanban ABRE A CONVERSA, não o
+negócio.** `src/lib/pipelines/cartao.ts`, `campos-do-card.ts`, `retorno.ts` e
+`src/lib/inbox/url.ts` (puros, testados); editar o negócio é o lápis do card.
+O que morde código novo:
+
+- ⚠️ **O recorte por etapa vindo de `?etapa=` só é APLICADO com
+  `etapasUsaveis`** (`filtrosEfetivos` no memo da lista). Com o mapa
+  contato→etapa vazio, `casaComAEtapa` reprova TODA conversa — sem a guarda, o
+  deep link abre "nenhuma conversa encontrada" com cara de resposta certa (há
+  pino disso em `filtros.test.ts`). O painel esconder o campo NÃO protege o
+  deep link: ele fura o gate do painel.
+- **`DEAL_SELECT_DO_QUADRO` é separado do `CONVERSATION_SELECT`** de
+  propósito — o do inbox é contrato da API pública v1. Embed recusado pelo
+  PostgREST cai no `DEAL_SELECT_BASICO` (senão o Kanban abre VAZIO sem erro,
+  porque o `loadDeals` original descartava o `error`).
+- **A restauração de rolagem mora no BOARD, não na página**: o `loading` da
+  página cobre só a carga dos funis; restaurar com ele mediria um quadro sem
+  colunas e gramparia o scroll em zero. E o `scrollTo` usa
+  `behavior: "instant"` porque o `.pipeline-scroll` tem
+  `scroll-behavior: smooth` — sem isso a volta vira varredura animada.
+- **`urlDoInbox` preserva `de` e derruba `etapa` nos replaces, por decisão**:
+  `etapa` é porta de entrada que semeia o filtro uma vez; preservá-la faria o
+  filtro limpo no painel voltar no reload.
+- **Sem realtime no quadro, por desenho**: não lidas/última mensagem são foto
+  da carga, e voltar do inbox remonta a página e refaz o fetch.
 
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
