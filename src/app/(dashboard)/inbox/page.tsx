@@ -13,6 +13,8 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
+import { VoltarAoFunil } from "@/components/inbox/voltar-ao-funil";
+import { urlDoInbox } from "@/lib/inbox/url";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { GroupSidebar } from "@/components/inbox/group-sidebar";
 import { toast } from "sonner";
@@ -48,6 +50,18 @@ function InboxPageInner() {
    * automatically instead of showing the empty center panel.
    */
   const deepLinkConvId = searchParams.get("c");
+  /**
+   * `?etapa=<stageId>` — porta de entrada do botão da coluna do funil.
+   * Semeia o filtro de etapa da lista UMA vez (no estado inicial dela); NÃO
+   * é preservada nos replaces, de propósito: preservar faria o filtro que o
+   * operador limpou no painel voltar no reload (ver `urlDoInbox`).
+   *
+   * `?de=funil` liga a faixa "Voltar ao funil" e ESSE sobrevive aos
+   * replaces — relido aqui a cada render e reescrito por `urlDoInbox`.
+   */
+  const etapaInicial = searchParams.get("etapa");
+  const de = searchParams.get("de");
+  const veioDoFunil = de === "funil";
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversation, setActiveConversation] =
@@ -574,9 +588,11 @@ function InboxPageInner() {
       // Reflect the selection in the URL so a refresh lands the user
       // back in the same thread, and so copy-paste links work. Use
       // replace() to avoid polluting browser history with every click.
-      router.replace(`/inbox?c=${conv.id}`, { scroll: false });
+      // `urlDoInbox` reescreve o `de=funil` vigente — sem isso, o primeiro
+      // clique numa conversa apagava a faixa "Voltar ao funil".
+      router.replace(urlDoInbox({ c: conv.id, de }), { scroll: false });
     },
-    [activeConversation?.id, router]
+    [activeConversation?.id, router, de]
   );
 
   // Mobile "back" — deselect the conversation so the list pane comes
@@ -590,8 +606,8 @@ function InboxPageInner() {
     // Clearing the ref lets the deep-link auto-selector fire again if
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
-    router.replace("/inbox", { scroll: false });
-  }, [router]);
+    router.replace(urlDoInbox({ de }), { scroll: false });
+  }, [router, de]);
 
 
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
@@ -711,6 +727,9 @@ function InboxPageInner() {
 
   return (
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
+      {/* Volta da jornada funil → conversa. Irmã da faixa amarela abaixo,
+          pela mesma razão: empurra os painéis em vez de sobrepor. */}
+      {veioDoFunil && <VoltarAoFunil />}
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
       {whatsappConnected === false && (
@@ -736,6 +755,7 @@ function InboxPageInner() {
           <ConversationList
             activeConversationId={activeConversation?.id ?? null}
             onSelect={handleSelectConversation}
+            etapaInicial={etapaInicial}
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}

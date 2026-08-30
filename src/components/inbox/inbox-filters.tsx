@@ -163,7 +163,11 @@ export function InboxFilters({
           ? t("stageNone")
           : etapaAtual
             ? nomeDaEtapa(etapaAtual, funis)
-            : t("stageAll"),
+            : // ⚠️ Filtro ativo cuja etapa não está na lista (dados ainda não
+              // carregados — o deep link ?etapa= chega antes deles — ou etapa
+              // apagada). "Qualquer etapa" aqui seria o OPOSTO do que está
+              // acontecendo; o rótulo genérico do campo é o honesto.
+              t("labelStage"),
       aoRemover: () => mexer({ etapaId: null }),
     });
   }
@@ -461,7 +465,9 @@ export function InboxFilters({
                       ? t("stageNone")
                       : etapaAtual
                         ? nomeDaEtapa(etapaAtual, funis)
-                        : t("stageAll")
+                        : // Etapa escolhida que sumiu da lista (apagada):
+                          // "Qualquer etapa" mentiria sobre um filtro ativo.
+                          t("labelStage")
                 }
                 ativo={filtros.etapaId !== null}
                 opcoes={[

@@ -62,6 +62,14 @@ interface ConversationListProps {
    * re-renderizar a cada tecla digitada.
    */
   onTermoDeBusca?: (termo: string) => void;
+  /**
+   * Etapa de funil vinda da URL (`?etapa=`, botão da coluna do quadro).
+   * Semeia o filtro UMA vez, no estado inicial — a lista não remonta quando
+   * a URL muda, então não há como o seed reaplicar por cima de um filtro que
+   * o operador já limpou. O recorte em si espera `etapasUsaveis` (ver o memo
+   * de `filtered`).
+   */
+  etapaInicial?: string | null;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -79,6 +87,7 @@ export function ConversationList({
   onConversationsLoaded,
   resyncToken = 0,
   onTermoDeBusca,
+  etapaInicial = null,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
 
@@ -88,7 +97,9 @@ export function ConversationList({
   // Trocar uma pela outra apagaria a busca por texto de mensagem e por nome
   // de grupo, que é o que a revisão prévia desta fase encontrou.
   const [search, setSearch] = useState("");
-  const [filtros, setFiltros] = useState<FiltrosDoInbox>(FILTROS_VAZIOS);
+  const [filtros, setFiltros] = useState<FiltrosDoInbox>(() =>
+    etapaInicial ? { ...FILTROS_VAZIOS, etapaId: etapaInicial } : FILTROS_VAZIOS,
+  );
   const [loading, setLoading] = useState(true);
   const [tags, setTags] = useState<Tag[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -104,6 +115,11 @@ export function ConversationList({
   // "Sem negócio" devolve as 64 — a resposta exatamente invertida, sem erro na
   // tela.
   const [etapasUsaveis, setEtapasUsaveis] = useState(false);
+  // `etapasUsaveis` não distingue "carregando" de "carregou e não dá para
+  // usar" — e hoje isso não importava, porque só dava para ESCOLHER etapa com
+  // o painel visível (dados prontos). O deep link `?etapa=` fura esse gate:
+  // este sinalizador separa a espera (spinner) da falha (aviso inline).
+  const [etapasResolvidas, setEtapasResolvidas] = useState(false);
   const [temPerfis, setTemPerfis] = useState(false);
   // `contact_id` → etapas dos negócios dele. Busca separada porque `deals` NÃO
   // vem no CONVERSATION_SELECT — e não pode vir: aquele select é compartilhado
@@ -242,6 +258,7 @@ export function ConversationList({
         !!etapasRes.data &&
         (dealsRes.count == null || dealsRes.count === linhas.length);
       setEtapasUsaveis(completo);
+      setEtapasResolvidas(true);
       if (linhas) setEtapaPorContato(mapaDeEtapasPorContato(linhas));
     })();
     return () => {
@@ -300,23 +317,33 @@ export function ConversationList({
 
   // Todo o recorte mora em `src/lib/inbox/filtros.ts`, testado lá. Aqui só
   // fica o estado e o que a tela precisa para desenhar os rótulos.
-  const filtered = useMemo(
-    () =>
-      aplicarFiltros(conversations, filtros, {
-        favoritas,
-        etapaPorContato,
-        busca: search,
-        achadasNoTexto: idsAchadosNoTexto,
-      }),
-    [
-      conversations,
-      filtros,
+  //
+  // ⚠️ O filtro de etapa só é APLICADO com `etapasUsaveis`: com o mapa
+  // contato→etapa ainda vazio, `casaComAEtapa` reprova TODAS as conversas e o
+  // deep link `?etapa=` abriria "nenhuma conversa" com cara de resposta certa
+  // (há um pino disso em filtros.test.ts). Enquanto os dados não chegam, o
+  // spinner de `aguardandoEtapas` segura a tela; se chegarem inutilizáveis, o
+  // aviso inline abaixo da busca assume — o recorte nunca responde errado.
+  const filtered = useMemo(() => {
+    const filtrosEfetivos = etapasUsaveis
+      ? filtros
+      : { ...filtros, etapaId: null };
+    return aplicarFiltros(conversations, filtrosEfetivos, {
       favoritas,
       etapaPorContato,
-      search,
-      idsAchadosNoTexto,
-    ],
-  );
+      busca: search,
+      achadasNoTexto: idsAchadosNoTexto,
+    });
+  }, [
+    conversations,
+    filtros,
+    etapasUsaveis,
+    favoritas,
+    etapaPorContato,
+    search,
+    idsAchadosNoTexto,
+  ]);
+  const aguardandoEtapas = filtros.etapaId !== null && !etapasResolvidas;
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -389,6 +416,14 @@ export function ConversationList({
             {t("searchingInMessages")}
           </p>
         )}
+        {/* Filtro de etapa ativo com os dados por trás indisponíveis: o
+            recorte foi neutralizado (ver o memo de `filtered`) e isto é o
+            que impede a lista completa de passar por "filtrada". */}
+        {filtros.etapaId !== null && etapasResolvidas && !etapasUsaveis && (
+          <p className="px-0.5 text-[11px] text-destructive">
+            {t("stageFilterUnavailable")}
+          </p>
+        )}
 
         <InboxFilters
           filtros={filtros}
@@ -415,7 +450,7 @@ export function ConversationList({
           space — the list then overflows and gets clipped by the
           parent's overflow-hidden with no scrollbar (issue #229). */}
       <ScrollArea className="min-h-0 flex-1">
-        {loading ? (
+        {loading || aguardandoEtapas ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>

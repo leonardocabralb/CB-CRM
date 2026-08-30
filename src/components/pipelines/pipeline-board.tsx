@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -17,17 +18,25 @@ import {
 import type { Automation, Deal, PipelineStage } from "@/types";
 import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
-import { Plus, Zap } from "lucide-react";
+import { MessageSquare, Plus, Zap } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { formatCurrency } from "@/lib/currency";
 import { contarAtivasNaEtapa } from "@/lib/automations/por-etapa";
 import { useTranslations } from "next-intl";
+import type { DealDoQuadro } from "@/lib/pipelines/cartao";
+import type { CamposDoCard } from "@/lib/pipelines/campos-do-card";
+import { gravarRetorno, lerRetorno, limparRetorno } from "@/lib/pipelines/retorno";
+import { urlDoInbox } from "@/lib/inbox/url";
 
 interface PipelineBoardProps {
   stages: PipelineStage[];
-  deals: Deal[];
+  deals: DealDoQuadro[];
   /** Automações da conta, para a etiqueta por coluna (Fase 5). */
   automations: Automation[];
+  /** O funil exibido — carimba o ponto de retorno ao sair para o inbox. */
+  pipelineId: string;
+  /** O que os cards exibem (popover da barra, por dispositivo). */
+  campos: CamposDoCard;
   onDealMoved: (dealId: string, newStageId: string) => void;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
@@ -38,13 +47,17 @@ export function PipelineBoard({
   stages,
   deals,
   automations,
+  pipelineId,
+  campos,
   onDealMoved,
   onAddDeal,
   onEditDeal,
   onOpenAutomations,
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
+  const router = useRouter();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
+  const quadroRef = useRef<HTMLDivElement>(null);
 
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
@@ -52,7 +65,7 @@ export function PipelineBoard({
   );
 
   const dealsByStage = useMemo(() => {
-    const map = new Map<string, Deal[]>();
+    const map = new Map<string, DealDoQuadro[]>();
     for (const stage of sortedStages) map.set(stage.id, []);
     for (const deal of deals) {
       const bucket = map.get(deal.stage_id);
@@ -60,6 +73,56 @@ export function PipelineBoard({
     }
     return map;
   }, [sortedStages, deals]);
+
+  /**
+   * As duas portas de saída para o inbox (corpo do card e botão da coluna)
+   * gravam o ponto de retorno ANTES de navegar — é o que permite à volta
+   * cair no mesmo funil, na mesma rolagem. O scroll vertical da página é o
+   * `<main>` do dashboard-shell (único ancestral com overflow-y), alcançado
+   * por `closest` para não acoplar a shell a esta feature.
+   */
+  function navegarParaInbox(destino: { c?: string; etapa?: string }) {
+    const quadro = quadroRef.current;
+    gravarRetorno({
+      pipelineId,
+      scrollLeft: quadro?.scrollLeft ?? 0,
+      scrollTop: quadro?.closest("main")?.scrollTop ?? 0,
+    });
+    router.push(urlDoInbox({ ...destino, de: "funil" }));
+  }
+
+  /**
+   * A volta: consome o retorno gravado acima, uma vez só (ler e limpar).
+   * Dispara quando as colunas existem — etapas e negócios chegam no MESMO
+   * commit (Promise.all na página), então aqui o quadro já tem a largura e
+   * a altura reais. ⚠️ O `loading` da página NÃO serviria de gatilho: ele
+   * cobre só a carga dos funis, e restaurar sobre um quadro vazio grampeia
+   * o scroll em zero e perde o registro em silêncio.
+   */
+  useEffect(() => {
+    if (sortedStages.length === 0) return;
+    const retorno = lerRetorno();
+    if (!retorno) return;
+    limparRetorno();
+    // Funil apagado/trocado no meio do caminho: o registro não serve mais.
+    if (retorno.pipelineId !== pipelineId) return;
+    // Dois rAF: o primeiro devolve o controle depois do commit, o segundo
+    // depois do layout — só aí scrollWidth/scrollHeight são reais.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        // ⚠️ `behavior: "instant"` é obrigatório: `.pipeline-scroll` tem
+        // `scroll-behavior: smooth` no styled-jsx abaixo, e restaurar
+        // obedecendo o CSS viraria uma varredura animada a cada volta.
+        quadroRef.current?.scrollTo({
+          left: retorno.scrollLeft,
+          behavior: "instant",
+        });
+        quadroRef.current
+          ?.closest("main")
+          ?.scrollTo({ top: retorno.scrollTop, behavior: "instant" });
+      }),
+    );
+  }, [sortedStages, pipelineId]);
 
   const sensors = useSensors(
     // 5px activation distance avoids clicks being interpreted as drags.
@@ -109,7 +172,10 @@ export function PipelineBoard({
           natural layout. The board can still overflow horizontally on
           lg+ once a pipeline has many stages (columns keep a 260px
           min-width), so a thin scrollbar stays visible on desktop. */}
-      <div className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none">
+      <div
+        ref={quadroRef}
+        className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none"
+      >
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
           const totalValue = stageDeals.reduce(
@@ -124,8 +190,13 @@ export function PipelineBoard({
               totalValue={totalValue}
               currency={defaultCurrency}
               automacoesAtivas={contarAtivasNaEtapa(automations, stage.id)}
+              campos={campos}
               onAddDeal={onAddDeal}
               onEditDeal={onEditDeal}
+              onAbrirConversa={(conversationId) =>
+                navegarParaInbox({ c: conversationId })
+              }
+              onVerConversas={(stageId) => navegarParaInbox({ etapa: stageId })}
               onOpenAutomations={onOpenAutomations}
             />
           );
@@ -145,7 +216,9 @@ export function PipelineBoard({
               stage={
                 sortedStages.find((s) => s.id === activeDeal.stage_id) ?? null
               }
+              campos={campos}
               onEdit={() => {}}
+              onAbrirConversa={() => {}}
               isOverlay
             />
           </div>
@@ -200,17 +273,23 @@ function StageColumn({
   totalValue,
   currency,
   automacoesAtivas,
+  campos,
   onAddDeal,
   onEditDeal,
+  onAbrirConversa,
+  onVerConversas,
   onOpenAutomations,
 }: {
   stage: PipelineStage;
-  deals: Deal[];
+  deals: DealDoQuadro[];
   totalValue: number;
   currency: string;
   automacoesAtivas: number;
+  campos: CamposDoCard;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  onAbrirConversa: (conversationId: string) => void;
+  onVerConversas: (stageId: string) => void;
   onOpenAutomations: (stage: PipelineStage) => void;
 }) {
   const t = useTranslations("Pipelines.board");
@@ -234,6 +313,18 @@ function StageColumn({
           {stage.name}
         </h3>
         <div className="flex shrink-0 items-center gap-1">
+          {/* As conversas desta etapa, na caixa de entrada — abre o inbox com
+              o filtro de etapa já semeado (?etapa=), gravando o retorno como
+              o clique no card: é a mesma jornada de ida e volta. */}
+          <button
+            type="button"
+            onClick={() => onVerConversas(stage.id)}
+            aria-label={t("stageConversations")}
+            title={t("stageConversations")}
+            className="inline-flex items-center rounded-full px-1.5 py-0.5 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <MessageSquare className="h-3 w-3" />
+          </button>
           {/* Automações desta coluna (Fase 5). Fica visível mesmo com zero:
               é por aqui que se CRIA a primeira, e um botão que só aparece
               depois de já existir automação não ensina ninguém.
@@ -284,7 +375,9 @@ function StageColumn({
               key={deal.id}
               deal={deal}
               stage={stage}
+              campos={campos}
               onEdit={onEditDeal}
+              onAbrirConversa={onAbrirConversa}
             />
           ))
         )}
@@ -306,11 +399,15 @@ function StageColumn({
 function DraggableDealCard({
   deal,
   stage,
+  campos,
   onEdit,
+  onAbrirConversa,
 }: {
-  deal: Deal;
+  deal: DealDoQuadro;
   stage: PipelineStage;
+  campos: CamposDoCard;
   onEdit: (deal: Deal) => void;
+  onAbrirConversa: (conversationId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: deal.id,
@@ -323,7 +420,13 @@ function DraggableDealCard({
       {...attributes}
       style={{ opacity: isDragging ? 0.3 : 1, touchAction: "none" }}
     >
-      <DealCard deal={deal} stage={stage} onEdit={onEdit} />
+      <DealCard
+        deal={deal}
+        stage={stage}
+        campos={campos}
+        onEdit={onEdit}
+        onAbrirConversa={onAbrirConversa}
+      />
     </div>
   );
 }

@@ -213,6 +213,10 @@ describe("casaComAEtapa", () => {
     expect(casaComAEtapa(grupo(), SEM_ETAPA, mapa)).toBe(true);
     expect(casaComAEtapa(grupo(), "s1", mapa)).toBe(false);
   });
+
+  it("⚠️ com o mapa VAZIO (deals ainda não carregados) TODA conversa reprova — é por isso que a lista neutraliza etapaId até `etapasUsaveis`; sem a guarda, o deep link ?etapa= abre 'nenhuma conversa' com cara de resposta certa", () => {
+    expect(casaComAEtapa(conversa(), "s1", new Map())).toBe(false);
+  });
 });
 
 describe("contarFiltrosAtivos", () => {

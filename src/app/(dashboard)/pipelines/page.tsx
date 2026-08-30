@@ -39,6 +39,21 @@ import { GatedButton } from "@/components/ui/gated-button";
 import { useTranslations } from "next-intl";
 import { avisarDrenagemDeFunil } from "@/lib/automations/avisar-drenagem";
 import { statusAoEntrarNaEtapa } from "@/lib/pipelines/resultado";
+import {
+  DEAL_SELECT_BASICO,
+  DEAL_SELECT_DO_QUADRO,
+  normalizarDealDoQuadro,
+  type DealDoQuadro,
+  type RawDealDoQuadro,
+} from "@/lib/pipelines/cartao";
+import {
+  CAMPOS_PADRAO,
+  CHAVE_CAMPOS_DO_CARD,
+  normalizarCampos,
+  type CamposDoCard,
+} from "@/lib/pipelines/campos-do-card";
+import { lerRetorno, type RetornoDoFunil } from "@/lib/pipelines/retorno";
+import { CamposDoCardPopover } from "@/components/pipelines/campos-do-card-popover";
 
 // Pipeline creation is admin-class (settings-tier write under
 // the new RLS); deal creation is operational and only requires
@@ -65,8 +80,44 @@ export default function PipelinesPage() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
   const [stages, setStages] = useState<PipelineStage[]>([]);
-  const [deals, setDeals] = useState<Deal[]>([]);
+  const [deals, setDeals] = useState<DealDoQuadro[]>([]);
   const [loading, setLoading] = useState(true);
+
+  /**
+   * O que os cards exibem — escolha POR DISPOSITIVO (localStorage). Lida em
+   * efeito pós-mount, nunca no inicializador: esta página tem passe SSR, e
+   * ler storage síncrono produziria hydration mismatch (mesmo padrão do
+   * painel do inbox). O parse fica DENTRO do try — registro corrompido não
+   * pode derrubar a página.
+   */
+  const [campos, setCampos] = useState<CamposDoCard>(CAMPOS_PADRAO);
+  useEffect(() => {
+    try {
+      const cru = localStorage.getItem(CHAVE_CAMPOS_DO_CARD);
+      if (cru !== null) setCampos(normalizarCampos(JSON.parse(cru)));
+    } catch {
+      // Navegação privativa / JSON inválido — fica no padrão.
+    }
+  }, []);
+  const trocarCampos = useCallback((next: CamposDoCard) => {
+    setCampos(next);
+    try {
+      localStorage.setItem(CHAVE_CAMPOS_DO_CARD, JSON.stringify(next));
+    } catch {
+      // Persistência é melhor esforço; a escolha vale para a sessão.
+    }
+  }, []);
+
+  /**
+   * O retorno gravado ao sair para o inbox (sessionStorage): aqui ele decide
+   * só a SELEÇÃO de funil. Quem aplica a rolagem — e LIMPA o registro — é o
+   * PipelineBoard, quando as colunas existem de verdade. A guarda cobre o
+   * StrictMode do dev (efeito roda duas vezes).
+   */
+  const retornoRef = useRef<RetornoDoFunil | null>(null);
+  useEffect(() => {
+    if (!retornoRef.current) retornoRef.current = lerRetorno();
+  }, []);
 
   // Automações de funil da conta inteira (Fase 5). Não é por funil de
   // propósito: a regra de gatilho VAZIO vale para toda etapa de todo funil, e
@@ -126,13 +177,35 @@ export default function PipelinesPage() {
   );
 
   const loadDeals = useCallback(
-    async (pipelineId: string) => {
-      const { data } = await supabase
+    async (pipelineId: string): Promise<DealDoQuadro[]> => {
+      const { data, error } = await supabase
         .from("deals")
-        .select("*, contact:contacts(*), assignee:profiles!deals_assigned_to_fkey(*)")
+        .select(DEAL_SELECT_DO_QUADRO)
         .eq("pipeline_id", pipelineId)
         .order("created_at", { ascending: false });
-      return (data ?? []) as Deal[];
+      if (!error) {
+        return ((data ?? []) as unknown as RawDealDoQuadro[]).map(
+          normalizarDealDoQuadro,
+        );
+      }
+      // ⚠️ Um embed recusado pelo PostgREST não pode derrubar o Kanban: sem
+      // este plano B o quadro abriria VAZIO, sem mensagem nenhuma. Loga (os
+      // campos do erro do Supabase não são enumeráveis) e refaz com o select
+      // antigo — o quadro fica de pé, só sem conversa/etiquetas nos cards.
+      console.error("Failed to load deals (select do quadro):", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+      const { data: basico } = await supabase
+        .from("deals")
+        .select(DEAL_SELECT_BASICO)
+        .eq("pipeline_id", pipelineId)
+        .order("created_at", { ascending: false });
+      return ((basico ?? []) as unknown as RawDealDoQuadro[]).map(
+        normalizarDealDoQuadro,
+      );
     },
     [supabase],
   );
@@ -248,9 +321,15 @@ export default function PipelinesPage() {
       if (cancelled) return;
       setPipelines(list);
       if (list.length > 0) {
-        setSelectedPipelineId((prev) =>
-          prev && list.some((p) => p.id === prev) ? prev : list[0].id,
-        );
+        // A volta do inbox prefere o funil de onde o operador saiu — o
+        // `retornoRef` já foi preenchido (o efeito de leitura é síncrono e
+        // roda antes deste `await` resolver).
+        setSelectedPipelineId((prev) => {
+          if (prev && list.some((p) => p.id === prev)) return prev;
+          const doRetorno = retornoRef.current?.pipelineId;
+          if (doRetorno && list.some((p) => p.id === doRetorno)) return doRetorno;
+          return list[0].id;
+        });
       } else {
         setSelectedPipelineId("");
       }
@@ -507,6 +586,10 @@ export default function PipelinesPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* O que os cards exibem — só na vista de leads, onde há card. */}
+          {vista === "leads" && pipelines.length > 0 && (
+            <CamposDoCardPopover campos={campos} onChange={trocarCampos} />
+          )}
           {/* Leads | Automações — as duas leituras do mesmo funil. */}
           <div className="flex rounded-lg border border-border bg-card p-0.5">
             {(["leads", "automacoes"] as const).map((v) => (
@@ -582,6 +665,8 @@ export default function PipelinesPage() {
             stages={stages}
             deals={deals}
             automations={automations}
+            pipelineId={selectedPipelineId}
+            campos={campos}
             onDealMoved={handleDealMoved}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}
