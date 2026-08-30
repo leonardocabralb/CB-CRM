@@ -154,7 +154,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const instanceName = buildChannelInstanceName(ctx.accountId);
+    const instanceName = buildChannelInstanceName(ctx.accountId, label);
 
     // Só agora cria estado remoto. Servidor fora do ar / mal configurado
     // vira 502 sem ter tocado o banco.

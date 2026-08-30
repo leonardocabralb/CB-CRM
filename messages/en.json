@@ -2078,6 +2078,7 @@
       "evolutionStepDescription": "Creates a new WhatsApp connection on your Evolution server. Just give it a name — you scan the QR Code on the next step.",
       "labelField": "Channel name",
       "labelPlaceholder": "Sales, Dr. Leonardo…",
+      "labelHelpEvolution": "Also names the instance on the Evolution server, and that is fixed now — renaming the channel later does not rename the instance.",
       "cancel": "Cancel",
       "createAndConnect": "Create and show QR Code",
       "metaStepTitle": "Connect an official number (Meta API)",

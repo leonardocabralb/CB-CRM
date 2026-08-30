@@ -857,6 +857,9 @@ export function CbChannelsPanel() {
                   onChange={(e) => setLabel(e.target.value)}
                   placeholder={t('labelPlaceholder')}
                 />
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {t('labelHelpEvolution')}
+                </p>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setAddStep('choose')}>
