@@ -43,6 +43,7 @@ export function InternalNoteBox({
   onSaved,
   onClose,
   listaParaBaixo = false,
+  autoFocus = true,
 }: {
   conversationId: string;
   onSaved?: (nota: ConversationNote) => void;
@@ -57,6 +58,14 @@ export function InternalNoteBox({
    * de um contêiner rolável — subir seria ser cortada pelo scroll.
    */
   listaParaBaixo?: boolean;
+  /**
+   * ⚠️ `false` na aba Notas do painel: lá a caixa monta ao ABRIR a aba e
+   * REMONTA a cada troca de conversa (key) — focar nesses momentos roubava
+   * o foco de quem digitava no compositor e abria o teclado do celular só
+   * de olhar as notas. No compositor a montagem é ação explícita do
+   * operador ("anotar") e o foco é o esperado.
+   */
+  autoFocus?: boolean;
 }) {
   const t = useTranslations('Inbox.composer');
 
@@ -100,11 +109,12 @@ export function InternalNoteBox({
    * de propósito, é o mesmo padrão que `desfazerEnvio` usa no compositor.
    */
   useEffect(() => {
+    if (!autoFocus) return;
     const el = areaRef.current;
     if (!el) return;
     el.focus();
     el.setSelectionRange(el.value.length, el.value.length);
-  }, []);
+  }, [autoFocus]);
 
   const mudarTexto = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {

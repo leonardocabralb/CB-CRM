@@ -114,15 +114,24 @@ export async function PATCH(
     .select('*')
     .single();
   if (erroFixa) {
+    const codigo = (erroFixa as { code?: string }).code;
     // 23505 = o índice parcial desempatou uma corrida de duas fixações.
-    const corrida = (erroFixa as { code?: string }).code === '23505';
-    if (!corrida) {
-      console.error('[PATCH /api/cb/notes] pin:', erroFixa.message);
+    if (codigo === '23505') {
+      return NextResponse.json(
+        { error: 'PINNED_BY_SOMEONE_ELSE' },
+        { status: 409 }
+      );
     }
-    return NextResponse.json(
-      { error: corrida ? 'PINNED_BY_SOMEONE_ELSE' : 'Failed to pin note' },
-      { status: corrida ? 409 : 500 }
-    );
+    // PGRST116 = o `.single()` casou 0 linhas: a nota foi APAGADA entre a
+    // leitura sob RLS e este update (DELETE é direto do navegador). Não é
+    // defeito do servidor — mas a limpeza da fixada anterior JÁ commitou
+    // (dois UPDATEs sem transação), então o cliente fica sem fixada e
+    // refaz o pin se quiser. 409 honesto, sem log de erro falso.
+    if (codigo === 'PGRST116') {
+      return NextResponse.json({ error: 'NOTE_GONE' }, { status: 409 });
+    }
+    console.error('[PATCH /api/cb/notes] pin:', erroFixa.message);
+    return NextResponse.json({ error: 'Failed to pin note' }, { status: 500 });
   }
 
   return NextResponse.json({ note: atual });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { createClient } from '@/lib/supabase/client';
 import type { ConversationNote } from '@/types';
@@ -35,6 +35,17 @@ export function useConversationNotes(
 ) {
   const [notas, setNotas] = useState<ConversationNote[]>([]);
   const [carregando, setCarregando] = useState(false);
+  /**
+   * ⚠️ A conversa ATUAL, viva — a régua de `acrescentar`/`aplicarFixacao`.
+   * A guarda que os call sites faziam (`nota.conversation_id ===
+   * conversationId`) era TAUTOLÓGICA: o closure em voo capturou o
+   * conversationId do render do clique, e a nota devolvida é daquela mesma
+   * conversa — A === A, nunca rejeita. Enquanto isso o estado do hook já é
+   * do cliente B, e a nota de A aterrissava na lista dele (achado da
+   * revisão de 2026-08-29/30). Ref compara contra o AGORA, não contra o
+   * passado de quem chamou.
+   */
+  const conversaAtualRef = useRef<string | null>(conversationId ?? null);
 
   /**
    * ⚠️ Identidade DESTA montagem do hook, no nome do canal de realtime.
@@ -80,6 +91,11 @@ export function useConversationNotes(
         .eq('conversation_id', conversationId)
         // Mesmo teto de segurança da trilha: busca as mais recentes e deixa a
         // ordenação final para o `intercalar`, que ordena o fio inteiro.
+        // ⚠️ O cartão de nota FIXADA (951) deriva DESTA janela: fixada mais
+        // velha que as 200 notas mais recentes não entra e o sticky some em
+        // silêncio. Hoje o máximo real é 2 notas/conversa — é a família de
+        // teto-que-chega-por-crescimento já documentada (924/929); quem
+        // paginar isto revisa a fixada junto.
         .order('created_at', { ascending: false })
         .limit(200);
 
@@ -103,6 +119,7 @@ export function useConversationNotes(
   // enquanto a busca nova corre é exibir anotação de um cliente dentro da
   // conversa de outro, mesmo que por um instante.
   useEffect(() => {
+    conversaAtualRef.current = conversationId ?? null;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setNotas([]);
   }, [conversationId]);
@@ -193,6 +210,10 @@ export function useConversationNotes(
    * servidor.
    */
   const aplicarFixacao = useCallback((nota: ConversationNote) => {
+    // Resposta de OUTRA conversa (fixar em voo + troca) morre aqui — sem a
+    // guarda, o ramo que zera `fixada_em` desafixava LOCALMENTE a nota
+    // fixada do cliente novo, sem nenhum evento que consertasse depois.
+    if (nota.conversation_id !== conversaAtualRef.current) return;
     setNotas((anteriores) =>
       anteriores.map((n) => {
         if (n.id === nota.id) return nota;
@@ -203,6 +224,9 @@ export function useConversationNotes(
 
   /** Põe a anotação recém-criada na lista, sem esperar o realtime. */
   const acrescentar = useCallback((nota: ConversationNote) => {
+    // Ver `conversaAtualRef`: a guarda dos call sites é de closure e não
+    // segura resposta em voo — esta é a que vale.
+    if (nota.conversation_id !== conversaAtualRef.current) return;
     setNotas((anteriores) =>
       anteriores.some((n) => n.id === nota.id)
         ? anteriores

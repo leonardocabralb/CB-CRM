@@ -1369,6 +1369,13 @@ mesma passada** (help/config no app, `docs/`, ou README do módulo). Doc obsolet
 - **Supabase:** Postgres + Auth + Storage + RLS. `SUPABASE_SERVICE_ROLE_KEY`
   ignora RLS e só pode ser usada em código server-side (webhook, automações,
   auth da API pública). Nunca no client.
+  ⚠️ **`cb_channels` está na publicação realtime com LISTA FIXA de colunas**
+  (a 909 fez `ADD TABLE cb_channels (…)`; medido em `pg_publication_rel.prattrs`
+  em 2026-08-30): coluna adicionada depois disso NÃO viaja no realtime. Hoje
+  nada assina essa tabela (`use-channels` é fetch único) — quem for assinar
+  `cb_channels` no futuro precisa reescrever a entrada na publicação. As
+  demais tabelas publicadas (ex.: `cb_conversation_notes`) estão sem lista
+  (todas as colunas).
 - **Assistente de IA:** bring-your-own-key (OpenAI/Anthropic/Gemini, desde a
   941) — cada conta cola sua chave em Settings → AI Assistant, guardada
   criptografada com `ENCRYPTION_KEY`. Não há env var global de provider.
