@@ -19,6 +19,8 @@ import {
   isAccountRole,
   type AccountRole,
 } from "@/lib/auth/roles";
+import type { ContextoDeAcesso, PerfilDeAcesso } from "@/lib/perfis/tipos";
+import { ehSecaoConhecida, ehTelaConhecida } from "@/lib/perfis/catalogo";
 
 interface Profile {
   id: string;
@@ -126,6 +128,24 @@ interface AuthContextValue {
   account: AccountSummary | null;
   /** Assinatura ligada — só para a bolha otimista nascer certa. */
   assinaturaAtiva: boolean;
+  /**
+   * Perfil de acesso da pessoa (956), ou `null` para SEM RESTRIÇÃO.
+   * ⚠️ Nulo nunca significa "não vê nada" — ver `@/lib/perfis/tipos`.
+   */
+  perfilDeAcesso: PerfilDeAcesso | null;
+  /**
+   * Papel + perfil no formato que `@/lib/perfis` consome. Use com
+   * `podeVerTela` / `podeVerSecao` / `conversaNoEscopo` — nunca leia
+   * `perfilDeAcesso.telas` direto, ou as travas (dono vê tudo, admin não
+   * perde Configurações) ficam de fora.
+   *
+   * ⚠️ Durante `profileLoading` este valor é `{ papel: null, perfil: null }`,
+   * e perfil nulo significa SEM RESTRIÇÃO — ou seja, `podeVerTela` responde
+   * `true` para tudo enquanto carrega. Gate de menu/rota tem de conferir
+   * `profileLoading` ANTES de decidir (fail-closed, como o `useCan` faz),
+   * senão o item proibido pisca na tela a cada carga e some em seguida.
+   */
+  acesso: ContextoDeAcesso;
   /** True if `accountRole === 'owner'`. */
   isOwner: boolean;
   /** True if `accountRole === 'admin'` (does NOT include owner — use canManageMembers for "admin or above"). */
@@ -162,6 +182,7 @@ interface ProfileRow {
   beta_features: string[] | null;
   account_id: string | null;
   account_role: string | null;
+  perfil_id: string | null;
 }
 
 /**
@@ -172,6 +193,12 @@ interface ProfileRow {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  // ⚠️ `null` = SEM RESTRIÇÃO, nunca "não vê nada". É o estado de todo mundo
+  // até a Fase 5 e o destino de quem teve o perfil apagado (ON DELETE SET
+  // NULL na 956).
+  const [perfilDeAcesso, setPerfilDeAcesso] = useState<PerfilDeAcesso | null>(
+    null,
+  );
   const [account, setAccount] = useState<AccountSummary | null>(null);
   const [loading, setLoading] = useState(true);
   // Why the account/role couldn't be established, when it couldn't.
@@ -202,7 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const result = await supabase
           .from("profiles")
           .select(
-            "id, full_name, email, avatar_url, role, beta_features, account_id, account_role",
+            "id, full_name, email, avatar_url, role, beta_features, account_id, account_role, perfil_id",
           )
           .eq("user_id", userId)
           .maybeSingle();
@@ -265,6 +292,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             };
           }
         }
+
+        // ------------------------------------------------------------
+        // Perfil de acesso (956). Consulta separada, pelo mesmo motivo do
+        // lookup da conta acima: embed obriga o PostgREST a resolver a FK
+        // pelo cache de schema, e cache velho — comum logo depois da
+        // migration que cria a FK — falharia com PGRST200 e apagaria o
+        // perfil inteiro.
+        //
+        // ⚠️ FALHA ABERTA de propósito: erro aqui deixa `perfil` nulo, que
+        // significa "sem restrição". O oposto deixaria a pessoa sem menu
+        // nenhum por causa de um hiccup de rede, que é a forma da issue
+        // #471 (perfil nulo travando a sessão inteira em read-only). E
+        // lembrar do que este recorte é: organização de visão, não
+        // segurança — não há RLS por área para ele contradizer.
+        let perfilRow: PerfilDeAcesso | null = null;
+        if (data.perfil_id) {
+          const { data: perfilData, error: perfilErr } = await supabase
+            .from("cb_perfis_de_acesso")
+            .select(
+              "id, account_id, nome, papel_base, telas, secoes_config, channel_ids, pipeline_ids, sistema",
+            )
+            .eq("id", data.perfil_id)
+            .maybeSingle();
+          if (perfilErr) {
+            console.error("[AuthProvider] fetchPerfil error:", {
+              message: perfilErr.message,
+              code: perfilErr.code,
+            });
+          } else if (perfilData) {
+            perfilRow = {
+              id: perfilData.id,
+              account_id: perfilData.account_id,
+              nome: perfilData.nome,
+              papel_base: perfilData.papel_base,
+              // Descarta id de tela/seção que o app não conhece mais — o
+              // array não tem FK e uma rota removida deixa lixo para trás.
+              telas: (perfilData.telas ?? []).filter(ehTelaConhecida),
+              secoes_config: (perfilData.secoes_config ?? []).filter(
+                ehSecaoConhecida,
+              ),
+              channel_ids: perfilData.channel_ids ?? [],
+              pipeline_ids: perfilData.pipeline_ids ?? [],
+              sistema: Boolean(perfilData.sistema),
+            };
+          }
+        }
+        setPerfilDeAcesso(perfilRow);
 
         // Narrow the DB enum into our AccountRole union. The DB
         // constraint should make this unconditional, but a future
@@ -375,6 +449,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         lastFetchedUserIdRef.current = null;
         setProfile(null);
         setAccount(null);
+        setPerfilDeAcesso(null);
         setProfileLoading(false);
       }
 
@@ -394,6 +469,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
     setAccount(null);
+    setPerfilDeAcesso(null);
     window.location.href = "/login";
   }, []);
 
@@ -418,8 +494,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canManageMembers: role ? canManageMembersFor(role) : false,
       canEditSettings: role ? canEditSettingsFor(role) : false,
       canSendMessages: role ? canSendMessagesFor(role) : false,
+      acesso: { papel: role, perfil: perfilDeAcesso } satisfies ContextoDeAcesso,
     };
-  }, [profile?.account_role, profile?.account_id]);
+  }, [profile?.account_role, profile?.account_id, perfilDeAcesso]);
 
   // Signed out is not a broken account — the shell redirects to /login
   // before anything reads this.
@@ -442,6 +519,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profileLoading,
         signOut,
         refreshProfile,
+        perfilDeAcesso,
         account,
         assinaturaAtiva: account?.assinatura_ativa ?? false,
         accountStatus,
@@ -475,6 +553,13 @@ export function useAuth(): AuthContextValue {
       },
       refreshProfile: async () => {},
       account: null,
+      // ⚠️ Fora do provider o perfil é nulo = SEM RESTRIÇÃO, ao contrário do
+      // resto deste fallback, que fecha em falso. Não é descuido: as telas
+      // que fazem o recorte só renderizam DENTRO do provider, e fechar aqui
+      // esconderia menu de quem está no meio de uma montagem. A barreira
+      // real de escrita continua sendo o papel, que segue nulo abaixo.
+      perfilDeAcesso: null,
+      acesso: { papel: null, perfil: null },
       // Fecha em falso como todo o resto do fallback: sem provider a bolha
       // nasce sem assinatura, e o servidor decide.
       assinaturaAtiva: false,

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { useAuth } from '@/hooks/use-auth';
+import { funilNoEscopo } from '@/lib/perfis/escopo';
 import { useChannels } from '@/hooks/use-channels';
 import { metaChannels, preferredChannel } from '@/lib/cb-channels/display';
 import { ChannelSelect } from '@/components/channels/channel-select';
@@ -73,6 +74,7 @@ export function ContactDetailView({
   const supabase = createClient();
   // `accountId` saiu com o insert direto: a anotação agora nasce na rota,
   // que resolve a conta no servidor a partir da sessão.
+  const { acesso } = useAuth();
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(false);
@@ -207,9 +209,16 @@ export function ContactDetailView({
       .select('*, stage:pipeline_stages(*)')
       .eq('contact_id', contactId)
       .order('created_at', { ascending: false });
-    setDeals((data ?? []) as Deal[]);
+    // Recorte por perfil (Fase 4): a aba Negócios esconde caso de funil de
+    // outra área — decisão do operador (cliente pode ter caso no trabalhista
+    // E no bancário; cada equipe vê o seu). Órfão de funil passa.
+    setDeals(
+      ((data ?? []) as Deal[]).filter(
+        (d) => !d.pipeline_id || funilNoEscopo(acesso, d.pipeline_id),
+      ),
+    );
     setLoadingDeals(false);
-  }, [contactId, supabase]);
+  }, [contactId, supabase, acesso]);
 
   useEffect(() => {
     if (open && contactId) {

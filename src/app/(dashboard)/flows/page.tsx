@@ -90,7 +90,7 @@ const TEMPLATE_ICONS = {
 
 export default function FlowsPage() {
   const router = useRouter();
-  const canCreate = useCan("send-messages");
+  const canCreate = useCan("manage-automations");
   const t = useTranslations("Flows.list");
   const tCanais = useTranslations("Channels");
   const [flows, setFlows] = useState<FlowRow[]>([]);

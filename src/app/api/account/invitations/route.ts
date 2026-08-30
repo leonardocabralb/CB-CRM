@@ -179,10 +179,41 @@ export async function POST(request: Request) {
     if (!limit.success) return rateLimitResponse(limit);
 
     const body = (await request.json().catch(() => null)) as
-      | { role?: unknown; expiresInDays?: unknown; label?: unknown }
+      | { role?: unknown; expiresInDays?: unknown; label?: unknown; perfilId?: unknown }
       | null;
 
-    const role = body?.role;
+    // Fase 6 dos perfis: convite pode carregar um perfil de acesso. Quando
+    // carrega, o PAPEL vem do perfil (papel_base) e o `role` do corpo é
+    // ignorado — papel e perfil divergentes no convite seria a divergência
+    // que o plano existe para evitar. O carimbo em `role` continua sendo
+    // gravado como retrato/fallback: se o perfil for apagado antes do
+    // aceite, o redeem (960) cai nele.
+    let perfilId: string | null = null;
+    let role: unknown = body?.role;
+    if (typeof body?.perfilId === "string" && body.perfilId) {
+      const perfil = await ctx.supabase
+        .from("cb_perfis_de_acesso")
+        .select("id, papel_base")
+        .eq("id", body.perfilId)
+        .eq("account_id", ctx.accountId)
+        .maybeSingle();
+      if (perfil.error) {
+        console.error("[POST /api/account/invitations] perfil error:", perfil.error);
+        return NextResponse.json(
+          { error: "Failed to load the access profile" },
+          { status: 500 },
+        );
+      }
+      if (!perfil.data) {
+        return NextResponse.json(
+          { error: "Access profile not found" },
+          { status: 400 },
+        );
+      }
+      perfilId = perfil.data.id;
+      role = perfil.data.papel_base;
+    }
+
     if (!isAccountRole(role) || role === "owner") {
       // The DB CHECK already rejects 'owner', but failing fast
       // here gives a clearer 400 than the eventual constraint
@@ -222,6 +253,7 @@ export async function POST(request: Request) {
         account_id: ctx.accountId,
         token_hash: hash,
         role,
+        perfil_id: perfilId,
         created_by_user_id: ctx.userId,
         label,
         expires_at: expiresAt.toISOString(),

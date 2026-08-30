@@ -22,6 +22,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useConversationNotes } from '@/hooks/use-conversation-notes';
 import { useFixarNota } from '@/hooks/use-fixar-nota';
 import { useCan } from '@/hooks/use-can';
+import { funilNoEscopo, funisVisiveis } from '@/lib/perfis/escopo';
 import { toast } from 'sonner';
 import { ActivityHistory } from '@/components/lead-events/activity-history';
 import { ContactTasks } from '@/components/tasks/contact-tasks';
@@ -135,6 +136,7 @@ export function PainelDoContato({
   // O mesmo gate da RLS: `agent`+ escreve contato/etiqueta/valores ("viewer"
   // só olha). O catálogo de CAMPOS é admin — gate separado, mais abaixo.
   const podeEditar = useCan('send-messages');
+  const { acesso } = useAuth();
   const podeGerirCampos = useCan('edit-settings');
 
   const [copied, setCopied] = useState(false);
@@ -380,7 +382,15 @@ export function PainelDoContato({
       toast.error(tSidebar('loadError'));
       return;
     }
-    setDeals(dealsRes.data ?? []);
+    // Recorte por perfil (Fase 4): negócio de funil fora do escopo não
+    // aparece na barra da conversa — mesmo cliente podendo ter caso nas duas
+    // áreas, cada equipe vê o seu. `pipeline_id` nulo (negócio órfão) passa,
+    // como todo "sem carimbo" do projeto.
+    setDeals(
+      ((dealsRes.data ?? []) as Deal[]).filter(
+        (d) => !d.pipeline_id || funilNoEscopo(acesso, d.pipeline_id),
+      ),
+    );
     const mapped = (tagsRes.data ?? [])
       .filter((ct: Record<string, unknown>) => ct.tags)
       .map((ct: Record<string, unknown>) => ({
@@ -396,11 +406,11 @@ export function PainelDoContato({
     // Catálogo da CONTA: falha aqui não trava a edição do contato — segue
     // tolerante, como antes (o estado anterior continua servindo).
     if (allTagsRes.data) setAllTags(allTagsRes.data);
-    if (funisRes.data) setPipelines(funisRes.data);
+    if (funisRes.data) setPipelines(funisVisiveis(acesso, funisRes.data));
     if (etapasRes.data) setAllStages(etapasRes.data as PipelineStage[]);
     if (!tarefasRes.error) setTarefasAbertas(tarefasRes.count ?? 0);
     setDadosProntos(true);
-  }, [contact, tSidebar]);
+  }, [contact, tSidebar, acesso]);
 
   // Load on contact change. setDeals/setTags run inside async
   // Supabase callbacks, not synchronously in the effect body.

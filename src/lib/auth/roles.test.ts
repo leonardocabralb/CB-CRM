@@ -7,6 +7,7 @@ import {
   canManageMembers,
   canSendMessages,
   canWriteNotes,
+  canManageAutomations,
   canTransferOwnership,
   canViewOnly,
   hasMinRole,
@@ -131,6 +132,15 @@ describe("capability predicates", () => {
     expect(canDeleteAccount("admin")).toBe(false);
     expect(canDeleteAccount("agent")).toBe(false);
     expect(canDeleteAccount("viewer")).toBe(false);
+  });
+
+  it("canManageAutomations: admin+ — automação, fluxo e disparo falam com o cliente sozinhos e em escala", () => {
+    expect(canManageAutomations("owner")).toBe(true);
+    expect(canManageAutomations("admin")).toBe(true);
+    // Era 'agent' até a Fase 2 dos perfis (2026-08-30). Se este expect
+    // quebrar num merge do upstream, a guarda das 9 rotas voltou a agent.
+    expect(canManageAutomations("agent")).toBe(false);
+    expect(canManageAutomations("viewer")).toBe(false);
   });
 
   it("canTransferOwnership: owner only", () => {

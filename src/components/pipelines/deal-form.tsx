@@ -1,5 +1,6 @@
 "use client";
 
+import { funisVisiveis } from "@/lib/perfis/escopo";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -65,7 +66,7 @@ export function DealForm({
 }: DealFormProps) {
   const t = useTranslations("Pipelines.form");
   const supabase = createClient();
-  const { accountId } = useAuth();
+  const { accountId, acesso } = useAuth();
 
   const [title, setTitle] = useState("");
   // Número, não texto: quem converte o que foi digitado é o `ValorInput`.
@@ -134,19 +135,22 @@ export function DealForm({
       const [c, p, funis, etapas] = await Promise.all([
         supabase.from("contacts").select("*").order("name"),
         supabase.from("profiles").select("*").order("full_name"),
+        // Recorte por perfil (Fase 4): o formulário só oferece funis do
+        // escopo — sem isto, o advogado do trabalhista criaria negócio no
+        // funil do bancário pelo select.
         supabase.from("pipelines").select("id, name").order("name"),
         supabase.from("pipeline_stages").select("*").order("position"),
       ]);
       if (cancelled) return;
       setContacts((c.data ?? []) as Contact[]);
       setProfiles((p.data ?? []) as Profile[]);
-      setPipelines((funis.data ?? []) as { id: string; name: string }[]);
+      setPipelines(funisVisiveis(acesso, (funis.data ?? []) as { id: string; name: string }[]));
       setAllStages((etapas.data ?? []) as PipelineStage[]);
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, supabase]);
+  }, [open, supabase, acesso]);
 
   // Fetch linked conversation for the selected contact (newest open one).
   // Clearing on no-selection is sync with prop state; the populated

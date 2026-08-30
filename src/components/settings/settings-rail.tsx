@@ -4,6 +4,8 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { cn } from '@/lib/utils';
+import { podeVerSecao } from '@/lib/perfis/visibilidade';
+import { useAuth } from '@/hooks/use-auth';
 import {
   RAIL_GROUPS,
   SECTION_META,
@@ -31,6 +33,7 @@ export function SettingsRail({
   onSelect: (section: SettingsSection) => void;
   hints?: Partial<Record<SettingsSection, ReactNode>>;
 }) {
+  const { acesso } = useAuth();
   const t = useTranslations('Settings');
   const activeRef = useRef<HTMLButtonElement>(null);
 
@@ -56,9 +59,15 @@ export function SettingsRail({
       )}
     >
       {RAIL_GROUPS.map(({ label, group }) => {
+        // Recorte por perfil (Fase 2): seção fora do perfil some do rail.
+        // As pessoais (perfil, senha, tema) passam sempre — é a garantia de
+        // `podeVerSecao`, não deste filtro. Grupo que ficar vazio some
+        // inteiro, senão sobra um cabeçalho "Workspace" órfão apontando para
+        // nada.
         const items = SETTINGS_SECTIONS.filter(
-          (s) => SECTION_META[s].group === group,
+          (s) => SECTION_META[s].group === group && podeVerSecao(acesso, s),
         );
+        if (items.length === 0) return null;
         return (
           <div
             key={group}

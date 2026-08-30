@@ -57,7 +57,7 @@ export function AutomationsBoard({
 }) {
   const t = useTranslations("Pipelines.automacoes")
   const router = useRouter()
-  const canCreate = useCan("send-messages")
+  const canCreate = useCan("manage-automations")
   const [expandindo, setExpandindo] = useState<Automation | null>(null)
   const [copiando, setCopiando] = useState<string | null>(null)
 

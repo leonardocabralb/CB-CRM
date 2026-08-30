@@ -12,6 +12,9 @@ import type { Conversation, Message, Contact, ConversationStatus } from "@/types
 import { useRealtime } from "@/hooks/use-realtime";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { ConversationList } from "@/components/inbox/conversation-list";
+import { ConversaForaDaArea } from "@/components/inbox/conversa-fora-da-area";
+import { useAuth } from "@/hooks/use-auth";
+import { conversaNoEscopo } from "@/lib/perfis/escopo";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { GroupSidebar } from "@/components/inbox/group-sidebar";
@@ -50,6 +53,11 @@ function InboxPageInner() {
   const deepLinkConvId = searchParams.get("c");
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  // Recorte por perfil (Fase 3). A LINHA aparece na lista (a busca acha
+  // conversa de outra área); ABRIR é que rende o cartão amigável no lugar do
+  // fio. Derivado, nunca estado: a seleção pode chegar por clique, por deep
+  // link (?conversation=) ou por URL colada, e todas caem aqui.
+  const { acesso } = useAuth();
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
@@ -521,7 +529,11 @@ function InboxPageInner() {
           // does — the user just deep-linked into this conv, treat that the
           // same as a click. Leaves activeConversation.unread_count alone so
           // the MessageThread reset effect still fires the server UPDATE.
-          if (match.unread_count > 0) {
+          // ⚠️ MESMA guarda de escopo do clique (Fase 3): deep link de
+          // notificação pode apontar conversa de outra área — o fio não
+          // monta, o servidor não zera, e zerar só o espelho local mentiria
+          // "lida" até o próximo reload. Achado da revisão fria.
+          if (conversaNoEscopo(acesso, match) && match.unread_count > 0) {
             setConversations((prev) =>
               prev.map((c) =>
                 c.id === match.id ? { ...c, unread_count: 0 } : c,
@@ -531,7 +543,7 @@ function InboxPageInner() {
         }
       }
     },
-    [deepLinkConvId, activeConversation?.id]
+    [deepLinkConvId, activeConversation?.id, acesso]
   );
 
   const handleSelectConversation = useCallback(
@@ -541,6 +553,7 @@ function InboxPageInner() {
       // when conversationId changes — so messages would stay empty until
       // the user navigated away and back. Bail out early instead.
       if (activeConversation?.id === conv.id) return;
+      const bloqueadaAoSelecionar = !conversaNoEscopo(acesso, conv);
       setActiveConversation(conv);
       setActiveContact(conv.contact ?? null);
       setMessages([]);
@@ -556,13 +569,19 @@ function InboxPageInner() {
       // here means the user sees the badge disappear the instant they
       // click instead of waiting for the round-trip — and it persists
       // even if the realtime UPDATE is dropped.
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === conv.id && c.unread_count > 0
-            ? { ...c, unread_count: 0 }
-            : c,
-        ),
-      );
+      // ⚠️ Conversa fora do perfil NÃO zera o contador — nem aqui nem no
+      // servidor (o reset de verdade mora no MessageThread, que não monta
+      // para ela). Zerar só o espelho local mentiria "lida" numa conversa
+      // que ninguém leu, até o próximo reload desmentir.
+      if (!bloqueadaAoSelecionar) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === conv.id && c.unread_count > 0
+              ? { ...c, unread_count: 0 }
+              : c,
+          ),
+        );
+      }
       // Record the selection on the deep-link ref BEFORE we change the
       // URL. The router.replace below flips `deepLinkConvId`, which can
       // in turn cause ConversationList to refetch and eventually call
@@ -576,7 +595,7 @@ function InboxPageInner() {
       // replace() to avoid polluting browser history with every click.
       router.replace(`/inbox?c=${conv.id}`, { scroll: false });
     },
-    [activeConversation?.id, router]
+    [activeConversation?.id, router, acesso]
   );
 
   // Mobile "back" — deselect the conversation so the list pane comes
@@ -760,6 +779,14 @@ function InboxPageInner() {
           )}
           inert={fundoInerte}
         >
+          {activeConversation && !conversaNoEscopo(acesso, activeConversation) ? (
+            // Fora do perfil: o cartão SUBSTITUI o fio inteiro. Substituir em
+            // vez de embrulhar é load-bearing — montar o MessageThread
+            // buscaria as mensagens E zeraria as não-lidas no servidor, e a
+            // conversa de outra área viraria "lida" por quem nem a pode
+            // responder.
+            <ConversaForaDaArea onBack={handleCloseConversation} />
+          ) : (
           <MessageThread
             conversation={activeConversation}
             contact={activeContact}
@@ -776,6 +803,7 @@ function InboxPageInner() {
             onRefresh={handleManualRefresh}
             termoDaBusca={termoDaBusca}
           />
+          )}
         </div>
 
         {/* Backdrop do overlay mobile — mesmo padrão do drawer de navegação
@@ -830,7 +858,12 @@ function InboxPageInner() {
           tabIndex={-1}
         >
           <div className="h-full w-full lg:w-[360px]">
-            {activeConversation?.group_id ? (
+            {activeConversation && !conversaNoEscopo(acesso, activeConversation) ? (
+              // Fora do perfil: nada de ficha. A LINHA da lista é pública por
+              // decisão do operador; a ficha traz anotações internas,
+              // negócios e histórico — conteúdo de outra área.
+              null
+            ) : activeConversation?.group_id ? (
               // Painel próprio: a ficha de contato é etiquetas, negócios,
               // anotações e histórico do lead — nada disso existe num grupo.
               <GroupSidebar

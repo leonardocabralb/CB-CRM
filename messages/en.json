@@ -1736,7 +1736,12 @@
       "removeDialogDesc": "Remove <bold>{name}</bold> from the account? They'll be signed out of this account and given a fresh personal account on their next sign-in. Their login isn't deleted.",
       "cancel": "Cancel",
       "removing": "Removing...",
-      "removeBtn": "Remove member"
+      "removeBtn": "Remove member",
+      "semPerfil": "No profile (full access)",
+      "perfilChanged": "Profile updated",
+      "perfilChangeError": "Could not assign the profile",
+      "legendaTitle": "What each profile grants",
+      "legendaMembros": "{count} {count, plural, =1 {member} other {members}}"
     },
     "invite": {
       "inviteCreated": "Invite created",
@@ -1764,7 +1769,8 @@
       "labelTooLong": "Label must be {max} characters or fewer",
       "copied": "Invite link copied",
       "clipboardBlocked": "Clipboard blocked — copy the link manually",
-      "whatsappMessage": "Join {accountName} on wacrm using this link (valid for {expiresInDays} days): {url}"
+      "whatsappMessage": "Join {accountName} on wacrm using this link (valid for {expiresInDays} days): {url}",
+      "perfilLabel": "Access profile"
     },
     "tagsAndFields": {
       "title": "Fields & tags",
@@ -1994,6 +2000,7 @@
       "members": "Team members",
       "integracoes": "Integrations",
       "api": "API keys",
+      "perfis": "Access profiles",
       "acervo": "Media library"
     },
     "integracoes": {
@@ -2845,5 +2852,61 @@
     "showDone": "Show {count} done",
     "openCount": "{count, plural, =1 {1 open task} other {# open tasks}}",
     "deleteConfirm": "Delete \"{titulo}\"? This cannot be undone."
+  },
+  "TelaBloqueada": {
+    "title": "This area is not part of your profile",
+    "body": "The page exists, but your access profile does not include it. If you need it for your work, ask the account administrator.",
+    "cta": "Go to my workspace"
+  },
+  "ConversaForaDaArea": {
+    "title": "This conversation belongs to another area",
+    "body": "It showed up in your search or notifications, but it is outside the connections of your access profile. If you need it, ask the account administrator.",
+    "back": "Back to my conversations"
+  },
+  "PerfisPanel": {
+    "title": "Access profiles",
+    "description": "Who sees what. Each member gets a profile, and the profile defines role, screens and area (connections and pipelines).",
+    "newProfile": "New profile",
+    "loading": "Loading…",
+    "loadError": "Could not load profiles",
+    "emptyState": "No profiles yet. Start from the default profiles — Administrator, Lawyer and Observer — and adjust as you like.",
+    "seedButton": "Create default profiles",
+    "seedOk": "{count} {count, plural, =1 {profile created} other {profiles created}}",
+    "seedError": "Could not create the default profiles",
+    "rowSummary": "{telas} {telas, plural, =1 {screen} other {screens}} · {membros} {membros, plural, =1 {member} other {members}}",
+    "allChannels": "all connections",
+    "someChannels": "{count} {count, plural, =1 {connection} other {connections}}",
+    "allPipelines": "all pipelines",
+    "somePipelines": "{count} {count, plural, =1 {pipeline} other {pipelines}}",
+    "duplicate": "Duplicate",
+    "edit": "Edit",
+    "delete": "Delete",
+    "copyName": "{nome} (copy)",
+    "createTitle": "New access profile",
+    "editTitle": "Edit profile",
+    "editorDescription": "The role defines what the person CAN do; screens and area define what they SEE.",
+    "nameLabel": "Name",
+    "namePlaceholder": "e.g. Labor Lawyer",
+    "roleLabel": "Role",
+    "roleHint": "Changing the role of a profile in use updates the role of all its members.",
+    "telasLabel": "Visible screens",
+    "telasHint": "With none checked, the profile only sees Settings (the lock marks what no profile can hide).",
+    "secoesLabel": "Settings sections",
+    "secoesHint": "Profile, password and appearance always show, for everyone — that is why they are not listed.",
+    "secaoPerfis": "Access profiles",
+    "canaisLabel": "Area connections",
+    "escopoVazioHint": "With none checked, the profile sees ALL connections and pipelines — check to restrict.",
+    "funisLabel": "Area pipelines",
+    "sugerirFunis": "Suggest from checked numbers",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saveOk": "Profile saved",
+    "saveOkComMembros": "Profile saved — {count} {count, plural, =1 {member had their role updated} other {members had their role updated}}",
+    "saveError": "Could not save the profile",
+    "deleteTitle": "Delete the profile \"{nome}\"?",
+    "deleteBody": "Only a profile with no members can be deleted. If people are on it, move them to another profile first.",
+    "deleteConfirm": "Delete profile",
+    "deleteOk": "Profile deleted",
+    "deleteError": "Could not delete the profile"
   }
 }

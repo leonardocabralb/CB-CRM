@@ -13,7 +13,9 @@ export async function POST(request: Request) {
   // at least `agent`; a viewer must not be able to trigger sends.
   let accountId: string
   try {
-    const ctx = await requireRole('agent')
+    // Fase 2 dos perfis (2026-08-30): mutação de automação/fluxo/disparo subiu de
+    // 'agent' para 'admin' — decisão do operador; ver canManageAutomations em roles.ts.
+    const ctx = await requireRole('admin')
     accountId = ctx.accountId
   } catch (err) {
     return toErrorResponse(err)
