@@ -411,7 +411,6 @@
       "pinNote": "Pin note",
       "unpinNote": "Unpin note",
       "pinnedNote": "Pinned",
-      "pinError": "Could not pin the note.",
       "tabTracking": "Tracking",
       "noTrackingFields": "No tracking fields yet.",
       "seedTrackingFields": "Create the {count} default fields",
@@ -476,7 +475,13 @@
       "delete": "Delete note",
       "confirmDelete": "Delete",
       "cancelDelete": "Cancel",
-      "deleteFailed": "Could not delete the note."
+      "deleteFailed": "Could not delete the note.",
+      "pinnedBanner": "Pinned note",
+      "pin": "Pin note to the top of the conversation",
+      "unpin": "Unpin note",
+      "expand": "Show the whole note",
+      "collapse": "Collapse note",
+      "pinError": "Could not pin the note."
     },
     "scheduled": {
       "sectionTitle": "Scheduled",
