@@ -1462,13 +1462,22 @@ sempre. O que morde código novo:
 - ⚠️ **O gancho do ENVIO mora no NÚCLEO (`sendMessageToConversation`), e é a
   escolha do LUGAR que define a regra.** Por ali passam os quatro envios de
   gente: compositor, ficha do contato, agendada e API v1. Broadcast
-  (`broadcast-core.ts`) e automação/fluxo (`meta-send.ts`,
-  `engine-send.ts`) **não passam** — e é assim que ficam de fora sem uma
-  linha de guarda. Um disparo para 500 contatos abriria 500 cards de uma
-  vez; "o robô respondeu" não é o escritório decidindo abordar ninguém.
-  ⚠️ Há teste estrutural lendo os fontes
-  (`pipeline-routing.chamadores.test.ts`) — "reusar o núcleo de envio no
-  broadcast" parece limpeza de código e traz o roteador junto, escondido.
+  (`src/lib/whatsapp/broadcast-core.ts` e `broadcast-resume.ts`) e
+  automação/fluxo/IA **não passam** — e é assim que ficam de fora sem uma
+  linha de guarda. ⚠️ **Há DOIS `meta-send.ts`**: o sender REAL do robô é
+  `src/lib/flows/meta-send.ts` (fluxo, resposta de IA e mídia de automação
+  saem por ele); `src/lib/automations/meta-send.ts` é só um wrapper que
+  delega para ele. Uma versão desta nota citava "meta-send.ts" sem caminho e
+  o teste estrutural passou a vigiar o wrapper — o sender real ficou
+  descoberto (achado #14 do plano de 31/08). Um disparo para 500 contatos
+  abriria 500 cards de uma vez; "o robô respondeu" não é o escritório
+  decidindo abordar ninguém.
+  ⚠️ O teste estrutural (`pipeline-routing.chamadores.test.ts`) agora tem
+  uma varredura DEFAULT-DENY: quem citar `routeContactToPipeline` ou
+  `sendMessageToConversation` fora da allowlist explícita reprova por
+  padrão — sender novo entra na allowlist por decisão visível no diff, não
+  por esquecimento. "Reusar o núcleo de envio no broadcast" parece limpeza
+  de código e traz o roteador junto, escondido.
 - ⚠️ **Via `supabaseAdmin()` no núcleo**, como o carimbo de canal ao lado: a
   rota `/api/whatsapp/send` entrega o client do OPERADOR (sob RLS), e o
   roteador lê `accounts` e escreve em `deals` — sob RLS um `agent` deixaria
