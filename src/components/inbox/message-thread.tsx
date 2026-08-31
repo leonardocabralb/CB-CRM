@@ -14,6 +14,7 @@ import { ExecutarAutomacaoDialog } from "./executar-automacao-dialog";
 import { AvataresNaConversa } from "./avatares-na-conversa";
 import { useQuemVeAConversa } from "@/hooks/use-conversa-aberta";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
+import { horasRestantes, janelaFechada } from "@/lib/inbox/janela-24h";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
 import {
   aplicarAssinatura,
@@ -54,7 +55,7 @@ import {
 } from "lucide-react";
 import { nomeDoGrupo } from "@/lib/cb-groups/display";
 import type { CbChannel } from "@/lib/cb-channels/repo";
-import { format, isToday, isYesterday, differenceInHours } from "date-fns";
+import { format, isToday, isYesterday } from "date-fns";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -514,44 +515,49 @@ export function MessageThread({
    */
   const janelaDe24h = !canaisCarregando && !evolutionActive;
 
-  // 24-hour session timer
+  // 24-hour session timer. A REGRA mora em `lib/inbox/janela-24h`, porque o
+  // portão do disparo (abaixo) tem de ler exatamente a mesma coisa com outro
+  // relógio.
   const sessionInfo = useMemo(() => {
     if (!messages.length) return { expired: false, remaining: "" };
-
-    // Find last customer message
-    const lastCustomerMsg = [...messages]
-      .reverse()
-      .find((m) => m.sender_type === "customer");
-
-    if (!lastCustomerMsg) return { expired: true, remaining: "No customer messages" };
-
-    const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
-    const expired = hoursSince >= 24;
-
-    if (expired) {
-      return { expired: true, remaining: tTimer("expired") };
+    // UM instante para as duas leituras: entre dois `new Date()` cabe uma
+    // virada de hora, e aí a janela sairia "aberta" com "0h restantes".
+    const agora = new Date();
+    if (janelaFechada(messages, agora)) {
+      const temCliente = messages.some((m) => m.sender_type === "customer");
+      return {
+        expired: true,
+        remaining: temCliente ? tTimer("expired") : "No customer messages",
+      };
     }
 
-    const hoursLeft = 24 - hoursSince;
+    const hoursLeft = horasRestantes(messages, agora);
     const remaining =
       hoursLeft >= 1
         ? tTimer("xhRemaining", { hours: Math.floor(hoursLeft) })
         : tTimer("xmRemaining", { minutes: Math.floor(hoursLeft * 60) });
 
-    return { expired, remaining };
+    return { expired: false, remaining };
   }, [messages, tTimer]);
 
   /**
-   * A janela expirada NO INSTANTE DO DISPARO — o último portão antes da rede.
+   * O ÚLTIMO PORTÃO ANTES DA REDE: a janela está fechada NESTE instante?
    *
    * ⚠️ Não é redundante com a prop `sessionExpired` do compositor. Aquela é
    * lida quando o operador aperta Enter; esta, quando a mensagem realmente
-   * sai — e entre as duas cabem os 5s da janela de desfazer MAIS o tempo de
-   * `/api/cb/channels` responder. Durante a carga o transporte é desconhecido
-   * e o compositor fica LIBERADO de propósito (senão as primeiras teclas se
-   * perdem — é a correção do PR #81); sem este portão, o que foi digitado
-   * nesse vão era despachado para a Meta fora da janela, que só o servidor
-   * dela recusaria. (Achado do Codex na revisão do PR #81.)
+   * sai — e entre as duas cabem os 5s da janela de desfazer, o tempo de
+   * `/api/cb/channels` responder e os minutos que um rascunho de mídia fica
+   * aberto enquanto se escreve a legenda. Durante a carga dos canais o
+   * transporte é desconhecido e o compositor fica LIBERADO de propósito
+   * (senão as primeiras teclas se perdem — é a correção do PR #81); sem este
+   * portão, o que foi digitado nesse vão era despachado para a Meta fora da
+   * janela, que só o servidor dela recusaria.
+   *
+   * ⚠️ RECALCULA A REGRA, nunca lê `sessionInfo.expired`. Aquele `useMemo`
+   * depende de `[messages, tTimer]`, então o simples PASSAR DAS HORAS não o
+   * recomputa: um valor cacheado aqui responderia "aberta" para sempre num
+   * fio parado, que é justamente o fio prestes a expirar. O relógio é lido no
+   * disparo. (Achados do Codex nas revisões dos PRs #81 e #84.)
    *
    * ⚠️ E ele NÃO engole a mensagem: publica a bolha e a marca `failed`, o
    * mesmo caminho da recusa da Meta. Abortar antes de publicar apagaria o
@@ -559,13 +565,20 @@ export function MessageThread({
    * o que escreveu sem nada na tela para copiar de volta. Aqui ele vê a bolha
    * com o texto dele e o motivo em português, sem custar uma chamada à Meta.
    *
-   * Escrita em efeito (não no render) pela regra de refs do React 19, como o
-   * `onMessagesLoadedRef` abaixo. O consumidor lê no disparo, muito depois.
+   * Os refs são escritos em efeito (não no render) pela regra de refs do
+   * React 19, como o `onMessagesLoadedRef` abaixo. O consumidor lê no
+   * disparo, muito depois.
    */
-  const janelaExpiradaRef = useRef(false);
+  const janelaDe24hRef = useRef(false);
+  const mensagensRef = useRef<Message[]>(messages);
   useEffect(() => {
-    janelaExpiradaRef.current = janelaDe24h && sessionInfo.expired;
+    janelaDe24hRef.current = janelaDe24h;
+    mensagensRef.current = messages;
   });
+  const janelaFechadaAgora = useCallback(
+    () => janelaDe24hRef.current && janelaFechada(mensagensRef.current, new Date()),
+    [],
+  );
 
   // Store latest callback in a ref so fetchMessages doesn't need to
   // depend on `onMessagesLoaded` — otherwise parent re-renders cause
@@ -1037,9 +1050,9 @@ export function MessageThread({
       publicarMensagemOtimista(optimisticMsg);
       setReplyTo(null);
 
-      // Ver `janelaExpiradaRef`: a janela pode ter fechado — ou só ter ficado
-      // CONHECIDA — entre o Enter e este instante.
-      if (janelaExpiradaRef.current) {
+      // Ver `janelaFechadaAgora`: a janela pode ter fechado — ou só ter
+      // ficado CONHECIDA — entre o Enter e este instante.
+      if (janelaFechadaAgora()) {
         onUpdateMessage(tempId, { status: "failed" });
         toast.error(t("sessionExpiredBlocked"));
         return;
@@ -1124,6 +1137,7 @@ export function MessageThread({
       t,
       marcarEnviada,
       nomeQueAssina,
+      janelaFechadaAgora,
     ]
   );
 
@@ -1154,10 +1168,11 @@ export function MessageThread({
       publicarMensagemOtimista(optimisticMsg);
       setReplyTo(null);
 
-      // Mesmo portão do texto (ver `janelaExpiradaRef`), e aqui o vão é maior:
+      // Mesmo portão do texto (ver `janelaFechadaAgora`), e aqui o vão é
+      // maior:
       // o anexo passa pelo MediaDraftPreview, que SUBSTITUI o compositor e
       // vive enquanto o operador escreve a legenda.
-      if (janelaExpiradaRef.current) {
+      if (janelaFechadaAgora()) {
         onUpdateMessage(tempId, { status: "failed" });
         toast.error(t("sessionExpiredBlocked"));
         // Mesma coleta dos outros dois caminhos de falha: o arquivo já subiu e
@@ -1205,7 +1220,14 @@ export function MessageThread({
         void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
       }
     },
-    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada, t],
+    [
+      conversation,
+      publicarMensagemOtimista,
+      onUpdateMessage,
+      marcarEnviada,
+      janelaFechadaAgora,
+      t,
+    ],
   );
 
   const handleSendInteractive = useCallback(
@@ -1227,6 +1249,17 @@ export function MessageThread({
         reply_to_message_id: replyToId,
       };
       publicarMensagemOtimista(optimisticMsg);
+
+      // Mesmo portão dos outros dois (ver `janelaFechadaAgora`). O diálogo da
+      // interativa é montado no compositor e o botão Enviar DELE não olha
+      // `sessionExpired`: aberto durante a carga dos canais, ele continua
+      // clicável depois de a carga resolver para uma sessão Meta expirada.
+      // (Achado do Codex na revisão do PR #84.)
+      if (janelaFechadaAgora()) {
+        onUpdateMessage(tempId, { status: "failed" });
+        toast.error(t("sessionExpiredBlocked"));
+        return;
+      }
 
       try {
         const res = await fetch("/api/whatsapp/send", {
@@ -1259,7 +1292,14 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada],
+    [
+      conversation,
+      publicarMensagemOtimista,
+      onUpdateMessage,
+      marcarEnviada,
+      janelaFechadaAgora,
+      t,
+    ],
   );
 
   const handleStatusChange = useCallback(
