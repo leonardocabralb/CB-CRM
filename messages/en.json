@@ -848,6 +848,8 @@
       "fieldName": "New field name…",
       "loading": "Loading…",
       "empty": "No custom fields yet.",
+      "loadError": "Couldn't load the fields and blocks. Nothing was changed.",
+      "retry": "Try again",
       "renameAria": "Rename {name}",
       "deleteTitle": "Delete field",
       "deleteConfirm": "Delete \"{name}\"? This also removes its stored value on every contact. This cannot be undone.",

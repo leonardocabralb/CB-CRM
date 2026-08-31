@@ -149,6 +149,17 @@ export function CustomFieldsPanel({
   const [novoGrupo, setNovoGrupo] = useState('');
   const [criandoGrupo, setCriandoGrupo] = useState(false);
   const [semeando, setSemeando] = useState(false);
+  /**
+   * ⚠️ Só vira `true` quando as DUAS consultas voltaram OK pelo menos uma
+   * vez. Este é o ÚNICO painel que ESCREVE blocos, e era o único que tratava
+   * falha de consulta como lista vazia: com `grupos = []`, `agruparCampos`
+   * joga tudo no Geral (fallback de exibição, correto) e o arrastar seguinte
+   * PERSISTIA esse fallback — `grupo_id: null` para a conta inteira, via
+   * RPC, sem erro em lugar nenhum (achado #02 do plano de 31/08). Enquanto
+   * for `false`, a lista nem renderiza (caixa de erro + tentar de novo), e
+   * os dois escritores de ordenação recusam por cima.
+   */
+  const [catalogoConfiavel, setCatalogoConfiavel] = useState(false);
 
   const fetchFields = useCallback(async () => {
     if (!accountId) return;
@@ -165,10 +176,18 @@ export function CustomFieldsPanel({
         .order('posicao')
         .order('nome'),
     ]);
+    // Falha NÃO é vazio: preserva o estado anterior e avisa — o mesmo que as
+    // duas telas de leitura (ficha e painel da conversa) já fazem.
+    if (camposRes.error || gruposRes.error) {
+      toast.error(t('loadError'));
+      setLoading(false);
+      return;
+    }
     setFields((camposRes.data as CustomField[] | null) ?? []);
     setGrupos((gruposRes.data as GrupoDeCampos[] | null) ?? []);
+    setCatalogoConfiavel(true);
     setLoading(false);
-  }, [supabase, accountId]);
+  }, [supabase, accountId, t]);
 
   // Load the field list on mount once the account is known. The setters
   // inside fetchFields run after the Supabase await — not synchronously in
@@ -543,6 +562,11 @@ export function CustomFieldsPanel({
   }
 
   async function reordenarCampos(campoId: string, alvo: string) {
+    // Cerca do achado #02: sem catálogo confiável o estado pode ser o
+    // fallback de exibição (tudo no Geral), e gravá-lo zeraria os blocos da
+    // conta. A lista nem renderiza nesse estado — isto protege o próximo
+    // refactor de render, não o operador de hoje.
+    if (!catalogoConfiavel) return;
     const novos = moverCampo(blocos, campoId, alvo);
     if (!novos) return;
 
@@ -577,6 +601,9 @@ export function CustomFieldsPanel({
   }
 
   async function reordenarGrupos(grupoId: string, alvoId: string) {
+    // Mesma cerca de `reordenarCampos` — este é o outro escritor que manda a
+    // conta inteira de uma vez.
+    if (!catalogoConfiavel) return;
     const ordenados = ordenarGrupos(grupos);
     const de = ordenados.findIndex((g) => g.id === grupoId);
     const para = ordenados.findIndex((g) => g.id === alvoId);
@@ -730,6 +757,18 @@ export function CustomFieldsPanel({
           <div className="text-muted-foreground flex items-center justify-center gap-2 py-8 text-sm">
             <Loader2 className="size-4 animate-spin" />
             {t('loading')}
+          </div>
+        ) : !catalogoConfiavel ? (
+          /* ⚠️ Carga que falhou NÃO vira "catálogo vazio" (§8.3 do plano):
+             afirmar "nenhum campo ainda" sobre consulta falha é a metade de
+             exibição do mesmo defeito que o arrastar persistia. Sem lista na
+             tela, não há arrastar nem seletor de bloco para gravar coisa
+             errada. */
+          <div className="text-muted-foreground flex flex-col items-center gap-3 py-8 text-sm">
+            <p>{t('loadError')}</p>
+            <Button variant="outline" size="sm" onClick={() => void fetchFields()}>
+              {t('retry')}
+            </Button>
           </div>
         ) : blocos.length === 0 ? (
           <p className="text-muted-foreground py-8 text-center text-sm">
