@@ -150,7 +150,7 @@ as frentes deles 🔵 e leve as opções ao operador antes de implementar.
 | **F1** | Vazamento e perda de dado do cliente | #01 #02 #03 #04 | 🔴 crítico | ✅ | #86 |
 | **F2** | Dono durável (CASCADE para `auth.users`) | #11 #12 #13 | 🔴 crítico | ⬜ | — |
 | **F3** | Fila de gravação de campo personalizado | #09 #10 (+#03) | 🟠 alto | ✅ | #87 |
-| **F4** | Radar: alarme apagado ou inalcançável | #05 #21 #22 #23 #28 | 🟠 alto | ⬜ | — |
+| **F4** | Radar: alarme apagado ou inalcançável | #05 #21 #22 #23 #28 | 🟠 alto | 🟨 #05/#21/#28 ✅ no PR #89 · **🔵 #22 e #23 aguardando decisão do operador (31/08)** | #89 |
 | **F5** | Vazio virando afirmação (`useChannels`) | #06 #08 | 🟠 alto | ⏸️ **aguardando a mesclagem do PR #84**: o consumo do sinalizador em `message-thread.tsx` (linha do `janelaDe24h`) e o M10 caem DENTRO do hunk 514-546 que o #84 reescreve — fazer antes conflita | — |
 | **F6** | Portão de i18n no CI | #18 #19 #20 #24 | 🟠 alto | ⬜ | — |
 | **F7** | Guardas e testes estruturais com falso verde | #14 #15 | 🟠 alto | ✅ | #88 |
@@ -902,6 +902,13 @@ duas consultas; num hook que recarrega a cada 2 min, é barato.
 o erro é engolido. No worker, aplique só o `.limit()` + aviso; ele já trata o
 erro (e esse `throw` tem custo próprio: ver M23 na §6).
 
+**Resolvido em** PR #89 — a "alternativa melhor" nos DOIS lados: a consulta
+de agendadas roda DEPOIS da primeira e recortada por `.in('message_id', …)`
+(hook: ids das respostas, teto = TETO_RESPOSTAS; worker: ids da equipe na
+janela, teto = TETO_MENSAGENS_JANELA) — exata e limitada por construção,
+sem depender de `order`/`limit` à mão. · **Medido:** typecheck/suíte 2258
+verdes; ver M23 para a decisão sobre o `throw` do worker.
+
 ---
 
 ### #21 — Envio agendado zera a pendência do cliente esquecido
@@ -968,6 +975,16 @@ perguntas diferentes — `porGente` decide se a pendência fechou;
 `houveHumanoNaJanela` decide se a análise congelada é preservada. O CLAUDE.md
 avisa: "Não unificar as duas sem entender qual pergunta cada uma responde".
 `worker.test.ts` não tem nenhum caso de agendada — acrescente.
+
+**Resolvido em** PR #89 — `!deAgendada.has(m.id)` nas DUAS réguas (não
+unificadas: a diferença deliberada é só o `from_device`, e os dois
+comentários foram reescritos para dizer exatamente isso — o de
+`worker.ts:437-441` afirmava que a divergência INTEIRA era proposital).
+· **Medido:** pino estrutural novo em `worker.test.ts` com contraprova por
+mutação — reverter o `houveHumanoNaJanela` à forma antiga derruba 2 testes;
+restaurado, 9/9. (Harness de fluxo completo não existe no arquivo — mock
+de todo o admin client seria maquinário desproporcional; o pino cobre a
+regressão exata do achado: uma régua atualizada, a outra esquecida.)
 
 ---
 
@@ -1114,6 +1131,22 @@ mudança).
 **Armadilhas.** Antes do PR os dois botões funcionavam nesse estado — ou
 seja, é regressão, não dívida antiga. Confira também o `reanalisar`
 (`worker.ts:787`), que tem a mesma recusa cega.
+
+**Resolvido em** PR #89 — **medição primeiro** (era PLAUSÍVEL): sonda SQL
+read-only em produção achou 60 insights, ZERO `running` órfão neste
+instante e zero `failed`/`tentativas` — nenhuma instância viva, mas nada
+refutado: o mecanismo está nos TRÊS lugares por leitura (rota, pré-cheque
+do reanalisar e o próprio `reivindicar`, que recusava `running` cegamente),
+sucessos zeram `tentativas` (rastros antigos se apagam) e a janela
+rollout×ciclo é real (rollout a cada merge; ciclo de até 110s por 15 min).
+Fix: `claimVivo()`/`corteDeClaimAbandonado()` exportados do worker (régua
+IDÊNTICA ao recolhedor, `running_desde` nulo incluso, comparação por
+INSTANTE — nunca lexicográfica); rota e reanalisar recusam só claim VIVO, o
+409 idem, e `reivindicar` TOMA claim abandonado (seguro: a cerca de posse
+corta o worker antigo ao regravar o carimbo). · **Medido:** testes de
+`claimVivo` (offsets `+00:00`×`Z` inclusos); simulação em produção foi
+DESCARTADA de propósito — exigiria mutar insight real e o recolhedor
+fabricaria um cartão de falha falso no painel da equipe.
 
 ---
 
@@ -1997,7 +2030,7 @@ avaliado e rejeitado.
 | **M13** ⚠️ | `message-thread.tsx:1181` | `handleSendInteractive` é o 3º disparo e ficou fora do portão da leva pendente. **Só existe se a leva da §0.3 tiver sido mesclada**; sem ela o item vira "conferir se o portão, quando entrar, cobre os TRÊS disparos" | F5 |
 | **M14** | `use-channels.ts:29` | sem cache: 2 a 4 GETs idênticos por carga do inbox (`conversation-list`, `message-thread`, `scheduled-bar`, `group-sidebar`) | F5 |
 | **M15** | `abrir/route.ts:236, :46, :172, :247, :35, :200` | seis achados menores da mesma rota: `buscar()` descarta `error`; erro ao ler `profiles` vira 403 "seu perfil não está ligado a uma conta"; `pinConversationChannel` roda incondicionalmente (FIXA canal de conversa ativa alheia) e o retorno é descartado; conversa `closed` não chama `reopenClosedConversation`; **única rota de escrita de `/api/cb` sem `checkRateLimit`**; nome digitado é ignorado quando o contato já existe | F9 / PR próprio — a METADE do `buscar()` (erro descartado) ✅ saiu no PR #86, junto com o #04; o resto segue pendente |
-| **M16** | `execucoes/executar/route.ts:116` | o comentário diz "Falha ABERTA (contato sem negócio deixa passar)"; `stageInScope` devolve `false` (`engine.ts:1167`) → 422 fail-CLOSED. Nota mentindo | §7 |
+| **M16** | `execucoes/executar/route.ts:116` | o comentário diz "Falha ABERTA (contato sem negócio deixa passar)"; `stageInScope` devolve `false` (`engine.ts:1167`) → 422 fail-CLOSED. Nota mentindo | §7 — ✅ PR #89 corrigiu o comentário da rota E a nota do CLAUDE.md (as duas direções, com motivo) |
 | **M17** | `964:129` | a conferência da migration pega policy RENOMEADA (`count < 12`) mas não policy ADICIONADA — um merge do upstream que reintroduza `"Users can manage own broadcasts"` reabre o furo com a migration imprimindo "OK" | PR próprio |
 | **M18** | `perfis-panel.tsx:538` | a grade de canais do perfil não tem a saída "Todos" nem o rótulo de id órfão que o `ChannelMultiSelect` já tem → recorte órfão fica irremovível e a lista de perfis afirma o contrário na mesma tela | PR próprio |
 | **M19** | `agenda/[id]/route.ts:245` | `channel_id` torto no PATCH vira `null` (desvincula o canal) e devolve 200, enquanto o mesmo PR aplicou "presente e torto = 400" a `owner_user_id` e `contact_id` | F9 |
@@ -2036,16 +2069,16 @@ avaliado e rejeitado.
 | `CLAUDE.md:481` | credita a idempotência da descarga de desmonte a `salvoRef` | `grep -rn 'salvoRef' src/` → **zero**. O mecanismo é `desejado`/`salvo` DENTRO de `criarFilaDeGravacao`, e a comparação é contra `desejado`, não `salvo` | F3 |
 | `CLAUDE.md:538` | "`.order('posicao', …)` em TODA consulta — são 8 call sites (painel da conversa ×2)" | São **7**, e o painel tem **1**. E a leva pendente REVERTE 4 deles (listas planas) com o argumento oposto, sem tocar na nota | F3 |
 | `CLAUDE.md:1493` | "no dia em que essa pessoa sair da equipe, o contato é apagado junto" | `remove_account_member` (018) e a 961 **não** apagam de `auth.users` — realocam o perfil. O gatilho real é apagar o usuário fora do app | F2 |
-| `CLAUDE.md:220` | o `ExecutarAutomacaoDialog` recebe "canal RESOLVIDO — `activeChannel`" | O #74 trocou para `conversation.channel_id ?? null`. Quem resolver conflito de merge seguindo a tabela reintroduz o bug | F4 |
-| `CLAUDE.md:380` | "a rota `executar` checa o escopo de canal" e "falha ABERTA" | O #74 acrescentou o recorte de ETAPA, e `stageInScope` falha FECHADA (ver M16) | F4 |
-| `CLAUDE.md:1325` | a automação de etapa "espera o ciclo de 15 min do cron" | O laço RÁPIDO do `docker-stack.yml` é `sleep 60`. O próprio #74 mediu isso e atualizou `lembretes.ts` e `DEPLOY-VPS.md`, mas não o CLAUDE.md | F4 |
-| `CLAUDE.md:441` | a rota do acervo "confere `data === false` ANTES do `error`" | O #74 reescreveu para `try/catch` lendo só `r.data`. A nota descreve a forma antiga e ensina a repeti-la | F4 |
+| `CLAUDE.md:220` | o `ExecutarAutomacaoDialog` recebe "canal RESOLVIDO — `activeChannel`" | O #74 trocou para `conversation.channel_id ?? null`. Quem resolver conflito de merge seguindo a tabela reintroduz o bug | F4 — ✅ PR #89 |
+| `CLAUDE.md:380` | "a rota `executar` checa o escopo de canal" e "falha ABERTA" | O #74 acrescentou o recorte de ETAPA, e `stageInScope` falha FECHADA (ver M16) | F4 — ✅ PR #89 |
+| `CLAUDE.md:1325` | a automação de etapa "espera o ciclo de 15 min do cron" | O laço RÁPIDO do `docker-stack.yml` é `sleep 60`. O próprio #74 mediu isso e atualizou `lembretes.ts` e `DEPLOY-VPS.md`, mas não o CLAUDE.md | F4 — ✅ PR #89 (laço rápido, 60s) |
+| `CLAUDE.md:441` | a rota do acervo "confere `data === false` ANTES do `error`" | O #74 reescreveu para `try/catch` lendo só `r.data`. A nota descreve a forma antiga e ensina a repeti-la | F4 — ✅ PR #89 |
 | `CLAUDE.md:1937` | "Até ali a única proteção era lembrar de rodá-los à mão" | `src/i18n/messages.test.ts` já gateava a paridade no MESMO job `verificar`, e mais rigorosamente (reprova chave órfã, que o `i18n-parity` chama de "inofensivo") | F6 |
 | `CLAUDE.md:1949` | o checador "cobra contra TODOS os namespaces do arquivo" | Cobra contra todos MENOS os sobrescritos — ver #19 | F6 |
 | `src/lib/auth/roles.ts:85` (docstring) | `agent` pode "run broadcasts, edit automations" | A 964 fechou as duas no banco; a rota e a tela já exigiam admin. As três camadas dizem não | F7 — ✅ corrigida no PR #88 |
 | `docker-stack.yml:17,56,63,85` | cita `.github/workflows/deploy.yml` (extinto) e descreve UM laço de 15 min | Só existe `pipeline.yml`; o agendador roda DOIS laços (60 s e 900 s) | F10 |
-| `messages/*.json` (Radar) | `semRespostaDesdeTitulo` e `vazioSemSinalDetalhe` cravam "24 horas" | `LIMIAR_ALARME_MS` viaja como valor para `cardPendencias` e para a legenda. Trocar o limiar faz a mesma tela contar duas histórias | F4 |
-| `messages/*.json` (Radar) | `Radar.legenda.estados` diz que o cartão "sai da lista na hora" e que o Desfazer é a correção | O #74/#76 passaram a manter o cartão listado com "Reabrir" (`mexidasAqui`) | F4 |
+| `messages/*.json` (Radar) | `semRespostaDesdeTitulo` e `vazioSemSinalDetalhe` cravam "24 horas" | `LIMIAR_ALARME_MS` viaja como valor para `cardPendencias` e para a legenda. Trocar o limiar faz a mesma tela contar duas histórias | F4 — ✅ PR #89 ({horas} interpolado da constante nos dois textos) |
+| `messages/*.json` (Radar) | `Radar.legenda.estados` diz que o cartão "sai da lista na hora" e que o Desfazer é a correção | O #74/#76 passaram a manter o cartão listado com "Reabrir" (`mexidasAqui`) | F4 — ✅ PR #89 (texto novo nos dois dicionários, medido na tela) |
 | `docs/public-api.md:131` | descreve os efeitos colaterais de `POST /api/v1/messages` | Não menciona que o envio pode ABRIR NEGÓCIO (`source: 'channel'`) — comportamento intencional do #79, não documentado | F7 — ✅ documentado no PR #88 |
 
 ---
