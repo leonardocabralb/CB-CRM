@@ -71,9 +71,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # ⚠️ A MESMA MAJOR DO Dockerfile (`node:22-alpine`), e não uma
+      # qualquer: o que roda aqui tem de ser o que roda em produção, senão
+      # o verde do CI não prova nada sobre o que é publicado.
+      #
+      # Estava em 20 e isso JÁ CUSTOU um vermelho real: o PR #66 passou na
+      # máquina do dev (Node 24) e reprovou aqui em `formatCurrencyShort`
+      # — `Intl.NumberFormat` mudou a saída de `notation: 'compact'` entre
+      # as majors ("R$ 900" virou "R$ 900,0"). Com três majors em jogo
+      # (local 24, CI 20, produção 22), qualquer teste que toque Intl,
+      # fuso ou colação vira loteria. Duas bastam de sobra.
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -159,6 +169,24 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      # ⚠️ O script do rollout mora AQUI, uma vez só: ele é executado por
+      # DOIS passos (tentativa e retentativa) e duas cópias divergiriam na
+      # primeira mudança — a armadilha que o CLAUDE.md descreve para
+      # guardas duplicadas, aplicada a um comando que troca a imagem de
+      # produção.
+      ROLLOUT_SCRIPT: |
+        set -e
+        if docker service inspect crm_crm >/dev/null 2>&1; then
+          docker service update \
+            --image ${{ env.IMAGE }}:${{ github.sha }} \
+            --with-registry-auth \
+            crm_crm
+        else
+          echo "Service crm_crm not found yet."
+          echo "Do the one-time manual deploy on the VPS first (see docs/DEPLOY-VPS.md),"
+          echo "then this workflow will roll out updates automatically."
+        fi
     steps:
       - uses: actions/checkout@v4
 
@@ -192,21 +220,41 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # ⚠️ DUAS TENTATIVAS, e a razão não é capricho: este passo é o único
+      # do pipeline cuja falha deixa `main` À FRENTE da produção EM
+      # SILÊNCIO. A imagem já foi construída e publicada no GHCR pelo passo
+      # acima; se só o SSH cai, o commit está mesclado, o GHCR tem a imagem
+      # nova e a VPS segue servindo a antiga — sem nada na tela dizendo
+      # isso. Medido: `dial tcp :22 i/o timeout` em 2026-08-29 e de novo em
+      # 2026-08-31, as DUAS vezes com a VPS no ar (site 200 e porta 22
+      # respondendo de fora minutos depois). É rede entre runner e VPS, não
+      # incidente do servidor — exatamente o que uma segunda tentativa
+      # resolve.
+      #
+      # Sem action de retry de terceiro DE PROPÓSITO: este passo carrega a
+      # CHAVE SSH DE PRODUÇÃO, e cada dependência nova aqui é mais uma
+      # supply chain com acesso a ela. `continue-on-error` + `if` fazem o
+      # mesmo com o que o GitHub já dá.
+      #
+      # O script é IDEMPOTENTE (um `docker service update` para o mesmo
+      # digest é no-op), então repetir é seguro mesmo se a primeira
+      # tentativa tiver aplicado antes de a conexão cair.
       - name: Roll out on the VPS
+        id: rollout
+        continue-on-error: true
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_SSH_HOST }}
           username: ${{ secrets.VPS_SSH_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -e
-            if docker service inspect crm_crm >/dev/null 2>&1; then
-              docker service update \
-                --image ${{ env.IMAGE }}:${{ github.sha }} \
-                --with-registry-auth \
-                crm_crm
-            else
-              echo "Service crm_crm not found yet."
-              echo "Do the one-time manual deploy on the VPS first (see docs/DEPLOY-VPS.md),"
-              echo "then this workflow will roll out updates automatically."
-            fi
+          script: ${{ env.ROLLOUT_SCRIPT }}
+
+      - name: Roll out on the VPS (segunda tentativa)
+        if: steps.rollout.outcome == 'failure'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_SSH_HOST }}
+          username: ${{ secrets.VPS_SSH_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: ${{ env.ROLLOUT_SCRIPT }}
+
