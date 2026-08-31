@@ -469,7 +469,13 @@ export default function RadarPage() {
             <>
               <p className="font-medium text-foreground">{t('vazioSemSinal')}</p>
               <p className="mx-auto mt-2 max-w-md">
-                {t('vazioSemSinalDetalhe', { n: nAnalisados })}
+                {t('vazioSemSinalDetalhe', {
+                  n: nAnalisados,
+                  // A constante REAL, nunca o número digitado (regra da
+                  // legenda): trocar o limiar não pode deixar esta frase
+                  // contando outra história.
+                  horas: LIMIAR_ALARME_MS / 3_600_000,
+                })}
               </p>
             </>
           )}
@@ -676,7 +682,12 @@ function LinhaDoRadar({
 
              A saída não é misturar as réguas — é largar as duas e dizer o
              INSTANTE, que não precisa de régua nenhuma para ser verdade. */
-          <Etiqueta className={COR_URGENCIA.media} title={t('semRespostaDesdeTitulo')}>
+          <Etiqueta
+            className={COR_URGENCIA.media}
+            title={t('semRespostaDesdeTitulo', {
+              horas: LIMIAR_ALARME_MS / 3_600_000,
+            })}
+          >
             <Clock className="h-3 w-3" />
             {t('semRespostaDesde', {
               quando: new Date(i.aguardando_desde).toLocaleString(undefined, {

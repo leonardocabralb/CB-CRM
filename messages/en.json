@@ -2783,7 +2783,7 @@
     "vazioTitulo": "No conversations analyzed yet",
     "vazioNuncaAnalisado": "To get the Radar running: enable it on the desired connection (Settings → Connections), add an AI key (Settings → Integrations) and wait for the next scheduler cycle. Without an AI key the Radar still shows response times and pending replies.",
     "vazioSemSinal": "No open signals",
-    "vazioSemSinalDetalhe": "{n, plural, =1 {The conversation analysed in the last few days has} other {The # conversations analysed in the last few days have}} no dissatisfaction, no unanswered request, no legal urgency and no client waiting more than 24 hours. The Radar only lists conversations with a problem — silence here is good news.",
+    "vazioSemSinalDetalhe": "{n, plural, =1 {The conversation analysed in the last few days has} other {The # conversations analysed in the last few days have}} no dissatisfaction, no unanswered request, no legal urgency and no client waiting more than {horas} hours. The Radar only lists conversations with a problem — silence here is good news.",
     "tratadoOk": "Marked as handled.",
     "analiseMudou": "The Radar re-analyzed this conversation in the meantime — the list was refreshed. Re-read the card before handling it.",
     "analiseRodando": "The Radar is re-reading this conversation right now. Wait a few seconds and try again — handling it mid-read would hide the new signal.",
@@ -2799,7 +2799,7 @@
     "insatisfacao": "Dissatisfaction",
     "aguardando": "Waiting for {tempo}",
     "semRespostaDesde": "No reply since {quando}",
-    "semRespostaDesdeTitulo": "Over 24 calendar hours without a reply. The business-hours counter has not reached the display floor yet — outside working hours it barely moves.",
+    "semRespostaDesdeTitulo": "Over {horas} calendar hours without a reply. The business-hours counter has not reached the display floor yet — outside working hours it barely moves.",
     "pedidos": "{count, plural, =1 {1 unmet request} other {# unmet requests}}",
     "mencaoProcesso": "Lawsuit mentioned",
     "semIa": "No AI — metrics only",
@@ -2849,7 +2849,7 @@
       "cicloTitulo": "When it runs",
       "ciclo": "Automatic cycle every ~{ciclo} min, in small batches, starting with the most recently active conversations. The same conversation waits at least {espera} min between analyses and only re-enters the queue when there is a new message — an idle conversation costs nothing (a failed analysis retries up to 3 times). A window with no client messages (broadcast, outreach) does not trigger the AI: metrics only, and automated messages do not close a pending reply — only a human one does. \"Reanalyze\" forces an analysis right away.",
       "estadosTitulo": "Handled and dismissed",
-      "estados": "\"Handled\" moves the card out of the way and reopens by itself if the client sends a message afterwards — also use it to archive a conversation that ended with a client courtesy (\"ok, thanks\") and got flagged as waiting. \"Dismissed\" means \"the AI got this one wrong\": it never reopens on its own and is recorded as a false positive for calibration. Both buttons offer \"Undo\" right after the click — since the card leaves the list immediately, that is how a mistaken click is corrected.",
+      "estados": "\"Handled\" moves the card out of the way and reopens by itself if the client sends a message afterwards — also use it to archive a conversation that ended with a client courtesy (\"ok, thanks\") and got flagged as waiting. \"Dismissed\" means \"the AI got this one wrong\": it never reopens on its own and is recorded as a false positive for calibration. Both buttons offer \"Undo\" right after the click, and the card STAYS on the list — dimmed, with a \"Reopen\" button — while this screen is open: a mistaken click can be fixed either way. Leaving the screen clears the list, like the end of a triage shift.",
       "custo": "The Radar's AI usage shows up under Settings → AI Agents, as the \"radar\" mode."
     }
   },

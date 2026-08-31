@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { precisaDeAnalise, THROTTLE_MS } from './worker'
+import { claimVivo, precisaDeAnalise, THROTTLE_MS, TRAVADA_MIN } from './worker'
 
 // A regra de candidatura já produziu o bug mais caro da revisão da 941:
 // linha `failed` que nunca teve sucesso (janela_fim NULL) era lida como
@@ -19,6 +19,7 @@ const insight = (o: {
   janela_fim?: string | null
   analisado_em?: string | null
   tentativas?: number
+  running_desde?: string | null
 }) => ({
   id: 'i1',
   conversation_id: 'c1',
@@ -26,6 +27,7 @@ const insight = (o: {
   janela_fim: o.janela_fim ?? null,
   analisado_em: o.analisado_em ?? null,
   tentativas: o.tentativas ?? 0,
+  running_desde: o.running_desde ?? null,
 })
 
 describe('precisaDeAnalise', () => {
@@ -145,5 +147,26 @@ describe('exclusão da agendada nas duas réguas de humano (#21)', () => {
     const trecho = fonte.slice(inicio, inicio + 300)
     expect(trecho).toContain('!deAgendada.has(m.id)')
     expect(trecho).toContain('sender_id !== null')
+  })
+})
+
+describe('claimVivo (#28)', () => {
+  // `running` órfão (worker morto por rollout — que acontece a cada merge
+  // no main) não pode congelar Tratar/Descartar/Reanalisar por 10–25 min.
+  const agora = Date.parse('2026-08-31T12:00:00Z')
+
+  it('claim fresco é vivo; velho, nulo e lixo são abandonados', () => {
+    expect(claimVivo(new Date(agora - 60_000).toISOString(), agora)).toBe(true)
+    expect(
+      claimVivo(new Date(agora - (TRAVADA_MIN * 60_000 + 1)).toISOString(), agora),
+    ).toBe(false)
+    expect(claimVivo(null, agora)).toBe(false)
+    expect(claimVivo('nao-e-data', agora)).toBe(false)
+  })
+
+  it('offsets diferentes não invertem a régua — comparação por instante', () => {
+    // O mesmo instante (11:59Z) escrito de dois jeitos: os dois são vivos.
+    expect(claimVivo('2026-08-31T11:59:00+00:00', agora)).toBe(true)
+    expect(claimVivo('2026-08-31T08:59:00-03:00', agora)).toBe(true)
   })
 })

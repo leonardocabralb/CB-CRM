@@ -217,7 +217,7 @@ upstream sobrescrevê-los:
 | `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página. Mais o menu de **filtros salvos** (967/968): o hook, os catálogos que dão nome aos ids, o `limparOrfaos` do aplicar e a semente do filtro padrão |
 | `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDaMensagem>` envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo), a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef` |
 | `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (963): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
-| `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem contato e canal RESOLVIDO — `activeChannel`; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
+| `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem o contato; o canal passado é `conversation.channel_id ?? null` — o PR #74 trocou o `activeChannel` resolvido pelo cru DE PROPÓSITO, para a checagem de escopo da rota falhar aberta igual ao motor em conversa sem canal; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
@@ -377,12 +377,18 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
   conta inteira); robô encerra por `abortActiveRunsForContact` com
   `stopped_by_agent` (955) — TERCEIRO status, pessoa que DECIDIU, distinto de
   `paused_by_agent` (pessoa respondeu) e `stopped_by_automation` (regra).
-- ⚠️ **A rota `executar` checa o escopo de canal; o motor NÃO.**
+- ⚠️ **A rota `executar` checa os DOIS escopos (canal E etapa); o motor NÃO.**
   `runAutomationById` pula recortes de propósito (chamador explícito), mas
   "explícito" aqui é um clique — automação restrita ao número A executada na
-  conversa do número B sairia pelo número errado. Falha ABERTA como o motor:
-  conversa sem canal deixa passar. Grupo é recusado (automação não roda em
-  grupo, 906) e o log ganha `trigger_event='manual'`.
+  conversa do número B sairia pelo número errado. As duas checagens têm
+  direções DIFERENTES, e isso é deliberado: a de CANAL falha ABERTA como o
+  motor (conversa sem canal deixa passar); a de ETAPA (`stageInScope`,
+  acrescentada no PR #74) mistura as duas com motivo — ERRO de consulta
+  deixa passar (ignorância), mas contato SEM NEGÓCIO leva 422
+  `stage_out_of_scope` (não é ignorância: sem card, ele não está em etapa
+  nenhuma — `engine.ts`). Uma versão desta nota dizia "falha ABERTA" para a
+  rota inteira e não mencionava a etapa (M16 do plano de 31/08). Grupo é recusado
+  (automação não roda em grupo, 906) e o log ganha `trigger_event='manual'`.
 - **Linha do tempo da expansão**: futuros são os passos do MESMO escopo da
   espera (`parent_step_id`+`branch`, de `next_step_position` em diante);
   condição aparece como "depende da condição" e os passos DENTRO dos ramos
@@ -438,10 +444,13 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
   DERIVADA do caminho no servidor (aceitá-la do cliente casaria caminho
   legítimo com URL de fora — lição da 932) e o caminho é exigido sob
   `account-<conta>/acervo/`. LER é direto sob RLS.
-- ⚠️ **`storage.exists()` de novo**: a rota confere `data === false` ANTES do
-  `error`, pela armadilha já documentada na 932. Invertido, todo arquivo
-  ausente responderia "existe" e o acervo ganharia item que entrega 404 ao
-  cliente.
+- ⚠️ **`storage.exists()` de novo**: a rota lê SÓ o `r.data` do resultado
+  resolvido (objeto ausente resolve com `data: false` E `error` preenchido —
+  ler o `error` como falha responderia "existe" para todo arquivo sumido) e
+  envolve a chamada em try/catch, porque falha que não é 400/404 é LANÇADA
+  pelo storage-js — Storage fora do ar não é "sumiu". O #74 reescreveu a
+  conferência nessa forma; uma versão desta nota descrevia a forma antiga
+  ("`data === false` antes do `error`") e ensinava a repeti-la.
 - **`categoria` é texto livre**, não tabela de pastas, e NULL = "Geral" (que a
   tela põe no fim). O conjunto real é meia dúzia de rótulos.
 - **Trocar o ARQUIVO de um item não existe**: o item mudaria de conteúdo sem
@@ -1321,8 +1330,10 @@ rotas em `src/app/api/v1/`. O que morde código novo:
   despeja o lead na faixa de estacionamento, e o índice único da 911 só
   cobre `source='channel'` — a regra semântica é de código.
 - **Escrita de negócio pela API chama `drenarEventosDeFunil()`** (fire-and-
-  forget), como a tela faz: sem isso a automação de etapa espera o ciclo de
-  15 min do cron.
+  forget), como a tela faz: sem isso a automação de etapa espera o próximo
+  batimento do agendador — o laço RÁPIDO do `docker-stack.yml`, `sleep 60`
+  (uma versão desta nota dizia "15 min", que é o laço LENTO; o próprio #74
+  mediu e corrigiu `lembretes.ts` e `DEPLOY-VPS.md`, e esta linha ficou).
 - **Nome carimbado vem de `resolveApiAuthor`** (`src/lib/api/v1/authorship.ts`):
   usuário de auditoria da v1, com queda para o DONO da conta quando aquele
   já saiu — e `membro: false` quando nem o dono resolve. Quem exigir um

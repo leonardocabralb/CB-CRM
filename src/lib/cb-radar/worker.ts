@@ -49,7 +49,28 @@ export { JANELA_DIAS, THROTTLE_MS }
 const POR_CICLO = 5
 /** `running` mais velho que isto é worker que morreu no meio. Acima do
  *  pior caso de uma análise (timeout de rede + escritas). */
-const TRAVADA_MIN = 10
+export const TRAVADA_MIN = 10
+
+/** ISO do corte de abandono: `running_desde` mais velho é claim órfão. */
+export function corteDeClaimAbandonado(agoraMs = Date.now()): string {
+  return new Date(agoraMs - TRAVADA_MIN * 60_000).toISOString()
+}
+
+/**
+ * `running` com carimbo mais novo que TRAVADA_MIN = análise DE VERDADE em
+ * curso. O que falhar aqui é claim abandonado — worker morto por rollout do
+ * Swarm (que roda a cada merge no `main`) ou por curl estourado — e não
+ * pode congelar botão nenhum por 10–25 min (#28 do plano de 31/08).
+ * `running_desde` nulo conta como abandonado, o mesmo par do recolhedor.
+ * ⚠️ Comparação por INSTANTE (`Date.parse`), nunca lexicográfica: os dois
+ * lados são ISO hoje, mas offsets diferentes (`+00:00` vs `Z`) inverteriam
+ * a ordem por string em silêncio.
+ */
+export function claimVivo(runningDesde: string | null, agoraMs = Date.now()): boolean {
+  if (runningDesde === null) return false
+  const t = Date.parse(runningDesde)
+  return Number.isFinite(t) && t >= agoraMs - TRAVADA_MIN * 60_000
+}
 const TENTATIVAS_MAX = 3
 /** Alvo "confortável" do ciclo — a partir daqui, não se COMEÇA item novo. */
 const TEMPO_LIMITE_MS = 45_000
@@ -93,6 +114,8 @@ interface InsightExistente {
   janela_fim: string | null
   analisado_em: string | null
   tentativas: number
+  /** Carimbo do claim — decide claim vivo × abandonado (#28). */
+  running_desde: string | null
 }
 
 interface Reivindicacao {
@@ -147,7 +170,7 @@ export async function rodarCicloDoRadar(
 
   const { data: insights, error: insErr } = await admin
     .from('cb_conversation_insights')
-    .select('id, conversation_id, status, janela_fim, analisado_em, tentativas')
+    .select('id, conversation_id, status, janela_fim, analisado_em, tentativas, running_desde')
     .in('conversation_id', convs.map((c) => c.id))
   if (insErr) throw new Error(`radar: falha lendo insights: ${insErr.message}`)
 
@@ -242,7 +265,7 @@ export function precisaDeAnalise(
  *  no meio). Uma a uma porque o incremento de `tentativas` precisa do
  *  valor atual — travada é rara, o custo não importa. */
 async function recolherTravadas(admin: SupabaseClient): Promise<number> {
-  const corte = new Date(Date.now() - TRAVADA_MIN * 60_000).toISOString()
+  const corte = corteDeClaimAbandonado()
   const { data: presas, error } = await admin
     .from('cb_conversation_insights')
     .select('id, tentativas')
@@ -292,7 +315,16 @@ async function reivindicar(
       .from('cb_conversation_insights')
       .update({ status: 'running', running_desde: claimIso })
       .eq('id', existente.id)
-      .neq('status', 'running')
+      // ⚠️ Claim VIVO recusa; claim ABANDONADO pode ser TOMADO (#28) — sem
+      // isto, um worker morto por rollout congelava a conversa até o
+      // recolhedor do ciclo seguinte, e a reanálise manual recusava
+      // `ja_em_analise` por 10–25 min. Roubar é seguro por desenho: a cerca
+      // de posse de toda escrita pós-claim (`running_desde = <carimbo do
+      // próprio claim>`) corta o worker antigo no instante em que este
+      // regrava o carimbo. O par `lt`+`is.null` é o MESMO do recolhedor.
+      .or(
+        `status.neq.running,running_desde.lt.${corteDeClaimAbandonado()},running_desde.is.null`,
+      )
     if (opts.respeitarThrottle) {
       const corte = new Date(Date.now() - THROTTLE_MS).toISOString()
       query = query.or(`analisado_em.is.null,analisado_em.lt.${corte}`)
@@ -812,10 +844,20 @@ export async function reanalisarConversa(
 
   const { data: existente } = await admin
     .from('cb_conversation_insights')
-    .select('id, conversation_id, status, janela_fim, analisado_em, tentativas')
+    .select(
+      'id, conversation_id, status, janela_fim, analisado_em, tentativas, running_desde',
+    )
     .eq('conversation_id', conversa.id)
     .maybeSingle()
-  if (existente?.status === 'running') throw new ErroDoRadar('ja_em_analise')
+  // Claim VIVO recusa; claim abandonado segue para o `reivindicar`, que sabe
+  // tomá-lo (#28). Recusar `running` cegamente deixava o Reanalisar preso
+  // junto com Tratar/Descartar quando um rollout matava o worker no meio.
+  if (
+    existente?.status === 'running' &&
+    claimVivo((existente as InsightExistente).running_desde)
+  ) {
+    throw new ErroDoRadar('ja_em_analise')
+  }
 
   const reivindicado = await reivindicar(
     admin,
