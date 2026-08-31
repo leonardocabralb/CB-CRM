@@ -21,11 +21,13 @@
  * Sai com código 1 se achar chave pedida e ausente — serve de portão no CI.
  *
  * ⚠️ ALCANCE, declarado de propósito. Isto é análise estática de texto: só
- * enxerga `t('literal')`. Chave montada em variável, template ou concatenação
- * — o caso do `descreverPasso`, que devolve CHAVE e valores — é INALCANÇÁVEL
- * daqui, e o script conta e IMPRIME quantas ignorou. Um número silencioso
- * viraria "cobrimos tudo" quando não cobrimos. Essas têm proteção própria:
- * teste que lê o dicionário e cobra uma chave por tipo de passo (CLAUDE.md).
+ * enxerga chave LITERAL. Cobre `t('k')`, `t.rich/.raw/.markup('k')` e a
+ * invocação direta `useTranslations('NS')('k')`. Chave montada em variável,
+ * template ou concatenação — o caso do `descreverPasso`, que devolve CHAVE e
+ * valores — é INALCANÇÁVEL daqui, e o script conta e IMPRIME quantas ignorou.
+ * Um número silencioso viraria "cobrimos tudo" quando não cobrimos. Essas têm
+ * proteção própria: teste que lê o dicionário e cobra uma chave por tipo de
+ * passo (CLAUDE.md).
  *
  * ⚠️ A chave é cobrada contra TODOS os namespaces declarados no arquivo, não
  * contra o do binding que aparenta ser o dono. Não é frouxidão: o tradutor
@@ -71,51 +73,112 @@ function arquivos(dir, saida = []) {
   return saida
 }
 
+// Últimos segmentos de toda chave do dicionário. Serve ao "modo folha"
+// abaixo, onde o namespace é desconhecido.
+const folhas = new Set(
+  [...dicionario].map((k) => k.slice(k.lastIndexOf('.') + 1)),
+)
+
 // `const t = useTranslations('NS')` / `const tX = await getTranslations("NS")`
 // Sem argumento, o namespace é a raiz e a chave vem absoluta.
 const RE_BINDING =
   /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?(?:useTranslations|getTranslations)\(\s*(?:(['"`])([^'"`]*)\2)?\s*\)/g
 
+// `useTranslations('NS')('chave')` — sem passar por variável nenhuma.
+// Existe uma no repo (flows/forms/fields.tsx) e o laço por binding não a vê.
+const RE_DIRETO =
+  /(?:useTranslations|getTranslations)\(\s*(['"`])([^'"`]*)\1\s*\)(?:\.(?:rich|raw|markup))?\(\s*(['"`])((?:[^'"`\\]|\\.)*)\3/g
+
+// ⚠️ `.raw` e `.markup` entram junto com `.rich`: os três disparam
+// MISSING_MESSAGE igual, e `t.raw` sozinho aparece 15 vezes no repo.
+const METODOS = '(?:\\.(?:rich|raw|markup))?'
+
 const faltando = []
 let dinamicas = 0
 let conferidas = 0
+let emModoFolha = 0
+
+/** O primeiro argumento é um literal utilizável? Devolve-o, ou null. */
+function literalInicial(resto) {
+  const lit = resto.match(/^(['"`])((?:[^'"`\\]|\\.)*)\1/)
+  // Fora do alcance: template com interpolação, concatenação, variável.
+  if (!lit || (lit[1] === '`' && lit[2].includes('${'))) return null
+  if (/^\s*\+/.test(resto.slice(lit[0].length))) return null
+  return lit[2]
+}
 
 for (const caminho of arquivos(SRC)) {
   const fonte = readFileSync(caminho, 'utf8')
 
   const bindings = new Map()
   for (const m of fonte.matchAll(RE_BINDING)) bindings.set(m[1], m[3] ?? '')
-  if (bindings.size === 0) continue
   // Ver a nota de ALCANCE: a cobrança é contra o conjunto do arquivo, porque
   // o tradutor viaja como prop e o parâmetro sombreia o binding do módulo.
   const escopos = [...new Set(bindings.values())]
 
-  for (const binding of bindings.keys()) {
-    const nome = binding.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    // `(?<![\w.$])` impede casar `obj.t(` e sufixo de outro identificador.
-    const re = new RegExp(`(?<![\\w.$])${nome}(?:\\.rich)?\\(\\s*`, 'g')
-    for (const m of fonte.matchAll(re)) {
-      const resto = fonte.slice(m.index + m[0].length)
-      const lit = resto.match(/^(['"`])((?:[^'"`\\]|\\.)*)\1/)
-      // Fora do alcance: template com interpolação, concatenação, variável.
-      if (!lit || (lit[1] === '`' && lit[2].includes('${'))) {
-        dinamicas++
-        continue
-      }
-      if (/^\s*\+/.test(resto.slice(lit[0].length))) {
+  // Chamada direta, sem variável no meio.
+  for (const m of fonte.matchAll(RE_DIRETO)) {
+    if (m[3] === '`' && m[4].includes('${')) {
+      dinamicas++
+      continue
+    }
+    conferidas++
+    const chave = m[2] ? `${m[2]}.${m[4]}` : m[4]
+    if (!dicionario.has(chave)) {
+      faltando.push({ literal: m[4], escopos: [m[2]], arquivo: relative(ROOT, caminho) })
+    }
+  }
+
+  // ⚠️ MODO FOLHA — arquivo que RECEBE o tradutor como prop e não declara
+  // binding nenhum (`flows/shared.tsx`, `message-media.tsx`). Sem binding não
+  // há namespace, e pular o arquivo inteiro era um buraco: chave apagada dos
+  // dois dicionários mantinha o CI verde (achado do Codex no PR #82). Aqui a
+  // chave é cobrada só como ÚLTIMO SEGMENTO, contra o dicionário inteiro —
+  // garantia mais fraca, e é por isso que o total sai impresso. Ainda assim
+  // pega a classe que motivou o script: a chave que não existe em lugar
+  // nenhum. Resolver o namespace de verdade exigiria seguir o `t={...}` até
+  // o chamador, em outro arquivo.
+  if (bindings.size === 0) {
+    if (!/(?<![\w.$])t[A-Z]?[\w$]*(?:\.(?:rich|raw|markup))?\(\s*['"`]/.test(fonte)) continue
+    emModoFolha++
+    for (const m of fonte.matchAll(
+      new RegExp(`(?<![\\w.$])(t[A-Z]?[\\w$]*)${METODOS}\\(\\s*`, 'g'),
+    )) {
+      const chave = literalInicial(fonte.slice(m.index + m[0].length))
+      if (chave === null) {
         dinamicas++
         continue
       }
       conferidas++
-      const achou = escopos.some((ns) =>
-        dicionario.has(ns ? `${ns}.${lit[2]}` : lit[2]),
-      )
+      if (!folhas.has(chave)) {
+        faltando.push({
+          literal: chave,
+          escopos: ['(namespace desconhecido — modo folha)'],
+          arquivo: relative(ROOT, caminho),
+        })
+      }
+    }
+    continue
+  }
+
+  for (const binding of bindings.keys()) {
+    const nome = binding.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    // `(?<![\w.$])` impede casar `obj.t(` e sufixo de outro identificador.
+    const re = new RegExp(`(?<![\\w.$])${nome}${METODOS}\\(\\s*`, 'g')
+    for (const m of fonte.matchAll(re)) {
+      const chave = literalInicial(fonte.slice(m.index + m[0].length))
+      if (chave === null) {
+        dinamicas++
+        continue
+      }
+      conferidas++
+      const achou = escopos.some((ns) => dicionario.has(ns ? `${ns}.${chave}` : chave))
       if (!achou) {
         // Imprime a chave CRUA e os namespaces tentados, nunca um caminho
         // montado: com mais de um namespace no arquivo, "escolher" um
         // mandaria quem for consertar para o lugar errado com ar de certeza.
         faltando.push({
-          literal: lit[2],
+          literal: chave,
           escopos,
           arquivo: relative(ROOT, caminho),
         })
@@ -131,6 +194,10 @@ const unicas = [
 console.log(`~ chaves pedidas pelo código, conferidas contra ${ATIVO}.json`)
 console.log(`    literais conferidas: ${conferidas}`)
 console.log(`    dinâmicas ignoradas: ${dinamicas}  (fora do alcance — ver cabeçalho)`)
+console.log(
+  `    arquivos em modo folha: ${emModoFolha}  (tradutor recebido como prop —` +
+    ` chave cobrada só pelo último segmento)`,
+)
 
 if (unicas.length === 0) {
   console.log('\nOK: toda chave literal pedida pelo código existe no dicionário.')
