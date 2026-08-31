@@ -182,12 +182,21 @@ async function respostasDepoisDaPendencia(
   // `.in('message_id', …)`, a pergunta vira exata e limitada a
   // TETO_RESPOSTAS por construção. Custa serializar as duas consultas; num
   // hook que recarrega a cada 2 min, é barato.
-  const agendadasRes = data.length
-    ? await supabase
-        .from('cb_scheduled_messages')
-        .select('message_id')
-        .in('message_id', data.map((m) => m.id))
-    : { data: [], error: null };
+  // Em fatias de 500, o precedente da casa para `.in()` (o PostgREST trava
+  // perto de 1000 valores e a URL tem teto próprio — ver
+  // `fetchCustomValueIndex`): `data` pode chegar a TETO_RESPOSTAS inteiro.
+  const agendadasRes: {
+    data: { message_id: string | null }[];
+    error: { message: string } | null;
+  } = { data: [], error: null };
+  for (let i = 0; i < data.length && !agendadasRes.error; i += 500) {
+    const fatia = await supabase
+      .from('cb_scheduled_messages')
+      .select('message_id')
+      .in('message_id', data.slice(i, i + 500).map((m) => m.id));
+    if (fatia.error) agendadasRes.error = fatia.error;
+    else agendadasRes.data.push(...(fatia.data ?? []));
+  }
 
   // ⚠️ Lista TRUNCADA continua valendo, e isto não é descuido.
   //

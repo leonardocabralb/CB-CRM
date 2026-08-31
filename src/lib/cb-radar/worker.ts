@@ -462,12 +462,19 @@ export async function analisarConversaReivindicada(
   const idsDaEquipe = comData
     .filter((m) => m.sender_type === 'agent')
     .map((m) => m.id)
-  const { data: enviosAgendados, error: agErr } = idsDaEquipe.length
-    ? await admin
-        .from('cb_scheduled_messages')
-        .select('message_id')
-        .in('message_id', idsDaEquipe)
-    : { data: [], error: null }
+  // Em fatias de 500 (o precedente da casa para `.in()` — o PostgREST trava
+  // perto de 1000 valores): a janela pode ter até TETO_MENSAGENS_JANELA
+  // mensagens da equipe.
+  const enviosAgendados: { message_id: string | null }[] = []
+  let agErr: { message: string } | null = null
+  for (let i = 0; i < idsDaEquipe.length && !agErr; i += 500) {
+    const fatia = await admin
+      .from('cb_scheduled_messages')
+      .select('message_id')
+      .in('message_id', idsDaEquipe.slice(i, i + 500))
+    if (fatia.error) agErr = fatia.error
+    else enviosAgendados.push(...(fatia.data ?? []))
+  }
   // ⚠️ O throw é DELIBERADO, e a DIREÇÃO do erro é o motivo (M23 do plano):
   // sem esta consulta não há como distinguir agendada de resposta humana, e
   // degradar "sem a exclusão" — como o hook do painel faz — apagaria a
