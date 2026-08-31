@@ -541,6 +541,32 @@ export function MessageThread({
     return { expired, remaining };
   }, [messages, tTimer]);
 
+  /**
+   * A janela expirada NO INSTANTE DO DISPARO — o último portão antes da rede.
+   *
+   * ⚠️ Não é redundante com a prop `sessionExpired` do compositor. Aquela é
+   * lida quando o operador aperta Enter; esta, quando a mensagem realmente
+   * sai — e entre as duas cabem os 5s da janela de desfazer MAIS o tempo de
+   * `/api/cb/channels` responder. Durante a carga o transporte é desconhecido
+   * e o compositor fica LIBERADO de propósito (senão as primeiras teclas se
+   * perdem — é a correção do PR #81); sem este portão, o que foi digitado
+   * nesse vão era despachado para a Meta fora da janela, que só o servidor
+   * dela recusaria. (Achado do Codex na revisão do PR #81.)
+   *
+   * ⚠️ E ele NÃO engole a mensagem: publica a bolha e a marca `failed`, o
+   * mesmo caminho da recusa da Meta. Abortar antes de publicar apagaria o
+   * texto — o compositor já limpou o campo no Enter —, e o operador perderia
+   * o que escreveu sem nada na tela para copiar de volta. Aqui ele vê a bolha
+   * com o texto dele e o motivo em português, sem custar uma chamada à Meta.
+   *
+   * Escrita em efeito (não no render) pela regra de refs do React 19, como o
+   * `onMessagesLoadedRef` abaixo. O consumidor lê no disparo, muito depois.
+   */
+  const janelaExpiradaRef = useRef(false);
+  useEffect(() => {
+    janelaExpiradaRef.current = janelaDe24h && sessionInfo.expired;
+  });
+
   // Store latest callback in a ref so fetchMessages doesn't need to
   // depend on `onMessagesLoaded` — otherwise parent re-renders cause
   // fetchMessages to change → useEffect re-fires → refetch → realtime
@@ -1011,6 +1037,14 @@ export function MessageThread({
       publicarMensagemOtimista(optimisticMsg);
       setReplyTo(null);
 
+      // Ver `janelaExpiradaRef`: a janela pode ter fechado — ou só ter ficado
+      // CONHECIDA — entre o Enter e este instante.
+      if (janelaExpiradaRef.current) {
+        onUpdateMessage(tempId, { status: "failed" });
+        toast.error(t("sessionExpiredBlocked"));
+        return;
+      }
+
       try {
         const res = await fetch("/api/whatsapp/send", {
           method: "POST",
@@ -1120,6 +1154,20 @@ export function MessageThread({
       publicarMensagemOtimista(optimisticMsg);
       setReplyTo(null);
 
+      // Mesmo portão do texto (ver `janelaExpiradaRef`), e aqui o vão é maior:
+      // o anexo passa pelo MediaDraftPreview, que SUBSTITUI o compositor e
+      // vive enquanto o operador escreve a legenda.
+      if (janelaExpiradaRef.current) {
+        onUpdateMessage(tempId, { status: "failed" });
+        toast.error(t("sessionExpiredBlocked"));
+        // Mesma coleta dos outros dois caminhos de falha: o arquivo já subiu e
+        // não vai chegar a ninguém. Sem isto o portão vazaria objeto no bucket
+        // público a cada anexo barrado — e o compositor não o apaga, porque
+        // para ele a entrega foi adiante.
+        void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
+        return;
+      }
+
       try {
         const res = await fetch("/api/whatsapp/send", {
           method: "POST",
@@ -1157,7 +1205,7 @@ export function MessageThread({
         void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
       }
     },
-    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada],
+    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada, t],
   );
 
   const handleSendInteractive = useCallback(
