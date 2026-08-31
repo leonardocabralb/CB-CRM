@@ -485,7 +485,10 @@
       "next": "Próximo",
       "counter": "{index} de {total}",
       "failed": "Este anexo não está mais disponível",
-      "imageAlt": "Imagem compartilhada"
+      "imageAlt": "Imagem compartilhada",
+      "you": "Você",
+      "openOriginal": "Abrir o original",
+      "downloadFailed": "Não foi possível baixar o arquivo."
     },
     "groupSidebar": {
       "empty": "Nenhum grupo selecionado.",

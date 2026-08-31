@@ -492,7 +492,10 @@
       "next": "Next",
       "counter": "{index} of {total}",
       "failed": "This attachment is no longer available",
-      "imageAlt": "Shared image"
+      "imageAlt": "Shared image",
+      "you": "You",
+      "openOriginal": "Open original",
+      "downloadFailed": "Could not download the file."
     },
     "groupSidebar": {
       "empty": "No group selected.",

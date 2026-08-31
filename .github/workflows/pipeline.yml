@@ -95,6 +95,26 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # ⚠️ Chave de i18n faltando NÃO quebra o build e NÃO aparece em teste:
+      # ela chega ao usuário como o caminho da chave escrito na tela
+      # (`Inbox.sidebar.tabTracking` dentro da aba), porque o fallback do
+      # next-intl é por ARQUIVO, não por chave. Até 31/08/2026 a única
+      # proteção era lembrar de rodar os scripts à mão — e não lembramos: o
+      # console de produção despejava três MISSING_MESSAGE às dezenas.
+      #
+      # São DOIS scripts porque respondem perguntas diferentes, e o segundo
+      # existe justamente porque o primeiro estava VERDE (2673/2673) durante
+      # aquele defeito:
+      #   paridade      → a chave existe num dicionário e falta no outro?
+      #   chaves-usadas → o código pede chave que não existe em NENHUM?
+      # Rodam antes de `test`/`build` por serem instantâneos: falha aqui
+      # aparece em segundos, não depois do build.
+      - name: i18n — paridade entre dicionários
+        run: node scripts/i18n-parity.mjs
+
+      - name: i18n — chave pedida existe no dicionário
+        run: node scripts/i18n-chaves-usadas.mjs
+
       - name: Test
         run: npm test
 

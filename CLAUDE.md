@@ -1798,7 +1798,24 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
   falta uma chave, o app **não** cai para o inglês — ele dispara
   `MISSING_MESSAGE` e mostra a chave crua na tela. Portanto: **ao adicionar
   qualquer chave em `en.json`, adicione no `pt-BR.json` na mesma passada.**
-  Conferir com paridade de chaves antes de commitar.
+- ✅ **Desde 31/08/2026 os dois scripts de i18n são PORTÃO no CI** (job
+  `verificar`, antes de `test`/`build`). Até ali a única proteção era lembrar
+  de rodá-los à mão — e não lembramos: o console de produção despejava
+  `Inbox.sidebar.tabTracking`, `noTrackingFields` e `seedTrackingFields` às
+  dezenas. São dois porque respondem perguntas diferentes:
+  - `i18n-parity.mjs` — a chave existe num dicionário e falta no outro?
+  - `i18n-chaves-usadas.mjs` — o código pede chave que não existe em
+    dicionário NENHUM? ⚠️ **Este é o que faltava.** Durante aquele defeito a
+    paridade estava VERDE (2673/2673): as três chaves faltavam nos dois
+    arquivos, então os dicionários "concordavam" — em não ter.
+  ⚠️ O segundo é análise estática de TEXTO e declara o próprio alcance: só
+  enxerga `t('literal')`, imprime quantas chamadas dinâmicas ignorou (88
+  hoje), e cobra a chave contra **todos os namespaces do arquivo**, não
+  contra o binding — porque o tradutor viaja como prop
+  (`<SeletorDeHorario t={tAgendadas}>`) e o parâmetro sombreia o do módulo.
+  Amarrar ao binding acusava 7 chaves boas de faltantes. Chave montada em
+  template/variável continua fora, com proteção própria (o teste que cobra
+  uma chave por tipo de passo).
 - ⚠️ **`t('chave')` sem `values` NÃO parseia ICU** — devolve a string crua.
   Erro `INVALID_TAG`/`MALFORMED_ARGUMENT` no console **não significa** tela
   quebrada: pode ser só ruído de log, com a renderização correta. Já
