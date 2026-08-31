@@ -267,10 +267,15 @@ irmãos (3ª cópia comentada, com o aviso de que a próxima entra também); o
 efeito de troca passou a cancelar gravação em curso (`cancelledRef` +
 `clearTimer` + `stop()`, a receita da limpeza de desmonte) — fecha também a
 janela "parou de gravar e trocou antes de o encoder devolver" — e a descartar
-o rascunho já pousado (M22). · **Medido:** typecheck/lint/suíte (2255)
-verdes; a medição NA TELA (gravar + trocar; anexar + trocar) ficou pendente
-de sessão logada no preview — o pane caiu na tela de login e autenticação não
-se fabrica. Roteiro pronto para rodar quando houver login.
+o rascunho já pousado (M22). · **Medido (E2E no preview, após o login do
+operador):** anexo injetado no compositor da conversa A (fixture), rascunho
+pousado (preview + legenda na tela), troca de conversa por clique → o
+compositor de B abriu LIMPO e o `DELETE` ao Storage foi capturado no fetch
+instrumentado — e a listagem do bucket confirmou o objeto REMOVIDO de
+verdade. A gravação de VOZ em si não é acionável no Browser pane (sem
+microfone); a guarda dela é byte a byte a do `stageUpload` (código já em
+produção) e o cancelamento na troca é a receita da limpeza de desmonte.
+Fixtures criadas e apagadas ao fim; typecheck/lint/suíte (2255) verdes.
 
 ---
 
@@ -343,9 +348,13 @@ renderizar sem catálogo confiável (caixa de erro + Tentar de novo — sem
 lista não há arrastar nem seletor), com guarda extra nos dois escritores
 (`reordenarCampos`/`reordenarGrupos`). O fallback do módulo puro NÃO foi
 tocado. O ramo de erro entrou ACIMA da linha do vazio que o PR #84 reescreve
-— sem conflito. · **Medido:** typecheck/lint/suíte/i18n verdes; a falha
-simulada na tela (bloquear a consulta e ver a caixa + arrastar inerte)
-pende de sessão logada no preview.
+— sem conflito. · **Medido (E2E no preview):** com a consulta de
+`cb_grupos_de_campos` respondendo 500 (fetch interceptado), o catálogo
+mostrou o toast "Não foi possível carregar os campos e blocos. Nada foi
+alterado." e a CAIXA DE ERRO com "Tentar de novo" no lugar da lista — sem
+blocos renderizados, sem arrastar, sem seletor, e SEM a frase de vazio.
+Falha desligada + "Tentar de novo" → a lista real carregou (bloco GERAL com
+os campos e alças). typecheck/lint/suíte/i18n verdes.
 
 ---
 
@@ -504,8 +513,15 @@ abrir → 500 `LOOKUP_FAILED` (e o `buscar()` de `resolverConversa` trata o
 `error` → `{contato: null, falhou: true}`); suíte 2255 verde inclusive o
 `dono-duravel.test.ts` estrutural; o diálogo já mapeia `LOOKUP_FAILED` para
 "Não foi possível abrir a conversa. Tente de novo." (conferido no dicionário
-— orienta repetir, não desconfiar do número). Caminho feliz na tela pende de
-sessão logada no preview.
+— orienta repetir, não desconfiar do número). **E2E no preview:** criação
+com número fixture → toast "Conversa aberta.", conversa selecionada com o
+canal fixado; MESMO número de novo → "Este contato já existia — abrindo a
+conversa dele", sem segunda ficha — os dois ramos felizes da rota com a
+assinatura nova, contra o banco real. Fixtures apagadas ao fim.
+⚠️ Observado de carona no teste: o defeito que o **PR #84** corrige
+(`conversaRecemAbertaRef` atropelando o clique em outra conversa) é
+REPRODUZÍVEL no main — depois de abrir pelo diálogo, clicar noutra conversa
+não trocava até recarregar. Mais um motivo para mesclar o #84 logo.
 
 ---
 
