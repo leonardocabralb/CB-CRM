@@ -21,10 +21,10 @@
 
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
-| **A1** | Banco dos filtros salvos + módulo puro (parse defensivo, resumo, ids órfãos) | ⬜ a fazer | `967` (a confirmar) | — |
-| **A2** | Menu no botão "Filtros": aplicar · salvar o atual · renomear · apagar | ⬜ a fazer | nenhuma | — |
-| **A3** | Filtro **padrão** por pessoa + a faixa que explica o inbox recortado | ⬜ a fazer | `968` (a confirmar) | — |
-| **B1** | Campos personalizados salvam ao sair do campo (painel do inbox + ficha `/contatos`) | ⬜ a fazer | nenhuma | — |
+| **A1** | Banco dos filtros salvos + módulo puro (parse defensivo, descrição, ids órfãos) | ✅ **feita** (2026-08-31) | `967` **aplicada** | #83 |
+| **A2** | Menu no botão "Filtros": aplicar · salvar o atual · renomear · apagar | ✅ **feita e medida no preview** (2026-08-31) | nenhuma | #83 |
+| **A3** | Filtro **padrão** por pessoa + a faixa que explica o inbox recortado | ✅ **feita e medida no preview** (2026-08-31) | `968` **aplicada** | #83 |
+| **B1** | Campos personalizados salvam ao sair do campo (painel do inbox + ficha `/contatos`) | ✅ **feita e medida no preview** (2026-08-31) | nenhuma | #83 |
 
 **Decisões travadas com o operador (2026-08-31):**
 
@@ -33,6 +33,11 @@
    "Jurídico", "Bancario" —, não de uma pessoa.)
 2. O **filtro padrão é escolha de cada um**, mesmo sendo o filtro compartilhado.
    O "SDR" pode ser o padrão do Fulano e não ser o de mais ninguém.
+   ⚠️ **A conta tem UM membro hoje.** A metade "compartilhado" fica dormente
+   até o primeiro convite real — como a presença por conversa (963). Isso não
+   muda o desenho (mudar depois seria migration de dados), mas muda o TESTE:
+   a guarda de papel precisa ser medida trocando de papel no banco, não
+   clicando na tela como `owner`, que passa em tudo.
 3. Os filtros salvos aparecem num **menu no próprio botão "Filtros"**, não em
    coluna nova nem em faixa fixa: a coluna do inbox tem 320px e já está cheia.
 4. Item B é **só os campos personalizados** — ver "O que já funciona" abaixo.
@@ -191,6 +196,40 @@ CREATE UNIQUE INDEX ... ON cb_inbox_saved_filters (account_id, lower(btrim(nome)
   `.select('id')` e confere o rowcount — o molde de `atualizarNegocio` e
   `deleteNote`.
 
+#### ✅ A1 — o que foi feito (2026-08-31)
+
+| Arquivo | O que é |
+| --- | --- |
+| `supabase/migrations/967_cb_filtros_salvos.sql` | **NOVO.** `cb_inbox_saved_filters` como descrito acima. **Aplicada** e conferida no banco: RLS ligada, 4 policies, `anon` sem SELECT, `authenticated` com os quatro privilégios, índice único de nome de pé. |
+| `src/lib/inbox/filtros-salvos.ts` | **NOVO, puro.** `lerFiltroSalvo` (parse defensivo), `escreverFiltroSalvo`, `mesmoFiltro`, `descreverFiltro`, `limparOrfaos`, `nomeDaEtapa`. |
+| `src/lib/inbox/filtros-salvos.test.ts` | **NOVO.** 46 casos. |
+| `messages/{en,pt-BR}.json` | `Inbox.conversationList.deletedRef` — "(deleted)" / "(apagado)". |
+
+**Duas coisas que o plano não previa e mudaram a execução:**
+
+- ⚠️ **`FiltrosDoInbox` ganhou `funilId` no PR #73**, entre o estudo e a
+  execução — o recorte de funil virou dois níveis (funil + etapa), com regras
+  próprias: só o seletor de funil escreve `funilId`, a etapa MANDA quando os
+  dois estão preenchidos, os dois contam como UM no distintivo, e tirar o funil
+  tira a etapa junto. O módulo foi refeito para acompanhar. **É a prova viva do
+  que o cabeçalho deste arquivo avisa**: o plano envelhece, e reler o arquivo
+  antes de escrever é o que separou um `escreverFiltroSalvo` correto de um que
+  gravaria um recorte pela metade, em silêncio.
+- ⚠️ **As pastilhas do painel NÃO foram extraídas**, ao contrário do que a
+  linha do `resumirFiltro` propunha. Aquele código acabou de ser reescrito pelo
+  #73 (duas pastilhas para funil e etapa, prefixo condicional) e mexer nele
+  agora seria reescrever core recém-mexido para servir a um menu. No lugar
+  disso, `descreverFiltro` cobre as duas superfícies e o risco de divergência é
+  pago por um teste: `AMOSTRAS` é um `Record<keyof FiltrosDoInbox, …>`, então o
+  **compilador** cobra uma entrada para todo campo novo, e o teste cobra que o
+  campo apareça na descrição, saiba se desfazer e sobreviva à ida e volta pelo
+  banco. A extração fica para quando o painel estabilizar.
+
+⚠️ **O replay em banco vazio não pôde ser rodado localmente** (Docker desligado
+nesta máquina) — mas **o CI do PR #83 o rodou e PASSOU** ("Apply to a clean
+database", 2m59s), então as duas migrations aplicam do zero. Lembrete que
+continua valendo: no CI o replay é sinal, não portão, e não segura o deploy.
+
 ### Fase A2 — O menu no botão "Filtros"
 
 **Hook `src/hooks/use-filtros-salvos.ts`** — busca (uma vez por montagem, como
@@ -275,6 +314,34 @@ CREATE TABLE cb_inbox_filtro_padrao (
 - **Trocar o padrão é um item no menu do próprio filtro** ("Definir como meu
   padrão" / "Deixar de ser meu padrão"), disponível a **qualquer membro** — o
   filtro é da equipe, mas a escolha é de cada um.
+
+#### ✅ A2 + A3 — medido no preview (2026-08-31, 1440×900)
+
+| O que | Resultado |
+| --- | --- |
+| Salvar o recorte atual | toast "Filtro salvo."; o gatilho vira a etiqueta do filtro, em roxo |
+| Nome repetido, outra caixa e com espaços (`"  teste e2e  "` sobre `TESTE E2E`) | vira PERGUNTA: "já existe … — salvar substitui o recorte dele", e o botão muda para "Substituir" |
+| Substituir | toast "Filtro atualizado."; o padrão continua apontando para o filtro (é referência, não cópia) |
+| Estrela na linha do menu | marca o padrão SEM aplicar o filtro nem fechar o menu (`stopPropagation`) |
+| **Recarregar a página** | o padrão entra sozinho: `Filtros ①`, pastilha, `Exibindo 132 de 176`, e a faixa "Filtro padrão: … · mostrar tudo" |
+| "mostrar tudo" | limpa o recorte, o gatilho volta a "Salvos" e a faixa some |
+| **`?etapa=…&de=funil`** | o deep link VENCE: pastilhas do funil/etapa, faixa "Voltar ao funil", padrão **não** aplicado — e `/inbox` puro logo depois volta a aplicá-lo |
+| Renomear (Enter e ✓) | ambos gravam; a faixa do padrão passa a mostrar o nome novo |
+| Apagar | confirmação inline; some da lista, o CASCADE da 968 leva o padrão junto e a faixa some |
+
+**Guarda de papel provada NO BANCO** (transação com `SET LOCAL ROLE authenticated`
++ `request.jwt.claims`, desfeita por `RAISE` no fim — o papel do dono foi
+rebaixado e restaurado): `owner_insert=OK` · `agent_select=1` (todo membro LÊ) ·
+`agent_insert=BARRADO` · `agent_update_linhas=0` · `agent_delete_linhas=0` (as
+duas voltam **0 linhas sem erro** — exatamente o que o rowcount do hook pega) ·
+`agent_apaga_proprio_padrao=1` (a assimetria de propósito: o padrão é pessoal) ·
+`outra_conta_select=0`.
+
+⚠️ **Um falso positivo registrado para não voltar:** o Enter do renomear parecia
+não funcionar. Não era o código — era o nome da tecla no comando de teste
+(`Return` não é reconhecido; `Enter` é). Medido nos dois caminhos depois disso.
+
+---
 
 ---
 
@@ -363,3 +430,50 @@ com as duas perguntas que **não** podem divergir entre as três telas:
 - [ ] Testado no preview em **1440×900+**, não no tamanho nativo do painel.
 - [ ] Revisão 2× (bugs/edge cases; consistência com as convenções e com o
       objetivo original), com os achados reportados mesmo que seja "nada".
+
+---
+
+## ✅ B1 — o que foi feito (2026-08-31)
+
+| Arquivo | O que é |
+| --- | --- |
+| `src/lib/contacts/salvamento-de-campo.ts` (+ teste) | **NOVO, puro.** `gravaAoSair` / `gravaAoEscolher` (o gesto que confirma cada tipo) e `valorMudou` (comparação APARADA, porque o helper grava `v.trim()`). |
+| `src/components/contacts/campo-com-salvamento.tsx` | **NOVO.** Embrulha o `CampoPersonalizadoInput`: rascunho, quando gravar, descarga de desmonte e o indicador por campo. |
+| `src/components/inbox/painel/painel-do-contato.tsx` | `salvarCampos` virou `gravarCampo(fieldId, valor)`; o botão "Salvar campos" SAIU. |
+| `src/components/contacts/contact-detail-view.tsx` | idem, na ficha de `/contatos`. |
+| `messages/{en,pt-BR}.json` | `fieldSaved` + o erro com `{campo}` e `{cliente}`; as 6 chaves do botão foram removidas. |
+
+**Medido no preview (1440×900) e conferido no banco:**
+
+| O que | Resultado |
+| --- | --- |
+| Digitar e clicar em outro campo | grava; "✓ Salvo" ao lado do rótulo, some sozinho. UMA linha no banco |
+| Entrar e sair SEM mudar | não grava, e o indicador não aparece |
+| Esvaziar o campo | grava a exclusão (a linha some do banco) — e um único espaço conta como vazio |
+| Digitar e TROCAR DE BLOCO no menu horizontal | o valor sobrevive: conferido na tela ao voltar e no banco. É o caso que a 966 avisava que perderia digitação |
+| Ficha de `/contatos` | mesmo comportamento, mesma peça, sem botão |
+
+⚠️ **Falso alarme registrado:** `Backspace` e `Return` não chegam ao input pelo
+comando de teste do painel do navegador (só `Enter` funciona; para limpar campo,
+`form_input` com o ref). Não é defeito do app — foi confundido com um por alguns
+minutos.
+
+---
+
+## ✅ Revisão do Codex no PR #83 (2026-08-31) — dois achados, os dois reais
+
+| Achado | Veredito | Correção |
+| --- | --- | --- |
+| O campo é montado antes de os valores do contato novo chegarem, e o rascunho nasce com o valor do ANTERIOR | **Confirmado, e pior que o relato**: não era um piscar. Medido no navegador — trocando de Morgana para Ana, o valor da Morgana ficou na ficha da Ana em **35 de 35 amostras (3,5s)**, e ficaria para sempre, porque o rascunho não persegue a prop. Editar ali gravaria o valor de A no B | `customValues` passou a guardar o DONO junto (`{ de, mapa }`) nas DUAS telas; o campo só monta com `valoresDesteContato`, e enquanto isso o rótulo fica com um esqueleto. Com a correção: **0 de 35** |
+| Gravações concorrentes podem chegar fora de ordem e a antiga apagar a nova | **Confirmado.** Alcançável mudando uma lista duas vezes rápido, ou sair-voltar-editar-sair antes de a primeira voltar | `criarFilaDeGravacao` no módulo puro (7 casos novos): serializa, guarda só o pendente mais novo, último valor vence |
+
+⚠️ **O teste da fila pegou um defeito na PRÓPRIA fila**, antes de ela chegar à
+tela: a primeira versão comparava "mudou?" contra o que o banco CONFIRMOU, e
+durante o voo isso ainda é o valor antigo — desfazer para o original era
+descartado como não-evento, e a tela terminava discordando do banco. A régua
+passou a ser o que se QUER gravar.
+
+⚠️ **Como medir isto de novo**, se alguém mexer: pôr um valor conhecido num
+campo do cliente A por SQL, abrir A, trocar para B e amostrar
+`document.querySelectorAll('input[data-slot="input"]')` a cada 100ms por ~3s.
+Sem o portão o valor de A aparece em todas; com ele, em nenhuma.

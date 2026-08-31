@@ -8,6 +8,7 @@ import {
 } from "@/lib/inbox/conversations";
 import {
   aplicarFiltros,
+  contarFiltrosAtivos,
   FILTROS_VAZIOS,
   mapaDeEtapasPorContato,
   recorteTemDoisNiveis,
@@ -19,6 +20,13 @@ import {
   type AchadoNoTexto,
 } from "@/lib/inbox/busca-em-mensagens";
 import { InboxFilters } from "@/components/inbox/inbox-filters";
+import { FiltrosSalvosMenu } from "@/components/inbox/filtros-salvos-menu";
+import { useFiltrosSalvos } from "@/hooks/use-filtros-salvos";
+import {
+  limparOrfaos,
+  mesmoFiltro,
+  type CatalogosDoFiltro,
+} from "@/lib/inbox/filtros-salvos";
 import { tituloDaConversa } from "@/lib/cb-groups/display";
 import { stripWhatsAppFormat } from "@/lib/inbox/whatsapp-format";
 import { cn } from "@/lib/utils";
@@ -29,7 +37,14 @@ import type {
   Profile,
   Tag,
 } from "@/types";
-import { Search, Users, Star, MessageSquareText, MessageSquarePlus } from "lucide-react";
+import {
+  Bookmark,
+  Search,
+  Users,
+  Star,
+  MessageSquareText,
+  MessageSquarePlus,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -166,6 +181,20 @@ export function ConversationList({
     falhouAoCarregar: falhouFavoritas,
     alternar: alternarFavorita,
   } = useFavoritas(resyncToken);
+
+  // Filtros salvos da conta (967). Leitura direta sob RLS; escrita só admin,
+  // conferida por rowcount dentro do hook.
+  const {
+    salvos: filtrosSalvos,
+    padraoId: filtroPadraoId,
+    carregando: salvosCarregando,
+    falhou: salvosFalhou,
+    criar: criarFiltroSalvo,
+    regravar: regravarFiltroSalvo,
+    renomear: renomearFiltroSalvo,
+    apagar: apagarFiltroSalvo,
+    definirPadrao: definirFiltroPadrao,
+  } = useFiltrosSalvos();
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
@@ -376,6 +405,10 @@ export function ConversationList({
   // problema só apareceria numa conta com perfil configurado — o tipo de
   // coisa que passa no teste de hoje e quebra quando o primeiro perfil
   // nascer.)
+  //
+  // ⚠️ E o menu de FILTROS SALVOS olha esta mesma lista: separá-las faria o
+  // menu esconder (ou oferecer) um filtro por um critério que o painel de
+  // filtros não usa.
   const canaisDoPerfil = useMemo(
     () => canaisVisiveis(acesso, channels),
     [acesso, channels],
@@ -383,6 +416,41 @@ export function ConversationList({
   const foraDoPerfil = useCallback(
     (c: Conversation) => !conversaNoEscopo(acesso, c),
     [acesso],
+  );
+
+
+  /**
+   * Os catálogos que dão NOME aos ids de um filtro salvo, e que dizem quais
+   * ids ainda existem.
+   *
+   * ⚠️ São os mesmos que o painel recebe, de propósito: um menu que resolvesse
+   * nomes por outra lista descreveria o recorte de um jeito e as pastilhas de
+   * outro, lado a lado na mesma tela.
+   */
+  const catalogosDoFiltro: CatalogosDoFiltro = useMemo(
+    () => ({
+      canais: canaisDoPerfil,
+      responsaveis: temPerfis ? profiles : [],
+      etapas,
+      funis,
+      etiquetas: tags,
+    }),
+    [canaisDoPerfil, temPerfis, profiles, etapas, funis, tags],
+  );
+
+  /**
+   * ⚠️ Aplicar um filtro salvo passa por `limparOrfaos` SEMPRE.
+   *
+   * Um recorte gravado em maio pode apontar para etapa removida, conexão
+   * desconectada ou etiqueta apagada — e id morto não dá erro: ele devolve
+   * ZERO conversas, com cara de resposta certa. A limpeza só descarta o que o
+   * catálogo carregado prova estar morto (catálogo vazio não prova nada, ver o
+   * módulo), então o pior caso é o filtro ainda recortar demais — nunca a tela
+   * afirmar que não há conversa nenhuma.
+   */
+  const aplicarFiltroSalvo = useCallback(
+    (f: FiltrosDoInbox) => setFiltros(limparOrfaos(f, catalogosDoFiltro)),
+    [catalogosDoFiltro],
   );
 
   // `stage_id` → `pipeline_id`, para o primeiro nível do recorte (escolher só
@@ -468,6 +536,99 @@ export function ConversationList({
       prev.etapaId === seed ? { ...prev, etapaId: null, funilId: null } : prev,
     );
   }, [jornadaDoFunil, etapasStatus, etapas, funis]);
+
+  /**
+   * ⚠️ A SEMENTE DO FILTRO PADRÃO (968) — UMA VEZ, E SÓ UMA.
+   *
+   * O padrão chega de uma consulta, depois do primeiro render. Reaplicá-lo a
+   * cada mudança faria o filtro que o operador acabou de limpar VOLTAR
+   * sozinho — por isso `padraoSemeado` vira `true` na primeira decisão, dê no
+   * que der (inclusive quando a decisão é "não há padrão").
+   *
+   * ⚠️ `?etapa=` do funil VENCE o padrão. Chegar pelo botão da coluna é gesto
+   * explícito, com a faixa "Voltar ao funil" na tela explicando o recorte;
+   * somar o padrão por cima mostraria MENOS conversas do que a coluna
+   * prometeu, e a faixa passaria a mentir.
+   *
+   * ⚠️ Espera os catálogos de etapa antes de semear. `limparOrfaos` só
+   * descarta o que o catálogo carregado prova estar morto — semear antes
+   * deles aplicaria uma etapa apagada, e aí a caixa abriria VAZIA com cara de
+   * "não há conversa nenhuma". Enquanto espera, a lista segura o mesmo
+   * spinner do deep link (ver `esperandoPadrao`), em vez de pintar a lista
+   * inteira e pular para 8 linhas um segundo depois.
+   */
+  const semeouPadraoRef = useRef(false);
+  useEffect(() => {
+    if (semeouPadraoRef.current) return;
+    if (etapaInicial) {
+      semeouPadraoRef.current = true;
+      return;
+    }
+    if (salvosCarregando) return;
+    const padrao = filtroPadraoId
+      ? filtrosSalvos.find((f) => f.id === filtroPadraoId)
+      : undefined;
+    if (!padrao) {
+      semeouPadraoRef.current = true;
+      return;
+    }
+    // `indisponivel` também passa: esperar para sempre seria pior, e o aviso
+    // de `stageFilterUnavailable` já explica a lista sem recorte de etapa.
+    if (etapasStatus === "carregando") return;
+    semeouPadraoRef.current = true;
+    // ⚠️ Só semeia sobre o recorte INTACTO. A consulta demora alguns
+    // centésimos e o operador pode ter clicado em "Não lidas" nesse meio —
+    // sobrescrever seria o padrão desfazendo uma escolha que a pessoa acabou
+    // de fazer, sem nada na tela explicando.
+    //
+    // O `set-state-in-effect` está desligado aqui pelo mesmo motivo dos
+    // outros pontos do projeto (contacts, pipelines, notifications): isto NÃO
+    // é estado derivado de prop — é uma semente de uma vez só, vinda de uma
+    // consulta, guardada por `semeouPadraoRef` e pelo teste de recorte
+    // intacto acima. Não há como derivá-la no render sem reaplicá-la a cada
+    // mudança, que é justamente o bug que a ref evita.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFiltros((prev) =>
+      contarFiltrosAtivos(prev) === 0
+        ? limparOrfaos(padrao.filtros, catalogosDoFiltro)
+        : prev,
+    );
+  }, [
+    etapaInicial,
+    salvosCarregando,
+    filtroPadraoId,
+    filtrosSalvos,
+    etapasStatus,
+    catalogosDoFiltro,
+  ]);
+
+  /**
+   * Segura a lista enquanto o padrão ainda pode entrar — ver acima.
+   *
+   * ⚠️ NÃO consulta o ref da semente, de propósito: ref não re-renderiza, e
+   * ler um durante o render dá tela desatualizada. Não precisa — as duas
+   * condições abaixo VIRAM FALSAS por conta própria assim que a semente pode
+   * ter rodado (`salvosCarregando` cai quando a consulta volta, e
+   * `etapasStatus` sai de "carregando" e nunca volta a ele).
+   */
+  const esperandoPadrao =
+    !etapaInicial &&
+    (salvosCarregando ||
+      (filtroPadraoId !== null && etapasStatus === "carregando"));
+
+  /**
+   * O recorte na tela é exatamente o do filtro padrão?
+   *
+   * ⚠️ É o que a faixa precisa saber. Um inbox recortado por algo que o
+   * operador NÃO fez nesta sessão precisa de mais que o distintivo de
+   * contagem: precisa dizer de onde veio o recorte e oferecer a saída.
+   */
+  const padraoNaTela = useMemo(() => {
+    const padrao = filtroPadraoId
+      ? filtrosSalvos.find((f) => f.id === filtroPadraoId)
+      : undefined;
+    return padrao && mesmoFiltro(padrao.filtros, filtros) ? padrao : null;
+  }, [filtroPadraoId, filtrosSalvos, filtros]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -606,11 +767,53 @@ export function ConversationList({
           etapasConfiaveis={etapasStatus === "ok"}
           funis={funis}
           temGrupos={temGrupos}
+          menuSalvos={
+            <FiltrosSalvosMenu
+              salvos={filtrosSalvos}
+              padraoId={filtroPadraoId}
+              carregando={salvosCarregando}
+              falhou={salvosFalhou}
+              filtrosAtuais={filtros}
+              onAplicar={aplicarFiltroSalvo}
+              catalogos={catalogosDoFiltro}
+              criar={criarFiltroSalvo}
+              regravar={regravarFiltroSalvo}
+              renomear={renomearFiltroSalvo}
+              apagar={apagarFiltroSalvo}
+              definirPadrao={definirFiltroPadrao}
+            />
+          }
           busca={search}
           onLimparBusca={() => setSearch("")}
           exibindo={filtered.length}
           total={conversations.length}
         />
+
+        {/* ⚠️ A FAIXA DO PADRÃO. O distintivo de contagem explica um recorte
+            que o operador ACABOU DE FAZER; este ele não fez — a caixa já
+            abriu assim. Sem uma linha dizendo de onde veio e como sair,
+            "preciso remover manualmente" (que é o pedido) vira "sumiram as
+            conversas".
+
+            Limpa só os FILTROS, não a busca: a faixa fala do filtro padrão, e
+            a caixa de busca continua visivelmente preenchida se houver texto
+            nela. */}
+        {padraoNaTela && (
+          <p className="flex flex-wrap items-center gap-x-1 px-0.5 text-[11px] text-muted-foreground">
+            <Bookmark className="h-3 w-3 shrink-0 fill-current text-primary" />
+            <span className="min-w-0 truncate">
+              {t("defaultFilterBanner", { nome: padraoNaTela.nome })}
+            </span>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={() => setFiltros(FILTROS_VAZIOS)}
+              className="underline underline-offset-2 transition-colors hover:text-foreground"
+            >
+              {t("showEverything")}
+            </button>
+          </p>
+        )}
       </div>
 
 
@@ -621,7 +824,7 @@ export function ConversationList({
           space — the list then overflows and gets clipped by the
           parent's overflow-hidden with no scrollbar (issue #229). */}
       <ScrollArea className="min-h-0 flex-1">
-        {loading || aguardandoEtapas ? (
+        {loading || aguardandoEtapas || esperandoPadrao ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>

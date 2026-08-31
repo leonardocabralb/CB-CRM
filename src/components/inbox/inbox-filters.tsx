@@ -44,6 +44,7 @@ import {
   SEM_RESPONSAVEL,
   type FiltrosDoInbox,
 } from "@/lib/inbox/filtros";
+import { nomeDaEtapa } from "@/lib/inbox/filtros-salvos";
 import type { TipoDeConversa } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type {
@@ -73,6 +74,16 @@ interface InboxFiltersProps {
   funis: Map<string, string>;
   /** Existe conversa de grupo carregada? Sem isso o recorte por tipo não decide nada. */
   temGrupos: boolean;
+  /**
+   * O menu de filtros salvos (Fase A2), montado pela LISTA e entregue pronto.
+   *
+   * Slot em vez de props de dados porque este arquivo já é grande e acabou de
+   * ser reescrito pelo #73: passar `salvos`, `criar`, `renomear`, `apagar` e os
+   * catálogos por aqui só para repassá-los adiante engrossaria o conflito do
+   * próximo merge sem ninguém ganhar nada. Opcional para a tela continuar
+   * montável sem ele (é o que os testes fazem).
+   */
+  menuSalvos?: React.ReactNode;
   /** A caixa de busca, que vive fora daqui — o "Limpar tudo" precisa dela. */
   busca: string;
   onLimparBusca: () => void;
@@ -91,6 +102,7 @@ export function InboxFilters({
   etapasConfiaveis,
   funis,
   temGrupos,
+  menuSalvos,
   busca,
   onLimparBusca,
   exibindo,
@@ -297,6 +309,11 @@ export function InboxFilters({
             className={cn("h-3 w-3 transition-transform", aberto && "rotate-180")}
           />
         </button>
+
+        {/* Colado no botão "Filtros" porque é o mesmo assunto — mas com
+            gatilho próprio: aquele botão já abre e fecha o painel, e um
+            segundo comportamento no mesmo clique não existe. */}
+        {menuSalvos}
 
         {/* ⚠️ "Não lidas" DEIXOU de ser uma opção do menu de situação e virou
             botão próprio — é mudança de comportamento, não adição. Antes,
@@ -712,19 +729,6 @@ export function InboxFilters({
       )}
     </div>
   );
-}
-
-/**
- * O nome da etapa, com o funil na frente quando há mais de um.
- *
- * ⚠️ Com dois funis os nomes se repetem — "Lead", "Qualificado" — e o menu
- * mostraria itens idênticos intercalados por `position`, sem o operador poder
- * distinguir. Hoje há um funil só e o prefixo não aparece.
- */
-function nomeDaEtapa(etapa: PipelineStage, funis: Map<string, string>): string {
-  if (funis.size < 2) return etapa.name;
-  const funil = funis.get(etapa.pipeline_id);
-  return funil ? `${funil} · ${etapa.name}` : etapa.name;
 }
 
 function Campo({

@@ -17,7 +17,7 @@ import {
   agruparCampos,
   chaveDoBloco,
 } from '@/lib/contacts/grupos-de-campos';
-import { CampoPersonalizadoInput } from '@/components/contacts/campo-personalizado-input';
+import { CampoComSalvamento } from '@/components/contacts/campo-com-salvamento';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag, ConversationNote, CustomField, ContactCustomValue, Deal, GrupoDeCampos, MessageTemplate } from "@/types";
 import {
@@ -152,8 +152,25 @@ export function ContactDetailView({
   const chaveVisivel = blocoVisivel
     ? chaveDoBloco(blocoVisivel.grupo?.id ?? null)
     : null;
-  const [customValues, setCustomValues] = useState<Record<string, string>>({});
-  const [savingCustom, setSavingCustom] = useState(false);
+  /**
+   * ⚠️ Os valores carregam o DONO junto — mesma correção do painel da
+   * conversa. Nada limpa `customValues` na troca de contato, então existe um
+   * render com o contato NOVO e os valores do ANTERIOR; o campo é montado
+   * ali (a `key` já mudou) e semearia o rascunho com o valor do cliente
+   * errado. A comparação é contra o PROP do render atual, nunca contra o
+   * resultado de um efeito que talvez já tenha rodado.
+   */
+  const [customValues, setCustomValues] = useState<{
+    de: string | null;
+    mapa: Record<string, string>;
+  }>({ de: null, mapa: {} });
+
+  /**
+   * Os valores personalizados, mas SÓ se já forem deste contato — ver o
+   * comentário do estado. `null` segura a montagem dos campos.
+   */
+  const valoresDesteContato =
+    customValues.de === contactId ? customValues.mapa : null;
   const [loadingCustom, setLoadingCustom] = useState(false);
 
   // Deals tab
@@ -263,7 +280,7 @@ export function ContactDetailView({
       valuesRes.data.forEach((v) => {
         map[v.custom_field_id] = v.value ?? '';
       });
-      setCustomValues(map);
+      setCustomValues({ de: alvo, mapa: map });
     }
     setLoadingCustom(false);
   }, [contactId, supabase]);
@@ -422,22 +439,42 @@ export function ContactDetailView({
     }
   }
 
-  async function saveCustomFields() {
-    if (!contactId) return;
-    setSavingCustom(true);
-
-    // ⚠️ UPSERT + delete dos esvaziados (helper compartilhado com o painel do
-    // inbox) — a versão antiga apagava TODAS as linhas do contato e reinseria
-    // as preenchidas: falha entre o delete e o insert perdia todos os
-    // valores, sem volta.
-    const erro = await salvarValoresDoContato(supabase, contactId, customValues);
-    if (erro) {
-      toast.error(t('toastCustomFieldsFailed'));
-    } else {
-      toast.success(t('toastCustomFieldsSaved'));
-    }
-    setSavingCustom(false);
-  }
+  /**
+   * Grava UM campo personalizado (Fase B1) — não existe mais "Salvar campos".
+   *
+   * ⚠️ UM campo por gravação, nunca o mapa inteiro: `""` no upsert
+   * compartilhado significa DELETE da linha, então um envio do mapa a cada
+   * blur faria um campo ainda não carregado apagar dado real.
+   *
+   * ⚠️ O aviso nomeia o CAMPO e o CLIENTE. Com o botão o erro chegava com o
+   * operador olhando a ficha; agora ele pode já ter fechado o painel.
+   */
+  const gravarCampo = useCallback(
+    async (fieldId: string, valor: string): Promise<boolean> => {
+      if (!contactId || !podeEditar) return false;
+      const erro = await salvarValoresDoContato(supabase, contactId, {
+        [fieldId]: valor,
+      });
+      if (erro) {
+        toast.error(
+          t('toastCustomFieldFailed', {
+            campo:
+              customFields.find((f) => f.id === fieldId)?.field_name ?? fieldId,
+            cliente: contact?.name || contact?.phone || '',
+          })
+        );
+        return false;
+      }
+      // Espelha o que o banco guardou (o helper grava aparado).
+      setCustomValues((prev) =>
+        prev.de === contactId
+          ? { de: prev.de, mapa: { ...prev.mapa, [fieldId]: valor.trim() } }
+          : prev
+      );
+      return true;
+    },
+    [contactId, podeEditar, supabase, customFields, contact, t]
+  );
 
   async function handleSendTemplate(
     template: MessageTemplate,
@@ -837,7 +874,7 @@ export function ContactDetailView({
 
               {/* Custom Fields Tab */}
               <TabsContent value="custom" className="flex-1 overflow-y-auto px-4 py-3">
-                {loadingCustom ? (
+                {loadingCustom || !valoresDesteContato ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="size-5 animate-spin text-muted-foreground" />
                   </div>
@@ -873,45 +910,26 @@ export function ContactDetailView({
                         })}
                       </div>
                     )}
+                    {/* ⚠️ A `key` INCLUI o contato — ver o cabeçalho do
+                        `CampoComSalvamento`: sem ela o React reusa a
+                        instância ao trocar de cliente e a descarga de
+                        desmonte grava no cliente errado. Mesma peça do
+                        painel da conversa: as duas telas editam o MESMO
+                        dado, e uma com botão e outra sem divergiria no
+                        primeiro tipo de campo novo. */}
                     {blocoVisivel?.campos.map((field) => (
-                      <div key={field.id} className="space-y-1.5">
-                        {/* ⚠️ Sem `capitalize`: ele maiusculava cada
-                            palavra e o operador via "Data De Fechamento
-                            Do Contrato" no lugar do nome cadastrado — e
-                            estragava os técnicos (utm_source). */}
-                        <Label className="text-muted-foreground text-xs">
-                          {field.field_name}
-                        </Label>
-                        {/* Componente COMPARTILHADO com o painel do inbox
-                            (948): um input por tipo, com as conversões de
-                            fuso do campo de data dentro dele. */}
-                        <CampoPersonalizadoInput
-                          field={field}
-                          value={customValues[field.id] ?? ''}
-                          onChange={(v) =>
-                            setCustomValues((prev) => ({
-                              ...prev,
-                              [field.id]: v,
-                            }))
-                          }
-                          placeholder={t('enterCustomField', { name: field.field_name })}
-                        />
-                      </div>
+                      <CampoComSalvamento
+                        key={`${contactId}:${field.id}`}
+                        field={field}
+                        rotulo={field.field_name}
+                        valorSalvo={valoresDesteContato[field.id] ?? ''}
+                        aoGravar={gravarCampo}
+                        textoSalvo={t('fieldSaved')}
+                        disabled={!podeEditar}
+                        placeholder={t('enterCustomField', { name: field.field_name })}
+                        className="space-y-1.5"
+                      />
                     ))}
-                    <Button
-                      onClick={saveCustomFields}
-                      disabled={savingCustom || !podeEditar}
-                      title={podeEditar ? undefined : t('readOnlyHint')}
-                      className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
-                      size="sm"
-                    >
-                      {savingCustom ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        <Save className="size-3.5" />
-                      )}
-                      {t('saveCustomFieldsBtn')}
-                    </Button>
                   </div>
                 )}
               </TabsContent>
