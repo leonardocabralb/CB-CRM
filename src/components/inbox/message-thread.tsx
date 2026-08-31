@@ -2165,7 +2165,14 @@ export function MessageThread({
           onOpenChange={setExecutarAberto}
           conversationId={conversation.id}
           contactName={contact.name || contact.phone}
-          channelId={activeChannel?.id ?? null}
+          // ⚠️ O canal CRU da conversa, não o `activeChannel` (que cai no
+          // padrão da conta): a rota decide pelo cru com falha ABERTA —
+          // conversa sem canal deixa passar. Com o padrão aqui, uma
+          // automação restrita ao número B aparecia desabilitada numa
+          // conversa sem canal cujo padrão é A, enquanto o servidor a
+          // aceitaria (ledger 48h). O dialog não desabilita nada quando o
+          // canal é nulo — o mesmo fail-open, nas duas camadas.
+          channelId={conversation.channel_id ?? null}
         />
       )}
 

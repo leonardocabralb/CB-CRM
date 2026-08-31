@@ -48,7 +48,13 @@ export type SecaoId =
   // — `podeVerSecao` responde true para uma seção que a tela não lista.
   | "acervo"
   | "fields"
-  | "deals"
+  // ⚠️ NÃO existe "deals" — foi declarada na Fase 1 achando que Configurações
+  // teria uma seção de negócios, que nunca nasceu (o assunto mora em
+  // `fields`). O id fantasma rendia um SEGUNDO checkbox no editor de perfis,
+  // caindo no rótulo de fallback — dois "Perfis de acesso" idênticos, e o
+  // admin podia marcar o errado. O `"deals"` gravado no perfil Administrador
+  // é filtrado por `ehSecaoConhecida` na leitura e na validação; não precisa
+  // de limpeza no banco.
   | "assinatura"
   | "members"
   | "integracoes"
@@ -89,7 +95,6 @@ export const TODAS_AS_SECOES: SecaoId[] = [
   "quick-replies",
   "acervo",
   "fields",
-  "deals",
   "assinatura",
   "members",
   "integracoes",

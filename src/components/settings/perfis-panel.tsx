@@ -102,6 +102,10 @@ export function PerfisPanel() {
   const t = useTranslations('PerfisPanel');
   const tSidebar = useTranslations('Sidebar');
   const tRoles = useTranslations('Settings.roles');
+  // As seções pelo MESMO dicionário do rail de Configurações — os checkboxes
+  // exibiam `SECTION_META.label`, que é inglês fixo ("Connections", "Team
+  // members") num app pt-BR (ledger 48h, r3).
+  const tSecoes = useTranslations('Settings.sections');
   const supabase = useMemo(() => createClient(), []);
   const { channels } = useChannels();
 
@@ -485,12 +489,13 @@ export function PerfisPanel() {
                         (SECOES_TRAVADAS_PARA_ADMIN as readonly string[]).includes(secao);
                       const marcada =
                         travadaAdmin || rascunho.secoes_config.includes(secao);
-                      // A seção `perfis` ainda não existe no rail (chega nesta
-                      // fase); mostra com o rótulo próprio.
+                      // Id declarado à frente da tela (como `acervo` e
+                      // `perfis` já foram) aparece CRU em vez de cair num
+                      // rótulo emprestado: foi um fallback assim que fez o
+                      // fantasma `deals` virar um segundo "Perfis de acesso"
+                      // idêntico ao verdadeiro.
                       const rotulo =
-                        secao in SECTION_META
-                          ? SECTION_META[secao as keyof typeof SECTION_META].label
-                          : t('secaoPerfis');
+                        secao in SECTION_META ? tSecoes(secao) : secao;
                       return (
                         <label
                           key={secao}

@@ -137,7 +137,16 @@ export function useExecucoesDoContato(contactId: string | null): Resultado {
           grupos?: GrupoDeEsperas[];
         } | null;
         if (cancelado) return;
-        esperas = json?.grupos ?? SEM_ESPERAS;
+        // ⚠️ 200 com corpo que não parseia (página de erro de proxy,
+        // resposta truncada) NÃO é "nada em execução" — sem o `falhou`, a
+        // aba afirmava vazio com cara de resposta certa sobre esperas que
+        // podem existir. A rota sempre devolve `{ grupos: [...] }`; qualquer
+        // outra forma é anomalia e vira o aviso da aba.
+        if (json && Array.isArray(json.grupos)) {
+          esperas = json.grupos;
+        } else {
+          falhou = true;
+        }
       } else {
         falhou = true;
       }
