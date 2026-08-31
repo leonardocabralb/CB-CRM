@@ -21,7 +21,7 @@
 
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
-| **A1** | Banco dos filtros salvos + módulo puro (parse defensivo, resumo, ids órfãos) | ⬜ a fazer | `967` (a confirmar) | — |
+| **A1** | Banco dos filtros salvos + módulo puro (parse defensivo, descrição, ids órfãos) | ✅ **feita** (2026-08-31) | `967` **aplicada** | `feat/filtros-salvos-no-inbox` |
 | **A2** | Menu no botão "Filtros": aplicar · salvar o atual · renomear · apagar | ⬜ a fazer | nenhuma | — |
 | **A3** | Filtro **padrão** por pessoa + a faixa que explica o inbox recortado | ⬜ a fazer | `968` (a confirmar) | — |
 | **B1** | Campos personalizados salvam ao sair do campo (painel do inbox + ficha `/contatos`) | ⬜ a fazer | nenhuma | — |
@@ -33,6 +33,11 @@
    "Jurídico", "Bancario" —, não de uma pessoa.)
 2. O **filtro padrão é escolha de cada um**, mesmo sendo o filtro compartilhado.
    O "SDR" pode ser o padrão do Fulano e não ser o de mais ninguém.
+   ⚠️ **A conta tem UM membro hoje.** A metade "compartilhado" fica dormente
+   até o primeiro convite real — como a presença por conversa (963). Isso não
+   muda o desenho (mudar depois seria migration de dados), mas muda o TESTE:
+   a guarda de papel precisa ser medida trocando de papel no banco, não
+   clicando na tela como `owner`, que passa em tudo.
 3. Os filtros salvos aparecem num **menu no próprio botão "Filtros"**, não em
    coluna nova nem em faixa fixa: a coluna do inbox tem 320px e já está cheia.
 4. Item B é **só os campos personalizados** — ver "O que já funciona" abaixo.
@@ -190,6 +195,40 @@ CREATE UNIQUE INDEX ... ON cb_inbox_saved_filters (account_id, lower(btrim(nome)
   editar um filtro leva 0 linhas com `error: null`. Toda escrita do hook usa
   `.select('id')` e confere o rowcount — o molde de `atualizarNegocio` e
   `deleteNote`.
+
+#### ✅ A1 — o que foi feito (2026-08-31)
+
+| Arquivo | O que é |
+| --- | --- |
+| `supabase/migrations/967_cb_filtros_salvos.sql` | **NOVO.** `cb_inbox_saved_filters` como descrito acima. **Aplicada** e conferida no banco: RLS ligada, 4 policies, `anon` sem SELECT, `authenticated` com os quatro privilégios, índice único de nome de pé. |
+| `src/lib/inbox/filtros-salvos.ts` | **NOVO, puro.** `lerFiltroSalvo` (parse defensivo), `escreverFiltroSalvo`, `mesmoFiltro`, `descreverFiltro`, `limparOrfaos`, `nomeDaEtapa`. |
+| `src/lib/inbox/filtros-salvos.test.ts` | **NOVO.** 46 casos. |
+| `messages/{en,pt-BR}.json` | `Inbox.conversationList.deletedRef` — "(deleted)" / "(apagado)". |
+
+**Duas coisas que o plano não previa e mudaram a execução:**
+
+- ⚠️ **`FiltrosDoInbox` ganhou `funilId` no PR #73**, entre o estudo e a
+  execução — o recorte de funil virou dois níveis (funil + etapa), com regras
+  próprias: só o seletor de funil escreve `funilId`, a etapa MANDA quando os
+  dois estão preenchidos, os dois contam como UM no distintivo, e tirar o funil
+  tira a etapa junto. O módulo foi refeito para acompanhar. **É a prova viva do
+  que o cabeçalho deste arquivo avisa**: o plano envelhece, e reler o arquivo
+  antes de escrever é o que separou um `escreverFiltroSalvo` correto de um que
+  gravaria um recorte pela metade, em silêncio.
+- ⚠️ **As pastilhas do painel NÃO foram extraídas**, ao contrário do que a
+  linha do `resumirFiltro` propunha. Aquele código acabou de ser reescrito pelo
+  #73 (duas pastilhas para funil e etapa, prefixo condicional) e mexer nele
+  agora seria reescrever core recém-mexido para servir a um menu. No lugar
+  disso, `descreverFiltro` cobre as duas superfícies e o risco de divergência é
+  pago por um teste: `AMOSTRAS` é um `Record<keyof FiltrosDoInbox, …>`, então o
+  **compilador** cobra uma entrada para todo campo novo, e o teste cobra que o
+  campo apareça na descrição, saiba se desfazer e sobreviva à ida e volta pelo
+  banco. A extração fica para quando o painel estabilizar.
+
+⚠️ **O replay em banco vazio NÃO foi rodado localmente** (Docker desligado nesta
+máquina). A migration segue a regra das duas metades (todo `REVOKE` com `GRANT`
+de volta) e nenhuma conferência exige dado, mas quem tiver Docker deve rodar
+`supabase db start` — no CI o replay é sinal, não portão, e não segura o deploy.
 
 ### Fase A2 — O menu no botão "Filtros"
 

@@ -205,7 +205,8 @@
       "searchingInMessages": "Buscando dentro das mensagens...",
       "stageFilterUnavailable": "Não foi possível carregar as etapas — o recorte por funil/etapa não está sendo aplicado.",
       "searchInMessagesFailed": "Não foi possível buscar dentro das mensagens. A busca olhou só nomes e números.",
-      "searchHitCount": "{n, plural, =1 {1 msg} other {# msgs}}"
+      "searchHitCount": "{n, plural, =1 {1 msg} other {# msgs}}",
+      "deletedRef": "(apagado)"
     },
     "messageThread": {
       "unknownAuthor": "Desconhecido",

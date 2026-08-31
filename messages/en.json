@@ -212,7 +212,8 @@
       "searchingInMessages": "Searching inside messages...",
       "stageFilterUnavailable": "Stages could not be loaded — the pipeline/stage filter is not being applied.",
       "searchInMessagesFailed": "Could not search inside messages. Only names and numbers were searched.",
-      "searchHitCount": "{n, plural, =1 {1 msg} other {# msgs}}"
+      "searchHitCount": "{n, plural, =1 {1 msg} other {# msgs}}",
+      "deletedRef": "(deleted)"
     },
     "messageThread": {
       "unknownAuthor": "Unknown",
