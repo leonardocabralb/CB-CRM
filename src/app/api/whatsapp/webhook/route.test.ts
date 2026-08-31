@@ -229,7 +229,7 @@ vi.mock('@/lib/cb-channels/resolve-inbound', () => ({
   resolveInboundMetaChannel: vi.fn(async () => null),
 }))
 vi.mock('@/lib/cb-channels/pipeline-routing', () => ({
-  routeInboundToPipeline: vi.fn(async () => {}),
+  routeContactToPipeline: vi.fn(async () => {}),
 }))
 
 vi.mock('@/lib/webhooks/deliver', () => ({

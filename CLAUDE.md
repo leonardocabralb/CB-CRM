@@ -202,7 +202,8 @@ upstream sobrescrevê-los:
 | `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
 | `src/lib/whatsapp/inbound-store.ts` | idem, no lado Evolution |
 | `src/lib/automations/engine.ts` | `channelInScope`, condição `channel`, canal de saída por passo, e o `create_deal` que virou chamada a `createDeal` com a checagem "um card por contato" ANTES do insert — o índice da 911 é parcial (`source = 'channel'`) e não barra o insert da automação, então sem a checagem nasce card duplicado. Mais o `rotuloDoDisparo` opcional de `runAutomationById` (955): a execução manual da conversa grava `'manual'` no log — sem ele, o registro diria que outra automação chamou |
-| `src/app/api/whatsapp/webhook/route.ts` e `src/lib/whatsapp/inbound-store.ts` | além do carimbo de canal, a chamada de uma linha a `routeInboundToPipeline` no fan-out. ⚠️ São **dois** call sites porque não há função compartilhada de abrir conversa — enxertar só num deles faz a feature valer só num transporte, e produção roda Evolution |
+| `src/app/api/whatsapp/webhook/route.ts`, `src/lib/whatsapp/inbound-store.ts` (×2) e `src/lib/whatsapp/send-message.ts` | a chamada a `routeContactToPipeline`. ⚠️ São **QUATRO** call sites: os dois de ingestão (não há função compartilhada de abrir conversa — enxertar só num faz a feature valer só num transporte, e produção roda Evolution), o `persistDeviceMessage` do celular pareado e o núcleo de envio. Ver "Quem abre negócio" abaixo |
+| `src/lib/whatsapp/inbound-store.ts` (`persistDeviceMessage`) | o `followConversationChannel` que aponta a conversa para o número por onde a EQUIPE falou. Sem ele a conversa nasce com `channel_id` nulo e o CRM responde pelo canal PADRÃO — o advogado aborda pelo Jurídico e o sistema responderia pelo Comercial |
 | `src/lib/flows/engine.ts` | `findEntryFlow` por canal, `flow_runs.channel_id`, try/catch nos nós interativos, e o parâmetro opcional `substituicao` de `startFlowForContact` (955): o start manual carimba a run substituída como gente (`stopped_by_agent`/`replaced_by_agent`), não como regra |
 | `src/lib/ai/{auto-reply,config,knowledge,usage}.ts` | agente por canal, interruptor, RAG por canal |
 | `src/lib/whatsapp/broadcast-core.ts` + rotas de template | `resolveMetaChannel` no lugar do espelho |
@@ -1179,6 +1180,55 @@ e as três já morderam de verdade.
   funcionar. (Primo do caso `<ScrollArea>`/flex acima — mesma família:
   `min-width: auto` anulando o limite do pai.)
 
+⚠️ **QUEM ABRE NEGÓCIO: os dois sentidos da conversa, decididos por GENTE.**
+Até 2026-08-31 só a mensagem RECEBIDA chamava `routeContactToPipeline` (que
+até então se chamava `routeInboundToPipeline`). Medido em produção naquele
+dia: **1.041** mensagens da equipe saíram pelo celular pareado contra **8**
+digitadas dentro do CRM — o caminho por onde o escritório realmente trabalha
+nunca abria negócio, e cliente que nunca respondeu ficava fora do funil para
+sempre. O que morde código novo:
+
+- ⚠️ **O gancho do ENVIO mora no NÚCLEO (`sendMessageToConversation`), e é a
+  escolha do LUGAR que define a regra.** Por ali passam os quatro envios de
+  gente: compositor, ficha do contato, agendada e API v1. Broadcast
+  (`broadcast-core.ts`) e automação/fluxo (`meta-send.ts`,
+  `engine-send.ts`) **não passam** — e é assim que ficam de fora sem uma
+  linha de guarda. Um disparo para 500 contatos abriria 500 cards de uma
+  vez; "o robô respondeu" não é o escritório decidindo abordar ninguém.
+  ⚠️ Há teste estrutural lendo os fontes
+  (`pipeline-routing.chamadores.test.ts`) — "reusar o núcleo de envio no
+  broadcast" parece limpeza de código e traz o roteador junto, escondido.
+- ⚠️ **Via `supabaseAdmin()` no núcleo**, como o carimbo de canal ao lado: a
+  rota `/api/whatsapp/send` entrega o client do OPERADOR (sob RLS), e o
+  roteador lê `accounts` e escreve em `deals` — sob RLS um `agent` deixaria
+  de abrir card em silêncio.
+- **Abrir conversa NÃO cria negócio** (decisão do operador): o card nasce no
+  primeiro ENVIO. Número digitado errado viraria card no funil para alguém
+  caçar e apagar à mão. Ver `POST /api/cb/conversas/abrir`.
+- **Não houve migration de recuperação**, de propósito: o gatilho é por
+  ESTADO ("este contato já tem card?"), então as conversas que ficaram sem
+  card se resolvem sozinhas na próxima mensagem trocada, em qualquer sentido.
+
+⚠️ **Iniciar conversa pelo CRM (`POST /api/cb/conversas/abrir`).** Botão no
+cabeçalho da lista do inbox → `nova-conversa-dialog.tsx`. ABRE, não envia:
+cria/reencontra contato e conversa, **FIXA** o canal escolhido
+(`pinConversationChannel`, não `follow` — quem clicou escolheu) e devolve o
+id; a página recarrega a lista e navega por `?c=`. O que morde código novo:
+
+- ⚠️ **O teto de 15 dígitos é load-bearing.** `findExistingContact` casa
+  pelos ÚLTIMOS 8 DÍGITOS com tolerância a tronco, então um JID de grupo
+  (~18 dígitos) colado no campo poderia FUNDIR com o celular de um cliente
+  real. `isValidE164` barra nos dois lados (tela e rota).
+- **Reusa `findExistingContact`**, não uma busca própria: sem isso, digitar
+  o número com o nono dígito quando o cliente já existe sem ele criaria uma
+  segunda ficha, cada uma com metade do histórico.
+- **A conversa nasce sem `last_message_at`** e, com `nullsFirst: false`, vai
+  para o FIM da lista até a primeira mensagem. Ela abre selecionada e a
+  busca a encontra ("Nenhuma mensagem ainda"), mas quem mexer na ordenação
+  precisa saber que existe conversa legítima com a coluna nula.
+- **A rota confere POSSE do canal, não escopo de perfil** — nenhuma rota
+  deste projeto valida `canalNoEscopo` hoje. Ver o comentário no arquivo.
+
 ⚠️ **Negócio (`deals`) só nasce por `src/lib/deals/create-deal.ts` no servidor.**
 A 908 deu à conexão um funil padrão, e o roteador de entrada
 (`src/lib/cb-channels/pipeline-routing.ts`) seria o terceiro escritor de deal
@@ -1201,7 +1251,7 @@ Coisas da 908 que mordem código novo:
   automáticos pertencem todos ao dono da conta; o CASCADE anterior apagaria o
   funil inteiro se essa pessoa saísse do `auth.users`.
 - **`deals.contact_id` é NULLABLE** (a 001 diz NOT NULL, mas a 004 dropou), e
-  `routeInboundToPipeline` depende disso: sem a guarda `if (!contactId)`, uma
+  `routeContactToPipeline` depende disso: sem a guarda `if (!contactId)`, uma
   conversa de grupo criaria card órfão que renderiza em branco no Kanban.
 - O roteador dispara por **estado**, não por evento. `first_inbound_message`
   não serve: é contado por conversa e há uma conversa por contato por conta
@@ -1292,7 +1342,7 @@ por fora deles. O que morde código novo:
 - **A política de falha é assimétrica.** Erro ao gravar o evento **estoura**
   quando `auth.uid()` existe (ação de gente, erro aparece na tela) e é
   **engolido com WARNING** quando não existe (ingestão/automação) — porque
-  `routeInboundToPipeline` captura tudo e o lead simplesmente não viraria card,
+  `routeContactToPipeline` captura tudo e o lead simplesmente não viraria card,
   em silêncio.
 - **`AFTER UPDATE OF pipeline_id, stage_id, status`** dispara quando a coluna é
   *mencionada*, mesmo sem mudar — e o formulário manda as três em todo save. O

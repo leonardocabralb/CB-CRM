@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { routeInboundToPipeline } from './pipeline-routing';
+import { routeContactToPipeline } from './pipeline-routing';
 
 // ------------------------------------------------------------
 // Stub que registra QUAIS TABELAS foram consultadas, além dos inserts.
@@ -107,14 +107,14 @@ const BASE = {
   contactName: 'Maria Silva',
 };
 
-describe('routeInboundToPipeline', () => {
+describe('routeContactToPipeline', () => {
   it('não roteia quando o canal não resolveu', async () => {
     // O oposto de `channelInScope` do motor de automações, que deixa
     // contexto sem canal passar em qualquer escopo — é assim que aquele
     // caminho joga o cliente em todos os funis de uma vez.
     const { db, inserts, tabelas } = makeDb({ channel: CANAL_CONFIGURADO });
 
-    await routeInboundToPipeline({ db, ...BASE, channelId: null });
+    await routeContactToPipeline({ db, ...BASE, channelId: null });
 
     expect(inserts).toHaveLength(0);
     expect(tabelas).toHaveLength(0);
@@ -125,7 +125,7 @@ describe('routeInboundToPipeline', () => {
     // barraria o card órfão, que apareceria em branco no Kanban.
     const { db, inserts, tabelas } = makeDb({ channel: CANAL_CONFIGURADO });
 
-    await routeInboundToPipeline({ db, ...BASE, contactId: null });
+    await routeContactToPipeline({ db, ...BASE, contactId: null });
 
     expect(inserts).toHaveLength(0);
     expect(tabelas).toHaveLength(0);
@@ -136,7 +136,7 @@ describe('routeInboundToPipeline', () => {
       channel: { label: 'Pessoal', default_pipeline_id: null, default_stage_id: null },
     });
 
-    await routeInboundToPipeline({ db, ...BASE });
+    await routeContactToPipeline({ db, ...BASE });
 
     expect(inserts).toHaveLength(0);
     expect(tabelas).toEqual(['cb_channels']);
@@ -153,7 +153,7 @@ describe('routeInboundToPipeline', () => {
       existingDeal: { id: 'negocio-em-outro-funil' },
     });
 
-    await routeInboundToPipeline({ db, ...BASE });
+    await routeContactToPipeline({ db, ...BASE });
 
     expect(inserts).toHaveLength(0);
   });
@@ -168,7 +168,7 @@ describe('routeInboundToPipeline', () => {
       account: { owner_user_id: 'dono-da-conta' },
     });
 
-    await routeInboundToPipeline({ db, ...BASE });
+    await routeContactToPipeline({ db, ...BASE });
 
     expect(filtros.deals).toContain('contact_id');
     expect(filtros.deals).not.toContain('pipeline_id');
@@ -182,7 +182,7 @@ describe('routeInboundToPipeline', () => {
       stage: { id: 'etapa-lead' },
     });
 
-    await routeInboundToPipeline({ db, ...BASE });
+    await routeContactToPipeline({ db, ...BASE });
 
     expect(inserts).toHaveLength(1);
     expect(inserts[0]).toMatchObject({
@@ -205,7 +205,7 @@ describe('routeInboundToPipeline', () => {
       account: { owner_user_id: 'dono-da-conta' },
     });
 
-    await routeInboundToPipeline({ db, ...BASE, conversationId: 'conversa-9' });
+    await routeContactToPipeline({ db, ...BASE, conversationId: 'conversa-9' });
 
     expect(inserts[0]).toMatchObject({ conversation_id: 'conversa-9' });
   });
@@ -218,7 +218,7 @@ describe('routeInboundToPipeline', () => {
       account: { owner_user_id: 'dono-da-conta' },
     });
 
-    await routeInboundToPipeline({ db, ...BASE });
+    await routeContactToPipeline({ db, ...BASE });
 
     expect(inserts[0]).toMatchObject({ title: 'Trabalhista — Maria Silva' });
   });
@@ -229,7 +229,7 @@ describe('routeInboundToPipeline', () => {
       account: { owner_user_id: 'dono-da-conta' },
     });
 
-    await routeInboundToPipeline({ db, ...BASE, contactName: null });
+    await routeContactToPipeline({ db, ...BASE, contactName: null });
 
     expect(inserts[0]).toMatchObject({ title: 'Trabalhista' });
   });
@@ -240,7 +240,7 @@ describe('routeInboundToPipeline', () => {
       dealSelectError: { message: 'timeout' },
     });
 
-    await expect(routeInboundToPipeline({ db, ...BASE })).resolves.toBeUndefined();
+    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBeUndefined();
     expect(inserts).toHaveLength(0);
   });
 
@@ -251,13 +251,13 @@ describe('routeInboundToPipeline', () => {
       insertError: { code: '23503', message: 'foreign key violation' },
     });
 
-    await expect(routeInboundToPipeline({ db, ...BASE })).resolves.toBeUndefined();
+    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBeUndefined();
   });
 
   it('erro ao ler o canal não propaga', async () => {
     const { db, inserts } = makeDb({ channelError: { message: 'conexão caiu' } });
 
-    await expect(routeInboundToPipeline({ db, ...BASE })).resolves.toBeUndefined();
+    await expect(routeContactToPipeline({ db, ...BASE })).resolves.toBeUndefined();
     expect(inserts).toHaveLength(0);
   });
 });

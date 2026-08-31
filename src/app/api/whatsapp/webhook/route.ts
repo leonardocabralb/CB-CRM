@@ -7,7 +7,7 @@ import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { reopenClosedConversation } from '@/lib/conversations/reopen'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
-import { routeInboundToPipeline } from '@/lib/cb-channels/pipeline-routing'
+import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
@@ -1011,9 +1011,9 @@ async function processMessage(
   // gatilho aqui é por ESTADO ("este contato já tem card neste funil?"), não
   // por evento, porque `first_inbound_message` é contado por conversa e há
   // uma conversa por contato — o cliente que muda de número nunca dispararia.
-  // `routeInboundToPipeline` nunca lança e sai no primeiro SELECT quando a
+  // `routeContactToPipeline` nunca lança e sai no primeiro SELECT quando a
   // conexão não tem funil configurado.
-  await routeInboundToPipeline({
+  await routeContactToPipeline({
     db: supabaseAdmin(),
     accountId,
     channelId,
