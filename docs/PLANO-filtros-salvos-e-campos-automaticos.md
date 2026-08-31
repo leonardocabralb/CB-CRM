@@ -21,10 +21,10 @@
 
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
-| **A1** | Banco dos filtros salvos + módulo puro (parse defensivo, descrição, ids órfãos) | ✅ **feita** (2026-08-31) | `967` **aplicada** | `feat/filtros-salvos-no-inbox` |
-| **A2** | Menu no botão "Filtros": aplicar · salvar o atual · renomear · apagar | ✅ **feita e medida no preview** (2026-08-31) | nenhuma | `feat/filtros-salvos-no-inbox` |
-| **A3** | Filtro **padrão** por pessoa + a faixa que explica o inbox recortado | ✅ **feita e medida no preview** (2026-08-31) | `968` **aplicada** | `feat/filtros-salvos-no-inbox` |
-| **B1** | Campos personalizados salvam ao sair do campo (painel do inbox + ficha `/contatos`) | ✅ **feita e medida no preview** (2026-08-31) | nenhuma | `feat/filtros-salvos-no-inbox` |
+| **A1** | Banco dos filtros salvos + módulo puro (parse defensivo, descrição, ids órfãos) | ✅ **feita** (2026-08-31) | `967` **aplicada** | #83 |
+| **A2** | Menu no botão "Filtros": aplicar · salvar o atual · renomear · apagar | ✅ **feita e medida no preview** (2026-08-31) | nenhuma | #83 |
+| **A3** | Filtro **padrão** por pessoa + a faixa que explica o inbox recortado | ✅ **feita e medida no preview** (2026-08-31) | `968` **aplicada** | #83 |
+| **B1** | Campos personalizados salvam ao sair do campo (painel do inbox + ficha `/contatos`) | ✅ **feita e medida no preview** (2026-08-31) | nenhuma | #83 |
 
 **Decisões travadas com o operador (2026-08-31):**
 
@@ -225,10 +225,10 @@ CREATE UNIQUE INDEX ... ON cb_inbox_saved_filters (account_id, lower(btrim(nome)
   campo apareça na descrição, saiba se desfazer e sobreviva à ida e volta pelo
   banco. A extração fica para quando o painel estabilizar.
 
-⚠️ **O replay em banco vazio NÃO foi rodado localmente** (Docker desligado nesta
-máquina). A migration segue a regra das duas metades (todo `REVOKE` com `GRANT`
-de volta) e nenhuma conferência exige dado, mas quem tiver Docker deve rodar
-`supabase db start` — no CI o replay é sinal, não portão, e não segura o deploy.
+⚠️ **O replay em banco vazio não pôde ser rodado localmente** (Docker desligado
+nesta máquina) — mas **o CI do PR #83 o rodou e PASSOU** ("Apply to a clean
+database", 2m59s), então as duas migrations aplicam do zero. Lembrete que
+continua valendo: no CI o replay é sinal, não portão, e não segura o deploy.
 
 ### Fase A2 — O menu no botão "Filtros"
 
