@@ -173,11 +173,17 @@ as que voltam a conflitar):
 - ⚠️ **Um workflow só: `.github/workflows/pipeline.yml`.** O `ci.yml` e o
   `migrations.yml` eram DO UPSTREAM e foram removidos; as três etapas
   (verificar → migrations → deploy) viraram jobs de um arquivo nosso, com o
-  `deploy` dependendo das outras duas. Antes os três rodavam **em paralelo** no
+  `deploy` dependendo de `verificar`. Antes os três rodavam **em paralelo** no
   push do `main`, e o cabeçalho do deploy dizia "after CI passes" sem que
   existisse `needs:` — um CI vermelho não impedia a publicação. **Todo merge do
   upstream vai trazer `ci.yml` e `migrations.yml` de volta: apagar de novo**, ou
   as etapas passam a rodar duas vezes por push.
+  ⚠️ **O replay de migrations NÃO segura o deploy**, e o próprio
+  `pipeline.yml` diz isso por escrito ("SINAL, não portão"): `deploy` tem
+  `needs: [verificar]` e mais nada. Migration vermelha no `main` PUBLICA
+  assim mesmo — medido em 2026-08-31, revisando o trem de PRs do dia
+  anterior. Esta seção afirmava "com as duas etapas verdes"; era mentira, e
+  mentira do tipo que faz alguém confiar num portão que não existe.
 
 - **`src/i18n/messages.test.ts` checa `pt-BR`, não `ko`.** O upstream o escreveu
   para `ko`, que não servimos; deixar assim daria um teste permanentemente
@@ -749,10 +755,15 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   mantém a função pura e mede a idade do sinal DENTRO da conversa.
 - ⚠️ **Não existe mais aba "Todos"** (decisão do operador): listar toda
   conversa analisada era o próprio ruído que o filtro passou a cortar.
-  Consequência que o desenho tem de sustentar — o cartão some da lista no
-  instante do clique e o botão "Reabrir" vai junto, então **tratar e
-  descartar têm "Desfazer" no toast**. É a única saída para o clique
-  errado: descartado nunca reabre sozinho.
+  Consequência que o desenho tem de sustentar: sem ela, um descarte errado
+  esconde o alarme daquele cliente **para sempre** — `descartado` nunca
+  reabre sozinho. São DUAS saídas, e nenhuma sobra: o "Desfazer" do toast
+  (~4s) e o cartão que **FICA na lista enquanto a tela estiver aberta**,
+  apagado e com o botão "Reabrir" (`mexidasAqui`, em `radar/page.tsx`). Só
+  o toast não bastava — e foi o que houve até 2026-08-31, com o "Reabrir"
+  como código morto, porque a lista só aceita `estado === 'aberto'`. Sair
+  da tela limpa o conjunto: é o fim do expediente de triagem, e a aba
+  "Todos" continua não existindo.
 - **NADA dispara sozinho** — mesma classe da 925: quem move é o agendador
   batendo em `/api/cb/radar/cron` (incluído no laço LENTO do
   `docker-stack.yml`). ⚠️ O CI não relê o `command` do `agendador`: a
@@ -1419,6 +1430,11 @@ mordem de novo em qualquer código novo:
     estoura com número duplicado, então o ARQUIVO foi renumerado no merge —
     o da presença, porque as 957–962 dependem da de perfis. O histórico do
     Supabase não muda (registra por timestamp), mesmo caso da 906.
+  - **964_cb_disparo_e_regras_so_admin** — as 12 policies de ESCRITA de
+    `automations`, `automation_steps`, `flows`, `flow_nodes`, `broadcasts` e
+    `broadcast_recipients` passam de `'agent'` para `'admin'`, alcançando a
+    decisão que a Fase 2 dos perfis só tinha aplicado nas ROTAS. Aplicada em
+    2026-08-31. SELECT continua aberto a qualquer membro da conta.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
@@ -1565,8 +1581,10 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
 
 - ⚠️⚠️ **`git push origin main` DISPARA DEPLOY DE PRODUÇÃO.** O workflow
   `.github/workflows/pipeline.yml` roda a cada push no `main`: verifica
-  (lint/typecheck/test/build), replaya as migrations num banco limpo e, com as
-  duas etapas verdes, builda a imagem, publica no GHCR
+  (lint/typecheck/test/build), replaya as migrations num banco limpo e, com a
+  etapa **`verificar`** verde — só ela; o replay de migrations é SINAL, não
+  portão, e migration vermelha publica assim mesmo —, builda a imagem,
+  publica no GHCR
   (`ghcr.io/leonardocabralb/cb-crm`) e faz rollout no serviço do **Docker Swarm
   da VPS** (`82.25.76.63` / `vps.cbadvogados.com`), atrás do **Traefik** (TLS
   Let's Encrypt). O rollout é `docker service update --image <repo>:<sha>` —
