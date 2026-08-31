@@ -455,6 +455,17 @@ vale para TODO cliente.** `cb_grupos_de_campos` (nome + posição),
 grupos-de-campos.ts` (testado) e o catálogo com arrastar em
 `custom-fields-manager.tsx`. O que morde código novo:
 
+- ⚠️⚠️ **NA FICHA DO CLIENTE SÓ UM BLOCO APARECE POR VEZ**, escolhido num menu
+  horizontal de pastilhas. Não é enfeite: é o PONTO da feature. A primeira
+  versão empilhava os blocos um sob o outro, o que organizava e não REDUZIA
+  nada — os 15 campos continuavam todos na tela, que é exatamente a poluição
+  que os blocos existem para resolver. O operador devolveu com o exemplo do
+  outro CRM ("a separação e a visualização são feitas por um menu selecionável
+  de forma horizontal"). Quem empilhar de novo desfaz a feature inteira.
+  ⚠️ O menu SOME com menos de dois blocos (mesma regra do seletor de canal:
+  com um bloco só ele não decide nada). E o bloco à vista é resolvido NO
+  RENDER (`blocos.find(...) ?? blocos[0]`), nunca guardado por efeito — bloco
+  apagado, ou esvaziado, deixaria a seção em branco com uma pastilha acesa.
 - ⚠️ **`grupo_id` NULO É o bloco "Geral", e ele vem SEMPRE primeiro.** Não
   existe linha para ele: por isso não é renomeável nem arrastável, e o rótulo
   sai do dicionário (`Contacts.customFields.groupGeneral`), não do banco. Ele
@@ -516,9 +527,15 @@ grupos-de-campos.ts` (testado) e o catálogo com arrastar em
   NOT NULL e faz parte da FK composta; um SET NULL sem lista tentaria zerar as
   duas colunas, e apagar um bloco passaria a estourar violação em vez de
   devolver os campos ao Geral. Medido: apagar o bloco preserva os campos.
-- **Um `Salvar campos` só, no fim.** Eram dois (um por aba) porque o Salvar de
-  uma aba não podia arrastar junto edição meio-feita da outra; com os blocos na
-  mesma tela, tudo o que o botão salva está visível acima dele.
+- ⚠️ **Um `Salvar campos` só, e ele salva TODOS os campos — inclusive os dos
+  blocos que não estão à vista.** Eram dois (um por aba) porque o Salvar de uma
+  aba não podia arrastar junto edição meio-feita da outra. Com o menu
+  horizontal os outros blocos voltaram a ficar invisíveis, mas o valor digitado
+  neles CONTINUA no `customValues` e é do operador: salvar só o bloco visível
+  descartaria em silêncio o que ele preencheu antes de trocar de pastilha —
+  perder digitação é pior que gravar digitação. Medido na tela: o valor
+  sobrevive à troca de bloco. Quem voltar a recortar o save por bloco precisa
+  resolver antes o que fazer com o que ficou escondido.
 - **Sem `capitalize` nos rótulos** (nas duas fichas): ele maiusculava cada
   palavra e o operador via "Data De Fechamento Do Contrato" no lugar do nome
   que cadastrou — e estragava os técnicos (`utm_source`), que por isso

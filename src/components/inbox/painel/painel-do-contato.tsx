@@ -38,7 +38,10 @@ import { LinhaDeEdicao } from '@/components/inbox/painel/linha-de-edicao';
 import { InternalNoteBox } from '@/components/inbox/internal-note-box';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
-import { agruparCampos } from '@/lib/contacts/grupos-de-campos';
+import {
+  agruparCampos,
+  chaveDoBloco,
+} from '@/lib/contacts/grupos-de-campos';
 import { useAuth } from '@/hooks/use-auth';
 import { ValorInput } from '@/components/valor/valor-input';
 import { formatCurrency } from '@/lib/currency';
@@ -229,6 +232,25 @@ export function PainelDoContato({
     () => agruparCampos(customFields, grupos),
     [customFields, grupos]
   );
+
+  /**
+   * Qual bloco está à vista. `null` = "ainda não escolhi", que resolve para o
+   * primeiro.
+   *
+   * ⚠️ Resolvido no RENDER, não guardado num efeito: o bloco escolhido pode
+   * sumir entre duas cargas (outro admin apagou, ou o último campo dele saiu),
+   * e um estado apontando para bloco morto deixaria a seção vazia com o menu
+   * mostrando uma aba selecionada — sem nada explicando. Caindo no primeiro,
+   * a tela sempre mostra alguma coisa. A escolha ATRAVESSA a troca de contato
+   * de propósito: é preferência de quem olha, não dado do cliente.
+   */
+  const [blocoAtivo, setBlocoAtivo] = useState<string | null>(null);
+  const blocoVisivel =
+    blocos.find((b) => chaveDoBloco(b.grupo?.id ?? null) === blocoAtivo) ??
+    blocos[0];
+  const chaveVisivel = blocoVisivel
+    ? chaveDoBloco(blocoVisivel.grupo?.id ?? null)
+    : null;
 
   /**
    * O negócio que a seção edita: o ABERTO mais recente; sem nenhum aberto, o
@@ -1163,60 +1185,79 @@ export function PainelDoContato({
               )}
             </div>
             <div className="mt-2 space-y-3">
-              {blocos.length === 0 ? (
+              {!blocoVisivel ? (
                 <p className="text-muted-foreground px-1 text-xs">
                   {tSidebar('noFields')}
                 </p>
               ) : (
                 <>
-                  {blocos.map((bloco, i) => (
-                    <div
-                      key={bloco.grupo?.id ?? 'geral'}
-                      className="space-y-3"
-                    >
-                      {/* O bloco Geral (grupo_id nulo) não ganha cabeçalho
-                          quando é o PRIMEIRO: o título "Campos personalizados"
-                          logo acima já o nomeia, e repetir "Geral" embaixo
-                          dele só empilharia dois rótulos para a mesma coisa.
-                          Os demais blocos se apresentam. */}
-                      {(bloco.grupo !== null || i > 0) && (
-                        <p className="text-muted-foreground border-border mt-1 border-t pt-2 text-[10px] font-medium tracking-wider uppercase">
-                          {bloco.grupo?.nome ?? tCampos('groupGeneral')}
-                        </p>
-                      )}
-                      {bloco.campos.map((field) => (
-                        <div key={field.id} className="space-y-1">
-                          {/* ⚠️ Sem `capitalize`. Ele maiusculava CADA palavra
-                              e o operador via "Data De Fechamento Do Contrato"
-                              no lugar do nome que cadastrou — e estragava de
-                              vez os técnicos (`utm_source`), que por isso
-                              tinham de morar numa aba à parte. O nome do campo
-                              já vem escrito como deve aparecer. */}
-                          <Label className="text-muted-foreground text-xs">
-                            {field.field_name}
-                          </Label>
-                          <CampoPersonalizadoInput
-                            field={field}
-                            value={customValues[field.id] ?? ''}
-                            onChange={(v) =>
-                              setCustomValues((prev) => ({
-                                ...prev,
-                                [field.id]: v,
-                              }))
-                            }
-                            disabled={!podeEditar || !dadosProntos}
-                          />
-                        </div>
-                      ))}
+                  {/* ⚠️ MENU HORIZONTAL, não blocos empilhados.
+                      A primeira versão desenhava todos os blocos um sob o
+                      outro: organizava, mas não REDUZIA — os 15 campos
+                      continuavam todos na tela, que é exatamente a poluição
+                      que os blocos existem para resolver (achado do operador,
+                      com o exemplo do outro CRM). Aqui só o bloco escolhido
+                      aparece.
+
+                      Some com menos de dois blocos, pela mesma regra do
+                      seletor de canal: com um bloco só ele não decide nada e
+                      o nome dele já está no título logo acima. */}
+                  {blocos.length > 1 && (
+                    <div className="flex flex-wrap gap-1">
+                      {blocos.map((bloco) => {
+                        const chave = chaveDoBloco(bloco.grupo?.id ?? null);
+                        const ativo = chave === chaveVisivel;
+                        return (
+                          <button
+                            key={chave}
+                            type="button"
+                            onClick={() => setBlocoAtivo(chave)}
+                            className={cn(
+                              'rounded-md px-2 py-1 text-[11px] font-medium transition-colors',
+                              ativo
+                                ? 'bg-primary/15 text-primary'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                            )}
+                          >
+                            {bloco.grupo?.nome ?? tCampos('groupGeneral')}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {blocoVisivel.campos.map((field) => (
+                    <div key={field.id} className="space-y-1">
+                      {/* ⚠️ Sem `capitalize`. Ele maiusculava CADA palavra
+                          e o operador via "Data De Fechamento Do Contrato"
+                          no lugar do nome que cadastrou — e estragava de
+                          vez os técnicos (`utm_source`), que por isso
+                          tinham de morar numa aba à parte. O nome do campo
+                          já vem escrito como deve aparecer. */}
+                      <Label className="text-muted-foreground text-xs">
+                        {field.field_name}
+                      </Label>
+                      <CampoPersonalizadoInput
+                        field={field}
+                        value={customValues[field.id] ?? ''}
+                        onChange={(v) =>
+                          setCustomValues((prev) => ({
+                            ...prev,
+                            [field.id]: v,
+                          }))
+                        }
+                        disabled={!podeEditar || !dadosProntos}
+                      />
                     </div>
                   ))}
                   {podeEditar && (
                     <Button
                       size="sm"
-                      // UM botão para todos os blocos: tudo o que ele salva
-                      // está visível acima dele. Um Salvar por bloco daria ao
-                      // operador quatro botões idênticos e a dúvida de qual
-                      // deles guarda o que ele acabou de digitar.
+                      // ⚠️ Salva TODOS os campos, não só os do bloco à vista.
+                      // Com o menu horizontal os outros blocos voltaram a ser
+                      // invisíveis, mas o que foi digitado neles continua no
+                      // estado e é do operador: salvar só o visível descartaria
+                      // em silêncio o que ele preencheu antes de trocar de
+                      // bloco. Perder digitação é pior que gravar digitação.
                       onClick={() => void salvarCampos(customFields)}
                       disabled={salvandoCampos || !dadosProntos}
                       className="bg-primary text-primary-foreground hover:bg-primary/90 w-full"

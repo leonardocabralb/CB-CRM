@@ -13,7 +13,10 @@ import { ActivityHistory } from '@/components/lead-events/activity-history';
 import { ContactTasks } from '@/components/tasks/contact-tasks';
 import { formatCurrency } from '@/lib/currency';
 import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
-import { agruparCampos } from '@/lib/contacts/grupos-de-campos';
+import {
+  agruparCampos,
+  chaveDoBloco,
+} from '@/lib/contacts/grupos-de-campos';
 import { CampoPersonalizadoInput } from '@/components/contacts/campo-personalizado-input';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag, ConversationNote, CustomField, ContactCustomValue, Deal, GrupoDeCampos, MessageTemplate } from "@/types";
@@ -132,6 +135,23 @@ export function ContactDetailView({
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   /** Os blocos da 966 — o mesmo catálogo que o painel da conversa lê. */
   const [grupos, setGrupos] = useState<GrupoDeCampos[]>([]);
+  /**
+   * Bloco à vista no menu horizontal. `null` = ainda não escolhi → o primeiro.
+   * Resolvido no render (e não num efeito) para que bloco apagado caia sozinho
+   * no primeiro, em vez de deixar a aba vazia com uma pastilha acesa.
+   */
+  const [blocoAtivo, setBlocoAtivo] = useState<string | null>(null);
+  const blocosDaFicha = useMemo(
+    () => agruparCampos(customFields, grupos),
+    [customFields, grupos]
+  );
+  const blocoVisivel =
+    blocosDaFicha.find(
+      (b) => chaveDoBloco(b.grupo?.id ?? null) === blocoAtivo
+    ) ?? blocosDaFicha[0];
+  const chaveVisivel = blocoVisivel
+    ? chaveDoBloco(blocoVisivel.grupo?.id ?? null)
+    : null;
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [savingCustom, setSavingCustom] = useState(false);
   const [loadingCustom, setLoadingCustom] = useState(false);
@@ -827,47 +847,55 @@ export function ContactDetailView({
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {/* Um bloco por grupo (966), na ordem que o operador
-                        montou em Configurações — a mesma do painel da
-                        conversa. Substituiu a divisão fixa em dois da 949
-                        (gerais + traqueamento). O bloco Geral não ganha
-                        cabeçalho quando é o primeiro: a aba já se chama
-                        "Campos". */}
-                    {agruparCampos(customFields, grupos).map((bloco, i) => (
-                      <div
-                        key={bloco.grupo?.id ?? 'geral'}
-                        className="space-y-3"
-                      >
-                        {(bloco.grupo !== null || i > 0) && (
-                          <p className="border-t border-border pt-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                            {bloco.grupo?.nome ?? tCampos('groupGeneral')}
-                          </p>
-                        )}
-                        {bloco.campos.map((field) => (
-                          <div key={field.id} className="space-y-1.5">
-                            {/* ⚠️ Sem `capitalize`: ele maiusculava cada
-                                palavra e o operador via "Data De Fechamento
-                                Do Contrato" no lugar do nome cadastrado — e
-                                estragava os técnicos (utm_source). */}
-                            <Label className="text-muted-foreground text-xs">
-                              {field.field_name}
-                            </Label>
-                            {/* Componente COMPARTILHADO com o painel do inbox
-                                (948): um input por tipo, com as conversões de
-                                fuso do campo de data dentro dele. */}
-                            <CampoPersonalizadoInput
-                              field={field}
-                              value={customValues[field.id] ?? ''}
-                              onChange={(v) =>
-                                setCustomValues((prev) => ({
-                                  ...prev,
-                                  [field.id]: v,
-                                }))
+                    {/* ⚠️ Menu horizontal, igual ao painel da conversa (966):
+                        só o bloco escolhido aparece. Empilhar os blocos
+                        organizava sem reduzir nada — os 15 campos continuavam
+                        todos na tela. Some com menos de dois blocos. */}
+                    {blocosDaFicha.length > 1 && (
+                      <div className="flex flex-wrap gap-1">
+                        {blocosDaFicha.map((bloco) => {
+                          const chave = chaveDoBloco(bloco.grupo?.id ?? null);
+                          const ativo = chave === chaveVisivel;
+                          return (
+                            <button
+                              key={chave}
+                              type="button"
+                              onClick={() => setBlocoAtivo(chave)}
+                              className={
+                                ativo
+                                  ? 'bg-primary/15 text-primary rounded-md px-2 py-1 text-xs font-medium transition-colors'
+                                  : 'text-muted-foreground hover:bg-muted hover:text-foreground rounded-md px-2 py-1 text-xs font-medium transition-colors'
                               }
-                              placeholder={t('enterCustomField', { name: field.field_name })}
-                            />
-                          </div>
-                        ))}
+                            >
+                              {bloco.grupo?.nome ?? tCampos('groupGeneral')}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {blocoVisivel?.campos.map((field) => (
+                      <div key={field.id} className="space-y-1.5">
+                        {/* ⚠️ Sem `capitalize`: ele maiusculava cada
+                            palavra e o operador via "Data De Fechamento
+                            Do Contrato" no lugar do nome cadastrado — e
+                            estragava os técnicos (utm_source). */}
+                        <Label className="text-muted-foreground text-xs">
+                          {field.field_name}
+                        </Label>
+                        {/* Componente COMPARTILHADO com o painel do inbox
+                            (948): um input por tipo, com as conversões de
+                            fuso do campo de data dentro dele. */}
+                        <CampoPersonalizadoInput
+                          field={field}
+                          value={customValues[field.id] ?? ''}
+                          onChange={(v) =>
+                            setCustomValues((prev) => ({
+                              ...prev,
+                              [field.id]: v,
+                            }))
+                          }
+                          placeholder={t('enterCustomField', { name: field.field_name })}
+                        />
                       </div>
                     ))}
                     <Button
