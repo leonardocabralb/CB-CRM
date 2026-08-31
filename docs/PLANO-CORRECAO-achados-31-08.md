@@ -149,9 +149,9 @@ as frentes deles 🔵 e leve as opções ao operador antes de implementar.
 | --- | --- | --- | --- | --- | --- |
 | **F1** | Vazamento e perda de dado do cliente | #01 #02 #03 #04 | 🔴 crítico | ✅ | #86 |
 | **F2** | Dono durável (CASCADE para `auth.users`) | #11 #12 #13 | 🔴 crítico | ⬜ | — |
-| **F3** | Fila de gravação de campo personalizado | #09 #10 (+#03) | 🟠 alto | ⬜ | — |
+| **F3** | Fila de gravação de campo personalizado | #09 #10 (+#03) | 🟠 alto | ✅ | #87 |
 | **F4** | Radar: alarme apagado ou inalcançável | #05 #21 #22 #23 #28 | 🟠 alto | ⬜ | — |
-| **F5** | Vazio virando afirmação (`useChannels`) | #06 #08 | 🟠 alto | ⬜ | — |
+| **F5** | Vazio virando afirmação (`useChannels`) | #06 #08 | 🟠 alto | ⏸️ **aguardando a mesclagem do PR #84**: o consumo do sinalizador em `message-thread.tsx` (linha do `janelaDe24h`) e o M10 caem DENTRO do hunk 514-546 que o #84 reescreve — fazer antes conflita | — |
 | **F6** | Portão de i18n no CI | #18 #19 #20 #24 | 🟠 alto | ⬜ | — |
 | **F7** | Guardas e testes estruturais com falso verde | #14 #15 | 🟠 alto | ⬜ | — |
 | **F8** | Filtros do inbox | #16 #25 #26 | 🟡 médio | ⬜ | — |
@@ -761,6 +761,13 @@ Enfileirar "B", enfileirar "C" com "B" em voo, resolver "B" como `false` e
 falha isolada faz o operador repetir o mesmo valor e ser ignorado — que é o
 defeito que o comentário documenta ter consertado.
 
+**Resolvido em** PR #87 — `else if (pendente === null) desejado = salvo;`
+com o comentário dos dois lados; o `else` NÃO foi removido. · **Medido:**
+teste novo com o roteiro exato do plano; contraprova por mutação (módulo
+antigo + testes novos = exatamente os 2 novos reprovam, 15 antigos passam).
+E2E de sanidade no preview: valor gravado por blur num campo real sobreviveu
+ao reload (fixture criada e apagada).
+
 ---
 
 ### #10 — Rejeição em `gravar()` trava a fila e o spinner para sempre
@@ -821,6 +828,14 @@ que `emVoo()` volta a `false` e que o `enfileirar` seguinte chama `gravar`.
 **Armadilhas.** Tratar a rejeição como `ok = false` é o certo (o operador vê
 "parado" e pode tentar de novo). Não engula silenciosamente sem mudar o estado
 — e considere logar, porque hoje o `catch` do chamador é quem toasta.
+
+**Resolvido em** PR #87 — try/catch com `ok = false` + `console.error` (o
+toast segue no chamador); estado "parado" e a fila continua drenando o
+pendente. · **Medido:** teste novo (`emVoo()` volta a false; o `enfileirar`
+seguinte grava de novo) com contraprova por mutação — no módulo antigo o
+teste reprova. As DUAS notas do CLAUDE.md desta frente (§7: "Salvar campos"
+e `salvoRef`) corrigidas no mesmo PR; a terceira (":538", famílias de
+ordenação) já é corrigida pelo texto novo do próprio PR #84.
 
 ---
 
