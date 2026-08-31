@@ -3,6 +3,7 @@ import {
   montarTranscrito,
   montarPromptDoRadar,
   interpretarAnalise,
+  insatisfacaoAindaVale,
   type MensagemParaTranscrito,
 } from './rubrica'
 import { calcularMetricas } from './metricas'
@@ -456,3 +457,36 @@ describe('interpretarAnalise', () => {
     })
   })
 })
+
+// ------------------------------------------------------------
+// insatisfacaoAindaVale — a régua de 48h também na LEITURA
+// ------------------------------------------------------------
+describe('insatisfacaoAindaVale', () => {
+  const AGORA = Date.parse('2026-08-28T12:00:00Z');
+  const hAtras = (h: number) => new Date(AGORA - h * 3_600_000).toISOString();
+
+  it('sinal de análise recente vale', () => {
+    expect(insatisfacaoAindaVale(true, hAtras(2), AGORA)).toBe(true);
+    expect(insatisfacaoAindaVale(true, hAtras(47), AGORA)).toBe(true);
+  });
+
+  it('⚠️ sinal de análise VELHA expira — o caso da conversa morta', () => {
+    // `precisaDeAnalise` recusa reanalisar conversa sem mensagem nova, então
+    // a régua da ESCRITA nunca alcança este caso: a linha fica congelada com
+    // insatisfacao=true e o cartão seguia aceso do 3º ao 7º dia.
+    expect(insatisfacaoAindaVale(true, hAtras(49), AGORA)).toBe(false);
+    expect(insatisfacaoAindaVale(true, hAtras(24 * 6), AGORA)).toBe(false);
+  });
+
+  it('não inventa sinal onde não havia', () => {
+    expect(insatisfacaoAindaVale(false, hAtras(1), AGORA)).toBe(false);
+    expect(insatisfacaoAindaVale(false, hAtras(999), AGORA)).toBe(false);
+  });
+
+  it('sem carimbo de análise (ou carimbo torto) devolve o valor como está', () => {
+    // Não há o que medir — e a linha `failed`, que é quem chega assim, já
+    // nasce com insatisfacao falso.
+    expect(insatisfacaoAindaVale(true, null, AGORA)).toBe(true);
+    expect(insatisfacaoAindaVale(true, 'nao-e-data', AGORA)).toBe(true);
+  });
+});

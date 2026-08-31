@@ -36,17 +36,48 @@ const TETO_CHARS_TOTAL = 60_000
 export const PREFIXO_AUDIO = '[áudio] '
 
 /**
- * Insatisfação só vira sinal se a evidência estiver nas últimas 48h DO
- * TRANSCRITO — decisão do operador (2026-08-30).
+ * Insatisfação só vira sinal se a evidência estiver nas últimas 48h —
+ * decisão do operador (2026-08-30).
  *
  * A janela analisada tem 7 dias, então sem esta régua uma irritação de
  * terça-feira, já resolvida na quarta, seguia acendendo o cartão no
- * domingo. O corte é medido contra a ÚLTIMA linha do transcrito, não
- * contra o relógio: mantém a função pura (o teste fixa o comportamento)
- * e é a referência certa — a análise pode rodar minutos depois da
- * conversa, mas o que importa é a idade do sinal DENTRO dela.
+ * domingo.
+ *
+ * ⚠️ A régua vale em DOIS momentos, e um só não basta:
+ *   1. na ESCRITA (`interpretarAnalise`, ancorada no instante da análise);
+ *   2. na LEITURA (`insatisfacaoAindaVale`, abaixo).
  */
 export const JANELA_INSATISFACAO_MS = 48 * 3_600_000
+
+/**
+ * A insatisfação GRAVADA ainda vale, lida agora?
+ *
+ * ⚠️ Existe porque a régua da escrita não alcança o caso que a motivou.
+ * `precisaDeAnalise` recusa reanalisar conversa sem mensagem nova — e
+ * "conversa que morre depois da reclamação" é exatamente isso. A linha
+ * fica com `insatisfacao = true` congelada e NENHUMA análise nova vem
+ * corrigi-la: o cartão seguia aceso do 3º ao 7º dia (quando a conversa
+ * enfim sai da janela do Radar). Achado do Codex no PR #76.
+ *
+ * `analisado_em` é o limite superior seguro da idade da evidência: a
+ * evidência é sempre ≤ a análise, e uma análise velha implica conversa
+ * parada (mensagem nova reanalisa em até `THROTTLE_MS`, 30min ≪ 48h).
+ * Por isso ela basta como âncora, sem carregar o transcrito para a tela.
+ *
+ * Sem `analisado_em` não há o que medir — devolve o valor como está (a
+ * linha `failed` já nasce com `insatisfacao` falso de qualquer forma).
+ */
+export function insatisfacaoAindaVale(
+  insatisfacao: boolean,
+  analisadoEm: string | null | undefined,
+  agoraMs: number,
+): boolean {
+  if (!insatisfacao) return false
+  if (!analisadoEm) return insatisfacao
+  const quando = Date.parse(analisadoEm)
+  if (Number.isNaN(quando)) return insatisfacao
+  return agoraMs - quando <= JANELA_INSATISFACAO_MS
+}
 
 export interface MensagemParaTranscrito {
   id: string
