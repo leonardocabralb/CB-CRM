@@ -446,12 +446,18 @@ export function PainelDoContato({
     const supabase = createClient();
     // Nome vazio volta a NULL — a ficha então mostra o telefone, que é o
     // comportamento de contato sem nome no resto do app.
-    const { error } = await supabase
+    //
+    // ⚠️ Conferir o RESULTADO, não só o erro: escrita que a RLS descarta
+    // (ou contato que sumiu numa fusão de duplicados) volta com `error`
+    // NULO e zero linhas — e a tela fechava o editor como se tivesse
+    // salvado. A armadilha do "0 linhas" documentada no CLAUDE.md.
+    const { data, error } = await supabase
       .from('contacts')
       .update({ name: nome === '' ? null : nome })
-      .eq('id', contact.id);
+      .eq('id', contact.id)
+      .select('id');
     setSalvandoNome(false);
-    if (error) {
+    if (error || !data?.length) {
       toast.error(tSidebar('nameSaveError'));
       return;
     }
@@ -1227,6 +1233,14 @@ export function PainelDoContato({
         {/* ---- Notas ---- */}
         <TabsContent
           value="notas"
+          // ⚠️ `keepMounted` porque o rascunho da anotação mora DENTRO do
+          // `InternalNoteBox` (o `key` pela conversa existe justamente
+          // porque a caixa guarda estado próprio). O TabsPanel do base-ui
+          // DESMONTA a aba inativa por padrão: digitar meia anotação, dar
+          // uma olhada na aba Principal e voltar apagava o texto em
+          // silêncio — na MESMA conversa. As buscas não mudam (moram no
+          // topo do painel, não na aba); o custo é só DOM escondido.
+          keepMounted
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
           {/* A nota FIXADA (951) vem antes de tudo e é sticky: rolar a
