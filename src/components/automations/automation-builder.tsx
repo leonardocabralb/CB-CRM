@@ -417,7 +417,11 @@ function ResourcesProvider({
           .select("*")
           .eq("status", "APPROVED")
           .order("name"),
-        supabase.from("custom_fields").select("*").order("field_name"),
+        supabase
+          .from("custom_fields")
+          .select("*")
+          .order("posicao", { nullsFirst: false })
+          .order("field_name"),
         supabase.from("pipelines").select("id, name").order("name"),
         supabase
           .from("pipeline_stages")

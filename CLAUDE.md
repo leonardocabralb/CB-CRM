@@ -438,6 +438,65 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
   (`sendWhatsAppAudio`, PTT na Evolution). O seletor diz isso na linha do
   item, senão o operador manda "um arquivo" e o cliente recebe voz.
 
+⚠️ **Blocos de campos personalizados (965): o operador define a ordem, e ela
+vale para TODO cliente.** `cb_grupos_de_campos` (nome + posição),
+`custom_fields.grupo_id`/`posicao`, o módulo puro `src/lib/contacts/
+grupos-de-campos.ts` (testado) e o catálogo com arrastar em
+`custom-fields-manager.tsx`. O que morde código novo:
+
+- ⚠️ **`grupo_id` NULO É o bloco "Geral", e ele vem SEMPRE primeiro.** Não
+  existe linha para ele: por isso não é renomeável nem arrastável, e o rótulo
+  sai do dicionário (`Contacts.customFields.groupGeneral`), não do banco. Ele
+  some sozinho quando todo campo estiver num grupo de verdade — bloco vazio
+  não renderiza na ficha do cliente. Uma tela que mostre "Geral" vindo do
+  banco está lendo uma linha que não existe.
+- ⚠️ **`categoria` (949) NÃO é o bloco, e não morreu.** Continua sendo a marca
+  SEMÂNTICA "campo técnico": é o que o semeador dos 10 campos escreve e o que
+  a API v1 expõe como `category` (dropar a coluna quebra o n8n do gestor).
+  `grupo_id` é só ONDE o campo aparece. O seletor de categoria saiu do
+  formulário de criação — quem cria campo escolhe BLOCO.
+- ⚠️ **A ordem é `.order('posicao', { nullsFirst: false }).order('field_name')`
+  em TODA consulta de `custom_fields`** — são 8 call sites (catálogo, painel da
+  conversa ×2, ficha de contato, broadcast ×2, automação, API v1). `posicao`
+  NULA cai no FIM de propósito: campo criado por caminho que não a carimba (o
+  semeador cria dez de uma vez) nasce no fim do bloco em vez de embaralhar a
+  ordem montada. `ordenarCampos` é o espelho EXATO dessa cláusula — mudar um
+  lado sem o outro faz o arrastar pousar o campo num lugar e o próximo
+  carregamento mostrá-lo em outro.
+- ⚠️ **Reordenar passa por RPC (`cb_ordenar_campos_personalizados`), nunca por
+  `upsert`.** O upsert do PostgREST teria de carregar as quatro colunas NOT
+  NULL de `custom_fields` junto (o NOT NULL é conferido ANTES de o Postgres
+  decidir pelo ramo do ON CONFLICT — mandar só o id NÃO passa), e aí um
+  arrastar pode reescrever o NOME do campo com um valor velho do estado da
+  tela. É a mesma armadilha do `/api/ai/config`. As duas RPCs são
+  `SECURITY INVOKER`: quem decide é a policy de admin que já existe.
+- ⚠️ **O arrastar manda o BLOCO INTEIRO (0..N-1), não só quem se moveu.** As
+  posições do banco não são densas — campo novo nasce nulo e o semeador cria
+  dez de uma vez —, então reordenar por diferença deixaria buraco que
+  reaparece como ordem errada no arrastar seguinte.
+- ⚠️ **A aba "Traqueamento" do painel da conversa (o megafone da 949) DEIXOU DE
+  EXISTIR**, e com ela as chaves `Inbox.sidebar.tabTracking`/
+  `noTrackingFields`/`seedTrackingFields`/`seedDone`/`seedError` e a
+  `Contacts.detailView.trackingHeading`. O semeador dos 10 campos padrão
+  mudou de casa: agora vive no CATÁLOGO (Configurações → Campos e etiquetas) e
+  cria os campos no bloco selecionado no formulário de cima — o botão diz qual,
+  porque um lote de dez campos no bloco errado é trabalhoso de desfazer.
+- ⚠️ **`ON DELETE SET NULL (grupo_id)`, com a coluna NOMEADA.** `account_id` é
+  NOT NULL e faz parte da FK composta; um SET NULL sem lista tentaria zerar as
+  duas colunas, e apagar um bloco passaria a estourar violação em vez de
+  devolver os campos ao Geral. Medido: apagar o bloco preserva os campos.
+- **Um `Salvar campos` só, no fim.** Eram dois (um por aba) porque o Salvar de
+  uma aba não podia arrastar junto edição meio-feita da outra; com os blocos na
+  mesma tela, tudo o que o botão salva está visível acima dele.
+- **Sem `capitalize` nos rótulos** (nas duas fichas): ele maiusculava cada
+  palavra e o operador via "Data De Fechamento Do Contrato" no lugar do nome
+  que cadastrou — e estragava os técnicos (`utm_source`), que por isso
+  precisavam de uma aba própria.
+- **A altura da lista do catálogo é PROP** (`alturaDaLista`). Configurações
+  passa `max-h-[min(36rem,60vh)]`; o diálogo da página de Contatos fica nos
+  288px porque o `DialogContent` deste projeto **não tem teto de altura** —
+  lista alta ali cresce para fora da viewport sem barra que a alcance.
+
 ⚠️ **Efeito passivo = o primeiro render mostra o estado VELHO.** Já mordeu
 duas vezes em 2026-08-30, nas duas features do dia: a faixa da nota fixada
 mostrava a anotação do cliente anterior sob o cabeçalho do novo (o
@@ -1419,6 +1478,11 @@ mordem de novo em qualquer código novo:
     estoura com número duplicado, então o ARQUIVO foi renumerado no merge —
     o da presença, porque as 957–962 dependem da de perfis. O histórico do
     Supabase não muda (registra por timestamp), mesmo caso da 906.
+
+  - **965_cb_grupos_de_campos** — blocos de campos personalizados
+    (`cb_grupos_de_campos` + `custom_fields.grupo_id`/`posicao` + as duas RPCs
+    de ordenação). Aplicada em 2026-08-31. ⚠️ Pulou a **964**, que é da branch
+    de revisão das 48h e ainda não estava mesclada quando esta nasceu.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

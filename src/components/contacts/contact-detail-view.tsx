@@ -12,13 +12,10 @@ import { ActivityHistory } from '@/components/lead-events/activity-history';
 import { ContactTasks } from '@/components/tasks/contact-tasks';
 import { formatCurrency } from '@/lib/currency';
 import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
-import {
-  camposDeTraqueamento,
-  camposGerais,
-} from '@/lib/contacts/campos-de-traqueamento';
+import { agruparCampos } from '@/lib/contacts/grupos-de-campos';
 import { CampoPersonalizadoInput } from '@/components/contacts/campo-personalizado-input';
 import { toast } from 'sonner';
-import type { Contact, Tag, ContactTag, ConversationNote, CustomField, ContactCustomValue, Deal, MessageTemplate } from '@/types';
+import type { Contact, Tag, ContactTag, ConversationNote, CustomField, ContactCustomValue, Deal, GrupoDeCampos, MessageTemplate } from "@/types";
 import {
   TemplatePicker,
   type TemplateSendValues,
@@ -69,6 +66,9 @@ export function ContactDetailView({
   onUpdated,
 }: ContactDetailViewProps) {
   const t = useTranslations('Contacts.detailView');
+  /** Só para o rótulo do bloco Geral (965) — o mesmo nome que o catálogo e o
+   *  painel da conversa usam. */
+  const tCampos = useTranslations('Contacts.customFields');
   const tEventos = useTranslations('LeadEvents');
   const tAgenda = useTranslations('Agenda');
   const supabase = createClient();
@@ -119,6 +119,8 @@ export function ContactDetailView({
 
   // Custom fields tab
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  /** Os blocos da 965 — o mesmo catálogo que o painel da conversa lê. */
+  const [grupos, setGrupos] = useState<GrupoDeCampos[]>([]);
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [savingCustom, setSavingCustom] = useState(false);
   const [loadingCustom, setLoadingCustom] = useState(false);
@@ -182,15 +184,27 @@ export function ContactDetailView({
     if (!contactId) return;
     setLoadingCustom(true);
 
-    const [fieldsRes, valuesRes] = await Promise.all([
-      supabase.from('custom_fields').select('*').order('field_name'),
+    const [fieldsRes, valuesRes, gruposRes] = await Promise.all([
+      supabase
+        .from('custom_fields')
+        .select('*')
+        .order('posicao', { nullsFirst: false })
+        .order('field_name'),
       supabase
         .from('contact_custom_values')
         .select('*')
         .eq('contact_id', contactId),
+      supabase
+        .from('cb_grupos_de_campos')
+        .select('*')
+        .order('posicao')
+        .order('nome'),
     ]);
 
     if (fieldsRes.data) setCustomFields(fieldsRes.data);
+    // Falhando, `agruparCampos` joga tudo no bloco Geral: a ficha perde a
+    // divisão, mas nenhum campo some.
+    if (gruposRes.data) setGrupos(gruposRes.data as GrupoDeCampos[]);
     if (valuesRes.data) {
       const map: Record<string, string> = {};
       valuesRes.data.forEach((v) => {
@@ -774,53 +788,47 @@ export function ContactDetailView({
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {/* Gerais primeiro; os de TRAQUEAMENTO (949) agrupados
-                        sob o próprio título — no inbox eles têm aba própria,
-                        aqui a separação visual cumpre o mesmo papel. */}
-                    {camposGerais(customFields).map((field) => (
-                      <div key={field.id} className="space-y-1.5">
-                        <Label className="text-muted-foreground text-xs capitalize">
-                          {field.field_name}
-                        </Label>
-                        {/* Componente COMPARTILHADO com o painel do inbox
-                            (948): um input por tipo, com as conversões de
-                            fuso do campo de data dentro dele. */}
-                        <CampoPersonalizadoInput
-                          field={field}
-                          value={customValues[field.id] ?? ''}
-                          onChange={(v) =>
-                            setCustomValues((prev) => ({
-                              ...prev,
-                              [field.id]: v,
-                            }))
-                          }
-                          placeholder={t('enterCustomField', { name: field.field_name })}
-                        />
-                      </div>
-                    ))}
-                    {camposDeTraqueamento(customFields).length > 0 && (
-                      <p className="border-t border-border pt-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                        {t('trackingHeading')}
-                      </p>
-                    )}
-                    {camposDeTraqueamento(customFields).map((field) => (
-                      <div key={field.id} className="space-y-1.5">
-                        {/* Sem `capitalize`: utm_source/fbclid são nomes
-                            técnicos. */}
-                        <Label className="text-muted-foreground text-xs">
-                          {field.field_name}
-                        </Label>
-                        <CampoPersonalizadoInput
-                          field={field}
-                          value={customValues[field.id] ?? ''}
-                          onChange={(v) =>
-                            setCustomValues((prev) => ({
-                              ...prev,
-                              [field.id]: v,
-                            }))
-                          }
-                          placeholder={t('enterCustomField', { name: field.field_name })}
-                        />
+                    {/* Um bloco por grupo (965), na ordem que o operador
+                        montou em Configurações — a mesma do painel da
+                        conversa. Substituiu a divisão fixa em dois da 949
+                        (gerais + traqueamento). O bloco Geral não ganha
+                        cabeçalho quando é o primeiro: a aba já se chama
+                        "Campos". */}
+                    {agruparCampos(customFields, grupos).map((bloco, i) => (
+                      <div
+                        key={bloco.grupo?.id ?? 'geral'}
+                        className="space-y-3"
+                      >
+                        {(bloco.grupo !== null || i > 0) && (
+                          <p className="border-t border-border pt-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                            {bloco.grupo?.nome ?? tCampos('groupGeneral')}
+                          </p>
+                        )}
+                        {bloco.campos.map((field) => (
+                          <div key={field.id} className="space-y-1.5">
+                            {/* ⚠️ Sem `capitalize`: ele maiusculava cada
+                                palavra e o operador via "Data De Fechamento
+                                Do Contrato" no lugar do nome cadastrado — e
+                                estragava os técnicos (utm_source). */}
+                            <Label className="text-muted-foreground text-xs">
+                              {field.field_name}
+                            </Label>
+                            {/* Componente COMPARTILHADO com o painel do inbox
+                                (948): um input por tipo, com as conversões de
+                                fuso do campo de data dentro dele. */}
+                            <CampoPersonalizadoInput
+                              field={field}
+                              value={customValues[field.id] ?? ''}
+                              onChange={(v) =>
+                                setCustomValues((prev) => ({
+                                  ...prev,
+                                  [field.id]: v,
+                                }))
+                              }
+                              placeholder={t('enterCustomField', { name: field.field_name })}
+                            />
+                          </div>
+                        ))}
                       </div>
                     ))}
                     <Button

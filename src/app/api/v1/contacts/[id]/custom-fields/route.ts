@@ -68,7 +68,7 @@ async function carregar(
       .from('custom_fields')
       .select('*')
       .eq('account_id', accountId)
-      .order('field_name'),
+      .order('posicao', { nullsFirst: false }).order('field_name'),
     db
       .from('contact_custom_values')
       .select('custom_field_id, value')

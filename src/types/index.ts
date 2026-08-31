@@ -151,10 +151,43 @@ export interface CustomField {
   /** `{ opcoes: string[] }` num campo `select`; livre/nulo nos demais. */
   field_options?: Record<string, unknown>;
   /**
-   * 'geral' | 'tracking' (CHECK da 949). Traqueamento vive na aba própria
-   * do painel e fora da seção CAMPOS da aba Principal.
+   * 'geral' | 'tracking' (CHECK da 949).
+   *
+   * ⚠️ NÃO é o bloco em que o campo aparece — isso é `grupo_id` (965). Esta
+   * coluna sobrevive como marca SEMÂNTICA ("é campo técnico"): é o que o
+   * semeador dos 10 campos padrão escreve e o que a API pública v1 expõe como
+   * `category` desde a Fase 6. O seletor de categoria saiu do formulário de
+   * criação; campo criado à mão nasce 'geral'.
    */
   categoria: string;
+  /**
+   * Bloco em que o campo aparece na ficha do cliente (965). `null` é o bloco
+   * "Geral", que não tem linha em `cb_grupos_de_campos` e vem sempre primeiro.
+   */
+  grupo_id?: string | null;
+  /**
+   * Ordem DENTRO do bloco (965). `null` cai no fim — é o que acontece com
+   * campo criado por um caminho que não carimba a posição (o semeador de
+   * traqueamento, por exemplo).
+   */
+  posicao?: number | null;
+  created_at: string;
+}
+
+/**
+ * Bloco de campos personalizados (migration 965) — "Bancário", "Trabalhista",
+ * "Traqueamento". É só rótulo + ordem: quem pertence a ele é
+ * `custom_fields.grupo_id`.
+ *
+ * O bloco "Geral" NÃO tem linha aqui: ele é o `grupo_id IS NULL`, e por isso
+ * não é renomeável nem arrastável. Ver `src/lib/contacts/grupos-de-campos.ts`.
+ */
+export interface GrupoDeCampos {
+  id: string;
+  account_id: string;
+  nome: string;
+  /** Ordem entre blocos. Empate desempata pelo nome. */
+  posicao: number;
   created_at: string;
 }
 
