@@ -5,10 +5,22 @@ import { calcularMetricas, type MensagemParaMetricas } from './metricas'
 const em = (hora: string): Date => new Date(`2026-08-26T${hora}:00-03:00`)
 const cliente = (hora: string): MensagemParaMetricas => ({
   senderType: 'customer',
+  porGente: false,
   createdAt: em(hora),
 })
+/** Alguém do escritório digitou — no CRM ou no celular pareado. */
 const equipe = (hora: string): MensagemParaMetricas => ({
   senderType: 'agent',
+  porGente: true,
+  createdAt: em(hora),
+})
+/** Broadcast, automação, fluxo ou agendada: sai sem gente atrás. */
+const automatica = (
+  hora: string,
+  senderType: 'agent' | 'bot' = 'agent',
+): MensagemParaMetricas => ({
+  senderType,
+  porGente: false,
   createdAt: em(hora),
 })
 
@@ -55,10 +67,7 @@ describe('calcularMetricas', () => {
 
   it('resposta "antes" da pergunta (relógio torto) mede zero, não negativo', () => {
     // Entrada carimba o relógio do aparelho; saída carimba o do banco.
-    const r = calcularMetricas([
-      { senderType: 'customer', createdAt: em('10:00') },
-      { senderType: 'agent', createdAt: em('10:00') },
-    ])
+    const r = calcularMetricas([cliente('10:00'), equipe('10:00')])
     expect(r.primeiraRespostaSeg).toBe(0)
   })
 
@@ -69,12 +78,29 @@ describe('calcularMetricas', () => {
     expect(r.aguardandoDesde).toBeNull()
   })
 
-  it('bot responde como equipe', () => {
+  it('⚠️ saída AUTOMÁTICA não fecha a pendência do cliente', () => {
+    // Cliente escreve na segunda e ninguém responde; na terça um broadcast
+    // (ou uma automação, um fluxo, uma agendada) entra na conversa. Pelo
+    // tipo do remetente sozinho, aquilo fechava a pendência e o cartão do
+    // cliente esquecido sumia do painel — apagando o alarme que o Radar
+    // existe para acender. Vale para 'agent' sem gente e para 'bot'.
+    for (const tipo of ['agent', 'bot'] as const) {
+      const r = calcularMetricas([cliente('10:00'), automatica('10:05', tipo)])
+      expect(r.aguardandoDesde).toEqual(em('10:00'))
+      expect(r.primeiraRespostaSeg).toBeNull()
+      // Continua contando como mensagem que SAIU: é volume, não atendimento.
+      expect(r.msgsEquipe).toBe(1)
+    }
+  })
+
+  it('a resposta de gente DEPOIS do robô fecha a pendência, medindo desde o cliente', () => {
     const r = calcularMetricas([
       cliente('10:00'),
-      { senderType: 'bot', createdAt: em('10:05') },
+      automatica('10:05', 'bot'),
+      equipe('10:30'),
     ])
-    expect(r.primeiraRespostaSeg).toBe(5 * 60)
-    expect(r.msgsEquipe).toBe(1)
+    expect(r.aguardandoDesde).toBeNull()
+    expect(r.primeiraRespostaSeg).toBe(30 * 60)
+    expect(r.msgsEquipe).toBe(2)
   })
 })

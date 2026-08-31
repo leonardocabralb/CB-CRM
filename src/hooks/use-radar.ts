@@ -155,12 +155,30 @@ async function respostasDepoisDaPendencia(
 
   // Na dúvida, MANTÉM o alarme. Falha de rede não pode apagar da tela um
   // cliente sem resposta — errar para o lado do alarme é barulho; errar
-  // para o outro é o cliente esquecido sumindo em silêncio. Vale também
-  // para o teto: com a lista truncada não dá para afirmar quem respondeu.
-  if (error || !data) return vazio;
-  if (data.length >= TETO_RESPOSTAS) {
-    console.warn('[radar] conferência de pendências truncada — alarmes mantidos');
+  // para o outro é o cliente esquecido sumindo em silêncio.
+  if (error || !data) {
+    console.warn('[radar] conferência de pendências falhou — alarmes mantidos:', error?.message);
     return vazio;
+  }
+
+  // ⚠️ Lista TRUNCADA continua valendo, e isto não é descuido.
+  //
+  // A consulta ordena por `created_at` DESC, então o que chega são as
+  // respostas MAIS RECENTES — cada linha que veio é verdadeira. O teto só
+  // pode fazer FALTAR resposta antiga, e faltar significa manter o cartão:
+  // a direção segura, a mesma que o parágrafo acima escolhe.
+  //
+  // Descartar tudo aqui era o oposto do que parecia. `desde` é a pendência
+  // mais ANTIGA da tela e pendência aberta não expira por desenho, então uma
+  // pendência de semanas puxa o piso da consulta para aquela data; passando
+  // de 1000 linhas — produção já tem 948 mensagens `from_device` —, a
+  // conferência ao vivo se desligava para TODAS as conversas, de vez, com um
+  // console.warn de aviso. O painel voltava ao bug que a conferência existe
+  // para corrigir: "aguardando há 26h" crescendo sobre cliente já atendido.
+  if (data.length >= TETO_RESPOSTAS) {
+    console.warn(
+      '[radar] conferência de pendências no teto — respostas antigas podem ter ficado de fora (alarme mantido nesses casos)',
+    );
   }
 
   const ultimaRespostaHumana = new Map<string, number>();

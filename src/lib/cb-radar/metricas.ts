@@ -19,6 +19,23 @@ export interface MensagemParaMetricas {
   /** 'customer' = cliente; 'agent' e 'bot' = escritório (inclui resposta
    *  dada pelo celular, `from_device` — para o cliente é resposta igual). */
   senderType: 'customer' | 'agent' | 'bot'
+  /**
+   * Saiu de GENTE? (`sender_id` preenchido **ou** `from_device`.)
+   *
+   * ⚠️ Só isto fecha a pendência do cliente. Broadcast, automação, fluxo e
+   * agendada gravam `agent`/`bot` sem `sender_id` e sem `from_device`: pelo
+   * tipo do remetente sozinho, um "recebemos seu contato" automático da
+   * terça fechava a pendência aberta na segunda e o cartão daquele cliente
+   * esquecido sumia do painel — apagando justamente o alarme que o Radar
+   * existe para acender. A legenda da tela promete o contrário.
+   *
+   * ⚠️ `from_device` é obrigatório na conta: o celular pareado grava
+   * `agent` com `sender_id` NULO, e em produção 948 das 978 respostas da
+   * equipe vêm por ele. Exigir `sender_id` reconheceria 8.
+   *
+   * Irrelevante quando `senderType === 'customer'`.
+   */
+  porGente: boolean
   createdAt: Date
 }
 
@@ -38,8 +55,14 @@ export interface MetricasDaConversa {
 /**
  * Percorre a janela em ordem cronológica medindo cada "rodada": a
  * PRIMEIRA mensagem de uma sequência do cliente abre a pendência, e a
- * resposta seguinte da equipe a fecha (mensagens extras do cliente no
+ * resposta seguinte de GENTE a fecha (mensagens extras do cliente no
  * meio não reabrem a contagem — quem espera desde a primeira espera mais).
+ *
+ * ⚠️ "De gente" e não "da equipe": ver `porGente`. Saída automática atravessa
+ * a rodada sem fechá-la, e sem entrar no tempo de resposta — um disparo em
+ * massa não é resposta a este cliente, e contá-lo como tal faria a métrica
+ * dizer que a equipe respondeu em 2 minutos uma pergunta ainda sem resposta.
+ * `msgsEquipe` continua contando tudo que saiu: é volume, não atendimento.
  */
 export function calcularMetricas(
   mensagens: MensagemParaMetricas[],
@@ -59,7 +82,7 @@ export function calcularMetricas(
       if (!inicioPendencia) inicioPendencia = m.createdAt
     } else {
       msgsEquipe += 1
-      if (inicioPendencia) {
+      if (inicioPendencia && m.porGente) {
         temposSeg.push(segundosUteisEntre(inicioPendencia, m.createdAt))
         inicioPendencia = null
       }

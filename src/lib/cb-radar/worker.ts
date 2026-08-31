@@ -353,6 +353,8 @@ interface MensagemDaJanela {
   id: string
   sender_type: 'customer' | 'agent' | 'bot'
   sender_id: string | null
+  /** Saiu do celular pareado — gente digitando, sem usuário do CRM atrás. */
+  from_device: boolean | null
   content_type: string
   content_text: string | null
   transcricao: string | null
@@ -392,7 +394,9 @@ export async function analisarConversaReivindicada(
   // esperando resposta (revisão 2026-08-27: quatro ângulos).
   const { data: mensagens, error: msgErr } = await admin
     .from('messages')
-    .select('id, sender_type, sender_id, content_type, content_text, transcricao, transcricao_status, created_at')
+    .select(
+      'id, sender_type, sender_id, from_device, content_type, content_text, transcricao, transcricao_status, created_at',
+    )
     .eq('conversation_id', args.conversationId)
     .gte('created_at', janelaInicio.toISOString())
     .is('deleted_at', null)
@@ -414,6 +418,12 @@ export async function analisarConversaReivindicada(
     comData.map(
       (m): MensagemParaMetricas => ({
         senderType: m.sender_type,
+        // ⚠️ A régua do PAINEL, e não a de `houveHumanoNaJanela` logo abaixo:
+        // aqui a pergunta é "alguém RESPONDEU a este cliente?", e o celular
+        // pareado responde (`from_device`, `sender_id` nulo). Lá a pergunta é
+        // outra — "vale refazer a análise?" — e continua sendo só `sender_id`
+        // de propósito. Não unificar sem responder às duas.
+        porGente: m.sender_id !== null || m.from_device === true,
         createdAt: new Date(m.created_at as string),
       }),
     ),
