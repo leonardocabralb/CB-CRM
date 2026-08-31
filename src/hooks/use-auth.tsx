@@ -89,11 +89,14 @@ interface AuthContextValue {
    */
   loading: boolean;
   /**
-   * Profile-row loading. Stays true until `fetchProfile` settles
-   * (success, missing row, or error). Code that branches on
-   * `profile.beta_features` MUST gate on this — otherwise it sees the
-   * `{ loading: false, profile: null }` window during initial load
-   * and may take the "not opted in" branch incorrectly.
+   * Profile-row loading. Stays true until the FIRST `fetchProfile` for the
+   * signed-in user settles (success, missing row, or error) — a later
+   * `refreshProfile()` do MESMO usuário NÃO a reergue, de propósito: o
+   * dashboard-shell troca a tela inteira por spinner enquanto isto é true,
+   * e cada save de nome/avatar remontava a página perdendo rolagem e
+   * rascunho. Code that branches on `profile.beta_features` MUST gate on
+   * this — otherwise it sees the `{ loading: false, profile: null }` window
+   * during initial load and may take the "not opted in" branch incorrectly.
    */
   profileLoading: boolean;
   signOut: () => Promise<void>;
@@ -215,12 +218,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // profileLoading back to true on window focus events/token refresh.
   const lastFetchedUserIdRef = useRef<string | null>(null);
 
+  // ⚠️ Quem já teve UMA resolução de profile nesta sessão. É o que impede o
+  // refreshProfile() (salvar nome/avatar, retry do alerta) de reerguer
+  // `profileLoading` — o dashboard-shell gateia a TELA INTEIRA nele, então
+  // cada recarga trocava o app por spinner e REMONTAVA a página, perdendo
+  // rolagem, seleção e rascunho (ledger 48h). A recarga do MESMO usuário
+  // atualiza por baixo do app montado; pessoa DIFERENTE (troca de sessão na
+  // mesma aba) volta a gatear, senão o acesso de A pintaria sob o login de B.
+  const resolvedUserIdRef = useRef<string | null>(null);
+
   // Shared across init, auth-state-change listener, and the exposed
   // refreshProfile() callback. Reads the current session's user id and
   // pulls the matching profile row along with its account summary.
   const fetchProfile = useCallback(async (userId: string) => {
     const supabase = createClient();
-    setProfileLoading(true);
+    // Ver `resolvedUserIdRef`: só a PRIMEIRA resolução de cada pessoa gateia
+    // a tela. Recarga do mesmo usuário roda com o app montado.
+    if (resolvedUserIdRef.current !== userId) setProfileLoading(true);
     setStatusDetail(null);
     lastFetchedUserIdRef.current = userId;
     try {
@@ -383,6 +397,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       lastFetchedUserIdRef.current = null;
       setStatusDetail(err instanceof Error ? err.message : "profile fetch failed");
     } finally {
+      // Resolvido INCLUSIVE em falha: o gate já caía aqui de qualquer jeito
+      // (fail-open documentado do shell), e um retry do alerta não deve
+      // trocar a tela por spinner — o AccountAccessAlert é quem narra.
+      resolvedUserIdRef.current = userId;
       setProfileLoading(false);
     }
   }, []);
@@ -447,6 +465,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } else {
         lastFetchedUserIdRef.current = null;
+        // Sem isto, sair e entrar DE NOVO como a mesma pessoa pulava o gate
+        // (ref ainda lembrava a resolução antiga sobre profile já nulado) e
+        // o shell pintava o flash fail-open que o gate existe para matar.
+        resolvedUserIdRef.current = null;
         setProfile(null);
         setAccount(null);
         setPerfilDeAcesso(null);
@@ -470,6 +492,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setAccount(null);
     setPerfilDeAcesso(null);
+    resolvedUserIdRef.current = null;
     window.location.href = "/login";
   }, []);
 

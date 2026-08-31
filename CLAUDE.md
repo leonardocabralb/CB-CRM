@@ -211,7 +211,7 @@ upstream sobrescrevê-los:
 | páginas de `automations`, `flows`, `broadcasts`, `dashboard` | etiqueta e filtro de canal, coluna de canal nos históricos, filtro do painel |
 | `src/components/broadcasts/step{1,4}-*.tsx`, `src/hooks/use-broadcast-sending.ts` | canal escolhido no passo 1, `channel_id` no corpo da API e na linha de `broadcasts` |
 | `src/components/settings/template-manager.tsx` | seletor de WABA para criar/sincronizar, etiqueta de canal por modelo |
-| `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato e a seção/aba **Histórico** (912). (A linha "canal da conversa" que o painel do inbox exibia foi REMOVIDA em 2026-08-29 a pedido do operador — o seletor do cabeçalho do fio já responde isso.) No detail view a `TabsList` ganhou `flex-wrap h-auto` — com 5 abas ela já estourava a largura do painel e escondia "Negócios" |
+| `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato e a seção/aba **Histórico** (912). (A linha "canal da conversa" que o painel do inbox exibia foi REMOVIDA em 2026-08-29 a pedido do operador — o seletor do cabeçalho do fio já responde isso.) No detail view a `TabsList` ganhou `flex-wrap` com a altura **prefixada** (`group-data-horizontal/tabs:h-auto` + `[&>button]:h-auto`, NUNCA `h-auto` cru — ver a armadilha do tailwind-merge abaixo; um merge que "simplifique" para `h-auto` quebra a tela de novo) — com 5 abas ela já estourava a largura do painel e escondia "Negócios" |
 | `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
 | `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página |
 | `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDaMensagem>` envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo), a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef` |
@@ -1147,9 +1147,13 @@ e as três já morderam de verdade.
   painel vira TELA CHEIA — sem fundo sobrando para fechar tocando fora, que no
   celular é a única saída à mão. Com `w-3/4` o desktop dá os mesmos 512px (3/4
   de 1440 estoura o teto de qualquer jeito) e o celular mantém a saída.
-  Os dois `SheetContent` do repo (`contact-detail-view.tsx` e
-  `pipelines/deal-form.tsx`) têm className idêntico e foram corrigidos juntos —
-  arrumar um só deixaria painéis irmãos com larguras diferentes.
+  São QUATRO os `SheetContent` do repo — `contact-detail-view.tsx`,
+  `pipelines/deal-form.tsx` e os DOIS de `flows/flow-canvas.tsx` (o painel do
+  nó; uma versão anterior desta nota dizia "dois" e o flow-canvas ficou de
+  fora, abrindo com 384px em vez dos 448px pedidos até a revisão 48h).
+  Todos com o `max-w` prefixado; arrumar só parte deles deixa painéis irmãos
+  com larguras diferentes. Quem criar um `SheetContent` novo confere os
+  quatro e repete o padrão.
 - ⚠️ **`<ScrollArea>` dentro de `flex-col` precisa de `min-h-0`, sempre.** Filho
   de flex nasce com `min-height: auto`, e o Root do base-ui só põe
   `position: relative` — o `overflow` fica `visible`, então o clamp não é

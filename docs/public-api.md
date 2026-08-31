@@ -475,9 +475,10 @@ Create a deal. Scope: `deals:write`. `contact_id`, `pipeline_id`,
 `stage_id` and `title` are required (`value` is optional). `stage_id`
 is **deliberately not optional**: the entry stage is a product
 decision, not "the first column" — pick one from
-`GET /api/v1/pipelines`. API-created deals get `source: "manual"`, the
-account currency, and no `channel_id` (that column means "which number
-the customer arrived through").
+`GET /api/v1/pipelines`. API-created deals get `source: "manual"`,
+currency `BRL` (fixed — the per-account currency setting was removed;
+this CRM operates in reais), and no `channel_id` (that column means
+"which number the customer arrived through").
 
 **One card per contact:** the product model is a single deal that
 moves between pipelines. A contact that already has a deal (open or
