@@ -145,6 +145,10 @@ function Conteudo() {
   const t = useTranslations('Settings.integracoes');
   const [cartoes, setCartoes] = useState<CartaoDeIntegracao[] | null>(null);
   const [testando, setTestando] = useState(false);
+  // ⚠️ Guarda do "Tentar de novo": `testando` só cobre a fase do ping, e na
+  // janela da carga barata (carregar(false)) um duplo clique disparava DUAS
+  // cadeias completas — cada uma com um ping PAGO por agente.
+  const [repetindo, setRepetindo] = useState(false);
   const [falhou, setFalhou] = useState(false);
   const [aberto, setAberto] = useState<string | null>(null);
   // Evita escrever estado em componente já desmontado.
@@ -202,15 +206,21 @@ function Conteudo() {
           type="button"
           variant="outline"
           size="sm"
-          disabled={testando}
+          disabled={testando || repetindo}
           onClick={() =>
             void (async () => {
-              await carregar(false);
-              await carregar(true);
+              if (repetindo) return;
+              setRepetindo(true);
+              try {
+                await carregar(false);
+                await carregar(true);
+              } finally {
+                if (vivoRef.current) setRepetindo(false);
+              }
             })()
           }
         >
-          <RefreshCw className={cn('size-4', testando && 'animate-spin')} />
+          <RefreshCw className={cn('size-4', (testando || repetindo) && 'animate-spin')} />
           {t('tentarDeNovo')}
         </Button>
       </div>

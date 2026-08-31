@@ -103,8 +103,12 @@ export function CampoPersonalizadoInput({
     // "sem valor" sobre dado real e o Salvar o sobrescrevia. Valor que o
     // input numérico não consegue EXIBIR cai no input de texto: continua
     // visível e editável.
+    // ⚠️ O regex roda no valor CRU, não no trim: o input recebe o cru, e
+    // " 300 " (espaço colado por automação) passava na checagem aparada e
+    // ainda renderizava vazio — o mesmo bug voltando pela borda. Só o
+    // whitespace-puro conta como vazio (não há dado a esconder).
     const exibivelComoNumero =
-      value.trim() === '' || /^-?(\d+|\d*\.\d+)([eE][+-]?\d+)?$/.test(value.trim());
+      value.trim() === '' || /^-?(\d+|\d*\.\d+)([eE][+-]?\d+)?$/.test(value);
     if (exibivelComoNumero) {
       return (
         <Input
