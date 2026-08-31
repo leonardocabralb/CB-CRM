@@ -605,6 +605,24 @@ não dentro da lista. O que morde código novo:
   senão apaga todos os grupos daquele número em silêncio. **Vale para
   qualquer código novo que agrupe ou conte conversa por canal**, não só para
   o filtro do inbox (o painel, por exemplo, ainda não foi conferido).
+- ⚠️ **O recorte de funil/etapa tem DOIS níveis, e `funilId` é escrito SÓ
+  pelo seletor de funil.** Escolher uma etapa nunca o carimba. Carimbando,
+  numa conta de um funil só ele ficaria preenchido por tabela e "Qualquer
+  etapa" — que hoje significa "não filtro por etapa" — passaria a significar
+  "quem tem negócio neste funil", sumindo em silêncio com quem ainda não
+  virou negócio (é o mesmo pessoal que "Sem negócio" existe para achar). Por
+  isso a etapa VENCE o funil em `casaComAEtapa`, e não se somam.
+- ⚠️ **`funilPorEtapa` (etapa→funil) é campo OBRIGATÓRIO do ctx**, pela mesma
+  razão de `achadasNoTexto`: esquecê-lo não dá erro — o recorte por funil só
+  não acha ninguém, e a tela diz "nenhuma conversa" sobre um funil cheio.
+- **O campo vira dois níveis só com 2+ funis NOMEADOS.** Com um funil, ou com
+  a consulta de `pipelines` falhando sozinha (os nomes vêm dela, o gate de
+  `etapasStatus` não a olha), ele cai na lista chapada de antes — subdividir
+  sem poder dizer em quê é pior que não subdividir.
+- **Uma pastilha POR NÍVEL.** A pastilha única mostrava
+  "Bancário - Comercial · Contato Avulso" (198px) numa caixa de 128px: o
+  operador lia o funil e NÃO enxergava a etapa. Tirar a do funil tira a
+  etapa junto — o seletor não sabe exibir etapa sem funil.
 - **Escopo vazio = TUDO**, igual ao resto do projeto: `FILTROS_VAZIOS` não
   recorta nada, e "sem responsável"/"sem negócio" são opções explícitas, não
   a ausência de filtro.

@@ -57,7 +57,25 @@ export interface FiltrosDoInbox {
   modoDeEtiqueta: ModoDeEtiqueta;
   /** Nome exato da empresa, ou `null`. */
   empresa: string | null;
-  /** Id da etapa, ou {@link SEM_ETAPA}, ou `null` para todas. */
+  /**
+   * Id do funil, ou `null` para todos. É o PRIMEIRO nível do recorte de
+   * etapa: escolhido sozinho, ele acha quem tem negócio em QUALQUER etapa
+   * daquele funil.
+   *
+   * ⚠️ Quem escreve esta coluna é SÓ o seletor de funil — escolher uma etapa
+   * nunca a preenche. Sem essa regra, o caso de um funil só ficava com
+   * `funilId` preenchido por tabela, e "Qualquer etapa" (que hoje significa
+   * "não filtro por etapa") passaria a significar "quem tem negócio neste
+   * funil" — sumindo em silêncio com quem ainda não virou negócio.
+   */
+  funilId: string | null;
+  /**
+   * Id da etapa, ou {@link SEM_ETAPA}, ou `null` para todas.
+   *
+   * ⚠️ Manda no {@link FiltrosDoInbox.funilId} quando os dois estão
+   * preenchidos: a etapa já vive dentro de um funil, e somar os dois
+   * recortes só repetiria a mesma pergunta.
+   */
   etapaId: string | null;
   /** Só as que EU marquei. */
   favoritas: boolean;
@@ -85,6 +103,7 @@ export const FILTROS_VAZIOS: FiltrosDoInbox = {
   etiquetaIds: [],
   modoDeEtiqueta: "qualquer",
   empresa: null,
+  funilId: null,
   etapaId: null,
   favoritas: false,
   naoLidas: false,
@@ -105,7 +124,11 @@ export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
   if (f.responsavelId) n++;
   if (f.etiquetaIds.length > 0) n++;
   if (f.empresa !== null) n++;
-  if (f.etapaId) n++;
+  // ⚠️ Os dois níveis contam como UM. Com etapa escolhida o funil vem junto
+  // (é o pai dela), e somar dois faria o distintivo dizer "2 filtros" sobre
+  // uma escolha só — o número existe para explicar uma lista curta, não para
+  // contar controles na tela.
+  if (f.etapaId || f.funilId) n++;
   if (f.favoritas) n++;
   if (f.naoLidas) n++;
   return n;
@@ -132,6 +155,51 @@ export function mapaDeEtapasPorContato(
   return mapa;
 }
 
+/**
+ * Os funis que podem virar o PRIMEIRO nível do recorte: os que têm etapa
+ * carregada **e** nome conhecido, em ordem de nome (a mesma `.order("name")`
+ * do resto do app).
+ *
+ * ⚠️ O nome é exigência, não enfeite. Os nomes vêm da consulta de `pipelines`,
+ * que é OUTRA — o gate de `etapasStatus` não a olha. Se ela falhar sozinha, um
+ * seletor de funil mostraria linhas em branco e o operador escolheria às
+ * cegas; sem os nomes o campo cai na lista chapada, que é honesta.
+ *
+ * ⚠️ **Mora aqui porque DOIS arquivos precisam da mesma resposta**: o painel,
+ * para desenhar um nível ou dois, e a lista, para decidir se o deep link
+ * `?etapa=` pode carimbar `funilId`. Quando os dois divergiram, um link do
+ * quadro numa conta de um funil só deixava `funilId` preenchido sem seletor
+ * que o mostrasse — e "Qualquer etapa" passava a esconder quem não tem
+ * negócio (achado do Codex no PR #73).
+ */
+export function funisDoRecorte(
+  etapas: { pipeline_id: string }[],
+  nomes: Map<string, string>,
+): { id: string; nome: string }[] {
+  const vistos = new Map<string, string>();
+  for (const e of etapas) {
+    if (vistos.has(e.pipeline_id)) continue;
+    const nome = nomes.get(e.pipeline_id);
+    if (nome) vistos.set(e.pipeline_id, nome);
+  }
+  return [...vistos.entries()]
+    .map(([id, nome]) => ({ id, nome }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
+/**
+ * O recorte tem os dois níveis (funil → etapa)? Com um funil só não há o que
+ * subdividir, e o campo continua sendo a lista de etapas de sempre — com
+ * `funilId` SEMPRE nulo, para "Qualquer etapa" seguir significando "não
+ * filtro por etapa".
+ */
+export function recorteTemDoisNiveis(
+  etapas: { pipeline_id: string }[],
+  nomes: Map<string, string>,
+): boolean {
+  return funisDoRecorte(etapas, nomes).length >= 2;
+}
+
 export interface ContextoDosFiltros {
   /**
    * Recorte por perfil de acesso (Fase 3). `true` = a conversa está FORA das
@@ -150,6 +218,17 @@ export interface ContextoDosFiltros {
   favoritas: Set<string>;
   /** Saída de {@link mapaDeEtapasPorContato}. */
   etapaPorContato: Map<string, Set<string>>;
+  /**
+   * `stage_id` → `pipeline_id`, para o recorte por funil resolver "esta etapa
+   * é de qual funil?".
+   *
+   * ⚠️ Obrigatório pela MESMA razão de `achadasNoTexto`: esquecê-lo não daria
+   * erro nenhum — o recorte por funil simplesmente não acharia ninguém, em
+   * silêncio, e a tela diria "nenhuma conversa" sobre um funil cheio. Campo
+   * exigido faz o compilador cobrar de quem consumir `aplicarFiltros` em
+   * outra tela.
+   */
+  funilPorEtapa: Map<string, string>;
   /** O texto da caixa de busca, cru. */
   busca: string;
   /**
@@ -246,12 +325,20 @@ export function canalDaConversa(conversation: Conversation): string | null {
   return conversation.channel_id ?? null;
 }
 
+/**
+ * O recorte de funil/etapa, nos dois níveis.
+ *
+ * ⚠️ A etapa VENCE o funil quando ambos vêm preenchidos — ver
+ * {@link FiltrosDoInbox.etapaId}.
+ */
 export function casaComAEtapa(
   conversation: Conversation,
-  etapaId: string | null,
+  recorte: Pick<FiltrosDoInbox, "funilId" | "etapaId">,
   etapaPorContato: Map<string, Set<string>>,
+  funilPorEtapa: Map<string, string>,
 ): boolean {
-  if (!etapaId) return true;
+  const { funilId, etapaId } = recorte;
+  if (!etapaId && !funilId) return true;
 
   // Grupo não tem contato e portanto não tem negócio. Ele cai em "sem etapa"
   // de propósito: é literalmente verdade, e o filtro de tipo é quem esconde
@@ -261,7 +348,16 @@ export function casaComAEtapa(
     : undefined;
 
   if (etapaId === SEM_ETAPA) return !doContato || doContato.size === 0;
-  return !!doContato?.has(etapaId);
+  if (etapaId) return !!doContato?.has(etapaId);
+
+  // Só o funil: basta UM negócio em qualquer etapa dele. É um conjunto de
+  // etapas por contato (índice único da 911 só cobre `source='channel'`), e o
+  // contato pode ter negócio em dois funis ao mesmo tempo.
+  if (!doContato) return false;
+  for (const etapa of doContato) {
+    if (funilPorEtapa.get(etapa) === funilId) return true;
+  }
+  return false;
 }
 
 /**
@@ -313,9 +409,16 @@ export function aplicarFiltros(
     if (f.favoritas && !ctx.favoritas.has(c.id)) return false;
     if (f.naoLidas && c.unread_count <= 0) return false;
     // Ver `recorteDeEtapaConfiavel`: sem os dados por trás, o recorte de
-    // etapa é neutralizado — nunca aplicado sobre um mapa incompleto.
-    const etapaEfetiva = ctx.recorteDeEtapaConfiavel ? f.etapaId : null;
-    if (!casaComAEtapa(c, etapaEfetiva, ctx.etapaPorContato)) return false;
+    // funil/etapa é neutralizado — nunca aplicado sobre um mapa incompleto.
+    // Os DOIS níveis caem juntos: o mapa que falta é o mesmo.
+    const recorteDeEtapa = ctx.recorteDeEtapaConfiavel
+      ? { funilId: f.funilId, etapaId: f.etapaId }
+      : { funilId: null, etapaId: null };
+    if (
+      !casaComAEtapa(c, recorteDeEtapa, ctx.etapaPorContato, ctx.funilPorEtapa)
+    ) {
+      return false;
+    }
 
     if (f.etiquetaIds.length > 0 || f.empresa !== null) {
       if (
