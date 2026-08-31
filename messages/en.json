@@ -2727,6 +2727,8 @@
     "urgencia_alta": "High urgency",
     "insatisfacao": "Dissatisfaction",
     "aguardando": "Waiting for {tempo}",
+    "semRespostaDesde": "No reply since {quando}",
+    "semRespostaDesdeTitulo": "Over 24 calendar hours without a reply. The business-hours counter has not reached the display floor yet — outside working hours it barely moves.",
     "pedidos": "{count, plural, =1 {1 unmet request} other {# unmet requests}}",
     "mencaoProcesso": "Lawsuit mentioned",
     "semIa": "No AI — metrics only",

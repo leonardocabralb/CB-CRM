@@ -2720,6 +2720,8 @@
     "urgencia_alta": "Urgência alta",
     "insatisfacao": "Insatisfação",
     "aguardando": "Aguardando há {tempo}",
+    "semRespostaDesde": "Sem resposta desde {quando}",
+    "semRespostaDesdeTitulo": "Passou de 24 horas corridas sem resposta. O contador em horas úteis ainda não alcançou o piso de exibição — fora do expediente ele quase não anda.",
     "pedidos": "{count, plural, =1 {1 pedido sem atendimento} other {# pedidos sem atendimento}}",
     "mencaoProcesso": "Processo citado",
     "semIa": "Sem IA — só métricas",

@@ -629,12 +629,34 @@ function LinhaDoRadar({
             {t('insatisfacao')}
           </Etiqueta>
         )}
-        {aguardandoSeg !== null && aguardandoSeg >= LIMIAR_PENDENCIA_SEG && (
+        {aguardandoSeg !== null && aguardandoSeg >= LIMIAR_PENDENCIA_SEG ? (
           <Etiqueta className={esperaEmAlarme ? COR_URGENCIA.media : undefined}>
             <Clock className="h-3 w-3" />
             {t('aguardando', { tempo: formatarDuracaoUtil(aguardandoSeg) })}
           </Etiqueta>
-        )}
+        ) : esperaEmAlarme && i.aguardando_desde ? (
+          /* ⚠️ CARTÃO MUDO, agora impossível. São duas réguas: o cartão
+             ENTRA na lista por 24h CORRIDAS (`LIMIAR_ALARME_MS`) e a
+             etiqueta acima é gateada por 30min ÚTEIS. Cliente que escreveu
+             sexta às 19h30 e olhado no sábado tem 24h corridas e ~0 hora
+             útil: o cartão aparecia em "1 sinal aberto" sem UMA etiqueta
+             dizendo por quê (ledger da revisão 48h).
+
+             A saída não é misturar as réguas — é largar as duas e dizer o
+             INSTANTE, que não precisa de régua nenhuma para ser verdade. */
+          <Etiqueta className={COR_URGENCIA.media} title={t('semRespostaDesdeTitulo')}>
+            <Clock className="h-3 w-3" />
+            {t('semRespostaDesde', {
+              quando: new Date(i.aguardando_desde).toLocaleString(undefined, {
+                weekday: 'short',
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+            })}
+          </Etiqueta>
+        ) : null}
         {foraDaJanela && (
           <Etiqueta className={COR_URGENCIA.media} title={t('foraDaJanelaTitulo')}>
             {t('foraDaJanela', { dias: JANELA_DIAS })}

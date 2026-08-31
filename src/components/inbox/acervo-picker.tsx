@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useAcervo } from "@/hooks/use-acervo";
 import { categoriasDe, filtrarAcervo, tamanhoLegivel } from "@/lib/acervo/filtro";
-import type { TipoDeMidia } from "@/lib/acervo/tipos";
+import { urlDaMiniatura, type TipoDeMidia } from "@/lib/acervo/tipos";
 import { cn } from "@/lib/utils";
 import type { MediaLibraryItem } from "@/types";
 
@@ -155,10 +155,26 @@ export function AcervoPicker({
                       className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted"
                     >
                       {item.tipo === "image" ? (
+                        // ⚠️ MINIATURA renderizada pelo Storage, nunca o
+                        // original: 36px pintados com o arquivo de 4 MB
+                        // faziam um acervo de 15 fotos custar ~60 MB por
+                        // abertura do diálogo. Medido nesta imagem de
+                        // teste: 124.086 B → 446 B.
+                        //
+                        // ⚠️ SEM `loading="lazy"`, e não é esquecimento:
+                        // medido no diálogo, a imagem lazy NÃO pintava —
+                        // ficava com `naturalWidth: 0` mesmo visível na
+                        // tela (o observador de interseção não resolve para
+                        // um nó inserido junto com o diálogo). Com a
+                        // miniatura em ~450 B, adiar a carga não economiza
+                        // nada e custa a miniatura em branco.
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={item.media_url}
+                          src={urlDaMiniatura(item.media_url)}
                           alt=""
+                          decoding="async"
+                          width={36}
+                          height={36}
                           className="h-9 w-9 shrink-0 rounded object-cover"
                         />
                       ) : (

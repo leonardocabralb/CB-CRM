@@ -407,6 +407,21 @@ function texto(v: unknown, teto = 500): string {
 export function interpretarAnalise(
   objeto: unknown,
   linhas: LinhaDoTranscrito[],
+  /**
+   * O instante da ANÁLISE — a âncora do corte de recência da insatisfação.
+   *
+   * ⚠️ Ancorava na ÚLTIMA LINHA do transcrito, e isso falhava exatamente no
+   * caso que motivou a régua: cliente reclama na terça, a equipe responde
+   * uma hora depois e a conversa MORRE ali. No domingo a última linha ainda
+   * é de terça, o corte anda junto com ela e a evidência nunca envelhece —
+   * o cartão de insatisfação seguia aceso sobre um caso encerrado (achado
+   * da revisão 48h). Medir do relógio faz o sinal expirar de verdade.
+   *
+   * Continua PURA: quem chama passa o instante (o worker, o `analisadoEm`;
+   * os testes, um valor fixo). Ausente = comportamento antigo, âncora na
+   * última linha — só para não quebrar chamador que ainda não passa.
+   */
+  agoraMs?: number,
 ): AnaliseInterpretada | null {
   if (!objeto || typeof objeto !== 'object' || Array.isArray(objeto)) return null
   const o = objeto as Record<string, unknown>
@@ -454,19 +469,25 @@ export function interpretarAnalise(
   }
 
   // Insatisfação tem uma segunda régua além da evidência: RECÊNCIA. O
-  // corte sai da última linha do transcrito (ver `JANELA_INSATISFACAO_MS`)
-  // — sem ele, irritação de terça já resolvida seguia acendendo o cartão
-  // no domingo, porque a janela analisada tem 7 dias.
+  // corte sai do INSTANTE DA ANÁLISE (ver `agoraMs` e
+  // `JANELA_INSATISFACAO_MS`) — sem ele, irritação de terça já resolvida
+  // seguia acendendo o cartão no domingo, porque a janela analisada tem 7
+  // dias.
+  //
+  // ⚠️ A âncora era a última linha do transcrito, e nessa forma a régua
+  // não funcionava justamente na conversa que PARA depois da reclamação: o
+  // corte envelhecia junto com a conversa e nunca a alcançava. Só o relógio
+  // faz o sinal expirar.
   //
   // Basta UMA evidência dentro da janela para o sinal valer; as antigas
-  // continuam sendo exibidas, como contexto da história. Transcrito vazio
-  // não tem corte a aplicar (e sem linha nenhuma não há evidência válida,
-  // então o sinal já cai pela régua de cima).
+  // continuam sendo exibidas, como contexto da história. Sem âncora (nem
+  // `agoraMs`, nem linha) não há corte a aplicar — e sem linha nenhuma não
+  // há evidência válida, então o sinal já cai pela régua de cima.
   const insatisfacaoEvidencias = evidencias(o.insatisfacao_evidencias)
   const ultimaLinha = linhas[linhas.length - 1]
-  const corteInsatisfacao = ultimaLinha
-    ? ultimaLinha.createdAt.getTime() - JANELA_INSATISFACAO_MS
-    : null
+  const ancora = agoraMs ?? ultimaLinha?.createdAt.getTime() ?? null
+  const corteInsatisfacao =
+    ancora === null ? null : ancora - JANELA_INSATISFACAO_MS
   const temEvidenciaRecente =
     corteInsatisfacao === null
       ? insatisfacaoEvidencias.length > 0

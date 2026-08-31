@@ -12,6 +12,7 @@ import {
   MIMES_POR_TIPO,
   prefixoDoAcervo,
   tipoPeloMime,
+  urlDaMiniatura,
 } from './tipos';
 
 const CONTA = '11111111-1111-1111-1111-111111111111';
@@ -175,5 +176,36 @@ describe('tamanhoLegivel', () => {
     expect(tamanhoLegivel(512)).toBe('512 B');
     expect(tamanhoLegivel(2048)).toBe('2 KB');
     expect(tamanhoLegivel(1_500_000)).toBe('1,4 MB');
+  });
+});
+
+// ------------------------------------------------------------
+// urlDaMiniatura — 36px não custa o arquivo inteiro
+// ------------------------------------------------------------
+describe('urlDaMiniatura', () => {
+  const BASE =
+    'https://x.supabase.co/storage/v1/object/public/chat-media/account-1/acervo/foto.png';
+
+  it('troca o caminho de OBJETO pelo de RENDER, com o lado pedido', () => {
+    // O seletor pinta 36×36 e baixava o original (até 16 MB) para isso.
+    const u = urlDaMiniatura(BASE);
+    expect(u).toContain('/storage/v1/render/image/public/');
+    expect(u).not.toContain('/storage/v1/object/public/');
+    expect(u).toContain('width=72');
+    expect(u).toContain('height=72');
+    expect(u).toContain('resize=cover');
+  });
+
+  it('preserva o caminho do arquivo — só a rota muda', () => {
+    expect(urlDaMiniatura(BASE)).toContain('/chat-media/account-1/acervo/foto.png');
+  });
+
+  it('aceita outro lado', () => {
+    expect(urlDaMiniatura(BASE, 144)).toContain('width=144');
+  });
+
+  it('⚠️ URL fora do formato volta INTEIRA — original pesado > miniatura quebrada', () => {
+    const estranha = 'https://cdn.exemplo.com/foto.png';
+    expect(urlDaMiniatura(estranha)).toBe(estranha);
   });
 });
