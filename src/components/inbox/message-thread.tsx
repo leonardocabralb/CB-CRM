@@ -466,7 +466,7 @@ export function MessageThread({
   // Canais de WhatsApp da conta (multi-canal). Uma busca por montagem —
   // a lista muda raramente (Settings → Conexões). Falha ou pré-migration
   // → lista vazia → seletor oculto e comportamento antigo preservado.
-  const { channels } = useChannels();
+  const { channels, loading: canaisCarregando } = useChannels();
 
   const channelsById = useMemo(() => {
     const map = new Map<string, CbChannel>();
@@ -495,6 +495,24 @@ export function MessageThread({
   // o cronômetro some, o aviso de "janela expirada" não aparece e o
   // compositor nunca trava (ver as props do MessageComposer).
   const evolutionActive = activeChannel?.kind === "evolution";
+
+  /**
+   * ⚠️ Enquanto os canais não chegam, o transporte é DESCONHECIDO — e
+   * `evolutionActive` responde `false`, que aqui significaria "é Meta, a
+   * janela vale". Afirmar isso sobre dado que ainda não temos custava, numa
+   * conta 100% Evolution: a badge vermelha "Expirada" piscando no cabeçalho
+   * por alguns segundos ao abrir cada conversa E — o dano de verdade — o
+   * compositor DESABILITADO com "Sessão expirada, use um modelo" no exato
+   * instante em que o operador abre a conversa para responder. As primeiras
+   * teclas iam para o vazio. (Medido em produção: conversa com `channel_id`
+   * nulo, que cai no canal padrão da conta, justamente o Evolution.)
+   *
+   * Mesma família do "efeito passivo mostra o estado velho" do CLAUDE.md: a
+   * cura é esperar o dado, não adivinhá-lo. Conta SEM canal nenhum continua
+   * na regra da Meta — ali a lista resolveu vazia, e vazio-com-resposta é
+   * conhecimento, não lacuna.
+   */
+  const janelaDe24h = !canaisCarregando && !evolutionActive;
 
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
@@ -1654,7 +1672,7 @@ export function MessageThread({
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. Canal Evolution não
               tem janela de 24h, então o cronômetro some. */}
-          {!evolutionActive && (
+          {janelaDe24h && (
             <Badge
               variant="outline"
               className={cn(
@@ -2141,7 +2159,7 @@ export function MessageThread({
           neutralizado) nem templates/interativas (channelKind esconde). */}
       <MessageComposer
         conversationId={conversation.id}
-        sessionExpired={evolutionActive ? false : sessionInfo.expired}
+        sessionExpired={janelaDe24h ? sessionInfo.expired : false}
         channelKind={activeChannel?.kind ?? null}
         onSend={handleSend}
         onSendMedia={handleSendMedia}

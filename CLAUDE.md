@@ -612,6 +612,27 @@ comparar contra o PROP do render atual (`conversation_id === conversationId`)
 ou esperar um sinalizador de "já carregou uma vez" — nunca confiar em que o
 efeito de limpeza já rodou.
 
+⚠️ **A terceira (2026-08-31) é a variante PERIGOSA: lista vazia virando
+AFIRMAÇÃO.** `message-thread.tsx` derivava `evolutionActive` de
+`useChannels()` sem olhar o `loading` — e enquanto os canais não chegam,
+"não é Evolution" era lido como "é Meta, logo a janela de 24h vale". Numa
+conta 100% Evolution isso pintava a badge vermelha **"Expirada"** no
+cabeçalho por alguns segundos ao abrir CADA conversa e, o dano real,
+DESABILITAVA o compositor com "Sessão expirada — use um modelo" no exato
+instante em que o operador abre a conversa para responder: as primeiras
+teclas iam para o vazio. Reportado da tela pelo operador. A cura é o
+sinalizador do próprio hook (`janelaDe24h = !canaisCarregando &&
+!evolutionActive`) — `useChannels` expõe `loading` desde sempre, e
+`step1-choose-template.tsx` e `template-manager.tsx` já o usavam.
+⚠️ **Conta SEM canal nenhum continua na regra da Meta**, de propósito: ali a
+lista resolveu vazia, e vazio-COM-resposta é conhecimento, não lacuna. A
+distinção entre os dois vazios é a feature inteira.
+⚠️ Os outros ~18 consumidores de `useChannels` usam a lista só para
+rótulo/filtro, onde vazio-durante-a-carga é cosmético e se corrige sozinho
+(é o contrato escrito no cabeçalho do hook). O que torna este caso diferente
+— e o teste para código novo — é a lista vazia ser convertida numa
+afirmação POSITIVA que desabilita um controle.
+
 ⚠️ **Agenda de reuniões (945, Fase 1): o calendário é a parte fácil.**
 `src/lib/agenda/` — `fuso.ts`, `vagas.ts`, `grade.ts` e `validar.ts`, todos
 puros e com teste (85 casos); a tela é `/agenda`, e a escrita passa por
@@ -1912,7 +1933,31 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
   falta uma chave, o app **não** cai para o inglês — ele dispara
   `MISSING_MESSAGE` e mostra a chave crua na tela. Portanto: **ao adicionar
   qualquer chave em `en.json`, adicione no `pt-BR.json` na mesma passada.**
-  Conferir com paridade de chaves antes de commitar.
+- ✅ **Desde 31/08/2026 os dois scripts de i18n são PORTÃO no CI** (job
+  `verificar`, antes de `test`/`build`). Até ali a única proteção era lembrar
+  de rodá-los à mão — e não lembramos: o console de produção despejava
+  `Inbox.sidebar.tabTracking`, `noTrackingFields` e `seedTrackingFields` às
+  dezenas. São dois porque respondem perguntas diferentes:
+  - `i18n-parity.mjs` — a chave existe num dicionário e falta no outro?
+  - `i18n-chaves-usadas.mjs` — o código pede chave que não existe em
+    dicionário NENHUM? ⚠️ **Este é o que faltava.** Durante aquele defeito a
+    paridade estava VERDE (2673/2673): as três chaves faltavam nos dois
+    arquivos, então os dicionários "concordavam" — em não ter.
+  ⚠️ O segundo é análise estática de TEXTO e declara o próprio alcance a
+  cada execução (literais conferidas, dinâmicas ignoradas, arquivos em modo
+  folha). Três decisões que parecem detalhe e não são:
+  - **Cobra contra TODOS os namespaces do arquivo, não contra o binding** —
+    o tradutor viaja como prop (`<SeletorDeHorario t={tAgendadas}>`) e o
+    parâmetro SOMBREIA o do módulo. Amarrado ao binding, acusava 7 chaves
+    boas de faltantes no compositor.
+  - **`.raw` e `.markup` contam junto com `.rich`** — os três disparam
+    MISSING_MESSAGE igual, e `t.raw` sozinho aparece 15 vezes no repo.
+  - **Modo folha** para arquivo que RECEBE o tradutor e não declara binding
+    (`flows/shared.tsx`, `message-media.tsx`): sem namespace, a chave é
+    cobrada só pelo ÚLTIMO SEGMENTO contra o dicionário inteiro. Garantia
+    mais fraca — e por isso o total sai impresso —, mas pular o arquivo
+    inteiro era buraco: chave apagada dos dois dicionários mantinha o CI
+    verde. As três lacunas foram achado do Codex no PR #82.
 - ⚠️ **`t('chave')` sem `values` NÃO parseia ICU** — devolve a string crua.
   Erro `INVALID_TAG`/`MALFORMED_ARGUMENT` no console **não significa** tela
   quebrada: pode ser só ruído de log, com a renderização correta. Já
