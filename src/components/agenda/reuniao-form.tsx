@@ -27,7 +27,7 @@ import { ExternalLink } from 'lucide-react';
 
 import { SeletorDeCliente } from '@/components/agenda/seletor-de-cliente';
 import { useAuth } from '@/hooks/use-auth';
-import { fetchAccountMembers } from '@/lib/account/members';
+import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
 import type {
   AccountMember,
   Contact,
@@ -346,15 +346,18 @@ export function ReuniaoForm({
               <Select value={responsavel} onValueChange={(v) => setResponsavel(v ?? '')}>
                 <SelectTrigger className="w-full">
                   <SelectValue>
-                    {membros.find((m) => m.user_id === responsavel)?.full_name ??
-                      reuniao?.owner_nome ??
-                      t('euMesmo')}
+                    {(() => {
+                      // memberLabel, nunca full_name cru — '' escapa do ??
+                      // e deixava o gatilho em branco (ledger 48h).
+                      const m = membros.find((x) => x.user_id === responsavel);
+                      return m ? memberLabel(m) : (reuniao?.owner_nome ?? t('euMesmo'));
+                    })()}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {membros.map((m) => (
                     <SelectItem key={m.user_id} value={m.user_id}>
-                      {m.full_name}
+                      {memberLabel(m)}
                     </SelectItem>
                   ))}
                 </SelectContent>

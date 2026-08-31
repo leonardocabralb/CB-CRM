@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { createClient } from '@/lib/supabase/client';
 import type { ConversationNote } from '@/types';
@@ -234,8 +234,29 @@ export function useConversationNotes(
     );
   }, []);
 
+  /**
+   * ⚠️ O que sai daqui é sempre da conversa do render ATUAL.
+   *
+   * O estado é esvaziado num efeito, e efeito é PASSIVO: no primeiro render
+   * depois de trocar de conversa, `notas` ainda é do cliente anterior. Quem
+   * desenha algo fora do `loading` que esconde o fio — a faixa da nota
+   * fixada, o cartão sticky da aba Notas — pintava a anotação do cliente A
+   * sob o cabeçalho do cliente B, com o botão de desafixar agindo sobre a
+   * nota de A. Foi o achado do Codex no PR #64 (corrigido no fio) e voltou
+   * no painel da conversa, que usa o mesmo hook.
+   *
+   * A guarda vive AQUI, e não em cada consumidor, justamente porque a
+   * segunda cópia foi a que faltou. Não é a comparação tautológica que o
+   * `conversaAtualRef` descreve: ali o id vem de um closure do passado;
+   * aqui, do prop do render atual contra o estado velho.
+   */
+  const notasDaConversa = useMemo(
+    () => notas.filter((n) => n.conversation_id === conversationId),
+    [notas, conversationId]
+  );
+
   return {
-    notas,
+    notas: notasDaConversa,
     carregando,
     recarregar: buscar,
     remover,

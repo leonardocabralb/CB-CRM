@@ -77,7 +77,11 @@ export function TaskForm({
 }: TaskFormProps) {
   const t = useTranslations('Tasks');
   const { user } = useAuth();
-  const { membros, carregando: carregandoMembros } = useMembros();
+  const {
+    membros,
+    carregando: carregandoMembros,
+    falhou: membrosFalharam,
+  } = useMembros();
 
   const editando = !!tarefa;
   const respondendo = tipo === 'resposta';
@@ -141,11 +145,15 @@ export function TaskForm({
 
   // O catálogo de contatos só é buscado quando a criação é GLOBAL — no
   // inbox/ficha o cliente vem por prop e a busca seria peso morto a cada
-  // abertura. Uma busca por montagem, RLS recorta a conta.
+  // abertura. Uma busca por ABERTURA (não por montagem): o guard antigo
+  // `contatos !== null` fazia a primeira lista valer para sempre, e o lead
+  // criado depois nunca aparecia em "Nova tarefa" até remontar a página —
+  // "Nenhum cliente encontrado" com cara de resposta certa (ledger 48h).
+  // A lista anterior FICA na tela enquanto a nova chega, sem piscar.
   // ⚠️ Teto implícito de 1000 linhas do PostgREST: hoje são ~120 contatos;
   // se a base passar de mil, este seletor precisa virar busca digitada.
   useEffect(() => {
-    if (!open || !precisaCliente || contatos !== null) return;
+    if (!open || !precisaCliente) return;
     let vivo = true;
     void createClient()
       .from('contacts')
@@ -154,9 +162,9 @@ export function TaskForm({
       .then(({ data, error }) => {
         if (!vivo) return;
         // Erro NÃO vira lista vazia: `[]` habilitava o seletor com cara de
-        // "não há clientes" e o Criar ficava travado sem explicação — e o
-        // guard `contatos !== null` nunca mais tentava de novo. Mantendo
-        // null, fechar e reabrir refaz a busca; o toast diz o que houve.
+        // "não há clientes" e o Criar ficava travado sem explicação. A
+        // lista que já estava na tela (se houver) continua utilizável; o
+        // toast diz o que houve, e reabrir tenta de novo.
         if (error) {
           toast.error(t('contactsLoadError'));
           return;
@@ -166,7 +174,7 @@ export function TaskForm({
     return () => {
       vivo = false;
     };
-  }, [open, precisaCliente, contatos, t]);
+  }, [open, precisaCliente, t]);
 
   const podeSalvar =
     !!titulo.trim() &&
@@ -318,18 +326,26 @@ export function TaskForm({
                 </Select>
               ) : (
                 <>
+                  {/* ⚠️ Falha na busca NÃO vira "único membro": a lista
+                      vazia de erro não diz nada sobre a conta, e afirmar
+                      sozinho-na-conta numa conta com equipe fazia o
+                      operador salvar sem perceber que a tarefa caiu nele.
+                      A tarefa continua criável (você é alvo válido) — o
+                      texto só para de mentir sobre o porquê. */}
                   <Select value="__eu__" disabled onValueChange={() => {}}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__eu__">
-                        {t('assigneeOnlyYou')}
+                        {membrosFalharam ? t('assigneeYou') : t('assigneeOnlyYou')}
                       </SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-muted-foreground text-xs">
-                    {t('assigneeInviteHint')}
+                    {membrosFalharam
+                      ? t('assigneeLoadFailed')
+                      : t('assigneeInviteHint')}
                   </p>
                 </>
               )}

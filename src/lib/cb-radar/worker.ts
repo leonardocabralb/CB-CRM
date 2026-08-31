@@ -353,6 +353,8 @@ interface MensagemDaJanela {
   id: string
   sender_type: 'customer' | 'agent' | 'bot'
   sender_id: string | null
+  /** Saiu do celular pareado — gente digitando, sem usuário do CRM atrás. */
+  from_device: boolean | null
   content_type: string
   content_text: string | null
   transcricao: string | null
@@ -392,7 +394,9 @@ export async function analisarConversaReivindicada(
   // esperando resposta (revisão 2026-08-27: quatro ângulos).
   const { data: mensagens, error: msgErr } = await admin
     .from('messages')
-    .select('id, sender_type, sender_id, content_type, content_text, transcricao, transcricao_status, created_at')
+    .select(
+      'id, sender_type, sender_id, from_device, content_type, content_text, transcricao, transcricao_status, created_at',
+    )
     .eq('conversation_id', args.conversationId)
     .gte('created_at', janelaInicio.toISOString())
     .is('deleted_at', null)
@@ -410,10 +414,34 @@ export async function analisarConversaReivindicada(
   }
   const comData = linhas.filter((m) => m.created_at !== null)
 
+  // ⚠️ A mensagem nascida de uma AGENDADA carrega `sender_id` — o
+  // `dispatch.ts` passa `created_by` e o send-message o persiste. É
+  // atribuição de quem AGENDOU, dias antes, não gente respondendo agora:
+  // pela coluna sozinha, uma agendada de follow-up fechava a pendência do
+  // cliente esquecido (achado do Codex no PR #74). A proveniência que a
+  // distingue é `cb_scheduled_messages.message_id`, gravado no envio.
+  const { data: enviosAgendados, error: agErr } = await admin
+    .from('cb_scheduled_messages')
+    .select('message_id')
+    .eq('conversation_id', args.conversationId)
+    .not('message_id', 'is', null)
+  if (agErr) throw new Error(`falha lendo envios agendados: ${agErr.message}`)
+  const deAgendada = new Set(
+    (enviosAgendados ?? []).map((r) => r.message_id as string),
+  )
+
   const metricas = calcularMetricas(
     comData.map(
       (m): MensagemParaMetricas => ({
         senderType: m.sender_type,
+        // ⚠️ A régua do PAINEL, e não a de `houveHumanoNaJanela` logo abaixo:
+        // aqui a pergunta é "alguém RESPONDEU a este cliente?", e o celular
+        // pareado responde (`from_device`, `sender_id` nulo). Lá a pergunta é
+        // outra — "vale refazer a análise?" — e continua sendo só `sender_id`
+        // de propósito. Não unificar sem responder às duas.
+        porGente:
+          (m.sender_id !== null || m.from_device === true) &&
+          !deAgendada.has(m.id),
         createdAt: new Date(m.created_at as string),
       }),
     ),

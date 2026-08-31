@@ -39,11 +39,12 @@ import {
  * traduz o código é o cliente.
  */
 
-// O ciclo é N gerações em paralelo (30s de teto cada) mais o ping de
-// embeddings. Sem isto a rota herda o teto default da plataforma e um
-// provedor emperrado derruba a tela inteira — inclusive os cartões que
-// responderam rápido. Mesmo valor das outras rotas de IA (reanalisar,
-// transcrição).
+// ⚠️ DECORATIVO em produção: o deploy roda `node server.js` num container
+// (CLAUDE.md, seção do maxDuration) e nada aplica este valor. Quem protege
+// a rota de um provedor emperrado é o AbortSignal de 30s de cada geração
+// (shared.ts) — os cartões rápidos respondem porque cada ping tem teto
+// próprio, não por causa desta linha. Fica pelo valor documental e por
+// plataformas que a leem (Vercel), como nas outras rotas de IA.
 export const maxDuration = 60;
 
 /** Códigos que o cliente sabe traduzir; o resto vira `provider_error`. */
@@ -56,7 +57,15 @@ const CODIGOS = new Set([
 ]);
 
 function motivoSeguro(err: unknown): string {
-  if (err instanceof AiError && CODIGOS.has(err.code)) return err.code;
+  if (err instanceof AiError) {
+    // ⚠️ Os adapters emitem `network_error` (shared.ts); o contrato com o
+    // cliente chama isso de `network`. Sem a ponte, VPS sem rede no ping
+    // colapsava em `provider_error` — "o provedor devolveu um erro" — e a
+    // tela mandava trocar uma chave boa, com `motivo.network` morto nos
+    // dois dicionários.
+    if (err.code === 'network_error') return 'network';
+    if (CODIGOS.has(err.code)) return err.code;
+  }
   return 'provider_error';
 }
 

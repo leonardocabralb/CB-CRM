@@ -15,6 +15,7 @@
 
 import {
   SECOES_PESSOAIS,
+  SECOES_SO_DE_ADMIN,
   SECOES_TRAVADAS_PARA_ADMIN,
   TELAS_SEMPRE_VISIVEIS,
   type SecaoId,
@@ -55,6 +56,19 @@ export function podeVerSecao(ctx: ContextoDeAcesso, secao: SecaoId): boolean {
   // sem caminho para trocar a própria senha dentro do app.
   if ((SECOES_PESSOAIS as readonly string[]).includes(secao)) return true;
 
+  // ⚠️ ANTES do fail-open de "sem perfil": gestão de permissão é do PAPEL, e
+  // papel existe mesmo quando o perfil foi apagado. Depois do `!ctx.perfil`,
+  // o membro no estado fail-open (perfil apagado, documentado abaixo) ganhava
+  // a tela de perfis junto com o resto — a mesma classe do furo da caixa
+  // marcada. O dono já saiu no curto-circuito; admin passa aqui e recebe a
+  // seção pelas travas logo abaixo.
+  if (
+    ctx.papel !== "admin" &&
+    (SECOES_SO_DE_ADMIN as readonly string[]).includes(secao)
+  ) {
+    return false;
+  }
+
   if (!ctx.perfil) return true;
 
   // ⚠️ Olha `ctx.papel` (o `profiles.account_role`), NÃO `perfil.papel_base`.
@@ -70,6 +84,8 @@ export function podeVerSecao(ctx: ContextoDeAcesso, secao: SecaoId): boolean {
     return true;
   }
 
+  // `SECOES_SO_DE_ADMIN` já foi resolvida lá em cima, antes do fail-open —
+  // quem chega aqui só disputa as seções comuns pela caixa marcada.
   return ctx.perfil.secoes_config.includes(secao);
 }
 

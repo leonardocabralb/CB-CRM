@@ -738,21 +738,15 @@ export function MessageThread({
    * Em conversa de GRUPO isto é sempre nulo: nota de grupo não tem contato
    * e a rota recusa fixá-la.
    *
-   * ⚠️ O `conversation_id === conversationId` NÃO é redundante, e aqui não é
-   * a guarda tautológica que o hook descreve. O `useConversationNotes` esvazia
-   * a lista num efeito, que é PASSIVO: no primeiro render depois de trocar de
-   * conversa, `notas` ainda é da conversa anterior. A faixa fica FORA do
-   * `loading` que esconde o fio, então sem esta comparação a anotação do
-   * cliente A apareceria sob o cabeçalho do cliente B — e o botão de
-   * desafixar dela agiria sobre a nota de A enquanto o operador olha B.
-   * A comparação vale porque é o PROP do render atual contra o ESTADO velho,
-   * não um id capturado em closure. (Achado pela revisão do Codex no PR #64.)
+   * ⚠️ A faixa fica FORA do `loading` que esconde o fio, então ela é a
+   * primeira a expor nota do cliente anterior no render da troca (achado do
+   * Codex no PR #64). A guarda contra isso mora no `useConversationNotes`,
+   * que só devolve nota da conversa do render atual — foi movida para lá
+   * porque a segunda cópia, a do painel da conversa, era a que faltava.
    */
   const notaFixada = useMemo(
-    () =>
-      notas.find((n) => n.fixada_em && n.conversation_id === conversationId) ??
-      null,
-    [notas, conversationId],
+    () => notas.find((n) => n.fixada_em) ?? null,
+    [notas],
   );
   const podeAdministrar = useCan("manage-members");
   // Agendadas (925): a faixa acima do compositor e o compositor são
@@ -2171,7 +2165,14 @@ export function MessageThread({
           onOpenChange={setExecutarAberto}
           conversationId={conversation.id}
           contactName={contact.name || contact.phone}
-          channelId={activeChannel?.id ?? null}
+          // ⚠️ O canal CRU da conversa, não o `activeChannel` (que cai no
+          // padrão da conta): a rota decide pelo cru com falha ABERTA —
+          // conversa sem canal deixa passar. Com o padrão aqui, uma
+          // automação restrita ao número B aparecia desabilitada numa
+          // conversa sem canal cujo padrão é A, enquanto o servidor a
+          // aceitaria (ledger 48h). O dialog não desabilita nada quando o
+          // canal é nulo — o mesmo fail-open, nas duas camadas.
+          channelId={conversation.channel_id ?? null}
         />
       )}
 

@@ -101,6 +101,22 @@ export default function RadarPage() {
   const { ocupada, mudarEstado, reanalisar } = useAcoesDoRadar(recarregar);
   const [canalFiltro, setCanalFiltro] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<string | null>(null);
+  /**
+   * Cartões tratados/descartados NESTA visita à tela — continuam listados,
+   * apagados e com o botão "Reabrir".
+   *
+   * ⚠️ Sem isto o botão "Reabrir" era CÓDIGO MORTO: a lista só aceita
+   * `estado === 'aberto'`, então o cartão sumia no instante do clique e
+   * levava junto o único botão que o traria de volta. Sobrava o "Desfazer"
+   * do toast, que expira em ~4s — e `descartado` NUNCA reabre sozinho, por
+   * desenho. Um clique errado escondia o alarme daquele cliente da equipe
+   * inteira, para sempre.
+   *
+   * O conjunto vive só enquanto a tela está montada: sair e voltar limpa,
+   * que é o "fim do expediente de triagem" e mantém a decisão do operador
+   * de não ter uma aba "Todos".
+   */
+  const [mexidasAqui, setMexidasAqui] = useState<ReadonlySet<string>>(new Set());
   // Relógio vivo: numa aba deixada aberta "de olho", sem o tick os
   // cartões e o "aguardando há X" congelariam no instante do último
   // render — a tela contradizia a si mesma na fronteira do limiar.
@@ -138,7 +154,18 @@ export default function RadarPage() {
     // ignoram os sinais dela via `foraDaJanela` (só a pendência conta), e
     // um "aguardando" tratado/descartado continua saindo da tela.
     const foraDaJanela = agora.getTime() - atividadeMs > MS_JANELA;
-    if (foraDaJanela && !(i.aguardando_desde && i.estado === 'aberto')) continue;
+    // ⚠️ `mexidasAqui` segura o cartão AQUI também, não só em `visiveis`:
+    // o cartão da pendência congelada só está na lista por `estado='aberto'`,
+    // então tratá-lo/descartá-lo o derrubava neste continue e o "Reabrir"
+    // não o alcançava — justamente no cliente esquecido, onde `descartado`
+    // nunca reabre sozinho (a conversa está parada; não vem mensagem nova).
+    if (
+      foraDaJanela &&
+      !(i.aguardando_desde && i.estado === 'aberto') &&
+      !mexidasAqui.has(i.conversation_id)
+    ) {
+      continue;
+    }
 
     // ⚠️ A pendência morre quando GENTE responde, e o painel descobre isso
     // ao vivo (`respondidas`) — o `aguardando_desde` da linha é o retrato
@@ -191,7 +218,7 @@ export default function RadarPage() {
   // mesma armadilha que o hook já evita ao separar `falhou` de "vazio".
   const visiveis = ordenados.filter(
     (d) =>
-      d.insight.estado === 'aberto' &&
+      (d.insight.estado === 'aberto' || mexidasAqui.has(d.insight.conversation_id)) &&
       (temGatilho(d.ord) || d.insight.status === 'failed'),
   );
   // Separado de `visiveis` para o vazio saber distinguir "nada analisado"
@@ -228,24 +255,55 @@ export default function RadarPage() {
   /**
    * Tratar/descartar COM desfazer.
    *
-   * ⚠️ Sem a aba "Todos", o cartão desaparece da tela no instante do
-   * clique — e o botão "Reabrir" vai junto. O desfazer deixou de ser
-   * cortesia e virou a única saída para o clique errado: descartar é
-   * "a IA errou aqui" e nunca reabre sozinho, então um engano esconderia
-   * o alarme para sempre.
+   * Duas saídas para o clique errado, de propósito: o "Desfazer" do toast
+   * (imediato) e o cartão que FICA na lista, apagado, com o botão
+   * "Reabrir" — ver `mexidasAqui`. Descartar é "a IA errou aqui" e nunca
+   * reabre sozinho; com uma saída só, e ela durando 4 segundos, um engano
+   * escondia o alarme daquele cliente para sempre.
    */
-  const mudar = useCallback(
-    async (conversationId: string, estado: 'aberto' | 'tratado' | 'descartado') => {
-      const ok = await agir(mudarEstado(conversationId, estado));
-      if (!ok || estado === 'aberto') return;
-      toast.success(t(estado === 'tratado' ? 'tratadoOk' : 'descartadoOk'), {
-        action: {
-          label: t('desfazer'),
-          onClick: () => void agir(mudarEstado(conversationId, 'aberto')),
-        },
+  const reabrir = useCallback(
+    async (conversationId: string) => {
+      if (!(await agir(mudarEstado(conversationId, 'aberto')))) return;
+      setMexidasAqui((antes) => {
+        const proximo = new Set(antes);
+        proximo.delete(conversationId);
+        return proximo;
       });
     },
-    [agir, mudarEstado, t],
+    [agir, mudarEstado],
+  );
+
+  const mudar = useCallback(
+    async (conversationId: string, estado: 'aberto' | 'tratado' | 'descartado') => {
+      if (estado === 'aberto') return reabrir(conversationId);
+      // ⚠️ O carimbo da análise QUE ESTÁ NA TELA viaja junto — é a trava
+      // otimista da rota contra o worker reanalisar no intervalo de até 2
+      // min da foto. 409 `analysis_changed` = "o Radar releu a conversa":
+      // recarrega e avisa em vez de esconder um sinal que ninguém viu.
+      const visto =
+        insights.find((i) => i.conversation_id === conversationId)?.analisado_em ??
+        null;
+      const r = await mudarEstado(conversationId, estado, visto);
+      if (!r.ok) {
+        if (r.erro === 'analysis_changed') {
+          toast.error(t('analiseMudou'));
+          recarregar();
+          return;
+        }
+        const erro = r.erro ?? '?';
+        toast.error(
+          (MOTIVOS_DE_ERRO as readonly string[]).includes(erro)
+            ? t(`erro_${erro}`)
+            : t('acaoFalhou', { erro }),
+        );
+        return;
+      }
+      setMexidasAqui((antes) => new Set(antes).add(conversationId));
+      toast.success(t(estado === 'tratado' ? 'tratadoOk' : 'descartadoOk'), {
+        action: { label: t('desfazer'), onClick: () => void reabrir(conversationId) },
+      });
+    },
+    [insights, mudarEstado, reabrir, recarregar, t],
   );
 
   return (
@@ -286,7 +344,9 @@ export default function RadarPage() {
         />
         <Cartao
           icone={Clock}
-          rotulo={t('cardPendencias')}
+          // A constante REAL viaja para o rótulo (regra da casa: número
+          // digitado no dicionário mente na primeira mudança do limiar).
+          rotulo={t('cardPendencias', { horas: LIMIAR_ALARME_MS / 3_600_000 })}
           valor={String(cartoes.pendencias)}
           alerta={cartoes.pendencias > 0}
         />
@@ -330,6 +390,24 @@ export default function RadarPage() {
         </div>
       )}
 
+      {/* ⚠️ Chave de IA ausente é problema de CONTA, não de conversa — um
+          cartão por linha `sem_ia` seria o ruído que o filtro matou, e
+          NENHUM cartão era o oposto: a chave rotacionada silenciava a
+          análise e o painel seguia com cara de saudável, só com as
+          métricas (ledger 48h). Um aviso único, no padrão do recado de
+          ciclo, apontando para onde se conserta. */}
+      {decorados.some((d) => d.insight.detalhes?.sem_ia && !d.foraDaJanela) && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p>
+            {t('semIaAviso')}{' '}
+            <Link href="/settings?tab=integracoes" className="underline underline-offset-2">
+              {t('semIaAvisoLink')}
+            </Link>
+          </p>
+        </div>
+      )}
+
       {/* A aba "Todos" foi removida em 2026-08-30 (decisão do operador):
           listar toda conversa analisada era o próprio ruído que o painel
           passou a filtrar. O que ficou de fora — análise sem gatilho,
@@ -337,7 +415,11 @@ export default function RadarPage() {
           cartões acima. */}
       <div className="flex items-center justify-between border-b border-border pb-2">
         <p className="text-sm font-medium text-foreground">
-          {t('listaTitulo', { n: visiveis.length })}
+          {/* ⚠️ Conta só o que ainda está ABERTO, não o tamanho da lista: o
+              cartão tratado/descartado continua listado (ver `mexidasAqui`) e
+              somá-lo faria o título dizer "3 sinais abertos" com um deles
+              marcado como descartado logo abaixo. */}
+          {t('listaTitulo', { n: visiveis.filter((d) => d.insight.estado === 'aberto').length })}
         </p>
       </div>
 

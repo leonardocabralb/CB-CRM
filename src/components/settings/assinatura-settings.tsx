@@ -24,9 +24,10 @@ import {
  * operador não deveria precisar mandar uma mensagem para um cliente real para
  * descobrir como a assinatura fica.
  *
- * Escreve direto em `accounts` sob RLS, no molde da `deals-settings`: a
- * policy `accounts_update` (017) já restringe a escrita a admin+, então não há
- * gate próprio aqui além de esconder os controles de quem não pode salvar.
+ * Escreve direto em `accounts` sob RLS (o molde era a `deals-settings`,
+ * apagada pelo #66 junto com a moeda por conta): a policy `accounts_update`
+ * (017) já restringe a escrita a admin+, então não há gate próprio aqui além
+ * de esconder os controles de quem não pode salvar.
  */
 export function AssinaturaSettings() {
   const supabase = createClient();

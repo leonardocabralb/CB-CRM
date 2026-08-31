@@ -48,7 +48,13 @@ export type SecaoId =
   // — `podeVerSecao` responde true para uma seção que a tela não lista.
   | "acervo"
   | "fields"
-  | "deals"
+  // ⚠️ NÃO existe "deals" — foi declarada na Fase 1 achando que Configurações
+  // teria uma seção de negócios, que nunca nasceu (o assunto mora em
+  // `fields`). O id fantasma rendia um SEGUNDO checkbox no editor de perfis,
+  // caindo no rótulo de fallback — dois "Perfis de acesso" idênticos, e o
+  // admin podia marcar o errado. O `"deals"` gravado no perfil Administrador
+  // é filtrado por `ehSecaoConhecida` na leitura e na validação; não precisa
+  // de limpeza no banco.
   | "assinatura"
   | "members"
   | "integracoes"
@@ -89,7 +95,6 @@ export const TODAS_AS_SECOES: SecaoId[] = [
   "quick-replies",
   "acervo",
   "fields",
-  "deals",
   "assinatura",
   "members",
   "integracoes",
@@ -137,6 +142,23 @@ export const SECOES_TRAVADAS_PARA_ADMIN: readonly SecaoId[] = [
   // nem a rota de membros como saída, porque o estrago está no perfil.
   "perfis",
 ] as const;
+
+/**
+ * Seções que exigem o PAPEL de admin — a caixa marcada não basta.
+ *
+ * ⚠️ `secoes_config` responde "o que este perfil MOSTRA", não "o que esta
+ * pessoa PODE". O editor oferece a caixa "Perfis de acesso" para perfil de
+ * qualquer papel, e marcá-la num perfil `agent`/`viewer` entregava a tela
+ * inteira de gestão de permissões a quem não administra nada: a leitura
+ * funciona (a policy da 956 dá SELECT a qualquer membro da conta) e só as
+ * escritas quebram, com 403 genérico. Ou seja, a pessoa via como a conta é
+ * recortada — inclusive o recorte dos colegas — e descobria isso clicando.
+ *
+ * Só `perfis` entra aqui. `members` fica de fora DE PROPÓSITO: aquela aba
+ * foi desenhada para ser lida por todo mundo, com as ações escondidas por
+ * `canManageMembers`.
+ */
+export const SECOES_SO_DE_ADMIN: readonly SecaoId[] = ["perfis"] as const;
 
 /**
  * Telas que TODO perfil enxerga, sempre.

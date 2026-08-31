@@ -107,6 +107,26 @@ export function useExecucoesDoContato(contactId: string | null): Resultado {
     const supabase = createClient();
     let cancelado = false;
 
+    // ⚠️ ASSINA PRIMEIRO, snapshot depois — a regra que o irmão
+    // useQuemVeAConversa segue: com o fetch antes, um UPDATE de flow_runs
+    // aterrissando na janela entre a resposta e o .subscribe() ficava
+    // invisível até o próximo evento ou ação (ledger 48h). O callback só
+    // bumpa o nonce, então armá-lo cedo é inofensivo: evento durante o
+    // fetch inicial vira um refetch logo atrás.
+    const canal = supabase
+      .channel(`execucoes:${contactId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "flow_runs",
+          filter: `contact_id=eq.${contactId}`,
+        },
+        () => setNonce((n) => n + 1),
+      )
+      .subscribe();
+
     void (async () => {
       const [runsRes, esperasRes] = await Promise.all([
         supabase
@@ -137,29 +157,22 @@ export function useExecucoesDoContato(contactId: string | null): Resultado {
           grupos?: GrupoDeEsperas[];
         } | null;
         if (cancelado) return;
-        esperas = json?.grupos ?? SEM_ESPERAS;
+        // ⚠️ 200 com corpo que não parseia (página de erro de proxy,
+        // resposta truncada) NÃO é "nada em execução" — sem o `falhou`, a
+        // aba afirmava vazio com cara de resposta certa sobre esperas que
+        // podem existir. A rota sempre devolve `{ grupos: [...] }`; qualquer
+        // outra forma é anomalia e vira o aviso da aba.
+        if (json && Array.isArray(json.grupos)) {
+          esperas = json.grupos;
+        } else {
+          falhou = true;
+        }
       } else {
         falhou = true;
       }
 
       setDados({ contactId, robos, esperas, erro: falhou });
     })();
-
-    // Robô muda no banco (começou, terminou, foi parado) → recarrega tudo.
-    // O filtro por contato mantém o tráfego no grão da conversa aberta.
-    const canal = supabase
-      .channel(`execucoes:${contactId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "flow_runs",
-          filter: `contact_id=eq.${contactId}`,
-        },
-        () => setNonce((n) => n + 1),
-      )
-      .subscribe();
 
     return () => {
       cancelado = true;

@@ -141,9 +141,15 @@ export function pontuacaoDeSeveridade(i: InsightParaOrdenacao, agora: Date): num
 }
 
 /**
- * Mais grave primeiro; empate vai para a atividade mais recente.
- * Tratado/descartado caem para depois de todo aberto — continuam
- * visíveis (na aba "todos"), mas nunca acima do que ainda pede ação.
+ * Mais grave primeiro; empate vai para quem ESPERA há mais tempo, depois
+ * para a atividade mais recente. Tratado/descartado caem para depois de
+ * todo aberto — continuam visíveis, mas nunca acima do que ainda pede ação.
+ *
+ * ⚠️ A espera no desempate existe porque abaixo de 24h ela soma ZERO ao
+ * score (os degraus começam no limiar do alarme): sem ela, dois "pedido sem
+ * atendimento" empatados eram decididos pela atividade mais RECENTE, e o
+ * cliente esperando há 20 horas — o mais perto de virar alarme — ficava
+ * ABAIXO do que escreveu há 20 minutos (ledger 48h, r5).
  */
 export function ordenarPorSeveridade<T>(
   itens: T[],
@@ -162,11 +168,16 @@ export function ordenarPorSeveridade<T>(
         item,
         rank: rank(ord.estado),
         score: pontuacaoDeSeveridade(ord, agora),
+        espera: ord.aguardandoMsCorridos ?? 0,
         atividade: ord.ultimaAtividade?.getTime() ?? 0,
       }
     })
     .sort(
-      (a, b) => a.rank - b.rank || b.score - a.score || b.atividade - a.atividade,
+      (a, b) =>
+        a.rank - b.rank ||
+        b.score - a.score ||
+        b.espera - a.espera ||
+        b.atividade - a.atividade,
     )
     .map((d) => d.item)
 }

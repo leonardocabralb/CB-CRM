@@ -28,7 +28,7 @@ import {
   TODOS,
   filtrarPorResponsavel,
 } from '@/lib/agenda/responsaveis';
-import { fetchAccountMembers } from '@/lib/account/members';
+import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
 import { cn } from '@/lib/utils';
 import type { AccountMember, Meeting } from '@/types';
 
@@ -233,15 +233,21 @@ export default function AgendaPage() {
                 <SelectValue>
                   {responsavel === TODOS
                     ? t('todosOsResponsaveis')
-                    : (membros.find((m) => m.user_id === responsavel)?.full_name ??
-                      t('todosOsResponsaveis'))}
+                    : (() => {
+                        // ⚠️ memberLabel, nunca full_name cru: o trigger de
+                        // signup grava '' (que o ?? não pega) — o gatilho
+                        // mostrava "Todos os responsáveis" sobre uma agenda
+                        // FILTRADA, e o item do dropdown saía em branco.
+                        const m = membros.find((x) => x.user_id === responsavel);
+                        return m ? memberLabel(m) : t('todosOsResponsaveis');
+                      })()}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={TODOS}>{t('todosOsResponsaveis')}</SelectItem>
                 {membros.map((m) => (
                   <SelectItem key={m.user_id} value={m.user_id}>
-                    {m.full_name}
+                    {memberLabel(m)}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -119,6 +119,18 @@ export async function PATCH(
   const erro = validarReuniao(paraValidar, { parcial: true });
   if (erro) return NextResponse.json({ error: erro }, { status: 400 });
 
+  // ⚠️ `null` explícito nas datas é recusado AQUI: o `?? atual.starts_at`
+  // da validação o converte para a data vigente (validação passa), mas o
+  // laço de escrita só pula `undefined` — o null seguia até o banco e
+  // estourava o NOT NULL como um 500 cru (ledger 48h). Reunião sem começo
+  // não existe; limpar data não é uma edição válida.
+  if (corpo.starts_at === null || corpo.ends_at === null) {
+    return NextResponse.json(
+      { error: 'Data inválida — a reunião precisa de início e fim.' },
+      { status: 400 },
+    );
+  }
+
   const mudancas: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
   // ------------------------------------------------------------
@@ -133,7 +145,15 @@ export async function PATCH(
   // FK sozinha não impede pôr uma reunião na agenda de alguém de outro
   // escritório.
   // ------------------------------------------------------------
-  if (UUID_OK(corpo.owner_user_id)) {
+  // ⚠️ Mesma forma do bloco do cliente logo abaixo: campo AUSENTE = "não
+  // mexe"; campo presente e torto = 400. A versão anterior só agia com UUID
+  // válido — `owner_user_id` malformado (ou null) era IGNORADO com 200, a
+  // assimetria que o próprio bloco vizinho denuncia (ledger 48h). Reunião
+  // sem responsável não existe, então null também é recusado.
+  if (corpo.owner_user_id !== undefined) {
+    if (!UUID_OK(corpo.owner_user_id)) {
+      return NextResponse.json({ error: 'Responsável inválido.' }, { status: 400 });
+    }
     const { data: dono } = await admin
       .from('profiles')
       .select('user_id, full_name, email')
@@ -179,6 +199,13 @@ export async function PATCH(
       if (atual.contact_id !== null) {
         mudancas.contact_id = null;
         mudancas.contato_nome = null;
+        // ⚠️ A conversa vai junto (lição do PR #71): `conversation_id` é da
+        // reunião que NASCEU daquela conversa — sem cliente, o link "abrir
+        // conversa" apontaria para o atendimento de um vínculo que não
+        // existe mais. Hoje nenhum caminho grava a coluna (ramo latente);
+        // isto garante que, quando um escritor nascer, trocar o cliente não
+        // deixe o formulário abrindo a conversa do antigo.
+        mudancas.conversation_id = null;
       }
     } else if (UUID_OK(corpo.contact_id)) {
       const { data: contato } = await admin
@@ -198,6 +225,11 @@ export async function PATCH(
       mudancas.contact_id = contato.id;
       mudancas.contato_nome =
         (contato.name as string | null) ?? (contato.phone as string);
+      // Cliente DIFERENTE leva a conversa antiga junto — mesma razão do
+      // bloco de desvincular acima. Reafirmar o mesmo cliente não mexe.
+      if (contato.id !== atual.contact_id) {
+        mudancas.conversation_id = null;
+      }
     } else {
       return NextResponse.json({ error: 'Cliente inválido.' }, { status: 400 });
     }

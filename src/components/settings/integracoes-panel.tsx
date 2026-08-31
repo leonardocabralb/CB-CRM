@@ -145,6 +145,10 @@ function Conteudo() {
   const t = useTranslations('Settings.integracoes');
   const [cartoes, setCartoes] = useState<CartaoDeIntegracao[] | null>(null);
   const [testando, setTestando] = useState(false);
+  // ⚠️ Guarda do "Tentar de novo": `testando` só cobre a fase do ping, e na
+  // janela da carga barata (carregar(false)) um duplo clique disparava DUAS
+  // cadeias completas — cada uma com um ping PAGO por agente.
+  const [repetindo, setRepetindo] = useState(false);
   const [falhou, setFalhou] = useState(false);
   const [aberto, setAberto] = useState<string | null>(null);
   // Evita escrever estado em componente já desmontado.
@@ -190,8 +194,36 @@ function Conteudo() {
   }, [carregar]);
 
   if (falhou && !cartoes) {
+    // ⚠️ Com um botão de repetir: sem ele, a única saída deste estado era o
+    // F5 — o botão "Atualizar" só existe no estado carregado, e o
+    // `disparouRef` (guarda de StrictMode) impede um novo disparo
+    // automático. Repetir refaz as duas cargas na ordem da montagem:
+    // config sem ping primeiro (barata), pings depois.
     return (
-      <p className="text-sm text-muted-foreground">{t('carregarFalhou')}</p>
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">{t('carregarFalhou')}</p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={testando || repetindo}
+          onClick={() =>
+            void (async () => {
+              if (repetindo) return;
+              setRepetindo(true);
+              try {
+                await carregar(false);
+                await carregar(true);
+              } finally {
+                if (vivoRef.current) setRepetindo(false);
+              }
+            })()
+          }
+        >
+          <RefreshCw className={cn('size-4', (testando || repetindo) && 'animate-spin')} />
+          {t('tentarDeNovo')}
+        </Button>
+      </div>
     );
   }
 

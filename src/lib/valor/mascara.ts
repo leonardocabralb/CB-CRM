@@ -31,12 +31,24 @@ const DIGITOS_DE_MILHAR = 3;
  * separador denunciam que aquilo são casas decimais mal digitadas, não
  * milhar, e ler como milhar multiplicaria o valor por mil.
  *
+ * ⚠️ Duas recusas que a primeira versão não fazia, e que valiam mil vezes o
+ * valor digitado:
+ *
+ * - **Separadores MISTOS**: em `1.250,555` a cabeça agrupa com ponto e o
+ *   último separador é vírgula. Quem escreve os dois usa o último como
+ *   decimal — é a forma brasileira de digitar centavos demais, não um milhar.
+ * - **Zero à esquerda**: `0,555` é meio real mal digitado. Ninguém escreve o
+ *   primeiro grupo de um número agrupado começando por zero.
+ *
  * Vale como grupo: `40` em `40.000`, `999` em `999,999`, e `1.234` em
  * `1.234.567` (que já vem agrupado). Não vale a parte vazia de `,555`.
  */
-function ehGrupoDeMilhar(inteiro: string): boolean {
+function ehGrupoDeMilhar(inteiro: string, separador: string): boolean {
   if (inteiro === '') return false;
-  return /[.,]/.test(inteiro) || inteiro.length <= DIGITOS_DE_MILHAR;
+  if (inteiro.startsWith('0')) return false;
+  const outro = separador === ',' ? '.' : ',';
+  if (inteiro.includes(outro)) return false;
+  return inteiro.includes(separador) || inteiro.length <= DIGITOS_DE_MILHAR;
 }
 
 /**
@@ -71,7 +83,7 @@ export function parsearValor(texto: string): number | null {
   } else {
     const cauda = limpo.slice(ultimoSeparador + 1);
     const cabeca = limpo.slice(0, ultimoSeparador);
-    if (cauda.length === DIGITOS_DE_MILHAR && ehGrupoDeMilhar(cabeca)) {
+    if (cauda.length === DIGITOS_DE_MILHAR && ehGrupoDeMilhar(cabeca, limpo[ultimoSeparador])) {
       // Milhar: o separador não separa nada, faz parte do número inteiro.
       inteiro = limpo;
       decimais = '';

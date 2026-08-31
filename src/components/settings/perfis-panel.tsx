@@ -102,6 +102,10 @@ export function PerfisPanel() {
   const t = useTranslations('PerfisPanel');
   const tSidebar = useTranslations('Sidebar');
   const tRoles = useTranslations('Settings.roles');
+  // As seções pelo MESMO dicionário do rail de Configurações — os checkboxes
+  // exibiam `SECTION_META.label`, que é inglês fixo ("Connections", "Team
+  // members") num app pt-BR (ledger 48h, r3).
+  const tSecoes = useTranslations('Settings.sections');
   const supabase = useMemo(() => createClient(), []);
   const { channels } = useChannels();
 
@@ -485,12 +489,13 @@ export function PerfisPanel() {
                         (SECOES_TRAVADAS_PARA_ADMIN as readonly string[]).includes(secao);
                       const marcada =
                         travadaAdmin || rascunho.secoes_config.includes(secao);
-                      // A seção `perfis` ainda não existe no rail (chega nesta
-                      // fase); mostra com o rótulo próprio.
+                      // Id declarado à frente da tela (como `acervo` e
+                      // `perfis` já foram) aparece CRU em vez de cair num
+                      // rótulo emprestado: foi um fallback assim que fez o
+                      // fantasma `deals` virar um segundo "Perfis de acesso"
+                      // idêntico ao verdadeiro.
                       const rotulo =
-                        secao in SECTION_META
-                          ? SECTION_META[secao as keyof typeof SECTION_META].label
-                          : t('secaoPerfis');
+                        secao in SECTION_META ? tSecoes(secao) : secao;
                       return (
                         <label
                           key={secao}
@@ -520,7 +525,17 @@ export function PerfisPanel() {
                   <p className="text-xs text-muted-foreground">{t('secoesHint')}</p>
                 </div>
 
-                {channels.length > 0 && (
+                {/* ⚠️ `> 1`, a convenção da casa: "seletor some com menos de
+                    2 canais" (CLAUDE.md, UI de canal) — com um número só o
+                    recorte não decide nada e a caixinha única confundia
+                    ("desmarcar tira o acesso ao canal?"). Escopo vazio segue
+                    significando TODOS.
+                    ⚠️ MAS nunca some sobre recorte JÁ GRAVADO: escopo não
+                    vazio cujos ids não casam com canal nenhum (conexão
+                    apagada, conta que encolheu para um número) deixa a
+                    pessoa sem canal ALGUM, e esconder a grade tiraria a
+                    única forma de desfazer isso pela tela. */}
+                {(channels.length > 1 || rascunho.channel_ids.length > 0) && (
                   <div className="flex flex-col gap-2">
                     <Label className="text-muted-foreground">
                       {t('canaisLabel')}

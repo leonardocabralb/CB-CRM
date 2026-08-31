@@ -75,6 +75,22 @@ describe('caminhoEhDaConta', () => {
     expect(caminhoEhDaConta(`account-${OUTRA}/x.png`, CONTA)).toBe(false);
   });
 
+  it('⚠️ recusa o arquivo do ACERVO, mesmo sendo da própria conta', () => {
+    // A rota `acervo/[id]/copiar` existe para a agendada nunca apontar para o
+    // ORIGINAL: cancelar uma agendada apaga o objeto do bucket. Sem esta
+    // recusa, um POST direto em /api/cb/scheduled com o `media_path` do
+    // acervo (visível a qualquer membro pela policy de SELECT da 953)
+    // apagava o contrato-padrão do escritório — e a única coisa entre isso e
+    // o operador era a interface.
+    expect(caminhoEhDaConta(`account-${CONTA}/acervo/contrato.pdf`, CONTA)).toBe(
+      false,
+    );
+    // A cópia que a rota devolve fica na raiz da conta e continua valendo.
+    expect(caminhoEhDaConta(`account-${CONTA}/1700000000000-contrato.pdf`, CONTA)).toBe(
+      true,
+    );
+  });
+
   it('⚠️ exige a barra — prefixo parecido não vale', () => {
     // Sem a barra, `account-1111` casaria com `account-11119999/…`.
     expect(caminhoEhDaConta(`account-${CONTA}-vizinho/x.png`, CONTA)).toBe(false);

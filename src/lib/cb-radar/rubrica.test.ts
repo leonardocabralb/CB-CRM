@@ -158,8 +158,16 @@ describe('montarPromptDoRadar', () => {
     const { systemPrompt, userContent } = montarPromptDoRadar({
       transcrito,
       metricas: calcularMetricas([
-        { senderType: 'customer', createdAt: new Date('2026-08-26T13:00:00Z') },
-        { senderType: 'agent', createdAt: new Date('2026-08-26T13:05:00Z') },
+        {
+          senderType: 'customer',
+          porGente: false,
+          createdAt: new Date('2026-08-26T13:00:00Z'),
+        },
+        {
+          senderType: 'agent',
+          porGente: true,
+          createdAt: new Date('2026-08-26T13:05:00Z'),
+        },
       ]),
       mensagensSemTexto: 3,
       processosPorRegex: ['0012345-89.2024.8.26.0100'],
