@@ -175,11 +175,18 @@ jobs:
       # primeira mudança — a armadilha que o CLAUDE.md descreve para
       # guardas duplicadas, aplicada a um comando que troca a imagem de
       # produção.
+      #
+      # ⚠️ A imagem entra por VARIÁVEL DE AMBIENTE (`$IMAGE_REF`, enviada
+      # pelo `envs:` de cada passo), nunca por `${{ env.IMAGE }}` aqui: o
+      # contexto `env` NÃO existe dentro de `jobs.<id>.env`, e usá-lo
+      # derruba o workflow INTEIRO antes de qualquer job rodar (run de 0s,
+      # "workflow file issue"). Sintaxe YAML válida não pega isso — só a
+      # tabela de contextos do GitHub.
       ROLLOUT_SCRIPT: |
         set -e
         if docker service inspect crm_crm >/dev/null 2>&1; then
           docker service update \
-            --image ${{ env.IMAGE }}:${{ github.sha }} \
+            --image "$IMAGE_REF" \
             --with-registry-auth \
             crm_crm
         else
@@ -242,19 +249,25 @@ jobs:
       - name: Roll out on the VPS
         id: rollout
         continue-on-error: true
+        env:
+          IMAGE_REF: ${{ env.IMAGE }}:${{ github.sha }}
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_SSH_HOST }}
           username: ${{ secrets.VPS_SSH_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          envs: IMAGE_REF
           script: ${{ env.ROLLOUT_SCRIPT }}
 
       - name: Roll out on the VPS (segunda tentativa)
         if: steps.rollout.outcome == 'failure'
+        env:
+          IMAGE_REF: ${{ env.IMAGE }}:${{ github.sha }}
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_SSH_HOST }}
           username: ${{ secrets.VPS_SSH_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          envs: IMAGE_REF
           script: ${{ env.ROLLOUT_SCRIPT }}
 
