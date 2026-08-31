@@ -148,25 +148,16 @@ async function respostasDepoisDaPendencia(
     comPendencia[0].aguardando_desde,
   );
   const ids = comPendencia.map((i) => i.conversation_id);
-  const [{ data, error }, agendadasRes] = await Promise.all([
-    supabase
-      .from('messages')
-      .select('id, conversation_id, created_at')
-      .in('conversation_id', ids)
-      .eq('sender_type', 'agent')
-      .or('sender_id.not.is.null,from_device.is.true')
-      .is('deleted_at', null)
-      .gte('created_at', desde)
-      .order('created_at', { ascending: false })
-      .limit(TETO_RESPOSTAS),
-    // As mensagens nascidas de AGENDADA nessas conversas — carregam
-    // `sender_id` e passariam pelo `.or` acima como se fossem resposta.
-    supabase
-      .from('cb_scheduled_messages')
-      .select('message_id')
-      .in('conversation_id', ids)
-      .not('message_id', 'is', null),
-  ]);
+  const { data, error } = await supabase
+    .from('messages')
+    .select('id, conversation_id, created_at')
+    .in('conversation_id', ids)
+    .eq('sender_type', 'agent')
+    .or('sender_id.not.is.null,from_device.is.true')
+    .is('deleted_at', null)
+    .gte('created_at', desde)
+    .order('created_at', { ascending: false })
+    .limit(TETO_RESPOSTAS);
 
   // Na dúvida, MANTÉM o alarme. Falha de rede não pode apagar da tela um
   // cliente sem resposta — errar para o lado do alarme é barulho; errar
@@ -175,6 +166,28 @@ async function respostasDepoisDaPendencia(
     console.warn('[radar] conferência de pendências falhou — alarmes mantidos:', error?.message);
     return vazio;
   }
+
+  // As mensagens nascidas de AGENDADA — carregam `sender_id` e passariam
+  // pelo `.or` acima como se fossem resposta.
+  //
+  // ⚠️ DEPOIS da primeira consulta e recortada pelos IDs dela, de propósito
+  // (achado #05 do plano de 31/08): a forma antiga pedia TODAS as agendadas
+  // enviadas daquelas conversas — `cb_scheduled_messages` é histórico
+  // permanente, `desde` é a pendência mais antiga da tela (que não expira
+  // por desenho), e o teto de 1000 do PostgREST chegava sozinho, devolvendo
+  // um subconjunto ARBITRÁRIO sem `order` e sem erro. Uma agendada fora do
+  // subconjunto passava por resposta humana e o cartão do cliente esquecido
+  // SAÍA do painel — exatamente a direção que o comentário acima chama de
+  // inaceitável, e sem nem o console.warn disparar. Recortada por
+  // `.in('message_id', …)`, a pergunta vira exata e limitada a
+  // TETO_RESPOSTAS por construção. Custa serializar as duas consultas; num
+  // hook que recarrega a cada 2 min, é barato.
+  const agendadasRes = data.length
+    ? await supabase
+        .from('cb_scheduled_messages')
+        .select('message_id')
+        .in('message_id', data.map((m) => m.id))
+    : { data: [], error: null };
 
   // ⚠️ Lista TRUNCADA continua valendo, e isto não é descuido.
   //

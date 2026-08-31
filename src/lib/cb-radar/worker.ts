@@ -420,11 +420,31 @@ export async function analisarConversaReivindicada(
   // pela coluna sozinha, uma agendada de follow-up fechava a pendência do
   // cliente esquecido (achado do Codex no PR #74). A proveniência que a
   // distingue é `cb_scheduled_messages.message_id`, gravado no envio.
-  const { data: enviosAgendados, error: agErr } = await admin
-    .from('cb_scheduled_messages')
-    .select('message_id')
-    .eq('conversation_id', args.conversationId)
-    .not('message_id', 'is', null)
+  //
+  // ⚠️ Recortada pelos IDs das mensagens da JANELA (achado #05 do plano de
+  // 31/08): pedir todas as agendadas da conversa encosta no teto de 1000 do
+  // PostgREST numa conversa com anos de follow-up — truncagem sem `order`,
+  // sem erro, e uma agendada de fora passando por resposta humana. Pelo
+  // `.in`, a pergunta é exata e limitada por TETO_MENSAGENS_JANELA por
+  // construção.
+  const idsDaEquipe = comData
+    .filter((m) => m.sender_type === 'agent')
+    .map((m) => m.id)
+  const { data: enviosAgendados, error: agErr } = idsDaEquipe.length
+    ? await admin
+        .from('cb_scheduled_messages')
+        .select('message_id')
+        .in('message_id', idsDaEquipe)
+    : { data: [], error: null }
+  // ⚠️ O throw é DELIBERADO, e a DIREÇÃO do erro é o motivo (M23 do plano):
+  // sem esta consulta não há como distinguir agendada de resposta humana, e
+  // degradar "sem a exclusão" — como o hook do painel faz — apagaria a
+  // pendência do cliente esquecido de forma DURÁVEL, gravada no insight até
+  // a próxima mensagem. Falhar preserva a análise congelada (o alarme fica
+  // na tela), custa 1 das 3 tentativas e o ciclo seguinte retenta sozinho;
+  // três seguidas viram `failed` VISÍVEL no painel, com o Reanalisar. O
+  // hook pode degradar porque a leitura dele é efêmera (recarrega em 2
+  // min); aqui é estado escrito.
   if (agErr) throw new Error(`falha lendo envios agendados: ${agErr.message}`)
   const deAgendada = new Set(
     (enviosAgendados ?? []).map((r) => r.message_id as string),
@@ -437,8 +457,13 @@ export async function analisarConversaReivindicada(
         // ⚠️ A régua do PAINEL, e não a de `houveHumanoNaJanela` logo abaixo:
         // aqui a pergunta é "alguém RESPONDEU a este cliente?", e o celular
         // pareado responde (`from_device`, `sender_id` nulo). Lá a pergunta é
-        // outra — "vale refazer a análise?" — e continua sendo só `sender_id`
-        // de propósito. Não unificar sem responder às duas.
+        // outra — "vale preservar a análise congelada?" — e fica
+        // DELIBERADAMENTE sem o alargamento do `from_device` (uma saída
+        // solta pelo celular não é motivo para refazer análise). ⚠️ Já a
+        // exclusão da AGENDADA vale para as DUAS réguas (#21 do plano de
+        // 31/08): ela ESTREITA "humano", e sem ela lá embaixo o follow-up
+        // agendado zerava o alarme do cliente esquecido. Não unificar as
+        // duas expressões sem responder às duas perguntas.
         porGente:
           (m.sender_id !== null || m.from_device === true) &&
           !deAgendada.has(m.id),
@@ -619,15 +644,21 @@ export async function analisarConversaReivindicada(
   // `last_message_at`, então uma pendência congelada (cliente esquecido
   // além da janela) voltava à candidatura e o UPDATE completo zerava
   // `aguardando_desde` — o alarme sumia sem nenhum humano ter respondido.
-  // O discriminador é `sender_id`: gente que aperta enviar o tem;
-  // broadcast/automação/API mandam com ele nulo, e fluxo é `bot`.
+  // O discriminador é `sender_id` (broadcast/automação/API mandam com ele
+  // nulo, e fluxo é `bot`) MAIS a exclusão por proveniência: a AGENDADA sai
+  // COM `sender_id` — o de quem a criou, dias antes — e era o furo que
+  // restava (#21 do plano de 31/08): o follow-up agendado disparando sobre
+  // a pendência congelada fazia esta régua dizer "houve humano", o ramo
+  // preservador era pulado e o UPDATE completo zerava o alarme, sem
+  // ninguém ter respondido.
   // Quando a janela só tem máquina (nenhum cliente, nenhum humano) e a
   // linha JÁ completou uma análise, esta análise é um NO-OP: avança só a
   // marca d'água (`janela_fim`) e preserva a análise congelada inteira —
   // que é exatamente o que o painel promete exibir. Resposta HUMANA na
   // janela segue fechando a pendência pelo UPDATE completo abaixo.
   const houveHumanoNaJanela = comData.some(
-    (m) => m.sender_type === 'agent' && m.sender_id !== null,
+    (m) =>
+      m.sender_type === 'agent' && m.sender_id !== null && !deAgendada.has(m.id),
   )
   if (semClienteNaJanela && !houveHumanoNaJanela) {
     const { data: preservado, error: presErr } = await admin

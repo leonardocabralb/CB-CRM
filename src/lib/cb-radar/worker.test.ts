@@ -107,3 +107,43 @@ describe('precisaDeAnalise', () => {
     expect(precisaDeAnalise(conversaComNovidade, analisadaHaTempo, AGORA)).toBe(true)
   })
 })
+
+// ============================================================
+// As DUAS réguas de "gente" excluem a agendada (#21 do plano de 31/08).
+//
+// A agendada sai COM `sender_id` — o de quem a criou, dias antes — então
+// pela coluna sozinha ela conta como resposta humana nas duas réguas do
+// worker: a do painel (`porGente`) e a da preservação
+// (`houveHumanoNaJanela`). O PR #74 corrigiu uma e esqueceu a outra: um
+// follow-up agendado disparando sobre pendência congelada pulava o ramo
+// preservador e o UPDATE completo zerava o alarme do cliente esquecido.
+//
+// As réguas são DIFERENTES de propósito (`from_device` só alarga a do
+// painel), então não dá para unificá-las num helper testável — este pino
+// estrutural cobra que a EXCLUSÃO exista nas duas, e reprova se um merge
+// devolver qualquer uma à forma antiga. Contraprova por mutação feita em
+// 31/08: remover a exclusão de qualquer uma das duas derruba o teste.
+// ============================================================
+
+import fs from 'node:fs'
+import path from 'node:path'
+
+describe('exclusão da agendada nas duas réguas de humano (#21)', () => {
+  const fonte = fs
+    .readFileSync(path.join(__dirname, 'worker.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '')
+
+  it('`porGente` e `houveHumanoNaJanela` carregam `!deAgendada.has`', () => {
+    const ocorrencias = fonte.match(/!deAgendada\.has\(m\.id\)/g) ?? []
+    expect(ocorrencias.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('a exclusão está DENTRO do `houveHumanoNaJanela` — não noutro lugar', () => {
+    const inicio = fonte.indexOf('const houveHumanoNaJanela')
+    expect(inicio).toBeGreaterThan(-1)
+    const trecho = fonte.slice(inicio, inicio + 300)
+    expect(trecho).toContain('!deAgendada.has(m.id)')
+    expect(trecho).toContain('sender_id !== null')
+  })
+})
