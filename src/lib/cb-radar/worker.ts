@@ -603,7 +603,10 @@ export async function analisarConversaReivindicada(
       model: modeloDoRadar,
       usage,
     })
-    analise = interpretarAnalise(resposta.object, transcrito.linhas)
+    // ⚠️ O relógio DA ANÁLISE ancora o corte de recência da insatisfação —
+    // ver `interpretarAnalise`. Com a âncora na última linha do transcrito,
+    // conversa que morre depois da reclamação nunca expirava o sinal.
+    analise = interpretarAnalise(resposta.object, transcrito.linhas, Date.now())
     if (!analise) {
       throw new Error('a IA respondeu num formato que não é um objeto de análise')
     }

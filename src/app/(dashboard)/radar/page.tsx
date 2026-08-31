@@ -59,7 +59,10 @@ import {
   temGatilho,
   type InsightParaOrdenacao,
 } from '@/lib/cb-radar/ordenacao';
-import type { Evidencia } from '@/lib/cb-radar/rubrica';
+import {
+  insatisfacaoAindaVale,
+  type Evidencia,
+} from '@/lib/cb-radar/rubrica';
 import { cn } from '@/lib/utils';
 
 const MS_JANELA = JANELA_DIAS * 86_400_000;
@@ -83,6 +86,14 @@ interface Decorado {
   aguardandoSeg: number | null;
   /** Conversa parada além da janela, mantida só pela pendência aberta. */
   foraDaJanela: boolean;
+  /**
+   * A insatisfação GRAVADA passou pela régua de 48h lida AGORA — ver
+   * `insatisfacaoAindaVale`. Fica no decorado (e não só dentro de `ord`)
+   * porque a ETIQUETA do cartão também tem de respeitá-la: mostrar
+   * "Insatisfação" num cartão que já não conta como sinal seria a mesma
+   * contradição entre lista e resumo que a régua existe para evitar.
+   */
+  insatisfacaoViva: boolean;
 }
 
 export default function RadarPage() {
@@ -182,13 +193,23 @@ export default function RadarPage() {
     const aguardandoMsCorridos = pendenciaViva
       ? agora.getTime() - pendenciaViva.getTime()
       : null;
+    // ⚠️ A régua de 48h da insatisfação também na LEITURA — ver
+    // `insatisfacaoAindaVale`. Conversa que morre depois da reclamação
+    // nunca é reanalisada (`precisaDeAnalise` exige mensagem nova), então
+    // a régua da escrita sozinha deixava o cartão aceso do 3º ao 7º dia.
+    const insatisfacaoViva = insatisfacaoAindaVale(
+      i.insatisfacao,
+      i.analisado_em,
+      agora.getTime(),
+    );
     decorados.push({
       insight: i,
+      insatisfacaoViva,
       aguardandoSeg,
       foraDaJanela,
       ord: {
         urgencia: i.urgencia,
-        insatisfacao: i.insatisfacao,
+        insatisfacao: insatisfacaoViva,
         pedidosAbertos: i.pedidos_abertos,
         aguardandoSegUteis: aguardandoSeg,
         aguardandoMsCorridos,
@@ -285,6 +306,13 @@ export default function RadarPage() {
         null;
       const r = await mudarEstado(conversationId, estado, visto);
       if (!r.ok) {
+        // `running`: o worker está COM a linha e o carimbo ainda é o velho —
+        // tratar agora esconderia o sinal que está nascendo. Não recarrega
+        // (não há o que reler ainda); só pede para esperar.
+        if (r.erro === 'analysis_running') {
+          toast.error(t('analiseRodando'));
+          return;
+        }
         if (r.erro === 'analysis_changed') {
           toast.error(t('analiseMudou'));
           recarregar();
@@ -448,10 +476,11 @@ export default function RadarPage() {
         </div>
       ) : (
         <ul className="space-y-2">
-          {visiveis.map(({ insight: i, aguardandoSeg, foraDaJanela, ord }) => (
+          {visiveis.map(({ insight: i, aguardandoSeg, foraDaJanela, ord, insatisfacaoViva }) => (
             <LinhaDoRadar
               key={i.id}
               insight={i}
+              insatisfacaoViva={insatisfacaoViva}
               aguardandoSeg={aguardandoSeg}
               esperaEmAlarme={(ord.aguardandoMsCorridos ?? 0) >= LIMIAR_ALARME_MS}
               foraDaJanela={foraDaJanela}
@@ -539,6 +568,7 @@ function LinhaDoRadar({
   insight: i,
   aguardandoSeg,
   esperaEmAlarme,
+  insatisfacaoViva,
   foraDaJanela,
   mostrarCanal,
   canais,
@@ -557,6 +587,8 @@ function LinhaDoRadar({
    *  etiqueta ainda aparece, mas como contexto de um cartão que existe
    *  por outro motivo. */
   esperaEmAlarme: boolean;
+  /** A insatisfação gravada ainda passa pela régua de 48h lida agora. */
+  insatisfacaoViva: boolean;
   /** Conversa parada além da janela, viva só pela pendência aberta. */
   foraDaJanela: boolean;
   mostrarCanal: boolean;
@@ -623,18 +655,40 @@ function LinhaDoRadar({
             {t(`urgencia_${i.urgencia}`)}
           </Etiqueta>
         )}
-        {i.insatisfacao && (
+        {insatisfacaoViva && (
           <Etiqueta className={COR_URGENCIA.media}>
             <Frown className="h-3 w-3" />
             {t('insatisfacao')}
           </Etiqueta>
         )}
-        {aguardandoSeg !== null && aguardandoSeg >= LIMIAR_PENDENCIA_SEG && (
+        {aguardandoSeg !== null && aguardandoSeg >= LIMIAR_PENDENCIA_SEG ? (
           <Etiqueta className={esperaEmAlarme ? COR_URGENCIA.media : undefined}>
             <Clock className="h-3 w-3" />
             {t('aguardando', { tempo: formatarDuracaoUtil(aguardandoSeg) })}
           </Etiqueta>
-        )}
+        ) : esperaEmAlarme && i.aguardando_desde ? (
+          /* ⚠️ CARTÃO MUDO, agora impossível. São duas réguas: o cartão
+             ENTRA na lista por 24h CORRIDAS (`LIMIAR_ALARME_MS`) e a
+             etiqueta acima é gateada por 30min ÚTEIS. Cliente que escreveu
+             sexta às 19h30 e olhado no sábado tem 24h corridas e ~0 hora
+             útil: o cartão aparecia em "1 sinal aberto" sem UMA etiqueta
+             dizendo por quê (ledger da revisão 48h).
+
+             A saída não é misturar as réguas — é largar as duas e dizer o
+             INSTANTE, que não precisa de régua nenhuma para ser verdade. */
+          <Etiqueta className={COR_URGENCIA.media} title={t('semRespostaDesdeTitulo')}>
+            <Clock className="h-3 w-3" />
+            {t('semRespostaDesde', {
+              quando: new Date(i.aguardando_desde).toLocaleString(undefined, {
+                weekday: 'short',
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+            })}
+          </Etiqueta>
+        ) : null}
         {foraDaJanela && (
           <Etiqueta className={COR_URGENCIA.media} title={t('foraDaJanelaTitulo')}>
             {t('foraDaJanela', { dias: JANELA_DIAS })}
@@ -701,6 +755,12 @@ function LinhaDoRadar({
           {analise?.urgenciaMotivo && (
             <Sinal titulo={t('urgenciaTitulo')} detalhe={analise.urgenciaMotivo} evidencias={analise.urgenciaEvidencias ?? []} />
           )}
+          {/* ⚠️ NÃO gateado por `insatisfacaoViva`, de propósito: a etiqueta
+              é o SINAL (some quando expira), a expansão é o HISTÓRICO. É a
+              mesma doutrina do parser, que mantém as evidências antigas
+              visíveis como contexto da história enquanto só a recente
+              acende o sinal. Gatear aqui apagaria o porquê de um cartão que
+              continua na lista por outro motivo. */}
           {analise?.insatisfacaoMotivo && (
             <Sinal titulo={t('insatisfacao')} detalhe={analise.insatisfacaoMotivo} evidencias={analise.insatisfacaoEvidencias ?? []} />
           )}

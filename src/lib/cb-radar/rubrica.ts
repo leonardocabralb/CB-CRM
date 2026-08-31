@@ -36,17 +36,48 @@ const TETO_CHARS_TOTAL = 60_000
 export const PREFIXO_AUDIO = '[áudio] '
 
 /**
- * Insatisfação só vira sinal se a evidência estiver nas últimas 48h DO
- * TRANSCRITO — decisão do operador (2026-08-30).
+ * Insatisfação só vira sinal se a evidência estiver nas últimas 48h —
+ * decisão do operador (2026-08-30).
  *
  * A janela analisada tem 7 dias, então sem esta régua uma irritação de
  * terça-feira, já resolvida na quarta, seguia acendendo o cartão no
- * domingo. O corte é medido contra a ÚLTIMA linha do transcrito, não
- * contra o relógio: mantém a função pura (o teste fixa o comportamento)
- * e é a referência certa — a análise pode rodar minutos depois da
- * conversa, mas o que importa é a idade do sinal DENTRO dela.
+ * domingo.
+ *
+ * ⚠️ A régua vale em DOIS momentos, e um só não basta:
+ *   1. na ESCRITA (`interpretarAnalise`, ancorada no instante da análise);
+ *   2. na LEITURA (`insatisfacaoAindaVale`, abaixo).
  */
 export const JANELA_INSATISFACAO_MS = 48 * 3_600_000
+
+/**
+ * A insatisfação GRAVADA ainda vale, lida agora?
+ *
+ * ⚠️ Existe porque a régua da escrita não alcança o caso que a motivou.
+ * `precisaDeAnalise` recusa reanalisar conversa sem mensagem nova — e
+ * "conversa que morre depois da reclamação" é exatamente isso. A linha
+ * fica com `insatisfacao = true` congelada e NENHUMA análise nova vem
+ * corrigi-la: o cartão seguia aceso do 3º ao 7º dia (quando a conversa
+ * enfim sai da janela do Radar). Achado do Codex no PR #76.
+ *
+ * `analisado_em` é o limite superior seguro da idade da evidência: a
+ * evidência é sempre ≤ a análise, e uma análise velha implica conversa
+ * parada (mensagem nova reanalisa em até `THROTTLE_MS`, 30min ≪ 48h).
+ * Por isso ela basta como âncora, sem carregar o transcrito para a tela.
+ *
+ * Sem `analisado_em` não há o que medir — devolve o valor como está (a
+ * linha `failed` já nasce com `insatisfacao` falso de qualquer forma).
+ */
+export function insatisfacaoAindaVale(
+  insatisfacao: boolean,
+  analisadoEm: string | null | undefined,
+  agoraMs: number,
+): boolean {
+  if (!insatisfacao) return false
+  if (!analisadoEm) return insatisfacao
+  const quando = Date.parse(analisadoEm)
+  if (Number.isNaN(quando)) return insatisfacao
+  return agoraMs - quando <= JANELA_INSATISFACAO_MS
+}
 
 export interface MensagemParaTranscrito {
   id: string
@@ -407,6 +438,21 @@ function texto(v: unknown, teto = 500): string {
 export function interpretarAnalise(
   objeto: unknown,
   linhas: LinhaDoTranscrito[],
+  /**
+   * O instante da ANÁLISE — a âncora do corte de recência da insatisfação.
+   *
+   * ⚠️ Ancorava na ÚLTIMA LINHA do transcrito, e isso falhava exatamente no
+   * caso que motivou a régua: cliente reclama na terça, a equipe responde
+   * uma hora depois e a conversa MORRE ali. No domingo a última linha ainda
+   * é de terça, o corte anda junto com ela e a evidência nunca envelhece —
+   * o cartão de insatisfação seguia aceso sobre um caso encerrado (achado
+   * da revisão 48h). Medir do relógio faz o sinal expirar de verdade.
+   *
+   * Continua PURA: quem chama passa o instante (o worker, o `analisadoEm`;
+   * os testes, um valor fixo). Ausente = comportamento antigo, âncora na
+   * última linha — só para não quebrar chamador que ainda não passa.
+   */
+  agoraMs?: number,
 ): AnaliseInterpretada | null {
   if (!objeto || typeof objeto !== 'object' || Array.isArray(objeto)) return null
   const o = objeto as Record<string, unknown>
@@ -454,19 +500,25 @@ export function interpretarAnalise(
   }
 
   // Insatisfação tem uma segunda régua além da evidência: RECÊNCIA. O
-  // corte sai da última linha do transcrito (ver `JANELA_INSATISFACAO_MS`)
-  // — sem ele, irritação de terça já resolvida seguia acendendo o cartão
-  // no domingo, porque a janela analisada tem 7 dias.
+  // corte sai do INSTANTE DA ANÁLISE (ver `agoraMs` e
+  // `JANELA_INSATISFACAO_MS`) — sem ele, irritação de terça já resolvida
+  // seguia acendendo o cartão no domingo, porque a janela analisada tem 7
+  // dias.
+  //
+  // ⚠️ A âncora era a última linha do transcrito, e nessa forma a régua
+  // não funcionava justamente na conversa que PARA depois da reclamação: o
+  // corte envelhecia junto com a conversa e nunca a alcançava. Só o relógio
+  // faz o sinal expirar.
   //
   // Basta UMA evidência dentro da janela para o sinal valer; as antigas
-  // continuam sendo exibidas, como contexto da história. Transcrito vazio
-  // não tem corte a aplicar (e sem linha nenhuma não há evidência válida,
-  // então o sinal já cai pela régua de cima).
+  // continuam sendo exibidas, como contexto da história. Sem âncora (nem
+  // `agoraMs`, nem linha) não há corte a aplicar — e sem linha nenhuma não
+  // há evidência válida, então o sinal já cai pela régua de cima.
   const insatisfacaoEvidencias = evidencias(o.insatisfacao_evidencias)
   const ultimaLinha = linhas[linhas.length - 1]
-  const corteInsatisfacao = ultimaLinha
-    ? ultimaLinha.createdAt.getTime() - JANELA_INSATISFACAO_MS
-    : null
+  const ancora = agoraMs ?? ultimaLinha?.createdAt.getTime() ?? null
+  const corteInsatisfacao =
+    ancora === null ? null : ancora - JANELA_INSATISFACAO_MS
   const temEvidenciaRecente =
     corteInsatisfacao === null
       ? insatisfacaoEvidencias.length > 0

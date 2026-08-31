@@ -3,6 +3,7 @@ import {
   montarTranscrito,
   montarPromptDoRadar,
   interpretarAnalise,
+  insatisfacaoAindaVale,
   type MensagemParaTranscrito,
 } from './rubrica'
 import { calcularMetricas } from './metricas'
@@ -278,7 +279,7 @@ describe('interpretarAnalise', () => {
   it('insatisfação ANTIGA é descartada; recente sobrevive', () => {
     // A janela analisada tem 7 dias: sem a régua de recência, irritação de
     // segunda já resolvida seguia acendendo o cartão no domingo. O corte
-    // sai da ÚLTIMA linha do transcrito, não do relógio.
+    // sai do INSTANTE DA ANÁLISE (`agoraMs`), passado por quem chama.
     const emDia = (dia: number, hora: string): MensagemParaTranscrito => ({
       id: `d${dia}-${hora}`,
       senderType: dia % 2 === 0 ? 'customer' : 'agent',
@@ -293,9 +294,13 @@ describe('interpretarAnalise', () => {
       emDia(8, '10:00'), // última linha do transcrito
     ]).linhas
 
+    // Análise rodando logo depois da última linha — a situação normal.
+    const agora = new Date('2026-08-28T10:00:00-03:00').getTime();
+
     const antiga = interpretarAnalise(
       { ...base, insatisfacao: true, insatisfacao_evidencias: [1] },
       doisDias,
+      agora,
     )!
     expect(antiga.insatisfacao).toBe(false)
     expect(antiga.insatisfacaoMotivo).toBe('')
@@ -303,6 +308,7 @@ describe('interpretarAnalise', () => {
     const recente = interpretarAnalise(
       { ...base, insatisfacao: true, insatisfacao_evidencias: [3] },
       doisDias,
+      agora,
     )!
     expect(recente.insatisfacao).toBe(true)
 
@@ -311,9 +317,49 @@ describe('interpretarAnalise', () => {
     const mista = interpretarAnalise(
       { ...base, insatisfacao: true, insatisfacao_evidencias: [1, 3] },
       doisDias,
+      agora,
     )!
     expect(mista.insatisfacao).toBe(true)
     expect(mista.insatisfacaoEvidencias).toHaveLength(2)
+  })
+
+  it('⚠️ conversa que MORRE depois da reclamação expira o sinal', () => {
+    // O caso que motivou a régua e que a âncora antiga NÃO cobria: cliente
+    // reclama, a equipe responde e a conversa para ali. Ancorado na última
+    // linha, o corte envelhecia junto com a conversa e a evidência ficava
+    // eternamente "recente" — o cartão de insatisfação seguia aceso sobre
+    // um caso encerrado (ledger da revisão 48h). Ancorado no relógio, ele
+    // expira.
+    const linha = (dia: number, hora: string): MensagemParaTranscrito => ({
+      id: `d${dia}-${hora}`,
+      senderType: dia % 2 === 0 ? 'customer' : 'agent',
+      createdAt: new Date(`2026-08-2${dia}T${hora}:00-03:00`),
+      texto: `mensagem do dia ${dia} às ${hora}`,
+    })
+    // Reclamação no dia 22, resposta 1h depois, e mais nada.
+    const morta = montarTranscrito([linha(2, '10:00'), linha(3, '11:00')]).linhas
+    const corpo = { ...base, insatisfacao: true, insatisfacao_evidencias: [1] }
+
+    // Analisada no mesmo dia: o sinal vale.
+    const noDia = interpretarAnalise(
+      corpo,
+      morta,
+      new Date('2026-08-22T18:00:00-03:00').getTime(),
+    )!
+    expect(noDia.insatisfacao).toBe(true)
+
+    // Cinco dias depois, sem nenhuma mensagem nova: expirou.
+    const cincoDiasDepois = interpretarAnalise(
+      corpo,
+      morta,
+      new Date('2026-08-27T10:00:00-03:00').getTime(),
+    )!
+    expect(cincoDiasDepois.insatisfacao).toBe(false)
+
+    // ⚠️ Sem `agoraMs` (chamador antigo) a âncora volta a ser a última
+    // linha e o sinal NÃO expira — é a forma que este teste condena, fixada
+    // aqui para deixar claro que passar o instante é obrigatório.
+    expect(interpretarAnalise(corpo, morta)!.insatisfacao).toBe(true)
   })
 
   it('clampa nota fora da escala e ignora nota não numérica', () => {
@@ -411,3 +457,36 @@ describe('interpretarAnalise', () => {
     })
   })
 })
+
+// ------------------------------------------------------------
+// insatisfacaoAindaVale — a régua de 48h também na LEITURA
+// ------------------------------------------------------------
+describe('insatisfacaoAindaVale', () => {
+  const AGORA = Date.parse('2026-08-28T12:00:00Z');
+  const hAtras = (h: number) => new Date(AGORA - h * 3_600_000).toISOString();
+
+  it('sinal de análise recente vale', () => {
+    expect(insatisfacaoAindaVale(true, hAtras(2), AGORA)).toBe(true);
+    expect(insatisfacaoAindaVale(true, hAtras(47), AGORA)).toBe(true);
+  });
+
+  it('⚠️ sinal de análise VELHA expira — o caso da conversa morta', () => {
+    // `precisaDeAnalise` recusa reanalisar conversa sem mensagem nova, então
+    // a régua da ESCRITA nunca alcança este caso: a linha fica congelada com
+    // insatisfacao=true e o cartão seguia aceso do 3º ao 7º dia.
+    expect(insatisfacaoAindaVale(true, hAtras(49), AGORA)).toBe(false);
+    expect(insatisfacaoAindaVale(true, hAtras(24 * 6), AGORA)).toBe(false);
+  });
+
+  it('não inventa sinal onde não havia', () => {
+    expect(insatisfacaoAindaVale(false, hAtras(1), AGORA)).toBe(false);
+    expect(insatisfacaoAindaVale(false, hAtras(999), AGORA)).toBe(false);
+  });
+
+  it('sem carimbo de análise (ou carimbo torto) devolve o valor como está', () => {
+    // Não há o que medir — e a linha `failed`, que é quem chega assim, já
+    // nasce com insatisfacao falso.
+    expect(insatisfacaoAindaVale(true, null, AGORA)).toBe(true);
+    expect(insatisfacaoAindaVale(true, 'nao-e-data', AGORA)).toBe(true);
+  });
+});

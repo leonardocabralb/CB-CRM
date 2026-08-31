@@ -22,7 +22,7 @@
 // certo: eles aparecem sozinhos quando os dados chegarem.
 // ============================================================
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, MailOpen, SlidersHorizontal, Star, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -38,6 +38,8 @@ import type { CbChannel } from "@/lib/cb-channels/repo";
 import {
   contarFiltrosAtivos,
   FILTROS_VAZIOS,
+  funisDoRecorte,
+  recorteTemDoisNiveis,
   SEM_ETAPA,
   SEM_RESPONSAVEL,
   type FiltrosDoInbox,
@@ -113,6 +115,41 @@ export function InboxFilters({
   );
   const etapaAtual = etapas.find((e) => e.id === filtros.etapaId);
 
+  // ⚠️ As duas saem do módulo puro, e não de uma cópia local: a LISTA também
+  // decide, lá em `conversation-list`, se o deep link `?etapa=` pode carimbar
+  // `funilId`. Divergindo, o carimbo acontece numa conta onde este seletor
+  // não existe — e some com quem não tem negócio (ver `funisDoRecorte`).
+  const funisDoSeletor = useMemo(
+    () => funisDoRecorte(etapas, funis),
+    [etapas, funis],
+  );
+  const doisNiveis = useMemo(
+    () => recorteTemDoisNiveis(etapas, funis),
+    [etapas, funis],
+  );
+
+  // Já vêm ordenadas por `position` da consulta — a ordem das colunas do
+  // quadro, que é como o operador pensa o funil.
+  const etapasDoFunil = useMemo(
+    () =>
+      doisNiveis
+        ? etapas.filter((e) => e.pipeline_id === filtros.funilId)
+        : etapas,
+    [doisNiveis, etapas, filtros.funilId],
+  );
+
+  const nomeDoFunil = (id: string) => funis.get(id) ?? t("labelPipeline");
+
+  /**
+   * Escolher uma etapa NUNCA escreve `funilId` — quem escreve é só o seletor
+   * de funil. Ver o comentário do campo em `filtros.ts`: com um funil só,
+   * carimbá-lo por tabela transformaria "Qualquer etapa" (hoje: não filtro
+   * por etapa) em "quem tem negócio neste funil", sumindo em silêncio com
+   * quem ainda não virou negócio.
+   */
+  const escolherFunil = (funilId: string | null) =>
+    mexer({ funilId, etapaId: null });
+
   const nomeDoResponsavel = (id: string) => {
     if (id === SEM_RESPONSAVEL) return t("assigneeNone");
     const p = responsaveis.find((x) => x.user_id === id);
@@ -164,22 +201,6 @@ export function InboxFilters({
       aoRemover: () => mexer({ responsavelId: null }),
     });
   }
-  if (filtros.etapaId) {
-    pastilhas.push({
-      chave: "etapa",
-      texto:
-        filtros.etapaId === SEM_ETAPA
-          ? t("stageNone")
-          : etapaAtual
-            ? nomeDaEtapa(etapaAtual, funis)
-            : // ⚠️ Filtro ativo cuja etapa não está na lista (dados ainda não
-              // carregados — o deep link ?etapa= chega antes deles — ou etapa
-              // apagada). "Qualquer etapa" aqui seria o OPOSTO do que está
-              // acontecendo; o rótulo genérico do campo é o honesto.
-              t("labelStage"),
-      aoRemover: () => mexer({ etapaId: null }),
-    });
-  }
   if (filtros.empresa !== null) {
     pastilhas.push({
       chave: "empresa",
@@ -197,6 +218,41 @@ export function InboxFilters({
       texto: tag?.name ?? t("tags"),
       cor: tag?.color,
       aoRemover: () => alternarEtiqueta(id),
+    });
+  }
+  // ⚠️ DUAS pastilhas para um recorte só, e de propósito. Antes era uma,
+  // com "Bancário - Comercial · Contato Avulso" dentro de uma caixa de 128px:
+  // o operador lia "Bancário - Comercial ·…" e NÃO conseguia ver por qual
+  // etapa a lista estava recortada — medido na tela (198px de texto). Cada
+  // nível na sua pastilha cabe, e cada um sai sozinho.
+  if (filtros.funilId) {
+    pastilhas.push({
+      chave: "funil",
+      texto: nomeDoFunil(filtros.funilId),
+      // Tirar o funil tira a etapa junto: o seletor de dois níveis não sabe
+      // exibir uma etapa sem o funil dela, e o recorte ficaria valendo com o
+      // painel mostrando "Qualquer funil".
+      aoRemover: () => mexer({ funilId: null, etapaId: null }),
+    });
+  }
+  if (filtros.etapaId) {
+    pastilhas.push({
+      chave: "etapa",
+      texto:
+        filtros.etapaId === SEM_ETAPA
+          ? t("stageNone")
+          : etapaAtual
+            ? // Sem o prefixo do funil quando ele já tem pastilha própria —
+              // repeti-lo era exatamente o que estourava a largura.
+              doisNiveis
+              ? etapaAtual.name
+              : nomeDaEtapa(etapaAtual, funis)
+            : // ⚠️ Filtro ativo cuja etapa não está na lista (dados ainda não
+              // carregados — o deep link ?etapa= chega antes deles — ou etapa
+              // apagada). "Qualquer etapa" aqui seria o OPOSTO do que está
+              // acontecendo; o rótulo genérico do campo é o honesto.
+              t("labelStage"),
+      aoRemover: () => mexer({ etapaId: null }),
     });
   }
   if (filtros.naoLidas) {
@@ -464,48 +520,6 @@ export function InboxFilters({
             />
           </Campo>
 
-          {etapasConfiaveis && etapas.length > 0 && (
-            <Campo rotulo={t("labelStage")}>
-              <Escolha
-                rotulo={
-                  filtros.etapaId === null
-                    ? t("stageAll")
-                    : filtros.etapaId === SEM_ETAPA
-                      ? t("stageNone")
-                      : etapaAtual
-                        ? nomeDaEtapa(etapaAtual, funis)
-                        : // Etapa escolhida que sumiu da lista (apagada):
-                          // "Qualquer etapa" mentiria sobre um filtro ativo.
-                          t("labelStage")
-                }
-                ativo={filtros.etapaId !== null}
-                opcoes={[
-                  {
-                    chave: "__todas__",
-                    texto: t("stageAll"),
-                    escolhido: filtros.etapaId === null,
-                    aoEscolher: () => mexer({ etapaId: null }),
-                  },
-                  {
-                    // Sem esta opção, quem ainda não virou negócio some de
-                    // qualquer recorte por etapa — e é justamente quem
-                    // precisa de atenção.
-                    chave: SEM_ETAPA,
-                    texto: t("stageNone"),
-                    escolhido: filtros.etapaId === SEM_ETAPA,
-                    aoEscolher: () => mexer({ etapaId: SEM_ETAPA }),
-                  },
-                  ...etapas.map((e) => ({
-                    chave: e.id,
-                    texto: nomeDaEtapa(e, funis),
-                    escolhido: filtros.etapaId === e.id,
-                    aoEscolher: () => mexer({ etapaId: e.id }),
-                  })),
-                ]}
-              />
-            </Campo>
-          )}
-
           {empresas.length > 0 && (
             <Campo rotulo={t("labelCompany")}>
               <Escolha
@@ -592,6 +606,108 @@ export function InboxFilters({
               </div>
             </Campo>
           )}
+
+          {/* ⚠️ FUNIL E ETAPA FICAM POR ÚLTIMO, a pedido do operador: são o
+              recorte menos usado no dia a dia e o único que ocupa duas
+              linhas. A ordem das pastilhas lá em cima acompanha esta — elas
+              existem para o olho não ter de procurar. */}
+          {etapasConfiaveis && doisNiveis && (
+            <Campo rotulo={t("labelPipeline")}>
+              <Escolha
+                rotulo={
+                  filtros.etapaId === SEM_ETAPA
+                    ? t("stageNone")
+                    : filtros.funilId
+                      ? nomeDoFunil(filtros.funilId)
+                      : t("pipelineAll")
+                }
+                ativo={filtros.funilId !== null || filtros.etapaId !== null}
+                opcoes={[
+                  {
+                    chave: "__todos__",
+                    texto: t("pipelineAll"),
+                    escolhido:
+                      filtros.funilId === null && filtros.etapaId === null,
+                    aoEscolher: () => escolherFunil(null),
+                  },
+                  {
+                    // "Sem negócio" mora no PRIMEIRO nível porque é a resposta
+                    // a "qual funil?" — nenhum. No segundo, ele seria uma
+                    // etapa que não existe dentro do funil escolhido.
+                    chave: SEM_ETAPA,
+                    texto: t("stageNone"),
+                    escolhido: filtros.etapaId === SEM_ETAPA,
+                    aoEscolher: () =>
+                      mexer({ funilId: null, etapaId: SEM_ETAPA }),
+                  },
+                  ...funisDoSeletor.map((f) => ({
+                    chave: f.id,
+                    texto: f.nome,
+                    escolhido: filtros.funilId === f.id,
+                    aoEscolher: () => escolherFunil(f.id),
+                  })),
+                ]}
+              />
+            </Campo>
+          )}
+
+          {/* Com dois níveis o seletor de etapa só aparece depois do funil:
+              antes disso ele não teria o que oferecer. Com um funil só ele é
+              o campo inteiro, como sempre foi. */}
+          {etapasConfiaveis &&
+            etapasDoFunil.length > 0 &&
+            (!doisNiveis || filtros.funilId !== null) && (
+              <Campo rotulo={t("labelStage")}>
+                <Escolha
+                  rotulo={
+                    filtros.etapaId === null
+                      ? t("stageAll")
+                      : filtros.etapaId === SEM_ETAPA
+                        ? t("stageNone")
+                        : etapaAtual
+                          ? doisNiveis
+                            ? etapaAtual.name
+                            : nomeDaEtapa(etapaAtual, funis)
+                          : // Etapa escolhida que sumiu da lista (apagada):
+                            // "Qualquer etapa" mentiria sobre um filtro ativo.
+                            t("labelStage")
+                  }
+                  ativo={filtros.etapaId !== null}
+                  opcoes={[
+                    {
+                      chave: "__todas__",
+                      texto: t("stageAll"),
+                      escolhido: filtros.etapaId === null,
+                      aoEscolher: () => mexer({ etapaId: null }),
+                    },
+                    // Sem esta opção, quem ainda não virou negócio some de
+                    // qualquer recorte por etapa — e é justamente quem
+                    // precisa de atenção. Com dois níveis ela subiu para o
+                    // seletor de funil.
+                    ...(doisNiveis
+                      ? []
+                      : [
+                          {
+                            chave: SEM_ETAPA,
+                            texto: t("stageNone"),
+                            escolhido: filtros.etapaId === SEM_ETAPA,
+                            aoEscolher: () => mexer({ etapaId: SEM_ETAPA }),
+                          },
+                        ]),
+                    ...etapasDoFunil.map((e) => ({
+                      chave: e.id,
+                      // Sem o prefixo do funil quando ele já foi escolhido no
+                      // campo de cima: repetir "Bancário - Comercial ·" em
+                      // cada uma das 10 etapas empurra o nome delas para fora
+                      // da caixa.
+                      texto: doisNiveis ? e.name : nomeDaEtapa(e, funis),
+                      escolhido: filtros.etapaId === e.id,
+                      aoEscolher: () => mexer({ etapaId: e.id }),
+                    })),
+                  ]}
+                />
+              </Campo>
+            )}
         </div>
       )}
     </div>

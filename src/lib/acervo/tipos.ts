@@ -97,3 +97,28 @@ export function caminhoEhDoAcervo(path: string, accountId: string): boolean {
 
 /** Teto do bucket (16 MB, migration 023). O servidor recusa acima disto. */
 export const TETO_DE_BYTES = 16 * 1024 * 1024;
+
+/**
+ * A URL da MINIATURA de um item de imagem — nunca o original.
+ *
+ * ⚠️ O seletor pinta 36×36 e usava `media_url` cru: um acervo com 15 fotos
+ * de 4 MB baixava ~60 MB a cada abertura do diálogo, com o operador
+ * esperando (ledger da revisão 48h). O Storage do Supabase renderiza sob
+ * demanda em `/render/image/public/...` — MEDIDO neste projeto em
+ * 2026-08-31 (200 numa imagem real; a transformação está habilitada).
+ *
+ * ⚠️ Vale SÓ para `tipo === 'image'`. Em PDF o render devolve 400
+ * ("source image is invalid or unsupported"), então documento/vídeo/áudio
+ * continuam com o ícone do tipo — que é o que a tela já faz.
+ *
+ * Devolve a URL original quando o caminho não é o esperado: sem
+ * `/object/public/` para trocar, um recorte errado renderizaria imagem
+ * quebrada, e original pesado é melhor que miniatura ausente.
+ */
+export const LADO_DA_MINIATURA = 72;
+
+export function urlDaMiniatura(mediaUrl: string, lado = LADO_DA_MINIATURA): string {
+  const marca = '/storage/v1/object/public/';
+  if (!mediaUrl.includes(marca)) return mediaUrl;
+  return `${mediaUrl.replace(marca, '/storage/v1/render/image/public/')}?width=${lado}&height=${lado}&resize=cover`;
+}
