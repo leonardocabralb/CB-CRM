@@ -556,6 +556,27 @@ comparar contra o PROP do render atual (`conversation_id === conversationId`)
 ou esperar um sinalizador de "já carregou uma vez" — nunca confiar em que o
 efeito de limpeza já rodou.
 
+⚠️ **A terceira (2026-08-31) é a variante PERIGOSA: lista vazia virando
+AFIRMAÇÃO.** `message-thread.tsx` derivava `evolutionActive` de
+`useChannels()` sem olhar o `loading` — e enquanto os canais não chegam,
+"não é Evolution" era lido como "é Meta, logo a janela de 24h vale". Numa
+conta 100% Evolution isso pintava a badge vermelha **"Expirada"** no
+cabeçalho por alguns segundos ao abrir CADA conversa e, o dano real,
+DESABILITAVA o compositor com "Sessão expirada — use um modelo" no exato
+instante em que o operador abre a conversa para responder: as primeiras
+teclas iam para o vazio. Reportado da tela pelo operador. A cura é o
+sinalizador do próprio hook (`janelaDe24h = !canaisCarregando &&
+!evolutionActive`) — `useChannels` expõe `loading` desde sempre, e
+`step1-choose-template.tsx` e `template-manager.tsx` já o usavam.
+⚠️ **Conta SEM canal nenhum continua na regra da Meta**, de propósito: ali a
+lista resolveu vazia, e vazio-COM-resposta é conhecimento, não lacuna. A
+distinção entre os dois vazios é a feature inteira.
+⚠️ Os outros ~18 consumidores de `useChannels` usam a lista só para
+rótulo/filtro, onde vazio-durante-a-carga é cosmético e se corrige sozinho
+(é o contrato escrito no cabeçalho do hook). O que torna este caso diferente
+— e o teste para código novo — é a lista vazia ser convertida numa
+afirmação POSITIVA que desabilita um controle.
+
 ⚠️ **Agenda de reuniões (945, Fase 1): o calendário é a parte fácil.**
 `src/lib/agenda/` — `fuso.ts`, `vagas.ts`, `grade.ts` e `validar.ts`, todos
 puros e com teste (85 casos); a tela é `/agenda`, e a escrita passa por
