@@ -363,7 +363,11 @@ export default function RadarPage() {
           cartões acima. */}
       <div className="flex items-center justify-between border-b border-border pb-2">
         <p className="text-sm font-medium text-foreground">
-          {t('listaTitulo', { n: visiveis.length })}
+          {/* ⚠️ Conta só o que ainda está ABERTO, não o tamanho da lista: o
+              cartão tratado/descartado continua listado (ver `mexidasAqui`) e
+              somá-lo faria o título dizer "3 sinais abertos" com um deles
+              marcado como descartado logo abaixo. */}
+          {t('listaTitulo', { n: visiveis.filter((d) => d.insight.estado === 'aberto').length })}
         </p>
       </div>
 
