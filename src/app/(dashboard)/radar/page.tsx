@@ -276,13 +276,34 @@ export default function RadarPage() {
   const mudar = useCallback(
     async (conversationId: string, estado: 'aberto' | 'tratado' | 'descartado') => {
       if (estado === 'aberto') return reabrir(conversationId);
-      if (!(await agir(mudarEstado(conversationId, estado)))) return;
+      // ⚠️ O carimbo da análise QUE ESTÁ NA TELA viaja junto — é a trava
+      // otimista da rota contra o worker reanalisar no intervalo de até 2
+      // min da foto. 409 `analysis_changed` = "o Radar releu a conversa":
+      // recarrega e avisa em vez de esconder um sinal que ninguém viu.
+      const visto =
+        insights.find((i) => i.conversation_id === conversationId)?.analisado_em ??
+        null;
+      const r = await mudarEstado(conversationId, estado, visto);
+      if (!r.ok) {
+        if (r.erro === 'analysis_changed') {
+          toast.error(t('analiseMudou'));
+          recarregar();
+          return;
+        }
+        const erro = r.erro ?? '?';
+        toast.error(
+          (MOTIVOS_DE_ERRO as readonly string[]).includes(erro)
+            ? t(`erro_${erro}`)
+            : t('acaoFalhou', { erro }),
+        );
+        return;
+      }
       setMexidasAqui((antes) => new Set(antes).add(conversationId));
       toast.success(t(estado === 'tratado' ? 'tratadoOk' : 'descartadoOk'), {
         action: { label: t('desfazer'), onClick: () => void reabrir(conversationId) },
       });
     },
-    [agir, mudarEstado, reabrir, t],
+    [insights, mudarEstado, reabrir, recarregar, t],
   );
 
   return (

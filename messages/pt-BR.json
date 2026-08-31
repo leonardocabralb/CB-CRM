@@ -2708,6 +2708,7 @@
     "vazioSemSinal": "Nenhum sinal aberto",
     "vazioSemSinalDetalhe": "{n, plural, =1 {A conversa analisada nos últimos dias não tem} other {As # conversas analisadas nos últimos dias não têm}} insatisfação, pedido sem resposta, urgência jurídica nem cliente esperando há mais de 24 horas. O Radar só lista conversa com problema — silêncio aqui é boa notícia.",
     "tratadoOk": "Marcado como tratado.",
+    "analiseMudou": "O Radar reanalisou esta conversa nesse meio-tempo — a lista foi atualizada. Releia o cartão antes de tratar.",
     "descartadoOk": "Sinal descartado — isso calibra o Radar.",
     "desfazer": "Desfazer",
     "acaoFalhou": "A ação falhou: {erro}",
