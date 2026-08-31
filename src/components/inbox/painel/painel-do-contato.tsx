@@ -33,7 +33,7 @@ import { AbaAutomacoes } from '@/components/inbox/painel/aba-automacoes';
 import { useExecucoesDoContato } from '@/hooks/use-execucoes-do-contato';
 import { statusAoEntrarNaEtapa } from '@/lib/pipelines/resultado';
 import { avisarDrenagemDeFunil } from '@/lib/automations/avisar-drenagem';
-import { CampoPersonalizadoInput } from '@/components/contacts/campo-personalizado-input';
+import { CampoComSalvamento } from '@/components/contacts/campo-com-salvamento';
 import { LinhaDeEdicao } from '@/components/inbox/painel/linha-de-edicao';
 import { InternalNoteBox } from '@/components/inbox/internal-note-box';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
@@ -75,7 +75,6 @@ import {
   Pencil,
   Pin,
   PinOff,
-  Save,
   Settings2,
   Zap,
 } from 'lucide-react';
@@ -184,7 +183,6 @@ export function PainelDoContato({
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [grupos, setGrupos] = useState<GrupoDeCampos[]>([]);
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
-  const [salvandoCampos, setSalvandoCampos] = useState(false);
   const [gerirCamposAberto, setGerirCamposAberto] = useState(false);
 
   // ---- Fase 4: o negócio dentro da conversa ------------------------------
@@ -659,35 +657,45 @@ export function PainelDoContato({
   );
 
   /**
-   * Valores dos campos — upsert compartilhado (nunca delete-all).
+   * Grava UM campo personalizado (Fase B1). Não existe mais "Salvar campos".
    *
-   * Recebe a lista a salvar, e hoje o único chamador manda TODOS os campos.
-   * Até a 966 eram dois botões salvando subconjuntos, porque os de
-   * traqueamento moravam numa aba separada e um Salvar não podia arrastar
-   * junto uma edição meio-feita que estava fora da tela. Com os blocos, tudo
-   * o que o botão salva está visível acima dele — o motivo da separação
-   * deixou de existir junto com a aba.
+   * ⚠️ UM campo por gravação, nunca o mapa inteiro. O botão antigo mandava
+   * todos de uma vez porque era um gesto só; com o salvamento automático isso
+   * seria um envio por blur — e `""` no upsert compartilhado significa DELETE
+   * da linha, então bastaria um campo ainda não carregado no mapa para o blur
+   * de OUTRO apagar dado real.
+   *
+   * ⚠️ O gate de `dadosProntos` CONTINUA, pelo mesmo motivo de antes: com os
+   * valores do contato ainda em voo, o que está na tela é o do contato
+   * anterior. Os campos ficam desabilitados até lá.
+   *
+   * ⚠️ O aviso de erro nomeia o CAMPO e o CLIENTE. Com o botão, o erro chegava
+   * com o operador olhando a tela; agora ele pode já estar em outra conversa
+   * quando o toast aparece, e "não foi possível salvar" sem contexto é
+   * indistinguível de ruído.
    */
-  const salvarCampos = useCallback(
-    async (campos: CustomField[]) => {
-      // ⚠️ O gate de `dadosProntos` é de CORREÇÃO, não de conforto: com os
-      // valores ainda não carregados, o subconjunto sai todo `?? ""` — e
-      // `""` no upsert compartilhado significa DELETE do valor real.
-      if (!contact || !dadosProntos) return;
-      setSalvandoCampos(true);
-      const subconjunto = Object.fromEntries(
-        campos.map((f) => [f.id, customValues[f.id] ?? ''])
-      );
-      const erro = await salvarValoresDoContato(
-        createClient(),
-        contact.id,
-        subconjunto
-      );
-      setSalvandoCampos(false);
-      if (erro) toast.error(tSidebar('fieldsSaveError'));
-      else toast.success(tSidebar('fieldsSaved'));
+  const gravarCampo = useCallback(
+    async (fieldId: string, valor: string): Promise<boolean> => {
+      if (!contact || !dadosProntos) return false;
+      const erro = await salvarValoresDoContato(createClient(), contact.id, {
+        [fieldId]: valor,
+      });
+      if (erro) {
+        toast.error(
+          tSidebar('fieldSaveError', {
+            campo:
+              customFields.find((f) => f.id === fieldId)?.field_name ?? fieldId,
+            cliente: contact.name || contact.phone,
+          })
+        );
+        return false;
+      }
+      // Espelha o que o banco guardou (`salvarValoresDoContato` grava
+      // aparado), para qualquer outro leitor do estado ver a mesma coisa.
+      setCustomValues((prev) => ({ ...prev, [fieldId]: valor.trim() }));
+      return true;
     },
-    [contact, customValues, dadosProntos, tSidebar]
+    [contact, dadosProntos, customFields, tSidebar]
   );
 
   const handleCopyPhone = useCallback(async () => {
@@ -1225,51 +1233,21 @@ export function PainelDoContato({
                       })}
                     </div>
                   )}
+                  {/* ⚠️ A `key` INCLUI o contato — é load-bearing. Sem ela o
+                      React reusa a instância ao trocar de cliente, o rascunho
+                      do anterior sobrevive sob o cabeçalho do novo, e a
+                      descarga de desmonte grava no cliente errado. */}
                   {blocoVisivel.campos.map((field) => (
-                    <div key={field.id} className="space-y-1">
-                      {/* ⚠️ Sem `capitalize`. Ele maiusculava CADA palavra
-                          e o operador via "Data De Fechamento Do Contrato"
-                          no lugar do nome que cadastrou — e estragava de
-                          vez os técnicos (`utm_source`), que por isso
-                          tinham de morar numa aba à parte. O nome do campo
-                          já vem escrito como deve aparecer. */}
-                      <Label className="text-muted-foreground text-xs">
-                        {field.field_name}
-                      </Label>
-                      <CampoPersonalizadoInput
-                        field={field}
-                        value={customValues[field.id] ?? ''}
-                        onChange={(v) =>
-                          setCustomValues((prev) => ({
-                            ...prev,
-                            [field.id]: v,
-                          }))
-                        }
-                        disabled={!podeEditar || !dadosProntos}
-                      />
-                    </div>
+                    <CampoComSalvamento
+                      key={`${contact.id}:${field.id}`}
+                      field={field}
+                      rotulo={field.field_name}
+                      valorSalvo={customValues[field.id] ?? ''}
+                      aoGravar={gravarCampo}
+                      textoSalvo={tSidebar('fieldSaved')}
+                      disabled={!podeEditar || !dadosProntos}
+                    />
                   ))}
-                  {podeEditar && (
-                    <Button
-                      size="sm"
-                      // ⚠️ Salva TODOS os campos, não só os do bloco à vista.
-                      // Com o menu horizontal os outros blocos voltaram a ser
-                      // invisíveis, mas o que foi digitado neles continua no
-                      // estado e é do operador: salvar só o visível descartaria
-                      // em silêncio o que ele preencheu antes de trocar de
-                      // bloco. Perder digitação é pior que gravar digitação.
-                      onClick={() => void salvarCampos(customFields)}
-                      disabled={salvandoCampos || !dadosProntos}
-                      className="bg-primary text-primary-foreground hover:bg-primary/90 w-full"
-                    >
-                      {salvandoCampos ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        <Save className="size-3.5" />
-                      )}
-                      {tSidebar('saveFields')}
-                    </Button>
-                  )}
                 </>
               )}
             </div>

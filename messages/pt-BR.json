@@ -435,9 +435,6 @@
       "customFields": "Campos personalizados",
       "manageFields": "Gerenciar",
       "noFields": "Nenhum campo criado ainda.",
-      "saveFields": "Salvar campos",
-      "fieldsSaved": "Campos salvos.",
-      "fieldsSaveError": "Não foi possível salvar os campos.",
       "loadError": "Não foi possível carregar os dados deste contato. Reabra a conversa para tentar de novo.",
       "pinNote": "Fixar nota",
       "unpinNote": "Desafixar nota",
@@ -446,7 +443,9 @@
       "dealSaveError": "Não foi possível atualizar o negócio.",
       "statusOpen": "Aberto",
       "dealDetails": "Detalhes do negócio",
-      "tabAutomations": "Automações"
+      "tabAutomations": "Automações",
+      "fieldSaved": "Salvo",
+      "fieldSaveError": "Não foi possível salvar \"{campo}\" em {cliente}."
     },
     "execucoes": {
       "roboAtivo": "Robô ativo",
@@ -751,7 +750,6 @@
       "sendTemplateBtn": "Enviar modelo",
       "saveChangesBtn": "Salvar alterações",
       "readOnlyHint": "Seu perfil é somente leitura",
-      "saveCustomFieldsBtn": "Salvar campos personalizados",
       "toastPhoneRequired": "O número de telefone é obrigatório",
       "toastUpdateFailed": "Falha ao atualizar contato",
       "toastUpdated": "Contato atualizado",
@@ -760,13 +758,13 @@
       "toastNoteAdded": "Nota adicionada",
       "toastNoteDeleteFailed": "Falha ao excluir nota",
       "toastNoteDeleted": "Nota excluída",
-      "toastCustomFieldsSaved": "Campos personalizados salvos",
-      "toastCustomFieldsFailed": "Falha ao salvar campos personalizados",
       "toastTemplateSent": "Modelo \"{name}\" enviado",
       "toastTemplateFailed": "Falha ao enviar o modelo: {reason}",
       "toastNoteNeedsConversation": "Este contato ainda não tem conversa, então não há onde prender a anotação. Envie uma mensagem primeiro.",
       "toastNoteDeleteForbidden": "Só o autor ou um admin pode excluir esta anotação.",
-      "name": "Nome"
+      "name": "Nome",
+      "fieldSaved": "Salvo",
+      "toastCustomFieldFailed": "Não foi possível salvar \"{campo}\" em {cliente}."
     },
     "importModal": {
       "title": "Importar contatos",
@@ -2813,8 +2811,8 @@
       "notaTitulo": "Como a nota nasce",
       "nota": "A nota (0–10) parte de 10 e desconta por demora injustificada, pedido ignorado ou respondido pela metade, tom seco e falta de proatividade. Os tempos de resposta não são estimados pela IA: o sistema os calcula em horas úteis (seg–sex, {abre}h–{fecha}h, horário de São Paulo) — madrugada e fim de semana não contam como demora.",
       "alarmeTitulo": "O que vira cartão",
-    "alarme": "O painel lista só conversa com problema: insatisfação, pedido do cliente sem resposta, urgência jurídica (citação, intimação, oficial de justiça, bloqueio, prazo, audiência) ou cliente esperando há mais de {horas}h corridas. Conversa bem atendida continua sendo analisada e entra na nota média acima, mas não vira cartão para ninguém tratar. Menção a processo e pontos de atenção aparecem dentro do cartão aberto — sozinhos, não abrem um. A espera só termina quando GENTE responde: mensagem automática (broadcast, automação, agendada) não fecha pendência. Assim que alguém responde, o cartão sai da lista na hora, sem esperar a próxima análise.",
-    "sinaisTitulo": "De onde vêm os sinais",
+      "alarme": "O painel lista só conversa com problema: insatisfação, pedido do cliente sem resposta, urgência jurídica (citação, intimação, oficial de justiça, bloqueio, prazo, audiência) ou cliente esperando há mais de {horas}h corridas. Conversa bem atendida continua sendo analisada e entra na nota média acima, mas não vira cartão para ninguém tratar. Menção a processo e pontos de atenção aparecem dentro do cartão aberto — sozinhos, não abrem um. A espera só termina quando GENTE responde: mensagem automática (broadcast, automação, agendada) não fecha pendência. Assim que alguém responde, o cartão sai da lista na hora, sem esperar a próxima análise.",
+      "sinaisTitulo": "De onde vêm os sinais",
       "sinais": "Urgência, insatisfação, pedidos sem atendimento, menção a processo e pontos de atenção são identificados pela IA — e todo sinal exige evidência: o trecho real da mensagem que o justifica aparece no cartão. Sinal sem evidência é descartado automaticamente antes de chegar à tela. Números de processo (padrão CNJ) também são detectados por regra fixa, sem IA. Para quem gerencia a equipe, a análise inclui observações por atendente (demora, mensagem confusa, questionamento sem resposta), citando as mensagens da própria pessoa.",
       "cicloTitulo": "Quando analisa",
       "ciclo": "Ciclo automático a cada ~{ciclo} min, em lotes pequenos, começando pelas conversas com atividade mais recente. A mesma conversa espera ao menos {espera} min entre análises e só volta à fila quando há mensagem nova — conversa parada não gasta nada (análise que falhou tenta de novo, até 3 vezes). Janela sem fala do cliente (broadcast, abordagem ativa) não aciona a IA: ficam só as métricas, e mensagem automática não fecha pendência — só resposta de gente. \"Reanalisar\" força uma análise na hora.",

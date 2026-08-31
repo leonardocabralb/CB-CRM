@@ -24,7 +24,7 @@
 | **A1** | Banco dos filtros salvos + módulo puro (parse defensivo, descrição, ids órfãos) | ✅ **feita** (2026-08-31) | `967` **aplicada** | `feat/filtros-salvos-no-inbox` |
 | **A2** | Menu no botão "Filtros": aplicar · salvar o atual · renomear · apagar | ✅ **feita e medida no preview** (2026-08-31) | nenhuma | `feat/filtros-salvos-no-inbox` |
 | **A3** | Filtro **padrão** por pessoa + a faixa que explica o inbox recortado | ✅ **feita e medida no preview** (2026-08-31) | `968` **aplicada** | `feat/filtros-salvos-no-inbox` |
-| **B1** | Campos personalizados salvam ao sair do campo (painel do inbox + ficha `/contatos`) | ⬜ a fazer | nenhuma | — |
+| **B1** | Campos personalizados salvam ao sair do campo (painel do inbox + ficha `/contatos`) | ✅ **feita e medida no preview** (2026-08-31) | nenhuma | `feat/filtros-salvos-no-inbox` |
 
 **Decisões travadas com o operador (2026-08-31):**
 
@@ -430,3 +430,30 @@ com as duas perguntas que **não** podem divergir entre as três telas:
 - [ ] Testado no preview em **1440×900+**, não no tamanho nativo do painel.
 - [ ] Revisão 2× (bugs/edge cases; consistência com as convenções e com o
       objetivo original), com os achados reportados mesmo que seja "nada".
+
+---
+
+## ✅ B1 — o que foi feito (2026-08-31)
+
+| Arquivo | O que é |
+| --- | --- |
+| `src/lib/contacts/salvamento-de-campo.ts` (+ teste) | **NOVO, puro.** `gravaAoSair` / `gravaAoEscolher` (o gesto que confirma cada tipo) e `valorMudou` (comparação APARADA, porque o helper grava `v.trim()`). |
+| `src/components/contacts/campo-com-salvamento.tsx` | **NOVO.** Embrulha o `CampoPersonalizadoInput`: rascunho, quando gravar, descarga de desmonte e o indicador por campo. |
+| `src/components/inbox/painel/painel-do-contato.tsx` | `salvarCampos` virou `gravarCampo(fieldId, valor)`; o botão "Salvar campos" SAIU. |
+| `src/components/contacts/contact-detail-view.tsx` | idem, na ficha de `/contatos`. |
+| `messages/{en,pt-BR}.json` | `fieldSaved` + o erro com `{campo}` e `{cliente}`; as 6 chaves do botão foram removidas. |
+
+**Medido no preview (1440×900) e conferido no banco:**
+
+| O que | Resultado |
+| --- | --- |
+| Digitar e clicar em outro campo | grava; "✓ Salvo" ao lado do rótulo, some sozinho. UMA linha no banco |
+| Entrar e sair SEM mudar | não grava, e o indicador não aparece |
+| Esvaziar o campo | grava a exclusão (a linha some do banco) — e um único espaço conta como vazio |
+| Digitar e TROCAR DE BLOCO no menu horizontal | o valor sobrevive: conferido na tela ao voltar e no banco. É o caso que a 966 avisava que perderia digitação |
+| Ficha de `/contatos` | mesmo comportamento, mesma peça, sem botão |
+
+⚠️ **Falso alarme registrado:** `Backspace` e `Return` não chegam ao input pelo
+comando de teste do painel do navegador (só `Enter` funciona; para limpar campo,
+`form_input` com o ref). Não é defeito do app — foi confundido com um por alguns
+minutos.

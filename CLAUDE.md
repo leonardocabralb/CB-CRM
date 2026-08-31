@@ -213,7 +213,7 @@ upstream sobrescrevê-los:
 | `src/components/settings/template-manager.tsx` | seletor de WABA para criar/sincronizar, etiqueta de canal por modelo |
 | `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato e a seção/aba **Histórico** (912). (A linha "canal da conversa" que o painel do inbox exibia foi REMOVIDA em 2026-08-29 a pedido do operador — o seletor do cabeçalho do fio já responde isso.) No detail view a `TabsList` ganhou `flex-wrap` com a altura **prefixada** (`group-data-horizontal/tabs:h-auto` + `[&>button]:h-auto`, NUNCA `h-auto` cru — ver a armadilha do tailwind-merge abaixo; um merge que "simplifique" para `h-auto` quebra a tela de novo) — com 5 abas ela já estourava a largura do painel e escondia "Negócios" |
 | `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
-| `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página |
+| `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página. Mais o menu de **filtros salvos** (967/968): o hook, os catálogos que dão nome aos ids, o `limparOrfaos` do aplicar e a semente do filtro padrão |
 | `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDaMensagem>` envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo), a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef` |
 | `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (963): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
 | `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem contato e canal RESOLVIDO — `activeChannel`; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
@@ -448,6 +448,42 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
 - **Áudio do acervo sai como NOTA DE VOZ** — é o mesmo caminho do gravador
   (`sendWhatsAppAudio`, PTT na Evolution). O seletor diz isso na linha do
   item, senão o operador manda "um arquivo" e o cliente recebe voz.
+
+⚠️ **Campo personalizado SALVA SOZINHO — não existe mais "Salvar campos".**
+`src/lib/contacts/salvamento-de-campo.ts` (puro, com teste) e
+`src/components/contacts/campo-com-salvamento.tsx`, usado pelas DUAS telas
+(painel da conversa e ficha de `/contatos`). O que morde código novo:
+
+- ⚠️⚠️ **A `key` de quem monta o campo PRECISA incluir o `contact.id`.** Sem
+  ela o React reusa a instância ao trocar de cliente, o rascunho de A sobrevive
+  sob o cabeçalho de B, e a descarga de desmonte grava no cliente errado — a
+  mesma janela que o painel já documentava, agora alcançável sem clicar em
+  botão nenhum.
+- ⚠️⚠️ **UM campo por gravação, nunca o mapa inteiro.** O botão antigo mandava
+  todos de uma vez porque era um gesto só; a cada blur isso seria um envio do
+  mapa — e `""` no upsert compartilhado significa DELETE da linha, então
+  bastaria um campo ainda não carregado para o blur de OUTRO apagar dado real.
+  O gate de `dadosProntos` continua pelo mesmo motivo.
+- ⚠️ **Desmontar não dispara `blur`**, então há descarga na limpeza de
+  desmonte: sem ela, digitar e trocar de bloco (o menu horizontal da 966),
+  fechar o painel ou trocar de aba apagaria o texto — em silêncio, e sem o
+  botão para servir de segunda chance. Ela não grava duas vezes porque
+  `salvoRef` é atualizado no sucesso do blur.
+- ⚠️ **`select` grava na ESCOLHA, o resto no blur** (`gravaAoSair`). O popover
+  fecha e não há blur útil para esperar. O campo de DATA fica no blur apesar de
+  disparar `change`: ele dispara a cada pedaço digitado, com datas
+  intermediárias absurdas — e a 935 lê essa coluna para disparar lembrete.
+- ⚠️ **A comparação "mudou?" é APARADA dos dois lados** (`valorMudou`), porque
+  o helper grava `v.trim()`. Sem isso, entrar e sair de um campo que a
+  automação preencheu com `" 300 "` gravaria `"300"` — uma edição na ficha que
+  ninguém fez.
+- **Sucesso é discreto (um "Salvo" que some em 2s por campo), erro é ALTO** e
+  nomeia o CAMPO e o CLIENTE: com o botão o erro chegava com o operador olhando
+  a tela; agora ele já pode estar em outra conversa.
+- **Etapa e valor do negócio JÁ salvavam sozinhos** desde a Fase 4/5 do painel
+  (`SeletorFunilEtapa` no clique, `ValorInput` no blur) — só os campos
+  personalizados dependiam do botão. Quem for "consertar" etapa/valor está
+  mexendo em coisa que já funciona.
 
 ⚠️ **Blocos de campos personalizados (966): o operador define a ordem, e ela
 vale para TODO cliente.** `cb_grupos_de_campos` (nome + posição),
@@ -726,6 +762,57 @@ não dentro da lista. O que morde código novo:
   trás não fica inerte: ele responde ERRADO com cara de certo (o de etapa
   chegaria a dizer que 55 negócios não existem). Cada busca do painel tem
   sinalizador próprio.
+
+⚠️ **Filtros SALVOS do inbox (967/968): o filtro é da CONTA, o padrão é de
+CADA UM.** `src/lib/inbox/filtros-salvos.ts` (puro, com teste),
+`src/hooks/use-filtros-salvos.ts`, o menu em
+`src/components/inbox/filtros-salvos-menu.tsx` (colado no botão "Filtros") e a
+semente em `conversation-list.tsx`. Aplicar é `setFiltros(...)`: nada muda em
+`aplicarFiltros`. O que morde código novo:
+
+- ⚠️⚠️ **Filtro salvo apontando para id APAGADO devolve ZERO conversas sem dar
+  erro** — etapa removida, conexão desconectada, etiqueta ou funil apagados. É
+  a mesma família de `recorteDeEtapaConfiavel`: filtro sem o dado por trás não
+  some, RESPONDE ERRADO. Por isso aplicar passa SEMPRE por `limparOrfaos`.
+  ⚠️ E **catálogo VAZIO não limpa nada**: lista vazia pode ser "ainda não
+  carregou" ou "a busca falhou" (o `useChannels` engole erro por desenho), e
+  descartar ali jogaria fora um recorte perfeitamente bom por causa de rede.
+  `empresa` fica FORA da limpeza de propósito — é texto casado contra
+  `contact.company`, não referência a linha: "nenhuma conversa desta empresa
+  agora" é uma resposta VERDADEIRA.
+- ⚠️ **`lerFiltroSalvo` é PARSE, nunca `as FiltrosDoInbox`.** A linha é JSONB e
+  pode ter sido gravada por uma versão que não conhecia um campo de hoje; um
+  cast entregaria `undefined` ao recorte e a lista responderia de um jeito que
+  ninguém escolheu. Parte de `FILTROS_VAZIOS`, só aceita chave conhecida com o
+  tipo certo, e booleano só é ligado pelo booleano `true` (`"false"` e `1` são
+  truthy em JS).
+- ⚠️ **As pastilhas do painel continuam sendo montadas em `inbox-filters.tsx`**,
+  e o menu descreve pelo `descreverFiltro` do módulo. O elo que impede as duas
+  descrições de divergirem é um TESTE: `AMOSTRAS` é um
+  `Record<keyof FiltrosDoInbox, …>`, então o **compilador** cobra uma entrada
+  para todo campo novo do recorte e o teste cobra que ele apareça, saiba se
+  desfazer e sobreviva à ida e volta pelo banco. Campo novo em `FiltrosDoInbox`
+  = mexer nos dois lugares, e o teste avisa.
+- ⚠️ **A semente do padrão roda UMA VEZ** (`semeouPadraoRef`) e só sobre
+  recorte INTACTO. Reaplicar faria o filtro que o operador acabou de limpar
+  voltar sozinho; semear por cima de uma escolha feita nos centésimos em que a
+  consulta voltava desfaria o que a pessoa acabou de fazer.
+- ⚠️ **`?etapa=` do funil VENCE o padrão**, e a lista SEGURA o spinner enquanto
+  o padrão pode entrar (`esperandoPadrao`). Sem a espera, o inbox pinta as 176
+  conversas e pula para 8 um segundo depois; sem a precedência, a faixa "Voltar
+  ao funil" mentiria sobre o que está na tela.
+- ⚠️ **Toda escrita confere ROWCOUNT.** A policy da 967 exige `admin`, e RLS que
+  barra escrita volta **0 linhas com `error: null`** — medido: `agent` renomeia,
+  vê o nome mudar e encontra o velho no reload. INSERT barrado volta sem erro
+  E sem linha (o `RETURNING` não enxerga o que a RLS recusou).
+- **Escolher o PADRÃO é de qualquer membro** (a policy é por `auth.uid()`, não
+  por papel): o filtro é do escritório, a preferência é de quem usa.
+- **Filtro cujo canal está fora do escopo do perfil SOME do menu** — aplicá-lo
+  devolveria vazio sem nada explicando.
+- **Nome é único por conta, aparado e em minúsculas**, e o `23505` vira
+  PERGUNTA na tela ("já existe 'SDR' — substituir?"), não erro cru.
+- **A faixa "Filtro padrão: X · mostrar tudo"** existe porque o distintivo de
+  contagem explica um recorte que o operador ACABOU de fazer; este ele não fez.
 
 ⚠️ **A caixa de busca do inbox tem DUAS metades, e elas se somam com um OU
 (929/930).** Nome, telefone, grupo e última mensagem são resolvidos em JS
@@ -1613,6 +1700,13 @@ mordem de novo em qualquer código novo:
     conflito para o Git relatar. Quem pega é o replay do CI, depois. O ARQUIVO
     foi renumerado (o desta, porque a outra já estava no `main`); o histórico
     não se mexe, como na 906 e na 963.
+  - **967_cb_filtros_salvos** — recorte nomeado da caixa de entrada
+    (`cb_inbox_saved_filters`): DA CONTA, admin+ escreve e qualquer membro lê.
+    Aplicada em 2026-08-31.
+  - **968_cb_filtro_padrao** — qual filtro salvo abre a caixa de entrada DE
+    CADA MEMBRO (`cb_inbox_filtro_padrao`, uma linha por pessoa por conta) +
+    o único `(id, account_id)` em `cb_inbox_saved_filters` que a FK composta
+    exige. Aplicada em 2026-08-31.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

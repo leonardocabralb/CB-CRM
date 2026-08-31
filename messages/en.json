@@ -442,9 +442,6 @@
       "customFields": "Custom fields",
       "manageFields": "Manage",
       "noFields": "No fields created yet.",
-      "saveFields": "Save fields",
-      "fieldsSaved": "Fields saved.",
-      "fieldsSaveError": "Could not save the fields.",
       "loadError": "Could not load this contact's data. Reopen the conversation to try again.",
       "pinNote": "Pin note",
       "unpinNote": "Unpin note",
@@ -453,7 +450,9 @@
       "dealSaveError": "Could not update the deal.",
       "statusOpen": "Open",
       "dealDetails": "Deal details",
-      "tabAutomations": "Automations"
+      "tabAutomations": "Automations",
+      "fieldSaved": "Saved",
+      "fieldSaveError": "Could not save \"{campo}\" for {cliente}."
     },
     "execucoes": {
       "roboAtivo": "Active bot",
@@ -759,7 +758,6 @@
       "sendTemplateBtn": "Send template",
       "saveChangesBtn": "Save Changes",
       "readOnlyHint": "Your role is read-only",
-      "saveCustomFieldsBtn": "Save Custom Fields",
       "toastPhoneRequired": "Phone number is required",
       "toastUpdateFailed": "Failed to update contact",
       "toastUpdated": "Contact updated",
@@ -768,12 +766,12 @@
       "toastNoteAdded": "Note added",
       "toastNoteDeleteFailed": "Failed to delete note",
       "toastNoteDeleted": "Note deleted",
-      "toastCustomFieldsSaved": "Custom fields saved",
-      "toastCustomFieldsFailed": "Failed to save custom fields",
       "toastTemplateSent": "Template \"{name}\" sent",
       "toastTemplateFailed": "Failed to send template: {reason}",
       "toastNoteNeedsConversation": "This contact has no conversation yet, so there is nowhere to attach the note. Send a message first.",
-      "toastNoteDeleteForbidden": "Only the author or an admin can delete this note."
+      "toastNoteDeleteForbidden": "Only the author or an admin can delete this note.",
+      "fieldSaved": "Saved",
+      "toastCustomFieldFailed": "Could not save \"{campo}\" for {cliente}."
     },
     "importModal": {
       "title": "Import Contacts",
@@ -2820,8 +2818,8 @@
       "notaTitulo": "Where the score comes from",
       "nota": "The score (0–10) starts at 10 and deducts for unjustified delays, ignored or half-answered requests, curt tone and lack of proactivity. Response times are not estimated by the AI: the system computes them in business hours (Mon–Fri, {abre}h–{fecha}h, São Paulo time) — nights and weekends do not count as delay.",
       "alarmeTitulo": "What becomes a card",
-    "alarme": "The panel lists only conversations with a problem: dissatisfaction, an unanswered client request, legal urgency (summons, subpoena, bailiff, asset freeze, deadline, hearing) or a client waiting more than {horas}h. A well-handled conversation is still analysed and still counts towards the average score above, but it never becomes a card for someone to handle. Case mentions and points of attention show up inside an open card — on their own, they do not open one. The wait only ends when a PERSON replies: automated messages (broadcast, automation, scheduled) do not clear it. As soon as someone replies, the card leaves the list immediately, without waiting for the next analysis.",
-    "sinaisTitulo": "Where the signals come from",
+      "alarme": "The panel lists only conversations with a problem: dissatisfaction, an unanswered client request, legal urgency (summons, subpoena, bailiff, asset freeze, deadline, hearing) or a client waiting more than {horas}h. A well-handled conversation is still analysed and still counts towards the average score above, but it never becomes a card for someone to handle. Case mentions and points of attention show up inside an open card — on their own, they do not open one. The wait only ends when a PERSON replies: automated messages (broadcast, automation, scheduled) do not clear it. As soon as someone replies, the card leaves the list immediately, without waiting for the next analysis.",
+      "sinaisTitulo": "Where the signals come from",
       "sinais": "Urgency, dissatisfaction, unanswered requests, lawsuit mentions and attention points are identified by the AI — and every signal requires evidence: the actual message excerpt that justifies it is shown on the card. A signal without evidence is discarded automatically before reaching the screen. Case numbers (CNJ pattern) are also detected by a fixed rule, without AI. For team managers, the analysis includes per-agent observations (delays, confusing messages, unanswered questions), citing that person's own messages.",
       "cicloTitulo": "When it runs",
       "ciclo": "Automatic cycle every ~{ciclo} min, in small batches, starting with the most recently active conversations. The same conversation waits at least {espera} min between analyses and only re-enters the queue when there is a new message — an idle conversation costs nothing (a failed analysis retries up to 3 times). A window with no client messages (broadcast, outreach) does not trigger the AI: metrics only, and automated messages do not close a pending reply — only a human one does. \"Reanalyze\" forces an analysis right away.",
