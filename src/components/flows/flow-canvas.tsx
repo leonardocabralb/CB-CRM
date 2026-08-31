@@ -620,7 +620,14 @@ function NodeEditSheet({
   if (!node) {
     return (
       <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-        <SheetContent side="right" className="w-full sm:max-w-md" />
+        {/* ⚠️ `data-[side=right]:` no max-w é obrigatório: o primitivo traz
+            `data-[side=right]:sm:max-w-sm`, o twMerge NÃO desempata prefixos
+            diferentes e a classe do primitivo vence por especificidade — o
+            painel abria com 384px em vez dos 448px pedidos (mesma armadilha
+            da ficha do contato, CLAUDE.md). O `w-full` fica SEM prefixo de
+            propósito: prefixado, venceria o `w-3/4` do primitivo e o sheet
+            viraria tela cheia no celular, sem fundo para fechar. */}
+        <SheetContent side="right" className="w-full data-[side=right]:sm:max-w-md" />
       </Sheet>
     );
   }
@@ -630,7 +637,7 @@ function NodeEditSheet({
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent
         side="right"
-        className="border-border bg-popover flex w-full flex-col gap-0 border-l p-0 sm:max-w-md"
+        className="border-border bg-popover flex w-full flex-col gap-0 border-l p-0 data-[side=right]:sm:max-w-md"
       >
         <SheetHeader className="border-border flex-row items-center gap-3 space-y-0 border-b px-5 py-4">
           <NodeIconChip type={node.node_type} size={36} iconSize={18} />

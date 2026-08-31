@@ -8,6 +8,8 @@ import {
   tipoPeloMime,
 } from '@/lib/acervo/tipos';
 import { CHAT_MEDIA_BUCKET } from '@/lib/storage/buckets';
+// Server-importável: evolution-media.ts (transporte) já consome daqui.
+import { MEDIA_MAX_BYTES_BY_KIND } from '@/lib/storage/upload-media';
 
 /**
  * Cadastrar um item no acervo (migration 953).
@@ -80,9 +82,15 @@ export async function POST(request: Request) {
     }
 
     const size = typeof body.size_bytes === 'number' ? body.size_bytes : 0;
-    if (!Number.isFinite(size) || size <= 0 || size > TETO_DE_BYTES) {
+    // ⚠️ Teto POR TIPO (o da tela e do envio), não só o chapado do bucket:
+    // com 16MB para tudo, uma imagem de 5–16MB cadastrada por fora da tela
+    // entrava no acervo e FALHAVA no envio com o 400 confuso da Meta (o cap
+    // de imagem é 5MB). A tela já valida por tipo; a rota é o backstop do
+    // POST direto (ledger 48h). O teto do bucket segue como cinto.
+    const tetoDoTipo = Math.min(TETO_DE_BYTES, MEDIA_MAX_BYTES_BY_KIND[tipo]);
+    if (!Number.isFinite(size) || size <= 0 || size > tetoDoTipo) {
       return NextResponse.json(
-        { error: 'size_bytes out of range' },
+        { error: 'size_bytes out of range', max_bytes: tetoDoTipo },
         { status: 400 }
       );
     }

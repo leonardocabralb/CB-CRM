@@ -385,6 +385,13 @@ export interface AcoesDoRadar {
   mudarEstado: (
     conversationId: string,
     estado: EstadoDoInsight,
+    /**
+     * O `analisado_em` da análise que o operador ESTÁ VENDO — a trava
+     * otimista da rota: se o worker reanalisou no intervalo (a lista é foto
+     * de até 2 min), o PATCH volta 409 `analysis_changed` em vez de tratar
+     * um sinal que ninguém leu. Nulo = sem trava (linha failed, ou reabrir).
+     */
+    analisadoEmVisto?: string | null,
   ) => Promise<{ ok: boolean; erro?: string }>;
   reanalisar: (conversationId: string) => Promise<{ ok: boolean; erro?: string }>;
 }
@@ -415,12 +422,19 @@ export function useAcoesDoRadar(aoConcluir: () => void): AcoesDoRadar {
   );
 
   const mudarEstado = useCallback(
-    (conversationId: string, estado: EstadoDoInsight) =>
+    (
+      conversationId: string,
+      estado: EstadoDoInsight,
+      analisadoEmVisto?: string | null,
+    ) =>
       chamar(conversationId, () =>
         fetch(`/api/cb/radar/${conversationId}/estado`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ estado }),
+          body: JSON.stringify({
+            estado,
+            ...(analisadoEmVisto ? { analisado_em: analisadoEmVisto } : {}),
+          }),
         }),
       ),
     [chamar],

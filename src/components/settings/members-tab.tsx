@@ -225,6 +225,11 @@ export function MembersTab() {
       }
       toast.success(t('perfilChanged'));
       await loadEverything();
+    } catch {
+      // try/finally SEM catch deixava a falha de rede virar unhandled
+      // rejection: nenhum toast, e o select só voltava no reload — o
+      // vizinho handleRoleChange já tratava (ledger 48h).
+      toast.error(t('perfilChangeError'));
     } finally {
       setPendingMemberAction(null);
     }

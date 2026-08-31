@@ -7,7 +7,7 @@
 // POST (scope: deals:write) — create a deal via `createDeal`, the
 //        single server-side birthplace of deals: it validates the
 //        pipeline belongs to the account and the stage belongs to
-//        the pipeline, and stamps the account currency. API-created
+//        the pipeline, and stamps BRL (moeda fixa desde o #66). API-created
 //        deals get `source: 'manual'` and no channel (the channel
 //        column means "which number the customer arrived through",
 //        which an API call doesn't know).

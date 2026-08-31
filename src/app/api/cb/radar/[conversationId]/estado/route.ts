@@ -28,7 +28,10 @@ export async function PATCH(
     const limit = checkRateLimit(`radar:estado:${ctx.userId}`, RATE_LIMITS.adminAction);
     if (!limit.success) return rateLimitResponse(limit);
 
-    const body = (await request.json().catch(() => null)) as { estado?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as {
+      estado?: unknown;
+      analisado_em?: unknown;
+    } | null;
     const estado = body?.estado;
     if (
       typeof estado !== 'string' ||
@@ -39,9 +42,22 @@ export async function PATCH(
         { status: 400 },
       );
     }
+    // ⚠️ Trava otimista contra a corrida com o WORKER (ledger 48h): a lista
+    // da tela é uma foto de até 2 min, e o worker pode ter REANALISADO a
+    // conversa no intervalo. Sem a trava, "Tratar" carimbava um sinal que o
+    // operador nunca viu — e `tratado` só reabre com mensagem do cliente
+    // POSTERIOR ao estado_em, então o sinal novo não voltava sozinho. O
+    // cliente manda o `analisado_em` da análise que ESTÁ VENDO; se a linha
+    // já mudou, 409 e a tela recarrega em vez de esconder o que ninguém leu.
+    // Reabrir (estado='aberto') fica fora da trava: tornar visível de novo
+    // nunca esconde nada. Sem carimbo no corpo, comporta como antes.
+    const analisadoEmVisto =
+      typeof body?.analisado_em === 'string' && body.analisado_em
+        ? body.analisado_em
+        : null;
 
     const { conversationId } = await params;
-    const { data, error } = await supabaseAdmin()
+    let query = supabaseAdmin()
       .from('cb_conversation_insights')
       .update({
         estado,
@@ -49,14 +65,30 @@ export async function PATCH(
         estado_em: new Date().toISOString(),
       })
       .eq('conversation_id', conversationId)
-      .eq('account_id', ctx.accountId)
-      .select('id')
-      .maybeSingle();
+      .eq('account_id', ctx.accountId);
+    if (estado !== 'aberto' && analisadoEmVisto) {
+      query = query.eq('analisado_em', analisadoEmVisto);
+    }
+    const { data, error } = await query.select('id').maybeSingle();
     if (error) {
       console.error('[radar] estado não gravou:', error.message);
       return NextResponse.json({ error: 'Falha ao gravar o estado.' }, { status: 500 });
     }
     if (!data) {
+      // A linha existe mas mudou de análise? Distinguir do 404 verdadeiro
+      // para a tela poder dizer "o Radar reanalisou — releia" em vez de
+      // "não encontrada".
+      if (estado !== 'aberto' && analisadoEmVisto) {
+        const { data: aindaExiste } = await supabaseAdmin()
+          .from('cb_conversation_insights')
+          .select('id')
+          .eq('conversation_id', conversationId)
+          .eq('account_id', ctx.accountId)
+          .maybeSingle();
+        if (aindaExiste) {
+          return NextResponse.json({ error: 'analysis_changed' }, { status: 409 });
+        }
+      }
       return NextResponse.json({ error: 'Análise não encontrada.' }, { status: 404 });
     }
     return NextResponse.json({ ok: true, estado });

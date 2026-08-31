@@ -525,7 +525,17 @@ export function PerfisPanel() {
                   <p className="text-xs text-muted-foreground">{t('secoesHint')}</p>
                 </div>
 
-                {channels.length > 0 && (
+                {/* ⚠️ `> 1`, a convenção da casa: "seletor some com menos de
+                    2 canais" (CLAUDE.md, UI de canal) — com um número só o
+                    recorte não decide nada e a caixinha única confundia
+                    ("desmarcar tira o acesso ao canal?"). Escopo vazio segue
+                    significando TODOS.
+                    ⚠️ MAS nunca some sobre recorte JÁ GRAVADO: escopo não
+                    vazio cujos ids não casam com canal nenhum (conexão
+                    apagada, conta que encolheu para um número) deixa a
+                    pessoa sem canal ALGUM, e esconder a grade tiraria a
+                    única forma de desfazer isso pela tela. */}
+                {(channels.length > 1 || rascunho.channel_ids.length > 0) && (
                   <div className="flex flex-col gap-2">
                     <Label className="text-muted-foreground">
                       {t('canaisLabel')}

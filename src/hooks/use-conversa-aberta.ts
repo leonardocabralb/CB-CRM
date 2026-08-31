@@ -38,11 +38,17 @@ const RE_DERIVE_MS = 15_000;
  * do StrictMode só re-executa o mesmo upsert.
  */
 export function useMarcarConversaAberta(conversationId: string | null): void {
+  // ⚠️ Espera a CONTA resolver, como o PresenceHeartbeat irmão: sem a
+  // guarda, um signup recém-criado (profile ainda sem conta) disparava a
+  // RPC a cada 30s só para colher "No account for caller" no console —
+  // ruído que esconde erro de verdade (ledger 48h).
+  const { accountId } = useAuth();
   // Fila de RPCs: garante que a ÚLTIMA intenção do operador é a última a
   // escrever, mesmo com respostas fora de ordem na rede.
   const filaRef = useRef<Promise<unknown>>(Promise.resolve());
 
   useEffect(() => {
+    if (!accountId) return;
     const supabase = createClient();
     const marcar = (id: string | null) => {
       filaRef.current = filaRef.current
@@ -71,7 +77,7 @@ export function useMarcarConversaAberta(conversationId: string | null): void {
       // 75s do leitor resolve.
       marcar(null);
     };
-  }, [conversationId]);
+  }, [conversationId, accountId]);
 }
 
 /**
