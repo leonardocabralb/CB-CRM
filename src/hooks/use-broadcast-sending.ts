@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import {
@@ -135,6 +137,32 @@ export function resolveVariables(
 }
 
 /**
+ * UPDATE de destinatário conferido pelo RETORNO (achado #15 do plano de
+ * 31/08): RLS barrando um update devolve **0 linhas sem erro** — a 964
+ * fechou a escrita destas tabelas para admin, e um "sucesso" silencioso
+ * aqui deixa o destinatário preso em `pending` para sempre, com os
+ * contadores à deriva (a mesma classe do insert incompleto documentado no
+ * laço de insert). `.select('id')` faz o PostgREST devolver as linhas
+ * tocadas; quem chama conta as perdidas.
+ *
+ * ⚠️ NÃO lança de propósito: quando estes updates rodam a mensagem JÁ SAIU
+ * para o cliente — um throw viraria "o disparo falhou" no wizard, que é o
+ * convite a reenviar a campanha inteira.
+ */
+async function marcarDestinatario(
+  supabase: ReturnType<typeof createClient>,
+  recipientId: string,
+  patch: Record<string, unknown>,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('broadcast_recipients')
+    .update(patch)
+    .eq('id', recipientId)
+    .select('id');
+  return !error && (data?.length ?? 0) > 0;
+}
+
+/**
  * Bulk-fetch contact_custom_values for a set of contacts. Returns an
  * index keyed by contact_id → field_id → value.
  */
@@ -166,6 +194,7 @@ async function fetchCustomValueIndex(
 
 export function useBroadcastSending(): UseBroadcastSendingReturn {
   const { accountId } = useAuth();
+  const tDetail = useTranslations('Broadcasts.detail');
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -469,6 +498,8 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       }
 
       let failedCount = 0;
+      // Escritas de status que voltaram com 0 linhas (ver `marcarDestinatario`).
+      let escritasPerdidas = 0;
       const totalRecipients = recipients.length;
 
       // Media-header templates (image/video/document) require a media
@@ -542,47 +573,51 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
 
             if (!result) {
               failedCount++;
-              await supabase
-                .from('broadcast_recipients')
-                .update({
+              if (
+                !(await marcarDestinatario(supabase, recipient.id, {
                   status: 'failed',
                   error_message: 'No phone number on contact',
-                })
-                .eq('id', recipient.id);
+                }))
+              ) {
+                escritasPerdidas++;
+              }
               continue;
             }
 
             if (result.status === 'sent') {
-              await supabase
-                .from('broadcast_recipients')
-                .update({
+              if (
+                !(await marcarDestinatario(supabase, recipient.id, {
                   status: 'sent',
                   sent_at: new Date().toISOString(),
                   whatsapp_message_id: result.whatsapp_message_id ?? null,
                   error_message: null,
-                })
-                .eq('id', recipient.id);
+                }))
+              ) {
+                escritasPerdidas++;
+              }
             } else {
               failedCount++;
-              await supabase
-                .from('broadcast_recipients')
-                .update({
+              if (
+                !(await marcarDestinatario(supabase, recipient.id, {
                   status: 'failed',
                   error_message: result.error ?? 'Unknown error',
-                })
-                .eq('id', recipient.id);
+                }))
+              ) {
+                escritasPerdidas++;
+              }
             }
           }
         } catch (err) {
           for (const recipient of batch) {
             failedCount++;
-            await supabase
-              .from('broadcast_recipients')
-              .update({
+            if (
+              !(await marcarDestinatario(supabase, recipient.id, {
                 status: 'failed',
                 error_message: err instanceof Error ? err.message : 'Unknown error',
-              })
-              .eq('id', recipient.id);
+              }))
+            ) {
+              escritasPerdidas++;
+            }
           }
         }
 
@@ -600,10 +635,29 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       // 003); we only flip the final status here.
       setProgress(95);
       const finalStatus = failedCount === totalRecipients ? 'failed' : 'sent';
-      await supabase
+      const { data: finalizado, error: finalErr } = await supabase
         .from('broadcasts')
         .update({ status: finalStatus })
-        .eq('id', broadcast.id);
+        .eq('id', broadcast.id)
+        .select('id');
+
+      // As mensagens JÁ SAÍRAM: nada aqui pode virar "o disparo falhou" (o
+      // wizard toastaria erro e convidaria a reenviar a campanha). Escrita de
+      // status perdida vira AVISO — o relatório é quem pode estar defasado,
+      // não o envio.
+      const statusFinalPerdido = Boolean(finalErr) || !finalizado?.length;
+      if (statusFinalPerdido || escritasPerdidas > 0) {
+        console.error(
+          `[broadcast] envio concluído, mas ${escritasPerdidas} status de destinatário` +
+            (statusFinalPerdido ? ' e o status final da campanha' : '') +
+            ' não gravaram (0 linhas/erro) — o relatório pode estar defasado.',
+        );
+        toast.warning(
+          tDetail('toastStatusWritesLost', {
+            count: escritasPerdidas + (statusFinalPerdido ? 1 : 0),
+          }),
+        );
+      }
 
       setProgress(100);
       return broadcast.id;
