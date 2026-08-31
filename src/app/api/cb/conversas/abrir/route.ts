@@ -128,14 +128,37 @@ export async function POST(request: Request) {
   const nomeLimpo =
     typeof nome === 'string' && nome.trim() ? nome.trim().slice(0, MAX_NOME) : null
 
+  // ---- Dono de registro: o DONO DA CONTA, nunca quem clicou ----
+  // ⚠️ NÃO é preciosismo de auditoria — é perda de dados. `contacts.user_id`
+  // referencia `auth.users` com **ON DELETE CASCADE**, e
+  // `conversations.contact_id` cascateia de novo: gravar aqui o membro que
+  // clicou faz com que, no dia em que essa pessoa sair, o CONTATO seja
+  // apagado junto, levando a conversa e TODAS as mensagens do cliente — que
+  // são do escritório, não dela. A ingestão nunca teve esse problema porque
+  // sempre gravou o dono (`configOwnerUserId`).
+  //
+  // `accounts.owner_user_id` é NOT NULL, então existe sempre que a conta
+  // existe; falhar a leitura é erro de verdade, não caso a contornar.
+  const { data: conta, error: contaErr } = await admin
+    .from('accounts')
+    .select('owner_user_id')
+    .eq('id', accountId)
+    .maybeSingle()
+
+  const donoDaConta = conta?.owner_user_id as string | undefined
+  if (contaErr || !donoDaConta) {
+    console.error('[conversas/abrir] dono da conta não resolvido:', contaErr)
+    return NextResponse.json({ error: 'LOOKUP_FAILED' }, { status: 500 })
+  }
+
   // ---- Contato: reencontra antes de criar ----
-  const achado = await resolverContato(admin, accountId, user.id, digitos, nomeLimpo)
+  const achado = await resolverContato(admin, accountId, donoDaConta, digitos, nomeLimpo)
   if (!achado) {
     return NextResponse.json({ error: 'CONTACT_CREATE_FAILED' }, { status: 500 })
   }
 
   // ---- Conversa: uma por contato (UNIQUE da 036) ----
-  const conversationId = await resolverConversa(admin, accountId, user.id, achado.contato.id)
+  const conversationId = await resolverConversa(admin, accountId, donoDaConta, achado.contato.id)
   if (!conversationId) {
     return NextResponse.json({ error: 'CONVERSATION_CREATE_FAILED' }, { status: 500 })
   }
@@ -168,7 +191,8 @@ export async function POST(request: Request) {
 async function resolverContato(
   admin: ReturnType<typeof supabaseAdmin>,
   accountId: string,
-  userId: string,
+  /** Dono da conta — ver o comentário no chamador (FK com CASCADE). */
+  donoDaConta: string,
   digitos: string,
   nomeLimpo: string | null,
 ): Promise<{ contato: { id: string; name?: string | null }; criou: boolean } | null> {
@@ -179,7 +203,7 @@ async function resolverContato(
     .from('contacts')
     .insert({
       account_id: accountId,
-      user_id: userId,
+      user_id: donoDaConta,
       phone: digitos,
       // Sem nome, o número: é o que a ingestão faz, e o que o WhatsApp
       // mostra até alguém batizar o contato.
@@ -205,7 +229,8 @@ async function resolverContato(
 async function resolverConversa(
   admin: ReturnType<typeof supabaseAdmin>,
   accountId: string,
-  userId: string,
+  /** Dono da conta — ver o comentário no chamador (FK com CASCADE). */
+  donoDaConta: string,
   contactId: string,
 ): Promise<string | null> {
   const buscar = async () => {
@@ -224,7 +249,7 @@ async function resolverConversa(
 
   const { data: nova, error } = await admin
     .from('conversations')
-    .insert({ account_id: accountId, user_id: userId, contact_id: contactId })
+    .insert({ account_id: accountId, user_id: donoDaConta, contact_id: contactId })
     .select('id')
     .single()
 

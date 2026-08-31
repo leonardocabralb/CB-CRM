@@ -1358,6 +1358,26 @@ cria/reencontra contato e conversa, **FIXA** o canal escolhido
 (`pinConversationChannel`, não `follow` — quem clicou escolheu) e devolve o
 id; a página recarrega a lista e navega por `?c=`. O que morde código novo:
 
+- ⚠️⚠️ **`contacts.user_id` e `conversations.user_id` são `ON DELETE CASCADE`
+  para `auth.users`, e `conversations.contact_id` cascateia de novo.** Todo
+  caminho que CRIA contato ou conversa grava o **dono da conta**
+  (`accounts.owner_user_id`, NOT NULL), nunca o membro que clicou — senão, no
+  dia em que essa pessoa sair da equipe, o contato é apagado junto e leva a
+  conversa e TODAS as mensagens daquele cliente, que são do escritório. A
+  ingestão sempre fez certo (`configOwnerUserId`); a rota de abrir nasceu
+  errada e foi corrigida logo depois do PR #79 (achado do Codex). O erro é
+  invisível: a rota tem o `user` autenticado em mão, `user_id: user.id`
+  parece óbvio, passa no typecheck e funciona na tela. Há teste estrutural
+  (`dono-duravel.test.ts`) porque isto volta.
+- ⚠️ **Selecionar a conversa recém-aberta NÃO pode depender do `?c=`.** O
+  refetch (`resyncToken`) e o `router.replace` saem juntos, e se a consulta
+  voltar antes de a navegação propagar os searchParams, `deepLinkConvId`
+  ainda tem o valor ANTIGO — a conversa nova não é selecionada e nada se
+  recupera depois, porque o efeito da lista só reage a `resyncToken`. Fica a
+  URL apontando para a conversa certa com o centro VAZIO. Por isso existe
+  `conversaRecemAbertaRef` na página do inbox, consumida antes do caminho de
+  deep link. (Também do Codex no #79 — o fluxo passou no teste manual porque
+  a navegação costuma ganhar a corrida.)
 - ⚠️ **O teto de 15 dígitos é load-bearing.** `findExistingContact` casa
   pelos ÚLTIMOS 8 DÍGITOS com tolerância a tronco, então um JID de grupo
   (~18 dígitos) colado no campo poderia FUNDIR com o celular de um cliente

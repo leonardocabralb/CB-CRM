@@ -195,6 +195,19 @@ function InboxPageInner() {
   // back to the deep-linked conversation if they've already clicked
   // elsewhere.
   const autoSelectedForDeepLinkRef = useRef<string | null>(null);
+  /**
+   * Conversa que o botão "nova conversa" acabou de abrir, esperando a lista
+   * chegar com ela dentro.
+   *
+   * ⚠️ Existe porque depender do `?c=` aqui é uma CORRIDA: o refetch e o
+   * `router.replace` saem juntos, e se a consulta voltar antes de a
+   * navegação propagar os searchParams, `deepLinkConvId` ainda tem o valor
+   * ANTIGO e a conversa nova não é selecionada. Pior, nada se recupera
+   * depois — o efeito da lista só reage a `resyncToken`, então a URL fica
+   * apontando para a conversa nova com o centro vazio até o próximo resync.
+   * A ref não corre contra nada. (Achado do Codex na revisão do PR #79.)
+   */
+  const conversaRecemAbertaRef = useRef<string | null>(null);
 
   // Tracks conversations whose hydrate fetch is currently in flight. The
   // conv-INSERT and the first-message-INSERT events both call into
@@ -528,6 +541,7 @@ function InboxPageInner() {
    */
   const handleConversaAberta = useCallback(
     (conversationId: string) => {
+      conversaRecemAbertaRef.current = conversationId;
       setResyncToken((t) => t + 1);
       router.replace(urlDoInbox({ c: conversationId, de }));
     },
@@ -537,6 +551,26 @@ function InboxPageInner() {
   const handleConversationsLoaded = useCallback(
     (loaded: Conversation[]) => {
       setConversations(loaded);
+
+      // A conversa que acabou de ser aberta pelo botão. Vem antes do deep
+      // link e não olha a URL — ver `conversaRecemAbertaRef`. Só limpa a ref
+      // quando de fato encontra a linha: se esta carga saiu antes de a
+      // conversa existir, a próxima resolve.
+      const recemAberta = conversaRecemAbertaRef.current;
+      if (recemAberta) {
+        const nova = loaded.find((c) => c.id === recemAberta);
+        if (nova) {
+          conversaRecemAbertaRef.current = null;
+          // Marca o deep link como já consumido: a URL aponta para esta
+          // mesma conversa, e sem isto o bloco abaixo a reaplicaria,
+          // zerando `messages` de um fio que o MessageThread já carregou.
+          autoSelectedForDeepLinkRef.current = recemAberta;
+          setActiveConversation(nova);
+          setActiveContact(nova.contact ?? null);
+          setMessages([]);
+          return;
+        }
+      }
       // Resolve a pending deep-link here rather than in an effect — this
       // is an event handler, so the setState calls below are allowed by
       // react-hooks/set-state-in-effect. Runs once per ?c=<id> URL value
