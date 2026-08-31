@@ -101,6 +101,22 @@ export default function RadarPage() {
   const { ocupada, mudarEstado, reanalisar } = useAcoesDoRadar(recarregar);
   const [canalFiltro, setCanalFiltro] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<string | null>(null);
+  /**
+   * Cartões tratados/descartados NESTA visita à tela — continuam listados,
+   * apagados e com o botão "Reabrir".
+   *
+   * ⚠️ Sem isto o botão "Reabrir" era CÓDIGO MORTO: a lista só aceita
+   * `estado === 'aberto'`, então o cartão sumia no instante do clique e
+   * levava junto o único botão que o traria de volta. Sobrava o "Desfazer"
+   * do toast, que expira em ~4s — e `descartado` NUNCA reabre sozinho, por
+   * desenho. Um clique errado escondia o alarme daquele cliente da equipe
+   * inteira, para sempre.
+   *
+   * O conjunto vive só enquanto a tela está montada: sair e voltar limpa,
+   * que é o "fim do expediente de triagem" e mantém a decisão do operador
+   * de não ter uma aba "Todos".
+   */
+  const [mexidasAqui, setMexidasAqui] = useState<ReadonlySet<string>>(new Set());
   // Relógio vivo: numa aba deixada aberta "de olho", sem o tick os
   // cartões e o "aguardando há X" congelariam no instante do último
   // render — a tela contradizia a si mesma na fronteira do limiar.
@@ -191,7 +207,7 @@ export default function RadarPage() {
   // mesma armadilha que o hook já evita ao separar `falhou` de "vazio".
   const visiveis = ordenados.filter(
     (d) =>
-      d.insight.estado === 'aberto' &&
+      (d.insight.estado === 'aberto' || mexidasAqui.has(d.insight.conversation_id)) &&
       (temGatilho(d.ord) || d.insight.status === 'failed'),
   );
   // Separado de `visiveis` para o vazio saber distinguir "nada analisado"
@@ -228,24 +244,34 @@ export default function RadarPage() {
   /**
    * Tratar/descartar COM desfazer.
    *
-   * ⚠️ Sem a aba "Todos", o cartão desaparece da tela no instante do
-   * clique — e o botão "Reabrir" vai junto. O desfazer deixou de ser
-   * cortesia e virou a única saída para o clique errado: descartar é
-   * "a IA errou aqui" e nunca reabre sozinho, então um engano esconderia
-   * o alarme para sempre.
+   * Duas saídas para o clique errado, de propósito: o "Desfazer" do toast
+   * (imediato) e o cartão que FICA na lista, apagado, com o botão
+   * "Reabrir" — ver `mexidasAqui`. Descartar é "a IA errou aqui" e nunca
+   * reabre sozinho; com uma saída só, e ela durando 4 segundos, um engano
+   * escondia o alarme daquele cliente para sempre.
    */
-  const mudar = useCallback(
-    async (conversationId: string, estado: 'aberto' | 'tratado' | 'descartado') => {
-      const ok = await agir(mudarEstado(conversationId, estado));
-      if (!ok || estado === 'aberto') return;
-      toast.success(t(estado === 'tratado' ? 'tratadoOk' : 'descartadoOk'), {
-        action: {
-          label: t('desfazer'),
-          onClick: () => void agir(mudarEstado(conversationId, 'aberto')),
-        },
+  const reabrir = useCallback(
+    async (conversationId: string) => {
+      if (!(await agir(mudarEstado(conversationId, 'aberto')))) return;
+      setMexidasAqui((antes) => {
+        const proximo = new Set(antes);
+        proximo.delete(conversationId);
+        return proximo;
       });
     },
-    [agir, mudarEstado, t],
+    [agir, mudarEstado],
+  );
+
+  const mudar = useCallback(
+    async (conversationId: string, estado: 'aberto' | 'tratado' | 'descartado') => {
+      if (estado === 'aberto') return reabrir(conversationId);
+      if (!(await agir(mudarEstado(conversationId, estado)))) return;
+      setMexidasAqui((antes) => new Set(antes).add(conversationId));
+      toast.success(t(estado === 'tratado' ? 'tratadoOk' : 'descartadoOk'), {
+        action: { label: t('desfazer'), onClick: () => void reabrir(conversationId) },
+      });
+    },
+    [agir, mudarEstado, reabrir, t],
   );
 
   return (

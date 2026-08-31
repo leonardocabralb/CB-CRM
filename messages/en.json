@@ -1568,7 +1568,8 @@
       "statusTimedOut": "Timed out",
       "statusPaused": "Paused by agent",
       "statusFailed": "Failed",
-      "statusStoppedByAutomation": "Stopped by automation"
+      "statusStoppedByAutomation": "Stopped by automation",
+      "statusStoppedByAgent": "Stopped by the team"
     },
     "builder": {
       "triggerTitle": "Trigger",

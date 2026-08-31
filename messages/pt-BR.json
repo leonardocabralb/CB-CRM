@@ -1561,7 +1561,8 @@
       "statusTimedOut": "Expirada",
       "statusPaused": "Pausada pelo atendente",
       "statusFailed": "Falhou",
-      "statusStoppedByAutomation": "Parado por automação"
+      "statusStoppedByAutomation": "Parado por automação",
+      "statusStoppedByAgent": "Parado pela equipe"
     },
     "builder": {
       "triggerTitle": "Gatilho",
