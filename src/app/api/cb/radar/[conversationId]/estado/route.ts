@@ -51,10 +51,21 @@ export async function PATCH(
     // já mudou, 409 e a tela recarrega em vez de esconder o que ninguém leu.
     // Reabrir (estado='aberto') fica fora da trava: tornar visível de novo
     // nunca esconde nada. Sem carimbo no corpo, comporta como antes.
+    //
+    // ⚠️⚠️ E a trava do carimbo NÃO basta sozinha: enquanto o worker está
+    // COM a linha (`status='running'`), o `analisado_em` ainda é o VELHO —
+    // o que a tela mostra —, então o compare-and-set passava bem no meio da
+    // reanálise. Aí o worker grava a análise nova e PRESERVA o tratamento
+    // feito durante a análise (o reset só reabre com mensagem do cliente
+    // posterior ao `estado_em`, e o clique é sempre posterior): o sinal
+    // recém-nascido já nasce escondido, sem ninguém ter lido. Por isso
+    // `running` também é recusado — a análise está literalmente mudando.
+    // (Achado do Codex no PR #76.)
     const analisadoEmVisto =
       typeof body?.analisado_em === 'string' && body.analisado_em
         ? body.analisado_em
         : null;
+    const comTrava = estado !== 'aberto';
 
     const { conversationId } = await params;
     let query = supabaseAdmin()
@@ -66,8 +77,9 @@ export async function PATCH(
       })
       .eq('conversation_id', conversationId)
       .eq('account_id', ctx.accountId);
-    if (estado !== 'aberto' && analisadoEmVisto) {
-      query = query.eq('analisado_em', analisadoEmVisto);
+    if (comTrava) {
+      query = query.neq('status', 'running');
+      if (analisadoEmVisto) query = query.eq('analisado_em', analisadoEmVisto);
     }
     const { data, error } = await query.select('id').maybeSingle();
     if (error) {
@@ -75,18 +87,24 @@ export async function PATCH(
       return NextResponse.json({ error: 'Falha ao gravar o estado.' }, { status: 500 });
     }
     if (!data) {
-      // A linha existe mas mudou de análise? Distinguir do 404 verdadeiro
-      // para a tela poder dizer "o Radar reanalisou — releia" em vez de
-      // "não encontrada".
-      if (estado !== 'aberto' && analisadoEmVisto) {
-        const { data: aindaExiste } = await supabaseAdmin()
+      // A linha existe mas está em análise, ou mudou de análise? Distinguir
+      // do 404 verdadeiro para a tela dizer o que houve — "o Radar está
+      // relendo" e "o Radar releu" pedem reações diferentes do operador.
+      if (comTrava) {
+        const { data: atual } = await supabaseAdmin()
           .from('cb_conversation_insights')
-          .select('id')
+          .select('id, status')
           .eq('conversation_id', conversationId)
           .eq('account_id', ctx.accountId)
           .maybeSingle();
-        if (aindaExiste) {
-          return NextResponse.json({ error: 'analysis_changed' }, { status: 409 });
+        if (atual) {
+          return NextResponse.json(
+            {
+              error:
+                atual.status === 'running' ? 'analysis_running' : 'analysis_changed',
+            },
+            { status: 409 },
+          );
         }
       }
       return NextResponse.json({ error: 'Análise não encontrada.' }, { status: 404 });

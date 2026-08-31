@@ -720,6 +720,14 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   calendário e "48h" quase uma semana — o alarme chegaria tarde para quem
   escreveu na sexta. A exibição segue em horas úteis porque é a régua
   justa com a equipe.
+  ⚠️ **O vão entre elas produzia CARTÃO MUDO** e foi fechado em 2026-08-31:
+  quem escreveu sexta 19h30 e é olhado no sábado tem 24h corridas (entra na
+  lista) e ~0 hora útil (etiqueta suprimida) — o cartão aparecia em "1 sinal
+  aberto" sem UMA etiqueta dizendo por quê. A saída NÃO foi misturar as
+  réguas: quando a de horas úteis não alcança o piso, a etiqueta cai para o
+  INSTANTE (`semRespostaDesde`, "Sem resposta desde sex, 22/08 19:30"), que
+  é verdade sem depender de régua nenhuma. Mexer numa das duas constantes
+  sem olhar esse ramo devolve o cartão mudo.
 - ⚠️ **A pendência é conferida AO VIVO na tela, não lida do banco**
   (`respostasDepoisDaPendencia`, em `use-radar.ts`). `aguardando_desde` é
   o retrato da última análise: entre a resposta do atendente e a próxima
@@ -764,11 +772,18 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   alguém respondeu é a consulta de `respondidas`. Sem a recarga, o cartão
   de cliente já atendido por um colega ficava na tela até o operador
   trocar de aba e voltar.
-- ⚠️ **Insatisfação exige evidência nas últimas 48h do TRANSCRITO**
-  (`JANELA_INSATISFACAO_MS`, validado no parser). A janela analisada tem 7
-  dias: sem isso, irritação de terça já resolvida seguia acendendo cartão
-  no domingo. O corte sai da ÚLTIMA linha do transcrito, não do relógio —
-  mantém a função pura e mede a idade do sinal DENTRO da conversa.
+- ⚠️ **Insatisfação exige evidência nas últimas 48h** (`JANELA_INSATISFACAO_MS`,
+  validado no parser). A janela analisada tem 7 dias: sem isso, irritação de
+  terça já resolvida seguia acendendo cartão no domingo.
+  ⚠️ **A âncora é o INSTANTE DA ANÁLISE (`agoraMs`), não a última linha do
+  transcrito** — mudou em 2026-08-31. Ancorada na conversa, a régua não
+  funcionava justamente no caso que a motivou: cliente reclama, a equipe
+  responde e a conversa MORRE ali; o corte envelhecia junto com a última
+  linha e nunca a alcançava, então o sinal ficava aceso para sempre sobre
+  caso encerrado. A função segue PURA — quem chama passa o instante (o
+  worker, `Date.now()`; os testes, um valor fixo), e há pino cobrindo os
+  dois lados. Chamar `interpretarAnalise` sem o 3º argumento volta à âncora
+  velha, de propósito, para não quebrar chamador antigo em silêncio.
 - ⚠️ **Não existe mais aba "Todos"** (decisão do operador): listar toda
   conversa analisada era o próprio ruído que o filtro passou a cortar.
   Consequência que o desenho tem de sustentar: sem ela, um descarte errado
@@ -780,6 +795,20 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   como código morto, porque a lista só aceita `estado === 'aberto'`. Sair
   da tela limpa o conjunto: é o fim do expediente de triagem, e a aba
   "Todos" continua não existindo.
+- ⚠️ **O falso NEGATIVO da IA não tem botão, e isso é decisão fechada
+  (2026-08-31), não pendência.** Análise sem gatilho não entra na lista,
+  então o "Reanalisar" dela é inalcançável — e a leitura ingênua ("falta um
+  caminho de correção") leva direto a ressuscitar a aba "Todos", que é
+  justamente o ruído que o operador mandou cortar. O que sustenta o NÃO: o
+  `generateStructured` roda a temperatura padrão sobre o MESMO transcrito,
+  então reanalisar um falso negativo tende a devolver o mesmo veredito —
+  o botão custaria uma geração paga para repetir a resposta. E os casos em
+  que reanalisar REALMENTE muda a resposta já têm caminho próprio:
+  `status='failed'` entra na lista independente de gatilho (com o botão),
+  `sem_ia` acende o aviso de conta que aponta para Integrações, e mensagem
+  nova reanalisa sozinha pelo worker. Sobra só a troca de modelo/prompt,
+  que é conta inteira e pediria um "reanalisar tudo" — não um botão por
+  conversa. Quem for reabrir isto começa por aí, nunca pela aba.
 - **NADA dispara sozinho** — mesma classe da 925: quem move é o agendador
   batendo em `/api/cb/radar/cron` (incluído no laço LENTO do
   `docker-stack.yml`). ⚠️ O CI não relê o `command` do `agendador`: a
