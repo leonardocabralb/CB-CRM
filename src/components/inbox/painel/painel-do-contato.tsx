@@ -39,10 +39,9 @@ import { InternalNoteBox } from '@/components/inbox/internal-note-box';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
 import {
-  camposDeTraqueamento,
-  camposFaltantes,
-  camposGerais,
-} from '@/lib/contacts/campos-de-traqueamento';
+  agruparCampos,
+  chaveDoBloco,
+} from '@/lib/contacts/grupos-de-campos';
 import { useAuth } from '@/hooks/use-auth';
 import { ValorInput } from '@/components/valor/valor-input';
 import { formatCurrency } from '@/lib/currency';
@@ -52,6 +51,7 @@ import type {
   CustomField,
   Deal,
   DealStatus,
+  GrupoDeCampos,
   PipelineStage,
   Tag,
 } from '@/types';
@@ -71,7 +71,6 @@ import {
   ChevronUp,
   Loader2,
   Maximize2,
-  Megaphone,
   PanelRightClose,
   Pencil,
   Pin,
@@ -128,14 +127,14 @@ export function PainelDoContato({
   onContactUpdated,
 }: PainelDoContatoProps) {
   const tSidebar = useTranslations('Inbox.sidebar');
+  /** Só para o rótulo do bloco Geral (966) — o mesmo que o catálogo usa, para
+   *  que a ficha e a tela de Configurações chamem o bloco pelo mesmo nome. */
+  const tCampos = useTranslations('Contacts.customFields');
   const tThread = useTranslations('Inbox.messageThread');
   // Rótulos do negócio vêm do namespace do funil — mesmo texto nas duas
   // telas, de propósito (Marcar como ganho etc.).
   const tForm = useTranslations('Pipelines.form');
   const tCard = useTranslations('Pipelines.card');
-  // `user`/`accountId` só para o seed do catálogo de traqueamento — o insert
-  // de `custom_fields` exige os dois carimbados à mão (NOT NULL sem default).
-  const { user, accountId } = useAuth();
   // O mesmo gate da RLS: `agent`+ escreve contato/etiqueta/valores ("viewer"
   // só olha). O catálogo de CAMPOS é admin — gate separado, mais abaixo.
   const podeEditar = useCan('send-messages');
@@ -183,10 +182,10 @@ export function PainelDoContato({
   const [nomeEdit, setNomeEdit] = useState('');
   const [salvandoNome, setSalvandoNome] = useState(false);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  const [grupos, setGrupos] = useState<GrupoDeCampos[]>([]);
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [salvandoCampos, setSalvandoCampos] = useState(false);
   const [gerirCamposAberto, setGerirCamposAberto] = useState(false);
-  const [semeando, setSemeando] = useState(false);
 
   // ---- Fase 4: o negócio dentro da conversa ------------------------------
   const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>(
@@ -217,17 +216,41 @@ export function PainelDoContato({
    */
   const [resetNegocio, setResetNegocio] = useState(0);
 
-  // Recortes por categoria (949): a seção CAMPOS da Principal mostra só os
-  // gerais; a aba Traqueamento, só os de anúncio.
-  const gerais = useMemo(() => camposGerais(customFields), [customFields]);
-  const tracking = useMemo(
-    () => camposDeTraqueamento(customFields),
-    [customFields]
+  /**
+   * Os BLOCOS da seção CAMPOS (966). Substituíram o recorte por categoria da
+   * 949: até aqui os gerais ficavam nesta aba e os de traqueamento numa aba
+   * própria (o megafone), o que dava ao operador uma divisão fixa de duas
+   * gavetas. Agora a divisão é a que ele montou em Configurações, e a aba
+   * separada deixou de existir — o bloco "Traqueamento" é um bloco como os
+   * outros, logo abaixo dos demais.
+   *
+   * ⚠️ Sem `incluirVazios`: aqui o bloco vazio some. Cabeçalho sem campo
+   * embaixo não informa nada e ainda ocupa a coluna estreita da conversa —
+   * quem precisa vê-lo é o catálogo, para poder soltar campo dentro.
+   */
+  const blocos = useMemo(
+    () => agruparCampos(customFields, grupos),
+    [customFields, grupos]
   );
-  const faltantes = useMemo(
-    () => camposFaltantes(customFields),
-    [customFields]
-  );
+
+  /**
+   * Qual bloco está à vista. `null` = "ainda não escolhi", que resolve para o
+   * primeiro.
+   *
+   * ⚠️ Resolvido no RENDER, não guardado num efeito: o bloco escolhido pode
+   * sumir entre duas cargas (outro admin apagou, ou o último campo dele saiu),
+   * e um estado apontando para bloco morto deixaria a seção vazia com o menu
+   * mostrando uma aba selecionada — sem nada explicando. Caindo no primeiro,
+   * a tela sempre mostra alguma coisa. A escolha ATRAVESSA a troca de contato
+   * de propósito: é preferência de quem olha, não dado do cliente.
+   */
+  const [blocoAtivo, setBlocoAtivo] = useState<string | null>(null);
+  const blocoVisivel =
+    blocos.find((b) => chaveDoBloco(b.grupo?.id ?? null) === blocoAtivo) ??
+    blocos[0];
+  const chaveVisivel = blocoVisivel
+    ? chaveDoBloco(blocoVisivel.grupo?.id ?? null)
+    : null;
 
   /**
    * O negócio que a seção edita: o ABERTO mais recente; sem nenhum aberto, o
@@ -352,6 +375,7 @@ export function PainelDoContato({
       funisRes,
       etapasRes,
       tarefasRes,
+      gruposRes,
     ] = await Promise.all([
       supabase
         .from('deals')
@@ -363,7 +387,11 @@ export function PainelDoContato({
         .select('id, tag_id, tags(*)')
         .eq('contact_id', contact.id),
       supabase.from('tags').select('*').order('name'),
-      supabase.from('custom_fields').select('*').order('field_name'),
+      supabase
+        .from('custom_fields')
+        .select('*')
+        .order('posicao', { nullsFirst: false })
+        .order('field_name'),
       supabase
         .from('contact_custom_values')
         .select('*')
@@ -378,6 +406,12 @@ export function PainelDoContato({
         .select('id', { count: 'exact', head: true })
         .eq('contact_id', contact.id)
         .eq('status', 'aberta'),
+      // Os blocos (966) — catálogo da conta, como as etiquetas e os campos.
+      supabase
+        .from('cb_grupos_de_campos')
+        .select('*')
+        .order('posicao')
+        .order('nome'),
     ]);
 
     // Resposta atrasada de OUTRO contato (ou de um refetch disparado antes
@@ -416,6 +450,9 @@ export function PainelDoContato({
     // Catálogo da CONTA: falha aqui não trava a edição do contato — segue
     // tolerante, como antes (o estado anterior continua servindo).
     if (allTagsRes.data) setAllTags(allTagsRes.data);
+    // Idem para os BLOCOS (966): falhando, `agruparCampos` joga todo campo no
+    // bloco Geral — a ficha perde a divisão, mas nenhum campo some.
+    if (gruposRes.data) setGrupos(gruposRes.data as GrupoDeCampos[]);
     if (funisRes.data) setPipelines(funisVisiveis(acesso, funisRes.data));
     if (etapasRes.data) setAllStages(etapasRes.data as PipelineStage[]);
     if (!tarefasRes.error) setTarefasAbertas(tarefasRes.count ?? 0);
@@ -622,10 +659,14 @@ export function PainelDoContato({
   );
 
   /**
-   * Valores dos campos — upsert compartilhado (nunca delete-all). Cada botão
-   * salva SÓ a própria seção (o subconjunto de ids que ela mostra): o Salvar
-   * da Principal não pode arrastar junto uma edição meio-feita na aba de
-   * Traqueamento, e vice-versa.
+   * Valores dos campos — upsert compartilhado (nunca delete-all).
+   *
+   * Recebe a lista a salvar, e hoje o único chamador manda TODOS os campos.
+   * Até a 966 eram dois botões salvando subconjuntos, porque os de
+   * traqueamento moravam numa aba separada e um Salvar não podia arrastar
+   * junto uma edição meio-feita que estava fora da tela. Com os blocos, tudo
+   * o que o botão salva está visível acima dele — o motivo da separação
+   * deixou de existir junto com a aba.
    */
   const salvarCampos = useCallback(
     async (campos: CustomField[]) => {
@@ -648,49 +689,6 @@ export function PainelDoContato({
     },
     [contact, customValues, dadosProntos, tSidebar]
   );
-
-  /**
-   * Semeia o catálogo padrão de traqueamento (949) — só os que FALTAM, e a
-   * falta é medida pela CHAVE em qualquer categoria: um `utm_source` já
-   * criado como campo geral não pode nascer de novo (chave é única por
-   * conta). Admin apenas, como todo o catálogo.
-   */
-  const semearTraqueamento = useCallback(async () => {
-    if (!user || !accountId || faltantes.length === 0) return;
-    setSemeando(true);
-    const supabase = createClient();
-    // ⚠️ `ignoreDuplicates`, não insert seco: `faltantes` é foto de quando o
-    // painel carregou, e uma chave criada nesse meio-tempo (outra aba, outro
-    // admin) fazia o 23505 derrubar o LOTE inteiro — e o retry repetia a
-    // mesma falha até recarregar. Com DO NOTHING, a repetida é pulada e as
-    // demais nascem. O alvo é o índice único da 948 (conta + chave).
-    const { error } = await supabase.from('custom_fields').upsert(
-      faltantes.map((c) => ({
-        field_name: c.nome,
-        field_key: c.key,
-        field_type: 'text',
-        categoria: 'tracking',
-        user_id: user.id,
-        account_id: accountId,
-      })),
-      { onConflict: 'account_id,field_key', ignoreDuplicates: true }
-    );
-    setSemeando(false);
-    if (error) {
-      toast.error(tSidebar('seedError'));
-      return;
-    }
-    toast.success(tSidebar('seedDone'));
-    // ⚠️ Recarrega SÓ o catálogo de definições. Semear não muda VALOR nenhum,
-    // e o `fetchContactData()` completo repunha `customValues` do banco —
-    // descartando, sem aviso, um rascunho digitado e ainda não salvo na
-    // outra aba de campos.
-    const { data: defs } = await supabase
-      .from('custom_fields')
-      .select('*')
-      .order('field_name');
-    if (defs) setCustomFields(defs as CustomField[]);
-  }, [user, accountId, faltantes, tSidebar]);
 
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
@@ -829,9 +827,11 @@ export function PainelDoContato({
           >
             <ListTodo className="h-4 w-4" />
           </AbaDeIcone>
-          <AbaDeIcone value="traqueamento" label={tSidebar('tabTracking')}>
-            <Megaphone className="h-4 w-4" />
-          </AbaDeIcone>
+          {/* ⚠️ A aba Traqueamento (o megafone da 949) SAIU na 966: os campos
+              de anúncio viraram um bloco como qualquer outro, dentro da
+              Principal. Decisão do operador — uma gaveta fixa para dez campos
+              técnicos, enquanto os campos do caso ficavam todos amontoados
+              numa lista só, era a divisão errada. */}
           <AbaDeIcone
             value="automacoes"
             label={tSidebar('tabAutomations')}
@@ -1185,15 +1185,55 @@ export function PainelDoContato({
               )}
             </div>
             <div className="mt-2 space-y-3">
-              {gerais.length === 0 ? (
+              {!blocoVisivel ? (
                 <p className="text-muted-foreground px-1 text-xs">
                   {tSidebar('noFields')}
                 </p>
               ) : (
                 <>
-                  {gerais.map((field) => (
+                  {/* ⚠️ MENU HORIZONTAL, não blocos empilhados.
+                      A primeira versão desenhava todos os blocos um sob o
+                      outro: organizava, mas não REDUZIA — os 15 campos
+                      continuavam todos na tela, que é exatamente a poluição
+                      que os blocos existem para resolver (achado do operador,
+                      com o exemplo do outro CRM). Aqui só o bloco escolhido
+                      aparece.
+
+                      Some com menos de dois blocos, pela mesma regra do
+                      seletor de canal: com um bloco só ele não decide nada e
+                      o nome dele já está no título logo acima. */}
+                  {blocos.length > 1 && (
+                    <div className="flex flex-wrap gap-1">
+                      {blocos.map((bloco) => {
+                        const chave = chaveDoBloco(bloco.grupo?.id ?? null);
+                        const ativo = chave === chaveVisivel;
+                        return (
+                          <button
+                            key={chave}
+                            type="button"
+                            onClick={() => setBlocoAtivo(chave)}
+                            className={cn(
+                              'rounded-md px-2 py-1 text-[11px] font-medium transition-colors',
+                              ativo
+                                ? 'bg-primary/15 text-primary'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                            )}
+                          >
+                            {bloco.grupo?.nome ?? tCampos('groupGeneral')}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {blocoVisivel.campos.map((field) => (
                     <div key={field.id} className="space-y-1">
-                      <Label className="text-muted-foreground text-xs capitalize">
+                      {/* ⚠️ Sem `capitalize`. Ele maiusculava CADA palavra
+                          e o operador via "Data De Fechamento Do Contrato"
+                          no lugar do nome que cadastrou — e estragava de
+                          vez os técnicos (`utm_source`), que por isso
+                          tinham de morar numa aba à parte. O nome do campo
+                          já vem escrito como deve aparecer. */}
+                      <Label className="text-muted-foreground text-xs">
                         {field.field_name}
                       </Label>
                       <CampoPersonalizadoInput
@@ -1212,7 +1252,13 @@ export function PainelDoContato({
                   {podeEditar && (
                     <Button
                       size="sm"
-                      onClick={() => void salvarCampos(gerais)}
+                      // ⚠️ Salva TODOS os campos, não só os do bloco à vista.
+                      // Com o menu horizontal os outros blocos voltaram a ser
+                      // invisíveis, mas o que foi digitado neles continua no
+                      // estado e é do operador: salvar só o visível descartaria
+                      // em silêncio o que ele preencheu antes de trocar de
+                      // bloco. Perder digitação é pior que gravar digitação.
+                      onClick={() => void salvarCampos(customFields)}
                       disabled={salvandoCampos || !dadosProntos}
                       className="bg-primary text-primary-foreground hover:bg-primary/90 w-full"
                     >
@@ -1348,72 +1394,6 @@ export function PainelDoContato({
           <ContactTasks contactId={contact.id} aoAlterar={recontarTarefas} />
         </TabsContent>
 
-        {/* ---- Traqueamento (949) — os campos que o clique no anúncio
-             produz (UTMs, fbclid, ctwa_clid, nomes de campanha/conjunto/
-             anúncio). São campos personalizados comuns com categoria
-             'tracking': a automação `update_contact_field` já os preenche e
-             a futura integração com a API de Conversões da Meta os lê pelo
-             `field_key`. O seed cria só os que FALTAM (admin). ---- */}
-        <TabsContent
-          value="traqueamento"
-          className="min-h-0 flex-1 overflow-y-auto p-4"
-        >
-          <div className="space-y-3">
-            {tracking.length === 0 && (
-              <p className="text-muted-foreground px-1 text-xs">
-                {tSidebar('noTrackingFields')}
-              </p>
-            )}
-            {podeGerirCampos && faltantes.length > 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void semearTraqueamento()}
-                disabled={semeando}
-                className="w-full"
-              >
-                {semeando ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Plus className="size-3.5" />
-                )}
-                {tSidebar('seedTrackingFields', { count: faltantes.length })}
-              </Button>
-            )}
-            {tracking.map((field) => (
-              <div key={field.id} className="space-y-1">
-                {/* Sem `capitalize`: utm_source/fbclid são nomes TÉCNICOS e
-                    mudá-los visualmente atrapalha quem confere o parâmetro. */}
-                <Label className="text-muted-foreground text-xs">
-                  {field.field_name}
-                </Label>
-                <CampoPersonalizadoInput
-                  field={field}
-                  value={customValues[field.id] ?? ''}
-                  onChange={(v) =>
-                    setCustomValues((prev) => ({ ...prev, [field.id]: v }))
-                  }
-                  disabled={!podeEditar || !dadosProntos}
-                />
-              </div>
-            ))}
-            {podeEditar && tracking.length > 0 && (
-              <Button
-                size="sm"
-                onClick={() => void salvarCampos(tracking)}
-                disabled={salvandoCampos || !dadosProntos}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 w-full"
-              >
-                {salvandoCampos ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Save className="size-3.5" />
-                )}
-                {tSidebar('saveFields')}
-              </Button>
-            )}
-          </div>
-        </TabsContent>
 
         {/* ---- Automações (955) — o que está RODANDO para o cliente: robô
              ativo e esperas futuras de automação, com o botão de parar. Os

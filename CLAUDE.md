@@ -449,6 +449,102 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
   (`sendWhatsAppAudio`, PTT na Evolution). O seletor diz isso na linha do
   item, senão o operador manda "um arquivo" e o cliente recebe voz.
 
+⚠️ **Blocos de campos personalizados (966): o operador define a ordem, e ela
+vale para TODO cliente.** `cb_grupos_de_campos` (nome + posição),
+`custom_fields.grupo_id`/`posicao`, o módulo puro `src/lib/contacts/
+grupos-de-campos.ts` (testado) e o catálogo com arrastar em
+`custom-fields-manager.tsx`. O que morde código novo:
+
+- ⚠️⚠️ **NA FICHA DO CLIENTE SÓ UM BLOCO APARECE POR VEZ**, escolhido num menu
+  horizontal de pastilhas. Não é enfeite: é o PONTO da feature. A primeira
+  versão empilhava os blocos um sob o outro, o que organizava e não REDUZIA
+  nada — os 15 campos continuavam todos na tela, que é exatamente a poluição
+  que os blocos existem para resolver. O operador devolveu com o exemplo do
+  outro CRM ("a separação e a visualização são feitas por um menu selecionável
+  de forma horizontal"). Quem empilhar de novo desfaz a feature inteira.
+  ⚠️ O menu SOME com menos de dois blocos (mesma regra do seletor de canal:
+  com um bloco só ele não decide nada). E o bloco à vista é resolvido NO
+  RENDER (`blocos.find(...) ?? blocos[0]`), nunca guardado por efeito — bloco
+  apagado, ou esvaziado, deixaria a seção em branco com uma pastilha acesa.
+- ⚠️ **`grupo_id` NULO É o bloco "Geral", e ele vem SEMPRE primeiro.** Não
+  existe linha para ele: por isso não é renomeável nem arrastável, e o rótulo
+  sai do dicionário (`Contacts.customFields.groupGeneral`), não do banco. Ele
+  some sozinho quando todo campo estiver num grupo de verdade — bloco vazio
+  não renderiza na ficha do cliente. Uma tela que mostre "Geral" vindo do
+  banco está lendo uma linha que não existe.
+- ⚠️ **`categoria` (949) NÃO é o bloco, e não morreu.** Continua sendo a marca
+  SEMÂNTICA "campo técnico": é o que o semeador dos 10 campos escreve e o que
+  a API v1 expõe como `category` (dropar a coluna quebra o n8n do gestor).
+  `grupo_id` é só ONDE o campo aparece. O seletor de categoria saiu do
+  formulário de criação — quem cria campo escolhe BLOCO.
+- ⚠️ **A ordem é `.order('posicao', { nullsFirst: false }).order('field_name')`
+  em TODA consulta de `custom_fields`** — são 8 call sites (catálogo, painel da
+  conversa ×2, ficha de contato, broadcast ×2, automação, API v1). `posicao`
+  NULA cai no FIM de propósito: campo criado por caminho que não a carimba (o
+  semeador cria dez de uma vez) nasce no fim do bloco em vez de embaralhar a
+  ordem montada. `ordenarCampos` é o espelho EXATO dessa cláusula — mudar um
+  lado sem o outro faz o arrastar pousar o campo num lugar e o próximo
+  carregamento mostrá-lo em outro.
+- ⚠️ **Reordenar passa por RPC (`cb_ordenar_campos_personalizados`), nunca por
+  `upsert`.** O upsert do PostgREST teria de carregar as quatro colunas NOT
+  NULL de `custom_fields` junto (o NOT NULL é conferido ANTES de o Postgres
+  decidir pelo ramo do ON CONFLICT — mandar só o id NÃO passa), e aí um
+  arrastar pode reescrever o NOME do campo com um valor velho do estado da
+  tela. É a mesma armadilha do `/api/ai/config`. As duas RPCs são
+  `SECURITY INVOKER`: quem decide é a policy de admin que já existe.
+- ⚠️⚠️ **ARRASTAR NÃO PODE SER A ÚNICA PORTA.** A primeira versão só deixava
+  mudar um campo de bloco arrastando, e punha o "novo bloco" no RODAPÉ do
+  cartão, depois de uma lista de 538px. O operador testou e não achou nenhuma
+  das duas coisas ("não achei as possibilidades de criar os grupos" / "nem de
+  colocar campos já criados em outros grupos") — metade da funcionalidade
+  existia e era invisível. Hoje: o formulário de bloco fica ACIMA da lista, e
+  cada linha tem um `<select>` de bloco ao lado da chave. O arrastar continua,
+  como atalho de quem já sabe. Vale para qualquer gesto novo nesta tela.
+- ⚠️ **`handleDragEnd` normaliza QUALQUER id do bloco para o mesmo destino**
+  (`blocoDoAlvo`). Três nós ocupam praticamente a mesma caixa — o bloco
+  arrastável, a ÁREA de soltura dentro dele e as linhas de campo — e entre os
+  dois primeiros, que têm o MESMO centro, o desempate do `closestCenter` é a
+  ordem de registro no `DndContext`, não a geometria. Medido: reordenando
+  blocos, o `over` vem SEMPRE como `bloco:<id>`, nunca `grupo:<id>` — a versão
+  que exigia o prefixo `grupo:` deixava reordenar bloco 100% quebrado, sem
+  erro nenhum no caminho.
+- ⚠️ **Alça de arrastar precisa de área de toque, não do tamanho do ícone.**
+  A do bloco nasceu `size-3.5` num cabeçalho `py-1`: 14px que o ponteiro erra
+  por um pixel, e aí o bloco não é agarrado — sem cursor mudando, sem aviso,
+  sem nada a depurar. Hoje é `size-4` com `p-1` (24×24), igual à da linha.
+- ⚠️ **O arrastar manda o BLOCO INTEIRO (0..N-1), não só quem se moveu.** As
+  posições do banco não são densas — campo novo nasce nulo e o semeador cria
+  dez de uma vez —, então reordenar por diferença deixaria buraco que
+  reaparece como ordem errada no arrastar seguinte.
+- ⚠️ **A aba "Traqueamento" do painel da conversa (o megafone da 949) DEIXOU DE
+  EXISTIR**, e com ela as chaves `Inbox.sidebar.tabTracking`/
+  `noTrackingFields`/`seedTrackingFields`/`seedDone`/`seedError` e a
+  `Contacts.detailView.trackingHeading`. O semeador dos 10 campos padrão
+  mudou de casa: agora vive no CATÁLOGO (Configurações → Campos e etiquetas) e
+  cria os campos no bloco selecionado no formulário de cima — o botão diz qual,
+  porque um lote de dez campos no bloco errado é trabalhoso de desfazer.
+- ⚠️ **`ON DELETE SET NULL (grupo_id)`, com a coluna NOMEADA.** `account_id` é
+  NOT NULL e faz parte da FK composta; um SET NULL sem lista tentaria zerar as
+  duas colunas, e apagar um bloco passaria a estourar violação em vez de
+  devolver os campos ao Geral. Medido: apagar o bloco preserva os campos.
+- ⚠️ **Um `Salvar campos` só, e ele salva TODOS os campos — inclusive os dos
+  blocos que não estão à vista.** Eram dois (um por aba) porque o Salvar de uma
+  aba não podia arrastar junto edição meio-feita da outra. Com o menu
+  horizontal os outros blocos voltaram a ficar invisíveis, mas o valor digitado
+  neles CONTINUA no `customValues` e é do operador: salvar só o bloco visível
+  descartaria em silêncio o que ele preencheu antes de trocar de pastilha —
+  perder digitação é pior que gravar digitação. Medido na tela: o valor
+  sobrevive à troca de bloco. Quem voltar a recortar o save por bloco precisa
+  resolver antes o que fazer com o que ficou escondido.
+- **Sem `capitalize` nos rótulos** (nas duas fichas): ele maiusculava cada
+  palavra e o operador via "Data De Fechamento Do Contrato" no lugar do nome
+  que cadastrou — e estragava os técnicos (`utm_source`), que por isso
+  precisavam de uma aba própria.
+- **A altura da lista do catálogo é PROP** (`alturaDaLista`). Configurações
+  passa `max-h-[min(36rem,60vh)]`; o diálogo da página de Contatos fica nos
+  288px porque o `DialogContent` deste projeto **não tem teto de altura** —
+  lista alta ali cresce para fora da viewport sem barra que a alcance.
+
 ⚠️ **Efeito passivo = o primeiro render mostra o estado VELHO.** Já mordeu
 duas vezes em 2026-08-30, nas duas features do dia: a faixa da nota fixada
 mostrava a anotação do cliente anterior sob o cabeçalho do novo (o
@@ -1506,6 +1602,17 @@ mordem de novo em qualquer código novo:
     (018) passa a limpar `perfil_id` ao promover o novo dono: o caminho da
     transferência ficara fora da 962 e deixava a divergência papel×perfil
     presa num owner, irremovível pela UI. Aplicada em 2026-08-31.
+  - **966_cb_grupos_de_campos** — blocos de campos personalizados
+    (`cb_grupos_de_campos` + `custom_fields.grupo_id`/`posicao` + as duas RPCs
+    de ordenação). Aplicada em 2026-08-31. ⚠️ NASCEU como `965` e COLIDIU com
+    a `965_cb_transferencia_limpa_perfil` — o TERCEIRO caso de duas branches
+    em paralelo (depois da 906 e da 963), e o mais instrutivo: as duas foram
+    APLICADAS no mesmo banco com 15 minutos de diferença, então o histórico do
+    Supabase tem duas entradas `965` e nenhum comando reclamou. O `git merge`
+    também passou limpo — são nomes de arquivo diferentes, então não há
+    conflito para o Git relatar. Quem pega é o replay do CI, depois. O ARQUIVO
+    foi renumerado (o desta, porque a outra já estava no `main`); o histórico
+    não se mexe, como na 906 e na 963.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

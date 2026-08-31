@@ -38,7 +38,11 @@ export function CustomFieldsSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <CustomFieldsPanel />
+        {/* A lista é mais alta AQUI, e só aqui: a caixa de 288px do diálogo da
+            página de Contatos mostrava ~5 dos 15 campos desta conta, e nesta
+            tela sobra página. O teto em `vh` existe porque a altura fixa
+            sozinha viraria um cartão maior que a tela num laptop de 768px. */}
+        <CustomFieldsPanel alturaDaLista="max-h-[min(36rem,60vh)]" />
       </CardContent>
     </Card>
   );

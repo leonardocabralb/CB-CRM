@@ -14,12 +14,12 @@ import { ContactTasks } from '@/components/tasks/contact-tasks';
 import { formatCurrency } from '@/lib/currency';
 import { salvarValoresDoContato } from '@/lib/contacts/custom-values';
 import {
-  camposDeTraqueamento,
-  camposGerais,
-} from '@/lib/contacts/campos-de-traqueamento';
+  agruparCampos,
+  chaveDoBloco,
+} from '@/lib/contacts/grupos-de-campos';
 import { CampoPersonalizadoInput } from '@/components/contacts/campo-personalizado-input';
 import { toast } from 'sonner';
-import type { Contact, Tag, ContactTag, ConversationNote, CustomField, ContactCustomValue, Deal, MessageTemplate } from '@/types';
+import type { Contact, Tag, ContactTag, ConversationNote, CustomField, ContactCustomValue, Deal, GrupoDeCampos, MessageTemplate } from "@/types";
 import {
   TemplatePicker,
   type TemplateSendValues,
@@ -70,6 +70,9 @@ export function ContactDetailView({
   onUpdated,
 }: ContactDetailViewProps) {
   const t = useTranslations('Contacts.detailView');
+  /** Só para o rótulo do bloco Geral (966) — o mesmo nome que o catálogo e o
+   *  painel da conversa usam. */
+  const tCampos = useTranslations('Contacts.customFields');
   const tEventos = useTranslations('LeadEvents');
   const tAgenda = useTranslations('Agenda');
   const supabase = createClient();
@@ -130,6 +133,25 @@ export function ContactDetailView({
 
   // Custom fields tab
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  /** Os blocos da 966 — o mesmo catálogo que o painel da conversa lê. */
+  const [grupos, setGrupos] = useState<GrupoDeCampos[]>([]);
+  /**
+   * Bloco à vista no menu horizontal. `null` = ainda não escolhi → o primeiro.
+   * Resolvido no render (e não num efeito) para que bloco apagado caia sozinho
+   * no primeiro, em vez de deixar a aba vazia com uma pastilha acesa.
+   */
+  const [blocoAtivo, setBlocoAtivo] = useState<string | null>(null);
+  const blocosDaFicha = useMemo(
+    () => agruparCampos(customFields, grupos),
+    [customFields, grupos]
+  );
+  const blocoVisivel =
+    blocosDaFicha.find(
+      (b) => chaveDoBloco(b.grupo?.id ?? null) === blocoAtivo
+    ) ?? blocosDaFicha[0];
+  const chaveVisivel = blocoVisivel
+    ? chaveDoBloco(blocoVisivel.grupo?.id ?? null)
+    : null;
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [savingCustom, setSavingCustom] = useState(false);
   const [loadingCustom, setLoadingCustom] = useState(false);
@@ -212,18 +234,30 @@ export function ContactDetailView({
     const alvo = contactId;
     setLoadingCustom(true);
 
-    const [fieldsRes, valuesRes] = await Promise.all([
-      supabase.from('custom_fields').select('*').order('field_name'),
+    const [fieldsRes, valuesRes, gruposRes] = await Promise.all([
+      supabase
+        .from('custom_fields')
+        .select('*')
+        .order('posicao', { nullsFirst: false })
+        .order('field_name'),
       supabase
         .from('contact_custom_values')
         .select('*')
         .eq('contact_id', contactId),
+      supabase
+        .from('cb_grupos_de_campos')
+        .select('*')
+        .order('posicao')
+        .order('nome'),
     ]);
 
     // ⚠️ O caso mais caro da ficha: sem isto os VALORES de A entram no
     // formulário aberto sobre B, e o Salvar os grava lá.
     if (contatoAlvoRef.current !== alvo) return;
     if (fieldsRes.data) setCustomFields(fieldsRes.data);
+    // Falhando, `agruparCampos` joga tudo no bloco Geral: a ficha perde a
+    // divisão, mas nenhum campo some.
+    if (gruposRes.data) setGrupos(gruposRes.data as GrupoDeCampos[]);
     if (valuesRes.data) {
       const map: Record<string, string> = {};
       valuesRes.data.forEach((v) => {
@@ -813,42 +847,44 @@ export function ContactDetailView({
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {/* Gerais primeiro; os de TRAQUEAMENTO (949) agrupados
-                        sob o próprio título — no inbox eles têm aba própria,
-                        aqui a separação visual cumpre o mesmo papel. */}
-                    {camposGerais(customFields).map((field) => (
+                    {/* ⚠️ Menu horizontal, igual ao painel da conversa (966):
+                        só o bloco escolhido aparece. Empilhar os blocos
+                        organizava sem reduzir nada — os 15 campos continuavam
+                        todos na tela. Some com menos de dois blocos. */}
+                    {blocosDaFicha.length > 1 && (
+                      <div className="flex flex-wrap gap-1">
+                        {blocosDaFicha.map((bloco) => {
+                          const chave = chaveDoBloco(bloco.grupo?.id ?? null);
+                          const ativo = chave === chaveVisivel;
+                          return (
+                            <button
+                              key={chave}
+                              type="button"
+                              onClick={() => setBlocoAtivo(chave)}
+                              className={
+                                ativo
+                                  ? 'bg-primary/15 text-primary rounded-md px-2 py-1 text-xs font-medium transition-colors'
+                                  : 'text-muted-foreground hover:bg-muted hover:text-foreground rounded-md px-2 py-1 text-xs font-medium transition-colors'
+                              }
+                            >
+                              {bloco.grupo?.nome ?? tCampos('groupGeneral')}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {blocoVisivel?.campos.map((field) => (
                       <div key={field.id} className="space-y-1.5">
-                        <Label className="text-muted-foreground text-xs capitalize">
+                        {/* ⚠️ Sem `capitalize`: ele maiusculava cada
+                            palavra e o operador via "Data De Fechamento
+                            Do Contrato" no lugar do nome cadastrado — e
+                            estragava os técnicos (utm_source). */}
+                        <Label className="text-muted-foreground text-xs">
                           {field.field_name}
                         </Label>
                         {/* Componente COMPARTILHADO com o painel do inbox
                             (948): um input por tipo, com as conversões de
                             fuso do campo de data dentro dele. */}
-                        <CampoPersonalizadoInput
-                          field={field}
-                          value={customValues[field.id] ?? ''}
-                          onChange={(v) =>
-                            setCustomValues((prev) => ({
-                              ...prev,
-                              [field.id]: v,
-                            }))
-                          }
-                          placeholder={t('enterCustomField', { name: field.field_name })}
-                        />
-                      </div>
-                    ))}
-                    {camposDeTraqueamento(customFields).length > 0 && (
-                      <p className="border-t border-border pt-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                        {t('trackingHeading')}
-                      </p>
-                    )}
-                    {camposDeTraqueamento(customFields).map((field) => (
-                      <div key={field.id} className="space-y-1.5">
-                        {/* Sem `capitalize`: utm_source/fbclid são nomes
-                            técnicos. */}
-                        <Label className="text-muted-foreground text-xs">
-                          {field.field_name}
-                        </Label>
                         <CampoPersonalizadoInput
                           field={field}
                           value={customValues[field.id] ?? ''}

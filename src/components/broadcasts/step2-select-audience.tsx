@@ -118,7 +118,7 @@ export function Step2SelectAudience({
         const { data } = await supabase
           .from('custom_fields')
           .select('*')
-          .order('field_name');
+          .order('posicao', { nullsFirst: false }).order('field_name');
         setCustomFields(data ?? []);
       } finally {
         setLoadingFields(false);

@@ -21,9 +21,9 @@
 
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
-| **A1** | Banco dos filtros salvos + módulo puro (parse defensivo, resumo, ids órfãos) | ⬜ a fazer | `966` (a confirmar) | — |
+| **A1** | Banco dos filtros salvos + módulo puro (parse defensivo, resumo, ids órfãos) | ⬜ a fazer | `967` (a confirmar) | — |
 | **A2** | Menu no botão "Filtros": aplicar · salvar o atual · renomear · apagar | ⬜ a fazer | nenhuma | — |
-| **A3** | Filtro **padrão** por pessoa + a faixa que explica o inbox recortado | ⬜ a fazer | `967` (a confirmar) | — |
+| **A3** | Filtro **padrão** por pessoa + a faixa que explica o inbox recortado | ⬜ a fazer | `968` (a confirmar) | — |
 | **B1** | Campos personalizados salvam ao sair do campo (painel do inbox + ficha `/contatos`) | ⬜ a fazer | nenhuma | — |
 
 **Decisões travadas com o operador (2026-08-31):**
@@ -96,10 +96,25 @@ com o valor guardado; não há caminho novo de recorte, nada muda em
 
 ### Fase A1 — Banco + módulo puro
 
-**Migration `966_cb_filtros_salvos.sql`** (⚠️ confirmar o número com
+**Migration `967_cb_filtros_salvos.sql`** (⚠️ confirmar o número com
 `ls supabase/migrations/` **e** `list_migrations` imediatamente antes de criar o
-arquivo — o `965` é o último em disco hoje, mas branches em paralelo mudam isso;
-e o histórico do Supabase não é fonte de verdade completa):
+arquivo — branches em paralelo mudam isso; e o histórico do Supabase não é
+fonte de verdade completa):
+
+> ⚠️ **Este plano reservava `966`/`967`, e os dois foram corrigidos para
+> `967`/`968` em 2026-08-31.** A `966_cb_grupos_de_campos` (blocos de campos
+> personalizados) nasceu numa branch paralela e **já está aplicada em
+> produção**. Foi a terceira colisão de número da semana — a 906, a 963 e a
+> própria 966, que nasceu `965` e colidiu com a `965_cb_transferencia_limpa_perfil`.
+> Reforçando o que a linha acima diz: conferir na hora, não deduzir da lista.
+>
+> ⚠️ **A Fase B1 encosta em código que a 966 acabou de reescrever.** "Campos
+> personalizados salvam ao sair do campo" muda exatamente o botão
+> `Salvar campos` do painel da conversa e da ficha — que hoje salva TODOS os
+> campos, inclusive os dos blocos que não estão à vista no menu horizontal.
+> Quem for fazer a B1 lê antes a seção "Blocos de campos personalizados (966)"
+> do CLAUDE.md: salvar por campo isolado é compatível, mas trocar o botão por
+> um save-do-bloco-visível reintroduz a perda silenciosa de digitação.
 
 ```sql
 CREATE TABLE cb_inbox_saved_filters (
@@ -213,7 +228,7 @@ quando há efeito, como a notificação de menção).
 
 ### Fase A3 — O filtro padrão
 
-**Migration `967_cb_filtro_padrao.sql`** — tabela minúscula, porque o padrão é
+**Migration `968_cb_filtro_padrao.sql`** — tabela minúscula, porque o padrão é
 **por pessoa** e o filtro é **da conta**: uma coluna `padrao boolean` na tabela
 de filtros seria uma marca compartilhada, e o padrão de um apagaria o do outro
 sem nada na tela explicando (é literalmente o motivo pelo qual a 924 virou
