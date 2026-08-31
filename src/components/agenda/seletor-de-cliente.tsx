@@ -61,14 +61,21 @@ export function SeletorDeCliente({ valor, nomeAtual, aoEscolher, travado }: Prop
       // de dentro do efeito, não a linha do `useEffect`.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setAchados([]);
+      setBuscando(false);
       return;
     }
+
+    // ⚠️ `buscando` sobe JÁ AQUI, não dentro do timer: o dropdown abre no
+    // instante em que o termo tem 2 letras, e com a flag nascendo false a
+    // janela do debounce + primeira resposta pintava "Nenhum cliente
+    // encontrado" antes de a consulta sequer sair — a mesma classe do
+    // "acervo está vazio" e da nota fixada (CLAUDE.md, efeito passivo).
+    setBuscando(true);
 
     // Espera a digitação parar: sem isto cada tecla vira uma consulta, e as
     // respostas voltam fora de ordem.
     let vivo = true;
     const timer = setTimeout(async () => {
-      setBuscando(true);
       const supabase = createClient();
       // ⚠️ O valor viaja DENTRO da árvore do `.or()`, onde vírgula e
       // parênteses são delimitadores — "(27) 9283" sem aspas vira filtro
