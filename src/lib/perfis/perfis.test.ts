@@ -158,6 +158,20 @@ describe("podeVerSecao", () => {
     }
   });
 
+  it("⚠️ nem com a caixa 'perfis' MARCADA no perfil", () => {
+    // O teste acima só exercitava `secoes_config` vazio, e o furo estava
+    // exatamente no outro caso: o editor oferece a caixa para perfil de
+    // qualquer papel, e marcá-la entregava a tela inteira de gestão de
+    // permissões — leitura funcionando (a policy da 956 dá SELECT a
+    // qualquer membro), escrita quebrando com 403 genérico.
+    for (const papel of ["agent", "viewer"] as const) {
+      const c = ctx({ papel_base: papel, secoes_config: ["perfis", "quick-replies"] });
+      expect(podeVerSecao(c, "perfis")).toBe(false);
+      // E o resto da caixa continua valendo — a trava é só da seção de perfis.
+      expect(podeVerSecao(c, "quick-replies")).toBe(true);
+    }
+  });
+
   it("⚠️ a trava segue o PAPEL REAL, não o papel_base do perfil", () => {
     // Achado da revisão: as duas colunas podem divergir (a rota da Fase 5 as
     // sincroniza, um UPDATE à mão no banco não). Quem decide o que a pessoa

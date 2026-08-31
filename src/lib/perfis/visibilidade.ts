@@ -15,6 +15,7 @@
 
 import {
   SECOES_PESSOAIS,
+  SECOES_SO_DE_ADMIN,
   SECOES_TRAVADAS_PARA_ADMIN,
   TELAS_SEMPRE_VISIVEIS,
   type SecaoId,
@@ -69,6 +70,10 @@ export function podeVerSecao(ctx: ContextoDeAcesso, secao: SecaoId): boolean {
   ) {
     return true;
   }
+
+  // Chegar aqui já quer dizer que a pessoa NÃO é dono nem admin (os dois
+  // saíram acima). Gestão de permissão exige o papel, não a caixa marcada.
+  if ((SECOES_SO_DE_ADMIN as readonly string[]).includes(secao)) return false;
 
   return ctx.perfil.secoes_config.includes(secao);
 }

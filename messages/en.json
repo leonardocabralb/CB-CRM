@@ -731,6 +731,7 @@
       },
       "sendTemplateBtn": "Send template",
       "saveChangesBtn": "Save Changes",
+      "readOnlyHint": "Your role is read-only",
       "saveCustomFieldsBtn": "Save Custom Fields",
       "toastPhoneRequired": "Phone number is required",
       "toastUpdateFailed": "Failed to update contact",

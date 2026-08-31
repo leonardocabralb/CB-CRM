@@ -723,6 +723,7 @@
       },
       "sendTemplateBtn": "Enviar modelo",
       "saveChangesBtn": "Salvar alterações",
+      "readOnlyHint": "Seu perfil é somente leitura",
       "saveCustomFieldsBtn": "Salvar campos personalizados",
       "toastPhoneRequired": "O número de telefone é obrigatório",
       "toastUpdateFailed": "Falha ao atualizar contato",

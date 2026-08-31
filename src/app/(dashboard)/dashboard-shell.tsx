@@ -8,7 +8,7 @@ import { Header } from "@/components/layout/header";
 import { AccountAccessAlert } from "@/components/layout/account-access-alert";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { TelaBloqueada } from "@/components/auth/tela-bloqueada";
-import { ROTA_DA_TELA } from "@/lib/perfis/catalogo";
+import { ROTA_DA_TELA, TODAS_AS_TELAS } from "@/lib/perfis/catalogo";
 import { podeVerTela, telaDoCaminho } from "@/lib/perfis/visibilidade";
 
 // Auth-gated dashboard shell. Extracted from the layout so the layout
@@ -30,6 +30,29 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       router.push("/login");
     }
   }, [user, loading, router]);
+
+  const tela = telaDoCaminho(pathname, ROTA_DA_TELA);
+  const bloqueada = tela !== null && !podeVerTela(acesso, tela);
+
+  /**
+   * ⚠️ `/dashboard` é o destino FIXO de login, cadastro, raiz e middleware —
+   * ninguém o escolhe, é para onde a sessão simplesmente começa. E os dois
+   * perfis de fábrica restritos (Advogado e Observador) não incluem a tela
+   * Painel, por decisão do operador: visão de gestão. O resultado era que
+   * TODO login dessas pessoas abria na TelaBloqueada, todo dia, exigindo um
+   * clique para chegar a uma tela que elas podem ver.
+   *
+   * Aterrissagem que a pessoa não pediu segue adiante; página que ela pediu
+   * (digitou, clicou numa notificação) continua explicada pela TelaBloqueada
+   * — mandá-la embora dali esconderia que a página existe.
+   */
+  const primeiraPermitida = TODAS_AS_TELAS.find((t) => podeVerTela(acesso, t));
+  const desviarDaAterrissagem =
+    bloqueada && tela === "dashboard" && !loading && !profileLoading;
+  useEffect(() => {
+    if (!desviarDaAterrissagem) return;
+    router.replace(ROTA_DA_TELA[primeiraPermitida ?? "settings"]);
+  }, [desviarDaAterrissagem, primeiraPermitida, router]);
 
   // ⚠️ `profileLoading` entra no gate junto com a sessão (Fase 2 dos
   // perfis). Enquanto o profile não chega, `acesso` é
@@ -72,11 +95,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
               `podeVerTela`. Caminho fora do catálogo (null) passa — não é
               uma tela recortável. NUNCA 404: a pessoa precisa entender que
               a página existe e está fora do perfil dela. */}
-          {(() => {
-            const tela = telaDoCaminho(pathname, ROTA_DA_TELA);
-            const bloqueada = tela !== null && !podeVerTela(acesso, tela);
-            return bloqueada ? <TelaBloqueada /> : children;
-          })()}
+          {desviarDaAterrissagem ? null : bloqueada ? <TelaBloqueada /> : children}
         </main>
       </div>
     </div>

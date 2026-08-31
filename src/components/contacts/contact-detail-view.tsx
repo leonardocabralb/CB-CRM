@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { useAuth } from '@/hooks/use-auth';
+import { useCan } from '@/hooks/use-can';
 import { funilNoEscopo } from '@/lib/perfis/escopo';
 import { useChannels } from '@/hooks/use-channels';
 import { metaChannels, preferredChannel } from '@/lib/cb-channels/display';
@@ -98,6 +99,16 @@ export function ContactDetailView({
     const escolha = preferredChannel(canaisMeta);
     if (escolha) setCanalEnvio(escolha.id);
   }, [canaisMeta, canalEnvio]);
+
+  /**
+   * ⚠️ Esta ficha e o painel da conversa escrevem O MESMO dado, e só o
+   * painel gateava. Sem isto, um `viewer` clicava em "Salvar alterações", a
+   * policy `contacts_update` (agent+) casava ZERO linhas, o PostgREST devolvia
+   * `error` nulo — e a tela dava toast de sucesso sobre uma escrita que nunca
+   * aconteceu. Mesma permissão do painel (`send-messages` = agent+), para as
+   * duas superfícies não divergirem.
+   */
+  const podeEditar = useCan('send-messages');
 
   // Details tab
   const [editName, setEditName] = useState('');
@@ -671,7 +682,8 @@ export function ContactDetailView({
                   </div>
                   <Button
                     onClick={saveDetails}
-                    disabled={savingDetails}
+                    disabled={savingDetails || !podeEditar}
+                    title={podeEditar ? undefined : t('readOnlyHint')}
                     className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
                     size="sm"
                   >
@@ -852,7 +864,8 @@ export function ContactDetailView({
                     ))}
                     <Button
                       onClick={saveCustomFields}
-                      disabled={savingCustom}
+                      disabled={savingCustom || !podeEditar}
+                      title={podeEditar ? undefined : t('readOnlyHint')}
                       className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
                       size="sm"
                     >
