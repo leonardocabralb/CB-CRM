@@ -94,26 +94,33 @@ export async function POST(request: Request) {
 
     const admin = supabaseAdmin();
 
-    // ⚠️⚠️ A ORDEM DOS DOIS TESTES ABAIXO É A GUARDA INTEIRA.
-    // `exists()` devolve `data: false` E `error` preenchido ao mesmo tempo
-    // quando o objeto não está lá (o 400/404 do HEAD vira StorageError e volta
-    // junto com a resposta). Lendo o `error` primeiro, esta conferência
-    // responderia "existe" para todo arquivo ausente — o único caso para o
-    // qual ela serve. Já custou caro na 932; aqui o dano seria um item no
-    // acervo que, ao ser enviado, entrega um 404 ao cliente.
-    const { data: existe, error: erroExiste } = await admin.storage
-      .from(CHAT_MEDIA_BUCKET)
-      .exists(mediaPath);
-    if (existe === false) {
-      return NextResponse.json({ error: 'FILE_NOT_FOUND' }, { status: 400 });
-    }
-    if (erroExiste) {
+    // ⚠️⚠️ AS DUAS ARMADILHAS DO `exists()`, e esta conferência já caiu na
+    // primeira (932): quando o objeto NÃO está lá, ele RESOLVE com
+    // `data: false` E `error` preenchido ao mesmo tempo (o 400/404 do HEAD
+    // vira StorageError e volta junto com a resposta) — ler o `error` como
+    // falha responderia "existe" para todo arquivo ausente, o único caso
+    // para o qual a conferência serve, e o acervo ganharia item que entrega
+    // 404 ao cliente. Por isso SÓ o `data` é lido do resultado resolvido.
+    // A segunda metade: qualquer OUTRA falha (5xx, rede) é LANÇADA
+    // (`throw error` no storage-js). Sem o try/catch, o "Storage fora do
+    // ar" era um ramo inalcançável — o blip virava 500 no toErrorResponse e
+    // recusava um upload que deu certo, o oposto do desenho. Mesma família
+    // do catch que o disparador da 932 já tinha (ledger 48h).
+    let existe: boolean | null;
+    try {
+      const r = await admin.storage.from(CHAT_MEDIA_BUCKET).exists(mediaPath);
+      existe = r.data;
+    } catch (erroExiste) {
       // Storage fora do ar não é "sumiu": seguir e gravar a linha é melhor que
       // recusar um upload que deu certo.
       console.warn(
         '[POST /api/cb/acervo] não deu para conferir o arquivo:',
-        erroExiste.message
+        erroExiste instanceof Error ? erroExiste.message : erroExiste
       );
+      existe = null;
+    }
+    if (existe === false) {
+      return NextResponse.json({ error: 'FILE_NOT_FOUND' }, { status: 400 });
     }
 
     const {

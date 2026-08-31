@@ -367,6 +367,24 @@ export default function RadarPage() {
         </div>
       )}
 
+      {/* ⚠️ Chave de IA ausente é problema de CONTA, não de conversa — um
+          cartão por linha `sem_ia` seria o ruído que o filtro matou, e
+          NENHUM cartão era o oposto: a chave rotacionada silenciava a
+          análise e o painel seguia com cara de saudável, só com as
+          métricas (ledger 48h). Um aviso único, no padrão do recado de
+          ciclo, apontando para onde se conserta. */}
+      {decorados.some((d) => d.insight.detalhes?.sem_ia && !d.foraDaJanela) && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p>
+            {t('semIaAviso')}{' '}
+            <Link href="/settings?tab=integracoes" className="underline underline-offset-2">
+              {t('semIaAvisoLink')}
+            </Link>
+          </p>
+        </div>
+      )}
+
       {/* A aba "Todos" foi removida em 2026-08-30 (decisão do operador):
           listar toda conversa analisada era o próprio ruído que o painel
           passou a filtrar. O que ficou de fora — análise sem gatilho,

@@ -2750,6 +2750,8 @@
     "erro_ja_em_analise": "This conversation is already being analyzed — try again in a few seconds.",
     "cicloNuncaRodou": "The Radar's automatic cycle has never run. The VPS scheduler isn't hitting the new route yet — that's the manual runbook step (docs/PLANO-radar-de-atendimento.md). Until then, use \"Re-analyze\" on conversations.",
     "cicloParado": "The Radar's automatic cycle has been stopped for {min} min. The analyses below may be stale.",
+    "semIaAviso": "Recent analyses ran without AI — the provider key is missing or stopped working. Response times continue; score, urgency and dissatisfaction do not.",
+    "semIaAvisoLink": "Check in Integrations",
     "janelaCortada": "conversation larger than the cap — the window's oldest messages were left out",
     "semCliente": "No client messages in the window",
     "foraDaJanela": "Idle for over {dias} days",

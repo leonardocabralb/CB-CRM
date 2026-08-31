@@ -325,7 +325,12 @@ entre escrever e enviar.** `src/lib/scheduled/midia.ts` (puro, com teste),
   responder "existe" para todo arquivo sumido, que é o único caso para o qual
   ela serve. Já foi cometido, e só a medição em produção pegou: o teste
   passava porque o stub imitava a forma SUPOSTA. **Quem usar `exists()` em
-  código novo confere `data === false` antes do `error`.**
+  código novo confere `data === false` antes do `error`.** ⚠️ E a SEGUNDA
+  metade (revisão 48h): a forma resolvida `{data:false, error}` só existe
+  para 400/404 — **qualquer outra falha (5xx, rede) é LANÇADA** (`throw
+  error` no storage-js). Sem try/catch, o ramo "Storage fora do ar" fica
+  inalcançável e o blip vira 500: código novo precisa das DUAS defesas,
+  como `anexoAindaExiste` (dispatch) e a rota do acervo fazem.
 - ⚠️ **A URL do anexo é DERIVADA do caminho (`getPublicUrl`), nunca aceita do
   cliente.** Aceitando-a, a conferência de posse olha um campo (`media_path`) e
   o envio usa outro (`media_url`), sem nada amarrando os dois — dá para casar

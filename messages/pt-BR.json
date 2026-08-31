@@ -2743,6 +2743,8 @@
     "erro_ja_em_analise": "Esta conversa já está sendo analisada — aguarde alguns segundos.",
     "cicloNuncaRodou": "O ciclo automático do Radar nunca rodou. O agendador da VPS ainda não bate na rota nova — é o passo manual do runbook (docs/PLANO-radar-de-atendimento.md). Até lá, use \"Reanalisar\" nas conversas.",
     "cicloParado": "O ciclo automático do Radar está parado há {min} min. As análises abaixo podem estar desatualizadas.",
+    "semIaAviso": "Análises recentes saíram sem IA — a chave do provedor está ausente ou parou de funcionar. Os tempos de resposta continuam; nota, urgência e insatisfação não.",
+    "semIaAvisoLink": "Conferir em Integrações",
     "janelaCortada": "conversa maior que o teto — as mensagens mais antigas da janela ficaram fora",
     "semCliente": "Sem fala do cliente na janela",
     "foraDaJanela": "Parada há mais de {dias} dias",

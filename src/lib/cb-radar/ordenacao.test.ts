@@ -121,6 +121,25 @@ describe('ordenarPorSeveridade', () => {
     const ordem = ordenarPorSeveridade([velho, novo], (x) => x, AGORA)
     expect(ordem[0]).toBe(novo)
   })
+
+  it('⚠️ no empate, quem ESPERA há mais tempo vem antes da atividade', () => {
+    // Abaixo de 24h a espera soma ZERO ao score (os degraus começam no
+    // limiar do alarme): decidido só pela atividade recente, o cliente
+    // esperando há 20 horas — o mais perto de virar alarme — ficava ABAIXO
+    // do que escreveu há 20 minutos.
+    const esperaLonga = insight({
+      pedidosAbertos: 1,
+      aguardandoMsCorridos: 20 * 3_600_000,
+      ultimaAtividade: haHoras(20),
+    })
+    const esperaCurta = insight({
+      pedidosAbertos: 1,
+      aguardandoMsCorridos: 20 * 60_000,
+      ultimaAtividade: haHoras(0.3),
+    })
+    const ordem = ordenarPorSeveridade([esperaCurta, esperaLonga], (x) => x, AGORA)
+    expect(ordem[0]).toBe(esperaLonga)
+  })
 })
 
 describe('resumirCartoes', () => {
