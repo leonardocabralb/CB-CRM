@@ -20,20 +20,24 @@ export interface MensagemParaMetricas {
    *  dada pelo celular, `from_device` — para o cliente é resposta igual). */
   senderType: 'customer' | 'agent' | 'bot'
   /**
-   * Saiu de GENTE? (`sender_id` preenchido **ou** `from_device`.)
+   * Saiu de GENTE respondendo agora?
    *
-   * ⚠️ Só isto fecha a pendência do cliente. Broadcast, automação, fluxo e
-   * agendada gravam `agent`/`bot` sem `sender_id` e sem `from_device`: pelo
-   * tipo do remetente sozinho, um "recebemos seu contato" automático da
-   * terça fechava a pendência aberta na segunda e o cartão daquele cliente
-   * esquecido sumia do painel — apagando justamente o alarme que o Radar
-   * existe para acender. A legenda da tela promete o contrário.
+   * ⚠️ Só isto fecha a pendência do cliente — e quem resolve é o CHAMADOR,
+   * porque as colunas não bastam:
    *
-   * ⚠️ `from_device` é obrigatório na conta: o celular pareado grava
-   * `agent` com `sender_id` NULO, e em produção 948 das 978 respostas da
-   * equipe vêm por ele. Exigir `sender_id` reconheceria 8.
+   * - Broadcast, automação e fluxo gravam `agent`/`bot` sem `sender_id` e
+   *   sem `from_device` → não é gente.
+   * - O celular pareado grava `agent` com `sender_id` NULO e `from_device`
+   *   true → É gente (948 das 978 respostas da equipe em produção).
+   * - ⚠️ A AGENDADA grava `sender_id` — o `created_by` de quem a criou,
+   *   dias antes (dispatch → send-message). É atribuição, não resposta:
+   *   pela coluna sozinha, um follow-up agendado fechava a pendência do
+   *   cliente esquecido (achado do Codex no PR #74). O worker a exclui
+   *   pela proveniência (`cb_scheduled_messages.message_id`).
    *
-   * Irrelevante quando `senderType === 'customer'`.
+   * Sem isto, um "recebemos seu contato" automático da terça apagava do
+   * painel a pendência aberta na segunda — o alarme que o Radar existe
+   * para acender. Irrelevante quando `senderType === 'customer'`.
    */
   porGente: boolean
   createdAt: Date

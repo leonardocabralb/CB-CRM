@@ -115,10 +115,17 @@ const TETO_RESPOSTAS = 1000;
  * `sender_id` reconheceria 8 de 978 respostas e o alarme de 24h
  * sobreviveria ao atendimento em quase todo caso real.
  *
- * O que continua NÃO fechando: broadcast, automação, fluxo e agendada,
- * que saem sem `sender_id` E sem `from_device` (22 linhas). Se qualquer
- * saída contasse, um "recebemos seu contato" automático apagaria da tela
- * justamente o cliente esquecido que o Radar existe para achar.
+ * O que continua NÃO fechando: broadcast, automação e fluxo (saem sem
+ * `sender_id` e sem `from_device`) — e a AGENDADA, que exige tratamento
+ * PRÓPRIO: ela SAI com `sender_id` (o `created_by` de quem a criou, dias
+ * antes — dispatch → send-message), então a coluna sozinha a confundiria
+ * com resposta. A proveniência que a denuncia é
+ * `cb_scheduled_messages.message_id` (achado do Codex no PR #74). Se
+ * qualquer saída automática contasse, um "recebemos seu contato" apagaria
+ * da tela justamente o cliente esquecido que o Radar existe para achar.
+ *
+ * Mensagem APAGADA também não conta: para o cliente ela virou "Esta
+ * mensagem foi apagada" — responder e apagar não é responder.
  */
 async function respostasDepoisDaPendencia(
   supabase: ReturnType<typeof createClient>,
@@ -140,18 +147,26 @@ async function respostasDepoisDaPendencia(
     (min, i) => (Date.parse(i.aguardando_desde) < Date.parse(min) ? i.aguardando_desde : min),
     comPendencia[0].aguardando_desde,
   );
-  const { data, error } = await supabase
-    .from('messages')
-    .select('conversation_id, created_at')
-    .in(
-      'conversation_id',
-      comPendencia.map((i) => i.conversation_id),
-    )
-    .eq('sender_type', 'agent')
-    .or('sender_id.not.is.null,from_device.is.true')
-    .gte('created_at', desde)
-    .order('created_at', { ascending: false })
-    .limit(TETO_RESPOSTAS);
+  const ids = comPendencia.map((i) => i.conversation_id);
+  const [{ data, error }, agendadasRes] = await Promise.all([
+    supabase
+      .from('messages')
+      .select('id, conversation_id, created_at')
+      .in('conversation_id', ids)
+      .eq('sender_type', 'agent')
+      .or('sender_id.not.is.null,from_device.is.true')
+      .is('deleted_at', null)
+      .gte('created_at', desde)
+      .order('created_at', { ascending: false })
+      .limit(TETO_RESPOSTAS),
+    // As mensagens nascidas de AGENDADA nessas conversas — carregam
+    // `sender_id` e passariam pelo `.or` acima como se fossem resposta.
+    supabase
+      .from('cb_scheduled_messages')
+      .select('message_id')
+      .in('conversation_id', ids)
+      .not('message_id', 'is', null),
+  ]);
 
   // Na dúvida, MANTÉM o alarme. Falha de rede não pode apagar da tela um
   // cliente sem resposta — errar para o lado do alarme é barulho; errar
@@ -181,8 +196,24 @@ async function respostasDepoisDaPendencia(
     );
   }
 
+  // ⚠️ Falha SÓ da consulta de agendadas segue SEM a exclusão, avisando.
+  // Descartar tudo (alarme para todo mundo por um blip de rede a cada 2
+  // min) regrediria o próprio bug que esta função corrige; e o caso que a
+  // exclusão protege — conversa cuja única "resposta" é uma agendada — é
+  // raro e se corrige na recarga seguinte.
+  if (agendadasRes.error) {
+    console.warn(
+      '[radar] não deu para conferir envios agendados — podem contar como resposta até a próxima recarga:',
+      agendadasRes.error.message,
+    );
+  }
+  const deAgendada = new Set(
+    (agendadasRes.data ?? []).map((r) => r.message_id as string),
+  );
+
   const ultimaRespostaHumana = new Map<string, number>();
-  for (const m of data as { conversation_id: string; created_at: string }[]) {
+  for (const m of data as { id: string; conversation_id: string; created_at: string }[]) {
+    if (deAgendada.has(m.id)) continue;
     const quando = Date.parse(m.created_at);
     if (Number.isNaN(quando)) continue;
     const atual = ultimaRespostaHumana.get(m.conversation_id);

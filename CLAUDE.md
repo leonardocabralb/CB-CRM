@@ -721,7 +721,11 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   passada do worker somam-se o ciclo do agendador e o throttle, e até lá o
   cartão ficava na tela com o contador "aguardando há 26h" CRESCENDO sobre
   cliente já atendido. A conferência **falha para o lado do alarme**: erro
-  de rede ou lista truncada mantêm o cartão.
+  de rede mantém o cartão, e lista TRUNCADA continua valendo (a consulta é
+  DESC — o teto só pode omitir resposta ANTIGA, e faltar resposta mantém o
+  cartão; descartar tudo no teto desligava a conferência inteira de vez,
+  porque pendência congelada puxa o piso da consulta para semanas atrás).
+  Mensagem APAGADA não conta como resposta (`deleted_at IS NULL`).
 - ⚠️⚠️ **"Resposta de gente" NÃO é `sender_id IS NOT NULL`** — é
   `sender_id` preenchido **OU `from_device = true`**. O celular pareado
   (`persistDeviceMessage`) grava `sender_type='agent'` com `from_device`
@@ -730,8 +734,15 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   da equipe são `from_device` contra **8** digitadas dentro do CRM — a
   versão só-`sender_id` reconhecia 8 de 978 e o alarme de 24h sobrevivia
   ao atendimento em quase todo caso real (achado da revisão do PR #72).
-  Continuam NÃO fechando a pendência: broadcast, automação, fluxo e
-  agendada, que saem sem `sender_id` **e** sem `from_device`. ⚠️ O
+  Continuam NÃO fechando a pendência: broadcast, automação e fluxo (saem
+  sem `sender_id` e sem `from_device`) — e a **AGENDADA**, que é o caso
+  TRAIÇOEIRO: ela SAI COM `sender_id` (o `dispatch.ts` passa o
+  `created_by` de quem a criou, dias antes, e o send-message persiste).
+  Pela coluna sozinha ela conta como resposta; a proveniência que a
+  denuncia é `cb_scheduled_messages.message_id`, e o worker E a
+  conferência ao vivo a excluem por ele (achado do Codex no PR #74 — uma
+  versão anterior desta nota afirmava que a agendada saía sem `sender_id`,
+  e estava ERRADA). ⚠️ O
   `houveHumanoNaJanela` do worker usa a régua ANTIGA (só `sender_id`) —
   lá ela decide outra coisa (se preserva a análise congelada quando a
   janela não tem cliente), e uma saída `from_device` sozinha realmente não
