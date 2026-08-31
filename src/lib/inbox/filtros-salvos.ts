@@ -142,9 +142,14 @@ export function escreverFiltroSalvo(f: FiltrosDoInbox): Record<string, unknown> 
  * parecer dois.
  */
 export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
-  const etiquetasIguais =
-    a.etiquetaIds.length === b.etiquetaIds.length &&
-    [...a.etiquetaIds].sort().every((id, i) => id === [...b.etiquetaIds].sort()[i]);
+  const etiquetasIguais = (() => {
+    if (a.etiquetaIds.length !== b.etiquetaIds.length) return false;
+    // Ordenadas UMA vez cada. Reordenar `b` dentro do laço custa n·log n por
+    // elemento e não muda o resultado.
+    const ea = [...a.etiquetaIds].sort();
+    const eb = [...b.etiquetaIds].sort();
+    return ea.every((id, i) => id === eb[i]);
+  })();
 
   const modoImporta = a.etiquetaIds.length >= 2 || b.etiquetaIds.length >= 2;
 

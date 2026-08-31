@@ -145,6 +145,18 @@ export function FiltrosSalvosMenu({
     return r === "ok";
   };
 
+  /**
+   * ⚠️ O gatilho SOME quando não decide nada — a convenção do projeto (o
+   * seletor de canal com menos de 2 números, o de tipo sem grupos, o de bloco
+   * com um bloco só). Para quem não pode gerir e ainda não tem filtro nenhum,
+   * este menu só teria "Nenhum filtro salvo ainda." atrás de um clique.
+   *
+   * Enquanto CARREGA ele fica, para a barra não pular; e quando a leitura
+   * FALHA ele fica também — é lá que o aviso mora, e sumir seria afirmar
+   * "não há filtro salvo" sobre uma consulta que não voltou.
+   */
+  if (!podeGerir && !carregando && !falhou && visiveis.length === 0) return null;
+
   return (
     <>
       <DropdownMenu>

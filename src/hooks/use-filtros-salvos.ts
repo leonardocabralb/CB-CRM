@@ -69,11 +69,20 @@ function ordenar(lista: FiltroSalvo[]): FiltroSalvo[] {
 }
 
 export function useFiltrosSalvos(): UseFiltrosSalvosResult {
-  const { accountId, user } = useAuth();
+  const { accountId, user, profileLoading } = useAuth();
   const userId = user?.id ?? null;
   const [salvos, setSalvos] = useState<FiltroSalvo[]>([]);
   const [padraoId, setPadraoId] = useState<string | null>(null);
-  const [carregando, setCarregando] = useState(true);
+  const [buscando, setBuscando] = useState(true);
+  /**
+   * ⚠️ DERIVADO, e não o `buscando` cru. Sem conta resolvida o efeito abaixo
+   * não busca nada e `buscando` ficaria `true` para sempre — e como a LISTA do
+   * inbox segura o spinner enquanto o filtro padrão pode entrar
+   * (`esperandoPadrao`), isso viraria uma caixa de entrada girando eternamente
+   * para quem tem o perfil quebrado. Com o perfil resolvido e ainda sem conta,
+   * não há o que carregar: a tela segue sem filtro salvo, que é a verdade.
+   */
+  const carregando = buscando && (profileLoading || !!accountId);
   const [falhou, setFalhou] = useState(false);
 
   useEffect(() => {
@@ -103,7 +112,7 @@ export function useFiltrosSalvos(): UseFiltrosSalvosResult {
         // a quem montou seis recortes ontem, e a única saída visível seria
         // remontá-los à mão.
         setFalhou(true);
-        setCarregando(false);
+        setBuscando(false);
         return;
       }
       setFalhou(false);
@@ -117,7 +126,7 @@ export function useFiltrosSalvos(): UseFiltrosSalvosResult {
           })),
         ),
       );
-      setCarregando(false);
+      setBuscando(false);
     })();
     return () => {
       cancelado = true;
