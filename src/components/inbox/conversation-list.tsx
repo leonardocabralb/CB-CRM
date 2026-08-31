@@ -29,16 +29,19 @@ import type {
   Profile,
   Tag,
 } from "@/types";
-import { Search, Users, Star, MessageSquareText } from "lucide-react";
+import { Search, Users, Star, MessageSquareText, MessageSquarePlus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { NovaConversaDialog } from "@/components/inbox/nova-conversa-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useBuscaEmMensagens } from "@/hooks/use-busca-em-mensagens";
 import { useChannels } from "@/hooks/use-channels";
 import { useAuth } from "@/hooks/use-auth";
 import { canaisVisiveis, conversaNoEscopo } from "@/lib/perfis/escopo";
+import { canSendMessages, isAccountRole } from "@/lib/auth/roles";
 import { useFavoritas } from "@/hooks/use-favoritas";
 
 interface ConversationListProps {
@@ -65,6 +68,12 @@ interface ConversationListProps {
    * re-renderizar a cada tecla digitada.
    */
   onTermoDeBusca?: (termo: string) => void;
+  /**
+   * Abriu uma conversa pelo botão "nova conversa". O pai é quem sabe
+   * recarregar a lista e navegar até ela (`?c=`), então o botão mora aqui só
+   * visualmente — sem o callback ele nem aparece.
+   */
+  onConversaAberta?: (conversationId: string) => void;
   /**
    * Etapa de funil vinda da URL (`?etapa=`, botão da coluna do quadro).
    * Semeia o filtro UMA vez, no estado inicial — a lista não remonta quando
@@ -99,10 +108,12 @@ export function ConversationList({
   onConversationsLoaded,
   resyncToken = 0,
   onTermoDeBusca,
+  onConversaAberta,
   etapaInicial = null,
   jornadaDoFunil = false,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
+  const [novaConversaAberta, setNovaConversaAberta] = useState(false);
 
   // ⚠️ A busca fica SEPARADA dos filtros, e de propósito. Ela responde "onde
   // está aquela conversa" (nome, telefone, nome do grupo, texto da última
@@ -357,6 +368,18 @@ export function ConversationList({
   // filtros.ts — escopo.ts importa canalDaConversa de lá, e o import na
   // direção contrária fecharia ciclo de módulos.
   const { acesso } = useAuth();
+  // ⚠️ Memoizado porque `canaisVisiveis` FILTRA quando o perfil tem recorte,
+  // e `.filter()` devolve array novo a cada render. Ele desce como prop para
+  // o diálogo de nova conversa, cujo efeito de pré-seleção depende desta
+  // lista — com identidade nova a cada render, o efeito reexecutaria sem
+  // parar. (Sem recorte a função devolve a MESMA referência, então o
+  // problema só apareceria numa conta com perfil configurado — o tipo de
+  // coisa que passa no teste de hoje e quebra quando o primeiro perfil
+  // nascer.)
+  const canaisDoPerfil = useMemo(
+    () => canaisVisiveis(acesso, channels),
+    [acesso, channels],
+  );
   const foraDoPerfil = useCallback(
     (c: Conversation) => !conversaNoEscopo(acesso, c),
     [acesso],
@@ -488,15 +511,48 @@ export function ConversationList({
     <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
       {/* Busca + filtros */}
       <div className="space-y-2 border-b border-border p-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={handleSearchChange}
-            placeholder={t("searchPlaceholder")}
-            className="border-border bg-muted pl-9 text-sm text-foreground placeholder-muted-foreground focus:border-primary/50"
-          />
+        <div className="flex items-center gap-2">
+          {/* `min-w-0` porque item de flex nasce com `min-width: auto` e o
+              campo tem largura intrínseca — sem ele o botão é empurrado para
+              fora da coluna de 320px. */}
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={handleSearchChange}
+              placeholder={t("searchPlaceholder")}
+              className="border-border bg-muted pl-9 text-sm text-foreground placeholder-muted-foreground focus:border-primary/50"
+            />
+          </div>
+
+          {/* Abordar um cliente é falar com ele: mesmo papel que ENVIAR, não
+              o de anotar. A rota confere de novo — isto só evita oferecer ao
+              `viewer` um botão que responderia 403. */}
+          {onConversaAberta && isAccountRole(acesso.papel) && canSendMessages(acesso.papel) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+              title={t("novaConversa")}
+              aria-label={t("novaConversa")}
+              onClick={() => setNovaConversaAberta(true)}
+            >
+              <MessageSquarePlus className="h-4 w-4" />
+            </Button>
+          )}
         </div>
+
+        {onConversaAberta && (
+          <NovaConversaDialog
+            open={novaConversaAberta}
+            onOpenChange={setNovaConversaAberta}
+            // As conexões DO PERFIL, como no filtro logo abaixo: oferecer
+            // uma conexão fora do escopo faria o operador abrir a conversa
+            // num número que ele não deveria usar.
+            canais={canaisDoPerfil}
+            onAberta={onConversaAberta}
+          />
+        )}
 
         {/* O que está acontecendo com a metade da busca que mora no banco.
             ⚠️ As três linhas existem porque, sem elas, os três estados são
@@ -538,7 +594,7 @@ export function ConversationList({
           // as outras seria um filtro que devolve sempre vazio, com cara de
           // "não há conversas". (As linhas de outra área que a BUSCA traz
           // continuam aparecendo; isto recorta só as OPÇÕES do filtro.)
-          canais={canaisVisiveis(acesso, channels)}
+          canais={canaisDoPerfil}
           etiquetas={tags}
           empresas={companies}
           responsaveis={temPerfis ? profiles : []}

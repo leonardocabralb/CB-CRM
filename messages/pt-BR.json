@@ -205,7 +205,8 @@
       "searchingInMessages": "Buscando dentro das mensagens...",
       "stageFilterUnavailable": "Não foi possível carregar as etapas — o recorte por funil/etapa não está sendo aplicado.",
       "searchInMessagesFailed": "Não foi possível buscar dentro das mensagens. A busca olhou só nomes e números.",
-      "searchHitCount": "{n, plural, =1 {1 msg} other {# msgs}}"
+      "searchHitCount": "{n, plural, =1 {1 msg} other {# msgs}}",
+      "novaConversa": "Nova conversa"
     },
     "messageThread": {
       "unknownAuthor": "Desconhecido",
@@ -593,6 +594,27 @@
       "noMatch": "Nenhum arquivo com esse termo.",
       "loadError": "Não foi possível carregar o acervo.",
       "asVoiceNote": "vai como nota de voz"
+    },
+    "novaConversa": {
+      "titulo": "Nova conversa",
+      "descricao": "Abre a conversa para você escrever nela. Nada é enviado agora.",
+      "telefone": "Telefone",
+      "telefonePlaceholder": "55 11 91234-5678",
+      "telefoneDica": "Com DDI e DDD. Espaços e traços são ignorados.",
+      "telefoneInvalido": "Isto não parece um telefone.",
+      "nome": "Nome (opcional)",
+      "nomePlaceholder": "Como este contato deve aparecer",
+      "canal": "Enviar pelo número",
+      "canalDica": "A conversa fica neste número até alguém trocar.",
+      "semCanal": "Nenhuma conexão de WhatsApp disponível. Conecte uma em Configurações.",
+      "abrir": "Abrir conversa",
+      "cancelar": "Cancelar",
+      "abertaNova": "Conversa aberta.",
+      "abertaExistente": "Este contato já existia — abrindo a conversa dele.",
+      "erroTelefone": "Telefone inválido. Confira o DDI e o DDD.",
+      "erroCanal": "Escolha por qual número enviar.",
+      "erroCanalSumiu": "Essa conexão não existe mais. Recarregue a página.",
+      "erroGenerico": "Não foi possível abrir a conversa. Tente de novo."
     }
   },
   "Contacts": {
@@ -2783,8 +2805,8 @@
       "notaTitulo": "Como a nota nasce",
       "nota": "A nota (0–10) parte de 10 e desconta por demora injustificada, pedido ignorado ou respondido pela metade, tom seco e falta de proatividade. Os tempos de resposta não são estimados pela IA: o sistema os calcula em horas úteis (seg–sex, {abre}h–{fecha}h, horário de São Paulo) — madrugada e fim de semana não contam como demora.",
       "alarmeTitulo": "O que vira cartão",
-    "alarme": "O painel lista só conversa com problema: insatisfação, pedido do cliente sem resposta, urgência jurídica (citação, intimação, oficial de justiça, bloqueio, prazo, audiência) ou cliente esperando há mais de {horas}h corridas. Conversa bem atendida continua sendo analisada e entra na nota média acima, mas não vira cartão para ninguém tratar. Menção a processo e pontos de atenção aparecem dentro do cartão aberto — sozinhos, não abrem um. A espera só termina quando GENTE responde: mensagem automática (broadcast, automação, agendada) não fecha pendência. Assim que alguém responde, o cartão sai da lista na hora, sem esperar a próxima análise.",
-    "sinaisTitulo": "De onde vêm os sinais",
+      "alarme": "O painel lista só conversa com problema: insatisfação, pedido do cliente sem resposta, urgência jurídica (citação, intimação, oficial de justiça, bloqueio, prazo, audiência) ou cliente esperando há mais de {horas}h corridas. Conversa bem atendida continua sendo analisada e entra na nota média acima, mas não vira cartão para ninguém tratar. Menção a processo e pontos de atenção aparecem dentro do cartão aberto — sozinhos, não abrem um. A espera só termina quando GENTE responde: mensagem automática (broadcast, automação, agendada) não fecha pendência. Assim que alguém responde, o cartão sai da lista na hora, sem esperar a próxima análise.",
+      "sinaisTitulo": "De onde vêm os sinais",
       "sinais": "Urgência, insatisfação, pedidos sem atendimento, menção a processo e pontos de atenção são identificados pela IA — e todo sinal exige evidência: o trecho real da mensagem que o justifica aparece no cartão. Sinal sem evidência é descartado automaticamente antes de chegar à tela. Números de processo (padrão CNJ) também são detectados por regra fixa, sem IA. Para quem gerencia a equipe, a análise inclui observações por atendente (demora, mensagem confusa, questionamento sem resposta), citando as mensagens da própria pessoa.",
       "cicloTitulo": "Quando analisa",
       "ciclo": "Ciclo automático a cada ~{ciclo} min, em lotes pequenos, começando pelas conversas com atividade mais recente. A mesma conversa espera ao menos {espera} min entre análises e só volta à fila quando há mensagem nova — conversa parada não gasta nada (análise que falhou tenta de novo, até 3 vezes). Janela sem fala do cliente (broadcast, abordagem ativa) não aciona a IA: ficam só as métricas, e mensagem automática não fecha pendência — só resposta de gente. \"Reanalisar\" força uma análise na hora.",

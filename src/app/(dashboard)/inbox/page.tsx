@@ -516,6 +516,24 @@ function InboxPageInner() {
     setResyncToken((n) => n + 1);
   }, []);
 
+  /**
+   * O botão "nova conversa" da lista acabou de abrir uma conversa no banco.
+   *
+   * Duas coisas, e as duas são necessárias: a conversa nasceu DEPOIS da
+   * última carga, então não está em `conversations` — o `resyncToken` força
+   * a lista a buscar de novo; e o `?c=` é o mesmo deep link que o painel e
+   * as notificações usam, que seleciona o fio assim que a lista chega com
+   * ele dentro. Só navegar deixaria a URL apontando para uma conversa que a
+   * lista não conhece, e o centro ficaria vazio.
+   */
+  const handleConversaAberta = useCallback(
+    (conversationId: string) => {
+      setResyncToken((t) => t + 1);
+      router.replace(urlDoInbox({ c: conversationId, de }));
+    },
+    [router, de],
+  );
+
   const handleConversationsLoaded = useCallback(
     (loaded: Conversation[]) => {
       setConversations(loaded);
@@ -789,6 +807,7 @@ function InboxPageInner() {
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
             onTermoDeBusca={setTermoDaBusca}
+            onConversaAberta={handleConversaAberta}
           />
         </div>
 

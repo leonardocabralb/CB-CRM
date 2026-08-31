@@ -47,6 +47,7 @@ import { EvolutionApiError } from '@/lib/whatsapp/transport/evolution-client';
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
 import { stampMessageChannel } from '@/lib/cb-channels/stamp';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
+import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { abortActiveRunsForContact } from '@/lib/flows/parar-run';
 import {
   sanitizePhoneForMeta,
@@ -853,6 +854,45 @@ export async function sendMessageToConversation(
       contactId: contact!.id,
       status: 'paused_by_agent',
       reason: 'agent_replied',
+    });
+  }
+
+  // Funil padrão da conexão. Este é o ponto que faz "o cliente que NÓS
+  // abordamos também entra no funil" — ver o cabeçalho de
+  // `pipeline-routing.ts`.
+  //
+  // ⚠️ DEPOIS da pausa de fluxos, de propósito. A pausa é sensível a TEMPO
+  // ("tem gente aqui agora") e corre contra um robô que pode responder ao
+  // cliente a qualquer momento; o funil não corre contra nada — o gatilho é
+  // por estado e a próxima mensagem tentaria de novo. Pôr as consultas do
+  // roteador na frente atrasaria o único dos dois que tem pressa.
+  //
+  // ⚠️ ESTÁ AQUI, no núcleo, de propósito — e a escolha é o que define
+  // QUEM abre negócio. Por este caminho passam os quatro envios decididos
+  // por gente: compositor do inbox, primeiro contato pela ficha, mensagem
+  // agendada e API pública. Broadcast (`broadcast-core.ts`) e
+  // automação/fluxo (`meta-send.ts`, `engine-send.ts`) NÃO passam, e é
+  // assim que ficam de fora sem uma única linha de guarda: um disparo em
+  // massa abriria centenas de cards de uma vez, e resposta de robô não é o
+  // escritório decidindo abordar ninguém.
+  //
+  // ⚠️ Via `supabaseAdmin()`, como o carimbo acima: a rota
+  // `/api/whatsapp/send` entrega o client do OPERADOR (sob RLS), e o
+  // roteador lê `accounts` e escreve em `deals` — sob RLS isso dependeria
+  // do papel de quem mandou a mensagem, e um `agent` deixaria de abrir
+  // card em silêncio.
+  //
+  // Pulado em GRUPO pelo mesmo motivo do bloco acima: grupo não tem
+  // contato individual, e card sem contato renderiza em branco no Kanban.
+  // (O roteador tem a guarda própria; aqui é para nem chegar lá.)
+  if (!ehGrupo && contact?.id) {
+    await routeContactToPipeline({
+      db: supabaseAdmin(),
+      accountId,
+      channelId: channel.channelId,
+      contactId: contact.id,
+      contactName: contact.name ?? null,
+      conversationId,
     });
   }
 

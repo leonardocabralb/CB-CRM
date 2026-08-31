@@ -13,7 +13,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
-import { routeInboundToPipeline } from '@/lib/cb-channels/pipeline-routing';
+import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
@@ -167,10 +167,17 @@ export interface PersistedInbound {
  * CRM. Existe separada de `persistInboundMessage` de propósito, e a
  * diferença não é cosmética:
  *
- *  - **Nenhum fan-out.** Automação, flow e resposta de IA não podem
- *    disparar aqui. Se disparassem, o assistente responderia ao próprio
- *    advogado, e uma automação de "primeira mensagem" contaria a resposta
- *    dele como se fosse do cliente.
+ *  - **Nenhum MOTOR DE CONVERSA.** Automação, flow e resposta de IA não
+ *    podem disparar aqui. Se disparassem, o assistente responderia ao
+ *    próprio advogado, e uma automação de "primeira mensagem" contaria a
+ *    resposta dele como se fosse do cliente.
+ *
+ *    ⚠️ O funil e o canal da conversa são OUTRA coisa, e por isso rodam
+ *    (desde 2026-08-31). Nenhum dos dois fala com o cliente nem produz
+ *    mensagem: um arquiva "este contato virou trabalho", o outro registra
+ *    "a conversa está acontecendo neste número". Eram a lacuna que fazia o
+ *    caminho REAL do escritório — 1.041 mensagens pelo celular contra 8
+ *    pelo CRM — não abrir negócio nenhum.
  *  - **Não mexe em `unread_count`.** O operador acabou de escrever aquilo;
  *    marcar como não lido é o contrário do que aconteceu.
  *  - **`sender_type='agent'`**, com `from_device` para a bolha marcar a
@@ -243,6 +250,34 @@ export async function persistDeviceMessage(
       updated_at: new Date().toISOString(),
     })
     .eq('id', conversation.id);
+
+  // A conversa segue o número por onde a EQUIPE acabou de falar — a mesma
+  // regra que já valia quando quem escrevia era o cliente, e o mesmo
+  // `followConversationChannel`, que não faz nada se o atendente tiver
+  // FIXADO o canal no seletor do fio (`channel_pinned`).
+  //
+  // ⚠️ Sem isto a conversa nascia com `channel_id` NULO — 129 delas em
+  // produção —, e conversa sem canal cai no canal PADRÃO da conta na hora de
+  // responder. O efeito medido: o advogado abordava o cliente pelo número do
+  // Jurídico e o CRM responderia pelo Comercial, trocando a identidade do
+  // escritório no meio do atendimento. A mensagem já nasce carimbada no
+  // insert acima; o que faltava era a conversa.
+  await followConversationChannel(db, conversation.id, m.channelId ?? null);
+
+  // Funil padrão da conexão — ver o cabeçalho de `pipeline-routing.ts`.
+  // Nunca lança, e sai no primeiro SELECT quando a conexão não tem funil.
+  await routeContactToPipeline({
+    db,
+    accountId: m.accountId,
+    channelId: m.channelId ?? null,
+    contactId: contactOutcome.contact.id,
+    // O nome do contato como está NO BANCO. O `m.name` de uma mensagem
+    // `fromMe` é o nome do PRÓPRIO operador (é por isso que o
+    // `findOrCreateContact` acima recebe string vazia) — usá-lo aqui poria
+    // "Leonardo" no título de um card que é do cliente.
+    contactName: contactOutcome.contact.name ?? null,
+    conversationId: conversation.id,
+  });
 
   return { messageId: insertedMsg.id, conversationId: conversation.id };
 }
@@ -394,9 +429,9 @@ export async function persistInboundMessage(
   // gatilho aqui é por ESTADO ("este contato já tem card neste funil?"), não
   // por evento, porque `first_inbound_message` é contado por conversa e há
   // uma conversa por contato — o cliente que muda de número nunca dispararia.
-  // `routeInboundToPipeline` nunca lança e sai no primeiro SELECT quando a
+  // `routeContactToPipeline` nunca lança e sai no primeiro SELECT quando a
   // conexão não tem funil configurado.
-  await routeInboundToPipeline({
+  await routeContactToPipeline({
     db,
     accountId: m.accountId,
     channelId: m.channelId ?? null,
