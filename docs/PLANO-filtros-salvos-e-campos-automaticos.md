@@ -22,8 +22,8 @@
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
 | **A1** | Banco dos filtros salvos + módulo puro (parse defensivo, descrição, ids órfãos) | ✅ **feita** (2026-08-31) | `967` **aplicada** | `feat/filtros-salvos-no-inbox` |
-| **A2** | Menu no botão "Filtros": aplicar · salvar o atual · renomear · apagar | 🟡 **código pronto**, falta o preview | nenhuma | `feat/filtros-salvos-no-inbox` |
-| **A3** | Filtro **padrão** por pessoa + a faixa que explica o inbox recortado | ⬜ a fazer | `968` (a confirmar) | — |
+| **A2** | Menu no botão "Filtros": aplicar · salvar o atual · renomear · apagar | ✅ **feita e medida no preview** (2026-08-31) | nenhuma | `feat/filtros-salvos-no-inbox` |
+| **A3** | Filtro **padrão** por pessoa + a faixa que explica o inbox recortado | ✅ **feita e medida no preview** (2026-08-31) | `968` **aplicada** | `feat/filtros-salvos-no-inbox` |
 | **B1** | Campos personalizados salvam ao sair do campo (painel do inbox + ficha `/contatos`) | ⬜ a fazer | nenhuma | — |
 
 **Decisões travadas com o operador (2026-08-31):**
@@ -314,6 +314,34 @@ CREATE TABLE cb_inbox_filtro_padrao (
 - **Trocar o padrão é um item no menu do próprio filtro** ("Definir como meu
   padrão" / "Deixar de ser meu padrão"), disponível a **qualquer membro** — o
   filtro é da equipe, mas a escolha é de cada um.
+
+#### ✅ A2 + A3 — medido no preview (2026-08-31, 1440×900)
+
+| O que | Resultado |
+| --- | --- |
+| Salvar o recorte atual | toast "Filtro salvo."; o gatilho vira a etiqueta do filtro, em roxo |
+| Nome repetido, outra caixa e com espaços (`"  teste e2e  "` sobre `TESTE E2E`) | vira PERGUNTA: "já existe … — salvar substitui o recorte dele", e o botão muda para "Substituir" |
+| Substituir | toast "Filtro atualizado."; o padrão continua apontando para o filtro (é referência, não cópia) |
+| Estrela na linha do menu | marca o padrão SEM aplicar o filtro nem fechar o menu (`stopPropagation`) |
+| **Recarregar a página** | o padrão entra sozinho: `Filtros ①`, pastilha, `Exibindo 132 de 176`, e a faixa "Filtro padrão: … · mostrar tudo" |
+| "mostrar tudo" | limpa o recorte, o gatilho volta a "Salvos" e a faixa some |
+| **`?etapa=…&de=funil`** | o deep link VENCE: pastilhas do funil/etapa, faixa "Voltar ao funil", padrão **não** aplicado — e `/inbox` puro logo depois volta a aplicá-lo |
+| Renomear (Enter e ✓) | ambos gravam; a faixa do padrão passa a mostrar o nome novo |
+| Apagar | confirmação inline; some da lista, o CASCADE da 968 leva o padrão junto e a faixa some |
+
+**Guarda de papel provada NO BANCO** (transação com `SET LOCAL ROLE authenticated`
++ `request.jwt.claims`, desfeita por `RAISE` no fim — o papel do dono foi
+rebaixado e restaurado): `owner_insert=OK` · `agent_select=1` (todo membro LÊ) ·
+`agent_insert=BARRADO` · `agent_update_linhas=0` · `agent_delete_linhas=0` (as
+duas voltam **0 linhas sem erro** — exatamente o que o rowcount do hook pega) ·
+`agent_apaga_proprio_padrao=1` (a assimetria de propósito: o padrão é pessoal) ·
+`outra_conta_select=0`.
+
+⚠️ **Um falso positivo registrado para não voltar:** o Enter do renomear parecia
+não funcionar. Não era o código — era o nome da tecla no comando de teste
+(`Return` não é reconhecido; `Enter` é). Medido nos dois caminhos depois disso.
+
+---
 
 ---
 

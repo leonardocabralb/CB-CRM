@@ -36,6 +36,14 @@ export type ResultadoDaEscrita = "ok" | "nome-repetido" | "sem-permissao" | "err
 
 export interface UseFiltrosSalvosResult {
   salvos: FiltroSalvo[];
+  /**
+   * O filtro que ESTE membro escolheu como padrão (968), ou `null`.
+   *
+   * ⚠️ É de cada um, sobre um filtro que é da conta. A policy já filtra por
+   * `auth.uid()`, então a consulta abaixo não repete o recorte — mas o
+   * `user_id` do upsert precisa estar certo, porque é ele que a policy compara.
+   */
+  padraoId: string | null;
   /** `true` até a primeira resposta (ou falha) chegar. */
   carregando: boolean;
   /** A leitura falhou — o menu não pode afirmar "não há filtro salvo". */
@@ -45,6 +53,8 @@ export interface UseFiltrosSalvosResult {
   regravar: (id: string, filtros: FiltrosDoInbox) => Promise<ResultadoDaEscrita>;
   renomear: (id: string, nome: string) => Promise<ResultadoDaEscrita>;
   apagar: (id: string) => Promise<ResultadoDaEscrita>;
+  /** `null` desmarca — o inbox volta a abrir sem recorte. */
+  definirPadrao: (filtroId: string | null) => Promise<ResultadoDaEscrita>;
 }
 
 interface LinhaCrua {
@@ -62,6 +72,7 @@ export function useFiltrosSalvos(): UseFiltrosSalvosResult {
   const { accountId, user } = useAuth();
   const userId = user?.id ?? null;
   const [salvos, setSalvos] = useState<FiltroSalvo[]>([]);
+  const [padraoId, setPadraoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [falhou, setFalhou] = useState(false);
 
@@ -70,10 +81,23 @@ export function useFiltrosSalvos(): UseFiltrosSalvosResult {
     const supabase = createClient();
     let cancelado = false;
     void (async () => {
-      const { data, error } = await supabase
-        .from("cb_inbox_saved_filters")
-        .select("id, nome, filtros");
+      // ⚠️ As duas JUNTAS, e `carregando` só cai quando as duas voltam: quem
+      // semeia o filtro padrão precisa saber que já sabe — com a lista pronta
+      // e o padrão ainda em voo, a semente rodaria achando que não há padrão
+      // nenhum, e o inbox abriria sem recorte para sempre (a semente é de uma
+      // vez só, de propósito).
+      const [{ data, error }, padraoRes] = await Promise.all([
+        supabase.from("cb_inbox_saved_filters").select("id, nome, filtros"),
+        supabase.from("cb_inbox_filtro_padrao").select("filtro_id").maybeSingle(),
+      ]);
       if (cancelado) return;
+      // Sem padrão escolhido é `data: null` sem erro; erro de verdade some com
+      // o padrão desta carga, o que é o lado seguro (abre sem recorte, e o
+      // menu continua dizendo qual filtro está marcado depois do próximo
+      // carregamento).
+      setPadraoId(
+        (padraoRes.data as { filtro_id: string } | null)?.filtro_id ?? null,
+      );
       if (error || !data) {
         // ⚠️ Não dá para tratar como "não há filtro salvo": o menu diria isso
         // a quem montou seis recortes ontem, e a única saída visível seria
@@ -197,8 +221,62 @@ export function useFiltrosSalvos(): UseFiltrosSalvosResult {
     // "0 linhas em silêncio" do CLAUDE.md.
     if (!data || data.length === 0) return "sem-permissao";
     setSalvos((prev) => prev.filter((f) => f.id !== id));
+    // O CASCADE da 968 já apagou a linha do padrão no banco; sem esta linha a
+    // tela seguiria marcando com a estrela um filtro que não existe mais.
+    setPadraoId((atual) => (atual === id ? null : atual));
     return "ok";
   }, []);
 
-  return { salvos, carregando, falhou, criar, regravar, renomear, apagar };
+  /**
+   * ⚠️ Upsert com alvo `(user_id, account_id)`, que é a PK — índice TOTAL, e
+   * por isso serve de `ON CONFLICT` (os índices PARCIAIS da 903 não servem, e
+   * é o erro que o CLAUDE.md documenta).
+   */
+  const definirPadrao = useCallback(
+    async (filtroId: string | null): Promise<ResultadoDaEscrita> => {
+      if (!accountId || !userId) return "erro";
+      const supabase = createClient();
+
+      if (filtroId === null) {
+        const { error } = await supabase
+          .from("cb_inbox_filtro_padrao")
+          .delete()
+          .eq("user_id", userId)
+          .eq("account_id", accountId);
+        if (error) return classificar(error.code);
+        setPadraoId(null);
+        return "ok";
+      }
+
+      const { data, error } = await supabase
+        .from("cb_inbox_filtro_padrao")
+        .upsert(
+          {
+            user_id: userId,
+            account_id: accountId,
+            filtro_id: filtroId,
+            definido_em: new Date().toISOString(),
+          },
+          { onConflict: "user_id,account_id" },
+        )
+        .select("filtro_id");
+      if (error) return classificar(error.code);
+      if (!data || data.length === 0) return "sem-permissao";
+      setPadraoId(filtroId);
+      return "ok";
+    },
+    [accountId, userId],
+  );
+
+  return {
+    salvos,
+    padraoId,
+    carregando,
+    falhou,
+    criar,
+    regravar,
+    renomear,
+    apagar,
+    definirPadrao,
+  };
 }

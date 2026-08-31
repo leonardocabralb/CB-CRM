@@ -236,7 +236,13 @@
       "savedFilterDeleted": "Filter deleted.",
       "savedFilterDuplicate": "A filter with that name already exists.",
       "savedFilterNoPermission": "Only admins can create or change saved filters.",
-      "savedFilterError": "Could not save the filter."
+      "savedFilterError": "Could not save the filter.",
+      "setAsDefault": "Make this my default",
+      "unsetAsDefault": "Stop being my default",
+      "defaultSet": "This filter now opens your inbox.",
+      "defaultUnset": "Your inbox opens unfiltered again.",
+      "defaultFilterBanner": "Default filter: {nome}",
+      "showEverything": "show everything"
     },
     "messageThread": {
       "unknownAuthor": "Unknown",

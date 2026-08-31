@@ -15,7 +15,16 @@
 // ============================================================
 
 import { useMemo, useState } from "react";
-import { Bookmark, Check, ChevronDown, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  Bookmark,
+  Check,
+  ChevronDown,
+  Loader2,
+  Pencil,
+  Plus,
+  Star,
+  Trash2,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
@@ -48,6 +57,8 @@ import { cn } from "@/lib/utils";
 
 export interface FiltrosSalvosMenuProps {
   salvos: FiltroSalvo[];
+  /** O filtro que ESTE membro escolheu como padrão (968). */
+  padraoId: string | null;
   carregando: boolean;
   falhou: boolean;
   filtrosAtuais: FiltrosDoInbox;
@@ -57,10 +68,12 @@ export interface FiltrosSalvosMenuProps {
   regravar: (id: string, filtros: FiltrosDoInbox) => Promise<ResultadoDaEscrita>;
   renomear: (id: string, nome: string) => Promise<ResultadoDaEscrita>;
   apagar: (id: string) => Promise<ResultadoDaEscrita>;
+  definirPadrao: (filtroId: string | null) => Promise<ResultadoDaEscrita>;
 }
 
 export function FiltrosSalvosMenu({
   salvos,
+  padraoId,
   carregando,
   falhou,
   filtrosAtuais,
@@ -70,6 +83,7 @@ export function FiltrosSalvosMenu({
   regravar,
   renomear,
   apagar,
+  definirPadrao,
 }: FiltrosSalvosMenuProps) {
   const t = useTranslations("Inbox.conversationList");
   // `edit-settings` é `admin`+ — a MESMA régua da policy da 967. Duas réguas
@@ -188,6 +202,46 @@ export function FiltrosSalvosMenu({
                     {aplicado?.id === f.id && (
                       <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
                     )}
+                    {/* ⚠️ Escolher o padrão é de QUALQUER membro — o filtro é
+                        do escritório, mas com qual recorte a MINHA caixa abre
+                        é meu. Por isso fica na linha, e não atrás do
+                        "Gerenciar", que é só de admin.
+
+                        `<button>` dentro de `DropdownMenuItem` é válido: o
+                        item do base-ui renderiza uma `div`. O
+                        `stopPropagation` impede que marcar o padrão também
+                        APLIQUE o filtro e feche o menu. */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const virandoPadrao = padraoId !== f.id;
+                        void definirPadrao(virandoPadrao ? f.id : null).then((r) =>
+                          avisar(
+                            r,
+                            virandoPadrao ? t("defaultSet") : t("defaultUnset"),
+                          ),
+                        );
+                      }}
+                      title={
+                        padraoId === f.id ? t("unsetAsDefault") : t("setAsDefault")
+                      }
+                      aria-pressed={padraoId === f.id}
+                      className={cn(
+                        "flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors hover:bg-muted",
+                        padraoId === f.id
+                          ? "text-amber-500"
+                          : "text-muted-foreground/50 hover:text-foreground",
+                      )}
+                    >
+                      <Star
+                        className={cn(
+                          "h-3.5 w-3.5",
+                          padraoId === f.id && "fill-current",
+                        )}
+                      />
+                    </button>
                   </span>
                   {/* O resumo é o que impede "acionei o SDR e sumiu tudo":
                       ele diz, antes do clique, o que aquele nome recorta. */}

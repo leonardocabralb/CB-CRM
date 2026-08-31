@@ -229,7 +229,13 @@
       "savedFilterDeleted": "Filtro apagado.",
       "savedFilterDuplicate": "Já existe um filtro com esse nome.",
       "savedFilterNoPermission": "Só administradores podem criar ou alterar filtros salvos.",
-      "savedFilterError": "Não foi possível salvar o filtro."
+      "savedFilterError": "Não foi possível salvar o filtro.",
+      "setAsDefault": "Definir como meu padrão",
+      "unsetAsDefault": "Deixar de ser meu padrão",
+      "defaultSet": "Este filtro passa a abrir a sua caixa de entrada.",
+      "defaultUnset": "A caixa de entrada volta a abrir sem filtro.",
+      "defaultFilterBanner": "Filtro padrão: {nome}",
+      "showEverything": "mostrar tudo"
     },
     "messageThread": {
       "unknownAuthor": "Desconhecido",
