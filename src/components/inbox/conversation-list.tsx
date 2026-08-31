@@ -10,6 +10,7 @@ import {
   aplicarFiltros,
   FILTROS_VAZIOS,
   mapaDeEtapasPorContato,
+  recorteTemDoisNiveis,
   type FiltrosDoInbox,
 } from "@/lib/inbox/filtros";
 import {
@@ -420,7 +421,14 @@ export function ConversationList({
       // chegam — a URL traz só a etapa. Sem isto o painel de dois níveis
       // abriria em "Qualquer funil" com uma etapa escolhida, que é um estado
       // que o seletor não sabe mostrar (o segundo nível nem apareceria).
-      if (daSemeada) {
+      //
+      // ⚠️ E SÓ onde esse seletor existe. Numa conta de um funil só — ou com
+      // a consulta de `pipelines` falhando sozinha — o painel é a lista
+      // chapada de sempre: carimbar `funilId` ali deixaria um recorte de
+      // funil ativo sem campo nenhum que o mostrasse, e "Qualquer etapa"
+      // (que significa "não filtro por etapa") passaria a esconder quem não
+      // tem negócio. Achado do Codex no PR #73.
+      if (daSemeada && recorteTemDoisNiveis(etapas, funis)) {
         setFiltros((prev) =>
           prev.etapaId === seed && prev.funilId === null
             ? { ...prev, funilId: daSemeada.pipeline_id }
@@ -436,7 +444,7 @@ export function ConversationList({
     setFiltros((prev) =>
       prev.etapaId === seed ? { ...prev, etapaId: null, funilId: null } : prev,
     );
-  }, [jornadaDoFunil, etapasStatus, etapas]);
+  }, [jornadaDoFunil, etapasStatus, etapas, funis]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -509,10 +517,15 @@ export function ConversationList({
             {t("searchingInMessages")}
           </p>
         )}
-        {/* Filtro de etapa ativo com os dados por trás indisponíveis: o
-            recorte foi neutralizado (ver `recorteDeEtapaConfiavel`) e isto é
-            o que impede a lista completa de passar por "filtrada". */}
-        {filtros.etapaId !== null && etapasStatus === "indisponivel" && (
+        {/* Filtro de funil OU de etapa ativo com os dados por trás
+            indisponíveis: o recorte foi neutralizado (ver
+            `recorteDeEtapaConfiavel`) e isto é o que impede a lista completa
+            de passar por "filtrada".
+            ⚠️ Os DOIS níveis, não só a etapa: um recorte só de funil cai
+            junto, e sem esta linha ele exibia a pastilha do funil sobre a
+            lista inteira, sem nada explicando. */}
+        {(filtros.etapaId !== null || filtros.funilId !== null) &&
+          etapasStatus === "indisponivel" && (
           <p className="px-0.5 text-[11px] text-destructive">
             {t("stageFilterUnavailable")}
           </p>

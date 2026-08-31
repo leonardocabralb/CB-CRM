@@ -11,6 +11,8 @@ import {
   mapaDeEtapasPorContato,
   SEM_ETAPA,
   SEM_RESPONSAVEL,
+  funisDoRecorte,
+  recorteTemDoisNiveis,
   type ContextoDosFiltros,
   type FiltrosDoInbox,
 } from "./filtros";
@@ -327,6 +329,50 @@ describe("casaComAEtapa", () => {
         funilPorEtapa: funis,
       })),
     ).toEqual([]);
+  });
+});
+
+describe("funisDoRecorte / recorteTemDoisNiveis", () => {
+  // Nomes ASCII de propósito: o `localeCompare` colaciona diferente entre a
+  // versão de Node da máquina e a do CI (Node 20), e um teste de ordenação
+  // com acento reprova só lá.
+  const etapas = [
+    { pipeline_id: "p2" },
+    { pipeline_id: "p1" },
+    { pipeline_id: "p2" },
+  ];
+  const nomes = new Map([
+    ["p1", "Bancario"],
+    ["p2", "Aereo"],
+    ["p3", "Sem etapa nenhuma"],
+  ]);
+
+  it("um item por funil, ordenado por nome", () => {
+    expect(funisDoRecorte(etapas, nomes)).toEqual([
+      { id: "p2", nome: "Aereo" },
+      { id: "p1", nome: "Bancario" },
+    ]);
+  });
+
+  it("funil sem etapa carregada fica de fora — não teria o que oferecer no segundo nível", () => {
+    expect(funisDoRecorte(etapas, nomes).map((f) => f.id)).not.toContain("p3");
+  });
+
+  it("⚠️ funil SEM NOME fica de fora: o seletor mostraria linha em branco e o operador escolheria às cegas", () => {
+    expect(funisDoRecorte(etapas, new Map([["p1", "Bancario"]]))).toEqual([
+      { id: "p1", nome: "Bancario" },
+    ]);
+    // Nomes indisponíveis (a consulta de `pipelines` falhou sozinha) derrubam
+    // os dois níveis inteiros — volta a lista chapada, que é honesta.
+    expect(recorteTemDoisNiveis(etapas, new Map())).toBe(false);
+  });
+
+  it("⚠️ dois níveis exigem DOIS funis nomeados — com um só, `funilId` fica sempre nulo e 'Qualquer etapa' segue significando 'não filtro por etapa'", () => {
+    expect(recorteTemDoisNiveis(etapas, nomes)).toBe(true);
+    expect(
+      recorteTemDoisNiveis([{ pipeline_id: "p1" }], nomes),
+    ).toBe(false);
+    expect(recorteTemDoisNiveis([], nomes)).toBe(false);
   });
 });
 

@@ -155,6 +155,51 @@ export function mapaDeEtapasPorContato(
   return mapa;
 }
 
+/**
+ * Os funis que podem virar o PRIMEIRO nível do recorte: os que têm etapa
+ * carregada **e** nome conhecido, em ordem de nome (a mesma `.order("name")`
+ * do resto do app).
+ *
+ * ⚠️ O nome é exigência, não enfeite. Os nomes vêm da consulta de `pipelines`,
+ * que é OUTRA — o gate de `etapasStatus` não a olha. Se ela falhar sozinha, um
+ * seletor de funil mostraria linhas em branco e o operador escolheria às
+ * cegas; sem os nomes o campo cai na lista chapada, que é honesta.
+ *
+ * ⚠️ **Mora aqui porque DOIS arquivos precisam da mesma resposta**: o painel,
+ * para desenhar um nível ou dois, e a lista, para decidir se o deep link
+ * `?etapa=` pode carimbar `funilId`. Quando os dois divergiram, um link do
+ * quadro numa conta de um funil só deixava `funilId` preenchido sem seletor
+ * que o mostrasse — e "Qualquer etapa" passava a esconder quem não tem
+ * negócio (achado do Codex no PR #73).
+ */
+export function funisDoRecorte(
+  etapas: { pipeline_id: string }[],
+  nomes: Map<string, string>,
+): { id: string; nome: string }[] {
+  const vistos = new Map<string, string>();
+  for (const e of etapas) {
+    if (vistos.has(e.pipeline_id)) continue;
+    const nome = nomes.get(e.pipeline_id);
+    if (nome) vistos.set(e.pipeline_id, nome);
+  }
+  return [...vistos.entries()]
+    .map(([id, nome]) => ({ id, nome }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
+/**
+ * O recorte tem os dois níveis (funil → etapa)? Com um funil só não há o que
+ * subdividir, e o campo continua sendo a lista de etapas de sempre — com
+ * `funilId` SEMPRE nulo, para "Qualquer etapa" seguir significando "não
+ * filtro por etapa".
+ */
+export function recorteTemDoisNiveis(
+  etapas: { pipeline_id: string }[],
+  nomes: Map<string, string>,
+): boolean {
+  return funisDoRecorte(etapas, nomes).length >= 2;
+}
+
 export interface ContextoDosFiltros {
   /**
    * Recorte por perfil de acesso (Fase 3). `true` = a conversa está FORA das

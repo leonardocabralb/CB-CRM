@@ -203,7 +203,7 @@
       "removeFilter": "Remover o filtro {filtro}",
       "searchMinChars": "Digite {n} letras para buscar também dentro das mensagens.",
       "searchingInMessages": "Buscando dentro das mensagens...",
-      "stageFilterUnavailable": "Não foi possível carregar as etapas — o recorte por etapa não está sendo aplicado.",
+      "stageFilterUnavailable": "Não foi possível carregar as etapas — o recorte por funil/etapa não está sendo aplicado.",
       "searchInMessagesFailed": "Não foi possível buscar dentro das mensagens. A busca olhou só nomes e números.",
       "searchHitCount": "{n, plural, =1 {1 msg} other {# msgs}}"
     },

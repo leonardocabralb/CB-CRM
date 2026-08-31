@@ -38,6 +38,8 @@ import type { CbChannel } from "@/lib/cb-channels/repo";
 import {
   contarFiltrosAtivos,
   FILTROS_VAZIOS,
+  funisDoRecorte,
+  recorteTemDoisNiveis,
   SEM_ETAPA,
   SEM_RESPONSAVEL,
   type FiltrosDoInbox,
@@ -113,36 +115,18 @@ export function InboxFilters({
   );
   const etapaAtual = etapas.find((e) => e.id === filtros.etapaId);
 
-  /**
-   * Os funis que podem virar o PRIMEIRO nível do recorte: os que têm etapa
-   * carregada **e** nome conhecido.
-   *
-   * ⚠️ O nome é exigência, não enfeite. `funis` vem de outra consulta do mesmo
-   * lote; se ela falhar sozinha, um seletor de funil mostraria linhas em
-   * branco e o operador escolheria às cegas. Sem os nomes o campo cai no
-   * formato antigo (lista chapada), que é honesto: pior que subdividir é
-   * subdividir sem dizer em quê.
-   */
-  const funisDoSeletor = useMemo(() => {
-    const vistos = new Map<string, string>();
-    for (const e of etapas) {
-      if (vistos.has(e.pipeline_id)) continue;
-      const nome = funis.get(e.pipeline_id);
-      if (nome) vistos.set(e.pipeline_id, nome);
-    }
-    return [...vistos.entries()]
-      .map(([id, nome]) => ({ id, nome }))
-      // Mesma ordenação do seletor de funis do resto do app (`.order("name")`
-      // em deal-form e automation-builder) — um Map não guarda ordem útil.
-      .sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [etapas, funis]);
-
-  /**
-   * Com dois funis ou mais o campo vira dois níveis (funil → etapa). Com um
-   * só, não há o que subdividir e ele fica exatamente como era: uma lista de
-   * etapas, com "Sem negócio" dentro dela.
-   */
-  const doisNiveis = funisDoSeletor.length >= 2;
+  // ⚠️ As duas saem do módulo puro, e não de uma cópia local: a LISTA também
+  // decide, lá em `conversation-list`, se o deep link `?etapa=` pode carimbar
+  // `funilId`. Divergindo, o carimbo acontece numa conta onde este seletor
+  // não existe — e some com quem não tem negócio (ver `funisDoRecorte`).
+  const funisDoSeletor = useMemo(
+    () => funisDoRecorte(etapas, funis),
+    [etapas, funis],
+  );
+  const doisNiveis = useMemo(
+    () => recorteTemDoisNiveis(etapas, funis),
+    [etapas, funis],
+  );
 
   // Já vêm ordenadas por `position` da consulta — a ordem das colunas do
   // quadro, que é como o operador pensa o funil.
