@@ -361,11 +361,20 @@ export function ConversationList({
     [acesso],
   );
 
+  // `stage_id` → `pipeline_id`, para o primeiro nível do recorte (escolher só
+  // o funil). Sai da MESMA consulta de `pipeline_stages` que alimenta o
+  // seletor, então nunca discorda dele.
+  const funilPorEtapa = useMemo(
+    () => new Map(etapas.map((e) => [e.id, e.pipeline_id])),
+    [etapas],
+  );
+
   const filtered = useMemo(
     () =>
       aplicarFiltros(conversations, filtros, {
         favoritas,
         etapaPorContato,
+        funilPorEtapa,
         busca: search,
         achadasNoTexto: idsAchadosNoTexto,
         recorteDeEtapaConfiavel: etapasStatus === "ok",
@@ -377,13 +386,15 @@ export function ConversationList({
       etapasStatus,
       favoritas,
       etapaPorContato,
+      funilPorEtapa,
       search,
       idsAchadosNoTexto,
       foraDoPerfil,
     ],
   );
   const aguardandoEtapas =
-    filtros.etapaId !== null && etapasStatus === "carregando";
+    (filtros.etapaId !== null || filtros.funilId !== null) &&
+    etapasStatus === "carregando";
 
   /**
    * Ciclo de vida do filtro SEMEADO por `?etapa=` (e só dele — etapa
@@ -402,12 +413,28 @@ export function ConversationList({
     const jornadaAcabou = jornadaAnteriorRef.current && !jornadaDoFunil;
     jornadaAnteriorRef.current = jornadaDoFunil;
     if (!seed) return;
-    const seedSumiu =
-      etapasStatus === "ok" && !etapas.some((e) => e.id === seed);
-    if (!jornadaAcabou && !seedSumiu) return;
+    const daSemeada = etapas.find((e) => e.id === seed);
+    const seedSumiu = etapasStatus === "ok" && !daSemeada;
+    if (!jornadaAcabou && !seedSumiu) {
+      // ⚠️ O funil da etapa semeada é preenchido AQUI, quando as etapas
+      // chegam — a URL traz só a etapa. Sem isto o painel de dois níveis
+      // abriria em "Qualquer funil" com uma etapa escolhida, que é um estado
+      // que o seletor não sabe mostrar (o segundo nível nem apareceria).
+      if (daSemeada) {
+        setFiltros((prev) =>
+          prev.etapaId === seed && prev.funilId === null
+            ? { ...prev, funilId: daSemeada.pipeline_id }
+            : prev,
+        );
+      }
+      return;
+    }
     seedDeEtapaRef.current = null;
+    // Os DOIS níveis morrem juntos: o funil só está aqui porque a etapa o
+    // trouxe, e deixá-lo de pé manteria a lista recortada pelo funil inteiro
+    // sem nada na tela explicando.
     setFiltros((prev) =>
-      prev.etapaId === seed ? { ...prev, etapaId: null } : prev,
+      prev.etapaId === seed ? { ...prev, etapaId: null, funilId: null } : prev,
     );
   }, [jornadaDoFunil, etapasStatus, etapas]);
 
