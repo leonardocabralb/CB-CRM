@@ -1455,6 +1455,10 @@ mordem de novo em qualquer código novo:
     `broadcast_recipients` passam de `'agent'` para `'admin'`, alcançando a
     decisão que a Fase 2 dos perfis só tinha aplicado nas ROTAS. Aplicada em
     2026-08-31. SELECT continua aberto a qualquer membro da conta.
+  - **965_cb_transferencia_limpa_perfil** — `transfer_account_ownership`
+    (018) passa a limpar `perfil_id` ao promover o novo dono: o caminho da
+    transferência ficara fora da 962 e deixava a divergência papel×perfil
+    presa num owner, irremovível pela UI. Aplicada em 2026-08-31.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
