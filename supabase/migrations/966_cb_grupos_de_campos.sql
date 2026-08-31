@@ -1,5 +1,5 @@
 -- ============================================================
--- 965 — Grupos de campos personalizados + ordem dentro do grupo
+-- 966 — Grupos de campos personalizados + ordem dentro do grupo
 --
 -- Pedido do operador em 2026-08-31, olhando o painel da conversa: os campos
 -- personalizados apareciam numa lista única, em ordem ALFABÉTICA, e os de
@@ -259,14 +259,14 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint WHERE conname = 'custom_fields_grupo_fkey'
   ) THEN
-    RAISE EXCEPTION '965: a FK composta do grupo não foi criada — campo poderia apontar para grupo de outra conta.';
+    RAISE EXCEPTION '966: a FK composta do grupo não foi criada — campo poderia apontar para grupo de outra conta.';
   END IF;
 
   IF NOT EXISTS (
     SELECT 1 FROM pg_indexes
     WHERE schemaname = 'public' AND indexname = 'cb_grupos_de_campos_nome_unico'
   ) THEN
-    RAISE EXCEPTION '965: o índice de nome único não foi criado — dariam para existir dois blocos com o mesmo nome.';
+    RAISE EXCEPTION '966: o índice de nome único não foi criado — dariam para existir dois blocos com o mesmo nome.';
   END IF;
 
   -- Afirmação de AUSÊNCIA: verdade trivial em banco vazio, e o que interessa
@@ -276,20 +276,20 @@ BEGIN
     FROM custom_fields
    WHERE categoria = 'tracking' AND grupo_id IS NULL;
   IF v_sem_grupo > 0 THEN
-    RAISE EXCEPTION '965: % campo(s) de traqueamento ficaram sem grupo.', v_sem_grupo;
+    RAISE EXCEPTION '966: % campo(s) de traqueamento ficaram sem grupo.', v_sem_grupo;
   END IF;
 
   IF has_table_privilege('anon', 'public.cb_grupos_de_campos', 'SELECT') THEN
-    RAISE EXCEPTION '965: anon enxerga cb_grupos_de_campos.';
+    RAISE EXCEPTION '966: anon enxerga cb_grupos_de_campos.';
   END IF;
 
   IF NOT has_table_privilege('authenticated', 'public.cb_grupos_de_campos', 'INSERT') THEN
-    RAISE EXCEPTION '965: authenticated não insere grupo — a tela de Configurações não criaria bloco.';
+    RAISE EXCEPTION '966: authenticated não insere grupo — a tela de Configurações não criaria bloco.';
   END IF;
 
   IF has_function_privilege('anon', 'public.cb_ordenar_campos_personalizados(jsonb)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.cb_ordenar_grupos_de_campos(uuid[])', 'EXECUTE') THEN
-    RAISE EXCEPTION '965: anon executa as RPCs de ordenação.';
+    RAISE EXCEPTION '966: anon executa as RPCs de ordenação.';
   END IF;
 END $$;
 
@@ -306,5 +306,5 @@ BEGIN
   PERFORM public.cb_ordenar_grupos_de_campos(ARRAY[]::uuid[]);
   RESET ROLE;
 EXCEPTION WHEN insufficient_privilege THEN
-  RAISE EXCEPTION '965: authenticated não consegue executar as RPCs de ordenação: %', SQLERRM;
+  RAISE EXCEPTION '966: authenticated não consegue executar as RPCs de ordenação: %', SQLERRM;
 END $$;

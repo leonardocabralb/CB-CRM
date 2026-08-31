@@ -124,7 +124,7 @@ export function PainelDoContato({
   onContactUpdated,
 }: PainelDoContatoProps) {
   const tSidebar = useTranslations('Inbox.sidebar');
-  /** Só para o rótulo do bloco Geral (965) — o mesmo que o catálogo usa, para
+  /** Só para o rótulo do bloco Geral (966) — o mesmo que o catálogo usa, para
    *  que a ficha e a tela de Configurações chamem o bloco pelo mesmo nome. */
   const tCampos = useTranslations('Contacts.customFields');
   const tThread = useTranslations('Inbox.messageThread');
@@ -214,7 +214,7 @@ export function PainelDoContato({
   const [resetNegocio, setResetNegocio] = useState(0);
 
   /**
-   * Os BLOCOS da seção CAMPOS (965). Substituíram o recorte por categoria da
+   * Os BLOCOS da seção CAMPOS (966). Substituíram o recorte por categoria da
    * 949: até aqui os gerais ficavam nesta aba e os de traqueamento numa aba
    * própria (o megafone), o que dava ao operador uma divisão fixa de duas
    * gavetas. Agora a divisão é a que ele montou em Configurações, e a aba
@@ -384,7 +384,7 @@ export function PainelDoContato({
         .select('id', { count: 'exact', head: true })
         .eq('contact_id', contact.id)
         .eq('status', 'aberta'),
-      // Os blocos (965) — catálogo da conta, como as etiquetas e os campos.
+      // Os blocos (966) — catálogo da conta, como as etiquetas e os campos.
       supabase
         .from('cb_grupos_de_campos')
         .select('*')
@@ -428,7 +428,7 @@ export function PainelDoContato({
     // Catálogo da CONTA: falha aqui não trava a edição do contato — segue
     // tolerante, como antes (o estado anterior continua servindo).
     if (allTagsRes.data) setAllTags(allTagsRes.data);
-    // Idem para os BLOCOS (965): falhando, `agruparCampos` joga todo campo no
+    // Idem para os BLOCOS (966): falhando, `agruparCampos` joga todo campo no
     // bloco Geral — a ficha perde a divisão, mas nenhum campo some.
     if (gruposRes.data) setGrupos(gruposRes.data as GrupoDeCampos[]);
     if (funisRes.data) setPipelines(funisVisiveis(acesso, funisRes.data));
@@ -640,7 +640,7 @@ export function PainelDoContato({
    * Valores dos campos — upsert compartilhado (nunca delete-all).
    *
    * Recebe a lista a salvar, e hoje o único chamador manda TODOS os campos.
-   * Até a 965 eram dois botões salvando subconjuntos, porque os de
+   * Até a 966 eram dois botões salvando subconjuntos, porque os de
    * traqueamento moravam numa aba separada e um Salvar não podia arrastar
    * junto uma edição meio-feita que estava fora da tela. Com os blocos, tudo
    * o que o botão salva está visível acima dele — o motivo da separação
@@ -805,7 +805,7 @@ export function PainelDoContato({
           >
             <ListTodo className="h-4 w-4" />
           </AbaDeIcone>
-          {/* ⚠️ A aba Traqueamento (o megafone da 949) SAIU na 965: os campos
+          {/* ⚠️ A aba Traqueamento (o megafone da 949) SAIU na 966: os campos
               de anúncio viraram um bloco como qualquer outro, dentro da
               Principal. Decisão do operador — uma gaveta fixa para dez campos
               técnicos, enquanto os campos do caso ficavam todos amontoados

@@ -1,7 +1,7 @@
 import type { CustomField, GrupoDeCampos } from '@/types';
 
 /**
- * Os BLOCOS de campos personalizados (migration 965).
+ * Os BLOCOS de campos personalizados (migration 966).
  *
  * Três telas mostram os mesmos campos repartidos do mesmo jeito — o painel da
  * conversa, a ficha de /contacts e o catálogo de Configurações. A repartição

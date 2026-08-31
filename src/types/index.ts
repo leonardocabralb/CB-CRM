@@ -153,7 +153,7 @@ export interface CustomField {
   /**
    * 'geral' | 'tracking' (CHECK da 949).
    *
-   * ⚠️ NÃO é o bloco em que o campo aparece — isso é `grupo_id` (965). Esta
+   * ⚠️ NÃO é o bloco em que o campo aparece — isso é `grupo_id` (966). Esta
    * coluna sobrevive como marca SEMÂNTICA ("é campo técnico"): é o que o
    * semeador dos 10 campos padrão escreve e o que a API pública v1 expõe como
    * `category` desde a Fase 6. O seletor de categoria saiu do formulário de
@@ -161,12 +161,12 @@ export interface CustomField {
    */
   categoria: string;
   /**
-   * Bloco em que o campo aparece na ficha do cliente (965). `null` é o bloco
+   * Bloco em que o campo aparece na ficha do cliente (966). `null` é o bloco
    * "Geral", que não tem linha em `cb_grupos_de_campos` e vem sempre primeiro.
    */
   grupo_id?: string | null;
   /**
-   * Ordem DENTRO do bloco (965). `null` cai no fim — é o que acontece com
+   * Ordem DENTRO do bloco (966). `null` cai no fim — é o que acontece com
    * campo criado por um caminho que não carimba a posição (o semeador de
    * traqueamento, por exemplo).
    */
@@ -175,7 +175,7 @@ export interface CustomField {
 }
 
 /**
- * Bloco de campos personalizados (migration 965) — "Bancário", "Trabalhista",
+ * Bloco de campos personalizados (migration 966) — "Bancário", "Trabalhista",
  * "Traqueamento". É só rótulo + ordem: quem pertence a ele é
  * `custom_fields.grupo_id`.
  *

@@ -100,7 +100,7 @@ const PREFIXO_BLOCO = 'bloco:';
 
 /**
  * Create / rename / delete account-wide custom contact field definitions,
- * repartidas em BLOCOS (migration 965). Per-contact values are edited
+ * repartidas em BLOCOS (migration 966). Per-contact values are edited
  * elsewhere (contact detail → Custom Fields); this only manages the field
  * catalogue. Admin+ gated by the caller — `custom_fields` e
  * `cb_grupos_de_campos` também exigem admin na RLS, como defesa em
@@ -138,7 +138,7 @@ export function CustomFieldsPanel({
   /** Opções do tipo `select`, separadas por vírgula (viram JSON no banco). */
   const [newOptions, setNewOptions] = useState('');
   /**
-   * Bloco em que o campo novo nasce (965). `''` é o bloco Geral — o
+   * Bloco em que o campo novo nasce (966). `''` é o bloco Geral — o
    * `grupo_id` NULO, que não tem linha no banco. Substituiu o seletor de
    * `categoria`: o operador escolhe ONDE o campo aparece, e a categoria (a
    * marca semântica que a API v1 expõe) fica no default 'geral'.
@@ -354,7 +354,7 @@ export function CustomFieldsPanel({
   }
 
   // ---------------------------------------------------------------
-  // Blocos (965)
+  // Blocos (966)
   // ---------------------------------------------------------------
 
   async function handleCreateGrupo() {
@@ -439,7 +439,7 @@ export function CustomFieldsPanel({
    * falta é medida pela CHAVE em qualquer categoria: um `utm_source` já criado
    * como campo geral não pode nascer de novo (a chave é única por conta).
    *
-   * ⚠️ Mudou de casa na 965. Ficava na aba Traqueamento do painel da conversa,
+   * ⚠️ Mudou de casa na 966. Ficava na aba Traqueamento do painel da conversa,
    * que deixou de existir; criar campo é gestão de CATÁLOGO e o catálogo é
    * aqui. Os campos nascem no bloco escolhido no formulário acima — o botão
    * diz qual, porque um lote de dez campos caindo no bloco errado é trabalhoso
@@ -481,6 +481,29 @@ export function CustomFieldsPanel({
   // Arrastar
   // ---------------------------------------------------------------
 
+  /**
+   * De QUALQUER id do arrastar para a chave do bloco em que ele está.
+   *
+   * ⚠️ Existe porque três nós ocupam praticamente a mesma caixa: o bloco
+   * arrastável, a ÁREA de soltura dentro dele e as linhas de campo. O
+   * `closestCenter` devolve o que tiver o centro mais perto — e entre o nó do
+   * bloco e a área dele, que têm o MESMO centro, o desempate é a ordem de
+   * registro no `DndContext`, não a geometria. Aceitar só um id por caso fazia
+   * "soltar num bloco vazio" e "reordenar blocos" funcionarem de forma
+   * INTERMITENTE: o gesto certo, o `over` "errado", e o arrastar sem efeito
+   * nenhum — sem erro, sem toast, sem nada a depurar.
+   */
+  function blocoDoAlvo(alvo: string): string | null {
+    if (alvo.startsWith(PREFIXO_BLOCO)) return alvo.slice(PREFIXO_BLOCO.length);
+    if (alvo.startsWith(PREFIXO_GRUPO)) return alvo.slice(PREFIXO_GRUPO.length);
+    if (alvo.startsWith(PREFIXO_CAMPO)) {
+      const id = alvo.slice(PREFIXO_CAMPO.length);
+      const dono = blocos.find((b) => b.campos.some((c) => c.id === id));
+      return dono ? chaveDoBloco(dono.grupo?.id ?? null) : null;
+    }
+    return null;
+  }
+
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over) return;
@@ -489,22 +512,20 @@ export function CustomFieldsPanel({
     if (arrastado === alvo) return;
 
     if (arrastado.startsWith(PREFIXO_GRUPO)) {
-      if (!alvo.startsWith(PREFIXO_GRUPO)) return;
-      await reordenarGrupos(
-        arrastado.slice(PREFIXO_GRUPO.length),
-        alvo.slice(PREFIXO_GRUPO.length)
-      );
+      const destino = blocoDoAlvo(alvo);
+      // O Geral não entra: não tem linha no banco, então não há posição a
+      // gravar — e ele é sempre o primeiro de qualquer forma.
+      if (!destino || destino === chaveDoBloco(null)) return;
+      await reordenarGrupos(arrastado.slice(PREFIXO_GRUPO.length), destino);
       return;
     }
 
     if (!arrastado.startsWith(PREFIXO_CAMPO)) return;
-    // O alvo é outro CAMPO (soltou em cima dele) ou a ÁREA de um bloco
-    // (soltou no vazio) — `moverCampo` distingue os dois.
+    // Soltou EM CIMA de um campo → aquela posição exata. Em qualquer outro nó
+    // do bloco → fim do bloco. `moverCampo` distingue os dois pelo formato.
     const destino = alvo.startsWith(PREFIXO_CAMPO)
       ? alvo.slice(PREFIXO_CAMPO.length)
-      : alvo.startsWith(PREFIXO_BLOCO)
-        ? alvo.slice(PREFIXO_BLOCO.length)
-        : null;
+      : blocoDoAlvo(alvo);
     if (!destino) return;
     await reordenarCampos(arrastado.slice(PREFIXO_CAMPO.length), destino);
   }

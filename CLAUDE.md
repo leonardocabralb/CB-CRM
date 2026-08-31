@@ -449,7 +449,7 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
   (`sendWhatsAppAudio`, PTT na Evolution). O seletor diz isso na linha do
   item, senão o operador manda "um arquivo" e o cliente recebe voz.
 
-⚠️ **Blocos de campos personalizados (965): o operador define a ordem, e ela
+⚠️ **Blocos de campos personalizados (966): o operador define a ordem, e ela
 vale para TODO cliente.** `cb_grupos_de_campos` (nome + posição),
 `custom_fields.grupo_id`/`posicao`, o módulo puro `src/lib/contacts/
 grupos-de-campos.ts` (testado) e o catálogo com arrastar em
@@ -1518,11 +1518,17 @@ mordem de novo em qualquer código novo:
     (018) passa a limpar `perfil_id` ao promover o novo dono: o caminho da
     transferência ficara fora da 962 e deixava a divergência papel×perfil
     presa num owner, irremovível pela UI. Aplicada em 2026-08-31.
-
-  - **965_cb_grupos_de_campos** — blocos de campos personalizados
+  - **966_cb_grupos_de_campos** — blocos de campos personalizados
     (`cb_grupos_de_campos` + `custom_fields.grupo_id`/`posicao` + as duas RPCs
-    de ordenação). Aplicada em 2026-08-31. ⚠️ Pulou a **964**, que é da branch
-    de revisão das 48h e ainda não estava mesclada quando esta nasceu.
+    de ordenação). Aplicada em 2026-08-31. ⚠️ NASCEU como `965` e COLIDIU com
+    a `965_cb_transferencia_limpa_perfil` — o TERCEIRO caso de duas branches
+    em paralelo (depois da 906 e da 963), e o mais instrutivo: as duas foram
+    APLICADAS no mesmo banco com 15 minutos de diferença, então o histórico do
+    Supabase tem duas entradas `965` e nenhum comando reclamou. O `git merge`
+    também passou limpo — são nomes de arquivo diferentes, então não há
+    conflito para o Git relatar. Quem pega é o replay do CI, depois. O ARQUIVO
+    foi renumerado (o desta, porque a outra já estava no `main`); o histórico
+    não se mexe, como na 906 e na 963.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

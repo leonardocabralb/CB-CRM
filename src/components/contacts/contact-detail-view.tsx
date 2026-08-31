@@ -67,7 +67,7 @@ export function ContactDetailView({
   onUpdated,
 }: ContactDetailViewProps) {
   const t = useTranslations('Contacts.detailView');
-  /** Só para o rótulo do bloco Geral (965) — o mesmo nome que o catálogo e o
+  /** Só para o rótulo do bloco Geral (966) — o mesmo nome que o catálogo e o
    *  painel da conversa usam. */
   const tCampos = useTranslations('Contacts.customFields');
   const tEventos = useTranslations('LeadEvents');
@@ -130,7 +130,7 @@ export function ContactDetailView({
 
   // Custom fields tab
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
-  /** Os blocos da 965 — o mesmo catálogo que o painel da conversa lê. */
+  /** Os blocos da 966 — o mesmo catálogo que o painel da conversa lê. */
   const [grupos, setGrupos] = useState<GrupoDeCampos[]>([]);
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [savingCustom, setSavingCustom] = useState(false);
@@ -827,7 +827,7 @@ export function ContactDetailView({
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {/* Um bloco por grupo (965), na ordem que o operador
+                    {/* Um bloco por grupo (966), na ordem que o operador
                         montou em Configurações — a mesma do painel da
                         conversa. Substituiu a divisão fixa em dois da 949
                         (gerais + traqueamento). O bloco Geral não ganha
