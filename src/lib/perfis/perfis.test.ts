@@ -158,6 +158,15 @@ describe("podeVerSecao", () => {
     }
   });
 
+  it("⚠️ nem no fail-open de quem está SEM perfil", () => {
+    // "Sem perfil = sem restrição" vale para as seções comuns, não para a
+    // gestão de permissão: o papel existe mesmo com o perfil apagado, e um
+    // agent nesse estado ganhava a tela de perfis junto com o resto.
+    expect(podeVerSecao(SEM_PERFIL, "perfis")).toBe(false);
+    expect(podeVerSecao(SEM_PERFIL, "channels")).toBe(true);
+    expect(podeVerSecao({ papel: "admin", perfil: null }, "perfis")).toBe(true);
+  });
+
   it("⚠️ nem com a caixa 'perfis' MARCADA no perfil", () => {
     // O teste acima só exercitava `secoes_config` vazio, e o furo estava
     // exatamente no outro caso: o editor oferece a caixa para perfil de

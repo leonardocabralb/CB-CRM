@@ -154,7 +154,18 @@ export default function RadarPage() {
     // ignoram os sinais dela via `foraDaJanela` (só a pendência conta), e
     // um "aguardando" tratado/descartado continua saindo da tela.
     const foraDaJanela = agora.getTime() - atividadeMs > MS_JANELA;
-    if (foraDaJanela && !(i.aguardando_desde && i.estado === 'aberto')) continue;
+    // ⚠️ `mexidasAqui` segura o cartão AQUI também, não só em `visiveis`:
+    // o cartão da pendência congelada só está na lista por `estado='aberto'`,
+    // então tratá-lo/descartá-lo o derrubava neste continue e o "Reabrir"
+    // não o alcançava — justamente no cliente esquecido, onde `descartado`
+    // nunca reabre sozinho (a conversa está parada; não vem mensagem nova).
+    if (
+      foraDaJanela &&
+      !(i.aguardando_desde && i.estado === 'aberto') &&
+      !mexidasAqui.has(i.conversation_id)
+    ) {
+      continue;
+    }
 
     // ⚠️ A pendência morre quando GENTE responde, e o painel descobre isso
     // ao vivo (`respondidas`) — o `aguardando_desde` da linha é o retrato

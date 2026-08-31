@@ -42,9 +42,11 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
    * TODO login dessas pessoas abria na TelaBloqueada, todo dia, exigindo um
    * clique para chegar a uma tela que elas podem ver.
    *
-   * Aterrissagem que a pessoa não pediu segue adiante; página que ela pediu
-   * (digitou, clicou numa notificação) continua explicada pela TelaBloqueada
-   * — mandá-la embora dali esconderia que a página existe.
+   * O desvio vale para TODO `/dashboard` bloqueado — inclusive digitado na
+   * barra, porque daqui não dá para distinguir intenção de aterrissagem. O
+   * que fica explicado pela TelaBloqueada são as OUTRAS telas: `/pipelines`
+   * digitado por quem não o tem continua dizendo "existe e está fora do seu
+   * perfil", nunca um redirect mudo.
    */
   const primeiraPermitida = TODAS_AS_TELAS.find((t) => podeVerTela(acesso, t));
   const desviarDaAterrissagem =
