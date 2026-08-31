@@ -182,7 +182,21 @@ export function PainelDoContato({
   const [salvandoNome, setSalvandoNome] = useState(false);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [grupos, setGrupos] = useState<GrupoDeCampos[]>([]);
-  const [customValues, setCustomValues] = useState<Record<string, string>>({});
+  /**
+   * ⚠️ OS VALORES CARREGAM O DONO JUNTO, e isso é correção, não enfeite.
+   *
+   * A limpeza da troca de contato roda num EFEITO — então existe um render
+   * com o contato NOVO e os valores do ANTERIOR. O `CampoComSalvamento` é
+   * montado nesse render (a `key` já mudou) e semeia o rascunho dele ali:
+   * sem o carimbo de dono, o campo nasceria com o valor do cliente A sob o
+   * cabeçalho do B, e a primeira edição gravaria aquilo no B. É a mesma
+   * regra que o CLAUDE.md tirou da nota fixada: comparar contra o PROP DO
+   * RENDER ATUAL, nunca confiar em que o efeito de limpeza já rodou.
+   */
+  const [customValues, setCustomValues] = useState<{
+    de: string | null;
+    mapa: Record<string, string>;
+  }>({ de: null, mapa: {} });
   const [gerirCamposAberto, setGerirCamposAberto] = useState(false);
 
   // ---- Fase 4: o negócio dentro da conversa ------------------------------
@@ -256,6 +270,14 @@ export function PainelDoContato({
    * ~1 negócio por contato nesta conta — os demais ficam numa lista de
    * leitura abaixo do cartão.
    */
+  /**
+   * Os valores personalizados, mas SÓ se já forem deste contato — ver o
+   * comentário do estado. `null` = ainda os do anterior (ou nenhum), e quem
+   * renderiza campo não pode usá-los.
+   */
+  const valoresDesteContato =
+    contact && customValues.de === contact.id ? customValues.mapa : null;
+
   const dealAtivo = useMemo(() => {
     // A âncora vence enquanto o negócio existir: depois de "Perdido" o
     // cartão continua NELE (mostrando "Reabrir"), em vez de saltar para o
@@ -297,7 +319,7 @@ export function PainelDoContato({
     setDadosProntos(false);
     setDeals([]);
     setTags([]);
-    setCustomValues({});
+    setCustomValues({ de: null, mapa: {} });
     setUltimoNegocioMexido(null);
     setDetalhesAbertos(false);
     setTarefasAbertas(null);
@@ -444,7 +466,7 @@ export function PainelDoContato({
     const map: Record<string, string> = {};
     for (const v of valuesRes.data ?? [])
       map[v.custom_field_id] = v.value ?? '';
-    setCustomValues(map);
+    setCustomValues({ de: idPedido, mapa: map });
     // Catálogo da CONTA: falha aqui não trava a edição do contato — segue
     // tolerante, como antes (o estado anterior continua servindo).
     if (allTagsRes.data) setAllTags(allTagsRes.data);
@@ -692,7 +714,13 @@ export function PainelDoContato({
       }
       // Espelha o que o banco guardou (`salvarValoresDoContato` grava
       // aparado), para qualquer outro leitor do estado ver a mesma coisa.
-      setCustomValues((prev) => ({ ...prev, [fieldId]: valor.trim() }));
+      setCustomValues((prev) =>
+        // Só espelha se os valores ainda forem DESTE contato — a resposta
+        // pode chegar depois de o operador trocar de conversa.
+        prev.de === contact.id
+          ? { de: prev.de, mapa: { ...prev.mapa, [fieldId]: valor.trim() } }
+          : prev
+      );
       return true;
     },
     [contact, dadosProntos, customFields, tSidebar]
@@ -1237,17 +1265,32 @@ export function PainelDoContato({
                       React reusa a instância ao trocar de cliente, o rascunho
                       do anterior sobrevive sob o cabeçalho do novo, e a
                       descarga de desmonte grava no cliente errado. */}
-                  {blocoVisivel.campos.map((field) => (
-                    <CampoComSalvamento
-                      key={`${contact.id}:${field.id}`}
-                      field={field}
-                      rotulo={field.field_name}
-                      valorSalvo={customValues[field.id] ?? ''}
-                      aoGravar={gravarCampo}
-                      textoSalvo={tSidebar('fieldSaved')}
-                      disabled={!podeEditar || !dadosProntos}
-                    />
-                  ))}
+                  {/* ⚠️ Só monta quando os valores já são DESTE contato.
+                      Montar antes semearia o rascunho com o valor do cliente
+                      anterior — o campo nasce uma vez só e não persegue a
+                      prop depois (ver o cabeçalho do componente). Enquanto
+                      isso, os rótulos ficam na tela com o campo travado, em
+                      vez de a seção sumir e voltar. */}
+                  {blocoVisivel.campos.map((field) =>
+                    valoresDesteContato ? (
+                      <CampoComSalvamento
+                        key={`${contact.id}:${field.id}`}
+                        field={field}
+                        rotulo={field.field_name}
+                        valorSalvo={valoresDesteContato[field.id] ?? ''}
+                        aoGravar={gravarCampo}
+                        textoSalvo={tSidebar('fieldSaved')}
+                        disabled={!podeEditar || !dadosProntos}
+                      />
+                    ) : (
+                      <div key={field.id} className="space-y-1">
+                        <Label className="text-muted-foreground text-xs">
+                          {field.field_name}
+                        </Label>
+                        <div className="bg-muted h-8 animate-pulse rounded-lg" />
+                      </div>
+                    )
+                  )}
                 </>
               )}
             </div>

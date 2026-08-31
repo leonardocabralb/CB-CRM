@@ -457,3 +457,23 @@ com as duas perguntas que **não** podem divergir entre as três telas:
 comando de teste do painel do navegador (só `Enter` funciona; para limpar campo,
 `form_input` com o ref). Não é defeito do app — foi confundido com um por alguns
 minutos.
+
+---
+
+## ✅ Revisão do Codex no PR #83 (2026-08-31) — dois achados, os dois reais
+
+| Achado | Veredito | Correção |
+| --- | --- | --- |
+| O campo é montado antes de os valores do contato novo chegarem, e o rascunho nasce com o valor do ANTERIOR | **Confirmado, e pior que o relato**: não era um piscar. Medido no navegador — trocando de Morgana para Ana, o valor da Morgana ficou na ficha da Ana em **35 de 35 amostras (3,5s)**, e ficaria para sempre, porque o rascunho não persegue a prop. Editar ali gravaria o valor de A no B | `customValues` passou a guardar o DONO junto (`{ de, mapa }`) nas DUAS telas; o campo só monta com `valoresDesteContato`, e enquanto isso o rótulo fica com um esqueleto. Com a correção: **0 de 35** |
+| Gravações concorrentes podem chegar fora de ordem e a antiga apagar a nova | **Confirmado.** Alcançável mudando uma lista duas vezes rápido, ou sair-voltar-editar-sair antes de a primeira voltar | `criarFilaDeGravacao` no módulo puro (7 casos novos): serializa, guarda só o pendente mais novo, último valor vence |
+
+⚠️ **O teste da fila pegou um defeito na PRÓPRIA fila**, antes de ela chegar à
+tela: a primeira versão comparava "mudou?" contra o que o banco CONFIRMOU, e
+durante o voo isso ainda é o valor antigo — desfazer para o original era
+descartado como não-evento, e a tela terminava discordando do banco. A régua
+passou a ser o que se QUER gravar.
+
+⚠️ **Como medir isto de novo**, se alguém mexer: pôr um valor conhecido num
+campo do cliente A por SQL, abrir A, trocar para B e amostrar
+`document.querySelectorAll('input[data-slot="input"]')` a cada 100ms por ~3s.
+Sem o portão o valor de A aparece em todas; com ele, em nenhuma.

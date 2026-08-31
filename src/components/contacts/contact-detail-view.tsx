@@ -152,7 +152,25 @@ export function ContactDetailView({
   const chaveVisivel = blocoVisivel
     ? chaveDoBloco(blocoVisivel.grupo?.id ?? null)
     : null;
-  const [customValues, setCustomValues] = useState<Record<string, string>>({});
+  /**
+   * ⚠️ Os valores carregam o DONO junto — mesma correção do painel da
+   * conversa. Nada limpa `customValues` na troca de contato, então existe um
+   * render com o contato NOVO e os valores do ANTERIOR; o campo é montado
+   * ali (a `key` já mudou) e semearia o rascunho com o valor do cliente
+   * errado. A comparação é contra o PROP do render atual, nunca contra o
+   * resultado de um efeito que talvez já tenha rodado.
+   */
+  const [customValues, setCustomValues] = useState<{
+    de: string | null;
+    mapa: Record<string, string>;
+  }>({ de: null, mapa: {} });
+
+  /**
+   * Os valores personalizados, mas SÓ se já forem deste contato — ver o
+   * comentário do estado. `null` segura a montagem dos campos.
+   */
+  const valoresDesteContato =
+    customValues.de === contactId ? customValues.mapa : null;
   const [loadingCustom, setLoadingCustom] = useState(false);
 
   // Deals tab
@@ -262,7 +280,7 @@ export function ContactDetailView({
       valuesRes.data.forEach((v) => {
         map[v.custom_field_id] = v.value ?? '';
       });
-      setCustomValues(map);
+      setCustomValues({ de: alvo, mapa: map });
     }
     setLoadingCustom(false);
   }, [contactId, supabase]);
@@ -448,7 +466,11 @@ export function ContactDetailView({
         return false;
       }
       // Espelha o que o banco guardou (o helper grava aparado).
-      setCustomValues((prev) => ({ ...prev, [fieldId]: valor.trim() }));
+      setCustomValues((prev) =>
+        prev.de === contactId
+          ? { de: prev.de, mapa: { ...prev.mapa, [fieldId]: valor.trim() } }
+          : prev
+      );
       return true;
     },
     [contactId, podeEditar, supabase, customFields, contact, t]
@@ -852,7 +874,7 @@ export function ContactDetailView({
 
               {/* Custom Fields Tab */}
               <TabsContent value="custom" className="flex-1 overflow-y-auto px-4 py-3">
-                {loadingCustom ? (
+                {loadingCustom || !valoresDesteContato ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="size-5 animate-spin text-muted-foreground" />
                   </div>
@@ -900,7 +922,7 @@ export function ContactDetailView({
                         key={`${contactId}:${field.id}`}
                         field={field}
                         rotulo={field.field_name}
-                        valorSalvo={customValues[field.id] ?? ''}
+                        valorSalvo={valoresDesteContato[field.id] ?? ''}
                         aoGravar={gravarCampo}
                         textoSalvo={t('fieldSaved')}
                         disabled={!podeEditar}

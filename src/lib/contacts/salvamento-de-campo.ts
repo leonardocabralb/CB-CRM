@@ -50,3 +50,95 @@ export function valorMudou(salvo: string, novo: string): boolean {
  * só para saber o que é uma data.
  */
 export { TIPO_DATA };
+
+// ------------------------------------------------------------
+// A fila de gravação de UM campo
+// ------------------------------------------------------------
+
+/** Como a gravação está, para o indicador ao lado do rótulo. */
+export type EstadoDaGravacao = "parado" | "gravando" | "salvo";
+
+export interface FilaDeGravacao {
+  /** Põe o valor na fila. Ignora o que não mudou em relação ao já gravado. */
+  enfileirar: (valor: string) => void;
+  /** O último valor que o banco CONFIRMOU. */
+  salvo: () => string;
+  /** Há gravação em voo? */
+  emVoo: () => boolean;
+}
+
+/**
+ * Serializa as gravações de um campo e faz o ÚLTIMO valor vencer.
+ *
+ * ⚠️⚠️ EXISTE PORQUE DUAS GRAVAÇÕES CONCORRENTES CHEGAM AO BANCO FORA DE
+ * ORDEM. Mudar uma lista duas vezes rápido, ou sair-voltar-editar-sair antes
+ * de a primeira requisição terminar, dispara dois upserts na mesma linha: se o
+ * ANTIGO chegar por último, ele sobrescreve a edição mais nova — no banco e no
+ * `salvo()` — e o operador não vê nada acontecer. É a mesma classe da divergência
+ * silenciosa que o `emVoo` das favoritas (924) resolve, aqui por campo.
+ *
+ * ⚠️ O pendente guarda só o MAIS NOVO, de propósito. Enfileirar tudo mandaria
+ * ao banco estados intermediários que ninguém quer ver gravados — o que
+ * importa é onde o campo PAROU.
+ *
+ * Falha não limpa o pendente: se houver valor novo esperando, ele é tentado na
+ * volta. Sem pendente, a fila para e quem chama avisa o operador — o próximo
+ * blur tenta de novo.
+ */
+export function criarFilaDeGravacao(
+  inicial: string,
+  gravar: (valor: string) => Promise<boolean>,
+  aoMudarEstado?: (estado: EstadoDaGravacao) => void,
+): FilaDeGravacao {
+  /** O que o banco CONFIRMOU. */
+  let salvo = inicial;
+  /**
+   * O que QUEREMOS que o banco tenha.
+   *
+   * ⚠️ É contra ele que `enfileirar` decide se há novidade — não contra
+   * `salvo`. Enquanto uma gravação está em voo, `salvo` ainda é o valor
+   * ANTIGO: comparar com ele faria "desfazer para o valor original antes de a
+   * requisição voltar" parecer um não-evento, e o campo terminaria mostrando
+   * o valor de antes com o banco guardando o de depois. Achado pelo próprio
+   * teste desta fila.
+   */
+  let desejado = inicial;
+  let rodando = false;
+  let pendente: string | null = null;
+
+  const laco = async (primeiro: string) => {
+    rodando = true;
+    aoMudarEstado?.("gravando");
+    let atual = primeiro;
+    for (;;) {
+      const ok = await gravar(atual);
+      if (ok) salvo = atual;
+      // Falhou: volta a régua para o que o banco tem, senão o MESMO gesto
+      // repetido pelo operador seria descartado como "não mudou" e a
+      // tentativa de novo nunca sairia.
+      else desejado = salvo;
+      const proximo = pendente;
+      pendente = null;
+      if (proximo === null) {
+        rodando = false;
+        aoMudarEstado?.(ok ? "salvo" : "parado");
+        return;
+      }
+      atual = proximo;
+    }
+  };
+
+  return {
+    enfileirar: (valor) => {
+      if (!valorMudou(desejado, valor)) return;
+      desejado = valor;
+      if (rodando) {
+        pendente = valor;
+        return;
+      }
+      void laco(valor);
+    },
+    salvo: () => salvo,
+    emVoo: () => rodando,
+  };
+}

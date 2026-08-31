@@ -455,6 +455,15 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
 `src/components/contacts/campo-com-salvamento.tsx`, usado pelas DUAS telas
 (painel da conversa e ficha de `/contatos`). O que morde código novo:
 
+- ⚠️⚠️ **O campo só pode ser MONTADO quando os valores já forem do contato
+  atual.** O rascunho nasce do `valorSalvo` de montagem e NÃO persegue a prop
+  depois — e a limpeza da troca de contato roda num EFEITO, então existe um
+  render com o contato NOVO e os valores do ANTERIOR. Medido no navegador:
+  sem o portão, o valor do cliente A ficava na ficha do B **nas 35 amostras
+  de 3,5s** (não é um piscar — é permanente, porque nada reescreve o
+  rascunho), e a primeira edição gravaria aquilo no B. Por isso `customValues`
+  guarda o DONO junto (`{ de, mapa }`) nas duas telas e a comparação é contra
+  o PROP DO RENDER ATUAL. Achado do Codex no PR #83.
 - ⚠️⚠️ **A `key` de quem monta o campo PRECISA incluir o `contact.id`.** Sem
   ela o React reusa a instância ao trocar de cliente, o rascunho de A sobrevive
   sob o cabeçalho de B, e a descarga de desmonte grava no cliente errado — a
@@ -470,6 +479,17 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
   fechar o painel ou trocar de aba apagaria o texto — em silêncio, e sem o
   botão para servir de segunda chance. Ela não grava duas vezes porque
   `salvoRef` é atualizado no sucesso do blur.
+- ⚠️⚠️ **Toda gravação passa pela FILA (`criarFilaDeGravacao`), nunca por
+  `aoGravar` direto.** Duas requisições concorrentes na mesma linha chegam ao
+  banco fora de ordem — mudar uma lista duas vezes rápido, ou
+  sair-voltar-editar-sair antes de a primeira voltar — e a ANTIGA chegando por
+  último apaga a edição mais nova, em silêncio. A fila serializa, guarda só o
+  pendente MAIS NOVO e faz o último valor vencer (mesma classe do `emVoo` das
+  favoritas, aqui por campo). ⚠️ Dentro dela, "mudou?" é medido contra o que
+  se QUER gravar, não contra o que o banco confirmou: com `salvo` ainda
+  antigo durante o voo, desfazer para o valor original seria descartado como
+  não-evento e a tela terminaria discordando do banco (pego pelo teste da
+  própria fila). Achado do Codex no PR #83.
 - ⚠️ **`select` grava na ESCOLHA, o resto no blur** (`gravaAoSair`). O popover
   fecha e não há blur útil para esperar. O campo de DATA fica no blur apesar de
   disparar `change`: ele dispara a cada pedaço digitado, com datas

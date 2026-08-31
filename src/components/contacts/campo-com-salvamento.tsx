@@ -24,12 +24,17 @@
 // salvar TODOS os campos, e não só os do bloco à vista).
 // ============================================================
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 
 import { CampoPersonalizadoInput } from '@/components/contacts/campo-personalizado-input';
 import { Label } from '@/components/ui/label';
-import { gravaAoEscolher, valorMudou } from '@/lib/contacts/salvamento-de-campo';
+import {
+  criarFilaDeGravacao,
+  gravaAoEscolher,
+  type EstadoDaGravacao,
+  type FilaDeGravacao,
+} from '@/lib/contacts/salvamento-de-campo';
 import { cn } from '@/lib/utils';
 import type { CustomField } from '@/types';
 
@@ -69,19 +74,21 @@ export function CampoComSalvamento({
   className,
 }: CampoComSalvamentoProps) {
   const [rascunho, setRascunho] = useState(valorSalvo);
-  const [estado, setEstado] = useState<'parado' | 'gravando' | 'salvo'>('parado');
+  const [estado, setEstado] = useState<EstadoDaGravacao>('parado');
 
   /**
-   * O que está digitado e o que já foi gravado, em refs, porque a limpeza de
-   * desmonte roda fora do render e não enxerga o estado.
+   * O que está digitado, em ref, porque a limpeza de desmonte roda fora do
+   * render e não enxerga o estado.
    *
-   * ⚠️ `salvoRef` NÃO acompanha a prop `valorSalvo` depois da montagem, de
+   * ⚠️ O rascunho NÃO acompanha a prop `valorSalvo` depois da montagem, de
    * propósito: o dono reescreve o estado dele a cada gravação bem-sucedida, e
-   * seguir a prop faria a comparação "mudou?" perseguir o próprio rabo. A
-   * troca de cliente é resolvida pela `key`, não por sincronia de prop.
+   * seguir a prop faria a comparação "mudou?" perseguir o próprio rabo. Por
+   * isso **quem monta só pode montar quando os valores já forem deste
+   * contato** — é o que `valoresDesteContato` garante nas duas telas.
    */
   const rascunhoRef = useRef(valorSalvo);
-  const salvoRef = useRef(valorSalvo);
+  /** O valor de MONTAGEM, para a fila nascer com a régua certa. */
+  const valorInicialRef = useRef(valorSalvo);
   const gravarRef = useRef(aoGravar);
   const fieldIdRef = useRef(field.id);
   useEffect(() => {
@@ -89,22 +96,42 @@ export function CampoComSalvamento({
     fieldIdRef.current = field.id;
   });
 
-  const gravar = useCallback(
-    async (valor: string) => {
-      if (!valorMudou(salvoRef.current, valor)) return;
-      setEstado('gravando');
-      const ok = await gravarRef.current(fieldIdRef.current, valor);
-      if (ok) {
-        salvoRef.current = valor;
-        setEstado('salvo');
-      } else {
-        // O aviso alto é do dono (ele sabe o nome do cliente); aqui o campo só
-        // para de dizer "gravando" — um spinner eterno seria a pior saída.
-        setEstado('parado');
-      }
-    },
-    [],
-  );
+  /**
+   * ⚠️ TODA gravação passa pela fila — nunca `aoGravar` direto.
+   *
+   * Duas requisições concorrentes na mesma linha chegam ao banco fora de
+   * ordem, e a antiga chegando por último apaga a edição mais nova, em
+   * silêncio. A fila serializa e faz o último valor vencer; ela também guarda
+   * o que o banco CONFIRMOU, que é a régua do "mudou?" e da descarga de
+   * desmonte.
+   *
+   * ⚠️ Criada no efeito de MONTAGEM, e não no render: ler `ref.current`
+   * durante o render é proibido pelo `react-hooks/refs`, e a fila precisa do
+   * `gravarRef` para não envelhecer junto com a prop. Os `?.` dos
+   * manipuladores cobrem a janela entre o primeiro render e o efeito —
+   * janela em que ninguém consegue focar, muito menos sair de, um campo que
+   * acabou de aparecer.
+   */
+  const filaRef = useRef<FilaDeGravacao | null>(null);
+  useEffect(() => {
+    const fila = criarFilaDeGravacao(
+      valorInicialRef.current,
+      (v) => gravarRef.current(fieldIdRef.current, v),
+      // O aviso alto do erro é do dono (ele sabe o nome do cliente); aqui o
+      // campo só para de dizer "gravando" — spinner eterno seria pior.
+      setEstado,
+    );
+    filaRef.current = fila;
+    // ⚠️ A DESCARGA DE DESMONTE — ver o cabeçalho. Pela FILA também: com uma
+    // gravação em voo, disparar direto aqui recriaria a corrida que ela
+    // existe para impedir; ela mesma pega o pendente na volta. O laço é uma
+    // promessa solta e sobrevive ao desmonte, e o `setEstado` que ele fizer
+    // depois é inócuo. Em StrictMode o desmonte falso roda com rascunho ===
+    // salvo, e a fila ignora o que não mudou.
+    return () => {
+      fila.enfileirar(rascunhoRef.current);
+    };
+  }, []);
 
   // O "Salvo" some sozinho. Sem isto, dez campos preenchidos deixam dez
   // marcas verdes permanentes e a informação vira decoração.
@@ -117,22 +144,14 @@ export function CampoComSalvamento({
   // ⚠️ A DESCARGA DE DESMONTE — ver o cabeçalho. Dispara sem `await` de
   // propósito: o componente já está indo embora e não há a quem contar o
   // resultado; a gravação em si é uma requisição normal e completa sozinha.
-  // Em StrictMode o desmonte falso roda com rascunho === salvo, então
-  // `valorMudou` devolve false e nada é gravado duas vezes.
-  useEffect(() => {
-    return () => {
-      if (valorMudou(salvoRef.current, rascunhoRef.current)) {
-        void gravarRef.current(fieldIdRef.current, rascunhoRef.current);
-      }
-    };
-  }, []);
-
+  // Em StrictMode o desmonte falso roda com rascunho === salvo, e a fila
+  // ignora o que não mudou — nada é gravado duas vezes.
   const mudou = (v: string) => {
     setRascunho(v);
     rascunhoRef.current = v;
     // Lista: escolher JÁ é o gesto inteiro — o popover fecha e não há blur
     // útil para esperar (ver `gravaAoSair`).
-    if (gravaAoEscolher(field.field_type)) void gravar(v);
+    if (gravaAoEscolher(field.field_type)) filaRef.current?.enfileirar(v);
   };
 
   return (
@@ -145,7 +164,7 @@ export function CampoComSalvamento({
       onBlur={() => {
         if (disabled) return;
         if (gravaAoEscolher(field.field_type)) return;
-        void gravar(rascunhoRef.current);
+        filaRef.current?.enfileirar(rascunhoRef.current);
       }}
     >
       <div className="flex min-w-0 items-center justify-between gap-2">
