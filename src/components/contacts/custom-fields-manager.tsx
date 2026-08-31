@@ -908,14 +908,19 @@ function BlocoArrastavel({
         busyId={busyId}
         cabecalho={
           <div className="bg-muted/30 flex items-center gap-1 px-2 py-1">
+            {/* ⚠️ Mesma área de toque da alça do campo, e com folga (`p-1`).
+                A primeira versão usava `size-3.5` num cabeçalho `py-1`: um
+                alvo de 14px que o ponteiro erra por um pixel e o bloco
+                simplesmente não é agarrado — sem nada na tela dizendo que o
+                gesto falhou. Pego no teste, arrastando pela captura. */}
             <button
               type="button"
               {...attributes}
               {...listeners}
-              className="text-muted-foreground hover:text-foreground shrink-0 cursor-grab touch-none active:cursor-grabbing"
+              className="text-muted-foreground hover:text-foreground -m-1 shrink-0 cursor-grab touch-none p-1 active:cursor-grabbing"
               aria-label={t('dragGroupToReorder')}
             >
-              <GripVertical className="size-3.5" />
+              <GripVertical className="size-4" />
             </button>
             <Input
               value={nome}
