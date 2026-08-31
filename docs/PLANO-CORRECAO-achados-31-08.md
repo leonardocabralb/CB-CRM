@@ -87,6 +87,14 @@ de tocar nesses dois. O **#03** é vizinhança de branch, não de arquivo: vive 
 `campo-personalizado-input.tsx`, mas fica no mesmo caminho de gravação, então
 convém ir junto.
 
+> **Estado conferido em 31/08 (início da execução):** a leva virou o
+> **PR #84**, ABERTO (2 commits, `619ca8a` + `3a724c6` — o segundo estende o
+> portão da janela de 24h à interativa, cobrindo o M13). Aguarda mesclagem
+> pelo operador. O #02 foi implementado no PR #86 **sem tocar a linha que o
+> #84 reescreve** (o ramo de erro entrou ACIMA da linha do vazio), então os
+> dois mesclam limpos em qualquer ordem — mas mesclar o #84 primeiro continua
+> sendo a ordem certa.
+
 ### 0.4 Os 11 PRs revisados
 
 Todos mesclados em `main` em 31/08/2026 e **em produção**. A coluna "achados"
@@ -139,7 +147,7 @@ as frentes deles 🔵 e leve as opções ao operador antes de implementar.
 
 | # | Frente | Achados | Risco | Estado | PR |
 | --- | --- | --- | --- | --- | --- |
-| **F1** | Vazamento e perda de dado do cliente | #01 #02 #03 #04 | 🔴 crítico | ⬜ | — |
+| **F1** | Vazamento e perda de dado do cliente | #01 #02 #03 #04 | 🔴 crítico | ✅ | #86 |
 | **F2** | Dono durável (CASCADE para `auth.users`) | #11 #12 #13 | 🔴 crítico | ⬜ | — |
 | **F3** | Fila de gravação de campo personalizado | #09 #10 (+#03) | 🟠 alto | ⬜ | — |
 | **F4** | Radar: alarme apagado ou inalcançável | #05 #21 #22 #23 #28 | 🟠 alto | ⬜ | — |
@@ -147,7 +155,7 @@ as frentes deles 🔵 e leve as opções ao operador antes de implementar.
 | **F6** | Portão de i18n no CI | #18 #19 #20 #24 | 🟠 alto | ⬜ | — |
 | **F7** | Guardas e testes estruturais com falso verde | #14 #15 | 🟠 alto | ⬜ | — |
 | **F8** | Filtros do inbox | #16 #25 #26 | 🟡 médio | ⬜ | — |
-| **F9** | Erro de banco lido como ausência | #04 #07 | 🟡 médio | ⬜ | — |
+| **F9** | Erro de banco lido como ausência | #04 #07 | 🟡 médio | 🟨 (#04 já saiu no #86; falta #07) | — |
 | **F10** | CI/CD e vazamento de credencial | #29 #30 | 🟡 médio | ⬜ | — |
 | **F11** | Menores de UX e estado | #17 #27 #31 #32 | 🟢 baixo | ⬜ | — |
 
@@ -254,6 +262,16 @@ recém-subido fica órfão no bucket. E não confunda `path` (o recém-subido, q
 deve ser apagado no ramo de descarte) com `draftRef.current?.path` (o rascunho
 antigo do destino, que só deve ser apagado no ramo de sucesso).
 
+**Resolvido em** PR #86 — `finalizeRecording` ganhou a guarda de origem dos
+irmãos (3ª cópia comentada, com o aviso de que a próxima entra também); o
+efeito de troca passou a cancelar gravação em curso (`cancelledRef` +
+`clearTimer` + `stop()`, a receita da limpeza de desmonte) — fecha também a
+janela "parou de gravar e trocou antes de o encoder devolver" — e a descartar
+o rascunho já pousado (M22). · **Medido:** typecheck/lint/suíte (2255)
+verdes; a medição NA TELA (gravar + trocar; anexar + trocar) ficou pendente
+de sessão logada no preview — o pane caiu na tela de login e autenticação não
+se fabrica. Roteiro pronto para rodar quando houver login.
+
 ---
 
 ### #02 — Falha ao ler blocos + um arrastar zera `grupo_id` da conta inteira
@@ -317,6 +335,17 @@ está CERTO e não deve mudar: ele existe para o caso "outro admin apagou o
 grupo entre as duas cargas", e o certo ali é o campo APARECER em algum lugar.
 O defeito é a tela de escrita persistir esse fallback de exibição. Não
 "conserte" o módulo puro.
+
+**Resolvido em** PR #86 — `fetchFields` trata o erro (toast `loadError` +
+estado preservado, chaves novas nos dois dicionários) e a cerca
+`catalogoConfiavel` (true só com as DUAS consultas OK) faz a lista nem
+renderizar sem catálogo confiável (caixa de erro + Tentar de novo — sem
+lista não há arrastar nem seletor), com guarda extra nos dois escritores
+(`reordenarCampos`/`reordenarGrupos`). O fallback do módulo puro NÃO foi
+tocado. O ramo de erro entrou ACIMA da linha do vazio que o PR #84 reescreve
+— sem conflito. · **Medido:** typecheck/lint/suíte/i18n verdes; a falha
+simulada na tela (bloquear a consulta e ver a caixa + arrastar inerte)
+pende de sessão logada no preview.
 
 ---
 
@@ -389,6 +418,16 @@ Alternativas avaliadas e por que são piores:
 - Conferir o mesmo caminho para o tipo **data** (`TIPO_DATA`): `<input
   type="date">` também tem bad input.
 
+**Resolvido em** PR #86 — guarda `value === '' && validity.badInput` nos
+ramos number E datetime-local (o tipo data usa `datetime-local`, conferido).
+· **Medido em navegador real** (sonda com a guarda idêntica, mesmo método da
+medição original): digitar `.` após `300` → evento com `.value === ""` e
+`badInput === true`, guarda ignorou, blur gravaria `"300"`; esvaziar de
+verdade → propagou `""` e o blur gravaria o DELETE legítimo. O datetime-local
+não recebe teclas sintéticas no Browser pane (limitação conhecida), então a
+guarda de data fica coberta por construção: só age no estado que é
+exatamente o nocivo, e é byte a byte a guarda medida.
+
 ---
 
 ### #04 — Erro de banco vira "não existe" e duplica a ficha do cliente
@@ -453,6 +492,20 @@ vazio"):
   correção de altitude (reusar `resolveConversationByPhone`) resolveria #04 e
   quase todo o M15 de uma vez — inclusive o "reabrir conversa fechada" — mas é
   refactor maior e deve ser decisão consciente, não efeito colateral.
+
+**Resolvido em** PR #86 — `findExistingContact` devolve `{ contato, falhou }`
+(opção "cada chamador decide", que era a única compatível com a armadilha de
+não estourar a ingestão) e o typecheck forçou os 12 call sites em 6 arquivos:
+abrir → 500 `LOOKUP_FAILED` (e o `buscar()` de `resolverConversa` trata o
+`error` — a metade do M15 que este achado mandava levar junto); API v1 e
+`resolve-conversation` → erro 500; ingestão Meta/Evolution → segue com
+`contato` nulo, por escrito; formulário → consultivo, sem mudança.
+· **Medido:** teste novo do caminho `falhou` no `dedupe.test.ts` (stub com
+`error` → `{contato: null, falhou: true}`); suíte 2255 verde inclusive o
+`dono-duravel.test.ts` estrutural; o diálogo já mapeia `LOOKUP_FAILED` para
+"Não foi possível abrir a conversa. Tente de novo." (conferido no dicionário
+— orienta repetir, não desconfiar do número). Caminho feliz na tela pende de
+sessão logada no preview.
 
 ---
 
@@ -1872,7 +1925,7 @@ avaliado e rejeitado.
 | id | Onde | O que | Carona natural |
 | --- | --- | --- | --- |
 | **M1** | `custom-fields-manager.tsx:265` e `:466` | `handleCreate` e `handleSeed` gravam `user_id: user.id` em `custom_fields`, que é CASCADE para `auth.users` e leva `contact_custom_values` junto. **Pré-existente**, não é do #78 (o diff mostra a linha como contexto). Mesma família do #11/#12, severidade menor (o dado é definição de campo + valores, não histórico de conversa) | F2 |
-| **M22** | `message-composer.tsx:684` | ⚠️ **Irmão do #01, e mais provável que ele.** O efeito de troca de conversa limpa `pendente`, agendamento, seletor e anotação — mas **não** `draft`. O anexo JÁ POUSADO do cliente A continua montado no compositor de B, e `sendDraft` chama o `onSendMedia` de B. Não exige rede lenta: basta anexar e trocar de conversa. O #74 fechou o upload EM VOO e deixou o rascunho pousado | **F1, com o #01** |
+| **M22** | `message-composer.tsx:684` | ⚠️ **Irmão do #01, e mais provável que ele.** O efeito de troca de conversa limpa `pendente`, agendamento, seletor e anotação — mas **não** `draft`. O anexo JÁ POUSADO do cliente A continua montado no compositor de B, e `sendDraft` chama o `onSendMedia` de B. Não exige rede lenta: basta anexar e trocar de conversa. O #74 fechou o upload EM VOO e deixou o rascunho pousado | **F1, com o #01** — ✅ resolvido no PR #86 (o efeito de troca descarta o rascunho e limpa o estado) |
 | **M2** | `radar/page.tsx:110` | `const { channels } = useChannels()` sem `loading` → "canal com Radar desligado" derivado de lista vazia; análise de canal PESSOAL desligado aparece na tela. Exceção deliberada à convenção "vazio = todos" (privacidade, 941) | F5 |
 | **M3** | `use-radar.ts:259` | análise `failed` tem `analisado_em` NULO; com `.order(..., nullsFirst:false).limit(200)` ela é a PRIMEIRA a cair do teto, e não há consulta de resgate (só pendência tem). A garantia "failed aparece independente de gatilho" expira em silêncio | F4 |
 | **M4** | `filtros-salvos.ts:300/350` | `descreverFiltro` marca `orfao` sem a guarda de "catálogo vazio não prova nada" que `limparOrfaos` aplica 140 linhas abaixo → o menu escreve "(apagado)" sobre etiqueta/etapa VIVAS enquanto os catálogos carregam | F8 (com #16) |
@@ -1886,7 +1939,7 @@ avaliado e rejeitado.
 | **M12** | `message-thread.tsx:2163` | `channelKind={activeChannel?.kind ?? null}` continua cru: durante a carga o compositor desabilita como Evolution E oferece Templates/interativo da Meta, com o `TemplatePicker` recebendo `channelId=null` → **recorte por WABA desligado** (o CLAUDE.md marca isso como load-bearing) | F5 |
 | **M13** ⚠️ | `message-thread.tsx:1181` | `handleSendInteractive` é o 3º disparo e ficou fora do portão da leva pendente. **Só existe se a leva da §0.3 tiver sido mesclada**; sem ela o item vira "conferir se o portão, quando entrar, cobre os TRÊS disparos" | F5 |
 | **M14** | `use-channels.ts:29` | sem cache: 2 a 4 GETs idênticos por carga do inbox (`conversation-list`, `message-thread`, `scheduled-bar`, `group-sidebar`) | F5 |
-| **M15** | `abrir/route.ts:236, :46, :172, :247, :35, :200` | seis achados menores da mesma rota: `buscar()` descarta `error`; erro ao ler `profiles` vira 403 "seu perfil não está ligado a uma conta"; `pinConversationChannel` roda incondicionalmente (FIXA canal de conversa ativa alheia) e o retorno é descartado; conversa `closed` não chama `reopenClosedConversation`; **única rota de escrita de `/api/cb` sem `checkRateLimit`**; nome digitado é ignorado quando o contato já existe | F9 / PR próprio |
+| **M15** | `abrir/route.ts:236, :46, :172, :247, :35, :200` | seis achados menores da mesma rota: `buscar()` descarta `error`; erro ao ler `profiles` vira 403 "seu perfil não está ligado a uma conta"; `pinConversationChannel` roda incondicionalmente (FIXA canal de conversa ativa alheia) e o retorno é descartado; conversa `closed` não chama `reopenClosedConversation`; **única rota de escrita de `/api/cb` sem `checkRateLimit`**; nome digitado é ignorado quando o contato já existe | F9 / PR próprio — a METADE do `buscar()` (erro descartado) ✅ saiu no PR #86, junto com o #04; o resto segue pendente |
 | **M16** | `execucoes/executar/route.ts:116` | o comentário diz "Falha ABERTA (contato sem negócio deixa passar)"; `stageInScope` devolve `false` (`engine.ts:1167`) → 422 fail-CLOSED. Nota mentindo | §7 |
 | **M17** | `964:129` | a conferência da migration pega policy RENOMEADA (`count < 12`) mas não policy ADICIONADA — um merge do upstream que reintroduza `"Users can manage own broadcasts"` reabre o furo com a migration imprimindo "OK" | PR próprio |
 | **M18** | `perfis-panel.tsx:538` | a grade de canais do perfil não tem a saída "Todos" nem o rótulo de id órfão que o `ChannelMultiSelect` já tem → recorte órfão fica irremovível e a lista de perfis afirma o contrário na mesma tela | PR próprio |
@@ -2008,3 +2061,10 @@ Ao concluir uma frente, edite este arquivo **no mesmo PR**:
 **Checklist técnico por PR:** `npm run typecheck` · `npm run lint` ·
 `npm run test` · `node scripts/i18n-parity.mjs` ·
 `node scripts/i18n-chaves-usadas.mjs` · preview em 1440×900+ · revisar 2×.
+
+> **Adição do operador (31/08, durante a execução):** ao fim de CADA frente,
+> revisar o que foi feito e **testar end-to-end no preview** o que for
+> testável na tela — não só os checks de linha de comando. Quando o preview
+> estiver sem sessão (o pane pode cair na tela de login, e autenticação não
+> se fabrica), registrar no achado exatamente qual medição ficou pendente e
+> rodá-la assim que houver login — pendência de medição não é medição.
