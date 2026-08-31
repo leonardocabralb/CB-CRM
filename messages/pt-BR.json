@@ -2697,7 +2697,7 @@
     "subtitle": "A IA lê as conversas dos últimos 7 dias e aponta o que merece atenção — a decisão é sua.",
     "cardUrgencias": "Urgências abertas",
     "cardInsatisfacoes": "Insatisfações",
-    "cardPendencias": "Sem resposta há 24h+",
+    "cardPendencias": "Sem resposta há {horas}h+",
     "cardNotaMedia": "Nota média (7 dias)",
     "loadFailed": "Não foi possível carregar o Radar. O que aparece abaixo pode estar desatualizado.",
     "tentarDeNovo": "Tentar de novo",

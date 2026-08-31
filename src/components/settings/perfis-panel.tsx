@@ -525,7 +525,12 @@ export function PerfisPanel() {
                   <p className="text-xs text-muted-foreground">{t('secoesHint')}</p>
                 </div>
 
-                {channels.length > 0 && (
+                {/* ⚠️ `> 1`, a convenção da casa: "seletor some com menos de
+                    2 canais" (CLAUDE.md, UI de canal) — com um número só o
+                    recorte não decide nada e a caixinha única confundia
+                    ("desmarcar tira o acesso ao canal?"). Escopo vazio segue
+                    significando TODOS. */}
+                {channels.length > 1 && (
                   <div className="flex flex-col gap-2">
                     <Label className="text-muted-foreground">
                       {t('canaisLabel')}

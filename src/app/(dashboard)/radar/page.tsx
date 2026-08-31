@@ -344,7 +344,9 @@ export default function RadarPage() {
         />
         <Cartao
           icone={Clock}
-          rotulo={t('cardPendencias')}
+          // A constante REAL viaja para o rótulo (regra da casa: número
+          // digitado no dicionário mente na primeira mudança do limiar).
+          rotulo={t('cardPendencias', { horas: LIMIAR_ALARME_MS / 3_600_000 })}
           valor={String(cartoes.pendencias)}
           alerta={cartoes.pendencias > 0}
         />

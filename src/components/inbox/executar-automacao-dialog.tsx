@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
+import { semAcento } from "@/lib/inbox/busca-em-mensagens";
 import { avisarExecucoesMudaram } from "@/hooks/use-execucoes-do-contato";
 
 interface AutomacaoDaLista {
@@ -120,17 +121,20 @@ export function ExecutarAutomacaoDialog({
     };
   }, [open]);
 
-  const termo = busca.trim().toLowerCase();
+  // ⚠️ `semAcento` como o resto do inbox: com o `.toLowerCase()` cru,
+  // "cobranca" não achava "Cobrança" e o dialog dizia "Nada casa com a
+  // busca" sobre item existente (ledger 48h).
+  const termo = semAcento(busca.trim());
   const automacoesVisiveis = useMemo(
     () =>
       termo
-        ? automacoes.filter((a) => a.name.toLowerCase().includes(termo))
+        ? automacoes.filter((a) => semAcento(a.name).includes(termo))
         : automacoes,
     [automacoes, termo],
   );
   const robosVisiveis = useMemo(
     () =>
-      termo ? robos.filter((r) => r.name.toLowerCase().includes(termo)) : robos,
+      termo ? robos.filter((r) => semAcento(r.name).includes(termo)) : robos,
     [robos, termo],
   );
 

@@ -2704,7 +2704,7 @@
     "subtitle": "AI reads the last 7 days of conversations and flags what needs attention — the decision is yours.",
     "cardUrgencias": "Open urgencies",
     "cardInsatisfacoes": "Dissatisfaction",
-    "cardPendencias": "No reply for 24h+",
+    "cardPendencias": "No reply for {horas}h+",
     "cardNotaMedia": "Average score (7 days)",
     "loadFailed": "Could not load the Radar. What you see below may be stale.",
     "tentarDeNovo": "Try again",

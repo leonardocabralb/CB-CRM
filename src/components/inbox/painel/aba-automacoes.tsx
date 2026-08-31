@@ -20,7 +20,7 @@
 // dialog: o contexto todo já está na linha.
 // ============================================================
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Bot,
   Check,
@@ -78,6 +78,15 @@ export function AbaAutomacoes({
   // propósito: uma tradução por tipo de passo, cobrada por teste.
   const tAuto = useTranslations('Pipelines.automacoes');
   const podeAgir = useCan('send-messages');
+  // ⚠️ Relógio vivo (mesmo padrão do Radar): o `agora` lá embaixo era
+  // capturado no render e NUNCA reavaliado — sem realtime nas esperas e
+  // recarregando só por ação, "próximo passo em 5 minutos" ficava escrito
+  // muito depois de a espera ter disparado (ledger 48h).
+  const [, setTique] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTique((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   /** Chave da linha aguardando o segundo clique ('robo' | automationId). */
   const [confirmando, setConfirmando] = useState<string | null>(null);
