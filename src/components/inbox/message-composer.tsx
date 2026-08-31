@@ -935,9 +935,18 @@ export function MessageComposer({
         );
         return;
       }
+      const origem = conversationId;
       setBusy(true);
       try {
         const { publicUrl, path } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file);
+        // ⚠️ Subir um arquivo leva segundos e o compositor NÃO remonta na
+        // troca de conversa: sem esta conferência o anexo aterrissa no
+        // rascunho do cliente que estiver aberto quando o upload termina.
+        // O objeto recém-subido não serve a ninguém — apaga junto.
+        if (conversaAnteriorRef.current !== origem) {
+          removeStaged(path);
+          return;
+        }
         // Replacing an existing draft? GC the previous object first.
         removeStaged(draftRef.current?.path);
         setDraft({ kind, mediaUrl: publicUrl, path, filename: file.name, caption: "" });
@@ -947,7 +956,7 @@ export function MessageComposer({
         setBusy(false);
       }
     },
-    [removeStaged],
+    [removeStaged, conversationId],
   );
 
   const handlePicked = useCallback(
@@ -966,10 +975,15 @@ export function MessageComposer({
    * cópia, nunca o arquivo do acervo. Enviar por referência faria um envio
    * falho apagar o contrato-padrão do escritório inteiro — ver o cabeçalho de
    * `api/cb/acervo/[id]/copiar`.
+   *
+   * ⚠️ E confere a conversa ao voltar, como o `stageUpload`: o compositor não
+   * remonta na troca, então a cópia em voo aterrissaria no rascunho de quem
+   * estivesse aberto — o documento do cliente A pronto para enviar ao B.
    */
   const escolherDoAcervo = useCallback(
     async (item: MediaLibraryItem) => {
       setAcervoOpen(false);
+      const origem = conversationId;
       setBusy(true);
       try {
         const res = await fetch(`/api/cb/acervo/${item.id}/copiar`, {
@@ -978,6 +992,11 @@ export function MessageComposer({
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json?.path) {
           toast.error(t("acervoError"));
+          return;
+        }
+        if (conversaAnteriorRef.current !== origem) {
+          // A cópia é do acervo, mas é CÓPIA: apagá-la não toca o original.
+          removeStaged(json.path as string);
           return;
         }
         removeStaged(draftRef.current?.path);
@@ -994,7 +1013,7 @@ export function MessageComposer({
         setBusy(false);
       }
     },
-    [removeStaged, t],
+    [removeStaged, t, conversationId],
   );
 
   // ---- Voice recording (client-side Ogg/Opus, no server transcode) ---

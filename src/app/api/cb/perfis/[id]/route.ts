@@ -84,6 +84,18 @@ export async function PATCH(
         .select("perfil_id, account_role")
         .eq("user_id", ctx.userId)
         .maybeSingle();
+      // ⚠️ Falha de consulta NÃO pode virar "não é o seu perfil".
+      // Descartando o `error`, `eu.data` chega nulo, `rebaixariaOEditor`
+      // responde false e a trava falha ABERTA: o admin salva, se rebaixa e
+      // perde o acesso à única tela que desfaria isso — sem caminho de volta
+      // pela interface. Falhar fechado aqui custa um "tente de novo".
+      if (eu.error) {
+        console.error("[PATCH /api/cb/perfis] self load error:", eu.error);
+        return NextResponse.json(
+          { error: "Não foi possível confirmar o seu próprio perfil — tente de novo" },
+          { status: 503 },
+        );
+      }
       if (
         rebaixariaOEditor({
           papelDoEditor: eu.data?.account_role ?? null,
@@ -207,6 +219,36 @@ export async function DELETE(
         {
           error: `Este perfil está atribuído a ${emUso.count} membro(s) — mova as pessoas para outro perfil antes de apagar`,
           membros: emUso.count,
+        },
+        { status: 409 },
+      );
+    }
+
+    // ⚠️ E o convite AINDA NÃO ACEITO conta como uso, pela mesma razão.
+    // A FK da 960 é `ON DELETE SET NULL (perfil_id)`: apagar o perfil antes
+    // do aceite deixa o convite com perfil nulo, e nulo significa SEM
+    // RESTRIÇÃO — o convidado entra vendo a conta inteira, e nada avisa
+    // quem apagou. Só a checagem de membros existia, e ela passa justamente
+    // porque a pessoa ainda não entrou.
+    const convites = await supabaseAdmin()
+      .from("account_invitations")
+      .select("id", { count: "exact", head: true })
+      .eq("perfil_id", id)
+      .eq("account_id", ctx.accountId)
+      .is("accepted_at", null)
+      .gt("expires_at", new Date().toISOString());
+    if (convites.error) {
+      console.error("[DELETE /api/cb/perfis] invites count error:", convites.error);
+      return NextResponse.json(
+        { error: "Falha ao conferir os convites pendentes" },
+        { status: 500 },
+      );
+    }
+    if ((convites.count ?? 0) > 0) {
+      return NextResponse.json(
+        {
+          error: `Há ${convites.count} convite(s) pendente(s) com este perfil — apagá-lo faria essas pessoas entrarem sem restrição nenhuma. Cancele os convites ou espere o aceite.`,
+          convites: convites.count,
         },
         { status: 409 },
       );

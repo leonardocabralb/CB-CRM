@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   LARGURA_MS,
+  PISO_ANTES_MS,
   deslocamentoEmMs,
   janelaDeBusca,
   larguraDaJanela,
@@ -194,9 +195,34 @@ describe('⚠️ largura da janela x deslocamento curto (947)', () => {
     expect(new Date(de).getTime()).toBeGreaterThanOrEqual(agora)
   })
 
-  it('deslocamento zero não zera a janela', () => {
-    // Sem o piso, a janela teria largura zero e nunca casaria com nada.
-    expect(larguraDaJanela({ offset_hours: 0 })).toBe(LARGURA_MS)
+  it('⚠️ deslocamento zero usa o PISO, nunca a guarda cheia', () => {
+    // "Na hora da reunião" com a guarda de 1h: um agendador religado após
+    // uma queda mandava "sua reunião é agora" até 1 HORA depois do início —
+    // a afirmação falsa que este módulo existe para impedir. O piso de 5min
+    // cobre a cadência real do laço (~60s) e limita o atraso a isso.
+    expect(larguraDaJanela({ offset_hours: 0 })).toBe(PISO_ANTES_MS)
+    expect(larguraDaJanela({})).toBe(PISO_ANTES_MS)
+  })
+
+  it('deslocamento menor que o piso sobe até o piso', () => {
+    // Janela menor que o ciclo do agendador (~60-110s com o -m 50 do curl)
+    // abriria buracos entre varreduras: "1 minuto antes" nunca dispararia.
+    // O preço declarado: um "2 minutos antes" pode chegar até 3 min depois
+    // do início — melhor que nunca chegar.
+    expect(larguraDaJanela({ offset_minutes: 2 })).toBe(PISO_ANTES_MS)
+  })
+
+  it('⚠️ "depois" mantém a guarda CHEIA — encolher perdia follow-up', () => {
+    // Follow-up é depois da reunião por definição: atraso não afirma nada
+    // de falso ao cliente. Encolhida para o deslocamento, qualquer queda do
+    // agendador maior que 30 min perdia os follow-ups do buraco EM SILÊNCIO
+    // (a varredura simplesmente não os achava mais). Ledger 48h, r2.
+    expect(larguraDaJanela({ offset_minutes: 30, direction: 'depois' })).toBe(
+      LARGURA_MS,
+    )
+    expect(larguraDaJanela({ offset_hours: 0, direction: 'depois' })).toBe(
+      LARGURA_MS,
+    )
   })
 })
 

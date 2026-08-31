@@ -37,6 +37,24 @@ describe('parsearValor', () => {
     expect(parsearValor(',555')).toBe(0.56);
   });
 
+  it('não lê como milhar o separador que vem depois de outro separador', () => {
+    // ⚠️ Medido em produção: estas três formas gravavam MIL VEZES o valor
+    // digitado. `1.250,555` é a forma brasileira de digitar um centavo a
+    // mais — a cabeça agrupa com ponto, então a vírgula final só pode ser
+    // decimal. O caso sem ponto (`1250,555`, acima) já era barrado; o caso
+    // COM ponto, que é o que o operador realmente digita, não.
+    expect(parsearValor('1.250,555')).toBe(1250.56);
+    expect(parsearValor('40.000,000')).toBe(40000);
+    expect(parsearValor('1,250.555')).toBe(1250.56);
+  });
+
+  it('não lê como milhar um grupo que começa por zero', () => {
+    // `0,555` é meio real mal digitado, não "zero mil quinhentos e
+    // cinquenta e cinco". Número agrupado nenhum começa com zero.
+    expect(parsearValor('0,555')).toBe(0.56);
+    expect(parsearValor('0.555')).toBe(0.56);
+  });
+
   it('trata uma ou duas casas como centavos', () => {
     expect(parsearValor('1250,5')).toBe(1250.5);
     expect(parsearValor('1250,55')).toBe(1250.55);

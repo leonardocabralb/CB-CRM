@@ -173,11 +173,17 @@ as que voltam a conflitar):
 - ⚠️ **Um workflow só: `.github/workflows/pipeline.yml`.** O `ci.yml` e o
   `migrations.yml` eram DO UPSTREAM e foram removidos; as três etapas
   (verificar → migrations → deploy) viraram jobs de um arquivo nosso, com o
-  `deploy` dependendo das outras duas. Antes os três rodavam **em paralelo** no
+  `deploy` dependendo de `verificar`. Antes os três rodavam **em paralelo** no
   push do `main`, e o cabeçalho do deploy dizia "after CI passes" sem que
   existisse `needs:` — um CI vermelho não impedia a publicação. **Todo merge do
   upstream vai trazer `ci.yml` e `migrations.yml` de volta: apagar de novo**, ou
   as etapas passam a rodar duas vezes por push.
+  ⚠️ **O replay de migrations NÃO segura o deploy**, e o próprio
+  `pipeline.yml` diz isso por escrito ("SINAL, não portão"): `deploy` tem
+  `needs: [verificar]` e mais nada. Migration vermelha no `main` PUBLICA
+  assim mesmo — medido em 2026-08-31, revisando o trem de PRs do dia
+  anterior. Esta seção afirmava "com as duas etapas verdes"; era mentira, e
+  mentira do tipo que faz alguém confiar num portão que não existe.
 
 - **`src/i18n/messages.test.ts` checa `pt-BR`, não `ko`.** O upstream o escreveu
   para `ko`, que não servimos; deixar assim daria um teste permanentemente
@@ -319,7 +325,12 @@ entre escrever e enviar.** `src/lib/scheduled/midia.ts` (puro, com teste),
   responder "existe" para todo arquivo sumido, que é o único caso para o qual
   ela serve. Já foi cometido, e só a medição em produção pegou: o teste
   passava porque o stub imitava a forma SUPOSTA. **Quem usar `exists()` em
-  código novo confere `data === false` antes do `error`.**
+  código novo confere `data === false` antes do `error`.** ⚠️ E a SEGUNDA
+  metade (revisão 48h): a forma resolvida `{data:false, error}` só existe
+  para 400/404 — **qualquer outra falha (5xx, rede) é LANÇADA** (`throw
+  error` no storage-js). Sem try/catch, o ramo "Storage fora do ar" fica
+  inalcançável e o blip vira 500: código novo precisa das DUAS defesas,
+  como `anexoAindaExiste` (dispatch) e a rota do acervo fazem.
 - ⚠️ **A URL do anexo é DERIVADA do caminho (`getPublicUrl`), nunca aceita do
   cliente.** Aceitando-a, a conferência de posse olha um campo (`media_path`) e
   o envio usa outro (`media_url`), sem nada amarrando os dois — dá para casar
@@ -715,7 +726,11 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   passada do worker somam-se o ciclo do agendador e o throttle, e até lá o
   cartão ficava na tela com o contador "aguardando há 26h" CRESCENDO sobre
   cliente já atendido. A conferência **falha para o lado do alarme**: erro
-  de rede ou lista truncada mantêm o cartão.
+  de rede mantém o cartão, e lista TRUNCADA continua valendo (a consulta é
+  DESC — o teto só pode omitir resposta ANTIGA, e faltar resposta mantém o
+  cartão; descartar tudo no teto desligava a conferência inteira de vez,
+  porque pendência congelada puxa o piso da consulta para semanas atrás).
+  Mensagem APAGADA não conta como resposta (`deleted_at IS NULL`).
 - ⚠️⚠️ **"Resposta de gente" NÃO é `sender_id IS NOT NULL`** — é
   `sender_id` preenchido **OU `from_device = true`**. O celular pareado
   (`persistDeviceMessage`) grava `sender_type='agent'` com `from_device`
@@ -724,8 +739,15 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   da equipe são `from_device` contra **8** digitadas dentro do CRM — a
   versão só-`sender_id` reconhecia 8 de 978 e o alarme de 24h sobrevivia
   ao atendimento em quase todo caso real (achado da revisão do PR #72).
-  Continuam NÃO fechando a pendência: broadcast, automação, fluxo e
-  agendada, que saem sem `sender_id` **e** sem `from_device`. ⚠️ O
+  Continuam NÃO fechando a pendência: broadcast, automação e fluxo (saem
+  sem `sender_id` e sem `from_device`) — e a **AGENDADA**, que é o caso
+  TRAIÇOEIRO: ela SAI COM `sender_id` (o `dispatch.ts` passa o
+  `created_by` de quem a criou, dias antes, e o send-message persiste).
+  Pela coluna sozinha ela conta como resposta; a proveniência que a
+  denuncia é `cb_scheduled_messages.message_id`, e o worker E a
+  conferência ao vivo a excluem por ele (achado do Codex no PR #74 — uma
+  versão anterior desta nota afirmava que a agendada saía sem `sender_id`,
+  e estava ERRADA). ⚠️ O
   `houveHumanoNaJanela` do worker usa a régua ANTIGA (só `sender_id`) —
   lá ela decide outra coisa (se preserva a análise congelada quando a
   janela não tem cliente), e uma saída `from_device` sozinha realmente não
@@ -749,10 +771,15 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   mantém a função pura e mede a idade do sinal DENTRO da conversa.
 - ⚠️ **Não existe mais aba "Todos"** (decisão do operador): listar toda
   conversa analisada era o próprio ruído que o filtro passou a cortar.
-  Consequência que o desenho tem de sustentar — o cartão some da lista no
-  instante do clique e o botão "Reabrir" vai junto, então **tratar e
-  descartar têm "Desfazer" no toast**. É a única saída para o clique
-  errado: descartado nunca reabre sozinho.
+  Consequência que o desenho tem de sustentar: sem ela, um descarte errado
+  esconde o alarme daquele cliente **para sempre** — `descartado` nunca
+  reabre sozinho. São DUAS saídas, e nenhuma sobra: o "Desfazer" do toast
+  (~4s) e o cartão que **FICA na lista enquanto a tela estiver aberta**,
+  apagado e com o botão "Reabrir" (`mexidasAqui`, em `radar/page.tsx`). Só
+  o toast não bastava — e foi o que houve até 2026-08-31, com o "Reabrir"
+  como código morto, porque a lista só aceita `estado === 'aberto'`. Sair
+  da tela limpa o conjunto: é o fim do expediente de triagem, e a aba
+  "Todos" continua não existindo.
 - **NADA dispara sozinho** — mesma classe da 925: quem move é o agendador
   batendo em `/api/cb/radar/cron` (incluído no laço LENTO do
   `docker-stack.yml`). ⚠️ O CI não relê o `command` do `agendador`: a
@@ -1419,6 +1446,11 @@ mordem de novo em qualquer código novo:
     estoura com número duplicado, então o ARQUIVO foi renumerado no merge —
     o da presença, porque as 957–962 dependem da de perfis. O histórico do
     Supabase não muda (registra por timestamp), mesmo caso da 906.
+  - **964_cb_disparo_e_regras_so_admin** — as 12 policies de ESCRITA de
+    `automations`, `automation_steps`, `flows`, `flow_nodes`, `broadcasts` e
+    `broadcast_recipients` passam de `'agent'` para `'admin'`, alcançando a
+    decisão que a Fase 2 dos perfis só tinha aplicado nas ROTAS. Aplicada em
+    2026-08-31. SELECT continua aberto a qualquer membro da conta.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
@@ -1565,8 +1597,10 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
 
 - ⚠️⚠️ **`git push origin main` DISPARA DEPLOY DE PRODUÇÃO.** O workflow
   `.github/workflows/pipeline.yml` roda a cada push no `main`: verifica
-  (lint/typecheck/test/build), replaya as migrations num banco limpo e, com as
-  duas etapas verdes, builda a imagem, publica no GHCR
+  (lint/typecheck/test/build), replaya as migrations num banco limpo e, com a
+  etapa **`verificar`** verde — só ela; o replay de migrations é SINAL, não
+  portão, e migration vermelha publica assim mesmo —, builda a imagem,
+  publica no GHCR
   (`ghcr.io/leonardocabralb/cb-crm`) e faz rollout no serviço do **Docker Swarm
   da VPS** (`82.25.76.63` / `vps.cbadvogados.com`), atrás do **Traefik** (TLS
   Let's Encrypt). O rollout é `docker service update --image <repo>:<sha>` —

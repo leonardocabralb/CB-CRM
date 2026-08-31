@@ -163,6 +163,7 @@ export function ExecutarAutomacaoDialog({
       };
       if (!res.ok) {
         if (data.error === "channel_out_of_scope") toast.error(t("foraDoCanal"));
+        else if (data.error === "stage_out_of_scope") toast.error(t("foraDaEtapa"));
         else if (data.error === "inactive") toast.error(t("inativa"));
         else if (data.error === "engine_refused" && data.detail)
           toast.error(data.detail);

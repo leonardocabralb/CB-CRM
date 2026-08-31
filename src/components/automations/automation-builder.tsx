@@ -126,6 +126,29 @@ export interface BuilderInitial {
   steps: BuilderStep[]
 }
 
+/**
+ * Defaults REAIS do gatilho de lembrete por data — os mesmos que os inputs
+ * exibem. Sem isto eles eram só de tela (`?? 24`, `?? "antes"`): digitar
+ * apenas os minutos salvava um lembrete de 30min-antes com a tela dizendo
+ * 24h30, e o formulário intocado era recusado na ativação por "direção
+ * inválida" — com "antes" selecionado na tela.
+ *
+ * ⚠️ O deslocamento é semeado só quando NENHUMA das duas metades veio
+ * (a régua de "veio" espelha `motivoDeConfigInvalida`): config só-minutos é
+ * um lembrete legítimo de minutos, e ganhar `offset_hours: 24` aqui o
+ * tornaria 24h30 em silêncio na próxima edição.
+ */
+function semearLembrete(cfg: Record<string, unknown>): Record<string, unknown> {
+  const ausente = (v: unknown) =>
+    v === undefined || v === null || (typeof v === "string" && v.trim() === "")
+  const semDeslocamento = ausente(cfg.offset_hours) && ausente(cfg.offset_minutes)
+  return {
+    ...cfg,
+    ...(semDeslocamento ? { offset_hours: 24, offset_minutes: 0 } : {}),
+    ...(ausente(cfg.direction) ? { direction: "antes" } : {}),
+  }
+}
+
 // ------------------------------------------------------------
 // Step metadata — one source of truth for icon + label + border color
 // ------------------------------------------------------------
@@ -801,7 +824,15 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
   const router = useRouter()
   const t = useTranslations("Automations.builder")
   const isEditing = !!initial.id
-  const [state, setState] = useState<BuilderInitial>(initial)
+  const [state, setState] = useState<BuilderInitial>(() =>
+    // O mesmo semear do onTypeChange, para a automação JÁ EXISTENTE aberta
+    // com a config incompleta (gravada na época dos defaults só-de-tela):
+    // sem isto, a tela mostraria 24h/"antes" sobre uma config sem nada, e o
+    // salvar recusaria com "direção inválida" contradizendo o que se vê.
+    initial.trigger_type === "date_field_offset"
+      ? { ...initial, trigger_config: semearLembrete(initial.trigger_config) }
+      : initial,
+  )
   const [saving, setSaving] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
@@ -939,7 +970,23 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
               config={state.trigger_config}
               channelIds={state.channel_ids}
               stageIds={state.stage_ids}
-              onTypeChange={(tVal) => patchTop("trigger_type", tVal)}
+              onTypeChange={(tVal) =>
+                setState((s) => ({
+                  ...s,
+                  trigger_type: tVal,
+                  // ⚠️ O lembrete por data SEMEIA os defaults NA CONFIG, não
+                  // só na tela — ver `semearLembrete`. Os inputs mostravam
+                  // `?? 24` / `?? "antes"` sem gravar nada: digitar só os
+                  // minutos salvava um lembrete de 30min-antes com a tela
+                  // dizendo 24h30, e o formulário intocado era recusado na
+                  // ativação por "direção inválida" — com "antes"
+                  // selecionado na tela. O que se vê é o que se salva.
+                  trigger_config:
+                    tVal === "date_field_offset"
+                      ? semearLembrete(s.trigger_config)
+                      : s.trigger_config,
+                }))
+              }
               onConfigChange={(c) => patchTop("trigger_config", c)}
               onChannelIdsChange={(ids) => patchTop("channel_ids", ids)}
               onStageIdsChange={(ids) => patchTop("stage_ids", ids)}

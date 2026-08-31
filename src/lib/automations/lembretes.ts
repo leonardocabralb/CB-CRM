@@ -60,20 +60,42 @@ export function deslocamentoEmMs(cfg: DateFieldTriggerConfig): number {
 }
 
 /**
+ * Piso da janela de um "antes" curto (e do "na hora").
+ *
+ * O laço rápido do agendador roda a cada ~60s (docker-stack.yml), então 5
+ * minutos cobrem folgado a cadência com tropeço. É o teto de atraso que um
+ * "na hora da reunião" aceita: disparar até 5 min depois do início, nunca a
+ * 1 hora da guarda cheia — "sua reunião é agora" com ela na metade é
+ * exatamente a afirmação falsa que este módulo existe para impedir.
+ */
+export const PISO_ANTES_MS = 5 * 60 * 1000
+
+/**
  * A largura da janela deste gatilho.
  *
- * ⚠️ NUNCA MAIOR QUE O PRÓPRIO DESLOCAMENTO, e é isso que torna o lembrete de
- * minutos possível. Com a largura fixa de 1 hora, um gatilho de "10 minutos
- * antes" aceitaria disparar até 50 minutos DEPOIS de a reunião começar — a
- * guarda contra atraso viraria a causa do atraso, e o cliente receberia "sua
- * reunião é em 10 minutos" com ela já em curso.
+ * ⚠️ `antes`: NUNCA MUITO MAIOR QUE O PRÓPRIO DESLOCAMENTO, e é isso que
+ * torna o lembrete de minutos possível. Com a largura fixa de 1 hora, um
+ * gatilho de "10 minutos antes" aceitaria disparar até 50 minutos DEPOIS de
+ * a reunião começar — a guarda contra atraso viraria a causa do atraso, e o
+ * cliente receberia "sua reunião é em 10 minutos" com ela já em curso. O
+ * PISO existe porque a cadência do laço é ~1 min: janela menor que o ciclo
+ * abriria buracos entre varreduras. E o deslocamento ZERO ("na hora") entra
+ * na MESMA régua — antes ele caía na guarda cheia e um agendador religado
+ * mandava "sua reunião é agora" até 1 hora depois do início.
+ *
+ * ⚠️ `depois` usa a guarda CHEIA, sempre. Encolher aqui não protege nada —
+ * o follow-up é depois da reunião por definição, atraso não afirma nada de
+ * falso — e custava caro: com "30 minutos depois", qualquer queda do
+ * agendador maior que 30 min perdia os follow-ups do buraco EM SILÊNCIO
+ * (a varredura simplesmente não os achava mais). Achado do ledger da
+ * revisão 48h (r2).
  *
  * Para os deslocamentos longos (24h, 4h) nada muda: continua 1 hora.
  */
 export function larguraDaJanela(cfg: DateFieldTriggerConfig): number {
+  if (cfg.direction === 'depois') return LARGURA_MS
   const deslocamento = deslocamentoEmMs(cfg)
-  if (deslocamento <= 0) return LARGURA_MS
-  return Math.min(LARGURA_MS, deslocamento)
+  return Math.min(LARGURA_MS, Math.max(deslocamento, PISO_ANTES_MS))
 }
 
 export function janelaDeBusca(cfg: DateFieldTriggerConfig, agoraMs: number): Janela {
@@ -108,7 +130,7 @@ export function motivoDeConfigInvalida(cfg: DateFieldTriggerConfig): string | nu
   // `Number(undefined) = NaN`, que a checagem recusava. Ao dividir em horas +
   // minutos eu troquei a condição por `!== undefined` e abri a porta: config
   // sem deslocamento nenhum passava a ser aceita, com deslocamento ZERO — e a
-  // janela `[agora-1h, agora]` avisaria sobre reuniões que JÁ COMEÇARAM, em
+  // janela `[agora-piso, agora]` avisaria sobre reuniões que JÁ COMEÇARAM, em
   // vez de a automação ser recusada com motivo no log. E `undefined` não
   // basta: campo "limpo" chega como `null` ou `''`, e os dois viram `0` no
   // `Number()` — o mesmo zero disfarçado. O `0` NUMÉRICO explícito continua

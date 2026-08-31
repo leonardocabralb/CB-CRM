@@ -19,6 +19,27 @@ export interface MensagemParaMetricas {
   /** 'customer' = cliente; 'agent' e 'bot' = escritório (inclui resposta
    *  dada pelo celular, `from_device` — para o cliente é resposta igual). */
   senderType: 'customer' | 'agent' | 'bot'
+  /**
+   * Saiu de GENTE respondendo agora?
+   *
+   * ⚠️ Só isto fecha a pendência do cliente — e quem resolve é o CHAMADOR,
+   * porque as colunas não bastam:
+   *
+   * - Broadcast, automação e fluxo gravam `agent`/`bot` sem `sender_id` e
+   *   sem `from_device` → não é gente.
+   * - O celular pareado grava `agent` com `sender_id` NULO e `from_device`
+   *   true → É gente (948 das 978 respostas da equipe em produção).
+   * - ⚠️ A AGENDADA grava `sender_id` — o `created_by` de quem a criou,
+   *   dias antes (dispatch → send-message). É atribuição, não resposta:
+   *   pela coluna sozinha, um follow-up agendado fechava a pendência do
+   *   cliente esquecido (achado do Codex no PR #74). O worker a exclui
+   *   pela proveniência (`cb_scheduled_messages.message_id`).
+   *
+   * Sem isto, um "recebemos seu contato" automático da terça apagava do
+   * painel a pendência aberta na segunda — o alarme que o Radar existe
+   * para acender. Irrelevante quando `senderType === 'customer'`.
+   */
+  porGente: boolean
   createdAt: Date
 }
 
@@ -38,8 +59,14 @@ export interface MetricasDaConversa {
 /**
  * Percorre a janela em ordem cronológica medindo cada "rodada": a
  * PRIMEIRA mensagem de uma sequência do cliente abre a pendência, e a
- * resposta seguinte da equipe a fecha (mensagens extras do cliente no
+ * resposta seguinte de GENTE a fecha (mensagens extras do cliente no
  * meio não reabrem a contagem — quem espera desde a primeira espera mais).
+ *
+ * ⚠️ "De gente" e não "da equipe": ver `porGente`. Saída automática atravessa
+ * a rodada sem fechá-la, e sem entrar no tempo de resposta — um disparo em
+ * massa não é resposta a este cliente, e contá-lo como tal faria a métrica
+ * dizer que a equipe respondeu em 2 minutos uma pergunta ainda sem resposta.
+ * `msgsEquipe` continua contando tudo que saiu: é volume, não atendimento.
  */
 export function calcularMetricas(
   mensagens: MensagemParaMetricas[],
@@ -59,7 +86,7 @@ export function calcularMetricas(
       if (!inicioPendencia) inicioPendencia = m.createdAt
     } else {
       msgsEquipe += 1
-      if (inicioPendencia) {
+      if (inicioPendencia && m.porGente) {
         temposSeg.push(segundosUteisEntre(inicioPendencia, m.createdAt))
         inicioPendencia = null
       }

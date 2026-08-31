@@ -96,16 +96,31 @@ export function CampoPersonalizadoInput({
   }
 
   if (field.field_type === 'number') {
-    return (
-      <Input
-        type="number"
-        inputMode="decimal"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        disabled={disabled}
-      />
-    );
+    // ⚠️ O mesmo cuidado do `foraDaLista` do select, para número: o banco é
+    // TEXT e automação grava texto livre por desenho (948) — e um
+    // `<input type="number" value="R$ 300">` renderiza VAZIO, porque o
+    // navegador recusa valor fora da forma numérica do HTML. O operador via
+    // "sem valor" sobre dado real e o Salvar o sobrescrevia. Valor que o
+    // input numérico não consegue EXIBIR cai no input de texto: continua
+    // visível e editável.
+    // ⚠️ O regex roda no valor CRU, não no trim: o input recebe o cru, e
+    // " 300 " (espaço colado por automação) passava na checagem aparada e
+    // ainda renderizava vazio — o mesmo bug voltando pela borda. Só o
+    // whitespace-puro conta como vazio (não há dado a esconder).
+    const exibivelComoNumero =
+      value.trim() === '' || /^-?(\d+|\d*\.\d+)([eE][+-]?\d+)?$/.test(value);
+    if (exibivelComoNumero) {
+      return (
+        <Input
+          type="number"
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          disabled={disabled}
+        />
+      );
+    }
   }
 
   return (

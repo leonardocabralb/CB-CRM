@@ -14,6 +14,8 @@
 // as duas telas mostram com isto. Três chamadores, uma regra.
 // ============================================================
 
+import { prefixoDoAcervo } from '@/lib/acervo/tipos';
+
 /**
  * O teto da Meta para legenda de mídia.
  *
@@ -87,6 +89,17 @@ export function caminhoEhDaConta(path: string, accountId: string): boolean {
   // `buildMediaPath` troca tudo que não é letra, número, `.`, `-` ou `_` por
   // `_`, então um `%` legítimo não existe.
   if (path.includes('%')) return false;
+  // ⚠️ O arquivo do ACERVO fica de fora, mesmo sendo da própria conta.
+  //
+  // A rota `acervo/[id]/copiar` existe exatamente para que uma agendada nunca
+  // aponte para o ORIGINAL — cancelar uma agendada apaga o objeto do bucket, e
+  // o compositor apaga em envio falho. Com só o prefixo da conta, um POST
+  // direto em `/api/cb/scheduled` (basta papel agent, e o `media_path` é
+  // visível a qualquer membro pela policy de SELECT da 953) agendava a mídia
+  // do acervo; cancelar aquilo apagava o contrato-padrão do escritório e
+  // deixava o item entregando 404 para todo mundo. A proteção era só da
+  // interface — esta linha a põe no servidor, que é onde ela vale.
+  if (path.startsWith(prefixoDoAcervo(accountId))) return false;
   // `startsWith` da pasta INTEIRA, com a barra. Sem ela, a conta
   // `account-11111111…` casaria com `account-11111111…-outra/`.
   return path.startsWith(`account-${accountId}/`);

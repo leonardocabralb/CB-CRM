@@ -49,6 +49,10 @@ interface RunRow {
     // (`stopped_by_automation` vs `replaced_by_automation`) fica no
     // `end_reason`, logo abaixo na linha.
     | "stopped_by_automation"
+    // Uma PESSOA decidiu parar, pelo botão da aba Automações da conversa
+    // (955) — distinto de `paused_by_agent`, que é a pessoa apenas ter
+    // respondido, e de `stopped_by_automation`, que é regra.
+    | "stopped_by_agent"
     | "failed";
   current_node_key: string | null;
   started_at: string;
@@ -73,45 +77,65 @@ interface EventRow {
   created_at: string;
 }
 
+/**
+ * Aparência e rótulo de cada status.
+ *
+ * ⚠️ O `status` vem de um CAST da resposta da API, não de um tipo checado:
+ * um valor que o CHECK do banco aceite e esta tabela não conheça derruba a
+ * página inteira. Já aconteceu — a 955 acrescentou `stopped_by_agent` e o
+ * histórico estourava `TypeError` ao abrir. Daí o `META_DESCONHECIDO` do
+ * consumidor: status novo aparece cru, mas a tela ABRE.
+ */
 const STATUS_META: Record<
   RunRow["status"],
-  { label: string; classes: string; icon: typeof Clock }
+  { chave: string; classes: string; icon: typeof Clock }
 > = {
   active: {
-    label: "Active",
+    chave: "statusActive",
     classes: "border-emerald-600/40 bg-emerald-500/10 text-emerald-300",
     icon: PlayCircle,
   },
   completed: {
-    label: "Completed",
+    chave: "statusCompleted",
     classes: "border-border bg-muted text-muted-foreground",
     icon: CircleCheck,
   },
   handed_off: {
-    label: "Handed off",
+    chave: "statusHandedOff",
     classes: "border-amber-600/40 bg-amber-500/10 text-amber-300",
     icon: UserPlus,
   },
   timed_out: {
-    label: "Timed out",
+    chave: "statusTimedOut",
     classes: "border-border bg-muted/60 text-muted-foreground",
     icon: Clock,
   },
   paused_by_agent: {
-    label: "Paused by agent",
+    chave: "statusPaused",
     classes: "border-border bg-muted text-muted-foreground",
     icon: PauseCircle,
   },
   stopped_by_automation: {
-    label: "Stopped by automation",
+    chave: "statusStoppedByAutomation",
     classes: "border-violet-600/40 bg-violet-500/10 text-violet-300",
     icon: OctagonX,
   },
+  stopped_by_agent: {
+    chave: "statusStoppedByAgent",
+    classes: "border-sky-600/40 bg-sky-500/10 text-sky-300",
+    icon: OctagonX,
+  },
   failed: {
-    label: "Failed",
+    chave: "statusFailed",
     classes: "border-red-600/40 bg-red-500/10 text-red-300",
     icon: CircleAlert,
   },
+};
+
+const META_DESCONHECIDO = {
+  chave: null,
+  classes: "border-border bg-muted text-muted-foreground",
+  icon: Clock,
 };
 
 export default function FlowRunsPage() {
@@ -247,7 +271,7 @@ function RunCard({
   onToggle: () => void;
   t: ReturnType<typeof useTranslations>;
 }) {
-  const meta = STATUS_META[run.status];
+  const meta = STATUS_META[run.status] ?? META_DESCONHECIDO;
   const StatusIcon = meta.icon;
   const contactLabel =
     run.contact?.name?.trim() || run.contact?.phone || t("unknownContact");
@@ -275,21 +299,7 @@ function RunCard({
             </span>
             <Badge variant="outline" className={cn("gap-1", meta.classes)}>
               <StatusIcon className="h-3 w-3" />
-              {t(
-                run.status === "active"
-                  ? "statusActive"
-                  : run.status === "completed"
-                  ? "statusCompleted"
-                  : run.status === "handed_off"
-                  ? "statusHandedOff"
-                  : run.status === "timed_out"
-                  ? "statusTimedOut"
-                  : run.status === "paused_by_agent"
-                  ? "statusPaused"
-                  : run.status === "stopped_by_automation"
-                  ? "statusStoppedByAutomation"
-                  : "statusFailed"
-              )}
+              {meta.chave ? t(meta.chave) : run.status}
             </Badge>
             {run.status === "active" && run.current_node_key && (
               <code className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">

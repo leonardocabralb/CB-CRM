@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ============================================================
 // REGRESSÃO DO MERGE (upstream 2026-08-26) — a guarda de papel das rotas
@@ -98,6 +98,22 @@ vi.mock('@/lib/cb-channels/engine-send', () => ({
   evolutionTransportFor: vi.fn(),
 }))
 
+// ⚠️ A rota templates/sync NÃO passa pelo meta-api mockado acima: ela chama
+// `fetch(graph.facebook.com)` DIRETO. Com o mock de resolve-meta devolvendo
+// um canal, o teste seguia até um fetch REAL — e passava só enquanto a
+// internet respondia rápido. Medido em 2026-08-31: a rede da máquina caiu e
+// o caso 'templates/sync' estourou os 5s de timeout, três vezes seguidas,
+// sem nenhuma mudança no código. Teste de guarda não prova nada sobre a
+// Meta; aqui fora não existe rede.
+beforeEach(() => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('sem rede no teste — fetch real bloqueado')
+    }),
+  )
+})
+
 function pedido(body: Record<string, unknown>) {
   return new Request('http://localhost/api/whatsapp/x', {
     method: 'POST',
@@ -108,6 +124,7 @@ function pedido(body: Record<string, unknown>) {
 afterEach(() => {
   vi.clearAllMocks()
   vi.resetModules()
+  vi.unstubAllGlobals()
 })
 
 /**

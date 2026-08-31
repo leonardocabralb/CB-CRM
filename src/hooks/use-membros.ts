@@ -16,25 +16,33 @@
 
 import { useEffect, useState } from 'react';
 
-import { fetchAccountMembers } from '@/lib/account/members';
+import { fetchAccountMembersOrNull } from '@/lib/account/members';
 import type { AccountMember } from '@/types';
 
 export interface UseMembrosResult {
   membros: AccountMember[];
   /** `true` até a primeira resposta chegar (ou falhar). */
   carregando: boolean;
+  /**
+   * ⚠️ A busca FALHOU — a lista vazia não diz nada sobre a conta. Sem esta
+   * distinção, o formulário de tarefa lia `[]` como "único membro" e
+   * auto-atribuía ao criador numa conta com equipe, numa falha de rede.
+   */
+  falhou: boolean;
 }
 
 export function useMembros(): UseMembrosResult {
   const [membros, setMembros] = useState<AccountMember[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [falhou, setFalhou] = useState(false);
 
   useEffect(() => {
     let cancelado = false;
     (async () => {
-      const lista = await fetchAccountMembers();
+      const lista = await fetchAccountMembersOrNull();
       if (!cancelado) {
-        setMembros(lista);
+        setMembros(lista ?? []);
+        setFalhou(lista === null);
         setCarregando(false);
       }
     })();
@@ -43,5 +51,5 @@ export function useMembros(): UseMembrosResult {
     };
   }, []);
 
-  return { membros, carregando };
+  return { membros, carregando, falhou };
 }

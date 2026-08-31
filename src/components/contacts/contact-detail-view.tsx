@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { useAuth } from '@/hooks/use-auth';
+import { useCan } from '@/hooks/use-can';
 import { funilNoEscopo } from '@/lib/perfis/escopo';
 import { useChannels } from '@/hooks/use-channels';
 import { metaChannels, preferredChannel } from '@/lib/cb-channels/display';
@@ -99,6 +100,16 @@ export function ContactDetailView({
     if (escolha) setCanalEnvio(escolha.id);
   }, [canaisMeta, canalEnvio]);
 
+  /**
+   * ⚠️ Esta ficha e o painel da conversa escrevem O MESMO dado, e só o
+   * painel gateava. Sem isto, um `viewer` clicava em "Salvar alterações", a
+   * policy `contacts_update` (agent+) casava ZERO linhas, o PostgREST devolvia
+   * `error` nulo — e a tela dava toast de sucesso sobre uma escrita que nunca
+   * aconteceu. Mesma permissão do painel (`send-messages` = agent+), para as
+   * duas superfícies não divergirem.
+   */
+  const podeEditar = useCan('send-messages');
+
   // Details tab
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
@@ -127,8 +138,21 @@ export function ContactDetailView({
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loadingDeals, setLoadingDeals] = useState(false);
 
+  /**
+   * ⚠️ O contato ABERTO agora — a régua das cinco buscas desta ficha.
+   *
+   * O painel fica montado entre um contato e outro (o `Sheet` só troca o
+   * `contactId`), então respostas de contatos diferentes disputam o mesmo
+   * estado: abrir A com a rede lenta, fechar, abrir B, e a resposta de A
+   * chega depois e preenche os campos com os dados de A — que o "Salvar
+   * alterações" então grava no CONTATO B. O painel da conversa já tinha
+   * essa guarda (`contactIdRef`/`dadosProntos`); esta ficha, não.
+   */
+  const contatoAlvoRef = useRef(contactId);
+
   const fetchContact = useCallback(async () => {
     if (!contactId) return;
+    const alvo = contactId;
     setLoading(true);
 
     const { data } = await supabase
@@ -137,6 +161,7 @@ export function ContactDetailView({
       .eq('id', contactId)
       .single();
 
+    if (contatoAlvoRef.current !== alvo) return;
     if (data) {
       setContact(data);
       setEditName(data.name ?? '');
@@ -149,12 +174,14 @@ export function ContactDetailView({
 
   const fetchTags = useCallback(async () => {
     if (!contactId) return;
+    const alvo = contactId;
 
     const [tagsRes, contactTagsRes] = await Promise.all([
       supabase.from('tags').select('*').order('name'),
       supabase.from('contact_tags').select('tag_id').eq('contact_id', contactId),
     ]);
 
+    if (contatoAlvoRef.current !== alvo) return;
     if (tagsRes.data) setAllTags(tagsRes.data);
     if (contactTagsRes.data) {
       setContactTagIds(contactTagsRes.data.map((ct) => ct.tag_id));
@@ -163,6 +190,7 @@ export function ContactDetailView({
 
   const fetchNotes = useCallback(async () => {
     if (!contactId) return;
+    const alvo = contactId;
     setLoadingNotes(true);
 
     // Desde a 918 a anotação vive em `cb_conversation_notes`, chaveada pela
@@ -174,12 +202,14 @@ export function ContactDetailView({
       .eq('contact_id', contactId)
       .order('created_at', { ascending: false });
 
+    if (contatoAlvoRef.current !== alvo) return;
     if (data) setNotes(data);
     setLoadingNotes(false);
   }, [contactId, supabase]);
 
   const fetchCustomFields = useCallback(async () => {
     if (!contactId) return;
+    const alvo = contactId;
     setLoadingCustom(true);
 
     const [fieldsRes, valuesRes] = await Promise.all([
@@ -190,6 +220,9 @@ export function ContactDetailView({
         .eq('contact_id', contactId),
     ]);
 
+    // ⚠️ O caso mais caro da ficha: sem isto os VALORES de A entram no
+    // formulário aberto sobre B, e o Salvar os grava lá.
+    if (contatoAlvoRef.current !== alvo) return;
     if (fieldsRes.data) setCustomFields(fieldsRes.data);
     if (valuesRes.data) {
       const map: Record<string, string> = {};
@@ -203,12 +236,14 @@ export function ContactDetailView({
 
   const fetchDeals = useCallback(async () => {
     if (!contactId) return;
+    const alvo = contactId;
     setLoadingDeals(true);
     const { data } = await supabase
       .from('deals')
       .select('*, stage:pipeline_stages(*)')
       .eq('contact_id', contactId)
       .order('created_at', { ascending: false });
+    if (contatoAlvoRef.current !== alvo) return;
     // Recorte por perfil (Fase 4): a aba Negócios esconde caso de funil de
     // outra área — decisão do operador (cliente pode ter caso no trabalhista
     // E no bancário; cada equipe vê o seu). Órfão de funil passa.
@@ -221,6 +256,9 @@ export function ContactDetailView({
   }, [contactId, supabase, acesso]);
 
   useEffect(() => {
+    // Aponta o alvo ANTES de disparar: é ele que faz as respostas em voo do
+    // contato anterior serem descartadas em vez de preencherem este.
+    contatoAlvoRef.current = contactId;
     if (open && contactId) {
       fetchContact();
       fetchTags();
@@ -644,7 +682,8 @@ export function ContactDetailView({
                   </div>
                   <Button
                     onClick={saveDetails}
-                    disabled={savingDetails}
+                    disabled={savingDetails || !podeEditar}
+                    title={podeEditar ? undefined : t('readOnlyHint')}
                     className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
                     size="sm"
                   >
@@ -825,7 +864,8 @@ export function ContactDetailView({
                     ))}
                     <Button
                       onClick={saveCustomFields}
-                      disabled={savingCustom}
+                      disabled={savingCustom || !podeEditar}
+                      title={podeEditar ? undefined : t('readOnlyHint')}
                       className="bg-primary hover:bg-primary/90 text-primary-foreground w-full"
                       size="sm"
                     >

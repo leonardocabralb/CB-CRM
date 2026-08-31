@@ -92,6 +92,12 @@ export function InviteMemberDialog({
   // link" ANTES de a busca dos perfis voltar cairia no ramo legado e criaria
   // o convite SEM perfil, em silêncio — o convidado chegaria vendo tudo.
   const [perfisCarregados, setPerfisCarregados] = useState(false);
+  // ⚠️ E FALHA não é "conta sem perfis": com erro de rede, o `data` nulo
+  // deixava `perfis=[]`, o render caía no MESMO ramo legado e o convite
+  // nascia sem perfil — o furo acima, reaberto pela outra porta (ledger
+  // 48h, três ângulos). Falhou = botão travado + repetir, nunca o legado.
+  const [perfisFalharam, setPerfisFalharam] = useState(false);
+  const [tentativa, setTentativa] = useState(0);
   const [expiry, setExpiry] = useState<string>('7');
   const [label, setLabel] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -101,28 +107,49 @@ export function InviteMemberDialog({
     if (!open) return;
     let cancelado = false;
     (async () => {
-      const { data } = await createClient()
-        .from('cb_perfis_de_acesso')
-        .select('id, nome, papel_base, telas, channel_ids, pipeline_ids')
-        .order('sistema', { ascending: false })
-        .order('nome');
+      // ⚠️ try/catch porque queda de REDE rejeita a promise em vez de
+      // resolver com `{error}` — sem ele, o efeito morria em unhandled
+      // rejection e o dialog ficava travado SEM aviso nenhum (medido no
+      // preview sabotando o fetch).
+      let data: unknown[] | null = null;
+      let error: unknown = null;
+      try {
+        const res = await createClient()
+          .from('cb_perfis_de_acesso')
+          .select('id, nome, papel_base, telas, channel_ids, pipeline_ids')
+          .order('sistema', { ascending: false })
+          .order('nome');
+        data = res.data;
+        error = res.error;
+      } catch (e) {
+        error = e;
+      }
       if (cancelado) return;
+      if (error || !data) {
+        setPerfisFalharam(true);
+        return;
+      }
+      setPerfisFalharam(false);
       setPerfisCarregados(true);
-      if (!data) return;
       setPerfis(data as (PerfilParaResumo & { id: string })[]);
       // Pré-seleciona o primeiro perfil que NÃO é de admin: o convite típico
       // é para a equipe, e nascer com "Administrador" marcado transformaria
       // um clique apressado em promoção acidental.
-      const padrao =
-        (data as { id: string; papel_base: string }[]).find(
-          (p) => p.papel_base !== 'admin',
-        ) ?? (data as { id: string }[])[0];
+      //
+      // ⚠️ SEM fallback para data[0]: numa conta cujos perfis são todos de
+      // admin, o fallback pré-selecionava exatamente o "Administrador" que
+      // este comentário diz evitar — gerar o link sem tocar no seletor
+      // convidava como admin. Sem escolha automática, o botão fica travado
+      // até alguém ESCOLHER (a promoção passa a ser deliberada).
+      const padrao = (data as { id: string; papel_base: string }[]).find(
+        (p) => p.papel_base !== 'admin',
+      );
       setPerfilId((atual) => atual || padrao?.id || '');
     })();
     return () => {
       cancelado = true;
     };
-  }, [open]);
+  }, [open, tentativa]);
 
   function reset() {
     setRole('agent');
@@ -132,6 +159,7 @@ export function InviteMemberDialog({
     setResult(null);
     setSubmitting(false);
     setPerfisCarregados(false);
+    setPerfisFalharam(false);
   }
 
   async function handleCreate() {
@@ -313,6 +341,26 @@ export function InviteMemberDialog({
             </DialogHeader>
 
             <div className="space-y-4 py-2">
+              {/* Falha na carga dos perfis TRAVA o convite em vez de cair no
+                  ramo legado sem perfil — ver `perfisFalharam`. */}
+              {perfisFalharam && (
+                <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/10 p-2.5">
+                  <p className="text-xs text-destructive">
+                    {t('perfisFalharam')}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setPerfisFalharam(false);
+                      setTentativa((n) => n + 1);
+                    }}
+                  >
+                    {t('perfisTentarDeNovo')}
+                  </Button>
+                </div>
+              )}
               {perfis.length > 0 ? (
                 <div className="space-y-2">
                   <Label className="text-muted-foreground">
@@ -416,7 +464,17 @@ export function InviteMemberDialog({
               </Button>
               <Button
                 onClick={handleCreate}
-                disabled={submitting || !perfisCarregados}
+                // ⚠️ Três travas, cada uma fechando uma porta do convite
+                // sem-perfil: ainda carregando; carga FALHOU (o [] de erro
+                // não é "conta sem perfis"); e lista carregada SEM escolha
+                // — sem o pré-selecionado não-admin, escolher o perfil de
+                // admin tem de ser um ato deliberado, nunca o default.
+                disabled={
+                  submitting ||
+                  !perfisCarregados ||
+                  perfisFalharam ||
+                  (perfis.length > 0 && !perfilId)
+                }
                 className="bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 {submitting ? (

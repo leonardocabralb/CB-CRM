@@ -22,7 +22,7 @@
 import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
-import { channelInScope, runAutomationById } from '@/lib/automations/engine'
+import { channelInScope, runAutomationById, stageInScope } from '@/lib/automations/engine'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { startFlowForContact } from '@/lib/flows/engine'
 import {
@@ -106,6 +106,23 @@ export async function POST(request: Request) {
       if (!channelInScope(alvo, { channel_id: canalDaConversa })) {
         return NextResponse.json(
           { error: 'channel_out_of_scope' },
+          { status: 422 },
+        )
+      }
+      // ⚠️ O MESMO recorte de etapa do motor (`automations.stage_ids` — "em
+      // qual etapa o contato precisa ESTAR"), que faltava aqui: o
+      // `runAutomationById` pula recortes de propósito, então uma automação
+      // restrita à etapa "Fechamento" rodava à mão num lead recém-chegado —
+      // o que o caminho automático recusaria. Falha ABERTA como o motor
+      // (consulta com erro ou contato sem negócio deixam passar).
+      if (
+        !(await stageInScope(db, alvo, conversa.contact_id as string, {
+          conversation_id: conversa.id as string,
+          channel_id: canalDaConversa,
+        }))
+      ) {
+        return NextResponse.json(
+          { error: 'stage_out_of_scope' },
           { status: 422 },
         )
       }

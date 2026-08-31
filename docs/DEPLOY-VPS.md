@@ -3,30 +3,27 @@
 O CRM roda como um serviço no Swarm que **já existe** na VPS, atrás do
 Traefik (que já cuida do TLS). Arquivos: [`Dockerfile`](../Dockerfile),
 [`docker-stack.yml`](../docker-stack.yml), CI em
-[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml).
+[`.github/workflows/pipeline.yml`](../.github/workflows/pipeline.yml)
+(o antigo `deploy.yml` foi consolidado nele em 2026-08-26).
 
-**Estado hoje:** `crm.cbadvogados.com` ainda aponta para a hospedagem
-compartilhada da Hostinger (`91.108.127.34`), **não** para a VPS
-(`82.25.76.63`, = `vps.cbadvogados.com`). O passo 1 corrige isso.
+**Estado hoje:** o cutover **já foi feito** (2026-07-25):
+`crm.cbadvogados.com` → `vps.cbadvogados.com` → `82.25.76.63`, servindo
+produção com TLS do Traefik. O passo 1 abaixo é só **conferência** — esta
+doc costuma ser lida em incidente, e uma versão antiga dela mandava
+"corrigir" um apontamento que já está certo.
 
 ---
 
-## 1. DNS — apontar o subdomínio para a VPS  *(sua mão)*
-
-No gerenciador de DNS de `cbadvogados.com` (hPanel → Domínios → DNS, ou
-onde o domínio é gerido), no registro **`crm`**:
-
-- Remova o apontamento atual (Hostinger compartilhada).
-- Crie: `crm` → **A** → `82.25.76.63`  (ou **CNAME** → `vps.cbadvogados.com`).
-
-Confirme (propaga em minutos):
+## 1. DNS — conferir o apontamento  *(sua mão)*
 
 ```bash
 dig +short crm.cbadvogados.com   # deve retornar 82.25.76.63
 ```
 
-O Traefik emite o certificado Let's Encrypt sozinho assim que o DNS
-apontar para a VPS e o serviço subir.
+Se (e só se) não retornar: no gerenciador de DNS de `cbadvogados.com`, o
+registro **`crm`** deve ser **A** → `82.25.76.63` (ou **CNAME** →
+`vps.cbadvogados.com`). O Traefik emite o certificado Let's Encrypt
+sozinho assim que o DNS apontar para a VPS e o serviço subir.
 
 ## 2. Confirmar os 3 valores do Traefik  *(na VPS)*
 
@@ -174,8 +171,9 @@ ativa — não há fila represada para drenar de uma vez no primeiro ciclo.
 | rápido | `/api/automations/cron` | **60 s** | Acorda o passo "Aguardar", drena a fila de eventos de funil (933) e varre os lembretes por data (935). Num ciclo de 15 min, "esperar 2 minutos" viraria "esperar até 15", e o lembrete de reunião erraria a hora pelo mesmo tanto |
 | lento | `/api/cb/scheduled/cron`, `/api/flows/cron`, `/api/cb/radar/cron` | **900 s** | O número **tem** de bater com `CICLO_MINUTOS` em `src/lib/scheduled/display.ts`, que define a grade de horários que a tela de agendadas oferece. Encolher aqui faz a tela prometer o que o servidor não cumpre. O Radar (941) pega carona no mesmo laço: o throttle de 30 min por conversa mora no worker, então os 96 toques/dia não custam análise repetida |
 
-**Subir os dois exige `docker stack deploy` à mão na VPS** — o `deploy.yml`
-só troca a imagem do serviço `crm_crm` e não mexe no `agendador`. Enquanto o
+**Subir os dois exige `docker stack deploy` à mão na VPS** — o deploy do CI
+(`pipeline.yml`) só troca a imagem do serviço `crm_crm` e não mexe no
+`agendador`. Enquanto o
 laço rápido não subir, automação com espera e lembrete por data continuam
 saindo no ritmo antigo, de 15 em 15 minutos: funcionam, só chegam atrasados.
 
