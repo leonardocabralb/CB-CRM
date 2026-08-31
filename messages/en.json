@@ -242,7 +242,8 @@
       "defaultSet": "This filter now opens your inbox.",
       "defaultUnset": "Your inbox opens unfiltered again.",
       "defaultFilterBanner": "Default filter: {nome}",
-      "showEverything": "show everything"
+      "showEverything": "show everything",
+      "novaConversa": "New conversation"
     },
     "messageThread": {
       "unknownAuthor": "Unknown",
@@ -629,6 +630,27 @@
       "noMatch": "No file matches that search.",
       "loadError": "Could not load the library.",
       "asVoiceNote": "sends as a voice note"
+    },
+    "novaConversa": {
+      "titulo": "New conversation",
+      "descricao": "Opens the conversation so you can write in it. Nothing is sent yet.",
+      "telefone": "Phone number",
+      "telefonePlaceholder": "55 11 91234-5678",
+      "telefoneDica": "With country and area code. Spaces and dashes are ignored.",
+      "telefoneInvalido": "This doesn't look like a phone number.",
+      "nome": "Name (optional)",
+      "nomePlaceholder": "How this contact should appear",
+      "canal": "Send from",
+      "canalDica": "The conversation stays on this number until someone changes it.",
+      "semCanal": "No WhatsApp connection available. Connect one in Settings first.",
+      "abrir": "Open conversation",
+      "cancelar": "Cancel",
+      "abertaNova": "Conversation opened.",
+      "abertaExistente": "This contact already existed — opening their conversation.",
+      "erroTelefone": "Invalid phone number. Check the country and area code.",
+      "erroCanal": "Pick which number to send from.",
+      "erroCanalSumiu": "That connection no longer exists. Reload the page.",
+      "erroGenerico": "Could not open the conversation. Try again."
     }
   },
   "Contacts": {

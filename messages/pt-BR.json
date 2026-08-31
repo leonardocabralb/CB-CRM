@@ -235,7 +235,8 @@
       "defaultSet": "Este filtro passa a abrir a sua caixa de entrada.",
       "defaultUnset": "A caixa de entrada volta a abrir sem filtro.",
       "defaultFilterBanner": "Filtro padrão: {nome}",
-      "showEverything": "mostrar tudo"
+      "showEverything": "mostrar tudo",
+      "novaConversa": "Nova conversa"
     },
     "messageThread": {
       "unknownAuthor": "Desconhecido",
@@ -622,6 +623,27 @@
       "noMatch": "Nenhum arquivo com esse termo.",
       "loadError": "Não foi possível carregar o acervo.",
       "asVoiceNote": "vai como nota de voz"
+    },
+    "novaConversa": {
+      "titulo": "Nova conversa",
+      "descricao": "Abre a conversa para você escrever nela. Nada é enviado agora.",
+      "telefone": "Telefone",
+      "telefonePlaceholder": "55 11 91234-5678",
+      "telefoneDica": "Com DDI e DDD. Espaços e traços são ignorados.",
+      "telefoneInvalido": "Isto não parece um telefone.",
+      "nome": "Nome (opcional)",
+      "nomePlaceholder": "Como este contato deve aparecer",
+      "canal": "Enviar pelo número",
+      "canalDica": "A conversa fica neste número até alguém trocar.",
+      "semCanal": "Nenhuma conexão de WhatsApp disponível. Conecte uma em Configurações.",
+      "abrir": "Abrir conversa",
+      "cancelar": "Cancelar",
+      "abertaNova": "Conversa aberta.",
+      "abertaExistente": "Este contato já existia — abrindo a conversa dele.",
+      "erroTelefone": "Telefone inválido. Confira o DDI e o DDD.",
+      "erroCanal": "Escolha por qual número enviar.",
+      "erroCanalSumiu": "Essa conexão não existe mais. Recarregue a página.",
+      "erroGenerico": "Não foi possível abrir a conversa. Tente de novo."
     }
   },
   "Contacts": {

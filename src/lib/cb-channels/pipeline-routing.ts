@@ -1,5 +1,25 @@
 // ============================================================
-// "Quem escrever neste número entra naquele funil."
+// "Quem CONVERSAR neste número entra naquele funil."
+//
+// VALE NOS DOIS SENTIDOS, e isso é o ponto.
+// Até 2026-08-31 só a mensagem RECEBIDA chamava aqui, e o efeito medido em
+// produção foi este: 1.041 mensagens da equipe saíram pelo celular pareado
+// contra 8 digitadas dentro do CRM — ou seja, o caminho por onde o
+// escritório realmente trabalha nunca abria negócio. Cliente abordado por
+// nós ficava fora do funil até responder, e quem nunca respondeu ficava
+// fora para sempre. Hoje chamam aqui os DOIS lados: a ingestão
+// (`persistInboundMessage`, webhook da Meta) e a saída de gente
+// (`persistDeviceMessage` do celular pareado e `sendMessageToConversation`,
+// que cobre compositor, ficha, agendada e API pública).
+//
+// ⚠️ O QUE DELIBERADAMENTE NÃO CHAMA AQUI: broadcast
+// (`broadcast-core.ts`) e automação/fluxo (`meta-send.ts`,
+// `engine-send.ts`). Não é guarda escrita neste módulo — é consequência de
+// eles não passarem pelo núcleo de envio, e é a razão de o gancho morar lá
+// e não num lugar mais genérico. Um disparo para 500 contatos abriria 500
+// cards de uma vez, e "o robô respondeu" não é o escritório decidindo
+// abordar ninguém. Quem for criar um caminho de envio novo herda essa
+// pergunta: foi GENTE que decidiu falar com este cliente?
 //
 // POR QUE O GATILHO É POR ESTADO, E NÃO POR EVENTO
 // O caminho óbvio seria pendurar isto no gatilho `first_inbound_message` das
@@ -14,43 +34,50 @@
 // Borda consumida não volta — o cliente ficaria fora do funil para sempre,
 // em silêncio.
 //
-// CONTRATO: NUNCA LANÇA. Roda no fan-out da ingestão, ao lado das
-// automações, depois do 200 devolvido ao provedor. Falhar aqui não pode
-// derrubar a gravação da mensagem nem o resto do fan-out.
+// É o mesmo motivo pelo qual não houve migration de recuperação quando a
+// saída passou a rotear: as conversas que ficaram sem card se resolvem
+// sozinhas na próxima mensagem trocada, em qualquer direção.
+//
+// CONTRATO: NUNCA LANÇA. Na entrada roda no fan-out da ingestão, depois do
+// 200 devolvido ao provedor; na saída roda DEPOIS de a mensagem já ter ido
+// para o WhatsApp. Nos dois casos falhar aqui não pode derrubar a gravação
+// da mensagem nem o resto do fan-out — e na saída seria pior, porque o
+// cliente já recebeu e só o operador veria o erro.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createDeal } from '@/lib/deals/create-deal';
 
-export interface RouteInboundArgs {
+export interface RouteContactArgs {
   /** Client de service-role (a ingestão ignora RLS — o filtro é explícito). */
   db: SupabaseClient;
   accountId: string;
-  /** Canal por onde a mensagem entrou. Nulo = não roteia (ver guarda 1). */
+  /** Canal por onde a mensagem passou (entrou OU saiu). Nulo = não roteia. */
   channelId: string | null | undefined;
   /** Contato dono da conversa. Nulo em grupo (ver guarda 2). */
   contactId: string | null | undefined;
   contactName?: string | null;
   /**
-   * Conversa que originou o card. Os dois call sites já a têm em mão — é a
-   * mesma que passam no contexto das automações —, então isto não custa
-   * consulta nenhuma. É o que dá ao card um caminho de volta ao atendimento.
+   * Conversa que originou o card. Todo call site já a tem em mão, então isto
+   * não custa consulta nenhuma. É o que dá ao card um caminho de volta ao
+   * atendimento.
    */
   conversationId?: string | null;
 }
 
 /**
  * Coloca o contato no funil configurado da conexão, se houver um e se ele
- * ainda não estiver lá.
+ * ainda não estiver lá. Serve tanto para quem escreveu para nós quanto para
+ * quem nós abordamos — ver o cabeçalho do módulo.
  */
-export async function routeInboundToPipeline(args: RouteInboundArgs): Promise<void> {
+export async function routeContactToPipeline(args: RouteContactArgs): Promise<void> {
   const { db, accountId, channelId, contactId } = args;
 
   // ---- Guarda 1: sem canal resolvido, não roteia ----
   // `channelInScope` do motor de automações faz o oposto (contexto sem canal
-  // passa em QUALQUER escopo), e é por isso que aquele caminho vaza: um
-  // inbound cujo canal não resolve dispara as regras de todos os números
+  // passa em QUALQUER escopo), e é por isso que aquele caminho vaza: uma
+  // mensagem cujo canal não resolve dispara as regras de todos os números
   // juntas. Aqui o silêncio é a resposta certa — melhor não criar card do
   // que criar no funil errado.
   if (!channelId) return;
