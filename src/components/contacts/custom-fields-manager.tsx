@@ -770,7 +770,11 @@ export function CustomFieldsPanel({
               {t('retry')}
             </Button>
           </div>
-        ) : blocos.length === 0 ? (
+        ) : /* ⚠️ O teste é o CATÁLOGO vazio, não `blocos.length`: aqui o
+               bloco Geral é incondicional (é o destino de volta do seletor),
+               então `blocos` nunca fica vazio e a conta recém-criada veria um
+               cabeçalho "Geral" solto em vez da frase que explica a tela. */
+          fields.length === 0 && grupos.length === 0 ? (
           <p className="text-muted-foreground py-8 text-center text-sm">
             {t('empty')}
           </p>

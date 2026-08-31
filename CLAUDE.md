@@ -218,6 +218,7 @@ upstream sobrescrevê-los:
 | `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDaMensagem>` envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo), a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef` |
 | `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (963): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
 | `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem contato e canal RESOLVIDO — `activeChannel`; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
+| `src/components/inbox/message-thread.tsx` (#84) | a **janela de 24h**: a regra saiu para `src/lib/inbox/janela-24h.ts` (puro, com teste) e os TRÊS caminhos de envio (texto, mídia, interativa) passam por `janelaFechadaAgora()` antes do `fetch` — o portão lê o RELÓGIO no disparo, nunca `sessionInfo.expired` (que é `useMemo` em `[messages]` e não recomputa com o passar das horas). Um merge que traga o `sessionInfo` inline do upstream devolve os três buracos de uma vez |
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
@@ -525,23 +526,40 @@ grupos-de-campos.ts` (testado) e o catálogo com arrastar em
   apagado, ou esvaziado, deixaria a seção em branco com uma pastilha acesa.
 - ⚠️ **`grupo_id` NULO É o bloco "Geral", e ele vem SEMPRE primeiro.** Não
   existe linha para ele: por isso não é renomeável nem arrastável, e o rótulo
-  sai do dicionário (`Contacts.customFields.groupGeneral`), não do banco. Ele
-  some sozinho quando todo campo estiver num grupo de verdade — bloco vazio
-  não renderiza na ficha do cliente. Uma tela que mostre "Geral" vindo do
-  banco está lendo uma linha que não existe.
+  sai do dicionário (`Contacts.customFields.groupGeneral`), não do banco. Uma
+  tela que mostre "Geral" vindo do banco está lendo uma linha que não existe.
+  ⚠️ **Ele some quando todo campo está num grupo de verdade SÓ nas telas de
+  LEITURA** (`incluirVazios: false` — ficha e painel, onde cabeçalho sem campo
+  embaixo não informa nada). **No CATÁLOGO ele fica, mesmo vazio**, e isso é
+  load-bearing: o seletor de bloco de cada linha oferece "Geral" SEMPRE, e sem
+  o bloco renderizado `moverCampo` não acha o destino, devolve `null` e a tela
+  não faz NADA — sem toast, sem erro, sem escrita. Arrastar também precisa do
+  bloco na tela, então não havia segunda porta: campo posto num grupo ficava
+  preso em grupo para sempre. "Simplificar" para `if (geral.length > 0)`
+  parece obviamente certo e mata a volta. (Achado do Codex no PR #78.)
 - ⚠️ **`categoria` (949) NÃO é o bloco, e não morreu.** Continua sendo a marca
   SEMÂNTICA "campo técnico": é o que o semeador dos 10 campos escreve e o que
   a API v1 expõe como `category` (dropar a coluna quebra o n8n do gestor).
   `grupo_id` é só ONDE o campo aparece. O seletor de categoria saiu do
   formulário de criação — quem cria campo escolhe BLOCO.
-- ⚠️ **A ordem é `.order('posicao', { nullsFirst: false }).order('field_name')`
-  em TODA consulta de `custom_fields`** — são 8 call sites (catálogo, painel da
-  conversa ×2, ficha de contato, broadcast ×2, automação, API v1). `posicao`
-  NULA cai no FIM de propósito: campo criado por caminho que não a carimba (o
-  semeador cria dez de uma vez) nasce no fim do bloco em vez de embaralhar a
-  ordem montada. `ordenarCampos` é o espelho EXATO dessa cláusula — mudar um
-  lado sem o outro faz o arrastar pousar o campo num lugar e o próximo
-  carregamento mostrá-lo em outro.
+- ⚠️⚠️ **`posicao` É POSIÇÃO DENTRO DO BLOCO, e por isso só quem REAGRUPA pode
+  ordenar por ela.** Ela reinicia em cada bloco, então ordenar a conta inteira
+  por `posicao` INTERCALA os blocos — todo "1" antes de todo "2" — e devolve
+  uma ordem que não é nem alfabética nem a que o operador arrumou. Não estoura
+  em lugar nenhum e passa em revisão. São DUAS famílias de consulta, e trocá-las
+  é o erro fácil:
+  - **Reagrupam** (catálogo, painel da conversa, ficha de contato):
+    `.order('posicao', { nullsFirst: false }).order('field_name')`, porque
+    `agruparCampos` reparte antes de exibir. `ordenarCampos` é o espelho EXATO
+    dessa cláusula — mudar um lado sem o outro faz o arrastar pousar o campo
+    num lugar e o próximo carregamento mostrá-lo em outro.
+  - **Listas PLANAS** (broadcast ×2, automação, API v1): `.order('field_name')`
+    e mais nada. A da v1 é CONTRATO com o integrador (o n8n do gestor lê o
+    array). Quem criar consulta plana nova repete esta metade.
+  `posicao` NULA cai no FIM de propósito: campo criado por caminho que não a
+  carimba (o semeador cria dez de uma vez) nasce no fim do bloco em vez de
+  embaralhar a ordem montada. (As duas famílias saíram da revisão do Codex no
+  PR #78, que pegou a ordenação global aplicada às quatro listas planas.)
 - ⚠️ **Reordenar passa por RPC (`cb_ordenar_campos_personalizados`), nunca por
   `upsert`.** O upsert do PostgREST teria de carregar as quatro colunas NOT
   NULL de `custom_fields` junto (o NOT NULL é conferido ANTES de o Postgres

@@ -270,7 +270,8 @@
       "today": "Hoje",
       "yesterday": "Ontem",
       "channelChangedWhileTyping": "Não enviado. O cliente escreveu por outro número enquanto você digitava e a conversa passou para {channel}. Confira o canal acima e envie de novo.",
-      "channelChangedUnknown": "outro número",
+      "sessionExpiredBlocked": "Não enviada: a janela de 24 horas fechou. Use um modelo para retomar o contato.",
+            "channelChangedUnknown": "outro número",
       "searchInThread": "“{termo}” — {atual} de {total}",
       "searchPrevHit": "Achado anterior",
       "searchNextHit": "Próximo achado"
