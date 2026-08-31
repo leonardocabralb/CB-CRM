@@ -530,6 +530,18 @@ export function CustomFieldsPanel({
     await reordenarCampos(arrastado.slice(PREFIXO_CAMPO.length), destino);
   }
 
+  /**
+   * Move um campo para outro bloco pelo SELETOR da linha (sem arrastar).
+   *
+   * Reusa o mesmo caminho do arrastar de propósito — soltar na área de um
+   * bloco também manda o campo para o fim dele. Duas rotas de escrita para o
+   * mesmo efeito divergiriam na primeira mudança de regra.
+   */
+  function moverParaBloco(field: CustomField, grupoId: string | null) {
+    if ((field.grupo_id ?? null) === grupoId) return;
+    void reordenarCampos(field.id, chaveDoBloco(grupoId));
+  }
+
   async function reordenarCampos(campoId: string, alvo: string) {
     const novos = moverCampo(blocos, campoId, alvo);
     if (!novos) return;
@@ -674,6 +686,40 @@ export function CustomFieldsPanel({
         )}
       </div>
 
+      {/* ⚠️ Criar bloco fica ACIMA da lista, não abaixo.
+          A primeira versão punha este formulário no rodapé do cartão, depois
+          de uma lista de 538px — e o operador simplesmente não achou ("não
+          achei as possibilidades de criar os grupos"). O cartão já começa
+          abaixo da dobra: o que fica no fim dele está a duas rolagens de
+          distância de quem acabou de chegar. */}
+      <div className="flex items-center gap-2">
+        <Input
+          value={novoGrupo}
+          onChange={(e) => setNovoGrupo(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void handleCreateGrupo();
+            }
+          }}
+          placeholder={t('newGroup')}
+          className="bg-muted text-foreground h-9"
+        />
+        <Button
+          variant="outline"
+          onClick={handleCreateGrupo}
+          disabled={criandoGrupo || !novoGrupo.trim()}
+          className="shrink-0"
+        >
+          {criandoGrupo ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Plus className="size-4" />
+          )}
+          {t('addGroup')}
+        </Button>
+      </div>
+
       <p className="text-muted-foreground px-1 text-xs">{t('reorderHint')}</p>
 
       {/* List */}
@@ -705,11 +751,13 @@ export function CustomFieldsPanel({
                 <Bloco
                   key="geral"
                   bloco={bloco}
+                  grupos={ordenarGrupos(grupos)}
                   titulo={t('groupGeneral')}
                   busyId={busyId}
                   onRename={handleRename}
                   onSaveOptions={handleSaveOptions}
                   onDelete={handleDelete}
+                  onMoverParaBloco={moverParaBloco}
                 />
               ))}
             <SortableContext
@@ -724,6 +772,7 @@ export function CustomFieldsPanel({
                   <BlocoArrastavel
                     key={bloco.grupo!.id}
                     bloco={bloco}
+                    grupos={ordenarGrupos(grupos)}
                     busy={busyId === bloco.grupo!.id}
                     busyId={busyId}
                     onRenameGrupo={handleRenameGrupo}
@@ -731,42 +780,12 @@ export function CustomFieldsPanel({
                     onRename={handleRename}
                     onSaveOptions={handleSaveOptions}
                     onDelete={handleDelete}
+                    onMoverParaBloco={moverParaBloco}
                   />
                 ))}
             </SortableContext>
           </DndContext>
         )}
-      </div>
-
-      {/* Novo bloco — abaixo da lista, porque criar bloco é raro perto de
-          criar campo, e o formulário de campo tem de continuar sendo a
-          primeira coisa da tela. */}
-      <div className="flex items-center gap-2">
-        <Input
-          value={novoGrupo}
-          onChange={(e) => setNovoGrupo(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              void handleCreateGrupo();
-            }
-          }}
-          placeholder={t('newGroup')}
-          className="bg-muted text-foreground h-9"
-        />
-        <Button
-          variant="outline"
-          onClick={handleCreateGrupo}
-          disabled={criandoGrupo || !novoGrupo.trim()}
-          className="shrink-0"
-        >
-          {criandoGrupo ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Plus className="size-4" />
-          )}
-          {t('addGroup')}
-        </Button>
       </div>
 
       {/* Só aparece quando falta algum: numa conta que já tem os dez, um botão
@@ -799,20 +818,24 @@ export function CustomFieldsPanel({
  *  um bloco recém-criado não teria como receber o primeiro. */
 function Bloco({
   bloco,
+  grupos,
   titulo,
   cabecalho,
   busyId,
   onRename,
   onSaveOptions,
   onDelete,
+  onMoverParaBloco,
 }: {
   bloco: BlocoDeCampos;
+  grupos: GrupoDeCampos[];
   titulo?: string;
   cabecalho?: React.ReactNode;
   busyId: string | null;
   onRename: (field: CustomField, name: string) => Promise<boolean>;
   onSaveOptions: (field: CustomField, texto: string) => Promise<boolean>;
   onDelete: (field: CustomField) => void;
+  onMoverParaBloco: (field: CustomField, grupoId: string | null) => void;
 }) {
   const t = useTranslations('Contacts.customFields');
   const chave = chaveDoBloco(bloco.grupo?.id ?? null);
@@ -847,9 +870,11 @@ function Bloco({
                 // enquanto o cabeçalho do bloco salvava um renomeio — dez
                 // campos parecendo estar salvando algo que não os envolve.
                 busy={busyId === field.id}
+                grupos={grupos}
                 onRename={onRename}
                 onSaveOptions={onSaveOptions}
                 onDelete={onDelete}
+                onMoverParaBloco={onMoverParaBloco}
               />
             ))}
           </ul>
@@ -872,11 +897,13 @@ function BlocoArrastavel({
   bloco: BlocoDeCampos;
   busy: boolean;
   busyId: string | null;
+  grupos: GrupoDeCampos[];
   onRenameGrupo: (grupo: GrupoDeCampos, nome: string) => Promise<boolean>;
   onDeleteGrupo: (grupo: GrupoDeCampos) => void;
   onRename: (field: CustomField, name: string) => Promise<boolean>;
   onSaveOptions: (field: CustomField, texto: string) => Promise<boolean>;
   onDelete: (field: CustomField) => void;
+  onMoverParaBloco: (field: CustomField, grupoId: string | null) => void;
 }) {
   const t = useTranslations('Contacts.customFields');
   const grupo = bloco.grupo!;
@@ -958,16 +985,20 @@ function BlocoArrastavel({
  *  Enter and cleanly revert to the last saved name when a rename fails. */
 function FieldRow({
   field,
+  grupos,
   busy,
   onRename,
   onSaveOptions,
   onDelete,
+  onMoverParaBloco,
 }: {
   field: CustomField;
+  grupos: GrupoDeCampos[];
   busy: boolean;
   onRename: (field: CustomField, name: string) => Promise<boolean>;
   onSaveOptions: (field: CustomField, texto: string) => Promise<boolean>;
   onDelete: (field: CustomField) => void;
+  onMoverParaBloco: (field: CustomField, grupoId: string | null) => void;
 }) {
   const t = useTranslations('Contacts.customFields');
   const [name, setName] = useState(field.field_name);
@@ -1048,24 +1079,46 @@ function FieldRow({
         </Button>
       </div>
 
-      {/* A chave (948): imutável depois de criada — renomear o CAMPO não a
-          muda, de propósito, senão toda integração externa quebraria a cada
-          renomeio cosmético. O botão copia para colar na API. */}
-      <button
-        type="button"
-        onClick={copiarChave}
-        title={t('copyKeyTitle')}
-        className="text-muted-foreground hover:text-foreground mt-0.5 flex max-w-full min-w-0 items-center gap-1 pl-6 font-mono text-[11px] transition-colors"
-      >
-        {/* truncate: chave pode ter 60 chars e o diálogo ~390px úteis —
-            sem isto a lista inteira ganhava rolagem horizontal. */}
-        <span className="min-w-0 truncate">{field.field_key}</span>
-        {copied ? (
-          <Check className="text-primary size-3" />
-        ) : (
-          <Copy className="size-3" />
-        )}
-      </button>
+      <div className="mt-0.5 flex items-center gap-2 pl-6">
+        {/* A chave (948): imutável depois de criada — renomear o CAMPO não a
+            muda, de propósito, senão toda integração externa quebraria a cada
+            renomeio cosmético. O botão copia para colar na API. */}
+        <button
+          type="button"
+          onClick={copiarChave}
+          title={t('copyKeyTitle')}
+          className="text-muted-foreground hover:text-foreground flex min-w-0 flex-1 items-center gap-1 font-mono text-[11px] transition-colors"
+        >
+          {/* truncate: chave pode ter 60 chars e o diálogo ~390px úteis —
+              sem isto a lista inteira ganhava rolagem horizontal. */}
+          <span className="min-w-0 truncate">{field.field_key}</span>
+          {copied ? (
+            <Check className="text-primary size-3" />
+          ) : (
+            <Copy className="size-3" />
+          )}
+        </button>
+
+        {/* ⚠️ O bloco do campo, EXPLÍCITO. Arrastar continua funcionando e é
+            mais rápido para quem já sabe — mas era o ÚNICO caminho, e o
+            operador não o encontrou ("nem de colocar campos já criados em
+            outros grupos"). Gesto que ninguém descobre sozinho não pode ser a
+            única porta para a metade da funcionalidade. */}
+        <select
+          value={field.grupo_id ?? ''}
+          disabled={busy}
+          onChange={(e) => onMoverParaBloco(field, e.target.value || null)}
+          aria-label={t('moveToGroup', { name: field.field_name })}
+          className="border-border bg-muted text-muted-foreground max-w-[8rem] shrink-0 rounded border px-1 py-0.5 text-[11px]"
+        >
+          <option value="">{t('groupGeneral')}</option>
+          {grupos.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.nome}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {field.field_type === 'select' && (
         <Input

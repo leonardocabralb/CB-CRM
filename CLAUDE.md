@@ -481,6 +481,26 @@ grupos-de-campos.ts` (testado) e o catálogo com arrastar em
   arrastar pode reescrever o NOME do campo com um valor velho do estado da
   tela. É a mesma armadilha do `/api/ai/config`. As duas RPCs são
   `SECURITY INVOKER`: quem decide é a policy de admin que já existe.
+- ⚠️⚠️ **ARRASTAR NÃO PODE SER A ÚNICA PORTA.** A primeira versão só deixava
+  mudar um campo de bloco arrastando, e punha o "novo bloco" no RODAPÉ do
+  cartão, depois de uma lista de 538px. O operador testou e não achou nenhuma
+  das duas coisas ("não achei as possibilidades de criar os grupos" / "nem de
+  colocar campos já criados em outros grupos") — metade da funcionalidade
+  existia e era invisível. Hoje: o formulário de bloco fica ACIMA da lista, e
+  cada linha tem um `<select>` de bloco ao lado da chave. O arrastar continua,
+  como atalho de quem já sabe. Vale para qualquer gesto novo nesta tela.
+- ⚠️ **`handleDragEnd` normaliza QUALQUER id do bloco para o mesmo destino**
+  (`blocoDoAlvo`). Três nós ocupam praticamente a mesma caixa — o bloco
+  arrastável, a ÁREA de soltura dentro dele e as linhas de campo — e entre os
+  dois primeiros, que têm o MESMO centro, o desempate do `closestCenter` é a
+  ordem de registro no `DndContext`, não a geometria. Medido: reordenando
+  blocos, o `over` vem SEMPRE como `bloco:<id>`, nunca `grupo:<id>` — a versão
+  que exigia o prefixo `grupo:` deixava reordenar bloco 100% quebrado, sem
+  erro nenhum no caminho.
+- ⚠️ **Alça de arrastar precisa de área de toque, não do tamanho do ícone.**
+  A do bloco nasceu `size-3.5` num cabeçalho `py-1`: 14px que o ponteiro erra
+  por um pixel, e aí o bloco não é agarrado — sem cursor mudando, sem aviso,
+  sem nada a depurar. Hoje é `size-4` com `p-1` (24×24), igual à da linha.
 - ⚠️ **O arrastar manda o BLOCO INTEIRO (0..N-1), não só quem se moveu.** As
   posições do banco não são densas — campo novo nasce nulo e o semeador cria
   dez de uma vez —, então reordenar por diferença deixaria buraco que
