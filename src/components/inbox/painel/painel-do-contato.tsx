@@ -301,7 +301,7 @@ export function PainelDoContato({
     notas,
     acrescentar: acrescentarNota,
     aplicarFixacao,
-  } = useConversationNotes(conversationId);
+  } = useConversationNotes(conversationId, resyncToken);
   /**
    * Fixar/desafixar (951). ⚠️ A ação mora no hook porque a faixa do topo do
    * fio faz a MESMA coisa: duas cópias das guardas divergiriam, e a
