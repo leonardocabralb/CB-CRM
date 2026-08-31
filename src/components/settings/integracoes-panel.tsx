@@ -190,8 +190,30 @@ function Conteudo() {
   }, [carregar]);
 
   if (falhou && !cartoes) {
+    // ⚠️ Com um botão de repetir: sem ele, a única saída deste estado era o
+    // F5 — o botão "Atualizar" só existe no estado carregado, e o
+    // `disparouRef` (guarda de StrictMode) impede um novo disparo
+    // automático. Repetir refaz as duas cargas na ordem da montagem:
+    // config sem ping primeiro (barata), pings depois.
     return (
-      <p className="text-sm text-muted-foreground">{t('carregarFalhou')}</p>
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">{t('carregarFalhou')}</p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={testando}
+          onClick={() =>
+            void (async () => {
+              await carregar(false);
+              await carregar(true);
+            })()
+          }
+        >
+          <RefreshCw className={cn('size-4', testando && 'animate-spin')} />
+          {t('tentarDeNovo')}
+        </Button>
+      </div>
     );
   }
 

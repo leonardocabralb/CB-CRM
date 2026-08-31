@@ -82,8 +82,17 @@ export async function POST(request: Request) {
       })
     } catch (err) {
       if (err instanceof AiError) {
+        // ⚠️ `invalid_key` NÃO ecoa `err.message`: a mensagem do provedor
+        // embute a chave enviada ("Incorrect API key provided: sk-…"), e o
+        // toast do "Testar chave" a pintaria na tela — inclusive quando a
+        // chave testada é a GUARDADA, que o admin nem digitou (sem `api_key`
+        // no corpo a rota descriptografa a salva). Sem `error`, o cliente
+        // cai no `testRejected` traduzido. É a mesma exceção do save do
+        // Radar em /api/ai/config; os demais códigos seguem com a mensagem,
+        // que é o que diz "modelo não encontrado".
+        const ehChave = err.code === 'invalid_key'
         return NextResponse.json(
-          { error: err.message, code: err.code },
+          ehChave ? { code: err.code } : { error: err.message, code: err.code },
           { status: 400 },
         )
       }

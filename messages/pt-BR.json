@@ -2067,6 +2067,7 @@
       "description": "Todas as conexões externas num lugar só — as chaves de IA e a agenda, cada uma com seu estado ao vivo.",
       "somenteAdmin": "Só administradores veem as integrações. Peça a um administrador.",
       "carregarFalhou": "Não foi possível carregar as integrações.",
+      "tentarDeNovo": "Tentar de novo",
       "atualizar": "Testar de novo",
       "testando": "Testando…",
       "chipOk": "Funcionando",
