@@ -22,7 +22,7 @@
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
 | **A1** | Banco dos filtros salvos + módulo puro (parse defensivo, descrição, ids órfãos) | ✅ **feita** (2026-08-31) | `967` **aplicada** | `feat/filtros-salvos-no-inbox` |
-| **A2** | Menu no botão "Filtros": aplicar · salvar o atual · renomear · apagar | ⬜ a fazer | nenhuma | — |
+| **A2** | Menu no botão "Filtros": aplicar · salvar o atual · renomear · apagar | 🟡 **código pronto**, falta o preview | nenhuma | `feat/filtros-salvos-no-inbox` |
 | **A3** | Filtro **padrão** por pessoa + a faixa que explica o inbox recortado | ⬜ a fazer | `968` (a confirmar) | — |
 | **B1** | Campos personalizados salvam ao sair do campo (painel do inbox + ficha `/contatos`) | ⬜ a fazer | nenhuma | — |
 

@@ -19,6 +19,9 @@ import {
   type AchadoNoTexto,
 } from "@/lib/inbox/busca-em-mensagens";
 import { InboxFilters } from "@/components/inbox/inbox-filters";
+import { FiltrosSalvosMenu } from "@/components/inbox/filtros-salvos-menu";
+import { useFiltrosSalvos } from "@/hooks/use-filtros-salvos";
+import { limparOrfaos, type CatalogosDoFiltro } from "@/lib/inbox/filtros-salvos";
 import { tituloDaConversa } from "@/lib/cb-groups/display";
 import { stripWhatsAppFormat } from "@/lib/inbox/whatsapp-format";
 import { cn } from "@/lib/utils";
@@ -155,6 +158,18 @@ export function ConversationList({
     falhouAoCarregar: falhouFavoritas,
     alternar: alternarFavorita,
   } = useFavoritas(resyncToken);
+
+  // Filtros salvos da conta (967). Leitura direta sob RLS; escrita só admin,
+  // conferida por rowcount dentro do hook.
+  const {
+    salvos: filtrosSalvos,
+    carregando: salvosCarregando,
+    falhou: salvosFalhou,
+    criar: criarFiltroSalvo,
+    regravar: regravarFiltroSalvo,
+    renomear: renomearFiltroSalvo,
+    apagar: apagarFiltroSalvo,
+  } = useFiltrosSalvos();
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
@@ -362,6 +377,48 @@ export function ConversationList({
     [acesso],
   );
 
+  // O seletor de canal e o menu de salvos olham a MESMA lista de conexões —
+  // separá-las faria o menu esconder (ou oferecer) filtro por um critério que
+  // o painel não usa.
+  const canaisDoPerfil = useMemo(
+    () => canaisVisiveis(acesso, channels),
+    [acesso, channels],
+  );
+
+  /**
+   * Os catálogos que dão NOME aos ids de um filtro salvo, e que dizem quais
+   * ids ainda existem.
+   *
+   * ⚠️ São os mesmos que o painel recebe, de propósito: um menu que resolvesse
+   * nomes por outra lista descreveria o recorte de um jeito e as pastilhas de
+   * outro, lado a lado na mesma tela.
+   */
+  const catalogosDoFiltro: CatalogosDoFiltro = useMemo(
+    () => ({
+      canais: canaisDoPerfil,
+      responsaveis: temPerfis ? profiles : [],
+      etapas,
+      funis,
+      etiquetas: tags,
+    }),
+    [canaisDoPerfil, temPerfis, profiles, etapas, funis, tags],
+  );
+
+  /**
+   * ⚠️ Aplicar um filtro salvo passa por `limparOrfaos` SEMPRE.
+   *
+   * Um recorte gravado em maio pode apontar para etapa removida, conexão
+   * desconectada ou etiqueta apagada — e id morto não dá erro: ele devolve
+   * ZERO conversas, com cara de resposta certa. A limpeza só descarta o que o
+   * catálogo carregado prova estar morto (catálogo vazio não prova nada, ver o
+   * módulo), então o pior caso é o filtro ainda recortar demais — nunca a tela
+   * afirmar que não há conversa nenhuma.
+   */
+  const aplicarFiltroSalvo = useCallback(
+    (f: FiltrosDoInbox) => setFiltros(limparOrfaos(f, catalogosDoFiltro)),
+    [catalogosDoFiltro],
+  );
+
   // `stage_id` → `pipeline_id`, para o primeiro nível do recorte (escolher só
   // o funil). Sai da MESMA consulta de `pipeline_stages` que alimenta o
   // seletor, então nunca discorda dele.
@@ -538,7 +595,7 @@ export function ConversationList({
           // as outras seria um filtro que devolve sempre vazio, com cara de
           // "não há conversas". (As linhas de outra área que a BUSCA traz
           // continuam aparecendo; isto recorta só as OPÇÕES do filtro.)
-          canais={canaisVisiveis(acesso, channels)}
+          canais={canaisDoPerfil}
           etiquetas={tags}
           empresas={companies}
           responsaveis={temPerfis ? profiles : []}
@@ -550,6 +607,20 @@ export function ConversationList({
           etapasConfiaveis={etapasStatus === "ok"}
           funis={funis}
           temGrupos={temGrupos}
+          menuSalvos={
+            <FiltrosSalvosMenu
+              salvos={filtrosSalvos}
+              carregando={salvosCarregando}
+              falhou={salvosFalhou}
+              filtrosAtuais={filtros}
+              onAplicar={aplicarFiltroSalvo}
+              catalogos={catalogosDoFiltro}
+              criar={criarFiltroSalvo}
+              regravar={regravarFiltroSalvo}
+              renomear={renomearFiltroSalvo}
+              apagar={apagarFiltroSalvo}
+            />
+          }
           busca={search}
           onLimparBusca={() => setSearch("")}
           exibindo={filtered.length}
