@@ -1805,6 +1805,8 @@
     },
     "invite": {
       "inviteCreated": "Convite criado",
+      "perfisFalharam": "Não foi possível carregar os perfis de acesso — o convite não será gerado sem um perfil escolhido.",
+      "perfisTentarDeNovo": "Tentar de novo",
       "inviteCreatedDesc": "Compartilhe este link com o novo membro da equipe. Ele poderá se cadastrar (ou entrar) e ingressar na conta como <bold>{role}</bold>. O link é válido por <bold>{days} {days, plural, =1 {dia} other {dias}}</bold>.",
       "inviteLink": "Link do convite",
       "copy": "Copiar",

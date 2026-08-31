@@ -1812,6 +1812,8 @@
     },
     "invite": {
       "inviteCreated": "Invite created",
+      "perfisFalharam": "Could not load the access profiles — the invite will not be generated without a chosen profile.",
+      "perfisTentarDeNovo": "Try again",
       "inviteCreatedDesc": "Share this link with your new teammate. They'll be able to sign up (or sign in) and join the account as <bold>{role}</bold>. The link is valid for <bold>{days} {days, plural, =1 {day} other {days}}</bold>.",
       "inviteLink": "Invite link",
       "copy": "Copy",
