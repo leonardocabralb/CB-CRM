@@ -153,7 +153,7 @@ as frentes deles 🔵 e leve as opções ao operador antes de implementar.
 | **F4** | Radar: alarme apagado ou inalcançável | #05 #21 #22 #23 #28 | 🟠 alto | ⬜ | — |
 | **F5** | Vazio virando afirmação (`useChannels`) | #06 #08 | 🟠 alto | ⏸️ **aguardando a mesclagem do PR #84**: o consumo do sinalizador em `message-thread.tsx` (linha do `janelaDe24h`) e o M10 caem DENTRO do hunk 514-546 que o #84 reescreve — fazer antes conflita | — |
 | **F6** | Portão de i18n no CI | #18 #19 #20 #24 | 🟠 alto | ⬜ | — |
-| **F7** | Guardas e testes estruturais com falso verde | #14 #15 | 🟠 alto | ⬜ | — |
+| **F7** | Guardas e testes estruturais com falso verde | #14 #15 | 🟠 alto | ✅ | #88 |
 | **F8** | Filtros do inbox | #16 #25 #26 | 🟡 médio | ⬜ | — |
 | **F9** | Erro de banco lido como ausência | #04 #07 | 🟡 médio | 🟨 (#04 já saiu no #86; falta #07) | — |
 | **F10** | CI/CD e vazamento de credencial | #29 #30 | 🟡 médio | ⬜ | — |
@@ -1432,6 +1432,16 @@ originou a troca.
    sender novo reprova por padrão, sem depender de alguém lembrar.
 3. Corrigir a nota do CLAUDE.md para citar os caminhos completos.
 
+**Resolvido em** PR #88 — as duas camadas: lista de negados ganhou
+`lib/flows/meta-send.ts` e `lib/whatsapp/broadcast-resume.ts`, e a varredura
+default-deny anda `src/` inteiro afirmando igualdade EXATA com a allowlist
+dos dois símbolos (nos dois sentidos: chamador novo reprova, e desligar um
+esperado também). CLAUDE.md ganhou os caminhos completos e a história dos
+dois `meta-send.ts`; `docs/public-api.md` documenta o negócio aberto pelo
+`POST /api/v1/messages` (resíduo do R3). · **Medido:** o repro exato do
+achado (roteador enxertado em `flows/meta-send.ts`) derruba 2 testes agora —
+antes derrubava zero (contraprova §8.2).
+
 ---
 
 ### #15 — Apagar disparo dá toast de sucesso sem apagar nada
@@ -1475,6 +1485,22 @@ para `/broadcasts`, e o disparo continua listado.
    um `.update(...).select('id')` seguido de `if (error || !data?.length)`, não
    um delete; a forma é a mesma, a operação não. A tela nunca deve afirmar
    sucesso sobre 0 linhas.
+
+**Resolvido em** PR #88 — lixeira atrás de `GatedButton`
+(`manage-automations`, a régua da página irmã), `.delete().select('id')` com
+0 linhas = toast de erro (chave nova nos dois dicionários), e os 4 updates de
+status + o final do `use-broadcast-sending` conferidos pelo retorno
+(`marcarDestinatario`) com AVISO pós-envio — nunca throw: a mensagem já saiu
+e um erro no wizard convidaria a REENVIAR a campanha.
+⚠️ **Refinamento MEDIDO sobre o plano:** o `agent` NÃO alcança os updates do
+envio — o INSERT de `broadcasts` (passo 2 do hook) estoura ALTO na RLS antes
+de qualquer envio, e o wizard está atrás de GatedButton na lista. O buraco
+silencioso alcançável era só o DELETE; a conferência dos updates entrou como
+defesa em profundidade (cascade-delete no meio do envio, drift futuro de
+policy). · **Medido (E2E no preview, fixture draft criada/apagada):** DELETE
+devolvendo 0 linhas (interceptado) → toast "Nada foi excluído…" e a página
+FICA; delete real → "Disparo excluído" + navegação. Docstring de `roles.ts`
+corrigida (§7).
 
 ---
 
@@ -2016,11 +2042,11 @@ avaliado e rejeitado.
 | `CLAUDE.md:441` | a rota do acervo "confere `data === false` ANTES do `error`" | O #74 reescreveu para `try/catch` lendo só `r.data`. A nota descreve a forma antiga e ensina a repeti-la | F4 |
 | `CLAUDE.md:1937` | "Até ali a única proteção era lembrar de rodá-los à mão" | `src/i18n/messages.test.ts` já gateava a paridade no MESMO job `verificar`, e mais rigorosamente (reprova chave órfã, que o `i18n-parity` chama de "inofensivo") | F6 |
 | `CLAUDE.md:1949` | o checador "cobra contra TODOS os namespaces do arquivo" | Cobra contra todos MENOS os sobrescritos — ver #19 | F6 |
-| `src/lib/auth/roles.ts:85` (docstring) | `agent` pode "run broadcasts, edit automations" | A 964 fechou as duas no banco; a rota e a tela já exigiam admin. As três camadas dizem não | F7 |
+| `src/lib/auth/roles.ts:85` (docstring) | `agent` pode "run broadcasts, edit automations" | A 964 fechou as duas no banco; a rota e a tela já exigiam admin. As três camadas dizem não | F7 — ✅ corrigida no PR #88 |
 | `docker-stack.yml:17,56,63,85` | cita `.github/workflows/deploy.yml` (extinto) e descreve UM laço de 15 min | Só existe `pipeline.yml`; o agendador roda DOIS laços (60 s e 900 s) | F10 |
 | `messages/*.json` (Radar) | `semRespostaDesdeTitulo` e `vazioSemSinalDetalhe` cravam "24 horas" | `LIMIAR_ALARME_MS` viaja como valor para `cardPendencias` e para a legenda. Trocar o limiar faz a mesma tela contar duas histórias | F4 |
 | `messages/*.json` (Radar) | `Radar.legenda.estados` diz que o cartão "sai da lista na hora" e que o Desfazer é a correção | O #74/#76 passaram a manter o cartão listado com "Reabrir" (`mexidasAqui`) | F4 |
-| `docs/public-api.md:131` | descreve os efeitos colaterais de `POST /api/v1/messages` | Não menciona que o envio pode ABRIR NEGÓCIO (`source: 'channel'`) — comportamento intencional do #79, não documentado | F7 |
+| `docs/public-api.md:131` | descreve os efeitos colaterais de `POST /api/v1/messages` | Não menciona que o envio pode ABRIR NEGÓCIO (`source: 'channel'`) — comportamento intencional do #79, não documentado | F7 — ✅ documentado no PR #88 |
 
 ---
 
