@@ -135,6 +135,38 @@ um `fix:`, são 15. Ver §8.1.
 
 ---
 
+## 0.6 Decisões do operador (31/08/2026 — fechadas, não reabrir)
+
+Tomadas ao fim da primeira sessão de execução, delegando à recomendação:
+
+- **#12 → opção (a):** resolver o dono da conta NO CLIENTE
+  (`accounts.owner_user_id` é legível por RLS ao membro; buscar uma vez e
+  cachear junto do contexto de auth) nos dois escritores — `contact-form.tsx`
+  e `import-modal.tsx`. Nada de rota nova, nada de trigger.
+- **#22 → opção (b):** a régua de 48h da insatisfação na LEITURA passa a
+  contar horas ÚTEIS (`horario-comercial.ts` é o único lugar dessa régua).
+  Na implementação, avaliar se a régua de ESCRITA (validação do parser)
+  precisa de simetria e REGISTRAR o que se decidiu; admitir nas notas que as
+  duas réguas se somam. A aba "Todos" NÃO volta, em nenhuma hipótese.
+- **#23 → opção (b):** descarte sobre linha `failed` é ACEITO, e o worker
+  REABRE (`estado='aberto'`) ao gravar análise BEM-SUCEDIDA quando o
+  `estado_em` do descarte for POSTERIOR ao `analisado_em` da tentativa falha
+  — o operador descartou uma NÃO-análise. Exceção estreita, escrita ao lado
+  das três assimetrias do ciclo de vida no CLAUDE.md.
+
+### Estado de integração (sonda de 31/08, fim da sessão 1)
+
+As branches de **F1 (#86)** e **F4 (#89)** contêm o merge do **PR #84** — os
+dois conflitos reais (render do catálogo; tabela do CLAUDE.md) foram
+resolvidos DENTRO delas para o operador nunca os ver. Sonda de trem em HEAD
+destacado: `#84 → F1 → F3 → F7 → F4 → docs` mescla limpa, e o estado
+INTEGRADO passa a suíte inteira (171 arquivos / 2278 testes), typecheck,
+lint e os dois portões de i18n. ⚠️ O **#07 (F9)** mexe na MESMA rota de
+estado do radar que a F4 reescreveu — fazê-lo na branch da F4 (PR #89),
+junto com #22/#23, senão nasce o terceiro conflito.
+
+---
+
 ## 1. Estado das frentes
 
 Legenda: ⬜ a fazer · 🟨 em andamento · 🔵 **aguardando decisão do operador** ·
