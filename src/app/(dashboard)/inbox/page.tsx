@@ -82,6 +82,27 @@ function InboxPageInner() {
   // está vendo — a página é a dona da seleção, então o escritor mora aqui.
   useMarcarConversaAberta(activeConversation?.id ?? null);
   const [messages, setMessages] = useState<Message[]>([]);
+  /**
+   * De QUAL conversa é o array `messages` acima. `null` = ainda não chegou.
+   *
+   * ⚠️ Existe porque `messages` vazio tem DOIS significados — "ainda estou
+   * carregando" e "esta conversa não tem nada" — e a aba Arquivos do painel
+   * converte o segundo numa AFIRMAÇÃO ("Nenhum arquivo nesta conversa"). Sem
+   * esta régua, abrir uma conversa com 93 documentos exibia essa frase por um
+   * segundo, que é a mesma família de defeito da badge "Expirada" nascendo de
+   * `useChannels` ainda vazio. O fio não sofre disso porque tem `loading`
+   * próprio; o painel é irmão dele, não filho, e não enxerga esse estado.
+   *
+   * ⚠️ Busca que FALHA deixa isto nulo, e a aba fica no spinner. É a escolha
+   * deliberada entre as duas respostas erradas possíveis: "espere" não afirma
+   * nada, "nenhum arquivo" afirmaria. E se resolve sozinho — o primeiro
+   * resync (voltar para a aba, realtime reconectar, o botão atualizar)
+   * recarrega e carimba. Não há canal de erro aqui porque o próprio fio não
+   * tem: em falha ele também cai no estado vazio.
+   */
+  const [messagesDaConversa, setMessagesDaConversa] = useState<string | null>(
+    null
+  );
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
@@ -568,6 +589,7 @@ function InboxPageInner() {
           setActiveConversation(nova);
           setActiveContact(nova.contact ?? null);
           setMessages([]);
+          setMessagesDaConversa(null);
           return;
         }
       }
@@ -597,6 +619,7 @@ function InboxPageInner() {
           setActiveConversation(match);
           setActiveContact(match.contact ?? null);
           setMessages([]);
+          setMessagesDaConversa(null);
           // Mirror the optimistic unread reset that handleSelectConversation
           // does — the user just deep-linked into this conv, treat that the
           // same as a click. Leaves activeConversation.unread_count alone so
@@ -629,6 +652,7 @@ function InboxPageInner() {
       setActiveConversation(conv);
       setActiveContact(conv.contact ?? null);
       setMessages([]);
+      setMessagesDaConversa(null);
       // Trocar de conversa fecha o overlay mobile — a ficha aberta é da
       // conversa anterior, e no celular ela cobriria o fio novo.
       setPainelMobileAberto(false);
@@ -688,6 +712,7 @@ function InboxPageInner() {
     setActiveConversation(null);
     setActiveContact(null);
     setMessages([]);
+    setMessagesDaConversa(null);
     setPainelMobileAberto(false);
     // Clearing the ref lets the deep-link auto-selector fire again if
     // the user later visits /inbox?c=<same-id> — desirable UX.
@@ -700,9 +725,16 @@ function InboxPageInner() {
   }, [router, de]);
 
 
-  const handleMessagesLoaded = useCallback((loaded: Message[]) => {
-    setMessages(loaded);
-  }, []);
+  const handleMessagesLoaded = useCallback(
+    (loaded: Message[]) => {
+      setMessages(loaded);
+      // Carimba de quem é o array. O fio só chama isto quando a busca NÃO foi
+      // cancelada, ou seja, quando ela ainda é da conversa aberta — por isso
+      // dá para ler o id do estado da página em vez de o fio precisar mandá-lo.
+      setMessagesDaConversa(activeConversation?.id ?? null);
+    },
+    [activeConversation?.id]
+  );
 
   const handleNewMessage = useCallback((msg: Message) => {
     setMessages((prev) => {
@@ -964,8 +996,15 @@ function InboxPageInner() {
               // anotações e histórico do lead — nada disso existe num grupo.
               <GroupSidebar
                 grupo={activeConversation.group ?? null}
+                conversationId={activeConversation.id}
                 onGrupoAtualizado={handleGroupUpdated}
                 onClose={handleToggleContactPanel}
+                // O mesmo array que alimenta o fio: a aba Arquivos não faz
+                // consulta própria. Ver `lib/media/anexos`.
+                messages={messages}
+                messagesCarregando={
+                  messagesDaConversa !== activeConversation.id
+                }
               />
             ) : (
               <ContactSidebar
@@ -974,6 +1013,13 @@ function InboxPageInner() {
                 resyncToken={resyncToken}
                 onClose={handleToggleContactPanel}
                 onContactUpdated={handleContactUpdated}
+                messages={messages}
+                // ⚠️ Sem conversa aberta não há carga em curso — `true` aqui
+                // deixaria a aba num spinner eterno em vez do estado vazio.
+                messagesCarregando={
+                  !!activeConversation &&
+                  messagesDaConversa !== activeConversation.id
+                }
               />
             )}
           </div>

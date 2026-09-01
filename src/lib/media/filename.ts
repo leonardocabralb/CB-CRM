@@ -4,14 +4,18 @@ import type { ContentType } from "@/types";
 /**
  * Works out the filename to save a chat attachment under.
  *
- * There is no `media_filename` column, so a name has to be reconstructed
- * from what the message row *does* carry. Three sources, in order of
- * trustworthiness:
+ * Four sources, in order of trustworthiness:
  *
+ *   0. `media_filename` — the name the sender actually used, stored since
+ *      migration 969. Authoritative when present: it is the only source that
+ *      survives spaces, accents and names longer than 40 characters. NULL on
+ *      every row written before that migration, hence the cascade below.
  *   1. A document's `content_text`. That's where the webhook puts
  *      `document.filename`, and where the composer puts the uploaded file's
  *      name — but only when the sender typed no caption, hence the
- *      "does it look like a filename" guard.
+ *      "does it look like a filename" guard. ⚠️ Only the Meta webhook ever
+ *      wrote it; the Evolution transport (what production runs) read only the
+ *      caption, so this source is empty for most real rows.
  *   2. The basename of a `chat-media` bucket URL, minus the leading id/epoch
  *      prefix that `buildMediaPath` (`@/lib/storage/upload-media`) puts in
  *      front of it. Covers outbound uploads and, since migration 042,
@@ -134,6 +138,8 @@ export interface MediaFilenameInput {
   media_url?: string;
   /** Meta's MIME type for inbound media (migration 042); null on older rows. */
   media_type?: string | null;
+  /** The sender's own filename (migration 969); null on older rows. */
+  media_filename?: string | null;
   created_at: string;
 }
 
@@ -151,6 +157,16 @@ export function mediaFilename(
   message: MediaFilenameInput,
   mimeType?: string | null,
 ): string {
+  // 0. The name the sender actually used (migration 969). Sanitised like any
+  //    other source — it comes from outside, so a `../` in it must not escape
+  //    the downloads folder — but otherwise trusted as-is: no `hasExtension`
+  //    guard, because a real attachment can legitimately have no extension
+  //    and the column only ever holds a filename, never prose.
+  if (message.media_filename) {
+    const fromColumn = sanitizeFilename(message.media_filename);
+    if (fromColumn) return fromColumn;
+  }
+
   // 1. A document's own filename, when the sender didn't replace it with a
   //    caption. Restricted to documents on purpose: an image caption like
   //    "is this the right invoice.pdf" is prose, not a filename.

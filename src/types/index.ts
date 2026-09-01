@@ -557,8 +557,21 @@ export interface Message {
    * MIME type of `media_url`'s content, as Meta reported it. Inbound
    * media only — outbound URLs already carry a filename and extension.
    * Null on every row written before migration 042.
+   *
+   * ⚠️ Era NULL em 100% das linhas até a 969: a coluna existia desde a 042,
+   * mas só o caminho da Meta a escrevia, e produção roda Evolution.
    */
   media_type?: string | null;
+  /**
+   * Nome do arquivo como o remetente o enviou (migration 969) — o que o
+   * WhatsApp mostra na bolha. NULL em mensagem sem anexo, em mídia que não
+   * tem nome (foto, vídeo, áudio) e em toda linha anterior à 969.
+   *
+   * ⚠️ Não leia esta coluna direto para exibir: use `mediaFilename()` de
+   * `@/lib/media/filename`, que cai para o caminho do Storage quando ela é
+   * nula — é o que recupera o nome dos 188 documentos históricos.
+   */
+  media_filename?: string | null;
   /**
    * Transcrição da nota de voz (migration 943) — NUNCA em `content_text`:
    * o que o cliente escreveu e o que a máquina ouviu são coisas

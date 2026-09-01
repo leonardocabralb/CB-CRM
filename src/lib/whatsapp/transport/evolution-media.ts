@@ -67,7 +67,28 @@ function kindFromContentType(contentType: string): Kind | null {
 }
 
 /**
- * Baixa a mídia da Evolution e sobe para o bucket. Devolve a URL pública, ou
+ * O que sobrou do download, além do arquivo em si.
+ *
+ * ⚠️ `filename` e `mime` viajavam até aqui e MORRIAM na função (ela devolvia
+ * só a URL). O nome ia parar apenas dentro do caminho do objeto, já degradado
+ * por `buildMediaPath` — e `messages.media_type` ficava NULL em 100% das
+ * linhas do Evolution, embora a coluna exista desde a 042. Devolvê-los é o
+ * que permite ao webhook carimbar `media_filename` (969) e `media_type`.
+ */
+export interface EvolutionMediaSalva {
+  /** URL pública no bucket `chat-media`. */
+  url: string;
+  /**
+   * Nome como o remetente enviou, ANTES do mangling do caminho. `null` quando
+   * a Evolution não o informou (comum em foto e áudio, que não têm nome).
+   */
+  filename: string | null;
+  /** Mimetype já sem parâmetros (`audio/ogg`, não `audio/ogg; codecs=opus`). */
+  mime: string;
+}
+
+/**
+ * Baixa a mídia da Evolution e sobe para o bucket. Devolve o que foi salvo, ou
  * `null` quando não há o que baixar / algo falhou.
  */
 export async function fetchAndStoreEvolutionMedia(args: {
@@ -81,7 +102,7 @@ export async function fetchAndStoreEvolutionMedia(args: {
    */
   rawMessage: unknown;
   contentType: string;
-}): Promise<string | null> {
+}): Promise<EvolutionMediaSalva | null> {
   const kind = kindFromContentType(args.contentType);
   if (!kind) return null;
 
@@ -115,7 +136,11 @@ export async function fetchAndStoreEvolutionMedia(args: {
     const {
       data: { publicUrl },
     } = args.db.storage.from(BUCKET).getPublicUrl(path);
-    return publicUrl;
+    // `fileName` cru, não o `nome` acima: aquele já carrega o fallback
+    // sintetizado (`media.pdf`), que é bom para nomear o objeto e péssimo para
+    // mostrar ao operador. Ausente vira `null`, e a bolha cai na cascata de
+    // `mediaFilename`.
+    return { url: publicUrl, filename: fileName || null, mime };
   } catch (err) {
     console.error(
       '[evolution-media] não foi possível recuperar a mídia:',

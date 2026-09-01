@@ -446,8 +446,20 @@
       "statusOpen": "Aberto",
       "dealDetails": "Detalhes do negócio",
       "tabAutomations": "Automações",
+      "tabFiles": "Arquivos",
       "fieldSaved": "Salvo",
       "fieldSaveError": "Não foi possível salvar \"{campo}\" em {cliente}."
+    },
+    "arquivos": {
+      "midia": "Fotos e vídeos",
+      "documentos": "Documentos",
+      "audios": "Áudios",
+      "video": "Vídeo",
+      "audioSemTranscricao": "Mensagem de voz",
+      "recebido": "Recebido",
+      "enviado": "Enviado",
+      "vazio": "Nenhum arquivo nesta conversa",
+      "vazioDica": "Fotos, documentos e áudios trocados aparecem aqui."
     },
     "execucoes": {
       "roboAtivo": "Robô ativo",
@@ -522,6 +534,8 @@
     },
     "groupSidebar": {
       "empty": "Nenhum grupo selecionado.",
+      "tabInfo": "Informações",
+      "noNotes": "Nenhuma nota ainda.",
       "noName": "Grupo sem nome",
       "participants": "{count, plural, one {# participante} other {# participantes}}",
       "announceOnly": "Só admins enviam",

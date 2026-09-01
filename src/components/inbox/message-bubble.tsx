@@ -21,6 +21,7 @@ import {
   Download,
 } from "lucide-react";
 import { corDoRemetente, podeBaixarAnexo } from "@/lib/cb-groups/display";
+import { mediaFilename } from "@/lib/media/filename";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
 import { FormattedText } from "./formatted-text";
@@ -155,19 +156,17 @@ function MediaPendente({
 }
 
 /**
- * Nome sugerido no download. O caminho no bucket já carrega o nome original
- * do arquivo (`buildMediaPath` prefixa um carimbo de tempo), então o
- * basename é o melhor palpite disponível sem consultar mais nada.
+ * Nome sugerido no download.
+ *
+ * ⚠️ Era uma derivação PRÓPRIA e mais fraca que a de `@/lib/media/filename`:
+ * ela devolvia o basename cru do bucket, com o carimbo de tempo colado na
+ * frente (`1756…-contrato.pdf`) e sem sanitizar. Agora delega para a cascata
+ * boa, que remove o carimbo, prefere o `media_filename` da 969 quando existe e
+ * sintetiza um nome quando não há nada.
  */
 function nomeDeArquivo(message: Message): string | undefined {
   if (!message.media_url) return undefined;
-  try {
-    const caminho = new URL(message.media_url, window.location.origin).pathname;
-    const base = decodeURIComponent(caminho.split("/").pop() ?? "");
-    return base || undefined;
-  } catch {
-    return undefined;
-  }
+  return mediaFilename(message) || undefined;
 }
 
 function MediaImage({
@@ -443,23 +442,43 @@ function MessageContent({
         </div>
       );
 
-    case "document":
+    case "document": {
+      // O nome de verdade, com a cascata inteira: `media_filename` (969) →
+      // `content_text` que pareça nome → basename do bucket sem o carimbo →
+      // nome sintetizado. Só cai no rótulo genérico quando nada disso resolve.
+      const nome = nomeDeArquivo(message) ?? t("document");
+      // A legenda é OUTRA coisa que o cliente escreveu, e nem sempre existe.
+      // ⚠️ Suprimida quando é igual ao nome: no caminho da Meta o filename era
+      // gravado NO `content_text`, então as linhas antigas mostrariam o mesmo
+      // texto duas vezes, uma embaixo da outra.
+      const legenda =
+        message.content_text && message.content_text !== nome
+          ? message.content_text
+          : null;
+
       if (!message.media_url) {
-        return <MediaPendente message={message} label={message.content_text || t("document")} t={t} />;
+        return <MediaPendente message={message} label={nome} t={t} />;
       }
       return (
-        <a
-          href={message.media_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm hover:bg-muted"
-        >
-          <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-          <span className="truncate">
-            {message.content_text || t("document")}
-          </span>
-        </a>
+        <div>
+          <a
+            href={message.media_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm hover:bg-muted"
+          >
+            <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+            {/* `min-w-0` é o que deixa o `truncate` funcionar dentro do flex:
+                sem ele o item nasce com `min-width: auto` e o nome longo
+                estica a bolha em vez de ser cortado. */}
+            <span className="min-w-0 truncate" title={nome}>
+              {nome}
+            </span>
+          </a>
+          {legenda && <FormattedText texto={legenda} className="mt-1" />}
+        </div>
       );
+    }
 
     case "template":
       return (
@@ -584,7 +603,22 @@ export function MessageBubble({
     >
       <div
         className={cn(
-          "relative rounded-2xl px-3 py-2",
+          // ⚠️ `max-w-full` é load-bearing, e a falta dele fazia a CONVERSA
+          // INTEIRA rolar para o lado.
+          //
+          // O teto de 75% do `<MessageActions>` funciona — medido: o pai
+          // resolve em 355px. Mas esta bolha é filha de um flex
+          // `flex-col items-start`, e `align-items: flex-start` dimensiona o
+          // filho por `fit-content`, NÃO estica até o pai. `max-width` não se
+          // herda, então uma URL sem espaços (`https://pje.tjce.jus.br/…`)
+          // media 1040px dentro de um pai de 355px e vazava para fora do fio,
+          // acendendo a barra horizontal. Medido: contêiner 505px,
+          // `scrollWidth` 1056px.
+          //
+          // Com o teto, o `break-words` do `<FormattedText>` finalmente tem
+          // contra o que quebrar — ele só parte a palavra quando ela NÃO CABE,
+          // e até aqui cabia sempre, porque nada limitava a largura.
+          "relative max-w-full rounded-2xl px-3 py-2",
           isAgent
             ? "rounded-br-md bg-primary text-primary-foreground"
             : "rounded-bl-md bg-muted text-foreground",

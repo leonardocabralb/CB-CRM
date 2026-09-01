@@ -453,8 +453,20 @@
       "statusOpen": "Open",
       "dealDetails": "Deal details",
       "tabAutomations": "Automations",
+      "tabFiles": "Files",
       "fieldSaved": "Saved",
       "fieldSaveError": "Could not save \"{campo}\" for {cliente}."
+    },
+    "arquivos": {
+      "midia": "Photos and videos",
+      "documentos": "Documents",
+      "audios": "Audio",
+      "video": "Video",
+      "audioSemTranscricao": "Voice message",
+      "recebido": "Received",
+      "enviado": "Sent",
+      "vazio": "No files in this conversation",
+      "vazioDica": "Photos, documents and audio shared here will show up."
     },
     "execucoes": {
       "roboAtivo": "Active bot",
@@ -529,6 +541,8 @@
     },
     "groupSidebar": {
       "empty": "No group selected.",
+      "tabInfo": "Info",
+      "noNotes": "No notes yet.",
       "noName": "Unnamed group",
       "participants": "{count, plural, one {# participant} other {# participants}}",
       "announceOnly": "Admins only",
