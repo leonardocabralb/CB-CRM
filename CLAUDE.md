@@ -478,8 +478,11 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
 - ⚠️ **Desmontar não dispara `blur`**, então há descarga na limpeza de
   desmonte: sem ela, digitar e trocar de bloco (o menu horizontal da 966),
   fechar o painel ou trocar de aba apagaria o texto — em silêncio, e sem o
-  botão para servir de segunda chance. Ela não grava duas vezes porque
-  `salvoRef` é atualizado no sucesso do blur.
+  botão para servir de segunda chance. Ela não grava duas vezes porque o
+  `enfileirar` da fila compara contra `desejado` (o que já se pediu gravar) e
+  descarta o que não mudou — a idempotência mora DENTRO de
+  `criarFilaDeGravacao`, não em ref nenhuma do componente. (Uma versão
+  anterior desta nota creditava um `salvoRef` que nunca existiu no código.)
 - ⚠️⚠️ **Toda gravação passa pela FILA (`criarFilaDeGravacao`), nunca por
   `aoGravar` direto.** Duas requisições concorrentes na mesma linha chegam ao
   banco fora de ordem — mudar uma lista duas vezes rápido, ou
@@ -490,7 +493,12 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
   se QUER gravar, não contra o que o banco confirmou: com `salvo` ainda
   antigo durante o voo, desfazer para o valor original seria descartado como
   não-evento e a tela terminaria discordando do banco (pego pelo teste da
-  própria fila). Achado do Codex no PR #83.
+  própria fila). Achado do Codex no PR #83. ⚠️ E o ramo de FALHA tem duas
+  sutilezas com teste próprio (achados #09/#10 do plano de 31/08): a régua
+  `desejado` só reverte para `salvo` quando NÃO há pendente (com pendente,
+  reverter engolia o desfazer seguinte), e REJEIÇÃO de `aoGravar` é tratada
+  como falha comum — sem o catch, o laço morria com `rodando = true` e o
+  campo parava de gravar para sempre, com o spinner aceso.
 - ⚠️ **`select` grava na ESCOLHA, o resto no blur** (`gravaAoSair`). O popover
   fecha e não há blur útil para esperar. O campo de DATA fica no blur apesar de
   disparar `change`: ele dispara a cada pedaço digitado, com datas
@@ -602,15 +610,13 @@ grupos-de-campos.ts` (testado) e o catálogo com arrastar em
   NOT NULL e faz parte da FK composta; um SET NULL sem lista tentaria zerar as
   duas colunas, e apagar um bloco passaria a estourar violação em vez de
   devolver os campos ao Geral. Medido: apagar o bloco preserva os campos.
-- ⚠️ **Um `Salvar campos` só, e ele salva TODOS os campos — inclusive os dos
-  blocos que não estão à vista.** Eram dois (um por aba) porque o Salvar de uma
-  aba não podia arrastar junto edição meio-feita da outra. Com o menu
-  horizontal os outros blocos voltaram a ficar invisíveis, mas o valor digitado
-  neles CONTINUA no `customValues` e é do operador: salvar só o bloco visível
-  descartaria em silêncio o que ele preencheu antes de trocar de pastilha —
-  perder digitação é pior que gravar digitação. Medido na tela: o valor
-  sobrevive à troca de bloco. Quem voltar a recortar o save por bloco precisa
-  resolver antes o que fazer com o que ficou escondido.
+- ⚠️ **O botão "Salvar campos" NÃO EXISTE MAIS** — o PR #83 trocou por
+  salvamento automático POR CAMPO (blur/escolha + descarga de desmonte; ver a
+  seção "Campo personalizado SALVA SOZINHO"). O que resta desta nota é o
+  motivo dela: o valor digitado num bloco fora de vista CONTINUA no
+  `customValues` e sobrevive à troca de pastilha (medido na tela) — quem um
+  dia recriar um save em LOTE precisa resolver antes o que fazer com o que
+  ficou escondido, porque perder digitação é pior que gravar digitação.
 - **Sem `capitalize` nos rótulos** (nas duas fichas): ele maiusculava cada
   palavra e o operador via "Data De Fechamento Do Contrato" no lugar do nome
   que cadastrou — e estragava os técnicos (`utm_source`), que por isso
