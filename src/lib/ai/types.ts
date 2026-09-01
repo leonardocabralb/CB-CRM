@@ -94,3 +94,19 @@ export class AiError extends Error {
     this.status = opts.status ?? 502
   }
 }
+
+/**
+ * A mensagem de um `AiError` que PODE ir para a tela.
+ *
+ * ⚠️ `invalid_key` é o ÚNICO código cuja mensagem ecoa a CHAVE enviada — a
+ * OpenAI devolve "Incorrect API key provided: sk-proj-…abcd", e a chave pode
+ * ser a GUARDADA (salvar só o modelo revalida com `decrypt(existing)`), que
+ * quem está salvando nem digitou. Esse texto renderizado num painel sai num
+ * print de suporte. Os demais códigos preservam a mensagem DE PROPÓSITO: é
+ * ela que diz "modelo não encontrado" (decisão registrada no CLAUDE.md).
+ * Toda rota que devolve `err.message` de AiError ao cliente passa por aqui
+ * (#30 do plano 31/08 — config, draft e playground ecoavam).
+ */
+export function mensagemSeguraDeAiError(err: AiError): string {
+  return err.code === 'invalid_key' ? 'o provedor recusou a chave' : err.message
+}

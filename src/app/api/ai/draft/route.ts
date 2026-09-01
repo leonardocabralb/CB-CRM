@@ -9,7 +9,7 @@ import { buildSystemPrompt } from '@/lib/ai/defaults'
 import { latestUserMessage } from '@/lib/ai/query'
 import { logAiUsage } from '@/lib/ai/usage'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
-import { AiError } from '@/lib/ai/types'
+import { AiError, mensagemSeguraDeAiError } from '@/lib/ai/types'
 
 /**
  * POST /api/ai/draft  (agent+)
@@ -139,8 +139,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ draft: text })
   } catch (err) {
     if (err instanceof AiError) {
+      // `invalid_key` ecoa a chave na mensagem do provedor — nunca cru (#30).
       return NextResponse.json(
-        { error: err.message, code: err.code },
+        { error: mensagemSeguraDeAiError(err), code: err.code },
         { status: err.status },
       )
     }
