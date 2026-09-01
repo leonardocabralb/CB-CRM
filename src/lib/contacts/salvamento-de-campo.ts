@@ -7,8 +7,6 @@
 // coisa diferente para o mesmo gesto, em telas que editam o MESMO dado.
 // ============================================================
 
-import { TIPO_DATA } from "@/lib/contacts/campo-data";
-
 /**
  * O gesto que confirma o campo é SAIR dele (`blur`)?
  *
@@ -44,12 +42,6 @@ export function gravaAoEscolher(fieldType: string): boolean {
 export function valorMudou(salvo: string, novo: string): boolean {
   return salvo.trim() !== novo.trim();
 }
-
-/**
- * Reexportado para quem monta o campo não precisar importar de dois lugares
- * só para saber o que é uma data.
- */
-export { TIPO_DATA };
 
 // ------------------------------------------------------------
 // A fila de gravação de UM campo
