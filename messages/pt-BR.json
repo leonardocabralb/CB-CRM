@@ -3073,6 +3073,8 @@
     "secoesHint": "Perfil, senha e aparência aparecem sempre, para todo mundo — por isso não estão na lista.",
     "canaisLabel": "Conexões da área",
     "escopoVazioHint": "Sem nenhuma marcada, o perfil vê TODAS as conexões e funis — marque para restringir.",
+    "canaisSumiram": "conexões que não existem mais",
+    "canaisSumiramDica": "O recorte aponta para conexão que não existe mais, então este perfil não enxerga conexão alguma. Escolha \"Todas as conexões\" para limpar, ou marque as certas.",
     "funisLabel": "Funis da área",
     "sugerirFunis": "Sugerir pelos números marcados",
     "cancel": "Cancelar",

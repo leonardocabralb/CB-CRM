@@ -49,12 +49,13 @@ export function camposFaltantes(
   return CAMPOS_DE_TRAQUEAMENTO.filter((c) => !chaves.has(c.key));
 }
 
-/** Recorte da aba: só os campos da categoria de traqueamento. */
-export function camposDeTraqueamento(campos: CustomField[]): CustomField[] {
-  return campos.filter((f) => f.categoria === "tracking");
-}
-
-/** Recorte da seção CAMPOS da aba Principal: tudo que NÃO é traqueamento. */
-export function camposGerais(campos: CustomField[]): CustomField[] {
-  return campos.filter((f) => f.categoria !== "tracking");
-}
+// ⚠️ `camposDeTraqueamento` e `camposGerais` viviam aqui e foram removidas
+// em 2026-09-01: as duas recortavam a lista para a aba "Traqueamento" do
+// painel da conversa, que DEIXOU DE EXISTIR (966). Ficaram sem consumidor,
+// com JSDoc descrevendo telas que não existem mais — a pior forma de código
+// morto, porque quem lê acredita que há uma aba em algum lugar.
+//
+// `categoria` continua viva e não é o bloco: é a marca semântica "campo
+// técnico", que o semeador acima escreve e a API v1 expõe como `category`
+// (dropar a coluna quebra o n8n do gestor). Quem precisar do recorte de novo
+// escreve o `.filter()` onde ele for usado.

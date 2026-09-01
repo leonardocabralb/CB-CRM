@@ -14,8 +14,12 @@
 
 services:
   crm:
-    # Built + pushed by CI (see .github/workflows/deploy.yml). Override the
+    # Built + pushed by CI (see .github/workflows/pipeline.yml). Override the
     # tag at deploy time with CRM_IMAGE=ghcr.io/leonardocabralb/cb-crm:<sha>.
+    # ⚠️ Tire o CRM_IMAGE de `.Spec.TaskTemplate.ContainerSpec.Image`, NUNCA
+    # do rótulo `com.docker.stack.image`: o CI publica com `docker service
+    # update`, que não reescreve o rótulo — ele guarda a imagem do último
+    # deploy MANUAL e rola a produção para trás em silêncio.
     image: ${CRM_IMAGE:-ghcr.io/leonardocabralb/cb-crm:latest}
     environment:
       # NEXT_PUBLIC_* are also read server-side at runtime; keep them here.
@@ -53,17 +57,21 @@ services:
         - traefik.http.services.crm.loadbalancer.passHostHeader=true
 
   # ============================================================
-  # O agendador. Bate nas rotas de cron do CRM de 15 em 15 minutos.
+  # O agendador. Bate nas rotas de cron do CRM em DOIS laços paralelos:
+  # 60s para as automações (esperas e fila de funil) e 900s para agendadas,
+  # fluxos e radar. Ver o `command` abaixo — a descrição de "um laço de 15
+  # minutos" valeu até o laço rápido nascer.
   #
   # ⚠️ SEM ESTE SERVIÇO, MENSAGEM AGENDADA NÃO SAI. A migration 925 guarda a
   # linha; quem a transforma em mensagem é `/api/cb/scheduled/cron`, e nada
   # no projeto chama essa rota sozinho — Next.js não tem agendador embutido,
   # não há `vercel.json`, e `pg_cron` não está instalado no Supabase.
   #
-  # ⚠️ O CI NÃO SOBE ESTE SERVIÇO. O `deploy.yml` termina em
+  # ⚠️ O CI NÃO SOBE ESTE SERVIÇO. O `pipeline.yml` termina em
   # `docker service update … crm_crm`, que só troca a imagem do serviço que
-  # já existe. Serviço novo exige UM `docker stack deploy` na VPS, à mão —
-  # ver `docs/DEPLOY-VPS.md`.
+  # já existe. Serviço novo — e QUALQUER mudança neste arquivo, inclusive no
+  # `command` do agendador — exige UM `docker stack deploy` na VPS, à mão.
+  # Ver `docs/DEPLOY-VPS.md`.
   #
   # ⚠️ ELE TAMBÉM RESSUSCITA AUTOMAÇÕES E FLUXOS. As duas rotas abaixo
   # existem no código desde o upstream e nunca foram chamadas em produção:
@@ -82,16 +90,12 @@ services:
     # Por dentro da overlay: sem sair para a internet, sem TLS, sem depender
     # do Traefik nem do certificado.
     #
-    # ⚠️ O ciclo de 15 minutos é decisão do operador, e o número TEM de bater
-    # com `CICLO_MINUTOS` em `src/lib/scheduled/display.ts` — é ele que define
-    # a grade de horários que a tela oferece e o texto "sai em até 15 min".
-    # Mudar um sem o outro faz a tela prometer o que o servidor não cumpre.
-    #
-    # ⚠️ A agendada vem PRIMEIRO no laço, e não é ordem alfabética: as outras
-    # duas rotas varrem automações e fluxos, e uma delas lenta faria a
+    # ⚠️ A agendada vem PRIMEIRO no laço lento, e não é ordem alfabética: as
+    # outras duas rotas varrem fluxos e radar, e uma delas lenta faria a
     # mensagem do cliente esperar atrás. O `-m 120` corta cada chamada bem
     # antes do ciclo seguinte; o `|| true` existe para que o CRM reiniciando
     # não derrube o laço.
+    #
     # ⚠️ DOIS LAÇOS, e a separação é load-bearing.
     #
     # O laço de 15 min NÃO PODE encolher: o número tem de bater com

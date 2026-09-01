@@ -270,7 +270,7 @@ export function useRadar(): RadarDaConta {
     const minhaGeracao = ++geracaoRef.current;
     const supabase = createClient();
 
-    const [lista, pendentes, batimento] = await Promise.all([
+    const [lista, pendentes, falhas, batimento] = await Promise.all([
       supabase
         .from('cb_conversation_insights')
         .select(SELECT_COM_CONVERSA, { count: 'exact' })
@@ -293,6 +293,22 @@ export function useRadar(): RadarDaConta {
         .eq('estado', 'aberto')
         .not('aguardando_desde', 'is', null)
         .order('aguardando_desde', { ascending: true })
+        .limit(100),
+      // ⚠️ MESMA classe da anterior, por um motivo INVERTIDO (M3): a linha
+      // que esgotou as tentativas NÃO carimba `analisado_em` — ele fica
+      // NULO —, e com `nullsFirst: false` ela é a ÚLTIMA da ordenação, a
+      // PRIMEIRA a cair do teto. A garantia "análise `failed` aparece no
+      // painel independente de gatilho" expiraria em silêncio, levando
+      // junto o botão "Reanalisar" — o único caminho de correção que
+      // sobrou depois que a aba "Todos" foi removida. Ordena por
+      // `created_at` (NOT NULL) porque a coluna da ordenação principal é
+      // justamente a que está nula aqui.
+      supabase
+        .from('cb_conversation_insights')
+        .select(SELECT_COM_CONVERSA)
+        .eq('account_id', accountId)
+        .eq('status', 'failed')
+        .order('created_at', { ascending: false })
         .limit(100),
       supabase
         .from('cb_agendador_batimento')
@@ -318,11 +334,14 @@ export function useRadar(): RadarDaConta {
     // Best-effort como o batimento: se a consulta de pendências falhar, a
     // tela perde só a blindagem contra o teto — não a lista.
     const dePendencia = (pendentes.data ?? []) as unknown as InsightDaConta[];
+    const deFalha = (falhas.data ?? []) as unknown as InsightDaConta[];
     const vistos = new Set(principais.map((i) => i.id));
-    const linhas = [
-      ...principais,
-      ...dePendencia.filter((i) => !vistos.has(i.id)),
-    ];
+    const linhas = [...principais];
+    for (const i of [...dePendencia, ...deFalha]) {
+      if (vistos.has(i.id)) continue;
+      vistos.add(i.id);
+      linhas.push(i);
+    }
     // Antes de publicar: quem já foi respondido. Publicar a lista primeiro
     // e corrigir depois faria o cartão resolvido aparecer e sumir na cara
     // do operador — a conferência é uma consulta curta, cabe aqui.

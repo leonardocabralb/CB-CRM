@@ -3073,6 +3073,8 @@
     "secoesHint": "Profile, password and appearance always show, for everyone — that is why they are not listed.",
     "canaisLabel": "Area connections",
     "escopoVazioHint": "With none checked, the profile sees ALL connections and pipelines — check to restrict.",
+    "canaisSumiram": "connections that no longer exist",
+    "canaisSumiramDica": "This scope points at a connection that no longer exists, so the profile sees no connection at all. Pick \"All connections\" to clear it, or check the right ones.",
     "funisLabel": "Area pipelines",
     "sugerirFunis": "Suggest from checked numbers",
     "cancel": "Cancel",

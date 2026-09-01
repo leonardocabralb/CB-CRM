@@ -35,6 +35,7 @@ import { useExecucoesDoContato } from '@/hooks/use-execucoes-do-contato';
 import { statusAoEntrarNaEtapa } from '@/lib/pipelines/resultado';
 import { avisarDrenagemDeFunil } from '@/lib/automations/avisar-drenagem';
 import { CampoComSalvamento } from '@/components/contacts/campo-com-salvamento';
+import { MenuDeBlocos } from '@/components/contacts/menu-de-blocos';
 import { LinhaDeEdicao } from '@/components/inbox/painel/linha-de-edicao';
 import { InternalNoteBox } from '@/components/inbox/internal-note-box';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
@@ -1263,29 +1264,12 @@ export function PainelDoContato({
                       Some com menos de dois blocos, pela mesma regra do
                       seletor de canal: com um bloco só ele não decide nada e
                       o nome dele já está no título logo acima. */}
-                  {blocos.length > 1 && (
-                    <div className="flex flex-wrap gap-1">
-                      {blocos.map((bloco) => {
-                        const chave = chaveDoBloco(bloco.grupo?.id ?? null);
-                        const ativo = chave === chaveVisivel;
-                        return (
-                          <button
-                            key={chave}
-                            type="button"
-                            onClick={() => setBlocoAtivo(chave)}
-                            className={cn(
-                              'rounded-md px-2 py-1 text-[11px] font-medium transition-colors',
-                              ativo
-                                ? 'bg-primary/15 text-primary'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                            )}
-                          >
-                            {bloco.grupo?.nome ?? tCampos('groupGeneral')}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <MenuDeBlocos
+                    blocos={blocos}
+                    chaveVisivel={chaveVisivel}
+                    onEscolher={setBlocoAtivo}
+                    rotuloDoGeral={tCampos('groupGeneral')}
+                  />
                   {/* ⚠️ A `key` INCLUI o contato — é load-bearing. Sem ela o
                       React reusa a instância ao trocar de cliente, o rascunho
                       do anterior sobrevive sob o cabeçalho do novo, e a

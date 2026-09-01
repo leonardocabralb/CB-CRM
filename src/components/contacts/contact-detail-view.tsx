@@ -18,6 +18,7 @@ import {
   chaveDoBloco,
 } from '@/lib/contacts/grupos-de-campos';
 import { CampoComSalvamento } from '@/components/contacts/campo-com-salvamento';
+import { MenuDeBlocos } from '@/components/contacts/menu-de-blocos';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag, ConversationNote, CustomField, ContactCustomValue, Deal, GrupoDeCampos, MessageTemplate } from "@/types";
 import {
@@ -914,28 +915,12 @@ export function ContactDetailView({
                         só o bloco escolhido aparece. Empilhar os blocos
                         organizava sem reduzir nada — os 15 campos continuavam
                         todos na tela. Some com menos de dois blocos. */}
-                    {blocosDaFicha.length > 1 && (
-                      <div className="flex flex-wrap gap-1">
-                        {blocosDaFicha.map((bloco) => {
-                          const chave = chaveDoBloco(bloco.grupo?.id ?? null);
-                          const ativo = chave === chaveVisivel;
-                          return (
-                            <button
-                              key={chave}
-                              type="button"
-                              onClick={() => setBlocoAtivo(chave)}
-                              className={
-                                ativo
-                                  ? 'bg-primary/15 text-primary rounded-md px-2 py-1 text-xs font-medium transition-colors'
-                                  : 'text-muted-foreground hover:bg-muted hover:text-foreground rounded-md px-2 py-1 text-xs font-medium transition-colors'
-                              }
-                            >
-                              {bloco.grupo?.nome ?? tCampos('groupGeneral')}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <MenuDeBlocos
+                      blocos={blocosDaFicha}
+                      chaveVisivel={chaveVisivel}
+                      onEscolher={setBlocoAtivo}
+                      rotuloDoGeral={tCampos('groupGeneral')}
+                    />
                     {/* ⚠️ A `key` INCLUI o contato — ver o cabeçalho do
                         `CampoComSalvamento`: sem ela o React reusa a
                         instância ao trocar de cliente e a descarga de
