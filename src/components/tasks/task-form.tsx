@@ -81,6 +81,7 @@ export function TaskForm({
     membros,
     carregando: carregandoMembros,
     falhou: membrosFalharam,
+    recarregar: recarregarMembros,
   } = useMembros();
 
   const editando = !!tarefa;
@@ -136,11 +137,16 @@ export function TaskForm({
   // DEPOIS de a caixa abrir (efeito separado do reset acima: preencher o
   // padrão não pode custar os outros campos).
   useEffect(() => {
-    if (!open || tarefa || carregandoMembros) return;
+    // ⚠️ `membrosFalharam` barra a queda para "eu" (#32): a lista vazia de
+    // uma falha não prova conta-de-um — auto-atribuir gravava a tarefa no
+    // criador e a colega para quem ele delegava nunca ficava sabendo. Em
+    // falha o campo fica VAZIO, `podeSalvar` barra e o botão de tentar de
+    // novo (abaixo, no render) refaz a busca.
+    if (!open || tarefa || carregandoMembros || membrosFalharam) return;
     if (membros.length <= 1) {
       setResponsavel((atual) => atual || (user?.id ?? ''));
     }
-  }, [open, tarefa, carregandoMembros, membros.length, user?.id]);
+  }, [open, tarefa, carregandoMembros, membrosFalharam, membros.length, user?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // O catálogo de contatos só é buscado quando a criação é GLOBAL — no
@@ -324,28 +330,41 @@ export function TaskForm({
                     ))}
                   </SelectContent>
                 </Select>
+              ) : membrosFalharam ? (
+                /* ⚠️ Falha na busca NÃO vira "único membro" nem cai em
+                   "você" (#32): a lista vazia de erro não diz nada sobre a
+                   conta, e auto-atribuir gravava no criador a tarefa que
+                   ele queria delegar. O campo fica vazio (podeSalvar
+                   barra) e o botão refaz a busca sem recarregar a página —
+                   o mesmo desenho do invite-member-dialog para o mesmo
+                   modo de falha. */
+                <div className="space-y-2">
+                  <p className="text-muted-foreground text-xs">
+                    {t('assigneeLoadFailed')}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={recarregarMembros}
+                  >
+                    {t('assigneeRetry')}
+                  </Button>
+                </div>
               ) : (
                 <>
-                  {/* ⚠️ Falha na busca NÃO vira "único membro": a lista
-                      vazia de erro não diz nada sobre a conta, e afirmar
-                      sozinho-na-conta numa conta com equipe fazia o
-                      operador salvar sem perceber que a tarefa caiu nele.
-                      A tarefa continua criável (você é alvo válido) — o
-                      texto só para de mentir sobre o porquê. */}
                   <Select value="__eu__" disabled onValueChange={() => {}}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__eu__">
-                        {membrosFalharam ? t('assigneeYou') : t('assigneeOnlyYou')}
+                        {t('assigneeOnlyYou')}
                       </SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-muted-foreground text-xs">
-                    {membrosFalharam
-                      ? t('assigneeLoadFailed')
-                      : t('assigneeInviteHint')}
+                    {t('assigneeInviteHint')}
                   </p>
                 </>
               )}

@@ -14,7 +14,7 @@
 // vazio que não deixa criar nada.
 // ============================================================
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { fetchAccountMembersOrNull } from '@/lib/account/members';
 import type { AccountMember } from '@/types';
@@ -29,16 +29,24 @@ export interface UseMembrosResult {
    * auto-atribuía ao criador numa conta com equipe, numa falha de rede.
    */
   falhou: boolean;
+  /** Refaz a busca — o botão "tentar de novo" do formulário de tarefa (#32):
+   *  sem ele, a falha só se resolvia recarregando a página inteira. */
+  recarregar: () => void;
 }
 
 export function useMembros(): UseMembrosResult {
   const [membros, setMembros] = useState<AccountMember[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [falhou, setFalhou] = useState(false);
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     let cancelado = false;
     (async () => {
+      // Dentro da IIFE, não no corpo do efeito: `setState` síncrono ali é
+      // erro de lint (cascading renders). No retry a lista some enquanto a
+      // nova não chega — é o que o `carregando` significa.
+      setCarregando(true);
       const lista = await fetchAccountMembersOrNull();
       if (!cancelado) {
         setMembros(lista ?? []);
@@ -49,7 +57,9 @@ export function useMembros(): UseMembrosResult {
     return () => {
       cancelado = true;
     };
-  }, []);
+  }, [nonce]);
 
-  return { membros, carregando, falhou };
+  const recarregar = useCallback(() => setNonce((n) => n + 1), []);
+
+  return { membros, carregando, falhou, recarregar };
 }

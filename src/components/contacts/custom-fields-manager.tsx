@@ -453,6 +453,24 @@ export function CustomFieldsPanel({
     }
     // Os campos do bloco NÃO somem: a FK é `ON DELETE SET NULL (grupo_id)`, e
     // eles reaparecem no bloco Geral. É por isso que o refetch traz os dois.
+    //
+    // ⚠️ RENORMALIZA o Geral resultante antes do refetch (M7 do plano
+    // 31/08): os campos chegam com a `posicao` que tinham DENTRO do bloco
+    // apagado, colidem com as do Geral, e `ordenarCampos` desempata pelo
+    // nome — a ordem que o operador montou embaralhava na ficha de TODO
+    // cliente. A lista vai na ordem em que a tela os mostrará (Geral atual
+    // primeiro, depois os do bloco apagado), pela MESMA RPC do arrastar.
+    const geralAtual = blocos.find((b) => b.grupo === null)?.campos ?? [];
+    const doApagado = blocos.find((b) => b.grupo?.id === grupo.id)?.campos ?? [];
+    if (doApagado.length > 0) {
+      const { error: reordErr } = await supabase.rpc(
+        'cb_ordenar_campos_personalizados',
+        { p_campos: posicoesDoBloco([...geralAtual, ...doApagado], null) },
+      );
+      // Falha aqui é só de ORDEM (nada se perdeu) — o aviso padrão do
+      // arrastar serve, e o refetch abaixo mostra o que o banco tem.
+      if (reordErr) toast.error(t('toastReorderFailed'));
+    }
     toast.success(t('toastGroupDeleted', { name: grupo.nome }));
     await fetchFields();
   }
@@ -615,7 +633,13 @@ export function CustomFieldsPanel({
 
     const nova = arrayMove(ordenados, de, para);
     const anterior = grupos;
-    setGrupos(nova.map((g, i) => ({ ...g, posicao: i })));
+    // ⚠️ `i + 1`, ESPELHANDO a RPC (#31 do plano 31/08): o
+    // `cb_ordenar_grupos_de_campos` grava a ORDINALITY (1..N), e o estado
+    // otimista gravava 0..N-1 — sem refetch depois do arrastar, o
+    // `max+1` do handleCreateGrupo calculava sobre a base errada e o bloco
+    // novo EMPATAVA com o último (o desempate por nome o punha antes,
+    // gravado; um F5 mantinha a ordem errada).
+    setGrupos(nova.map((g, i) => ({ ...g, posicao: i + 1 })));
 
     const { error } = await supabase.rpc('cb_ordenar_grupos_de_campos', {
       p_ids: nova.map((g) => g.id),
