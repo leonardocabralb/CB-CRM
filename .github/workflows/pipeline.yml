@@ -71,19 +71,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # ⚠️ A MESMA MAJOR DO Dockerfile (`node:22-alpine`), e não uma
-      # qualquer: o que roda aqui tem de ser o que roda em produção, senão
-      # o verde do CI não prova nada sobre o que é publicado.
+      # ⚠️ A VERSÃO NÃO SE ESCREVE AQUI — sai do `.nvmrc`, que é a MESMA
+      # fonte que a máquina do dev lê (`nvm use`). O que roda no CI tem de
+      # ser o que roda em produção, senão o verde daqui não prova nada
+      # sobre o que é publicado.
       #
-      # Estava em 20 e isso JÁ CUSTOU um vermelho real: o PR #66 passou na
-      # máquina do dev (Node 24) e reprovou aqui em `formatCurrencyShort`
-      # — `Intl.NumberFormat` mudou a saída de `notation: 'compact'` entre
-      # as majors ("R$ 900" virou "R$ 900,0"). Com três majors em jogo
-      # (local 24, CI 20, produção 22), qualquer teste que toque Intl,
-      # fuso ou colação vira loteria. Duas bastam de sobra.
+      # Não é teoria: com as majors divergindo (dev 24, CI 20, produção 22)
+      # o PR #66 passou na máquina do dev e reprovou aqui, em
+      # `formatCurrencyShort` — o `Intl.NumberFormat` resolvia
+      # `notation: 'compact'` de um jeito em cada V8 ("R$ 900" virou
+      # "R$ 900,0"). Qualquer teste que toque Intl, fuso ou colação vira
+      # loteria assim, e divergir é o estado natural de números que
+      # ninguém amarrou um ao outro.
+      #
+      # Sobra UM outro número: o `ARG NODE_VERSION` do Dockerfile. O `FROM`
+      # não lê arquivo do contexto de build, então produção não tem como
+      # derivar daqui — os dois têm de andar juntos, e a nota lá diz isso.
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
@@ -184,7 +190,21 @@ jobs:
     # Só `verificar`. Ver a nota na etapa `migrations` sobre por que ela
     # não entra aqui.
     needs: [verificar]
-    if: github.event_name != 'pull_request'
+    # ⚠️ O PORTÃO É A REF, NÃO O EVENTO. Era `github.event_name !=
+    # 'pull_request'`, que dizia "não é PR" onde o comentário acima promete
+    # "só no main" — e `workflow_dispatch` não tem filtro de branch no `on:`.
+    # Consequência: disparar o pipeline à mão numa branch de feature
+    # publicava ELA na VPS e reescrevia a tag `:latest`, sem nada barrando.
+    #
+    # É LISTA DE PERMISSÃO de propósito, não uma negação a mais: este job
+    # carrega a chave SSH de produção. `pull_request_target`, se alguém o
+    # acrescentar ao `on:` um dia, roda com a ref da BASE — `refs/heads/main`
+    # — então a checagem de ref sozinha não bastaria, e negar só
+    # `pull_request` não o pegaria. Enumerar os dois eventos que podem
+    # publicar fecha os dois buracos de uma vez.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -202,18 +222,45 @@ jobs:
       # derruba o workflow INTEIRO antes de qualquer job rodar (run de 0s,
       # "workflow file issue"). Sintaxe YAML válida não pega isso — só a
       # tabela de contextos do GitHub.
+      #
+      # ⚠️ `docker service inspect` falha por QUATRO motivos e o script antigo
+      # tratava os quatro como "ainda não implantado", saindo com código 0:
+      # daemon fora do ar, nó que não é manager do Swarm, usuário SSH sem
+      # acesso ao socket, e o serviço realmente não existir. Nos três
+      # primeiros o pipeline ficava VERDE sem ter publicado nada — `main` à
+      # frente da produção, em silêncio, que é exatamente o estado que a
+      # segunda tentativa acima existe para evitar. Separar antes de decidir,
+      # e falhar alto: sair 0 aqui é mentir sobre ter publicado.
+      #
+      # O quarto caso (serviço ausente) também falha. O primeiro deploy é
+      # manual por desenho (docs/DEPLOY-VPS.md) e já foi feito — a produção
+      # está no ar desde 25/07/2026. Hoje "não existe" só pode ser Swarm
+      # recriado ou serviço removido à mão, e as duas coisas são para uma
+      # pessoa ver, não para o pipeline engolir.
       ROLLOUT_SCRIPT: |
         set -e
-        if docker service inspect crm_crm >/dev/null 2>&1; then
-          docker service update \
-            --image "$IMAGE_REF" \
-            --with-registry-auth \
-            crm_crm
-        else
-          echo "Service crm_crm not found yet."
-          echo "Do the one-time manual deploy on the VPS first (see docs/DEPLOY-VPS.md),"
-          echo "then this workflow will roll out updates automatically."
+
+        if ! docker info >/dev/null 2>&1; then
+          echo "Daemon Docker inacessível na VPS: fora do ar, ou o usuário do SSH não alcança /var/run/docker.sock."
+          exit 1
         fi
+
+        if [ "$(docker info --format '{{.Swarm.LocalNodeState}}')" != "active" ] ||
+           [ "$(docker info --format '{{.Swarm.ControlAvailable}}')" != "true" ]; then
+          echo "Este nó não é manager de um Swarm ativo — 'docker service' não funciona aqui."
+          exit 1
+        fi
+
+        if ! docker service inspect crm_crm >/dev/null 2>&1; then
+          echo "Serviço crm_crm não existe no Swarm, e o daemon responde normalmente."
+          echo "O primeiro deploy é MANUAL (docs/DEPLOY-VPS.md); depois dele o rollout é automático."
+          exit 1
+        fi
+
+        docker service update \
+          --image "$IMAGE_REF" \
+          --with-registry-auth \
+          crm_crm
     steps:
       - uses: actions/checkout@v4
 
