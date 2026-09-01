@@ -91,6 +91,85 @@ describe("basenameFromUrl", () => {
   });
 });
 
+describe("mediaFilename — media_filename (migration 969)", () => {
+  it("prefers the stored filename over every reconstructed source", () => {
+    expect(
+      mediaFilename({
+        content_type: "document",
+        // A caption AND a bucket path that both look like usable names —
+        // neither may win over what the sender actually called the file.
+        content_text: "segue em anexo.pdf",
+        media_filename: "MARÇO 2024.pdf",
+        media_url:
+          "https://x.supabase.co/storage/v1/object/public/chat-media/account-1/1756000000000-MAR_O_2024.pdf",
+        created_at: AT,
+      }),
+    ).toBe("MARÇO 2024.pdf");
+  });
+
+  it("keeps what the bucket path destroys — spaces and accents", () => {
+    // `buildMediaPath` collapses anything outside [a-zA-Z0-9_-] to `_`, so the
+    // path can only ever give back `MAR_O_2024.pdf`. This is the whole reason
+    // the column exists.
+    const doPath = mediaFilename({
+      content_type: "document",
+      media_url:
+        "https://x.supabase.co/storage/v1/object/public/chat-media/account-1/1756000000000-MAR_O_2024.pdf",
+      created_at: AT,
+    });
+    expect(doPath).toBe("MAR_O_2024.pdf");
+    expect(doPath).not.toBe("MARÇO 2024.pdf");
+  });
+
+  it("sanitises the stored name — it came from outside", () => {
+    expect(
+      mediaFilename({
+        content_type: "document",
+        media_filename: "../../../.ssh/authorized_keys.txt",
+        created_at: AT,
+      }),
+    ).toBe("authorized_keys.txt");
+  });
+
+  it("falls through when the stored name sanitises to nothing", () => {
+    // A name made only of dots survives `split` but not the leading-dot strip;
+    // returning "" here would hand a download an empty filename.
+    expect(
+      mediaFilename({
+        content_type: "document",
+        media_filename: "...",
+        media_url:
+          "https://x.supabase.co/storage/v1/object/public/chat-media/account-1/1756000000000-contrato.pdf",
+        created_at: AT,
+      }),
+    ).toBe("contrato.pdf");
+  });
+
+  it("accepts a stored name with no extension", () => {
+    // Unlike `content_text`, this column only ever holds a filename, so there
+    // is no "is this prose?" guard to pass.
+    expect(
+      mediaFilename({
+        content_type: "document",
+        media_filename: "CONTRATO",
+        created_at: AT,
+      }),
+    ).toBe("CONTRATO");
+  });
+
+  it("is ignored when null, as on every row before the migration", () => {
+    expect(
+      mediaFilename({
+        content_type: "document",
+        media_filename: null,
+        media_url:
+          "https://x.supabase.co/storage/v1/object/public/chat-media/account-1/1756000000000-ABRIL_2024.pdf",
+        created_at: AT,
+      }),
+    ).toBe("ABRIL_2024.pdf");
+  });
+});
+
 describe("mediaFilename", () => {
   it("uses a document's own filename when content_text is one", () => {
     expect(

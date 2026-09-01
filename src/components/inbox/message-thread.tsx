@@ -293,6 +293,46 @@ export function MessageThread({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   /**
+   * Qual conversa já foi carregada com sucesso. Serve só para o spinner saber
+   * distinguir "trocou de conversa" de "resync da mesma conversa" — ver o
+   * efeito de carga.
+   */
+  const conversaCarregadaRef = useRef<string | null>(null);
+
+  /**
+   * O operador estava colado no fim do fio?
+   *
+   * ⚠️ É a guarda que faltava no auto-scroll, e o `saltoAtivoRef` NÃO a
+   * substitui: aquele é armado só pelo salto da busca e, pior, `liberarSalto`
+   * está pendurado no `onWheel` — rolar à mão DESLIGA o `saltoAtivoRef`. Sem
+   * esta, qualquer troca de identidade de `messages`, `leadEvents` ou `notas`
+   * puxava para o fim quem estava lendo o histórico. Abrir um anexo em nova
+   * aba fazia isso TRÊS vezes por retorno (os três chegam em buscas próprias),
+   * porque o `visibilitychange` incrementa o `resyncToken`.
+   *
+   * Nasce `true`: conversa recém-aberta abre no fim, como sempre.
+   */
+  const coladoNoFimRef = useRef(true);
+
+  const anotarPosicao = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // ⚠️ Conteúdo que não chega a encher o contêiner NÃO responde a pergunta.
+    // É o estado do spinner (~100px numa caixa de centenas): o `scrollHeight`
+    // desaba, o navegador grampeia o `scrollTop` em zero e dispara um evento
+    // de rolagem cuja conta dá "colado no fim" — religando justamente a guarda
+    // que se quer manter desligada. Medir a GEOMETRIA, e não o `loading`, é o
+    // que dispensa espelhar estado num ref durante o render (que o React
+    // Compiler reprova) e ainda cobre qualquer outro caminho que encolha o fio.
+    if (el.scrollHeight <= el.clientHeight) return;
+    // A folga não é zero: `scrollTop` é fracionário em tela HiDPI, e exigir o
+    // fim exato faria a conversa parar de acompanhar mensagem nova por causa
+    // de meio pixel.
+    coladoNoFimRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+  }, []);
+
+  /**
    * O salto da busca está mandando na rolagem agora?
    *
    * Vale de quando há alvo ATÉ O OPERADOR AGIR. Enquanto vale, o auto-scroll
@@ -358,6 +398,13 @@ export function MessageThread({
   const publicarMensagemOtimista = useCallback(
     (msg: Message) => {
       liberarSalto();
+      // ⚠️ Escrever é pedir para ver o que se escreveu. Sem isto, quem estava
+      // lendo o histórico mandaria a mensagem e ela nasceria abaixo da dobra,
+      // com o auto-scroll calado pela guarda do `coladoNoFimRef` — o mesmo
+      // "mandei e não vi" que o comentário acima descreve para o salto.
+      // Vale para os quatro caminhos de envio, pelo mesmo motivo de o funil
+      // existir.
+      coladoNoFimRef.current = true;
       onNewMessage(msg);
     },
     [liberarSalto, onNewMessage],
@@ -606,7 +653,22 @@ export function MessageThread({
     let cancelled = false;
 
     (async () => {
-      setLoading(true);
+      // ⚠️ O spinner só entra quando a CONVERSA muda — nunca num resync.
+      //
+      // Trocar o fio por um spinner de ~100px DENTRO do contêiner de rolagem
+      // faz o `scrollHeight` desabar abaixo do `clientHeight`, e o navegador
+      // GRAMPEIA o `scrollTop` em zero. Como o resync dispara a cada
+      // `visibilitychange`, abrir um anexo em nova aba e voltar destruía a
+      // posição de quem estava lendo o histórico: o operador voltava para o
+      // começo da conversa, e o auto-scroll logo abaixo o empurrava para o
+      // fim. Aqui o conteúdo antigo continua válido — ele é substituído
+      // quando o novo chega, sem passar pelo vazio.
+      const trocouDeConversa = conversaCarregadaRef.current !== conversationId;
+      if (trocouDeConversa) {
+        setLoading(true);
+        // Conversa nova abre no fim — e a âncora do fio anterior não vale mais.
+        coladoNoFimRef.current = true;
+      }
 
       const { data, error } = await supabase
         .from("messages")
@@ -620,6 +682,9 @@ export function MessageThread({
         console.error("Failed to fetch messages:", error);
       } else {
         onMessagesLoadedRef.current(data ?? []);
+        // Só marca depois de uma carga BOA: se a primeira falhou, a tela está
+        // vazia e o próximo resync tem de mostrar o spinner de novo.
+        conversaCarregadaRef.current = conversationId;
       }
 
       if (!cancelled) setLoading(false);
@@ -828,6 +893,10 @@ export function MessageThread({
       // Escrever anotação é agir: solta a rolagem do salto da busca, senão o
       // autor salva e não vê o que acabou de escrever.
       liberarSalto();
+      // E, pelo mesmo motivo, volta a acompanhar o fim — a anotação nasce lá
+      // embaixo, e a guarda do `coladoNoFimRef` calaria o auto-scroll para
+      // quem estava lendo o histórico enquanto escrevia.
+      coladoNoFimRef.current = true;
       acrescentarNota(nota);
     },
     [acrescentarNota, conversationId, liberarSalto],
@@ -954,6 +1023,8 @@ export function MessageThread({
   // salvaria e não veria o que acabou de escrever.
   useEffect(() => {
     if (saltoAtivoRef.current) return;
+    // ⚠️ Quem estava lendo o histórico fica onde está. Ver `coladoNoFimRef`.
+    if (!coladoNoFimRef.current) return;
     if (scrollRef.current) {
       const el = scrollRef.current;
       el.scrollTop = el.scrollHeight;
@@ -1145,13 +1216,12 @@ export function MessageThread({
     async (payload: SendMediaPayload) => {
       if (!conversation) return;
 
-      // Documents show their filename in our own bubble (and to the
-      // recipient as the Meta caption when no caption was typed); other
-      // kinds use the caption as-is. Audio carries no caption.
-      const contentText =
-        payload.kind === "document"
-          ? payload.caption || payload.filename || "Document"
-          : payload.caption;
+      // A legenda, e só ela. O nome do arquivo saiu daqui: ele agora viaja em
+      // `media_filename` (969), que é o que a bolha lê.
+      // ⚠️ O `"Document"` que ficava neste fallback era string CRUA em inglês
+      // — o único texto do fio fora do dicionário. Some junto: sem nome, a
+      // bolha resolve o rótulo com `t()`.
+      const contentText = payload.caption;
 
       const tempId = `temp-${Date.now()}`;
       const optimisticMsg: Message = {
@@ -1161,6 +1231,9 @@ export function MessageThread({
         content_type: payload.kind,
         content_text: contentText,
         media_url: payload.mediaUrl,
+        // Para a bolha otimista mostrar o nome certo já no primeiro quadro —
+        // o servidor grava a mesma coisa quando a mensagem assenta.
+        media_filename: payload.filename ?? null,
         status: "sending",
         created_at: new Date().toISOString(),
         reply_to_message_id: payload.replyToId,
@@ -2047,10 +2120,16 @@ export function MessageThread({
 
           As setas continuam mandando: elas trocam o `alvoId`, e o efeito que
           re-arma o salto dispara com isso. */}
+      {/* ⚠️ `onScroll` acompanha o `onWheel`/`onTouchMove` acima, mas responde
+          outra pergunta. Aqueles captam INTENÇÃO do operador (soltam o salto da
+          busca) e por isso ignoram rolagem programática. Este só ANOTA onde a
+          rolagem parou, venha de onde vier — teclado, barra, inércia do
+          trackpad —, porque é o que diz ao auto-scroll se ele pode agir. */}
       <div
         ref={scrollRef}
         onWheel={liberarSalto}
         onTouchMove={liberarSalto}
+        onScroll={anotarPosicao}
         className="flex-1 overflow-y-auto px-4 py-4"
       >
         {loading ? (

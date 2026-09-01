@@ -33,7 +33,10 @@ import { atualizarPreviaDaConversa } from '@/lib/inbox/conversation-preview';
 import { resolveInboundEvolutionChannel } from '@/lib/cb-channels/resolve-inbound';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
-import { fetchAndStoreEvolutionMedia } from '@/lib/whatsapp/transport/evolution-media';
+import {
+  fetchAndStoreEvolutionMedia,
+  type EvolutionMediaSalva,
+} from '@/lib/whatsapp/transport/evolution-media';
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
 import { decrypt } from '@/lib/whatsapp/encryption';
 
@@ -265,14 +268,14 @@ export async function POST(request: Request) {
             continue; // fica com media_state='pending'
           }
 
-          const mediaUrl = await resolveEvolutionMedia(
+          const midia = await resolveEvolutionMedia(
             route.accountId,
             route.channelId,
             pendente.item,
             pendente.contentType,
           );
 
-          if (!mediaUrl) {
+          if (!midia) {
             // Só a mensagem de grupo tem `media_state`; marcar a de 1:1
             // mudaria o comportamento de um caminho que não está em jogo aqui.
             if (pendente.ehGrupo) {
@@ -287,7 +290,15 @@ export async function POST(request: Request) {
           const { error } = await supabaseAdmin()
             .from('messages')
             .update({
-              media_url: mediaUrl,
+              media_url: midia.url,
+              // O nome como o remetente enviou (969) e o mime que a Evolution
+              // declarou. Os dois chegavam até aqui e eram descartados: o
+              // documento aparecia como "Documento" na bolha e `media_type`
+              // ficava NULL em 100% das linhas deste transporte.
+              // ⚠️ Só escreve o nome quando ele existe — sobrescrever com NULL
+              // apagaria o que outro caminho tivesse gravado antes.
+              ...(midia.filename ? { media_filename: midia.filename } : {}),
+              media_type: midia.mime,
               // Baixou: o anexo está no nosso Storage e o balão para de
               // oferecer o botão.
               ...(pendente.ehGrupo ? { media_state: null } : {}),
@@ -749,7 +760,7 @@ async function resolveEvolutionMedia(
   channelId: string | null,
   rawItem: unknown,
   contentType: string,
-): Promise<string | null> {
+): Promise<EvolutionMediaSalva | null> {
   try {
     const canal = await resolveChannelForConversation(supabaseAdmin(), accountId, {
       channel_id: channelId,

@@ -793,6 +793,10 @@ export async function sendMessageToConversation(
       // (P1.2).
       content_text: persistedText,
       media_url: mediaUrl || null,
+      // O nome do arquivo que a equipe subiu (969). Ele já chegava na função
+      // e ia só para o WhatsApp — no CRM, a bolha do que NÓS enviamos caía no
+      // mesmo rótulo genérico "Documento" que a do cliente.
+      media_filename: filename || null,
       template_name: templateName || null,
       interactive_payload:
         messageType === 'interactive' ? interactivePayload : null,

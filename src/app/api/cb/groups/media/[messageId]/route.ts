@@ -17,7 +17,10 @@ import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
-import { fetchAndStoreEvolutionMedia } from '@/lib/whatsapp/transport/evolution-media';
+import {
+  fetchAndStoreEvolutionMedia,
+  type EvolutionMediaSalva,
+} from '@/lib/whatsapp/transport/evolution-media';
 import { decrypt } from '@/lib/whatsapp/encryption';
 
 export const maxDuration = 60;
@@ -107,9 +110,9 @@ export async function POST(
       apikey: decrypt(canal.api_key),
     });
 
-    let mediaUrl: string | null = null;
+    let midia: EvolutionMediaSalva | null = null;
     try {
-      mediaUrl = await fetchAndStoreEvolutionMedia({
+      midia = await fetchAndStoreEvolutionMedia({
         db,
         client,
         accountId: ctx.accountId,
@@ -120,7 +123,7 @@ export async function POST(
       console.error('[cb/groups/media] download falhou:', err);
     }
 
-    if (!mediaUrl) {
+    if (!midia) {
       await db.from('messages').update({ media_state: 'failed' }).eq('id', messageId);
       return NextResponse.json(
         {
@@ -133,7 +136,14 @@ export async function POST(
 
     await db
       .from('messages')
-      .update({ media_url: mediaUrl, media_state: null })
+      .update({
+        media_url: midia.url,
+        // Mesma regra do webhook: nome (969) e mime só chegam aqui, e nome
+        // ausente não sobrescreve o que já houver.
+        ...(midia.filename ? { media_filename: midia.filename } : {}),
+        media_type: midia.mime,
+        media_state: null,
+      })
       .eq('id', messageId);
 
     // Ponteiro cumpriu o papel. Some junto porque carrega as chaves de
@@ -141,7 +151,7 @@ export async function POST(
     // superfície de risco de graça.
     await db.from('cb_message_media_ref').delete().eq('message_id', messageId);
 
-    return NextResponse.json({ media_url: mediaUrl });
+    return NextResponse.json({ media_url: midia.url });
   } catch (err) {
     return toErrorResponse(err);
   }

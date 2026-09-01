@@ -747,7 +747,7 @@ async function processMessage(
   }
 
   // Parse message content based on type
-  const { contentText, mediaUrl, mediaType, interactiveReplyId } =
+  const { contentText, mediaUrl, mediaType, mediaFilename, interactiveReplyId } =
     await parseMessageContent(
       message,
       accessToken,
@@ -827,6 +827,9 @@ async function processMessage(
         // extension from the fetched blob — impossible to do until the
         // bytes had already been fetched successfully.
         media_type: mediaType,
+        // Nome do arquivo como o remetente enviou (969). Antes só existia
+        // dentro de `content_text`, e só quando não havia legenda.
+        media_filename: mediaFilename,
         message_id: message.id,
         status: 'delivered',
         created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
@@ -1069,6 +1072,16 @@ async function parseMessageContent(
   mediaUrl: string | null
   mediaType: string | null
   /**
+   * O nome do arquivo como o remetente o enviou (migration 969). Só o
+   * documento tem um; imagem, vídeo e áudio chegam sem nome.
+   *
+   * ⚠️ Separado de `contentText` de propósito. Aqui o filename já era gravado
+   * como TEXTO da mensagem quando não havia legenda — o que faz o nome
+   * DESAPARECER assim que o cliente escreve uma legenda, porque as duas
+   * coisas disputam a mesma coluna.
+   */
+  mediaFilename: string | null
+  /**
    * For interactive button / list replies: the stable id of the tapped
    * option (whatever we put on the button when sending). Used by the
    * Flows engine to advance the per-contact run; persisted to
@@ -1137,6 +1150,7 @@ async function parseMessageContent(
     contentText: null,
     mediaUrl: null,
     mediaType: null,
+    mediaFilename: null,
     interactiveReplyId: null,
   }
 
@@ -1180,6 +1194,11 @@ async function parseMessageContent(
             message.document.filename
           ),
           mediaType: message.document.mime_type,
+          // Coluna própria (969). O `contentText` acima FICA como está: ele é
+          // o que a lista de conversas e a busca já mostram há meses, e mudá-lo
+          // reescreveria o passado. A diferença é que agora o nome não depende
+          // mais de o cliente ter deixado a legenda em branco.
+          mediaFilename: message.document.filename || null,
         }
       }
       return empty
