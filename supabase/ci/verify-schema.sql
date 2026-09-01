@@ -1,5 +1,6 @@
--- Post-migration assertions for the CI job in
--- `.github/workflows/migrations.yml`.
+-- Post-migration assertions for the `migrations` job in
+-- `.github/workflows/pipeline.yml`. (O `migrations.yml` que este cabeçalho
+-- citava era do upstream e foi removido no merge de 2026-08-26.)
 --
 -- `supabase db reset` already fails on any statement Postgres rejects,
 -- so this is not about syntax. It's about the quieter failure: a
@@ -41,6 +42,47 @@ BEGIN
   IF to_regclass('public.accounts') IS NULL THEN
     RAISE EXCEPTION 'public.accounts is missing — migration 017 did not apply';
   END IF;
+
+  -- ⚠️ Disparo e regras são de ADMIN (964) — e a checagem é pelo CONJUNTO.
+  --
+  -- A conferência DENTRO da 964 pega policy RENOMEADA (conta os 12 nomes
+  -- esperados) e policy AFROUXADA (procura 'agent' nas 12). O que ela não
+  -- pega é policy ADICIONADA — e em Postgres policies permissivas são
+  -- combinadas com OU, então UMA a mais reabre o furo inteiro com as 12
+  -- originais intactas e a migration imprimindo "OK".
+  --
+  -- O caso real: um merge do upstream reintroduzindo a
+  -- "Users can manage own broadcasts" (001, `FOR ALL USING auth.uid() =
+  -- user_id`). A 017 a derrubou; um merge futuro a traz de volta.
+  --
+  -- Aqui a pergunta é outra: existe ALGUMA policy de escrita nessas seis
+  -- tabelas fora das 12? Se existir, o nome dela sai na mensagem.
+  DECLARE
+    v_intrusas TEXT;
+  BEGIN
+    SELECT string_agg(format('%s.%s', tablename, policyname), ', ' ORDER BY tablename, policyname)
+    INTO v_intrusas
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename IN (
+        'automations', 'automation_steps', 'flows',
+        'flow_nodes', 'broadcasts', 'broadcast_recipients'
+      )
+      AND cmd <> 'SELECT'
+      AND policyname NOT IN (
+        'automations_insert', 'automations_update', 'automations_delete',
+        'automation_steps_modify',
+        'flows_insert', 'flows_update', 'flows_delete',
+        'flow_nodes_modify',
+        'broadcasts_insert', 'broadcasts_update', 'broadcasts_delete',
+        'broadcast_recipients_modify'
+      );
+    IF v_intrusas IS NOT NULL THEN
+      RAISE EXCEPTION
+        'policy de escrita inesperada em tabela de disparo/regras: % — policies permissivas se somam com OU, então esta reabre o acesso que a 964 fechou',
+        v_intrusas;
+    END IF;
+  END;
 
   RAISE NOTICE 'schema verification passed';
 END

@@ -40,7 +40,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { ChannelMultiSelect } from '@/components/channels/channel-select';
 import { createClient } from '@/lib/supabase/client';
+import { summarizeScope } from '@/lib/cb-channels/display';
 import { useChannels } from '@/hooks/use-channels';
 import {
   SECOES_PESSOAIS,
@@ -108,6 +110,24 @@ export function PerfisPanel() {
   const tSecoes = useTranslations('Settings.sections');
   const supabase = useMemo(() => createClient(), []);
   const { channels } = useChannels();
+
+  /**
+   * Como a LINHA do perfil resume o escopo de canal.
+   *
+   * ⚠️ Ids que não resolvem não entram na conta. Conexão apagada deixa o id
+   * gravado, e contá-lo faria a linha prometer acesso que não existe: escopo
+   * não vazio significa "restrito a estes", então um perfil cujo único id
+   * sumiu enxerga ZERO conexões enquanto a lista diz "1 conexão".
+   * `summarizeScope` já modela isso — o caso `unresolved` existe para não
+   * cair em "todas as conexões", que seria a mentira oposta.
+   */
+  function resumoDeCanais(ids: string[]): string {
+    const resumo = summarizeScope(channels, ids.length === 0 ? null : ids);
+    if (resumo.kind === 'all') return t('allChannels');
+    if (resumo.kind === 'unresolved') return t('canaisSumiram');
+    const n = resumo.kind === 'one' ? 1 : resumo.count;
+    return t('someChannels', { count: n });
+  }
 
   const [perfis, setPerfis] = useState<PerfilDeAcesso[]>([]);
   const [membrosPorPerfil, setMembrosPorPerfil] = useState<Map<string, number>>(
@@ -346,9 +366,12 @@ export function PerfisPanel() {
                         membros,
                       })}
                       {' · '}
-                      {p.channel_ids.length === 0
-                        ? t('allChannels')
-                        : t('someChannels', { count: p.channel_ids.length })}
+                      {/* ⚠️ Conta o que RESOLVE, não o tamanho do array: id
+                          de conexão apagada continua gravado, e somá-lo faz
+                          a linha dizer "1 conexão" sobre um perfil que na
+                          prática não enxerga conexão nenhuma — a tela
+                          afirmando o oposto do que a pessoa vive. */}
+                      {resumoDeCanais(p.channel_ids)}
                       {' · '}
                       {p.pipeline_ids.length === 0
                         ? t('allPipelines')
@@ -540,31 +563,40 @@ export function PerfisPanel() {
                     <Label className="text-muted-foreground">
                       {t('canaisLabel')}
                     </Label>
-                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                      {channels.map((c) => (
-                        <label
-                          key={c.id}
-                          className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs hover:bg-muted"
-                        >
-                          <Checkbox
-                            checked={rascunho.channel_ids.includes(c.id)}
-                            onCheckedChange={() =>
-                              setRascunho({
-                                ...rascunho,
-                                channel_ids: alternar(
-                                  rascunho.channel_ids,
-                                  c.id,
-                                ),
-                              })
-                            }
-                          />
-                          <span className="truncate text-foreground">{c.label}</span>
-                        </label>
-                      ))}
-                    </div>
+                    {/* ⚠️ `ChannelMultiSelect`, e não uma grade de checkbox
+                        própria: a grade só desenhava os canais VIVOS, então
+                        um id de conexão apagada não tinha caixinha — e como
+                        o array só mudava por essas caixinhas, o id ficava
+                        preso PARA SEMPRE. Desmarcar tudo deixava `[órfão]`,
+                        que é escopo não vazio: a pessoa ficava restrita a um
+                        canal inexistente, ou seja, sem canal algum, sem
+                        caminho de conserto pela tela.
+                        O componente traz as duas peças que faltavam: o item
+                        "Todos" (zera o array inteiro, órfão incluso) e o
+                        rótulo `unresolved`, que não mente "todos os canais"
+                        sobre um recorte que existe. */}
+                    <ChannelMultiSelect
+                      channels={channels}
+                      value={rascunho.channel_ids}
+                      onChange={(ids) =>
+                        setRascunho({ ...rascunho, channel_ids: ids })
+                      }
+                    />
                     <p className="text-xs text-muted-foreground">
                       {t('escopoVazioHint')}
                     </p>
+                    {/* Só quando há id preso: a frase explica o que a lista
+                        de itens não tem como mostrar. */}
+                    {summarizeScope(
+                      channels,
+                      rascunho.channel_ids.length === 0
+                        ? null
+                        : rascunho.channel_ids,
+                    ).kind === 'unresolved' && (
+                      <p className="text-xs text-destructive">
+                        {t('canaisSumiramDica')}
+                      </p>
+                    )}
                   </div>
                 )}
 
