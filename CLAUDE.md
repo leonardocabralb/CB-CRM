@@ -487,8 +487,11 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
 - ⚠️ **Desmontar não dispara `blur`**, então há descarga na limpeza de
   desmonte: sem ela, digitar e trocar de bloco (o menu horizontal da 966),
   fechar o painel ou trocar de aba apagaria o texto — em silêncio, e sem o
-  botão para servir de segunda chance. Ela não grava duas vezes porque
-  `salvoRef` é atualizado no sucesso do blur.
+  botão para servir de segunda chance. Ela não grava duas vezes porque o
+  `enfileirar` da fila compara contra `desejado` (o que já se pediu gravar) e
+  descarta o que não mudou — a idempotência mora DENTRO de
+  `criarFilaDeGravacao`, não em ref nenhuma do componente. (Uma versão
+  anterior desta nota creditava um `salvoRef` que nunca existiu no código.)
 - ⚠️⚠️ **Toda gravação passa pela FILA (`criarFilaDeGravacao`), nunca por
   `aoGravar` direto.** Duas requisições concorrentes na mesma linha chegam ao
   banco fora de ordem — mudar uma lista duas vezes rápido, ou
@@ -499,7 +502,12 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
   se QUER gravar, não contra o que o banco confirmou: com `salvo` ainda
   antigo durante o voo, desfazer para o valor original seria descartado como
   não-evento e a tela terminaria discordando do banco (pego pelo teste da
-  própria fila). Achado do Codex no PR #83.
+  própria fila). Achado do Codex no PR #83. ⚠️ E o ramo de FALHA tem duas
+  sutilezas com teste próprio (achados #09/#10 do plano de 31/08): a régua
+  `desejado` só reverte para `salvo` quando NÃO há pendente (com pendente,
+  reverter engolia o desfazer seguinte), e REJEIÇÃO de `aoGravar` é tratada
+  como falha comum — sem o catch, o laço morria com `rodando = true` e o
+  campo parava de gravar para sempre, com o spinner aceso.
 - ⚠️ **`select` grava na ESCOLHA, o resto no blur** (`gravaAoSair`). O popover
   fecha e não há blur útil para esperar. O campo de DATA fica no blur apesar de
   disparar `change`: ele dispara a cada pedaço digitado, com datas
@@ -611,15 +619,13 @@ grupos-de-campos.ts` (testado) e o catálogo com arrastar em
   NOT NULL e faz parte da FK composta; um SET NULL sem lista tentaria zerar as
   duas colunas, e apagar um bloco passaria a estourar violação em vez de
   devolver os campos ao Geral. Medido: apagar o bloco preserva os campos.
-- ⚠️ **Um `Salvar campos` só, e ele salva TODOS os campos — inclusive os dos
-  blocos que não estão à vista.** Eram dois (um por aba) porque o Salvar de uma
-  aba não podia arrastar junto edição meio-feita da outra. Com o menu
-  horizontal os outros blocos voltaram a ficar invisíveis, mas o valor digitado
-  neles CONTINUA no `customValues` e é do operador: salvar só o bloco visível
-  descartaria em silêncio o que ele preencheu antes de trocar de pastilha —
-  perder digitação é pior que gravar digitação. Medido na tela: o valor
-  sobrevive à troca de bloco. Quem voltar a recortar o save por bloco precisa
-  resolver antes o que fazer com o que ficou escondido.
+- ⚠️ **O botão "Salvar campos" NÃO EXISTE MAIS** — o PR #83 trocou por
+  salvamento automático POR CAMPO (blur/escolha + descarga de desmonte; ver a
+  seção "Campo personalizado SALVA SOZINHO"). O que resta desta nota é o
+  motivo dela: o valor digitado num bloco fora de vista CONTINUA no
+  `customValues` e sobrevive à troca de pastilha (medido na tela) — quem um
+  dia recriar um save em LOTE precisa resolver antes o que fazer com o que
+  ficou escondido, porque perder digitação é pior que gravar digitação.
 - **Sem `capitalize` nos rótulos** (nas duas fichas): ele maiusculava cada
   palavra e o operador via "Data De Fechamento Do Contrato" no lugar do nome
   que cadastrou — e estragava os técnicos (`utm_source`), que por isso
@@ -1507,13 +1513,22 @@ sempre. O que morde código novo:
 - ⚠️ **O gancho do ENVIO mora no NÚCLEO (`sendMessageToConversation`), e é a
   escolha do LUGAR que define a regra.** Por ali passam os quatro envios de
   gente: compositor, ficha do contato, agendada e API v1. Broadcast
-  (`broadcast-core.ts`) e automação/fluxo (`meta-send.ts`,
-  `engine-send.ts`) **não passam** — e é assim que ficam de fora sem uma
-  linha de guarda. Um disparo para 500 contatos abriria 500 cards de uma
-  vez; "o robô respondeu" não é o escritório decidindo abordar ninguém.
-  ⚠️ Há teste estrutural lendo os fontes
-  (`pipeline-routing.chamadores.test.ts`) — "reusar o núcleo de envio no
-  broadcast" parece limpeza de código e traz o roteador junto, escondido.
+  (`src/lib/whatsapp/broadcast-core.ts` e `broadcast-resume.ts`) e
+  automação/fluxo/IA **não passam** — e é assim que ficam de fora sem uma
+  linha de guarda. ⚠️ **Há DOIS `meta-send.ts`**: o sender REAL do robô é
+  `src/lib/flows/meta-send.ts` (fluxo, resposta de IA e mídia de automação
+  saem por ele); `src/lib/automations/meta-send.ts` é só um wrapper que
+  delega para ele. Uma versão desta nota citava "meta-send.ts" sem caminho e
+  o teste estrutural passou a vigiar o wrapper — o sender real ficou
+  descoberto (achado #14 do plano de 31/08). Um disparo para 500 contatos
+  abriria 500 cards de uma vez; "o robô respondeu" não é o escritório
+  decidindo abordar ninguém.
+  ⚠️ O teste estrutural (`pipeline-routing.chamadores.test.ts`) agora tem
+  uma varredura DEFAULT-DENY: quem citar `routeContactToPipeline` ou
+  `sendMessageToConversation` fora da allowlist explícita reprova por
+  padrão — sender novo entra na allowlist por decisão visível no diff, não
+  por esquecimento. "Reusar o núcleo de envio no broadcast" parece limpeza
+  de código e traz o roteador junto, escondido.
 - ⚠️ **Via `supabaseAdmin()` no núcleo**, como o carimbo de canal ao lado: a
   rota `/api/whatsapp/send` entrega o client do OPERADOR (sob RLS), e o
   roteador lê `accounts` e escreve em `deals` — sob RLS um `agent` deixaria
@@ -1531,17 +1546,22 @@ cria/reencontra contato e conversa, **FIXA** o canal escolhido
 (`pinConversationChannel`, não `follow` — quem clicou escolheu) e devolve o
 id; a página recarrega a lista e navega por `?c=`. O que morde código novo:
 
-- ⚠️⚠️ **`contacts.user_id` e `conversations.user_id` são `ON DELETE CASCADE`
-  para `auth.users`, e `conversations.contact_id` cascateia de novo.** Todo
-  caminho que CRIA contato ou conversa grava o **dono da conta**
-  (`accounts.owner_user_id`, NOT NULL), nunca o membro que clicou — senão, no
-  dia em que essa pessoa sair da equipe, o contato é apagado junto e leva a
-  conversa e TODAS as mensagens daquele cliente, que são do escritório. A
-  ingestão sempre fez certo (`configOwnerUserId`); a rota de abrir nasceu
-  errada e foi corrigida logo depois do PR #79 (achado do Codex). O erro é
-  invisível: a rota tem o `user` autenticado em mão, `user_id: user.id`
-  parece óbvio, passa no typecheck e funciona na tela. Há teste estrutural
-  (`dono-duravel.test.ts`) porque isto volta.
+- ⚠️⚠️ **`contacts.user_id`, `conversations.user_id` e `custom_fields.user_id`
+  são `ON DELETE CASCADE` para `auth.users`, e `conversations.contact_id`
+  cascateia de novo.** Todo caminho que CRIA contato, conversa ou campo grava
+  o **dono da conta** (`accounts.owner_user_id`, NOT NULL — no client vem de
+  `useAuth().ownerUserId`), nunca o membro que clicou — senão, no dia em que o
+  LOGIN dessa pessoa for apagado, o contato é apagado junto e leva a conversa
+  e TODAS as mensagens daquele cliente, que são do escritório. ⚠️ O gatilho
+  NÃO é "remover da equipe" pela UI (`remove_account_member` e a 961 só
+  realocam o perfil, sem tocar `auth.users`): é apagar o usuário FORA do app —
+  dashboard do Supabase ou admin API, o passo normal de offboarding. Isso já
+  nasceu errado três vezes (rota de abrir no #79; `/api/whatsapp/send`,
+  formulário/CSV e o CSV do broadcast até o plano de 31/08): a tela tem o
+  `user` em mão, `user_id: user.id` parece óbvio, passa no typecheck e
+  funciona. Sem o dono resolvido a criação FALHA — nunca cair para `user.id`.
+  Há varredura estrutural de `src/**` com allowlist exata
+  (`src/lib/contacts/dono-duravel.test.ts`) porque isto volta.
 - ⚠️ **Selecionar a conversa recém-aberta NÃO pode depender do `?c=`.** O
   refetch (`resyncToken`) e o `router.replace` saem juntos, e se a consulta
   voltar antes de a navegação propagar os searchParams, `deepLinkConvId`

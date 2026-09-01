@@ -47,6 +47,17 @@ interface AccountSummary {
   // banco; carregá-la aqui só sugeriria uma escolha que não existe.
 
   /**
+   * Dono da conta (`accounts.owner_user_id`, NOT NULL). É o `user_id` que
+   * TODO caminho client-side que cria contato/conversa/campo tem de gravar
+   * — essas colunas são `ON DELETE CASCADE` para `auth.users`, e gravar o
+   * membro que clicou faz o offboarding dele (apagar o login no dashboard
+   * do Supabase) levar junto o cliente e todo o histórico, que são do
+   * escritório. Nunca caia para `user.id` quando isto for nulo: falhe a
+   * ação (é a regressão que `dono-duravel.test.ts` existe para barrar).
+   */
+  owner_user_id: string;
+
+  /**
    * Assinatura ligada (migration 923). Vem para o cliente por UM motivo:
    * a bolha otimista precisa nascer assinada. O compositor desenha a
    * mensagem antes de falar com o servidor — sem saber disto, ela aparece
@@ -131,6 +142,13 @@ interface AuthContextValue {
   account: AccountSummary | null;
   /** Assinatura ligada — só para a bolha otimista nascer certa. */
   assinaturaAtiva: boolean;
+  /**
+   * Dono da conta, para escrever em coluna `user_id` que CASCADE de
+   * `auth.users` (contatos, conversas, campos personalizados). Nulo
+   * enquanto carrega OU se o lookup da conta falhou — nesse caso a ação
+   * tem de FALHAR, nunca cair para `user.id` (ver `AccountSummary`).
+   */
+  ownerUserId: string | null;
   /**
    * Perfil de acesso da pessoa (956), ou `null` para SEM RESTRIÇÃO.
    * ⚠️ Nulo nunca significa "não vê nada" — ver `@/lib/perfis/tipos`.
@@ -288,7 +306,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (data.account_id) {
           const { data: account, error: accountErr } = await supabase
             .from("accounts")
-            .select("id, name, assinatura_ativa")
+            .select("id, name, assinatura_ativa, owner_user_id")
             .eq("id", data.account_id)
             .maybeSingle();
           if (accountErr) {
@@ -303,6 +321,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               id: account.id,
               name: account.name,
               assinatura_ativa: Boolean(account.assinatura_ativa),
+              owner_user_id: account.owner_user_id,
             };
           }
         }
@@ -545,6 +564,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         perfilDeAcesso,
         account,
         assinaturaAtiva: account?.assinatura_ativa ?? false,
+        ownerUserId: account?.owner_user_id ?? null,
         accountStatus,
         accountStatusDetail: statusDetail,
         ...derived,
@@ -586,6 +606,8 @@ export function useAuth(): AuthContextValue {
       // Fecha em falso como todo o resto do fallback: sem provider a bolha
       // nasce sem assinatura, e o servidor decide.
       assinaturaAtiva: false,
+      // Nulo = os escritores de contato/conversa/campo falham fechado.
+      ownerUserId: null,
       // Outside the provider there is nothing to resolve yet — 'loading'
       // keeps the access alert from firing on, say, the login page.
       accountStatus: "loading",
