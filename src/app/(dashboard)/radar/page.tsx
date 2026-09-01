@@ -107,7 +107,16 @@ export default function RadarPage() {
     respondidas,
     recarregar,
   } = useRadar();
-  const { channels } = useChannels();
+  // `loading`/`falhou` importam AQUI (M2): o recorte de privacidade por
+  // canal (`radar_enabled`) é derivado desta lista, e lista vazia durante a
+  // carga/falha deixaria passar a análise do canal PESSOAL desligado — a
+  // exceção deliberada à convenção "vazio = todos" (941).
+  const {
+    channels,
+    loading: canaisCarregando,
+    falhou: canaisFalharam,
+    recarregar: recarregarCanais,
+  } = useChannels();
   const podeAgir = useCan('send-messages');
   const { ocupada, mudarEstado, reanalisar } = useAcoesDoRadar(recarregar);
   const [canalFiltro, setCanalFiltro] = useState<string | null>(null);
@@ -146,6 +155,9 @@ export default function RadarPage() {
   // (o caso nomeado na 941 é o canal pessoal ligado por engano — desligar
   // tem de sumir com as análises antigas dele, não só parar as novas).
   const canalDesligado = new Map(channels.map((c) => [c.id, c.radar_enabled !== true]));
+  // Radar falhou OU canais falharam: as duas cargas sustentam a tela — sem a
+  // lista de canais o recorte de privacidade acima não tem como ser aplicado.
+  const falhaDeCarga = falhou || canaisFalharam;
 
   const decorados: Decorado[] = [];
   for (const i of insights) {
@@ -153,7 +165,11 @@ export default function RadarPage() {
       ? Date.parse(i.conversation.last_message_at)
       : null;
     if (!atividadeMs) continue;
-    if (i.channel_id && canalDesligado.get(i.channel_id)) continue;
+    // ⚠️ `canaisFalharam` esconde TODO insight carimbado com canal (M2):
+    // sem a lista não dá para saber se o canal está com o Radar desligado,
+    // e aqui a falha pende para a PRIVACIDADE, não para o alarme — é a
+    // exceção da 941. O aviso de falha com "tentar de novo" já está na tela.
+    if (i.channel_id && (canaisFalharam || canalDesligado.get(i.channel_id))) continue;
     if (canalFiltro && i.channel_id !== canalFiltro) continue;
 
     // Fora da janela do Radar = fora do painel, a MESMA régua do worker —
@@ -393,13 +409,16 @@ export default function RadarPage() {
         />
       </div>
 
-      {falhou && (
+      {falhaDeCarga && (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {t('loadFailed')}
           <button
             type="button"
-            onClick={recarregar}
+            onClick={() => {
+              recarregar();
+              void recarregarCanais();
+            }}
             className="ml-auto underline underline-offset-2"
           >
             {t('tentarDeNovo')}
@@ -458,11 +477,11 @@ export default function RadarPage() {
         </p>
       </div>
 
-      {carregando ? (
+      {carregando || canaisCarregando ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : visiveis.length === 0 && !falhou ? (
+      ) : visiveis.length === 0 && !falhaDeCarga ? (
         <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
           {/* ⚠️ A base é a lista FILTRADA (decorados), não a bruta: com o
               filtro num canal nunca analisado, a bruta dizia "tudo
