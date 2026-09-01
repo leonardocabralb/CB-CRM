@@ -1495,17 +1495,22 @@ cria/reencontra contato e conversa, **FIXA** o canal escolhido
 (`pinConversationChannel`, não `follow` — quem clicou escolheu) e devolve o
 id; a página recarrega a lista e navega por `?c=`. O que morde código novo:
 
-- ⚠️⚠️ **`contacts.user_id` e `conversations.user_id` são `ON DELETE CASCADE`
-  para `auth.users`, e `conversations.contact_id` cascateia de novo.** Todo
-  caminho que CRIA contato ou conversa grava o **dono da conta**
-  (`accounts.owner_user_id`, NOT NULL), nunca o membro que clicou — senão, no
-  dia em que essa pessoa sair da equipe, o contato é apagado junto e leva a
-  conversa e TODAS as mensagens daquele cliente, que são do escritório. A
-  ingestão sempre fez certo (`configOwnerUserId`); a rota de abrir nasceu
-  errada e foi corrigida logo depois do PR #79 (achado do Codex). O erro é
-  invisível: a rota tem o `user` autenticado em mão, `user_id: user.id`
-  parece óbvio, passa no typecheck e funciona na tela. Há teste estrutural
-  (`dono-duravel.test.ts`) porque isto volta.
+- ⚠️⚠️ **`contacts.user_id`, `conversations.user_id` e `custom_fields.user_id`
+  são `ON DELETE CASCADE` para `auth.users`, e `conversations.contact_id`
+  cascateia de novo.** Todo caminho que CRIA contato, conversa ou campo grava
+  o **dono da conta** (`accounts.owner_user_id`, NOT NULL — no client vem de
+  `useAuth().ownerUserId`), nunca o membro que clicou — senão, no dia em que o
+  LOGIN dessa pessoa for apagado, o contato é apagado junto e leva a conversa
+  e TODAS as mensagens daquele cliente, que são do escritório. ⚠️ O gatilho
+  NÃO é "remover da equipe" pela UI (`remove_account_member` e a 961 só
+  realocam o perfil, sem tocar `auth.users`): é apagar o usuário FORA do app —
+  dashboard do Supabase ou admin API, o passo normal de offboarding. Isso já
+  nasceu errado três vezes (rota de abrir no #79; `/api/whatsapp/send`,
+  formulário/CSV e o CSV do broadcast até o plano de 31/08): a tela tem o
+  `user` em mão, `user_id: user.id` parece óbvio, passa no typecheck e
+  funciona. Sem o dono resolvido a criação FALHA — nunca cair para `user.id`.
+  Há varredura estrutural de `src/**` com allowlist exata
+  (`src/lib/contacts/dono-duravel.test.ts`) porque isto volta.
 - ⚠️ **Selecionar a conversa recém-aberta NÃO pode depender do `?c=`.** O
   refetch (`resyncToken`) e o `router.replace` saem juntos, e se a consulta
   voltar antes de a navegação propagar os searchParams, `deepLinkConvId`

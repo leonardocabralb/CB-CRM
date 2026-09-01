@@ -193,7 +193,7 @@ async function fetchCustomValueIndex(
 }
 
 export function useBroadcastSending(): UseBroadcastSendingReturn {
-  const { accountId } = useAuth();
+  const { accountId, ownerUserId } = useAuth();
   const tDetail = useTranslations('Broadcasts.detail');
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -286,11 +286,15 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
     }
     const phones = [...uniqueByPhone.keys()];
 
-    // Single round-trip lookup of existing contacts by phone.
+    // Single round-trip lookup of existing contacts by phone. Scoped by
+    // ACCOUNT, not by who clicked: contacts born from ingestion (or from a
+    // teammate) carry the account owner's user_id, and filtering by
+    // `user.id` missed them — the re-insert then hit the unique index
+    // (migration 022) and sank the whole broadcast with a raw 23505.
     const { data: existing, error: lookupErr } = await supabase
       .from('contacts')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('account_id', accountId)
       .in('phone', phones);
     if (lookupErr) {
       throw new Error(`Failed to look up CSV contacts: ${lookupErr.message}`);
@@ -303,10 +307,17 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
 
     // Insert only missing contacts, in one batch per 200 rows (PostgREST
     // has a default payload cap — 200 keeps individual requests small).
+    // `contacts.user_id` CASCADEia de `auth.users`: grava-se o dono da
+    // conta, nunca quem clicou — senão o offboarding do operador (apagar o
+    // login no dashboard) leva os contatos criados pelo CSV do broadcast,
+    // com conversas e mensagens. Sem dono resolvido, falha fechado.
+    if (!ownerUserId) {
+      throw new Error('Account owner not resolved.');
+    }
     const missing = phones
       .filter((p) => !byPhone.has(p))
       .map((phone) => ({
-        user_id: user.id,
+        user_id: ownerUserId,
         account_id: accountId,
         phone,
         name: uniqueByPhone.get(phone)?.name ?? null,
