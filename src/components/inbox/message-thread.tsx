@@ -514,7 +514,12 @@ export function MessageThread({
   // Canais de WhatsApp da conta (multi-canal). Uma busca por montagem —
   // a lista muda raramente (Settings → Conexões). Falha ou pré-migration
   // → lista vazia → seletor oculto e comportamento antigo preservado.
-  const { channels, loading: canaisCarregando } = useChannels();
+  // `falhou` alimenta só o que AFIRMA a partir da lista (janela de 24h).
+  const {
+    channels,
+    loading: canaisCarregando,
+    falhou: canaisFalharam,
+  } = useChannels();
 
   const channelsById = useMemo(() => {
     const map = new Map<string, CbChannel>();
@@ -559,22 +564,42 @@ export function MessageThread({
    * cura é esperar o dado, não adivinhá-lo. Conta SEM canal nenhum continua
    * na regra da Meta — ali a lista resolveu vazia, e vazio-com-resposta é
    * conhecimento, não lacuna.
+   *
+   * ⚠️ E `falhou` conta como "não sei" (#06): o hook devolvia
+   * `{channels: [], loading: false}` byte por byte igual para "conta sem
+   * canal" e "não consegui perguntar" — um 5xx transitório travava o
+   * compositor da conta Evolution até o operador recarregar a página.
+   * Falha abre o compositor (o lado em que a Evolution está); o portão do
+   * disparo abaixo continua recusando envio Meta fora da janela.
    */
-  const janelaDe24h = !canaisCarregando && !evolutionActive;
+  const janelaDe24h = !canaisCarregando && !canaisFalharam && !evolutionActive;
+
+  // O relógio da badge (M11): `sessionInfo` lê a hora, e hora PASSA — sem um
+  // tique, o memo congelava em "1h restantes" num fio parado e a janela
+  // fechava com o compositor liberado (o portão do disparo segurava o envio,
+  // mas a tela mentia até chegar mensagem nova). Um tique por minuto basta:
+  // a badge fala em horas/minutos inteiros.
+  const [agoraDaBadge, setAgoraDaBadge] = useState(() => new Date());
+  useEffect(() => {
+    if (!janelaDe24h) return; // Evolution/carga: a badge nem renderiza
+    const id = setInterval(() => setAgoraDaBadge(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, [janelaDe24h]);
 
   // 24-hour session timer. A REGRA mora em `lib/inbox/janela-24h`, porque o
   // portão do disparo (abaixo) tem de ler exatamente a mesma coisa com outro
   // relógio.
   const sessionInfo = useMemo(() => {
     if (!messages.length) return { expired: false, remaining: "" };
-    // UM instante para as duas leituras: entre dois `new Date()` cabe uma
-    // virada de hora, e aí a janela sairia "aberta" com "0h restantes".
-    const agora = new Date();
+    // UM instante para as duas leituras: entre dois relógios cabe uma virada
+    // de hora, e aí a janela sairia "aberta" com "0h restantes". O instante
+    // vem do estado (não de `new Date()` aqui) para o memo envelhecer.
+    const agora = agoraDaBadge;
     if (janelaFechada(messages, agora)) {
       const temCliente = messages.some((m) => m.sender_type === "customer");
       return {
         expired: true,
-        remaining: temCliente ? tTimer("expired") : "No customer messages",
+        remaining: temCliente ? tTimer("expired") : tTimer("noCustomerMessages"),
       };
     }
 
@@ -585,7 +610,7 @@ export function MessageThread({
         : tTimer("xmRemaining", { minutes: Math.floor(hoursLeft * 60) });
 
     return { expired: false, remaining };
-  }, [messages, tTimer]);
+  }, [messages, tTimer, agoraDaBadge]);
 
   /**
    * O ÚLTIMO PORTÃO ANTES DA REDE: a janela está fechada NESTE instante?
@@ -2328,6 +2353,7 @@ export function MessageThread({
         conversationId={conversation.id}
         sessionExpired={janelaDe24h ? sessionInfo.expired : false}
         channelKind={activeChannel?.kind ?? null}
+        transporteConhecido={!canaisCarregando && !canaisFalharam}
         onSend={handleSend}
         onSendMedia={handleSendMedia}
         onSendInteractive={handleSendInteractive}

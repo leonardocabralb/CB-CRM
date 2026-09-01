@@ -204,7 +204,7 @@ as frentes deles 🔵 e leve as opções ao operador antes de implementar.
 | **F2** | Dono durável (CASCADE para `auth.users`) | #11 #12 #13 | 🔴 crítico | ✅ (+M1 e um 6º call site achado em implementação) | #90 |
 | **F3** | Fila de gravação de campo personalizado | #09 #10 (+#03) | 🟠 alto | ✅ | #87 |
 | **F4** | Radar: alarme apagado ou inalcançável | #05 #21 #22 #23 #28 | 🟠 alto | ✅ (#22b e #23b pelas decisões §0.6) | #89 |
-| **F5** | Vazio virando afirmação (`useChannels`) | #06 #08 | 🟠 alto | ⏸️ **aguardando a mesclagem do PR #84**: o consumo do sinalizador em `message-thread.tsx` (linha do `janelaDe24h`) e o M10 caem DENTRO do hunk 514-546 que o #84 reescreve — fazer antes conflita | — |
+| **F5** | Vazio virando afirmação (`useChannels`) | #06 #08 | 🟠 alto | ✅ (+M2, M10, M11, M12, M14) | #95 |
 | **F6** | Portão de i18n no CI | #18 #19 #20 #24 | 🟠 alto | ✅ | #91 |
 | **F7** | Guardas e testes estruturais com falso verde | #14 #15 | 🟠 alto | ✅ | #88 |
 | **F8** | Filtros do inbox | #16 #25 #26 | 🟡 médio | ✅ (+M4 e M5-parcial) | #92 |
@@ -1406,6 +1406,48 @@ clicar no botão de nova conversa numa conta com dois números conectados.
 `canais.length > 0`, contra a convenção do projeto ("seletor some com menos de
 2 canais" — `message-thread.tsx:1724`, `automation-builder.tsx:1115`,
 `flow-builder.tsx:340` e mais dois já gateiam em `>= 2`).
+⏭️ **NÃO feito**, de propósito: aqui o seletor com UM canal é a linha que diz
+**por qual número a conversa vai nascer** — e essa conversa ainda não existe.
+Nas outras cinco telas o canal já está decidido e visível em outro lugar.
+
+---
+
+### Resolvido no PR #95 — o que foi MEDIDO
+
+Tudo abaixo com a rota `/api/cb/channels` devolvendo **503 de verdade**
+(interruptor por env no handler do dev, removido depois), na conversa
+`0569d67c…` — antiga e **já lida**, para não escrever nada em produção.
+
+| | Antes (código do `main`) | Depois (F5) |
+| --- | --- | --- |
+| Compositor | `disabled: true`, placeholder **"Sessão expirada - use um modelo"** | habilitado, "Digite uma mensagem…" |
+| Cabeçalho | badge vermelha **"Expirada"** + faixa "A janela de 24 horas expirou" | nenhuma |
+| Botão "Modelos" | **oferecido** (abriria o `TemplatePicker` com `channelId` nulo — M12) | oculto |
+
+- **#08 medido no diálogo:** sob falha ele diz *"Não foi possível carregar as
+  conexões"* com **"Tentar de novo"**; o clique (com a rota curada no mesmo
+  gesto, sem reload) devolveu o seletor — "Escolha um canal". A frase
+  "Conecte uma em Configurações" ficou só para o vazio COM resposta.
+- **M14 medido:** `1` busca real para os 3 consumidores do inbox (eram 3–4
+  GETs idênticos). Ida ao Radar e volta dentro da validade: **0** buscas
+  novas; passada a validade, **1**. Falha **não** entra no cache, de
+  propósito — cada montagem tenta de novo em vez de repetir "falhou" por 15s.
+- **M2 medido no Radar:** com os canais falhando a tela mostra **2 de 23**
+  sinais (só os sem `channel_id`) + o aviso com "tentar de novo"; curado,
+  volta aos 23. ⚠️ **A falha pende para a PRIVACIDADE, não para o alarme** —
+  é a exceção deliberada da 941 (Radar manda conversa de cliente para IA
+  externa e há canal PESSOAL na conta). Esconder 21 cartões é agressivo e
+  está atrás de um aviso vermelho; se o operador preferir o contrário, é
+  trocar uma linha em `radar/page.tsx`.
+- **M11 — limite de medição declarado:** o tique só arma quando a janela da
+  Meta está em jogo (`if (!janelaDe24h) return`), e esta conta é 100%
+  Evolution, então a badge nunca renderiza aqui. Medido: `0` timers armados,
+  que é o comportamento CERTO. O envelhecimento do memo fica pinado por
+  teste estrutural (`agoraDaBadge` nas dependências), não por tela.
+- **Contraprovas por mutação:** 6/6 mortas, cada uma por exatamente um teste
+  — tirar `!canaisFalharam`; voltar o literal inglês; tirar `agoraDaBadge`
+  dos deps; furar um dos três portões de disparo; tirar o gate de transporte
+  de um atalho; ignorar o `unavailable` no hook.
 
 ---
 
@@ -2293,19 +2335,19 @@ avaliado e rejeitado.
 | --- | --- | --- | --- |
 | **M1** | `custom-fields-manager.tsx:265` e `:466` | `handleCreate` e `handleSeed` gravam `user_id: user.id` em `custom_fields`, que é CASCADE para `auth.users` e leva `contact_custom_values` junto. **Pré-existente**, não é do #78 (o diff mostra a linha como contexto). Mesma família do #11/#12, severidade menor (o dado é definição de campo + valores, não histórico de conversa) | F2 — ✅ PR #90 (`ownerUserId` nos dois; `custom_fields` entrou na varredura; E2E: campo fixture criado com `user_id` do dono e apagado) |
 | **M22** | `message-composer.tsx:684` | ⚠️ **Irmão do #01, e mais provável que ele.** O efeito de troca de conversa limpa `pendente`, agendamento, seletor e anotação — mas **não** `draft`. O anexo JÁ POUSADO do cliente A continua montado no compositor de B, e `sendDraft` chama o `onSendMedia` de B. Não exige rede lenta: basta anexar e trocar de conversa. O #74 fechou o upload EM VOO e deixou o rascunho pousado | **F1, com o #01** — ✅ resolvido no PR #86 (o efeito de troca descarta o rascunho e limpa o estado) |
-| **M2** | `radar/page.tsx:110` | `const { channels } = useChannels()` sem `loading` → "canal com Radar desligado" derivado de lista vazia; análise de canal PESSOAL desligado aparece na tela. Exceção deliberada à convenção "vazio = todos" (privacidade, 941) | F5 |
+| **M2** | `radar/page.tsx:110` | `const { channels } = useChannels()` sem `loading` → "canal com Radar desligado" derivado de lista vazia; análise de canal PESSOAL desligado aparece na tela. Exceção deliberada à convenção "vazio = todos" (privacidade, 941) | F5 — ✅ PR #95: `canaisFalharam` esconde TODO insight com canal (medido: 2 de 23 sob falha) e a carga dos canais entra no spinner |
 | **M3** | `use-radar.ts:259` | análise `failed` tem `analisado_em` NULO; com `.order(..., nullsFirst:false).limit(200)` ela é a PRIMEIRA a cair do teto, e não há consulta de resgate (só pendência tem). A garantia "failed aparece independente de gatilho" expira em silêncio | F4 — ⬜ **NÃO FEITO e não registrado na hora**: a F4 (PR #89) tratou #05/#21/#22/#23/#28 e M23, e este item passou batido entre a frente e a revisão final de 01/09. Continua válido; pede consulta de resgate para `status=failed`, como a pendência já tem |
 | **M4** | `filtros-salvos.ts:300/350` | `descreverFiltro` marca `orfao` sem a guarda de "catálogo vazio não prova nada" que `limparOrfaos` aplica 140 linhas abaixo → o menu escreve "(apagado)" sobre etiqueta/etapa VIVAS enquanto os catálogos carregam | F8 — ✅ PR #92 (guarda nos 5 campos + teste CRÍTICO com contraprova) |
 | **M5** | `filtros-salvos-menu.tsx:299/498` + `conversation-list.tsx:614` | o menu recalcula `descreverFiltro` para o filtro atual e para cada salvo a CADA render (inclusive com os dois diálogos fechados), e a busca do inbox mora no mesmo pai → roda por tecla digitada. E `esperandoPadrao` serializa perfil→filtros antes da primeira pintura do inbox, para todo mundo | F8 — 🟨 PR #92 fez a metade BARATA (resumos memoizados por id, callbacks estáveis); o `esperandoPadrao` ficou, de propósito: mexer na serialização arrisca reintroduzir o flash 176→8 sem medição que justifique |
 | **M6** | `custom-fields-manager.tsx:155` | `fetchFields` liga `loading` e refaz as DUAS consultas depois de TODAS as 8 escritas — inclusive renomear um campo. Desmonta a lista e zera a rolagem | F11 — ⏭️ FORA do PR #94, com motivo: é reescrita da estratégia de carga (sem defeito de correção), e mexer nela junto de #31/M7 — que dependem do estado local — trocaria um bug por outro |
 | **M7** | `custom-fields-manager.tsx:419` | `handleDeleteGrupo` não renormaliza `posicao`: os campos voltam ao Geral com a posição DENTRO do bloco apagado, colidem, e `ordenarCampos` desempata pelo nome → a ordem que o operador montou embaralha, na ficha de TODO cliente | F11 — ✅ PR #94 (renormaliza pela RPC do arrastar antes do refetch; medido: campo volta em posicao 5 sobre um Geral 0–4) |
-| **M8** | `pipeline.yml:212` | o ramo `else` do rollout sai com código 0 → pipeline VERDE sem ter publicado. Cobre 4 estados, não só "serviço não existe": daemon fora do ar, nó fora de manager, SSH sem acesso ao socket. **PRÉ-EXISTENTE** (vem do `deploy.yml` original), não é do #77 | PR próprio |
-| **M9** | `pipeline.yml:187` | `if: github.event_name != 'pull_request'` inclui `workflow_dispatch` → disparar o pipeline manualmente numa branch de feature faz rollout dela na VPS e reescreve a tag `:latest`. O comentário da linha 179 diz "⚠️ Só no main", o `if` diz "não é PR". **PRÉ-EXISTENTE** | PR próprio |
-| **M10** | `message-thread.tsx:526` | `return { expired: true, remaining: "No customer messages" }` — literal em INGLÊS na badge, com a chave `Inbox.sessionTimer.noCustomerMessages` traduzida nos três dicionários e sem uso. Nenhum dos dois portões pega (um compara dicionários, o outro só cobra chave PEDIDA) | F5 |
-| **M11** ⚠️ | `message-thread.tsx:518` | `sessionInfo` chama `new Date()` mas depende de `[messages, tTimer]` — não envelhece. A badge congela em "1h restantes" e a janela pode fechar com o compositor liberado. **Limita o `janelaExpiradaRef` da leva pendente**, que lê esse mesmo memo | F5 |
-| **M12** | `message-thread.tsx:2163` | `channelKind={activeChannel?.kind ?? null}` continua cru: durante a carga o compositor desabilita como Evolution E oferece Templates/interativo da Meta, com o `TemplatePicker` recebendo `channelId=null` → **recorte por WABA desligado** (o CLAUDE.md marca isso como load-bearing) | F5 |
-| **M13** ⚠️ | `message-thread.tsx:1181` | `handleSendInteractive` é o 3º disparo e ficou fora do portão da leva pendente. **Só existe se a leva da §0.3 tiver sido mesclada**; sem ela o item vira "conferir se o portão, quando entrar, cobre os TRÊS disparos" | F5 |
-| **M14** | `use-channels.ts:29` | sem cache: 2 a 4 GETs idênticos por carga do inbox (`conversation-list`, `message-thread`, `scheduled-bar`, `group-sidebar`) | F5 |
+| **M8** | `pipeline.yml:240` (era `:212` antes do conserto) | o ramo `else` do rollout sai com código 0 → pipeline VERDE sem ter publicado. Cobre 4 estados, não só "serviço não existe": daemon fora do ar, nó fora de manager, SSH sem acesso ao socket. **PRÉ-EXISTENTE** (vem do `deploy.yml` original), não é do #77 | ✅ branch `chore/node-22-em-todo-lugar` — o script separa os quatro estados e **sai 1** nos quatro casos que não publicam. Medido com `docker` real (sem Swarm: antigo exit 0 / novo exit 1) e com stub para os outros três; caminho feliz confirmado chamando o mesmo `service update --image ... --with-registry-auth crm_crm` |
+| **M9** | `pipeline.yml:205` (era `:187` antes do conserto) | `if: github.event_name != 'pull_request'` inclui `workflow_dispatch` → disparar o pipeline manualmente numa branch de feature faz rollout dela na VPS e reescreve a tag `:latest`. O comentário da linha 179 diz "⚠️ Só no main", o `if` diz "não é PR". **PRÉ-EXISTENTE** | ✅ branch `chore/node-22-em-todo-lugar` — o portão virou LISTA DE PERMISSÃO sobre a ref: `github.ref == 'refs/heads/main' && (event == 'push' || event == 'workflow_dispatch')`. Lista de permissão e não negação porque `pull_request_target`, se algum dia entrar no `on:`, roda com a ref da BASE (`refs/heads/main`) — checar só a ref não bastaria, e negar só `pull_request` não o pegaria. `actionlint` limpo |
+| **M10** | `message-thread.tsx:526` | `return { expired: true, remaining: "No customer messages" }` — literal em INGLÊS na badge, com a chave `Inbox.sessionTimer.noCustomerMessages` traduzida nos três dicionários e sem uso. Nenhum dos dois portões pega (um compara dicionários, o outro só cobra chave PEDIDA) | F5 — ✅ PR #95 |
+| **M11** ⚠️ | `message-thread.tsx:518` | `sessionInfo` chama `new Date()` mas depende de `[messages, tTimer]` — não envelhece. A badge congela em "1h restantes" e a janela pode fechar com o compositor liberado. **Limita o `janelaExpiradaRef` da leva pendente**, que lê esse mesmo memo | F5 — ✅ PR #95: relógio próprio (`agoraDaBadge`, tique de 60s) nas deps do memo; só arma com a janela Meta em jogo |
+| **M12** | `message-thread.tsx:2163` | `channelKind={activeChannel?.kind ?? null}` continua cru: durante a carga o compositor desabilita como Evolution E oferece Templates/interativo da Meta, com o `TemplatePicker` recebendo `channelId=null` → **recorte por WABA desligado** (o CLAUDE.md marca isso como load-bearing) | F5 — ✅ PR #95: prop `transporteConhecido`; medido — o botão Modelos some sob falha |
+| **M13** ⚠️ | `message-thread.tsx:1181` | `handleSendInteractive` é o 3º disparo e ficou fora do portão da leva pendente. **Só existe se a leva da §0.3 tiver sido mesclada**; sem ela o item vira "conferir se o portão, quando entrar, cobre os TRÊS disparos" | F5 — ✅ CONFERIDO no PR #95: o #84 já cobria os TRÊS disparos; virou pino estrutural (`janela-24h.chamadores.test.ts`) |
+| **M14** | `use-channels.ts:29` | sem cache: 2 a 4 GETs idênticos por carga do inbox (`conversation-list`, `message-thread`, `scheduled-bar`, `group-sidebar`) | F5 — ✅ PR #95: cache de módulo (15s) + vôo compartilhado; medido 3–4 GETs → 1 |
 | **M15** | `abrir/route.ts:236, :46, :172, :247, :35, :200` | seis achados menores da mesma rota: `buscar()` descarta `error`; erro ao ler `profiles` vira 403 "seu perfil não está ligado a uma conta"; `pinConversationChannel` roda incondicionalmente (FIXA canal de conversa ativa alheia) e o retorno é descartado; conversa `closed` não chama `reopenClosedConversation`; **única rota de escrita de `/api/cb` sem `checkRateLimit`**; nome digitado é ignorado quando o contato já existe | F9 / PR próprio — a METADE do `buscar()` (erro descartado) ✅ saiu no PR #86, junto com o #04; o resto segue pendente |
 | **M16** | `execucoes/executar/route.ts:116` | o comentário diz "Falha ABERTA (contato sem negócio deixa passar)"; `stageInScope` devolve `false` (`engine.ts:1167`) → 422 fail-CLOSED. Nota mentindo | §7 — ✅ PR #89 corrigiu o comentário da rota E a nota do CLAUDE.md (as duas direções, com motivo) |
 | **M17** | `964:129` | a conferência da migration pega policy RENOMEADA (`count < 12`) mas não policy ADICIONADA — um merge do upstream que reintroduza `"Users can manage own broadcasts"` reabre o furo com a migration imprimindo "OK" | PR próprio |
