@@ -117,7 +117,11 @@ export function CustomFieldsPanel({
 }) {
   const t = useTranslations('Contacts.customFields');
   const supabase = createClient();
-  const { user, accountId } = useAuth();
+  // `ownerUserId`, não `user`: `custom_fields.user_id` CASCADEia de
+  // `auth.users` e leva `contact_custom_values` junto — campo criado por um
+  // admin que depois sai da equipe (login apagado no dashboard) sumiria com
+  // os valores preenchidos de TODO cliente. Grava-se o dono da conta.
+  const { ownerUserId, accountId } = useAuth();
 
   const [fields, setFields] = useState<CustomField[]>([]);
   const [grupos, setGrupos] = useState<GrupoDeCampos[]>([]);
@@ -258,7 +262,7 @@ export function CustomFieldsPanel({
   async function handleCreate() {
     const name = newName.trim();
     if (!name) return;
-    if (!accountId || !user) {
+    if (!accountId || !ownerUserId) {
       toast.error(t('toastNoAccount'));
       return;
     }
@@ -281,7 +285,7 @@ export function CustomFieldsPanel({
       // (as consultas ordenam com NULLS LAST). Calculá-la aqui exigiria que
       // todo escritor de `custom_fields` soubesse fazer o mesmo.
       grupo_id: grupoEscolhido || null,
-      user_id: user.id,
+      user_id: ownerUserId,
       account_id: accountId,
     });
     setCreating(false);
@@ -465,7 +469,7 @@ export function CustomFieldsPanel({
    * de desfazer.
    */
   async function handleSeed() {
-    if (!user || !accountId || faltantes.length === 0) return;
+    if (!ownerUserId || !accountId || faltantes.length === 0) return;
     setSemeando(true);
     // ⚠️ `ignoreDuplicates`, não insert seco: `faltantes` é foto de quando o
     // painel carregou, e uma chave criada nesse meio-tempo (outra aba, outro
@@ -482,7 +486,7 @@ export function CustomFieldsPanel({
         // outra coisa, e é o de cima.
         categoria: 'tracking',
         grupo_id: grupoEscolhido || null,
-        user_id: user.id,
+        user_id: ownerUserId,
         account_id: accountId,
       })),
       { onConflict: 'account_id,field_key', ignoreDuplicates: true }
