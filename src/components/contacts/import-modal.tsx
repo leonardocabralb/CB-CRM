@@ -128,7 +128,7 @@ export function ImportModal({
 }: ImportModalProps) {
   const t = useTranslations('Contacts.importModal');
   const supabase = createClient();
-  const { accountId, canEditSettings } = useAuth();
+  const { accountId, canEditSettings, ownerUserId } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
@@ -217,6 +217,12 @@ export function ImportModal({
       if (!user) throw new Error('Not authenticated');
       if (!accountId)
         throw new Error('Your profile is not linked to an account.');
+      // `contacts.user_id` CASCADEia de `auth.users`: a importação grava o
+      // dono da conta, nunca o membro que clicou — senão o offboarding dele
+      // (apagar o login no dashboard) apaga o lote inteiro de clientes com
+      // conversas e mensagens. Sem dono resolvido, falha fechado — cair
+      // para `user.id` é a regressão que `dono-duravel.test.ts` barra.
+      if (!ownerUserId) throw new Error('Account owner not resolved.');
 
       let imported = 0;
       let skipped = 0;
@@ -272,7 +278,7 @@ export function ImportModal({
       for (let i = 0; i < toInsert.length; i += chunkSize) {
         const chunk = toInsert.slice(i, i + chunkSize);
         const rows = chunk.map((row) => ({
-          user_id: user.id,
+          user_id: ownerUserId,
           account_id: accountId,
           phone: row.phone,
           name: row.name || null,

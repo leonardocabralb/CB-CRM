@@ -6,7 +6,7 @@ import { retrieveKnowledge } from '@/lib/ai/knowledge'
 import { generateReply } from '@/lib/ai/generate'
 import { buildSystemPrompt } from '@/lib/ai/defaults'
 import { latestUserMessage } from '@/lib/ai/query'
-import { AiError, type ChatMessage } from '@/lib/ai/types'
+import { AiError, mensagemSeguraDeAiError, type ChatMessage } from '@/lib/ai/types'
 
 // Keep the tested transcript bounded, mirroring the live context window.
 const MAX_TURNS = 20
@@ -88,8 +88,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ reply: text, handoff })
   } catch (err) {
     if (err instanceof AiError) {
+      // `invalid_key` ecoa a chave na mensagem do provedor — nunca cru (#30).
       return NextResponse.json(
-        { error: err.message, code: err.code },
+        { error: mensagemSeguraDeAiError(err), code: err.code },
         { status: err.status },
       )
     }

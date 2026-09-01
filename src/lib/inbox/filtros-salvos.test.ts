@@ -251,6 +251,39 @@ describe("descreverFiltro", () => {
     }
   });
 
+  it("CRÍTICO (M4): catálogo VAZIO não marca órfão — a mesma guarda do limparOrfaos", () => {
+    // Lista vazia pode ser "ainda não carregou" ou "a busca falhou" — o menu
+    // escrevia "(apagado)" sobre etiqueta/etapa/canal VIVOS enquanto os
+    // catálogos chegavam. Rótulo genérico sim; marca de referência morta não.
+    const catVazio: CatalogosDoFiltro = {
+      canais: [],
+      etiquetas: [],
+      responsaveis: [],
+      etapas: [],
+      funis: new Map(),
+    };
+    const p = descreverFiltro(
+      {
+        ...FILTROS_VAZIOS,
+        canalId: "c1",
+        etapaId: "e1",
+        etiquetaIds: ["t1"],
+        responsavelId: "u1",
+        funilId: "p1",
+      },
+      catVazio,
+    );
+    expect(p.length).toBeGreaterThan(0);
+    expect(p.some((x) => x.orfao)).toBe(false);
+    // E com o catálogo CARREGADO os mesmos ids mortos voltam a ser órfãos —
+    // a guarda não desligou a detecção.
+    const morto = descreverFiltro(
+      { ...FILTROS_VAZIOS, canalId: "sumiu" },
+      CAT,
+    );
+    expect(morto[0].orfao).toBe(true);
+  });
+
   it("os sentinelas não são órfãos", () => {
     const p = descreverFiltro(
       { ...FILTROS_VAZIOS, etapaId: SEM_ETAPA, responsavelId: SEM_RESPONSAVEL },

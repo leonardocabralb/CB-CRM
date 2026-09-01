@@ -1291,11 +1291,14 @@ async function findOrCreateContact(
   // strict `phonesMatch` in JS on the small candidate set. The same
   // helper backs the manual contact form and CSV import, so all three
   // paths agree on what "same number" means (issue #212).
-  const existingContact = await findExistingContact(
-    supabaseAdmin(),
-    accountId,
-    phone,
-  )
+  //
+  // ⚠️ `falhou` deliberadamente NÃO derruba a ingestão: perder a mensagem do
+  // cliente é pior que arriscar uma ficha duplicada de variante de tronco —
+  // e o backstop 23505 logo abaixo cobre o duplicado exato. Os caminhos de
+  // GENTE (abrir conversa, API v1) fazem o oposto e respondem 500.
+  const existingContact = (
+    await findExistingContact(supabaseAdmin(), accountId, phone)
+  ).contato
 
   if (existingContact) {
     // Update name if it changed
@@ -1329,7 +1332,8 @@ async function findOrCreateContact(
     // unique index (migration 022) rejected the duplicate. Re-resolve
     // the existing row instead of dropping the message.
     if (isUniqueViolation(createError)) {
-      const raced = await findExistingContact(supabaseAdmin(), accountId, phone)
+      const raced = (await findExistingContact(supabaseAdmin(), accountId, phone))
+        .contato
       if (raced) return { contact: raced, wasCreated: false }
     }
     console.error('Error creating contact:', createError)

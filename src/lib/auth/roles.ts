@@ -82,8 +82,13 @@ export function canEditSettings(role: AccountRole): boolean {
 
 /**
  * Owner / admin / agent: write operational data — send messages,
- * create contacts, move deals, run broadcasts, edit automations.
- * Viewers are read-only.
+ * create contacts, move deals. Viewers are read-only.
+ *
+ * ⚠️ Broadcasts e automações NÃO entram aqui: a migration 964 fechou a
+ * escrita dessas tabelas para admin, e rota + tela cobram o mesmo
+ * (`manage-automations`). Uma versão desta docstring listava "run
+ * broadcasts, edit automations" como coisa de agent — as três camadas
+ * dizem que não (achado da revisão de 31/08).
  */
 export function canSendMessages(role: AccountRole): boolean {
   return hasMinRole(role, "agent");

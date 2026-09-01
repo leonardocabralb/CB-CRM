@@ -194,9 +194,12 @@ vi.mock('@/lib/whatsapp/meta-api', () => ({
 }))
 vi.mock('@/lib/contacts/dedupe', () => ({
   findExistingContact: vi.fn(async () => ({
-    id: 'contact-1',
-    name: 'Ada',
-    phone: '15551230000',
+    contato: {
+      id: 'contact-1',
+      name: 'Ada',
+      phone: '15551230000',
+    },
+    falhou: false,
   })),
   isUniqueViolation: () => false,
 }))
