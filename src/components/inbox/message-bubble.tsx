@@ -603,7 +603,22 @@ export function MessageBubble({
     >
       <div
         className={cn(
-          "relative rounded-2xl px-3 py-2",
+          // ⚠️ `max-w-full` é load-bearing, e a falta dele fazia a CONVERSA
+          // INTEIRA rolar para o lado.
+          //
+          // O teto de 75% do `<MessageActions>` funciona — medido: o pai
+          // resolve em 355px. Mas esta bolha é filha de um flex
+          // `flex-col items-start`, e `align-items: flex-start` dimensiona o
+          // filho por `fit-content`, NÃO estica até o pai. `max-width` não se
+          // herda, então uma URL sem espaços (`https://pje.tjce.jus.br/…`)
+          // media 1040px dentro de um pai de 355px e vazava para fora do fio,
+          // acendendo a barra horizontal. Medido: contêiner 505px,
+          // `scrollWidth` 1056px.
+          //
+          // Com o teto, o `break-words` do `<FormattedText>` finalmente tem
+          // contra o que quebrar — ele só parte a palavra quando ela NÃO CABE,
+          // e até aqui cabia sempre, porque nada limitava a largura.
+          "relative max-w-full rounded-2xl px-3 py-2",
           isAgent
             ? "rounded-br-md bg-primary text-primary-foreground"
             : "rounded-bl-md bg-muted text-foreground",

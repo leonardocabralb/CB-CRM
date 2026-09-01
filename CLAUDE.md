@@ -1546,6 +1546,20 @@ e as três já morderam de verdade.
   digitada. Some a borda de volta: `el.offsetHeight - el.clientHeight` (medido
   com `height: auto`). É o que `message-composer.tsx` faz — é o único autosize
   do repo; os outros `<textarea>` têm `rows` fixo.
+- ⚠️ **`max-width` NÃO se herda, e `align-items: flex-start` dimensiona o
+  filho por `fit-content`.** A bolha do fio (`message-bubble.tsx`) mora dentro
+  de um `flex flex-col items-start`, cujo pai já carrega o teto de 75% do
+  `<MessageActions>`. O teto funcionava — medido, o pai resolvia em 355px —, e
+  a bolha saía com **1040px** assim mesmo, porque `flex-start` a dimensiona
+  pelo conteúdo e nada a limitava: uma URL sem espaços
+  (`https://pje.tjce.jus.br/…`) vazava para fora e acendia **barra horizontal
+  na conversa inteira** (contêiner 505px, `scrollWidth` 1056px). A cura é
+  `max-w-full` NA BOLHA. ⚠️ E o `break-words` do `<FormattedText>` não
+  salvava: ele só parte a palavra quando ela NÃO CABE — sem teto, cabia
+  sempre. Reportado da tela pelo operador em 2026-09-01. **Vale para qualquer
+  filho de flex alinhado com `items-start`/`items-end` que possa receber texto
+  de fora**; `truncate` também depende disso (nome de anexo longo estouraria
+  igual).
 - ⚠️ **Filho direto do `DialogContent` precisa de `min-w-0` quando carrega
   texto com `truncate`.** O `DialogContent` é `grid`, e item de grid nasce
   com `min-width: auto`; `truncate` é `nowrap`, então o intrínseco do filho
