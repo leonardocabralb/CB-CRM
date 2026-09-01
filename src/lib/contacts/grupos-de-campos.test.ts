@@ -135,18 +135,41 @@ describe("agruparCampos", () => {
     const semNada = agruparCampos([], [bancario]);
     expect(semNada).toEqual([]);
 
+    // No catálogo saem os DOIS vazios: o Geral (destino de volta, sempre
+    // oferecido pelo seletor) e o grupo recém-criado.
     const comVazios = agruparCampos([], [bancario], { incluirVazios: true });
-    expect(comVazios.map((bl) => bl.grupo?.nome)).toEqual(["Bancário"]);
-    expect(comVazios[0].campos).toEqual([]);
+    expect(comVazios.map((bl) => bl.grupo?.nome ?? null)).toEqual([
+      null,
+      "Bancário",
+    ]);
+    expect(comVazios.every((bl) => bl.campos.length === 0)).toBe(true);
   });
 
-  it("o bloco Geral some quando não há campo solto", () => {
+  it("o bloco Geral some quando não há campo solto — nas telas de LEITURA", () => {
+    const blocos = agruparCampos([campo({ id: "1", grupo_id: "b" })], [bancario]);
+    expect(blocos.map((bl) => bl.grupo?.nome ?? null)).toEqual(["Bancário"]);
+  });
+
+  it("no CATÁLOGO o Geral vazio FICA — é o destino de volta", () => {
+    // O seletor de bloco de cada linha oferece "Geral" sempre. Sem o bloco
+    // aqui, `moverCampo` não acha o destino e o catálogo não faz nada: campo
+    // posto num grupo nunca mais voltava, sem nada na tela dizendo por quê.
     const blocos = agruparCampos(
       [campo({ id: "1", grupo_id: "b" })],
       [bancario],
       { incluirVazios: true }
     );
-    expect(blocos.map((bl) => bl.grupo?.nome ?? null)).toEqual(["Bancário"]);
+    expect(blocos.map((bl) => bl.grupo?.nome ?? null)).toEqual([
+      null,
+      "Bancário",
+    ]);
+    expect(blocos[0].campos).toEqual([]);
+
+    // E o movimento de volta de fato acontece.
+    const movidos = moverCampo(blocos, "1", chaveDoBloco(null));
+    expect(movidos).not.toBeNull();
+    expect(movidos![0].campos.map((c) => c.id)).toEqual(["1"]);
+    expect(movidos![1].campos).toEqual([]);
   });
 
   it("campo de grupo DESCONHECIDO cai no Geral, nunca some", () => {
