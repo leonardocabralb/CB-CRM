@@ -140,14 +140,24 @@ export function InboxFilters({
     [etapas, funis],
   );
 
+  // ⚠️ O funil que o PAINEL mostra é derivado, nunca só o carimbado (#26 do
+  // plano 31/08): `funilId` é escrito SÓ pelo seletor de funil, mas um filtro
+  // salvo pode gravar `etapaId` sem funil (salvo numa conta de um funil, onde
+  // o seed não carimba de propósito). Com dois níveis e `funilId` nulo, o
+  // campo Etapa não renderizava e o de Funil dizia "Qualquer funil" — a lista
+  // recortada por uma etapa que o painel não mostrava e não deixava trocar.
+  // Derivar do `etapaAtual` dá ao painel UMA fonte de verdade sem carimbar
+  // nada (carimbar é a armadilha que o CLAUDE.md proíbe).
+  const funilVisivel = filtros.funilId ?? etapaAtual?.pipeline_id ?? null;
+
   // Já vêm ordenadas por `position` da consulta — a ordem das colunas do
   // quadro, que é como o operador pensa o funil.
   const etapasDoFunil = useMemo(
     () =>
       doisNiveis
-        ? etapas.filter((e) => e.pipeline_id === filtros.funilId)
+        ? etapas.filter((e) => e.pipeline_id === funilVisivel)
         : etapas,
-    [doisNiveis, etapas, filtros.funilId],
+    [doisNiveis, etapas, funilVisivel],
   );
 
   const nomeDoFunil = (id: string) => funis.get(id) ?? t("labelPipeline");
@@ -634,8 +644,8 @@ export function InboxFilters({
                 rotulo={
                   filtros.etapaId === SEM_ETAPA
                     ? t("stageNone")
-                    : filtros.funilId
-                      ? nomeDoFunil(filtros.funilId)
+                    : funilVisivel
+                      ? nomeDoFunil(funilVisivel)
                       : t("pipelineAll")
                 }
                 ativo={filtros.funilId !== null || filtros.etapaId !== null}
@@ -660,7 +670,7 @@ export function InboxFilters({
                   ...funisDoSeletor.map((f) => ({
                     chave: f.id,
                     texto: f.nome,
-                    escolhido: filtros.funilId === f.id,
+                    escolhido: funilVisivel === f.id,
                     aoEscolher: () => escolherFunil(f.id),
                   })),
                 ]}
@@ -673,7 +683,7 @@ export function InboxFilters({
               o campo inteiro, como sempre foi. */}
           {etapasConfiaveis &&
             etapasDoFunil.length > 0 &&
-            (!doisNiveis || filtros.funilId !== null) && (
+            (!doisNiveis || funilVisivel !== null) && (
               <Campo rotulo={t("labelStage")}>
                 <Escolha
                   rotulo={
