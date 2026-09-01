@@ -180,7 +180,7 @@ as frentes deles 🔵 e leve as opções ao operador antes de implementar.
 | # | Frente | Achados | Risco | Estado | PR |
 | --- | --- | --- | --- | --- | --- |
 | **F1** | Vazamento e perda de dado do cliente | #01 #02 #03 #04 | 🔴 crítico | ✅ | #86 |
-| **F2** | Dono durável (CASCADE para `auth.users`) | #11 #12 #13 | 🔴 crítico | ⬜ | — |
+| **F2** | Dono durável (CASCADE para `auth.users`) | #11 #12 #13 | 🔴 crítico | ✅ (+M1 e um 6º call site achado em implementação) | #90 |
 | **F3** | Fila de gravação de campo personalizado | #09 #10 (+#03) | 🟠 alto | ✅ | #87 |
 | **F4** | Radar: alarme apagado ou inalcançável | #05 #21 #22 #23 #28 | 🟠 alto | 🟨 #05/#21/#28 ✅ no PR #89 · **🔵 #22 e #23 aguardando decisão do operador (31/08)** | #89 |
 | **F5** | Vazio virando afirmação (`useChannels`) | #06 #08 | 🟠 alto | ⏸️ **aguardando a mesclagem do PR #84**: o consumo do sinalizador em `message-thread.tsx` (linha do `janelaDe24h`) e o M10 caem DENTRO do hunk 514-546 que o #84 reescreve — fazer antes conflita | — |
@@ -627,6 +627,17 @@ E a pergunta do passo 2 já tem resposta: **esta rota não cria contato.** O
 único `from('contacts')` de `send/route.ts` (linha ~129) é um `.select('id')`
 de validação de posse — só o insert de `conversations` precisa mudar.
 
+**Resolvido em** PR #90 — `findOrCreateConversation` perdeu o parâmetro
+`userId` e resolve `accounts.owner_user_id` DENTRO do caminho de criação (o
+hit não paga a consulta), falhando fechado (null → o 500 que o call site já
+devolvia). O `userId` da rota continua para rate limit e `senderUserId`
+(autoria da mensagem — coluna diferente e correta).
+· **Medido:** o teste de rota existente quebrou no ato (mock sem
+`owner_user_id` → 500, o fail-closed funcionando) e foi endurecido: o mock
+devolve `owner-1` ≠ caller `user-1` e o `toMatchObject` do insert afirma
+`user_id: 'owner-1'` — regressão de fonte agora reprova por COMPORTAMENTO.
+Sem E2E de propósito: o caminho dispara template real por canal de produção.
+
 ---
 
 ### #12 — Cadastro manual e importação de CSV gravam o membro que clicou
@@ -669,6 +680,27 @@ comportamento de duas telas muito usadas.
 **Armadilhas.** Não tente resolver isso por trigger no banco sem falar com o
 operador: um `BEFORE INSERT` que sobrescreva `user_id` mudaria o significado da
 coluna para os 14 call sites de uma vez, inclusive os que não são de contato.
+
+**Resolvido em** PR #90, pela opção (a) da decisão §0.6 — o select de
+`accounts` que o `AuthProvider` JÁ fazia ganhou `owner_user_id`, e o contexto
+expõe `ownerUserId` (custo zero de consulta extra; nulo = escritor falha
+fechado com "Account owner not resolved", nunca cai para `user.id`).
+⚠️ **O levantamento do plano estava incompleto**: além dos dois arquivos, o
+CSV do passo de destinatários do broadcast (`use-broadcast-sending.ts`,
+`resolveAudience`) TAMBÉM cria contatos com `user_id: user.id` — corrigido
+junto. E de carona ali: o lookup de de-dupe filtrava `.eq('user_id', user.id)`
+em vez de `account_id` — numa conta com 2+ membros, contato criado pela
+ingestão (dono ≠ operador) não era achado, o re-insert batia no índice único
+da 022 e o 23505 cru derrubava o broadcast inteiro. Trocado para
+`.eq('account_id', accountId)`.
+· **Medido (E2E no preview, banco real, fixtures apagadas com rowcount):**
+cadastro manual (+5511999990004) e importação de CSV de 1 linha
+(+5511999990005) → `contacts.user_id = 582aad06…` = `accounts.owner_user_id`
+nas duas; toasts de sucesso. Conta de UM membro (operador == dono), então o
+VALOR não distingue as fontes — o que o E2E prova é que `ownerUserId`
+resolve de verdade (nulo teria falhado fechado) e que os fluxos seguem
+inteiros; a distinção dono≠operador é o teste de rota do #11 e a varredura
+do #13. O broadcast não foi rodado E2E (envio em massa real).
 
 ---
 
@@ -721,6 +753,26 @@ rota sem Supabase), mas deve verificar a **origem do valor**, não o nome:
 **Armadilhas.** Ao ampliar a varredura, ela vai acusar #11 e #12 imediatamente
 — o que é o comportamento certo, mas significa que **o teste tem de entrar no
 mesmo PR que as correções**, senão o CI fica vermelho no `main`.
+
+**Resolvido em** PR #90 — o teste antigo foi apagado e substituído por
+`src/lib/contacts/dono-duravel.test.ts`, varredura de `src/**` no molde da
+allowlist da F7: universo EXATO de call sites `.from(contacts|conversations|
+custom_fields).insert/upsert` (deep-equal — 17 call sites em 11 arquivos;
+arquivo novo obriga o dev a declarar a fonte NO teste que documenta a regra),
+fonte durável por arquivo decidida pela heurística do "último `.from()`
+anterior" (é o que deixa o `user_id: user.id` LEGÍTIMO do insert de
+`broadcasts`, no mesmo arquivo do hook, fora do alcance sem exceção
+declarada), origem amarrada (a declaração de `donoDaConta` tem de conter
+`owner_user_id` e NÃO conter `??`/`||`; `ownerUserId` client-side tem de vir
+do destructuring de `useAuth()` e redeclará-lo é proibido — fecha o
+sombreamento), shorthand proibido dentro do argumento extraído por
+balanceamento de parênteses, e a amarra do próprio provider
+(`ownerUserId: account?.owner_user_id ?? null`, e `user.id` proibido ali).
+· **Medido por mutação (7/7 reprovam):** as três da tabela acima (`?? user.id`
+→ 1 failed; `= userId` mantendo o select → 1 failed; shorthand → 2 failed)
+mais quatro novas (fonte errada no client → 1; `const ownerUserId = user.id`
+sombreando no handler → 1; arquivo novo com insert fora do universo → 1;
+provider caindo para `user.id` → 1). Suíte 2257 verde no estado bom.
 
 ---
 
@@ -2046,7 +2098,7 @@ avaliado e rejeitado.
 
 | id | Onde | O que | Carona natural |
 | --- | --- | --- | --- |
-| **M1** | `custom-fields-manager.tsx:265` e `:466` | `handleCreate` e `handleSeed` gravam `user_id: user.id` em `custom_fields`, que é CASCADE para `auth.users` e leva `contact_custom_values` junto. **Pré-existente**, não é do #78 (o diff mostra a linha como contexto). Mesma família do #11/#12, severidade menor (o dado é definição de campo + valores, não histórico de conversa) | F2 |
+| **M1** | `custom-fields-manager.tsx:265` e `:466` | `handleCreate` e `handleSeed` gravam `user_id: user.id` em `custom_fields`, que é CASCADE para `auth.users` e leva `contact_custom_values` junto. **Pré-existente**, não é do #78 (o diff mostra a linha como contexto). Mesma família do #11/#12, severidade menor (o dado é definição de campo + valores, não histórico de conversa) | F2 — ✅ PR #90 (`ownerUserId` nos dois; `custom_fields` entrou na varredura; E2E: campo fixture criado com `user_id` do dono e apagado) |
 | **M22** | `message-composer.tsx:684` | ⚠️ **Irmão do #01, e mais provável que ele.** O efeito de troca de conversa limpa `pendente`, agendamento, seletor e anotação — mas **não** `draft`. O anexo JÁ POUSADO do cliente A continua montado no compositor de B, e `sendDraft` chama o `onSendMedia` de B. Não exige rede lenta: basta anexar e trocar de conversa. O #74 fechou o upload EM VOO e deixou o rascunho pousado | **F1, com o #01** — ✅ resolvido no PR #86 (o efeito de troca descarta o rascunho e limpa o estado) |
 | **M2** | `radar/page.tsx:110` | `const { channels } = useChannels()` sem `loading` → "canal com Radar desligado" derivado de lista vazia; análise de canal PESSOAL desligado aparece na tela. Exceção deliberada à convenção "vazio = todos" (privacidade, 941) | F5 |
 | **M3** | `use-radar.ts:259` | análise `failed` tem `analisado_em` NULO; com `.order(..., nullsFirst:false).limit(200)` ela é a PRIMEIRA a cair do teto, e não há consulta de resgate (só pendência tem). A garantia "failed aparece independente de gatilho" expira em silêncio | F4 |
@@ -2100,7 +2152,7 @@ avaliado e rejeitado.
 | `CLAUDE.md:587` (seção 966) | "Um `Salvar campos` só, e ele salva TODOS os campos — inclusive os dos blocos que não estão à vista" | O botão não existe: o #83 trocou por salvamento automático por campo. A linha 453 do MESMO arquivo diz "não existe mais 'Salvar campos'". **5 ângulos acharam** | F3 |
 | `CLAUDE.md:481` | credita a idempotência da descarga de desmonte a `salvoRef` | `grep -rn 'salvoRef' src/` → **zero**. O mecanismo é `desejado`/`salvo` DENTRO de `criarFilaDeGravacao`, e a comparação é contra `desejado`, não `salvo` | F3 |
 | `CLAUDE.md:538` | "`.order('posicao', …)` em TODA consulta — são 8 call sites (painel da conversa ×2)" | São **7**, e o painel tem **1**. E a leva pendente REVERTE 4 deles (listas planas) com o argumento oposto, sem tocar na nota | F3 |
-| `CLAUDE.md:1493` | "no dia em que essa pessoa sair da equipe, o contato é apagado junto" | `remove_account_member` (018) e a 961 **não** apagam de `auth.users` — realocam o perfil. O gatilho real é apagar o usuário fora do app | F2 |
+| `CLAUDE.md:1493` | "no dia em que essa pessoa sair da equipe, o contato é apagado junto" | `remove_account_member` (018) e a 961 **não** apagam de `auth.users` — realocam o perfil. O gatilho real é apagar o usuário fora do app | F2 — ✅ PR #90 (nota reescrita: gatilho = login apagado FORA do app; `custom_fields` e o `ownerUserId` do useAuth incluídos; aponta a varredura nova) |
 | `CLAUDE.md:220` | o `ExecutarAutomacaoDialog` recebe "canal RESOLVIDO — `activeChannel`" | O #74 trocou para `conversation.channel_id ?? null`. Quem resolver conflito de merge seguindo a tabela reintroduz o bug | F4 — ✅ PR #89 |
 | `CLAUDE.md:380` | "a rota `executar` checa o escopo de canal" e "falha ABERTA" | O #74 acrescentou o recorte de ETAPA, e `stageInScope` falha FECHADA (ver M16) | F4 — ✅ PR #89 |
 | `CLAUDE.md:1325` | a automação de etapa "espera o ciclo de 15 min do cron" | O laço RÁPIDO do `docker-stack.yml` é `sleep 60`. O próprio #74 mediu isso e atualizou `lembretes.ts` e `DEPLOY-VPS.md`, mas não o CLAUDE.md | F4 — ✅ PR #89 (laço rápido, 60s) |
