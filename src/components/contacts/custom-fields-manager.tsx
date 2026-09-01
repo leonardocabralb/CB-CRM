@@ -165,9 +165,26 @@ export function CustomFieldsPanel({
    */
   const [catalogoConfiavel, setCatalogoConfiavel] = useState(false);
 
-  const fetchFields = useCallback(async () => {
+  /**
+   * (Re)carrega catálogo e blocos.
+   *
+   * ⚠️ `comSpinner` só na PRIMEIRA carga, e isso é o conserto de um defeito
+   * medido: o spinner substitui a lista DENTRO do contêiner rolável, o
+   * conteúdo desaba de 1215px para 84px, e o navegador GRAMPEIA o `scrollTop`
+   * em 0. Como nada o restaura depois, renomear um campo lá embaixo jogava a
+   * pessoa de volta ao topo de uma lista de 30 campos — a cada renomeação, e
+   * o mesmo valia para as outras sete escritas.
+   *
+   * (Medido em 01/09: rolagem 139 → 0. O contêiner NÃO desmonta — quem
+   * some é o conteúdo dele, e é o suficiente.)
+   *
+   * No refetch a lista fica na tela, com os dados velhos por alguns
+   * centésimos. Não é mentira: a linha que está sendo escrita já mostra o
+   * próprio spinner (`busyId`), então o retorno visual existe e é local.
+   */
+  const fetchFields = useCallback(async (comSpinner = false) => {
     if (!accountId) return;
-    setLoading(true);
+    if (comSpinner) setLoading(true);
     const [camposRes, gruposRes] = await Promise.all([
       supabase
         .from('custom_fields')
@@ -198,8 +215,11 @@ export function CustomFieldsPanel({
   // the effect body — so the cascade the lint rule warns about doesn't apply.
   useEffect(() => {
     if (accountId) {
+      // ⚠️ O ÚNICO chamador com spinner: aqui não há lista na tela para
+      // preservar, e sem ele a caixa nasceria vazia com cara de "não há
+      // campo nenhum". Os outros oito (as escritas) recarregam em silêncio.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      fetchFields();
+      fetchFields(true);
     }
   }, [accountId, fetchFields]);
 

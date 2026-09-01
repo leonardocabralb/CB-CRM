@@ -44,7 +44,7 @@ import {
   SEM_RESPONSAVEL,
   type FiltrosDoInbox,
 } from "@/lib/inbox/filtros";
-import { nomeDaEtapa } from "@/lib/inbox/filtros-salvos";
+import { descreverFiltro, nomeDaEtapa } from "@/lib/inbox/filtros-salvos";
 import type { TipoDeConversa } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type {
@@ -178,125 +178,42 @@ export function InboxFilters({
   const escolherFunil = (funilId: string | null) =>
     mexer({ funilId, etapaId: null });
 
-  const nomeDoResponsavel = (id: string) => {
-    if (id === SEM_RESPONSAVEL) return t("assigneeNone");
-    const p = responsaveis.find((x) => x.user_id === id);
-    return p?.full_name || p?.email || t("assigneeUnnamed");
-  };
-
   /**
-   * Uma pastilha por recorte ativo, cada uma removível sozinha. A ordem é a
-   * mesma dos campos no painel, para o olho não precisar procurar.
+   * Uma pastilha por recorte ativo, cada uma removível sozinha.
+   *
+   * ⚠️ SAI DO MÓDULO, e antes eram DUAS descrições do mesmo recorte: o
+   * cabeçalho de `filtros-salvos.ts` declarava "UMA descrição, DUAS
+   * superfícies", mas o painel montava a lista à mão — `aoRemover: () =>
+   * mexer({ tipo: "todas" })` aqui, `limpar: { tipo: "todas" }` lá, o mesmo
+   * conhecimento escrito duas vezes. O menu de filtros salvos já consumia o
+   * módulo; só esta metade faltava.
+   *
+   * O elo que impedia as duas de divergirem era um TESTE (as `AMOSTRAS`, um
+   * `Record<keyof FiltrosDoInbox, …>` que o compilador cobra) — ou seja, a
+   * garantia existia e a duplicata também. Agora o campo novo entra num
+   * lugar só.
+   *
+   * ⚠️ `orfao` NÃO vira "(apagado)" aqui, ao contrário do menu: a pastilha
+   * mantém o rótulo genérico do campo, que é o comportamento que já existia
+   * e o que o próprio `PedacoDoFiltro` documenta. Um id que não resolve pode
+   * ser catálogo ainda carregando.
+   *
+   * Sem `useMemo` de propósito: a versão antiga também remontava a cada
+   * render, e `mexer` não é memoizado — envolver isto num memo é o caso que
+   * o React Compiler recusa ("existing memoization could not be preserved").
    */
-  const pastilhas: {
-    chave: string;
-    texto: string;
-    cor?: string;
-    aoRemover: () => void;
-  }[] = [];
-
-  if (filtros.tipo !== "todas") {
-    pastilhas.push({
-      chave: "tipo",
-      texto: filtros.tipo === "grupos" ? t("typeGroups") : t("typeDirect"),
-      aoRemover: () => mexer({ tipo: "todas" }),
-    });
-  }
-  if (filtros.status !== "todos") {
-    pastilhas.push({
-      chave: "status",
-      texto:
-        filtros.status === "open"
-          ? t("filterOpen")
-          : filtros.status === "pending"
-            ? t("filterPending")
-            : t("filterClosed"),
-      aoRemover: () => mexer({ status: "todos" }),
-    });
-  }
-  if (filtros.canalId) {
-    pastilhas.push({
-      chave: "canal",
-      texto:
-        canais.find((c) => c.id === filtros.canalId)?.label ?? t("channelFilter"),
-      aoRemover: () => mexer({ canalId: null }),
-    });
-  }
-  if (filtros.responsavelId) {
-    pastilhas.push({
-      chave: "responsavel",
-      texto: nomeDoResponsavel(filtros.responsavelId),
-      aoRemover: () => mexer({ responsavelId: null }),
-    });
-  }
-  if (filtros.empresa !== null) {
-    pastilhas.push({
-      chave: "empresa",
-      texto: filtros.empresa,
-      aoRemover: () => mexer({ empresa: null }),
-    });
-  }
-  // Uma pastilha POR ETIQUETA, e não uma só dizendo "3 etiquetas": tirar uma
-  // etiqueta do recorte era um clique antes deste painel, e sem isto viraria
-  // três (abrir painel → abrir a lista → desmarcar).
-  for (const id of filtros.etiquetaIds) {
-    const tag = etiquetas.find((x) => x.id === id);
-    pastilhas.push({
-      chave: `etiqueta:${id}`,
-      texto: tag?.name ?? t("tags"),
-      cor: tag?.color,
-      aoRemover: () => alternarEtiqueta(id),
-    });
-  }
-  // ⚠️ DUAS pastilhas para um recorte só, e de propósito. Antes era uma,
-  // com "Bancário - Comercial · Contato Avulso" dentro de uma caixa de 128px:
-  // o operador lia "Bancário - Comercial ·…" e NÃO conseguia ver por qual
-  // etapa a lista estava recortada — medido na tela (198px de texto). Cada
-  // nível na sua pastilha cabe, e cada um sai sozinho.
-  if (filtros.funilId) {
-    pastilhas.push({
-      chave: "funil",
-      texto: nomeDoFunil(filtros.funilId),
-      // Tirar o funil tira a etapa junto: o seletor de dois níveis não sabe
-      // exibir uma etapa sem o funil dela, e o recorte ficaria valendo com o
-      // painel mostrando "Qualquer funil".
-      aoRemover: () => mexer({ funilId: null, etapaId: null }),
-    });
-  }
-  if (filtros.etapaId) {
-    pastilhas.push({
-      chave: "etapa",
-      texto:
-        filtros.etapaId === SEM_ETAPA
-          ? t("stageNone")
-          : etapaAtual
-            ? // Sem o prefixo do funil quando ele já tem pastilha própria —
-              // repeti-lo era exatamente o que estourava a largura.
-              doisNiveis
-              ? etapaAtual.name
-              : nomeDaEtapa(etapaAtual, funis)
-            : // ⚠️ Filtro ativo cuja etapa não está na lista (dados ainda não
-              // carregados — o deep link ?etapa= chega antes deles — ou etapa
-              // apagada). "Qualquer etapa" aqui seria o OPOSTO do que está
-              // acontecendo; o rótulo genérico do campo é o honesto.
-              t("labelStage"),
-      aoRemover: () => mexer({ etapaId: null }),
-    });
-  }
-  if (filtros.naoLidas) {
-    pastilhas.push({
-      chave: "naoLidas",
-      texto: t("filterUnread"),
-      aoRemover: () => mexer({ naoLidas: false }),
-    });
-  }
-  if (filtros.favoritas) {
-    pastilhas.push({
-      chave: "favoritas",
-      texto: t("favorites"),
-      aoRemover: () => mexer({ favoritas: false }),
-    });
-  }
+  const pastilhas = descreverFiltro(filtros, {
+    canais,
+    responsaveis,
+    etapas,
+    funis,
+    etiquetas,
+  }).map((p) => ({
+    chave: p.chave,
+    texto: p.rotulo.fonte === "i18n" ? t(p.rotulo.chave) : p.rotulo.texto,
+    cor: p.cor,
+    aoRemover: () => mexer(p.limpar),
+  }));
 
   return (
     <div className="space-y-2">
