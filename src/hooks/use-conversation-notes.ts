@@ -36,6 +36,20 @@ export function useConversationNotes(
   const [notas, setNotas] = useState<ConversationNote[]>([]);
   const [carregando, setCarregando] = useState(false);
   /**
+   * ⚠️ De qual conversa é a última busca que VOLTOU — e se voltou bem.
+   *
+   * `carregando` nasce falso e `notas` nasce vazia, então o primeiro render
+   * de toda conversa é "sem nota nenhuma" com cara de resposta — a aba Notas
+   * do grupo afirmava "Nenhuma anotação ainda" sobre grupo com anotações a
+   * cada carga, e para sempre quando a busca falhava (achado do Codex no
+   * PR #101). É a variante de lista-vazia-virando-afirmação do CLAUDE.md:
+   * quem desenha o vazio precisa de um sinal de "já carregou ESTA conversa",
+   * e carimbar a conversa (não um booleano) é o que impede o sinal do
+   * cliente anterior de valer para o seguinte no render em que a troca
+   * ainda não passou pelo efeito de limpeza.
+   */
+  const [carregada, setCarregada] = useState<{ de: string; ok: boolean } | null>(null);
+  /**
    * ⚠️ A conversa ATUAL, viva — a régua de `acrescentar`/`aplicarFixacao`.
    * A guarda que os call sites faziam (`nota.conversation_id ===
    * conversationId`) era TAUTOLÓGICA: o closure em voo capturou o
@@ -106,8 +120,10 @@ export function useConversationNotes(
         // atendimento e o chat precisa abrir de qualquer jeito.
         console.warn('[notas] falha ao buscar anotações:', error.message);
         setNotas([]);
+        setCarregada({ de: conversationId, ok: false });
       } else {
         setNotas((data ?? []) as ConversationNote[]);
+        setCarregada({ de: conversationId, ok: true });
       }
       setCarregando(false);
     },
@@ -255,9 +271,17 @@ export function useConversationNotes(
     [notas, conversationId]
   );
 
+  // Derivados contra o PROP do render atual, nunca contra o estado velho —
+  // a mesma régua de `notasDaConversa` logo acima.
+  const daConversaAtual = carregada !== null && carregada.de === conversationId;
+
   return {
     notas: notasDaConversa,
     carregando,
+    /** A lista é RESPOSTA para esta conversa: uma busca voltou bem. Só aí o vazio quer dizer "sem nota". */
+    pronta: daConversaAtual && carregada.ok,
+    /** A última busca desta conversa falhou — o vazio NÃO é resposta. */
+    falhou: daConversaAtual && !carregada.ok,
     recarregar: buscar,
     remover,
     acrescentar,

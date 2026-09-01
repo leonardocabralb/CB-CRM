@@ -57,30 +57,66 @@ BEGIN
   --
   -- Aqui a pergunta é outra: existe ALGUMA policy de escrita nessas seis
   -- tabelas fora das 12? Se existir, o nome dela sai na mensagem.
+  --
+  -- ⚠️ O par (tabela, nome), não o nome sozinho: `broadcasts_insert` criada
+  -- em `automations` — por `EXECUTE format(...)`, que o teste estrutural do
+  -- vitest não enxerga — é uma policy de escrita A MAIS, e por nome ela
+  -- passava (achado do Codex no PR #98).
+  --
+  -- E a segunda pergunta, que só faz sentido AQUI, no fim do replay: as 12
+  -- ainda exigem admin? A conferência da 964 roda no instante da 964; uma
+  -- migration posterior que derrube e recrie uma delas com `'agent'` passa
+  -- por ela verde. É a mesma régua da 964, sobre o estado FINAL.
   DECLARE
     v_intrusas TEXT;
+    v_frouxas TEXT;
   BEGIN
-    SELECT string_agg(format('%s.%s', tablename, policyname), ', ' ORDER BY tablename, policyname)
+    SELECT string_agg(format('%s.%s', p.tablename, p.policyname), ', ' ORDER BY p.tablename, p.policyname)
     INTO v_intrusas
-    FROM pg_policies
-    WHERE schemaname = 'public'
-      AND tablename IN (
+    FROM pg_policies p
+    WHERE p.schemaname = 'public'
+      AND p.tablename IN (
         'automations', 'automation_steps', 'flows',
         'flow_nodes', 'broadcasts', 'broadcast_recipients'
       )
-      AND cmd <> 'SELECT'
-      AND policyname NOT IN (
-        'automations_insert', 'automations_update', 'automations_delete',
-        'automation_steps_modify',
-        'flows_insert', 'flows_update', 'flows_delete',
-        'flow_nodes_modify',
-        'broadcasts_insert', 'broadcasts_update', 'broadcasts_delete',
-        'broadcast_recipients_modify'
+      AND p.cmd <> 'SELECT'
+      AND (p.tablename, p.policyname) NOT IN (
+        ('automations', 'automations_insert'),
+        ('automations', 'automations_update'),
+        ('automations', 'automations_delete'),
+        ('automation_steps', 'automation_steps_modify'),
+        ('flows', 'flows_insert'),
+        ('flows', 'flows_update'),
+        ('flows', 'flows_delete'),
+        ('flow_nodes', 'flow_nodes_modify'),
+        ('broadcasts', 'broadcasts_insert'),
+        ('broadcasts', 'broadcasts_update'),
+        ('broadcasts', 'broadcasts_delete'),
+        ('broadcast_recipients', 'broadcast_recipients_modify')
       );
     IF v_intrusas IS NOT NULL THEN
       RAISE EXCEPTION
         'policy de escrita inesperada em tabela de disparo/regras: % — policies permissivas se somam com OU, então esta reabre o acesso que a 964 fechou',
         v_intrusas;
+    END IF;
+
+    SELECT string_agg(format('%s.%s', p.tablename, p.policyname), ', ' ORDER BY p.tablename, p.policyname)
+    INTO v_frouxas
+    FROM pg_policies p
+    WHERE p.schemaname = 'public'
+      AND p.tablename IN (
+        'automations', 'automation_steps', 'flows',
+        'flow_nodes', 'broadcasts', 'broadcast_recipients'
+      )
+      AND p.cmd <> 'SELECT'
+      AND (
+        coalesce(p.qual, '') || coalesce(p.with_check, '') LIKE '%''agent''%'
+        OR coalesce(p.qual, '') || coalesce(p.with_check, '') NOT LIKE '%''admin''%'
+      );
+    IF v_frouxas IS NOT NULL THEN
+      RAISE EXCEPTION
+        'policy de escrita de disparo/regras que não exige admin no FIM do replay: % — a 964 conferiu só o instante dela; alguém a recriou frouxa depois',
+        v_frouxas;
     END IF;
   END;
 

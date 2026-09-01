@@ -269,8 +269,10 @@ export async function POST(request: Request) {
         await embedTexts(rawEmbeddingsKey, ['ping'])
       } catch (err) {
         if (err instanceof AiError) {
+          // A mesma regra da chave de chat, quatro linhas acima: em
+          // `invalid_key` a mensagem do provedor ECOA a chave.
           return NextResponse.json(
-            { error: `Embeddings key: ${err.message}`, code: err.code },
+            { error: `Embeddings key: ${mensagemSeguraDeAiError(err)}`, code: err.code },
             { status: 400 },
           )
         }

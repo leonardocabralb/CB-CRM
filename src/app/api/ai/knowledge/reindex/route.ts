@@ -3,7 +3,7 @@ import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { loadEmbeddingsKey } from '@/lib/ai/config'
 import { ingestDocument } from '@/lib/ai/knowledge'
-import { AiError } from '@/lib/ai/types'
+import { AiError, mensagemSeguraDeAiError } from '@/lib/ai/types'
 
 /**
  * POST /api/ai/knowledge/reindex  (admin+)
@@ -58,7 +58,8 @@ export async function POST() {
       } catch (err) {
         // One bad document (e.g. a mid-run embeddings rate-limit) should
         // not abort the whole batch.
-        const message = err instanceof AiError ? err.message : String(err)
+        // Ver a nota irmã em `knowledge/route.ts`: `invalid_key` ecoa a chave.
+        const message = err instanceof AiError ? mensagemSeguraDeAiError(err) : String(err)
         console.error(`[ai/knowledge/reindex] doc ${doc.id} failed:`, message)
         return NextResponse.json(
           {

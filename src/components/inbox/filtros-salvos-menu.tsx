@@ -95,17 +95,47 @@ export function FiltrosSalvosMenu({
   const [salvarAberto, setSalvarAberto] = useState(false);
   const [gerirAberto, setGerirAberto] = useState(false);
 
-  const aplicado = useMemo(
+  /**
+   * ⚠️ Filtro que aponta para um canal FORA do escopo do perfil de quem olha
+   * some do menu. Aplicá-lo devolveria zero conversas com nada na tela
+   * explicando — o pior tipo de resposta errada. Some é honesto.
+   *
+   * O recorte por perfil já filtra `catalogos.canais` lá na lista (ver
+   * `canaisVisiveis` em `conversation-list`), então basta perguntar se o canal
+   * do filtro está no catálogo que ESTE membro recebeu. Sem canal no filtro,
+   * ele vale para todos.
+   */
+  const visiveis = useMemo(
     () =>
-      // ⚠️ Compara o recorte GRAVADO já passado por `limparOrfaos` (#16): o
-      // que está no estado veio limpo (semente e clique), então um filtro
-      // com referência morta nunca casava contra o cru — o ✓ do menu não
-      // acendia nem depois de o operador clicar nele.
-      salvos.find((f) =>
-        mesmoFiltro(limparOrfaos(f.filtros, catalogos), filtrosAtuais),
-      ) ?? null,
-    [salvos, filtrosAtuais, catalogos],
+      salvos.filter(
+        (f) =>
+          !f.filtros.canalId ||
+          catalogos.canais.length === 0 ||
+          catalogos.canais.some((c) => c.id === f.filtros.canalId),
+      ),
+    [salvos, catalogos.canais],
   );
+
+  const aplicado = useMemo(() => {
+    // ⚠️ Compara o recorte GRAVADO já passado por `limparOrfaos` (#16): o
+    // que está no estado veio limpo (semente e clique), então um filtro
+    // com referência morta nunca casava contra o cru — o ✓ do menu não
+    // acendia nem depois de o operador clicar nele.
+    //
+    // ⚠️ Só entre os VISÍVEIS, e só quem ainda RECORTA algo depois da
+    // limpeza (achado do Codex no PR #92): o filtro do canal B, fora do
+    // escopo de quem olha, perde o canal no `limparOrfaos` (o catálogo
+    // recebido não tem B) e vira vazio — e vazio casa com o inbox sem
+    // recorte. O gatilho mostrava o nome de um filtro escondido do menu e
+    // que ninguém aplicou. O mesmo vale para um filtro cujos ids morreram
+    // todos: não está aplicado, está morto.
+    return (
+      visiveis.find((f) => {
+        const limpo = limparOrfaos(f.filtros, catalogos);
+        return contarFiltrosAtivos(limpo) > 0 && mesmoFiltro(limpo, filtrosAtuais);
+      }) ?? null
+    );
+  }, [visiveis, filtrosAtuais, catalogos]);
 
   /**
    * Um pedaço do recorte vira texto.
@@ -140,27 +170,6 @@ export function FiltrosSalvosMenu({
     (f: FiltrosDoInbox) =>
       descreverFiltro(f, catalogos).map(textoDoPedaco).join(" · "),
     [catalogos, textoDoPedaco],
-  );
-
-  /**
-   * ⚠️ Filtro que aponta para um canal FORA do escopo do perfil de quem olha
-   * some do menu. Aplicá-lo devolveria zero conversas com nada na tela
-   * explicando — o pior tipo de resposta errada. Some é honesto.
-   *
-   * O recorte por perfil já filtra `catalogos.canais` lá na lista (ver
-   * `canaisVisiveis` em `conversation-list`), então basta perguntar se o canal
-   * do filtro está no catálogo que ESTE membro recebeu. Sem canal no filtro,
-   * ele vale para todos.
-   */
-  const visiveis = useMemo(
-    () =>
-      salvos.filter(
-        (f) =>
-          !f.filtros.canalId ||
-          catalogos.canais.length === 0 ||
-          catalogos.canais.some((c) => c.id === f.filtros.canalId),
-      ),
-    [salvos, catalogos.canais],
   );
 
   const avisar = (r: ResultadoDaEscrita, sucesso: string) => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -182,8 +182,26 @@ export function CustomFieldsPanel({
    * centésimos. Não é mentira: a linha que está sendo escrita já mostra o
    * próprio spinner (`busyId`), então o retorno visual existe e é local.
    */
+  /**
+   * ⚠️ Número de série das buscas. Com o refetch silencioso a lista fica
+   * editável enquanto a consulta anterior ainda está em voo, e duas coisas
+   * davam errado (achado do Codex no PR #103): duas buscas podem VOLTAR
+   * fora de ordem (a mais velha por último, sobrescrevendo a mais nova), e
+   * um arrastar otimista feito durante o voo era ATROPELADO pela resposta
+   * antiga — a ordem certa estava no banco e a tela mostrava a velha. A
+   * regra: só a busca MAIS NOVA escreve, e todo escritor otimista bump o
+   * número (`invalidarBuscasEmVoo`) para a resposta que já viajava ser
+   * descartada — e recarrega DEPOIS do sucesso, para a tela terminar com o
+   * que o banco tem.
+   */
+  const buscaRef = useRef(0);
+  const invalidarBuscasEmVoo = () => {
+    buscaRef.current += 1;
+  };
+
   const fetchFields = useCallback(async (comSpinner = false) => {
     if (!accountId) return;
+    const minha = ++buscaRef.current;
     if (comSpinner) setLoading(true);
     const [camposRes, gruposRes] = await Promise.all([
       supabase
@@ -197,6 +215,9 @@ export function CustomFieldsPanel({
         .order('posicao')
         .order('nome'),
     ]);
+    // Resposta de busca superada — por outra busca ou por uma escrita
+    // otimista — não toca no estado. Ver `buscaRef`.
+    if (minha !== buscaRef.current) return;
     // Falha NÃO é vazio: preserva o estado anterior e avisa — o mesmo que as
     // duas telas de leitura (ficha e painel da conversa) já fazem.
     if (camposRes.error || gruposRes.error) {
@@ -616,6 +637,7 @@ export function CustomFieldsPanel({
     // guardado para a volta, senão uma falha de rede deixaria a tela mostrando
     // uma ordem que o banco não tem — e o operador arrumaria "de novo" o que
     // nunca foi salvo.
+    invalidarBuscasEmVoo();
     const anterior = fields;
     setFields(
       novos.flatMap((bloco) =>
@@ -639,7 +661,12 @@ export function CustomFieldsPanel({
     if (error) {
       setFields(anterior);
       toast.error(t('toastReorderFailed'));
+      return;
     }
+    // A verdade do banco por cima do otimista (iguais, se tudo correu bem) —
+    // e é isto que recupera o que uma busca descartada teria trazido, como
+    // uma exclusão feita instantes antes do arrastar.
+    await fetchFields();
   }
 
   async function reordenarGrupos(grupoId: string, alvoId: string) {
@@ -652,6 +679,7 @@ export function CustomFieldsPanel({
     if (de < 0 || para < 0) return;
 
     const nova = arrayMove(ordenados, de, para);
+    invalidarBuscasEmVoo();
     const anterior = grupos;
     // ⚠️ `i + 1`, ESPELHANDO a RPC (#31 do plano 31/08): o
     // `cb_ordenar_grupos_de_campos` grava a ORDINALITY (1..N), e o estado
@@ -667,7 +695,9 @@ export function CustomFieldsPanel({
     if (error) {
       setGrupos(anterior);
       toast.error(t('toastReorderFailed'));
+      return;
     }
+    await fetchFields();
   }
 
   return (

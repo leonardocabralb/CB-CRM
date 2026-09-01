@@ -330,6 +330,20 @@ microfone); a guarda dela é byte a byte a do `stageUpload` (código já em
 produção) e o cancelamento na troca é a receita da limpeza de desmonte.
 Fixtures criadas e apagadas ao fim; typecheck/lint/suíte (2255) verdes.
 
+⚠️ **Correção do parágrafo "A guarda proposta NÃO cobre…" (Codex na revisão
+do PR #85, 01/09):** a alegação de que `finalizeRecording` rodaria "com o
+closure já atualizado" é FALSA. `startRecording` atribui
+`recorder.ondataavailable` UMA vez, e esse handler segura o
+`finalizeRecording` do render em que a gravação começou — um render
+posterior cria callback novo, mas não troca o handler do gravador. Com a
+guarda de origem e `conversationId` nas dependências, uma gravação iniciada
+em A captura A, compara com `conversaAnteriorRef.current === B` e é
+DESCARTADA. O cancelamento da gravação na troca (feito no PR #86) continua
+valendo por outros dois motivos — ninguém deve seguir gravando dentro do
+compositor de B uma fala já condenada, e o upload dela seria pago para ser
+jogado fora —, e o comentário do compositor foi reescrito com o motivo
+certo no PR desta correção.
+
 ---
 
 ### #02 — Falha ao ler blocos + um arrastar zera `grupo_id` da conta inteira
@@ -1013,6 +1027,20 @@ de agendadas roda DEPOIS da primeira e recortada por `.in('message_id', …)`
 janela, teto = TETO_MENSAGENS_JANELA) — exata e limitada por construção,
 sem depender de `order`/`limit` à mão. · **Medido:** typecheck/suíte 2258
 verdes; ver M23 para a decisão sobre o `throw` do worker.
+
+⚠️ **Correção deste texto (Codex na revisão do PR #85, 01/09):** o "Como
+corrigir" acima está ERRADO como receita, e a "alternativa melhor" não era
+opcional — era a única forma correta. Recortar por `scheduled_for >= desde`
+não garante que toda mensagem enviada DEPOIS de `desde` seja reconhecida como
+agendada: `dispararUma` aceita retentar uma agendada `failed`/pendente antiga
+seja qual for o `scheduled_for` dela, então uma linha agendada ANTES da janela
+produz mensagem DENTRO dela — a consulta por data a omitiria e o Radar
+voltaria a ler a agendada como resposta humana, apagando o alarme. E o
+`.limit(TETO)` reproduz o mesmo falso negativo assim que as linhas de
+proveniência passam do teto. A implementação (PR #89) já foi pela forma por
+`message_id`; esta nota existe para ninguém "simplificar" de volta para a
+receita da lista numerada. A 970 indexou `message_id` (era varredura de
+tabela inteira — Codex no PR #89).
 
 ---
 
@@ -2272,6 +2300,24 @@ dano documentado no CLAUDE.md é sobre `REVOKE … FROM PUBLIC` numa **FUNÇÃO*
 **Resíduo legítimo:** se um dia nascer rota server-side sobre essas tabelas,
 ela precisará do GRANT escrito — a mesma dívida latente que 918 e 924 já têm.
 
+### R5 — `custom-fields-manager` exibe catálogo de OUTRA conta quando `accountId` muda
+**Alegação (Codex, PR #86):** com `accountId` mudando depois de uma carga boa,
+uma falha nas consultas da conta nova preservaria `fields`/`grupos` da conta
+anterior com `catalogoConfiavel = true`, expondo o catálogo do outro tenant.
+**Por que é falso:** `accountId` sai de `profile.account_id` no `useAuth`, e
+só muda por (a) troca de USUÁRIO — `onAuthStateChange` com `user.id`
+diferente, e o `signOut` faz `window.location.href = '/login'`, recarga
+completa, sem painel montado —, (b) `refreshProfile()`, chamado só por
+`profile-form.tsx` (mesma pessoa, mesma conta) e por
+`account-access-alert.tsx` (retry de perfil SEM conta: `null → X`, e com
+`accountId` nulo o `fetchFields` nem roda, então não há catálogo velho), e (c)
+aceitar convite em `/join/[token]`, que é OUTRA página — o catálogo não está
+montado. Não existe troca de conta em runtime no app. **Regra do CLAUDE.md:**
+nada de fallback para cenário impossível.
+**Resíduo legítimo:** se um dia nascer troca de conta sem recarga, o padrão
+`{ de, mapa }` das duas fichas (carimbar o DONO junto do estado) é o
+conserto — e vale para todo estado por conta, não só este.
+
 ### R2 — `podeEditar` ausente no `gravarCampo` do painel da conversa
 **Alegação:** a ficha checa `podeEditar` e o painel não, e a descarga de
 desmonte não consulta `disabled`.
@@ -2334,6 +2380,7 @@ avaliado e rejeitado.
 | id | Onde | O que | Carona natural |
 | --- | --- | --- | --- |
 | **M1** | `custom-fields-manager.tsx:265` e `:466` | `handleCreate` e `handleSeed` gravam `user_id: user.id` em `custom_fields`, que é CASCADE para `auth.users` e leva `contact_custom_values` junto. **Pré-existente**, não é do #78 (o diff mostra a linha como contexto). Mesma família do #11/#12, severidade menor (o dado é definição de campo + valores, não histórico de conversa) | F2 — ✅ PR #90 (`ownerUserId` nos dois; `custom_fields` entrou na varredura; E2E: campo fixture criado com `user_id` do dono e apagado) |
+| **M24** | `supabase/migrations/001_initial_schema.sql` (+006, 010, 035) | ⚠️ **Irmão da F2 e da 971, e é DECISÃO DE PRODUTO.** `tags`, `message_templates`, `pipelines`, `whatsapp_config`, `broadcasts`, `automations`, `automation_logs`, `automation_pending_executions`, `flows`, `flow_runs` e `quick_replies` têm o MESMO `user_id … ON DELETE CASCADE` para `auth.users` que a F2 fechou em contatos/conversas/campos — e `pipelines` cascateia `deals`. São carimbados com quem CRIOU (upstream), e telas do upstream filtram por essa coluna (`tag-manager`, `template-manager`, `settings-overview` usam `.eq('user_id', user.id)`): apagar o login de um admin que criou o funil apaga o funil e os negócios. Reparentar para o dono muda o que cada pessoa vê nessas telas; converter as FKs para `SET NULL` exige `user_id` anulável e revisar quem lê. Medido em 01/09: 0 linhas fora do dono em TODAS elas (conta de um membro) — dormente até o segundo membro criar algo | 🔵 **decisão do operador** — não é carona: a 971 deixou de fora de propósito |
 | **M22** | `message-composer.tsx:684` | ⚠️ **Irmão do #01, e mais provável que ele.** O efeito de troca de conversa limpa `pendente`, agendamento, seletor e anotação — mas **não** `draft`. O anexo JÁ POUSADO do cliente A continua montado no compositor de B, e `sendDraft` chama o `onSendMedia` de B. Não exige rede lenta: basta anexar e trocar de conversa. O #74 fechou o upload EM VOO e deixou o rascunho pousado | **F1, com o #01** — ✅ resolvido no PR #86 (o efeito de troca descarta o rascunho e limpa o estado) |
 | **M2** | `radar/page.tsx:110` | `const { channels } = useChannels()` sem `loading` → "canal com Radar desligado" derivado de lista vazia; análise de canal PESSOAL desligado aparece na tela. Exceção deliberada à convenção "vazio = todos" (privacidade, 941) | F5 — ✅ PR #95: `canaisFalharam` esconde TODO insight com canal (medido: 2 de 23 sob falha) e a carga dos canais entra no spinner |
 | **M3** | `use-radar.ts:259` | análise `failed` tem `analisado_em` NULO; com `.order(..., nullsFirst:false).limit(200)` ela é a PRIMEIRA a cair do teto, e não há consulta de resgate (só pendência tem). A garantia "failed aparece independente de gatilho" expira em silêncio | F4 — ✅ PR #96 (caiu no vão da F4 e foi registrado como pendente na revisão de 01/09; agora tem consulta de resgate própria, ordenada por `created_at` porque `analisado_em` é justamente a coluna nula) |
@@ -2496,3 +2543,56 @@ Ao concluir uma frente, edite este arquivo **no mesmo PR**:
 > estiver sem sessão (o pane pode cair na tela de login, e autenticação não
 > se fabrica), registrar no achado exatamente qual medição ficou pendente e
 > rodá-la assim que houver login — pendência de medição não é medição.
+
+---
+
+## 10. Revisão do Codex sobre os PRs desta correção (01/09/2026)
+
+O Codex revisou os PRs de 31/08–01/09 (#84 a #103) e devolveu 24 apontamentos
+(o operador reenviou dois em duplicata). Cada um foi conferido contra o código
+de 01/09 — vários já tinham sido corrigidos por PR posterior ao que o Codex
+leu — e o resultado está abaixo. **Resolvidos no PR desta seção** (branch
+`fix/achados-do-codex-01-09`), salvo onde indicado. Migrations **970** e
+**971** aplicadas em produção em 01/09 e conferidas por SQL (índice parcial
+presente; a função reparenta as três tabelas e mantém o `perfil_id = NULL`
+da 965; `anon` sem EXECUTE, `authenticated` e `service_role` com).
+
+Legenda: ✅ corrigido aqui · ✔️ já estava corrigido quando o Codex leu ·
+📝 correção de TEXTO (plano/comentário) · ⏭️ refutado (ver §5)
+
+| id | PR lido | Onde | O que o Codex apontou | Veredito | O que foi feito |
+| --- | --- | --- | --- | --- | --- |
+| **C1** | #84 | `message-thread.tsx` | `janelaExpiradaRef` copiava `sessionInfo.expired`, memo que não envelhece — o portão do disparo não via a janela fechar durante o desfazer/rascunho | ✔️ | O próprio #84 (versão final) substituiu o ref por `janelaFechadaAgora()`, que LÊ O RELÓGIO no disparo (`lib/inbox/janela-24h.ts`) |
+| **C2** | #84 | `message-thread.tsx` | o envio INTERATIVO não passava pelo portão | ✔️ | `handleSendInteractive` passa por `janelaFechadaAgora()` desde o #84 — são os três caminhos |
+| **C3** | #85 | plano, #05 | a receita "recortar por `scheduled_for` + `limit`" é INCORRETA (retentativa de agendada antiga cai dentro da janela) | 📝 | nota de correção no #05; a implementação já era por `message_id` |
+| **C4** | #85 | plano, #01 | "o closure já atualizado" é falso: `ondataavailable` segura o `finalizeRecording` do render em que a gravação começou | 📝 | nota no #01 + comentário do compositor reescrito com o motivo certo do cancelamento |
+| **C5** | #86 | `custom-fields-manager.tsx` | catálogo da conta anterior ficaria confiável se `accountId` mudasse e a carga nova falhasse | ⏭️ | **R5**: `accountId` não muda com o painel montado (troca de usuário recarrega a página; `/join` é outra página) |
+| **C6** | #89 | `worker.ts` | o recolhedor de travadas fazia UPDATE só por `id + status`, sem repetir a régua de abandono — marcava `failed` um claim recém-tomado pela reanálise manual | ✅ | o SELECT traz `running_desde` e o UPDATE o exige de volta (`is null` quando nulo); claim tomado no meio não conta. Pino em `worker.test.ts` |
+| **C7** | #89 | `worker.ts`, `use-radar.ts` | `.in('message_id', …)` com até 1000 UUIDs estoura a linha de requisição | ✔️ | os dois lados já fatiam em 500 (o #89 final) |
+| **C8** | #89 | `cb_scheduled_messages` | `message_id` sem índice — varredura da tabela inteira a cada análise e a cada recarga do painel | ✅ | **970**: índice parcial `WHERE message_id IS NOT NULL` |
+| **C9** | #90 | `use-auth.tsx` / 018 | carimbar o dono não sobrevive à TRANSFERÊNCIA de posse: `transfer_account_ownership` não reparenta, o ex-dono vira removível e o CASCADE leva contatos, conversas e campos do mandato dele | ✅ | **971**: a função reparenta `contacts`/`conversations`/`custom_fields` + backfill idempotente (0 linhas em produção). Escopo limitado às três — o resto virou **M24** |
+| **C10** | #91 | `i18n-chaves-usadas.mjs` | arquivo folha que TAMBÉM importa o hook com alias pulava a guarda de cobertura | ✅ | guarda roda antes e independente do modo folha; teste com fixture |
+| **C11** | #91 | `i18n-chaves-usadas.mjs` | `import type { useTranslations }` reprovaria como binding perdido | ✅ | `(?!type\b)`/`(?<!\btype\s)` no regex, fonte sem comentários; `message-media.tsx` passou a `import type`; teste com as duas formas |
+| **C12** | #92 | `filtros-salvos-menu.tsx` | `aplicado` procurava entre TODOS os salvos — filtro escondido (canal fora do escopo) limpava para vazio e aparecia como aplicado | ✅ | procura só entre `visiveis` e só quem ainda recorta algo depois de `limparOrfaos` |
+| **C13** | #92 | `conversation-list.tsx` | padrão com todos os ids mortos limpava para `FILTROS_VAZIOS`, casava com o vazio e a faixa não saía nunca | ✅ | `contarFiltrosAtivos(limpo) === 0` → não está na tela |
+| **C14** | #93 | rotas `api/ai` | `err.message` de AiError ainda chegava à tela por `warning` (knowledge, [id], reindex) e pelo template do embeddings key no config; o pino só casava `error: err.message` | ✅ | `mensagemSeguraDeAiError` nos quatro; o pino passou a reprovar QUALQUER `err|error|e.message` fora de `console.*` |
+| **C15** | #96 | `use-radar.ts` | resgate das falhas com `limit(100)` incluía tratadas/descartadas (a tela só mostra abertas) — falha ABERTA antiga ficava invisível | ✅ | `.eq('estado','aberto')`, como a irmã da pendência; pino. Paginação NÃO: 100 falhas abertas é conta quebrada, não acervo |
+| **C16** | #96 | `use-channels.ts` | cache de 15s não é invalidado por mutação no painel de Conexões | ✅ | `invalidarCacheDeCanais()` exportado e chamado no `load()` do painel (caminho comum a toda escrita); pino estrutural |
+| **C17** | #96 | `message-thread.tsx` | o tique da badge parava em conversa Evolution; ao voltar a uma Meta o relógio velho abria a janela por até um minuto | ✅ | o tique roda sempre (um setState/min) |
+| **C18** | #98 | `policies-de-escrita.test.ts` | nome + comando não pegam policy recriada com predicado FROUXO depois da 964 | ✅ | o parser guarda o CORPO da última definição e exige `'admin'`/proíbe `'agent'` no fim do replay; `verify-schema.sql` faz o mesmo sobre `pg_policies` |
+| **C19** | #98 | `verify-schema.sql` | nome sozinho exime `broadcasts_insert` criada em `automations` | ✅ | par `(tablename, policyname)` |
+| **C20** | #99 | `perfis-panel.tsx` | `channels = []` durante carga/falha virava "conexões que não existem mais" em todo perfil restrito, e o editor não oferecia saída | ✅ | `loading`/`falhou` do hook: sem catálogo confiável a linha diz "N conexões"; falha tem frase + tentar de novo; a dica de órfão só com catálogo confiável (2 chaves novas nos dois dicionários) |
+| **C21** | #101 | `message-thread.tsx` | voltar (celular) zera `messages` mas não a marca `conversaCarregadaRef`; reabrir a mesma conversa era lido como resync, sem spinner, com "Nenhuma mensagem ainda" | ✅ | a marca zera quando `conversationId` fica nulo |
+| **C22** | #101 | `message-bubble.tsx` | `nomeDeArquivo` devolvia `undefined` sem `media_url`, jogando fora `media_filename`/`content_text` de documento pendente | ✅ | `nomeDeclarado()` em `lib/media/filename.ts` (passos 0+1, sem síntese) — a bolha usa quando não há objeto; testes |
+| **C23** | #101 | `group-sidebar.tsx` | "Nenhuma anotação ainda" pintado durante a carga e para sempre na falha | ✅ | o hook expõe `pronta`/`falhou` (carimbados pela CONVERSA); o vazio só afirma com `pronta`, falha tem frase + tentar de novo (2 chaves novas) |
+| **C24** | #103 | `custom-fields-manager.tsx` | com refetch silencioso a lista fica editável durante o voo: respostas fora de ordem, e o arrastar otimista atropelado por resposta velha | ✅ | número de série das buscas (só a mais nova escreve); os escritores otimistas invalidam o voo e recarregam depois do sucesso |
+
+**Medido:** typecheck · lint (0 erros; os 5 avisos nos arquivos tocados
+pré-existem no `main`) · suíte 185 arquivos / **2387 testes** em Node 22 ·
+`i18n-parity` e `i18n-chaves-usadas` verdes (2697 literais) · `npm run
+build` verde · 970/971 conferidas por SQL em produção (acima).
+
+**O que NÃO foi medido na tela:** C17 (exige conta com Meta E Evolution —
+produção é 100% Evolution), C20 (exige derrubar `/api/cb/channels`), C23 e
+C21 no celular. As quatro são leituras de estado (`loading`/`falhou`/marca
+de conversa), a mesma família já medida nas F5/F11.

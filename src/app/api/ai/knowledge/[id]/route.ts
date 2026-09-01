@@ -7,7 +7,7 @@ import {
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { loadEmbeddingsKey } from '@/lib/ai/config'
 import { ingestDocument } from '@/lib/ai/knowledge'
-import { AiError } from '@/lib/ai/types'
+import { AiError, mensagemSeguraDeAiError } from '@/lib/ai/types'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -84,7 +84,8 @@ export async function PATCH(request: Request, { params }: Params) {
       try {
         await ingestDocument(supabase, accountId, { embeddingsApiKey }, id, content)
       } catch (err) {
-        const message = err instanceof AiError ? err.message : 'indexing failed'
+        // Ver a nota irmã em `knowledge/route.ts`: `invalid_key` ecoa a chave.
+        const message = err instanceof AiError ? mensagemSeguraDeAiError(err) : 'indexing failed'
         console.error('[ai/knowledge/[id] PATCH] ingest error:', err)
         return NextResponse.json(
           {

@@ -956,7 +956,14 @@ semente em `conversation-list.tsx`. Aplicar é `setFiltros(...)`: nada muda em
 - **Escolher o PADRÃO é de qualquer membro** (a policy é por `auth.uid()`, não
   por papel): o filtro é do escritório, a preferência é de quem usa.
 - **Filtro cujo canal está fora do escopo do perfil SOME do menu** — aplicá-lo
-  devolveria vazio sem nada explicando.
+  devolveria vazio sem nada explicando. ⚠️ E o "aplicado" do gatilho é
+  procurado SÓ entre os visíveis, e só entre os que ainda RECORTAM algo
+  depois de `limparOrfaos`: o filtro do canal fora do escopo perde o canal na
+  limpeza, vira vazio, e vazio casa com o inbox sem recorte — o gatilho
+  mostrava o nome de um filtro escondido que ninguém aplicou. A faixa
+  "Filtro padrão: X" segue a mesma régua (`contarFiltrosAtivos(limpo) > 0`):
+  padrão com todos os ids mortos não está "na tela" — e o "mostrar tudo"
+  gravava o mesmo vazio, então a faixa não saía nunca (Codex, PR #92).
 - **Nome é único por conta, aparado e em minúsculas**, e o `23505` vira
   PERGUNTA na tela ("já existe 'SDR' — substituir?"), não erro cru.
 - **A faixa "Filtro padrão: X · mostrar tudo"** existe porque o distintivo de
@@ -1115,7 +1122,10 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   (`urgencia='nenhuma'`, sem insatisfação, sem pedido): pelo filtro comum
   ela sumiria e o vazio afirmaria "nenhum sinal aberto" sobre conversa que
   o Radar NÃO CONSEGUIU LER, com a etiqueta de falha e o botão
-  "Reanalisar" inalcançáveis.
+  "Reanalisar" inalcançáveis. A consulta de RESGATE dela (M3) filtra
+  `estado = 'aberto'` como a irmã da pendência: a tela só mostra abertas, e
+  100 falhas tratadas/descartadas consumiam o resgate inteiro escondendo uma
+  falha aberta mais antiga (Codex, PR #96).
 - ⚠️ **O painel recarrega sozinho a cada 2 min com a aba visível.** O
   tique de 1 min só re-renderiza (reconta a espera); quem descobre que
   alguém respondeu é a consulta de `respondidas`. Sem a recarga, o cartão
@@ -1227,7 +1237,12 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
 - ⚠️ **Toda escrita pós-claim do worker tem CERCA DE POSSE**
   (`.eq('status','running').eq('running_desde', <carimbo do próprio claim>)`).
   Sem ela, um worker recolhido como travado continuava com direito de escrita
-  e atropelava a análise seguinte. E **"mensagem nova" exige `janela_fim` NÃO
+  e atropelava a análise seguinte. ⚠️ O RECOLHEDOR tem a cerca dele próprio:
+  o UPDATE exige o MESMO `running_desde` velho que o SELECT viu (`is null`
+  quando nulo — `.eq()` nunca casa NULL). Entre os dois cabe uma reanálise
+  manual TOMANDO o claim abandonado (#28 permite), e sem a cerca o recolhedor
+  marcava `failed` o claim fresco e a escrita do worker vivo era descartada
+  (Codex, PR #89). E **"mensagem nova" exige `janela_fim` NÃO
   NULO** — tratá-lo nulo como "tem novidade" furava o teto de tentativas e
   virava retentativa paga infinita (4 ângulos da revisão acharam).
 - **A janela de mensagens lê DESC + reverse** — com mais linhas que o teto,
@@ -1649,6 +1664,17 @@ id; a página recarrega a lista e navega por `?c=`. O que morde código novo:
   funciona. Sem o dono resolvido a criação FALHA — nunca cair para `user.id`.
   Há varredura estrutural de `src/**` com allowlist exata
   (`src/lib/contacts/dono-duravel.test.ts`) porque isto volta.
+  ⚠️ **E a POSSE também precisa ser durável (971).** `accounts.owner_user_id`
+  é `ON DELETE RESTRICT`: o dono vigente nunca é apagável do `auth.users` —
+  o primeiro dia em que um ex-dono pode ser apagado é o dia seguinte à
+  transferência, e tudo que a conta carimbou com ele no mandato iria junto.
+  Por isso `transfer_account_ownership` REPARENTA `contacts`,
+  `conversations` e `custom_fields` para o novo dono na mesma transação
+  (Codex, PR #90). SÓ essas três, de propósito: `tags`, `message_templates`,
+  `pipelines`, `automations`, `flows`, `broadcasts` e cia. têm o MESMO
+  CASCADE, mas guardam quem CRIOU e telas do upstream ainda filtram por
+  essa coluna — mover mudaria o que cada pessoa vê; é decisão de produto
+  pendente (M24 do plano de 31/08), não carona.
 - ⚠️ **Selecionar a conversa recém-aberta NÃO pode depender do `?c=`.** O
   refetch (`resyncToken`) e o `router.replace` saem juntos, e se a consulta
   voltar antes de a navegação propagar os searchParams, `deepLinkConvId`
@@ -1973,6 +1999,14 @@ mordem de novo em qualquer código novo:
   - **969_cb_nome_do_anexo** — `messages.media_filename`: o nome do arquivo
     como o remetente o enviou. Aplicada em 2026-09-01. SEM backfill, de
     propósito (ver a seção "Nome do anexo").
+  - **970_cb_indice_da_agendada_por_mensagem** — índice PARCIAL em
+    `cb_scheduled_messages(message_id) WHERE message_id IS NOT NULL`, para
+    a pergunta "esta mensagem nasceu de agendada?" do Radar (worker e
+    painel). Aplicada em 2026-09-01.
+  - **971_cb_transferencia_leva_o_acervo** — `transfer_account_ownership`
+    reparenta `contacts`/`conversations`/`custom_fields` para o novo dono +
+    backfill idempotente (medido: 0 linhas fora do dono em produção).
+    Aplicada em 2026-09-01.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
@@ -2130,6 +2164,14 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
     ALCANCE do script) e arquivo que importa o tradutor sem produzir
     binding nem uso reconhecível reprova nomeado — um alias
     (`useTranslations as useT`) tirava o arquivo da cobertura em silêncio.
+    ⚠️ A guarda roda ANTES e INDEPENDENTE do modo folha: um arquivo que
+    recebe `t` por prop E importa o hook com alias tinha só as chamadas
+    folha conferidas, e o alias passava (Codex, PR #91). `import type {
+    useTranslations }` (só para `ReturnType<typeof …>`, message-media.tsx)
+    fica de fora — não há binding a cobrir — e é por isso que aquele import
+    É `import type`: voltar a importar em valor reprova o portão. A guarda
+    olha o fonte SEM comentários: um comentário que descreva a forma
+    proibida logo acima do import real casava o regex (medido).
 - ⚠️ **`t('chave')` sem `values` NÃO parseia ICU** — devolve a string crua.
   Erro `INVALID_TAG`/`MALFORMED_ARGUMENT` no console **não significa** tela
   quebrada: pode ser só ruído de log, com a renderização correta. Já

@@ -7,7 +7,7 @@ import {
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { loadEmbeddingsKey } from '@/lib/ai/config'
 import { ingestDocument } from '@/lib/ai/knowledge'
-import { AiError } from '@/lib/ai/types'
+import { AiError, mensagemSeguraDeAiError } from '@/lib/ai/types'
 
 /**
  * GET /api/ai/knowledge
@@ -83,7 +83,11 @@ export async function POST(request: Request) {
         content,
       )
     } catch (err) {
-      const message = err instanceof AiError ? err.message : 'indexing failed'
+      // ⚠️ Nunca `err.message` cru: a chave de embeddings GUARDADA pode ter
+      // sido revogada, e em `invalid_key` a OpenAI ecoa a chave na mensagem
+      // — que aqui viajaria dentro de `warning` até a tela (#30, Codex no
+      // PR #93).
+      const message = err instanceof AiError ? mensagemSeguraDeAiError(err) : 'indexing failed'
       console.error('[ai/knowledge POST] ingest error:', err)
       return NextResponse.json(
         {

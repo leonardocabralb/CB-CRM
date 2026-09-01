@@ -174,26 +174,32 @@ for (const caminho of arquivos(SRC)) {
   // (medido: `toast('Contrato salvo')` → FALHA). `t` é a convenção da casa
   // para tradutor-por-prop, nos dois arquivos folha reais.
   if (bindings.size === 0) {
-    if (!/(?<![\w.$])t(?:\.(?:rich|raw|markup))?\(\s*['"`]/.test(fonte)) {
-      // ⚠️ Guarda de cobertura (#24): o arquivo importa o tradutor, não tem
-      // binding que o script enxergue, não usa `t(` (modo folha) nem a
-      // invocação direta — um alias no import (`useTranslations as useT`)
-      // ou um envelope local apagava a cobertura SEM SINAL NENHUM e o
-      // portão seguia verde. Import só como TIPO em arquivo folha
-      // (`ReturnType<typeof useTranslations>`, message-media.tsx) não cai
-      // aqui: esse usa `t(` e entra no modo folha acima.
-      if (
-        /import\s+[^;]*\b(?:useTranslations|getTranslations)\b[^;]*from\s+['"]next-intl/.test(
-          fonte,
-        ) &&
-        // Cópia SEM a flag `g`: `.test` numa global avança `lastIndex` e o
-        // `matchAll` de RE_DIRETO no próximo arquivo herdaria o cursor.
-        !new RegExp(RE_DIRETO.source).test(fonte)
-      ) {
-        foraDeAlcance.push(relative(ROOT, caminho))
-      }
-      continue
+    // ⚠️ Guarda de cobertura (#24): o arquivo importa o tradutor EM VALOR,
+    // não tem binding que o script enxergue nem a invocação direta — um
+    // alias no import (`useTranslations as useT`) ou um envelope local
+    // apagava a cobertura SEM SINAL NENHUM e o portão seguia verde.
+    //
+    // Roda ANTES (e independente) do modo folha, de propósito: um arquivo
+    // que recebe `t` por prop E importa o hook com alias tinha só as
+    // chamadas folha conferidas, e o alias passava em silêncio (achado do
+    // Codex no PR #91). Import SÓ COMO TIPO (`import type { useTranslations }`
+    // para `ReturnType<typeof useTranslations>`, message-media.tsx) não é
+    // binding em potencial — não há o que cobrir — e fica de fora pelo
+    // `(?!type\b)` e pelo `(?<!\btype\s)` (o especificador inline).
+    if (
+      /import\s+(?!type\b)[^;]*(?<!\btype\s)\b(?:useTranslations|getTranslations)\b[^;]*from\s+['"]next-intl/.test(
+        // Sem comentários: um comentário que DESCREVA a forma proibida
+        // ("import em valor…") logo acima de um `import type` real casava
+        // o `[^;]*` atravessando as linhas até o import de verdade.
+        fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''),
+      ) &&
+      // Cópia SEM a flag `g`: `.test` numa global avança `lastIndex` e o
+      // `matchAll` de RE_DIRETO no próximo arquivo herdaria o cursor.
+      !new RegExp(RE_DIRETO.source).test(fonte)
+    ) {
+      foraDeAlcance.push(relative(ROOT, caminho))
     }
+    if (!/(?<![\w.$])t(?:\.(?:rich|raw|markup))?\(\s*['"`]/.test(fonte)) continue
     emModoFolha++
     for (const m of fonte.matchAll(
       new RegExp(`(?<![\\w.$])t${METODOS}\\(\\s*`, 'g'),

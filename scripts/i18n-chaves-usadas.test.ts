@@ -207,3 +207,35 @@ describe('i18n-chaves-usadas — o checador em si', () => {
     expect(r.saida).toContain('OK');
   });
 });
+
+describe('i18n-chaves-usadas — a guarda de cobertura é independente do modo folha (Codex, PR #91)', () => {
+  it('arquivo folha que TAMBÉM importa o hook com alias reprova nomeando o arquivo', () => {
+    // Antes, a existência de um `t(` folha pulava a guarda inteira: só as
+    // chamadas folha eram conferidas e `tr('inventada')` do alias passava.
+    const r = rodar({
+      'folha-com-alias.tsx': `
+        import { useTranslations as useTraducao } from 'next-intl';
+        export function Folha({ t }: { t: (k: string) => string }) {
+          const tr = useTraducao('Inbox.sidebar');
+          return <>{t('label')}{tr('chaveInventadaQueNaoExiste')}</>;
+        }`,
+    });
+    expect(r.exit).toBe(1);
+    expect(r.saida).toContain('folha-com-alias.tsx');
+    expect(r.saida).toContain('NENHUM binding');
+  });
+
+  it('import SÓ COMO TIPO não é binding em potencial — não reprova', () => {
+    // `ReturnType<typeof useTranslations>` num módulo de tipos (a forma de
+    // message-media.tsx) não tem chamada nenhuma a cobrir.
+    const r = rodar({
+      'tipos.ts': `
+        import type { useTranslations } from 'next-intl';
+        export type Translator = ReturnType<typeof useTranslations>;`,
+      'inline.ts': `
+        import { type useTranslations } from 'next-intl';
+        export type Tradutor = ReturnType<typeof useTranslations>;`,
+    });
+    expect(r.exit).toBe(0);
+  });
+});

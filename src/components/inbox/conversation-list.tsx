@@ -650,9 +650,14 @@ export function ConversationList({
     // desconectado — fazia `mesmoFiltro` reprovar contra o cru e a faixa
     // sumia EXATAMENTE no caso que ela existe para socorrer: um inbox
     // recortado por algo que o operador não fez nesta sessão.
-    return mesmoFiltro(limparOrfaos(padrao.filtros, catalogosDoFiltro), filtros)
-      ? padrao
-      : null;
+    const limpo = limparOrfaos(padrao.filtros, catalogosDoFiltro);
+    // ⚠️ Padrão que ficou SEM critério depois da limpeza não está "na tela":
+    // todo id dele morreu, a semente gravou `FILTROS_VAZIOS`, e o vazio é
+    // igual ao vazio — a faixa dizia "Filtro padrão: X" sobre um inbox sem
+    // recorte nenhum, e "mostrar tudo" gravava o mesmo vazio, então ela
+    // não saía nunca (achado do Codex no PR #92).
+    if (contarFiltrosAtivos(limpo) === 0) return null;
+    return mesmoFiltro(limpo, filtros) ? padrao : null;
   }, [filtroPadraoId, filtrosSalvos, filtros, catalogosDoFiltro]);
 
   const handleSearchChange = useCallback(

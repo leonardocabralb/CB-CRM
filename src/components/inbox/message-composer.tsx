@@ -709,13 +709,16 @@ export function MessageComposer({
     // protege arquivo que já é de uma agendada) e limpa o estado.
     removeStaged(draftRef.current?.path);
     setDraft(null);
-    // ⚠️ E uma gravação EM CURSO morre aqui, descartada. Este efeito acabou
-    // de apontar `conversaAnteriorRef` para a conversa nova, então a guarda
-    // de origem do upload não teria mais como saber que a fala era sobre o
-    // cliente anterior — e a nota de voz seguiria viva, gravando no
-    // compositor de B, para pousar lá no fim. Mesmo desfecho para a
-    // gravação já parada cujo encoder ainda não devolveu os bytes: o
-    // `cancelledRef` faz o `ondataavailable` ignorá-los.
+    // ⚠️ E uma gravação EM CURSO morre aqui, descartada. Não é por a guarda
+    // de origem falhar: o `ondataavailable` do gravador segura o
+    // `finalizeRecording` do render em que a gravação COMEÇOU, cujo `origem`
+    // é o cliente anterior — a guarda pegaria, e o áudio seria apagado no
+    // fim do upload (o Codex corrigiu a versão anterior desta nota, que
+    // dizia o contrário). Cancela-se aqui por dois motivos que sobram:
+    // ninguém deve seguir gravando dentro do compositor de B uma fala que
+    // já está condenada, e sem o cancelamento o upload dela ainda seria
+    // pago para ser jogado fora. O `cancelledRef` faz o `ondataavailable`
+    // ignorar os bytes que o encoder ainda devolver.
     clearTimer();
     cancelledRef.current = true;
     setRecording(false);

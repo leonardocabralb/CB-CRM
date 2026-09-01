@@ -80,8 +80,13 @@ export function GroupSidebar({
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
   const { channels } = useChannels();
-  const { notas, acrescentar: acrescentarNota } =
-    useConversationNotes(conversationId);
+  const {
+    notas,
+    pronta: notasProntas,
+    falhou: notasFalharam,
+    recarregar: recarregarNotas,
+    acrescentar: acrescentarNota,
+  } = useConversationNotes(conversationId);
 
   const [editandoApelido, setEditandoApelido] = useState(false);
   const [apelido, setApelido] = useState("");
@@ -386,7 +391,25 @@ export function GroupSidebar({
                 </p>
               </div>
             ))}
-            {notas.length === 0 && (
+            {/* ⚠️ O vazio só vira afirmação quando a busca DESTA conversa
+                voltou bem (`pronta`): durante a carga a lista é vazia por
+                construção, e afirmar "nenhuma anotação" ali era mentira a
+                cada abertura — e permanente quando a busca falhava (achado
+                do Codex no PR #101). Falha tem frase própria e tentar de
+                novo. */}
+            {notasFalharam && (
+              <p className="text-destructive py-6 text-center text-xs">
+                {t("notesError")}{" "}
+                <button
+                  type="button"
+                  onClick={() => void recarregarNotas()}
+                  className="underline underline-offset-2"
+                >
+                  {t("notesRetry")}
+                </button>
+              </p>
+            )}
+            {notasProntas && notas.length === 0 && (
               // ⚠️ `t` (Inbox.groupSidebar), NÃO `tSidebar`: a chave mora no
               // bloco do grupo. O portão estático não pega a troca — ele
               // confere a chave contra TODOS os namespaces do arquivo, de

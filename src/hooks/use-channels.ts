@@ -76,6 +76,20 @@ const VALIDADE_MS = 15_000;
 let cache: { em: number; resultado: Resultado } | null = null;
 let emVoo: Promise<Resultado> | null = null;
 
+/**
+ * Esvazia o cache — para quem acabou de MUDAR um canal.
+ *
+ * ⚠️ O painel de Conexões não passa por este hook (tem o fetch próprio), então
+ * sem isto conectar/apagar/trocar o padrão e voltar ao inbox dentro dos 15s
+ * servia a lista de ANTES da mudança: o fio resolvia o canal apagado e o Radar
+ * seguia mostrando análise de canal cujo `radar_enabled` acabou de ser
+ * desligado (achado do Codex no PR #96). O `load()` do painel chama isto a
+ * cada recarga — que é exatamente depois de cada escrita.
+ */
+export function invalidarCacheDeCanais(): void {
+  cache = null;
+}
+
 async function buscar(): Promise<Resultado> {
   try {
     const res = await fetch('/api/cb/channels');

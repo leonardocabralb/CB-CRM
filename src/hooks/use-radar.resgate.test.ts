@@ -56,3 +56,15 @@ describe('use-radar: o resgate do que cai do teto (M3)', () => {
     expect(fonte).not.toContain('if (falhas.error)');
   });
 });
+
+describe('o resgate das falhas é só das ABERTAS (Codex, PR #96)', () => {
+  it('a consulta de falhas filtra `estado = aberto`, como a irmã da pendência', () => {
+    // A tela mostra só `estado === 'aberto'`: falha tratada/descartada no
+    // resgate só ocupa vaga, e 100 delas escondem uma falha aberta mais
+    // antiga — com o único "Reanalisar" dela junto.
+    const i = fonte.indexOf("eq('status', 'failed')");
+    expect(i).toBeGreaterThan(-1);
+    const bloco = fonte.slice(i, i + 220);
+    expect(bloco).toContain("eq('estado', 'aberto')");
+  });
+});

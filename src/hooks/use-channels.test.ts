@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 
-import { resultadoDaResposta } from './use-channels';
+import { invalidarCacheDeCanais, resultadoDaResposta } from './use-channels';
 
 // ============================================================
 // #06 — as TRÊS formas de a busca de canais falhar, e a que não falha.
@@ -50,5 +52,27 @@ describe('resultadoDaResposta (#06)', () => {
       channels: [],
       falhou: false,
     });
+  });
+});
+
+describe('o cache de canais é invalidado por quem MUDA canal (Codex, PR #96)', () => {
+  // O painel de Conexões tem fetch próprio e não passa pelo hook: sem a
+  // invalidação, conectar/apagar/trocar o padrão e voltar ao inbox dentro dos
+  // 15s servia a lista de antes. Pino estrutural: o `load()` do painel — o
+  // caminho comum a toda escrita — chama o invalidador.
+  it('o load() do cb-channels-panel chama invalidarCacheDeCanais', () => {
+    const fonte = fs.readFileSync(
+      path.join(__dirname, '..', 'components', 'settings', 'cb-channels-panel.tsx'),
+      'utf8',
+    );
+    expect(fonte).toContain("import { invalidarCacheDeCanais } from '@/hooks/use-channels'");
+    const inicio = fonte.indexOf('const load = useCallback(');
+    expect(inicio).toBeGreaterThan(-1);
+    expect(fonte.slice(inicio, inicio + 600)).toContain('invalidarCacheDeCanais();');
+  });
+
+  it('invalidar de fato esvazia: exportado e sem argumentos', () => {
+    expect(typeof invalidarCacheDeCanais).toBe('function');
+    expect(() => invalidarCacheDeCanais()).not.toThrow();
   });
 });

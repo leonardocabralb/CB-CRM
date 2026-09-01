@@ -109,7 +109,24 @@ export function PerfisPanel() {
   // members") num app pt-BR (ledger 48h, r3).
   const tSecoes = useTranslations('Settings.sections');
   const supabase = useMemo(() => createClient(), []);
-  const { channels } = useChannels();
+  const {
+    channels,
+    loading: canaisCarregando,
+    falhou: canaisFalharam,
+    recarregar: recarregarCanais,
+  } = useChannels();
+  /**
+   * ⚠️ "Conexão sumiu" é uma AFIRMAÇÃO, e lista vazia não a sustenta. O hook
+   * devolve `[]` enquanto carrega e quando a rota falha — e nesses dois
+   * estados TODO perfil restrito resolvia como `unresolved`: a lista dizia
+   * "conexões que não existem mais" sobre conexões vivas a cada carga, e
+   * para sempre numa falha de rede, com o editor repetindo o aviso e o
+   * `ChannelMultiSelect` (que some com lista vazia) sem oferecer a saída
+   * "Todas" (achado do Codex no PR #99). É a variante do CLAUDE.md de lista
+   * vazia virando afirmação positiva; a cura é o sinalizador do próprio
+   * hook, como no fio do inbox.
+   */
+  const canaisConfiaveis = !canaisCarregando && !canaisFalharam;
 
   /**
    * Como a LINHA do perfil resume o escopo de canal.
@@ -122,7 +139,11 @@ export function PerfisPanel() {
    * cair em "todas as conexões", que seria a mentira oposta.
    */
   function resumoDeCanais(ids: string[]): string {
-    const resumo = summarizeScope(channels, ids.length === 0 ? null : ids);
+    if (ids.length === 0) return t('allChannels');
+    // Sem catálogo confiável, o que se sabe é o que está GRAVADO: "restrito
+    // a N conexões" é verdade sem depender da lista.
+    if (!canaisConfiaveis) return t('someChannels', { count: ids.length });
+    const resumo = summarizeScope(channels, ids);
     if (resumo.kind === 'all') return t('allChannels');
     if (resumo.kind === 'unresolved') return t('canaisSumiram');
     const n = resumo.kind === 'one' ? 1 : resumo.count;
@@ -585,18 +606,35 @@ export function PerfisPanel() {
                     <p className="text-xs text-muted-foreground">
                       {t('escopoVazioHint')}
                     </p>
-                    {/* Só quando há id preso: a frase explica o que a lista
-                        de itens não tem como mostrar. */}
-                    {summarizeScope(
-                      channels,
-                      rascunho.channel_ids.length === 0
-                        ? null
-                        : rascunho.channel_ids,
-                    ).kind === 'unresolved' && (
+                    {/* Catálogo que não veio: dizer isso, com a saída. Sem a
+                        lista o seletor nem renderiza, e o aviso de "sumiu"
+                        abaixo seria a afirmação errada. */}
+                    {canaisFalharam && (
                       <p className="text-xs text-destructive">
-                        {t('canaisSumiramDica')}
+                        {t('canaisIndisponiveis')}{' '}
+                        <button
+                          type="button"
+                          onClick={() => void recarregarCanais()}
+                          className="underline underline-offset-2"
+                        >
+                          {t('canaisRecarregar')}
+                        </button>
                       </p>
                     )}
+                    {/* Só quando há id preso — e só com catálogo confiável: a
+                        frase explica o que a lista de itens não tem como
+                        mostrar. */}
+                    {canaisConfiaveis &&
+                      summarizeScope(
+                        channels,
+                        rascunho.channel_ids.length === 0
+                          ? null
+                          : rascunho.channel_ids,
+                      ).kind === 'unresolved' && (
+                        <p className="text-xs text-destructive">
+                          {t('canaisSumiramDica')}
+                        </p>
+                      )}
                   </div>
                 )}
 

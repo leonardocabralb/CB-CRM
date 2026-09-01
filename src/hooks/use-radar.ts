@@ -303,11 +303,18 @@ export function useRadar(): RadarDaConta {
       // sobrou depois que a aba "Todos" foi removida. Ordena por
       // `created_at` (NOT NULL) porque a coluna da ordenação principal é
       // justamente a que está nula aqui.
+      //
+      // ⚠️ Só as ABERTAS, como a irmã da pendência: a tela mostra apenas
+      // `estado === 'aberto'`, então falha já tratada/descartada só ocupava
+      // vaga — 100 delas consumiam o resgate inteiro e uma falha ABERTA mais
+      // antiga (também fora das 200 principais) ficava invisível, com o
+      // Reanalisar dela junto (achado do Codex no PR #96).
       supabase
         .from('cb_conversation_insights')
         .select(SELECT_COM_CONVERSA)
         .eq('account_id', accountId)
         .eq('status', 'failed')
+        .eq('estado', 'aberto')
         .order('created_at', { ascending: false })
         .limit(100),
       supabase

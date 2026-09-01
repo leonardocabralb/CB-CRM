@@ -10,7 +10,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useTranslations } from "next-intl";
+// Importação SÓ DE TIPO, de propósito: só `typeof useTranslations` é usado,
+// e o portão de i18n (`scripts/i18n-chaves-usadas.mjs`) trata importação em
+// valor sem binding como cobertura perdida.
+import type { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/types";
 import { downloadMediaMessage } from "@/lib/media/download";

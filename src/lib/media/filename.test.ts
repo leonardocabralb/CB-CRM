@@ -3,6 +3,7 @@ import {
   basenameFromUrl,
   extensionForMime,
   mediaFilename,
+  nomeDeclarado,
   sanitizeFilename,
 } from "./filename";
 
@@ -328,5 +329,49 @@ describe("mediaFilename", () => {
         "application/pdf",
       ),
     ).toBe("invoice.pdf");
+  });
+});
+
+describe("nomeDeclarado — the name without the file (Codex, PR #101)", () => {
+  // The bubble's question for a document whose object is not in the bucket
+  // (Meta media that failed verification, group attachment awaiting the
+  // on-demand download): is there a REAL name to show? Steps 0 and 1 only —
+  // never the bucket basename, never a synthesised name.
+  it("returns the stored filename with no media_url at all", () => {
+    expect(
+      nomeDeclarado({
+        content_type: "document",
+        media_filename: "Contrato Silva.pdf",
+      }),
+    ).toBe("Contrato Silva.pdf");
+  });
+
+  it("falls back to a document caption that looks like a filename", () => {
+    expect(
+      nomeDeclarado({ content_type: "document", content_text: "procuracao.pdf" }),
+    ).toBe("procuracao.pdf");
+  });
+
+  it("returns null — never a synthesised name — when the sender gave none", () => {
+    expect(nomeDeclarado({ content_type: "document" })).toBeNull();
+    expect(
+      nomeDeclarado({ content_type: "document", content_text: "segue o documento" }),
+    ).toBeNull();
+    // An image caption is prose even when it ends in an extension.
+    expect(
+      nomeDeclarado({ content_type: "image", content_text: "is this the right invoice.pdf" }),
+    ).toBeNull();
+  });
+
+  it("is the head of mediaFilename's cascade — same answer when both apply", () => {
+    const row = {
+      content_type: "document" as const,
+      content_text: "segue em anexo.pdf",
+      media_filename: "MARÇO 2024.pdf",
+      media_url:
+        "https://x.supabase.co/storage/v1/object/public/chat-media/account-1/1756000000000-MAR_O_2024.pdf",
+      created_at: AT,
+    };
+    expect(mediaFilename(row)).toBe(nomeDeclarado(row));
   });
 });
