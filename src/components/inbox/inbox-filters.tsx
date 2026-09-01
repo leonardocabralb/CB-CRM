@@ -152,13 +152,19 @@ export function InboxFilters({
 
   // Já vêm ordenadas por `position` da consulta — a ordem das colunas do
   // quadro, que é como o operador pensa o funil.
-  const etapasDoFunil = useMemo(
-    () =>
-      doisNiveis
-        ? etapas.filter((e) => e.pipeline_id === funilVisivel)
-        : etapas,
-    [doisNiveis, etapas, funilVisivel],
-  );
+  //
+  // ⚠️ O funil é re-derivado AQUI DENTRO, com deps primitivas, em vez de
+  // depender do `funilVisivel` acima: como `etapaAtual` sai de um `.find`
+  // não memoizado, o React Compiler recusa a memoização
+  // ("Existing memoization could not be preserved") e o lint vira ERRO.
+  const etapasDoFunil = useMemo(() => {
+    if (!doisNiveis) return etapas;
+    const funil =
+      filtros.funilId ??
+      etapas.find((e) => e.id === filtros.etapaId)?.pipeline_id ??
+      null;
+    return etapas.filter((e) => e.pipeline_id === funil);
+  }, [doisNiveis, etapas, filtros.funilId, filtros.etapaId]);
 
   const nomeDoFunil = (id: string) => funis.get(id) ?? t("labelPipeline");
 
