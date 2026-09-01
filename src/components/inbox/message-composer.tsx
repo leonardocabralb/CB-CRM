@@ -180,6 +180,15 @@ interface MessageComposerProps {
    * (pré-migration) → comportamento de sempre.
    */
   channelKind?: "meta" | "evolution" | null;
+  /**
+   * `false` enquanto a lista de canais ainda não chegou (ou a busca falhou):
+   * o transporte é DESCONHECIDO, que não é o mesmo que `channelKind: null`
+   * ("a conta não tem canais", regra Meta). Nesse vão os atalhos de
+   * template/interativa ficam ocultos (M12): oferecê-los abria o
+   * TemplatePicker com channelId nulo — catálogo sem o recorte por WABA,
+   * que o CLAUDE.md marca como load-bearing.
+   */
+  transporteConhecido?: boolean;
   onSend: (text: string, replyToId?: string) => void;
   onSendMedia: (payload: SendMediaPayload) => void;
   onSendInteractive: (payload: InteractiveMessagePayload, replyToId?: string) => void;
@@ -221,6 +230,7 @@ export function MessageComposer({
   conversationId,
   sessionExpired,
   channelKind = null,
+  transporteConhecido = true,
   onSend,
   onSendMedia,
   onSendInteractive,
@@ -1368,8 +1378,9 @@ export function MessageComposer({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="border-border bg-popover">
               {/* Botões/listas não entregam via Baileys — o item some no
-                  canal Evolution; respostas rápidas de texto continuam. */}
-              {channelKind !== "evolution" && (
+                  canal Evolution; respostas rápidas de texto continuam.
+                  Transporte desconhecido também esconde (M12). */}
+              {transporteConhecido && channelKind !== "evolution" && (
                 <DropdownMenuItem onClick={() => openInteractiveBuilder()}>
                   <MessageSquareDashed className="mr-2 h-4 w-4" />
                   {t("interactiveMessage")}
@@ -1391,8 +1402,10 @@ export function MessageComposer({
           </DropdownMenu>
 
           {/* Templates são um conceito da API oficial — o botão some no
-              canal Evolution. */}
-          {channelKind !== "evolution" && (
+              canal Evolution e enquanto o transporte é desconhecido (M12):
+              aberto nesse vão, o TemplatePicker nasceria com channelId nulo
+              e o catálogo sairia sem o recorte por WABA. */}
+          {transporteConhecido && channelKind !== "evolution" && (
             <GatedButton
               variant="ghost"
               size="sm"

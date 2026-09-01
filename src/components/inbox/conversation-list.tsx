@@ -171,7 +171,12 @@ export function ConversationList({
   );
   // Conta sem canais (ou deploy pré-901): a lista fica vazia e o seletor
   // simplesmente não aparece.
-  const { channels } = useChannels();
+  const {
+    channels,
+    loading: canaisCarregando,
+    falhou: canaisFalharam,
+    recarregar: recarregarCanais,
+  } = useChannels();
   // Favoritas são de CADA MEMBRO (migration 924) — o hook já lê só as minhas.
   // `resyncToken` porque `cb_conversation_favorites` não está no realtime:
   // marcar no celular não apareceria nesta aba até recarregar a página.
@@ -731,6 +736,9 @@ export function ConversationList({
             // uma conexão fora do escopo faria o operador abrir a conversa
             // num número que ele não deveria usar.
             canais={canaisDoPerfil}
+            carregandoCanais={canaisCarregando}
+            canaisFalharam={canaisFalharam}
+            onRecarregarCanais={recarregarCanais}
             onAberta={onConversaAberta}
           />
         )}
