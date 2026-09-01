@@ -283,14 +283,25 @@ export function ConversationList({
         const { data, error, count } = await supabase
           .from("deals")
           .select("contact_id, stage_id", { count: "exact" })
+          // ⚠️ `range` sem `order` é LIMIT/OFFSET sobre ordem INDEFINIDA
+          // (#25): um card arrastado entre duas páginas muda de posição no
+          // seq scan e a página seguinte repete/omite linhas — o contato
+          // omitido some de "Funil: X" e passa a casar "Sem negócio", sem
+          // erro em lugar nenhum. `id` é PK: estável e barato.
+          .order("id", { ascending: true })
           .range(de, de + PAGINA - 1);
         if (error || !data) return { linhas: null };
         acumulado.push(...(data as typeof acumulado));
         total = count ?? total;
-        if (total == null || acumulado.length >= total || data.length < PAGINA) {
+        if (total == null) {
+          // Sem contagem não há como fechar o laço: página CHEIA pode ter
+          // continuação, e devolver o acumulado afirmaria completude sem
+          // prova — o contrato deste bloco é "linhas: null = não confiar".
+          return { linhas: data.length < PAGINA ? acumulado : null };
+        }
+        if (acumulado.length >= total || data.length < PAGINA) {
           return {
-            linhas:
-              total != null && acumulado.length < total ? null : acumulado,
+            linhas: acumulado.length < total ? null : acumulado,
           };
         }
       }
@@ -627,8 +638,17 @@ export function ConversationList({
     const padrao = filtroPadraoId
       ? filtrosSalvos.find((f) => f.id === filtroPadraoId)
       : undefined;
-    return padrao && mesmoFiltro(padrao.filtros, filtros) ? padrao : null;
-  }, [filtroPadraoId, filtrosSalvos, filtros]);
+    if (!padrao) return null;
+    // ⚠️ Compara contra o recorte JÁ LIMPO (#16 do plano 31/08): o que vai
+    // para o estado passa por `limparOrfaos` (semente e clique), então uma
+    // referência morta no filtro gravado — etiqueta apagada, canal
+    // desconectado — fazia `mesmoFiltro` reprovar contra o cru e a faixa
+    // sumia EXATAMENTE no caso que ela existe para socorrer: um inbox
+    // recortado por algo que o operador não fez nesta sessão.
+    return mesmoFiltro(limparOrfaos(padrao.filtros, catalogosDoFiltro), filtros)
+      ? padrao
+      : null;
+  }, [filtroPadraoId, filtrosSalvos, filtros, catalogosDoFiltro]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {

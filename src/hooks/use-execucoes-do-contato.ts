@@ -101,18 +101,18 @@ export function useExecucoesDoContato(contactId: string | null): Resultado {
     return () => window.removeEventListener(EVENTO_EXECUCOES, aoMudar);
   }, [recarregar]);
 
+  // ⚠️ A assinatura vive num efeito PRÓPRIO, com deps só de `contactId` —
+  // UMA por contato, como o irmão `useQuemVeAConversa` ([accountId]). Com
+  // `nonce` nas deps (a forma anterior, achado #27 do plano 31/08), TODO
+  // evento de flow_runs derrubava o canal e criava outro: o re-join a cada
+  // evento é exatamente a janela de perda que o comentário daqui dizia ter
+  // fechado. Declarado ANTES do efeito do snapshot de propósito: os efeitos
+  // rodam na ordem de declaração, então na primeira passada o canal arma
+  // antes de o fetch sair — evento durante o fetch vira nonce++ e um
+  // refetch logo atrás, com o MESMO canal de pé.
   useEffect(() => {
     if (!contactId) return;
-
     const supabase = createClient();
-    let cancelado = false;
-
-    // ⚠️ ASSINA PRIMEIRO, snapshot depois — a regra que o irmão
-    // useQuemVeAConversa segue: com o fetch antes, um UPDATE de flow_runs
-    // aterrissando na janela entre a resposta e o .subscribe() ficava
-    // invisível até o próximo evento ou ação (ledger 48h). O callback só
-    // bumpa o nonce, então armá-lo cedo é inofensivo: evento durante o
-    // fetch inicial vira um refetch logo atrás.
     const canal = supabase
       .channel(`execucoes:${contactId}`)
       .on(
@@ -126,6 +126,16 @@ export function useExecucoesDoContato(contactId: string | null): Resultado {
         () => setNonce((n) => n + 1),
       )
       .subscribe();
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [contactId]);
+
+  useEffect(() => {
+    if (!contactId) return;
+
+    const supabase = createClient();
+    let cancelado = false;
 
     void (async () => {
       const [runsRes, esperasRes] = await Promise.all([
@@ -176,7 +186,6 @@ export function useExecucoesDoContato(contactId: string | null): Resultado {
 
     return () => {
       cancelado = true;
-      supabase.removeChannel(canal);
     };
   }, [contactId, nonce]);
 

@@ -94,7 +94,15 @@ for (const loc of locales) {
     for (const k of faltando.slice(0, 15)) console.log(`      - ${k}`)
     if (faltando.length > 15) console.log(`      … e mais ${faltando.length - 15}`)
   }
-  if (sobrando.length) console.log(`    sobrando (${sobrando.length}, inofensivo): ${sobrando.slice(0, 5).join(', ')}`)
+  // ⚠️ "Inofensivo" AQUI — mas `src/i18n/messages.test.ts`, no MESMO job do
+  // CI, REPROVA chave órfã. Quem adicionar uma chave só a este dicionário
+  // passa nos dois scripts e quebra dois passos adiante (F6/#24 do plano
+  // 31/08): a saída é adicioná-la também ao en.json, ou removê-la.
+  if (sobrando.length)
+    console.log(
+      `    sobrando (${sobrando.length}, inofensivo AQUI — mas messages.test.ts REPROVA` +
+        ` chave órfã: adicione ao en.json ou remova): ${sobrando.slice(0, 5).join(', ')}`,
+    )
   if (argsDivergentes.length) {
     console.log(`    PLACEHOLDERS DIVERGENTES (${argsDivergentes.length}) — quebram a interpolação:`)
     for (const k of argsDivergentes.slice(0, 10)) console.log(`      - ${k}`)

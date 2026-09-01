@@ -13,7 +13,9 @@ import type { CustomField, GrupoDeCampos } from '@/types';
  * isso `grupo` vem `null` nele. Consequências que o consumidor precisa saber:
  * ele vem SEMPRE primeiro, o rótulo sai do dicionário (não do banco), e ele não
  * é renomeável nem arrastável. Em compensação some sozinho quando todo campo
- * estiver num grupo de verdade.
+ * estiver num grupo de verdade — nas telas de LEITURA. No catálogo
+ * (`incluirVazios`) ele fica, porque lá ele é destino de movimento; ver a nota
+ * dentro de {@link agruparCampos}.
  */
 export interface BlocoDeCampos {
   /** `null` no bloco Geral. */
@@ -90,7 +92,18 @@ export function agruparCampos(
   }
 
   const blocos: BlocoDeCampos[] = [];
-  if (geral.length > 0) blocos.push({ grupo: null, campos: ordenarCampos(geral) });
+  // ⚠️ O Geral segue a MESMA regra dos blocos vazios, e isso é load-bearing no
+  // catálogo. Ele é o único destino que a tela oferece SEM depender de haver
+  // uma linha no banco — o `<option value="">` do seletor de cada campo está
+  // lá sempre. Escondendo-o quando todo campo já está num grupo de verdade, o
+  // seletor continuava oferecendo "Geral", `moverCampo` não achava o bloco
+  // destino, devolvia `null` e o catálogo NÃO FAZIA NADA: sem toast, sem erro,
+  // sem escrita — e não havia outro caminho de volta, porque arrastar também
+  // precisa do bloco renderizado. Um campo posto num grupo ficava preso em
+  // grupo para sempre. (Achado do Codex na revisão do PR #78.)
+  if (geral.length > 0 || incluirVazios) {
+    blocos.push({ grupo: null, campos: ordenarCampos(geral) });
+  }
 
   for (const grupo of ordenarGrupos(grupos)) {
     const doGrupo = porGrupo.get(grupo.id) ?? [];

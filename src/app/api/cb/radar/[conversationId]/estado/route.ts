@@ -4,6 +4,7 @@ import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { ESTADOS_DO_INSIGHT, type EstadoDoInsight } from '@/lib/cb-radar/ordenacao';
+import { claimVivo, corteDeClaimAbandonado } from '@/lib/cb-radar/worker';
 
 /**
  * PATCH /api/cb/radar/[conversationId]/estado — o ciclo de vida do sinal:
@@ -78,7 +79,17 @@ export async function PATCH(
       .eq('conversation_id', conversationId)
       .eq('account_id', ctx.accountId);
     if (comTrava) {
-      query = query.neq('status', 'running');
+      // ⚠️ Claim VIVO recusa; claim ABANDONADO não (#28 do plano de 31/08).
+      // O ciclo é o laço LENTO do agendador (15 min) e o worker morre com o
+      // rollout do Swarm — que roda a CADA merge no `main` —, deixando
+      // `running` órfão por 10–25 min até o recolhedor. Recusar `running`
+      // cegamente congelava o cartão INTEIRO nesse vão: nem Tratar, nem
+      // Descartar (nem Reanalisar, que tinha a mesma recusa). A régua de
+      // obsolescência é a MESMA do recolhedor (TRAVADA_MIN, exportada do
+      // worker), incluindo `running_desde` nulo como abandonado.
+      query = query.or(
+        `status.neq.running,running_desde.lt.${corteDeClaimAbandonado()},running_desde.is.null`,
+      );
       if (analisadoEmVisto) query = query.eq('analisado_em', analisadoEmVisto);
     }
     const { data, error } = await query.select('id').maybeSingle();
@@ -91,17 +102,30 @@ export async function PATCH(
       // do 404 verdadeiro para a tela dizer o que houve — "o Radar está
       // relendo" e "o Radar releu" pedem reações diferentes do operador.
       if (comTrava) {
-        const { data: atual } = await supabaseAdmin()
+        const { data: atual, error: erroAtual } = await supabaseAdmin()
           .from('cb_conversation_insights')
-          .select('id, status')
+          .select('id, status, running_desde')
           .eq('conversation_id', conversationId)
           .eq('account_id', ctx.accountId)
           .maybeSingle();
+        // ⚠️ Erro de banco NÃO é "não encontrado" (#07, a lição da API v1):
+        // com o error descartado, um blip do PostgREST caía no 404 e a tela
+        // anunciava que o Radar PERDEU a análise do cliente — quando só a
+        // consulta falhou. 500 manda tentar de novo.
+        if (erroAtual) {
+          console.error('[radar] releitura do estado falhou:', erroAtual.message);
+          return NextResponse.json({ error: 'LOOKUP_FAILED' }, { status: 500 });
+        }
         if (atual) {
+          // `analysis_running` só para claim VIVO — sobre claim abandonado a
+          // frase "o Radar está relendo" seria mentira (o worker morreu), e
+          // `analysis_changed` manda a tela reler, que é a reação certa.
           return NextResponse.json(
             {
               error:
-                atual.status === 'running' ? 'analysis_running' : 'analysis_changed',
+                atual.status === 'running' && claimVivo(atual.running_desde)
+                  ? 'analysis_running'
+                  : 'analysis_changed',
             },
             { status: 409 },
           );

@@ -172,6 +172,12 @@ export function ContactDetailView({
   const valoresDesteContato =
     customValues.de === contactId ? customValues.mapa : null;
   const [loadingCustom, setLoadingCustom] = useState(false);
+  // ⚠️ Falha da carga NÃO pode ficar indistinguível de "carregando" (#17 do
+  // plano 31/08): com o erro engolido, `valoresDesteContato` nunca resolvia
+  // e a aba girava para sempre, sem toast nem retry — só fechar e reabrir o
+  // Sheet. O painel da conversa, que faz o MESMO trio, avisa; as duas telas
+  // editam o mesmo dado e divergiam aqui.
+  const [falhouCustom, setFalhouCustom] = useState(false);
 
   // Deals tab
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -271,6 +277,13 @@ export function ContactDetailView({
     // ⚠️ O caso mais caro da ficha: sem isto os VALORES de A entram no
     // formulário aberto sobre B, e o Salvar os grava lá.
     if (contatoAlvoRef.current !== alvo) return;
+    if (fieldsRes.error || valuesRes.error || gruposRes.error) {
+      toast.error(t('customLoadError'));
+      setFalhouCustom(true);
+      setLoadingCustom(false);
+      return;
+    }
+    setFalhouCustom(false);
     if (fieldsRes.data) setCustomFields(fieldsRes.data);
     // Falhando, `agruparCampos` joga tudo no bloco Geral: a ficha perde a
     // divisão, mas nenhum campo some.
@@ -874,7 +887,20 @@ export function ContactDetailView({
 
               {/* Custom Fields Tab */}
               <TabsContent value="custom" className="flex-1 overflow-y-auto px-4 py-3">
-                {loadingCustom || !valoresDesteContato ? (
+                {falhouCustom ? (
+                  <div className="flex flex-col items-center gap-2 py-8">
+                    <p className="text-sm text-muted-foreground">
+                      {t('customLoadError')}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void fetchCustomFields()}
+                    >
+                      {t('customRetry')}
+                    </Button>
+                  </div>
+                ) : loadingCustom || !valoresDesteContato ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="size-5 animate-spin text-muted-foreground" />
                   </div>

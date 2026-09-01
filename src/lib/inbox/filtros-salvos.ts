@@ -297,7 +297,12 @@ export function descreverFiltro(
       rotulo: canal
         ? { fonte: "dado", texto: canal.label }
         : { fonte: "i18n", chave: "channelFilter" },
-      orfao: !canal,
+      // ⚠️ Catálogo VAZIO não prova nada (M4 do plano 31/08) — a MESMA
+      // guarda do `limparOrfaos` lá embaixo: lista vazia pode ser "ainda não
+      // carregou" ou "a busca falhou", e marcar "(apagado)" sobre canal VIVO
+      // enquanto os catálogos chegam é o menu afirmando referência morta
+      // sobre um blip de rede. Vale para os cinco campos com `orfao`.
+      orfao: cat.canais.length > 0 && !canal,
       limpar: { canalId: null },
     });
   }
@@ -320,7 +325,7 @@ export function descreverFiltro(
         rotulo: nome
           ? { fonte: "dado", texto: nome }
           : { fonte: "i18n", chave: "assigneeUnnamed" },
-        orfao: !p,
+        orfao: cat.responsaveis.length > 0 && !p,
         limpar: { responsavelId: null },
       });
     }
@@ -347,7 +352,7 @@ export function descreverFiltro(
         ? { fonte: "dado", texto: tag.name }
         : { fonte: "i18n", chave: "tags" },
       cor: tag?.color,
-      orfao: !tag,
+      orfao: cat.etiquetas.length > 0 && !tag,
       limpar: { etiquetaIds: f.etiquetaIds.filter((x) => x !== id) },
     });
   }
@@ -359,7 +364,7 @@ export function descreverFiltro(
       rotulo: nome
         ? { fonte: "dado", texto: nome }
         : { fonte: "i18n", chave: "labelPipeline" },
-      orfao: !nome,
+      orfao: cat.funis.size > 0 && !nome,
       // ⚠️ Tirar o funil tira a ETAPA junto — é o que a pastilha faz. O
       // seletor de dois níveis não sabe exibir etapa sem o funil dela, e o
       // recorte ficaria valendo com o painel dizendo "Qualquer funil".
@@ -386,7 +391,7 @@ export function descreverFiltro(
               texto: doisNiveis ? etapa.name : nomeDaEtapa(etapa, cat.funis),
             }
           : { fonte: "i18n", chave: "labelStage" },
-        orfao: !etapa,
+        orfao: cat.etapas.length > 0 && !etapa,
         limpar: { etapaId: null },
       });
     }

@@ -117,7 +117,11 @@ export function CustomFieldsPanel({
 }) {
   const t = useTranslations('Contacts.customFields');
   const supabase = createClient();
-  const { user, accountId } = useAuth();
+  // `ownerUserId`, não `user`: `custom_fields.user_id` CASCADEia de
+  // `auth.users` e leva `contact_custom_values` junto — campo criado por um
+  // admin que depois sai da equipe (login apagado no dashboard) sumiria com
+  // os valores preenchidos de TODO cliente. Grava-se o dono da conta.
+  const { ownerUserId, accountId } = useAuth();
 
   const [fields, setFields] = useState<CustomField[]>([]);
   const [grupos, setGrupos] = useState<GrupoDeCampos[]>([]);
@@ -149,6 +153,17 @@ export function CustomFieldsPanel({
   const [novoGrupo, setNovoGrupo] = useState('');
   const [criandoGrupo, setCriandoGrupo] = useState(false);
   const [semeando, setSemeando] = useState(false);
+  /**
+   * ⚠️ Só vira `true` quando as DUAS consultas voltaram OK pelo menos uma
+   * vez. Este é o ÚNICO painel que ESCREVE blocos, e era o único que tratava
+   * falha de consulta como lista vazia: com `grupos = []`, `agruparCampos`
+   * joga tudo no Geral (fallback de exibição, correto) e o arrastar seguinte
+   * PERSISTIA esse fallback — `grupo_id: null` para a conta inteira, via
+   * RPC, sem erro em lugar nenhum (achado #02 do plano de 31/08). Enquanto
+   * for `false`, a lista nem renderiza (caixa de erro + tentar de novo), e
+   * os dois escritores de ordenação recusam por cima.
+   */
+  const [catalogoConfiavel, setCatalogoConfiavel] = useState(false);
 
   const fetchFields = useCallback(async () => {
     if (!accountId) return;
@@ -165,10 +180,18 @@ export function CustomFieldsPanel({
         .order('posicao')
         .order('nome'),
     ]);
+    // Falha NÃO é vazio: preserva o estado anterior e avisa — o mesmo que as
+    // duas telas de leitura (ficha e painel da conversa) já fazem.
+    if (camposRes.error || gruposRes.error) {
+      toast.error(t('loadError'));
+      setLoading(false);
+      return;
+    }
     setFields((camposRes.data as CustomField[] | null) ?? []);
     setGrupos((gruposRes.data as GrupoDeCampos[] | null) ?? []);
+    setCatalogoConfiavel(true);
     setLoading(false);
-  }, [supabase, accountId]);
+  }, [supabase, accountId, t]);
 
   // Load the field list on mount once the account is known. The setters
   // inside fetchFields run after the Supabase await — not synchronously in
@@ -239,7 +262,7 @@ export function CustomFieldsPanel({
   async function handleCreate() {
     const name = newName.trim();
     if (!name) return;
-    if (!accountId || !user) {
+    if (!accountId || !ownerUserId) {
       toast.error(t('toastNoAccount'));
       return;
     }
@@ -262,7 +285,7 @@ export function CustomFieldsPanel({
       // (as consultas ordenam com NULLS LAST). Calculá-la aqui exigiria que
       // todo escritor de `custom_fields` soubesse fazer o mesmo.
       grupo_id: grupoEscolhido || null,
-      user_id: user.id,
+      user_id: ownerUserId,
       account_id: accountId,
     });
     setCreating(false);
@@ -430,6 +453,24 @@ export function CustomFieldsPanel({
     }
     // Os campos do bloco NÃO somem: a FK é `ON DELETE SET NULL (grupo_id)`, e
     // eles reaparecem no bloco Geral. É por isso que o refetch traz os dois.
+    //
+    // ⚠️ RENORMALIZA o Geral resultante antes do refetch (M7 do plano
+    // 31/08): os campos chegam com a `posicao` que tinham DENTRO do bloco
+    // apagado, colidem com as do Geral, e `ordenarCampos` desempata pelo
+    // nome — a ordem que o operador montou embaralhava na ficha de TODO
+    // cliente. A lista vai na ordem em que a tela os mostrará (Geral atual
+    // primeiro, depois os do bloco apagado), pela MESMA RPC do arrastar.
+    const geralAtual = blocos.find((b) => b.grupo === null)?.campos ?? [];
+    const doApagado = blocos.find((b) => b.grupo?.id === grupo.id)?.campos ?? [];
+    if (doApagado.length > 0) {
+      const { error: reordErr } = await supabase.rpc(
+        'cb_ordenar_campos_personalizados',
+        { p_campos: posicoesDoBloco([...geralAtual, ...doApagado], null) },
+      );
+      // Falha aqui é só de ORDEM (nada se perdeu) — o aviso padrão do
+      // arrastar serve, e o refetch abaixo mostra o que o banco tem.
+      if (reordErr) toast.error(t('toastReorderFailed'));
+    }
     toast.success(t('toastGroupDeleted', { name: grupo.nome }));
     await fetchFields();
   }
@@ -446,7 +487,7 @@ export function CustomFieldsPanel({
    * de desfazer.
    */
   async function handleSeed() {
-    if (!user || !accountId || faltantes.length === 0) return;
+    if (!ownerUserId || !accountId || faltantes.length === 0) return;
     setSemeando(true);
     // ⚠️ `ignoreDuplicates`, não insert seco: `faltantes` é foto de quando o
     // painel carregou, e uma chave criada nesse meio-tempo (outra aba, outro
@@ -463,7 +504,7 @@ export function CustomFieldsPanel({
         // outra coisa, e é o de cima.
         categoria: 'tracking',
         grupo_id: grupoEscolhido || null,
-        user_id: user.id,
+        user_id: ownerUserId,
         account_id: accountId,
       })),
       { onConflict: 'account_id,field_key', ignoreDuplicates: true }
@@ -543,6 +584,11 @@ export function CustomFieldsPanel({
   }
 
   async function reordenarCampos(campoId: string, alvo: string) {
+    // Cerca do achado #02: sem catálogo confiável o estado pode ser o
+    // fallback de exibição (tudo no Geral), e gravá-lo zeraria os blocos da
+    // conta. A lista nem renderiza nesse estado — isto protege o próximo
+    // refactor de render, não o operador de hoje.
+    if (!catalogoConfiavel) return;
     const novos = moverCampo(blocos, campoId, alvo);
     if (!novos) return;
 
@@ -577,6 +623,9 @@ export function CustomFieldsPanel({
   }
 
   async function reordenarGrupos(grupoId: string, alvoId: string) {
+    // Mesma cerca de `reordenarCampos` — este é o outro escritor que manda a
+    // conta inteira de uma vez.
+    if (!catalogoConfiavel) return;
     const ordenados = ordenarGrupos(grupos);
     const de = ordenados.findIndex((g) => g.id === grupoId);
     const para = ordenados.findIndex((g) => g.id === alvoId);
@@ -584,7 +633,13 @@ export function CustomFieldsPanel({
 
     const nova = arrayMove(ordenados, de, para);
     const anterior = grupos;
-    setGrupos(nova.map((g, i) => ({ ...g, posicao: i })));
+    // ⚠️ `i + 1`, ESPELHANDO a RPC (#31 do plano 31/08): o
+    // `cb_ordenar_grupos_de_campos` grava a ORDINALITY (1..N), e o estado
+    // otimista gravava 0..N-1 — sem refetch depois do arrastar, o
+    // `max+1` do handleCreateGrupo calculava sobre a base errada e o bloco
+    // novo EMPATAVA com o último (o desempate por nome o punha antes,
+    // gravado; um F5 mantinha a ordem errada).
+    setGrupos(nova.map((g, i) => ({ ...g, posicao: i + 1 })));
 
     const { error } = await supabase.rpc('cb_ordenar_grupos_de_campos', {
       p_ids: nova.map((g) => g.id),
@@ -731,7 +786,23 @@ export function CustomFieldsPanel({
             <Loader2 className="size-4 animate-spin" />
             {t('loading')}
           </div>
-        ) : blocos.length === 0 ? (
+        ) : !catalogoConfiavel ? (
+          /* ⚠️ Carga que falhou NÃO vira "catálogo vazio" (§8.3 do plano):
+             afirmar "nenhum campo ainda" sobre consulta falha é a metade de
+             exibição do mesmo defeito que o arrastar persistia. Sem lista na
+             tela, não há arrastar nem seletor de bloco para gravar coisa
+             errada. */
+          <div className="text-muted-foreground flex flex-col items-center gap-3 py-8 text-sm">
+            <p>{t('loadError')}</p>
+            <Button variant="outline" size="sm" onClick={() => void fetchFields()}>
+              {t('retry')}
+            </Button>
+          </div>
+        ) : /* ⚠️ O teste é o CATÁLOGO vazio, não `blocos.length`: aqui o
+               bloco Geral é incondicional (é o destino de volta do seletor),
+               então `blocos` nunca fica vazio e a conta recém-criada veria um
+               cabeçalho "Geral" solto em vez da frase que explica a tela. */
+          fields.length === 0 && grupos.length === 0 ? (
           <p className="text-muted-foreground py-8 text-center text-sm">
             {t('empty')}
           </p>

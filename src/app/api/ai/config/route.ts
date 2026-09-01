@@ -8,7 +8,7 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { embedTexts } from '@/lib/ai/embeddings'
-import { AiError, type AiProvider } from '@/lib/ai/types'
+import { AiError, mensagemSeguraDeAiError, type AiProvider } from '@/lib/ai/types'
 
 function bad(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
@@ -210,8 +210,12 @@ export async function POST(request: Request) {
         })
       } catch (err) {
         if (err instanceof AiError) {
+          // ⚠️ Nunca `err.message` cru: em `invalid_key` ele ECOA a chave
+          // ("Incorrect API key provided: sk-…abcd") — e com `rawKey` vazio
+          // a chave validada é a GUARDADA, que quem salva nem digitou. A
+          // mesma exceção do save do modelo do Radar, logo abaixo (#30).
           return NextResponse.json(
-            { error: err.message, code: err.code },
+            { error: mensagemSeguraDeAiError(err), code: err.code },
             { status: 400 },
           )
         }
@@ -244,11 +248,9 @@ export async function POST(request: Request) {
         // ela ecoa a chave enviada ("Incorrect API key provided:
         // sk-…abcd") — e a chave pode ser a GUARDADA, que quem está
         // salvando nem digitou. Só o caso de chave vira texto genérico.
-        const ehChave = err instanceof AiError && err.code === 'invalid_key'
-        const motivo = ehChave
-          ? 'o provedor recusou a chave'
-          : err instanceof AiError
-            ? err.message
+        const motivo =
+          err instanceof AiError
+            ? mensagemSeguraDeAiError(err)
             : 'erro desconhecido do provedor'
         return NextResponse.json(
           {
