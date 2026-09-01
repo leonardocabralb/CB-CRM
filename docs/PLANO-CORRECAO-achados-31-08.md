@@ -154,6 +154,27 @@ Tomadas ao fim da primeira sessão de execução, delegando à recomendação:
   — o operador descartou uma NÃO-análise. Exceção estreita, escrita ao lado
   das três assimetrias do ciclo de vida no CLAUDE.md.
 
+### Estado de integração (sonda de 01/09, TODAS as frentes entregues)
+
+Ordem de merge (11 branches): `#84 → F1 #86 → F2 #90 → F3 #87 → F7 #88 →
+F4 #89 → F6 #91 → F8 #92 → F10 #93 → F11 #94 → docs #85`. Sonda em HEAD
+destacado: **mescla limpa de ponta a ponta**, e o estado INTEGRADO passa
+174 arquivos / **2304 testes**, typecheck, lint (0 erros) e os dois portões
+de i18n. CI verde nos 11 PRs.
+
+⚠️ **Três conflitos reais foram resolvidos DENTRO das branches** para o
+operador nunca os ver: `#84 × F1` (render do catálogo), `#84 × F4` (tabela
+do CLAUDE.md) e `F2 × F7` (`use-broadcast-sending.ts` — as duas frentes
+acrescentaram coisas diferentes na mesma linha do `useAuth()`).
+
+⚠️ **Duas armadilhas de LINT que só o CI pegou** (o `npm run lint` local
+imprime a linha "0 errors and 2 warnings potentially fixable" DEPOIS do
+resumo real — ler `✖ N problems (E errors, …)`, nunca a última linha):
+o React Compiler recusa memo cuja dep saia de um `.find()` não memoizado
+("Existing memoization could not be preserved" — F8), e `setState` síncrono
+no corpo de um `useEffect` é ERRO, não aviso (F11). As duas foram
+corrigidas e o comportamento remedido na tela.
+
 ### Estado de integração (sonda de 31/08, fim da sessão 1)
 
 As branches de **F1 (#86)** e **F4 (#89)** contêm o merge do **PR #84** — os
