@@ -213,6 +213,7 @@ export async function rodarCicloDoRadar(
         accountId: conversa.account_id,
         channelId: conversa.channel_id,
         deadlineMs: inicioCiclo + TETO_ABSOLUTO_MS,
+        descarteSobreFalha: descarteFoiSobreFalha(existente),
       })
       resultado.analisadas += 1
     } catch (err) {
@@ -224,6 +225,28 @@ export async function rodarCicloDoRadar(
   }
 
   return resultado
+}
+
+/**
+ * O descarte desta linha foi dado sobre uma FALHA, não sobre um veredito?
+ *
+ * ⚠️ É o discriminador da exceção estreita do #23 (decisão §0.6 do plano
+ * 31/08) à regra "descartado nunca reabre": linha `failed` que NUNCA teve
+ * análise concluída (`analisado_em` nulo — a falha não o carimba) não
+ * tinha veredito NENHUM na tela; o operador descartou o aviso "análise
+ * falhou", não um sinal da IA. Quando a análise enfim der certo, o
+ * resultado REAL reabre — senão fica invisível para sempre sob um
+ * descarte que nunca o viu (a linha `failed` com tentativas < 3 reanalisa
+ * sozinha no ciclo seguinte, e `descartado` não tem outra volta).
+ *
+ * Linha que JÁ teve análise concluída (`analisado_em` preenchido) segue a
+ * regra geral mesmo com falha por cima: havia conteúdo real no cartão, e
+ * foi ele que o descarte rejeitou — reabrir repetiria o falso positivo.
+ */
+export function descarteFoiSobreFalha(
+  insight: Pick<InsightExistente, 'status' | 'analisado_em'> | undefined,
+): boolean {
+  return insight?.status === 'failed' && insight.analisado_em === null
 }
 
 /**
@@ -414,6 +437,12 @@ export async function analisarConversaReivindicada(
      *  curl do agendador). As transcrições de áudio respeitam este
      *  orçamento, reservando o tempo da análise que ainda vem. */
     deadlineMs?: number
+    /** Retrato do CLAIM: a linha estava `failed` sem análise concluída
+     *  (`descarteFoiSobreFalha`). Habilita a exceção estreita do #23 —
+     *  descarte dado sobre a falha reabre quando a análise boa chegar.
+     *  Calculado pelo CHAMADOR porque o `analisado_em` anterior deixa de
+     *  existir assim que o UPDATE principal o sobrescreve. */
+    descarteSobreFalha?: boolean
   },
 ): Promise<{ semIa: boolean }> {
   const janelaFim = new Date()
@@ -802,7 +831,10 @@ export async function analisarConversaReivindicada(
   //   - `descartado` NUNCA reabre sozinho: descartar = "a IA errou aqui";
   //     reanálise repetiria o mesmo falso positivo e o operador o
   //     descartaria de novo a cada mensagem — a fadiga de alarme que a
-  //     tela promete combater. Reabre só à mão (botão Reabrir).
+  //     tela promete combater. Reabre só à mão (botão Reabrir) — com UMA
+  //     exceção estreita logo abaixo (#23): descarte dado sobre linha
+  //     `failed` que nunca teve análise concluída não descartou veredito
+  //     nenhum, e a PRIMEIRA análise boa reabre.
   const ultimaDoCliente = [...comData]
     .reverse()
     .find((m) => m.sender_type === 'customer')
@@ -815,6 +847,25 @@ export async function analisarConversaReivindicada(
       .lt('estado_em', ultimaDoCliente.created_at)
     if (estadoErr) {
       console.error('[radar] reset de estado não gravou:', estadoErr.message)
+    }
+  }
+
+  // A exceção do #23 (ver `descarteFoiSobreFalha`): o flag vem do retrato
+  // do claim — depois do UPDATE principal o `analisado_em` antigo já foi
+  // sobrescrito e não há mais como distinguir. O `.eq('estado',
+  // 'descartado')` confere o estado AGORA: se o operador tratou/reabriu no
+  // meio-tempo, vira no-op.
+  if (args.descarteSobreFalha) {
+    const { error: reabreErr } = await admin
+      .from('cb_conversation_insights')
+      .update({ estado: 'aberto', estado_por: null, estado_em: null })
+      .eq('id', args.insightId)
+      .eq('estado', 'descartado')
+    if (reabreErr) {
+      console.error(
+        '[radar] reabertura do descarte sobre falha não gravou:',
+        reabreErr.message,
+      )
     }
   }
 
@@ -887,6 +938,9 @@ export async function reanalisarConversa(
       accountId: conversa.account_id,
       channelId: conversa.channel_id,
       deadlineMs: Date.now() + TETO_ABSOLUTO_MS,
+      descarteSobreFalha: descarteFoiSobreFalha(
+        (existente as InsightExistente | null) ?? undefined,
+      ),
     })
   } catch (err) {
     const motivo = err instanceof Error ? err.message : 'erro desconhecido'

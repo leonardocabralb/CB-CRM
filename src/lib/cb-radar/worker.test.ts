@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { claimVivo, precisaDeAnalise, THROTTLE_MS, TRAVADA_MIN } from './worker'
+import {
+  claimVivo,
+  descarteFoiSobreFalha,
+  precisaDeAnalise,
+  THROTTLE_MS,
+  TRAVADA_MIN,
+} from './worker'
 
 // A regra de candidatura já produziu o bug mais caro da revisão da 941:
 // linha `failed` que nunca teve sucesso (janela_fim NULL) era lida como
@@ -168,5 +174,54 @@ describe('claimVivo (#28)', () => {
     // O mesmo instante (11:59Z) escrito de dois jeitos: os dois são vivos.
     expect(claimVivo('2026-08-31T11:59:00+00:00', agora)).toBe(true)
     expect(claimVivo('2026-08-31T08:59:00-03:00', agora)).toBe(true)
+  })
+})
+
+describe('descarteFoiSobreFalha (#23)', () => {
+  // A exceção ESTREITA à regra "descartado nunca reabre": só a linha
+  // `failed` que nunca teve análise concluída — ali o operador descartou o
+  // aviso "análise falhou", não um veredito da IA, e a linha reanalisa
+  // sozinha no ciclo seguinte (tentativas < 3), deixando o sinal real
+  // invisível para sempre sob o descarte.
+  it('failed sem análise concluída: o descarte era sobre a falha', () => {
+    expect(
+      descarteFoiSobreFalha(insight({ status: 'failed', analisado_em: null })),
+    ).toBe(true)
+  })
+
+  it('failed com análise antiga por baixo NÃO entra na exceção', () => {
+    // Havia conteúdo real no cartão (a análise velha) — foi ele que o
+    // descarte rejeitou; reabrir repetiria o falso positivo.
+    expect(
+      descarteFoiSobreFalha(
+        insight({ status: 'failed', analisado_em: '2026-08-25T10:00:00Z' }),
+      ),
+    ).toBe(false)
+  })
+
+  it('done e ausente ficam na regra geral', () => {
+    expect(
+      descarteFoiSobreFalha(
+        insight({ status: 'done', analisado_em: '2026-08-26T10:00:00Z' }),
+      ),
+    ).toBe(false)
+    expect(descarteFoiSobreFalha(undefined)).toBe(false)
+  })
+
+  it('o fio está ligado: os DOIS call sites passam o flag e o update confere o estado', () => {
+    // A regra pura acima não prova que alguém a chama. O flag tem de ser
+    // calculado no CHAMADOR (depois do UPDATE principal o analisado_em
+    // antigo já foi sobrescrito) — no ciclo e na reanálise manual — e o
+    // update da reabertura confere `estado='descartado'` na hora (clique
+    // do operador no meio-tempo vira no-op).
+    const fonte = fs
+      .readFileSync(path.join(__dirname, 'worker.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '')
+    const chamadas = fonte.match(/descarteSobreFalha: descarteFoiSobreFalha\(/g) ?? []
+    expect(chamadas.length).toBe(2)
+    const reabre = fonte.indexOf('args.descarteSobreFalha')
+    expect(reabre).toBeGreaterThan(-1)
+    expect(fonte.slice(reabre, reabre + 400)).toContain("eq('estado', 'descartado')")
   })
 })
