@@ -184,7 +184,7 @@ as frentes deles 🔵 e leve as opções ao operador antes de implementar.
 | **F3** | Fila de gravação de campo personalizado | #09 #10 (+#03) | 🟠 alto | ✅ | #87 |
 | **F4** | Radar: alarme apagado ou inalcançável | #05 #21 #22 #23 #28 | 🟠 alto | ✅ (#22b e #23b pelas decisões §0.6) | #89 |
 | **F5** | Vazio virando afirmação (`useChannels`) | #06 #08 | 🟠 alto | ⏸️ **aguardando a mesclagem do PR #84**: o consumo do sinalizador em `message-thread.tsx` (linha do `janelaDe24h`) e o M10 caem DENTRO do hunk 514-546 que o #84 reescreve — fazer antes conflita | — |
-| **F6** | Portão de i18n no CI | #18 #19 #20 #24 | 🟠 alto | ⬜ | — |
+| **F6** | Portão de i18n no CI | #18 #19 #20 #24 | 🟠 alto | ✅ | #91 |
 | **F7** | Guardas e testes estruturais com falso verde | #14 #15 | 🟠 alto | ✅ | #88 |
 | **F8** | Filtros do inbox | #16 #25 #26 | 🟡 médio | ⬜ | — |
 | **F9** | Erro de banco lido como ausência | #04 #07 | 🟡 médio | ✅ (#04 no PR #86; #07 no PR #89, mesma branch da F4) | #86/#89 |
@@ -1433,6 +1433,14 @@ tradutor em vez de "qualquer coisa que comece com t":
 Uma allowlist de "não é tradutor" (`twMerge|toast|track|truncate`) é remendo:
 a próxima função com `t` volta a reprovar.
 
+**Resolvido em** PR #91 (opção "casar só o nome declarado", na forma mínima:
+o identificador `t` EXATO, que é a convenção da casa nos dois arquivos folha
+reais — allowlist de "não é tradutor" foi descartada como remendo, como o
+plano previa). · **Medido:** teste do repro (`toast('Contrato salvo')` +
+`twMerge('flex gap-2')` em folha → OK) + mutação (regex antigo de volta → o
+teste reprova). Contra o repo real: 2673 literais conferidas, o MESMO total
+de antes — cobertura preservada.
+
 ---
 
 ### #19 — Dois `const t` no mesmo arquivo perdem um namespace
@@ -1475,6 +1483,11 @@ for (const m of fonte.matchAll(RE_BINDING)) {
 e `escopos` vira a união de todos os Sets — mantendo a leniência declarada
 ("cobra contra todos os namespaces do arquivo"), agora de verdade.
 
+**Resolvido em** PR #91, exatamente na forma proposta (nome → `Set`, escopos
+= união). · **Medido:** teste com dois componentes/dois namespaces (era o
+repro: `draftHint` reprovando "sob: Channels") → OK, e chave ausente nos
+DOIS continua reprovando; mutação (sobrescrever de volta) → reprova.
+
 ---
 
 ### #20 — Modo folha reprova chave aninhada que EXISTE
@@ -1501,6 +1514,12 @@ para lá trava a publicação. O repo tem **249** chamadas `t('a.b…')`.
 alguma chave do dicionário (`[...dicionario].some(k => k === chave || k.endsWith('.' + chave))`),
 em vez de comparar contra o último segmento. Mantém a garantia fraca que o
 modo folha admite ter, sem o falso vermelho.
+
+**Resolvido em** PR #91: `folhas` (últimos segmentos) virou `sufixos` (todos
+os sufixos por ponto de toda chave — `a.b.c` → c, b.c, a.b.c), e o modo
+folha cobra pertinência ali. · **Medido:** `t('table.name')` com
+`Broadcasts.page.table.name` no dicionário → OK; `t('table.colunaInventada')`
+→ FALHA; mutação (último segmento de volta) → o teste do repro reprova.
 
 ---
 
@@ -1546,6 +1565,22 @@ não entra em `bloqueantes`), mas `src/i18n/messages.test.ts`, que roda no
 MESMO job, reprova. Quem seguir a mensagem do checador novo e acrescentar a
 chave só ao `pt-BR` passa nos dois scripts e quebra dois passos adiante. Vale
 alinhar as duas guardas — ou ao menos dizer isso na mensagem de erro.
+
+**Resolvido em** PR #91, com as duas guardas propostas — e uma lição de
+ORDEM medida na implementação: a guarda "importa e não produz binding" tem
+de rodar DEPOIS do gate do modo folha, senão acusa o import-só-de-tipo do
+`message-media.tsx` (`ReturnType<typeof useTranslations>`), que é folha
+legítimo. Piso `PISO_CONFERIDAS = 2400` (~90% das 2673; a mensagem diz que
+o defeito é o ALCANCE, não uma chave); invocação direta continua aceita. A
+armadilha relacionada do parity também: a mensagem de `sobrando` agora
+avisa que `messages.test.ts` reprova chave órfã. Os fixtures dos testes
+entram por `I18N_CHECK_ROOT`/`I18N_CHECK_PISO` (inertes fora dos testes), e
+`vitest.config.ts` passou a incluir `scripts/**` — teste de portão que não
+roda é portão sem prova. · **Medido:** o repro do alias
+(`useTranslations as useTraducao` + chave inventada) sai de exit 0
+silencioso para FALHA nomeando o arquivo; piso reprovando com "cobertura
+CAIU"; 5/5 mutações da frente reprovam exatamente o teste correspondente;
+suíte 171/2264 verde.
 
 ---
 
