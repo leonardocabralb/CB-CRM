@@ -2354,7 +2354,7 @@ avaliado e rejeitado.
 | **M18** | `perfis-panel.tsx:538` | a grade de canais do perfil não tem a saída "Todos" nem o rótulo de id órfão que o `ChannelMultiSelect` já tem → recorte órfão fica irremovível e a lista de perfis afirma o contrário na mesma tela | PR próprio |
 | **M19** | `agenda/[id]/route.ts:245` | `channel_id` torto no PATCH vira `null` (desvincula o canal) e devolve 200, enquanto o mesmo PR aplicou "presente e torto = 400" a `owner_user_id` e `contact_id` | F9 — ⬜ **NÃO FEITO**: a F9 fechou #04 e #07 (rotas de conversa e de estado do radar); este é OUTRA rota (PATCH de perfil/canal) e não foi tocado |
 | **M20** | `965_cb_transferencia_limpa_perfil.sql` | conserta a CAUSA e não faz backfill: um `profiles` que já esteja `owner` + `perfil_id` preenchido (o estado que o cabeçalho chama de irremovível) permanece assim para sempre | PR próprio |
-| **M21** | vários (detalhe abaixo) | pacote de reuso/simplificação — **cada item com sua âncora**, senão a "carona" não acontece | `/simplify` |
+| **M21** | vários (detalhe abaixo) | pacote de reuso/simplificação — **cada item com sua âncora**, senão a "carona" não acontece | 🟨 PR #100 fez os itens VERIFICADOS: o menu de blocos (que já divergira — 12px × 11px; agora `<MenuDeBlocos>`, medido igual nas duas telas), o reexport de `TIPO_DATA` e as duas funções da aba Traqueamento extinta. ⚠️ Três itens da lista NÃO eram o que a nota dizia — ver as correções abaixo da tabela |
 | **M23** | `src/lib/cb-radar/worker.ts:428` | `if (agErr) throw` na consulta de agendadas derruba a análise INTEIRA e queima 1 das 3 tentativas, por um refinamento opcional da régua. A metade gêmea (`use-radar.ts:203`) degrada com `console.warn`, de propósito. Três vezes na mesma conversa e a linha congela em `failed` | F4 — ✅ PR #89 (o `throw` do erro da consulta de agendadas ficou, com a DIREÇÃO do erro documentada no worker: degradar apagaria o alarme) |
 
 **Detalhe do M21** (âncoras conferidas em `origin/main` @ `b9ceca8`):
@@ -2371,6 +2371,25 @@ avaliado e rejeitado.
 | `src/components/contacts/custom-fields-manager.tsx:553-560` × `:569-571` | o estado otimista do arrastar reimplementa `posicoesDoBloco` inline, 15 linhas acima da chamada real |
 | `src/components/contacts/custom-fields-manager.tsx:914-921` × `:1010-1017` | o "input que salva no blur" copiado no mesmo arquivo (bloco e campo) |
 | `src/components/inbox/filtros-salvos-menu.tsx:465` × `:483` | o corpo do renomear escrito duas vezes (Enter e clique) |
+
+⚠️ **Três itens desta lista foram MEDIDOS em 01/09 e não eram o que a nota
+dizia** — registrado aqui porque "código morto" que não está morto é a pior
+carona possível:
+
+- **`.cor` do `PedacoDoFiltro` É LIDO** (`inbox-filters.tsx:421`, a bolinha
+  colorida da etiqueta). A nota dizia "calculados para todo pedaço e lidos por
+  ninguém"; vale só para `.limpar`.
+- **`.limpar` não deve ser apagado.** O painel monta as próprias pastilhas com
+  `aoRemover: () => mexer({ tipo: "todas" })` — o MESMO conhecimento que o
+  `descreverFiltro` já guarda em `limpar: { tipo: "todas" }`. Apagar o campo
+  consagraria a duplicata; o conserto é o primeiro item da tabela (unificar as
+  duas superfícies), que é trabalho próprio e não carona.
+- **`gravaAoSair` fica exportada.** Ela não tem call site de produção, mas TEM
+  teste próprio, e é ela que ENUNCIA a regra (`gravaAoEscolher` é a negação).
+  Removê-la trocaria clareza por uma linha a menos.
+- **`salvo()`/`emVoo()` da fila ficam.** Existem para o teste inspecionar a
+  fila — e é esse teste que guarda a corrida que apagava edição do operador.
+  Simplificação que custa cobertura de caminho de gravação não é ganho.
 
 ---
 
