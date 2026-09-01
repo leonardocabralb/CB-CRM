@@ -182,12 +182,12 @@ as frentes deles 🔵 e leve as opções ao operador antes de implementar.
 | **F1** | Vazamento e perda de dado do cliente | #01 #02 #03 #04 | 🔴 crítico | ✅ | #86 |
 | **F2** | Dono durável (CASCADE para `auth.users`) | #11 #12 #13 | 🔴 crítico | ✅ (+M1 e um 6º call site achado em implementação) | #90 |
 | **F3** | Fila de gravação de campo personalizado | #09 #10 (+#03) | 🟠 alto | ✅ | #87 |
-| **F4** | Radar: alarme apagado ou inalcançável | #05 #21 #22 #23 #28 | 🟠 alto | 🟨 #05/#21/#28 ✅ no PR #89 · **🔵 #22 e #23 aguardando decisão do operador (31/08)** | #89 |
+| **F4** | Radar: alarme apagado ou inalcançável | #05 #21 #22 #23 #28 | 🟠 alto | ✅ (#22b e #23b pelas decisões §0.6) | #89 |
 | **F5** | Vazio virando afirmação (`useChannels`) | #06 #08 | 🟠 alto | ⏸️ **aguardando a mesclagem do PR #84**: o consumo do sinalizador em `message-thread.tsx` (linha do `janelaDe24h`) e o M10 caem DENTRO do hunk 514-546 que o #84 reescreve — fazer antes conflita | — |
 | **F6** | Portão de i18n no CI | #18 #19 #20 #24 | 🟠 alto | ⬜ | — |
 | **F7** | Guardas e testes estruturais com falso verde | #14 #15 | 🟠 alto | ✅ | #88 |
 | **F8** | Filtros do inbox | #16 #25 #26 | 🟡 médio | ⬜ | — |
-| **F9** | Erro de banco lido como ausência | #04 #07 | 🟡 médio | 🟨 (#04 já saiu no #86; falta #07) | — |
+| **F9** | Erro de banco lido como ausência | #04 #07 | 🟡 médio | ✅ (#04 no PR #86; #07 no PR #89, mesma branch da F4) | #86/#89 |
 | **F10** | CI/CD e vazamento de credencial | #29 #30 | 🟡 médio | ⬜ | — |
 | **F11** | Menores de UX e estado | #17 #27 #31 #32 | 🟢 baixo | ⬜ | — |
 
@@ -1123,6 +1123,28 @@ leve ao operador com as três opções:
 pedido explícito do operador, porque listar toda conversa analisada era
 justamente o ruído que o filtro passou a cortar. O CLAUDE.md registra isso.
 
+**Resolvido em** PR #89 (decisão (b) da §0.6), com uma CALIBRAÇÃO dentro da
+decisão, registrada para veto: **2 dias úteis (22h de expediente)**, não "48h
+úteis" — a conversão hora-a-hora inflaria a régua para ~6 dias corridos
+(11h/dia), quase a janela inteira de 7, desfazendo na prática a expiração que
+o #76 criou; é o MESMO racional que o CLAUDE.md já usa para manter
+`LIMIAR_ALARME_MS` em corridas. "48h" da decisão original do operador
+(2026-08-30) sempre quis dizer "2 dias". **Simetria da escrita: adotada** (a
+decisão mandava avaliar e registrar) — em corridas, mensagem nova no fim de
+semana fazia a reanálise de segunda DESCARTAR a evidência de sexta (o mesmo
+buraco, no nascimento do sinal), e réguas em unidades diferentes tornariam a
+soma das duas inexplicável. A soma (~4 dias úteis de teto) está admitida na
+docstring da constante e no CLAUDE.md.
+· **Medido:** pinos com datas de calendário reais nos DOIS lados (leitura:
+análise de sexta 09:15 viva segunda 08:00, morta terça 10:00; escrita:
+evidência de sexta sobrevive à reanálise de segunda) + contraprova por
+mutação (reverter a leitura para corridas → 1 failed; a escrita → 1 failed).
+Suíte 2275 verde. E2E: `/radar` em produção rendendo 20 sinais / 9 cartões
+de insatisfação sob a régua nova, sem erro novo de console (não há linha
+com `analisado_em` de sexta em produção — o worker reanalisa a cada
+mensagem — então a discriminação temporal é provada pelos pinos, não pela
+tela).
+
 ---
 
 ### #23 — Descartar análise `failed` esconde o sinal real para sempre
@@ -1171,6 +1193,26 @@ está no CLAUDE.md (descartar = "a IA errou"; reanálise repetiria o falso
 positivo). A exceção proposta em (b) é estreita — descarte sobre linha que
 NUNCA teve análise concluída — e precisa ficar escrita, senão o próximo leitor
 a remove como inconsistência.
+
+**Resolvido em** PR #89 (decisão (b) da §0.6), com um REFINAMENTO do
+enunciado, descoberto na implementação: a falha NÃO carimba `analisado_em`,
+então "estado_em posterior ao analisado_em da falha" não é implementável
+como comparação — e a comparação crua `estado_em > analisado_em` reabriria
+TODO descarte normal (todo descarte é posterior à análise descartada). O
+discriminador real: `status='failed'` com `analisado_em IS NULL` no retrato
+do CLAIM (`descarteFoiSobreFalha`, pura e exportada) — linha que nunca teve
+análise concluída, onde o descarte só pode ter sido sobre o aviso de falha.
+A linha done→failed+descarte fica na regra geral: havia conteúdo real no
+cartão, e foi ele que o operador rejeitou. O flag viaja do CHAMADOR (após o
+UPDATE principal o carimbo antigo já foi sobrescrito) nos dois call sites
+(ciclo e reanálise manual); o update de reabertura confere
+`estado='descartado'` na hora (clique no meio-tempo vira no-op) e mora ao
+lado do reset condicional de `tratado`, como o CLAUDE.md manda.
+· **Medido:** 4 pinos da regra pura + pino estrutural do fio (2 call sites +
+`.eq('estado','descartado')` no update); mutações: regra invertida → 2
+failed, flag removido do ciclo → 3 failed. A exceção está escrita ao lado
+das três assimetrias no CLAUDE.md. Sem E2E: forçar falha real de análise +
+descarte + sucesso em produção exigiria quebrar a chave de IA da conta.
 
 ---
 
@@ -1782,6 +1824,18 @@ E conferir se a tela tem ramo para 500 (hoje ela cai no genérico
 novo em vez de anunciar perda de dado.
 
 **Ver também #04**, a mesma classe na rota de abrir conversa.
+
+**Resolvido em** PR #89 (na branch da F4, como a §0.6 previu — o bloco é o
+MESMO que o #28 reescreveu; branch própria criaria o terceiro conflito do
+trem). A releitura destrutura `error` → 500 `LOOKUP_FAILED` com log; a tela
+ganhou o ramo (`consultaFalhou` nos dois dicionários: "Não foi possível
+conferir a análise agora — tente de novo em alguns segundos").
+· **Medido (E2E em produção, ZERO mutação de dado):** PATCH com
+`analisado_em` desatualizado numa conversa real → **409 `analysis_changed`**
+e o banco conferido intocado depois (estado/carimbo idênticos); PATCH em
+conversa inexistente → **404 verdadeiro**. O ramo do 500 em si é
+inalcançável sem derrubar o banco — coberto pelos dois caminhos vizinhos
+medidos + leitura. i18n ×2 verdes.
 
 ---
 
