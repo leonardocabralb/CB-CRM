@@ -243,8 +243,18 @@ export async function PATCH(
       mudancas[campo] =
         typeof valor === 'string' && valor.trim() ? valor.trim() : null;
     } else if (campo === 'channel_id') {
-      mudancas[campo] =
-        typeof valor === 'string' && UUID.test(valor) ? valor : null;
+      // ⚠️ PRESENTE E TORTO = 400, como `owner_user_id` e `contact_id`
+      // logo acima. A forma antiga (`… ? valor : null`) traduzia lixo em
+      // DESVINCULAR e devolvia 200: um integrador que mandasse o id errado
+      // via API perdia o canal da reunião — e a resposta dizia que deu
+      // certo. `null` explícito continua desvinculando: é gesto legítimo.
+      if (valor === null) {
+        mudancas[campo] = null;
+      } else if (typeof valor === 'string' && UUID.test(valor)) {
+        mudancas[campo] = valor;
+      } else {
+        return NextResponse.json({ error: 'Canal inválido.' }, { status: 400 });
+      }
     } else if (campo === 'titulo') {
       mudancas[campo] = (valor as string).trim();
     } else {
