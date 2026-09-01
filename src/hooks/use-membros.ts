@@ -42,8 +42,11 @@ export function useMembros(): UseMembrosResult {
 
   useEffect(() => {
     let cancelado = false;
-    setCarregando(true);
     (async () => {
+      // Dentro da IIFE, não no corpo do efeito: `setState` síncrono ali é
+      // erro de lint (cascading renders). No retry a lista some enquanto a
+      // nova não chega — é o que o `carregando` significa.
+      setCarregando(true);
       const lista = await fetchAccountMembersOrNull();
       if (!cancelado) {
         setMembros(lista ?? []);
