@@ -12,14 +12,21 @@
 # read at RUNTIME and are injected by the stack env, never baked in.
 # ============================================================
 
+# ⚠️ A major do Node vive AQUI e no `.nvmrc` — e os dois têm de bater. O
+# `FROM` não lê arquivo do contexto de build, então não há como derivar um do
+# outro; é o único número duplicado que sobrou. Divergir volta a pôr CI e
+# produção em majors diferentes, que é o que já custou um vermelho (ver a
+# nota do `setup-node` em .github/workflows/pipeline.yml).
+ARG NODE_VERSION=22
+
 # ---- deps: install production + build deps ----
-FROM node:22-alpine AS deps
+FROM node:${NODE_VERSION}-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # ---- builder: compile the standalone server ----
-FROM node:22-alpine AS builder
+FROM node:${NODE_VERSION}-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -46,7 +53,7 @@ ENV ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000
 RUN npm run build
 
 # ---- runner: minimal runtime ----
-FROM node:22-alpine AS runner
+FROM node:${NODE_VERSION}-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production \

@@ -170,6 +170,26 @@ as que voltam a conflitar):
   arquivos `media-lightbox.tsx`, `message-media.tsx` e `lib/media/*` vieram no
   merge mas **não estão ligados** — se um merge futuro os religar, o inbox passa
   a ter dois visualizadores.
+- ⚠️ **Uma major de Node só, e ela mora no `.nvmrc` (hoje `22`, o LTS).**
+  Chegaram a existir TRÊS ao mesmo tempo — dev 24, CI 20, produção 22 — e isso
+  já custou um vermelho real: o PR #66 passou na máquina do dev e reprovou no
+  CI em `formatCurrencyShort`, porque cada V8 resolvia `notation: 'compact'`
+  de um jeito (`R$ 900` vs `R$ 900,0`). Teste que toque **Intl, fuso ou
+  colação** é loteria quando as majors divergem. Quem mexer nisso:
+  - O CI **não escreve o número**: `node-version-file: .nvmrc`. Um merge do
+    upstream traz o `node-version: <n>` cravado de volta — **trocar de novo
+    pelo `node-version-file`**, senão o CI volta a poder divergir sozinho.
+  - **Sobra um número duplicado, e é inevitável**: o `ARG NODE_VERSION` do
+    `Dockerfile`. `FROM` não lê arquivo do contexto de build, então produção
+    não tem como derivar do `.nvmrc`. Mudou um, muda o outro.
+  - `engines` (raiz **e** `mcp-server/`) é `>=22.12.0` — piso **derivado**, não
+    escolhido: `vite` e `rolldown` exigem `^20.19.0 || >=22.12.0`, e o ramo do
+    20 caiu. Não baixar sem conferir os `engines` das dependências.
+  - `packageManager: npm@10.9.9` é a linha de npm que o Node 22 embarca. Subir
+    a major do Node sem subir esse pin volta a descasar CI e Dependabot.
+  - Máquina nova: `nvm use` na raiz. Quem usa **asdf** precisa de
+    `legacy_version_file = yes` no `~/.asdfrc` para ele respeitar o `.nvmrc`.
+
 - ⚠️ **Um workflow só: `.github/workflows/pipeline.yml`.** O `ci.yml` e o
   `migrations.yml` eram DO UPSTREAM e foram removidos; as três etapas
   (verificar → migrations → deploy) viraram jobs de um arquivo nosso, com o
@@ -2169,6 +2189,8 @@ mesma passada** (help/config no app, `docs/`, ou README do módulo). Doc obsolet
 
 ## Antes de aplicar mudanças
 
+- [ ] Está no Node do `.nvmrc` (`nvm use` na raiz)? Rodar teste numa major
+      diferente da do CI é como o PR #66 passou aqui e reprovou lá.
 - [ ] Estamos numa branch derivada de `main`? Não commitar direto no `main`.
 - [ ] Branch criada a partir de `main` atualizado (`git pull origin main`)?
 - [ ] Se mexer em schema: migration na faixa `900+`/`cb_` e check de drift.
@@ -2185,6 +2207,8 @@ mesma passada** (help/config no app, `docs/`, ou README do módulo). Doc obsolet
   branch do CB-CRM. (Regra de ouro 1.)
 - ❌ **Criar branch de desenvolvimento a partir de algo que não seja `main`.**
   (Regra de ouro 2.)
+- ❌ Cravar a major do Node no `pipeline.yml` (`node-version:`) em vez de
+  deixá-la sair do `.nvmrc` — é assim que CI e máquina voltam a divergir.
 - ❌ Commitar direto no `main` sem passar por branch de feature.
 - ❌ `git push` no `upstream` (é read-only).
 - ❌ Numerar migration nossa na sequência do upstream (`037`, `038`…) em vez da
@@ -2205,6 +2229,7 @@ mesma passada** (help/config no app, `docs/`, ou README do módulo). Doc obsolet
 ## Comandos úteis
 
 ```bash
+nvm use              # entra no Node do .nvmrc (22) — ANTES de tudo
 npm run dev          # servidor de desenvolvimento (localhost:3000)
 npm run build        # build de produção
 npm run lint         # eslint
