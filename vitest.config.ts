@@ -6,7 +6,10 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // `scripts/**` entra porque os checadores de i18n são PORTÃO do CI e
+    // ganharam testes próprios (F6 do plano 31/08) — teste de portão que
+    // não roda é portão sem prova.
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "scripts/**/*.test.ts"],
     // Dummy secrets — encryption.ts / webhook-signature.ts read these
     // at module load. Tests never hit a real Meta/Supabase service, so
     // any 32-byte hex / non-empty string will do; keep them lexically

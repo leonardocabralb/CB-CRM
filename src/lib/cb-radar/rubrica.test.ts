@@ -362,6 +362,30 @@ describe('interpretarAnalise', () => {
     expect(interpretarAnalise(corpo, morta)!.insatisfacao).toBe(true)
   })
 
+  it('⚠️ evidência de sexta sobrevive à reanálise de segunda (régua ÚTIL na escrita)', () => {
+    // A simetria do #22: em horas CORRIDAS, uma mensagem nova no fim de
+    // semana fazia a reanálise de segunda medir 72h e descartar a evidência
+    // de sexta — o sinal nem NASCIA. Em tempo útil, sex 09:00 → seg 10:00
+    // são 12h de expediente (sex 10h + seg 2h), dentro dos 2 dias úteis.
+    const linhas = montarTranscrito([
+      {
+        id: 'reclamacao-sexta',
+        senderType: 'customer',
+        createdAt: new Date('2026-08-28T09:00:00-03:00'), // sexta
+        texto: 'estou muito insatisfeito com a demora',
+      },
+      {
+        id: 'retorno-fds',
+        senderType: 'customer',
+        createdAt: new Date('2026-08-30T15:00:00-03:00'), // domingo
+        texto: 'alguém me responde?',
+      },
+    ]).linhas
+    const corpo = { ...base, insatisfacao: true, insatisfacao_evidencias: [1] }
+    const segunda = new Date('2026-08-31T10:00:00-03:00').getTime()
+    expect(interpretarAnalise(corpo, linhas, segunda)!.insatisfacao).toBe(true)
+  })
+
   it('clampa nota fora da escala e ignora nota não numérica', () => {
     expect(interpretarAnalise({ ...base, nota: 14 }, linhas)!.nota).toBe(10)
     expect(interpretarAnalise({ ...base, nota: -2 }, linhas)!.nota).toBe(0)
@@ -459,14 +483,18 @@ describe('interpretarAnalise', () => {
 })
 
 // ------------------------------------------------------------
-// insatisfacaoAindaVale — a régua de 48h também na LEITURA
+// insatisfacaoAindaVale — a régua de recência também na LEITURA, em
+// TEMPO ÚTIL (2 dias de expediente) desde o #22 do plano 31/08
 // ------------------------------------------------------------
 describe('insatisfacaoAindaVale', () => {
+  // 28/08/2026 é sexta-feira; 12:00Z = 09:00 em São Paulo.
   const AGORA = Date.parse('2026-08-28T12:00:00Z');
   const hAtras = (h: number) => new Date(AGORA - h * 3_600_000).toISOString();
 
   it('sinal de análise recente vale', () => {
     expect(insatisfacaoAindaVale(true, hAtras(2), AGORA)).toBe(true);
+    // 47h corridas atrás = quarta 10:00 SP → 21h ÚTEIS (qua 9h + qui 11h +
+    // sex 1h): dentro dos 2 dias de expediente por pouco.
     expect(insatisfacaoAindaVale(true, hAtras(47), AGORA)).toBe(true);
   });
 
@@ -476,6 +504,22 @@ describe('insatisfacaoAindaVale', () => {
     // insatisfacao=true e o cartão seguia aceso do 3º ao 7º dia.
     expect(insatisfacaoAindaVale(true, hAtras(49), AGORA)).toBe(false);
     expect(insatisfacaoAindaVale(true, hAtras(24 * 6), AGORA)).toBe(false);
+  });
+
+  it('⚠️ o caso do #22: análise de sexta ainda vale na segunda de manhã', () => {
+    // Em horas CORRIDAS a reclamação analisada sexta 09:15 expirava no
+    // domingo — antes de alguém abrir o painel — e sem a aba "Todos" o
+    // sumiço era definitivo. Em tempo ÚTIL o fim de semana não conta.
+    const analiseSexta = '2026-08-28T12:15:00Z'; // sexta 09:15 SP
+    const segundaCedo = Date.parse('2026-08-31T11:00:00Z'); // seg 08:00 SP
+    expect(insatisfacaoAindaVale(true, analiseSexta, segundaCedo)).toBe(true);
+
+    // E a régua continua expirando: 22h úteis a partir de sexta 09:15
+    // esgotam terça ~09:15 (sex 9h45 + seg 11h + ter 1h15).
+    const tercaMeioDaManha = Date.parse('2026-09-01T13:00:00Z'); // ter 10:00 SP
+    expect(insatisfacaoAindaVale(true, analiseSexta, tercaMeioDaManha)).toBe(
+      false,
+    );
   });
 
   it('não inventa sinal onde não havia', () => {

@@ -68,10 +68,19 @@ describe('NÃO abre negócio: disparo em massa e resposta de robô', () => {
   // Não são omissões: são a decisão. Um broadcast não é o escritório
   // decidindo abordar 500 pessoas uma a uma, e um fluxo respondendo não é
   // ninguém decidindo nada.
+  //
+  // ⚠️ Há DOIS `meta-send.ts` no repo, e o achado #14 do plano de 31/08 é
+  // exatamente esta lista ter vigiado o de `lib/automations/` — o WRAPPER —
+  // enquanto fluxo, resposta de IA e mídia de automação saem por
+  // `lib/flows/meta-send.ts`, que ficou descoberto: trocar `engineSendText`
+  // por `sendMessageToConversation` lá abria card para toda resposta de robô
+  // com a suíte verde.
   const NAO_PODEM_ROTEAR = [
     { arquivo: 'lib/whatsapp/broadcast-core.ts', quem: 'broadcast' },
-    { arquivo: 'lib/automations/meta-send.ts', quem: 'automação (Meta)' },
-    { arquivo: 'lib/cb-channels/engine-send.ts', quem: 'automação/fluxo (motor)' },
+    { arquivo: 'lib/whatsapp/broadcast-resume.ts', quem: 'retomada de broadcast' },
+    { arquivo: 'lib/flows/meta-send.ts', quem: 'fluxo/IA/automação (o sender REAL)' },
+    { arquivo: 'lib/automations/meta-send.ts', quem: 'automação (wrapper que delega ao de cima)' },
+    { arquivo: 'lib/cb-channels/engine-send.ts', quem: 'resolução de canal do motor' },
   ];
 
   for (const { arquivo, quem } of NAO_PODEM_ROTEAR) {
@@ -84,6 +93,55 @@ describe('NÃO abre negócio: disparo em massa e resposta de robô', () => {
     // de envio" parece limpeza de código, e traz o roteador junto, escondido.
     it(`${quem} não passa pelo núcleo de envio (que roteia)`, () => {
       expect(fonte(arquivo)).not.toContain('sendMessageToConversation');
+    });
+  }
+});
+
+// ============================================================
+// A varredura DEFAULT-DENY (a correção estrutural do #14).
+//
+// Lista de negados envelhece a cada sender novo — foi assim que o
+// `lib/flows/meta-send.ts` ficou de fora. A varredura inverte o ônus: anda
+// `src/` inteiro e afirma que o conjunto de arquivos que CITAM o roteador ou
+// o núcleo de envio é EXATAMENTE a allowlist. Um caminho novo (ou um "reuso"
+// que traga o núcleo para um caminho de máquina) reprova POR PADRÃO, e
+// entrar na allowlist é uma decisão de produto visível no diff DESTE
+// arquivo. A igualdade é nos dois sentidos: sumir um chamador esperado (ex.:
+// desligar o roteador da ingestão) também reprova.
+// ============================================================
+
+function todosOsFontes(dir: string, acc: string[] = []): string[] {
+  for (const nome of fs.readdirSync(dir)) {
+    const p = path.join(dir, nome);
+    if (fs.statSync(p).isDirectory()) todosOsFontes(p, acc);
+    else if (/\.(ts|tsx)$/.test(nome) && !/\.test\./.test(nome)) acc.push(p);
+  }
+  return acc;
+}
+
+describe('varredura default-deny: quem cita o roteador e o núcleo', () => {
+  const PODEM_CITAR: Record<string, string[]> = {
+    routeContactToPipeline: [
+      'lib/cb-channels/pipeline-routing.ts', // a definição
+      'lib/whatsapp/inbound-store.ts', // ingestão + celular pareado (Evolution)
+      'app/api/whatsapp/webhook/route.ts', // ingestão (Meta)
+      'lib/whatsapp/send-message.ts', // núcleo de envio
+    ],
+    sendMessageToConversation: [
+      'lib/whatsapp/send-message.ts', // a definição
+      'app/api/whatsapp/send/route.ts', // compositor + primeiro contato pela ficha
+      'lib/scheduled/dispatch.ts', // agendada
+      'app/api/v1/messages/route.ts', // API pública (decisão fixada — ver R3 do plano)
+    ],
+  };
+
+  for (const [simbolo, allowlist] of Object.entries(PODEM_CITAR)) {
+    it(`só a allowlist cita ${simbolo}`, () => {
+      const citam = todosOsFontes(raiz)
+        .map((p) => path.relative(raiz, p).split(path.sep).join('/'))
+        .filter((rel) => fonte(rel).includes(simbolo))
+        .sort();
+      expect(citam).toEqual([...allowlist].sort());
     });
   }
 });

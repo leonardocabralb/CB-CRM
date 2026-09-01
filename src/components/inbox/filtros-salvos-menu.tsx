@@ -14,7 +14,7 @@
 // lá dentro engrossaria o conflito do próximo merge sem ganho nenhum.
 // ============================================================
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Bookmark,
   Check,
@@ -48,6 +48,7 @@ import type { ResultadoDaEscrita } from "@/hooks/use-filtros-salvos";
 import { contarFiltrosAtivos, type FiltrosDoInbox } from "@/lib/inbox/filtros";
 import {
   descreverFiltro,
+  limparOrfaos,
   mesmoFiltro,
   type CatalogosDoFiltro,
   type FiltroSalvo,
@@ -95,8 +96,15 @@ export function FiltrosSalvosMenu({
   const [gerirAberto, setGerirAberto] = useState(false);
 
   const aplicado = useMemo(
-    () => salvos.find((f) => mesmoFiltro(f.filtros, filtrosAtuais)) ?? null,
-    [salvos, filtrosAtuais],
+    () =>
+      // ⚠️ Compara o recorte GRAVADO já passado por `limparOrfaos` (#16): o
+      // que está no estado veio limpo (semente e clique), então um filtro
+      // com referência morta nunca casava contra o cru — o ✓ do menu não
+      // acendia nem depois de o operador clicar nele.
+      salvos.find((f) =>
+        mesmoFiltro(limparOrfaos(f.filtros, catalogos), filtrosAtuais),
+      ) ?? null,
+    [salvos, filtrosAtuais, catalogos],
   );
 
   /**
@@ -107,14 +115,32 @@ export function FiltrosSalvosMenu({
    * pode só não ter carregado ainda); o menu descreve um recorte GRAVADO, onde
    * um id que não resolve depois da carga é quase sempre coisa apagada — e
    * dizer isso é o que explica por que aquele filtro devolve pouca coisa.
+   * (Catálogo ainda VAZIO não marca órfão — guarda M4 no `descreverFiltro`.)
    */
-  const textoDoPedaco = (p: PedacoDoFiltro): string => {
-    if (p.orfao) return t("deletedRef");
-    return p.rotulo.fonte === "i18n" ? t(p.rotulo.chave) : p.rotulo.texto;
-  };
+  const textoDoPedaco = useCallback(
+    (p: PedacoDoFiltro): string => {
+      if (p.orfao) return t("deletedRef");
+      return p.rotulo.fonte === "i18n" ? t(p.rotulo.chave) : p.rotulo.texto;
+    },
+    [t],
+  );
 
-  const resumir = (f: FiltrosDoInbox) =>
-    descreverFiltro(f, catalogos).map(textoDoPedaco).join(" · ");
+  // Memoizado por filtro salvo (M5): a busca do inbox mora no mesmo pai,
+  // então este componente re-renderiza POR TECLA digitada — recalcular
+  // `descreverFiltro` para cada salvo a cada render era trabalho jogado fora
+  // com os dois diálogos fechados.
+  const resumoPorId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const f of salvos)
+      m.set(f.id, descreverFiltro(f.filtros, catalogos).map(textoDoPedaco).join(" · "));
+    return m;
+  }, [salvos, catalogos, textoDoPedaco]);
+
+  const resumir = useCallback(
+    (f: FiltrosDoInbox) =>
+      descreverFiltro(f, catalogos).map(textoDoPedaco).join(" · "),
+    [catalogos, textoDoPedaco],
+  );
 
   /**
    * ⚠️ Filtro que aponta para um canal FORA do escopo do perfil de quem olha
@@ -200,7 +226,7 @@ export function FiltrosSalvosMenu({
             </div>
           ) : (
             visiveis.map((f) => {
-              const resumo = resumir(f.filtros);
+              const resumo = resumoPorId.get(f.id) ?? resumir(f.filtros);
               return (
                 <DropdownMenuItem
                   key={f.id}
