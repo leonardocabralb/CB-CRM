@@ -113,8 +113,12 @@ export async function POST(request: Request) {
       // qual etapa o contato precisa ESTAR"), que faltava aqui: o
       // `runAutomationById` pula recortes de propósito, então uma automação
       // restrita à etapa "Fechamento" rodava à mão num lead recém-chegado —
-      // o que o caminho automático recusaria. Falha ABERTA como o motor
-      // (consulta com erro ou contato sem negócio deixam passar).
+      // o que o caminho automático recusaria. As duas direções, com motivo
+      // (M16 do plano de 31/08 — uma versão deste comentário dizia "falha
+      // aberta" para os dois casos): ERRO de consulta deixa passar
+      // (ignorância não recusa), mas contato SEM NEGÓCIO é recusado —
+      // `stageInScope` devolve false porque sem card ele não está em etapa
+      // nenhuma, e isso é fato, não lacuna.
       if (
         !(await stageInScope(db, alvo, conversa.contact_id as string, {
           conversation_id: conversa.id as string,

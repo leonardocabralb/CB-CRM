@@ -15,7 +15,13 @@
 import { removerAssinatura } from '@/lib/assinatura/assinatura'
 import type { JsonSchema } from '@/lib/ai/structured'
 import type { MetricasDaConversa } from './metricas'
-import { formatarDuracaoUtil, horaSp } from './horario-comercial'
+import {
+  ABRE_HORA,
+  FECHA_HORA,
+  formatarDuracaoUtil,
+  horaSp,
+  segundosUteisEntre,
+} from './horario-comercial'
 import { URGENCIAS, type Urgencia } from './ordenacao'
 
 // Tetos do transcrito. A maior conversa real tem ~208 mensagens; os tetos
@@ -36,18 +42,30 @@ const TETO_CHARS_TOTAL = 60_000
 export const PREFIXO_AUDIO = '[áudio] '
 
 /**
- * Insatisfação só vira sinal se a evidência estiver nas últimas 48h —
- * decisão do operador (2026-08-30).
+ * Insatisfação só vira sinal com evidência recente — decisão do operador
+ * (2026-08-30, "últimas 48h"), medida em TEMPO ÚTIL desde 31/08 (decisão
+ * §0.6 do plano): **2 dias de expediente** (22h úteis com o expediente
+ * atual), via `segundosUteisEntre`.
  *
  * A janela analisada tem 7 dias, então sem esta régua uma irritação de
  * terça-feira, já resolvida na quarta, seguia acendendo o cartão no
  * domingo.
  *
+ * ⚠️ Por que ÚTIL, e por que 2 DIAS e não "48h úteis": em horas corridas a
+ * reclamação de sexta expirava no domingo — antes de alguém abrir o painel
+ * na segunda — e sem a aba "Todos" isso é sumiço DEFINITIVO. E converter
+ * 48h corridas em 48h ÚTEIS inflaria a régua para ~6 dias corridos (11h de
+ * expediente/dia), quase a janela inteira — o mesmo racional que manteve
+ * `LIMIAR_ALARME_MS` em horas corridas. "48h" sempre quis dizer "2 dias";
+ * 2 dias ÚTEIS preserva isso e atravessa o fim de semana.
+ *
  * ⚠️ A régua vale em DOIS momentos, e um só não basta:
- *   1. na ESCRITA (`interpretarAnalise`, ancorada no instante da análise);
- *   2. na LEITURA (`insatisfacaoAindaVale`, abaixo).
+ *   1. na ESCRITA (`interpretarAnalise`, evidência → instante da análise);
+ *   2. na LEITURA (`insatisfacaoAindaVale`, análise → agora).
+ * As duas se SOMAM: evidência aceita no limite da escrita ainda vive a
+ * janela inteira da leitura — o teto real é ~4 dias úteis, por desenho.
  */
-export const JANELA_INSATISFACAO_MS = 48 * 3_600_000
+export const JANELA_INSATISFACAO_UTIL_SEG = 2 * (FECHA_HORA - ABRE_HORA) * 3_600
 
 /**
  * A insatisfação GRAVADA ainda vale, lida agora?
@@ -76,7 +94,12 @@ export function insatisfacaoAindaVale(
   if (!analisadoEm) return insatisfacao
   const quando = Date.parse(analisadoEm)
   if (Number.isNaN(quando)) return insatisfacao
-  return agoraMs - quando <= JANELA_INSATISFACAO_MS
+  // Tempo ÚTIL, não corrido: em horas corridas a reclamação analisada na
+  // sexta expirava no domingo e ninguém a via (achado #22 do plano 31/08).
+  return (
+    segundosUteisEntre(new Date(quando), new Date(agoraMs)) <=
+    JANELA_INSATISFACAO_UTIL_SEG
+  )
 }
 
 export interface MensagemParaTranscrito {
@@ -95,7 +118,7 @@ export interface LinhaDoTranscrito {
   mensagemId: string
   texto: string
   /** Quando a mensagem foi enviada — a âncora da regra de RECÊNCIA da
-   *  insatisfação (`JANELA_INSATISFACAO_MS`). */
+   *  insatisfação (`JANELA_INSATISFACAO_UTIL_SEG`). */
   createdAt: Date
   /** Autor da linha quando é da equipe E nomeado — é contra ISTO que o
    *  parser valida `observacoes_por_atendente` (observação sobre alguém
@@ -501,14 +524,20 @@ export function interpretarAnalise(
 
   // Insatisfação tem uma segunda régua além da evidência: RECÊNCIA. O
   // corte sai do INSTANTE DA ANÁLISE (ver `agoraMs` e
-  // `JANELA_INSATISFACAO_MS`) — sem ele, irritação de terça já resolvida
-  // seguia acendendo o cartão no domingo, porque a janela analisada tem 7
-  // dias.
+  // `JANELA_INSATISFACAO_UTIL_SEG`) — sem ele, irritação de terça já
+  // resolvida seguia acendendo o cartão no domingo, porque a janela
+  // analisada tem 7 dias.
   //
   // ⚠️ A âncora era a última linha do transcrito, e nessa forma a régua
   // não funcionava justamente na conversa que PARA depois da reclamação: o
   // corte envelhecia junto com a conversa e nunca a alcançava. Só o relógio
   // faz o sinal expirar.
+  //
+  // ⚠️ Medida em tempo ÚTIL, na MESMA unidade da leitura (decisão §0.6 do
+  // plano 31/08): em corridas, uma reanálise na segunda (mensagem nova no
+  // fim de semana) descartava a evidência de sexta — o mesmo buraco do
+  // #22, só que no nascimento do sinal. Régua heterogênea entre escrita e
+  // leitura também tornaria a soma das duas impossível de explicar.
   //
   // Basta UMA evidência dentro da janela para o sinal valer; as antigas
   // continuam sendo exibidas, como contexto da história. Sem âncora (nem
@@ -517,14 +546,15 @@ export function interpretarAnalise(
   const insatisfacaoEvidencias = evidencias(o.insatisfacao_evidencias)
   const ultimaLinha = linhas[linhas.length - 1]
   const ancora = agoraMs ?? ultimaLinha?.createdAt.getTime() ?? null
-  const corteInsatisfacao =
-    ancora === null ? null : ancora - JANELA_INSATISFACAO_MS
   const temEvidenciaRecente =
-    corteInsatisfacao === null
+    ancora === null
       ? insatisfacaoEvidencias.length > 0
       : insatisfacaoEvidencias.some((e) => {
           const linha = porIndice.get(e.indice)
-          return linha ? linha.createdAt.getTime() >= corteInsatisfacao : false
+          return linha
+            ? segundosUteisEntre(linha.createdAt, new Date(ancora)) <=
+                JANELA_INSATISFACAO_UTIL_SEG
+            : false
         })
   let insatisfacao = o.insatisfacao === true
   if (insatisfacao && !temEvidenciaRecente) {
