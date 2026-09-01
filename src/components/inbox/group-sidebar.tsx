@@ -64,6 +64,8 @@ interface GroupSidebarProps {
   onClose?: () => void;
   /** O fio, para a aba Arquivos. Ver `PainelDoContatoProps.messages`. */
   messages?: Message[];
+  /** A carga do fio está em curso? Ver `AbaArquivos`. */
+  messagesCarregando?: boolean;
 }
 
 export function GroupSidebar({
@@ -72,6 +74,7 @@ export function GroupSidebar({
   onGrupoAtualizado,
   onClose,
   messages = [],
+  messagesCarregando = false,
 }: GroupSidebarProps) {
   const t = useTranslations("Inbox.groupSidebar");
   const tSidebar = useTranslations("Inbox.sidebar");
@@ -403,7 +406,7 @@ export function GroupSidebar({
           value="arquivos"
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
-          <AbaArquivos messages={messages} />
+          <AbaArquivos messages={messages} carregando={messagesCarregando} />
         </TabsContent>
       </Tabs>
     </div>

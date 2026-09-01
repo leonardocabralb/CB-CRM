@@ -128,6 +128,11 @@ export interface PainelDoContatoProps {
    * antes de o fio carregar.
    */
   messages?: Message[];
+  /**
+   * A carga do fio ainda está em curso? Sem isto a aba Arquivos afirma
+   * "nenhum arquivo" enquanto as mensagens não chegaram — ver `AbaArquivos`.
+   */
+  messagesCarregando?: boolean;
 }
 
 export function PainelDoContato({
@@ -137,6 +142,7 @@ export function PainelDoContato({
   onClose,
   onContactUpdated,
   messages = [],
+  messagesCarregando = false,
 }: PainelDoContatoProps) {
   const tSidebar = useTranslations('Inbox.sidebar');
   /** Só para o rótulo do bloco Geral (966) — o mesmo que o catálogo usa, para
@@ -1460,7 +1466,7 @@ export function PainelDoContato({
           value="arquivos"
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
-          <AbaArquivos messages={messages} />
+          <AbaArquivos messages={messages} carregando={messagesCarregando} />
         </TabsContent>
 
         {/* ---- Histórico de atividade (912) — o registro completo, POR

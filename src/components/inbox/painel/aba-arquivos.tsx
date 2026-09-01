@@ -28,9 +28,20 @@ import type { Message } from "@/types";
 interface AbaArquivosProps {
   /** O fio inteiro, como a página já o tem em estado. */
   messages: Message[];
+  /**
+   * A carga do fio ainda está em curso?
+   *
+   * ⚠️ Obrigatório, e não opcional com padrão `false`: sem ele o estado vazio
+   * vira uma AFIRMAÇÃO falsa. `messages` chega `[]` durante a carga, e a
+   * conversa com 93 documentos exibia "Nenhum arquivo nesta conversa" por um
+   * segundo. É a mesma família do vazio de `useChannels` virando "sessão
+   * expirada" — vazio-durante-a-carga é LACUNA, vazio-com-resposta é
+   * conhecimento, e só quem chama sabe distinguir os dois.
+   */
+  carregando: boolean;
 }
 
-export function AbaArquivos({ messages }: AbaArquivosProps) {
+export function AbaArquivos({ messages, carregando }: AbaArquivosProps) {
   const t = useTranslations("Inbox.arquivos");
   const anexos = useMemo(() => coletarAnexos(messages), [messages]);
 
@@ -49,6 +60,15 @@ export function AbaArquivos({ messages }: AbaArquivosProps) {
     [anexos],
   );
   const audios = useMemo(() => filtrarPorTipo(anexos, "audio"), [anexos]);
+
+  // ⚠️ Antes do estado vazio, sempre. Ver `carregando` nas props.
+  if (carregando) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="border-primary h-5 w-5 animate-spin rounded-full border-2 border-t-transparent" />
+      </div>
+    );
+  }
 
   if (anexos.length === 0) {
     return (

@@ -198,7 +198,11 @@ upstream sobrescrevê-los:
 | `src/lib/whatsapp/send-message.ts` | resolve o canal, carimba `channel_id`, devolve `channelId` no resultado, busca o template **filtrando por canal**, e os dois parâmetros da agendada (925): `channelId` (exige aquele canal, **falha fechada**) e `pauseFlows` |
 | `src/components/inbox/message-composer.tsx` | o **acervo** no menu do clipe (953) e o botão de **gravar voz** fora dele, à direita da caixa — um merge que traga o menu do upstream cru devolve a gravação para dentro do menu e some com o acervo. Mais a anotação interna (918) e o **agendamento** (925): o relógio abre um seletor, e com hora escolhida o `handleSend` DESVIA antes da janela de desfazer. Mais a 932: `sendDraft` desvia igual (anexo agendado), o seletor virou `<SeletorDeHorario>` de módulo — reusado dentro do `MediaDraftPreview`, que SUBSTITUI o compositor — e `entreguesRef` impede a limpeza de desmonte de apagar arquivo que já é de uma agendada. Mais o item **Executar automação** no menu + (955), atrás da prop opcional `onExecutarAutomacao` — o dialog mora no FIO, não aqui |
 | `src/lib/whatsapp/send-message.ts` (2ª linha nossa) | a 932 separou `evolution_rejected` (4xx: a Evolution recusou, nada saiu) de `evolution_error` (tempo esgotado/5xx: pode ter saído). Só o segundo vira `entrega_incerta` |
+| `src/lib/whatsapp/send-message.ts` (3ª linha nossa) | `media_filename` no INSERT (969) — o `filename` já chegava na função e ia só para o WhatsApp; sem ele a bolha do que NÓS enviamos cai no rótulo genérico |
+| `src/app/api/whatsapp/webhook/route.ts` (2ª linha nossa) | `mediaFilename` no tipo de retorno da extração, no `empty`, no case `document` e no upsert (969). ⚠️ O `contentText` continua `caption \|\| filename` — não "simplificar" removendo o filename de lá: a lista de conversas e a busca já leem essa coluna há meses |
+| `src/components/inbox/message-bubble.tsx` (além de ser nosso inteiro) | o case `document` usa `mediaFilename(message)` e mostra a legenda embaixo só quando ela DIFERE do nome; `nomeDeArquivo` delega para a cascata em vez de derivar o basename cru |
 | `src/components/inbox/message-thread.tsx` | além do fio intercalado, renderiza a faixa `ScheduledBar` logo acima do compositor e guarda o contador que a liga ao compositor |
+| `src/components/inbox/message-thread.tsx` (rolagem, 2026-09-01) | ⚠️ `coladoNoFimRef` + `onScroll` guardam o auto-scroll, e o spinner só entra quando a CONVERSA muda (`conversaCarregadaRef`). Sem os dois, voltar de uma aba nova — o `visibilitychange` incrementa o `resyncToken` — perdia a posição de quem lia o histórico E o empurrava para o fim, três vezes por retorno (mensagens, eventos e notas chegam em buscas próprias). O `saltoAtivoRef` NÃO cobre isso: é armado só pelo salto da busca, e `liberarSalto` está no `onWheel`, então rolar à mão o DESLIGA. A guarda é re-armada em `publicarMensagemOtimista` e ao acrescentar nota — senão o autor manda e não vê |
 | `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
 | `src/lib/whatsapp/inbound-store.ts` | idem, no lado Evolution |
 | `src/lib/automations/engine.ts` | `channelInScope`, condição `channel`, canal de saída por passo, e o `create_deal` que virou chamada a `createDeal` com a checagem "um card por contato" ANTES do insert — o índice da 911 é parcial (`source = 'channel'`) e não barra o insert da automação, então sem a checagem nasce card duplicado. Mais o `rotuloDoDisparo` opcional de `runAutomationById` (955): a execução manual da conversa grava `'manual'` no log — sem ele, o registro diria que outra automação chamou |
@@ -665,6 +669,55 @@ rótulo/filtro, onde vazio-durante-a-carga é cosmético e se corrige sozinho
 (é o contrato escrito no cabeçalho do hook). O que torna este caso diferente
 — e o teste para código novo — é a lista vazia ser convertida numa
 afirmação POSITIVA que desabilita um controle.
+
+⚠️ **A QUARTA (2026-09-01) é a mesma armadilha num painel novo**, e vale como
+teste para qualquer aba que receba dado por prop: a aba **Arquivos** afirma
+"Nenhum arquivo nesta conversa" quando `messages` vem vazio — e ele vem vazio
+DURANTE A CARGA, porque a página zera o array ao trocar de conversa. Numa
+conversa com 93 documentos a frase aparecia por ~1s. O fio não sofre disso
+porque tem `loading` próprio; **o painel é IRMÃO do fio, não filho, e não
+enxerga esse estado**. A cura é a página carimbar de quem é o array
+(`messagesDaConversa`) e passar `carregando` — prop OBRIGATÓRIA no
+`AbaArquivos`, para o compilador cobrar de quem montar a aba em tela nova.
+
+⚠️ **Nome do anexo (969): o nome SEMPRE chegou, e era descartado na porta.**
+`messages.media_filename`, `src/lib/media/filename.ts` (a cascata) e
+`src/lib/media/anexos.ts` (o acervo da conversa, puro e testado). O que morde
+código novo:
+
+- ⚠️ **`extractText` (`evolution-inbound.ts`) lê só o `caption` do
+  `documentMessage`, nunca o `fileName`** — por isso 166 dos 188 documentos
+  em produção não tinham nome nenhum e a bolha caía em "Documento". O caminho
+  da **Meta** não tem o defeito (`caption || filename`), e produção roda
+  **Evolution**: é a divergência de transporte que a doc do `filename.ts`
+  afirmava não existir.
+- ⚠️ **`fetchAndStoreEvolutionMedia` devolve `EvolutionMediaSalva`, não uma
+  string.** `fileName` e `mimetype` chegavam nela e morriam no `return`: o
+  nome ia só para o caminho do objeto e `media_type` ficava NULL em 100% das
+  linhas do Evolution. São DOIS call sites (webhook e a rota de download de
+  mídia de grupo) — os dois gravam as duas colunas.
+- ⚠️ **Coluna própria, nunca `content_text`.** Legenda e nome são coisas
+  diferentes e um documento pode ter as duas; empilhá-las é o que faz o
+  caminho da Meta PERDER o nome quando há legenda. E `content_text` alimenta
+  a busca (929) e o transcrito do Radar (941).
+- ⚠️ **Nome ausente NÃO sobrescreve com NULL** (`...(filename ? {…} : {})`):
+  foto e áudio chegam sem nome, e o UPDATE apagaria o que outro caminho
+  gravou.
+- ⚠️ **SEM backfill, e o histórico ainda funciona.** `buildMediaPath` põe o
+  nome no caminho do objeto (degradado: espaço e acento viram `_`, corte em
+  40 chars), e `basenameFromUrl` o recupera — é a 2ª fonte de
+  `mediaFilename`. Gravar a versão degradada congelaria a perda no banco e
+  apagaria a distinção entre nome verdadeiro e reconstruído.
+- ⚠️ **Exibir é `mediaFilename(message)`, nunca `media_filename` cru** — a
+  coluna é NULA em toda linha anterior à 969. E a legenda só é mostrada
+  quando DIFERE do nome resolvido: nas linhas antigas da Meta o filename está
+  DENTRO do `content_text`, e sem a guarda o texto sai duas vezes.
+- ⚠️ **Áudio não mostra nome de arquivo.** Nota de voz não tem nome — o
+  WhatsApp entrega o id hexadecimal do objeto (`3A0B…oga`), e a lista virava
+  trinta linhas de gibberish. Mostra a transcrição (943) quando `pronta`, e
+  um rótulo genérico quando não.
+- **`gallery.ts` NÃO foi alargado para documento**, de propósito: ele
+  alimenta as setas ‹ › do visualizador, que só sabe desenhar imagem e vídeo.
 
 ⚠️ **Agenda de reuniões (945, Fase 1): o calendário é a parte fácil.**
 `src/lib/agenda/` — `fuso.ts`, `vagas.ts`, `grade.ts` e `validar.ts`, todos
@@ -1883,6 +1936,9 @@ mordem de novo em qualquer código novo:
     CADA MEMBRO (`cb_inbox_filtro_padrao`, uma linha por pessoa por conta) +
     o único `(id, account_id)` em `cb_inbox_saved_filters` que a FK composta
     exige. Aplicada em 2026-08-31.
+  - **969_cb_nome_do_anexo** — `messages.media_filename`: o nome do arquivo
+    como o remetente o enviou. Aplicada em 2026-09-01. SEM backfill, de
+    propósito (ver a seção "Nome do anexo").
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

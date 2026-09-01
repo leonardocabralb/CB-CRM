@@ -21,13 +21,41 @@
 
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
-| **1** | **Nome do arquivo** na bolha, no fio e no download | ⬜ a fazer | `969` (a confirmar) | — |
-| **2** | **Bug da rolagem** ao abrir anexo em nova aba | ⬜ a fazer | nenhuma | — |
-| **3** | **Aba "Arquivos"** no painel (contato **e** grupo) | ⬜ a fazer | nenhuma | — |
+| **1** | **Nome do arquivo** na bolha, no fio e no download | ✅ **feita** (2026-09-01) | `969` **aplicada** | `feat/anexos-do-cliente` |
+| **2** | **Bug da rolagem** ao abrir anexo em nova aba | ✅ **feita** (2026-09-01) | nenhuma | idem |
+| **3** | **Aba "Arquivos"** no painel (contato **e** grupo) | ✅ **feita** (2026-09-01) | nenhuma | idem |
 | **4** | **Miniatura** do documento | ⬜ bloqueada por medição + decisão | a decidir | — |
-| **5** | *(bônus)* **Anotações em grupo** | ⬜ opcional | nenhuma | — |
+| **5** | *(bônus)* **Anotações em grupo** | ✅ **feita** (2026-09-01) | nenhuma | idem |
 
-**Decisões que precisam do operador** — ver `## Decisões em aberto` no fim.
+**Decisões do operador (2026-09-01):** fazer as fases 1, 2, 3 e 5; a 4 fica
+para depois da 1, como recomendado.
+
+**Julgamentos tomados na execução, por falta de resposta explícita:**
+
+- **Áudio ENTRA na aba** (decisão 2). O pedido abre com "todos os anexos e
+  todas as mídias", e áudio é a maior categoria (278). ⚠️ Mas NÃO mostra nome
+  de arquivo: nota de voz não tem nome, e a lista virava trinta linhas de id
+  hexadecimal — medido na tela. Mostra a transcrição (943) quando `pronta`.
+- **"Ir para a mensagem no fio" FICOU DE FORA** (decisão 3). Ele mexe no
+  mesmo mecanismo de salto (`alvoId`, `saltoAtivoRef`) que a Fase 2 estava
+  consertando; fazer os dois na mesma passada misturaria as duas mudanças no
+  mesmo trecho de código.
+- **`message-media.tsx` NÃO foi apagado** (decisão 5). É arquivo do upstream:
+  apagá-lo faz cada merge futuro trazê-lo de volta como conflito ou
+  ressurreição silenciosa. A CLAUDE.md já registra que é código morto, e essa
+  nota resolve o risco sem custo recorrente.
+
+### Resultado medido na tela (2026-09-01, preview 1440×900)
+
+- Bolha do fio, na conversa do print do operador: `MARC_O_2024.pdf`,
+  `ABRIL_2024.pdf`, `RESCISO_ES.xlsx` — antes as três diziam "Documento".
+- Aba Arquivos do grupo: **93 documentos**, mais recente primeiro.
+- Aba Arquivos de um 1:1: 9 fotos/vídeos em grade, 22 documentos, 30 áudios.
+- Rolagem: posição preservada EXATAMENTE (5005 → 5005) num
+  `visibilitychange`; quem estava no fim continua no fim; trocar de conversa
+  ainda abre no fim.
+- Estado de carga: 20 amostras em 2,4s ao trocar de conversa, **zero**
+  ocorrências de "Nenhum arquivo nesta conversa".
 
 ---
 
