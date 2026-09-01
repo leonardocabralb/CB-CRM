@@ -1154,6 +1154,8 @@
       },
       "toastFailedDelete": "Falha ao excluir: {error}",
       "toastDeleted": "Disparo excluído",
+      "toastDeleteBlocked": "Nada foi excluído — seu papel não pode excluir disparos, ou ele já não existe.",
+      "toastStatusWritesLost": "O disparo saiu, mas {count} registro(s) de status não gravaram — recarregue o relatório para conferir.",
       "resumeTitle": "Alguns destinatários precisam de nova tentativa",
       "resumeStalledTitle": "Esta campanha parou no meio",
       "resumeHint": "{count} destinatários falharam. Tentar de novo os reenvia a partir do servidor.",

@@ -1161,6 +1161,8 @@
       },
       "toastFailedDelete": "Failed to delete: {error}",
       "toastDeleted": "Broadcast deleted",
+      "toastDeleteBlocked": "Nothing was deleted — your role can't delete broadcasts, or it no longer exists.",
+      "toastStatusWritesLost": "The broadcast went out, but {count} status update(s) didn't save — reload the report to verify.",
       "resumeTitle": "Some recipients need another attempt",
       "resumeStalledTitle": "This campaign stopped part-way",
       "resumeHint": "{count} recipients failed. Retrying sends them again from the server.",

@@ -6,7 +6,9 @@ import { createClient } from '@/lib/supabase/client';
 import { Broadcast, BroadcastRecipient, RecipientStatus } from '@/types';
 import { ChannelCell } from '@/components/channels/channel-badge';
 import { useChannels } from '@/hooks/use-channels';
+import { useCan } from '@/hooks/use-can';
 import { Button } from '@/components/ui/button';
+import { GatedButton } from '@/components/ui/gated-button';
 import {
   Table,
   TableBody,
@@ -152,6 +154,9 @@ export default function BroadcastDetailPage() {
   const t = useTranslations('Broadcasts.detail');
   const tStatus = useTranslations('Broadcasts.status');
   const broadcastId = params.id as string;
+  // Mesma régua da página irmã da lista (e das policies da 964): gerir
+  // disparo é coisa de admin. `useCan` falha fechado para viewer/agent.
+  const podeGerir = useCan('manage-automations');
 
   const [broadcast, setBroadcast] = useState<Broadcast | null>(null);
   const { channels } = useChannels();
@@ -288,13 +293,22 @@ export default function BroadcastDetailPage() {
     // single delete is sufficient — the aggregate trigger in migration 003
     // is defined on broadcast_recipients but fires only on its own row
     // changes, not on a cascaded drop of the parent row.
-    const { error: delErr } = await supabase
+    const { data: apagadas, error: delErr } = await supabase
       .from('broadcasts')
       .delete()
-      .eq('id', broadcastId);
+      .eq('id', broadcastId)
+      .select('id');
     setDeleting(false);
     if (delErr) {
       toast.error(t('toastFailedDelete', { error: delErr.message }));
+      return;
+    }
+    // ⚠️ DELETE barrado pela RLS volta 0 linhas SEM erro (a 964 fechou a
+    // escrita de `broadcasts` para admin) — afirmar sucesso aqui era o toast
+    // verde + navegação com o disparo continuando na lista (achado #15 do
+    // plano de 31/08). A tela nunca afirma sucesso sobre 0 linhas.
+    if (!apagadas?.length) {
+      toast.error(t('toastDeleteBlocked'));
       return;
     }
     toast.success(t('toastDeleted'));
@@ -399,7 +413,14 @@ export default function BroadcastDetailPage() {
             </Button>
           </div>
         ) : (
-          <Button
+          /* A 964 fechou a escrita de `broadcasts` para admin no banco; a
+             tela acompanha (mesma régua da página irmã da lista). Sem o
+             gate, o `agent` clicava, via toast de sucesso e o disparo
+             continuava lá — o DELETE barrado por RLS volta 0 linhas sem
+             erro (achado #15). */
+          <GatedButton
+            canAct={podeGerir}
+            gateReason="delete broadcasts"
             variant="outline"
             size="sm"
             disabled={broadcast.status === 'sending'}
@@ -413,7 +434,7 @@ export default function BroadcastDetailPage() {
           >
             <Trash2 className="h-3.5 w-3.5" />
             {t('delete')}
-          </Button>
+          </GatedButton>
         )}
       </div>
 
