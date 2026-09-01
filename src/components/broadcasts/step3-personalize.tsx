@@ -95,7 +95,9 @@ export function Step3Personalize({
         supabase
           .from('custom_fields')
           .select('*')
-          .order('posicao', { nullsFirst: false })
+          // ⚠️ Alfabética: lista PLANA. `posicao` é a ordem DENTRO do bloco
+          // (966) e reinicia em cada um — ordenar a conta inteira por ela
+          // intercala os blocos. Só quem REAGRUPA pode usá-la.
           .order('field_name'),
         supabase
           .from('contacts')

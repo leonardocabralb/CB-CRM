@@ -121,7 +121,12 @@ export async function findOrCreateContact(
     );
   }
 
-  const existing = await findExistingContact(db, accountId, sanitized);
+  // ⚠️ Erro de banco NÃO é "não encontrado" — a lição da própria v1 no
+  // CLAUDE.md: um timeout tratado como "não achei" faz a rota CRIAR de novo
+  // e o integrador duplica a ficha. 500 deixa o n8n reencaminhar.
+  const busca = await findExistingContact(db, accountId, sanitized);
+  if (busca.falhou) throw new ContactError('Failed to look up contact', 500);
+  const existing = busca.contato;
   if (existing) return { id: existing.id, created: false };
 
   const { data: created, error } = await db
@@ -141,7 +146,7 @@ export async function findOrCreateContact(
     // Lost a race against a concurrent create — the unique index
     // rejected the duplicate. Re-resolve to the winner.
     if (isUniqueViolation(error)) {
-      const raced = await findExistingContact(db, accountId, sanitized);
+      const raced = (await findExistingContact(db, accountId, sanitized)).contato;
       if (raced) return { id: raced.id, created: false };
     }
     console.error('[api/v1/contacts] create error:', error);

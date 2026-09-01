@@ -270,7 +270,8 @@
       "today": "Hoje",
       "yesterday": "Ontem",
       "channelChangedWhileTyping": "Não enviado. O cliente escreveu por outro número enquanto você digitava e a conversa passou para {channel}. Confira o canal acima e envie de novo.",
-      "channelChangedUnknown": "outro número",
+      "sessionExpiredBlocked": "Não enviada: a janela de 24 horas fechou. Use um modelo para retomar o contato.",
+            "channelChangedUnknown": "outro número",
       "searchInThread": "“{termo}” — {atual} de {total}",
       "searchPrevHit": "Achado anterior",
       "searchNextHit": "Próximo achado"
@@ -841,6 +842,8 @@
       "fieldName": "Nome do novo campo…",
       "loading": "Carregando…",
       "empty": "Nenhum campo personalizado ainda.",
+      "loadError": "Não foi possível carregar os campos e blocos. Nada foi alterado.",
+      "retry": "Tentar de novo",
       "renameAria": "Renomear {name}",
       "deleteTitle": "Excluir campo",
       "deleteConfirm": "Excluir \"{name}\"? Isso também remove o valor armazenado em todos os contatos. Esta ação não pode ser desfeita.",

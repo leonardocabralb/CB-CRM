@@ -142,7 +142,6 @@ export async function POST(request: Request) {
       const resolved = await findOrCreateConversation(
         supabase,
         accountId,
-        userId,
         contact_id
       )
       if (!resolved) {
@@ -274,12 +273,12 @@ type SendSupabase = Awaited<ReturnType<typeof createClient>>
  * it doesn't exist yet. Mirrors the webhook's find-or-create so an
  * inbound-then-outbound (or outbound-first) sequence converges on a single
  * thread per contact. Runs under the caller's RLS — the conversations_insert
- * policy requires account agent membership, which the caller already is.
+ * policy requires account agent membership, which the caller already is,
+ * and accounts_select lets any member read the owner column below.
  */
 async function findOrCreateConversation(
   supabase: SendSupabase,
   accountId: string,
-  userId: string,
   contactId: string,
 ): Promise<string | null> {
   const { data: existing } = await supabase
@@ -291,11 +290,30 @@ async function findOrCreateConversation(
 
   if (existing) return existing.id
 
+  // `conversations.user_id` CASCADEia de `auth.users`: gravar o operador
+  // faria o offboarding dele (apagar o login no dashboard) levar a conversa
+  // e as mensagens do cliente. Grava-se o dono da conta, como a ingestão e
+  // /api/cb/conversas/abrir — e sem dono resolvido a criação FALHA (nunca
+  // cair para o operador autenticado).
+  const { data: conta, error: contaErr } = await supabase
+    .from('accounts')
+    .select('owner_user_id')
+    .eq('id', accountId)
+    .single()
+  const donoDaConta = conta?.owner_user_id as string | undefined
+  if (contaErr || !donoDaConta) {
+    console.error(
+      'Error resolving account owner for contact send:',
+      contaErr?.message ?? 'owner_user_id empty',
+    )
+    return null
+  }
+
   const { data: created, error } = await supabase
     .from('conversations')
     .insert({
       account_id: accountId,
-      user_id: userId,
+      user_id: donoDaConta,
       contact_id: contactId,
     })
     .select('id')
