@@ -173,32 +173,56 @@ for (const caminho of arquivos(SRC)) {
   // argumento de qualquer um deles reprovava o CI com "chave ausente"
   // (medido: `toast('Contrato salvo')` → FALHA). `t` é a convenção da casa
   // para tradutor-por-prop, nos dois arquivos folha reais.
-  if (bindings.size === 0) {
-    // ⚠️ Guarda de cobertura (#24): o arquivo importa o tradutor EM VALOR,
-    // não tem binding que o script enxergue nem a invocação direta — um
-    // alias no import (`useTranslations as useT`) ou um envelope local
-    // apagava a cobertura SEM SINAL NENHUM e o portão seguia verde.
-    //
-    // Roda ANTES (e independente) do modo folha, de propósito: um arquivo
-    // que recebe `t` por prop E importa o hook com alias tinha só as
-    // chamadas folha conferidas, e o alias passava em silêncio (achado do
-    // Codex no PR #91). Import SÓ COMO TIPO (`import type { useTranslations }`
-    // para `ReturnType<typeof useTranslations>`, message-media.tsx) não é
-    // binding em potencial — não há o que cobrir — e fica de fora pelo
-    // `(?!type\b)` e pelo `(?<!\btype\s)` (o especificador inline).
-    if (
-      /import\s+(?!type\b)[^;]*(?<!\btype\s)\b(?:useTranslations|getTranslations)\b[^;]*from\s+['"]next-intl/.test(
-        // Sem comentários: um comentário que DESCREVA a forma proibida
-        // ("import em valor…") logo acima de um `import type` real casava
-        // o `[^;]*` atravessando as linhas até o import de verdade.
-        fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''),
-      ) &&
-      // Cópia SEM a flag `g`: `.test` numa global avança `lastIndex` e o
-      // `matchAll` de RE_DIRETO no próximo arquivo herdaria o cursor.
-      !new RegExp(RE_DIRETO.source).test(fonte)
-    ) {
-      foraDeAlcance.push(relative(ROOT, caminho))
+  // ⚠️ Guarda de cobertura (#24), para TODO arquivo — não só para os sem
+  // binding. A pergunta é: toda CHAMADA da fábrica de tradutor importada
+  // do next-intl é uma forma que este script reconhece? As reconhecidas são
+  // duas: `const t = useTranslations(...)` (RE_BINDING) e a invocação
+  // direta `useTranslations('NS')('chave')` (RE_DIRETO). Qualquer outra —
+  // alias no import (`useTranslations as useT`), envelope local (`function
+  // useTraducao(ns) { return useTranslations(ns) }`), chamada passada como
+  // argumento — produz um tradutor cujas chaves NINGUÉM confere, e o
+  // portão seguia verde. Duas versões desta guarda deixaram passar caso:
+  // a primeira só rodava sem `t(` folha (Codex no PR #91), a segunda só
+  // rodava sem binding NENHUM — um `const t = useTranslations(...)` legítimo
+  // ao lado do alias escondia o alias (Codex no PR #104).
+  //
+  // Import SÓ COMO TIPO (`import type { useTranslations }` ou `{ type
+  // useTranslations }`, para `ReturnType<typeof …>` — message-media.tsx)
+  // não é fábrica em potencial e fica de fora. O fonte vai SEM comentários:
+  // um comentário que descreva a forma proibida logo acima do import real
+  // casava o regex (medido).
+  const semComentarios = fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  const fabricas = new Map() // nome local → nome original
+  for (const m of semComentarios.matchAll(/import\s+(?!type\b)\{([^}]*)\}\s*from\s*['"]next-intl/g)) {
+    for (const spec of m[1].split(',')) {
+      const s = spec.trim()
+      if (!s || /^type\s/.test(s)) continue
+      const [orig, , alias] = s.split(/\s+/)
+      if (orig === 'useTranslations' || orig === 'getTranslations') fabricas.set(alias ?? orig, orig)
     }
+  }
+  for (const [local, orig] of fabricas) {
+    const esc = local.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const chamadas = (semComentarios.match(new RegExp(`(?<![\\w.$])${esc}\\s*\\(`, 'g')) ?? []).length
+    let reconhecidas = 0
+    if (local === orig) {
+      // Binding com QUALQUER argumento conta aqui: namespace dinâmico cai no
+      // modo folha abaixo (o RE_BINDING exige literal), não é buraco.
+      reconhecidas += (semComentarios.match(
+        new RegExp(`(?:const|let)\\s+[A-Za-z_$][\\w$]*\\s*=\\s*(?:await\\s+)?${esc}\\(`, 'g'),
+      ) ?? []).length
+      reconhecidas += (semComentarios.match(
+        new RegExp(`(?<![\\w.$])${esc}\\(\\s*['"\`][^'"\`]*['"\`]\\s*\\)${METODOS}\\(`, 'g'),
+      ) ?? []).length
+    }
+    if (chamadas === 0 || chamadas > reconhecidas) {
+      foraDeAlcance.push(
+        `${relative(ROOT, caminho)}  (\`${local}\`: ${chamadas} chamada(s), ${reconhecidas} reconhecida(s))`,
+      )
+    }
+  }
+
+  if (bindings.size === 0) {
     if (!/(?<![\w.$])t(?:\.(?:rich|raw|markup))?\(\s*['"`]/.test(fonte)) continue
     emModoFolha++
     for (const m of fonte.matchAll(
@@ -263,10 +287,11 @@ console.log(
 // sobre cobertura quebrada é o falso verde que elas existem para matar.
 if (foraDeAlcance.length > 0) {
   console.log(
-    `\nFALHA: ${foraDeAlcance.length} arquivo(s) importam o tradutor do next-intl` +
-      ` e o script não achou NENHUM binding neles — um alias no import` +
-      ` (\`useTranslations as useT\`) ou um envelope local apaga a cobertura` +
-      ` do arquivo inteiro, em silêncio.`,
+    `\nFALHA: ${foraDeAlcance.length} arquivo(s) chamam o tradutor do next-intl de uma forma que` +
+      ` o script não reconhece — alias no import, envelope local ou chamada fora de` +
+      ` \`const t = useTranslations(...)\`. NENHUM binding cobre esse uso, e a cobertura do` +
+      ` arquivo cai em silêncio (ex.: \`useTranslations as useT\`, ou um` +
+      ` \`function useTraducao(ns) { return useTranslations(ns) }\`).`,
   )
   for (const a of foraDeAlcance.sort()) console.log(`      - ${a}`)
   console.log(

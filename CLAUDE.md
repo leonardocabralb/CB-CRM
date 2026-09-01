@@ -2164,11 +2164,17 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
     ALCANCE do script) e arquivo que importa o tradutor sem produzir
     binding nem uso reconhecível reprova nomeado — um alias
     (`useTranslations as useT`) tirava o arquivo da cobertura em silêncio.
-    ⚠️ A guarda roda ANTES e INDEPENDENTE do modo folha: um arquivo que
-    recebe `t` por prop E importa o hook com alias tinha só as chamadas
-    folha conferidas, e o alias passava (Codex, PR #91). `import type {
+    ⚠️ A guarda vale para TODO arquivo e conta CHAMADAS da fábrica, não a
+    ausência de binding: para cada `useTranslations`/`getTranslations`
+    importado em valor (alias incluso), toda chamada tem de ser `const t =
+    …(…)` ou a invocação direta `…('NS')('chave')`; alias, envelope local
+    (`function useTraducao(ns) { return useTranslations(ns) }`) ou chamada
+    passada adiante reprovam com o nome e a contagem. Duas versões deixaram
+    passar caso — a que só rodava sem `t(` folha (Codex, PR #91) e a que só
+    rodava sem binding NENHUM, onde um `const t = useTranslations(...)`
+    legítimo escondia o alias ao lado (Codex, PR #104). `import type {
     useTranslations }` (só para `ReturnType<typeof …>`, message-media.tsx)
-    fica de fora — não há binding a cobrir — e é por isso que aquele import
+    fica de fora — não há fábrica a cobrir — e é por isso que aquele import
     É `import type`: voltar a importar em valor reprova o portão. A guarda
     olha o fonte SEM comentários: um comentário que descreva a forma
     proibida logo acima do import real casava o regex (medido).

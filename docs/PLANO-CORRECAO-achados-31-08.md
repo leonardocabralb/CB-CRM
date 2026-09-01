@@ -2587,8 +2587,16 @@ Legenda: ✅ corrigido aqui · ✔️ já estava corrigido quando o Codex leu ·
 | **C23** | #101 | `group-sidebar.tsx` | "Nenhuma anotação ainda" pintado durante a carga e para sempre na falha | ✅ | o hook expõe `pronta`/`falhou` (carimbados pela CONVERSA); o vazio só afirma com `pronta`, falha tem frase + tentar de novo (2 chaves novas) |
 | **C24** | #103 | `custom-fields-manager.tsx` | com refetch silencioso a lista fica editável durante o voo: respostas fora de ordem, e o arrastar otimista atropelado por resposta velha | ✅ | número de série das buscas (só a mais nova escreve); os escritores otimistas invalidam o voo e recarregam depois do sucesso |
 
+**Segunda rodada do Codex (sobre o commit `835d998` deste PR):** dois
+apontamentos, os dois válidos e corrigidos no commit seguinte.
+
+| id | Onde | O que o Codex apontou | O que foi feito |
+| --- | --- | --- | --- |
+| **C25** | `use-channels.ts` | `invalidarCacheDeCanais` zerava só o `cache`: um voo iniciado ANTES da mutação e resolvido DEPOIS repovoava o cache com a lista velha, e a montagem seguinte ainda recebia a promessa antiga por `emVoo` | geração: invalidar sobe o contador, zera cache E `emVoo`; a resposta só escreve o cache se a geração ainda for a dela, e só solta o `emVoo` se ainda for o seu. `obterCanais` exportada para o teste, que prende o `fetch` com uma promessa, invalida no meio e prova que a montagem seguinte busca de novo (2 fetches, lista nova) |
+| **C26** | `i18n-chaves-usadas.mjs` | a guarda de alias ainda estava sob `bindings.size === 0`: um `const t = useTranslations(...)` legítimo ao lado de um alias ou envelope escondia o segundo tradutor | a guarda passou a valer para TODO arquivo e a contar CHAMADAS por fábrica importada (alias incluso): toda chamada tem de ser binding ou invocação direta; o resto reprova com nome e contagem ("2 chamada(s), 1 reconhecida(s)"). Ensaio no repo: zero falsos vermelhos. Três fixtures novas (binding + alias, binding + envelope, namespace dinâmico não é buraco) |
+
 **Medido:** typecheck · lint (0 erros; os 5 avisos nos arquivos tocados
-pré-existem no `main`) · suíte 185 arquivos / **2387 testes** em Node 22 ·
+pré-existem no `main`) · suíte 185 arquivos / **2392 testes** em Node 22 ·
 `i18n-parity` e `i18n-chaves-usadas` verdes (2697 literais) · `npm run
 build` verde · 970/971 conferidas por SQL em produção (acima).
 

@@ -75,6 +75,8 @@ const VALIDADE_MS = 15_000;
 
 let cache: { em: number; resultado: Resultado } | null = null;
 let emVoo: Promise<Resultado> | null = null;
+/** Sobe a cada invalidação: resposta de uma geração anterior não escreve o cache. */
+let geracao = 0;
 
 /**
  * Esvazia o cache — para quem acabou de MUDAR um canal.
@@ -85,9 +87,18 @@ let emVoo: Promise<Resultado> | null = null;
  * seguia mostrando análise de canal cujo `radar_enabled` acabou de ser
  * desligado (achado do Codex no PR #96). O `load()` do painel chama isto a
  * cada recarga — que é exatamente depois de cada escrita.
+ *
+ * ⚠️ Invalidar é TRÊS coisas, não uma. Zerar só o `cache` deixava o voo
+ * antigo de pé: uma busca iniciada ANTES da mutação e resolvida DEPOIS
+ * repovoava o cache com a lista velha, e quem montasse em seguida ainda
+ * recebia a promessa antiga por `emVoo` (Codex no PR #104). Daí a geração —
+ * a resposta só escreve se ninguém invalidou no meio — e o `emVoo` solto,
+ * para a próxima montagem buscar de novo.
  */
 export function invalidarCacheDeCanais(): void {
+  geracao += 1;
   cache = null;
+  emVoo = null;
 }
 
 async function buscar(): Promise<Resultado> {
@@ -100,18 +111,24 @@ async function buscar(): Promise<Resultado> {
   }
 }
 
-function obter(forcar: boolean): Promise<Resultado> {
+/** Exportada só para o teste da geração; o hook é o único chamador de verdade. */
+export function obterCanais(forcar: boolean): Promise<Resultado> {
   if (!forcar && cache && Date.now() - cache.em < VALIDADE_MS) {
     return Promise.resolve(cache.resultado);
   }
   if (!emVoo) {
-    emVoo = buscar().then((r) => {
+    const minha = geracao;
+    const promessa: Promise<Resultado> = buscar().then((r) => {
       // Falha NÃO entra no cache: a próxima montagem tenta de novo em vez
-      // de repetir "falhou" por 15s a quem acabou de abrir a tela.
-      if (!r.falhou) cache = { em: Date.now(), resultado: r };
-      emVoo = null;
+      // de repetir "falhou" por 15s a quem acabou de abrir a tela. E resposta
+      // de geração ANTERIOR também não — ver `invalidarCacheDeCanais`.
+      if (!r.falhou && minha === geracao) cache = { em: Date.now(), resultado: r };
+      // Só solta o voo se ainda for o SEU: uma invalidação pode já ter posto
+      // outro no lugar, e zerá-lo faria a montagem seguinte buscar de novo.
+      if (emVoo === promessa) emVoo = null;
       return r;
     });
+    emVoo = promessa;
   }
   return emVoo;
 }
@@ -126,7 +143,7 @@ export function useChannels(): UseChannelsResult {
     montadoRef.current = true;
     // Cache quente resolve num microtask — o `loading` inicial não chega a
     // pintar, e o setState fica assíncrono (regra do React Compiler).
-    void obter(false).then((r) => {
+    void obterCanais(false).then((r) => {
       if (montadoRef.current) setResultado(r);
     });
     return () => {
@@ -135,7 +152,7 @@ export function useChannels(): UseChannelsResult {
   }, []);
 
   const recarregar = useCallback(async () => {
-    const r = await obter(true);
+    const r = await obterCanais(true);
     if (montadoRef.current) setResultado(r);
   }, []);
 
