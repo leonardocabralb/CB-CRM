@@ -45,11 +45,25 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+// `I18N_CHECK_ROOT` existe para o TESTE DO PRÓPRIO SCRIPT (F6 do plano
+// 31/08): aponta para uma árvore fixture com `src/` e `messages/` próprios.
+// Sem a env, comporta como sempre — a raiz do repositório.
+const ROOT =
+  process.env.I18N_CHECK_ROOT ?? join(dirname(fileURLToPath(import.meta.url)), '..')
 const SRC = join(ROOT, 'src')
 // O locale que o app serve (NEXT_PUBLIC_APP_LOCALE). É o dicionário que
 // decide o que o usuário lê, então é contra ele que a existência é cobrada.
 const ATIVO = 'pt-BR'
+
+// ⚠️ PISO DE COBERTURA (#24): "nenhuma faltante" só é boa notícia se o
+// script ainda estiver ENXERGANDO as chamadas — um alias no import ou um
+// refactor nos regexes zerava a cobertura em silêncio e o portão seguia
+// verde afirmando uma garantia que não conferiu. O repo tinha ~2670 literais
+// em 31/08/2026; o piso fica com folga abaixo (o número CRESCE com o
+// produto). Se este check reprovar sem você ter removido código de i18n, o
+// defeito é o ALCANCE do script — conserte o regex, não o piso. Encolhimento
+// legítimo do repo: ajuste o número no mesmo PR, dizendo por quê.
+const PISO_CONFERIDAS = Number(process.env.I18N_CHECK_PISO ?? 2400)
 
 function achatar(node, prefixo = '', saida = new Set()) {
   for (const [k, v] of Object.entries(node)) {
@@ -73,11 +87,16 @@ function arquivos(dir, saida = []) {
   return saida
 }
 
-// Últimos segmentos de toda chave do dicionário. Serve ao "modo folha"
-// abaixo, onde o namespace é desconhecido.
-const folhas = new Set(
-  [...dicionario].map((k) => k.slice(k.lastIndexOf('.') + 1)),
-)
+// Todos os SUFIXOS por ponto de toda chave do dicionário (`a.b.c` → c, b.c,
+// a.b.c). Serve ao "modo folha" abaixo, onde o namespace é desconhecido:
+// comparar a chave pedida só contra o ÚLTIMO segmento reprovava chave
+// aninhada VÁLIDA (`t('table.name')` sob um namespace entregue por prop —
+// achado #20 do plano 31/08, medido: falso vermelho travando publicação).
+const sufixos = new Set()
+for (const k of dicionario) {
+  const partes = k.split('.')
+  for (let i = 0; i < partes.length; i++) sufixos.add(partes.slice(i).join('.'))
+}
 
 // `const t = useTranslations('NS')` / `const tX = await getTranslations("NS")`
 // Sem argumento, o namespace é a raiz e a chave vem absoluta.
@@ -94,6 +113,7 @@ const RE_DIRETO =
 const METODOS = '(?:\\.(?:rich|raw|markup))?'
 
 const faltando = []
+const foraDeAlcance = []
 let dinamicas = 0
 let conferidas = 0
 let emModoFolha = 0
@@ -110,11 +130,20 @@ function literalInicial(resto) {
 for (const caminho of arquivos(SRC)) {
   const fonte = readFileSync(caminho, 'utf8')
 
+  // ⚠️ Nome → CONJUNTO de namespaces (#19): dois componentes no mesmo
+  // arquivo, cada um com `const t = useTranslations('...')` próprio, são
+  // padrão comum de React — sobrescrever por nome deixava só o ÚLTIMO
+  // namespace e as chaves válidas do primeiro reprovavam (medido). É isto
+  // que torna verdadeira a promessa "cobra contra TODOS os namespaces".
   const bindings = new Map()
-  for (const m of fonte.matchAll(RE_BINDING)) bindings.set(m[1], m[3] ?? '')
+  for (const m of fonte.matchAll(RE_BINDING)) {
+    if (!bindings.has(m[1])) bindings.set(m[1], new Set())
+    bindings.get(m[1]).add(m[3] ?? '')
+  }
   // Ver a nota de ALCANCE: a cobrança é contra o conjunto do arquivo, porque
   // o tradutor viaja como prop e o parâmetro sombreia o binding do módulo.
-  const escopos = [...new Set(bindings.values())]
+  const escopos = [...new Set([...bindings.values()].flatMap((s) => [...s]))]
+
 
   // Chamada direta, sem variável no meio.
   for (const m of fonte.matchAll(RE_DIRETO)) {
@@ -133,16 +162,41 @@ for (const caminho of arquivos(SRC)) {
   // binding nenhum (`flows/shared.tsx`, `message-media.tsx`). Sem binding não
   // há namespace, e pular o arquivo inteiro era um buraco: chave apagada dos
   // dois dicionários mantinha o CI verde (achado do Codex no PR #82). Aqui a
-  // chave é cobrada só como ÚLTIMO SEGMENTO, contra o dicionário inteiro —
+  // chave é cobrada como SUFIXO de alguma chave do dicionário (#20) —
   // garantia mais fraca, e é por isso que o total sai impresso. Ainda assim
   // pega a classe que motivou o script: a chave que não existe em lugar
   // nenhum. Resolver o namespace de verdade exigiria seguir o `t={...}` até
   // o chamador, em outro arquivo.
+  //
+  // ⚠️ SÓ o identificador `t` exato (#18): a forma antiga (`t[A-Z]?\w*`)
+  // casava `twMerge(`, `toast(`, `truncate(` — e um literal no primeiro
+  // argumento de qualquer um deles reprovava o CI com "chave ausente"
+  // (medido: `toast('Contrato salvo')` → FALHA). `t` é a convenção da casa
+  // para tradutor-por-prop, nos dois arquivos folha reais.
   if (bindings.size === 0) {
-    if (!/(?<![\w.$])t[A-Z]?[\w$]*(?:\.(?:rich|raw|markup))?\(\s*['"`]/.test(fonte)) continue
+    if (!/(?<![\w.$])t(?:\.(?:rich|raw|markup))?\(\s*['"`]/.test(fonte)) {
+      // ⚠️ Guarda de cobertura (#24): o arquivo importa o tradutor, não tem
+      // binding que o script enxergue, não usa `t(` (modo folha) nem a
+      // invocação direta — um alias no import (`useTranslations as useT`)
+      // ou um envelope local apagava a cobertura SEM SINAL NENHUM e o
+      // portão seguia verde. Import só como TIPO em arquivo folha
+      // (`ReturnType<typeof useTranslations>`, message-media.tsx) não cai
+      // aqui: esse usa `t(` e entra no modo folha acima.
+      if (
+        /import\s+[^;]*\b(?:useTranslations|getTranslations)\b[^;]*from\s+['"]next-intl/.test(
+          fonte,
+        ) &&
+        // Cópia SEM a flag `g`: `.test` numa global avança `lastIndex` e o
+        // `matchAll` de RE_DIRETO no próximo arquivo herdaria o cursor.
+        !new RegExp(RE_DIRETO.source).test(fonte)
+      ) {
+        foraDeAlcance.push(relative(ROOT, caminho))
+      }
+      continue
+    }
     emModoFolha++
     for (const m of fonte.matchAll(
-      new RegExp(`(?<![\\w.$])(t[A-Z]?[\\w$]*)${METODOS}\\(\\s*`, 'g'),
+      new RegExp(`(?<![\\w.$])t${METODOS}\\(\\s*`, 'g'),
     )) {
       const chave = literalInicial(fonte.slice(m.index + m[0].length))
       if (chave === null) {
@@ -150,7 +204,7 @@ for (const caminho of arquivos(SRC)) {
         continue
       }
       conferidas++
-      if (!folhas.has(chave)) {
+      if (!sufixos.has(chave)) {
         faltando.push({
           literal: chave,
           escopos: ['(namespace desconhecido — modo folha)'],
@@ -196,8 +250,33 @@ console.log(`    literais conferidas: ${conferidas}`)
 console.log(`    dinâmicas ignoradas: ${dinamicas}  (fora do alcance — ver cabeçalho)`)
 console.log(
   `    arquivos em modo folha: ${emModoFolha}  (tradutor recebido como prop —` +
-    ` chave cobrada só pelo último segmento)`,
+    ` chave cobrada por sufixo do dicionário)`,
 )
+
+// As duas guardas do #24 vêm ANTES do veredito de chaves: um "OK" calculado
+// sobre cobertura quebrada é o falso verde que elas existem para matar.
+if (foraDeAlcance.length > 0) {
+  console.log(
+    `\nFALHA: ${foraDeAlcance.length} arquivo(s) importam o tradutor do next-intl` +
+      ` e o script não achou NENHUM binding neles — um alias no import` +
+      ` (\`useTranslations as useT\`) ou um envelope local apaga a cobertura` +
+      ` do arquivo inteiro, em silêncio.`,
+  )
+  for (const a of foraDeAlcance.sort()) console.log(`      - ${a}`)
+  console.log(
+    '    Use `const t = useTranslations(...)` direto, ou ensine a forma nova a este script.',
+  )
+  process.exit(1)
+}
+if (conferidas < PISO_CONFERIDAS) {
+  console.log(
+    `\nFALHA: a cobertura CAIU — ${conferidas} literais conferidas, piso ${PISO_CONFERIDAS}.` +
+      `\n    O defeito é o ALCANCE do script (regex que deixou de casar as chamadas),` +
+      `\n    não uma chave de tradução. Se o repo encolheu de verdade, ajuste` +
+      `\n    PISO_CONFERIDAS no mesmo PR, dizendo por quê.`,
+  )
+  process.exit(1)
+}
 
 if (unicas.length === 0) {
   console.log('\nOK: toda chave literal pedida pelo código existe no dicionário.')
