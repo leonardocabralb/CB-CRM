@@ -102,12 +102,20 @@ export async function PATCH(
       // do 404 verdadeiro para a tela dizer o que houve — "o Radar está
       // relendo" e "o Radar releu" pedem reações diferentes do operador.
       if (comTrava) {
-        const { data: atual } = await supabaseAdmin()
+        const { data: atual, error: erroAtual } = await supabaseAdmin()
           .from('cb_conversation_insights')
           .select('id, status, running_desde')
           .eq('conversation_id', conversationId)
           .eq('account_id', ctx.accountId)
           .maybeSingle();
+        // ⚠️ Erro de banco NÃO é "não encontrado" (#07, a lição da API v1):
+        // com o error descartado, um blip do PostgREST caía no 404 e a tela
+        // anunciava que o Radar PERDEU a análise do cliente — quando só a
+        // consulta falhou. 500 manda tentar de novo.
+        if (erroAtual) {
+          console.error('[radar] releitura do estado falhou:', erroAtual.message);
+          return NextResponse.json({ error: 'LOOKUP_FAILED' }, { status: 500 });
+        }
         if (atual) {
           // `analysis_running` só para claim VIVO — sobre claim abandonado a
           // frase "o Radar está relendo" seria mentira (o worker morreu), e

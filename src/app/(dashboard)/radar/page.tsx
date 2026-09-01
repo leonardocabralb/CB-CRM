@@ -318,6 +318,13 @@ export default function RadarPage() {
           recarregar();
           return;
         }
+        // A releitura que distingue 409 de 404 falhou no BANCO (#07): não é
+        // "análise sumiu", é "não deu para conferir" — a frase pede para
+        // tentar de novo em vez de anunciar perda de dado.
+        if (r.erro === 'LOOKUP_FAILED') {
+          toast.error(t('consultaFalhou'));
+          return;
+        }
         const erro = r.erro ?? '?';
         toast.error(
           (MOTIVOS_DE_ERRO as readonly string[]).includes(erro)

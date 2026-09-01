@@ -2791,6 +2791,7 @@
     "descartadoOk": "Signal dismissed — this calibrates the Radar.",
     "desfazer": "Undo",
     "acaoFalhou": "The action failed: {erro}",
+    "consultaFalhou": "Couldn't check the analysis right now — try again in a few seconds.",
     "contatoSemNome": "Unnamed contact",
     "notaTitulo": "Service score (0–10)",
     "nota": "{nota}/10",

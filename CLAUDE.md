@@ -1042,9 +1042,16 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   alguém respondeu é a consulta de `respondidas`. Sem a recarga, o cartão
   de cliente já atendido por um colega ficava na tela até o operador
   trocar de aba e voltar.
-- ⚠️ **Insatisfação exige evidência nas últimas 48h** (`JANELA_INSATISFACAO_MS`,
-  validado no parser). A janela analisada tem 7 dias: sem isso, irritação de
-  terça já resolvida seguia acendendo cartão no domingo.
+- ⚠️ **Insatisfação exige evidência recente — 2 dias de expediente, em TEMPO
+  ÚTIL** (`JANELA_INSATISFACAO_UTIL_SEG`, 22h úteis via `segundosUteisEntre`;
+  era "48h corridas" até 31/08). A janela analisada tem 7 dias: sem a régua,
+  irritação de terça já resolvida seguia acendendo cartão no domingo. Em
+  CORRIDAS, porém, a reclamação analisada na sexta expirava no DOMINGO —
+  antes de qualquer pessoa abrir o painel — e sem a aba "Todos" o sumiço era
+  definitivo (#22). Não é "48h úteis" de propósito: isso inflaria a régua
+  para ~6 dias corridos (o racional que manteve `LIMIAR_ALARME_MS` em
+  corridas, apontado acima). As DUAS réguas (escrita e leitura) usam a MESMA
+  unidade e SE SOMAM — o teto real é ~4 dias úteis, por desenho.
   ⚠️ **A âncora é o INSTANTE DA ANÁLISE (`agoraMs`), não a última linha do
   transcrito** — mudou em 2026-08-31. Ancorada na conversa, a régua não
   funcionava justamente no caso que a motivou: cliente reclama, a equipe
@@ -1129,6 +1136,15 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   repetiria o falso positivo a cada mensagem — reabre só pelo botão);
   `aberto` fica. Quem mexer no reset mexe no UPDATE condicional do worker,
   não no UPDATE principal.
+  ⚠️ **UMA exceção escrita (#23, 31/08), e ela é ESTREITA:** descarte dado
+  sobre linha `failed` que NUNCA teve análise concluída (`analisado_em`
+  nulo no claim — `descarteFoiSobreFalha`) reabre quando a primeira análise
+  BOA gravar. Ali o operador descartou o aviso "análise falhou", não um
+  veredito — e a linha `failed` com tentativas < 3 reanalisa SOZINHA no
+  ciclo seguinte, então sem a exceção o sinal real nascia invisível para
+  sempre. Linha que já teve análise concluída fica na regra geral mesmo com
+  falha por cima: o que o descarte rejeitou era conteúdo real. Não remover
+  como "inconsistência" — o próximo leitor vai querer.
 - ⚠️ **Toda escrita pós-claim do worker tem CERCA DE POSSE**
   (`.eq('status','running').eq('running_desde', <carimbo do próprio claim>)`).
   Sem ela, um worker recolhido como travado continuava com direito de escrita

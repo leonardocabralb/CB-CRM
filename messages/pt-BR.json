@@ -2784,6 +2784,7 @@
     "descartadoOk": "Sinal descartado — isso calibra o Radar.",
     "desfazer": "Desfazer",
     "acaoFalhou": "A ação falhou: {erro}",
+    "consultaFalhou": "Não foi possível conferir a análise agora — tente de novo em alguns segundos.",
     "contatoSemNome": "Contato sem nome",
     "notaTitulo": "Nota do atendimento (0–10)",
     "nota": "{nota}/10",
