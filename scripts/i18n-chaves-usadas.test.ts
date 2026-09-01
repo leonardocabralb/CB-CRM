@@ -207,3 +207,82 @@ describe('i18n-chaves-usadas — o checador em si', () => {
     expect(r.saida).toContain('OK');
   });
 });
+
+describe('i18n-chaves-usadas — a guarda de cobertura é independente do modo folha (Codex, PR #91)', () => {
+  it('arquivo folha que TAMBÉM importa o hook com alias reprova nomeando o arquivo', () => {
+    // Antes, a existência de um `t(` folha pulava a guarda inteira: só as
+    // chamadas folha eram conferidas e `tr('inventada')` do alias passava.
+    const r = rodar({
+      'folha-com-alias.tsx': `
+        import { useTranslations as useTraducao } from 'next-intl';
+        export function Folha({ t }: { t: (k: string) => string }) {
+          const tr = useTraducao('Inbox.sidebar');
+          return <>{t('label')}{tr('chaveInventadaQueNaoExiste')}</>;
+        }`,
+    });
+    expect(r.exit).toBe(1);
+    expect(r.saida).toContain('folha-com-alias.tsx');
+    expect(r.saida).toContain('NENHUM binding');
+  });
+
+  it('import SÓ COMO TIPO não é binding em potencial — não reprova', () => {
+    // `ReturnType<typeof useTranslations>` num módulo de tipos (a forma de
+    // message-media.tsx) não tem chamada nenhuma a cobrir.
+    const r = rodar({
+      'tipos.ts': `
+        import type { useTranslations } from 'next-intl';
+        export type Translator = ReturnType<typeof useTranslations>;`,
+      'inline.ts': `
+        import { type useTranslations } from 'next-intl';
+        export type Tradutor = ReturnType<typeof useTranslations>;`,
+    });
+    expect(r.exit).toBe(0);
+  });
+});
+
+describe('i18n-chaves-usadas — a guarda vale mesmo COM binding reconhecido (Codex, PR #104)', () => {
+  it('binding normal + alias no MESMO arquivo: o alias reprova nomeando o arquivo', () => {
+    // Antes, `bindings.size === 0` era a porta da guarda: um `const t =
+    // useTranslations(...)` legítimo ao lado do alias escondia o alias.
+    const r = rodar({
+      'misto.tsx': `
+        import { useTranslations, useTranslations as useTraducao } from 'next-intl';
+        export function A() {
+          const t = useTranslations('Channels');
+          const tr = useTraducao('Inbox.sidebar');
+          return <>{t('label')}{tr('chaveInventadaQueNaoExiste')}</>;
+        }`,
+    });
+    expect(r.exit).toBe(1);
+    expect(r.saida).toContain('misto.tsx');
+    expect(r.saida).toContain('useTraducao');
+  });
+
+  it('binding normal + envelope local chamando a fábrica: a chamada fora de binding reprova', () => {
+    const r = rodar({
+      'envelope.tsx': `
+        import { useTranslations } from 'next-intl';
+        function useTraducao(ns: string) { return useTranslations(ns); }
+        export function A() {
+          const t = useTranslations('Channels');
+          const tr = useTraducao('Inbox.sidebar');
+          return <>{t('label')}{tr('chaveInventadaQueNaoExiste')}</>;
+        }`,
+    });
+    expect(r.exit).toBe(1);
+    expect(r.saida).toContain('envelope.tsx');
+    expect(r.saida).toContain('2 chamada(s), 1 reconhecida(s)');
+  });
+
+  it('binding com namespace DINÂMICO não é buraco de cobertura (cai no modo folha)', () => {
+    const r = rodar({
+      'dinamico.tsx': `
+        import { useTranslations } from 'next-intl';
+        export function A({ ns }: { ns: string }) {
+          const t = useTranslations(ns);
+          return t('label');
+        }`,
+    });
+    expect(r.exit).toBe(0);
+  });
+});

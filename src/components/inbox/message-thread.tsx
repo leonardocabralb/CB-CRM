@@ -579,12 +579,21 @@ export function MessageThread({
   // fechava com o compositor liberado (o portão do disparo segurava o envio,
   // mas a tela mentia até chegar mensagem nova). Um tique por minuto basta:
   // a badge fala em horas/minutos inteiros.
+  //
+  // ⚠️ O tique NÃO é condicionado a `janelaDe24h`. O fio fica montado ao
+  // trocar de conversa, e numa conta com os DOIS transportes o relógio
+  // parado numa conversa Evolution chegava VELHO à conversa Meta seguinte —
+  // horas velho, se a pessoa passou a tarde na Evolution. O memo abaixo
+  // recomputava com as `messages` novas e o instante antigo: a badge dizia
+  // "2h restantes" e o compositor abria sobre janela já fechada, até o tique
+  // seguinte (o portão do disparo segurava o envio, mas a tela mentia por
+  // até um minuto). Um setState por minuto num fio parado é barato; o
+  // relógio errado não é. (Achado do Codex no PR #96.)
   const [agoraDaBadge, setAgoraDaBadge] = useState(() => new Date());
   useEffect(() => {
-    if (!janelaDe24h) return; // Evolution/carga: a badge nem renderiza
     const id = setInterval(() => setAgoraDaBadge(new Date()), 60_000);
     return () => clearInterval(id);
-  }, [janelaDe24h]);
+  }, []);
 
   // 24-hour session timer. A REGRA mora em `lib/inbox/janela-24h`, porque o
   // portão do disparo (abaixo) tem de ler exatamente a mesma coisa com outro
@@ -672,7 +681,15 @@ export function MessageThread({
   // arriving while the thread is open don't trigger a full refetch —
   // they only flip hasUnread, which only the reset effect listens to.
   useEffect(() => {
-    if (!conversationId) return;
+    if (!conversationId) {
+      // Voltar (celular) zera `messages` no pai e deixa o fio montado SEM
+      // conversa. Sem zerar a marca aqui, REABRIR a mesma conversa era lido
+      // como resync — sem spinner — e a tela afirmava "Nenhuma mensagem
+      // ainda" sobre um fio de 150 linhas até a busca voltar (achado do
+      // Codex no PR #101).
+      conversaCarregadaRef.current = null;
+      return;
+    }
 
     const supabase = createClient();
     let cancelled = false;

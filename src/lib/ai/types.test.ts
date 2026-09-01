@@ -29,7 +29,16 @@ describe('mensagemSeguraDeAiError (#30)', () => {
 describe('nenhuma rota de AI devolve err.message cru (#30, pino estrutural)', () => {
   // O eco foi tirado de /api/ai/test no PR #74 e a revisão achou as TRÊS
   // cópias restantes (config, draft, playground). Este pino impede a quarta:
-  // qualquer `error: err.message` novo sob src/app/api/ai reprova aqui.
+  // qualquer leitura de `.message` de um erro sob src/app/api/ai reprova aqui.
+  //
+  // ⚠️ O padrão é a LEITURA (`err.message`, `error.message`, `e.message`),
+  // não a forma `error: err.message`: a primeira versão só casava a forma
+  // literal e deixava passar `const message = err instanceof AiError ?
+  // err.message : …` interpolado num `warning` (knowledge, [id], reindex) e
+  // o template `Embeddings key: ${err.message}` do config — quatro caminhos
+  // por onde uma chave de embeddings revogada ecoava até a tela (achado do
+  // Codex no PR #93). Linhas de `console.*` ficam de fora: log de servidor
+  // não vai para o cliente.
   it('só test/route.ts contém o padrão, e lá atrás da guarda de chave', () => {
     const raiz = path.resolve(__dirname, '..', '..', 'app', 'api', 'ai')
     const comPadrao: string[] = []
@@ -42,7 +51,8 @@ describe('nenhuma rota de AI devolve err.message cru (#30, pino estrutural)', ()
             .readFileSync(p, 'utf8')
             .replace(/\/\*[\s\S]*?\*\//g, '')
             .replace(/\/\/.*$/gm, '')
-          if (/error:\s*err\.message/.test(fonte)) {
+            .replace(/^.*\bconsole\.\w+\(.*$/gm, '')
+          if (/\b(?:err|error|e)\.message\b/.test(fonte)) {
             comPadrao.push(path.relative(raiz, p).split(path.sep).join('/'))
           }
         }

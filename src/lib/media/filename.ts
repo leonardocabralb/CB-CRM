@@ -157,25 +157,11 @@ export function mediaFilename(
   message: MediaFilenameInput,
   mimeType?: string | null,
 ): string {
-  // 0. The name the sender actually used (migration 969). Sanitised like any
-  //    other source — it comes from outside, so a `../` in it must not escape
-  //    the downloads folder — but otherwise trusted as-is: no `hasExtension`
-  //    guard, because a real attachment can legitimately have no extension
-  //    and the column only ever holds a filename, never prose.
-  if (message.media_filename) {
-    const fromColumn = sanitizeFilename(message.media_filename);
-    if (fromColumn) return fromColumn;
-  }
-
-  // 1. A document's own filename, when the sender didn't replace it with a
-  //    caption. Restricted to documents on purpose: an image caption like
-  //    "is this the right invoice.pdf" is prose, not a filename.
-  if (message.content_type === "document" && message.content_text) {
-    const fromText = hasExtension(message.content_text)
-      ? sanitizeFilename(message.content_text)
-      : "";
-    if (fromText) return fromText;
-  }
+  // 0 + 1. What the sender called the file — the two sources that need no
+  //        object in the bucket. Split out so a document whose file is not
+  //        (yet) available can still show its real name.
+  const declarado = nomeDeclarado(message);
+  if (declarado) return declarado;
 
   // 2. The uploaded object's name, for anything we sent ourselves.
   if (message.media_url) {
@@ -200,6 +186,45 @@ export function mediaFilename(
  * so a row carrying `application/octet-stream` doesn't beat a browser
  * blob that knows it's a JPEG.
  */
+/**
+ * The name the SENDER gave the file, or null when they gave none.
+ *
+ * Steps 0 and 1 of the cascade, and nothing else: no bucket basename, no
+ * synthesised name. It exists because the bubble asks a different question
+ * from the download: "is there a real name to show?" — and a document with
+ * `media_url` still null (Meta media whose verification failed, or a group
+ * attachment waiting for the on-demand download) HAS a real name in
+ * `media_filename`/`content_text`. Reading the full cascade there would
+ * synthesise `documento-<stamp>.bin` for a file that has a name; gating on
+ * the URL threw the name away and fell back to the generic "Document" label
+ * (Codex review of PR #101). Pure, and the tests fix the boundary.
+ */
+export function nomeDeclarado(
+  message: Pick<MediaFilenameInput, "content_type" | "content_text" | "media_filename">,
+): string | null {
+  // 0. The name the sender actually used (migration 969). Sanitised like any
+  //    other source — it comes from outside, so a `../` in it must not escape
+  //    the downloads folder — but otherwise trusted as-is: no `hasExtension`
+  //    guard, because a real attachment can legitimately have no extension
+  //    and the column only ever holds a filename, never prose.
+  if (message.media_filename) {
+    const fromColumn = sanitizeFilename(message.media_filename);
+    if (fromColumn) return fromColumn;
+  }
+
+  // 1. A document's own filename, when the sender didn't replace it with a
+  //    caption. Restricted to documents on purpose: an image caption like
+  //    "is this the right invoice.pdf" is prose, not a filename.
+  if (message.content_type === "document" && message.content_text) {
+    const fromText = hasExtension(message.content_text)
+      ? sanitizeFilename(message.content_text)
+      : "";
+    if (fromText) return fromText;
+  }
+
+  return null;
+}
+
 function preferKnownMime(mediaType?: string | null): string | null {
   if (!mediaType) return null;
   return extensionForMime(mediaType) === "bin" ? null : mediaType;

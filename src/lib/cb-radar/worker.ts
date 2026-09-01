@@ -291,7 +291,7 @@ async function recolherTravadas(admin: SupabaseClient): Promise<number> {
   const corte = corteDeClaimAbandonado()
   const { data: presas, error } = await admin
     .from('cb_conversation_insights')
-    .select('id, tentativas')
+    .select('id, tentativas, running_desde')
     .eq('status', 'running')
     // `running_desde` nulo com status `running` é inalcançável pelo
     // código — mas se aparecer (escrita manual, versão antiga), `.lt()`
@@ -306,8 +306,19 @@ async function recolherTravadas(admin: SupabaseClient): Promise<number> {
   if (!presas || presas.length === 0) return 0
 
   let recolhidas = 0
-  for (const p of presas as { id: string; tentativas: number }[]) {
-    const { error: upErr } = await admin
+  for (const p of presas as {
+    id: string
+    tentativas: number
+    running_desde: string | null
+  }[]) {
+    // ⚠️ CERCA do recolhedor: o UPDATE exige o MESMO `running_desde` velho
+    // que o SELECT acima viu. Entre os dois cabe uma reanálise manual TOMANDO
+    // o claim abandonado (o #28 permite roubar) — e sem a cerca o recolhedor
+    // marcava `failed` o claim FRESCO, zerava o carimbo, a escrita cercada do
+    // worker vivo era descartada e a rota manual ainda respondia sucesso
+    // (achado do Codex no PR #89). Carimbo nulo é cercado com `is null`,
+    // porque `.eq()` nunca casa NULL.
+    const base = admin
       .from('cb_conversation_insights')
       .update({
         status: 'failed',
@@ -317,8 +328,17 @@ async function recolherTravadas(admin: SupabaseClient): Promise<number> {
       })
       .eq('id', p.id)
       .eq('status', 'running')
+    const { data, error: upErr } = await (p.running_desde === null
+      ? base.is('running_desde', null)
+      : base.eq('running_desde', p.running_desde)
+    )
+      .select('id')
+      .maybeSingle()
     if (upErr) {
       console.error(`[radar] recolhedor não gravou a travada ${p.id}:`, upErr.message)
+    } else if (!data) {
+      // Alguém tomou o claim entre o SELECT e o UPDATE — é dele agora.
+      console.warn(`[radar] travada ${p.id} foi reivindicada no meio; recolhedor deixou quieta`)
     } else {
       recolhidas += 1
     }

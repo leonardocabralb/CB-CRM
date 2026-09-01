@@ -21,7 +21,7 @@ import {
   Download,
 } from "lucide-react";
 import { corDoRemetente, podeBaixarAnexo } from "@/lib/cb-groups/display";
-import { mediaFilename } from "@/lib/media/filename";
+import { mediaFilename, nomeDeclarado } from "@/lib/media/filename";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
 import { FormattedText } from "./formatted-text";
@@ -165,7 +165,12 @@ function MediaPendente({
  * sintetiza um nome quando não há nada.
  */
 function nomeDeArquivo(message: Message): string | undefined {
-  if (!message.media_url) return undefined;
+  // Sem objeto no bucket (mídia da Meta que não verificou, anexo de grupo
+  // esperando o download sob demanda) NÃO se sintetiza nome — mas o que o
+  // remetente CHAMOU o arquivo continua valendo. A versão anterior devolvia
+  // `undefined` aqui e a bolha caía no rótulo genérico "Documento" sobre
+  // arquivo com nome gravado (achado do Codex no PR #101).
+  if (!message.media_url) return nomeDeclarado(message) ?? undefined;
   return mediaFilename(message) || undefined;
 }
 

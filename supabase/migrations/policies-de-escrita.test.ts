@@ -63,16 +63,24 @@ const APAGA = /DROP\s+POLICY\s+(?:IF\s+EXISTS\s+)?(?:"([^"]+)"|([A-Za-z_]\w*))\s
 
 /**
  * Reproduz o replay: aplica os arquivos em ordem e devolve as policies de
- * ESCRITA que sobram nas seis tabelas. `Map` porque `CREATE` depois de
- * `DROP` (o padrão deste repo) tem de reescrever, não duplicar.
+ * ESCRITA que sobram nas seis tabelas, com o CORPO da última definição.
+ * `Map` porque `CREATE` depois de `DROP` (o padrão deste repo) tem de
+ * reescrever, não duplicar.
+ *
+ * ⚠️ O corpo viaja junto porque nome + comando não bastam: uma migration
+ * posterior pode DERRUBAR `broadcasts_insert` e recriá-la com o MESMO nome
+ * e `FOR INSERT`, só que `WITH CHECK (is_account_member(account_id,
+ * 'agent'))` — a conferência da 964 já rodou (e passou) antes dela, e o
+ * teste de conjunto veria exatamente as doze chaves esperadas (achado do
+ * Codex no PR #98). O predicado é conferido no FIM do replay, abaixo.
  */
-function policiasDeEscrita(): string[] {
+function policiasDeEscritaComCorpo(): Map<string, { cmd: string; corpo: string }> {
   const arquivos = fs
     .readdirSync(DIR)
     .filter((f) => f.endsWith('.sql'))
     .sort(); // 001 < 017 < 037 < 900 < 964 — três dígitos, ordem lexicográfica serve
 
-  const vivas = new Map<string, string>();
+  const vivas = new Map<string, { cmd: string; corpo: string }>();
 
   for (const arquivo of arquivos) {
     const sql = fs.readFileSync(path.join(DIR, arquivo), 'utf8');
@@ -91,16 +99,23 @@ function policiasDeEscrita(): string[] {
       // O comando vive entre o `ON <tabela>` e o fim da instrução. Sem
       // `FOR`, o padrão do Postgres é ALL — que é ESCRITA, e é a forma da
       // policy do upstream que este teste existe para pegar.
-      const corpo = sql.slice(m.index! + m[0].length).split(';')[0].slice(0, 200);
+      // Até o `;` — o corpo inteiro, não os 200 primeiros caracteres: o
+      // predicado de `automation_steps_modify` (subselect com JOIN) passa
+      // disso, e é nele que o `'agent'` de uma regressão apareceria.
+      const corpo = sql.slice(m.index! + m[0].length).split(';')[0];
       const cmd = corpo.match(/\bFOR\s+(ALL|SELECT|INSERT|UPDATE|DELETE)\b/i)?.[1] ?? 'ALL';
-      vivas.set(`${tabela}.${nome}`, cmd.toUpperCase());
+      vivas.set(`${tabela}.${nome}`, { cmd: cmd.toUpperCase(), corpo });
     }
   }
 
-  return [...vivas.entries()]
-    .filter(([, cmd]) => cmd !== 'SELECT')
-    .map(([chave]) => chave)
-    .sort();
+  for (const [chave, { cmd }] of vivas) {
+    if (cmd === 'SELECT') vivas.delete(chave);
+  }
+  return vivas;
+}
+
+function policiasDeEscrita(): string[] {
+  return [...policiasDeEscritaComCorpo().keys()].sort();
 }
 
 describe('policies de escrita em disparo/regras (M17)', () => {
@@ -108,6 +123,15 @@ describe('policies de escrita em disparo/regras (M17)', () => {
     // Deep-equal, não `every`: o ponto do teste é a policy EXTRA, e um
     // `every` sobre as esperadas passaria feliz com uma décima terceira.
     expect(policiasDeEscrita()).toEqual(ESPERADAS);
+  });
+
+  it('no FIM do replay, as doze ainda exigem admin — nenhuma foi recriada frouxa', () => {
+    // O mesmo critério da conferência da 964 (`'agent'` no predicado), só
+    // que sobre a ÚLTIMA definição de cada uma, e não sobre a da 964.
+    for (const [chave, { corpo }] of policiasDeEscritaComCorpo()) {
+      expect(corpo, `${chave} aceita agent`).not.toMatch(/'agent'/);
+      expect(corpo, `${chave} não exige admin`).toMatch(/is_account_member\([^)]*'admin'\)/);
+    }
   });
 
   it('o parser enxerga as policies que o upstream derrubou — senão não prova nada', () => {

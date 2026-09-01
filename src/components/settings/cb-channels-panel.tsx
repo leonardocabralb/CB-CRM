@@ -64,6 +64,7 @@ import { Label } from '@/components/ui/label';
 import { RequireRole } from '@/components/auth/require-role';
 import { createClient } from '@/lib/supabase/client';
 import { ehUrlAlcancavel } from '@/lib/cb-channels/webhook-url';
+import { invalidarCacheDeCanais } from '@/hooks/use-channels';
 import { SettingsPanelHead } from './settings-panel-head';
 
 interface CbChannel {
@@ -180,6 +181,11 @@ export function CbChannelsPanel() {
       : '';
 
   const load = useCallback(async () => {
+    // Este painel é o ÚNICO escritor de canal, e todo escritor recarrega por
+    // aqui — então é aqui que o cache de 15s do `useChannels` (M14) é
+    // esvaziado. Sem isto, mudar um canal e voltar ao inbox servia a lista
+    // de antes da mudança (ver a nota no hook).
+    invalidarCacheDeCanais();
     try {
       const res = await fetch('/api/cb/channels');
       const payload = await res.json();

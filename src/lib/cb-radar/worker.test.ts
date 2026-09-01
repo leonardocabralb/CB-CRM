@@ -225,3 +225,32 @@ describe('descarteFoiSobreFalha (#23)', () => {
     expect(fonte.slice(reabre, reabre + 400)).toContain("eq('estado', 'descartado')")
   })
 })
+
+describe('cerca do recolhedor de travadas (Codex, PR #89)', () => {
+  const fonte = fs
+    .readFileSync(path.join(__dirname, 'worker.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '')
+
+  // Entre o SELECT das presas e o UPDATE de cada uma cabe uma reanálise
+  // manual TOMANDO o claim abandonado (#28). O UPDATE tem de exigir o MESMO
+  // `running_desde` velho que o SELECT viu — senão marca `failed` o claim
+  // fresco e a escrita cercada do worker vivo é descartada.
+  it('o SELECT das presas traz `running_desde`, e o UPDATE o exige de volta', () => {
+    const inicio = fonte.indexOf('async function recolherTravadas')
+    expect(inicio).toBeGreaterThan(-1)
+    const fim = fonte.indexOf('async function reivindicar', inicio)
+    const corpo = fonte.slice(inicio, fim)
+    expect(corpo).toContain("select('id, tentativas, running_desde')")
+    expect(corpo).toContain("base.is('running_desde', null)")
+    expect(corpo).toContain("base.eq('running_desde', p.running_desde)")
+  })
+
+  it('claim tomado no meio NÃO conta como recolhido (o update confere o retorno)', () => {
+    const inicio = fonte.indexOf('async function recolherTravadas')
+    const fim = fonte.indexOf('async function reivindicar', inicio)
+    const corpo = fonte.slice(inicio, fim)
+    expect(corpo).toContain('.maybeSingle()')
+    expect(corpo).toContain('else if (!data)')
+  })
+})

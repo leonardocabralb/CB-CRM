@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 
-import { resultadoDaResposta } from './use-channels';
+import { invalidarCacheDeCanais, obterCanais, resultadoDaResposta } from './use-channels';
 
 // ============================================================
 // #06 — as TRÊS formas de a busca de canais falhar, e a que não falha.
@@ -50,5 +52,82 @@ describe('resultadoDaResposta (#06)', () => {
       channels: [],
       falhou: false,
     });
+  });
+});
+
+describe('o cache de canais é invalidado por quem MUDA canal (Codex, PR #96)', () => {
+  // O painel de Conexões tem fetch próprio e não passa pelo hook: sem a
+  // invalidação, conectar/apagar/trocar o padrão e voltar ao inbox dentro dos
+  // 15s servia a lista de antes. Pino estrutural: o `load()` do painel — o
+  // caminho comum a toda escrita — chama o invalidador.
+  it('o load() do cb-channels-panel chama invalidarCacheDeCanais', () => {
+    const fonte = fs.readFileSync(
+      path.join(__dirname, '..', 'components', 'settings', 'cb-channels-panel.tsx'),
+      'utf8',
+    );
+    expect(fonte).toContain("import { invalidarCacheDeCanais } from '@/hooks/use-channels'");
+    const inicio = fonte.indexOf('const load = useCallback(');
+    expect(inicio).toBeGreaterThan(-1);
+    expect(fonte.slice(inicio, inicio + 600)).toContain('invalidarCacheDeCanais();');
+  });
+
+  it('invalidar de fato esvazia: exportado e sem argumentos', () => {
+    expect(typeof invalidarCacheDeCanais).toBe('function');
+    expect(() => invalidarCacheDeCanais()).not.toThrow();
+  });
+});
+
+describe('invalidar no meio de um voo (Codex, PR #104)', () => {
+  // Uma busca iniciada ANTES da mutação e resolvida DEPOIS não pode repovoar
+  // o cache com a lista velha — e a montagem seguinte não pode receber a
+  // promessa antiga por `emVoo`. O `fetch` é stubado com uma promessa que só
+  // resolve quando o teste manda.
+  const resposta = (channels: unknown[]) => ({
+    ok: true,
+    json: async () => ({ channels }),
+  });
+
+  it('resposta de geração anterior é descartada e a próxima montagem busca de novo', async () => {
+    const original = globalThis.fetch;
+    let soltar!: (v: unknown) => void;
+    const presa = new Promise((r) => {
+      soltar = r;
+    });
+    const fetchStub = vi
+      .fn()
+      .mockReturnValueOnce(presa)
+      .mockResolvedValueOnce(resposta([{ id: 'novo' }]));
+    globalThis.fetch = fetchStub as unknown as typeof fetch;
+    try {
+      invalidarCacheDeCanais();
+      const antes = obterCanais(false); // voo #1, ainda preso
+      invalidarCacheDeCanais(); // a mutação aconteceu no meio
+      soltar(resposta([{ id: 'velho' }]));
+      expect((await antes).channels).toEqual([{ id: 'velho' }]); // quem pediu antes recebe o que pediu
+      const depois = await obterCanais(false); // NÃO pode ser o cache do velho
+      expect(fetchStub).toHaveBeenCalledTimes(2);
+      expect(depois.channels).toEqual([{ id: 'novo' }]);
+    } finally {
+      globalThis.fetch = original;
+      invalidarCacheDeCanais();
+    }
+  });
+
+  it('sem invalidação no meio, o voo compartilhado continua colapsando a rajada', async () => {
+    const original = globalThis.fetch;
+    const fetchStub = vi.fn().mockResolvedValue(resposta([{ id: 'a' }]));
+    globalThis.fetch = fetchStub as unknown as typeof fetch;
+    try {
+      invalidarCacheDeCanais();
+      const [x, y] = await Promise.all([obterCanais(false), obterCanais(false)]);
+      expect(fetchStub).toHaveBeenCalledTimes(1);
+      expect(x.channels).toEqual(y.channels);
+      // E dentro da validade o cache serve sem rede.
+      await obterCanais(false);
+      expect(fetchStub).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.fetch = original;
+      invalidarCacheDeCanais();
+    }
   });
 });
