@@ -186,7 +186,7 @@ as frentes deles 🔵 e leve as opções ao operador antes de implementar.
 | **F5** | Vazio virando afirmação (`useChannels`) | #06 #08 | 🟠 alto | ⏸️ **aguardando a mesclagem do PR #84**: o consumo do sinalizador em `message-thread.tsx` (linha do `janelaDe24h`) e o M10 caem DENTRO do hunk 514-546 que o #84 reescreve — fazer antes conflita | — |
 | **F6** | Portão de i18n no CI | #18 #19 #20 #24 | 🟠 alto | ✅ | #91 |
 | **F7** | Guardas e testes estruturais com falso verde | #14 #15 | 🟠 alto | ✅ | #88 |
-| **F8** | Filtros do inbox | #16 #25 #26 | 🟡 médio | ⬜ | — |
+| **F8** | Filtros do inbox | #16 #25 #26 | 🟡 médio | ✅ (+M4 e M5-parcial) | #92 |
 | **F9** | Erro de banco lido como ausência | #04 #07 | 🟡 médio | ✅ (#04 no PR #86; #07 no PR #89, mesma branch da F4) | #86/#89 |
 | **F10** | CI/CD e vazamento de credencial | #29 #30 | 🟡 médio | ⬜ | — |
 | **F11** | Menores de UX e estado | #17 #27 #31 #32 | 🟢 baixo | ⬜ | — |
@@ -1745,6 +1745,16 @@ pode oscilar entre dois carregamentos. Se isso incomodar, gateie a faixa em
 vazio) — mesmo módulo, mesma família, e o conserto se beneficia de ser feito
 junto.
 
+**Resolvido em** PR #92 — as duas superfícies comparam contra
+`limparOrfaos(f.filtros, catalogos)`, memoizado; a M4 entrou junto (os cinco
+`orfao:` de `descreverFiltro` com a guarda de catálogo vazio). ⚠️ Nota de
+registro: o "Ver também #17" logo acima descreve o **M4** — o #17 real é a
+aba Campos da ficha (F11); numeração trocada no plano, não no código.
+· **Medido (E2E, fixtures apagadas):** filtro "f8 fixture" com etiqueta
+MORTA de nascença marcado como padrão → a faixa "Filtro padrão: f8 fixture ·
+mostrar tudo" RENDERIZOU no reload (sem o fix não renderizava) e o gatilho
+do menu mostra o nome. Mutação da M4 (guarda removida) → 46/47.
+
 ---
 
 ### #25 — Paginação de `deals` sem `ORDER BY` pula e repete linhas
@@ -1779,6 +1789,14 @@ para confiar").
 
 **Armadilha.** Ordenar por `id` é suficiente para estabilidade e é barato (PK).
 Não ordene por `stage_id`/`contact_id`, que têm duplicatas.
+
+**Resolvido em** PR #92 — `.order("id", { ascending: true })` antes do
+`.range()` e o ramo `total == null` fechado (página CHEIA sem count devolve
+`linhas: null`; só página incompleta é aceita como fim). · **Medido:** a
+query REAL do navegador agora sai
+`deals?select=contact_id,stage_id&order=id.asc&offset=0&limit=1000`
+(performance API). O cenário >1000 negócios com UPDATE concorrente não é
+reproduzível na conta real — coberto por leitura e pela direção do fix.
 
 ---
 
@@ -1819,6 +1837,14 @@ escritores precisa mudar.
 CLAUDE.md é explícito: `funilId` é escrito SÓ pelo seletor de funil, porque
 carimbá-lo faria "Qualquer etapa" passar a significar "quem tem negócio neste
 funil", sumindo em silêncio com quem ainda não virou negócio.
+
+**Resolvido em** PR #92, exatamente pela derivação proposta
+(`funilVisivel = filtros.funilId ?? etapaAtual?.pipeline_id ?? null`) usada
+no gate do campo Etapa, no rótulo do Funil e no ✓ das opções — sem carimbar
+nada, como a armadilha manda. · **Medido (E2E):** fixture com `etapaId` de
+"Contato Avulso" e `funilId: null` aplicada numa conta de 4 funis → o painel
+exibiu FUNIL: "Bancário - Comercial" (derivado) e o campo ETAPA presente com
+"Contato Avulso"; a lista recortou 184→158.
 
 ---
 
@@ -2191,8 +2217,8 @@ avaliado e rejeitado.
 | **M22** | `message-composer.tsx:684` | ⚠️ **Irmão do #01, e mais provável que ele.** O efeito de troca de conversa limpa `pendente`, agendamento, seletor e anotação — mas **não** `draft`. O anexo JÁ POUSADO do cliente A continua montado no compositor de B, e `sendDraft` chama o `onSendMedia` de B. Não exige rede lenta: basta anexar e trocar de conversa. O #74 fechou o upload EM VOO e deixou o rascunho pousado | **F1, com o #01** — ✅ resolvido no PR #86 (o efeito de troca descarta o rascunho e limpa o estado) |
 | **M2** | `radar/page.tsx:110` | `const { channels } = useChannels()` sem `loading` → "canal com Radar desligado" derivado de lista vazia; análise de canal PESSOAL desligado aparece na tela. Exceção deliberada à convenção "vazio = todos" (privacidade, 941) | F5 |
 | **M3** | `use-radar.ts:259` | análise `failed` tem `analisado_em` NULO; com `.order(..., nullsFirst:false).limit(200)` ela é a PRIMEIRA a cair do teto, e não há consulta de resgate (só pendência tem). A garantia "failed aparece independente de gatilho" expira em silêncio | F4 |
-| **M4** | `filtros-salvos.ts:300/350` | `descreverFiltro` marca `orfao` sem a guarda de "catálogo vazio não prova nada" que `limparOrfaos` aplica 140 linhas abaixo → o menu escreve "(apagado)" sobre etiqueta/etapa VIVAS enquanto os catálogos carregam | F8 (com #16) |
-| **M5** | `filtros-salvos-menu.tsx:299/498` + `conversation-list.tsx:614` | o menu recalcula `descreverFiltro` para o filtro atual e para cada salvo a CADA render (inclusive com os dois diálogos fechados), e a busca do inbox mora no mesmo pai → roda por tecla digitada. E `esperandoPadrao` serializa perfil→filtros antes da primeira pintura do inbox, para todo mundo | F8 |
+| **M4** | `filtros-salvos.ts:300/350` | `descreverFiltro` marca `orfao` sem a guarda de "catálogo vazio não prova nada" que `limparOrfaos` aplica 140 linhas abaixo → o menu escreve "(apagado)" sobre etiqueta/etapa VIVAS enquanto os catálogos carregam | F8 — ✅ PR #92 (guarda nos 5 campos + teste CRÍTICO com contraprova) |
+| **M5** | `filtros-salvos-menu.tsx:299/498` + `conversation-list.tsx:614` | o menu recalcula `descreverFiltro` para o filtro atual e para cada salvo a CADA render (inclusive com os dois diálogos fechados), e a busca do inbox mora no mesmo pai → roda por tecla digitada. E `esperandoPadrao` serializa perfil→filtros antes da primeira pintura do inbox, para todo mundo | F8 — 🟨 PR #92 fez a metade BARATA (resumos memoizados por id, callbacks estáveis); o `esperandoPadrao` ficou, de propósito: mexer na serialização arrisca reintroduzir o flash 176→8 sem medição que justifique |
 | **M6** | `custom-fields-manager.tsx:155` | `fetchFields` liga `loading` e refaz as DUAS consultas depois de TODAS as 8 escritas — inclusive renomear um campo. Desmonta a lista e zera a rolagem | F11 (com #31) |
 | **M7** | `custom-fields-manager.tsx:419` | `handleDeleteGrupo` não renormaliza `posicao`: os campos voltam ao Geral com a posição DENTRO do bloco apagado, colidem, e `ordenarCampos` desempata pelo nome → a ordem que o operador montou embaralha, na ficha de TODO cliente | F11 (com #31) |
 | **M8** | `pipeline.yml:212` | o ramo `else` do rollout sai com código 0 → pipeline VERDE sem ter publicado. Cobre 4 estados, não só "serviço não existe": daemon fora do ar, nó fora de manager, SSH sem acesso ao socket. **PRÉ-EXISTENTE** (vem do `deploy.yml` original), não é do #77 | PR próprio |
