@@ -81,17 +81,36 @@ describe("findExistingContact", () => {
   it("returns a trunk-variant match via phonesMatch", async () => {
     const db = stubDb([{ id: "c1", phone: "37063949836" }]);
     const hit = await findExistingContact(db, "acct", "+370 063 949 836");
-    expect(hit?.id).toBe("c1");
+    expect(hit.contato?.id).toBe("c1");
+    expect(hit.falhou).toBe(false);
   });
 
-  it("returns null when no candidate matches", async () => {
+  it("returns no contact when no candidate matches", async () => {
     const db = stubDb([{ id: "c1", phone: "15559999999" }]);
     const hit = await findExistingContact(db, "acct", "+1 555-123-4567");
-    expect(hit).toBeNull();
+    expect(hit.contato).toBeNull();
+    expect(hit.falhou).toBe(false);
   });
 
-  it("returns null for an empty phone without querying", async () => {
+  it("returns no contact for an empty phone without querying", async () => {
     const db = stubDb([{ id: "c1", phone: "15551234567" }]);
-    expect(await findExistingContact(db, "acct", "   ")).toBeNull();
+    const hit = await findExistingContact(db, "acct", "   ");
+    expect(hit.contato).toBeNull();
+    expect(hit.falhou).toBe(false);
+  });
+
+  it("marca `falhou` quando a CONSULTA erra — nunca 'não achei' (#04)", async () => {
+    // Colapsar erro em null era o que duplicava a ficha: a rota de abrir
+    // conversa lia "não achei" e criava a variante do nono dígito.
+    const builder = {
+      select: () => builder,
+      eq: () => builder,
+      like: () =>
+        Promise.resolve({ data: null, error: { message: "timeout" } }),
+    };
+    const db = { from: () => builder } as unknown as SupabaseClient;
+    const hit = await findExistingContact(db, "acct", "+1 555-123-4567");
+    expect(hit.contato).toBeNull();
+    expect(hit.falhou).toBe(true);
   });
 });

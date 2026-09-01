@@ -842,6 +842,8 @@
       "fieldName": "Nome do novo campo…",
       "loading": "Carregando…",
       "empty": "Nenhum campo personalizado ainda.",
+      "loadError": "Não foi possível carregar os campos e blocos. Nada foi alterado.",
+      "retry": "Tentar de novo",
       "renameAria": "Renomear {name}",
       "deleteTitle": "Excluir campo",
       "deleteConfirm": "Excluir \"{name}\"? Isso também remove o valor armazenado em todos os contatos. Esta ação não pode ser desfeita.",

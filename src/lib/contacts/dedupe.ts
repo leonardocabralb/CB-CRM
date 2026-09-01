@@ -26,9 +26,29 @@ export interface ExistingContact {
   [key: string]: unknown;
 }
 
+/** Resultado da busca: distingue "não achei" de "não consegui procurar". */
+export interface BuscaDeContato {
+  /** O contato encontrado, ou null quando NÃO HÁ contato com esse número. */
+  contato: ExistingContact | null;
+  /**
+   * ⚠️ `true` = a CONSULTA falhou — "não sei", nunca "não achei". Colapsar
+   * os dois em null era o que duplicava a ficha do cliente num blip de banco
+   * (achado #04 do plano de 31/08): a busca é por sufixo com tolerância a
+   * tronco, as variantes de nono dígito têm `phone_normalized` DIFERENTES, e
+   * o índice único NÃO segura o insert que vem depois. Quem chama decide:
+   * — caminho de GENTE (abrir conversa, API v1, envio por telefone) responde
+   *   erro 500 e deixa tentar de novo;
+   * — a INGESTÃO (webhook Meta, Evolution) segue em frente com o `contato`
+   *   nulo, de propósito: derrubá-la perderia a mensagem do cliente, que é
+   *   pior que uma ficha duplicada — e o backstop 23505 cobre o duplicado
+   *   exato.
+   */
+  falhou: boolean;
+}
+
 /**
- * Find an existing contact in `accountId` whose phone matches `phone`,
- * or null. Pre-filters in SQL by the last-8-digit suffix (so we don't
+ * Find an existing contact in `accountId` whose phone matches `phone`.
+ * Pre-filters in SQL by the last-8-digit suffix (so we don't
  * pull every contact), then applies the strict `phonesMatch` in JS on
  * the small candidate set — the exact approach the webhook has used.
  */
@@ -36,9 +56,9 @@ export async function findExistingContact(
   db: SupabaseClient,
   accountId: string,
   phone: string,
-): Promise<ExistingContact | null> {
+): Promise<BuscaDeContato> {
   const normalized = normalizePhone(phone);
-  if (!normalized) return null;
+  if (!normalized) return { contato: null, falhou: false };
 
   const suffix = normalized.length >= 8 ? normalized.slice(-8) : normalized;
 
@@ -48,11 +68,14 @@ export async function findExistingContact(
     .eq("account_id", accountId)
     .like("phone", `%${suffix}`);
 
-  if (error || !data) return null;
+  if (error || !data) return { contato: null, falhou: true };
 
-  return (
-    (data as ExistingContact[]).find((c) => phonesMatch(c.phone, phone)) ?? null
-  );
+  return {
+    contato:
+      (data as ExistingContact[]).find((c) => phonesMatch(c.phone, phone)) ??
+      null,
+    falhou: false,
+  };
 }
 
 /**

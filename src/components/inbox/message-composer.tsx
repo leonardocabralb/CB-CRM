@@ -692,7 +692,25 @@ export function MessageComposer({
     limparAgendamento();
     setSeletorAberto(false);
     setAnotando(false);
-  }, [conversationId, liberarPendente, limparAgendamento]);
+    // ⚠️ O anexo JÁ POUSADO segue o destino da anotação: o rascunho do
+    // cliente A não pode continuar montado no compositor de B — um clique em
+    // Enviar mandaria o documento de um caso para o outro. Mesma receita da
+    // limpeza de desmonte lá em cima: recolhe o objeto (o `entreguesRef`
+    // protege arquivo que já é de uma agendada) e limpa o estado.
+    removeStaged(draftRef.current?.path);
+    setDraft(null);
+    // ⚠️ E uma gravação EM CURSO morre aqui, descartada. Este efeito acabou
+    // de apontar `conversaAnteriorRef` para a conversa nova, então a guarda
+    // de origem do upload não teria mais como saber que a fala era sobre o
+    // cliente anterior — e a nota de voz seguiria viva, gravando no
+    // compositor de B, para pousar lá no fim. Mesmo desfecho para a
+    // gravação já parada cujo encoder ainda não devolveu os bytes: o
+    // `cancelledRef` faz o `ondataavailable` ignorá-los.
+    clearTimer();
+    cancelledRef.current = true;
+    setRecording(false);
+    void recorderRef.current?.stop().catch(() => {});
+  }, [conversationId, liberarPendente, limparAgendamento, removeStaged, clearTimer]);
 
   // Contagem regressiva da barra. Sem isto o rótulo repetiria o valor cheio
   // o tempo todo, inclusive no último instante antes de a mensagem sair.
@@ -1032,9 +1050,23 @@ export function MessageComposer({
         toast.error("Recording is too long (over 16 MB).");
         return;
       }
+      const origem = conversationId;
       setBusy(true);
       try {
         const { publicUrl, path } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file);
+        // ⚠️ Subir um arquivo leva segundos e o compositor NÃO remonta na
+        // troca de conversa: sem esta conferência a nota de voz sobre o caso
+        // de A aterrissa no rascunho do cliente que estiver aberto quando o
+        // upload termina — e um Enviar entrega áudio sigiloso de um cliente a
+        // outro. É a MESMA guarda de `stageUpload` e `escolherDoAcervo`; são
+        // TRÊS cópias de propósito (três linhas parecidas > abstração
+        // prematura), e um caminho de upload novo entra nela também.
+        // A troca DURANTE a gravação não chega aqui: o efeito de troca
+        // cancela o gravador antes (ver `conversaAnteriorRef`).
+        if (conversaAnteriorRef.current !== origem) {
+          removeStaged(path);
+          return;
+        }
         removeStaged(draftRef.current?.path);
         setDraft({ kind: "audio", mediaUrl: publicUrl, path, filename: file.name, caption: "" });
       } catch (err) {
@@ -1043,7 +1075,7 @@ export function MessageComposer({
         setBusy(false);
       }
     },
-    [removeStaged],
+    [removeStaged, conversationId],
   );
 
   const startRecording = useCallback(async () => {
