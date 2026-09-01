@@ -100,7 +100,14 @@ export async function resolveConversationByPhone(
   let contactId: string;
   let contactCreated = false;
 
-  const existing = await findExistingContact(db, accountId, sanitized);
+  // ⚠️ Erro de banco NÃO é "não encontrado" (regra da v1): seguir criando
+  // duplicaria a ficha do cliente — a variante de tronco passa pelo índice
+  // único. O 500 deixa o integrador reencaminhar o envio.
+  const busca = await findExistingContact(db, accountId, sanitized);
+  if (busca.falhou) {
+    throw new SendMessageError('db_error', 'Failed to look up contact', 500);
+  }
+  const existing = busca.contato;
   if (existing) {
     contactId = existing.id;
     if (name && name !== existing.name) {
@@ -125,7 +132,8 @@ export async function resolveConversationByPhone(
       // Lost a race against a concurrent inbound/API create — the
       // unique index (migration 022) rejected the duplicate. Re-resolve.
       if (isUniqueViolation(createErr)) {
-        const raced = await findExistingContact(db, accountId, sanitized);
+        const raced = (await findExistingContact(db, accountId, sanitized))
+          .contato;
         if (raced) {
           contactId = raced.id;
         } else {

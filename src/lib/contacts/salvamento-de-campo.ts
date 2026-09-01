@@ -111,12 +111,31 @@ export function criarFilaDeGravacao(
     aoMudarEstado?.("gravando");
     let atual = primeiro;
     for (;;) {
-      const ok = await gravar(atual);
+      let ok = false;
+      try {
+        ok = await gravar(atual);
+      } catch (err) {
+        // ⚠️ Rejeição é FALHA, não fim do laço (#10 do plano de 31/08). O
+        // contrato de `gravar` é resolver boolean, mas um `createClient()`
+        // que estoura ou um toast que quebra na formatação REJEITAM — e sem
+        // este catch o laço abandonava com `rodando = true` para sempre:
+        // spinner eterno, todo `enfileirar` caindo no pendente que ninguém
+        // consome, e nada mais gravado naquele campo, nem na descarga de
+        // desmonte. Quem toasta é o chamador; aqui registra e segue.
+        console.error("[salvamento-de-campo] gravar rejeitou:", err);
+        ok = false;
+      }
       if (ok) salvo = atual;
       // Falhou: volta a régua para o que o banco tem, senão o MESMO gesto
       // repetido pelo operador seria descartado como "não mudou" e a
       // tentativa de novo nunca sairia.
-      else desejado = salvo;
+      // ⚠️ SÓ quando não há pendente (#09): com pendente na fila, `desejado`
+      // já aponta para o valor MAIS NOVO — reverter aqui o deixava preso num
+      // valor que o banco não teria mais assim que o pendente gravasse, e o
+      // gesto de DESFAZER de volta ao original era engolido como "não
+      // mudou": a tela mostrando uma coisa, o banco guardando outra, sem
+      // spinner nem toast.
+      else if (pendente === null) desejado = salvo;
       const proximo = pendente;
       pendente = null;
       if (proximo === null) {

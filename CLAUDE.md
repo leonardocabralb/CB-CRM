@@ -218,6 +218,7 @@ upstream sobrescrevê-los:
 | `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDaMensagem>` envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo), a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef` |
 | `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (963): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
 | `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem contato e canal RESOLVIDO — `activeChannel`; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
+| `src/components/inbox/message-thread.tsx` (#84) | a **janela de 24h**: a regra saiu para `src/lib/inbox/janela-24h.ts` (puro, com teste) e os TRÊS caminhos de envio (texto, mídia, interativa) passam por `janelaFechadaAgora()` antes do `fetch` — o portão lê o RELÓGIO no disparo, nunca `sessionInfo.expired` (que é `useMemo` em `[messages]` e não recomputa com o passar das horas). Um merge que traga o `sessionInfo` inline do upstream devolve os três buracos de uma vez |
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
@@ -477,8 +478,11 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
 - ⚠️ **Desmontar não dispara `blur`**, então há descarga na limpeza de
   desmonte: sem ela, digitar e trocar de bloco (o menu horizontal da 966),
   fechar o painel ou trocar de aba apagaria o texto — em silêncio, e sem o
-  botão para servir de segunda chance. Ela não grava duas vezes porque
-  `salvoRef` é atualizado no sucesso do blur.
+  botão para servir de segunda chance. Ela não grava duas vezes porque o
+  `enfileirar` da fila compara contra `desejado` (o que já se pediu gravar) e
+  descarta o que não mudou — a idempotência mora DENTRO de
+  `criarFilaDeGravacao`, não em ref nenhuma do componente. (Uma versão
+  anterior desta nota creditava um `salvoRef` que nunca existiu no código.)
 - ⚠️⚠️ **Toda gravação passa pela FILA (`criarFilaDeGravacao`), nunca por
   `aoGravar` direto.** Duas requisições concorrentes na mesma linha chegam ao
   banco fora de ordem — mudar uma lista duas vezes rápido, ou
@@ -489,7 +493,12 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
   se QUER gravar, não contra o que o banco confirmou: com `salvo` ainda
   antigo durante o voo, desfazer para o valor original seria descartado como
   não-evento e a tela terminaria discordando do banco (pego pelo teste da
-  própria fila). Achado do Codex no PR #83.
+  própria fila). Achado do Codex no PR #83. ⚠️ E o ramo de FALHA tem duas
+  sutilezas com teste próprio (achados #09/#10 do plano de 31/08): a régua
+  `desejado` só reverte para `salvo` quando NÃO há pendente (com pendente,
+  reverter engolia o desfazer seguinte), e REJEIÇÃO de `aoGravar` é tratada
+  como falha comum — sem o catch, o laço morria com `rodando = true` e o
+  campo parava de gravar para sempre, com o spinner aceso.
 - ⚠️ **`select` grava na ESCOLHA, o resto no blur** (`gravaAoSair`). O popover
   fecha e não há blur útil para esperar. O campo de DATA fica no blur apesar de
   disparar `change`: ele dispara a cada pedaço digitado, com datas
@@ -525,23 +534,40 @@ grupos-de-campos.ts` (testado) e o catálogo com arrastar em
   apagado, ou esvaziado, deixaria a seção em branco com uma pastilha acesa.
 - ⚠️ **`grupo_id` NULO É o bloco "Geral", e ele vem SEMPRE primeiro.** Não
   existe linha para ele: por isso não é renomeável nem arrastável, e o rótulo
-  sai do dicionário (`Contacts.customFields.groupGeneral`), não do banco. Ele
-  some sozinho quando todo campo estiver num grupo de verdade — bloco vazio
-  não renderiza na ficha do cliente. Uma tela que mostre "Geral" vindo do
-  banco está lendo uma linha que não existe.
+  sai do dicionário (`Contacts.customFields.groupGeneral`), não do banco. Uma
+  tela que mostre "Geral" vindo do banco está lendo uma linha que não existe.
+  ⚠️ **Ele some quando todo campo está num grupo de verdade SÓ nas telas de
+  LEITURA** (`incluirVazios: false` — ficha e painel, onde cabeçalho sem campo
+  embaixo não informa nada). **No CATÁLOGO ele fica, mesmo vazio**, e isso é
+  load-bearing: o seletor de bloco de cada linha oferece "Geral" SEMPRE, e sem
+  o bloco renderizado `moverCampo` não acha o destino, devolve `null` e a tela
+  não faz NADA — sem toast, sem erro, sem escrita. Arrastar também precisa do
+  bloco na tela, então não havia segunda porta: campo posto num grupo ficava
+  preso em grupo para sempre. "Simplificar" para `if (geral.length > 0)`
+  parece obviamente certo e mata a volta. (Achado do Codex no PR #78.)
 - ⚠️ **`categoria` (949) NÃO é o bloco, e não morreu.** Continua sendo a marca
   SEMÂNTICA "campo técnico": é o que o semeador dos 10 campos escreve e o que
   a API v1 expõe como `category` (dropar a coluna quebra o n8n do gestor).
   `grupo_id` é só ONDE o campo aparece. O seletor de categoria saiu do
   formulário de criação — quem cria campo escolhe BLOCO.
-- ⚠️ **A ordem é `.order('posicao', { nullsFirst: false }).order('field_name')`
-  em TODA consulta de `custom_fields`** — são 8 call sites (catálogo, painel da
-  conversa ×2, ficha de contato, broadcast ×2, automação, API v1). `posicao`
-  NULA cai no FIM de propósito: campo criado por caminho que não a carimba (o
-  semeador cria dez de uma vez) nasce no fim do bloco em vez de embaralhar a
-  ordem montada. `ordenarCampos` é o espelho EXATO dessa cláusula — mudar um
-  lado sem o outro faz o arrastar pousar o campo num lugar e o próximo
-  carregamento mostrá-lo em outro.
+- ⚠️⚠️ **`posicao` É POSIÇÃO DENTRO DO BLOCO, e por isso só quem REAGRUPA pode
+  ordenar por ela.** Ela reinicia em cada bloco, então ordenar a conta inteira
+  por `posicao` INTERCALA os blocos — todo "1" antes de todo "2" — e devolve
+  uma ordem que não é nem alfabética nem a que o operador arrumou. Não estoura
+  em lugar nenhum e passa em revisão. São DUAS famílias de consulta, e trocá-las
+  é o erro fácil:
+  - **Reagrupam** (catálogo, painel da conversa, ficha de contato):
+    `.order('posicao', { nullsFirst: false }).order('field_name')`, porque
+    `agruparCampos` reparte antes de exibir. `ordenarCampos` é o espelho EXATO
+    dessa cláusula — mudar um lado sem o outro faz o arrastar pousar o campo
+    num lugar e o próximo carregamento mostrá-lo em outro.
+  - **Listas PLANAS** (broadcast ×2, automação, API v1): `.order('field_name')`
+    e mais nada. A da v1 é CONTRATO com o integrador (o n8n do gestor lê o
+    array). Quem criar consulta plana nova repete esta metade.
+  `posicao` NULA cai no FIM de propósito: campo criado por caminho que não a
+  carimba (o semeador cria dez de uma vez) nasce no fim do bloco em vez de
+  embaralhar a ordem montada. (As duas famílias saíram da revisão do Codex no
+  PR #78, que pegou a ordenação global aplicada às quatro listas planas.)
 - ⚠️ **Reordenar passa por RPC (`cb_ordenar_campos_personalizados`), nunca por
   `upsert`.** O upsert do PostgREST teria de carregar as quatro colunas NOT
   NULL de `custom_fields` junto (o NOT NULL é conferido ANTES de o Postgres
@@ -584,15 +610,13 @@ grupos-de-campos.ts` (testado) e o catálogo com arrastar em
   NOT NULL e faz parte da FK composta; um SET NULL sem lista tentaria zerar as
   duas colunas, e apagar um bloco passaria a estourar violação em vez de
   devolver os campos ao Geral. Medido: apagar o bloco preserva os campos.
-- ⚠️ **Um `Salvar campos` só, e ele salva TODOS os campos — inclusive os dos
-  blocos que não estão à vista.** Eram dois (um por aba) porque o Salvar de uma
-  aba não podia arrastar junto edição meio-feita da outra. Com o menu
-  horizontal os outros blocos voltaram a ficar invisíveis, mas o valor digitado
-  neles CONTINUA no `customValues` e é do operador: salvar só o bloco visível
-  descartaria em silêncio o que ele preencheu antes de trocar de pastilha —
-  perder digitação é pior que gravar digitação. Medido na tela: o valor
-  sobrevive à troca de bloco. Quem voltar a recortar o save por bloco precisa
-  resolver antes o que fazer com o que ficou escondido.
+- ⚠️ **O botão "Salvar campos" NÃO EXISTE MAIS** — o PR #83 trocou por
+  salvamento automático POR CAMPO (blur/escolha + descarga de desmonte; ver a
+  seção "Campo personalizado SALVA SOZINHO"). O que resta desta nota é o
+  motivo dela: o valor digitado num bloco fora de vista CONTINUA no
+  `customValues` e sobrevive à troca de pastilha (medido na tela) — quem um
+  dia recriar um save em LOTE precisa resolver antes o que fazer com o que
+  ficou escondido, porque perder digitação é pior que gravar digitação.
 - **Sem `capitalize` nos rótulos** (nas duas fichas): ele maiusculava cada
   palavra e o operador via "Data De Fechamento Do Contrato" no lugar do nome
   que cadastrou — e estragava os técnicos (`utm_source`), que por isso

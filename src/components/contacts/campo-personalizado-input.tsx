@@ -57,7 +57,13 @@ export function CampoPersonalizadoInput({
       <Input
         type="datetime-local"
         value={paraEntradaLocal(value)}
-        onChange={(e) => onChange(deEntradaLocal(e.target.value))}
+        onChange={(e) => {
+          // ⚠️ Mesma guarda de *bad input* do ramo number, logo abaixo:
+          // datetime-local com metade dos segmentos preenchidos devolve
+          // `value === ""` com a caixa ainda mostrando o que foi digitado.
+          if (e.target.value === '' && e.target.validity.badInput) return;
+          onChange(deEntradaLocal(e.target.value));
+        }}
         disabled={disabled}
       />
     );
@@ -115,7 +121,17 @@ export function CampoPersonalizadoInput({
           type="number"
           inputMode="decimal"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            // ⚠️ <input type=number> devolve "" em `.value` no estado *bad
+            // input* (`300.`, `-`, `1e`) — com a caixa AINDA mostrando o
+            // texto digitado. Sem esta guarda, o salvamento automático (B1
+            // do PR #83) lê isso como "esvaziar" a cada blur/desmonte e o
+            // upsert vira DELETE da linha gravada, com o ✓ verde ao lado.
+            // Apagar de verdade (Backspace até o fim) continua passando:
+            // lá `value === ""` vem com `badInput === false`.
+            if (e.target.value === '' && e.target.validity.badInput) return;
+            onChange(e.target.value);
+          }}
           placeholder={placeholder}
           disabled={disabled}
         />

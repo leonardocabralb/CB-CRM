@@ -85,7 +85,11 @@ async function findOrCreateContact(
   phone: string,
   name: string
 ): Promise<{ contact: ContactRow; wasCreated: boolean } | null> {
-  const existing = await findExistingContact(db, accountId, phone);
+  // ⚠️ `falhou` deliberadamente NÃO derruba a ingestão (mesma decisão do
+  // webhook da Meta): perder a mensagem do cliente é pior que arriscar uma
+  // ficha duplicada de variante de tronco — o backstop 23505 abaixo cobre o
+  // duplicado exato. Caminhos de GENTE respondem 500 em vez disso.
+  const existing = (await findExistingContact(db, accountId, phone)).contato;
   if (existing) {
     if (name && name !== existing.name) {
       await db
@@ -104,7 +108,7 @@ async function findOrCreateContact(
 
   if (error) {
     if (isUniqueViolation(error)) {
-      const raced = await findExistingContact(db, accountId, phone);
+      const raced = (await findExistingContact(db, accountId, phone)).contato;
       if (raced) return { contact: raced as ContactRow, wasCreated: false };
     }
     console.error('[inbound-store] create contact failed:', error);

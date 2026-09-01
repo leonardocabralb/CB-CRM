@@ -277,7 +277,8 @@
       "today": "Today",
       "yesterday": "Yesterday",
       "channelChangedWhileTyping": "Not sent. {channel} messaged you from a different number while you were typing — the thread moved there. Check the channel above and send again.",
-      "channelChangedUnknown": "The customer",
+      "sessionExpiredBlocked": "Not sent: the 24-hour window closed. Use a template to re-engage.",
+            "channelChangedUnknown": "The customer",
       "searchInThread": "“{termo}” — {atual} of {total}",
       "searchPrevHit": "Previous match",
       "searchNextHit": "Next match"
@@ -848,6 +849,8 @@
       "fieldName": "New field name…",
       "loading": "Loading…",
       "empty": "No custom fields yet.",
+      "loadError": "Couldn't load the fields and blocks. Nothing was changed.",
+      "retry": "Try again",
       "renameAria": "Rename {name}",
       "deleteTitle": "Delete field",
       "deleteConfirm": "Delete \"{name}\"? This also removes its stored value on every contact. This cannot be undone.",

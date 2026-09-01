@@ -93,7 +93,15 @@ export function ContactForm({
     }
     setCheckingDup(true);
     try {
-      const existing = await findExistingContact(supabase, accountId, value);
+      // A conferência é CONSULTIVA (aviso de possível duplicata), então
+      // `falhou` fica silencioso de propósito: o índice único segura o
+      // duplicado exato no submit, e bloquear o formulário por um blip de
+      // rede seria pior que perder o aviso do fuzzy.
+      const { contato: existing } = await findExistingContact(
+        supabase,
+        accountId,
+        value,
+      );
       setDupMatch(
         existing
           ? { contact: existing, exact: isExactMatch(existing, value) }
@@ -210,7 +218,7 @@ export function ContactForm({
       if (isUniqueViolation(err)) {
         toast.error(t('toastConflict'));
         if (!isEdit && accountId) {
-          const existing = await findExistingContact(
+          const { contato: existing } = await findExistingContact(
             supabase,
             accountId,
             phone.trim(),
