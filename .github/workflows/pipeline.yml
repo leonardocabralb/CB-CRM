@@ -271,7 +271,7 @@ jobs:
         continue-on-error: true
         env:
           IMAGE_REF: ${{ env.IMAGE }}:${{ github.sha }}
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5 — pin por SHA: a action recebe a chave SSH de produção, e tag móvel é supply chain com acesso a ela
         with:
           host: ${{ secrets.VPS_SSH_HOST }}
           username: ${{ secrets.VPS_SSH_USER }}
@@ -279,15 +279,35 @@ jobs:
           envs: IMAGE_REF
           script: ${{ env.ROLLOUT_SCRIPT }}
 
+      # ⚠️ BACKOFF entre as tentativas (#29 do plano 31/08). Sem ele, a 2ª
+      # começava ~30-40s depois da 1ª (o timeout de conexão do ssh-action) —
+      # dentro do MESMO blip de rede, que é a única causa que o retry cobre.
+      # Medido em 31/08 (PR #80): as DUAS falharam com `dial tcp :22 i/o
+      # timeout` e o `gh run rerun --failed` passou MINUTOS depois — minutos
+      # são a medida do que faltava.
+      - name: Espera antes da segunda tentativa
+        if: steps.rollout.outcome == 'failure'
+        run: sleep 60
+
       - name: Roll out on the VPS (segunda tentativa)
         if: steps.rollout.outcome == 'failure'
         env:
           IMAGE_REF: ${{ env.IMAGE }}:${{ github.sha }}
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5 — pin por SHA: a action recebe a chave SSH de produção, e tag móvel é supply chain com acesso a ela
         with:
           host: ${{ secrets.VPS_SSH_HOST }}
           username: ${{ secrets.VPS_SSH_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           envs: IMAGE_REF
           script: ${{ env.ROLLOUT_SCRIPT }}
+
+      # ⚠️ Devolve o SINAL que o `continue-on-error` engole: a 1ª tentativa
+      # falha aparece como success no resumo do Actions, e a auditoria de
+      # flakiness que originou o retry contaria 100% verde enquanto o
+      # rollout falha a cada push. O warning é auditável sem reprovar o job.
+      - name: Sinaliza que precisou da segunda tentativa
+        if: steps.rollout.outcome == 'failure'
+        run: |
+          echo "::warning::rollout precisou da 2ª tentativa (1ª falhou — provável blip de rede runner→VPS)"
+          echo "⚠️ rollout precisou da 2ª tentativa" >> "$GITHUB_STEP_SUMMARY"
 
