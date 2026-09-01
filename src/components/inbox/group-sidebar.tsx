@@ -4,9 +4,25 @@
 // Painel lateral de uma conversa de GRUPO.
 //
 // Componente separado do `contact-sidebar.tsx` de propósito: aquele é
-// contato de ponta a ponta (etiquetas, negócios, anotações, histórico do
-// lead) e nada disso existe num grupo. Enfiar ramos de `if (grupo)` lá
-// deixaria os dois piores.
+// contato de ponta a ponta (etiquetas, negócios, histórico do lead) e nada
+// disso existe num grupo. Enfiar ramos de `if (grupo)` lá deixaria os dois
+// piores.
+//
+// ⚠️ Ganhou ABAS em 2026-09-01, e até então não tinha nenhuma. Duas das
+// features que o painel do contato tem NÃO dependem de contato:
+//
+//   - **Arquivos** — o acervo é da CONVERSA; o componente é o mesmo.
+//   - **Notas** — `cb_conversation_notes.conversation_id` é NOT NULL e
+//     `contact_id` é anulável, e o comentário da migration 918 já antecipa
+//     o caso de grupo por escrito. O hook sempre buscou por conversa. Só o
+//     painel não expunha.
+//
+// O que continua de fora, e por quê: tarefas e campos personalizados exigem
+// `contact_id NOT NULL` (944 / 001); negócios e histórico o banco aceitaria,
+// mas dependem de decisão de produto; automações estão excluídas por desenho
+// (`cb-groups/persist.ts` não importa os motores, e há teste vigiando).
+// ⚠️ FIXAR nota também fica de fora, e é estrutural: o índice único da 951
+// exige `contact_id NOT NULL` — fixação é conceito da ficha do cliente.
 // ============================================================
 
 import { useCallback, useState } from "react";
@@ -21,28 +37,48 @@ import {
   PanelRightClose,
 } from "lucide-react";
 
-import type { CbGroup } from "@/types";
+import type { CbGroup, Message } from "@/types";
 import { useChannels } from "@/hooks/use-channels";
+import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { nomeDoGrupo, podeRenomearNoWhatsApp } from "@/lib/cb-groups/display";
 import { TituloDeSecao } from "@/components/inbox/painel/painel-do-contato";
 import { LinhaDeEdicao } from "@/components/inbox/painel/linha-de-edicao";
+import { AbaArquivos } from "@/components/inbox/painel/aba-arquivos";
+import { InternalNoteBox } from "@/components/inbox/internal-note-box";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 interface GroupSidebarProps {
   grupo: CbGroup | null;
+  /**
+   * A conversa aberta. Necessária para as anotações — elas são chaveadas pela
+   * CONVERSA (918), não pelo contato, que num grupo é nulo.
+   */
+  conversationId?: string | null;
   /** Reflete no estado do pai o que a rota devolveu. */
   onGrupoAtualizado?: (patch: Partial<CbGroup>) => void;
   /** Fecha o painel — mesmo botão, mesmo lugar que na ficha do contato. */
   onClose?: () => void;
+  /** O fio, para a aba Arquivos. Ver `PainelDoContatoProps.messages`. */
+  messages?: Message[];
 }
 
-export function GroupSidebar({ grupo, onGrupoAtualizado, onClose }: GroupSidebarProps) {
+export function GroupSidebar({
+  grupo,
+  conversationId,
+  onGrupoAtualizado,
+  onClose,
+  messages = [],
+}: GroupSidebarProps) {
   const t = useTranslations("Inbox.groupSidebar");
+  const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
   const { channels } = useChannels();
+  const { notas, acrescentar: acrescentarNota } =
+    useConversationNotes(conversationId);
 
   const [editandoApelido, setEditandoApelido] = useState(false);
   const [apelido, setApelido] = useState("");
@@ -166,6 +202,33 @@ export function GroupSidebar({ grupo, onGrupoAtualizado, onClose }: GroupSidebar
         </>,
       )}
 
+      {/* Abas com RÓTULO, não só-ícone como na ficha do contato: lá são cinco
+          e o espaço obriga; aqui são três e cabem escritas. */}
+      <Tabs
+        defaultValue="informacoes"
+        className="flex min-h-0 flex-1 flex-col gap-0"
+      >
+        {/* ⚠️ `group-data-horizontal/tabs:h-auto` com o prefixo REPETIDO, não
+            `h-auto` cru: o `h-8` do TabsList vem sob prefixo de variante, e o
+            tailwind-merge só desempata classes de MESMO prefixo — as duas
+            sobreviveriam e a variante venceria. É a armadilha que já quebrou a
+            ficha do contato (as abas renderizadas por cima dos campos). */}
+        <TabsList className="border-border bg-muted/30 w-full shrink-0 justify-start gap-x-1 rounded-none border-b px-2 py-1 group-data-horizontal/tabs:h-auto [&>button]:h-8 [&>button]:flex-1">
+          <TabsTrigger value="informacoes" className="text-xs">
+            {t("tabInfo")}
+          </TabsTrigger>
+          <TabsTrigger value="notas" className="text-xs">
+            {tSidebar("tabNotes")}
+          </TabsTrigger>
+          <TabsTrigger value="arquivos" className="text-xs">
+            {tSidebar("tabFiles")}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent
+          value="informacoes"
+          className="min-h-0 flex-1 overflow-y-auto"
+        >
       {/* `min-h-0` é load-bearing: filho de flex nasce com min-height:auto e
           o Root do ScrollArea é overflow:visible — sem isto a coluna cresce
           para caber tudo e o fim é cortado sem barra (issue #229). */}
@@ -279,6 +342,70 @@ export function GroupSidebar({ grupo, onGrupoAtualizado, onClose }: GroupSidebar
           </Secao>
         </div>
       </ScrollArea>
+        </TabsContent>
+
+        {/* ---- Notas (918). O mesmo caminho da ficha do contato, menos a
+             FIXAÇÃO: o índice único da 951 exige `contact_id NOT NULL`.
+             ⚠️ `keepMounted` pela mesma razão de lá — o rascunho mora dentro
+             do `InternalNoteBox`, e o TabsPanel do base-ui desmonta a aba
+             inativa: dar uma olhada em Informações e voltar apagaria o texto
+             em silêncio. ---- */}
+        <TabsContent
+          value="notas"
+          keepMounted
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          {conversationId ? (
+            <InternalNoteBox
+              key={conversationId}
+              conversationId={conversationId}
+              listaParaBaixo
+              autoFocus={false}
+              onSaved={acrescentarNota}
+            />
+          ) : null}
+
+          <div className="mt-2 space-y-2">
+            {notas.map((note) => (
+              <div key={note.id} className="bg-muted rounded-lg px-3 py-2">
+                <p className="text-muted-foreground text-xs whitespace-pre-wrap">
+                  {note.texto}
+                </p>
+                <p className="text-muted-foreground mt-1 text-[10px]">
+                  {/* Locale do NAVEGADOR (undefined), nunca fixo. */}
+                  {new Date(note.created_at).toLocaleString(undefined, {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </p>
+              </div>
+            ))}
+            {notas.length === 0 && (
+              // ⚠️ `t` (Inbox.groupSidebar), NÃO `tSidebar`: a chave mora no
+              // bloco do grupo. O portão estático não pega a troca — ele
+              // confere a chave contra TODOS os namespaces do arquivo, de
+              // propósito (tradutor viaja como prop), então `tSidebar("noNotes")`
+              // passava no CI e só o console do navegador acusava
+              // MISSING_MESSAGE.
+              <p className="text-muted-foreground py-6 text-center text-xs">
+                {t("noNotes")}
+              </p>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* ---- Arquivos: o MESMO componente da ficha do contato. O acervo é
+             da conversa, e ele não sabe de quem ela é. ---- */}
+        <TabsContent
+          value="arquivos"
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          <AbaArquivos messages={messages} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

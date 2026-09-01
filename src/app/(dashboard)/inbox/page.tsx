@@ -964,8 +964,12 @@ function InboxPageInner() {
               // anotações e histórico do lead — nada disso existe num grupo.
               <GroupSidebar
                 grupo={activeConversation.group ?? null}
+                conversationId={activeConversation.id}
                 onGrupoAtualizado={handleGroupUpdated}
                 onClose={handleToggleContactPanel}
+                // O mesmo array que alimenta o fio: a aba Arquivos não faz
+                // consulta própria. Ver `lib/media/anexos`.
+                messages={messages}
               />
             ) : (
               <ContactSidebar
@@ -974,6 +978,7 @@ function InboxPageInner() {
                 resyncToken={resyncToken}
                 onClose={handleToggleContactPanel}
                 onContactUpdated={handleContactUpdated}
+                messages={messages}
               />
             )}
           </div>

@@ -30,6 +30,7 @@ import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager
 import { DealForm } from '@/components/pipelines/deal-form';
 import { SeletorFunilEtapa } from '@/components/inbox/painel/seletor-funil-etapa';
 import { AbaAutomacoes } from '@/components/inbox/painel/aba-automacoes';
+import { AbaArquivos } from '@/components/inbox/painel/aba-arquivos';
 import { useExecucoesDoContato } from '@/hooks/use-execucoes-do-contato';
 import { statusAoEntrarNaEtapa } from '@/lib/pipelines/resultado';
 import { avisarDrenagemDeFunil } from '@/lib/automations/avisar-drenagem';
@@ -52,6 +53,7 @@ import type {
   Deal,
   DealStatus,
   GrupoDeCampos,
+  Message,
   PipelineStage,
   Tag,
 } from '@/types';
@@ -67,6 +69,7 @@ import {
   Building2,
   History,
   ListTodo,
+  Paperclip,
   ChevronDown,
   ChevronUp,
   Loader2,
@@ -116,6 +119,15 @@ export interface PainelDoContatoProps {
    * lista até o próximo refetch.
    */
   onContactUpdated?: (patch: Partial<Contact>) => void;
+  /**
+   * O fio da conversa aberta, para a aba Arquivos montar o acervo de anexos.
+   *
+   * ⚠️ Vem por PROP em vez de consulta própria: a página já carrega a conversa
+   * inteira para o fio, e uma segunda busca aqui duplicaria o tráfego para
+   * responder a mesma coisa. Vazio é o padrão — o painel também é montado
+   * antes de o fio carregar.
+   */
+  messages?: Message[];
 }
 
 export function PainelDoContato({
@@ -124,6 +136,7 @@ export function PainelDoContato({
   resyncToken = 0,
   onClose,
   onContactUpdated,
+  messages = [],
 }: PainelDoContatoProps) {
   const tSidebar = useTranslations('Inbox.sidebar');
   /** Só para o rótulo do bloco Geral (966) — o mesmo que o catálogo usa, para
@@ -879,6 +892,12 @@ export function PainelDoContato({
           >
             <Zap className="h-4 w-4" />
           </AbaDeIcone>
+          {/* Arquivos (2026-09-01): o acervo de anexos DESTA conversa. Fica
+              antes do Histórico pela mesma lógica que o pôs por último —
+              procurar o PDF que o cliente mandou é atendimento; auditar não. */}
+          <AbaDeIcone value="arquivos" label={tSidebar('tabFiles')}>
+            <Paperclip className="h-4 w-4" />
+          </AbaDeIcone>
           <AbaDeIcone value="historico" label={tSidebar('tabHistory')}>
             <History className="h-4 w-4" />
           </AbaDeIcone>
@@ -1432,6 +1451,16 @@ export function PainelDoContato({
             erro={execucoes.erro}
             recarregar={execucoes.recarregar}
           />
+        </TabsContent>
+
+        {/* ---- Arquivos: fotos, vídeos, documentos e áudios trocados nesta
+             conversa. Sem consulta própria — as mensagens vêm da página, que
+             já as tem para o fio. ---- */}
+        <TabsContent
+          value="arquivos"
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          <AbaArquivos messages={messages} />
         </TabsContent>
 
         {/* ---- Histórico de atividade (912) — o registro completo, POR
