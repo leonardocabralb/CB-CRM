@@ -2592,7 +2592,45 @@ pré-existem no `main`) · suíte 185 arquivos / **2387 testes** em Node 22 ·
 `i18n-parity` e `i18n-chaves-usadas` verdes (2697 literais) · `npm run
 build` verde · 970/971 conferidas por SQL em produção (acima).
 
+**Medido E2E no preview (01/09, dev server sobre o banco de produção, logado
+como o operador; toda escrita foi desfeita e conferida por SQL):**
+
+- **C16** — com um `MutationObserver` e o `fetch` instrumentado por pilha:
+  a busca do `useChannels` rodou no inbox (t=116,7 s), o painel de Conexões
+  foi aberto por navegação de CLIENTE (o `load()` dele invalidou o cache) e
+  a volta ao inbox em t=123,9 s — 7,2 s depois, dentro dos 15 s — disparou
+  `buscar` de novo (frame `useChannels.useEffect → obter → buscar`). Sem a
+  invalidação, seria cache.
+- **C21** — viewport 375×812: abrir "Ana Christina" (326 msgs), voltar,
+  reabrir. Na reabertura o nó com "Nenhuma mensagem ainda" foi REMOVIDO e o
+  spinner inserido aos 166 ms; as mensagens entraram aos ~600 ms; nenhum
+  `add` do texto vazio em momento algum.
+- **C23** — grupo "CB - Rafael Stopa" (0 notas) com a aba Notas ativa;
+  troca para "CB TRABALHISTA - ANA PAULA": "Nenhuma nota ainda" saiu aos
+  150 ms, a busca de `cb_conversation_notes` correu de 153 a 436 ms e o vazio
+  só voltou aos 443 ms — depois da resposta.
+- **C20** — perfil "Teste Codex C20" criado com a conexão "Comercial -
+  Bancário" (linha: "1 conexão"); saída para o inbox, 16,5 s de espera
+  (cache expirado), volta aos perfis por navegação de cliente: os canais
+  foram buscados de novo (166→723 ms de carga) e a sentinela não registrou
+  "conexões que não existem mais" nem "Não foi possível carregar" — a linha
+  disse "1 conexão" o tempo todo. Perfil apagado ao fim (0 linhas em
+  `cb_perfis_de_acesso`).
+- **C24** — catálogo de campos: rename de "Link Reunião" (commit por
+  `focusout`) e, no MESMO tique, mover "Tempo de Atraso" de bloco pelo
+  `<select>` (a busca do rename ainda em voo). Banco e tela terminaram
+  iguais: nome novo gravado e campo no bloco novo; repetido no sentido
+  inverso para desfazer. A posição original do campo movido foi devolvida
+  por SQL (mover põe no FIM do bloco) e a tela recarregada mostrou a ordem
+  e os nomes originais.
+- Regressões: painel de perfis com os três padrões em "todas as conexões";
+  inbox sem filtro padrão e gatilho "Salvos" (C12/C13 não têm fixture
+  reproduzível sem um segundo membro restrito ou etiqueta apagada).
+
 **O que NÃO foi medido na tela:** C17 (exige conta com Meta E Evolution —
-produção é 100% Evolution), C20 (exige derrubar `/api/cb/channels`), C23 e
-C21 no celular. As quatro são leituras de estado (`loading`/`falhou`/marca
-de conversa), a mesma família já medida nas F5/F11.
+produção é 100% Evolution), C22 (produção não tem documento sem `media_url`
+com nome declarado — coberto por `filename.test.ts`), C12/C13 (exigem
+visão de um membro com canal fora do escopo, ou id apagado num filtro
+salvo). Observação de carona: o diálogo "Apagar o perfil" ficou aberto com
+nome vazio depois de apagar (fechou só no Escape) — pré-existente, fora do
+escopo desta correção.
