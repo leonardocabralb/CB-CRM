@@ -189,7 +189,7 @@ as frentes deles 🔵 e leve as opções ao operador antes de implementar.
 | **F8** | Filtros do inbox | #16 #25 #26 | 🟡 médio | ✅ (+M4 e M5-parcial) | #92 |
 | **F9** | Erro de banco lido como ausência | #04 #07 | 🟡 médio | ✅ (#04 no PR #86; #07 no PR #89, mesma branch da F4) | #86/#89 |
 | **F10** | CI/CD e vazamento de credencial | #29 #30 | 🟡 médio | ✅ | #93 |
-| **F11** | Menores de UX e estado | #17 #27 #31 #32 | 🟢 baixo | ⬜ | — |
+| **F11** | Menores de UX e estado | #17 #27 #31 #32 | 🟢 baixo | ✅ (+M7; M6 fora, com motivo) | #94 |
 
 **Ordem recomendada:** F1 → F2 → F3 → F5 → F7 → F4 → F6 → F9 → F8 → F10 → F11.
 
@@ -2045,6 +2045,13 @@ e dar à aba um estado de erro com botão "tentar de novo" — ou, no mínimo, s
 do spinner. Note que **sucesso com zero linhas devolve `[]`, que é truthy**,
 então o caso "cliente sem valor nenhum" não é afetado.
 
+**Resolvido em** PR #94 — o erro das TRÊS consultas vira toast + estado de
+erro com "tentar de novo" (chaves `customLoadError`/`customRetry` nos dois
+dicionários), como o painel irmão da conversa já fazia.
+· **Medido (E2E):** `fetch` interceptado derrubando só
+`contact_custom_values` → a aba mostrou a frase de erro SEM spinner e com o
+botão; despatchado, o retry recarregou a aba com os blocos reais.
+
 ---
 
 ### #27 — O canal de realtime das execuções é destruído e recriado a cada evento
@@ -2073,6 +2080,15 @@ observar no Network/console o canal sendo removido e recriado a cada UPDATE de
 **Como corrigir.** Tirar `nonce` das dependências: o efeito assina uma vez por
 `contactId`; o `nonce` só dispara o **refetch**, num efeito separado. E
 reescrever o comentário para descrever o que a mudança realmente faz.
+
+**Veredito confirmado** (era PLAUSÍVEL) e **resolvido em** PR #94: a
+assinatura foi para um efeito próprio com deps `[contactId]`, declarado
+ANTES do efeito do snapshot para preservar a ordem "assina, depois busca"
+que o #75 quis criar; o `nonce` segue disparando só o refetch. A leitura
+confirmou o mecanismo — o callback bumpa o nonce, o nonce estava nas deps,
+logo todo evento derrubava e recriava o canal.
+· **Medido:** pino estrutural de 3 casos + mutação (`nonce` de volta nas
+deps → 1 failed). Sem E2E: exigiria UPDATE real em `flow_runs` de cliente.
 
 ---
 
@@ -2111,6 +2127,15 @@ bloco devolve os campos ao Geral **com a `posicao` antiga**, que é a posição
 DENTRO do bloco apagado — as posições colidem e a ordem do Geral embaralha.
 `handleDeleteGrupo` não renormaliza. Vale corrigir junto.
 
+**Resolvido em** PR #94 — estado otimista do arrastar de blocos passou a
+`posicao: i + 1`, espelhando a ORDINALITY da RPC (a opção "mais simples" do
+próprio achado). A carona **M7** entrou junto: apagar bloco renormaliza
+(Geral atual + os que voltam) pela MESMA RPC do arrastar, antes do refetch.
+· **Medido (E2E, fixtures apagadas):** blocos "f11 a"/"f11 b" criados pela
+tela nasceram em 2 e 3 (a base 1-based que o fix alinha); apagando "f11 a"
+pela tela, o campo dentro dele voltou ao Geral em `posicao: 5`, continuando
+a sequência densa 0–4 — sem colisão nem reembaralhamento por nome.
+
 ---
 
 ### #32 — Falha de rede ainda auto-atribui a tarefa ao criador
@@ -2145,6 +2170,18 @@ if (!membrosFalharam && membros.length <= 1) {
 Em falha, o campo fica vazio e `podeSalvar` já barra — o desenho "escopo vazio
 não afirma nada" usado no resto do fork. E acrescentar "tentar de novo", como
 o `invite-member-dialog.tsx` do MESMO PR faz para o MESMO modo de falha.
+
+**Resolvido em** PR #94, na forma proposta (`!membrosFalharam &&
+membros.length <= 1`) mais o "tentar de novo": `useMembros` ganhou
+`recarregar` e o formulário troca o seletor desabilitado por mensagem +
+botão quando a busca falha. ⚠️ O texto de `assigneeLoadFailed` prometia o
+comportamento ANTIGO ("a tarefa ficará com você… recarregue a página") —
+reescrito nos dois dicionários; `assigneeYou`, que só existia para aquele
+ramo, foi removida (ficaria órfã e o `messages.test.ts` reprova).
+· **Medido (E2E):** `/api/account/members` em 500 → "Nova tarefa" abriu com
+a mensagem de falha, SEM "Você", "Criar tarefa" desabilitado e o botão de
+retry; despatchado, o retry trouxe "Você (único membro desta conta)" sem
+recarregar a página.
 
 ---
 
@@ -2239,8 +2276,8 @@ avaliado e rejeitado.
 | **M3** | `use-radar.ts:259` | análise `failed` tem `analisado_em` NULO; com `.order(..., nullsFirst:false).limit(200)` ela é a PRIMEIRA a cair do teto, e não há consulta de resgate (só pendência tem). A garantia "failed aparece independente de gatilho" expira em silêncio | F4 |
 | **M4** | `filtros-salvos.ts:300/350` | `descreverFiltro` marca `orfao` sem a guarda de "catálogo vazio não prova nada" que `limparOrfaos` aplica 140 linhas abaixo → o menu escreve "(apagado)" sobre etiqueta/etapa VIVAS enquanto os catálogos carregam | F8 — ✅ PR #92 (guarda nos 5 campos + teste CRÍTICO com contraprova) |
 | **M5** | `filtros-salvos-menu.tsx:299/498` + `conversation-list.tsx:614` | o menu recalcula `descreverFiltro` para o filtro atual e para cada salvo a CADA render (inclusive com os dois diálogos fechados), e a busca do inbox mora no mesmo pai → roda por tecla digitada. E `esperandoPadrao` serializa perfil→filtros antes da primeira pintura do inbox, para todo mundo | F8 — 🟨 PR #92 fez a metade BARATA (resumos memoizados por id, callbacks estáveis); o `esperandoPadrao` ficou, de propósito: mexer na serialização arrisca reintroduzir o flash 176→8 sem medição que justifique |
-| **M6** | `custom-fields-manager.tsx:155` | `fetchFields` liga `loading` e refaz as DUAS consultas depois de TODAS as 8 escritas — inclusive renomear um campo. Desmonta a lista e zera a rolagem | F11 (com #31) |
-| **M7** | `custom-fields-manager.tsx:419` | `handleDeleteGrupo` não renormaliza `posicao`: os campos voltam ao Geral com a posição DENTRO do bloco apagado, colidem, e `ordenarCampos` desempata pelo nome → a ordem que o operador montou embaralha, na ficha de TODO cliente | F11 (com #31) |
+| **M6** | `custom-fields-manager.tsx:155` | `fetchFields` liga `loading` e refaz as DUAS consultas depois de TODAS as 8 escritas — inclusive renomear um campo. Desmonta a lista e zera a rolagem | F11 — ⏭️ FORA do PR #94, com motivo: é reescrita da estratégia de carga (sem defeito de correção), e mexer nela junto de #31/M7 — que dependem do estado local — trocaria um bug por outro |
+| **M7** | `custom-fields-manager.tsx:419` | `handleDeleteGrupo` não renormaliza `posicao`: os campos voltam ao Geral com a posição DENTRO do bloco apagado, colidem, e `ordenarCampos` desempata pelo nome → a ordem que o operador montou embaralha, na ficha de TODO cliente | F11 — ✅ PR #94 (renormaliza pela RPC do arrastar antes do refetch; medido: campo volta em posicao 5 sobre um Geral 0–4) |
 | **M8** | `pipeline.yml:212` | o ramo `else` do rollout sai com código 0 → pipeline VERDE sem ter publicado. Cobre 4 estados, não só "serviço não existe": daemon fora do ar, nó fora de manager, SSH sem acesso ao socket. **PRÉ-EXISTENTE** (vem do `deploy.yml` original), não é do #77 | PR próprio |
 | **M9** | `pipeline.yml:187` | `if: github.event_name != 'pull_request'` inclui `workflow_dispatch` → disparar o pipeline manualmente numa branch de feature faz rollout dela na VPS e reescreve a tag `:latest`. O comentário da linha 179 diz "⚠️ Só no main", o `if` diz "não é PR". **PRÉ-EXISTENTE** | PR próprio |
 | **M10** | `message-thread.tsx:526` | `return { expired: true, remaining: "No customer messages" }` — literal em INGLÊS na badge, com a chave `Inbox.sessionTimer.noCustomerMessages` traduzida nos três dicionários e sem uso. Nenhum dos dois portões pega (um compara dicionários, o outro só cobra chave PEDIDA) | F5 |
