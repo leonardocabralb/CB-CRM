@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { TIPO_DATA } from "@/lib/contacts/campo-data";
 import {
@@ -169,5 +169,54 @@ describe("criarFilaDeGravacao", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(estados).toEqual(["gravando", "salvo"]);
+  });
+
+  it("CRÍTICO: falha COM pendente não deixa a régua presa no valor velho (#09)", async () => {
+    const g = gravadorManual();
+    const fila = criarFilaDeGravacao("A", g.gravar);
+    fila.enfileirar("B"); // em voo
+    fila.enfileirar("C"); // pendente; a régua (`desejado`) aponta para "C"
+    g.resolvers[0](false); // "B" FALHA com pendente na fila
+    await Promise.resolve();
+    await Promise.resolve();
+    g.resolvers[1](true); // "C" grava
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fila.salvo()).toBe("C");
+    expect(fila.emVoo()).toBe(false);
+    // O arrependimento: devolver o campo ao "A" original TEM de ir ao banco.
+    // Antes da correção, a falha de "B" revertia a régua para "A" mesmo com
+    // "C" na fila — e este gesto era engolido como "não mudou": a tela
+    // mostrando "A", o banco guardando "C", sem spinner nem toast.
+    fila.enfileirar("A");
+    expect(g.chamadas).toEqual(["B", "C", "A"]);
+  });
+
+  it("CRÍTICO: rejeição em `gravar` não trava a fila nem o spinner (#10)", async () => {
+    const silencio = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const chamadas: string[] = [];
+      const estados: string[] = [];
+      let vez = 0;
+      const gravar = (valor: string) => {
+        chamadas.push(valor);
+        return vez++ === 0
+          ? Promise.reject(new Error("createClient estourou"))
+          : Promise.resolve(true);
+      };
+      const fila = criarFilaDeGravacao("", gravar, (e) => estados.push(e));
+      fila.enfileirar("a");
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      // Antes da correção: `rodando` ficava true para sempre — spinner
+      // eterno, e todo enfileirar seguinte morria no pendente sem consumidor.
+      expect(fila.emVoo()).toBe(false);
+      expect(estados).toEqual(["gravando", "parado"]);
+      fila.enfileirar("a"); // o próximo blur tenta de novo, como na falha comum
+      expect(chamadas).toEqual(["a", "a"]);
+    } finally {
+      silencio.mockRestore();
+    }
   });
 });

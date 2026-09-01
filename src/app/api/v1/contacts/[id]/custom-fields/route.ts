@@ -68,7 +68,15 @@ async function carregar(
       .from('custom_fields')
       .select('*')
       .eq('account_id', accountId)
-      .order('posicao', { nullsFirst: false }).order('field_name'),
+      // ⚠️ Ordem ALFABÉTICA, e ela é CONTRATO com o integrador (o n8n do
+      // gestor lê este array). `custom_fields.posicao` é a posição DENTRO do
+      // bloco (966) e reinicia em cada bloco, então ordenar a conta inteira
+      // por ela intercala os blocos — todo "1" antes de todo "2" — e o
+      // resultado não é nem alfabético nem a ordem que o operador arrumou no
+      // catálogo. Esta resposta é PLANA e não expõe os blocos; só quem
+      // REAGRUPA (ficha, painel, catálogo) pode ordenar por `posicao`.
+      // (Achado do Codex na revisão do PR #78.)
+      .order('field_name'),
     db
       .from('contact_custom_values')
       .select('custom_field_id, value')

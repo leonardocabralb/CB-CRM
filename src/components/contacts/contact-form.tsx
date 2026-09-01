@@ -48,7 +48,7 @@ export function ContactForm({
 }: ContactFormProps) {
   const t = useTranslations('Contacts.form');
   const supabase = createClient();
-  const { accountId } = useAuth();
+  const { accountId, ownerUserId } = useAuth();
   const isEdit = !!contact;
 
   const [name, setName] = useState('');
@@ -93,7 +93,15 @@ export function ContactForm({
     }
     setCheckingDup(true);
     try {
-      const existing = await findExistingContact(supabase, accountId, value);
+      // A conferência é CONSULTIVA (aviso de possível duplicata), então
+      // `falhou` fica silencioso de propósito: o índice único segura o
+      // duplicado exato no submit, e bloquear o formulário por um blip de
+      // rede seria pior que perder o aviso do fuzzy.
+      const { contato: existing } = await findExistingContact(
+        supabase,
+        accountId,
+        value,
+      );
       setDupMatch(
         existing
           ? { contact: existing, exact: isExactMatch(existing, value) }
@@ -162,10 +170,16 @@ export function ContactForm({
           .eq('id', contactId);
         if (error) throw error;
       } else {
+        // `contacts.user_id` CASCADEia de `auth.users`: gravar quem clicou
+        // faria o offboarding desse membro apagar o contato, a conversa e as
+        // mensagens do cliente. Grava-se o dono da conta; sem ele resolvido
+        // (lookup da conta falhou no AuthProvider), a criação FALHA — cair
+        // para `user.id` é a regressão que `dono-duravel.test.ts` barra.
+        if (!ownerUserId) throw new Error('Account owner not resolved.');
         const { data, error } = await supabase
           .from('contacts')
           .insert({
-            user_id: user.id,
+            user_id: ownerUserId,
             account_id: accountId,
             name: name.trim() || null,
             phone: phone.trim(),
@@ -204,7 +218,7 @@ export function ContactForm({
       if (isUniqueViolation(err)) {
         toast.error(t('toastConflict'));
         if (!isEdit && accountId) {
-          const existing = await findExistingContact(
+          const { contato: existing } = await findExistingContact(
             supabase,
             accountId,
             phone.trim(),

@@ -217,7 +217,8 @@ upstream sobrescrevê-los:
 | `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página. Mais o menu de **filtros salvos** (967/968): o hook, os catálogos que dão nome aos ids, o `limparOrfaos` do aplicar e a semente do filtro padrão |
 | `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDaMensagem>` envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo), a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef` |
 | `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (963): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
-| `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem contato e canal RESOLVIDO — `activeChannel`; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
+| `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem o contato; o canal passado é `conversation.channel_id ?? null` — o PR #74 trocou o `activeChannel` resolvido pelo cru DE PROPÓSITO, para a checagem de escopo da rota falhar aberta igual ao motor em conversa sem canal; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
+| `src/components/inbox/message-thread.tsx` (#84) | a **janela de 24h**: a regra saiu para `src/lib/inbox/janela-24h.ts` (puro, com teste) e os TRÊS caminhos de envio (texto, mídia, interativa) passam por `janelaFechadaAgora()` antes do `fetch` — o portão lê o RELÓGIO no disparo, nunca `sessionInfo.expired` (que é `useMemo` em `[messages]` e não recomputa com o passar das horas). Um merge que traga o `sessionInfo` inline do upstream devolve os três buracos de uma vez |
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
@@ -377,12 +378,18 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
   conta inteira); robô encerra por `abortActiveRunsForContact` com
   `stopped_by_agent` (955) — TERCEIRO status, pessoa que DECIDIU, distinto de
   `paused_by_agent` (pessoa respondeu) e `stopped_by_automation` (regra).
-- ⚠️ **A rota `executar` checa o escopo de canal; o motor NÃO.**
+- ⚠️ **A rota `executar` checa os DOIS escopos (canal E etapa); o motor NÃO.**
   `runAutomationById` pula recortes de propósito (chamador explícito), mas
   "explícito" aqui é um clique — automação restrita ao número A executada na
-  conversa do número B sairia pelo número errado. Falha ABERTA como o motor:
-  conversa sem canal deixa passar. Grupo é recusado (automação não roda em
-  grupo, 906) e o log ganha `trigger_event='manual'`.
+  conversa do número B sairia pelo número errado. As duas checagens têm
+  direções DIFERENTES, e isso é deliberado: a de CANAL falha ABERTA como o
+  motor (conversa sem canal deixa passar); a de ETAPA (`stageInScope`,
+  acrescentada no PR #74) mistura as duas com motivo — ERRO de consulta
+  deixa passar (ignorância), mas contato SEM NEGÓCIO leva 422
+  `stage_out_of_scope` (não é ignorância: sem card, ele não está em etapa
+  nenhuma — `engine.ts`). Uma versão desta nota dizia "falha ABERTA" para a
+  rota inteira e não mencionava a etapa (M16 do plano de 31/08). Grupo é recusado
+  (automação não roda em grupo, 906) e o log ganha `trigger_event='manual'`.
 - **Linha do tempo da expansão**: futuros são os passos do MESMO escopo da
   espera (`parent_step_id`+`branch`, de `next_step_position` em diante);
   condição aparece como "depende da condição" e os passos DENTRO dos ramos
@@ -438,10 +445,13 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
   DERIVADA do caminho no servidor (aceitá-la do cliente casaria caminho
   legítimo com URL de fora — lição da 932) e o caminho é exigido sob
   `account-<conta>/acervo/`. LER é direto sob RLS.
-- ⚠️ **`storage.exists()` de novo**: a rota confere `data === false` ANTES do
-  `error`, pela armadilha já documentada na 932. Invertido, todo arquivo
-  ausente responderia "existe" e o acervo ganharia item que entrega 404 ao
-  cliente.
+- ⚠️ **`storage.exists()` de novo**: a rota lê SÓ o `r.data` do resultado
+  resolvido (objeto ausente resolve com `data: false` E `error` preenchido —
+  ler o `error` como falha responderia "existe" para todo arquivo sumido) e
+  envolve a chamada em try/catch, porque falha que não é 400/404 é LANÇADA
+  pelo storage-js — Storage fora do ar não é "sumiu". O #74 reescreveu a
+  conferência nessa forma; uma versão desta nota descrevia a forma antiga
+  ("`data === false` antes do `error`") e ensinava a repeti-la.
 - **`categoria` é texto livre**, não tabela de pastas, e NULL = "Geral" (que a
   tela põe no fim). O conjunto real é meia dúzia de rótulos.
 - **Trocar o ARQUIVO de um item não existe**: o item mudaria de conteúdo sem
@@ -477,8 +487,11 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
 - ⚠️ **Desmontar não dispara `blur`**, então há descarga na limpeza de
   desmonte: sem ela, digitar e trocar de bloco (o menu horizontal da 966),
   fechar o painel ou trocar de aba apagaria o texto — em silêncio, e sem o
-  botão para servir de segunda chance. Ela não grava duas vezes porque
-  `salvoRef` é atualizado no sucesso do blur.
+  botão para servir de segunda chance. Ela não grava duas vezes porque o
+  `enfileirar` da fila compara contra `desejado` (o que já se pediu gravar) e
+  descarta o que não mudou — a idempotência mora DENTRO de
+  `criarFilaDeGravacao`, não em ref nenhuma do componente. (Uma versão
+  anterior desta nota creditava um `salvoRef` que nunca existiu no código.)
 - ⚠️⚠️ **Toda gravação passa pela FILA (`criarFilaDeGravacao`), nunca por
   `aoGravar` direto.** Duas requisições concorrentes na mesma linha chegam ao
   banco fora de ordem — mudar uma lista duas vezes rápido, ou
@@ -489,7 +502,12 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
   se QUER gravar, não contra o que o banco confirmou: com `salvo` ainda
   antigo durante o voo, desfazer para o valor original seria descartado como
   não-evento e a tela terminaria discordando do banco (pego pelo teste da
-  própria fila). Achado do Codex no PR #83.
+  própria fila). Achado do Codex no PR #83. ⚠️ E o ramo de FALHA tem duas
+  sutilezas com teste próprio (achados #09/#10 do plano de 31/08): a régua
+  `desejado` só reverte para `salvo` quando NÃO há pendente (com pendente,
+  reverter engolia o desfazer seguinte), e REJEIÇÃO de `aoGravar` é tratada
+  como falha comum — sem o catch, o laço morria com `rodando = true` e o
+  campo parava de gravar para sempre, com o spinner aceso.
 - ⚠️ **`select` grava na ESCOLHA, o resto no blur** (`gravaAoSair`). O popover
   fecha e não há blur útil para esperar. O campo de DATA fica no blur apesar de
   disparar `change`: ele dispara a cada pedaço digitado, com datas
@@ -525,23 +543,40 @@ grupos-de-campos.ts` (testado) e o catálogo com arrastar em
   apagado, ou esvaziado, deixaria a seção em branco com uma pastilha acesa.
 - ⚠️ **`grupo_id` NULO É o bloco "Geral", e ele vem SEMPRE primeiro.** Não
   existe linha para ele: por isso não é renomeável nem arrastável, e o rótulo
-  sai do dicionário (`Contacts.customFields.groupGeneral`), não do banco. Ele
-  some sozinho quando todo campo estiver num grupo de verdade — bloco vazio
-  não renderiza na ficha do cliente. Uma tela que mostre "Geral" vindo do
-  banco está lendo uma linha que não existe.
+  sai do dicionário (`Contacts.customFields.groupGeneral`), não do banco. Uma
+  tela que mostre "Geral" vindo do banco está lendo uma linha que não existe.
+  ⚠️ **Ele some quando todo campo está num grupo de verdade SÓ nas telas de
+  LEITURA** (`incluirVazios: false` — ficha e painel, onde cabeçalho sem campo
+  embaixo não informa nada). **No CATÁLOGO ele fica, mesmo vazio**, e isso é
+  load-bearing: o seletor de bloco de cada linha oferece "Geral" SEMPRE, e sem
+  o bloco renderizado `moverCampo` não acha o destino, devolve `null` e a tela
+  não faz NADA — sem toast, sem erro, sem escrita. Arrastar também precisa do
+  bloco na tela, então não havia segunda porta: campo posto num grupo ficava
+  preso em grupo para sempre. "Simplificar" para `if (geral.length > 0)`
+  parece obviamente certo e mata a volta. (Achado do Codex no PR #78.)
 - ⚠️ **`categoria` (949) NÃO é o bloco, e não morreu.** Continua sendo a marca
   SEMÂNTICA "campo técnico": é o que o semeador dos 10 campos escreve e o que
   a API v1 expõe como `category` (dropar a coluna quebra o n8n do gestor).
   `grupo_id` é só ONDE o campo aparece. O seletor de categoria saiu do
   formulário de criação — quem cria campo escolhe BLOCO.
-- ⚠️ **A ordem é `.order('posicao', { nullsFirst: false }).order('field_name')`
-  em TODA consulta de `custom_fields`** — são 8 call sites (catálogo, painel da
-  conversa ×2, ficha de contato, broadcast ×2, automação, API v1). `posicao`
-  NULA cai no FIM de propósito: campo criado por caminho que não a carimba (o
-  semeador cria dez de uma vez) nasce no fim do bloco em vez de embaralhar a
-  ordem montada. `ordenarCampos` é o espelho EXATO dessa cláusula — mudar um
-  lado sem o outro faz o arrastar pousar o campo num lugar e o próximo
-  carregamento mostrá-lo em outro.
+- ⚠️⚠️ **`posicao` É POSIÇÃO DENTRO DO BLOCO, e por isso só quem REAGRUPA pode
+  ordenar por ela.** Ela reinicia em cada bloco, então ordenar a conta inteira
+  por `posicao` INTERCALA os blocos — todo "1" antes de todo "2" — e devolve
+  uma ordem que não é nem alfabética nem a que o operador arrumou. Não estoura
+  em lugar nenhum e passa em revisão. São DUAS famílias de consulta, e trocá-las
+  é o erro fácil:
+  - **Reagrupam** (catálogo, painel da conversa, ficha de contato):
+    `.order('posicao', { nullsFirst: false }).order('field_name')`, porque
+    `agruparCampos` reparte antes de exibir. `ordenarCampos` é o espelho EXATO
+    dessa cláusula — mudar um lado sem o outro faz o arrastar pousar o campo
+    num lugar e o próximo carregamento mostrá-lo em outro.
+  - **Listas PLANAS** (broadcast ×2, automação, API v1): `.order('field_name')`
+    e mais nada. A da v1 é CONTRATO com o integrador (o n8n do gestor lê o
+    array). Quem criar consulta plana nova repete esta metade.
+  `posicao` NULA cai no FIM de propósito: campo criado por caminho que não a
+  carimba (o semeador cria dez de uma vez) nasce no fim do bloco em vez de
+  embaralhar a ordem montada. (As duas famílias saíram da revisão do Codex no
+  PR #78, que pegou a ordenação global aplicada às quatro listas planas.)
 - ⚠️ **Reordenar passa por RPC (`cb_ordenar_campos_personalizados`), nunca por
   `upsert`.** O upsert do PostgREST teria de carregar as quatro colunas NOT
   NULL de `custom_fields` junto (o NOT NULL é conferido ANTES de o Postgres
@@ -584,15 +619,13 @@ grupos-de-campos.ts` (testado) e o catálogo com arrastar em
   NOT NULL e faz parte da FK composta; um SET NULL sem lista tentaria zerar as
   duas colunas, e apagar um bloco passaria a estourar violação em vez de
   devolver os campos ao Geral. Medido: apagar o bloco preserva os campos.
-- ⚠️ **Um `Salvar campos` só, e ele salva TODOS os campos — inclusive os dos
-  blocos que não estão à vista.** Eram dois (um por aba) porque o Salvar de uma
-  aba não podia arrastar junto edição meio-feita da outra. Com o menu
-  horizontal os outros blocos voltaram a ficar invisíveis, mas o valor digitado
-  neles CONTINUA no `customValues` e é do operador: salvar só o bloco visível
-  descartaria em silêncio o que ele preencheu antes de trocar de pastilha —
-  perder digitação é pior que gravar digitação. Medido na tela: o valor
-  sobrevive à troca de bloco. Quem voltar a recortar o save por bloco precisa
-  resolver antes o que fazer com o que ficou escondido.
+- ⚠️ **O botão "Salvar campos" NÃO EXISTE MAIS** — o PR #83 trocou por
+  salvamento automático POR CAMPO (blur/escolha + descarga de desmonte; ver a
+  seção "Campo personalizado SALVA SOZINHO"). O que resta desta nota é o
+  motivo dela: o valor digitado num bloco fora de vista CONTINUA no
+  `customValues` e sobrevive à troca de pastilha (medido na tela) — quem um
+  dia recriar um save em LOTE precisa resolver antes o que fazer com o que
+  ficou escondido, porque perder digitação é pior que gravar digitação.
 - **Sem `capitalize` nos rótulos** (nas duas fichas): ele maiusculava cada
   palavra e o operador via "Data De Fechamento Do Contrato" no lugar do nome
   que cadastrou — e estragava os técnicos (`utm_source`), que por isso
@@ -1015,9 +1048,16 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   alguém respondeu é a consulta de `respondidas`. Sem a recarga, o cartão
   de cliente já atendido por um colega ficava na tela até o operador
   trocar de aba e voltar.
-- ⚠️ **Insatisfação exige evidência nas últimas 48h** (`JANELA_INSATISFACAO_MS`,
-  validado no parser). A janela analisada tem 7 dias: sem isso, irritação de
-  terça já resolvida seguia acendendo cartão no domingo.
+- ⚠️ **Insatisfação exige evidência recente — 2 dias de expediente, em TEMPO
+  ÚTIL** (`JANELA_INSATISFACAO_UTIL_SEG`, 22h úteis via `segundosUteisEntre`;
+  era "48h corridas" até 31/08). A janela analisada tem 7 dias: sem a régua,
+  irritação de terça já resolvida seguia acendendo cartão no domingo. Em
+  CORRIDAS, porém, a reclamação analisada na sexta expirava no DOMINGO —
+  antes de qualquer pessoa abrir o painel — e sem a aba "Todos" o sumiço era
+  definitivo (#22). Não é "48h úteis" de propósito: isso inflaria a régua
+  para ~6 dias corridos (o racional que manteve `LIMIAR_ALARME_MS` em
+  corridas, apontado acima). As DUAS réguas (escrita e leitura) usam a MESMA
+  unidade e SE SOMAM — o teto real é ~4 dias úteis, por desenho.
   ⚠️ **A âncora é o INSTANTE DA ANÁLISE (`agoraMs`), não a última linha do
   transcrito** — mudou em 2026-08-31. Ancorada na conversa, a régua não
   funcionava justamente no caso que a motivou: cliente reclama, a equipe
@@ -1102,6 +1142,15 @@ viva por conversa); o painel só lê. `src/lib/cb-radar/` (puro, testado),
   repetiria o falso positivo a cada mensagem — reabre só pelo botão);
   `aberto` fica. Quem mexer no reset mexe no UPDATE condicional do worker,
   não no UPDATE principal.
+  ⚠️ **UMA exceção escrita (#23, 31/08), e ela é ESTREITA:** descarte dado
+  sobre linha `failed` que NUNCA teve análise concluída (`analisado_em`
+  nulo no claim — `descarteFoiSobreFalha`) reabre quando a primeira análise
+  BOA gravar. Ali o operador descartou o aviso "análise falhou", não um
+  veredito — e a linha `failed` com tentativas < 3 reanalisa SOZINHA no
+  ciclo seguinte, então sem a exceção o sinal real nascia invisível para
+  sempre. Linha que já teve análise concluída fica na regra geral mesmo com
+  falha por cima: o que o descarte rejeitou era conteúdo real. Não remover
+  como "inconsistência" — o próximo leitor vai querer.
 - ⚠️ **Toda escrita pós-claim do worker tem CERCA DE POSSE**
   (`.eq('status','running').eq('running_desde', <carimbo do próprio claim>)`).
   Sem ela, um worker recolhido como travado continuava com direito de escrita
@@ -1321,8 +1370,10 @@ rotas em `src/app/api/v1/`. O que morde código novo:
   despeja o lead na faixa de estacionamento, e o índice único da 911 só
   cobre `source='channel'` — a regra semântica é de código.
 - **Escrita de negócio pela API chama `drenarEventosDeFunil()`** (fire-and-
-  forget), como a tela faz: sem isso a automação de etapa espera o ciclo de
-  15 min do cron.
+  forget), como a tela faz: sem isso a automação de etapa espera o próximo
+  batimento do agendador — o laço RÁPIDO do `docker-stack.yml`, `sleep 60`
+  (uma versão desta nota dizia "15 min", que é o laço LENTO; o próprio #74
+  mediu e corrigiu `lembretes.ts` e `DEPLOY-VPS.md`, e esta linha ficou).
 - **Nome carimbado vem de `resolveApiAuthor`** (`src/lib/api/v1/authorship.ts`):
   usuário de auditoria da v1, com queda para o DONO da conta quando aquele
   já saiu — e `membro: false` quando nem o dono resolve. Quem exigir um
@@ -1462,13 +1513,22 @@ sempre. O que morde código novo:
 - ⚠️ **O gancho do ENVIO mora no NÚCLEO (`sendMessageToConversation`), e é a
   escolha do LUGAR que define a regra.** Por ali passam os quatro envios de
   gente: compositor, ficha do contato, agendada e API v1. Broadcast
-  (`broadcast-core.ts`) e automação/fluxo (`meta-send.ts`,
-  `engine-send.ts`) **não passam** — e é assim que ficam de fora sem uma
-  linha de guarda. Um disparo para 500 contatos abriria 500 cards de uma
-  vez; "o robô respondeu" não é o escritório decidindo abordar ninguém.
-  ⚠️ Há teste estrutural lendo os fontes
-  (`pipeline-routing.chamadores.test.ts`) — "reusar o núcleo de envio no
-  broadcast" parece limpeza de código e traz o roteador junto, escondido.
+  (`src/lib/whatsapp/broadcast-core.ts` e `broadcast-resume.ts`) e
+  automação/fluxo/IA **não passam** — e é assim que ficam de fora sem uma
+  linha de guarda. ⚠️ **Há DOIS `meta-send.ts`**: o sender REAL do robô é
+  `src/lib/flows/meta-send.ts` (fluxo, resposta de IA e mídia de automação
+  saem por ele); `src/lib/automations/meta-send.ts` é só um wrapper que
+  delega para ele. Uma versão desta nota citava "meta-send.ts" sem caminho e
+  o teste estrutural passou a vigiar o wrapper — o sender real ficou
+  descoberto (achado #14 do plano de 31/08). Um disparo para 500 contatos
+  abriria 500 cards de uma vez; "o robô respondeu" não é o escritório
+  decidindo abordar ninguém.
+  ⚠️ O teste estrutural (`pipeline-routing.chamadores.test.ts`) agora tem
+  uma varredura DEFAULT-DENY: quem citar `routeContactToPipeline` ou
+  `sendMessageToConversation` fora da allowlist explícita reprova por
+  padrão — sender novo entra na allowlist por decisão visível no diff, não
+  por esquecimento. "Reusar o núcleo de envio no broadcast" parece limpeza
+  de código e traz o roteador junto, escondido.
 - ⚠️ **Via `supabaseAdmin()` no núcleo**, como o carimbo de canal ao lado: a
   rota `/api/whatsapp/send` entrega o client do OPERADOR (sob RLS), e o
   roteador lê `accounts` e escreve em `deals` — sob RLS um `agent` deixaria
@@ -1486,17 +1546,22 @@ cria/reencontra contato e conversa, **FIXA** o canal escolhido
 (`pinConversationChannel`, não `follow` — quem clicou escolheu) e devolve o
 id; a página recarrega a lista e navega por `?c=`. O que morde código novo:
 
-- ⚠️⚠️ **`contacts.user_id` e `conversations.user_id` são `ON DELETE CASCADE`
-  para `auth.users`, e `conversations.contact_id` cascateia de novo.** Todo
-  caminho que CRIA contato ou conversa grava o **dono da conta**
-  (`accounts.owner_user_id`, NOT NULL), nunca o membro que clicou — senão, no
-  dia em que essa pessoa sair da equipe, o contato é apagado junto e leva a
-  conversa e TODAS as mensagens daquele cliente, que são do escritório. A
-  ingestão sempre fez certo (`configOwnerUserId`); a rota de abrir nasceu
-  errada e foi corrigida logo depois do PR #79 (achado do Codex). O erro é
-  invisível: a rota tem o `user` autenticado em mão, `user_id: user.id`
-  parece óbvio, passa no typecheck e funciona na tela. Há teste estrutural
-  (`dono-duravel.test.ts`) porque isto volta.
+- ⚠️⚠️ **`contacts.user_id`, `conversations.user_id` e `custom_fields.user_id`
+  são `ON DELETE CASCADE` para `auth.users`, e `conversations.contact_id`
+  cascateia de novo.** Todo caminho que CRIA contato, conversa ou campo grava
+  o **dono da conta** (`accounts.owner_user_id`, NOT NULL — no client vem de
+  `useAuth().ownerUserId`), nunca o membro que clicou — senão, no dia em que o
+  LOGIN dessa pessoa for apagado, o contato é apagado junto e leva a conversa
+  e TODAS as mensagens daquele cliente, que são do escritório. ⚠️ O gatilho
+  NÃO é "remover da equipe" pela UI (`remove_account_member` e a 961 só
+  realocam o perfil, sem tocar `auth.users`): é apagar o usuário FORA do app —
+  dashboard do Supabase ou admin API, o passo normal de offboarding. Isso já
+  nasceu errado três vezes (rota de abrir no #79; `/api/whatsapp/send`,
+  formulário/CSV e o CSV do broadcast até o plano de 31/08): a tela tem o
+  `user` em mão, `user_id: user.id` parece óbvio, passa no typecheck e
+  funciona. Sem o dono resolvido a criação FALHA — nunca cair para `user.id`.
+  Há varredura estrutural de `src/**` com allowlist exata
+  (`src/lib/contacts/dono-duravel.test.ts`) porque isto volta.
 - ⚠️ **Selecionar a conversa recém-aberta NÃO pode depender do `?c=`.** O
   refetch (`resyncToken`) e o `router.replace` saem juntos, e se a consulta
   voltar antes de a navegação propagar os searchParams, `deepLinkConvId`

@@ -45,7 +45,13 @@ function makeSupabaseMock() {
             error: null,
           }
         case 'accounts':
-          return { data: { id: 'acct-1', name: 'Acme' }, error: null }
+          // `owner_user_id` alimenta o dono durável da conversa criada —
+          // deliberadamente DIFERENTE do caller ('user-1') para o teste
+          // flagrar uma regressão que volte a gravar quem clicou.
+          return {
+            data: { id: 'acct-1', name: 'Acme', owner_user_id: 'owner-1' },
+            error: null,
+          }
         case 'contacts':
           return { data: contactRow, error: null }
         case 'conversations':
@@ -206,11 +212,15 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
     expect(json.success).toBe(true)
     expect(json.whatsapp_message_id).toBe('wamid-1')
 
-    // A conversation was created for this contact.
+    // A conversation was created for this contact — owned by the ACCOUNT
+    // OWNER, not the caller: `conversations.user_id` cascades from
+    // `auth.users`, so stamping the operator would delete the client's
+    // thread on that operator's offboarding (plano 31/08, #11).
     expect(conversationInserts).toHaveLength(1)
     expect(conversationInserts[0]).toMatchObject({
       account_id: 'acct-1',
       contact_id: 'contact-1',
+      user_id: 'owner-1',
     })
 
     // The template was sent to the contact's number.
