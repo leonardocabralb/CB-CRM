@@ -71,19 +71,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # ⚠️ A MESMA MAJOR DO Dockerfile (`node:22-alpine`), e não uma
-      # qualquer: o que roda aqui tem de ser o que roda em produção, senão
-      # o verde do CI não prova nada sobre o que é publicado.
+      # ⚠️ A VERSÃO NÃO SE ESCREVE AQUI — sai do `.nvmrc`, que é a MESMA
+      # fonte que a máquina do dev lê (`nvm use`). O que roda no CI tem de
+      # ser o que roda em produção, senão o verde daqui não prova nada
+      # sobre o que é publicado.
       #
-      # Estava em 20 e isso JÁ CUSTOU um vermelho real: o PR #66 passou na
-      # máquina do dev (Node 24) e reprovou aqui em `formatCurrencyShort`
-      # — `Intl.NumberFormat` mudou a saída de `notation: 'compact'` entre
-      # as majors ("R$ 900" virou "R$ 900,0"). Com três majors em jogo
-      # (local 24, CI 20, produção 22), qualquer teste que toque Intl,
-      # fuso ou colação vira loteria. Duas bastam de sobra.
+      # Não é teoria: com as majors divergindo (dev 24, CI 20, produção 22)
+      # o PR #66 passou na máquina do dev e reprovou aqui, em
+      # `formatCurrencyShort` — o `Intl.NumberFormat` resolvia
+      # `notation: 'compact'` de um jeito em cada V8 ("R$ 900" virou
+      # "R$ 900,0"). Qualquer teste que toque Intl, fuso ou colação vira
+      # loteria assim, e divergir é o estado natural de números que
+      # ninguém amarrou um ao outro.
+      #
+      # Sobra UM outro número: o `ARG NODE_VERSION` do Dockerfile. O `FROM`
+      # não lê arquivo do contexto de build, então produção não tem como
+      # derivar daqui — os dois têm de andar juntos, e a nota lá diz isso.
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
