@@ -92,6 +92,13 @@ function InboxPageInner() {
    * segundo, que é a mesma família de defeito da badge "Expirada" nascendo de
    * `useChannels` ainda vazio. O fio não sofre disso porque tem `loading`
    * próprio; o painel é irmão dele, não filho, e não enxerga esse estado.
+   *
+   * ⚠️ Busca que FALHA deixa isto nulo, e a aba fica no spinner. É a escolha
+   * deliberada entre as duas respostas erradas possíveis: "espere" não afirma
+   * nada, "nenhum arquivo" afirmaria. E se resolve sozinho — o primeiro
+   * resync (voltar para a aba, realtime reconectar, o botão atualizar)
+   * recarrega e carimba. Não há canal de erro aqui porque o próprio fio não
+   * tem: em falha ele também cai no estado vazio.
    */
   const [messagesDaConversa, setMessagesDaConversa] = useState<string | null>(
     null
