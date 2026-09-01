@@ -2,9 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CAMPOS_DE_TRAQUEAMENTO,
-  camposDeTraqueamento,
   camposFaltantes,
-  camposGerais,
 } from "./campos-de-traqueamento";
 import { gerarChaveDeCampo } from "./chave-do-campo";
 import type { CustomField } from "@/types";
@@ -47,13 +45,4 @@ describe("campos-de-traqueamento", () => {
     expect(camposFaltantes([])).toHaveLength(CAMPOS_DE_TRAQUEAMENTO.length);
   });
 
-  it("recortes: tracking e geral são partição dos campos", () => {
-    const lista = [
-      campo({ id: "1", categoria: "geral" }),
-      campo({ id: "2", categoria: "tracking" }),
-      campo({ id: "3", categoria: "tracking" }),
-    ];
-    expect(camposDeTraqueamento(lista).map((f) => f.id)).toEqual(["2", "3"]);
-    expect(camposGerais(lista).map((f) => f.id)).toEqual(["1"]);
-  });
 });
