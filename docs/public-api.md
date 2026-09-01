@@ -134,6 +134,15 @@ Send a WhatsApp message to a phone number. Scope: `messages:send`. You
 pass an **E.164 number**, not an internal id — the endpoint
 finds-or-creates the contact + conversation, then sends.
 
+> **Side effect — deals.** A successful send counts as the firm reaching
+> out, so if the contact has **no deal yet** in any pipeline, one is
+> created automatically in the channel's default pipeline/stage
+> (`source: 'channel'`) — the same rule as sends from the CRM composer.
+> At most one deal per contact is ever created this way; contacts that
+> already have a deal are left untouched. This is intentional (PR #79);
+> if your integration must not open deals, don't send through this
+> endpoint for those contacts.
+
 ```bash
 curl -X POST https://your-crm.example.com/api/v1/messages \
   -H "Authorization: Bearer wacrm_live_xxx" \

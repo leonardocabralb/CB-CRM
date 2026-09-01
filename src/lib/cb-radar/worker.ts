@@ -49,7 +49,28 @@ export { JANELA_DIAS, THROTTLE_MS }
 const POR_CICLO = 5
 /** `running` mais velho que isto é worker que morreu no meio. Acima do
  *  pior caso de uma análise (timeout de rede + escritas). */
-const TRAVADA_MIN = 10
+export const TRAVADA_MIN = 10
+
+/** ISO do corte de abandono: `running_desde` mais velho é claim órfão. */
+export function corteDeClaimAbandonado(agoraMs = Date.now()): string {
+  return new Date(agoraMs - TRAVADA_MIN * 60_000).toISOString()
+}
+
+/**
+ * `running` com carimbo mais novo que TRAVADA_MIN = análise DE VERDADE em
+ * curso. O que falhar aqui é claim abandonado — worker morto por rollout do
+ * Swarm (que roda a cada merge no `main`) ou por curl estourado — e não
+ * pode congelar botão nenhum por 10–25 min (#28 do plano de 31/08).
+ * `running_desde` nulo conta como abandonado, o mesmo par do recolhedor.
+ * ⚠️ Comparação por INSTANTE (`Date.parse`), nunca lexicográfica: os dois
+ * lados são ISO hoje, mas offsets diferentes (`+00:00` vs `Z`) inverteriam
+ * a ordem por string em silêncio.
+ */
+export function claimVivo(runningDesde: string | null, agoraMs = Date.now()): boolean {
+  if (runningDesde === null) return false
+  const t = Date.parse(runningDesde)
+  return Number.isFinite(t) && t >= agoraMs - TRAVADA_MIN * 60_000
+}
 const TENTATIVAS_MAX = 3
 /** Alvo "confortável" do ciclo — a partir daqui, não se COMEÇA item novo. */
 const TEMPO_LIMITE_MS = 45_000
@@ -93,6 +114,8 @@ interface InsightExistente {
   janela_fim: string | null
   analisado_em: string | null
   tentativas: number
+  /** Carimbo do claim — decide claim vivo × abandonado (#28). */
+  running_desde: string | null
 }
 
 interface Reivindicacao {
@@ -147,7 +170,7 @@ export async function rodarCicloDoRadar(
 
   const { data: insights, error: insErr } = await admin
     .from('cb_conversation_insights')
-    .select('id, conversation_id, status, janela_fim, analisado_em, tentativas')
+    .select('id, conversation_id, status, janela_fim, analisado_em, tentativas, running_desde')
     .in('conversation_id', convs.map((c) => c.id))
   if (insErr) throw new Error(`radar: falha lendo insights: ${insErr.message}`)
 
@@ -190,6 +213,7 @@ export async function rodarCicloDoRadar(
         accountId: conversa.account_id,
         channelId: conversa.channel_id,
         deadlineMs: inicioCiclo + TETO_ABSOLUTO_MS,
+        descarteSobreFalha: descarteFoiSobreFalha(existente),
       })
       resultado.analisadas += 1
     } catch (err) {
@@ -201,6 +225,28 @@ export async function rodarCicloDoRadar(
   }
 
   return resultado
+}
+
+/**
+ * O descarte desta linha foi dado sobre uma FALHA, não sobre um veredito?
+ *
+ * ⚠️ É o discriminador da exceção estreita do #23 (decisão §0.6 do plano
+ * 31/08) à regra "descartado nunca reabre": linha `failed` que NUNCA teve
+ * análise concluída (`analisado_em` nulo — a falha não o carimba) não
+ * tinha veredito NENHUM na tela; o operador descartou o aviso "análise
+ * falhou", não um sinal da IA. Quando a análise enfim der certo, o
+ * resultado REAL reabre — senão fica invisível para sempre sob um
+ * descarte que nunca o viu (a linha `failed` com tentativas < 3 reanalisa
+ * sozinha no ciclo seguinte, e `descartado` não tem outra volta).
+ *
+ * Linha que JÁ teve análise concluída (`analisado_em` preenchido) segue a
+ * regra geral mesmo com falha por cima: havia conteúdo real no cartão, e
+ * foi ele que o descarte rejeitou — reabrir repetiria o falso positivo.
+ */
+export function descarteFoiSobreFalha(
+  insight: Pick<InsightExistente, 'status' | 'analisado_em'> | undefined,
+): boolean {
+  return insight?.status === 'failed' && insight.analisado_em === null
 }
 
 /**
@@ -242,7 +288,7 @@ export function precisaDeAnalise(
  *  no meio). Uma a uma porque o incremento de `tentativas` precisa do
  *  valor atual — travada é rara, o custo não importa. */
 async function recolherTravadas(admin: SupabaseClient): Promise<number> {
-  const corte = new Date(Date.now() - TRAVADA_MIN * 60_000).toISOString()
+  const corte = corteDeClaimAbandonado()
   const { data: presas, error } = await admin
     .from('cb_conversation_insights')
     .select('id, tentativas')
@@ -292,7 +338,16 @@ async function reivindicar(
       .from('cb_conversation_insights')
       .update({ status: 'running', running_desde: claimIso })
       .eq('id', existente.id)
-      .neq('status', 'running')
+      // ⚠️ Claim VIVO recusa; claim ABANDONADO pode ser TOMADO (#28) — sem
+      // isto, um worker morto por rollout congelava a conversa até o
+      // recolhedor do ciclo seguinte, e a reanálise manual recusava
+      // `ja_em_analise` por 10–25 min. Roubar é seguro por desenho: a cerca
+      // de posse de toda escrita pós-claim (`running_desde = <carimbo do
+      // próprio claim>`) corta o worker antigo no instante em que este
+      // regrava o carimbo. O par `lt`+`is.null` é o MESMO do recolhedor.
+      .or(
+        `status.neq.running,running_desde.lt.${corteDeClaimAbandonado()},running_desde.is.null`,
+      )
     if (opts.respeitarThrottle) {
       const corte = new Date(Date.now() - THROTTLE_MS).toISOString()
       query = query.or(`analisado_em.is.null,analisado_em.lt.${corte}`)
@@ -382,6 +437,12 @@ export async function analisarConversaReivindicada(
      *  curl do agendador). As transcrições de áudio respeitam este
      *  orçamento, reservando o tempo da análise que ainda vem. */
     deadlineMs?: number
+    /** Retrato do CLAIM: a linha estava `failed` sem análise concluída
+     *  (`descarteFoiSobreFalha`). Habilita a exceção estreita do #23 —
+     *  descarte dado sobre a falha reabre quando a análise boa chegar.
+     *  Calculado pelo CHAMADOR porque o `analisado_em` anterior deixa de
+     *  existir assim que o UPDATE principal o sobrescreve. */
+    descarteSobreFalha?: boolean
   },
 ): Promise<{ semIa: boolean }> {
   const janelaFim = new Date()
@@ -420,11 +481,38 @@ export async function analisarConversaReivindicada(
   // pela coluna sozinha, uma agendada de follow-up fechava a pendência do
   // cliente esquecido (achado do Codex no PR #74). A proveniência que a
   // distingue é `cb_scheduled_messages.message_id`, gravado no envio.
-  const { data: enviosAgendados, error: agErr } = await admin
-    .from('cb_scheduled_messages')
-    .select('message_id')
-    .eq('conversation_id', args.conversationId)
-    .not('message_id', 'is', null)
+  //
+  // ⚠️ Recortada pelos IDs das mensagens da JANELA (achado #05 do plano de
+  // 31/08): pedir todas as agendadas da conversa encosta no teto de 1000 do
+  // PostgREST numa conversa com anos de follow-up — truncagem sem `order`,
+  // sem erro, e uma agendada de fora passando por resposta humana. Pelo
+  // `.in`, a pergunta é exata e limitada por TETO_MENSAGENS_JANELA por
+  // construção.
+  const idsDaEquipe = comData
+    .filter((m) => m.sender_type === 'agent')
+    .map((m) => m.id)
+  // Em fatias de 500 (o precedente da casa para `.in()` — o PostgREST trava
+  // perto de 1000 valores): a janela pode ter até TETO_MENSAGENS_JANELA
+  // mensagens da equipe.
+  const enviosAgendados: { message_id: string | null }[] = []
+  let agErr: { message: string } | null = null
+  for (let i = 0; i < idsDaEquipe.length && !agErr; i += 500) {
+    const fatia = await admin
+      .from('cb_scheduled_messages')
+      .select('message_id')
+      .in('message_id', idsDaEquipe.slice(i, i + 500))
+    if (fatia.error) agErr = fatia.error
+    else enviosAgendados.push(...(fatia.data ?? []))
+  }
+  // ⚠️ O throw é DELIBERADO, e a DIREÇÃO do erro é o motivo (M23 do plano):
+  // sem esta consulta não há como distinguir agendada de resposta humana, e
+  // degradar "sem a exclusão" — como o hook do painel faz — apagaria a
+  // pendência do cliente esquecido de forma DURÁVEL, gravada no insight até
+  // a próxima mensagem. Falhar preserva a análise congelada (o alarme fica
+  // na tela), custa 1 das 3 tentativas e o ciclo seguinte retenta sozinho;
+  // três seguidas viram `failed` VISÍVEL no painel, com o Reanalisar. O
+  // hook pode degradar porque a leitura dele é efêmera (recarrega em 2
+  // min); aqui é estado escrito.
   if (agErr) throw new Error(`falha lendo envios agendados: ${agErr.message}`)
   const deAgendada = new Set(
     (enviosAgendados ?? []).map((r) => r.message_id as string),
@@ -437,8 +525,13 @@ export async function analisarConversaReivindicada(
         // ⚠️ A régua do PAINEL, e não a de `houveHumanoNaJanela` logo abaixo:
         // aqui a pergunta é "alguém RESPONDEU a este cliente?", e o celular
         // pareado responde (`from_device`, `sender_id` nulo). Lá a pergunta é
-        // outra — "vale refazer a análise?" — e continua sendo só `sender_id`
-        // de propósito. Não unificar sem responder às duas.
+        // outra — "vale preservar a análise congelada?" — e fica
+        // DELIBERADAMENTE sem o alargamento do `from_device` (uma saída
+        // solta pelo celular não é motivo para refazer análise). ⚠️ Já a
+        // exclusão da AGENDADA vale para as DUAS réguas (#21 do plano de
+        // 31/08): ela ESTREITA "humano", e sem ela lá embaixo o follow-up
+        // agendado zerava o alarme do cliente esquecido. Não unificar as
+        // duas expressões sem responder às duas perguntas.
         porGente:
           (m.sender_id !== null || m.from_device === true) &&
           !deAgendada.has(m.id),
@@ -619,15 +712,21 @@ export async function analisarConversaReivindicada(
   // `last_message_at`, então uma pendência congelada (cliente esquecido
   // além da janela) voltava à candidatura e o UPDATE completo zerava
   // `aguardando_desde` — o alarme sumia sem nenhum humano ter respondido.
-  // O discriminador é `sender_id`: gente que aperta enviar o tem;
-  // broadcast/automação/API mandam com ele nulo, e fluxo é `bot`.
+  // O discriminador é `sender_id` (broadcast/automação/API mandam com ele
+  // nulo, e fluxo é `bot`) MAIS a exclusão por proveniência: a AGENDADA sai
+  // COM `sender_id` — o de quem a criou, dias antes — e era o furo que
+  // restava (#21 do plano de 31/08): o follow-up agendado disparando sobre
+  // a pendência congelada fazia esta régua dizer "houve humano", o ramo
+  // preservador era pulado e o UPDATE completo zerava o alarme, sem
+  // ninguém ter respondido.
   // Quando a janela só tem máquina (nenhum cliente, nenhum humano) e a
   // linha JÁ completou uma análise, esta análise é um NO-OP: avança só a
   // marca d'água (`janela_fim`) e preserva a análise congelada inteira —
   // que é exatamente o que o painel promete exibir. Resposta HUMANA na
   // janela segue fechando a pendência pelo UPDATE completo abaixo.
   const houveHumanoNaJanela = comData.some(
-    (m) => m.sender_type === 'agent' && m.sender_id !== null,
+    (m) =>
+      m.sender_type === 'agent' && m.sender_id !== null && !deAgendada.has(m.id),
   )
   if (semClienteNaJanela && !houveHumanoNaJanela) {
     const { data: preservado, error: presErr } = await admin
@@ -732,7 +831,10 @@ export async function analisarConversaReivindicada(
   //   - `descartado` NUNCA reabre sozinho: descartar = "a IA errou aqui";
   //     reanálise repetiria o mesmo falso positivo e o operador o
   //     descartaria de novo a cada mensagem — a fadiga de alarme que a
-  //     tela promete combater. Reabre só à mão (botão Reabrir).
+  //     tela promete combater. Reabre só à mão (botão Reabrir) — com UMA
+  //     exceção estreita logo abaixo (#23): descarte dado sobre linha
+  //     `failed` que nunca teve análise concluída não descartou veredito
+  //     nenhum, e a PRIMEIRA análise boa reabre.
   const ultimaDoCliente = [...comData]
     .reverse()
     .find((m) => m.sender_type === 'customer')
@@ -745,6 +847,25 @@ export async function analisarConversaReivindicada(
       .lt('estado_em', ultimaDoCliente.created_at)
     if (estadoErr) {
       console.error('[radar] reset de estado não gravou:', estadoErr.message)
+    }
+  }
+
+  // A exceção do #23 (ver `descarteFoiSobreFalha`): o flag vem do retrato
+  // do claim — depois do UPDATE principal o `analisado_em` antigo já foi
+  // sobrescrito e não há mais como distinguir. O `.eq('estado',
+  // 'descartado')` confere o estado AGORA: se o operador tratou/reabriu no
+  // meio-tempo, vira no-op.
+  if (args.descarteSobreFalha) {
+    const { error: reabreErr } = await admin
+      .from('cb_conversation_insights')
+      .update({ estado: 'aberto', estado_por: null, estado_em: null })
+      .eq('id', args.insightId)
+      .eq('estado', 'descartado')
+    if (reabreErr) {
+      console.error(
+        '[radar] reabertura do descarte sobre falha não gravou:',
+        reabreErr.message,
+      )
     }
   }
 
@@ -781,10 +902,20 @@ export async function reanalisarConversa(
 
   const { data: existente } = await admin
     .from('cb_conversation_insights')
-    .select('id, conversation_id, status, janela_fim, analisado_em, tentativas')
+    .select(
+      'id, conversation_id, status, janela_fim, analisado_em, tentativas, running_desde',
+    )
     .eq('conversation_id', conversa.id)
     .maybeSingle()
-  if (existente?.status === 'running') throw new ErroDoRadar('ja_em_analise')
+  // Claim VIVO recusa; claim abandonado segue para o `reivindicar`, que sabe
+  // tomá-lo (#28). Recusar `running` cegamente deixava o Reanalisar preso
+  // junto com Tratar/Descartar quando um rollout matava o worker no meio.
+  if (
+    existente?.status === 'running' &&
+    claimVivo((existente as InsightExistente).running_desde)
+  ) {
+    throw new ErroDoRadar('ja_em_analise')
+  }
 
   const reivindicado = await reivindicar(
     admin,
@@ -807,6 +938,9 @@ export async function reanalisarConversa(
       accountId: conversa.account_id,
       channelId: conversa.channel_id,
       deadlineMs: Date.now() + TETO_ABSOLUTO_MS,
+      descarteSobreFalha: descarteFoiSobreFalha(
+        (existente as InsightExistente | null) ?? undefined,
+      ),
     })
   } catch (err) {
     const motivo = err instanceof Error ? err.message : 'erro desconhecido'

@@ -662,6 +662,15 @@ function InboxPageInner() {
       // sees `ref !== deepLinkConvId`, fires a second time, and
       // clobbers the messages MessageThread just fetched.
       autoSelectedForDeepLinkRef.current = conv.id;
+      // ⚠️ E CANCELA a abertura pendente do botão "nova conversa". A ref não
+      // olha a URL de propósito (é o que a torna imune à corrida do `?c=`),
+      // então ela também não percebe um clique explícito: com o refetch ainda
+      // no ar, `handleConversationsLoaded` selecionava a conversa recém-criada
+      // por cima da que o operador acabou de escolher — e o `router.replace`
+      // deste clique já tinha escrito a OUTRA na URL, deixando fio e endereço
+      // discordando (um F5 trocava a conversa de novo). A escolha explícita
+      // manda. (Achado do Codex na revisão do PR #80.)
+      conversaRecemAbertaRef.current = null;
       // Reflect the selection in the URL so a refresh lands the user
       // back in the same thread, and so copy-paste links work. Use
       // replace() to avoid polluting browser history with every click.
@@ -683,6 +692,10 @@ function InboxPageInner() {
     // Clearing the ref lets the deep-link auto-selector fire again if
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
+    // Voltar também cancela a abertura pendente, pelo mesmo motivo do clique
+    // explícito: sem isto, o fio que o operador acabou de fechar reabria
+    // sozinho quando o refetch chegasse — no celular, por cima da lista.
+    conversaRecemAbertaRef.current = null;
     router.replace(urlDoInbox({ de }), { scroll: false });
   }, [router, de]);
 

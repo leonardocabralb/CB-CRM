@@ -153,15 +153,30 @@ export async function POST(request: Request) {
 
   // ---- Contato: reencontra antes de criar ----
   const achado = await resolverContato(admin, accountId, donoDaConta, digitos, nomeLimpo)
-  if (!achado) {
-    return NextResponse.json({ error: 'CONTACT_CREATE_FAILED' }, { status: 500 })
+  if ('erro' in achado) {
+    return NextResponse.json(
+      {
+        error:
+          achado.erro === 'LOOKUP_FAILED' ? 'LOOKUP_FAILED' : 'CONTACT_CREATE_FAILED',
+      },
+      { status: 500 },
+    )
   }
 
   // ---- Conversa: uma por contato (UNIQUE da 036) ----
-  const conversationId = await resolverConversa(admin, accountId, donoDaConta, achado.contato.id)
-  if (!conversationId) {
-    return NextResponse.json({ error: 'CONVERSATION_CREATE_FAILED' }, { status: 500 })
+  const conversa = await resolverConversa(admin, accountId, donoDaConta, achado.contato.id)
+  if ('erro' in conversa) {
+    return NextResponse.json(
+      {
+        error:
+          conversa.erro === 'LOOKUP_FAILED'
+            ? 'LOOKUP_FAILED'
+            : 'CONVERSATION_CREATE_FAILED',
+      },
+      { status: 500 },
+    )
   }
+  const conversationId = conversa.id
 
   // ---- Fixa o canal ----
   // `pin`, não `follow`: quem clicou ESCOLHEU o número, e a escolha tem de
@@ -195,9 +210,18 @@ async function resolverContato(
   donoDaConta: string,
   digitos: string,
   nomeLimpo: string | null,
-): Promise<{ contato: { id: string; name?: string | null }; criou: boolean } | null> {
-  const existente = await findExistingContact(admin, accountId, digitos)
-  if (existente) return { contato: existente, criou: false }
+): Promise<
+  | { contato: { id: string; name?: string | null }; criou: boolean }
+  | { erro: 'LOOKUP_FAILED' | 'CREATE_FAILED' }
+> {
+  const busca = await findExistingContact(admin, accountId, digitos)
+  // ⚠️ Erro de banco NÃO é "não encontrado" — a mesma lição do canal e da
+  // conta, lá em cima. Seguir criando aqui era o que duplicava a ficha
+  // (achado #04): a variante do nono dígito tem `phone_normalized` diferente
+  // e passa limpa pelo índice único — duas fichas, cada uma com metade do
+  // histórico do cliente.
+  if (busca.falhou) return { erro: 'LOOKUP_FAILED' }
+  if (busca.contato) return { contato: busca.contato, criou: false }
 
   const { data: novo, error } = await admin
     .from('contacts')
@@ -218,11 +242,12 @@ async function resolverContato(
   // operador abria a conversa. O contato dele é o certo.
   if (error && isUniqueViolation(error)) {
     const correu = await findExistingContact(admin, accountId, digitos)
-    if (correu) return { contato: correu, criou: false }
+    if (correu.contato) return { contato: correu.contato, criou: false }
+    if (correu.falhou) return { erro: 'LOOKUP_FAILED' }
   }
 
   console.error('[conversas/abrir] criar contato falhou:', error)
-  return null
+  return { erro: 'CREATE_FAILED' }
 }
 
 /** A conversa daquele contato, criando se ainda não houver (UNIQUE da 036). */
@@ -232,20 +257,26 @@ async function resolverConversa(
   /** Dono da conta — ver o comentário no chamador (FK com CASCADE). */
   donoDaConta: string,
   contactId: string,
-): Promise<string | null> {
-  const buscar = async () => {
-    const { data } = await admin
+): Promise<{ id: string } | { erro: 'LOOKUP_FAILED' | 'CREATE_FAILED' }> {
+  const buscar = async (): Promise<{ id: string | null; falhou: boolean }> => {
+    // ⚠️ O `error` era descartado (M15 do plano): um blip nesta consulta
+    // virava "não existe conversa" e o INSERT de baixo corria — a UNIQUE da
+    // 036 barra a duplicata, mas a rota respondia CREATE_FAILED mentindo a
+    // causa, e sem a UNIQUE seria uma segunda conversa para o mesmo cliente.
+    const { data, error } = await admin
       .from('conversations')
       .select('id')
       .eq('account_id', accountId)
       .eq('contact_id', contactId)
       .order('created_at', { ascending: true })
       .limit(1)
-    return (data?.[0]?.id as string | undefined) ?? null
+    if (error) return { id: null, falhou: true }
+    return { id: (data?.[0]?.id as string | undefined) ?? null, falhou: false }
   }
 
   const existente = await buscar()
-  if (existente) return existente
+  if (existente.falhou) return { erro: 'LOOKUP_FAILED' }
+  if (existente.id) return { id: existente.id }
 
   const { data: nova, error } = await admin
     .from('conversations')
@@ -253,13 +284,14 @@ async function resolverConversa(
     .select('id')
     .single()
 
-  if (nova) return nova.id as string
+  if (nova) return { id: nova.id as string }
 
   if (error && isUniqueViolation(error)) {
     const correu = await buscar()
-    if (correu) return correu
+    if (correu.id) return { id: correu.id }
+    if (correu.falhou) return { erro: 'LOOKUP_FAILED' }
   }
 
   console.error('[conversas/abrir] criar conversa falhou:', error)
-  return null
+  return { erro: 'CREATE_FAILED' }
 }
