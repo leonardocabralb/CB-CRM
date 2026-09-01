@@ -188,7 +188,7 @@ as frentes deles 🔵 e leve as opções ao operador antes de implementar.
 | **F7** | Guardas e testes estruturais com falso verde | #14 #15 | 🟠 alto | ✅ | #88 |
 | **F8** | Filtros do inbox | #16 #25 #26 | 🟡 médio | ✅ (+M4 e M5-parcial) | #92 |
 | **F9** | Erro de banco lido como ausência | #04 #07 | 🟡 médio | ✅ (#04 no PR #86; #07 no PR #89, mesma branch da F4) | #86/#89 |
-| **F10** | CI/CD e vazamento de credencial | #29 #30 | 🟡 médio | ⬜ | — |
+| **F10** | CI/CD e vazamento de credencial | #29 #30 | 🟡 médio | ✅ | #93 |
 | **F11** | Menores de UX e estado | #17 #27 #31 #32 | 🟢 baixo | ⬜ | — |
 
 **Ordem recomendada:** F1 → F2 → F3 → F5 → F7 → F4 → F6 → F9 → F8 → F10 → F11.
@@ -1951,6 +1951,13 @@ o ramo `else` do rollout sai com código 0 (verde sem publicar), e
 `workflow_dispatch` em qualquer branch publica aquela branch e envenena a tag
 `:latest`. Estão na §6 (M8, M9) — valem um PR próprio, não este.
 
+**Resolvido em** PR #93 — os três itens: `sleep 60` condicional entre as
+tentativas, `::warning::` + `$GITHUB_STEP_SUMMARY` quando a 2ª foi
+necessária, e `appleboy/ssh-action` fixado por SHA (v1.2.5) nos dois usos.
+M8/M9 ficaram fora, como o próprio achado manda (pré-existentes, PR
+próprio). · **Medido:** leitura + sintaxe validada pelo CI do PR (o backoff
+só executa em falha real no main; o warning aparecerá no primeiro blip).
+
 ---
 
 ### #30 — O save de configuração ainda ecoa a chave de IA na tela
@@ -1985,6 +1992,19 @@ pelo provedor"); para os demais códigos, manter a mensagem — é ela que diz
 
 **Armadilhas.** `/api/ai/draft:142` e `/api/ai/playground:91` ecoam igual —
 confira os três no mesmo PR.
+
+**Resolvido em** PR #93, pelo PADRÃO (§8.1): helper
+`mensagemSeguraDeAiError` em `lib/ai/types.ts` usado nas TRÊS rotas do
+achado (config, draft, playground) + unificado no ramo do modelo do Radar
+que já tinha a exceção inline. Grep de `error: err.message` sob
+`src/app/api/ai`: sobra só `test/route.ts` (forma já segura — chave
+inválida devolve só `{code}`), e um pino estrutural afirma essa allowlist
+exata: a 4ª cópia reprova a suíte. · **Medido (E2E, zero gravação — a
+validação falha ANTES do upsert, config conferida intacta):** POST com
+provider openai + chave lixo → `{code: 'invalid_key', error: 'o provedor
+recusou a chave'}`, nenhum `sk-proj` no corpo — o caminho EXATO do achado
+(o 401 da OpenAI ecoa a chave; o do Gemini, medido também, nunca ecoou).
+Mutações: helper desprotegido → 1 failed; eco cru de volta → o pino pega.
 
 ---
 
