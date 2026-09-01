@@ -90,17 +90,12 @@ services:
     # Por dentro da overlay: sem sair para a internet, sem TLS, sem depender
     # do Traefik nem do certificado.
     #
-    # ⚠️ O ciclo de 15 minutos do laço LENTO é decisão do operador, e o número
-    # TEM de bater com `CICLO_MINUTOS` em `src/lib/scheduled/display.ts` — é
-    # ele que define a grade de horários que a tela oferece e o texto "sai em
-    # até 15 min". Mudar um sem o outro faz a tela prometer o que o servidor
-    # não cumpre. (O laço rápido de 60s não aparece em tela nenhuma.)
-    #
-    # ⚠️ A agendada vem PRIMEIRO no laço, e não é ordem alfabética: as outras
-    # duas rotas varrem automações e fluxos, e uma delas lenta faria a
+    # ⚠️ A agendada vem PRIMEIRO no laço lento, e não é ordem alfabética: as
+    # outras duas rotas varrem fluxos e radar, e uma delas lenta faria a
     # mensagem do cliente esperar atrás. O `-m 120` corta cada chamada bem
     # antes do ciclo seguinte; o `|| true` existe para que o CRM reiniciando
     # não derrube o laço.
+    #
     # ⚠️ DOIS LAÇOS, e a separação é load-bearing.
     #
     # O laço de 15 min NÃO PODE encolher: o número tem de bater com

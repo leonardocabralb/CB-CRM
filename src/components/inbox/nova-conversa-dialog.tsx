@@ -54,12 +54,21 @@ export function NovaConversaDialog({
   open,
   onOpenChange,
   canais,
+  carregandoCanais,
+  canaisFalharam,
+  onRecarregarCanais,
   onAberta,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Já recortados pelo perfil de quem está olhando — ver `canaisVisiveis`. */
   canais: CbChannel[];
+  /** `loading` do useChannels do pai: lista vazia AINDA não é resposta. */
+  carregandoCanais: boolean;
+  /** `falhou` do useChannels do pai: lista vazia é LACUNA, não "sem canal". */
+  canaisFalharam: boolean;
+  /** O "tentar de novo" da falha — repete a busca ignorando o cache. */
+  onRecarregarCanais: () => Promise<void>;
   /** Recebe o id da conversa aberta; o pai recarrega a lista e navega até ela. */
   onAberta: (conversationId: string) => void;
 }) {
@@ -69,6 +78,7 @@ export function NovaConversaDialog({
   const [nome, setNome] = useState("");
   const [canalId, setCanalId] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [tentandoCanais, setTentandoCanais] = useState(false);
 
   // Conta de um número só: não há o que escolher. (O seletor continua
   // aparecendo, dizendo por qual número a conversa vai sair — numa conta com
@@ -201,11 +211,12 @@ export function NovaConversaDialog({
 
           <div className="space-y-1.5">
             <span className="text-sm font-medium">{t("canal")}</span>
-            {canais.length === 0 ? (
-              // Sem conexão não há por onde falar, e o botão desabilitado
-              // sozinho não explicaria o motivo.
-              <p className="text-[11px] text-destructive">{t("semCanal")}</p>
-            ) : (
+            {/* ⚠️ TRÊS estados antes do seletor (#08): "carregando" e
+                "falhou" NÃO podem cair na frase "nenhuma conexão — conecte
+                em Configurações", que é uma AFIRMAÇÃO sobre a conta (e uma
+                instrução que um `agent` nem consegue seguir). Só o vazio
+                COM resposta a merece. */}
+            {canais.length > 0 ? (
               <>
                 <ChannelSelect
                   channels={canais}
@@ -214,6 +225,34 @@ export function NovaConversaDialog({
                 />
                 <p className="text-[11px] text-muted-foreground">{t("canalDica")}</p>
               </>
+            ) : carregandoCanais || tentandoCanais ? (
+              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {t("canaisCarregando")}
+              </p>
+            ) : canaisFalharam ? (
+              <div className="flex items-center gap-2">
+                <p className="text-[11px] text-muted-foreground">
+                  {t("canaisFalharam")}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-[11px]"
+                  onClick={() => {
+                    setTentandoCanais(true);
+                    void onRecarregarCanais().finally(() =>
+                      setTentandoCanais(false),
+                    );
+                  }}
+                >
+                  {t("tentarDeNovo")}
+                </Button>
+              </div>
+            ) : (
+              // Sem conexão não há por onde falar, e o botão desabilitado
+              // sozinho não explicaria o motivo.
+              <p className="text-[11px] text-destructive">{t("semCanal")}</p>
             )}
           </div>
 
