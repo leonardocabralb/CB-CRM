@@ -316,11 +316,25 @@ grupos), e o rótulo de canal acendia em TODAS. O que morde código novo:
   de carregamento.** `activeChannel` só resolve depois do `useChannels`, e um
   aviso montado sobre lista vazia nomearia a divergência errada — mesma
   família da badge "Expirada" que piscava no cabeçalho (2026-08-31).
-- **A faixa NÃO exige `fioMulticanal`**, de propósito: a conversa fixada num
-  número enquanto o cliente escreve de outro tem UM canal no fio, e ali a
-  divergência é permanente — toda resposta cai noutra conversa no celular
-  dele. O botão FIXA a conversa no número do cliente; "Automático" no menu
-  desfaz.
+- ⚠️⚠️ **A faixa só aparece com a conversa FIXADA (`channel_pinned`).**
+  Solta, a conversa SEGUE o cliente: o `inbound-store` carimba a mensagem e
+  só depois atualiza a conversa, em duas escritas, e o realtime entrega
+  nessa ordem — a mensagem no número B está na tela enquanto `activeChannel`
+  ainda é A. Divergência sem pino é trânsito (corrige-se em milissegundos)
+  ou `follow` que falhou (raro; a próxima mensagem conserta). A faixa ali
+  PISCARIA a cada troca legítima, e o botão, clicado nesse instante, fixaria
+  B e desligaria o seguimento em silêncio (achado do Codex no PR #105). Com
+  pino a divergência é permanente e escolhida — toda resposta cai noutra
+  conversa no celular do cliente — e é para ela que a faixa existe. Não
+  exige `fioMulticanal`: fixada em A com o cliente só em B, o fio tem UM
+  canal. O botão re-fixa no número do cliente; "Automático" no menu solta.
+- ⚠️ **A mensagem otimista nasce carimbada com o canal da tela, e a rota
+  `/api/whatsapp/send` devolve `channel_id`** (o núcleo já o devolvia; a
+  rota descartava). Sem os dois, em conversa mista a resposta enviada por B
+  nascia sem carimbo e ficava desenhada no trecho de A até o realtime trocar
+  a bolha — e realtime atrasado a deixava lá (Codex, PR #105). Quem criar
+  um 5º caminho de envio repete os dois: o carimbo na otimista e o
+  `marcarEnviada` com o `channel_id` da resposta.
 - **Informativo, não bloqueante** (decisão do operador, 2026-09-02): com 2
   casos em 90 conversas, confirmar a cada envio custaria um clique em toda
   conversa mista para prevenir um erro que a faixa já torna visível.

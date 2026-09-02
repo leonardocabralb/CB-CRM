@@ -248,6 +248,13 @@ export async function POST(request: Request) {
         // uma versão que nunca existiu até o realtime chegar e trocar o
         // texto na frente do operador.
         content_text: result.contentText,
+        // O número por onde SAIU. A bolha otimista nasce carimbada com o
+        // canal da tela, mas quem manda antes de `useChannels` responder
+        // nasce sem canal — e em conversa que mistura números uma resposta
+        // sem carimbo fica desenhada no trecho do número ANTERIOR até o
+        // realtime trocar a bolha. O núcleo já devolvia isto; a rota
+        // descartava. (Codex, PR #105.)
+        channel_id: result.channelId,
       })
     } catch (err) {
       if (err instanceof SendMessageError) {

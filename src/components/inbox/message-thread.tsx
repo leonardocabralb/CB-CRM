@@ -1182,11 +1182,16 @@ export function MessageThread({
    * devolve `content_text` para todos eles desde a 923.
    */
   const marcarEnviada = useCallback(
-    (tempId: string, payload: { content_text?: unknown }) => {
+    (tempId: string, payload: { content_text?: unknown; channel_id?: unknown }) => {
       onUpdateMessage(tempId, {
         status: "sent",
         ...(typeof payload?.content_text === "string"
           ? { content_text: payload.content_text }
+          : {}),
+        // O canal que o servidor DE FATO usou. A otimista já nasce com o da
+        // tela; isto cobre o envio feito antes de `useChannels` responder.
+        ...(typeof payload?.channel_id === "string"
+          ? { channel_id: payload.channel_id }
           : {}),
       });
     },
@@ -1209,6 +1214,13 @@ export function MessageThread({
         // muda sozinha um instante depois, quando a resposta do servidor
         // chega — parecendo que o sistema reescreveu o que foi digitado.
         content_text: aplicarAssinatura(text, nomeQueAssina) ?? text,
+        // Nasce CARIMBADA com o número da tela, como já nasce assinada. Em
+        // conversa que mistura números, a resposta sem carimbo ficava
+        // desenhada no trecho do número ANTERIOR até o realtime trocar a
+        // bolha — e realtime atrasado a deixava lá (Codex, PR #105). O
+        // servidor confirma o canal que usou de fato em `marcarEnviada`.
+        // Os outros três caminhos de envio repetem o carimbo.
+        channel_id: activeChannel?.id ?? null,
         status: "sending",
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
@@ -1329,6 +1341,8 @@ export function MessageThread({
         // Para a bolha otimista mostrar o nome certo já no primeiro quadro —
         // o servidor grava a mesma coisa quando a mensagem assenta.
         media_filename: payload.filename ?? null,
+        // Carimbo de canal — ver o comentário em `handleSend`.
+        channel_id: activeChannel?.id ?? null,
         status: "sending",
         created_at: new Date().toISOString(),
         reply_to_message_id: payload.replyToId,
@@ -1395,6 +1409,7 @@ export function MessageThread({
       marcarEnviada,
       janelaFechadaAgora,
       t,
+      activeChannel?.id,
     ],
   );
 
@@ -1412,6 +1427,8 @@ export function MessageThread({
         content_type: "interactive",
         content_text: payload.body,
         interactive_payload: payload,
+        // Carimbo de canal — ver o comentário em `handleSend`.
+        channel_id: activeChannel?.id ?? null,
         status: "sending",
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
@@ -1467,6 +1484,7 @@ export function MessageThread({
       marcarEnviada,
       janelaFechadaAgora,
       t,
+      activeChannel?.id,
     ],
   );
 
@@ -1510,6 +1528,8 @@ export function MessageThread({
         content_type: "template",
         content_text: renderedBody,
         template_name: template.name,
+        // Carimbo de canal — ver o comentário em `handleSend`.
+        channel_id: activeChannel?.id ?? null,
         status: "sending",
         created_at: new Date().toISOString(),
       };
@@ -1556,7 +1576,13 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada],
+    [
+      conversation,
+      publicarMensagemOtimista,
+      onUpdateMessage,
+      marcarEnviada,
+      activeChannel?.id,
+    ],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without
@@ -1852,7 +1878,9 @@ export function MessageThread({
   const fioMisturaCanais = fioMulticanal(messages, ehGrupo);
   const coresDosCanais = coresPorCanal(channels);
   const aberturasDeTrecho = aberturasDeCanal(messages, ehGrupo);
-  // A última do cliente chegou por um número e a resposta sai por outro.
+  // A última do cliente chegou por um número e a resposta sai por outro —
+  // só com a conversa FIXADA: solta, ela segue o cliente sozinha e a
+  // divergência é trânsito de realtime (ver `canalDivergente`).
   // `activeChannel` nulo (canais ainda carregando) cala o aviso lá dentro.
   const corDoCanalAtivo = corDoCanal(coresDosCanais, activeChannel?.id);
   const canalDoClienteDivergente = channelsById.get(
@@ -1860,6 +1888,7 @@ export function MessageThread({
       messages,
       canalDeSaida: activeChannel?.id ?? null,
       ehGrupo,
+      fixado: Boolean(conversation.channel_pinned),
     }) ?? "",
   );
 
@@ -2486,8 +2515,14 @@ export function MessageThread({
           em toda conversa mista para prevenir um erro que a faixa já torna
           visível.
 
-          O botão FIXA a conversa no número do cliente (o mesmo que escolher
-          no seletor). "Automático" segue no menu para desfazer. */}
+          Só aparece com a conversa FIXADA no seletor. Solta, ela segue o
+          cliente sozinha, e o aviso piscaria a cada troca legítima (a
+          mensagem chega por realtime ANTES do UPDATE da conversa) — pior,
+          o botão clicado nesse instante fixaria o número e desligaria o
+          seguimento em silêncio (Codex, PR #105).
+
+          O botão re-FIXA a conversa no número do cliente (o mesmo que
+          escolher no seletor). "Automático" segue no menu para soltar. */}
       {canalDoClienteDivergente && (
         <div className="flex items-center gap-2 border-t border-amber-500/30 bg-amber-500/10 px-3 py-2">
           <CornerUpLeft

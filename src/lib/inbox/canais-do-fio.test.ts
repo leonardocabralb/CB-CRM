@@ -125,17 +125,34 @@ describe('canalDivergente', () => {
     msg('3', 'customer', COM),
   ];
 
-  it('acusa quando a última do cliente veio por outro número', () => {
+  const fixada = { ehGrupo: false, fixado: true };
+
+  it('acusa quando a última do cliente veio por outro número (conversa FIXADA)', () => {
     // O caso medido em 02/09: cliente escreveu ao Comercial, a conversa
-    // responde pelo Jurídico.
+    // está fixada no Jurídico.
     expect(
-      canalDivergente({ messages: fioMisto, canalDeSaida: JUR, ehGrupo: false }),
+      canalDivergente({ messages: fioMisto, canalDeSaida: JUR, ...fixada }),
     ).toBe(COM);
+  });
+
+  it('SEM pino cala mesmo divergindo — o follow está a caminho', () => {
+    // Solta, a conversa segue o cliente: a mensagem no número B chega por
+    // realtime ANTES do UPDATE da conversa, e por milissegundos o canal
+    // ativo ainda é A. Avisar aqui piscaria a cada troca legítima, e o botão
+    // fixaria B em silêncio. (Codex, PR #105.)
+    expect(
+      canalDivergente({
+        messages: fioMisto,
+        canalDeSaida: JUR,
+        ehGrupo: false,
+        fixado: false,
+      }),
+    ).toBeNull();
   });
 
   it('cala quando a saída é o mesmo número da última do cliente', () => {
     expect(
-      canalDivergente({ messages: fioMisto, canalDeSaida: COM, ehGrupo: false }),
+      canalDivergente({ messages: fioMisto, canalDeSaida: COM, ...fixada }),
     ).toBeNull();
   });
 
@@ -143,40 +160,37 @@ describe('canalDivergente', () => {
     // `useChannels` ainda não respondeu: um aviso montado sobre lista vazia
     // nomearia a divergência errada.
     expect(
-      canalDivergente({ messages: fioMisto, canalDeSaida: null, ehGrupo: false }),
+      canalDivergente({ messages: fioMisto, canalDeSaida: null, ...fixada }),
     ).toBeNull();
+    expect(
+      canalDivergente({ messages: fioMisto, canalDeSaida: undefined, ...fixada }),
+    ).toBeNull();
+  });
+
+  it('GRUPO nunca acusa, nem fixado', () => {
     expect(
       canalDivergente({
         messages: fioMisto,
-        canalDeSaida: undefined,
-        ehGrupo: false,
+        canalDeSaida: JUR,
+        ehGrupo: true,
+        fixado: true,
       }),
     ).toBeNull();
   });
 
-  it('GRUPO nunca acusa', () => {
-    expect(
-      canalDivergente({ messages: fioMisto, canalDeSaida: JUR, ehGrupo: true }),
-    ).toBeNull();
-  });
-
-  it('acusa mesmo com UM canal no fio — a conversa fixada noutro número', () => {
+  it('acusa mesmo com UM canal no fio — fixada num número, cliente só no outro', () => {
     // Sem `fioMulticanal` no caminho de propósito: aqui a divergência é
     // permanente, e toda resposta cai noutra conversa no celular do cliente.
     const soComercial = [msg('1', 'customer', COM)];
     expect(
-      canalDivergente({
-        messages: soComercial,
-        canalDeSaida: JUR,
-        ehGrupo: false,
-      }),
+      canalDivergente({ messages: soComercial, canalDeSaida: JUR, ...fixada }),
     ).toBe(COM);
   });
 
   it('fio sem carimbo cala — não inventa divergência sobre o histórico antigo', () => {
     const antigo = [msg('1', 'customer', null)];
     expect(
-      canalDivergente({ messages: antigo, canalDeSaida: JUR, ehGrupo: false }),
+      canalDivergente({ messages: antigo, canalDeSaida: JUR, ...fixada }),
     ).toBeNull();
   });
 });

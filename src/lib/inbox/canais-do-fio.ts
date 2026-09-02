@@ -106,9 +106,20 @@ export function ultimoCanalDoCliente(
  * O canal por onde a última mensagem do cliente chegou, QUANDO ele difere
  * daquele por onde a resposta vai sair. `null` = nada a avisar.
  *
- * ⚠️ Não exige {@link fioMulticanal}: a conversa fixada num número enquanto
- * o cliente escreve de outro tem UM canal no fio e a divergência é real — e
- * permanente, porque toda resposta cai noutra conversa no celular dele.
+ * ⚠️⚠️ SÓ COM A CONVERSA FIXADA (`fixado` = `conversations.channel_pinned`).
+ * Solta, a conversa SEGUE o cliente sozinha: o `inbound-store` carimba a
+ * mensagem e só depois atualiza a conversa — duas escritas —, e o realtime
+ * entrega nessa ordem, então a mensagem no número B já está na tela
+ * enquanto o canal ativo ainda é A. Uma divergência sem pino é trânsito
+ * (corrige-se em milissegundos) ou um `follow` que falhou (raro, e a
+ * próxima mensagem conserta). Avisar ali piscaria a cada troca legítima, e
+ * o botão da faixa, clicado nesse instante, FIXARIA B e desligaria o
+ * seguimento em silêncio. (Achado do Codex no PR #105.)
+ *
+ * Com pino a divergência é permanente e escolhida — toda resposta cai
+ * noutra conversa no celular do cliente — e é para ela que o aviso existe.
+ * Por isso não exige {@link fioMulticanal}: fixada em A com o cliente só em
+ * B, o fio tem UM canal.
  *
  * ⚠️ `canalDeSaida` nulo devolve `null`, e isso é o gate de carregamento: o
  * canal ativo do fio só resolve depois de `useChannels` responder, e um
@@ -120,9 +131,11 @@ export function canalDivergente(args: {
   messages: MensagemDoFio[];
   canalDeSaida: string | null | undefined;
   ehGrupo: boolean;
+  /** `conversations.channel_pinned`. Obrigatório: esquecê-lo é o bug acima. */
+  fixado: boolean;
 }): string | null {
-  const { messages, canalDeSaida, ehGrupo } = args;
-  if (ehGrupo || !canalDeSaida) return null;
+  const { messages, canalDeSaida, ehGrupo, fixado } = args;
+  if (ehGrupo || !fixado || !canalDeSaida) return null;
 
   const doCliente = ultimoCanalDoCliente(messages);
   if (!doCliente || doCliente === canalDeSaida) return null;
