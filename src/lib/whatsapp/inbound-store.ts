@@ -14,6 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
+import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
@@ -255,6 +256,11 @@ export async function persistDeviceMessage(
     })
     .eq('id', conversation.id);
 
+  // A equipe falou numa conversa encerrada: ela volta à caixa de entrada.
+  // Sem responsável — não há usuário do CRM por trás do celular pareado
+  // (`sender_id` nulo), só um advogado digitando. Ver `reopen.ts`.
+  await reopenClosedConversation(db, conversation);
+
   // A conversa segue o número por onde a EQUIPE acabou de falar — a mesma
   // regra que já valia quando quem escrevia era o cliente, e o mesmo
   // `followConversationChannel`, que não faz nada se o atendente tiver
@@ -373,6 +379,11 @@ export async function persistInboundMessage(
       updated_at: new Date().toISOString(),
     })
     .eq('id', conversation.id);
+
+  // O cliente escreveu de novo numa conversa encerrada: ela volta à caixa de
+  // entrada (paridade com o webhook da Meta — até 2026-09-02 só ele reabria,
+  // e produção roda Evolution). Ver `reopen.ts`.
+  await reopenClosedConversation(db, conversation);
 
   // Carimbo de canal (Fase 3): marca por onde a mensagem entrou e faz a
   // conversa "seguir o cliente" (a menos que fixada). Best-effort e

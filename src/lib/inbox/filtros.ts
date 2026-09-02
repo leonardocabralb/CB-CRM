@@ -30,7 +30,7 @@ import {
   type TipoDeConversa,
 } from "@/lib/inbox/conversations";
 import { stripWhatsAppFormat } from "@/lib/inbox/whatsapp-format";
-import type { Conversation, ConversationStatus } from "@/types";
+import type { Conversation } from "@/types";
 
 /**
  * "Sem etapa" e "sem responsável" são opções DE VERDADE, não ausência de
@@ -44,11 +44,32 @@ import type { Conversation, ConversationStatus } from "@/types";
 export const SEM_ETAPA = "__sem_etapa__";
 export const SEM_RESPONSAVEL = "__sem_responsavel__";
 
+/**
+ * As duas abas da caixa de entrada (decisão do operador, 2026-09-02).
+ *
+ * `ativas` É a caixa de entrada: tudo que não foi encerrado — `open` E
+ * `pending`, porque a pendente ainda é atendimento em curso. `closed` é o
+ * acervo do que já terminou. Não existe mais "todas as situações": encerrar
+ * uma conversa é justamente tirá-la da caixa, e qualquer mensagem nova (do
+ * cliente OU da equipe) a devolve sozinha — ver
+ * `src/lib/conversations/reopen.ts`. Com as duas regras valendo, conversa
+ * encerrada é conversa em que não há nada a fazer, e é isso que permite
+ * zerar a caixa.
+ *
+ * ⚠️ `ativas` NÃO é filtro: é a ausência dele (`FILTROS_VAZIOS`) — não conta
+ * no distintivo nem vira pastilha. `closed` conta como um recorte, igual a
+ * Favoritas e Não lidas, que moram na mesma linha da barra.
+ *
+ * ⚠️ Arquivada É encerrada (decisão P2.3): é o mesmo campo, e um segundo
+ * controle "arquivadas" poderia contradizer este, então não existe.
+ */
+export type SituacaoDaCaixa = "ativas" | "closed";
+
 export interface FiltrosDoInbox {
   /** Todas / só diretas / só grupos. */
   tipo: TipoDeConversa;
-  /** `todos` = não filtra. Arquivada É encerrada (`closed`), decisão P2.3. */
-  status: ConversationStatus | "todos";
+  /** Qual das duas abas está aberta — ver {@link SituacaoDaCaixa}. */
+  status: SituacaoDaCaixa;
   /** `null` = todos os canais. */
   canalId: string | null;
   /** `auth.users.id`, ou {@link SEM_RESPONSAVEL}, ou `null` para todos. */
@@ -97,7 +118,7 @@ export interface FiltrosDoInbox {
 
 export const FILTROS_VAZIOS: FiltrosDoInbox = {
   tipo: "todas",
-  status: "todos",
+  status: "ativas",
   canalId: null,
   responsavelId: null,
   etiquetaIds: [],
@@ -119,7 +140,7 @@ export const FILTROS_VAZIOS: FiltrosDoInbox = {
 export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
   let n = 0;
   if (f.tipo !== "todas") n++;
-  if (f.status !== "todos") n++;
+  if (f.status !== "ativas") n++;
   if (f.canalId) n++;
   if (f.responsavelId) n++;
   if (f.etiquetaIds.length > 0) n++;
@@ -375,12 +396,40 @@ export function casaComAEtapa(
  */
 
 /**
+ * A aba Abertas/Encerradas.
+ *
+ * ⚠️ **A BUSCA ATRAVESSA a aba padrão, e SÓ ela.** Antes desta feature o
+ * padrão era "todas as situações", e digitar o nome de um cliente achava a
+ * conversa dele mesmo encerrada. Esconder as encerradas por padrão SEM esta
+ * exceção faria "João" na caixa devolver "nenhuma conversa" sobre um cliente
+ * que existe — e a conclusão do operador seria que o João não está no CRM,
+ * não que a conversa está na outra aba. É a mesma família da exceção do
+ * perfil (decisão do operador, 2026-08-30): a busca responde "onde está
+ * aquela conversa", e a resposta pode ser "encerrada".
+ *
+ * Na aba Encerradas a busca NÃO atravessa: ali a aba é um recorte escolhido
+ * (conta no distintivo, tem pastilha), e recorte é E lógico com a busca como
+ * qualquer outro — trazer as abertas para dentro dela faria a pastilha
+ * "Encerradas" mentir sobre o que está na tela.
+ */
+export function casaComASituacao(
+  c: Pick<Conversation, "status">,
+  aba: SituacaoDaCaixa,
+  busca: string,
+): boolean {
+  if (aba === "closed") return c.status === "closed";
+  return c.status !== "closed" || busca.trim() !== "";
+}
+
+/**
  * O recorte inteiro.
  *
  * ⚠️ **Todos os filtros se aplicam JUNTOS (E lógico)** — decisão do operador em
  * 2026-08-01. Nenhum substitui outro nem "ganha" do resto: responsável = Ana
  * mais favoritas mostra *as favoritas da Ana*. É o que faz o contador
  * "Exibindo N" importar — ele é a única coisa que explica um resultado vazio.
+ * (A aba padrão não é filtro, e a busca a atravessa — ver
+ * {@link casaComASituacao}.)
  */
 export function aplicarFiltros(
   conversations: Conversation[],
@@ -399,7 +448,7 @@ export function aplicarFiltros(
     if (ctx.foraDoPerfil?.(c) && ctx.busca.trim() === "") return false;
 
     if (!matchesTypeFilter(c, f.tipo)) return false;
-    if (f.status !== "todos" && c.status !== f.status) return false;
+    if (!casaComASituacao(c, f.status, ctx.busca)) return false;
 
     // Ver `canalDaConversa`: em grupo o número mora em `cb_groups`, não na
     // conversa.

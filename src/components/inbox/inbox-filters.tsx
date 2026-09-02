@@ -43,12 +43,12 @@ import {
   SEM_ETAPA,
   SEM_RESPONSAVEL,
   type FiltrosDoInbox,
+  type SituacaoDaCaixa,
 } from "@/lib/inbox/filtros";
 import { descreverFiltro, nomeDaEtapa } from "@/lib/inbox/filtros-salvos";
 import type { TipoDeConversa } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type {
-  ConversationStatus,
   PipelineStage,
   Profile,
   Tag,
@@ -217,6 +217,90 @@ export function InboxFilters({
 
   return (
     <div className="space-y-2">
+      {/* ⚠️ DUAS LINHAS, com papéis diferentes (pedido do operador,
+          2026-09-02). A de cima é o que se usa o dia inteiro: as duas ABAS
+          (Abertas = a caixa de entrada; Encerradas = o acervo) e os dois
+          recortes que se ligam e desligam o tempo todo. A de baixo é o
+          PAINEL e o que ele está fazendo: o botão, os filtros salvos e as
+          pastilhas do recorte ativo. Antes era uma linha só com `flex-wrap`,
+          e nos ~296px da coluna "Favoritas" caía sozinha na segunda linha —
+          uma quebra que não dizia nada. ⚠️ Sem `flex-wrap` aqui de
+          propósito: se a linha não coubesse, era para ENCOLHER (padding,
+          ícone), nunca para quebrar de novo. MEDIDO em 02/09 a 1440px: os
+          quatro controles somam ~286px nos 296px úteis da coluna (com
+          `px-1.5` davam 310 e "Não lidas" saía cortado pela borda) — quem
+          alargar padding ou ícone aqui precisa medir de novo. */}
+      <div className="flex items-center gap-1">
+        {/* As abas são um seletor de valor ÚNICO (uma conversa está numa ou
+            noutra), por isso o grupo fechado — visualmente distinto dos dois
+            interruptores ao lado, que SOMAM. ⚠️ "Abertas" inclui a PENDENTE:
+            atendimento em curso continua na caixa. Ver `SituacaoDaCaixa`. */}
+        <div
+          role="group"
+          aria-label={t("labelStatus")}
+          className="inline-flex h-7 shrink-0 items-center rounded-md bg-muted p-0.5"
+        >
+          {(
+            [
+              ["ativas", t("filterOpen")],
+              ["closed", t("filterClosed")],
+            ] as [SituacaoDaCaixa, string][]
+          ).map(([valor, texto]) => (
+            <button
+              key={valor}
+              type="button"
+              onClick={() => mexer({ status: valor })}
+              aria-pressed={filtros.status === valor}
+              className={cn(
+                "h-6 whitespace-nowrap rounded px-1 text-xs transition-colors",
+                filtros.status === valor
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {texto}
+            </button>
+          ))}
+        </div>
+
+        {/* Favoritas fica FORA do painel: é recorte de uso diário, que se
+            liga e desliga o tempo todo, e enterrá-lo atrás de um clique a
+            mais custaria mais que o espaço que ocupa. */}
+        <button
+          type="button"
+          onClick={() => mexer({ favoritas: !filtros.favoritas })}
+          aria-pressed={filtros.favoritas}
+          className={cn(
+            "inline-flex h-7 shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md px-1 text-xs transition-colors hover:bg-muted",
+            filtros.favoritas
+              ? "text-amber-500"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Star className={cn("h-3 w-3", filtros.favoritas && "fill-current")} />
+          {t("favorites")}
+        </button>
+
+        {/* ⚠️ "Não lidas" DEIXOU de ser uma opção do menu de situação e virou
+            botão próprio — é mudança de comportamento, não adição. Antes,
+            escolhê-la SUBSTITUÍA o status (mostrava não lida encerrada
+            junto); agora ela soma com o resto, como o operador pediu. */}
+        <button
+          type="button"
+          onClick={() => mexer({ naoLidas: !filtros.naoLidas })}
+          aria-pressed={filtros.naoLidas}
+          className={cn(
+            "inline-flex h-7 shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md px-1 text-xs transition-colors hover:bg-muted",
+            filtros.naoLidas
+              ? "text-primary"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <MailOpen className="h-3 w-3" />
+          {t("filterUnread")}
+        </button>
+      </div>
+
       <div className="flex flex-wrap items-center gap-1">
         <button
           type="button"
@@ -248,44 +332,36 @@ export function InboxFilters({
             segundo comportamento no mesmo clique não existe. */}
         {menuSalvos}
 
-        {/* ⚠️ "Não lidas" DEIXOU de ser uma opção do menu de situação e virou
-            botão próprio — é mudança de comportamento, não adição. Antes,
-            escolhê-la SUBSTITUÍA o status (mostrava não lida encerrada
-            junto); agora ela soma com o resto, como o operador pediu. Fica
-            fora do painel junto com Favoritas pelo mesmo motivo: são os dois
-            recortes que se ligam e desligam o dia inteiro. */}
-        <button
-          type="button"
-          onClick={() => mexer({ naoLidas: !filtros.naoLidas })}
-          aria-pressed={filtros.naoLidas}
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-muted",
-            filtros.naoLidas
-              ? "text-primary"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <MailOpen className="h-3.5 w-3.5" />
-          {t("filterUnread")}
-        </button>
+        {/* ⚠️ AS PASTILHAS DO FILTRO ATIVO, VISÍVEIS COM O PAINEL FECHADO —
+            na MESMA linha do botão, que é o assunto delas.
+            Antes deste painel, o rótulo de cada filtro escolhido ficava escrito
+            na barra o tempo todo, e cada etiqueta tinha um X próprio. Sem isto
+            o operador abre o inbox, vê 8 de 64 conversas e um "Filtros ①" que
+            diz que EXISTE um filtro, não QUAL — e a única saída seria limpar
+            todos de uma vez.
 
-        {/* Favoritas fica FORA do painel: é o único recorte de uso diário que
-            se liga e desliga o tempo todo, e enterrá-lo atrás de um clique a
-            mais custaria mais que o espaço que ocupa. */}
-        <button
-          type="button"
-          onClick={() => mexer({ favoritas: !filtros.favoritas })}
-          aria-pressed={filtros.favoritas}
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-muted",
-            filtros.favoritas
-              ? "text-amber-500"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <Star className={cn("h-3.5 w-3.5", filtros.favoritas && "fill-current")} />
-          {t("favorites")}
-        </button>
+            Também é o que salva o caso do filtro cujo campo sumiu: se o último
+            grupo sair da lista com "só grupos" marcado, o campo Tipo some do
+            painel mas o recorte continua valendo. A pastilha continua ali, com
+            o X. */}
+        {pastilhas.map((p) => (
+          <button
+            key={p.chave}
+            type="button"
+            onClick={p.aoRemover}
+            title={t("removeFilter", { filtro: p.texto })}
+            className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground transition-colors hover:bg-muted/70"
+          >
+            {p.cor && (
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full"
+                style={{ backgroundColor: p.cor }}
+              />
+            )}
+            <span className="max-w-32 truncate">{p.texto}</span>
+            <X className="h-3 w-3 shrink-0" />
+          </button>
+        ))}
 
         {/* Limpa também a BUSCA: ela recorta a lista igual aos filtros, e um
             "limpar tudo" que deixa a busca de pé não limpou tudo. Por isso
@@ -313,40 +389,6 @@ export function InboxFilters({
           </span>
         )}
       </div>
-
-      {/* ⚠️ AS PASTILHAS DO FILTRO ATIVO, VISÍVEIS COM O PAINEL FECHADO.
-          Antes deste painel, o rótulo de cada filtro escolhido ficava escrito
-          na barra o tempo todo, e cada etiqueta tinha um X próprio. Sem isto
-          o operador abre o inbox, vê 8 de 64 conversas e um "Filtros ①" que
-          diz que EXISTE um filtro, não QUAL — e a única saída seria limpar
-          todos de uma vez.
-
-          Também é o que salva o caso do filtro cujo campo sumiu: se o último
-          grupo sair da lista com "só grupos" marcado, o campo Tipo some do
-          painel mas o recorte continua valendo. A pastilha continua ali, com
-          o X. */}
-      {ativos > 0 && (
-        <div className="flex flex-wrap items-center gap-1">
-          {pastilhas.map((p) => (
-            <button
-              key={p.chave}
-              type="button"
-              onClick={p.aoRemover}
-              title={t("removeFilter", { filtro: p.texto })}
-              className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground transition-colors hover:bg-muted/70"
-            >
-              {p.cor && (
-                <span
-                  className="h-1.5 w-1.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: p.cor }}
-                />
-              )}
-              <span className="max-w-32 truncate">{p.texto}</span>
-              <X className="h-3 w-3 shrink-0" />
-            </button>
-          ))}
-        </div>
-      )}
 
       {aberto && (
         // ⚠️ UMA coluna, e `sm:grid-cols-2` seria errado aqui: `sm:` olha a
@@ -383,37 +425,6 @@ export function InboxFilters({
               />
             </Campo>
           )}
-
-          <Campo rotulo={t("labelStatus")}>
-            <Escolha
-              rotulo={
-                filtros.status === "todos"
-                  ? t("filterAll")
-                  : filtros.status === "open"
-                    ? t("filterOpen")
-                    : filtros.status === "pending"
-                      ? t("filterPending")
-                      : t("filterClosed")
-              }
-              ativo={filtros.status !== "todos"}
-              opcoes={(
-                [
-                  ["todos", t("filterAll")],
-                  ["open", t("filterOpen")],
-                  ["pending", t("filterPending")],
-                  // ⚠️ "Encerrada" É "arquivada" (decisão P2.3): é o mesmo
-                  // campo. Um segundo controle "arquivadas" poderia
-                  // contradizer este, então não existe.
-                  ["closed", t("filterClosed")],
-                ] as [ConversationStatus | "todos", string][]
-              ).map(([valor, texto]) => ({
-                chave: valor,
-                texto,
-                escolhido: filtros.status === valor,
-                aoEscolher: () => mexer({ status: valor }),
-              }))}
-            />
-          </Campo>
 
           {canais.length >= 2 && (
             <Campo rotulo={t("channelFilter")}>

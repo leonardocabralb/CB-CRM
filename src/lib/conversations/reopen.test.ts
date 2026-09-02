@@ -109,3 +109,52 @@ describe('reopenClosedConversation', () => {
     spy.mockRestore()
   })
 })
+
+describe('reopenClosedConversation — quem reabre fica responsável (2026-09-02)', () => {
+  it('com `assignTo`, reabre E atribui na mesma escrita', async () => {
+    const { client, calls } = stubClient()
+
+    await reopenClosedConversation(
+      client,
+      { id: 'conv-1', status: 'closed' },
+      { assignTo: 'user-ana' },
+    )
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0].payload).toMatchObject({
+      status: 'open',
+      assigned_agent_id: 'user-ana',
+    })
+  })
+
+  it.each([null, undefined])(
+    'sem quem nomear (%s) reabre sem tocar na atribuição',
+    async (assignTo) => {
+      // Cliente, celular pareado e API por chave: reabrem, mas não há pessoa
+      // da equipe a nomear — e a atribuição fica como o encerramento deixou.
+      const { client, calls } = stubClient()
+
+      await reopenClosedConversation(
+        client,
+        { id: 'conv-1', status: 'closed' },
+        { assignTo },
+      )
+
+      expect(calls[0].payload).not.toHaveProperty('assigned_agent_id')
+    },
+  )
+
+  it('conversa aberta não é reatribuída por um envio comum', async () => {
+    // A regra é "quem REABRE fica responsável" — mandar mensagem numa conversa
+    // já aberta não pode roubar a atribuição de quem está com ela.
+    const { client, calls } = stubClient()
+
+    await reopenClosedConversation(
+      client,
+      { id: 'conv-1', status: 'open' },
+      { assignTo: 'user-ana' },
+    )
+
+    expect(calls).toEqual([])
+  })
+})

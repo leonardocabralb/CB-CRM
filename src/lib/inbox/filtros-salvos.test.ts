@@ -72,7 +72,7 @@ describe("lerFiltroSalvo", () => {
     expect(
       lerFiltroSalvo({
         tipo: "grupos",
-        status: "pending",
+        status: "closed",
         canalId: "c1",
         responsavelId: "u1",
         etiquetaIds: ["t1", "t2"],
@@ -85,7 +85,7 @@ describe("lerFiltroSalvo", () => {
       }),
     ).toEqual({
       tipo: "grupos",
-      status: "pending",
+      status: "closed",
       canalId: "c1",
       responsavelId: "u1",
       etiquetaIds: ["t1", "t2"],
@@ -101,8 +101,17 @@ describe("lerFiltroSalvo", () => {
   it("CRÍTICO: valor fora da união cai no padrão, nunca vaza para aplicarFiltros", () => {
     const f = lerFiltroSalvo({ tipo: "coisa", status: "arquivada", modoDeEtiqueta: 1 });
     expect(f.tipo).toBe("todas");
-    expect(f.status).toBe("todos");
+    expect(f.status).toBe("ativas");
     expect(f.modoDeEtiqueta).toBe("qualquer");
+  });
+
+  it("⚠️ filtro gravado ANTES das duas abas: todos/open/pending caem em 'ativas', closed sobrevive", () => {
+    // Um `as FiltrosDoInbox` entregaria "todos" a `aplicarFiltros`, que não o
+    // conhece mais — e a lista responderia de um jeito que ninguém escolheu.
+    for (const legado of ["todos", "open", "pending"]) {
+      expect(lerFiltroSalvo({ status: legado }).status).toBe("ativas");
+    }
+    expect(lerFiltroSalvo({ status: "closed" }).status).toBe("closed");
   });
 
   it("CRÍTICO: booleano só é `true` quando é o booleano true", () => {
@@ -342,7 +351,7 @@ describe("descreverFiltro", () => {
     const cheio: FiltrosDoInbox = {
       ...FILTROS_VAZIOS,
       tipo: "grupos",
-      status: "open",
+      status: "closed",
       canalId: "c1",
       responsavelId: "u1",
       funilId: "p1",
@@ -440,7 +449,7 @@ describe("limparOrfaos", () => {
 /** `null` = não recorta sozinho (é o caso de `modoDeEtiqueta`). */
 const AMOSTRAS: Record<keyof FiltrosDoInbox, Partial<FiltrosDoInbox> | null> = {
   tipo: { tipo: "grupos" },
-  status: { status: "open" },
+  status: { status: "closed" },
   canalId: { canalId: "c1" },
   responsavelId: { responsavelId: "u1" },
   etiquetaIds: { etiquetaIds: ["t1"] },
@@ -523,8 +532,6 @@ describe("funil (dois níveis)", () => {
 const CHAVES_USADAS = [
   "typeDirect",
   "typeGroups",
-  "filterOpen",
-  "filterPending",
   "filterClosed",
   "filterUnread",
   "favorites",

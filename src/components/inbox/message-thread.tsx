@@ -15,6 +15,7 @@ import { AvataresNaConversa } from "./avatares-na-conversa";
 import { useQuemVeAConversa } from "@/hooks/use-conversa-aberta";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
 import { horasRestantes, janelaFechada } from "@/lib/inbox/janela-24h";
+import { patchDeSituacao } from "@/lib/conversations/situacao";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
 import {
   aberturasDeCanal,
@@ -1492,15 +1493,33 @@ export function MessageThread({
     async (status: ConversationStatus) => {
       if (!conversation) return;
 
+      // Reabrir atribui a quem reabriu; encerrar solta o responsável — ver
+      // `patchDeSituacao`. Sem sessão não há quem nomear, e a troca fica só
+      // na situação (o mesmo que acontecia antes da regra).
+      const patch = user
+        ? patchDeSituacao(conversation.status, status, user.id)
+        : { status };
+
       const supabase = createClient();
-      await supabase
+      const { error } = await supabase
         .from("conversations")
-        .update({ status })
+        .update(patch)
         .eq("id", conversation.id);
 
+      if (error) {
+        console.error("Failed to update status:", error);
+        toast.error(t("statusUpdateFailed"));
+        return;
+      }
+
       onStatusChange(conversation.id, status);
+      // A atribuição mudou junto: espelha no estado da página, senão o
+      // cabeçalho mostra o responsável velho até o realtime chegar.
+      if ("assigned_agent_id" in patch) {
+        onAssignChange(conversation.id, patch.assigned_agent_id ?? null);
+      }
     },
-    [conversation, onStatusChange]
+    [conversation, onStatusChange, onAssignChange, user, t]
   );
 
   const handleOpenTemplates = useCallback(() => {

@@ -48,6 +48,7 @@ import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
 import { stampMessageChannel } from '@/lib/cb-channels/stamp';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
+import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { abortActiveRunsForContact } from '@/lib/flows/parar-run';
 import {
   sanitizePhoneForMeta,
@@ -832,6 +833,15 @@ export async function sendMessageToConversation(
       updated_at: new Date().toISOString(),
     })
     .eq('id', conversationId);
+
+  // Falar numa conversa encerrada a devolve à caixa de entrada, e quem falou
+  // fica responsável por ela (regra do operador, 2026-09-02). `senderUserId`
+  // nulo é envio por CHAVE DE API: reabre, mas não há quem nomear. Por aqui
+  // passam os quatro envios decididos por gente — ver `reopen.ts` para o que
+  // fica de fora (broadcast e robô) e por quê.
+  await reopenClosedConversation(db, conversation, {
+    assignTo: senderUserId ?? null,
+  });
 
   // Carimbo de canal (Fase 3): registra por qual número esta resposta saiu.
   // Via supabaseAdmin (não depende de policy de UPDATE em messages para o

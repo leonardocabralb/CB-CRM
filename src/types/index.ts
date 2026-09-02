@@ -417,6 +417,13 @@ export interface Conversation {
   group_id?: string | null;
   /** Hidratado pelo `CONVERSATION_SELECT`, do mesmo jeito que `contact`. */
   group?: CbGroup | null;
+  /**
+   * Desde quando o CLIENTE espera resposta de gente (migration 972). Mantida
+   * por gatilho: mensagem do cliente preenche se vazia, resposta humana
+   * (`sender_id` OU `from_device`) limpa, encerrar limpa. NULL = ninguém
+   * esperando. A lista lê pela régua de `src/lib/inbox/atraso.ts`.
+   */
+  aguardando_desde?: string | null;
 }
 
 // ============================================================

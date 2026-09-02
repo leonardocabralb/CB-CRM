@@ -952,6 +952,48 @@ O que morde código novo:
   card) e o `DealCard` é `memo` com handlers `useCallback` — quem criar prop
   nova instável quebra isso e volta a re-renderizar 120 cards por tecla.
 
+⚠️ **Caixa de entrada em DUAS ABAS (2026-09-02): encerrada SAI da caixa, e
+qualquer mensagem de gente a devolve.** `SituacaoDaCaixa` em
+`src/lib/inbox/filtros.ts` (puro, testado), a barra em `inbox-filters.tsx`,
+`src/lib/conversations/{reopen,situacao}.ts` (testados, com teste
+estrutural `reopen.chamadores.test.ts`) e o alerta de atraso em
+`src/lib/inbox/atraso.ts` + migration 972. O que morde código novo:
+
+- ⚠️ **`status` do filtro é `"ativas" | "closed"`, e `"ativas"` (aberta E
+  pendente) é a AUSÊNCIA de filtro.** Não existe mais "todas as situações":
+  encerrar é tirar da caixa. Filtro salvo gravado antes com `todos`/`open`/
+  `pending` cai em `ativas` no `lerFiltroSalvo` — de propósito, nunca `as`.
+- ⚠️ **A busca ATRAVESSA a aba padrão, e SÓ ela** (`casaComASituacao`).
+  Sem isso, digitar o nome de um cliente com conversa encerrada devolvia
+  "nenhuma conversa" — a leitura do operador seria que o cliente não está
+  no CRM. Na aba Encerradas a busca é E lógico como qualquer filtro, senão
+  a pastilha "Encerradas" mentiria sobre o que está na tela.
+- ⚠️⚠️ **QUATRO caminhos reabrem, e há teste estrutural cobrando cada um:**
+  webhook da Meta, `persistInboundMessage` E `persistDeviceMessage`
+  (Evolution) e `sendMessageToConversation`. O helper existia desde o
+  upstream (#409) e só a Meta o chamava — produção roda Evolution, então a
+  regra não valia para NENHUMA mensagem real. Broadcast, fluxo, automação e
+  IA NÃO reabrem, de propósito (um disparo para 500 encerradas devolveria
+  as 500 à caixa); é o mesmo desenho do roteador de funil.
+- ⚠️ **Quem reabre fica responsável; encerrar solta o responsável.** O envio
+  pelo núcleo reabre com `assignTo: senderUserId` (nulo na API por chave);
+  o cabeçalho do fio usa `patchDeSituacao`; o passo `close_conversation`
+  da automação zera `assigned_agent_id`. Cliente e celular pareado reabrem
+  SEM atribuir — não há quem nomear. Aberta ↔ pendente não mexe em nada.
+- ⚠️ **O alerta de atraso lê `conversations.aguardando_desde`, mantida por
+  GATILHO (972), nunca calculada na tela.** Mensagem do cliente preenche
+  se vazia (conta da PRIMEIRA sem resposta), resposta de GENTE
+  (`sender_id` OU `from_device` — a régua do Radar) limpa, encerrar limpa,
+  grupo nunca. Broadcast e robô NÃO limpam: um disparo apagaria o alerta de
+  todo cliente esquecido. Os 10 minutos são régua de tela
+  (`ATRASO_DE_RESPOSTA_MS`), e a lista re-renderiza a cada minuto — a linha
+  não muda no banco quando o prazo vence. ⚠️ A mensagem do cliente
+  preenche a coluna MESMO com a conversa encerrada: a reabertura acontece
+  DEPOIS do insert; a tela é quem esconde o alerta enquanto está encerrada.
+- **A linha de cima da barra NÃO tem `flex-wrap`** (abas + Favoritas + Não
+  lidas somam ~286px nos 296px úteis; medido). Alargar padding ou ícone ali
+  volta a cortar "Não lidas" na borda.
+
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
 e `src/hooks/use-favoritas.ts`. Quem for mexer em filtro de conversa mexe lá,
@@ -2091,6 +2133,12 @@ mordem de novo em qualquer código novo:
     reparenta `contacts`/`conversations`/`custom_fields` para o novo dono +
     backfill idempotente (medido: 0 linhas fora do dono em produção).
     Aplicada em 2026-09-01.
+  - **972_cb_aguardando_resposta** — `conversations.aguardando_desde` +
+    dois gatilhos (mensagem nova mexe no relógio; encerrar limpa) + acervo
+    idempotente. ⚠️ **PENDENTE de aplicar** ao abrir o PR (02/09): o
+    conector MCP do Supabase não estava autenticado na sessão. Sem ela o
+    alerta de atraso da caixa simplesmente não aparece (a coluna vem
+    `undefined` e a régua responde "ninguém esperando") — nada quebra.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
