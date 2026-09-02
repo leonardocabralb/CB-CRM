@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { usePresence } from "@/hooks/use-presence";
@@ -16,6 +16,16 @@ import { useQuemVeAConversa } from "@/hooks/use-conversa-aberta";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
 import { horasRestantes, janelaFechada } from "@/lib/inbox/janela-24h";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
+import {
+  aberturasDeCanal,
+  canalDivergente,
+  fioMulticanal,
+} from "@/lib/inbox/canais-do-fio";
+import {
+  coresPorCanal,
+  corDoCanal,
+  type CorDeCanal,
+} from "@/lib/cb-channels/cores";
 import {
   aplicarAssinatura,
   assinaturaExistente,
@@ -52,6 +62,7 @@ import {
   Users,
   Search,
   ChevronUp,
+  CornerUpLeft,
 } from "lucide-react";
 import { nomeDoGrupo } from "@/lib/cb-groups/display";
 import type { CbChannel } from "@/lib/cb-channels/repo";
@@ -178,6 +189,48 @@ interface MessageThreadProps {
  * busca é apagada), e não por alguns segundos: com ↑/↓ é ele que responde "em
  * qual dos cinco eu estou" a cada passo.
  */
+/**
+ * "Daqui para baixo a conversa passou a correr por este número."
+ *
+ * Mesmo papel do separador de DATA logo acima na tela, e de propósito: o
+ * operador já lê aquela linha como "mudou de contexto". O rótulo embaixo
+ * de cada bolha continua (com a bolinha da cor) e responde "e esta aqui?" a
+ * qualquer altura do fio; o separador é o que anuncia a TROCA, uma vez, com
+ * o nome inteiro em destaque.
+ *
+ * Só aparece em conversa que MISTURA conexões (ver `aberturasDeCanal`), que
+ * são 4 das 228 em produção. É o orçamento visual que sobra por não gastá-lo
+ * nas outras 224.
+ */
+function SeparadorDeCanal({
+  nome,
+  cor,
+  rotulo,
+}: {
+  nome: string;
+  cor: CorDeCanal;
+  rotulo: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 py-1" role="separator" aria-label={rotulo}>
+      <span aria-hidden="true" className="h-px flex-1 bg-border" />
+      <span
+        className={cn(
+          "inline-flex min-w-0 items-center gap-1.5 text-[11px] font-medium",
+          cor.texto,
+        )}
+      >
+        <span
+          aria-hidden="true"
+          className={cn("h-1.5 w-1.5 shrink-0 rounded-full", cor.ponto)}
+        />
+        <span className="truncate">{nome}</span>
+      </span>
+      <span aria-hidden="true" className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
 function LinhaDaMensagem({
   id,
   destacada,
@@ -1129,11 +1182,16 @@ export function MessageThread({
    * devolve `content_text` para todos eles desde a 923.
    */
   const marcarEnviada = useCallback(
-    (tempId: string, payload: { content_text?: unknown }) => {
+    (tempId: string, payload: { content_text?: unknown; channel_id?: unknown }) => {
       onUpdateMessage(tempId, {
         status: "sent",
         ...(typeof payload?.content_text === "string"
           ? { content_text: payload.content_text }
+          : {}),
+        // O canal que o servidor DE FATO usou. A otimista já nasce com o da
+        // tela; isto cobre o envio feito antes de `useChannels` responder.
+        ...(typeof payload?.channel_id === "string"
+          ? { channel_id: payload.channel_id }
           : {}),
       });
     },
@@ -1156,6 +1214,13 @@ export function MessageThread({
         // muda sozinha um instante depois, quando a resposta do servidor
         // chega — parecendo que o sistema reescreveu o que foi digitado.
         content_text: aplicarAssinatura(text, nomeQueAssina) ?? text,
+        // Nasce CARIMBADA com o número da tela, como já nasce assinada. Em
+        // conversa que mistura números, a resposta sem carimbo ficava
+        // desenhada no trecho do número ANTERIOR até o realtime trocar a
+        // bolha — e realtime atrasado a deixava lá (Codex, PR #105). O
+        // servidor confirma o canal que usou de fato em `marcarEnviada`.
+        // Os outros três caminhos de envio repetem o carimbo.
+        channel_id: activeChannel?.id ?? null,
         status: "sending",
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
@@ -1276,6 +1341,8 @@ export function MessageThread({
         // Para a bolha otimista mostrar o nome certo já no primeiro quadro —
         // o servidor grava a mesma coisa quando a mensagem assenta.
         media_filename: payload.filename ?? null,
+        // Carimbo de canal — ver o comentário em `handleSend`.
+        channel_id: activeChannel?.id ?? null,
         status: "sending",
         created_at: new Date().toISOString(),
         reply_to_message_id: payload.replyToId,
@@ -1342,6 +1409,7 @@ export function MessageThread({
       marcarEnviada,
       janelaFechadaAgora,
       t,
+      activeChannel?.id,
     ],
   );
 
@@ -1359,6 +1427,8 @@ export function MessageThread({
         content_type: "interactive",
         content_text: payload.body,
         interactive_payload: payload,
+        // Carimbo de canal — ver o comentário em `handleSend`.
+        channel_id: activeChannel?.id ?? null,
         status: "sending",
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
@@ -1414,6 +1484,7 @@ export function MessageThread({
       marcarEnviada,
       janelaFechadaAgora,
       t,
+      activeChannel?.id,
     ],
   );
 
@@ -1457,6 +1528,8 @@ export function MessageThread({
         content_type: "template",
         content_text: renderedBody,
         template_name: template.name,
+        // Carimbo de canal — ver o comentário em `handleSend`.
+        channel_id: activeChannel?.id ?? null,
         status: "sending",
         created_at: new Date().toISOString(),
       };
@@ -1503,7 +1576,13 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, publicarMensagemOtimista, onUpdateMessage, marcarEnviada],
+    [
+      conversation,
+      publicarMensagemOtimista,
+      onUpdateMessage,
+      marcarEnviada,
+      activeChannel?.id,
+    ],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without
@@ -1790,6 +1869,29 @@ export function MessageThread({
   }
 
   const grupo = conversation.group ?? null;
+
+  // ---- Por qual NÚMERO esta conversa está correndo ---------------------
+  // O critério é a CONVERSA, não a conta — ver `src/lib/inbox/canais-do-fio.ts`.
+  // Consts simples, não memos: são hooks proibidos daqui para baixo (o
+  // `return` cedo do estado vazio já passou), e o custo é uma varredura de
+  // ~200 mensagens, ao lado do `groupTimelineByDate` que já roda inline.
+  const fioMisturaCanais = fioMulticanal(messages, ehGrupo);
+  const coresDosCanais = coresPorCanal(channels);
+  const aberturasDeTrecho = aberturasDeCanal(messages, ehGrupo);
+  // A última do cliente chegou por um número e a resposta sai por outro —
+  // só com a conversa FIXADA: solta, ela segue o cliente sozinha e a
+  // divergência é trânsito de realtime (ver `canalDivergente`).
+  // `activeChannel` nulo (canais ainda carregando) cala o aviso lá dentro.
+  const corDoCanalAtivo = corDoCanal(coresDosCanais, activeChannel?.id);
+  const canalDoClienteDivergente = channelsById.get(
+    canalDivergente({
+      messages,
+      canalDeSaida: activeChannel?.id ?? null,
+      ehGrupo,
+      fixado: Boolean(conversation.channel_pinned),
+    }) ?? "",
+  );
+
   const displayName = ehGrupo
     ? nomeDoGrupo(grupo, t("groupNoName"))
     : (contact?.name || contact?.phone) ?? "";
@@ -1935,11 +2037,20 @@ export function MessageThread({
                     : "text-muted-foreground",
                 )}
               >
-                {activeChannel.kind === "meta" ? (
-                  <BadgeCheck className="h-3 w-3" />
-                ) : (
-                  <QrCode className="h-3 w-3" />
-                )}
+                {/* A bolinha da COR do canal ocupa o lugar que era do ícone
+                    de transporte. O transporte segue no menu, onde há espaço:
+                    numa conta 100% Evolution aquele ícone é o mesmo em todas
+                    as linhas e não informa nada, enquanto a cor é o que amarra
+                    este gatilho aos rótulos das bolhas logo abaixo. Sempre
+                    resolve: `activeChannel` é um elemento de `channels`, e
+                    `coresPorCanal` dá cor a todos eles. */}
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "h-2 w-2 shrink-0 rounded-full",
+                    corDoCanalAtivo?.ponto,
+                  )}
+                />
                 <span className="hidden max-w-[8rem] truncate sm:inline">
                   {activeChannel.label}
                 </span>
@@ -1959,6 +2070,13 @@ export function MessageThread({
                         isSelected ? "text-primary" : "text-popover-foreground",
                       )}
                     >
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "mr-2 h-2 w-2 shrink-0 rounded-full",
+                          corDoCanal(coresDosCanais, c.id)?.ponto,
+                        )}
+                      />
                       {c.kind === "meta" ? (
                         <BadgeCheck className="mr-2 h-3.5 w-3.5" />
                       ) : (
@@ -2270,12 +2388,18 @@ export function MessageThread({
                         }
                       : null;
                     const msgReactions = reactionsByMessageId.get(msg.id);
-                    // Rótulo do canal por mensagem — só em conta multi-canal
-                    // e quando a mensagem foi carimbada (Fase 3).
-                    const channelLabel =
-                      channels.length >= 2 && msg.channel_id
-                        ? (channelsById.get(msg.channel_id)?.label ?? null)
-                        : null;
+                    // Canal desta mensagem — só quando a CONVERSA mistura
+                    // conexões. Canal que não resolve (apagado, ou lista
+                    // ainda carregando) não vira rótulo: uma cor de queda
+                    // afirmaria um número que ninguém sabe qual é.
+                    const canalDaMsg = fioMisturaCanais
+                      ? (channelsById.get(msg.channel_id ?? "") ?? null)
+                      : null;
+                    const corDaMsg = corDoCanal(coresDosCanais, canalDaMsg?.id);
+                    // Esta mensagem ABRE um trecho de outro número?
+                    const canalQueAbre =
+                      channelsById.get(aberturasDeTrecho.get(msg.id) ?? "") ?? null;
+                    const corQueAbre = corDoCanal(coresDosCanais, canalQueAbre?.id);
                     // Toggle is computed at the call site — `msgReactions`
                     // and `user?.id` are already in scope, no extra hook.
                     const handlePillToggle = (emoji: string) => {
@@ -2288,8 +2412,17 @@ export function MessageThread({
                       void postReaction(msg.id, next);
                     };
                     return (
+                      <Fragment key={msg.id}>
+                      {canalQueAbre && corQueAbre && (
+                        <SeparadorDeCanal
+                          nome={canalQueAbre.label}
+                          cor={corQueAbre}
+                          rotulo={t("channelSectionLabel", {
+                            channel: canalQueAbre.label,
+                          })}
+                        />
+                      )}
                       <LinhaDaMensagem
-                        key={msg.id}
                         id={msg.id}
                         destacada={destacada}
                       >
@@ -2309,7 +2442,11 @@ export function MessageThread({
                           reactions={msgReactions}
                           currentUserId={user?.id}
                           onToggleReaction={handlePillToggle}
-                          channelLabel={channelLabel}
+                          canal={
+                            canalDaMsg && corDaMsg
+                              ? { label: canalDaMsg.label, cor: corDaMsg }
+                              : null
+                          }
                           emGrupo={ehGrupo}
                           baixandoAnexo={anexoEmCurso === msg.id}
                           onBaixarAnexo={() => baixarAnexoDoGrupo(msg.id)}
@@ -2317,6 +2454,7 @@ export function MessageThread({
                         />
                       </MessageActions>
                       </LinhaDaMensagem>
+                      </Fragment>
                     );
                   })}
                 </div>
@@ -2363,6 +2501,48 @@ export function MessageThread({
         podeAgir={podeEnviar}
         resyncToken={agendadasResync}
       />
+
+      {/* ⚠️ A última mensagem do cliente chegou por um NÚMERO e a resposta
+          vai sair por OUTRO — o que, no celular dele, quer dizer que a
+          resposta cai numa conversa diferente daquela em que ele perguntou.
+          Não há nada na tela que denuncie isso hoje: o seletor do cabeçalho
+          mostra o canal de SAÍDA e fica no canto oposto ao da caixa de
+          texto.
+
+          Fica colado no compositor de propósito — é o último lugar por onde
+          o olho passa antes de digitar. Informativo, não bloqueante: com 2
+          casos em 90 conversas, confirmar a cada envio custaria um clique
+          em toda conversa mista para prevenir um erro que a faixa já torna
+          visível.
+
+          Só aparece com a conversa FIXADA no seletor. Solta, ela segue o
+          cliente sozinha, e o aviso piscaria a cada troca legítima (a
+          mensagem chega por realtime ANTES do UPDATE da conversa) — pior,
+          o botão clicado nesse instante fixaria o número e desligaria o
+          seguimento em silêncio (Codex, PR #105).
+
+          O botão re-FIXA a conversa no número do cliente (o mesmo que
+          escolher no seletor). "Automático" segue no menu para soltar. */}
+      {canalDoClienteDivergente && (
+        <div className="flex items-center gap-2 border-t border-amber-500/30 bg-amber-500/10 px-3 py-2">
+          <CornerUpLeft
+            aria-hidden="true"
+            className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+          />
+          <span className="min-w-0 flex-1 text-xs text-amber-700 dark:text-amber-300">
+            {t("channelMismatch", { channel: canalDoClienteDivergente.label })}
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              void handleChannelChange(canalDoClienteDivergente.id)
+            }
+            className="shrink-0 rounded-md border border-amber-600/40 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
+          >
+            {t("channelMismatchAction")}
+          </button>
+        </div>
+      )}
 
       {/* Composer — canal Evolution não tem janela de 24h (sessionExpired
           neutralizado) nem templates/interativas (channelKind esconde). */}

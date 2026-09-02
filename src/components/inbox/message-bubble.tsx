@@ -29,6 +29,7 @@ import { MediaViewer } from "./media-viewer";
 import { MessageReactions } from "./message-reactions";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
 import { useTranslations } from "next-intl";
+import type { CorDeCanal } from "@/lib/cb-channels/cores";
 
 interface MessageBubbleProps {
   message: Message;
@@ -38,10 +39,16 @@ interface MessageBubbleProps {
   currentUserId?: string;
   onToggleReaction?: (emoji: string) => void;
   /**
-   * Rótulo do canal (cb_channels) por onde a mensagem passou. O thread só
-   * o preenche em conta multi-canal (2+ números) — senão é ruído.
+   * O canal (cb_channels) por onde a mensagem passou, já resolvido em nome
+   * e cor.
+   *
+   * ⚠️ O fio só preenche isto quando a CONVERSA mistura conexões. O critério
+   * era a CONTA (`channels.length >= 2`) e acendia o rótulo em 98% das
+   * conversas — 224 das 228 correm por um número só. Presente onde não
+   * informa nada, ele virou moldura, e moldura não se lê justamente nos 4
+   * casos em que decide para onde a resposta vai. Ver `fioMulticanal`.
    */
-  channelLabel?: string | null;
+  canal?: { label: string; cor: CorDeCanal } | null;
   /**
    * A conversa é de grupo. Muda três coisas: mostra quem falou, destaca
    * menção a nós, e oferece baixar anexo pendente.
@@ -548,7 +555,7 @@ export function MessageBubble({
   reactions,
   currentUserId,
   onToggleReaction,
-  channelLabel,
+  canal,
   emGrupo = false,
   onBaixarAnexo,
   baixandoAnexo = false,
@@ -779,15 +786,40 @@ export function MessageBubble({
               {t("fromDevice")}
             </span>
           )}
-          {channelLabel && (
+          {/* Por qual número esta mensagem passou. Continua embaixo da
+              mensagem, ao lado da hora — só que agora aparece SÓ quando a
+              conversa mistura conexões, e por isso pôde crescer: 10px em vez
+              de 9, e teto de 9rem em vez de 7. Medido em 02/09: os seis nomes
+              da conta cabem em 7rem até a 10px (o mais longo, "Trabalhista -
+              Comercial", dá 110px) — o 9rem é folga para o próximo nome, não
+              conserto de truncagem. O defeito do rótulo antigo era estar em
+              TODA conversa, não a largura.
+
+              ⚠️ A cor vive na BOLINHA, não no texto. A bolha da equipe é
+              preenchida com `bg-primary` — que nesta conta é violeta —, então
+              texto na cor do canal ficaria ilegível justamente no canal
+              violeta, e o mesmo rótulo teria contraste diferente conforme o
+              lado do fio. A bolinha se sustenta sobre qualquer fundo. É a
+              mesma dupla ponto+nome do seletor do cabeçalho e da lista.
+
+              ⚠️ Em PALAVRAS, não só em cor — a mesma regra do aviso de falha
+              logo abaixo. Quem não distingue as cores lê o nome. */}
+          {canal && (
             <span
-              title={t("viaChannel", { label: channelLabel })}
+              title={t("viaChannel", { label: canal.label })}
               className={cn(
-                "max-w-[7rem] truncate text-[9px]",
-                isAgent ? "text-primary-foreground/60" : "text-muted-foreground",
+                "inline-flex min-w-0 items-center gap-1 text-[10px]",
+                isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
               )}
             >
-              {channelLabel}
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  canal.cor.ponto,
+                )}
+              />
+              <span className="max-w-[9rem] truncate">{canal.label}</span>
             </span>
           )}
           <span
