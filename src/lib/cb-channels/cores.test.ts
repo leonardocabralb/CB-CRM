@@ -78,7 +78,6 @@ describe('coresPorCanal', () => {
 
   it('a paleta usa classes literais — sem interpolação o Tailwind não gera', () => {
     for (const cor of PALETA_DE_CANAIS) {
-      expect(cor.borda).toMatch(/^border-[a-z]+-\d{3}$/);
       expect(cor.ponto).toMatch(/^bg-[a-z]+-\d{3}$/);
       expect(cor.texto).toContain('dark:');
     }

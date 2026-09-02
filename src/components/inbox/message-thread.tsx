@@ -193,10 +193,10 @@ interface MessageThreadProps {
  * "Daqui para baixo a conversa passou a correr por este número."
  *
  * Mesmo papel do separador de DATA logo acima na tela, e de propósito: o
- * operador já lê aquela linha como "mudou de contexto". Rotular cada bolha
- * em vez disto foi o que se fez até aqui, e o rótulo — 9px, truncado em 7rem
- * — não sobrevivia nem ao nome dos dois canais desta conta, que começam
- * iguais ("Comercial - Ban…" / "Jurídico - Ban…").
+ * operador já lê aquela linha como "mudou de contexto". O rótulo embaixo
+ * de cada bolha continua (com a bolinha da cor) e responde "e esta aqui?" a
+ * qualquer altura do fio; o separador é o que anuncia a TROCA, uma vez, com
+ * o nome inteiro em destaque.
  *
  * Só aparece em conversa que MISTURA conexões (ver `aberturasDeCanal`), que
  * são 4 das 228 em produção. É o orçamento visual que sobra por não gastá-lo
@@ -2012,20 +2012,16 @@ export function MessageThread({
                     de transporte. O transporte segue no menu, onde há espaço:
                     numa conta 100% Evolution aquele ícone é o mesmo em todas
                     as linhas e não informa nada, enquanto a cor é o que amarra
-                    este gatilho às trilhas das bolhas logo abaixo. */}
-                {corDoCanalAtivo ? (
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "h-2 w-2 shrink-0 rounded-full",
-                      corDoCanalAtivo.ponto,
-                    )}
-                  />
-                ) : activeChannel.kind === "meta" ? (
-                  <BadgeCheck className="h-3 w-3" />
-                ) : (
-                  <QrCode className="h-3 w-3" />
-                )}
+                    este gatilho aos rótulos das bolhas logo abaixo. Sempre
+                    resolve: `activeChannel` é um elemento de `channels`, e
+                    `coresPorCanal` dá cor a todos eles. */}
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "h-2 w-2 shrink-0 rounded-full",
+                    corDoCanalAtivo?.ponto,
+                  )}
+                />
                 <span className="hidden max-w-[8rem] truncate sm:inline">
                   {activeChannel.label}
                 </span>
@@ -2049,7 +2045,7 @@ export function MessageThread({
                         aria-hidden="true"
                         className={cn(
                           "mr-2 h-2 w-2 shrink-0 rounded-full",
-                          corDoCanal(coresDosCanais, c.id)?.ponto ?? "bg-transparent",
+                          corDoCanal(coresDosCanais, c.id)?.ponto,
                         )}
                       />
                       {c.kind === "meta" ? (
@@ -2365,7 +2361,7 @@ export function MessageThread({
                     const msgReactions = reactionsByMessageId.get(msg.id);
                     // Canal desta mensagem — só quando a CONVERSA mistura
                     // conexões. Canal que não resolve (apagado, ou lista
-                    // ainda carregando) não vira trilha: uma cor de queda
+                    // ainda carregando) não vira rótulo: uma cor de queda
                     // afirmaria um número que ninguém sabe qual é.
                     const canalDaMsg = fioMisturaCanais
                       ? (channelsById.get(msg.channel_id ?? "") ?? null)

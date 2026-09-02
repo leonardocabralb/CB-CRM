@@ -649,17 +649,6 @@ export function MessageBubble({
           // no tema claro. A exceção é o próprio aviso, que é vermelho.
           naoEntregue &&
             "bg-destructive/10 text-foreground ring-2 ring-destructive/60 [&_*:not(.aviso-falha):not(.aviso-falha_*)]:!text-foreground",
-          // Trilha do canal, na borda EXTERNA da bolha (a que aponta para
-          // fora do fio). O separador nomeia a troca UMA vez; a trilha é o
-          // que sobrevive à rolagem e responde "e esta aqui, veio por qual
-          // número?" a qualquer altura da conversa.
-          //
-          // ⚠️ Largura e cor são classes separadas de propósito: o twMerge
-          // não as considera concorrentes (`border-r-width` vs
-          // `border-color`), então as duas sobrevivem ao `cn`. A cor pinta
-          // as quatro bordas, mas só a que tem largura aparece.
-          canal && (isAgent ? "border-r-[3px]" : "border-l-[3px]"),
-          canal?.cor.borda,
         )}
       >
         {remetente && (
@@ -797,18 +786,40 @@ export function MessageBubble({
               {t("fromDevice")}
             </span>
           )}
-          {/* ⚠️ Em PALAVRAS, não só em cor — a mesma regra do aviso de falha
-              logo abaixo. A trilha colorida na borda carrega a informação
-              para quem enxerga a diferença; esta linha é o que resta para
-              leitor de tela e para quem não distingue as cores. O separador
-              acima da mensagem escreve o nome na tela.
+          {/* Por qual número esta mensagem passou. Continua embaixo da
+              mensagem, ao lado da hora — só que agora aparece SÓ quando a
+              conversa mistura conexões, e por isso pôde crescer: 10px em vez
+              de 9, e teto de 9rem em vez de 7. Medido em 02/09: os seis nomes
+              da conta cabem em 7rem até a 10px (o mais longo, "Trabalhista -
+              Comercial", dá 110px) — o 9rem é folga para o próximo nome, não
+              conserto de truncagem. O defeito do rótulo antigo era estar em
+              TODA conversa, não a largura.
 
-              Era um rótulo de 9px truncado em 7rem ("Comercial - Ban…")
-              repetido em toda bolha, e ele não sobrevivia ao truncamento:
-              os dois canais desta conta começam igual. */}
+              ⚠️ A cor vive na BOLINHA, não no texto. A bolha da equipe é
+              preenchida com `bg-primary` — que nesta conta é violeta —, então
+              texto na cor do canal ficaria ilegível justamente no canal
+              violeta, e o mesmo rótulo teria contraste diferente conforme o
+              lado do fio. A bolinha se sustenta sobre qualquer fundo. É a
+              mesma dupla ponto+nome do seletor do cabeçalho e da lista.
+
+              ⚠️ Em PALAVRAS, não só em cor — a mesma regra do aviso de falha
+              logo abaixo. Quem não distingue as cores lê o nome. */}
           {canal && (
-            <span className="sr-only">
-              {t("viaChannel", { label: canal.label })}
+            <span
+              title={t("viaChannel", { label: canal.label })}
+              className={cn(
+                "inline-flex min-w-0 items-center gap-1 text-[10px]",
+                isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
+              )}
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  canal.cor.ponto,
+                )}
+              />
+              <span className="max-w-[9rem] truncate">{canal.label}</span>
             </span>
           )}
           <span

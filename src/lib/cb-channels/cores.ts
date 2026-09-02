@@ -24,13 +24,16 @@ import type { CbChannel } from './repo';
 
 export interface CorDeCanal {
   /**
-   * Trilha na borda da bolha e da linha da lista. Vem sem lado: quem usa
-   * escolhe `border-l-*`/`border-r-*` conforme o alinhamento.
+   * A bolinha. É onde a cor vive em quase toda parte — gatilho do seletor,
+   * itens do menu, linha da lista e o rótulo embaixo da mensagem —, porque
+   * uma bolinha se sustenta sobre qualquer fundo, inclusive o `bg-primary`
+   * da bolha da equipe.
    */
-  borda: string;
-  /** Bolinha da pastilha do cabeçalho e do separador do fio. */
   ponto: string;
-  /** O nome do canal escrito na cor dele. */
+  /**
+   * O nome do canal escrito na cor dele. Só onde o fundo é neutro: hoje o
+   * separador de trecho do fio.
+   */
   texto: string;
 }
 
@@ -39,8 +42,8 @@ export interface CorDeCanal {
  *
  * ⚠️ Classes LITERAIS, nunca interpoladas (`border-${cor}-500`): o Tailwind
  * varre o fonte em busca de strings de classe e não executa código — uma
- * classe montada em runtime simplesmente não é gerada, e a trilha nasce
- * invisível sem erro nenhum.
+ * classe montada em runtime simplesmente não é gerada, e a bolinha nasce
+ * transparente sem erro nenhum.
  *
  * Fora da paleta: verde e vermelho, que já carregam significado de estado
  * neste projeto (`CHANNEL_STATUS_DOT` pinta conectado/desconectado, e a
@@ -48,12 +51,12 @@ export interface CorDeCanal {
  * canal com problema.
  */
 export const PALETA_DE_CANAIS: readonly CorDeCanal[] = [
-  { borda: 'border-violet-500', ponto: 'bg-violet-500', texto: 'text-violet-600 dark:text-violet-400' },
-  { borda: 'border-teal-500', ponto: 'bg-teal-500', texto: 'text-teal-600 dark:text-teal-400' },
-  { borda: 'border-amber-500', ponto: 'bg-amber-500', texto: 'text-amber-600 dark:text-amber-400' },
-  { borda: 'border-sky-500', ponto: 'bg-sky-500', texto: 'text-sky-600 dark:text-sky-400' },
-  { borda: 'border-fuchsia-500', ponto: 'bg-fuchsia-500', texto: 'text-fuchsia-600 dark:text-fuchsia-400' },
-  { borda: 'border-orange-500', ponto: 'bg-orange-500', texto: 'text-orange-600 dark:text-orange-400' },
+  { ponto: 'bg-violet-500', texto: 'text-violet-600 dark:text-violet-400' },
+  { ponto: 'bg-teal-500', texto: 'text-teal-600 dark:text-teal-400' },
+  { ponto: 'bg-amber-500', texto: 'text-amber-600 dark:text-amber-400' },
+  { ponto: 'bg-sky-500', texto: 'text-sky-600 dark:text-sky-400' },
+  { ponto: 'bg-fuchsia-500', texto: 'text-fuchsia-600 dark:text-fuchsia-400' },
+  { ponto: 'bg-orange-500', texto: 'text-orange-600 dark:text-orange-400' },
 ];
 
 /**
@@ -82,7 +85,7 @@ export function coresPorCanal(channels: CbChannel[]): Map<string, CorDeCanal> {
 
 /**
  * A cor de UM canal, ou `null` quando o id não resolve — canal apagado, ou
- * lista ainda carregando. Quem chama não desenha trilha nenhuma nesse caso:
+ * lista ainda carregando. Quem chama não desenha bolinha nenhuma nesse caso:
  * uma cor de queda afirmaria um canal que ninguém sabe qual é.
  */
 export function corDoCanal(

@@ -221,7 +221,7 @@ upstream sobrescrevê-los:
 | `src/lib/whatsapp/send-message.ts` (3ª linha nossa) | `media_filename` no INSERT (969) — o `filename` já chegava na função e ia só para o WhatsApp; sem ele a bolha do que NÓS enviamos cai no rótulo genérico |
 | `src/app/api/whatsapp/webhook/route.ts` (2ª linha nossa) | `mediaFilename` no tipo de retorno da extração, no `empty`, no case `document` e no upsert (969). ⚠️ O `contentText` continua `caption \|\| filename` — não "simplificar" removendo o filename de lá: a lista de conversas e a busca já leem essa coluna há meses |
 | `src/components/inbox/message-bubble.tsx` (além de ser nosso inteiro) | o case `document` usa `mediaFilename(message)` e mostra a legenda embaixo só quando ela DIFERE do nome; `nomeDeArquivo` delega para a cascata em vez de derivar o basename cru |
-| `src/components/inbox/message-bubble.tsx` (canal, 2026-09-02) | a prop `canal` (nome + cor) no lugar do antigo `channelLabel`: a trilha de 3px na borda EXTERNA da bolha mais a linha `sr-only` "via X". O rótulo de 9px SAIU — quem nomeia o canal na tela é o `SeparadorDeCanal` do fio |
+| `src/components/inbox/message-bubble.tsx` (canal, 2026-09-02) | a prop `canal` (nome + cor) no lugar do antigo `channelLabel`: o rótulo embaixo da mensagem ganhou a bolinha da cor, 10px (era 9) e teto de 9rem (era 7). ⚠️ Uma versão desta nota dizia que em 7rem os nomes truncavam "no ponto em que ainda são iguais" — MEDIDO em 02/09: os seis nomes da conta cabem em 7rem até a 10px (o mais longo, "Trabalhista - Comercial", dá 110px); o 9rem é folga, não conserto. A cor vive na BOLINHA, não no texto: a bolha da equipe é `bg-primary`, violeta nesta conta. Uma trilha de 3px na borda foi feita e DESCARTADA pelo operador na hora ("não gostei dessa borda colorida") |
 | `src/components/inbox/message-thread.tsx` | além do fio intercalado, renderiza a faixa `ScheduledBar` logo acima do compositor e guarda o contador que a liga ao compositor |
 | `src/components/inbox/message-thread.tsx` (rolagem, 2026-09-01) | ⚠️ `coladoNoFimRef` + `onScroll` guardam o auto-scroll, e o spinner só entra quando a CONVERSA muda (`conversaCarregadaRef`). Sem os dois, voltar de uma aba nova — o `visibilitychange` incrementa o `resyncToken` — perdia a posição de quem lia o histórico E o empurrava para o fim, três vezes por retorno (mensagens, eventos e notas chegam em buscas próprias). O `saltoAtivoRef` NÃO cobre isso: é armado só pelo salto da busca, e `liberarSalto` está no `onWheel`, então rolar à mão o DESLIGA. A guarda é re-armada em `publicarMensagemOtimista` e ao acrescentar nota — senão o autor manda e não vê |
 | `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
@@ -269,7 +269,8 @@ upstream sobrescrevê-los:
 ⚠️ **Qual NÚMERO nesta conversa: o critério é a CONVERSA, nunca a conta.**
 `src/lib/inbox/canais-do-fio.ts` e `src/lib/cb-channels/cores.ts` (puros, com
 teste), o `SeparadorDeCanal` e a faixa de divergência em `message-thread.tsx`,
-a trilha na bolha e a bolinha da linha da lista. Nasceu de uma medição: em
+o rótulo com bolinha embaixo da mensagem e a bolinha da linha da lista.
+Nasceu de uma medição: em
 produção, **4 das 228** conversas correm por mais de um número (2 delas
 grupos), e o rótulo de canal acendia em TODAS. O que morde código novo:
 
@@ -282,11 +283,11 @@ grupos), e o rótulo de canal acendia em TODAS. O que morde código novo:
   Pintar isso afirmaria uma escolha que ninguém fez. Em grupo quem responde
   "por qual número" é `cb_groups.channel_id`, e só no cabeçalho.
 - ⚠️ **O gatilho é `fioMulticanal`, não `channels.length >= 2`.** O critério
-  antigo era a CONTA: o rótulo de 9px truncado em 7rem aparecia em 98% das
-  conversas, onde não informa nada — e não sobrevivia ao truncamento
-  justamente nos 4 casos que decidem a resposta (os dois canais desta conta
-  começam iguais: "Comercial - Ban…" / "Jurídico - Ban…"). Presente demais é
-  o mesmo que ausente.
+  antigo era a CONTA: o rótulo cinza de 9px aparecia em 98% das conversas,
+  onde não informa nada, e por isso o olho aprendia a ignorá-lo justamente
+  nos 4 casos que decidem a resposta. Presente demais é o mesmo que ausente.
+  (Uma versão desta nota culpava o truncamento em 7rem; medido em 02/09, os
+  nomes cabiam — o defeito era a onipresença, não a largura.)
 - ⚠️⚠️ **A cor sai da ordem de `created_at`, calculada DENTRO de
   `coresPorCanal` — nunca do índice do array recebido.** `listChannels`
   ordena `is_default DESC, created_at ASC`: sem o sort próprio, marcar outra
@@ -294,20 +295,23 @@ grupos), e o rótulo de canal acendia em TODAS. O que morde código novo:
   escritório de uma vez**. Não estoura em lugar nenhum e passa em revisão.
   Conexão nova entra no fim e não mexe em ninguém; apagar uma recolore as
   posteriores (aceito — apagar canal já anula o `channel_id` das mensagens).
-- ⚠️ **As classes da paleta são LITERAIS** (`'border-violet-500'`), nunca
+- ⚠️ **As classes da paleta são LITERAIS** (`'bg-violet-500'`), nunca
   interpoladas: o Tailwind varre o fonte atrás de strings e não executa
-  código, então `border-${cor}-500` simplesmente não é gerada e a trilha
-  nasce invisível, sem erro nenhum. Há teste com regex cobrando a forma.
+  código, então `bg-${cor}-500` simplesmente não é gerada e a bolinha
+  nasce transparente, sem erro nenhum. Há teste com regex cobrando a forma.
 - ⚠️ **Mensagem SEM carimbo não abre nem fecha trecho de canal.** São 117
   conversas com histórico anterior ao multi-canal (mais o acervo do canal
   apagado, cujo `channel_id` foi anulado): tratá-las como trecho próprio
   desenharia um separador que não tem nome para escrever, e atribuí-las ao
   canal vizinho seria inventar.
-- ⚠️ **Na LISTA é bolinha, não trilha na borda.** A borda esquerda da linha
-  já é da SELEÇÃO (`border-l-2 border-primary` no botão) — duas coisas
-  disputando a mesma faixa, e o twMerge derrubaria uma sem avisar. Ali o
-  canal sai de `canalDaConversa()`, nunca de `conversation.channel_id`: em
-  grupo aquela coluna é sempre nula.
+- ⚠️ **A cor vive na BOLINHA em toda parte; texto colorido só no separador.**
+  A bolha da equipe é `bg-primary` (violeta nesta conta): nome na cor do
+  canal ficaria ilegível justamente no canal violeta, e o mesmo rótulo
+  teria contraste diferente conforme o lado do fio. A bolinha se sustenta
+  sobre qualquer fundo. Na LISTA a razão é outra e se soma: a borda esquerda
+  da linha já é da SELEÇÃO (`border-l-2 border-primary` no botão), e uma
+  trilha ali disputaria a faixa. Na lista o canal sai de `canalDaConversa()`,
+  nunca de `conversation.channel_id`: em grupo aquela coluna é sempre nula.
 - ⚠️ **A faixa de divergência cala com `canalDeSaida` nulo, e esse é o gate
   de carregamento.** `activeChannel` só resolve depois do `useChannels`, e um
   aviso montado sobre lista vazia nomearia a divergência errada — mesma
@@ -327,7 +331,7 @@ grupos), e o rótulo de canal acendia em TODAS. O que morde código novo:
 - **O gatilho do seletor do cabeçalho trocou o ícone de transporte pela
   bolinha da cor** (o transporte segue no menu): numa conta 100% Evolution
   aquele ícone é o mesmo em todas as linhas e não informa nada, enquanto a
-  cor é o que amarra o cabeçalho às trilhas das bolhas.
+  cor é o que amarra o cabeçalho aos rótulos das bolhas.
 
 ⚠️ **A visão "Automações" do funil (grade estilo Kommo) é desenho de dado, não
 tela nova.** `src/lib/automations/grade-do-funil.ts` e
