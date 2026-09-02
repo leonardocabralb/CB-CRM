@@ -2143,10 +2143,12 @@ mordem de novo em qualquer código novo:
     Aplicada em 2026-09-01.
   - **972_cb_aguardando_resposta** — `conversations.aguardando_desde` +
     três gatilhos (mensagem nova mexe no relógio; mensagem apagada
-    recalcula; encerrar limpa) + acervo idempotente. ⚠️ **PENDENTE de aplicar** ao abrir o PR (02/09): o
-    conector MCP do Supabase não estava autenticado na sessão. Sem ela o
-    alerta de atraso da caixa simplesmente não aparece (a coluna vem
-    `undefined` e a régua responde "ninguém esperando") — nada quebra.
+    recalcula; encerrar limpa) + acervo idempotente. Aplicada em 2026-09-02
+    via conector, com autorização do operador, ANTES do merge do PR #106 —
+    o app em produção só passa a ler a coluna quando o PR entrar. Medido na
+    aplicação: 64 conversas esperando, 62 já além dos 10 min, 18 há mais de
+    um dia. Sem a coluna o alerta simplesmente não aparece (vem `undefined`
+    e a régua responde "ninguém esperando") — nada quebra.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
