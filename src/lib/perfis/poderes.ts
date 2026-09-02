@@ -121,7 +121,16 @@ export const ESCRITA_DA_TELA: Record<TelaId, AccountRole> = {
   inbox: "viewer",
   notifications: "viewer",
   tarefas: "viewer", // /api/cb/tasks decide por permissoes.ts, não por papel
-  contacts: "agent", // policies `contacts_*` (017)
+  // ⚠️ `viewer` pela MESMA razão do inbox — e esta linha nasceu `agent`
+  // (policies `contacts_*` da 017) até o Codex apontar no PR #107: a ficha
+  // do contato (`contact-detail-view`) tem uma aba Notas cujo compositor
+  // NÃO passa por `podeEditar`, e a rota `POST /api/cb/notes` aceita
+  // `viewer`. O Visualizador abre Contatos e ANOTA — logo a tela não é "só
+  // leitura, sem os botões". A régua deste mapa é "há alguma operação
+  // disponível para este papel nesta tela?", e anotação interna CONTA.
+  // Funis, Radar e Agendadas ficam em `agent` porque NÃO montam o
+  // compositor de nota (medido: só inbox e contatos o montam).
+  contacts: "viewer",
   agenda: "viewer", // /api/cb/agenda confere só a conta
   pipelines: "agent", // `deals` é agent; `pipelines`/`pipeline_stages` é admin
   broadcasts: "admin", // canManageAutomations + policies da 964

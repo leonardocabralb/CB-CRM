@@ -156,18 +156,19 @@ describe("areasQueNaoOperam", () => {
     expect(r.secoesOcultas).toEqual([]);
   });
 
-  it("CRÍTICO: o inbox NÃO é somente-leitura para o viewer", () => {
+  it("CRÍTICO: inbox e contatos NÃO são somente-leitura para o viewer", () => {
     // `canWriteNotes` é deliberadamente mais permissivo que `canSendMessages`:
-    // o Visualizador escreve anotação interna. Dizer "só para leitura" sobre o
-    // inbox dele seria mentira — e acompanhar-anotando é configuração
-    // legítima, não beco sem saída. Contatos e Funis, sim: lá ele não escreve
-    // nada.
+    // o Visualizador escreve anotação interna — no inbox E na aba Notas da
+    // ficha do contato (compositor sem gate de `podeEditar`, rota aceita
+    // viewer; achado do Codex no PR #107, a linha nasceu `agent`). Dizer "só
+    // para leitura, sem os botões" sobre essas duas seria mentira. Funis,
+    // sim: lá ele não escreve nada e não há compositor de nota.
     const r = areasQueNaoOperam(
       "viewer",
       ["inbox", "agenda", "dashboard", "contacts", "pipelines"],
       [],
     );
-    expect(r.telas).toEqual(["contacts", "pipelines"]);
+    expect(r.telas).toEqual(["pipelines"]);
   });
 });
 

@@ -2072,11 +2072,17 @@ código novo:
   cada cópia continua completa, só que uma aponta para a chave velha.
 - ⚠️ **`adminOnly` no docstring de `settings-sections.ts` é MENTIRA** — o campo
   não existe; quem recorta a seção é `podeVerSecao`.
-- ⚠️ **`ESCRITA_DA_TELA.inbox` é `viewer`, e não `agent`** — de propósito. O
-  aviso diz "aparece só para leitura, sem os botões", e no inbox isso seria
-  MENTIRA para o Visualizador: `canWriteNotes` é deliberadamente mais
-  permissivo e a caixa de anotação aparece para ele. "Simplificar" para
-  `agent` (que é o piso de ENVIAR) reintroduz a mentira.
+- ⚠️ **`ESCRITA_DA_TELA.inbox` E `.contacts` são `viewer`, e não `agent`** —
+  de propósito. A régua do mapa é "há ALGUMA operação disponível para este
+  papel nesta tela?", e anotação interna CONTA: `canWriteNotes` é
+  deliberadamente mais permissivo, a caixa de anotação aparece para o
+  Visualizador no inbox E na aba Notas da ficha do contato (compositor sem
+  gate de `podeEditar`; a rota aceita `viewer`). O aviso diz "aparece só
+  para leitura, sem os botões", e ali isso seria MENTIRA. `contacts` nasceu
+  `agent` (policies da 017) e o Codex pegou no PR #107. "Simplificar" para
+  `agent` (o piso de ENVIAR/EDITAR) reintroduz a mentira. Funis, Radar e
+  Agendadas ficam em `agent` porque NÃO montam o compositor de nota — quem
+  levar o `InternalNoteBox` para uma tela nova rebaixa a entrada dela aqui.
 
 ⚠️ **Anotação interna: são QUATRO telas, e o que as une mora em dois arquivos.**
 `src/hooks/use-apagar-nota.ts` e `src/components/inbox/cartao-de-nota.tsx`.
