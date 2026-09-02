@@ -45,6 +45,7 @@ import { createClient } from '@/lib/supabase/client';
 import { summarizeScope } from '@/lib/cb-channels/display';
 import { useChannels } from '@/hooks/use-channels';
 import {
+  ROTULO_DA_TELA,
   SECOES_PESSOAIS,
   SECOES_TRAVADAS_PARA_ADMIN,
   TELAS_SEMPRE_VISIVEIS,
@@ -56,24 +57,7 @@ import {
 import type { PapelBase, PerfilDeAcesso } from '@/lib/perfis/tipos';
 import { SECTION_META } from './settings-sections';
 import { SettingsPanelHead } from './settings-panel-head';
-
-/** TelaId → chave de rótulo do namespace Sidebar (rótulos que já existem). */
-const ROTULO_DA_TELA: Record<TelaId, string> = {
-  dashboard: 'dashboard',
-  radar: 'radar',
-  inbox: 'inbox',
-  notifications: 'notifications',
-  tarefas: 'tasks',
-  contacts: 'contacts',
-  agenda: 'agenda',
-  pipelines: 'pipelines',
-  broadcasts: 'broadcasts',
-  agendadas: 'scheduled',
-  automations: 'automations',
-  flows: 'flows',
-  agents: 'aiAgents',
-  settings: 'settings',
-};
+import { AvisoDeAreasSemAcao, PoderesDoPapel } from './poderes-do-papel';
 
 interface Funil {
   id: string;
@@ -490,6 +474,12 @@ export function PerfisPanel() {
                   </div>
                 </div>
 
+                {/* O que o papel escolhido PODE. Fora da grade de duas
+                    colunas de propósito: a lista é a resposta à pergunta que
+                    o seletor levanta, e espremida ao lado do Nome ela
+                    quebraria em seis linhas de uma palavra. */}
+                <PoderesDoPapel papel={rascunho.papel_base} />
+
                 <div className="flex flex-col gap-2">
                   <Label className="text-muted-foreground">{t('telasLabel')}</Label>
                   <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
@@ -568,6 +558,15 @@ export function PerfisPanel() {
                   </div>
                   <p className="text-xs text-muted-foreground">{t('secoesHint')}</p>
                 </div>
+
+                {/* Depois das DUAS grades porque ele confere as duas contra o
+                    papel. Some sozinho quando não há divergência — aviso que
+                    fica sempre aceso vira moldura e ninguém o lê. */}
+                <AvisoDeAreasSemAcao
+                  papel={rascunho.papel_base}
+                  telas={rascunho.telas}
+                  secoes={rascunho.secoes_config}
+                />
 
                 {/* ⚠️ `> 1`, a convenção da casa: "seletor some com menos de
                     2 canais" (CLAUDE.md, UI de canal) — com um número só o

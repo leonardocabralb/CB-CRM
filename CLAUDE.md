@@ -2031,6 +2031,84 @@ mordem de novo em qualquer código novo:
   Toda consulta precisa escopar o canal, ou `.is('channel_id', null)` quando o
   alvo é explicitamente o padrão da conta.
 
+⚠️ **O editor de perfis DESCREVE o papel, e a descrição pode mentir.**
+`src/lib/perfis/poderes.ts` (puro, com teste) e
+`src/components/settings/poderes-do-papel.tsx`. Nasceu de uma pergunta do
+operador em 2026-09-02 ("atendente com a aba de Conexões marcada consegue
+excluir uma conexão?") e da medição que ela provocou: os perfis **Gestor
+Geral** e **Trabalhista - Gestor** são `papel_base = 'agent'` com Conexões,
+Membros, Modelos, Campos, Acervo e Assinatura marcados, mais as telas de
+Automações e Disparos — tudo somente-leitura. A configuração fazia o que foi
+pedida a fazer; faltava a tela dizer o que aquilo significava. O que morde
+código novo:
+
+- ⚠️⚠️ **`ESCRITA_DA_TELA` e `ESCRITA_DA_SECAO` são ESPELHO das guardas, não
+  guarda nenhuma.** Nada no app decide permissão por eles — quem decide
+  continua sendo `requireRole` na rota, `useCan`/`RequireRole` no botão e a
+  policy no banco. Mudar um guard sem mudar o mapa não quebra nada e não
+  aparece em teste: só faz o editor AFIRMAR um poder que a pessoa não tem,
+  que é pior que não dizer nada. Os dois são `Record<TelaId|SecaoId, …>`, então
+  tela/seção nova não compila sem entrada — mas o VALOR é responsabilidade de
+  quem mexe na guarda.
+- ⚠️ **`PODERES` delega para os predicados de `roles.ts`, nunca compara papel
+  na mão** — há teste comparando os dois lados. Uma segunda cópia da política
+  aqui divergiria na primeira mudança.
+- ⚠️ **Id órfão é IGNORADO, e não é defensividade genérica**: o perfil
+  "Administrador" desta conta guarda `"deals"` em `secoes_config` (seção que
+  nunca existiu — a nota está em `catalogo.ts`), o editor NÃO filtra ao montar
+  o rascunho e `duplicar()` o copia verbatim. Sem o filtro,
+  `ESCRITA_DA_SECAO["deals"]` é `undefined`, `hasMinRole` compara
+  `3 >= undefined` = false, e o aviso dizia "só para leitura: deals" **num
+  perfil Administrador**. Não estoura: `roleRank` não tem `default`.
+- ⚠️ **Somente-leitura e OCULTA são avisos separados.** Seção somente-leitura
+  aparece sem botões; seção de `SECOES_SO_DE_ADMIN` marcada num perfil não-admin
+  não aparece de jeito nenhum — a caixa é inerte, e quem marcou "Perfis de
+  acesso" sai da tela achando ter delegado a gestão de permissões.
+- **A lista fica SEMPRE VISÍVEL, não atrás de um "?"**: quem configurou os
+  "Gestor" não tinha por que suspeitar que havia algo a perguntar.
+- **`ROTULO_DA_TELA` mudou de casa para `catalogo.ts`** — já havia duas cópias
+  (`perfis-panel.tsx`, `perfil-resumo.tsx`) e a terceira ia nascer aqui. Cópia
+  de mapa exaustivo é o caso em que o typecheck deixa passar a divergência:
+  cada cópia continua completa, só que uma aponta para a chave velha.
+- ⚠️ **`adminOnly` no docstring de `settings-sections.ts` é MENTIRA** — o campo
+  não existe; quem recorta a seção é `podeVerSecao`.
+- ⚠️ **`ESCRITA_DA_TELA.inbox` E `.contacts` são `viewer`, e não `agent`** —
+  de propósito. A régua do mapa é "há ALGUMA operação disponível para este
+  papel nesta tela?", e anotação interna CONTA: `canWriteNotes` é
+  deliberadamente mais permissivo, a caixa de anotação aparece para o
+  Visualizador no inbox E na aba Notas da ficha do contato (compositor sem
+  gate de `podeEditar`; a rota aceita `viewer`). O aviso diz "aparece só
+  para leitura, sem os botões", e ali isso seria MENTIRA. `contacts` nasceu
+  `agent` (policies da 017) e o Codex pegou no PR #107. "Simplificar" para
+  `agent` (o piso de ENVIAR/EDITAR) reintroduz a mentira. Funis, Radar e
+  Agendadas ficam em `agent` porque NÃO montam o compositor de nota — quem
+  levar o `InternalNoteBox` para uma tela nova rebaixa a entrada dela aqui.
+
+⚠️ **Anotação interna: são QUATRO telas, e o que as une mora em dois arquivos.**
+`src/hooks/use-apagar-nota.ts` e `src/components/inbox/cartao-de-nota.tsx`.
+Até 2026-09-02 a aba Notas do painel e a do grupo mostravam a anotação SEM
+autor e SEM como apagar — a mesma nota tinha dono e lixeira no fio e era anônima
+e sem saída na aba, a dois centímetros. O que morde código novo:
+
+- ⚠️⚠️ **Apagar SEMPRE pelo `useApagarNota`, nunca por um `.delete()` solto.**
+  A policy da 918 é "autor OU admin", e **RLS que barra DELETE devolve 0 linhas
+  SEM erro** — a cópia que não conferir o `count` faz a anotação sumir da tela,
+  ficar no banco e voltar na próxima abertura da conversa, sem nada explicando.
+  É a mesma classe do rowcount dos filtros salvos (967).
+- ⚠️ **`podeApagar` é `author_user_id === user.id || useCan('manage-members')`**,
+  igual nas três telas. Divergir mostra a lixeira para quem a RLS vai recusar —
+  e aí o ramo do `count` dispara em uso normal, virando ruído.
+- ⚠️ **Nota de GRUPO não fixa** (o índice parcial da 951 exige `contact_id`):
+  sem `onFixar`, o alfinete nem aparece. O `CartaoDeNota` não decide isso —
+  quem monta a aba decide.
+- **`sticky` NÃO mora no cartão**: grudar no topo é layout de quem monta a aba
+  (o painel prende a fixada; a barra do grupo nem tem nota fixada).
+- **`contact-detail-view` ficou com o `deleteNote` próprio**, de propósito: ele
+  já confere o `count` E distingue "proibido" de "falhou" com toasts
+  diferentes, o que o hook não faz. Levou só o nome do autor.
+- **A frase do autor é `Inbox.note.wrote` nas quatro telas** — chave única,
+  senão a tradução diverge entre a bolha e o cartão.
+
 ## Branches — criação e nomenclatura
 
 - **Toda branch nova sai única e exclusivamente de `main`** e faz merge **de

@@ -76,6 +76,9 @@ export function ContactDetailView({
   const tCampos = useTranslations('Contacts.customFields');
   const tEventos = useTranslations('LeadEvents');
   const tAgenda = useTranslations('Agenda');
+  // Mesmo namespace do fio: a frase "{autor} anotou:" é a MESMA nas quatro
+  // telas que mostram anotação, e uma segunda chave divergiria na tradução.
+  const tNote = useTranslations('Inbox.note');
   const supabase = createClient();
   // `accountId` saiu com o insert direto: a anotação agora nasce na rota,
   // que resolve a conta no servidor a partir da sessão.
@@ -860,6 +863,15 @@ export function ContactDetailView({
                         key={note.id}
                         className="rounded-lg bg-muted/50 border border-border/50 p-3 group"
                       >
+                        {/* Autor, igual ao fio e às abas do inbox: a mesma
+                            anotação não pode ter dono numa tela e ser anônima
+                            na outra. Queda para "Alguém da equipe" quando o
+                            autor saiu da conta (`autor_nome` congelado). */}
+                        <p className="text-foreground mb-1 text-[11px] font-semibold">
+                          {tNote('wrote', {
+                            autor: note.autor_nome || tNote('unknownAuthor'),
+                          })}
+                        </p>
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm text-muted-foreground whitespace-pre-wrap flex-1">
                             {note.texto}

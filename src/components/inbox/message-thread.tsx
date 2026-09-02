@@ -7,6 +7,7 @@ import { usePresence } from "@/hooks/use-presence";
 import { useChannels } from "@/hooks/use-channels";
 import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
+import { useApagarNota } from "@/hooks/use-apagar-nota";
 import { useFixarNota } from "@/hooks/use-fixar-nota";
 import { useCan } from "@/hooks/use-can";
 import { ScheduledBar } from "./scheduled-bar";
@@ -323,7 +324,6 @@ export function MessageThread({
   const tTimer = useTranslations("Inbox.sessionTimer");
   const tQuote = useTranslations("Inbox.replyQuote");
   const tActions = useTranslations("Inbox.actions");
-  const tNote = useTranslations("Inbox.note");
 
   const { user, profile, assinaturaAtiva } = useAuth();
 
@@ -999,35 +999,15 @@ export function MessageThread({
   );
 
   /**
-   * Apagar anotação. Vai direto do navegador — ao contrário de criar, que
-   * precisa da rota de servidor por causa da notificação da menção. Aqui a
-   * própria RLS decide (autor ou admin), então não há o que validar no meio.
-   *
-   * ⚠️ Some da tela ANTES da confirmação do banco e volta se der errado. A
-   * `cb_conversation_notes` tem REVOKE de UPDATE mas mantém DELETE, então um
-   * erro aqui é erro de verdade — não o "0 linhas afetadas" silencioso que a
-   * ausência de policy produziria.
+   * Apagar anotação. ⚠️ A ação mora no hook (como `useFixarNota`) porque a
+   * ABA Notas do painel e a do grupo fazem a MESMA coisa desde 2026-09-02, e
+   * o que as três precisam ter igual é a guarda do `count`: RLS que barra
+   * DELETE devolve 0 linhas SEM erro, e a cópia que a esquecesse faria a
+   * anotação sumir da tela, ficar no banco e voltar na próxima abertura.
    */
-  const handleApagarNota = useCallback(
-    async (id: string) => {
-      const supabase = createClient();
-      removerNotaLocal(id);
-      const { error, count } = await supabase
-        .from("cb_conversation_notes")
-        .delete({ count: "exact" })
-        .eq("id", id);
-      // ⚠️ `count` e não só `error`. A policy é "autor OU admin", e RLS que
-      // barra DELETE não devolve erro — devolve **0 linhas**, que aqui
-      // pareceria sucesso. Sem isto a anotação sumia da tela, continuava no
-      // banco e reaparecia na próxima abertura da conversa, sem explicação.
-      // O botão já é escondido por `podeApagar`, então isto só dispara se a
-      // tela e a RLS discordarem — que é exatamente quando não dá para calar.
-      if (error || !count) {
-        toast.error(tNote("deleteFailed"));
-        void recarregarNotas();
-      }
-    },
-    [removerNotaLocal, recarregarNotas, tNote],
+  const { apagarNota: handleApagarNota } = useApagarNota(
+    removerNotaLocal,
+    recarregarNotas,
   );
 
   // ============================================================
