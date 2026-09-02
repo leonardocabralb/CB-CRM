@@ -29,6 +29,7 @@ import { MediaViewer } from "./media-viewer";
 import { MessageReactions } from "./message-reactions";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
 import { useTranslations } from "next-intl";
+import type { CorDeCanal } from "@/lib/cb-channels/cores";
 
 interface MessageBubbleProps {
   message: Message;
@@ -38,10 +39,16 @@ interface MessageBubbleProps {
   currentUserId?: string;
   onToggleReaction?: (emoji: string) => void;
   /**
-   * Rótulo do canal (cb_channels) por onde a mensagem passou. O thread só
-   * o preenche em conta multi-canal (2+ números) — senão é ruído.
+   * O canal (cb_channels) por onde a mensagem passou, já resolvido em nome
+   * e cor.
+   *
+   * ⚠️ O fio só preenche isto quando a CONVERSA mistura conexões. O critério
+   * era a CONTA (`channels.length >= 2`) e acendia o rótulo em 98% das
+   * conversas — 224 das 228 correm por um número só. Presente onde não
+   * informa nada, ele virou moldura, e moldura não se lê justamente nos 4
+   * casos em que decide para onde a resposta vai. Ver `fioMulticanal`.
    */
-  channelLabel?: string | null;
+  canal?: { label: string; cor: CorDeCanal } | null;
   /**
    * A conversa é de grupo. Muda três coisas: mostra quem falou, destaca
    * menção a nós, e oferece baixar anexo pendente.
@@ -548,7 +555,7 @@ export function MessageBubble({
   reactions,
   currentUserId,
   onToggleReaction,
-  channelLabel,
+  canal,
   emGrupo = false,
   onBaixarAnexo,
   baixandoAnexo = false,
@@ -642,6 +649,17 @@ export function MessageBubble({
           // no tema claro. A exceção é o próprio aviso, que é vermelho.
           naoEntregue &&
             "bg-destructive/10 text-foreground ring-2 ring-destructive/60 [&_*:not(.aviso-falha):not(.aviso-falha_*)]:!text-foreground",
+          // Trilha do canal, na borda EXTERNA da bolha (a que aponta para
+          // fora do fio). O separador nomeia a troca UMA vez; a trilha é o
+          // que sobrevive à rolagem e responde "e esta aqui, veio por qual
+          // número?" a qualquer altura da conversa.
+          //
+          // ⚠️ Largura e cor são classes separadas de propósito: o twMerge
+          // não as considera concorrentes (`border-r-width` vs
+          // `border-color`), então as duas sobrevivem ao `cn`. A cor pinta
+          // as quatro bordas, mas só a que tem largura aparece.
+          canal && (isAgent ? "border-r-[3px]" : "border-l-[3px]"),
+          canal?.cor.borda,
         )}
       >
         {remetente && (
@@ -779,15 +797,18 @@ export function MessageBubble({
               {t("fromDevice")}
             </span>
           )}
-          {channelLabel && (
-            <span
-              title={t("viaChannel", { label: channelLabel })}
-              className={cn(
-                "max-w-[7rem] truncate text-[9px]",
-                isAgent ? "text-primary-foreground/60" : "text-muted-foreground",
-              )}
-            >
-              {channelLabel}
+          {/* ⚠️ Em PALAVRAS, não só em cor — a mesma regra do aviso de falha
+              logo abaixo. A trilha colorida na borda carrega a informação
+              para quem enxerga a diferença; esta linha é o que resta para
+              leitor de tela e para quem não distingue as cores. O separador
+              acima da mensagem escreve o nome na tela.
+
+              Era um rótulo de 9px truncado em 7rem ("Comercial - Ban…")
+              repetido em toda bolha, e ele não sobrevivia ao truncamento:
+              os dois canais desta conta começam igual. */}
+          {canal && (
+            <span className="sr-only">
+              {t("viaChannel", { label: canal.label })}
             </span>
           )}
           <span

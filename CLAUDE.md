@@ -221,6 +221,7 @@ upstream sobrescrevê-los:
 | `src/lib/whatsapp/send-message.ts` (3ª linha nossa) | `media_filename` no INSERT (969) — o `filename` já chegava na função e ia só para o WhatsApp; sem ele a bolha do que NÓS enviamos cai no rótulo genérico |
 | `src/app/api/whatsapp/webhook/route.ts` (2ª linha nossa) | `mediaFilename` no tipo de retorno da extração, no `empty`, no case `document` e no upsert (969). ⚠️ O `contentText` continua `caption \|\| filename` — não "simplificar" removendo o filename de lá: a lista de conversas e a busca já leem essa coluna há meses |
 | `src/components/inbox/message-bubble.tsx` (além de ser nosso inteiro) | o case `document` usa `mediaFilename(message)` e mostra a legenda embaixo só quando ela DIFERE do nome; `nomeDeArquivo` delega para a cascata em vez de derivar o basename cru |
+| `src/components/inbox/message-bubble.tsx` (canal, 2026-09-02) | a prop `canal` (nome + cor) no lugar do antigo `channelLabel`: a trilha de 3px na borda EXTERNA da bolha mais a linha `sr-only` "via X". O rótulo de 9px SAIU — quem nomeia o canal na tela é o `SeparadorDeCanal` do fio |
 | `src/components/inbox/message-thread.tsx` | além do fio intercalado, renderiza a faixa `ScheduledBar` logo acima do compositor e guarda o contador que a liga ao compositor |
 | `src/components/inbox/message-thread.tsx` (rolagem, 2026-09-01) | ⚠️ `coladoNoFimRef` + `onScroll` guardam o auto-scroll, e o spinner só entra quando a CONVERSA muda (`conversaCarregadaRef`). Sem os dois, voltar de uma aba nova — o `visibilitychange` incrementa o `resyncToken` — perdia a posição de quem lia o histórico E o empurrava para o fim, três vezes por retorno (mensagens, eventos e notas chegam em buscas próprias). O `saltoAtivoRef` NÃO cobre isso: é armado só pelo salto da busca, e `liberarSalto` está no `onWheel`, então rolar à mão o DESLIGA. A guarda é re-armada em `publicarMensagemOtimista` e ao acrescentar nota — senão o autor manda e não vê |
 | `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
@@ -239,7 +240,9 @@ upstream sobrescrevê-los:
 | `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato e a seção/aba **Histórico** (912). (A linha "canal da conversa" que o painel do inbox exibia foi REMOVIDA em 2026-08-29 a pedido do operador — o seletor do cabeçalho do fio já responde isso.) No detail view a `TabsList` ganhou `flex-wrap` com a altura **prefixada** (`group-data-horizontal/tabs:h-auto` + `[&>button]:h-auto`, NUNCA `h-auto` cru — ver a armadilha do tailwind-merge abaixo; um merge que "simplifique" para `h-auto` quebra a tela de novo) — com 5 abas ela já estourava a largura do painel e escondia "Negócios" |
 | `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
 | `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página. Mais o menu de **filtros salvos** (967/968): o hook, os catálogos que dão nome aos ids, o `limparOrfaos` do aplicar e a semente do filtro padrão |
+| `src/components/inbox/message-thread.tsx` (canal, 2026-09-02) | o `SeparadorDeCanal` entre trechos, a faixa de divergência colada no compositor, a bolinha de cor no gatilho e nos itens do seletor de canal, e o `Fragment` que embrulha separador + `LinhaDaMensagem` (a `key` mudou de lugar) |
 | `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDaMensagem>` envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo), a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef` |
+| `src/components/inbox/conversation-list.tsx` (canal, 2026-09-02) | a prop `corDoCanalDaLinha` do `ConversationItem` e a bolinha antes do nome — bolinha, e não trilha, porque a borda esquerda já é da seleção |
 | `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (963): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
 | `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem o contato; o canal passado é `conversation.channel_id ?? null` — o PR #74 trocou o `activeChannel` resolvido pelo cru DE PROPÓSITO, para a checagem de escopo da rota falhar aberta igual ao motor em conversa sem canal; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
 | `src/components/inbox/message-thread.tsx` (#84) | a **janela de 24h**: a regra saiu para `src/lib/inbox/janela-24h.ts` (puro, com teste) e os TRÊS caminhos de envio (texto, mídia, interativa) passam por `janelaFechadaAgora()` antes do `fetch` — o portão lê o RELÓGIO no disparo, nunca `sessionInfo.expired` (que é `useMemo` em `[messages]` e não recomputa com o passar das horas). Um merge que traga o `sessionInfo` inline do upstream devolve os três buracos de uma vez |
@@ -262,6 +265,69 @@ upstream sobrescrevê-los:
 | `src/components/settings/settings-sections.ts`, `settings-chip.tsx`, `src/app/(dashboard)/settings/page.tsx` | a seção `integracoes` no rail e a variante `err` (vermelha) do chip |
 | `src/lib/ai/types.ts`, `config.ts`, `structured.ts`, `defaults.ts`, `src/lib/cb-radar/worker.ts`, `src/app/api/ai/config/route.ts` | o modelo do Radar separado do modelo de chat (946): `radarModel` no tipo e em `CONFIG_COLUMNS`, o parâmetro `model` do `generateStructured`, `AI_PROVIDER_MODELS`, e a validação do modelo do Radar no save |
 | `src/components/settings/ai-config.tsx` | `<datalist>` de sugestão no campo Modelo e a frase de escopo com link para Integrações |
+
+⚠️ **Qual NÚMERO nesta conversa: o critério é a CONVERSA, nunca a conta.**
+`src/lib/inbox/canais-do-fio.ts` e `src/lib/cb-channels/cores.ts` (puros, com
+teste), o `SeparadorDeCanal` e a faixa de divergência em `message-thread.tsx`,
+a trilha na bolha e a bolinha da linha da lista. Nasceu de uma medição: em
+produção, **4 das 228** conversas correm por mais de um número (2 delas
+grupos), e o rótulo de canal acendia em TODAS. O que morde código novo:
+
+- ⚠️⚠️ **GRUPO FICA DE FORA, e não é conservadorismo — lá o carimbo NÃO é
+  escolha do cliente.** Com os dois números dentro do mesmo grupo, o WhatsApp
+  entrega a mensagem às duas instâncias Evolution, o
+  `UNIQUE (conversation_id, message_id)` descarta a segunda, e o `channel_id`
+  gravado é o do webhook que CHEGOU PRIMEIRO. Medido no grupo `f68d7fe3`: 14
+  mensagens "Comercial" e 15 "Jurídico" alternando por corrida de rede.
+  Pintar isso afirmaria uma escolha que ninguém fez. Em grupo quem responde
+  "por qual número" é `cb_groups.channel_id`, e só no cabeçalho.
+- ⚠️ **O gatilho é `fioMulticanal`, não `channels.length >= 2`.** O critério
+  antigo era a CONTA: o rótulo de 9px truncado em 7rem aparecia em 98% das
+  conversas, onde não informa nada — e não sobrevivia ao truncamento
+  justamente nos 4 casos que decidem a resposta (os dois canais desta conta
+  começam iguais: "Comercial - Ban…" / "Jurídico - Ban…"). Presente demais é
+  o mesmo que ausente.
+- ⚠️⚠️ **A cor sai da ordem de `created_at`, calculada DENTRO de
+  `coresPorCanal` — nunca do índice do array recebido.** `listChannels`
+  ordena `is_default DESC, created_at ASC`: sem o sort próprio, marcar outra
+  conexão como padrão a joga para a frente e **repinta todas as conversas do
+  escritório de uma vez**. Não estoura em lugar nenhum e passa em revisão.
+  Conexão nova entra no fim e não mexe em ninguém; apagar uma recolore as
+  posteriores (aceito — apagar canal já anula o `channel_id` das mensagens).
+- ⚠️ **As classes da paleta são LITERAIS** (`'border-violet-500'`), nunca
+  interpoladas: o Tailwind varre o fonte atrás de strings e não executa
+  código, então `border-${cor}-500` simplesmente não é gerada e a trilha
+  nasce invisível, sem erro nenhum. Há teste com regex cobrando a forma.
+- ⚠️ **Mensagem SEM carimbo não abre nem fecha trecho de canal.** São 117
+  conversas com histórico anterior ao multi-canal (mais o acervo do canal
+  apagado, cujo `channel_id` foi anulado): tratá-las como trecho próprio
+  desenharia um separador que não tem nome para escrever, e atribuí-las ao
+  canal vizinho seria inventar.
+- ⚠️ **Na LISTA é bolinha, não trilha na borda.** A borda esquerda da linha
+  já é da SELEÇÃO (`border-l-2 border-primary` no botão) — duas coisas
+  disputando a mesma faixa, e o twMerge derrubaria uma sem avisar. Ali o
+  canal sai de `canalDaConversa()`, nunca de `conversation.channel_id`: em
+  grupo aquela coluna é sempre nula.
+- ⚠️ **A faixa de divergência cala com `canalDeSaida` nulo, e esse é o gate
+  de carregamento.** `activeChannel` só resolve depois do `useChannels`, e um
+  aviso montado sobre lista vazia nomearia a divergência errada — mesma
+  família da badge "Expirada" que piscava no cabeçalho (2026-08-31).
+- **A faixa NÃO exige `fioMulticanal`**, de propósito: a conversa fixada num
+  número enquanto o cliente escreve de outro tem UM canal no fio, e ali a
+  divergência é permanente — toda resposta cai noutra conversa no celular
+  dele. O botão FIXA a conversa no número do cliente; "Automático" no menu
+  desfaz.
+- **Informativo, não bloqueante** (decisão do operador, 2026-09-02): com 2
+  casos em 90 conversas, confirmar a cada envio custaria um clique em toda
+  conversa mista para prevenir um erro que a faixa já torna visível.
+- **A cor é DERIVADA, não configurável.** Se um dia o operador quiser mandar
+  nela, o lugar é uma coluna `cor` em `cb_channels` com queda para
+  `PALETA_DE_CANAIS` — e aí entra no `CB_CHANNEL_SAFE_COLUMNS`, senão salva e
+  some no reload.
+- **O gatilho do seletor do cabeçalho trocou o ícone de transporte pela
+  bolinha da cor** (o transporte segue no menu): numa conta 100% Evolution
+  aquele ícone é o mesmo em todas as linhas e não informa nada, enquanto a
+  cor é o que amarra o cabeçalho às trilhas das bolhas.
 
 ⚠️ **A visão "Automações" do funil (grade estilo Kommo) é desenho de dado, não
 tela nova.** `src/lib/automations/grade-do-funil.ts` e

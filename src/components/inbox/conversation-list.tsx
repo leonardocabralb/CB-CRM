@@ -8,12 +8,18 @@ import {
 } from "@/lib/inbox/conversations";
 import {
   aplicarFiltros,
+  canalDaConversa,
   contarFiltrosAtivos,
   FILTROS_VAZIOS,
   mapaDeEtapasPorContato,
   recorteTemDoisNiveis,
   type FiltrosDoInbox,
 } from "@/lib/inbox/filtros";
+import {
+  coresPorCanal,
+  corDoCanal,
+  type CorDeCanal,
+} from "@/lib/cb-channels/cores";
 import {
   TERMO_MINIMO,
   termoBuscavel,
@@ -429,6 +435,9 @@ export function ConversationList({
     () => canaisVisiveis(acesso, channels),
     [acesso, channels],
   );
+  // Cor por conexão, para a bolinha da linha. Memoizada porque o `Map` é
+  // recriado a cada render e as linhas o consultam uma vez cada.
+  const coresDosCanais = useMemo(() => coresPorCanal(channels), [channels]);
   const foraDoPerfil = useCallback(
     (c: Conversation) => !conversaNoEscopo(acesso, c),
     [acesso],
@@ -877,6 +886,16 @@ export function ConversationList({
                 onToggleFavorita={handleToggleFavorita}
                 favoritaHabilitada={favoritasProntas}
                 achado={achadosNoTexto.get(conv.id)}
+                // Numa conta de um número só a bolinha não decide nada e só
+                // ocupa espaço — mesma régua do seletor e do filtro de canal.
+                // ⚠️ `canalDaConversa`, nunca `conversation.channel_id`: em
+                // grupo aquela coluna é SEMPRE nula, e a linha ficaria sem
+                // marca justamente onde há dois números envolvidos.
+                corDoCanalDaLinha={
+                  channels.length >= 2
+                    ? corDoCanal(coresDosCanais, canalDaConversa(conv))
+                    : null
+                }
                 t={t}
               />
             ))}
@@ -900,6 +919,12 @@ interface ConversationItemProps {
    * (RPC 929). `undefined` no uso normal, sem busca.
    */
   achado?: AchadoNoTexto;
+  /**
+   * Cor da conexão desta conversa, ou `null` — conta de um número só, canal
+   * apagado, ou lista de canais ainda carregando. Sem cor não se desenha
+   * bolinha: uma cor de queda apontaria um número que ninguém sabe qual é.
+   */
+  corDoCanalDaLinha: CorDeCanal | null;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -911,6 +936,7 @@ function ConversationItem({
   onToggleFavorita,
   favoritaHabilitada,
   achado,
+  corDoCanalDaLinha,
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
@@ -975,6 +1001,20 @@ function ConversationItem({
                   avatar sozinho não distingue de uma foto de perfil. */}
               {ehGrupo && (
                 <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              )}
+              {/* Por qual número esta conversa corre. É bolinha e não trilha
+                  na borda porque a borda esquerda da linha já é da SELEÇÃO
+                  (`border-l-2 border-primary` no botão) — duas coisas
+                  disputando a mesma faixa de 2px, e o twMerge derrubaria uma
+                  delas sem avisar. */}
+              {corDoCanalDaLinha && (
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                    corDoCanalDaLinha.ponto,
+                  )}
+                />
               )}
               <span className="truncate text-sm font-medium text-foreground">
                 {displayName}
