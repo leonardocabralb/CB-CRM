@@ -15,6 +15,7 @@ import {
   recorteTemDoisNiveis,
   type ContextoDosFiltros,
   type FiltrosDoInbox,
+  casaComASituacao,
 } from "./filtros";
 import type { Conversation, Tag } from "@/types";
 
@@ -570,11 +571,11 @@ describe("aplicarFiltros", () => {
     expect(saida).toHaveLength(0);
   });
 
-  it("'não lidas' SOMA com a situação, em vez de substituí-la", () => {
+  it("'não lidas' SOMA com a aba, em vez de substituí-la", () => {
     // Este é o teste da mudança de comportamento do commit 3. Antes, escolher
     // "não lidas" no menu de situação substituía o status — a encerrada não
-    // lida aparecia junto. Agora os dois se aplicam, e sobra só a aberta e
-    // não lida.
+    // lida aparecia junto. Agora os dois se aplicam: na caixa (aba padrão)
+    // sobra só a aberta e não lida; na aba Encerradas, só a encerrada.
     const abertaNaoLida = conversa({ id: "c1", status: "open", unread_count: 3 });
     const abertaLida = conversa({ id: "c2", status: "open", unread_count: 0 });
     const encerradaNaoLida = conversa({
@@ -583,19 +584,19 @@ describe("aplicarFiltros", () => {
       unread_count: 5,
     });
 
-    const so = aplicarFiltros(
+    const naCaixa = aplicarFiltros(
       [abertaNaoLida, abertaLida, encerradaNaoLida],
       { ...FILTROS_VAZIOS, naoLidas: true },
       ctx(),
     );
-    expect(so.map((c) => c.id)).toEqual(["c1", "c3"]);
+    expect(naCaixa.map((c) => c.id)).toEqual(["c1"]);
 
-    const comSituacao = aplicarFiltros(
+    const nasEncerradas = aplicarFiltros(
       [abertaNaoLida, abertaLida, encerradaNaoLida],
-      { ...FILTROS_VAZIOS, naoLidas: true, status: "open" },
+      { ...FILTROS_VAZIOS, naoLidas: true, status: "closed" },
       ctx(),
     );
-    expect(comSituacao.map((c) => c.id)).toEqual(["c1"]);
+    expect(nasEncerradas.map((c) => c.id)).toEqual(["c3"]);
   });
 
   it("a busca continua valendo junto com os filtros", () => {
@@ -607,10 +608,77 @@ describe("aplicarFiltros", () => {
     });
     const saida = aplicarFiltros(
       [ana, outro],
-      { ...FILTROS_VAZIOS, status: "open" },
+      { ...FILTROS_VAZIOS, favoritas: false },
       ctx({ busca: "bruno" }),
     );
     expect(saida.map((c) => c.id)).toEqual(["c2"]);
+  });
+});
+
+// ============================================================
+// As duas abas (2026-09-02): a caixa de entrada esconde as encerradas, e a
+// busca atravessa SÓ a aba padrão.
+// ============================================================
+describe("casaComASituacao — Abertas esconde encerrada; Encerradas mostra só ela", () => {
+  const aberta = conversa({ id: "a", status: "open" });
+  const pendente = conversa({ id: "p", status: "pending" });
+  const encerrada = conversa({ id: "e", status: "closed" });
+
+  it("a aba padrão é a ausência de filtro", () => {
+    expect(FILTROS_VAZIOS.status).toBe("ativas");
+    expect(contarFiltrosAtivos(FILTROS_VAZIOS)).toBe(0);
+    expect(contarFiltrosAtivos({ ...FILTROS_VAZIOS, status: "closed" })).toBe(1);
+  });
+
+  it("na caixa, aberta E pendente ficam; a encerrada sai", () => {
+    expect(casaComASituacao(aberta, "ativas", "")).toBe(true);
+    expect(casaComASituacao(pendente, "ativas", "")).toBe(true);
+    expect(casaComASituacao(encerrada, "ativas", "")).toBe(false);
+  });
+
+  it("na aba Encerradas só a encerrada aparece", () => {
+    expect(casaComASituacao(encerrada, "closed", "")).toBe(true);
+    expect(casaComASituacao(aberta, "closed", "")).toBe(false);
+    expect(casaComASituacao(pendente, "closed", "")).toBe(false);
+  });
+
+  it("⚠️ a busca ATRAVESSA a aba padrão: o nome do cliente acha a conversa encerrada", () => {
+    // Sem isto, "João" na caixa diria "nenhuma conversa" sobre um cliente que
+    // existe — e a leitura do operador seria que ele não está no CRM.
+    expect(casaComASituacao(encerrada, "ativas", "joão")).toBe(true);
+    // Só espaço não é busca.
+    expect(casaComASituacao(encerrada, "ativas", "   ")).toBe(false);
+  });
+
+  it("na aba Encerradas a busca NÃO atravessa: a pastilha não pode mentir", () => {
+    expect(casaComASituacao(aberta, "closed", "ana")).toBe(false);
+  });
+
+  it("aplicarFiltros: a busca traz a encerrada para a caixa, e os outros filtros seguem valendo", () => {
+    const anaEncerrada = conversa({ id: "e", status: "closed" });
+    const brunoEncerrado = conversa({
+      id: "b",
+      status: "closed",
+      contact: { ...conversa().contact!, name: "Bruno Lima" },
+    });
+    const semBusca = aplicarFiltros([anaEncerrada, brunoEncerrado], FILTROS_VAZIOS, ctx());
+    expect(semBusca).toHaveLength(0);
+
+    const comBusca = aplicarFiltros(
+      [anaEncerrada, brunoEncerrado],
+      FILTROS_VAZIOS,
+      ctx({ busca: "bruno" }),
+    );
+    expect(comBusca.map((c) => c.id)).toEqual(["b"]);
+
+    // Favoritas continua E lógico: encerrada achada pela busca, mas não
+    // favorita, fica de fora.
+    const favoritas = aplicarFiltros(
+      [anaEncerrada, brunoEncerrado],
+      { ...FILTROS_VAZIOS, favoritas: true },
+      ctx({ busca: "bruno" }),
+    );
+    expect(favoritas).toHaveLength(0);
   });
 });
 

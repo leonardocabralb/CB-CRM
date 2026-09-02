@@ -952,6 +952,56 @@ O que morde código novo:
   card) e o `DealCard` é `memo` com handlers `useCallback` — quem criar prop
   nova instável quebra isso e volta a re-renderizar 120 cards por tecla.
 
+⚠️ **Caixa de entrada em DUAS ABAS (2026-09-02): encerrada SAI da caixa, e
+qualquer mensagem de gente a devolve.** `SituacaoDaCaixa` em
+`src/lib/inbox/filtros.ts` (puro, testado), a barra em `inbox-filters.tsx`,
+`src/lib/conversations/{reopen,situacao}.ts` (testados, com teste
+estrutural `reopen.chamadores.test.ts`) e o alerta de atraso em
+`src/lib/inbox/atraso.ts` + migration 972. O que morde código novo:
+
+- ⚠️ **`status` do filtro é `"ativas" | "closed"`, e `"ativas"` (aberta E
+  pendente) é a AUSÊNCIA de filtro.** Não existe mais "todas as situações":
+  encerrar é tirar da caixa. Filtro salvo gravado antes com `todos`/`open`/
+  `pending` cai em `ativas` no `lerFiltroSalvo` — de propósito, nunca `as`.
+- ⚠️ **A busca ATRAVESSA a aba padrão, e SÓ ela** (`casaComASituacao`).
+  Sem isso, digitar o nome de um cliente com conversa encerrada devolvia
+  "nenhuma conversa" — a leitura do operador seria que o cliente não está
+  no CRM. Na aba Encerradas a busca é E lógico como qualquer filtro, senão
+  a pastilha "Encerradas" mentiria sobre o que está na tela.
+- ⚠️⚠️ **QUATRO caminhos reabrem, e há teste estrutural cobrando cada um:**
+  webhook da Meta, `persistInboundMessage` E `persistDeviceMessage`
+  (Evolution) e `sendMessageToConversation`. O helper existia desde o
+  upstream (#409) e só a Meta o chamava — produção roda Evolution, então a
+  regra não valia para NENHUMA mensagem real. Broadcast, fluxo, automação e
+  IA NÃO reabrem, de propósito (um disparo para 500 encerradas devolveria
+  as 500 à caixa); é o mesmo desenho do roteador de funil.
+- ⚠️ **Quem reabre fica responsável; encerrar solta o responsável.** O envio
+  pelo núcleo reabre com `assignTo: senderUserId` (nulo na API por chave);
+  o cabeçalho do fio usa `patchDeSituacao`; o passo `close_conversation`
+  da automação zera `assigned_agent_id`. Cliente, celular pareado e API por
+  chave reabrem ESCREVENDO `assigned_agent_id = NULL` — não "deixando como
+  está": conversa encerrada antes da regra ainda carrega o dono velho, e
+  reabrir em nome dele a tiraria da fila de "sem responsável" (Codex, PR
+  #106). Sem acervo nas encerradas antigas, de propósito (o dono que ficou
+  lá diz quem atendeu por último). Aberta ↔ pendente não mexe em nada.
+- ⚠️ **O alerta de atraso lê `conversations.aguardando_desde`, mantida por
+  GATILHO (972), nunca calculada na tela.** Mensagem do cliente preenche
+  se vazia (conta da PRIMEIRA sem resposta), resposta de GENTE
+  (`sender_id` OU `from_device` — a régua do Radar) limpa, encerrar limpa,
+  grupo nunca. Broadcast e robô NÃO limpam: um disparo apagaria o alerta de
+  todo cliente esquecido. Os 10 minutos são régua de tela
+  (`ATRASO_DE_RESPOSTA_MS`), e a lista re-renderiza a cada minuto — a linha
+  não muda no banco quando o prazo vence. ⚠️ A mensagem do cliente
+  preenche a coluna MESMO com a conversa encerrada: a reabertura acontece
+  DEPOIS do insert; a tela é quem esconde o alerta enquanto está encerrada.
+  Mensagem APAGADA (`deleted_at` carimbado) recalcula a partir do que
+  sobrou — senão o cliente que manda e apaga deixava o relógio preso numa
+  mensagem inexistente. O contador "Exibindo N de M" conta a ABA, com o
+  termo da busca no universo (a busca atravessa para as encerradas).
+- **A linha de cima da barra NÃO tem `flex-wrap`** (abas + Favoritas + Não
+  lidas somam ~286px nos 296px úteis; medido). Alargar padding ou ícone ali
+  volta a cortar "Não lidas" na borda.
+
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
 e `src/hooks/use-favoritas.ts`. Quem for mexer em filtro de conversa mexe lá,
@@ -2091,6 +2141,14 @@ mordem de novo em qualquer código novo:
     reparenta `contacts`/`conversations`/`custom_fields` para o novo dono +
     backfill idempotente (medido: 0 linhas fora do dono em produção).
     Aplicada em 2026-09-01.
+  - **972_cb_aguardando_resposta** — `conversations.aguardando_desde` +
+    três gatilhos (mensagem nova mexe no relógio; mensagem apagada
+    recalcula; encerrar limpa) + acervo idempotente. Aplicada em 2026-09-02
+    via conector, com autorização do operador, ANTES do merge do PR #106 —
+    o app em produção só passa a ler a coluna quando o PR entrar. Medido na
+    aplicação: 64 conversas esperando, 62 já além dos 10 min, 18 há mais de
+    um dia. Sem a coluna o alerta simplesmente não aparece (vem `undefined`
+    e a régua responde "ninguém esperando") — nada quebra.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

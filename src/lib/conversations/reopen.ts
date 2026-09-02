@@ -1,42 +1,79 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
- * Re-open a closed conversation because the customer wrote again
- * (issue #409).
+ * Devolve à caixa de entrada uma conversa encerrada em que alguém acabou de
+ * falar — o cliente OU a equipe (decisão do operador, 2026-09-02).
  *
- * Inbound processing bumps `unread_count` but used to leave `status`
- * alone, so a thread an agent closed — or that a `close_conversation`
- * automation step closed — stayed `closed` while accumulating unread
- * customer messages. It read as resolved, and it dropped out of the
- * inbox's Open filter, so an agent working that filter never saw the
- * reply. (Automation dispatch is unaffected either way: it keys on
- * account + trigger + contact, never conversation status.)
+ * Nasceu no upstream (issue #409) só para o cliente: a ingestão incrementava
+ * `unread_count` e deixava `status` em paz, então a conversa encerrada
+ * acumulava mensagens não lidas parecendo resolvida, fora do filtro de
+ * abertas. Aqui virou a regra que sustenta a caixa de entrada inteira: a aba
+ * "Abertas" esconde as encerradas, e isso só é confiável se encerrada
+ * significar "não há nada a fazer" — logo QUALQUER mensagem nova (recebida,
+ * enviada pelo CRM, pelo celular pareado, agendada, pela API) a reabre.
  *
- * Lives here rather than inline in the webhook so it can be tested
- * without standing up the whole route, and so any future inbound path
- * gets the same behaviour for free.
+ * ⚠️ QUATRO caminhos chamam isto, e há teste estrutural cobrando cada um
+ * (`reopen.chamadores.test.ts`): a ingestão da Meta (`webhook/route.ts`), a
+ * ingestão da Evolution e o celular pareado (`inbound-store.ts`, DUAS
+ * funções) e o núcleo de envio (`send-message.ts`). Até 2026-09-02 só o
+ * primeiro chamava — e produção roda Evolution: a regra existia e não valia
+ * para nenhuma mensagem real.
+ *
+ * ⚠️ Broadcast, automação, fluxo e resposta de IA NÃO reabrem, de propósito.
+ * Ficam de fora por não passarem por nenhum dos quatro caminhos, sem uma
+ * linha de guarda — o mesmo desenho do roteador de funil. Um disparo para
+ * 500 encerradas devolveria as 500 à caixa de uma vez, e "o robô respondeu"
+ * não é gente decidindo retomar um atendimento. Se o cliente responder, a
+ * mensagem DELE reabre.
+ *
+ * `assignTo`: quem reabriu fica RESPONSÁVEL (regra do operador: a conversa
+ * reaberta é atribuída a quem a abriu e segue com essa pessoa até ser
+ * encerrada de novo — e encerrar solta o responsável, ver `situacao.ts`). Só o
+ * envio por gente logada tem quem nomear; o cliente, o celular pareado (sem
+ * usuário do CRM por trás) e a API por chave reabrem SEM responsável.
+ *
+ * ⚠️ "Sem responsável" é ESCRITO (`assigned_agent_id = NULL`), não deixado
+ * como estava. Conversa encerrada ANTES desta regra ainda carrega o
+ * responsável antigo — os caminhos de encerrar só zeravam `status` —, e um
+ * reabrir que não tocasse a coluna devolveria a conversa à caixa em nome de
+ * quem já a tinha dado por resolvida, fora da fila de "sem responsável"
+ * (achado do Codex no PR #106). SEM acervo nas encerradas antigas, de
+ * propósito: o responsável que ficou lá diz quem atendeu por último, e
+ * nenhum caminho devolve conversa aberta com esse dono velho — reabrir por
+ * gente nomeia gente, reabrir sem gente escreve NULL aqui.
+ *
+ * Mora num módulo próprio para ser testável sem a rota inteira e para todo
+ * caminho novo de mensagem ganhar o comportamento chamando uma função só.
  */
 export async function reopenClosedConversation(
   db: SupabaseClient,
   conversation: { id: string; status?: string | null },
+  opts: { assignTo?: string | null } = {},
 ): Promise<boolean> {
-  // Nothing to do for open/pending threads, which is the common case —
-  // skipping the round trip keeps inbound processing as cheap as it was.
+  // Aberta/pendente é o caso comum — pular a ida ao banco mantém a ingestão
+  // tão barata quanto era.
   if (conversation.status !== 'closed') return false
+
+  const patch: Record<string, unknown> = {
+    status: 'open',
+    assigned_agent_id: opts.assignTo ?? null,
+    updated_at: new Date().toISOString(),
+  }
 
   const { error } = await db
     .from('conversations')
-    .update({ status: 'open', updated_at: new Date().toISOString() })
+    .update(patch)
     .eq('id', conversation.id)
-    // Re-checked in SQL, not just in the `if` above: the caller's row was
-    // read earlier in the request, so two concurrent inbound deliveries
-    // both holding a stale `status: 'closed'` must not be able to write
-    // 'open' back over an agent who re-closed the thread in between.
+    // Conferido de novo em SQL, não só no `if` acima: a linha do chamador foi
+    // lida no começo da requisição, e duas entregas concorrentes segurando um
+    // `status: 'closed'` velho não podem escrever 'open' por cima de quem
+    // acabou de encerrar a conversa de novo no meio delas.
     .eq('status', 'closed')
 
   if (error) {
-    // Best-effort, same as the conversation update this follows: a failed
-    // re-open must not abort inbound processing (and make Meta redeliver).
+    // Best-effort, como a atualização da conversa que precede isto: uma
+    // reabertura que falha não pode abortar a ingestão (e fazer a Meta
+    // reentregar).
     console.error('Error re-opening conversation:', error)
     return false
   }

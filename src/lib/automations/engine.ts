@@ -1028,9 +1028,17 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
 
     case 'close_conversation': {
       if (!args.contactId) throw new Error('close_conversation needs a contact')
+      // Encerrar SOLTA o responsável, como no cabeçalho do fio (regra do
+      // operador, 2026-09-02): a atribuição dura até o encerramento, e quem
+      // reabrir depois — cliente ou equipe — recebe a conversa sem dono
+      // velho. Ver `src/lib/conversations/situacao.ts`.
       await db
         .from('conversations')
-        .update({ status: 'closed', updated_at: new Date().toISOString() })
+        .update({
+          status: 'closed',
+          assigned_agent_id: null,
+          updated_at: new Date().toISOString(),
+        })
         .eq('account_id', args.automation.account_id)
         .eq('contact_id', args.contactId)
       return 'conversation closed'

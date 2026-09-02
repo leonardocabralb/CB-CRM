@@ -22,10 +22,10 @@ import {
   SEM_ETAPA,
   SEM_RESPONSAVEL,
   type FiltrosDoInbox,
+  type SituacaoDaCaixa,
 } from "@/lib/inbox/filtros";
 import type { ModoDeEtiqueta, TipoDeConversa } from "@/lib/inbox/conversations";
 import type {
-  ConversationStatus,
   PipelineStage,
   Profile,
   Tag,
@@ -39,12 +39,14 @@ export interface FiltroSalvo {
 }
 
 const TIPOS: readonly TipoDeConversa[] = ["todas", "diretas", "grupos"];
-const STATUS: readonly (ConversationStatus | "todos")[] = [
-  "todos",
-  "open",
-  "pending",
-  "closed",
-];
+/**
+ * ⚠️ Filtro gravado ANTES das duas abas (2026-09-02) pode carregar `"todos"`,
+ * `"open"` ou `"pending"` — valores que o recorte de hoje não conhece. Os
+ * três caem para `"ativas"` pelo `umDe`, que é a leitura mais próxima do que
+ * cada um pedia (as encerradas saem da caixa por desenho; aberta e pendente
+ * são as duas metades de "ativas"). Só `"closed"` sobrevive tal qual.
+ */
+const STATUS: readonly SituacaoDaCaixa[] = ["ativas", "closed"];
 const MODOS: readonly ModoDeEtiqueta[] = ["qualquer", "todas"];
 
 function umDe<T extends string>(
@@ -190,8 +192,6 @@ export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
 export type ChaveDeRotulo =
   | "typeDirect"
   | "typeGroups"
-  | "filterOpen"
-  | "filterPending"
   | "filterClosed"
   | "filterUnread"
   | "favorites"
@@ -277,16 +277,13 @@ export function descreverFiltro(
     });
   }
 
-  if (f.status !== "todos") {
-    const porStatus: Record<ConversationStatus, ChaveDeRotulo> = {
-      open: "filterOpen",
-      pending: "filterPending",
-      closed: "filterClosed",
-    };
+  // A aba padrão ("ativas") não é recorte — só a de Encerradas vira pastilha,
+  // e desfazê-la é voltar para a caixa de entrada.
+  if (f.status === "closed") {
     pedacos.push({
       chave: "status",
-      rotulo: { fonte: "i18n", chave: porStatus[f.status] },
-      limpar: { status: "todos" },
+      rotulo: { fonte: "i18n", chave: "filterClosed" },
+      limpar: { status: "ativas" },
     });
   }
 

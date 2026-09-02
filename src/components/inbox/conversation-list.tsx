@@ -9,6 +9,7 @@ import {
 import {
   aplicarFiltros,
   canalDaConversa,
+  casaComASituacao,
   contarFiltrosAtivos,
   FILTROS_VAZIOS,
   mapaDeEtapasPorContato,
@@ -44,6 +45,7 @@ import type {
   Tag,
 } from "@/types";
 import {
+  AlarmClock,
   Bookmark,
   Search,
   Users,
@@ -51,6 +53,7 @@ import {
   MessageSquareText,
   MessageSquarePlus,
 } from "lucide-react";
+import { atrasoDeResposta } from "@/lib/inbox/atraso";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -146,6 +149,15 @@ export function ConversationList({
     etapaInicial ? { ...FILTROS_VAZIOS, etapaId: etapaInicial } : FILTROS_VAZIOS,
   );
   const [loading, setLoading] = useState(true);
+  // Relógio do alerta de atraso (972). A linha não muda no banco quando os 10
+  // minutos vencem — quem muda é o tempo —, então a lista re-renderiza a cada
+  // minuto, o mesmo tique do Radar. Um estado só, passado às linhas: um
+  // intervalo por linha seriam duzentos relógios para a mesma hora.
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setAgora(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const [tags, setTags] = useState<Tag[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [etapas, setEtapas] = useState<PipelineStage[]>([]);
@@ -484,6 +496,17 @@ export function ConversationList({
   const funilPorEtapa = useMemo(
     () => new Map(etapas.map((e) => [e.id, e.pipeline_id])),
     [etapas],
+  );
+
+  // ⚠️ Com o TERMO da busca, não com string vazia: na aba padrão a busca
+  // atravessa para as encerradas (`casaComASituacao`), e contar só as
+  // ativas daria "Exibindo 2 de 1" ao achar uma encerrada (Codex, PR #106).
+  // O universo do contador é o mesmo que o do recorte.
+  const totalDaAba = useMemo(
+    () =>
+      conversations.filter((c) => casaComASituacao(c, filtros.status, search))
+        .length,
+    [conversations, filtros.status, search],
   );
 
   const filtered = useMemo(
@@ -828,7 +851,11 @@ export function ConversationList({
           busca={search}
           onLimparBusca={() => setSearch("")}
           exibindo={filtered.length}
-          total={conversations.length}
+          // ⚠️ O total é o DA ABA, não da conta. Com as encerradas fora da
+          // caixa por desenho, "Exibindo 90 de 228" ficaria aceso o dia
+          // inteiro sem filtro nenhum — e o contador existe para explicar um
+          // recorte que o operador FEZ, não a aba em que ele está.
+          total={totalDaAba}
         />
 
         {/* ⚠️ A FAIXA DO PADRÃO. O distintivo de contagem explica um recorte
@@ -886,6 +913,7 @@ export function ConversationList({
                 onToggleFavorita={handleToggleFavorita}
                 favoritaHabilitada={favoritasProntas}
                 achado={achadosNoTexto.get(conv.id)}
+                agora={agora}
                 // Numa conta de um número só a bolinha não decide nada e só
                 // ocupa espaço — mesma régua do seletor e do filtro de canal.
                 // ⚠️ `canalDaConversa`, nunca `conversation.channel_id`: em
@@ -925,6 +953,8 @@ interface ConversationItemProps {
    * bolinha: uma cor de queda apontaria um número que ninguém sabe qual é.
    */
   corDoCanalDaLinha: CorDeCanal | null;
+  /** O tique de um minuto da lista — a régua do alerta de atraso lê daqui. */
+  agora: number;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -937,6 +967,7 @@ function ConversationItem({
   favoritaHabilitada,
   achado,
   corDoCanalDaLinha,
+  agora,
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
@@ -963,6 +994,22 @@ function ConversationItem({
         addSuffix: false,
       })
     : "";
+
+  // Cliente esperando resposta de gente há 10+ minutos (pedido do operador,
+  // 2026-09-02). O fato vem do banco (`aguardando_desde`, gatilho da 972); a
+  // régua é pura — ver `src/lib/inbox/atraso.ts` para o que conta como
+  // resposta e por que broadcast/robô não contam.
+  const atraso = atrasoDeResposta(conversation, agora);
+  const rotuloDoAtraso = atraso
+    ? t(
+        atraso.unidade === "min"
+          ? "waitMin"
+          : atraso.unidade === "h"
+            ? "waitHours"
+            : "waitDays",
+        { n: atraso.n },
+      )
+    : null;
 
   return (
     // ⚠️ A estrela NÃO pode ficar dentro do botão da linha: `<button>` dentro
@@ -1020,7 +1067,23 @@ function ConversationItem({
                 {displayName}
               </span>
             </span>
-            <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
+            <span className="flex shrink-0 items-center gap-1">
+              {/* O alerta de atraso, colado à hora: âmbar (não vermelho — a
+                  cor da falha é do envio), com o tempo que o cliente espera.
+                  Fica na linha de cima porque a de baixo já carrega prévia,
+                  não lidas e situação, e um quarto item ali truncaria a
+                  prévia em toda linha alertada. */}
+              {rotuloDoAtraso && (
+                <span
+                  title={t("awaitingReply", { tempo: rotuloDoAtraso })}
+                  className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-px text-[10px] font-medium text-amber-600 dark:text-amber-400"
+                >
+                  <AlarmClock className="h-3 w-3" aria-hidden="true" />
+                  {rotuloDoAtraso}
+                </span>
+              )}
+              <span className="text-[10px] text-muted-foreground">{timeAgo}</span>
+            </span>
           </div>
           <div className="mt-0.5 flex items-center justify-between gap-2">
             {/* ⚠️ Durante a busca, a prévia de sempre MENTE. Ela mostra a
