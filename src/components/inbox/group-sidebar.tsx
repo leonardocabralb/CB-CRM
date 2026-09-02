@@ -38,8 +38,12 @@ import {
 } from "lucide-react";
 
 import type { CbGroup, Message } from "@/types";
+import { useApagarNota } from "@/hooks/use-apagar-nota";
+import { useAuth } from "@/hooks/use-auth";
+import { useCan } from "@/hooks/use-can";
 import { useChannels } from "@/hooks/use-channels";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
+import { CartaoDeNota } from "@/components/inbox/cartao-de-nota";
 import { nomeDoGrupo, podeRenomearNoWhatsApp } from "@/lib/cb-groups/display";
 import { TituloDeSecao } from "@/components/inbox/painel/painel-do-contato";
 import { LinhaDeEdicao } from "@/components/inbox/painel/linha-de-edicao";
@@ -86,7 +90,12 @@ export function GroupSidebar({
     falhou: notasFalharam,
     recarregar: recarregarNotas,
     acrescentar: acrescentarNota,
+    remover: removerNotaLocal,
   } = useConversationNotes(conversationId);
+  const { user } = useAuth();
+  // Autor OU admin, a mesma régua do fio e do painel — é a policy da 918.
+  const podeAdministrar = useCan("manage-members");
+  const { apagarNota } = useApagarNota(removerNotaLocal, recarregarNotas);
 
   const [editandoApelido, setEditandoApelido] = useState(false);
   const [apelido, setApelido] = useState("");
@@ -375,21 +384,14 @@ export function GroupSidebar({
 
           <div className="mt-2 space-y-2">
             {notas.map((note) => (
-              <div key={note.id} className="bg-muted rounded-lg px-3 py-2">
-                <p className="text-muted-foreground text-xs whitespace-pre-wrap">
-                  {note.texto}
-                </p>
-                <p className="text-muted-foreground mt-1 text-[10px]">
-                  {/* Locale do NAVEGADOR (undefined), nunca fixo. */}
-                  {new Date(note.created_at).toLocaleString(undefined, {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </p>
-              </div>
+              // Sem `onFixar`: nota de grupo não fixa (o índice parcial da
+              // 951 exige `contact_id`, que grupo não tem).
+              <CartaoDeNota
+                key={note.id}
+                nota={note}
+                podeApagar={note.author_user_id === user?.id || podeAdministrar}
+                onApagar={(id) => void apagarNota(id)}
+              />
             ))}
             {/* ⚠️ O vazio só vira afirmação quando a busca DESTA conversa
                 voltou bem (`pronta`): durante a carga a lista é vazia por

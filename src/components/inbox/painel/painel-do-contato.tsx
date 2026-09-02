@@ -20,6 +20,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useConversationNotes } from '@/hooks/use-conversation-notes';
+import { CartaoDeNota } from '@/components/inbox/cartao-de-nota';
+import { useApagarNota } from '@/hooks/use-apagar-nota';
 import { useFixarNota } from '@/hooks/use-fixar-nota';
 import { useCan } from '@/hooks/use-can';
 import { funilNoEscopo, funisVisiveis } from '@/lib/perfis/escopo';
@@ -77,8 +79,6 @@ import {
   Maximize2,
   PanelRightClose,
   Pencil,
-  Pin,
-  PinOff,
   Settings2,
   Zap,
 } from 'lucide-react';
@@ -157,8 +157,12 @@ export function PainelDoContato({
   // O mesmo gate da RLS: `agent`+ escreve contato/etiqueta/valores ("viewer"
   // só olha). O catálogo de CAMPOS é admin — gate separado, mais abaixo.
   const podeEditar = useCan('send-messages');
-  const { acesso } = useAuth();
+  const { acesso, user } = useAuth();
   const podeGerirCampos = useCan('edit-settings');
+  // Apagar anotação é do AUTOR ou de um admin — a mesma régua do fio
+  // (`message-thread.tsx`), porque é a mesma policy da 918 dos dois lados.
+  // Divergir aqui mostraria a lixeira para quem a RLS vai recusar.
+  const podeAdministrar = useCan('manage-members');
 
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -364,7 +368,16 @@ export function PainelDoContato({
     notas,
     acrescentar: acrescentarNota,
     aplicarFixacao,
+    remover: removerNotaLocal,
+    recarregar: recarregarNotas,
   } = useConversationNotes(conversationId, resyncToken);
+  /**
+   * Apagar (918). ⚠️ No HOOK pela mesma razão do `useFixarNota` logo abaixo:
+   * o que os call sites precisam ter em comum é a guarda do `count` — RLS que
+   * barra DELETE devolve 0 linhas SEM erro, e uma segunda cópia sem ela faz a
+   * anotação sumir da tela, ficar no banco e voltar na próxima abertura.
+   */
+  const { apagarNota } = useApagarNota(removerNotaLocal, recarregarNotas);
   /**
    * Fixar/desafixar (951). ⚠️ A ação mora no hook porque a faixa do topo do
    * fio faz a MESMA coisa: duas cópias das guardas divergiriam, e a
@@ -1323,35 +1336,18 @@ export function PainelDoContato({
               lista não a leva embora. `top-0` gruda na borda do scrollport
               — o padding do TabsContent rola junto com o conteúdo. */}
           {notaFixada && (
-            <div className="border-primary/40 bg-card sticky top-0 z-10 mb-2 rounded-lg border px-3 py-2 shadow-sm">
-              <div className="flex items-start justify-between gap-2">
-                <span className="text-primary flex items-center gap-1 text-[10px] font-semibold tracking-wider uppercase">
-                  <Pin className="h-3 w-3" />
-                  {tSidebar('pinnedNote')}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void fixarNota(notaFixada, false)}
-                  disabled={fixando === notaFixada.id}
-                  aria-label={tSidebar('unpinNote')}
-                  title={tSidebar('unpinNote')}
-                  className="text-muted-foreground hover:text-foreground -m-1 p-1 transition-colors disabled:opacity-50"
-                >
-                  <PinOff className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <p className="text-foreground mt-1 text-xs whitespace-pre-wrap">
-                {notaFixada.texto}
-              </p>
-              <p className="text-muted-foreground mt-1 text-[10px]">
-                {new Date(notaFixada.created_at).toLocaleString(undefined, {
-                  day: '2-digit',
-                  month: 'short',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </p>
+            <div className="sticky top-0 z-10 mb-2">
+              <CartaoDeNota
+                nota={notaFixada}
+                destaque
+                fixada
+                fixando={fixando === notaFixada.id}
+                onFixar={(fixar) => void fixarNota(notaFixada, fixar)}
+                podeApagar={
+                  notaFixada.author_user_id === user?.id || podeAdministrar
+                }
+                onApagar={(id) => void apagarNota(id)}
+              />
             </div>
           )}
 
@@ -1377,40 +1373,22 @@ export function PainelDoContato({
 
           <div className="mt-2 space-y-2">
             {notasComuns.map((note) => (
-              <div
+              <CartaoDeNota
                 key={note.id}
-                className="bg-muted relative rounded-lg px-3 py-2"
-              >
-                {/* Fixar é para qualquer um que anota (viewer incluso — a
-                    rota decide); sem hover-para-aparecer, que não existe no
-                    toque do celular. */}
-                {note.contact_id && (
-                  <button
-                    type="button"
-                    onClick={() => void fixarNota(note, true)}
-                    disabled={fixando === note.id}
-                    aria-label={tSidebar('pinNote')}
-                    title={tSidebar('pinNote')}
-                    className="text-muted-foreground/60 hover:text-foreground absolute top-1.5 right-1.5 p-1 transition-colors disabled:opacity-50"
-                  >
-                    <Pin className="h-3 w-3" />
-                  </button>
-                )}
-                <p className="text-muted-foreground pr-5 text-xs whitespace-pre-wrap">
-                  {note.texto}
-                </p>
-                <p className="text-muted-foreground mt-1 text-[10px]">
-                  {/* Locale do NAVEGADOR (undefined), nunca fixo — o formato
-                      antigo do date-fns imprimia "Aug 29" num app pt-BR. */}
-                  {new Date(note.created_at).toLocaleString(undefined, {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </p>
-              </div>
+                nota={note}
+                fixando={fixando === note.id}
+                // Fixar é para qualquer um que anota (viewer incluso — a rota
+                // decide). Sem `contact_id` não há fixação: o índice parcial
+                // da 951 nem cobre nota de grupo.
+                onFixar={
+                  note.contact_id
+                    ? (fixar) => void fixarNota(note, fixar)
+                    : undefined
+                }
+                // Apagar é do AUTOR ou de admin — mesma régua do fio.
+                podeApagar={note.author_user_id === user?.id || podeAdministrar}
+                onApagar={(id) => void apagarNota(id)}
+              />
             ))}
           </div>
         </TabsContent>
