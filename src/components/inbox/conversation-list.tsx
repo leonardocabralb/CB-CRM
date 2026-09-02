@@ -498,11 +498,15 @@ export function ConversationList({
     [etapas],
   );
 
+  // ⚠️ Com o TERMO da busca, não com string vazia: na aba padrão a busca
+  // atravessa para as encerradas (`casaComASituacao`), e contar só as
+  // ativas daria "Exibindo 2 de 1" ao achar uma encerrada (Codex, PR #106).
+  // O universo do contador é o mesmo que o do recorte.
   const totalDaAba = useMemo(
     () =>
-      conversations.filter((c) => casaComASituacao(c, filtros.status, ""))
+      conversations.filter((c) => casaComASituacao(c, filtros.status, search))
         .length,
-    [conversations, filtros.status],
+    [conversations, filtros.status, search],
   );
 
   const filtered = useMemo(

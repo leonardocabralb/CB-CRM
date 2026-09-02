@@ -30,8 +30,17 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * reaberta é atribuída a quem a abriu e segue com essa pessoa até ser
  * encerrada de novo — e encerrar solta o responsável, ver `situacao.ts`). Só o
  * envio por gente logada tem quem nomear; o cliente, o celular pareado (sem
- * usuário do CRM por trás) e a API por chave não passam nada, e a atribuição
- * fica como estava — que, depois de um encerramento, é vazia.
+ * usuário do CRM por trás) e a API por chave reabrem SEM responsável.
+ *
+ * ⚠️ "Sem responsável" é ESCRITO (`assigned_agent_id = NULL`), não deixado
+ * como estava. Conversa encerrada ANTES desta regra ainda carrega o
+ * responsável antigo — os caminhos de encerrar só zeravam `status` —, e um
+ * reabrir que não tocasse a coluna devolveria a conversa à caixa em nome de
+ * quem já a tinha dado por resolvida, fora da fila de "sem responsável"
+ * (achado do Codex no PR #106). SEM acervo nas encerradas antigas, de
+ * propósito: o responsável que ficou lá diz quem atendeu por último, e
+ * nenhum caminho devolve conversa aberta com esse dono velho — reabrir por
+ * gente nomeia gente, reabrir sem gente escreve NULL aqui.
  *
  * Mora num módulo próprio para ser testável sem a rota inteira e para todo
  * caminho novo de mensagem ganhar o comportamento chamando uma função só.
@@ -47,9 +56,9 @@ export async function reopenClosedConversation(
 
   const patch: Record<string, unknown> = {
     status: 'open',
+    assigned_agent_id: opts.assignTo ?? null,
     updated_at: new Date().toISOString(),
   }
-  if (opts.assignTo) patch.assigned_agent_id = opts.assignTo
 
   const { error } = await db
     .from('conversations')

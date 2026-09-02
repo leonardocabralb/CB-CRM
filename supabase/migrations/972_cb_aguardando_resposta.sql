@@ -23,6 +23,10 @@
 --     todo cliente esquecido, a armadilha que o Radar já documenta;
 --   • ENCERRAR limpa (BEFORE UPDATE, na mesma escrita): encerrada não espera
 --     ninguém, e a reaberta pelo cliente recomeça a contar da mensagem dele;
+--   • mensagem APAGADA recalcula: o cliente que manda "oi" e apaga em
+--     seguida ("apagou para todos", `deleted_at` carimbado pelo webhook da
+--     Evolution) não está esperando nada — sem o recálculo o relógio
+--     ficaria preso numa mensagem que não existe mais (Codex, PR #106);
 --   • GRUPO fica de fora (`group_id IS NULL`): "cliente esperando" não faz
 --     sentido com trinta participantes, e o contador de não lidas já o
 --     exclui pelo mesmo motivo.
@@ -79,6 +83,52 @@ CREATE TRIGGER cb_marcar_aguardando_resposta_trigger
   EXECUTE FUNCTION cb_marcar_aguardando_resposta();
 
 -- ------------------------------------------------------------
+-- 1b) Mensagem apagada recalcula o relógio a partir do que SOBROU:
+-- a primeira mensagem viva do cliente depois da última resposta viva de
+-- gente — a mesma conta do acervo lá embaixo. `deleted_at` só é escrito
+-- pelo webhook (`messages.delete`) e pelo caminho de exclusão do CRM, e
+-- nos dois é UPDATE de NULL para carimbo; voltar de carimbo para NULL não
+-- existe, então o gatilho só olha esse sentido.
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION cb_mensagem_apagada_recalcula_espera()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL THEN
+    UPDATE conversations c
+    SET aguardando_desde = (
+      SELECT MIN(m.created_at)
+      FROM messages m
+      WHERE m.conversation_id = c.id
+        AND m.sender_type = 'customer'
+        AND m.deleted_at IS NULL
+        AND m.created_at > COALESCE((
+          SELECT MAX(h.created_at)
+          FROM messages h
+          WHERE h.conversation_id = c.id
+            AND h.sender_type = 'agent'
+            AND (h.sender_id IS NOT NULL OR h.from_device)
+            AND h.deleted_at IS NULL
+        ), '-infinity'::timestamptz)
+    )
+    WHERE c.id = NEW.conversation_id
+      AND c.group_id IS NULL
+      AND c.status <> 'closed';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS cb_mensagem_apagada_recalcula_espera_trigger ON messages;
+CREATE TRIGGER cb_mensagem_apagada_recalcula_espera_trigger
+  AFTER UPDATE OF deleted_at ON messages
+  FOR EACH ROW
+  EXECUTE FUNCTION cb_mensagem_apagada_recalcula_espera();
+
+-- ------------------------------------------------------------
 -- 2) Encerrar limpa — BEFORE, para ir na MESMA escrita do status.
 -- SECURITY INVOKER basta: só mexe em NEW.
 -- ------------------------------------------------------------
@@ -107,6 +157,7 @@ CREATE TRIGGER cb_encerrar_limpa_espera_trigger
 -- pela API com um NEW forjado.
 -- ------------------------------------------------------------
 REVOKE EXECUTE ON FUNCTION cb_marcar_aguardando_resposta() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION cb_mensagem_apagada_recalcula_espera() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION cb_encerrar_limpa_espera() FROM PUBLIC, anon, authenticated;
 
 -- ------------------------------------------------------------
@@ -168,9 +219,17 @@ BEGIN
     RAISE EXCEPTION '972: gatilho de conversations ausente';
   END IF;
 
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'cb_mensagem_apagada_recalcula_espera_trigger'
+  ) THEN
+    RAISE EXCEPTION '972: gatilho de mensagem apagada ausente';
+  END IF;
+
   IF has_function_privilege('anon', 'cb_marcar_aguardando_resposta()', 'EXECUTE')
-     OR has_function_privilege('authenticated', 'cb_marcar_aguardando_resposta()', 'EXECUTE') THEN
-    RAISE EXCEPTION '972: a função DEFINER continua executável pela API';
+     OR has_function_privilege('authenticated', 'cb_marcar_aguardando_resposta()', 'EXECUTE')
+     OR has_function_privilege('anon', 'cb_mensagem_apagada_recalcula_espera()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'cb_mensagem_apagada_recalcula_espera()', 'EXECUTE') THEN
+    RAISE EXCEPTION '972: função DEFINER continua executável pela API';
   END IF;
 
   -- Grupo nunca espera: afirmar ausência é trivialmente verdadeiro num banco

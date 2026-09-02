@@ -978,8 +978,12 @@ estrutural `reopen.chamadores.test.ts`) e o alerta de atraso em
 - ⚠️ **Quem reabre fica responsável; encerrar solta o responsável.** O envio
   pelo núcleo reabre com `assignTo: senderUserId` (nulo na API por chave);
   o cabeçalho do fio usa `patchDeSituacao`; o passo `close_conversation`
-  da automação zera `assigned_agent_id`. Cliente e celular pareado reabrem
-  SEM atribuir — não há quem nomear. Aberta ↔ pendente não mexe em nada.
+  da automação zera `assigned_agent_id`. Cliente, celular pareado e API por
+  chave reabrem ESCREVENDO `assigned_agent_id = NULL` — não "deixando como
+  está": conversa encerrada antes da regra ainda carrega o dono velho, e
+  reabrir em nome dele a tiraria da fila de "sem responsável" (Codex, PR
+  #106). Sem acervo nas encerradas antigas, de propósito (o dono que ficou
+  lá diz quem atendeu por último). Aberta ↔ pendente não mexe em nada.
 - ⚠️ **O alerta de atraso lê `conversations.aguardando_desde`, mantida por
   GATILHO (972), nunca calculada na tela.** Mensagem do cliente preenche
   se vazia (conta da PRIMEIRA sem resposta), resposta de GENTE
@@ -990,6 +994,10 @@ estrutural `reopen.chamadores.test.ts`) e o alerta de atraso em
   não muda no banco quando o prazo vence. ⚠️ A mensagem do cliente
   preenche a coluna MESMO com a conversa encerrada: a reabertura acontece
   DEPOIS do insert; a tela é quem esconde o alerta enquanto está encerrada.
+  Mensagem APAGADA (`deleted_at` carimbado) recalcula a partir do que
+  sobrou — senão o cliente que manda e apaga deixava o relógio preso numa
+  mensagem inexistente. O contador "Exibindo N de M" conta a ABA, com o
+  termo da busca no universo (a busca atravessa para as encerradas).
 - **A linha de cima da barra NÃO tem `flex-wrap`** (abas + Favoritas + Não
   lidas somam ~286px nos 296px úteis; medido). Alargar padding ou ícone ali
   volta a cortar "Não lidas" na borda.
@@ -2134,8 +2142,8 @@ mordem de novo em qualquer código novo:
     backfill idempotente (medido: 0 linhas fora do dono em produção).
     Aplicada em 2026-09-01.
   - **972_cb_aguardando_resposta** — `conversations.aguardando_desde` +
-    dois gatilhos (mensagem nova mexe no relógio; encerrar limpa) + acervo
-    idempotente. ⚠️ **PENDENTE de aplicar** ao abrir o PR (02/09): o
+    três gatilhos (mensagem nova mexe no relógio; mensagem apagada
+    recalcula; encerrar limpa) + acervo idempotente. ⚠️ **PENDENTE de aplicar** ao abrir o PR (02/09): o
     conector MCP do Supabase não estava autenticado na sessão. Sem ela o
     alerta de atraso da caixa simplesmente não aparece (a coluna vem
     `undefined` e a régua responde "ninguém esperando") — nada quebra.

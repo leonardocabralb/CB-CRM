@@ -128,10 +128,13 @@ describe('reopenClosedConversation — quem reabre fica responsável (2026-09-02
   })
 
   it.each([null, undefined])(
-    'sem quem nomear (%s) reabre sem tocar na atribuição',
+    'sem quem nomear (%s) reabre SEM responsável — escreve NULL, não deixa como estava',
     async (assignTo) => {
       // Cliente, celular pareado e API por chave: reabrem, mas não há pessoa
-      // da equipe a nomear — e a atribuição fica como o encerramento deixou.
+      // da equipe a nomear. ⚠️ Conversa encerrada ANTES da regra ainda
+      // carrega o responsável velho (encerrar só zerava `status`); deixar a
+      // coluna em paz devolveria a conversa à caixa em nome de quem já a
+      // tinha dado por resolvida (Codex, PR #106).
       const { client, calls } = stubClient()
 
       await reopenClosedConversation(
@@ -140,9 +143,17 @@ describe('reopenClosedConversation — quem reabre fica responsável (2026-09-02
         { assignTo },
       )
 
-      expect(calls[0].payload).not.toHaveProperty('assigned_agent_id')
+      expect(calls[0].payload).toMatchObject({ assigned_agent_id: null })
     },
   )
+
+  it('sem `opts` nenhum também zera o responsável (os caminhos do cliente)', async () => {
+    const { client, calls } = stubClient()
+
+    await reopenClosedConversation(client, { id: 'conv-1', status: 'closed' })
+
+    expect(calls[0].payload).toMatchObject({ status: 'open', assigned_agent_id: null })
+  })
 
   it('conversa aberta não é reatribuída por um envio comum', async () => {
     // A regra é "quem REABRE fica responsável" — mandar mensagem numa conversa
