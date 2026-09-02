@@ -85,6 +85,32 @@ export const ROTA_DA_TELA: Record<TelaId, string> = {
 
 export const TODAS_AS_TELAS = Object.keys(ROTA_DA_TELA) as TelaId[];
 
+/**
+ * Chave do dicionário (namespace `Sidebar`) que nomeia cada tela.
+ *
+ * ⚠️ Mora aqui, e não no componente, porque JÁ existiam duas cópias — uma no
+ * `perfis-panel.tsx` e outra no `perfil-resumo.tsx` — e a terceira ia nascer
+ * junto com o aviso de áreas sem ação. Cópia de mapa exaustivo é o caso em
+ * que o typecheck deixa passar a divergência: cada cópia continua completa,
+ * só que uma delas aponta para a chave velha depois de um rename.
+ */
+export const ROTULO_DA_TELA: Record<TelaId, string> = {
+  dashboard: "dashboard",
+  radar: "radar",
+  inbox: "inbox",
+  notifications: "notifications",
+  tarefas: "tasks",
+  contacts: "contacts",
+  agenda: "agenda",
+  pipelines: "pipelines",
+  broadcasts: "broadcasts",
+  agendadas: "scheduled",
+  automations: "automations",
+  flows: "flows",
+  agents: "aiAgents",
+  settings: "settings",
+};
+
 export const TODAS_AS_SECOES: SecaoId[] = [
   "overview",
   "profile",

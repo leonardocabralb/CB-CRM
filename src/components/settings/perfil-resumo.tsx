@@ -12,25 +12,11 @@
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
-import { TODAS_AS_TELAS, TELAS_SEMPRE_VISIVEIS, type TelaId } from '@/lib/perfis/catalogo';
-
-/** TelaId → chave do namespace Sidebar (mesmo mapa do PerfisPanel). */
-const ROTULO_DA_TELA: Record<TelaId, string> = {
-  dashboard: 'dashboard',
-  radar: 'radar',
-  inbox: 'inbox',
-  notifications: 'notifications',
-  tarefas: 'tasks',
-  contacts: 'contacts',
-  agenda: 'agenda',
-  pipelines: 'pipelines',
-  broadcasts: 'broadcasts',
-  agendadas: 'scheduled',
-  automations: 'automations',
-  flows: 'flows',
-  agents: 'aiAgents',
-  settings: 'settings',
-};
+import {
+  ROTULO_DA_TELA,
+  TODAS_AS_TELAS,
+  TELAS_SEMPRE_VISIVEIS,
+} from '@/lib/perfis/catalogo';
 
 export interface PerfilParaResumo {
   nome: string;
