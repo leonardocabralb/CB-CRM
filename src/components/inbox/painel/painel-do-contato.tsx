@@ -33,6 +33,7 @@ import { DealForm } from '@/components/pipelines/deal-form';
 import { SeletorFunilEtapa } from '@/components/inbox/painel/seletor-funil-etapa';
 import { AbaAutomacoes } from '@/components/inbox/painel/aba-automacoes';
 import { AbaArquivos } from '@/components/inbox/painel/aba-arquivos';
+import { FotoAmpliavel } from '@/components/inbox/painel/foto-ampliavel';
 import { OrigemDoContato } from '@/components/inbox/painel/origem-do-contato';
 import { ResponsavelMenu } from '@/components/inbox/painel/responsavel-menu';
 import { CopiarLinkDaConversa } from '@/components/inbox/copiar-link-da-conversa';
@@ -822,17 +823,16 @@ export function PainelDoContato({
           A identidade ocupava ~150px em três blocos centralizados; agora são
           ~60px, e o que sobrou de altura vai para o conteúdo das abas. */}
       <CabecalhoDoPainel onClose={onClose} tThread={tThread}>
-        <div className="bg-muted text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold">
-          {contact.avatar_url ? (
-            <img
-              src={contact.avatar_url}
-              alt={displayName}
-              className="h-10 w-10 rounded-full object-cover"
-            />
-          ) : (
-            initials
-          )}
-        </div>
+        {/* A foto abre ampliada no visualizador do inbox (clique). */}
+        <FotoAmpliavel
+          src={contact.avatar_url}
+          alt={displayName}
+          fallback={
+            <div className="bg-muted text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold">
+              {initials}
+            </div>
+          }
+        />
         <div className="min-w-0 flex-1">
           {editandoNome ? (
             <LinhaDeEdicao

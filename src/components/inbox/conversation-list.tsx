@@ -118,16 +118,13 @@ interface ConversationListProps {
 }
 
 // Situação da conversa na LINHA (pedido do operador, 2026-09-03 — "hoje a
-// gente só tem um círculo pequeno colorido"): ANEL colorido no avatar em toda
-// linha, e pastilha ESCRITA só para pendente e encerrada. "Aberta" é o
-// normal da caixa (98% das linhas): escrevê-la em todas viraria o rótulo que
-// o olho aprende a ignorar — a lição do rótulo de canal. A mesma paleta do
-// cabeçalho do fio (`STATUS_OPTIONS`): violeta, âmbar, cinza.
-const STATUS_RING: Record<ConversationStatus, string> = {
-  open: "ring-primary/70",
-  pending: "ring-amber-500",
-  closed: "ring-muted-foreground/60",
-};
+// gente só tem um círculo pequeno colorido"): pastilha ESCRITA só para
+// pendente e encerrada. "Aberta" é o normal da caixa (98% das linhas) e não
+// leva marca nenhuma: escrevê-la em todas viraria o rótulo que o olho
+// aprende a ignorar — a lição do rótulo de canal. Houve um ANEL colorido no
+// avatar (violeta/âmbar/cinza) por algumas horas; o operador o tirou no
+// mesmo dia ("está atrapalhando") — a foto do contato (973) e o anel
+// disputavam o mesmo círculo. A paleta é a do cabeçalho do fio.
 const STATUS_PILL: Record<Exclude<ConversationStatus, "open">, string> = {
   pending: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   closed: "bg-muted text-muted-foreground",
@@ -1042,13 +1039,8 @@ function ConversationItem({
           isActive && "border-l-2 border-primary bg-muted/70"
         )}
       >
-        {/* Avatar — com o anel da situação (ver `STATUS_RING`). */}
-        <div
-          className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground ring-2 ring-offset-1 ring-offset-card",
-            STATUS_RING[conversation.status],
-          )}
-        >
+        {/* Avatar */}
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
           {avatarUrl ? (
             <img
               src={avatarUrl}
