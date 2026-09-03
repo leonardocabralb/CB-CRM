@@ -157,6 +157,10 @@ export function useFiltrosSalvos(): UseFiltrosSalvosResult {
           nome: nome.trim(),
           filtros: escreverFiltroSalvo(filtros),
           criado_por: userId,
+          // 974: o filtro é DE QUEM SALVA. A policy exige `user_id = auth.uid()`;
+          // a coluna tem DEFAULT auth.uid(), mas carimbar aqui deixa a intenção
+          // no código, não no banco.
+          user_id: userId,
         })
         .select("id, nome, filtros")
         .maybeSingle();

@@ -65,6 +65,16 @@ function umDe<T extends string>(
  * ⚠️ `""` vira `null` de propósito: um id vazio não casa com nada e faria o
  * recorte devolver zero conversas com cara de filtro configurado.
  */
+/** Lista de ids: só strings não vazias, sem repetição; outra forma vira []. */
+function listaDeIds(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const saida: string[] = [];
+  for (const x of v) {
+    if (typeof x === "string" && x.trim() !== "" && !saida.includes(x.trim())) saida.push(x.trim());
+  }
+  return saida;
+}
+
 function textoOuNulo(valor: unknown): string | null {
   if (typeof valor !== "string") return null;
   const t = valor.trim();
@@ -95,7 +105,15 @@ export function lerFiltroSalvo(bruto: unknown): FiltrosDoInbox {
   return {
     tipo: umDe(o.tipo, TIPOS, FILTROS_VAZIOS.tipo),
     status: umDe(o.status, STATUS, FILTROS_VAZIOS.status),
-    canalId: textoOuNulo(o.canalId),
+    // ⚠️ Aceita o formato ANTIGO (`canalId: "x"`, uma conexão só, até 03/09)
+    // além do novo (`canalIds: [...]`): o JSON gravado antes da mudança
+    // continua legível sem migration de dados.
+    canalIds:
+      listaDeIds(o.canalIds).length > 0
+        ? listaDeIds(o.canalIds)
+        : textoOuNulo(o.canalId)
+          ? [textoOuNulo(o.canalId) as string]
+          : [],
     responsavelId: textoOuNulo(o.responsavelId),
     etiquetaIds,
     modoDeEtiqueta: umDe(o.modoDeEtiqueta, MODOS, FILTROS_VAZIOS.modoDeEtiqueta),
@@ -118,7 +136,7 @@ export function escreverFiltroSalvo(f: FiltrosDoInbox): Record<string, unknown> 
   return {
     tipo: f.tipo,
     status: f.status,
-    canalId: f.canalId,
+    canalIds: f.canalIds,
     responsavelId: f.responsavelId,
     etiquetaIds: f.etiquetaIds,
     modoDeEtiqueta: f.modoDeEtiqueta,
@@ -143,6 +161,13 @@ export function escreverFiltroSalvo(f: FiltrosDoInbox): Record<string, unknown> 
  * "qualquer" e "todas" recortam igual, e diferenciar ali faria o mesmo recorte
  * parecer dois.
  */
+/** Igualdade de conjunto (ordem não importa) — para as listas de ids. */
+function mesmoConjunto(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sb = new Set(b);
+  return a.every((x) => sb.has(x));
+}
+
 export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
   const etiquetasIguais = (() => {
     if (a.etiquetaIds.length !== b.etiquetaIds.length) return false;
@@ -158,7 +183,7 @@ export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
   return (
     a.tipo === b.tipo &&
     a.status === b.status &&
-    a.canalId === b.canalId &&
+    mesmoConjunto(a.canalIds, b.canalIds) &&
     a.responsavelId === b.responsavelId &&
     a.empresa === b.empresa &&
     a.funilId === b.funilId &&
@@ -287,20 +312,22 @@ export function descreverFiltro(
     });
   }
 
-  if (f.canalId) {
-    const canal = cat.canais.find((c) => c.id === f.canalId);
+  if (f.canalIds.length > 0) {
+    const nomes = f.canalIds.map((id) => cat.canais.find((c) => c.id === id)?.label ?? null);
+    const todosResolvidos = nomes.every((n) => n !== null);
     pedacos.push({
       chave: "canal",
-      rotulo: canal
-        ? { fonte: "dado", texto: canal.label }
+      // Uma conexão: o nome dela. Várias: os nomes separados por " ou ".
+      rotulo: todosResolvidos
+        ? { fonte: "dado", texto: nomes.join(" ou ") }
         : { fonte: "i18n", chave: "channelFilter" },
       // ⚠️ Catálogo VAZIO não prova nada (M4 do plano 31/08) — a MESMA
       // guarda do `limparOrfaos` lá embaixo: lista vazia pode ser "ainda não
       // carregou" ou "a busca falhou", e marcar "(apagado)" sobre canal VIVO
       // enquanto os catálogos chegam é o menu afirmando referência morta
       // sobre um blip de rede. Vale para os cinco campos com `orfao`.
-      orfao: cat.canais.length > 0 && !canal,
-      limpar: { canalId: null },
+      orfao: cat.canais.length > 0 && !todosResolvidos,
+      limpar: { canalIds: [] },
     });
   }
 
@@ -443,12 +470,9 @@ export function limparOrfaos(
 ): FiltrosDoInbox {
   const limpo = { ...f };
 
-  if (
-    limpo.canalId &&
-    cat.canais.length > 0 &&
-    !cat.canais.some((c) => c.id === limpo.canalId)
-  ) {
-    limpo.canalId = null;
+  // Tira só os ids MORTOS; as conexões vivas do mesmo filtro continuam.
+  if (limpo.canalIds.length > 0 && cat.canais.length > 0) {
+    limpo.canalIds = limpo.canalIds.filter((id) => cat.canais.some((c) => c.id === id));
   }
 
   if (

@@ -70,8 +70,13 @@ export interface FiltrosDoInbox {
   tipo: TipoDeConversa;
   /** Qual das duas abas está aberta — ver {@link SituacaoDaCaixa}. */
   status: SituacaoDaCaixa;
-  /** `null` = todos os canais. */
-  canalId: string | null;
+  /**
+   * Conexões marcadas — VAZIO = todas (a convenção do projeto: escopo vazio
+   * é tudo). Várias somam com OU: "Bancário - Comercial ou Jurídico". Era
+   * `canalId: string | null` (uma só) até 03/09; o JSON salvo antigo é
+   * traduzido em `lerFiltroSalvo`.
+   */
+  canalIds: string[];
   /** `auth.users.id`, ou {@link SEM_RESPONSAVEL}, ou `null` para todos. */
   responsavelId: string | null;
   etiquetaIds: string[];
@@ -119,7 +124,7 @@ export interface FiltrosDoInbox {
 export const FILTROS_VAZIOS: FiltrosDoInbox = {
   tipo: "todas",
   status: "ativas",
-  canalId: null,
+  canalIds: [],
   responsavelId: null,
   etiquetaIds: [],
   modoDeEtiqueta: "qualquer",
@@ -158,7 +163,7 @@ export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
   let n = 0;
   if (f.tipo !== "todas") n++;
   if (f.status !== "ativas") n++;
-  if (f.canalId) n++;
+  if (f.canalIds.length > 0) n++;
   if (f.responsavelId) n++;
   if (f.etiquetaIds.length > 0) n++;
   if (f.empresa !== null) n++;
@@ -469,7 +474,10 @@ export function aplicarFiltros(
 
     // Ver `canalDaConversa`: em grupo o número mora em `cb_groups`, não na
     // conversa.
-    if (f.canalId && canalDaConversa(c) !== f.canalId) return false;
+    if (f.canalIds.length > 0) {
+      const canal = canalDaConversa(c);
+      if (!canal || !f.canalIds.includes(canal)) return false;
+    }
 
     if (!casaComOResponsavel(c, f.responsavelId)) return false;
     if (f.favoritas && !ctx.favoritas.has(c.id)) return false;
