@@ -1012,9 +1012,14 @@ estrutural `reopen.chamadores.test.ts`) e o alerta de atraso em
   fio, e alargar ali o levaria a 64px (Codex, PR #108). O nome do filtro
   salvo aplicado vive no `title`,
   não mais no botão; as pastilhas ganharam linha própria, que só existe
-  com algo recortando. ⚠️ Pré-existente e mantido: a aba Encerradas conta
-  como filtro ativo (`contarFiltrosAtivos`) — acende o distintivo do chip
-  e uma pastilha "Encerradas"; decisão pendente do operador.
+  com algo recortando. ⚠️ **A aba Encerradas NÃO conta para o painel**
+  (decisão do operador, 03/09): distintivo, pastilhas e "Limpar tudo" usam
+  `contarRecortesDoPainel` (situação fora da conta; limpar mantém a aba),
+  enquanto `contarFiltrosAtivos` SEGUE contando a situação para os filtros
+  SALVOS — um filtro "só encerradas" recorta, e a semente do padrão só cai
+  sobre recorte intacto. Trocar um pelo outro faz o filtro salvo de
+  encerradas nunca aparecer como aplicado, ou a aba voltar a acender o
+  distintivo.
 
 ⚠️ **Cabeçalho do fio, linha da lista e painel (2026-09-03, "sistema de
 referência" Chatguru).** Quatro mudanças pequenas com um motivo cada:

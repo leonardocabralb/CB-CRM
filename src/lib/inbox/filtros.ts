@@ -137,6 +137,23 @@ export const FILTROS_VAZIOS: FiltrosDoInbox = {
  * ⚠️ `modoDeEtiqueta` NÃO conta: ele não recorta nada sozinho, só muda como as
  * etiquetas já escolhidas se combinam.
  */
+/**
+ * Quantos recortes o PAINEL está fazendo — a situação FORA da conta.
+ *
+ * Decisão do operador (2026-09-03): a aba Encerradas é uma VISÃO, escolhida
+ * num controle próprio e sempre à vista; contá-la como filtro acendia o
+ * distintivo "1" no botão do painel e uma pastilha "Encerradas" logo abaixo
+ * da aba acesa — o mesmo fato dito três vezes. É o número do distintivo, das
+ * pastilhas e do "Limpar tudo" (que por isso NÃO troca de aba).
+ *
+ * ⚠️ `contarFiltrosAtivos` continua contando a situação, de propósito: é a
+ * régua dos filtros SALVOS ("este filtro ainda recorta algo?", a semente do
+ * padrão sobre recorte intacto) — lá um filtro "só encerradas" recorta, sim.
+ */
+export function contarRecortesDoPainel(f: FiltrosDoInbox): number {
+  return contarFiltrosAtivos({ ...f, status: "ativas" });
+}
+
 export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
   let n = 0;
   if (f.tipo !== "todas") n++;
