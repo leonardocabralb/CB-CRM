@@ -253,51 +253,34 @@ export function CbChannelsPanel() {
   };
 
   /**
-
    * Busca em lote a FOTO DE PERFIL dos contatos desta conexão (973). A rota
-
    * responde 202 na hora e faz o trabalho em `after()`: são até ~200
-
-   * downloads, e as fotos vão aparecendo na caixa de entrada.
-
+   * downloads, e as fotos vão aparecendo na caixa de entrada. 409 = já há
+   * um lote em curso nesta conexão (o botão volta a aceitar clique antes
+   * de o lote acabar) — aviso, não falha.
    */
-
   const buscarFotos = useCallback(
-
     async (channelId: string) => {
-
       setBuscandoFotos(channelId);
-
       try {
-
         const res = await fetch(`/api/cb/channels/${channelId}/fotos`, {
-
           method: 'POST',
-
           headers: { 'Content-Type': 'application/json' },
-
           body: JSON.stringify({}),
-
         });
-
+        if (res.status === 409) {
+          toast.info(t('fetchPhotosRunning'));
+          return;
+        }
         if (!res.ok) throw new Error(String(res.status));
-
         toast.success(t('fetchPhotosStarted'));
-
       } catch {
-
         toast.error(t('fetchPhotosFailed'));
-
       } finally {
-
         setBuscandoFotos(null);
-
       }
-
     },
-
     [t],
-
   );
 
 

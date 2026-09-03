@@ -2327,6 +2327,7 @@
       "fetchPhotosHint": "Baixa a foto de perfil do WhatsApp dos contatos desta conexão (e revalida as com mais de 30 dias)",
       "fetchPhotosStarted": "Busca de fotos iniciada — elas aparecem na caixa de entrada nos próximos minutos",
       "fetchPhotosFailed": "Não foi possível iniciar a busca de fotos",
+      "fetchPhotosRunning": "Já há uma busca de fotos em andamento nesta conexão",
       "configureAction": "Configurar",
       "configureTitle": "Configurar conexão",
       "configureSave": "Salvar",

@@ -2334,6 +2334,7 @@
       "fetchPhotosHint": "Downloads the WhatsApp profile photo of this connection's contacts (and refreshes the ones older than 30 days)",
       "fetchPhotosStarted": "Photo fetch started — they show up in the inbox over the next few minutes",
       "fetchPhotosFailed": "Couldn't start the photo fetch",
+      "fetchPhotosRunning": "A photo fetch is already running for this connection",
       "configureAction": "Configure",
       "configureTitle": "Configure connection",
       "configureSave": "Save",
