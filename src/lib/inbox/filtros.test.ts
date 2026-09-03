@@ -527,7 +527,7 @@ describe("aplicarFiltros", () => {
     const doCanal = conversa({ id: "c2", channel_id: "ch1" });
     const saida = aplicarFiltros(
       [semCarimbo, doCanal],
-      { ...FILTROS_VAZIOS, canalId: "ch1" },
+      { ...FILTROS_VAZIOS, canalIds: ["ch1"] },
       ctx(),
     );
     expect(saida.map((c) => c.id)).toEqual(["c2"]);
@@ -547,7 +547,7 @@ describe("aplicarFiltros", () => {
 
     const saida = aplicarFiltros(
       [doCanal, deOutro],
-      { ...FILTROS_VAZIOS, canalId: "ch1" },
+      { ...FILTROS_VAZIOS, canalIds: ["ch1"] },
       ctx(),
     );
     expect(saida.map((c) => c.id)).toEqual(["g1"]);
@@ -559,7 +559,7 @@ describe("aplicarFiltros", () => {
       group: { ...grupo().group!, channel_id: null },
     });
     expect(
-      aplicarFiltros([semNumero], { ...FILTROS_VAZIOS, canalId: "ch1" }, ctx()),
+      aplicarFiltros([semNumero], { ...FILTROS_VAZIOS, canalIds: ["ch1"] }, ctx()),
     ).toHaveLength(0);
   });
 
@@ -753,5 +753,20 @@ describe("recorte por perfil (foraDoPerfil)", () => {
   it("predicado ausente = sem recorte (perfil nulo)", () => {
     const saida = aplicarFiltros([conversa(), fora()], FILTROS_VAZIOS, ctx());
     expect(saida).toHaveLength(2);
+  });
+});
+
+describe("canalIds — OU entre as conexões marcadas (03/09)", () => {
+  it("duas conexões marcadas: entra quem está em qualquer uma; sem carimbo fica de fora", () => {
+    const c1 = conversa({ id: "a", channel_id: "ch1" });
+    const c2 = conversa({ id: "b", channel_id: "ch2" });
+    const c3 = conversa({ id: "c", channel_id: "ch3" });
+    const semCarimbo = conversa({ id: "d", channel_id: null });
+    const saida = aplicarFiltros(
+      [c1, c2, c3, semCarimbo],
+      { ...FILTROS_VAZIOS, canalIds: ["ch1", "ch2"] },
+      ctx(),
+    );
+    expect(saida.map((c) => c.id)).toEqual(["a", "b"]);
   });
 });

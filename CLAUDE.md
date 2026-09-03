@@ -1001,7 +1001,8 @@ estrutural `reopen.chamadores.test.ts`) e o alerta de atraso em
   mensagem inexistente. O contador "Exibindo N de M" conta a ABA, com o
   termo da busca no universo (a busca atravessa para as encerradas).
 - **A barra é UMA linha sem `flex-wrap`, e a coluna tem 320px no `lg` e
-  360px no `xl`** (03/09,
+  360px no `xl`** (03/09; o chip de filtros salvos SAIU dela no mesmo dia —
+  virou a fileira de visões logo abaixo — sobraram três chips:
   layout "C" escolhido pelo operador entre três mocks): abas sublinhadas à
   esquerda e quatro chips quadrados só com ícone à direita (favoritas, não
   lidas, salvos, filtros), todos por `chipDaBarra()` de `inbox-filters.tsx`
@@ -1079,16 +1080,18 @@ gancho no webhook da Evolution e a rota `POST /api/cb/channels/[id]/fotos`
   a coluna o PostgREST recusa, `guardarFoto` devolve `'falhou'` (log, sem
   quebrar a ingestão) e nenhuma foto entra.
 
-⚠️ **O resumo do recorte abaixo da barra é UM bloco de duas linhas com
-papéis fixos** (`inbox-filters.tsx`, 2026-09-03): linha 1 = pastilhas +
-"Limpar tudo" (chips da MESMA forma, quebrando juntos); linha 2 = a META,
-que nunca quebra — a faixa "Filtro padrão: X · mostrar tudo" à esquerda
-(vem da LISTA por slot `faixaDoPadrao`, trunca) e o contador "Exibindo N de
-M" à direita (`shrink-0`). Antes, o contador com `ml-auto` caía sozinho
-numa segunda linha assim que a pastilha crescia, e a faixa ficava solta
-abaixo de tudo ("desencaixadas", nas palavras do operador). Quem
-acrescentar peça ao resumo escolhe a linha pelo papel, não a pendura no
-fim.
+⚠️ **Abaixo da barra: a FILEIRA DE VISÕES e um painel COMPACTO, recolhido
+por padrão** (03/09). As pastilhas do recorte, o "Limpar tudo" solto e a
+faixa "Filtro padrão: X" SAÍRAM a pedido do operador ("com um filtro salvo
+aplicado, tudo isso vira um aglomerado que repete o que o chip aceso já
+diz"). O painel abre no botão de ajustes (distintivo = recortes além da
+aba): FIXOS conexões (multi), etiquetas e funil/etapa; "Mais filtros"
+guarda tipo, responsável e empresa — e abre sozinho quando um deles está
+recortando, senão o painel esconderia de onde vem o recorte. Rodapé numa
+linha: "N de M" (só com recorte) e "Limpar" (limpa a busca também, mantém
+a aba). A fileira QUEBRA linha (não rola): com 360px o segundo filtro já
+não cabia, e rolagem escondida cortava o chip na borda sem sinal. Quem
+acrescentar campo ao painel decide: dia a dia (fixo) ou "Mais filtros".
 
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
@@ -1133,12 +1136,37 @@ não dentro da lista. O que morde código novo:
   chegaria a dizer que 55 negócios não existem). Cada busca do painel tem
   sinalizador próprio.
 
-⚠️ **Filtros SALVOS do inbox (967/968): o filtro é da CONTA, o padrão é de
-CADA UM.** `src/lib/inbox/filtros-salvos.ts` (puro, com teste),
-`src/hooks/use-filtros-salvos.ts`, o menu em
-`src/components/inbox/filtros-salvos-menu.tsx` (colado no botão "Filtros") e a
-semente em `conversation-list.tsx`. Aplicar é `setFiltros(...)`: nada muda em
-`aplicarFiltros`. O que morde código novo:
+⚠️ **Filtros SALVOS do inbox (967/968/974): o filtro é DE CADA MEMBRO, e o
+padrão também.** `src/lib/inbox/filtros-salvos.ts` (puro, com teste),
+`src/lib/inbox/visoes.ts` (puro: o que a fileira acende/oferece),
+`src/hooks/use-filtros-salvos.ts`, a FILEIRA DE VISÕES em
+`src/components/inbox/visoes-salvas.tsx` (chips sob as abas — layout "B",
+escolhido pelo operador em 03/09; o menu atrás do ícone de marcador foi
+apagado), os diálogos em `filtros-salvos-dialogos.tsx` e a semente em
+`conversation-list.tsx`. Aplicar é `setFiltros(...)`: nada muda em
+`aplicarFiltros`. ⚠️ A 974 reescreveu a regra de posse: `user_id NOT NULL
+DEFAULT auth.uid()`, policies "só as minhas" para QUALQUER membro (o gate
+de admin sumiu do código também), nome único por `(conta, membro)`,
+`ON DELETE CASCADE` de propósito (preferência pessoal, não dado do
+escritório — a exceção à regra dos contatos). Decisão do operador: "cada
+membro cria e edita os seus; não são distribuíveis". O que morde código
+novo:
+
+- ⚠️ **A fileira tem uma BASE** (`visaoBaseId`, na lista): o chip clicado por
+  último, ou o padrão semeado. É o que permite "Salvar alterações em X"
+  quando o operador parte de um filtro e mexe; sem ela só existiria "salvar
+  como novo". "Todas" e o "Limpar" a zeram; mexer NÃO zera (é para isso que
+  existe). O chip aceso é IGUALDADE com o recorte atual (depois de
+  `limparOrfaos`), nunca a base — um chip aceso sobre recorte diferente
+  mentiria.
+- ⚠️ **Conexões são VÁRIAS** (`canalIds: string[]`, vazio = todas, OU entre
+  as marcadas; era `canalId` até 03/09). `lerFiltroSalvo` lê o JSON antigo
+  (`canalId: "x"` → `["x"]`), `limparOrfaos` tira SÓ os ids mortos e
+  `mesmoFiltro` compara conjunto. Filtro cujas conexões estão TODAS fora do
+  escopo do perfil some da fileira (aplicado, viraria "todas as conexões").
+- ⚠️ **A semente do padrão lê o recorte pela REF, não pelo updater**: um
+  `setState` (a base) dentro de outro updater é efeito colateral onde o
+  React exige pureza.
 
 - ⚠️⚠️ **Filtro salvo apontando para id APAGADO devolve ZERO conversas sem dar
   erro** — etapa removida, conexão desconectada, etiqueta ou funil apagados. É
@@ -2320,6 +2348,12 @@ e sem saída na aba, a dois centímetros. O que morde código novo:
     conferência da foto de perfil na Evolution). Aplicada em 2026-09-03 via
     conector, ANTES do merge do PR #110 (o app grava a coluna) — conferida
     por leitura no PostgREST antes de mesclar.
+
+  - **974_cb_filtros_salvos_por_membro** — `cb_inbox_saved_filters.user_id`
+    (dono; `DEFAULT auth.uid()` para a janela entre migration e deploy),
+    policies "só as minhas", nome único por membro. Aplicada em 2026-09-03
+    via conector, ANTES do merge; conferido: os 2 filtros ficaram com o
+    criador.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

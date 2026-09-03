@@ -73,7 +73,7 @@ describe("lerFiltroSalvo", () => {
       lerFiltroSalvo({
         tipo: "grupos",
         status: "closed",
-        canalId: "c1",
+        canalIds: ["c1"],
         responsavelId: "u1",
         etiquetaIds: ["t1", "t2"],
         modoDeEtiqueta: "todas",
@@ -86,7 +86,7 @@ describe("lerFiltroSalvo", () => {
     ).toEqual({
       tipo: "grupos",
       status: "closed",
-      canalId: "c1",
+      canalIds: ["c1"],
       responsavelId: "u1",
       etiquetaIds: ["t1", "t2"],
       modoDeEtiqueta: "todas",
@@ -124,7 +124,7 @@ describe("lerFiltroSalvo", () => {
 
   it("string vazia vira null — id vazio não casa com nada", () => {
     const f = lerFiltroSalvo({ canalId: "", etapaId: "   ", empresa: "" });
-    expect(f.canalId).toBeNull();
+    expect(f.canalIds).toEqual([]);
     expect(f.etapaId).toBeNull();
     expect(f.empresa).toBeNull();
   });
@@ -144,7 +144,7 @@ describe("lerFiltroSalvo", () => {
   it("ida e volta preserva o recorte", () => {
     const original = {
       ...FILTROS_VAZIOS,
-      canalId: "c1",
+      canalIds: ["c1"],
       etapaId: "e1",
       etiquetaIds: ["t1"],
       naoLidas: true,
@@ -157,7 +157,7 @@ describe("escreverFiltroSalvo", () => {
   it("grava só as chaves do recorte — campo de UI não vaza para o banco", () => {
     const comLixo = { ...FILTROS_VAZIOS, painelAberto: true } as never;
     expect(Object.keys(escreverFiltroSalvo(comLixo)).sort()).toEqual([
-      "canalId",
+      "canalIds",
       "empresa",
       "etapaId",
       "etiquetaIds",
@@ -185,7 +185,7 @@ describe("mesmoFiltro", () => {
     expect(mesmoFiltro(FILTROS_VAZIOS, { ...FILTROS_VAZIOS, naoLidas: true })).toBe(
       false,
     );
-    expect(mesmoFiltro(FILTROS_VAZIOS, { ...FILTROS_VAZIOS, canalId: "c1" })).toBe(
+    expect(mesmoFiltro(FILTROS_VAZIOS, { ...FILTROS_VAZIOS, canalIds: ["c1"] })).toBe(
       false,
     );
   });
@@ -228,7 +228,7 @@ describe("descreverFiltro", () => {
 
   it("troca id por nome", () => {
     const p = descreverFiltro(
-      { ...FILTROS_VAZIOS, canalId: "c1", etapaId: "e1", etiquetaIds: ["t1"] },
+      { ...FILTROS_VAZIOS, canalIds: ["c1"], etapaId: "e1", etiquetaIds: ["t1"] },
       CAT,
     );
     // A ordem é a MESMA das pastilhas do painel: canal → etiqueta → etapa.
@@ -244,7 +244,7 @@ describe("descreverFiltro", () => {
     const p = descreverFiltro(
       {
         ...FILTROS_VAZIOS,
-        canalId: "sumiu",
+        canalIds: ["sumiu"],
         etapaId: "sumiu",
         etiquetaIds: ["sumiu"],
         responsavelId: "sumiu",
@@ -274,7 +274,7 @@ describe("descreverFiltro", () => {
     const p = descreverFiltro(
       {
         ...FILTROS_VAZIOS,
-        canalId: "c1",
+        canalIds: ["c1"],
         etapaId: "e1",
         etiquetaIds: ["t1"],
         responsavelId: "u1",
@@ -287,7 +287,7 @@ describe("descreverFiltro", () => {
     // E com o catálogo CARREGADO os mesmos ids mortos voltam a ser órfãos —
     // a guarda não desligou a detecção.
     const morto = descreverFiltro(
-      { ...FILTROS_VAZIOS, canalId: "sumiu" },
+      { ...FILTROS_VAZIOS, canalIds: ["sumiu"] },
       CAT,
     );
     expect(morto[0].orfao).toBe(true);
@@ -352,7 +352,7 @@ describe("descreverFiltro", () => {
       ...FILTROS_VAZIOS,
       tipo: "grupos",
       status: "closed",
-      canalId: "c1",
+      canalIds: ["c1"],
       responsavelId: "u1",
       funilId: "p1",
       etapaId: "e1",
@@ -377,7 +377,7 @@ describe("limparOrfaos", () => {
   it("recorte todo vivo passa intacto", () => {
     const f = {
       ...FILTROS_VAZIOS,
-      canalId: "c1",
+      canalIds: ["c1"],
       responsavelId: "u1",
       etapaId: "e1",
       etiquetaIds: ["t1", "t2"],
@@ -388,7 +388,7 @@ describe("limparOrfaos", () => {
   it("CRÍTICO: id morto é descartado — senão o filtro devolve zero sem erro", () => {
     const f = {
       ...FILTROS_VAZIOS,
-      canalId: "morto",
+      canalIds: ["morto"],
       responsavelId: "morto",
       etapaId: "morto",
       etiquetaIds: ["t1", "morto"],
@@ -402,7 +402,7 @@ describe("limparOrfaos", () => {
   it("CRÍTICO: catálogo VAZIO não limpa nada — pode ser rede caída, não exclusão", () => {
     const f = {
       ...FILTROS_VAZIOS,
-      canalId: "c1",
+      canalIds: ["c1"],
       responsavelId: "u1",
       etapaId: "e1",
       etiquetaIds: ["t1"],
@@ -428,9 +428,9 @@ describe("limparOrfaos", () => {
   });
 
   it("não muda o objeto de entrada", () => {
-    const f = { ...FILTROS_VAZIOS, canalId: "morto" };
+    const f = { ...FILTROS_VAZIOS, canalIds: ["morto"] };
     limparOrfaos(f, CAT);
-    expect(f.canalId).toBe("morto");
+    expect(f.canalIds).toEqual(["morto"]);
   });
 });
 
@@ -450,7 +450,7 @@ describe("limparOrfaos", () => {
 const AMOSTRAS: Record<keyof FiltrosDoInbox, Partial<FiltrosDoInbox> | null> = {
   tipo: { tipo: "grupos" },
   status: { status: "closed" },
-  canalId: { canalId: "c1" },
+  canalIds: { canalIds: ["c1"] },
   responsavelId: { responsavelId: "u1" },
   etiquetaIds: { etiquetaIds: ["t1"] },
   // Só muda como as etiquetas já escolhidas se combinam — `contarFiltrosAtivos`
@@ -559,4 +559,55 @@ describe("os rótulos existem nos DOIS dicionários", () => {
       }
     });
   }
+});
+
+describe("canalIds — várias conexões num filtro (03/09)", () => {
+  const cat = {
+    canais: [
+      { id: "c1", label: "Comercial" },
+      { id: "c2", label: "Jurídico" },
+    ],
+    responsaveis: [],
+    etapas: [],
+    funis: new Map(),
+    etiquetas: [],
+  } as unknown as Parameters<typeof descreverFiltro>[1];
+
+  it("lê o formato antigo (canalId) e o novo (canalIds), sem repetição nem lixo", () => {
+    expect(lerFiltroSalvo({ canalId: "c1" }).canalIds).toEqual(["c1"]);
+    expect(lerFiltroSalvo({ canalIds: ["c1", "c2", "c1", "", 3] }).canalIds).toEqual(["c1", "c2"]);
+    expect(lerFiltroSalvo({ canalIds: "c1" }).canalIds).toEqual([]);
+    // o novo vence o antigo quando os dois vêm
+    expect(lerFiltroSalvo({ canalId: "c9", canalIds: ["c1"] }).canalIds).toEqual(["c1"]);
+  });
+
+  it("mesmoFiltro ignora a ordem das conexões", () => {
+    expect(
+      mesmoFiltro(
+        { ...FILTROS_VAZIOS, canalIds: ["c1", "c2"] },
+        { ...FILTROS_VAZIOS, canalIds: ["c2", "c1"] },
+      ),
+    ).toBe(true);
+    expect(
+      mesmoFiltro({ ...FILTROS_VAZIOS, canalIds: ["c1"] }, { ...FILTROS_VAZIOS, canalIds: ["c1", "c2"] }),
+    ).toBe(false);
+  });
+
+  it("descreve várias conexões num pedaço só, com ' ou '", () => {
+    const p = descreverFiltro({ ...FILTROS_VAZIOS, canalIds: ["c1", "c2"] }, cat);
+    expect(p).toHaveLength(1);
+    expect(p[0].rotulo).toEqual({ fonte: "dado", texto: "Comercial ou Jurídico" });
+    expect(p[0].limpar).toEqual({ canalIds: [] });
+  });
+
+  it("limparOrfaos tira só o id morto e mantém os vivos", () => {
+    expect(limparOrfaos({ ...FILTROS_VAZIOS, canalIds: ["c1", "morto", "c2"] }, cat).canalIds).toEqual([
+      "c1",
+      "c2",
+    ]);
+    // catálogo vazio não prova nada: nada é descartado
+    expect(
+      limparOrfaos({ ...FILTROS_VAZIOS, canalIds: ["morto"] }, { ...cat, canais: [] }).canalIds,
+    ).toEqual(["morto"]);
+  });
 });

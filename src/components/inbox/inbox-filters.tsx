@@ -26,7 +26,6 @@ import { useMemo, useState } from "react";
 import { ChevronDown, MailOpen, SlidersHorizontal, Star, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { ChannelFilter } from "@/components/channels/channel-filter";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -45,7 +44,7 @@ import {
   type FiltrosDoInbox,
   type SituacaoDaCaixa,
 } from "@/lib/inbox/filtros";
-import { descreverFiltro, nomeDaEtapa } from "@/lib/inbox/filtros-salvos";
+import { nomeDaEtapa } from "@/lib/inbox/filtros-salvos";
 import type { TipoDeConversa } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type {
@@ -96,22 +95,12 @@ interface InboxFiltersProps {
   /** Existe conversa de grupo carregada? Sem isso o recorte por tipo não decide nada. */
   temGrupos: boolean;
   /**
-   * O menu de filtros salvos (Fase A2), montado pela LISTA e entregue pronto.
-   *
-   * Slot em vez de props de dados porque este arquivo já é grande e acabou de
-   * ser reescrito pelo #73: passar `salvos`, `criar`, `renomear`, `apagar` e os
-   * catálogos por aqui só para repassá-los adiante engrossaria o conflito do
-   * próximo merge sem ninguém ganhar nada. Opcional para a tela continuar
-   * montável sem ele (é o que os testes fazem).
+   * A FILEIRA DE VISÕES (os filtros salvos do membro como chips), montada
+   * pela LISTA e entregue pronta — slot, porque os dados dela são da lista
+   * (hook de filtros salvos, padrão, catálogos). Desenhada logo abaixo das
+   * abas. Opcional para a tela continuar montável sem ela (testes).
    */
-  menuSalvos?: React.ReactNode;
-  /**
-   * A faixa "Filtro padrão: X · mostrar tudo", montada pela LISTA (o padrão
-   * é dela) e entregue pronta, como `menuSalvos`. Entra na linha de meta do
-   * resumo do recorte, ao lado do contador — fora daqui ela ficava solta
-   * abaixo do bloco, desalinhada de tudo.
-   */
-  faixaDoPadrao?: React.ReactNode;
+  visoes?: React.ReactNode;
   /** A caixa de busca, que vive fora daqui — o "Limpar tudo" precisa dela. */
   busca: string;
   onLimparBusca: () => void;
@@ -130,8 +119,7 @@ export function InboxFilters({
   etapasConfiaveis,
   funis,
   temGrupos,
-  menuSalvos,
-  faixaDoPadrao,
+  visoes,
   busca,
   onLimparBusca,
   exibindo,
@@ -139,12 +127,28 @@ export function InboxFilters({
 }: InboxFiltersProps) {
   const t = useTranslations("Inbox.conversationList");
   const [aberto, setAberto] = useState(false);
+  const [maisFiltros, setMaisFiltros] = useState(false);
   // A situação (aba Abertas/Encerradas) fica FORA da conta: é uma visão com
   // controle próprio, sempre à vista — ver `contarRecortesDoPainel`.
   const ativos = contarRecortesDoPainel(filtros);
 
   const mexer = (patch: Partial<FiltrosDoInbox>) =>
     onChange({ ...filtros, ...patch });
+
+  const alternarCanal = (id: string) =>
+    mexer({
+      canalIds: filtros.canalIds.includes(id)
+        ? filtros.canalIds.filter((x) => x !== id)
+        : [...filtros.canalIds, id],
+    });
+
+  // "Mais filtros" abre sozinho quando um dos campos escondidos está
+  // recortando: senão o painel esconderia de onde vem o recorte.
+  const maisAbertos =
+    maisFiltros ||
+    filtros.tipo !== "todas" ||
+    filtros.responsavelId !== null ||
+    filtros.empresa !== null;
 
   const alternarEtiqueta = (id: string) =>
     mexer({
@@ -209,47 +213,6 @@ export function InboxFilters({
   const escolherFunil = (funilId: string | null) =>
     mexer({ funilId, etapaId: null });
 
-  /**
-   * Uma pastilha por recorte ativo, cada uma removível sozinha.
-   *
-   * ⚠️ SAI DO MÓDULO, e antes eram DUAS descrições do mesmo recorte: o
-   * cabeçalho de `filtros-salvos.ts` declarava "UMA descrição, DUAS
-   * superfícies", mas o painel montava a lista à mão — `aoRemover: () =>
-   * mexer({ tipo: "todas" })` aqui, `limpar: { tipo: "todas" }` lá, o mesmo
-   * conhecimento escrito duas vezes. O menu de filtros salvos já consumia o
-   * módulo; só esta metade faltava.
-   *
-   * O elo que impedia as duas de divergirem era um TESTE (as `AMOSTRAS`, um
-   * `Record<keyof FiltrosDoInbox, …>` que o compilador cobra) — ou seja, a
-   * garantia existia e a duplicata também. Agora o campo novo entra num
-   * lugar só.
-   *
-   * ⚠️ `orfao` NÃO vira "(apagado)" aqui, ao contrário do menu: a pastilha
-   * mantém o rótulo genérico do campo, que é o comportamento que já existia
-   * e o que o próprio `PedacoDoFiltro` documenta. Um id que não resolve pode
-   * ser catálogo ainda carregando.
-   *
-   * Sem `useMemo` de propósito: a versão antiga também remontava a cada
-   * render, e `mexer` não é memoizado — envolver isto num memo é o caso que
-   * o React Compiler recusa ("existing memoization could not be preserved").
-   */
-  const pastilhas = descreverFiltro(filtros, {
-    canais,
-    responsaveis,
-    etapas,
-    funis,
-    etiquetas,
-  })
-    // A aba Encerradas não vira pastilha: ela já está acesa logo acima, e o
-    // menu de filtros salvos continua descrevendo-a (é a mesma função).
-    .filter((p) => p.chave !== "status")
-    .map((p) => ({
-      chave: p.chave,
-      texto: p.rotulo.fonte === "i18n" ? t(p.rotulo.chave) : p.rotulo.texto,
-      cor: p.cor,
-      aoRemover: () => mexer(p.limpar),
-    }));
-
   return (
     <div className="space-y-2">
       {/* ⚠️ UMA LINHA SÓ, e todos os controles com a MESMA cara (pedido do
@@ -258,10 +221,11 @@ export function InboxFilters({
           dois botões de texto ao lado, e "Filtros"/"Salvos" embaixo, cada um
           com padding e forma próprios porque era o jeito de caber em 296px.
           Agora: as duas ABAS (Abertas = a caixa; Encerradas = o acervo) como
-          abas de verdade, sublinhadas, e à direita quatro chips quadrados só
-          com ícone — os dois interruptores que SOMAM (favoritas, não lidas),
-          o menu de filtros salvos e o botão do painel. O nome vive no
-          `title`/`aria-label`.
+          abas de verdade, sublinhadas, e à direita três chips quadrados só
+          com ícone — os dois interruptores que SOMAM (favoritas, não lidas)
+          e o botão do painel. (O chip do menu de filtros salvos saiu em
+          03/09: os salvos viraram a FILEIRA DE VISÕES logo abaixo.) O nome
+          vive no `title`/`aria-label`.
           MEDIDO em 03/09: abas ~130px + chips ~148px = ~290px nos 296px úteis
           da coluna no `lg` (336 no `xl`, onde ela passa a 360px). Sem
           `flex-wrap` de propósito: se não couber, é para encolher, nunca
@@ -323,11 +287,6 @@ export function InboxFilters({
             <MailOpen />
           </button>
 
-          {/* Colado no botão "Filtros" porque é o mesmo assunto — mas com
-              gatilho próprio: aquele botão já abre e fecha o painel, e um
-              segundo comportamento no mesmo clique não existe. */}
-          {menuSalvos}
-
           <button
             type="button"
             onClick={() => setAberto((v) => !v)}
@@ -358,195 +317,65 @@ export function InboxFilters({
           grupo sair da lista com "só grupos" marcado, o campo Tipo some do
           painel mas o recorte continua valendo. A pastilha continua ali, com
           o X. */}
-      {/* ⚠️ O RESUMO DO RECORTE é UM bloco, em duas linhas com papéis fixos
-          (pedido do operador, 2026-09-03 — com um filtro salvo aplicado, a
-          pastilha, o "Limpar tudo", o contador e a faixa do padrão ficavam
-          "desencaixados": o contador, com `ml-auto`, caía sozinho numa
-          segunda linha assim que a pastilha crescia).
-          Linha 1 — as PASTILHAS do recorte ativo e o "Limpar tudo", com a
-          MESMA forma (chips de 22px, texto de 11px), quebrando juntos.
-          Linha 2 — a META, numa linha só que nunca quebra: à esquerda a
-          faixa do filtro padrão (vem da LISTA por slot, porque o padrão é
-          dela; trunca), à direita o contador (nunca encolhe).
-          As pastilhas continuam visíveis com o painel fechado: sem elas o
-          operador vê 8 de 64 conversas e um distintivo "①" que diz que
-          EXISTE um filtro, não QUAL. E salvam o caso do filtro cujo campo
-          sumiu do painel (o último grupo saiu com "só grupos" marcado): a
-          pastilha continua ali, com o X. */}
-      {(ativos > 0 ||
-        busca.trim().length > 0 ||
-        exibindo !== total ||
-        faixaDoPadrao) && (
-        <div className="space-y-1">
-          {(pastilhas.length > 0 || ativos > 0 || busca.trim().length > 0) && (
-            <div className="flex flex-wrap items-center gap-1">
-              {pastilhas.map((p) => (
-                <button
-                  key={p.chave}
-                  type="button"
-                  onClick={p.aoRemover}
-                  title={t("removeFilter", { filtro: p.texto })}
-                  className="inline-flex h-[22px] max-w-full items-center gap-1 rounded-full bg-muted px-2 text-[11px] text-foreground transition-colors hover:bg-muted/70"
-                >
-                  {p.cor && (
-                    <span
-                      className="h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: p.cor }}
-                    />
-                  )}
-                  <span className="max-w-32 truncate">{p.texto}</span>
-                  <X className="h-3 w-3 shrink-0" />
-                </button>
-              ))}
-
-              {/* Limpa também a BUSCA: ela recorta a lista igual aos filtros,
-                  e um "limpar tudo" que deixa a busca de pé não limpou tudo.
-                  Por isso aparece com busca preenchida mesmo sem nenhum
-                  filtro. Mantém a ABA (ver `contarRecortesDoPainel`). */}
-              {(ativos > 0 || busca.trim().length > 0) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange({ ...FILTROS_VAZIOS, status: filtros.status });
-                    onLimparBusca();
-                  }}
-                  className="inline-flex h-[22px] items-center gap-1 rounded-full border border-dashed border-border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <X className="h-3 w-3" />
-                  {t("clearAll")}
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* O contador só aparece quando algo recorta — ele existe para
-              explicar um resultado vazio ou curto; com a lista inteira seria
-              ruído. A faixa do padrão explica um recorte que o operador NÃO
-              fez (a caixa já abriu assim). */}
-          {(faixaDoPadrao || ativos > 0 || exibindo !== total) && (
-            <div className="flex items-center justify-between gap-2 px-0.5 text-[11px] text-muted-foreground">
-              <div className="flex min-w-0 items-center gap-x-1">{faixaDoPadrao}</div>
-              {(ativos > 0 || exibindo !== total) && (
-                <span className="shrink-0">
-                  {t("showingCount", { count: exibindo, total })}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {/* A fileira de visões (filtros salvos como chips) — ver `visoes-salvas`.
+          As PASTILHAS do recorte, o "Limpar tudo" solto e a faixa "Filtro
+          padrão" moraram aqui até 03/09 e SAÍRAM a pedido do operador: com
+          um filtro salvo aplicado viravam um aglomerado que repetia o que o
+          chip aceso já diz. O que resta do recorte ad hoc está no painel
+          (contador e "Limpar", no rodapé) e no distintivo do botão. */}
+      {visoes}
 
       {aberto && (
-        // ⚠️ UMA coluna, e `sm:grid-cols-2` seria errado aqui: `sm:` olha a
-        // LARGURA DA JANELA, mas esta barra tem largura FIXA no desktop
-        // (320px no `lg`, 360px no `xl`). Duas colunas dariam ~130px cada, e "Recebeu
+        // ⚠️ PAINEL COMPACTO (03/09): os três campos do dia a dia FIXOS —
+        // conexões, etiquetas, funil/etapa — e o resto (tipo, responsável,
+        // empresa) atrás de "Mais filtros". Uma coluna, de propósito: `sm:`
+        // olha a JANELA, mas esta barra tem largura FIXA no desktop (320px
+        // no `lg`, 360 no `xl`). Duas colunas dariam ~130px cada, e "Recebeu
         // link de agendamento" ou "Leonardo Cabral Baptista" truncariam no
-        // próprio gatilho — o operador não conseguiria ler o filtro que
-        // escolheu. E o efeito era invertido: no celular, onde a lista ocupa
-        // a tela toda, ele caía para uma coluna larga.
-        <div className="grid gap-3 rounded-lg border border-border bg-muted/30 p-3">
-          {temGrupos && (
-            <Campo rotulo={t("labelType")}>
-              <Escolha
-                rotulo={
-                  filtros.tipo === "grupos"
-                    ? t("typeGroups")
-                    : filtros.tipo === "diretas"
-                      ? t("typeDirect")
-                      : t("typeAll")
-                }
-                ativo={filtros.tipo !== "todas"}
-                opcoes={(
-                  [
-                    ["todas", t("typeAll")],
-                    ["diretas", t("typeDirect")],
-                    ["grupos", t("typeGroups")],
-                  ] as [TipoDeConversa, string][]
-                ).map(([valor, texto]) => ({
-                  chave: valor,
-                  texto,
-                  escolhido: filtros.tipo === valor,
-                  aoEscolher: () => mexer({ tipo: valor }),
-                }))}
-              />
-            </Campo>
-          )}
-
+        // próprio gatilho. E o efeito era invertido: no celular, onde a
+        // lista ocupa a tela toda, ele caía para uma coluna larga.
+        <div className="grid gap-2 rounded-lg border border-border bg-muted/30 p-2.5">
+          {/* CONEXÕES — várias, somando com OU (pedido do operador, 03/09).
+              Caixas de marcação como as etiquetas; some com menos de 2
+              conexões (convenção do projeto: seletor de uma opção não decide
+              nada). Vazio = todas. */}
           {canais.length >= 2 && (
-            <Campo rotulo={t("channelFilter")}>
-              {/* Peça compartilhada: ela já traz o gate de 2+ e o rótulo do
-                  canal com bolinha de estado. */}
-              <ChannelFilter
-                channels={canais}
-                value={filtros.canalId}
-                onChange={(canalId) => mexer({ canalId })}
-                className="h-8 w-full justify-between"
-              />
-            </Campo>
-          )}
-
-          <Campo rotulo={t("labelAssignee")}>
-            <Escolha
-              rotulo={
-                filtros.responsavelId === null
-                  ? t("assigneeAll")
-                  : filtros.responsavelId === SEM_RESPONSAVEL
-                    ? t("assigneeNone")
-                    : // ⚠️ `||`, não `??`: `profiles.full_name` é NOT NULL
-                      // mas SEM default — pode ser string vazia, e com `??` o
-                      // gatilho ficaria em branco enquanto o filtro está
-                      // pegando.
-                      (responsavelAtual?.full_name ||
-                      responsavelAtual?.email ||
-                      t("assigneeUnnamed"))
-              }
-              ativo={filtros.responsavelId !== null}
-              opcoes={[
-                {
-                  chave: "__todos__",
-                  texto: t("assigneeAll"),
-                  escolhido: filtros.responsavelId === null,
-                  aoEscolher: () => mexer({ responsavelId: null }),
-                },
-                {
-                  // A pergunta da manhã: "o que ninguém pegou ainda?".
-                  chave: SEM_RESPONSAVEL,
-                  texto: t("assigneeNone"),
-                  escolhido: filtros.responsavelId === SEM_RESPONSAVEL,
-                  aoEscolher: () => mexer({ responsavelId: SEM_RESPONSAVEL }),
-                },
-                ...responsaveis.map((p) => ({
-                  chave: p.user_id,
-                  // Nunca o `user_id`: um UUID cru na frente do operador não
-                  // identifica ninguém.
-                  texto: p.full_name || p.email || t("assigneeUnnamed"),
-                  escolhido: filtros.responsavelId === p.user_id,
-                  aoEscolher: () => mexer({ responsavelId: p.user_id }),
-                })),
-              ]}
-            />
-          </Campo>
-
-          {empresas.length > 0 && (
-            <Campo rotulo={t("labelCompany")}>
-              <Escolha
-                rotulo={filtros.empresa ?? t("allCompanies")}
-                ativo={filtros.empresa !== null}
-                opcoes={[
-                  {
-                    chave: "__todas__",
-                    texto: t("allCompanies"),
-                    escolhido: filtros.empresa === null,
-                    aoEscolher: () => mexer({ empresa: null }),
-                  },
-                  ...empresas.map((co) => ({
-                    chave: co,
-                    texto: co,
-                    escolhido: filtros.empresa === co,
-                    aoEscolher: () => mexer({ empresa: co }),
-                  })),
-                ]}
-              />
+            <Campo rotulo={t("labelChannels")}>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className={cn(
+                    "inline-flex h-8 w-full min-w-0 items-center justify-between gap-1 rounded-md border border-border px-2 text-xs transition-colors hover:bg-muted",
+                    filtros.canalIds.length > 0
+                      ? "text-primary"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <span className="truncate">
+                    {filtros.canalIds.length === 0
+                      ? t("channelsAll")
+                      : filtros.canalIds.length === 1
+                        ? (canais.find((c) => c.id === filtros.canalIds[0])?.label ??
+                          t("channelsChosen", { count: 1 }))
+                        : t("channelsChosen", { count: filtros.canalIds.length })}
+                  </span>
+                  <ChevronDown className="h-3 w-3 shrink-0" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  className="max-h-64 w-60 overflow-y-auto border-border bg-popover"
+                >
+                  {canais.map((c) => (
+                    <DropdownMenuCheckboxItem
+                      key={c.id}
+                      checked={filtros.canalIds.includes(c.id)}
+                      onCheckedChange={() => alternarCanal(c.id)}
+                      className="text-sm text-popover-foreground"
+                    >
+                      <span className="truncate">{c.label}</span>
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </Campo>
           )}
 
@@ -591,9 +420,8 @@ export function InboxFilters({
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
-
-                {/* O modo só faz diferença com 2+ etiquetas escolhidas — com
-                    uma só, "qualquer" e "todas" dão o mesmo resultado. */}
+                {/* "Qualquer uma" × "Todas elas" só decide algo com 2+ etiquetas
+                    marcadas. */}
                 {filtros.etiquetaIds.length >= 2 && (
                   <button
                     type="button"
@@ -603,7 +431,7 @@ export function InboxFilters({
                           filtros.modoDeEtiqueta === "todas" ? "qualquer" : "todas",
                       })
                     }
-                    className="h-8 shrink-0 rounded-md border border-border px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="h-8 shrink-0 rounded-md border border-border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     {filtros.modoDeEtiqueta === "todas"
                       ? t("tagModeAll")
@@ -614,10 +442,8 @@ export function InboxFilters({
             </Campo>
           )}
 
-          {/* ⚠️ FUNIL E ETAPA FICAM POR ÚLTIMO, a pedido do operador: são o
-              recorte menos usado no dia a dia e o único que ocupa duas
-              linhas. A ordem das pastilhas lá em cima acompanha esta — elas
-              existem para o olho não ter de procurar. */}
+          {/* FUNIL (só com 2+ funis nomeados) e ETAPA — ver `filtros.ts`:
+              escolher etapa nunca carimba o funil; a etapa VENCE o funil. */}
           {etapasConfiaveis && doisNiveis && (
             <Campo rotulo={t("labelPipeline")}>
               <Escolha
@@ -638,9 +464,6 @@ export function InboxFilters({
                     aoEscolher: () => escolherFunil(null),
                   },
                   {
-                    // "Sem negócio" mora no PRIMEIRO nível porque é a resposta
-                    // a "qual funil?" — nenhum. No segundo, ele seria uma
-                    // etapa que não existe dentro do funil escolhido.
                     chave: SEM_ETAPA,
                     texto: t("stageNone"),
                     escolhido: filtros.etapaId === SEM_ETAPA,
@@ -657,10 +480,6 @@ export function InboxFilters({
               />
             </Campo>
           )}
-
-          {/* Com dois níveis o seletor de etapa só aparece depois do funil:
-              antes disso ele não teria o que oferecer. Com um funil só ele é
-              o campo inteiro, como sempre foi. */}
           {etapasConfiaveis &&
             etapasDoFunil.length > 0 &&
             (!doisNiveis || funilVisivel !== null) && (
@@ -675,9 +494,7 @@ export function InboxFilters({
                           ? doisNiveis
                             ? etapaAtual.name
                             : nomeDaEtapa(etapaAtual, funis)
-                          : // Etapa escolhida que sumiu da lista (apagada):
-                            // "Qualquer etapa" mentiria sobre um filtro ativo.
-                            t("labelStage")
+                          : t("labelStage")
                   }
                   ativo={filtros.etapaId !== null}
                   opcoes={[
@@ -687,10 +504,6 @@ export function InboxFilters({
                       escolhido: filtros.etapaId === null,
                       aoEscolher: () => mexer({ etapaId: null }),
                     },
-                    // Sem esta opção, quem ainda não virou negócio some de
-                    // qualquer recorte por etapa — e é justamente quem
-                    // precisa de atenção. Com dois níveis ela subiu para o
-                    // seletor de funil.
                     ...(doisNiveis
                       ? []
                       : [
@@ -703,10 +516,6 @@ export function InboxFilters({
                         ]),
                     ...etapasDoFunil.map((e) => ({
                       chave: e.id,
-                      // Sem o prefixo do funil quando ele já foi escolhido no
-                      // campo de cima: repetir "Bancário - Comercial ·" em
-                      // cada uma das 10 etapas empurra o nome delas para fora
-                      // da caixa.
                       texto: doisNiveis ? e.name : nomeDaEtapa(e, funis),
                       escolhido: filtros.etapaId === e.id,
                       aoEscolher: () => mexer({ etapaId: e.id }),
@@ -715,6 +524,136 @@ export function InboxFilters({
                 />
               </Campo>
             )}
+
+          {/* MAIS FILTROS: tipo, responsável e empresa — os menos usados no
+              dia a dia. Abrem sozinhos quando um deles está recortando,
+              senão o operador não veria de onde vem o recorte. */}
+          {(temGrupos || responsaveis.length > 0 || empresas.length > 0) && (
+            <button
+              type="button"
+              onClick={() => setMaisFiltros((v) => !v)}
+              aria-expanded={maisAbertos}
+              className="flex items-center gap-1 px-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronDown
+                className={cn("h-3 w-3 transition-transform", maisAbertos && "rotate-180")}
+              />
+              {maisAbertos ? t("fewerFilters") : t("moreFilters")}
+            </button>
+          )}
+
+          {maisAbertos && temGrupos && (
+            <Campo rotulo={t("labelType")}>
+              <Escolha
+                rotulo={
+                  filtros.tipo === "grupos"
+                    ? t("typeGroups")
+                    : filtros.tipo === "diretas"
+                      ? t("typeDirect")
+                      : t("typeAll")
+                }
+                ativo={filtros.tipo !== "todas"}
+                opcoes={(
+                  [
+                    ["todas", t("typeAll")],
+                    ["diretas", t("typeDirect")],
+                    ["grupos", t("typeGroups")],
+                  ] as [TipoDeConversa, string][]
+                ).map(([valor, texto]) => ({
+                  chave: valor,
+                  texto,
+                  escolhido: filtros.tipo === valor,
+                  aoEscolher: () => mexer({ tipo: valor }),
+                }))}
+              />
+            </Campo>
+          )}
+
+          {maisAbertos && (
+            <Campo rotulo={t("labelAssignee")}>
+              <Escolha
+                rotulo={
+                  filtros.responsavelId === null
+                    ? t("assigneeAll")
+                    : filtros.responsavelId === SEM_RESPONSAVEL
+                      ? t("assigneeNone")
+                      : // ⚠️ `||`, não `??`: `profiles.full_name` é NOT NULL
+                        // mas SEM default — pode ser string vazia.
+                        (responsavelAtual?.full_name ||
+                        responsavelAtual?.email ||
+                        t("assigneeUnnamed"))
+                }
+                ativo={filtros.responsavelId !== null}
+                opcoes={[
+                  {
+                    chave: "__todos__",
+                    texto: t("assigneeAll"),
+                    escolhido: filtros.responsavelId === null,
+                    aoEscolher: () => mexer({ responsavelId: null }),
+                  },
+                  {
+                    chave: SEM_RESPONSAVEL,
+                    texto: t("assigneeNone"),
+                    escolhido: filtros.responsavelId === SEM_RESPONSAVEL,
+                    aoEscolher: () => mexer({ responsavelId: SEM_RESPONSAVEL }),
+                  },
+                  ...responsaveis.map((p) => ({
+                    chave: p.user_id,
+                    texto: p.full_name || p.email || t("assigneeUnnamed"),
+                    escolhido: filtros.responsavelId === p.user_id,
+                    aoEscolher: () => mexer({ responsavelId: p.user_id }),
+                  })),
+                ]}
+              />
+            </Campo>
+          )}
+
+          {maisAbertos && empresas.length > 0 && (
+            <Campo rotulo={t("labelCompany")}>
+              <Escolha
+                rotulo={filtros.empresa ?? t("allCompanies")}
+                ativo={filtros.empresa !== null}
+                opcoes={[
+                  {
+                    chave: "__todas__",
+                    texto: t("allCompanies"),
+                    escolhido: filtros.empresa === null,
+                    aoEscolher: () => mexer({ empresa: null }),
+                  },
+                  ...empresas.map((co) => ({
+                    chave: co,
+                    texto: co,
+                    escolhido: filtros.empresa === co,
+                    aoEscolher: () => mexer({ empresa: co }),
+                  })),
+                ]}
+              />
+            </Campo>
+          )}
+
+          {/* Rodapé: o contador (só quando algo recorta — ele existe para
+              explicar um resultado curto) e o "Limpar", que limpa também a
+              BUSCA (um "limpar" que deixa a busca de pé não limpou) e mantém
+              a ABA (ver `contarRecortesDoPainel`). */}
+          <div className="flex items-center justify-between gap-2 px-0.5 pt-0.5 text-[11px] text-muted-foreground">
+            <span>
+              {(ativos > 0 || exibindo !== total) &&
+                t("resultCount", { count: exibindo, total })}
+            </span>
+            {(ativos > 0 || busca.trim().length > 0) && (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange({ ...FILTROS_VAZIOS, status: filtros.status });
+                  onLimparBusca();
+                }}
+                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+                {t("clearAll")}
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

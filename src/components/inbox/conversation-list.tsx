@@ -27,11 +27,10 @@ import {
   type AchadoNoTexto,
 } from "@/lib/inbox/busca-em-mensagens";
 import { InboxFilters } from "@/components/inbox/inbox-filters";
-import { FiltrosSalvosMenu } from "@/components/inbox/filtros-salvos-menu";
+import { VisoesSalvas } from "@/components/inbox/visoes-salvas";
 import { useFiltrosSalvos } from "@/hooks/use-filtros-salvos";
 import {
   limparOrfaos,
-  mesmoFiltro,
   type CatalogosDoFiltro,
 } from "@/lib/inbox/filtros-salvos";
 import { tituloDaConversa } from "@/lib/cb-groups/display";
@@ -46,7 +45,6 @@ import type {
 } from "@/types";
 import {
   AlarmClock,
-  Bookmark,
   Search,
   Users,
   Star,
@@ -492,9 +490,27 @@ export function ConversationList({
    * módulo), então o pior caso é o filtro ainda recortar demais — nunca a tela
    * afirmar que não há conversa nenhuma.
    */
-  const aplicarFiltroSalvo = useCallback(
-    (f: FiltrosDoInbox) => setFiltros(limparOrfaos(f, catalogosDoFiltro)),
-    [catalogosDoFiltro],
+  /**
+   * A BASE da visão: o chip clicado por último (ou o padrão semeado). É o
+   * que permite oferecer "Salvar alterações em X" quando o operador parte
+   * de um filtro salvo e mexe — sem ela, só existiria "salvar como novo".
+   * Some ao clicar em "Todas" ou ao limpar; NÃO some ao mexer (é para isso
+   * que serve). Ver `lib/inbox/visoes.ts`.
+   */
+  const [visaoBaseId, setVisaoBaseId] = useState<string | null>(null);
+  /** Espelho de `filtros` para efeitos que não podem depender dele (a semente do padrão). */
+  const filtrosRef = useRef(filtros);
+  useEffect(() => {
+    filtrosRef.current = filtros;
+  }, [filtros]);
+  const aplicarVisao = useCallback(
+    (f: FiltrosDoInbox | null, baseId: string | null) => {
+      setVisaoBaseId(baseId);
+      // "Todas": limpa o recorte do painel mas MANTÉM a aba (situação não é
+      // recorte — ver `contarRecortesDoPainel`).
+      setFiltros((prev) => (f ? f : { ...FILTROS_VAZIOS, status: prev.status }));
+    },
+    [],
   );
 
   // `stage_id` → `pipeline_id`, para o primeiro nível do recorte (escolher só
@@ -642,12 +658,15 @@ export function ConversationList({
     // consulta, guardada por `semeouPadraoRef` e pelo teste de recorte
     // intacto acima. Não há como derivá-la no render sem reaplicá-la a cada
     // mudança, que é justamente o bug que a ref evita.
+    // ⚠️ Lê o recorte pela REF, não pelo updater: um `setState` dentro de
+    // outro updater é efeito colateral onde o React exige pureza. A ref
+    // espelha `filtros` num efeito próprio (abaixo).
+    if (contarFiltrosAtivos(filtrosRef.current) !== 0) return;
+    // A base da visão é o padrão: mexer depois oferece "salvar alterações".
+    // (Mesma justificativa do `setFiltros` logo abaixo: é semente única.)
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setFiltros((prev) =>
-      contarFiltrosAtivos(prev) === 0
-        ? limparOrfaos(padrao.filtros, catalogosDoFiltro)
-        : prev,
-    );
+    setVisaoBaseId(padrao.id);
+    setFiltros(limparOrfaos(padrao.filtros, catalogosDoFiltro));
   }, [
     etapaInicial,
     salvosCarregando,
@@ -670,34 +689,6 @@ export function ConversationList({
     !etapaInicial &&
     (salvosCarregando ||
       (filtroPadraoId !== null && etapasStatus === "carregando"));
-
-  /**
-   * O recorte na tela é exatamente o do filtro padrão?
-   *
-   * ⚠️ É o que a faixa precisa saber. Um inbox recortado por algo que o
-   * operador NÃO fez nesta sessão precisa de mais que o distintivo de
-   * contagem: precisa dizer de onde veio o recorte e oferecer a saída.
-   */
-  const padraoNaTela = useMemo(() => {
-    const padrao = filtroPadraoId
-      ? filtrosSalvos.find((f) => f.id === filtroPadraoId)
-      : undefined;
-    if (!padrao) return null;
-    // ⚠️ Compara contra o recorte JÁ LIMPO (#16 do plano 31/08): o que vai
-    // para o estado passa por `limparOrfaos` (semente e clique), então uma
-    // referência morta no filtro gravado — etiqueta apagada, canal
-    // desconectado — fazia `mesmoFiltro` reprovar contra o cru e a faixa
-    // sumia EXATAMENTE no caso que ela existe para socorrer: um inbox
-    // recortado por algo que o operador não fez nesta sessão.
-    const limpo = limparOrfaos(padrao.filtros, catalogosDoFiltro);
-    // ⚠️ Padrão que ficou SEM critério depois da limpeza não está "na tela":
-    // todo id dele morreu, a semente gravou `FILTROS_VAZIOS`, e o vazio é
-    // igual ao vazio — a faixa dizia "Filtro padrão: X" sobre um inbox sem
-    // recorte nenhum, e "mostrar tudo" gravava o mesmo vazio, então ela
-    // não saía nunca (achado do Codex no PR #92).
-    if (contarFiltrosAtivos(limpo) === 0) return null;
-    return mesmoFiltro(limpo, filtros) ? padrao : null;
-  }, [filtroPadraoId, filtrosSalvos, filtros, catalogosDoFiltro]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -843,47 +834,22 @@ export function ConversationList({
           etapasConfiaveis={etapasStatus === "ok"}
           funis={funis}
           temGrupos={temGrupos}
-          menuSalvos={
-            <FiltrosSalvosMenu
+          visoes={
+            <VisoesSalvas
               salvos={filtrosSalvos}
               padraoId={filtroPadraoId}
               carregando={salvosCarregando}
               falhou={salvosFalhou}
               filtrosAtuais={filtros}
-              onAplicar={aplicarFiltroSalvo}
+              baseId={visaoBaseId}
               catalogos={catalogosDoFiltro}
+              onAplicar={aplicarVisao}
               criar={criarFiltroSalvo}
               regravar={regravarFiltroSalvo}
               renomear={renomearFiltroSalvo}
               apagar={apagarFiltroSalvo}
               definirPadrao={definirFiltroPadrao}
             />
-          }
-          // ⚠️ A FAIXA DO PADRÃO, por slot. O distintivo de contagem explica
-          // um recorte que o operador ACABOU DE FAZER; este ele não fez — a
-          // caixa já abriu assim. Sem uma linha dizendo de onde veio e como
-          // sair, "preciso remover manualmente" (que é o pedido) vira
-          // "sumiram as conversas". Limpa só os FILTROS, não a busca: a
-          // faixa fala do filtro padrão, e a caixa de busca continua
-          // visivelmente preenchida se houver texto nela. Mora na linha de
-          // meta do resumo do recorte (`inbox-filters`), ao lado do contador.
-          faixaDoPadrao={
-            padraoNaTela ? (
-              <>
-                <Bookmark className="h-3 w-3 shrink-0 fill-current text-primary" />
-                <span className="min-w-0 truncate">
-                  {t("defaultFilterBanner", { nome: padraoNaTela.nome })}
-                </span>
-                <span aria-hidden="true">·</span>
-                <button
-                  type="button"
-                  onClick={() => setFiltros(FILTROS_VAZIOS)}
-                  className="shrink-0 underline underline-offset-2 transition-colors hover:text-foreground"
-                >
-                  {t("showEverything")}
-                </button>
-              </>
-            ) : null
           }
           busca={search}
           onLimparBusca={() => setSearch("")}
