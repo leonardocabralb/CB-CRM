@@ -15,7 +15,11 @@ import {
   isGroupJid,
   normalizeGroupUpsert,
 } from '@/lib/whatsapp/transport/evolution-group-inbound';
-import { persistDeviceMessage, persistInboundMessage } from '@/lib/whatsapp/inbound-store';
+import {
+  persistDeviceMessage,
+  persistInboundMessage,
+  type PersistedInbound,
+} from '@/lib/whatsapp/inbound-store';
 import {
   aprenderNossoLid,
   persistGroupDeviceMessage,
@@ -39,6 +43,8 @@ import {
 } from '@/lib/whatsapp/transport/evolution-media';
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
 import { decrypt } from '@/lib/whatsapp/encryption';
+import { precisaConferirFoto } from '@/lib/contacts/foto-de-perfil';
+import { atualizarFotoDoContato } from '@/lib/whatsapp/foto-do-contato';
 
 // Inbound processing fans out to flows / automations / AI, so give the
 // after() block headroom beyond the platform default.
@@ -168,6 +174,7 @@ export async function POST(request: Request) {
         /** Mensagem de grupo — só nela mexemos em `media_state`. */
         ehGrupo?: boolean;
       }[] = [];
+      const paraFoto: NonNullable<PersistedInbound['contato']>[] = [];
 
       for (const item of items) {
         try {
@@ -239,6 +246,17 @@ export async function POST(request: Request) {
           const gravada = normalized.fromMe
             ? await persistDeviceMessage(supabaseAdmin(), normalized)
             : await persistInboundMessage(supabaseAdmin(), normalized);
+
+          // Foto de perfil (973): só quem nunca foi conferido ou passou de
+          // 30 dias — e depois de tudo gravado, fora do caminho da mensagem.
+          if (
+            gravada?.contato &&
+            !normalized.remoteJid?.endsWith('@g.us') &&
+            precisaConferirFoto(gravada.contato, Date.now()) &&
+            !paraFoto.some((c) => c.id === gravada.contato!.id)
+          ) {
+            paraFoto.push(gravada.contato);
+          }
 
           if (gravada && normalized.contentType !== 'text' && !normalized.mediaUrl) {
             semAnexo.push({
@@ -340,6 +358,13 @@ export async function POST(request: Request) {
             }
           }
         }
+      }
+
+      // Fotos de perfil, por último: cada uma é uma chamada à Evolution mais
+      // um download, e nada aqui pode segurar a mensagem (já gravada) nem o
+      // anexo (já baixado). Falha vira log — a próxima mensagem tenta de novo.
+      if (paraFoto.length > 0) {
+        await conferirFotosDosContatos(route.accountId, route.channelId, paraFoto);
       }
     });
     return NextResponse.json({ ok: true });
@@ -748,6 +773,40 @@ async function registrarReacao(item: EvolutionUpsert): Promise<void> {
     { onConflict: 'message_id,actor_type,actor_id' },
   );
   if (error) console.error('[evolution/webhook] gravar reação falhou:', error.message);
+}
+
+/**
+ * Foto de perfil dos contatos que acabaram de falar (973): monta o client
+ * UMA vez para o canal e confere um a um. Nunca lança.
+ */
+async function conferirFotosDosContatos(
+  accountId: string,
+  channelId: string | null,
+  contatos: NonNullable<PersistedInbound['contato']>[],
+): Promise<void> {
+  try {
+    const canal = await resolveChannelForConversation(supabaseAdmin(), accountId, {
+      channel_id: channelId,
+    });
+    if (!canal || canal.provider !== 'evolution') return;
+    if (!canal.base_url || !canal.instance_name || !canal.api_key) return;
+    const client = new EvolutionClient({
+      baseUrl: canal.base_url,
+      instance: canal.instance_name,
+      apikey: decrypt(canal.api_key),
+    });
+    for (const c of contatos) {
+      await atualizarFotoDoContato({
+        db: supabaseAdmin(),
+        client,
+        accountId,
+        contactId: c.id,
+        phone: c.phone,
+      });
+    }
+  } catch (err) {
+    console.error('[evolution/webhook] foto de perfil:', err instanceof Error ? err.message : err);
+  }
 }
 
 /**

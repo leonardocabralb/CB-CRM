@@ -1051,6 +1051,34 @@ referência" Chatguru).** Quatro mudanças pequenas com um motivo cada:
   é comparada contra a prop do render atual (`de === conversationId`) — a
   armadilha do efeito passivo, de novo.
 
+⚠️ **Foto de perfil do contato (973): a URL do WhatsApp EXPIRA, a cópia é
+nossa.** `lib/contacts/foto-de-perfil.ts` (puro, testado),
+`lib/whatsapp/foto-do-contato.ts` (I/O), `EvolutionClient.fetchProfilePictureUrl`,
+gancho no webhook da Evolution e a rota `POST /api/cb/channels/[id]/fotos`
+(botão "Buscar fotos dos contatos" em Conexões). O que morde código novo:
+
+- ⚠️ **`contacts.avatar_checked_at` é o que impede a chamada infinita.** A
+  Evolution devolve `profilePictureUrl: null` tanto para "não tem foto"
+  quanto para "esconde de quem não é contato" (ela captura o erro do Baileys
+  e responde 200) — sem o carimbo, todo contato sem foto seria consultado a
+  cada mensagem, para sempre. Revalidação: 30 dias (`REVALIDAR_FOTO_MS`).
+- ⚠️ **`null` NÃO apaga a foto que já temos**, pelo mesmo motivo: quem só
+  mexeu na privacidade perderia a foto. Só o carimbo avança.
+- ⚠️ **A imagem é BAIXADA para `chat-media`, em
+  `account-<conta>/avatares/<contato>.jpg`** — caminho ESTÁVEL com `upsert`
+  (a revalidação sobrescreve, sem cópia órfã por mês) e `?v=<epoch>` na URL
+  gravada, senão o navegador serve a foto velha pelo `cacheControl`. Nenhuma
+  policy nova: as da 020/023 casam só o primeiro segmento (qualquer membro
+  pode apagar o objeto pelo Storage — aceito: a próxima conferência refaz).
+- **Dois caminhos, um destino**: o webhook confere UM contato por vez
+  (depois de a mensagem e o anexo já estarem gravados, e só 1:1); o botão
+  usa `chat/findChats`, que traz a foto de TODOS os chats numa chamada, e
+  casa com `contacts` pelos ÚLTIMOS 8 DÍGITOS (a régua de
+  `findExistingContact`). A rota responde 202 e trabalha em `after()`.
+- ⚠️ **Deploy DEPOIS da migration**: o UPDATE grava `avatar_checked_at`; sem
+  a coluna o PostgREST recusa, `guardarFoto` devolve `'falhou'` (log, sem
+  quebrar a ingestão) e nenhuma foto entra.
+
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
 e `src/hooks/use-favoritas.ts`. Quem for mexer em filtro de conversa mexe lá,
@@ -2276,6 +2304,10 @@ e sem saída na aba, a dois centímetros. O que morde código novo:
     aplicação: 64 conversas esperando, 62 já além dos 10 min, 18 há mais de
     um dia. Sem a coluna o alerta simplesmente não aparece (vem `undefined`
     e a régua responde "ninguém esperando") — nada quebra.
+
+  - **973_cb_foto_do_contato** — `contacts.avatar_checked_at` (última
+    conferência da foto de perfil na Evolution). Criada em 2026-09-03 no PR
+    da foto de perfil; **aplicar ANTES do merge** (o app grava a coluna).
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

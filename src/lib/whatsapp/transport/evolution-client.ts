@@ -448,6 +448,18 @@ export class EvolutionClient {
   }
 
   /**
+   * Foto de perfil de UM número (`POST /chat/fetchProfilePictureUrl`, body
+   * `{ number }`). Devolve `{ wuid, profilePictureUrl }`, com
+   * `profilePictureUrl: null` quando não há foto ou o cliente a esconde — a
+   * Evolution captura o erro do Baileys e responde 200 com null, então "sem
+   * foto" e "escondida" são indistinguíveis daqui. ⚠️ A URL é ASSINADA e
+   * expira: quem a usa copia a imagem (`lib/whatsapp/foto-do-contato`).
+   */
+  async fetchProfilePictureUrl(number: string): Promise<unknown> {
+    return this.request('POST', 'chat/fetchProfilePictureUrl', { number });
+  }
+
+  /**
    * Metadados de um grupo: nome, descrição, `announce` e a lista completa de
    * participantes — que é onde vive o mapeamento LID → telefone
    * (`participants[].jid` traz o número real).
