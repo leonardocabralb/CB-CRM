@@ -37,6 +37,7 @@ import {
   PanelRightClose,
 } from "lucide-react";
 import { CopiarLinkDaConversa } from "@/components/inbox/copiar-link-da-conversa";
+import { FotoAmpliavel } from "@/components/inbox/painel/foto-ampliavel";
 import { ResponsavelMenu } from "@/components/inbox/painel/responsavel-menu";
 
 import type { CbGroup, Message, Conversation } from "@/types";
@@ -207,17 +208,16 @@ export function GroupSidebar({
     <div className="flex h-full w-full flex-col border-l border-border bg-card">
       {cabecalho(
         <>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted">
-            {grupo.picture_url ? (
-              <img
-                src={grupo.picture_url}
-                alt={nome}
-                className="h-10 w-10 rounded-full object-cover"
-              />
-            ) : (
-              <Users className="h-5 w-5 text-muted-foreground" />
-            )}
-          </div>
+          {/* A foto do grupo abre ampliada no visualizador do inbox (clique). */}
+          <FotoAmpliavel
+            src={grupo.picture_url}
+            alt={nome}
+            fallback={
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted">
+                <Users className="h-5 w-5 text-muted-foreground" />
+              </div>
+            }
+          />
           <div className="min-w-0 flex-1">
             <h3 className="truncate text-sm font-semibold text-foreground">
               {nome}

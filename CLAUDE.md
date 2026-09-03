@@ -1032,10 +1032,12 @@ referência" Chatguru).** Quatro mudanças pequenas com um motivo cada:
   isso em silêncio. O fio CONTINUA chamando `onAssignChange` pelo caminho de
   situação (encerrar solta o responsável) — não remover a prop.
 - **Situação como PASTILHA preenchida** no cabeçalho (`STATUS_OPTIONS` ganhou
-  `pill`/`dot`) e, na lista, **anel colorido no avatar em toda linha +
-  pastilha escrita SÓ para pendente e encerrada** (`STATUS_RING`/
-  `STATUS_PILL`): "Aberta" escrita em 98% das linhas seria o rótulo que o
-  olho aprende a ignorar. Paleta única: violeta/âmbar/cinza.
+  `pill`/`dot`) e, na lista, **pastilha escrita SÓ para pendente e
+  encerrada** (`STATUS_PILL`) — aberta não leva marca: "Aberta" escrita em
+  98% das linhas seria o rótulo que o olho aprende a ignorar. ⚠️ O anel
+  colorido no avatar existiu por algumas horas e foi RETIRADO pelo operador
+  no mesmo dia ("está atrapalhando"): a foto do contato e o anel disputavam
+  o mesmo círculo. Não voltar com ele. Paleta única: violeta/âmbar/cinza.
 - **Copiar link da conversa** (`copiar-link-da-conversa.tsx`): é o deep link
   que já existe, `/inbox?c=<id>` via `urlDoInbox` — círculo no cabeçalho dos
   painéis e ícone pequeno ao lado do nome no fio (irmão do botão do nome:
