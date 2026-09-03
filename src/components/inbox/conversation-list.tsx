@@ -859,6 +859,32 @@ export function ConversationList({
               definirPadrao={definirFiltroPadrao}
             />
           }
+          // ⚠️ A FAIXA DO PADRÃO, por slot. O distintivo de contagem explica
+          // um recorte que o operador ACABOU DE FAZER; este ele não fez — a
+          // caixa já abriu assim. Sem uma linha dizendo de onde veio e como
+          // sair, "preciso remover manualmente" (que é o pedido) vira
+          // "sumiram as conversas". Limpa só os FILTROS, não a busca: a
+          // faixa fala do filtro padrão, e a caixa de busca continua
+          // visivelmente preenchida se houver texto nela. Mora na linha de
+          // meta do resumo do recorte (`inbox-filters`), ao lado do contador.
+          faixaDoPadrao={
+            padraoNaTela ? (
+              <>
+                <Bookmark className="h-3 w-3 shrink-0 fill-current text-primary" />
+                <span className="min-w-0 truncate">
+                  {t("defaultFilterBanner", { nome: padraoNaTela.nome })}
+                </span>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => setFiltros(FILTROS_VAZIOS)}
+                  className="shrink-0 underline underline-offset-2 transition-colors hover:text-foreground"
+                >
+                  {t("showEverything")}
+                </button>
+              </>
+            ) : null
+          }
           busca={search}
           onLimparBusca={() => setSearch("")}
           exibindo={filtered.length}
@@ -869,31 +895,6 @@ export function ConversationList({
           total={totalDaAba}
         />
 
-        {/* ⚠️ A FAIXA DO PADRÃO. O distintivo de contagem explica um recorte
-            que o operador ACABOU DE FAZER; este ele não fez — a caixa já
-            abriu assim. Sem uma linha dizendo de onde veio e como sair,
-            "preciso remover manualmente" (que é o pedido) vira "sumiram as
-            conversas".
-
-            Limpa só os FILTROS, não a busca: a faixa fala do filtro padrão, e
-            a caixa de busca continua visivelmente preenchida se houver texto
-            nela. */}
-        {padraoNaTela && (
-          <p className="flex flex-wrap items-center gap-x-1 px-0.5 text-[11px] text-muted-foreground">
-            <Bookmark className="h-3 w-3 shrink-0 fill-current text-primary" />
-            <span className="min-w-0 truncate">
-              {t("defaultFilterBanner", { nome: padraoNaTela.nome })}
-            </span>
-            <span aria-hidden="true">·</span>
-            <button
-              type="button"
-              onClick={() => setFiltros(FILTROS_VAZIOS)}
-              className="underline underline-offset-2 transition-colors hover:text-foreground"
-            >
-              {t("showEverything")}
-            </button>
-          </p>
-        )}
       </div>
 
 

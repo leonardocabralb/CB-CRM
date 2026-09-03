@@ -105,6 +105,13 @@ interface InboxFiltersProps {
    * montável sem ele (é o que os testes fazem).
    */
   menuSalvos?: React.ReactNode;
+  /**
+   * A faixa "Filtro padrão: X · mostrar tudo", montada pela LISTA (o padrão
+   * é dela) e entregue pronta, como `menuSalvos`. Entra na linha de meta do
+   * resumo do recorte, ao lado do contador — fora daqui ela ficava solta
+   * abaixo do bloco, desalinhada de tudo.
+   */
+  faixaDoPadrao?: React.ReactNode;
   /** A caixa de busca, que vive fora daqui — o "Limpar tudo" precisa dela. */
   busca: string;
   onLimparBusca: () => void;
@@ -124,6 +131,7 @@ export function InboxFilters({
   funis,
   temGrupos,
   menuSalvos,
+  faixaDoPadrao,
   busca,
   onLimparBusca,
   exibindo,
@@ -350,53 +358,80 @@ export function InboxFilters({
           grupo sair da lista com "só grupos" marcado, o campo Tipo some do
           painel mas o recorte continua valendo. A pastilha continua ali, com
           o X. */}
-      {(ativos > 0 || busca.trim().length > 0 || exibindo !== total) && (
-        <div className="flex flex-wrap items-center gap-1">
-          {pastilhas.map((p) => (
-            <button
-              key={p.chave}
-              type="button"
-              onClick={p.aoRemover}
-              title={t("removeFilter", { filtro: p.texto })}
-              className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground transition-colors hover:bg-muted/70"
-            >
-              {p.cor && (
-                <span
-                  className="h-1.5 w-1.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: p.cor }}
-                />
-              )}
-              <span className="max-w-32 truncate">{p.texto}</span>
-              <X className="h-3 w-3 shrink-0" />
-            </button>
-          ))}
+      {/* ⚠️ O RESUMO DO RECORTE é UM bloco, em duas linhas com papéis fixos
+          (pedido do operador, 2026-09-03 — com um filtro salvo aplicado, a
+          pastilha, o "Limpar tudo", o contador e a faixa do padrão ficavam
+          "desencaixados": o contador, com `ml-auto`, caía sozinho numa
+          segunda linha assim que a pastilha crescia).
+          Linha 1 — as PASTILHAS do recorte ativo e o "Limpar tudo", com a
+          MESMA forma (chips de 22px, texto de 11px), quebrando juntos.
+          Linha 2 — a META, numa linha só que nunca quebra: à esquerda a
+          faixa do filtro padrão (vem da LISTA por slot, porque o padrão é
+          dela; trunca), à direita o contador (nunca encolhe).
+          As pastilhas continuam visíveis com o painel fechado: sem elas o
+          operador vê 8 de 64 conversas e um distintivo "①" que diz que
+          EXISTE um filtro, não QUAL. E salvam o caso do filtro cujo campo
+          sumiu do painel (o último grupo saiu com "só grupos" marcado): a
+          pastilha continua ali, com o X. */}
+      {(ativos > 0 ||
+        busca.trim().length > 0 ||
+        exibindo !== total ||
+        faixaDoPadrao) && (
+        <div className="space-y-1">
+          {(pastilhas.length > 0 || ativos > 0 || busca.trim().length > 0) && (
+            <div className="flex flex-wrap items-center gap-1">
+              {pastilhas.map((p) => (
+                <button
+                  key={p.chave}
+                  type="button"
+                  onClick={p.aoRemover}
+                  title={t("removeFilter", { filtro: p.texto })}
+                  className="inline-flex h-[22px] max-w-full items-center gap-1 rounded-full bg-muted px-2 text-[11px] text-foreground transition-colors hover:bg-muted/70"
+                >
+                  {p.cor && (
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: p.cor }}
+                    />
+                  )}
+                  <span className="max-w-32 truncate">{p.texto}</span>
+                  <X className="h-3 w-3 shrink-0" />
+                </button>
+              ))}
 
-          {/* Limpa também a BUSCA: ela recorta a lista igual aos filtros, e um
-              "limpar tudo" que deixa a busca de pé não limpou tudo. Por isso
-              aparece com busca preenchida mesmo sem nenhum filtro. */}
-          {(ativos > 0 || busca.trim().length > 0) && (
-            <button
-              type="button"
-              onClick={() => {
-                // Mantém a ABA: quem limpa os filtros em Encerradas quer ver
-                // todas as encerradas, não ser levado de volta às abertas.
-                onChange({ ...FILTROS_VAZIOS, status: filtros.status });
-                onLimparBusca();
-              }}
-              className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <X className="h-3 w-3" />
-              {t("clearAll")}
-            </button>
+              {/* Limpa também a BUSCA: ela recorta a lista igual aos filtros,
+                  e um "limpar tudo" que deixa a busca de pé não limpou tudo.
+                  Por isso aparece com busca preenchida mesmo sem nenhum
+                  filtro. Mantém a ABA (ver `contarRecortesDoPainel`). */}
+              {(ativos > 0 || busca.trim().length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange({ ...FILTROS_VAZIOS, status: filtros.status });
+                    onLimparBusca();
+                  }}
+                  className="inline-flex h-[22px] items-center gap-1 rounded-full border border-dashed border-border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                  {t("clearAll")}
+                </button>
+              )}
+            </div>
           )}
 
-          {/* O contador só aparece quando algo recorta. Ele existe para
-              explicar um resultado vazio ou curto — mostrá-lo com a lista
-              inteira seria ruído. */}
-          {(ativos > 0 || exibindo !== total) && (
-            <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
-              {t("showingCount", { count: exibindo, total })}
-            </span>
+          {/* O contador só aparece quando algo recorta — ele existe para
+              explicar um resultado vazio ou curto; com a lista inteira seria
+              ruído. A faixa do padrão explica um recorte que o operador NÃO
+              fez (a caixa já abriu assim). */}
+          {(faixaDoPadrao || ativos > 0 || exibindo !== total) && (
+            <div className="flex items-center justify-between gap-2 px-0.5 text-[11px] text-muted-foreground">
+              <div className="flex min-w-0 items-center gap-x-1">{faixaDoPadrao}</div>
+              {(ativos > 0 || exibindo !== total) && (
+                <span className="shrink-0">
+                  {t("showingCount", { count: exibindo, total })}
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}

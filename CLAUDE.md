@@ -1079,6 +1079,17 @@ gancho no webhook da Evolution e a rota `POST /api/cb/channels/[id]/fotos`
   a coluna o PostgREST recusa, `guardarFoto` devolve `'falhou'` (log, sem
   quebrar a ingestão) e nenhuma foto entra.
 
+⚠️ **O resumo do recorte abaixo da barra é UM bloco de duas linhas com
+papéis fixos** (`inbox-filters.tsx`, 2026-09-03): linha 1 = pastilhas +
+"Limpar tudo" (chips da MESMA forma, quebrando juntos); linha 2 = a META,
+que nunca quebra — a faixa "Filtro padrão: X · mostrar tudo" à esquerda
+(vem da LISTA por slot `faixaDoPadrao`, trunca) e o contador "Exibindo N de
+M" à direita (`shrink-0`). Antes, o contador com `ml-auto` caía sozinho
+numa segunda linha assim que a pastilha crescia, e a faixa ficava solta
+abaixo de tudo ("desencaixadas", nas palavras do operador). Quem
+acrescentar peça ao resumo escolhe a linha pelo papel, não a pendura no
+fim.
+
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
 e `src/hooks/use-favoritas.ts`. Quem for mexer em filtro de conversa mexe lá,
@@ -2306,8 +2317,9 @@ e sem saída na aba, a dois centímetros. O que morde código novo:
     e a régua responde "ninguém esperando") — nada quebra.
 
   - **973_cb_foto_do_contato** — `contacts.avatar_checked_at` (última
-    conferência da foto de perfil na Evolution). Criada em 2026-09-03 no PR
-    da foto de perfil; **aplicar ANTES do merge** (o app grava a coluna).
+    conferência da foto de perfil na Evolution). Aplicada em 2026-09-03 via
+    conector, ANTES do merge do PR #110 (o app grava a coluna) — conferida
+    por leitura no PostgREST antes de mesclar.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
