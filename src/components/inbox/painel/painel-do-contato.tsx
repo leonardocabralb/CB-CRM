@@ -33,6 +33,9 @@ import { DealForm } from '@/components/pipelines/deal-form';
 import { SeletorFunilEtapa } from '@/components/inbox/painel/seletor-funil-etapa';
 import { AbaAutomacoes } from '@/components/inbox/painel/aba-automacoes';
 import { AbaArquivos } from '@/components/inbox/painel/aba-arquivos';
+import { OrigemDoContato } from '@/components/inbox/painel/origem-do-contato';
+import { ResponsavelMenu } from '@/components/inbox/painel/responsavel-menu';
+import { CopiarLinkDaConversa } from '@/components/inbox/copiar-link-da-conversa';
 import { useExecucoesDoContato } from '@/hooks/use-execucoes-do-contato';
 import { statusAoEntrarNaEtapa } from '@/lib/pipelines/resultado';
 import { avisarDrenagemDeFunil } from '@/lib/automations/avisar-drenagem';
@@ -59,6 +62,7 @@ import type {
   Message,
   PipelineStage,
   Tag,
+  Conversation,
 } from '@/types';
 import {
   Mail,
@@ -102,6 +106,14 @@ export interface PainelDoContatoProps {
    */
   conversationId?: string | null;
   /**
+   * A conversa aberta, para o RESPONSÁVEL (o menu de atribuição mora aqui
+   * desde 03/09) e para o bloco de origem do Histórico. Opcional: a ficha
+   * de `/contatos` não tem conversa em mão.
+   */
+  conversation?: Conversation | null;
+  /** Espelha a atribuição no estado da página — o contrato que o fio cumpria. */
+  onAssignChange?: (conversationId: string, assignedAgentId: string | null) => void;
+  /**
    * Contador de resync da página (reconexão de WS, aba voltou a ficar
    * visível). Repassado ao histórico de atividade, que sempre aceitou um
    * `token` e nunca o recebia daqui.
@@ -139,6 +151,8 @@ export interface PainelDoContatoProps {
 export function PainelDoContato({
   contact,
   conversationId,
+  conversation = null,
+  onAssignChange,
   resyncToken = 0,
   onClose,
   onContactUpdated,
@@ -867,7 +881,27 @@ export function PainelDoContato({
             </>
           )}
         </div>
+        {/* O círculo com o link, como na referência: copia o deep link
+            `/inbox?c=<id>` da conversa. Só com conversa — a ficha de
+            `/contatos` monta o painel sem uma. */}
+        {conversationId && (
+          <CopiarLinkDaConversa conversationId={conversationId} variante="circulo" />
+        )}
       </CabecalhoDoPainel>
+
+      {/* RESPONSÁVEL (pedido do operador, 03/09): saiu do cabeçalho do fio
+          para cá, abaixo do nome — visível em qualquer aba, como no Chatguru.
+          Fora do `CabecalhoDoPainel` porque é uma linha inteira, não um
+          controle da fileira do nome. */}
+      {conversation && onAssignChange && (
+        <div className="border-border shrink-0 border-b px-3 py-2">
+          <ResponsavelMenu
+            conversationId={conversation.id}
+            assignedAgentId={conversation.assigned_agent_id ?? null}
+            onAssignChange={onAssignChange}
+          />
+        </div>
+      )}
 
       {/* Abas só-ícone. `title` + `aria-label` em cada gatilho: ícone sem nome
           acessível é um botão mudo para leitor de tela.
@@ -1438,6 +1472,7 @@ export function PainelDoContato({
           value="historico"
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
+          <OrigemDoContato contact={contact} conversationId={conversationId ?? null} />
           <ActivityHistory contactId={contact.id} token={resyncToken} />
         </TabsContent>
       </Tabs>

@@ -1002,6 +1002,34 @@ estrutural `reopen.chamadores.test.ts`) e o alerta de atraso em
   lidas somam ~286px nos 296px úteis; medido). Alargar padding ou ícone ali
   volta a cortar "Não lidas" na borda.
 
+⚠️ **Cabeçalho do fio, linha da lista e painel (2026-09-03, "sistema de
+referência" Chatguru).** Quatro mudanças pequenas com um motivo cada:
+
+- **O menu de ATRIBUIÇÃO saiu do cabeçalho do fio para o painel lateral**
+  (`painel/responsavel-menu.tsx`, abaixo do nome — visível em qualquer aba),
+  a pedido do operador, para a linha de cima ficar só com conexão e situação.
+  ⚠️ É montado nos DOIS painéis (contato e grupo): atribuir grupo é decisão
+  explícita do operador, e tirar do fio sem levar ao `group-sidebar` apagava
+  isso em silêncio. O fio CONTINUA chamando `onAssignChange` pelo caminho de
+  situação (encerrar solta o responsável) — não remover a prop.
+- **Situação como PASTILHA preenchida** no cabeçalho (`STATUS_OPTIONS` ganhou
+  `pill`/`dot`) e, na lista, **anel colorido no avatar em toda linha +
+  pastilha escrita SÓ para pendente e encerrada** (`STATUS_RING`/
+  `STATUS_PILL`): "Aberta" escrita em 98% das linhas seria o rótulo que o
+  olho aprende a ignorar. Paleta única: violeta/âmbar/cinza.
+- **Copiar link da conversa** (`copiar-link-da-conversa.tsx`): é o deep link
+  que já existe, `/inbox?c=<id>` via `urlDoInbox` — círculo no cabeçalho dos
+  painéis e ícone pequeno ao lado do nome no fio (irmão do botão do nome:
+  button aninhado é inválido).
+- **Bloco "Origem do contato" fixo no topo da aba Histórico**
+  (`painel/origem-do-contato.tsx`, regra em `lib/contacts/origem.ts`, pura
+  e testada): cadastro (`contacts.created_at`), conexão da PRIMEIRA mensagem
+  e quem a mandou (cliente / equipe pelo CRM / equipe pelo celular pareado /
+  robô). ⚠️ Canal sem carimbo (117 conversas anteriores ao multi-canal, ou
+  conexão apagada) vira TRAVESSÃO, nunca o canal padrão. A primeira mensagem
+  é comparada contra a prop do render atual (`de === conversationId`) — a
+  armadilha do efeito passivo, de novo.
+
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`
 e `src/hooks/use-favoritas.ts`. Quem for mexer em filtro de conversa mexe lá,

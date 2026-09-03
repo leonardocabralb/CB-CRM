@@ -997,6 +997,9 @@ function InboxPageInner() {
               <GroupSidebar
                 grupo={activeConversation.group ?? null}
                 conversationId={activeConversation.id}
+                // O responsável mora no painel desde 03/09 (era no fio).
+                conversation={activeConversation}
+                onAssignChange={handleAssignChange}
                 onGrupoAtualizado={handleGroupUpdated}
                 onClose={handleToggleContactPanel}
                 // O mesmo array que alimenta o fio: a aba Arquivos não faz
@@ -1010,6 +1013,9 @@ function InboxPageInner() {
               <ContactSidebar
                 contact={activeContact}
                 conversationId={activeConversation?.id ?? null}
+                // O responsável mora no painel desde 03/09 (era no fio).
+                conversation={activeConversation}
+                onAssignChange={handleAssignChange}
                 resyncToken={resyncToken}
                 onClose={handleToggleContactPanel}
                 onContactUpdated={handleContactUpdated}

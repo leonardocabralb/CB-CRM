@@ -36,8 +36,10 @@ import {
   ShieldCheck,
   PanelRightClose,
 } from "lucide-react";
+import { CopiarLinkDaConversa } from "@/components/inbox/copiar-link-da-conversa";
+import { ResponsavelMenu } from "@/components/inbox/painel/responsavel-menu";
 
-import type { CbGroup, Message } from "@/types";
+import type { CbGroup, Message, Conversation } from "@/types";
 import { useApagarNota } from "@/hooks/use-apagar-nota";
 import { useAuth } from "@/hooks/use-auth";
 import { useCan } from "@/hooks/use-can";
@@ -62,6 +64,14 @@ interface GroupSidebarProps {
    * CONVERSA (918), não pelo contato, que num grupo é nulo.
    */
   conversationId?: string | null;
+  /**
+   * A conversa aberta, para o RESPONSÁVEL — atribuir grupo a alguém foi
+   * decisão explícita do operador, e o menu saiu do cabeçalho do fio em
+   * 03/09 (ver `painel/responsavel-menu.tsx`).
+   */
+  conversation?: Conversation | null;
+  /** Espelha a atribuição no estado da página. */
+  onAssignChange?: (conversationId: string, assignedAgentId: string | null) => void;
   /** Reflete no estado do pai o que a rota devolveu. */
   onGrupoAtualizado?: (patch: Partial<CbGroup>) => void;
   /** Fecha o painel — mesmo botão, mesmo lugar que na ficha do contato. */
@@ -75,6 +85,8 @@ interface GroupSidebarProps {
 export function GroupSidebar({
   grupo,
   conversationId,
+  conversation = null,
+  onAssignChange,
   onGrupoAtualizado,
   onClose,
   messages = [],
@@ -216,7 +228,21 @@ export function GroupSidebar({
               </p>
             )}
           </div>
+          {conversationId && (
+            <CopiarLinkDaConversa conversationId={conversationId} variante="circulo" />
+          )}
         </>,
+      )}
+
+      {/* Responsável — o mesmo menu do painel do contato. */}
+      {conversation && onAssignChange && (
+        <div className="shrink-0 border-b border-border px-3 py-2">
+          <ResponsavelMenu
+            conversationId={conversation.id}
+            assignedAgentId={conversation.assigned_agent_id ?? null}
+            onAssignChange={onAssignChange}
+          />
+        </div>
       )}
 
       {/* Abas com RÓTULO, não só-ícone como na ficha do contato: lá são cinco

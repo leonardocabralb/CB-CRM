@@ -117,10 +117,20 @@ interface ConversationListProps {
   jornadaDoFunil?: boolean;
 }
 
-const STATUS_COLORS: Record<ConversationStatus, string> = {
-  open: "bg-primary",
-  pending: "bg-amber-500",
-  closed: "bg-muted-foreground",
+// Situação da conversa na LINHA (pedido do operador, 2026-09-03 — "hoje a
+// gente só tem um círculo pequeno colorido"): ANEL colorido no avatar em toda
+// linha, e pastilha ESCRITA só para pendente e encerrada. "Aberta" é o
+// normal da caixa (98% das linhas): escrevê-la em todas viraria o rótulo que
+// o olho aprende a ignorar — a lição do rótulo de canal. A mesma paleta do
+// cabeçalho do fio (`STATUS_OPTIONS`): violeta, âmbar, cinza.
+const STATUS_RING: Record<ConversationStatus, string> = {
+  open: "ring-primary/70",
+  pending: "ring-amber-500",
+  closed: "ring-muted-foreground/60",
+};
+const STATUS_PILL: Record<Exclude<ConversationStatus, "open">, string> = {
+  pending: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  closed: "bg-muted text-muted-foreground",
 };
 
 
@@ -970,6 +980,9 @@ function ConversationItem({
   agora,
   t,
 }: ConversationItemProps) {
+  // As chaves da situação escrita moram no namespace do fio (`statusPending`,
+  // `statusClosed`) — é o mesmo texto do menu do cabeçalho, de propósito.
+  const tThread = useTranslations("Inbox.messageThread");
   const contact = conversation.contact;
   const ehGrupo = !!conversation.group_id;
   const displayName = tituloDaConversa(conversation, {
@@ -1025,8 +1038,13 @@ function ConversationItem({
           isActive && "border-l-2 border-primary bg-muted/70"
         )}
       >
-        {/* Avatar */}
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+        {/* Avatar — com o anel da situação (ver `STATUS_RING`). */}
+        <div
+          className={cn(
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground ring-2 ring-offset-1 ring-offset-card",
+            STATUS_RING[conversation.status],
+          )}
+        >
           {avatarUrl ? (
             <img
               src={avatarUrl}
@@ -1116,13 +1134,18 @@ function ConversationItem({
                   {conversation.unread_count}
                 </span>
               )}
-              <span
-                className={cn(
-                  "h-2 w-2 rounded-full",
-                  STATUS_COLORS[conversation.status]
-                )}
-                title={conversation.status}
-              />
+              {conversation.status !== "open" && (
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 py-px text-[10px] font-medium",
+                    STATUS_PILL[conversation.status],
+                  )}
+                >
+                  {conversation.status === "pending"
+                    ? tThread("statusPending")
+                    : tThread("statusClosed")}
+                </span>
+              )}
             </div>
           </div>
         </div>
