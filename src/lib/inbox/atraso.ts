@@ -27,10 +27,20 @@ import type { Conversation } from "@/types";
 /** Dez minutos: o número que o operador pediu. */
 export const ATRASO_DE_RESPOSTA_MS = 10 * 60_000;
 
+/**
+ * Trinta minutos: a partir daqui o alerta deixa de ser âmbar e vira VERMELHO
+ * (decisão do operador, 2026-09-03). Duas cores, não uma escala: o âmbar diz
+ * "ainda dá tempo", o vermelho diz "já passou do razoável" — e o número ao
+ * lado continua contando.
+ */
+export const ATRASO_CRITICO_MS = 30 * 60_000;
+
 export interface Atraso {
   /** Quanto tempo o cliente espera, na unidade mais legível. */
   n: number;
   unidade: "min" | "h" | "d";
+  /** Passou de `ATRASO_CRITICO_MS`: a linha pinta em vermelho. */
+  critico: boolean;
 }
 
 /**
@@ -52,9 +62,10 @@ export function atrasoDeResposta(
   const espera = agoraMs - desde;
   if (espera < ATRASO_DE_RESPOSTA_MS) return null;
 
+  const critico = espera >= ATRASO_CRITICO_MS;
   const minutos = Math.floor(espera / 60_000);
-  if (minutos < 60) return { n: minutos, unidade: "min" };
+  if (minutos < 60) return { n: minutos, unidade: "min", critico };
   const horas = Math.floor(minutos / 60);
-  if (horas < 24) return { n: horas, unidade: "h" };
-  return { n: Math.floor(horas / 24), unidade: "d" };
+  if (horas < 24) return { n: horas, unidade: "h", critico };
+  return { n: Math.floor(horas / 24), unidade: "d", critico };
 }

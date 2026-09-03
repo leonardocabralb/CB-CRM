@@ -6,8 +6,14 @@
 // ⚠️ POR QUE UM GATILHO PRÓPRIO, E NÃO "DENTRO DO BOTÃO FILTROS"
 // O botão "Filtros" ABRE E FECHA o painel — ele já tem um clique com dono. Um
 // segundo comportamento no mesmo alvo não existe. Este gatilho fica colado
-// nele, na mesma barra, e mostra o NOME do filtro aplicado: um clique para
-// abrir, um para acionar, que é o "sob demanda" que o operador pediu.
+// nele, na mesma barra: um clique para abrir, um para acionar, que é o "sob
+// demanda" que o operador pediu.
+//
+// ⚠️ Desde 03/09 o gatilho é SÓ O ÍCONE (chip igual aos vizinhos — layout "C"
+// escolhido pelo operador entre três mocks). O NOME do filtro aplicado, que
+// antes era o rótulo do botão, vive no `title`/`aria-label` e no ✓ do menu;
+// o que explica um inbox recortado com o painel fechado são as pastilhas da
+// linha de baixo (`inbox-filters.tsx`).
 //
 // ⚠️ ARQUIVO NOVO de propósito. `inbox-filters.tsx` já passa de 700 linhas e
 // acabou de ser reescrito pelo PR #73 (funil em dois níveis) — enfiar o menu
@@ -18,7 +24,6 @@ import { useCallback, useMemo, useState } from "react";
 import {
   Bookmark,
   Check,
-  ChevronDown,
   Loader2,
   Pencil,
   Plus,
@@ -28,6 +33,7 @@ import {
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
+import { chipDaBarra } from "@/components/inbox/inbox-filters";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -196,22 +202,11 @@ export function FiltrosSalvosMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger
-          className={cn(
-            "inline-flex h-7 max-w-40 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-muted",
-            aplicado
-              ? "text-primary"
-              : "text-muted-foreground hover:text-foreground",
-          )}
+          className={chipDaBarra(aplicado !== null)}
+          aria-label={aplicado ? aplicado.nome : t("savedFilters")}
+          title={aplicado ? aplicado.nome : t("savedFilters")}
         >
-          <Bookmark
-            className={cn("h-3.5 w-3.5 shrink-0", aplicado && "fill-current")}
-          />
-          {/* Com um filtro acionado, o gatilho vira a etiqueta dele: é o que
-              explica um inbox recortado sem obrigar a abrir o menu. */}
-          <span className="truncate">
-            {aplicado ? aplicado.nome : t("savedFilters")}
-          </span>
-          <ChevronDown className="h-3 w-3 shrink-0" />
+          <Bookmark className={cn(aplicado && "fill-current")} />
         </DropdownMenuTrigger>
 
         <DropdownMenuContent

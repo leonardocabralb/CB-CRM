@@ -729,9 +729,10 @@ export function ConversationList({
 
   return (
     // w-full on mobile so the list occupies the whole viewport when it's
-    // the single pane showing; fixed 320px on desktop where it shares the
-    // row with the thread + contact sidebar.
-    <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
+    // the single pane showing; fixed 360px on desktop where it shares the
+    // row with the thread + contact sidebar. (Era 320px até 03/09; o operador
+    // pediu "um pouco mais" para a prévia da mensagem — ver `inbox-filters`.)
+    <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-[22.5rem]">
       {/* Busca + filtros */}
       <div className="space-y-2 border-b border-border p-3">
         <div className="flex items-center gap-2">
@@ -1068,15 +1069,21 @@ function ConversationItem({
               </span>
             </span>
             <span className="flex shrink-0 items-center gap-1">
-              {/* O alerta de atraso, colado à hora: âmbar (não vermelho — a
-                  cor da falha é do envio), com o tempo que o cliente espera.
-                  Fica na linha de cima porque a de baixo já carrega prévia,
-                  não lidas e situação, e um quarto item ali truncaria a
-                  prévia em toda linha alertada. */}
-              {rotuloDoAtraso && (
+              {/* O alerta de atraso, colado à hora: âmbar até 30 min e
+                  VERMELHO depois (`critico`, decisão do operador em 03/09),
+                  com o tempo que o cliente espera. Fica na linha de cima
+                  porque a de baixo já carrega prévia, não lidas e situação,
+                  e um quarto item ali truncaria a prévia em toda linha
+                  alertada. */}
+              {atraso && rotuloDoAtraso && (
                 <span
                   title={t("awaitingReply", { tempo: rotuloDoAtraso })}
-                  className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-px text-[10px] font-medium text-amber-600 dark:text-amber-400"
+                  className={cn(
+                    "inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[10px] font-medium",
+                    atraso.critico
+                      ? "bg-red-500/15 text-red-600 dark:text-red-400"
+                      : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+                  )}
                 >
                   <AlarmClock className="h-3 w-3" aria-hidden="true" />
                   {rotuloDoAtraso}
