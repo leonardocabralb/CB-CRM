@@ -3,7 +3,6 @@
 import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { usePresence } from "@/hooks/use-presence";
 import { useChannels } from "@/hooks/use-channels";
 import { useLeadEvents } from "@/hooks/use-lead-events";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
@@ -12,6 +11,7 @@ import { useFixarNota } from "@/hooks/use-fixar-nota";
 import { useCan } from "@/hooks/use-can";
 import { ScheduledBar } from "./scheduled-bar";
 import { ExecutarAutomacaoDialog } from "./executar-automacao-dialog";
+import { CopiarLinkDaConversa } from "@/components/inbox/copiar-link-da-conversa";
 import { AvataresNaConversa } from "./avatares-na-conversa";
 import { useQuemVeAConversa } from "@/hooks/use-conversa-aberta";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
@@ -37,8 +37,6 @@ import {
 import { LeadEventLine } from "@/components/lead-events/lead-event-line";
 import { NoteLine } from "./note-line";
 import { NotaFixadaBar } from "./nota-fixada-bar";
-import { PresenceDot } from "@/components/presence/presence-dot";
-import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
 import type {
   Conversation,
@@ -54,7 +52,6 @@ import type {
 import {
   MessageSquare,
   ChevronDown,
-  UserPlus,
   Check,
   Clock,
   ArrowLeft,
@@ -286,10 +283,37 @@ function groupTimelineByDate(itens: ItemDaLinhaDoTempo<Message>[]) {
   return groups;
 }
 
-const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string }[] = [
-  { label: "Open", value: "open", color: "text-primary" },
-  { label: "Pending", value: "pending", color: "text-amber-400" },
-  { label: "Closed", value: "closed", color: "text-muted-foreground" },
+// `color` pinta o item do menu; `pill`/`dot` pintam o gatilho — a mesma
+// paleta da lista (`STATUS_COLORS` em conversation-list): violeta = aberta,
+// âmbar = pendente, cinza = encerrada.
+const STATUS_OPTIONS: {
+  label: string;
+  value: ConversationStatus;
+  color: string;
+  pill: string;
+  dot: string;
+}[] = [
+  {
+    label: "Open",
+    value: "open",
+    color: "text-primary",
+    pill: "bg-primary/10 text-primary hover:bg-primary/15",
+    dot: "bg-primary",
+  },
+  {
+    label: "Pending",
+    value: "pending",
+    color: "text-amber-400",
+    pill: "bg-amber-500/15 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300",
+    dot: "bg-amber-500",
+  },
+  {
+    label: "Closed",
+    value: "closed",
+    color: "text-muted-foreground",
+    pill: "bg-muted text-muted-foreground hover:bg-muted/80",
+    dot: "bg-muted-foreground",
+  },
 ];
 
 /**
@@ -340,7 +364,6 @@ export function MessageThread({
   const nomeQueAssina = assinaturaAtiva
     ? nomeDePessoa(profile?.full_name, profile?.email)
     : null;
-  const { getPresence, getRow, now } = usePresence();
   /** Quem MAIS está com esta conversa aberta (963) — avatares do cabeçalho. */
   const vendoAgora = useQuemVeAConversa(conversation?.id ?? null);
   const [loading, setLoading] = useState(false);
@@ -1793,27 +1816,6 @@ export function MessageThread({
     [conversation, user?.id],
   );
 
-  const handleAssignChange = useCallback(
-    async (agentId: string | null) => {
-      if (!conversation) return;
-
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("conversations")
-        .update({ assigned_agent_id: agentId })
-        .eq("id", conversation.id);
-
-      if (error) {
-        console.error("Failed to update assignment:", error);
-        toast.error("Failed to update assignment");
-        return;
-      }
-
-      onAssignChange(conversation.id, agentId);
-    },
-    [conversation, onAssignChange],
-  );
-
   const handleChannelChange = useCallback(
     async (channelId: string | null) => {
       if (!conversation) return;
@@ -1905,14 +1907,10 @@ export function MessageThread({
   const messageGroups = groupTimelineByDate(
     intercalar(messages, leadEvents, notas)
   );
+  const assignedAgentId = conversation.assigned_agent_id ?? null;
   const currentStatus = STATUS_OPTIONS.find(
     (s) => s.value === conversation.status
   );
-  const assignedAgentId = conversation.assigned_agent_id ?? null;
-  const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
-  const assignLabel = assignedAgentId
-    ? (currentAssignee?.full_name ?? t("assigned"))
-    : t("assign");
 
   return (
     // `min-w-0` is load-bearing: the page already puts min-w-0 on the
@@ -1973,6 +1971,15 @@ export function MessageThread({
             </span>
           </button>
           </h2>
+          {/* Copiar o link da conversa — IRMÃO do botão do nome (button
+              dentro de button é HTML inválido). O círculo maior fica no
+              painel; este é o atalho para quando o painel está fechado. */}
+          {conversation && (
+            <CopiarLinkDaConversa
+              conversationId={conversation.id}
+              className="ml-0.5 hidden sm:inline-flex"
+            />
+          )}
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. Canal Evolution não
               tem janela de 24h, então o cronômetro some. */}
@@ -2111,10 +2118,15 @@ export function MessageThread({
               coluna é NOT NULL), só não se oferece o controle. */}
           {!ehGrupo && (
           <DropdownMenu>
+            {/* Pastilha PREENCHIDA, não texto colorido (pedido do operador,
+                2026-09-03): a situação é o que mais muda de conversa para
+                conversa, e um texto de 12px em cor só não se destacava dos
+                outros controles da linha. A cor sai de `STATUS_OPTIONS`. */}
             <DropdownMenuTrigger className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  currentStatus?.color ?? "text-muted-foreground"
+                  "inline-flex h-7 items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors",
+                  currentStatus?.pill ?? "bg-muted text-muted-foreground"
                 )}>
+                <span className={cn("h-2 w-2 rounded-full", currentStatus?.dot ?? "bg-muted-foreground")} />
                 {currentStatus ? t(`status${currentStatus.label}`) : t("status")}
                 <ChevronDown className="h-3 w-3" />
             </DropdownMenuTrigger>
@@ -2135,71 +2147,11 @@ export function MessageThread({
           </DropdownMenu>
           )}
 
-          {/* Assign dropdown — SEGUE valendo em grupo: atribuir um grupo a
-              alguém foi decisão explícita do operador. */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className={cn(
-                "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                assignedAgentId ? "text-primary" : "text-muted-foreground"
-              )}
-            >
-              <UserPlus className="h-3 w-3" />
-              <span className="hidden sm:inline">{assignLabel}</span>
-              <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
-            >
-              {profiles.length === 0 ? (
-                <DropdownMenuItem disabled className="text-sm text-muted-foreground">
-                  {t("noTeammates")}
-                </DropdownMenuItem>
-              ) : (
-                profiles.map((p) => {
-                  const isSelected = p.user_id === assignedAgentId;
-                  const presence = getPresence(p.user_id);
-                  return (
-                    <DropdownMenuItem
-                      key={p.id}
-                      onClick={() => handleAssignChange(p.user_id)}
-                      className={cn(
-                        "text-sm",
-                        isSelected ? "text-primary" : "text-popover-foreground"
-                      )}
-                    >
-                      <PresenceDot
-                        status={presence}
-                        label={presenceLabel(
-                          presence,
-                          getRow(p.user_id)?.last_seen_at ?? null,
-                          now
-                        )}
-                        className="mr-2"
-                      />
-                      <span className="flex-1">
-                        {p.full_name}
-                        {p.user_id === user?.id ? t("me") : ""}
-                      </span>
-                      {isSelected && <Check className="ml-2 h-3 w-3" />}
-                    </DropdownMenuItem>
-                  );
-                })
-              )}
-              {assignedAgentId && (
-                <>
-                  <DropdownMenuSeparator className="bg-border" />
-                  <DropdownMenuItem
-                    onClick={() => handleAssignChange(null)}
-                    className="text-sm text-muted-foreground"
-                  >
-                    {t("unassign")}
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* O menu de ATRIBUIÇÃO morou aqui até 2026-09-03 e foi para o
+              cabeçalho do painel lateral (`painel/responsavel-menu.tsx`), a
+              pedido do operador: esta linha fica com a conexão e a situação.
+              `onAssignChange` continua sendo chamado daqui pelo caminho de
+              SITUAÇÃO (encerrar solta o responsável — `patchDeSituacao`). */}
         </div>
       </div>
 
