@@ -991,16 +991,30 @@ estrutural `reopen.chamadores.test.ts`) e o alerta de atraso em
   grupo nunca. Broadcast e robô NÃO limpam: um disparo apagaria o alerta de
   todo cliente esquecido. Os 10 minutos são régua de tela
   (`ATRASO_DE_RESPOSTA_MS`), e a lista re-renderiza a cada minuto — a linha
-  não muda no banco quando o prazo vence. ⚠️ A mensagem do cliente
+  não muda no banco quando o prazo vence. Aos 30 min (`ATRASO_CRITICO_MS`,
+  campo `critico`) o selo passa de âmbar a VERMELHO — decisão do operador
+  em 03/09; até então era só âmbar. ⚠️ A mensagem do cliente
   preenche a coluna MESMO com a conversa encerrada: a reabertura acontece
   DEPOIS do insert; a tela é quem esconde o alerta enquanto está encerrada.
   Mensagem APAGADA (`deleted_at` carimbado) recalcula a partir do que
   sobrou — senão o cliente que manda e apaga deixava o relógio preso numa
   mensagem inexistente. O contador "Exibindo N de M" conta a ABA, com o
   termo da busca no universo (a busca atravessa para as encerradas).
-- **A linha de cima da barra NÃO tem `flex-wrap`** (abas + Favoritas + Não
-  lidas somam ~286px nos 296px úteis; medido). Alargar padding ou ícone ali
-  volta a cortar "Não lidas" na borda.
+- **A barra é UMA linha sem `flex-wrap`, e a coluna tem 320px no `lg` e
+  360px no `xl`** (03/09,
+  layout "C" escolhido pelo operador entre três mocks): abas sublinhadas à
+  esquerda e quatro chips quadrados só com ícone à direita (favoritas, não
+  lidas, salvos, filtros), todos por `chipDaBarra()` de `inbox-filters.tsx`
+  — o menu de salvos IMPORTA de lá, senão o gatilho dele volta a ter forma
+  própria, que foi a queixa original ("os itens estão diferentes"). Medido:
+  ~290px nos 296px úteis do `lg`. ⚠️ Os 40px a mais são SÓ no `xl`: a
+  1024px o menu (240) e o painel do contato (360) já deixam 104px para o
+  fio, e alargar ali o levaria a 64px (Codex, PR #108). O nome do filtro
+  salvo aplicado vive no `title`,
+  não mais no botão; as pastilhas ganharam linha própria, que só existe
+  com algo recortando. ⚠️ Pré-existente e mantido: a aba Encerradas conta
+  como filtro ativo (`contarFiltrosAtivos`) — acende o distintivo do chip
+  e uma pastilha "Encerradas"; decisão pendente do operador.
 
 ⚠️ **Filtros do inbox: o recorte é PURO e mora fora da tela (924).**
 `src/lib/inbox/filtros.ts` (testado), `src/components/inbox/inbox-filters.tsx`

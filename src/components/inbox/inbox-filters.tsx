@@ -54,6 +54,27 @@ import type {
   Tag,
 } from "@/types";
 
+/**
+ * O chip quadrado da barra: 28×28, só ícone, mesma cara nos QUATRO controles
+ * (favoritas, não lidas, salvos, filtros) — o menu de salvos importa daqui,
+ * senão o gatilho dele volta a ter forma própria, que foi a queixa. Ligado
+ * pinta em violeta; a estrela em âmbar, que é a cor dela na linha da lista.
+ * Com conteúdo a mais (o distintivo do painel) o chip cresce pelo `min-w`.
+ */
+export function chipDaBarra(ligado: boolean, tom: "primary" | "amber" = "primary") {
+  return cn(
+    "inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-md border px-1.5 text-xs transition-colors [&_svg]:size-3.5 [&_svg]:shrink-0",
+    !ligado &&
+      "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+    ligado &&
+      tom === "primary" &&
+      "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15",
+    ligado &&
+      tom === "amber" &&
+      "border-amber-500/40 bg-amber-500/10 text-amber-600 hover:bg-amber-500/15 dark:text-amber-400",
+  );
+}
+
 interface InboxFiltersProps {
   filtros: FiltrosDoInbox;
   onChange: (filtros: FiltrosDoInbox) => void;
@@ -217,28 +238,26 @@ export function InboxFilters({
 
   return (
     <div className="space-y-2">
-      {/* ⚠️ DUAS LINHAS, com papéis diferentes (pedido do operador,
-          2026-09-02). A de cima é o que se usa o dia inteiro: as duas ABAS
-          (Abertas = a caixa de entrada; Encerradas = o acervo) e os dois
-          recortes que se ligam e desligam o tempo todo. A de baixo é o
-          PAINEL e o que ele está fazendo: o botão, os filtros salvos e as
-          pastilhas do recorte ativo. Antes era uma linha só com `flex-wrap`,
-          e nos ~296px da coluna "Favoritas" caía sozinha na segunda linha —
-          uma quebra que não dizia nada. ⚠️ Sem `flex-wrap` aqui de
-          propósito: se a linha não coubesse, era para ENCOLHER (padding,
-          ícone), nunca para quebrar de novo. MEDIDO em 02/09 a 1440px: os
-          quatro controles somam ~286px nos 296px úteis da coluna (com
-          `px-1.5` davam 310 e "Não lidas" saía cortado pela borda) — quem
-          alargar padding ou ícone aqui precisa medir de novo. */}
-      <div className="flex items-center gap-1">
-        {/* As abas são um seletor de valor ÚNICO (uma conversa está numa ou
-            noutra), por isso o grupo fechado — visualmente distinto dos dois
-            interruptores ao lado, que SOMAM. ⚠️ "Abertas" inclui a PENDENTE:
-            atendimento em curso continua na caixa. Ver `SituacaoDaCaixa`. */}
+      {/* ⚠️ UMA LINHA SÓ, e todos os controles com a MESMA cara (pedido do
+          operador, 2026-09-03 — "tá feia e aglomerada, os itens estão
+          diferentes"). Antes eram duas linhas: um bloco cinza com as abas,
+          dois botões de texto ao lado, e "Filtros"/"Salvos" embaixo, cada um
+          com padding e forma próprios porque era o jeito de caber em 296px.
+          Agora: as duas ABAS (Abertas = a caixa; Encerradas = o acervo) como
+          abas de verdade, sublinhadas, e à direita quatro chips quadrados só
+          com ícone — os dois interruptores que SOMAM (favoritas, não lidas),
+          o menu de filtros salvos e o botão do painel. O nome vive no
+          `title`/`aria-label`.
+          MEDIDO em 03/09: abas ~130px + chips ~148px = ~290px nos 296px úteis
+          da coluna no `lg` (336 no `xl`, onde ela passa a 360px). Sem
+          `flex-wrap` de propósito: se não couber, é para encolher, nunca
+          quebrar. O `-mx-3 px-3` estica o sublinhado até as bordas da coluna
+          (o pai tem `p-3`), senão a linha para 12px antes de cada lado. */}
+      <div className="-mx-3 flex items-center gap-3 border-b border-border px-3">
         <div
           role="group"
           aria-label={t("labelStatus")}
-          className="inline-flex h-7 shrink-0 items-center rounded-md bg-muted p-0.5"
+          className="flex items-center gap-3"
         >
           {(
             [
@@ -252,10 +271,10 @@ export function InboxFilters({
               onClick={() => mexer({ status: valor })}
               aria-pressed={filtros.status === valor}
               className={cn(
-                "h-6 whitespace-nowrap rounded px-1 text-xs transition-colors",
+                "-mb-px h-8 whitespace-nowrap border-b-2 px-0.5 text-[13px] transition-colors",
                 filtros.status === valor
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
+                  ? "border-primary font-medium text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
               {texto}
@@ -263,137 +282,121 @@ export function InboxFilters({
           ))}
         </div>
 
-        {/* Favoritas fica FORA do painel: é recorte de uso diário, que se
-            liga e desliga o tempo todo, e enterrá-lo atrás de um clique a
-            mais custaria mais que o espaço que ocupa. */}
-        <button
-          type="button"
-          onClick={() => mexer({ favoritas: !filtros.favoritas })}
-          aria-pressed={filtros.favoritas}
-          className={cn(
-            "inline-flex h-7 shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md px-1 text-xs transition-colors hover:bg-muted",
-            filtros.favoritas
-              ? "text-amber-500"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <Star className={cn("h-3 w-3", filtros.favoritas && "fill-current")} />
-          {t("favorites")}
-        </button>
+        <div className="mb-1 ml-auto flex items-center gap-1.5">
+          {/* Favoritas e Não lidas ficam FORA do painel: são recortes de uso
+              diário, que se ligam e desligam o tempo todo, e enterrá-los atrás
+              de um clique a mais custaria mais que o espaço que ocupam.
+              ⚠️ "Não lidas" SOMA com o resto (não substitui a situação, como a
+              antiga opção do menu fazia). */}
+          <button
+            type="button"
+            onClick={() => mexer({ favoritas: !filtros.favoritas })}
+            aria-pressed={filtros.favoritas}
+            aria-label={t("favorites")}
+            title={t("favorites")}
+            className={chipDaBarra(filtros.favoritas, "amber")}
+          >
+            <Star className={cn(filtros.favoritas && "fill-current")} />
+          </button>
+          <button
+            type="button"
+            onClick={() => mexer({ naoLidas: !filtros.naoLidas })}
+            aria-pressed={filtros.naoLidas}
+            aria-label={t("filterUnread")}
+            title={t("filterUnread")}
+            className={chipDaBarra(filtros.naoLidas)}
+          >
+            <MailOpen />
+          </button>
 
-        {/* ⚠️ "Não lidas" DEIXOU de ser uma opção do menu de situação e virou
-            botão próprio — é mudança de comportamento, não adição. Antes,
-            escolhê-la SUBSTITUÍA o status (mostrava não lida encerrada
-            junto); agora ela soma com o resto, como o operador pediu. */}
-        <button
-          type="button"
-          onClick={() => mexer({ naoLidas: !filtros.naoLidas })}
-          aria-pressed={filtros.naoLidas}
-          className={cn(
-            "inline-flex h-7 shrink-0 items-center gap-0.5 whitespace-nowrap rounded-md px-1 text-xs transition-colors hover:bg-muted",
-            filtros.naoLidas
-              ? "text-primary"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <MailOpen className="h-3 w-3" />
-          {t("filterUnread")}
-        </button>
+          {/* Colado no botão "Filtros" porque é o mesmo assunto — mas com
+              gatilho próprio: aquele botão já abre e fecha o painel, e um
+              segundo comportamento no mesmo clique não existe. */}
+          {menuSalvos}
+
+          <button
+            type="button"
+            onClick={() => setAberto((v) => !v)}
+            aria-expanded={aberto}
+            aria-label={t("filters")}
+            title={t("filters")}
+            className={chipDaBarra(ativos > 0)}
+          >
+            <SlidersHorizontal />
+            {/* ⚠️ O distintivo é o que explica uma lista curta com o painel
+                fechado. Sem ele, um filtro esquecido vira "sumiram conversas". */}
+            {ativos > 0 && (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                {ativos}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1">
-        <button
-          type="button"
-          onClick={() => setAberto((v) => !v)}
-          aria-expanded={aberto}
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-muted",
-            ativos > 0
-              ? "text-primary"
-              : "text-muted-foreground hover:text-foreground",
+      {/* ⚠️ AS PASTILHAS DO FILTRO ATIVO, VISÍVEIS COM O PAINEL FECHADO — numa
+          linha que SÓ EXISTE quando algo recorta (antes dividiam a linha com
+          "Filtros"/"Salvos", espremidas). Sem isto o operador abre o inbox,
+          vê 8 de 64 conversas e um distintivo "①" que diz que EXISTE um
+          filtro, não QUAL — e a única saída seria limpar todos de uma vez.
+
+          Também é o que salva o caso do filtro cujo campo sumiu: se o último
+          grupo sair da lista com "só grupos" marcado, o campo Tipo some do
+          painel mas o recorte continua valendo. A pastilha continua ali, com
+          o X. */}
+      {(ativos > 0 || busca.trim().length > 0 || exibindo !== total) && (
+        <div className="flex flex-wrap items-center gap-1">
+          {pastilhas.map((p) => (
+            <button
+              key={p.chave}
+              type="button"
+              onClick={p.aoRemover}
+              title={t("removeFilter", { filtro: p.texto })}
+              className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground transition-colors hover:bg-muted/70"
+            >
+              {p.cor && (
+                <span
+                  className="h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: p.cor }}
+                />
+              )}
+              <span className="max-w-32 truncate">{p.texto}</span>
+              <X className="h-3 w-3 shrink-0" />
+            </button>
+          ))}
+
+          {/* Limpa também a BUSCA: ela recorta a lista igual aos filtros, e um
+              "limpar tudo" que deixa a busca de pé não limpou tudo. Por isso
+              aparece com busca preenchida mesmo sem nenhum filtro. */}
+          {(ativos > 0 || busca.trim().length > 0) && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange(FILTROS_VAZIOS);
+                onLimparBusca();
+              }}
+              className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-3 w-3" />
+              {t("clearAll")}
+            </button>
           )}
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          {t("filters")}
-          {/* ⚠️ O distintivo é o que explica uma lista curta com o painel
-              fechado. Sem ele, um filtro esquecido vira "sumiram conversas". */}
-          {ativos > 0 && (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-              {ativos}
+
+          {/* O contador só aparece quando algo recorta. Ele existe para
+              explicar um resultado vazio ou curto — mostrá-lo com a lista
+              inteira seria ruído. */}
+          {(ativos > 0 || exibindo !== total) && (
+            <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+              {t("showingCount", { count: exibindo, total })}
             </span>
           )}
-          <ChevronDown
-            className={cn("h-3 w-3 transition-transform", aberto && "rotate-180")}
-          />
-        </button>
-
-        {/* Colado no botão "Filtros" porque é o mesmo assunto — mas com
-            gatilho próprio: aquele botão já abre e fecha o painel, e um
-            segundo comportamento no mesmo clique não existe. */}
-        {menuSalvos}
-
-        {/* ⚠️ AS PASTILHAS DO FILTRO ATIVO, VISÍVEIS COM O PAINEL FECHADO —
-            na MESMA linha do botão, que é o assunto delas.
-            Antes deste painel, o rótulo de cada filtro escolhido ficava escrito
-            na barra o tempo todo, e cada etiqueta tinha um X próprio. Sem isto
-            o operador abre o inbox, vê 8 de 64 conversas e um "Filtros ①" que
-            diz que EXISTE um filtro, não QUAL — e a única saída seria limpar
-            todos de uma vez.
-
-            Também é o que salva o caso do filtro cujo campo sumiu: se o último
-            grupo sair da lista com "só grupos" marcado, o campo Tipo some do
-            painel mas o recorte continua valendo. A pastilha continua ali, com
-            o X. */}
-        {pastilhas.map((p) => (
-          <button
-            key={p.chave}
-            type="button"
-            onClick={p.aoRemover}
-            title={t("removeFilter", { filtro: p.texto })}
-            className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground transition-colors hover:bg-muted/70"
-          >
-            {p.cor && (
-              <span
-                className="h-1.5 w-1.5 shrink-0 rounded-full"
-                style={{ backgroundColor: p.cor }}
-              />
-            )}
-            <span className="max-w-32 truncate">{p.texto}</span>
-            <X className="h-3 w-3 shrink-0" />
-          </button>
-        ))}
-
-        {/* Limpa também a BUSCA: ela recorta a lista igual aos filtros, e um
-            "limpar tudo" que deixa a busca de pé não limpou tudo. Por isso
-            aparece com busca preenchida mesmo sem nenhum filtro. */}
-        {(ativos > 0 || busca.trim().length > 0) && (
-          <button
-            type="button"
-            onClick={() => {
-              onChange(FILTROS_VAZIOS);
-              onLimparBusca();
-            }}
-            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <X className="h-3 w-3" />
-            {t("clearAll")}
-          </button>
-        )}
-
-        {/* O contador só aparece quando algo recorta. Ele existe para explicar
-            um resultado vazio ou curto — mostrá-lo com a lista inteira seria
-            ruído. */}
-        {(ativos > 0 || exibindo !== total) && (
-          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
-            {t("showingCount", { count: exibindo, total })}
-          </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {aberto && (
         // ⚠️ UMA coluna, e `sm:grid-cols-2` seria errado aqui: `sm:` olha a
-        // LARGURA DA JANELA, mas esta barra tem largura FIXA de 320px no
-        // desktop (`lg:w-80`). Duas colunas dariam ~129px cada, e "Recebeu
+        // LARGURA DA JANELA, mas esta barra tem largura FIXA no desktop
+        // (320px no `lg`, 360px no `xl`). Duas colunas dariam ~130px cada, e "Recebeu
         // link de agendamento" ou "Leonardo Cabral Baptista" truncariam no
         // próprio gatilho — o operador não conseguiria ler o filtro que
         // escolheu. E o efeito era invertido: no celular, onde a lista ocupa
