@@ -6,67 +6,55 @@
 // correu a primeira mensagem e quem a mandou. A regra é `lib/contacts/origem`
 // (pura, com teste); aqui só a busca da primeira mensagem e a renderização.
 //
-// ⚠️ A primeira mensagem é buscada por CONVERSA e comparada contra a prop do
-// render atual (`de === conversationId`) — a armadilha do efeito passivo que
-// já mordeu quatro vezes: sem isso, ao trocar de cliente o bloco mostraria a
-// origem do anterior sob o nome do novo. Sem resposta ainda, não afirma nada.
+// ⚠️ A primeira mensagem vem do FIO, por prop (`messages[0]`), nunca de uma
+// consulta própria: a página zera o array ao trocar de conversa e carimba de
+// quem ele é (`messagesCarregando`), então não há render com a origem do
+// cliente anterior sob o nome do novo — e a primeira mensagem de uma
+// conversa nova chega sozinha, sem remontar nada.
 // ============================================================
 
-import { useEffect, useState } from 'react';
 import { CalendarDays, MapPin, MessageSquare, PlugZap } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { useChannels } from '@/hooks/use-channels';
-import { origemDoContato, type PrimeiraMensagem } from '@/lib/contacts/origem';
-import { createClient } from '@/lib/supabase/client';
-import type { Contact } from '@/types';
+import { origemDoContato } from '@/lib/contacts/origem';
+import type { Contact, Message } from '@/types';
 
 export function OrigemDoContato({
   contact,
-  conversationId,
+  messages,
+  carregando,
 }: {
   contact: Contact;
-  conversationId: string | null;
+  /**
+   * O fio INTEIRO da conversa, por prop — o mesmo array que alimenta a aba
+   * Arquivos. O fio carrega a conversa completa (sem `limit`), do mais antigo
+   * ao mais novo, então `messages[0]` É a primeira mensagem; e como é prop,
+   * a primeira mensagem de uma conversa recém-aberta chega sozinha (achado
+   * do Codex no PR #109: uma consulta própria, chaveada só pela conversa,
+   * ficava presa em "nenhuma mensagem" até remontar o painel).
+   */
+  messages: Message[];
+  /** Carga do fio em curso: `messages` vazio ainda não afirma nada. */
+  carregando: boolean;
 }) {
   const t = useTranslations('Inbox.sidebar');
   const { channels } = useChannels();
-  const [primeira, setPrimeira] = useState<{
-    de: string;
-    mensagem: PrimeiraMensagem | null;
-  } | null>(null);
 
-  useEffect(() => {
-    if (!conversationId) return;
-    let cancelado = false;
-    const supabase = createClient();
-    supabase
-      .from('messages')
-      .select('created_at, channel_id, sender_type, from_device')
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .then(({ data, error }) => {
-        if (cancelado) return;
-        if (error) {
-          console.error('[origem-do-contato] primeira mensagem:', error);
-          return;
-        }
-        setPrimeira({
-          de: conversationId,
-          mensagem: (data?.[0] as PrimeiraMensagem | undefined) ?? null,
-        });
-      });
-    return () => {
-      cancelado = true;
-    };
-  }, [conversationId]);
-
-  // Só afirma sobre a primeira mensagem quando a resposta é DESTA conversa;
-  // enquanto não é, o bloco mostra só a data de cadastro, que é do contato.
-  const respondeu = !!conversationId && primeira?.de === conversationId;
+  // Só afirma sobre a primeira mensagem com a carga concluída; até lá o
+  // bloco mostra só a data de cadastro, que é do contato.
+  const respondeu = !carregando;
+  const primeira = respondeu && messages.length > 0 ? messages[0] : null;
   const origem = origemDoContato(
     contact,
-    respondeu ? primeira!.mensagem : null,
+    primeira
+      ? {
+          created_at: primeira.created_at,
+          channel_id: primeira.channel_id,
+          sender_type: primeira.sender_type,
+          from_device: primeira.from_device,
+        }
+      : null,
     (id) => channels.find((c) => c.id === id)?.label ?? null,
   );
 

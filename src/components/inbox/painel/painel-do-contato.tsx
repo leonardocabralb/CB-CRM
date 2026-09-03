@@ -1472,7 +1472,11 @@ export function PainelDoContato({
           value="historico"
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
-          <OrigemDoContato contact={contact} conversationId={conversationId ?? null} />
+          <OrigemDoContato
+            contact={contact}
+            messages={messages}
+            carregando={messagesCarregando}
+          />
           <ActivityHistory contactId={contact.id} token={resyncToken} />
         </TabsContent>
       </Tabs>
