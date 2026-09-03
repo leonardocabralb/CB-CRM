@@ -5,6 +5,7 @@ import {
   casarContatosComFotos,
   comCarimboDeVersao,
   fotosDosChats,
+  mesmoTelefone,
   precisaConferirFoto,
   urlDaFotoNaResposta,
 } from "./foto-de-perfil";
@@ -47,6 +48,15 @@ describe("caminho e versão", () => {
   });
 });
 
+describe("mesmoTelefone — sufixo E prefixo, tolerante ao nono dígito", () => {
+  it("nono dígito e tronco não separam; DDD diferente separa", () => {
+    expect(mesmoTelefone("5511999998888", "551199998888")).toBe(true);
+    expect(mesmoTelefone("5511999998888", "5521999998888")).toBe(false);
+    expect(mesmoTelefone("999998888", "5511999998888")).toBe(true);
+    expect(mesmoTelefone("1234567", "5511999998888")).toBe(false);
+  });
+});
+
 describe("fotosDosChats + casarContatosComFotos — o backfill", () => {
   const chats = [
     { remoteJid: "5511999998888@s.whatsapp.net", profilePicUrl: "https://pps/a.jpg" },
@@ -67,6 +77,7 @@ describe("fotosDosChats + casarContatosComFotos — o backfill", () => {
       { id: "c1", phone: "+55 11 9999-8888", avatar_checked_at: null }, // sem o nono dígito
       { id: "c2", phone: "+5521888887777", avatar_checked_at: dias(1) }, // recente
       { id: "c3", phone: "+5511777776666", avatar_checked_at: null }, // chat sem foto
+      { id: "c4", phone: "+5531999998888", avatar_checked_at: null }, // mesmo sufixo, DDD 31: NÃO é o chat de SP
     ];
     expect(casarContatosComFotos(contatos, fotos, AGORA)).toEqual([
       { contactId: "c1", url: "https://pps/a.jpg" },

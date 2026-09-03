@@ -81,9 +81,25 @@ export function fotosDosChats(chats: unknown[]): { digitos: string; url: string 
 }
 
 /**
- * Casa os chats com os contatos da conta pelos ÚLTIMOS 8 DÍGITOS — a mesma
- * régua de `findExistingContact` (tolerante ao nono dígito e ao tronco).
- * Contato conferido há menos de 30 dias fica de fora, salvo `forcar`.
+ * Dois números são o MESMO telefone quando os últimos 8 dígitos batem E o
+ * que vem antes deles também bate depois de descontado o nono dígito (o `9`
+ * que o Brasil inseriu) — é a régua de `findExistingContact`, reescrita
+ * sobre dígitos. Só o sufixo cruzaria `(11) 9999-8888` com `(21) 9999-8888`:
+ * dois clientes reais com a foto de um só.
+ */
+export function mesmoTelefone(a: string, b: string): boolean {
+  if (a.length < 8 || b.length < 8 || a.slice(-8) !== b.slice(-8)) return false;
+  const prefixo = (d: string) => d.slice(0, -8).replace(/9$/, "");
+  const pa = prefixo(a);
+  const pb = prefixo(b);
+  // Um dos lados pode vir sem país/DDD (número digitado curto): aí o
+  // prefixo vazio aceita qualquer coisa — é o que o LIKE de sufixo já fazia.
+  return pa === "" || pb === "" || pa === pb;
+}
+
+/**
+ * Casa os chats com os contatos da conta por `mesmoTelefone`. Contato
+ * conferido há menos de 30 dias fica de fora, salvo `forcar`.
  */
 export function casarContatosComFotos(
   contatos: { id: string; phone: string; avatar_checked_at?: string | null }[],
@@ -91,16 +107,18 @@ export function casarContatosComFotos(
   agoraMs: number,
   forcar = false,
 ): { contactId: string; url: string }[] {
-  const porSufixo = new Map<string, { digitos: string; url: string }>();
+  const porSufixo = new Map<string, { digitos: string; url: string }[]>();
   for (const f of fotos) {
-    if (f.digitos.length >= 8) porSufixo.set(f.digitos.slice(-8), f);
+    if (f.digitos.length < 8) continue;
+    const chave = f.digitos.slice(-8);
+    porSufixo.set(chave, [...(porSufixo.get(chave) ?? []), f]);
   }
   const pares: { contactId: string; url: string }[] = [];
   for (const c of contatos) {
     if (!forcar && !precisaConferirFoto(c, agoraMs)) continue;
     const d = digitosDoTelefone(c.phone);
     if (d.length < 8) continue;
-    const foto = porSufixo.get(d.slice(-8));
+    const foto = (porSufixo.get(d.slice(-8)) ?? []).find((f) => mesmoTelefone(d, f.digitos));
     if (foto) pares.push({ contactId: c.id, url: foto.url });
   }
   return pares;
