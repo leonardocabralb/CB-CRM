@@ -248,8 +248,8 @@ export function InboxFilters({
           com ícone — os dois interruptores que SOMAM (favoritas, não lidas),
           o menu de filtros salvos e o botão do painel. O nome vive no
           `title`/`aria-label`.
-          MEDIDO em 03/09: abas ~130px + chips ~148px = ~290px nos 336px úteis
-          da coluna (que passou de 320 para 360px no mesmo pedido). Sem
+          MEDIDO em 03/09: abas ~130px + chips ~148px = ~290px nos 296px úteis
+          da coluna no `lg` (336 no `xl`, onde ela passa a 360px). Sem
           `flex-wrap` de propósito: se não couber, é para encolher, nunca
           quebrar. O `-mx-3 px-3` estica o sublinhado até as bordas da coluna
           (o pai tem `p-3`), senão a linha para 12px antes de cada lado. */}
@@ -395,8 +395,8 @@ export function InboxFilters({
 
       {aberto && (
         // ⚠️ UMA coluna, e `sm:grid-cols-2` seria errado aqui: `sm:` olha a
-        // LARGURA DA JANELA, mas esta barra tem largura FIXA de 360px no
-        // desktop (`lg:w-[22.5rem]`). Duas colunas dariam ~150px cada, e "Recebeu
+        // LARGURA DA JANELA, mas esta barra tem largura FIXA no desktop
+        // (320px no `lg`, 360px no `xl`). Duas colunas dariam ~130px cada, e "Recebeu
         // link de agendamento" ou "Leonardo Cabral Baptista" truncariam no
         // próprio gatilho — o operador não conseguiria ler o filtro que
         // escolheu. E o efeito era invertido: no celular, onde a lista ocupa

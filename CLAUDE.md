@@ -1000,13 +1000,17 @@ estrutural `reopen.chamadores.test.ts`) e o alerta de atraso em
   sobrou — senão o cliente que manda e apaga deixava o relógio preso numa
   mensagem inexistente. O contador "Exibindo N de M" conta a ABA, com o
   termo da busca no universo (a busca atravessa para as encerradas).
-- **A barra é UMA linha sem `flex-wrap`, e a coluna tem 360px** (03/09,
+- **A barra é UMA linha sem `flex-wrap`, e a coluna tem 320px no `lg` e
+  360px no `xl`** (03/09,
   layout "C" escolhido pelo operador entre três mocks): abas sublinhadas à
   esquerda e quatro chips quadrados só com ícone à direita (favoritas, não
   lidas, salvos, filtros), todos por `chipDaBarra()` de `inbox-filters.tsx`
   — o menu de salvos IMPORTA de lá, senão o gatilho dele volta a ter forma
   própria, que foi a queixa original ("os itens estão diferentes"). Medido:
-  ~290px nos 336px úteis. O nome do filtro salvo aplicado vive no `title`,
+  ~290px nos 296px úteis do `lg`. ⚠️ Os 40px a mais são SÓ no `xl`: a
+  1024px o menu (240) e o painel do contato (360) já deixam 104px para o
+  fio, e alargar ali o levaria a 64px (Codex, PR #108). O nome do filtro
+  salvo aplicado vive no `title`,
   não mais no botão; as pastilhas ganharam linha própria, que só existe
   com algo recortando. ⚠️ Pré-existente e mantido: a aba Encerradas conta
   como filtro ativo (`contarFiltrosAtivos`) — acende o distintivo do chip

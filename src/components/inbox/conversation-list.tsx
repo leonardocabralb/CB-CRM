@@ -729,10 +729,13 @@ export function ConversationList({
 
   return (
     // w-full on mobile so the list occupies the whole viewport when it's
-    // the single pane showing; fixed 360px on desktop where it shares the
-    // row with the thread + contact sidebar. (Era 320px até 03/09; o operador
-    // pediu "um pouco mais" para a prévia da mensagem — ver `inbox-filters`.)
-    <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-[22.5rem]">
+    // the single pane showing; fixed on desktop where it shares the row with
+    // the thread + contact sidebar: 320px no `lg` e 360px a partir do `xl`
+    // (o operador pediu "um pouco mais" para a prévia, 03/09). ⚠️ Não alargar
+    // no `lg`: a 1024px o menu (240) e o painel do contato (360) já deixam
+    // só 104px para o fio — com 360 aqui sobrariam 64 (achado do Codex, PR
+    // #108). A 1280px sobram 320px, que é onde os 40px cabem.
+    <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80 xl:w-[22.5rem]">
       {/* Busca + filtros */}
       <div className="space-y-2 border-b border-border p-3">
         <div className="flex items-center gap-2">
