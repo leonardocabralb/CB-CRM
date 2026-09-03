@@ -34,6 +34,7 @@ import {
   Plus,
   RotateCcw,
   QrCode,
+  Images,
   RefreshCw,
   Smartphone,
   Star,
@@ -171,6 +172,7 @@ export function CbChannelsPanel() {
 
   const [promotingId, setPromotingId] = useState<string | null>(null);
   const [resyncing, setResyncing] = useState<string | null>(null);
+  const [buscandoFotos, setBuscandoFotos] = useState<string | null>(null);
 
   const [confirmRestart, setConfirmRestart] = useState<CbChannel | null>(null);
   const [restarting, setRestarting] = useState(false);
@@ -249,6 +251,55 @@ export function CbChannelsPanel() {
     setQrError(null);
     avisouWebhookRef.current = false;
   };
+
+  /**
+
+   * Busca em lote a FOTO DE PERFIL dos contatos desta conexão (973). A rota
+
+   * responde 202 na hora e faz o trabalho em `after()`: são até ~200
+
+   * downloads, e as fotos vão aparecendo na caixa de entrada.
+
+   */
+
+  const buscarFotos = useCallback(
+
+    async (channelId: string) => {
+
+      setBuscandoFotos(channelId);
+
+      try {
+
+        const res = await fetch(`/api/cb/channels/${channelId}/fotos`, {
+
+          method: 'POST',
+
+          headers: { 'Content-Type': 'application/json' },
+
+          body: JSON.stringify({}),
+
+        });
+
+        if (!res.ok) throw new Error(String(res.status));
+
+        toast.success(t('fetchPhotosStarted'));
+
+      } catch {
+
+        toast.error(t('fetchPhotosFailed'));
+
+      } finally {
+
+        setBuscandoFotos(null);
+
+      }
+
+    },
+
+    [t],
+
+  );
+
 
   /**
    * Ressincroniza um canal que JÁ ESTÁ conectado.
@@ -725,6 +776,24 @@ export function CbChannelsPanel() {
                           {t('connect')}
                         </Button>
                       ))}
+                    {/* Fotos de perfil dos contatos (973) — só faz sentido
+                        com a instância conectada: o `findChats` é dela. */}
+                    {channel.kind === 'evolution' && channel.status === 'connected' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={buscandoFotos === channel.id}
+                        onClick={() => void buscarFotos(channel.id)}
+                        title={t('fetchPhotosHint')}
+                      >
+                        {buscandoFotos === channel.id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Images className="mr-2 h-4 w-4" />
+                        )}
+                        {t('fetchPhotos')}
+                      </Button>
+                    )}
                     {/* REPAREAR. Sem condição de status de propósito: o caso
                         que ele existe para resolver é justamente o canal que
                         SE DIZ conectado e não entrega nada. Amarrá-lo a

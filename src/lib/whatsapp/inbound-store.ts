@@ -165,6 +165,13 @@ async function findOrCreateConversation(
 export interface PersistedInbound {
   messageId: string;
   conversationId: string;
+  /**
+   * O contato da conversa 1:1, para a conferência da FOTO DE PERFIL em
+   * segundo plano (webhook da Evolution, 2026-09-03): `avatar_checked_at`
+   * (973) é o que decide se vale uma chamada à Evolution — sem ele o
+   * contato sem foto seria consultado a cada mensagem, para sempre.
+   */
+  contato: { id: string; phone: string; avatar_checked_at: string | null } | null;
 }
 
 /**
@@ -289,7 +296,16 @@ export async function persistDeviceMessage(
     conversationId: conversation.id,
   });
 
-  return { messageId: insertedMsg.id, conversationId: conversation.id };
+  return {
+    messageId: insertedMsg.id,
+    conversationId: conversation.id,
+    contato: {
+      id: contactOutcome.contact.id,
+      phone: m.phone,
+      avatar_checked_at:
+        (contactOutcome.contact.avatar_checked_at as string | null | undefined) ?? null,
+    },
+  };
 }
 
 /**
@@ -474,5 +490,13 @@ export async function persistInboundMessage(
     channel_id: m.channelId ?? null,
   });
 
-  return { messageId: insertedMsg.id, conversationId: conversation.id };
+  return {
+    messageId: insertedMsg.id,
+    conversationId: conversation.id,
+    contato: {
+      id: contact.id,
+      phone: m.phone,
+      avatar_checked_at: (contact.avatar_checked_at as string | null | undefined) ?? null,
+    },
+  };
 }
