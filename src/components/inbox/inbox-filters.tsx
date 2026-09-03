@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { CbChannel } from "@/lib/cb-channels/repo";
 import {
-  contarRecortesDoPainel,
+  contarFiltrosAtivos,
   FILTROS_VAZIOS,
   funisDoRecorte,
   recorteTemDoisNiveis,
@@ -129,8 +129,8 @@ export function InboxFilters({
   const [aberto, setAberto] = useState(false);
   const [maisFiltros, setMaisFiltros] = useState(false);
   // A situação (aba Abertas/Encerradas) fica FORA da conta: é uma visão com
-  // controle próprio, sempre à vista — ver `contarRecortesDoPainel`.
-  const ativos = contarRecortesDoPainel(filtros);
+  // controle próprio, sempre à vista — ver `contarFiltrosAtivos`.
+  const ativos = contarFiltrosAtivos(filtros);
 
   const mexer = (patch: Partial<FiltrosDoInbox>) =>
     onChange({ ...filtros, ...patch });
@@ -634,7 +634,7 @@ export function InboxFilters({
           {/* Rodapé: o contador (só quando algo recorta — ele existe para
               explicar um resultado curto) e o "Limpar", que limpa também a
               BUSCA (um "limpar" que deixa a busca de pé não limpou) e mantém
-              a ABA (ver `contarRecortesDoPainel`). */}
+              a ABA (ver `contarFiltrosAtivos`). */}
           <div className="flex items-center justify-between gap-2 px-0.5 pt-0.5 text-[11px] text-muted-foreground">
             <span>
               {(ativos > 0 || exibindo !== total) &&

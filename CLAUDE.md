@@ -961,8 +961,10 @@ estrutural `reopen.chamadores.test.ts`) e o alerta de atraso em
 
 - ⚠️ **`status` do filtro é `"ativas" | "closed"`, e `"ativas"` (aberta E
   pendente) é a AUSÊNCIA de filtro.** Não existe mais "todas as situações":
-  encerrar é tirar da caixa. Filtro salvo gravado antes com `todos`/`open`/
-  `pending` cai em `ativas` no `lerFiltroSalvo` — de propósito, nunca `as`.
+  encerrar é tirar da caixa. A visão salva NÃO carrega a aba: `lerFiltroSalvo`
+  ignora qualquer `status` gravado (`todos`/`open`/`pending` de antes das duas
+  abas, e o `closed` de até 03/09) — de propósito, nunca `as`. Ver a nota das
+  visões, mais abaixo.
 - ⚠️ **A busca ATRAVESSA a aba padrão, e SÓ ela** (`casaComASituacao`).
   Sem isso, digitar o nome de um cliente com conversa encerrada devolvia
   "nenhuma conversa" — a leitura do operador seria que o cliente não está
@@ -1013,14 +1015,19 @@ estrutural `reopen.chamadores.test.ts`) e o alerta de atraso em
   fio, e alargar ali o levaria a 64px (Codex, PR #108). O nome do filtro
   salvo aplicado vive no `title`,
   não mais no botão; as pastilhas ganharam linha própria, que só existe
-  com algo recortando. ⚠️ **A aba Encerradas NÃO conta para o painel**
-  (decisão do operador, 03/09): distintivo, pastilhas e "Limpar tudo" usam
-  `contarRecortesDoPainel` (situação fora da conta; limpar mantém a aba),
-  enquanto `contarFiltrosAtivos` SEGUE contando a situação para os filtros
-  SALVOS — um filtro "só encerradas" recorta, e a semente do padrão só cai
-  sobre recorte intacto. Trocar um pelo outro faz o filtro salvo de
-  encerradas nunca aparecer como aplicado, ou a aba voltar a acender o
-  distintivo.
+  com algo recortando. ⚠️ **A aba Encerradas NÃO é filtro — nem do painel,
+  nem da visão salva** (decisão do operador, 03/09, em duas rodadas): a aba
+  é ONDE o operador está; o recorte é o que ele filtra. `contarFiltrosAtivos`
+  não conta a situação (distintivo, "Limpar tudo" e a semente do padrão),
+  `lerFiltroSalvo` ignora o `status` gravado, `escreverFiltroSalvo` não o
+  grava, `mesmoFiltro` não o compara e `aplicarVisao` mantém a aba nos dois
+  caminhos (chip e "Todas"). Existiu por algumas horas uma segunda contagem
+  (`contarRecortesDoPainel`, "situação fora da conta só para o painel") com
+  os filtros salvos ainda carregando a aba: aplicar um chip em Encerradas
+  jogava o operador de volta para Abertas, e trocar de aba com um chip aceso
+  o apagava e oferecia "salvar alterações". Quem precisar de uma visão "só
+  encerradas" está pedindo outra feature (a aba DENTRO da visão), não a
+  contagem antiga de volta.
 
 ⚠️ **Cabeçalho do fio, linha da lista e painel (2026-09-03, "sistema de
 referência" Chatguru).** Quatro mudanças pequenas com um motivo cada:

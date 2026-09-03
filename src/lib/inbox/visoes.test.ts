@@ -33,6 +33,19 @@ describe("estadoDasVisoes", () => {
     expect(e.todasAtiva).toBe(true);
   });
 
+  it("⚠️ a aba não apaga o chip nem conta como 'mexida': é o mesmo recorte, visto de Encerradas", () => {
+    const e = estadoDasVisoes({
+      salvos: [comercial],
+      padraoId: null,
+      atual: { ...FILTROS_VAZIOS, canalIds: ["c1"], status: "closed" },
+      baseId: "f1",
+      catalogos: cat,
+    });
+    expect(e.chips[0].ativa).toBe(true);
+    expect(e.mexida).toBe(false);
+    expect(e.podeSalvar).toBe(false);
+  });
+
   it("recorte igual a um salvo acende o chip; o padrão vem primeiro", () => {
     const e = estadoDasVisoes({ salvos: [comercial, vip], padraoId: "f2", atual: { ...FILTROS_VAZIOS, canalIds: ["c1"] }, baseId: null, catalogos: cat });
     expect(e.chips.map((c) => c.nome)).toEqual(["VIP", "Comercial"]);

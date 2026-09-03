@@ -22,7 +22,6 @@ import {
   SEM_ETAPA,
   SEM_RESPONSAVEL,
   type FiltrosDoInbox,
-  type SituacaoDaCaixa,
 } from "@/lib/inbox/filtros";
 import type { ModoDeEtiqueta, TipoDeConversa } from "@/lib/inbox/conversations";
 import type {
@@ -39,14 +38,6 @@ export interface FiltroSalvo {
 }
 
 const TIPOS: readonly TipoDeConversa[] = ["todas", "diretas", "grupos"];
-/**
- * ⚠️ Filtro gravado ANTES das duas abas (2026-09-02) pode carregar `"todos"`,
- * `"open"` ou `"pending"` — valores que o recorte de hoje não conhece. Os
- * três caem para `"ativas"` pelo `umDe`, que é a leitura mais próxima do que
- * cada um pedia (as encerradas saem da caixa por desenho; aberta e pendente
- * são as duas metades de "ativas"). Só `"closed"` sobrevive tal qual.
- */
-const STATUS: readonly SituacaoDaCaixa[] = ["ativas", "closed"];
 const MODOS: readonly ModoDeEtiqueta[] = ["qualquer", "todas"];
 
 function umDe<T extends string>(
@@ -104,7 +95,13 @@ export function lerFiltroSalvo(bruto: unknown): FiltrosDoInbox {
 
   return {
     tipo: umDe(o.tipo, TIPOS, FILTROS_VAZIOS.tipo),
-    status: umDe(o.status, STATUS, FILTROS_VAZIOS.status),
+    // ⚠️ A ABA não faz parte da visão salva — é onde o operador ESTÁ, não o
+    // que ele recorta. O JSON antigo pode trazer `status` ("todos"/"open"/
+    // "pending" de antes das duas abas, ou o "closed" gravado até 03/09): é
+    // ignorado. Aplicar o chip mantém a aba (ver `aplicarVisao` na lista);
+    // ler "closed" daqui jogava quem estava em Encerradas de volta para
+    // Abertas — a queixa do operador.
+    status: FILTROS_VAZIOS.status,
     // ⚠️ Aceita o formato ANTIGO (`canalId: "x"`, uma conexão só, até 03/09)
     // além do novo (`canalIds: [...]`): o JSON gravado antes da mudança
     // continua legível sem migration de dados.
@@ -131,11 +128,12 @@ export function lerFiltroSalvo(bruto: unknown): FiltrosDoInbox {
  * Explícito, e não um spread do estado: o estado da tela pode ganhar um campo
  * de UI (aberto/fechado, rascunho) e um spread o gravaria no banco em silêncio,
  * onde ele viveria para sempre sem ninguém saber de onde veio.
+ *
+ * `status` (a aba) fica de fora de propósito — ver `lerFiltroSalvo`.
  */
 export function escreverFiltroSalvo(f: FiltrosDoInbox): Record<string, unknown> {
   return {
     tipo: f.tipo,
-    status: f.status,
     canalIds: f.canalIds,
     responsavelId: f.responsavelId,
     etiquetaIds: f.etiquetaIds,
@@ -160,6 +158,10 @@ export function escreverFiltroSalvo(f: FiltrosDoInbox): Record<string, unknown> 
  * aplicar. `modoDeEtiqueta` só conta quando há 2+ etiquetas — com uma só,
  * "qualquer" e "todas" recortam igual, e diferenciar ali faria o mesmo recorte
  * parecer dois.
+ *
+ * ⚠️ `status` (a aba) NÃO entra: trocar de aba com um chip aceso não pode
+ * apagá-lo nem oferecer "salvar alterações" — a aba não faz parte da visão
+ * (ver `lerFiltroSalvo`).
  */
 /** Igualdade de conjunto (ordem não importa) — para as listas de ids. */
 function mesmoConjunto(a: string[], b: string[]): boolean {
@@ -182,7 +184,6 @@ export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
 
   return (
     a.tipo === b.tipo &&
-    a.status === b.status &&
     mesmoConjunto(a.canalIds, b.canalIds) &&
     a.responsavelId === b.responsavelId &&
     a.empresa === b.empresa &&
@@ -217,7 +218,6 @@ export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
 export type ChaveDeRotulo =
   | "typeDirect"
   | "typeGroups"
-  | "filterClosed"
   | "filterUnread"
   | "favorites"
   | "channelFilter"
@@ -302,15 +302,8 @@ export function descreverFiltro(
     });
   }
 
-  // A aba padrão ("ativas") não é recorte — só a de Encerradas vira pastilha,
-  // e desfazê-la é voltar para a caixa de entrada.
-  if (f.status === "closed") {
-    pedacos.push({
-      chave: "status",
-      rotulo: { fonte: "i18n", chave: "filterClosed" },
-      limpar: { status: "ativas" },
-    });
-  }
+  // A situação (aba) não é descrita: não faz parte da visão salva, e o resumo
+  // do diálogo de salvar não pode prometer uma aba que não vai ser gravada.
 
   if (f.canalIds.length > 0) {
     const nomes = f.canalIds.map((id) => cat.canais.find((c) => c.id === id)?.label ?? null);
