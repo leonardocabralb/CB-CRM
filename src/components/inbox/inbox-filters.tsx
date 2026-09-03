@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { CbChannel } from "@/lib/cb-channels/repo";
 import {
-  contarFiltrosAtivos,
+  contarRecortesDoPainel,
   FILTROS_VAZIOS,
   funisDoRecorte,
   recorteTemDoisNiveis,
@@ -131,7 +131,9 @@ export function InboxFilters({
 }: InboxFiltersProps) {
   const t = useTranslations("Inbox.conversationList");
   const [aberto, setAberto] = useState(false);
-  const ativos = contarFiltrosAtivos(filtros);
+  // A situação (aba Abertas/Encerradas) fica FORA da conta: é uma visão com
+  // controle próprio, sempre à vista — ver `contarRecortesDoPainel`.
+  const ativos = contarRecortesDoPainel(filtros);
 
   const mexer = (patch: Partial<FiltrosDoInbox>) =>
     onChange({ ...filtros, ...patch });
@@ -229,12 +231,16 @@ export function InboxFilters({
     etapas,
     funis,
     etiquetas,
-  }).map((p) => ({
-    chave: p.chave,
-    texto: p.rotulo.fonte === "i18n" ? t(p.rotulo.chave) : p.rotulo.texto,
-    cor: p.cor,
-    aoRemover: () => mexer(p.limpar),
-  }));
+  })
+    // A aba Encerradas não vira pastilha: ela já está acesa logo acima, e o
+    // menu de filtros salvos continua descrevendo-a (é a mesma função).
+    .filter((p) => p.chave !== "status")
+    .map((p) => ({
+      chave: p.chave,
+      texto: p.rotulo.fonte === "i18n" ? t(p.rotulo.chave) : p.rotulo.texto,
+      cor: p.cor,
+      aoRemover: () => mexer(p.limpar),
+    }));
 
   return (
     <div className="space-y-2">
@@ -372,7 +378,9 @@ export function InboxFilters({
             <button
               type="button"
               onClick={() => {
-                onChange(FILTROS_VAZIOS);
+                // Mantém a ABA: quem limpa os filtros em Encerradas quer ver
+                // todas as encerradas, não ser levado de volta às abertas.
+                onChange({ ...FILTROS_VAZIOS, status: filtros.status });
                 onLimparBusca();
               }}
               className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

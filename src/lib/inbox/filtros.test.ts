@@ -7,6 +7,7 @@ import {
   casaComAEtapa,
   casaComOResponsavel,
   contarFiltrosAtivos,
+  contarRecortesDoPainel,
   FILTROS_VAZIOS,
   mapaDeEtapasPorContato,
   SEM_ETAPA,
@@ -628,6 +629,11 @@ describe("casaComASituacao — Abertas esconde encerrada; Encerradas mostra só 
     expect(FILTROS_VAZIOS.status).toBe("ativas");
     expect(contarFiltrosAtivos(FILTROS_VAZIOS)).toBe(0);
     expect(contarFiltrosAtivos({ ...FILTROS_VAZIOS, status: "closed" })).toBe(1);
+    // A aba Encerradas conta para os filtros SALVOS, nunca para o painel.
+    expect(contarRecortesDoPainel({ ...FILTROS_VAZIOS, status: "closed" })).toBe(0);
+    expect(
+      contarRecortesDoPainel({ ...FILTROS_VAZIOS, status: "closed", favoritas: true }),
+    ).toBe(1);
   });
 
   it("na caixa, aberta E pendente ficam; a encerrada sai", () => {
