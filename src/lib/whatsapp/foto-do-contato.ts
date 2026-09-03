@@ -139,18 +139,27 @@ export async function conferirFotosDaConexao(args: {
 }): Promise<ResumoDoLote> {
   const agora = args.agoraMs ?? Date.now();
   const fotos = fotosDosChats(await args.client.findChats());
-  const { data: contatos, error } = await args.db
-    .from('contacts')
-    .select('id, phone, avatar_checked_at')
-    .eq('account_id', args.accountId);
-  if (error) throw new Error(`contatos: ${error.message}`);
 
-  const pares = casarContatosComFotos(
-    (contatos ?? []) as { id: string; phone: string; avatar_checked_at: string | null }[],
-    fotos,
-    agora,
-    args.forcar ?? false,
-  );
+  // ⚠️ PAGINADO, com ordem estável: o PostgREST devolve no máximo ~1000
+  // linhas por consulta e NÃO avisa — uma conta com mais contatos que isso
+  // teria o lote "concluído" com metade dos contatos sem foto (achado do
+  // Codex no PR #110). A mesma armadilha da busca por texto (929).
+  const contatos: { id: string; phone: string; avatar_checked_at: string | null }[] = [];
+  const PAGINA = 500;
+  for (let de = 0; ; de += PAGINA) {
+    const { data, error } = await args.db
+      .from('contacts')
+      .select('id, phone, avatar_checked_at')
+      .eq('account_id', args.accountId)
+      .order('id', { ascending: true })
+      .range(de, de + PAGINA - 1);
+    if (error) throw new Error(`contatos: ${error.message}`);
+    const lote = (data ?? []) as typeof contatos;
+    contatos.push(...lote);
+    if (lote.length < PAGINA) break;
+  }
+
+  const pares = casarContatosComFotos(contatos, fotos, agora, args.forcar ?? false);
   const resumo: ResumoDoLote = {
     chatsComFoto: fotos.length,
     candidatos: pares.length,

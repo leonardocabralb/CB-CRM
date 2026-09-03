@@ -21,6 +21,17 @@ import { decrypt } from '@/lib/whatsapp/encryption';
 import { conferirFotosDaConexao } from '@/lib/whatsapp/foto-do-contato';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
 
+/**
+ * Lotes EM CURSO, por conexão (achado do Codex no PR #110): a rota responde
+ * 202 na hora e o botão volta a aceitar clique, então dois cliques seguidos
+ * baixavam as mesmas centenas de fotos em paralelo. Enquanto o lote roda, a
+ * conexão responde 409. ⚠️ É memória de PROCESSO — no deploy (`start-first`)
+ * há dois Node vivos por instantes, e cada um tem o seu conjunto; é a mesma
+ * régua do rate limit em `lib/rate-limit`, e o dano do caso raro é só
+ * trabalho repetido (o upload é `upsert`).
+ */
+const lotesEmCurso = new Set<string>();
+
 /** O `after()` sobrevive à resposta; o client RLS do pedido, não. */
 function admin() {
   return createClient(
@@ -65,6 +76,14 @@ export async function POST(
     });
     const accountId = ctx.accountId;
 
+    if (lotesEmCurso.has(channelId)) {
+      return NextResponse.json(
+        { error: 'Já há uma busca de fotos em andamento nesta conexão.', code: 'busca_em_curso' },
+        { status: 409 },
+      );
+    }
+    lotesEmCurso.add(channelId);
+
     after(async () => {
       try {
         const resumo = await conferirFotosDaConexao({ db: admin(), client, accountId, forcar });
@@ -73,6 +92,8 @@ export async function POST(
         );
       } catch (err) {
         console.error('[cb/channels/fotos] lote falhou:', err instanceof Error ? err.message : err);
+      } finally {
+        lotesEmCurso.delete(channelId);
       }
     });
 
