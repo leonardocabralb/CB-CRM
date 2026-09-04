@@ -30,7 +30,7 @@
 
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
-| **0** | Fundamentos: correspondência etapa → degrau do funil de eficiência (coluna + UI em Funis), RPC das trajetórias, módulos puros do cálculo | ✅ **feita** (2026-09-04) | `975_cb_degrau_do_funil` **aplicada** (04/09) | `feat/funil-comercial-fase-0` |
+| **0** | Fundamentos: correspondência etapa → degrau do funil de eficiência (coluna + UI em Funis), RPC das trajetórias, módulos puros do cálculo | ✅ **feita** (2026-09-04) | `975_cb_degrau_do_funil` **aplicada** (04/09) | [#119](https://github.com/leonardocabralb/CB-CRM/pull/119) |
 | **1** | **Lista de leads** do funil: colunas fixas + campos personalizados, etapa editável na linha, busca/etapa/situação/período, ordenação, CSV | ⏳ a fazer | nenhuma | — |
 | **2** | **Desempenho**: funil de eficiência, negativos e em aberto, taxas atual × anterior, entrada por dia, cards de conversão/valor | ⏳ a fazer | nenhuma | — |
 | **3** | **Saúde**: conversão por degrau nos últimos 12 meses (linhas) e mapa de calor | ⏳ a fazer | nenhuma | — |
