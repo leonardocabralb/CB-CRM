@@ -191,9 +191,53 @@ describe("resumoDoPeriodo — o funil de eficiência de setembro", () => {
   });
 
   it("a situação PARTICIONA a coorte: fechado + perdido + sem avanço + em andamento + fora do funil = entradas", () => {
-    // C e H estão em contrato (situação 'fechado'); os demais se repartem.
-    const fechadosAgora = coorteDoPeriodo(FATOS, SETEMBRO).filter((f) => f.situacao === "fechado").length;
-    expect(fechadosAgora + r.perdidos + r.semAvanco + r.emAndamento + r.foraDoFunil).toBe(r.entradas);
+    // ⚠️ O "fechado" da partição é `fechadosAgora`, o campo EXPORTADO —
+    // somar `fechados` (que é "alcançou contrato") conta duas vezes quem
+    // voltou. Este teste lê o que a TELA lê.
+    expect(r.fechadosAgora + r.perdidos + r.semAvanco + r.emAndamento + r.foraDoFunil).toBe(r.entradas);
+    expect(r.fechadosAgora).toBe(coorteDoPeriodo(FATOS, SETEMBRO).filter((f) => f.situacao === "fechado").length);
+  });
+
+  it("DISTRATO: chegou a contrato e foi para perda — conta no degrau, some do dinheiro", () => {
+    const distrato = negocio(
+      "Z",
+      "desq",
+      [
+        passo("avulso", em(1, 8), FUNIL, "deal_created"),
+        passo("contrato", em(2, 8)),
+        passo("desq", em(3, 8)),
+      ],
+      { value: 30000 },
+    );
+    const fatos = [...LINHAS, distrato].map((l) => fatosDoNegocio(l, FUNIL, CLASSIFICACAO));
+    const comDistrato = resumoDoPeriodo(fatos, CLASSIFICACAO, SETEMBRO, AGORA);
+
+    // O degrau CONTRATO do funil de eficiência conta quem ALCANÇOU.
+    expect(comDistrato.fechados).toBe(r.fechados + 1);
+    // O dinheiro, não: os R$ 30.000 do distrato não são receita, e o
+    // negócio já está contado como perdido.
+    expect(comDistrato.fechadosAgora).toBe(r.fechadosAgora);
+    expect(comDistrato.valorFechado).toBe(r.valorFechado);
+    expect(comDistrato.perdidos).toBe(r.perdidos + 1);
+    // E a partição continua fechando com a entrada a mais.
+    expect(
+      comDistrato.fechadosAgora +
+        comDistrato.perdidos +
+        comDistrato.semAvanco +
+        comDistrato.emAndamento +
+        comDistrato.foraDoFunil,
+    ).toBe(comDistrato.entradas);
+  });
+
+  it("entrada FORA da grade densa não some do gráfico", () => {
+    // Relógio do navegador atrás do carimbo do banco: o lead entrou depois
+    // do fim que `diasDoIntervalo` calcula, e sumia do gráfico enquanto o
+    // card "Leads" seguia contando (revisão do PR #123).
+    const amanha = negocio("W", "avulso", [passo("avulso", em(5, 9), FUNIL, "deal_created")]);
+    const fatos = [...LINHAS, amanha].map((l) => fatosDoNegocio(l, FUNIL, CLASSIFICACAO));
+    const comFuturo = resumoDoPeriodo(fatos, CLASSIFICACAO, SETEMBRO, AGORA);
+    const somaDoGrafico = comFuturo.entradasPorDia.reduce((soma, d) => soma + d.n, 0);
+    expect(somaDoGrafico).toBe(comFuturo.entradas);
   });
 
   it("entradas por dia, densas do dia 1 até hoje", () => {

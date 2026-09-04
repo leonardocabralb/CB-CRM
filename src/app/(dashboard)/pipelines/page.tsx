@@ -90,6 +90,10 @@ export default function PipelinesPage() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
   const [stages, setStages] = useState<PipelineStage[]>([]);
+  // De QUAL funil são as `stages` em estado: elas chegam depois da seleção,
+  // e Desempenho/Saúde precisam distinguir "ainda não chegaram" de "o funil
+  // não tem etapa" — os dois são `[]` (Codex, PR #121).
+  const [etapasDe, setEtapasDe] = useState<string>("");
   const [deals, setDeals] = useState<DealDoQuadro[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -387,6 +391,8 @@ export default function PipelinesPage() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStages([]);
       // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEtapasDe("");
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDeals([]);
       return;
     }
@@ -398,6 +404,7 @@ export default function PipelinesPage() {
       ]);
       if (cancelled) return;
       setStages(s);
+      setEtapasDe(selectedPipelineId);
       setDeals(d);
     })();
     return () => {
@@ -726,8 +733,14 @@ export default function PipelinesPage() {
         </div>
       ) : vista === "lista" && selectedPipeline ? (
         <ListaDeLeads
+          // ⚠️ `key` por funil: sem ela o React reusa a instância e os
+          // FILTROS do funil anterior sobrevivem — o operador vê "0 de 37"
+          // sobre um funil cheio, com o seletor de etapa em branco porque o
+          // id filtrado não existe aqui (Codex, PR #123).
+          key={selectedPipeline.id}
           pipeline={selectedPipeline}
           stages={stages}
+          etapasCarregadas={etapasDe === selectedPipeline.id}
           onEditDeal={handleEditDealPorId}
           onDealChanged={refreshDeals}
         />
@@ -735,12 +748,14 @@ export default function PipelinesPage() {
         <Desempenho
           pipeline={selectedPipeline}
           stages={stages}
+          etapasCarregadas={etapasDe === selectedPipeline.id}
           onConfigurar={() => setSettingsOpen(true)}
         />
       ) : vista === "saude" && selectedPipeline ? (
         <Saude
           pipeline={selectedPipeline}
           stages={stages}
+          etapasCarregadas={etapasDe === selectedPipeline.id}
           onConfigurar={() => setSettingsOpen(true)}
         />
       ) : vista === "automacoes" && podeAutomacoes ? (

@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { AI_PROVIDER_DEFAULT_MODEL, AI_PROVIDER_MODELS } from '@/lib/ai/defaults';
 import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
+import { MetaAdsCard } from './meta-ads-card';
 import { SettingsChip, type ChipVariant } from './settings-chip';
 import { SettingsPanelHead } from './settings-panel-head';
 import { cn } from '@/lib/utils';
@@ -275,6 +276,10 @@ function Conteudo() {
           onSalvo={() => void carregar(true)}
         />
       ))}
+      {/* Meta Ads (Fase 4 do funil comercial): cartão com rota própria
+          (`GET /api/cb/meta-ads`) — não passa pelo `montarCartoes`, que é
+          o das chaves de IA; o token nunca chega ao navegador. */}
+      <MetaAdsCard />
     </div>
   );
 }

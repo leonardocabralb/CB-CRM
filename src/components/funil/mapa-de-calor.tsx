@@ -4,9 +4,11 @@
  * O mapa de saúde: linhas = transições, colunas = meses, cor RELATIVA À
  * LINHA (decisão D6: o melhor mês da transição é verde e o pior é vermelho —
  * escala absoluta pintaria "Lead → Contrato" de vermelho o ano inteiro).
- * Coorte pequena fica apagada, com o motivo no `title`; o mês corrente é
- * marcado como "em andamento". Tabela HTML pura — não há biblioteca para
- * desenhar isto, e a rolagem horizontal fica no contêiner, nunca na página.
+ * Coorte pequena fica apagada, com o motivo no `title`; coorte com lead
+ * ainda sem desfecho traz "N em aberto" sob o mês (a taxa dela ainda pode
+ * mudar — e isso vale para agosto tanto quanto para o mês corrente). Tabela
+ * HTML pura — não há biblioteca para desenhar isto, e a rolagem horizontal
+ * fica no contêiner, nunca na página.
  */
 export interface CelulaDoMapa {
   /** fração 0..1 ou nulo (sem denominador) */
@@ -36,13 +38,17 @@ export function MapaDeCalor({
   formatarTaxa,
   tituloDaCelula,
   rotuloEmAndamento,
+  rotuloEmAberto,
   rotuloPequena,
 }: {
-  meses: { chave: string; rotulo: string; emAndamento: boolean }[];
+  meses: { chave: string; rotulo: string; emAberto: number }[];
   linhas: LinhaDoMapaDeCalor[];
   formatarTaxa: (taxa: number | null) => string;
   tituloDaCelula: (mes: string, taxa: string, entradas: number) => string;
-  rotuloEmAndamento: string;
+  /** o `title` da contagem: explica que a taxa do mês ainda pode mudar */
+  rotuloEmAndamento: (emAberto: number) => string;
+  /** o texto visível sob o mês ("3 em aberto") */
+  rotuloEmAberto: (emAberto: number) => string;
   rotuloPequena: string;
 }) {
   return (
@@ -54,9 +60,9 @@ export function MapaDeCalor({
             {meses.map((m) => (
               <th key={m.chave} className="px-1 py-1 text-center font-medium text-muted-foreground">
                 {m.rotulo}
-                {m.emAndamento && (
-                  <span className="block text-[10px] font-normal" title={rotuloEmAndamento}>
-                    ●
+                {m.emAberto > 0 && (
+                  <span className="block whitespace-nowrap text-[10px] font-normal" title={rotuloEmAndamento(m.emAberto)}>
+                    {rotuloEmAberto(m.emAberto)}
                   </span>
                 )}
               </th>

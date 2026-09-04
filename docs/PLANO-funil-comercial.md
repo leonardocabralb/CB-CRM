@@ -34,7 +34,7 @@
 | **1** | **Lista de leads** do funil: colunas fixas + campos personalizados, etapa editável na linha, busca/etapa/situação/período, ordenação, CSV | ✅ **feita** (2026-09-04) | nenhuma | [#120](https://github.com/leonardocabralb/CB-CRM/pull/120) |
 | **2** | **Desempenho**: funil de eficiência, negativos e em aberto, taxas atual × anterior, entrada por dia, cards de conversão/valor | ✅ **feita** (2026-09-04) | nenhuma | [#121](https://github.com/leonardocabralb/CB-CRM/pull/121) |
 | **3** | **Saúde**: conversão por degrau nos últimos 12 meses (linhas) e mapa de calor | ✅ **feita** (2026-09-04) | nenhuma | [#122](https://github.com/leonardocabralb/CB-CRM/pull/122) |
-| **4** | **Meta Ads em Integrações**: conexão com a conta de anúncios (token cifrado), campanhas → funil, gasto diário por campanha puxado pelo agendador → custo por lead, CAC e custo dos perdidos no Desempenho | ⏳ a fazer | `976_cb_meta_ads` | — |
+| **4** | **Meta Ads em Integrações**: conexão com a conta de anúncios (token cifrado), campanhas → funil, gasto diário por campanha puxado pelo agendador → custo por lead, CAC e custo dos perdidos no Desempenho | ✅ **feita** (2026-09-04) — falta o operador **conectar** (token) e rodar `docker stack deploy` na VPS | `976_cb_meta_ads` **aplicada** (04/09) | [#123](https://github.com/leonardocabralb/CB-CRM/pull/123) |
 | **5** | **Depois, cada um por decisão própria**: captura automática do anúncio de origem (fica barata depois da Fase 4) · backfill de lista de outro CRM (plano próprio) | 🔭 futuro | — | — |
 
 **Decisões travadas com o operador (2026-09-03):**
@@ -298,8 +298,10 @@ negócio nascido em etapa sem degrau — e a lista mostra as duas colunas.
 ### 3.3 De onde vem a trajetória: uma RPC, uma chamada por vista
 
 `cb_funil_trajetorias(p_pipeline_id, p_desde, p_ate)` — `LANGUAGE sql STABLE
-SECURITY INVOKER` (a RLS de `deals`, `cb_lead_events`, `contacts`,
-`contact_custom_values` e `custom_fields` vale para quem chama). Uma linha por
+SECURITY INVOKER` (a RLS das SEIS tabelas que ela toca vale para quem
+chama: `deals`, `cb_lead_events`, `contacts`, `conversations`,
+`contact_custom_values` e `custom_fields` — `conversations` entra pela
+subconsulta de `conversa_do_contato`). Uma linha por
 negócio que **já passou por este funil**:
 
 ```
@@ -308,7 +310,7 @@ title, value, status, pipeline_id, stage_id, channel_id, source, assigned_to,
 created_at, updated_at,
 contato_nome, contato_telefone, contato_email, contato_empresa, contato_avatar,
 campos jsonb        -- {field_key: value} do contato (só preenchidos)
-trajeto jsonb       -- [{etapa, funil, em, origem}] em ordem, inclusive a saída para outro funil
+trajeto jsonb       -- [{etapa, funil, em, origem, tipo}] em ordem, inclusive a saída para outro funil
 ```
 
 - **Quem entra:** negócio com algum evento `deal_created`/`stage_changed`/
@@ -338,25 +340,38 @@ trajeto jsonb       -- [{etapa, funil, em, origem}] em ordem, inclusive a saída
 ### 3.4 Módulos (puros, com teste) e componentes
 
 ```
-src/lib/funil/
+src/lib/funil/                                    (assinaturas MEDIDAS no código)
   degraus.ts        DEGRAUS = ['lead','mql','reuniao','proposta','contrato'], tipo Degrau,
-                    classificarEtapas(stages) → {porDegrau, degrauDaEtapa, configurado, faltando}
-  trajetoria.ts     fatosDoNegocio(linha, degrauDaEtapa) → {entradaEm, degrauMaximo, etapaAtual,
-                    naEtapaDesde, situacao, transferidoPara}; aplicarMudancaDeEtapa (otimista)
-  periodo.ts        presets → {desde, ate} local; periodoAnterior; formatação do rótulo
-  coorte.ts         resumoDoPeriodo(fatos, degraus, intervalo) → contagens por degrau, perdas por
-                    etapa, sem avanço, em andamento, taxas, entradas por dia; comparar(atual, anterior)
-  saude.ts          coortesMensais(fatos, 12, agora) → séries por transição; corRelativa(valor, linha)
+                    classificarEtapas(etapas) → {classeDaEtapa, porClasse, faltando,
+                    configurado, etapas}
+  trajetoria.ts     fatosDoNegocio(linha, pipelineId, classificacao) → {linha, noFunil,
+                    transferidoPara, entradaEm, degrauMaximo, etapaAtual, classeAtual,
+                    naEtapaDesde, situacao, alcancouContrato}; aplicarMudancaDeEtapa (otimista)
+  periodo.ts        presets → {desde, ate} local; periodoAnterior (dias de calendário)
+  coorte.ts         resumoDoPeriodo(fatos, classificacao, intervalo, agora) → contagens por
+                    degrau, perdas por etapa, sem avanço, em andamento, taxas, entradas por
+                    dia; comparar(atual, anterior)
+  saude.ts          coortesMensais(fatos, classificacao, meses, agora) → coortes; escalaRelativa,
+                    transicoesDoHistorico, linhasDoMapa (a cor por célula é corDaCelula, e ela
+                    mora no componente mapa-de-calor.tsx)
   lista.ts          catálogo de colunas, ordenar, filtrar (busca/etapa/situação/período), linhasDoCsv
-  carregar.ts       laço paginado da RPC (order + range + count) — o único I/O do módulo
-src/lib/csv.ts      toCsv (';' + BOM, RFC 4180) + baixarArquivo — novo, sem tocar a página de broadcast
+  apresentacao.ts   percentual, variação e pontos percentuais em pt-BR fixo
+  carregar.ts       laço paginado da RPC (order + range + count) — I/O, não é módulo puro
+src/lib/csv.ts      paraCsv (';' + BOM, RFC 4180) + baixarArquivo — novo, sem tocar a página de
+                    broadcast (que tem um `toCsv` PRÓPRIO, e continua com ele)
 src/hooks/use-trajetorias.ts   carrega por (pipelineId, intervalo) com sinalizador `carregando`
-src/components/funil/
+src/components/funil/          (o que EXISTE; os nomes riscados abaixo nunca nasceram)
   lista-de-leads.tsx · colunas-popover.tsx · seletor-de-periodo.tsx
-  desempenho.tsx · cards-do-funil.tsx · grafico-de-taxas.tsx · grafico-de-entradas.tsx
-  saude.tsx · mapa-de-calor.tsx · correspondencia-legenda.tsx
-  investimento-form.tsx (Fase 4)
+  desempenho.tsx · grafico-de-taxas.tsx · grafico-de-entradas.tsx
+  saude.tsx · mapa-de-calor.tsx · grafico-de-conversao.tsx
 ```
+
+⚠️ **Três componentes desta lista foram DESCARTADOS durante a execução, e a
+lista acima já os omite:** `cards-do-funil.tsx` (os cards ficaram inline no
+`desempenho.tsx`), `correspondencia-legenda.tsx` (a legenda virou uma linha
+de rodapé, "sem bloco à parte") e `investimento-form.tsx` (a Fase 4 não tem
+lançamento manual — o gasto vem da API, e a tela é
+`src/components/settings/meta-ads-card.tsx`).
 
 O `vista` da página de Funis vira `"leads" | "lista" | "desempenho" | "saude"
 | "automacoes"` (rótulos: Quadro · Lista · Desempenho · Saúde · Automações —
@@ -413,7 +428,7 @@ envelhece):
 
 | Arquivo | O que muda |
 | --- | --- |
-| `src/types/index.ts` | `PipelineStage.degrau?: Degrau \| null`; aproveitar para acrescentar `account_id` a `Pipeline` e `Deal` (é NOT NULL desde a 017 e falta no tipo) |
+| `src/types/index.ts` | `PipelineStage.degrau?: string \| null` (string, e não o union `Degrau`, para `types/` não importar de `lib/funil` — quem lê a coluna estreita com `ehDegrau`/`ehClasse`); aproveitar para acrescentar `account_id` a `Pipeline` e `Deal` (é NOT NULL desde a 017 e falta no tipo) |
 | `src/lib/funil/degraus.ts` (+test) | catálogo dos degraus, `classificarEtapas` |
 | `src/lib/funil/trajetoria.ts` (+test) | `fatosDoNegocio`, regras 1–7 da seção 3.2, inclusive transferido e negócio nascido em etapa sem degrau |
 | `src/lib/funil/periodo.ts` (+test) | presets, período anterior, fuso local, virada de mês/ano |
@@ -553,8 +568,10 @@ lista com o select desabilitado; sem rolagem horizontal fora da tabela
 
 - Vista "Lista" no toggle da página de Funis (Quadro · Lista · Automações —
   o Kanban deixou de se chamar "Leads"). Módulo puro `src/lib/funil/lista.ts`
-  (colunas, preferência normalizada, ordenação, recorte, CSV) com 19 testes;
-  `src/lib/csv.ts` (`;` + BOM UTF-8, RFC 4180) com 4; hook `use-trajetorias`
+  (colunas, preferência normalizada, ordenação, recorte, CSV) com **14** testes;
+  `src/lib/csv.ts` (`;` + BOM UTF-8, RFC 4180) com **3** (os números 19 e 4
+  desta linha estavam ERRADOS desde que foram escritos — medidos em 04/09
+  contra os mesmos arquivos, sem uma linha de diferença); hook `use-trajetorias`
   (carregando DERIVADO da chave do pedido, sem setState síncrono no efeito);
   componentes `lista-de-leads`, `colunas-popover`, `seletor-de-periodo`.
   Suíte inteira **2610** verdes no Node 22; typecheck limpo; lint 0 erros;
@@ -620,8 +637,11 @@ carga da RPC para `[desde do período anterior, hoje)`):
 
 **Resultado esperado (medir):** com o funil de teste mapeado e 6–8 negócios
 movidos (inclusive um transferido para outro funil e um pulando degrau), os
-números batem com o cálculo à mão registrado no PR; a soma "fechados +
-perdidos + sem avanço + em andamento" = coorte; período sem coorte mostra
+números batem com o cálculo à mão registrado no PR; a partição de CINCO
+baldes fecha (`situacao`: fechado + perdido + sem avanço + em andamento +
+fora do funil = entradas — ⚠️ pelo campo `situacao`, nunca somando
+`resumo.fechados`, que é "alcançou contrato" e inclui quem voltou para
+Proposta); período sem coorte mostra
 zeros COM a nota "nenhum lead entrou no funil neste período" (não o estado
 "configure"); dark mode legível (cores do `chart-colors.ts`).
 
@@ -686,7 +706,7 @@ vista nasce honesta: os meses sem coorte ficam vazios com a nota, não zero.
   `coortesMensais`), `grafico-de-conversao.tsx` (recharts direto, uma linha
   por transição + a global, legenda própria) e `mapa-de-calor.tsx` (tabela
   HTML, cor `hsl(0→130, alfa 0,35)` relativa à LINHA, célula de coorte
-  pequena apagada com o motivo no `title`, mês corrente marcado ●).
+  pequena apagada com o motivo no `title`, mês com lead ainda sem desfecho marcado "N em aberto" sob o rótulo — era "mês corrente marcado ●" até o Codex apontar, no PR #122, que a coorte de agosto com leads abertos segue mudando em setembro).
   `saude.ts` ganhou `transicoesDoHistorico` e `linhasDoMapa` (escala
   calculada SEM as coortes pequenas — 100% sobre um lead dominaria o ano)
   com testes; módulo em **90** testes; typecheck limpo; lint 0 erros;
@@ -710,9 +730,12 @@ custo dos perdidos no Desempenho, sem digitação. Decisão do operador (03/09):
 começa direto pela API da Meta, na aba de Integrações.
 
 **Onde mora:** um cartão "Meta Ads" em Configurações → Integrações
-(`integracoes-panel.tsx` + `montar.ts`, rota `GET /api/cb/integracoes/status`),
-no padrão que o cartão "Google Agenda" já reserva ("não conectado" até a
-integração existir). Estados: não conectado · conectado (conta, moeda, última
+(`src/components/settings/meta-ads-card.tsx`, montado por
+`integracoes-panel.tsx` FORA do `cartoes.map`). ⚠️ Ele **não** passa por
+`montar.ts`/`montarCartoes` nem pela rota `/api/cb/integracoes/status`:
+aquilo é o caminho das chaves de IA, e este cartão tem rota própria
+(`GET /api/cb/meta-ads`), porque precisa de service role para ler uma tabela
+que o navegador não alcança. Visualmente segue o padrão do "Google Agenda". Estados: não conectado · conectado (conta, moeda, última
 sincronização, N campanhas, M sem funil) · erro (token vencido, sem
 permissão). Expandido: o formulário de conexão e a tabela campanha → funil.
 
@@ -739,8 +762,9 @@ INSERT/UPDATE/DELETE de `authenticated`, como `cb_tasks`):
   campaign_id)`. SELECT para o membro da conta (é o que amarra gasto → funil
   no Desempenho).
 - `cb_meta_ads_gastos`: `account_id`, `campaign_id`, `dia date`, `gasto
-  numeric(12,2)`, `atualizado_em`; `UNIQUE (account_id, campaign_id, dia)`.
-  SELECT para o membro da conta.
+  numeric(12,2)`, `atualizado_em`; a chave é a PRIMARY KEY composta
+  `(account_id, campaign_id, dia)` — é ela o alvo do `onConflict`. SELECT
+  para o membro da conta.
 
 **Rotas** (`/api/cb/meta-ads/*`, `requireRole('admin')`, service-role):
 - `PUT config` — grava conta + token cifrado e testa na hora (`GET
@@ -760,8 +784,10 @@ INSERT/UPDATE/DELETE de `authenticated`, como `cb_tasks`):
   `-m 120` do curl, não o `maxDuration`.
 
 **Sincronização (`src/lib/meta-ads/`):** `cliente.ts` (fetch a
-`graph.facebook.com/<META_API_VERSION>`, a mesma constante de `meta-api.ts`,
-paginando por `paging.next`) e `sincronizar.ts`: (1) relê as campanhas
+`graph.facebook.com/<META_ADS_API_VERSION>` — constante PRÓPRIA, porque a do
+`meta-api.ts` do WhatsApp não é exportada; são dois literais independentes, e
+subir a versão do Graph exige mexer nos dois — paginando por `paging.next`,
+com cerca de origem) e `sincronizar.ts`: (1) relê as campanhas
 (upsert por id, carimba `last_seen_at`); (2) `GET /act_<id>/insights?level=
 campaign&fields=campaign_id,spend&time_increment=1&time_range=…` para os
 **últimos 3 dias** — a Meta reprocessa o gasto de ontem por até 48h; puxar
@@ -769,8 +795,10 @@ só "hoje" congelaria um número que ainda muda — e upsert em gastos; (3)
 carimba `last_sync_at`/`last_error`. Primeira sincronização depois de
 conectar: 90 dias, em `after()`. Puros e testados: `janela-de-sync.ts`
 (quais dias puxar), `atribuicao.ts` (gasto do período por funil a partir de
-campanhas + gastos, e o "sem funil"), `cartao.ts` (o cartão para
-`montarCartoes`).
+campanhas + gastos, e o "sem funil"), `cartao.ts` (o estado que a rota
+`GET /api/cb/meta-ads` devolve ao cartão — nada a ver com `montarCartoes`).
+`cliente.ts` faz I/O; o que os testes cobrem são os ajudantes puros dele
+(`codigoDoErro`, `normalizarAdAccountId`, `semSegredo`, `doGraph`).
 
 **No Desempenho (linha 2 da Fase 2):** Investimento no período (soma do
 gasto diário das campanhas do funil nos dias do período — granularidade
@@ -784,6 +812,87 @@ em Integrações", nunca R$ 0,00 com cara de número.
 
 **Fora daqui:** custo por lead POR CAMPANHA (exige saber de qual campanha
 veio cada lead — Fase 5a); orçamento e limites; qualquer escrita na Meta.
+
+**Resultado medido (2026-09-04, worktree em `main` @ `f25c259`):**
+
+- Migration `976_cb_meta_ads` **aplicada em produção** pelo conector e
+  conferida por consulta: as três tabelas com RLS ligada, `anon` sem SELECT
+  nas três, `authenticated` sem INSERT/UPDATE/DELETE nas três, sem SELECT em
+  `cb_meta_ads_config` (o token cifrado não passa pelo PostgREST) e com
+  SELECT em campanhas/gastos, `service_role` com INSERT nas três.
+- Código: `src/lib/meta-ads/` (`cliente.ts` com Bearer no cabeçalho e
+  paginação por `paging.next`; `janela-de-sync.ts`; `atribuicao.ts`;
+  `cartao.ts`; `sincronizar.ts`) com testes, rotas em
+  `/api/cb/meta-ads/{,config,campanhas/[id],sync,cron}`,
+  `use-gastos-de-anuncios.ts`, `meta-ads-card.tsx` no painel de Integrações,
+  e no Desempenho a linha de cards (Investimento · Custo por lead · CAC ·
+  Custo dos perdidos), o aviso de campanha sem funil e a tabela por
+  campanha. Suíte em **2629** testes; typecheck limpo; lint 0 erros;
+  portões de i18n OK.
+- Preview em 1440×900: o cartão "Meta Ads" aparece em Integrações como **não
+  conectado**, com o formulário (conta + token como `password`) e o texto de
+  onde tirar o token. Token propositalmente inválido → `PUT config` devolve
+  **400** e a tela mostra "Falha: a Meta recusou o token"; o log do servidor
+  registra `[meta-ads] conexão recusada (token_invalido)`. Nada foi gravado.
+  No Desempenho de um funil com degrau mapeado, a linha
+  "Conecte o Meta Ads em Integrações…" com link para `?tab=integracoes`.
+- ⚠️ **O que NÃO foi testado aqui, e por quê:** a sincronização de verdade
+  (campanhas, gasto diário, tabela campanha → funil, cards com número)
+  exige o token `ads_read` e o `act_…` do escritório, que o operador tem e
+  eu não. O caminho de erro foi exercitado; o caminho feliz espera a
+  conexão real.
+
+**Revisão de código do trabalho inteiro (04/09), e o que ela mudou.** Quatro
+revisores independentes leram os módulos puros, o SQL e as rotas, os
+componentes e os dois documentos contra o código. O que virou correção nesta
+branch, além dos quatro achados do Codex no próprio PR #123:
+
+- ⚠️⚠️ **Dinheiro deixou de contar quem VOLTOU.** `resumo.fechados` é
+  "alcançou contrato" (o degrau do funil, monotônico); valor fechado, ticket
+  médio e CAC passaram a sair de `fechadosAgora` (`situacao === 'fechado'`).
+  Um distrato aparecia como receita E como perda, e dividia o investimento
+  por um número inflado — medido numa coorte de teste: 4 "contratos" e
+  R$ 68.000 onde havia 1 e R$ 24.000.
+- **O gráfico de entradas por dia passou a somar o mesmo que o card "Leads"**
+  (a grade densa é limitada; a coorte não é).
+- **CSV: aspas não protegem contra fórmula** — nome vindo do WhatsApp ou
+  campo vindo do n8n começando com `=`/`+`/`-`/`@` era avaliado pelo Excel
+  na máquina de quem abrisse a planilha.
+- **`created_at` nulo deixou de derrubar as três vistas** (uma linha assim
+  descartava a carga inteira, para sempre).
+- **A seta do delta passou a concordar com o texto** no intervalo de ±0,05.
+- **O token da Meta não sobrevive à mensagem de erro nem ao log**
+  (`semSegredo`), e a paginação não segue URL fora do Graph (`doGraph`).
+- **Teste novo pinando a RLS das três tabelas do Meta Ads**: elas só podem
+  dar SELECT ao membro porque a RLS está ligada, e a conferência dentro da
+  migration testa GRANT, não RLS.
+- **A auditoria dos documentos achou 16 imprecisões**, todas corrigidas —
+  inclusive duas contagens de teste erradas desde que foram escritas, três
+  componentes listados que nunca existiram e a afirmação de que o cartão do
+  Meta Ads passa por `montar.ts`.
+
+**Correções do Codex às fases ANTERIORES, entregues nesta mesma branch**
+(os três achados são de Fase 2 e Fase 3, não da Fase 4 — vieram nos PRs #121
+e #122 e só foram corrigidos aqui):
+
+- **Taxa nula deixou de virar 0,0%** no gráfico de taxas: no preset "Total"
+  (sem período anterior) e em transição sem denominador, o valor ia como
+  `?? 0` e o tooltip afirmava uma conversão MEDIDA em zero. Agora o nulo
+  viaja como nulo (barra ausente) e o formatador escreve "—".
+- **Funil SEM etapa nenhuma caiu no estado de configuração.** A guarda era
+  `stages.length > 0 && !configurado`, então o funil sem etapa (etapa
+  apagada, ou insert padrão que falhou) renderizava zeros com cara de funil
+  configurado. Como `stages` também é `[]` **enquanto carrega**, a página
+  passou a carimbar de quem são as etapas (`etapasDe`) e Desempenho/Saúde
+  recebem `etapasCarregadas` — prop OBRIGATÓRIA, para o compilador cobrar de
+  quem montar a vista numa tela nova. É a mesma família do "efeito passivo"
+  do CLAUDE.md: lista vazia durante a carga não é resposta.
+- **"Em andamento" no mapa de saúde passou a ser a coorte com lead sem
+  desfecho**, não o mês do calendário: agosto com 6 abertos segue mudando em
+  setembro, e setembro com tudo resolvido já é final. O marcador virou a
+  contagem visível ("6 em aberto") sob o rótulo do mês, com o motivo no
+  `title`. Medido no preview: a marca ficou em **ago/26**, onde estão os 6,
+  e não em set/26.
 
 ### Fase 5 — Depois (cada item é uma decisão à parte)
 
@@ -859,13 +968,20 @@ veio cada lead — Fase 5a); orçamento e limites; qualquer escrita na Meta.
   "seguir o broadcast" faz o operador abrir tudo numa coluna só.
 - ⚠️ **O token da Meta é segredo e cifrado**: nunca sai da rota de status,
   nem mascarado; erro da API volta como código. Rotacionar `ENCRYPTION_KEY`
-  invalida-o junto com os tokens do WhatsApp.
+  invalida-o junto com os tokens do WhatsApp. ⚠️ **E não basta o código**: a
+  mensagem da Meta ECOA o token ("Malformed access token EAAB…", medido em
+  04/09) e ia para o log do servidor — `semSegredo()` a limpa antes de ela
+  virar `MetaAdsError.message`.
 - ⚠️ **Campanha sem funil silencia custo** — o card do Desempenho avisa em
   vez de esconder; quem "limpar" o aviso faz o custo por lead mentir para
   baixo.
 - ⚠️ **O gasto de ontem muda por 48h** na Meta: a janela de sincronização é
   de 3 dias, com upsert por (campanha, dia). Puxar só o dia corrente congela
-  número errado.
+  número errado. ⚠️ **E o upsert sozinho não basta**: quando o dia é
+  reprocessado para ZERO, a Meta OMITE a linha em vez de devolver 0 — o
+  valor antigo ficaria gravado e, ao sair da janela, viraria permanente. Por
+  isso a janela é RECONCILIADA: o que estava lá e não voltou no retrato é
+  apagado (achado do Codex no PR #123).
 
 ---
 

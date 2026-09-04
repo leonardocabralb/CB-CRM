@@ -301,7 +301,7 @@
       "yesterday": "Yesterday",
       "channelChangedWhileTyping": "Not sent. {channel} messaged you from a different number while you were typing — the thread moved there. Check the channel above and send again.",
       "sessionExpiredBlocked": "Not sent: the 24-hour window closed. Use a template to re-engage.",
-            "channelChangedUnknown": "The customer",
+      "channelChangedUnknown": "The customer",
       "searchInThread": "“{termo}” — {atual} of {total}",
       "searchPrevHit": "Previous match",
       "searchNextHit": "Next match"
@@ -1162,7 +1162,8 @@
         "total": "Total",
         "personalizado": "Custom",
         "de": "From",
-        "ate": "To"
+        "ate": "To",
+        "personalizadoVazio": "no dates: showing everything"
       },
       "desempenho": {
         "periodoPorEntrada": "Period by funnel entry date",
@@ -1218,13 +1219,32 @@
           "titulo": "Lead entries in the period",
           "subtitulo": "per day",
           "noDia": "{n} lead(s) on the day"
+        },
+        "investimento": {
+          "titulo": "Ad spend",
+          "investimento": "Spend in the period",
+          "custoPorLead": "Cost per lead",
+          "cac": "CAC",
+          "custoDosPerdidos": "Cost of lost leads",
+          "campanhasDoFunil": "{n} campaign(s) of this pipeline",
+          "porLead": "spend ÷ leads",
+          "porContrato": "spend ÷ contracts",
+          "porPerdido": "cost per lead × lost",
+          "semFunil": "{valor} in {n} campaign(s) without a pipeline in the period — assign them in Integrations so cost per lead is right.",
+          "naoConectado": "Connect Meta Ads in Integrations to see spend, cost per lead and CAC.",
+          "falhou": "Could not read ad spend right now. Cost figures stay out until the next attempt.",
+          "abrirIntegracoes": "Open Integrations",
+          "porCampanha": "Spend per campaign",
+          "colCampanha": "Campaign",
+          "colGasto": "Spend in the period",
+          "semGasto": "No spend in this period on this pipeline's campaigns."
         }
       },
       "saude": {
         "periodo": "Last {meses} months, by funnel entry month",
         "entradas": "{n} entries in total",
         "semCoortes": "No lead entered the funnel in the last months. Health makes sense after months of operation.",
-        "fonte": "Stages per the mapping of pipeline {funil}. The current month is a cohort still in progress.",
+        "fonte": "Stages per the mapping of pipeline {funil}. A month with leads still open is a cohort in progress: its rate can still change, and the number under the month says how many.",
         "conversao": {
           "titulo": "Conversion per step over time",
           "subtitulo": "last {meses} months"
@@ -1234,7 +1254,8 @@
           "subtitulo": "color relative to each row's history",
           "legenda": "green = best month of the row · red = worst · dimmed = fewer than {minimo} leads",
           "celula": "{mes}: {taxa} · {n} lead(s)",
-          "emAndamento": "month in progress",
+          "emAndamento": "{n, plural, one {# lead still open} other {# leads still open}} — this month's rate can still change",
+          "emAberto": "{n} open",
           "pequena": "fewer than {minimo} leads: rate not reliable"
         }
       },
@@ -2374,6 +2395,40 @@
       "naoConfiguradaDica": "Paste the provider key below — transcription and the Radar use it as soon as it is saved. The conversation assistant is switched on in AI Agents.",
       "abrirAgentes": "Open AI Agents",
       "googleDesc": "Meeting sync with Google Calendar is not connected yet. The calendar already works internally; this card becomes the connection point once the integration ships.",
+      "metaAds": {
+        "desc": "Connect the ad account so pipeline Performance can show ad spend, cost per lead and CAC. The CRM only READS (ads_read permission): every 15 minutes it pulls spend per day and campaign, and you say which pipeline each campaign belongs to.",
+        "campoConta": "Ad account",
+        "campoToken": "System user token",
+        "tokenVazio": "Paste the token generated in Business Manager",
+        "tokenDica": "Business Manager → Business settings → System users → Generate token (ads_read permission, no expiry). The token is stored encrypted and never shown again.",
+        "conectar": "Connect",
+        "conectando": "Connecting…",
+        "conectado": "Meta Ads connected. The first sync (90 days) has started.",
+        "carregando": "Loading…",
+        "campanhas": "{n} campaign(s), {ativas} active",
+        "ultimaSync": "synced at {quando}",
+        "sincronizar": "Sync now",
+        "sincronizando": "Syncing…",
+        "desconectar": "Disconnect",
+        "confirmarDesconectar": "Disconnect Meta Ads? Spend already synced stays in Performance; syncing stops.",
+        "semFunil": "{n} campaign(s) without a pipeline: their spend does not enter any pipeline's cost per lead until you assign them.",
+        "semFunilOpcao": "— no pipeline",
+        "semCampanhas": "No campaigns yet. The first sync may take a few seconds; click Sync now.",
+        "colCampanha": "Campaign",
+        "colStatus": "Status",
+        "colFunil": "Pipeline",
+        "motivo": {
+          "token_invalido": "Meta rejected the token",
+          "sem_permissao": "the token lacks ads_read on this account",
+          "conta_nao_encontrada": "ad account not found",
+          "conta_invalida": "invalid account id (use act_… or digits only)",
+          "limite": "Meta rate limit reached — try again later",
+          "rede": "could not reach Meta",
+          "meta_error": "Meta returned an error",
+          "db_error": "could not save",
+          "chave_ilegivel": "the stored token could not be read — connect again"
+        }
+      },
       "emBreve": "Coming soon",
       "modulo": {
         "conversa": "Conversation assistant",

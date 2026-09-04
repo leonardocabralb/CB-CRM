@@ -21,28 +21,48 @@ import { MapaDeCalor, type LinhaDoMapaDeCalor } from "./mapa-de-calor";
  * de calor com cor relativa à linha. Conta em `src/lib/funil/saude.ts`.
  *
  * UMA carga da RPC para `[1º dia de 11 meses atrás, hoje)` — o que a coorte
- * de cada mês fez depois conta até hoje. O mês corrente é coorte em
- * andamento e vem marcado; coorte pequena (< 5) fica apagada e fora da
- * escala de cor.
+ * de cada mês fez depois conta até hoje. Coorte com lead ainda SEM DESFECHO
+ * é "em andamento" e traz a contagem sob o mês — não é o mês corrente: a
+ * coorte de agosto com três leads abertos segue mudando em setembro, e o
+ * mês corrente com tudo resolvido já é final (Codex, PR #122). Coorte
+ * pequena (< 5) fica apagada e fora da escala de cor.
  */
 
 const MESES = 12;
 
-const COR_DA_TRANSICAO: Record<Degrau, string> = {
-  lead: "stroke-sky-500",
-  mql: "stroke-violet-500",
-  reuniao: "stroke-pink-500",
-  proposta: "stroke-amber-500",
-  contrato: "stroke-emerald-500",
+/**
+ * ⚠️ As três classes de cada degrau são LITERAIS, nunca derivadas por
+ * `replace("stroke-", "fill-")`: o Tailwind varre o FONTE atrás de strings e
+ * não executa código, então uma classe montada em tempo de execução
+ * simplesmente não é gerada — e o ponto da linha caía no preto padrão do
+ * SVG, sem erro nenhum. Medido no CSS compilado: `.fill-sky-500` tinha ZERO
+ * ocorrências enquanto `.stroke-sky-500` tinha uma. É a mesma armadilha da
+ * `PALETA_DE_CANAIS` (CLAUDE.md), e há teste cobrando a forma.
+ */
+export interface CorDoDegrau {
+  traco: string;
+  ponto: string;
+  bloco: string;
+}
+
+const COR_DA_TRANSICAO: Record<Degrau, CorDoDegrau> = {
+  lead: { traco: "stroke-sky-500", ponto: "fill-sky-500", bloco: "bg-sky-500" },
+  mql: { traco: "stroke-violet-500", ponto: "fill-violet-500", bloco: "bg-violet-500" },
+  reuniao: { traco: "stroke-pink-500", ponto: "fill-pink-500", bloco: "bg-pink-500" },
+  proposta: { traco: "stroke-amber-500", ponto: "fill-amber-500", bloco: "bg-amber-500" },
+  contrato: { traco: "stroke-emerald-500", ponto: "fill-emerald-500", bloco: "bg-emerald-500" },
 };
 
 export function Saude({
   pipeline,
   stages,
+  etapasCarregadas,
   onConfigurar,
 }: {
   pipeline: Pipeline;
   stages: PipelineStage[];
+  /** se `stages` já é DESTE funil — ver o mesmo campo em `Desempenho`. */
+  etapasCarregadas: boolean;
   onConfigurar: () => void;
 }) {
   const t = useTranslations("Pipelines.funil.saude");
@@ -60,7 +80,16 @@ export function Saude({
   const rotuloDaTransicao = (tr: TransicaoDoHistorico) =>
     tr.global ? tDesempenho("taxas.global") : `${rotuloDoDegrau(tr.de)} → ${rotuloDoDegrau(tr.para)}`;
 
-  if (stages.length > 0 && !classificacao.configurado) {
+  // Etapas ainda não chegaram ≠ funil sem etapa (ver `Desempenho`).
+  if (!etapasCarregadas) {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-16 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        {tDesempenho("carregando")}
+      </div>
+    );
+  }
+  if (!classificacao.configurado) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
         <Settings className="h-8 w-8 text-muted-foreground" />
@@ -97,17 +126,19 @@ export function Saude({
   // "jul/26", não "jul. de 26": são doze colunas lado a lado.
   const rotuloDoMes = (d: Date) =>
     `${d.toLocaleDateString(undefined, { month: "short" }).replace(".", "")}/${String(d.getFullYear()).slice(-2)}`;
-  const meses = coortes.map((c, i) => ({
+  const meses = coortes.map((c) => ({
     chave: c.chave,
     rotulo: rotuloDoMes(c.desde),
-    emAndamento: i === coortes.length - 1,
+    // "em andamento" é ter lead SEM DESFECHO, não ser o mês corrente (ver
+    // o cabeçalho): a contagem vai para debaixo do rótulo do mês.
+    emAberto: c.emAberto,
   }));
   const totalDeEntradas = coortes.reduce((s, c) => s + c.resumo.entradas, 0);
 
   const series: SerieDeConversao[] = mapa.map((linha) => ({
     chave: `${linha.transicao.de}-${linha.transicao.para}${linha.transicao.global ? "-global" : ""}`,
     rotulo: rotuloDaTransicao(linha.transicao),
-    classeDaCor: COR_DA_TRANSICAO[linha.transicao.global ? "contrato" : linha.transicao.de],
+    cor: COR_DA_TRANSICAO[linha.transicao.global ? "contrato" : linha.transicao.de],
     valores: linha.taxas.map(paraPontosPercentuais),
   }));
 
@@ -165,7 +196,8 @@ export function Saude({
             linhas={linhasDoCalor}
             formatarTaxa={formatarPercentual}
             tituloDaCelula={(mes, taxa, entradas) => t("mapa.celula", { mes, taxa, n: entradas })}
-            rotuloEmAndamento={t("mapa.emAndamento")}
+            rotuloEmAndamento={(n) => t("mapa.emAndamento", { n })}
+            rotuloEmAberto={(n) => t("mapa.emAberto", { n })}
             rotuloPequena={t("mapa.pequena", { minimo: COORTE_PEQUENA })}
           />
         )}
