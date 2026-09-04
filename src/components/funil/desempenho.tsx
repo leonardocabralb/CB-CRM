@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
 import {
+  ArrowDownLeft,
+  ArrowRight,
   DollarSign,
   Loader2,
   Megaphone,
@@ -58,12 +60,19 @@ import { SeletorDePeriodo } from "./seletor-de-periodo";
  *   escondê-lo faria os totais não fecharem (Codex, PR #119).
  */
 
-const CORES_DO_DEGRAU: Record<Degrau, string> = {
-  lead: "border-t-sky-500",
-  mql: "border-t-violet-500",
-  reuniao: "border-t-pink-500",
-  proposta: "border-t-amber-500",
-  contrato: "border-t-emerald-500",
+/**
+ * Fundo e borda tingidos com a cor do degrau (a referência do operador,
+ * 05/09 — "referência polida", mantendo a identidade do app: são as classes
+ * do cartão de sempre, só a cor mudou de borda superior para tinta). Classes
+ * LITERAIS, nunca interpoladas: o Tailwind varre o fonte e não executa
+ * código (ver PALETA_DE_CANAIS). Os matizes são os das linhas da Saúde.
+ */
+const TINTA_DO_DEGRAU: Record<Degrau, string> = {
+  lead: "border-sky-500/40 bg-sky-500/10",
+  mql: "border-violet-500/40 bg-violet-500/10",
+  reuniao: "border-pink-500/40 bg-pink-500/10",
+  proposta: "border-amber-500/40 bg-amber-500/10",
+  contrato: "border-emerald-500/40 bg-emerald-500/10",
 };
 
 export function Desempenho({
@@ -326,46 +335,61 @@ export function Desempenho({
                 {t("funil.entradas", { n: atual.entradas })}
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+            {/* Cinco cartões tingidos com a cor do degrau e uma seta entre eles
+                (a referência do operador). A seta é SÓ seta: a taxa fica dentro
+                do cartão, e a queda em número ("−15") foi descartada por decisão
+                dele. Abaixo de `lg` as setas somem e os cartões voltam à grade —
+                seta quebrando de linha vira ruído. As nove colunas são
+                cartão · seta · cartão · …, com a seta no tamanho do ícone. */}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-2">
               {atual.porDegrau.map((d, k) => {
                 const etapas = classificacao.porClasse[d.degrau].map((e) => e.name);
                 const anteriorMapeado = atual.porDegrau.slice(0, k).reverse().find((x) => x.comEtapa);
                 return (
-                  <div
-                    key={d.degrau}
-                    className={
-                      d.comEtapa
-                        ? `rounded-lg border border-border border-t-4 bg-muted/40 p-3 ${CORES_DO_DEGRAU[d.degrau]}`
-                        : "rounded-lg border border-dashed border-border p-3 opacity-70"
-                    }
-                  >
-                    <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                      {rotuloDoDegrau(d.degrau)}
-                    </div>
-                    <div className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
-                      {d.comEtapa ? d.alcancaram : "—"}
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {!d.comEtapa
-                        ? t("funil.semEtapa")
-                        : anteriorMapeado
-                          ? t("funil.doAnterior", {
-                              pct: formatarPercentual(d.taxaDoAnterior),
-                              degrau: rotuloDoDegrau(anteriorMapeado.degrau),
-                            })
-                          : t("funil.dasEntradas", { pct: formatarPercentual(d.taxaDoAnterior) })}
-                    </div>
-                    {etapas.length > 0 && (
-                      <div className="mt-2 truncate text-[11px] text-muted-foreground" title={etapas.join(", ")}>
-                        {t("funil.etapas", { nomes: etapas.join(", ") })}
+                  <Fragment key={d.degrau}>
+                    {k > 0 && (
+                      <div className="hidden items-center justify-center text-muted-foreground lg:flex" aria-hidden="true">
+                        <ArrowRight className="h-4 w-4" />
                       </div>
                     )}
-                    {!d.comEtapa && (
-                      <button type="button" onClick={onConfigurar} className="mt-2 text-[11px] underline hover:text-foreground">
-                        {t("configurar")}
-                      </button>
-                    )}
-                  </div>
+                    <div
+                      className={
+                        d.comEtapa
+                          ? `min-w-0 rounded-lg border p-3 ${TINTA_DO_DEGRAU[d.degrau]}`
+                          : "min-w-0 rounded-lg border border-dashed border-border p-3 opacity-70"
+                      }
+                    >
+                      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {rotuloDoDegrau(d.degrau)}
+                      </div>
+                      <div className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
+                        {d.comEtapa ? d.alcancaram : "—"}
+                      </div>
+                      <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                        {d.comEtapa && anteriorMapeado && <ArrowDownLeft className="h-3 w-3 shrink-0" aria-hidden="true" />}
+                        <span className="min-w-0">
+                          {!d.comEtapa
+                            ? t("funil.semEtapa")
+                            : anteriorMapeado
+                              ? t("funil.doAnterior", {
+                                  pct: formatarPercentual(d.taxaDoAnterior),
+                                  degrau: rotuloDoDegrau(anteriorMapeado.degrau),
+                                })
+                              : t("funil.dasEntradas", { pct: formatarPercentual(d.taxaDoAnterior) })}
+                        </span>
+                      </div>
+                      {etapas.length > 0 && (
+                        <div className="mt-2 truncate text-[11px] text-muted-foreground" title={etapas.join(", ")}>
+                          {t("funil.etapas", { nomes: etapas.join(", ") })}
+                        </div>
+                      )}
+                      {!d.comEtapa && (
+                        <button type="button" onClick={onConfigurar} className="mt-2 text-[11px] underline hover:text-foreground">
+                          {t("configurar")}
+                        </button>
+                      )}
+                    </div>
+                  </Fragment>
                 );
               })}
             </div>
