@@ -187,6 +187,10 @@ export interface AreasQueNaoOperam {
  * dados e não tem botão); seção oculta NÃO APARECE, e a caixa marcada é
  * silenciosamente inerte. Quem marcasse "Perfis de acesso" num perfil
  * `agent` sairia da tela achando ter delegado a gestão de permissões.
+ *
+ * Consumidores (2026-09-03, `editor.ts`): `gruposDoEditor` faz do
+ * `telas`/`secoes` o grupo "Só leitura para este papel" e omite as
+ * `secoesOcultas`; `semSecoesOcultas` as descarta do rascunho.
  */
 export function areasQueNaoOperam(
   papel: PapelBase,
