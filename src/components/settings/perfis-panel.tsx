@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Copy, Loader2, Lock, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { Copy, Eye, Loader2, Lock, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -41,10 +41,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ChannelMultiSelect } from '@/components/channels/channel-select';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/use-auth';
 import { createClient } from '@/lib/supabase/client';
+import { podeVerTela } from '@/lib/perfis/visibilidade';
 import { summarizeScope } from '@/lib/cb-channels/display';
 import { useChannels } from '@/hooks/use-channels';
-import type { SecaoId, TelaId } from '@/lib/perfis/catalogo';
+import {
+  ROTA_DA_TELA,
+  TODAS_AS_TELAS,
+  type SecaoId,
+  type TelaId,
+} from '@/lib/perfis/catalogo';
 import {
   modelosDePartida,
   semSecoesOcultas,
@@ -87,6 +95,8 @@ export function PerfisPanel() {
   const t = useTranslations('PerfisPanel');
   const tRoles = useTranslations('Settings.roles');
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
+  const { simularPerfil } = useAuth();
   const {
     channels,
     loading: canaisCarregando,
@@ -315,6 +325,20 @@ export function PerfisPanel() {
     setRascunho({ ...rascunho, pipeline_ids: [...sugeridos] });
   }
 
+  /**
+   * "Ver como": liga a lente (ver `lib/perfis/simulacao.ts`) e leva para a
+   * PRIMEIRA tela que o perfil enxerga — ficar aqui não mostraria nada,
+   * porque um perfil sem `perfis` faz esta própria seção sumir. A saída é a
+   * faixa no topo de toda página.
+   */
+  function verComo(p: PerfilDeAcesso) {
+    simularPerfil(p.id);
+    const primeira = TODAS_AS_TELAS.find((tela) =>
+      podeVerTela({ papel: p.papel_base, perfil: p }, tela),
+    );
+    router.push(ROTA_DA_TELA[primeira ?? 'settings']);
+  }
+
   function alternar<T extends string>(lista: T[], valor: T): T[] {
     return lista.includes(valor)
       ? lista.filter((v) => v !== valor)
@@ -408,6 +432,14 @@ export function PerfisPanel() {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => verComo(p)}
+                      title={t('simulacao.botao')}
+                    >
+                      <Eye className="size-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"

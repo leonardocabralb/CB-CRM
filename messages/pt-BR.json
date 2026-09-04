@@ -3166,6 +3166,12 @@
     "deleteBody": "Só é possível apagar um perfil sem membros. Se houver gente nele, mova as pessoas para outro perfil antes.",
     "deleteConfirm": "Apagar perfil",
     "deleteOk": "Perfil apagado",
-    "deleteError": "Não foi possível apagar o perfil"
+    "deleteError": "Não foi possível apagar o perfil",
+    "simulacao": {
+      "botao": "Ver como este perfil",
+      "faixa": "Você está vendo o CRM como o perfil \"{nome}\" ({papel}).",
+      "faixaDica": "Só a sua visão muda: você continua {papelReal}, e o servidor não simula nada.",
+      "sair": "Sair da simulação"
+    }
   }
 }
