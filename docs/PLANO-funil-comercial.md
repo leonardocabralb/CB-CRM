@@ -33,7 +33,7 @@
 | **0** | Fundamentos: correspondência etapa → degrau do funil de eficiência (coluna + UI em Funis), RPC das trajetórias, módulos puros do cálculo | ✅ **feita** (2026-09-04) | `975_cb_degrau_do_funil` **aplicada** (04/09) | [#119](https://github.com/leonardocabralb/CB-CRM/pull/119) |
 | **1** | **Lista de leads** do funil: colunas fixas + campos personalizados, etapa editável na linha, busca/etapa/situação/período, ordenação, CSV | ✅ **feita** (2026-09-04) | nenhuma | [#120](https://github.com/leonardocabralb/CB-CRM/pull/120) |
 | **2** | **Desempenho**: funil de eficiência, negativos e em aberto, taxas atual × anterior, entrada por dia, cards de conversão/valor | ✅ **feita** (2026-09-04) | nenhuma | [#121](https://github.com/leonardocabralb/CB-CRM/pull/121) |
-| **3** | **Saúde**: conversão por degrau nos últimos 12 meses (linhas) e mapa de calor | ✅ **feita** (2026-09-04) | nenhuma | `feat/funil-comercial-fase-3` |
+| **3** | **Saúde**: conversão por degrau nos últimos 12 meses (linhas) e mapa de calor | ✅ **feita** (2026-09-04) | nenhuma | [#122](https://github.com/leonardocabralb/CB-CRM/pull/122) |
 | **4** | **Meta Ads em Integrações**: conexão com a conta de anúncios (token cifrado), campanhas → funil, gasto diário por campanha puxado pelo agendador → custo por lead, CAC e custo dos perdidos no Desempenho | ⏳ a fazer | `976_cb_meta_ads` | — |
 | **5** | **Depois, cada um por decisão própria**: captura automática do anúncio de origem (fica barata depois da Fase 4) · backfill de lista de outro CRM (plano próprio) | 🔭 futuro | — | — |
 
