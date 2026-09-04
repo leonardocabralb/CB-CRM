@@ -1065,6 +1065,10 @@
       "outcomeNone": "—",
       "outcomeWon": "Ganho",
       "outcomeLost": "Perdido",
+      "stageDegrau": "Funil de eficiência",
+      "stageDegrauHint": "A que degrau do funil de eficiência esta etapa corresponde. Várias etapas podem apontar para o mesmo degrau; etapa sem degrau não conta no Desempenho.",
+      "semLead": "Nenhuma etapa está marcada como Lead: o Desempenho e a Saúde deste funil ficam sem cálculo até isso ser configurado.",
+      "toastStageMappedWithHistory": "Esta etapa está mapeada no funil de eficiência e tem histórico de negócios: apagá-la apagaria essa história do Desempenho. Mude o degrau para \"Não conta\" e salve antes de remover, ou mantenha a etapa.",
       "deletePipelineChannels": "Estas conexões colocam clientes neste funil: {channels}. Depois de apagar, elas param de criar negócios até você apontá-las para outro funil em Configurações › Conexões.",
       "toastStageIsChannelEntry": "Esta etapa é a entrada de {channels}. Escolha outra etapa de entrada em Configurações › Conexões antes de apagá-la."
     },
@@ -1122,6 +1126,17 @@
       "cancelar": "Cancelar",
       "salvar": "Salvar",
       "salvando": "Salvando…"
+    },
+    "funil": {
+      "degraus": {
+        "nenhum": "Não conta",
+        "lead": "Lead",
+        "mql": "MQL",
+        "reuniao": "Reunião",
+        "proposta": "Proposta",
+        "contrato": "Contrato",
+        "perda": "Perda"
+      }
     },
     "analytics": {
       "totalDeals": "Total de negócios",
