@@ -34,7 +34,7 @@
 | **1** | **Lista de leads** do funil: colunas fixas + campos personalizados, etapa editável na linha, busca/etapa/situação/período, ordenação, CSV | ✅ **feita** (2026-09-04) | nenhuma | [#120](https://github.com/leonardocabralb/CB-CRM/pull/120) |
 | **2** | **Desempenho**: funil de eficiência, negativos e em aberto, taxas atual × anterior, entrada por dia, cards de conversão/valor | ✅ **feita** (2026-09-04) | nenhuma | [#121](https://github.com/leonardocabralb/CB-CRM/pull/121) |
 | **3** | **Saúde**: conversão por degrau nos últimos 12 meses (linhas) e mapa de calor | ✅ **feita** (2026-09-04) | nenhuma | [#122](https://github.com/leonardocabralb/CB-CRM/pull/122) |
-| **4** | **Meta Ads em Integrações**: conexão com a conta de anúncios (token cifrado), campanhas → funil, gasto diário por campanha puxado pelo agendador → custo por lead, CAC e custo dos perdidos no Desempenho | ⏳ a fazer | `976_cb_meta_ads` | — |
+| **4** | **Meta Ads em Integrações**: conexão com a conta de anúncios (token cifrado), campanhas → funil, gasto diário por campanha puxado pelo agendador → custo por lead, CAC e custo dos perdidos no Desempenho | ✅ **feita** (2026-09-04) — falta o operador **conectar** (token) e rodar `docker stack deploy` na VPS | `976_cb_meta_ads` **aplicada** (04/09) | [#123](https://github.com/leonardocabralb/CB-CRM/pull/123) |
 | **5** | **Depois, cada um por decisão própria**: captura automática do anúncio de origem (fica barata depois da Fase 4) · backfill de lista de outro CRM (plano próprio) | 🔭 futuro | — | — |
 
 **Decisões travadas com o operador (2026-09-03):**
@@ -686,7 +686,7 @@ vista nasce honesta: os meses sem coorte ficam vazios com a nota, não zero.
   `coortesMensais`), `grafico-de-conversao.tsx` (recharts direto, uma linha
   por transição + a global, legenda própria) e `mapa-de-calor.tsx` (tabela
   HTML, cor `hsl(0→130, alfa 0,35)` relativa à LINHA, célula de coorte
-  pequena apagada com o motivo no `title`, mês corrente marcado ●).
+  pequena apagada com o motivo no `title`, mês com lead ainda sem desfecho marcado "N em aberto" sob o rótulo — era "mês corrente marcado ●" até o Codex apontar, no PR #122, que a coorte de agosto com leads abertos segue mudando em setembro).
   `saude.ts` ganhou `transicoesDoHistorico` e `linhasDoMapa` (escala
   calculada SEM as coortes pequenas — 100% sobre um lead dominaria o ano)
   com testes; módulo em **90** testes; typecheck limpo; lint 0 erros;
@@ -784,6 +784,56 @@ em Integrações", nunca R$ 0,00 com cara de número.
 
 **Fora daqui:** custo por lead POR CAMPANHA (exige saber de qual campanha
 veio cada lead — Fase 5a); orçamento e limites; qualquer escrita na Meta.
+
+**Resultado medido (2026-09-04, worktree em `main` @ `f25c259`):**
+
+- Migration `976_cb_meta_ads` **aplicada em produção** pelo conector e
+  conferida por consulta: as três tabelas com RLS ligada, `anon` sem SELECT
+  nas três, `authenticated` sem INSERT/UPDATE/DELETE nas três, sem SELECT em
+  `cb_meta_ads_config` (o token cifrado não passa pelo PostgREST) e com
+  SELECT em campanhas/gastos, `service_role` com INSERT nas três.
+- Código: `src/lib/meta-ads/` (`cliente.ts` com Bearer no cabeçalho e
+  paginação por `paging.next`; `janela-de-sync.ts`; `atribuicao.ts`;
+  `cartao.ts`; `sincronizar.ts`) com testes, rotas em
+  `/api/cb/meta-ads/{,config,campanhas/[id],sync,cron}`,
+  `use-gastos-de-anuncios.ts`, `meta-ads-card.tsx` no painel de Integrações,
+  e no Desempenho a linha de cards (Investimento · Custo por lead · CAC ·
+  Custo dos perdidos), o aviso de campanha sem funil e a tabela por
+  campanha. Suíte em **2629** testes; typecheck limpo; lint 0 erros;
+  portões de i18n OK.
+- Preview em 1440×900: o cartão "Meta Ads" aparece em Integrações como **não
+  conectado**, com o formulário (conta + token como `password`) e o texto de
+  onde tirar o token. Token propositalmente inválido → `PUT config` devolve
+  **400** e a tela mostra "Falha: a Meta recusou o token"; o log do servidor
+  registra `[meta-ads] conexão recusada (token_invalido)`. Nada foi gravado.
+  No Desempenho de um funil com degrau mapeado, a linha
+  "Conecte o Meta Ads em Integrações…" com link para `?tab=integracoes`.
+- ⚠️ **O que NÃO foi testado aqui, e por quê:** a sincronização de verdade
+  (campanhas, gasto diário, tabela campanha → funil, cards com número)
+  exige o token `ads_read` e o `act_…` do escritório, que o operador tem e
+  eu não. O caminho de erro foi exercitado; o caminho feliz espera a
+  conexão real.
+
+**Correções do Codex nesta mesma branch (PRs #121/#122, três P2):**
+
+- **Taxa nula deixou de virar 0,0%** no gráfico de taxas: no preset "Total"
+  (sem período anterior) e em transição sem denominador, o valor ia como
+  `?? 0` e o tooltip afirmava uma conversão MEDIDA em zero. Agora o nulo
+  viaja como nulo (barra ausente) e o formatador escreve "—".
+- **Funil SEM etapa nenhuma caiu no estado de configuração.** A guarda era
+  `stages.length > 0 && !configurado`, então o funil sem etapa (etapa
+  apagada, ou insert padrão que falhou) renderizava zeros com cara de funil
+  configurado. Como `stages` também é `[]` **enquanto carrega**, a página
+  passou a carimbar de quem são as etapas (`etapasDe`) e Desempenho/Saúde
+  recebem `etapasCarregadas` — prop OBRIGATÓRIA, para o compilador cobrar de
+  quem montar a vista numa tela nova. É a mesma família do "efeito passivo"
+  do CLAUDE.md: lista vazia durante a carga não é resposta.
+- **"Em andamento" no mapa de saúde passou a ser a coorte com lead sem
+  desfecho**, não o mês do calendário: agosto com 6 abertos segue mudando em
+  setembro, e setembro com tudo resolvido já é final. O marcador virou a
+  contagem visível ("6 em aberto") sob o rótulo do mês, com o motivo no
+  `title`. Medido no preview: a marca ficou em **ago/26**, onde estão os 6,
+  e não em set/26.
 
 ### Fase 5 — Depois (cada item é uma decisão à parte)
 

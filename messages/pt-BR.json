@@ -1211,13 +1211,31 @@
           "titulo": "Entrada de leads no período",
           "subtitulo": "por dia",
           "noDia": "{n} lead(s) no dia"
+        },
+        "investimento": {
+          "titulo": "Investimento em anúncios",
+          "investimento": "Investimento no período",
+          "custoPorLead": "Custo por lead",
+          "cac": "CAC",
+          "custoDosPerdidos": "Custo dos perdidos",
+          "campanhasDoFunil": "{n} campanha(s) deste funil",
+          "porLead": "investimento ÷ leads",
+          "porContrato": "investimento ÷ contratos",
+          "porPerdido": "custo por lead × perdidos",
+          "semFunil": "{valor} em {n} campanha(s) sem funil atribuído no período — atribua em Integrações para o custo por lead ficar certo.",
+          "naoConectado": "Conecte o Meta Ads em Integrações para ver investimento, custo por lead e CAC.",
+          "abrirIntegracoes": "Abrir Integrações",
+          "porCampanha": "Investimento por campanha",
+          "colCampanha": "Campanha",
+          "colGasto": "Gasto no período",
+          "semGasto": "Nenhum gasto neste período nas campanhas deste funil."
         }
       },
       "saude": {
         "periodo": "Últimos {meses} meses, pelo mês de entrada no funil",
         "entradas": "{n} entradas no total",
         "semCoortes": "Nenhum lead entrou no funil nos últimos meses. A Saúde ganha sentido com meses de operação.",
-        "fonte": "Etapas pelo mapeamento do funil {funil}. O mês corrente é coorte em andamento.",
+        "fonte": "Etapas pelo mapeamento do funil {funil}. Mês com leads ainda sem desfecho é coorte em andamento: a taxa pode mudar, e o número sob o mês diz quantos.",
         "conversao": {
           "titulo": "Conversão por degrau ao longo do tempo",
           "subtitulo": "últimos {meses} meses"
@@ -1227,7 +1245,8 @@
           "subtitulo": "cor relativa ao histórico de cada linha",
           "legenda": "verde = melhor mês da linha · vermelho = pior · apagado = menos de {minimo} leads",
           "celula": "{mes}: {taxa} · {n} lead(s)",
-          "emAndamento": "mês em andamento",
+          "emAndamento": "{n, plural, one {# lead ainda sem desfecho} other {# leads ainda sem desfecho}} — a taxa deste mês ainda pode mudar",
+          "emAberto": "{n} em aberto",
           "pequena": "menos de {minimo} leads: taxa pouco confiável"
         }
       },
@@ -2367,6 +2386,40 @@
       "naoConfiguradaDica": "Cole a chave do provedor abaixo — a transcrição e o Radar a usam assim que ela é salva. O assistente de conversa se liga em Agentes de IA.",
       "abrirAgentes": "Abrir Agentes de IA",
       "googleDesc": "A sincronização das reuniões com o Google Agenda ainda não está conectada. A agenda já funciona internamente; este cartão vira o ponto de conexão quando a integração existir.",
+      "metaAds": {
+        "desc": "Conecte a conta de anúncios para o Desempenho dos funis mostrar investimento, custo por lead e CAC. O CRM só LÊ (permissão ads_read): a cada 15 minutos puxa o gasto por dia e por campanha, e você diz a que funil cada campanha pertence.",
+        "campoConta": "Conta de anúncios",
+        "campoToken": "Token de usuário de sistema",
+        "tokenVazio": "Cole o token gerado no Gerenciador de Negócios",
+        "tokenDica": "Gerenciador de Negócios → Configurações do negócio → Usuários do sistema → Gerar token (permissão ads_read, sem validade). O token é guardado cifrado e nunca aparece de novo.",
+        "conectar": "Conectar",
+        "conectando": "Conectando…",
+        "conectado": "Meta Ads conectado. A primeira sincronização (90 dias) já começou.",
+        "carregando": "Carregando…",
+        "campanhas": "{n} campanha(s), {ativas} ativa(s)",
+        "ultimaSync": "sincronizado em {quando}",
+        "sincronizar": "Sincronizar agora",
+        "sincronizando": "Sincronizando…",
+        "desconectar": "Desconectar",
+        "confirmarDesconectar": "Desconectar o Meta Ads? O gasto já sincronizado continua no Desempenho; a sincronização para.",
+        "semFunil": "{n} campanha(s) sem funil: o gasto delas não entra no custo por lead de funil nenhum até você atribuir.",
+        "semFunilOpcao": "— sem funil",
+        "semCampanhas": "Nenhuma campanha ainda. A primeira sincronização pode levar alguns segundos; clique em Sincronizar agora.",
+        "colCampanha": "Campanha",
+        "colStatus": "Status",
+        "colFunil": "Funil",
+        "motivo": {
+          "token_invalido": "a Meta recusou o token",
+          "sem_permissao": "o token não tem permissão ads_read nesta conta",
+          "conta_nao_encontrada": "conta de anúncios não encontrada",
+          "conta_invalida": "id da conta inválido (use act_… ou só os números)",
+          "limite": "limite de chamadas da Meta atingido — tente mais tarde",
+          "rede": "não foi possível falar com a Meta",
+          "meta_error": "a Meta devolveu um erro",
+          "db_error": "não foi possível gravar",
+          "chave_ilegivel": "o token guardado não pôde ser lido — conecte de novo"
+        }
+      },
       "emBreve": "Em breve",
       "modulo": {
         "conversa": "Assistente de conversa",

@@ -24,11 +24,14 @@ export function GraficoDeTaxas({
   rotuloAnterior: string;
 }) {
   // As chaves das séries são os RÓTULOS traduzidos: o Tremor usa a chave
-  // como texto da legenda e do tooltip.
+  // como texto da legenda e do tooltip. Taxa NULA (sem denominador, ou
+  // sem período anterior no "Total") continua nula: barra ausente e "—" no
+  // tooltip. Coalescer para 0 desenhava "0,0%" — uma conversão MEDIDA em
+  // zero, que não houve (Codex, PR #121).
   const dados = linhas.map((l) => ({
     transicao: l.transicao,
-    [rotuloAtual]: l.atual ?? 0,
-    [rotuloAnterior]: l.anterior ?? 0,
+    [rotuloAtual]: l.atual,
+    [rotuloAnterior]: l.anterior,
   }));
 
   return (
@@ -38,7 +41,7 @@ export function GraficoDeTaxas({
       categories={[rotuloAtual, rotuloAnterior]}
       colors={["emerald", "amber"]}
       layout="vertical"
-      valueFormatter={(v) => `${v.toFixed(1)}%`}
+      valueFormatter={(v) => (v == null ? "—" : `${v.toFixed(1)}%`)}
       minValue={0}
       maxValue={100}
       yAxisWidth={190}

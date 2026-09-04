@@ -2405,6 +2405,61 @@ Meta Ads) leem daqui. O que morde código novo:
   calculada SEM as coortes pequenas (`< COORTE_PEQUENA`, 5): 100% sobre um
   lead dominaria o ano inteiro. Coorte pequena mostra o número apagado com
   o motivo no `title`; mês sem coorte é "—", nunca 0%.
+- ⚠️ **"Em andamento" no mapa é a coorte com lead SEM DESFECHO, não o mês
+  corrente** (Codex, PR #122). Agosto com 6 abertos ainda muda em setembro,
+  e setembro com tudo resolvido já é final — marcar o calendário tirava o
+  aviso justamente de quem precisava dele. A marca é a CONTAGEM visível
+  ("6 em aberto") sob o rótulo do mês, e sai de `CoorteMensal.emAberto`.
+- ⚠️⚠️ **`etapasCarregadas` é prop OBRIGATÓRIA de `Desempenho` e `Saude`, e
+  o motivo é o efeito passivo de sempre**: a página carrega as etapas DEPOIS
+  da seleção, então `stages` é `[]` durante a carga — o MESMO `[]` de um
+  funil sem etapa nenhuma. A guarda antiga (`stages.length > 0 &&
+  !configurado`) escolhia o lado errado: funil sem etapa renderizava ZEROS
+  com cara de funil configurado (Codex, PR #121). Quem sabe de quem são as
+  etapas é a página (`etapasDe`), e a prop existe para o compilador cobrar
+  de quem montar a vista numa tela nova.
+- ⚠️ **Taxa NULA nunca vira 0 no gráfico** (`grafico-de-taxas.tsx`): no
+  preset "Total" todo valor do período anterior é nulo, e transição sem
+  denominador também é. Com `?? 0` o tooltip afirmava "0,0%" — conversão
+  MEDIDA em zero, que não houve. O nulo viaja como nulo (recharts omite a
+  barra) e o formatador escreve "—".
+- **META ADS (Fase 4, 976): o CRM só LÊ, e o token é o único segredo.**
+  `src/lib/meta-ads/` (`cliente.ts`, `janela-de-sync.ts`, `atribuicao.ts`,
+  `cartao.ts` puros e testados; `sincronizar.ts` server-side), rotas em
+  `/api/cb/meta-ads/`, cartão em Configurações → Integrações, e no
+  Desempenho os cards de investimento/CAC. O que morde código novo:
+  - ⚠️⚠️ **`cb_meta_ads_config` NÃO tem SELECT para `authenticated`** — nem
+    a linha, nem o token cifrado, passam pelo PostgREST. A tela lê pela rota
+    `GET /api/cb/meta-ads` (admin, service role), e **o token não sai de
+    rota nenhuma, nem mascarado**. Campanhas e gastos, sim, têm SELECT: é
+    deles que o Desempenho monta o investimento sob RLS.
+  - ⚠️ **Erro da Meta volta como CÓDIGO** (`token_invalido`, `sem_permissao`,
+    `conta_nao_encontrada`, `limite`, `meta_error`), nunca a mensagem crua —
+    ela ecoa o token enviado, a mesma armadilha da chave da OpenAI em
+    `/api/cb/integracoes/status`.
+  - ⚠️ **O token vai no cabeçalho `Authorization: Bearer`, nunca em
+    `?access_token=`** na URL (vaza em log de proxy) — mesma regra da chave
+    do Gemini.
+  - ⚠️ **A janela de sincronização é de 3 DIAS, não "hoje"**: a Meta
+    reprocessa o gasto por até 48h. Puxar só o dia corrente congela um
+    número que ainda muda, e o upsert é por `(conta, campanha, dia)`
+    justamente para reescrever. Primeira sincronização: 90 dias.
+  - ⚠️ **Campanha SEM funil não some do total** — vira aviso com link para
+    Integrações. Silenciada, o custo por lead sai menor do que é, que é o
+    erro que ninguém percebe.
+  - ⚠️ **O cron entrou no laço LENTO do `docker-stack.yml`
+    (`cb/scheduled flows cb/radar cb/meta-ads`), e o CI NÃO relê o `command`
+    do agendador**: só vale depois de um `docker stack deploy` à mão na VPS,
+    com o `crm.env` carregado. Sem isso as tabelas ficam vazias e os cards
+    seguem dizendo "conecte o Meta Ads" — sem erro nenhum.
+  - ⚠️ **No Desempenho, "conectado" é DERIVADO de haver campanha**
+    (`use-gastos-de-anuncios.ts`), porque o membro não enxerga a config. Nos
+    segundos entre conectar e a primeira sincronização — ou numa conta de
+    anúncios sem campanha nenhuma — a linha ainda diz "conecte o Meta Ads".
+    Quem quiser fechar essa fresta precisa de um sinal LIDO pelo membro, não
+    de um SELECT em `cb_meta_ads_config`.
+  - **Desconectar apaga só a config**: campanhas e gastos ficam, senão o
+    histórico do Desempenho sumiria junto com o token.
 
 ## Branches — criação e nomenclatura
 
@@ -2546,6 +2601,13 @@ Meta Ads) leem daqui. O que morde código novo:
     SELECT em `contacts` — a migration passou a conceder SELECT nas seis
     tabelas que a função lê (no-op em produção). Função INVOKER conferida
     trocando de papel = GRANT nas tabelas que ela lê, sempre.
+
+  - **976_cb_meta_ads** — as três tabelas do Meta Ads
+    (`cb_meta_ads_config` sem SELECT para `authenticated`, `..._campanhas`
+    com a FK composta `(pipeline_id, account_id)` e `..._gastos` por dia).
+    Aplicada em 2026-09-04 via conector, ANTES do merge; conferido por
+    consulta: RLS ligada nas três, `anon` sem SELECT, `authenticated` sem
+    escrita, `service_role` com INSERT.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

@@ -1,13 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { DollarSign, Loader2, Percent, Receipt, Settings, Trophy, Users } from "lucide-react";
+import Link from "next/link";
+import {
+  DollarSign,
+  Loader2,
+  Megaphone,
+  Percent,
+  Receipt,
+  Settings,
+  Trophy,
+  UserMinus,
+  Users,
+  Wallet,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Button } from "@/components/ui/button";
+import { useGastosDeAnuncios } from "@/hooks/use-gastos-de-anuncios";
 import { useTrajetorias } from "@/hooks/use-trajetorias";
 import { formatCurrency } from "@/lib/currency";
+import { custos, diasDoPeriodo, gastoDoPeriodo } from "@/lib/meta-ads/atribuicao";
 import {
   formatarPercentual,
   formatarPp,
@@ -55,10 +69,17 @@ const CORES_DO_DEGRAU: Record<Degrau, string> = {
 export function Desempenho({
   pipeline,
   stages,
+  etapasCarregadas,
   onConfigurar,
 }: {
   pipeline: Pipeline;
   stages: PipelineStage[];
+  /**
+   * Se `stages` já é DESTE funil. A página carrega as etapas depois da
+   * seleção e o estado fica `[]` até lá — o mesmo `[]` de um funil sem
+   * etapa. Obrigatória para o compilador cobrar de quem montar a vista.
+   */
+  etapasCarregadas: boolean;
   /** abre "Gerenciar funil" — é lá que a correspondência das etapas se faz. */
   onConfigurar: () => void;
 }) {
@@ -76,13 +97,28 @@ export function Desempenho({
     desde: anterior?.desde ?? intervalo.desde,
     ate: null,
   });
+  // Fase 4: o gasto em anúncios do período (campanhas → funil), sob RLS.
+  const anuncios = useGastosDeAnuncios(intervalo);
 
   const classificacao = classificarEtapas(stages);
   const rotuloDoDegrau = (d: Degrau) =>
     // chave montada: `degraus.<d>` — cobrada em degraus.test.ts
     tDegraus(d as Parameters<typeof tDegraus>[0]);
 
-  if (stages.length > 0 && !classificacao.configurado) {
+  // Etapas ainda não chegaram ≠ funil sem etapa: o primeiro espera, o
+  // segundo cai no estado de configuração (sem Lead mapeado não há o que
+  // medir). A versão que gateava por `stages.length > 0` mostrava zero
+  // métricas, com cara de funil configurado, para o funil que ficou sem
+  // etapa nenhuma (Codex, PR #121).
+  if (!etapasCarregadas) {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-16 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        {t("carregando")}
+      </div>
+    );
+  }
+  if (!classificacao.configurado) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
         <Settings className="h-8 w-8 text-muted-foreground" />
@@ -127,6 +163,10 @@ export function Desempenho({
   const penultimo = [...DEGRAUS].reverse().find((d, i) => i > 0 && classificacao.porClasse[d].length > 0);
   const emPenultimo = penultimo ? (atual.emAndamentoPorDegrau[penultimo] ?? 0) : 0;
   const pctDosLeads = (n: number) => formatarPercentual(atual.entradas > 0 ? n / atual.entradas : null);
+
+  const investimento = gastoDoPeriodo(anuncios.gastos, anuncios.campanhas, pipeline.id, diasDoPeriodo(intervalo, agora));
+  const custo = custos(investimento.total, atual.entradas, atual.fechados, atual.perdidos);
+  const moeda = (v: number | null) => (v === null ? "—" : formatCurrency(v));
 
   return (
     <div className="flex flex-col gap-4">
@@ -205,6 +245,60 @@ export function Desempenho({
               subtitle={atual.ticketMedio === null ? t("cards.semFechados") : t("cards.porContrato")}
             />
           </div>
+
+          {/* Investimento em anúncios (Fase 4) — só com o Meta Ads conectado;
+              sem integração, uma linha apontando para Integrações, nunca
+              R$ 0,00 com cara de número. */}
+          {anuncios.conectado ? (
+            <>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <MetricCard
+                  title={t("investimento.investimento")}
+                  value={formatCurrency(investimento.total)}
+                  icon={Megaphone}
+                  subtitle={t("investimento.campanhasDoFunil", { n: investimento.porCampanha.length })}
+                />
+                <MetricCard
+                  title={t("investimento.custoPorLead")}
+                  value={moeda(custo.custoPorLead)}
+                  icon={Wallet}
+                  subtitle={t("investimento.porLead")}
+                />
+                <MetricCard
+                  title={t("investimento.cac")}
+                  value={moeda(custo.cac)}
+                  icon={Trophy}
+                  subtitle={t("investimento.porContrato")}
+                />
+                <MetricCard
+                  title={t("investimento.custoDosPerdidos")}
+                  value={moeda(custo.custoDosPerdidos)}
+                  icon={UserMinus}
+                  subtitle={t("investimento.porPerdido")}
+                />
+              </div>
+              {investimento.semFunil.total > 0 && (
+                <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                  {t("investimento.semFunil", {
+                    valor: formatCurrency(investimento.semFunil.total),
+                    n: investimento.semFunil.campanhas,
+                  })}{" "}
+                  <Link href="/settings?tab=integracoes" className="underline">
+                    {t("investimento.abrirIntegracoes")}
+                  </Link>
+                </p>
+              )}
+            </>
+          ) : (
+            !anuncios.carregando && (
+              <p className="text-xs text-muted-foreground">
+                {t("investimento.naoConectado")}{" "}
+                <Link href="/settings?tab=integracoes" className="underline hover:text-foreground">
+                  {t("investimento.abrirIntegracoes")}
+                </Link>
+              </p>
+            )
+          )}
 
           {/* Funil de eficiência */}
           <section className="rounded-xl border border-border bg-card p-4">
@@ -335,6 +429,39 @@ export function Desempenho({
               )}
             </section>
           </div>
+
+          {/* Investimento por campanha (Fase 4) */}
+          {anuncios.conectado && (
+            <section className="rounded-xl border border-border bg-card p-4">
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {t("investimento.porCampanha")}
+              </h3>
+              {investimento.porCampanha.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">{t("investimento.semGasto")}</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <th className="py-1 pr-2 font-medium">{t("investimento.colCampanha")}</th>
+                        <th className="py-1 text-right font-medium">{t("investimento.colGasto")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {investimento.porCampanha.map((c) => (
+                        <tr key={c.campaignId} className="border-t border-border">
+                          <td className="max-w-[28rem] truncate py-1.5 pr-2" title={c.nome}>
+                            {c.nome}
+                          </td>
+                          <td className="py-1.5 text-right tabular-nums">{formatCurrency(c.gasto)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
         </>
       )}
     </div>
