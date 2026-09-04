@@ -1075,6 +1075,7 @@
     "automacoes": {
       "abaLeads": "Quadro",
       "abaLista": "Lista",
+      "abaDesempenho": "Desempenho",
       "abaAutomacoes": "Automações",
       "quandoEntra": "Quando o card entra nesta etapa",
       "quandoEntraVarias": "Quando o card entra em qualquer uma destas etapas",
@@ -1154,6 +1155,62 @@
         "personalizado": "Personalizar",
         "de": "De",
         "ate": "Até"
+      },
+      "desempenho": {
+        "periodoPorEntrada": "Período pela data de entrada no funil",
+        "comparacaoCom": "comparação com os {dias} dias anteriores",
+        "semComparacao": "sem período anterior para comparar",
+        "configure": "Este funil ainda não tem etapa marcada como Lead. Configure a correspondência das etapas em Funis para o Desempenho calcular.",
+        "configurar": "Configurar etapas",
+        "carregando": "Carregando o funil…",
+        "falhou": "Não foi possível carregar as trajetórias deste funil.",
+        "tentarDeNovo": "Tentar de novo",
+        "semCoorte": "Nenhum lead entrou no funil neste período.",
+        "cards": {
+          "leads": "Leads no período",
+          "contratos": "Contratos",
+          "conversao": "Conversão global",
+          "valorFechado": "Valor fechado",
+          "ticketMedio": "Ticket médio",
+          "vsAnterior": "{delta} vs período anterior",
+          "semAnterior": "sem período anterior",
+          "deLeads": "de {n} leads",
+          "contratosFechados": "{n} contrato(s) fechado(s)",
+          "semFechados": "nenhum contrato fechado",
+          "porContrato": "por contrato"
+        },
+        "funil": {
+          "titulo": "Funil de eficiência",
+          "entradas": "{n} entradas no funil no período",
+          "dasEntradas": "{pct} das entradas",
+          "doAnterior": "{pct} de {degrau}",
+          "semEtapa": "Sem etapa correspondente",
+          "etapas": "Etapas: {nomes}"
+        },
+        "negativos": {
+          "titulo": "Negativos e em aberto",
+          "perdidos": "{n} leads perdidos neste período",
+          "dosLeads": "{pct} dos leads",
+          "perdaDesc": "Perdidos nesta etapa",
+          "semAvanco": "Sem avanço",
+          "semAvancoDesc": "Ainda na etapa de Lead",
+          "emAndamento": "Em andamento",
+          "emAndamentoDesc": "{n} em {degrau}",
+          "foraDoFunil": "Fora do funil",
+          "foraDoFunilDesc": "Movidos para etapa sem degrau"
+        },
+        "taxas": {
+          "titulo": "Taxas de conversão entre degraus",
+          "subtitulo": "atual vs anterior",
+          "atual": "Período atual",
+          "anterior": "Período anterior",
+          "global": "Lead → Contrato (global)"
+        },
+        "entradas": {
+          "titulo": "Entrada de leads no período",
+          "subtitulo": "por dia",
+          "noDia": "{n} lead(s) no dia"
+        }
       },
       "lista": {
         "colunas": {

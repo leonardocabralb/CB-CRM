@@ -1082,6 +1082,7 @@
     "automacoes": {
       "abaLeads": "Board",
       "abaLista": "List",
+      "abaDesempenho": "Performance",
       "abaAutomacoes": "Automations",
       "quandoEntra": "When a card enters this stage",
       "quandoEntraVarias": "When a card enters any of these stages",
@@ -1161,6 +1162,62 @@
         "personalizado": "Custom",
         "de": "From",
         "ate": "To"
+      },
+      "desempenho": {
+        "periodoPorEntrada": "Period by funnel entry date",
+        "comparacaoCom": "compared with the previous {dias} days",
+        "semComparacao": "no previous period to compare",
+        "configure": "This pipeline has no stage marked as Lead yet. Map the stages in Pipelines so Performance can compute.",
+        "configurar": "Configure stages",
+        "carregando": "Loading the funnel…",
+        "falhou": "Could not load this pipeline's trajectories.",
+        "tentarDeNovo": "Try again",
+        "semCoorte": "No lead entered the funnel in this period.",
+        "cards": {
+          "leads": "Leads in the period",
+          "contratos": "Contracts",
+          "conversao": "Overall conversion",
+          "valorFechado": "Closed value",
+          "ticketMedio": "Average ticket",
+          "vsAnterior": "{delta} vs previous period",
+          "semAnterior": "no previous period",
+          "deLeads": "of {n} leads",
+          "contratosFechados": "{n} contract(s) closed",
+          "semFechados": "no contract closed",
+          "porContrato": "per contract"
+        },
+        "funil": {
+          "titulo": "Efficiency funnel",
+          "entradas": "{n} funnel entries in the period",
+          "dasEntradas": "{pct} of entries",
+          "doAnterior": "{pct} of {degrau}",
+          "semEtapa": "No matching stage",
+          "etapas": "Stages: {nomes}"
+        },
+        "negativos": {
+          "titulo": "Negatives and open pipeline",
+          "perdidos": "{n} leads lost in this period",
+          "dosLeads": "{pct} of leads",
+          "perdaDesc": "Lost at this stage",
+          "semAvanco": "No progress",
+          "semAvancoDesc": "Still at the Lead step",
+          "emAndamento": "In progress",
+          "emAndamentoDesc": "{n} at {degrau}",
+          "foraDoFunil": "Outside the funnel",
+          "foraDoFunilDesc": "Moved to a stage without a step"
+        },
+        "taxas": {
+          "titulo": "Conversion rates between steps",
+          "subtitulo": "current vs previous",
+          "atual": "Current period",
+          "anterior": "Previous period",
+          "global": "Lead → Contract (overall)"
+        },
+        "entradas": {
+          "titulo": "Lead entries in the period",
+          "subtitulo": "per day",
+          "noDia": "{n} lead(s) on the day"
+        }
       },
       "lista": {
         "colunas": {

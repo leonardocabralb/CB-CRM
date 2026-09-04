@@ -1,0 +1,41 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  formatarPercentual,
+  formatarPp,
+  formatarVariacao,
+  paraPontosPercentuais,
+  rotuloCurtoDoDia,
+  sinalDe,
+} from "./apresentacao";
+
+// O separador decimal do pt-BR é a vírgula; o de milhar não aparece aqui.
+describe("apresentacao (pt-BR fixo)", () => {
+  it("percentual com uma casa; nulo vira travessão", () => {
+    expect(formatarPercentual(0.6)).toBe("60,0%");
+    expect(formatarPercentual(2 / 3)).toBe("66,7%");
+    expect(formatarPercentual(0)).toBe("0,0%");
+    expect(formatarPercentual(null)).toBe("—");
+  });
+
+  it("variação de contagem com sinal e sem casas", () => {
+    expect(formatarVariacao(7)).toBe("+700%");
+    expect(formatarVariacao(-0.5)).toBe("-50%");
+    expect(formatarVariacao(0)).toBe("0%");
+    expect(formatarVariacao(null)).toBeNull();
+  });
+
+  it("pontos percentuais com sinal e uma casa", () => {
+    expect(formatarPp(20)).toBe("+20,0 pp");
+    expect(formatarPp(-33.333)).toBe("-33,3 pp");
+    expect(formatarPp(null)).toBeNull();
+  });
+
+  it("sinal e rótulos auxiliares", () => {
+    expect([sinalDe(3), sinalDe(-1), sinalDe(0), sinalDe(null)]).toEqual([1, -1, 0, 0]);
+    expect(rotuloCurtoDoDia("2026-09-01")).toBe("01/09");
+    expect(rotuloCurtoDoDia("lixo")).toBe("lixo");
+    expect(paraPontosPercentuais(2 / 3)).toBe(66.7);
+    expect(paraPontosPercentuais(null)).toBeNull();
+  });
+});

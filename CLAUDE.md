@@ -2389,6 +2389,16 @@ Meta Ads) leem daqui. O que morde código novo:
   DERIVADO da chave do pedido — nunca `setState` síncrono no efeito (regra
   do React Compiler que já derrubou PR); resposta atrasada é descartada
   pela chave.
+- **O DESEMPENHO (Fase 2, `src/components/funil/desempenho.tsx`) carrega a
+  RPC UMA vez para `[desde do período anterior, hoje)`** e recorta as duas
+  coortes em TS (`resumoDoPeriodo` × 2 + `comparar`). Funil sem etapa em
+  `lead` → estado "configure" (abre Gerenciar funil); período sem coorte →
+  zeros com a nota, NUNCA o "configure". Os cinco baldes da situação
+  aparecem, "fora do funil" inclusive. Gráfico de barras = Tremor
+  vendorizado; o de área é recharts DIRETO (`grafico-de-entradas.tsx`, cores
+  por classe Tailwind com `stroke=""`/`fill=""`, o truque do Tremor) — não
+  vendorizar mais um Tremor para isso. Números em pt-BR fixo
+  (`apresentacao.ts`), como `currency.ts`.
 
 ## Branches — criação e nomenclatura
 

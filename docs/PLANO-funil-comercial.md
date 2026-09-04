@@ -32,7 +32,7 @@
 | --- | --- | --- | --- | --- |
 | **0** | Fundamentos: correspondência etapa → degrau do funil de eficiência (coluna + UI em Funis), RPC das trajetórias, módulos puros do cálculo | ✅ **feita** (2026-09-04) | `975_cb_degrau_do_funil` **aplicada** (04/09) | [#119](https://github.com/leonardocabralb/CB-CRM/pull/119) |
 | **1** | **Lista de leads** do funil: colunas fixas + campos personalizados, etapa editável na linha, busca/etapa/situação/período, ordenação, CSV | ✅ **feita** (2026-09-04) | nenhuma | [#120](https://github.com/leonardocabralb/CB-CRM/pull/120) |
-| **2** | **Desempenho**: funil de eficiência, negativos e em aberto, taxas atual × anterior, entrada por dia, cards de conversão/valor | ⏳ a fazer | nenhuma | — |
+| **2** | **Desempenho**: funil de eficiência, negativos e em aberto, taxas atual × anterior, entrada por dia, cards de conversão/valor | ✅ **feita** (2026-09-04) | nenhuma | [#121](https://github.com/leonardocabralb/CB-CRM/pull/121) |
 | **3** | **Saúde**: conversão por degrau nos últimos 12 meses (linhas) e mapa de calor | ⏳ a fazer | nenhuma | — |
 | **4** | **Meta Ads em Integrações**: conexão com a conta de anúncios (token cifrado), campanhas → funil, gasto diário por campanha puxado pelo agendador → custo por lead, CAC e custo dos perdidos no Desempenho | ⏳ a fazer | `976_cb_meta_ads` | — |
 | **5** | **Depois, cada um por decisão própria**: captura automática do anúncio de origem (fica barata depois da Fase 4) · backfill de lista de outro CRM (plano próprio) | 🔭 futuro | — | — |
@@ -584,7 +584,7 @@ lista com o select desabilitado; sem rolagem horizontal fora da tabela
   o conteúdo está coberto por teste) e o perfil `viewer` (o select nasce
   desabilitado por `useCan('send-messages')`, mesmo gate do painel).
 
-### Fase 2 — Desempenho
+### ✅ Fase 2 — Desempenho (concluída em 2026-09-04)
 
 **Objetivo:** a vista "Desempenho": o painel do funil de eficiência para o
 período escolhido, com comparação.
@@ -624,6 +624,41 @@ números batem com o cálculo à mão registrado no PR; a soma "fechados +
 perdidos + sem avanço + em andamento" = coorte; período sem coorte mostra
 zeros COM a nota "nenhum lead entrou no funil neste período" (não o estado
 "configure"); dark mode legível (cores do `chart-colors.ts`).
+
+**Resultado medido (2026-09-04, worktree em `main` @ `844629c`):**
+
+- Vista "Desempenho" no toggle (Quadro · Lista · Desempenho · Automações):
+  `src/components/funil/desempenho.tsx` (cards do `MetricCard` do painel,
+  funil de eficiência com uma faixa de cor por degrau e as etapas mapeadas
+  escritas em cada card — é a "legenda da correspondência", sem bloco à
+  parte —, negativos com um card por etapa de perda + Sem avanço + Em
+  andamento ("N em Proposta") + **Fora do funil**), `grafico-de-taxas.tsx`
+  (Tremor `BarChart`, barras deitadas, emerald × amber) e
+  `grafico-de-entradas.tsx` (recharts DIRETO, área + linha — vendorizar o
+  `LineChart` do Tremor seria a terceira cópia de tooltip do repo; o plano
+  previa vendorizar e mudou aqui). `src/lib/funil/apresentacao.ts` (pt-BR
+  fixo: percentual, variação, pp, rótulo do dia) com 4 testes. Suíte em
+  **88** no módulo; typecheck limpo; lint 0 erros; portões de i18n OK.
+- UMA carga da RPC para `[desde do período anterior, hoje)`; a comparação
+  "com os N dias anteriores" escreve o N na frase do topo.
+- Preview em 1440×900 num funil de teste criado pelo conector ("TESTE Fase
+  2 (apagar)": 7 etapas mapeadas, 11 negócios movidos por UPDATE — inclusive
+  um pulando degrau, dois perdidos, um voltando para Lead, um estacionado e
+  um do período ANTERIOR com a trilha retroagida para 29/08) e apagado ao
+  fim (funil em cascata, trilha e fila de automação limpas). Os números
+  bateram com o cálculo à mão, que é o MESMO fixture de `coorte.test.ts`:
+  9 leads (+800% vs os 4 dias anteriores, que tinham 1), 2 contratos,
+  conversão global 22,2% (+22,2 pp), R$ 42.000 fechados, ticket R$ 21.000;
+  funil 9 → 6 (66,7%) → 3 (50,0%) → 3 (100,0%) → 2 (66,7%); No Show 2,
+  Sem avanço 1, Em andamento 3 (1 em Proposta), Fora do funil 1; entradas
+  por dia 01/09–04/09 com 9 no dia 4; "Total" dá 10 leads e "sem período
+  anterior"; o funil real (Bancário - Comercial, sem degrau) mostra o
+  estado "configure" com o botão que abre Gerenciar funil.
+- ⚠️ Console: de novo o `MISSING_MESSAGE` (`abaDesempenho`) do cache do
+  `next dev`, mais um `ArrowDown is not defined` vindo do HMR de uma versão
+  intermediária do arquivo — nenhum dos dois sobrevive ao restart do
+  servidor. Quem revisar console em `next dev` depois de mexer em
+  dicionário ou em imports reinicia antes de acreditar.
 
 ### Fase 3 — Saúde
 
