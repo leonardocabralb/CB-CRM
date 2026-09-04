@@ -1080,7 +1080,8 @@
       "toastStageIsChannelEntry": "This stage is the entry point for {channels}. Pick another entry stage in Settings › Connections before deleting it."
     },
     "automacoes": {
-      "abaLeads": "Leads",
+      "abaLeads": "Board",
+      "abaLista": "List",
       "abaAutomacoes": "Automations",
       "quandoEntra": "When a card enters this stage",
       "quandoEntraVarias": "When a card enters any of these stages",
@@ -1143,6 +1144,58 @@
         "proposta": "Proposal",
         "contrato": "Contract",
         "perda": "Loss"
+      },
+      "situacao": {
+        "fora_do_funil": "Outside the funnel",
+        "sem_avanco": "No progress",
+        "andamento": "In progress",
+        "fechado": "Closed",
+        "perdido": "Lost"
+      },
+      "periodo": {
+        "este_mes": "This month",
+        "mes_passado": "Last month",
+        "este_ano": "This year",
+        "ano_passado": "Last year",
+        "total": "Total",
+        "personalizado": "Custom",
+        "de": "From",
+        "ate": "To"
+      },
+      "lista": {
+        "colunas": {
+          "numero": "#",
+          "data": "Date",
+          "nome": "Name",
+          "naEtapaDesde": "In stage since",
+          "etapa": "Stage",
+          "valor": "Value",
+          "telefone": "Phone",
+          "email": "Email",
+          "entrada": "Funnel entry",
+          "situacao": "Status",
+          "conexao": "Connection",
+          "responsavel": "Assignee",
+          "empresa": "Company"
+        },
+        "buscar": "Search by name, phone or email…",
+        "todasEtapas": "All stages",
+        "todasSituacoes": "All statuses",
+        "contagem": "{n} of {m} in the period",
+        "exportar": "Export CSV",
+        "escolherColunas": "Columns",
+        "colunasFixas": "Deal columns",
+        "blocoGeral": "General",
+        "carregando": "Loading leads…",
+        "falhou": "Could not load this pipeline's leads.",
+        "tentarDeNovo": "Try again",
+        "semLeadsNoPeriodo": "No deal created in this period.",
+        "semLeadsComFiltro": "No lead matches these filters.",
+        "mostrarMais": "Show {n} more",
+        "abrirConversa": "Open conversation",
+        "editar": "Edit deal",
+        "ordenarPor": "Sort by {coluna}",
+        "toastEtapaFalhou": "Could not move the deal. The list was reloaded."
       }
     },
     "analytics": {

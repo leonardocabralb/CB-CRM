@@ -1073,7 +1073,8 @@
       "toastStageIsChannelEntry": "Esta etapa é a entrada de {channels}. Escolha outra etapa de entrada em Configurações › Conexões antes de apagá-la."
     },
     "automacoes": {
-      "abaLeads": "Leads",
+      "abaLeads": "Quadro",
+      "abaLista": "Lista",
       "abaAutomacoes": "Automações",
       "quandoEntra": "Quando o card entra nesta etapa",
       "quandoEntraVarias": "Quando o card entra em qualquer uma destas etapas",
@@ -1136,6 +1137,58 @@
         "proposta": "Proposta",
         "contrato": "Contrato",
         "perda": "Perda"
+      },
+      "situacao": {
+        "fora_do_funil": "Fora do funil",
+        "sem_avanco": "Sem avanço",
+        "andamento": "Em andamento",
+        "fechado": "Fechado",
+        "perdido": "Perdido"
+      },
+      "periodo": {
+        "este_mes": "Este mês",
+        "mes_passado": "Mês passado",
+        "este_ano": "Este ano",
+        "ano_passado": "Ano passado",
+        "total": "Total",
+        "personalizado": "Personalizar",
+        "de": "De",
+        "ate": "Até"
+      },
+      "lista": {
+        "colunas": {
+          "numero": "#",
+          "data": "Data",
+          "nome": "Nome",
+          "naEtapaDesde": "Na etapa desde",
+          "etapa": "Etapa",
+          "valor": "Valor",
+          "telefone": "Telefone",
+          "email": "E-mail",
+          "entrada": "Entrada no funil",
+          "situacao": "Situação",
+          "conexao": "Conexão",
+          "responsavel": "Responsável",
+          "empresa": "Empresa"
+        },
+        "buscar": "Buscar por nome, telefone ou e-mail…",
+        "todasEtapas": "Todas as etapas",
+        "todasSituacoes": "Todas as situações",
+        "contagem": "{n} de {m} no período",
+        "exportar": "Exportar CSV",
+        "escolherColunas": "Colunas",
+        "colunasFixas": "Colunas do negócio",
+        "blocoGeral": "Geral",
+        "carregando": "Carregando leads…",
+        "falhou": "Não foi possível carregar os leads deste funil.",
+        "tentarDeNovo": "Tentar de novo",
+        "semLeadsNoPeriodo": "Nenhum negócio criado neste período.",
+        "semLeadsComFiltro": "Nenhum lead com esses filtros.",
+        "mostrarMais": "Mostrar mais {n}",
+        "abrirConversa": "Abrir conversa",
+        "editar": "Editar negócio",
+        "ordenarPor": "Ordenar por {coluna}",
+        "toastEtapaFalhou": "Não foi possível mover o negócio. A lista foi recarregada."
       }
     },
     "analytics": {
