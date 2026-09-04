@@ -1,4 +1,4 @@
-import type { Classificacao } from "./degraus";
+import { type Classificacao, type Degrau, DEGRAUS } from "./degraus";
 import { type ResumoDoPeriodo, resumoDoPeriodo } from "./coorte";
 import { type MesDoHistorico, mesesAnteriores } from "./periodo";
 import type { FatosDoNegocio } from "./trajetoria";
@@ -44,6 +44,51 @@ export function coortesMensais(
 
 export function coortePequena(entradas: number): boolean {
   return entradas < COORTE_PEQUENA;
+}
+
+export interface TransicaoDoHistorico {
+  de: Degrau;
+  para: Degrau;
+  /** lead → contrato, a linha de baixo do mapa. */
+  global: boolean;
+}
+
+/** As linhas do gráfico e do mapa: degraus MAPEADOS consecutivos + a global. */
+export function transicoesDoHistorico(classificacao: Classificacao): TransicaoDoHistorico[] {
+  const mapeados = DEGRAUS.filter((d) => classificacao.porClasse[d].length > 0);
+  const linhas: TransicaoDoHistorico[] = mapeados
+    .slice(1)
+    .map((para, i) => ({ de: mapeados[i], para, global: false }));
+  if (classificacao.porClasse.lead.length > 0 && classificacao.porClasse.contrato.length > 0) {
+    linhas.push({ de: "lead", para: "contrato", global: true });
+  }
+  return linhas;
+}
+
+export interface LinhaDoMapa {
+  transicao: TransicaoDoHistorico;
+  /** uma taxa (fração) por mês, na ordem das coortes; nula sem denominador. */
+  taxas: (number | null)[];
+  /** 0..1 relativo à LINHA, calculado SEM as coortes pequenas (regra 11). */
+  escala: (v: number | null) => number | null;
+}
+
+/**
+ * Uma linha por transição, com a escala de cor própria. Coorte pequena
+ * entra com a taxa (a célula mostra o número, apagado) mas fica FORA do
+ * min/max — 100% sobre um lead dominaria a escala do ano inteiro.
+ */
+export function linhasDoMapa(coortes: readonly CoorteMensal[], classificacao: Classificacao): LinhaDoMapa[] {
+  return transicoesDoHistorico(classificacao).map((transicao) => {
+    const taxas = coortes.map((c) => {
+      const t = transicao.global
+        ? c.resumo.global
+        : c.resumo.transicoes.find((x) => x.de === transicao.de && x.para === transicao.para);
+      return t?.taxa ?? null;
+    });
+    const confiaveis = taxas.map((t, i) => (coortes[i].pequena ? null : t));
+    return { transicao, taxas, escala: escalaRelativa(confiaveis) };
+  });
 }
 
 /**

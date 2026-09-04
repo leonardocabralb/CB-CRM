@@ -33,7 +33,7 @@
 | **0** | Fundamentos: correspondência etapa → degrau do funil de eficiência (coluna + UI em Funis), RPC das trajetórias, módulos puros do cálculo | ✅ **feita** (2026-09-04) | `975_cb_degrau_do_funil` **aplicada** (04/09) | [#119](https://github.com/leonardocabralb/CB-CRM/pull/119) |
 | **1** | **Lista de leads** do funil: colunas fixas + campos personalizados, etapa editável na linha, busca/etapa/situação/período, ordenação, CSV | ✅ **feita** (2026-09-04) | nenhuma | [#120](https://github.com/leonardocabralb/CB-CRM/pull/120) |
 | **2** | **Desempenho**: funil de eficiência, negativos e em aberto, taxas atual × anterior, entrada por dia, cards de conversão/valor | ✅ **feita** (2026-09-04) | nenhuma | [#121](https://github.com/leonardocabralb/CB-CRM/pull/121) |
-| **3** | **Saúde**: conversão por degrau nos últimos 12 meses (linhas) e mapa de calor | ⏳ a fazer | nenhuma | — |
+| **3** | **Saúde**: conversão por degrau nos últimos 12 meses (linhas) e mapa de calor | ✅ **feita** (2026-09-04) | nenhuma | `feat/funil-comercial-fase-3` |
 | **4** | **Meta Ads em Integrações**: conexão com a conta de anúncios (token cifrado), campanhas → funil, gasto diário por campanha puxado pelo agendador → custo por lead, CAC e custo dos perdidos no Desempenho | ⏳ a fazer | `976_cb_meta_ads` | — |
 | **5** | **Depois, cada um por decisão própria**: captura automática do anúncio de origem (fica barata depois da Fase 4) · backfill de lista de outro CRM (plano próprio) | 🔭 futuro | — | — |
 
@@ -660,7 +660,7 @@ zeros COM a nota "nenhum lead entrou no funil neste período" (não o estado
   servidor. Quem revisar console em `next dev` depois de mexer em
   dicionário ou em imports reinicia antes de acreditar.
 
-### Fase 3 — Saúde
+### ✅ Fase 3 — Saúde (concluída em 2026-09-04)
 
 **Objetivo:** a vista "Saúde": a tendência de 12 meses.
 
@@ -677,6 +677,30 @@ zeros COM a nota "nenhum lead entrou no funil neste período" (não o estado
 
 ⚠️ **Saúde só fica útil com meses de operação ou com o backfill futuro (Fase 5b).** A
 vista nasce honesta: os meses sem coorte ficam vazios com a nota, não zero.
+
+**Resultado medido (2026-09-04, worktree em `main` @ `7dce4c6`):**
+
+- Vista "Saúde" no toggle (Quadro · Lista · Desempenho · Saúde ·
+  Automações): `src/components/funil/saude.tsx` (uma carga da RPC para
+  `[1º dia de 11 meses atrás, hoje)`; doze coortes mensais por
+  `coortesMensais`), `grafico-de-conversao.tsx` (recharts direto, uma linha
+  por transição + a global, legenda própria) e `mapa-de-calor.tsx` (tabela
+  HTML, cor `hsl(0→130, alfa 0,35)` relativa à LINHA, célula de coorte
+  pequena apagada com o motivo no `title`, mês corrente marcado ●).
+  `saude.ts` ganhou `transicoesDoHistorico` e `linhasDoMapa` (escala
+  calculada SEM as coortes pequenas — 100% sobre um lead dominaria o ano)
+  com testes; módulo em **90** testes; typecheck limpo; lint 0 erros;
+  portões de i18n OK.
+- Preview em 1440×900 num funil de teste criado pelo conector ("TESTE Fase 3
+  (apagar)": 4 etapas, 13 negócios com `created_at` e trilha RETROAGIDOS
+  para julho/agosto/setembro) e apagado ao fim: "13 entradas no total";
+  linhas Lead → MQL, MQL → Contrato e global; mapa com as 12 colunas
+  (`out/25 … set/26●`), julho verde (50,0% · 6 leads) e agosto vermelho
+  (40,0% · 5 leads) na linha Lead → MQL, setembro apagado (2 leads, "taxa
+  pouco confiável"), meses sem coorte com "—"; o funil real sem degrau cai
+  no "configure". Console limpo numa aba nova depois do restart do servidor.
+- Rótulo do mês mudou de "jul. de 26" (o `toLocaleDateString` com ano) para
+  "jul/26" — doze colunas lado a lado não cabiam com o "de".
 
 ### Fase 4 — Meta Ads em Integrações (migration `976`)
 

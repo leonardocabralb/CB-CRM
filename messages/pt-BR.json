@@ -1076,6 +1076,7 @@
       "abaLeads": "Quadro",
       "abaLista": "Lista",
       "abaDesempenho": "Desempenho",
+      "abaSaude": "Saúde",
       "abaAutomacoes": "Automações",
       "quandoEntra": "Quando o card entra nesta etapa",
       "quandoEntraVarias": "Quando o card entra em qualquer uma destas etapas",
@@ -1210,6 +1211,24 @@
           "titulo": "Entrada de leads no período",
           "subtitulo": "por dia",
           "noDia": "{n} lead(s) no dia"
+        }
+      },
+      "saude": {
+        "periodo": "Últimos {meses} meses, pelo mês de entrada no funil",
+        "entradas": "{n} entradas no total",
+        "semCoortes": "Nenhum lead entrou no funil nos últimos meses. A Saúde ganha sentido com meses de operação.",
+        "fonte": "Etapas pelo mapeamento do funil {funil}. O mês corrente é coorte em andamento.",
+        "conversao": {
+          "titulo": "Conversão por degrau ao longo do tempo",
+          "subtitulo": "últimos {meses} meses"
+        },
+        "mapa": {
+          "titulo": "Mapa de saúde do funil",
+          "subtitulo": "cor relativa ao histórico de cada linha",
+          "legenda": "verde = melhor mês da linha · vermelho = pior · apagado = menos de {minimo} leads",
+          "celula": "{mes}: {taxa} · {n} lead(s)",
+          "emAndamento": "mês em andamento",
+          "pequena": "menos de {minimo} leads: taxa pouco confiável"
         }
       },
       "lista": {

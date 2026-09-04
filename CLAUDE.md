@@ -2399,6 +2399,12 @@ Meta Ads) leem daqui. O que morde código novo:
   por classe Tailwind com `stroke=""`/`fill=""`, o truque do Tremor) — não
   vendorizar mais um Tremor para isso. Números em pt-BR fixo
   (`apresentacao.ts`), como `currency.ts`.
+- **A SAÚDE (Fase 3, `saude.tsx` + `mapa-de-calor.tsx` +
+  `grafico-de-conversao.tsx`) são doze coortes MENSAIS pelo mês de entrada**,
+  numa carga só. A cor do mapa é RELATIVA À LINHA (D6) e a escala é
+  calculada SEM as coortes pequenas (`< COORTE_PEQUENA`, 5): 100% sobre um
+  lead dominaria o ano inteiro. Coorte pequena mostra o número apagado com
+  o motivo no `title`; mês sem coorte é "—", nunca 0%.
 
 ## Branches — criação e nomenclatura
 

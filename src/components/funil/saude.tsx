@@ -1,0 +1,176 @@
+"use client";
+
+import { Loader2, Settings } from "lucide-react";
+import { useTranslations } from "next-intl";
+
+import { Button } from "@/components/ui/button";
+import { useTrajetorias } from "@/hooks/use-trajetorias";
+import { formatarPercentual, paraPontosPercentuais } from "@/lib/funil/apresentacao";
+import { classificarEtapas, type Degrau } from "@/lib/funil/degraus";
+import { inicioDoMesLocal } from "@/lib/funil/periodo";
+import { COORTE_PEQUENA, coortesMensais, linhasDoMapa, type TransicaoDoHistorico } from "@/lib/funil/saude";
+import { fatosDoNegocio } from "@/lib/funil/trajetoria";
+import type { Pipeline, PipelineStage } from "@/types";
+
+import { GraficoDeConversao, type SerieDeConversao } from "./grafico-de-conversao";
+import { MapaDeCalor, type LinhaDoMapaDeCalor } from "./mapa-de-calor";
+
+/**
+ * A vista de SAÚDE (Fase 3 do plano): doze coortes mensais (pelo mês da
+ * ENTRADA no funil), a conversão por transição ao longo do tempo e o mapa
+ * de calor com cor relativa à linha. Conta em `src/lib/funil/saude.ts`.
+ *
+ * UMA carga da RPC para `[1º dia de 11 meses atrás, hoje)` — o que a coorte
+ * de cada mês fez depois conta até hoje. O mês corrente é coorte em
+ * andamento e vem marcado; coorte pequena (< 5) fica apagada e fora da
+ * escala de cor.
+ */
+
+const MESES = 12;
+
+const COR_DA_TRANSICAO: Record<Degrau, string> = {
+  lead: "stroke-sky-500",
+  mql: "stroke-violet-500",
+  reuniao: "stroke-pink-500",
+  proposta: "stroke-amber-500",
+  contrato: "stroke-emerald-500",
+};
+
+export function Saude({
+  pipeline,
+  stages,
+  onConfigurar,
+}: {
+  pipeline: Pipeline;
+  stages: PipelineStage[];
+  onConfigurar: () => void;
+}) {
+  const t = useTranslations("Pipelines.funil.saude");
+  const tDesempenho = useTranslations("Pipelines.funil.desempenho");
+  const tDegraus = useTranslations("Pipelines.funil.degraus");
+
+  const agora = new Date();
+  const desde = inicioDoMesLocal(agora.getFullYear(), agora.getMonth() - (MESES - 1));
+  const { linhas, carregando, falhou, recarregar } = useTrajetorias(pipeline.id, { desde, ate: null });
+
+  const classificacao = classificarEtapas(stages);
+  const rotuloDoDegrau = (d: Degrau) =>
+    // chave montada: `degraus.<d>` — cobrada em degraus.test.ts
+    tDegraus(d as Parameters<typeof tDegraus>[0]);
+  const rotuloDaTransicao = (tr: TransicaoDoHistorico) =>
+    tr.global ? tDesempenho("taxas.global") : `${rotuloDoDegrau(tr.de)} → ${rotuloDoDegrau(tr.para)}`;
+
+  if (stages.length > 0 && !classificacao.configurado) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
+        <Settings className="h-8 w-8 text-muted-foreground" />
+        <p className="max-w-md text-sm text-muted-foreground">{tDesempenho("configure")}</p>
+        <Button variant="outline" onClick={onConfigurar} className="border-border bg-card text-foreground hover:bg-muted">
+          {tDesempenho("configurar")}
+        </Button>
+      </div>
+    );
+  }
+
+  if (carregando) {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-16 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        {tDesempenho("carregando")}
+      </div>
+    );
+  }
+  if (falhou) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card py-16 text-sm text-muted-foreground">
+        {tDesempenho("falhou")}
+        <button type="button" onClick={recarregar} className="underline hover:text-foreground">
+          {tDesempenho("tentarDeNovo")}
+        </button>
+      </div>
+    );
+  }
+
+  const fatos = (linhas ?? []).map((l) => fatosDoNegocio(l, pipeline.id, classificacao));
+  const coortes = coortesMensais(fatos, classificacao, MESES, agora);
+  const mapa = linhasDoMapa(coortes, classificacao);
+  // "jul/26", não "jul. de 26": são doze colunas lado a lado.
+  const rotuloDoMes = (d: Date) =>
+    `${d.toLocaleDateString(undefined, { month: "short" }).replace(".", "")}/${String(d.getFullYear()).slice(-2)}`;
+  const meses = coortes.map((c, i) => ({
+    chave: c.chave,
+    rotulo: rotuloDoMes(c.desde),
+    emAndamento: i === coortes.length - 1,
+  }));
+  const totalDeEntradas = coortes.reduce((s, c) => s + c.resumo.entradas, 0);
+
+  const series: SerieDeConversao[] = mapa.map((linha) => ({
+    chave: `${linha.transicao.de}-${linha.transicao.para}${linha.transicao.global ? "-global" : ""}`,
+    rotulo: rotuloDaTransicao(linha.transicao),
+    classeDaCor: COR_DA_TRANSICAO[linha.transicao.global ? "contrato" : linha.transicao.de],
+    valores: linha.taxas.map(paraPontosPercentuais),
+  }));
+
+  const linhasDoCalor: LinhaDoMapaDeCalor[] = mapa.map((linha) => ({
+    chave: `${linha.transicao.de}-${linha.transicao.para}${linha.transicao.global ? "-global" : ""}`,
+    rotulo: rotuloDaTransicao(linha.transicao),
+    celulas: linha.taxas.map((taxa, i) => ({
+      taxa,
+      posicao: coortes[i].pequena ? null : linha.escala(taxa),
+      entradas: coortes[i].resumo.entradas,
+      pequena: coortes[i].pequena,
+    })),
+  }));
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-xs text-muted-foreground">
+        {t("periodo", { meses: MESES })} · {t("entradas", { n: totalDeEntradas })}
+      </p>
+      {totalDeEntradas === 0 && (
+        <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+          {t("semCoortes")}
+        </p>
+      )}
+
+      <section className="rounded-xl border border-border bg-card p-4">
+        <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t("conversao.titulo")} <span className="font-normal normal-case">· {t("conversao.subtitulo", { meses: MESES })}</span>
+        </h3>
+        {series.length === 0 ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">{tDesempenho("funil.semEtapa")}</p>
+        ) : (
+          <GraficoDeConversao
+            meses={meses.map((m) => m.rotulo)}
+            series={series}
+            formatarValor={(v) => (v === null ? "—" : formatarPercentual(v / 100))}
+          />
+        )}
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-4">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t("mapa.titulo")} <span className="font-normal normal-case">· {t("mapa.subtitulo")}</span>
+          </h3>
+          <span className="text-[11px] text-muted-foreground">
+            {t("mapa.legenda", { minimo: COORTE_PEQUENA })}
+          </span>
+        </div>
+        {linhasDoCalor.length === 0 ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">{tDesempenho("funil.semEtapa")}</p>
+        ) : (
+          <MapaDeCalor
+            meses={meses}
+            linhas={linhasDoCalor}
+            formatarTaxa={formatarPercentual}
+            tituloDaCelula={(mes, taxa, entradas) => t("mapa.celula", { mes, taxa, n: entradas })}
+            rotuloEmAndamento={t("mapa.emAndamento")}
+            rotuloPequena={t("mapa.pequena", { minimo: COORTE_PEQUENA })}
+          />
+        )}
+        <p className="mt-3 text-[11px] text-muted-foreground">{t("fonte", { funil: pipeline.name })}</p>
+      </section>
+    </div>
+  );
+}
