@@ -2447,7 +2447,10 @@ Meta Ads) leem daqui. O que morde código novo:
     `/api/cb/integracoes/status`.
   - ⚠️ **O token vai no cabeçalho `Authorization: Bearer`, nunca em
     `?access_token=`** na URL (vaza em log de proxy) — mesma regra da chave
-    do Gemini.
+    do Gemini. ⚠️ E como ele viaja no CABEÇALHO, a paginação precisa de
+    cerca: `paging.next` é uma URL vinda da RESPOSTA, e seguir uma de outro
+    host entregaria o token a esse host. `doGraph()` confere a origem antes
+    de cada pedido, inclusive o primeiro.
   - ⚠️ **A janela de sincronização é de 3 DIAS, não "hoje"**: a Meta
     reprocessa o gasto por até 48h. Puxar só o dia corrente congela um
     número que ainda muda, e o upsert é por `(conta, campanha, dia)`

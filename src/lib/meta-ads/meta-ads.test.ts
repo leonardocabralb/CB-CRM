@@ -4,7 +4,7 @@ import { intervaloDoPreset } from "@/lib/funil/periodo";
 
 import { custos, diasDoPeriodo, gastoDoPeriodo } from "./atribuicao";
 import { cartaoDoMetaAds } from "./cartao";
-import { codigoDoErro, criarClienteMeta, MARCA_DE_TOKEN, MetaAdsError, normalizarAdAccountId, semSegredo } from "./cliente";
+import { codigoDoErro, criarClienteMeta, doGraph, MARCA_DE_TOKEN, MetaAdsError, normalizarAdAccountId, semSegredo } from "./cliente";
 import { DIAS_DA_PRIMEIRA_SYNC, DIAS_DE_REPROCESSO, janelaDeSync } from "./janela-de-sync";
 
 describe("janelaDeSync", () => {
@@ -52,6 +52,31 @@ describe("o token não sobrevive à mensagem de erro", () => {
       (e: unknown) =>
         e instanceof MetaAdsError && e.codigo === "token_invalido" && !e.message.includes(TOKEN),
     );
+  });
+});
+
+describe("a paginação não leva o token para fora do Graph", () => {
+  it("reconhece só a origem do Graph", () => {
+    expect(doGraph("https://graph.facebook.com/v21.0/act_1/campaigns")).toBe(true);
+    expect(doGraph("https://graph.facebook.com.evil.test/v21.0/x")).toBe(false);
+    expect(doGraph("http://graph.facebook.com/v21.0/x")).toBe(false);
+    expect(doGraph("nao é url")).toBe(false);
+  });
+
+  it("cursor apontando para outro host é recusado ANTES do pedido", async () => {
+    const pedidos: string[] = [];
+    const fetchFalso = (async (url: string) => {
+      pedidos.push(url);
+      return new Response(
+        JSON.stringify({ data: [], paging: { next: "https://evil.test/roubar?x=1" } }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+    await expect(criarClienteMeta("EAABsegredo123", fetchFalso).campanhas("act_1")).rejects.toBeInstanceOf(
+      MetaAdsError,
+    );
+    expect(pedidos).toHaveLength(1);
+    expect(pedidos[0]).toContain("graph.facebook.com");
   });
 });
 

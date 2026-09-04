@@ -15,10 +15,23 @@
  *   token pelo marcador e limpa `access_token=` de qualquer URL. É a mesma
  *   armadilha da chave da OpenAI em `/api/cb/integracoes/status`.
  * - Paginação por `paging.next`, com teto — a Meta devolve o cursor pronto.
+ *   ⚠️ Esse cursor é uma URL vinda da RESPOSTA, e nós mandamos o token no
+ *   cabeçalho: seguir uma URL de outro host entregaria o token a ele. Por
+ *   isso `doGraph()` confere a ORIGEM antes de cada pedido.
  */
 
 export const META_ADS_API_VERSION = "v21.0";
-const BASE = `https://graph.facebook.com/${META_ADS_API_VERSION}`;
+const ORIGEM = "https://graph.facebook.com";
+const BASE = `${ORIGEM}/${META_ADS_API_VERSION}`;
+
+/** A URL é do Graph? O cursor de paginação vem da resposta e leva o token junto. */
+export function doGraph(url: string): boolean {
+  try {
+    return new URL(url).origin === ORIGEM;
+  } catch {
+    return false;
+  }
+}
 const TIMEOUT_MS = 20_000;
 const MAX_PAGINAS = 20;
 
@@ -116,6 +129,7 @@ export function semSegredo(texto: string, token: string): string {
 
 export function criarClienteMeta(token: string, fetchFn: Fetch = fetch): ClienteMeta {
   async function pedir(url: string): Promise<Record<string, unknown>> {
+    if (!doGraph(url)) throw new MetaAdsError("meta_error", "URL fora do graph.facebook.com");
     let resposta: Response;
     try {
       resposta = await fetchFn(url, {
