@@ -267,8 +267,15 @@ entrou, com o instante de cada entrada (`cb_lead_events`), mais a etapa atual.
    950), e o índice `cb_deals_contato_canal_idx` (911) impede segundo card
    de canal por contato: a transferência é do MESMO negócio. Sem esta regra,
    cada contrato fechado sumiria da estatística comercial no instante em que
-   fosse para o Jurídico. A lista mostra "transferido para X" na linha; o
-   painel conta normalmente.
+   fosse para o Jurídico. O PAINEL (Desempenho e Saúde) conta normalmente.
+   ⚠️ A LISTA, não: por decisão da Fase 1 (D3, e o corte da coluna
+   "Transferido para" registrado no resultado medido), ela mostra só quem
+   está NESTE funil hoje — o contrato fechado que foi para o Jurídico
+   aparece nos números do comercial e NÃO na lista do comercial. Uma
+   versão desta regra dizia "a lista mostra 'transferido para X' na
+   linha", e o código nunca fez isso. Se a divergência incomodar na
+   operação (o filtro "Fechado" da lista nunca vai bater com o card
+   "Contratos"), é decisão de produto à parte.
 7. **Negócio apagado some** da coorte (a trilha fica, o negócio não; o
    `deal_deleted` não aparece no chat por decisão da 912 — aqui também não).
 8. **Período** = intervalo local `[desde, até)`; presets Este mês · Mês
@@ -393,7 +400,7 @@ como hipótese.
 | **D4** | Período anterior = **mesma duração imediatamente anterior** ou mês/ano-calendário anterior inteiro | mesma duração (frase da referência) | "Este mês" com 3 dias comparado com um mês inteiro mentiria em -90% |
 | **D5** | Colunas padrão da lista | padrão = colunas fixas + nenhum campo personalizado (o seletor de colunas liga e persiste por membro) | 18 colunas vazias de largada só fariam a tabela rolar; ligar uma vez persiste. (O filtro "só alto valor" saiu por decisão do operador; se voltar, "Tamanho da Dívida" precisa virar campo `number` antes — hoje é texto livre) |
 | **D6** | Mapa de calor: cor **relativa à linha** (melhor mês verde, pior vermelho, por transição) ou escala absoluta | relativa por linha, com coorte pequena apagada | absoluta pinta "Lead → Contrato" de vermelho em todo mês (2–9%) e não informa nada; o título da referência diz "relativa ao histórico", o render dela parece absoluto |
-| **D8** | Fórmula do "custo de no-show" | card "Custo dos perdidos" = custo por lead × leads perdidos no período, com a quebra por etapa de perda no tooltip (o "no-show" é uma das linhas) | a referência não escreve a fórmula; esta é a mais defensável e não depende de existir uma etapa chamada "No Show" |
+| **D8** | Fórmula do "custo de no-show" | card "Custo dos perdidos" = custo por lead × leads perdidos no período; a quebra por etapa de perda fica na seção "Negativos e em aberto" da mesma tela (o "no-show" é uma das linhas) — o card NÃO tem tooltip, ao contrário do que esta linha dizia | a referência não escreve a fórmula; esta é a mais defensável e não depende de existir uma etapa chamada "No Show" |
 | **D9** | Onde as vistas moram | abas dentro de `/pipelines` (sem rota nem TelaId nova) | herda o seletor de funil, o recorte por perfil e o gate de escrita da tela |
 
 ---
