@@ -2176,13 +2176,16 @@ código novo:
   `ESCRITA_DA_SECAO["deals"]` é `undefined`, `hasMinRole` compara
   `3 >= undefined` = false, e o aviso dizia "só para leitura: deals" **num
   perfil Administrador**. Não estoura: `roleRank` não tem `default`.
-- ⚠️ **Somente-leitura e OCULTA são coisas separadas, ditas em lugares
-  separados (desde 03/09).** Somente-leitura é o GRUPO "Só leitura para este
-  papel" do editor (a seção aparece sem botões); oculta é o aviso âmbar:
-  seção de `SECOES_SO_DE_ADMIN` marcada num perfil não-admin não aparece de
-  jeito nenhum — a caixa é inerte, e quem marcou "Perfis de acesso" sai da
-  tela achando ter delegado a gestão de permissões. Por isso ela não é mais
-  OFERECIDA fora do admin; o aviso cobre o que chega gravado.
+- ⚠️ **Somente-leitura e OCULTA são coisas separadas, tratadas de jeitos
+  diferentes (desde 03/09).** Somente-leitura é o GRUPO "Só leitura para
+  este papel" do editor (a seção aparece sem botões). Oculta é seção de
+  `SECOES_SO_DE_ADMIN` num perfil não-admin: não aparece de jeito nenhum, a
+  caixa seria inerte, e quem a marcasse sairia da tela achando ter delegado
+  a gestão de permissões. Por isso ela não é OFERECIDA fora do admin e é
+  DESCARTADA do rascunho (`semSecoesOcultas`) ao abrir o editor e ao descer
+  o papel — sem caixa não haveria como desmarcá-la, e `salvar` a devolveria
+  ao banco para sempre (Codex, PR #117). O aviso âmbar que existia para isso
+  saiu junto: não sobrou o que avisar.
 - **A lista fica SEMPRE VISÍVEL, não atrás de um "?"**: quem configurou os
   "Gestor" não tinha por que suspeitar que havia algo a perguntar.
 - **`ROTULO_DA_TELA` mudou de casa para `catalogo.ts`** — já havia duas cópias
@@ -2216,13 +2219,18 @@ que morde código novo:
   rascunho nasce com papel, telas e seções do modelo; o trabalho é
   desmarcar. Quem religar o botão direto ao formulário devolve o perfil que
   só serve depois de 14 caixas.
-- ⚠️ **A partição "só leitura para este papel" é DERIVADA de
-  `ESCRITA_DA_TELA`/`ESCRITA_DA_SECAO`** — a mesma fonte do antigo aviso
-  âmbar — e há teste cobrando que o grupo seja EXATAMENTE o que
-  `areasQueNaoOperam` apontaria com tudo marcado. O grupo EXISTE de
-  propósito: os "Gestor" desta conta são `agent` com 8 áreas só de leitura
-  marcadas; esconder o item apagaria uma configuração legítima, e misturá-lo
-  com os operáveis era a queixa. Fica recolhido, tracejado, com o olho.
+- **Os cartões do modelo têm nome e descrição no DICIONÁRIO**
+  (`modelos.<papel>.nome`/`.descricao`), nunca o `nome` de
+  `PERFIS_DE_FABRICA`: aquele é o que o semeador GRAVA (dado, em português)
+  e sairia cru no locale inglês, ao lado de um texto que chama os mesmos
+  perfis de "Administrator, Lawyer and Observer" (Codex, PR #117).
+- ⚠️ **A partição "só leitura para este papel" SAI de `areasQueNaoOperam`**
+  (poderes.ts, a régua única de "o que este papel não opera"), não de uma
+  segunda leitura de `ESCRITA_DA_*` — e há teste pinando isso. O grupo
+  EXISTE de propósito: os "Gestor" desta conta são `agent` com 8 áreas só de
+  leitura marcadas; esconder o item apagaria uma configuração legítima, e
+  misturá-lo com os operáveis era a queixa. Fica recolhido, tracejado, com o
+  olho.
 - ⚠️ **`AREA_DA_TELA` é `Record<TelaId, …>`**: tela nova não compila sem
   área. Seção (fora as pessoais) cai sempre em Configurações. Grupo vazio
   some (para `viewer`, "Disparos e automações" não aparece).
@@ -2234,7 +2242,7 @@ que morde código novo:
 - **Abre expandido só o grupo PARCIAL** (`gruposAbertosDeInicio`), semeado
   na montagem — o diálogo desmonta ao fechar, então cada abertura recomeça
   pela regra. "5 de 5" e "0 de 12" já dizem tudo no cabeçalho.
-- **Chaves montadas (`areas.<id>`, `modelos.<papel>`) escapam do portão
+- **Chaves montadas (`areas.<id>`, `modelos.<papel>.*`) escapam do portão
   estático de i18n**: `editor.test.ts` as cobra nos dois dicionários, como
   `poderes.test.ts` faz com `poderes.<id>`.
 

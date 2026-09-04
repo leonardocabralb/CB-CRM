@@ -45,11 +45,15 @@ import { createClient } from '@/lib/supabase/client';
 import { summarizeScope } from '@/lib/cb-channels/display';
 import { useChannels } from '@/hooks/use-channels';
 import type { SecaoId, TelaId } from '@/lib/perfis/catalogo';
-import { modelosDePartida, type ModeloDePartida } from '@/lib/perfis/editor';
+import {
+  modelosDePartida,
+  semSecoesOcultas,
+  type ModeloDePartida,
+} from '@/lib/perfis/editor';
 import type { PapelBase, PerfilDeAcesso } from '@/lib/perfis/tipos';
 import { AreasDoPerfil } from './areas-do-perfil';
 import { SettingsPanelHead } from './settings-panel-head';
-import { AvisoDeAreasSemAcao, PoderesDoPapel } from './poderes-do-papel';
+import { PoderesDoPapel } from './poderes-do-papel';
 
 interface Funil {
   id: string;
@@ -276,7 +280,7 @@ export function PerfisPanel() {
       nome: p.nome,
       papel_base: p.papel_base,
       telas: p.telas,
-      secoes_config: p.secoes_config,
+      secoes_config: semSecoesOcultas(p.papel_base, p.secoes_config),
       channel_ids: p.channel_ids,
       pipeline_ids: p.pipeline_ids,
     });
@@ -289,7 +293,7 @@ export function PerfisPanel() {
       nome: t('copyName', { nome: p.nome }),
       papel_base: p.papel_base,
       telas: p.telas,
-      secoes_config: p.secoes_config,
+      secoes_config: semSecoesOcultas(p.papel_base, p.secoes_config),
       channel_ids: p.channel_ids,
       pipeline_ids: p.pipeline_ids,
     });
@@ -470,10 +474,15 @@ export function PerfisPanel() {
                     onClick={() => partirDe(m)}
                     className="flex flex-col items-start gap-1.5 rounded-md border border-border px-3 py-2.5 text-left transition-colors hover:bg-muted"
                   >
-                    <span className="text-sm font-medium text-foreground">{m.nome}</span>
+                    {/* Nome e descrição do DICIONÁRIO, não o `nome` de
+                        fábrica (dado, em português — sairia cru no locale
+                        inglês). Ver `modelosDePartida`. */}
+                    <span className="text-sm font-medium text-foreground">
+                      {t(`modelos.${m.papel_base}.nome` as Parameters<typeof t>[0])}
+                    </span>
                     {papelChip(m.papel_base)}
                     <span className="text-xs text-muted-foreground">
-                      {t(`modelos.${m.papel_base}` as Parameters<typeof t>[0])}
+                      {t(`modelos.${m.papel_base}.descricao` as Parameters<typeof t>[0])}
                     </span>
                     <span className="text-[11px] text-muted-foreground">
                       {t('modeloTelas', { count: m.telas.length })}
@@ -527,9 +536,16 @@ export function PerfisPanel() {
                     <Label className="text-muted-foreground">{t('roleLabel')}</Label>
                     <Select
                       value={rascunho.papel_base}
-                      onValueChange={(v) =>
-                        setRascunho({ ...rascunho, papel_base: v as PapelBase })
-                      }
+                      onValueChange={(v) => {
+                        const papel = v as PapelBase;
+                        // Descer o papel tira do rascunho o que ele não veria
+                        // de jeito nenhum (ver `semSecoesOcultas`).
+                        setRascunho({
+                          ...rascunho,
+                          papel_base: papel,
+                          secoes_config: semSecoesOcultas(papel, rascunho.secoes_config),
+                        });
+                      }}
                     >
                       <SelectTrigger className="border-border bg-muted text-foreground">
                         <SelectValue />
@@ -557,16 +573,6 @@ export function PerfisPanel() {
                   telas={rascunho.telas}
                   secoes={rascunho.secoes_config}
                   onChange={(proximo) => setRascunho({ ...rascunho, ...proximo })}
-                />
-
-                {/* Só o caso INERTE sobrou aqui: seção que este papel não vê
-                    de jeito nenhum (`perfis` fora do admin), marcada por
-                    legado ou por troca de papel. Some sozinho quando não há
-                    divergência. */}
-                <AvisoDeAreasSemAcao
-                  papel={rascunho.papel_base}
-                  telas={rascunho.telas}
-                  secoes={rascunho.secoes_config}
                 />
 
                 {/* ⚠️ `> 1`, a convenção da casa: "seletor some com menos de

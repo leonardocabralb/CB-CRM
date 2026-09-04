@@ -18,6 +18,7 @@ import {
   gruposDoEditor,
   itemTravado,
   modelosDePartida,
+  semSecoesOcultas,
   type GrupoDoEditor,
   type ItemDoEditor,
 } from "./editor";
@@ -76,9 +77,9 @@ describe("gruposDoEditor — 'só leitura para este papel'", () => {
   });
 
   it("CRÍTICO: o grupo é EXATAMENTE o que `areasQueNaoOperam` apontaria com tudo marcado", () => {
-    // Duas réguas para a mesma pergunta divergem na primeira mudança de
-    // piso: a tela agruparia um item como operável e o aviso o chamaria de
-    // somente-leitura. Uma fonte só (ESCRITA_DA_*), conferida aqui.
+    // É a MESMA régua de propósito (o módulo consome `areasQueNaoOperam`);
+    // o teste pina que continue sendo. Duas réguas para a mesma pergunta
+    // divergem na primeira mudança de piso.
     for (const papel of ["agent", "viewer"] as PapelBase[]) {
       const so = grupo(papel, "so-leitura")!;
       const aviso = areasQueNaoOperam(papel, TODAS_AS_TELAS, TODAS_AS_SECOES);
@@ -192,14 +193,32 @@ describe("estadoDoGrupo e alternarGrupo", () => {
   });
 });
 
-describe("modelosDePartida", () => {
-  it("são os três de fábrica, como cópias", () => {
-    const modelos = modelosDePartida();
-    expect(modelos.map((m) => [m.nome, m.papel_base])).toEqual([
-      ["Administrador", "admin"],
-      ["Advogado", "agent"],
-      ["Observador", "viewer"],
+describe("semSecoesOcultas", () => {
+  it("agent/viewer perdem `perfis`; admin mantém; o resto passa intacto", () => {
+    expect(semSecoesOcultas("agent", ["perfis", "channels"])).toEqual(["channels"]);
+    expect(semSecoesOcultas("viewer", ["perfis"])).toEqual([]);
+    expect(semSecoesOcultas("admin", ["perfis", "channels"])).toEqual(["perfis", "channels"]);
+  });
+
+  it("id desconhecido passa — quem o descarta é o servidor (o fantasma 'deals')", () => {
+    expect(semSecoesOcultas("agent", ["deals" as SecaoId, "quick-replies"])).toEqual([
+      "deals",
+      "quick-replies",
     ]);
+  });
+
+  it("não muda o array de entrada", () => {
+    const entrada: SecaoId[] = ["perfis", "channels"];
+    semSecoesOcultas("agent", entrada);
+    expect(entrada).toEqual(["perfis", "channels"]);
+  });
+});
+
+describe("modelosDePartida", () => {
+  it("são os três de fábrica, como cópias — sem o nome, que é dado gravado", () => {
+    const modelos = modelosDePartida();
+    expect(modelos.map((m) => m.papel_base)).toEqual(["admin", "agent", "viewer"]);
+    expect("nome" in modelos[0]).toBe(false);
     for (const m of modelos) expect(m.telas.length).toBeGreaterThan(0);
     modelos[1].telas.push("broadcasts");
     expect(PERFIS_DE_FABRICA[1].telas).not.toContain("broadcasts");
@@ -219,7 +238,8 @@ describe("dicionários", () => {
         expect(painel.areas[area].length).toBeGreaterThan(0);
       }
       for (const papel of PAPEIS) {
-        expect(typeof painel.modelos?.[papel]).toBe("string");
+        expect(typeof painel.modelos?.[papel]?.nome).toBe("string");
+        expect(typeof painel.modelos?.[papel]?.descricao).toBe("string");
       }
     });
   }

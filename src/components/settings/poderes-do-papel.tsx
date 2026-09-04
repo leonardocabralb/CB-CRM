@@ -1,9 +1,7 @@
 'use client';
 
 // ============================================================
-// O que o PAPEL escolhido pode fazer — e a seção que o rascunho marca sem
-// que este papel chegue a vê-la. As duas pontas da mesma pergunta, no editor
-// de perfis.
+// O que o PAPEL escolhido pode fazer, no editor de perfis.
 //
 // Por que existe: o seletor de Papel mostrava três nomes e nada mais. A
 // única explicação de papel do app (`Settings.roles.*Hint`) vive no diálogo
@@ -18,18 +16,18 @@
 // consultada por quem não sabe que ela existe — quem configurou os "Gestor"
 // não tinha por que suspeitar que havia algo a perguntar.
 //
-// O somente-leitura em si saiu daqui em 2026-09-03: virou o grupo "Só leitura
-// para este papel" dentro de <AreasDoPerfil>, que diz a mesma coisa ANTES de
-// a pessoa marcar, em vez de avisar depois.
+// O aviso de "áreas sem ação" que morava aqui saiu em 2026-09-03: o
+// somente-leitura virou o grupo "Só leitura para este papel" dentro de
+// <AreasDoPerfil> (diz a mesma coisa ANTES de a pessoa marcar), e a seção
+// oculta deixou de ser oferecida e é descartada do rascunho
+// (`semSecoesOcultas`) — não sobrou o que avisar.
 // ============================================================
 
 import { useTranslations } from 'next-intl';
-import { AlertTriangle, Check, Minus } from 'lucide-react';
+import { Check, Minus } from 'lucide-react';
 
-import type { SecaoId, TelaId } from '@/lib/perfis/catalogo';
-import { areasQueNaoOperam, poderesDoPapel } from '@/lib/perfis/poderes';
+import { poderesDoPapel } from '@/lib/perfis/poderes';
 import type { PapelBase } from '@/lib/perfis/tipos';
-import { SECTION_META } from './settings-sections';
 
 export function PoderesDoPapel({ papel }: { papel: PapelBase }) {
   const t = useTranslations('PerfisPanel');
@@ -66,53 +64,6 @@ export function PoderesDoPapel({ papel }: { papel: PapelBase }) {
         ))}
       </ul>
       <p className="text-xs text-muted-foreground">{t('poderesHint')}</p>
-    </div>
-  );
-}
-
-/**
- * O aviso do caso INERTE: seção marcada que este papel não vê de jeito
- * nenhum (`perfis` fora do admin — `SECOES_SO_DE_ADMIN`). A caixa não faz
- * nada, e quem a marcou sai da tela achando ter delegado a gestão de
- * permissões.
- *
- * O editor já não OFERECE essa caixa fora do admin (`gruposDoEditor`); o
- * caso chega gravado (legado) ou por troca de papel com ela marcada — e é
- * por isso que o aviso fica. Só aparece quando há divergência: um aviso
- * permanente vira moldura e ninguém o lê.
- */
-export function AvisoDeAreasSemAcao({
-  papel,
-  telas,
-  secoes,
-}: {
-  papel: PapelBase;
-  telas: TelaId[];
-  secoes: SecaoId[];
-}) {
-  const t = useTranslations('PerfisPanel');
-  const tSecoes = useTranslations('Settings.sections');
-
-  const areas = areasQueNaoOperam(papel, telas, secoes);
-  if (areas.secoesOcultas.length === 0) return null;
-
-  // Id declarado à frente da tela (foi o caso de `acervo` e `perfis`)
-  // aparece CRU, e não num rótulo emprestado — a mesma decisão da grade de
-  // áreas, tomada depois de o fantasma `deals` virar um segundo "Perfis de
-  // acesso" idêntico ao verdadeiro.
-  const nomeDaSecao = (secao: SecaoId) =>
-    secao in SECTION_META
-      ? tSecoes(secao as Parameters<typeof tSecoes>[0])
-      : secao;
-
-  return (
-    <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2">
-      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
-      <p className="text-xs text-foreground">
-        {t('avisoOcultas', {
-          areas: areas.secoesOcultas.map(nomeDaSecao).join(', '),
-        })}
-      </p>
     </div>
   );
 }

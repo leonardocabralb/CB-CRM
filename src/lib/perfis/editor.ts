@@ -19,20 +19,17 @@
 //      perfis "Gestor" desta conta usam isso de propósito (agent que
 //      acompanha Conexões, Membros, Automações sem mexer).
 //
-// ⚠️ A partição em "só leitura" é DERIVADA de `ESCRITA_DA_TELA` /
-// `ESCRITA_DA_SECAO` (poderes.ts) — a mesma fonte do aviso antigo. Há teste
-// cobrando que o grupo seja EXATAMENTE o que `areasQueNaoOperam` apontaria
-// com tudo marcado: duas régua divergindo fariam a tela avisar sobre um item
-// e agrupar outro.
+// ⚠️ A partição em "só leitura" SAI de `areasQueNaoOperam` (poderes.ts), a
+// régua única de "o que este papel não opera" — não de uma segunda leitura
+// de `ESCRITA_DA_*`. Uma régua só: duas divergindo fariam a tela agrupar um
+// item como operável e outra parte do app chamá-lo de somente-leitura.
 //
 // Puro: a tela só desenha o que sai daqui. Quem for mexer no agrupamento
 // mexe neste módulo, não no componente.
 // ============================================================
 
-import { hasMinRole } from "@/lib/auth/roles";
 import {
   SECOES_PESSOAIS,
-  SECOES_SO_DE_ADMIN,
   SECOES_TRAVADAS_PARA_ADMIN,
   TELAS_SEMPRE_VISIVEIS,
   TODAS_AS_SECOES,
@@ -41,7 +38,7 @@ import {
   type TelaId,
 } from "./catalogo";
 import { PERFIS_DE_FABRICA } from "./padroes";
-import { ESCRITA_DA_SECAO, ESCRITA_DA_TELA } from "./poderes";
+import { areasQueNaoOperam } from "./poderes";
 import type { PapelBase } from "./tipos";
 
 /**
@@ -101,38 +98,54 @@ export interface GrupoDoEditor {
 /**
  * Os grupos que o editor mostra para um papel.
  *
- * - Item que o papel opera fica na sua área; item acima do piso vai para
- *   "só leitura" (régua: `ESCRITA_DA_*` + `hasMinRole`, nunca comparação de
- *   papel à mão — ver poderes.ts).
+ * - Item que o papel opera fica na sua área; item que ele não opera vai
+ *   para "só leitura" (`areasQueNaoOperam` com tudo marcado).
  * - Seções pessoais nunca entram (aparecem sempre, para todo mundo).
  * - `perfis` (SECOES_SO_DE_ADMIN) NÃO é oferecida fora do admin: marcada num
  *   perfil agent/viewer a caixa é inerte, e oferecer o inerte é o que fazia
- *   alguém sair da tela achando ter delegado a gestão de permissões. O caso
- *   já gravado (legado, ou papel trocado depois) continua avisado por
- *   `AvisoDeAreasSemAcao`.
+ *   alguém sair da tela achando ter delegado a gestão de permissões. O que
+ *   chega gravado assim (legado) ou fica assim ao descer o papel é
+ *   DESCARTADO do rascunho por `semSecoesOcultas` — sem a caixa não haveria
+ *   como desmarcar (Codex, PR #117).
  * - Grupo vazio some (para viewer, "Disparos e automações" fica vazio).
  */
 export function gruposDoEditor(papel: PapelBase): GrupoDoEditor[] {
+  // Com TUDO marcado: o que este papel não opera, e o que nem chega a ver.
+  const naoOpera = areasQueNaoOperam(papel, TODAS_AS_TELAS, TODAS_AS_SECOES);
   const porArea = new Map<AreaId, ItemDoEditor[]>(
     ORDEM_DAS_AREAS.map((a) => [a, [] as ItemDoEditor[]]),
   );
   for (const tela of TODAS_AS_TELAS) {
-    const area = hasMinRole(papel, ESCRITA_DA_TELA[tela])
-      ? AREA_DA_TELA[tela]
-      : "so-leitura";
+    const area = naoOpera.telas.includes(tela) ? "so-leitura" : AREA_DA_TELA[tela];
     porArea.get(area)!.push({ tipo: "tela", id: tela });
   }
   for (const secao of TODAS_AS_SECOES) {
     if (SECOES_PESSOAIS.includes(secao)) continue;
-    if (SECOES_SO_DE_ADMIN.includes(secao) && !hasMinRole(papel, "admin")) continue;
-    const area: AreaId = hasMinRole(papel, ESCRITA_DA_SECAO[secao])
-      ? "configuracoes"
-      : "so-leitura";
+    if (naoOpera.secoesOcultas.includes(secao)) continue;
+    const area: AreaId = naoOpera.secoes.includes(secao) ? "so-leitura" : "configuracoes";
     porArea.get(area)!.push({ tipo: "secao", id: secao });
   }
   return ORDEM_DAS_AREAS.map((area) => ({ area, itens: porArea.get(area)! })).filter(
     (g) => g.itens.length > 0,
   );
+}
+
+/**
+ * Tira do rascunho as seções que este papel não vê de jeito nenhum
+ * (`SECOES_SO_DE_ADMIN` fora do admin). Chamada ao abrir o editor e ao trocar
+ * o papel: como `gruposDoEditor` não OFERECE a caixa fora do admin, um id
+ * desses preso no array não teria como ser desmarcado pela tela — e `salvar`
+ * o mandaria de volta ao banco, inerte, para sempre (Codex, PR #117).
+ *
+ * Id desconhecido (o fantasma "deals") passa intacto: quem o descarta é a
+ * validação do servidor, como sempre foi.
+ */
+export function semSecoesOcultas(
+  papel: PapelBase,
+  secoes: readonly SecaoId[],
+): SecaoId[] {
+  const ocultas = areasQueNaoOperam(papel, [], secoes).secoesOcultas;
+  return secoes.filter((s) => !ocultas.includes(s));
 }
 
 /** As duas listas que o editor edita — o pedaço do rascunho que este módulo lê. */
@@ -229,7 +242,6 @@ export function gruposAbertosDeInicio(
 }
 
 export interface ModeloDePartida {
-  nome: string;
   papel_base: PapelBase;
   telas: TelaId[];
   secoes_config: SecaoId[];
@@ -238,13 +250,17 @@ export interface ModeloDePartida {
 /**
  * Os três perfis de fábrica como ponto de partida do perfil novo — cópias,
  * para o rascunho poder ser mexido sem tocar em `PERFIS_DE_FABRICA` (que o
- * semeador também lê). A descrição de cada um vem do dicionário, por
- * `papel_base` (`PerfisPanel.modelos.<papel>`), porque os três casam 1:1
- * com os papéis.
+ * semeador também lê).
+ *
+ * ⚠️ Nome e descrição de cada cartão vêm do DICIONÁRIO, por `papel_base`
+ * (`PerfisPanel.modelos.<papel>.nome` / `.descricao`), porque os três casam
+ * 1:1 com os papéis. O `nome` de `PERFIS_DE_FABRICA` é o que o semeador
+ * GRAVA — dado, em português — e no locale inglês sairia cru ao lado de um
+ * texto que chama os mesmos perfis de "Administrator, Lawyer and Observer"
+ * (Codex, PR #117).
  */
 export function modelosDePartida(): ModeloDePartida[] {
-  return PERFIS_DE_FABRICA.map(({ nome, papel_base, telas, secoes_config }) => ({
-    nome,
+  return PERFIS_DE_FABRICA.map(({ papel_base, telas, secoes_config }) => ({
     papel_base,
     telas: [...telas],
     secoes_config: [...secoes_config],

@@ -3117,12 +3117,20 @@
       "edit-settings": "Alterar configurações da conta: conexões, modelos, campos, assinatura, integrações e chaves de API",
       "manage-members": "Convidar, remover e trocar o perfil de membros"
     },
-    "avisoOcultas": "Estas seções não chegam a aparecer com este papel, mesmo marcadas: {areas}.",
     "modeloDescricao": "Escolha o modelo mais parecido e ajuste depois — o trabalho vira desmarcar, não marcar.",
     "modelos": {
-      "admin": "Vê tudo e mexe em tudo. Para quem administra a conta.",
-      "agent": "Atende, anota e move negócios. Sem disparos, automações nem configurações da conta.",
-      "viewer": "Acompanha sem responder ao cliente; só escreve anotações internas."
+      "admin": {
+        "nome": "Administrador",
+        "descricao": "Vê tudo e mexe em tudo. Para quem administra a conta."
+      },
+      "agent": {
+        "nome": "Advogado",
+        "descricao": "Atende, anota e move negócios. Sem disparos, automações nem configurações da conta."
+      },
+      "viewer": {
+        "nome": "Observador",
+        "descricao": "Acompanha sem responder ao cliente; só escreve anotações internas."
+      }
     },
     "modeloTelas": "{count} {count, plural, =1 {tela} other {telas}}",
     "modeloEmBranco": "Começar em branco",
