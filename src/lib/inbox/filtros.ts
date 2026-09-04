@@ -138,31 +138,25 @@ export const FILTROS_VAZIOS: FiltrosDoInbox = {
 /**
  * Quantos filtros estão pegando. É o número no distintivo do botão — sem ele,
  * um painel fechado com filtro ativo esconde a razão de a lista estar curta.
+ * É também a régua dos filtros salvos ("este filtro ainda recorta algo?") e
+ * da semente do padrão (só cai sobre recorte intacto).
+ *
+ * ⚠️ A SITUAÇÃO (aba Abertas/Encerradas) NÃO conta. Decisão do operador
+ * (2026-09-03, em duas rodadas): a aba é uma VISÃO, escolhida num controle
+ * próprio e sempre à vista — contá-la acendia o distintivo "1" no botão do
+ * painel sobre a aba acesa, o mesmo fato dito duas vezes. E a visão salva
+ * também NÃO carrega a aba (`lerFiltroSalvo` a ignora, `escreverFiltroSalvo`
+ * não a grava): aplicar um chip na aba Encerradas jogava o operador de volta
+ * para Abertas. Por isso não existe mais uma segunda contagem "do painel":
+ * a que contava a aba servia só aos filtros salvos, e eles deixaram de
+ * conhecê-la. "Limpar tudo" e os chips mantêm a aba pelo mesmo motivo.
  *
  * ⚠️ `modoDeEtiqueta` NÃO conta: ele não recorta nada sozinho, só muda como as
  * etiquetas já escolhidas se combinam.
  */
-/**
- * Quantos recortes o PAINEL está fazendo — a situação FORA da conta.
- *
- * Decisão do operador (2026-09-03): a aba Encerradas é uma VISÃO, escolhida
- * num controle próprio e sempre à vista; contá-la como filtro acendia o
- * distintivo "1" no botão do painel e uma pastilha "Encerradas" logo abaixo
- * da aba acesa — o mesmo fato dito três vezes. É o número do distintivo, das
- * pastilhas e do "Limpar tudo" (que por isso NÃO troca de aba).
- *
- * ⚠️ `contarFiltrosAtivos` continua contando a situação, de propósito: é a
- * régua dos filtros SALVOS ("este filtro ainda recorta algo?", a semente do
- * padrão sobre recorte intacto) — lá um filtro "só encerradas" recorta, sim.
- */
-export function contarRecortesDoPainel(f: FiltrosDoInbox): number {
-  return contarFiltrosAtivos({ ...f, status: "ativas" });
-}
-
 export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
   let n = 0;
   if (f.tipo !== "todas") n++;
-  if (f.status !== "ativas") n++;
   if (f.canalIds.length > 0) n++;
   if (f.responsavelId) n++;
   if (f.etiquetaIds.length > 0) n++;

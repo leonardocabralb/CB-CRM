@@ -12,13 +12,14 @@
 // mesmo critério do antigo menu (Codex, PR #92): filtro cujos ids morreram
 // todos vira vazio, e vazio casa com o inbox sem recorte; acender um chip
 // nesse caso afirmaria um recorte que não existe.
+//
+// ⚠️ A ABA (Abertas/Encerradas) fica FORA de tudo aqui: a visão salva não a
+// carrega (`lerFiltroSalvo`), `mesmoFiltro` não a compara e `aplicarVisao`
+// mantém a aba corrente. Um chip aceso na aba Abertas continua aceso ao
+// trocar para Encerradas — é o MESMO recorte, visto de outra aba.
 // ============================================================
 
-import {
-  contarFiltrosAtivos,
-  contarRecortesDoPainel,
-  type FiltrosDoInbox,
-} from "@/lib/inbox/filtros";
+import { contarFiltrosAtivos, type FiltrosDoInbox } from "@/lib/inbox/filtros";
 import {
   limparOrfaos,
   mesmoFiltro,
@@ -83,7 +84,7 @@ export function estadoDasVisoes(args: {
   chips.sort((a, b) => Number(b.padrao) - Number(a.padrao));
 
   const algumaAtiva = chips.some((c) => c.ativa);
-  const recorteDoPainel = contarRecortesDoPainel(args.atual) > 0;
+  const recorteDoPainel = contarFiltrosAtivos(args.atual) > 0;
   const base = args.baseId ? (args.salvos.find((f) => f.id === args.baseId) ?? null) : null;
   const mexida =
     base !== null && !mesmoFiltro(limparOrfaos(base.filtros, args.catalogos), args.atual);

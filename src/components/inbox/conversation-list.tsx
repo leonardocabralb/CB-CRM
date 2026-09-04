@@ -506,9 +506,12 @@ export function ConversationList({
   const aplicarVisao = useCallback(
     (f: FiltrosDoInbox | null, baseId: string | null) => {
       setVisaoBaseId(baseId);
-      // "Todas": limpa o recorte do painel mas MANTÉM a aba (situação não é
-      // recorte — ver `contarRecortesDoPainel`).
-      setFiltros((prev) => (f ? f : { ...FILTROS_VAZIOS, status: prev.status }));
+      // ⚠️ A ABA fica como está, nos dois caminhos. A visão salva não carrega
+      // situação (`lerFiltroSalvo`), e "Todas" limpa só o recorte do painel:
+      // a aba é onde o operador ESTÁ, não o que ele recorta. Até 03/09 o chip
+      // substituía o recorte inteiro, e quem estava em Encerradas era jogado
+      // de volta para Abertas (queixa do operador).
+      setFiltros((prev) => ({ ...(f ?? FILTROS_VAZIOS), status: prev.status }));
     },
     [],
   );
@@ -666,7 +669,12 @@ export function ConversationList({
     // (Mesma justificativa do `setFiltros` logo abaixo: é semente única.)
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisaoBaseId(padrao.id);
-    setFiltros(limparOrfaos(padrao.filtros, catalogosDoFiltro));
+    // A aba corrente fica: "recorte intacto" não diz nada sobre a aba (ela não
+    // conta), e o operador pode ter ido a Encerradas enquanto a consulta voltava.
+    setFiltros((prev) => ({
+      ...limparOrfaos(padrao.filtros, catalogosDoFiltro),
+      status: prev.status,
+    }));
   }, [
     etapaInicial,
     salvosCarregando,
