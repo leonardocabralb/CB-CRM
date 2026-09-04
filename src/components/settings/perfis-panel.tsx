@@ -45,10 +45,14 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { createClient } from '@/lib/supabase/client';
 import { podeVerTela } from '@/lib/perfis/visibilidade';
-import { ROTA_DA_TELA } from '@/lib/perfis/catalogo';
 import { summarizeScope } from '@/lib/cb-channels/display';
 import { useChannels } from '@/hooks/use-channels';
-import type { SecaoId, TelaId } from '@/lib/perfis/catalogo';
+import {
+  ROTA_DA_TELA,
+  TODAS_AS_TELAS,
+  type SecaoId,
+  type TelaId,
+} from '@/lib/perfis/catalogo';
 import {
   modelosDePartida,
   semSecoesOcultas,
