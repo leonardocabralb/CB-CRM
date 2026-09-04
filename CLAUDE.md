@@ -2185,8 +2185,12 @@ morde código novo:
   (lente fiel ao perfil de hoje); perfil apagado, erro ou 8s sem resposta
   DERRUBAM a simulação e limpam a chave, senão toda montagem futura
   esperaria por nada.
-- **Por ABA** (`sessionStorage`): sobrevive ao reload, morre com a aba, e
-  `signOut` a limpa (a lente não pode sobreviver à troca de pessoa).
+- **Por ABA** (`sessionStorage`) e **amarrada a quem a ligou**: a chave
+  guarda `{ perfil, usuario }` e só vale para o mesmo `user.id`. Sobrevive
+  ao reload, morre com a aba, e TODO caminho de saída a limpa — o `signOut`
+  daqui e o ramo SIGNED_OUT do listener (saída por outra aba, sessão
+  invalidada). Sem a amarração, outra pessoa da mesma conta entrando nesta
+  aba herdaria a lente do anterior (Codex, PR #118).
 - **A SAÍDA mora na faixa**, não na tela de Perfis: o perfil simulado pode
   esconder Configurações → Perfis (seção só de admin). Começar leva para a
   PRIMEIRA tela que o perfil enxerga — ficar em Perfis não mostraria nada.

@@ -253,19 +253,41 @@ function perfilDaLinha(row: PerfilRow): PerfilDeAcesso {
   };
 }
 
-function lerSimulacaoDaAba(): string | null {
+/** O que fica na aba: o perfil simulado E quem o ligou. */
+interface SimulacaoGravada {
+  perfil: string;
+  usuario: string;
+}
+
+/**
+ * ⚠️ Amarrada ao USUÁRIO que a ligou. A chave vive na aba, e a aba
+ * sobrevive à sessão: um SIGNED_OUT vindo de outra aba (ou de sessão
+ * invalidada) não passa pelo `signOut` daqui, e outra pessoa da mesma conta
+ * entrando nesta aba herdaria a lente do anterior (Codex, PR #118). Com o
+ * id gravado junto, a chave de outra pessoa é simplesmente ignorada — e o
+ * ramo de saída do listener a limpa de qualquer forma.
+ */
+function lerSimulacaoDaAba(): SimulacaoGravada | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.sessionStorage.getItem(CHAVE_DA_SIMULACAO);
+    const bruto = window.sessionStorage.getItem(CHAVE_DA_SIMULACAO);
+    if (!bruto) return null;
+    const o = JSON.parse(bruto) as Partial<SimulacaoGravada> | null;
+    return o && typeof o.perfil === "string" && typeof o.usuario === "string"
+      ? { perfil: o.perfil, usuario: o.usuario }
+      : null;
   } catch {
     return null;
   }
 }
 
-function gravarSimulacaoNaAba(perfilId: string | null) {
+function gravarSimulacaoNaAba(valor: SimulacaoGravada | null) {
   try {
-    if (perfilId) window.sessionStorage.setItem(CHAVE_DA_SIMULACAO, perfilId);
-    else window.sessionStorage.removeItem(CHAVE_DA_SIMULACAO);
+    if (valor) {
+      window.sessionStorage.setItem(CHAVE_DA_SIMULACAO, JSON.stringify(valor));
+    } else {
+      window.sessionStorage.removeItem(CHAVE_DA_SIMULACAO);
+    }
   } catch {
     // Aba sem storage (modo privado restrito): a simulação vale até o reload.
   }
@@ -292,9 +314,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // a LINHA é buscada de novo a cada montagem, para a lente refletir o perfil
   // como ele está hoje. Linha de outro id (troca rápida de alvo) é ignorada
   // na leitura, então não há reset síncrono a fazer aqui.
-  const [simulacaoId, setSimulacaoId] = useState<string | null>(() =>
-    lerSimulacaoDaAba(),
-  );
+  const [simulacaoGravada, setSimulacaoGravada] =
+    useState<SimulacaoGravada | null>(() => lerSimulacaoDaAba());
   const [perfilSimulado, setPerfilSimulado] = useState<PerfilDeAcesso | null>(
     null,
   );
@@ -553,6 +574,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setAccount(null);
         setPerfilDeAcesso(null);
+        // Qualquer saída (outra aba, sessão invalidada) apaga a lente.
+        gravarSimulacaoNaAba(null);
+        setSimulacaoGravada(null);
         setProfileLoading(false);
       }
 
@@ -575,6 +599,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPerfilDeAcesso(null);
     // A lente não pode sobreviver à troca de pessoa na mesma aba.
     gravarSimulacaoNaAba(null);
+    setSimulacaoGravada(null);
     resolvedUserIdRef.current = null;
     window.location.href = "/login";
   }, []);
@@ -583,6 +608,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user?.id) return;
     await fetchProfile(user.id);
   }, [user?.id, fetchProfile]);
+
+  // A lente só vale para quem a ligou (ver `lerSimulacaoDaAba`); enquanto o
+  // `user` não resolve, não há simulação a buscar.
+  const simulacaoId =
+    simulacaoGravada && user?.id === simulacaoGravada.usuario
+      ? simulacaoGravada.perfil
+      : null;
 
   // A linha do perfil simulado. Qualquer membro lê `cb_perfis_de_acesso`
   // (policy da 956), então a busca vale para o admin que simula. Perfil que
@@ -596,7 +628,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       encerrado = true;
       console.warn(`[AuthProvider] simulação de perfil encerrada: ${motivo}`);
       gravarSimulacaoNaAba(null);
-      setSimulacaoId(null);
+      setSimulacaoGravada(null);
     };
     const timer = setTimeout(
       () => desistir("a linha do perfil não chegou a tempo"),
@@ -628,16 +660,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Guarda de ESCALADA no cliente: só admin/dono começa uma simulação. O
       // provider ignora a chave de qualquer forma (`resolverAcesso`); aqui é
       // para nem gravá-la.
-      if (!podeSimular(profile?.account_role ?? null)) return;
-      gravarSimulacaoNaAba(perfilId);
-      setSimulacaoId(perfilId);
+      if (!user || !podeSimular(profile?.account_role ?? null)) return;
+      const valor = { perfil: perfilId, usuario: user.id };
+      gravarSimulacaoNaAba(valor);
+      setSimulacaoGravada(valor);
     },
-    [profile?.account_role],
+    [user, profile?.account_role],
   );
 
   const encerrarSimulacao = useCallback(() => {
     gravarSimulacaoNaAba(null);
-    setSimulacaoId(null);
+    setSimulacaoGravada(null);
   }, []);
 
   // A linha só vale para o id em vigor: troca rápida de alvo não pode deixar
