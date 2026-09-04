@@ -7,7 +7,6 @@ import {
   casaComAEtapa,
   casaComOResponsavel,
   contarFiltrosAtivos,
-  contarRecortesDoPainel,
   FILTROS_VAZIOS,
   mapaDeEtapasPorContato,
   SEM_ETAPA,
@@ -408,7 +407,7 @@ describe("contarFiltrosAtivos", () => {
     expect(
       contarFiltrosAtivos({
         ...FILTROS_VAZIOS,
-        status: "closed",
+        tipo: "grupos",
         favoritas: true,
         etiquetaIds: ["t1", "t2"],
       }),
@@ -628,11 +627,11 @@ describe("casaComASituacao — Abertas esconde encerrada; Encerradas mostra só 
   it("a aba padrão é a ausência de filtro", () => {
     expect(FILTROS_VAZIOS.status).toBe("ativas");
     expect(contarFiltrosAtivos(FILTROS_VAZIOS)).toBe(0);
-    expect(contarFiltrosAtivos({ ...FILTROS_VAZIOS, status: "closed" })).toBe(1);
-    // A aba Encerradas conta para os filtros SALVOS, nunca para o painel.
-    expect(contarRecortesDoPainel({ ...FILTROS_VAZIOS, status: "closed" })).toBe(0);
+    // A aba Encerradas NÃO conta como filtro — nem para o painel, nem para a
+    // visão salva (que não a carrega): é onde o operador está, não um recorte.
+    expect(contarFiltrosAtivos({ ...FILTROS_VAZIOS, status: "closed" })).toBe(0);
     expect(
-      contarRecortesDoPainel({ ...FILTROS_VAZIOS, status: "closed", favoritas: true }),
+      contarFiltrosAtivos({ ...FILTROS_VAZIOS, status: "closed", favoritas: true }),
     ).toBe(1);
   });
 

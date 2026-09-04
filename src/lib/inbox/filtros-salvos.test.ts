@@ -85,7 +85,8 @@ describe("lerFiltroSalvo", () => {
       }),
     ).toEqual({
       tipo: "grupos",
-      status: "closed",
+      // A aba não faz parte da visão — o "closed" gravado é ignorado.
+      status: "ativas",
       canalIds: ["c1"],
       responsavelId: "u1",
       etiquetaIds: ["t1", "t2"],
@@ -105,13 +106,14 @@ describe("lerFiltroSalvo", () => {
     expect(f.modoDeEtiqueta).toBe("qualquer");
   });
 
-  it("⚠️ filtro gravado ANTES das duas abas: todos/open/pending caem em 'ativas', closed sobrevive", () => {
+  it("⚠️ a ABA não faz parte da visão: qualquer `status` gravado é ignorado", () => {
     // Um `as FiltrosDoInbox` entregaria "todos" a `aplicarFiltros`, que não o
     // conhece mais — e a lista responderia de um jeito que ninguém escolheu.
-    for (const legado of ["todos", "open", "pending"]) {
-      expect(lerFiltroSalvo({ status: legado }).status).toBe("ativas");
+    // E o "closed" gravado até 03/09 também cai: aplicar o chip na aba
+    // Encerradas jogava o operador de volta para Abertas.
+    for (const gravado of ["todos", "open", "pending", "closed", "ativas"]) {
+      expect(lerFiltroSalvo({ status: gravado }).status).toBe("ativas");
     }
-    expect(lerFiltroSalvo({ status: "closed" }).status).toBe("closed");
   });
 
   it("CRÍTICO: booleano só é `true` quando é o booleano true", () => {
@@ -166,9 +168,12 @@ describe("escreverFiltroSalvo", () => {
       "modoDeEtiqueta",
       "naoLidas",
       "responsavelId",
-      "status",
       "tipo",
     ]);
+  });
+
+  it("não grava a aba: `status` não vai para o banco", () => {
+    expect("status" in escreverFiltroSalvo({ ...FILTROS_VAZIOS, status: "closed" })).toBe(false);
   });
 });
 
@@ -351,7 +356,6 @@ describe("descreverFiltro", () => {
     const cheio: FiltrosDoInbox = {
       ...FILTROS_VAZIOS,
       tipo: "grupos",
-      status: "closed",
       canalIds: ["c1"],
       responsavelId: "u1",
       funilId: "p1",
@@ -449,7 +453,8 @@ describe("limparOrfaos", () => {
 /** `null` = não recorta sozinho (é o caso de `modoDeEtiqueta`). */
 const AMOSTRAS: Record<keyof FiltrosDoInbox, Partial<FiltrosDoInbox> | null> = {
   tipo: { tipo: "grupos" },
-  status: { status: "closed" },
+  // A aba não é recorte salvo: não conta, não é descrita, não vai ao banco.
+  status: null,
   canalIds: { canalIds: ["c1"] },
   responsavelId: { responsavelId: "u1" },
   etiquetaIds: { etiquetaIds: ["t1"] },
@@ -609,5 +614,20 @@ describe("canalIds — várias conexões num filtro (03/09)", () => {
     expect(
       limparOrfaos({ ...FILTROS_VAZIOS, canalIds: ["morto"] }, { ...cat, canais: [] }).canalIds,
     ).toEqual(["morto"]);
+  });
+});
+
+// ============================================================
+// A ABA não faz parte da visão (03/09, segunda rodada): o chip aceso na aba
+// Abertas continua aceso em Encerradas, e nada é gravado sobre ela.
+// ============================================================
+describe("a aba fica fora da visão salva", () => {
+  it("mesmoFiltro ignora `status`", () => {
+    const a = { ...FILTROS_VAZIOS, canalIds: ["c1"] };
+    expect(mesmoFiltro(a, { ...a, status: "closed" })).toBe(true);
+  });
+
+  it("descreverFiltro não descreve a aba", () => {
+    expect(descreverFiltro({ ...FILTROS_VAZIOS, status: "closed" }, CAT)).toEqual([]);
   });
 });

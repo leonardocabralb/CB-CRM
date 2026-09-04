@@ -1,8 +1,7 @@
 'use client';
 
 // ============================================================
-// O que o PAPEL escolhido pode fazer — e o que o rascunho promete sem
-// entregar. As duas metades da mesma pergunta, no editor de perfis.
+// O que o PAPEL escolhido pode fazer, no editor de perfis.
 //
 // Por que existe: o seletor de Papel mostrava três nomes e nada mais. A
 // única explicação de papel do app (`Settings.roles.*Hint`) vive no diálogo
@@ -16,15 +15,19 @@
 // ⚠️ SEMPRE VISÍVEL, não atrás de um "?". A informação que faltava não é
 // consultada por quem não sabe que ela existe — quem configurou os "Gestor"
 // não tinha por que suspeitar que havia algo a perguntar.
+//
+// O aviso de "áreas sem ação" que morava aqui saiu em 2026-09-03: o
+// somente-leitura virou o grupo "Só leitura para este papel" dentro de
+// <AreasDoPerfil> (diz a mesma coisa ANTES de a pessoa marcar), e a seção
+// oculta deixou de ser oferecida e é descartada do rascunho
+// (`semSecoesOcultas`) — não sobrou o que avisar.
 // ============================================================
 
 import { useTranslations } from 'next-intl';
-import { AlertTriangle, Check, EyeOff, Minus } from 'lucide-react';
+import { Check, Minus } from 'lucide-react';
 
-import { ROTULO_DA_TELA, type SecaoId, type TelaId } from '@/lib/perfis/catalogo';
-import { areasQueNaoOperam, poderesDoPapel } from '@/lib/perfis/poderes';
+import { poderesDoPapel } from '@/lib/perfis/poderes';
 import type { PapelBase } from '@/lib/perfis/tipos';
-import { SECTION_META } from './settings-sections';
 
 export function PoderesDoPapel({ papel }: { papel: PapelBase }) {
   const t = useTranslations('PerfisPanel');
@@ -61,77 +64,6 @@ export function PoderesDoPapel({ papel }: { papel: PapelBase }) {
         ))}
       </ul>
       <p className="text-xs text-muted-foreground">{t('poderesHint')}</p>
-    </div>
-  );
-}
-
-/**
- * O aviso. Só aparece quando há divergência — um aviso permanente vira
- * moldura e ninguém o lê (a mesma razão de o rótulo de canal na conversa ter
- * deixado de acender em 98% dos casos).
- */
-export function AvisoDeAreasSemAcao({
-  papel,
-  telas,
-  secoes,
-}: {
-  papel: PapelBase;
-  telas: TelaId[];
-  secoes: SecaoId[];
-}) {
-  const t = useTranslations('PerfisPanel');
-  const tSidebar = useTranslations('Sidebar');
-  const tSecoes = useTranslations('Settings.sections');
-
-  const areas = areasQueNaoOperam(papel, telas, secoes);
-  const nada =
-    areas.telas.length === 0 &&
-    areas.secoes.length === 0 &&
-    areas.secoesOcultas.length === 0;
-  if (nada) return null;
-
-  const nomeDaTela = (tela: TelaId) =>
-    tSidebar(ROTULO_DA_TELA[tela] as Parameters<typeof tSidebar>[0]);
-  // Id declarado à frente da tela (foi o caso de `acervo` e `perfis`)
-  // aparece CRU, e não num rótulo emprestado — a mesma decisão da grade de
-  // seções logo acima, tomada depois de o fantasma `deals` virar um segundo
-  // "Perfis de acesso" idêntico ao verdadeiro.
-  const nomeDaSecao = (secao: SecaoId) =>
-    secao in SECTION_META
-      ? tSecoes(secao as Parameters<typeof tSecoes>[0])
-      : secao;
-
-  return (
-    <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2">
-      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
-      <div className="flex flex-col gap-1 text-xs text-foreground">
-        {(areas.telas.length > 0 || areas.secoes.length > 0) && (
-          <p>
-            {t('avisoSomenteLeitura', {
-              areas: [
-                ...areas.telas.map(nomeDaTela),
-                ...areas.secoes.map(nomeDaSecao),
-              ].join(', '),
-            })}
-          </p>
-        )}
-        {/* Separada da lista acima de propósito: seção somente-leitura
-            APARECE (dados à vista, sem botão); seção oculta NÃO APARECE, e a
-            caixa marcada é inerte — quem marcou "Perfis de acesso" num perfil
-            `agent` sai da tela achando ter delegado a gestão de permissões.
-            Um aviso só, misturando as duas, pediria um conserto para dois
-            problemas diferentes. */}
-        {areas.secoesOcultas.length > 0 && (
-          <p className="flex items-start gap-1.5">
-            <EyeOff className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-            <span>
-              {t('avisoOcultas', {
-                areas: areas.secoesOcultas.map(nomeDaSecao).join(', '),
-              })}
-            </span>
-          </p>
-        )}
-      </div>
     </div>
   );
 }
