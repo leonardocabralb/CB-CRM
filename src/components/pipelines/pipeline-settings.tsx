@@ -215,6 +215,24 @@ export function PipelineSettings({
       toast.error(t("toastMoveOrDeleteDeals"));
       return;
     }
+    // 975: etapa MAPEADA no funil de eficiência com histórico na trilha. O
+    // mapeamento é lido hoje sobre a história inteira; apagar a etapa apaga a
+    // classe dos passos dela — a entrada no funil desliza para a próxima etapa
+    // mapeada e negócio que só passou por ela some da coorte. Zero negócios
+    // NA etapa (a guarda acima) não protege disso: é o caso comum de uma
+    // etapa antiga. Tirar o degrau antes é a saída explícita (achado do Codex
+    // no PR #119). Sem degrau, a história daquela etapa não contava mesmo.
+    const etapa = localStages.find((s) => s.id === stageId);
+    if (etapa?.degrau) {
+      const { count: eventos, error: erroTrilha } = await supabase
+        .from("cb_lead_events")
+        .select("id", { count: "exact", head: true })
+        .or(`to_stage_id.eq.${stageId},from_stage_id.eq.${stageId}`);
+      if (erroTrilha || (eventos ?? 0) > 0) {
+        toast.error(t("toastStageMappedWithHistory"));
+        return;
+      }
+    }
     const { error } = await supabase
       .from("pipeline_stages")
       .delete()

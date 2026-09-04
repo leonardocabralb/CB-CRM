@@ -123,20 +123,23 @@ const LINHAS: LinhaDeTrajetoria[] = [
     passo("mql1", em(3, 10)),
     passo("avulso", em(3, 11)),
   ]),
+  // K: entrou por lead e foi ESTACIONADO numa etapa sem degrau — dia 3.
+  // Continua na coorte (já entrou) e cai no balde "fora do funil".
+  negocio("K", "parking", [passo("avulso", em(3, 14), FUNIL, "deal_created"), passo("parking", em(3, 15))]),
 ];
 
 const FATOS = LINHAS.map((l) => fatosDoNegocio(l, FUNIL, CLASSIFICACAO));
 const SETEMBRO = intervaloDoPreset("este_mes", AGORA);
 
 describe("coorteDoPeriodo (regra 2)", () => {
-  it("é quem ENTROU no período — nem o estacionado, nem o de agosto", () => {
+  it("é quem ENTROU no período — nem o estacionado de nascença, nem o de agosto", () => {
     expect(coorteDoPeriodo(FATOS, SETEMBRO).map((f) => f.linha.deal_id)).toEqual([
-      "A", "B", "C", "D", "E", "F", "H", "J",
+      "A", "B", "C", "D", "E", "F", "H", "J", "K",
     ]);
   });
 
   it("Total pega todo mundo que entrou, em qualquer mês", () => {
-    expect(coorteDoPeriodo(FATOS, { desde: null, ate: null })).toHaveLength(9);
+    expect(coorteDoPeriodo(FATOS, { desde: null, ate: null })).toHaveLength(10);
   });
 });
 
@@ -144,9 +147,9 @@ describe("resumoDoPeriodo — o funil de eficiência de setembro", () => {
   const r = resumoDoPeriodo(FATOS, CLASSIFICACAO, SETEMBRO, AGORA);
 
   it("entradas e alcance monotônico por degrau (regra 3)", () => {
-    expect(r.entradas).toBe(8);
+    expect(r.entradas).toBe(9);
     expect(r.porDegrau.map((d) => [d.degrau, d.alcancaram])).toEqual([
-      ["lead", 8],
+      ["lead", 9],
       ["mql", 6],
       ["reuniao", 3],
       ["proposta", 3],
@@ -155,21 +158,21 @@ describe("resumoDoPeriodo — o funil de eficiência de setembro", () => {
   });
 
   it("taxa do degrau anterior: a primeira é sobre as entradas", () => {
-    expect(r.porDegrau.map((d) => d.taxaDoAnterior)).toEqual([1, 0.75, 0.5, 1, 2 / 3]);
+    expect(r.porDegrau.map((d) => d.taxaDoAnterior)).toEqual([1, 6 / 9, 0.5, 1, 2 / 3]);
     expect(r.porDegrau.every((d) => d.comEtapa)).toBe(true);
   });
 
   it("transições encadeadas e a global", () => {
     expect(r.transicoes.map((t) => [t.de, t.para, t.taxa])).toEqual([
-      ["lead", "mql", 0.75],
+      ["lead", "mql", 6 / 9],
       ["mql", "reuniao", 0.5],
       ["reuniao", "proposta", 1],
       ["proposta", "contrato", 2 / 3],
     ]);
-    expect(r.global).toEqual({ de: "lead", para: "contrato", numerador: 2, denominador: 8, taxa: 0.25 });
+    expect(r.global).toEqual({ de: "lead", para: "contrato", numerador: 2, denominador: 9, taxa: 2 / 9 });
   });
 
-  it("negativos: um card por etapa de perda (com zero), sem avanço e em andamento", () => {
+  it("negativos: um card por etapa de perda (com zero), sem avanço, em andamento e fora do funil", () => {
     expect(r.perdasPorEtapa).toEqual([
       { etapaId: "desq", nome: "Etapa desq", n: 1 },
       { etapaId: "noshow", nome: "Etapa noshow", n: 1 },
@@ -178,6 +181,7 @@ describe("resumoDoPeriodo — o funil de eficiência de setembro", () => {
     expect(r.semAvanco).toBe(1); // A
     expect(r.emAndamento).toBe(3); // B (mql), D (proposta), J (voltou para lead)
     expect(r.emAndamentoPorDegrau).toEqual({ mql: 1, proposta: 1, lead: 1 });
+    expect(r.foraDoFunil).toBe(1); // K, estacionado depois de entrar
   });
 
   it("fechados contam o transferido para o jurídico (regra 6), com o valor", () => {
@@ -186,17 +190,17 @@ describe("resumoDoPeriodo — o funil de eficiência de setembro", () => {
     expect(r.ticketMedio).toBe(21000);
   });
 
-  it("fechados + perdidos + sem avanço + em andamento = coorte", () => {
+  it("a situação PARTICIONA a coorte: fechado + perdido + sem avanço + em andamento + fora do funil = entradas", () => {
     // C e H estão em contrato (situação 'fechado'); os demais se repartem.
     const fechadosAgora = coorteDoPeriodo(FATOS, SETEMBRO).filter((f) => f.situacao === "fechado").length;
-    expect(fechadosAgora + r.perdidos + r.semAvanco + r.emAndamento).toBe(r.entradas);
+    expect(fechadosAgora + r.perdidos + r.semAvanco + r.emAndamento + r.foraDoFunil).toBe(r.entradas);
   });
 
   it("entradas por dia, densas do dia 1 até hoje", () => {
     expect(r.entradasPorDia).toEqual([
       { dia: "2026-09-01", n: 3 },
       { dia: "2026-09-02", n: 3 },
-      { dia: "2026-09-03", n: 2 },
+      { dia: "2026-09-03", n: 3 },
     ]);
   });
 
@@ -206,6 +210,7 @@ describe("resumoDoPeriodo — o funil de eficiência de setembro", () => {
     expect(vazio.porDegrau.every((d) => d.taxaDoAnterior === null)).toBe(true);
     expect(vazio.global?.taxa).toBeNull();
     expect(vazio.ticketMedio).toBeNull();
+    expect(vazio.foraDoFunil).toBe(0);
     expect(vazio.entradasPorDia).toHaveLength(365);
     expect(vazio.entradasPorDia.every((d) => d.n === 0)).toBe(true);
   });
@@ -237,6 +242,8 @@ describe("degrau SEM etapa correspondente", () => {
     ]);
     // D entrou na etapa "proposta", que agora não tem degrau: fica de fora do alcance
     expect(r.porDegrau.find((d) => d.degrau === "contrato")?.taxaDoAnterior).toBe(2 / 2);
+    // …e, parado numa etapa sem degrau, cai no balde "fora do funil" junto com K
+    expect(r.foraDoFunil).toBe(2);
   });
 });
 
@@ -246,10 +253,10 @@ describe("comparar — atual × anterior", () => {
     const anterior = resumoDoPeriodo(FATOS, CLASSIFICACAO, periodoAnterior(SETEMBRO, AGORA)!, AGORA);
     expect(anterior.entradas).toBe(1); // I, em 30/08
     const c = comparar(atual, anterior);
-    expect(c.entradas).toEqual({ atual: 8, anterior: 1, variacao: 7 });
+    expect(c.entradas).toEqual({ atual: 9, anterior: 1, variacao: 8 });
     expect(c.fechados).toEqual({ atual: 2, anterior: 0, variacao: null });
-    expect(c.global).toEqual({ atual: 0.25, anterior: 0, pp: 25 });
-    expect(c.transicoes[0]).toEqual({ de: "lead", para: "mql", atual: 0.75, anterior: 1, pp: -25 });
+    expect(c.global).toEqual({ atual: 2 / 9, anterior: 0, pp: (2 / 9 - 0) * 100 });
+    expect(c.transicoes[0]).toEqual({ de: "lead", para: "mql", atual: 6 / 9, anterior: 1, pp: (6 / 9 - 1) * 100 });
   });
 
   it("sem período anterior (Total) os deltas ficam nulos", () => {

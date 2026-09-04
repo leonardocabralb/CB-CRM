@@ -64,6 +64,13 @@ export interface ResumoDoPeriodo {
   emAndamento: number;
   /** em andamento por degrau ATUAL (o "pipeline ativo" da referência = proposta). */
   emAndamentoPorDegrau: Partial<Record<Degrau, number>>;
+  /**
+   * Entrou no funil e hoje está numa etapa SEM degrau (estacionado). É balde
+   * da coorte como os outros — sem ele, os totais não fechavam com as
+   * entradas (achado do Codex no PR #119). A situação particiona a coorte:
+   * fechado + perdido + sem avanço + em andamento + fora do funil = entradas.
+   */
+  foraDoFunil: number;
   /** alcançaram contrato (regra 3), mesmo que tenham voltado depois. */
   fechados: number;
   valorFechado: number;
@@ -142,6 +149,7 @@ export function resumoDoPeriodo(
     semAvanco: coorte.filter((f) => f.situacao === "sem_avanco").length,
     emAndamento: coorte.filter((f) => f.situacao === "andamento").length,
     emAndamentoPorDegrau,
+    foraDoFunil: coorte.filter((f) => f.situacao === "fora_do_funil").length,
     fechados,
     valorFechado,
     ticketMedio: fechados > 0 ? valorFechado / fechados : null,

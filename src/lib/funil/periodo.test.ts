@@ -93,6 +93,25 @@ describe("periodoAnterior — mesma duração, imediatamente antes (D4)", () => 
   it("total não tem anterior", () => {
     expect(periodoAnterior({ desde: null, ate: null }, AGORA)).toBeNull();
   });
+
+  it("desloca por DIAS DE CALENDÁRIO: março (31 dias) → 29 de janeiro à meia-noite local", () => {
+    // Num fuso com horário de verão, março tem 30 dias e 23 horas; subtrair
+    // milissegundos cairia em 29/01 à 1h. Rodado também com
+    // TZ=America/New_York na revisão do PR #119.
+    const abril = new Date(2026, 3, 10, 9);
+    const anterior = periodoAnterior(intervaloDoPreset("mes_passado", abril), abril);
+    expect(anterior).toEqual({ desde: new Date(2026, 0, 29), ate: new Date(2026, 2, 1) });
+    expect(anterior?.desde?.getHours()).toBe(0);
+  });
+
+  it("ano inteiro → os 365 dias anteriores, não o ano-calendário (2024 é bissexto)", () => {
+    // D4 é "mesma duração", não "mesmo calendário": 2025 tem 365 dias, e 365
+    // dias antes de 1/1/2025 é 2/1/2024 — o 1/1/2024 fica de fora, de
+    // propósito. O deslocamento por dias de calendário mantém a meia-noite.
+    const anterior = periodoAnterior(intervaloDoPreset("ano_passado", AGORA), AGORA);
+    expect(anterior).toEqual({ desde: new Date(2024, 0, 2), ate: new Date(2025, 0, 1) });
+    expect(anterior?.desde?.getHours()).toBe(0);
+  });
 });
 
 describe("dentroDoIntervalo e diasDoIntervalo", () => {

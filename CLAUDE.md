@@ -2355,7 +2355,21 @@ Meta Ads) leem daqui. O que morde código novo:
 - ⚠️ **Paginar a RPC** com `order('deal_id')` + `range` + `count: 'exact'`
   (`carregar.ts`); `null` = "não confie", nunca lista parcial.
 - **Período em fuso LOCAL, `[desde, ate)`; anterior = mesma duração
-  imediatamente antes**, em dias inteiros para intervalo aberto (D4).
+  imediatamente antes**, em dias inteiros para intervalo aberto (D4) — e o
+  deslocamento é por DIAS DE CALENDÁRIO, nunca por milissegundos: num fuso
+  com horário de verão, subtrair "30 dias e 23 horas" de 1º de março cai em
+  29/01 à 1h e some com a hora de fronteira (Codex, PR #119).
+- ⚠️ **A situação PARTICIONA a coorte em cinco baldes** — fechado, perdido,
+  sem avanço, em andamento e **fora do funil** (entrou por etapa mapeada e
+  hoje está numa etapa SEM degrau). O quinto existe porque sem ele os totais
+  não fechavam com as entradas (Codex, PR #119); a tela do Desempenho tem de
+  mostrá-lo, não escondê-lo.
+- ⚠️ **Apagar etapa MAPEADA com histórico é barrado na tela de Funis.** O
+  mapeamento é lido hoje sobre a história inteira (remapear reescreve o
+  passado de propósito); etapa apagada some da classificação, a entrada no
+  funil desliza para a próxima etapa mapeada e negócio que só passou por ela
+  sai da coorte. "Zero negócios na etapa" NÃO protege disso — é o caso comum
+  da etapa antiga. Saída explícita: pôr "Não conta", salvar, remover.
 - **Os rótulos dos degraus são chave MONTADA** (`Pipelines.funil.degraus.<c>`,
   com `as Parameters<typeof t>[0]`); `degraus.test.ts` cobra os dois
   dicionários.

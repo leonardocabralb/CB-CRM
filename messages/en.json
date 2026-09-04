@@ -1075,6 +1075,7 @@
       "stageDegrau": "Efficiency funnel",
       "stageDegrauHint": "Which step of the efficiency funnel this stage maps to. Several stages may map to the same step; a stage without a step is not counted in Performance.",
       "semLead": "No stage is marked as Lead: Performance and Health for this pipeline stay empty until this is configured.",
+      "toastStageMappedWithHistory": "This stage is mapped to the efficiency funnel and has deal history: deleting it would erase that history from Performance. Set its step to \"Not counted\" and save before removing, or keep the stage.",
       "deletePipelineChannels": "These connections put clients into this pipeline: {channels}. Once deleted, they stop creating deals until you point them at another pipeline in Settings › Connections.",
       "toastStageIsChannelEntry": "This stage is the entry point for {channels}. Pick another entry stage in Settings › Connections before deleting it."
     },

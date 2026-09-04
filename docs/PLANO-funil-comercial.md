@@ -475,6 +475,20 @@ paginadas em uma página e o negócio movido em 31/08 aparece com trajeto de
   executado lá também para repo e banco ficarem iguais). É a regra "o que a
   migration confere, ela concede", que a 929 não precisou porque as tabelas
   dela já tinham GRANT escrito em migration anterior.
+- **Revisão do Codex no PR #119 — três achados P2, os três tratados:**
+  (1) etapa MAPEADA apagada sumia da classificação e a história dela
+  evaporava do painel (entrada deslizando, conversão sumindo) → a tela de
+  Funis passou a BARRAR a remoção de etapa mapeada com histórico na trilha
+  (saída explícita: "Não conta" → salvar → remover), com a limitação escrita
+  no cabeçalho de `trajetoria.ts`; (2) negócio que entrou por etapa mapeada
+  e foi estacionado numa etapa sem degrau ficava na coorte sem balde nenhum
+  e os totais não fechavam → `ResumoDoPeriodo.foraDoFunil`, quinto balde,
+  com teste de partição (fechado + perdido + sem avanço + em andamento +
+  fora do funil = entradas); (3) o período anterior era calculado em
+  milissegundos, o que em fuso com horário de verão deslocava a fronteira
+  em uma hora → passou a deslocar por DIAS DE CALENDÁRIO (teste de março →
+  29/01 à meia-noite, e de ano bissexto; rodado também com
+  `TZ=America/New_York`).
 
 **Arquivos tocados:** `supabase/migrations/975_cb_degrau_do_funil.sql`;
 `src/lib/funil/{degraus,trajetoria,periodo,coorte,saude,carregar}.ts` (+

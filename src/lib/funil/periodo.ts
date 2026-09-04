@@ -12,6 +12,13 @@ import { localDayKey } from "@/lib/dashboard/date-utils";
  * D4 do plano). Para intervalo aberto a duração é contada em DIAS INTEIROS
  * (do `desde` até o fim de hoje): "Este mês" no dia 3 compara 3 dias com os
  * 3 dias anteriores — comparar com o mês inteiro anterior mentiria em -90%.
+ *
+ * ⚠️ A duração é contada e deslocada em DIAS DE CALENDÁRIO locais, nunca em
+ * milissegundos: num fuso com horário de verão, março tem 30 dias e 23
+ * horas, e subtrair esse tanto de 1º de março cairia em 29 de janeiro à 1h
+ * — a hora de fronteira sumiria da comparação (achado do Codex no PR #119).
+ * O Brasil não tem horário de verão desde 2019; o dia em que houver alguém
+ * em outro fuso, isto já está certo.
  */
 
 export const PRESETS = [
@@ -103,9 +110,23 @@ export function periodoAnterior(intervalo: Intervalo, agora: Date): Intervalo | 
   if (!intervalo.desde) return null;
   const fim = fimDoIntervalo(intervalo, agora);
   if (!fim) return null;
-  const duracao = fim.getTime() - intervalo.desde.getTime();
-  if (duracao <= 0) return null;
-  return { desde: new Date(intervalo.desde.getTime() - duracao), ate: intervalo.desde };
+  // Dias de calendário, arredondados: um dia de 23h ou 25h (virada de
+  // horário de verão) continua contando como UM dia.
+  const dias = Math.round((fim.getTime() - intervalo.desde.getTime()) / DIA_MS);
+  if (dias <= 0) return null;
+  const d = intervalo.desde;
+  return {
+    desde: new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate() - dias,
+      d.getHours(),
+      d.getMinutes(),
+      d.getSeconds(),
+      d.getMilliseconds(),
+    ),
+    ate: intervalo.desde,
+  };
 }
 
 export function dentroDoIntervalo(d: Date, intervalo: Intervalo): boolean {

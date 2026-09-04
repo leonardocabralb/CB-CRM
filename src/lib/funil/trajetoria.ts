@@ -28,6 +28,15 @@ import {
  *     contrato fechado sumiria da estatística comercial ao ser transferido.
  *     A RPC devolve o negócio porque ele tem evento com `to_pipeline_id` =
  *     este funil; aqui, `noFunil = false` e `transferidoPara` diz para onde.
+ *
+ * ⚠️ O mapeamento é lido HOJE, sobre a história inteira — remapear uma etapa
+ * reescreve o passado de propósito (o operador configura depois e vê o
+ * funil). O preço: etapa APAGADA some da classificação, e os passos dela
+ * viram "sem classe" — a entrada no funil desliza para a próxima etapa
+ * mapeada, e negócio que só passou por ela sai da coorte. Por isso a tela de
+ * Funis BARRA apagar etapa mapeada que tenha histórico na trilha
+ * (`handleRemoveStage`); quem tirar essa guarda precisa de outra resposta
+ * para a história (achado do Codex no PR #119).
  */
 
 export interface PassoDoTrajeto {
