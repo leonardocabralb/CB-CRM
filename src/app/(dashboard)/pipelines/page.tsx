@@ -37,6 +37,7 @@ import { useCan } from "@/hooks/use-can";
 import { funisVisiveis } from "@/lib/perfis/escopo";
 import { useAuth } from "@/hooks/use-auth";
 import { GatedButton } from "@/components/ui/gated-button";
+import { ListaDeLeads } from "@/components/funil/lista-de-leads";
 import { useTranslations } from "next-intl";
 import { avisarDrenagemDeFunil } from "@/lib/automations/avisar-drenagem";
 import { statusAoEntrarNaEtapa } from "@/lib/pipelines/resultado";
@@ -145,7 +146,9 @@ export default function PipelinesPage() {
   }>({ tags: {}, etapas: {}, fluxos: {}, automacoes: {} });
 
   /** "leads" = o Kanban de sempre; "automacoes" = a grade estilo Kommo. */
-  const [vista, setVista] = useState<"leads" | "automacoes">("leads");
+  // "leads" é o QUADRO (o id ficou pelo diff mínimo; o rótulo virou "Quadro"
+  // quando a lista chegou, na Fase 1 do funil comercial).
+  const [vista, setVista] = useState<"leads" | "lista" | "automacoes">("leads");
 
   // Dialog / sheet state
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
@@ -499,6 +502,24 @@ export default function PipelinesPage() {
     setDealFormOpen(true);
   }, []);
 
+  // A lista (Fase 1 do funil comercial) trabalha sobre as trajetórias da
+  // RPC, não sobre `deals` — o negócio inteiro é buscado na hora de editar.
+  const handleEditDealPorId = useCallback(
+    async (dealId: string) => {
+      const { data, error } = await supabase
+        .from("deals")
+        .select(DEAL_SELECT_BASICO)
+        .eq("id", dealId)
+        .maybeSingle();
+      if (error || !data) {
+        toast.error(t("toastFailedLoadDeals"));
+        return;
+      }
+      handleEditDeal(data as Deal);
+    },
+    [supabase, t, handleEditDeal],
+  );
+
   async function handleCreatePipeline() {
     const name = newPipelineName.trim();
     if (!name) return;
@@ -630,7 +651,10 @@ export default function PipelinesPage() {
                 botão que abre uma grade somente-leitura de regras que a
                 pessoa não pode tocar seria convite a reportar "não consigo
                 editar" como defeito. */}
-            {(podeAutomacoes ? (["leads", "automacoes"] as const) : (["leads"] as const)).map((v) => (
+            {(podeAutomacoes
+              ? (["leads", "lista", "automacoes"] as const)
+              : (["leads", "lista"] as const)
+            ).map((v) => (
               <button
                 key={v}
                 type="button"
@@ -641,7 +665,7 @@ export default function PipelinesPage() {
                     : "rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                 }
               >
-                {tAuto(v === "leads" ? "abaLeads" : "abaAutomacoes")}
+                {tAuto(v === "leads" ? "abaLeads" : v === "lista" ? "abaLista" : "abaAutomacoes")}
               </button>
             ))}
           </div>
@@ -688,6 +712,13 @@ export default function PipelinesPage() {
             {t("createPipeline")}
           </GatedButton>
         </div>
+      ) : vista === "lista" && selectedPipeline ? (
+        <ListaDeLeads
+          pipeline={selectedPipeline}
+          stages={stages}
+          onEditDeal={handleEditDealPorId}
+          onDealChanged={refreshDeals}
+        />
       ) : vista === "automacoes" && podeAutomacoes ? (
         <AutomationsBoard
           stages={stages}

@@ -2377,6 +2377,18 @@ Meta Ads) leem daqui. O que morde código novo:
   os 4 reais. Teste de tela com escrita = funil de teste criado na hora e
   apagado, ou mexer no real e REVERTER (medido na Fase 0: gravar e voltar
   `degrau` deixa NULL em tudo).
+- **A LISTA (Fase 1, `src/components/funil/lista-de-leads.tsx` +
+  `src/lib/funil/lista.ts`) mostra só quem está NESTE funil hoje e filtra o
+  período pela CRIAÇÃO do negócio** (D3) — o transferido é do painel. A
+  etapa na linha escreve pelo padrão do quadro (`update` + rowcount +
+  `statusAoEntrarNaEtapa` + `avisarDrenagemDeFunil`), com estado otimista
+  via `aplicarMudancaDeEtapa`; editar busca o negócio por id
+  (`handleEditDealPorId`), porque a lista não carrega `deals`. Colunas por
+  dispositivo em `localStorage` (`wacrm:pipelines:lista:colunas`,
+  `normalizarColunas` é a migração). ⚠️ `useTrajetorias`: `carregando` é
+  DERIVADO da chave do pedido — nunca `setState` síncrono no efeito (regra
+  do React Compiler que já derrubou PR); resposta atrasada é descartada
+  pela chave.
 
 ## Branches — criação e nomenclatura
 

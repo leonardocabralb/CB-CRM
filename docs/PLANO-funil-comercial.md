@@ -31,7 +31,7 @@
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
 | **0** | Fundamentos: correspondência etapa → degrau do funil de eficiência (coluna + UI em Funis), RPC das trajetórias, módulos puros do cálculo | ✅ **feita** (2026-09-04) | `975_cb_degrau_do_funil` **aplicada** (04/09) | [#119](https://github.com/leonardocabralb/CB-CRM/pull/119) |
-| **1** | **Lista de leads** do funil: colunas fixas + campos personalizados, etapa editável na linha, busca/etapa/situação/período, ordenação, CSV | ⏳ a fazer | nenhuma | — |
+| **1** | **Lista de leads** do funil: colunas fixas + campos personalizados, etapa editável na linha, busca/etapa/situação/período, ordenação, CSV | ✅ **feita** (2026-09-04) | nenhuma | [#120](https://github.com/leonardocabralb/CB-CRM/pull/120) |
 | **2** | **Desempenho**: funil de eficiência, negativos e em aberto, taxas atual × anterior, entrada por dia, cards de conversão/valor | ⏳ a fazer | nenhuma | — |
 | **3** | **Saúde**: conversão por degrau nos últimos 12 meses (linhas) e mapa de calor | ⏳ a fazer | nenhuma | — |
 | **4** | **Meta Ads em Integrações**: conexão com a conta de anúncios (token cifrado), campanhas → funil, gasto diário por campanha puxado pelo agendador → custo por lead, CAC e custo dos perdidos no Desempenho | ⏳ a fazer | `976_cb_meta_ads` | — |
@@ -500,7 +500,7 @@ a partir do resultado, aviso sem Lead, `degrau` no upsert);
 semLead` e `Pipelines.funil.degraus.*`); `CLAUDE.md` (seção "Funil comercial"
 + entrada da 975); este plano.
 
-### Fase 1 — Lista de leads
+### ✅ Fase 1 — Lista de leads (concluída em 2026-09-04)
 
 **Objetivo:** a vista "Lista" no funil selecionado: a tabela da referência com
 os dados que o CRM tem.
@@ -548,6 +548,41 @@ OUTRA conta — medido na Fase 0; NUNCA mover negócio real); trocar etapa na li
 voltar; CSV abre no Numbers/Excel com acentos certos; perfil `viewer` vê a
 lista com o select desabilitado; sem rolagem horizontal fora da tabela
 (`overflow-x-auto` do `Table`, corpo da página parado).
+
+**Resultado medido (2026-09-04, worktree em `main` @ `f8cf74b`):**
+
+- Vista "Lista" no toggle da página de Funis (Quadro · Lista · Automações —
+  o Kanban deixou de se chamar "Leads"). Módulo puro `src/lib/funil/lista.ts`
+  (colunas, preferência normalizada, ordenação, recorte, CSV) com 19 testes;
+  `src/lib/csv.ts` (`;` + BOM UTF-8, RFC 4180) com 4; hook `use-trajetorias`
+  (carregando DERIVADO da chave do pedido, sem setState síncrono no efeito);
+  componentes `lista-de-leads`, `colunas-popover`, `seletor-de-periodo`.
+  Suíte inteira **2610** verdes no Node 22; typecheck limpo; lint 0 erros;
+  `i18n-parity` e `i18n-chaves-usadas` OK.
+- ⚠️ **Coluna "Transferido para" foi cortada** antes de nascer: a lista mostra
+  só quem está NESTE funil hoje, então ela seria sempre vazia. O transferido
+  é assunto do painel (regra 6), não da lista.
+- Preview em 1440×900, num funil de teste criado na conta pelo conector
+  ("TESTE Fase 1 (apagar)": 4 etapas mapeadas + 2 negócios sem contato) e
+  APAGADO ao fim (funil, negócios em cascata e os eventos órfãos da trilha):
+  tabela com as 9 colunas padrão e "2 de 2 no período"; **mover a etapa na
+  linha** troca a pastilha e a situação na hora e GRAVA (conferido no banco:
+  `stage_changed` com `origin='usuario'`); busca por nome, filtro de
+  situação ("1 de 2 no período") e de etapa recortam; "Mês passado" mostra
+  "Nenhum negócio criado neste período."; ordenar por Nome inverte; o
+  seletor de colunas lista as 13 fixas + os 18 campos por bloco, ligar
+  "Empresa" e "Nome da campanha" cria as colunas e grava em
+  `wacrm:pipelines:lista:colunas`; o lápis abre "Editar negócio" com o
+  título certo; "Exportar CSV" dispara sem erro.
+- ⚠️ **Falso erro no console:** `MISSING_MESSAGE Pipelines.automacoes.abaLista`
+  apareceu 38 vezes com a aba já escrita "Lista" na tela — é o CACHE do
+  `next dev`, que carregou os dicionários antes da chave existir (o mesmo
+  achado da Fase 1 do painel do contato). Depois de reiniciar o servidor,
+  nenhuma ocorrência nova. Quem vir isso confere o dicionário antes de
+  "corrigir" código.
+- Não testado: CSV aberto no Excel (o download não é observável no painel;
+  o conteúdo está coberto por teste) e o perfil `viewer` (o select nasce
+  desabilitado por `useCan('send-messages')`, mesmo gate do painel).
 
 ### Fase 2 — Desempenho
 

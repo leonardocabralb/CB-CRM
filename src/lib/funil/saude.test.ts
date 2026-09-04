@@ -15,7 +15,7 @@ const CLASSIFICACAO = classificarEtapas([
 ]);
 
 function negocio(id: string, entradas: [string, Date][]): LinhaDeTrajetoria {
-  const [primeiraEtapa, criadoEm] = entradas[0];
+  const criadoEm = entradas[0][1];
   return {
     deal_id: id,
     contact_id: null,
