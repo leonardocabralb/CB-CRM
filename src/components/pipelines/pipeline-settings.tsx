@@ -23,6 +23,7 @@ import {
   channelsUsingStage,
 } from "@/lib/cb-channels/display";
 import type { Pipeline, PipelineStage } from "@/types";
+import { CLASSES, sugerirClasse } from "@/lib/funil/degraus";
 import {
   Dialog,
   DialogContent,
@@ -75,6 +76,18 @@ export function PipelineSettings({
   onCreateNewPipeline,
 }: PipelineSettingsProps) {
   const t = useTranslations("Pipelines.settings");
+  const tFunil = useTranslations("Pipelines.funil");
+  // 975: o seletor de degrau do funil de eficiência, por etapa. Os rótulos
+  // das classes são chave MONTADA (`degraus.${classe}`) — o portão estático
+  // de i18n não as enxerga; `src/lib/funil/degraus.test.ts` cobra os dois
+  // dicionários.
+  const opcoesDeDegrau = [
+    { value: "", label: tFunil("degraus.nenhum") },
+    ...CLASSES.map((classe) => ({
+      value: classe,
+      label: tFunil(`degraus.${classe}` as Parameters<typeof tFunil>[0]),
+    })),
+  ];
   const supabase = createClient();
   // Uma busca por montagem, falha silenciosa → lista vazia. É fail-open
   // consciente: sem os canais o operador perde o AVISO, não a ação — travar
@@ -128,6 +141,8 @@ export function PipelineSettings({
       position: i,
       // 950: etapa marcada carimba ganho/perdido por gatilho no banco.
       resultado: s.resultado ?? null,
+      // 975: o degrau do funil de eficiência — independente do resultado.
+      degrau: s.degrau ?? null,
     }));
 
     const [renameRes, stagesRes] = await Promise.all([
@@ -318,9 +333,24 @@ export function PipelineSettings({
                           }}
                           onResultadoChange={(v) => {
                             const updated = [...localStages];
-                            updated[index] = { ...updated[index], resultado: v };
+                            // 975: a tela SUGERE o degrau a partir do resultado
+                            // (ganho → contrato, perdido → perda), só quando a
+                            // etapa ainda não tem degrau. O cálculo nunca deriva
+                            // um do outro; o operador confirma ao salvar.
+                            const sugestao = updated[index].degrau ? null : sugerirClasse(v);
+                            updated[index] = {
+                              ...updated[index],
+                              resultado: v,
+                              ...(sugestao ? { degrau: sugestao } : {}),
+                            };
                             setLocalStages(updated);
                           }}
+                          onDegrauChange={(v) => {
+                            const updated = [...localStages];
+                            updated[index] = { ...updated[index], degrau: v };
+                            setLocalStages(updated);
+                          }}
+                          opcoesDeDegrau={opcoesDeDegrau}
                           onRemove={() => handleRemoveStage(stage.id)}
                           colors={STAGE_COLORS}
                           t={t}
@@ -329,6 +359,16 @@ export function PipelineSettings({
                     </div>
                   </SortableContext>
                 </DndContext>
+
+                {/* 975: funil com degrau em alguma etapa mas sem Lead —
+                    configuração incompleta: o Desempenho não calcula nada. */}
+                {localStages.some((s) => s.degrau) &&
+                  !localStages.some((s) => s.degrau === "lead") && (
+                    <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>{t("semLead")}</span>
+                    </p>
+                  )}
 
                 {/* Add new stage */}
                 <div className="mt-1 flex flex-wrap gap-1">
@@ -416,6 +456,8 @@ function SortableStageRow({
   onNameChange,
   onColorChange,
   onResultadoChange,
+  onDegrauChange,
+  opcoesDeDegrau,
   onRemove,
   colors,
   t,
@@ -424,6 +466,8 @@ function SortableStageRow({
   onNameChange: (v: string) => void;
   onColorChange: (v: string) => void;
   onResultadoChange: (v: string | null) => void;
+  onDegrauChange: (v: string | null) => void;
+  opcoesDeDegrau: { value: string; label: string }[];
   onRemove: () => void;
   colors: string[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -472,6 +516,23 @@ function SortableStageRow({
         <option value="">{t('outcomeNone')}</option>
         <option value="ganho">{t('outcomeWon')}</option>
         <option value="perdido">{t('outcomeLost')}</option>
+      </select>
+      {/* 975: a que DEGRAU do funil de eficiência a etapa corresponde
+          (lead → mql → reuniao → proposta → contrato, ou perda). Várias
+          etapas podem apontar para o mesmo degrau; sem degrau, a etapa não
+          conta no Desempenho. Independente do resultado ao lado. */}
+      <select
+        value={stage.degrau ?? ''}
+        onChange={(e) => onDegrauChange(e.target.value || null)}
+        aria-label={t('stageDegrau')}
+        title={t('stageDegrauHint')}
+        className="h-7 shrink-0 rounded-md border border-border bg-card px-1 text-xs text-foreground"
+      >
+        {opcoesDeDegrau.map((opcao) => (
+          <option key={opcao.value} value={opcao.value}>
+            {opcao.label}
+          </option>
+        ))}
       </select>
       <Button
         variant="ghost"

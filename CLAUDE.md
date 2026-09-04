@@ -2321,6 +2321,49 @@ e sem saída na aba, a dois centímetros. O que morde código novo:
 - **A frase do autor é `Inbox.note.wrote` nas quatro telas** — chave única,
   senão a tradução diverge entre a bolha e o cartão.
 
+⚠️ **Funil comercial (975 — Fase 0 de `docs/PLANO-funil-comercial.md`): o
+funil de eficiência é FIXO e cada funil mapeia as SUAS etapas.**
+`pipeline_stages.degrau` ∈ {lead, mql, reuniao, proposta, contrato, perda,
+NULL}; `src/lib/funil/` (puro, testado: `degraus`, `trajetoria`, `periodo`,
+`coorte`, `saude`, `carregar`); a RPC `cb_funil_trajetorias`; o seletor por
+etapa em `pipeline-settings.tsx`. As Fases 1–4 (lista, Desempenho, Saúde,
+Meta Ads) leem daqui. O que morde código novo:
+
+- ⚠️⚠️ **NEGÓCIO TRANSFERIDO PARA OUTRO FUNIL CONTINUA CONTANDO NO FUNIL DE
+  ORIGEM, com a última etapa que teve lá.** Decisão do operador (03/09/2026),
+  que pediu que ficasse ESCRITA: o fluxo é "fechou → transfere para o funil
+  do Jurídico → continua ganho". A RPC devolve o negócio porque ele tem
+  evento com `to_pipeline_id` = o funil; `fatosDoNegocio` resolve a última
+  etapa dele ali (`noFunil = false`, `transferidoPara`). Quem "simplificar"
+  para `deals.pipeline_id`/`stage_id` atuais apaga todo contrato transferido
+  da estatística comercial, sem erro nenhum.
+- ⚠️ **`degrau` é INDEPENDENTE de `resultado` (950).** `resultado` carimba o
+  status do negócio; `degrau` diz o que a etapa significa no funil de
+  eficiência. A tela SUGERE (ganho → contrato, perdido → perda) só quando a
+  etapa ainda não tem degrau; o cálculo nunca deriva um do outro ("No Show"
+  pode ser perda no funil sem ser perdido no status, se o escritório
+  reagenda). SEM backfill: quem mapeia é o operador, na tela de Funis.
+  Decisão dele: "Contato Avulso" e as etapas de entrada CONTAM como `lead`
+  — para negócio de canal, a entrada no funil e a criação do card coincidem.
+- ⚠️ **A RPC é SUPERCONJUNTO** (criado no intervalo OU com evento no
+  intervalo): a coorte de verdade é `coorteDoPeriodo` (entrada = primeira
+  etapa COM classe, perda inclusive). Somar linhas cruas conta negócio de
+  janeiro movido em abril como coorte de abril.
+- ⚠️ **Alcance é MONOTÔNICO** (`degrauMaximo`): pular de Lead para Proposta
+  alcança MQL e Reunião — nenhuma taxa passa de 100%. Perda não alcança
+  nada; entrar direto em perda É entrada.
+- ⚠️ **Paginar a RPC** com `order('deal_id')` + `range` + `count: 'exact'`
+  (`carregar.ts`); `null` = "não confie", nunca lista parcial.
+- **Período em fuso LOCAL, `[desde, ate)`; anterior = mesma duração
+  imediatamente antes**, em dias inteiros para intervalo aberto (D4).
+- **Os rótulos dos degraus são chave MONTADA** (`Pipelines.funil.degraus.<c>`,
+  com `as Parameters<typeof t>[0]`); `degraus.test.ts` cobra os dois
+  dicionários.
+- **Os funis "TESTE" não são desta conta**: o seletor do operador lista só
+  os 4 reais. Teste de tela com escrita = funil de teste criado na hora e
+  apagado, ou mexer no real e REVERTER (medido na Fase 0: gravar e voltar
+  `degrau` deixa NULL em tudo).
+
 ## Branches — criação e nomenclatura
 
 - **Toda branch nova sai única e exclusivamente de `main`** e faz merge **de
@@ -2450,6 +2493,12 @@ e sem saída na aba, a dois centímetros. O que morde código novo:
     policies "só as minhas", nome único por membro. Aplicada em 2026-09-03
     via conector, ANTES do merge; conferido: os 2 filtros ficaram com o
     criador.
+
+  - **975_cb_degrau_do_funil** — `pipeline_stages.degrau`, índice
+    `cb_lead_events_funil_idx` e a RPC `cb_funil_trajetorias` (Fase 0 do
+    funil comercial). Aplicada em 2026-09-04 via conector, ANTES do merge;
+    conferido: 123 linhas no Bancário - Comercial, `anon` sem EXECUTE,
+    `authenticated` com. Sem backfill de `degrau`, de propósito.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
