@@ -38,6 +38,7 @@ import { funisVisiveis } from "@/lib/perfis/escopo";
 import { useAuth } from "@/hooks/use-auth";
 import { GatedButton } from "@/components/ui/gated-button";
 import { ListaDeLeads } from "@/components/funil/lista-de-leads";
+import { Desempenho } from "@/components/funil/desempenho";
 import { useTranslations } from "next-intl";
 import { avisarDrenagemDeFunil } from "@/lib/automations/avisar-drenagem";
 import { statusAoEntrarNaEtapa } from "@/lib/pipelines/resultado";
@@ -148,7 +149,7 @@ export default function PipelinesPage() {
   /** "leads" = o Kanban de sempre; "automacoes" = a grade estilo Kommo. */
   // "leads" é o QUADRO (o id ficou pelo diff mínimo; o rótulo virou "Quadro"
   // quando a lista chegou, na Fase 1 do funil comercial).
-  const [vista, setVista] = useState<"leads" | "lista" | "automacoes">("leads");
+  const [vista, setVista] = useState<"leads" | "lista" | "desempenho" | "automacoes">("leads");
 
   // Dialog / sheet state
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
@@ -652,8 +653,8 @@ export default function PipelinesPage() {
                 pessoa não pode tocar seria convite a reportar "não consigo
                 editar" como defeito. */}
             {(podeAutomacoes
-              ? (["leads", "lista", "automacoes"] as const)
-              : (["leads", "lista"] as const)
+              ? (["leads", "lista", "desempenho", "automacoes"] as const)
+              : (["leads", "lista", "desempenho"] as const)
             ).map((v) => (
               <button
                 key={v}
@@ -665,7 +666,15 @@ export default function PipelinesPage() {
                     : "rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                 }
               >
-                {tAuto(v === "leads" ? "abaLeads" : v === "lista" ? "abaLista" : "abaAutomacoes")}
+                {tAuto(
+                  v === "leads"
+                    ? "abaLeads"
+                    : v === "lista"
+                      ? "abaLista"
+                      : v === "desempenho"
+                        ? "abaDesempenho"
+                        : "abaAutomacoes",
+                )}
               </button>
             ))}
           </div>
@@ -718,6 +727,12 @@ export default function PipelinesPage() {
           stages={stages}
           onEditDeal={handleEditDealPorId}
           onDealChanged={refreshDeals}
+        />
+      ) : vista === "desempenho" && selectedPipeline ? (
+        <Desempenho
+          pipeline={selectedPipeline}
+          stages={stages}
+          onConfigurar={() => setSettingsOpen(true)}
         />
       ) : vista === "automacoes" && podeAutomacoes ? (
         <AutomationsBoard
