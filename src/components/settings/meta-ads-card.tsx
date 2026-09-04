@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import type { CampanhaDoMetaAds, CartaoDoMetaAds } from "@/lib/meta-ads/cartao";
 import { cn } from "@/lib/utils";
 
-import { SettingsChip, type ChipVariant } from "./settings-chip";
+import { SettingsChip } from "./settings-chip";
 
 /**
  * O cartão "Meta Ads" da aba Integrações (Fase 4 do funil comercial).
@@ -28,12 +28,6 @@ interface Resposta {
   campanhas: CampanhaDoMetaAds[];
   funis: { id: string; name: string }[];
 }
-
-const CHIP: Record<CartaoDoMetaAds["estado"], ChipVariant> = {
-  nao_conectado: "muted",
-  conectado: "ok",
-  erro: "err",
-};
 
 const CODIGOS_CONHECIDOS = new Set([
   "token_invalido",
@@ -56,8 +50,16 @@ export function MetaAdsCard() {
   const [token, setToken] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
+  // Sem trava, dois cliques mandam dois DELETE: o segundo responde sobre uma
+  // config que já sumiu e pinta "falhou" em cima de uma desconexão que deu
+  // certo (Codex, PR #123).
+  const [desconectando, setDesconectando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const vivoRef = useRef(true);
+  // Espelho de `dados` para o `carregar` saber se JÁ havia algo na tela sem
+  // se re-criar a cada resposta (ele é dependência de um efeito).
+  const dadosRef = useRef<Resposta | null>(null);
+  dadosRef.current = dados;
 
   const motivo = (codigo: string) =>
     CODIGOS_CONHECIDOS.has(codigo)
@@ -75,9 +77,15 @@ export function MetaAdsCard() {
         setFalhou(false);
       }
     } catch {
-      if (vivoRef.current) setFalhou(true);
+      if (!vivoRef.current) return;
+      setFalhou(true);
+      // Já havia dados na tela: o chip e a data continuam desenhados, então
+      // a falha precisa de VOZ — senão o operador conclui que a ação não
+      // rodou e clica de novo (Codex, PR #123). É o mesmo aviso que o painel
+      // de Integrações usa.
+      if (dadosRef.current !== null) toast.error(t("recarregarFalhou"));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     vivoRef.current = true;
@@ -112,13 +120,19 @@ export function MetaAdsCard() {
   };
 
   const desconectar = async () => {
+    if (desconectando) return;
     if (!window.confirm(t("metaAds.confirmarDesconectar"))) return;
-    const res = await fetch("/api/cb/meta-ads/config", { method: "DELETE" });
-    if (!res.ok) {
-      toast.error(t("salvarFalhou"));
-      return;
+    setDesconectando(true);
+    try {
+      const res = await fetch("/api/cb/meta-ads/config", { method: "DELETE" });
+      if (!res.ok) {
+        toast.error(t("salvarFalhou"));
+        return;
+      }
+      await carregar();
+    } finally {
+      if (vivoRef.current) setDesconectando(false);
     }
-    await carregar();
   };
 
   const sincronizar = async () => {
@@ -138,7 +152,10 @@ export function MetaAdsCard() {
   };
 
   const atribuir = async (campanha: CampanhaDoMetaAds, pipelineId: string | null) => {
-    const anterior = dados;
+    // ⚠️ O desfazer é POR CAMPANHA, nunca uma foto do estado inteiro:
+    // atribuindo duas em sequência, a falha da segunda revertia também a
+    // primeira, que já estava gravada (Codex, PR #123).
+    const anterior = dados?.campanhas.find((c) => c.id === campanha.id)?.pipeline_id ?? null;
     setDados((d) =>
       d ? { ...d, campanhas: d.campanhas.map((c) => (c.id === campanha.id ? { ...c, pipeline_id: pipelineId } : c)) } : d,
     );
@@ -149,7 +166,14 @@ export function MetaAdsCard() {
     });
     if (!res.ok) {
       toast.error(t("salvarFalhou"));
-      setDados(anterior);
+      setDados((d) =>
+        d
+          ? {
+              ...d,
+              campanhas: d.campanhas.map((c) => (c.id === campanha.id ? { ...c, pipeline_id: anterior } : c)),
+            }
+          : d,
+      );
       return;
     }
     await carregar();
@@ -157,8 +181,21 @@ export function MetaAdsCard() {
 
   const cartao = dados?.cartao;
   const estado = cartao?.estado ?? "nao_conectado";
-  const rotuloDoChip =
-    estado === "conectado" ? t("chipOk") : estado === "erro" ? t("chipErro") : t("chipNaoConectado");
+  // ⚠️ O chip fica no cabeçalho, sempre visível, e é uma AFIRMAÇÃO. Enquanto
+  // a carga corre — ou quando ela falha — dizer "Não conectada" acusa de
+  // desconexão uma integração que pode estar de pé, e o operador vai
+  // recadastrar conta e token para consertar o que não quebrou (Codex,
+  // PR #123). Os cartões de IA ao lado já fazem isto: skeleton até saber.
+  const [variante, rotuloDoChip] =
+    dados === null && !falhou
+      ? (["muted", t("chipConferindo")] as const)
+      : falhou && !dados
+        ? (["err", t("chipErro")] as const)
+        : estado === "conectado"
+          ? (["ok", t("chipOk")] as const)
+          : estado === "erro"
+            ? (["err", t("chipErro")] as const)
+            : (["muted", t("chipNaoConectado")] as const);
 
   return (
     <div className="rounded-lg border border-border bg-card">
@@ -170,7 +207,7 @@ export function MetaAdsCard() {
       >
         <Megaphone className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">Meta Ads</span>
-        <SettingsChip variant={CHIP[estado]}>{rotuloDoChip}</SettingsChip>
+        <SettingsChip variant={variante}>{rotuloDoChip}</SettingsChip>
         <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", aberto && "rotate-180")} />
       </button>
 
@@ -238,7 +275,8 @@ export function MetaAdsCard() {
                     <RefreshCw className={cn("size-4", sincronizando && "animate-spin")} />
                     {sincronizando ? t("metaAds.sincronizando") : t("metaAds.sincronizar")}
                   </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => void desconectar()}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void desconectar()}
+              disabled={desconectando}>
                     {t("metaAds.desconectar")}
                   </Button>
                 </div>

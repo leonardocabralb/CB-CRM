@@ -15,6 +15,11 @@
  *   token pelo marcador e limpa `access_token=` de qualquer URL. É a mesma
  *   armadilha da chave da OpenAI em `/api/cb/integracoes/status`.
  * - Paginação por `paging.next`, com teto — a Meta devolve o cursor pronto.
+ *   ⚠️ Bater no teto ESTOURA, nunca devolve a lista pela metade: a sync
+ *   gravaria `last_sync_at` sobre um import incompleto e nunca mais
+ *   voltaria àqueles dias (a janela seguinte tem 3 dias). Falhar deixa a
+ *   conta em `status = 'erro'`, visível na tela, e a próxima tentativa
+ *   ainda é a primeira (90 dias).
  *   ⚠️ Esse cursor é uma URL vinda da RESPOSTA, e nós mandamos o token no
  *   cabeçalho: seguir uma URL de outro host entregaria o token a ele. Por
  *   isso `doGraph()` confere a ORIGEM antes de cada pedido.
@@ -33,7 +38,7 @@ export function doGraph(url: string): boolean {
   }
 }
 const TIMEOUT_MS = 20_000;
-const MAX_PAGINAS = 20;
+const MAX_PAGINAS = 100;
 
 export type CodigoDoErroMeta =
   | "token_invalido"
@@ -160,6 +165,9 @@ export function criarClienteMeta(token: string, fetchFn: Fetch = fetch): Cliente
       if (Array.isArray(corpo.data)) tudo.push(...corpo.data);
       const paging = ehObjeto(corpo.paging) ? corpo.paging : null;
       proxima = paging && typeof paging.next === "string" ? paging.next : null;
+    }
+    if (proxima) {
+      throw new MetaAdsError("meta_error", `paginação passou de ${MAX_PAGINAS} páginas — resultado incompleto`);
     }
     return tudo;
   }

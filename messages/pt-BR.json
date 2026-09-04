@@ -294,7 +294,7 @@
       "yesterday": "Ontem",
       "channelChangedWhileTyping": "Não enviado. O cliente escreveu por outro número enquanto você digitava e a conversa passou para {channel}. Confira o canal acima e envie de novo.",
       "sessionExpiredBlocked": "Não enviada: a janela de 24 horas fechou. Use um modelo para retomar o contato.",
-            "channelChangedUnknown": "outro número",
+      "channelChangedUnknown": "outro número",
       "searchInThread": "“{termo}” — {atual} de {total}",
       "searchPrevHit": "Achado anterior",
       "searchNextHit": "Próximo achado"
@@ -1155,7 +1155,8 @@
         "total": "Total",
         "personalizado": "Personalizar",
         "de": "De",
-        "ate": "Até"
+        "ate": "Até",
+        "personalizadoVazio": "sem datas: mostrando tudo"
       },
       "desempenho": {
         "periodoPorEntrada": "Período pela data de entrada no funil",
@@ -1224,6 +1225,7 @@
           "porPerdido": "custo por lead × perdidos",
           "semFunil": "{valor} em {n} campanha(s) sem funil atribuído no período — atribua em Integrações para o custo por lead ficar certo.",
           "naoConectado": "Conecte o Meta Ads em Integrações para ver investimento, custo por lead e CAC.",
+          "falhou": "Não foi possível ler o investimento em anúncios agora. Os números de custo ficam de fora até a próxima tentativa.",
           "abrirIntegracoes": "Abrir Integrações",
           "porCampanha": "Investimento por campanha",
           "colCampanha": "Campanha",

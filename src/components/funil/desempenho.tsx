@@ -289,6 +289,13 @@ export function Desempenho({
                 </p>
               )}
             </>
+          ) : anuncios.falhou ? (
+            // Ler o gasto falhou (ou não coube). Dizer "conecte o Meta Ads"
+            // aqui mandaria conectar o que já está conectado, e mostrar
+            // zeros faria o custo por lead mentir para baixo.
+            <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+              {t("investimento.falhou")}
+            </p>
           ) : (
             !anuncios.carregando && (
               <p className="text-xs text-muted-foreground">

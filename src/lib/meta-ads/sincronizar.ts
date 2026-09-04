@@ -10,6 +10,13 @@ import { janelaDeSync } from "./janela-de-sync";
  * o `pipeline_id` que o operador atribuiu), puxa o gasto por dia da janela
  * (3 dias; 90 na primeira) e carimba `last_sync_at`/`last_error`.
  *
+ * ⚠️ A janela é RECONCILIADA, não só sobrescrita. Quando a Meta reprocessa
+ * um dia para ZERO, ela OMITE a linha em vez de devolver 0 — um upsert
+ * cego deixaria o valor antigo gravado, e ao sair da janela de 3 dias esse
+ * número errado viraria permanente, inflando investimento, custo por lead e
+ * CAC para sempre (achado do Codex no PR #123). Por isso, depois do upsert,
+ * o que estava na janela e NÃO voltou no retrato é apagado.
+ *
  * Roda com o client de SERVICE ROLE (as três tabelas são fechadas para o
  * navegador). Chamada pelo cron, pelo "Sincronizar agora" e, em `after()`,
  * logo depois de conectar. Falha da Meta vira `status = 'erro'` com o
@@ -78,6 +85,7 @@ export async function sincronizarMetaAds(
       );
       if (error) throw new Error(`gastos: ${error.message}`);
     }
+    await apagarOqueSumiu(admin, accountId, janela.since, janela.until, gastos);
 
     await admin
       .from("cb_meta_ads_config")
@@ -90,6 +98,50 @@ export async function sincronizarMetaAds(
     console.error(`[meta-ads] sincronização da conta ${accountId} falhou (${codigo}):`, e instanceof Error ? e.message : e);
     await marcarErro(admin, accountId, codigo);
     return { ok: false, codigo };
+  }
+}
+
+/**
+ * Apaga da janela o que o retrato da Meta NÃO trouxe. Agrupado POR DIA
+ * (`.eq('dia').in('campaign_id', …)`): na janela normal são 3 consultas, e
+ * na primeira sincronização a tabela está vazia, então são zero. Uma
+ * consulta por par (campanha, dia) seria centenas.
+ */
+async function apagarOqueSumiu(
+  admin: SupabaseClient,
+  accountId: string,
+  since: string,
+  until: string,
+  retrato: readonly { campaignId: string; dia: string }[],
+): Promise<void> {
+  const { data: existentes, error } = await admin
+    .from("cb_meta_ads_gastos")
+    .select("campaign_id, dia")
+    .eq("account_id", accountId)
+    .gte("dia", since)
+    .lte("dia", until);
+  // Não sabemos o que está lá: apagar às cegas tiraria gasto legítimo.
+  if (error || !existentes) return;
+
+  const noRetrato = new Set(retrato.map((g) => `${g.dia}|${g.campaignId}`));
+  const porDia = new Map<string, string[]>();
+  for (const linha of existentes as { campaign_id: string; dia: string }[]) {
+    if (noRetrato.has(`${linha.dia}|${linha.campaign_id}`)) continue;
+    const lista = porDia.get(linha.dia) ?? [];
+    lista.push(linha.campaign_id);
+    porDia.set(linha.dia, lista);
+  }
+
+  for (const [dia, campanhas] of porDia) {
+    for (let i = 0; i < campanhas.length; i += LOTE) {
+      const { error: erroDelete } = await admin
+        .from("cb_meta_ads_gastos")
+        .delete()
+        .eq("account_id", accountId)
+        .eq("dia", dia)
+        .in("campaign_id", campanhas.slice(i, i + LOTE));
+      if (erroDelete) throw new Error(`limpeza da janela: ${erroDelete.message}`);
+    }
   }
 }
 

@@ -30,12 +30,27 @@ import { MapaDeCalor, type LinhaDoMapaDeCalor } from "./mapa-de-calor";
 
 const MESES = 12;
 
-const COR_DA_TRANSICAO: Record<Degrau, string> = {
-  lead: "stroke-sky-500",
-  mql: "stroke-violet-500",
-  reuniao: "stroke-pink-500",
-  proposta: "stroke-amber-500",
-  contrato: "stroke-emerald-500",
+/**
+ * ⚠️ As três classes de cada degrau são LITERAIS, nunca derivadas por
+ * `replace("stroke-", "fill-")`: o Tailwind varre o FONTE atrás de strings e
+ * não executa código, então uma classe montada em tempo de execução
+ * simplesmente não é gerada — e o ponto da linha caía no preto padrão do
+ * SVG, sem erro nenhum. Medido no CSS compilado: `.fill-sky-500` tinha ZERO
+ * ocorrências enquanto `.stroke-sky-500` tinha uma. É a mesma armadilha da
+ * `PALETA_DE_CANAIS` (CLAUDE.md), e há teste cobrando a forma.
+ */
+export interface CorDoDegrau {
+  traco: string;
+  ponto: string;
+  bloco: string;
+}
+
+const COR_DA_TRANSICAO: Record<Degrau, CorDoDegrau> = {
+  lead: { traco: "stroke-sky-500", ponto: "fill-sky-500", bloco: "bg-sky-500" },
+  mql: { traco: "stroke-violet-500", ponto: "fill-violet-500", bloco: "bg-violet-500" },
+  reuniao: { traco: "stroke-pink-500", ponto: "fill-pink-500", bloco: "bg-pink-500" },
+  proposta: { traco: "stroke-amber-500", ponto: "fill-amber-500", bloco: "bg-amber-500" },
+  contrato: { traco: "stroke-emerald-500", ponto: "fill-emerald-500", bloco: "bg-emerald-500" },
 };
 
 export function Saude({
@@ -123,7 +138,7 @@ export function Saude({
   const series: SerieDeConversao[] = mapa.map((linha) => ({
     chave: `${linha.transicao.de}-${linha.transicao.para}${linha.transicao.global ? "-global" : ""}`,
     rotulo: rotuloDaTransicao(linha.transicao),
-    classeDaCor: COR_DA_TRANSICAO[linha.transicao.global ? "contrato" : linha.transicao.de],
+    cor: COR_DA_TRANSICAO[linha.transicao.global ? "contrato" : linha.transicao.de],
     valores: linha.taxas.map(paraPontosPercentuais),
   }));
 

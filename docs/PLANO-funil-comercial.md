@@ -298,8 +298,10 @@ negócio nascido em etapa sem degrau — e a lista mostra as duas colunas.
 ### 3.3 De onde vem a trajetória: uma RPC, uma chamada por vista
 
 `cb_funil_trajetorias(p_pipeline_id, p_desde, p_ate)` — `LANGUAGE sql STABLE
-SECURITY INVOKER` (a RLS de `deals`, `cb_lead_events`, `contacts`,
-`contact_custom_values` e `custom_fields` vale para quem chama). Uma linha por
+SECURITY INVOKER` (a RLS das SEIS tabelas que ela toca vale para quem
+chama: `deals`, `cb_lead_events`, `contacts`, `conversations`,
+`contact_custom_values` e `custom_fields` — `conversations` entra pela
+subconsulta de `conversa_do_contato`). Uma linha por
 negócio que **já passou por este funil**:
 
 ```
@@ -308,7 +310,7 @@ title, value, status, pipeline_id, stage_id, channel_id, source, assigned_to,
 created_at, updated_at,
 contato_nome, contato_telefone, contato_email, contato_empresa, contato_avatar,
 campos jsonb        -- {field_key: value} do contato (só preenchidos)
-trajeto jsonb       -- [{etapa, funil, em, origem}] em ordem, inclusive a saída para outro funil
+trajeto jsonb       -- [{etapa, funil, em, origem, tipo}] em ordem, inclusive a saída para outro funil
 ```
 
 - **Quem entra:** negócio com algum evento `deal_created`/`stage_changed`/
@@ -338,25 +340,38 @@ trajeto jsonb       -- [{etapa, funil, em, origem}] em ordem, inclusive a saída
 ### 3.4 Módulos (puros, com teste) e componentes
 
 ```
-src/lib/funil/
+src/lib/funil/                                    (assinaturas MEDIDAS no código)
   degraus.ts        DEGRAUS = ['lead','mql','reuniao','proposta','contrato'], tipo Degrau,
-                    classificarEtapas(stages) → {porDegrau, degrauDaEtapa, configurado, faltando}
-  trajetoria.ts     fatosDoNegocio(linha, degrauDaEtapa) → {entradaEm, degrauMaximo, etapaAtual,
-                    naEtapaDesde, situacao, transferidoPara}; aplicarMudancaDeEtapa (otimista)
-  periodo.ts        presets → {desde, ate} local; periodoAnterior; formatação do rótulo
-  coorte.ts         resumoDoPeriodo(fatos, degraus, intervalo) → contagens por degrau, perdas por
-                    etapa, sem avanço, em andamento, taxas, entradas por dia; comparar(atual, anterior)
-  saude.ts          coortesMensais(fatos, 12, agora) → séries por transição; corRelativa(valor, linha)
+                    classificarEtapas(etapas) → {classeDaEtapa, porClasse, faltando,
+                    configurado, etapas}
+  trajetoria.ts     fatosDoNegocio(linha, pipelineId, classificacao) → {linha, noFunil,
+                    transferidoPara, entradaEm, degrauMaximo, etapaAtual, classeAtual,
+                    naEtapaDesde, situacao, alcancouContrato}; aplicarMudancaDeEtapa (otimista)
+  periodo.ts        presets → {desde, ate} local; periodoAnterior (dias de calendário)
+  coorte.ts         resumoDoPeriodo(fatos, classificacao, intervalo, agora) → contagens por
+                    degrau, perdas por etapa, sem avanço, em andamento, taxas, entradas por
+                    dia; comparar(atual, anterior)
+  saude.ts          coortesMensais(fatos, classificacao, meses, agora) → coortes; escalaRelativa,
+                    transicoesDoHistorico, linhasDoMapa (a cor por célula é corDaCelula, e ela
+                    mora no componente mapa-de-calor.tsx)
   lista.ts          catálogo de colunas, ordenar, filtrar (busca/etapa/situação/período), linhasDoCsv
-  carregar.ts       laço paginado da RPC (order + range + count) — o único I/O do módulo
-src/lib/csv.ts      toCsv (';' + BOM, RFC 4180) + baixarArquivo — novo, sem tocar a página de broadcast
+  apresentacao.ts   percentual, variação e pontos percentuais em pt-BR fixo
+  carregar.ts       laço paginado da RPC (order + range + count) — I/O, não é módulo puro
+src/lib/csv.ts      paraCsv (';' + BOM, RFC 4180) + baixarArquivo — novo, sem tocar a página de
+                    broadcast (que tem um `toCsv` PRÓPRIO, e continua com ele)
 src/hooks/use-trajetorias.ts   carrega por (pipelineId, intervalo) com sinalizador `carregando`
-src/components/funil/
+src/components/funil/          (o que EXISTE; os nomes riscados abaixo nunca nasceram)
   lista-de-leads.tsx · colunas-popover.tsx · seletor-de-periodo.tsx
-  desempenho.tsx · cards-do-funil.tsx · grafico-de-taxas.tsx · grafico-de-entradas.tsx
-  saude.tsx · mapa-de-calor.tsx · correspondencia-legenda.tsx
-  investimento-form.tsx (Fase 4)
+  desempenho.tsx · grafico-de-taxas.tsx · grafico-de-entradas.tsx
+  saude.tsx · mapa-de-calor.tsx · grafico-de-conversao.tsx
 ```
+
+⚠️ **Três componentes desta lista foram DESCARTADOS durante a execução, e a
+lista acima já os omite:** `cards-do-funil.tsx` (os cards ficaram inline no
+`desempenho.tsx`), `correspondencia-legenda.tsx` (a legenda virou uma linha
+de rodapé, "sem bloco à parte") e `investimento-form.tsx` (a Fase 4 não tem
+lançamento manual — o gasto vem da API, e a tela é
+`src/components/settings/meta-ads-card.tsx`).
 
 O `vista` da página de Funis vira `"leads" | "lista" | "desempenho" | "saude"
 | "automacoes"` (rótulos: Quadro · Lista · Desempenho · Saúde · Automações —
@@ -413,7 +428,7 @@ envelhece):
 
 | Arquivo | O que muda |
 | --- | --- |
-| `src/types/index.ts` | `PipelineStage.degrau?: Degrau \| null`; aproveitar para acrescentar `account_id` a `Pipeline` e `Deal` (é NOT NULL desde a 017 e falta no tipo) |
+| `src/types/index.ts` | `PipelineStage.degrau?: string \| null` (string, e não o union `Degrau`, para `types/` não importar de `lib/funil` — quem lê a coluna estreita com `ehDegrau`/`ehClasse`); aproveitar para acrescentar `account_id` a `Pipeline` e `Deal` (é NOT NULL desde a 017 e falta no tipo) |
 | `src/lib/funil/degraus.ts` (+test) | catálogo dos degraus, `classificarEtapas` |
 | `src/lib/funil/trajetoria.ts` (+test) | `fatosDoNegocio`, regras 1–7 da seção 3.2, inclusive transferido e negócio nascido em etapa sem degrau |
 | `src/lib/funil/periodo.ts` (+test) | presets, período anterior, fuso local, virada de mês/ano |
@@ -553,8 +568,10 @@ lista com o select desabilitado; sem rolagem horizontal fora da tabela
 
 - Vista "Lista" no toggle da página de Funis (Quadro · Lista · Automações —
   o Kanban deixou de se chamar "Leads"). Módulo puro `src/lib/funil/lista.ts`
-  (colunas, preferência normalizada, ordenação, recorte, CSV) com 19 testes;
-  `src/lib/csv.ts` (`;` + BOM UTF-8, RFC 4180) com 4; hook `use-trajetorias`
+  (colunas, preferência normalizada, ordenação, recorte, CSV) com **14** testes;
+  `src/lib/csv.ts` (`;` + BOM UTF-8, RFC 4180) com **3** (os números 19 e 4
+  desta linha estavam ERRADOS desde que foram escritos — medidos em 04/09
+  contra os mesmos arquivos, sem uma linha de diferença); hook `use-trajetorias`
   (carregando DERIVADO da chave do pedido, sem setState síncrono no efeito);
   componentes `lista-de-leads`, `colunas-popover`, `seletor-de-periodo`.
   Suíte inteira **2610** verdes no Node 22; typecheck limpo; lint 0 erros;
@@ -620,8 +637,11 @@ carga da RPC para `[desde do período anterior, hoje)`):
 
 **Resultado esperado (medir):** com o funil de teste mapeado e 6–8 negócios
 movidos (inclusive um transferido para outro funil e um pulando degrau), os
-números batem com o cálculo à mão registrado no PR; a soma "fechados +
-perdidos + sem avanço + em andamento" = coorte; período sem coorte mostra
+números batem com o cálculo à mão registrado no PR; a partição de CINCO
+baldes fecha (`situacao`: fechado + perdido + sem avanço + em andamento +
+fora do funil = entradas — ⚠️ pelo campo `situacao`, nunca somando
+`resumo.fechados`, que é "alcançou contrato" e inclui quem voltou para
+Proposta); período sem coorte mostra
 zeros COM a nota "nenhum lead entrou no funil neste período" (não o estado
 "configure"); dark mode legível (cores do `chart-colors.ts`).
 
@@ -710,9 +730,12 @@ custo dos perdidos no Desempenho, sem digitação. Decisão do operador (03/09):
 começa direto pela API da Meta, na aba de Integrações.
 
 **Onde mora:** um cartão "Meta Ads" em Configurações → Integrações
-(`integracoes-panel.tsx` + `montar.ts`, rota `GET /api/cb/integracoes/status`),
-no padrão que o cartão "Google Agenda" já reserva ("não conectado" até a
-integração existir). Estados: não conectado · conectado (conta, moeda, última
+(`src/components/settings/meta-ads-card.tsx`, montado por
+`integracoes-panel.tsx` FORA do `cartoes.map`). ⚠️ Ele **não** passa por
+`montar.ts`/`montarCartoes` nem pela rota `/api/cb/integracoes/status`:
+aquilo é o caminho das chaves de IA, e este cartão tem rota própria
+(`GET /api/cb/meta-ads`), porque precisa de service role para ler uma tabela
+que o navegador não alcança. Visualmente segue o padrão do "Google Agenda". Estados: não conectado · conectado (conta, moeda, última
 sincronização, N campanhas, M sem funil) · erro (token vencido, sem
 permissão). Expandido: o formulário de conexão e a tabela campanha → funil.
 
@@ -739,8 +762,9 @@ INSERT/UPDATE/DELETE de `authenticated`, como `cb_tasks`):
   campaign_id)`. SELECT para o membro da conta (é o que amarra gasto → funil
   no Desempenho).
 - `cb_meta_ads_gastos`: `account_id`, `campaign_id`, `dia date`, `gasto
-  numeric(12,2)`, `atualizado_em`; `UNIQUE (account_id, campaign_id, dia)`.
-  SELECT para o membro da conta.
+  numeric(12,2)`, `atualizado_em`; a chave é a PRIMARY KEY composta
+  `(account_id, campaign_id, dia)` — é ela o alvo do `onConflict`. SELECT
+  para o membro da conta.
 
 **Rotas** (`/api/cb/meta-ads/*`, `requireRole('admin')`, service-role):
 - `PUT config` — grava conta + token cifrado e testa na hora (`GET
@@ -760,8 +784,10 @@ INSERT/UPDATE/DELETE de `authenticated`, como `cb_tasks`):
   `-m 120` do curl, não o `maxDuration`.
 
 **Sincronização (`src/lib/meta-ads/`):** `cliente.ts` (fetch a
-`graph.facebook.com/<META_API_VERSION>`, a mesma constante de `meta-api.ts`,
-paginando por `paging.next`) e `sincronizar.ts`: (1) relê as campanhas
+`graph.facebook.com/<META_ADS_API_VERSION>` — constante PRÓPRIA, porque a do
+`meta-api.ts` do WhatsApp não é exportada; são dois literais independentes, e
+subir a versão do Graph exige mexer nos dois — paginando por `paging.next`,
+com cerca de origem) e `sincronizar.ts`: (1) relê as campanhas
 (upsert por id, carimba `last_seen_at`); (2) `GET /act_<id>/insights?level=
 campaign&fields=campaign_id,spend&time_increment=1&time_range=…` para os
 **últimos 3 dias** — a Meta reprocessa o gasto de ontem por até 48h; puxar
@@ -769,8 +795,10 @@ só "hoje" congelaria um número que ainda muda — e upsert em gastos; (3)
 carimba `last_sync_at`/`last_error`. Primeira sincronização depois de
 conectar: 90 dias, em `after()`. Puros e testados: `janela-de-sync.ts`
 (quais dias puxar), `atribuicao.ts` (gasto do período por funil a partir de
-campanhas + gastos, e o "sem funil"), `cartao.ts` (o cartão para
-`montarCartoes`).
+campanhas + gastos, e o "sem funil"), `cartao.ts` (o estado que a rota
+`GET /api/cb/meta-ads` devolve ao cartão — nada a ver com `montarCartoes`).
+`cliente.ts` faz I/O; o que os testes cobrem são os ajudantes puros dele
+(`codigoDoErro`, `normalizarAdAccountId`, `semSegredo`, `doGraph`).
 
 **No Desempenho (linha 2 da Fase 2):** Investimento no período (soma do
 gasto diário das campanhas do funil nos dias do período — granularidade
@@ -814,7 +842,9 @@ veio cada lead — Fase 5a); orçamento e limites; qualquer escrita na Meta.
   eu não. O caminho de erro foi exercitado; o caminho feliz espera a
   conexão real.
 
-**Correções do Codex nesta mesma branch (PRs #121/#122, três P2):**
+**Correções do Codex às fases ANTERIORES, entregues nesta mesma branch**
+(os três achados são de Fase 2 e Fase 3, não da Fase 4 — vieram nos PRs #121
+e #122 e só foram corrigidos aqui):
 
 - **Taxa nula deixou de virar 0,0%** no gráfico de taxas: no preset "Total"
   (sem período anterior) e em transição sem denominador, o valor ia como
@@ -918,7 +948,11 @@ veio cada lead — Fase 5a); orçamento e limites; qualquer escrita na Meta.
   baixo.
 - ⚠️ **O gasto de ontem muda por 48h** na Meta: a janela de sincronização é
   de 3 dias, com upsert por (campanha, dia). Puxar só o dia corrente congela
-  número errado.
+  número errado. ⚠️ **E o upsert sozinho não basta**: quando o dia é
+  reprocessado para ZERO, a Meta OMITE a linha em vez de devolver 0 — o
+  valor antigo ficaria gravado e, ao sair da janela, viraria permanente. Por
+  isso a janela é RECONCILIADA: o que estava lá e não voltou no retrato é
+  apagado (achado do Codex no PR #123).
 
 ---
 

@@ -128,11 +128,20 @@ const formatarDataHora = (d: Date) =>
 export function ListaDeLeads({
   pipeline,
   stages,
+  etapasCarregadas,
   onEditDeal,
   onDealChanged,
 }: {
   pipeline: Pipeline;
   stages: PipelineStage[];
+  /**
+   * Se `stages` já é DESTE funil — igual em `Desempenho` e `Saude`. A página
+   * não limpa as etapas ao trocar de funil, então elas são as do ANTERIOR
+   * até a consulta voltar; sem esperar, nenhuma etapa casa, toda linha vira
+   * "fora do funil" e o seletor de etapa da linha nasce em branco (Codex,
+   * PR #123).
+   */
+  etapasCarregadas: boolean;
   /** abre o formulário do negócio (a página busca o negócio pelo id). */
   onEditDeal: (dealId: string) => void;
   /** depois de uma escrita: o quadro recarrega os dados dele. */
@@ -143,7 +152,7 @@ export function ListaDeLeads({
   const router = useRouter();
   const supabase = createClient();
   const podeMover = useCan("send-messages");
-  const { channels } = useChannels();
+  const { channels, loading: canaisCarregando } = useChannels();
 
   const [preset, setPreset] = useState<Preset>("este_mes");
   const [personalizado, setPersonalizado] = useState<Personalizado>({ desde: "", ate: "" });
@@ -154,10 +163,11 @@ export function ListaDeLeads({
   const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
 
   const intervalo = intervaloDoPreset(preset, new Date(), personalizado);
-  const { linhas, carregando, falhou, recarregar, atualizarLinha } = useTrajetorias(
-    pipeline.id,
-    intervalo,
-  );
+  const trajetorias = useTrajetorias(pipeline.id, intervalo);
+  const { linhas, falhou, recarregar, atualizarLinha } = trajetorias;
+  // Sem as etapas DESTE funil, `classificarEtapas` não casa nada: toda linha
+  // sairia "fora do funil" e o seletor da linha nasceria em branco.
+  const carregando = trajetorias.carregando || !etapasCarregadas;
 
   // Catálogo de campos (colunas + rótulos), blocos e nomes dos responsáveis —
   // uma busca por montagem; setState só no `.then` (regra do React Compiler).
@@ -393,7 +403,11 @@ export function ListaDeLeads({
             variant="outline"
             size="sm"
             onClick={exportar}
-            disabled={ordenadas.length === 0}
+            // ⚠️ Canais e perfis chegam em buscas PRÓPRIAS, depois das
+            // linhas. Exportar antes delas grava Conexão e Responsável
+            // VAZIOS num arquivo que sai da tela e vira planilha — o
+            // erro que ninguém percebe (Codex, PR #123).
+            disabled={ordenadas.length === 0 || canaisCarregando || catalogo === null}
             className="h-9 border-border bg-card text-foreground hover:bg-muted"
           >
             <Download className="mr-1 h-4 w-4" />

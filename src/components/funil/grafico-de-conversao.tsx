@@ -10,11 +10,16 @@ import {
   YAxis,
 } from "recharts";
 
-/** Uma série por transição do funil; a cor é uma classe Tailwind (`stroke-*`). */
+/**
+ * Uma série por transição do funil. ⚠️ A cor vem em TRÊS classes literais
+ * (traço, ponto, bloco da legenda), nunca numa só derivada por `replace`: o
+ * Tailwind não gera classe montada em tempo de execução — ver o comentário
+ * de `COR_DA_TRANSICAO` em `saude.tsx`.
+ */
 export interface SerieDeConversao {
   chave: string;
   rotulo: string;
-  classeDaCor: string;
+  cor: { traco: string; ponto: string; bloco: string };
   /** um ponto por mês, em pontos percentuais (0..100); nulo sem denominador */
   valores: (number | null)[];
 }
@@ -44,7 +49,7 @@ export function GraficoDeConversao({
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
         {series.map((s) => (
           <span key={s.chave} className="inline-flex items-center gap-1.5">
-            <span className={`inline-block h-2 w-3 rounded-sm ${s.classeDaCor.replace("stroke-", "bg-")}`} />
+            <span className={`inline-block h-2 w-3 rounded-sm ${s.cor.bloco}`} />
             {s.rotulo}
           </span>
         ))}
@@ -74,7 +79,7 @@ export function GraficoDeConversao({
                       const v = payload.find((p) => p.dataKey === s.chave)?.value;
                       return (
                         <div key={s.chave} className="flex items-center gap-1.5">
-                          <span className={`inline-block h-2 w-2 rounded-full ${s.classeDaCor.replace("stroke-", "bg-")}`} />
+                          <span className={`inline-block h-2 w-2 rounded-full ${s.cor.bloco}`} />
                           <span className="text-muted-foreground">{s.rotulo}:</span>
                           <span className="font-medium">{formatarValor(typeof v === "number" ? v : null)}</span>
                         </div>
@@ -90,9 +95,9 @@ export function GraficoDeConversao({
                 type="monotone"
                 dataKey={s.chave}
                 strokeWidth={2}
-                className={s.classeDaCor}
+                className={s.cor.traco}
                 stroke=""
-                dot={{ r: 3, className: `${s.classeDaCor} ${s.classeDaCor.replace("stroke-", "fill-")}`, stroke: "", fill: "" }}
+                dot={{ r: 3, className: `${s.cor.traco} ${s.cor.ponto}`, stroke: "", fill: "" }}
                 activeDot={{ r: 4 }}
                 connectNulls={false}
                 isAnimationActive={false}

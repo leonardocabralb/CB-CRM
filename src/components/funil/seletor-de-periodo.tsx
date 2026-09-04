@@ -63,6 +63,14 @@ export function SeletorDePeriodo({
               className="h-7 rounded-md border border-border bg-card px-1.5 text-xs text-foreground"
             />
           </label>
+          {!personalizado.desde && !personalizado.ate && (
+            // Sem nenhuma das duas datas o intervalo é o TOTAL — a tela
+            // mostra a história inteira com a pastilha dizendo
+            // "Personalizar", que é a leitura errada mais fácil de fazer
+            // (Codex, PR #123). Dizer isso é mais honesto que adivinhar
+            // um período que o operador não escolheu.
+            <span className="text-[11px] italic">{t("personalizadoVazio")}</span>
+          )}
         </div>
       )}
     </div>

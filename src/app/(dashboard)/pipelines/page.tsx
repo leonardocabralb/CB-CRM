@@ -733,8 +733,14 @@ export default function PipelinesPage() {
         </div>
       ) : vista === "lista" && selectedPipeline ? (
         <ListaDeLeads
+          // ⚠️ `key` por funil: sem ela o React reusa a instância e os
+          // FILTROS do funil anterior sobrevivem — o operador vê "0 de 37"
+          // sobre um funil cheio, com o seletor de etapa em branco porque o
+          // id filtrado não existe aqui (Codex, PR #123).
+          key={selectedPipeline.id}
           pipeline={selectedPipeline}
           stages={stages}
+          etapasCarregadas={etapasDe === selectedPipeline.id}
           onEditDeal={handleEditDealPorId}
           onDealChanged={refreshDeals}
         />

@@ -2324,8 +2324,9 @@ e sem saída na aba, a dois centímetros. O que morde código novo:
 ⚠️ **Funil comercial (975 — Fase 0 de `docs/PLANO-funil-comercial.md`): o
 funil de eficiência é FIXO e cada funil mapeia as SUAS etapas.**
 `pipeline_stages.degrau` ∈ {lead, mql, reuniao, proposta, contrato, perda,
-NULL}; `src/lib/funil/` (puro, testado: `degraus`, `trajetoria`, `periodo`,
-`coorte`, `saude`, `carregar`); a RPC `cb_funil_trajetorias`; o seletor por
+NULL}; `src/lib/funil/` — puros e testados: `degraus`, `trajetoria`, `periodo`,
+`coorte`, `saude`, `lista`, `apresentacao`; e `carregar`, que é o ÚNICO com
+I/O (o laço paginado da RPC) —; a RPC `cb_funil_trajetorias`; o seletor por
 etapa em `pipeline-settings.tsx`. As Fases 1–4 (lista, Desempenho, Saúde,
 Meta Ads) leem daqui. O que morde código novo:
 
@@ -2362,8 +2363,13 @@ Meta Ads) leem daqui. O que morde código novo:
 - ⚠️ **A situação PARTICIONA a coorte em cinco baldes** — fechado, perdido,
   sem avanço, em andamento e **fora do funil** (entrou por etapa mapeada e
   hoje está numa etapa SEM degrau). O quinto existe porque sem ele os totais
-  não fechavam com as entradas (Codex, PR #119); a tela do Desempenho tem de
-  mostrá-lo, não escondê-lo.
+  não fechavam com as entradas (Codex, PR #119). ⚠️ E a soma se faz por
+  `situacao`, NUNCA somando `resumo.fechados`: aquele campo é "alcançou
+  contrato" e inclui quem voltou para Proposta, então ele e `emAndamento`
+  contam o mesmo negócio duas vezes (é por isso que `coorte.test.ts`
+  recalcula o fechado a partir de `situacao`). Na tela, "sem avanço" e "em
+  andamento" aparecem sempre; o cartão "fora do funil" só entra quando há
+  alguém nele — vazio, ele seria uma categoria que não explica nada.
 - ⚠️ **Apagar etapa MAPEADA com histórico é barrado na tela de Funis.** O
   mapeamento é lido hoje sobre a história inteira (remapear reescreve o
   passado de propósito); etapa apagada some da classificação, a entrada no
@@ -2423,9 +2429,29 @@ Meta Ads) leem daqui. O que morde código novo:
   denominador também é. Com `?? 0` o tooltip afirmava "0,0%" — conversão
   MEDIDA em zero, que não houve. O nulo viaja como nulo (recharts omite a
   barra) e o formatador escreve "—".
+- ⚠️⚠️ **A LISTA leva `key={funil.id}` na página, e não é enfeite.** Sem ela
+  o React reusa a instância ao trocar de funil: o FILTRO de etapa do funil
+  anterior sobrevive, nenhuma etapa daqui casa com ele, e o operador vê
+  "0 de 37" sobre um funil cheio com o seletor de etapa EM BRANCO — porque o
+  id filtrado não existe nesta lista (Codex, PR #123). As três vistas também
+  recebem `etapasCarregadas` pelo mesmo motivo de fundo: a página não limpa
+  `stages` ao trocar de funil, então elas são as do ANTERIOR até a consulta
+  voltar.
+- ⚠️ **Exportar CSV espera os CATÁLOGOS, não só as linhas.** Canais e perfis
+  chegam em buscas próprias, depois das trajetórias: exportar no meio disso
+  grava Conexão e Responsável VAZIOS num arquivo que sai da tela e vira
+  planilha. O botão fica desabilitado até os dois chegarem.
+- ⚠️⚠️ **As cores das linhas da Saúde são TRÊS classes literais por degrau**
+  (`traco`/`ponto`/`bloco`), nunca uma só derivada com
+  `replace("stroke-", "fill-")`. O Tailwind varre o FONTE atrás de strings e
+  não executa código: a classe montada em tempo de execução não é gerada, e
+  o ponto da linha caía no preto padrão do SVG, sem erro nenhum. Medido no
+  CSS compilado — `.fill-sky-500` tinha ZERO ocorrências (Codex, PR #123).
+  Mesma armadilha da `PALETA_DE_CANAIS`.
 - **META ADS (Fase 4, 976): o CRM só LÊ, e o token é o único segredo.**
-  `src/lib/meta-ads/` (`cliente.ts`, `janela-de-sync.ts`, `atribuicao.ts`,
-  `cartao.ts` puros e testados; `sincronizar.ts` server-side), rotas em
+  `src/lib/meta-ads/`: `janela-de-sync.ts`, `atribuicao.ts` e `cartao.ts`
+  são puros e testados; `cliente.ts` faz I/O (os testes cobrem os ajudantes
+  puros dele) e `sincronizar.ts` é server-side, com dublê no teste. Rotas em
   `/api/cb/meta-ads/`, cartão em Configurações → Integrações, e no
   Desempenho os cards de investimento/CAC. O que morde código novo:
   - ⚠️⚠️ **`cb_meta_ads_config` NÃO tem SELECT para `authenticated`** — nem
@@ -2436,25 +2462,54 @@ Meta Ads) leem daqui. O que morde código novo:
   - ⚠️⚠️ **A mensagem da Meta ECOA O TOKEN, e ela ia para o LOG.** Medido em
     04/09 no primeiro teste da conexão: token malformado volta como
     "Malformed access token EAAB…", e os dois chamadores registram essa
-    frase. Devolver só o CÓDIGO ao navegador (`token_invalido`,
-    `sem_permissao`, `conta_nao_encontrada`, `limite`, `meta_error`) não
-    bastava — log de servidor é lido por quem não deveria ter o token. Por
-    isso tudo que vira `MetaAdsError.message` passa por `semSegredo()`
-    (`cliente.ts`), que troca o token pelo marcador `«token»` e limpa
-    `access_token=` de URL (a paginação da Meta devolve o cursor com ele).
-    Há teste com a frase real. Quem criar outro caminho de erro repete a
-    passagem — é a mesma armadilha da chave da OpenAI em
+    frase. Devolver só o CÓDIGO ao navegador **não bastava** — log de
+    servidor é lido por quem não deveria ter o token, e a mensagem crua
+    CONTINUA viva em `MetaAdsError.message`, de propósito, porque é ela que
+    diz o que houve. Quem protege são duas funções de `cliente.ts`, e código
+    novo precisa das duas:
+    · **`semSegredo(texto, token)`** — por onde passa TUDO que vira
+      `MetaAdsError.message`: troca o token pelo marcador `«token»` e limpa
+      `access_token=` de URL. Há teste com a frase real medida.
+    · **`doGraph(url)`** — recusa qualquer URL fora de
+      `https://graph.facebook.com` antes do pedido. Ela existe porque o
+      token viaja no CABEÇALHO e `paging.next` é uma URL vinda da RESPOSTA:
+      segui-la para outro host entregaria o token àquele host.
+    Os códigos são **seis** — `token_invalido`, `sem_permissao`,
+    `conta_nao_encontrada`, `limite`, `rede` (tempo esgotado/falha de
+    fetch) e `meta_error`. É a mesma armadilha da chave da OpenAI em
     `/api/cb/integracoes/status`.
   - ⚠️ **O token vai no cabeçalho `Authorization: Bearer`, nunca em
     `?access_token=`** na URL (vaza em log de proxy) — mesma regra da chave
-    do Gemini. ⚠️ E como ele viaja no CABEÇALHO, a paginação precisa de
-    cerca: `paging.next` é uma URL vinda da RESPOSTA, e seguir uma de outro
-    host entregaria o token a esse host. `doGraph()` confere a origem antes
-    de cada pedido, inclusive o primeiro.
+    do Gemini. A cerca de origem que isso exige está no item acima
+    (`doGraph`).
   - ⚠️ **A janela de sincronização é de 3 DIAS, não "hoje"**: a Meta
     reprocessa o gasto por até 48h. Puxar só o dia corrente congela um
     número que ainda muda, e o upsert é por `(conta, campanha, dia)`
     justamente para reescrever. Primeira sincronização: 90 dias.
+  - ⚠️⚠️ **E o upsert sozinho NÃO limpa o dia que zerou.** Quando a Meta
+    reprocessa um dia para zero, ela OMITE a linha em vez de devolver 0 —
+    o valor antigo continuaria gravado e, ao sair da janela de 3 dias,
+    viraria permanente, inflando investimento, custo por lead e CAC para
+    sempre (Codex, PR #123). Por isso a janela é RECONCILIADA: o que estava
+    lá e não voltou no retrato é apagado, agrupado POR DIA (3 consultas na
+    janela normal; zero na primeira, que acha a tabela vazia). Há teste.
+  - ⚠️ **Bater no teto de páginas ESTOURA, nunca devolve meia lista.** Uma
+    sync que voltasse truncada gravaria `last_sync_at` sobre um import
+    incompleto — e a janela seguinte tem 3 dias, então aqueles dias nunca
+    mais seriam buscados. Falhando, a conta fica em `status = 'erro'`,
+    visível na tela, e a próxima tentativa ainda é a primeira (90 dias).
+  - ⚠️⚠️ **Consulta de gasto que falhou ou não coube NÃO vira número.**
+    `useGastosDeAnuncios` devolve `falhou`, e o Desempenho diz que não
+    conseguiu ler. Publicar a soma parcial como total faz custo por lead e
+    CAC mentirem PARA BAIXO — e o `dia` ordena ASCENDENTE, então o que o
+    teto cortaria seria justamente o gasto mais NOVO. As campanhas também
+    paginam: campanha que não veio some do mapa e o gasto DELA é descartado
+    por `gastoDoPeriodo`, sem nem entrar no aviso "sem funil".
+  - ⚠️ **O chip do cartão não afirma "Não conectada" enquanto carrega.** Ele
+    fica no cabeçalho, sempre visível: dizer isso durante a carga (ou quando
+    a carga falha) acusa de desconexão uma integração de pé, e o operador
+    recadastra conta e token para consertar o que não quebrou. "Conferindo…"
+    enquanto não se sabe, vermelho quando a leitura falhou.
   - ⚠️ **Campanha SEM funil não some do total** — vira aviso com link para
     Integrações. Silenciada, o custo por lead sai menor do que é, que é o
     erro que ninguém percebe.

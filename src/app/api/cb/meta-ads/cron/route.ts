@@ -36,8 +36,20 @@ export async function GET(request: Request) {
 
   const admin = supabaseAdmin();
   const inicio = Date.now();
-  const { data: contas, error } = await admin.from("cb_meta_ads_config").select("account_id");
-  if (error) return NextResponse.json({ error: "db_error" }, { status: 500 });
+  // Pagina: é a consulta que decide QUEM sincroniza, e o teto de 1000 do
+  // PostgREST deixaria a cauda sem sincronizar para sempre, em silêncio.
+  const contas: { account_id: string }[] = [];
+  for (let pagina = 0; pagina < 20; pagina++) {
+    const { data, error } = await admin
+      .from("cb_meta_ads_config")
+      .select("account_id")
+      .order("account_id")
+      .range(pagina * 1000, pagina * 1000 + 999);
+    if (error) return NextResponse.json({ error: "db_error" }, { status: 500 });
+    if (!data) break;
+    contas.push(...(data as { account_id: string }[]));
+    if (data.length < 1000) break;
+  }
 
   let ok = 0;
   let falhas = 0;

@@ -301,7 +301,7 @@
       "yesterday": "Yesterday",
       "channelChangedWhileTyping": "Not sent. {channel} messaged you from a different number while you were typing — the thread moved there. Check the channel above and send again.",
       "sessionExpiredBlocked": "Not sent: the 24-hour window closed. Use a template to re-engage.",
-            "channelChangedUnknown": "The customer",
+      "channelChangedUnknown": "The customer",
       "searchInThread": "“{termo}” — {atual} of {total}",
       "searchPrevHit": "Previous match",
       "searchNextHit": "Next match"
@@ -1162,7 +1162,8 @@
         "total": "Total",
         "personalizado": "Custom",
         "de": "From",
-        "ate": "To"
+        "ate": "To",
+        "personalizadoVazio": "no dates: showing everything"
       },
       "desempenho": {
         "periodoPorEntrada": "Period by funnel entry date",
@@ -1231,6 +1232,7 @@
           "porPerdido": "cost per lead × lost",
           "semFunil": "{valor} in {n} campaign(s) without a pipeline in the period — assign them in Integrations so cost per lead is right.",
           "naoConectado": "Connect Meta Ads in Integrations to see spend, cost per lead and CAC.",
+          "falhou": "Could not read ad spend right now. Cost figures stay out until the next attempt.",
           "abrirIntegracoes": "Open Integrations",
           "porCampanha": "Spend per campaign",
           "colCampanha": "Campaign",

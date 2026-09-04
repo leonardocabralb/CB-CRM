@@ -29,7 +29,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     if (pipelineId !== null) {
-      const { data: funil } = await ctx.supabase.from("pipelines").select("id").eq("id", pipelineId).maybeSingle();
+      // Erro de banco NÃO é "não encontrado": um tempo esgotado do PostgREST
+      // viraria um 404 mandando o admin procurar um funil que existe.
+      const { data: funil, error: erroFunil } = await ctx.supabase
+        .from("pipelines")
+        .select("id")
+        .eq("id", pipelineId)
+        .maybeSingle();
+      if (erroFunil) return NextResponse.json({ error: "db_error" }, { status: 500 });
       if (!funil) return NextResponse.json({ error: "Funil não encontrado." }, { status: 404 });
     }
 
