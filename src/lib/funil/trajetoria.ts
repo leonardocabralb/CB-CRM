@@ -66,7 +66,17 @@ export interface LinhaDeTrajetoria {
   channel_id: string | null;
   source: string | null;
   assigned_to: string | null;
-  created_at: string;
+  /**
+   * ⚠️ NULO é possível: `deals.created_at` é `DEFAULT now()` mas NULLABLE
+   * (001, e a 912 já usa `coalesce` reconhecendo isso). Exigi-lo aqui fazia
+   * UMA linha assim derrubar `carregarTrajetorias` inteiro — que devolve
+   * `null` no primeiro registro inválido — e as três vistas do funil
+   * ficavam em "falhou · tentar de novo" PARA SEMPRE, por causa de um
+   * carimbo de data que só serve de queda para `naEtapaDesde` e de coluna
+   * na lista (revisão do PR #123). A régua "não confie" vale para desvio de
+   * FORMA, não para um timestamp opcional.
+   */
+  created_at: string | null;
   updated_at: string | null;
   contato_nome: string | null;
   contato_telefone: string | null;
@@ -139,12 +149,7 @@ function lerTrajeto(v: unknown): PassoDoTrajeto[] | undefined {
 export function lerLinha(cru: unknown): LinhaDeTrajetoria | null {
   if (!ehObjeto(cru)) return null;
   const { deal_id, pipeline_id, stage_id, created_at } = cru;
-  if (
-    typeof deal_id !== "string" ||
-    typeof pipeline_id !== "string" ||
-    typeof stage_id !== "string" ||
-    typeof created_at !== "string"
-  ) {
+  if (typeof deal_id !== "string" || typeof pipeline_id !== "string" || typeof stage_id !== "string") {
     return null;
   }
   const value = lerNumero(cru.value);
@@ -177,7 +182,7 @@ export function lerLinha(cru: unknown): LinhaDeTrajetoria | null {
     deal_id,
     pipeline_id,
     stage_id,
-    created_at,
+    created_at: typeof created_at === "string" ? created_at : null,
     title: typeof cru.title === "string" ? cru.title : "",
     value,
     trajeto,
@@ -224,7 +229,8 @@ export interface FatosDoNegocio {
   etapaAtual: string | null;
   classeAtual: ClasseDaEtapa | null;
   /** regra 5. */
-  naEtapaDesde: Date;
+  /** nulo só quando não há passo AQUI nem `created_at` — ver o tipo da linha. */
+  naEtapaDesde: Date | null;
   situacao: Situacao;
   /** chegou ao último degrau (conta como contrato mesmo se voltou depois). */
   alcancouContrato: boolean;
@@ -283,7 +289,7 @@ export function fatosDoNegocio(
     degrauMaximo,
     etapaAtual,
     classeAtual,
-    naEtapaDesde: naEtapaDesde ?? new Date(linha.created_at),
+    naEtapaDesde: naEtapaDesde ?? (linha.created_at ? new Date(linha.created_at) : null),
     situacao: situacaoDe(classeAtual, degrauMaximo),
     alcancouContrato: degrauMaximo === indiceDoDegrau("contrato"),
   };

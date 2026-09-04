@@ -2429,6 +2429,35 @@ Meta Ads) leem daqui. O que morde código novo:
   denominador também é. Com `?? 0` o tooltip afirmava "0,0%" — conversão
   MEDIDA em zero, que não houve. O nulo viaja como nulo (recharts omite a
   barra) e o formatador escreve "—".
+- ⚠️⚠️ **`resumo.fechados` NÃO é dinheiro.** São DUAS contas, e trocá-las é
+  o erro fácil: `fechados` é "ALCANÇOU contrato" (regra 3, monotônica) e é o
+  número do DEGRAU do funil de eficiência e das taxas; `fechadosAgora` é
+  `situacao === 'fechado'` e é de onde saem valor fechado, ticket médio e o
+  CAC. Um distrato — chegou a contrato e foi para etapa de perda — está nos
+  dois primeiros e em nenhum dos segundos: contado como receita, ele
+  reaparecia como dinheiro ganho E como perda, e dividia o investimento por
+  um número inflado. Medido numa coorte de teste: 4 "contratos" e R$ 68.000
+  onde havia 1 e R$ 24.000 (revisão do PR #123). A partição dos cinco baldes
+  é por `situacao`, então quem a somar usa `fechadosAgora`.
+- ⚠️ **O gráfico de entradas por dia soma o mesmo que o card "Leads".** A
+  grade densa vem do intervalo (limitada pelo fim e por um teto de dias); a
+  coorte, não. Relógio de navegador minutos atrás da meia-noite do banco, ou
+  um período personalizado de décadas, deixava lead fora do gráfico com o
+  card contando — os dias da coorte que a grade não cobre entram na lista.
+- ⚠️ **CSV: aspas NÃO protegem contra fórmula.** O Excel tira a citação e
+  AVALIA o que começa com `=`, `+`, `-`, `@`, tabulação ou CR. Nome de
+  contato vem do push name do WhatsApp e campo personalizado vem do n8n:
+  `=HYPERLINK(…&A1,…)` viraria link clicável levando a célula vizinha, no
+  computador de quem abrir a planilha. `neutralizarFormula` (`lib/csv.ts`)
+  põe apóstrofo na frente — menos em número, que precisa continuar número.
+  Quem escrever outro exportador repete a passagem.
+- ⚠️ **`created_at` da RPC é NULÁVEL, e `lerLinha` aceita.** `deals.created_at`
+  é `DEFAULT now()` mas NULLABLE (001; a 912 já usa `coalesce`). Exigi-lo
+  fazia UMA linha assim derrubar `carregarTrajetorias` inteiro — ele
+  descarta a carga no primeiro inválido — e as três vistas ficavam em
+  "falhou · tentar de novo" para sempre, por causa de um carimbo que só
+  serve de queda para `naEtapaDesde` e de coluna na lista. A régua "não
+  confie" vale para desvio de FORMA, não para timestamp opcional.
 - ⚠️⚠️ **A LISTA leva `key={funil.id}` na página, e não é enfeite.** Sem ela
   o React reusa a instância ao trocar de funil: o FILTRO de etapa do funil
   anterior sobrevive, nenhuma etapa daqui casa com ele, e o operador vê

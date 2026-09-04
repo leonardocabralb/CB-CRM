@@ -842,6 +842,35 @@ veio cada lead — Fase 5a); orçamento e limites; qualquer escrita na Meta.
   eu não. O caminho de erro foi exercitado; o caminho feliz espera a
   conexão real.
 
+**Revisão de código do trabalho inteiro (04/09), e o que ela mudou.** Quatro
+revisores independentes leram os módulos puros, o SQL e as rotas, os
+componentes e os dois documentos contra o código. O que virou correção nesta
+branch, além dos quatro achados do Codex no próprio PR #123:
+
+- ⚠️⚠️ **Dinheiro deixou de contar quem VOLTOU.** `resumo.fechados` é
+  "alcançou contrato" (o degrau do funil, monotônico); valor fechado, ticket
+  médio e CAC passaram a sair de `fechadosAgora` (`situacao === 'fechado'`).
+  Um distrato aparecia como receita E como perda, e dividia o investimento
+  por um número inflado — medido numa coorte de teste: 4 "contratos" e
+  R$ 68.000 onde havia 1 e R$ 24.000.
+- **O gráfico de entradas por dia passou a somar o mesmo que o card "Leads"**
+  (a grade densa é limitada; a coorte não é).
+- **CSV: aspas não protegem contra fórmula** — nome vindo do WhatsApp ou
+  campo vindo do n8n começando com `=`/`+`/`-`/`@` era avaliado pelo Excel
+  na máquina de quem abrisse a planilha.
+- **`created_at` nulo deixou de derrubar as três vistas** (uma linha assim
+  descartava a carga inteira, para sempre).
+- **A seta do delta passou a concordar com o texto** no intervalo de ±0,05.
+- **O token da Meta não sobrevive à mensagem de erro nem ao log**
+  (`semSegredo`), e a paginação não segue URL fora do Graph (`doGraph`).
+- **Teste novo pinando a RLS das três tabelas do Meta Ads**: elas só podem
+  dar SELECT ao membro porque a RLS está ligada, e a conferência dentro da
+  migration testa GRANT, não RLS.
+- **A auditoria dos documentos achou 16 imprecisões**, todas corrigidas —
+  inclusive duas contagens de teste erradas desde que foram escritas, três
+  componentes listados que nunca existiram e a afirmação de que o cartão do
+  Meta Ads passa por `montar.ts`.
+
 **Correções do Codex às fases ANTERIORES, entregues nesta mesma branch**
 (os três achados são de Fase 2 e Fase 3, não da Fase 4 — vieram nos PRs #121
 e #122 e só foram corrigidos aqui):

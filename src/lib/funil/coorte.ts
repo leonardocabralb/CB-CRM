@@ -67,12 +67,28 @@ export interface ResumoDoPeriodo {
   /**
    * Entrou no funil e hoje está numa etapa SEM degrau (estacionado). É balde
    * da coorte como os outros — sem ele, os totais não fechavam com as
-   * entradas (achado do Codex no PR #119). A situação particiona a coorte:
-   * fechado + perdido + sem avanço + em andamento + fora do funil = entradas.
+   * entradas (achado do Codex no PR #119). ⚠️ A partição é por `situacao`:
+   * fechado + perdido + sem avanço + em andamento + fora do funil =
+   * entradas — e o "fechado" dela é `fechadosAgora`, NUNCA `fechados`
+   * (aquele é "alcançou contrato" e inclui quem voltou).
    */
   foraDoFunil: number;
-  /** alcançaram contrato (regra 3), mesmo que tenham voltado depois. */
+  /**
+   * ⚠️ ALCANÇARAM contrato (regra 3), mesmo que tenham voltado ou se
+   * perdido depois. É o número do DEGRAU do funil de eficiência e das
+   * taxas — não é "contrato em pé", e somá-lo aos baldes conta o mesmo
+   * negócio duas vezes. Para dinheiro, use `fechadosAgora`.
+   */
   fechados: number;
+  /**
+   * Contratos que ESTÃO fechados hoje (`situacao === 'fechado'`). É daqui
+   * que saem valor fechado, ticket médio e o CAC: um distrato (chegou a
+   * contrato e foi para uma etapa de perda) reaparecia como receita e
+   * dividia o investimento por um número inflado — medido numa coorte de
+   * teste, 4 "contratos" e R$ 68.000 onde havia 1 e R$ 24.000 (revisão do
+   * PR #123).
+   */
+  fechadosAgora: number;
   valorFechado: number;
   ticketMedio: number | null;
   /** densa quando o intervalo tem `desde`; esparsa (só dias com lead) no Total. */
@@ -135,9 +151,11 @@ export function resumoDoPeriodo(
     emAndamentoPorDegrau[f.classeAtual] = (emAndamentoPorDegrau[f.classeAtual] ?? 0) + 1;
   }
 
-  const fechadosDaCoorte = coorte.filter((f) => f.alcancouContrato);
-  const fechados = fechadosDaCoorte.length;
-  const valorFechado = fechadosDaCoorte.reduce((soma, f) => soma + f.linha.value, 0);
+  // Duas contas diferentes de propósito: o DEGRAU conta quem alcançou
+  // contrato (é o funil de eficiência); o DINHEIRO conta o que está fechado.
+  const fechados = coorte.filter((f) => f.alcancouContrato).length;
+  const emPe = coorte.filter((f) => f.situacao === "fechado");
+  const valorFechado = emPe.reduce((soma, f) => soma + f.linha.value, 0);
 
   return {
     entradas,
@@ -151,8 +169,9 @@ export function resumoDoPeriodo(
     emAndamentoPorDegrau,
     foraDoFunil: coorte.filter((f) => f.situacao === "fora_do_funil").length,
     fechados,
+    fechadosAgora: emPe.length,
     valorFechado,
-    ticketMedio: fechados > 0 ? valorFechado / fechados : null,
+    ticketMedio: emPe.length > 0 ? valorFechado / emPe.length : null,
     entradasPorDia: entradasPorDia(coorte, intervalo, agora),
   };
 }
@@ -168,7 +187,14 @@ function entradasPorDia(
     const dia = localDayKey(f.entradaEm);
     contagem.set(dia, (contagem.get(dia) ?? 0) + 1);
   }
-  const dias = intervalo.desde ? diasDoIntervalo(intervalo, agora) : [...contagem.keys()].sort();
+  const densos = intervalo.desde ? diasDoIntervalo(intervalo, agora) : [];
+  // ⚠️ A grade densa é limitada (fim do intervalo, teto de dias); a coorte
+  // NÃO é. Um relógio de navegador alguns minutos à frente da meia-noite do
+  // banco, ou um período personalizado de 26 anos, deixava lead FORA do
+  // gráfico enquanto o card "Leads" continuava contando — soma menor que o
+  // total, sem nada avisando (revisão do PR #123). Os dias da coorte que a
+  // grade não cobre entram, e a ordenação é do próprio dia.
+  const dias = [...new Set([...densos, ...contagem.keys()])].sort();
   return dias.map((dia) => ({ dia, n: contagem.get(dia) ?? 0 }));
 }
 

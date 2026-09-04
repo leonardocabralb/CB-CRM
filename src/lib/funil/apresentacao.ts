@@ -35,7 +35,19 @@ export function formatarPp(pp: number | null): string | null {
   return pp === null ? null : `${umaCasaComSinal.format(pp)} pp`;
 }
 
-/** -1, 0 ou 1 — o que decide a seta e a cor do delta. */
+/**
+ * O sinal do que a tela ESCREVE, não o do número cru. `Intl` decide o sinal
+ * sobre o valor ARREDONDADO, então -0,04 pp sai como "0,0 pp": com o sinal
+ * cru, a seta vermelha para baixo aparecia ao lado de um texto dizendo zero
+ * (revisão do PR #123).
+ */
+export function sinalArredondado(valor: number, casas: number): number {
+  const fator = 10 ** casas;
+  const arredondado = Math.round(valor * fator) / fator;
+  return sinalDe(arredondado);
+}
+
+/** -1, 0 ou 1 do valor CRU — a tela usa `sinalArredondado`. */
 export function sinalDe(n: number | null): number {
   if (n === null || n === 0) return 0;
   return n > 0 ? 1 : -1;

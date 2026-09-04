@@ -307,7 +307,9 @@ export function ListaDeLeads({
       case "numero":
         return <span className="tabular-nums text-muted-foreground">{indice + 1}</span>;
       case "data":
-        return <span className="tabular-nums">{formatarData(new Date(l.created_at))}</span>;
+        return (
+          <span className="tabular-nums">{l.created_at ? formatarData(new Date(l.created_at)) : traco}</span>
+        );
       case "nome":
         return conversaDe(f) ? (
           <button
@@ -323,7 +325,7 @@ export function ListaDeLeads({
         );
       case "naEtapaDesde":
         return (
-          <span className="tabular-nums text-muted-foreground">{formatarDataHora(f.naEtapaDesde)}</span>
+          <span className="tabular-nums text-muted-foreground">{f.naEtapaDesde ? formatarDataHora(f.naEtapaDesde) : traco}</span>
         );
       case "etapa": {
         const etapa = f.etapaAtual ? etapaPorId.get(f.etapaAtual) : undefined;

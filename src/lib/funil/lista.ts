@@ -130,7 +130,11 @@ export function linhasDoFunil(fatos: readonly FatosDoNegocio[]): FatosDoNegocio[
 
 /** Período da lista = criação do negócio (D3). */
 export function noPeriodo(fatos: readonly FatosDoNegocio[], intervalo: Intervalo): FatosDoNegocio[] {
-  return fatos.filter((f) => dentroDoIntervalo(new Date(f.linha.created_at), intervalo));
+  // Sem data de criação não dá para dizer se cabe no período: fica de fora
+  // do recorte por data, e aparece no "Total" (que não filtra).
+  return fatos.filter((f) =>
+    f.linha.created_at ? dentroDoIntervalo(new Date(f.linha.created_at), intervalo) : false,
+  );
 }
 
 const soDigitos = (texto: string) => texto.replace(/\D+/g, "");
@@ -167,9 +171,9 @@ const cmpNumero = (a: number, b: number) => a - b;
 function chaveNumerica(f: FatosDoNegocio, coluna: ColunaOrdenavel, posicaoDaEtapa: Map<string, number>): number | null {
   switch (coluna) {
     case "data":
-      return new Date(f.linha.created_at).getTime();
+      return f.linha.created_at ? new Date(f.linha.created_at).getTime() : null;
     case "naEtapaDesde":
-      return f.naEtapaDesde.getTime();
+      return f.naEtapaDesde?.getTime() ?? null;
     case "entrada":
       return f.entradaEm ? f.entradaEm.getTime() : null;
     case "valor":
@@ -226,11 +230,11 @@ export function celula(f: FatosDoNegocio, coluna: ColunaId, indice: number, ctx:
     case "numero":
       return String(indice + 1);
     case "data":
-      return ctx.formatarData(new Date(l.created_at));
+      return l.created_at ? ctx.formatarData(new Date(l.created_at)) : "";
     case "nome":
       return nomeDaLinha(f);
     case "naEtapaDesde":
-      return ctx.formatarData(f.naEtapaDesde);
+      return f.naEtapaDesde ? ctx.formatarData(f.naEtapaDesde) : "";
     case "etapa":
       return ctx.nomeDaEtapa(f.etapaAtual);
     case "valor":

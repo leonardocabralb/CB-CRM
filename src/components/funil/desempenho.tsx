@@ -27,7 +27,7 @@ import {
   formatarPp,
   formatarVariacao,
   paraPontosPercentuais,
-  sinalDe,
+  sinalArredondado,
 } from "@/lib/funil/apresentacao";
 import { comparar, resumoDoPeriodo } from "@/lib/funil/coorte";
 import { DEGRAUS, classificarEtapas, type Degrau } from "@/lib/funil/degraus";
@@ -136,12 +136,19 @@ export function Desempenho({
   const comparacao = comparar(atual, resumoAnterior);
   const dias = duracaoEmDias(intervalo, agora);
 
+  // A seta sai do valor ARREDONDADO, o mesmo que o texto ao lado escreve:
+  // com o sinal cru, -0,04 pp virava seta vermelha ao lado de "0,0 pp".
   const deltaDeContagem = (variacao: number | null) =>
     variacao === null
       ? undefined
-      : { sign: sinalDe(variacao), label: t("cards.vsAnterior", { delta: formatarVariacao(variacao) ?? "" }) };
+      : {
+          sign: sinalArredondado(variacao * 100, 0),
+          label: t("cards.vsAnterior", { delta: formatarVariacao(variacao) ?? "" }),
+        };
   const deltaDeTaxa = (pp: number | null) =>
-    pp === null ? undefined : { sign: sinalDe(pp), label: t("cards.vsAnterior", { delta: formatarPp(pp) ?? "" }) };
+    pp === null
+      ? undefined
+      : { sign: sinalArredondado(pp, 1), label: t("cards.vsAnterior", { delta: formatarPp(pp) ?? "" }) };
 
   const linhasDeTaxas: LinhaDeTaxa[] = [
     ...comparacao.transicoes.map((tr) => ({
@@ -165,7 +172,9 @@ export function Desempenho({
   const pctDosLeads = (n: number) => formatarPercentual(atual.entradas > 0 ? n / atual.entradas : null);
 
   const investimento = gastoDoPeriodo(anuncios.gastos, anuncios.campanhas, pipeline.id, diasDoPeriodo(intervalo, agora));
-  const custo = custos(investimento.total, atual.entradas, atual.fechados, atual.perdidos);
+  // CAC divide por contrato EM PÉ: com "alcançou contrato", um distrato
+  // dividia o investimento por um número inflado (revisão do PR #123).
+  const custo = custos(investimento.total, atual.entradas, atual.fechadosAgora, atual.perdidos);
   const moeda = (v: number | null) => (v === null ? "—" : formatCurrency(v));
 
   return (
@@ -236,7 +245,7 @@ export function Desempenho({
               title={t("cards.valorFechado")}
               value={formatCurrency(atual.valorFechado)}
               icon={DollarSign}
-              subtitle={t("cards.contratosFechados", { n: atual.fechados })}
+              subtitle={t("cards.contratosFechados", { n: atual.fechadosAgora })}
             />
             <MetricCard
               title={t("cards.ticketMedio")}

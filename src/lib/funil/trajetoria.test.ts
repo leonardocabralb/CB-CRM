@@ -125,7 +125,7 @@ describe("fatosDoNegocio — regras 1, 3, 4, 5", () => {
     expect(f.entradaEm?.toISOString()).toBe("2026-09-01T12:00:00.000Z");
     expect(f.degrauMaximo).toBe(0);
     expect(f.situacao).toBe("sem_avanco");
-    expect(f.naEtapaDesde.toISOString()).toBe("2026-09-01T12:00:00.000Z");
+    expect(f.naEtapaDesde!.toISOString()).toBe("2026-09-01T12:00:00.000Z");
     expect(f.noFunil).toBe(true);
     expect(f.transferidoPara).toBeNull();
   });
@@ -217,7 +217,7 @@ describe("fatosDoNegocio — regras 1, 3, 4, 5", () => {
     );
     expect(f.situacao).toBe("perdido");
     expect(f.degrauMaximo).toBe(2);
-    expect(f.naEtapaDesde.toISOString()).toBe("2026-09-03T13:00:00.000Z");
+    expect(f.naEtapaDesde!.toISOString()).toBe("2026-09-03T13:00:00.000Z");
   });
 
   it("voltar para Lead depois de MQL não é 'sem avanço' — é andamento", () => {
@@ -235,7 +235,7 @@ describe("fatosDoNegocio — regras 1, 3, 4, 5", () => {
       CLASSIFICACAO,
     );
     expect(f.situacao).toBe("andamento");
-    expect(f.naEtapaDesde.toISOString()).toBe("2026-09-02T13:00:00.000Z");
+    expect(f.naEtapaDesde!.toISOString()).toBe("2026-09-02T13:00:00.000Z");
   });
 
   it("chegou a contrato: fechado, alcançou contrato", () => {
@@ -278,7 +278,7 @@ describe("fatosDoNegocio — regras 1, 3, 4, 5", () => {
     expect(f.etapaAtual).toBe("contrato");
     expect(f.situacao).toBe("fechado");
     expect(f.alcancouContrato).toBe(true);
-    expect(f.naEtapaDesde.toISOString()).toBe("2026-09-03T12:00:00.000Z");
+    expect(f.naEtapaDesde!.toISOString()).toBe("2026-09-03T12:00:00.000Z");
   });
 
   it("transferido PARA cá: a entrada é a chegada, não a criação no outro funil", () => {
@@ -313,7 +313,7 @@ describe("fatosDoNegocio — regras 1, 3, 4, 5", () => {
       CLASSIFICACAO,
     );
     expect(f.entradaEm?.toISOString()).toBe("2026-09-01T12:00:00.000Z");
-    expect(f.naEtapaDesde.toISOString()).toBe("2026-09-02T12:00:00.000Z");
+    expect(f.naEtapaDesde!.toISOString()).toBe("2026-09-02T12:00:00.000Z");
   });
 });
 
@@ -335,5 +335,30 @@ describe("aplicarMudancaDeEtapa — estado otimista", () => {
     const f = fatosDoNegocio(depois, FUNIL, CLASSIFICACAO);
     expect(f.situacao).toBe("andamento");
     expect(f.naEtapaDesde).toEqual(em);
+  });
+});
+
+describe("created_at nulo não derruba a carga", () => {
+  it("a linha é aceita e `naEtapaDesde` cai para nulo quando não há passo aqui", () => {
+    // `deals.created_at` é DEFAULT now() mas NULLABLE. Uma linha assim
+    // fazia `lerLinha` devolver null, e `carregarTrajetorias` descarta a
+    // carga INTEIRA no primeiro inválido — as três vistas ficavam em
+    // "falhou" para sempre por causa de um carimbo de data (revisão do
+    // PR #123).
+    const linha = lerLinha({
+      deal_id: "d1",
+      pipeline_id: "p1",
+      stage_id: "s1",
+      created_at: null,
+      value: 0,
+      trajeto: [],
+    });
+    expect(linha).not.toBeNull();
+    expect(linha?.created_at).toBeNull();
+  });
+
+  it("forma errada de verdade continua sendo recusada", () => {
+    expect(lerLinha({ deal_id: 1, pipeline_id: "p1", stage_id: "s1", value: 0 })).toBeNull();
+    expect(lerLinha({ deal_id: "d1", pipeline_id: "p1", stage_id: "s1", value: "muito" })).toBeNull();
   });
 });
