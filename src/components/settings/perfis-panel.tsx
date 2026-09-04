@@ -44,18 +44,10 @@ import { ChannelMultiSelect } from '@/components/channels/channel-select';
 import { createClient } from '@/lib/supabase/client';
 import { summarizeScope } from '@/lib/cb-channels/display';
 import { useChannels } from '@/hooks/use-channels';
-import {
-  ROTULO_DA_TELA,
-  SECOES_PESSOAIS,
-  SECOES_TRAVADAS_PARA_ADMIN,
-  TELAS_SEMPRE_VISIVEIS,
-  TODAS_AS_SECOES,
-  TODAS_AS_TELAS,
-  type SecaoId,
-  type TelaId,
-} from '@/lib/perfis/catalogo';
+import type { SecaoId, TelaId } from '@/lib/perfis/catalogo';
+import { modelosDePartida, type ModeloDePartida } from '@/lib/perfis/editor';
 import type { PapelBase, PerfilDeAcesso } from '@/lib/perfis/tipos';
-import { SECTION_META } from './settings-sections';
+import { AreasDoPerfil } from './areas-do-perfil';
 import { SettingsPanelHead } from './settings-panel-head';
 import { AvisoDeAreasSemAcao, PoderesDoPapel } from './poderes-do-papel';
 
@@ -84,14 +76,12 @@ const RASCUNHO_VAZIO: Rascunho = {
   pipeline_ids: [],
 };
 
+/** Os três de fábrica, como ponto de partida do perfil novo (ver `partirDe`). */
+const MODELOS = modelosDePartida();
+
 export function PerfisPanel() {
   const t = useTranslations('PerfisPanel');
-  const tSidebar = useTranslations('Sidebar');
   const tRoles = useTranslations('Settings.roles');
-  // As seções pelo MESMO dicionário do rail de Configurações — os checkboxes
-  // exibiam `SECTION_META.label`, que é inglês fixo ("Connections", "Team
-  // members") num app pt-BR (ledger 48h, r3).
-  const tSecoes = useTranslations('Settings.sections');
   const supabase = useMemo(() => createClient(), []);
   const {
     channels,
@@ -143,6 +133,8 @@ export function PerfisPanel() {
   const [salvando, setSalvando] = useState(false);
   const [semeando, setSemeando] = useState(false);
   const [rascunho, setRascunho] = useState<Rascunho | null>(null);
+  /** "Novo perfil" abre primeiro a escolha do modelo; o formulário vem depois. */
+  const [escolhendoModelo, setEscolhendoModelo] = useState(false);
   const [apagando, setApagando] = useState<PerfilDeAcesso | null>(null);
 
   const carregar = useCallback(async () => {
@@ -250,6 +242,31 @@ export function PerfisPanel() {
     }
   }
 
+  /**
+   * Perfil novo NASCE PREENCHIDO a partir de um dos três de fábrica (ou em
+   * branco, se pedido). Até 03/09 o rascunho começava sem tela nenhuma — e
+   * "nenhuma tela" aqui é literal (ver tipos.ts): o perfil só servia depois
+   * de 14 caixas marcadas à mão. O trabalho agora é desmarcar.
+   */
+  function partirDe(modelo: ModeloDePartida | null) {
+    setEscolhendoModelo(false);
+    setRascunho(
+      modelo
+        ? {
+            ...RASCUNHO_VAZIO,
+            papel_base: modelo.papel_base,
+            telas: modelo.telas,
+            secoes_config: modelo.secoes_config,
+          }
+        : { ...RASCUNHO_VAZIO },
+    );
+  }
+
+  function fecharEditor() {
+    setEscolhendoModelo(false);
+    setRascunho(null);
+  }
+
   function editar(p: PerfilDeAcesso) {
     setRascunho({
       id: p.id,
@@ -314,7 +331,7 @@ export function PerfisPanel() {
         description={t('description')}
         action={
           <Button
-            onClick={() => setRascunho({ ...RASCUNHO_VAZIO })}
+            onClick={() => setEscolhendoModelo(true)}
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Plus className="size-4" />
@@ -423,12 +440,62 @@ export function PerfisPanel() {
 
       {/* ---------- Editor ---------- */}
       <Dialog
-        open={rascunho !== null}
+        open={rascunho !== null || escolhendoModelo}
         onOpenChange={(open) => {
-          if (!open) setRascunho(null);
+          if (!open) fecharEditor();
         }}
       >
         <DialogContent className="bg-popover border-border max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          {/* Passo 0 do perfil novo: de qual modelo partir. Três cartões, um
+              por perfil de fábrica, e a saída "em branco" para quem quer
+              montar do zero (o caminho antigo). */}
+          {escolhendoModelo && !rascunho && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-popover-foreground">
+                  {t('createTitle')}
+                </DialogTitle>
+                <DialogDescription className="text-muted-foreground">
+                  {t('modeloDescricao')}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-2 py-2 sm:grid-cols-3">
+                {MODELOS.map((m) => (
+                  <button
+                    key={m.papel_base}
+                    type="button"
+                    onClick={() => partirDe(m)}
+                    className="flex flex-col items-start gap-1.5 rounded-md border border-border px-3 py-2.5 text-left transition-colors hover:bg-muted"
+                  >
+                    <span className="text-sm font-medium text-foreground">{m.nome}</span>
+                    {papelChip(m.papel_base)}
+                    <span className="text-xs text-muted-foreground">
+                      {t(`modelos.${m.papel_base}` as Parameters<typeof t>[0])}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {t('modeloTelas', { count: m.telas.length })}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <DialogFooter className="bg-popover border-border sm:justify-between">
+                <Button
+                  variant="ghost"
+                  onClick={() => partirDe(null)}
+                  className="text-muted-foreground"
+                >
+                  {t('modeloEmBranco')}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={fecharEditor}
+                  className="border-border text-popover-foreground"
+                >
+                  {t('cancel')}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
           {rascunho && (
             <>
               <DialogHeader>
@@ -480,88 +547,19 @@ export function PerfisPanel() {
                     quebraria em seis linhas de uma palavra. */}
                 <PoderesDoPapel papel={rascunho.papel_base} />
 
-                <div className="flex flex-col gap-2">
-                  <Label className="text-muted-foreground">{t('telasLabel')}</Label>
-                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                    {TODAS_AS_TELAS.map((tela) => {
-                      const travada = (TELAS_SEMPRE_VISIVEIS as readonly string[]).includes(tela);
-                      const marcada = travada || rascunho.telas.includes(tela);
-                      return (
-                        <label
-                          key={tela}
-                          className={`flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs ${travada ? 'opacity-60' : 'cursor-pointer hover:bg-muted'}`}
-                        >
-                          <Checkbox
-                            checked={marcada}
-                            disabled={travada}
-                            onCheckedChange={() =>
-                              setRascunho({
-                                ...rascunho,
-                                telas: alternar(rascunho.telas, tela),
-                              })
-                            }
-                          />
-                          <span className="text-foreground">
-                            {tSidebar(ROTULO_DA_TELA[tela])}
-                          </span>
-                          {travada && <Lock className="size-3 text-muted-foreground" />}
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <p className="text-xs text-muted-foreground">{t('telasHint')}</p>
-                </div>
+                {/* Áreas com caixa de grupo, detalhe recolhido e o grupo "Só
+                    leitura para este papel" — ver lib/perfis/editor.ts. */}
+                <AreasDoPerfil
+                  papel={rascunho.papel_base}
+                  telas={rascunho.telas}
+                  secoes={rascunho.secoes_config}
+                  onChange={(proximo) => setRascunho({ ...rascunho, ...proximo })}
+                />
 
-                <div className="flex flex-col gap-2">
-                  <Label className="text-muted-foreground">{t('secoesLabel')}</Label>
-                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                    {TODAS_AS_SECOES.filter(
-                      (s) => !(SECOES_PESSOAIS as readonly string[]).includes(s),
-                    ).map((secao) => {
-                      const travadaAdmin =
-                        rascunho.papel_base === 'admin' &&
-                        (SECOES_TRAVADAS_PARA_ADMIN as readonly string[]).includes(secao);
-                      const marcada =
-                        travadaAdmin || rascunho.secoes_config.includes(secao);
-                      // Id declarado à frente da tela (como `acervo` e
-                      // `perfis` já foram) aparece CRU em vez de cair num
-                      // rótulo emprestado: foi um fallback assim que fez o
-                      // fantasma `deals` virar um segundo "Perfis de acesso"
-                      // idêntico ao verdadeiro.
-                      const rotulo =
-                        secao in SECTION_META ? tSecoes(secao) : secao;
-                      return (
-                        <label
-                          key={secao}
-                          className={`flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs ${travadaAdmin ? 'opacity-60' : 'cursor-pointer hover:bg-muted'}`}
-                        >
-                          <Checkbox
-                            checked={marcada}
-                            disabled={travadaAdmin}
-                            onCheckedChange={() =>
-                              setRascunho({
-                                ...rascunho,
-                                secoes_config: alternar(
-                                  rascunho.secoes_config,
-                                  secao,
-                                ),
-                              })
-                            }
-                          />
-                          <span className="text-foreground">{rotulo}</span>
-                          {travadaAdmin && (
-                            <Lock className="size-3 text-muted-foreground" />
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <p className="text-xs text-muted-foreground">{t('secoesHint')}</p>
-                </div>
-
-                {/* Depois das DUAS grades porque ele confere as duas contra o
-                    papel. Some sozinho quando não há divergência — aviso que
-                    fica sempre aceso vira moldura e ninguém o lê. */}
+                {/* Só o caso INERTE sobrou aqui: seção que este papel não vê
+                    de jeito nenhum (`perfis` fora do admin), marcada por
+                    legado ou por troca de papel. Some sozinho quando não há
+                    divergência. */}
                 <AvisoDeAreasSemAcao
                   papel={rascunho.papel_base}
                   telas={rascunho.telas}

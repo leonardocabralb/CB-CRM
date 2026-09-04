@@ -2176,10 +2176,13 @@ código novo:
   `ESCRITA_DA_SECAO["deals"]` é `undefined`, `hasMinRole` compara
   `3 >= undefined` = false, e o aviso dizia "só para leitura: deals" **num
   perfil Administrador**. Não estoura: `roleRank` não tem `default`.
-- ⚠️ **Somente-leitura e OCULTA são avisos separados.** Seção somente-leitura
-  aparece sem botões; seção de `SECOES_SO_DE_ADMIN` marcada num perfil não-admin
-  não aparece de jeito nenhum — a caixa é inerte, e quem marcou "Perfis de
-  acesso" sai da tela achando ter delegado a gestão de permissões.
+- ⚠️ **Somente-leitura e OCULTA são coisas separadas, ditas em lugares
+  separados (desde 03/09).** Somente-leitura é o GRUPO "Só leitura para este
+  papel" do editor (a seção aparece sem botões); oculta é o aviso âmbar:
+  seção de `SECOES_SO_DE_ADMIN` marcada num perfil não-admin não aparece de
+  jeito nenhum — a caixa é inerte, e quem marcou "Perfis de acesso" sai da
+  tela achando ter delegado a gestão de permissões. Por isso ela não é mais
+  OFERECIDA fora do admin; o aviso cobre o que chega gravado.
 - **A lista fica SEMPRE VISÍVEL, não atrás de um "?"**: quem configurou os
   "Gestor" não tinha por que suspeitar que havia algo a perguntar.
 - **`ROTULO_DA_TELA` mudou de casa para `catalogo.ts`** — já havia duas cópias
@@ -2199,6 +2202,41 @@ código novo:
   `agent` (o piso de ENVIAR/EDITAR) reintroduz a mentira. Funis, Radar e
   Agendadas ficam em `agent` porque NÃO montam o compositor de nota — quem
   levar o `InternalNoteBox` para uma tela nova rebaixa a entrada dela aqui.
+
+⚠️ **O editor de perfis NASCE PREENCHIDO e agrupa por ÁREA (2026-09-03).**
+`src/lib/perfis/editor.ts` (puro, com teste) e
+`src/components/settings/areas-do-perfil.tsx`. Pedido do operador ("a aba de
+edição de perfil está muito complexa"); medido antes: ~31 controles, 25 caixas
+idênticas em duas grades, e o perfil novo nascia SEM tela nenhuma — que aqui
+é literal (tipos.ts), então só servia depois de 14 caixas marcadas à mão. O
+que morde código novo:
+
+- ⚠️ **"Novo perfil" abre primeiro a escolha do MODELO** (os três de
+  `PERFIS_DE_FABRICA`, via `modelosDePartida`, mais "Começar em branco"). O
+  rascunho nasce com papel, telas e seções do modelo; o trabalho é
+  desmarcar. Quem religar o botão direto ao formulário devolve o perfil que
+  só serve depois de 14 caixas.
+- ⚠️ **A partição "só leitura para este papel" é DERIVADA de
+  `ESCRITA_DA_TELA`/`ESCRITA_DA_SECAO`** — a mesma fonte do antigo aviso
+  âmbar — e há teste cobrando que o grupo seja EXATAMENTE o que
+  `areasQueNaoOperam` apontaria com tudo marcado. O grupo EXISTE de
+  propósito: os "Gestor" desta conta são `agent` com 8 áreas só de leitura
+  marcadas; esconder o item apagaria uma configuração legítima, e misturá-lo
+  com os operáveis era a queixa. Fica recolhido, tracejado, com o olho.
+- ⚠️ **`AREA_DA_TELA` é `Record<TelaId, …>`**: tela nova não compila sem
+  área. Seção (fora as pessoais) cai sempre em Configurações. Grupo vazio
+  some (para `viewer`, "Disparos e automações" não aparece).
+- **A caixa do grupo mexe SÓ no que é livre** (`alternarGrupo`): item travado
+  (`settings`; `overview`/`members`/`perfis` no admin) não entra no array ao
+  ligar — listá-lo "daria a impressão de que dá para tirá-lo" (padroes.ts).
+  A contagem do cabeçalho conta todos (travado = marcado); o tri-estado, só
+  os livres.
+- **Abre expandido só o grupo PARCIAL** (`gruposAbertosDeInicio`), semeado
+  na montagem — o diálogo desmonta ao fechar, então cada abertura recomeça
+  pela regra. "5 de 5" e "0 de 12" já dizem tudo no cabeçalho.
+- **Chaves montadas (`areas.<id>`, `modelos.<papel>`) escapam do portão
+  estático de i18n**: `editor.test.ts` as cobra nos dois dicionários, como
+  `poderes.test.ts` faz com `poderes.<id>`.
 
 ⚠️ **Anotação interna: são QUATRO telas, e o que as une mora em dois arquivos.**
 `src/hooks/use-apagar-nota.ts` e `src/components/inbox/cartao-de-nota.tsx`.
