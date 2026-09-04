@@ -2433,9 +2433,17 @@ Meta Ads) leem daqui. O que morde código novo:
     `GET /api/cb/meta-ads` (admin, service role), e **o token não sai de
     rota nenhuma, nem mascarado**. Campanhas e gastos, sim, têm SELECT: é
     deles que o Desempenho monta o investimento sob RLS.
-  - ⚠️ **Erro da Meta volta como CÓDIGO** (`token_invalido`, `sem_permissao`,
-    `conta_nao_encontrada`, `limite`, `meta_error`), nunca a mensagem crua —
-    ela ecoa o token enviado, a mesma armadilha da chave da OpenAI em
+  - ⚠️⚠️ **A mensagem da Meta ECOA O TOKEN, e ela ia para o LOG.** Medido em
+    04/09 no primeiro teste da conexão: token malformado volta como
+    "Malformed access token EAAB…", e os dois chamadores registram essa
+    frase. Devolver só o CÓDIGO ao navegador (`token_invalido`,
+    `sem_permissao`, `conta_nao_encontrada`, `limite`, `meta_error`) não
+    bastava — log de servidor é lido por quem não deveria ter o token. Por
+    isso tudo que vira `MetaAdsError.message` passa por `semSegredo()`
+    (`cliente.ts`), que troca o token pelo marcador `«token»` e limpa
+    `access_token=` de URL (a paginação da Meta devolve o cursor com ele).
+    Há teste com a frase real. Quem criar outro caminho de erro repete a
+    passagem — é a mesma armadilha da chave da OpenAI em
     `/api/cb/integracoes/status`.
   - ⚠️ **O token vai no cabeçalho `Authorization: Bearer`, nunca em
     `?access_token=`** na URL (vaza em log de proxy) — mesma regra da chave

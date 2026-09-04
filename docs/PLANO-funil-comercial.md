@@ -909,7 +909,10 @@ veio cada lead — Fase 5a); orçamento e limites; qualquer escrita na Meta.
   "seguir o broadcast" faz o operador abrir tudo numa coluna só.
 - ⚠️ **O token da Meta é segredo e cifrado**: nunca sai da rota de status,
   nem mascarado; erro da API volta como código. Rotacionar `ENCRYPTION_KEY`
-  invalida-o junto com os tokens do WhatsApp.
+  invalida-o junto com os tokens do WhatsApp. ⚠️ **E não basta o código**: a
+  mensagem da Meta ECOA o token ("Malformed access token EAAB…", medido em
+  04/09) e ia para o log do servidor — `semSegredo()` a limpa antes de ela
+  virar `MetaAdsError.message`.
 - ⚠️ **Campanha sem funil silencia custo** — o card do Desempenho avisa em
   vez de esconder; quem "limpar" o aviso faz o custo por lead mentir para
   baixo.

@@ -4,7 +4,7 @@ import { intervaloDoPreset } from "@/lib/funil/periodo";
 
 import { custos, diasDoPeriodo, gastoDoPeriodo } from "./atribuicao";
 import { cartaoDoMetaAds } from "./cartao";
-import { codigoDoErro, criarClienteMeta, MetaAdsError, normalizarAdAccountId } from "./cliente";
+import { codigoDoErro, criarClienteMeta, MARCA_DE_TOKEN, MetaAdsError, normalizarAdAccountId, semSegredo } from "./cliente";
 import { DIAS_DA_PRIMEIRA_SYNC, DIAS_DE_REPROCESSO, janelaDeSync } from "./janela-de-sync";
 
 describe("janelaDeSync", () => {
@@ -18,6 +18,40 @@ describe("janelaDeSync", () => {
     expect(j.dias).toBe(DIAS_DA_PRIMEIRA_SYNC);
     expect(j.until).toBe("2026-09-04");
     expect(j.since).toBe("2026-06-07");
+  });
+});
+
+describe("o token não sobrevive à mensagem de erro", () => {
+  const TOKEN = "EAABsegredoDoEscritorio123";
+
+  it("a frase da Meta ecoa o token, e semSegredo o troca pelo marcador", () => {
+    // Medido em 04/09/2026 contra a API real, com um token inválido.
+    const daMeta = `Malformed access token ${TOKEN}`;
+    expect(semSegredo(daMeta, TOKEN)).toBe(`Malformed access token ${MARCA_DE_TOKEN}`);
+    expect(semSegredo(daMeta, TOKEN)).not.toContain(TOKEN);
+  });
+
+  it("limpa access_token= de URL (a paginação da Meta devolve o cursor com ele)", () => {
+    const url = "https://graph.facebook.com/v21.0/act_1/campaigns?after=X&access_token=OUTRO_SEGREDO&limit=200";
+    const limpo = semSegredo(url, TOKEN);
+    expect(limpo).not.toContain("OUTRO_SEGREDO");
+    expect(limpo).toContain("after=X");
+  });
+
+  it("token curto demais não é procurado — trocaria pedaços da frase", () => {
+    expect(semSegredo("erro no token abc", "abc")).toBe("erro no token abc");
+  });
+
+  it("o erro que sai do cliente já vem sem o token", async () => {
+    const fetchFalso = (async () =>
+      new Response(JSON.stringify({ error: { code: 190, message: `Malformed access token ${TOKEN}` } }), {
+        status: 400,
+      })) as unknown as typeof fetch;
+    const cliente = criarClienteMeta(TOKEN, fetchFalso);
+    await expect(cliente.conta("act_1")).rejects.toSatisfy(
+      (e: unknown) =>
+        e instanceof MetaAdsError && e.codigo === "token_invalido" && !e.message.includes(TOKEN),
+    );
   });
 });
 

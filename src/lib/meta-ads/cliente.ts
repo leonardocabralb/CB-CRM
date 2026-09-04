@@ -7,6 +7,13 @@
  * - Erro da Meta vira CÓDIGO (`token_invalido`, `sem_permissao`, …) para a
  *   tela traduzir; a mensagem crua da Meta fica no `Error.message`, para o
  *   log do servidor, e não é devolvida ao navegador.
+ * - ⚠️ **A mensagem da Meta ECOA O TOKEN**: um token malformado volta como
+ *   "Malformed access token EAAB…" — medido em 2026-09-04, no primeiro
+ *   teste da conexão. Os dois chamadores registram essa mensagem em log, e
+ *   log de servidor é lido por quem não deveria ter o token. Por isso tudo
+ *   que vira `MetaAdsError.message` passa por `semSegredo()`, que troca o
+ *   token pelo marcador e limpa `access_token=` de qualquer URL. É a mesma
+ *   armadilha da chave da OpenAI em `/api/cb/integracoes/status`.
  * - Paginação por `paging.next`, com teto — a Meta devolve o cursor pronto.
  */
 
@@ -92,6 +99,21 @@ function ehObjeto(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
 
+export const MARCA_DE_TOKEN = "«token»";
+
+/**
+ * Tira o token de um texto antes de ele virar mensagem de erro (e log).
+ * Duas passadas, porque são dois vazamentos diferentes: o token que a Meta
+ * devolve DENTRO da frase, e o `access_token=` de uma URL de paginação.
+ * Token curto demais não é procurado — trocar 3 letras espalharia o
+ * marcador pela frase inteira e esconderia o motivo do erro.
+ */
+export function semSegredo(texto: string, token: string): string {
+  let saida = texto.replaceAll(/access_token=[^&\s"']+/gi, `access_token=${MARCA_DE_TOKEN}`);
+  if (token.length >= 8) saida = saida.replaceAll(token, MARCA_DE_TOKEN);
+  return saida;
+}
+
 export function criarClienteMeta(token: string, fetchFn: Fetch = fetch): ClienteMeta {
   async function pedir(url: string): Promise<Record<string, unknown>> {
     let resposta: Response;
@@ -101,12 +123,15 @@ export function criarClienteMeta(token: string, fetchFn: Fetch = fetch): Cliente
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch (e) {
-      throw new MetaAdsError("rede", e instanceof Error ? e.message : String(e));
+      throw new MetaAdsError("rede", semSegredo(e instanceof Error ? e.message : String(e), token));
     }
     const corpo: unknown = await resposta.json().catch(() => null);
     if (!resposta.ok) {
       const erro = ehObjeto(corpo) && ehObjeto(corpo.error) ? (corpo.error as ErroDaMeta) : null;
-      throw new MetaAdsError(codigoDoErro(resposta.status, erro), erro?.message ?? `HTTP ${resposta.status}`);
+      throw new MetaAdsError(
+        codigoDoErro(resposta.status, erro),
+        semSegredo(erro?.message ?? `HTTP ${resposta.status}`, token),
+      );
     }
     if (!ehObjeto(corpo)) throw new MetaAdsError("meta_error", "resposta sem corpo JSON");
     return corpo;
