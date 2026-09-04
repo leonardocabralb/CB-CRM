@@ -2498,7 +2498,12 @@ Meta Ads) leem daqui. O que morde código novo:
     `cb_lead_events_funil_idx` e a RPC `cb_funil_trajetorias` (Fase 0 do
     funil comercial). Aplicada em 2026-09-04 via conector, ANTES do merge;
     conferido: 123 linhas no Bancário - Comercial, `anon` sem EXECUTE,
-    `authenticated` com. Sem backfill de `degrau`, de propósito.
+    `authenticated` com. Sem backfill de `degrau`, de propósito. ⚠️ O
+    replay do CI reprovou a primeira versão: a conferência chama a RPC
+    (SECURITY INVOKER) como `authenticated`, e em banco VAZIO ele não tinha
+    SELECT em `contacts` — a migration passou a conceder SELECT nas seis
+    tabelas que a função lê (no-op em produção). Função INVOKER conferida
+    trocando de papel = GRANT nas tabelas que ela lê, sempre.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

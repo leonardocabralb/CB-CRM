@@ -466,6 +466,15 @@ paginadas em uma página e o negócio movido em 31/08 aparece com trajeto de
   aplica: o diálogo inteiro é admin (botão gated + policy
   `pipeline_stages_modify`) — um `agent` não o abre.
 - **Nada de mapeamento gravado**: quem mapeia é o operador (decisão D2).
+- ⚠️ **Erro corrigido depois do PR aberto:** o replay das migrations no CI
+  (banco VAZIO) reprovou a 975 com "permission denied for table contacts" —
+  a conferência chama a RPC como `authenticated`, a função é SECURITY
+  INVOKER, e num banco novo o SELECT de `authenticated` nas tabelas não
+  existe (é default privilege do Supabase). Correção: a migration passou a
+  CONCEDER `SELECT` nas seis tabelas que a função lê (no-op em produção,
+  executado lá também para repo e banco ficarem iguais). É a regra "o que a
+  migration confere, ela concede", que a 929 não precisou porque as tabelas
+  dela já tinham GRANT escrito em migration anterior.
 
 **Arquivos tocados:** `supabase/migrations/975_cb_degrau_do_funil.sql`;
 `src/lib/funil/{degraus,trajetoria,periodo,coorte,saude,carregar}.ts` (+

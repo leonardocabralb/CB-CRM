@@ -172,6 +172,16 @@ REVOKE EXECUTE ON FUNCTION public.cb_funil_trajetorias(uuid, timestamptz, timest
 GRANT EXECUTE ON FUNCTION public.cb_funil_trajetorias(uuid, timestamptz, timestamptz)
   TO authenticated, service_role;
 
+-- A função é SECURITY INVOKER: lê as tabelas com o privilégio de QUEM CHAMA.
+-- Em produção o SELECT de `authenticated` nessas tabelas vem do default
+-- privilege do Supabase; num banco VAZIO (o replay do CI) ele não existe, e a
+-- conferência abaixo — que chama a função como `authenticated` — reprovava
+-- com "permission denied for table contacts". A regra das migrations em
+-- banco vazio: o que a migration CONFERE, ela CONCEDE. GRANT é idempotente
+-- (no-op em produção) e a RLS de cada tabela continua mandando.
+GRANT SELECT ON TABLE deals, contacts, conversations, contact_custom_values,
+  custom_fields, cb_lead_events TO authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Conferências — todas válidas num banco VAZIO (nenhuma exige dado).
 -- ---------------------------------------------------------------------------
