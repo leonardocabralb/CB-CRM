@@ -255,8 +255,11 @@ export function PerfisPanel() {
         ? {
             ...RASCUNHO_VAZIO,
             papel_base: modelo.papel_base,
-            telas: modelo.telas,
-            secoes_config: modelo.secoes_config,
+            // Cópias: `MODELOS` é de módulo e vive entre uma abertura e outra
+            // do diálogo — os handlers hoje substituem os arrays, mas um
+            // `push` futuro contaminaria o modelo para todo perfil novo.
+            telas: [...modelo.telas],
+            secoes_config: [...modelo.secoes_config],
           }
         : { ...RASCUNHO_VAZIO },
     );
