@@ -3140,6 +3140,12 @@
     "deleteBody": "Only a profile with no members can be deleted. If people are on it, move them to another profile first.",
     "deleteConfirm": "Delete profile",
     "deleteOk": "Profile deleted",
-    "deleteError": "Could not delete the profile"
+    "deleteError": "Could not delete the profile",
+    "simulacao": {
+      "botao": "View as this profile",
+      "faixa": "You are viewing the CRM as the \"{nome}\" profile ({papel}).",
+      "faixaDica": "Only your view changes: you are still {papelReal}, and the server simulates nothing.",
+      "sair": "Exit simulation"
+    }
   }
 }

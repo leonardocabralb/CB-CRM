@@ -8,6 +8,7 @@ import { Header } from "@/components/layout/header";
 import { AccountAccessAlert } from "@/components/layout/account-access-alert";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { TelaBloqueada } from "@/components/auth/tela-bloqueada";
+import { FaixaDeSimulacao } from "@/components/auth/faixa-de-simulacao";
 import { ROTA_DA_TELA, TODAS_AS_TELAS } from "@/lib/perfis/catalogo";
 import { podeVerTela, telaDoCaminho } from "@/lib/perfis/visibilidade";
 
@@ -85,6 +86,9 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       <PresenceHeartbeat />
       <Sidebar open={sidebarOpen} onClose={closeSidebar} />
       <div className="flex flex-1 flex-col overflow-hidden">
+        {/* "Ver como": acima do cabeçalho, em toda página, com a saída —
+            o perfil simulado pode esconder a tela de Perfis. */}
+        <FaixaDeSimulacao />
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
         {/* Thinner horizontal padding on mobile so cards have room to breathe. */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">

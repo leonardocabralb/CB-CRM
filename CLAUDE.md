@@ -2147,6 +2147,45 @@ mordem de novo em qualquer código novo:
   Toda consulta precisa escopar o canal, ou `.is('channel_id', null)` quando o
   alvo é explicitamente o padrão da conta.
 
+⚠️ **Simulação de perfil ("Ver como", 2026-09-03): troca de LENTE no
+navegador, e só nele.** `src/lib/perfis/simulacao.ts` (puro, com teste), o
+override no `AuthProvider` (`use-auth.tsx`), a faixa
+`src/components/auth/faixa-de-simulacao.tsx` montada no `dashboard-shell`
+acima do cabeçalho, e o olho em cada linha de Configurações → Perfis. O que
+morde código novo:
+
+- ⚠️⚠️ **O SERVIDOR NÃO PARTICIPA.** `requireRole` e a RLS continuam vendo
+  o administrador real; a simulação responde "o que este perfil VÊ e quais
+  botões perde", que é o que os perfis prometem (a 956 diz por escrito que
+  são restrição de visualização). Não é teste de segurança, e a faixa diz
+  isso. Levar ao servidor (cookie que REBAIXA o papel em `requireRole`) é
+  possível, mas foi deixado de fora da primeira versão de propósito.
+- ⚠️ **NUNCA ESCALA.** `resolverAcesso` só honra a lente quando o papel REAL
+  administra (`podeSimular` = admin/dono) e o alvo é desta conta; o CHECK da
+  956 já impede alvo `owner`. Chave plantada à mão no sessionStorage por um
+  agent é ignorada. O dono que simula PERDE o curto-circuito de dono — é o
+  ponto.
+- ⚠️ **TUDO no provider deriva do acesso EFETIVO** (`accountRole`, `acesso`,
+  `isX`, `canX`): nenhum consumidor sabe que a lente existe — é o que faz
+  menu, seções, tela bloqueada, recorte de conexões/funis e botões seguirem
+  juntos. `profile` continua sendo o real; `simulacao.papelReal` diz quem
+  está simulando. Quem ler `profile.account_role` direto num gate de UI
+  fura a lente (hoje ninguém lê).
+- ⚠️ **A simulação PENDENTE entra em `profileLoading`**: o shell troca a
+  tela por spinner e remonta a página — para começar a ver como outro
+  perfil é o que se quer (a app "recarrega" já na lente) e mata o flash da
+  visão do admin. A linha do perfil é buscada de novo a cada montagem
+  (lente fiel ao perfil de hoje); perfil apagado, erro ou 8s sem resposta
+  DERRUBAM a simulação e limpam a chave, senão toda montagem futura
+  esperaria por nada.
+- **Por ABA** (`sessionStorage`): sobrevive ao reload, morre com a aba, e
+  `signOut` a limpa (a lente não pode sobreviver à troca de pessoa).
+- **A SAÍDA mora na faixa**, não na tela de Perfis: o perfil simulado pode
+  esconder Configurações → Perfis (seção só de admin). Começar leva para a
+  PRIMEIRA tela que o perfil enxerga — ficar em Perfis não mostraria nada.
+- **Presença, heartbeat e toda escrita continuam como o admin real** — a
+  lente não muda quem a pessoa é para o servidor nem para os colegas.
+
 ⚠️ **O editor de perfis DESCREVE o papel, e a descrição pode mentir.**
 `src/lib/perfis/poderes.ts` (puro, com teste) e
 `src/components/settings/poderes-do-papel.tsx`. Nasceu de uma pergunta do

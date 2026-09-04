@@ -21,6 +21,11 @@ import {
 } from "@/lib/auth/roles";
 import type { ContextoDeAcesso, PerfilDeAcesso } from "@/lib/perfis/tipos";
 import { ehSecaoConhecida, ehTelaConhecida } from "@/lib/perfis/catalogo";
+import {
+  CHAVE_DA_SIMULACAO,
+  podeSimular,
+  resolverAcesso,
+} from "@/lib/perfis/simulacao";
 
 interface Profile {
   id: string;
@@ -167,6 +172,16 @@ interface AuthContextValue {
    * senão o item proibido pisca na tela a cada carga e some em seguida.
    */
   acesso: ContextoDeAcesso;
+  /**
+   * Simulação de perfil em curso NESTA ABA ("ver como" — só admin/dono; ver
+   * `lib/perfis/simulacao.ts`). Enquanto ela dura, `accountRole`, `acesso`,
+   * os `isX` e os `canX` são os do perfil simulado; `profile` continua
+   * sendo o real. `papelReal` é o papel de quem está simulando.
+   */
+  simulacao: { perfil: PerfilDeAcesso; papelReal: AccountRole } | null;
+  /** Passa a ver o CRM como o perfil dado. Ignorado fora de admin/dono. */
+  simularPerfil: (perfilId: string) => void;
+  encerrarSimulacao: () => void;
   /** True if `accountRole === 'owner'`. */
   isOwner: boolean;
   /** True if `accountRole === 'admin'` (does NOT include owner — use canManageMembers for "admin or above"). */
@@ -206,6 +221,59 @@ interface ProfileRow {
   perfil_id: string | null;
 }
 
+/** Shape do select em `cb_perfis_de_acesso` (o mesmo nos dois lugares). */
+interface PerfilRow {
+  id: string;
+  account_id: string;
+  nome: string;
+  papel_base: PerfilDeAcesso["papel_base"];
+  telas: string[] | null;
+  secoes_config: string[] | null;
+  channel_ids: string[] | null;
+  pipeline_ids: string[] | null;
+  sistema: boolean | null;
+}
+
+const PERFIL_SELECT =
+  "id, account_id, nome, papel_base, telas, secoes_config, channel_ids, pipeline_ids, sistema";
+
+/** Linha do banco → `PerfilDeAcesso`, descartando id de tela/seção que o app não conhece mais. */
+function perfilDaLinha(row: PerfilRow): PerfilDeAcesso {
+  return {
+    id: row.id,
+    account_id: row.account_id,
+    nome: row.nome,
+    papel_base: row.papel_base,
+    // O array não tem FK e uma rota removida deixa lixo para trás.
+    telas: (row.telas ?? []).filter(ehTelaConhecida),
+    secoes_config: (row.secoes_config ?? []).filter(ehSecaoConhecida),
+    channel_ids: row.channel_ids ?? [],
+    pipeline_ids: row.pipeline_ids ?? [],
+    sistema: Boolean(row.sistema),
+  };
+}
+
+function lerSimulacaoDaAba(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage.getItem(CHAVE_DA_SIMULACAO);
+  } catch {
+    return null;
+  }
+}
+
+function gravarSimulacaoNaAba(perfilId: string | null) {
+  try {
+    if (perfilId) window.sessionStorage.setItem(CHAVE_DA_SIMULACAO, perfilId);
+    else window.sessionStorage.removeItem(CHAVE_DA_SIMULACAO);
+  } catch {
+    // Aba sem storage (modo privado restrito): a simulação vale até o reload.
+  }
+}
+
+/** Teto para a linha do perfil simulado chegar; passado isso, a simulação cai. */
+const SIMULACAO_TIMEOUT_MS = 8_000;
+
 /**
  * AuthProvider — wrap this around the dashboard layout.
  * Makes ONE getSession() call for the whole tree instead of one per
@@ -218,6 +286,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // até a Fase 5 e o destino de quem teve o perfil apagado (ON DELETE SET
   // NULL na 956).
   const [perfilDeAcesso, setPerfilDeAcesso] = useState<PerfilDeAcesso | null>(
+    null,
+  );
+  // Simulação de perfil ("ver como"): o ID vive no sessionStorage desta aba;
+  // a LINHA é buscada de novo a cada montagem, para a lente refletir o perfil
+  // como ele está hoje. Linha de outro id (troca rápida de alvo) é ignorada
+  // na leitura, então não há reset síncrono a fazer aqui.
+  const [simulacaoId, setSimulacaoId] = useState<string | null>(() =>
+    lerSimulacaoDaAba(),
+  );
+  const [perfilSimulado, setPerfilSimulado] = useState<PerfilDeAcesso | null>(
     null,
   );
   const [account, setAccount] = useState<AccountSummary | null>(null);
@@ -343,9 +421,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (data.perfil_id) {
           const { data: perfilData, error: perfilErr } = await supabase
             .from("cb_perfis_de_acesso")
-            .select(
-              "id, account_id, nome, papel_base, telas, secoes_config, channel_ids, pipeline_ids, sistema",
-            )
+            .select(PERFIL_SELECT)
             .eq("id", data.perfil_id)
             .maybeSingle();
           if (perfilErr) {
@@ -354,21 +430,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               code: perfilErr.code,
             });
           } else if (perfilData) {
-            perfilRow = {
-              id: perfilData.id,
-              account_id: perfilData.account_id,
-              nome: perfilData.nome,
-              papel_base: perfilData.papel_base,
-              // Descarta id de tela/seção que o app não conhece mais — o
-              // array não tem FK e uma rota removida deixa lixo para trás.
-              telas: (perfilData.telas ?? []).filter(ehTelaConhecida),
-              secoes_config: (perfilData.secoes_config ?? []).filter(
-                ehSecaoConhecida,
-              ),
-              channel_ids: perfilData.channel_ids ?? [],
-              pipeline_ids: perfilData.pipeline_ids ?? [],
-              sistema: Boolean(perfilData.sistema),
-            };
+            perfilRow = perfilDaLinha(perfilData);
           }
         }
         setPerfilDeAcesso(perfilRow);
@@ -511,6 +573,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setAccount(null);
     setPerfilDeAcesso(null);
+    // A lente não pode sobreviver à troca de pessoa na mesma aba.
+    gravarSimulacaoNaAba(null);
     resolvedUserIdRef.current = null;
     window.location.href = "/login";
   }, []);
@@ -520,15 +584,89 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchProfile(user.id);
   }, [user?.id, fetchProfile]);
 
+  // A linha do perfil simulado. Qualquer membro lê `cb_perfis_de_acesso`
+  // (policy da 956), então a busca vale para o admin que simula. Perfil que
+  // sumiu, erro ou demora além do teto DERRUBAM a simulação e limpam a chave
+  // — uma chave presa faria toda montagem futura esperar por nada.
+  useEffect(() => {
+    if (!simulacaoId) return;
+    let encerrado = false;
+    const desistir = (motivo: string) => {
+      if (encerrado) return;
+      encerrado = true;
+      console.warn(`[AuthProvider] simulação de perfil encerrada: ${motivo}`);
+      gravarSimulacaoNaAba(null);
+      setSimulacaoId(null);
+    };
+    const timer = setTimeout(
+      () => desistir("a linha do perfil não chegou a tempo"),
+      SIMULACAO_TIMEOUT_MS,
+    );
+    (async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("cb_perfis_de_acesso")
+        .select(PERFIL_SELECT)
+        .eq("id", simulacaoId)
+        .maybeSingle();
+      if (encerrado) return;
+      clearTimeout(timer);
+      if (error || !data) {
+        desistir(error ? error.message : "perfil não existe mais");
+        return;
+      }
+      setPerfilSimulado(perfilDaLinha(data));
+    })();
+    return () => {
+      encerrado = true;
+      clearTimeout(timer);
+    };
+  }, [simulacaoId]);
+
+  const simularPerfil = useCallback(
+    (perfilId: string) => {
+      // Guarda de ESCALADA no cliente: só admin/dono começa uma simulação. O
+      // provider ignora a chave de qualquer forma (`resolverAcesso`); aqui é
+      // para nem gravá-la.
+      if (!podeSimular(profile?.account_role ?? null)) return;
+      gravarSimulacaoNaAba(perfilId);
+      setSimulacaoId(perfilId);
+    },
+    [profile?.account_role],
+  );
+
+  const encerrarSimulacao = useCallback(() => {
+    gravarSimulacaoNaAba(null);
+    setSimulacaoId(null);
+  }, []);
+
+  // A linha só vale para o id em vigor: troca rápida de alvo não pode deixar
+  // a resposta atrasada vencer a intenção nova.
+  const perfilSimuladoEmVigor =
+    simulacaoId !== null && perfilSimulado?.id === simulacaoId
+      ? perfilSimulado
+      : null;
+  // Há simulação pedida e a linha ainda não chegou: o app espera, em vez de
+  // pintar a visão do admin e trocar para a do perfil um instante depois.
+  const simulacaoPendente = simulacaoId !== null && perfilSimuladoEmVigor === null;
+
   // Derive the role booleans once per profile change rather than on
   // every consumer render. Cheap regardless, but the memo also gives
   // each derived value a stable identity for React.memo / useEffect
   // dependencies downstream.
   const derived = useMemo(() => {
-    const role = profile?.account_role ?? null;
+    const papelReal = profile?.account_role ?? null;
+    const accountId = profile?.account_id ?? null;
+    const real = { papel: papelReal, perfil: perfilDeAcesso } satisfies ContextoDeAcesso;
+    // ⚠️ Daqui para baixo TUDO deriva do acesso EFETIVO — o simulado quando
+    // há simulação honrada, o real caso contrário. É o que faz menu, seções,
+    // recortes e botões seguirem a lente sem que nenhum consumidor saiba
+    // que ela existe. Ver `lib/perfis/simulacao.ts`.
+    const { acesso, simulado } = resolverAcesso(real, perfilSimuladoEmVigor, accountId);
+    const role = acesso.papel;
     return {
       accountRole: role,
-      accountId: profile?.account_id ?? null,
+      accountId,
       isOwner: role === "owner",
       isAdmin: role === "admin",
       isAgent: role === "agent",
@@ -536,9 +674,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canManageMembers: role ? canManageMembersFor(role) : false,
       canEditSettings: role ? canEditSettingsFor(role) : false,
       canSendMessages: role ? canSendMessagesFor(role) : false,
-      acesso: { papel: role, perfil: perfilDeAcesso } satisfies ContextoDeAcesso,
+      acesso,
+      simulacao:
+        simulado && papelReal ? { perfil: simulado, papelReal } : null,
     };
-  }, [profile?.account_role, profile?.account_id, perfilDeAcesso]);
+  }, [profile?.account_role, profile?.account_id, perfilDeAcesso, perfilSimuladoEmVigor]);
 
   // Signed out is not a broken account — the shell redirects to /login
   // before anything reads this.
@@ -558,9 +698,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         profile,
         loading,
-        profileLoading,
+        // A simulação pendente entra aqui de propósito: o shell troca a tela
+        // por spinner e REMONTA a página quando isto é true — para começar
+        // a ver como outro perfil, é exatamente o que se quer (a app
+        // "recarrega" já na lente), e evita o flash da visão do admin.
+        profileLoading: profileLoading || simulacaoPendente,
         signOut,
         refreshProfile,
+        simularPerfil,
+        encerrarSimulacao,
         perfilDeAcesso,
         account,
         assinaturaAtiva: account?.assinatura_ativa ?? false,
@@ -603,6 +749,9 @@ export function useAuth(): AuthContextValue {
       // real de escrita continua sendo o papel, que segue nulo abaixo.
       perfilDeAcesso: null,
       acesso: { papel: null, perfil: null },
+      simulacao: null,
+      simularPerfil: () => {},
+      encerrarSimulacao: () => {},
       // Fecha em falso como todo o resto do fallback: sem provider a bolha
       // nasce sem assinatura, e o servidor decide.
       assinaturaAtiva: false,
