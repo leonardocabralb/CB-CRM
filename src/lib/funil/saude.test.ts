@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { classificarEtapas } from "./degraus";
-import { COORTE_PEQUENA, coortePequena, coortesMensais, escalaRelativa } from "./saude";
+import {
+  COORTE_PEQUENA,
+  coortePequena,
+  coortesMensais,
+  escalaRelativa,
+  linhasDoMapa,
+  transicoesDoHistorico,
+} from "./saude";
 import { fatosDoNegocio, type LinhaDeTrajetoria } from "./trajetoria";
 
 const FUNIL = "f";
@@ -87,6 +94,32 @@ describe("coortesMensais", () => {
     const seis = coortesMensais(FATOS, CLASSIFICACAO, 6, AGORA);
     expect(seis.map((m) => m.resumo.entradas)).toEqual([0, 0, 0, 1, 5, 2]);
     expect(seis[0].resumo.transicoes[0].taxa).toBeNull();
+  });
+});
+
+describe("linhas do mapa de saúde", () => {
+  it("transições dos degraus mapeados + a global (só com lead E contrato)", () => {
+    expect(transicoesDoHistorico(CLASSIFICACAO)).toEqual([
+      { de: "lead", para: "mql", global: false },
+      { de: "mql", para: "contrato", global: false },
+      { de: "lead", para: "contrato", global: true },
+    ]);
+    const semContrato = classificarEtapas([{ id: "lead", name: "Lead", position: 0, degrau: "lead" }]);
+    expect(transicoesDoHistorico(semContrato)).toEqual([]);
+  });
+
+  it("uma taxa por mês e a escala calculada SEM as coortes pequenas", () => {
+    const meses = coortesMensais(FATOS, CLASSIFICACAO, 3, AGORA);
+    const linhas = linhasDoMapa(meses, CLASSIFICACAO);
+    const leadMql = linhas[0];
+    // julho (1 lead, 100%) e setembro (2 leads, 0%) são pequenas: só agosto (0,4) entra no min/max
+    expect(leadMql.taxas).toEqual([1, 0.4, 0]);
+    expect(leadMql.escala(0.4)).toBe(0.5);
+    expect(leadMql.escala(1)).toBe(0.5);
+    expect(leadMql.escala(null)).toBeNull();
+    const global = linhas[2];
+    expect(global.transicao.global).toBe(true);
+    expect(global.taxas).toEqual([0, 0.2, 0]);
   });
 });
 

@@ -1083,6 +1083,7 @@
       "abaLeads": "Board",
       "abaLista": "List",
       "abaDesempenho": "Performance",
+      "abaSaude": "Health",
       "abaAutomacoes": "Automations",
       "quandoEntra": "When a card enters this stage",
       "quandoEntraVarias": "When a card enters any of these stages",
@@ -1217,6 +1218,24 @@
           "titulo": "Lead entries in the period",
           "subtitulo": "per day",
           "noDia": "{n} lead(s) on the day"
+        }
+      },
+      "saude": {
+        "periodo": "Last {meses} months, by funnel entry month",
+        "entradas": "{n} entries in total",
+        "semCoortes": "No lead entered the funnel in the last months. Health makes sense after months of operation.",
+        "fonte": "Stages per the mapping of pipeline {funil}. The current month is a cohort still in progress.",
+        "conversao": {
+          "titulo": "Conversion per step over time",
+          "subtitulo": "last {meses} months"
+        },
+        "mapa": {
+          "titulo": "Funnel health map",
+          "subtitulo": "color relative to each row's history",
+          "legenda": "green = best month of the row · red = worst · dimmed = fewer than {minimo} leads",
+          "celula": "{mes}: {taxa} · {n} lead(s)",
+          "emAndamento": "month in progress",
+          "pequena": "fewer than {minimo} leads: rate not reliable"
         }
       },
       "lista": {

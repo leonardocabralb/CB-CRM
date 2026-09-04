@@ -1,0 +1,106 @@
+"use client";
+
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+/** Uma série por transição do funil; a cor é uma classe Tailwind (`stroke-*`). */
+export interface SerieDeConversao {
+  chave: string;
+  rotulo: string;
+  classeDaCor: string;
+  /** um ponto por mês, em pontos percentuais (0..100); nulo sem denominador */
+  valores: (number | null)[];
+}
+
+/**
+ * Conversão por degrau ao longo dos meses — recharts direto, como o gráfico
+ * de entradas (`grafico-de-entradas.tsx`). As cores saem de classes com
+ * `stroke=""` vazio (o truque do Tremor), então o gráfico segue o tema.
+ */
+export function GraficoDeConversao({
+  meses,
+  series,
+  formatarValor,
+}: {
+  meses: string[];
+  series: SerieDeConversao[];
+  formatarValor: (v: number | null) => string;
+}) {
+  const dados = meses.map((mes, i) => {
+    const linha: Record<string, string | number | null> = { mes };
+    for (const s of series) linha[s.chave] = s.valores[i];
+    return linha;
+  });
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {series.map((s) => (
+          <span key={s.chave} className="inline-flex items-center gap-1.5">
+            <span className={`inline-block h-2 w-3 rounded-sm ${s.classeDaCor.replace("stroke-", "bg-")}`} />
+            {s.rotulo}
+          </span>
+        ))}
+      </div>
+      <div className="h-[300px] w-full text-muted-foreground">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={dados} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" stroke="" />
+            <XAxis dataKey="mes" tick={{ fill: "currentColor", fontSize: 11 }} tickLine={false} axisLine={false} />
+            <YAxis
+              domain={[0, 100]}
+              ticks={[0, 25, 50, 75, 100]}
+              tickFormatter={(v: number) => `${v}%`}
+              tick={{ fill: "currentColor", fontSize: 11 }}
+              tickLine={false}
+              axisLine={false}
+              width={44}
+            />
+            <Tooltip
+              cursor={{ strokeDasharray: "3 3" }}
+              content={({ active, payload, label }) => {
+                if (!active || !payload || payload.length === 0) return null;
+                return (
+                  <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md">
+                    <div className="mb-1 font-medium">{String(label)}</div>
+                    {series.map((s) => {
+                      const v = payload.find((p) => p.dataKey === s.chave)?.value;
+                      return (
+                        <div key={s.chave} className="flex items-center gap-1.5">
+                          <span className={`inline-block h-2 w-2 rounded-full ${s.classeDaCor.replace("stroke-", "bg-")}`} />
+                          <span className="text-muted-foreground">{s.rotulo}:</span>
+                          <span className="font-medium">{formatarValor(typeof v === "number" ? v : null)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }}
+            />
+            {series.map((s) => (
+              <Line
+                key={s.chave}
+                type="monotone"
+                dataKey={s.chave}
+                strokeWidth={2}
+                className={s.classeDaCor}
+                stroke=""
+                dot={{ r: 3, className: `${s.classeDaCor} ${s.classeDaCor.replace("stroke-", "fill-")}`, stroke: "", fill: "" }}
+                activeDot={{ r: 4 }}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
