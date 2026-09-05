@@ -9,6 +9,7 @@ import {
   BATCH_SEND_ATTEMPTS,
   batchRetryDelayMs,
 } from '@/lib/broadcast-retry';
+import { normalizeKey } from '@/lib/contacts/dedupe';
 import { Contact, MessageTemplate } from '@/types';
 
 export type CustomFieldOperator = 'is' | 'is_not' | 'contains';
@@ -261,6 +262,9 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
    * Pre-existing implementation synthesized `csv-N` strings as
    * contact_id, which failed the UUID cast on insert — every CSV
    * broadcast silently created zero recipients.
+   *
+   * Matching is on the normalized number throughout, so it agrees with
+   * the account-wide unique index rather than colliding with it.
    */
   async function upsertCsvContacts(
     supabase: ReturnType<typeof createClient>,
@@ -279,30 +283,39 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       throw new Error('Your profile is not linked to an account.');
     }
 
-    // De-duplicate by phone within the CSV (users can paste duplicates).
-    const uniqueByPhone = new Map<string, { phone: string; name?: string }>();
+    // De-duplicate within the CSV on the NORMALIZED number — the same
+    // key the DB's UNIQUE (account_id, phone_normalized) index uses
+    // (migration 022). Keyed on the raw string instead, "+1 555-0100"
+    // and "15550100" survived as two rows and the insert below died on
+    // a 23505, failing the whole broadcast.
+    const uniqueByKey = new Map<string, { phone: string; name?: string }>();
     for (const row of csvRows) {
-      if (row.phone) uniqueByPhone.set(row.phone, row);
+      const key = normalizeKey(row.phone);
+      if (key && !uniqueByKey.has(key)) uniqueByKey.set(key, row);
     }
-    const phones = [...uniqueByPhone.keys()];
+    const keys = [...uniqueByKey.keys()];
 
-    // Single round-trip lookup of existing contacts by phone. Scoped by
-    // ACCOUNT, not by who clicked: contacts born from ingestion (or from a
-    // teammate) carry the account owner's user_id, and filtering by
-    // `user.id` missed them — the re-insert then hit the unique index
-    // (migration 022) and sank the whole broadcast with a raw 23505.
+    // Single round-trip lookup of existing contacts. Scoped by ACCOUNT, not
+    // by who clicked: contacts born from ingestion (or from a teammate)
+    // carry the account owner's user_id, and filtering by `user.id` missed
+    // them — the re-insert then hit the unique index (migration 022) and
+    // sank the whole broadcast with a raw 23505. Matched on the generated
+    // `phone_normalized` column (upstream #532), the same digits-only key
+    // as `normalizeKey`, so "+55 (11) 9..." in the CSV finds the contact
+    // stored as "5511 9..." instead of trying to insert it again.
     const { data: existing, error: lookupErr } = await supabase
       .from('contacts')
       .select('*')
       .eq('account_id', accountId)
-      .in('phone', phones);
+      .in('phone_normalized', keys);
     if (lookupErr) {
       throw new Error(`Failed to look up CSV contacts: ${lookupErr.message}`);
     }
 
-    const byPhone = new Map<string, Contact>();
+    const byKey = new Map<string, Contact>();
     for (const c of (existing ?? []) as Contact[]) {
-      if (c.phone) byPhone.set(c.phone, c);
+      const key = normalizeKey(c.phone ?? '');
+      if (key) byKey.set(key, c);
     }
 
     // Insert only missing contacts, in one batch per 200 rows (PostgREST
@@ -311,16 +324,19 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
     // conta, nunca quem clicou — senão o offboarding do operador (apagar o
     // login no dashboard) leva os contatos criados pelo CSV do broadcast,
     // com conversas e mensagens. Sem dono resolvido, falha fechado.
+    // ⚠️ Merge do upstream: a versão deles grava `user.id` aqui — manter
+    // `ownerUserId` (decisão registrada no CLAUDE.md, merge de 2026-09-05).
     if (!ownerUserId) {
       throw new Error('Account owner not resolved.');
     }
-    const missing = phones
-      .filter((p) => !byPhone.has(p))
-      .map((phone) => ({
+    const missing = keys
+      .filter((k) => !byKey.has(k))
+      .map((k) => uniqueByKey.get(k)!)
+      .map((row) => ({
         user_id: ownerUserId,
         account_id: accountId,
-        phone,
-        name: uniqueByPhone.get(phone)?.name ?? null,
+        phone: row.phone,
+        name: row.name ?? null,
       }));
 
     const INSERT_CHUNK = 200;
@@ -334,13 +350,14 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
         throw new Error(`Failed to create CSV contacts: ${insertErr.message}`);
       }
       for (const c of (inserted ?? []) as Contact[]) {
-        if (c.phone) byPhone.set(c.phone, c);
+        const key = normalizeKey(c.phone ?? '');
+        if (key) byKey.set(key, c);
       }
     }
 
     // Preserve input order so analytics roughly matches the CSV order.
-    return phones
-      .map((p) => byPhone.get(p))
+    return keys
+      .map((k) => byKey.get(k))
       .filter((c): c is Contact => Boolean(c));
   }
 
