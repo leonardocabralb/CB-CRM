@@ -209,6 +209,21 @@ as que voltam a conflitar):
   para `ko`, que não servimos; deixar assim daria um teste permanentemente
   vermelho sobre um idioma que ninguém usa. Ao mesclar, ele volta com `['ko']`.
 
+**Decisão fixada no merge de 2026-09-05** (upstream #532, o upload de CSV do
+assistente de broadcast — 1 PR, o único desde o merge anterior):
+
+- **`upsertCsvContacts` (`src/hooks/use-broadcast-sending.ts`) fica com os
+  DOIS lados.** Do upstream: o CSV passa a casar com o contato pelo número
+  NORMALIZADO (`.in('phone_normalized', keys)`, a coluna gerada da 022, mesma
+  chave do `normalizeKey`) em vez do texto cru — "+55 (11) 9…" no arquivo agora
+  acha o "5511 9…" da base em vez de tentar inserir de novo e morrer em 23505.
+  Nosso: o contato criado grava `user_id: ownerUserId` com falha fechada
+  (`if (!ownerUserId) throw`), nunca `user.id` — `contacts.user_id` CASCADEia
+  de `auth.users`, e o offboarding do operador levaria os contatos do CSV com
+  conversas e mensagens. A versão do upstream grava `user.id` ali, e o próximo
+  merge vai trazê-la de volta. Pino:
+  `src/hooks/use-broadcast-sending.dono-do-csv.test.ts`.
+
 ⚠️ **Vários arquivos do upstream ganharam mudanças NOSSAS para o multi-canal —
 cuidado no merge.** Ao mesclar upstream, manter os nossos trechos e não deixar o
 upstream sobrescrevê-los:
@@ -235,7 +250,7 @@ upstream sobrescrevê-los:
 | `src/lib/api/v1/conversations.ts`, `src/lib/api-keys/scopes.ts` | `channel_id` nos serializers, escopo `channels:read` |
 | `src/components/automations/automation-builder.tsx`, `src/components/flows/{flow-builder,flow-editor-state}.tsx` | escopo de canal editável (multi-select / select), canais no contexto do editor, validação de canal no cliente |
 | páginas de `automations`, `flows`, `broadcasts`, `dashboard` | etiqueta e filtro de canal, coluna de canal nos históricos, filtro do painel |
-| `src/components/broadcasts/step{1,4}-*.tsx`, `src/hooks/use-broadcast-sending.ts` | canal escolhido no passo 1, `channel_id` no corpo da API e na linha de `broadcasts` |
+| `src/components/broadcasts/step{1,4}-*.tsx`, `src/hooks/use-broadcast-sending.ts` | canal escolhido no passo 1, `channel_id` no corpo da API e na linha de `broadcasts`. No hook, mais: `marcarDestinatario` (update conferido pelo retorno, #15) e o `ownerUserId` do `upsertCsvContacts` (ver a decisão do merge de 2026-09-05 acima) |
 | `src/components/settings/template-manager.tsx` | seletor de WABA para criar/sincronizar, etiqueta de canal por modelo |
 | `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato e a seção/aba **Histórico** (912). (A linha "canal da conversa" que o painel do inbox exibia foi REMOVIDA em 2026-08-29 a pedido do operador — o seletor do cabeçalho do fio já responde isso.) No detail view a `TabsList` ganhou `flex-wrap` com a altura **prefixada** (`group-data-horizontal/tabs:h-auto` + `[&>button]:h-auto`, NUNCA `h-auto` cru — ver a armadilha do tailwind-merge abaixo; um merge que "simplifique" para `h-auto` quebra a tela de novo) — com 5 abas ela já estourava a largura do painel e escondia "Negócios" |
 | `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
