@@ -208,26 +208,32 @@ export async function aplicarMudancaDeTags(
     desconhecidas: [],
   };
 
-  // O catálogo inteiro, uma vez. São dezenas de linhas por conta.
-  // ⚠️ Ordenado por `created_at`: quando duas etiquetas colapsam na mesma
-  // chave (o "Bancário"/"bancario" que este bug já produziu em produção),
-  // vence a MAIS ANTIGA — a que o escritório vem usando. Sem o ORDER BY, o
-  // PostgREST devolve em ordem não determinística e a escolha mudaria entre
-  // duas chamadas iguais.
-  const { data: catalogo, error: erroCatalogo } = await db
-    .from('tags')
-    .select('id, name')
-    .eq('account_id', accountId)
-    .order('created_at', { ascending: true });
-  if (erroCatalogo) {
-    throw new ContactTagWriteError("Failed to read the account's tags");
-  }
+  // O catálogo inteiro. São dezenas de linhas por conta.
+  //
+  // ⚠️ Ordenado por `created_at` (e por `id` no empate): quando duas
+  // etiquetas colapsam na mesma chave — o "Bancário"/"bancario" que o bug do
+  // acento já produziu em produção —, vence a MAIS ANTIGA, que é a que o
+  // escritório vem usando. Sem o ORDER BY, o PostgREST devolve em ordem não
+  // determinística e a escolha mudaria entre duas chamadas iguais.
+  const lerCatalogo = async (): Promise<Map<string, string>> => {
+    const { data, error } = await db
+      .from('tags')
+      .select('id, name')
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true });
+    if (error) {
+      throw new ContactTagWriteError("Failed to read the account's tags");
+    }
+    const mapa = new Map<string, string>();
+    for (const tag of data ?? []) {
+      const chave = chaveDeTag(tag.name as string);
+      if (!mapa.has(chave)) mapa.set(chave, tag.id as string);
+    }
+    return mapa;
+  };
 
-  const porChave = new Map<string, string>();
-  for (const tag of catalogo ?? []) {
-    const chave = chaveDeTag(tag.name as string);
-    if (!porChave.has(chave)) porChave.set(chave, tag.id as string);
-  }
+  let porChave = await lerCatalogo();
 
   // ── Retirar ────────────────────────────────────────────────
   // NUNCA cria: criar uma etiqueta para em seguida tentar removê-la do
@@ -249,16 +255,32 @@ export async function aplicarMudancaDeTags(
     if (mudanca.criarFaltantes) {
       // A CRIAÇÃO continua no helper compartilhado: é ele que sabe a cor
       // padrão e o `user_id` de auditoria. Só o CASAMENTO é nosso.
-      const { tagIdByKey } = await resolveImportTagIds(db, {
+      await resolveImportTagIds(db, {
         accountId,
         userId: auditUserId,
         tagNames: faltantes,
         canCreateTags: true,
       });
-      for (const [k, id] of tagIdByKey) {
-        const chave = chaveDeTag(k);
-        if (!porChave.has(chave)) porChave.set(chave, id);
-      }
+      // ⚠️ RELÊ o catálogo em vez de aproveitar o `tagIdByKey` devolvido, e
+      // o motivo é uma CORRIDA: `tags` não tem UNIQUE em `name` (nem numa
+      // forma normalizada), e `resolveImportTagIds` faz ler-então-inserir.
+      // Duas chamadas concorrentes com o mesmo nome NOVO criam duas linhas
+      // — e, confiando cada uma no id que ela mesma inseriu, o contato
+      // ganharia as DUAS etiquetas e o gatilho `tag_added` dispararia DUAS
+      // vezes (uma automação sem etiqueta específica mandaria a mensagem em
+      // dobro ao cliente).
+      //
+      // Relendo, as duas convergem para a MAIS ANTIGA: uma linha só em
+      // `contact_tags`, um disparo só — o 23505 do helper central torna a
+      // segunda um no-op.
+      //
+      // O que isto NÃO conserta: a linha duplicada continua no catálogo,
+      // visível para o operador apagar. Fechar de vez exige índice único em
+      // `(account_id, lower(btrim(name)))`, e essa migration precisa
+      // deduplicar o que já existe — vale para o `PATCH` e para o import de
+      // CSV também, que têm a mesma corrida desde sempre. (Achado do Codex
+      // no PR #150.)
+      porChave = await lerCatalogo();
     } else {
       r.desconhecidas.push(...faltantes);
     }

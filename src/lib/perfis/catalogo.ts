@@ -59,9 +59,9 @@ export type SecaoId =
   | "members"
   | "integracoes"
   // Webhooks (982): as duas direções — os de ENTRADA, que sistemas de fora
-  // acionam, e os de SAÍDA da 028. Só admin, como `api`: quem enxerga a
-  // seção enxerga o token de cada webhook na URL, que é endereço de porta
-  // aberta para a conta.
+  // acionam, e os de SAÍDA da 028. Só admin DE VERDADE: está em
+  // `SECOES_SO_DE_ADMIN` logo abaixo, porque marcá-la `admin` só em
+  // `ESCRITA_DA_SECAO` não a esconde de ninguém.
   | "webhooks"
   | "api"
   // ⚠️ Declarada ANTES de existir na tela (a seção chega na Fase 5). O
@@ -186,11 +186,28 @@ export const SECOES_TRAVADAS_PARA_ADMIN: readonly SecaoId[] = [
  * escritas quebram, com 403 genérico. Ou seja, a pessoa via como a conta é
  * recortada — inclusive o recorte dos colegas — e descobria isso clicando.
  *
- * Só `perfis` entra aqui. `members` fica de fora DE PROPÓSITO: aquela aba
- * foi desenhada para ser lida por todo mundo, com as ações escondidas por
- * `canManageMembers`.
+ * `perfis` e `webhooks` entram aqui. `members` fica de fora DE PROPÓSITO:
+ * aquela aba foi desenhada para ser lida por todo mundo, com as ações
+ * escondidas por `canManageMembers`.
+ *
+ * ⚠️ `webhooks` (982) precisa estar aqui, e não bastava marcá-la `admin` em
+ * `ESCRITA_DA_SECAO`: a régua acima é o fail-open da linha `if (!ctx.perfil)
+ * return true` de `visibilidade.ts` — membro SEM perfil enxerga tudo que não
+ * estiver nesta lista, e um admin ainda podia marcar a caixa num perfil
+ * `agent`. Todas as rotas `/api/cb/webhooks*` são `requireRole("admin")`,
+ * então a seção não VAZA nada — ela simplesmente não funciona: a lista falha
+ * e o operador fica com uma tela de Configurações permanentemente quebrada.
+ * Seção que nunca pode funcionar não deve ser oferecida. (Achado do Codex no
+ * PR #150.)
+ *
+ * ⚠️ `api` está no mesmo caso e NÃO foi mexida aqui: é seção antiga, o
+ * comportamento dela é o que a conta já vive hoje, e mudá-la de carona num
+ * PR de webhooks esconderia a decisão. Vale revisitar em separado.
  */
-export const SECOES_SO_DE_ADMIN: readonly SecaoId[] = ["perfis"] as const;
+export const SECOES_SO_DE_ADMIN: readonly SecaoId[] = [
+  "perfis",
+  "webhooks",
+] as const;
 
 /**
  * Telas que TODO perfil enxerga, sempre.

@@ -343,3 +343,11 @@ o código ANTIGO para provar que reprovam.
 **Verificado e limpo:** vazamento de segredo (nem `COLUNAS_DO_WEBHOOK` nem
 as rotas o expõem), tenancy nas consultas auxiliares, uso do cadeado e da
 cerca de posse, rowcount nas escritas, e a migration num banco vazio.
+
+### Segunda rodada — Codex no PR #150
+
+| # | Veredito | O quê |
+| --- | --- | --- |
+| 1 | ❌ **Falso positivo** | "`id_externo` omitido vira NULL e o insert estoura". O `columns` do postgrest-js só é fixado para ARRAY (`index.mjs:4438`); com objeto único o PostgREST deriva as colunas das chaves presentes e a omitida usa o DEFAULT — a doc do `defaultToNull` diz "only applies for bulk inserts". O e2e já havia provado ao vivo: três acionamentos gravados com `campo_id` vazio, todos 200. |
+| 2 | ⚠️ **Real, parcialmente corrigido** | Corrida na criação de etiqueta nova: `tags` não tem UNIQUE em `name` e `resolveImportTagIds` faz ler-então-inserir. Mitigado relendo o catálogo depois da criação — as duas requisições convergem na etiqueta MAIS ANTIGA, então o contato ganha uma linha só e o `tag_added` dispara uma vez só. **Sobra**: a linha duplicada no catálogo. Fechar de vez exige índice único em `(account_id, lower(btrim(name)))` com deduplicação do que já existe — vale para o `PATCH` e para o import de CSV também, que têm a mesma corrida desde sempre. Fica para PR próprio. |
+| 3 | ✅ **Real, corrigido** | A seção `webhooks` não estava em `SECOES_SO_DE_ADMIN`, e `podeVerSecao` tem fail-open para membro sem perfil — a seção aparecia para não-admin como tela permanentemente quebrada. Corrigido, e o teste do editor passou a DERIVAR da constante em vez de cravar `"perfis"`. |

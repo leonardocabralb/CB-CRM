@@ -3004,6 +3004,18 @@ Webhooks. Plano em `docs/PLANO-webhooks-de-entrada.md`; doc do operador em
   977): a pergunta do operador é "por que `{{vars.nome}}` saiu vazio", e ela
   se responde com a lista de variáveis e valores. O cru seria uma segunda
   cópia de dado de cliente para responder a mesma pergunta.
+- ⚠️⚠️ **A seção está em `SECOES_SO_DE_ADMIN`, e marcá-la `admin` em
+  `ESCRITA_DA_SECAO` NÃO bastaria.** `podeVerSecao` tem um fail-open
+  explícito (`if (!ctx.perfil) return true`): membro sem perfil de acesso
+  enxerga toda seção que não esteja naquela lista, e um admin ainda podia
+  marcar a caixa num perfil `agent`. Como todas as rotas `/api/cb/webhooks*`
+  são `requireRole("admin")`, a seção não VAZA nada — ela simplesmente não
+  funciona, e o operador fica com uma tela de Configurações permanentemente
+  quebrada. `api` está no mesmo caso e ficou como está, de propósito (é
+  comportamento antigo; mudá-la de carona esconderia a decisão).
+  ⚠️ O teste `editor.test.ts` cravava `s !== "perfis"` em vez de derivar de
+  `SECOES_SO_DE_ADMIN` — a segunda seção só-de-admin o reprovava como se o
+  código estivesse errado. Agora deriva. (Achado do Codex no PR #150.)
 - **Apagar o webhook leva o LOG junto** (FK CASCADE) — a tela põe o número na
   pergunta, porque "apagar" e "apagar 340 registros" são decisões diferentes.
 - **A aba "Enviados" da mesma seção é a primeira TELA dos `webhook_endpoints`

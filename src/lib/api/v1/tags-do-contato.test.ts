@@ -131,25 +131,38 @@ describe('chaveDeTag', () => {
   });
 });
 
-/** Client de mentira: só a consulta do catálogo de etiquetas. */
+/**
+ * Client de mentira: só a consulta do catálogo de etiquetas.
+ *
+ * `leituras` permite devolver catálogos DIFERENTES a cada chamada — é assim
+ * que se observa a releitura de depois da criação.
+ */
 function bancoCom(
-  tags: { id: string; name: string }[],
+  tags: { id: string; name: string }[] | { id: string; name: string }[][],
   opts: { falha?: boolean } = {}
 ) {
-  return {
+  const paginas = Array.isArray(tags[0])
+    ? (tags as { id: string; name: string }[][])
+    : [tags as { id: string; name: string }[]];
+  const chamadas = { n: 0 };
+  const resposta = () => {
+    if (opts.falha)
+      return Promise.resolve({ data: null, error: { message: 'timeout' } });
+    const i = Math.min(chamadas.n++, paginas.length - 1);
+    return Promise.resolve({ data: paginas[i], error: null });
+  };
+  const db = {
+    chamadas,
     from: () => ({
       select: () => ({
         eq: () => ({
-          order: () =>
-            Promise.resolve(
-              opts.falha
-                ? { data: null, error: { message: 'timeout' } }
-                : { data: tags, error: null }
-            ),
+          // duas ordens encadeadas: `created_at` e o desempate por `id`
+          order: () => ({ order: resposta }),
         }),
       }),
     }),
-  } as never;
+  };
+  return db as never;
 }
 
 describe('aplicarMudancaDeTags', () => {
@@ -213,6 +226,38 @@ describe('aplicarMudancaDeTags', () => {
     expect(r.inalteradas).toEqual(['Typebot']);
   });
 
+  it('⚠️ RELÊ o catálogo depois de criar — corrida converge na mais antiga', async () => {
+    // `tags` não tem UNIQUE em `name`, e `resolveImportTagIds` faz
+    // ler-então-inserir: duas chamadas concorrentes com o mesmo nome NOVO
+    // criam duas linhas. Confiando no id que cada uma inseriu, o contato
+    // ganharia AS DUAS etiquetas e o `tag_added` dispararia duas vezes.
+    // Relendo, as duas convergem para a mais antiga.
+    resolveImportTagIds.mockResolvedValue({
+      tagIdByKey: new Map([['nova', 'id-que-EU-inseri']]),
+      skippedNames: [],
+    });
+    addContactTagAndDispatch.mockResolvedValue({
+      added: true,
+      dispatched: true,
+    });
+
+    const db = bancoCom([
+      CATALOGO, // antes de criar
+      [{ id: 'id-da-outra-requisicao', name: 'Nova' }, ...CATALOGO], // depois
+    ]);
+
+    await aplicarMudancaDeTags(db, {
+      ...base,
+      mudanca: { add: ['Nova'], remove: [], criarFaltantes: true },
+    });
+
+    // O id que ESTA requisição inseriu é descartado em favor do que a
+    // releitura ordenada devolveu.
+    expect(addContactTagAndDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ tagId: 'id-da-outra-requisicao' })
+    );
+  });
+
   it('nome novo de verdade é criado pelo helper compartilhado', async () => {
     resolveImportTagIds.mockResolvedValue({
       tagIdByKey: new Map([['nova', 'id-nova']]),
@@ -223,10 +268,15 @@ describe('aplicarMudancaDeTags', () => {
       dispatched: true,
     });
 
-    const r = await aplicarMudancaDeTags(bancoCom(CATALOGO), {
-      ...base,
-      mudanca: { add: ['Nova'], remove: [], criarFaltantes: true },
-    });
+    // Duas páginas: o catálogo ANTES da criação e o de DEPOIS, que é o que o
+    // banco devolveria de verdade na releitura.
+    const r = await aplicarMudancaDeTags(
+      bancoCom([CATALOGO, [...CATALOGO, { id: 'id-nova', name: 'Nova' }]]),
+      {
+        ...base,
+        mudanca: { add: ['Nova'], remove: [], criarFaltantes: true },
+      }
+    );
 
     expect(resolveImportTagIds).toHaveBeenCalledWith(
       expect.anything(),
