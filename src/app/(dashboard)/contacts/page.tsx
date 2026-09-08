@@ -56,7 +56,7 @@ import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { useCan } from '@/hooks/use-can';
-import { lerExclusao, podeLimparSelecao } from '@/lib/contacts/exclusao';
+import { lerExclusao, podeLimparSelecao, selecaoRestante } from '@/lib/contacts/exclusao';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
 
@@ -139,13 +139,20 @@ export default function ContactsPage() {
     }
   }, [supabase]);
 
-  const fetchContacts = useCallback(async () => {
+  const fetchContacts = useCallback(async (opcoes?: { preservarSelecao?: boolean }) => {
     const seq = ++fetchSeq.current;
     setLoading(true);
     // The visible rows are about to change — drop any selection that
     // referred to the old page/search results so the bulk bar can't
     // act on rows the user can no longer see.
-    setSelected(new Set());
+    //
+    // ⚠️ MENOS quando quem recarrega já cuidou da seleção: uma exclusão
+    // recusada não muda linha nenhuma, e limpar ali jogaria fora a seleção
+    // que o operador precisa manter para tentar de novo (achado do Codex no
+    // PR #138 — sem esta saída, `podeLimparSelecao` não valia na prática).
+    // Chamador que passa um EVENTO (onUpdated/onImported) não tem a chave e
+    // cai no comportamento normal.
+    if (!opcoes?.preservarSelecao) setSelected(new Set());
 
     const from = page * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
@@ -285,9 +292,17 @@ export default function ContactsPage() {
       .eq('id', deleteTarget.id)
       .select('id');
 
-    const r = lerExclusao({ pedidos: 1, apagados: data?.length ?? 0, houveErro: !!error });
+    const r = lerExclusao({
+      pedidos: 1,
+      apagados: data?.length ?? 0,
+      houveErro: !!error,
+      podeApagar: podeApagarContatos,
+    });
     if (r === 'falhou') toast.error(t('toastFailedDelete'));
     else if (r === 'apagado') toast.success(t('toastDeleted'));
+    // ⚠️ "Sumiu" NÃO é falta de permissão: quem pode apagar e não apagou
+    // nada perdeu a corrida para outro cliente.
+    else if (r === 'sumiu') toast.info(t('toastDeleteGone'));
     else toast.error(t('toastDeleteRefused'));
     if (r !== 'falhou') fetchContacts();
 
@@ -336,16 +351,26 @@ export default function ContactsPage() {
       .in('id', ids)
       .select('id');
 
-    const apagados = data?.length ?? 0;
-    const r = lerExclusao({ pedidos: ids.length, apagados, houveErro: !!error });
+    const saidos = (data ?? []).map((linha) => linha.id as string);
+    const r = lerExclusao({
+      pedidos: ids.length,
+      apagados: saidos.length,
+      houveErro: !!error,
+      podeApagar: podeApagarContatos,
+    });
     if (r === 'falhou') toast.error(t('toastBulkFailedDelete'));
     else if (r === 'recusado') toast.error(t('toastDeleteRefused'));
+    else if (r === 'sumiu') toast.info(t('toastDeleteGone'));
     // O número é o que SAIU, não o que se pediu.
-    else toast.success(t('toastBulkDeleted', { count: apagados }));
-    // Só limpa quando tudo saiu: seleção limpa sobre contato que ficou
-    // esconde o que não foi apagado.
-    if (podeLimparSelecao(r)) setSelected(new Set());
-    if (r !== 'falhou') fetchContacts();
+    else toast.success(t('toastBulkDeleted', { count: saidos.length }));
+
+    // ⚠️ A seleção é PODADA, não zerada: tira quem saiu e mantém quem
+    // ficou. E a recarga precisa preservá-la — ela zera a seleção por conta
+    // própria, o que anulava esta decisão inteira (Codex, PR #138).
+    const limpaTudo = podeLimparSelecao(r);
+    if (limpaTudo) setSelected(new Set());
+    else if (saidos.length > 0) setSelected((atual) => selecaoRestante(atual, saidos));
+    if (r !== 'falhou') fetchContacts({ preservarSelecao: !limpaTudo });
 
     setDeleting(false);
     setBulkDeleteOpen(false);

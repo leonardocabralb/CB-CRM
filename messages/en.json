@@ -752,7 +752,8 @@
       "toastDeleted": "Contact deleted",
       "toastBulkFailedDelete": "Failed to delete contacts",
       "toastBulkDeleted": "{count} contacts deleted",
-      "toastDeleteRefused": "Could not delete: your profile is not allowed to delete contacts."
+      "toastDeleteRefused": "Could not delete: your profile is not allowed to delete contacts.",
+      "toastDeleteGone": "This contact no longer exists — someone deleted it first. The list has been refreshed."
     },
     "form": {
       "addTitle": "Add Contact",
