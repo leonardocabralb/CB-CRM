@@ -16,7 +16,7 @@ DNS, certificado e aprovação da Meta (quando você escolhe a Meta).
 | Item | Para quê | Custo |
 |---|---|---|
 | Conta no [Supabase](https://supabase.com) | Banco, autenticação, arquivos | Plano gratuito serve para começar |
-| Um servidor com Docker | Rodar o CRM e o gateway de WhatsApp | Qualquer VPS de 2 vCPU / 4 GB dá conta |
+| Um servidor com Docker **em modo Swarm** | Rodar o CRM e o gateway de WhatsApp | Qualquer VPS de 2 vCPU / 4 GB dá conta |
 | Um domínio, com DNS que você controla | Endereço do CRM e certificado | — |
 | Conta no GitHub | Guardar a sua cópia e construir a imagem | Gratuito |
 | Um número de WhatsApp | O número de atendimento | — |
@@ -107,12 +107,12 @@ Sem elas o link do e-mail é recusado pelo Supabase.
 O remetente embutido do Supabase é limitado a testes e não entrega
 volume — quem depende dele descobre no dia em que convida a equipe.
 
-**Decida agora quem pode se cadastrar.** Em *Authentication → Sign In /
-Providers → Email*, a opção que permite novos cadastros vem **ligada**.
-Deixá-la ligada num CRM exposto na internet significa que qualquer pessoa
-cria uma conta no seu servidor. Se a sua equipe é fechada, desligue e
-convide as pessoas pelo painel (*Authentication → Users → Invite user*)
-ou pelos convites do próprio CRM.
+> ⚠️ **Deixe os cadastros LIGADOS por enquanto.** Em *Authentication →
+> Sign In / Providers → Email* existe a opção que permite novos cadastros,
+> e ela vem ligada. Você provavelmente vai querer desligá-la, mas **ainda
+> não**: é por ela que você cria a sua própria conta no passo 6, e é por
+> ela que os convites do CRM funcionam. O passo 10 explica quando e como
+> desligar sem quebrar nada.
 
 ### 1.5 Copiar as três chaves
 
@@ -159,30 +159,58 @@ Faça **um** dos dois caminhos. Você pode voltar e fazer o outro depois.
 
 ### 3.1 Caminho A — Evolution API
 
-Suba o gateway no mesmo servidor onde o CRM vai rodar. O repositório traz
-um `docker-compose.evolution.yml` pronto para desenvolvimento local; para
-o servidor, o essencial é:
+O gateway roda no mesmo servidor do CRM, **como serviço do Swarm e na
+mesma rede overlay que ele**. O repositório traz um
+`docker-compose.evolution.yml` pronto para desenvolvimento local; para o
+servidor, o essencial é:
 
 ```yaml
+# evolution-stack.yml
 services:
   evolution:
     image: evoapicloud/evolution-api:2.3.2
-    restart: unless-stopped
     environment:
-      SERVER_URL: http://127.0.0.1:8080
+      SERVER_URL: https://api.seudominio.com
       AUTHENTICATION_API_KEY: <a-sua-chave-global>   # invente uma longa
       DATABASE_ENABLED: 'true'
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://evolution:<senha>@postgres:5432/evolution?schema=public
       DEL_INSTANCE: 'false'
-    ports:
-      - '127.0.0.1:8080:8080'
+    networks:
+      - crmnet
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+
+networks:
+  crmnet:
+    external: true
 ```
 
-Repare no `127.0.0.1:` antes da porta: o gateway fica acessível só de
-dentro do servidor. É de propósito. A chave global dele é a senha mestra
-daquele servidor de WhatsApp, e não há motivo para expô-la à internet
-quando o CRM roda ao lado.
+```bash
+docker network create --driver overlay --attachable crmnet   # se ainda não existir
+docker stack deploy -c evolution-stack.yml evolution
+```
+
+> ⚠️⚠️ **NÃO publique a Evolution em `127.0.0.1:8080` e NÃO aponte o CRM
+> para esse endereço.** Parece a coisa segura a fazer, e é o erro que
+> deixa a instalação inteira sem WhatsApp: o CRM roda **dentro de um
+> contêiner**, e ali `127.0.0.1` é o próprio contêiner do CRM, não o
+> servidor nem a Evolution. Provisionar canal e parear número falham, com
+> "connection refused" e sem nada explicando por quê.
+>
+> Quem resolve o endereço é o **DNS do Swarm**: dentro da rede overlay, o
+> serviço `evolution` do stack `evolution` atende como
+> `evolution_evolution`. Por isso o valor certo é
+> `EVOLUTION_BASE_URL=http://evolution_evolution:8080` — tráfego que nunca
+> sai do host, sem passar pela internet e sem expor a chave global.
+>
+> O que o `127.0.0.1` tentava proteger continua protegido, e melhor: sem
+> `ports:`, a Evolution **não** fica publicada em porta nenhuma do
+> servidor. Só quem está na mesma rede overlay a alcança. Se você quiser o
+> painel dela (`/manager`) pelo navegador, exponha-o pelo mesmo proxy que
+> serve o CRM, com TLS, e nunca a porta 8080 crua.
 
 **O conserto do eco do celular.** Quando alguém da equipe responde pelo
 **celular pareado**, o WhatsApp entrega esse eco ao gateway endereçado por
@@ -243,8 +271,9 @@ SUPABASE_SERVICE_ROLE_KEY=<a chave service_role>
 ENCRYPTION_KEY=<os 64 hex do passo 2>
 AUTOMATION_CRON_SECRET=<o segundo segredo do passo 2>
 
-# Só se usar a Evolution:
-EVOLUTION_BASE_URL=http://127.0.0.1:8080
+# Só se usar a Evolution. O nome é o DNS do Swarm (<stack>_<serviço>),
+# NUNCA 127.0.0.1 — ver o aviso no passo 3.1.
+EVOLUTION_BASE_URL=http://evolution_evolution:8080
 EVOLUTION_GLOBAL_API_KEY=<a chave global do gateway>
 EVOLUTION_WEBHOOK_SECRET=<o terceiro segredo do passo 2>
 
@@ -309,11 +338,37 @@ Um push no `main` constrói a imagem e roda `docker service update`, que
 só atualiza um serviço que já existe. Da primeira vez, no servidor:
 
 ```bash
+# 1. O Swarm precisa existir. Ter Docker instalado NÃO basta:
+#    `docker stack deploy` só funciona num nó que seja manager, e o
+#    rollout do CI recusa explicitamente um nó que não seja.
+#    Num servidor recém-instalado, uma vez só:
+docker info --format '{{.Swarm.LocalNodeState}}'   # "inactive" = falta iniciar
+docker swarm init                                  # se estiver inactive
+
+# 2. Autenticar no registro onde a SUA imagem foi publicada.
 docker login ghcr.io -u <seu-usuário>
+
+# 3. Carregar os segredos E APONTAR PARA A SUA IMAGEM.
 set -a && . ./crm.env && set +a
+export CRM_IMAGE=ghcr.io/<seu-usuário>/cb-crm:latest
+
+# 4. Subir.
 docker stack deploy -c docker-stack.yml crm
 docker service logs -f crm_crm
 ```
+
+> ⚠️⚠️ **O `export CRM_IMAGE` não é opcional numa instalação sua.** O
+> `docker-stack.yml` traz um valor de queda que aponta para a imagem do
+> repositório de ONDE ESTE CÓDIGO VEIO, e trocar o `IMAGE` no
+> `pipeline.yml` não muda esse valor de queda. Sem exportar, o Swarm puxa
+> a imagem de outra pessoa. Na melhor hipótese o pull falha por falta de
+> permissão; na pior ele funciona — e aí a sua instalação sobe com a URL e
+> a chave pública do Supabase **de outro projeto** gravadas no pacote
+> JavaScript, porque todo `NEXT_PUBLIC_*` é inlinado no build. O navegador
+> dos seus usuários passaria a falar com o banco de outra empresa.
+>
+> Vale editar a linha `image:` do `docker-stack.yml` para a sua imagem de
+> uma vez, e deixar o `export` como cinto e suspensório.
 
 > ⚠️ **As duas primeiras linhas andam juntas, sempre.** O
 > `docker-stack.yml` usa `${VARIAVEL}`, que o Docker substitui pelo
@@ -424,6 +479,37 @@ sozinha: é o teste do agendador.
 | Convite devolve erro 500 citando `NEXT_PUBLIC_SITE_URL` | A instalação não sabe o próprio endereço. Defina a variável e reconstrua |
 | Eco do celular pareado não aparece | O conserto do `@lid` na Evolution. Veja o passo 3.1 |
 | Tela em inglês depois de mudar o idioma | Idioma é fixado no build. Reconstrua a imagem |
+| Convite aceito mas o cadastro é recusado | Os cadastros estão desligados no Supabase. Veja o passo 10 |
+| Evolution "connection refused" a partir do CRM | `EVOLUTION_BASE_URL` apontando para `127.0.0.1`. Use o nome do serviço no Swarm. Veja o passo 3.1 |
+| `docker stack deploy` diz que não é um manager | Falta `docker swarm init` no servidor. Veja o passo 5.3 |
+| A tela abre com dados de outra empresa | O stack subiu com a imagem de queda, de outro repositório. Exporte `CRM_IMAGE`. Veja o passo 5.3 |
+
+---
+
+## 10. Fechar o cadastro (depois que a equipe entrou)
+
+Enquanto a opção de cadastro estiver ligada, **qualquer pessoa que
+alcance o seu endereço cria uma conta no seu servidor**. Num CRM exposto
+na internet você vai querer fechar isso. Mas a ordem importa, e fechar
+cedo demais deixa você de fora do próprio sistema.
+
+**Faça só quando as duas coisas já tiverem acontecido:** a sua conta de
+dono existe (passo 6) e todo mundo da equipe já entrou.
+
+⚠️ **Desligar o cadastro desliga também os convites do próprio CRM.** O
+link de convite manda quem ainda não tem conta para `/signup`, e aquela
+tela chama o cadastro do Supabase — que passa a recusar. Não é uma falha
+sua; é o que essa opção faz. Depois de fechar, entrem pessoas novas por
+*Authentication → Users → Invite user*, no painel do Supabase: a pessoa
+recebe o e-mail, define a senha, e aí o link de convite do CRM funciona
+para ela (ele resgata para quem já está logado).
+
+Em *Authentication → Sign In / Providers → Email*, desligue a opção que
+permite novos cadastros. Se depois disso você precisar convidar muita
+gente pelo próprio CRM, religue por um tempo e feche de novo.
+
+Um teste que vale fazer: com o cadastro fechado, abra `/signup` numa aba
+anônima e confirme que ele recusa. É a prova de que a porta fechou.
 
 ---
 
