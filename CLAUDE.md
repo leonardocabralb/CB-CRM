@@ -2673,7 +2673,10 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   vai junto (`event_type_nome`) para a automação ficar legível quando a API
   não responde. O select vem de `GET /api/cb/calendly/event-types`.
 - ⚠️ **`interpolate` (engine.ts) ganhou `{{contact.*}}` e `{{conversation.link}}`**
-  (`contact.name|phone|email|company|link`, `contact.campo.<field_key>`).
+  (`contact.name|phone|email|company|link`, `contact.campo.<field_key>`,
+  `contact.origem` = campanha - conjunto - anúncio da 949, só as partes
+  preenchidas — três `contact.campo.*` no texto imprimiam " -  - " no
+  contato sem anúncio, medido no primeiro aviso real).
   É ASSÍNCRONO agora (os 6 call sites usam `await`); o contato é carregado
   UMA vez por execução (`WeakMap` por `args`) e SÓ quando o texto cita
   `contact.`/`conversation.` — sem a guarda todo `send_message` pagaria

@@ -1598,7 +1598,7 @@ function waitMs(cfg: WaitStepConfig): number {
 // Namespaces:
 //   message.text, vars.<nome>, channel.id — do CONTEXTO do disparo (baratos);
 //   contact.name|phone|email|company|link, contact.campo.<chave_do_campo>,
-//   conversation.link — do CONTATO, carregados do banco (977).
+//   contact.origem, conversation.link — do CONTATO, carregados do banco (977).
 //
 // ⚠️ O contato é carregado UMA vez por execução (WeakMap por `args`) e SÓ
 // quando o texto cita `contact.`/`conversation.`: sem a guarda, todo
@@ -1694,6 +1694,16 @@ async function interpolate(s: string, args: ExecuteArgs): Promise<string> {
     if (ns === 'channel' && prop === 'id') return String(args.context.channel_id ?? '')
     if (ns === 'contact' && dados) {
       if (prop === 'campo') return dados.campos[partes.slice(2).join('.')] ?? ''
+      // "Campanha - Conjunto - Anúncio" dos campos de traqueamento da 949,
+      // SÓ as partes preenchidas: escrito com três `contact.campo.*` no
+      // texto, um contato sem anúncio saía como " -  - " (medido no
+      // primeiro aviso real, 07/09).
+      if (prop === 'origem') {
+        return [dados.campos.nome_da_campanha, dados.campos.nome_do_conjunto, dados.campos.nome_do_anuncio]
+          .map((v) => (v ?? '').trim())
+          .filter(Boolean)
+          .join(' - ')
+      }
       if (prop === 'link') return args.contactId ? linkDoCrm(`/contacts?contact=${args.contactId}`) : ''
       if (prop === 'name' || prop === 'phone' || prop === 'email' || prop === 'company') {
         return dados.contato?.[prop] ?? ''
