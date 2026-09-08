@@ -81,10 +81,8 @@ import { GaleriaDoFio } from "./media-gallery";
 import { MessageActions } from "./message-actions";
 import {
   MessageComposer,
-  CHAT_MEDIA_BUCKET,
   type SendMediaPayload,
 } from "./message-composer";
-import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
@@ -1323,9 +1321,16 @@ export function MessageThread({
     ]
   );
 
+  /**
+   * ⚠️ Devolve `false` quando NÃO entregou — e nesse caso NÃO apaga o objeto
+   * do bucket. O compositor mantém o anexo na fila e continua dono dele (a
+   * limpeza de desmonte e o descarte recolhem). Sem esse par, o anexo de uma
+   * fila de cinco sumia no erro do terceiro e o operador reanexava tudo
+   * (achado do Codex no PR #144).
+   */
   const handleSendMedia = useCallback(
-    async (payload: SendMediaPayload) => {
-      if (!conversation) return;
+    async (payload: SendMediaPayload): Promise<boolean> => {
+      if (!conversation) return false;
 
       // A legenda, e só ela. O nome do arquivo saiu daqui: ele agora viaja em
       // `media_filename` (969), que é o que a bolha lê.
@@ -1361,12 +1366,10 @@ export function MessageThread({
       if (janelaFechadaAgora()) {
         onUpdateMessage(tempId, { status: "failed" });
         toast.error(t("sessionExpiredBlocked"));
-        // Mesma coleta dos outros dois caminhos de falha: o arquivo já subiu e
-        // não vai chegar a ninguém. Sem isto o portão vazaria objeto no bucket
-        // público a cada anexo barrado — e o compositor não o apaga, porque
-        // para ele a entrega foi adiante.
-        void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
-        return;
+        // ⚠️ O objeto FICA: com o retorno `false` o compositor mantém o anexo
+        // na fila e volta a ser dono dele. Apagar aqui deixaria o rascunho
+        // apontando para um arquivo que não existe mais.
+        return false;
       }
 
       try {
@@ -1390,20 +1393,19 @@ export function MessageThread({
           console.error("Failed to send media:", reason);
           toast.error(`Failed to send: ${reason}`);
           onUpdateMessage(tempId, { status: "failed" });
-          // The upload never reached the recipient — GC the orphaned
-          // object rather than leaving it in the public bucket forever.
-          void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
-          return;
+          // ⚠️ O objeto FICA — ver o cabeçalho: o compositor volta a ser dono.
+          return false;
         }
 
         // `data` e a resposta; `payload` aqui e o CORPO da requisicao.
         marcarEnviada(tempId, data);
+        return true;
       } catch (err) {
         console.error("Failed to send media:", err);
         const reason = err instanceof Error ? err.message : "network error";
         toast.error(`Failed to send: ${reason}`);
         onUpdateMessage(tempId, { status: "failed" });
-        void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
+        return false;
       }
     },
     [
