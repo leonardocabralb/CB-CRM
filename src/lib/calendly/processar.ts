@@ -215,13 +215,21 @@ export function resultadoDoDisparo(
  * impede dois processamentos simultâneos do mesmo agendamento (980); um
  * caminho de saída que não o solte deixa a linha travada até o
  * recolhimento de 10 minutos.
+ *
+ * ⚠️⚠️ COM CERCA DE POSSE: passe o `processando_desde` que o SEU claim
+ * gravou, e a escrita só vale se o cadeado ainda for aquele. Sem a cerca,
+ * um dono recolhido como abandonado terminava tarde, sobrescrevia o
+ * resultado de quem tinha assumido e soltava o cadeado VIVO do outro
+ * (achado do Codex no PR #135). Sem cerca a escrita é incondicional — e o
+ * único chamador que pode fazer isso é quem nunca reivindicou nada.
  */
 export async function gravarResultado(
   admin: SupabaseClient,
   eventoId: string,
   r: ProcessamentoDoAgendamento,
-): Promise<void> {
-  const { error } = await admin
+  claimIso?: string | null,
+): Promise<{ gravou: boolean }> {
+  const escrita = admin
     .from("cb_calendly_eventos")
     .update({
       resultado: r.resultado,
@@ -231,5 +239,16 @@ export async function gravarResultado(
       processando_desde: null,
     })
     .eq("id", eventoId);
-  if (error) console.error("[calendly] não foi possível gravar o resultado do evento:", error.message);
+  const { data, error } = await (claimIso ? escrita.eq("processando_desde", claimIso) : escrita).select("id");
+  if (error) {
+    console.error("[calendly] não foi possível gravar o resultado do evento:", error.message);
+    return { gravou: false };
+  }
+  const gravou = (data?.length ?? 0) > 0;
+  if (!gravou && claimIso) {
+    // Não é erro: outro dono assumiu o agendamento enquanto este rodava.
+    // Perder a escrita é exatamente o que a cerca existe para fazer.
+    console.warn("[calendly] resultado descartado — o cadeado do evento já é de outro dono:", eventoId);
+  }
+  return { gravou };
 }

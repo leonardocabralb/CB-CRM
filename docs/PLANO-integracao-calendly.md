@@ -425,3 +425,21 @@ que são conselhos diferentes). O webhook carimba o cadeado junto com a
 linha; `gravarResultado` o solta na mesma escrita do resultado; o caminho de
 exceção grava `falhou` em vez de soltar limpo, porque a automação pode ter
 enviado antes de morrer; claim de mais de 10 minutos é tomado.
+
+### Cerca de posse e teto de processamento (08/09, 2ª rodada do Codex no #135)
+
+O cadeado sozinho não bastava, e o Codex apontou os dois furos:
+
+1. **Recolher por idade podia tomar a linha de um dono VIVO** — em produção
+   não há corte de duração de rota, então "10 min sem notícias" não provava
+   nada. Conserto: `TETO_DE_PROCESSAMENTO_MS` (4 min), abaixo do
+   recolhimento (10 min), com teste cobrando a margem. Quem passa do teto
+   grava `falhou` e sai, então cadeado velho passa a significar dono morto.
+2. **A escrita do resultado casava só por id** — um dono recolhido terminava
+   tarde, sobrescrevia o resultado de quem assumiu e soltava o cadeado vivo
+   do outro. Conserto: cerca de posse (`processando_desde` do próprio claim)
+   em `gravarResultado` e `liberarClaim`, a mesma do worker do Radar.
+
+Limite declarado: desistir não cancela o trabalho em voo — uma promessa em
+JS não se aborta. O que impede o estrago é a cerca, que transforma as
+escritas do desistente em no-op.
