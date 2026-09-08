@@ -99,13 +99,13 @@ export async function processarAgendamento(
     return { resultado: "sem_automacao", detalhe: "nenhuma automação ativa escuta este evento", contactId: contatoExistente };
   }
 
-  let contactId = contatoExistente;
+  let resolvido = contatoExistente;
   let conversaDaFichaNova: string | null = null;
   let fichaNova = false;
-  if (!contactId) {
+  if (!resolvido) {
     try {
       const destino = await resolverDestinatario(admin, accountId, agendamento.telefone, agendamento.nome);
-      contactId = destino.contactId;
+      resolvido = destino.contactId;
       conversaDaFichaNova = destino.conversationId;
       fichaNova = destino.criouContato;
     } catch (e) {
@@ -116,6 +116,12 @@ export async function processarAgendamento(
       };
     }
   }
+
+  // ⚠️ Daqui para baixo o contato EXISTE — ou já existia, ou acabou de ser
+  // criado, ou a função já voltou. A const estreita o tipo para quem editar
+  // isto depois: com `string | null`, um `dispararAutomacoes` sem contato
+  // passaria no compilador e os passos morreriam um a um no motor.
+  const contactId: string = resolvido;
 
   // A conversa do contato (única por conta, 036) e o canal por onde ele
   // fala — é o que o recorte por conexão da automação lê. Ficha recém-criada

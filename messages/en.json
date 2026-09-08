@@ -2546,7 +2546,8 @@
         "reprocessarAjuda": "Runs this booking again with the data already received — for after you fixed what was missing.",
         "reprocessado": "Processed again: {resultado}.",
         "reprocessarFalhou": "Could not process it again.",
-        "jaProcessado": "This booking already ran — repeating it would send the same message again."
+        "jaProcessado": "This booking already ran — repeating it would send the same message again.",
+        "aindaProcessando": "This booking just arrived and is still being processed. Wait a moment and reload."
       },
       "emBreve": "Coming soon",
       "modulo": {

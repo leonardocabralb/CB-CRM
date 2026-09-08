@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
-import { RESULTADOS_REPROCESSAVEIS } from "@/lib/calendly/log";
+import { RECEBIDO_EM_PROCESSAMENTO_MS, RESULTADOS_REPROCESSAVEIS } from "@/lib/calendly/log";
 import { agendamentoDaLinha, varsDaLinha } from "@/lib/calendly/reprocessar";
 import { gravarResultado, processarAgendamento } from "@/lib/calendly/processar";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
@@ -24,6 +24,13 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
  * `disparado` mandaria a mesma mensagem à equipe outra vez. Sem retentativa
  * com espera aqui — é um clique, a resposta tem de voltar.
  */
+/** A linha chegou agora há pouco? Data ilegível conta como recente (não repetir no escuro). */
+function recemChegada(recebidoEm: unknown): boolean {
+  const t = typeof recebidoEm === "string" ? new Date(recebidoEm).getTime() : NaN;
+  if (Number.isNaN(t)) return true;
+  return Date.now() - t < RECEBIDO_EM_PROCESSAMENTO_MS;
+}
+
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const ctx = await requireRole("admin");
@@ -45,6 +52,12 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
     if (!(RESULTADOS_REPROCESSAVEIS as readonly string[]).includes(linha.resultado)) {
       return NextResponse.json({ error: "ja_processado", resultado: linha.resultado }, { status: 409 });
+    }
+    // ⚠️ `recebido` recente pode estar rodando NESTE instante (a rota do
+    // webhook grava a linha e processa depois, em `after()`). Ver
+    // `RECEBIDO_EM_PROCESSAMENTO_MS`.
+    if (linha.resultado === "recebido" && recemChegada(linha.recebido_em)) {
+      return NextResponse.json({ error: "ainda_processando" }, { status: 409 });
     }
 
     const agendamento = agendamentoDaLinha(linha);
