@@ -46,6 +46,36 @@ Se você não tem certeza, comece pela Evolution: ela sobe em quinze
 minutos e não depende de aprovação de ninguém. Trocar depois é
 acrescentar uma conexão, não refazer a instalação.
 
+### 0.1 Preparar o servidor
+
+Faça isto **antes de tudo que vem depois**, uma vez só. Tanto o gateway
+de WhatsApp (passo 3.1) quanto o CRM (passo 5.3) sobem como serviços do
+Docker Swarm e conversam por uma rede overlay, e nenhuma das duas coisas
+existe num servidor recém-instalado.
+
+```bash
+# Docker instalado NÃO é o mesmo que Docker em modo Swarm.
+docker info --format '{{.Swarm.LocalNodeState}}'   # "inactive" = falta iniciar
+docker swarm init                                  # só se estiver inactive
+
+# A rede por onde o CRM alcança o gateway. Ela não é publicada em
+# porta nenhuma do servidor: só quem está nela se enxerga.
+docker network create --driver overlay --attachable crmnet
+```
+
+Confira antes de seguir:
+
+```bash
+docker info --format '{{.Swarm.LocalNodeState}} {{.Swarm.ControlAvailable}}'
+# esperado: "active true"
+docker network ls | grep crmnet
+```
+
+> ⚠️ `active true` é o que o rollout do CI exige literalmente: ele recusa
+> um nó cujo estado não seja ativo ou que não seja manager. Se aqui sair
+> outra coisa, pare e resolva agora — cada passo seguinte assume estes
+> dois comandos feitos, e a falha aparece lá na frente, longe da causa.
+
 ---
 
 ## 1. Supabase
@@ -189,8 +219,9 @@ networks:
 ```
 
 ```bash
-docker network create --driver overlay --attachable crmnet   # se ainda não existir
+# A rede `crmnet` já existe desde o passo 0.1.
 docker stack deploy -c evolution-stack.yml evolution
+docker service logs -f evolution_evolution
 ```
 
 > ⚠️⚠️ **NÃO publique a Evolution em `127.0.0.1:8080` e NÃO aponte o CRM
@@ -338,12 +369,10 @@ Um push no `main` constrói a imagem e roda `docker service update`, que
 só atualiza um serviço que já existe. Da primeira vez, no servidor:
 
 ```bash
-# 1. O Swarm precisa existir. Ter Docker instalado NÃO basta:
-#    `docker stack deploy` só funciona num nó que seja manager, e o
-#    rollout do CI recusa explicitamente um nó que não seja.
-#    Num servidor recém-instalado, uma vez só:
-docker info --format '{{.Swarm.LocalNodeState}}'   # "inactive" = falta iniciar
-docker swarm init                                  # se estiver inactive
+# 1. O Swarm já foi iniciado no passo 0.1. Confirme, porque publicar
+#    num nó que não é manager falha aqui:
+docker info --format '{{.Swarm.LocalNodeState}} {{.Swarm.ControlAvailable}}'
+# esperado: "active true" — se não for, volte ao passo 0.1
 
 # 2. Autenticar no registro onde a SUA imagem foi publicada.
 docker login ghcr.io -u <seu-usuário>
@@ -481,7 +510,7 @@ sozinha: é o teste do agendador.
 | Tela em inglês depois de mudar o idioma | Idioma é fixado no build. Reconstrua a imagem |
 | Convite aceito mas o cadastro é recusado | Os cadastros estão desligados no Supabase. Veja o passo 10 |
 | Evolution "connection refused" a partir do CRM | `EVOLUTION_BASE_URL` apontando para `127.0.0.1`. Use o nome do serviço no Swarm. Veja o passo 3.1 |
-| `docker stack deploy` diz que não é um manager | Falta `docker swarm init` no servidor. Veja o passo 5.3 |
+| `docker stack deploy` ou `network create` diz que não é um manager | O Swarm não foi iniciado. Veja o passo 0.1 |
 | A tela abre com dados de outra empresa | O stack subiu com a imagem de queda, de outro repositório. Exporte `CRM_IMAGE`. Veja o passo 5.3 |
 
 ---
