@@ -367,3 +367,13 @@ conectou o token (organização, webhook `active`) e pediu o teste.
 - As outras mensagens que chegaram ao número no mesmo minuto são de outra
   automação, de outro CRM (Kommo), disparada pelo mesmo agendamento —
   informado pelo operador.
+
+### Cartão de chegada na grade do funil (07/09, pedido do operador)
+
+O operador procurou a automação em Funis → Automações e não achou: a grade
+só posicionava gatilhos de etapa. `montarGrade` passou a receber os passos
+e a criar cartões de CHEGADA (`tipo: 'chegada'`, borda azul, cabeçalho
+"Chega nesta etapa por: Agendamento no Calendly") sob a etapa de destino do
+`move_deal_stage`/`create_deal`, sem "expandir". 7 testes em
+`grade-do-funil.test.ts`. A seção 3.4 do plano e o CLAUDE.md foram
+corrigidos: a frase "não aparece no funil" deixou de ser verdade.

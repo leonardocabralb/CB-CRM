@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { Automation } from '@/types'
+import type { Automation, AutomationStep } from '@/types'
 
-import { montarGrade, trechosContinuos } from './grade-do-funil'
+import { cartoesDeChegada, etapasParaOndeLeva, montarGrade, trechosContinuos } from './grade-do-funil'
 
 // ------------------------------------------------------------
 // A posição do cartão na grade é uma AFIRMAÇÃO sobre onde a regra roda.
@@ -144,5 +144,70 @@ describe('montarGrade — empilhamento em linhas', () => {
     // reordenar por "esperteza" faria o mesmo funil parecer outro.
     const g = montarGrade([auto('z', ['e0']), auto('y', ['e1'])], ETAPAS)
     expect(g[0].map((c) => c.automation.id)).toEqual(['z', 'y'])
+  })
+})
+
+// ------------------------------------------------------------
+// Cartões de CHEGADA (07/09/2026): automação de outro gatilho que LEVA o
+// card para uma etapa deste quadro — o caso do Calendly.
+// ------------------------------------------------------------
+
+const outroGatilho = (id: string, trigger_type = 'calendly_booking'): Automation =>
+  ({ id, name: id, trigger_type, trigger_config: {}, is_active: true }) as unknown as Automation
+
+const passo = (automation_id: string, step_type: string, step_config: Record<string, unknown>): AutomationStep =>
+  ({ id: `${automation_id}-${step_type}`, automation_id, step_type, step_config, position: 0 }) as unknown as AutomationStep
+
+describe('cartões de chegada', () => {
+  const posicao = new Map(ETAPAS.map((id, i) => [id, i]))
+
+  it('move_deal_stage para uma etapa do quadro vira um cartão de UMA coluna naquela etapa', () => {
+    const cal = outroGatilho('cal')
+    const steps = { cal: [passo('cal', 'update_contact_field', { field: 'name' }), passo('cal', 'move_deal_stage', { stage_id: 'e2' })] }
+    const cartoes = cartoesDeChegada([cal], steps, posicao)
+    expect(cartoes).toEqual([
+      { automation: cal, tipo: 'chegada', colunaInicial: 2, colunas: 1, todasAsEtapas: false, temOutrosTrechos: false },
+    ])
+  })
+
+  it('create_deal também é chegada; etapa de OUTRO funil não vira cartão', () => {
+    const a = outroGatilho('a', 'keyword_match')
+    const steps = { a: [passo('a', 'create_deal', { pipeline_id: 'p', stage_id: 'e0' }), passo('a', 'move_deal_stage', { stage_id: 'de-outro-funil' })] }
+    expect(etapasParaOndeLeva(steps.a, posicao)).toEqual([0])
+  })
+
+  it('dois destinos = dois cartões; o mesmo destino duas vezes = um', () => {
+    const a = outroGatilho('a')
+    const steps = { a: [passo('a', 'move_deal_stage', { stage_id: 'e1' }), passo('a', 'move_deal_stage', { stage_id: 'e3' }), passo('a', 'move_deal_stage', { stage_id: 'e1' })] }
+    expect(cartoesDeChegada([a], steps, posicao).map((c) => c.colunaInicial)).toEqual([1, 3])
+  })
+
+  it('CRÍTICO: automação de gatilho de etapa NÃO ganha cartão de chegada (já tem o do gatilho)', () => {
+    const esteira = auto('esteira', ['e0'])
+    const steps = { esteira: [passo('esteira', 'move_deal_stage', { stage_id: 'e1' })] }
+    expect(cartoesDeChegada([esteira], steps, posicao)).toEqual([])
+    const grade = montarGrade([esteira], ETAPAS, steps)
+    expect(grade.flat().map((c) => c.tipo)).toEqual(['gatilho'])
+  })
+
+  it('sem passos (ou automação que não move nada) não aparece', () => {
+    const a = outroGatilho('a')
+    expect(cartoesDeChegada([a], {}, posicao)).toEqual([])
+    expect(cartoesDeChegada([a], { a: [passo('a', 'send_message', { text: 'oi' })] }, posicao)).toEqual([])
+  })
+
+  it('montarGrade empilha os de chegada junto com os de gatilho, sem sobrepor', () => {
+    const gat = auto('gat', ['e2'])
+    const cal = outroGatilho('cal')
+    const steps = { cal: [passo('cal', 'move_deal_stage', { stage_id: 'e2' })] }
+    const grade = montarGrade([gat, cal], ETAPAS, steps)
+    // os dois querem a coluna 2: duas linhas
+    expect(grade).toHaveLength(2)
+    expect(grade[0][0]).toMatchObject({ automation: gat, tipo: 'gatilho' })
+    expect(grade[1][0]).toMatchObject({ automation: cal, tipo: 'chegada', colunaInicial: 2 })
+  })
+
+  it('todo cartão de gatilho carrega `tipo: gatilho` (compat com a tela)', () => {
+    expect(montarGrade([auto('x', null)], ETAPAS).flat().every((c) => c.tipo === 'gatilho')).toBe(true)
   })
 })

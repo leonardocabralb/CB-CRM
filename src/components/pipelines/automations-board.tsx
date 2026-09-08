@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   AlertTriangle,
+  ArrowDownToLine,
   Copy,
   Globe,
   Columns3,
@@ -65,9 +66,12 @@ export function AutomationsBoard({
     () => [...stages].sort((a, b) => a.position - b.position),
     [stages],
   )
+  // Com os passos, a grade também posiciona os cartões de CHEGADA: regras
+  // de outro gatilho (Calendly, palavra-chave…) que movem o card para uma
+  // etapa deste quadro — ver `grade-do-funil.ts`.
   const linhas = useMemo(
-    () => montarGrade(automations, ordenadas.map((s) => s.id)),
-    [automations, ordenadas],
+    () => montarGrade(automations, ordenadas.map((s) => s.id), steps),
+    [automations, ordenadas, steps],
   )
 
   const colunas = `repeat(${ordenadas.length}, minmax(240px, 1fr))`
@@ -182,12 +186,20 @@ function Cartao({
   const a = cartao.automation
   const primeiro = passos[0]
   const resumo = primeiro ? descreverPasso(primeiro, nomes) : null
+  const tGatilhos = useTranslations("Automations.builder")
+  const chegada = cartao.tipo === "chegada"
 
-  const gatilho = cartao.todasAsEtapas
-    ? t("todasAsEtapas")
-    : cartao.colunas > 1
-      ? t("quandoEntraVarias")
-      : t("quandoEntra")
+  // Chegada: o cabeçalho diz POR QUAL gatilho o card chega aqui — o rótulo é
+  // o mesmo do editor (chave montada; toda `AutomationTriggerType` tem uma).
+  const gatilho = chegada
+    ? t("chegaPor", {
+        gatilho: tGatilhos(`triggers.${a.trigger_type}.label` as Parameters<typeof tGatilhos>[0]),
+      })
+    : cartao.todasAsEtapas
+      ? t("todasAsEtapas")
+      : cartao.colunas > 1
+        ? t("quandoEntraVarias")
+        : t("quandoEntra")
 
   return (
     <div
@@ -203,11 +215,14 @@ function Cartao({
           ? "border-border bg-card hover:border-primary/40"
           : "border-dashed border-border bg-card/40",
         cartao.todasAsEtapas && "border-violet-500/40 bg-violet-500/5",
+        chegada && "border-sky-500/40 bg-sky-500/5",
       )}
+      title={chegada ? t("chegaAjuda") : undefined}
     >
       <button type="button" onClick={onAbrir} className="block w-full min-w-0 text-left">
         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           {cartao.todasAsEtapas && <Globe className="h-3 w-3 shrink-0 text-violet-400" />}
+          {chegada && <ArrowDownToLine className="h-3 w-3 shrink-0 text-sky-400" />}
           <span className="truncate">{gatilho}</span>
         </div>
 
@@ -252,15 +267,18 @@ function Cartao({
         >
           <Copy className="h-3 w-3" />
         </button>
-        <button
-          type="button"
-          onClick={onExpandir}
-          aria-label={t("expandir")}
-          title={t("expandir")}
-          className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <Columns3 className="h-3 w-3" />
-        </button>
+        {/* Chegada não "expande": a coluna é o passo que move, não o gatilho. */}
+        {!chegada && (
+          <button
+            type="button"
+            onClick={onExpandir}
+            aria-label={t("expandir")}
+            title={t("expandir")}
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Columns3 className="h-3 w-3" />
+          </button>
+        )}
       </div>
     </div>
   )
