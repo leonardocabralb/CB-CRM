@@ -225,7 +225,13 @@ export function CalendlyCard() {
       const res = await fetch(`/api/cb/calendly/eventos/${id}/reprocessar`, { method: "POST" });
       const corpo = (await res.json().catch(() => null)) as { resultado?: string; error?: string } | null;
       if (!res.ok) {
-        toast.error(corpo?.error === "ja_processado" ? t("calendly.jaProcessado") : t("calendly.reprocessarFalhou"));
+        toast.error(
+          corpo?.error === "ja_processado"
+            ? t("calendly.jaProcessado")
+            : corpo?.error === "ainda_processando"
+              ? t("calendly.aindaProcessando")
+              : t("calendly.reprocessarFalhou"),
+        );
         return;
       }
       toast.success(t("calendly.reprocessado", { resultado: rotuloDoResultado(corpo?.resultado ?? "") }));

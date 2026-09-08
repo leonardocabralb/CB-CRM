@@ -2539,7 +2539,8 @@
         "reprocessarAjuda": "Roda este agendamento outra vez, com os dados que já chegaram — para depois de arrumar o que faltava.",
         "reprocessado": "Processado de novo: {resultado}.",
         "reprocessarFalhou": "Não foi possível processar de novo.",
-        "jaProcessado": "Este agendamento já foi processado — repetir mandaria a mesma mensagem outra vez."
+        "jaProcessado": "Este agendamento já foi processado — repetir mandaria a mesma mensagem outra vez.",
+        "aindaProcessando": "Este agendamento acabou de chegar e ainda está sendo processado. Espere um instante e recarregue."
       },
       "emBreve": "Em breve",
       "modulo": {

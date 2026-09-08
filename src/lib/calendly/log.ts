@@ -21,5 +21,20 @@ export const EVENTOS_POR_PAGINA = 20;
  */
 export const RESULTADOS_REPROCESSAVEIS = ["recebido", "sem_contato", "sem_automacao"] as const;
 
+/**
+ * ⚠️ Quanto tempo uma linha `recebido` é considerada EM PROCESSAMENTO.
+ *
+ * `recebido` é o estado inicial: a rota grava a linha e só depois processa,
+ * em `after()`. Uma linha recém-chegada, portanto, pode estar rodando
+ * AGORA — e o botão "Processar de novo", clicado nesse intervalo, dispararia
+ * a mesma automação em paralelo: dois avisos ao advogado e o card mexido
+ * duas vezes. A janela é de segundos, e é por isso que ela precisa de um
+ * número: quem só olha o estado não a enxerga.
+ *
+ * Passado o prazo, `recebido` significa outra coisa — o processamento morreu
+ * no meio (deploy, container reciclado) — e aí repetir é exatamente o certo.
+ */
+export const RECEBIDO_EM_PROCESSAMENTO_MS = 2 * 60 * 1000;
+
 export const COLUNAS_DO_EVENTO =
   "id, evento, nome, email, telefone, telefone_origem, event_type_nome, inicio, fim, link, perguntas, contact_id, resultado, detalhe, recebido_em, processado_em";

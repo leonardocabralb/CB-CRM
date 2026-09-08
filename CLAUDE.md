@@ -2661,7 +2661,13 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   `sem_contato`, `sem_automacao`): repetir um `disparado` mandaria a mesma
   mensagem à equipe de novo, e em `falhou` não se sabe se o passo de envio
   já tinha rodado (aí o caminho é o histórico da automação e o "Executar
-  automação" da conversa). ⚠️ Ele usa as VARIÁVEIS gravadas (979,
+  automação" da conversa). ⚠️ `recebido` com menos de
+  `RECEBIDO_EM_PROCESSAMENTO_MS` (2 min) é RECUSADO: a rota do webhook grava
+  a linha e processa depois, em `after()`, então uma linha recém-chegada
+  pode estar rodando NAQUELE instante — clicar ali dispararia a automação em
+  paralelo (dois avisos, card mexido duas vezes). Passado o prazo,
+  `recebido` significa processamento que morreu no meio, e repetir é o
+  certo. Data de chegada ilegível conta como recente. ⚠️ Ele usa as VARIÁVEIS gravadas (979,
   `cb_calendly_eventos.variaveis`), nunca só o remonte: a tabela não guarda
   local/cancelar/remarcar/situação em coluna, e o remonte entregaria à
   automação menos variáveis que a primeira entrega, em silêncio.
