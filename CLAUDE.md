@@ -83,8 +83,17 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API.
   upstream vai trazê-lo de volta: apagar de novo.**
 - `mcp-server/` — subprojeto separado (tem `package.json` próprio) que expõe o
   CRM via MCP. Rodar `npm` dentro dele, não na raiz.
-- `docs/` — `mcp.md`, `public-api.md`. A doc completa de self-host vive em
-  `wacrm.tech/docs` (repo separado `ArnasDon/wacrm-site`).
+- `docs/` — a documentação ENTREGUE a quem instala o sistema: `README.md`
+  (índice), `INSTALACAO.md` (do zero até o WhatsApp conectado), `ATUALIZAR.md`,
+  `docker.md`, `public-api.md` e `mcp.md`. ⚠️ Até 2026-09-08 esta linha dizia
+  que a doc de self-host vivia no site do projeto ORIGINAL — verdade enquanto
+  éramos só um fork de uso interno, e mentira a partir do momento em que o
+  código passou a ser instalado por outra pessoa. O `SETUP-PRODUCAO.md` foi
+  apagado no mesmo dia (mandava instalar numa hospedagem abandonada e afirmava
+  que o português não existia); quem o procurar acha o `INSTALACAO.md`.
+  ⚠️ Os demais arquivos de `docs/` (`PLANO-*`, `INFRA-VPS`, `DEPLOY-VPS`,
+  `EVOLUTION-LID-FIX`) são INTERNOS: descrevem a nossa operação e não vão para
+  quem instala. Ver `docs/PLANO-produto-vendavel.md`, Fase 4.4.
 - `.env.local` — segredos (Supabase URL/keys, `META_APP_SECRET`,
   `ENCRYPTION_KEY`). Gitignored; **nunca commitar**. Modelo em
   `.env.local.example`.
@@ -3235,8 +3244,12 @@ reprovavam por falta de dado, não por defeito.
 **Como conferir antes de abrir o PR:** `supabase db start` na raiz do projeto
 reaplica tudo do zero, igual ao CI. Exige Docker rodando e ~2 GB livres.
 
-**O replay NÃO trava o deploy** — ver a nota em `pipeline.yml`. Ele é sinal, não
-portão, justamente porque as migrations antigas ainda carregam essa dívida.
+**O replay TRAVA o deploy desde 2026-09-08** — `needs: [verificar, migrations]`
+no `pipeline.yml`, com pino em `pipeline.test.ts`. Foi sinal, não portão,
+enquanto as migrations antigas ainda carregavam a dívida das duas causas acima;
+paga a dívida, manter o portão aberto só preservava o buraco. Quem descobriria
+uma migration que não replaya seria a PRÓXIMA instalação — a que constrói o
+banco do zero e não tem produção antiga para disfarçar o defeito.
 
 ## i18n (armadilhas que já morderam)
 
