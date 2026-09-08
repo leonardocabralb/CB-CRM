@@ -24,7 +24,7 @@
 
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
-| **1** | Integração (cartão em Integrações + webhook), gatilho `calendly_booking`, passo `send_to_number` | ✅ **código pronto** (2026-09-07) — aguarda: migration em produção, merge/deploy | `977_cb_calendly` (**não aplicada** — aguarda autorização) | — |
+| **1** | Integração (cartão em Integrações + webhook + log paginado), gatilho `calendly_booking`, passo `send_to_number`, variáveis `{{contact.*}}`/`{{conversation.link}}` | ✅ **feita** (2026-09-07) | `977_cb_calendly` **aplicada** (07/09, via conector, antes do merge) | [#128](https://github.com/leonardocabralb/CB-CRM/pull/128) |
 | **2** | Depois do deploy: operador conecta o Calendly (token); a automação "Calendly → Reunião agendada" é criada (seção 3.5), o evento é escolhido no gatilho e ela é ATIVADA | ⏳ depende do operador | — | — |
 
 **Decisões travadas pelo pedido (07/09):**
@@ -295,3 +295,27 @@ qualquer, até a conexão existir), passos nesta ordem (D6):
   `send_to_number` que fizesse o mesmo avisaria o advogado pelo número por
   onde o CLIENTE escreveu. O passo NÃO herda (só a escolha explícita, que
   falha fechada). Está no teste do motor e no CLAUDE.md.
+
+### Complemento medido no mesmo dia (07/09, depois da revisão do operador)
+
+- **Formato do aviso** trocado pelo que o operador escreveu (negrito do
+  WhatsApp, sem "Tipo", com Origem = campanha - conjunto - anúncio, Tamanho
+  da Dívida e Link CRM). Para isso o motor ganhou `{{contact.*}}` e
+  `{{conversation.link}}` em todo passo de texto (5 testes novos no motor:
+  nome/telefone/e-mail/link, campo ausente vira vazio, link da ficha, e a
+  guarda de "só consulta o contato quando o texto cita, uma vez por
+  execução").
+- **Log de recebimentos** virou seção expansível no cartão, **20 por
+  página** (pedido do operador), com "‹ Mais recentes / Mais antigos ›" e
+  cada linha abrindo os dados que chegaram. Rota `GET /api/cb/calendly/
+  eventos?pagina=N` com `count: 'exact'`.
+- **Migration 977 aplicada em produção** pelo conector com autorização do
+  operador ("siga"); conferido por consulta: RLS ligada nas duas, `anon` e
+  `authenticated` sem SELECT, `service_role` com INSERT, linha
+  `977_cb_calendly` no histórico.
+- Preview depois da migration: cartão em "Não conectada" com o formulário
+  do token; token inválido de teste → "Falha: o Calendly recusou o token"
+  (401 real do Calendly), nada gravado (0 linhas em `cb_calendly_config`).
+- ⚠️ **O token do Calendly foi colado no chat pelo operador.** Não foi
+  digitado em lugar nenhum por decisão de regra (credencial só entra pela
+  mão do operador); recomendado gerar um novo e colar no cartão.

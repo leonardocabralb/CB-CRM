@@ -2814,8 +2814,9 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
     cifrados, token de rota do webhook) e `cb_calendly_eventos` (cada
     agendamento recebido e o que aconteceu com ele; UNIQUE por invitee =
     idempotência). As duas FECHADAS para `authenticated` — a tela lê pela
-    rota. **Ainda NÃO aplicada** (aguarda autorização do operador; ver
-    `docs/PLANO-integracao-calendly.md`).
+    rota. Aplicada em 2026-09-07 via conector, ANTES do merge, com
+    autorização do operador; conferido por consulta (RLS, grants, histórico).
+    Plano em `docs/PLANO-integracao-calendly.md`.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
