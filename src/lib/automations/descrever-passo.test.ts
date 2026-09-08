@@ -107,6 +107,18 @@ describe('descreverPasso — texto', () => {
   })
 })
 
+describe('send_to_number (977)', () => {
+  it('mostra o número legível, com o 55 que o motor acrescenta', () => {
+    expect(descreverPasso(passo('send_to_number', { phone: '(83) 98874-5316' })).valores.alvo).toBe('(83) 98874-5316')
+    expect(descreverPasso(passo('send_to_number', { phone: '5583988745316' })).valores.alvo).toBe('(83) 98874-5316')
+  })
+
+  it('telefone ausente ou inválido não vira "undefined"', () => {
+    expect(descreverPasso(passo('send_to_number', {})).valores.alvo).toBe('')
+    expect(descreverPasso(passo('send_to_number', { phone: '12' })).valores.alvo).toBe('')
+  })
+})
+
 // ------------------------------------------------------------
 // A trava contra MISSING_MESSAGE.
 // ------------------------------------------------------------
@@ -116,7 +128,7 @@ const TIPOS_DE_PASSO = [
   'remove_tag', 'assign_conversation', 'update_contact_field', 'create_deal',
   'move_deal_stage', 'set_deal_status', 'run_automation', 'stop_automation',
   'run_flow', 'stop_flow', 'set_ai', 'send_media', 'wait', 'condition',
-  'send_webhook', 'close_conversation',
+  'send_webhook', 'close_conversation', 'send_to_number',
 ] as const
 
 // Configs que exercitam TODAS as variantes de chave, não só o caminho padrão.

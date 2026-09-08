@@ -1131,7 +1131,8 @@
         "wait_days": "Wait {quantidade} days",
         "condition": "Check a condition",
         "send_webhook": "Call webhook",
-        "close_conversation": "Close the conversation"
+        "close_conversation": "Close the conversation",
+        "send_to_number": "Notify number: {alvo}"
       },
       "cancelar": "Cancel",
       "salvar": "Save",
@@ -1579,7 +1580,8 @@
         "run_flow": "Run bot",
         "stop_flow": "Stop bot",
         "set_ai": "AI assistant",
-        "send_media": "Send file"
+        "send_media": "Send file",
+        "send_to_number": "Notify a number"
       },
       "triggers": {
         "new_message_received": {
@@ -1625,6 +1627,10 @@
         "date_field_offset": {
           "label": "Date reminder",
           "hint": "Before or after a date stored in a contact field — e.g. 24h before the meeting."
+        },
+        "calendly_booking": {
+          "label": "Calendly booking",
+          "hint": "When someone books a slot on Calendly (integration in Settings → Integrations). The contact is matched by the booking's phone number."
         }
       },
       "trigger": "Trigger",
@@ -1735,7 +1741,14 @@
         "matchExact": "Exact",
         "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed.",
         "channelGone": "The connection in this condition was removed — until you pick another, this condition will never be true.",
-        "outboundChannelGone": "The connection picked for this step was removed. Until you pick another one, the message still goes out — through the conversation's connection, not the one you chose."
+        "outboundChannelGone": "The connection picked for this step was removed. Until you pick another one, the message still goes out — through the conversation's connection, not the one you chose.",
+        "phoneLabel": "Number that gets the notice",
+        "phoneHint": "Country code + area code, digits only (e.g. 5583988745316). Without a country code, 55 is added.",
+        "contactNameLabel": "Name on the contact (optional)",
+        "contactNameHint": "Only used when the number is not a contact yet — the contact is created with this name.",
+        "placeholderNotifyText": "New booking: {nome} at {data}",
+        "notifyChannelInherit": "The number's conversation (or the default connection)",
+        "notifyChannelHelp": "Choosing a connection sends the notice ALWAYS through it — and fails if it is unavailable, instead of going out through another number."
       },
       "delete": "Delete",
       "stages": {
@@ -1766,6 +1779,17 @@
         "fonteCampo": "From a contact field",
         "fonteReuniao": "From the meeting on the calendar",
         "minutosLabel": "Minutes"
+      },
+      "calendly": {
+        "eventoLabel": "Calendly event",
+        "qualquerEvento": "Any event",
+        "carregando": "Loading events…",
+        "naoConectado": "Calendly is not connected on this account yet.",
+        "abrirIntegracoes": "Connect in Integrations",
+        "falhou": "Could not load Calendly events right now. Whatever was already chosen still applies.",
+        "inativo": "{nome} (inactive)",
+        "variaveisTitulo": "Booking variables, for use in the steps",
+        "variaveisAjuda": "E.g. Name: {nome} · Date: {data} (dd/mm/yyyy hh:mm) · the meeting date field takes {inicio}."
       },
       "orquestracao": {
         "runAutomationLabel": "Automation to run",
@@ -2427,6 +2451,75 @@
           "meta_error": "Meta returned an error",
           "db_error": "could not save",
           "chave_ilegivel": "the stored token could not be read — connect again"
+        }
+      },
+      "calendly": {
+        "desc": "Connect Calendly so the CRM learns about every booked slot: the \"Calendly booking\" automation trigger finds the customer by phone, fills the fields, moves the card and notifies whoever you want. Calendly notifies the CRM instantly (webhook).",
+        "campoToken": "Calendly Personal Access Token",
+        "tokenVazio": "Paste the token generated in Calendly",
+        "tokenDica": "Calendly → Integrations → API & Webhooks → Personal access tokens → Generate new token. Use the account that administers the organization (to see everyone's events). The token is stored encrypted and never shown again.",
+        "planoDica": "Webhooks require a paid Calendly plan (Standard or higher).",
+        "conectar": "Connect",
+        "conectando": "Connecting…",
+        "conectado": "Calendly connected and webhook subscribed.",
+        "conectadoSemWebhook": "Token accepted, but the webhook could not be subscribed. See the reason below and try Resubscribe.",
+        "carregando": "Loading…",
+        "usuario": "Connected as {nome} ({email})",
+        "agenda": "scheduling page",
+        "webhookAtivo": "Webhook active · scope {escopo}",
+        "webhookDesativado": "Webhook DISABLED by Calendly (24h of failed deliveries) — resubscribe.",
+        "webhookAusente": "No webhook subscribed — no bookings arrive until you resubscribe.",
+        "escopo": {
+          "organization": "organization",
+          "user": "user"
+        },
+        "reassinar": "Resubscribe webhook",
+        "reassinando": "Resubscribing…",
+        "reassinado": "Webhook resubscribed.",
+        "desconectar": "Disconnect",
+        "confirmarDesconectar": "Disconnect Calendly? The webhook is removed and bookings stop arriving. The event history stays.",
+        "perguntaLabel": "Phone question on the form",
+        "perguntaHint": "Calendly has no phone field. If your event asks for the customer's WhatsApp, type part of that question's label here (e.g. WhatsApp). Empty = automatic (SMS reminder number, else the answer that looks like a phone).",
+        "perguntaPlaceholder": "e.g. WhatsApp",
+        "salvarPergunta": "Save",
+        "perguntaSalva": "Phone question saved.",
+        "urlLabel": "Webhook URL",
+        "urlHint": "This is the URL registered in Calendly. For reference only — the CRM subscribes it.",
+        "urlInalcancavel": "The CRM's public URL (NEXT_PUBLIC_SITE_URL) is not reachable from outside — the webhook cannot be subscribed from this environment.",
+        "eventosTitulo": "Latest bookings received",
+        "semEventos": "No booking has arrived yet. Book a test slot on Calendly to check.",
+        "colQuando": "Received",
+        "colNome": "Name",
+        "colTelefone": "Phone",
+        "colEvento": "Event",
+        "colResultado": "Result",
+        "contagem": "{disparados} with automation · {semContato} no contact · {semAutomacao} no automation · {semTelefone} no phone",
+        "resultado": {
+          "recebido": "received",
+          "disparado": "automation fired",
+          "sem_automacao": "no automation listens to this event",
+          "sem_contato": "phone matches no contact",
+          "sem_telefone": "no phone in the booking",
+          "ignorado": "ignored",
+          "falhou": "failed"
+        },
+        "origem": {
+          "sms": "SMS reminder",
+          "pergunta": "configured question",
+          "heuristica": "detected question"
+        },
+        "motivo": {
+          "token_invalido": "Calendly rejected the token",
+          "sem_permissao": "Calendly refused (permission, or plan without webhooks)",
+          "nao_encontrado": "resource not found on Calendly",
+          "limite": "Calendly rate limit reached — try again later",
+          "rede": "could not reach Calendly",
+          "calendly_error": "Calendly returned an error",
+          "url_inalcancavel": "the CRM's public URL is not reachable from outside",
+          "db_error": "could not save",
+          "nao_conectado": "Calendly is not connected",
+          "chave_ilegivel": "the stored token could not be read — connect again",
+          "webhook_desativado": "the webhook is disabled — resubscribe"
         }
       },
       "emBreve": "Coming soon",

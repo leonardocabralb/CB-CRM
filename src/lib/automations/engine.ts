@@ -24,8 +24,13 @@ import type {
   RunFlowStepConfig,
   SetAiStepConfig,
   SendMediaStepConfig,
+  SendToNumberStepConfig,
+  CalendlyTriggerConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
+import { resolverDestinatario } from './destinatario'
+import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send'
+import { digitosDoTelefone } from '@/lib/contacts/telefone'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
@@ -91,6 +96,12 @@ export interface AutomationContext {
    * na própria janela.
    */
   automation_id?: string
+  /**
+   * URI do TIPO de evento do Calendly (`scheduled_event.event_type`) que
+   * originou o disparo (migration 977). É o que `calendly_booking` compara
+   * com `event_type_uri` da config; os dados do agendamento vêm em `vars`.
+   */
+  calendly_event_type?: string | null
 }
 
 export interface DispatchInput {
@@ -1026,6 +1037,48 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       return `webhook ${res.status}`
     }
 
+    case 'send_to_number': {
+      // Aviso para a EQUIPE (977): um número fixo, não o contato do disparo.
+      //
+      // ⚠️ Sai por `engineSendText`, como robô — e é isso que o mantém fora
+      // do `routeContactToPipeline` e do reabrir: o número avisado ganha
+      // ficha e conversa (é assim que a mensagem aparece no inbox), mas não
+      // vira card no funil nem "conversa reaberta" a cada aviso.
+      const cfg = step.step_config as SendToNumberStepConfig
+      // A mesma leitura do telefone do Calendly: "(83) 98874-5316" ganha o 55,
+      // "+1 404…" entra como veio. Sem isso o número digitado sem DDI no
+      // editor saía para um destino que não existe.
+      const digitos = digitosDoTelefone(cfg.phone)
+      if (!digitos) throw new Error('send_to_number: telefone inválido')
+      const text = interpolate(cfg.text ?? '', args)
+      if (!text.trim()) throw new Error('send_to_number has empty text')
+      const accountId = args.automation.account_id
+
+      const destino = await resolverDestinatario(db, accountId, digitos, cfg.contact_name)
+
+      // ⚠️ A conexão escolhida tem de resolver DE FATO. `resolveEngineChannelPreferring`
+      // cai no canal da conversa (e daí no padrão) quando a preferida não
+      // resolve — para uma resposta ao cliente é a degradação certa; para
+      // "avise o advogado pelo número X" seria a mensagem saindo pelo número
+      // errado sem ninguém saber. Falha fechada.
+      if (cfg.channel_id) {
+        const canal = await resolveEngineChannelPreferring(db, accountId, destino.conversationId, cfg.channel_id)
+        if (!canal || canal.channelId !== cfg.channel_id) {
+          throw new Error('send_to_number: a conexão escolhida não está disponível nesta conta')
+        }
+      }
+
+      const { whatsapp_message_id } = await engineSendText({
+        accountId,
+        userId: args.automation.user_id,
+        conversationId: destino.conversationId,
+        contactId: destino.contactId,
+        text,
+        preferredChannelId: cfg.channel_id ?? undefined,
+      })
+      return `sent to ${digitos} (${whatsapp_message_id})`
+    }
+
     case 'close_conversation': {
       if (!args.contactId) throw new Error('close_conversation needs a contact')
       // Encerrar SOLTA o responsável, como no cabeçalho do fio (regra do
@@ -1285,6 +1338,17 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
   // lembrete nenhum — e é o certo: rodar "todos, agora" ignoraria as datas.
   if (automation.trigger_type === 'date_field_offset') {
     return ctx?.automation_id === automation.id
+  }
+
+  // Agendamento no Calendly (977): config vazia = qualquer evento, como o
+  // gatilho de funil. Com URI, só aquele tipo de evento — e um disparo sem
+  // URI no contexto falha fechado, pela mesma razão da etapa: "foi ESTE
+  // evento?" não tem resposta honesta sem saber qual foi.
+  if (automation.trigger_type === 'calendly_booking') {
+    const cfg = automation.trigger_config as CalendlyTriggerConfig
+    const alvo = typeof cfg?.event_type_uri === 'string' ? cfg.event_type_uri.trim() : ''
+    if (!alvo) return true
+    return Boolean(ctx?.calendly_event_type && ctx.calendly_event_type === alvo)
   }
 
   return true

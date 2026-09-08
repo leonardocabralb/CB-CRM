@@ -69,6 +69,13 @@ const UNIVERSO: Record<
     callSites: 1,
     viaVariavel: true,
   },
+  'lib/automations/destinatario.ts': {
+    // O passo `send_to_number` (977) cria a ficha e a conversa do número
+    // avisado. `donoDaConta` vem de `accounts.owner_user_id`, resolvido sem
+    // fallback; o autor da automação nunca entra.
+    fontes: ['dono'],
+    callSites: 2,
+  },
   'lib/api/v1/contacts.ts': {
     // `resolveApiAuthor` (authorship.ts): usuário de auditoria da v1 com
     // queda para o dono da conta — nunca um membro comum.

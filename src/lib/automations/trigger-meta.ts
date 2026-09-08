@@ -51,6 +51,10 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Date Reminder',
     pillClass: 'border-violet-500/30 bg-violet-500/10 text-violet-300',
   },
+  calendly_booking: {
+    label: 'Calendly Booking',
+    pillClass: 'border-sky-500/30 bg-sky-500/10 text-sky-300',
+  },
 }
 
 export function triggerMeta(t: AutomationTriggerType | string): TriggerMeta {

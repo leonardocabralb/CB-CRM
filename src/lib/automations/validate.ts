@@ -1,5 +1,6 @@
 import type { AutomationTriggerType } from '@/types'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
+import { digitosDoTelefone } from '@/lib/contacts/telefone'
 import { motivoDeConfigInvalida } from './lembretes'
 
 // ------------------------------------------------------------
@@ -223,6 +224,19 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
     case 'close_conversation':
       // No config required.
       break
+    case 'send_to_number': {
+      // Telefone com DDI (o mesmo `isValidE164` das outras portas de
+      // telefone): sem ele o passo não tem destinatário, e o motor
+      // estouraria em execução — o tipo de falha que esta validação existe
+      // para pegar antes de ativar.
+      if (!digitosDoTelefone(typeof c.phone === 'string' ? c.phone : '')) {
+        issues.push({ path: `${path}.phone`, message: 'phone must be a valid number with country code' })
+      }
+      if (!nonEmpty(c.text)) {
+        issues.push({ path: `${path}.text`, message: 'message text is required' })
+      }
+      break
+    }
     default:
       issues.push({ path, message: `unknown step type: ${step.step_type}` })
   }
@@ -306,6 +320,14 @@ export function validateTriggerForActivation(
     const motivo = motivoDeConfigInvalida(cfg as never)
     if (motivo) {
       issues.push({ path: 'trigger.custom_field_id', message: motivo })
+    }
+  } else if (triggerType === 'calendly_booking') {
+    // Vazio = qualquer evento (convenção do projeto). Só o lixo é recusado:
+    // `event_type_uri` que não seja texto nunca casaria com evento nenhum e
+    // deixaria a automação ativa e muda.
+    const uri = cfg.event_type_uri
+    if (uri != null && typeof uri !== 'string') {
+      issues.push({ path: 'trigger.event_type_uri', message: 'event type must be a string' })
     }
   } else if (triggerType === 'deal_status_changed') {
     const st = cfg.statuses

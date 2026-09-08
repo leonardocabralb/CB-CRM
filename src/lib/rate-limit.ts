@@ -199,6 +199,11 @@ export const RATE_LIMITS = {
    *  `integracoesPing` porque parar espera pendente é barato e às vezes se
    *  para meia dúzia de uma vez. */
   execucao: { limit: 30, windowMs: 60_000 },
+  /** Webhook do Calendly (977), por token de conta. A assinatura HMAC é o
+   *  portão; isto só impede que um token vazado vire enxurrada de linhas em
+   *  `cb_calendly_eventos`. Um escritório não marca 120 reuniões por
+   *  minuto; o Calendly retenta com backoff quando recebe 429. */
+  calendlyWebhook: { limit: 120, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

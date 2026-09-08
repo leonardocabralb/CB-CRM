@@ -298,3 +298,25 @@ describe("validateTriggerForActivation", () => {
     expect(validateTriggerForActivation("some_future_trigger", {})).toEqual([]);
   });
 });
+
+describe("send_to_number / calendly_booking (977)", () => {
+  it("exige telefone com DDI e texto", () => {
+    expect(
+      validateStepsForActivation([{ step_type: "send_to_number", step_config: { phone: "(83) 98874-5316", text: "oi" } }]),
+    ).toEqual([]);
+    expect(
+      validateStepsForActivation([{ step_type: "send_to_number", step_config: { phone: "123", text: "oi" } }]),
+    ).toEqual([{ path: "steps[0].phone", message: "phone must be a valid number with country code" }]);
+    expect(
+      validateStepsForActivation([{ step_type: "send_to_number", step_config: { phone: "5583988745316", text: " " } }]),
+    ).toEqual([{ path: "steps[0].text", message: "message text is required" }]);
+  });
+
+  it("gatilho: vazio é 'qualquer evento'; só lixo é recusado", () => {
+    expect(validateTriggerForActivation("calendly_booking", {})).toEqual([]);
+    expect(validateTriggerForActivation("calendly_booking", { event_type_uri: "https://api.calendly.com/event_types/A" })).toEqual([]);
+    expect(validateTriggerForActivation("calendly_booking", { event_type_uri: 12 })).toEqual([
+      { path: "trigger.event_type_uri", message: "event type must be a string" },
+    ]);
+  });
+});
