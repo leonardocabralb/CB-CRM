@@ -2540,7 +2540,7 @@
         "reprocessado": "Processado de novo: {resultado}.",
         "reprocessarFalhou": "Não foi possível processar de novo.",
         "jaProcessado": "Este agendamento já foi processado — repetir mandaria a mesma mensagem outra vez.",
-        "aindaProcessando": "Este agendamento acabou de chegar e ainda está sendo processado. Espere um instante e recarregue."
+        "aindaProcessando": "Este agendamento está sendo processado agora. Espere um instante e tente de novo."
       },
       "emBreve": "Em breve",
       "modulo": {
