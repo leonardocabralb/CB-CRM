@@ -277,6 +277,22 @@ export default function ContactsPage() {
     setDeleteConfirmOpen(true);
   }
 
+  /**
+   * Quais destes contatos AINDA existem? É a medição que separa "a policy
+   * recusou" de "outro cliente já apagou" — as duas dão 0 linhas no DELETE,
+   * e nenhum estado da tela distingue as duas (um admin rebaixado com a
+   * página aberta ainda acha que pode). `null` = não deu para conferir.
+   */
+  async function aindaExistentes(ids: string[]): Promise<string[] | null> {
+    if (ids.length === 0) return [];
+    const { data, error } = await supabase
+      .from('contacts')
+      .select('id')
+      .in('id', ids);
+    if (error) return null;
+    return (data ?? []).map((linha) => linha.id as string);
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -292,18 +308,20 @@ export default function ContactsPage() {
       .eq('id', deleteTarget.id)
       .select('id');
 
+    const apagados = data?.length ?? 0;
+    // Só há o que conferir quando o contato NÃO saiu.
+    const restantes = apagados > 0 || error ? [] : await aindaExistentes([deleteTarget.id]);
     const r = lerExclusao({
       pedidos: 1,
-      apagados: data?.length ?? 0,
+      apagados,
+      aindaExistem: restantes === null ? null : restantes.length,
       houveErro: !!error,
-      podeApagar: podeApagarContatos,
     });
-    if (r === 'falhou') toast.error(t('toastFailedDelete'));
-    else if (r === 'apagado') toast.success(t('toastDeleted'));
-    // ⚠️ "Sumiu" NÃO é falta de permissão: quem pode apagar e não apagou
-    // nada perdeu a corrida para outro cliente.
+    if (r === 'apagado') toast.success(t('toastDeleted'));
+    // ⚠️ "Sumiu" NÃO é falta de permissão: o contato já não estava lá.
     else if (r === 'sumiu') toast.info(t('toastDeleteGone'));
-    else toast.error(t('toastDeleteRefused'));
+    else if (r === 'recusado') toast.error(t('toastDeleteRefused'));
+    else toast.error(t('toastFailedDelete'));
     if (r !== 'falhou') fetchContacts();
 
     setDeleting(false);
@@ -352,11 +370,15 @@ export default function ContactsPage() {
       .select('id');
 
     const saidos = (data ?? []).map((linha) => linha.id as string);
+    const naoSairam = ids.filter((id) => !saidos.includes(id));
+    // Dos que ficaram, quais ainda existem? Os que existem foram RECUSADOS;
+    // os que não existem, outro cliente já tinha apagado.
+    const recusados = error || naoSairam.length === 0 ? [] : await aindaExistentes(naoSairam);
     const r = lerExclusao({
       pedidos: ids.length,
       apagados: saidos.length,
+      aindaExistem: recusados === null ? null : recusados.length,
       houveErro: !!error,
-      podeApagar: podeApagarContatos,
     });
     if (r === 'falhou') toast.error(t('toastBulkFailedDelete'));
     else if (r === 'recusado') toast.error(t('toastDeleteRefused'));
@@ -364,12 +386,19 @@ export default function ContactsPage() {
     // O número é o que SAIU, não o que se pediu.
     else toast.success(t('toastBulkDeleted', { count: saidos.length }));
 
-    // ⚠️ A seleção é PODADA, não zerada: tira quem saiu e mantém quem
-    // ficou. E a recarga precisa preservá-la — ela zera a seleção por conta
-    // própria, o que anulava esta decisão inteira (Codex, PR #138).
+    // ⚠️ A seleção é PODADA, não zerada, e o que sai são os RESOLVIDOS: os
+    // que foram apagados E os que já não existiam. Manter um ausente deixava
+    // uma linha invisível marcada na barra, e toda nova tentativa repetia
+    // "sumiu" (Codex, #139). E a recarga precisa preservar o que sobrou —
+    // ela zera a seleção por conta própria (Codex, #138).
     const limpaTudo = podeLimparSelecao(r);
-    if (limpaTudo) setSelected(new Set());
-    else if (saidos.length > 0) setSelected((atual) => selecaoRestante(atual, saidos));
+    if (limpaTudo) {
+      setSelected(new Set());
+    } else {
+      const sumidos = recusados === null ? [] : naoSairam.filter((id) => !recusados.includes(id));
+      const resolvidos = [...saidos, ...sumidos];
+      if (resolvidos.length > 0) setSelected((atual) => selecaoRestante(atual, resolvidos));
+    }
     if (r !== 'falhou') fetchContacts({ preservarSelecao: !limpaTudo });
 
     setDeleting(false);

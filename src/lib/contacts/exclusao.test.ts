@@ -3,45 +3,54 @@ import { describe, expect, it } from "vitest";
 import { lerExclusao, podeLimparSelecao, selecaoRestante } from "./exclusao";
 
 // ============================================================
-// A armadilha: RLS que barra DELETE devolve 0 linhas com `error: null`.
-// Depois da 981 (apagar contato é de admin), qualquer aba aberta antes do
-// deploy cai nesse caso — e a tela dizia "excluído" sobre um contato
-// intacto (Codex, PR #137).
-//
-// E zero linhas tem DOIS significados: policy recusou, ou a linha já não
-// existia. O rowcount não separa os dois; `podeApagar` separa (Codex, #138).
+// Três rodadas do Codex moram nestes testes:
+//   #137 — 0 linhas com `error: null` não é sucesso;
+//   #138 — 0 linhas tem dois significados (recusa × já sumiu);
+//   #139 — o motivo é MEDIDO no banco, nunca inferido do papel em cache
+//          (um admin rebaixado com a página aberta ainda "sabe" que pode).
 // ============================================================
 
-const ADMIN = { podeApagar: true };
-const ATENDENTE = { podeApagar: false };
+const base = { houveErro: false };
 
 describe("lerExclusao", () => {
   it("tudo saiu", () => {
-    expect(lerExclusao({ pedidos: 3, apagados: 3, houveErro: false, ...ADMIN })).toBe("apagado");
+    expect(lerExclusao({ ...base, pedidos: 3, apagados: 3, aindaExistem: 0 })).toBe("apagado");
   });
 
   it("CRÍTICO: zero linhas SEM erro nunca é sucesso", () => {
-    expect(lerExclusao({ pedidos: 1, apagados: 0, houveErro: false, ...ATENDENTE })).not.toBe("apagado");
-    expect(lerExclusao({ pedidos: 12, apagados: 0, houveErro: false, ...ADMIN })).not.toBe("apagado");
+    expect(lerExclusao({ ...base, pedidos: 1, apagados: 0, aindaExistem: 1 })).not.toBe("apagado");
+    expect(lerExclusao({ ...base, pedidos: 1, apagados: 0, aindaExistem: 0 })).not.toBe("apagado");
   });
 
-  it("CRÍTICO: quem NÃO pode apagar e não apagou nada foi recusado pela policy", () => {
-    expect(lerExclusao({ pedidos: 1, apagados: 0, houveErro: false, ...ATENDENTE })).toBe("recusado");
+  it("CRÍTICO: o que não saiu e AINDA ESTÁ LÁ foi recusado pela policy", () => {
+    expect(lerExclusao({ ...base, pedidos: 1, apagados: 0, aindaExistem: 1 })).toBe("recusado");
   });
 
-  it("⚠️ quem PODE apagar e não apagou nada perdeu a corrida — a linha já sumiu", () => {
-    // Dizer "seu perfil não tem permissão" a um admin seria afirmar o que
-    // não houve: outro cliente apagou o contato depois que a lista carregou.
-    expect(lerExclusao({ pedidos: 1, apagados: 0, houveErro: false, ...ADMIN })).toBe("sumiu");
+  it("CRÍTICO: o que não saiu e não existe mais SUMIU — outro cliente apagou", () => {
+    expect(lerExclusao({ ...base, pedidos: 1, apagados: 0, aindaExistem: 0 })).toBe("sumiu");
   });
 
-  it("parte saiu = parcial, para os dois papéis", () => {
-    expect(lerExclusao({ pedidos: 12, apagados: 5, houveErro: false, ...ADMIN })).toBe("parcial");
-    expect(lerExclusao({ pedidos: 12, apagados: 5, houveErro: false, ...ATENDENTE })).toBe("parcial");
+  it("⚠️ o veredito não olha papel nenhum: os mesmos números dão a mesma resposta", () => {
+    // Era aqui que a versão anterior errava — ela perguntava à tela se o
+    // usuário podia apagar, e a tela pode estar com o papel velho em memória.
+    const recusado = { ...base, pedidos: 2, apagados: 0, aindaExistem: 2 };
+    expect(lerExclusao(recusado)).toBe("recusado");
+    expect(lerExclusao({ ...recusado })).toBe("recusado");
   });
 
-  it("erro de consulta vence tudo — inclusive um rowcount zerado", () => {
-    expect(lerExclusao({ pedidos: 3, apagados: 0, houveErro: true, ...ATENDENTE })).toBe("falhou");
+  it("parte saiu = parcial, existindo resto ou não", () => {
+    expect(lerExclusao({ ...base, pedidos: 12, apagados: 5, aindaExistem: 7 })).toBe("parcial");
+    expect(lerExclusao({ ...base, pedidos: 12, apagados: 5, aindaExistem: 0 })).toBe("parcial");
+  });
+
+  it("erro de consulta vence tudo", () => {
+    expect(lerExclusao({ pedidos: 3, apagados: 0, aindaExistem: 3, houveErro: true })).toBe("falhou");
+  });
+
+  it("⚠️ conferência que não pôde ser feita é `falhou`, não um palpite", () => {
+    expect(lerExclusao({ ...base, pedidos: 1, apagados: 0, aindaExistem: null })).toBe("falhou");
+    // …mas se TUDO saiu, não há o que conferir.
+    expect(lerExclusao({ ...base, pedidos: 2, apagados: 2, aindaExistem: null })).toBe("apagado");
   });
 });
 
@@ -55,15 +64,17 @@ describe("podeLimparSelecao", () => {
 });
 
 describe("selecaoRestante", () => {
-  it("tira os que saíram e mantém o resto", () => {
-    expect([...selecaoRestante(["a", "b", "c"], ["b"])]).toEqual(["a", "c"]);
+  it("CRÍTICO: tira os que saíram E os que já não existiam — sobra o recusado", () => {
+    // Sem tirar o ausente, ele ficava marcado numa linha que não aparece, e
+    // toda nova tentativa repetia "sumiu".
+    expect([...selecaoRestante(["a", "b", "c"], ["a", "b"])]).toEqual(["c"]);
   });
 
   it("recusa total não mexe na seleção", () => {
     expect([...selecaoRestante(["a", "b"], [])]).toEqual(["a", "b"]);
   });
 
-  it("tudo apagado esvazia", () => {
+  it("tudo resolvido esvazia", () => {
     expect([...selecaoRestante(["a", "b"], ["a", "b"])]).toEqual([]);
   });
 });
