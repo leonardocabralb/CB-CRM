@@ -261,3 +261,56 @@ export async function desconectarCalendly(
   if (error) return { ok: false, codigo: "db_error" };
   return { ok: true };
 }
+
+/**
+ * Confere no Calendly o estado da assinatura guardada e corrige a linha
+ * quando divergem. O Calendly DESATIVA a assinatura depois de 24h de
+ * entregas com falha e não avisa — só a coluna gravada na criação ficaria,
+ * dizendo "ativo" para sempre (achado do Codex no PR #128). Chamada pelo
+ * cartão a cada carga; nunca lança (Calendly fora do ar = fica o que está).
+ */
+export async function conferirAssinatura(
+  admin: SupabaseClient,
+  accountId: string,
+  opcoes: { cliente?: FabricaDeCliente } = {},
+): Promise<void> {
+  const { data: config } = await admin
+    .from("cb_calendly_config")
+    .select("access_token, webhook_uri, webhook_state, status")
+    .eq("account_id", accountId)
+    .maybeSingle();
+  if (!config?.webhook_uri) return;
+
+  let token: string;
+  try {
+    token = decrypt(config.access_token);
+  } catch {
+    return;
+  }
+  const agora = new Date().toISOString();
+  try {
+    const viva = await (opcoes.cliente ?? criarClienteCalendly)(token).assinatura(config.webhook_uri);
+    if (viva.estado !== config.webhook_state) {
+      await admin
+        .from("cb_calendly_config")
+        .update({ webhook_state: viva.estado, updated_at: agora })
+        .eq("account_id", accountId);
+    }
+  } catch (e) {
+    const codigo = codigoDe(e);
+    if (codigo === "nao_encontrado") {
+      // Apagada do lado de lá (pelo painel do Calendly, ou por nós numa
+      // reconexão que não gravou): o que resta é reassinar.
+      await admin
+        .from("cb_calendly_config")
+        .update({ webhook_state: "disabled", updated_at: agora })
+        .eq("account_id", accountId);
+    } else if (codigo === "token_invalido") {
+      await admin
+        .from("cb_calendly_config")
+        .update({ status: "erro", last_error: "token_invalido", updated_at: agora })
+        .eq("account_id", accountId);
+    }
+    // rede/limite/outros: sem informação nova, fica o que está.
+  }
+}

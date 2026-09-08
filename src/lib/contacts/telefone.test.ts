@@ -14,6 +14,16 @@ describe("digitosDoTelefone", () => {
     expect(digitosDoTelefone("83988745316")).toBe("5583988745316");
   });
 
+  it("CRÍTICO: número de fora escrito só em dígitos NÃO ganha o 55 (o 9 na 3ª posição é o que separa)", () => {
+    // "14045551234" tem 11 dígitos como um celular brasileiro; com o 55 ele
+    // iria para outro destinatário, com os dados do agendamento junto.
+    expect(digitosDoTelefone("14045551234")).toBe("14045551234");
+    expect(digitosDoTelefone("1 404 555 1234")).toBe("14045551234");
+    // celular brasileiro: DDD + 9 + 8 dígitos
+    expect(digitosDoTelefone("83988745316")).toBe("5583988745316");
+    expect(digitosDoTelefone("11 91234-5678")).toBe("5511912345678");
+  });
+
   it("já com 55 e sem `+` não dobra o DDI", () => {
     expect(digitosDoTelefone("5596991126767")).toBe("5596991126767");
     expect(digitosDoTelefone("55 96 99112-6767")).toBe("5596991126767");

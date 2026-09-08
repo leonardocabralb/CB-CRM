@@ -150,6 +150,18 @@ describe("criarClienteCalendly", () => {
     });
   });
 
+  it("assinatura(uri) lê o estado ao vivo — é o que diz se o Calendly a desativou", async () => {
+    const fetchFn = vi.fn(async (url: string | URL | Request) => {
+      expect(String(url)).toBe("https://api.calendly.com/webhook_subscriptions/W1");
+      return resposta(200, {
+        resource: { uri: "https://api.calendly.com/webhook_subscriptions/W1", callback_url: "https://x/y", state: "disabled", events: ["invitee.created"], scope: "organization", retry_started_at: "2026-09-06T10:00:00Z" },
+      });
+    });
+    const a = await criarClienteCalendly(TOKEN, fetchFn as unknown as typeof fetch).assinatura("https://api.calendly.com/webhook_subscriptions/W1");
+    expect(a.estado).toBe("disabled");
+    expect(a.retryStartedAt).toBe("2026-09-06T10:00:00Z");
+  });
+
   it("apagarAssinatura só segue URI do Calendly (o token iria junto)", async () => {
     const fetchFn = vi.fn(async () => resposta(204, null));
     const cliente = criarClienteCalendly(TOKEN, fetchFn as unknown as typeof fetch);

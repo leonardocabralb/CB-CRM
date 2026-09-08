@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
 import { cartaoDoCalendly, type ConfigDoCalendly, type EventoDoCalendly } from "@/lib/calendly/cartao";
-import { origemPublica, urlDoWebhook } from "@/lib/calendly/conexao";
+import { conferirAssinatura, origemPublica, urlDoWebhook } from "@/lib/calendly/conexao";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import { COLUNAS_DO_EVENTO, EVENTOS_POR_PAGINA } from "@/lib/calendly/log";
 
@@ -25,6 +25,9 @@ export async function GET(request: Request) {
     if (!limit.success) return rateLimitResponse(limit);
 
     const admin = supabaseAdmin();
+    // O estado da assinatura vem do Calendly, não só da coluna: ele a
+    // desativa depois de 24h de falhas sem avisar (Codex, PR #128).
+    await conferirAssinatura(admin, ctx.accountId);
     const [config, eventos] = await Promise.all([
       admin
         .from("cb_calendly_config")

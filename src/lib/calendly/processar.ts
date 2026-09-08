@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { runAutomationsForTrigger } from "@/lib/automations/engine";
+import { dispararAutomacoes } from "@/lib/automations/engine";
 import { findExistingContact } from "@/lib/contacts/dedupe";
 
 import type { ResultadoDoEvento } from "./cartao";
@@ -82,7 +82,7 @@ export async function processarAgendamento(
     .limit(1)
     .maybeSingle();
 
-  await runAutomationsForTrigger({
+  const r = await dispararAutomacoes({
     accountId,
     triggerType: "calendly_booking",
     contactId,
@@ -93,7 +93,39 @@ export async function processarAgendamento(
       vars: variaveisDoAgendamento(agendamento),
     },
   });
-  return { resultado: "disparado", detalhe: null, contactId };
+  return resultadoDoDisparo(r, contactId);
+}
+
+/**
+ * Puro: o que gravar no evento a partir do que o motor DISSE que fez.
+ * "Disparado" só quando alguma automação rodou até o fim; o escopo de
+ * conexão/etapa barrando tudo é `sem_automacao` com o motivo escrito, e um
+ * passo que falhou é `falhou` — o log da automação tem o detalhe (achado
+ * do Codex no PR #128: antes, tudo virava "disparado").
+ */
+export function resultadoDoDisparo(
+  r: { executadas: number; foraDoEscopo: number; comFalha: number; erro?: string },
+  contactId: string | null,
+): ProcessamentoDoAgendamento {
+  if (r.erro) return { resultado: "falhou", detalhe: `o disparo não aconteceu: ${r.erro}`, contactId };
+  if (r.executadas === 0) {
+    return {
+      resultado: "sem_automacao",
+      detalhe:
+        r.foraDoEscopo > 0
+          ? "a automação existe, mas está fora do escopo (conexão ou etapa) para este contato"
+          : "nenhuma automação ativa escuta este evento",
+      contactId,
+    };
+  }
+  if (r.comFalha > 0) {
+    return {
+      resultado: "falhou",
+      detalhe: `${r.comFalha} de ${r.executadas} automação(ões) terminou com erro — veja o histórico da automação`,
+      contactId,
+    };
+  }
+  return { resultado: "disparado", detalhe: `${r.executadas} automação(ões) executada(s)`, contactId };
 }
 
 /** Carimba o resultado na linha do evento. Nunca lança — é o fim de um `after()`. */
