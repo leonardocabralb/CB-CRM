@@ -304,7 +304,18 @@ export function MessageComposer({
   const [selecionado, setSelecionado] = useState<string | null>(null);
   // Trinco do envio da fila. O ref é o que serializa (síncrono); o estado só
   // existe para desabilitar o botão e o Enter.
-  const enviandoFilaRef = useRef(false);
+  //
+  // ⚠️ O ref guarda a POSSE (um número por envio), não um booleano, porque o
+  // trinco tem DOIS pontos de queda: o `finally` de `sendDraft` e o efeito de
+  // troca de conversa. Com booleano, o `finally` do envio de A — que só roda
+  // quando a requisição em voo assenta, e o `fetch` não tem prazo — derrubava
+  // o trinco de um envio JÁ EM CURSO em B, e o clique seguinte reenviava os
+  // anexos de B ao cliente: exatamente o que o trinco existe para impedir.
+  // É a mesma cerca de posse do worker do Radar (`running_desde`) e do claim
+  // do Calendly (`processando_desde`): quem foi solto não escreve por cima de
+  // quem assumiu. 0 = ninguém enviando.
+  const enviandoFilaRef = useRef(0);
+  const proximaPosseRef = useRef(0);
   const [enviandoFila, setEnviandoFila] = useState(false);
   const [busy, setBusy] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -742,6 +753,18 @@ export function MessageComposer({
     for (const d of draftsRef.current) removeStaged(d.path);
     setDrafts([]);
     setSelecionado(null);
+    // ⚠️ E O TRINCO DA FILA SOLTA AQUI. Ele é liberado pelo `finally` de
+    // `sendDraft`, que só roda quando o envio em voo assenta — e o `fetch`
+    // de `/api/whatsapp/send` não tem prazo. Sem esta linha, sair de uma
+    // conversa com a fila correndo levava o trinco junto: no cliente
+    // seguinte o botão Enviar do anexo nascia desabilitado
+    // (`busy={busy || enviandoFila}`) e um `sendDraft` novo era recusado
+    // logo na entrada, sem toast e sem nada a clicar — até a requisição
+    // velha voltar, ou para sempre se ela travasse. O laço de A não passa a
+    // escrever na tela de B por causa da guarda de origem que ele carrega
+    // (achado do Codex no PR #146).
+    enviandoFilaRef.current = 0;
+    setEnviandoFila(false);
     // ⚠️ E uma gravação EM CURSO morre aqui, descartada. Não é por a guarda
     // de origem falhar: o `ondataavailable` do gravador segura o
     // `finalizeRecording` do render em que a gravação COMEÇOU, cujo `origem`
@@ -1299,8 +1322,17 @@ export function MessageComposer({
     // clique e o próximo render cabe um segundo clique (ou um segundo Enter)
     // — que iteraria sobre a MESMA fila capturada e mandaria todos os anexos
     // de novo ao cliente (achado do Codex no PR #144).
-    if (drafts.length === 0 || busy || enviandoFilaRef.current) return;
-    enviandoFilaRef.current = true;
+    if (drafts.length === 0 || busy || enviandoFilaRef.current !== 0) return;
+    // ⚠️ A MESMA guarda de origem de `stageUpload`, `escolherDoAcervo` e
+    // `finalizeRecording`: o compositor NÃO remonta na troca de conversa, e
+    // cada item da fila é um `await`. Sem ela, trocar de cliente no meio de
+    // uma fila de cinco deixava o laço seguir escrevendo no compositor do
+    // cliente NOVO — `setDrafts(restantes)` do ramo agendado devolvia à tela
+    // de B os anexos que sobraram de A, e o `onClearReply()` do fim apagava
+    // a citação que B acabou de escolher.
+    const origem = conversationId;
+    const posse = ++proximaPosseRef.current;
+    enviandoFilaRef.current = posse;
     setEnviandoFila(true);
     try {
 
@@ -1317,6 +1349,7 @@ export function MessageComposer({
           // buscá-lo lá daqui a horas. Falhou? O item fica na tela, com o
           // arquivo já subido, e a pessoa tenta de novo sem reanexar.
           if (!ok) restantes.push(item);
+          if (conversaAnteriorRef.current !== origem) return;
         }
         setDrafts(restantes);
         setSelecionado(restantes[0]?.id ?? null);
@@ -1339,16 +1372,22 @@ export function MessageComposer({
         // quando a causa é a mesma para todos (janela de 24h fechada, rede
         // fora) — e o operador perderia as legendas já escritas.
         if (!entregou) return;
+        if (conversaAnteriorRef.current !== origem) return;
         // O objeto passou a ser da mensagem enviada — sai da fila sem recolher.
         setDrafts((atual) => atual.filter((d) => d.id !== item.id));
       }
       setSelecionado(null);
       onClearReply?.();
     } finally {
-      enviandoFilaRef.current = false;
-      setEnviandoFila(false);
+      // ⚠️ CERCA DE POSSE: só solta quem ainda é o dono. Solto pelo efeito de
+      // troca e com outro envio já em curso na conversa nova, limpar aqui
+      // abriria o trinco DELE — e o próximo clique mandaria os anexos de novo.
+      if (enviandoFilaRef.current === posse) {
+        enviandoFilaRef.current = 0;
+        setEnviandoFila(false);
+      }
     }
-  }, [drafts, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar]);
+  }, [drafts, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar, conversationId]);
 
   /** Descarta UM item — recolhe o objeto, que subiu e não foi enviado. */
   const discardDraft = useCallback(

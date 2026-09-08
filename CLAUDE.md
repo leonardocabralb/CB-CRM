@@ -2469,6 +2469,36 @@ que arrastava PDF para a conversa e nada acontecia. O que morde código novo:
   o `busy`: entre o clique e o próximo render cabe um segundo clique, e ele
   iteraria sobre a MESMA fila capturada, mandando todos os anexos de novo ao
   cliente. Estado não serializa; ref serializa.
+  ⚠️⚠️ **O ref guarda a POSSE (um número por envio), nunca um booleano**, e
+  o `finally` só solta quem AINDA é dono (`enviandoFilaRef.current ===
+  posse`). São dois pontos de queda — o `finally` e o efeito de troca —, e
+  com booleano o `finally` do envio de A derrubava o trinco de um envio JÁ
+  EM CURSO em B: o clique seguinte reenviava os anexos de B ao cliente, que
+  é o próprio dano que o trinco existe para impedir. É a mesma cerca de
+  posse do worker do Radar (`running_desde`) e do claim do Calendly
+  (`processando_desde`).
+  ⚠️⚠️ **E o trinco é SOLTO na troca de conversa, além do `finally`.** Ele
+  só cai quando o envio em voo assenta, e o `fetch` de `/api/whatsapp/send`
+  não tem prazo: sair da conversa com a fila correndo levava o trinco junto,
+  e no cliente seguinte o botão Enviar do anexo nascia desabilitado
+  (`busy={busy || enviandoFila}`) com um `sendDraft` novo recusado logo na
+  entrada — sem toast, sem nada a clicar, e para sempre se a requisição
+  travasse. ⚠️ Soltar o trinco só é seguro porque `sendDraft` carrega a
+  GUARDA DE ORIGEM (`const origem = conversationId`, a mesma de
+  `stageUpload`/`escolherDoAcervo`/`finalizeRecording`) depois de cada
+  `await`: sem ela o laço de A seguia escrevendo na tela de B — o
+  `setDrafts(restantes)` do ramo agendado devolvia a B os anexos que
+  sobraram de A, e o `onClearReply()` do fim apagava a citação que B acabou
+  de escolher. As duas metades andam juntas (Codex, PR #146).
+- ⚠️⚠️ **`handleSendMedia` NÃO limpa a citação — quem limpa é o fim da
+  fila** (`onClearReply`, depois de a fila INTEIRA sair). Ele tem três
+  saídas `false` que RETÊM o anexo, e `MediaDraft` não guarda o id da
+  citada: ela é lida de `replyTo` a cada envio. Limpando ali, a segunda
+  tentativa saía SEM a citação enquanto a bolha falhada no fio continuava
+  mostrando a resposta que o retry não carrega — o anexo trocava de
+  contexto em silêncio (Codex, PR #146). Quem fizer o rascunho guardar a
+  citada muda esta regra de forma, e há pino cobrando as duas pontas em
+  `src/lib/inbox/fila-de-anexos.chamadores.test.ts`.
 - ⚠️ **O seletor de arquivo passa pelo MESMO funil do arrastar**
   (`receberArquivos`): é ele que aplica `MAX_ANEXOS` e avisa o que ficou de
   fora. Ligar o seletor direto ao upload ignorava o teto — escolher uma
