@@ -3432,6 +3432,8 @@
       "send-messages": "Responder clientes no WhatsApp",
       "write-notes": "Escrever anotações internas",
       "manage-deals": "Mover negócios no funil (criar e apagar funis é do Administrador)",
+      "view-reports": "Ver os relatórios do funil: lista de leads, Desempenho e Saúde",
+      "delete-contacts": "Excluir contatos (apagar a ficha leva a conversa e as mensagens junto)",
       "manage-automations": "Criar automações, fluxos e disparos em massa",
       "edit-settings": "Alterar configurações da conta: conexões, modelos, campos, assinatura, integrações e chaves de API",
       "manage-members": "Convidar, remover e trocar o perfil de membros"

@@ -139,6 +139,44 @@ export function canManageAutomations(role: AccountRole): boolean {
   return hasMinRole(role, "admin");
 }
 
+/**
+ * Owner / admin: as LEITURAS ANALÍTICAS do funil — a lista de leads, o
+ * Desempenho e a Saúde (as três abas de `/pipelines`).
+ *
+ * Decisão do operador (2026-09-08, simulando o perfil "Bancário -
+ * Jurídico"): elas mostram a conta INTEIRA — taxas de conversão, valor
+ * fechado, ticket médio, investimento em anúncios, CAC —, que é informação
+ * de gestão do escritório, não instrumento de atendimento. O Kanban (a aba
+ * "Leads") continua de `agent`: é lá que o atendente trabalha o próprio
+ * funil.
+ *
+ * ⚠️ É LEITURA, e por isso não tem par no banco: as três abas leem `deals`
+ * e `cb_lead_events`, cujo SELECT é de qualquer membro (017/912). Quem
+ * quiser fechar isso no banco precisa de rota server-side, não de policy —
+ * `deals` é a mesma tabela que alimenta o Kanban do atendente.
+ */
+export function canViewReports(role: AccountRole): boolean {
+  return hasMinRole(role, "admin");
+}
+
+/**
+ * Owner / admin: APAGAR contato.
+ *
+ * Decisão do operador (2026-09-08): o atendente edita nome e telefone, e
+ * não apaga. Apagar contato aqui é destrutivo de verdade — `conversations`
+ * cascateia de `contacts`, então some o histórico inteiro de mensagens
+ * daquele cliente, que é do escritório.
+ *
+ * ⚠️ Separado de `canEditSettings` porque a régua é outra: editar contato
+ * segue sendo `agent` (policies `contacts_update` da 017). Este predicado
+ * cobre só o DELETE, e tem par no banco — a policy `contacts_delete` subiu
+ * para `admin` na 981. Sem os dois lados, a tela esconderia o botão e um
+ * `.delete()` do navegador ainda apagaria.
+ */
+export function canDeleteContacts(role: AccountRole): boolean {
+  return hasMinRole(role, "admin");
+}
+
 /** Owner only: irreversible destructive operations. */
 export function canDeleteAccount(role: AccountRole): boolean {
   return role === "owner";

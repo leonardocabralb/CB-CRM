@@ -34,6 +34,12 @@ import { Label } from "@/components/ui/label";
 import { GitBranch, Plus, ChevronDown, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { useCan } from "@/hooks/use-can";
+import {
+  VISTA_PADRAO,
+  vistaVigente,
+  vistasPermitidas,
+  type VistaDoFunil,
+} from "@/lib/pipelines/vistas";
 import { funisVisiveis } from "@/lib/perfis/escopo";
 import { useAuth } from "@/hooks/use-auth";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -85,6 +91,10 @@ export default function PipelinesPage() {
   const canEditSettings = useCan("edit-settings");
   const canCreateDeals = useCan("send-messages");
   const podeAutomacoes = useCan("manage-automations");
+  // Lista, Desempenho e Saúde: leituras da conta INTEIRA, de administrador
+  // (decisão do operador, 08/09/2026 — ver `canViewReports`).
+  const podeRelatorios = useCan("view-reports");
+  const poderesDoFunil = { relatorios: podeRelatorios, automacoes: podeAutomacoes };
   const { acesso, accountId } = useAuth();
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -154,7 +164,12 @@ export default function PipelinesPage() {
   /** "leads" = o Kanban de sempre; "automacoes" = a grade estilo Kommo. */
   // "leads" é o QUADRO (o id ficou pelo diff mínimo; o rótulo virou "Quadro"
   // quando a lista chegou, na Fase 1 do funil comercial).
-  const [vista, setVista] = useState<"leads" | "lista" | "desempenho" | "saude" | "automacoes">("leads");
+  const [vistaEscolhida, setVista] = useState<VistaDoFunil>(VISTA_PADRAO);
+  // ⚠️ A aba vigente é resolvida no RENDER, nunca guardada por efeito: a
+  // lente de simulação de perfil troca o papel com a tela montada, e uma aba
+  // proibida que sobrevivesse até o efeito rodar mostraria o Desempenho da
+  // conta inteira a quem acabou de perder o acesso.
+  const vista = vistaVigente(vistaEscolhida, poderesDoFunil);
 
   // Dialog / sheet state
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
@@ -641,15 +656,26 @@ export default function PipelinesPage() {
                   {p.name}
                 </DropdownMenuItem>
               ))}
-              <DropdownMenuSeparator className="bg-border" />
-              {selectedPipeline && (
-                <DropdownMenuItem
-                  onClick={() => setSettingsOpen(true)}
-                  className="text-popover-foreground"
-                >
-                  <Settings className="mr-2 h-3.5 w-3.5" />
-                  {t("managePipelines")}
-                </DropdownMenuItem>
+              {/* ⚠️ "Gerenciar funil" é de ADMIN, e some para os demais.
+                  As policies de `pipelines`/`pipeline_stages` já exigiam
+                  admin desde a 002/017 — a tela é que oferecia o painel a
+                  qualquer um que enxergasse a página, e RLS que barra
+                  escrita devolve 0 linhas SEM erro: o atendente renomeava
+                  uma etapa, via a mudança na tela e a encontrava intacta no
+                  reload (reportado pelo operador em 08/09/2026, simulando o
+                  perfil "Bancário - Jurídico"). Esconder, e não desabilitar,
+                  segue a regra da grade de automações logo abaixo. */}
+              {selectedPipeline && canEditSettings && (
+                <>
+                  <DropdownMenuSeparator className="bg-border" />
+                  <DropdownMenuItem
+                    onClick={() => setSettingsOpen(true)}
+                    className="text-popover-foreground"
+                  >
+                    <Settings className="mr-2 h-3.5 w-3.5" />
+                    {t("managePipelines")}
+                  </DropdownMenuItem>
+                </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -661,16 +687,18 @@ export default function PipelinesPage() {
             <CamposDoCardPopover campos={campos} onChange={trocarCampos} />
           )}
           {/* Leads | Automações — as duas leituras do mesmo funil. */}
+          {/* Com uma aba só não há o que alternar — a barra viraria um
+              botão aceso permanente, como o seletor de canal com uma
+              conexão. */}
+          {vistasPermitidas(poderesDoFunil).length > 1 && (
           <div className="flex rounded-lg border border-border bg-card p-0.5">
             {/* A grade de automações segue a regra da Fase 2: automação é
                 assunto de admin. Para os demais o toggle nem aparece — um
                 botão que abre uma grade somente-leitura de regras que a
                 pessoa não pode tocar seria convite a reportar "não consigo
-                editar" como defeito. */}
-            {(podeAutomacoes
-              ? (["leads", "lista", "desempenho", "saude", "automacoes"] as const)
-              : (["leads", "lista", "desempenho", "saude"] as const)
-            ).map((v) => (
+                editar" como defeito. Lista, Desempenho e Saúde seguem a
+                mesma regra desde 08/09/2026, por decisão do operador. */}
+            {vistasPermitidas(poderesDoFunil).map((v) => (
               <button
                 key={v}
                 type="button"
@@ -695,6 +723,7 @@ export default function PipelinesPage() {
               </button>
             ))}
           </div>
+          )}
           <GatedButton
             variant="outline"
             canAct={canEditSettings}

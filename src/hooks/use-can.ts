@@ -3,12 +3,14 @@
 import { useAuth } from "@/hooks/use-auth";
 import {
   canDeleteAccount,
+  canDeleteContacts,
   canEditSettings,
   canManageAutomations,
   canManageMembers,
   canSendMessages,
   canTransferOwnership,
   canViewOnly,
+  canViewReports,
   canWriteNotes,
 } from "@/lib/auth/roles";
 
@@ -26,7 +28,11 @@ export type CanAction =
   | "write-notes"
   | "view-only"
   | "delete-account"
-  | "transfer-ownership";
+  | "transfer-ownership"
+  /** As três abas analíticas do funil (lista, desempenho, saúde). */
+  | "view-reports"
+  /** Apagar contato — destrutivo: leva conversa e mensagens junto. */
+  | "delete-contacts";
 
 /**
  * Inline alternative to `<RequireRole>` for places that need a
@@ -62,6 +68,10 @@ export function useCan(action: CanAction): boolean {
       return canDeleteAccount(accountRole);
     case "transfer-ownership":
       return canTransferOwnership(accountRole);
+    case "view-reports":
+      return canViewReports(accountRole);
+    case "delete-contacts":
+      return canDeleteContacts(accountRole);
     default: {
       // Exhaustiveness check — adding a new `CanAction` without a
       // case here fails the typecheck because TS narrows `action`

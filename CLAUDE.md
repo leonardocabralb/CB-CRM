@@ -2281,6 +2281,49 @@ código novo:
   Agendadas ficam em `agent` porque NÃO montam o compositor de nota — quem
   levar o `InternalNoteBox` para uma tela nova rebaixa a entrada dela aqui.
 
+⚠️ **Funil e Contatos: o que é de ADMIN (2026-09-08).** O operador simulou
+o perfil "Bancário - Jurídico" (papel `agent`) e viu poderes que não queria
+conceder. Três decisões, e o que morde código novo:
+
+- ⚠️⚠️ **"Gerenciar funil" some para quem não é admin.** As policies de
+  `pipelines`/`pipeline_stages` exigem admin desde sempre — era a TELA que
+  oferecia o painel a qualquer um que enxergasse a página. E o sintoma é o
+  pior tipo: **RLS que barra escrita devolve 0 linhas SEM erro**, então o
+  atendente renomeava a etapa, via a mudança na tela e a encontrava intacta
+  no reload. Esconder, e não desabilitar, segue a regra que a grade de
+  automações já usava.
+- ⚠️ **Lista, Desempenho e Saúde são de admin** (`canViewReports`), e a
+  barra de abas SOME quando sobra uma só. Elas mostram a conta inteira —
+  conversão, valor fechado, ticket médio, investimento em anúncios, CAC —,
+  que é informação de gestão. O Kanban continua de `agent`. ⚠️ É recorte de
+  TELA, não barreira: `deals` e `cb_lead_events` são legíveis por qualquer
+  membro (017/912) e as abas leem direto do banco no navegador. Fechar de
+  verdade exigiria rota server-side, e a mesma tabela alimenta o Kanban do
+  atendente — não dá para resolver com policy.
+- ⚠️ **A aba vigente é resolvida no RENDER** (`vistaVigente`, em
+  `src/lib/pipelines/vistas.ts`, puro e testado), nunca guardada por efeito:
+  a lente de simulação troca o papel com a tela montada, e uma aba proibida
+  que sobrevivesse até o efeito rodar mostraria o Desempenho da conta a quem
+  acabou de perder o acesso.
+- ⚠️⚠️ **Apagar contato subiu para admin nos DOIS lados** — `canDeleteContacts`
+  na tela e a policy `contacts_delete` na 981. Só o DELETE: `contacts_insert`
+  e `contacts_update` continuam em `agent`, porque cadastrar e corrigir ficha
+  é trabalho de atendimento (a 981 CONFERE isso, para um "endurecimento"
+  futuro não levar as três juntas). Eram DOIS caminhos de exclusão na tela e
+  o do menu da linha não tinha gate nenhum. Apagar leva a conversa e todas as
+  mensagens junto (CASCADE), e isso é do escritório.
+- **Tarefas já estavam certas**: `podeNaTarefa` dá `apagar` ao criador (e ao
+  admin, para a tarefa órfã cujo criador saiu). Conferido, nada mudou.
+- ⚠️ **A 981 é a exceção à ordem "migration antes do merge"**: ela RESTRINGE,
+  e o app antigo ainda oferece o botão de excluir. Aplicada DEPOIS do
+  deploy, senão a janela entre as duas deixaria a tela dizer "contato
+  excluído" sobre um contato intacto. A regra habitual vale para migration
+  que ACRESCENTA (o app novo precisa da coluna); esta é o inverso.
+- **Os dois poderes novos aparecem no editor de perfis** (`PODERES`), porque
+  eram justamente as diferenças entre `agent` e `admin` que a tela não
+  deixava evidentes. ⚠️ Vale para os QUATRO perfis não-admin da conta — os
+  dois "Gestor" incluídos, que são `agent`.
+
 ⚠️ **O editor de perfis NASCE PREENCHIDO e agrupa por ÁREA (2026-09-03).**
 `src/lib/perfis/editor.ts` (puro, com teste) e
 `src/components/settings/areas-do-perfil.tsx`. Pedido do operador ("a aba de
