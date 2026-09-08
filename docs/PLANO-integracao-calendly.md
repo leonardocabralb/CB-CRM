@@ -26,7 +26,7 @@
 | --- | --- | --- | --- | --- |
 | **1** | Integração (cartão em Integrações + webhook + log paginado), gatilho `calendly_booking`, passo `send_to_number`, variáveis `{{contact.*}}`/`{{conversation.link}}` | ✅ **feita** (2026-09-07) | `977_cb_calendly` **aplicada** (07/09, via conector, antes do merge) | [#128](https://github.com/leonardocabralb/CB-CRM/pull/128) |
 | **2** | Depois do deploy: operador conecta o Calendly (token); a automação "Calendly → Reunião agendada" é criada (seção 3.5), o evento é escolhido no gatilho e ela é ATIVADA | ✅ **feita** (07/09): token conectado pelo operador, automação criada e fixada no evento por SQL, ATIVA; teste de ponta a ponta na seção 7 | — | [#129](https://github.com/leonardocabralb/CB-CRM/pull/129)–[#131](https://github.com/leonardocabralb/CB-CRM/pull/131) |
-| **2b** | Achados do Codex, 2ª rodada: ramo que falha derruba a execução; "Aguardar" vira `em_espera` (não `disparado`); gatilho sem disparo fora da grade | 🔧 PR aberto (07/09) | `978_cb_calendly_em_espera` — ⚠️ **pendente**: aplicar ANTES do merge (conector sem autorização na sessão) | [#132](https://github.com/leonardocabralb/CB-CRM/pull/132) |
+| **2b** | Achados do Codex, 2ª rodada: ramo que falha derruba a execução; "Aguardar" vira `em_espera` (não `disparado`); gatilho sem disparo fora da grade | ✅ **feita** (07/09) | `978_cb_calendly_em_espera` **aplicada** (07/09, via conector, antes do merge) | [#132](https://github.com/leonardocabralb/CB-CRM/pull/132) |
 
 **Decisões travadas pelo pedido (07/09):**
 

@@ -2873,11 +2873,12 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
     Plano em `docs/PLANO-integracao-calendly.md`.
   - **978_cb_calendly_em_espera** — o CHECK de `cb_calendly_eventos.resultado`
     ganha `'em_espera'` (automação parada num "Aguardar"; Codex, 2ª rodada).
-    ⚠️ **NÃO aplicada** ao fechar a sessão de 07/09: o conector do Supabase
-    estava sem autorização. Aplicar ANTES do merge do PR #132. Sem ela o
-    app não quebra: `gravarResultado` falha no CHECK só para automação
-    parada em "Aguardar" (log de erro, a linha do evento fica `recebido`)
-    — e a automação de produção não tem espera.
+    Aplicada em 2026-09-07 via conector, ANTES do merge do PR #132;
+    conferido no catálogo (o CHECK recriado com o mesmo nome que a 977 lhe
+    deu, `cb_calendly_eventos_resultado_check`, e a entrada no histórico).
+    Deploy antes dela não quebraria o app: `gravarResultado` falharia no
+    CHECK só para automação parada em "Aguardar" (log de erro, a linha do
+    evento ficaria `recebido`) — e a automação de produção não tem espera.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
