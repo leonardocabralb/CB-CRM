@@ -48,8 +48,8 @@ describe('nomeDePessoa', () => {
   });
 
   it('cai para o e-mail sem o domínio quando não há nome', () => {
-    expect(nomeDePessoa('', 'leonardo@cbadvogados.com')).toBe('leonardo');
-    expect(nomeDePessoa(null, 'leonardo@cbadvogados.com')).toBe('leonardo');
+    expect(nomeDePessoa('', 'leonardo@exemplo.com')).toBe('leonardo');
+    expect(nomeDePessoa(null, 'leonardo@exemplo.com')).toBe('leonardo');
   });
 
   it('devolve null quando não há nem nome nem e-mail', () => {

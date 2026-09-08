@@ -1,10 +1,7 @@
 <!--
-Heads up: this is a template, not a collaborative product. Most
-changes belong in your fork. See CONTRIBUTING.md for which kinds of
-upstream PRs tend to land (security, correctness, docs) vs. which
-belong in a fork (new features, stack swaps, opinionated refactors).
-If you haven't opened an issue yet for a non-trivial change, consider
-doing that first to check alignment.
+Antes de abrir: toda branch sai de `main` e volta para `main`, sempre
+neste repositório. PR para o projeto original é proibido (CLAUDE.md,
+"Fork + upstream").
 
 Keep this short and specific. The commit message is where the "why"
 lives; this is where the reviewer gets the "what" and "how to try it".

@@ -63,16 +63,20 @@ import {
 //
 //   When `ALLOWED_INVITE_HOSTS` is set (comma-separated hostnames),
 //   we validate the derived host against the list. Anything not
-//   on the list falls through to the wacrm.tech fallback with a
-//   loud console.warn. Operators who care about this attack
-//   surface should set this to their canonical hostnames; everyone
-//   else gets today's permissive behavior.
+//   on the list makes this FAIL — see below. Operators who care
+//   about this attack surface should set it to their canonical
+//   hostnames; everyone else gets today's permissive behavior.
 //
-// Previous implementation hard-defaulted to `https://wacrm.tech`
-// (the docs/marketing site, a different repo). Forks that didn't
-// set `NEXT_PUBLIC_SITE_URL` got invite links pointing at the
-// marketing site, which 404s on `/join/<token>`. This resolution
-// chain removes the foot-gun.
+// ⚠️ QUANDO NADA RESOLVE, ISTO FALHA — não devolve URL nenhuma.
+// Até 2026-09-08 o último ramo devolvia, fixo, o domínio do site de
+// marketing do projeto ORIGINAL — outro repositório, que responde 404
+// em `/join/<token>`. Ou seja: o convite saía com cara de link bom,
+// apontando para o domínio de um terceiro, e só quem clicasse
+// descobriria. Instalação que não sabe o próprio endereço não tem
+// convite para oferecer — tem configuração faltando, e é isso que a
+// mensagem de erro diz. Ninguém deve reintroduzir um domínio padrão
+// aqui: num produto instalado por outra pessoa, o "padrão" é sempre o
+// endereço de outro.
 function parseAllowedHosts(): readonly string[] | null {
   const raw = process.env.ALLOWED_INVITE_HOSTS?.trim();
   if (!raw) return null;
@@ -91,7 +95,7 @@ function isHostAllowed(
   return allowList.includes(hostname.toLowerCase());
 }
 
-function getBaseUrl(request: Request): string {
+function getBaseUrl(request: Request): string | null {
   const explicit = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (explicit) return explicit.replace(/\/+$/, "");
 
@@ -128,10 +132,10 @@ function getBaseUrl(request: Request): string {
     );
   } else {
     console.warn(
-      "[POST /api/account/invitations] could not derive base URL from request; falling back to marketing domain",
+      "[POST /api/account/invitations] could not derive base URL from request; set NEXT_PUBLIC_SITE_URL",
     );
   }
-  return "https://wacrm.tech";
+  return null;
 }
 
 const MAX_LABEL_LEN = 80;
@@ -224,6 +228,20 @@ export async function POST(request: Request) {
       );
     }
 
+    // ⚠️ Resolvido ANTES do insert. Falhar depois deixaria na tabela um
+    // convite que ninguém consegue entregar — o token só aparece nesta
+    // resposta, então o administrador teria de revogar e reemitir.
+    const baseUrl = getBaseUrl(request);
+    if (!baseUrl) {
+      return NextResponse.json(
+        {
+          error:
+            "This deployment cannot build invite links: set NEXT_PUBLIC_SITE_URL to the CRM's public URL (or add this host to ALLOWED_INVITE_HOSTS).",
+        },
+        { status: 500 },
+      );
+    }
+
     const expiresInDaysRaw = body?.expiresInDays;
     // `clampExpiryDays` tolerates undefined / NaN / negatives by
     // collapsing to the safe default, so we just pass the raw
@@ -274,7 +292,7 @@ export async function POST(request: Request) {
         invitation: data,
         // Plaintext payload — visible to the admin exactly once.
         token,
-        url: inviteUrl(token, getBaseUrl(request)),
+        url: inviteUrl(token, baseUrl),
         expiresInDays: expiryDays,
       },
       { status: 201 },

@@ -33,7 +33,6 @@
     "createAccount": "Criar conta"
   },
   "Sidebar": {
-    "title": "CB Advogados CRM",
     "dashboard": "Painel",
     "inbox": "Caixa de entrada",
     "notifications": "Notificações",
@@ -2158,7 +2157,8 @@
       "labelTooLong": "O rótulo deve ter no máximo {max} caracteres",
       "copied": "Link do convite copiado",
       "clipboardBlocked": "Área de transferência bloqueada — copie o link manualmente",
-      "whatsappMessage": "Entre em {accountName} no wacrm usando este link (válido por {expiresInDays} dias): {url}",
+      "whatsappMessage": "Entre em {accountName} no {appName} usando este link (válido por {expiresInDays} dias): {url}",
+      "genericAccountName": "esta conta",
       "perfilLabel": "Perfil de acesso"
     },
     "tagsAndFields": {
@@ -2272,8 +2272,8 @@
       "saveResubmit": "Salvar e reenviar",
       "submitApproval": "Enviar para aprovação",
       "deleteDialogTitle": "Excluir modelo?",
-      "deleteMetaDesc": "\"{name}\" será excluído da Meta e do wacrm. Disparos ativos que usam este modelo passarão a falhar no próximo envio. Não é possível desfazer.",
-      "deleteLocalDesc": "\"{name}\" será excluído do wacrm. Ele nunca foi enviado à Meta, então não há nada a remover de lá.",
+      "deleteMetaDesc": "\"{name}\" será excluído da Meta e deste CRM. Disparos ativos que usam este modelo passarão a falhar no próximo envio. Não é possível desfazer.",
+      "deleteLocalDesc": "\"{name}\" será excluído deste CRM. Ele nunca foi enviado à Meta, então não há nada a remover de lá.",
       "deleting": "Excluindo…",
       "delete": "Excluir",
       "toastLoadFailed": "Falha ao carregar os modelos",
@@ -2314,7 +2314,7 @@
       "notConnected": "Não conectado",
       "connectedDesc": "Seu Access Token autentica com a Meta. Veja o status de registro abaixo para saber se os webhooks estão realmente conectados.",
       "notConnectedDesc": "Configure abaixo suas credenciais da API da Meta para conectar sua conta do WhatsApp Business.",
-      "registered": "Registrado — a Meta vai entregar eventos ao wacrm",
+      "registered": "Registrado — a Meta vai entregar eventos a este CRM",
       "notRegistered": "Não registrado — a Meta não vai entregar eventos",
       "verifyWithMeta": "Verificar com a Meta",
       "subscribedSince": "Inscrito desde {date}. Clique em Verificar com a Meta se os eventos pararem de chegar.",
@@ -2338,7 +2338,7 @@
       "twoStepPin": "PIN de verificação em duas etapas",
       "optional": "(opcional)",
       "pinPlaceholder": "PIN de 6 dígitos do Meta WhatsApp Manager",
-      "pinHint": "Necessário apenas para conectar as mensagens recebidas em um número de produção. Defina-o em Meta Business Manager → WhatsApp Accounts → Phone Numbers → Two-step verification e cole aqui, para que o wacrm possa inscrever o número — caso contrário, a Meta encaminha os eventos recebidos ao app que reivindicou o número por último (o sintoma que atinge números secundários sob uma mesma WABA). Números de teste da Meta não têm PIN e já vêm registrados — deixe este campo em branco para eles. Deixar em branco também mantém um registro existente sem alteração.",
+      "pinHint": "Necessário apenas para conectar as mensagens recebidas em um número de produção. Defina-o em Meta Business Manager → WhatsApp Accounts → Phone Numbers → Two-step verification e cole aqui, para que este CRM possa inscrever o número — caso contrário, a Meta encaminha os eventos recebidos ao app que reivindicou o número por último (o sintoma que atinge números secundários sob uma mesma WABA). Números de teste da Meta não têm PIN e já vêm registrados — deixe este campo em branco para eles. Deixar em branco também mantém um registro existente sem alteração.",
       "webhookTitle": "Configuração do webhook",
       "webhookDesc": "Use esta URL como callback de webhook no Meta App Dashboard.",
       "webhookUrl": "Webhook Callback URL",
@@ -2824,7 +2824,7 @@
     },
     "aiConfig": {
       "title": "Configuração do agente de IA",
-      "description": "Use sua própria chave da OpenAI, da Anthropic ou do Google (Gemini). O wacrm chama o provedor diretamente com a sua chave — sem cobrança de IA por usuário, e seus dados continuam sendo seus. Isso alimenta as respostas sugeridas por IA na caixa de entrada, o bot de resposta automática, o Playground e o Radar do atendimento.",
+      "description": "Use sua própria chave da OpenAI, da Anthropic ou do Google (Gemini). Este CRM chama o provedor diretamente com a sua chave — sem cobrança de IA por usuário, e seus dados continuam sendo seus. Isso alimenta as respostas sugeridas por IA na caixa de entrada, o bot de resposta automática, o Playground e o Radar do atendimento.",
       "adminOnlyConfig": "Apenas administradores e proprietários podem alterar a configuração de IA.",
       "loadFailed": "Falha ao carregar a configuração de IA",
       "providerAndKey": "Provedor e chave",
@@ -2919,7 +2919,7 @@
       "toggleHint": "Muda o texto que o cliente recebe. Nasce desligada.",
       "autoNameLabel": "Nome para mensagens automáticas",
       "autoNameHint": "Automação, fluxo e IA não têm autor humano — assinam com o nome do escritório. Nunca ponha o nome de uma pessoa aqui: uma resposta automática às 3h da manhã sairia assinada por quem estava dormindo. Deixe vazio para essas saírem sem assinatura.",
-      "autoNamePlaceholder": "ex.: CB Advogados",
+      "autoNamePlaceholder": "ex.: Silva & Associados",
       "previewTitle": "O que o cliente vê",
       "previewPersonLabel": "Enviada por uma pessoa",
       "previewAutoLabel": "Enviada por automação, fluxo ou IA",
@@ -3008,7 +3008,24 @@
     "emailLabel": "E-mail",
     "emailPlaceholder": "voce@exemplo.com",
     "sending": "Enviando...",
-    "submitButton": "Enviar link de redefinição"
+    "submitButton": "Enviar link de redefinição",
+    "linkExpired": "Esse link expirou ou já foi usado. Peça outro abaixo."
+  },
+  "ResetPasswordPage": {
+    "title": "Escolha uma senha nova",
+    "description": "Digite a senha que você vai usar a partir de agora",
+    "checking": "Conferindo seu link…",
+    "invalidTitle": "Este link não vale mais",
+    "invalidDescription": "Links de redefinição expiram e só podem ser usados uma vez. Peça outro e abra no mesmo navegador.",
+    "requestNew": "Pedir um link novo",
+    "passwordLabel": "Senha nova",
+    "passwordPlaceholder": "Pelo menos {min} caracteres",
+    "confirmLabel": "Confirmar senha nova",
+    "confirmPlaceholder": "Repita a senha",
+    "tooShort": "A senha precisa de pelo menos {min} caracteres.",
+    "mismatch": "As duas senhas não conferem.",
+    "submitButton": "Salvar senha nova",
+    "saving": "Salvando…"
   },
   "GatedButton": {
     "readOnlyTooltip": "Somente leitura — seu papel não permite {reason}"
@@ -3093,7 +3110,7 @@
     "backToSignIn": "Voltar para o login",
     "title": "Criar conta",
     "titleInvite": "Criar conta e entrar na equipe",
-    "description": "Comece a usar o CB Advogados CRM",
+    "description": "Comece a usar o {appName}",
     "descriptionInvite": "Crie sua conta e aceite o convite para entrar na sua equipe.",
     "fullNameLabel": "Nome completo",
     "fullNamePlaceholder": "João da Silva",

@@ -16,6 +16,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { NOME_DO_APP } from '@/lib/marca';
 import { createClient } from '@/lib/supabase/client';
 import { PerfilResumo, type PerfilParaResumo } from './perfil-resumo';
 import { toast } from 'sonner';
@@ -208,8 +209,11 @@ export function InviteMemberDialog({
         // share message has team context. Falls back to a generic
         // string if `account` hasn't loaded yet (shouldn't happen
         // — the dialog requires admin+ which requires a loaded
-        // profile — but stay safe).
-        accountName: account?.name ?? 'our wacrm account',
+        // profile — but stay safe). O texto de queda vem do
+        // dicionário: era uma frase em inglês com o nome do projeto
+        // original escrita no código, e ela saía numa mensagem de
+        // WhatsApp que o administrador manda para um colega.
+        accountName: account?.name ?? t('genericAccountName'),
       });
       onCreated();
     } catch (err) {
@@ -236,10 +240,15 @@ export function InviteMemberDialog({
   function whatsappShareUrl(url: string): string {
     // Include the account name so the recipient knows which team
     // they're being invited to before clicking through. This matters
-    // for users in multi-team contexts where "our wacrm account"
+    // for users in multi-team contexts where a generic name
     // wouldn't be enough to disambiguate.
-    const accountName = result?.accountName ?? 'our wacrm account';
-    const message = t('whatsappMessage', { accountName, expiresInDays: result?.expiresInDays ?? 0, url });
+    const accountName = result?.accountName ?? t('genericAccountName');
+    const message = t('whatsappMessage', {
+      accountName,
+      appName: NOME_DO_APP,
+      expiresInDays: result?.expiresInDays ?? 0,
+      url,
+    });
     return `https://wa.me/?text=${encodeURIComponent(message)}`;
   }
 

@@ -8,6 +8,62 @@
 > repositório. Ao executar cada item, marque-o aqui e registre a data: o
 > plano é a trilha do que foi feito, não só do que se pretende fazer.
 
+## 0. Estado da execução (2026-09-08)
+
+Aplicado o que NÃO depende de fechar o repositório. Tudo verde: lint sem
+erro, typecheck, 2.832 testes, os dois portões de i18n e o build.
+
+| Fase | Estado | O que ficou de fora |
+|---|---|---|
+| 0 — fechar o repositório | **não iniciada** | decisão do operador (D1) |
+| 1 — infraestrutura parametrizada | **só o 1.6** (comentários e fixtures) | 1.1 a 1.5 exigem janela e `stack deploy` |
+| 2 — buracos funcionais | **feita** | — |
+| 3 — marca configurável | **feita** | 3.3 entregue como `NEXT_PUBLIC_APP_LOGO_URL`, não como detecção de arquivo |
+| 4 — documentação | **feita** | 4.4 (tirar `docs/PLANO-*` e infra da árvore) e 4.5 (`ARQUITETURA.md` saneado) |
+| 5 — portão de migrations | **feita** | a validação de instalação limpa exige Supabase e número de teste |
+| 6.2 — portão de strings | **feita** | escopo estreito: `src/`, `messages/`, `supabase/`, raiz |
+| 6.1, 6.3–6.5, 7 | **não iniciadas** | dependem de D2, D3 e da Fase 0 |
+
+**Decisões respondidas pelo operador:** a venda será **repetida**, para
+compradores diferentes. Isso mantém a Fase 5 (D-modelo) no escopo e torna
+a Fase 6.1 (repositório do produto) e a 7 (instalador) necessárias, não
+opcionais.
+
+**Decisões ainda abertas:** D1 (como privar), D2 (como o comprador
+recebe), D3 (licença das adições), D4 (nome do produto — hoje o padrão no
+código é o genérico `CRM` e a nossa produção passa `NEXT_PUBLIC_APP_NAME`
+pelo build-arg), D6 (segundo caminho de deploy), D7 (Supabase do
+comprador), D8 (`CLAUDE.md` saneado).
+
+**D5 foi respondida na prática:** o `ko.json` foi removido.
+
+### O que foi entregue
+
+- `src/lib/auth/destino-seguro.ts` (+teste), `src/app/auth/callback/route.ts`
+  e `src/app/(auth)/reset-password/page.tsx` — a recuperação de senha, que
+  não existia. `forgot-password` ganhou o aviso de link vencido.
+- `.env.local.example` com as três variáveis da Evolution, mais
+  `NEXT_PUBLIC_APP_NAME` e `NEXT_PUBLIC_APP_LOGO_URL`, e
+  `scripts/env-documentado.test.ts` cobrando a cobertura.
+- O fallback para o domínio de marketing do upstream saiu de
+  `invitations/route.ts`: agora falha ANTES do insert, nomeando a variável.
+- `messages/ko.json` apagado.
+- `src/lib/marca.ts`, com `layout.tsx` e `sidebar.tsx` lendo dele;
+  `Sidebar.title` removida dos dicionários; as 9 chaves com marca
+  reescritas; `NEXT_PUBLIC_APP_NAME` como build-arg no `Dockerfile`, no
+  `pipeline.yml` e no `docker-compose.yml`.
+- `.github/` inteiro reapontado (CODEOWNERS, SECURITY, CODE_OF_CONDUCT,
+  templates, dependabot); o asset da Hostinger removido.
+- `needs: [verificar, migrations]` no `pipeline.yml`, com pino em
+  `pipeline.test.ts`.
+- `scripts/produto-gate.test.ts`.
+- `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, `docs/README.md`,
+  `docs/INSTALACAO.md`, `docs/ATUALIZAR.md`; `docs/SETUP-PRODUCAO.md`
+  apagado.
+- `CLAUDE.md`: quatro afirmações stale corrigidas e um bloco novo com as
+  regras da marca, do portão de strings, do portão de env e do par de
+  rotas de recuperação de senha.
+
 ---
 
 ## 1. Objetivo

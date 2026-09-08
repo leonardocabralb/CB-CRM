@@ -137,7 +137,7 @@ const GROUP_LIST_TIMEOUT_MS = 30_000;
  * and reached over the loopback / private interface (e.g.
  * `http://127.0.0.1:8080`), so the apikey and message content never
  * leave the host and plain HTTP is fine. Only the CRM's own public
- * origin (crm.cbadvogados.com) needs TLS. If you ever expose Evolution
+ * origin (the CRM domain) needs TLS. If you ever expose Evolution
  * across an untrusted network, put it behind HTTPS.
  */
 export function assertValidBaseUrl(baseUrl: string): void {

@@ -6,6 +6,7 @@ import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { ThemedToaster } from "@/components/themed-toaster";
+import { NOME_DO_APP } from "@/lib/marca";
 import {
   DEFAULT_MODE,
   DEFAULT_THEME,
@@ -21,11 +22,14 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  // ⚠️ Nome e descrição saem de `src/lib/marca.ts`, não de literal aqui:
+  // o produto é instalado por outras pessoas, e um nome escrito no código
+  // faz a instalação delas se apresentar com o nome de outro escritório.
   title: {
-    default: "CB Advogados CRM",
-    template: "%s — CB Advogados CRM",
+    default: NOME_DO_APP,
+    template: `%s — ${NOME_DO_APP}`,
   },
-  description: "Sistema de gestão de WhatsApp do CB Advogados.",
+  description: `Gestão de atendimento no WhatsApp — ${NOME_DO_APP}.`,
   robots: {
     index: false,
     follow: false,

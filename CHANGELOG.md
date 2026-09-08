@@ -1,13 +1,50 @@
 # Changelog
 
-User-visible changes in `wacrm`. Self-hosters: when pulling an update,
-check this file for any **migration required** notes and apply the
-matching SQL files from `supabase/migrations/` against your Supabase
-project before restarting the app.
+Mudanças visíveis para quem usa o CRM. Ao trazer uma atualização, procure
+aqui as notas de **migration necessária** e aplique os arquivos de
+`supabase/migrations/` antes de reiniciar a aplicação. O roteiro completo
+está em [`docs/ATUALIZAR.md`](./docs/ATUALIZAR.md).
 
-Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
-and polish.
+Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+> ⚠️ **As entradas abaixo de `0.8.1` são do projeto original** (`wacrm`),
+> de onde este código veio, e descrevem a base sobre a qual ele foi
+> construído. O histórico das mudanças feitas aqui desde então está nos
+> commits e nos documentos de `docs/`; a numeração de versões própria
+> começa em `v1.0.0`.
+
+## [Não publicado]
+
+### Corrigido
+
+- **A recuperação de senha volta a funcionar.** A tela de "esqueci a
+  senha" apontava para `/auth/callback` e `/reset-password` desde o
+  início, e nenhuma das duas rotas existia: o e-mail chegava e o link
+  caía em 404. As duas foram implementadas.
+  **Ação necessária:** acrescente `<a-sua-origem>/auth/callback` à lista
+  de redirects em *Authentication → URL Configuration* no Supabase.
+- **Convite não aponta mais para um domínio de terceiro.** Quando a
+  instalação não sabia o próprio endereço, o link de convite era gerado
+  apontando para o site de marketing do projeto original, que responde
+  404. Agora a criação do convite falha com uma mensagem que nomeia
+  `NEXT_PUBLIC_SITE_URL`, e nenhuma linha é gravada.
+- **Três variáveis de ambiente estavam sem documentação.**
+  `EVOLUTION_BASE_URL`, `EVOLUTION_GLOBAL_API_KEY` e
+  `EVOLUTION_WEBHOOK_SECRET` são lidas pelo código e não apareciam no
+  `.env.local.example`. Um teste passou a cobrar isso.
+- **O idioma coreano foi removido.** O dicionário tinha menos da metade
+  das chaves, e escolhê-lo entregava metade da tela como caminho de chave
+  cru. Restam português do Brasil e inglês, os dois completos.
+
+### Mudado
+
+- **Nome e logo viraram configuração.** `NEXT_PUBLIC_APP_NAME` e
+  `NEXT_PUBLIC_APP_LOGO_URL` definem como o CRM se apresenta. Sem valor,
+  ele se chama "CRM". Nenhuma frase da interface cita mais o nome do
+  produto original.
+- **O replay das migrations passou a segurar a publicação.** Antes era
+  apenas um aviso: uma migration que não aplicasse num banco vazio ia
+  para produção assim mesmo. Agora não vai.
 
 ## [0.8.1] — 2026-07-10
 

@@ -1,124 +1,122 @@
-# Using this template
+# Mexendo no código
 
-This is a **template repository**, not a collaborative product. The
-expected flow is:
+Esta é a sua cópia do CRM. Renomeie, mude cores, acrescente telas, remova
+módulos — nada precisa voltar para lugar nenhum.
 
-1. **Fork** it to your own GitHub account or organisation.
-2. **Deploy** the fork — see [`docs/`](./docs/README.md).
-3. **Customise** your fork. Rebrand, add the features you need, remove
-   the ones you don't, swap hosting, change the schema.
+O que este documento cobre é como fazer isso sem tornar as atualizações
+futuras dolorosas, e quais convenções o código já assume.
 
-You **don't** need to send changes back upstream. The fact that your
-fork diverges is the whole point — the upstream is deliberately
-opinionated about stack, UX, and scope, and your fork is where those
-opinions become yours.
+---
 
-## Fork and run
+## Ambiente
 
 ```bash
-# 1. Fork on GitHub: https://github.com/ArnasDon/wacrm → Fork
-# 2. Clone your fork
-git clone https://github.com/<your-username>/wacrm.git
-cd wacrm
-
-cp .env.local.example .env.local   # fill in Supabase + Meta creds
+nvm use            # Node 22, do .nvmrc — antes de tudo
 npm install
-npm run dev
+cp .env.local.example .env.local
+npm run dev        # localhost:3000
 ```
 
-Full setup (Supabase migrations, WhatsApp Business API, deploy) lives in
-[`docs/`](./docs/README.md).
+A versão do Node não é detalhe. Ela sai do `.nvmrc` e o `Dockerfile` traz
+o mesmo número; rodar teste numa versão diferente da que o CI usa produz
+falha que só aparece lá. Já aconteceu: uma formatação de moeda resolvia
+diferente entre duas versões do V8, e o teste passava na máquina e
+reprovava no CI.
 
-## Keeping your fork up to date
-
-Pull in upstream bug fixes and security patches periodically:
+Comandos:
 
 ```bash
-git remote add upstream https://github.com/ArnasDon/wacrm.git  # once
-git fetch upstream
-git checkout main
-git merge upstream/main     # or: git rebase upstream/main
-# Resolve any conflicts (likely in areas you've customised), then push
-git push origin main
+npm run dev        # desenvolvimento
+npm run build      # build de produção
+npm run lint       # eslint
+npm run typecheck  # tsc --noEmit
+npm test           # vitest
+npm run format     # prettier
 ```
 
-If you've made heavy local customisations, rebasing can surface
-conflicts every time you pull. Pinning to a specific upstream tag and
-updating on your schedule is a valid alternative.
+---
 
-## Reporting bugs in the upstream template
+## Antes de abrir um PR
 
-If you find a bug in the upstream code — not one you introduced in your
-fork — please file it using the
-[bug report](https://github.com/ArnasDon/wacrm/issues/new?template=bug_report.yml)
-template. Including the commit SHA, the runtime (Hostinger / Vercel /
-local / other), and logs will get to a fix fastest.
+O CI roda, nesta ordem, e qualquer um segura a publicação:
 
-## Reporting security issues
+```bash
+npm run lint
+npm run typecheck
+node scripts/i18n-parity.mjs         # dicionários em paridade
+node scripts/i18n-chaves-usadas.mjs  # o código não pede chave inexistente
+npm test
+npm run build
+```
 
-**Do not file security issues publicly.** Follow the private flow in
-[SECURITY.md](./.github/SECURITY.md).
+E, num job próprio, o replay de todas as migrations contra um Postgres
+vazio. Ele também segura a publicação: se o banco não puder ser
+construído do zero, nada vai para produção.
 
-## Upstream pull requests
+---
 
-Not the primary flow, but welcome in specific cases:
+## Convenções que o código assume
 
-- **Security fixes** — always welcome, please follow SECURITY.md first
-  for disclosure.
-- **Bug fixes** that match upstream intent (crash, correctness,
-  documentation errors, typos) — land quickly.
-- **Small improvements** (accessibility, obvious UX nits) — usually
-  welcome, open an issue first to check alignment.
+Estas não são preferências de estilo. São regras que, ignoradas, quebram
+algo — e a maioria delas está registrada com o motivo e a data no
+`CLAUDE.md`, que é a memória de engenharia do projeto. Vale ler a seção
+correspondente antes de mexer numa área.
 
-Less likely to land:
+**Texto de tela vive no dicionário, nos dois idiomas.** Chave nova em
+`messages/en.json` entra em `messages/pt-BR.json` na mesma passada. O
+fallback do next-intl é por arquivo, não por chave: uma chave que falta
+não cai para o inglês, aparece na tela como o caminho dela. Dois scripts
+no CI cobram isso.
 
-- **New features.** The template's scope is intentionally narrow. A
-  "great idea for a CRM" is often a great idea for *your* CRM — i.e.
-  your fork — but would dilute the template for the next forker.
-- **Stack changes** (different ORM, different UI kit, different auth
-  provider). These belong in a fork, not upstream.
-- **Opinionated refactors** without a concrete correctness or
-  performance motivation.
+**O nome do produto não é tradução.** Ele vem de `src/lib/marca.ts`, que
+lê `NEXT_PUBLIC_APP_NAME`. Frase de interface não cita o nome do produto;
+onde ele é necessário, entra como parâmetro `{appName}`.
 
-If you do send a PR, the usual rules apply:
+**Migrations são arquivos, e nunca se renumera uma já aplicada.** Nomes
+em `NNN_descricao.sql`, sequenciais. Toda migration precisa aplicar num
+banco **vazio**: todo `REVOKE` acompanhado do `GRANT` de volta para quem
+precisa, e nenhuma conferência que exija dado que só existe numa
+instalação específica.
 
-- Branch off the latest `main` (don't push to a merged branch — commits
-  end up orphaned).
-- Run `npm run typecheck` and `npm run format` locally first.
-- Fill in the PR template, especially the **Test plan**.
-- One logical change per PR.
-- Commit-message first line is imperative + terse; the body explains
-  the *why*, the diff shows the *what*.
+**A chave `service_role` do Supabase nunca aparece no navegador.** Ela
+ignora as regras de acesso do banco. Só em rota de servidor.
 
-Expect a review within a few days. PRs opened without an issue may be
-closed — open the issue first to align.
+**Prefira arquivo novo a reescrever um existente.** Um módulo seu em
+`src/lib/<seu-dominio>/` nunca conflita numa atualização. Uma edição no
+meio de uma tela existente conflita toda vez que aquela tela mudar.
 
-## If you maintain a public fork
+**Lógica pura sai do componente.** O padrão do projeto é um módulo sem
+I/O, com teste, e o componente só desenhando. É o que permite testar
+regra de negócio sem montar tela.
 
-- Rebrand. The "CRM Template for WhatsApp" name, favicon, and
-  `wacrm.tech` URL belong to the upstream project; please swap them
-  for your own before putting your deployment in front of users.
-- Keep the MIT [`LICENSE`](./LICENSE) file — that's how the template's
-  permissions travel with the code. Attribution in a `README` section
-  is appreciated but not required.
-- You are free to re-license additions to your fork however you like.
+---
 
-## Dev-loop reference
+## Duas armadilhas que já custaram caro
 
-Even if you never send a PR upstream, these are the scripts you'll use
-in your fork:
+Valem para qualquer código novo, e nenhuma delas aparece em teste ou em
+revisão — só na tela.
 
-| Command | What it does |
-| --- | --- |
-| `npm run dev` | Turbopack dev server on port 3000. |
-| `npm run build` | Production build. Next also runs its own typecheck here. |
-| `npm run typecheck` | `tsc --noEmit`. Fast TS-only pass. |
-| `npm run lint` | ESLint. |
-| `npm run format` | Prettier write. |
-| `npm run format:check` | Prettier in check-only mode. Useful in CI. |
+**Lista vazia durante o carregamento não é uma resposta.** Um efeito que
+limpa o estado roda *depois* do primeiro render, então existe um instante
+com os dados antigos sob o cabeçalho novo. E uma lista ainda não
+carregada é indistinguível de uma lista genuinamente vazia. Transformar
+esse vazio numa afirmação positiva ("não há nada", "não é este
+transporte") produz telas que mentem por alguns segundos — e uma delas
+chegou a desabilitar a caixa de resposta no exato momento em que o
+atendente abria a conversa para responder. Compare sempre contra a
+propriedade do render atual, ou espere um sinalizador de "já carregou".
 
-## Licensing
+**Classe do Tailwind montada em tempo de execução não existe.** O
+Tailwind varre o código-fonte procurando strings e não executa nada, então
+`bg-${cor}-500` simplesmente não é gerada: o elemento nasce transparente,
+sem erro nenhum. Cores de paleta são literais, sempre.
 
-This template is MIT ([`LICENSE`](./LICENSE)). Anything you contribute
-upstream is assumed to be MIT too. Your fork's additions are yours to
-license however you like.
+---
+
+## Onde procurar
+
+- `CLAUDE.md` — a memória de engenharia: por que cada decisão não óbvia é
+  como é, com data e, quando houve, a medição que a motivou. É longo de
+  propósito; use busca.
+- `docs/` — instalação, atualização, API pública, MCP.
+- `.env.local.example` — toda variável de ambiente, explicada.

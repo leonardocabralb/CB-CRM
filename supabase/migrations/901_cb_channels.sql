@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS cb_channels (
   verify_token    text,
 
   -- ---- Evolution API ----
-  server_url      text,   -- ex. https://api.cbadvogados.com (sem barra final)
+  server_url      text,   -- ex. https://api.exemplo.com (sem barra final)
   instance_name   text,
   api_key         text,   -- criptografado (AES-256-GCM)
 

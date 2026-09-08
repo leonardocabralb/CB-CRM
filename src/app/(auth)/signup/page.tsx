@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
+import { NOME_DO_APP } from "@/lib/marca";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -176,7 +177,9 @@ function SignupPageInner() {
             {inviteToken ? t("titleInvite") : t("title")}
           </CardTitle>
           <CardDescription className="text-muted-foreground">
-            {inviteToken ? t("descriptionInvite") : t("description")}
+            {inviteToken
+              ? t("descriptionInvite")
+              : t("description", { appName: NOME_DO_APP })}
           </CardDescription>
         </CardHeader>
         <CardContent>

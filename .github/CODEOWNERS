@@ -1,8 +1,12 @@
-# Everyone who opens a PR against this repo gets Arnas as a required
-# reviewer. Paired with a branch-protection rule on `main` that
-# requires Code Owner approval, this ensures every change is reviewed
-# before merge.
+# Todo PR contra este repositório pede revisão do dono. Combinado com uma
+# regra de proteção do `main` que exija aprovação de Code Owner, garante
+# que nada entra sem leitura.
 #
-# Syntax: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+# ⚠️ Vinha de fábrica apontando para o autor do projeto ORIGINAL
+# — uma conta que não tem acesso a este repositório. O efeito prático
+# era um revisor obrigatório impossível de satisfazer. Quem instalar este
+# sistema troca a linha abaixo pelo próprio usuário ou time.
+#
+# Sintaxe: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
 
-* @ArnasDon
+* @leonardocabralb

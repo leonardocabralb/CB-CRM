@@ -1,6 +1,6 @@
 # Security Policy
 
-Thanks for taking the time to look into the security of this template.
+Thanks for taking the time to look into the security of this CRM.
 
 ## Reporting a vulnerability
 
@@ -8,11 +8,14 @@ Thanks for taking the time to look into the security of this template.
 indexed by search engines and seen by every fork long before the upstream fix
 lands.
 
-Instead, please report privately via one of:
+Instead, please report privately through
+[GitHub Security Advisories](https://github.com/leonardocabralb/CB-CRM/security/advisories/new),
+which keeps the report, the fix, and the disclosure in one place and visible
+only to the maintainers until a patch ships.
 
-- [GitHub Security Advisories](https://github.com/ArnasDon/wacrm/security/advisories/new)
-  (preferred — keeps the disclosure, fix, and CVE all in one place).
-- Email: `a.donauskas@hostinger.com` with `[CRM template security]` in the subject.
+If you run your own installation of this CRM, replace the link above with your
+own repository's advisory page — reports about YOUR deployment belong with
+whoever operates it.
 
 Include, if you can:
 
@@ -34,8 +37,8 @@ Include, if you can:
 ## Scope
 
 In scope:
-- Anything in this repository (`ArnasDon/wacrm`), including webhook and auth
-  flows, token encryption, RLS policies, and the built-in cron endpoints.
+- Anything in this repository, including webhook and auth flows, token
+  encryption, RLS policies, and the built-in cron endpoints.
 - Default configurations shipped in `docs/` — e.g. if the setup guide leaves
   an unsafe default.
 
@@ -46,8 +49,8 @@ Out of scope:
 - Issues that require a pre-compromised deployment (e.g. a leaked
   service-role key) unless they widen the blast radius beyond the initial
   compromise.
-- Social engineering, physical attacks, or third-party services your fork
-  adds after deploy.
+- Social engineering, physical attacks, or third-party services added to an
+  installation after deploy.
 
 ## Safe harbor
 

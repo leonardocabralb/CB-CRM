@@ -72,7 +72,19 @@ describe('pipeline: quem pode publicar (M9)', () => {
   });
 
   it('o deploy continua dependendo da verificação', () => {
-    expect(jobDoDeploy()).toContain('needs: [verificar]');
+    expect(jobDoDeploy()).toContain('verificar');
+    expect(jobDoDeploy()).toMatch(/needs: \[[^\]]*verificar/);
+  });
+
+  // ⚠️ Pino do portão que faltou por meses. Até 2026-09-08 o `needs` era
+  // só `[verificar]` e a etapa que replaya as migrations num banco vazio
+  // era SINAL: migration vermelha no `main` publicava assim mesmo, sem
+  // nada na tela dizendo isso. Quem descobriria seria a próxima
+  // instalação — a que constrói o banco do zero e não tem produção antiga
+  // para disfarçar o defeito. Tirar `migrations` daqui reabre esse
+  // buraco, e nenhum teste de código o alcança.
+  it('o deploy também depende do replay das migrations', () => {
+    expect(jobDoDeploy()).toMatch(/needs: \[[^\]]*migrations/);
   });
 });
 

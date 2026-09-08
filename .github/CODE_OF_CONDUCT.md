@@ -11,7 +11,9 @@ that standard.
 If you witness or experience behaviour that violates the Code, please
 report it privately to the project maintainer:
 
-- Email: **a.donauskas@hostinger.com** with `[CRM template conduct]` in
+- Open a private report through the repository's
+  [Security Advisories](https://github.com/leonardocabralb/CB-CRM/security/advisories/new)
+  page, which only the maintainers can read.
   the subject.
 
 Reports are handled confidentially. Expect an acknowledgement within
