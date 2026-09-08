@@ -2476,7 +2476,7 @@
         "desconectar": "Desconectar",
         "confirmarDesconectar": "Desconectar o Calendly? O webhook é removido e os agendamentos param de chegar. O histórico de eventos fica.",
         "perguntaLabel": "Pergunta do telefone no formulário",
-        "perguntaHint": "O Calendly não tem campo de telefone. Se o seu evento pergunta o WhatsApp do cliente, escreva aqui parte do rótulo da pergunta (ex.: WhatsApp). Vazio = automático (lembrete por SMS, senão a pergunta que parecer telefone).",
+        "perguntaHint": "Normalmente não precisa mexer: o CRM já acha o telefone sozinho, no lembrete por SMS ou na pergunta do formulário que tem cara de telefone (CPF e outros documentos ficam de fora). Preencha só se o seu formulário tiver mais de uma pergunta parecida com telefone e o CRM pegar a errada — aí escreva parte do rótulo da certa (ex.: WhatsApp). O log mostra, em cada linha, de onde o telefone saiu.",
         "perguntaPlaceholder": "ex.: WhatsApp",
         "salvarPergunta": "Salvar",
         "perguntaSalva": "Pergunta do telefone salva.",
@@ -2493,7 +2493,7 @@
         "resultado": {
           "recebido": "recebido",
           "disparado": "automação disparada",
-        "em_espera": "em espera (a automação parou num passo Aguardar)",
+          "em_espera": "em espera (a automação parou num passo Aguardar)",
           "sem_automacao": "nenhuma automação escuta este evento",
           "sem_contato": "telefone não é de nenhum contato",
           "sem_telefone": "sem telefone no agendamento",
@@ -2533,7 +2533,13 @@
         "abrirNoCrm": "Abrir a ficha no CRM",
         "logPagina": "página {pagina} de {total}",
         "logMaisRecentes": "‹ Mais recentes",
-        "logMaisAntigos": "Mais antigos ›"
+        "logMaisAntigos": "Mais antigos ›",
+        "reprocessar": "Processar de novo",
+        "reprocessando": "Processando…",
+        "reprocessarAjuda": "Roda este agendamento outra vez, com os dados que já chegaram — para depois de arrumar o que faltava.",
+        "reprocessado": "Processado de novo: {resultado}.",
+        "reprocessarFalhou": "Não foi possível processar de novo.",
+        "jaProcessado": "Este agendamento já foi processado — repetir mandaria a mesma mensagem outra vez."
       },
       "emBreve": "Em breve",
       "modulo": {

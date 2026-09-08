@@ -16,6 +16,7 @@ import {
   type ContextoDosFiltros,
   type FiltrosDoInbox,
   casaComASituacao,
+  digitosDeBuscaDeTelefone,
 } from "./filtros";
 import type { Conversation, Tag } from "@/types";
 
@@ -142,6 +143,50 @@ describe("casaComABusca", () => {
     });
     expect(casaComABusca(comAcento, "conceicao")).toBe(true);
     expect(casaComABusca(comAcento, "Conceição")).toBe(true);
+  });
+});
+
+describe("casaComABusca — telefone escrito por gente (08/09/2026)", () => {
+  // `contacts.phone` guarda só dígitos com DDI. Colar "(19) 98276-4080" — a
+  // forma que o cliente manda, e a que o próprio CRM exibe — não achava
+  // NADA, e a leitura do operador foi que o cliente não estava no CRM.
+  const joel = conversa({
+    contact: { ...conversa().contact!, phone: "5519982764080", name: "Joel" },
+  });
+
+  it("CRÍTICO: acha com o número formatado, com e sem DDI", () => {
+    expect(casaComABusca(joel, "(19) 98276-4080")).toBe(true);
+    expect(casaComABusca(joel, "+55 19 98276-4080")).toBe(true);
+    expect(casaComABusca(joel, "19 98276 4080")).toBe(true);
+  });
+
+  it("o pedaço formatado também acha (é o que se cola do WhatsApp)", () => {
+    expect(casaComABusca(joel, "98276-4080")).toBe(true);
+    expect(casaComABusca(joel, "982764080")).toBe(true);
+  });
+
+  it("não passa a achar quem não tem aqueles dígitos", () => {
+    expect(casaComABusca(conversa(), "(19) 98276-4080")).toBe(false);
+  });
+});
+
+describe("digitosDeBuscaDeTelefone", () => {
+  it("aceita dígitos e a pontuação com que se escreve telefone", () => {
+    expect(digitosDeBuscaDeTelefone("(19) 98276-4080")).toBe("19982764080");
+    expect(digitosDeBuscaDeTelefone("+55 19 98276.4080")).toBe("5519982764080");
+    expect(digitosDeBuscaDeTelefone(" 982764080 ")).toBe("982764080");
+  });
+
+  it("⚠️ termo com LETRA não é telefone — senão a busca por texto sujaria a de número", () => {
+    expect(digitosDeBuscaDeTelefone("Rua 12")).toBeNull();
+    expect(digitosDeBuscaDeTelefone("contrato 2026")).toBeNull();
+    expect(digitosDeBuscaDeTelefone("")).toBeNull();
+  });
+
+  it("piso de 3 dígitos, o mesmo da busca do banco", () => {
+    expect(digitosDeBuscaDeTelefone("19")).toBeNull();
+    expect(digitosDeBuscaDeTelefone("(19)")).toBeNull();
+    expect(digitosDeBuscaDeTelefone("199")).toBe("199");
   });
 });
 

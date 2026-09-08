@@ -2483,7 +2483,7 @@
         "desconectar": "Disconnect",
         "confirmarDesconectar": "Disconnect Calendly? The webhook is removed and bookings stop arriving. The event history stays.",
         "perguntaLabel": "Phone question on the form",
-        "perguntaHint": "Calendly has no phone field. If your event asks for the customer's WhatsApp, type part of that question's label here (e.g. WhatsApp). Empty = automatic (SMS reminder number, else the answer that looks like a phone).",
+        "perguntaHint": "You usually don't need this: the CRM finds the phone on its own, from the SMS reminder or from the form answer that looks like a phone (IDs and tax numbers are excluded). Fill it in only if your form has more than one phone-like question and the CRM picks the wrong one — then write part of the right question's label (e.g. WhatsApp). Each log row shows where the phone came from.",
         "perguntaPlaceholder": "e.g. WhatsApp",
         "salvarPergunta": "Save",
         "perguntaSalva": "Phone question saved.",
@@ -2500,7 +2500,7 @@
         "resultado": {
           "recebido": "received",
           "disparado": "automation fired",
-        "em_espera": "waiting (the automation stopped at a Wait step)",
+          "em_espera": "waiting (the automation stopped at a Wait step)",
           "sem_automacao": "no automation listens to this event",
           "sem_contato": "phone matches no contact",
           "sem_telefone": "no phone in the booking",
@@ -2540,7 +2540,13 @@
         "abrirNoCrm": "Open the contact in the CRM",
         "logPagina": "page {pagina} of {total}",
         "logMaisRecentes": "‹ Newer",
-        "logMaisAntigos": "Older ›"
+        "logMaisAntigos": "Older ›",
+        "reprocessar": "Process again",
+        "reprocessando": "Processing…",
+        "reprocessarAjuda": "Runs this booking again with the data already received — for after you fixed what was missing.",
+        "reprocessado": "Processed again: {resultado}.",
+        "reprocessarFalhou": "Could not process it again.",
+        "jaProcessado": "This booking already ran — repeating it would send the same message again."
       },
       "emBreve": "Coming soon",
       "modulo": {

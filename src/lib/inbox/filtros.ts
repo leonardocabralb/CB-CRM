@@ -306,6 +306,13 @@ export interface ContextoDosFiltros {
  *
  * ⚠️ `semAcento` nas DUAS pontas: a busca do banco ignora acento, e sem isto a
  * mesma palavra digitada acharia a mensagem e não acharia o contato homônimo.
+ *
+ * ⚠️ O telefone é comparado DUAS vezes: como texto (o que sempre foi) e em
+ * DÍGITOS, quando o termo é um telefone escrito por gente. `contacts.phone`
+ * guarda só dígitos com DDI ("5519982764080"); colar "(19) 98276-4080" — a
+ * forma que o cliente manda e que o próprio CRM exibe — não achava NADA, e
+ * a leitura do operador é que o cliente não está no CRM (reportado da tela
+ * em 08/09/2026, sobre um contato que existia). Ver `digitosDeBuscaDeTelefone`.
  */
 export function casaComABusca(conversation: Conversation, busca: string): boolean {
   const q = semAcento(busca.trim());
@@ -313,6 +320,7 @@ export function casaComABusca(conversation: Conversation, busca: string): boolea
 
   const nome = semAcento(conversation.contact?.name ?? "");
   const telefone = semAcento(conversation.contact?.phone ?? "");
+  const digitosBuscados = digitosDeBuscaDeTelefone(busca);
   const grupo = conversation.group_id
     ? semAcento(
         `${conversation.group?.alias ?? ""} ${conversation.group?.subject ?? ""}`,
@@ -325,9 +333,30 @@ export function casaComABusca(conversation: Conversation, busca: string): boolea
   return (
     nome.includes(q) ||
     telefone.includes(q) ||
+    (digitosBuscados !== null && telefone.replace(/\D/g, "").includes(digitosBuscados)) ||
     grupo.includes(q) ||
     ultima.includes(q)
   );
+}
+
+/**
+ * Os dígitos de um termo de busca que é um TELEFONE escrito por gente, ou
+ * `null` quando o termo é outra coisa.
+ *
+ * ⚠️ O termo precisa ser só dígitos e a pontuação com que se escreve
+ * telefone. Sem essa cerca, buscar "2026" passaria a casar todo telefone que
+ * contém 2026 — o campo é o mesmo para nome, telefone e texto de mensagem, e
+ * alargar a comparação de um deles suja os outros três.
+ *
+ * Termo só de dígitos já casava pelo `includes` de texto; ele continua aqui
+ * porque a régua é a mesma e não muda resposta nenhuma. O piso de 3 dígitos
+ * é o da busca do banco (929): abaixo disso o termo não recorta nada útil.
+ */
+export function digitosDeBuscaDeTelefone(termo: string): string | null {
+  const t = termo.trim();
+  if (!t || !/^[\s()+\-.\d]+$/.test(t)) return null;
+  const digitos = t.replace(/\D/g, "");
+  return digitos.length >= 3 ? digitos : null;
 }
 
 /** Um filtro só, isolado para ser testável e para o `aplicarFiltros` ler bem. */

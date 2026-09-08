@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { resolverDestinatario } from "@/lib/automations/destinatario";
 import { dispararAutomacoes } from "@/lib/automations/engine";
 import { findExistingContact } from "@/lib/contacts/dedupe";
 
@@ -17,7 +18,27 @@ import { variaveisDoAgendamento } from "./variaveis";
  * aconteceu" tem resposta: sem telefone no formulário, telefone que não é
  * de nenhum contato, nenhuma automação escutando este evento.
  *
- * ⚠️ Não cria contato (D2 do plano): telefone desconhecido é `sem_contato`.
+ * ⚠️⚠️ CRIA a ficha quando o telefone não é de nenhum contato — e essa é a
+ * REVISÃO da D2 do plano, decidida pelo operador em 08/09/2026.
+ *
+ * O desenho original recusava criar contato a partir de número digitado num
+ * formulário. Na prática a ficha nascia mesmo assim, segundos depois, porque
+ * o OUTRO CRM do escritório respondia ao mesmo agendamento mandando um
+ * WhatsApp pelo celular pareado — medido: o evento foi processado 4,2 s e
+ * 4,5 s ANTES de a ficha existir, nos dois primeiros agendamentos de gente
+ * de verdade, e os dois viraram `sem_contato` com o contato aparecendo logo
+ * em seguida. Ou seja: a integração dependia, sem dizer, de um sistema que
+ * vai ser desligado. Quando ele sair, lead novo nenhum teria ficha, e a
+ * automação não teria em quem agir.
+ *
+ * ⚠️ A ficha só é criada se ALGUMA automação escuta este evento — por isso a
+ * consulta de automações subiu para ANTES dela. Sem essa ordem, um
+ * agendamento numa conta que não configurou nada materializaria um lead que
+ * ninguém pediu.
+ *
+ * ⚠️ Falha ao criar vira `sem_contato` (não `falhou`), de propósito: nada da
+ * automação rodou, então repetir é seguro — e `sem_contato` é justamente o
+ * que o botão "Processar de novo" aceita.
  */
 
 export interface AutomacaoQueEscuta {
@@ -48,6 +69,13 @@ export async function processarAgendamento(
   admin: SupabaseClient,
   accountId: string,
   agendamento: Agendamento,
+  /**
+   * As variáveis a entregar ao motor. O reprocessamento manual passa as que
+   * FORAM gravadas na primeira vez (979) — remontá-las do agendamento
+   * reconstruído entregaria menos variáveis que da primeira vez, porque a
+   * linha não guarda local/cancelar/remarcar/situacao em coluna.
+   */
+  vars?: Record<string, string>,
 ): Promise<ProcessamentoDoAgendamento> {
   if (!agendamento.telefone) {
     return { resultado: "sem_telefone", detalhe: "o agendamento não trouxe telefone (SMS ou pergunta do formulário)", contactId: null };
@@ -55,32 +83,54 @@ export async function processarAgendamento(
 
   const busca = await findExistingContact(admin, accountId, agendamento.telefone);
   if (busca.falhou) return { resultado: "falhou", detalhe: "busca do contato falhou", contactId: null };
-  if (!busca.contato) {
-    return { resultado: "sem_contato", detalhe: `nenhum contato com o telefone ${agendamento.telefone}`, contactId: null };
-  }
-  const contactId = busca.contato.id;
 
+  // ⚠️ ANTES de criar ficha: alguém escuta este evento? Ver o cabeçalho.
   const { data: automacoes, error: erroAuto } = await admin
     .from("automations")
     .select("trigger_type, trigger_config, is_active")
     .eq("account_id", accountId)
     .eq("trigger_type", "calendly_booking")
     .eq("is_active", true);
-  if (erroAuto) return { resultado: "falhou", detalhe: `leitura das automações falhou: ${erroAuto.message}`, contactId };
+  const contatoExistente = busca.contato?.id ?? null;
+  if (erroAuto) {
+    return { resultado: "falhou", detalhe: `leitura das automações falhou: ${erroAuto.message}`, contactId: contatoExistente };
+  }
   if (escutamEsteEvento((automacoes ?? []) as AutomacaoQueEscuta[], agendamento.eventoUri) === 0) {
-    return { resultado: "sem_automacao", detalhe: "nenhuma automação ativa escuta este evento", contactId };
+    return { resultado: "sem_automacao", detalhe: "nenhuma automação ativa escuta este evento", contactId: contatoExistente };
+  }
+
+  let contactId = contatoExistente;
+  let conversaDaFichaNova: string | null = null;
+  let fichaNova = false;
+  if (!contactId) {
+    try {
+      const destino = await resolverDestinatario(admin, accountId, agendamento.telefone, agendamento.nome);
+      contactId = destino.contactId;
+      conversaDaFichaNova = destino.conversationId;
+      fichaNova = destino.criouContato;
+    } catch (e) {
+      return {
+        resultado: "sem_contato",
+        detalhe: `não foi possível criar a ficha de ${agendamento.telefone}: ${e instanceof Error ? e.message : "erro"}`,
+        contactId: null,
+      };
+    }
   }
 
   // A conversa do contato (única por conta, 036) e o canal por onde ele
-  // fala — é o que o recorte por conexão da automação lê.
-  const { data: conversa } = await admin
-    .from("conversations")
-    .select("id, channel_id")
-    .eq("account_id", accountId)
-    .eq("contact_id", contactId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  // fala — é o que o recorte por conexão da automação lê. Ficha recém-criada
+  // já devolveu a conversa; a conexão dela é NULA, e `channelInScope` deixa
+  // passar nesse caso (a mesma passagem livre do resíduo de ingestão).
+  const { data: conversa } = conversaDaFichaNova
+    ? { data: { id: conversaDaFichaNova, channel_id: null as string | null } }
+    : await admin
+        .from("conversations")
+        .select("id, channel_id")
+        .eq("account_id", accountId)
+        .eq("contact_id", contactId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
   const r = await dispararAutomacoes({
     accountId,
@@ -90,10 +140,20 @@ export async function processarAgendamento(
       conversation_id: conversa?.id ?? undefined,
       channel_id: conversa?.channel_id ?? null,
       calendly_event_type: agendamento.eventoUri,
-      vars: variaveisDoAgendamento(agendamento),
+      vars: vars ?? variaveisDoAgendamento(agendamento),
     },
   });
-  return resultadoDoDisparo(r, contactId);
+  return comFichaNova(resultadoDoDisparo(r, contactId), fichaNova);
+}
+
+/**
+ * Puro: registra no detalhe que a ficha do cliente nasceu deste agendamento.
+ * É a única pista, no log, de que aquele lead entrou no CRM por ter marcado
+ * horário — e não por ter mandado mensagem.
+ */
+export function comFichaNova(r: ProcessamentoDoAgendamento, fichaNova: boolean): ProcessamentoDoAgendamento {
+  if (!fichaNova) return r;
+  return { ...r, detalhe: `ficha criada a partir do agendamento — ${r.detalhe ?? "sem detalhe"}` };
 }
 
 /**

@@ -2590,6 +2590,33 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
 `trigger-meta.ts`, builder + `calendly-trigger-config.tsx`). Plano vivo em
 `docs/PLANO-integracao-calendly.md`. O que morde código novo:
 
+- ⚠️⚠️ **A ficha do cliente NASCE do agendamento (08/09/2026)** — revisão da
+  D2, decidida pelo operador. Telefone que não é de nenhum contato deixa de
+  ser `sem_contato`: `processarAgendamento` chama `resolverDestinatario` (o
+  mesmo do `send_to_number`, com o dono DURÁVEL da conta) e segue. O que
+  morde código novo:
+  - ⚠️ **A consulta de automações vem ANTES da criação.** Ninguém escutando
+    = `sem_automacao` sem criar nada; sem essa ordem, um agendamento numa
+    conta que não configurou a integração materializa um lead que ninguém
+    pediu.
+  - ⚠️ **Falha ao criar vira `sem_contato`, não `falhou`**: nada da
+    automação rodou, repetir é seguro, e `sem_contato` é o que o botão
+    "Processar de novo" aceita.
+  - ⚠️ **A conversa nasce com `channel_id` NULO** e o disparo vai com ela.
+    `channelInScope` deixa passar canal nulo (a passagem livre do resíduo de
+    ingestão), então automação restrita a uma conexão AINDA dispara para
+    lead novo. Quem apertar essa regra desliga o Calendly para lead novo.
+  - ⚠️⚠️ **Lead novo não tem card, e `move_deal_stage` LANÇA nesse caso**
+    ("nenhum negócio aberto para este contato"), encerrando a execução. A
+    automação do Calendly precisa de um passo **`create_deal`** antes dele —
+    `create_deal` desiste em silêncio quando já há card ("um card por
+    contato"), então serve aos dois casos. Sem ele, todo lead novo termina
+    `falhou` DEPOIS de já ter mandado o aviso.
+  - **A corrida que motivou tudo, medida**: os dois primeiros agendamentos
+    reais foram processados 4,2 s e 4,5 s ANTES de a ficha existir — ela
+    nascia da mensagem que o OUTRO CRM manda pelo celular pareado
+    (`persistDeviceMessage`). A integração dependia, sem dizer, de um
+    sistema que vai ser desligado.
 - ⚠️⚠️ **O Calendly NÃO tem campo de telefone**, e o telefone é o que acha o
   cliente. Três fontes, nesta ordem (`telefoneDoAgendamento`):
   `text_reminder_number` (SMS, com DDI) → a pergunta do formulário cujo
@@ -2625,10 +2652,19 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
 - ⚠️ **Evento que não é `invitee.created` responde 200 e não grava.** 4xx
   faria o Calendly retentar por 24h e DESATIVAR a assinatura inteira,
   inclusive para os agendamentos.
-- ⚠️ **Telefone desconhecido NÃO cria contato** (`sem_contato`, decisão D2
-  do plano). Reagendamento chega como `invitee.created` NOVO (a URI do
-  invitee muda): campos atualizados e aviso de novo, com
+- **Reagendamento chega como `invitee.created` NOVO** (a URI do invitee
+  muda): campos atualizados e aviso de novo, com
   `agendamento_situacao = "Reagendamento"`.
+- ⚠️ **"Processar de novo" (botão no log, `POST /api/cb/calendly/eventos/[id]/reprocessar`)**
+  roda o agendamento gravado outra vez — para depois de o operador arrumar o
+  que faltava. Só aceita `RESULTADOS_REPROCESSAVEIS` (`recebido`,
+  `sem_contato`, `sem_automacao`): repetir um `disparado` mandaria a mesma
+  mensagem à equipe de novo, e em `falhou` não se sabe se o passo de envio
+  já tinha rodado (aí o caminho é o histórico da automação e o "Executar
+  automação" da conversa). ⚠️ Ele usa as VARIÁVEIS gravadas (979,
+  `cb_calendly_eventos.variaveis`), nunca só o remonte: a tabela não guarda
+  local/cancelar/remarcar/situação em coluna, e o remonte entregaria à
+  automação menos variáveis que a primeira entrega, em silêncio.
 - ⚠️ **`agendamento_data` sai de `formatToParts`, nunca de `toLocaleString`**
   (a forma muda entre majors do Node — o PR #66); `agendamento_inicio` é o
   ISO UTC cru, que é o que o campo `datetime` guarda (`campo-data.ts`).

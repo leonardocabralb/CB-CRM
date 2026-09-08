@@ -123,6 +123,11 @@ describe("POST /api/cb/calendly/webhook/[token]", () => {
     });
     expect(h.state.processados).toHaveLength(1);
     expect(h.state.gravados[0]).toMatchObject({ eventoId: "evt-1", r: { resultado: "disparado" } });
+    // 979: as variáveis entregues ao motor ficam na linha, para o
+    // "Processar de novo" repetir a MESMA entrega.
+    expect((h.state.upserts[0] as { variaveis?: Record<string, string> }).variaveis).toMatchObject({
+      agendamento_nome: "Marcelo",
+    });
     const carimbo = h.state.updates.find((u) => u.table === "cb_calendly_config" && "last_event_at" in u.payload);
     expect(carimbo?.payload.webhook_state).toBe("active");
   });
