@@ -83,18 +83,40 @@ const CORES_DE_REMETENTE = [
   "text-orange-600 dark:text-orange-400",
 ];
 
+/**
+ * O confirmador de entrega, SEMPRE dentro da bolha de saída.
+ *
+ * ⚠️ As cores são as do fundo PRIMARY, nunca as neutras. `text-muted-foreground`
+ * é feito para o fundo da página; sobre o preenchimento violeta da bolha ele
+ * some — o operador reportou da tela em 08/09/2026 que o check de "entregue"
+ * era ilegível e só o de "lido" (azul) aparecia. É exatamente o cuidado que o
+ * comentário do horário, dois elementos ao lado, já descrevia: o ícone tinha
+ * ficado de fora.
+ *
+ * ⚠️ `text-primary-foreground` é DERIVADA do tema, e isso é load-bearing:
+ * são quatro temas com `--primary` diferente (violeta, verde, azul, laranja),
+ * então qualquer cor fixa acertaria um e erraria os outros. O azul do "lido"
+ * é a exceção deliberada — é convenção do WhatsApp e o que distingue lido de
+ * entregue —, num tom claro que se sustenta sobre os quatro.
+ *
+ * Contraste MEDIDO sobre o violeta desta conta (#7834e8): o
+ * `text-muted-foreground` de antes dava **1,87**, abaixo de qualquer
+ * limiar; hoje o entregue dá **4,26** e o lido, **4,21** — os dois acima do
+ * 3,0 que a WCAG pede para elemento gráfico, e distinguidos por MATIZ
+ * (branco × ciano), não por luminosidade.
+ */
 function StatusIcon({ status }: { status: Message["status"] }) {
   switch (status) {
     case "sending":
-      return <Clock className="h-3 w-3 text-muted-foreground" />;
+      return <Clock className="h-3 w-3 text-primary-foreground/80" />;
     case "sent":
-      return <Check className="h-3 w-3 text-muted-foreground" />;
+      return <Check className="h-3 w-3 text-primary-foreground/80" />;
     case "delivered":
-      return <CheckCheck className="h-3 w-3 text-muted-foreground" />;
+      return <CheckCheck className="h-3 w-3 text-primary-foreground/80" />;
     case "read":
-      return <CheckCheck className="h-3 w-3 text-blue-400" />;
+      return <CheckCheck className="h-3 w-3 text-cyan-300" />;
     case "failed":
-      return <XCircle className="h-3 w-3 text-red-400" />;
+      return <XCircle className="h-3 w-3 text-red-300" />;
     default:
       return null;
   }
