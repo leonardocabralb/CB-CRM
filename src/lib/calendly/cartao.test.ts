@@ -40,12 +40,12 @@ describe("cartaoDoCalendly", () => {
   });
 
   it("conectado com webhook ativo", () => {
-    const c = cartaoDoCalendly(config, [evento("disparado"), evento("disparado"), evento("sem_contato"), evento("lixo")]);
+    const c = cartaoDoCalendly(config, [evento("disparado"), evento("disparado"), evento("sem_contato"), evento("em_espera"), evento("lixo")]);
     expect(c.estado).toBe("conectado");
     expect(c.usuario).toEqual({ nome: "Leonardo", email: "l@cb.com", agenda: "https://calendly.com/cb" });
     expect(c.webhook).toEqual({ escopo: "organization", estado: "active" });
     expect(c.perguntaTelefone).toBe("WhatsApp");
-    expect(c.contagem).toMatchObject({ disparado: 2, sem_contato: 1 });
+    expect(c.contagem).toMatchObject({ disparado: 2, sem_contato: 1, em_espera: 1 });
     expect(c.erro).toBeNull();
   });
 

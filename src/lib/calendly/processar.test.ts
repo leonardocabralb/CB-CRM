@@ -33,23 +33,34 @@ describe("escutamEsteEvento", () => {
 
 describe("resultadoDoDisparo (o que o motor DISSE que fez)", () => {
   it("só é 'disparado' quando alguma automação rodou sem falha", () => {
-    expect(resultadoDoDisparo({ executadas: 1, foraDoEscopo: 0, comFalha: 0 }, "c1")).toMatchObject({ resultado: "disparado", contactId: "c1" });
+    expect(resultadoDoDisparo({ executadas: 1, foraDoEscopo: 0, comFalha: 0, emEspera: 0 }, "c1")).toMatchObject({ resultado: "disparado", contactId: "c1" });
   });
 
   it("escopo de conexão/etapa barrando tudo NÃO é 'disparado'", () => {
-    const r = resultadoDoDisparo({ executadas: 0, foraDoEscopo: 1, comFalha: 0 }, "c1");
+    const r = resultadoDoDisparo({ executadas: 0, foraDoEscopo: 1, comFalha: 0, emEspera: 0 }, "c1");
     expect(r.resultado).toBe("sem_automacao");
     expect(r.detalhe).toContain("fora do escopo");
   });
 
   it("passo que falhou vira 'falhou' com o número de automações", () => {
-    const r = resultadoDoDisparo({ executadas: 2, foraDoEscopo: 0, comFalha: 1 }, "c1");
+    const r = resultadoDoDisparo({ executadas: 2, foraDoEscopo: 0, comFalha: 1, emEspera: 0 }, "c1");
     expect(r.resultado).toBe("falhou");
     expect(r.detalhe).toContain("1 de 2");
   });
 
+  it("CRÍTICO: automação parada em 'Aguardar' é 'em_espera', não 'disparado' (Codex, 2ª rodada)", () => {
+    const r = resultadoDoDisparo({ executadas: 1, foraDoEscopo: 0, comFalha: 0, emEspera: 1 }, "c1");
+    expect(r.resultado).toBe("em_espera");
+    expect(r.detalhe).toContain("Aguardar");
+    expect(r.detalhe).toContain("não é atualizada");
+  });
+
+  it("falha vence espera quando há as duas", () => {
+    expect(resultadoDoDisparo({ executadas: 2, foraDoEscopo: 0, comFalha: 1, emEspera: 1 }, "c1").resultado).toBe("falhou");
+  });
+
   it("disparo que não aconteceu (contato de outra conta, banco) vira 'falhou' com o motivo", () => {
-    const r = resultadoDoDisparo({ executadas: 0, foraDoEscopo: 0, comFalha: 0, erro: "contact not in account" }, null);
+    const r = resultadoDoDisparo({ executadas: 0, foraDoEscopo: 0, comFalha: 0, emEspera: 0, erro: "contact not in account" }, null);
     expect(r.resultado).toBe("falhou");
     expect(r.detalhe).toContain("contact not in account");
   });

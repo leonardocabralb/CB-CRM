@@ -50,7 +50,7 @@ const CODIGOS_CONHECIDOS = new Set([
   "webhook_desativado",
 ]);
 
-const RESULTADOS = new Set(["recebido", "disparado", "sem_automacao", "sem_contato", "sem_telefone", "ignorado", "falhou"]);
+const RESULTADOS = new Set(["recebido", "disparado", "em_espera", "sem_automacao", "sem_contato", "sem_telefone", "ignorado", "falhou"]);
 const ORIGENS = new Set(["sms", "pergunta", "heuristica"]);
 
 export function CalendlyCard() {
@@ -477,7 +477,7 @@ function LogDeRecebimentos({
                                 ? "text-emerald-600 dark:text-emerald-400"
                                 : e.resultado === "falhou"
                                   ? "text-destructive"
-                                  : e.resultado === "recebido"
+                                  : e.resultado === "recebido" || e.resultado === "em_espera"
                                     ? "text-muted-foreground"
                                     : "text-amber-600 dark:text-amber-400",
                             )}

@@ -25,7 +25,8 @@
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
 | **1** | Integração (cartão em Integrações + webhook + log paginado), gatilho `calendly_booking`, passo `send_to_number`, variáveis `{{contact.*}}`/`{{conversation.link}}` | ✅ **feita** (2026-09-07) | `977_cb_calendly` **aplicada** (07/09, via conector, antes do merge) | [#128](https://github.com/leonardocabralb/CB-CRM/pull/128) |
-| **2** | Depois do deploy: operador conecta o Calendly (token); a automação "Calendly → Reunião agendada" é criada (seção 3.5), o evento é escolhido no gatilho e ela é ATIVADA | ⏳ depende do operador | — | — |
+| **2** | Depois do deploy: operador conecta o Calendly (token); a automação "Calendly → Reunião agendada" é criada (seção 3.5), o evento é escolhido no gatilho e ela é ATIVADA | ✅ **feita** (07/09): token conectado pelo operador, automação criada e fixada no evento por SQL, ATIVA; teste de ponta a ponta na seção 7 | — | [#129](https://github.com/leonardocabralb/CB-CRM/pull/129)–[#131](https://github.com/leonardocabralb/CB-CRM/pull/131) |
+| **2b** | Achados do Codex, 2ª rodada: ramo que falha derruba a execução; "Aguardar" vira `em_espera` (não `disparado`); gatilho sem disparo fora da grade | 🔧 PR aberto (07/09) | `978_cb_calendly_em_espera` — ⚠️ **pendente**: aplicar ANTES do merge (conector sem autorização na sessão) | [#132](https://github.com/leonardocabralb/CB-CRM/pull/132) |
 
 **Decisões travadas pelo pedido (07/09):**
 
@@ -134,8 +135,8 @@ até o operador dizer o contrário):**
 - `cb_calendly_eventos`: o que chegou e o que aconteceu com cada agendamento
   (`evento`, `invitee_uri`, `event_type_uri/nome`, `nome`, `email`,
   `telefone`, `inicio`, `fim`, `link`, `perguntas`, `contact_id`,
-  `resultado` ∈ {recebido, disparado, sem_automacao, sem_contato,
-  sem_telefone, ignorado, falhou}, `detalhe`). `UNIQUE (account_id, evento,
+  `resultado` ∈ {recebido, disparado, em_espera (978), sem_automacao,
+  sem_contato, sem_telefone, ignorado, falhou}, `detalhe`). `UNIQUE (account_id, evento,
   invitee_uri)` = idempotência (o Calendly reenvia). Fechada como a config —
   a tela lê pela rota.
 - Conferências válidas em banco VAZIO; teste `rls-das-tabelas-do-calendly.test.ts`
@@ -377,3 +378,29 @@ e a criar cartões de CHEGADA (`tipo: 'chegada'`, borda azul, cabeçalho
 `move_deal_stage`/`create_deal`, sem "expandir". 7 testes em
 `grade-do-funil.test.ts`. A seção 3.4 do plano e o CLAUDE.md foram
 corrigidos: a frase "não aparece no funil" deixou de ser verdade.
+
+### Achados do Codex nos PRs #129 e #131 (2ª rodada, 07/09) — tratados no #132
+
+1. **P2 — automação parada em "Aguardar" era gravada como `disparado`.**
+   `dispararAutomacoes` passou a contar `emEspera` (retorno `partial`, no
+   escopo de fora ou num ramo) e `resultadoDoDisparo` grava `em_espera`
+   (migration 978 amplia o CHECK; rótulo nos dois dicionários). Falha vence
+   espera. A linha do evento NÃO é atualizada quando o agendador retoma — o
+   `detalhe` diz onde olhar (`automation_logs`). Decisão: preservar
+   `partial` no resultado em vez de "adiar o resultado até a execução
+   pendente terminar" — a segunda opção exigiria o agendador conhecer o
+   evento do Calendly (acoplamento motor → Calendly, com ciclo de import)
+   para cobrir um caso que a automação de produção não tem.
+2. **P2 — passo que falhava DENTRO de um ramo de condição não derrubava
+   nada.** O ramo devolvia `null`, o escopo de fora seguia e o log terminava
+   "success" com `error_message` preenchido; `comFalha` ficava em zero.
+   Agora o ramo devolve o status dele, o escopo de fora marca `failed` e
+   PARA (como pararia fora do ramo). "Aguardar" dentro do ramo sobe como
+   `partial` no retorno mas não segura o escopo de fora (o log segue a
+   semântica do upstream). 4 pinos em `engine.test.ts`, que reprovam sem a
+   correção; o mock de `automation_steps` passou a recortar por escopo.
+3. **P2 — `time_based`/`conversation_assigned` com `move_deal_stage`
+   ganhavam cartão de chegada** apesar de nunca dispararem (sem call site
+   desde o upstream). Lista `GATILHOS_SEM_DISPARO` em `trigger-meta.ts`,
+   usada por `cartoesDeChegada`; teste amarra a lista ao `TRIGGER_OPTIONS`
+   do builder (lê o fonte).

@@ -1,5 +1,7 @@
 import type { Automation, AutomationStep, DealStageTriggerConfig } from '@/types'
 
+import { GATILHOS_SEM_DISPARO } from './trigger-meta'
+
 /**
  * A GRADE de automações do funil — colunas são etapas, cartões ocupam as
  * colunas em que a automação dispara (estilo Kommo).
@@ -155,7 +157,10 @@ export function etapasParaOndeLeva(passos: AutomationStep[] | undefined, posicao
  * Os cartões de CHEGADA: automações de outro gatilho que movem o card para
  * uma etapa deste quadro. A de gatilho de etapa fica de fora de propósito —
  * ela já tem cartão pela largura do gatilho, e um segundo cartão pela etapa
- * de destino faria uma esteira de 5 regras virar 10 cartões.
+ * de destino faria uma esteira de 5 regras virar 10 cartões. Gatilho que
+ * NUNCA dispara (`GATILHOS_SEM_DISPARO`: `time_based`, `conversation_assigned`,
+ * sem call site) também fica de fora: o cartão afirmaria "esta regra leva o
+ * card para cá" sobre regra que não roda (Codex, PR #131).
  */
 export function cartoesDeChegada(
   automations: Automation[],
@@ -164,7 +169,7 @@ export function cartoesDeChegada(
 ): CartaoDaGrade[] {
   const cartoes: CartaoDaGrade[] = []
   for (const a of automations) {
-    if (a.trigger_type === 'deal_stage_changed') continue
+    if (a.trigger_type === 'deal_stage_changed' || GATILHOS_SEM_DISPARO.has(a.trigger_type)) continue
     for (const i of etapasParaOndeLeva(steps[a.id], posicao)) {
       cartoes.push({
         automation: a,

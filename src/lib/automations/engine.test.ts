@@ -29,6 +29,7 @@ vi.mock("./admin-client", () => {
     type: string;
     payload?: unknown;
     filters: [string, string, unknown][];
+    recorte?: [string, string, unknown][];
   }) {
     const { table, type } = ops;
     if (table === "contacts") {
@@ -89,7 +90,20 @@ vi.mock("./admin-client", () => {
       }
       return { data: { steps_executed: [], status: "success" }, error: null };
     }
-    if (table === "automation_steps") return { data: state.steps, error: null };
+    if (table === "automation_steps") {
+      // Recorte por ESCOPO (parent_step_id / branch / position), para os
+      // testes de ramo e espera: sem ele a consulta do ramo devolvia a lista
+      // inteira — inclusive a própria condição, em recursão infinita. Passo
+      // sem a coluna (helpers antigos) conta como escopo de fora, posição 0.
+      let lista = state.steps;
+      for (const [op, k, v] of [...ops.filters, ...(ops.recorte ?? [])]) {
+        if (k === "automation_id") continue;
+        if (op === "is" && v === null) lista = lista.filter((s) => s[k] == null);
+        else if (op === "eq") lista = lista.filter((s) => (s[k] ?? null) === v);
+        else if (op === "gte") lista = lista.filter((s) => s[k] === undefined || Number(s[k]) >= Number(v));
+      }
+      return { data: lista, error: null };
+    }
     return { data: null, error: null };
   }
 
@@ -99,6 +113,7 @@ vi.mock("./admin-client", () => {
       type: "select",
       payload: undefined as unknown,
       filters: [] as [string, string, unknown][],
+      recorte: [] as [string, string, unknown][],
     };
     const b: Record<string, unknown> = {
       select: () => b,
@@ -107,8 +122,8 @@ vi.mock("./admin-client", () => {
       delete: () => ((ops.type = "delete"), b),
       upsert: (p: unknown) => ((ops.type = "upsert"), (ops.payload = p), b),
       eq: (k: string, v: unknown) => (ops.filters.push(["eq", k, v]), b),
-      gte: () => b,
-      is: () => b,
+      gte: (k: string, v: unknown) => (ops.recorte.push(["gte", k, v]), b),
+      is: (k: string, v: unknown) => (ops.recorte.push(["is", k, v]), b),
       order: () => b,
       limit: () => b,
       single: () => Promise.resolve(resolve(ops)),
@@ -150,7 +165,7 @@ const canalMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/cb-channels/engine-send", () => canalMock);
 
-import { runAutomationsForTrigger, triggerMatches } from "./engine";
+import { dispararAutomacoes, runAutomationsForTrigger, triggerMatches } from "./engine";
 import { engineSendText } from "./meta-send";
 import type { Automation, KeywordMatchTriggerConfig } from "@/types";
 
@@ -990,5 +1005,80 @@ describe("interpolate — variáveis do contato", () => {
     h.state.fromCalls = [];
     await textoEnviado("{{contact.name}} e de novo {{contact.name}} e {{contact.campo.x}}");
     expect(h.state.fromCalls.filter((t) => t === "contact_custom_values")).toHaveLength(1);
+  });
+});
+
+// ------------------------------------------------------------
+// Ramo e espera (Codex, PR #128 — 2ª rodada). O que `dispararAutomacoes`
+// devolve é o que o evento do Calendly grava: "disparado" tem de significar
+// "rodou até o fim, sem falha". O mock de `automation_steps` recorta por
+// escopo (lá em cima) justamente para estes testes.
+// ------------------------------------------------------------
+
+const condicao = {
+  id: "cond",
+  automation_id: "a1",
+  step_type: "condition",
+  position: 0,
+  parent_step_id: null,
+  step_config: { subject: "message_content", value: "oi" },
+};
+const noRamo = (step: Record<string, unknown>) => ({ ...step, id: `ramo-${String(step.step_type)}`, parent_step_id: "cond", branch: "yes", position: 0 });
+const depoisDoRamo = { ...updateStep(), id: "depois", position: 1 };
+const espera = () => ({
+  id: "esp",
+  automation_id: "a1",
+  step_type: "wait",
+  position: 0,
+  parent_step_id: null,
+  step_config: { amount: 1, unit: "hours" },
+});
+
+async function dispararComRamo() {
+  h.state.owned = { id: "c1" };
+  h.state.automations = [automationWithUpdateStep()];
+  return dispararAutomacoes({
+    accountId: ACCOUNT,
+    triggerType: "new_message_received",
+    contactId: "c1",
+    context: { message_text: "oi" },
+  });
+}
+const ultimoStatusDoLog = () =>
+  (h.state.logUpdates.filter((u) => "status" in u).at(-1) as { status?: string } | undefined)?.status;
+
+describe("dispararAutomacoes — ramo e espera (Codex, 2ª rodada)", () => {
+  it("CRÍTICO: passo que falha DENTRO do ramo derruba a execução: log 'failed', comFalha, e o passo seguinte ao ramo não roda", async () => {
+    // "123" não é telefone: `send_to_number` lança antes de tocar em nada.
+    h.state.steps = [condicao, noRamo(passoAvisar({ phone: "123", text: "oi" })), depoisDoRamo];
+    const r = await dispararComRamo();
+    expect(r).toMatchObject({ executadas: 1, comFalha: 1, emEspera: 0 });
+    expect(ultimoStatusDoLog()).toBe("failed");
+    // `depois` escreve em contacts; antes ele rodava como se nada tivesse falhado.
+    expect(h.state.updateCalls).toHaveLength(0);
+  });
+
+  it("ramo que termina bem não muda nada: sucesso, e o passo seguinte ao ramo roda", async () => {
+    h.state.steps = [condicao, noRamo(updateStep()), depoisDoRamo];
+    const r = await dispararComRamo();
+    expect(r).toMatchObject({ executadas: 1, comFalha: 0, emEspera: 0 });
+    expect(ultimoStatusDoLog()).toBe("success");
+    expect(h.state.updateCalls).toHaveLength(2);
+  });
+
+  it("CRÍTICO: 'Aguardar' no escopo de fora é emEspera, não execução sem falha", async () => {
+    h.state.steps = [espera(), depoisDoRamo];
+    const r = await dispararComRamo();
+    expect(r).toMatchObject({ executadas: 1, comFalha: 0, emEspera: 1 });
+    expect(ultimoStatusDoLog()).toBe("partial");
+    expect(h.state.updateCalls).toHaveLength(0);
+  });
+
+  it("'Aguardar' DENTRO do ramo também é emEspera — mas o escopo de fora segue e o LOG termina por ele (semântica do upstream)", async () => {
+    h.state.steps = [condicao, noRamo(espera()), depoisDoRamo];
+    const r = await dispararComRamo();
+    expect(r).toMatchObject({ executadas: 1, comFalha: 0, emEspera: 1 });
+    expect(h.state.updateCalls).toHaveLength(1);
+    expect(ultimoStatusDoLog()).toBe("success");
   });
 });

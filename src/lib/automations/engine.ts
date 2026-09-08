@@ -133,11 +133,19 @@ export interface ResultadoDoDisparo {
   executadas: number
   /** Rodaram e terminaram `failed` (ou estouraram antes do log). */
   comFalha: number
+  /**
+   * Pararam num passo "Aguardar" (`partial`) — no escopo de fora OU dentro
+   * de um ramo. O resto sai pelo agendador e fica no histórico da automação;
+   * nada aqui é atualizado depois. Contar isso como "executada sem falha"
+   * era afirmar "rodou até o fim" sobre execução que nem tinha terminado
+   * (Codex, PR #128, 2ª rodada).
+   */
+  emEspera: number
   /** O disparo em si não aconteceu (contato de outra conta, banco fora). */
   erro?: string
 }
 
-const DISPARO_VAZIO: ResultadoDoDisparo = { candidatas: 0, foraDoEscopo: 0, executadas: 0, comFalha: 0 }
+const DISPARO_VAZIO: ResultadoDoDisparo = { candidatas: 0, foraDoEscopo: 0, executadas: 0, comFalha: 0, emEspera: 0 }
 
 /**
  * Fire all active automations matching the given trigger for an
@@ -220,6 +228,7 @@ export async function dispararAutomacoes(input: DispatchInput): Promise<Resultad
         const status = await executeAutomation(input, automation)
         r.executadas += 1
         if (status === 'failed') r.comFalha += 1
+        else if (status === 'partial') r.emEspera += 1
       } catch (err) {
         console.error('[automations] execute failed:', automation.id, err)
         r.executadas += 1
@@ -451,9 +460,20 @@ interface ExecuteArgs {
 }
 
 /**
- * Roda os passos de um escopo. Devolve o status FINAL só no escopo de fora
- * (o que `finalizeLog`/`appendResults` gravou); ramo aninhado devolve
- * `null` — o status do log é decidido pelo escopo que o abriu.
+ * Roda os passos de um escopo e devolve o status DESTE escopo:
+ *
+ * - `failed`: um passo falhou — aqui ou num ramo abaixo. No escopo de fora é
+ *   o que `appendResults` gravou; num ramo é devolvido SEM gravar status (o
+ *   log é do escopo que abriu o ramo), e esse escopo PARA, como pararia se
+ *   o passo estivesse fora do ramo. Até a 2ª rodada do Codex no PR #128 o
+ *   ramo devolvia `null`, a execução seguia e o log terminava "success" com
+ *   `error_message` preenchido.
+ * - `partial`: parou num "Aguardar" — o próprio, ou um ramo. ⚠️ Ramo em
+ *   espera NÃO segura o escopo de fora: os passos seguintes rodam e o LOG
+ *   termina pelo status deles (semântica do upstream; o ramo continua pelo
+ *   agendador). Só o RETORNO sobe como `partial`, para quem precisa saber
+ *   se a execução terminou (`dispararAutomacoes` → `emEspera`).
+ * - `success`: chegou ao fim. `null`: ramo sem passo nenhum.
  */
 async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus | null> {
   const db = supabaseAdmin()
@@ -487,6 +507,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
   const results: AutomationLogStepResult[] = []
   let status: 'success' | 'partial' | 'failed' = 'success'
   let errorMessage: string | null = null
+  let ramoEmEspera = false
 
   for (const step of steps as AutomationStep[]) {
     // `wait` is the suspension point: enqueue and stop processing this
@@ -516,7 +537,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
       })
       status = 'partial'
       await appendResults(args.logId, results, status, errorMessage)
-      return args.parentStepId === null ? status : null
+      return status
     }
 
     try {
@@ -531,13 +552,21 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
         })
         // Recurse into the chosen branch at position 0 (children use their
         // own ordering within the branch scope).
-        await executeStepsFrom({
+        const ramo = await executeStepsFrom({
           ...args,
           parentStepId: step.id,
           branch: taken ? 'yes' : 'no',
           startPosition: 0,
           logId: args.logId,
         })
+        if (ramo === 'failed') {
+          // O ramo já gravou seus resultados e o `error_message`; o status é
+          // deste escopo. Sem isto o passo falhava lá dentro, a execução
+          // seguia daqui e o log dizia "success" (Codex, PR #128, 2ª rodada).
+          status = 'failed'
+          break
+        }
+        if (ramo === 'partial') ramoEmEspera = true
         continue
       }
 
@@ -564,12 +593,13 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
 
   if (args.parentStepId === null) {
     await appendResults(args.logId, results, status, errorMessage)
-    return status
   } else {
-    // Nested branch — just append results; parent scope decides final status.
+    // Nested branch — just append results; the parent scope writes the status.
     await appendResults(args.logId, results, null, errorMessage)
   }
-  return null
+  // Ramo parado em "Aguardar" não muda o que o log diz (acima), mas a
+  // execução NÃO terminou — e é isso que o chamador pergunta.
+  return status === 'success' && ramoEmEspera ? 'partial' : status
 }
 
 async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string> {
