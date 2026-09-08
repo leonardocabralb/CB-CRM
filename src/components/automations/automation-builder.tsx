@@ -42,6 +42,7 @@ import {
   Sparkles,
   Paperclip,
   Upload,
+  BellRing,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -71,6 +72,7 @@ import {
 } from "@/components/interactive/interactive-builder"
 import { interactivePayloadPreviewText } from "@/lib/whatsapp/interactive"
 import { createClient } from "@/lib/supabase/client"
+import { CalendlyTriggerConfig } from "@/components/automations/calendly-trigger-config"
 import {
   childPath,
   insertAt,
@@ -185,6 +187,9 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   condition: { label: "condition", icon: GitBranch, border: "border-l-amber-500" },
   send_webhook: { label: "send_webhook", icon: Webhook, border: "border-l-primary" },
   close_conversation: { label: "close_conversation", icon: CircleSlash, border: "border-l-primary" },
+  // Aviso para a EQUIPE (977): fala com um número fixo, não com o cliente —
+  // borda própria para o olho separar "resposta ao cliente" de "aviso interno".
+  send_to_number: { label: "send_to_number", icon: BellRing, border: "border-l-sky-500" },
 }
 
 const ADDABLE_STEPS: AutomationStepType[] = [
@@ -209,6 +214,7 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "condition",
   "send_webhook",
   "close_conversation",
+  "send_to_number",
 ]
 
 /**
@@ -240,6 +246,7 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "new_contact_created" },
   { value: "tag_added" },
   { value: "date_field_offset" },
+  { value: "calendly_booking" },
 ]
 
 function cid(): string {
@@ -297,6 +304,8 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return { kind: "image", url: "" }
     case "stop_flow":
       return {}
+    case "send_to_number":
+      return { phone: "", contact_name: "", text: "" }
     // Nasce LIGANDO a IA: é o caso que a maioria monta ("cliente respondeu ao
     // menu, devolve para o robô"). Nascer desligando faria o passo, aceito
     // sem abrir a config, calar o robô — o oposto do que quem o arrastou quis.
@@ -1292,6 +1301,12 @@ function TriggerCard({
                 </p>
               </div>
             )}
+            {/* Agendamento no Calendly (977): qual evento, e as variáveis que
+                os passos podem usar. O select vem da API do Calendly pela
+                conexão feita em Integrações. */}
+            {type === "calendly_booking" && (
+              <CalendlyTriggerConfig config={config} onChange={onConfigChange} />
+            )}
             {type === "deal_status_changed" && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
@@ -1902,10 +1917,15 @@ function CanalDeSaida({
   value,
   onChange,
   t,
+  allLabel,
+  help,
 }: {
   value: string | null
   onChange: (id: string | null) => void
   t: ReturnType<typeof useTranslations>
+  /** Rótulo da opção "sem escolha" — o passo de aviso (977) não herda o disparo. */
+  allLabel?: string
+  help?: string
 }) {
   const tCanais = useTranslations("Channels")
   const { channels } = useResources()
@@ -1937,7 +1957,7 @@ function CanalDeSaida({
         value={value}
         onChange={onChange}
         allowAll
-        allLabel={tCanais("outboundInherit")}
+        allLabel={allLabel ?? tCanais("outboundInherit")}
       />
       {orfao ? (
         // Texto diz que a mensagem CONTINUA saindo, por outro número — o
@@ -1949,7 +1969,7 @@ function CanalDeSaida({
         </p>
       ) : (
         <p className="mt-1 text-[11px] text-muted-foreground">
-          {tCanais("outboundHelp")}
+          {help ?? tCanais("outboundHelp")}
         </p>
       )}
     </FieldBlock>
@@ -2244,6 +2264,7 @@ function StepEditor({
               placeholder={t("config.placeholderMessageText")}
               className="min-h-24 bg-muted text-foreground"
             />
+            <DicaDeVariaveis t={t} />
           </FieldBlock>
           <CanalDeSaida
             value={canalDoPasso(cfg)}
@@ -2604,6 +2625,48 @@ function StepEditor({
           )}
         </>
       )
+    case "send_to_number":
+      // Aviso para a EQUIPE (977). O canal aqui NÃO herda o do disparo (é o
+      // número do cliente); ausente = a conversa que já existe com o número
+      // avisado, senão o padrão da conta — por isso o rótulo próprio.
+      return (
+        <>
+          <FieldBlock label={t("config.phoneLabel")}>
+            <Input
+              value={(cfg.phone as string) ?? ""}
+              onChange={(e) => set({ phone: e.target.value })}
+              placeholder="5583988745316"
+              inputMode="tel"
+              className="bg-muted text-foreground"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">{t("config.phoneHint")}</p>
+          </FieldBlock>
+          <FieldBlock label={t("config.contactNameLabel")}>
+            <Input
+              value={(cfg.contact_name as string) ?? ""}
+              onChange={(e) => set({ contact_name: e.target.value })}
+              className="bg-muted text-foreground"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">{t("config.contactNameHint")}</p>
+          </FieldBlock>
+          <FieldBlock label={t("config.messageText")}>
+            <Textarea
+              value={(cfg.text as string) ?? ""}
+              onChange={(e) => set({ text: e.target.value })}
+              placeholder={t("config.placeholderNotifyText", { nome: "{{vars.agendamento_nome}}", data: "{{vars.agendamento_data}}" })}
+              className="min-h-24 bg-muted text-foreground"
+            />
+            <DicaDeVariaveis t={t} />
+          </FieldBlock>
+          <CanalDeSaida
+            value={canalDoPasso(cfg)}
+            onChange={(id) => set({ channel_id: id })}
+            t={t}
+            allLabel={t("config.notifyChannelInherit")}
+            help={t("config.notifyChannelHelp")}
+          />
+        </>
+      )
     case "send_webhook":
       return (
         <>
@@ -2636,6 +2699,30 @@ function StepEditor({
   }
 }
 
+/**
+ * As variáveis que qualquer passo de texto aceita (977). A lista é montada
+ * em código e entra no dicionário por VALOR: chaves duplas escritas no JSON
+ * quebrariam o parser ICU (icu-safety.test.ts).
+ */
+const VARIAVEIS_DE_TEXTO = [
+  "{{contact.name}}",
+  "{{contact.phone}}",
+  "{{contact.email}}",
+  "{{contact.company}}",
+  "{{contact.campo.<chave_do_campo>}}",
+  "{{conversation.link}}",
+  "{{contact.link}}",
+  "{{message.text}}",
+]
+
+function DicaDeVariaveis({ t }: { t: ReturnType<typeof useTranslations> }) {
+  return (
+    <p className="mt-1 text-[11px] text-muted-foreground">
+      {t("config.variaveisDeTexto", { lista: VARIAVEIS_DE_TEXTO.join("  ") })}
+    </p>
+  )
+}
+
 function FieldBlock({
   label,
   children,
@@ -2666,6 +2753,10 @@ function previewFor(step: BuilderStep): string {
       return `when ${step.step_config.subject ?? "?"}`
     case "send_webhook":
       return (step.step_config.url as string) || "no url"
+    case "send_to_number":
+      return [step.step_config.phone, (step.step_config.text as string | undefined)?.split("\n")[0]]
+        .filter(Boolean)
+        .join(" · ")
     default:
       return ""
   }

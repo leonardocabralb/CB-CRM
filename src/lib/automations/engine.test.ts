@@ -136,6 +136,20 @@ vi.mock("./meta-send", () => ({
   engineSendInteractive: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
 }));
 
+// `send_to_number` (977): a ficha/conversa do número avisado e a conferência
+// da conexão são mockadas — o que se testa aqui é o que chega ao sender e a
+// regra de falhar FECHADO quando a conexão pedida não resolve.
+const destinatarioMock = vi.hoisted(() => ({
+  resolverDestinatario: vi.fn(async () => ({ contactId: "equipe-1", conversationId: "conv-equipe", criouContato: false })),
+}));
+vi.mock("./destinatario", () => destinatarioMock);
+const canalMock = vi.hoisted(() => ({
+  resolveEngineChannelPreferring: vi.fn(async (_db: unknown, _acc: string, _conv: string, preferido: string | null | undefined) => ({
+    channelId: preferido ?? "ch-padrao",
+  })),
+}));
+vi.mock("@/lib/cb-channels/engine-send", () => canalMock);
+
 import { runAutomationsForTrigger, triggerMatches } from "./engine";
 import { engineSendText } from "./meta-send";
 import type { Automation, KeywordMatchTriggerConfig } from "@/types";
@@ -821,5 +835,154 @@ describe("triggerMatches — keyword_match", () => {
   it("ignores empty keywords and empty messages in `word` mode", () => {
     expect(on(automation({ keywords: [""], match_type: "word" }), "anything")).toBe(false);
     expect(on(automation({ keywords: ["hi"], match_type: "word" }), "")).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------
+// send_to_number (977): avisa um NÚMERO fixo, não o contato do disparo.
+// ------------------------------------------------------------
+
+function passoAvisar(step_config: Record<string, unknown>) {
+  return {
+    id: "s1",
+    automation_id: "a1",
+    step_type: "send_to_number",
+    position: 0,
+    parent_step_id: null,
+    step_config,
+  };
+}
+
+async function dispararAviso(step_config: Record<string, unknown>, context: Record<string, unknown> = {}) {
+  h.state.owned = { id: "c1" };
+  h.state.automations = [automationWithUpdateStep()];
+  h.state.steps = [passoAvisar(step_config)];
+  await runAutomationsForTrigger({
+    accountId: ACCOUNT,
+    triggerType: "new_message_received",
+    contactId: "c1",
+    context: { conversation_id: "conv-cliente", channel_id: "ch-do-cliente", ...context },
+  });
+}
+
+describe("send_to_number — aviso para a equipe", () => {
+  beforeEach(() => {
+    vi.mocked(engineSendText).mockClear();
+    destinatarioMock.resolverDestinatario.mockClear();
+    canalMock.resolveEngineChannelPreferring.mockClear();
+  });
+
+  it("manda para a conversa do NÚMERO avisado, com o texto interpolado, pela conexão do passo", async () => {
+    await dispararAviso(
+      { phone: "(83) 98874-5316", contact_name: "Leonardo", text: "Novo agendamento: {{vars.agendamento_nome}}", channel_id: "ch-comercial" },
+      { vars: { agendamento_nome: "Marcelo" } },
+    );
+    expect(destinatarioMock.resolverDestinatario).toHaveBeenCalledWith(expect.anything(), ACCOUNT, "5583988745316", "Leonardo");
+    const args = vi.mocked(engineSendText).mock.calls[0]?.[0];
+    expect(args?.conversationId).toBe("conv-equipe");
+    expect(args?.contactId).toBe("equipe-1");
+    expect(args?.text).toBe("Novo agendamento: Marcelo");
+    expect(args?.preferredChannelId).toBe("ch-comercial");
+  });
+
+  it("CRÍTICO: sem conexão no passo NÃO herda o canal do disparo (é o número do cliente, não o da equipe)", async () => {
+    await dispararAviso({ phone: "5583988745316", text: "oi" });
+    const args = vi.mocked(engineSendText).mock.calls[0]?.[0];
+    expect(args?.preferredChannelId).toBeUndefined();
+  });
+
+  it("CRÍTICO: conexão pedida que não resolve FALHA, em vez de sair por outro número", async () => {
+    canalMock.resolveEngineChannelPreferring.mockResolvedValueOnce({ channelId: "ch-padrao" });
+    await dispararAviso({ phone: "5583988745316", text: "oi", channel_id: "ch-apagado" });
+    expect(engineSendText).not.toHaveBeenCalled();
+    const log = h.state.logUpdates.at(-1) as { status?: string; error_message?: string } | undefined;
+    expect(log?.status).toBe("failed");
+    expect(log?.error_message).toContain("conexão escolhida");
+  });
+
+  it("telefone inválido falha antes de criar ficha", async () => {
+    await dispararAviso({ phone: "123", text: "oi" });
+    expect(destinatarioMock.resolverDestinatario).not.toHaveBeenCalled();
+    expect(engineSendText).not.toHaveBeenCalled();
+  });
+
+  it("texto vazio depois da interpolação falha antes de enviar", async () => {
+    await dispararAviso({ phone: "5583988745316", text: "{{vars.nada}}" });
+    expect(engineSendText).not.toHaveBeenCalled();
+  });
+});
+
+// ------------------------------------------------------------
+// calendly_booking (977): vazio = qualquer evento; URI = só aquele.
+// ------------------------------------------------------------
+
+describe("triggerMatches — calendly_booking", () => {
+  const auto = (trigger_config: Record<string, unknown>) =>
+    ({ id: "a1", trigger_type: "calendly_booking", trigger_config }) as unknown as Automation;
+
+  it("config vazia dispara para qualquer evento — inclusive sem URI no contexto", () => {
+    expect(triggerMatches(auto({}), { calendly_event_type: "https://api.calendly.com/event_types/A" })).toBe(true);
+    expect(triggerMatches(auto({ event_type_uri: "" }), {})).toBe(true);
+    expect(triggerMatches(auto({}), undefined)).toBe(true);
+  });
+
+  it("com URI, só o evento igual", () => {
+    const a = auto({ event_type_uri: "https://api.calendly.com/event_types/A" });
+    expect(triggerMatches(a, { calendly_event_type: "https://api.calendly.com/event_types/A" })).toBe(true);
+    expect(triggerMatches(a, { calendly_event_type: "https://api.calendly.com/event_types/B" })).toBe(false);
+  });
+
+  it("com URI e disparo sem evento, falha fechado", () => {
+    expect(triggerMatches(auto({ event_type_uri: "https://api.calendly.com/event_types/A" }), {})).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------
+// Variáveis do CONTATO (977): {{contact.*}} e {{conversation.link}}.
+// ------------------------------------------------------------
+
+describe("interpolate — variáveis do contato", () => {
+  beforeEach(() => {
+    vi.mocked(engineSendText).mockClear();
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://crm.exemplo.com/");
+  });
+
+  async function textoEnviado(text: string, context: Record<string, unknown> = {}) {
+    h.state.owned = { id: "c1", name: "Marcelo", phone: "5596991126767", email: "m@x.com", company: null } as unknown as { id: string };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [sendStep({ text })];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: { conversation_id: "conv1", ...context },
+    });
+    return vi.mocked(engineSendText).mock.calls[0]?.[0]?.text;
+  }
+
+  it("lê nome, telefone e e-mail do contato, e o link da conversa do disparo", async () => {
+    const texto = await textoEnviado("{{contact.name}} · {{contact.phone}} · {{contact.email}} · {{conversation.link}}");
+    expect(texto).toBe("Marcelo · 5596991126767 · m@x.com · https://crm.exemplo.com/inbox?c=conv1");
+  });
+
+  it("campo personalizado ausente vira vazio, nunca 'undefined'; empresa nula idem", async () => {
+    const texto = await textoEnviado("[{{contact.campo.tamanho_da_divida}}] [{{contact.company}}] [{{contact.nada}}]");
+    expect(texto).toBe("[] [] []");
+  });
+
+  it("link da ficha do contato", async () => {
+    expect(await textoEnviado("{{contact.link}}")).toBe("https://crm.exemplo.com/contacts?contact=c1");
+  });
+
+  it("texto sem `contact.` NÃO consulta o contato (só a guarda de posse)", async () => {
+    h.state.fromCalls = [];
+    await textoEnviado("oi {{vars.x}}");
+    expect(h.state.fromCalls.filter((t) => t === "contact_custom_values")).toHaveLength(0);
+  });
+
+  it("texto com `contact.` consulta o contato UMA vez por execução", async () => {
+    h.state.fromCalls = [];
+    await textoEnviado("{{contact.name}} e de novo {{contact.name}} e {{contact.campo.x}}");
+    expect(h.state.fromCalls.filter((t) => t === "contact_custom_values")).toHaveLength(1);
   });
 });

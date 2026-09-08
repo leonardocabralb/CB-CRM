@@ -1124,7 +1124,8 @@
         "wait_days": "Aguardar {quantidade} dias",
         "condition": "Verificar uma condição",
         "send_webhook": "Disparar webhook",
-        "close_conversation": "Encerrar a conversa"
+        "close_conversation": "Encerrar a conversa",
+        "send_to_number": "Avisar o número: {alvo}"
       },
       "cancelar": "Cancelar",
       "salvar": "Salvar",
@@ -1572,7 +1573,8 @@
         "run_flow": "Acionar robô",
         "stop_flow": "Parar robô",
         "set_ai": "Assistente de IA",
-        "send_media": "Enviar arquivo"
+        "send_media": "Enviar arquivo",
+        "send_to_number": "Avisar um número"
       },
       "triggers": {
         "new_message_received": {
@@ -1618,6 +1620,10 @@
         "date_field_offset": {
           "label": "Lembrete por data",
           "hint": "Antes ou depois de uma data guardada num campo do contato — ex.: 24h antes da reunião."
+        },
+        "calendly_booking": {
+          "label": "Agendamento no Calendly",
+          "hint": "Quando alguém marca um horário no Calendly (integração em Configurações → Integrações). O contato é achado pelo telefone do agendamento."
         }
       },
       "trigger": "Gatilho",
@@ -1728,7 +1734,15 @@
         "channelGone": "A conexão desta condição foi removida — enquanto ela não for trocada, esta condição nunca será verdadeira.",
         "outboundChannelGone": "A conexão escolhida para este envio foi removida. Enquanto outra não for escolhida, a mensagem continua saindo — mas pela conexão da conversa, não pela que você escolheu.",
         "matchWord": "Palavra inteira",
-        "matchWordHint": "Casa a palavra-chave apenas como palavra isolada, então \"k\" deixa de disparar em \"obrigada\". Ideal para palavras-chave curtas; use Contém para idiomas escritos sem espaços."
+        "matchWordHint": "Casa a palavra-chave apenas como palavra isolada, então \"k\" deixa de disparar em \"obrigada\". Ideal para palavras-chave curtas; use Contém para idiomas escritos sem espaços.",
+        "phoneLabel": "Número que recebe o aviso",
+        "phoneHint": "Com DDI e DDD, só dígitos (ex.: 5583988745316). Sem DDI, o 55 é acrescentado.",
+        "contactNameLabel": "Nome na ficha (opcional)",
+        "contactNameHint": "Usado só se o número ainda não for um contato — a ficha nasce com este nome.",
+        "placeholderNotifyText": "Novo agendamento: {nome} em {data}",
+        "notifyChannelInherit": "A conversa do número (ou a conexão padrão)",
+        "notifyChannelHelp": "Escolhendo uma conexão, o aviso sai SEMPRE por ela — e falha se ela não estiver disponível, em vez de sair por outro número.",
+        "variaveisDeTexto": "Variáveis: {lista} — a chave do campo é a do catálogo (Configurações → Campos e etiquetas)."
       },
       "delete": "Excluir",
       "stages": {
@@ -1759,6 +1773,18 @@
         "fonteCampo": "De um campo do cliente",
         "fonteReuniao": "Da reunião marcada na agenda",
         "minutosLabel": "Minutos"
+      },
+      "calendly": {
+        "eventoLabel": "Evento do Calendly",
+        "qualquerEvento": "Qualquer evento",
+        "carregando": "Carregando eventos…",
+        "naoConectado": "O Calendly ainda não está conectado nesta conta.",
+        "abrirIntegracoes": "Conectar em Integrações",
+        "falhou": "Não foi possível carregar os eventos do Calendly agora. O que já estava escolhido continua valendo.",
+        "inativo": "{nome} (inativo)",
+        "variaveisTitulo": "Variáveis do agendamento, para usar nos passos",
+        "variaveisAjuda": "Ex.: Nome: {nome} · Data: {data} (dd/mm/aaaa hh:mm) · o campo de data da reunião recebe {inicio}.",
+        "variaveisDoContatoTitulo": "Do contato (em qualquer passo de texto)"
       },
       "orquestracao": {
         "runAutomationLabel": "Automação a acionar",
@@ -2421,6 +2447,90 @@
           "db_error": "não foi possível gravar",
           "chave_ilegivel": "o token guardado não pôde ser lido — conecte de novo"
         }
+      },
+      "calendly": {
+        "desc": "Conecte o Calendly para o CRM saber de cada horário marcado: o gatilho \"Agendamento no Calendly\" das automações acha o cliente pelo telefone, preenche os campos, move o card e avisa quem você quiser. O Calendly avisa o CRM na hora (webhook).",
+        "campoToken": "Personal Access Token do Calendly",
+        "tokenVazio": "Cole o token gerado no Calendly",
+        "tokenDica": "Calendly → Integrations → API & Webhooks → Personal access tokens → Generate new token. Use a conta que administra a organização (para enxergar os eventos de todos). O token é guardado cifrado e nunca aparece de novo.",
+        "planoDica": "Webhooks exigem plano pago do Calendly (Standard ou superior).",
+        "conectar": "Conectar",
+        "conectando": "Conectando…",
+        "conectado": "Calendly conectado e webhook assinado.",
+        "conectadoSemWebhook": "Token aceito, mas o webhook não pôde ser assinado. Veja o motivo abaixo e tente Reassinar.",
+        "carregando": "Carregando…",
+        "usuario": "Conectado como {nome} ({email})",
+        "agenda": "agenda",
+        "webhookAtivo": "Webhook ativo · escopo {escopo}",
+        "webhookDesativado": "Webhook DESATIVADO pelo Calendly (24h de entregas com falha) — reassine.",
+        "webhookAusente": "Sem webhook assinado — nenhum agendamento chega até reassinar.",
+        "escopo": {
+          "organization": "organização",
+          "user": "usuário"
+        },
+        "reassinar": "Reassinar webhook",
+        "reassinando": "Reassinando…",
+        "reassinado": "Webhook reassinado.",
+        "desconectar": "Desconectar",
+        "confirmarDesconectar": "Desconectar o Calendly? O webhook é removido e os agendamentos param de chegar. O histórico de eventos fica.",
+        "perguntaLabel": "Pergunta do telefone no formulário",
+        "perguntaHint": "O Calendly não tem campo de telefone. Se o seu evento pergunta o WhatsApp do cliente, escreva aqui parte do rótulo da pergunta (ex.: WhatsApp). Vazio = automático (lembrete por SMS, senão a pergunta que parecer telefone).",
+        "perguntaPlaceholder": "ex.: WhatsApp",
+        "salvarPergunta": "Salvar",
+        "perguntaSalva": "Pergunta do telefone salva.",
+        "urlLabel": "URL do webhook",
+        "urlHint": "É esta URL que está registrada no Calendly. Só para conferência — a assinatura é feita pelo CRM.",
+        "urlInalcancavel": "A URL pública do CRM (NEXT_PUBLIC_SITE_URL) não é alcançável de fora — o webhook não pode ser assinado a partir deste ambiente.",
+        "semEventos": "Nenhum agendamento chegou ainda. Marque um horário de teste no Calendly para conferir.",
+        "colQuando": "Recebido",
+        "colNome": "Nome",
+        "colTelefone": "Telefone",
+        "colEvento": "Evento",
+        "colResultado": "Resultado",
+        "contagem": "nesta página: {disparados} com automação · {semContato} sem contato · {semAutomacao} sem automação · {semTelefone} sem telefone",
+        "resultado": {
+          "recebido": "recebido",
+          "disparado": "automação disparada",
+          "sem_automacao": "nenhuma automação escuta este evento",
+          "sem_contato": "telefone não é de nenhum contato",
+          "sem_telefone": "sem telefone no agendamento",
+          "ignorado": "ignorado",
+          "falhou": "falhou"
+        },
+        "origem": {
+          "sms": "lembrete por SMS",
+          "pergunta": "pergunta configurada",
+          "heuristica": "pergunta detectada"
+        },
+        "motivo": {
+          "token_invalido": "o Calendly recusou o token",
+          "sem_permissao": "o Calendly recusou (permissão ou plano sem webhooks)",
+          "nao_encontrado": "recurso não encontrado no Calendly",
+          "limite": "limite de chamadas do Calendly atingido — tente mais tarde",
+          "rede": "não foi possível falar com o Calendly",
+          "calendly_error": "o Calendly devolveu um erro",
+          "url_inalcancavel": "a URL pública do CRM não é alcançável de fora",
+          "db_error": "não foi possível gravar",
+          "nao_conectado": "o Calendly não está conectado",
+          "chave_ilegivel": "o token guardado não pôde ser lido — conecte de novo",
+          "webhook_desativado": "o webhook está desativado — reassine"
+        },
+        "log": "Log de recebimentos ({n})",
+        "logAjuda": "Cada linha é um agendamento que o Calendly entregou ao CRM, 20 por página, do mais recente ao mais antigo. Clique na linha para ver os dados que chegaram e o que foi feito com eles.",
+        "detEvento": "Evento",
+        "detEmail": "E-mail",
+        "detTelefone": "Telefone",
+        "detLink": "Link da reunião",
+        "detPerguntas": "Respostas do formulário",
+        "detSemPerguntas": "nenhuma pergunta no formulário",
+        "detResultado": "Resultado",
+        "detProcessado": "processado em {quando}",
+        "detNaoProcessado": "ainda não processado",
+        "detContato": "Contato",
+        "abrirNoCrm": "Abrir a ficha no CRM",
+        "logPagina": "página {pagina} de {total}",
+        "logMaisRecentes": "‹ Mais recentes",
+        "logMaisAntigos": "Mais antigos ›"
       },
       "emBreve": "Em breve",
       "modulo": {

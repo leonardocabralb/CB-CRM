@@ -2571,6 +2571,98 @@ Meta Ads) leem daqui. O que morde código novo:
   - **Desconectar apaga só a config**: campanhas e gastos ficam, senão o
     histórico do Desempenho sumiria junto com o token.
 
+⚠️ **Calendly → automação (977): o Calendly avisa por webhook, o motor faz o
+resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
+`cliente` puros e testados; `conexao` e `processar` são I/O),
+`src/lib/contacts/telefone.ts` (puro), rotas em `/api/cb/calendly/`, cartão
+`calendly-card.tsx` em Integrações, gatilho `calendly_booking` e passo
+`send_to_number` no motor (`engine.ts`, `validate.ts`, `descrever-passo.ts`,
+`trigger-meta.ts`, builder + `calendly-trigger-config.tsx`). Plano vivo em
+`docs/PLANO-integracao-calendly.md`. O que morde código novo:
+
+- ⚠️⚠️ **O Calendly NÃO tem campo de telefone**, e o telefone é o que acha o
+  cliente. Três fontes, nesta ordem (`telefoneDoAgendamento`):
+  `text_reminder_number` (SMS, com DDI) → a pergunta do formulário cujo
+  rótulo o operador escreveu no cartão → heurística (rótulo que fala de
+  telefone/WhatsApp, senão a primeira resposta com cara de telefone).
+  ⚠️ **CPF tem 11 dígitos, como um celular sem DDI**, e formulário de
+  escritório pergunta CPF: a heurística EXCLUI rótulo de documento
+  (`cpf|cnpj|rg|cep|valor|processo…`) e resposta com pontuação de CPF/CNPJ.
+  A pergunta configurada pelo operador VENCE a exclusão. A ORIGEM fica
+  gravada no evento (`telefone_origem`) — é o que a tela mostra quando não
+  há contato.
+- ⚠️ **Sem `+`, 10–11 dígitos ganham o 55** (`digitosDoTelefone`): é o que o
+  brasileiro digita. Com `+`, os dígitos entram como vieram ("+1 404…" tem
+  11 dígitos e NÃO é celular de São Paulo). Vale para o passo
+  `send_to_number` também — o mesmo helper, senão "(83) 98874-5316" no
+  editor saía para um número que não existe.
+- ⚠️ **A assinatura é conferida sobre o corpo CRU** (`request.text()`),
+  `Calendly-Webhook-Signature: t=…,v1=…` = HMAC-SHA256 de `t.corpo` com a
+  chave que NÓS informamos ao assinar (cifrada em `signing_key`).
+  Tolerância de 5 min contra replay. O token da URL só diz DE QUAL CONTA é
+  a assinatura; quem protege a entrega é o HMAC.
+- ⚠️ **Idempotência é o UNIQUE `(account_id, evento, invitee_uri)`**, com
+  `ignoreDuplicates` no upsert — o Calendly REENVIA por 24h enquanto não
+  recebe 2xx, e a segunda cópia não pode disparar a automação de novo.
+  A rota responde 200 ANTES de processar (`after()`): o Calendly espera
+  15 s, e a automação manda WhatsApp.
+- ⚠️ **Evento que não é `invitee.created` responde 200 e não grava.** 4xx
+  faria o Calendly retentar por 24h e DESATIVAR a assinatura inteira,
+  inclusive para os agendamentos.
+- ⚠️ **Telefone desconhecido NÃO cria contato** (`sem_contato`, decisão D2
+  do plano). Reagendamento chega como `invitee.created` NOVO (a URI do
+  invitee muda): campos atualizados e aviso de novo, com
+  `agendamento_situacao = "Reagendamento"`.
+- ⚠️ **`agendamento_data` sai de `formatToParts`, nunca de `toLocaleString`**
+  (a forma muda entre majors do Node — o PR #66); `agendamento_inicio` é o
+  ISO UTC cru, que é o que o campo `datetime` guarda (`campo-data.ts`).
+  Fuso fixo `America/Sao_Paulo` em `FUSO_DO_ESCRITORIO`.
+- ⚠️ **O nome vindo do Calendly é sobrescrito pela próxima mensagem do
+  cliente**: `inbound-store.ts`, o webhook da Meta e a API v1 gravam o
+  `pushName` do WhatsApp sempre que difere do salvo — para TODO nome,
+  inclusive o editado à mão. Fixar o nome exige uma marca na ficha (fora
+  deste PR, D5).
+- ⚠️⚠️ **`send_to_number` NÃO herda o canal do disparo** (ao contrário de
+  `send_message`): o canal do disparo é o número por onde o CLIENTE
+  escreveu, e não diz nada sobre por qual número o escritório avisa a si
+  mesmo. `channel_id` ausente = a conversa do número avisado, senão o padrão;
+  preenchido = aquele número, **falhando FECHADO** se não resolver
+  (`resolveEngineChannelPreferring` cai no padrão em silêncio — para o aviso
+  do advogado isso seria a mensagem saindo pelo número errado).
+- ⚠️ **`send_to_number` sai por `engineSendText` (robô)**: não roteia para
+  funil, não reabre conversa, e a ficha/conversa do número avisado nascem
+  por `resolverDestinatario` (`destinatario.ts`) com o DONO DA CONTA em
+  `user_id` (está na allowlist de `dono-duravel.test.ts`). Não usa
+  `resolveConversationByPhone` porque aquele módulo importa
+  `api/v1/contacts.ts` → `tag-events.ts` → o motor (ciclo), e porque
+  RENOMEIA contato existente — `contact_name` aqui só vale na criação.
+- ⚠️ **Passo que falha ENCERRA a execução** (`executeStepsFrom`, `break`).
+  Na automação criada, o aviso vem ANTES de `move_deal_stage`, que falha
+  quando o contato não tem card aberto — o aviso do agendamento não pode
+  depender do card.
+- **A assinatura do webhook tenta `organization` e cai para `user`** (403):
+  o token de quem não administra a organização só enxerga os próprios
+  eventos. Token bom + webhook recusado grava `status='erro'` com o motivo
+  (quase sempre plano sem webhooks — Standard+) e a tela oferece
+  "Reassinar". A URL é recusada quando não é alcançável de fora
+  (`ehUrlAlcancavel`) — dev local assinando `localhost` no Calendly da
+  produção mataria a entrega em silêncio.
+- **O gatilho compara `event_type_uri`** (config vazia = qualquer evento;
+  disparo sem URI com config preenchida falha fechado). O nome do evento
+  vai junto (`event_type_nome`) para a automação ficar legível quando a API
+  não responde. O select vem de `GET /api/cb/calendly/event-types`.
+- ⚠️ **`interpolate` (engine.ts) ganhou `{{contact.*}}` e `{{conversation.link}}`**
+  (`contact.name|phone|email|company|link`, `contact.campo.<field_key>`).
+  É ASSÍNCRONO agora (os 6 call sites usam `await`); o contato é carregado
+  UMA vez por execução (`WeakMap` por `args`) e SÓ quando o texto cita
+  `contact.`/`conversation.` — sem a guarda todo `send_message` pagaria
+  três consultas. A chave do campo é a `field_key` do catálogo (948), não
+  o nome exibido. Links usam `NEXT_PUBLIC_SITE_URL`; sem ela, caminho
+  relativo.
+- **A grade por etapa do funil NÃO mostra esta automação** (`classificarNaEtapa`
+  só olha `deal_stage_changed`): ela vive em Automações. Não é omissão —
+  a grade é "o que dispara AO ENTRAR na etapa".
+
 ## Branches — criação e nomenclatura
 
 - **Toda branch nova sai única e exclusivamente de `main`** e faz merge **de
@@ -2718,6 +2810,13 @@ Meta Ads) leem daqui. O que morde código novo:
     Aplicada em 2026-09-04 via conector, ANTES do merge; conferido por
     consulta: RLS ligada nas três, `anon` sem SELECT, `authenticated` sem
     escrita, `service_role` com INSERT.
+  - **977_cb_calendly** — `cb_calendly_config` (token e chave de assinatura
+    cifrados, token de rota do webhook) e `cb_calendly_eventos` (cada
+    agendamento recebido e o que aconteceu com ele; UNIQUE por invitee =
+    idempotência). As duas FECHADAS para `authenticated` — a tela lê pela
+    rota. Aplicada em 2026-09-07 via conector, ANTES do merge, com
+    autorização do operador; conferido por consulta (RLS, grants, histórico).
+    Plano em `docs/PLANO-integracao-calendly.md`.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

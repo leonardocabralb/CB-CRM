@@ -976,7 +976,14 @@ export type AutomationTriggerType =
    * alvo: o motor roda por contato e "todo dia às 9h" não diz para qual.
    * Aqui a hora vem do próprio contato, então o alvo é ele.
    */
-  | 'date_field_offset';
+  | 'date_field_offset'
+  /**
+   * Alguém marcou um horário no Calendly (migration 977). Chega pelo webhook
+   * `invitee.created`; o contato é achado pelo TELEFONE do agendamento e os
+   * dados entram em `context.vars` (`{{vars.agendamento_*}}`). Config vazia =
+   * qualquer evento; `event_type_uri` restringe a um tipo de evento.
+   */
+  | 'calendly_booking';
 
 export type AutomationStepType =
   | 'send_message'
@@ -1007,7 +1014,13 @@ export type AutomationStepType =
   | 'wait'
   | 'condition'
   | 'send_webhook'
-  | 'close_conversation';
+  | 'close_conversation'
+  /**
+   * Manda um texto para um NÚMERO fixo (a equipe), não para o contato do
+   * disparo — "avise o advogado que o cliente marcou reunião". Sai como
+   * robô por `engineSendText`: não reabre conversa nem abre card.
+   */
+  | 'send_to_number';
 
 export type AutomationLogStatus = 'success' | 'partial' | 'failed';
 
@@ -1094,6 +1107,19 @@ export interface DealStatusTriggerConfig {
   statuses?: string[];
 }
 
+/**
+ * Config do gatilho `calendly_booking` (migration 977).
+ *
+ * Vazio = QUALQUER evento do Calendly, na convenção do projeto. Com
+ * `event_type_uri`, só o tipo de evento com aquela URI dispara. O nome vai
+ * junto para a tela mostrar algo legível quando a API do Calendly não
+ * responde (a URI é opaca).
+ */
+export interface CalendlyTriggerConfig {
+  event_type_uri?: string;
+  event_type_nome?: string;
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
@@ -1103,6 +1129,7 @@ export type AutomationTriggerConfig =
   | DealStageTriggerConfig
   | DealStatusTriggerConfig
   | DateFieldTriggerConfig
+  | CalendlyTriggerConfig
   | Record<string, unknown>;
 
 /**
@@ -1257,6 +1284,25 @@ export interface SendWebhookStepConfig {
   url: string;
   headers?: Record<string, string>;
   body_template?: string;
+}
+
+/**
+ * Config de `send_to_number` (migration 977): um texto para um número
+ * FIXO — a equipe —, com as mesmas variáveis dos outros passos.
+ *
+ * ⚠️ `channel_id` aqui NÃO cai no canal do disparo quando ausente: o canal
+ * do disparo é o número por onde o CLIENTE escreveu, que não diz nada
+ * sobre por qual número o escritório quer avisar a si mesmo. Ausente = a
+ * conversa que já existe com aquele número, senão o padrão da conta.
+ * Preenchido = aquele número, falhando FECHADO se ele não resolver.
+ */
+export interface SendToNumberStepConfig extends ChannelScopedStepConfig {
+  /** Dígitos com DDI (`5583988745316`); pontuação é tolerada. */
+  phone: string;
+  /** Nome para a ficha quando o número ainda não é contato. */
+  contact_name?: string;
+  /** Suporta `{{ vars.* }}` / `{{ message.text }}`. */
+  text: string;
 }
 
 /**
