@@ -2325,10 +2325,20 @@ conceder. Três decisões, e o que morde código novo:
   excluídos" sobre zero.
   ⚠️⚠️ **Zero linhas tem DOIS significados**, e o rowcount sozinho não os
   separa: a policy recusou, ou a linha JÁ NÃO EXISTIA (outro cliente a
-  apagou depois que a lista carregou). Por isso `lerExclusao` recebe
-  `podeApagar` — o que a tela sabe da própria permissão: sem permissão é
-  `recusado`, com permissão é `sumiu`. Dizer "seu perfil não tem permissão"
-  a um admin que perdeu a corrida afirma o que não houve (Codex, PR #138).
+  apagou depois que a lista carregou). Dizer "seu perfil não tem permissão"
+  a quem perdeu a corrida afirma o que não houve (Codex, PR #138).
+  ⚠️⚠️ **E o motivo é MEDIDO, nunca inferido do papel em cache.** A primeira
+  correção perguntava à TELA se o usuário podia apagar — e um admin
+  REBAIXADO com a página aberta mantém `accountRole` antigo em memória (o
+  provider não refaz o perfil em evento de auth do mesmo usuário), então a
+  tela "sabia" que podia enquanto o banco já recusava, e anunciava que
+  alguém havia apagado o contato que a recarga trazia de volta (Codex, PR
+  #139). Hoje: depois de um DELETE incompleto, uma consulta pergunta quais
+  dos pedidos AINDA EXISTEM — os que existem foram recusados, os que não
+  existem sumiram. Conferência que falha vira `falhou`, nunca palpite.
+  ⚠️ **A seleção perde os RESOLVIDOS, que são dois grupos**: os apagados e
+  os que já não existiam. Manter o segundo deixava uma linha invisível
+  marcada na barra, e cada nova tentativa repetia "sumiu" para sempre.
   ⚠️⚠️ E a seleção: a recarga da lista **zera a seleção por conta própria**
   (as linhas visíveis mudam), então devolver `false` em `podeLimparSelecao`
   não bastava — `fetchContacts` ganhou `{ preservarSelecao }`, e a exclusão

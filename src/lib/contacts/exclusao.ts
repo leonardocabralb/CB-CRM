@@ -2,35 +2,37 @@
  * O que dizer depois de um DELETE de contato — puro, porque a frase que a
  * tela mostra é uma AFIRMAÇÃO sobre o que aconteceu no banco.
  *
- * ⚠️⚠️ Existe por causa de uma armadilha que o CLAUDE.md já documentava e
- * que a página de contatos repetia: **RLS que barra DELETE devolve 0 linhas
- * com `error: null`**. Olhando só o erro, a tela anunciava "contato
- * excluído" sobre um contato intacto — e depois da 981 (apagar contato é de
- * admin) esse é o caso REAL de quem estava com a página aberta quando a
- * policy mudou, ou de qualquer aba antiga (achado do Codex no PR #137).
+ * ⚠️⚠️ A armadilha de origem: **RLS que barra DELETE devolve 0 linhas com
+ * `error: null`**. Olhando só o erro, a tela anunciava "contato excluído"
+ * sobre um contato intacto — e depois da 981 (apagar contato é de admin)
+ * esse é o caso real de qualquer aba aberta antes do deploy (Codex, #137).
  *
- * ⚠️ E o número importa: o toast em massa dizia quantos foram PEDIDOS, não
- * quantos saíram. Com a policy recusando, ele anunciava "12 contatos
- * excluídos" sobre zero.
+ * ⚠️⚠️ E zero linhas tem DOIS significados: a policy recusou, ou a linha JÁ
+ * NÃO EXISTIA (outro cliente a apagou depois que a lista carregou). O
+ * rowcount não separa os dois.
  *
- * ⚠️⚠️ ZERO LINHAS TEM DOIS SIGNIFICADOS, e o rowcount sozinho não os
- * separa: ou a policy recusou, ou a linha JÁ NÃO EXISTIA — outro cliente a
- * apagou depois que esta lista carregou. Dizer "seu perfil não tem
- * permissão" a um admin que perdeu a corrida é afirmar o que não houve
- * (achado do Codex no PR #138). Por isso `podeApagar` entra na conta: é o
- * que a tela SABE sobre a própria permissão.
+ * ⚠️⚠️ A primeira tentativa de separá-los usou o que a TELA sabia da própria
+ * permissão. Estava errada, e o Codex mostrou o caminho (#139): um admin
+ * REBAIXADO com a página aberta mantém `accountRole` antigo em memória (o
+ * provider não refaz o perfil em evento de auth do mesmo usuário), então a
+ * tela "sabia" que podia enquanto o banco já recusava — e anunciava que
+ * alguém tinha apagado o contato que a recarga mostrava de volta.
+ *
+ * A régua passou a ser MEDIDA, não inferida: depois de um DELETE incompleto,
+ * pergunta-se ao banco quais dos pedidos AINDA EXISTEM. Os que existem foram
+ * recusados; os que não existem, sumiram. Nenhum estado em cache participa.
  */
 
 export type ResultadoDaExclusao =
   /** Todos saíram. */
   | "apagado"
-  /** Nenhum saiu, e quem pediu não tem permissão: a policy recusou. */
+  /** Nada saiu, e o que se pediu continua lá: a policy recusou. */
   | "recusado"
-  /** Nenhum saiu, mas quem pediu PODE apagar: a linha já não existia. */
+  /** Nada saiu, e nada mais existe: outro cliente apagou antes. */
   | "sumiu"
-  /** Alguns saíram — parte foi recusada, ou parte já não existia. */
+  /** Parte saiu. */
   | "parcial"
-  /** A consulta em si falhou. */
+  /** A consulta em si falhou — ou a conferência não pôde ser feita. */
   | "falhou";
 
 export function lerExclusao(args: {
@@ -38,14 +40,19 @@ export function lerExclusao(args: {
   pedidos: number;
   /** Quantos o banco devolveu no `RETURNING` (`.select()` depois do delete). */
   apagados: number;
+  /**
+   * Dos pedidos que NÃO saíram, quantos ainda existem no banco — medido por
+   * uma consulta, nunca inferido. `null` = a conferência falhou, e aí não se
+   * sabe o motivo: vira `falhou`, que é a única resposta honesta.
+   */
+  aindaExistem: number | null;
   houveErro: boolean;
-  /** O que a TELA sabe sobre a permissão de quem clicou (`canDeleteContacts`). */
-  podeApagar: boolean;
 }): ResultadoDaExclusao {
   if (args.houveErro) return "falhou";
-  if (args.apagados === 0) return args.podeApagar ? "sumiu" : "recusado";
-  if (args.apagados < args.pedidos) return "parcial";
-  return "apagado";
+  if (args.apagados >= args.pedidos) return "apagado";
+  if (args.aindaExistem === null) return "falhou";
+  if (args.apagados > 0) return "parcial";
+  return args.aindaExistem > 0 ? "recusado" : "sumiu";
 }
 
 /**
@@ -53,22 +60,26 @@ export function lerExclusao(args: {
  *
  * ⚠️ Não basta devolver `false` aqui: a recarga da lista limpa a seleção por
  * conta própria (as linhas visíveis mudam), então quem recarrega depois de
- * uma recusa precisa pedir para PRESERVAR. Sem isso a invariante desta
- * função não vale na prática — foi o que o Codex apontou no PR #138.
+ * uma recusa precisa pedir para PRESERVAR. Sem esse par a invariante desta
+ * função não vale na prática (Codex, #138).
  */
 export function podeLimparSelecao(r: ResultadoDaExclusao): boolean {
   return r === "apagado";
 }
 
 /**
- * O que sobra selecionado depois de uma exclusão que apagou só parte.
- * Tira os que saíram e mantém o resto — deselecionar quem ficou esconde
- * justamente o que o operador ainda precisa resolver.
+ * O que sobra selecionado: só o que continua existindo E não saiu.
+ *
+ * ⚠️ Os RESOLVIDOS são dois grupos, não um: os que saíram e os que já não
+ * existiam. Manter o segundo deixava um contato invisível marcado na barra
+ * de seleção, e cada nova tentativa de apagá-lo repetia "sumiu" para sempre
+ * (Codex, #139). Sobra o que foi RECUSADO — que é justamente o que o
+ * operador ainda precisa resolver.
  */
 export function selecaoRestante(
   selecionados: Iterable<string>,
-  apagados: readonly string[],
+  resolvidos: readonly string[],
 ): Set<string> {
-  const saiu = new Set(apagados);
-  return new Set([...selecionados].filter((id) => !saiu.has(id)));
+  const fora = new Set(resolvidos);
+  return new Set([...selecionados].filter((id) => !fora.has(id)));
 }
