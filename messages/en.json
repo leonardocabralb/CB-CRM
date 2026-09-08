@@ -360,8 +360,11 @@
       "fromLibrary": "From library",
       "acervoError": "Could not prepare the library file.",
       "solteParaAnexar": "Drop here to attach",
-      "arquivoNaoSuportado": "File type not supported by WhatsApp. Accepts images (PNG, JPG, WebP), video (MP4, 3GP), PDF, Word, Excel, PowerPoint and text.",
-      "umAnexoPorVez": "One attachment per message — the other {ignorados} were ignored."
+      "arquivoNaoSuportado": "{n, plural, =1 {1 file is not supported by WhatsApp and was left out} other {# files are not supported by WhatsApp and were left out}}. Accepts images (PNG, JPG, WebP), video (MP4, 3GP), PDF, Word, Excel, PowerPoint and text.",
+      "tetoDeAnexos": "{n, plural, =1 {1 file was left out} other {# files were left out}}: at most {max} attachments at a time.",
+      "removeAllAttachments": "Remove all",
+      "addCaptionFor": "Caption for {arquivo}",
+      "enviarNAnexos": "{n} messages"
     },
     "bubble": {
       "transcricao": "Transcript",

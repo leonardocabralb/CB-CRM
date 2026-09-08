@@ -353,8 +353,11 @@
       "fromLibrary": "Do acervo",
       "acervoError": "Não foi possível preparar o arquivo do acervo.",
       "solteParaAnexar": "Solte aqui para anexar",
-      "arquivoNaoSuportado": "Tipo de arquivo não suportado pelo WhatsApp. Aceita imagem (PNG, JPG, WebP), vídeo (MP4, 3GP), PDF, Word, Excel, PowerPoint e texto.",
-      "umAnexoPorVez": "Só um anexo por mensagem — os outros {ignorados} foram ignorados."
+      "arquivoNaoSuportado": "{n, plural, =1 {1 arquivo não é suportado pelo WhatsApp e ficou de fora} other {# arquivos não são suportados pelo WhatsApp e ficaram de fora}}. Aceita imagem (PNG, JPG, WebP), vídeo (MP4, 3GP), PDF, Word, Excel, PowerPoint e texto.",
+      "tetoDeAnexos": "{n, plural, =1 {1 arquivo ficou de fora} other {# arquivos ficaram de fora}}: são no máximo {max} anexos por vez.",
+      "removeAllAttachments": "Remover todos",
+      "addCaptionFor": "Legenda de {arquivo}",
+      "enviarNAnexos": "{n} mensagens"
     },
     "bubble": {
       "transcricao": "Transcrição",

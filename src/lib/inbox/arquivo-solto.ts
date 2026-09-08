@@ -97,48 +97,52 @@ export function arquivoParaEnviar(arquivo: File, agora?: Date): File {
   return new File([arquivo], nome, { type: mime, lastModified: arquivo.lastModified });
 }
 
-export interface ArquivoRecebido {
-  arquivo: File;
-  tipo: TipoDeAnexo;
-  /** Quantos vieram junto e foram ignorados (o compositor leva UM anexo). */
-  ignorados: number;
+/**
+ * Quantos anexos o compositor aceita de uma vez.
+ *
+ * ⚠️ Existe para o upload não virar uma enxurrada: cada arquivo é uma
+ * requisição ao Storage e uma MENSAGEM no WhatsApp. Soltar uma pasta com 200
+ * arquivos por engano mandaria 200 mensagens ao cliente. Dez cobre o uso real
+ * (um conjunto de documentos, algumas fotos) e mantém o erro reversível.
+ */
+export const MAX_ANEXOS = 10;
+
+export interface ArquivosRecebidos {
+  /** Os que serão anexados, na ordem em que vieram. */
+  aceitos: File[];
+  /** Vieram e não servem — tipo que o WhatsApp não aceita. */
+  recusados: number;
+  /** Passaram do teto e ficaram de fora. */
+  excedentes: number;
 }
 
-export type ResultadoDoArquivo =
-  | { ok: true; recebido: ArquivoRecebido }
-  /** Veio arquivo, mas nenhum de tipo aceito. */
-  | { ok: false; motivo: "tipo_recusado" }
-  /** Não veio arquivo nenhum — o navegador que trate (texto arrastado, etc.). */
-  | { ok: false; motivo: "sem_arquivo" };
-
 /**
- * Escolhe o arquivo a anexar. O compositor carrega UM anexo por vez, então
- * o primeiro ACEITO vence e o resto é contado para o aviso.
+ * Reparte o que chegou: o que vai anexar, o que não serve e o que passou do
+ * teto. Os três números importam porque cada um vira um aviso diferente —
+ * engolir arquivo em silêncio é o que faz o operador achar que mandou o que
+ * não mandou.
+ *
+ * `jaAnexados` é quanto já está na fila: o teto vale para o TOTAL, não para
+ * cada soltura.
  */
-export function escolherArquivo(arquivos: readonly File[]): ResultadoDoArquivo {
-  if (arquivos.length === 0) return { ok: false, motivo: "sem_arquivo" };
-  const aceitos = arquivos
-    .map((arquivo) => ({ arquivo, tipo: tipoDoArquivo(arquivo.type) }))
-    .filter((x): x is { arquivo: File; tipo: TipoDeAnexo } => x.tipo !== null);
-  if (aceitos.length === 0) return { ok: false, motivo: "tipo_recusado" };
+export function escolherArquivos(
+  arquivos: readonly File[],
+  jaAnexados = 0,
+): ArquivosRecebidos {
+  const aceitos: File[] = [];
+  let recusados = 0;
+  for (const arquivo of arquivos) {
+    if (tipoDoArquivo(arquivo.type) === null) recusados += 1;
+    else aceitos.push(arquivo);
+  }
+  const vagas = Math.max(0, MAX_ANEXOS - jaAnexados);
   return {
-    ok: true,
-    recebido: {
-      arquivo: aceitos[0]!.arquivo,
-      tipo: aceitos[0]!.tipo,
-      ignorados: arquivos.length - 1,
-    },
+    aceitos: aceitos.slice(0, vagas),
+    recusados,
+    excedentes: Math.max(0, aceitos.length - vagas),
   };
 }
 
-/**
- * A colagem deve virar ANEXO?
- *
- * ⚠️ Só quando não há texto junto. Copiar de um editor traz texto E imagem no
- * mesmo evento (o Word e o Google Docs fazem isso), e roubar a colagem ali
- * transformaria um Ctrl+V de texto num upload — perdendo o texto que a
- * pessoa queria colar. Com texto presente, o navegador faz o normal.
- */
 export function colagemEhAnexo(args: { temArquivo: boolean; texto: string }): boolean {
   return args.temArquivo && args.texto.trim() === "";
 }
