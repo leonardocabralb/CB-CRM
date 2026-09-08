@@ -35,6 +35,7 @@ const VARIAVEIS_DO_CONTATO = [
   "{{contact.name}}",
   "{{contact.phone}}",
   "{{contact.campo.<chave_do_campo>}}",
+  "{{contact.origem}}",
   "{{conversation.link}}",
   "{{contact.link}}",
 ]

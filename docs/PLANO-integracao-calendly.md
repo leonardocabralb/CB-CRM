@@ -203,7 +203,7 @@ qualquer, até a conexão existir), passos nesta ordem (D6):
    *Nome:* {{vars.agendamento_nome}}
    *Data:* {{vars.agendamento_data}}
    *Telefone:* {{vars.agendamento_telefone}}
-   *Origem:* {{contact.campo.nome_da_campanha}} - {{contact.campo.nome_do_conjunto}} - {{contact.campo.nome_do_anuncio}}
+   *Origem:* {{contact.origem}}
    *Tamanho da Dívida:* {{contact.campo.tamanho_da_divida}}
    *Link CRM:* {{conversation.link}}
    ```
@@ -339,3 +339,31 @@ qualquer, até a conexão existir), passos nesta ordem (D6):
    do escopo") quando conexão/etapa barram, `falhou` quando um passo
    falhou ou o disparo não aconteceu. `resultadoDoDisparo` é puro, com 4
    testes.
+
+## 7. Teste de ponta a ponta em produção (2026-09-07, ~21h45 BRT)
+
+Depois do merge do #128 (deploy no ar) e da 977 aplicada, o operador
+conectou o token (organização, webhook `active`) e pediu o teste.
+
+- Automação "Calendly → Reunião agendada" criada por SQL (5 passos da
+  seção 3.5), ativada, e o agendamento feito na página pública
+  `calendly.com/cbadvogados` → "Reunião com Advogado - Kommo" → 9/9 17:30,
+  com nome, e-mail e "Telefone (Whatsapp)" `+55 83 98874-5316`.
+- **Medido:** webhook recebido **2 s** depois da confirmação; assinatura
+  aceita; telefone lido por HEURÍSTICA (rótulo "Telefone (Whatsapp)",
+  resposta com `+55`); contato casado pelos últimos 8 dígitos (a ficha
+  guarda `558388745316`, sem o nono dígito, e casou mesmo assim);
+  `automation_logs` `success` com os 5 passos; campos `data_e_hora_reuniao
+  = 2026-09-09T20:30:00Z` (17:30 BRT) e `link_reuniao` (Google Meet do
+  Calendly); card em "Reunião Agendada"; aviso `delivered` no
+  83 98874-5316 pela Bancário - Comercial, com a assinatura do escritório
+  na frente (923) e o link `https://crm.cbadvogados.com/inbox?c=…`.
+- **Achado:** "*Origem:*" saiu como " -  - " (contato sem campanha).
+  Nasceu `{{contact.origem}}`, que junta só as partes preenchidas; o passo
+  em produção foi trocado por SQL para usá-la.
+- O gatilho foi fixado no evento pela URI que veio no próprio webhook
+  (`…/event_types/ABFU5IERKFEFK5FB`, "Reunião com Advogado - Kommo") —
+  sem sessão em produção no navegador, foi por SQL.
+- As outras mensagens que chegaram ao número no mesmo minuto são de outra
+  automação, de outro CRM (Kommo), disparada pelo mesmo agendamento —
+  informado pelo operador.

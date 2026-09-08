@@ -970,6 +970,12 @@ describe("interpolate — variáveis do contato", () => {
     expect(texto).toBe("[] [] []");
   });
 
+  it("{{contact.origem}} junta campanha - conjunto - anúncio, só as partes preenchidas", async () => {
+    // O mock de contact_custom_values devolve null: sem campos, a origem é vazia
+    // (nunca " -  - ", que foi o que o primeiro aviso real imprimiu).
+    expect(await textoEnviado("[{{contact.origem}}]")).toBe("[]");
+  });
+
   it("link da ficha do contato", async () => {
     expect(await textoEnviado("{{contact.link}}")).toBe("https://crm.exemplo.com/contacts?contact=c1");
   });

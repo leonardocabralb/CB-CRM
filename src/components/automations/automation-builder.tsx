@@ -2710,6 +2710,7 @@ const VARIAVEIS_DE_TEXTO = [
   "{{contact.email}}",
   "{{contact.company}}",
   "{{contact.campo.<chave_do_campo>}}",
+  "{{contact.origem}}",
   "{{conversation.link}}",
   "{{contact.link}}",
   "{{message.text}}",
