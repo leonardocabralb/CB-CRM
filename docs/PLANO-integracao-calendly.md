@@ -404,3 +404,24 @@ corrigidos: a frase "não aparece no funil" deixou de ser verdade.
    desde o upstream). Lista `GATILHOS_SEM_DISPARO` em `trigger-meta.ts`,
    usada por `cartoesDeChegada`; teste amarra a lista ao `TRIGGER_OPTIONS`
    do builder (lê o fonte).
+
+### O cadeado do "Processar de novo" (08/09, achado do Codex nos PRs #133/#134)
+
+O botão nasceu com uma guarda de leitura: conferir o `resultado` e então
+processar. Isso não serializa nada — dois cliques (duas abas, dois
+administradores) leem a mesma linha e disparam a automação duas vezes, e o
+mesmo vale para um clique durante o `after()` do webhook. A primeira
+tentativa de conserto (recusar `recebido` com menos de 2 minutos) media a
+IDADE da linha, o que também não serializa: duas requisições acham a mesma
+linha velha e passam as duas. E não podia funcionar, porque em produção não
+há corte de duração de rota — a idade não diz se o processamento anterior
+terminou.
+
+Conserto: migration **980**, coluna `processando_desde`, e o cadeado
+`UPDATE…RETURNING` de `src/lib/calendly/claim.ts` — o mesmo padrão da
+transcrição de áudio (943). Quem consegue escrever a coluna é o dono; os
+demais recebem 409 com o motivo real (`ainda_processando` × `ja_processado`,
+que são conselhos diferentes). O webhook carimba o cadeado junto com a
+linha; `gravarResultado` o solta na mesma escrita do resultado; o caminho de
+exceção grava `falhou` em vez de soltar limpo, porque a automação pode ter
+enviado antes de morrer; claim de mais de 10 minutos é tomado.

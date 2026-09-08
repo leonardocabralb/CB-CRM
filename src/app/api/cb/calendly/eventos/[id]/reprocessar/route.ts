@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
-import { RECEBIDO_EM_PROCESSAMENTO_MS, RESULTADOS_REPROCESSAVEIS } from "@/lib/calendly/log";
-import { agendamentoDaLinha, varsDaLinha } from "@/lib/calendly/reprocessar";
+import { liberarClaim, motivoDaRecusa, reivindicarEvento } from "@/lib/calendly/claim";
 import { gravarResultado, processarAgendamento } from "@/lib/calendly/processar";
+import { agendamentoDaLinha, varsDaLinha } from "@/lib/calendly/reprocessar";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
 /**
@@ -14,23 +14,21 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
  * variáveis que ele entregou da primeira vez (979).
  *
  * Existe porque a razão de um agendamento não ter disparado costuma ser
- * passageira e externa: o telefone ainda não era de nenhum contato (a ficha
- * nasce segundos depois — ver `processar.ts`), ou a automação ainda não
- * existia/estava desligada. O caminho automático já tenta de novo por
- * alguns minutos; este é para depois disso, quando o operador arrumou o que
- * faltava.
+ * passageira e externa: a automação ainda não existia ou estava desligada,
+ * ou o CRM não conseguiu criar a ficha do cliente. O operador arruma o que
+ * faltava e pede a repetição.
  *
- * ⚠️ NÃO re-tenta o que já rodou (`RESULTADOS_REPROCESSAVEIS`): repetir um
- * `disparado` mandaria a mesma mensagem à equipe outra vez. Sem retentativa
- * com espera aqui — é um clique, a resposta tem de voltar.
+ * ⚠️⚠️ Passa pelo CADEADO (`reivindicarEvento`, 980) — nunca por "ler o
+ * estado e então processar". Isto MANDA MENSAGEM: dois cliques simultâneos,
+ * ou um clique enquanto o `after()` do webhook ainda roda, dariam dois
+ * avisos ao advogado e mexeriam no card duas vezes. Quem consegue escrever
+ * o cadeado é o dono; os demais recebem 409 com o motivo real.
+ *
+ * ⚠️ Só linha REPROCESSÁVEL é reivindicável (`RESULTADOS_REPROCESSAVEIS`):
+ * repetir um `disparado` mandaria a mesma mensagem de novo, e em `falhou`
+ * não se sabe se o passo de envio já tinha rodado (aí o caminho é o
+ * histórico da automação e o "Executar automação" da conversa).
  */
-/** A linha chegou agora há pouco? Data ilegível conta como recente (não repetir no escuro). */
-function recemChegada(recebidoEm: unknown): boolean {
-  const t = typeof recebidoEm === "string" ? new Date(recebidoEm).getTime() : NaN;
-  if (Number.isNaN(t)) return true;
-  return Date.now() - t < RECEBIDO_EM_PROCESSAMENTO_MS;
-}
-
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const ctx = await requireRole("admin");
@@ -39,33 +37,47 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
     const { id } = await params;
     const admin = supabaseAdmin();
-    const { data: linha, error } = await admin
-      .from("cb_calendly_eventos")
-      .select("*")
-      .eq("id", id)
-      .eq("account_id", ctx.accountId)
-      .maybeSingle();
-    // Erro de banco NÃO é "não encontrado" — senão um blip vira 404 e o
-    // operador conclui que o agendamento sumiu do log.
-    if (error) return NextResponse.json({ error: "db_error" }, { status: 500 });
-    if (!linha) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-    if (!(RESULTADOS_REPROCESSAVEIS as readonly string[]).includes(linha.resultado)) {
-      return NextResponse.json({ error: "ja_processado", resultado: linha.resultado }, { status: 409 });
-    }
-    // ⚠️ `recebido` recente pode estar rodando NESTE instante (a rota do
-    // webhook grava a linha e processa depois, em `after()`). Ver
-    // `RECEBIDO_EM_PROCESSAMENTO_MS`.
-    if (linha.resultado === "recebido" && recemChegada(linha.recebido_em)) {
-      return NextResponse.json({ error: "ainda_processando" }, { status: 409 });
+    const { linha, erro } = await reivindicarEvento(admin, { id, accountId: ctx.accountId });
+    if (erro) return NextResponse.json({ error: "db_error" }, { status: 500 });
+
+    if (!linha) {
+      // Não pegou. O motivo vem do estado REAL — e erro de banco aqui NÃO é
+      // "não encontrado": um blip viraria 404 e o operador concluiria que o
+      // agendamento sumiu do log.
+      const { data: atual, error: erroLeitura } = await admin
+        .from("cb_calendly_eventos")
+        .select("resultado, processando_desde")
+        .eq("id", id)
+        .eq("account_id", ctx.accountId)
+        .maybeSingle();
+      if (erroLeitura) return NextResponse.json({ error: "db_error" }, { status: 500 });
+      const motivo = motivoDaRecusa(atual, Date.now());
+      return NextResponse.json({ error: motivo }, { status: motivo === "not_found" ? 404 : 409 });
     }
 
     const agendamento = agendamentoDaLinha(linha);
-    if (!agendamento) return NextResponse.json({ error: "linha_incompleta" }, { status: 422 });
+    if (!agendamento) {
+      await liberarClaim(admin, id);
+      return NextResponse.json({ error: "linha_incompleta" }, { status: 422 });
+    }
 
-    const r = await processarAgendamento(admin, ctx.accountId, agendamento, varsDaLinha(linha, agendamento));
-    await gravarResultado(admin, id, r);
-    return NextResponse.json({ ok: true, resultado: r.resultado, detalhe: r.detalhe });
+    try {
+      const r = await processarAgendamento(admin, ctx.accountId, agendamento, varsDaLinha(linha, agendamento));
+      await gravarResultado(admin, id, r);
+      return NextResponse.json({ ok: true, resultado: r.resultado, detalhe: r.detalhe });
+    } catch (e) {
+      // ⚠️ Estourou DEPOIS do cadeado: a automação pode ter mandado
+      // mensagem antes de morrer. Grava `falhou` — que não é reprocessável —
+      // em vez de soltar o cadeado limpo, senão o próximo clique repetiria
+      // um envio que talvez tenha saído. `gravarResultado` solta o cadeado.
+      await gravarResultado(admin, id, {
+        resultado: "falhou",
+        detalhe: e instanceof Error ? e.message.slice(0, 500) : "erro desconhecido",
+        contactId: null,
+      });
+      return NextResponse.json({ error: "processamento_falhou" }, { status: 500 });
+    }
   } catch (err) {
     return toErrorResponse(err);
   }

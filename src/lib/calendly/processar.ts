@@ -207,7 +207,15 @@ export function resultadoDoDisparo(
   return { resultado: "disparado", detalhe: `${r.executadas} automação(ões) executada(s)`, contactId };
 }
 
-/** Carimba o resultado na linha do evento. Nunca lança — é o fim de um `after()`. */
+/**
+ * Carimba o resultado na linha do evento. Nunca lança — é o fim de um
+ * `after()`.
+ *
+ * ⚠️ SOLTA o cadeado (`processando_desde`) na mesma escrita. Ele é o que
+ * impede dois processamentos simultâneos do mesmo agendamento (980); um
+ * caminho de saída que não o solte deixa a linha travada até o
+ * recolhimento de 10 minutos.
+ */
 export async function gravarResultado(
   admin: SupabaseClient,
   eventoId: string,
@@ -215,7 +223,13 @@ export async function gravarResultado(
 ): Promise<void> {
   const { error } = await admin
     .from("cb_calendly_eventos")
-    .update({ resultado: r.resultado, detalhe: r.detalhe, contact_id: r.contactId, processado_em: new Date().toISOString() })
+    .update({
+      resultado: r.resultado,
+      detalhe: r.detalhe,
+      contact_id: r.contactId,
+      processado_em: new Date().toISOString(),
+      processando_desde: null,
+    })
     .eq("id", eventoId);
   if (error) console.error("[calendly] não foi possível gravar o resultado do evento:", error.message);
 }

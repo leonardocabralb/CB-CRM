@@ -2661,13 +2661,24 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   `sem_contato`, `sem_automacao`): repetir um `disparado` mandaria a mesma
   mensagem à equipe de novo, e em `falhou` não se sabe se o passo de envio
   já tinha rodado (aí o caminho é o histórico da automação e o "Executar
-  automação" da conversa). ⚠️ `recebido` com menos de
-  `RECEBIDO_EM_PROCESSAMENTO_MS` (2 min) é RECUSADO: a rota do webhook grava
-  a linha e processa depois, em `after()`, então uma linha recém-chegada
-  pode estar rodando NAQUELE instante — clicar ali dispararia a automação em
-  paralelo (dois avisos, card mexido duas vezes). Passado o prazo,
-  `recebido` significa processamento que morreu no meio, e repetir é o
-  certo. Data de chegada ilegível conta como recente. ⚠️ Ele usa as VARIÁVEIS gravadas (979,
+  automação" da conversa).
+- ⚠️⚠️ **Processar um agendamento passa pelo CADEADO
+  `cb_calendly_eventos.processando_desde` (980), nunca por "ler o estado e
+  então processar".** É o mesmo `UPDATE…RETURNING` da transcrição de áudio
+  (943), e vale pela mesma razão: no deploy `start-first` há dois processos
+  Node vivos, e só o banco serializa. Sem ele, dois cliques (duas abas, dois
+  administradores) ou um clique durante o `after()` do webhook davam dois
+  avisos ao advogado e mexiam no card duas vezes. ⚠️ A guarda por IDADE da
+  linha que existiu entre os PRs #134 e #135 **não serializava nada** — duas
+  requisições achavam a mesma linha velha e passavam as duas — e não podia
+  funcionar: em produção não há corte de duração de rota, então a idade não
+  diz se o processamento anterior terminou (achado do Codex, duas rodadas).
+  O webhook carimba o cadeado JUNTO com a linha, antes do `after()`.
+  ⚠️ **Toda saída tem de SOLTAR o cadeado**: `gravarResultado` o zera na
+  mesma escrita do resultado, e o caminho de exceção da rota grava `falhou`
+  (não reprocessável) em vez de soltar limpo — a automação pode ter enviado
+  antes de morrer. Claim mais velho que `RECOLHER_CLAIM_MS` (10 min) é
+  tomado, senão processo morto trava o agendamento para sempre. ⚠️ Ele usa as VARIÁVEIS gravadas (979,
   `cb_calendly_eventos.variaveis`), nunca só o remonte: a tabela não guarda
   local/cancelar/remarcar/situação em coluna, e o remonte entregaria à
   automação menos variáveis que a primeira entrega, em silêncio.

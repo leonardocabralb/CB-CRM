@@ -96,6 +96,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         // primeira vez, em silêncio.
         variaveis: variaveisDoAgendamento(agendamento),
         resultado: "recebido",
+        // ⚠️ O cadeado (980) nasce com a linha: o processamento começa logo
+        // abaixo, em `after()`, e sem ele o botão "Processar de novo" podia
+        // disparar a MESMA automação em paralelo. `gravarResultado` solta.
+        processando_desde: new Date().toISOString(),
       },
       { onConflict: "account_id,evento,invitee_uri", ignoreDuplicates: true },
     )

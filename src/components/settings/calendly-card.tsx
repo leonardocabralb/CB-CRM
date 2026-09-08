@@ -232,6 +232,9 @@ export function CalendlyCard() {
               ? t("calendly.aindaProcessando")
               : t("calendly.reprocessarFalhou"),
         );
+        // O estado da linha mudou (outro já processou, ou está processando):
+        // a lista na tela é uma foto de antes do clique.
+        await carregar();
         return;
       }
       toast.success(t("calendly.reprocessado", { resultado: rotuloDoResultado(corpo?.resultado ?? "") }));
