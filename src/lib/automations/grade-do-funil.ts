@@ -1,4 +1,4 @@
-import type { Automation, DealStageTriggerConfig } from '@/types'
+import type { Automation, AutomationStep, DealStageTriggerConfig } from '@/types'
 
 /**
  * A GRADE de automações do funil — colunas são etapas, cartões ocupam as
@@ -11,11 +11,24 @@ import type { Automation, DealStageTriggerConfig } from '@/types'
  * ⚠️ "Expandir" o cartão para mais colunas é gravar mais etapas em
  * `trigger_config.stage_ids`. Não há coluna nova, nem migration: a largura do
  * cartão É o conteúdo daquele campo. Vazio = ocupa o funil inteiro.
+ *
+ * Dois TIPOS de cartão, e a diferença é o que a posição afirma:
+ *   - `gatilho`: "dispara quando o card ENTRA nesta(s) etapa(s)" — a
+ *     largura é `trigger_config.stage_ids`.
+ *   - `chegada`: "dispara em OUTRO lugar (Calendly, palavra-chave, tag…) e
+ *     LEVA o card para esta etapa" — a posição é o `stage_id` de um passo
+ *     `move_deal_stage`/`create_deal`. Sempre uma coluna, sem "expandir":
+ *     mudar a etapa é editar o passo. Nasceu em 07/09/2026 porque a
+ *     automação do Calendly, que move para "Reunião Agendada", não aparecia
+ *     no funil, e o operador foi procurá-la lá.
  */
+
+export type TipoDoCartao = 'gatilho' | 'chegada'
 
 /** Um cartão já posicionado: onde começa, quantas colunas ocupa. */
 export interface CartaoDaGrade {
   automation: Automation
+  tipo: TipoDoCartao
   /** Índice da primeira coluna (0-based), na ordem das etapas do quadro. */
   colunaInicial: number
   /** Quantas colunas ele atravessa. Sempre ≥ 1. */
@@ -67,9 +80,17 @@ export function trechosContinuos(indices: number[]): Array<{ inicio: number; tam
 export function montarGrade(
   automations: Automation[],
   stageIds: string[],
+  /** Passos por automação (planos, ramos incluídos). Sem eles, só os cartões de gatilho. */
+  steps: Record<string, AutomationStep[]> = {},
 ): LinhaDaGrade[] {
   const posicao = new Map(stageIds.map((id, i) => [id, i]))
   const linhas: LinhaDaGrade[] = []
+
+  const empilhar = (cartao: CartaoDaGrade) => {
+    const linha = linhas.find((l) => cabeNaLinha(l, cartao))
+    if (linha) linha.push(cartao)
+    else linhas.push([cartao])
+  }
 
   for (const a of automations) {
     if (a.trigger_type !== 'deal_stage_changed') continue
@@ -77,7 +98,7 @@ export function montarGrade(
     const alvo = (a.trigger_config as DealStageTriggerConfig | undefined)?.stage_ids
     const semEscolha = !Array.isArray(alvo) || alvo.length === 0
 
-    let cartoes: Array<Omit<CartaoDaGrade, 'automation'>>
+    let cartoes: Array<Omit<CartaoDaGrade, 'automation' | 'tipo'>>
     if (semEscolha) {
       // Sem etapa escolhida = todas. Ocupa a largura do quadro.
       if (stageIds.length === 0) continue
@@ -106,15 +127,56 @@ export function montarGrade(
       }))
     }
 
-    for (const c of cartoes) {
-      const cartao: CartaoDaGrade = { automation: a, ...c }
-      const linha = linhas.find((l) => cabeNaLinha(l, cartao))
-      if (linha) linha.push(cartao)
-      else linhas.push([cartao])
-    }
+    for (const c of cartoes) empilhar({ automation: a, tipo: 'gatilho', ...c })
   }
 
+  for (const c of cartoesDeChegada(automations, steps, posicao)) empilhar(c)
+
   return linhas
+}
+
+/**
+ * Para que etapas DESTE quadro uma automação leva o card. Só os passos que
+ * escrevem etapa: `move_deal_stage` e `create_deal` (que nasce numa etapa).
+ * Passo dentro de ramo conta — "pode chegar aqui" é verdade mesmo condicional.
+ */
+export function etapasParaOndeLeva(passos: AutomationStep[] | undefined, posicao: Map<string, number>): number[] {
+  const indices: number[] = []
+  for (const p of passos ?? []) {
+    if (p.step_type !== 'move_deal_stage' && p.step_type !== 'create_deal') continue
+    const stageId = (p.step_config as { stage_id?: unknown } | undefined)?.stage_id
+    const i = typeof stageId === 'string' ? posicao.get(stageId) : undefined
+    if (i !== undefined) indices.push(i)
+  }
+  return [...new Set(indices)].sort((a, b) => a - b)
+}
+
+/**
+ * Os cartões de CHEGADA: automações de outro gatilho que movem o card para
+ * uma etapa deste quadro. A de gatilho de etapa fica de fora de propósito —
+ * ela já tem cartão pela largura do gatilho, e um segundo cartão pela etapa
+ * de destino faria uma esteira de 5 regras virar 10 cartões.
+ */
+export function cartoesDeChegada(
+  automations: Automation[],
+  steps: Record<string, AutomationStep[]>,
+  posicao: Map<string, number>,
+): CartaoDaGrade[] {
+  const cartoes: CartaoDaGrade[] = []
+  for (const a of automations) {
+    if (a.trigger_type === 'deal_stage_changed') continue
+    for (const i of etapasParaOndeLeva(steps[a.id], posicao)) {
+      cartoes.push({
+        automation: a,
+        tipo: 'chegada',
+        colunaInicial: i,
+        colunas: 1,
+        todasAsEtapas: false,
+        temOutrosTrechos: false,
+      })
+    }
+  }
+  return cartoes
 }
 
 function cabeNaLinha(linha: LinhaDaGrade, novo: CartaoDaGrade): boolean {

@@ -249,11 +249,18 @@ export default function PipelinesPage() {
   // é fail-open consciente, igual ao `useChannels`: sem as automações o
   // operador perde a INFORMAÇÃO, não o quadro. Travar o Kanban porque um GET
   // não respondeu seria pior.
+  //
+  // ⚠️ TODAS as automações da conta, não só as de gatilho de etapa (07/09):
+  // a grade posiciona também os cartões de CHEGADA — regra de outro gatilho
+  // (Calendly, palavra-chave, tag…) que move o card para uma etapa deste
+  // funil. Filtrar por `deal_stage_changed` aqui escondia a automação do
+  // Calendly, e o operador foi procurá-la no funil e não achou. Quem decide
+  // o que vira cartão é `montarGrade`; o raio do Kanban continua contando só
+  // o que dispara na etapa (`contarAtivasNaEtapa` ignora os outros gatilhos).
   const loadAutomations = useCallback(async () => {
     const { data, error } = await supabase
       .from("automations")
       .select("*")
-      .eq("trigger_type", "deal_stage_changed")
       .order("created_at", { ascending: false });
     if (error) {
       console.error("Failed to load stage automations:", error.message);

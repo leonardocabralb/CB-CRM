@@ -404,6 +404,14 @@ banco para isso e não deve haver. O que morde código novo:
   no motor.
 - **Há teste comparando `classificarNaEtapa` com o `triggerMatches` de
   verdade**, importado do `engine.ts`. Se a regra do motor mudar, ele quebra.
+- ⚠️ **Dois TIPOS de cartão desde 07/09/2026 (`CartaoDaGrade.tipo`):**
+  `gatilho` (largura = `trigger_config.stage_ids`, "dispara ao entrar") e
+  `chegada` (automação de OUTRO gatilho que LEVA o card para a etapa — a
+  coluna é o `stage_id` do `move_deal_stage`/`create_deal`, sempre 1
+  coluna, sem "expandir": mudar a etapa é editar o passo). Automação de
+  gatilho de etapa NÃO ganha cartão de chegada — já tem o do gatilho, e
+  uma esteira de 5 regras viraria 10 cartões. `contarAtivasNaEtapa` (o
+  raio do Kanban) continua contando só o que DISPARA na etapa.
 
 ⚠️ **Mensagem agendada (925/926): NADA dispara sozinho.** A tabela guarda a
 linha; quem a transforma em mensagem é um agendador EXTERNO batendo em
@@ -2683,9 +2691,11 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   três consultas. A chave do campo é a `field_key` do catálogo (948), não
   o nome exibido. Links usam `NEXT_PUBLIC_SITE_URL`; sem ela, caminho
   relativo.
-- **A grade por etapa do funil NÃO mostra esta automação** (`classificarNaEtapa`
-  só olha `deal_stage_changed`): ela vive em Automações. Não é omissão —
-  a grade é "o que dispara AO ENTRAR na etapa".
+- **Na grade por etapa do funil ela aparece como cartão de CHEGADA** sob
+  "Reunião Agendada" (07/09): `cartoesDeChegada` em `grade-do-funil.ts`
+  posiciona automação de OUTRO gatilho pela etapa de destino do
+  `move_deal_stage`/`create_deal`. O operador foi procurá-la no funil e não
+  achou — a grade só conhecia gatilho de etapa.
 
 ## Branches — criação e nomenclatura
 
