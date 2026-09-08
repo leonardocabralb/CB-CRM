@@ -3,8 +3,15 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 
 /**
- * Ficha + conversa de um NÚMERO que a automação quer avisar (`send_to_number`,
- * migration 977) — a equipe, não o cliente do disparo.
+ * Ficha + conversa de um NÚMERO, quando o CRM precisa falar com ele e ainda
+ * não há contato. DOIS chamadores, e a diferença entre eles importa:
+ *
+ *   - `send_to_number` (977): o número da EQUIPE que a automação avisa.
+ *   - o agendamento do Calendly (08/09/2026): o CLIENTE que marcou horário e
+ *     nunca escreveu para o escritório. Decisão do operador, revendo a D2 do
+ *     plano — até aqui a ficha dele nascia por acaso, quando o outro CRM
+ *     mandava a primeira mensagem pelo celular pareado, e o Calendly ficava
+ *     dependendo de um sistema que vai ser desligado.
  *
  * É o mesmo find-or-create da API pública (`resolveConversationByPhone`), com
  * duas diferenças de propósito:
@@ -37,7 +44,7 @@ export async function resolverDestinatario(
   const busca = await findExistingContact(db, accountId, digitos)
   // ⚠️ Erro de banco NÃO é "não encontrado": seguir criando duplicaria a
   // ficha (a variante de tronco passa pelo índice único).
-  if (busca.falhou) throw new Error('send_to_number: busca do contato falhou')
+  if (busca.falhou) throw new Error('destinatário: busca do contato falhou')
 
   let contactId: string | null = busca.contato?.id ?? null
   let criouContato = false
@@ -47,7 +54,7 @@ export async function resolverDestinatario(
     if (donoDaConta) return donoDaConta
     const { data, error } = await db.from('accounts').select('owner_user_id').eq('id', accountId).maybeSingle()
     const dono = typeof data?.owner_user_id === 'string' ? data.owner_user_id : null
-    if (error || !dono) throw new Error('send_to_number: dono da conta não resolvido')
+    if (error || !dono) throw new Error('destinatário: dono da conta não resolvido')
     donoDaConta = dono
     return dono
   }
@@ -62,7 +69,7 @@ export async function resolverDestinatario(
     if (error || !criado) {
       // Corrida com uma entrada do mesmo número: o índice único (022) recusou.
       const de_novo = isUniqueViolation(error) ? (await findExistingContact(db, accountId, digitos)).contato : null
-      if (!de_novo) throw new Error(`send_to_number: não foi possível criar o contato (${error?.message ?? '?'})`)
+      if (!de_novo) throw new Error(`destinatário: não foi possível criar o contato (${error?.message ?? '?'})`)
       contactId = de_novo.id
     } else {
       contactId = criado.id as string
@@ -79,7 +86,7 @@ export async function resolverDestinatario(
     .eq('contact_id', contatoId)
     .order('created_at', { ascending: true })
     .limit(1)
-  if (erroBusca) throw new Error(`send_to_number: busca da conversa falhou (${erroBusca.message})`)
+  if (erroBusca) throw new Error(`destinatário: busca da conversa falhou (${erroBusca.message})`)
   if (existente && existente.length > 0) {
     return { contactId: contatoId, conversationId: existente[0].id as string, criouContato }
   }
@@ -101,7 +108,7 @@ export async function resolverDestinatario(
         .limit(1)
       if (raced && raced.length > 0) return { contactId: contatoId, conversationId: raced[0].id as string, criouContato }
     }
-    throw new Error(`send_to_number: não foi possível criar a conversa (${erroNova?.message ?? '?'})`)
+    throw new Error(`destinatário: não foi possível criar a conversa (${erroNova?.message ?? '?'})`)
   }
   return { contactId: contatoId, conversationId: nova.id as string, criouContato }
 }

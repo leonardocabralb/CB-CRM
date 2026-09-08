@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { verificarAssinatura } from "@/lib/calendly/assinatura";
 import { eventoDoCorpo, lerAgendamento } from "@/lib/calendly/payload";
 import { gravarResultado, processarAgendamento } from "@/lib/calendly/processar";
+import { variaveisDoAgendamento } from "@/lib/calendly/variaveis";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import { decrypt } from "@/lib/whatsapp/encryption";
 
@@ -22,7 +23,9 @@ import { decrypt } from "@/lib/whatsapp/encryption";
  *      novo — quem decide é o UNIQUE da 977, não um `if`;
  *   5. responde 200 e processa em `after()`: o Calendly espera 15 s, e a
  *      automação pode mandar WhatsApp (segundos) — segurar a resposta é
- *      convidar a retentativa.
+ *      convidar a retentativa. ⚠️ O processamento CRIA a ficha do cliente
+ *      quando o telefone ainda não é de nenhum contato (08/09/2026) — ver
+ *      `processar.ts`.
  *
  * Evento que não é `invitee.created` (assinatura feita à mão com outros
  * eventos) responde 200 e não grava: 4xx faria o Calendly retentar por 24h
@@ -87,6 +90,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         fim: agendamento.fim,
         link: agendamento.link,
         perguntas: agendamento.perguntas,
+        // As variáveis que ESTE agendamento entregou ao motor (979): é o que
+        // torna "Processar de novo" fiel — a linha não guarda local, cancelar,
+        // remarcar nem situação em coluna, e remontá-las daria menos do que a
+        // primeira vez, em silêncio.
+        variaveis: variaveisDoAgendamento(agendamento),
         resultado: "recebido",
       },
       { onConflict: "account_id,evento,invitee_uri", ignoreDuplicates: true },

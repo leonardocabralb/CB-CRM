@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { RESULTADOS_REPROCESSAVEIS } from "@/lib/calendly/log";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { CartaoDoCalendly, EventoDoCalendly } from "@/lib/calendly/cartao";
@@ -75,6 +76,7 @@ export function CalendlyCard() {
   const [pagina, setPagina] = useState(1);
   const [paginaCarregada, setPaginaCarregada] = useState<{ pagina: number; eventos: EventoDoCalendly[] } | null>(null);
   const [carregandoPagina, setCarregandoPagina] = useState(false);
+  const [reprocessando, setReprocessando] = useState<string | null>(null);
   const vivoRef = useRef(true);
   const dadosRef = useRef<Resposta | null>(null);
   dadosRef.current = dados;
@@ -207,6 +209,33 @@ export function CalendlyCard() {
       if (vivoRef.current) toast.error(t("recarregarFalhou"));
     } finally {
       if (vivoRef.current) setCarregandoPagina(false);
+    }
+  };
+
+  /**
+   * "Processar de novo" numa linha do log. Existe porque o motivo de um
+   * agendamento não ter disparado costuma ser passageiro e externo — o
+   * telefone ainda não era de nenhum contato (a ficha nasce segundos
+   * depois), a automação ainda não existia. Depois de arrumar, o operador
+   * não tinha como pedir a repetição sem marcar outro horário no Calendly.
+   */
+  const reprocessar = async (id: string) => {
+    setReprocessando(id);
+    try {
+      const res = await fetch(`/api/cb/calendly/eventos/${id}/reprocessar`, { method: "POST" });
+      const corpo = (await res.json().catch(() => null)) as { resultado?: string; error?: string } | null;
+      if (!res.ok) {
+        toast.error(corpo?.error === "ja_processado" ? t("calendly.jaProcessado") : t("calendly.reprocessarFalhou"));
+        return;
+      }
+      toast.success(t("calendly.reprocessado", { resultado: rotuloDoResultado(corpo?.resultado ?? "") }));
+      // Recarrega o cartão inteiro: o resultado da linha mudou, e com ele as
+      // contagens do rodapé.
+      await carregar();
+    } catch {
+      toast.error(t("calendly.reprocessarFalhou"));
+    } finally {
+      if (vivoRef.current) setReprocessando(null);
     }
   };
 
@@ -370,6 +399,8 @@ export function CalendlyCard() {
                 onToggle={() => setLogAberto((a) => !a)}
                 eventoAberto={eventoAberto}
                 onAbrirEvento={(id) => setEventoAberto((atual) => (atual === id ? null : id))}
+                onReprocessar={(id) => void reprocessar(id)}
+                reprocessando={reprocessando}
                 t={t}
                 rotuloDoResultado={rotuloDoResultado}
                 rotuloDaOrigem={rotuloDaOrigem}
@@ -398,6 +429,8 @@ function LogDeRecebimentos({
   onToggle,
   eventoAberto,
   onAbrirEvento,
+  onReprocessar,
+  reprocessando,
   t,
   rotuloDoResultado,
   rotuloDaOrigem,
@@ -412,6 +445,9 @@ function LogDeRecebimentos({
   onToggle: () => void;
   eventoAberto: string | null;
   onAbrirEvento: (id: string) => void;
+  onReprocessar: (id: string) => void;
+  /** id da linha em processamento, ou null. */
+  reprocessando: string | null;
   t: ReturnType<typeof useTranslations>;
   rotuloDoResultado: (r: string) => string;
   rotuloDaOrigem: (o: string | null) => string | null;
@@ -553,6 +589,20 @@ function LogDeRecebimentos({
                                   )}
                                 </dd>
                               </dl>
+                              {(RESULTADOS_REPROCESSAVEIS as readonly string[]).includes(e.resultado) && (
+                                <div className="mt-2 flex items-center gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => onReprocessar(e.id)}
+                                    disabled={reprocessando !== null}
+                                  >
+                                    {reprocessando === e.id ? t("calendly.reprocessando") : t("calendly.reprocessar")}
+                                  </Button>
+                                  <span className="text-xs text-muted-foreground">{t("calendly.reprocessarAjuda")}</span>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         )}
