@@ -1357,7 +1357,14 @@ export function MessageThread({
         reply_to_message_id: payload.replyToId,
       };
       publicarMensagemOtimista(optimisticMsg);
-      setReplyTo(null);
+      // ⚠️ A CITAÇÃO NÃO É LIMPA AQUI. Quem limpa é o compositor, pelo
+      // `onClearReply`, e só depois de a fila INTEIRA ter saído. Os três
+      // retornos `false` abaixo mantêm o anexo na fila para o operador
+      // tentar de novo (PR #146), e `MediaDraft` não guarda o id da
+      // citada — ela é lida de `replyTo` a cada envio. Limpando aqui, a
+      // segunda tentativa saía SEM a citação, enquanto a bolha falhada no
+      // fio continuava mostrando a resposta que o retry não carrega: o
+      // anexo trocava de contexto em silêncio (achado do Codex no PR #146).
 
       // Mesmo portão do texto (ver `janelaFechadaAgora`), e aqui o vão é
       // maior:
