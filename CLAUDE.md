@@ -74,12 +74,26 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API.
   serve ao CI que replaya as migrations contra um Postgres limpo. **A CLI
   continua não-linkada** — o `config.toml` não muda a regra de nunca usar
   `supabase db push` (ver seção de migrations).
-- `messages/` — dicionários i18n: `en.json` (referência), `pt-BR.json` (o que o
-  app usa hoje) e `ko.json` (veio do upstream, não usamos). Ver seção "i18n".
+- `messages/` — dicionários i18n: `en.json` (referência) e `pt-BR.json` (o que
+  o app usa hoje), os dois COMPLETOS e em paridade. Ver seção "i18n".
+  ⚠️ O `ko.json` do upstream foi APAGADO em 2026-09-08: tinha 1.472 chaves
+  contra 3.070, e `src/i18n/request.ts` carrega o arquivo se ele existir —
+  então `NEXT_PUBLIC_APP_LOCALE=ko` entregava metade da tela como caminho
+  de chave cru. Sem o arquivo, aquele valor cai em inglês. **Todo merge do
+  upstream vai trazê-lo de volta: apagar de novo.**
 - `mcp-server/` — subprojeto separado (tem `package.json` próprio) que expõe o
   CRM via MCP. Rodar `npm` dentro dele, não na raiz.
-- `docs/` — `mcp.md`, `public-api.md`. A doc completa de self-host vive em
-  `wacrm.tech/docs` (repo separado `ArnasDon/wacrm-site`).
+- `docs/` — a documentação ENTREGUE a quem instala o sistema: `README.md`
+  (índice), `INSTALACAO.md` (do zero até o WhatsApp conectado), `ATUALIZAR.md`,
+  `docker.md`, `public-api.md` e `mcp.md`. ⚠️ Até 2026-09-08 esta linha dizia
+  que a doc de self-host vivia no site do projeto ORIGINAL — verdade enquanto
+  éramos só um fork de uso interno, e mentira a partir do momento em que o
+  código passou a ser instalado por outra pessoa. O `SETUP-PRODUCAO.md` foi
+  apagado no mesmo dia (mandava instalar numa hospedagem abandonada e afirmava
+  que o português não existia); quem o procurar acha o `INSTALACAO.md`.
+  ⚠️ Os demais arquivos de `docs/` (`PLANO-*`, `INFRA-VPS`, `DEPLOY-VPS`,
+  `EVOLUTION-LID-FIX`) são INTERNOS: descrevem a nossa operação e não vão para
+  quem instala. Ver `docs/PLANO-produto-vendavel.md`, Fase 4.4.
 - `.env.local` — segredos (Supabase URL/keys, `META_APP_SECRET`,
   `ENCRYPTION_KEY`). Gitignored; **nunca commitar**. Modelo em
   `.env.local.example`.
@@ -198,16 +212,23 @@ as que voltam a conflitar):
   existisse `needs:` — um CI vermelho não impedia a publicação. **Todo merge do
   upstream vai trazer `ci.yml` e `migrations.yml` de volta: apagar de novo**, ou
   as etapas passam a rodar duas vezes por push.
-  ⚠️ **O replay de migrations NÃO segura o deploy**, e o próprio
-  `pipeline.yml` diz isso por escrito ("SINAL, não portão"): `deploy` tem
-  `needs: [verificar]` e mais nada. Migration vermelha no `main` PUBLICA
-  assim mesmo — medido em 2026-08-31, revisando o trem de PRs do dia
-  anterior. Esta seção afirmava "com as duas etapas verdes"; era mentira, e
-  mentira do tipo que faz alguém confiar num portão que não existe.
+  ✅ **O replay de migrations SEGURA o deploy desde 2026-09-08**:
+  `needs: [verificar, migrations]`. Durante meses foi só `[verificar]`, e
+  migration vermelha no `main` publicava assim mesmo (medido em
+  2026-08-31) — a etapa era SINAL porque as migrations históricas ainda
+  carregavam a dívida do banco vazio. A dívida foi paga (as duas regras
+  estão na seção de migrations), a etapa vinha verde, e manter o portão
+  aberto só preservava o buraco: quem descobriria a migration quebrada
+  seria a PRÓXIMA instalação, que constrói o banco do zero e não tem
+  produção antiga para disfarçar. Há pino em
+  `.github/workflows/pipeline.test.ts` — tirar `migrations` do `needs`
+  reprova o CI.
 
 - **`src/i18n/messages.test.ts` checa `pt-BR`, não `ko`.** O upstream o escreveu
   para `ko`, que não servimos; deixar assim daria um teste permanentemente
-  vermelho sobre um idioma que ninguém usa. Ao mesclar, ele volta com `['ko']`.
+  vermelho sobre um idioma que ninguém usa. Ao mesclar, ele volta com `['ko']`
+  — e junto volta o `messages/ko.json`, que foi apagado (ver a nota em
+  "Estrutura"). Apagar os dois de novo.
 
 **Decisão fixada no merge de 2026-09-05** (upstream #532, o upload de CSV do
 assistente de broadcast — 1 PR, o único desde o merge anterior):
@@ -2897,6 +2918,67 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   (Codex, PR #131) — o cartão afirmaria movimento de regra que não roda; há
   teste amarrando essa lista ao `TRIGGER_OPTIONS` do builder.
 
+⚠️ **A MARCA vem de `src/lib/marca.ts`, nunca de literal nem do dicionário.**
+`NOME_DO_APP` (de `NEXT_PUBLIC_APP_NAME`, com queda no genérico `'CRM'`) e
+`LOGO_DO_APP` (de `NEXT_PUBLIC_APP_LOGO_URL`, opcional). Nasceu do
+levantamento de venda (`docs/PLANO-produto-vendavel.md`): o nome do produto
+estava em TRÊS fontes que podiam discordar, e mais sete frases citavam a
+marca do projeto original. O que morde código novo:
+
+- ⚠️ **Nome de produto não é tradução.** `Sidebar.title` foi REMOVIDA dos
+  dois dicionários; a barra lateral e o `metadata` do `layout.tsx` leem
+  `NOME_DO_APP` direto. Recriar a chave faz renomear o sistema exigir editar
+  dois dicionários — e faz o nome divergir entre os idiomas.
+- ⚠️ **O padrão no código é genérico DE PROPÓSITO.** Quem dá nome à nossa
+  produção é o build-arg `NEXT_PUBLIC_APP_NAME` no `pipeline.yml`. Escrever
+  "CB Advogados" em `marca.ts` faria a instalação de outra pessoa nascer se
+  apresentando como a nossa — e o `scripts/produto-gate.test.ts` reprova.
+- ⚠️ **É build-arg, não env de runtime** (todo `NEXT_PUBLIC_*` é inlinado no
+  bundle): mudar o `crm.env` da VPS não muda o nome. Mesma armadilha do
+  `NEXT_PUBLIC_APP_LOCALE`, registrada em "Deploy".
+- ⚠️ **Frase de UI não cita o nome do produto** — nem o nosso, nem o do
+  upstream. Onde o nome é necessário, ele entra como `{appName}` (é o caso
+  de `SignupPage.description` e `Settings.invite.whatsappMessage`); onde não
+  é, a frase diz "este CRM". Merge do upstream reintroduz "wacrm" em toda
+  chave nova.
+
+⚠️ **`scripts/produto-gate.test.ts` reprova a nossa infraestrutura em código
+que viaja.** Proíbe `cbadvogados`, `CBAdvNet`, o IP da VPS, o ref do
+Supabase, as duas contas do GitHub e o domínio de marketing do upstream em
+`src/`, `messages/`, `supabase/` e na raiz. **Escopo estreito de propósito**:
+`docs/`, `ops/`, `CLAUDE.md`, `docker-stack.yml` e os workflows ainda
+descrevem a nossa infra e ficam de fora até as Fases 1 e 4.4 do plano.
+Exceção nova entra em `EXCECOES` com o motivo escrito, nunca alargando o
+padrão.
+
+⚠️ **Recuperação de senha: `/auth/callback` e `/reset-password` existem
+desde 2026-09-08, e são um par.** A tela de "esqueci a senha" aponta para as
+duas desde o upstream e nenhuma existia — o e-mail chegava e o link caía em
+404. Apagar uma apaga a recuperação de senha inteira. O que morde código
+novo:
+
+- ⚠️ **O `next` do callback passa por `destinoSeguro`** (`src/lib/auth/
+  destino-seguro.ts`, puro, com teste), nunca cru: com o navegador já
+  autenticado, um `next` para outro host é open redirect no exato momento
+  em que a pessoa está disposta a digitar uma senha. A régua é a ORIGEM
+  RESOLVIDA — `//evil.com`, `/\evil.com`, `https://evil.com` e
+  `javascript:` passam por `startsWith('/')` e morrem na comparação de
+  origem.
+- ⚠️ **As duas rotas ficam FORA do `protectedPaths` do middleware.** Quem
+  chega no callback ainda não tem sessão; protegê-lo mandaria a pessoa para
+  o login levando o `code` embora, e o código do e-mail é de uso único.
+- ⚠️ **A instalação precisa de `<origem>/auth/callback` na lista de
+  redirects do Supabase** (Authentication → URL Configuration), ao lado do
+  `/join/*` que já existia. Está escrito no `docs/INSTALACAO.md`.
+
+⚠️ **`scripts/env-documentado.test.ts` cobra o `.env.local.example`.** Toda
+`process.env.X` lida em `src/` tem de aparecer lá como `X=`, comentada ou
+não. Existe porque três variáveis da Evolution (`EVOLUTION_BASE_URL`,
+`EVOLUTION_GLOBAL_API_KEY`, `EVOLUTION_WEBHOOK_SECRET`) eram lidas pelo
+transporte que a produção usa e não estavam documentadas: quem copiasse o
+exemplo e preenchesse tudo terminava sem WhatsApp e sem uma linha dizendo o
+que faltava. `mcp-server/` fica fora (tem `.env.example` e doc próprios).
+
 ## Branches — criação e nomenclatura
 
 - **Toda branch nova sai única e exclusivamente de `main`** e faz merge **de
@@ -3162,8 +3244,12 @@ reprovavam por falta de dado, não por defeito.
 **Como conferir antes de abrir o PR:** `supabase db start` na raiz do projeto
 reaplica tudo do zero, igual ao CI. Exige Docker rodando e ~2 GB livres.
 
-**O replay NÃO trava o deploy** — ver a nota em `pipeline.yml`. Ele é sinal, não
-portão, justamente porque as migrations antigas ainda carregam essa dívida.
+**O replay TRAVA o deploy desde 2026-09-08** — `needs: [verificar, migrations]`
+no `pipeline.yml`, com pino em `pipeline.test.ts`. Foi sinal, não portão,
+enquanto as migrations antigas ainda carregavam a dívida das duas causas acima;
+paga a dívida, manter o portão aberto só preservava o buraco. Quem descobriria
+uma migration que não replaya seria a PRÓXIMA instalação — a que constrói o
+banco do zero e não tem produção antiga para disfarçar o defeito.
 
 ## i18n (armadilhas que já morderam)
 
@@ -3260,10 +3346,9 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
 
 - ⚠️⚠️ **`git push origin main` DISPARA DEPLOY DE PRODUÇÃO.** O workflow
   `.github/workflows/pipeline.yml` roda a cada push no `main`: verifica
-  (lint/typecheck/test/build), replaya as migrations num banco limpo e, com a
-  etapa **`verificar`** verde — só ela; o replay de migrations é SINAL, não
-  portão, e migration vermelha publica assim mesmo —, builda a imagem,
-  publica no GHCR
+  (lint/typecheck/test/build), replaya as migrations num banco limpo e, com
+  as **DUAS** etapas verdes (`needs: [verificar, migrations]` desde
+  2026-09-08), builda a imagem, publica no GHCR
   (`ghcr.io/leonardocabralb/cb-crm`) e faz rollout no serviço do **Docker Swarm
   da VPS** (`82.25.76.63` / `vps.cbadvogados.com`), atrás do **Traefik** (TLS
   Let's Encrypt). O rollout é `docker service update --image <repo>:<sha>` —

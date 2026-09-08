@@ -41,7 +41,7 @@ describe('tokenSobOCursor', () => {
   });
 
   it('IGNORA o @ de um e-mail — ele não vem depois de espaço', () => {
-    const texto = 'mandar para leo@cbadvogados';
+    const texto = 'mandar para leo@exemplo';
     expect(tokenSobOCursor(texto, texto.length)).toBeNull();
   });
 

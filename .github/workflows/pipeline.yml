@@ -130,19 +130,26 @@ jobs:
   # ------------------------------------------------------------
   # Etapa 2 — as migrations aplicam num banco vazio?
   # ------------------------------------------------------------
-  # ⚠️ NÃO BLOQUEIA O DEPLOY, de propósito. Esta etapa é valiosa — foi ela
-  # que achou o privilégio herdado que quatro migrations nossas assumiam e
-  # a conferência da 922 que acusava o próprio comentário. Mas as migrations
-  # históricas deste repositório nunca foram escritas para reaplicar do
-  # zero: elas cresceram contra um banco que já existia, e várias conferem
-  # DADOS de produção. Pôr o deploy atrás disso transforma uma dívida antiga
-  # em impedimento de publicar, o que é o trade errado — o que precisa
-  # gatear o deploy é o código, e disso cuida a etapa `verificar`.
+  # ⚠️ ESTA ETAPA SEGURA O DEPLOY desde 2026-09-08 — ela está no `needs` do
+  # job `deploy`, e é para continuar assim.
   #
-  # Enquanto a dívida não for paga, esta etapa é SINAL, não portão: falha
-  # aqui aparece vermelha no PR e merece conserto, mas não segura a
-  # publicação. Quando as migrations replayarem limpas, basta acrescentá-la
-  # de volta ao `needs` do deploy.
+  # Durante meses ela foi SINAL, não portão, e o comentário que morava aqui
+  # explicava por quê: as migrations históricas cresceram contra um banco
+  # que já existia, várias conferiam DADOS de produção, e nove reprovaram
+  # na primeira vez que o CI as reaplicou do zero. Pôr o deploy atrás
+  # daquilo teria transformado uma dívida antiga em impedimento de
+  # publicar.
+  #
+  # A dívida foi paga (as duas regras estão no CLAUDE.md: todo REVOKE tem
+  # GRANT de volta, e conferência não exige dado que só existe aqui), e a
+  # etapa vinha verde. Manter o portão aberto depois disso só preservava o
+  # buraco: migration vermelha no `main` publicava assim mesmo, em
+  # silêncio, e quem descobriria seria a PRÓXIMA instalação — que constrói
+  # o banco do zero e não tem produção antiga para disfarçar.
+  #
+  # Custo aceito: falha de infraestrutura desta etapa (download da CLI,
+  # `supabase db start`) segura um deploy que o código aprovaria. É
+  # recuperável com um re-run; migration que não replaya, não.
   #
   # Sem filtro de caminho: como job, um filtro a deixaria "skipped", e job
   # pulado dentro de `needs` pula quem depende dele.
@@ -187,9 +194,9 @@ jobs:
   # "publicar".
   deploy:
     name: Build image and roll out on the VPS
-    # Só `verificar`. Ver a nota na etapa `migrations` sobre por que ela
-    # não entra aqui.
-    needs: [verificar]
+    # As DUAS: o código de pé (`verificar`) e o banco reconstruível do zero
+    # (`migrations`). Ver a nota na etapa `migrations`.
+    needs: [verificar, migrations]
     # ⚠️ O PORTÃO É A REF, NÃO O EVENTO. Era `github.event_name !=
     # 'pull_request'`, que dizia "não é PR" onde o comentário acima promete
     # "só no main" — e `workflow_dispatch` não tem filtro de branch no `on:`.
@@ -286,11 +293,19 @@ jobs:
           # esse prefixo é inlinado no bundle EM TEMPO DE BUILD. Mudar o
           # `crm.env` da VPS não muda nada aqui — o idioma, por exemplo,
           # só troca alterando esta linha e rebuildando.
+          # ⚠️ `NEXT_PUBLIC_APP_NAME` PRECISA passar por aqui. O padrão no
+          # código (`src/lib/marca.ts`) é o genérico "CRM", de propósito:
+          # aquele arquivo viaja para quem instalar o sistema, e um padrão
+          # com nome de escritório faria a instalação de outra pessoa
+          # nascer se apresentando como a nossa. Quem dá nome à NOSSA
+          # produção é esta linha. Removê-la não quebra nada — só troca o
+          # título da aba e da barra lateral por "CRM".
           build-args: |
             NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
             NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
             NEXT_PUBLIC_SITE_URL=https://crm.cbadvogados.com
             NEXT_PUBLIC_APP_LOCALE=pt-BR
+            NEXT_PUBLIC_APP_NAME=CB Advogados CRM
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

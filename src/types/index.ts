@@ -714,7 +714,7 @@ export interface WhatsAppConfig {
   last_registration_error?: string;
 
   // --- Evolution API fields (provider = 'evolution') ---------
-  /** Evolution server origin, e.g. `https://api.cbadvogados.com`. */
+  /** Evolution server origin, e.g. `https://api.example.com`. */
   base_url?: string;
   /** Evolution instance name (also the inbound-routing key). */
   instance_name?: string;

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -16,8 +17,23 @@ import {
 } from "@/components/ui/card";
 import { MessageSquare, CheckCircle, ArrowLeft } from "lucide-react";
 
+// `useSearchParams` tira o componente do prerender estático fora de um
+// Suspense — mesmo desenho da tela de login.
 export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ForgotPasswordPageInner />
+    </Suspense>
+  );
+}
+
+function ForgotPasswordPageInner() {
   const t = useTranslations("ForgotPasswordPage");
+  // `/auth/callback` manda para cá com `?erro=link` quando o código do
+  // e-mail está vencido, já foi usado ou não confere. Sem este aviso a
+  // pessoa voltaria ao formulário sem saber por quê, e provavelmente
+  // pediria o mesmo link de novo achando que tinha errado o e-mail.
+  const linkFalhou = useSearchParams().get("erro") === "link";
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -91,6 +107,12 @@ export default function ForgotPasswordPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {linkFalhou && !error && (
+            <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-500">
+              {t("linkExpired")}
+            </div>
+          )}
+
           <form onSubmit={handleReset} className="flex flex-col gap-4">
             {error && (
               <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">

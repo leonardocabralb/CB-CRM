@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ehUrlAlcancavel, motivoParaRecusar, segredoDoHeader } from './webhook-url';
 
-const PROD_ORIGEM = 'https://crm.cbadvogados.com';
+const PROD_ORIGEM = 'https://crm.exemplo.com';
 const PUBLICA = `${PROD_ORIGEM}/api/whatsapp/evolution/webhook`;
 const LOCAL = 'http://host.docker.internal:3000/api/whatsapp/evolution/webhook';
 const SEGREDO = 'segredo-de-producao';
@@ -20,10 +20,10 @@ describe('ehUrlAlcancavel', () => {
   it('aceita endereço público', () => {
     for (const url of [
       PUBLICA,
-      'https://api.cbadvogados.com',
-      'http://vps.cbadvogados.com:3000',
-      'https://82.25.76.63/webhook',
-      'https://crm.cbadvogados.com.', // FQDN absoluto continua público
+      'https://api.exemplo.com',
+      'http://vps.exemplo.com:3000',
+      'https://203.0.113.10/webhook',
+      'https://crm.exemplo.com.', // FQDN absoluto continua público
       'https://a1b2c3.trycloudflare.com/webhook',
     ]) {
       expect(ehUrlAlcancavel(url), url).toBe(true);
