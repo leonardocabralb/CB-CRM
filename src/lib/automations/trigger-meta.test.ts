@@ -1,6 +1,30 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { formatRelative } from './trigger-meta'
+import { formatRelative, GATILHOS_SEM_DISPARO, TRIGGER_META } from './trigger-meta'
+
+// ------------------------------------------------------------
+// `GATILHOS_SEM_DISPARO` é a lista do que existe no union sem call site. Dois
+// consumidores dependem dela dizer a verdade: o seletor do builder (que não
+// os oferece) e a grade do funil (que não desenha cartão de chegada para
+// eles). O segundo teste lê o FONTE do builder para amarrar as duas listas.
+// ------------------------------------------------------------
+
+describe('GATILHOS_SEM_DISPARO — o que não roda não é oferecido nem desenhado', () => {
+  it('são os dois aposentados do upstream, e existem no catálogo de rótulos', () => {
+    expect([...GATILHOS_SEM_DISPARO].sort()).toEqual(['conversation_assigned', 'time_based'])
+    for (const g of GATILHOS_SEM_DISPARO) expect(TRIGGER_META[g]).toBeDefined()
+  })
+
+  it('o seletor do builder (TRIGGER_OPTIONS) não oferece nenhum deles', () => {
+    const fonte = fs.readFileSync(path.join(__dirname, '../../components/automations/automation-builder.tsx'), 'utf8')
+    const bloco = fonte.match(/const TRIGGER_OPTIONS[^=]*=\s*\[([\s\S]*?)\]/)?.[1] ?? ''
+    expect(bloco).toContain('"calendly_booking"')
+    for (const g of GATILHOS_SEM_DISPARO) expect(bloco).not.toContain(`"${g}"`)
+  })
+})
 
 // ------------------------------------------------------------
 // `formatRelative` alimenta três telas em produção (lista de automações,

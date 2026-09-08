@@ -174,6 +174,7 @@ describe('cartões de chegada', () => {
     const a = outroGatilho('a', 'keyword_match')
     const steps = { a: [passo('a', 'create_deal', { pipeline_id: 'p', stage_id: 'e0' }), passo('a', 'move_deal_stage', { stage_id: 'de-outro-funil' })] }
     expect(etapasParaOndeLeva(steps.a, posicao)).toEqual([0])
+    expect(cartoesDeChegada([a], steps, posicao).map((c) => c.colunaInicial)).toEqual([0])
   })
 
   it('dois destinos = dois cartões; o mesmo destino duas vezes = um', () => {
@@ -188,6 +189,16 @@ describe('cartões de chegada', () => {
     expect(cartoesDeChegada([esteira], steps, posicao)).toEqual([])
     const grade = montarGrade([esteira], ETAPAS, steps)
     expect(grade.flat().map((c) => c.tipo)).toEqual(['gatilho'])
+  })
+
+  it('CRÍTICO: gatilho que NUNCA dispara (time_based, conversation_assigned) não ganha cartão de chegada', () => {
+    // Existem no banco desde o upstream sem call site nenhum (Codex, PR #131):
+    // o cartão afirmaria "esta regra leva o card para cá" sobre regra que não roda.
+    const steps = (id: string) => ({ [id]: [passo(id, 'move_deal_stage', { stage_id: 'e2' })] })
+    expect(cartoesDeChegada([outroGatilho('t', 'time_based')], steps('t'), posicao)).toEqual([])
+    expect(cartoesDeChegada([outroGatilho('c', 'conversation_assigned')], steps('c'), posicao)).toEqual([])
+    // …e o MESMO passo num gatilho que dispara continua aparecendo.
+    expect(cartoesDeChegada([outroGatilho('k', 'keyword_match')], steps('k'), posicao)).toHaveLength(1)
   })
 
   it('sem passos (ou automação que não move nada) não aparece', () => {

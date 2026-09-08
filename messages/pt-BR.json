@@ -2493,6 +2493,7 @@
         "resultado": {
           "recebido": "recebido",
           "disparado": "automação disparada",
+        "em_espera": "em espera (a automação parou num passo Aguardar)",
           "sem_automacao": "nenhuma automação escuta este evento",
           "sem_contato": "telefone não é de nenhum contato",
           "sem_telefone": "sem telefone no agendamento",

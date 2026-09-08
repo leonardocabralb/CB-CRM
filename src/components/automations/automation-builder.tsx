@@ -236,7 +236,9 @@ const ADDABLE_STEPS: AutomationStepType[] = [
  * Os dois seguem no union de tipos: automação antiga gravada com eles continua
  * carregando e salvando. Só não se oferece o que não acontece — opção que não
  * dispara é pior que opção ausente, porque o operador monta a regra, ativa, e
- * espera.
+ * espera. A lista deles mora em `GATILHOS_SEM_DISPARO` (`trigger-meta.ts`):
+ * a grade do funil a usa para não desenhar cartão de chegada de regra que
+ * não roda, e há teste cobrando que este seletor não ofereça nenhum deles.
  */
 const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "new_message_received" },

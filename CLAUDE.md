@@ -412,6 +412,8 @@ banco para isso e não deve haver. O que morde código novo:
   gatilho de etapa NÃO ganha cartão de chegada — já tem o do gatilho, e
   uma esteira de 5 regras viraria 10 cartões. `contarAtivasNaEtapa` (o
   raio do Kanban) continua contando só o que DISPARA na etapa.
+  Gatilho SEM call site (`GATILHOS_SEM_DISPARO`) não ganha cartão de
+  chegada nem de gatilho — regra que não roda não é desenhada (Codex, PR #131).
 
 ⚠️ **Mensagem agendada (925/926): NADA dispara sozinho.** A tabela guarda a
 linha; quem a transforma em mensagem é um agendador EXTERNO batendo em
@@ -2650,7 +2652,9 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   `resolveConversationByPhone` porque aquele módulo importa
   `api/v1/contacts.ts` → `tag-events.ts` → o motor (ciclo), e porque
   RENOMEIA contato existente — `contact_name` aqui só vale na criação.
-- ⚠️ **Passo que falha ENCERRA a execução** (`executeStepsFrom`, `break`).
+- ⚠️ **Passo que falha ENCERRA a execução** (`executeStepsFrom`, `break`) —
+  inclusive dentro de um ramo de condição, desde a 2ª rodada do Codex
+  (antes o ramo falhava e o escopo de fora seguia).
   Na automação criada, o aviso vem ANTES de `move_deal_stage`, que falha
   quando o contato não tem card aberto — o aviso do agendamento não pode
   depender do card.
@@ -2661,14 +2665,26 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   404 lá = `disabled` aqui (só reassinar resolve); 401 = token inválido;
   rede/limite = fica o que está. E toda entrega que chega grava
   `webhook_state = 'active'` — entrega chegando é prova de vida.
-- ⚠️ **`runAutomationsForTrigger` DEVOLVE o que fez** (`ResultadoDoDisparo`:
-  candidatas, fora do escopo, executadas, com falha, erro) — chamadores
-  antigos ignoram. O evento do Calendly grava `disparado` SÓ quando alguma
-  automação rodou sem falha; escopo de conexão/etapa barrando tudo é
-  `sem_automacao` com o motivo escrito, passo que falhou é `falhou`
-  (Codex, PR #128: antes tudo virava "disparado"). Para isso
-  `executeStepsFrom` devolve o status final no escopo de fora (`null` em
-  ramo aninhado) e `executeAutomation` o repassa.
+- ⚠️ **`dispararAutomacoes` DEVOLVE o que fez** (`ResultadoDoDisparo`:
+  candidatas, fora do escopo, executadas, com falha, EM ESPERA, erro) —
+  `runAutomationsForTrigger` continua `void` para os chamadores do upstream.
+  O evento do Calendly grava `disparado` SÓ quando alguma automação rodou
+  ATÉ O FIM sem falha; escopo de conexão/etapa barrando tudo é
+  `sem_automacao` com o motivo escrito, passo que falhou é `falhou`, e
+  execução parada num "Aguardar" é `em_espera` (978) — falha vence espera
+  (Codex, PR #128, duas rodadas: antes tudo virava "disparado", inclusive a
+  que nem tinha terminado). ⚠️ `em_espera` é TERMINAL para a linha do
+  evento: o agendador retoma a execução e escreve só em `automation_logs`;
+  o `detalhe` diz isso ao operador. Para isso `executeStepsFrom` devolve o
+  status do ESCOPO — e ramo aninhado devolve o dele em vez de `null`:
+  **passo que falha DENTRO de um ramo agora derruba a execução** (o escopo
+  de fora marca `failed` e PARA, como pararia fora do ramo); antes a
+  execução seguia e o log terminava "success" com `error_message`
+  preenchido. ⚠️ "Aguardar" DENTRO de ramo sobe como `partial` no RETORNO,
+  mas NÃO segura o escopo de fora: os passos seguintes rodam e o LOG
+  termina pelo status deles (semântica do upstream; o ramo continua pelo
+  agendador). Pinos em `engine.test.ts` ("ramo e espera") — o mock de
+  `automation_steps` recorta por escopo só por causa deles.
 - **A assinatura do webhook tenta `organization` e cai para `user`** (403):
   o token de quem não administra a organização só enxerga os próprios
   eventos. Token bom + webhook recusado grava `status='erro'` com o motivo
@@ -2695,7 +2711,11 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   "Reunião Agendada" (07/09): `cartoesDeChegada` em `grade-do-funil.ts`
   posiciona automação de OUTRO gatilho pela etapa de destino do
   `move_deal_stage`/`create_deal`. O operador foi procurá-la no funil e não
-  achou — a grade só conhecia gatilho de etapa.
+  achou — a grade só conhecia gatilho de etapa. ⚠️ Gatilho que NUNCA
+  dispara (`GATILHOS_SEM_DISPARO` em `trigger-meta.ts`: `time_based`,
+  `conversation_assigned`, sem call site) fica FORA dos cartões de chegada
+  (Codex, PR #131) — o cartão afirmaria movimento de regra que não roda; há
+  teste amarrando essa lista ao `TRIGGER_OPTIONS` do builder.
 
 ## Branches — criação e nomenclatura
 
@@ -2851,6 +2871,14 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
     rota. Aplicada em 2026-09-07 via conector, ANTES do merge, com
     autorização do operador; conferido por consulta (RLS, grants, histórico).
     Plano em `docs/PLANO-integracao-calendly.md`.
+  - **978_cb_calendly_em_espera** — o CHECK de `cb_calendly_eventos.resultado`
+    ganha `'em_espera'` (automação parada num "Aguardar"; Codex, 2ª rodada).
+    Aplicada em 2026-09-07 via conector, ANTES do merge do PR #132;
+    conferido no catálogo (o CHECK recriado com o mesmo nome que a 977 lhe
+    deu, `cb_calendly_eventos_resultado_check`, e a entrada no histórico).
+    Deploy antes dela não quebraria o app: `gravarResultado` falharia no
+    CHECK só para automação parada em "Aguardar" (log de erro, a linha do
+    evento ficaria `recebido`) — e a automação de produção não tem espera.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

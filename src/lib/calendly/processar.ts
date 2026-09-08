@@ -98,13 +98,19 @@ export async function processarAgendamento(
 
 /**
  * Puro: o que gravar no evento a partir do que o motor DISSE que fez.
- * "Disparado" só quando alguma automação rodou até o fim; o escopo de
- * conexão/etapa barrando tudo é `sem_automacao` com o motivo escrito, e um
- * passo que falhou é `falhou` — o log da automação tem o detalhe (achado
- * do Codex no PR #128: antes, tudo virava "disparado").
+ * "Disparado" só quando alguma automação rodou ATÉ O FIM; o escopo de
+ * conexão/etapa barrando tudo é `sem_automacao` com o motivo escrito, um
+ * passo que falhou é `falhou`, e execução parada num "Aguardar" é
+ * `em_espera` — o log da automação tem o detalhe (achados do Codex no PR
+ * #128: antes tudo virava "disparado", inclusive a que ainda nem tinha
+ * terminado). Falha vence espera: se uma das automações falhou, é isso que
+ * o operador precisa ver.
+ *
+ * ⚠️ `em_espera` NÃO é atualizado depois: o que vier após a espera (o
+ * agendador retoma, e pode falhar) fica só em `automation_logs`.
  */
 export function resultadoDoDisparo(
-  r: { executadas: number; foraDoEscopo: number; comFalha: number; erro?: string },
+  r: { executadas: number; foraDoEscopo: number; comFalha: number; emEspera: number; erro?: string },
   contactId: string | null,
 ): ProcessamentoDoAgendamento {
   if (r.erro) return { resultado: "falhou", detalhe: `o disparo não aconteceu: ${r.erro}`, contactId };
@@ -122,6 +128,13 @@ export function resultadoDoDisparo(
     return {
       resultado: "falhou",
       detalhe: `${r.comFalha} de ${r.executadas} automação(ões) terminou com erro — veja o histórico da automação`,
+      contactId,
+    };
+  }
+  if (r.emEspera > 0) {
+    return {
+      resultado: "em_espera",
+      detalhe: `${r.emEspera} de ${r.executadas} automação(ões) parou num passo "Aguardar" — o restante sai pelo agendador e fica no histórico da automação; esta linha não é atualizada depois`,
       contactId,
     };
   }

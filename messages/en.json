@@ -2500,6 +2500,7 @@
         "resultado": {
           "recebido": "received",
           "disparado": "automation fired",
+        "em_espera": "waiting (the automation stopped at a Wait step)",
           "sem_automacao": "no automation listens to this event",
           "sem_contato": "phone matches no contact",
           "sem_telefone": "no phone in the booking",

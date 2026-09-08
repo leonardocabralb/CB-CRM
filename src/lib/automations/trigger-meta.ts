@@ -57,6 +57,20 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
   },
 }
 
+/**
+ * Gatilhos que existem no union e no banco mas NUNCA são despachados — não
+ * há call site: `time_based` (nada além do cron o leria, e o cron só drena
+ * esperas; substituído por `date_field_offset`) e `conversation_assigned`
+ * (volta com a caixa de saída da Fase 2). O builder não os oferece
+ * (`TRIGGER_OPTIONS`, com teste lendo o fonte) e a grade do funil não desenha
+ * cartão de chegada para eles (Codex, PR #131): o cartão afirmaria "esta
+ * regra leva o card para cá" sobre regra que não roda.
+ */
+export const GATILHOS_SEM_DISPARO: ReadonlySet<AutomationTriggerType> = new Set<AutomationTriggerType>([
+  'time_based',
+  'conversation_assigned',
+])
+
 export function triggerMeta(t: AutomationTriggerType | string): TriggerMeta {
   return (
     TRIGGER_META[t as AutomationTriggerType] ?? {
