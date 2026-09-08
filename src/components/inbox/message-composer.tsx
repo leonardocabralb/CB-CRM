@@ -529,6 +529,14 @@ export function MessageComposer({
     onClearReplyRef.current = onClearReply;
   }, [onClearReply]);
 
+  // Mesmo padrão, para a CITAÇÃO: o envio da fila leva horas de operador
+  // entre o clique e o fim, e no fim precisamos saber se a citação ainda é
+  // a MESMA que a fila mandou — não qual está selecionada agora.
+  const citadaAtualRef = useRef(replyTo?.id);
+  useEffect(() => {
+    citadaAtualRef.current = replyTo?.id;
+  }, [replyTo?.id]);
+
   // Ref espelhando a pendente: o cleanup do efeito de desmontagem precisa do
   // valor mais recente sem re-registrar o efeito a cada tecla.
   const pendenteRef = useRef<{
@@ -1323,17 +1331,26 @@ export function MessageComposer({
     // — que iteraria sobre a MESMA fila capturada e mandaria todos os anexos
     // de novo ao cliente (achado do Codex no PR #144).
     if (drafts.length === 0 || busy || enviandoFilaRef.current !== 0) return;
-    // ⚠️ A MESMA guarda de origem de `stageUpload`, `escolherDoAcervo` e
-    // `finalizeRecording`: o compositor NÃO remonta na troca de conversa, e
-    // cada item da fila é um `await`. Sem ela, trocar de cliente no meio de
-    // uma fila de cinco deixava o laço seguir escrevendo no compositor do
-    // cliente NOVO — `setDrafts(restantes)` do ramo agendado devolvia à tela
-    // de B os anexos que sobraram de A, e o `onClearReply()` do fim apagava
-    // a citação que B acabou de escolher.
-    const origem = conversationId;
+    // ⚠️ A POSSE é também a GERAÇÃO que cancela este laço. O compositor NÃO
+    // remonta na troca de conversa e cada item da fila é um `await`: sem
+    // cancelar, trocar de cliente no meio de uma fila de cinco deixava o laço
+    // seguir escrevendo no compositor do cliente NOVO — o `setDrafts(...)` do
+    // ramo agendado devolvia à tela dele os anexos que sobraram do anterior, e
+    // o `onClearReply()` do fim apagava a citação que ele acabou de escolher.
+    //
+    // ⚠️⚠️ Comparar o `conversationId` NÃO basta, e essa foi a primeira versão
+    // (achado do Codex no PR #148): em A → B → A a conversa volta a ser a
+    // mesma, o laço abandonado de A volta a casar e retoma como se nada
+    // tivesse acontecido — mandando anexos cujos objetos o efeito de troca já
+    // apagou do bucket e limpando a citação da sessão NOVA de A. A posse é
+    // única por invocação e o efeito de troca a zera, então toda navegação
+    // invalida o laço velho PARA SEMPRE, qualquer que seja o caminho.
     const posse = ++proximaPosseRef.current;
     enviandoFilaRef.current = posse;
     setEnviandoFila(true);
+    // A citação que ESTA fila leva. Guardada porque o operador pode escolher
+    // outra enquanto os anexos saem, e o fim do laço não pode apagar a nova.
+    const citada = replyTo?.id;
     try {
 
     // ⚠️ DESVIO ANTES DE QUALQUER COISA, igual ao do texto (925). Com hora
@@ -1343,13 +1360,13 @@ export function MessageComposer({
         const restantes: MediaDraft[] = [];
         for (const item of drafts) {
           const legenda = podeTerLegenda(item.kind) ? item.caption.trim() : "";
-          const ok = await agendar(legenda, { anexo: item, replyToId: replyTo?.id });
+          const ok = await agendar(legenda, { anexo: item, replyToId: citada });
           // ⚠️ Só sai da fila quando DEU CERTO, e sem apagar o objeto do
           // bucket: ele passou a pertencer à agendada, e o disparador vai
           // buscá-lo lá daqui a horas. Falhou? O item fica na tela, com o
           // arquivo já subido, e a pessoa tenta de novo sem reanexar.
           if (!ok) restantes.push(item);
-          if (conversaAnteriorRef.current !== origem) return;
+          if (enviandoFilaRef.current !== posse) return;
         }
         setDrafts(restantes);
         setSelecionado(restantes[0]?.id ?? null);
@@ -1365,19 +1382,22 @@ export function MessageComposer({
           // trimmed caption, or undefined when blank.
           caption: podeTerLegenda(item.kind) ? item.caption.trim() || undefined : undefined,
           filename: item.kind === "document" ? item.filename : undefined,
-          replyToId: replyTo?.id,
+          replyToId: citada,
         });
         // ⚠️ PARA no primeiro que não entregou, e o item FICA na fila com o
         // arquivo ainda no bucket. Seguir daria um toast de erro por anexo
         // quando a causa é a mesma para todos (janela de 24h fechada, rede
         // fora) — e o operador perderia as legendas já escritas.
         if (!entregou) return;
-        if (conversaAnteriorRef.current !== origem) return;
+        if (enviandoFilaRef.current !== posse) return;
         // O objeto passou a ser da mensagem enviada — sai da fila sem recolher.
         setDrafts((atual) => atual.filter((d) => d.id !== item.id));
       }
       setSelecionado(null);
-      onClearReply?.();
+      // ⚠️ Só limpa se a citação ainda for a QUE SAIU. O operador pode clicar
+      // Responder noutra mensagem enquanto os anexos sobem, e limpar aqui
+      // apagaria a escolha que ele acabou de fazer (Codex, PR #148).
+      if (citadaAtualRef.current === citada) onClearReply?.();
     } finally {
       // ⚠️ CERCA DE POSSE: só solta quem ainda é o dono. Solto pelo efeito de
       // troca e com outro envio já em curso na conversa nova, limpar aqui
@@ -1387,7 +1407,7 @@ export function MessageComposer({
         setEnviandoFila(false);
       }
     }
-  }, [drafts, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar, conversationId]);
+  }, [drafts, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar]);
 
   /** Descarta UM item — recolhe o objeto, que subiu e não foi enviado. */
   const discardDraft = useCallback(

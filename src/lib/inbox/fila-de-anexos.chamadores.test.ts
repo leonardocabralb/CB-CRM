@@ -66,16 +66,27 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     expect(c).toContain('enviandoFilaRef.current !== 0');
   });
 
-  it('o laço da fila carrega a guarda de origem depois de cada await', () => {
+  it('o laço da fila é cancelado pela POSSE depois de cada await, não pelo id da conversa', () => {
     const c = compositor();
-    // A mesma guarda de `stageUpload`/`escolherDoAcervo`/`finalizeRecording`:
-    // sem ela o laço de A segue escrevendo no compositor de B — devolvendo
-    // à tela dele os anexos que sobraram de A e apagando a citação que ele
-    // acabou de escolher.
     const corpo = c.slice(c.indexOf('const sendDraft'), c.indexOf('const discardDraft'));
-    expect(corpo).toContain('const origem = conversationId;');
     // Um ponto por ramo: o agendado e o de enviar agora.
-    expect(ocorrencias(corpo, 'conversaAnteriorRef.current !== origem')).toBe(2);
+    expect(ocorrencias(corpo, 'if (enviandoFilaRef.current !== posse) return;')).toBe(2);
+    // ⚠️ Comparar o id da conversa NÃO serve: em A → B → A ele volta a casar
+    // e o laço abandonado de A retoma, mandando anexos cujos objetos já foram
+    // apagados e limpando a citação da sessão nova (Codex, PR #148).
+    expect(corpo).not.toContain('conversaAnteriorRef.current !== origem');
+  });
+
+  it('o fim da fila só limpa a citação se ela ainda for a que saiu', () => {
+    const c = compositor();
+    const corpo = c.slice(c.indexOf('const sendDraft'), c.indexOf('const discardDraft'));
+    // O operador pode clicar Responder noutra mensagem enquanto os anexos
+    // sobem; limpar o que estiver vigente apagaria a escolha nova.
+    expect(corpo).toContain('const citada = replyTo?.id;');
+    expect(corpo).toContain('if (citadaAtualRef.current === citada) onClearReply?.();');
+    // E o que a fila manda é a citação CAPTURADA, não a lida a cada volta.
+    expect(corpo).not.toContain('replyToId: replyTo?.id');
+    expect(ocorrencias(corpo, 'replyToId: citada')).toBe(2);
   });
 
   it('o envio de mídia NÃO limpa a citação — quem limpa é o fim da fila', () => {
