@@ -358,7 +358,10 @@
       "noteMentionHint": "Type @ to mention a teammate",
       "noteMentionFailed": "Note saved, but the mentioned teammates could not be notified.",
       "fromLibrary": "From library",
-      "acervoError": "Could not prepare the library file."
+      "acervoError": "Could not prepare the library file.",
+      "solteParaAnexar": "Drop here to attach",
+      "arquivoNaoSuportado": "File type not supported by WhatsApp. Accepts images (PNG, JPG, WebP), video (MP4, 3GP), PDF, Word, Excel, PowerPoint and text.",
+      "umAnexoPorVez": "One attachment per message — the other {ignorados} were ignored."
     },
     "bubble": {
       "transcricao": "Transcript",

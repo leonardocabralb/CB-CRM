@@ -2398,6 +2398,32 @@ que morde código novo:
   estático de i18n**: `editor.test.ts` as cobra nos dois dicionários, como
   `poderes.test.ts` faz com `poderes.<id>`.
 
+⚠️ **Anexo por ARRASTAR e por COLAR (08/09/2026).** `src/lib/inbox/arquivo-solto.ts`
+(puro, com teste) e os handlers em `message-composer.tsx`. Pedido do operador,
+que arrastava PDF para a conversa e nada acontecia. O que morde código novo:
+
+- ⚠️⚠️ **A lista de MIMEs é UMA** (`MIMES_ACEITOS`), e o `accept=` dos três
+  seletores deriva dela (`ACEITE_DO_SELETOR`). Duas listas divergiriam, e o
+  sintoma seria um arquivo aceito por uma porta e recusado pela outra —
+  falhando só no envio, longe da causa.
+- ⚠️⚠️ **Colagem COM TEXTO junto não vira upload** (`colagemEhAnexo`). Word e
+  Google Docs mandam texto e imagem no MESMO evento; interceptar ali
+  transformaria um Ctrl+V de texto num anexo e perderia o texto. Só colagem
+  sem texto algum é tratada como arquivo.
+- ⚠️ **`dragenter`/`dragleave` contam PROFUNDIDADE**, não ligam um booleano:
+  `dragleave` dispara ao passar de um filho para outro dentro da mesma zona,
+  e o destaque piscaria. E os handlers só interceptam quando
+  `dataTransfer.types` inclui `Files` — texto arrastado tem de continuar
+  caindo na caixa como texto.
+- ⚠️ **O alvo de soltura é `pointer-events-none`**: sem isso ele engole o
+  próprio `drop` que anuncia.
+- ⚠️ **Print colado ganha nome com carimbo** (`nomeParaColagem`): o Chrome
+  chama TODA colagem de `image.png`, então dois prints na mesma conversa
+  teriam o mesmo nome — e o nome viaja para o WhatsApp e para
+  `messages.media_filename` (969).
+- **Um anexo por vez**, com aviso de quantos foram ignorados: o compositor
+  carrega um só, e soltar três em silêncio esconderia dois.
+
 ⚠️ **Anotação interna: são QUATRO telas, e o que as une mora em dois arquivos.**
 `src/hooks/use-apagar-nota.ts` e `src/components/inbox/cartao-de-nota.tsx`.
 Até 2026-09-02 a aba Notas do painel e a do grupo mostravam a anotação SEM
