@@ -63,9 +63,9 @@ import {
 } from "@/lib/inbox/whatsapp-format";
 import {
   ACEITE_DO_SELETOR,
+  arquivoParaEnviar,
   colagemEhAnexo,
   escolherArquivo,
-  nomeParaColagem,
 } from "@/lib/inbox/arquivo-solto";
 import { useTranslations } from "next-intl";
 import {
@@ -1018,12 +1018,11 @@ export function MessageComposer({
       }
       const { arquivo, tipo, ignorados } = r.recebido;
       if (ignorados > 0) toast.info(t("umAnexoPorVez", { ignorados }));
-      // O print colado costuma vir sem nome útil (ou como "image.png" em
-      // toda colagem) — e o nome viaja para o WhatsApp e para o histórico.
-      const nome = nomeParaColagem(arquivo.name, arquivo.type);
-      const pronto =
-        nome === arquivo.name ? arquivo : new File([arquivo], nome, { type: arquivo.type });
-      void stageUpload(tipo, pronto);
+      // ⚠️ Ajusta NOME e MIME antes de subir. O print colado costuma vir sem
+      // nome útil (ou como "image.png" em toda colagem), e o MIME pode vir
+      // com parâmetro (`image/png; charset=binary`) — que o bucket, de lista
+      // exata, recusa. Ver `arquivoParaEnviar`.
+      void stageUpload(tipo, arquivoParaEnviar(arquivo));
     },
     [readOnly, sessionExpired, busy, stageUpload, t],
   );

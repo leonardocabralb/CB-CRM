@@ -2421,6 +2421,13 @@ que arrastava PDF para a conversa e nada acontecia. O que morde código novo:
   chama TODA colagem de `image.png`, então dois prints na mesma conversa
   teriam o mesmo nome — e o nome viaja para o WhatsApp e para
   `messages.media_filename` (969).
+- ⚠️⚠️ **O MIME é NORMALIZADO antes de subir** (`arquivoParaEnviar`), não só
+  antes de comparar. `uploadAccountMedia` manda `file.type` como
+  `contentType`, e o bucket `chat-media` tem lista EXATA de MIMEs (023):
+  `image/png; charset=binary` — a forma que aparece em colagem de alguns
+  aplicativos — passava por `tipoDoArquivo` e era recusado no upload,
+  falhando justamente no caso que o código dizia suportar (Codex, PR #141).
+  Quem criar outro caminho de upload repete a normalização.
 - **Um anexo por vez**, com aviso de quantos foram ignorados: o compositor
   carrega um só, e soltar três em silêncio esconderia dois.
 

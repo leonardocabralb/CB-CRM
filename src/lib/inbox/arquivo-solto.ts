@@ -44,12 +44,26 @@ export const ACEITE_DO_SELETOR: Record<TipoDeAnexo, string> = {
  * certos aplicativos).
  */
 export function tipoDoArquivo(mime: string | null | undefined): TipoDeAnexo | null {
-  const limpo = (mime ?? "").split(";")[0]!.trim().toLowerCase();
+  const limpo = mimeNormalizado(mime);
   if (!limpo) return null;
   for (const tipo of ["image", "video", "document"] as const) {
     if (MIMES_ACEITOS[tipo].includes(limpo)) return tipo;
   }
   return null;
+}
+
+/**
+ * O MIME sem os parâmetros que alguns aplicativos anexam, em minúsculas.
+ *
+ * ⚠️⚠️ NÃO é só para comparar: é o valor que vai para o Storage. O bucket
+ * `chat-media` tem lista EXATA de MIMEs (023), então `image/png; charset=binary`
+ * — a forma que aparece em colagem de alguns aplicativos — é recusado no
+ * upload mesmo depois de `tipoDoArquivo` tê-lo aceitado. Aceitar numa ponta e
+ * mandar cru na outra fazia a colagem falhar exatamente no caso que o código
+ * dizia suportar (achado do Codex no PR #141).
+ */
+export function mimeNormalizado(mime: string | null | undefined): string {
+  return (mime ?? "").split(";")[0]!.trim().toLowerCase();
 }
 
 /**
@@ -63,13 +77,24 @@ export function nomeParaColagem(nomeOriginal: string, mime: string, agora = new 
   // "image.png" é o placeholder do Chrome, igual em toda colagem — dois
   // prints na mesma conversa ficariam com o mesmo nome.
   if (nome && nome !== "image.png") return nome;
-  const ext = tipoDoArquivo(mime) === "image" ? (mime.split("/")[1] ?? "png").split(";")[0] : "bin";
+  const ext = tipoDoArquivo(mime) === "image" ? (mimeNormalizado(mime).split("/")[1] ?? "png") : "bin";
   const carimbo = agora
     .toISOString()
     .slice(0, 19)
     .replace(/[-:]/g, "")
     .replace("T", "-");
   return `imagem-${carimbo}.${ext}`;
+}
+
+/**
+ * O arquivo pronto para subir: nome e MIME já ajustados. Recria o `File` só
+ * quando algo mudou — recriar à toa copia os bytes sem motivo.
+ */
+export function arquivoParaEnviar(arquivo: File, agora?: Date): File {
+  const mime = mimeNormalizado(arquivo.type);
+  const nome = nomeParaColagem(arquivo.name, mime, agora);
+  if (nome === arquivo.name && mime === arquivo.type) return arquivo;
+  return new File([arquivo], nome, { type: mime, lastModified: arquivo.lastModified });
 }
 
 export interface ArquivoRecebido {
