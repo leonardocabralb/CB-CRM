@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   ACEITE_DO_SELETOR,
+  arquivoParaEnviar,
   colagemEhAnexo,
   escolherArquivo,
+  mimeNormalizado,
   nomeParaColagem,
   tipoDoArquivo,
 } from "./arquivo-solto";
@@ -101,5 +103,44 @@ describe("nomeParaColagem", () => {
   it("sem nome nenhum também ganha carimbo, com a extensão do MIME", () => {
     expect(nomeParaColagem("", "image/jpeg", AGORA)).toBe("imagem-20260908-163045.jpeg");
     expect(nomeParaColagem("   ", "image/webp", AGORA)).toBe("imagem-20260908-163045.webp");
+  });
+});
+
+describe("mimeNormalizado / arquivoParaEnviar", () => {
+  const AGORA = new Date("2026-09-08T16:30:45Z");
+
+  it("tira parâmetros e caixa", () => {
+    expect(mimeNormalizado("image/PNG; charset=binary")).toBe("image/png");
+    expect(mimeNormalizado(" application/pdf ")).toBe("application/pdf");
+    expect(mimeNormalizado(null)).toBe("");
+  });
+
+  it("⚠️⚠️ CRÍTICO: o MIME que vai para o Storage é o LIMPO", () => {
+    // O bucket `chat-media` tem lista EXATA (023): `image/png; charset=binary`
+    // é recusado no upload mesmo depois de o tipo ter sido aceito aqui. Sem
+    // esta normalização, a colagem falhava justamente no caso que o código
+    // dizia suportar (Codex, PR #141).
+    const colado = new File([new Uint8Array(4)], "image.png", { type: "image/png; charset=binary" });
+    const pronto = arquivoParaEnviar(colado, AGORA);
+    expect(pronto.type).toBe("image/png");
+    expect(pronto.name).toBe("imagem-20260908-163045.png");
+  });
+
+  it("arquivo já correto não é recriado — copiar bytes à toa", () => {
+    const ok = new File([new Uint8Array(4)], "contrato.pdf", { type: "application/pdf" });
+    expect(arquivoParaEnviar(ok, AGORA)).toBe(ok);
+  });
+
+  it("só o nome errado (MIME já limpo) recria com o MIME intacto", () => {
+    const print = new File([new Uint8Array(4)], "image.png", { type: "image/png" });
+    const pronto = arquivoParaEnviar(print, AGORA);
+    expect(pronto).not.toBe(print);
+    expect(pronto.type).toBe("image/png");
+    expect(pronto.name).toBe("imagem-20260908-163045.png");
+  });
+
+  it("a extensão do nome sai do MIME LIMPO, nunca do cru", () => {
+    const colado = new File([new Uint8Array(4)], "", { type: "image/webp; charset=binary" });
+    expect(arquivoParaEnviar(colado, AGORA).name).toBe("imagem-20260908-163045.webp");
   });
 });
