@@ -65,7 +65,9 @@ import {
   ACEITE_DO_SELETOR,
   arquivoParaEnviar,
   colagemEhAnexo,
-  escolherArquivo,
+  escolherArquivos,
+  MAX_ANEXOS,
+  tipoDoArquivo,
 } from "@/lib/inbox/arquivo-solto";
 import { useTranslations } from "next-intl";
 import {
@@ -167,12 +169,22 @@ interface ReplyDraft {
 const PICKER_ACCEPT = ACEITE_DO_SELETOR;
 
 interface MediaDraft {
+  /**
+   * Identidade do item na fila — `path` serviria, mas ele é dado do Storage
+   * e a fila precisa de chave estável para o React e para a seleção.
+   */
+  id: string;
   kind: ComposerMediaKind;
   mediaUrl: string;
   /** Storage path — used to GC the object if the draft is discarded. */
   path: string;
   filename: string;
   caption: string;
+}
+
+/** Um item da fila, pronto para virar mensagem. */
+function novoDraft(d: Omit<MediaDraft, "id">): MediaDraft {
+  return { ...d, id: `${d.path}#${Math.random().toString(36).slice(2, 8)}` };
 }
 
 interface MessageComposerProps {
@@ -196,7 +208,11 @@ interface MessageComposerProps {
    */
   transporteConhecido?: boolean;
   onSend: (text: string, replyToId?: string) => void;
-  onSendMedia: (payload: SendMediaPayload) => void;
+  /**
+   * ⚠️ Pode devolver promessa: com vários anexos o compositor envia UM POR
+   * VEZ, com `await`, para não embaralhar a ordem no celular do cliente.
+   */
+  onSendMedia: (payload: SendMediaPayload) => void | Promise<void>;
   onSendInteractive: (payload: InteractiveMessagePayload, replyToId?: string) => void;
   onOpenTemplates: () => void;
   replyTo?: ReplyDraft | null;
@@ -279,7 +295,11 @@ export function MessageComposer({
 
   // Media attachment state. `draft` holds an uploaded-but-not-yet-sent
   // attachment; `busy` covers the upload/transcode window.
-  const [draft, setDraft] = useState<MediaDraft | null>(null);
+  // ⚠️ FILA, não um só (08/09/2026, pedido do operador). Cada item vira UMA
+  // mensagem no WhatsApp — não existe "mensagem com 3 anexos" no protocolo.
+  const [drafts, setDrafts] = useState<MediaDraft[]>([]);
+  // Qual item está com a prévia grande e o campo de legenda aberto.
+  const [selecionado, setSelecionado] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -287,10 +307,10 @@ export function MessageComposer({
   // Mirror of `draft` for the unmount cleanup, which can't read render
   // state. Kept in sync below so navigating away with a staged-but-unsent
   // attachment GCs the orphaned object.
-  const draftRef = useRef<MediaDraft | null>(null);
+  const draftsRef = useRef<MediaDraft[]>([]);
   useEffect(() => {
-    draftRef.current = draft;
-  }, [draft]);
+    draftsRef.current = drafts;
+  }, [drafts]);
 
   /**
    * Caminhos que JÁ pertencem a outra coisa e não podem mais ser recolhidos.
@@ -439,7 +459,7 @@ export function MessageComposer({
       cancelledRef.current = true;
       // stop() releases the mic stream + audio context inside opus-recorder.
       void recorderRef.current?.stop().catch(() => {});
-      removeStaged(draftRef.current?.path);
+      for (const d of draftsRef.current) removeStaged(d.path);
     };
   }, [clearTimer, removeStaged]);
 
@@ -713,8 +733,9 @@ export function MessageComposer({
     // Enviar mandaria o documento de um caso para o outro. Mesma receita da
     // limpeza de desmonte lá em cima: recolhe o objeto (o `entreguesRef`
     // protege arquivo que já é de uma agendada) e limpa o estado.
-    removeStaged(draftRef.current?.path);
-    setDraft(null);
+    for (const d of draftsRef.current) removeStaged(d.path);
+    setDrafts([]);
+    setSelecionado(null);
     // ⚠️ E uma gravação EM CURSO morre aqui, descartada. Não é por a guarda
     // de origem falhar: o `ondataavailable` do gravador segura o
     // `finalizeRecording` do render em que a gravação COMEÇOU, cujo `origem`
@@ -984,9 +1005,11 @@ export function MessageComposer({
           removeStaged(path);
           return;
         }
-        // Replacing an existing draft? GC the previous object first.
-        removeStaged(draftRef.current?.path);
-        setDraft({ kind, mediaUrl: publicUrl, path, filename: file.name, caption: "" });
+        // ⚠️ ACRESCENTA à fila (não substitui): o compositor passou a levar
+        // vários anexos, e cada um vira uma mensagem.
+        const item = novoDraft({ kind, mediaUrl: publicUrl, path, filename: file.name, caption: "" });
+        setDrafts((atual) => [...atual, item]);
+        setSelecionado((atual) => atual ?? item.id);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Upload failed.");
       } finally {
@@ -996,11 +1019,32 @@ export function MessageComposer({
     [removeStaged, conversationId],
   );
 
-  const handlePicked = useCallback(
-    (kind: "image" | "video" | "document", file: File | undefined) => {
-      if (file) void stageUpload(kind, file);
+  /**
+   * Sobe vários, em sequência. ⚠️ O tipo de cada um é resolvido pelo MIME —
+   * o seletor de "imagem" pode receber um PDF arrastado para o mesmo campo,
+   * e o `kind` errado manda o arquivo pelo endpoint errado do WhatsApp.
+   */
+  const stageUploads = useCallback(
+    async (arquivos: readonly File[]) => {
+      for (const bruto of arquivos) {
+        // ⚠️ Ajusta NOME e MIME antes de subir. O print colado costuma vir sem
+        // nome útil (ou como "image.png" em toda colagem), e o MIME pode vir
+        // com parâmetro (`image/png; charset=binary`) — que o bucket, de lista
+        // exata, recusa. Ver `arquivoParaEnviar`.
+        const arquivo = arquivoParaEnviar(bruto);
+        const tipo = tipoDoArquivo(arquivo.type);
+        if (!tipo) continue;
+        await stageUpload(tipo, arquivo);
+      }
     },
     [stageUpload],
+  );
+
+  const handlePicked = useCallback(
+    (kind: "image" | "video" | "document", files: FileList | null) => {
+      if (files && files.length > 0) void stageUploads(Array.from(files));
+    },
+    [stageUploads],
   );
 
   /**
@@ -1011,20 +1055,17 @@ export function MessageComposer({
   const receberArquivos = useCallback(
     (arquivos: readonly File[]) => {
       if (readOnly || sessionExpired || busy) return;
-      const r = escolherArquivo(arquivos);
-      if (!r.ok) {
-        if (r.motivo === "tipo_recusado") toast.error(t("arquivoNaoSuportado"));
-        return;
-      }
-      const { arquivo, tipo, ignorados } = r.recebido;
-      if (ignorados > 0) toast.info(t("umAnexoPorVez", { ignorados }));
-      // ⚠️ Ajusta NOME e MIME antes de subir. O print colado costuma vir sem
-      // nome útil (ou como "image.png" em toda colagem), e o MIME pode vir
-      // com parâmetro (`image/png; charset=binary`) — que o bucket, de lista
-      // exata, recusa. Ver `arquivoParaEnviar`.
-      void stageUpload(tipo, arquivoParaEnviar(arquivo));
+      const r = escolherArquivos(arquivos, draftsRef.current.length);
+      // Cada descarte tem seu aviso: o operador precisa saber o que NÃO foi.
+      if (r.recusados > 0) toast.error(t("arquivoNaoSuportado", { n: r.recusados }));
+      if (r.excedentes > 0) toast.error(t("tetoDeAnexos", { max: MAX_ANEXOS, n: r.excedentes }));
+      if (r.aceitos.length === 0) return;
+      // ⚠️ Um de cada vez, com `await` dentro de `stageUploads`: dez uploads
+      // simultâneos disputam a banda e a ordem da fila viraria a ordem de
+      // conclusão, não a que a pessoa soltou.
+      void stageUploads(r.aceitos);
     },
-    [readOnly, sessionExpired, busy, stageUpload, t],
+    [readOnly, sessionExpired, busy, stageUploads, t],
   );
 
   const [arrastando, setArrastando] = useState(false);
@@ -1110,14 +1151,15 @@ export function MessageComposer({
           removeStaged(json.path as string);
           return;
         }
-        removeStaged(draftRef.current?.path);
-        setDraft({
+        const novo = novoDraft({
           kind: json.kind as ComposerMediaKind,
           mediaUrl: json.mediaUrl as string,
           path: json.path as string,
           filename: (json.filename as string) ?? item.filename,
           caption: "",
         });
+        setDrafts((atual) => [...atual, novo]);
+        setSelecionado((atual) => atual ?? novo.id);
       } catch {
         toast.error(t("acervoError"));
       } finally {
@@ -1160,8 +1202,9 @@ export function MessageComposer({
           removeStaged(path);
           return;
         }
-        removeStaged(draftRef.current?.path);
-        setDraft({ kind: "audio", mediaUrl: publicUrl, path, filename: file.name, caption: "" });
+        const nota = novoDraft({ kind: "audio", mediaUrl: publicUrl, path, filename: file.name, caption: "" });
+        setDrafts((atual) => [...atual, nota]);
+        setSelecionado((atual) => atual ?? nota.id);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Upload failed.");
       } finally {
@@ -1228,45 +1271,80 @@ export function MessageComposer({
 
   // ---- Draft send / discard -----------------------------------------
 
+  /**
+   * Envia (ou agenda) a fila inteira, UM item por vez.
+   *
+   * ⚠️ SEQUENCIAL, com `await`: não existe "mensagem com 3 anexos" no
+   * WhatsApp — cada item é uma mensagem —, e disparar as três de uma vez as
+   * entregaria fora de ordem no celular do cliente. A prop `onSendMedia`
+   * aceita promessa justamente para isto.
+   *
+   * ⚠️ O que JÁ SAIU sai da fila, mesmo se o próximo falhar: reenviar do
+   * começo mandaria o primeiro anexo duas vezes ao cliente.
+   */
   const sendDraft = useCallback(async () => {
-    if (!draft || busy) return;
+    if (drafts.length === 0 || busy) return;
 
     // ⚠️ DESVIO ANTES DE QUALQUER COISA, igual ao do texto (925). Com hora
-    // escolhida, o anexo vai para a fila em vez de sair agora.
+    // escolhida, os anexos vão para a fila de agendadas em vez de sair agora
+    // — uma linha por anexo, que é como a tabela guarda (932).
     if (quandoAg) {
-      const legenda = podeTerLegenda(draft.kind) ? draft.caption.trim() : "";
-      const ok = await agendar(legenda, { anexo: draft, replyToId: replyTo?.id });
-      // ⚠️ Só limpa o rascunho quando DEU CERTO, e sem apagar o objeto do
-      // bucket: ele passou a pertencer à agendada, e o disparador vai buscá-lo
-      // lá daqui a horas. Falhou? O rascunho fica na tela, com o arquivo já
-      // subido, e a pessoa tenta de novo sem reanexar.
-      if (ok) setDraft(null);
+      const restantes: MediaDraft[] = [];
+      for (const item of drafts) {
+        const legenda = podeTerLegenda(item.kind) ? item.caption.trim() : "";
+        const ok = await agendar(legenda, { anexo: item, replyToId: replyTo?.id });
+        // ⚠️ Só sai da fila quando DEU CERTO, e sem apagar o objeto do
+        // bucket: ele passou a pertencer à agendada, e o disparador vai
+        // buscá-lo lá daqui a horas. Falhou? O item fica na tela, com o
+        // arquivo já subido, e a pessoa tenta de novo sem reanexar.
+        if (!ok) restantes.push(item);
+      }
+      setDrafts(restantes);
+      setSelecionado(restantes[0]?.id ?? null);
       return;
     }
 
-    onSendMedia({
-      kind: draft.kind,
-      mediaUrl: draft.mediaUrl,
-      path: draft.path,
-      // Audio takes no caption (Meta rejects it). Everything else: the
-      // trimmed caption, or undefined when blank.
-      caption: podeTerLegenda(draft.kind) ? draft.caption.trim() || undefined : undefined,
-      filename: draft.kind === "document" ? draft.filename : undefined,
-      replyToId: replyTo?.id,
-    });
-    // The object is now owned by the sent message — clear without GC.
-    setDraft(null);
+    for (const item of drafts) {
+      await onSendMedia({
+        kind: item.kind,
+        mediaUrl: item.mediaUrl,
+        path: item.path,
+        // Audio takes no caption (Meta rejects it). Everything else: the
+        // trimmed caption, or undefined when blank.
+        caption: podeTerLegenda(item.kind) ? item.caption.trim() || undefined : undefined,
+        filename: item.kind === "document" ? item.filename : undefined,
+        replyToId: replyTo?.id,
+      });
+      // O objeto passou a ser da mensagem enviada — sai da fila sem recolher.
+      setDrafts((atual) => atual.filter((d) => d.id !== item.id));
+    }
+    setSelecionado(null);
     onClearReply?.();
-  }, [draft, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar]);
+  }, [drafts, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar]);
 
-  // Discard GCs the staged object — it was uploaded but never sent.
-  const discardDraft = useCallback(() => {
-    removeStaged(draft?.path);
-    setDraft(null);
-  }, [draft?.path, removeStaged]);
+  /** Descarta UM item — recolhe o objeto, que subiu e não foi enviado. */
+  const discardDraft = useCallback(
+    (id: string) => {
+      const alvo = draftsRef.current.find((d) => d.id === id);
+      removeStaged(alvo?.path);
+      setDrafts((atual) => {
+        const resto = atual.filter((d) => d.id !== id);
+        setSelecionado((sel) => (sel === id ? (resto[0]?.id ?? null) : sel));
+        return resto;
+      });
+    },
+    [removeStaged],
+  );
 
-  const setCaption = useCallback((caption: string) => {
-    setDraft((d) => (d ? { ...d, caption } : d));
+  /** Descarta a fila inteira. */
+  const discardAll = useCallback(() => {
+    for (const d of draftsRef.current) removeStaged(d.path);
+    setDrafts([]);
+    setSelecionado(null);
+  }, [removeStaged]);
+
+  const setCaption = useCallback((id: string, caption: string) => {
+    setDrafts((atual) => atual.map((d) => (d.id === id ? { ...d, caption } : d)));
   }, []);
 
   // ---- Render --------------------------------------------------------
@@ -1345,9 +1423,10 @@ export function MessageComposer({
         ref={imageInputRef}
         type="file"
         accept={PICKER_ACCEPT.image}
+        multiple
         className="hidden"
         onChange={(e) => {
-          handlePicked("image", e.target.files?.[0]);
+          handlePicked("image", e.target.files);
           e.target.value = "";
         }}
       />
@@ -1355,9 +1434,10 @@ export function MessageComposer({
         ref={videoInputRef}
         type="file"
         accept={PICKER_ACCEPT.video}
+        multiple
         className="hidden"
         onChange={(e) => {
-          handlePicked("video", e.target.files?.[0]);
+          handlePicked("video", e.target.files);
           e.target.value = "";
         }}
       />
@@ -1365,20 +1445,24 @@ export function MessageComposer({
         ref={documentInputRef}
         type="file"
         accept={PICKER_ACCEPT.document}
+        multiple
         className="hidden"
         onChange={(e) => {
-          handlePicked("document", e.target.files?.[0]);
+          handlePicked("document", e.target.files);
           e.target.value = "";
         }}
       />
 
-      {draft ? (
+      {drafts.length > 0 ? (
         <MediaDraftPreview
-          draft={draft}
+          drafts={drafts}
+          selecionadoId={selecionado}
+          onSelecionar={setSelecionado}
           busy={busy}
           readOnly={readOnly}
           onCaptionChange={setCaption}
           onDiscard={discardDraft}
+          onDiscardAll={discardAll}
           onSend={() => void sendDraft()}
           // 932: a prévia SUBSTITUI o compositor, então o relógio precisa
           // existir aqui também — senão anexar um arquivo tira a opção de
@@ -1644,7 +1728,7 @@ export function MessageComposer({
       {/* Hint sits outside the flex row so its height doesn't push
           `items-end` buttons below the textarea. Indented to line up
           under the textarea left edge. */}
-      {!draft && !recording && (
+      {drafts.length === 0 && !recording && (
         <div className="mt-1 flex items-center gap-1 pl-[5.5rem]">
           {/* Inserem os marcadores do WhatsApp na seleção. O texto enviado
               continua sendo `*assim*` — é o próprio WhatsApp que formata do
@@ -1744,11 +1828,14 @@ function useTetoDaLegenda(): number {
 }
 
 function MediaDraftPreview({
-  draft,
+  drafts,
+  selecionadoId,
+  onSelecionar,
   busy,
   readOnly,
   onCaptionChange,
   onDiscard,
+  onDiscardAll,
   onSend,
   ag,
   agendando,
@@ -1756,11 +1843,15 @@ function MediaDraftPreview({
   tAgendadas,
   t,
 }: {
-  draft: MediaDraft;
+  /** A fila inteira; cada item vira UMA mensagem. */
+  drafts: MediaDraft[];
+  selecionadoId: string | null;
+  onSelecionar: (id: string) => void;
   busy: boolean;
   readOnly: boolean;
-  onCaptionChange: (caption: string) => void;
-  onDiscard: () => void;
+  onCaptionChange: (id: string, caption: string) => void;
+  onDiscard: (id: string) => void;
+  onDiscardAll: () => void;
   onSend: () => void;
   ag: Agendamento;
   agendando: boolean;
@@ -1769,8 +1860,57 @@ function MediaDraftPreview({
   t: ReturnType<typeof useTranslations>;
 }) {
   const tetoDaLegenda = useTetoDaLegenda();
+  // ⚠️ Resolvido no RENDER, com queda para o primeiro: descartar o item
+  // selecionado deixaria a prévia em branco por um quadro se dependesse de
+  // efeito. Mesma armadilha do "efeito passivo" do CLAUDE.md.
+  const draft = drafts.find((d) => d.id === selecionadoId) ?? drafts[0]!;
+  const varios = drafts.length > 1;
   return (
     <div className="rounded-xl border border-border bg-muted/40 p-3">
+      {/* Tira de miniaturas — só com mais de um. Com um só ela não escolhe
+          nada e ocuparia altura à toa. */}
+      {varios && (
+        <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
+          {drafts.map((d, i) => (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => onSelecionar(d.id)}
+              title={d.filename}
+              className={cn(
+                "relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-background",
+                d.id === draft.id ? "border-primary ring-2 ring-primary/30" : "border-border",
+              )}
+            >
+              {d.kind === "image" ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={d.mediaUrl} alt={d.filename} className="h-full w-full object-cover" />
+              ) : (
+                <span className="flex flex-col items-center gap-0.5 px-1">
+                  {d.kind === "video" ? (
+                    <Video className="h-4 w-4 text-muted-foreground" />
+                  ) : d.kind === "audio" ? (
+                    <Mic className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="w-full truncate text-[9px] text-muted-foreground">{d.filename}</span>
+                </span>
+              )}
+              <span className="absolute left-0 top-0 rounded-br bg-background/85 px-1 text-[9px] font-medium text-muted-foreground">
+                {i + 1}
+              </span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={onDiscardAll}
+            className="ml-auto shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            {t("removeAllAttachments")}
+          </button>
+        </div>
+      )}
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           {draft.kind === "image" && (
@@ -1796,7 +1936,7 @@ function MediaDraftPreview({
         </div>
         <button
           type="button"
-          onClick={onDiscard}
+          onClick={() => onDiscard(draft.id)}
           aria-label={t("removeAttachment")}
           className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
         >
@@ -1809,14 +1949,14 @@ function MediaDraftPreview({
           <input
             value={draft.caption}
             maxLength={tetoDaLegenda}
-            onChange={(e) => onCaptionChange(e.target.value)}
+            onChange={(e) => onCaptionChange(draft.id, e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 onSend();
               }
             }}
-            placeholder={t("addCaption")}
+            placeholder={varios ? t("addCaptionFor", { arquivo: draft.filename }) : t("addCaption")}
             className="flex-1 rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50"
           />
         )}
@@ -1859,6 +1999,13 @@ function MediaDraftPreview({
             <Send className="h-4 w-4" />
           )}
         </GatedButton>
+        {/* Quantas mensagens vão sair — cada anexo é uma. Sem isto, clicar
+            em Enviar com a fila cheia surpreende. */}
+        {varios && (
+          <span className="shrink-0 self-center text-xs text-muted-foreground">
+            {t("enviarNAnexos", { n: drafts.length })}
+          </span>
+        )}
       </div>
     </div>
   );

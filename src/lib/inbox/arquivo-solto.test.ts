@@ -4,7 +4,8 @@ import {
   ACEITE_DO_SELETOR,
   arquivoParaEnviar,
   colagemEhAnexo,
-  escolherArquivo,
+  escolherArquivos,
+  MAX_ANEXOS,
   mimeNormalizado,
   nomeParaColagem,
   tipoDoArquivo,
@@ -46,28 +47,40 @@ describe("tipoDoArquivo", () => {
   });
 });
 
-describe("escolherArquivo", () => {
-  it("um arquivo aceito passa", () => {
-    const r = escolherArquivo([arquivo("contrato.pdf", "application/pdf")]);
-    expect(r).toMatchObject({ ok: true, recebido: { tipo: "document", ignorados: 0 } });
-  });
-
-  it("vários: o primeiro aceito vence e o resto é contado para o aviso", () => {
-    const r = escolherArquivo([
+describe("escolherArquivos", () => {
+  it("todos os aceitos passam, na ordem em que vieram", () => {
+    const r = escolherArquivos([
       arquivo("a.pdf", "application/pdf"),
       arquivo("b.png", "image/png"),
-      arquivo("c.pdf", "application/pdf"),
     ]);
-    expect(r.ok && r.recebido.arquivo.name).toBe("a.pdf");
-    expect(r.ok && r.recebido.ignorados).toBe(2);
+    expect(r.aceitos.map((f) => f.name)).toEqual(["a.pdf", "b.png"]);
+    expect(r).toMatchObject({ recusados: 0, excedentes: 0 });
   });
 
-  it("distingue 'não veio arquivo' de 'veio e não serve' — são avisos diferentes", () => {
-    expect(escolherArquivo([])).toEqual({ ok: false, motivo: "sem_arquivo" });
-    expect(escolherArquivo([arquivo("x.heic", "image/heic")])).toEqual({
-      ok: false,
-      motivo: "tipo_recusado",
-    });
+  it("CRÍTICO: cada descarte tem seu próprio número — engolir em silêncio faz o operador achar que mandou", () => {
+    const r = escolherArquivos([
+      arquivo("ok.pdf", "application/pdf"),
+      arquivo("x.heic", "image/heic"),
+      arquivo("y.exe", "application/x-msdownload"),
+    ]);
+    expect(r.aceitos).toHaveLength(1);
+    expect(r.recusados).toBe(2);
+    expect(r.excedentes).toBe(0);
+  });
+
+  it("⚠️ o teto vale para o TOTAL da fila, não para cada soltura", () => {
+    const dez = Array.from({ length: 10 }, (_, i) => arquivo(`f${i}.pdf`, "application/pdf"));
+    expect(escolherArquivos(dez).aceitos).toHaveLength(MAX_ANEXOS);
+    // Com 8 já anexados, sobram 2 vagas.
+    const comFila = escolherArquivos(dez, 8);
+    expect(comFila.aceitos).toHaveLength(2);
+    expect(comFila.excedentes).toBe(8);
+    // Fila cheia não aceita mais nenhum.
+    expect(escolherArquivos(dez, MAX_ANEXOS).aceitos).toHaveLength(0);
+  });
+
+  it("nada aceito e nada recusado quando não veio arquivo", () => {
+    expect(escolherArquivos([])).toEqual({ aceitos: [], recusados: 0, excedentes: 0 });
   });
 });
 

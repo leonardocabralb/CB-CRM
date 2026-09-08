@@ -2449,8 +2449,25 @@ que arrastava PDF para a conversa e nada acontecia. O que morde código novo:
   aplicativos — passava por `tipoDoArquivo` e era recusado no upload,
   falhando justamente no caso que o código dizia suportar (Codex, PR #141).
   Quem criar outro caminho de upload repete a normalização.
-- **Um anexo por vez**, com aviso de quantos foram ignorados: o compositor
-  carrega um só, e soltar três em silêncio esconderia dois.
+- ⚠️⚠️ **VÁRIOS anexos por vez desde 08/09/2026** (`drafts: MediaDraft[]`,
+  teto `MAX_ANEXOS` = 10). Cada item vira UMA mensagem — não existe "mensagem
+  com 3 anexos" no WhatsApp —, e o envio é SEQUENCIAL com `await`
+  (`onSendMedia` passou a aceitar promessa): disparar todas de uma vez as
+  entregaria fora de ordem no celular do cliente. ⚠️ O que JÁ SAIU é
+  removido da fila item a item, mesmo se o próximo falhar — reenviar do
+  começo mandaria o primeiro anexo duas vezes. O mesmo vale para o
+  agendamento: uma linha de `cb_scheduled_messages` por anexo, e só o que
+  falhou fica na tela.
+- ⚠️ **Os TRÊS caminhos de upload acrescentam à fila** (seletor, arrastar/
+  colar, acervo, gravação de voz) e cada um mantém a guarda de troca de
+  conversa. A limpeza de desmonte e a da anotação percorrem a fila INTEIRA —
+  uma delas esquecida vaza objeto no bucket.
+- ⚠️ **O item exibido é resolvido no RENDER** (`find(...) ?? drafts[0]`),
+  nunca por efeito: descartar o selecionado deixaria a prévia em branco por
+  um quadro. A tira de miniaturas só aparece com mais de um, pela mesma
+  regra do seletor de canal.
+- **Cada descarte tem seu aviso** (`recusados`, `excedentes`): engolir
+  arquivo em silêncio faz o operador achar que mandou o que não mandou.
 
 ⚠️ **Anotação interna: são QUATRO telas, e o que as une mora em dois arquivos.**
 `src/hooks/use-apagar-nota.ts` e `src/components/inbox/cartao-de-nota.tsx`.
