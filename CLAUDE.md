@@ -2322,7 +2322,18 @@ conceder. Três decisões, e o que morde código novo:
   excluído" sobre um contato intacto — o caso real de quem estava com a
   página aberta quando a 981 entrou (achado do Codex no PR #137). O toast em
   massa também contava os PEDIDOS, não os que saíram: anunciava "12
-  excluídos" sobre zero. E a seleção só é limpa quando TUDO saiu.
+  excluídos" sobre zero.
+  ⚠️⚠️ **Zero linhas tem DOIS significados**, e o rowcount sozinho não os
+  separa: a policy recusou, ou a linha JÁ NÃO EXISTIA (outro cliente a
+  apagou depois que a lista carregou). Por isso `lerExclusao` recebe
+  `podeApagar` — o que a tela sabe da própria permissão: sem permissão é
+  `recusado`, com permissão é `sumiu`. Dizer "seu perfil não tem permissão"
+  a um admin que perdeu a corrida afirma o que não houve (Codex, PR #138).
+  ⚠️⚠️ E a seleção: a recarga da lista **zera a seleção por conta própria**
+  (as linhas visíveis mudam), então devolver `false` em `podeLimparSelecao`
+  não bastava — `fetchContacts` ganhou `{ preservarSelecao }`, e a exclusão
+  parcial PODA a seleção com `selecaoRestante` em vez de zerá-la. Sem esse
+  par, a invariante da função não valia na prática (Codex, PR #138).
 - ⚠️ **Os dois caminhos SOMEM juntos para quem não é admin** — o item do
   menu da linha e o botão de seleção múltipla. Um `GatedButton` desabilitado
   num deles anunciaria a exclusão a quem não pode usá-la, e desfaria a
