@@ -55,6 +55,10 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Calendly Booking',
     pillClass: 'border-sky-500/30 bg-sky-500/10 text-sky-300',
   },
+  webhook_received: {
+    label: 'Webhook',
+    pillClass: 'border-teal-500/30 bg-teal-500/10 text-teal-300',
+  },
 }
 
 /**

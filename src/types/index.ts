@@ -983,7 +983,15 @@ export type AutomationTriggerType =
    * dados entram em `context.vars` (`{{vars.agendamento_*}}`). Config vazia =
    * qualquer evento; `event_type_uri` restringe a um tipo de evento.
    */
-  | 'calendly_booking';
+  | 'calendly_booking'
+  /**
+   * Um webhook de entrada da conta foi acionado (migration 982). O sistema
+   * de fora (Typebot, n8n) faz POST na URL do webhook; o contato é achado
+   * pelo TELEFONE que o payload traz no campo configurado, e o payload
+   * ACHATADO entra em `context.vars` (`{{vars.*}}`). Config vazia =
+   * QUALQUER webhook da conta; `webhook_id` restringe a um.
+   */
+  | 'webhook_received';
 
 export type AutomationStepType =
   | 'send_message'
@@ -1120,6 +1128,19 @@ export interface CalendlyTriggerConfig {
   event_type_nome?: string;
 }
 
+/**
+ * Config do gatilho `webhook_received` (migration 982).
+ *
+ * Vazio = QUALQUER webhook de entrada da conta, na convenção do projeto.
+ * Com `webhook_id`, só aquele webhook dispara. O nome vai junto para a
+ * tela mostrar algo legível sem depender de uma segunda consulta — e para
+ * o cartão continuar dizendo alguma coisa quando o webhook é apagado.
+ */
+export interface WebhookTriggerConfig {
+  webhook_id?: string;
+  webhook_nome?: string;
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
@@ -1130,6 +1151,7 @@ export type AutomationTriggerConfig =
   | DealStatusTriggerConfig
   | DateFieldTriggerConfig
   | CalendlyTriggerConfig
+  | WebhookTriggerConfig
   | Record<string, unknown>;
 
 /**

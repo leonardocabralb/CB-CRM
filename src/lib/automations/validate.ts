@@ -329,6 +329,14 @@ export function validateTriggerForActivation(
     if (uri != null && typeof uri !== 'string') {
       issues.push({ path: 'trigger.event_type_uri', message: 'event type must be a string' })
     }
+  } else if (triggerType === 'webhook_received') {
+    // Vazio = qualquer webhook de entrada da conta (convenção do projeto).
+    // Só o lixo é recusado: um `webhook_id` que não seja texto nunca casaria
+    // com acionamento nenhum e deixaria a automação ativa e muda.
+    const id = cfg.webhook_id
+    if (id != null && typeof id !== 'string') {
+      issues.push({ path: 'trigger.webhook_id', message: 'webhook must be a string' })
+    }
   } else if (triggerType === 'deal_status_changed') {
     const st = cfg.statuses
     if (st != null && !Array.isArray(st)) {

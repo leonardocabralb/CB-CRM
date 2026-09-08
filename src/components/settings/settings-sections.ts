@@ -11,6 +11,7 @@ import {
   Tags,
   User,
   UsersRound,
+  Webhook,
   Zap,
   type LucideIcon,
   PenLine,
@@ -38,6 +39,11 @@ export const SETTINGS_SECTIONS = [
   'members',
   'integracoes',
   'api',
+  // Webhooks (982) — as duas direções: os de ENTRADA, que sistemas de
+  // fora acionam, e os de SAÍDA da 028, que existiam desde o upstream e
+  // nunca tiveram tela. Vizinha de 'api' de propósito: as duas seções são
+  // credenciais de integração, e é ali que o operador vai procurar.
+  'webhooks',
   // Perfis de acesso (Fase 5) — quem vê o quê. Declarada no catálogo de
   // perfis desde a Fase 1; aqui é a seção de verdade.
   'perfis',
@@ -79,6 +85,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   // vier (TLDV, Calendly…), com estado ao vivo por integração.
   integracoes: { id: 'integracoes', label: 'Integrations', icon: Plug, group: 'workspace' },
   api: { id: 'api', label: 'API keys', icon: KeyRound, group: 'workspace' },
+  webhooks: { id: 'webhooks', label: 'Webhooks', icon: Webhook, group: 'workspace' },
   perfis: { id: 'perfis', label: 'Perfis de acesso', icon: UserCog, group: 'workspace' },
 };
 

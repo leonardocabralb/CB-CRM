@@ -58,6 +58,11 @@ export type SecaoId =
   | "assinatura"
   | "members"
   | "integracoes"
+  // Webhooks (982): as duas direções — os de ENTRADA, que sistemas de fora
+  // acionam, e os de SAÍDA da 028. Só admin, como `api`: quem enxerga a
+  // seção enxerga o token de cada webhook na URL, que é endereço de porta
+  // aberta para a conta.
+  | "webhooks"
   | "api"
   // ⚠️ Declarada ANTES de existir na tela (a seção chega na Fase 5). O
   // catálogo é a lista fechada do que um perfil PODE ligar: seção ausente
@@ -125,6 +130,7 @@ export const TODAS_AS_SECOES: SecaoId[] = [
   "members",
   "integracoes",
   "api",
+  "webhooks",
   "perfis",
 ];
 

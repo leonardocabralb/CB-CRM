@@ -73,6 +73,7 @@ import {
 import { interactivePayloadPreviewText } from "@/lib/whatsapp/interactive"
 import { createClient } from "@/lib/supabase/client"
 import { CalendlyTriggerConfig } from "@/components/automations/calendly-trigger-config"
+import { WebhookTriggerConfig } from "@/components/automations/webhook-trigger-config"
 import {
   childPath,
   insertAt,
@@ -249,6 +250,7 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "tag_added" },
   { value: "date_field_offset" },
   { value: "calendly_booking" },
+  { value: "webhook_received" },
 ]
 
 function cid(): string {
@@ -1308,6 +1310,12 @@ function TriggerCard({
                 conexão feita em Integrações. */}
             {type === "calendly_booking" && (
               <CalendlyTriggerConfig config={config} onChange={onConfigChange} />
+            )}
+            {/* Webhook de entrada (982): QUAL webhook dispara. As variáveis
+                listadas saem do ÚLTIMO acionamento real — o payload é
+                arbitrário, então não há lista fixa a mostrar. */}
+            {type === "webhook_received" && (
+              <WebhookTriggerConfig config={config} onChange={onConfigChange} />
             )}
             {type === "deal_status_changed" && (
               <div>
