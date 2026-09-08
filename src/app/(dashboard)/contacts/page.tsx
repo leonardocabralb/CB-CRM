@@ -56,6 +56,7 @@ import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { useCan } from '@/hooks/use-can';
+import { lerExclusao, podeLimparSelecao } from '@/lib/contacts/exclusao';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
 
@@ -273,17 +274,22 @@ export default function ContactsPage() {
     if (!deleteTarget) return;
     setDeleting(true);
 
-    const { error } = await supabase
+    // ⚠️ CONFERE O ROWCOUNT, não só o erro: desde a 981 apagar contato é de
+    // admin, e RLS que barra DELETE devolve 0 linhas com `error: null`. Sem
+    // o `.select()`, a tela diria "contato excluído" sobre um contato
+    // intacto — e é o caso REAL de quem estava com a página aberta quando a
+    // policy mudou (achado do Codex no PR #137).
+    const { data, error } = await supabase
       .from('contacts')
       .delete()
-      .eq('id', deleteTarget.id);
+      .eq('id', deleteTarget.id)
+      .select('id');
 
-    if (error) {
-      toast.error(t('toastFailedDelete'));
-    } else {
-      toast.success(t('toastDeleted'));
-      fetchContacts();
-    }
+    const r = lerExclusao({ pedidos: 1, apagados: data?.length ?? 0, houveErro: !!error });
+    if (r === 'falhou') toast.error(t('toastFailedDelete'));
+    else if (r === 'apagado') toast.success(t('toastDeleted'));
+    else toast.error(t('toastDeleteRefused'));
+    if (r !== 'falhou') fetchContacts();
 
     setDeleting(false);
     setDeleteConfirmOpen(false);
@@ -320,15 +326,26 @@ export default function ContactsPage() {
     if (ids.length === 0) return;
     setDeleting(true);
 
-    const { error } = await supabase.from('contacts').delete().in('id', ids);
+    // ⚠️ Mesma conferência da exclusão individual, e aqui o número IMPORTA:
+    // o toast dizia `count: ids.length` — o que se PEDIU —, não o que saiu.
+    // Com a policy da 981 recusando, ele anunciava "12 contatos excluídos"
+    // sobre zero, e ainda limpava a seleção.
+    const { data, error } = await supabase
+      .from('contacts')
+      .delete()
+      .in('id', ids)
+      .select('id');
 
-    if (error) {
-      toast.error(t('toastBulkFailedDelete'));
-    } else {
-      toast.success(t('toastBulkDeleted', { count: ids.length }));
-      setSelected(new Set());
-      fetchContacts();
-    }
+    const apagados = data?.length ?? 0;
+    const r = lerExclusao({ pedidos: ids.length, apagados, houveErro: !!error });
+    if (r === 'falhou') toast.error(t('toastBulkFailedDelete'));
+    else if (r === 'recusado') toast.error(t('toastDeleteRefused'));
+    // O número é o que SAIU, não o que se pediu.
+    else toast.success(t('toastBulkDeleted', { count: apagados }));
+    // Só limpa quando tudo saiu: seleção limpa sobre contato que ficou
+    // esconde o que não foi apagado.
+    if (podeLimparSelecao(r)) setSelected(new Set());
+    if (r !== 'falhou') fetchContacts();
 
     setDeleting(false);
     setBulkDeleteOpen(false);
@@ -533,16 +550,20 @@ export default function ContactsPage() {
             >
               {t('clearSelection')}
             </Button>
-            <GatedButton
-              variant="destructive"
-              size="sm"
-              canAct={podeApagarContatos}
-              gateReason="delete contacts"
-              onClick={() => setBulkDeleteOpen(true)}
-            >
-              <Trash2 className="size-4" />
-              {t('deleteSelected')}
-            </GatedButton>
+            {/* ⚠️ SOME para quem não é admin, como o item do menu da linha.
+                Um `GatedButton` desabilitado anunciaria um dos dois caminhos
+                de exclusão a quem não pode usá-lo — os dois têm de
+                desaparecer juntos (achado do Codex no PR #137). */}
+            {podeApagarContatos && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setBulkDeleteOpen(true)}
+              >
+                <Trash2 className="size-4" />
+                {t('deleteSelected')}
+              </Button>
+            )}
           </div>
         </div>
       )}

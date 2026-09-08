@@ -744,7 +744,8 @@
       "toastFailedDelete": "Falha ao excluir contato",
       "toastDeleted": "Contato excluído",
       "toastBulkFailedDelete": "Falha ao excluir contatos",
-      "toastBulkDeleted": "{count} contatos excluídos"
+      "toastBulkDeleted": "{count} contatos excluídos",
+      "toastDeleteRefused": "Não foi possível excluir: seu perfil não tem permissão para apagar contatos."
     },
     "form": {
       "addTitle": "Adicionar contato",

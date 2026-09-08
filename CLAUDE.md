@@ -2314,6 +2314,19 @@ conceder. Três decisões, e o que morde código novo:
   mensagens junto (CASCADE), e isso é do escritório.
 - **Tarefas já estavam certas**: `podeNaTarefa` dá `apagar` ao criador (e ao
   admin, para a tarefa órfã cujo criador saiu). Conferido, nada mudou.
+- ⚠️⚠️ **Os DOIS caminhos de exclusão conferem o ROWCOUNT** (`lerExclusao`,
+  em `src/lib/contacts/exclusao.ts`, puro e testado), não só o erro. É a
+  armadilha que este arquivo já documentava para os filtros salvos e as
+  anotações, e que a página de contatos repetia: **RLS que barra DELETE
+  devolve 0 linhas com `error: null`**, então a tela dizia "contato
+  excluído" sobre um contato intacto — o caso real de quem estava com a
+  página aberta quando a 981 entrou (achado do Codex no PR #137). O toast em
+  massa também contava os PEDIDOS, não os que saíram: anunciava "12
+  excluídos" sobre zero. E a seleção só é limpa quando TUDO saiu.
+- ⚠️ **Os dois caminhos SOMEM juntos para quem não é admin** — o item do
+  menu da linha e o botão de seleção múltipla. Um `GatedButton` desabilitado
+  num deles anunciaria a exclusão a quem não pode usá-la, e desfaria a
+  simetria (Codex, PR #137).
 - ⚠️ **A 981 é a exceção à ordem "migration antes do merge"**: ela RESTRINGE,
   e o app antigo ainda oferece o botão de excluir. Aplicada DEPOIS do
   deploy, senão a janela entre as duas deixaria a tela dizer "contato
