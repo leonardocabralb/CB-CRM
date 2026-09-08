@@ -9,6 +9,8 @@ import {
   canWriteNotes,
   canManageAutomations,
   canTransferOwnership,
+  canViewReports,
+  canDeleteContacts,
   canViewOnly,
   hasMinRole,
   isAccountRole,
@@ -141,6 +143,29 @@ describe("capability predicates", () => {
     // quebrar num merge do upstream, a guarda das 9 rotas voltou a agent.
     expect(canManageAutomations("agent")).toBe(false);
     expect(canManageAutomations("viewer")).toBe(false);
+  });
+
+  it("canViewReports: admin+ — as três abas analíticas do funil", () => {
+    // Decisão do operador em 08/09/2026, simulando o perfil "Bancário -
+    // Jurídico": Lista, Desempenho e Saúde mostram a conta INTEIRA
+    // (conversão, valor fechado, ticket médio, investimento, CAC). O Kanban
+    // segue de agent — é onde o atendente trabalha.
+    expect(canViewReports("owner")).toBe(true);
+    expect(canViewReports("admin")).toBe(true);
+    expect(canViewReports("agent")).toBe(false);
+    expect(canViewReports("viewer")).toBe(false);
+  });
+
+  it("canDeleteContacts: admin+ — apagar leva conversa e mensagens junto", () => {
+    // ⚠️ Só o DELETE subiu: editar contato segue em `agent`
+    // (`contacts_update` da 017). Se este expect quebrar, o par da tela e
+    // da policy 981 se desfez.
+    expect(canDeleteContacts("owner")).toBe(true);
+    expect(canDeleteContacts("admin")).toBe(true);
+    expect(canDeleteContacts("agent")).toBe(false);
+    expect(canDeleteContacts("viewer")).toBe(false);
+    // A edição continua sendo de atendente — é o outro lado da decisão.
+    expect(canSendMessages("agent")).toBe(true);
   });
 
   it("canTransferOwnership: owner only", () => {

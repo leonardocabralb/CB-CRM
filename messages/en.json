@@ -3432,6 +3432,8 @@
       "send-messages": "Reply to customers on WhatsApp",
       "write-notes": "Write internal notes",
       "manage-deals": "Move deals across the pipeline (creating and deleting pipelines is admin-only)",
+      "view-reports": "See the pipeline reports: lead list, Performance and Health",
+      "delete-contacts": "Delete contacts (deleting a record takes its conversation and messages with it)",
       "manage-automations": "Create automations, flows and broadcasts",
       "edit-settings": "Change account settings: connections, templates, fields, signature, integrations and API keys",
       "manage-members": "Invite, remove and reassign members"

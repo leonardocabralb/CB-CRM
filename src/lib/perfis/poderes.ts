@@ -17,10 +17,12 @@
 // ============================================================
 
 import {
+  canDeleteContacts,
   canEditSettings,
   canManageAutomations,
   canManageMembers,
   canSendMessages,
+  canViewReports,
   canWriteNotes,
   hasMinRole,
   type AccountRole,
@@ -51,6 +53,8 @@ export type PoderId =
   | "send-messages"
   | "write-notes"
   | "manage-deals"
+  | "view-reports"
+  | "delete-contacts"
   | "manage-automations"
   | "edit-settings"
   | "manage-members";
@@ -81,6 +85,12 @@ export const PODERES: readonly {
   // rótulo diz isso — a diferença é o que faz alguém achar que "Funis
   // marcado" basta para reestruturar o quadro.
   { id: "manage-deals", permite: (p) => hasMinRole(p, "agent") },
+  // As duas linhas abaixo nasceram em 08/09/2026, quando o operador simulou
+  // o perfil "Bancário - Jurídico" e viu poderes que não queria conceder.
+  // Elas existem porque são as diferenças entre `agent` e `admin` que a tela
+  // de Funis e a de Contatos NÃO deixavam evidentes.
+  { id: "view-reports", permite: canViewReports },
+  { id: "delete-contacts", permite: canDeleteContacts },
   { id: "manage-automations", permite: canManageAutomations },
   { id: "edit-settings", permite: canEditSettings },
   { id: "manage-members", permite: canManageMembers },

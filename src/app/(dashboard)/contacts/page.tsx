@@ -70,6 +70,12 @@ export default function ContactsPage() {
   const supabase = createClient();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
+  // ⚠️ APAGAR contato é de admin (decisão do operador, 08/09/2026), enquanto
+  // EDITAR segue de `agent`. Apagar aqui leva a conversa e todas as
+  // mensagens daquele cliente junto (CASCADE), e isso é do escritório. A
+  // policy `contacts_delete` subiu junto, na 981 — sem os dois lados, o
+  // botão sumiria e um `.delete()` do navegador ainda apagaria.
+  const podeApagarContatos = useCan('delete-contacts');
 
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
   const [loading, setLoading] = useState(true);
@@ -530,7 +536,7 @@ export default function ContactsPage() {
             <GatedButton
               variant="destructive"
               size="sm"
-              canAct={canEdit}
+              canAct={podeApagarContatos}
               gateReason="delete contacts"
               onClick={() => setBulkDeleteOpen(true)}
             >
@@ -687,16 +693,23 @@ export default function ContactsPage() {
                           {t('editAction')}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator className="bg-border" />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            confirmDelete(contact);
-                          }}
-                        >
-                          <Trash2 className="size-4" />
-                          {t('deleteAction')}
-                        </DropdownMenuItem>
+                        {/* ⚠️ Some para quem não é admin, em vez de aparecer
+                            desabilitado: até 08/09/2026 este item não tinha
+                            gate NENHUM — era o único caminho de exclusão sem
+                            guarda na tela, e a policy da 017 deixava o
+                            atendente apagar de verdade. */}
+                        {podeApagarContatos && (
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              confirmDelete(contact);
+                            }}
+                          >
+                            <Trash2 className="size-4" />
+                            {t('deleteAction')}
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
