@@ -2678,7 +2678,24 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   mesma escrita do resultado, e o caminho de exceção da rota grava `falhou`
   (não reprocessável) em vez de soltar limpo — a automação pode ter enviado
   antes de morrer. Claim mais velho que `RECOLHER_CLAIM_MS` (10 min) é
-  tomado, senão processo morto trava o agendamento para sempre. ⚠️ Ele usa as VARIÁVEIS gravadas (979,
+  tomado, senão processo morto trava o agendamento para sempre.
+- ⚠️⚠️ **Recolher por idade só é seguro por causa de DUAS peças, e as duas
+  são obrigatórias em código novo** (achado do Codex no PR #135):
+  - **CERCA DE POSSE em toda escrita pós-claim** — `gravarResultado` e
+    `liberarClaim` recebem o `processando_desde` do PRÓPRIO claim e filtram
+    por ele. Sem ela, um dono recolhido terminava tarde, sobrescrevia o
+    resultado de quem assumiu e SOLTAVA o cadeado vivo do outro, deixando um
+    terceiro entrar. É a mesma cerca do worker do Radar (`running_desde`).
+    `gravarResultado` devolve `{ gravou }` — `false` ali é normal, é a cerca
+    agindo.
+  - **TETO de processamento MENOR que o recolhimento**
+    (`TETO_DE_PROCESSAMENTO_MS`, 4 min × 10 min), com teste cobrando a
+    margem. Sem ele, "10 min sem notícias" não prova que o dono morreu — em
+    produção não há corte de duração de rota —, e o recolhimento podia
+    tomar a linha de um processamento VIVO, disparando a automação em
+    paralelo. Quem passa do teto grava `falhou` e sai. ⚠️ Desistir não
+    cancela o trabalho em voo (promessa não se aborta); quem impede o
+    estrago é a cerca. ⚠️ Ele usa as VARIÁVEIS gravadas (979,
   `cb_calendly_eventos.variaveis`), nunca só o remonte: a tabela não guarda
   local/cancelar/remarcar/situação em coluna, e o remonte entregaria à
   automação menos variáveis que a primeira entrega, em silêncio.

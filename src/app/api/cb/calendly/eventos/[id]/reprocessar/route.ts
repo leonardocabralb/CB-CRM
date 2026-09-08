@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
-import { liberarClaim, motivoDaRecusa, reivindicarEvento } from "@/lib/calendly/claim";
+import { comTetoDeProcessamento, liberarClaim, motivoDaRecusa, reivindicarEvento } from "@/lib/calendly/claim";
 import { gravarResultado, processarAgendamento } from "@/lib/calendly/processar";
 import { agendamentoDaLinha, varsDaLinha } from "@/lib/calendly/reprocessar";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
@@ -28,6 +28,12 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit
  * repetir um `disparado` mandaria a mesma mensagem de novo, e em `falhou`
  * não se sabe se o passo de envio já tinha rodado (aí o caminho é o
  * histórico da automação e o "Executar automação" da conversa).
+ *
+ * ⚠️ Toda escrita daqui para baixo leva a CERCA DE POSSE do claim, e o
+ * processamento tem TETO (`TETO_DE_PROCESSAMENTO_MS`, menor que o
+ * recolhimento). Os dois juntos são o que garante o cadeado: o teto faz o
+ * dono desistir antes de ser recolhido, e a cerca faz as escritas de um
+ * dono recolhido virarem no-op.
  */
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -56,26 +62,44 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ error: motivo }, { status: motivo === "not_found" ? 404 : 409 });
     }
 
+    // O carimbo do NOSSO claim — a cerca de toda escrita daqui para baixo.
+    const claimIso = String(linha.processando_desde);
+
     const agendamento = agendamentoDaLinha(linha);
     if (!agendamento) {
-      await liberarClaim(admin, id);
+      await liberarClaim(admin, id, claimIso);
       return NextResponse.json({ error: "linha_incompleta" }, { status: 422 });
     }
 
     try {
-      const r = await processarAgendamento(admin, ctx.accountId, agendamento, varsDaLinha(linha, agendamento));
-      await gravarResultado(admin, id, r);
-      return NextResponse.json({ ok: true, resultado: r.resultado, detalhe: r.detalhe });
+      const r = await comTetoDeProcessamento(
+        processarAgendamento(admin, ctx.accountId, agendamento, varsDaLinha(linha, agendamento)),
+      );
+      if (!r.pronto) {
+        // ⚠️ Estourou o teto. Desistimos ANTES do recolhimento, para que
+        // "cadeado velho" signifique mesmo "dono morto" — e gravamos
+        // `falhou` (não reprocessável) porque o envio pode ter saído.
+        await gravarResultado(
+          admin,
+          id,
+          { resultado: "falhou", detalhe: "o processamento passou do tempo e foi interrompido", contactId: null },
+          claimIso,
+        );
+        return NextResponse.json({ error: "tempo_esgotado" }, { status: 504 });
+      }
+      await gravarResultado(admin, id, r.valor, claimIso);
+      return NextResponse.json({ ok: true, resultado: r.valor.resultado, detalhe: r.valor.detalhe });
     } catch (e) {
       // ⚠️ Estourou DEPOIS do cadeado: a automação pode ter mandado
       // mensagem antes de morrer. Grava `falhou` — que não é reprocessável —
       // em vez de soltar o cadeado limpo, senão o próximo clique repetiria
       // um envio que talvez tenha saído. `gravarResultado` solta o cadeado.
-      await gravarResultado(admin, id, {
-        resultado: "falhou",
-        detalhe: e instanceof Error ? e.message.slice(0, 500) : "erro desconhecido",
-        contactId: null,
-      });
+      await gravarResultado(
+        admin,
+        id,
+        { resultado: "falhou", detalhe: e instanceof Error ? e.message.slice(0, 500) : "erro desconhecido", contactId: null },
+        claimIso,
+      );
       return NextResponse.json({ error: "processamento_falhou" }, { status: 500 });
     }
   } catch (err) {

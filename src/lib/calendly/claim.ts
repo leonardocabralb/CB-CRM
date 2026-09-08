@@ -19,6 +19,14 @@ import { RESULTADOS_REPROCESSAVEIS } from "./log";
  * dela: no deploy `start-first` existem dois processos Node vivos, e só o
  * banco os serializa.
  *
+ * ⚠️⚠️ E toda escrita pós-claim leva CERCA DE POSSE: o UPDATE exige o
+ * `processando_desde` do PRÓPRIO claim. Sem ela, um dono recolhido como
+ * abandonado (abaixo) continuava com direito de escrita — terminava tarde,
+ * sobrescrevia o resultado de quem assumiu, e ainda SOLTAVA o cadeado vivo
+ * do outro, abrindo caminho para um terceiro entrar enquanto o segundo
+ * ainda rodava (achado do Codex no PR #135; é a mesma cerca do worker do
+ * Radar, `running_desde`).
+ *
  * ⚠️ Toda saída do processamento tem de LIBERAR o cadeado. `gravarResultado`
  * faz isso ao carimbar o resultado; um caminho novo que esqueça deixa o
  * agendamento travado até o recolhimento.
@@ -33,6 +41,44 @@ import { RESULTADOS_REPROCESSAVEIS } from "./log";
  * segundos) e curto o bastante para o operador não ficar sem o botão.
  */
 export const RECOLHER_CLAIM_MS = 10 * 60 * 1000;
+
+/**
+ * Teto de um processamento. Passado isto, quem está rodando DESISTE e grava
+ * `falhou`.
+ *
+ * ⚠️ Ele existe para dar sentido ao recolhimento acima. Sem teto, "10 min
+ * sem notícias" não prova que o dono morreu — em produção não há corte de
+ * duração de rota (o `maxDuration` é decorativo; ver CLAUDE.md), então um
+ * processamento pendurado numa chamada de rede podia seguir vivo enquanto
+ * outro clique tomava o cadeado e disparava a MESMA automação em paralelo
+ * (achado do Codex no PR #135). Com o teto, quem passa dele já desistiu e
+ * já gravou `falhou` — que não é reprocessável.
+ *
+ * ⚠️ A margem para `RECOLHER_CLAIM_MS` é o que dá a garantia, e há teste
+ * cobrando que ela exista. Encostar os dois valores devolve a janela.
+ *
+ * ⚠️ Desistir NÃO cancela o trabalho: uma promessa em JS não se aborta, e
+ * o que estava em voo segue até terminar. O que impede o estrago é a CERCA
+ * DE POSSE — as escritas do desistente não casam mais com o cadeado.
+ */
+export const TETO_DE_PROCESSAMENTO_MS = 4 * 60 * 1000;
+
+/** Estourou o teto? Devolve o que a promessa deu, ou `null` no tempo esgotado. */
+export async function comTetoDeProcessamento<T>(
+  trabalho: Promise<T>,
+  tetoMs: number = TETO_DE_PROCESSAMENTO_MS,
+): Promise<{ pronto: true; valor: T } | { pronto: false }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const relogio = new Promise<{ pronto: false }>((resolve) => {
+    timer = setTimeout(() => resolve({ pronto: false }), tetoMs);
+  });
+  try {
+    const r = await Promise.race([trabalho.then((valor) => ({ pronto: true as const, valor })), relogio]);
+    return r;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 /** Puro: claims mais antigos que este instante estão abandonados. */
 export function corteDoClaim(agoraMs: number): string {
@@ -95,7 +141,13 @@ export async function reivindicarEvento(
  * que nada foi decidido — o caminho normal libera junto com o resultado,
  * em `gravarResultado`.
  */
-export async function liberarClaim(admin: SupabaseClient, id: string): Promise<void> {
-  const { error } = await admin.from("cb_calendly_eventos").update({ processando_desde: null }).eq("id", id);
+export async function liberarClaim(admin: SupabaseClient, id: string, claimIso: string): Promise<void> {
+  const { error } = await admin
+    .from("cb_calendly_eventos")
+    .update({ processando_desde: null })
+    // ⚠️ Cerca de posse: soltar sem ela derrubaria o cadeado de quem
+    // assumiu depois de este dono ser recolhido.
+    .eq("processando_desde", claimIso)
+    .eq("id", id);
   if (error) console.error("[calendly] não foi possível soltar o cadeado do evento:", error.message);
 }

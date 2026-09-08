@@ -3,6 +3,7 @@ import { NextResponse, after } from "next/server";
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { verificarAssinatura } from "@/lib/calendly/assinatura";
 import { eventoDoCorpo, lerAgendamento } from "@/lib/calendly/payload";
+import { comTetoDeProcessamento } from "@/lib/calendly/claim";
 import { gravarResultado, processarAgendamento } from "@/lib/calendly/processar";
 import { variaveisDoAgendamento } from "@/lib/calendly/variaveis";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
@@ -73,6 +74,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     return NextResponse.json({ ok: true, ignorado: true });
   }
 
+  const claimIso = new Date().toISOString();
   const { data: gravado, error: erroInsert } = await admin
     .from("cb_calendly_eventos")
     .upsert(
@@ -98,8 +100,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         resultado: "recebido",
         // ⚠️ O cadeado (980) nasce com a linha: o processamento começa logo
         // abaixo, em `after()`, e sem ele o botão "Processar de novo" podia
-        // disparar a MESMA automação em paralelo. `gravarResultado` solta.
-        processando_desde: new Date().toISOString(),
+        // disparar a MESMA automação em paralelo. `gravarResultado` solta,
+        // e toda escrita leva `claimIso` como CERCA DE POSSE.
+        processando_desde: claimIso,
       },
       { onConflict: "account_id,evento,invitee_uri", ignoreDuplicates: true },
     )
@@ -125,15 +128,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   after(async () => {
     const db = supabaseAdmin();
     try {
-      const r = await processarAgendamento(db, accountId, agendamento);
-      await gravarResultado(db, eventoId, r);
+      // ⚠️ Com TETO: quem passa dele desiste antes do recolhimento do
+      // cadeado, para que "cadeado velho" signifique "dono morto" e não
+      // "dono lento" — senão outro clique tomaria a linha e dispararia a
+      // mesma automação em paralelo (Codex, PR #135).
+      const r = await comTetoDeProcessamento(processarAgendamento(db, accountId, agendamento));
+      await gravarResultado(
+        db,
+        eventoId,
+        r.pronto
+          ? r.valor
+          : { resultado: "falhou", detalhe: "o processamento passou do tempo e foi interrompido", contactId: null },
+        claimIso,
+      );
     } catch (e) {
       console.error("[calendly] processamento falhou:", e instanceof Error ? e.message : e);
-      await gravarResultado(db, eventoId, {
-        resultado: "falhou",
-        detalhe: e instanceof Error ? e.message.slice(0, 500) : "erro desconhecido",
-        contactId: null,
-      });
+      await gravarResultado(
+        db,
+        eventoId,
+        {
+          resultado: "falhou",
+          detalhe: e instanceof Error ? e.message.slice(0, 500) : "erro desconhecido",
+          contactId: null,
+        },
+        claimIso,
+      );
     }
   });
 
