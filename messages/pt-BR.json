@@ -351,7 +351,10 @@
       "noteMentionHint": "Digite @ para mencionar um colega",
       "noteMentionFailed": "Anotação salva, mas não foi possível avisar quem você mencionou.",
       "fromLibrary": "Do acervo",
-      "acervoError": "Não foi possível preparar o arquivo do acervo."
+      "acervoError": "Não foi possível preparar o arquivo do acervo.",
+      "solteParaAnexar": "Solte aqui para anexar",
+      "arquivoNaoSuportado": "Tipo de arquivo não suportado pelo WhatsApp. Aceita imagem (PNG, JPG, WebP), vídeo (MP4, 3GP), PDF, Word, Excel, PowerPoint e texto.",
+      "umAnexoPorVez": "Só um anexo por mensagem — os outros {ignorados} foram ignorados."
     },
     "bubble": {
       "transcricao": "Transcrição",

@@ -61,6 +61,12 @@ import {
   alternarMarcador,
   type EstiloFormatacao,
 } from "@/lib/inbox/whatsapp-format";
+import {
+  ACEITE_DO_SELETOR,
+  colagemEhAnexo,
+  escolherArquivo,
+  nomeParaColagem,
+} from "@/lib/inbox/arquivo-solto";
 import { useTranslations } from "next-intl";
 import {
   InteractiveBuilder,
@@ -153,12 +159,12 @@ interface ReplyDraft {
 // the file picker so unsupported files are rejected before upload rather
 // than failing with a confusing Storage error. Audio has no picker — it's
 // captured via the recorder.
-const PICKER_ACCEPT: Record<"image" | "video" | "document", string> = {
-  image: "image/png,image/jpeg,image/webp",
-  video: "video/mp4,video/3gpp",
-  document:
-    "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain",
-};
+/**
+ * ⚠️ Vem de `arquivo-solto.ts`, que é a MESMA lista usada por quem arrasta
+ * ou cola arquivo. Duas listas divergiriam, e o sintoma seria um arquivo
+ * aceito por uma porta e recusado pela outra.
+ */
+const PICKER_ACCEPT = ACEITE_DO_SELETOR;
 
 interface MediaDraft {
   kind: ComposerMediaKind;
@@ -998,6 +1004,81 @@ export function MessageComposer({
   );
 
   /**
+   * Arquivo que chegou sem passar pelo seletor: arrastado para a conversa ou
+   * colado com Ctrl+V. Um anexo por vez — o compositor carrega um só —, e o
+   * que o seletor recusaria é recusado aqui também, com aviso.
+   */
+  const receberArquivos = useCallback(
+    (arquivos: readonly File[]) => {
+      if (readOnly || sessionExpired || busy) return;
+      const r = escolherArquivo(arquivos);
+      if (!r.ok) {
+        if (r.motivo === "tipo_recusado") toast.error(t("arquivoNaoSuportado"));
+        return;
+      }
+      const { arquivo, tipo, ignorados } = r.recebido;
+      if (ignorados > 0) toast.info(t("umAnexoPorVez", { ignorados }));
+      // O print colado costuma vir sem nome útil (ou como "image.png" em
+      // toda colagem) — e o nome viaja para o WhatsApp e para o histórico.
+      const nome = nomeParaColagem(arquivo.name, arquivo.type);
+      const pronto =
+        nome === arquivo.name ? arquivo : new File([arquivo], nome, { type: arquivo.type });
+      void stageUpload(tipo, pronto);
+    },
+    [readOnly, sessionExpired, busy, stageUpload, t],
+  );
+
+  const [arrastando, setArrastando] = useState(false);
+  // Contador, não booleano: `dragleave` dispara ao passar de um filho para
+  // outro dentro da mesma zona, e um booleano faria o destaque piscar.
+  const profundidadeDoArrasto = useRef(0);
+
+  const aoArrastarEntrando = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    profundidadeDoArrasto.current += 1;
+    setArrastando(true);
+  }, []);
+
+  const aoArrastarSaindo = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    profundidadeDoArrasto.current = Math.max(0, profundidadeDoArrasto.current - 1);
+    if (profundidadeDoArrasto.current === 0) setArrastando(false);
+  }, []);
+
+  const aoArrastarSobre = useCallback((e: React.DragEvent) => {
+    // ⚠️ Só intercepta ARQUIVO. Texto arrastado (selecionar e puxar) tem de
+    // continuar caindo na caixa como texto, que é o padrão do navegador.
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const aoSoltar = useCallback(
+    (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes("Files")) return;
+      e.preventDefault();
+      profundidadeDoArrasto.current = 0;
+      setArrastando(false);
+      receberArquivos(Array.from(e.dataTransfer.files));
+    },
+    [receberArquivos],
+  );
+
+  const aoColar = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const arquivos = Array.from(e.clipboardData.files);
+      // ⚠️ Colagem com texto junto NÃO vira upload — ver `colagemEhAnexo`.
+      if (!colagemEhAnexo({ temArquivo: arquivos.length > 0, texto: e.clipboardData.getData("text/plain") })) {
+        return;
+      }
+      e.preventDefault();
+      receberArquivos(arquivos);
+    },
+    [receberArquivos],
+  );
+
+  /**
    * Item do acervo (953) escolhido: vira o MESMO rascunho de um arquivo
    * recém-subido — com legenda, prévia, envio agora ou agendamento.
    *
@@ -1192,7 +1273,20 @@ export function MessageComposer({
   // ---- Render --------------------------------------------------------
 
   return (
-    <div className="border-t border-border bg-card p-3">
+    <div
+      className="relative border-t border-border bg-card p-3"
+      onDragEnter={aoArrastarEntrando}
+      onDragOver={aoArrastarSobre}
+      onDragLeave={aoArrastarSaindo}
+      onDrop={aoSoltar}
+    >
+      {/* Alvo de soltura: só aparece com arquivo sendo arrastado, e é
+          `pointer-events-none` para não engolir o `drop` que ele anuncia. */}
+      {arrastando && (
+        <div className="pointer-events-none absolute inset-1 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-primary/10">
+          <span className="text-sm font-medium text-primary">{t("solteParaAnexar")}</span>
+        </div>
+      )}
       {/* Mensagem retida: enquanto esta barra estiver visível, nada saiu. */}
       {pendente && (
         <div className="mb-2 flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2">
@@ -1466,6 +1560,7 @@ export function MessageComposer({
             value={text}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onPaste={aoColar}
             placeholder={
               readOnly
                 ? t("readOnlyPlaceholder")
