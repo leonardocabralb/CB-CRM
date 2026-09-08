@@ -2458,6 +2458,21 @@ que arrastava PDF para a conversa e nada acontecia. O que morde código novo:
   começo mandaria o primeiro anexo duas vezes. O mesmo vale para o
   agendamento: uma linha de `cb_scheduled_messages` por anexo, e só o que
   falhou fica na tela.
+- ⚠️⚠️ **`onSendMedia` DEVOLVE se entregou, e o pai NÃO apaga o objeto na
+  falha** — o compositor mantém o item na fila e volta a ser dono dele
+  (achado do Codex no PR #144). Antes o pai recolhia o objeto em todo
+  caminho de erro, então guardar o rascunho deixaria um anexo apontando para
+  arquivo inexistente. O envio PARA no primeiro que não entregou: a causa
+  costuma ser a mesma para todos (janela de 24h, rede fora) e seguir daria
+  um toast por anexo.
+- ⚠️⚠️ **O envio da fila tem TRINCO SÍNCRONO** (`enviandoFilaRef`), não só
+  o `busy`: entre o clique e o próximo render cabe um segundo clique, e ele
+  iteraria sobre a MESMA fila capturada, mandando todos os anexos de novo ao
+  cliente. Estado não serializa; ref serializa.
+- ⚠️ **O seletor de arquivo passa pelo MESMO funil do arrastar**
+  (`receberArquivos`): é ele que aplica `MAX_ANEXOS` e avisa o que ficou de
+  fora. Ligar o seletor direto ao upload ignorava o teto — escolher uma
+  pasta inteira subia e mandava tudo.
 - ⚠️ **Os TRÊS caminhos de upload acrescentam à fila** (seletor, arrastar/
   colar, acervo, gravação de voz) e cada um mantém a guarda de troca de
   conversa. A limpeza de desmonte e a da anotação percorrem a fila INTEIRA —

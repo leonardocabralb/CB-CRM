@@ -209,10 +209,12 @@ interface MessageComposerProps {
   transporteConhecido?: boolean;
   onSend: (text: string, replyToId?: string) => void;
   /**
-   * ⚠️ Pode devolver promessa: com vários anexos o compositor envia UM POR
-   * VEZ, com `await`, para não embaralhar a ordem no celular do cliente.
+   * ⚠️ Devolve se ENTREGOU. Com vários anexos o compositor envia um por vez,
+   * com `await` (senão chegam fora de ordem no celular do cliente), e só
+   * tira da fila o que foi confirmado — o que falhou fica na tela, com o
+   * arquivo ainda no bucket, para a pessoa tentar de novo sem reanexar.
    */
-  onSendMedia: (payload: SendMediaPayload) => void | Promise<void>;
+  onSendMedia: (payload: SendMediaPayload) => boolean | Promise<boolean>;
   onSendInteractive: (payload: InteractiveMessagePayload, replyToId?: string) => void;
   onOpenTemplates: () => void;
   replyTo?: ReplyDraft | null;
@@ -300,6 +302,10 @@ export function MessageComposer({
   const [drafts, setDrafts] = useState<MediaDraft[]>([]);
   // Qual item está com a prévia grande e o campo de legenda aberto.
   const [selecionado, setSelecionado] = useState<string | null>(null);
+  // Trinco do envio da fila. O ref é o que serializa (síncrono); o estado só
+  // existe para desabilitar o botão e o Enter.
+  const enviandoFilaRef = useRef(false);
+  const [enviandoFila, setEnviandoFila] = useState(false);
   const [busy, setBusy] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -1040,13 +1046,6 @@ export function MessageComposer({
     [stageUpload],
   );
 
-  const handlePicked = useCallback(
-    (kind: "image" | "video" | "document", files: FileList | null) => {
-      if (files && files.length > 0) void stageUploads(Array.from(files));
-    },
-    [stageUploads],
-  );
-
   /**
    * Arquivo que chegou sem passar pelo seletor: arrastado para a conversa ou
    * colado com Ctrl+V. Um anexo por vez — o compositor carrega um só —, e o
@@ -1066,6 +1065,19 @@ export function MessageComposer({
       void stageUploads(r.aceitos);
     },
     [readOnly, sessionExpired, busy, stageUploads, t],
+  );
+
+  /**
+   * ⚠️ O seletor passa pelo MESMO funil do arrastar (`receberArquivos`): ele
+   * é quem aplica o teto e avisa o que ficou de fora. Chamar `stageUploads`
+   * direto daqui ignorava `MAX_ANEXOS` — escolher uma pasta inteira subia e
+   * mandava tudo, apesar do limite anunciado (achado do Codex no PR #144).
+   */
+  const handlePicked = useCallback(
+    (_kind: "image" | "video" | "document", files: FileList | null) => {
+      if (files && files.length > 0) receberArquivos(Array.from(files));
+    },
+    [receberArquivos],
   );
 
   const [arrastando, setArrastando] = useState(false);
@@ -1283,43 +1295,59 @@ export function MessageComposer({
    * começo mandaria o primeiro anexo duas vezes ao cliente.
    */
   const sendDraft = useCallback(async () => {
-    if (drafts.length === 0 || busy) return;
+    // ⚠️ TRINCO SÍNCRONO, e por isso um ref: `busy` é estado, e entre o
+    // clique e o próximo render cabe um segundo clique (ou um segundo Enter)
+    // — que iteraria sobre a MESMA fila capturada e mandaria todos os anexos
+    // de novo ao cliente (achado do Codex no PR #144).
+    if (drafts.length === 0 || busy || enviandoFilaRef.current) return;
+    enviandoFilaRef.current = true;
+    setEnviandoFila(true);
+    try {
 
     // ⚠️ DESVIO ANTES DE QUALQUER COISA, igual ao do texto (925). Com hora
     // escolhida, os anexos vão para a fila de agendadas em vez de sair agora
     // — uma linha por anexo, que é como a tabela guarda (932).
-    if (quandoAg) {
-      const restantes: MediaDraft[] = [];
-      for (const item of drafts) {
-        const legenda = podeTerLegenda(item.kind) ? item.caption.trim() : "";
-        const ok = await agendar(legenda, { anexo: item, replyToId: replyTo?.id });
-        // ⚠️ Só sai da fila quando DEU CERTO, e sem apagar o objeto do
-        // bucket: ele passou a pertencer à agendada, e o disparador vai
-        // buscá-lo lá daqui a horas. Falhou? O item fica na tela, com o
-        // arquivo já subido, e a pessoa tenta de novo sem reanexar.
-        if (!ok) restantes.push(item);
+      if (quandoAg) {
+        const restantes: MediaDraft[] = [];
+        for (const item of drafts) {
+          const legenda = podeTerLegenda(item.kind) ? item.caption.trim() : "";
+          const ok = await agendar(legenda, { anexo: item, replyToId: replyTo?.id });
+          // ⚠️ Só sai da fila quando DEU CERTO, e sem apagar o objeto do
+          // bucket: ele passou a pertencer à agendada, e o disparador vai
+          // buscá-lo lá daqui a horas. Falhou? O item fica na tela, com o
+          // arquivo já subido, e a pessoa tenta de novo sem reanexar.
+          if (!ok) restantes.push(item);
+        }
+        setDrafts(restantes);
+        setSelecionado(restantes[0]?.id ?? null);
+        return;
       }
-      setDrafts(restantes);
-      setSelecionado(restantes[0]?.id ?? null);
-      return;
-    }
 
-    for (const item of drafts) {
-      await onSendMedia({
-        kind: item.kind,
-        mediaUrl: item.mediaUrl,
-        path: item.path,
-        // Audio takes no caption (Meta rejects it). Everything else: the
-        // trimmed caption, or undefined when blank.
-        caption: podeTerLegenda(item.kind) ? item.caption.trim() || undefined : undefined,
-        filename: item.kind === "document" ? item.filename : undefined,
-        replyToId: replyTo?.id,
-      });
-      // O objeto passou a ser da mensagem enviada — sai da fila sem recolher.
-      setDrafts((atual) => atual.filter((d) => d.id !== item.id));
+      for (const item of drafts) {
+        const entregou = await onSendMedia({
+          kind: item.kind,
+          mediaUrl: item.mediaUrl,
+          path: item.path,
+          // Audio takes no caption (Meta rejects it). Everything else: the
+          // trimmed caption, or undefined when blank.
+          caption: podeTerLegenda(item.kind) ? item.caption.trim() || undefined : undefined,
+          filename: item.kind === "document" ? item.filename : undefined,
+          replyToId: replyTo?.id,
+        });
+        // ⚠️ PARA no primeiro que não entregou, e o item FICA na fila com o
+        // arquivo ainda no bucket. Seguir daria um toast de erro por anexo
+        // quando a causa é a mesma para todos (janela de 24h fechada, rede
+        // fora) — e o operador perderia as legendas já escritas.
+        if (!entregou) return;
+        // O objeto passou a ser da mensagem enviada — sai da fila sem recolher.
+        setDrafts((atual) => atual.filter((d) => d.id !== item.id));
+      }
+      setSelecionado(null);
+      onClearReply?.();
+    } finally {
+      enviandoFilaRef.current = false;
+      setEnviandoFila(false);
     }
-    setSelecionado(null);
-    onClearReply?.();
   }, [drafts, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar]);
 
   /** Descarta UM item — recolhe o objeto, que subiu e não foi enviado. */
@@ -1458,7 +1486,7 @@ export function MessageComposer({
           drafts={drafts}
           selecionadoId={selecionado}
           onSelecionar={setSelecionado}
-          busy={busy}
+          busy={busy || enviandoFila}
           readOnly={readOnly}
           onCaptionChange={setCaption}
           onDiscard={discardDraft}
