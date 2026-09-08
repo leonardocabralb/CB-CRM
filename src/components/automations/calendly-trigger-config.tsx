@@ -30,6 +30,15 @@ type Carga =
   | { estado: "nao_conectado" }
   | { estado: "falhou" }
 
+/** As mesmas de qualquer passo de texto — repetidas aqui porque é aqui que o operador monta a mensagem do aviso. */
+const VARIAVEIS_DO_CONTATO = [
+  "{{contact.name}}",
+  "{{contact.phone}}",
+  "{{contact.campo.<chave_do_campo>}}",
+  "{{conversation.link}}",
+  "{{contact.link}}",
+]
+
 const SELECT_CLASS =
   "w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
 
@@ -110,6 +119,10 @@ export function CalendlyTriggerConfig({
         <p className="text-[11px] font-medium text-muted-foreground">{t("variaveisTitulo")}</p>
         <p className="mt-1 font-mono text-[11px] leading-5 text-foreground">
           {VARIAVEIS_DO_AGENDAMENTO.map((v) => `{{vars.${v}}}`).join("  ")}
+        </p>
+        <p className="mt-2 text-[11px] font-medium text-muted-foreground">{t("variaveisDoContatoTitulo")}</p>
+        <p className="mt-1 font-mono text-[11px] leading-5 text-foreground">
+          {VARIAVEIS_DO_CONTATO.join("  ")}
         </p>
         <p className="mt-1 text-[11px] text-muted-foreground">
           {/* As chaves entram por VALOR: escritas no dicionário, as chaves

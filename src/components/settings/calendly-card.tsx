@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { CalendarClock, ChevronDown, RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { CartaoDoCalendly, EventoDoCalendly } from "@/lib/calendly/cartao";
+import { EVENTOS_POR_PAGINA } from "@/lib/calendly/log";
 import { formatarTelefone } from "@/lib/contacts/telefone";
 import { cn } from "@/lib/utils";
 
@@ -27,10 +28,13 @@ import { SettingsChip } from "./settings-chip";
 
 interface Resposta {
   cartao: CartaoDoCalendly;
+  /** A primeira página do log (os 20 mais recentes). */
   eventos: EventoDoCalendly[];
+  totalEventos: number;
   webhookUrl: string | null;
   origemAlcancavel: boolean;
 }
+
 
 const CODIGOS_CONHECIDOS = new Set([
   "token_invalido",
@@ -61,6 +65,16 @@ export function CalendlyCard() {
   const [salvandoPergunta, setSalvandoPergunta] = useState(false);
   const [desconectando, setDesconectando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // O log é EXPANSÍVEL (pedido do operador): fechado, o cartão diz só
+  // quantos chegaram; aberto, lista cada recebimento, e cada linha abre os
+  // dados que vieram — é a auditoria de "marquei e o que aconteceu?".
+  const [logAberto, setLogAberto] = useState(false);
+  const [eventoAberto, setEventoAberto] = useState<string | null>(null);
+  // Paginado (pedido do operador): 20 por página, dos mais recentes para os
+  // mais antigos. A página 1 vem junto com o cartão; as outras, sob demanda.
+  const [pagina, setPagina] = useState(1);
+  const [paginaCarregada, setPaginaCarregada] = useState<{ pagina: number; eventos: EventoDoCalendly[] } | null>(null);
+  const [carregandoPagina, setCarregandoPagina] = useState(false);
   const vivoRef = useRef(true);
   const dadosRef = useRef<Resposta | null>(null);
   dadosRef.current = dados;
@@ -79,6 +93,8 @@ export function CalendlyCard() {
       if (vivoRef.current) {
         setDados(corpo);
         setPergunta(corpo.cartao.perguntaTelefone ?? "");
+        setPagina(1);
+        setPaginaCarregada(null);
         setFalhou(false);
       }
     } catch {
@@ -167,6 +183,30 @@ export function CalendlyCard() {
       await carregar();
     } finally {
       if (vivoRef.current) setDesconectando(false);
+    }
+  };
+
+  const irParaPagina = async (n: number) => {
+    if (n < 1) return;
+    if (n === 1) {
+      setPagina(1);
+      setPaginaCarregada(null);
+      return;
+    }
+    setCarregandoPagina(true);
+    try {
+      const res = await fetch(`/api/cb/calendly/eventos?pagina=${n}`);
+      if (!res.ok) throw new Error(String(res.status));
+      const corpo = (await res.json()) as { eventos: EventoDoCalendly[]; pagina: number };
+      if (vivoRef.current) {
+        setPagina(corpo.pagina);
+        setPaginaCarregada({ pagina: corpo.pagina, eventos: corpo.eventos });
+        setEventoAberto(null);
+      }
+    } catch {
+      if (vivoRef.current) toast.error(t("recarregarFalhou"));
+    } finally {
+      if (vivoRef.current) setCarregandoPagina(false);
     }
   };
 
@@ -319,77 +359,228 @@ export function CalendlyCard() {
                 <p className="text-xs text-muted-foreground">{t("calendly.perguntaHint")}</p>
               </div>
 
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-foreground">{t("calendly.eventosTitulo")}</p>
-                <p className="text-xs text-muted-foreground">
-                  {t("calendly.contagem", {
-                    disparados: cartao.contagem.disparado,
-                    semContato: cartao.contagem.sem_contato,
-                    semAutomacao: cartao.contagem.sem_automacao,
-                    semTelefone: cartao.contagem.sem_telefone,
-                  })}
-                </p>
-                {dados && dados.eventos.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                          <th className="py-1 pr-2 font-medium">{t("calendly.colQuando")}</th>
-                          <th className="py-1 pr-2 font-medium">{t("calendly.colNome")}</th>
-                          <th className="py-1 pr-2 font-medium">{t("calendly.colTelefone")}</th>
-                          <th className="py-1 pr-2 font-medium">{t("calendly.colEvento")}</th>
-                          <th className="py-1 font-medium">{t("calendly.colResultado")}</th>
+              <LogDeRecebimentos
+                eventos={pagina === 1 || !paginaCarregada ? (dados?.eventos ?? []) : paginaCarregada.eventos}
+                total={dados?.totalEventos ?? 0}
+                pagina={pagina}
+                carregando={carregandoPagina}
+                onPagina={(n) => void irParaPagina(n)}
+                cartao={cartao}
+                aberto={logAberto}
+                onToggle={() => setLogAberto((a) => !a)}
+                eventoAberto={eventoAberto}
+                onAbrirEvento={(id) => setEventoAberto((atual) => (atual === id ? null : id))}
+                t={t}
+                rotuloDoResultado={rotuloDoResultado}
+                rotuloDaOrigem={rotuloDaOrigem}
+              />
+            </>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function quando(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+}
+
+function LogDeRecebimentos({
+  eventos,
+  total,
+  pagina,
+  carregando,
+  onPagina,
+  cartao,
+  aberto,
+  onToggle,
+  eventoAberto,
+  onAbrirEvento,
+  t,
+  rotuloDoResultado,
+  rotuloDaOrigem,
+}: {
+  eventos: EventoDoCalendly[];
+  total: number;
+  pagina: number;
+  carregando: boolean;
+  onPagina: (n: number) => void;
+  cartao: CartaoDoCalendly;
+  aberto: boolean;
+  onToggle: () => void;
+  eventoAberto: string | null;
+  onAbrirEvento: (id: string) => void;
+  t: ReturnType<typeof useTranslations>;
+  rotuloDoResultado: (r: string) => string;
+  rotuloDaOrigem: (o: string | null) => string | null;
+}) {
+  return (
+    <div className="rounded-md border border-border">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={aberto}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs"
+      >
+        <ChevronDown className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", aberto && "rotate-180")} />
+        <span className="font-medium text-foreground">{t("calendly.log", { n: total })}</span>
+        <span className="ml-auto truncate text-muted-foreground">
+          {t("calendly.contagem", {
+            disparados: cartao.contagem.disparado,
+            semContato: cartao.contagem.sem_contato,
+            semAutomacao: cartao.contagem.sem_automacao,
+            semTelefone: cartao.contagem.sem_telefone,
+          })}
+        </span>
+      </button>
+      {aberto ? (
+        <div className="space-y-2 border-t border-border p-3">
+          <p className="text-[11px] text-muted-foreground">{t("calendly.logAjuda")}</p>
+          {total === 0 ? (
+            <p className="text-xs text-muted-foreground">{t("calendly.semEventos")}</p>
+          ) : (
+            <div className={cn("overflow-x-auto", carregando && "opacity-60")}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <th className="py-1 pr-2 font-medium">{t("calendly.colQuando")}</th>
+                    <th className="py-1 pr-2 font-medium">{t("calendly.colNome")}</th>
+                    <th className="py-1 pr-2 font-medium">{t("calendly.colTelefone")}</th>
+                    <th className="py-1 pr-2 font-medium">{t("calendly.colEvento")}</th>
+                    <th className="py-1 font-medium">{t("calendly.colResultado")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {eventos.map((e) => {
+                    const abertoAqui = eventoAberto === e.id;
+                    return (
+                      <React.Fragment key={e.id}>
+                        <tr
+                          className="cursor-pointer border-t border-border align-top hover:bg-muted/40"
+                          onClick={() => onAbrirEvento(e.id)}
+                          aria-expanded={abertoAqui}
+                        >
+                          <td className="whitespace-nowrap py-1.5 pr-2 text-muted-foreground">{quando(e.recebido_em)}</td>
+                          <td className="max-w-[12rem] truncate py-1.5 pr-2" title={e.nome ?? ""}>
+                            {e.nome ?? "—"}
+                          </td>
+                          <td className="whitespace-nowrap py-1.5 pr-2">{e.telefone ? formatarTelefone(e.telefone) : "—"}</td>
+                          <td className="max-w-[14rem] truncate py-1.5 pr-2" title={e.event_type_nome ?? ""}>
+                            {e.event_type_nome ?? "—"}
+                          </td>
+                          <td
+                            className={cn(
+                              "py-1.5",
+                              e.resultado === "disparado"
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : e.resultado === "falhou"
+                                  ? "text-destructive"
+                                  : e.resultado === "recebido"
+                                    ? "text-muted-foreground"
+                                    : "text-amber-600 dark:text-amber-400",
+                            )}
+                          >
+                            {rotuloDoResultado(e.resultado)}
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {dados.eventos.map((e) => (
-                          <tr key={e.id} className="border-t border-border align-top">
-                            <td className="whitespace-nowrap py-1.5 pr-2 text-muted-foreground">
-                              {new Date(e.recebido_em).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}
-                            </td>
-                            <td className="max-w-[12rem] truncate py-1.5 pr-2" title={e.nome ?? ""}>
-                              {e.nome ?? "—"}
-                            </td>
-                            <td className="whitespace-nowrap py-1.5 pr-2">
-                              {e.telefone ? formatarTelefone(e.telefone) : "—"}
-                              {rotuloDaOrigem(e.telefone_origem) && (
-                                <span className="text-muted-foreground"> · {rotuloDaOrigem(e.telefone_origem)}</span>
-                              )}
-                            </td>
-                            <td className="max-w-[14rem] truncate py-1.5 pr-2" title={e.event_type_nome ?? ""}>
-                              {e.event_type_nome ?? "—"}
-                              {e.inicio && (
-                                <span className="text-muted-foreground">
-                                  {" "}
-                                  · {new Date(e.inicio).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}
-                                </span>
-                              )}
-                            </td>
-                            <td
-                              className={cn(
-                                "py-1.5",
-                                e.resultado === "disparado"
-                                  ? "text-emerald-600 dark:text-emerald-400"
-                                  : e.resultado === "falhou"
-                                    ? "text-destructive"
-                                    : e.resultado === "recebido"
-                                      ? "text-muted-foreground"
-                                      : "text-amber-600 dark:text-amber-400",
-                              )}
-                              title={e.detalhe ?? ""}
-                            >
-                              {rotuloDoResultado(e.resultado)}
+                        {abertoAqui && (
+                          <tr className="border-t border-border/60 bg-muted/30">
+                            <td colSpan={5} className="px-2 py-2">
+                              <dl className="grid gap-x-4 gap-y-1 text-xs sm:grid-cols-[max-content_1fr]">
+                                <dt className="text-muted-foreground">{t("calendly.detEvento")}</dt>
+                                <dd>
+                                  {e.event_type_nome ?? "—"}
+                                  {e.inicio && (
+                                    <span className="text-muted-foreground">
+                                      {" "}
+                                      · {quando(e.inicio)}
+                                      {e.fim ? ` – ${quando(e.fim)}` : ""}
+                                    </span>
+                                  )}
+                                </dd>
+                                <dt className="text-muted-foreground">{t("calendly.detEmail")}</dt>
+                                <dd>{e.email ?? "—"}</dd>
+                                <dt className="text-muted-foreground">{t("calendly.detTelefone")}</dt>
+                                <dd>
+                                  {e.telefone ? formatarTelefone(e.telefone) : "—"}
+                                  {rotuloDaOrigem(e.telefone_origem) && (
+                                    <span className="text-muted-foreground"> · {rotuloDaOrigem(e.telefone_origem)}</span>
+                                  )}
+                                </dd>
+                                <dt className="text-muted-foreground">{t("calendly.detLink")}</dt>
+                                <dd className="break-all">
+                                  {e.link ? (
+                                    <a href={e.link} target="_blank" rel="noreferrer" className="underline">
+                                      {e.link}
+                                    </a>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </dd>
+                                <dt className="text-muted-foreground">{t("calendly.detPerguntas")}</dt>
+                                <dd>
+                                  {e.perguntas && e.perguntas.length > 0 ? (
+                                    <ul className="space-y-0.5">
+                                      {e.perguntas.map((q, i) => (
+                                        <li key={i}>
+                                          <span className="text-muted-foreground">{q.pergunta}:</span> {q.resposta}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    t("calendly.detSemPerguntas")
+                                  )}
+                                </dd>
+                                <dt className="text-muted-foreground">{t("calendly.detResultado")}</dt>
+                                <dd>
+                                  {rotuloDoResultado(e.resultado)}
+                                  {e.detalhe && <span className="text-muted-foreground"> · {e.detalhe}</span>}
+                                  <span className="text-muted-foreground">
+                                    {" "}
+                                    · {e.processado_em ? t("calendly.detProcessado", { quando: quando(e.processado_em) }) : t("calendly.detNaoProcessado")}
+                                  </span>
+                                </dd>
+                                <dt className="text-muted-foreground">{t("calendly.detContato")}</dt>
+                                <dd>
+                                  {e.contact_id ? (
+                                    <a href={`/contacts?contact=${e.contact_id}`} className="underline">
+                                      {t("calendly.abrirNoCrm")}
+                                    </a>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </dd>
+                              </dl>
                             </td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">{t("calendly.semEventos")}</p>
-                )}
-              </div>
-            </>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {total > EVENTOS_POR_PAGINA && (
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <Button type="button" variant="outline" size="sm" onClick={() => onPagina(pagina - 1)} disabled={carregando || pagina <= 1}>
+                {t("calendly.logMaisRecentes")}
+              </Button>
+              <span className="text-muted-foreground">
+                {t("calendly.logPagina", { pagina, total: Math.max(1, Math.ceil(total / EVENTOS_POR_PAGINA)) })}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onPagina(pagina + 1)}
+                disabled={carregando || pagina * EVENTOS_POR_PAGINA >= total}
+              >
+                {t("calendly.logMaisAntigos")}
+              </Button>
+            </div>
           )}
         </div>
       ) : null}

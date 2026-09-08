@@ -31,6 +31,7 @@ import { supabaseAdmin } from './admin-client'
 import { resolverDestinatario } from './destinatario'
 import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send'
 import { digitosDoTelefone } from '@/lib/contacts/telefone'
+import { urlDoInbox } from '@/lib/inbox/url'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
@@ -519,7 +520,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'send_message': {
       const cfg = step.step_config as SendMessageStepConfig
       if (!args.contactId) throw new Error('send_message needs a contact')
-      const text = interpolate(cfg.text, args)
+      const text = await interpolate(cfg.text, args)
       if (!text.trim()) throw new Error('send_message has empty text')
       const conversationId = await resolveConversationId(args)
       const { whatsapp_message_id } = await engineSendText({
@@ -694,7 +695,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId) throw new Error('update_contact_field needs a contact')
       // Resolve workflow variables ({{ vars.* }}, {{ message.text }}) so custom
       // values can be populated dynamically from the triggering context.
-      const value = interpolate(cfg.value, args)
+      const value = await interpolate(cfg.value, args)
 
       // Custom fields are encoded as `custom:<custom_field_id>`; anything else
       // is a built-in contact column.
@@ -784,7 +785,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         contactId: args.contactId,
         pipelineId: cfg.pipeline_id,
         stageId: cfg.stage_id,
-        title: interpolate(cfg.title, args),
+        title: await interpolate(cfg.title, args),
         value: cfg.value ?? 0,
         // Canal do disparo, mesmo carimbo que a linha de automation_logs
         // recebe. Sem ele o card some de qualquer recorte por número.
@@ -994,7 +995,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       // NÃO viajaria ao cliente — a equipe leria uma conversa que o cliente
       // nunca teve. Mesma guarda da 932, aqui em terceiro lugar (banco, tela,
       // motor), porque a config pode ter sido gravada antes desta regra.
-      const legenda = cfg.kind === 'audio' ? undefined : interpolate(cfg.caption ?? '', args) || undefined
+      const legenda = cfg.kind === 'audio' ? undefined : (await interpolate(cfg.caption ?? '', args)) || undefined
 
       const conversationId = await resolveConversationId(args)
       const { whatsapp_message_id } = await engineSendMedia({
@@ -1022,7 +1023,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!(await isDeliverableUrl(cfg.url))) {
         throw new Error('send_webhook: destination not allowed')
       }
-      const body = cfg.body_template ? interpolate(cfg.body_template, args) : JSON.stringify(args.context)
+      const body = cfg.body_template ? await interpolate(cfg.body_template, args) : JSON.stringify(args.context)
       const res = await fetch(cfg.url, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...(cfg.headers ?? {}) },
@@ -1050,7 +1051,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       // editor saía para um destino que não existe.
       const digitos = digitosDoTelefone(cfg.phone)
       if (!digitos) throw new Error('send_to_number: telefone inválido')
-      const text = interpolate(cfg.text ?? '', args)
+      const text = await interpolate(cfg.text ?? '', args)
       if (!text.trim()) throw new Error('send_to_number has empty text')
       const accountId = args.automation.account_id
 
@@ -1532,14 +1533,117 @@ function waitMs(cfg: WaitStepConfig): number {
   return Math.max(1_000, cfg.amount * unitMs)
 }
 
-function interpolate(s: string, args: ExecuteArgs): string {
-  return s.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
-    const [ns, prop] = String(key).split('.')
+// ------------------------------------------------------------
+// Variáveis de texto — `{{ns.prop}}` em mensagem, campo, legenda, webhook.
+//
+// Namespaces:
+//   message.text, vars.<nome>, channel.id — do CONTEXTO do disparo (baratos);
+//   contact.name|phone|email|company|link, contact.campo.<chave_do_campo>,
+//   conversation.link — do CONTATO, carregados do banco (977).
+//
+// ⚠️ O contato é carregado UMA vez por execução (WeakMap por `args`) e SÓ
+// quando o texto cita `contact.`/`conversation.`: sem a guarda, todo
+// `send_message` pagaria três consultas para nada. `contact.campo.<chave>`
+// usa a `field_key` (a chave estável do catálogo, 948), não o nome exibido.
+// Os links saem de `NEXT_PUBLIC_SITE_URL`; sem ela, caminho relativo.
+// ------------------------------------------------------------
+
+interface DadosDoContato {
+  contato: { name: string; phone: string; email: string; company: string } | null
+  campos: Record<string, string>
+  conversationId: string | null
+}
+
+const dadosPorExecucao = new WeakMap<ExecuteArgs, Promise<DadosDoContato>>()
+
+function dadosDoContato(args: ExecuteArgs): Promise<DadosDoContato> {
+  let p = dadosPorExecucao.get(args)
+  if (!p) {
+    p = carregarDadosDoContato(args)
+    dadosPorExecucao.set(args, p)
+  }
+  return p
+}
+
+async function carregarDadosDoContato(args: ExecuteArgs): Promise<DadosDoContato> {
+  const conversaDoContexto = args.context.conversation_id ?? null
+  if (!args.contactId) return { contato: null, campos: {}, conversationId: conversaDoContexto }
+  const db = supabaseAdmin()
+  const accountId = args.automation.account_id
+  const [contato, valores, conversa] = await Promise.all([
+    db
+      .from('contacts')
+      .select('name, phone, email, company')
+      .eq('id', args.contactId)
+      .eq('account_id', accountId)
+      .maybeSingle(),
+    // `contact_custom_values` não tem `account_id`: a conta vem pelo campo.
+    db
+      .from('contact_custom_values')
+      .select('value, custom_fields(field_key, account_id)')
+      .eq('contact_id', args.contactId),
+    conversaDoContexto
+      ? Promise.resolve({ data: null })
+      : db
+          .from('conversations')
+          .select('id')
+          .eq('account_id', accountId)
+          .eq('contact_id', args.contactId)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle(),
+  ])
+
+  const campos: Record<string, string> = {}
+  for (const linha of (valores.data ?? []) as Array<{
+    value: string | null
+    custom_fields: { field_key?: string; account_id?: string } | null
+  }>) {
+    const def = linha.custom_fields
+    if (!def?.field_key || def.account_id !== accountId) continue
+    campos[def.field_key] = linha.value ?? ''
+  }
+  const c = contato.data as { name?: string | null; phone?: string | null; email?: string | null; company?: string | null } | null
+  return {
+    contato: c
+      ? { name: c.name ?? '', phone: c.phone ?? '', email: c.email ?? '', company: c.company ?? '' }
+      : null,
+    campos,
+    conversationId: conversaDoContexto ?? ((conversa.data as { id?: string } | null)?.id ?? null),
+  }
+}
+
+/** URL absoluta no CRM quando `NEXT_PUBLIC_SITE_URL` existe; senão o caminho. */
+function linkDoCrm(caminho: string): string {
+  const base = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, '')
+  return base ? `${base}${caminho}` : caminho
+}
+
+const RE_VARIAVEL = /\{\{\s*([\w.]+)\s*\}\}/g
+const RE_CITA_CONTATO = /\{\{\s*(contact|conversation)\./
+
+async function interpolate(s: string, args: ExecuteArgs): Promise<string> {
+  if (!s) return ''
+  const dados = RE_CITA_CONTATO.test(s) ? await dadosDoContato(args) : null
+  return s.replace(RE_VARIAVEL, (_, key) => {
+    const partes = String(key).split('.')
+    const [ns, prop] = partes
     if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
     if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')
     // `{{channel.id}}` no corpo de um send_webhook faz o sistema externo
     // saber por qual número o cliente falou, sem depender do webhook nativo.
     if (ns === 'channel' && prop === 'id') return String(args.context.channel_id ?? '')
+    if (ns === 'contact' && dados) {
+      if (prop === 'campo') return dados.campos[partes.slice(2).join('.')] ?? ''
+      if (prop === 'link') return args.contactId ? linkDoCrm(`/contacts?contact=${args.contactId}`) : ''
+      if (prop === 'name' || prop === 'phone' || prop === 'email' || prop === 'company') {
+        return dados.contato?.[prop] ?? ''
+      }
+      return ''
+    }
+    if (ns === 'conversation' && prop === 'link' && dados) {
+      return dados.conversationId ? linkDoCrm(urlDoInbox({ c: dados.conversationId })) : ''
+    }
     return ''
   })
 }

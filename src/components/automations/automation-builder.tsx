@@ -2264,6 +2264,7 @@ function StepEditor({
               placeholder={t("config.placeholderMessageText")}
               className="min-h-24 bg-muted text-foreground"
             />
+            <DicaDeVariaveis t={t} />
           </FieldBlock>
           <CanalDeSaida
             value={canalDoPasso(cfg)}
@@ -2655,6 +2656,7 @@ function StepEditor({
               placeholder={t("config.placeholderNotifyText", { nome: "{{vars.agendamento_nome}}", data: "{{vars.agendamento_data}}" })}
               className="min-h-24 bg-muted text-foreground"
             />
+            <DicaDeVariaveis t={t} />
           </FieldBlock>
           <CanalDeSaida
             value={canalDoPasso(cfg)}
@@ -2695,6 +2697,30 @@ function StepEditor({
     default:
       return null
   }
+}
+
+/**
+ * As variáveis que qualquer passo de texto aceita (977). A lista é montada
+ * em código e entra no dicionário por VALOR: chaves duplas escritas no JSON
+ * quebrariam o parser ICU (icu-safety.test.ts).
+ */
+const VARIAVEIS_DE_TEXTO = [
+  "{{contact.name}}",
+  "{{contact.phone}}",
+  "{{contact.email}}",
+  "{{contact.company}}",
+  "{{contact.campo.<chave_do_campo>}}",
+  "{{conversation.link}}",
+  "{{contact.link}}",
+  "{{message.text}}",
+]
+
+function DicaDeVariaveis({ t }: { t: ReturnType<typeof useTranslations> }) {
+  return (
+    <p className="mt-1 text-[11px] text-muted-foreground">
+      {t("config.variaveisDeTexto", { lista: VARIAVEIS_DE_TEXTO.join("  ") })}
+    </p>
+  )
 }
 
 function FieldBlock({

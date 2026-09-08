@@ -195,14 +195,24 @@ qualquer, até a conexão existir), passos nesta ordem (D6):
 1. `update_contact_field` `name` = `{{vars.agendamento_nome}}`
 2. `update_contact_field` `custom:e40ad0f2…` (Data e Hora Reunião) = `{{vars.agendamento_inicio}}`
 3. `update_contact_field` `custom:a5d00f62…` (Link Reunião) = `{{vars.agendamento_link}}`
-4. `send_to_number` telefone `5583988745316`, conexão Bancário - Comercial, texto:
+4. `send_to_number` telefone `5583988745316`, nome "Leonardo Cabral Baptista",
+   conexão Bancário - Comercial, texto (formato do operador, 07/09, com
+   negrito do WhatsApp):
    ```
-   Novo Agendamento:
-   Tipo: {{vars.agendamento_evento}}
-   Nome: {{vars.agendamento_nome}}
-   Data: {{vars.agendamento_data}}
-   Telefone: {{vars.agendamento_telefone}}
+   *Novo Agendamento:*
+   *Nome:* {{vars.agendamento_nome}}
+   *Data:* {{vars.agendamento_data}}
+   *Telefone:* {{vars.agendamento_telefone}}
+   *Origem:* {{contact.campo.nome_da_campanha}} - {{contact.campo.nome_do_conjunto}} - {{contact.campo.nome_do_anuncio}}
+   *Tamanho da Dívida:* {{contact.campo.tamanho_da_divida}}
+   *Link CRM:* {{conversation.link}}
    ```
+   Os `{{contact.*}}` e o `{{conversation.link}}` nasceram deste pedido: o
+   motor só conhecia `{{vars.*}}`, `{{message.text}}` e `{{channel.id}}`.
+   Agora todo passo de texto (mensagem, aviso, campo, legenda, webhook)
+   aceita `contact.name|phone|email|company|link`,
+   `contact.campo.<chave_do_campo>` e `conversation.link` — o contato é
+   carregado uma vez por execução, e só quando o texto cita.
 5. `move_deal_stage` → Reunião Agendada
 
 ---
@@ -227,6 +237,9 @@ qualquer, até a conexão existir), passos nesta ordem (D6):
 ## 5. Fora deste PR
 
 - `invitee.canceled` / no-show (D7).
+- O log do cartão mostra os dados NORMALIZADOS de cada recebimento (nome,
+  e-mail, telefone e origem, evento, horário, link, respostas do
+  formulário, resultado, contato) — não o JSON cru do Calendly.
 - Criar contato/card para telefone desconhecido (D2).
 - Fixar o nome vindo do Calendly contra o `pushName` do WhatsApp (D5).
 - OAuth do Calendly (o token pessoal basta para um escritório).

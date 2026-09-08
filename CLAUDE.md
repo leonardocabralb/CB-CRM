@@ -2651,6 +2651,14 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   disparo sem URI com config preenchida falha fechado). O nome do evento
   vai junto (`event_type_nome`) para a automação ficar legível quando a API
   não responde. O select vem de `GET /api/cb/calendly/event-types`.
+- ⚠️ **`interpolate` (engine.ts) ganhou `{{contact.*}}` e `{{conversation.link}}`**
+  (`contact.name|phone|email|company|link`, `contact.campo.<field_key>`).
+  É ASSÍNCRONO agora (os 6 call sites usam `await`); o contato é carregado
+  UMA vez por execução (`WeakMap` por `args`) e SÓ quando o texto cita
+  `contact.`/`conversation.` — sem a guarda todo `send_message` pagaria
+  três consultas. A chave do campo é a `field_key` do catálogo (948), não
+  o nome exibido. Links usam `NEXT_PUBLIC_SITE_URL`; sem ela, caminho
+  relativo.
 - **A grade por etapa do funil NÃO mostra esta automação** (`classificarNaEtapa`
   só olha `deal_stage_changed`): ela vive em Automações. Não é omissão —
   a grade é "o que dispara AO ENTRAR na etapa".

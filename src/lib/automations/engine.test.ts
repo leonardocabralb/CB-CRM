@@ -936,3 +936,53 @@ describe("triggerMatches — calendly_booking", () => {
     expect(triggerMatches(auto({ event_type_uri: "https://api.calendly.com/event_types/A" }), {})).toBe(false);
   });
 });
+
+// ------------------------------------------------------------
+// Variáveis do CONTATO (977): {{contact.*}} e {{conversation.link}}.
+// ------------------------------------------------------------
+
+describe("interpolate — variáveis do contato", () => {
+  beforeEach(() => {
+    vi.mocked(engineSendText).mockClear();
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://crm.exemplo.com/");
+  });
+
+  async function textoEnviado(text: string, context: Record<string, unknown> = {}) {
+    h.state.owned = { id: "c1", name: "Marcelo", phone: "5596991126767", email: "m@x.com", company: null } as unknown as { id: string };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [sendStep({ text })];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: { conversation_id: "conv1", ...context },
+    });
+    return vi.mocked(engineSendText).mock.calls[0]?.[0]?.text;
+  }
+
+  it("lê nome, telefone e e-mail do contato, e o link da conversa do disparo", async () => {
+    const texto = await textoEnviado("{{contact.name}} · {{contact.phone}} · {{contact.email}} · {{conversation.link}}");
+    expect(texto).toBe("Marcelo · 5596991126767 · m@x.com · https://crm.exemplo.com/inbox?c=conv1");
+  });
+
+  it("campo personalizado ausente vira vazio, nunca 'undefined'; empresa nula idem", async () => {
+    const texto = await textoEnviado("[{{contact.campo.tamanho_da_divida}}] [{{contact.company}}] [{{contact.nada}}]");
+    expect(texto).toBe("[] [] []");
+  });
+
+  it("link da ficha do contato", async () => {
+    expect(await textoEnviado("{{contact.link}}")).toBe("https://crm.exemplo.com/contacts?contact=c1");
+  });
+
+  it("texto sem `contact.` NÃO consulta o contato (só a guarda de posse)", async () => {
+    h.state.fromCalls = [];
+    await textoEnviado("oi {{vars.x}}");
+    expect(h.state.fromCalls.filter((t) => t === "contact_custom_values")).toHaveLength(0);
+  });
+
+  it("texto com `contact.` consulta o contato UMA vez por execução", async () => {
+    h.state.fromCalls = [];
+    await textoEnviado("{{contact.name}} e de novo {{contact.name}} e {{contact.campo.x}}");
+    expect(h.state.fromCalls.filter((t) => t === "contact_custom_values")).toHaveLength(1);
+  });
+});

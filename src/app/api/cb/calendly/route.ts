@@ -5,6 +5,7 @@ import { requireRole, toErrorResponse } from "@/lib/auth/account";
 import { cartaoDoCalendly, type ConfigDoCalendly, type EventoDoCalendly } from "@/lib/calendly/cartao";
 import { origemPublica, urlDoWebhook } from "@/lib/calendly/conexao";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
+import { COLUNAS_DO_EVENTO, EVENTOS_POR_PAGINA } from "@/lib/calendly/log";
 
 /**
  * GET /api/cb/calendly  (admin+)
@@ -30,12 +31,13 @@ export async function GET(request: Request) {
         .select("user_name, user_email, scheduling_url, webhook_uri, webhook_scope, webhook_state, webhook_token, pergunta_telefone, status, last_event_at, last_error")
         .eq("account_id", ctx.accountId)
         .maybeSingle(),
+      // A primeira página do log (20); as demais vêm de `/eventos?pagina=N`.
       admin
         .from("cb_calendly_eventos")
-        .select("id, evento, nome, telefone, telefone_origem, event_type_nome, inicio, contact_id, resultado, detalhe, recebido_em")
+        .select(COLUNAS_DO_EVENTO, { count: "exact" })
         .eq("account_id", ctx.accountId)
         .order("recebido_em", { ascending: false })
-        .limit(20),
+        .range(0, EVENTOS_POR_PAGINA - 1),
     ]);
     if (config.error || eventos.error) {
       return NextResponse.json({ error: "Não foi possível ler a integração." }, { status: 500 });
@@ -46,6 +48,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       cartao: cartaoDoCalendly(linha, (eventos.data ?? []) as EventoDoCalendly[]),
       eventos: eventos.data ?? [],
+      totalEventos: eventos.count ?? 0,
       webhookUrl: linha && origem ? urlDoWebhook(origem, linha.webhook_token) : null,
       origemAlcancavel: origem !== null,
     });

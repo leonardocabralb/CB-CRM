@@ -1748,7 +1748,8 @@
         "contactNameHint": "Only used when the number is not a contact yet — the contact is created with this name.",
         "placeholderNotifyText": "New booking: {nome} at {data}",
         "notifyChannelInherit": "The number's conversation (or the default connection)",
-        "notifyChannelHelp": "Choosing a connection sends the notice ALWAYS through it — and fails if it is unavailable, instead of going out through another number."
+        "notifyChannelHelp": "Choosing a connection sends the notice ALWAYS through it — and fails if it is unavailable, instead of going out through another number.",
+        "variaveisDeTexto": "Variables: {lista} — the field key is the one in the catalogue (Settings → Fields & tags)."
       },
       "delete": "Delete",
       "stages": {
@@ -1789,7 +1790,8 @@
         "falhou": "Could not load Calendly events right now. Whatever was already chosen still applies.",
         "inativo": "{nome} (inactive)",
         "variaveisTitulo": "Booking variables, for use in the steps",
-        "variaveisAjuda": "E.g. Name: {nome} · Date: {data} (dd/mm/yyyy hh:mm) · the meeting date field takes {inicio}."
+        "variaveisAjuda": "E.g. Name: {nome} · Date: {data} (dd/mm/yyyy hh:mm) · the meeting date field takes {inicio}.",
+        "variaveisDoContatoTitulo": "From the contact (in any text step)"
       },
       "orquestracao": {
         "runAutomationLabel": "Automation to run",
@@ -2486,14 +2488,13 @@
         "urlLabel": "Webhook URL",
         "urlHint": "This is the URL registered in Calendly. For reference only — the CRM subscribes it.",
         "urlInalcancavel": "The CRM's public URL (NEXT_PUBLIC_SITE_URL) is not reachable from outside — the webhook cannot be subscribed from this environment.",
-        "eventosTitulo": "Latest bookings received",
         "semEventos": "No booking has arrived yet. Book a test slot on Calendly to check.",
         "colQuando": "Received",
         "colNome": "Name",
         "colTelefone": "Phone",
         "colEvento": "Event",
         "colResultado": "Result",
-        "contagem": "{disparados} with automation · {semContato} no contact · {semAutomacao} no automation · {semTelefone} no phone",
+        "contagem": "on this page: {disparados} with automation · {semContato} no contact · {semAutomacao} no automation · {semTelefone} no phone",
         "resultado": {
           "recebido": "received",
           "disparado": "automation fired",
@@ -2520,7 +2521,23 @@
           "nao_conectado": "Calendly is not connected",
           "chave_ilegivel": "the stored token could not be read — connect again",
           "webhook_desativado": "the webhook is disabled — resubscribe"
-        }
+        },
+        "log": "Delivery log ({n})",
+        "logAjuda": "Each row is a booking Calendly delivered to the CRM, 20 per page, newest first. Click a row to see the data that arrived and what was done with it.",
+        "detEvento": "Event",
+        "detEmail": "Email",
+        "detTelefone": "Phone",
+        "detLink": "Meeting link",
+        "detPerguntas": "Form answers",
+        "detSemPerguntas": "no questions on the form",
+        "detResultado": "Result",
+        "detProcessado": "processed at {quando}",
+        "detNaoProcessado": "not processed yet",
+        "detContato": "Contact",
+        "abrirNoCrm": "Open the contact in the CRM",
+        "logPagina": "page {pagina} of {total}",
+        "logMaisRecentes": "‹ Newer",
+        "logMaisAntigos": "Older ›"
       },
       "emBreve": "Coming soon",
       "modulo": {

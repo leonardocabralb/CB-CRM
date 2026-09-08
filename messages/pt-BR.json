@@ -1741,7 +1741,8 @@
         "contactNameHint": "Usado só se o número ainda não for um contato — a ficha nasce com este nome.",
         "placeholderNotifyText": "Novo agendamento: {nome} em {data}",
         "notifyChannelInherit": "A conversa do número (ou a conexão padrão)",
-        "notifyChannelHelp": "Escolhendo uma conexão, o aviso sai SEMPRE por ela — e falha se ela não estiver disponível, em vez de sair por outro número."
+        "notifyChannelHelp": "Escolhendo uma conexão, o aviso sai SEMPRE por ela — e falha se ela não estiver disponível, em vez de sair por outro número.",
+        "variaveisDeTexto": "Variáveis: {lista} — a chave do campo é a do catálogo (Configurações → Campos e etiquetas)."
       },
       "delete": "Excluir",
       "stages": {
@@ -1782,7 +1783,8 @@
         "falhou": "Não foi possível carregar os eventos do Calendly agora. O que já estava escolhido continua valendo.",
         "inativo": "{nome} (inativo)",
         "variaveisTitulo": "Variáveis do agendamento, para usar nos passos",
-        "variaveisAjuda": "Ex.: Nome: {nome} · Data: {data} (dd/mm/aaaa hh:mm) · o campo de data da reunião recebe {inicio}."
+        "variaveisAjuda": "Ex.: Nome: {nome} · Data: {data} (dd/mm/aaaa hh:mm) · o campo de data da reunião recebe {inicio}.",
+        "variaveisDoContatoTitulo": "Do contato (em qualquer passo de texto)"
       },
       "orquestracao": {
         "runAutomationLabel": "Automação a acionar",
@@ -2479,14 +2481,13 @@
         "urlLabel": "URL do webhook",
         "urlHint": "É esta URL que está registrada no Calendly. Só para conferência — a assinatura é feita pelo CRM.",
         "urlInalcancavel": "A URL pública do CRM (NEXT_PUBLIC_SITE_URL) não é alcançável de fora — o webhook não pode ser assinado a partir deste ambiente.",
-        "eventosTitulo": "Últimos agendamentos recebidos",
         "semEventos": "Nenhum agendamento chegou ainda. Marque um horário de teste no Calendly para conferir.",
         "colQuando": "Recebido",
         "colNome": "Nome",
         "colTelefone": "Telefone",
         "colEvento": "Evento",
         "colResultado": "Resultado",
-        "contagem": "{disparados} com automação · {semContato} sem contato · {semAutomacao} sem automação · {semTelefone} sem telefone",
+        "contagem": "nesta página: {disparados} com automação · {semContato} sem contato · {semAutomacao} sem automação · {semTelefone} sem telefone",
         "resultado": {
           "recebido": "recebido",
           "disparado": "automação disparada",
@@ -2513,7 +2514,23 @@
           "nao_conectado": "o Calendly não está conectado",
           "chave_ilegivel": "o token guardado não pôde ser lido — conecte de novo",
           "webhook_desativado": "o webhook está desativado — reassine"
-        }
+        },
+        "log": "Log de recebimentos ({n})",
+        "logAjuda": "Cada linha é um agendamento que o Calendly entregou ao CRM, 20 por página, do mais recente ao mais antigo. Clique na linha para ver os dados que chegaram e o que foi feito com eles.",
+        "detEvento": "Evento",
+        "detEmail": "E-mail",
+        "detTelefone": "Telefone",
+        "detLink": "Link da reunião",
+        "detPerguntas": "Respostas do formulário",
+        "detSemPerguntas": "nenhuma pergunta no formulário",
+        "detResultado": "Resultado",
+        "detProcessado": "processado em {quando}",
+        "detNaoProcessado": "ainda não processado",
+        "detContato": "Contato",
+        "abrirNoCrm": "Abrir a ficha no CRM",
+        "logPagina": "página {pagina} de {total}",
+        "logMaisRecentes": "‹ Mais recentes",
+        "logMaisAntigos": "Mais antigos ›"
       },
       "emBreve": "Em breve",
       "modulo": {

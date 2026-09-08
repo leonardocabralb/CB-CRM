@@ -30,14 +30,19 @@ export interface EventoDoCalendly {
   id: string;
   evento: string;
   nome: string | null;
+  email?: string | null;
   telefone: string | null;
   telefone_origem: string | null;
   event_type_nome: string | null;
   inicio: string | null;
+  fim?: string | null;
+  link?: string | null;
+  perguntas?: { pergunta: string; resposta: string }[] | null;
   contact_id: string | null;
   resultado: ResultadoDoEvento | string;
   detalhe: string | null;
   recebido_em: string;
+  processado_em?: string | null;
 }
 
 export type EstadoDoCalendly = "nao_conectado" | "conectado" | "erro";
