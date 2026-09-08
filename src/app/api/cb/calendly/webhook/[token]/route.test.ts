@@ -123,7 +123,8 @@ describe("POST /api/cb/calendly/webhook/[token]", () => {
     });
     expect(h.state.processados).toHaveLength(1);
     expect(h.state.gravados[0]).toMatchObject({ eventoId: "evt-1", r: { resultado: "disparado" } });
-    expect(h.state.updates.some((u) => u.table === "cb_calendly_config" && "last_event_at" in u.payload)).toBe(true);
+    const carimbo = h.state.updates.find((u) => u.table === "cb_calendly_config" && "last_event_at" in u.payload);
+    expect(carimbo?.payload.webhook_state).toBe("active");
   });
 
   it("CRÍTICO: assinatura errada → 401 e NADA gravado", async () => {

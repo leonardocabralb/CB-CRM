@@ -102,9 +102,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     return NextResponse.json({ ok: true, duplicado: true });
   }
 
+  // Entrega chegando = assinatura viva: corrige um `disabled` que a
+  // conferência do cartão possa ter gravado numa hora ruim.
   await admin
     .from("cb_calendly_config")
-    .update({ last_event_at: new Date().toISOString() })
+    .update({ last_event_at: new Date().toISOString(), webhook_state: "active" })
     .eq("account_id", config.account_id);
 
   const accountId = config.account_id as string;

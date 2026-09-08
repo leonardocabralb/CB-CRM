@@ -319,3 +319,23 @@ qualquer, até a conexão existir), passos nesta ordem (D6):
 - ⚠️ **O token do Calendly foi colado no chat pelo operador.** Não foi
   digitado em lugar nenhum por decisão de regra (credencial só entra pela
   mão do operador); recomendado gerar um novo e colar no cartão.
+
+### Achados do Codex no PR #128 (07/09) — os três tratados no PR seguinte
+
+1. **P1 — `send_to_number` normalizava número estrangeiro em dígitos como
+   Brasil** ("14045551234" → "5514045551234", aviso para outro
+   destinatário). `digitosDoTelefone` passou a exigir o 9 na 3ª posição
+   para acrescentar o 55 a 11 dígitos (celular BR = DDD + 9 + 8; na
+   América do Norte N9X é reservado, então não colide). A dica do editor
+   manda escrever número de fora com `+`. Teste com o caso do achado.
+2. **P2 — `webhook_state` nunca era relido** (o Calendly desativa a
+   assinatura após 24h de falhas sem avisar). `conferirAssinatura` no
+   `GET /api/cb/calendly` lê a assinatura ao vivo e corrige a coluna
+   (404 → `disabled`; 401 → `token_invalido`); toda entrega grava
+   `active`. `cliente.assinatura(uri)` novo, com teste.
+3. **P2 — o evento virava "disparado" sem confirmar execução**.
+   `runAutomationsForTrigger` devolve `ResultadoDoDisparo`; `processar`
+   grava `disparado` só com execução sem falha, `sem_automacao` (com "fora
+   do escopo") quando conexão/etapa barram, `falhou` quando um passo
+   falhou ou o disparo não aconteceu. `resultadoDoDisparo` é puro, com 4
+   testes.

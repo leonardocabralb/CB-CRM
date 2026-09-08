@@ -8,10 +8,19 @@
  * `contacts.phone` (só dígitos, com DDI), que é o que `findExistingContact`
  * casa pelos últimos 8 dígitos.
  *
- * ⚠️ O `+` decide se o número JÁ tem DDI. Sem ele, 10–11 dígitos são lidos
- * como DDD + número do Brasil e ganham o 55 — é o que o cliente brasileiro
- * digita. Com ele, os dígitos entram como vieram ("+1 404 555 1234" tem 11
- * dígitos e NÃO é um celular de São Paulo).
+ * ⚠️ O `+` decide se o número JÁ tem DDI. Sem ele, 10 dígitos (fixo) ou 11
+ * dígitos COM o nono dígito na 3ª posição (celular: DDD + 9 + 8) são lidos
+ * como Brasil e ganham o 55 — é o que o cliente brasileiro digita. Com
+ * ele, os dígitos entram como vieram.
+ *
+ * ⚠️ Por que a 3ª posição, e não "11 dígitos": um número americano em
+ * dígitos ("14045551234") também tem 11, e ganhar o 55 o mandaria para
+ * outro destinatário — com os dados do agendamento junto (achado do Codex
+ * no PR #128). Na América do Norte o 2º dígito do código de área nunca é
+ * 9 (N9X é reservado), então o "9" na 3ª posição separa os dois com
+ * segurança. Número de outro país com 11 dígitos e 9 na 3ª posição
+ * (Bulgária fixo: "3592…") ainda colide — escreva com `+`, que é o que a
+ * dica do editor pede para número de fora.
  */
 
 const MIN_DIGITOS = 8;
@@ -25,7 +34,8 @@ export function digitosDoTelefone(texto: string | null | undefined): string | nu
   let digitos = aparado.replace(/\D/g, "");
   if (aparado.startsWith("00")) digitos = digitos.replace(/^00/, "");
   if (digitos.length < MIN_DIGITOS || digitos.length > MAX_DIGITOS) return null;
-  if (!comDdi && (digitos.length === 10 || digitos.length === 11)) return `55${digitos}`;
+  if (!comDdi && digitos.length === 10) return `55${digitos}`;
+  if (!comDdi && digitos.length === 11 && digitos[2] === "9") return `55${digitos}`;
   return digitos;
 }
 

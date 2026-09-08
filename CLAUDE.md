@@ -2591,11 +2591,17 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   A pergunta configurada pelo operador VENCE a exclusão. A ORIGEM fica
   gravada no evento (`telefone_origem`) — é o que a tela mostra quando não
   há contato.
-- ⚠️ **Sem `+`, 10–11 dígitos ganham o 55** (`digitosDoTelefone`): é o que o
-  brasileiro digita. Com `+`, os dígitos entram como vieram ("+1 404…" tem
-  11 dígitos e NÃO é celular de São Paulo). Vale para o passo
-  `send_to_number` também — o mesmo helper, senão "(83) 98874-5316" no
-  editor saía para um número que não existe.
+- ⚠️ **Sem `+`, 10 dígitos (fixo) ou 11 dígitos COM 9 na 3ª posição
+  (celular) ganham o 55** (`digitosDoTelefone`): é o que o brasileiro
+  digita. Com `+`, os dígitos entram como vieram. ⚠️ O "9 na 3ª posição"
+  não é enfeite: "14045551234" (EUA, só dígitos) também tem 11 dígitos, e
+  ganhar o 55 mandava o aviso — com os dados do agendamento — para outro
+  destinatário (Codex, PR #128). Na América do Norte o 2º dígito do código
+  de área nunca é 9 (N9X reservado), então o teste separa os dois; número
+  de outro país com 11 dígitos e 9 ali (Bulgária fixo) ainda colide —
+  a dica do editor manda escrever número de fora com `+`. Vale para o
+  passo `send_to_number` também — o mesmo helper, senão "(83) 98874-5316"
+  no editor saía para um número que não existe.
 - ⚠️ **A assinatura é conferida sobre o corpo CRU** (`request.text()`),
   `Calendly-Webhook-Signature: t=…,v1=…` = HMAC-SHA256 de `t.corpo` com a
   chave que NÓS informamos ao assinar (cifrada em `signing_key`).
@@ -2640,6 +2646,21 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   Na automação criada, o aviso vem ANTES de `move_deal_stage`, que falha
   quando o contato não tem card aberto — o aviso do agendamento não pode
   depender do card.
+- ⚠️ **`webhook_state` é conferido AO VIVO a cada carga do cartão**
+  (`conferirAssinatura`, `GET /webhook_subscriptions/{uuid}`): o Calendly
+  DESATIVA a assinatura depois de 24h de entregas com falha e não avisa —
+  a coluna gravada na criação diria "ativo" para sempre (Codex, PR #128).
+  404 lá = `disabled` aqui (só reassinar resolve); 401 = token inválido;
+  rede/limite = fica o que está. E toda entrega que chega grava
+  `webhook_state = 'active'` — entrega chegando é prova de vida.
+- ⚠️ **`runAutomationsForTrigger` DEVOLVE o que fez** (`ResultadoDoDisparo`:
+  candidatas, fora do escopo, executadas, com falha, erro) — chamadores
+  antigos ignoram. O evento do Calendly grava `disparado` SÓ quando alguma
+  automação rodou sem falha; escopo de conexão/etapa barrando tudo é
+  `sem_automacao` com o motivo escrito, passo que falhou é `falhou`
+  (Codex, PR #128: antes tudo virava "disparado"). Para isso
+  `executeStepsFrom` devolve o status final no escopo de fora (`null` em
+  ramo aninhado) e `executeAutomation` o repassa.
 - **A assinatura do webhook tenta `organization` e cai para `user`** (403):
   o token de quem não administra a organização só enxerga os próprios
   eventos. Token bom + webhook recusado grava `status='erro'` com o motivo

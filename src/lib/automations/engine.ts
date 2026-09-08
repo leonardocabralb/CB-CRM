@@ -26,6 +26,7 @@ import type {
   SendMediaStepConfig,
   SendToNumberStepConfig,
   CalendlyTriggerConfig,
+  AutomationLogStatus,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
 import { resolverDestinatario } from './destinatario'
@@ -118,14 +119,46 @@ export interface DispatchInput {
 }
 
 /**
+ * O que aconteceu num disparo (977). Os chamadores antigos ignoram o
+ * retorno (fire-and-forget); o Calendly grava isto no evento — sem ele o
+ * log dizia "automação disparada" quando o escopo de conexão/etapa tinha
+ * barrado tudo, ou quando um passo falhou (achado do Codex no PR #128).
+ */
+export interface ResultadoDoDisparo {
+  /** Automações ativas deste gatilho na conta. */
+  candidatas: number
+  /** Barradas por conexão, etapa ou pela config do gatilho. */
+  foraDoEscopo: number
+  /** Chegaram a rodar (têm linha em `automation_logs`). */
+  executadas: number
+  /** Rodaram e terminaram `failed` (ou estouraram antes do log). */
+  comFalha: number
+  /** O disparo em si não aconteceu (contato de outra conta, banco fora). */
+  erro?: string
+}
+
+const DISPARO_VAZIO: ResultadoDoDisparo = { candidatas: 0, foraDoEscopo: 0, executadas: 0, comFalha: 0 }
+
+/**
  * Fire all active automations matching the given trigger for an
  * account.
  *
  * Must never throw — callers use fire-and-forget from the webhook.
  * All errors are caught and logged; per-automation failures are
  * recorded into automation_logs with status='failed'.
+ *
+ * Devolve `void` de propósito: os chamadores do upstream (webhook da Meta,
+ * `inbound-store`) empilham a promessa num `Promise<void>[]`, e mudar o
+ * tipo aqui mexeria em arquivos que o merge do upstream reescreve. Quem
+ * precisa saber o que aconteceu chama `dispararAutomacoes`.
  */
 export async function runAutomationsForTrigger(input: DispatchInput): Promise<void> {
+  await dispararAutomacoes(input)
+}
+
+/** `runAutomationsForTrigger` com o RESULTADO (977). Nunca lança. */
+export async function dispararAutomacoes(input: DispatchInput): Promise<ResultadoDoDisparo> {
+  const r: ResultadoDoDisparo = { ...DISPARO_VAZIO }
   try {
     const db = supabaseAdmin()
 
@@ -145,11 +178,11 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
         .maybeSingle()
       if (ownErr) {
         console.error('[automations] contact ownership check failed:', ownErr)
-        return
+        return { ...r, erro: 'contact ownership check failed' }
       }
       if (!owned) {
         console.warn('[automations] contact not in account, refusing dispatch', input.contactId)
-        return
+        return { ...r, erro: 'contact not in account' }
       }
     }
 
@@ -162,25 +195,41 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
 
     if (error) {
       console.error('[automations] fetch failed:', error)
-      return
+      return { ...r, erro: 'automations fetch failed' }
     }
-    if (!automations || automations.length === 0) return
+    if (!automations || automations.length === 0) return r
+    r.candidatas = automations.length
 
     for (const automation of automations as Automation[]) {
-      if (!channelInScope(automation, input.context)) continue
-      if (!triggerMatches(automation, input.context)) continue
+      if (!channelInScope(automation, input.context)) {
+        r.foraDoEscopo += 1
+        continue
+      }
+      if (!triggerMatches(automation, input.context)) {
+        r.foraDoEscopo += 1
+        continue
+      }
       // Depois do casamento de gatilho, e não antes: `stageInScope` pode
       // consultar o banco, e não faz sentido perguntar em que etapa o contato
       // está para uma automação que nem era desta palavra-chave.
-      if (!(await stageInScope(db, automation, input.contactId, input.context))) continue
+      if (!(await stageInScope(db, automation, input.contactId, input.context))) {
+        r.foraDoEscopo += 1
+        continue
+      }
       try {
-        await executeAutomation(input, automation)
+        const status = await executeAutomation(input, automation)
+        r.executadas += 1
+        if (status === 'failed') r.comFalha += 1
       } catch (err) {
         console.error('[automations] execute failed:', automation.id, err)
+        r.executadas += 1
+        r.comFalha += 1
       }
     }
+    return r
   } catch (err) {
     console.error('[automations] dispatch failed:', err)
+    return { ...r, erro: err instanceof Error ? err.message : 'dispatch failed' }
   }
 }
 
@@ -328,7 +377,7 @@ async function executeAutomation(
    * automação a chamou, e a diferença é tudo ao investigar um laço.
    */
   rotuloDoDisparo?: string,
-) {
+): Promise<AutomationLogStatus> {
   const db = supabaseAdmin()
 
   const { data: log, error: logErr } = await db
@@ -362,19 +411,20 @@ async function executeAutomation(
 
   if (logErr || !log) {
     console.error('[automations] cannot create log:', logErr)
-    return
+    return 'failed'
   }
 
-  await executeStepsFrom({
-    automation,
-    contactId: input.contactId ?? null,
-    context: input.context ?? {},
-    parentStepId: null,
-    branch: null,
-    startPosition: 0,
-    logId: log.id,
-    triggerEvent: rotuloDoDisparo ?? input.triggerType,
-  })
+  const status =
+    (await executeStepsFrom({
+      automation,
+      contactId: input.contactId ?? null,
+      context: input.context ?? {},
+      parentStepId: null,
+      branch: null,
+      startPosition: 0,
+      logId: log.id,
+      triggerEvent: rotuloDoDisparo ?? input.triggerType,
+    })) ?? 'success'
 
   // Atomic counter update via the SQL function from migration 007.
   // Doing this with a client-side read-modify-write raced when the
@@ -386,6 +436,7 @@ async function executeAutomation(
   if (rpcErr) {
     console.error('[automations] increment counter failed:', rpcErr)
   }
+  return status
 }
 
 interface ExecuteArgs {
@@ -399,7 +450,12 @@ interface ExecuteArgs {
   triggerEvent: string
 }
 
-async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
+/**
+ * Roda os passos de um escopo. Devolve o status FINAL só no escopo de fora
+ * (o que `finalizeLog`/`appendResults` gravou); ramo aninhado devolve
+ * `null` — o status do log é decidido pelo escopo que o abriu.
+ */
+async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus | null> {
   const db = supabaseAdmin()
 
   const baseQuery = db
@@ -418,13 +474,14 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
 
   if (stepsErr) {
     await finalizeLog(args.logId, 'failed', stepsErr.message)
-    return
+    return 'failed'
   }
   if (!steps || steps.length === 0) {
     if (args.parentStepId === null && args.logId) {
       await finalizeLog(args.logId, 'success', null)
+      return 'success'
     }
-    return
+    return null
   }
 
   const results: AutomationLogStepResult[] = []
@@ -459,7 +516,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
       })
       status = 'partial'
       await appendResults(args.logId, results, status, errorMessage)
-      return
+      return args.parentStepId === null ? status : null
     }
 
     try {
@@ -507,10 +564,12 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
 
   if (args.parentStepId === null) {
     await appendResults(args.logId, results, status, errorMessage)
+    return status
   } else {
     // Nested branch — just append results; parent scope decides final status.
     await appendResults(args.logId, results, null, errorMessage)
   }
+  return null
 }
 
 async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string> {

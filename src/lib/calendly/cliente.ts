@@ -92,6 +92,8 @@ export interface ClienteCalendly {
   usuarioAtual(): Promise<UsuarioDoCalendly>;
   tiposDeEvento(filtro: { organization?: string; user?: string }): Promise<TipoDeEvento[]>;
   assinaturas(filtro: { organization: string; scope: EscopoDaAssinatura; user?: string }): Promise<AssinaturaDeWebhook[]>;
+  /** Uma assinatura pelo URI (`GET /webhook_subscriptions/{uuid}`) — o estado ao vivo. */
+  assinatura(uri: string): Promise<AssinaturaDeWebhook>;
   criarAssinatura(args: {
     url: string;
     events: string[];
@@ -224,6 +226,13 @@ export function criarClienteCalendly(token: string, fetchFn: Fetch = fetch): Cli
       u.searchParams.set("count", "100");
       const linhas = await paginar(u.toString());
       return linhas.map(lerAssinatura).filter((a): a is AssinaturaDeWebhook => a !== null);
+    },
+
+    async assinatura(uri) {
+      const corpo = await pedir(uri);
+      const lida = corpo ? lerAssinatura(corpo.resource) : null;
+      if (!lida) throw new CalendlyError("calendly_error", "assinatura sem `resource.uri` na resposta");
+      return lida;
     },
 
     async criarAssinatura(args) {
