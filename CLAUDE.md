@@ -3726,21 +3726,19 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
     Evolution.
   - **987_cb_tldv** — `cb_tldv_config` (chave cifrada, FECHADA para o
     navegador) e `cb_reunioes_transcritas` (reunião + transcrição, do tl;dv
-    ou colada à mão; SELECT por membro, escrita só pela rota). ⚠️ **Criada em
-    2026-09-09 e NÃO aplicada** (o conector do Supabase não estava
-    autorizado na sessão): aplicar via conector ANTES do merge, com
-    autorização do operador. **Aplicada em 2026-09-09 via conector, com a
-    autorização, ANTES do merge**; conferido por consulta (as duas tabelas,
-    `anon` sem nada, `authenticated` só com SELECT nas reuniões).
+    ou colada à mão; SELECT por membro, escrita só pela rota). Aplicada em
+    2026-09-09 via conector, ANTES do merge, com autorização do operador;
+    conferido por consulta (as duas tabelas, `anon` sem nada,
+    `authenticated` só com SELECT nas reuniões).
   - **988_cb_rodizio_do_cron_do_meta_ads** — `cb_meta_ads_config.
     last_sync_attempt_at`, o carimbo de TENTATIVA por onde o cron ordena as
-    contas (rodízio). ⚠️ **Criada em 2026-09-09 e NÃO aplicada** (conector
-    sem autorização na sessão): aplicar via conector ANTES do merge. Deploy
-    ANTES dela quebra o ciclo inteiro: o UPDATE do carimbo volta com
-    `error` (o Supabase não lança) e a varredura segue, mas o `.order()` do
-    cron reprova a consulta com "column does not exist" e a rota devolve
-    500 sem sincronizar conta nenhuma. (A 987, do tl;dv, está em outro PR;
-    os números não colidem.)
+    contas (rodízio). Aplicada em 2026-09-09 via conector, ANTES do merge,
+    com autorização do operador; conferido por consulta (a coluna existe e
+    a tabela continua fechada para o navegador). ⚠️ Deploy ANTES dela
+    quebraria o ciclo inteiro: o UPDATE do carimbo volta com `error` (o
+    Supabase não lança) e a varredura segue, mas o `.order()` do cron
+    reprova a consulta com "column does not exist" e a rota devolve 500 sem
+    sincronizar conta nenhuma.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
