@@ -27,5 +27,11 @@ export function IconeDoTransporte({
       return <QrCode className={className} />;
     case 'instagram':
       return <InstagramGlyph className={className} />;
+    default: {
+      // `tsconfig` não tem `noImplicitReturns`: sem isto, um 4º transporte
+      // compilaria e o ícone sumiria em silêncio (Codex, PR #170).
+      const nunca: never = kind;
+      throw new Error(`transporte sem ícone: ${String(nunca)}`);
+    }
   }
 }

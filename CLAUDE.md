@@ -3447,15 +3447,24 @@ estrutural `transporte.chamadores.test.ts` (no `main` desde 10/09/2026, PR
   significando "Meta"; acrescentar `'instagram'` ao tipo dava 7 erros de
   compilação e NENHUM ramo de envio aparecia — um canal Instagram iria para
   a Cloud API com o token do Instagram e um IGSID no lugar do telefone.
-  `switch (x.kind)` sobre o tipo `Transporte` é permitido (o compilador
-  cobre); `.eq('kind', …)` de consulta também.
+  `switch (x.kind)` sobre o tipo `Transporte` é permitido SÓ com a
+  asserção de exaustividade (`default: { const nunca: never = x; throw … }`,
+  como em `IconeDoTransporte` e `transport/index.ts`) — o `tsconfig` não
+  tem `noImplicitReturns`, então sem ela um 4º transporte compila e o
+  `switch` devolve `undefined` em silêncio. `.eq('kind', …)` de consulta
+  também é permitido.
 - ⚠️ **Cada `else` que era "Meta" virou `ehMeta(...)` explícito**, e os ramos
   de Instagram já existem falhando FECHADO: núcleo de envio
   (`not_supported`), senders do robô (`exigirWhatsApp` — D1: robô não
   responde no Direct na v1), reação (400), apagar/editar (frase própria),
   canal padrão (recusa: o padrão é o número de WhatsApp que responde conversa
   sem canal e alimenta `whatsapp_config`), nova conversa (não oferece),
-  compositor (sem modelo nem interativa). Ramo novo nomeia os TRÊS.
+  compositor (sem modelo nem interativa, inclusive pelo atalho de resposta
+  rápida). ⚠️ Sobraram ramos de DUAS pernas com predicado (`ehEvolution ?
+  … : <Meta>` em envio, robô, reação, canal padrão, criação de canal): todos
+  ficam ATRÁS de uma guarda de Instagram anterior no mesmo caminho, e é a
+  guarda que os sustenta — o teste estrutural só pega o literal. Ramo novo
+  de duas pernas sem guarda anterior é bug; o censo é `grep -n 'if (eh' src`.
 - ⚠️ **`Contact.phone` é `string | null`** (PR #168): a ficha só do Instagram
   não tem telefone. Toda tela que mostra "o telefone" passa por
   `identidadeDoContato`/`nomeDoContato` (`src/lib/contacts/identidade.ts`):
@@ -3465,7 +3474,11 @@ estrutural `transporte.chamadores.test.ts` (no `main` desde 10/09/2026, PR
   sítios; `{contact.phone}` em JSX, `name || phone` e tipos locais com
   `phone: string` ele NÃO vê — caçar por grep. Fotos de perfil e público de
   disparo já ignoram ficha sem telefone; o formulário de contato só dispensa
-  o telefone na EDIÇÃO de ficha com `instagram_id`.
+  o telefone na EDIÇÃO de ficha com `instagram_id`. ⚠️ Consulta que EMBUTE
+  o contato (`contact:contacts(id, name, phone)`) precisa levar
+  `instagram_username` junto, senão o `@` não chega e a ficha sem nome vira
+  "contato desconhecido" — tarefas, logs de automação, runs de fluxo, radar,
+  agendadas e o feed do painel já levam (Codex, PR #170).
 - ⚠️ **IGSID nunca vai para `contacts.phone`**: `findExistingContact` casa
   pelos ÚLTIMOS 8 DÍGITOS — a armadilha do JID de grupo (906), agora com 16
   dígitos. A identidade do Instagram é `contacts.instagram_id` (989).
@@ -3491,7 +3504,15 @@ estrutural `transporte.chamadores.test.ts` (no `main` desde 10/09/2026, PR
   assinatura que NÃO casa vale 401 — `object` errado, conta desconhecida e
   forma estranha são 200 com log, porque 4xx repetido faz a Meta desativar
   a assinatura (977). Uma entrega pode trazer várias `entry`; o segredo é
-  do APP, então uma conexão que assine vale para o corpo inteiro. A
+  do APP da Meta: cada `entry` só é persistida se a SUA conexão assina
+  (`quaisAssinam`) — conta de outro app no mesmo corpo fica de fora, senão
+  quem tem o segredo do próprio app forjaria o `entry.id` de outra conta
+  deste CRM (Codex, PR #173). Edição e exclusão alcançam a mensagem pela
+  CONVERSA do cliente na conta roteada, nunca por `mid` solto (só é único
+  por conversa). Não-lidas pela RPC atômica `bump_conversation_on_inbound`.
+  O perfil (nome, @, foto) é lido ANTES do roteamento para o funil — o card
+  nasce com o nome — e só na criação, sem `@`, ou a cada 30 dias
+  (`avatar_checked_at`, carimbado mesmo sem foto). A
   persistência (`src/lib/instagram/persistir.ts`) roda em `after()`, grava
   `user_id` = `accounts.owner_user_id` (dono durável, allowlist de
   `dono-duravel.test.ts`), NÃO importa os motores (teste estrutural

@@ -36,7 +36,7 @@ import type { Conversation, ScheduledMessage } from '@/types';
  * centenas de linhas e cada campo a mais viaja em todas elas.
  */
 const SELECT_COM_CONVERSA =
-  '*, conversation:conversations(id, group_id, contact:contacts(id, name, phone), group:cb_groups(id, subject, alias))';
+  '*, conversation:conversations(id, group_id, contact:contacts(id, name, phone, instagram_username), group:cb_groups(id, subject, alias))';
 
 /** A conversa como ela chega aqui — estreita de propósito. */
 export type ConversaDaAgendada = Pick<

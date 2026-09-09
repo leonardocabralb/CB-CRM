@@ -64,6 +64,7 @@ import {
   type Evidencia,
 } from '@/lib/cb-radar/rubrica';
 import { cn } from '@/lib/utils';
+import { nomeDoContato } from '@/lib/contacts/identidade';
 
 const MS_JANELA = JANELA_DIAS * 86_400_000;
 
@@ -640,7 +641,7 @@ function LinhaDoRadar({
   // da migration 943 para a barreira real).
   const podeVerEquipe = useCan('manage-members');
   const contato = i.conversation?.contact;
-  const nome = contato?.name || contato?.phone || t('contatoSemNome');
+  const nome = nomeDoContato(contato, t('contatoSemNome'));
   const detalhes = i.detalhes;
   const analise = detalhes?.analise ?? null;
   const processos = detalhes?.processos ?? [];

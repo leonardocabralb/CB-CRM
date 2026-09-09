@@ -434,7 +434,7 @@ export async function loadActivity(
     semCanal
       ? db
           .from('contacts')
-          .select('id, name, phone, created_at')
+          .select('id, name, phone, instagram_username, created_at')
           .order('created_at', { ascending: false })
           .limit(10)
       : Promise.resolve({ data: [] }),
@@ -488,7 +488,7 @@ export async function loadActivity(
     })
   }
 
-  for (const c of (contacts.data ?? []) as Array<{ id: string; name: string | null; phone: string | null; created_at: string }>) {
+  for (const c of (contacts.data ?? []) as Array<{ id: string; name: string | null; phone: string | null; instagram_username?: string | null; created_at: string }>) {
     items.push({
       id: `contact-${c.id}`,
       kind: 'contact',

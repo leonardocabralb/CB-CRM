@@ -45,6 +45,7 @@ import type { AcoesDaTarefa } from '@/hooks/use-acoes-da-tarefa';
 import { podeNaTarefa, type AtorDaTarefa } from '@/lib/tasks/permissoes';
 import { dataParaExibir, horaJaPassou, horaParaExibir } from '@/lib/tasks/prazo';
 import { cn } from '@/lib/utils';
+import { nomeDoContato } from '@/lib/contacts/identidade';
 
 /**
  * A linha aceita a tarefa CRUA ou a enriquecida.
@@ -182,7 +183,7 @@ export function TaskRow({
                 className="inline-flex items-center gap-1 text-foreground hover:underline"
               >
                 <MessageSquare className="size-3" />
-                {tarefa.contact?.name || tarefa.contact?.phone || t('unknownContact')}
+                {nomeDoContato(tarefa.contact, t('unknownContact'))}
               </Link>
             ) : (
               <Link
@@ -190,7 +191,7 @@ export function TaskRow({
                 className="inline-flex items-center gap-1 text-foreground hover:underline"
               >
                 <User className="size-3" />
-                {tarefa.contact?.name || tarefa.contact?.phone || t('unknownContact')}
+                {nomeDoContato(tarefa.contact, t('unknownContact'))}
               </Link>
             )
           ) : null}

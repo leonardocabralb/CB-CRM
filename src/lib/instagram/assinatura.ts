@@ -44,3 +44,19 @@ export function assinaturaCasa(
   if (esperado.length !== recebido.length) return false;
   return timingSafeEqual(esperado, recebido);
 }
+
+/**
+ * Os candidatos cujo segredo assina ESTE corpo — cada um por si. É o que
+ * permite a rota gravar só as `entry` das contas que de fato assinam: o
+ * segredo é do app da Meta, e uma conta de outro app no mesmo corpo não
+ * pode ser alcançada pela assinatura alheia.
+ */
+export function quaisAssinam<T>(
+  header: string | null | undefined,
+  corpoCru: string,
+  candidatos: readonly { id: T; segredo: string }[]
+): T[] {
+  return candidatos
+    .filter((c) => assinaturaCasa(header, corpoCru, c.segredo))
+    .map((c) => c.id);
+}

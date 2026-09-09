@@ -97,7 +97,7 @@ export function TaskForm({
   const [responsavel, setResponsavel] = useState('');
   /** Catálogo de contatos — carregado SÓ na criação global (`null` = ainda não). */
   const [contatos, setContatos] = useState<
-    { id: string; name: string | null; phone: string }[] | null
+    { id: string; name: string | null; phone: string | null; instagram_username?: string | null }[] | null
   >(null);
   const [contatoEscolhido, setContatoEscolhido] = useState('');
   const [venceEm, setVenceEm] = useState('');
@@ -163,7 +163,7 @@ export function TaskForm({
     let vivo = true;
     void createClient()
       .from('contacts')
-      .select('id, name, phone')
+      .select('id, name, phone, instagram_username')
       .order('name')
       .then(({ data, error }) => {
         if (!vivo) return;
