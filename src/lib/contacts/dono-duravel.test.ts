@@ -83,6 +83,7 @@ const UNIVERSO: Record<
     callSites: 1,
   },
   'lib/cb-groups/persist.ts': { fontes: ['ownerUserId'], callSites: 1 },
+  'lib/instagram/persistir.ts': { fontes: ['ownerUserId'], callSites: 1 },
   'lib/whatsapp/inbound-store.ts': { fontes: ['ownerUserId'], callSites: 2 },
   'lib/whatsapp/resolve-conversation.ts': { fontes: ['ownerUserId'], callSites: 2 },
 };

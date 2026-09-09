@@ -118,7 +118,7 @@ async function findOrCreateContact(
   return { contact: created as ContactRow, wasCreated: true };
 }
 
-async function findOrCreateConversation(
+export async function findOrCreateConversation(
   db: SupabaseClient,
   accountId: string,
   ownerUserId: string,

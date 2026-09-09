@@ -186,3 +186,60 @@ export async function resolveInboundMetaChannel(
     channelId: channel.id,
   };
 }
+
+/** A conexão do Instagram que atende um `entry.id` do webhook. */
+export interface InboundInstagramRoute {
+  accountId: string;
+  /**
+   * DONO DURÁVEL da conta (`accounts.owner_user_id`, NOT NULL e ON DELETE
+   * RESTRICT): é o `user_id` das fichas e conversas que a ingestão cria. Não
+   * é `created_by` do canal — quem conectou pode sair do escritório, e
+   * `contacts.user_id` CASCADEia de `auth.users`.
+   */
+  ownerUserId: string;
+  channelId: string;
+  /** Instagram App Secret CIFRADO — quem assina a entrega (Teste B). */
+  igAppSecretCifrado: string;
+  /** Token CIFRADO, para ler o perfil do cliente. Nulo = não lê. */
+  accessTokenCifrado: string | null;
+}
+
+/**
+ * Descobre conta / dono / canal a partir do `entry.id` (o IG user id da
+ * conta profissional). `null` quando nenhuma conexão tem esse id — a rota
+ * responde 200 e registra: um app da Meta pode entregar por várias contas,
+ * e uma delas pode simplesmente não estar cadastrada aqui.
+ */
+export async function resolveInboundInstagramChannel(
+  db: SupabaseClient,
+  igUserId: string,
+): Promise<InboundInstagramRoute | null> {
+  const { data: channel, error } = await db
+    .from('cb_channels')
+    .select('id, account_id, ig_app_secret, access_token')
+    .eq('kind', 'instagram')
+    .eq('ig_user_id', igUserId)
+    .maybeSingle();
+  if (error) {
+    console.error('[cb-channels] buscar conexão do Instagram falhou:', error.message);
+    return null;
+  }
+  if (!channel || !channel.ig_app_secret) return null;
+
+  const { data: conta } = await db
+    .from('accounts')
+    .select('owner_user_id')
+    .eq('id', channel.account_id)
+    .maybeSingle();
+  if (!conta?.owner_user_id) {
+    console.error('[cb-channels] conta sem dono resolvível; entrega do Instagram descartada:', igUserId);
+    return null;
+  }
+  return {
+    accountId: channel.account_id,
+    ownerUserId: conta.owner_user_id,
+    channelId: channel.id,
+    igAppSecretCifrado: channel.ig_app_secret,
+    accessTokenCifrado: channel.access_token ?? null,
+  };
+}

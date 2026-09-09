@@ -116,11 +116,12 @@ foi caçado por grep.
 
 ### Fase 2 — Conexão: cadastrar o canal na tela
 Branch `feat/instagram-2-conexao` (construída em 10/09; PR aberto).
-- [ ] Migration 989 (acima) — **aplicada em produção antes do merge** (pelo
-      operador ou por sessão com o conector autorizado), conferida por leitura.
-      ⚠️ É o ÚNICO bloqueio do merge: `CB_CHANNEL_SAFE_COLUMNS` passa a pedir
-      as colunas novas, e sem elas o GET de canais cai no aviso de
-      "migration ausente" e o painel inteiro trava.
+- [x] Migration 989 **aplicada em produção em 2026-09-09 via conector** (o
+      operador autorizou o conector e pediu o merge), conferida por consulta;
+      PR #167 mesclado depois de revisão independente (5 achados corrigidos)
+      e teste e2e no preview (lista com as colunas novas, cartão, formulário,
+      ida e volta à Meta com token inválido → "Failed to decrypt" sem o token).
+      A conexão REAL exige o token e o segredo colados pelo operador.
 - [x] `CB_CHANNEL_SAFE_COLUMNS` + `CbChannel` com `ig_user_id`, `ig_username`,
       `ig_token_expires_at`, `ig_human_agent` (nunca o token/segredo);
       `CbChannelWithSecrets.ig_app_secret`; `countChannels` conta só WhatsApp
@@ -152,16 +153,18 @@ Branch `feat/instagram-2-conexao` (construída em 10/09; PR aberto).
       (`semSegredo`), host preso a `graph.instagram.com`.
 
 ### Fase 3 — Entrada: a DM vira mensagem na caixa
-- [ ] `src/lib/instagram/webhook.ts` (puro, testado): parse do payload →
+3a (parser + assinatura, PR #169) e 3b (rota, persistência, mídia, perfil)
+construídas em 10/09.
+- [x] `src/lib/instagram/webhook.ts` (puro, testado): parse do payload →
       eventos tipados: `mensagem` (texto/anexos, `is_echo`, `is_deleted`,
       `reply_to` — mid ou story), `edicao` (só `num_edit ≥ 1` — o `num_edit: 0`
       que chega com toda DM é **ignorado**), `reacao`, `postback`, `outro`.
-- [ ] Rota real `GET/POST /api/cb/instagram/webhook` (substitui o receptor):
+- [x] Rota real `GET/POST /api/cb/instagram/webhook` (substitui o receptor):
       GET varre `verify_token` dos canais Instagram; POST lê corpo CRU, acha o
       canal por `entry.id`, confere HMAC com o **`ig_app_secret` daquele
       canal** (401 se não casa; 200 e ignora `object ≠ instagram` e canal
       desconhecido — 4xx repetido faz a Meta desativar a assinatura).
-- [ ] `src/lib/instagram/persistir.ts`: contato por `instagram_id` (criação
+- [x] `src/lib/instagram/persistir.ts`: contato por `instagram_id` (criação
       com `user_id = accounts.owner_user_id` — **dono durável**, allowlist de
       `dono-duravel.test.ts`), conversa (`channel_id` do canal, `follow`),
       mensagem (`message_id` = mid; `UNIQUE (conversation_id, message_id)`
@@ -170,23 +173,25 @@ Branch `feat/instagram-2-conexao` (construída em 10/09; PR aberto).
       edição → `content_text`/`text_before_edit`/`edited_at`; `reply_to.mid`
       → `reply_to_message_id` (a citação do CLIENTE aparece no fio); reação →
       ignorada na v1.
-- [ ] `reopenConversation` (gente reabre) e `routeContactToPipeline` (card)
+- [x] `reopenConversation` (gente reabre) e `routeContactToPipeline` (card)
       — **allowlists** de `reopen.chamadores.test.ts` e
       `pipeline-routing.chamadores.test.ts` ganham o caminho novo.
-- [ ] `src/lib/instagram/midia.ts`: baixa a URL assinada do CDN **na hora**
+- [x] `src/lib/instagram/midia.ts`: baixa a URL assinada do CDN **na hora**
       (expira), sobe no `chat-media` com `uploadAccountMedia`; **mime pelo
       `type` do webhook** (`audio` → `audio/mp4`), nunca pelo content-type
       (`video/mp4`, medido); `media_filename` do `content-disposition`.
       Teto: `MEDIA_MAX_BYTES_ENTRADA`.
-- [ ] `src/lib/instagram/perfil.ts`: na criação do contato,
+- [x] `src/lib/instagram/perfil.ts`: na criação do contato,
       `GET /{igsid}?fields=name,username,profile_pic` → nome, `@username`,
       avatar salvo como em `foto-do-contato` (revalidação em 30 dias). Falha
       não derruba a ingestão.
-- [ ] D1 na prática: **nenhum** `runAutomationsForTrigger`/`findEntryFlow`/
+- [x] D1 na prática: **nenhum** `runAutomationsForTrigger`/`findEntryFlow`/
       auto-reply chamado neste caminho — com teste estrutural no molde de
       `cb-groups/persist.ts` (o módulo não importa os motores).
-- [ ] Deploy → trocar a URL de callback no painel da Meta para a de produção
-      e re-verificar; conferir com uma DM real; desligar o túnel.
+- [ ] Deploy → o operador conecta o Instagram em produção (token + segredo),
+      cola a URL de callback e o verify token no painel da Meta (ou eu, pelo
+      Chrome dele), re-verifica; conferir com uma DM real; desligar o túnel
+      e o receptor de teste.
 
 ### Fase 4 — Saída: responder pela caixa
 - [ ] `sendMessageToConversation` ganha o ramo `ehInstagram`: destinatário =

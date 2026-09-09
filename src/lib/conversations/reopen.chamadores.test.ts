@@ -29,6 +29,7 @@ describe('reabre: os caminhos de mensagem decididos por gente', () => {
     { arquivo: 'app/api/whatsapp/webhook/route.ts', quem: 'ingestão (Meta)' },
     { arquivo: 'lib/whatsapp/inbound-store.ts', quem: 'ingestão + celular pareado (Evolution)' },
     { arquivo: 'lib/whatsapp/send-message.ts', quem: 'núcleo de envio (compositor, ficha, agendada, API v1)' },
+    { arquivo: 'lib/instagram/persistir.ts', quem: 'ingestão (Instagram Direct)' },
   ]
 
   for (const { arquivo, quem } of DEVEM_REABRIR) {
