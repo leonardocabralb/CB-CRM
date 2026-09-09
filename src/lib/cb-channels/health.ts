@@ -175,6 +175,17 @@ export function toneFor(e: EntradaDeCor): { tone: HealthTone; detail: string | n
   return { tone: 'ok', detail: null };
 }
 
+/**
+ * O que uma FALHA do `/me` do Instagram diz sobre o canal. Só a RESPOSTA da
+ * Meta prova queda (token vencido/revogado, sem permissão). Tempo esgotado ou
+ * rede fora é "não sei": fica `null`, e o tom vem do frescor do último
+ * estado gravado — senão um blip de rede gravava `disconnected` com carimbo
+ * novo, que é o verde mentiroso ao contrário (Codex, PR #167).
+ */
+export function estadoDaFalhaDoInstagram(err: unknown): 'close' | null {
+  return err instanceof InstagramApiError && err.codigo === 'rede' ? null : 'close';
+}
+
 /** O pior tom de um conjunto — é o que o glifo colapsado mostra. */
 export function piorTom(tons: HealthTone[]): HealthTone {
   const ordem: HealthTone[] = ['down', 'warn', 'unknown', 'ok'];
@@ -374,15 +385,7 @@ export async function probeChannels(
             '[health] canal Instagram não validou:',
             err instanceof Error ? err.message : err,
           );
-          // Só a RESPOSTA da Meta prova queda (token vencido/revogado, sem
-          // permissão). Tempo esgotado ou rede fora é "não sei": fica
-          // `null`, e o tom vem do frescor do último estado gravado — senão
-          // um blip de rede gravava `disconnected` com carimbo novo, que é o
-          // verde mentiroso ao contrário (Codex, PR #167).
-          estadoVivo =
-            err instanceof InstagramApiError && err.codigo === 'rede'
-              ? null
-              : 'close';
+          estadoVivo = estadoDaFalhaDoInstagram(err);
         }
       }
     }
