@@ -77,11 +77,18 @@ export async function POST(
       // Já está no Storage — outro atendente clicou primeiro.
       return NextResponse.json({ media_url: (msg as { media_url: string }).media_url });
     }
+    // O service-role entra aqui, depois da checagem de posse acima: é ele que
+    // lê a tabela de ponteiros (fechada a quem está logado) e grava o
+    // resultado.
+    const db = admin();
+
     if ((msg as { media_state?: string | null }).media_state === 'too_large') {
+      // Ponteiro LEGADO: linha marcada antes de o webhook passar a limpar
+      // (PR #157) ainda carrega o payload do Baileys com as chaves de
+      // decifragem, e daqui ninguém mais vai buscar o arquivo. Sai agora.
+      await db.from('cb_message_media_ref').delete().eq('message_id', messageId);
       return NextResponse.json({ error: GRANDE_DEMAIS }, { status: 400 });
     }
-
-    const db = admin();
 
     const { data: ref } = await db
       .from('cb_message_media_ref')
@@ -120,6 +127,9 @@ export async function POST(
     // e sem isto ela baixaria dezenas de MiB para o Storage recusar no fim.
     if (anexoGrandeDemais(mediaBytesOf((ref as { payload: EvolutionUpsert }).payload))) {
       await db.from('messages').update({ media_state: 'too_large' }).eq('id', messageId);
+      // Mesma regra do webhook: marcado como grande demais, o ponteiro não
+      // serve mais a ninguém — e ele guarda as chaves de decifragem.
+      await db.from('cb_message_media_ref').delete().eq('message_id', messageId);
       return NextResponse.json({ error: GRANDE_DEMAIS }, { status: 413 });
     }
 

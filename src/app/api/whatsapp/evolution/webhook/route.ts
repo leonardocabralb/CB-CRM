@@ -316,6 +316,22 @@ export async function POST(request: Request) {
                 '[evolution/webhook] não pôde marcar anexo grande demais:',
                 erroGrande.message,
               );
+            } else if (pendente.ehGrupo) {
+              // ⚠️ O PONTEIRO SAI JUNTO, pela MESMA razão do caminho de
+              // sucesso logo abaixo: `cb_message_media_ref` guarda o payload
+              // cru do Baileys, com as CHAVES DE DECIFRAGEM da mídia. Só que
+              // aqui é pior — `too_large` desliga o download sob demanda para
+              // sempre (`podeBaixarAnexo` o exclui, e a rota o recusa na
+              // entrada), então essas chaves nunca mais seriam consumidas e
+              // ficariam no banco indefinidamente. Achado do Codex no PR #157.
+              //
+              // Só quando a marcação DEU CERTO: com ela falhando, a mensagem
+              // segue `pending`, o botão continua na tela e o ponteiro ainda é
+              // o único caminho para o arquivo.
+              await supabaseAdmin()
+                .from('cb_message_media_ref')
+                .delete()
+                .eq('message_id', pendente.messageId);
             }
             continue;
           }
