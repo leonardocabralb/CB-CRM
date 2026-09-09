@@ -3590,6 +3590,14 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
   Redis é compartilhado com outros serviços); o log da Evolution morre no
   reinício do contêiner.
 
+- ⚠️ **Recibo fora de ordem (medido 09/09/2026, primeira mensagem depois do
+  upgrade)**: a 2.4 emite `SERVER_ACK` DEPOIS do `DELIVERY_ACK` da mesma
+  mensagem. A rota do webhook aplica a ESCADA (`src/lib/whatsapp/transport/
+  escada-de-status.ts`, puro, testado): `UPDATE messages SET status` só com
+  `.in('status', aceitamAvancoPara(novo))`, e o fan-out `message.status_updated`
+  só quando alguma linha avançou. Quem escrever outro caminho de status repete
+  a guarda — sem ela a bolha volta a um ✓ com a mensagem entregue.
+
 ## Branches — criação e nomenclatura
 
 - **Toda branch nova sai única e exclusivamente de `main`** e faz merge **de

@@ -11,6 +11,7 @@ import {
   unwrapMessage,
   type EvolutionUpsert,
 } from '@/lib/whatsapp/transport/evolution-inbound';
+import { aceitamAvancoPara } from '@/lib/whatsapp/transport/escada-de-status';
 import {
   isGroupJid,
   normalizeGroupUpsert,
@@ -436,14 +437,23 @@ export async function POST(request: Request) {
           .eq('message_id', d.keyId)
           .in('sender_type', ['agent', 'bot']);
         // Ver `ACEITA_FALHA`: só marca falha o que ainda não passou de
-        // "enviado". O resto da escada continua sem guarda porque ela já é
-        // monotônica na prática (a Baileys não volta de READ para SENT).
+        // "enviado". ⚠️ O resto da escada TAMBÉM tem guarda desde 09/09/2026:
+        // a Evolution 2.4 (Baileys 7) emite SERVER_ACK DEPOIS do DELIVERY_ACK
+        // da mesma mensagem (medido: 5 recibos em 9 s, o último rebaixando),
+        // e sem a guarda a bolha voltava a um ✓ com a mensagem entregue. Uma
+        // versão deste comentário dizia que a escada "já era monotônica na
+        // prática" — era, na 6.7.19. Ver `escada-de-status.ts`.
         if (status === 'failed') q = q.in('status', ACEITA_FALHA);
-        const { error } = await q;
+        else q = q.in('status', aceitamAvancoPara(status));
+        const { data: atualizadas, error } = await q.select('id');
         if (error) {
           console.error('[evolution/webhook] status update failed:', error);
           return;
         }
+        // Recibo atrasado ou repetido: nenhuma linha avançou, nada a anunciar
+        // — sem isto o fan-out abaixo contaria ao integrador um "sent" sobre
+        // mensagem já entregue.
+        if (!atualizadas || atualizadas.length === 0) return;
 
         // Fan-out do webhook público. O lado Meta já emite
         // message.status_updated; sem isto, quem integra recebe o ✓✓ dos
