@@ -218,7 +218,12 @@ interface MessageComposerProps {
   onSendInteractive: (payload: InteractiveMessagePayload, replyToId?: string) => void;
   onOpenTemplates: () => void;
   replyTo?: ReplyDraft | null;
-  onClearReply?: () => void;
+  /**
+   * Limpa a citação. Com `idQueSaiu`, o dono do estado só limpa se a citação
+   * vigente ainda for aquela — ver o envio da fila de anexos, que leva
+   * segundos e pode terminar depois de o operador escolher outra.
+   */
+  onClearReply?: (idQueSaiu?: string) => void;
   /**
    * Anotação interna recém-criada (migration 918). O compositor chama a rota
    * e devolve a linha pronta para o pai pôr no fio sem esperar o realtime —
@@ -1323,17 +1328,26 @@ export function MessageComposer({
     // — que iteraria sobre a MESMA fila capturada e mandaria todos os anexos
     // de novo ao cliente (achado do Codex no PR #144).
     if (drafts.length === 0 || busy || enviandoFilaRef.current !== 0) return;
-    // ⚠️ A MESMA guarda de origem de `stageUpload`, `escolherDoAcervo` e
-    // `finalizeRecording`: o compositor NÃO remonta na troca de conversa, e
-    // cada item da fila é um `await`. Sem ela, trocar de cliente no meio de
-    // uma fila de cinco deixava o laço seguir escrevendo no compositor do
-    // cliente NOVO — `setDrafts(restantes)` do ramo agendado devolvia à tela
-    // de B os anexos que sobraram de A, e o `onClearReply()` do fim apagava
-    // a citação que B acabou de escolher.
-    const origem = conversationId;
+    // ⚠️ A POSSE é também a GERAÇÃO que cancela este laço. O compositor NÃO
+    // remonta na troca de conversa e cada item da fila é um `await`: sem
+    // cancelar, trocar de cliente no meio de uma fila de cinco deixava o laço
+    // seguir escrevendo no compositor do cliente NOVO — o `setDrafts(...)` do
+    // ramo agendado devolvia à tela dele os anexos que sobraram do anterior, e
+    // o `onClearReply()` do fim apagava a citação que ele acabou de escolher.
+    //
+    // ⚠️⚠️ Comparar o `conversationId` NÃO basta, e essa foi a primeira versão
+    // (achado do Codex no PR #148): em A → B → A a conversa volta a ser a
+    // mesma, o laço abandonado de A volta a casar e retoma como se nada
+    // tivesse acontecido — mandando anexos cujos objetos o efeito de troca já
+    // apagou do bucket e limpando a citação da sessão NOVA de A. A posse é
+    // única por invocação e o efeito de troca a zera, então toda navegação
+    // invalida o laço velho PARA SEMPRE, qualquer que seja o caminho.
     const posse = ++proximaPosseRef.current;
     enviandoFilaRef.current = posse;
     setEnviandoFila(true);
+    // A citação que ESTA fila leva. Guardada porque o operador pode escolher
+    // outra enquanto os anexos saem, e o fim do laço não pode apagar a nova.
+    const citada = replyTo?.id;
     try {
 
     // ⚠️ DESVIO ANTES DE QUALQUER COISA, igual ao do texto (925). Com hora
@@ -1343,13 +1357,13 @@ export function MessageComposer({
         const restantes: MediaDraft[] = [];
         for (const item of drafts) {
           const legenda = podeTerLegenda(item.kind) ? item.caption.trim() : "";
-          const ok = await agendar(legenda, { anexo: item, replyToId: replyTo?.id });
+          const ok = await agendar(legenda, { anexo: item, replyToId: citada });
           // ⚠️ Só sai da fila quando DEU CERTO, e sem apagar o objeto do
           // bucket: ele passou a pertencer à agendada, e o disparador vai
           // buscá-lo lá daqui a horas. Falhou? O item fica na tela, com o
           // arquivo já subido, e a pessoa tenta de novo sem reanexar.
           if (!ok) restantes.push(item);
-          if (conversaAnteriorRef.current !== origem) return;
+          if (enviandoFilaRef.current !== posse) return;
         }
         setDrafts(restantes);
         setSelecionado(restantes[0]?.id ?? null);
@@ -1365,19 +1379,34 @@ export function MessageComposer({
           // trimmed caption, or undefined when blank.
           caption: podeTerLegenda(item.kind) ? item.caption.trim() || undefined : undefined,
           filename: item.kind === "document" ? item.filename : undefined,
-          replyToId: replyTo?.id,
+          replyToId: citada,
         });
         // ⚠️ PARA no primeiro que não entregou, e o item FICA na fila com o
         // arquivo ainda no bucket. Seguir daria um toast de erro por anexo
         // quando a causa é a mesma para todos (janela de 24h fechada, rede
         // fora) — e o operador perderia as legendas já escritas.
         if (!entregou) return;
-        if (conversaAnteriorRef.current !== origem) return;
+        if (enviandoFilaRef.current !== posse) return;
         // O objeto passou a ser da mensagem enviada — sai da fila sem recolher.
         setDrafts((atual) => atual.filter((d) => d.id !== item.id));
       }
       setSelecionado(null);
-      onClearReply?.();
+      // ⚠️⚠️ Limpa SÓ a citação que saiu, e quem compara é o DONO do estado.
+      //
+      // O operador pode clicar Responder noutra mensagem enquanto os anexos
+      // sobem, e limpar cegamente apagaria a escolha que ele acabou de fazer
+      // (Codex, PR #148). A primeira versão comparava contra um ref alimentado
+      // por `useEffect` — e aí a corrida volta pela porta dos fundos: efeito é
+      // PASSIVO, então a promessa do upload pode assentar depois de o React
+      // comprometer o `replyTo` novo e ANTES de o efeito atualizar o ref. Na
+      // janela, o ref ainda tem o id velho, a comparação passa, e apaga-se
+      // justamente a citação nova — o defeito que esta guarda existe para
+      // impedir (Codex, PR #149). É a armadilha de efeito passivo que o
+      // CLAUDE.md já registra quatro vezes.
+      //
+      // Passando o id, `setReplyTo` decide com o estado MAIS FRESCO, dentro do
+      // próprio updater. Não há janela: não há cópia a envelhecer.
+      onClearReply?.(citada);
     } finally {
       // ⚠️ CERCA DE POSSE: só solta quem ainda é o dono. Solto pelo efeito de
       // troca e com outro envio já em curso na conversa nova, limpar aqui
@@ -1387,7 +1416,7 @@ export function MessageComposer({
         setEnviandoFila(false);
       }
     }
-  }, [drafts, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar, conversationId]);
+  }, [drafts, busy, onSendMedia, replyTo?.id, onClearReply, quandoAg, agendar]);
 
   /** Descarta UM item — recolhe o objeto, que subiu e não foi enviado. */
   const discardDraft = useCallback(
@@ -1452,7 +1481,11 @@ export function MessageComposer({
           <ReplyQuote
             authorLabel={replyTo.authorLabel}
             preview={replyTo.preview}
-            onDismiss={onClearReply}
+            // ⚠️ Embrulhado, nunca a referência crua: `onDismiss` vira o
+            // `onClick` do X, e o React passaria o MouseEvent como
+            // `idQueSaiu` — o dono compararia o id da citação com um evento,
+            // não limparia nada, e o botão morreria em silêncio.
+            onDismiss={() => onClearReply?.()}
           />
         </div>
       )}
