@@ -37,6 +37,7 @@ import { atualizarPreviaDaConversa } from '@/lib/inbox/conversation-preview';
 import { resolveInboundEvolutionChannel } from '@/lib/cb-channels/resolve-inbound';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
+import { marcarAnexoGrandeDemais } from '@/lib/whatsapp/anexo-grande';
 import {
   anexoGrandeDemais,
   mediaBytesOf,
@@ -299,40 +300,15 @@ export async function POST(request: Request) {
           // de grupo — e `too_large` não tinha escritor nenhum, embora a rota
           // de download já o lesse.
           if (anexoGrandeDemais(pendente.bytes)) {
-            const nome = nomeDeArquivoDeclarado(pendente.item);
-            const { error: erroGrande } = await supabaseAdmin()
-              .from('messages')
-              .update({
-                media_state: 'too_large',
-                // Nome ausente não sobrescreve com NULL (a regra da 969).
-                ...(nome ? { media_filename: nome } : {}),
-              })
-              .eq('id', pendente.messageId);
-            if (erroGrande) {
-              // Falhar aqui devolve a bolha ao "indisponível" genérico — a
-              // mensagem em si está gravada. Vale o log: é a diferença entre
-              // o operador saber e não saber por que o anexo não veio.
-              console.error(
-                '[evolution/webhook] não pôde marcar anexo grande demais:',
-                erroGrande.message,
-              );
-            } else if (pendente.ehGrupo) {
-              // ⚠️ O PONTEIRO SAI JUNTO, pela MESMA razão do caminho de
-              // sucesso logo abaixo: `cb_message_media_ref` guarda o payload
-              // cru do Baileys, com as CHAVES DE DECIFRAGEM da mídia. Só que
-              // aqui é pior — `too_large` desliga o download sob demanda para
-              // sempre (`podeBaixarAnexo` o exclui, e a rota o recusa na
-              // entrada), então essas chaves nunca mais seriam consumidas e
-              // ficariam no banco indefinidamente. Achado do Codex no PR #157.
-              //
-              // Só quando a marcação DEU CERTO: com ela falhando, a mensagem
-              // segue `pending`, o botão continua na tela e o ponteiro ainda é
-              // o único caminho para o arquivo.
-              await supabaseAdmin()
-                .from('cb_message_media_ref')
-                .delete()
-                .eq('message_id', pendente.messageId);
-            }
+            // ⚠️ Os dois passos (marcar + apagar o ponteiro com as chaves de
+            // decifragem) moram no helper de propósito — soltos aqui, eles já
+            // divergiram da rota de download em um PR. Ver `anexo-grande.ts`.
+            await marcarAnexoGrandeDemais({
+              db: supabaseAdmin(),
+              messageId: pendente.messageId,
+              filename: nomeDeArquivoDeclarado(pendente.item),
+              limparPonteiro: !!pendente.ehGrupo,
+            });
             continue;
           }
 

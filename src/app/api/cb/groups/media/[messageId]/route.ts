@@ -26,6 +26,7 @@ import {
   fetchAndStoreEvolutionMedia,
   type EvolutionMediaSalva,
 } from '@/lib/whatsapp/transport/evolution-media';
+import { marcarAnexoGrandeDemais } from '@/lib/whatsapp/anexo-grande';
 import { decrypt } from '@/lib/whatsapp/encryption';
 
 /** Uma frase só para os dois caminhos: o já marcado e o que acabou de ser. */
@@ -126,10 +127,12 @@ export async function POST(
     // mensagem marcada `pending` por uma versão anterior ao teto de entrada,
     // e sem isto ela baixaria dezenas de MiB para o Storage recusar no fim.
     if (anexoGrandeDemais(mediaBytesOf((ref as { payload: EvolutionUpsert }).payload))) {
-      await db.from('messages').update({ media_state: 'too_large' }).eq('id', messageId);
-      // Mesma regra do webhook: marcado como grande demais, o ponteiro não
-      // serve mais a ninguém — e ele guarda as chaves de decifragem.
-      await db.from('cb_message_media_ref').delete().eq('message_id', messageId);
+      // O ponteiro só sai se a marcação pegar — ver `anexo-grande.ts`. Este
+      // arquivo apagava sempre, e o Supabase devolve `error` em vez de
+      // lançar: com o UPDATE falhando, a mensagem seguia `pending` (botão na
+      // tela) e sem ponteiro, e o clique seguinte respondia 410 "o WhatsApp
+      // não tem mais este arquivo" — que é mentira.
+      await marcarAnexoGrandeDemais({ db, messageId, limparPonteiro: true });
       return NextResponse.json({ error: GRANDE_DEMAIS }, { status: 413 });
     }
 
