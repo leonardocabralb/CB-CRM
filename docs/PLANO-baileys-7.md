@@ -74,6 +74,7 @@ abaixo. Nada foi deixado implícito de propósito.
 - **Variável de shell envelhece**: `$CID` aponta para OUTRO contêiner depois de cada `scale`/`update` (e é vazio a 0 réplicas); sessão SSH nova não tem as variáveis da anterior; `docker exec $CID … > arquivo` com `$CID` vazio cria o arquivo **vazio** sem parar nada. Por isso o Anexo B virou blocos com preâmbulo, a `KEY` sai da especificação do serviço e os passos mandam **reler `CID`**. E o `pg_restore` da prova apontava para `evolution-$(date +%F).dump` enquanto o dump gravava `evolution-$CARIMBO.dump` — pego pela revisão adversarial antes de doer.
 - **O portão de licença só barra a API HTTP**: entre o `scale=1` e a ativação a Evolution **recebe** (instâncias conectam, webhooks chegam ao CRM) e o CRM **não consegue enviar nem baixar mídia** (503). Ativar imediatamente e recolher o intervalo (6.2, passos 4 e 8). O `fetchInstances` também responde 503 — o gatilho "open em 10 min" se mede no banco/log.
 - **Migration que falha vira laço**: `RestartPolicy any/5 s` recria o contêiner para sempre, cada subida repete o `prisma migrate deploy` (P3009), e `docker service scale` sem `--detach` espera uma convergência que não vem. Sempre `--detach` + `docker service ps`.
+- **A imagem `homolog` não traz o `prisma.config.ts`** (Dockerfile do `develop` não o copia), e o Prisma 7 recusa `migrate deploy` sem ele — descoberto na tentativa 1 (9.4). Antes de trocar imagem, **ensaiar a migration numa cópia** (`evolution_ensaio` + `docker run --rm --network container:$PGCID … deploy_database.sh`): custa 1 min e teria evitado a parada. O arquivo montado vive em `/root/evolution/` — quem rebuildar a imagem ou trocar de tag confere se ele continua necessário.
 - Cópia local de fonte pode ser **página de erro**: `baileys-v7-migration.md` e `CHANGELOG.md` no scratchpad eram um 503 do Varnish (470 bytes) até a noite de 09/09 — a revisão adversarial pegou. Conferir tamanho e `<title>` de tudo que se baixa antes de citar. Re-baixados: o guia v7 (283 KB, real) e `messages-recv.ts` da rc13 e da 6.7.19.
 - O estado Signal no Redis **muda a cada mensagem** (ratchet): uma cópia tirada horas antes restaura sessões velhas e o cliente não decifra o que vem depois. Por isso a **foto final** (dump + db 8 → db 9 + RDB) é tirada com o serviço **a 0**, segundos antes da troca (6.2, passo 1). A do pré-voo serve de prova de restauração.
 
@@ -576,9 +577,13 @@ docker service ps evolution_evolution --format '{{.Name}} {{.CurrentState}}' | h
 #    tabela RuntimeConfig) e o arquivo do rollback não estaria fechado em disco.
 
 # 2. trocar a especificação (0 réplicas: nenhuma tarefa sobe ainda)
+#    ⚠️ O prisma.config.ts é OBRIGATÓRIO (9.4): a imagem homolog não o traz, e sem ele o
+#    Prisma 7 não migra ("datasource.url property is required"). O arquivo é o do develop
+#    (lê DATABASE_CONNECTION_URI), guardado em /root/evolution/prisma.config.ts na VPS.
 docker service update \
   --image evoapicloud/evolution-api:homolog@sha256:1e656f95aa1a2b7c2455a6a36d654637ddc2658c263794a5074ada798412a549 \
   --env-add TELEMETRY_ENABLED=false \
+  --mount-add type=bind,source=/root/evolution/prisma.config.ts,target=/evolution/prisma.config.ts,readonly \
   evolution_evolution
 
 # 3. subir SEM bloquear e vigiar: o entrypoint roda `prisma migrate deploy` (4 migrations)
@@ -610,7 +615,8 @@ docker exec $PGCID psql -U postgres -d evolution -Atc 'select migration_name, fi
      telefone decididos → `curl -s https://api.cbadvogados.com/license/status`
      (linha de base hoje: **404**; depois tem de dizer ativo).
    - **Guardar a ativação**: `docker exec $PGCID pg_dump -U postgres -Fc -t
-     '"RuntimeConfig"' evolution > /root/backups/evolution-runtimeconfig-$CARIMBO.dump`
+     '"RuntimeConfig"' evolution > /root/backups/evolution-runtimeconfig-$FOTO.dump`
+     (`$FOTO` vem do preâmbulo do Anexo B — o carimbo da foto final mais recente)
      — a licença local mora nessa tabela (`licensing-runtime.ts`,
      `model RuntimeConfig`); a foto final é anterior à 2.4 e não a tem. Numa
      2ª tentativa depois de rollback, restaurar só essa tabela depois do
@@ -888,6 +894,15 @@ Script `prevoo-backup.sh` em segundo plano na VPS (`/root/backups/prevoo-run.log
 - ⚠️⚠️ **Achado: o `DELETE /instance/delete` das órfãs levou o HISTÓRICO delas junto.** Entre a prova de 17:25 (348.805 mensagens, 7.019 chats, 17.202 contatos, 6 instâncias) e esta (70.482 / 2.607 / 6.220, 4 instâncias) o banco perdeu ~278 mil linhas de `Message`: o `schema.prisma` da Evolution tem `onDelete: Cascade` de **toda** tabela filha para `Instance` (Message, Chat, Contact, MessageUpdate, IsOnWhatsapp não — ela é global —, Label, Media…). As linhas apagadas eram das instâncias `Bancario` e `CBAdv`: já **inalcançáveis** pelas conexões vivas (a Evolution consulta sempre por `instanceId`), e o CRM tem a cópia própria de tudo no Supabase. Nada do que as 4 conexões vivas usam mudou (hoje: `trabalhista-juridico` 30.280, `cbcrm-…` 26.916, `comercial-trabalhista` 11.908, `juridico-bancario` 1.430). O dump de **17:04** continua em `/root/backups/` com as 348 mil — é o único lugar onde o histórico das órfãs existe fora do Supabase. `pg_database_size` continua dizendo 579 MB (tuplas mortas até o `VACUUM`).
   **Prova** (dump de 17:04 restaurado de novo em `evolution_ensaio` às 18:40, 20 s, 0 avisos, e apagado): `Bancario` **177.185** mensagens / 3.512 chats / 6.309 contatos, `CBAdv` **101.287** / 900 / 4.684 — as duas em `connecting` (laço de QR); as vivas tinham `trabalhista-juridico` 30.231, `cbcrm-…` 26.894, `comercial-trabalhista` 11.894, `juridico-bancario` 1.430 — hoje 30.280 / 26.916 / 11.908 / 1.430, ou seja, **só cresceram**. 177.185 + 101.287 = 278.472 = a diferença.
 
+#### 9.4 Registro da execução da Fase 1 (09/09/2026, 18:53–19:03, horário de Brasília — UTC−3)
+
+- **Tentativa 1 (18:53–18:57)**: `scale=0` 18:53:17 UTC; foto final `20260909-1853-final` (dump 14,26 MB em 3 s, 36 `TABLE DATA`, `Message` 70.540, Redis 16 = 16, RDB 3,2 MB); especificação trocada (imagem por digest + `TELEMETRY_ENABLED=false`); `scale=1` 18:53:32. **Falhou na migration, antes de tocar no banco**: `Error: The datasource.url property is required in your Prisma config file when using prisma migrate deploy` — laço de reinício detectado em 20 s (2 tarefas `non-zero exit`), `scale=0` às 18:54. Causa: a imagem `homolog` (build de 14/07, Prisma **7.8.0**, `datasource` do schema sem `url`) **não contém o `prisma.config.ts`** — o `develop` o tem desde 15/06 (commit `dd552c7`), mas o Dockerfile não o copia para a imagem final (`COPY` só de `package*.json`, `dist`, `prisma/`, `manager`, `public`, `.env`, `Docker/`, `runWithProvider.js`, `tsup.config.ts`). Não há build `homolog` mais novo no Docker Hub (a tag é de 14/07, mesmo digest). Banco intocado (55 migrations, sem `RuntimeConfig`), Redis intocado.
+- **Volta (18:56–18:57)**: como nada rodou, bastou trocar a especificação de volta (`--image …lidfix@dd3e46…`, `--env-rm TELEMETRY_ENABLED`) e `scale=1` — **sem restaurar nada**. HTTP no ar 18:57:22; 4 × `open` sem QR (API e banco). Parada total: **4 min**.
+- **Ensaio da correção (18:59)**: `prisma.config.ts` do `develop` (lê `env('DATABASE_CONNECTION_URI')`, a nossa variável) copiado para `/root/evolution/prisma.config.ts`; foto final restaurada em `evolution_ensaio`; a imagem `homolog` rodada como contêiner avulso (`docker run --rm --network container:$PGCID -v /root/evolution/prisma.config.ts:/evolution/prisma.config.ts:ro …`, URI apontando para `127.0.0.1:5432/evolution_ensaio`) só com `. ./Docker/scripts/deploy_database.sh`: **as 4 migrations aplicaram em 9 s**, `prisma generate` ok, `RuntimeConfig` criada, `Chat_instanceId_remoteJid_key` criado, `Message` 70.540 intacta. Autorizado pelo operador na hora.
+- **Tentativa 2 (19:02–19:03)**: `scale=0` 19:02:03; foto final **`20260909-1902-final`** (dump 14,26 MB, `Message` **70.550** / máx `messageTimestamp` 1788991209, Redis **59 = 59**, `HLEN` 437/726/275/1276, RDB 3,2 MB); especificação: imagem por digest + `TELEMETRY_ENABLED=false` + **`--mount-add type=bind,source=/root/evolution/prisma.config.ts,target=/evolution/prisma.config.ts,readonly`**; `scale=1` **19:02:22**; `Migration succeeded` + `Prisma generate succeeded` às 19:02:26 (as 4: `add_kafka_integration`, `add_chat_instance_remotejid_unique`, `increase_token_length`, `add_runtime_config`); HTTP no ar ~19:02:35; **4 × `CONNECTED TO WHATSAPP` sem QR** (19:02:36), `Instance` 4 × `open`, webhooks `connection.update` entregues ao CRM (os 4 `cb_channels` marcados `connected` às 19:02:36 — o `Authorization` guardado continua válido). Contêiner: `2.4.0` / `7.0.0-rc13`. `/license/status` → `{"status":"inactive","instance_id":"02510f09-…"}`; `fetchInstances` sem chave → 503 com `register_url = https://api.cbadvogados.com/manager/login` (certo).
+- **Sinais aos 4 min**: `lid-mapping-*` = **2** em cada um dos 4 hashes (campo novo da v7), `session-*_1.*` ainda 0 (migra no primeiro tráfego), PN inalteradas (154/142/35/291); log: `463` = 0, `Bad MAC` = 0, erros = 0. Apareceu um hash `evolution:instance:whatsapp_web_version` (cache novo da 2.4).
+- Ativação da licença: **pelo operador**, no navegador (19:03 →).
+
 #### 9.1 Registro da execução da Fase 0 (09/09/2026, 17:04–17:30)
 
 - **Prova de restauração** (`evolution_ensaio`, 0 avisos do `pg_restore`), comparando o mesmo corte:
@@ -904,10 +919,11 @@ Script `prevoo-backup.sh` em segundo plano na VPS (`/root/backups/prevoo-run.log
 - [x] Pré-voo, parte só de leitura (6.2.0, itens 2, 3, 5, 6, 7) — 09/09 18:10, registro em 9.2
 - [x] Pré-voo, parte de backup (6.2.0, item 4): dump novo, `FLUSHDB` do db 9 + cópia, RDB, restauração de prova, log — 09/09 18:24, carimbo `20260909-1824`, registro em 9.3
 - [x] Operador confirmou janela e equipe avisada; **1 celular** à mão (os outros 3 números são de teste — QR em 10/09 se pedirem); P2 decidida (LID) — 09/09 noite
-- [ ] Instância do celular à mão **nomeada** (P4) — é a que conta em 8.4
-- [ ] `docker service scale evolution_evolution=0` e **foto final** (6.2, passos 0–1)
-- [ ] `service update` com a imagem por digest + `TELEMETRY_ENABLED=false` (a 0 réplicas) e `scale --detach =1`; `date` anotado
-- [ ] Migrations aplicadas (log) — anotar as 4 em `_prisma_migrations`; sem laço de reinício
+- [x] Instância do celular à mão **nomeada** (P4): `cbcrm-…-76ac04` (11 96410-2992)
+- [x] `docker service scale evolution_evolution=0` e **foto final** (6.2, passos 0–1) — `20260909-1902-final` (9.4)
+- [x] `service update` com a imagem por digest + `TELEMETRY_ENABLED=false` + o mount do `prisma.config.ts` (a 0 réplicas) e `scale --detach =1` — 19:02:22 BRT (9.4); a tentativa 1 sem o mount falhou e voltou em 4 min
+- [x] Migrations aplicadas — as 4 em `_prisma_migrations` às 19:02:26 (nomes em 9.4); sem laço na tentativa 2
+- [x] 4 × `CONNECTED TO WHATSAPP` sem QR às 19:02:36; `lid-mapping` = 2 por hash aos 4 min
 - [ ] Cadastro/ativação feito **imediatamente**; `/license/status` OK; `date` anotado; `pg_dump -t RuntimeConfig` guardado
 - [ ] 4 conexões `open` no banco/log (QR lido em: ______; as sem celular à mão ficam para 10/09)
 - [ ] `lid-mapping-*` / `session-*_1.*` no Redis
@@ -957,8 +973,11 @@ um `pg_restore` interrompido no meio deixaria a Evolution sem banco nenhum.
 3. Redis db 8: `FLUSHDB` no **8** + `COPY` de cada chave do db 9 (foto final)
    de volta para o 8; `DBSIZE` do 8 = do 9 e `HLEN` dos 4 hashes = os de
    `foto-<carimbo>.txt`.
-4. `docker service update --image ghcr.io/leonardocabralb/evolution-api-lidfix:2.3.2-lidfix@sha256:dd3e46aadd696c07ac4a099f7e8e59b970f8a59e3df6c8c8beb4bf31f5848694 --env-rm TELEMETRY_ENABLED evolution_evolution`
-   — a 0 réplicas, só a especificação muda. A imagem está no nó (id
+4. `docker service update --image ghcr.io/leonardocabralb/evolution-api-lidfix:2.3.2-lidfix@sha256:dd3e46aadd696c07ac4a099f7e8e59b970f8a59e3df6c8c8beb4bf31f5848694 --env-rm TELEMETRY_ENABLED --mount-rm /evolution/prisma.config.ts evolution_evolution`
+   — a 0 réplicas, só a especificação muda. ⚠️ Se a migration **não** chegou a
+   rodar (caso da tentativa 1 em 9.4: o banco ainda tem 55 migrations e não
+   existe `RuntimeConfig`), os passos 2 e 3 são desnecessários — basta trocar a
+   especificação e subir. A imagem está no nó (id
    `7e614b07…`, 1,11 GB, conferido em 09/09); **nenhum `docker image prune` /
    `system prune`** na janela nem nas 48 h.
 5. `docker service scale --detach evolution_evolution=1`; **reler `CID`**;
@@ -1016,7 +1035,7 @@ duplicidade volta em dias ou semanas (relatos de 1–2 dias a semanas).
 | ~~P1~~ | **Resolvida 09/09**: cadastro com `leonardocabralb@gmail.com` (telefone informado ao executor, fora do repositório) | — |
 | ~~P2~~ | **Resolvida 09/09 (noite)**: `group_sender_jid` continua LID (5.2) — decisão do operador; nada muda no código | — |
 | ~~P3~~ | **Autorizada 09/09** e executada (seção 9, Fase 0) | — |
-| ~~P4~~ | **Resolvida 09/09 (noite)**: janela aberta; o operador tem **só 1 celular à mão** e aceitou o risco — os outros 3 números foram conectados **para teste**, ninguém os usa; se pedirem QR, ficam desconectados e a leitura fica para 10/09. Equipe avisada (celular/outro CRM). **Qual instância o celular à mão atende: ______ (confirmar antes do `scale=0` — é a única que entra no gatilho de 8.4)** | operador nomeia |
+| ~~P4~~ | **Resolvida 09/09 (noite)**: janela aberta; o operador tem **só 1 celular à mão** e aceitou o risco — os outros 3 números foram conectados **para teste**, ninguém os usa; se pedirem QR, ficam desconectados e a leitura fica para 10/09. Equipe avisada (celular/outro CRM). Celular à mão atende `cbcrm-a3af0191-…-76ac04` (11 96410-2992) — confirmado 09/09 18:50 | — |
 | P5 | Forma de `fileLength` na versão nova → ajuste 4 | teste T5 |
 | P6 | Latência de entrada com rc13 (5.6 dos riscos) | teste T21 |
 | P7 | Log da Evolution fora do contêiner (fora deste plano, registrar) | depois |
@@ -1099,6 +1118,7 @@ RC="docker exec $RCID redis-cli -n 8"
 KEY=$(docker service inspect evolution_evolution --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | sed -n 's/^AUTHENTICATION_API_KEY=//p')
 B=/root/backups; mkdir -p $B
 q() { docker exec $PGCID psql -U postgres -d "$1" -Atc "$2"; }   # ⚠️ -d ANTES de -Atc
+FOTO=$(ls -t $B/evolution-*-final.dump 2>/dev/null | head -1 | sed -E 's#.*/evolution-(.*)\.dump#\1#')   # carimbo da foto final mais recente (ex.: 20260909-1902-final)
 
 # Contêiner e imagem em execução
 docker service inspect evolution_evolution --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
@@ -1127,8 +1147,8 @@ q evolution 'select "remoteJid", lid from "IsOnWhatsapp" where "remoteJid" like 
 CARIMBO=$(date +%Y%m%d-%H%M)          # foto final: CARIMBO=$(date +%Y%m%d-%H%M)-final
 docker exec $PGCID pg_dump -U postgres -Fc evolution > $B/evolution-$CARIMBO.dump
 test -s $B/evolution-$CARIMBO.dump || { echo "DUMP VAZIO"; exit 1; }
-docker exec -i $PGCID pg_restore -l < $B/evolution-$CARIMBO.dump | grep -c 'TABLE DATA'   # arquivo truncado falha aqui
-ls -l $B/evolution-$CARIMBO.dump && echo DUMP-OK
+docker exec -i $PGCID pg_restore -l < $B/evolution-$CARIMBO.dump | grep -q 'TABLE DATA' \
+  && ls -l $B/evolution-$CARIMBO.dump && echo DUMP-OK || { echo "DUMP RUIM (truncado?)"; exit 1; }   # o DUMP-OK depende da validação (Codex, PR #165)
 q evolution 'select count(*), max("messageTimestamp") from "Message"' > $B/foto-$CARIMBO.txt      # referência para o rollback
 # ⚠️ O db 9 guarda a cópia anterior: esvaziar ANTES de copiar de novo — só o db 9! (Codex, PR #162)
 docker exec $RCID redis-cli -n 9 FLUSHDB
@@ -1157,16 +1177,17 @@ docker exec $PGCID dropdb -U postgres evolution_ensaio
 docker service scale evolution_evolution=0
 docker service ps evolution_evolution --format '{{.Name}} {{.CurrentState}}' | head -3      # nenhuma Running
 docker exec $PGCID dropdb -U postgres --if-exists evolution_volta; docker exec $PGCID createdb -U postgres evolution_volta
-docker exec -i $PGCID pg_restore --exit-on-error -U postgres -d evolution_volta < $B/evolution-$FOTO.dump; echo "restore rc=$?"   # rc tem de ser 0
-q evolution_volta 'select count(*), max("messageTimestamp") from "Message"'; cat $B/foto-$FOTO.txt   # IGUAIS, senão PARAR
+docker exec -i $PGCID pg_restore --exit-on-error -U postgres -d evolution_volta < $B/evolution-$FOTO.dump || { echo "RESTORE FALHOU — nada foi trocado"; exit 1; }
+[ "$(q evolution_volta 'select count(*) from "Message"')" = "$(head -1 $B/foto-$FOTO.txt | cut -d'|' -f1)" ] || { echo "CONTAGEM DIFERE da foto — PARAR"; exit 1; }   # as duas travas: Codex, PR #165
+ARQ="evolution_v24_$(date +%Y%m%d%H%M)"   # nome ÚNICO por rollback (numa 2ª tentativa o anterior ainda existe)
 q postgres "select pg_terminate_backend(pid) from pg_stat_activity where datname in ('evolution','evolution_volta') and pid <> pg_backend_pid()"
-q postgres 'alter database evolution rename to evolution_v24'
-q postgres 'alter database evolution_volta rename to evolution'
+q postgres "alter database evolution rename to \"$ARQ\"" || { echo "RENAME 1 falhou — PARAR (o banco vivo continua intacto)"; exit 1; }
+q postgres 'alter database evolution_volta rename to evolution' || { echo "RENAME 2 falhou — desfazer: alter database \"$ARQ\" rename to evolution"; exit 1; }
 docker exec $RCID redis-cli -n 8 FLUSHDB     # só o db 8!
 for k in $(docker exec $RCID redis-cli -n 9 --scan --pattern '*'); do docker exec $RCID redis-cli -n 9 COPY "$k" "$k" DB 8 REPLACE >/dev/null; done
 echo "db8=$($RC DBSIZE) db9=$(docker exec $RCID redis-cli -n 9 DBSIZE)"   # iguais
 for h in $($RC --scan --pattern 'evolution:instance:*'); do echo "$h $($RC HLEN $h)"; done; cat $B/foto-$FOTO.txt   # HLEN iguais
-docker service update --image ghcr.io/leonardocabralb/evolution-api-lidfix:2.3.2-lidfix@sha256:dd3e46aadd696c07ac4a099f7e8e59b970f8a59e3df6c8c8beb4bf31f5848694 --env-rm TELEMETRY_ENABLED evolution_evolution
+docker service update --image ghcr.io/leonardocabralb/evolution-api-lidfix:2.3.2-lidfix@sha256:dd3e46aadd696c07ac4a099f7e8e59b970f8a59e3df6c8c8beb4bf31f5848694 --env-rm TELEMETRY_ENABLED --mount-rm /evolution/prisma.config.ts evolution_evolution
 docker service scale --detach evolution_evolution=1
 sleep 20; CID=$(docker ps -q -f name=evolution_evolution | head -1)                       # RELER
 docker exec $CID sh -c 'grep -m1 "\"version\"" package.json'                              # 2.3.2
