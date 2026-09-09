@@ -991,7 +991,7 @@ export function MessageComposer({
         // Botões/listas não entregam via Baileys — este atalho por resposta
         // rápida também precisa da barreira (o item direto já está oculto;
         // sem isto o envio morreria num 400 do servidor).
-        if (ehEvolution(channelKind)) {
+        if (ehEvolution(channelKind) || ehInstagram(channelKind)) {
           toast.error(t("interactiveNotOnChannel"));
           return;
         }

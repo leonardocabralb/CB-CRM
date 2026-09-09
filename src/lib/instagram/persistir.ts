@@ -19,6 +19,11 @@
 //   do Instagram, entra como `persistDeviceMessage` entra a do celular
 //   pareado: `sender_type='agent'`, `from_device=true`, sem motor.
 //
+// TENANCY: toda leitura e escrita aqui passa pela CONTA da rota (`ctx`), e
+// as mensagens são alcançadas pela CONVERSA do cliente — nunca por
+// `message_id` solto. O `mid` da Meta só é único por conversa no nosso
+// schema, e este módulo roda em service-role (Codex, PR #173).
+//
 // `user_id` das linhas novas é o DONO DA CONTA (`ownerUserId` resolvido de
 // `accounts.owner_user_id` pela rota) — a regra do dono durável, cobrada por
 // `dono-duravel.test.ts`.
@@ -67,8 +72,21 @@ export interface ContatoDoInstagram {
   name: string | null;
   instagram_username: string | null;
   avatar_url: string | null;
+  avatar_checked_at: string | null;
   wasCreated: boolean;
 }
+
+/**
+ * Injetado pela rota: lê o perfil (nome, @, foto) com o token do canal e
+ * devolve o nome que ficou na ficha. Roda ANTES do roteamento para o funil,
+ * para o card nascer com o nome da pessoa — `routeContactToPipeline` não
+ * volta a mexer no card depois que ele existe (Codex, PR #173). `null` =
+ * não leu; a mensagem já está gravada e nada aqui a segura.
+ */
+export type Enriquecer = (
+  contato: ContatoDoInstagram,
+  igsid: string
+) => Promise<{ name: string | null } | null>;
 
 type EventoMensagem = Extract<EventoDoInstagram, { tipo: 'mensagem' }>;
 type EventoPostback = Extract<EventoDoInstagram, { tipo: 'postback' }>;
@@ -84,10 +102,30 @@ export type ResultadoDaPersistencia =
   | { resultado: 'duplicada' | 'ignorada' | 'falhou' };
 
 const TAG = '[instagram/persistir]';
+const COLUNAS_DO_CONTATO =
+  'id, name, instagram_username, avatar_url, avatar_checked_at';
+
+async function buscarContato(
+  db: SupabaseClient,
+  ctx: ContextoDoCanal,
+  igsid: string
+): Promise<Omit<ContatoDoInstagram, 'wasCreated'> | null> {
+  const { data, error } = await db
+    .from('contacts')
+    .select(COLUNAS_DO_CONTATO)
+    .eq('account_id', ctx.accountId)
+    .eq('instagram_id', igsid)
+    .maybeSingle();
+  if (error) {
+    console.error(`${TAG} buscar contato falhou:`, error.message);
+    return null;
+  }
+  return data as Omit<ContatoDoInstagram, 'wasCreated'> | null;
+}
 
 /**
  * A ficha do cliente pelo IGSID. Nasce sem nome e sem `@` — o perfil chega
- * por `perfil.ts` logo depois, e a falha lá não pode segurar a mensagem.
+ * por `enriquecer` logo depois, e a falha lá não pode segurar a mensagem.
  */
 export async function findOrCreateContatoDoInstagram(
   db: SupabaseClient,
@@ -95,21 +133,7 @@ export async function findOrCreateContatoDoInstagram(
   igsid: string
 ): Promise<ContatoDoInstagram | null> {
   const { accountId, ownerUserId } = ctx;
-  const buscar = async () => {
-    const { data, error } = await db
-      .from('contacts')
-      .select('id, name, instagram_username, avatar_url')
-      .eq('account_id', accountId)
-      .eq('instagram_id', igsid)
-      .maybeSingle();
-    if (error) {
-      console.error(`${TAG} buscar contato falhou:`, error.message);
-      return null;
-    }
-    return data as Omit<ContatoDoInstagram, 'wasCreated'> | null;
-  };
-
-  const existente = await buscar();
+  const existente = await buscarContato(db, ctx, igsid);
   if (existente) return { ...existente, wasCreated: false };
 
   const { data: criado, error } = await db
@@ -120,14 +144,14 @@ export async function findOrCreateContatoDoInstagram(
       phone: null,
       instagram_id: igsid,
     })
-    .select('id, name, instagram_username, avatar_url')
+    .select(COLUNAS_DO_CONTATO)
     .single();
 
   if (error) {
     // Duas entregas da mesma pessoa em paralelo: o índice único parcial
     // `(account_id, instagram_id)` da 989 decide, e a perdedora relê.
     if (isUniqueViolation(error)) {
-      const corrida = await buscar();
+      const corrida = await buscarContato(db, ctx, igsid);
       if (corrida) return { ...corrida, wasCreated: false };
     }
     console.error(`${TAG} criar contato falhou:`, error.message);
@@ -137,6 +161,45 @@ export async function findOrCreateContatoDoInstagram(
     ...(criado as Omit<ContatoDoInstagram, 'wasCreated'>),
     wasCreated: true,
   };
+}
+
+/**
+ * A conversa do cliente NESTA conta, sem criar nada — é por ela que edição
+ * e exclusão alcançam a mensagem. `null` = a pessoa nunca escreveu para
+ * esta conexão (edição de mensagem anterior à integração, ou de outro app).
+ */
+export async function conversaDoCliente(
+  db: SupabaseClient,
+  ctx: ContextoDoCanal,
+  igsid: string
+): Promise<string | null> {
+  const contato = await buscarContato(db, ctx, igsid);
+  if (!contato) return null;
+  const { data, error } = await db
+    .from('conversations')
+    .select('id')
+    .eq('account_id', ctx.accountId)
+    .eq('contact_id', contato.id)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error(`${TAG} buscar conversa falhou:`, error.message);
+    return null;
+  }
+  return (data?.id as string | undefined) ?? null;
+}
+
+/**
+ * O IGSID do cliente num evento SEM a marca de eco (edição): quando o
+ * remetente é a própria conta, o cliente é o destinatário.
+ */
+export function igsidDoCliente(ev: {
+  igUserId: string;
+  remetente: string;
+  destinatario: string;
+}): string {
+  return ev.remetente === ev.igUserId ? ev.destinatario : ev.remetente;
 }
 
 export interface ConteudoDaMensagem {
@@ -219,7 +282,8 @@ async function gravarMensagem(
   db: SupabaseClient,
   ctx: ContextoDoCanal,
   ev: EventoMensagem,
-  salvarMidia: SalvarMidia
+  salvarMidia: SalvarMidia,
+  enriquecer?: Enriquecer
 ): Promise<ResultadoDaPersistencia> {
   const igsid = clienteDe(ev);
   const contato = await findOrCreateContatoDoInstagram(db, ctx, igsid);
@@ -323,18 +387,26 @@ async function gravarMensagem(
     }
   }
 
-  const agora = new Date().toISOString();
-  await db
-    .from('conversations')
-    .update({
-      last_message_text: previa(conteudo),
-      last_message_at: agora,
-      updated_at: agora,
-      ...(ev.ehEco
-        ? {}
-        : { unread_count: (conversation.unread_count || 0) + 1 }),
-    })
-    .eq('id', conversation.id);
+  if (ev.ehEco) {
+    const agora = new Date().toISOString();
+    await db
+      .from('conversations')
+      .update({
+        last_message_text: previa(conteudo),
+        last_message_at: agora,
+        updated_at: agora,
+      })
+      .eq('id', conversation.id);
+  } else {
+    // ATÔMICO no banco (040): duas entregas ao mesmo tempo somariam a mesma
+    // base e perderiam uma não-lida se fosse ler-somar-gravar (Codex, PR #173).
+    const { error: erroBump } = await db.rpc('bump_conversation_on_inbound', {
+      p_conversation_id: conversation.id,
+      p_last_message_text: previa(conteudo),
+    });
+    if (erroBump)
+      console.error(`${TAG} bump da conversa falhou:`, erroBump.message);
+  }
 
   // Gente reabre — o cliente escrevendo, ou o escritório respondendo pelo
   // app do Instagram. Sem responsável: quem reabre por aqui não é membro.
@@ -344,12 +416,16 @@ async function gravarMensagem(
   );
   await followConversationChannel(db, conversation.id, ctx.channelId);
 
+  // O perfil ANTES do funil: o card nasce com o nome da pessoa.
+  const enriquecido = enriquecer ? await enriquecer(contato, igsid) : null;
+  const nome = enriquecido?.name ?? contato.name;
+
   await routeContactToPipeline({
     db,
     accountId: ctx.accountId,
     channelId: ctx.channelId,
     contactId: contato.id,
-    contactName: contato.name,
+    contactName: nome,
     conversationId: conversation.id,
   });
 
@@ -366,7 +442,7 @@ async function gravarMensagem(
 
   return {
     resultado: 'gravada',
-    contato,
+    contato: { ...contato, name: nome },
     conversationId: conversation.id,
     messageId: inserida.id as string,
   };
@@ -377,7 +453,8 @@ async function gravarPostback(
   db: SupabaseClient,
   ctx: ContextoDoCanal,
   ev: EventoPostback,
-  salvarMidia: SalvarMidia
+  salvarMidia: SalvarMidia,
+  enriquecer?: Enriquecer
 ): Promise<ResultadoDaPersistencia> {
   const texto = ev.titulo ?? ev.payload;
   if (!texto) return { resultado: 'ignorada' };
@@ -396,19 +473,26 @@ async function gravarPostback(
     respostaA: null,
     quickReply: ev.payload,
   };
-  return gravarMensagem(db, ctx, comoMensagem, salvarMidia);
+  return gravarMensagem(db, ctx, comoMensagem, salvarMidia, enriquecer);
 }
 
-/** Edição de verdade (num_edit ≥ 1 — o parser já descartou o 0). */
+/**
+ * Edição de verdade (num_edit ≥ 1 — o parser já descartou o 0). A mensagem
+ * é alcançada pela CONVERSA do cliente nesta conta, nunca por `mid` solto.
+ */
 async function aplicarEdicao(
   db: SupabaseClient,
+  ctx: ContextoDoCanal,
   ev: EventoEdicao
 ): Promise<ResultadoDaPersistencia> {
+  const conversationId = await conversaDoCliente(db, ctx, igsidDoCliente(ev));
+  if (!conversationId) return { resultado: 'ignorada' };
+
   const { data: atual } = await db
     .from('messages')
     .select('id, content_text')
+    .eq('conversation_id', conversationId)
     .eq('message_id', ev.mid)
-    .limit(1)
     .maybeSingle();
   if (!atual) return { resultado: 'ignorada' }; // anterior à integração
   if (ev.texto === null || atual.content_text === ev.texto)
@@ -421,7 +505,8 @@ async function aplicarEdicao(
       text_before_edit: atual.content_text,
       edited_at: new Date().toISOString(),
     })
-    .eq('id', atual.id);
+    .eq('id', atual.id)
+    .eq('conversation_id', conversationId);
   if (error) {
     console.error(`${TAG} aplicar edição falhou:`, error.message);
     return { resultado: 'falhou' };
@@ -437,15 +522,16 @@ export async function persistirEventoDoInstagram(
   db: SupabaseClient,
   ctx: ContextoDoCanal,
   ev: EventoDoInstagram,
-  salvarMidia: SalvarMidia
+  salvarMidia: SalvarMidia,
+  enriquecer?: Enriquecer
 ): Promise<ResultadoDaPersistencia> {
   switch (ev.tipo) {
     case 'mensagem':
-      return gravarMensagem(db, ctx, ev, salvarMidia);
+      return gravarMensagem(db, ctx, ev, salvarMidia, enriquecer);
     case 'postback':
-      return gravarPostback(db, ctx, ev, salvarMidia);
+      return gravarPostback(db, ctx, ev, salvarMidia, enriquecer);
     case 'edicao':
-      return aplicarEdicao(db, ev);
+      return aplicarEdicao(db, ctx, ev);
     default:
       return { resultado: 'ignorada' };
   }

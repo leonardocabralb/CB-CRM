@@ -5,7 +5,7 @@
 //          token CIFRADO de cada conexão do Instagram.
 //   POST — as entregas. Corpo CRU primeiro (o HMAC é sobre os bytes), a
 //          conta pelo `entry.id`, a assinatura conferida com o Instagram App
-//          Secret DAQUELE canal, e o processamento em `after()`.
+//          Secret de CADA canal, e o processamento em `after()`.
 //
 // O que morde código novo (tudo medido na Fase 0, 09/09/2026):
 //
@@ -16,9 +16,12 @@
 //   conta desconhecida, forma estranha —, porque 4xx repetido faz a Meta
 //   desativar a assinatura e as DMs reais somem sem erro em lugar nenhum
 //   (a lição do Calendly, 977).
-// · Uma entrega pode trazer várias `entry` (contas do mesmo app). O
-//   segredo é do APP, então uma conexão que assine vale para o corpo
-//   inteiro; cada entry é persistida no contexto do SEU canal.
+// · Uma entrega pode trazer várias `entry`, e cada `entry` só é persistida
+//   se a SUA conexão assina o corpo. O segredo é do APP da Meta, então as
+//   contas de um mesmo app assinam todas; conta de OUTRO app no mesmo corpo
+//   não assina e fica de fora. Sem isso, quem tem o segredo do próprio app
+//   poderia forjar um corpo com o `entry.id` de outra conta deste CRM e
+//   injetar mensagens nela (Codex, PR #173).
 // · D1: nada aqui chama automação, fluxo ou IA — `persistir.ts` não os
 //   importa, e há teste lendo o fonte.
 // ============================================================
@@ -27,10 +30,16 @@ import { NextResponse, after } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 import { resolveInboundInstagramChannel } from '@/lib/cb-channels/resolve-inbound';
-import { assinaturaCasa } from '@/lib/instagram/assinatura';
+import { precisaConferirFoto } from '@/lib/contacts/foto-de-perfil';
+import { quaisAssinam } from '@/lib/instagram/assinatura';
 import { salvarMidiaDoInstagram } from '@/lib/instagram/midia';
 import { completarPerfilDoContato } from '@/lib/instagram/perfil';
-import { persistirEventoDoInstagram } from '@/lib/instagram/persistir';
+import {
+  persistirEventoDoInstagram,
+  type ContatoDoInstagram,
+  type Enriquecer,
+  type SalvarMidia,
+} from '@/lib/instagram/persistir';
 import {
   interpretarWebhook,
   type EventoDoInstagram,
@@ -117,50 +126,58 @@ export async function POST(request: Request) {
   }
   const rotas = new Map<
     string,
-    Awaited<ReturnType<typeof resolveInboundInstagramChannel>>
+    NonNullable<Awaited<ReturnType<typeof resolveInboundInstagramChannel>>>
   >();
   for (const igUserId of porConta.keys()) {
-    rotas.set(igUserId, await resolveInboundInstagramChannel(db, igUserId));
+    const rota = await resolveInboundInstagramChannel(db, igUserId);
+    if (rota) rotas.set(igUserId, rota);
   }
-  const conhecidas = [...rotas.values()].filter((r) => r !== null);
-  if (conhecidas.length === 0) {
+  if (rotas.size === 0) {
     console.warn(
       `${TAG} entrega para conta(s) sem conexão: ${[...porConta.keys()].join(', ')}`
     );
     return NextResponse.json({ ok: true, ignorado: 'conta_desconhecida' });
   }
 
-  // O segredo é do APP: basta que UMA das conexões do corpo assine.
-  const assinou = conhecidas.some((r) => {
+  // Cada conta responde pelo PRÓPRIO segredo. O que não assina fica de fora
+  // — e se nenhuma assina, o corpo inteiro é recusado.
+  const candidatos: { id: string; segredo: string }[] = [];
+  for (const [igUserId, rota] of rotas) {
     try {
-      return assinaturaCasa(
-        assinatura,
-        corpoCru,
-        decrypt(r.igAppSecretCifrado)
-      );
+      candidatos.push({
+        id: igUserId,
+        segredo: decrypt(rota.igAppSecretCifrado),
+      });
     } catch {
-      return false;
+      console.error(
+        `${TAG} segredo da conta ${igUserId} não decifra — conexão precisa ser refeita.`
+      );
     }
-  });
-  if (!assinou) {
+  }
+  const assinantes = new Set(quaisAssinam(assinatura, corpoCru, candidatos));
+  if (assinantes.size === 0) {
     console.warn(`${TAG} assinatura NÃO casa — entrega recusada.`);
     return NextResponse.json({ error: 'invalid_signature' }, { status: 401 });
+  }
+  for (const igUserId of rotas.keys()) {
+    if (!assinantes.has(igUserId)) {
+      console.warn(
+        `${TAG} conta ${igUserId} está no corpo mas o segredo dela não assina — ignorada.`
+      );
+    }
   }
 
   // 200 já; o trabalho (download de mídia, perfil) fica para depois.
   after(async () => {
     for (const [igUserId, lista] of porConta) {
       const rota = rotas.get(igUserId);
-      if (!rota) continue;
+      if (!rota || !assinantes.has(igUserId)) continue;
       const ctx = {
         accountId: rota.accountId,
         ownerUserId: rota.ownerUserId,
         channelId: rota.channelId,
       };
-      const salvarMidia = (
-        anexo: Parameters<typeof salvarMidiaDoInstagram>[0]['anexo'],
-        mid: string
-      ) =>
+      const salvarMidia: SalvarMidia = (anexo, mid) =>
         salvarMidiaDoInstagram({
           storage: db.storage,
           accountId: rota.accountId,
@@ -168,6 +185,29 @@ export async function POST(request: Request) {
           mid,
           timestampMs: null,
         });
+      // Perfil: na criação, sem @, ou a cada 30 dias (`avatar_checked_at`,
+      // a régua da foto do WhatsApp) — nunca a cada mensagem.
+      const enriquecer: Enriquecer = async (
+        contato: ContatoDoInstagram,
+        igsid: string
+      ) => {
+        if (!rota.accessTokenCifrado) return null;
+        const agora = Date.now();
+        const precisa =
+          contato.wasCreated ||
+          !contato.instagram_username ||
+          precisaConferirFoto(contato, agora);
+        if (!precisa) return null;
+        return completarPerfilDoContato({
+          db,
+          accountId: rota.accountId,
+          contactId: contato.id,
+          igsid,
+          token: decrypt(rota.accessTokenCifrado),
+          nomeAtual: contato.name,
+          agoraMs: agora,
+        });
+      };
 
       for (const ev of lista) {
         if (ev.tipo === 'ignorado') {
@@ -175,24 +215,13 @@ export async function POST(request: Request) {
           continue;
         }
         try {
-          const r = await persistirEventoDoInstagram(db, ctx, ev, salvarMidia);
-          if (r.resultado !== 'gravada') continue;
-          // Perfil (nome, @, foto) só quando falta — e nunca antes da mensagem
-          // estar gravada: a leitura do perfil pode falhar sem custo.
-          const c = r.contato;
-          if (!c.wasCreated && c.instagram_username && c.avatar_url) continue;
-          if (!rota.accessTokenCifrado) continue;
-          await completarPerfilDoContato({
+          await persistirEventoDoInstagram(
             db,
-            accountId: rota.accountId,
-            contactId: c.id,
-            igsid:
-              ev.tipo === 'mensagem' && ev.ehEco
-                ? ev.destinatario
-                : ev.remetente,
-            token: decrypt(rota.accessTokenCifrado),
-            temNome: Boolean(c.name),
-          });
+            ctx,
+            ev,
+            salvarMidia,
+            enriquecer
+          );
         } catch (err) {
           console.error(
             `${TAG} persistir falhou:`,

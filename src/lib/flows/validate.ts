@@ -846,7 +846,7 @@ export function validateFlowChannelForActivation(
       node_key: node.node_key,
       severity: 'error',
       scope: 'node',
-      message: `O nó "${node.node_type}" precisa de um número oficial da Meta, mas está apontado para "${canal.label}", que é um número não oficial (QR Code). Troque o canal ou use uma mensagem de texto.`,
+      message: `O nó "${node.node_type}" precisa de um número oficial da Meta, mas está apontado para "${canal.label}", que não é um número oficial da Meta. Troque o canal ou use uma mensagem de texto.`,
     });
   }
   return issues;

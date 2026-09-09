@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils"
 import { formatRelative } from "@/lib/automations/trigger-meta"
 import { ChannelCell, ChannelScopeBadge } from "@/components/channels/channel-badge"
 import { useChannels } from "@/hooks/use-channels"
+import { nomeDoContato } from "@/lib/contacts/identidade"
 
 export default function AutomationLogsPage({
   params,
@@ -51,7 +52,7 @@ export default function AutomationLogsPage({
             .maybeSingle(),
           supabase
             .from("automation_logs")
-            .select("*, contact:contacts(id, name, phone)")
+            .select("*, contact:contacts(id, name, phone, instagram_username)")
             .eq("automation_id", id)
             .order("created_at", { ascending: false })
             .limit(100),
@@ -143,7 +144,7 @@ export default function AutomationLogsPage({
                   <StatusBadge status={log.status} desfecho={log.desfecho} t={t} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-foreground">
-                      {log.contact?.name ?? log.contact?.phone ?? t("unknownContact")}
+                      {nomeDoContato(log.contact, t("unknownContact"))}
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
                       {log.trigger_event} · {log.steps_executed?.length ?? 0}{" "}

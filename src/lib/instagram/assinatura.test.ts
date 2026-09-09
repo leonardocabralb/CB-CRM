@@ -53,3 +53,24 @@ describe('assinaturaCasa', () => {
     ).toBe(false);
   });
 });
+
+describe('quaisAssinam — cada conta responde pelo próprio segredo', () => {
+  it('devolve só quem assina, e vazio quando ninguém assina', async () => {
+    const { quaisAssinam } = await import('./assinatura');
+    const candidatos = [
+      { id: 'conta-do-app-A', segredo: 'segredo-A' },
+      { id: 'conta-do-app-B', segredo: 'segredo-B' },
+      { id: 'outra-do-app-A', segredo: 'segredo-A' },
+    ];
+    expect(
+      quaisAssinam(assinar(CORPO, 'segredo-A'), CORPO, candidatos)
+    ).toEqual(['conta-do-app-A', 'outra-do-app-A']);
+    expect(
+      quaisAssinam(assinar(CORPO, 'segredo-B'), CORPO, candidatos)
+    ).toEqual(['conta-do-app-B']);
+    expect(quaisAssinam(assinar(CORPO, 'terceiro'), CORPO, candidatos)).toEqual(
+      []
+    );
+    expect(quaisAssinam(null, CORPO, candidatos)).toEqual([]);
+  });
+});

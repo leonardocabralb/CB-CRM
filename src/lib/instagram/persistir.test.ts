@@ -203,3 +203,24 @@ describe('findOrCreateContatoDoInstagram', () => {
     expect(await findOrCreateContatoDoInstagram(db, ctx, 'x')).toBeNull();
   });
 });
+
+describe('igsidDoCliente — o cliente numa edição sem marca de eco', () => {
+  it('remetente é o cliente; se a própria conta editou, o cliente é o destinatário', async () => {
+    const { igsidDoCliente } = await import('./persistir');
+    const conta = '17841457826920658';
+    expect(
+      igsidDoCliente({
+        igUserId: conta,
+        remetente: '1663055967608091',
+        destinatario: conta,
+      })
+    ).toBe('1663055967608091');
+    expect(
+      igsidDoCliente({
+        igUserId: conta,
+        remetente: conta,
+        destinatario: '1663055967608091',
+      })
+    ).toBe('1663055967608091');
+  });
+});

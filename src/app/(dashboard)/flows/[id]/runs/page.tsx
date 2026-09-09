@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { ChannelCell } from "@/components/channels/channel-badge";
 import { useChannels } from "@/hooks/use-channels";
 import type { CbChannel } from "@/lib/cb-channels/repo";
+import { nomeDoContato } from "@/lib/contacts/identidade";
 
 /**
  * Run history viewer.
@@ -66,7 +67,7 @@ interface RunRow {
    * nos runs anteriores à 903.
    */
   channel_id: string | null;
-  contact: { id: string; name: string | null; phone: string } | null;
+  contact: { id: string; name: string | null; phone: string | null; instagram_username?: string | null } | null;
 }
 
 interface EventRow {
@@ -274,7 +275,7 @@ function RunCard({
   const meta = STATUS_META[run.status] ?? META_DESCONHECIDO;
   const StatusIcon = meta.icon;
   const contactLabel =
-    run.contact?.name?.trim() || run.contact?.phone || t("unknownContact");
+    nomeDoContato(run.contact, t("unknownContact"));
   const duration = run.ended_at
     ? formatDistanceToNow(new Date(run.ended_at), {
         addSuffix: false,
