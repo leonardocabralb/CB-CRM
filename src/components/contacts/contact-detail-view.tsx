@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ReunioesDoContato } from '@/components/agenda/reunioes-do-contato';
+import { ReunioesTranscritasDoContato } from '@/components/transcricoes/reunioes-transcritas-do-contato';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1030,6 +1031,13 @@ export function ContactDetailView({
               {/* Meetings Tab — Fase 1 da agenda (945) */}
               <TabsContent value="meetings" className="flex-1 overflow-y-auto px-4 py-3">
                 <ReunioesDoContato contactId={contact.id} />
+                {/* As reuniões TRANSCRITAS (987): o histórico do que foi dito,
+                    importado do tl;dv ou colado à mão. Na mesma aba de
+                    propósito — a agenda olha para a frente, a transcrição para
+                    trás, e as duas são "as reuniões com este cliente". */}
+                <div className="mt-4">
+                  <ReunioesTranscritasDoContato contactId={contact.id} />
+                </div>
               </TabsContent>
 
               <TabsContent value="history" className="flex-1 overflow-y-auto px-4 py-3">

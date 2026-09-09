@@ -13,6 +13,7 @@ import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
 import { MetaAdsCard } from './meta-ads-card';
 import { CalendlyCard } from './calendly-card';
+import { TldvCard } from './tldv-card';
 import { SettingsChip, type ChipVariant } from './settings-chip';
 import { SettingsPanelHead } from './settings-panel-head';
 import { cn } from '@/lib/utils';
@@ -284,6 +285,9 @@ function Conteudo() {
       {/* Calendly (977): mesmo desenho do Meta Ads — rota própria
           (`GET /api/cb/calendly`), nenhum segredo chega ao navegador. */}
       <CalendlyCard />
+      {/* tl;dv (987): mesmo desenho — rota própria (`GET /api/cb/tldv`), a
+          chave nunca chega ao navegador. */}
+      <TldvCard />
     </div>
   );
 }

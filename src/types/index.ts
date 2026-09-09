@@ -1,5 +1,6 @@
 import type { AccountRole } from '@/lib/auth/roles';
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive';
+import type { FraseDaTranscricao } from '@/lib/tldv/leitura';
 
 export type {
   InteractiveMessagePayload,
@@ -1741,6 +1742,61 @@ export interface Availability {
   antecedencia_minima_horas: number;
   janela_maxima_dias: number;
   ativo: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Reuniões transcritas (migration 987) — a integração com o tl;dv e a
+// transcrição colada à mão, na mesma tabela. Ver `src/lib/tldv/`.
+// ---------------------------------------------------------------------------
+
+export type OrigemDaReuniaoTranscrita = 'tldv' | 'manual';
+/**
+ * `pendente`: o tl;dv ainda não terminou a transcrição; `pronta`: gravada;
+ * `sem_transcricao`: desistiu depois das tentativas (o botão "Buscar de
+ * novo" recomeça); `falhou`: a API recusou (`erro` diz o código).
+ */
+export type StatusDaReuniaoTranscrita = 'pendente' | 'pronta' | 'sem_transcricao' | 'falhou';
+/**
+ * COMO o cliente foi ligado: `email` (automático, pelo e-mail do convidado),
+ * `manual` (alguém escolheu) ou `desvinculada` (alguém tirou — a
+ * sincronização não religa sozinha).
+ */
+export type VinculoDaReuniaoTranscrita = 'email' | 'manual' | 'desvinculada';
+
+export interface ReuniaoTranscrita {
+  id: string;
+  account_id: string;
+  /** Nulo é caso normal: reunião importada que ainda não foi ligada a ninguém. */
+  contact_id: string | null;
+  origem: OrigemDaReuniaoTranscrita;
+  /** Só na origem `tldv`; único por conta. */
+  tldv_meeting_id: string | null;
+  titulo: string;
+  /** Instante, com fuso. */
+  realizada_em: string;
+  duracao_seg: number | null;
+  /** O link para abrir no tl;dv (origem `tldv`) ou o que o operador colou. */
+  url: string | null;
+  organizador_nome: string | null;
+  organizador_email: string | null;
+  participantes: { nome: string; email: string }[];
+  status: StatusDaReuniaoTranscrita;
+  /**
+   * ⚠️ As três colunas pesadas são OPCIONAIS no tipo porque a lista da ficha
+   * não as seleciona — só o visualizador, por id.
+   */
+  texto?: string | null;
+  segmentos?: FraseDaTranscricao[] | null;
+  notas?: string | null;
+  tentativas: number;
+  erro: string | null;
+  vinculo_origem: VinculoDaReuniaoTranscrita | null;
+  vinculado_por: string | null;
+  vinculado_em: string | null;
+  created_by: string | null;
+  autor_nome: string | null;
   created_at: string;
   updated_at: string;
 }
