@@ -35,6 +35,7 @@ import type {
   MeetingStatus,
   MeetingType,
 } from '@/types';
+import { nomeDoContato } from '@/lib/contacts/identidade';
 
 /**
  * Criar e editar reunião (migration 945).
@@ -401,7 +402,7 @@ export function ReuniaoForm({
               travado={Boolean(contactId)}
               aoEscolher={(c: Contact | null) => {
                 setClienteId(c?.id ?? null);
-                setClienteNome(c ? c.name || c.phone : null);
+                setClienteNome(c ? nomeDoContato(c, '') : null);
               }}
             />
           </div>

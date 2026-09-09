@@ -207,6 +207,13 @@ or phone) and `?tag=<tagId>`.
 }
 ```
 
+> **Instagram (since migration 989):** a contact that only exists on
+> Instagram Direct has `phone: null` and carries `instagram_id` (the IGSID)
+> and `instagram_username` instead. Both fields are present on every
+> contact object (`null` for WhatsApp-only contacts). `POST /contacts`
+> still requires `phone` — Instagram contacts are created by the Direct
+> webhook, never by the API.
+
 ### `POST /api/v1/contacts`
 
 Create a contact. Scope: `contacts:write`. `phone` (E.164) is required;

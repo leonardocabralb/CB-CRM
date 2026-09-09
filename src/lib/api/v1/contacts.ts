@@ -20,11 +20,14 @@ export const CONTACT_SELECT = '*, contact_tags(tags(*))';
 
 export interface ApiContact {
   id: string;
-  phone: string;
+  /** `null` em contato só do Instagram (989) — ele carrega `instagram_id`. */
+  phone: string | null;
   name: string | null;
   email: string | null;
   company: string | null;
   avatar_url: string | null;
+  instagram_id: string | null;
+  instagram_username: string | null;
   tags: { id: string; name: string; color: string }[];
   created_at: string;
   updated_at: string;
@@ -47,11 +50,13 @@ export function serializeContact(row: Record<string, unknown>): ApiContact {
   const joins = (row.contact_tags as RawTagJoin[] | undefined) ?? [];
   return {
     id: row.id as string,
-    phone: row.phone as string,
+    phone: (row.phone as string | null) ?? null,
     name: (row.name as string | null) ?? null,
     email: (row.email as string | null) ?? null,
     company: (row.company as string | null) ?? null,
     avatar_url: (row.avatar_url as string | null) ?? null,
+    instagram_id: (row.instagram_id as string | null) ?? null,
+    instagram_username: (row.instagram_username as string | null) ?? null,
     tags: joins
       .map((j) => j.tags)
       .filter((t): t is NonNullable<RawTagJoin['tags']> => t != null)

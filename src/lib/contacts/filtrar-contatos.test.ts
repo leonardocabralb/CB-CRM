@@ -36,3 +36,14 @@ describe('casaComContato', () => {
     expect(filtrarContatos([ana, jose, semNome], 'ana')).toEqual([ana]);
   });
 });
+
+describe('ficha só do Instagram (989)', () => {
+  it('telefone nulo não estoura, e o @ conta como nome', async () => {
+    const { casaComContato } = await import('./filtrar-contatos');
+    const ig = { name: null, phone: null, instagram_username: 'cbadv.bancario' };
+    expect(casaComContato(ig, 'bancario')).toBe(true);
+    expect(casaComContato(ig, '@cbadv')).toBe(true);
+    expect(casaComContato(ig, '9887')).toBe(false);
+    expect(casaComContato({ name: 'Ana', phone: null }, '11')).toBe(false);
+  });
+});

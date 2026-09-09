@@ -26,6 +26,7 @@ import {
   type ContatoPesquisavel,
 } from '@/lib/contacts/filtrar-contatos';
 import { cn } from '@/lib/utils';
+import { identidadeDoContato, nomeDoContato } from '@/lib/contacts/identidade';
 
 export interface ContatoDoSeletor extends ContatoPesquisavel {
   id: string;
@@ -94,7 +95,7 @@ export function SeletorDeContato({
           {carregando
             ? loadingText
             : escolhido
-              ? escolhido.name || escolhido.phone
+              ? nomeDoContato(escolhido, '')
               : placeholder}
         </span>
         <ChevronDown className="text-muted-foreground size-4 shrink-0" />
@@ -136,13 +137,13 @@ export function SeletorDeContato({
                 )}
               >
                 <span className="min-w-0 flex-1 truncate">
-                  {c.name || c.phone}
+                  {nomeDoContato(c, '')}
                 </span>
                 {/* O telefone sempre à vista: é ele que confirma "achei o
                     cliente certo" quando a busca foi por número. */}
                 {c.name ? (
                   <span className="text-muted-foreground shrink-0 text-xs">
-                    {c.phone}
+                    {identidadeDoContato(c)}
                   </span>
                 ) : null}
                 {c.id === value ? (

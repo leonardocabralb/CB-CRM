@@ -35,6 +35,7 @@ import { resolveApiAuthor } from '@/lib/api/v1/authorship';
 import { serializeMeeting } from '@/lib/api/v1/meetings';
 import { validarReuniao, instanteValido, STATUS, TIPOS } from '@/lib/agenda/validar';
 import { ehUuid } from '@/lib/tasks/validar';
+import { nomeDoContato, type ContatoIdentificavel } from '@/lib/contacts/identidade';
 
 /** Postgres code for the EXCLUDE ("no overlap") constraint. */
 const SOBREPOSICAO = '23P01';
@@ -196,7 +197,7 @@ export async function POST(request: Request) {
       }
       if (!contato) return fail('not_found', 'Contact not found', 404);
       contactId = contato.id as string;
-      contatoNome = (contato.name as string | null) ?? (contato.phone as string);
+      contatoNome = nomeDoContato(contato as ContatoIdentificavel, '');
     }
 
     const { data: criada, error } = await ctx.supabase

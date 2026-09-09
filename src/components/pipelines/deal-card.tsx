@@ -10,6 +10,7 @@ import { findChannel } from "@/lib/cb-channels/display";
 import { conversaDoCard, type DealDoQuadro } from "@/lib/pipelines/cartao";
 import type { CamposDoCard } from "@/lib/pipelines/campos-do-card";
 import { stripWhatsAppFormat } from "@/lib/inbox/whatsapp-format";
+import { identidadeDoContato, nomeDoContato } from "@/lib/contacts/identidade";
 
 interface DealCardProps {
   deal: DealDoQuadro;
@@ -75,7 +76,7 @@ export const DealCard = memo(function DealCard({
   isOverlay,
 }: DealCardProps) {
   const t = useTranslations("Pipelines.card");
-  const contactLabel = deal.contact?.name || deal.contact?.phone || t("noContact");
+  const contactLabel = nomeDoContato(deal.contact, t("noContact"));
   const assigneeLabel = deal.assignee?.full_name || null;
 
   // Por qual número o cliente CHEGOU (908). Com um canal só a etiqueta não
@@ -165,7 +166,7 @@ export const DealCard = memo(function DealCard({
         {/* Contact row */}
         <div className="mt-2 flex items-center gap-2">
           <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-foreground">
-            {initials(deal.contact?.name, deal.contact?.phone)}
+            {initials(deal.contact?.name, identidadeDoContato(deal.contact ?? {}) ?? undefined)}
           </span>
           <span className="truncate text-xs text-muted-foreground">{contactLabel}</span>
           {canalDeOrigem && (

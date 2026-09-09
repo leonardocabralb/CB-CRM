@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { avisarDrenagemDeFunil } from "@/lib/automations/avisar-drenagem";
 import { urlDoInbox } from "@/lib/inbox/url";
+import { nomeDoContato } from "@/lib/contacts/identidade";
 
 interface DealFormProps {
   open: boolean;
@@ -341,7 +342,7 @@ export function DealForm({
                 <option value="">{t("selectContact")}</option>
                 {contacts.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name || c.phone}
+                    {nomeDoContato(c, '')}
                   </option>
                 ))}
               </select>
