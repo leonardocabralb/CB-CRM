@@ -125,7 +125,7 @@ export function resolveVariables(
     if (v.type === 'field') {
       const fieldMap: Record<string, string | undefined> = {
         name: contact.name,
-        phone: contact.phone,
+        phone: contact.phone ?? undefined,
         email: contact.email,
         company: contact.company,
       };
@@ -237,6 +237,11 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
     } else if (audience.type === 'csv' && audience.csvContacts) {
       contacts = await upsertCsvContacts(supabase, audience.csvContacts);
     }
+
+    // Disparo é WhatsApp. A ficha só do Instagram (989) não tem telefone:
+    // a Meta não teria para onde mandar, e cada uma viraria um "failed" na
+    // lista de destinatários. Fica de fora aqui, antes de virar linha.
+    contacts = contacts.filter((c) => !!c.phone);
 
     // Apply exclude tags (works across all contact-derived audience
     // types). CSV contacts are synthetic so exclusion doesn't apply.

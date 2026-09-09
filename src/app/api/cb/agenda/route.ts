@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { validarReuniao } from '@/lib/agenda/validar';
 import { isAccountRole, canWriteNotes } from '@/lib/auth/roles';
 import { createClient } from '@/lib/supabase/server';
+import { nomeDoContato, type ContatoIdentificavel } from '@/lib/contacts/identidade';
 
 /**
  * Criação de reunião (migration 945).
@@ -129,7 +130,7 @@ export async function POST(request: Request) {
       );
     }
     contactId = contato.id as string;
-    contatoNome = (contato.name as string | null) ?? (contato.phone as string);
+    contatoNome = nomeDoContato(contato as ContatoIdentificavel, '');
   }
 
   const autorNome =

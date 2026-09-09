@@ -152,6 +152,13 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error('contact not found for this account')
   }
 
+  // Ficha só do Instagram (989) não tem telefone — e o robô não responde no
+  // Direct na v1 (D1). Dizer isso é melhor que "contact phone invalid: null".
+  if (!contact.phone) {
+    throw new Error(
+      'contact has no phone number (Instagram-only contact) — flows and automations do not send on Instagram (v1)',
+    )
+  }
   const sanitized = sanitizePhoneForMeta(contact.phone)
   if (!isValidE164(sanitized)) {
     throw new Error(`contact phone invalid: ${contact.phone}`)

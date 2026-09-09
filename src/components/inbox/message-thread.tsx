@@ -97,6 +97,7 @@ import {
 } from "@/components/ui/dialog";
 import { ehEvolution } from "@/lib/cb-channels/transporte";
 import { IconeDoTransporte } from "@/components/channels/transporte-icone";
+import { identidadeDoContato, nomeDoContato } from "@/lib/contacts/identidade";
 
 interface ReplyDraft {
   id: string;
@@ -1645,7 +1646,7 @@ export function MessageThread({
     return map;
   }, [reactions]);
 
-  const contactDisplayName = contact?.name || contact?.phone || "Customer";
+  const contactDisplayName = nomeDoContato(contact, "Customer");
 
   // Author label for a quoted message: "You" when we sent the parent,
   // contact name when the customer sent it.
@@ -1914,7 +1915,7 @@ export function MessageThread({
 
   const displayName = ehGrupo
     ? nomeDoGrupo(grupo, t("groupNoName"))
-    : (contact?.name || contact?.phone) ?? "";
+    : nomeDoContato(contact, "");
   // Linha de baixo do cabeçalho: no 1:1 é o telefone; num grupo, quantas
   // pessoas estão nele — que é a informação equivalente ("com quem eu estou
   // falando"). Fica vazia enquanto a sincronização não trouxe o número.
@@ -1922,7 +1923,7 @@ export function MessageThread({
     ? grupo?.participant_count
       ? t("groupParticipants", { count: grupo.participant_count })
       : ""
-    : (contact?.phone ?? "");
+    : (identidadeDoContato(contact ?? {}) ?? "");
   const messageGroups = groupTimelineByDate(
     intercalar(messages, leadEvents, notas, execucoesDoFio)
   );
@@ -2367,9 +2368,7 @@ export function MessageThread({
                               // Sem isto, citar qualquer um mostrava o
                               // literal "Unknown" — texto fixo em inglês.
                               : parent.group_sender_name ||
-                                contact?.name ||
-                                contact?.phone ||
-                                t("unknownAuthor"),
+                                nomeDoContato(contact, t("unknownAuthor")),
                           preview: buildReplyPreview(parent, tQuote),
                         }
                       : null;
@@ -2569,7 +2568,7 @@ export function MessageThread({
           open={executarAberto}
           onOpenChange={setExecutarAberto}
           conversationId={conversation.id}
-          contactName={contact.name || contact.phone}
+          contactName={nomeDoContato(contact, "")}
           // ⚠️ O canal CRU da conversa, não o `activeChannel` (que cai no
           // padrão da conta): a rota decide pelo cru com falha ABERTA —
           // conversa sem canal deixa passar. Com o padrão aqui, uma

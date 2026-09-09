@@ -91,15 +91,28 @@ Branch `feat/instagram-1-transporte`. Sem migration (ver acima).
 - [ ] **PR aberto e mesclado.**
 
 ### Fase 1b — Identidade do contato sem telefone
-Branch própria, ainda sem migration (o tipo fica mais largo que o banco; nada
-grava NULL antes da Fase 3).
-- [ ] `Contact.phone: string | null` no tipo; o `tsc` aponta cada uso que
-      assume string; `src/lib/contacts/identidade.ts` (puro, testado):
-      `identidadeDoContato(c)` → telefone formatado, senão `@username`, senão
-      nome — usado onde a UI mostra telefone (lista, painel, ficha, card do
-      funil, busca, CSV).
-- [ ] API v1: `phone` nullable nos serializers + `instagram_id`/`instagram_username`
-      expostos; `docs/public-api.md` avisa o integrador.
+Branch `feat/instagram-1b-identidade` (construída em 10/09; PR aberto). Sem
+migration: o tipo fica mais largo que o banco, e nada grava NULL antes da
+Fase 3. Medido: só **11 erros** de compilação — o resto (`{contact.phone}`
+em JSX, `name || phone`, tipos locais com `phone: string`) o `tsc` não vê e
+foi caçado por grep.
+- [x] `Contact.phone: string | null` (+ `instagram_id`/`instagram_username`
+      opcionais no tipo); `src/lib/contacts/identidade.ts` (puro, testado):
+      `identidadeDoContato(c)` → telefone, senão `@username`, senão `null`
+      (nunca o IGSID na tela), e `nomeDoContato(c, fallback)` com o fallback
+      OBRIGATÓRIO (cada tela tem o seu). Usados no fio (cabeçalho, citação,
+      diálogo de automação), painel da conversa (nome, iniciais, copiar,
+      placeholder), ficha, lista de contatos, card do funil, seletores de
+      contato/cliente, formulário de negócio, agenda e rotas de reunião.
+- [x] Busca de contatos: telefone nulo não estoura e o `@` conta como nome.
+      Fotos de perfil (webhook e lote) e público de disparo ignoram ficha
+      sem telefone. Senders do robô dizem "contato sem telefone (Instagram)"
+      em vez de "contact phone invalid: null". Formulário de contato deixa
+      salvar ficha do Instagram sem telefone (só na edição).
+- [x] API v1: `phone` nullable nos serializers de contato e conversa +
+      `instagram_id`/`instagram_username` expostos (nulos no WhatsApp);
+      `docs/public-api.md` avisa o integrador. `POST /contacts` continua
+      exigindo `phone`.
 
 ### Fase 2 — Conexão: cadastrar o canal na tela
 - [ ] Migration 989 (acima) — **aplicada em produção antes do merge** (pelo

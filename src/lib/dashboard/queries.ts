@@ -16,6 +16,7 @@ import type {
   ResponseTimeBucket,
   ResponseTimeSummary,
 } from './types'
+import { nomeDoContato } from '@/lib/contacts/identidade'
 
 // ------------------------------------------------------------
 // All client-side aggregation. RLS scopes every query to the
@@ -487,11 +488,11 @@ export async function loadActivity(
     })
   }
 
-  for (const c of (contacts.data ?? []) as Array<{ id: string; name: string | null; phone: string; created_at: string }>) {
+  for (const c of (contacts.data ?? []) as Array<{ id: string; name: string | null; phone: string | null; created_at: string }>) {
     items.push({
       id: `contact-${c.id}`,
       kind: 'contact',
-      text: `New contact: ${c.name || c.phone}`,
+      text: `New contact: ${nomeDoContato(c, '—')}`,
       at: c.created_at,
       href: '/contacts',
     })

@@ -57,6 +57,7 @@ import {
   LayoutTemplate,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { identidadeDoContato } from '@/lib/contacts/identidade';
 
 interface ContactDetailViewProps {
   open: boolean;
@@ -339,7 +340,9 @@ export function ContactDetailView({
 
   async function copyPhone() {
     if (!contact) return;
-    await navigator.clipboard.writeText(contact.phone);
+    const texto = identidadeDoContato(contact);
+    if (!texto) return;
+    await navigator.clipboard.writeText(texto);
     setCopiedPhone(true);
     setTimeout(() => setCopiedPhone(false), 2000);
   }
@@ -598,7 +601,7 @@ export function ContactDetailView({
                       className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
                     >
                       <Phone className="size-3" />
-                      {contact.phone}
+                      {identidadeDoContato(contact)}
                       {copiedPhone ? (
                         <Check className="size-3 text-primary" />
                       ) : (

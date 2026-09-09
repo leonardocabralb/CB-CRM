@@ -133,7 +133,10 @@ export function ContactForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!phone.trim()) {
+    // A ficha só do Instagram (989) não tem telefone, e editar o nome dela
+    // não pode exigir um. Na CRIAÇÃO o telefone continua obrigatório.
+    const semTelefonePermitido = isEdit && !!contact?.instagram_id;
+    if (!phone.trim() && !semTelefonePermitido) {
       toast.error(t('phoneRequired'));
       return;
     }
@@ -162,7 +165,7 @@ export function ContactForm({
           .from('contacts')
           .update({
             name: name.trim() || null,
-            phone: phone.trim(),
+            phone: phone.trim() || null,
             email: email.trim() || null,
             company: company.trim() || null,
             updated_at: new Date().toISOString(),

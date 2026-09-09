@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { validarReuniao } from '@/lib/agenda/validar';
 import { isAccountRole, canWriteNotes } from '@/lib/auth/roles';
 import { createClient } from '@/lib/supabase/server';
+import { nomeDoContato, type ContatoIdentificavel } from '@/lib/contacts/identidade';
 
 /**
  * Editar, mover e apagar reunião (migration 945).
@@ -224,7 +225,7 @@ export async function PATCH(
 
       mudancas.contact_id = contato.id;
       mudancas.contato_nome =
-        (contato.name as string | null) ?? (contato.phone as string);
+        nomeDoContato(contato as ContatoIdentificavel, '');
       // Cliente DIFERENTE leva a conversa antiga junto — mesma razão do
       // bloco de desvincular acima. Reafirmar o mesmo cliente não mexe.
       if (contato.id !== atual.contact_id) {

@@ -98,6 +98,7 @@ import {
 } from '@/components/ui/popover';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useTranslations } from 'next-intl';
+import { identidadeDoContato, nomeDoContato } from '@/lib/contacts/identidade';
 
 export interface PainelDoContatoProps {
   contact: Contact | null;
@@ -777,7 +778,7 @@ export function PainelDoContato({
           tSidebar('fieldSaveError', {
             campo:
               customFields.find((f) => f.id === fieldId)?.field_name ?? fieldId,
-            cliente: contact.name || contact.phone,
+            cliente: nomeDoContato(contact, ''),
           })
         );
         return false;
@@ -797,8 +798,9 @@ export function PainelDoContato({
   );
 
   const handleCopyPhone = useCallback(async () => {
-    if (!contact?.phone) return;
-    await navigator.clipboard.writeText(contact.phone);
+    const texto = contact ? identidadeDoContato(contact) : null;
+    if (!texto) return;
+    await navigator.clipboard.writeText(texto);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
     // Dep is the whole `contact` object (not `contact?.phone`) so the
@@ -836,7 +838,7 @@ export function PainelDoContato({
     );
   }
 
-  const displayName = contact.name || contact.phone;
+  const displayName = nomeDoContato(contact, '');
   const initials = displayName.charAt(0).toUpperCase();
 
   return (
@@ -860,7 +862,7 @@ export function PainelDoContato({
             <LinhaDeEdicao
               valor={nomeEdit}
               onChange={setNomeEdit}
-              placeholder={contact.phone}
+              placeholder={identidadeDoContato(contact) ?? ''}
               salvando={salvandoNome}
               onSalvar={() => void salvarNome()}
               onCancelar={() => setEditandoNome(false)}
@@ -891,9 +893,9 @@ export function PainelDoContato({
               <button
                 onClick={handleCopyPhone}
                 className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs transition-colors"
-                title={contact.phone}
+                title={identidadeDoContato(contact) ?? undefined}
               >
-                <span className="truncate">{contact.phone}</span>
+                <span className="truncate">{identidadeDoContato(contact)}</span>
                 {copied ? (
                   <Check className="text-primary h-3 w-3 shrink-0" />
                 ) : (

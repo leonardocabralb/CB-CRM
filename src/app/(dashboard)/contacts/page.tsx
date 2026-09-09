@@ -59,6 +59,7 @@ import { useCan } from '@/hooks/use-can';
 import { lerExclusao, podeLimparSelecao, selecaoRestante } from '@/lib/contacts/exclusao';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
+import { identidadeDoContato, nomeDoContato } from '@/lib/contacts/identidade';
 
 const PAGE_SIZE = 25;
 
@@ -692,14 +693,14 @@ export default function ContactsPage() {
                     <Checkbox
                       checked={selected.has(contact.id)}
                       onCheckedChange={() => toggleSelect(contact.id)}
-                      aria-label={`Select ${contact.name || contact.phone}`}
+                      aria-label={`Select ${nomeDoContato(contact, '')}`}
                     />
                   </TableCell>
                   <TableCell className="text-foreground font-medium">
                     {contact.name || <span className="text-muted-foreground italic">{t('unnamed')}</span>}
                   </TableCell>
                   <TableCell className="text-muted-foreground font-mono text-xs">
-                    {contact.phone}
+                    {identidadeDoContato(contact)}
                   </TableCell>
                   <TableCell className="text-muted-foreground hidden md:table-cell text-sm">
                     {contact.email || <span className="text-muted-foreground">-</span>}

@@ -151,6 +151,8 @@ export async function conferirFotosDaConexao(args: {
       .from('contacts')
       .select('id, phone, avatar_checked_at')
       .eq('account_id', args.accountId)
+      // A foto vem do WhatsApp: ficha só do Instagram (989) fica de fora.
+      .not('phone', 'is', null)
       .order('id', { ascending: true })
       .range(de, de + PAGINA - 1);
     if (error) throw new Error(`contatos: ${error.message}`);

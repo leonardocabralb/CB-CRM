@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import type { Contact } from '@/types';
+import { identidadeDoContato, nomeDoContato } from '@/lib/contacts/identidade';
 
 /**
  * Escolher o cliente de uma reunião (migration 945).
@@ -222,10 +223,10 @@ export function SeletorDeCliente({ valor, nomeAtual, aoEscolher, travado }: Prop
                 'hover:bg-muted focus-visible:bg-muted focus-visible:outline-none',
               )}
             >
-              <span className="text-sm">{c.name || c.phone}</span>
+              <span className="text-sm">{nomeDoContato(c, '')}</span>
               {c.name && (
                 <span className="text-xs tabular-nums text-muted-foreground">
-                  {c.phone}
+                  {identidadeDoContato(c)}
                 </span>
               )}
             </button>

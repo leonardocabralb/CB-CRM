@@ -102,7 +102,7 @@ export function mesmoTelefone(a: string, b: string): boolean {
  * conferido há menos de 30 dias fica de fora, salvo `forcar`.
  */
 export function casarContatosComFotos(
-  contatos: { id: string; phone: string; avatar_checked_at?: string | null }[],
+  contatos: { id: string; phone: string | null; avatar_checked_at?: string | null }[],
   fotos: { digitos: string; url: string }[],
   agoraMs: number,
   forcar = false,
@@ -116,6 +116,8 @@ export function casarContatosComFotos(
   const pares: { contactId: string; url: string }[] = [];
   for (const c of contatos) {
     if (!forcar && !precisaConferirFoto(c, agoraMs)) continue;
+    // Ficha só do Instagram (989): não há número para casar com o chat.
+    if (!c.phone) continue;
     const d = digitosDoTelefone(c.phone);
     if (d.length < 8) continue;
     const foto = (porSufixo.get(d.slice(-8)) ?? []).find((f) => mesmoTelefone(d, f.digitos));

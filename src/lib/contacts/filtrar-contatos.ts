@@ -12,7 +12,9 @@ import { semAcento } from '@/lib/inbox/busca-em-mensagens';
 
 export interface ContatoPesquisavel {
   name: string | null;
-  phone: string;
+  /** NULO na ficha só do Instagram (989). */
+  phone: string | null;
+  instagram_username?: string | null;
 }
 
 /** Só os dígitos — "+55 (11) 3178-4851" e "551131784851" viram comparáveis. */
@@ -37,11 +39,18 @@ export function casaComContato(
   if (!q) return true;
 
   if (semAcento(contato.name ?? '').includes(q)) return true;
+  // O @ do Instagram conta como nome: é como a equipe conhece o cliente.
+  if (
+    contato.instagram_username &&
+    semAcento(contato.instagram_username).includes(q.replace(/^@/, ''))
+  ) {
+    return true;
+  }
 
   const digitosDoTermo = soDigitos(termo);
   return (
     digitosDoTermo.length > 0 &&
-    soDigitos(contato.phone).includes(digitosDoTermo)
+    soDigitos(contato.phone ?? '').includes(digitosDoTermo)
   );
 }
 
