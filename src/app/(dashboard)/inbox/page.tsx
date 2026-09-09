@@ -902,9 +902,17 @@ function InboxPageInner() {
         {/* Left panel: Conversation list.
             Hidden on mobile when a conversation is selected so the
             thread can occupy the full width. Always visible on lg+. */}
+        {/* ⚠️ `min-w-0` é load-bearing no CELULAR (09/09/2026): item de flex
+            nasce com `min-width: auto`, e a largura mínima desta coluna era o
+            texto SEM QUEBRA mais longo lá dentro — a prévia da última mensagem
+            é `truncate`, que é `nowrap`. Medido a 375px: a coluna saía com
+            3.042px, e a caixa de busca, as abas e a fileira de visões ficavam
+            cortadas na borda direita (reportado da tela pelo operador). No
+            desktop a lista tem largura fixa (`lg:w-80`) e o defeito não
+            aparece. Primo do `min-w-0` do fio logo abaixo (Issue #165). */}
         <div
           className={cn(
-            "flex h-full flex-1 lg:flex-none",
+            "flex h-full min-w-0 flex-1 lg:flex-none",
             hasActiveConv ? "hidden lg:flex" : "flex",
           )}
           inert={fundoInerte}

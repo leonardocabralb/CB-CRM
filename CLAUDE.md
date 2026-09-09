@@ -2067,6 +2067,24 @@ e as três já morderam de verdade.
   filho de flex alinhado com `items-start`/`items-end` que possa receber texto
   de fora**; `truncate` também depende disso (nome de anexo longo estouraria
   igual).
+- ⚠️ **A COLUNA DA LISTA do inbox precisa de `min-w-0` no wrapper da página
+  (`inbox/page.tsx`), e o defeito só existe no CELULAR.** Item de flex nasce
+  com `min-width: auto`, e a largura mínima da coluna era o texto SEM QUEBRA
+  mais longo lá dentro — a prévia da última mensagem é `truncate`, que é
+  `nowrap`. Medido a 375px em 09/09/2026: a coluna saía com **3.042px**, e a
+  caixa de busca, as abas e a fileira de visões ficavam cortadas na borda
+  direita (reportado da tela pelo operador). No desktop a lista tem largura
+  fixa (`lg:w-80`) e nada aparece — foi assim que passou meses despercebido.
+  O fio já tinha o seu `min-w-0` (Issue #165); a lista não.
+- ⚠️ **O compositor QUEBRA linha no celular** (`flex-wrap sm:flex-nowrap`, a
+  `<textarea>` com `order-first basis-full` e `sm:basis-0` devolvendo o
+  `flex-1`): são sete botões de 36px numa tela de 375px, e a caixa de texto
+  sobrava com 85px — "Digite uma" quebrando no meio (operador, 09/09/2026).
+  Abaixo de `sm` a caixa ocupa a linha inteira e os botões descem, com
+  gravar/agendar/enviar à direita (`max-sm:ml-auto` no microfone E no enviar
+  — o segundo só age em somente-leitura, quando o microfone não é
+  renderizado); a dica do ✨ some ali (`hidden sm:block`), senão vira três
+  linhas de 10px embaixo de um compositor que já ocupa duas.
 - ⚠️ **Filho direto do `DialogContent` precisa de `min-w-0` quando carrega
   texto com `truncate`.** O `DialogContent` é `grid`, e item de grid nasce
   com `min-width: auto`; `truncate` é `nowrap`, então o intrínseco do filho

@@ -1601,7 +1601,13 @@ export function MessageComposer({
           </Button>
         </div>
       ) : (
-        <div className="flex items-end gap-0.5">
+        // ⚠️ No CELULAR a linha QUEBRA e a caixa de texto fica sozinha na
+        // primeira linha (`order-first basis-full`), com os botões embaixo:
+        // são sete botões de 36px numa tela de 375px, e a caixa sobrava com
+        // 85px — "Digite uma" quebrando no meio (reportado da tela pelo
+        // operador, 09/09/2026). A partir de `sm` volta a linha única de
+        // sempre; `sm:basis-0` devolve exatamente o `flex-1` da caixa.
+        <div className="flex flex-wrap items-end gap-0.5 sm:flex-nowrap">
           {/* Attach menu — photo / video / document / voice. */}
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -1762,7 +1768,7 @@ export function MessageComposer({
             // The placeholder text also surfaces the read-only state.
             title={readOnly ? t("readOnlyTitle") : undefined}
             className={cn(
-              "flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
+              "order-first flex-1 basis-full resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50 sm:order-none sm:basis-0",
               (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
             )}
           />
@@ -1783,7 +1789,9 @@ export function MessageComposer({
               disabled={inputsDisabled || busy}
               title={t("voiceNote")}
               onClick={() => void startRecording()}
-              className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              // `max-sm:ml-auto`: na segunda linha do celular, gravar,
+              // agendar e enviar ficam à direita, como na linha única.
+              className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 max-sm:ml-auto"
             >
               <Mic className="h-4 w-4" />
             </Button>
@@ -1812,7 +1820,10 @@ export function MessageComposer({
             // diferentes, e quem passa o mouse tem de saber qual.
             title={quandoAg ? tAgendadas("scheduleAction") : undefined}
             className={cn(
-              "h-9 w-9 shrink-0 p-0 disabled:opacity-40",
+              // O segundo `max-sm:ml-auto` só age quando o microfone não é
+              // renderizado (somente-leitura): com ele, o primeiro já levou
+              // o espaço todo e este fica colado ao lado.
+              "h-9 w-9 shrink-0 p-0 disabled:opacity-40 max-sm:ml-auto",
               quandoAg
                 ? "bg-amber-500 hover:bg-amber-600"
                 : "bg-primary hover:bg-primary/90",
@@ -1833,7 +1844,8 @@ export function MessageComposer({
           `items-end` buttons below the textarea. Indented to line up
           under the textarea left edge. */}
       {drafts.length === 0 && !recording && (
-        <div className="mt-1 flex items-center gap-1 pl-[5.5rem]">
+        // Sem o recuo no celular: lá a caixa começa na borda esquerda.
+        <div className="mt-1 flex items-center gap-1 sm:pl-[5.5rem]">
           {/* Inserem os marcadores do WhatsApp na seleção. O texto enviado
               continua sendo `*assim*` — é o próprio WhatsApp que formata do
               outro lado; os botões só poupam decorar a sintaxe. */}
@@ -1849,7 +1861,10 @@ export function MessageComposer({
           <BotaoFormato onClick={() => formatar("mono")} title={t("mono")}>
             <span className="font-mono text-[10px]">{"</>"}</span>
           </BotaoFormato>
-          <p className="ml-1 text-[10px] text-muted-foreground">{t("draftHint")}</p>
+          {/* A dica some no celular: em 375px ela vira três linhas de 10px
+              embaixo de um compositor que já ocupa duas — o ✨ continua ali,
+              com o `title`. */}
+          <p className="ml-1 hidden text-[10px] text-muted-foreground sm:block">{t("draftHint")}</p>
         </div>
       )}
 
