@@ -63,7 +63,10 @@ export interface DetalheDoGrupo {
   isAnnounce: boolean | null;
   /** Somos administradores deste grupo? Libera renomear de verdade. */
   weAreAdmin: boolean | null;
-  /** O NOSSO lid, descoberto cruzando `participants[].jid` com o nosso número. */
+  /**
+   * O NOSSO lid, descoberto cruzando o telefone dos participantes
+   * (`.jid` na Baileys 6, `.phoneNumber` na 7) com o nosso número.
+   */
   ourLid: string | null;
 }
 
@@ -71,12 +74,35 @@ const soDigitos = (s: unknown): string =>
   typeof s === 'string' ? s.replace(/\D/g, '') : '';
 
 /**
+ * O telefone de um participante, na forma que a Evolution entregar:
+ * `.jid` (Baileys 6.7.19, a forma medida em produção em 2026-07) ou, na
+ * Baileys 7 (tipo `Contact`), `.phoneNumber` quando o `id` preferido é o LID
+ * — ou o PRÓPRIO `.id`, quando o preferido é o telefone (e aí o LID vem em
+ * `.lid`). `.jid` NÃO existe mais na 7. Ler só `.jid` faz a nossa linha nunca
+ * ser achada depois do upgrade: `weAreAdmin` e `ourLid` viram `null` em
+ * silêncio. Ver docs/PLANO-baileys-7.md, ajuste 3.
+ */
+const telefoneDoParticipante = (p: Record<string, unknown>): string =>
+  soDigitos(p.phoneNumber) ||
+  soDigitos(p.jid) ||
+  (typeof p.id === 'string' && p.id.endsWith('@s.whatsapp.net') ? soDigitos(p.id) : '');
+
+/** O LID de um participante: `.lid` quando vem, senão o `.id` se ele for `@lid`. */
+const lidDoParticipante = (p: Record<string, unknown>): string | null => {
+  for (const v of [p.lid, p.id]) {
+    if (typeof v === 'string' && v.endsWith('@lid')) return v;
+  }
+  return null;
+};
+
+/**
  * Lê a resposta de `findGroupInfos`.
  *
  * `nossoTelefone` é o `display_phone` do canal. É com ele que achamos a nossa
  * linha entre os participantes — e é a única forma de descobrir o nosso LID,
- * porque o `participants[].id` vem sempre em `@lid` e só o `.jid` traz
- * telefone. Sem esse cruzamento, menção a nós nunca acende (ver 916).
+ * porque o `participants[].id` vem em `@lid` e só o telefone do participante
+ * (`.jid` ou `.phoneNumber`, conforme a versão) casa com o nosso número. Sem
+ * esse cruzamento, menção a nós nunca acende (ver 916).
  */
 export function parseGroupInfo(raw: unknown, nossoTelefone: string | null): DetalheDoGrupo {
   const vazio: DetalheDoGrupo = {
@@ -100,11 +126,11 @@ export function parseGroupInfo(raw: unknown, nossoTelefone: string | null): Deta
   let ourLid: string | null = null;
   const nosso = soDigitos(nossoTelefone);
   if (nosso) {
-    const eu = participantes.find((p) => soDigitos(p.jid) === nosso);
+    const eu = participantes.find((p) => telefoneDoParticipante(p) === nosso);
     if (eu) {
       // `admin` vem como 'admin' | 'superadmin' | null.
       weAreAdmin = !!eu.admin;
-      ourLid = typeof eu.lid === 'string' ? eu.lid : null;
+      ourLid = lidDoParticipante(eu);
     }
   }
 

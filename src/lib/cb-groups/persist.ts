@@ -141,18 +141,23 @@ async function findOrCreateGroupConversation(
  * sempre false, porque as menções chegam em LID e o que temos guardado é
  * telefone (ver 916_cb_lid_do_canal).
  *
+ * ⚠️ Recebe o `senderLid` do item normalizado, NUNCA o `senderJid`: aquele
+ * prefere o telefone, e com a Baileys 7 (que manda `participantAlt` com o
+ * número) passaria a ser telefone em toda mensagem — e esta função, que só
+ * aceita `@lid`, nunca mais aprenderia. Ver docs/PLANO-baileys-7.md, ajuste 2.
+ *
  * Best-effort e só escreve uma vez — falhar aqui não pode derrubar a
  * gravação da mensagem.
  */
 export async function aprenderNossoLid(
   db: SupabaseClient,
   channelId: string,
-  senderJid: string | null,
+  senderLid: string | null,
 ): Promise<void> {
-  if (!senderJid || !senderJid.endsWith('@lid')) return;
+  if (!senderLid || !senderLid.endsWith('@lid')) return;
   const { error } = await db
     .from('cb_channels')
-    .update({ own_lid: senderJid })
+    .update({ own_lid: senderLid })
     .eq('id', channelId)
     .is('own_lid', null);
   if (error) console.warn('[cb-groups] gravar own_lid falhou (ignorado):', error.message);

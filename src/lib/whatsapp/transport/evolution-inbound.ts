@@ -27,12 +27,19 @@ export interface EvolutionMessageKey {
   participantPn?: string;
   participantAlt?: string;
   /**
-   * O endereço que `remoteJid` tinha ANTES de a Evolution reescrevê-lo de
-   * `@lid` para telefone. Serve para AGIR sobre a mensagem (revogar, editar):
-   * do lado do WhatsApp a conversa continua endereçada por LID, e a
-   * revogação mandada para o telefone não acha nada. Ver migration 917.
+   * O endereço que `remoteJid` tinha ANTES de a Evolution 2.3.2 reescrevê-lo
+   * de `@lid` para telefone. Serve para AGIR sobre a mensagem (revogar,
+   * editar): do lado do WhatsApp a conversa continua endereçada por LID, e a
+   * revogação mandada para o telefone não acha nada. Ver migration 917 e
+   * `lidJidFromKey` — o LID muda de campo entre versões da Evolution.
    */
   previousRemoteJid?: string;
+  /**
+   * Baileys 7 (Evolution 2.4): `'lid'` quando a conversa é endereçada por LID.
+   * Informativo — a decisão do telefone/LID é de `phoneJidFromKey` e
+   * `lidJidFromKey`, que olham os campos, não este rótulo.
+   */
+  addressingMode?: string;
 }
 
 export interface EvolutionUpsert {
@@ -100,6 +107,36 @@ export function phoneJidFromKey(key: EvolutionMessageKey | undefined): string | 
   // que um upgrade do servidor Evolution volte a partir as conversas.
   for (const alt of [key?.remoteJidAlt, key?.senderPn, key?.participantPn, key?.participantAlt]) {
     if (alt && !isLidJid(alt) && /\d/.test(alt)) return alt;
+  }
+  return null;
+}
+
+/**
+ * Endereço `@lid` da conversa, quando o WhatsApp a endereça assim. Devolve
+ * `null` em conversa não migrada — o campo nem vem.
+ *
+ * Serve para AGIR sobre a mensagem (revogar, editar): do lado do WhatsApp a
+ * conversa migrada continua endereçada por LID, e a revogação mandada para o
+ * telefone não acha nada (migration 917). ⚠️ O LID muda de CAMPO conforme a
+ * versão da Evolution, e ler só um deles é o que faria `remote_jid_lid`
+ * nascer NULL depois de um upgrade — devolvendo o bug de 28/07/2026 (apagar
+ * pelo CRM uma mensagem enviada do celular não fazia nada):
+ *
+ *   - 2.3.2 (+ patch `lidfix`): `remoteJid` reescrito para telefone e o LID
+ *     guardado em `previousRemoteJid`;
+ *   - `develop` (2.4.0): `remoteJid` e `remoteJidAlt` TROCADOS — telefone em
+ *     `remoteJid`, LID em `remoteJidAlt`;
+ *   - sem troca (o payload cru da Baileys 7): `remoteJid` É o LID e o
+ *     telefone vem em `remoteJidAlt` — `phoneJidFromKey` já usou o
+ *     alternativo, e o LID é o próprio `remoteJid`.
+ *
+ * A 2.3.7 põe telefone nos dois campos e PERDE o LID: nela isto devolve
+ * `null`, limitação daquela versão, não deste código. Ver
+ * docs/PLANO-baileys-7.md, seção 4.2.
+ */
+export function lidJidFromKey(key: EvolutionMessageKey | undefined): string | null {
+  for (const candidato of [key?.previousRemoteJid, key?.remoteJidAlt, key?.remoteJid]) {
+    if (candidato && isLidJid(candidato)) return candidato;
   }
   return null;
 }
@@ -243,14 +280,12 @@ export function normalizeUpsert(
     name: item.pushName || phone,
     providerMessageId: id,
     remoteJid: jid,
-    // O endereço ORIGINAL, antes de a Evolution reescrever `@lid` → telefone.
-    // Sem ele não dá para revogar nem editar mensagem de conversa migrada: a
-    // revogação sairia para a conversa "telefone" e a mensagem vive na
-    // "@lid". Só grava quando é de fato um LID — em conversa não migrada o
-    // campo nem vem. Ver migration 917.
-    remoteJidLid: isLidJid(item.key?.previousRemoteJid ?? '')
-      ? (item.key?.previousRemoteJid ?? null)
-      : null,
+    // O endereço `@lid` da conversa, venha ele no campo que vier (a Evolution
+    // muda o lugar entre versões — ver `lidJidFromKey`). Sem ele não dá para
+    // revogar nem editar mensagem de conversa migrada: a revogação sairia
+    // para a conversa "telefone" e a mensagem vive na "@lid". Só grava quando
+    // é de fato um LID — em conversa não migrada o campo nem vem. Ver 917.
+    remoteJidLid: lidJidFromKey(item.key),
     timestamp: ts,
     contentType: detectContentType(item.message),
     text: extractText(item.message),
