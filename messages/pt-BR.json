@@ -6,6 +6,7 @@
     "selectPlaceholder": "Escolha um canal",
     "kind_meta": "API oficial · Meta",
     "kind_evolution": "Não oficial · QR Code",
+    "kind_instagram": "Direct · Instagram",
     "scopeLabel": "Vale para",
     "scopeHelpAll": "Sem canal escolhido, vale para todos os números.",
     "filterAll": "Todos os canais",
@@ -2655,6 +2656,7 @@
       "emptyTitle": "Nenhum número conectado ainda.",
       "kindMeta": "API oficial · Meta",
       "kindEvolution": "Não oficial · QR Code",
+      "kindInstagram": "Direct · Instagram",
       "defaultBadge": "Padrão",
       "setDefaultAction": "Tornar padrão",
       "setDefaultHint": "Disparos, modelos de mensagem e a API pública usam sempre o canal padrão.",
@@ -3303,6 +3305,7 @@
     "detail_incomplete": "faltam credenciais — refaça a conexão",
     "kind_meta": "API oficial · Meta",
     "kind_evolution": "Não oficial · QR Code",
+    "kind_instagram": "Direct · Instagram",
     "connectedFor": "conectada há {tempo}",
     "checkedAgo": "verificada há {tempo}",
     "neverChecked": "ainda não verificada"

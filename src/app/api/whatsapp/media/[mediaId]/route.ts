@@ -4,6 +4,7 @@ import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { getChannelWithSecrets } from '@/lib/cb-channels/repo'
 import type { CbChannelWithSecrets } from '@/lib/cb-channels/repo'
+import { ehMeta } from '@/lib/cb-channels/transporte'
 
 export async function GET(
   request: Request,
@@ -84,13 +85,13 @@ export async function GET(
     // .split em string), e como isso rodava incondicionalmente, toda mídia de um
     // canal Meta adicional numa conta Evolution virava 500.
     let encryptedToken: string | null = null
-    if (channel?.kind === 'meta' && channel.access_token && !channel.is_default) {
+    if (channel && ehMeta(channel) && channel.access_token && !channel.is_default) {
       encryptedToken = channel.access_token
     }
     if (!encryptedToken && config?.access_token) {
       encryptedToken = config.access_token
     }
-    if (!encryptedToken && channel?.kind === 'meta' && channel.access_token) {
+    if (!encryptedToken && channel && ehMeta(channel) && channel.access_token) {
       encryptedToken = channel.access_token
     }
 

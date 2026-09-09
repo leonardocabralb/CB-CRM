@@ -28,6 +28,7 @@ import {
 } from '@/lib/whatsapp/transport/evolution-media';
 import { marcarAnexoGrandeDemais } from '@/lib/whatsapp/anexo-grande';
 import { decrypt } from '@/lib/whatsapp/encryption';
+import { ehEvolution } from '@/lib/cb-channels/transporte';
 
 /** Uma frase só para os dois caminhos: o já marcado e o que acabou de ser. */
 const GRANDE_DEMAIS = 'Arquivo grande demais para o CRM guardar. Veja no celular.';
@@ -110,7 +111,7 @@ export async function POST(
     const canal = await resolveChannelForConversation(db, ctx.accountId, {
       channel_id: conversa.channel_id ?? null,
     });
-    if (!canal || canal.provider !== 'evolution' || !canal.base_url || !canal.instance_name || !canal.api_key) {
+    if (!canal || !ehEvolution(canal) || !canal.base_url || !canal.instance_name || !canal.api_key) {
       return NextResponse.json(
         { error: 'Conexão indisponível para buscar o anexo.' },
         { status: 400 },

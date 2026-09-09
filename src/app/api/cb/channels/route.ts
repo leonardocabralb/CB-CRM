@@ -40,6 +40,7 @@ import {
   provisionChannelInstance,
 } from '@/lib/cb-channels/evolution-admin';
 import { provisionMetaChannel } from '@/lib/cb-channels/meta-admin';
+import { ehInstagram, ehMeta, transporteValido } from '@/lib/cb-channels/transporte';
 
 const MAX_LABEL_LEN = 60;
 
@@ -92,7 +93,20 @@ export async function POST(request: Request) {
     > | null;
     const label = asStr(body?.label);
     // 'evolution' por padrão (o painel antigo mandava só { label }).
-    const kind = body?.kind === 'meta' ? 'meta' : 'evolution';
+    const kindPedido = body?.kind ?? 'evolution';
+    if (!transporteValido(kindPedido)) {
+      return NextResponse.json({ error: 'Tipo de conexão desconhecido.' }, { status: 400 });
+    }
+    // Instagram: o cadastro chega na Fase 2 do plano
+    // (docs/PLANO-instagram-direct.md). Até lá, recusa clara — nunca cair
+    // no ramo Evolution, como o ternário antigo fazia com todo kind estranho.
+    if (ehInstagram(kindPedido)) {
+      return NextResponse.json(
+        { error: 'Conexão do Instagram ainda não pode ser criada por aqui.' },
+        { status: 400 },
+      );
+    }
+    const kind = kindPedido;
 
     if (!label) {
       return NextResponse.json(
@@ -130,7 +144,7 @@ export async function POST(request: Request) {
     const isDefault = existingCount === 0;
 
     // ---- Canal Meta (API oficial): assistente por token ----
-    if (kind === 'meta') {
+    if (ehMeta(kind)) {
       return createMetaChannel(ctx, {
         label,
         isDefault,

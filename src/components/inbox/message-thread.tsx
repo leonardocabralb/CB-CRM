@@ -58,8 +58,6 @@ import {
   Clock,
   ArrowLeft,
   RefreshCw,
-  BadgeCheck,
-  QrCode,
   Users,
   Search,
   ChevronUp,
@@ -97,6 +95,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ehEvolution } from "@/lib/cb-channels/transporte";
+import { IconeDoTransporte } from "@/components/channels/transporte-icone";
 
 interface ReplyDraft {
   id: string;
@@ -625,7 +625,7 @@ export function MessageThread({
   // No canal Evolution o atendente escolhe o número e conversa normalmente:
   // o cronômetro some, o aviso de "janela expirada" não aparece e o
   // compositor nunca trava (ver as props do MessageComposer).
-  const evolutionActive = activeChannel?.kind === "evolution";
+  const evolutionActive = ehEvolution(activeChannel);
 
   /**
    * ⚠️ Enquanto os canais não chegam, o transporte é DESCONHECIDO — e
@@ -2104,11 +2104,7 @@ export function MessageThread({
                           corDoCanal(coresDosCanais, c.id)?.ponto,
                         )}
                       />
-                      {c.kind === "meta" ? (
-                        <BadgeCheck className="mr-2 h-3.5 w-3.5" />
-                      ) : (
-                        <QrCode className="mr-2 h-3.5 w-3.5" />
-                      )}
+                      <IconeDoTransporte kind={c.kind} className="mr-2 h-3.5 w-3.5" />
                       <span className="flex-1">{c.label}</span>
                       {isSelected && <Check className="ml-2 h-3 w-3" />}
                     </DropdownMenuItem>

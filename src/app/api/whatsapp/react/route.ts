@@ -12,6 +12,7 @@ import {
   rateLimitResponse,
   RATE_LIMITS,
 } from '@/lib/rate-limit';
+import { ehEvolution, ehInstagram } from '@/lib/cb-channels/transporte';
 
 /**
  * POST /api/whatsapp/react
@@ -118,9 +119,19 @@ export async function POST(request: Request) {
       );
     }
 
+    // Reação existe na API do Instagram, mas fica fora da v1 (D5 do plano:
+    // o emoji livre daqui não se traduz na reação única de lá). Recusa
+    // clara — nunca o ramo Meta com o token do Instagram.
+    if (ehInstagram(channel)) {
+      return NextResponse.json(
+        { error: 'Reações não estão disponíveis em conversa do Instagram.', code: 'not_supported' },
+        { status: 400 },
+      );
+    }
+
     const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
 
-    if (channel.provider === 'evolution') {
+    if (ehEvolution(channel)) {
       try {
         const transport = evolutionTransportFor(channel);
         await transport.sendReaction({

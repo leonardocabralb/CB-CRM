@@ -18,13 +18,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createClient } from '@/lib/supabase/client';
+import type { CbChannelKind } from '@/lib/cb-channels/repo';
 
 export type HealthTone = 'ok' | 'warn' | 'down' | 'unknown';
 
 export interface ChannelHealth {
   id: string;
   label: string;
-  kind: 'meta' | 'evolution';
+  kind: CbChannelKind;
   phone: string | null;
   isDefault: boolean;
   tone: HealthTone;

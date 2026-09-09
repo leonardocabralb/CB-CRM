@@ -23,6 +23,7 @@ import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { detalharGrupos, sincronizarListaDeGrupos } from '@/lib/cb-groups/sync';
 import { createClient } from '@supabase/supabase-js';
+import { ehEvolution } from '@/lib/cb-channels/transporte';
 
 // O detalhamento roda dentro deste orçamento; ver o comentário do módulo.
 export const maxDuration = 120;
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
     if (!canal) {
       return NextResponse.json({ error: 'Conexão não encontrada.' }, { status: 404 });
     }
-    if (canal.kind !== 'evolution') {
+    if (!ehEvolution(canal)) {
       // Grupo não existe na API oficial da Meta — não é limitação nossa.
       return NextResponse.json(
         { error: 'Grupos só funcionam em conexões por QR Code, não na API oficial da Meta.' },

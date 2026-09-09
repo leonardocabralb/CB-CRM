@@ -67,6 +67,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { canaisVisiveis, conversaNoEscopo } from "@/lib/perfis/escopo";
 import { canSendMessages, isAccountRole } from "@/lib/auth/roles";
 import { useFavoritas } from "@/hooks/use-favoritas";
+import { ehInstagram } from "@/lib/cb-channels/transporte";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -458,6 +459,14 @@ export function ConversationList({
     () => canaisVisiveis(acesso, channels),
     [acesso, channels],
   );
+  // Nova conversa é INICIAR conversa — e no Instagram só o cliente inicia
+  // (a API não tem como escrever para quem nunca escreveu). O diálogo não
+  // oferece a conexão do Instagram. Memoizado pelo mesmo motivo acima: o
+  // efeito de pré-seleção do diálogo depende da identidade desta lista.
+  const canaisParaAbrirConversa = useMemo(
+    () => canaisDoPerfil.filter((c) => !ehInstagram(c)),
+    [canaisDoPerfil],
+  );
   // Cor por conexão, para a bolinha da linha. Memoizada porque o `Map` é
   // recriado a cada render e as linhas o consultam uma vez cada.
   const coresDosCanais = useMemo(() => coresPorCanal(channels), [channels]);
@@ -792,7 +801,7 @@ export function ConversationList({
             // As conexões DO PERFIL, como no filtro logo abaixo: oferecer
             // uma conexão fora do escopo faria o operador abrir a conversa
             // num número que ele não deveria usar.
-            canais={canaisDoPerfil}
+            canais={canaisParaAbrirConversa}
             carregandoCanais={canaisCarregando}
             canaisFalharam={canaisFalharam}
             onRecarregarCanais={recarregarCanais}

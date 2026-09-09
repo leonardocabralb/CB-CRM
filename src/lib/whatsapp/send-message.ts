@@ -62,6 +62,7 @@ import {
   templateBodyParams,
   templateContentText,
 } from '@/lib/whatsapp/template-body';
+import { ehEvolution, ehInstagram, ehMeta } from '@/lib/cb-channels/transporte';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
 export const VALID_MESSAGE_TYPES = [
@@ -435,13 +436,22 @@ export async function sendMessageToConversation(
     );
   }
 
-  const provider = channel.provider;
+  // Instagram: o ramo de saída chega na Fase 4 do plano
+  // (docs/PLANO-instagram-direct.md). Até lá falha FECHADO aqui — nunca o
+  // ramo Meta com o token do Instagram e um IGSID no lugar do telefone.
+  if (ehInstagram(channel)) {
+    throw new SendMessageError(
+      'not_supported',
+      'Enviar pelo Instagram ainda não está disponível nesta versão.',
+      400
+    );
+  }
 
   // ⚠️ Grupo NÃO existe na API oficial da Meta — não é limitação nossa nem
   // configuração faltando. A conversa chega aqui com canal Meta quando o
   // atendente fixou o canal na mão, e o texto precisa dizer o que fazer
   // (trocar de canal), não um "não suportado" que deixa ele sem saída.
-  if (ehGrupo && provider === 'meta') {
+  if (ehGrupo && ehMeta(channel)) {
     throw new SendMessageError(
       'not_supported',
       'Grupos não funcionam pela API oficial da Meta. Troque o canal desta conversa para uma conexão por QR Code antes de enviar.',
@@ -462,7 +472,7 @@ export async function sendMessageToConversation(
     );
   }
 
-  if (provider === 'meta' && (!channel.phone_number_id || !channel.access_token)) {
+  if (ehMeta(channel) && (!channel.phone_number_id || !channel.access_token)) {
     throw new SendMessageError(
       'whatsapp_not_configured',
       'WhatsApp (Meta) connection is incomplete — reconfigure it in Settings.',
@@ -473,9 +483,9 @@ export async function sendMessageToConversation(
   // Meta keeps its token in access_token; Evolution its instance key in
   // api_key. Only the Meta path decrypts here (and self-heals legacy CBC —
   // only for the whatsapp_config fallback; channels are GCM from creation).
-  const accessToken = provider === 'meta' ? decrypt(channel.access_token!) : '';
+  const accessToken = ehMeta(channel) ? decrypt(channel.access_token!) : '';
   if (
-    provider === 'meta' &&
+    ehMeta(channel) &&
     channel.source === 'whatsapp_config' &&
     channel.legacyConfigId &&
     isLegacyFormat(channel.access_token!)
@@ -564,7 +574,7 @@ export async function sendMessageToConversation(
   // can rebuild the Baileys key later. NULL for Meta.
   let outboundRemoteJid: string | null = null;
 
-  if (provider === 'evolution') {
+  if (ehEvolution(channel)) {
     // Evolution/Baileys has no HSM templates and unreliable native
     // buttons/lists — both are rejected up front until they degrade to
     // plain text in a later pass. Text + media are the reply MVP.
@@ -804,7 +814,7 @@ export async function sendMessageToConversation(
       message_id: waMessageId,
       // Baileys key parts — only meaningful for Evolution (NULL for Meta).
       remote_jid: outboundRemoteJid,
-      from_me: provider === 'evolution' ? true : null,
+      from_me: ehEvolution(channel) ? true : null,
       status: 'sent',
       reply_to_message_id: replyToMessageId || null,
     })

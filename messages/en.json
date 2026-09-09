@@ -6,6 +6,7 @@
     "selectPlaceholder": "Pick a channel",
     "kind_meta": "Official API · Meta",
     "kind_evolution": "Unofficial · QR Code",
+    "kind_instagram": "Direct · Instagram",
     "scopeLabel": "Runs on",
     "scopeHelpAll": "With no channel picked it runs on every number.",
     "filterAll": "All channels",
@@ -2662,6 +2663,7 @@
       "emptyTitle": "No numbers connected yet.",
       "kindMeta": "Official API · Meta",
       "kindEvolution": "Unofficial · QR Code",
+      "kindInstagram": "Direct · Instagram",
       "defaultBadge": "Default",
       "setDefaultAction": "Make default",
       "setDefaultHint": "Broadcasts, message templates and the public API always use the default channel.",
@@ -3310,6 +3312,7 @@
     "detail_incomplete": "missing credentials — set the connection up again",
     "kind_meta": "Official API · Meta",
     "kind_evolution": "Unofficial · QR Code",
+    "kind_instagram": "Direct · Instagram",
     "connectedFor": "connected for {tempo}",
     "checkedAgo": "checked {tempo} ago",
     "neverChecked": "not checked yet"

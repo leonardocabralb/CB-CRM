@@ -51,6 +51,7 @@ import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { precisaConferirFoto } from '@/lib/contacts/foto-de-perfil';
 import { atualizarFotoDoContato } from '@/lib/whatsapp/foto-do-contato';
+import { ehEvolution } from '@/lib/cb-channels/transporte';
 
 // Inbound processing fans out to flows / automations / AI, so give the
 // after() block headroom beyond the platform default.
@@ -833,7 +834,7 @@ async function conferirFotosDosContatos(
     const canal = await resolveChannelForConversation(supabaseAdmin(), accountId, {
       channel_id: channelId,
     });
-    if (!canal || canal.provider !== 'evolution') return;
+    if (!canal || !ehEvolution(canal)) return;
     if (!canal.base_url || !canal.instance_name || !canal.api_key) return;
     const client = new EvolutionClient({
       baseUrl: canal.base_url,
@@ -869,7 +870,7 @@ async function resolveEvolutionMedia(
     const canal = await resolveChannelForConversation(supabaseAdmin(), accountId, {
       channel_id: channelId,
     });
-    if (!canal || canal.provider !== 'evolution') return null;
+    if (!canal || !ehEvolution(canal)) return null;
     if (!canal.base_url || !canal.instance_name || !canal.api_key) return null;
 
     const client = new EvolutionClient({

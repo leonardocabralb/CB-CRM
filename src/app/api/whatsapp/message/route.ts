@@ -22,6 +22,7 @@ import { EvolutionApiError, EvolutionClient } from '@/lib/whatsapp/transport/evo
 import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
 import { atualizarPreviaDaConversa } from '@/lib/inbox/conversation-preview';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
+import { ehEvolution, ehInstagram } from '@/lib/cb-channels/transporte';
 
 /**
  * Prazos do WHATSAPP, não nossos. Passado o limite, a Evolution recusa.
@@ -150,12 +151,13 @@ async function resolverAlvo(messageId: unknown) {
   if (!canal) {
     return { erro: NextResponse.json({ error: 'Canal não encontrado.' }, { status: 409 }) };
   }
-  if (canal.provider !== 'evolution') {
+  if (!ehEvolution(canal)) {
     return {
       erro: NextResponse.json(
         {
-          error:
-            'A API oficial do WhatsApp não permite apagar nem editar mensagem enviada.',
+          error: ehInstagram(canal)
+            ? 'O Instagram não permite apagar nem editar mensagem enviada.'
+            : 'A API oficial do WhatsApp não permite apagar nem editar mensagem enviada.',
           code: 'not_supported',
         },
         { status: 400 },
