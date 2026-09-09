@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useChannels } from "@/hooks/use-channels";
 import { useLeadEvents } from "@/hooks/use-lead-events";
+import { useExecucoesDoFio } from "@/hooks/use-execucoes-do-fio";
 import { useConversationNotes } from "@/hooks/use-conversation-notes";
 import { useApagarNota } from "@/hooks/use-apagar-nota";
 import { useFixarNota } from "@/hooks/use-fixar-nota";
@@ -36,6 +37,7 @@ import {
 } from "@/lib/assinatura/assinatura";
 import { LeadEventLine } from "@/components/lead-events/lead-event-line";
 import { NoteLine } from "./note-line";
+import { AvisoDeExecucao } from "./aviso-de-execucao";
 import { NotaFixadaBar } from "./nota-fixada-bar";
 import { cn } from "@/lib/utils";
 import type {
@@ -950,6 +952,13 @@ export function MessageThread({
   // status e tags aparecem intercaladas na conversa. `resyncToken` entra como
   // gatilho para o botão de atualizar da thread arrastar a trilha junto.
   const { eventos: leadEvents } = useLeadEvents(contact?.id, resyncToken);
+  // As execuções de automação que TERMINARAM para este cliente (985).
+  //
+  // ⚠️ Grupo fica de fora de graça, sem precisar do `ehGrupo` (que só é
+  // declarado mais abaixo): conversa de grupo tem `contact_id` NULO — é o
+  // CHECK XOR da 906 —, então não há contato por quem perguntar. E automação
+  // não roda em grupo, por garantia estrutural.
+  const { itens: execucoesDoFio } = useExecucoesDoFio(contact?.id);
 
   // Anotações internas (migration 918). Chaveadas pela CONVERSA, não pelo
   // contato como a trilha acima — é a única chave que existe em grupo.
@@ -1914,7 +1923,7 @@ export function MessageThread({
       : ""
     : (contact?.phone ?? "");
   const messageGroups = groupTimelineByDate(
-    intercalar(messages, leadEvents, notas)
+    intercalar(messages, leadEvents, notas, execucoesDoFio)
   );
   const assignedAgentId = conversation.assigned_agent_id ?? null;
   const currentStatus = STATUS_OPTIONS.find(
@@ -2283,6 +2292,20 @@ export function MessageThread({
                     // mensagem: sem bolha, sem ações, sem reação.
                     if (item.evento) {
                       return <LeadEventLine key={item.chave} evento={item.evento} />;
+                    }
+                    // Execução de automação encerrada (985) — como o evento do
+                    // lead, é aviso de sistema: sem bolha, sem ações, sem
+                    // reação. Precisa vir ANTES do `item.mensagem!` lá embaixo,
+                    // pelo mesmo motivo que a nota: aquele `!` desliga a
+                    // checagem e um item de execução derrubaria o fio.
+                    if (item.execucao) {
+                      return (
+                        <AvisoDeExecucao
+                          key={item.chave}
+                          item={item.execucao}
+                          aoAbrirDetalhes={onOpenContactPanel}
+                        />
+                      );
                     }
                     // ⚠️ A anotação interna tem de ser tratada AQUI, antes do
                     // `item.mensagem!` logo abaixo. Aquele `!` desliga a

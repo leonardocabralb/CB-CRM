@@ -13,6 +13,7 @@
 // duplicá-la produziria duas ordens diferentes para o mesmo fio.
 // ============================================================
 
+import type { ItemDeExecucao } from '@/lib/execucoes/desfecho';
 import type { ConversationNote, LeadEvent, LeadEventType } from '@/types';
 
 /**
@@ -149,6 +150,8 @@ export interface ItemDaLinhaDoTempo<M> {
   mensagem?: M;
   evento?: LeadEvent;
   nota?: ConversationNote;
+  /** Execução de automação que terminou (985) — a quarta fatia do fio. */
+  execucao?: ItemDeExecucao;
 }
 
 /**
@@ -160,15 +163,22 @@ export interface ItemDaLinhaDoTempo<M> {
  * meio `src/types` junto. `LeadEvent` e `ConversationNote` são concretos
  * porque são tipos nossos e pequenos.
  *
- * ⚠️ Cada fatia tem PREFIXO DE CHAVE próprio (`m:`, `e:`, `n:`). A chave tem
- * dois papéis — key do React e desempate da ordenação — e ids de tabelas
+ * ⚠️ Cada fatia tem PREFIXO DE CHAVE próprio (`m:`, `e:`, `n:`, `x:`). A chave
+ * tem dois papéis — key do React e desempate da ordenação — e ids de tabelas
  * diferentes podem coincidir. Sem prefixo distinto, dois itens do mesmo
  * instante trocariam de lugar entre renderizações.
+ *
+ * ⚠️ A fatia de EXECUÇÃO já vem colapsada e com teto (`itensDoFio`, em
+ * `lib/execucoes/desfecho.ts`). Aqui não há filtro: quem decide o que merece
+ * uma linha é aquela régua, no molde de `apareceNaConversa` para os eventos.
+ * A chave dela é a do grupo (`automação|dia|desfecho`), não um id de linha —
+ * é o que faz três conclusões do mesmo dia ocuparem UMA posição estável.
  */
 export function intercalar<M extends { id: string; created_at: string }>(
   mensagens: readonly M[],
   eventos: readonly LeadEvent[],
   notas: readonly ConversationNote[] = [],
+  execucoes: readonly ItemDeExecucao[] = [],
 ): ItemDaLinhaDoTempo<M>[] {
   const itens: ItemDaLinhaDoTempo<M>[] = [
     ...mensagens.map((m) => ({ chave: `m:${m.id}`, quando: m.created_at, mensagem: m })),
@@ -176,6 +186,7 @@ export function intercalar<M extends { id: string; created_at: string }>(
       .filter(apareceNaConversa)
       .map((e) => ({ chave: `e:${e.id}`, quando: e.occurred_at, evento: e })),
     ...notas.map((n) => ({ chave: `n:${n.id}`, quando: n.created_at, nota: n })),
+    ...execucoes.map((x) => ({ chave: `x:${x.chave}`, quando: x.quando, execucao: x })),
   ];
 
   return itens.sort((a, b) => cmp(a.quando, b.quando) || cmp(a.chave, b.chave));
