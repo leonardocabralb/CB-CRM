@@ -242,8 +242,13 @@ of the contact's labels and still answer `200`.
 }
 ```
 
-- Names are matched **case-insensitively** and trimmed, so `"vip"`
-  finds an existing `"VIP"`.
+- Names are matched **case- and accent-insensitively**, and trimmed: `"vip"`
+  finds an existing `"VIP"`, and `"bancario"` finds an existing `"Bancário"`.
+  Two names that differ only by accent or case are the **same tag** — the
+  database enforces this with a unique index, so a second one cannot be
+  created. The response echoes the spelling **you sent**, while the
+  `contact.tags` array carries the stored spelling; when they differ, the
+  stored one is the tag you got.
 - `create_missing` (default `true`) creates tags in `add` that don't
   exist yet. It never applies to `remove` — an unknown name there is
   reported, not created.

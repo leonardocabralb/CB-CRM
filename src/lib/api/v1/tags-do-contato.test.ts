@@ -9,10 +9,14 @@ import {
 } from './tags-do-contato';
 
 const resolveImportTagIds = vi.hoisted(() => vi.fn());
+const lerCatalogoDeTags = vi.hoisted(() => vi.fn());
 const addContactTagAndDispatch = vi.hoisted(() => vi.fn());
 const removeContactTag = vi.hoisted(() => vi.fn());
 
-vi.mock('@/lib/contacts/resolve-import-tags', () => ({ resolveImportTagIds }));
+vi.mock('@/lib/contacts/resolve-import-tags', () => ({
+  resolveImportTagIds,
+  lerCatalogoDeTags,
+}));
 vi.mock('@/lib/contacts/tag-events', () => ({ addContactTagAndDispatch }));
 vi.mock('@/lib/contacts/tag-write', () => ({
   removeContactTag,
@@ -112,37 +116,22 @@ describe('lerMudancaDeTags', () => {
 });
 
 /**
- * Client de mentira: só a consulta do catálogo de etiquetas.
- *
- * `leituras` permite devolver catálogos DIFERENTES a cada chamada — é assim
- * que se observa a releitura de depois da criação.
+ * A leitura do catálogo é o `lerCatalogoDeTags` (mockado), então o "banco"
+ * aqui só precisa existir — nenhuma consulta passa por ele.
  */
 function bancoCom(
-  tags: { id: string; name: string }[] | { id: string; name: string }[][],
+  tags: { id: string; name: string }[],
   opts: { falha?: boolean } = {}
 ) {
-  const paginas = Array.isArray(tags[0])
-    ? (tags as { id: string; name: string }[][])
-    : [tags as { id: string; name: string }[]];
-  const chamadas = { n: 0 };
-  const resposta = () => {
-    if (opts.falha)
-      return Promise.resolve({ data: null, error: { message: 'timeout' } });
-    const i = Math.min(chamadas.n++, paginas.length - 1);
-    return Promise.resolve({ data: paginas[i], error: null });
-  };
-  const db = {
-    chamadas,
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          // duas ordens encadeadas: `created_at` e o desempate por `id`
-          order: () => ({ order: resposta }),
-        }),
-      }),
-    }),
-  };
-  return db as never;
+  if (opts.falha) {
+    lerCatalogoDeTags.mockRejectedValue(new Error('timeout'));
+  } else {
+    // `.reverse()` porque o Map deixa o ÚLTIMO vencer, e o real deixa o
+    // PRIMEIRO (a etiqueta mais antiga) — é isso que o teste da colisão mede.
+    const pares: [string, string][] = tags.map((t) => [chaveDeTag(t.name), t.id]);
+    lerCatalogoDeTags.mockResolvedValue(new Map(pares.reverse()));
+  }
+  return {} as never;
 }
 
 describe('aplicarMudancaDeTags', () => {

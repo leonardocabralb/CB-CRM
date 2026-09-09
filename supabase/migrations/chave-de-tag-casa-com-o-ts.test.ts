@@ -29,20 +29,51 @@ const semComentarios = (sql: string) =>
     .map((l) => l.replace(/--.*$/, ''))
     .join('\n');
 
+/**
+ * A expressão DA COLUNA GERADA, e só ela.
+ *
+ * ⚠️ Varrer o arquivo inteiro atrás de `normalize(`/`regexp_replace(` não
+ * serve: o bloco de conferência da própria migration usa as MESMAS chamadas,
+ * então os testes passariam com a expressão da coluna errada. Recortar o
+ * `ADD COLUMN ... GENERATED ALWAYS AS (...) STORED` é o que faz a asserção
+ * valer sobre a coisa certa. (Achado da revisão adversarial.)
+ */
+function expressaoDaColunaGerada(sql: string): string {
+  const m = semComentarios(sql).match(
+    /ADD COLUMN\s+name_key[\s\S]*?GENERATED ALWAYS AS\s*\(([\s\S]*?)\)\s*STORED/i
+  );
+  if (!m) throw new Error('não achei o ADD COLUMN ... GENERATED ALWAYS AS da name_key');
+  return m[1];
+}
+
 describe('984 — a régua do SQL casa com a do TS', () => {
   const corpo = semComentarios(SQL_984);
+  const expressao = expressaoDaColunaGerada(SQL_984);
 
   it('CRÍTICO: a coluna gerada NORMALIZA antes de apagar os sinais', () => {
     // Sem o `normalize(..., NFD)`, a forma decomposta de um nome acentuado
     // gera outra chave e o índice único deixa a duplicata entrar — que é
     // exatamente o furo que a 983 tinha.
-    expect(/normalize\(\s*lower\(\s*btrim\(\s*name/i.test(corpo)).toBe(true);
-    expect(/normalize\([^)]*NFD\s*\)/i.test(corpo)).toBe(true);
+    expect(/normalize\(\s*lower\(\s*btrim\(\s*name/i.test(expressao)).toBe(true);
+    // ⚠️ `[\s\S]*?` e não `[^)]*`: o argumento do `normalize` tem parênteses
+    // aninhados (`lower(btrim(name, ...))`), então a versão com `[^)]*` NUNCA
+    // casava aqui — ela vinha passando só porque a busca era no arquivo
+    // inteiro e encontrava o `normalize('Bancário', NFD)` do bloco de
+    // conferência. Exatamente o furo que motivou recortar a expressão.
+    expect(/normalize\([\s\S]*?,\s*NFD\s*\)/i.test(expressao)).toBe(true);
   });
 
   it('CRÍTICO: apaga o bloco de sinais combinantes U+0300–U+036F', () => {
-    expect(/regexp_replace\(/i.test(corpo)).toBe(true);
-    expect(corpo).toContain('u0300-\\u036f');
+    expect(/regexp_replace\(/i.test(expressao)).toBe(true);
+    expect(expressao).toContain('u0300-\\u036f');
+  });
+
+  it('⚠️ a asserção é sobre a EXPRESSÃO, não sobre o arquivo', () => {
+    // Prova que o recorte funciona: a expressão extraída é bem menor que o
+    // arquivo, e não arrasta o bloco de conferência junto.
+    expect(expressao.length).toBeLessThan(corpo.length / 3);
+    expect(expressao).not.toMatch(/RAISE EXCEPTION/i);
+    expect(expressao).toContain('name');
   });
 
   it('⚠️ o intervalo é escrito por ESCAPE, nunca com o caractere literal', () => {

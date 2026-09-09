@@ -11,6 +11,47 @@ export interface ResolveImportTagsResult {
   skippedNames: string[];
 }
 
+/** Quantas linhas por página. Abaixo do teto de 1000 do PostgREST. */
+const TAGS_POR_PAGINA = 500;
+
+/**
+ * O catálogo de etiquetas da conta, chaveado por `chaveDeTag`.
+ *
+ * ⚠️ PAGINADO, e não é zelo prematuro: o PostgREST corta em 1000 linhas SEM
+ * avisar, e este mapa é quem responde "esta etiqueta já existe?". Truncado,
+ * ele diz "não existe" sobre etiqueta que existe — e daí sai criação
+ * recusada pelo índice (23505 na cara do integrador) ou, no `remove`, um
+ * "desconhecida" sobre etiqueta que está lá. É a mesma armadilha que a busca
+ * de conversas (929) e o funil comercial já documentam.
+ *
+ * ⚠️ Ordenado por `created_at, id`: na colisão de chave vence a MAIS ANTIGA,
+ * a que o escritório vem usando. A ordem também é o que torna a paginação
+ * estável — sem ela, duas páginas podem repetir ou pular linha.
+ */
+export async function lerCatalogoDeTags(
+  supabase: SupabaseClient,
+  accountId: string
+): Promise<Map<string, string>> {
+  const mapa = new Map<string, string>();
+  for (let pagina = 0; ; pagina++) {
+    const de = pagina * TAGS_POR_PAGINA;
+    const { data, error } = await supabase
+      .from('tags')
+      .select('id, name')
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(de, de + TAGS_POR_PAGINA - 1);
+    if (error) throw error;
+
+    for (const tag of data ?? []) {
+      const chave = chaveDeTag(tag.name as string);
+      if (!mapa.has(chave)) mapa.set(chave, tag.id as string);
+    }
+    if (!data || data.length < TAGS_POR_PAGINA) return mapa;
+  }
+}
+
 /**
  * Resolve nomes de etiqueta para ids. Usado pelas TRÊS portas que criam
  * etiqueta: o import de CSV, o `PATCH /api/v1/contacts/{id}` (substitutivo)
@@ -70,24 +111,7 @@ export async function resolveImportTagIds(
   // ANTIGA. É a mesma régua do desempate da migration e da leitura de
   // catálogo da API aditiva. Sem o ORDER BY o PostgREST devolve em ordem não
   // determinística e duas chamadas iguais escolheriam etiquetas diferentes.
-  const lerCatalogo = async (): Promise<Map<string, string>> => {
-    const { data, error } = await supabase
-      .from('tags')
-      .select('id, name')
-      .eq('account_id', accountId)
-      .order('created_at', { ascending: true })
-      .order('id', { ascending: true });
-    if (error) throw error;
-
-    const mapa = new Map<string, string>();
-    for (const tag of data ?? []) {
-      const chave = chaveDeTag(tag.name as string);
-      if (!mapa.has(chave)) mapa.set(chave, tag.id as string);
-    }
-    return mapa;
-  };
-
-  let tagIdByKey = await lerCatalogo();
+  let tagIdByKey = await lerCatalogoDeTags(supabase, accountId);
 
   const skippedNames: string[] = [];
   const toCreate: string[] = [];
@@ -106,7 +130,18 @@ export async function resolveImportTagIds(
     const { error: createError } = await supabase
       .from('tags')
       .upsert(
-        toCreate.map((name) => ({
+        // ⚠️ ORDENADO, e não é estética: com o índice único da 983/984, o
+        // `ON CONFLICT DO NOTHING` passou a ESPERAR a transação concorrente
+        // que já inseriu a chave conflitante. Duas requisições mandando as
+        // MESMAS etiquetas novas em ordens diferentes fecham um ciclo de
+        // espera e o Postgres aborta uma com 40P01. Antes da 983 não havia
+        // índice, logo não havia espera nem ciclo — é regressão daquele PR.
+        // Reproduzido pela revisão num Postgres real, e o controle com a
+        // mesma ordem nos dois lados NÃO deadlocka: ordenar elimina a classe
+        // inteira, porque todo mundo trava na mesma sequência.
+        [...toCreate]
+          .sort((a, b) => (chaveDeTag(a) < chaveDeTag(b) ? -1 : 1))
+          .map((name) => ({
           user_id: userId,
           account_id: accountId,
           name,
@@ -118,7 +153,7 @@ export async function resolveImportTagIds(
 
     if (createError) throw createError;
 
-    tagIdByKey = await lerCatalogo();
+    tagIdByKey = await lerCatalogoDeTags(supabase, accountId);
 
     // Sobrou nome que nem existia nem foi criado? Reportar como pulado é
     // melhor que devolver um mapa incompleto em silêncio, que faria o

@@ -114,9 +114,25 @@ describe('setContactTags', () => {
     expect(registro.apagados[0].sort()).toEqual(['id-bancario', 'id-typebot']);
   });
 
-  it('nome que o catálogo não resolveu é ignorado, não vira etiqueta alheia', async () => {
-    const db = bancoCom([]);
-    await setContactTags(db, 'conta-1', 'dono-1', 'contato-1', ['Fantasma']);
-    expect(addContactTagAndDispatch).not.toHaveBeenCalled();
+  it('⚠️⚠️ nome pedido que não resolveu ESTOURA — senão apagaria a etiqueta pedida', async () => {
+    // Este verbo SUBSTITUI: o que não entra em `desired` entra em
+    // `toRemove`. Ignorar um nome irresolvido em silêncio não é "aplicar
+    // menos" — é APAGAR do contato justamente a etiqueta que o chamador
+    // acabou de pedir para manter. Um `PATCH {tags:["Bancário"]}` num
+    // contato que TEM "Bancário" o deixaria sem nenhuma.
+    // (Achado da revisão adversarial.)
+    resolveImportTagIds.mockResolvedValue({
+      tagIdByKey: CATALOGO,
+      skippedNames: ['Bancário'],
+    });
+    const db = bancoCom(['id-bancario']);
+
+    await expect(
+      setContactTags(db, 'conta-1', 'dono-1', 'contato-1', ['Bancário'])
+    ).rejects.toThrow(/Bancário/);
+
+    // e nada foi apagado no caminho
+    const { registro } = db as unknown as { registro: { apagados: string[][] } };
+    expect(registro.apagados).toEqual([]);
   });
 });

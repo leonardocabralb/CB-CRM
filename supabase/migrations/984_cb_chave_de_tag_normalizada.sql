@@ -59,6 +59,13 @@ ALTER TABLE tags
 -- config de nó de fluxo, o recorte salvo da caixa de entrada da 967), e
 -- apagar deixaria essas regras apontando para um id morto, parando de casar
 -- EM SILÊNCIO.
+--
+-- ⚠️ O que o operador PODE fazer com a renomeada é limitado, e vale dizer
+-- em vez de sugerir o contrário: o app não tem renomear nem fundir etiqueta
+-- — só criar e excluir (`tag-manager.tsx`). Na prática ele reetiqueta os
+-- contatos com a que ficou e apaga a do sufixo. A renomeação existe para
+-- que ele VEJA que havia duas e decida, não porque exista um botão de
+-- fusão. (Achado da revisão adversarial.)
 DO $$
 DECLARE
   v_renomeadas integer;
