@@ -991,7 +991,20 @@ export type AutomationTriggerType =
    * ACHATADO entra em `context.vars` (`{{vars.*}}`). Config vazia =
    * QUALQUER webhook da conta; `webhook_id` restringe a um.
    */
-  | 'webhook_received';
+  | 'webhook_received'
+  /**
+   * NUNCA dispara sozinho — só pelo botão "Executar automação" do menu + da
+   * conversa (955). O dispatch é uma consulta `.eq('trigger_type', …)` pelo
+   * tipo do EVENTO, e nenhum evento carrega este; `runAutomationById`, que é
+   * por onde o botão passa, pula o casamento de gatilho de propósito.
+   *
+   * ⚠️ Existe porque a alternativa era pior: uma automação de execução manual
+   * precisa ficar ATIVA (a rota recusa inativa), e sem este tipo o jeito era
+   * gravá-la com `keyword_match` e uma palavra impossível — como a automação
+   * de teste que ficou em produção. Basta alguém digitar a palavra por acaso
+   * para o cliente receber a esteira inteira.
+   */
+  | 'manual';
 
 export type AutomationStepType =
   | 'send_message'
@@ -1023,6 +1036,8 @@ export type AutomationStepType =
   | 'condition'
   | 'send_webhook'
   | 'close_conversation'
+  /** Abre uma tarefa para um membro da equipe sobre este cliente. */
+  | 'create_task'
   /**
    * Manda um texto para um NÚMERO fixo (a equipe), não para o contato do
    * disparo — "avise o advogado que o cliente marcou reunião". Sai como
@@ -1274,7 +1289,14 @@ export interface MoveDealStepConfig {
 
 export interface WaitStepConfig {
   amount: number;
-  unit: 'minutes' | 'hours' | 'days';
+  /**
+   * ⚠️ `seconds` NÃO é preciso, e a tela diz isso. Quem acorda a espera é o
+   * laço rápido do agendador (`docker-stack.yml`), então o piso real da
+   * pausa é o intervalo dele: uma espera de 10 s acorda no tique seguinte.
+   * Serve para o que o operador quer aqui — separar mensagens que sairiam
+   * coladas e dar folga a um webhook —, não para sincronizar nada.
+   */
+  unit: 'seconds' | 'minutes' | 'hours' | 'days';
 }
 
 export type ConditionSubject =
@@ -1306,6 +1328,29 @@ export interface SendWebhookStepConfig {
   url: string;
   headers?: Record<string, string>;
   body_template?: string;
+}
+
+/**
+ * Config de `create_task` — a tarefa que a regra abre para alguém da equipe.
+ *
+ * ⚠️ O prazo é RELATIVO ("daqui a N dias"), nunca uma data fixa. A automação
+ * é escrita uma vez e roda por meses: uma data gravada aqui nasceria vencida
+ * na segunda execução, e ninguém voltaria na regra para corrigi-la.
+ *
+ * ⚠️ `responsavel_user_id` é `profiles.user_id` (o `auth.users`), NÃO
+ * `profiles.id` — são colunas diferentes nesta tabela, e o id errado aponta
+ * para alguém que não existe. É a mesma chave que `cb_tasks` guarda.
+ */
+export interface CreateTaskStepConfig {
+  /** Suporta `{{ contact.* }}` / `{{ vars.* }}`, como as mensagens. */
+  titulo: string;
+  descricao?: string;
+  responsavel_user_id: string;
+  /** Dias a partir de hoje, no fuso do escritório. Ausente/0 = hoje. */
+  prazo_em_dias?: number;
+  /** `HH:MM`. Ausente = tarefa do dia inteiro, sem hora. */
+  hora?: string;
+  importante?: boolean;
 }
 
 /**
@@ -1423,6 +1468,7 @@ export type AutomationStepConfig =
   | WaitStepConfig
   | ConditionStepConfig
   | SendWebhookStepConfig
+  | CreateTaskStepConfig
   | Record<string, never>
   | Record<string, unknown>;
 

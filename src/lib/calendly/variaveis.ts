@@ -1,38 +1,26 @@
 import type { Agendamento } from "./payload";
 import { formatarTelefone } from "@/lib/contacts/telefone";
+import { FUSO_DO_ESCRITORIO, formatarParaMensagem } from "@/lib/contacts/campo-data";
 
 /**
  * As variáveis que o agendamento entrega ao motor de automações, em
  * `context.vars` — o `{{vars.agendamento_*}}` que o operador escreve na
  * mensagem, no nome e nos campos.
  *
- * ⚠️ `agendamento_data` é montada por `formatToParts`, nunca por
- * `toLocaleString`: a forma da data varia entre majors do Node (o PR #66
- * reprovou no CI por `Intl` divergindo entre 22 e 24), e aqui ela vai para
- * uma mensagem de WhatsApp. `agendamento_inicio` é o ISO cru, em UTC — o que
- * o campo personalizado do tipo `datetime` guarda (`campo-data.ts`).
+ * ⚠️ `agendamento_data` sai de `formatarParaMensagem` (`campo-data.ts`), a
+ * MESMA função que formata campo de data dentro de mensagem — o formato do
+ * aviso de agendamento e o do lembrete de reunião têm de ser o mesmo, e duas
+ * cópias divergiriam na primeira mudança. `agendamento_inicio` é o ISO cru,
+ * em UTC — o que o campo personalizado do tipo `datetime` guarda.
  */
 
-/** O Brasil não tem horário de verão desde 2019; se voltar, muda aqui. */
-export const FUSO_DO_ESCRITORIO = "America/Sao_Paulo";
+// Reexportados: os call sites e os testes do Calendly já os importavam daqui,
+// e a função mudou de casa (não de comportamento) quando o lembrete de reunião
+// passou a precisar dela.
+export { FUSO_DO_ESCRITORIO };
 
-/** "2026-08-26T16:45:00Z" → "26/08/2026 13:45" no fuso dado. */
-export function formatarDataHora(iso: string | null | undefined, fuso: string = FUSO_DO_ESCRITORIO): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const partes = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: fuso,
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(d);
-  const p = (tipo: Intl.DateTimeFormatPartTypes) => partes.find((x) => x.type === tipo)?.value ?? "";
-  return `${p("day")}/${p("month")}/${p("year")} ${p("hour")}:${p("minute")}`;
-}
+/** "2026-08-26T16:45:00Z" → "26/08/2026 às 13:45h" no fuso dado. */
+export const formatarDataHora = formatarParaMensagem;
 
 export function variaveisDoAgendamento(a: Agendamento, fuso: string = FUSO_DO_ESCRITORIO): Record<string, string> {
   return {

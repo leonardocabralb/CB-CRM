@@ -38,6 +38,51 @@ export function diaLocal(agora: Date): string {
 }
 
 /**
+ * O mesmo `YYYY-MM-DD`, mas num fuso ESCOLHIDO em vez do fuso de quem chama.
+ *
+ * ⚠️ Existe para o SERVIDOR. `diaLocal` acima serve à tela, onde "hoje" é o
+ * dia de quem está olhando; no contêiner, que roda em UTC, ele responde o dia
+ * seguinte a partir das 21h de Brasília — e uma tarefa aberta por automação
+ * às 22h nasceria com prazo de amanhã sem ninguém pedir.
+ *
+ * `formatToParts` em vez de `toLocaleDateString('pt-BR')` pelo motivo de
+ * sempre: a forma varia entre majors do Node, e aqui o resultado é fatiado.
+ */
+export function diaNoFuso(agora: Date, fuso: string): string {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: fuso,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(agora);
+  const p = (tipo: Intl.DateTimeFormatPartTypes) =>
+    partes.find((x) => x.type === tipo)?.value ?? '';
+  return `${p('year')}-${p('month')}-${p('day')}`;
+}
+
+/**
+ * `"2026-08-30"` + 3 dias → `"2026-09-02"`.
+ *
+ * ⚠️ A conta é feita em UTC (`Date.UTC` + `setUTCDate`) e o resultado é
+ * remontado com os componentes UTC. Não é descuido: aqui não há hora nenhuma
+ * envolvida, e usar componentes locais faria a soma atravessar a virada de um
+ * horário de verão devolvendo o dia anterior — o defeito que o funil comercial
+ * já pegou ao deslocar período por milissegundos. Em UTC não existe virada.
+ */
+export function somarDias(dia: string, dias: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dia);
+  if (!m) return dia;
+  const d = new Date(
+    Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])),
+  );
+  d.setUTCDate(d.getUTCDate() + Math.trunc(dias));
+  const ano = d.getUTCFullYear();
+  const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const diaDoMes = String(d.getUTCDate()).padStart(2, '0');
+  return `${ano}-${mes}-${diaDoMes}`;
+}
+
+/**
  * Onde a tarefa cai na linha do tempo.
  *
  * ⚠️ O corte é o DIA, nunca a hora, mesmo quando a tarefa tem hora marcada.

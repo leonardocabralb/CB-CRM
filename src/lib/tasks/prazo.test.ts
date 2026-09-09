@@ -6,10 +6,12 @@ import {
   compararPendentes,
   dataParaExibir,
   diaLocal,
+  diaNoFuso,
   grupoDaTarefa,
   horaJaPassou,
   horaParaExibir,
   situacaoDoPrazo,
+  somarDias,
 } from './prazo';
 import type { Task } from '@/types';
 
@@ -310,5 +312,60 @@ describe('horaParaExibir', () => {
   it('sem hora é null, não "00:00"', () => {
     // Escrever uma hora que ninguém marcou seria inventar informação.
     expect(horaParaExibir(null)).toBeNull();
+  });
+});
+
+// ------------------------------------------------------------
+// Prazo RELATIVO — o que o passo "Criar tarefa" das automações usa.
+//
+// A automação é escrita uma vez e roda por meses, então o prazo é "daqui a N
+// dias" contados no dia do ESCRITÓRIO. As duas funções abaixo existem porque
+// o contêiner roda em UTC: `diaLocal` responderia o dia seguinte a partir das
+// 21h de Brasília, e a tarefa nasceria com prazo de amanhã sem ninguém pedir.
+// ------------------------------------------------------------
+
+describe('diaNoFuso', () => {
+  it('depois das 21h de Brasília, o dia do escritório ainda é o de hoje', () => {
+    // 09/09 00:30 UTC = 08/09 21:30 em São Paulo. É o caso do bug.
+    const instante = new Date('2026-09-09T00:30:00Z');
+    expect(diaNoFuso(instante, 'America/Sao_Paulo')).toBe('2026-09-08');
+    expect(diaNoFuso(instante, 'UTC')).toBe('2026-09-09');
+  });
+
+  it('durante o dia os dois fusos concordam', () => {
+    const instante = new Date('2026-09-08T15:00:00Z');
+    expect(diaNoFuso(instante, 'America/Sao_Paulo')).toBe('2026-09-08');
+    expect(diaNoFuso(instante, 'UTC')).toBe('2026-09-08');
+  });
+
+  it('devolve YYYY-MM-DD com zero à esquerda', () => {
+    // A largura fixa é o que permite comparar prazo como texto no resto do
+    // módulo. "2026-9-8" passaria em qualquer olhada e quebraria a ordem.
+    expect(diaNoFuso(new Date('2026-01-05T12:00:00Z'), 'UTC')).toBe('2026-01-05');
+  });
+});
+
+describe('somarDias', () => {
+  it('0 dias é hoje', () => {
+    expect(somarDias('2026-09-08', 0)).toBe('2026-09-08');
+  });
+
+  it('atravessa mês e ano', () => {
+    expect(somarDias('2026-08-30', 3)).toBe('2026-09-02');
+    expect(somarDias('2026-12-30', 5)).toBe('2027-01-04');
+  });
+
+  it('conhece ano bissexto', () => {
+    expect(somarDias('2028-02-28', 1)).toBe('2028-02-29');
+    expect(somarDias('2026-02-28', 1)).toBe('2026-03-01');
+  });
+
+  it('aceita negativo e trunca fração', () => {
+    expect(somarDias('2026-09-08', -1)).toBe('2026-09-07');
+    expect(somarDias('2026-09-08', 1.9)).toBe('2026-09-09');
+  });
+
+  it('entrada malformada volta como veio, sem inventar data', () => {
+    expect(somarDias('amanhã', 3)).toBe('amanhã');
   });
 });

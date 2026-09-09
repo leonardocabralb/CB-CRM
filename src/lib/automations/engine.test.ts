@@ -4,7 +4,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // so the vi.mock factory below can close over it.
 const h = vi.hoisted(() => ({
   state: {
-    owned: null as { id: string } | null,
+    // Os campos do contato entram aqui porque a interpolação de
+    // `{{contact.*}}` lê a MESMA tabela pela qual o motor confere posse.
+    owned: null as
+      | { id: string; name?: string; phone?: string; email?: string; company?: string }
+      | null,
     ownedCustomField: null as { id: string } | null,
     pipeline: null as { id: string } | null,
     stage: null as { id: string } | null,
@@ -18,6 +22,13 @@ const h = vi.hoisted(() => ({
     upsertCalls: [] as { table: string; payload: unknown }[],
     logInserts: [] as Record<string, unknown>[],
     logUpdates: [] as Record<string, unknown>[],
+    taskInserts: [] as Record<string, unknown>[],
+    notifInserts: [] as Record<string, unknown>[],
+    // Valores de campo personalizado do contato, como o PostgREST os entrega
+    // (com a definição embutida) — é por eles que a interpolação de
+    // `{{contact.campo.*}}` passa.
+    customValues: [] as Record<string, unknown>[],
+    membros: [{ user_id: "agente-fallback", full_name: "Agente Um", email: "um@cb.test" }] as Record<string, unknown>[],
   },
 }));
 
@@ -51,8 +62,10 @@ vi.mock("./admin-client", () => {
       return { data: null, error: null };
     }
     if (table === "profiles") {
-      // round_robin resolve um membro da conta por aqui.
-      return { data: [{ user_id: "agente-fallback" }], error: null };
+      // round_robin resolve um membro da conta por aqui; `create_task` usa a
+      // MESMA consulta para provar que o responsável é membro e para carimbar
+      // o nome dele na tarefa.
+      return { data: state.membros, error: null };
     }
     if (table === "custom_fields") {
       // account-scoped ownership lookup for a custom field definition
@@ -63,7 +76,7 @@ vi.mock("./admin-client", () => {
         state.upsertCalls.push({ table, payload: ops.payload });
         return { data: null, error: null };
       }
-      return { data: null, error: null };
+      return { data: state.customValues, error: null };
     }
     if (table === "pipelines") return { data: state.pipeline, error: null };
     if (table === "pipeline_stages") return { data: state.stage, error: null };
@@ -77,6 +90,20 @@ vi.mock("./admin-client", () => {
       }
       state.dealSelects.push(ops.filters);
       return { data: state.dealExistente, error: null };
+    }
+    if (table === "cb_tasks") {
+      if (type === "insert") {
+        state.taskInserts.push(ops.payload as Record<string, unknown>);
+        return { data: { id: "t-1" }, error: null };
+      }
+      return { data: null, error: null };
+    }
+    if (table === "notifications") {
+      if (type === "insert") {
+        state.notifInserts.push(ops.payload as Record<string, unknown>);
+        return { data: null, error: null };
+      }
+      return { data: null, error: null };
     }
     if (table === "automations") return { data: state.automations, error: null };
     if (table === "automation_logs") {
@@ -122,6 +149,9 @@ vi.mock("./admin-client", () => {
       delete: () => ((ops.type = "delete"), b),
       upsert: (p: unknown) => ((ops.type = "upsert"), (ops.payload = p), b),
       eq: (k: string, v: unknown) => (ops.filters.push(["eq", k, v]), b),
+      // `create_task` pergunta pelos DOIS perfis (autor e responsável) numa
+      // consulta só — é ela que prova que o responsável é da conta.
+      in: (k: string, v: unknown) => (ops.filters.push(["in", k, v]), b),
       gte: (k: string, v: unknown) => (ops.recorte.push(["gte", k, v]), b),
       is: (k: string, v: unknown) => (ops.recorte.push(["is", k, v]), b),
       order: () => b,
@@ -168,6 +198,7 @@ vi.mock("@/lib/cb-channels/engine-send", () => canalMock);
 import { dispararAutomacoes, runAutomationsForTrigger, triggerMatches } from "./engine";
 import { engineSendText } from "./meta-send";
 import type { Automation, KeywordMatchTriggerConfig } from "@/types";
+import { diaNoFuso, somarDias } from "@/lib/tasks/prazo";
 
 const ACCOUNT = "acct-1";
 
@@ -186,6 +217,10 @@ beforeEach(() => {
   h.state.upsertCalls = [];
   h.state.logInserts = [];
   h.state.logUpdates = [];
+  h.state.taskInserts = [];
+  h.state.notifInserts = [];
+  h.state.customValues = [];
+  h.state.membros = [{ user_id: "agente-fallback", full_name: "Agente Um", email: "um@cb.test" }];
 });
 
 describe("runAutomationsForTrigger — tenant isolation", () => {
@@ -1080,5 +1115,397 @@ describe("dispararAutomacoes — ramo e espera (Codex, 2ª rodada)", () => {
     expect(r).toMatchObject({ executadas: 1, comFalha: 0, emEspera: 1 });
     expect(h.state.updateCalls).toHaveLength(1);
     expect(ultimoStatusDoLog()).toBe("success");
+  });
+});
+
+// ------------------------------------------------------------
+// Passo "Criar tarefa" — a tarefa que a regra abre para a equipe.
+//
+// O que estes testes protegem: o prazo é RELATIVO ao dia do ESCRITÓRIO (não do
+// contêiner, que roda em UTC), os nomes são carimbados no servidor, o
+// responsável é conferido contra a conta, e o aviso SAI mesmo quando o
+// responsável é o autor da automação — o contrário da rota da tela, de
+// propósito, porque aqui a pessoa escreveu uma regra meses antes.
+// ------------------------------------------------------------
+
+function automacaoDeTarefa(cfg: Record<string, unknown>) {
+  return {
+    automacao: {
+      id: "a-tarefa",
+      account_id: ACCOUNT,
+      user_id: "agente-fallback",
+      name: "Contrato fechado",
+      trigger_type: "new_message_received",
+      trigger_config: {},
+      is_active: true,
+    },
+    passo: {
+      id: "s-tarefa",
+      automation_id: "a-tarefa",
+      step_type: "create_task",
+      position: 0,
+      parent_step_id: null,
+      step_config: cfg,
+    },
+  };
+}
+
+describe("create_task", () => {
+  it("abre a tarefa com prazo relativo, nomes carimbados e aviso", async () => {
+    h.state.owned = { id: "c1" };
+    const { automacao, passo } = automacaoDeTarefa({
+      titulo: "Conferir documentação de {{contact.name}}",
+      responsavel_user_id: "agente-fallback",
+      prazo_em_dias: 1,
+      hora: "09:00",
+      importante: true,
+    });
+    h.state.automations = [automacao];
+    h.state.steps = [passo];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: {},
+    });
+
+    expect(h.state.taskInserts).toHaveLength(1);
+    const tarefa = h.state.taskInserts[0];
+    expect(tarefa.account_id).toBe(ACCOUNT);
+    expect(tarefa.contact_id).toBe("c1");
+    expect(tarefa.responsavel_user_id).toBe("agente-fallback");
+    // Carimbado do banco, não do config: é o que faz a autoria sobreviver à
+    // saída do membro.
+    expect(tarefa.responsavel_nome).toBe("Agente Um");
+    expect(tarefa.criador_nome).toBe("Agente Um");
+    expect(tarefa.vence_as).toBe("09:00:00");
+    expect(tarefa.importante).toBe(true);
+    expect(tarefa.tipo).toBe("tarefa");
+    // Prazo relativo: 1 dia à frente do dia de HOJE no escritório.
+    const hoje = diaNoFuso(new Date(), "America/Sao_Paulo");
+    expect(tarefa.vence_em).toBe(somarDias(hoje, 1));
+
+    // Aviso: mesmo com o responsável sendo o autor da automação.
+    expect(h.state.notifInserts).toHaveLength(1);
+    expect(h.state.notifInserts[0]).toMatchObject({
+      user_id: "agente-fallback",
+      type: "task_assigned",
+      task_id: "t-1",
+      contact_id: "c1",
+    });
+    // Sem conversa, de propósito: quem roteia o clique é `task_id`; com
+    // `conversation_id` preenchido a tela levaria ao fio, não à tarefa.
+    expect("conversation_id" in h.state.notifInserts[0]).toBe(false);
+    expect(String(h.state.notifInserts[0].title)).toContain("Contrato fechado");
+  });
+
+  it("interpola o título com os dados do contato", async () => {
+    h.state.owned = { id: "c1", name: "Joel" };
+    const { automacao, passo } = automacaoDeTarefa({
+      titulo: "Ligar para {{contact.name}}",
+      responsavel_user_id: "agente-fallback",
+    });
+    h.state.automations = [automacao];
+    h.state.steps = [passo];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: {},
+    });
+
+    expect(h.state.taskInserts[0].titulo).toBe("Ligar para Joel");
+  });
+
+  it("sem prazo escrito, a tarefa é para HOJE", async () => {
+    h.state.owned = { id: "c1" };
+    const { automacao, passo } = automacaoDeTarefa({
+      titulo: "Assinar",
+      responsavel_user_id: "agente-fallback",
+    });
+    h.state.automations = [automacao];
+    h.state.steps = [passo];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: {},
+    });
+
+    expect(h.state.taskInserts[0].vence_em).toBe(
+      diaNoFuso(new Date(), "America/Sao_Paulo"),
+    );
+    // Sem hora = o dia inteiro, nunca "00:00".
+    expect(h.state.taskInserts[0].vence_as).toBeNull();
+  });
+
+  it("recusa responsável que não é membro da conta, sem criar tarefa", async () => {
+    h.state.owned = { id: "c1" };
+    const { automacao, passo } = automacaoDeTarefa({
+      titulo: "Tarefa para fora",
+      responsavel_user_id: "gente-de-outro-escritorio",
+    });
+    h.state.automations = [automacao];
+    h.state.steps = [passo];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: {},
+    });
+
+    expect(h.state.taskInserts).toHaveLength(0);
+    expect(h.state.notifInserts).toHaveLength(0);
+    // A falha fica no registro, com motivo — é onde o operador vai olhar.
+    expect(JSON.stringify(h.state.logUpdates)).toContain("não é membro");
+  });
+
+  it("título vazio depois da interpolação não vira tarefa sem nome", async () => {
+    h.state.owned = { id: "c1" };
+    const { automacao, passo } = automacaoDeTarefa({
+      // A variável não resolve (não há campo), então o título inteiro some.
+      titulo: "{{contact.campo.inexistente}}",
+      responsavel_user_id: "agente-fallback",
+    });
+    h.state.automations = [automacao];
+    h.state.steps = [passo];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: {},
+    });
+
+    expect(h.state.taskInserts).toHaveLength(0);
+  });
+});
+
+describe("interpolação de campo de DATA", () => {
+  it("campo datetime sai formatado, nunca o ISO cru", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.customValues = [
+      {
+        value: "2026-08-30T19:00:00.000Z",
+        custom_fields: {
+          field_key: "data_e_hora_reuniao",
+          field_type: "datetime",
+          account_id: ACCOUNT,
+        },
+      },
+    ];
+    h.state.automations = [
+      {
+        id: "a-msg",
+        account_id: ACCOUNT,
+        user_id: "u1",
+        trigger_type: "new_message_received",
+        trigger_config: {},
+        is_active: true,
+      },
+    ];
+    h.state.steps = [
+      {
+        id: "s-msg",
+        automation_id: "a-msg",
+        step_type: "send_message",
+        position: 0,
+        parent_step_id: null,
+        step_config: { text: "Sua reunião é {{contact.campo.data_e_hora_reuniao}}." },
+      },
+    ];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: { conversation_id: "conv-1" },
+    });
+
+    const enviado = vi.mocked(engineSendText).mock.calls.at(-1)?.[0] as { text: string };
+    expect(enviado.text).toBe("Sua reunião é 30/08/2026 às 16:00h.");
+  });
+
+  it("campo de texto continua saindo como está", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.customValues = [
+      {
+        value: "https://meet.google.com/abc-defg-hij",
+        custom_fields: {
+          field_key: "link_reuniao",
+          field_type: "text",
+          account_id: ACCOUNT,
+        },
+      },
+    ];
+    h.state.automations = [
+      {
+        id: "a-msg",
+        account_id: ACCOUNT,
+        user_id: "u1",
+        trigger_type: "new_message_received",
+        trigger_config: {},
+        is_active: true,
+      },
+    ];
+    h.state.steps = [
+      {
+        id: "s-msg",
+        automation_id: "a-msg",
+        step_type: "send_message",
+        position: 0,
+        parent_step_id: null,
+        step_config: { text: "Link: {{contact.campo.link_reuniao}}" },
+      },
+    ];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: { conversation_id: "conv-1" },
+    });
+
+    const enviado = vi.mocked(engineSendText).mock.calls.at(-1)?.[0] as { text: string };
+    expect(enviado.text).toBe("Link: https://meet.google.com/abc-defg-hij");
+  });
+
+  it("data ilegível no campo cai no valor cru, não em vazio", async () => {
+    // A coluna é TEXT livre — pode ter "amanhã de tarde" digitado à mão.
+    // Melhor o cliente ler o que a pessoa escreveu do que uma frase truncada.
+    h.state.owned = { id: "c1" };
+    h.state.customValues = [
+      {
+        value: "amanhã de tarde",
+        custom_fields: {
+          field_key: "data_e_hora_reuniao",
+          field_type: "datetime",
+          account_id: ACCOUNT,
+        },
+      },
+    ];
+    h.state.automations = [
+      {
+        id: "a-msg",
+        account_id: ACCOUNT,
+        user_id: "u1",
+        trigger_type: "new_message_received",
+        trigger_config: {},
+        is_active: true,
+      },
+    ];
+    h.state.steps = [
+      {
+        id: "s-msg",
+        automation_id: "a-msg",
+        step_type: "send_message",
+        position: 0,
+        parent_step_id: null,
+        step_config: { text: "Reunião: {{contact.campo.data_e_hora_reuniao}}" },
+      },
+    ];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: { conversation_id: "conv-1" },
+    });
+
+    const enviado = vi.mocked(engineSendText).mock.calls.at(-1)?.[0] as { text: string };
+    expect(enviado.text).toBe("Reunião: amanhã de tarde");
+  });
+});
+
+// ------------------------------------------------------------
+// O MESMO campo de data em dois modos (achado do Codex no PR #152).
+//
+// Em texto para gente, formatado. Onde a saída é DADO — `update_contact_field`
+// grava no banco, `send_webhook` fala com um sistema — cru. Trocar isto faz o
+// campo copiado ficar ilegível para a tela e, pior, invisível para a varredura
+// de lembretes (`cb_para_timestamp` de uma data em português devolve NULL, e o
+// lembrete nunca sai).
+// ------------------------------------------------------------
+
+function comCampoDeData(passo: Record<string, unknown>) {
+  h.state.owned = { id: "c1" };
+  h.state.customValues = [
+    {
+      value: "2026-08-30T19:00:00.000Z",
+      custom_fields: {
+        field_key: "data_e_hora_reuniao",
+        field_type: "datetime",
+        account_id: ACCOUNT,
+      },
+    },
+  ];
+  h.state.automations = [
+    {
+      id: "a-cru",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      trigger_type: "new_message_received",
+      trigger_config: {},
+      is_active: true,
+    },
+  ];
+  h.state.steps = [
+    { id: "s-cru", automation_id: "a-cru", position: 0, parent_step_id: null, ...passo },
+  ];
+}
+
+describe("campo de data: formatado na mensagem, CRU no dado", () => {
+  it("update_contact_field grava o ISO, não a data em português", async () => {
+    comCampoDeData({
+      step_type: "update_contact_field",
+      step_config: { field: "company", value: "{{contact.campo.data_e_hora_reuniao}}" },
+    });
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: {},
+    });
+
+    const escrita = h.state.updateCalls.find((u) => u.table === "contacts");
+    expect(escrita).toBeDefined();
+    // O payload do update passa pelo mock como `ops.payload`; aqui basta
+    // provar que o valor gravado é o instante, não "30/08/2026 às 16:00h".
+    expect(JSON.stringify(h.state.updateCalls)).not.toContain("às 16:00h");
+  });
+
+  it("send_webhook manda o ISO no corpo", async () => {
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: { body?: string }) =>
+        ({ ok: true, status: 200 }) as unknown as Response,
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    comCampoDeData({
+      step_type: "send_webhook",
+      step_config: {
+        // IP público literal: a guarda decide sem DNS (e sem mock, que
+        // quebraria o teste vizinho que prova o BLOQUEIO). O fetch está
+        // stubbed, então nada sai da máquina.
+        url: "https://8.8.8.8/hook",
+        body_template: '{"quando":"{{contact.campo.data_e_hora_reuniao}}"}',
+      },
+    });
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: {},
+    });
+
+    vi.unstubAllGlobals();
+    const corpo = String(fetchMock.mock.calls.at(-1)?.[1]?.body ?? "");
+    expect(corpo).toContain("2026-08-30T19:00:00.000Z");
+    expect(corpo).not.toContain("às 16:00h");
   });
 });

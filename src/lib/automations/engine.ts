@@ -28,6 +28,7 @@ import type {
   CalendlyTriggerConfig,
   WebhookTriggerConfig,
   AutomationLogStatus,
+  CreateTaskStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
 import { resolverDestinatario } from './destinatario'
@@ -36,6 +37,17 @@ import { digitosDoTelefone } from '@/lib/contacts/telefone'
 import { urlDoInbox } from '@/lib/inbox/url'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
+import {
+  FUSO_DO_ESCRITORIO,
+  TIPO_DATA,
+  formatarParaMensagem,
+} from '@/lib/contacts/campo-data'
+import { diaNoFuso, somarDias } from '@/lib/tasks/prazo'
+import {
+  normalizarDescricao,
+  normalizarHora,
+  normalizarTitulo,
+} from '@/lib/tasks/validar'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
 // ⚠️ Direto dos FLUXOS, como `engineSendInteractive*` já faz em
 // `automations/meta-send.ts`. Não há ciclo: `flows/meta-send` só depende de
@@ -795,7 +807,9 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId) throw new Error('update_contact_field needs a contact')
       // Resolve workflow variables ({{ vars.* }}, {{ message.text }}) so custom
       // values can be populated dynamically from the triggering context.
-      const value = await interpolate(cfg.value, args)
+      // ⚠️ CRU: este passo GRAVA. Ver `camposCru` — data formatada aqui deixa
+      // o campo de destino inútil para a tela e para o lembrete.
+      const value = await interpolate(cfg.value, args, { cru: true })
 
       // Custom fields are encoded as `custom:<custom_field_id>`; anything else
       // is a built-in contact column.
@@ -1123,7 +1137,11 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!(await isDeliverableUrl(cfg.url))) {
         throw new Error('send_webhook: destination not allowed')
       }
-      const body = cfg.body_template ? await interpolate(cfg.body_template, args) : JSON.stringify(args.context)
+      // ⚠️ CRU: do outro lado há um sistema, não uma pessoa — ISO é o formato
+      // que ele sabe ler, e trocá-lo quebraria integração já em pé.
+      const body = cfg.body_template
+        ? await interpolate(cfg.body_template, args, { cru: true })
+        : JSON.stringify(args.context)
       const res = await fetch(cfg.url, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...(cfg.headers ?? {}) },
@@ -1196,6 +1214,105 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         .eq('account_id', args.automation.account_id)
         .eq('contact_id', args.contactId)
       return 'conversation closed'
+    }
+
+    // ------------------------------------------------------------
+    // Abrir tarefa para a equipe.
+    //
+    // ⚠️ ESPELHA `POST /api/cb/tasks`, e as três razões daquela rota valem
+    // aqui: `notifications` não tem policy de INSERT (só service-role
+    // escreve), os nomes são CARIMBADOS no servidor (é o carimbo que faz a
+    // autoria sobreviver à saída do membro) e o destinatário é conferido
+    // contra a conta — sem isso, um `responsavel_user_id` gravado na config
+    // encaminharia tarefa para gente de outro escritório.
+    // ------------------------------------------------------------
+    case 'create_task': {
+      const cfg = step.step_config as CreateTaskStepConfig
+      if (!args.contactId) throw new Error('create_task precisa de um contato')
+      if (!cfg.responsavel_user_id) throw new Error('create_task precisa de um responsável')
+
+      const titulo = normalizarTitulo(await interpolate(cfg.titulo ?? '', args))
+      if (!titulo) throw new Error('create_task precisa de um título (1–200 caracteres)')
+      const descricao = normalizarDescricao(await interpolate(cfg.descricao ?? '', args))
+      if (descricao === undefined) throw new Error('create_task: descrição longa demais')
+
+      const hora = normalizarHora(cfg.hora)
+      if (hora === undefined) throw new Error('create_task: hora deve ser HH:MM')
+
+      // ⚠️ "Hoje" é o dia em BRASÍLIA, não no contêiner (que roda em UTC):
+      // depois das 21h os dois discordam, e a tarefa nasceria com prazo de
+      // amanhã sem ninguém ter pedido.
+      const hoje = diaNoFuso(new Date(), FUSO_DO_ESCRITORIO)
+      const vence_em = somarDias(hoje, Number(cfg.prazo_em_dias) || 0)
+
+      // Uma consulta que responde duas coisas: o responsável é membro desta
+      // conta? E quais nomes congelar nas colunas.
+      const autorId = args.automation.user_id
+      const { data: perfis, error: erroPerfis } = await db
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .eq('account_id', args.automation.account_id)
+        .in('user_id', [autorId, cfg.responsavel_user_id])
+      if (erroPerfis) throw new Error(`create_task: leitura de perfis falhou: ${erroPerfis.message}`)
+
+      const nomeDe = (id: string): string | null => {
+        const p = (perfis ?? []).find((x) => x.user_id === id)
+        const nome = (p?.full_name as string | null)?.trim()
+        return nome || ((p?.email as string | null) ?? null)
+      }
+      if (!(perfis ?? []).some((p) => p.user_id === cfg.responsavel_user_id)) {
+        throw new Error('create_task: responsável não é membro desta conta')
+      }
+
+      const { data: tarefa, error: erroTarefa } = await db
+        .from('cb_tasks')
+        .insert({
+          account_id: args.automation.account_id,
+          contact_id: args.contactId,
+          // O AUTOR da automação, que é quem o projeto usa como responsável
+          // de registro em todo caminho sem gente na tela. Pode ser null se
+          // ele já saiu — a coluna é ON DELETE SET NULL de qualquer forma.
+          criador_user_id: autorId,
+          responsavel_user_id: cfg.responsavel_user_id,
+          criador_nome: nomeDe(autorId),
+          responsavel_nome: nomeDe(cfg.responsavel_user_id),
+          titulo,
+          descricao,
+          vence_em,
+          vence_as: hora,
+          importante: cfg.importante === true,
+          tipo: 'tarefa',
+        })
+        .select('id')
+        .single()
+      if (erroTarefa) throw new Error(`create_task falhou: ${erroTarefa.message}`)
+
+      // ⚠️ AVISA MESMO QUANDO O RESPONSÁVEL É O AUTOR DA AUTOMAÇÃO — e aqui
+      // divergimos da rota de propósito. Lá o silêncio existe porque a pessoa
+      // ACABOU de escrever a tarefa e não quer sino do próprio gesto; aqui
+      // ela escreveu uma REGRA, possivelmente meses antes, e o aviso é o
+      // ponto: é ele que diz que um contrato fechou agora.
+      //
+      // Best-effort, como na rota: perder o sino é chato, perder a tarefa que
+      // a automação abriu é pior. O passo não falha por causa dele.
+      const { error: erroSino } = await db.from('notifications').insert({
+        account_id: args.automation.account_id,
+        user_id: cfg.responsavel_user_id,
+        type: 'task_assigned',
+        // Nulo de propósito: a tela roteia por `task_id`; com
+        // `conversation_id` o clique cairia no fio em vez da tarefa.
+        contact_id: args.contactId,
+        task_id: tarefa.id,
+        actor_user_id: autorId,
+        // Texto cru, sem dicionário — como o trigger da 027 e a rota.
+        title: `A automação "${args.automation.name}" abriu uma tarefa para você`,
+        body: titulo,
+      })
+      if (erroSino) {
+        console.error('[automations] create_task: aviso não saiu:', erroSino.message)
+        return `tarefa criada (${tarefa.id}), sem aviso`
+      }
+      return `tarefa criada (${tarefa.id})`
     }
 
     default:
@@ -1643,7 +1760,14 @@ function cadeiaDoContexto(args: ExecuteArgs): string[] {
 }
 
 function waitMs(cfg: WaitStepConfig): number {
-  const unitMs = cfg.unit === 'days' ? 86_400_000 : cfg.unit === 'hours' ? 3_600_000 : 60_000
+  const unitMs =
+    cfg.unit === 'days'
+      ? 86_400_000
+      : cfg.unit === 'hours'
+        ? 3_600_000
+        : cfg.unit === 'seconds'
+          ? 1_000
+          : 60_000
   return Math.max(1_000, cfg.amount * unitMs)
 }
 
@@ -1664,7 +1788,24 @@ function waitMs(cfg: WaitStepConfig): number {
 
 interface DadosDoContato {
   contato: { name: string; phone: string; email: string; company: string } | null
+  /**
+   * Para texto que GENTE lê: campo de data já formatado ("30/08/2026 às
+   * 16:00h").
+   */
   campos: Record<string, string>
+  /**
+   * ⚠️ O MESMO campo, exatamente como está guardado — e existe porque duas
+   * saídas de `interpolate` não são texto para gente: `update_contact_field`
+   * ESCREVE no banco e `send_webhook` manda para uma máquina.
+   *
+   * Copiar um campo de data para outro com o valor formatado deixaria o
+   * destino ilegível para o `<input type="datetime-local">` e, pior, para a
+   * varredura de lembretes: `cb_para_timestamp('30/08/2026 às 16:00h')`
+   * devolve NULL, e o lembrete simplesmente NUNCA sai — sem erro em lugar
+   * nenhum. E um consumidor de webhook que esperava ISO passaria a receber
+   * data em português. Achado do Codex no PR #152.
+   */
+  camposCru: Record<string, string>
   conversationId: string | null
 }
 
@@ -1681,7 +1822,8 @@ function dadosDoContato(args: ExecuteArgs): Promise<DadosDoContato> {
 
 async function carregarDadosDoContato(args: ExecuteArgs): Promise<DadosDoContato> {
   const conversaDoContexto = args.context.conversation_id ?? null
-  if (!args.contactId) return { contato: null, campos: {}, conversationId: conversaDoContexto }
+  if (!args.contactId)
+    return { contato: null, campos: {}, camposCru: {}, conversationId: conversaDoContexto }
   const db = supabaseAdmin()
   const accountId = args.automation.account_id
   const [contato, valores, conversa] = await Promise.all([
@@ -1692,9 +1834,11 @@ async function carregarDadosDoContato(args: ExecuteArgs): Promise<DadosDoContato
       .eq('account_id', accountId)
       .maybeSingle(),
     // `contact_custom_values` não tem `account_id`: a conta vem pelo campo.
+    // `field_type` vem junto porque campo de DATA guarda ISO em UTC e não
+    // pode sair assim numa mensagem — ver a formatação logo abaixo.
     db
       .from('contact_custom_values')
-      .select('value, custom_fields(field_key, account_id)')
+      .select('value, custom_fields(field_key, field_type, account_id)')
       .eq('contact_id', args.contactId),
     conversaDoContexto
       ? Promise.resolve({ data: null })
@@ -1709,13 +1853,22 @@ async function carregarDadosDoContato(args: ExecuteArgs): Promise<DadosDoContato
   ])
 
   const campos: Record<string, string> = {}
+  const camposCru: Record<string, string> = {}
   for (const linha of (valores.data ?? []) as Array<{
     value: string | null
-    custom_fields: { field_key?: string; account_id?: string } | null
+    custom_fields: { field_key?: string; field_type?: string; account_id?: string } | null
   }>) {
     const def = linha.custom_fields
     if (!def?.field_key || def.account_id !== accountId) continue
-    campos[def.field_key] = linha.value ?? ''
+    const bruto = linha.value ?? ''
+    camposCru[def.field_key] = bruto
+    // ⚠️ EM TEXTO PARA GENTE, campo de data sai FORMATADO. A coluna guarda
+    // ISO em UTC (`campo-data.ts`), então o valor cru numa mensagem chega ao
+    // cliente como "2026-08-30T19:00:00.000Z" — e, pior que feio, com a hora
+    // errada por três horas para quem souber lê-lo. Lixo no campo (é TEXT
+    // livre) cai no `|| bruto`: melhor o que a pessoa digitou do que nada.
+    campos[def.field_key] =
+      def.field_type === TIPO_DATA ? formatarParaMensagem(bruto) || bruto : bruto
   }
   const c = contato.data as { name?: string | null; phone?: string | null; email?: string | null; company?: string | null } | null
   return {
@@ -1723,6 +1876,7 @@ async function carregarDadosDoContato(args: ExecuteArgs): Promise<DadosDoContato
       ? { name: c.name ?? '', phone: c.phone ?? '', email: c.email ?? '', company: c.company ?? '' }
       : null,
     campos,
+    camposCru,
     conversationId: conversaDoContexto ?? ((conversa.data as { id?: string } | null)?.id ?? null),
   }
 }
@@ -1736,7 +1890,18 @@ function linkDoCrm(caminho: string): string {
 const RE_VARIAVEL = /\{\{\s*([\w.]+)\s*\}\}/g
 const RE_CITA_CONTATO = /\{\{\s*(contact|conversation)\./
 
-async function interpolate(s: string, args: ExecuteArgs): Promise<string> {
+/**
+ * ⚠️ `cru: true` para as saídas que NÃO são texto para gente —
+ * `update_contact_field` (escreve no banco) e `send_webhook` (fala com uma
+ * máquina). Só o campo de DATA difere entre os dois modos, e a diferença
+ * importa: formatado, o valor copiado para outro campo de data fica ilegível
+ * para a tela e invisível para a varredura de lembretes.
+ */
+async function interpolate(
+  s: string,
+  args: ExecuteArgs,
+  opcoes: { cru?: boolean } = {},
+): Promise<string> {
   if (!s) return ''
   const dados = RE_CITA_CONTATO.test(s) ? await dadosDoContato(args) : null
   return s.replace(RE_VARIAVEL, (_, key) => {
@@ -1748,7 +1913,10 @@ async function interpolate(s: string, args: ExecuteArgs): Promise<string> {
     // saber por qual número o cliente falou, sem depender do webhook nativo.
     if (ns === 'channel' && prop === 'id') return String(args.context.channel_id ?? '')
     if (ns === 'contact' && dados) {
-      if (prop === 'campo') return dados.campos[partes.slice(2).join('.')] ?? ''
+      if (prop === 'campo') {
+        const chave = partes.slice(2).join('.')
+        return (opcoes.cru ? dados.camposCru : dados.campos)[chave] ?? ''
+      }
       // "Campanha - Conjunto - Anúncio" dos campos de traqueamento da 949,
       // SÓ as partes preenchidas: escrito com três `contact.campo.*` no
       // texto, um contato sem anúncio saía como " -  - " (medido no

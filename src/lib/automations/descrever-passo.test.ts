@@ -128,7 +128,7 @@ const TIPOS_DE_PASSO = [
   'remove_tag', 'assign_conversation', 'update_contact_field', 'create_deal',
   'move_deal_stage', 'set_deal_status', 'run_automation', 'stop_automation',
   'run_flow', 'stop_flow', 'set_ai', 'send_media', 'wait', 'condition',
-  'send_webhook', 'close_conversation', 'send_to_number',
+  'send_webhook', 'close_conversation', 'send_to_number', 'create_task',
 ] as const
 
 // Configs que exercitam TODAS as variantes de chave, não só o caminho padrão.
@@ -142,6 +142,7 @@ const VARIANTES: Array<[string, Record<string, unknown>]> = [
   ['send_media', { kind: 'video' }],
   ['send_media', { kind: 'document' }],
   ['send_media', { kind: 'audio' }],
+  ['wait', { unit: 'seconds' }],
   ['wait', { unit: 'minutes' }],
   ['wait', { unit: 'hours' }],
   ['wait', { unit: 'days' }],

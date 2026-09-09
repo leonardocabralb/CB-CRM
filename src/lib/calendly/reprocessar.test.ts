@@ -77,7 +77,7 @@ describe("varsDaLinha", () => {
     for (const guardadas of [{}, null, undefined, [], "texto"]) {
       const vars = varsDaLinha({ ...LINHA, variaveis: guardadas }, a);
       expect(vars.agendamento_nome).toBe("Joel");
-      expect(vars.agendamento_data).toBe("09/09/2026 16:00");
+      expect(vars.agendamento_data).toBe("09/09/2026 às 16:00h");
     }
   });
 

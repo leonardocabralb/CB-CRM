@@ -46,6 +46,49 @@ export function deEntradaLocal(local: string | null | undefined): string {
   return d.toISOString()
 }
 
+/**
+ * O fuso do escritório. O Brasil não tem horário de verão desde 2019; se
+ * voltar, muda aqui.
+ */
+export const FUSO_DO_ESCRITORIO = 'America/Sao_Paulo'
+
+/**
+ * "2026-08-30T19:00:00Z" → "30/08/2026 às 16:00h" no fuso do escritório.
+ *
+ * É a forma que vai para MENSAGEM — o lembrete de reunião que o cliente
+ * recebe e o aviso de agendamento que a equipe recebe. Formato escolhido pelo
+ * operador em 2026-09-08.
+ *
+ * ⚠️ Montada por `formatToParts`, nunca por `toLocaleString`: a forma varia
+ * entre majors do Node (o PR #66 reprovou no CI por `Intl` divergindo entre
+ * 22 e 24), e aqui ela viaja para o WhatsApp do cliente.
+ *
+ * ⚠️ E o FUSO é fixo no do escritório, não o do servidor: o contêiner roda em
+ * UTC, então sem ele toda reunião da tarde sairia três horas adiantada na
+ * mensagem — sem erro nenhum, só chegando errada. `formatarData` (acima) é o
+ * oposto de propósito: ela é para a TELA, onde o certo é a hora de quem olha.
+ */
+export function formatarParaMensagem(
+  iso: string | null | undefined,
+  fuso: string = FUSO_DO_ESCRITORIO,
+): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const partes = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: fuso,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(d)
+  const p = (tipo: Intl.DateTimeFormatPartTypes) =>
+    partes.find((x) => x.type === tipo)?.value ?? ''
+  return `${p('day')}/${p('month')}/${p('year')} às ${p('hour')}:${p('minute')}h`
+}
+
 /** Rótulo legível de um valor guardado, para exibição fora do formulário. */
 export function formatarData(iso: string | null | undefined): string {
   if (!iso) return ''

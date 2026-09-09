@@ -2,6 +2,7 @@ import type {
   AutomationRefStepConfig,
   AutomationStepType,
   CreateDealStepConfig,
+  CreateTaskStepConfig,
   MoveDealStepConfig,
   RunFlowStepConfig,
   SendMediaStepConfig,
@@ -144,6 +145,13 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
         alvoSumiu: false,
       }
     }
+
+    case 'create_task':
+      // O TÍTULO, não o responsável: é ele que distingue duas tarefas no mesmo
+      // quadro ("Conferir documentação" × "Ligar para o cliente"). O nome de
+      // quem recebe não cabe em `NomesConhecidos` — a tela da grade não
+      // carrega membros — e um id cru ali seria lido como se fosse o nome.
+      return simples(recortar((cfg as unknown as CreateTaskStepConfig).titulo))
 
     default:
       // send_buttons, send_list, assign_conversation, stop_flow, condition,

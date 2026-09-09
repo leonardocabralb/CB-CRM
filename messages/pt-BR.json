@@ -1128,13 +1128,15 @@
         "send_media_video": "Enviar vídeo",
         "send_media_document": "Enviar documento",
         "send_media_audio": "Enviar áudio",
+        "wait_seconds": "Aguardar {quantidade} s",
         "wait_minutes": "Aguardar {quantidade} min",
         "wait_hours": "Aguardar {quantidade} h",
         "wait_days": "Aguardar {quantidade} dias",
         "condition": "Verificar uma condição",
         "send_webhook": "Disparar webhook",
         "close_conversation": "Encerrar a conversa",
-        "send_to_number": "Avisar o número: {alvo}"
+        "send_to_number": "Avisar o número: {alvo}",
+        "create_task": "Criar tarefa: {alvo}"
       },
       "cancelar": "Cancelar",
       "salvar": "Salvar",
@@ -1583,7 +1585,8 @@
         "stop_flow": "Parar robô",
         "set_ai": "Assistente de IA",
         "send_media": "Enviar arquivo",
-        "send_to_number": "Avisar um número"
+        "send_to_number": "Avisar um número",
+        "create_task": "Criar tarefa"
       },
       "triggers": {
         "new_message_received": {
@@ -1637,6 +1640,10 @@
         "webhook_received": {
           "label": "Webhook recebido",
           "hint": "Quando um sistema de fora (Typebot, n8n…) aciona um dos seus webhooks de entrada. Crie-os em Configurações → Webhooks. O contato é achado pelo telefone que vem no payload."
+        },
+        "manual": {
+          "label": "Manual (só pelo botão)",
+          "hint": "Nunca dispara sozinha. Ela roda quando você a executa dentro de uma conversa, pelo menu + do compositor → Executar automação."
         }
       },
       "trigger": "Gatilho",
@@ -1717,6 +1724,7 @@
         "amountLabel": "Quantidade",
         "unitLabel": "Unidade",
         "units": {
+          "seconds": "Segundos",
           "minutes": "Minutos",
           "hours": "Horas",
           "days": "Dias"
@@ -1755,7 +1763,8 @@
         "placeholderNotifyText": "Novo agendamento: {nome} em {data}",
         "notifyChannelInherit": "A conversa do número (ou a conexão padrão)",
         "notifyChannelHelp": "Escolhendo uma conexão, o aviso sai SEMPRE por ela — e falha se ela não estiver disponível, em vez de sair por outro número.",
-        "variaveisDeTexto": "Variáveis: {lista} — a chave do campo é a do catálogo (Configurações → Campos e etiquetas)."
+        "variaveisDeTexto": "Variáveis: {lista} — a chave do campo é a do catálogo (Configurações → Campos e etiquetas).",
+        "segundosAviso": "Segundos não são exatos: a espera acorda no ciclo seguinte do agendador. Serve para separar mensagens, não para cronometrar."
       },
       "delete": "Excluir",
       "stages": {
@@ -1848,6 +1857,16 @@
         "nomeHelp": "Só documentos — o WhatsApp ignora nos outros tipos.",
         "legendaLabel": "Legenda (opcional)",
         "audioSemLegenda": "Áudio não tem legenda. A nota de voz do WhatsApp não carrega texto — o que fosse escrito aqui apareceria no fio para a sua equipe e nunca chegaria ao cliente."
+      },
+      "tarefa": {
+        "tituloLabel": "Título da tarefa",
+        "descricaoLabel": "Descrição (opcional)",
+        "responsavelLabel": "Para quem",
+        "prazoLabel": "Prazo (dias)",
+        "prazoHint": "0 = hoje, 1 = amanhã.",
+        "horaLabel": "Hora (opcional)",
+        "horaHint": "Em branco = o dia inteiro.",
+        "importanteLabel": "Marcar como importante"
       }
     }
   },

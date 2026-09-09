@@ -26,15 +26,15 @@ const base: Agendamento = {
 
 describe("formatarDataHora", () => {
   it("UTC → hora de Brasília, dd/mm/aaaa hh:mm (o exemplo do pedido)", () => {
-    expect(formatarDataHora("2026-08-26T16:45:00.000000Z")).toBe("26/08/2026 13:45");
+    expect(formatarDataHora("2026-08-26T16:45:00.000000Z")).toBe("26/08/2026 às 13:45h");
   });
 
   it("meia-noite não vira 24:00", () => {
-    expect(formatarDataHora("2026-08-27T03:00:00Z")).toBe("27/08/2026 00:00");
+    expect(formatarDataHora("2026-08-27T03:00:00Z")).toBe("27/08/2026 às 00:00h");
   });
 
   it("respeita o fuso pedido", () => {
-    expect(formatarDataHora("2026-08-26T16:45:00Z", "UTC")).toBe("26/08/2026 16:45");
+    expect(formatarDataHora("2026-08-26T16:45:00Z", "UTC")).toBe("26/08/2026 às 16:45h");
   });
 
   it("lixo vira vazio", () => {
@@ -48,7 +48,7 @@ describe("variaveisDoAgendamento", () => {
     const v = variaveisDoAgendamento(base);
     expect(v.agendamento_nome).toBe("Marcelo");
     expect(v.agendamento_evento).toBe("Reunião com Advogado - Kommo");
-    expect(v.agendamento_data).toBe("26/08/2026 13:45");
+    expect(v.agendamento_data).toBe("26/08/2026 às 13:45h");
     expect(v.agendamento_telefone).toBe("(96) 99112-6767");
     expect(v.agendamento_inicio).toBe("2026-08-26T16:45:00.000000Z");
     expect(v.agendamento_link).toBe("https://meet.google.com/abc");
