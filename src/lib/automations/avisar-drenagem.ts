@@ -25,9 +25,12 @@ export function avisarDrenagemDeFunil(): void {
   })
     .then((res) => {
       // ⚠️ A rota AGUARDA a drenagem antes de responder, então neste ponto as
-      // automações daquele movimento já rodaram: ou criaram espera, ou
-      // terminaram. É o único instante em que dá para avisar a tela sem
-      // adivinhar — e sem ele, arrastar um card acendia a automação no
+      // automações já rodaram — mas NÃO necessariamente as deste card: o cron
+      // de 15 s pode ter reivindicado o evento primeiro, e aí o trabalho
+      // termina noutro processo, depois desta resposta. Ainda assim é o
+      // instante mais tarde que dá para avisar a tela sem adivinhar, e a
+      // consulta refeita mostra o que já houver — sem o aviso não haveria
+      // consulta nenhuma, e arrastar um card acendia a automação no
       // servidor e o raio do quadro só aparecia no recarregamento seguinte,
       // com o inverso valendo igual: o raio ficava aceso o expediente inteiro
       // depois de a fila esvaziar (Codex, PR #155).

@@ -604,6 +604,18 @@ novo:
   pode voltar vazio (o `appendResults` engole erro de leitura e regrava só o
   trecho novo) e a memória é o único lugar que conhece o trecho em curso.
   Medido de ponta a ponta em 09/09.
+  ⚠️⚠️ **São TRÊS fechadores, e os outros dois leem o registro por consulta
+  própria (`sinaisGravados`)**: o escopo raiz SEM passos (a retomada cai aqui
+  sempre que o "Aguardar" é o último passo — o motor enfileira `position + 1`
+  sem perguntar se sobrou algo) e a retomada de RAMO, que fechava por
+  `desfechoDoRetorno` e nunca podia dizer `barrada`. A primeira versão da
+  correção só alcançou o fechamento normal da raiz, e dois céticos da revisão
+  MEDIRAM a divergência: a mesma automação fecha `barrada` com a espera na raiz
+  e `concluida` com ela dentro de um ramo. ⚠️ E isto não é borda neste
+  escritório: ramo vazio NÃO para o escopo de fora, então uma trava só gateia
+  de verdade com o corpo DENTRO do ramo — é o desenho das oito automações
+  pedidas (a tag do contrato fechado, o "ainda está em No Show?" antes de cada
+  uma das dez).
 - ⚠️ **`barrada` é ESTREITA**: só quando a execução não fez trabalho nenhum.
   `[enviar][condição de ramo vazio]` é `concluida`, porque a mensagem SAIU.
   E o critério é "fez trabalho?", NUNCA a ordem de `steps_executed`, que não

@@ -55,10 +55,14 @@ import type { AutomationLogDesfecho, AutomationLogStepResult } from "@/types";
  * para isso acontecer numa tarde (Codex, PR #155).
  *
  * O que sobra de risco, escrito para não virar surpresa: acima de 200
- * execuções recentes de uma mesma automação para o MESMO cliente, os grupos
- * mais antigos deixam de caber aqui. A saída é o histórico DAQUELA automação
- * (`/automations/<id>/logs`), que lista as 100 últimas execuções sem colapso,
- * com o nome do cliente em cada linha — conferido, é o que aquela tela faz.
+ * execuções recentes para o MESMO cliente, os grupos mais antigos deixam de
+ * caber e somem do fio. ⚠️ E não há resgate: `/automations/<id>/logs` também
+ * ordena por recência e também tem teto (100), então no cenário em que ESTE
+ * corte morde — muita execução recente do mesmo cliente — aquela tela mostra
+ * a mesma janela, não uma mais antiga. Uma versão desta nota a oferecia como
+ * saída; era promessa que a tela não cumpre (Codex, PR #155, 2ª rodada).
+ * Quem precisar de verdade do histórico fundo terá de paginar a consulta —
+ * hoje não existe caminho de tela para isso.
  */
 const LIMITE_DE_LINHAS = 200;
 

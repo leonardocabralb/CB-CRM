@@ -347,7 +347,21 @@ export async function resumePendingExecution(pending: {
     // repete a escrita: `executeStepsFrom` já fechou lá dentro.
     if (pending.parent_step_id !== null) {
       const desfecho = desfechoDoRetorno(retorno)
-      if (desfecho) await fecharLog(pending.log_id, desfecho)
+      // ⚠️⚠️ 'concluida' aqui é PALPITE, não medição: `desfechoDoRetorno` só
+      // enxerga o status do escopo, e o escopo de ramo joga fora o
+      // `barrouPorCondicao` que calculou (sai pelo `else`, sem acumulador).
+      // Medido no harness: a MESMA automação fecha 'barrada' com a espera na
+      // raiz e 'concluida' com ela dentro de um ramo. E espera dentro de ramo
+      // é a forma NORMAL das automações deste escritório — a trava por
+      // etiqueta e o "ainda está em No Show?" só gateiam de verdade com o
+      // corpo DENTRO do ramo. O registro persistido carrega o `skipped`, então
+      // é dele que a resposta sai (Codex, PR #155, 2ª rodada).
+      if (desfecho === 'concluida') {
+        const sinais = await sinaisGravados(pending.log_id)
+        await fecharLog(pending.log_id, desfechoDoEscopo({ falhou: false, ...sinais }))
+      } else if (desfecho) {
+        await fecharLog(pending.log_id, desfecho)
+      }
     }
   } catch (err) {
     console.error('[automations] resume failed:', err)
@@ -572,11 +586,21 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
   if (!steps || steps.length === 0) {
     if (args.parentStepId === null && args.logId) {
       await finalizeLog(args.logId, 'success', null)
-      // ⚠️ `concluida`, não `barrada`: aqui não houve condição nenhuma — a
-      // automação simplesmente não tem passo no escopo raiz. É uma mentira
-      // pequena e deliberada; "barrada" significa "uma condição desviou", e
-      // usá-la aqui seria falso de outro jeito.
-      await fecharLog(args.logId, 'concluida', args.esperaEmCurso)
+      // ⚠️⚠️ Este ramo tem DOIS moradores, e por isso o desfecho sai do
+      // REGISTRO em vez de ser cravado. No disparo fresco de uma automação sem
+      // passo nenhum o histórico é vazio e a resposta é `concluida`, como
+      // sempre foi. Mas a RETOMADA cai aqui também, sempre que o "Aguardar" é
+      // o último passo (o motor enfileira `position + 1` sem perguntar se
+      // sobrou algo) ou quando o operador apaga os passos seguintes com uma
+      // execução estacionada — e aí a premissa da nota antiga ("não houve
+      // condição nenhuma") é falsa: pode ter havido barreira e zero trabalho
+      // horas antes, noutra chamada (Codex, PR #155, 2ª rodada).
+      const sinais = await sinaisGravados(args.logId)
+      await fecharLog(
+        args.logId,
+        desfechoDoEscopo({ falhou: false, ...sinais }),
+        args.esperaEmCurso,
+      )
       return 'success'
     }
     return null
@@ -2118,6 +2142,39 @@ async function finalizeLog(
  * Nunca lança: é a última coisa que roda numa execução, e derrubá-la aqui
  * transformaria uma automação bem-sucedida em erro no log.
  */
+/**
+ * Os sinais de trabalho/barreira do que JÁ está gravado neste log.
+ *
+ * Uma consulta, e só nos dois fechamentos que não têm o histórico em mão — o
+ * escopo raiz sem passos e a retomada de ramo. O fechamento normal do escopo
+ * raiz não passa por aqui: `appendResults` já devolve o mesclado de graça.
+ *
+ * ⚠️ Leitura que falha responde "nada consta", não estoura: é o mesmo trato
+ * do resto do fechamento — entre afirmar errado e calar, cala. O preço é
+ * cair no `concluida`, que é o desfecho menos alarmante dos três.
+ */
+async function sinaisGravados(
+  logId: string | null,
+): Promise<{ fezTrabalho: boolean; barrouPorCondicao: boolean }> {
+  const vazio = { fezTrabalho: false, barrouPorCondicao: false }
+  if (!logId) return vazio
+  try {
+    const { data, error } = await supabaseAdmin()
+      .from('automation_logs')
+      .select('steps_executed')
+      .eq('id', logId)
+      .maybeSingle()
+    if (error) {
+      console.error('[automations] sinaisGravados falhou:', error.message)
+      return vazio
+    }
+    return sinaisDoHistorico(data?.steps_executed)
+  } catch (err) {
+    console.error('[automations] sinaisGravados estourou:', err)
+    return vazio
+  }
+}
+
 async function fecharLog(
   logId: string | null,
   desfecho: Desfecho,

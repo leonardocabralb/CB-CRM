@@ -1740,6 +1740,11 @@ describe("desfecho da execução (985)", () => {
 
     expect(desfechoGravado()?.desfecho).toBe("falhou");
     expect(statusGravado()).toBe("failed");
+    // ⚠️ A FALHA TAMBÉM PRECISA DA HORA DE FIM, e sem esta linha o pino não
+    // existia: um mutante que gateasse a 2ª escrita em `desfecho !== 'falhou'`
+    // passava na suíte inteira (75/75) enquanto deixava toda execução falhada
+    // invisível no fio, que exige as duas colunas (medido pela revisão).
+    expect(horaDeFimGravada()).toBeTruthy();
   });
 
   it("CRÍTICO: espera VIVA adia a HORA DE FIM, mas o desfecho é gravado", async () => {
@@ -1924,5 +1929,104 @@ describe("desfecho: os dois furos da 2ª rodada da revisão", () => {
     });
 
     expect(desfechoGravado()?.desfecho).toBe("barrada");
+  });
+});
+
+// ============================================================
+// Os DOIS fechadores irmãos que a 1ª tentativa da correção #2 não alcançou
+// (medidos por dois céticos da revisão, que não conseguiram refutar).
+//
+// ⚠️ Importa mais do que parece: as automações deste escritório põem o
+// "Aguardar" DENTRO do ramo da condição — é assim que a trava por etiqueta e o
+// "ainda está em No Show?" gateiam de verdade, porque ramo vazio NÃO para o
+// escopo de fora. Ou seja, o caminho de ramo é o comum aqui, não a borda.
+// ============================================================
+describe("desfecho: os fechadores que não têm o histórico em mão", () => {
+  it("retomada de RAMO sem trabalho, com barreira no registro, é 'barrada'", async () => {
+    h.state.automations = [automacaoSimples("a-resume")];
+    // O escopo do ramo não tem mais passo depois da espera.
+    h.state.steps = [];
+    h.state.historicoDoLog = [
+      { step_id: "s-cond", step_type: "condition", status: "skipped", detail: "branch=no" },
+      { step_id: "s-esperou", step_type: "wait", status: "success" },
+    ];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: "s-pai",
+      branch: "yes",
+      next_step_position: 1,
+      context: {},
+    });
+
+    expect(desfechoGravado()?.desfecho).toBe("barrada");
+  });
+
+  it("retomada de RAMO com trabalho no registro continua 'concluida'", async () => {
+    // A correção não pode virar "tudo é barrada": mensagem que saiu antes da
+    // espera manda no desfecho.
+    h.state.automations = [automacaoSimples("a-resume")];
+    h.state.steps = [];
+    h.state.historicoDoLog = [
+      { step_id: "s-enviou", step_type: "send_message", status: "success" },
+      { step_id: "s-cond", step_type: "condition", status: "skipped", detail: "branch=no" },
+    ];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: "s-pai",
+      branch: "yes",
+      next_step_position: 1,
+      context: {},
+    });
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+  });
+
+  it("retomada da RAIZ sem passo restante lê o registro em vez de cravar 'concluida'", async () => {
+    // Alcançável sem nada de exótico: o motor enfileira `position + 1` sem
+    // perguntar se sobrou passo, então "Aguardar" como ÚLTIMO passo cai aqui.
+    h.state.automations = [automacaoSimples("a-resume")];
+    h.state.steps = [];
+    h.state.historicoDoLog = [
+      { step_id: "s-cond", step_type: "condition", status: "skipped", detail: "branch=no" },
+      { step_id: "s-esperou", step_type: "wait", status: "success" },
+    ];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: {},
+    });
+
+    expect(desfechoGravado()?.desfecho).toBe("barrada");
+  });
+
+  it("automação SEM passo nenhum, no disparo fresco, continua 'concluida'", async () => {
+    // O outro morador do mesmo ramo: registro vazio, e a resposta de sempre.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [];
+
+    await dispara();
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
   });
 });
