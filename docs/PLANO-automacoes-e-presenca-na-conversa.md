@@ -290,5 +290,37 @@ staleness de 75 s resolve (mesma filosofia da 024 — nunca confiar em unload).
 - Sem coluna "quem parou/cancelou" (nem o upstream registra quem pausou);
   registrado como limitação, não como dívida.
 - Sem presença na lista de conversas, sem histórico de logs na aba (v2).
+
+## v2 — 2026-09-09 (migration 985): o desfecho, o fio e a marca de fora
+
+O que ficou de fora acima virou esta entrega, com uma parte que o plano
+original não previa: **o motor não sabia como a execução tinha terminado**.
+
+- **Motor**: `automation_logs.desfecho` + `finalizado_em`, escritos por
+  `fecharLog` (escritor único, com guarda de espera viva). A execução barrada
+  por uma condição deixa de ser registrada como "concluída com sucesso" —
+  era o defeito que motivou o pedido do operador.
+- **Fio**: três pesos (cartão de falha, pílula âmbar de barrada, pílula cinza
+  de conclusão), com a régua de colapso e teto em `lib/execucoes/desfecho.ts`.
+- **Aba**: seção "Já rodou" — é ela que faltava para o cartão de falha ter
+  destino, e é onde o motivo cru do motor aparece.
+- **Fora da conversa**: marca na linha da lista e no card do funil, lendo a
+  FILA por uma rota de resumo em lote.
+
+**Medido no preview (produção, 1600×1000 e 375×812), com quatro automações de
+teste executadas de verdade e apagadas depois:**
+
+- Os quatro estados gravaram certo (`barrada` com `status` ainda `'success'`,
+  `concluida`, `falhou` com motivo, e a espera NÃO fechada).
+- Colapso funcionando (duas execuções do mesmo dia = um item com "2×").
+- Marca acesa com espera pendente, apagada com a fila vazia.
+- 375px sem rolagem horizontal; contraste conferido nos dois temas.
+- Visibilidade pela lente do perfil "Gestor Geral", com a policy
+  `is_account_member` conferida à parte (a lente não é barreira).
+
+**Três defeitos que só o teste na tela pegou** (nenhum reprovava nos testes
+unitários): a espera em curso travando o próprio fechamento; o estado vazio da
+aba engolindo a seção nova; e as cores fixas de tema escuro ilegíveis no tema
+claro. Os dois primeiros ganharam pino.
 - Não fundir com `member_presence` do upstream: tabela nova isolada = zero
   conflito de merge.
