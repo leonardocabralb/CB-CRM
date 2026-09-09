@@ -208,19 +208,34 @@ export async function POST(request: Request) {
           // MANTENDO o texto antigo: a bolha passa a mostrar "editada"
           // (sem o "era: …", porque `text_before_edit` fica nulo) e o
           // operador sabe que o cliente mudou algo. Inventar texto ou apagar
-          // o original seriam as duas mentiras possíveis. Sem escopo de
-          // canal, pela mesma razão do bloco de `messages.update`: o
-          // `message_id` é único por mensagem. Sem isto o item caía em
-          // `normalizeUpsert` como texto vazio e virava bolha em branco.
+          // o original seriam as duas mentiras possíveis. Sem isto o item
+          // caía em `normalizeUpsert` como texto vazio e virava bolha em branco.
           const edicao = edicaoCifrada(item.message);
           if (edicao) {
-            const { error: erroEdicao } = await supabaseAdmin()
+            // ⚠️ Escopo de CONTA (Codex, PR #175): `message_id` só é único por
+            // CONVERSA (040) — o mesmo wamid pode existir em duas contas quando
+            // as duas estão na mesma conversa (grupo com dois números nossos,
+            // ou uma segunda instalação no mesmo chat). Primeiro as linhas
+            // DESTA conta, depois o carimbo por `id`.
+            const { data: alvos, error: erroBusca } = await supabaseAdmin()
               .from('messages')
-              .update({ edited_at: new Date().toISOString() })
+              .select('id, conversations!inner(account_id)')
               .eq('message_id', edicao.targetId)
+              .eq('conversations.account_id', route.accountId)
               .is('edited_at', null);
-            if (erroEdicao) {
-              console.error('[evolution/webhook] carimbar edição cifrada falhou:', erroEdicao.message);
+            if (erroBusca) {
+              console.error('[evolution/webhook] achar alvo da edição cifrada falhou:', erroBusca.message);
+              continue;
+            }
+            const ids = (alvos ?? []).map((a) => a.id as string);
+            if (ids.length > 0) {
+              const { error: erroEdicao } = await supabaseAdmin()
+                .from('messages')
+                .update({ edited_at: new Date().toISOString() })
+                .in('id', ids);
+              if (erroEdicao) {
+                console.error('[evolution/webhook] carimbar edição cifrada falhou:', erroEdicao.message);
+              }
             }
             continue;
           }
