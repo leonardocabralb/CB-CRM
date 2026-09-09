@@ -260,20 +260,23 @@ export function AbaAutomacoes({
     );
   }
 
-  if (robos.length === 0 && esperas.length === 0) {
-    return (
-      <div className="py-8 text-center">
-        <Zap className="text-muted-foreground/40 mx-auto h-8 w-8" />
-        <p className="text-muted-foreground mt-2 text-sm">{t('nadaRodando')}</p>
-        <p className="text-muted-foreground/70 mt-1 text-xs">{t('dica')}</p>
-      </div>
-    );
-  }
-
   const agora = Date.now();
+  const nadaEmCurso = robos.length === 0 && esperas.length === 0;
 
   return (
     <div className="space-y-4">
+      {/* ⚠️ O vazio de "em execução" NÃO devolve mais a aba inteira. Ele fazia
+          `return` antes da seção "Já rodou" — e o caso mais comum é
+          exatamente esse: nada rodando agora, várias execuções terminadas.
+          Medido no preview em 09/09: numa conversa sem espera pendente, o
+          histórico não aparecia em tela nenhuma. */}
+      {nadaEmCurso && (
+        <div className="py-6 text-center">
+          <Zap className="text-muted-foreground/40 mx-auto h-8 w-8" />
+          <p className="text-muted-foreground mt-2 text-sm">{t('nadaRodando')}</p>
+          <p className="text-muted-foreground/70 mt-1 text-xs">{t('dica')}</p>
+        </div>
+      )}
       {robos.length > 0 && (
         <div>
           <TituloDeSecao icon={<Bot className="h-3 w-3" />}>
@@ -423,7 +426,7 @@ export function AbaAutomacoes({
         ) : historicoFalhou ? (
           // ⚠️ Falha de leitura NÃO é "nada aconteceu": dizer vazio aqui
           // afirmaria que a automação não rodou quando só a consulta caiu.
-          <p className="text-amber-500/90 text-[11px]">{t('falhouCarga')}</p>
+          <p className="text-[11px] text-amber-700 dark:text-amber-400">{t('falhouCarga')}</p>
         ) : historico.length === 0 ? (
           <p className="text-muted-foreground/70 text-[11px]">{t('vazio')}</p>
         ) : (
@@ -456,9 +459,9 @@ function LinhaDoHistorico({
     item.desfecho === 'falhou' ? X : item.desfecho === 'barrada' ? GitBranch : Check;
   const cor =
     item.desfecho === 'falhou'
-      ? 'text-red-400'
+      ? 'text-red-600 dark:text-red-400'
       : item.desfecho === 'barrada'
-        ? 'text-amber-400'
+        ? 'text-amber-600 dark:text-amber-400'
         : 'text-primary';
 
   return (

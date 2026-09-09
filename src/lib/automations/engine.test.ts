@@ -95,7 +95,17 @@ vi.mock("./admin-client", () => {
       return { data: state.dealExistente, error: null };
     }
     if (table === "automation_pending_executions") {
-      if (type === "select") return { data: state.esperasVivas, error: null };
+      if (type === "select") {
+        // ⚠️ Respeita o `.neq('id', …)`: é ele que faz a guarda de `fecharLog`
+        // ignorar a espera que o cron está processando AGORA. Sem isto o mock
+        // devolveria a própria espera em curso e o pino do resume passaria
+        // por um motivo errado.
+        const excluido = ops.filters.find(([op, k]) => op === "neq" && k === "id")?.[2];
+        const vivas = excluido
+          ? state.esperasVivas.filter((e) => e.id !== excluido)
+          : state.esperasVivas;
+        return { data: vivas, error: null };
+      }
       return { data: null, error: null };
     }
     if (table === "cb_tasks") {
@@ -112,7 +122,20 @@ vi.mock("./admin-client", () => {
       }
       return { data: null, error: null };
     }
-    if (table === "automations") return { data: state.automations, error: null };
+    if (table === "automations") {
+      // ⚠️ Consulta POR ID (o resume e o `run_automation`) espera UM objeto —
+      // `.single()`. Devolver a lista fazia `automation.is_active` ser
+      // `undefined`, e o resume desistia achando a automação desligada: o
+      // pino do desfecho pós-espera reprovava por um motivo que não era o dele.
+      const porId = ops.filters.find(([op, k]) => op === "eq" && k === "id")?.[2];
+      if (porId) {
+        return {
+          data: state.automations.find((a) => a.id === porId) ?? null,
+          error: null,
+        };
+      }
+      return { data: state.automations, error: null };
+    }
     if (table === "automation_logs") {
       if (type === "insert") {
         state.logInserts.push(ops.payload as Record<string, unknown>);
@@ -159,6 +182,8 @@ vi.mock("./admin-client", () => {
       // `create_task` pergunta pelos DOIS perfis (autor e responsável) numa
       // consulta só — é ela que prova que o responsável é da conta.
       in: (k: string, v: unknown) => (ops.filters.push(["in", k, v]), b),
+      // A guarda de `fecharLog` exclui a espera em curso com `.neq('id', …)`.
+      neq: (k: string, v: unknown) => (ops.filters.push(["neq", k, v]), b),
       gte: (k: string, v: unknown) => (ops.recorte.push(["gte", k, v]), b),
       is: (k: string, v: unknown) => (ops.recorte.push(["is", k, v]), b),
       order: () => b,
@@ -202,7 +227,12 @@ const canalMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/cb-channels/engine-send", () => canalMock);
 
-import { dispararAutomacoes, runAutomationsForTrigger, triggerMatches } from "./engine";
+import {
+  dispararAutomacoes,
+  resumePendingExecution,
+  runAutomationsForTrigger,
+  triggerMatches,
+} from "./engine";
 import { engineSendText } from "./meta-send";
 import type { Automation, KeywordMatchTriggerConfig } from "@/types";
 import { diaNoFuso, somarDias } from "@/lib/tasks/prazo";
@@ -1683,6 +1713,63 @@ describe("desfecho da execução (985)", () => {
     h.state.esperasVivas = [{ id: "espera-1" }];
 
     await dispara();
+
+    expect(h.state.logUpdates.filter((u) => "desfecho" in u)).toHaveLength(0);
+  });
+});
+
+describe("desfecho depois de uma ESPERA (achado do teste ponta a ponta)", () => {
+  it("CRÍTICO: o resume fecha o log, ignorando a própria espera que está processando", async () => {
+    // ⚠️ Este pino nasceu de um defeito MEDIDO no preview em 09/09: a guarda
+    // de `fecharLog` enxergava a espera que o cron acabou de reivindicar
+    // (`status='running'`, que é ESTA execução), concluía que a automação
+    // continuava e nunca fechava. Resultado: toda automação com "Aguardar"
+    // terminava sem desfecho e ficava invisível no fio — para sempre.
+    h.state.automations = [automacaoSimples("a-resume")];
+    h.state.steps = [
+      { ...passoDeTrabalho("s-depois", 1), automation_id: "a-resume" },
+    ];
+    // A espera em curso está `running` e é a que o resume está processando.
+    h.state.esperasVivas = [{ id: "espera-em-curso" }];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: {},
+    });
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+  });
+
+  it("mas uma espera de OUTRO ramo, ainda viva, continua segurando o fechamento", async () => {
+    // A exceção é só para a espera em processamento. Outra pendente do mesmo
+    // log significa que a automação REALMENTE continua — é o follow-up de 30
+    // dias com nove mensagens pela frente.
+    h.state.automations = [automacaoSimples("a-resume")];
+    h.state.steps = [
+      { ...passoDeTrabalho("s-depois", 1), automation_id: "a-resume" },
+    ];
+    h.state.esperasVivas = [{ id: "espera-em-curso" }, { id: "outra-espera" }];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: {},
+    });
 
     expect(h.state.logUpdates.filter((u) => "desfecho" in u)).toHaveLength(0);
   });

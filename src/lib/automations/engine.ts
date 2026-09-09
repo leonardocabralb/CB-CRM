@@ -330,6 +330,7 @@ export async function resumePendingExecution(pending: {
       startPosition: pending.next_step_position,
       logId: pending.log_id,
       triggerEvent: 'resumed_wait',
+      esperaEmCurso: pending.id,
     })
     // ⚠️ A espera precisa virar `done` ANTES de fechar o log: a guarda de
     // `fecharLog` procura espera VIVA deste log, e esta ainda está `running`.
@@ -501,6 +502,17 @@ interface ExecuteArgs {
   startPosition: number
   logId: string | null
   triggerEvent: string
+  /**
+   * A espera que ESTÁ SENDO processada agora, quando isto é um resume.
+   *
+   * ⚠️ Sem ela, `fecharLog` enxerga a própria espera que o cron acabou de
+   * reivindicar (`status='running'`), conclui que a execução continua e NUNCA
+   * fecha o log. Medido no preview em 09/09: a automação com "Aguardar"
+   * terminava com `desfecho` nulo para sempre, e ficava invisível no fio —
+   * defeito que nenhum teste unitário pegou, porque o mock não simula o ciclo
+   * de vida da linha da fila.
+   */
+  esperaEmCurso?: string | null
 }
 
 /**
@@ -672,6 +684,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
     await fecharLog(
       args.logId,
       desfechoDoEscopo({ falhou: status === 'failed', barrouPorCondicao, fezTrabalho }),
+      args.esperaEmCurso,
     )
   } else {
     // Nested branch — just append results; the parent scope writes the status.
@@ -2054,16 +2067,24 @@ async function finalizeLog(
  * Nunca lança: é a última coisa que roda numa execução, e derrubá-la aqui
  * transformaria uma automação bem-sucedida em erro no log.
  */
-async function fecharLog(logId: string | null, desfecho: Desfecho): Promise<void> {
+async function fecharLog(
+  logId: string | null,
+  desfecho: Desfecho,
+  esperaEmCurso?: string | null,
+): Promise<void> {
   if (!logId) return
   try {
     const db = supabaseAdmin()
-    const { data: vivas, error } = await db
+    let consulta = db
       .from('automation_pending_executions')
       .select('id')
       .eq('log_id', logId)
       .in('status', ['pending', 'running'])
-      .limit(1)
+    // A espera que o cron acabou de reivindicar está `running` e é ESTA
+    // execução — contá-la como "ainda vai rodar" trava o fechamento para
+    // sempre.
+    if (esperaEmCurso) consulta = consulta.neq('id', esperaEmCurso)
+    const { data: vivas, error } = await consulta.limit(1)
 
     if (error) {
       console.error('[automations] fecharLog: guarda de espera falhou:', error.message)
