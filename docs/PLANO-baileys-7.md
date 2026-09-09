@@ -8,11 +8,62 @@
 | | |
 | --- | --- |
 | **Criado** | 09/09/2026 |
-| **Estado** | **Fase 0 quase concluída** (09/09/2026 17:30): backup com restauração de prova, limpeza das órfãs/hashes e amostras **feitos na VPS**; ajustes 1–3 do CRM **escritos e testados** na branch `fix/lid-nos-campos-da-baileys-7` (PR aberto). Versão da Evolution **não** mudou. |
-| **Próximo passo** | Mesclar o PR dos ajustes (publica no CRM); decidir P2 e a agendada pendente (P8); marcar a janela da Fase 1 com os 4 celulares; refazer o dump antes dela. |
-| **Branch** | `docs/plano-baileys-7` (worktree separada, criada de `origin/main`) |
+| **Estado** | **Fase 0 CONCLUÍDA** (09/09/2026): backup com restauração de prova, limpeza das órfãs/hashes e amostras feitos na VPS; ajustes 1–3 do CRM mesclados no `main` (PR #161) e este plano mesclado (PR #162). Versão da Evolution **não** mudou — continua 2.3.2 + `lidfix`. |
+| **Próximo passo** | **Fase 1** (seção 6.2), numa janela marcada pelo operador com os 4 celulares à mão. Antes: pré-voo da seção 6.2.0 (dump novo, db 9 renovado, imagem conferida, P2). |
+| **Como retomar sem contexto** | Ler a **seção 0** abaixo primeiro; o prompt de retomada está no **Anexo C**. A memória privada do executor (`baileys-7-plano-e-decisoes.md`) guarda o telefone do cadastro. |
 | **Estudo de origem** | seções 2–4 deste documento condensam o estudo de 09/09 |
 | **Docs relacionadas** | `docs/EVOLUTION-LID-FIX.md` (fica OBSOLETA com este plano), `docs/INFRA-VPS.md`, `docs/DEPLOY-VPS.md`, `docs/INSTALACAO.md` |
+
+## 0. Como retomar este plano sem o contexto de quem o escreveu
+
+Quem pega este plano depois de uma compactação de contexto (ou outra pessoa)
+precisa só do que está aqui, da memória privada do executor e dos acessos
+abaixo. Nada foi deixado implícito de propósito.
+
+### 0.1 Onde está cada coisa
+
+| O quê | Onde |
+| --- | --- |
+| Repositório / trunk | `leonardocabralb/CB-CRM`, branch `main`. **Nunca** PR ou push para `ArnasDon/wacrm`. Branch nova sai só de `origin/main`, e numa **worktree separada** — em 09/09 outra sessão deixou o checkout principal em `feat/instagram-receptor-de-teste`; não mexer nele. |
+| VPS (Swarm) | `ssh -i ~/.ssh/cb-crm-vps root@vps.cbadvogados.com`. Serviços: `evolution_evolution` (Evolution), `crm_crm` (CRM), `postgres_postgres` (banco `evolution`, `psql -U postgres` pelo socket entra sem senha), `redis_redis` (db 8 = Evolution; **db 9 = cópia de backup**; db0/db2 são de outros serviços). |
+| Banco do CRM (Supabase) | projeto `hxnhakmyxyhalbsktzwe`, pelo conector MCP (`execute_sql`). |
+| Backups da Fase 0 | `/root/backups/` na VPS, carimbo `20260909-1704` (dump, RDB, instances, log, env, imagem, migrations, amostras). |
+| Imagem candidata | já **puxada** na VPS: `evoapicloud/evolution-api:homolog@sha256:1e656f95aa1a2b7c2455a6a36d654637ddc2658c263794a5074ada798412a549` (Evolution 2.4.0, Baileys 7.0.0-rc13, Node 24). |
+| Imagem atual (rollback) | `ghcr.io/leonardocabralb/evolution-api-lidfix:2.3.2-lidfix@sha256:dd3e46aadd696c07ac4a099f7e8e59b970f8a59e3df6c8c8beb4bf31f5848694` |
+| Cadastro da licença | e-mail `leonardocabralb@gmail.com`; **telefone só na memória privada** (`baileys-7-plano-e-decisoes.md`) ou com o operador. |
+| Contato para testes reais | "Leonardo Cabral Baptista" (memória `lead-de-teste-autorizado`; único destinatário autorizado para mensagem de teste). Testar num contato endereçado por LID: conferir em `IsOnWhatsapp`. |
+| Código do CRM que este plano mexeu | `src/lib/whatsapp/transport/evolution-inbound.ts` (`lidJidFromKey`), `evolution-group-inbound.ts` (`lidDoRemetente`, `senderLid`), `src/lib/cb-groups/persist.ts` (`aprenderNossoLid`), `src/lib/cb-groups/sync.ts` (`parseGroupInfo`), `src/app/api/whatsapp/evolution/webhook/route.ts`; nota em `CLAUDE.md` antes de "## Branches". |
+| Regras que não se negociam | `docker stack deploy` **proibido** para a Evolution (só `service update`); imagem **por digest**; backup do Redis **só do db 8**; log da Evolution morre no reinício do contêiner; `GROUP_UPDATE` só entra na lista de eventos **depois** do upgrade; ação destrutiva pede autorização explícita do operador **naquela conversa**. |
+
+### 0.2 O que já foi feito (linha do tempo)
+
+| Quando | O quê | Prova |
+| --- | --- | --- |
+| 09/09 tarde | Diagnóstico: sessões duplicadas por aparelho na Baileys 6.7.19; imagens, 463, WA Web e celular do cliente descartados | seção 2 |
+| 09/09 | Decisões do operador: rc13 via `develop`/`homolog`, cadastro aceito (e-mail/telefone informados), upgrade **no lugar** com backup testado, 2.3.7 pura descartada | seção 3 |
+| 09/09 17:04 | Backup completo em `/root/backups/` | 9.1 |
+| 09/09 17:25 | Restauração de prova: **todas as tabelas batem** no mesmo corte, 0 avisos | 9.1 |
+| 09/09 17:27 | Instâncias órfãs `Bancario` e `CBAdv` apagadas; 6 hashes do Redis apagados (cópias no db 9); laço de QR parou; 4 conexões `open` | 9.1, Anexo A |
+| 09/09 | Amostras de payload da 2.3.2 guardadas na VPS (600) | 9.1 |
+| 09/09 | Ajustes 1–3 do CRM + testes (95/95, lint, typecheck) — **PR #161 mesclado no `main`** | seção 5 |
+| 09/09 | Este plano — **PR #162 mesclado** | — |
+
+### 0.3 O que NÃO foi feito (e é o próximo trabalho)
+
+- A **Fase 1** inteira (seção 6.2): trocar a imagem, ativar a licença, conferir as 4 conexões, rodar T1–T22, observar 48 h.
+- O **pré-voo** da Fase 1 (seção 6.2.0), no dia da janela.
+- P2 (forma de `group_sender_jid`), ajuste 4 (`fileLength`, depende de medição), ajuste 5 (`GROUP_UPDATE`, depois do upgrade), docs da seção 5.6, fixtures anonimizadas a partir das amostras.
+- Limpeza das worktrees `wt-plano` e `wt-fix` no scratchpad (já mescladas; `git worktree remove`).
+
+### 0.4 Armadilhas encontradas na execução (para não repetir)
+
+- `docker service logs evolution_evolution` (sem `--since`) **trava depois de imprimir tudo**; usar `--since` ou `timeout`.
+- No `psql` do contêiner, `-d <banco>` vem **antes** de `-Atc`, senão o `-d` vira o SQL.
+- `Message.id` da Evolution é **cuid (texto)**, não inteiro; e a produção continua recebendo enquanto se confere — comparar contagens no **mesmo corte de `messageTimestamp`** (Anexo B).
+- `DELETE /instance/delete` responde `Instance deleted` mas a remoção é **assíncrona** (5 s depois ainda aparecia `close`); conferir 1 min depois.
+- As chaves `evolution:baileys:*` têm TTL e expiram também na cópia do db 9; os hashes `evolution:instance:*` não têm TTL — são eles que importam.
+- Comandos longos por SSH (dump + restore) passam de 10 min: rodar em segundo plano e ler a saída depois.
+- O checkout principal pode estar em outra branch por causa de sessões paralelas: **sempre `git branch --show-current` antes de qualquer `checkout -b`**, e preferir worktree.
 
 **Sumário**
 
@@ -401,6 +452,29 @@ Tudo na VPS (`vps.cbadvogados.com`, Swarm). **Regra que segue valendo:
 7. **Aviso à equipe**: usar celular/outro CRM na janela (a Dra. Isa mandou 17
    pelo CRM em 09/09).
 
+### 6.2.0 Pré-voo da Fase 1 (no dia da janela, ANTES de trocar a imagem)
+
+Todos os comandos estão no Anexo B. Ordem:
+
+1. **Confirmar com o operador**: janela aberta agora, os 4 celulares à mão,
+   equipe avisada (celular/outro CRM), decisão P2 tomada.
+2. **CRM publicado com o PR #161**: na VPS, a imagem de `crm_crm` termina no
+   sha do `main` que contém o merge do #161 (`git log origin/main`).
+3. **Fila de agendadas**: só a linha de teste de 2030 (P8) pode estar
+   `pending`.
+4. **Backup NOVO** (o de 17:04 de 09/09 é anterior à limpeza e envelhece):
+   `pg_dump` com carimbo do dia; **`FLUSHDB` no db 9** (ele guarda a cópia
+   antiga) e copiar o db 8 de novo; `SAVE` + `docker cp` do RDB; `instances`;
+   log; env; e a **restauração de prova** com o corte de tempo (Anexo B).
+5. **Imagem**: `docker image inspect evoapicloud/evolution-api:homolog` mostra
+   o digest `1e656f95…`; `docker run --rm --entrypoint sh <imagem> -c 'grep
+   version node_modules/baileys/package.json'` → `7.0.0-rc13`. Se a tag
+   `homolog` tiver sido re-puxada e mudado, **parar e reavaliar** (é branch
+   sem release).
+6. **Linha de base**: `fetchInstances` 4 × `open`; contagem de sessões PN por
+   hash (Anexo B) — comparar com a de 8.3.
+7. **Log atual guardado** (`docker service logs --since 24h > /root/backups/…`).
+
 ### 6.2 Fase 1 — o upgrade (janela combinada; os 4 celulares à mão)
 
 ```bash
@@ -581,20 +655,20 @@ Evolution e do CRM abertos. Registrar resultado e data em cada linha.
 
 ## 9. Fases e checklist
 
-### Fase 0 — preparação (sem trocar versão)
+### Fase 0 — preparação (sem trocar versão) — **CONCLUÍDA em 09/09/2026**
 
 - [x] Operador: e-mail e telefone do cadastro decididos (09/09)
-- [ ] PR com os ajustes 1, 2, 3 + testes (5.1–5.3, 5.7) — branch `fix/lid-nos-campos-da-baileys-7`, 95 testes verdes, lint e typecheck limpos (09/09); **mesclar e publicar**
-- [ ] Decisão do ajuste 2 (`group_sender_jid` = LID) confirmada (P2)
+- [x] PR com os ajustes 1, 2, 3 + testes (5.1–5.3, 5.7) — **PR #161 mesclado no `main`** em 09/09 (95 testes verdes, lint e typecheck limpos); a publicação é o run do pipeline do `main` seguinte ao merge — conferir no pré-voo (6.2.0, item 2)
+- [ ] Decisão do ajuste 2 (`group_sender_jid` = LID) confirmada (P2) — **não bloqueia a Fase 1** (o código atual mantém a preferência antiga)
 - [x] Instâncias órfãs `Bancario` e `CBAdv` removidas (autorizado e executado 09/09 17:27; a API respondeu `Instance deleted` e a remoção completou em segundo plano — `Instance` ficou com 4 linhas)
 - [x] 6 hashes do Redis removidos (2 órfãs + 4 mortos); sobraram os 4 vivos
 - [x] `/root/backups/` criado (09/09 17:04): `evolution-20260909-1704.dump` (105,8 MB), `redis-20260909-1704.rdb` (33,9 MB), cópia do db 8 no **db 9**, `instances-…`, `evolution-log-…txt` (25.968 linhas), `evolution-env-…txt` (600), `evolution-image-…txt`, `evolution-migrations-…txt`
 - [x] Restauração de prova feita e removida (ver registro em 9.1)
 - [x] Payloads reais capturados: `/root/backups/evolution-amostras-20260909-1704.jsonl` (10 linhas, 600) — falta anonimizar e transformar em fixtures no repositório
 - [x] Fila de agendadas conferida: a única pendente é um resto de teste marcado para 2030 (P8) — nada real dispara na janela
-- [ ] Equipe avisada para usar celular/outro CRM na janela
-- [ ] Janela marcada, 4 celulares confirmados
-- [ ] **Refazer o `pg_dump` e a cópia db 8 → db 9 imediatamente antes da janela** (o de 17:04 é anterior à limpeza das órfãs e vai envelhecendo)
+- [ ] Equipe avisada para usar celular/outro CRM na janela → vira o item 1 do pré-voo (6.2.0)
+- [ ] Janela marcada, 4 celulares confirmados → pré-voo (6.2.0)
+- [ ] Refazer o `pg_dump` e a cópia db 8 → db 9 imediatamente antes da janela → pré-voo (6.2.0, item 4)
 
 #### 9.1 Registro da execução da Fase 0 (09/09/2026, 17:04–17:30)
 
@@ -764,9 +838,11 @@ docker exec $PGCID psql -U postgres -d evolution -Atc 'select name, "connectionS
 docker exec $PGCID psql -U postgres -d evolution -Atc 'select migration_name from _prisma_migrations order by finished_at desc limit 5'
 docker exec $PGCID psql -U postgres -d evolution -Atc 'select "remoteJid", lid from "IsOnWhatsapp" where "remoteJid" like '"'"'55119953%'"'"''
 
-# Backup (Fase 0) — cria arquivos; não altera o serviço
+# Backup (Fase 0 / pré-voo) — cria arquivos; não altera o serviço
 mkdir -p /root/backups
 docker exec $PGCID pg_dump -U postgres -Fc evolution > /root/backups/evolution-$(date +%F).dump
+# ⚠️ O db 9 já guarda a cópia de 09/09: esvaziar ANTES de copiar de novo (só o db 9!)
+docker exec $(docker ps -q -f name=redis_redis | head -1) redis-cli -n 9 FLUSHDB
 $RC --scan --pattern '*' | while read -r k; do $RC COPY "$k" "$k" DB 9 REPLACE >/dev/null; done   # db 8 → db 9
 $RC SAVE && docker cp $(docker ps -q -f name=redis_redis | head -1):/data/dump.rdb /root/backups/redis-$(date +%F).rdb
 docker cp $CID:/evolution/instances /root/backups/instances-$(date +%F)
@@ -798,6 +874,25 @@ select count(*) from cb_scheduled_messages where status = 'pending';
 ```
 
 ---
+
+## Anexo C — prompt de retomada (colar numa sessão nova)
+
+> Estamos no meio do plano `docs/PLANO-baileys-7.md` do repositório CB-CRM
+> (conserto do "Aguardando mensagem": subir a Evolution para a imagem
+> `homolog` com Baileys 7.0.0-rc13). Leia o plano inteiro antes de agir —
+> primeiro a **seção 0** (onde está cada coisa, o que já foi feito, o que
+> falta, as armadilhas), depois **6.2.0** (pré-voo), **6.2** (upgrade), **8**
+> (testes e gatilhos de rollback), **10** (rollback) e o **Anexo B**
+> (comandos). Leia também a memória `baileys-7-plano-e-decisoes` (tem o
+> telefone do cadastro, que não está no repositório). A Fase 0 está
+> concluída; o próximo trabalho é o **pré-voo e a Fase 1**. Não execute nada
+> destrutivo nem troque a imagem da Evolution sem eu autorizar nesta conversa
+> — comece me perguntando se a janela está aberta e se os 4 celulares estão
+> à mão, e então rode o pré-voo (só leitura e backup) e me apresente o
+> resultado antes do `service update`. Trabalhe numa worktree separada
+> criada de `origin/main`; o checkout principal pode estar em outra branch.
+> Ao terminar cada fase, atualize o plano (checklist + registro com data) e
+> a memória.
 
 ## 15. Fontes
 
