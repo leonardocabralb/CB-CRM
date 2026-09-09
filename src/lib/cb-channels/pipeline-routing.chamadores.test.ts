@@ -35,6 +35,7 @@ describe('abre negócio: os caminhos decididos por gente', () => {
     { arquivo: 'lib/whatsapp/inbound-store.ts', quem: 'ingestão + celular pareado (Evolution)' },
     { arquivo: 'app/api/whatsapp/webhook/route.ts', quem: 'ingestão (Meta)' },
     { arquivo: 'lib/whatsapp/send-message.ts', quem: 'núcleo de envio (compositor, ficha, agendada, API v1)' },
+    { arquivo: 'lib/instagram/persistir.ts', quem: 'ingestão (Instagram Direct)' },
   ];
 
   for (const { arquivo, quem } of DEVEM_ROTEAR) {
@@ -126,6 +127,7 @@ describe('varredura default-deny: quem cita o roteador e o núcleo', () => {
       'lib/whatsapp/inbound-store.ts', // ingestão + celular pareado (Evolution)
       'app/api/whatsapp/webhook/route.ts', // ingestão (Meta)
       'lib/whatsapp/send-message.ts', // núcleo de envio
+      'lib/instagram/persistir.ts', // ingestão (Instagram Direct)
     ],
     sendMessageToConversation: [
       'lib/whatsapp/send-message.ts', // a definição

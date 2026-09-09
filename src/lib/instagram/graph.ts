@@ -119,8 +119,17 @@ export interface PerfilDaConta {
   nome: string | null;
 }
 
+/** O que `GET /{igsid}` devolve sobre a pessoa que escreveu. */
+export interface PerfilDoCliente {
+  nome: string | null;
+  username: string | null;
+  /** URL da foto — da Meta, EXPIRA: `guardarFoto` copia para o Storage. */
+  fotoUrl: string | null;
+}
+
 export interface ClienteInstagram {
   me(): Promise<PerfilDaConta>;
+  perfil(igsid: string): Promise<PerfilDoCliente>;
 }
 
 type Fetch = typeof fetch;
@@ -187,6 +196,20 @@ export function criarClienteInstagram(
         igUserId: String(igUserId),
         username,
         nome: typeof r.name === 'string' && r.name ? r.name : null,
+      };
+    },
+    async perfil(igsid) {
+      const r = await pedir(
+        `${encodeURIComponent(igsid)}?fields=name,username,profile_pic`
+      );
+      return {
+        nome: typeof r.name === 'string' && r.name ? r.name : null,
+        username:
+          typeof r.username === 'string' && r.username ? r.username : null,
+        fotoUrl:
+          typeof r.profile_pic === 'string' && r.profile_pic
+            ? r.profile_pic
+            : null,
       };
     },
   };

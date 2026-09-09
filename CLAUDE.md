@@ -3487,6 +3487,18 @@ estrutural `transporte.chamadores.test.ts` (no `main` desde 10/09/2026, PR
   (`src/lib/instagram/graph.ts`, PR #167 — mesma família do cliente do Meta
   Ads). O token do painel dura 60 dias; a validade fica em
   `ig_token_expires_at` e o cron da Fase 6 renova.
+- ⚠️ **A porta é `/api/cb/instagram/webhook` (PR da Fase 3b)**: só a
+  assinatura que NÃO casa vale 401 — `object` errado, conta desconhecida e
+  forma estranha são 200 com log, porque 4xx repetido faz a Meta desativar
+  a assinatura (977). Uma entrega pode trazer várias `entry`; o segredo é
+  do APP, então uma conexão que assine vale para o corpo inteiro. A
+  persistência (`src/lib/instagram/persistir.ts`) roda em `after()`, grava
+  `user_id` = `accounts.owner_user_id` (dono durável, allowlist de
+  `dono-duravel.test.ts`), NÃO importa os motores (teste estrutural
+  `persistir.chamadores.test.ts`, D1) e entra nas allowlists de
+  `pipeline-routing.chamadores` e `reopen.chamadores`. O eco (`is_echo`)
+  com `mid` já gravado é o nosso próprio envio e o UNIQUE descarta; sem
+  linha, é o app do Instagram e entra como `from_device`.
 - **Decisões do operador (10/09/2026), no plano**: robô fora (D1); janela de
   24h + `ig_human_agent` opcional, só depois da feature aprovada na Meta
   (D2); token colado, sem OAuth (D3); ficha própria + unificação MANUAL com
@@ -3807,13 +3819,12 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
     CHECK é recriado pela FORMA, não pelo nome), colunas `ig_*` em
     `cb_channels`, índice único GLOBAL por `ig_user_id`,
     `contacts.instagram_id`/`instagram_username` e **`contacts.phone`
-    ANULÁVEL** com CHECK "telefone OU instagram". ⚠️ **NÃO aplicada ainda**
-    (10/09/2026): viaja no PR #167 (Fase 2 do Instagram) e tem de ser
-    aplicada ANTES daquele merge — `CB_CHANNEL_SAFE_COLUMNS` passa a pedir as
-    colunas novas, e sem elas o painel de conexões trava no aviso de
-    migration ausente. O conector do Supabase estava sem autenticação na
-    sessão que a escreveu; quem aplica é o operador (SQL Editor) ou uma
-    sessão autorizada. É **989**, não 987: a 987 (tl;dv) e a 988 (rodízio)
+    ANULÁVEL** com CHECK "telefone OU instagram". Aplicada em 2026-09-09 via conector, ANTES do merge do PR
+    #167, com autorização do operador (o "faça o merge" veio depois de a
+    dependência ser explicada, e o conector foi autorizado para isso);
+    conferida por consulta: o CHECK renderizado como `kind = ANY
+    (ARRAY[…])`, as 6 colunas, `phone` anulável, os 2 índices, histórico
+    `20260909223424`. É **989**, não 987: a 987 (tl;dv) e a 988 (rodízio)
     nasceram em branches paralelas — quarto caso de colisão evitada.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
