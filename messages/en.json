@@ -1135,13 +1135,15 @@
         "send_media_video": "Send video",
         "send_media_document": "Send document",
         "send_media_audio": "Send audio",
+        "wait_seconds": "Wait {quantidade}s",
         "wait_minutes": "Wait {quantidade} min",
         "wait_hours": "Wait {quantidade} h",
         "wait_days": "Wait {quantidade} days",
         "condition": "Check a condition",
         "send_webhook": "Call webhook",
         "close_conversation": "Close the conversation",
-        "send_to_number": "Notify number: {alvo}"
+        "send_to_number": "Notify number: {alvo}",
+        "create_task": "Create task: {alvo}"
       },
       "cancelar": "Cancel",
       "salvar": "Save",
@@ -1590,7 +1592,8 @@
         "stop_flow": "Stop bot",
         "set_ai": "AI assistant",
         "send_media": "Send file",
-        "send_to_number": "Notify a number"
+        "send_to_number": "Notify a number",
+        "create_task": "Create task"
       },
       "triggers": {
         "new_message_received": {
@@ -1644,6 +1647,10 @@
         "webhook_received": {
           "label": "Incoming webhook",
           "hint": "When an external system (Typebot, n8n…) calls one of your incoming webhooks. Create them in Settings → Webhooks. The contact is matched by the phone number in the payload."
+        },
+        "manual": {
+          "label": "Manual (button only)",
+          "hint": "Never fires on its own. It runs when you execute it inside a conversation, from the composer + menu → Run automation."
         }
       },
       "trigger": "Trigger",
@@ -1724,6 +1731,7 @@
         "amountLabel": "Amount",
         "unitLabel": "Unit",
         "units": {
+          "seconds": "Seconds",
           "minutes": "Minutes",
           "hours": "Hours",
           "days": "Days"
@@ -1762,7 +1770,8 @@
         "placeholderNotifyText": "New booking: {nome} at {data}",
         "notifyChannelInherit": "The number's conversation (or the default connection)",
         "notifyChannelHelp": "Choosing a connection sends the notice ALWAYS through it — and fails if it is unavailable, instead of going out through another number.",
-        "variaveisDeTexto": "Variables: {lista} — the field key is the one in the catalogue (Settings → Fields & tags)."
+        "variaveisDeTexto": "Variables: {lista} — the field key is the one in the catalogue (Settings → Fields & tags).",
+        "segundosAviso": "Seconds are not exact: the wait resumes on the scheduler’s next cycle. Use it to space messages out, not to time anything."
       },
       "delete": "Delete",
       "stages": {
@@ -1855,6 +1864,16 @@
         "nomeHelp": "Documents only — WhatsApp ignores it for the other types.",
         "legendaLabel": "Caption (optional)",
         "audioSemLegenda": "Audio has no caption. WhatsApp voice notes carry no text — anything written here would show in the thread for your team and never reach the client."
+      },
+      "tarefa": {
+        "tituloLabel": "Task title",
+        "descricaoLabel": "Description (optional)",
+        "responsavelLabel": "Assign to",
+        "prazoLabel": "Due in (days)",
+        "prazoHint": "0 = today, 1 = tomorrow.",
+        "horaLabel": "Time (optional)",
+        "horaHint": "Empty = all day.",
+        "importanteLabel": "Mark as important"
       }
     }
   },

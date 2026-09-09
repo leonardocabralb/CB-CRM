@@ -1,6 +1,7 @@
 import type { AutomationTriggerType } from '@/types'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { digitosDoTelefone } from '@/lib/contacts/telefone'
+import { MAX_TITULO, normalizarHora } from '@/lib/tasks/validar'
 import { motivoDeConfigInvalida } from './lembretes'
 
 // ------------------------------------------------------------
@@ -189,10 +190,10 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       if (typeof c.amount !== 'number' || !Number.isFinite(c.amount) || c.amount <= 0) {
         issues.push({ path: `${path}.amount`, message: 'wait amount must be greater than 0' })
       }
-      if (!['minutes', 'hours', 'days'].includes(String(c.unit))) {
+      if (!['seconds', 'minutes', 'hours', 'days'].includes(String(c.unit))) {
         issues.push({
           path: `${path}.unit`,
-          message: 'wait unit must be minutes, hours, or days',
+          message: 'wait unit must be seconds, minutes, hours, or days',
         })
       }
       break
@@ -234,6 +235,30 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       }
       if (!nonEmpty(c.text)) {
         issues.push({ path: `${path}.text`, message: 'message text is required' })
+      }
+      break
+    }
+    case 'create_task': {
+      if (!nonEmpty(c.titulo)) {
+        issues.push({ path: `${path}.titulo`, message: 'task title is required' })
+      } else if (String(c.titulo).trim().length > MAX_TITULO) {
+        issues.push({ path: `${path}.titulo`, message: `task title must be at most ${MAX_TITULO} chars` })
+      }
+      // ⚠️ Sem responsável a tarefa não tem para quem ir, e o motor estouraria
+      // em execução — o tipo de falha que esta validação existe para pegar
+      // antes de a automação ser ativada. Se ela é MEMBRO da conta é o motor
+      // que confere: a lista de membros muda depois de a regra ser gravada.
+      if (!nonEmpty(c.responsavel_user_id)) {
+        issues.push({ path: `${path}.responsavel_user_id`, message: 'task assignee is required' })
+      }
+      if (c.prazo_em_dias !== undefined && c.prazo_em_dias !== null) {
+        const dias = Number(c.prazo_em_dias)
+        if (!Number.isFinite(dias) || dias < 0 || dias > 365) {
+          issues.push({ path: `${path}.prazo_em_dias`, message: 'due date must be 0–365 days from today' })
+        }
+      }
+      if (nonEmpty(c.hora) && normalizarHora(c.hora) === undefined) {
+        issues.push({ path: `${path}.hora`, message: 'time must be HH:MM' })
       }
       break
     }

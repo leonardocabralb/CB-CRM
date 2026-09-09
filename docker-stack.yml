@@ -112,15 +112,28 @@ services:
     # (A fila de funil tem ainda um aviso imediato disparado por quem move o
     # card, então o caso comum já sai em segundos; este laço é a rede de
     # segurança e o relógio das esperas.)
+    #
+    # ⚠️ O laço rápido é de 15s desde 2026-09-08, e o número É a precisão da
+    # espera em SEGUNDOS do passo "Aguardar": uma pausa de 10 s acorda no tique
+    # seguinte, então o piso real da pausa é este intervalo. Alargá-lo de volta
+    # para 60 s não quebra nada — só faz as pausas curtas das automações do
+    # escritório (10 s entre mensagens, 30 s de folga para o webhook) durarem
+    # até um minuto, sem nada na tela dizendo por quê.
+    #
+    # Custo medido antes de encurtar: um ciclo ocioso faz ~12 consultas
+    # (drenar a fila, podar, varrer lembretes, podar, batimento, buscar
+    # esperas). A 15s isso é menos de uma consulta por segundo. E o laço é
+    # SEQUENCIAL — `curl` e só então `sleep` —, então ciclo lento não empilha
+    # com o seguinte; o intervalo real é "15s depois que o anterior terminou".
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        echo "[agendador] laço rápido (60s) para automações + laço de 15min para agendadas, fluxos e radar"
+        echo "[agendador] laço rápido (15s) para automações + laço de 15min para agendadas, fluxos e radar"
         while true; do
           curl -fsS -m 50 -o /dev/null \
             -H "x-cron-secret: $$AUTOMATION_CRON_SECRET" \
             "http://crm_crm:3000/api/automations/cron" || true
-          sleep 60
+          sleep 15
         done &
         while true; do
           for rota in cb/scheduled flows cb/radar cb/meta-ads; do

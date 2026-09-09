@@ -43,6 +43,7 @@ import {
   Paperclip,
   Upload,
   BellRing,
+  ListTodo,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -191,6 +192,9 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   // Aviso para a EQUIPE (977): fala com um número fixo, não com o cliente —
   // borda própria para o olho separar "resposta ao cliente" de "aviso interno".
   send_to_number: { label: "send_to_number", icon: BellRing, border: "border-l-sky-500" },
+  // Tarefa é trabalho INTERNO, como o aviso ao número: mesma borda, pelo mesmo
+  // motivo — nada disto chega ao cliente.
+  create_task: { label: "create_task", icon: ListTodo, border: "border-l-sky-500" },
 }
 
 const ADDABLE_STEPS: AutomationStepType[] = [
@@ -216,6 +220,7 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "send_webhook",
   "close_conversation",
   "send_to_number",
+  "create_task",
 ]
 
 /**
@@ -251,6 +256,12 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "date_field_offset" },
   { value: "calendly_booking" },
   { value: "webhook_received" },
+  // ⚠️ `manual` é oferecido, e NÃO está em `GATILHOS_SEM_DISPARO`: ele nunca é
+  // despachado por evento, mas roda pelo botão "Executar automação" do menu +
+  // da conversa. É o gatilho de quem só quer o botão — sem ele, o jeito de
+  // fazer isso era gravar uma palavra-chave impossível, que basta alguém
+  // digitar por acaso para a esteira inteira sair para o cliente.
+  { value: "manual" },
 ]
 
 function cid(): string {
@@ -323,6 +334,12 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return { url: "", headers: {}, body_template: "" }
     case "close_conversation":
       return {}
+    // Prazo HOJE por padrão, e sem hora: a tarefa que uma automação abre é
+    // quase sempre "faça isso agora" (o contrato fechou). Nascer com prazo
+    // distante faria o passo, aceito sem abrir a config, criar tarefa que não
+    // aparece na lista de hoje de ninguém.
+    case "create_task":
+      return { titulo: "", responsavel_user_id: "", prazo_em_dias: 0 }
     default:
       return {}
   }
@@ -2500,6 +2517,14 @@ function StepEditor({
     case "wait":
       return (
         <div className="grid grid-cols-2 gap-2">
+          {/* ⚠️ O aviso é do tamanho da promessa: quem escolhe "segundos" está
+              contando os segundos, e o agendador acorda a espera no ciclo dele.
+              Sem dizer isso, uma pausa de 10 s que chega em 20 s parece bug. */}
+          {cfg.unit === "seconds" && (
+            <p className="col-span-2 text-[11px] text-amber-500">
+              {t("config.segundosAviso")}
+            </p>
+          )}
           <FieldBlock label={t("config.amountLabel")}>
             <Input
               type="number"
@@ -2515,6 +2540,7 @@ function StepEditor({
               onChange={(e) => set({ unit: e.target.value })}
               className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
             >
+              <option value="seconds">{t("config.units.seconds")}</option>
               <option value="minutes">{t("config.units.minutes")}</option>
               <option value="hours">{t("config.units.hours")}</option>
               <option value="days">{t("config.units.days")}</option>
@@ -2703,6 +2729,64 @@ function StepEditor({
               só enganava quem lesse. */}
           {t("config.closeConversationHint")}
         </p>
+      )
+    case "create_task":
+      return (
+        <>
+          <FieldBlock label={t("tarefa.tituloLabel")}>
+            <Input
+              value={(cfg.titulo as string) ?? ""}
+              onChange={(e) => set({ titulo: e.target.value })}
+              className="bg-muted text-foreground"
+            />
+            <DicaDeVariaveis t={t} />
+          </FieldBlock>
+          <FieldBlock label={t("tarefa.descricaoLabel")}>
+            <Textarea
+              value={(cfg.descricao as string) ?? ""}
+              onChange={(e) => set({ descricao: e.target.value })}
+              className="min-h-16 bg-muted text-foreground"
+            />
+          </FieldBlock>
+          <FieldBlock label={t("tarefa.responsavelLabel")}>
+            <AgentSelect
+              value={(cfg.responsavel_user_id as string) ?? ""}
+              onChange={(v) => set({ responsavel_user_id: v })}
+              t={t}
+            />
+          </FieldBlock>
+          <div className="grid grid-cols-2 gap-3">
+            <FieldBlock label={t("tarefa.prazoLabel")}>
+              <Input
+                type="number"
+                min={0}
+                max={365}
+                value={Number(cfg.prazo_em_dias ?? 0)}
+                onChange={(e) => set({ prazo_em_dias: Number(e.target.value) })}
+                className="bg-muted text-foreground"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">{t("tarefa.prazoHint")}</p>
+            </FieldBlock>
+            <FieldBlock label={t("tarefa.horaLabel")}>
+              <Input
+                type="time"
+                value={((cfg.hora as string) ?? "").slice(0, 5)}
+                onChange={(e) => set({ hora: e.target.value })}
+                className="bg-muted text-foreground"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">{t("tarefa.horaHint")}</p>
+            </FieldBlock>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={cfg.importante === true}
+              onChange={(e) => set({ importante: e.target.checked })}
+              className="size-4 accent-primary"
+            />
+            {t("tarefa.importanteLabel")}
+          </label>
+        </>
       )
     default:
       return null

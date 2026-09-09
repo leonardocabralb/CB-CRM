@@ -45,7 +45,11 @@ describe("validateStepsForActivation", () => {
   it("checks wait amount and unit boundaries", () => {
     const issues = validateStepsForActivation([
       { step_type: "wait", step_config: { amount: 0, unit: "minutes" } },
-      { step_type: "wait", step_config: { amount: 5, unit: "seconds" } },
+      // `seconds` passou a ser unidade VÁLIDA (as pausas curtas das automações
+      // do escritório); o inválido de verdade aqui é uma unidade que o motor
+      // não sabe converter — `waitMs` cairia no fallback de minutos e a espera
+      // de "2 semanas" duraria 2 minutos.
+      { step_type: "wait", step_config: { amount: 5, unit: "weeks" } },
       { step_type: "wait", step_config: { amount: -1, unit: "hours" } },
       {
         step_type: "wait",

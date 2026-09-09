@@ -59,6 +59,10 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Webhook',
     pillClass: 'border-teal-500/30 bg-teal-500/10 text-teal-300',
   },
+  manual: {
+    label: 'Manual',
+    pillClass: 'border-zinc-500/30 bg-zinc-500/10 text-zinc-300',
+  },
 }
 
 /**
@@ -69,6 +73,12 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
  * (`TRIGGER_OPTIONS`, com teste lendo o fonte) e a grade do funil não desenha
  * cartão de chegada para eles (Codex, PR #131): o cartão afirmaria "esta
  * regra leva o card para cá" sobre regra que não roda.
+ *
+ * ⚠️ `manual` NÃO entra aqui, e a distinção é a razão de ele existir: ele
+ * também nunca é DESPACHADO, mas TEM call site — o botão "Executar automação"
+ * do menu + da conversa, por `runAutomationById`. Ele roda; só não é um
+ * evento que o motor observa. Pô-lo nesta lista esconderia da grade do funil
+ * justamente a automação que o operador executa à mão para mover o card.
  */
 export const GATILHOS_SEM_DISPARO: ReadonlySet<AutomationTriggerType> = new Set<AutomationTriggerType>([
   'time_based',
