@@ -291,6 +291,7 @@ upstream sobrescrevê-los:
 | `src/app/(dashboard)/inbox/page.tsx`, `src/components/inbox/conversation-list.tsx`, `inbox-filters.tsx` | os params `?etapa=` (semeia o filtro de etapa UMA vez) e `?de=funil` (faixa "Voltar ao funil") — os `router.replace` usam `urlDoInbox`, que preserva `de` e derruba `etapa` DE PROPÓSITO; na lista, `etapaInicial` + `etapasResolvidas` e o recorte de etapa gateado por `etapasUsaveis`; nos filtros, o fallback da pastilha virou `labelStage` (era "Qualquer etapa" sobre filtro ativo) |
 | `src/app/(dashboard)/automations/new/page.tsx` | o `?stage=` que faz a automação nascer com o gatilho de funil já apontando para a etapa clicada |
 | `src/lib/automations/trigger-meta.ts` | `formatRelative` passou a usar `Intl.RelativeTimeFormat` e a receber o texto de "nunca" — devolvia `5m ago`/`never` em inglês nas três telas |
+| `src/components/contacts/contact-detail-view.tsx` (987) | a seção `<ReunioesTranscritasDoContato>` dentro da aba Reuniões, abaixo de `<ReunioesDoContato>` — um merge que traga a aba crua do upstream apaga o histórico de transcrições da ficha |
 | `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx`, `src/app/(dashboard)/notifications/page.tsx`, `src/components/layout/{sidebar,header}.tsx`, `src/app/(dashboard)/contacts/page.tsx`, `src/lib/rate-limit.ts` | as tarefas (944): 7ª aba na ficha (com `[&>button]:flex-none` na TabsList), seção na barra da conversa, ícones/navegação dos tipos `task_*` no sino (o `TYPE_ICON` é exaustivo — merge que trouxer tipo novo sem ícone quebra o typecheck), item "Tarefas" com etiqueta realtime no menu, deep link `?contact=`, bucket `tarefa` |
 | `src/lib/ai/types.ts`, `generate.ts`, `defaults.ts`, `config.ts`, `usage.ts`, `providers/` | o TERCEIRO provedor (`gemini`, 941) e o modo `'radar'` no log de uso — o upstream conhece só openai/anthropic. `structured.ts` e `providers/gemini.ts` são arquivos NOSSOS |
 | `src/components/settings/ai-config.tsx`, `src/app/api/ai/config/route.ts` | a opção Gemini no seletor e na validação do provider |
@@ -3171,6 +3172,49 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   (Codex, PR #131) — o cartão afirmaria movimento de regra que não roda; há
   teste amarrando essa lista ao `TRIGGER_OPTIONS` do builder.
 
+⚠️ **tl;dv → transcrições na ficha (987): a reunião vem pela API, e o
+cliente vem pelo E-MAIL.** `src/lib/tldv/` (`cliente`, `leitura`, `texto`,
+`vinculo`, `janela`, `cartao` puros e testados; `sincronizar` e `conexao`
+são I/O), `src/lib/reunioes-transcritas/validar.ts`, rotas em
+`/api/cb/tldv/*` e `/api/cb/reunioes-transcritas/*`, cartão em Integrações
+e a seção **Transcrições** dentro da aba Reuniões da ficha
+(`src/components/transcricoes/`). Plano vivo em
+`docs/PLANO-integracao-tldv.md`. O que morde código novo:
+
+- ⚠️⚠️ **O webhook do tl;dv NÃO é assinado, e por isso o corpo é AVISO,
+  nunca dado.** A rota `/api/cb/tldv/webhook/[token]` lê SÓ o id da reunião
+  e busca a reunião na API com a NOSSA chave (`importarReuniaoDoTldv`).
+  Quem passar a gravar algo do corpo transforma o token da URL na única
+  barreira entre a internet e a ficha do cliente.
+- ⚠️ **O upsert da sincronização leva SÓ metadados** (nome, data, duração,
+  participantes). `status`, `contact_id`, `vinculo_origem`, `texto` NÃO
+  entram — reunião já conhecida mantém o que tem. Pôr `status: 'pendente'`
+  no upsert "para garantir" apaga a transcrição gravada a cada ciclo.
+- ⚠️ **Vínculo automático só quando `vinculo_origem IS NULL`**, e o UPDATE é
+  cercado por `contact_id IS NULL`. `desvinculada` é o que impede a regra de
+  religar o que uma pessoa desligou; sem a cerca, a regra atropelaria um
+  vínculo manual feito entre a leitura e a escrita.
+- ⚠️ **A janela é 7 dias SEMPRE, não "desde a última sincronização"**: o
+  tl;dv processa a gravação depois da reunião e `happenedAt` é a hora da
+  reunião. A idempotência é o UNIQUE `(account_id, tldv_meeting_id)`.
+- ⚠️ **403 vira `falhou` na hora; 404 na transcrição é "ainda não pronta"**
+  (conta tentativa; 12 → `sem_transcricao`). A doc diz que a exportação
+  depende do PLANO de quem ORGANIZOU a reunião — insistir num 403 não muda.
+  Chave inválida, limite e rede param o CICLO (são da conta).
+- ⚠️ **O prazo do ciclo é medido por `Date.now()`, nunca por `agora`**:
+  `agora` é carimbo (injetável); o prazo é "quanto esta chamada ainda pode
+  gastar". Misturar os dois adiou toda transcrição no primeiro teste.
+- ⚠️ **A lista da ficha NÃO seleciona `texto`/`segmentos`/`notas`**
+  (`COLUNAS_DA_LISTA`); só o visualizador busca a linha inteira. ~80 KB por
+  hora de reunião vezes dezenas de reuniões é o que a ficha carregaria.
+- ⚠️ **A importada do tl;dv não se apaga; dela se tira o cliente.** A
+  varredura de 7 dias a traria de volta sem cliente. `DELETE` só na
+  `manual`, pelo autor ou admin.
+- ⚠️ **A chave vai no cabeçalho `x-api-key`, nunca na URL**, e toda mensagem
+  de erro passa por `semSegredo()` (a mesma disciplina do Meta Ads/Calendly).
+- **`cb/tldv` está no laço LENTO do `docker-stack.yml`** — e o CI não relê o
+  `command` do agendador: vale depois de `docker stack deploy` manual.
+
 ⚠️ **Webhooks de ENTRADA (982) e tags ADITIVAS na v1: o Typebot chama o CRM.**
 `src/lib/webhooks-de-entrada/` (`achatar.ts` e o `resultadoDoDisparo`/
 `escutamEsteWebhook` de `processar.ts` são puros e testados; `claim.ts` e
@@ -3626,6 +3670,14 @@ que faltava. `mcp-server/` fica fora (tem `.env.example` e doc próprios).
     Aplicada em 2026-09-09 via conector, ANTES do merge; conferido por
     consulta (52428800) e pela recuperação dos 6 anexos ainda vivos na
     Evolution.
+  - **987_cb_tldv** — `cb_tldv_config` (chave cifrada, FECHADA para o
+    navegador) e `cb_reunioes_transcritas` (reunião + transcrição, do tl;dv
+    ou colada à mão; SELECT por membro, escrita só pela rota). ⚠️ **Criada em
+    2026-09-09 e NÃO aplicada** (o conector do Supabase não estava
+    autorizado na sessão): aplicar via conector ANTES do merge, com
+    autorização do operador. Sem ela o cartão em Integrações mostra "Erro"
+    e a seção Transcrições da ficha "não foi possível carregar" — nada mais
+    quebra.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
