@@ -256,7 +256,8 @@
       "channelsAll": "All connections",
       "channelsChosen": "{count, plural, one {# connection} other {# connections}}",
       "resultCount": "{count} of {total}",
-      "novaConversa": "New conversation"
+      "novaConversa": "New conversation",
+      "automacaoRodando": "{n, plural, one {# automation scheduled for this contact} other {# automations scheduled for this contact}}"
     },
     "messageThread": {
       "unknownAuthor": "Unknown",
@@ -548,7 +549,20 @@
         "roboIniciado": "Bot started for this client.",
         "automacaoDisparada": "Automation triggered for this client.",
         "erro": "Couldn't run it. Try again."
-      }
+      },
+      "aviso": {
+        "concluida": "{nome} completed",
+        "barrada": "{nome} stopped at a condition",
+        "falhou": "{nome} failed"
+      },
+      "vezes": "{vezes}×",
+      "no_passo": "at step {passo}",
+      "verDetalhes": "View runs",
+      "tituloDaSecao": "Already ran",
+      "vazio": "No automation has finished for this contact yet.",
+      "carregando": "Loading runs…",
+      "falhouCarga": "Couldn't load the runs.",
+      "rodando": "{n, plural, one {# automation running} other {# automations running}}"
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",
@@ -1007,7 +1021,8 @@
       "openConversationOf": "Open the conversation for {titulo}",
       "editDeal": "Edit deal",
       "editDealTitled": "Edit deal {titulo}",
-      "unreadCount": "{count, plural, one {# unread message} other {# unread messages}}"
+      "unreadCount": "{count, plural, one {# unread message} other {# unread messages}}",
+      "automacaoRodando": "{n, plural, one {# automation scheduled for this contact} other {# automations scheduled for this contact}}"
     },
     "form": {
       "editDeal": "Edit Deal",
@@ -1567,7 +1582,12 @@
         "failed": "failed"
       },
       "back": "Back",
-      "backAria": "Back"
+      "backAria": "Back",
+      "desfecho": {
+        "concluida": "Completed",
+        "barrada": "Stopped at a condition",
+        "falhou": "Failed"
+      }
     },
     "builder": {
       "steps": {

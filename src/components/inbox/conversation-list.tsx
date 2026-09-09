@@ -45,6 +45,7 @@ import type {
 } from "@/types";
 import {
   AlarmClock,
+  Zap,
   Search,
   Users,
   Star,
@@ -60,6 +61,7 @@ import { Button } from "@/components/ui/button";
 import { NovaConversaDialog } from "@/components/inbox/nova-conversa-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useBuscaEmMensagens } from "@/hooks/use-busca-em-mensagens";
+import { useSinalDeExecucoes } from "@/hooks/use-sinal-de-execucoes";
 import { useChannels } from "@/hooks/use-channels";
 import { useAuth } from "@/hooks/use-auth";
 import { canaisVisiveis, conversaNoEscopo } from "@/lib/perfis/escopo";
@@ -200,6 +202,10 @@ export function ConversationList({
     falhou: canaisFalharam,
     recarregar: recarregarCanais,
   } = useChannels();
+  // Quais clientes têm automação AGENDADA (985) — UMA consulta para a lista
+  // inteira, não uma por linha. `null` = ainda não sei, e a marca cala: sem a
+  // distinção, "não carregou" viraria a afirmação "não tem robô rodando".
+  const { resumo: sinalDeExecucoes } = useSinalDeExecucoes(true, resyncToken);
   // Favoritas são de CADA MEMBRO (migration 924) — o hook já lê só as minhas.
   // `resyncToken` porque `cb_conversation_favorites` não está no realtime:
   // marcar no celular não apareceria nesta aba até recarregar a página.
@@ -900,6 +906,9 @@ export function ConversationList({
                 favoritaHabilitada={favoritasProntas}
                 achado={achadosNoTexto.get(conv.id)}
                 agora={agora}
+                esperasDeAutomacao={
+                  sinalDeExecucoes?.porContato[conv.contact_id ?? ""]?.esperas ?? 0
+                }
                 // Numa conta de um número só a bolinha não decide nada e só
                 // ocupa espaço — mesma régua do seletor e do filtro de canal.
                 // ⚠️ `canalDaConversa`, nunca `conversation.channel_id`: em
@@ -941,6 +950,12 @@ interface ConversationItemProps {
   corDoCanalDaLinha: CorDeCanal | null;
   /** O tique de um minuto da lista — a régua do alerta de atraso lê daqui. */
   agora: number;
+  /**
+   * Quantas automações estão AGENDADAS para o contato desta conversa (985).
+   * `0` = nenhuma, ou ainda não se sabe — a marca cala nos dois casos, porque
+   * ausência de marca não pode afirmar "não tem robô rodando".
+   */
+  esperasDeAutomacao: number;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -954,6 +969,7 @@ function ConversationItem({
   achado,
   corDoCanalDaLinha,
   agora,
+  esperasDeAutomacao,
   t,
 }: ConversationItemProps) {
   // As chaves da situação escrita moram no namespace do fio (`statusPending`,
@@ -1063,6 +1079,21 @@ function ConversationItem({
                   porque a de baixo já carrega prévia, não lidas e situação,
                   e um quarto item ali truncaria a prévia em toda linha
                   alertada. */}
+              {/* ⚠️ "Tem robô rodando neste cliente" (985). O pedido era
+                  lembrar de DESATIVAR o follow-up quando o cliente volta a
+                  falar — e é exatamente aí que esta marca aparece, ao lado do
+                  selo de atraso. Só o ícone, sem número: a 320px a faixa da
+                  direita já leva selo e hora, e o corte aqui é a marca, nunca
+                  o nome do cliente. Quantas e quando ficam no `title` e na
+                  aba do painel. */}
+              {esperasDeAutomacao > 0 && (
+                <span
+                  title={t("automacaoRodando", { n: esperasDeAutomacao })}
+                  className="inline-flex items-center rounded-full bg-violet-500/15 px-1 py-px text-violet-600 dark:text-violet-300"
+                >
+                  <Zap className="h-3 w-3" aria-hidden="true" />
+                </span>
+              )}
               {atraso && rotuloDoAtraso && (
                 <span
                   title={t("awaitingReply", { tempo: rotuloDoAtraso })}

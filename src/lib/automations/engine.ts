@@ -58,6 +58,12 @@ import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 import { createDeal } from '@/lib/deals/create-deal'
 import { abortActiveRunsForContact } from '@/lib/flows/parar-run'
 import { chaveDeAutomacao, chaveDeFluxo, encadear, lerCadeia } from './cadeia'
+import {
+  desfechoDoEscopo,
+  desfechoDoRetorno,
+  sinaisDoHistorico,
+  type Desfecho,
+} from './estado-da-execucao'
 
 // ------------------------------------------------------------
 // Public API
@@ -316,7 +322,7 @@ export async function resumePendingExecution(pending: {
   }
 
   try {
-    await executeStepsFrom({
+    const retorno = await executeStepsFrom({
       automation: automation as Automation,
       contactId: pending.contact_id,
       context: pending.context ?? {},
@@ -325,11 +331,42 @@ export async function resumePendingExecution(pending: {
       startPosition: pending.next_step_position,
       logId: pending.log_id,
       triggerEvent: 'resumed_wait',
+      esperaEmCurso: pending.id,
     })
+    // ⚠️ A espera precisa virar `done` ANTES de fechar o log: a guarda de
+    // `fecharLog` procura espera VIVA deste log, e esta ainda está `running`.
+    // Invertido, toda retomada sairia sem desfecho — e o sintoma seria a
+    // execução ficar invisível no fio para sempre.
     await markPending(pending.id, 'done')
+
+    // ⚠️ ESPERA NASCIDA DENTRO DE UM RAMO nunca ganhava desfecho: o resume
+    // retoma com `parentStepId` preenchido, e nesse escopo o fim de
+    // `executeStepsFrom` chama `appendResults(..., null, ...)`, que não grava
+    // status nenhum — o log do ramo ficava para sempre no `partial` da espera.
+    // Furo apontado pelos três juízes do desenho. No escopo de FORA não se
+    // repete a escrita: `executeStepsFrom` já fechou lá dentro.
+    if (pending.parent_step_id !== null) {
+      const desfecho = desfechoDoRetorno(retorno)
+      // ⚠️⚠️ 'concluida' aqui é PALPITE, não medição: `desfechoDoRetorno` só
+      // enxerga o status do escopo, e o escopo de ramo joga fora o
+      // `barrouPorCondicao` que calculou (sai pelo `else`, sem acumulador).
+      // Medido no harness: a MESMA automação fecha 'barrada' com a espera na
+      // raiz e 'concluida' com ela dentro de um ramo. E espera dentro de ramo
+      // é a forma NORMAL das automações deste escritório — a trava por
+      // etiqueta e o "ainda está em No Show?" só gateiam de verdade com o
+      // corpo DENTRO do ramo. O registro persistido carrega o `skipped`, então
+      // é dele que a resposta sai (Codex, PR #155, 2ª rodada).
+      if (desfecho === 'concluida') {
+        const sinais = await sinaisGravados(pending.log_id)
+        await fecharLog(pending.log_id, desfechoDoEscopo({ falhou: false, ...sinais }))
+      } else if (desfecho) {
+        await fecharLog(pending.log_id, desfecho)
+      }
+    }
   } catch (err) {
     console.error('[automations] resume failed:', err)
     await markPending(pending.id, 'failed')
+    await fecharLog(pending.log_id, 'falhou')
   }
 }
 
@@ -480,6 +517,28 @@ interface ExecuteArgs {
   startPosition: number
   logId: string | null
   triggerEvent: string
+  /**
+   * A espera que ESTÁ SENDO processada agora, quando isto é um resume.
+   *
+   * ⚠️ Sem ela, `fecharLog` enxerga a própria espera que o cron acabou de
+   * reivindicar (`status='running'`), conclui que a execução continua e NUNCA
+   * fecha o log. Medido no preview em 09/09: a automação com "Aguardar"
+   * terminava com `desfecho` nulo para sempre, e ficava invisível no fio —
+   * defeito que nenhum teste unitário pegou, porque o mock não simula o ciclo
+   * de vida da linha da fila.
+   */
+  esperaEmCurso?: string | null
+  /**
+   * Onde este escopo REPORTA ao pai o que fez (985).
+   *
+   * ⚠️ Existe porque `barrouPorCondicao`/`fezTrabalho` são locais a cada
+   * escopo, e o retorno de `executeStepsFrom` é só o `AutomationLogStatus`.
+   * Sem isto, `[condição A → ramo [condição B → ramo vazio]]` era gravada
+   * como `concluida`: o escopo do ramo de A tinha passos (a condição B),
+   * então devolvia 'success', e a raiz lia isso como "o ramo fez trabalho" —
+   * quando ninguém fez nada além de avaliar condições (achado da revisão).
+   */
+  acumulador?: { fezTrabalho: boolean; barrouPorCondicao: boolean }
 }
 
 /**
@@ -517,11 +576,31 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
 
   if (stepsErr) {
     await finalizeLog(args.logId, 'failed', stepsErr.message)
+    // ⚠️ `esperaEmCurso` aqui também: num resume de escopo RAIZ a guarda
+    // enxergaria a própria espera que o cron reivindicou e o log ficaria sem
+    // desfecho para sempre — o cartão de falha nunca apareceria (achado da
+    // revisão, 09/09).
+    await fecharLog(args.logId, 'falhou', args.esperaEmCurso)
     return 'failed'
   }
   if (!steps || steps.length === 0) {
     if (args.parentStepId === null && args.logId) {
       await finalizeLog(args.logId, 'success', null)
+      // ⚠️⚠️ Este ramo tem DOIS moradores, e por isso o desfecho sai do
+      // REGISTRO em vez de ser cravado. No disparo fresco de uma automação sem
+      // passo nenhum o histórico é vazio e a resposta é `concluida`, como
+      // sempre foi. Mas a RETOMADA cai aqui também, sempre que o "Aguardar" é
+      // o último passo (o motor enfileira `position + 1` sem perguntar se
+      // sobrou algo) ou quando o operador apaga os passos seguintes com uma
+      // execução estacionada — e aí a premissa da nota antiga ("não houve
+      // condição nenhuma") é falsa: pode ter havido barreira e zero trabalho
+      // horas antes, noutra chamada (Codex, PR #155, 2ª rodada).
+      const sinais = await sinaisGravados(args.logId)
+      await fecharLog(
+        args.logId,
+        desfechoDoEscopo({ falhou: false, ...sinais }),
+        args.esperaEmCurso,
+      )
       return 'success'
     }
     return null
@@ -531,6 +610,10 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
   let status: 'success' | 'partial' | 'failed' = 'success'
   let errorMessage: string | null = null
   let ramoEmEspera = false
+  // Para o DESFECHO (985), que é pergunta diferente do `status`: "como isto
+  // terminou?" em vez de "deu erro?". Ver `estado-da-execucao.ts`.
+  let barrouPorCondicao = false
+  let fezTrabalho = false
 
   for (const step of steps as AutomationStep[]) {
     // `wait` is the suspension point: enqueue and stop processing this
@@ -575,12 +658,15 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
         })
         // Recurse into the chosen branch at position 0 (children use their
         // own ordering within the branch scope).
+        // O que o RAMO fizer é reportado aqui, não inferido do status dele.
+        const doRamo = { fezTrabalho: false, barrouPorCondicao: false }
         const ramo = await executeStepsFrom({
           ...args,
           parentStepId: step.id,
           branch: taken ? 'yes' : 'no',
           startPosition: 0,
           logId: args.logId,
+          acumulador: doRamo,
         })
         if (ramo === 'failed') {
           // O ramo já gravou seus resultados e o `error_message`; o status é
@@ -590,6 +676,23 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
           break
         }
         if (ramo === 'partial') ramoEmEspera = true
+        if (ramo === null) {
+          // ⚠️ RAMO VAZIO — a barreira que o log não registrava (985). O motor
+          // SEGUE nos passos seguintes deste escopo (semântica que já existia e
+          // que esta entrega não muda); o que passa a existir é o registro.
+          barrouPorCondicao = true
+          // A entrada da condição vira `skipped` para a tela poder dizer QUAL
+          // condição desviou. É a última empurrada acima: a recursão do ramo
+          // grava no array DELA, não neste.
+          const ultima = results[results.length - 1]
+          if (ultima) ultima.status = 'skipped'
+        } else {
+          // ⚠️ O que conta é o que o ramo REPORTOU, não o status dele: um ramo
+          // que só avaliou outra condição e caiu em ramo vazio devolve
+          // 'success' sem ter feito trabalho nenhum.
+          if (doRamo.fezTrabalho) fezTrabalho = true
+          if (doRamo.barrouPorCondicao) barrouPorCondicao = true
+        }
         continue
       }
 
@@ -600,6 +703,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
         status: 'success',
         detail,
       })
+      fezTrabalho = true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       results.push({
@@ -614,8 +718,41 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
     }
   }
 
+  // Reporta ao escopo de cima o que aconteceu aqui. Na raiz não há pai, e é
+  // ela que grava o desfecho logo abaixo.
+  if (args.acumulador) {
+    if (fezTrabalho) args.acumulador.fezTrabalho = true
+    if (barrouPorCondicao) args.acumulador.barrouPorCondicao = true
+  }
+
   if (args.parentStepId === null) {
-    await appendResults(args.logId, results, status, errorMessage)
+    const historico = await appendResults(args.logId, results, status, errorMessage)
+    // O DESFECHO (985) é gravado só no escopo de FORA, e só aqui: é o ponto em
+    // que se sabe se houve barreira e se houve trabalho.
+    //
+    // ⚠️ Sem condicional de `status`: a espera DESTE escopo já saiu por
+    // `return` bem acima (o compilador confirma — aqui `status` só pode ser
+    // 'success' ou 'failed'). O caso que sobra é `ramoEmEspera`: o escopo
+    // terminou mas um ramo continua parado, e aí quem impede o fechamento
+    // prematuro é a guarda de espera viva de `fecharLog`, não um teste aqui.
+    //
+    // ⚠️⚠️ Os contadores acima só conhecem ESTA chamada, e uma execução com
+    // "Aguardar" atravessa várias: a retomada zera tudo e enxerga só o trecho
+    // depois da espera. Por isso somam-se os sinais do REGISTRO, que
+    // atravessa as chamadas. Sem isso, `[enviar][aguardar][condição de ramo
+    // vazio]` — a forma do follow-up de no-show — fechava como `barrada`, ou
+    // seja, "não fez nada" sobre uma execução que já falou com o cliente
+    // (Codex, PR #155).
+    const doRegistro = sinaisDoHistorico(historico)
+    await fecharLog(
+      args.logId,
+      desfechoDoEscopo({
+        falhou: status === 'failed',
+        barrouPorCondicao: barrouPorCondicao || doRegistro.barrouPorCondicao,
+        fezTrabalho: fezTrabalho || doRegistro.fezTrabalho,
+      }),
+      args.esperaEmCurso,
+    )
   } else {
     // Nested branch — just append results; the parent scope writes the status.
     await appendResults(args.logId, results, null, errorMessage)
@@ -1940,13 +2077,20 @@ async function interpolate(
   })
 }
 
+/**
+ * Acumula os passos na coluna e devolve o HISTÓRICO COMPLETO da execução.
+ *
+ * ⚠️ Devolver o mesclado não é conveniência: é o que permite ao escopo raiz
+ * saber o que aconteceu ANTES de um "Aguardar" sem pagar uma segunda leitura
+ * — esta função já lê a linha para mesclar. Ver `sinaisDoHistorico`.
+ */
 async function appendResults(
   logId: string | null,
   newItems: AutomationLogStepResult[],
   status: 'success' | 'partial' | 'failed' | null,
   errorMessage: string | null,
-) {
-  if (!logId) return
+): Promise<AutomationLogStepResult[]> {
+  if (!logId) return newItems
   const db = supabaseAdmin()
   const { data: existing } = await db
     .from('automation_logs')
@@ -1964,6 +2108,7 @@ async function appendResults(
   }
   if (errorMessage) update.error_message = errorMessage
   await db.from('automation_logs').update(update).eq('id', logId)
+  return merged
 }
 
 async function finalizeLog(
@@ -1976,6 +2121,134 @@ async function finalizeLog(
     .from('automation_logs')
     .update({ status, error_message: errorMessage })
     .eq('id', logId)
+}
+
+/**
+ * Grava o DESFECHO da execução (985) — o ÚNICO escritor de
+ * `automation_logs.desfecho` / `finalizado_em`.
+ *
+ * ⚠️ A guarda é "não sobrou espera VIVA deste log". Sem ela, uma automação com
+ * "Aguardar" seria fechada como concluída no instante em que o escopo de fora
+ * termina — e o follow-up de no-show, que tem nove esperas pela frente,
+ * apareceria no fio como "concluiu" na primeira mensagem. Ela também resolve o
+ * caso que os três juízes do desenho apontaram: a espera nascida DENTRO de um
+ * ramo, cujo escopo de fora termina sem saber que o ramo continua.
+ *
+ * ⚠️ Consulta da guarda que FALHA não fecha o log. Fechar às cegas afirmaria
+ * "terminou" sobre execução que pode ter mensagem por sair; não fechar deixa a
+ * execução sem desfecho, que a tela trata como "não sei" e simplesmente não
+ * mostra. Entre afirmar errado e calar, cala.
+ *
+ * Nunca lança: é a última coisa que roda numa execução, e derrubá-la aqui
+ * transformaria uma automação bem-sucedida em erro no log.
+ */
+/**
+ * Os sinais de trabalho/barreira do que JÁ está gravado neste log.
+ *
+ * Uma consulta, e só nos dois fechamentos que não têm o histórico em mão — o
+ * escopo raiz sem passos e a retomada de ramo. O fechamento normal do escopo
+ * raiz não passa por aqui: `appendResults` já devolve o mesclado de graça.
+ *
+ * ⚠️ Leitura que falha responde "nada consta", não estoura: é o mesmo trato
+ * do resto do fechamento — entre afirmar errado e calar, cala. O preço é
+ * cair no `concluida`, que é o desfecho menos alarmante dos três.
+ */
+async function sinaisGravados(
+  logId: string | null,
+): Promise<{ fezTrabalho: boolean; barrouPorCondicao: boolean }> {
+  const vazio = { fezTrabalho: false, barrouPorCondicao: false }
+  if (!logId) return vazio
+  try {
+    const { data, error } = await supabaseAdmin()
+      .from('automation_logs')
+      .select('steps_executed')
+      .eq('id', logId)
+      .maybeSingle()
+    if (error) {
+      console.error('[automations] sinaisGravados falhou:', error.message)
+      return vazio
+    }
+    return sinaisDoHistorico(data?.steps_executed)
+  } catch (err) {
+    console.error('[automations] sinaisGravados estourou:', err)
+    return vazio
+  }
+}
+
+async function fecharLog(
+  logId: string | null,
+  desfecho: Desfecho,
+  esperaEmCurso?: string | null,
+): Promise<void> {
+  if (!logId) return
+  try {
+    const db = supabaseAdmin()
+    let consulta = db
+      .from('automation_pending_executions')
+      .select('id')
+      .eq('log_id', logId)
+      .in('status', ['pending', 'running'])
+    // A espera que o cron acabou de reivindicar está `running` e é ESTA
+    // execução — contá-la como "ainda vai rodar" trava o fechamento para
+    // sempre.
+    if (esperaEmCurso) consulta = consulta.neq('id', esperaEmCurso)
+    const { data: vivas, error } = await consulta.limit(1)
+
+    if (error) {
+      console.error('[automations] fecharLog: guarda de espera falhou:', error.message)
+      return
+    }
+    const aindaCorre = Boolean(vivas && vivas.length > 0)
+
+    // ⚠️⚠️ O DESFECHO É GRAVADO SEMPRE; o que a espera viva adia é só o
+    // `finalizado_em`. Antes esta função DESCARTAVA o desfecho quando havia
+    // espera viva — e o 'falhou' de um escopo cujo ramo continuava era perdido
+    // para sempre: horas depois o resume daquele ramo gravava 'concluida', e a
+    // tela mostrava "concluiu" sobre uma execução em que a mensagem NÃO saiu.
+    // Sinal invertido, exatamente a mentira que a 985 existe para matar
+    // (achado da revisão adversarial, 09/09).
+    //
+    // ⚠️⚠️ SÃO DUAS ESCRITAS, e separá-las é o conserto do buraco que a
+    // primeira versão desta cerca abriu (Codex, PR #155). O filtro
+    // anti-regressão recusa a LINHA INTEIRA quando o log já diz 'falhou' —
+    // então ele descartava junto o `finalizado_em` que vinha no mesmo update.
+    // A régua do fio exige as DUAS colunas (`itensDoFio` descarta linha sem
+    // hora de fim), logo: ramo que estoura enquanto a espera irmã segue viva,
+    // e depois uma retomada que termina bem, deixava a execução SEM hora de
+    // fim e invisível no fio e no histórico — sumia justamente o cartão de
+    // falha, que é o que a 985 existe para mostrar.
+    //
+    // 1) O desfecho, com a cerca. NUNCA REGREDIR: falha registrada não vira
+    //    conclusão. Duas esperas irmãs (dois ramos parados) resolvem em ordem
+    //    imprevisível, e a que termina bem não pode apagar a que estourou.
+    //    `falhou` grava sem filtro porque é o pior desfecho — sempre pode
+    //    sobrescrever os outros.
+    let update = db.from('automation_logs').update({ desfecho }).eq('id', logId)
+    if (desfecho !== 'falhou') {
+      update = update.or('desfecho.is.null,desfecho.neq.falhou')
+    }
+    const { error: erroDesfecho } = await update
+    if (erroDesfecho) {
+      console.error('[automations] fecharLog: desfecho falhou:', erroDesfecho.message)
+    }
+
+    // 2) A hora de fim, SEM cerca — ela não regride nada, só PUBLICA o que
+    //    já está gravado. Vai depois de propósito: entre as duas escritas a
+    //    linha tem desfecho e não tem hora, e a régua do fio simplesmente não
+    //    a mostra ainda. O inverso (publicar antes de decidir) exibiria por um
+    //    instante o desfecho da execução anterior.
+    if (!aindaCorre) {
+      const { error: erroFim } = await db
+        .from('automation_logs')
+        .update({ finalizado_em: new Date().toISOString() })
+        .eq('id', logId)
+      if (erroFim) {
+        console.error('[automations] fecharLog: hora de fim falhou:', erroFim.message)
+      }
+    }
+  } catch (err) {
+    console.error('[automations] fecharLog estourou:', err)
+  }
 }
 
 async function markPending(id: string, status: 'done' | 'failed' | 'cancelled') {

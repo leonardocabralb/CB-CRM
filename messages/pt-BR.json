@@ -249,7 +249,8 @@
       "channelsAll": "Todas as conexões",
       "channelsChosen": "{count, plural, one {# conexão} other {# conexões}}",
       "resultCount": "{count} de {total}",
-      "novaConversa": "Nova conversa"
+      "novaConversa": "Nova conversa",
+      "automacaoRodando": "{n, plural, one {# automação agendada para este cliente} other {# automações agendadas para este cliente}}"
     },
     "messageThread": {
       "unknownAuthor": "Desconhecido",
@@ -541,7 +542,20 @@
         "roboIniciado": "Robô iniciado para este cliente.",
         "automacaoDisparada": "Automação disparada para este cliente.",
         "erro": "Não deu para executar. Tente de novo."
-      }
+      },
+      "aviso": {
+        "concluida": "{nome} concluiu",
+        "barrada": "{nome} parou numa condição",
+        "falhou": "{nome} falhou"
+      },
+      "vezes": "{vezes}×",
+      "no_passo": "no passo {passo}",
+      "verDetalhes": "Ver execuções",
+      "tituloDaSecao": "Já rodou",
+      "vazio": "Nenhuma automação terminou para este cliente ainda.",
+      "carregando": "Carregando execuções…",
+      "falhouCarga": "Não consegui ler as execuções.",
+      "rodando": "{n, plural, one {# automação rodando} other {# automações rodando}}"
     },
     "aiBanner": {
       "pausedTitle": "O assistente de IA está pausado aqui",
@@ -1000,7 +1014,8 @@
       "openConversationOf": "Abrir a conversa de {titulo}",
       "editDeal": "Editar negócio",
       "editDealTitled": "Editar o negócio {titulo}",
-      "unreadCount": "{count, plural, one {# mensagem não lida} other {# mensagens não lidas}}"
+      "unreadCount": "{count, plural, one {# mensagem não lida} other {# mensagens não lidas}}",
+      "automacaoRodando": "{n, plural, one {# automação agendada para este cliente} other {# automações agendadas para este cliente}}"
     },
     "form": {
       "editDeal": "Editar negócio",
@@ -1560,7 +1575,12 @@
         "failed": "falha"
       },
       "back": "Voltar",
-      "backAria": "Voltar"
+      "backAria": "Voltar",
+      "desfecho": {
+        "concluida": "Concluída",
+        "barrada": "Parou numa condição",
+        "falhou": "Falhou"
+      }
     },
     "builder": {
       "steps": {

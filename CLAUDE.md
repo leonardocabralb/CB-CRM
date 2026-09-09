@@ -561,6 +561,98 @@ quem mais está com a conversa aberta. `src/lib/execucoes/` e
 - **Conta de UM membro**: a presença fica dormente em produção até o convite
   real — testada em 2026-08-30 com usuária fixture (criada e removida).
 
+⚠️ **Desfecho da execução de automação (985): o fio NARRA o que a automação
+fez.** `automation_logs.desfecho` ('concluida'|'barrada'|'falhou') +
+`finalizado_em`, `src/lib/automations/estado-da-execucao.ts` e
+`src/lib/execucoes/desfecho.ts` (puros, testados), `use-execucoes-do-fio.ts`,
+`aviso-de-execucao.tsx`, a seção "Já rodou" da aba e a rota
+`/api/cb/execucoes/resumo` com a marca na lista e no card. O que morde código
+novo:
+
+- ⚠️⚠️ **`status` NÃO responde "como terminou?", e é por isso que a coluna
+  nova existe.** Ele nasce `'failed'` no INSERT, ANTES do primeiro passo
+  (semente pessimista da #409), então "failed" também significa "acabou de
+  começar"; e quando uma condição desvia para ramo VAZIO o log termina
+  `'success'` — a execução que uma trava por etiqueta barrou era registrada
+  como "concluída com sucesso". Vocabulário novo em COLUNA PRÓPRIA porque
+  `status` é lido por quatro consumidores que o TypeScript não cobre; um 4º
+  valor ali pintaria "barrada" de vermelho e imprimiria chave crua.
+- ⚠️⚠️ **`fecharLog` é o ÚNICO escritor das duas colunas, e a guarda é "não
+  sobrou espera VIVA deste log" — MENOS a que está sendo processada agora.**
+  Sem a exceção, o resume enxerga a própria espera que o cron reivindicou
+  (`running`), conclui que a automação continua e NUNCA fecha: toda automação
+  com "Aguardar" fica invisível no fio, para sempre. Medido no preview em
+  09/09; nenhum teste unitário pegava, porque o mock não simula o ciclo de
+  vida da linha da fila. A guarda também conserta o furo da espera nascida
+  DENTRO de um ramo, que o resume retoma com `parentStepId` preenchido — e
+  naquele escopo o fim de `executeStepsFrom` não grava status nenhum.
+- ⚠️⚠️ **São DUAS ESCRITAS, e juntá-las apaga a falha do fio.** O desfecho sai
+  com a cerca anti-regressão (`desfecho.is.null,desfecho.neq.falhou`, para uma
+  espera irmã que termina bem não sobrescrever o `falhou` de um ramo que
+  estourou); a HORA DE FIM sai em update PRÓPRIO, sem cerca. Numa escrita só, a
+  cerca recusa a LINHA INTEIRA quando o log já diz 'falhou' — e como a régua do
+  fio exige as duas colunas, a falha ficava sem hora de fim e INVISÍVEL, que é
+  o oposto do que a 985 existe para fazer (Codex, PR #155, 2ª rodada).
+- ⚠️⚠️ **Os contadores do motor só conhecem UMA chamada; execução com
+  "Aguardar" atravessa várias.** `fezTrabalho`/`barrouPorCondicao` nascem
+  zerados na retomada, então `[enviar][aguardar][condição de ramo vazio]` — a
+  forma do follow-up de no-show — fechava como `barrada`, "parou numa
+  condição", sobre execução que já tinha falado com o cliente. Por isso
+  `appendResults` DEVOLVE o histórico mesclado (ele já lia a linha) e o
+  fechamento do escopo raiz soma `sinaisDoHistorico(...)` aos contadores. As
+  duas fontes cobrem pedaços diferentes do tempo e se somam com OU: o registro
+  pode voltar vazio (o `appendResults` engole erro de leitura e regrava só o
+  trecho novo) e a memória é o único lugar que conhece o trecho em curso.
+  Medido de ponta a ponta em 09/09.
+  ⚠️⚠️ **São TRÊS fechadores, e os outros dois leem o registro por consulta
+  própria (`sinaisGravados`)**: o escopo raiz SEM passos (a retomada cai aqui
+  sempre que o "Aguardar" é o último passo — o motor enfileira `position + 1`
+  sem perguntar se sobrou algo) e a retomada de RAMO, que fechava por
+  `desfechoDoRetorno` e nunca podia dizer `barrada`. A primeira versão da
+  correção só alcançou o fechamento normal da raiz, e dois céticos da revisão
+  MEDIRAM a divergência: a mesma automação fecha `barrada` com a espera na raiz
+  e `concluida` com ela dentro de um ramo. ⚠️ E isto não é borda neste
+  escritório: ramo vazio NÃO para o escopo de fora, então uma trava só gateia
+  de verdade com o corpo DENTRO do ramo — é o desenho das oito automações
+  pedidas (a tag do contrato fechado, o "ainda está em No Show?" antes de cada
+  uma das dez).
+- ⚠️ **`barrada` é ESTREITA**: só quando a execução não fez trabalho nenhum.
+  `[enviar][condição de ramo vazio]` é `concluida`, porque a mensagem SAIU.
+  E o critério é "fez trabalho?", NUNCA a ordem de `steps_executed`, que não
+  é cronológica quando há ramo cheio (o ramo faz flush antes do escopo de
+  fora) — quem ler `at(-1)` acerta no caso simples e erra onde há ramo.
+- ⚠️ **A régua do que aparece no fio é PURA** (`itensDoFio`), no molde de
+  `apareceNaConversa`: descarta o que não tem desfecho, colapsa por
+  (automação, dia local, desfecho) com contador, e tem teto de 12. Sem o
+  colapso a feature DOBRA o fio — automação de gatilho "mensagem recebida"
+  conclui uma vez POR MENSAGEM. É a lição do Radar (941).
+- ⚠️ **O motivo CRU do motor NÃO vai para o fio** — inglês, com id dentro. Ele
+  fica na aba, numa expansão aberta de propósito.
+- ⚠️ **Quem mexe na fila avisa a tela pelo evento `cb:execucoes-mudaram`**, que
+  mora em `src/lib/execucoes/aviso.ts` (fora dos hooks, porque
+  `avisar-drenagem.ts` é módulo de biblioteca e não pode arrastar React). A
+  drenagem do funil o emite quando a rota responde — a rota AGUARDA o dreno,
+  então ali as automações do movimento já rodaram. Sem isso, arrastar um card
+  acendia a automação no servidor e o raio do quadro só aparecia no
+  recarregamento seguinte (Codex, PR #155).
+- ⚠️ **A marca "tem robô rodando" lê a FILA, não o log**: só ela sabe que
+  AINDA VAI rodar, e é o que faz o botão Parar apagar a marca. Vai por ROTA
+  porque `automation_pending_executions` é service-role only (RLS ligada, ZERO
+  policies): do navegador devolve 0 linhas com `error: null` — marca
+  permanentemente apagada com cara de resposta certa. Erro vira 500, nunca
+  `{}`, e o hook devolve `null` (não sei) em vez de vazio.
+- ⚠️ **O card do funil recebe um NÚMERO por prop**, nunca um hook: o board
+  redesenha ~120 cards por tecla, e o `memo` só segura com props estáveis.
+- ⚠️ **Cor de texto em par claro/escuro**, sempre (`text-red-700
+  dark:text-red-300`): medido no tema claro, `text-red-300` sozinho dava
+  luminosidade 76 sobre fundo 99 — ilegível justamente no aviso de falha.
+- ⚠️ **A 985 fechou o `anon` em `automation_logs`**, que a 931 não alcançou
+  (tabela do upstream): ele tinha INSERT/UPDATE/DELETE/TRUNCATE, com a RLS
+  como única barreira.
+- **Nada retroativo**: as execuções anteriores ficam sem desfecho e não
+  aparecem: não há registro de quando terminaram, e carimbar `created_at`
+  mentiria em toda automação com espera.
+
 ⚠️ **Acervo de mídias (953): enviar do acervo COPIA o arquivo.** Tabela
 `cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
 `/api/cb/acervo`, painel em Configurações → Acervo e o seletor
@@ -809,7 +901,9 @@ DESABILITAVA o compositor com "Sessão expirada — use um modelo" no exato
 instante em que o operador abre a conversa para responder: as primeiras
 teclas iam para o vazio. Reportado da tela pelo operador. A cura é o
 sinalizador do próprio hook (`janelaDe24h = !canaisCarregando &&
-!evolutionActive`) — `useChannels` expõe `loading` desde sempre, e
+!canaisFalharam && !evolutionActive` — TRÊS termos: a consulta que FALHOU
+também não autoriza afirmar "é Meta", e uma versão desta nota citava só
+dois) — `useChannels` expõe `loading` desde sempre, e
 `step1-choose-template.tsx` e `template-manager.tsx` já o usavam.
 ⚠️ **Conta SEM canal nenhum continua na regra da Meta**, de propósito: ali a
 lista resolveu vazia, e vazio-COM-resposta é conhecimento, não lacuna. A

@@ -22,12 +22,18 @@ const h = vi.hoisted(() => ({
     upsertCalls: [] as { table: string; payload: unknown }[],
     logInserts: [] as Record<string, unknown>[],
     logUpdates: [] as Record<string, unknown>[],
+    /** Filtros de cada update em `automation_logs` — a cerca de não-regressão. */
+    updateFiltros: [] as [string, string, unknown][][],
+    historicoDoLog: [] as Array<Record<string, unknown>>,
     taskInserts: [] as Record<string, unknown>[],
     notifInserts: [] as Record<string, unknown>[],
     // Valores de campo personalizado do contato, como o PostgREST os entrega
     // (com a definição embutida) — é por eles que a interpolação de
     // `{{contact.campo.*}}` passa.
     customValues: [] as Record<string, unknown>[],
+    // A guarda de `fecharLog` (985) pergunta se sobrou espera VIVA deste log.
+    // Vazio = nenhuma, que é o caso da maioria dos testes.
+    esperasVivas: [] as Record<string, unknown>[],
     membros: [{ user_id: "agente-fallback", full_name: "Agente Um", email: "um@cb.test" }] as Record<string, unknown>[],
   },
 }));
@@ -91,6 +97,20 @@ vi.mock("./admin-client", () => {
       state.dealSelects.push(ops.filters);
       return { data: state.dealExistente, error: null };
     }
+    if (table === "automation_pending_executions") {
+      if (type === "select") {
+        // ⚠️ Respeita o `.neq('id', …)`: é ele que faz a guarda de `fecharLog`
+        // ignorar a espera que o cron está processando AGORA. Sem isto o mock
+        // devolveria a própria espera em curso e o pino do resume passaria
+        // por um motivo errado.
+        const excluido = ops.filters.find(([op, k]) => op === "neq" && k === "id")?.[2];
+        const vivas = excluido
+          ? state.esperasVivas.filter((e) => e.id !== excluido)
+          : state.esperasVivas;
+        return { data: vivas, error: null };
+      }
+      return { data: null, error: null };
+    }
     if (table === "cb_tasks") {
       if (type === "insert") {
         state.taskInserts.push(ops.payload as Record<string, unknown>);
@@ -105,7 +125,20 @@ vi.mock("./admin-client", () => {
       }
       return { data: null, error: null };
     }
-    if (table === "automations") return { data: state.automations, error: null };
+    if (table === "automations") {
+      // ⚠️ Consulta POR ID (o resume e o `run_automation`) espera UM objeto —
+      // `.single()`. Devolver a lista fazia `automation.is_active` ser
+      // `undefined`, e o resume desistia achando a automação desligada: o
+      // pino do desfecho pós-espera reprovava por um motivo que não era o dele.
+      const porId = ops.filters.find(([op, k]) => op === "eq" && k === "id")?.[2];
+      if (porId) {
+        return {
+          data: state.automations.find((a) => a.id === porId) ?? null,
+          error: null,
+        };
+      }
+      return { data: state.automations, error: null };
+    }
     if (table === "automation_logs") {
       if (type === "insert") {
         state.logInserts.push(ops.payload as Record<string, unknown>);
@@ -113,9 +146,17 @@ vi.mock("./admin-client", () => {
       }
       if (type === "update") {
         state.logUpdates.push(ops.payload as Record<string, unknown>);
+        state.updateFiltros.push([...ops.filters]);
         return { data: null, error: null };
       }
-      return { data: { steps_executed: [], status: "success" }, error: null };
+      // ⚠️ O que já estava GRAVADO em `steps_executed` antes desta chamada.
+      // Configurável porque é a única forma de encenar uma execução que
+      // atravessou um "Aguardar": a retomada é um processo novo, e o que
+      // aconteceu antes da espera só existe nesta coluna.
+      return {
+        data: { steps_executed: state.historicoDoLog, status: "success" },
+        error: null,
+      };
     }
     if (table === "automation_steps") {
       // Recorte por ESCOPO (parent_step_id / branch / position), para os
@@ -152,6 +193,12 @@ vi.mock("./admin-client", () => {
       // `create_task` pergunta pelos DOIS perfis (autor e responsável) numa
       // consulta só — é ela que prova que o responsável é da conta.
       in: (k: string, v: unknown) => (ops.filters.push(["in", k, v]), b),
+      // A guarda de `fecharLog` exclui a espera em curso com `.neq('id', …)`.
+      neq: (k: string, v: unknown) => (ops.filters.push(["neq", k, v]), b),
+      // `fecharLog` usa `.or('desfecho.is.null,desfecho.neq.falhou')` para
+      // NUNCA REGREDIR um 'falhou' já gravado. O mock só registra: o que os
+      // pinos medem é o payload do update, não o filtro do PostgREST.
+      or: (expr: string) => (ops.filters.push(["or", "expr", expr]), b),
       gte: (k: string, v: unknown) => (ops.recorte.push(["gte", k, v]), b),
       is: (k: string, v: unknown) => (ops.recorte.push(["is", k, v]), b),
       order: () => b,
@@ -195,7 +242,12 @@ const canalMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/cb-channels/engine-send", () => canalMock);
 
-import { dispararAutomacoes, runAutomationsForTrigger, triggerMatches } from "./engine";
+import {
+  dispararAutomacoes,
+  resumePendingExecution,
+  runAutomationsForTrigger,
+  triggerMatches,
+} from "./engine";
 import { engineSendText } from "./meta-send";
 import type { Automation, KeywordMatchTriggerConfig } from "@/types";
 import { diaNoFuso, somarDias } from "@/lib/tasks/prazo";
@@ -217,9 +269,12 @@ beforeEach(() => {
   h.state.upsertCalls = [];
   h.state.logInserts = [];
   h.state.logUpdates = [];
+  h.state.updateFiltros = [];
+  h.state.historicoDoLog = [];
   h.state.taskInserts = [];
   h.state.notifInserts = [];
   h.state.customValues = [];
+  h.state.esperasVivas = [];
   h.state.membros = [{ user_id: "agente-fallback", full_name: "Agente Um", email: "um@cb.test" }];
 });
 
@@ -945,7 +1000,11 @@ describe("send_to_number — aviso para a equipe", () => {
     canalMock.resolveEngineChannelPreferring.mockResolvedValueOnce({ channelId: "ch-padrao" });
     await dispararAviso({ phone: "5583988745316", text: "oi", channel_id: "ch-apagado" });
     expect(engineSendText).not.toHaveBeenCalled();
-    const log = h.state.logUpdates.at(-1) as { status?: string; error_message?: string } | undefined;
+    // ⚠️ O update do STATUS, não o último: desde a 985 `fecharLog` escreve
+    // depois dele (o desfecho e, em update próprio, a hora de fim).
+    const log = h.state.logUpdates.filter((u) => "status" in u).at(-1) as
+      | { status?: string; error_message?: string }
+      | undefined;
     expect(log?.status).toBe("failed");
     expect(log?.error_message).toContain("conexão escolhida");
   });
@@ -1507,5 +1566,467 @@ describe("campo de data: formatado na mensagem, CRU no dado", () => {
     const corpo = String(fetchMock.mock.calls.at(-1)?.[1]?.body ?? "");
     expect(corpo).toContain("2026-08-30T19:00:00.000Z");
     expect(corpo).not.toContain("às 16:00h");
+  });
+});
+
+// ------------------------------------------------------------
+// DESFECHO da execução (migration 985).
+//
+// O que estes pinos protegem: a execução que uma condição barrou deixa de ser
+// registrada como "concluída com sucesso" (era o defeito que motivou a
+// feature), sem que `status` mude de vocabulário — as quatro telas que leem
+// `status` sem cobertura de tipo continuam vendo os mesmos três valores.
+// ------------------------------------------------------------
+
+function automacaoSimples(id = "a-desf") {
+  return {
+    id,
+    account_id: ACCOUNT,
+    user_id: "u1",
+    name: "Contrato fechado",
+    trigger_type: "new_message_received",
+    trigger_config: {},
+    is_active: true,
+  };
+}
+
+/** Condição no escopo raiz. Sem passo com este `parent_step_id`, o ramo é VAZIO. */
+function passoCondicao(id: string, position: number) {
+  return {
+    id,
+    automation_id: "a-desf",
+    step_type: "condition",
+    position,
+    parent_step_id: null,
+    step_config: { subject: "tag_presence", operand: "tag-x" },
+  };
+}
+
+/**
+ * Passo que representa TRABALHO FEITO. É `update_contact_field` e não
+ * `add_tag` porque o harness mocka a escrita em `contacts`, enquanto `add_tag`
+ * exige que a etiqueta exista na conta — o que aqui viraria falha e mediria
+ * outra coisa.
+ */
+function passoDeTrabalho(id: string, position: number) {
+  return {
+    id,
+    automation_id: "a-desf",
+    step_type: "update_contact_field",
+    position,
+    parent_step_id: null,
+    step_config: { field: "company", value: "trabalho feito" },
+  };
+}
+
+const desfechoGravado = () =>
+  (h.state.logUpdates.filter((u) => "desfecho" in u).at(-1) as
+    | { desfecho?: string; finalizado_em?: string }
+    | undefined);
+
+/**
+ * ⚠️ A HORA DE FIM vem em UPDATE PRÓPRIO desde a 2ª rodada da revisão: a cerca
+ * anti-regressão recusa a linha inteira quando o log já diz 'falhou', e
+ * juntas as duas colunas a falha ficava para sempre sem hora de fim — ou
+ * seja, invisível no fio, que exige as duas. Procurar `finalizado_em` dentro
+ * do update do desfecho passaria a medir sempre `undefined`.
+ */
+const horaDeFimGravada = () =>
+  (
+    h.state.logUpdates.filter((u) => "finalizado_em" in u).at(-1) as
+      | { finalizado_em?: string }
+      | undefined
+  )?.finalizado_em;
+
+/** Os filtros do update que carregou a hora de fim (para provar que vai SEM cerca). */
+const filtrosDaHoraDeFim = () => {
+  const i = h.state.logUpdates.findIndex((u) => "finalizado_em" in u);
+  return i < 0 ? null : h.state.updateFiltros[i];
+};
+
+const statusGravado = () =>
+  (h.state.logUpdates.filter((u) => "status" in u).at(-1) as { status?: string } | undefined)
+    ?.status;
+
+async function dispara() {
+  await runAutomationsForTrigger({
+    accountId: ACCOUNT,
+    triggerType: "new_message_received",
+    contactId: "c1",
+    context: {},
+  });
+}
+
+describe("desfecho da execução (985)", () => {
+  it("condição de ramo vazio, sem trabalho: desfecho 'barrada' e status intocado", async () => {
+    // É a trava por etiqueta da automação de contrato fechado: o ramo "sim"
+    // existe vazio de propósito, para a segunda passada morrer nele.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [passoCondicao("s-cond", 0)];
+
+    await dispara();
+
+    expect(desfechoGravado()?.desfecho).toBe("barrada");
+    expect(horaDeFimGravada()).toBeTruthy();
+    // ⚠️ `status` continua nos três valores do upstream — é o que impede as
+    // telas que o leem sem cobertura de tipo de pintar "barrada" de vermelho.
+    expect(statusGravado()).toBe("success");
+  });
+
+  it("marca a própria condição como 'skipped', para a tela dizer qual desviou", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [passoCondicao("s-cond", 0)];
+
+    await dispara();
+
+    const passos = h.state.logUpdates
+      .flatMap((u) => (u.steps_executed as Array<Record<string, unknown>>) ?? [])
+      .filter((p) => p.step_type === "condition");
+    expect(passos.at(-1)).toMatchObject({ step_id: "s-cond", status: "skipped" });
+  });
+
+  it("barreira DEPOIS de trabalho feito é 'concluida', não 'barrada'", async () => {
+    // A etiqueta foi aplicada; chamar a execução de interrompida faria o
+    // operador ler "não rodou" sobre algo que rodou.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [passoDeTrabalho("s-tag", 0), passoCondicao("s-cond", 1)];
+
+    await dispara();
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+  });
+
+  it("a regra não depende da ORDEM em steps_executed", async () => {
+    // `[condição vazia][condição cheia]`: o ramo cheio faz seu próprio flush
+    // ANTES do escopo de fora, então uma régua baseada em `at(-1)` acharia a
+    // condição errada. Aqui a segunda condição tem um passo no ramo.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [
+      passoCondicao("s-vazia", 0),
+      passoCondicao("s-cheia", 1),
+      {
+        id: "s-dentro",
+        automation_id: "a-desf",
+        step_type: "update_contact_field",
+        position: 0,
+        parent_step_id: "s-cheia",
+        // ⚠️ Ramo "no": o contato do harness não tem etiqueta, então
+        // `tag_presence` reprova e é este o ramo que o motor escolhe. Pôr o
+        // passo no "yes" deixaria os DOIS ramos vazios e o teste mediria
+        // 'barrada' — o oposto do que ele existe para provar.
+        branch: "no",
+        step_config: { field: "company", value: "dentro do ramo" },
+      },
+    ];
+
+    await dispara();
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+  });
+
+  it("passo que falha vira desfecho 'falhou'", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    // `add_tag` sem tag_id estoura dentro do motor.
+    h.state.steps = [
+      { ...passoDeTrabalho("s-ruim", 0), step_type: "add_tag", step_config: { tag_id: "" } },
+    ];
+
+    await dispara();
+
+    expect(desfechoGravado()?.desfecho).toBe("falhou");
+    expect(statusGravado()).toBe("failed");
+    // ⚠️ A FALHA TAMBÉM PRECISA DA HORA DE FIM, e sem esta linha o pino não
+    // existia: um mutante que gateasse a 2ª escrita em `desfecho !== 'falhou'`
+    // passava na suíte inteira (75/75) enquanto deixava toda execução falhada
+    // invisível no fio, que exige as duas colunas (medido pela revisão).
+    expect(horaDeFimGravada()).toBeTruthy();
+  });
+
+  it("CRÍTICO: espera VIVA adia a HORA DE FIM, mas o desfecho é gravado", async () => {
+    // ⚠️ A régua mudou depois da revisão adversarial de 09/09: antes a espera
+    // viva fazia `fecharLog` DESCARTAR o desfecho — e o 'falhou' de um escopo
+    // cujo ramo continuava era perdido, para horas depois o resume daquele
+    // ramo gravar 'concluida' por cima. Hoje o desfecho é gravado sempre; o
+    // que a espera adia é só `finalizado_em`. Como a régua do fio exige os
+    // DOIS, a execução continua não aparecendo como encerrada — sem que o
+    // fato se perca.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [passoDeTrabalho("s-tag", 0)];
+    h.state.esperasVivas = [{ id: "espera-1" }];
+
+    await dispara();
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+    expect(horaDeFimGravada()).toBeUndefined();
+  });
+
+  it("CRÍTICO: 'falhou' de um escopo NÃO é apagado pelo ramo que conclui depois", async () => {
+    // O cenário que a revisão achou, no nível do que dá para observar aqui:
+    // quando o desfecho não é 'falhou', o update sai com a cerca
+    // `desfecho.is.null,desfecho.neq.falhou` — é ela que impede a regressão
+    // no banco. 'falhou' grava sem cerca, porque é o pior desfecho.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [{ ...passoDeTrabalho("s-ruim", 0), step_type: "add_tag", step_config: { tag_id: "" } }];
+
+    await dispara();
+
+    const semCerca = h.state.updateFiltros.filter((f) =>
+      f.some(([op]) => op === "or"),
+    );
+    expect(desfechoGravado()?.desfecho).toBe("falhou");
+    expect(semCerca).toHaveLength(0);
+  });
+});
+
+describe("desfecho depois de uma ESPERA (achado do teste ponta a ponta)", () => {
+  it("CRÍTICO: o resume fecha o log, ignorando a própria espera que está processando", async () => {
+    // ⚠️ Este pino nasceu de um defeito MEDIDO no preview em 09/09: a guarda
+    // de `fecharLog` enxergava a espera que o cron acabou de reivindicar
+    // (`status='running'`, que é ESTA execução), concluía que a automação
+    // continuava e nunca fechava. Resultado: toda automação com "Aguardar"
+    // terminava sem desfecho e ficava invisível no fio — para sempre.
+    h.state.automations = [automacaoSimples("a-resume")];
+    h.state.steps = [
+      { ...passoDeTrabalho("s-depois", 1), automation_id: "a-resume" },
+    ];
+    // A espera em curso está `running` e é a que o resume está processando.
+    h.state.esperasVivas = [{ id: "espera-em-curso" }];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: {},
+    });
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+  });
+
+  it("mas uma espera de OUTRO ramo, ainda viva, continua segurando o fechamento", async () => {
+    // A exceção é só para a espera em processamento. Outra pendente do mesmo
+    // log significa que a automação REALMENTE continua — é o follow-up de 30
+    // dias com nove mensagens pela frente.
+    h.state.automations = [automacaoSimples("a-resume")];
+    h.state.steps = [
+      { ...passoDeTrabalho("s-depois", 1), automation_id: "a-resume" },
+    ];
+    h.state.esperasVivas = [{ id: "espera-em-curso" }, { id: "outra-espera" }];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: {},
+    });
+
+    // O desfecho é registrado; a HORA DE FIM é que espera a outra ponta.
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+    expect(horaDeFimGravada()).toBeUndefined();
+  });
+});
+
+// ============================================================
+// A 2ª rodada da revisão (Codex, PR #155). Os dois achados são do mesmo
+// tronco: o desfecho é decidido por uma CHAMADA, e uma execução com
+// "Aguardar" atravessa várias.
+// ============================================================
+describe("desfecho: os dois furos da 2ª rodada da revisão", () => {
+  it("CRÍTICO: a HORA DE FIM vai SEM cerca — senão a falha nunca aparece", async () => {
+    // ⚠️ O cenário: um ramo estoura enquanto a espera irmã segue viva, então o
+    // log fica 'falhou' e SEM hora de fim. Horas depois a outra ponta termina
+    // bem e chama `fecharLog` com 'concluida' — que sai com a cerca
+    // `desfecho.is.null,desfecho.neq.falhou`. Com as duas colunas no MESMO
+    // update, a cerca recusava a linha inteira e a hora de fim nunca era
+    // gravada; como `itensDoFio` descarta linha sem hora de fim, a falha
+    // sumia do fio e do histórico — some justamente o cartão vermelho.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [passoDeTrabalho("s-tag", 0)];
+
+    await dispara();
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+    expect(horaDeFimGravada()).toBeTruthy();
+    // O update do desfecho leva a cerca; o da hora de fim, não.
+    expect(filtrosDaHoraDeFim()?.some(([op]) => op === "or")).toBe(false);
+    expect(h.state.updateFiltros.some((f) => f.some(([op]) => op === "or"))).toBe(true);
+  });
+
+  it("CRÍTICO: trabalho feito ANTES da espera impede o 'barrada' na retomada", async () => {
+    // ⚠️ `[enviar][aguardar][condição de ramo vazio]` — a forma do follow-up
+    // de no-show. A retomada não faz trabalho e acha a barreira, então os
+    // contadores DELA dizem "barrada": "a automação não fez nada", sobre uma
+    // execução que já mandou a mensagem. Quem sabe do trecho anterior é o
+    // registro persistido.
+    h.state.automations = [automacaoSimples("a-resume")];
+    h.state.steps = [
+      { ...passoCondicao("s-cond", 1), automation_id: "a-resume" },
+    ];
+    h.state.historicoDoLog = [
+      { step_id: "s-enviou", step_type: "send_message", status: "success" },
+      { step_id: "s-esperou", step_type: "wait", status: "success" },
+    ];
+    h.state.esperasVivas = [{ id: "espera-em-curso" }];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: {},
+    });
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+  });
+
+  it("sem trabalho nenhum no registro, a barreira da retomada CONTINUA valendo", async () => {
+    // A cerca de cima não pode virar "nunca mais barra": execução que só
+    // esperou e morreu numa trava é `barrada` de verdade.
+    h.state.automations = [automacaoSimples("a-resume")];
+    h.state.steps = [
+      { ...passoCondicao("s-cond", 1), automation_id: "a-resume" },
+    ];
+    h.state.historicoDoLog = [
+      { step_id: "s-esperou", step_type: "wait", status: "success" },
+    ];
+    h.state.esperasVivas = [{ id: "espera-em-curso" }];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: {},
+    });
+
+    expect(desfechoGravado()?.desfecho).toBe("barrada");
+  });
+});
+
+// ============================================================
+// Os DOIS fechadores irmãos que a 1ª tentativa da correção #2 não alcançou
+// (medidos por dois céticos da revisão, que não conseguiram refutar).
+//
+// ⚠️ Importa mais do que parece: as automações deste escritório põem o
+// "Aguardar" DENTRO do ramo da condição — é assim que a trava por etiqueta e o
+// "ainda está em No Show?" gateiam de verdade, porque ramo vazio NÃO para o
+// escopo de fora. Ou seja, o caminho de ramo é o comum aqui, não a borda.
+// ============================================================
+describe("desfecho: os fechadores que não têm o histórico em mão", () => {
+  it("retomada de RAMO sem trabalho, com barreira no registro, é 'barrada'", async () => {
+    h.state.automations = [automacaoSimples("a-resume")];
+    // O escopo do ramo não tem mais passo depois da espera.
+    h.state.steps = [];
+    h.state.historicoDoLog = [
+      { step_id: "s-cond", step_type: "condition", status: "skipped", detail: "branch=no" },
+      { step_id: "s-esperou", step_type: "wait", status: "success" },
+    ];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: "s-pai",
+      branch: "yes",
+      next_step_position: 1,
+      context: {},
+    });
+
+    expect(desfechoGravado()?.desfecho).toBe("barrada");
+  });
+
+  it("retomada de RAMO com trabalho no registro continua 'concluida'", async () => {
+    // A correção não pode virar "tudo é barrada": mensagem que saiu antes da
+    // espera manda no desfecho.
+    h.state.automations = [automacaoSimples("a-resume")];
+    h.state.steps = [];
+    h.state.historicoDoLog = [
+      { step_id: "s-enviou", step_type: "send_message", status: "success" },
+      { step_id: "s-cond", step_type: "condition", status: "skipped", detail: "branch=no" },
+    ];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: "s-pai",
+      branch: "yes",
+      next_step_position: 1,
+      context: {},
+    });
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+  });
+
+  it("retomada da RAIZ sem passo restante lê o registro em vez de cravar 'concluida'", async () => {
+    // Alcançável sem nada de exótico: o motor enfileira `position + 1` sem
+    // perguntar se sobrou passo, então "Aguardar" como ÚLTIMO passo cai aqui.
+    h.state.automations = [automacaoSimples("a-resume")];
+    h.state.steps = [];
+    h.state.historicoDoLog = [
+      { step_id: "s-cond", step_type: "condition", status: "skipped", detail: "branch=no" },
+      { step_id: "s-esperou", step_type: "wait", status: "success" },
+    ];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: {},
+    });
+
+    expect(desfechoGravado()?.desfecho).toBe("barrada");
+  });
+
+  it("automação SEM passo nenhum, no disparo fresco, continua 'concluida'", async () => {
+    // O outro morador do mesmo ramo: registro vazio, e a resposta de sempre.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [];
+
+    await dispara();
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
   });
 });

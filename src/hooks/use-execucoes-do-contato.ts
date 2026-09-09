@@ -27,22 +27,15 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { EsperaAgrupada } from "@/lib/execucoes/agrupar";
 import type { LinhaDoTempo } from "@/lib/execucoes/linha-do-tempo";
+import { EVENTO_EXECUCOES, avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
 
 /** Grupo de esperas + a linha do tempo que o GET monta para a expansão. */
 export type GrupoDeEsperas = EsperaAgrupada & { linha?: LinhaDoTempo };
 
-/**
- * Evento global disparado por quem MUDA o conjunto de execuções de fora da
- * aba (o dialog "Executar automação" vive no fio, em outra árvore). O hook
- * escuta e recarrega — mais barato e mais honesto que fiar um callback
- * através de page → thread → composer.
- */
-export const EVENTO_EXECUCOES = "cb:execucoes-mudaram";
-
-/** Avisa todos os `useExecucoesDoContato` montados para recarregarem. */
-export function avisarExecucoesMudaram() {
-  window.dispatchEvent(new Event(EVENTO_EXECUCOES));
-}
+// O evento mudou de casa para `lib/execucoes/aviso.ts` (a drenagem do funil
+// precisa emiti-lo e é módulo de biblioteca, sem React). Reexportado aqui
+// porque os componentes já importam destes nomes.
+export { EVENTO_EXECUCOES, avisarExecucoesMudaram };
 
 export interface RoboAtivo {
   runId: string;

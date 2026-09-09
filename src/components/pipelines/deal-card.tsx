@@ -3,7 +3,7 @@
 import { memo } from "react";
 import type { Deal, PipelineStage } from "@/types";
 import type { CbChannel } from "@/lib/cb-channels/repo";
-import { Calendar, Check, Pencil, X } from "lucide-react";
+import { Calendar, Check, Pencil, X, Zap } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
 import { findChannel } from "@/lib/cb-channels/display";
@@ -18,6 +18,16 @@ interface DealCardProps {
   campos: CamposDoCard;
   /** Carregados UMA vez pelo board — um hook aqui custaria um GET por card. */
   channels: CbChannel[];
+  /**
+   * Quantas automações estão AGENDADAS para o contato deste card (985).
+   *
+   * ⚠️ Chega por PROP, número primitivo, e não por hook: o board redesenha
+   * ~120 cards a cada tecla num diálogo irmão, e o `memo` só segura isso com
+   * props estáveis. Um `useSinalDeExecucoes()` aqui dentro seria uma
+   * requisição por card, e um objeto novo por render quebraria o `memo`.
+   * `0` = nenhuma, ou ainda não se sabe — a marca cala nos dois casos.
+   */
+  esperasDeAutomacao?: number;
   onEdit: (deal: Deal) => void;
   /** Clique no corpo do card, quando há conversa para abrir. */
   onAbrirConversa: (conversationId: string) => void;
@@ -58,6 +68,7 @@ export const DealCard = memo(function DealCard({
   deal,
   stage,
   campos,
+  esperasDeAutomacao = 0,
   channels,
   onEdit,
   onAbrirConversa,
@@ -190,7 +201,7 @@ export const DealCard = memo(function DealCard({
         {/* Última mensagem + não lidas — o resumo vem de `conversaDoCard`;
             no fallback pelo vínculo histórico (contato apagado, plano B) ele
             é null e nada aqui pinta dado de outra linha. */}
-        {(ultimaMensagem || naoLidas > 0) && (
+        {(ultimaMensagem || naoLidas > 0 || esperasDeAutomacao > 0) && (
           <div className="mt-2 flex items-center justify-between gap-2">
             {ultimaMensagem ? (
               <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
@@ -198,6 +209,19 @@ export const DealCard = memo(function DealCard({
               </span>
             ) : (
               <span className="min-w-0 flex-1" />
+            )}
+            {/* ⚠️ "Tem robô rodando neste cliente" (985) — o mesmo raio da
+                linha da lista de conversas, de propósito: é a mesma pergunta,
+                e duas marcas diferentes para o mesmo fato fariam o operador
+                aprender duas linguagens. Antes do contador de não lidas
+                porque este é o que ele precisa LEMBRAR de desligar. */}
+            {esperasDeAutomacao > 0 && (
+              <span
+                title={t("automacaoRodando", { n: esperasDeAutomacao })}
+                className="flex h-5 shrink-0 items-center rounded-full bg-violet-500/15 px-1.5 text-violet-600 dark:text-violet-300"
+              >
+                <Zap className="h-3 w-3" aria-hidden="true" />
+              </span>
             )}
             {naoLidas > 0 && (
               <span

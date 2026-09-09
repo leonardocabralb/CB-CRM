@@ -1536,6 +1536,12 @@ export interface AutomationLogStepResult {
   detail?: string;
 }
 
+/**
+ * Desfecho da execução (migration 985) — vocabulário NOSSO, independente de
+ * `status`. Ver `src/lib/automations/estado-da-execucao.ts`.
+ */
+export type AutomationLogDesfecho = 'concluida' | 'barrada' | 'falhou';
+
 export interface AutomationLog {
   id: string;
   automation_id: string;
@@ -1554,6 +1560,20 @@ export interface AutomationLog {
    * número.
    */
   channel_id?: string | null;
+  /**
+   * Como a execução terminou (985). `null` = não terminou, terminou antes da
+   * migration, ou o processo morreu no meio.
+   *
+   * ⚠️ NÃO é `status`. Aquele nasce `'failed'` no INSERT (semente pessimista
+   * da issue #409) e diz `'success'` para a execução que uma condição barrou —
+   * é justamente por isso que esta coluna existe.
+   */
+  desfecho?: AutomationLogDesfecho | null;
+  /**
+   * Quando terminou de fato. Diferente de `created_at`, que é o INSERT: numa
+   * automação com "Aguardar" os dois ficam a dias de distância.
+   */
+  finalizado_em?: string | null;
 }
 
 // ============================================================

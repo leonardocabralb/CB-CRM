@@ -205,6 +205,19 @@ describe('ordenarPorTempo', () => {
   });
 });
 
+/** Item de execução já colapsado, como `itensDoFio` o entrega. */
+function execucao(quando: string, vezes = 1) {
+  const dia = quando.slice(0, 10);
+  return {
+    chave: `aut-1|${dia}|concluida`,
+    quando,
+    desfecho: 'concluida' as const,
+    nome: 'Contrato fechado',
+    vezes,
+    execucaoId: 'log-1',
+  };
+}
+
 describe('intercalar', () => {
   const msg = (id: string, created_at: string) => ({ id, created_at });
   const nota = (id: string, created_at: string): ConversationNote => ({
@@ -262,10 +275,11 @@ describe('intercalar', () => {
       [msg('m1', '2026-07-27T09:00:00+00:00')],
       [evento({ id: 'e1', occurred_at: '2026-07-27T10:00:00+00:00' })],
       [nota('n1', '2026-07-27T10:30:00+00:00')],
+      [execucao('2026-07-27T11:00:00+00:00')],
     );
-    expect(itens).toHaveLength(3);
+    expect(itens).toHaveLength(4);
     for (const item of itens) {
-      const preenchidas = [item.mensagem, item.evento, item.nota].filter(Boolean);
+      const preenchidas = [item.mensagem, item.evento, item.nota, item.execucao].filter(Boolean);
       expect(preenchidas).toHaveLength(1);
     }
   });
@@ -299,5 +313,48 @@ describe('intercalar', () => {
     ]);
     expect(primeira.map((i) => i.chave)).toEqual(['e:x', 'm:x', 'n:x']);
     expect(primeira.map((i) => i.chave)).toEqual(segunda.map((i) => i.chave));
+  });
+
+  // --- a quarta fatia: execução de automação encerrada (985) ---
+  it('entra na ordem cronológica, junto das outras três', () => {
+    const itens = intercalar(
+      [msg('m1', '2026-07-27T09:00:00+00:00'), msg('m2', '2026-07-27T12:00:00+00:00')],
+      [evento({ id: 'e1', occurred_at: '2026-07-27T11:00:00+00:00' })],
+      [nota('n1', '2026-07-27T10:00:00+00:00')],
+      [execucao('2026-07-27T11:30:00+00:00')],
+    );
+    expect(itens.map((i) => i.chave)).toEqual([
+      'm:m1',
+      'n:n1',
+      'e:e1',
+      'x:aut-1|2026-07-27|concluida',
+      'm:m2',
+    ]);
+  });
+
+  it('é opcional — os call sites antigos continuam funcionando', () => {
+    // Mesma garantia que a nota tem: se o parâmetro perder o default, isto
+    // quebra em vez de obrigar quem passa três argumentos a mudar.
+    const itens = intercalar([msg('m1', '2026-07-27T09:00:00+00:00')], []);
+    expect(itens.map((i) => i.chave)).toEqual(['m:m1']);
+    expect(itens.every((i) => i.execucao === undefined)).toBe(true);
+  });
+
+  it('empate exato com uma anotação tem ordem determinística', () => {
+    // A chave é o desempate, e `n:` vem antes de `x:` byte a byte. O que
+    // importa não é QUAL vem primeiro, é a ordem não mudar entre renders.
+    const mesmo = '2026-07-27T10:00:00+00:00';
+    const uma = intercalar([], [], [nota('n1', mesmo)], [execucao(mesmo)]);
+    const outra = intercalar([], [], [nota('n1', mesmo)], [execucao(mesmo)]);
+    expect(uma.map((i) => i.chave)).toEqual(outra.map((i) => i.chave));
+    expect(uma.map((i) => i.chave)).toEqual(['n:n1', 'x:aut-1|2026-07-27|concluida']);
+  });
+
+  it('a chave é a do GRUPO, não de uma linha — três conclusões do dia ocupam uma posição', () => {
+    // É o que a régua de `itensDoFio` produz: `automação|dia|desfecho`. Se a
+    // chave fosse o id do log, o colapso não teria posição estável no fio.
+    const itens = intercalar([], [], [], [execucao('2026-07-27T18:00:00+00:00', 3)]);
+    expect(itens).toHaveLength(1);
+    expect(itens[0].execucao?.vezes).toBe(3);
   });
 });

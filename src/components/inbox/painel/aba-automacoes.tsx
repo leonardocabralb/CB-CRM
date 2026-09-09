@@ -39,11 +39,14 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useCan } from '@/hooks/use-can';
-import type {
-  GrupoDeEsperas,
-  RoboAtivo,
+import {
+  avisarExecucoesMudaram,
+  type GrupoDeEsperas,
+  type RoboAtivo,
 } from '@/hooks/use-execucoes-do-contato';
+import type { ItemDeExecucao } from '@/lib/execucoes/desfecho';
 import type { ItemDaLinha } from '@/lib/execucoes/linha-do-tempo';
 import { relativoAoInstante } from '@/lib/execucoes/tempo';
 import { TituloDeSecao } from './painel-do-contato';
@@ -55,6 +58,18 @@ interface AbaAutomacoesProps {
   carregou: boolean;
   erro: boolean;
   recarregar: () => void;
+  /**
+   * O que JÁ RODOU para este cliente (985).
+   *
+   * ⚠️ As três props são OBRIGATÓRIAS de propósito (o padrão de
+   * `aba-arquivos.tsx`): sem `historicoPronto`, a seção afirmaria "nenhuma
+   * automação terminou" enquanto a consulta está no ar — a armadilha do
+   * efeito passivo, que neste projeto já mordeu quatro vezes. Exigi-las faz
+   * o compilador cobrar de quem montar a aba numa tela nova.
+   */
+  historico: ItemDeExecucao[];
+  historicoPronto: boolean;
+  historicoFalhou: boolean;
 }
 
 const ICONE_POR_ESTADO: Record<ItemDaLinha['estado'], typeof Check> = {
@@ -72,6 +87,9 @@ export function AbaAutomacoes({
   carregou,
   erro,
   recarregar,
+  historico,
+  historicoPronto,
+  historicoFalhou,
 }: AbaAutomacoesProps) {
   const t = useTranslations('Inbox.execucoes');
   // Rótulo de cada passo — MESMAS chaves do resumo da grade do funil, de
@@ -111,6 +129,12 @@ export function AbaAutomacoes({
         toast.error(t('erroParar'));
         return;
       }
+      // ⚠️ Avisa QUEM ESTÁ FORA da conversa (985): a marca de "automação
+      // agendada" na linha da lista e no card do funil só recarrega por este
+      // evento. Sem ele, o raio seguia aceso depois de o operador parar a
+      // automação — a três centímetros do toast dizendo que parou (achado da
+      // revisão, 09/09).
+      avisarExecucoesMudaram();
       // 0 não é falha: a lista é uma foto de segundos atrás e a espera pode
       // ter acordado (ou o robô terminado) entre a carga e o clique.
       const efetivadas = data.paradas ?? data.canceladas ?? 0;
@@ -229,34 +253,40 @@ export function AbaAutomacoes({
     );
   }
 
-  // Falha de carga NUNCA vira "nada em execução": afirmar ausência com a
-  // consulta quebrada é o modo de falha que este projeto mais persegue.
-  if (erro) {
-    return (
-      <div className="py-8 text-center">
-        <p className="text-muted-foreground text-sm">{t('erroCarregar')}</p>
-        <Button size="sm" variant="outline" className="mt-3" onClick={recarregar}>
-          <RefreshCw className="size-3.5" />
-          {t('tentarDeNovo')}
-        </Button>
-      </div>
-    );
-  }
 
-  if (robos.length === 0 && esperas.length === 0) {
-    return (
-      <div className="py-8 text-center">
-        <Zap className="text-muted-foreground/40 mx-auto h-8 w-8" />
-        <p className="text-muted-foreground mt-2 text-sm">{t('nadaRodando')}</p>
-        <p className="text-muted-foreground/70 mt-1 text-xs">{t('dica')}</p>
-      </div>
-    );
-  }
 
   const agora = Date.now();
+  const nadaEmCurso = robos.length === 0 && esperas.length === 0;
 
   return (
     <div className="space-y-4">
+      {/* ⚠️ Falha de carga NUNCA vira "nada em execução" — afirmar ausência com
+          a consulta quebrada é o modo de falha que este projeto mais persegue.
+          Mas ela também não pode DEVOLVER a aba inteira: as duas fontes são
+          independentes de propósito (uma é rota, a outra é RLS direto), e a
+          falha de uma escondia o histórico da outra, que já estava carregado
+          em memória (achado da revisão, 09/09). */}
+      {erro && (
+        <div className="py-4 text-center">
+          <p className="text-muted-foreground text-sm">{t('erroCarregar')}</p>
+          <Button size="sm" variant="outline" className="mt-3" onClick={recarregar}>
+            <RefreshCw className="size-3.5" />
+            {t('tentarDeNovo')}
+          </Button>
+        </div>
+      )}
+      {/* ⚠️ O vazio de "em execução" NÃO devolve mais a aba inteira. Ele fazia
+          `return` antes da seção "Já rodou" — e o caso mais comum é
+          exatamente esse: nada rodando agora, várias execuções terminadas.
+          Medido no preview em 09/09: numa conversa sem espera pendente, o
+          histórico não aparecia em tela nenhuma. */}
+      {!erro && nadaEmCurso && (
+        <div className="py-6 text-center">
+          <Zap className="text-muted-foreground/40 mx-auto h-8 w-8" />
+          <p className="text-muted-foreground mt-2 text-sm">{t('nadaRodando')}</p>
+          <p className="text-muted-foreground/70 mt-1 text-xs">{t('dica')}</p>
+        </div>
+      )}
       {robos.length > 0 && (
         <div>
           <TituloDeSecao icon={<Bot className="h-3 w-3" />}>
@@ -390,6 +420,81 @@ export function AbaAutomacoes({
           </div>
         </div>
       )}
+
+      {/* ------------------------------------------------------------
+          JÁ RODOU (985) — o destino do clique no cartão de falha do fio.
+          
+          ⚠️ Sem expansão de linha do tempo aqui: `montarLinhaDoTempo` precisa
+          de uma ESPERA de referência para dizer "o que vem depois", e
+          fabricar uma faria a tela afirmar próximos passos que nunca vão
+          rodar. Execução encerrada não tem futuro.
+          ------------------------------------------------------------ */}
+      <div>
+        <TituloDeSecao>{t('tituloDaSecao')}</TituloDeSecao>
+        {!historicoPronto ? (
+          <p className="text-muted-foreground/70 text-[11px]">{t('carregando')}</p>
+        ) : historicoFalhou ? (
+          // ⚠️ Falha de leitura NÃO é "nada aconteceu": dizer vazio aqui
+          // afirmaria que a automação não rodou quando só a consulta caiu.
+          <p className="text-[11px] text-amber-700 dark:text-amber-400">{t('falhouCarga')}</p>
+        ) : historico.length === 0 ? (
+          <p className="text-muted-foreground/70 text-[11px]">{t('vazio')}</p>
+        ) : (
+          <div className="space-y-1.5">
+            {[...historico].reverse().slice(0, 8).map((item) => (
+              <LinhaDoHistorico key={item.chave} item={item} agora={agora} t={t} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Uma execução encerrada na aba. É AQUI — e só aqui — que o motivo CRU do
+ * motor aparece: em inglês, com id dentro, a 11px, numa aba que o operador
+ * abriu de propósito. No fio ele ficaria no meio da conversa com o cliente.
+ */
+function LinhaDoHistorico({
+  item,
+  agora,
+  t,
+}: {
+  item: ItemDeExecucao;
+  agora: number;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const Icone =
+    item.desfecho === 'falhou' ? X : item.desfecho === 'barrada' ? GitBranch : Check;
+  const cor =
+    item.desfecho === 'falhou'
+      ? 'text-red-600 dark:text-red-400'
+      : item.desfecho === 'barrada'
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-primary';
+
+  return (
+    <div className="flex items-start gap-2">
+      <Icone className={cn('mt-0.5 h-3 w-3 shrink-0', cor)} />
+      <div className="min-w-0">
+        <p className="text-foreground text-xs">
+          {item.nome ?? t('semNome')}
+          {item.vezes > 1 && (
+            <span className="text-muted-foreground"> {t('vezes', { vezes: item.vezes })}</span>
+          )}
+        </p>
+        <p className="text-muted-foreground text-[11px]">
+          {relativoAoInstante(item.quando, agora)}
+        </p>
+        {/* ⚠️ Em barrada isto também aparece: era calculado e nunca exibido
+            (achado da revisão). É na aba que o detalhe mora — no fio, não. */}
+        {item.motivoBruto && (
+          <p className="text-muted-foreground/80 mt-0.5 text-[11px] break-words whitespace-pre-wrap">
+            {item.motivoBruto}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

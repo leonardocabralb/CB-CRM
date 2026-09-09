@@ -38,6 +38,7 @@ import { OrigemDoContato } from '@/components/inbox/painel/origem-do-contato';
 import { ResponsavelMenu } from '@/components/inbox/painel/responsavel-menu';
 import { CopiarLinkDaConversa } from '@/components/inbox/copiar-link-da-conversa';
 import { useExecucoesDoContato } from '@/hooks/use-execucoes-do-contato';
+import { useExecucoesDoFio } from '@/hooks/use-execucoes-do-fio';
 import { statusAoEntrarNaEtapa } from '@/lib/pipelines/resultado';
 import { avisarDrenagemDeFunil } from '@/lib/automations/avisar-drenagem';
 import { CampoComSalvamento } from '@/components/contacts/campo-com-salvamento';
@@ -101,6 +102,19 @@ import { useTranslations } from 'next-intl';
 export interface PainelDoContatoProps {
   contact: Contact | null;
   /**
+   * Aba que alguém de FORA pediu para abrir (985) — hoje o cartão de falha do
+   * fio, que precisa levar ao histórico de execuções.
+   *
+   * ⚠️ Não é "aba inicial": o painel já nasce aberto no desktop, então um
+   * valor lido só na montagem não abriria nada. Ele VENCE a escolha local
+   * enquanto estiver preenchido, e o primeiro clique do operador em outra aba
+   * o consome (`aoConsumirAba`). Sem isso o operador ficaria preso na aba que
+   * o cartão pediu.
+   */
+  abaPedida?: string | null;
+  /** Chamado quando o operador troca de aba à mão, para soltar `abaPedida`. */
+  aoConsumirAba?: () => void;
+  /**
    * Conversa aberta. A anotação é chaveada pela CONVERSA desde a 918 — sem
    * ela dá para LER as anotações do contato (a coluna `contact_id` é
    * desnormalizada justamente para isso), mas não para escrever.
@@ -151,6 +165,8 @@ export interface PainelDoContatoProps {
 
 export function PainelDoContato({
   contact,
+  abaPedida = null,
+  aoConsumirAba,
   conversationId,
   conversation = null,
   onAssignChange,
@@ -161,6 +177,8 @@ export function PainelDoContato({
   messagesCarregando = false,
 }: PainelDoContatoProps) {
   const tSidebar = useTranslations('Inbox.sidebar');
+  /** A aba escolhida AQUI. `abaPedida` vence enquanto existir — ver a prop. */
+  const [abaLocal, setAbaLocal] = useState('principal');
   /** Só para o rótulo do bloco Geral (966) — o mesmo que o catálogo usa, para
    *  que a ficha e a tela de Configurações chamem o bloco pelo mesmo nome. */
   const tCampos = useTranslations('Contacts.customFields');
@@ -196,6 +214,10 @@ export function PainelDoContato({
    * sozinho na troca de contato (mesma régua de staleness das 7 queries).
    */
   const execucoes = useExecucoesDoContato(contact?.id ?? null);
+  // O que JÁ RODOU (985). No TOPO, como as outras buscas do painel: trocar de
+  // aba não pode refazer consulta, e a seção precisa distinguir "carregando"
+  // de "nada terminou" no primeiro render.
+  const historico = useExecucoesDoFio(contact?.id ?? null);
   /**
    * `true` só depois que as consultas POR-CONTATO do contato ATUAL
    * aterrissaram sem erro. Enquanto `false`, salvar campos e o cartão de
@@ -910,7 +932,11 @@ export function PainelDoContato({
           TabsList vem sob prefixo de variante, e `flex-1`/`h-[calc(100%-1px)]`
           do TabsTrigger se comportam mal em contêiner estreito. */}
       <Tabs
-        defaultValue="principal"
+        value={abaPedida ?? abaLocal}
+        onValueChange={(v) => {
+          setAbaLocal(v);
+          if (abaPedida) aoConsumirAba?.();
+        }}
         className="flex min-h-0 flex-1 flex-col gap-0"
       >
         {/* Ordem definida pelo operador (2026-08-29): Principal, Notas,
@@ -1452,6 +1478,9 @@ export function PainelDoContato({
             carregou={execucoes.carregou}
             erro={execucoes.erro}
             recarregar={execucoes.recarregar}
+            historico={historico.itens}
+            historicoPronto={historico.carregou}
+            historicoFalhou={historico.erro}
           />
         </TabsContent>
 
