@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+
+import { chaveDeTag } from '@/lib/contacts/chave-de-tag';
 import { Loader2, Plus, Tag as TagIcon, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
@@ -91,6 +93,28 @@ export function TagManager() {
       return;
     }
 
+    // Desde a 983/984 o banco tem índice único por `(account_id, name_key)`,
+    // e `name_key` ignora caixa E acento. Digitar "bancario" numa conta que
+    // já tem "Bancário" é recusado — e o `catch` lá embaixo mostrava só
+    // "Falha ao criar a etiqueta", sem pista nenhuma do motivo.
+    //
+    // Esta busca serve para DAR NOME ao erro, e nada mais. Ela NÃO barra a
+    // criação, de propósito:
+    //
+    // ⚠️ `tags` é uma foto de quando `fetchTags` rodou. Se a etiqueta que
+    // colidiria foi APAGADA noutra aba ou noutro aparelho, o banco aceitaria
+    // a criação — e uma guarda que desse `return` aqui recusaria para
+    // sempre, até a pessoa recarregar a página. O caminho que só depende do
+    // banco se cura sozinho; a guarda o transformava em estado preso.
+    // (Achado do Codex no PR #154.)
+    //
+    // ⚠️ E ela é incompleta por outro motivo: `fetchTags` filtra por
+    // `user_id`, então etiqueta criada por OUTRO membro da conta não está
+    // nesta lista. Quem decide é sempre o 23505.
+    const provavelColisao = tags.find(
+      (tag) => chaveDeTag(tag.name) === chaveDeTag(newTagName)
+    );
+
     try {
       setSaving(true);
       if (!user || !accountId) {
@@ -115,7 +139,23 @@ export function TagManager() {
       await fetchTags(user.id);
     } catch (err) {
       console.error('Create error:', err);
-      toast.error(t('failedToCreateTag'));
+      // 23505 aqui só pode ser o índice único de `tags` (983/984). Não dá
+      // para NOMEAR a etiqueta que colidiu — ela pode ser de outro membro e
+      // não estar na lista carregada —, mas dizer o motivo já poupa o
+      // operador de tentar de novo achando que o sistema falhou.
+      const codigo = (err as { code?: string } | null)?.code;
+      if (codigo !== '23505') {
+        toast.error(t('failedToCreateTag'));
+        return;
+      }
+      // O banco recusou por nome repetido. Se a lista carregada souber qual
+      // é, nomeamos; senão (etiqueta de outro membro, ou lista velha)
+      // dizemos o motivo sem apontar qual.
+      toast.error(
+        provavelColisao
+          ? t('tagAlreadyExists', { nome: provavelColisao.name })
+          : t('tagAlreadyExistsUnknown')
+      );
     } finally {
       setSaving(false);
     }

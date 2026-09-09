@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveImportTagIds } from './resolve-import-tags';
+import {
+  assignImportedContactTags,
+  resolveImportTagIds,
+} from './resolve-import-tags';
 
 // ============================================================
 // Este helper é a porta ÚNICA de criação de etiqueta: import de CSV,
@@ -11,57 +14,66 @@ import { resolveImportTagIds } from './resolve-import-tags';
 type Linha = { id: string; name: string };
 
 /**
- * Client de mentira. `catalogos` é a sequência de respostas da leitura —
- * assim dá para observar a RELEITURA de depois da criação, e simular a
- * corrida (outra requisição criou a etiqueta primeiro).
+ * Client de mentira para o catálogo paginado + o upsert.
+ *
+ * `catalogos` é a sequência de respostas COMPLETAS da leitura — cada item é
+ * o catálogo inteiro visto por uma chamada de `lerCatalogoDeTags`. O dublê
+ * fatia cada um em páginas do mesmo tamanho que o código pede, e registra os
+ * `range` recebidos, para dar como provar que a paginação acontece.
  */
-function bancoCom(catalogos: Linha[][], opts: { erroAoCriar?: string } = {}) {
+function bancoCom(
+  catalogos: Linha[][],
+  opts: { erroAoCriar?: string; erroAoLer?: string } = {}
+) {
   const registro = {
     leituras: 0,
+    faixas: [] as [number, number][],
     upserts: [] as { linhas: Record<string, unknown>[]; opcoes: unknown }[],
   };
-  const db = {
-    registro,
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          order: () => ({
-            order: () => {
-              const i = Math.min(registro.leituras++, catalogos.length - 1);
-              return Promise.resolve({ data: catalogos[i], error: null });
-            },
-          }),
+  let chamada = -1;
+
+  const consulta = () => ({
+    eq: () => ({
+      order: () => ({
+        order: () => ({
+          range: (de: number, ate: number) => {
+            if (opts.erroAoLer) {
+              return Promise.resolve({
+                data: null,
+                error: { message: opts.erroAoLer },
+              });
+            }
+            if (de === 0) chamada++;
+            registro.leituras++;
+            registro.faixas.push([de, ate]);
+            const cat = catalogos[Math.min(chamada, catalogos.length - 1)];
+            return Promise.resolve({
+              data: cat.slice(de, ate + 1),
+              error: null,
+            });
+          },
         }),
       }),
     }),
-    // `upsert(...).select('id')`
-    upsert: (linhas: Record<string, unknown>[], opcoes: unknown) => {
-      registro.upserts.push({ linhas, opcoes });
-      return {
-        select: () =>
-          Promise.resolve(
-            opts.erroAoCriar
-              ? { data: null, error: { message: opts.erroAoCriar } }
-              : { data: [], error: null }
-          ),
-      };
-    },
+  });
+
+  const db = {
+    registro,
+    from: () => ({
+      select: consulta,
+      upsert: (linhas: Record<string, unknown>[], opcoes: unknown) => {
+        registro.upserts.push({ linhas, opcoes });
+        return {
+          select: () =>
+            Promise.resolve(
+              opts.erroAoCriar
+                ? { data: null, error: { message: opts.erroAoCriar } }
+                : { data: [], error: null }
+            ),
+        };
+      },
+    }),
   };
-  // `from()` devolve o mesmo objeto para select e upsert
-  db.from = () =>
-    ({
-      select: () => ({
-        eq: () => ({
-          order: () => ({
-            order: () => {
-              const i = Math.min(registro.leituras++, catalogos.length - 1);
-              return Promise.resolve({ data: catalogos[i], error: null });
-            },
-          }),
-        }),
-      }),
-      upsert: db.upsert,
-    }) as never;
   return db as never;
 }
 
@@ -143,10 +155,14 @@ describe('resolveImportTagIds', () => {
     expect((db as unknown as { registro: { upserts: unknown[] } }).registro.upserts).toEqual([]);
   });
 
-  it('⚠️ inserção barrada por RLS (0 linhas, sem erro) vira "pulado", não mapa incompleto', async () => {
-    // RLS que recusa escrita devolve 0 linhas com `error: null`. Devolver um
-    // mapa sem aquele nome, calado, faria o chamador atribuir menos
-    // etiquetas do que pediu e não perceber.
+  it('⚠️ releitura que não enxerga o que foi escrito vira "pulado", não mapa incompleto', async () => {
+    // Devolver um mapa sem aquele nome, calado, faria o chamador atribuir
+    // menos etiquetas do que pediu e não perceber.
+    //
+    // ⚠️ Isto NÃO é o caso de RLS: INSERT barrado por RLS ESTOURA (42501,
+    // medido), e sai pelo `throw` do erro de criação. O que este ramo cobre
+    // é a releitura não ver o que acabou de ser gravado — atraso de réplica,
+    // ou alguém apagando entre as duas chamadas.
     const db = bancoCom([CATALOGO, CATALOGO]); // a releitura não traz a nova
     const r = await resolveImportTagIds(db, args(['Nova']));
 
@@ -166,6 +182,33 @@ describe('resolveImportTagIds', () => {
     expect((db as unknown as { registro: { leituras: number } }).registro.leituras).toBe(0);
   });
 
+  it('⚠️ PAGINA o catálogo — o PostgREST corta em 1000 sem avisar', async () => {
+    // Truncado, o mapa diz "não existe" sobre etiqueta que existe: criação
+    // recusada pelo índice, ou "desconhecida" num remove que deveria achar.
+    const grande: Linha[] = Array.from({ length: 1200 }, (_, i) => ({
+      id: `id-${i}`,
+      name: `Etiqueta ${i}`,
+    }));
+    const db = bancoCom([grande]);
+    const r = await resolveImportTagIds(db, args(['Etiqueta 1100']));
+
+    expect(r.tagIdByKey.get('etiqueta 1100')).toBe('id-1100');
+    const { registro } = db as unknown as {
+      registro: { faixas: [number, number][] };
+    };
+    expect(registro.faixas.length).toBeGreaterThan(1);
+    expect(registro.faixas[0][0]).toBe(0);
+    // a última página vem incompleta e encerra o laço
+    expect(registro.faixas.length).toBe(3);
+  });
+
+  it('⚠️ erro na LEITURA do catálogo estoura — não vira "não existe"', async () => {
+    // Tratar falha de leitura como catálogo vazio faria o código concluir
+    // que toda etiqueta é nova e sair criando.
+    const db = bancoCom([CATALOGO], { erroAoLer: 'timeout' });
+    await expect(resolveImportTagIds(db, args(['Typebot']))).rejects.toBeTruthy();
+  });
+
   it('⚠️ na colisão de chave vence a MAIS ANTIGA (a leitura vem ordenada)', async () => {
     // Base anterior à 983 pode ter as duas: a migration RENOMEIA em vez de
     // apagar, para não quebrar referência em JSON de automação.
@@ -177,5 +220,96 @@ describe('resolveImportTagIds', () => {
     ]);
     const r = await resolveImportTagIds(db, args(['BANCARIO']));
     expect(r.tagIdByKey.get('bancario')).toBe('id-antiga');
+  });
+});
+
+// ============================================================
+// `assignImportedContactTags` — o passo que grava os vínculos do import de
+// CSV. Este PR trocou a derivação da chave (`name.trim().toLowerCase()` →
+// `chaveDeTag`) e a função não tinha UM teste.
+// ============================================================
+
+/** Dublê só do upsert em `contact_tags`. */
+function bancoDeVinculos(opts: { erro?: string } = {}) {
+  const registro = { lotes: [] as Record<string, unknown>[][] };
+  const db = {
+    registro,
+    from: () => ({
+      upsert: (linhas: Record<string, unknown>[]) => {
+        registro.lotes.push(linhas);
+        return Promise.resolve(
+          opts.erro ? { error: { message: opts.erro } } : { error: null }
+        );
+      },
+    }),
+  };
+  return db as never;
+}
+
+describe('assignImportedContactTags', () => {
+  const MAPA = new Map([
+    ['bancario', 'id-bancario'],
+    ['typebot', 'id-typebot'],
+  ]);
+
+  it('⚠️ consulta o mapa por chaveDeTag — o CSV traz o nome sem acento', () => {
+    // Enquanto isto era `name.trim().toLowerCase()`, a chave montada aqui
+    // não batia com a que `resolveImportTagIds` usa para MONTAR o mapa, e o
+    // vínculo simplesmente não era criado: o import terminava "com sucesso"
+    // e o contato ficava sem a etiqueta.
+    const db = bancoDeVinculos();
+    return assignImportedContactTags(
+      db,
+      [{ contactId: 'c1', tagNames: ['bancario', 'BANCÁRIO'] }],
+      MAPA
+    ).then(() => {
+      const { registro } = db as unknown as {
+        registro: { lotes: Record<string, unknown>[][] };
+      };
+      // as duas grafias são a MESMA etiqueta: um vínculo só
+      expect(registro.lotes[0]).toEqual([
+        { contact_id: 'c1', tag_id: 'id-bancario' },
+      ]);
+    });
+  });
+
+  it('nome fora do mapa é ignorado, não vira vínculo errado', async () => {
+    const db = bancoDeVinculos();
+    await assignImportedContactTags(
+      db,
+      [{ contactId: 'c1', tagNames: ['Fantasma'] }],
+      MAPA
+    );
+    const { registro } = db as unknown as { registro: { lotes: unknown[] } };
+    expect(registro.lotes).toEqual([]);
+  });
+
+  it('fatia em lotes — o teto de linhas do PostgREST vale aqui também', async () => {
+    const db = bancoDeVinculos();
+    const muitos = Array.from({ length: 250 }, (_, i) => ({
+      contactId: `c${i}`,
+      tagNames: ['Typebot'],
+    }));
+    await assignImportedContactTags(db, muitos, MAPA);
+    const { registro } = db as unknown as {
+      registro: { lotes: Record<string, unknown>[][] };
+    };
+    expect(registro.lotes.length).toBe(3);
+    expect(registro.lotes[0].length).toBe(100);
+    expect(registro.lotes[2].length).toBe(50);
+  });
+
+  it('erro de banco ESTOURA — import não pode terminar dizendo que deu certo', async () => {
+    const db = bancoDeVinculos({ erro: 'timeout' });
+    await expect(
+      assignImportedContactTags(db, [{ contactId: 'c1', tagNames: ['Typebot'] }], MAPA)
+    ).rejects.toBeTruthy();
+  });
+
+  it('lista vazia não toca no banco', async () => {
+    const db = bancoDeVinculos();
+    expect(await assignImportedContactTags(db, [], MAPA)).toBe(0);
+    const { registro } = db as unknown as { registro: { lotes: unknown[] } };
+    expect(registro.lotes).toEqual([]);
   });
 });

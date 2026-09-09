@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { chaveDeTag } from '@/lib/contacts/chave-de-tag';
 import { useAuth } from '@/hooks/use-auth';
 import {
   dedupeByPhone,
@@ -89,9 +90,15 @@ function ImportPreviewTags({
   return (
     <div className="flex min-w-[4.5rem] flex-wrap gap-1">
       {tagNames.map((name) => {
-        const color =
-          tagColorByKey.get(name.trim().toLowerCase()) ?? DEFAULT_TAG_COLOR;
-        const isKnown = tagColorByKey.has(name.trim().toLowerCase());
+        // ⚠️ `chaveDeTag`, a MESMA régua que a importação usa para casar
+        // (`resolveImportTagIds`). Enquanto isto era `trim().toLowerCase()`,
+        // a prévia anunciava "será criada" para um nome que só difere no
+        // acento de uma etiqueta existente — e a importação, que casa sem
+        // acento, reusava a que já havia. A tela prometia uma coisa e o
+        // import fazia outra. (Achado da revisão adversarial.)
+        const chave = chaveDeTag(name);
+        const color = tagColorByKey.get(chave) ?? DEFAULT_TAG_COLOR;
+        const isKnown = tagColorByKey.has(chave);
         return (
           <span
             key={name}
@@ -196,7 +203,8 @@ export function ImportModal({
 
       const colors = new Map<string, string>();
       for (const tag of tags ?? []) {
-        const key = tag.name.trim().toLowerCase();
+        // Mesma chave da consulta na prévia e do casamento do import.
+        const key = chaveDeTag(tag.name);
         if (!colors.has(key)) colors.set(key, tag.color);
       }
       setTagColorByKey(colors);
@@ -391,7 +399,10 @@ export function ImportModal({
     for (const row of parsedRows) {
       if (row.tagNames.length === 0) continue;
       rowsWithTags++;
-      for (const name of row.tagNames) names.add(name.trim().toLowerCase());
+      // Mesma régua do casamento: "Bancário" e "bancario" no mesmo arquivo
+      // são UMA etiqueta para a importação, e contá-las como duas faria o
+      // resumo prometer mais do que vai acontecer.
+      for (const name of row.tagNames) names.add(chaveDeTag(name));
     }
     return { unique: names.size, rowsWithTags };
   }, [parsedRows]);

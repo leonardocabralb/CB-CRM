@@ -37,7 +37,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { chaveDeTag } from '@/lib/contacts/chave-de-tag';
-import { resolveImportTagIds } from '@/lib/contacts/resolve-import-tags';
+import {
+  lerCatalogoDeTags,
+  resolveImportTagIds,
+} from '@/lib/contacts/resolve-import-tags';
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
 import {
   ContactTagWriteError,
@@ -184,32 +187,15 @@ export async function aplicarMudancaDeTags(
     desconhecidas: [],
   };
 
-  // O catálogo inteiro. São dezenas de linhas por conta.
-  //
-  // ⚠️ Ordenado por `created_at` (e por `id` no empate): quando duas
-  // etiquetas colapsam na mesma chave — o "Bancário"/"bancario" que o bug do
-  // acento já produziu em produção —, vence a MAIS ANTIGA, que é a que o
-  // escritório vem usando. Sem o ORDER BY, o PostgREST devolve em ordem não
-  // determinística e a escolha mudaria entre duas chamadas iguais.
-  const lerCatalogo = async (): Promise<Map<string, string>> => {
-    const { data, error } = await db
-      .from('tags')
-      .select('id, name')
-      .eq('account_id', accountId)
-      .order('created_at', { ascending: true })
-      .order('id', { ascending: true });
-    if (error) {
-      throw new ContactTagWriteError("Failed to read the account's tags");
-    }
-    const mapa = new Map<string, string>();
-    for (const tag of data ?? []) {
-      const chave = chaveDeTag(tag.name as string);
-      if (!mapa.has(chave)) mapa.set(chave, tag.id as string);
-    }
-    return mapa;
-  };
-
-  let porChave = await lerCatalogo();
+  // O catálogo, pela MESMA leitura que a criação usa — paginada e ordenada.
+  // Duas cópias divergiriam na primeira mudança, e a ordem é o que decide
+  // quem vence uma colisão de chave.
+  let porChave: Map<string, string>;
+  try {
+    porChave = await lerCatalogoDeTags(db, accountId);
+  } catch {
+    throw new ContactTagWriteError("Failed to read the account's tags");
+  }
 
   // ── Retirar ────────────────────────────────────────────────
   // NUNCA cria: criar uma etiqueta para em seguida tentar removê-la do
@@ -237,13 +223,19 @@ export async function aplicarMudancaDeTags(
       // com o mesmo nome novo terminam no MESMO id. O mapa que ele devolve
       // já é o catálogo inteiro depois da criação, chaveado por
       // `chaveDeTag` — a mesma chave usada aqui.
-      const { tagIdByKey } = await resolveImportTagIds(db, {
+      const { tagIdByKey, skippedNames } = await resolveImportTagIds(db, {
         accountId,
         userId: auditUserId,
         tagNames: faltantes,
         canCreateTags: true,
       });
       porChave = tagIdByKey;
+      // ⚠️ Nome que pediu criação e mesmo assim não resolveu precisa APARECER
+      // na resposta. Sem isto ele não entrava em NENHUM dos quatro baldes: o
+      // integrador recebia 200, via o nome ausente de `adicionadas`, de
+      // `inalteradas` e de `desconhecidas`, e não tinha como saber que a
+      // etiqueta não foi aplicada. (Achado da revisão adversarial.)
+      r.desconhecidas.push(...skippedNames);
     } else {
       r.desconhecidas.push(...faltantes);
     }
@@ -251,7 +243,9 @@ export async function aplicarMudancaDeTags(
 
   for (const nome of mudanca.add) {
     const tagId = porChave.get(chaveDeTag(nome));
-    if (!tagId) continue; // já contabilizado em desconhecidas
+    // Já contabilizado em `desconhecidas` — pelo ramo do `create_missing:
+    // false` acima, ou pelo `skippedNames` da criação.
+    if (!tagId) continue;
     // `added: false` = o 23505 agiu: a etiqueta já estava aplicada. Não é
     // erro, e o helper garante que o gatilho `tag_added` NÃO dispara nesse
     // caso.

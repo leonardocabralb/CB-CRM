@@ -171,12 +171,31 @@ export async function setContactTags(
   contactId: string,
   tagNames: string[]
 ): Promise<void> {
-  const { tagIdByKey } = await resolveImportTagIds(db, {
+  const { tagIdByKey, skippedNames } = await resolveImportTagIds(db, {
     accountId,
     userId: auditUserId,
     tagNames,
     canCreateTags: true,
   });
+
+  // ⚠️⚠️ Nome pedido que NÃO resolveu tem de ESTOURAR, nunca ser ignorado.
+  //
+  // Este verbo SUBSTITUI o conjunto: o que não entra em `desired` entra em
+  // `toRemove` logo abaixo. Descartar um nome irresolvido em silêncio,
+  // portanto, não é "aplicar menos" — é APAGAR do contato justamente a
+  // etiqueta que o chamador acabou de pedir para manter. Um `PATCH` com
+  // `tags: ["Bancário"]` tiraria "Bancário" do contato.
+  //
+  // Com `canCreateTags: true`, um nome só cai em `skippedNames` quando a
+  // criação não materializou (o helper explica os casos). É problema de
+  // servidor, e 500 é a resposta honesta: a substituição pedida não pôde ser
+  // feita. (Achado da revisão adversarial.)
+  if (skippedNames.length > 0) {
+    throw new ContactError(
+      `Could not resolve tags: ${skippedNames.join(', ')}`,
+      500
+    );
+  }
   // ⚠️⚠️ SÓ os nomes PEDIDOS, nunca `tagIdByKey.values()`.
   //
   // `resolveImportTagIds` devolve o CATÁLOGO INTEIRO da conta chaveado por
@@ -238,7 +257,23 @@ export async function setContactTags(
   }
 }
 
-/** Fetch + serialize a single contact scoped to the account, or null. */
+/**
+ * Fetch + serialize a single contact scoped to the account.
+ *
+ * `null` significa AUSENTE — o contato não existe nesta conta.
+ *
+ * ⚠️⚠️ Erro de banco ESTOURA (`ContactError`, 500); ele nunca vira `null`.
+ * Enquanto os dois eram o mesmo `null`, todo chamador transformava um
+ * timeout do PostgREST em **404 "Contact not found"** sobre um contato que
+ * existe — e o integrador, lendo 404, recria a ficha. São quatro chamadores
+ * (`GET`/`PATCH /contacts/{id}` e o `POST /contacts`), e no `PATCH` a
+ * releitura acontece DEPOIS da escrita, então o 404 vinha logo após o
+ * contato ter sido alterado com sucesso.
+ *
+ * É a regra da casa escrita no CLAUDE.md ("erro de banco não é 'não
+ * encontrado'"), e este helper era a maior exceção a ela. (Achado da
+ * revisão adversarial.)
+ */
 export async function getContactById(
   db: SupabaseClient,
   accountId: string,
@@ -250,6 +285,10 @@ export async function getContactById(
     .eq('id', contactId)
     .eq('account_id', accountId)
     .maybeSingle();
-  if (error || !data) return null;
+  if (error) {
+    console.error('[api/v1/contacts] getContactById error:', error);
+    throw new ContactError('Failed to load contact', 500);
+  }
+  if (!data) return null;
   return serializeContact(data as Record<string, unknown>);
 }

@@ -3136,6 +3136,35 @@ novo:
 - **Escopo reusa `contacts:write`/`contacts:read`**: a chave precisa de
   `contacts:write` de qualquer jeito para criar o contato, então um `tags:*`
   separado não reduziria privilégio nenhum.
+- ⚠️⚠️ **O upsert de criação vai ORDENADO, e isso evita DEADLOCK.** Com o
+  índice único, o `ON CONFLICT DO NOTHING` passou a ESPERAR a transação
+  concorrente que já inseriu a chave conflitante. Duas requisições mandando
+  as MESMAS etiquetas novas em ordens diferentes fecham um ciclo de espera e
+  o Postgres aborta uma com **40P01**. Antes da 983 não havia índice, logo
+  não havia espera nem ciclo — é regressão daquele PR. Reproduzido num
+  Postgres real pela revisão, e o controle com a mesma ordem NÃO deadlocka:
+  ordenar `toCreate` elimina a classe inteira.
+- ⚠️⚠️ **`setContactTags` ESTOURA quando um nome pedido não resolve.** Aquele
+  verbo SUBSTITUI: o que não entra em `desired` entra em `toRemove`.
+  Descartar um irresolvido em silêncio não é "aplicar menos" — é APAGAR do
+  contato justamente a etiqueta que o chamador pediu para manter.
+- ⚠️ **`skippedNames` PRECISA chegar à resposta do aditivo.** Sem isso, um
+  nome que pediu criação e não resolveu não entrava em nenhum dos quatro
+  baldes: 200 na cara do integrador, e nada dizendo que a etiqueta não foi
+  aplicada.
+- ⚠️⚠️ **`getContactById` ESTOURA em erro de banco** (desde a revisão de
+  09/09). Enquanto erro e ausência eram o mesmo `null`, os quatro chamadores
+  transformavam timeout do PostgREST em **404 "Contact not found"** — e no
+  `PATCH` isso vinha DEPOIS da escrita bem-sucedida, então o integrador lia
+  404 e recriava a ficha. Era a maior exceção à regra da casa.
+- ⚠️ **A leitura do catálogo é PAGINADA** (`lerCatalogoDeTags`, compartilhada
+  pelas três portas). O PostgREST corta em 1000 linhas sem avisar, e esse
+  mapa é quem responde "esta etiqueta já existe?" — truncado, ele diz "não
+  existe" sobre etiqueta que existe.
+- ⚠️ **A tela do import de CSV usa a MESMA régua** na prévia, no mapa de
+  cores e na contagem de "etiquetas únicas". Enquanto a prévia casava por
+  `trim().toLowerCase()` e o import por `chaveDeTag`, a tela prometia "será
+  criada" sobre etiqueta que o import ia reusar.
 - **A auditoria sai de graça**: o trigger da 912 grava `tag_added`/
   `tag_removed` a cada INSERT/DELETE em `contact_tags`, e vindo de
   service-role registra com `origin = 'sistema'`. Não escrever log à mão.

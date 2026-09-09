@@ -2219,6 +2219,8 @@
       "notAuthenticated": "Not authenticated",
       "tagCreated": "Tag created",
       "failedToCreateTag": "Failed to create tag",
+      "tagAlreadyExists": "You already have the “{nome}” tag. Names that differ only by accent or case count as the same one.",
+      "tagAlreadyExistsUnknown": "A tag with that name already exists in this account. Names that differ only by accent or case count as the same one.",
       "tagDeleted": "Tag deleted",
       "failedToDeleteTag": "Failed to delete tag",
       "deleteAria": "Delete {name}",
