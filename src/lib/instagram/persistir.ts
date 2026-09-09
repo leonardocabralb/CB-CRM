@@ -416,8 +416,20 @@ async function gravarMensagem(
   );
   await followConversationChannel(db, conversation.id, ctx.channelId);
 
-  // O perfil ANTES do funil: o card nasce com o nome da pessoa.
-  const enriquecido = enriquecer ? await enriquecer(contato, igsid) : null;
+  // O perfil ANTES do funil: o card nasce com o nome da pessoa. E nunca
+  // derruba o que vem depois — a mensagem já está gravada; roteamento e
+  // webhook têm de sair mesmo que o perfil falhe (Codex, PR #178).
+  let enriquecido: { name: string | null } | null = null;
+  if (enriquecer) {
+    try {
+      enriquecido = await enriquecer(contato, igsid);
+    } catch (err) {
+      console.error(
+        `${TAG} enriquecer lançou:`,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
   const nome = enriquecido?.name ?? contato.name;
 
   await routeContactToPipeline({
