@@ -12,8 +12,11 @@
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Transporte } from './transporte';
 
-export type CbChannelKind = 'meta' | 'evolution';
+/** O transporte da conexão. Ver `transporte.ts` — o único lugar que compara
+ *  com o literal; o resto do código usa os predicados de lá. */
+export type CbChannelKind = Transporte;
 export type CbChannelStatus = 'disconnected' | 'connecting' | 'connected';
 
 /** O que o browser pode ver. Note a ausência dos segredos. */

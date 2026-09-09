@@ -72,8 +72,13 @@ describe('o fio e a janela de 24h (F5)', () => {
       'transporteConhecido={!canaisCarregando && !canaisFalharam}',
     );
     // Os DOIS atalhos (item de interativa no menu + e botão de templates).
+    // Desde a Fase 1 do Instagram o gate é "não é Evolution E não é Instagram"
+    // (predicados de `transporte.ts`), não "é Meta": o null legado entra.
     expect(
-      ocorrencias(compositor(), 'transporteConhecido && channelKind !== "evolution"'),
+      ocorrencias(
+        compositor(),
+        'transporteConhecido && !ehEvolution(channelKind) && !ehInstagram(channelKind)',
+      ),
     ).toBe(2);
   });
 });

@@ -22,6 +22,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { getChannelWithSecrets, type CbChannelWithSecrets } from './repo';
+import { ehEvolution, ehInstagram, ehMeta } from './transporte';
 
 export type SetDefaultResult =
   | { ok: true; alreadyDefault: boolean; mirrorWarning: string | null }
@@ -33,13 +34,19 @@ export type SetDefaultResult =
 
 /** O canal tem credenciais suficientes para ser o padrão da conta? */
 function missingCredential(channel: CbChannelWithSecrets): string | null {
-  if (channel.kind === 'meta') {
+  // O padrão da conta é o número por onde as conversas SEM canal respondem —
+  // e o que o espelho `whatsapp_config` copia. Uma conexão do Instagram não
+  // tem número: promovê-la deixaria a conta inteira sem WhatsApp padrão.
+  if (ehInstagram(channel)) {
+    return 'Uma conexão do Instagram não pode ser a padrão da conta: o padrão é o número de WhatsApp por onde as conversas sem canal respondem.';
+  }
+  if (ehMeta(channel)) {
     if (!channel.phone_number_id || !channel.access_token) {
       return 'Este canal Meta está incompleto (falta Phone Number ID ou Access Token). Reconecte-o antes de torná-lo padrão.';
     }
     return null;
   }
-  if (channel.kind === 'evolution') {
+  if (ehEvolution(channel)) {
     if (!channel.server_url || !channel.instance_name || !channel.api_key) {
       return 'Este canal está incompleto (falta servidor, instância ou chave). Reconecte-o antes de torná-lo padrão.';
     }
@@ -91,7 +98,7 @@ async function rewriteMirror(
   };
 
   const row: MirrorRow =
-    channel.kind === 'meta'
+    ehMeta(channel)
       ? {
           ...comum,
           provider: 'meta',

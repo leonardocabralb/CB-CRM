@@ -29,6 +29,7 @@ import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { ehUrlAlcancavel } from './webhook-url';
 import type { CbChannelStatus, CbChannelKind } from './repo';
+import { ehEvolution, ehMeta } from './transporte';
 
 /** Cor do glifo. `unknown` = configuração incompleta, nem dá para sondar. */
 export type HealthTone = 'ok' | 'warn' | 'down' | 'unknown';
@@ -280,7 +281,7 @@ export async function probeChannels(
 
   // ---- Evolution: um fetchInstances por SERVIDOR, não por canal ----
   const servidores = new Set(
-    canais.filter((c) => c.kind === 'evolution' && c.server_url).map((c) => c.server_url!),
+    canais.filter((c) => ehEvolution(c) && c.server_url).map((c) => c.server_url!),
   );
   const estadosPorServidor = new Map<string, Map<string, 'open' | 'connecting' | 'close'>>();
   await Promise.all(
@@ -308,7 +309,9 @@ export async function probeChannels(
     let webhookOk: boolean | null = null;
     let incompleto = false;
 
-    if (c.kind === 'evolution') {
+    // Instagram ainda não é conferido (a saúde por `/me` chega na Fase 2 do
+    // plano): nenhum ramo abaixo casa, e fica o status gravado no canal.
+    if (ehEvolution(c)) {
       if (!c.server_url || !c.instance_name) {
         incompleto = true;
       } else {
@@ -328,7 +331,7 @@ export async function probeChannels(
           }
         }
       }
-    } else {
+    } else if (ehMeta(c)) {
       // Meta não "cai": falha por token revogado ou número restrito.
       if (!c.phone_number_id || !c.access_token) {
         incompleto = true;

@@ -99,6 +99,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { ehEvolution, ehInstagram } from "@/lib/cb-channels/transporte";
+import type { CbChannelKind } from "@/lib/cb-channels/repo";
 
 /** Media content types an agent can send from the composer. */
 export type ComposerMediaKind = "image" | "video" | "document" | "audio";
@@ -195,9 +197,11 @@ interface MessageComposerProps {
    * oficial, Baileys) não tem templates nem mensagens interativas — os dois
    * atalhos somem. A janela de 24h também não existe lá, mas isso o pai já
    * neutraliza passando sessionExpired=false. Null = conta sem canais
-   * (pré-migration) → comportamento de sempre.
+   * (pré-migration) → comportamento de sempre. Instagram também não tem
+   * modelo nem interativa — por isso os dois atalhos exigem "não é Evolution
+   * E não é Instagram", e não "é Meta": o null legado continua entrando.
    */
-  channelKind?: "meta" | "evolution" | null;
+  channelKind?: CbChannelKind | null;
   /**
    * `false` enquanto a lista de canais ainda não chegou (ou a busca falhou):
    * o transporte é DESCONHECIDO, que não é o mesmo que `channelKind: null`
@@ -987,7 +991,7 @@ export function MessageComposer({
         // Botões/listas não entregam via Baileys — este atalho por resposta
         // rápida também precisa da barreira (o item direto já está oculto;
         // sem isto o envio morreria num 400 do servidor).
-        if (channelKind === "evolution") {
+        if (ehEvolution(channelKind)) {
           toast.error(t("interactiveNotOnChannel"));
           return;
         }
@@ -1660,7 +1664,7 @@ export function MessageComposer({
               {/* Botões/listas não entregam via Baileys — o item some no
                   canal Evolution; respostas rápidas de texto continuam.
                   Transporte desconhecido também esconde (M12). */}
-              {transporteConhecido && channelKind !== "evolution" && (
+              {transporteConhecido && !ehEvolution(channelKind) && !ehInstagram(channelKind) && (
                 <DropdownMenuItem onClick={() => openInteractiveBuilder()}>
                   <MessageSquareDashed className="mr-2 h-4 w-4" />
                   {t("interactiveMessage")}
@@ -1685,7 +1689,7 @@ export function MessageComposer({
               canal Evolution e enquanto o transporte é desconhecido (M12):
               aberto nesse vão, o TemplatePicker nasceria com channelId nulo
               e o catálogo sairia sem o recorte por WABA. */}
-          {transporteConhecido && channelKind !== "evolution" && (
+          {transporteConhecido && !ehEvolution(channelKind) && !ehInstagram(channelKind) && (
             <GatedButton
               variant="ghost"
               size="sm"

@@ -24,6 +24,8 @@
  */
 
 import { INTERACTIVE_LIMITS } from "@/lib/whatsapp/meta-api";
+import { ehMeta } from "@/lib/cb-channels/transporte";
+import type { CbChannelKind } from "@/lib/cb-channels/repo";
 
 export interface ValidationIssue {
   severity: "error" | "warning";
@@ -809,7 +811,7 @@ const META_ONLY_NODES = new Set(['send_buttons', 'send_list']);
 export interface FlowChannelForValidation {
   id: string;
   label: string;
-  kind: 'meta' | 'evolution';
+  kind: CbChannelKind;
 }
 
 /**
@@ -838,7 +840,7 @@ export function validateFlowChannelForActivation(
 
     const canal = porId.get(alvoId);
     // Canal desconhecido (apagado entre editar e salvar) não trava a ativação.
-    if (!canal || canal.kind === 'meta') continue;
+    if (!canal || ehMeta(canal)) continue;
 
     issues.push({
       node_key: node.node_key,

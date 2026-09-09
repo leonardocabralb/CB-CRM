@@ -12,6 +12,7 @@
 // ============================================================
 
 import type { CbChannel } from './repo';
+import { ehMeta } from './transporte';
 
 /**
  * Telefone do canal em forma legível. A Meta (`display_phone_number`) já
@@ -89,7 +90,7 @@ export function summarizeScope(
  * produziria um erro alguns cliques depois.
  */
 export function metaChannels(channels: CbChannel[]): CbChannel[] {
-  return channels.filter((c) => c.kind === 'meta');
+  return channels.filter((c) => ehMeta(c));
 }
 
 /**

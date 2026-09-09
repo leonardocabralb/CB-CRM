@@ -67,10 +67,21 @@ import { createClient } from '@/lib/supabase/client';
 import { ehUrlAlcancavel } from '@/lib/cb-channels/webhook-url';
 import { invalidarCacheDeCanais } from '@/hooks/use-channels';
 import { SettingsPanelHead } from './settings-panel-head';
+import { ehEvolution, ehMeta } from '@/lib/cb-channels/transporte';
+import type { CbChannelKind } from '@/lib/cb-channels/repo';
+import { IconeDoTransporte } from '@/components/channels/transporte-icone';
+
+/** Chave do rótulo em `Settings.channels`, por transporte — chave MONTADA,
+ *  cobrada nos dois dicionários por `transporte.test.ts`. */
+const ROTULO_DO_TRANSPORTE = {
+  meta: 'kindMeta',
+  evolution: 'kindEvolution',
+  instagram: 'kindInstagram',
+} as const satisfies Record<CbChannelKind, string>;
 
 interface CbChannel {
   id: string;
-  kind: 'meta' | 'evolution';
+  kind: CbChannelKind;
   label: string;
   display_phone: string | null;
   is_default: boolean;
@@ -639,17 +650,10 @@ export function CbChannelsPanel() {
                 <div className="min-w-56 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium text-foreground">{channel.label}</span>
-                    {channel.kind === 'meta' ? (
-                      <Badge>
-                        <BadgeCheck className="mr-1 h-3 w-3" />
-                        {t('kindMeta')}
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary">
-                        <QrCode className="mr-1 h-3 w-3" />
-                        {t('kindEvolution')}
-                      </Badge>
-                    )}
+                    <Badge variant={ehMeta(channel) ? undefined : 'secondary'}>
+                      <IconeDoTransporte kind={channel.kind} className="mr-1 h-3 w-3" />
+                      {t(ROTULO_DO_TRANSPORTE[channel.kind])}
+                    </Badge>
                     {channel.is_default && (
                       <Badge variant="outline">
                         <Star className="mr-1 h-3 w-3" />
@@ -737,7 +741,7 @@ export function CbChannelsPanel() {
                           alcança quem já está conectado. Esconder o botão
                           com o canal conectado deixava esse reparo
                           inalcançável justamente quando era necessário. */}
-                    {channel.kind === 'evolution' &&
+                    {ehEvolution(channel) &&
                       (channel.status === 'connected' ? (
                         <Button
                           variant="outline"
@@ -761,7 +765,7 @@ export function CbChannelsPanel() {
                       ))}
                     {/* Fotos de perfil dos contatos (973) — só faz sentido
                         com a instância conectada: o `findChats` é dela. */}
-                    {channel.kind === 'evolution' && channel.status === 'connected' && (
+                    {ehEvolution(channel) && channel.status === 'connected' && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -783,7 +787,7 @@ export function CbChannelsPanel() {
                         `status !== 'connected'` o esconderia exatamente
                         quando é necessário — o erro que já escondia o botão
                         de parear. */}
-                    {channel.kind === 'evolution' && (
+                    {ehEvolution(channel) && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -1217,7 +1221,7 @@ export function CbChannelsPanel() {
             {/* Grupos (906). Só em conexão por QR Code: a API oficial da Meta
                 não entrega mensagem de grupo, então oferecer o interruptor num
                 canal Meta prometeria algo impossível. */}
-            {configTarget?.kind === 'evolution' && (
+            {configTarget && ehEvolution(configTarget) && (
               <div className="rounded-md border border-border p-3">
                 <label className="flex cursor-pointer items-start gap-2">
                   <input
@@ -1342,7 +1346,7 @@ export function CbChannelsPanel() {
               {confirmDelete ? t('deleteConfirmTitle', { label: confirmDelete.label }) : ''}
             </DialogTitle>
             <DialogDescription>
-              {confirmDelete?.kind === 'evolution'
+              {ehEvolution(confirmDelete)
                 ? t('deleteConfirmEvolutionDesc')
                 : t('deleteConfirmMetaDesc')}
             </DialogDescription>
@@ -1394,7 +1398,7 @@ export function CbChannelsPanel() {
                   {/* "Use Reparear" só vale para Evolution — canal Meta não
                       tem sessão de QR e nem desenha esse botão. Mandar o
                       operador procurá-lo seria beco sem saída. */}
-                  {confirmDelete.kind === 'evolution'
+                  {ehEvolution(confirmDelete)
                     ? t('deleteLastChannel')
                     : t('deleteLastChannelMeta')}
                 </p>

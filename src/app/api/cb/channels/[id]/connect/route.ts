@@ -22,6 +22,7 @@ import {
   channelConnectionState,
   reaplicarWebhook,
 } from '@/lib/cb-channels/evolution-admin';
+import { ehEvolution } from '@/lib/cb-channels/transporte';
 
 /** A UI faz polling enquanto o QR está na tela (~12/min a 5s). 60/min dá
  *  folga para recarregar e para dois admins pareando ao mesmo tempo. */
@@ -66,7 +67,7 @@ export async function POST(
     if (!channel) {
       return NextResponse.json({ error: 'Canal não encontrado.' }, { status: 404 });
     }
-    if (channel.kind !== 'evolution') {
+    if (!ehEvolution(channel)) {
       return NextResponse.json(
         { error: 'Só canais da Evolution são pareados por QR Code.' },
         { status: 400 },
