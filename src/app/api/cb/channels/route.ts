@@ -41,6 +41,9 @@ import {
 } from '@/lib/cb-channels/evolution-admin';
 import { provisionMetaChannel } from '@/lib/cb-channels/meta-admin';
 import { ehInstagram, ehMeta, transporteValido } from '@/lib/cb-channels/transporte';
+import { criarClienteInstagram, type PerfilDaConta } from '@/lib/instagram/graph';
+import { validadeDoToken } from '@/lib/instagram/conexao';
+import { novoVerifyToken } from '@/lib/instagram/verify-token';
 
 const MAX_LABEL_LEN = 60;
 
@@ -97,15 +100,6 @@ export async function POST(request: Request) {
     if (!transporteValido(kindPedido)) {
       return NextResponse.json({ error: 'Tipo de conexão desconhecido.' }, { status: 400 });
     }
-    // Instagram: o cadastro chega na Fase 2 do plano
-    // (docs/PLANO-instagram-direct.md). Até lá, recusa clara — nunca cair
-    // no ramo Evolution, como o ternário antigo fazia com todo kind estranho.
-    if (ehInstagram(kindPedido)) {
-      return NextResponse.json(
-        { error: 'Conexão do Instagram ainda não pode ser criada por aqui.' },
-        { status: 400 },
-      );
-    }
     const kind = kindPedido;
 
     if (!label) {
@@ -142,6 +136,19 @@ export async function POST(request: Request) {
       );
     }
     const isDefault = existingCount === 0;
+
+    // ---- Canal Instagram (Direct): token + Instagram App Secret ----
+    // NUNCA é o padrão da conta, nem quando é a primeira conexão: o padrão é
+    // o número de WhatsApp que responde conversa sem canal e alimenta o
+    // espelho `whatsapp_config` (ver set-default.ts e countChannels).
+    if (ehInstagram(kind)) {
+      return createInstagramChannel(ctx, {
+        label,
+        accessToken: asStr(body?.access_token),
+        igAppSecret: asStr(body?.ig_app_secret),
+        humanAgent: body?.ig_human_agent === true,
+      });
+    }
 
     // ---- Canal Meta (API oficial): assistente por token ----
     if (ehMeta(kind)) {
@@ -448,4 +455,137 @@ async function createMetaChannel(
   if (isDefault) await mirrorDefaultMeta();
 
   return NextResponse.json({ channel, registration }, { status: 201 });
+}
+
+// ============================================================
+// Criação de canal Instagram (Direct). O operador cola o token de longa
+// duração e o Instagram App Secret; o servidor DESCOBRE a conta pelo `/me`
+// (ninguém digita ID), gera o verify token e cifra os dois segredos. Nada
+// remoto é criado: a Meta só passa a entregar quando o operador colar a
+// URL e o verify token no painel dela — a resposta traz o verify token em
+// claro UMA vez; depois ele sai de GET /api/cb/channels/[id]/instagram.
+// ============================================================
+async function createInstagramChannel(
+  ctx: AdminCtx,
+  args: {
+    label: string;
+    accessToken: string;
+    igAppSecret: string;
+    humanAgent: boolean;
+  },
+): Promise<NextResponse> {
+  const { label, accessToken, igAppSecret, humanAgent } = args;
+
+  if (!accessToken || !igAppSecret) {
+    return NextResponse.json(
+      { error: 'Token de acesso e Instagram App Secret são obrigatórios.' },
+      { status: 400 },
+    );
+  }
+
+  // Confere o token com o Instagram ANTES de gravar. A mensagem já vem sem o
+  // token (`semSegredo`); o caso comum é token colado pela metade ou de
+  // outro app.
+  let perfil: PerfilDaConta;
+  try {
+    perfil = await criarClienteInstagram(accessToken).me();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erro desconhecido';
+    return NextResponse.json(
+      { error: `Erro do Instagram: ${message}` },
+      { status: 400 },
+    );
+  }
+
+  const nowIso = new Date().toISOString();
+  const verifyToken = novoVerifyToken();
+  const credenciais = {
+    access_token: encrypt(accessToken),
+    ig_app_secret: encrypt(igAppSecret),
+    ig_username: perfil.username,
+    ig_token_expires_at: validadeDoToken(),
+    ig_token_refreshed_at: nowIso,
+    ig_human_agent: humanAgent,
+    status: 'connected',
+    connected_at: nowIso,
+    last_error: null,
+  };
+
+  const { data: channel, error } = await ctx.supabase
+    .from('cb_channels')
+    .insert({
+      account_id: ctx.accountId,
+      created_by: ctx.userId,
+      kind: 'instagram',
+      label,
+      is_default: false,
+      display_phone: null,
+      verify_token: encrypt(verifyToken),
+      ig_user_id: perfil.igUserId,
+      ...credenciais,
+    })
+    .select(CB_CHANNEL_SAFE_COLUMNS)
+    .single();
+
+  if (error) {
+    // O índice único GLOBAL de ig_user_id (989) barra a mesma conta do
+    // Instagram duas vezes. NESTA conta, o re-cadastro é recuperação (token
+    // novo, segredo novo): atualiza em vez de 409, como o caminho da Meta.
+    // Em OUTRA conta (linha invisível pela RLS) continua caindo no 409.
+    if (error.code === '23505') {
+      const { data: existing } = await ctx.supabase
+        .from('cb_channels')
+        .select('id')
+        .eq('account_id', ctx.accountId)
+        .eq('kind', 'instagram')
+        .eq('ig_user_id', perfil.igUserId)
+        .maybeSingle();
+
+      if (existing) {
+        const { data: updated, error: updErr } = await ctx.supabase
+          .from('cb_channels')
+          .update({ label, ...credenciais })
+          .eq('id', existing.id)
+          .eq('account_id', ctx.accountId)
+          .select(CB_CHANNEL_SAFE_COLUMNS)
+          .single();
+        if (updErr || !updated) {
+          console.error(
+            '[cb/channels] recadastro do Instagram falhou:',
+            updErr?.message,
+          );
+          return NextResponse.json(
+            { error: 'Não foi possível atualizar a conexão do Instagram.' },
+            { status: 500 },
+          );
+        }
+        // O verify token gravado NÃO muda no recadastro: o painel da Meta já
+        // o conhece. Quem precisar vê-lo usa o GET da conexão.
+        return NextResponse.json(
+          { channel: updated, reconnected: true, username: perfil.username },
+          { status: 200 },
+        );
+      }
+      return NextResponse.json(
+        {
+          error: `A conta @${perfil.username} já está conectada em outra conta deste CRM.`,
+        },
+        { status: 409 },
+      );
+    }
+    console.error(
+      '[cb/channels] erro ao inserir canal Instagram:',
+      error.code,
+      error.message,
+    );
+    return NextResponse.json(
+      { error: 'Não foi possível salvar a conexão do Instagram.' },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json(
+    { channel, username: perfil.username, webhook: { verifyToken } },
+    { status: 201 },
+  );
 }

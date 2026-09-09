@@ -48,6 +48,7 @@ export async function PATCH(
       default_stage_id?: unknown;
       groups_enabled?: unknown;
       radar_enabled?: unknown;
+      ig_human_agent?: unknown;
     } | null;
     const label = typeof body?.label === 'string' ? body.label.trim() : '';
 
@@ -134,6 +135,13 @@ export async function PATCH(
     // provedor de IA, e ligar tem de ser um ato, nunca um efeito.
     if ('radar_enabled' in (body ?? {})) {
       patch.radar_enabled = body?.radar_enabled === true;
+    }
+
+    // Janela de 7 dias do Instagram (D2 do plano). Mesma disciplina, mesmo
+    // `=== true`: ligar manda a tag HUMAN_AGENT, que a Meta RECUSA sem a
+    // feature aprovada — tem de ser um ato do operador que sabe disso.
+    if ('ig_human_agent' in (body ?? {})) {
+      patch.ig_human_agent = body?.ig_human_agent === true;
     }
 
     const { data, error } = await ctx.supabase

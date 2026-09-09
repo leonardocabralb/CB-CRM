@@ -29,7 +29,8 @@ import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { ehUrlAlcancavel } from './webhook-url';
 import type { CbChannelStatus, CbChannelKind } from './repo';
-import { ehEvolution, ehMeta } from './transporte';
+import { ehEvolution, ehInstagram, ehMeta } from './transporte';
+import { criarClienteInstagram } from '@/lib/instagram/graph';
 
 /** Cor do glifo. `unknown` = configuração incompleta, nem dá para sondar. */
 export type HealthTone = 'ok' | 'warn' | 'down' | 'unknown';
@@ -255,6 +256,7 @@ interface LinhaDeCanal {
   server_url: string | null;
   instance_name: string | null;
   access_token: string | null;
+  ig_user_id: string | null;
 }
 
 export async function probeChannels(
@@ -266,7 +268,7 @@ export async function probeChannels(
     .select(
       'id, kind, label, display_phone, is_default, status, connected_at, ' +
         'last_error, last_checked_at, phone_number_id, server_url, ' +
-        'instance_name, access_token',
+        'instance_name, access_token, ig_user_id',
     )
     .eq('account_id', accountId)
     .order('is_default', { ascending: false })
@@ -309,8 +311,8 @@ export async function probeChannels(
     let webhookOk: boolean | null = null;
     let incompleto = false;
 
-    // Instagram ainda não é conferido (a saúde por `/me` chega na Fase 2 do
-    // plano): nenhum ramo abaixo casa, e fica o status gravado no canal.
+    // Três transportes, três sondas: Evolution (instância + webhook), Meta
+    // (verify do número) e Instagram (`/me` com o token).
     if (ehEvolution(c)) {
       if (!c.server_url || !c.instance_name) {
         incompleto = true;
@@ -350,6 +352,26 @@ export async function probeChannels(
           // significa que não dá para enviar por este número.
           console.warn(
             '[health] canal Meta não validou:',
+            err instanceof Error ? err.message : err,
+          );
+          estadoVivo = 'close';
+        }
+      }
+    } else if (ehInstagram(c)) {
+      // O `/me` responde 200 enquanto o token vale e 190 quando venceu ou
+      // foi revogado — é a mesma pergunta que a Meta responde com o verify.
+      if (!c.ig_user_id || !c.access_token) {
+        incompleto = true;
+      } else {
+        try {
+          await comCache(`ig:${c.id}`, TTL_META_MS, async () => {
+            await criarClienteInstagram(decrypt(c.access_token!)).me();
+            return true;
+          });
+          estadoVivo = 'open';
+        } catch (err) {
+          console.warn(
+            '[health] canal Instagram não validou:',
             err instanceof Error ? err.message : err,
           );
           estadoVivo = 'close';
