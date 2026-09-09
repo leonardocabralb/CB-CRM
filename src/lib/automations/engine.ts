@@ -26,6 +26,7 @@ import type {
   SendMediaStepConfig,
   SendToNumberStepConfig,
   CalendlyTriggerConfig,
+  WebhookTriggerConfig,
   AutomationLogStatus,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
@@ -104,6 +105,16 @@ export interface AutomationContext {
    * com `event_type_uri` da config; os dados do agendamento vêm em `vars`.
    */
   calendly_event_type?: string | null
+  /**
+   * Id do webhook de entrada que originou o disparo (migration 982). É o
+   * que `webhook_received` compara com `webhook_id` da config; o payload
+   * achatado vem em `vars`.
+   *
+   * ⚠️ Atravessa o passo "Aguardar" de graça: o contexto inteiro vira
+   * JSONB em `automation_pending_executions.context` e volta intacto pelo
+   * agendador.
+   */
+  webhook_id?: string | null
 }
 
 export interface DispatchInput {
@@ -1439,6 +1450,20 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
     const alvo = typeof cfg?.event_type_uri === 'string' ? cfg.event_type_uri.trim() : ''
     if (!alvo) return true
     return Boolean(ctx?.calendly_event_type && ctx.calendly_event_type === alvo)
+  }
+
+  // Webhook de entrada (982): mesma forma do Calendly acima. Config vazia =
+  // qualquer webhook da conta; com id, só aquele — e um disparo sem
+  // `webhook_id` no contexto falha fechado.
+  //
+  // ⚠️ Sem este ramo o `return true` abaixo faria TODO acionamento disparar
+  // TODA automação deste gatilho, e a falha seria silenciosa: nada estoura,
+  // a automação do webhook A responde ao webhook B.
+  if (automation.trigger_type === 'webhook_received') {
+    const cfg = automation.trigger_config as WebhookTriggerConfig
+    const alvo = typeof cfg?.webhook_id === 'string' ? cfg.webhook_id.trim() : ''
+    if (!alvo) return true
+    return Boolean(ctx?.webhook_id && ctx.webhook_id === alvo)
   }
 
   return true

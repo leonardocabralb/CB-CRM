@@ -166,6 +166,7 @@ export const ESCRITA_DA_SECAO: Record<SecaoId, AccountRole> = {
   members: "admin", // canManageMembers
   integracoes: "admin", // /api/ai/config, /api/cb/integracoes/status
   api: "admin", // /api/account/api-keys
+  webhooks: "admin", // requireRole("admin") em todas as rotas /api/cb/webhooks*
   perfis: "admin", // e mais que isso: invisível fora do admin (SECOES_SO_DE_ADMIN)
 };
 

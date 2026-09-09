@@ -220,8 +220,63 @@ list rows above).
 
 Read or update one contact. Scopes: `contacts:read` / `contacts:write`.
 `PATCH` updates only the fields you send (`name`, `email`, `company`);
-pass `tags` (an array of tag names) to replace the contact's tags. A
+pass `tags` (an array of tag names) to **replace** the contact's tags. A
 contact in another account returns `404`.
+
+> ⚠️ `tags` here replaces the whole set — sending `["Lead"]` removes
+> every other tag the contact had. To add or drop individual tags, use
+> `POST /api/v1/contacts/{id}/tags` below.
+
+### `POST /api/v1/contacts/{id}/tags`
+
+Add and remove tags **by name, without touching the others**. Scope:
+`contacts:write`. This is what an external flow (Typebot, n8n) should
+call to label a lead — the `tags` array on `PATCH` would wipe the rest
+of the contact's labels and still answer `200`.
+
+```jsonc
+{
+  "add": ["Typebot", "Lead novo"],   // optional
+  "remove": ["Desqualificado"],      // optional
+  "create_missing": true             // optional, default true
+}
+```
+
+- Names are matched **case-insensitively** and trimmed, so `"vip"`
+  finds an existing `"VIP"`.
+- `create_missing` (default `true`) creates tags in `add` that don't
+  exist yet. It never applies to `remove` — an unknown name there is
+  reported, not created.
+- The **same name in both `add` and `remove` is rejected** (`400`):
+  either order would be a convention invisible to the caller.
+- At least one of `add` / `remove` must be non-empty; at most 50 names
+  per request.
+
+Response is the contact plus a summary of what actually changed —
+enough to debug "I tagged the lead and nothing happened" without a
+second call:
+
+```jsonc
+{
+  "data": {
+    "contact": { "id": "…", "tags": [ /* … */ ] },
+    "adicionadas":  ["Typebot"],       // now applied
+    "removidas":    ["Desqualificado"],// now gone
+    "inalteradas":  ["Lead novo"],     // already in the requested state
+    "desconhecidas": []                // no such tag in this account
+  }
+}
+```
+
+Applying a tag **fires `tag_added` automations** (once per tag actually
+added — a duplicate is a no-op and triggers nothing), and both adding
+and removing are recorded in the contact's activity trail.
+
+### `GET /api/v1/tags`
+
+List the account's tags (`id`, `name`, `color`), ordered by name. Scope:
+`contacts:read`. Not paginated. Use it to discover the names accepted by
+`POST /api/v1/contacts/{id}/tags`.
 
 ### `GET` / `PATCH /api/v1/contacts/{id}/custom-fields`
 

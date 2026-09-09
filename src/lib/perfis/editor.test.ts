@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   SECOES_PESSOAIS,
+  SECOES_SO_DE_ADMIN,
   TODAS_AS_SECOES,
   TODAS_AS_TELAS,
   type SecaoId,
@@ -39,14 +40,21 @@ const VAZIO = { telas: [] as TelaId[], secoes_config: [] as SecaoId[] };
 
 describe("gruposDoEditor — cobertura", () => {
   it("CRÍTICO: todo item do catálogo aparece UMA vez, em qualquer papel", () => {
-    // Fora: as três seções pessoais (aparecem sempre) e, fora do admin,
-    // `perfis` (oferecê-la marcaria uma caixa inerte).
+    // Fora: as três seções pessoais (aparecem sempre) e, fora do admin, as de
+    // `SECOES_SO_DE_ADMIN` (oferecê-las marcaria uma caixa inerte).
+    //
+    // ⚠️ DERIVADO da constante, nunca com o id cravado: enquanto isto dizia
+    // `s !== "perfis"`, acrescentar uma segunda seção só-de-admin reprovava
+    // este teste — que é a asserção CERTA — como se o código estivesse
+    // errado. Aconteceu com `webhooks` (982).
     for (const papel of PAPEIS) {
       const itens = gruposDoEditor(papel).flatMap((g) => g.itens);
       expect(new Set(chaves(itens)).size).toBe(itens.length);
       expect([...telasDe(itens)].sort()).toEqual([...TODAS_AS_TELAS].sort());
       const esperadas = TODAS_AS_SECOES.filter(
-        (s) => !SECOES_PESSOAIS.includes(s) && (papel === "admin" || s !== "perfis"),
+        (s) =>
+          !SECOES_PESSOAIS.includes(s) &&
+          (papel === "admin" || !SECOES_SO_DE_ADMIN.includes(s)),
       );
       expect([...secoesDe(itens)].sort()).toEqual([...esperadas].sort());
     }

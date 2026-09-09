@@ -204,6 +204,14 @@ export const RATE_LIMITS = {
    *  `cb_calendly_eventos`. Um escritório não marca 120 reuniões por
    *  minuto; o Calendly retenta com backoff quando recebe 429. */
   calendlyWebhook: { limit: 120, windowMs: 60_000 },
+  /** Webhook de ENTRADA genérico (982), por token do webhook. Mais
+   *  apertado que o do Calendly de propósito: ali o HMAC é o portão e o
+   *  token só endereça; aqui o segredo do cabeçalho pode estar
+   *  DESLIGADO (`sem_segredo`), e nesse caso este balde é a única coisa
+   *  entre um token vazado e uma enxurrada de automações disparando —
+   *  cada uma podendo mandar mensagem a cliente. 60/min é folgado para
+   *  um formulário e apertado para abuso. */
+  webhookDeEntrada: { limit: 60, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

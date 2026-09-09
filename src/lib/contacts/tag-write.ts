@@ -72,15 +72,24 @@ export async function addContactTagIfAbsent(
   return true;
 }
 
+/**
+ * Remove a tag from a contact. Returns whether a row was actually
+ * deleted — `false` means the tag simply wasn't applied.
+ *
+ * ⚠️ O `count` não é enfeite: sem ele "removi" e "não estava lá" são
+ * indistinguíveis, e a API pública precisa da diferença para responder
+ * ao integrador o que de fato mudou. Os chamadores que ignoram o
+ * retorno continuam corretos.
+ */
 export async function removeContactTag(
   db: SupabaseClient,
   input: ContactTagWriteInput
-): Promise<void> {
+): Promise<boolean> {
   await assertContactAndTagOwnership(db, input);
 
-  const { error } = await db
+  const { error, count } = await db
     .from('contact_tags')
-    .delete()
+    .delete({ count: 'exact' })
     .eq('contact_id', input.contactId)
     .eq('tag_id', input.tagId);
 
@@ -89,4 +98,5 @@ export async function removeContactTag(
       `Failed to remove contact tag: ${error.message}`
     );
   }
+  return (count ?? 0) > 0;
 }

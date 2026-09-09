@@ -2980,6 +2980,135 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   (Codex, PR #131) — o cartão afirmaria movimento de regra que não roda; há
   teste amarrando essa lista ao `TRIGGER_OPTIONS` do builder.
 
+⚠️ **Webhooks de ENTRADA (982) e tags ADITIVAS na v1: o Typebot chama o CRM.**
+`src/lib/webhooks-de-entrada/` (`achatar.ts` e o `resultadoDoDisparo`/
+`escutamEsteWebhook` de `processar.ts` são puros e testados; `claim.ts` e
+`repo.ts` fazem I/O), a porta em `/api/cb/entrada/[token]`, o admin em
+`/api/cb/webhooks*`, o gatilho `webhook_received` e a seção Configurações →
+Webhooks. Plano em `docs/PLANO-webhooks-de-entrada.md`; doc do operador em
+`docs/webhooks.md`. O que morde código novo:
+
+- ⚠️⚠️ **A porta é `/api/cb/entrada/[token]`, NÃO `/api/cb/webhooks/[token]`.**
+  As duas não podem coexistir: o Next recusa dois nomes de segmento dinâmico
+  na mesma posição, e `/api/cb/webhooks/[id]` é o admin. Quem "arrumar" a URL
+  para ficar simétrica quebra o build.
+- ⚠️⚠️ **O token na URL é ENDEREÇO; o segredo do cabeçalho é a CREDENCIAL.**
+  O Calendly assina cada entrega com HMAC, e por isso lá o token basta —
+  Typebot e n8n não assinam. Sem o segredo, a URL seria a única barreira, e
+  URL vaza em log de proxy, histórico e captura de tela. O CHECK
+  `cb_webhooks_credencial_ck` garante que só existe linha COM segredo ou
+  linha declaradamente aberta (`sem_segredo`), nunca aberta por esquecimento.
+- ⚠️⚠️ **O achatamento (`achatar.ts`) não é gosto — é o contrato do
+  `interpolate` do motor.** A chave é casada por `[\w.]` e o motor lê UM
+  nível (`partes[1]`), então acento, hífen e aninhamento fazem o `{{vars.x}}`
+  ficar literal ou vazio **no texto que sai para o cliente**, sem erro
+  nenhum. Daí `observação`→`observacao`, `pedido.total`→`pedido_total`, lista
+  →`_0`/`_1`.
+- ⚠️⚠️ **O sublinhado inicial é PODADO, e essa é a defesa das chaves
+  reservadas.** `_cadeia` (guarda anti-ciclo da 936) e `_tag_chain_depth`
+  vivem dentro de `vars`; payload de fora que as sobrescrevesse furaria as
+  duas. Medido na tela: `{"_cadeia": "invasao"}` chega como `{{vars.cadeia}}`.
+  Há teste cobrando que NENHUMA chave produzida comece com `_`.
+- ⚠️⚠️ **A consulta de automações vem ANTES de criar a ficha.** Ninguém
+  escutando = `sem_automacao` sem materializar nada. Medido em produção: o
+  disparo numa conta sem automação criou ZERO contatos. Inverter a ordem
+  enche a tela de Contatos de lead vindo de teste.
+- ⚠️ **`id_externo` é `NOT NULL` COM DEFAULT aleatório, e o DEFAULT é
+  load-bearing:** ele mantém o `UNIQUE (webhook_id, id_externo)` TOTAL, e só
+  índice total serve de alvo do `ON CONFLICT` do PostgREST (lição da 903).
+  Sem `campo_id` configurado cada entrega é evento novo; com ele, a reentrega
+  é descartada antes de disparar automação.
+- ⚠️ **O cadeado é GÊMEO do `src/lib/calendly/claim.ts`** — mesma mecânica,
+  outra tabela, e de propósito NÃO foi fatorado: um helper genérico receberia
+  tabela, coluna e lista por parâmetro, escondendo justamente as cercas que
+  precisam ser lidas. Quem mudar a mecânica de um confere o outro.
+- ⚠️ **A conversa criada aqui nasce com `channel_id` NULO**, e o disparo vai
+  com ele. `channelInScope` deixa passar canal nulo (falha ABERTA), então
+  automação restrita a uma conexão AINDA dispara para lead novo. Apertar a
+  regra desliga o webhook justamente para quem acabou de chegar.
+- ⚠️ **Lead novo não tem card**, e `move_deal_stage` LANÇA nesse caso,
+  encerrando a execução. Automação de webhook que mexe no funil precisa de
+  `create_deal` ANTES (ele desiste em silêncio quando já há card) — a mesma
+  lição da automação do Calendly.
+- **`variaveis` guarda o ACHATADO, não o corpo cru** (decisão igual à da
+  977): a pergunta do operador é "por que `{{vars.nome}}` saiu vazio", e ela
+  se responde com a lista de variáveis e valores. O cru seria uma segunda
+  cópia de dado de cliente para responder a mesma pergunta.
+- ⚠️⚠️ **A seção está em `SECOES_SO_DE_ADMIN`, e marcá-la `admin` em
+  `ESCRITA_DA_SECAO` NÃO bastaria.** `podeVerSecao` tem um fail-open
+  explícito (`if (!ctx.perfil) return true`): membro sem perfil de acesso
+  enxerga toda seção que não esteja naquela lista, e um admin ainda podia
+  marcar a caixa num perfil `agent`. Como todas as rotas `/api/cb/webhooks*`
+  são `requireRole("admin")`, a seção não VAZA nada — ela simplesmente não
+  funciona, e o operador fica com uma tela de Configurações permanentemente
+  quebrada. `api` está no mesmo caso e ficou como está, de propósito (é
+  comportamento antigo; mudá-la de carona esconderia a decisão).
+  ⚠️ O teste `editor.test.ts` cravava `s !== "perfis"` em vez de derivar de
+  `SECOES_SO_DE_ADMIN` — a segunda seção só-de-admin o reprovava como se o
+  código estivesse errado. Agora deriva. (Achado do Codex no PR #150.)
+- **Apagar o webhook leva o LOG junto** (FK CASCADE) — a tela põe o número na
+  pergunta, porque "apagar" e "apagar 340 registros" são decisões diferentes.
+- **A aba "Enviados" da mesma seção é a primeira TELA dos `webhook_endpoints`
+  da 028**, que existiam desde o upstream e só eram configuráveis por `curl`
+  com chave de API (zero endpoints registrados em produção). As rotas de
+  sessão são `/api/cb/webhooks-de-saida*`, separadas das da v1 de propósito:
+  reusar aquelas faria a tela carregar uma chave de API para falar com o
+  próprio CRM. A tela DECLARA as duas limitações (uma tentativa de 5s sem
+  retry; 15 falhas seguidas desligam) — sem isso o operador conta com
+  garantia que não existe.
+
+⚠️ **Tag ADITIVA na API v1: `POST /api/v1/contacts/{id}/tags`.**
+`src/lib/api/v1/tags-do-contato.ts` (parse puro, testado). O `PATCH` com
+`tags: []` continua SUBSTITUTIVO — é contrato publicado. O que morde código
+novo:
+
+- ⚠️⚠️ **O casamento de nome é insensível a ACENTO (`chaveDeTag`), e isso
+  DIVERGE do `resolveImportTagIds`.** Medido na API em 08/09/2026: mandar
+  `"bancario"` num contato que já tinha **"Bancário"** criava uma SEGUNDA
+  etiqueta no catálogo do escritório, sem erro nem aviso — e no `remove` o
+  nome sem acento não achava nada e a resposta dizia "desconhecida" sobre
+  etiqueta que está lá. Quem escreve o nome aqui é um fluxo de fora,
+  configurado à mão, quase sempre sem acento. O import de CSV mantém a régua
+  dele (lá o arquivo vem de planilha). Usa `\p{Mn}`, nunca `\p{Diacritic}`
+  — a mesma armadilha de `semAcento()`.
+- ⚠️⚠️ **TODA comparação de nome de etiqueta neste arquivo passa por
+  `chaveDeTag` — validação incluída.** As duas divergiram numa revisão (a
+  validação em `toLowerCase()`, a resolução em `chaveDeTag`), e o resultado
+  era: `{add:["Bancário"], remove:["bancario"]}` PASSAVA pela recusa de
+  "mesmo nome nos dois lados", o `remove` tirava a etiqueta e o `add`
+  reinseria a MESMA — disparando o gatilho `tag_added`, que pode mandar
+  mensagem ao cliente por uma etiqueta que ele já tinha antes e continua
+  tendo depois. A resposta ainda relatava a mesma etiqueta em `removidas` e
+  em `adicionadas`. Há teste pinando as duas pontas (achado do revisor).
+- ⚠️ **Só o CASAMENTO é nosso; a CRIAÇÃO continua em `resolveImportTagIds`**
+  (é ele que sabe a cor padrão e o `user_id` de auditoria). O catálogo é lido
+  com `.order('created_at')`: na colisão de chave vence a etiqueta MAIS
+  ANTIGA — sem o ORDER BY o PostgREST devolve em ordem não determinística e
+  duas chamadas iguais escolheriam etiquetas diferentes.
+- ⚠️ **Trabalha por NOME, não por UUID**, porque não havia como o integrador
+  descobrir um id de tag. `GET /api/v1/tags` entrou junto, para descoberta.
+- ⚠️ **`ContactTagWriteError` NÃO é `ApiError`**: sem o ramo explícito no
+  catch, um "Tag not found" (404) sai como 500 genérico.
+- ⚠️ **`removeContactTag` passou a devolver `boolean`** (o `count` do delete).
+  Sem ele, "removi" e "não estava lá" são indistinguíveis, e a resposta ao
+  integrador não diria o que mudou. Os 2 chamadores antigos ignoram o retorno.
+- **Escopo reusa `contacts:write`/`contacts:read`**: a chave precisa de
+  `contacts:write` de qualquer jeito para criar o contato, então um `tags:*`
+  separado não reduziria privilégio nenhum.
+- **A auditoria sai de graça**: o trigger da 912 grava `tag_added`/
+  `tag_removed` a cada INSERT/DELETE em `contact_tags`, e vindo de
+  service-role registra com `origin = 'sistema'`. Não escrever log à mão.
+
+⚠️ **Dois testes novos fecham buracos de i18n que o portão do CI não
+alcança.** `src/lib/automations/rotulo-do-gatilho.test.ts` e
+`src/components/settings/rotulo-da-secao.test.ts`. Os dois rótulos são
+pedidos por chave MONTADA (`triggers.<tipo>.label` e `sections.<id>`), e
+`scripts/i18n-chaves-usadas.mjs` declara no próprio cabeçalho que não alcança
+chave dinâmica — só as CONTA. Não é hipótese: ao acrescentar a seção Webhooks
+o CI ficou inteiro verde e o menu mostrou `Settings.sections.webhooks` cru;
+só a verificação na tela pegou. Gatilho ou seção nova sem entrada nos DOIS
+dicionários agora reprova.
+
 ⚠️ **A MARCA vem de `src/lib/marca.ts`, nunca de literal nem do dicionário.**
 `NOME_DO_APP` (de `NEXT_PUBLIC_APP_NAME`, com queda no genérico `'CRM'`) e
 `LOGO_DO_APP` (de `NEXT_PUBLIC_APP_LOGO_URL`, opcional). Nasceu do
@@ -3203,6 +3332,15 @@ que faltava. `mcp-server/` fica fora (tem `.env.example` e doc próprios).
     Deploy antes dela não quebraria o app: `gravarResultado` falharia no
     CHECK só para automação parada em "Aguardar" (log de erro, a linha do
     evento ficaria `recebido`) — e a automação de produção não tem espera.
+  - **979–981** — variáveis do Calendly, o cadeado do Calendly e o
+    endurecimento de apagar contato. (Aplicadas antes desta linha existir; a
+    lista acima ficou parada na 978 por um tempo.)
+  - **982_cb_webhooks_de_entrada** — `cb_webhooks` (nome, token em claro,
+    segredo cifrado, mapeamento de campos) e `cb_webhook_eventos` (o log, com
+    o payload ACHATADO e o cadeado). As duas FECHADAS para `authenticated` —
+    a tela lê pela rota. Aplicada em 2026-09-08 via conector, ANTES do merge,
+    com autorização do operador; conferido por consulta (RLS ligada nas duas,
+    `anon` e membro sem SELECT, `service_role` escrevendo, zero policies).
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
