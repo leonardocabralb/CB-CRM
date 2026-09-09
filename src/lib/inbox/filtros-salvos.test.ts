@@ -96,6 +96,7 @@ describe("lerFiltroSalvo", () => {
       etapaId: "e1",
       favoritas: true,
       naoLidas: true,
+      emAtraso: false,
     });
   });
 
@@ -160,6 +161,7 @@ describe("escreverFiltroSalvo", () => {
     const comLixo = { ...FILTROS_VAZIOS, painelAberto: true } as never;
     expect(Object.keys(escreverFiltroSalvo(comLixo)).sort()).toEqual([
       "canalIds",
+      "emAtraso",
       "empresa",
       "etapaId",
       "etiquetaIds",
@@ -466,6 +468,7 @@ const AMOSTRAS: Record<keyof FiltrosDoInbox, Partial<FiltrosDoInbox> | null> = {
   etapaId: { etapaId: "e1" },
   favoritas: { favoritas: true },
   naoLidas: { naoLidas: true },
+  emAtraso: { emAtraso: true },
 };
 
 describe("todo recorte que o painel CONTA, a descrição DESCREVE", () => {

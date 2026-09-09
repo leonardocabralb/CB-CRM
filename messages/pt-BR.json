@@ -165,6 +165,7 @@
       "groupNoName": "Grupo sem nome",
       "searchPlaceholder": "Buscar nome, número ou mensagem...",
       "filterUnread": "Não lidas",
+      "filterAwaiting": "Em atraso",
       "filterOpen": "Abertas",
       "filterClosed": "Encerradas",
       "tags": "Etiquetas",

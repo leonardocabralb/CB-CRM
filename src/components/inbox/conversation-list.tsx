@@ -551,11 +551,15 @@ export function ConversationList({
         achadasNoTexto: idsAchadosNoTexto,
         recorteDeEtapaConfiavel: etapasStatus === "ok",
         foraDoPerfil,
+        // O mesmo tique de um minuto que acende o selo na linha — o recorte
+        // "em atraso" tem de virar sozinho quando os 10 minutos vencem.
+        agoraMs: agora,
       }),
     [
       conversations,
       filtros,
       etapasStatus,
+      agora,
       favoritas,
       etapaPorContato,
       funilPorEtapa,
