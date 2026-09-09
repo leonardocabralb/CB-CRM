@@ -23,6 +23,7 @@ import {
 } from '@/lib/cb-channels/repo';
 import { deleteChannelInstance } from '@/lib/cb-channels/evolution-admin';
 import { setDefaultChannel } from '@/lib/cb-channels/set-default';
+import { ehEvolution } from '@/lib/cb-channels/transporte';
 
 const MAX_LABEL_LEN = 60;
 
@@ -285,7 +286,7 @@ export async function DELETE(
 
     // Remove a instância no servidor ANTES de apagar a linha (depois
     // perderíamos as credenciais). Erros são engolidos na função.
-    if (channel.kind === 'evolution' && channel.instance_name) {
+    if (ehEvolution(channel) && channel.instance_name) {
       await deleteChannelInstance(channel.instance_name);
     }
 

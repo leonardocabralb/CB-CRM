@@ -18,6 +18,7 @@ import { ArrowLeft, Send, Loader2, Users, Save } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useChannels } from '@/hooks/use-channels';
 import { channelLabel } from '@/lib/cb-channels/display';
+import { ehMeta } from '@/lib/cb-channels/transporte';
 
 interface AudienceConfig {
   type: string;
@@ -152,7 +153,7 @@ export function Step4ScheduleSend({
               leitura: quem escolhe é o passo 1, porque a lista de modelos
               depende do canal. Mostrado aqui para o operador conferir antes
               de disparar para centenas de contatos. */}
-          {channels.filter((c) => c.kind === 'meta').length >= 2 && (
+          {channels.filter((c) => ehMeta(c)).length >= 2 && (
             <div>
               <p className="text-xs text-muted-foreground">
                 {tCanais('outboundLabel')}

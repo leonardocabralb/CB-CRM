@@ -20,6 +20,7 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { conferirFotosDaConexao } from '@/lib/whatsapp/foto-do-contato';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
+import { ehEvolution } from '@/lib/cb-channels/transporte';
 
 /**
  * Lotes EM CURSO, por conexão (achado do Codex no PR #110): a rota responde
@@ -57,7 +58,7 @@ export async function POST(
     if (!canal) {
       return NextResponse.json({ error: 'Conexão não encontrada.' }, { status: 404 });
     }
-    if (canal.kind !== 'evolution') {
+    if (!ehEvolution(canal)) {
       return NextResponse.json(
         { error: 'Foto de perfil só está disponível em conexões por QR Code.' },
         { status: 400 },

@@ -212,6 +212,17 @@ export const RATE_LIMITS = {
    *  cada uma podendo mandar mensagem a cliente. 60/min é folgado para
    *  um formulário e apertado para abuso. */
   webhookDeEntrada: { limit: 60, windowMs: 60_000 },
+  /** Webhook do tl;dv (987), por token de conta. O tl;dv NÃO assina a
+   *  entrega, e o corpo é só um AVISO — a rota busca a reunião na API com a
+   *  nossa chave. Este balde é o que impede um token vazado de virar uma
+   *  enxurrada de consultas pagas ao tl;dv (cada aviso custa até três
+   *  chamadas lá). */
+  tldvWebhook: { limit: 60, windowMs: 60_000 },
+  /** Escrita nas reuniões transcritas (987): vincular/desvincular cliente,
+   *  colar transcrição, importar pelo link, buscar de novo. Por usuário. A
+   *  importação e o "buscar de novo" chamam o tl;dv na hora (2–3 pedidos);
+   *  30/min é folgado para gente e apertado para laço. */
+  reuniaoTranscrita: { limit: 30, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

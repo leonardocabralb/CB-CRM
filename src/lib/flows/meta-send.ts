@@ -24,6 +24,8 @@ import {
 import { supabaseAdmin } from './admin-client'
 import { aplicarAssinatura } from '@/lib/assinatura/assinatura'
 import { nomeAutomaticoParaAssinar } from '@/lib/assinatura/resolver'
+import { ehEvolution, ehInstagram } from '@/lib/cb-channels/transporte'
+import type { ResolvedChannel } from '@/lib/cb-channels/resolve'
 
 // ------------------------------------------------------------
 // Flows-side Meta sender (interactive variants).
@@ -59,6 +61,17 @@ interface SendTextEngineArgs {
   /** Canal de saida preferido (passo/no do operador, ou o canal do RUN).
    *  Ausente = canal atual da conversa — o comportamento de antes. */
   preferredChannelId?: string | null
+}
+
+/**
+ * D1 do plano do Instagram (docs/PLANO-instagram-direct.md): fluxo, resposta
+ * de IA e automação NÃO respondem no Direct na v1. Lança com motivo claro —
+ * o run/log registra — em vez de cair no ramo Meta com o token do Instagram.
+ */
+function exigirWhatsApp(channel: ResolvedChannel): void {
+  if (ehInstagram(channel)) {
+    throw new Error('flows and automations do not send on Instagram channels (v1)')
+  }
 }
 
 /**
@@ -123,7 +136,8 @@ export async function engineSendText(
   let workingPhone = sanitized
   let outboundRemoteJid: string | null = null
 
-  if (channel.provider === 'evolution') {
+  exigirWhatsApp(channel)
+  if (ehEvolution(channel)) {
     // Texto sai pelo transport da Evolution (Baileys) — sem janela de 24h.
     const transport = evolutionTransportFor(channel)
     const res = await transport.sendText({ to: sanitized, text: textoFinal })
@@ -177,7 +191,7 @@ export async function engineSendText(
       message_id: waMessageId,
       // Partes da chave Baileys — só Evolution (NULL no Meta).
       remote_jid: outboundRemoteJid,
-      from_me: channel.provider === 'evolution' ? true : null,
+      from_me: ehEvolution(channel) ? true : null,
       status: 'sent',
       ai_generated: args.aiGenerated ?? false,
     })
@@ -271,7 +285,8 @@ export async function engineSendMedia(
   let workingPhone = sanitized
   let outboundRemoteJid: string | null = null
 
-  if (channel.provider === 'evolution') {
+  exigirWhatsApp(channel)
+  if (ehEvolution(channel)) {
     // Mídia sai pelo transport da Evolution (aceita URL pública).
     const transport = evolutionTransportFor(channel)
     const res = await transport.sendMedia({
@@ -347,7 +362,7 @@ const preview = legendaFinal?.trim() || `[${args.kind}]`
       media_url: args.link,
       message_id: waMessageId,
       remote_jid: outboundRemoteJid,
-      from_me: channel.provider === 'evolution' ? true : null,
+      from_me: ehEvolution(channel) ? true : null,
       status: 'sent',
     })
     .select('id')
@@ -466,7 +481,8 @@ async function sendInteractiveViaMeta(
   if (!channel) {
     throw new Error('WhatsApp not configured for this account')
   }
-  if (channel.provider === 'evolution') {
+  exigirWhatsApp(channel)
+  if (ehEvolution(channel)) {
     throw new Error(
       'interactive messages (buttons/lists) are not supported on the Evolution (unofficial) channel',
     )

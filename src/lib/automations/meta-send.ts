@@ -24,6 +24,7 @@ import {
 import { supabaseAdmin } from './admin-client'
 import { aplicarAssinatura } from '@/lib/assinatura/assinatura'
 import { nomeAutomaticoParaAssinar } from '@/lib/assinatura/resolver'
+import { ehEvolution, ehInstagram } from '@/lib/cb-channels/transporte'
 
 // ------------------------------------------------------------
 // Automation-side Meta sender.
@@ -214,7 +215,15 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // O `const attempt` que o upstream abre aqui nao entra: nesta base o envio
   // tem DOIS caminhos (Evolution e Meta), e o `attempt` equivalente ja vive
   // dentro do ramo Meta, mais abaixo.
-  if (channel.provider === 'evolution') {
+  // D1 do plano do Instagram (docs/PLANO-instagram-direct.md): automação
+  // NÃO responde no Direct na v1 — falha CLARA (a execução registra o
+  // motivo), nunca o ramo Meta com o token do Instagram.
+  if (ehInstagram(channel)) {
+    throw new Error(
+      'automations do not send on Instagram channels (v1) — this step needs a WhatsApp number',
+    )
+  }
+  if (ehEvolution(channel)) {
     if (input.kind === 'template') {
       // Template é conceito da API oficial — falha CLARA em canal Evolution
       // (a execução da automação registra o motivo), nada de envio fantasma.
@@ -303,7 +312,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       message_id: waMessageId,
       // Partes da chave Baileys — só Evolution (NULL no Meta).
       remote_jid: outboundRemoteJid,
-      from_me: channel.provider === 'evolution' ? true : null,
+      from_me: ehEvolution(channel) ? true : null,
       status: 'sent',
     })
     .select('id')

@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/popover";
 import type { Message } from "@/types";
 import { useTranslations } from "next-intl";
+import { ehEvolution } from "@/lib/cb-channels/transporte";
+import type { CbChannelKind } from "@/lib/cb-channels/repo";
 
 // WhatsApp's own quick-reaction bar starts with these six. Picking the same
 // set keeps the affordance familiar without pulling in a 300KB emoji library.
@@ -26,7 +28,7 @@ interface MessageActionsProps {
    * expõe nenhum dos dois. Sem esta informação os botões apareceriam numa
    * conta Meta e o operador tentaria uma ação que não pode dar certo.
    */
-  channelKind?: "meta" | "evolution" | null;
+  channelKind?: CbChannelKind | null;
   onDelete?: () => void;
   onEdit?: () => void;
   children: ReactNode;
@@ -67,7 +69,7 @@ export function MessageActions({
     podeAgir &&
     existeNoWhatsApp &&
     message.status !== "failed" &&
-    channelKind === "evolution" &&
+    ehEvolution(channelKind) &&
     nossa &&
     !message.deleted_at;
 

@@ -16,6 +16,7 @@
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { ehEvolution, ehMeta } from './transporte';
 
 export interface MetaChannelForSend {
   /** `cb_channels.id`, ou `null` quando veio do espelho legado. */
@@ -40,7 +41,7 @@ interface LinhaCanal {
 
 /** A linha serve para enviar por API oficial? */
 function utilizavel(c: LinhaCanal): boolean {
-  return c.kind === 'meta' && !!c.phone_number_id && !!c.access_token;
+  return ehMeta(c) && !!c.phone_number_id && !!c.access_token;
 }
 
 function mapear(c: LinhaCanal): MetaChannelForSend {
@@ -107,7 +108,7 @@ export async function resolveMetaChannel(
     access_token: string | null;
     provider: string | null;
   } | null;
-  if (c && c.provider !== 'evolution' && c.phone_number_id && c.access_token) {
+  if (c && !ehEvolution(c) && c.phone_number_id && c.access_token) {
     return {
       channelId: null,
       phoneNumberId: c.phone_number_id,

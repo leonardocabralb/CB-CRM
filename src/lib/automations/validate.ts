@@ -3,6 +3,8 @@ import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { digitosDoTelefone } from '@/lib/contacts/telefone'
 import { MAX_DESCRICAO, MAX_TITULO, normalizarHora } from '@/lib/tasks/validar'
 import { motivoDeConfigInvalida } from './lembretes'
+import { ehMeta } from '@/lib/cb-channels/transporte'
+import type { CbChannelKind } from '@/lib/cb-channels/repo'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -412,7 +414,7 @@ const META_ONLY_STEPS = new Set(['send_template', 'send_buttons', 'send_list']);
 export interface ChannelForValidation {
   id: string;
   label: string;
-  kind: 'meta' | 'evolution';
+  kind: CbChannelKind;
 }
 
 /**
@@ -449,7 +451,7 @@ export function validateChannelScopeForActivation(
       ? contasCanais.filter((c) => channelIds.includes(c.id))
       : [];
   // Escopo vazio, ou só com ids desconhecidos, = "todos os canais".
-  const herancaPodeSerMeta = escopo.length === 0 || escopo.some((c) => c.kind === 'meta');
+  const herancaPodeSerMeta = escopo.length === 0 || escopo.some((c) => ehMeta(c));
   const nomesDoEscopo = escopo.map((c) => c.label).join(', ');
 
   const visitar = (lista: StepLike[], prefixo: string) => {
@@ -460,7 +462,7 @@ export function validateChannelScopeForActivation(
         const canalFixado = typeof fixado === 'string' && fixado ? porId.get(fixado) : undefined;
 
         if (canalFixado) {
-          if (canalFixado.kind !== 'meta') {
+          if (!ehMeta(canalFixado)) {
             issues.push({
               path: `${path}.channel_id`,
               message: `"${s.step_type}" só funciona em número oficial da Meta, e este passo está fixado para enviar por "${canalFixado.label}", que é um número não oficial (QR Code). Troque a conexão de saída deste passo ou use uma mensagem de texto.`,

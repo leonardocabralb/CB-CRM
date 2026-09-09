@@ -26,6 +26,7 @@
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { ehEvolution, transporteDe, type Transporte } from './transporte';
 
 /**
  * Conexão resolvida, já no formato que o `send-message.ts` consome. Os
@@ -35,7 +36,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * continuam CRIPTOGRAFADOS (o chamador decripta).
  */
 export interface ResolvedChannel {
-  provider: 'meta' | 'evolution';
+  provider: Transporte;
   phone_number_id: string | null;
   waba_id: string | null;
   access_token: string | null;
@@ -67,7 +68,8 @@ interface ChannelRow {
 
 function mapChannelRow(row: ChannelRow): ResolvedChannel {
   return {
-    provider: row.kind === 'evolution' ? 'evolution' : 'meta',
+    // Lança em kind desconhecido — o ternário antigo mandava tudo para 'meta'.
+    provider: transporteDe(row.kind),
     phone_number_id: row.phone_number_id ?? null,
     waba_id: row.waba_id ?? null,
     access_token: row.access_token ?? null,
@@ -131,7 +133,8 @@ export async function resolveChannelForConversation(
     '[cb-channels] conversa sem canal em cb_channels; usando whatsapp_config (fallback de transição)',
   );
   return {
-    provider: cfg.provider === 'evolution' ? 'evolution' : 'meta',
+    // Tabela legada, só de WhatsApp: o CHECK da 037 aceita 'meta' e 'evolution'.
+    provider: ehEvolution(cfg) ? 'evolution' : 'meta',
     phone_number_id: cfg.phone_number_id ?? null,
     waba_id: cfg.waba_id ?? null,
     access_token: cfg.access_token ?? null,

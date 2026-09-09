@@ -28,6 +28,9 @@ import { formatChannelPhone } from '@/lib/cb-channels/display';
 import { cn } from '@/lib/utils';
 
 import { WhatsAppGlyph } from './whatsapp-glyph';
+import { InstagramGlyph } from './instagram-glyph';
+import { ehInstagram } from '@/lib/cb-channels/transporte';
+import type { CbChannelKind } from '@/lib/cb-channels/repo';
 
 /** Acima disto os glifos viram um só, com contador. */
 const TETO_DE_GLIFOS = 3;
@@ -56,15 +59,19 @@ function piorTom(tons: HealthTone[]): HealthTone {
 function Glifo({
   tone,
   pulsar,
+  kind,
   className,
 }: {
   tone: HealthTone;
   pulsar: boolean;
+  /** Sem `kind` (o glifo AGREGADO, acima do teto) desenha o WhatsApp. */
+  kind?: CbChannelKind;
   className?: string;
 }) {
+  const Marca = ehInstagram(kind) ? InstagramGlyph : WhatsAppGlyph;
   return (
     <span className={cn('relative inline-flex', className)}>
-      <WhatsAppGlyph
+      <Marca
         className={cn(
           'h-5 w-5 transition-colors',
           COR[tone],
@@ -107,7 +114,7 @@ function Ficha({ c }: { c: ChannelHealth }) {
 
   return (
     <div className="flex items-start gap-2.5 py-1.5">
-      <Glifo tone={c.tone} pulsar={c.tone === 'warn'} className="mt-0.5 shrink-0" />
+      <Glifo tone={c.tone} pulsar={c.tone === 'warn'} kind={c.kind} className="mt-0.5 shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">{c.label}</p>
         <p className="text-xs text-muted-foreground">
@@ -164,7 +171,7 @@ export function ChannelHealthIndicator({ className }: { className?: string }) {
           </>
         ) : (
           channels.map((c) => (
-            <Glifo key={c.id} tone={c.tone} pulsar={c.tone === 'warn'} />
+            <Glifo key={c.id} tone={c.tone} pulsar={c.tone === 'warn'} kind={c.kind} />
           ))
         )}
       </PopoverTrigger>

@@ -23,6 +23,7 @@ import {
   CB_CHANNEL_SAFE_COLUMNS,
 } from '@/lib/cb-channels/repo';
 import { repairChannelPairing } from '@/lib/cb-channels/evolution-admin';
+import { ehEvolution } from '@/lib/cb-channels/transporte';
 
 export async function POST(
   _request: Request,
@@ -38,7 +39,7 @@ export async function POST(
     if (!channel) {
       return NextResponse.json({ error: 'Canal não encontrado.' }, { status: 404 });
     }
-    if (channel.kind !== 'evolution') {
+    if (!ehEvolution(channel)) {
       // Canal Meta não tem sessão de QR para derrubar. O equivalente é
       // revalidar a credencial (verify → register → subscribe), que é o
       // assistente de conexão — não este endpoint.
