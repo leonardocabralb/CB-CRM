@@ -7,89 +7,81 @@ import { chaveDeTag } from '@/lib/contacts/chave-de-tag';
 
 // ============================================================
 // A régua de "mesma etiqueta" existe DUAS vezes: em TS (`chaveDeTag`) e em
-// SQL (a coluna gerada `tags.name_key`, migration 983). Elas precisam
-// concordar, e a divergência entre as duas é exatamente o defeito que a 983
-// existe para fechar — antes dela, a API casava sem acento e o import de CSV
-// casava com.
+// SQL (a coluna gerada `tags.name_key`). Elas precisam concordar — a
+// divergência entre as duas foi o defeito que a 983 fechou, e o furo que a
+// 984 fechou depois.
 //
-// Este teste lê o `translate` DO PRÓPRIO SQL e confere par a par contra o
-// TS. Editar o mapa da migration sem mexer no `chaveDeTag` (ou o contrário)
-// reprova aqui.
-//
-// LIMITE DECLARADO: confere os caracteres que o SQL mapeia. O TS colapsa
-// MAIS (apaga todo `\p{Mn}`), e essa folga é deliberada — ver o cabeçalho de
-// `chave-de-tag.ts`. O teste cobra a direção que importa: o SQL nunca pode
-// colapsar algo que o TS mantém separado.
+// Um teste não roda SQL, então o que dá para cobrar aqui é a FORMA da
+// expressão. A equivalência de VALOR foi medida contra o Postgres de
+// produção em 2026-09-09 (precomposta e decomposta → "bancario"; "Bancária"
+// segue distinta; `a^b` e `ø` sobrevivem) e está escrita no cabeçalho da
+// migration.
 // ============================================================
 
-const sql = readFileSync(
-  path.join(__dirname, '983_cb_etiqueta_sem_duplicata.sql'),
-  'utf8'
-);
+const p = (arquivo: string) =>
+  readFileSync(path.join(__dirname, arquivo), 'utf8');
 
-/** O primeiro `translate(..., 'de', 'para')` do arquivo. */
-function mapaDoSql(): { de: string; para: string } {
-  const m = sql.match(
-    /translate\(\s*btrim\(name[^)]*\),\s*'([^']+)',\s*'([^']+)'\s*\)/
-  );
-  if (!m) throw new Error('não achei o translate da coluna gerada');
-  return { de: m[1], para: m[2] };
-}
+const SQL_984 = p('984_cb_chave_de_tag_normalizada.sql');
 
-describe('983 — a régua do SQL casa com a do TS', () => {
-  const { de, para } = mapaDoSql();
+const semComentarios = (sql: string) =>
+  sql
+    .split('\n')
+    .map((l) => l.replace(/--.*$/, ''))
+    .join('\n');
 
-  it('⚠️ as duas strings do translate têm o MESMO comprimento', () => {
-    // Com `para` mais curta, o `translate` APAGA os caracteres sobrando em
-    // vez de mapeá-los — e a chave gerada ficaria errada, em silêncio.
-    expect(de.length).toBe(para.length);
+describe('984 — a régua do SQL casa com a do TS', () => {
+  const corpo = semComentarios(SQL_984);
+
+  it('CRÍTICO: a coluna gerada NORMALIZA antes de apagar os sinais', () => {
+    // Sem o `normalize(..., NFD)`, a forma decomposta de um nome acentuado
+    // gera outra chave e o índice único deixa a duplicata entrar — que é
+    // exatamente o furo que a 983 tinha.
+    expect(/normalize\(\s*lower\(\s*btrim\(\s*name/i.test(corpo)).toBe(true);
+    expect(/normalize\([^)]*NFD\s*\)/i.test(corpo)).toBe(true);
   });
 
-  it('CRÍTICO: cada caractere mapeado no SQL cai no mesmo lugar no TS', () => {
-    const divergentes: string[] = [];
-    for (let i = 0; i < de.length; i++) {
-      if (chaveDeTag(de[i]) !== para[i].toLowerCase()) {
-        divergentes.push(`${de[i]} → SQL "${para[i]}" · TS "${chaveDeTag(de[i])}"`);
-      }
-    }
-    expect(divergentes).toEqual([]);
+  it('CRÍTICO: apaga o bloco de sinais combinantes U+0300–U+036F', () => {
+    expect(/regexp_replace\(/i.test(corpo)).toBe(true);
+    expect(corpo).toContain('u0300-\\u036f');
   });
 
-  it('o SQL não colapsa nada que o TS mantenha separado', () => {
-    // A direção perigosa: se o SQL juntasse dois nomes que o TS considera
-    // diferentes, o código pediria uma etiqueta nova, levaria 23505 e ela
-    // sumiria em silêncio.
-    const porDestinoSql = new Map<string, string[]>();
-    for (let i = 0; i < de.length; i++) {
-      const lista = porDestinoSql.get(para[i].toLowerCase()) ?? [];
-      lista.push(de[i]);
-      porDestinoSql.set(para[i].toLowerCase(), lista);
-    }
-    for (const [destino, origens] of porDestinoSql) {
-      for (const o of origens) expect(chaveDeTag(o)).toBe(destino);
-    }
+  it('⚠️ o intervalo é escrito por ESCAPE, nunca com o caractere literal', () => {
+    // Caractere combinante literal num arquivo é invisível para quem lê ou
+    // edita — e some numa cópia descuidada. Já aconteceu ao escrever esta
+    // própria migration.
+    const combinanteLiteral = /[̀-ͯ]/u;
+    expect(combinanteLiteral.test(SQL_984)).toBe(false);
   });
 
-  it('os nomes reais do escritório continuam distintos entre si', () => {
-    // Se a régua colapsasse dois nomes em uso, a migration renomearia um
-    // deles no deploy — mudança visível que ninguém pediu.
-    const reais = [
-      'Ag. Demissão', 'Bancário', 'Cliente Fechado', 'Demitida',
-      'Desqualificado', 'Formulário', 'Imobiliario', 'Pediu Demissão',
-      'Setor Acordo', 'Trabalhista', 'Typebot',
-    ];
-    expect(new Set(reais.map(chaveDeTag)).size).toBe(reais.length);
+  it('a coluna é RECRIADA, e o índice volta depois', () => {
+    // `ALTER ... SET EXPRESSION` só existe no PG 17, e a migration precisa
+    // replayar no Postgres que o CI subir.
+    expect(/DROP COLUMN IF EXISTS name_key/i.test(corpo)).toBe(true);
+    expect(/ADD COLUMN name_key[\s\S]*GENERATED ALWAYS AS/i.test(corpo)).toBe(true);
+    expect(/CREATE UNIQUE INDEX[\s\S]*tags_conta_nome_uk/i.test(corpo)).toBe(true);
   });
 
   it('a migration RENOMEIA a duplicata, nunca apaga', () => {
     // Apagar quebraria em silêncio as regras que referenciam `tags.id` por
     // JSON — automação, fluxo e o recorte salvo da caixa de entrada —, que
     // nenhuma FK protege.
-    const semComentarios = sql
-      .split('\n')
-      .map((l) => l.replace(/--.*$/, ''))
-      .join('\n');
-    expect(/UPDATE\s+tags[\s\S]*?SET\s+name\s*=/i.test(semComentarios)).toBe(true);
-    expect(/DELETE\s+FROM\s+tags/i.test(semComentarios)).toBe(false);
+    expect(/UPDATE\s+tags[\s\S]*?SET\s+name\s*=/i.test(corpo)).toBe(true);
+    expect(/DELETE\s+FROM\s+tags/i.test(corpo)).toBe(false);
+  });
+
+  it('o TS trata as duas formas Unicode como a mesma etiqueta', () => {
+    // O outro lado da equivalência que a migration garante no banco.
+    const pre = 'Bancário';
+    expect(chaveDeTag(pre.normalize('NFD'))).toBe(chaveDeTag(pre));
+    expect(chaveDeTag(pre.normalize('NFC'))).toBe('bancario');
+  });
+
+  it('os nomes reais do escritório continuam distintos entre si', () => {
+    const reais = [
+      'Ag. Demissão', 'Bancário', 'Cliente Fechado', 'Demitida',
+      'Desqualificado', 'Formulário', 'Imobiliario', 'Pediu Demissão',
+      'Setor Acordo', 'Trabalhista', 'Typebot',
+    ];
+    expect(new Set(reais.map(chaveDeTag)).size).toBe(reais.length);
   });
 });
