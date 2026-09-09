@@ -67,7 +67,7 @@ import { createClient } from '@/lib/supabase/client';
 import { ehUrlAlcancavel } from '@/lib/cb-channels/webhook-url';
 import { invalidarCacheDeCanais } from '@/hooks/use-channels';
 import { SettingsPanelHead } from './settings-panel-head';
-import { ehEvolution, ehInstagram, ehMeta } from '@/lib/cb-channels/transporte';
+import { ehEvolution, ehInstagram, ehMeta, ehWhatsApp } from '@/lib/cb-channels/transporte';
 import { InstagramGlyph } from '@/components/channels/instagram-glyph';
 import { identidadeDoCanal } from '@/lib/cb-channels/display';
 import {
@@ -179,6 +179,8 @@ export function CbChannelsPanel() {
   // ressincronização no diálogo.
   const [configGrupos, setConfigGrupos] = useState(false);
   const [configRadar, setConfigRadar] = useState(false);
+  /** Instagram: a tag HUMAN_AGENT (7 dias). Só aparece em canal Instagram. */
+  const [configHumanAgent, setConfigHumanAgent] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [pipelines, setPipelines] = useState<PipelineOption[]>([]);
@@ -576,7 +578,17 @@ export function CbChannelsPanel() {
     setConfigStage(channel.default_stage_id ?? '');
     setConfigGrupos(channel.groups_enabled === true);
     setConfigRadar(channel.radar_enabled === true);
+    setConfigHumanAgent(channel.ig_human_agent === true);
   };
+
+  /**
+   * Quem pode SUCEDER um canal como padrão: só WhatsApp. O padrão é o número
+   * que responde conversa sem canal e alimenta o espelho `whatsapp_config`;
+   * o servidor recusa promover o Instagram, então oferecê-lo aqui seria um
+   * clique que sempre falha (Codex, PR #167).
+   */
+  const sucessoresDe = (canal: CbChannel) =>
+    channels.filter((c) => c.id !== canal.id && ehWhatsApp(c));
 
   const handleConfigure = async () => {
     if (!configTarget) return;
@@ -593,6 +605,9 @@ export function CbChannelsPanel() {
           default_stage_id: configPipeline ? configStage || null : null,
           groups_enabled: configGrupos,
           radar_enabled: configRadar,
+          // Só o Instagram tem a chave — e a chave presente é o que autoriza
+          // a rota a mexer (mesma disciplina do funil e do radar).
+          ...(ehInstagram(configTarget) ? { ig_human_agent: configHumanAgent } : {}),
         }),
       });
       const payload = await res.json();
@@ -995,7 +1010,7 @@ export function CbChannelsPanel() {
                       onClick={() => {
                         setConfirmDelete(channel);
                         setSuccessorId(
-                          channels.find((c) => c.id !== channel.id)?.id ?? '',
+                          sucessoresDe(channel)[0]?.id ?? '',
                         );
                       }}
                     >
@@ -1582,6 +1597,30 @@ export function CbChannelsPanel() {
                 </p>
               )}
             </div>
+
+            {/* Human Agent (D2 do plano do Instagram). A Meta aprova a feature
+                DEPOIS de a conta estar conectada — por isso o interruptor
+                mora aqui, não só na criação (Codex, PR #167). */}
+            {configTarget && ehInstagram(configTarget) && (
+              <div className="rounded-md border border-border p-3">
+                <label className="flex cursor-pointer items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={configHumanAgent}
+                    onChange={(e) => setConfigHumanAgent(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-foreground">
+                      {t('instagramHumanAgent')}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {t('instagramHumanAgentHint')}
+                    </span>
+                  </span>
+                </label>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfigTarget(null)}>
@@ -1698,7 +1737,7 @@ export function CbChannelsPanel() {
                 número de envio do escritório não pode ser efeito colateral
                 silencioso de um clique em "excluir". Quem sucede vai nomeado. */}
             {confirmDelete?.is_default &&
-              (channels.filter((c) => c.id !== confirmDelete.id).length === 0 ? (
+              (sucessoresDe(confirmDelete).length === 0 ? (
                 <p className="rounded-md border border-destructive/40 p-2 text-xs text-destructive">
                   {/* "Use Reparear" só vale para Evolution — canal Meta não
                       tem sessão de QR e nem desenha esse botão. Mandar o
@@ -1718,9 +1757,7 @@ export function CbChannelsPanel() {
                     onChange={(e) => setSuccessorId(e.target.value)}
                     className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
                   >
-                    {channels
-                      .filter((c) => c.id !== confirmDelete.id)
-                      .map((c) => (
+                    {sucessoresDe(confirmDelete).map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.label}
                         </option>
@@ -1742,7 +1779,7 @@ export function CbChannelsPanel() {
                 // Última conexão da conta: o servidor recusa (409), então o
                 // botão não deve nem prometer.
                 (confirmDelete?.is_default === true &&
-                  channels.filter((c) => c.id !== confirmDelete.id).length === 0)
+                  sucessoresDe(confirmDelete).length === 0)
               }
               onClick={() => confirmDelete && void handleDelete(confirmDelete)}
             >

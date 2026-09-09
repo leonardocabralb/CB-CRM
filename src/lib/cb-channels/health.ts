@@ -30,7 +30,7 @@ import { decrypt } from '@/lib/whatsapp/encryption';
 import { ehUrlAlcancavel } from './webhook-url';
 import type { CbChannelStatus, CbChannelKind } from './repo';
 import { ehEvolution, ehInstagram, ehMeta } from './transporte';
-import { criarClienteInstagram } from '@/lib/instagram/graph';
+import { InstagramApiError, criarClienteInstagram } from '@/lib/instagram/graph';
 
 /** Cor do glifo. `unknown` = configuração incompleta, nem dá para sondar. */
 export type HealthTone = 'ok' | 'warn' | 'down' | 'unknown';
@@ -374,7 +374,15 @@ export async function probeChannels(
             '[health] canal Instagram não validou:',
             err instanceof Error ? err.message : err,
           );
-          estadoVivo = 'close';
+          // Só a RESPOSTA da Meta prova queda (token vencido/revogado, sem
+          // permissão). Tempo esgotado ou rede fora é "não sei": fica
+          // `null`, e o tom vem do frescor do último estado gravado — senão
+          // um blip de rede gravava `disconnected` com carimbo novo, que é o
+          // verde mentiroso ao contrário (Codex, PR #167).
+          estadoVivo =
+            err instanceof InstagramApiError && err.codigo === 'rede'
+              ? null
+              : 'close';
         }
       }
     }
