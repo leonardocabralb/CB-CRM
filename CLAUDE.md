@@ -3430,6 +3430,67 @@ novo:
   `tag_removed` a cada INSERT/DELETE em `contact_tags`, e vindo de
   service-role registra com `origin = 'sistema'`. Não escrever log à mão.
 
+⚠️ **Instagram Direct (em construção — plano vivo em
+`docs/PLANO-instagram-direct.md`): o transporte é PREDICADO, nunca literal.**
+`src/lib/cb-channels/transporte.ts` (`ehMeta`/`ehEvolution`/`ehInstagram`/
+`ehWhatsApp`, e `transporteDe`, que LANÇA em valor desconhecido) e o teste
+estrutural `transporte.chamadores.test.ts` (no `main` desde 10/09/2026, PR
+#166). O que morde código novo:
+
+- ⚠️⚠️ **`kind === 'evolution'` / `provider !== 'meta'` REPROVA o CI em todo
+  `src/`** (fora de `transporte.ts`) — qualquer identificador terminado em
+  kind/provider, sem distinção de caixa (`channelKind` inclusive). Motivo,
+  medido antes do terceiro transporte: ~45 ternários com o `else`
+  significando "Meta"; acrescentar `'instagram'` ao tipo dava 7 erros de
+  compilação e NENHUM ramo de envio aparecia — um canal Instagram iria para
+  a Cloud API com o token do Instagram e um IGSID no lugar do telefone.
+  `switch (x.kind)` sobre o tipo `Transporte` é permitido (o compilador
+  cobre); `.eq('kind', …)` de consulta também.
+- ⚠️ **Cada `else` que era "Meta" virou `ehMeta(...)` explícito**, e os ramos
+  de Instagram já existem falhando FECHADO: núcleo de envio
+  (`not_supported`), senders do robô (`exigirWhatsApp` — D1: robô não
+  responde no Direct na v1), reação (400), apagar/editar (frase própria),
+  canal padrão (recusa: o padrão é o número de WhatsApp que responde conversa
+  sem canal e alimenta `whatsapp_config`), nova conversa (não oferece),
+  compositor (sem modelo nem interativa). Ramo novo nomeia os TRÊS.
+- ⚠️ **`Contact.phone` é `string | null`** (PR #168): a ficha só do Instagram
+  não tem telefone. Toda tela que mostra "o telefone" passa por
+  `identidadeDoContato`/`nomeDoContato` (`src/lib/contacts/identidade.ts`):
+  telefone, senão `@usuario`, senão o fallback que a TELA escolhe — parâmetro
+  OBRIGATÓRIO de propósito, porque um padrão escondido sairia em inglês numa
+  tela e em português noutra. Nunca o IGSID na tela. O `tsc` pegou só 11
+  sítios; `{contact.phone}` em JSX, `name || phone` e tipos locais com
+  `phone: string` ele NÃO vê — caçar por grep. Fotos de perfil e público de
+  disparo já ignoram ficha sem telefone; o formulário de contato só dispensa
+  o telefone na EDIÇÃO de ficha com `instagram_id`.
+- ⚠️ **IGSID nunca vai para `contacts.phone`**: `findExistingContact` casa
+  pelos ÚLTIMOS 8 DÍGITOS — a armadilha do JID de grupo (906), agora com 16
+  dígitos. A identidade do Instagram é `contacts.instagram_id` (989).
+- ⚠️ **Quem assina o webhook do Instagram é o Instagram App Secret da aba do
+  produto** (MEDIDO no Teste B da Fase 0, 09/09/2026) — não a "Chave secreta
+  do aplicativo" que a doc da Meta sugere, e não `META_APP_SECRET`. É POR
+  CANAL e cifrado (`cb_channels.ig_app_secret`, 989).
+  `src/lib/instagram/assinatura.ts` (PR #169) recebe o segredo por
+  parâmetro; segredo vazio nunca casa.
+- ⚠️ **Toda DM chega com um `message_edit` de `num_edit: 0`** — não é edição,
+  e consumida como tal cada DM viraria duas linhas; `interpretarWebhook`
+  (`src/lib/instagram/webhook.ts`) ignora. A nota de voz vem como
+  `attachments[type=audio]` numa URL assinada que EXPIRA (baixar na hora),
+  com `content-type: video/mp4` — a classe sai do `type` do webhook
+  (`midiaDoAnexo`), nunca do CDN, senão a voz vira vídeo no fio.
+- ⚠️ **Token do Instagram só no cabeçalho `Authorization: Bearer`, nunca em
+  `?access_token=`; a mensagem de erro da Meta ECOA o token e passa por
+  `semSegredo`; o host é preso a `graph.instagram.com`**
+  (`src/lib/instagram/graph.ts`, PR #167 — mesma família do cliente do Meta
+  Ads). O token do painel dura 60 dias; a validade fica em
+  `ig_token_expires_at` e o cron da Fase 6 renova.
+- **Decisões do operador (10/09/2026), no plano**: robô fora (D1); janela de
+  24h + `ig_human_agent` opcional, só depois da feature aprovada na Meta
+  (D2); token colado, sem OAuth (D3); ficha própria + unificação MANUAL com
+  a ficha de WhatsApp (D4, Fase 5); o que a API não cobre — apagar-para-
+  todos, responder citando, documento que não seja PDF, editar — fica
+  INACESSÍVEL na conversa Instagram; nota de voz cabe via WAV (D5).
+
 ⚠️ **Dois testes novos fecham buracos de i18n que o portão do CI não
 alcança.** `src/lib/automations/rotulo-do-gatilho.test.ts` e
 `src/components/settings/rotulo-da-secao.test.ts`. Os dois rótulos são
@@ -3739,6 +3800,18 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
     Supabase não lança) e a varredura segue, mas o `.order()` do cron
     reprova a consulta com "column does not exist" e a rota devolve 500 sem
     sincronizar conta nenhuma.
+  - **989_cb_instagram** — o terceiro transporte: `kind = 'instagram'` (o
+    CHECK é recriado pela FORMA, não pelo nome), colunas `ig_*` em
+    `cb_channels`, índice único GLOBAL por `ig_user_id`,
+    `contacts.instagram_id`/`instagram_username` e **`contacts.phone`
+    ANULÁVEL** com CHECK "telefone OU instagram". ⚠️ **NÃO aplicada ainda**
+    (10/09/2026): viaja no PR #167 (Fase 2 do Instagram) e tem de ser
+    aplicada ANTES daquele merge — `CB_CHANNEL_SAFE_COLUMNS` passa a pedir as
+    colunas novas, e sem elas o painel de conexões trava no aviso de
+    migration ausente. O conector do Supabase estava sem autenticação na
+    sessão que a escreveu; quem aplica é o operador (SQL Editor) ou uma
+    sessão autorizada. É **989**, não 987: a 987 (tl;dv) e a 988 (rodízio)
+    nasceram em branches paralelas — quarto caso de colisão evitada.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
