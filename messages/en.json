@@ -273,6 +273,7 @@
       "showContact": "Show contact",
       "refresh": "Refresh",
       "refreshConversation": "Refresh conversation",
+      "naoLidasAbaixo": "{count, plural, one {# unread message} other {# unread messages}}",
       "tambemNaConversa": "{nome} is also viewing this conversation",
       "status": "Status",
       "statusOpen": "Open",
@@ -438,7 +439,8 @@
       "location": "[Location]",
       "template": "[Template]",
       "message": "[Message]",
-      "cancelReply": "Cancel reply"
+      "cancelReply": "Cancel reply",
+      "jumpTo": "Go to the quoted message"
     },
     "templatePicker": {
       "sendTemplate": "Send template",

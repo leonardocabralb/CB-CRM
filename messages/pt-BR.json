@@ -266,6 +266,7 @@
       "showContact": "Exibir contato",
       "refresh": "Atualizar",
       "refreshConversation": "Atualizar conversa",
+      "naoLidasAbaixo": "{count, plural, one {# mensagem não lida} other {# mensagens não lidas}}",
       "tambemNaConversa": "{nome} também está com esta conversa aberta",
       "status": "Status",
       "statusOpen": "Aberta",
@@ -431,7 +432,8 @@
       "location": "[Localização]",
       "template": "[Modelo]",
       "message": "[Mensagem]",
-      "cancelReply": "Cancelar resposta"
+      "cancelReply": "Cancelar resposta",
+      "jumpTo": "Ir para a mensagem citada"
     },
     "templatePicker": {
       "sendTemplate": "Enviar modelo",

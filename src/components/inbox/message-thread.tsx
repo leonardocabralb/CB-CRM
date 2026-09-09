@@ -19,6 +19,7 @@ import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe"
 import { horasRestantes, janelaFechada } from "@/lib/inbox/janela-24h";
 import { patchDeSituacao } from "@/lib/conversations/situacao";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
+import { contarNovasDoCliente } from "@/lib/inbox/nao-lidas-abaixo";
 import {
   aberturasDeCanal,
   canalDivergente,
@@ -393,6 +394,26 @@ export function MessageThread({
    */
   const coladoNoFimRef = useRef(true);
 
+  /**
+   * O ESPELHO em estado do `coladoNoFimRef`, mais a âncora do "N mensagens
+   * não lidas": o id da última mensagem que estava na tela da última vez em
+   * que o operador esteve colado no fim. O ref decide o auto-scroll (não pode
+   * re-renderizar a cada evento de rolagem); o estado é o que faz o botão
+   * aparecer e sumir. Os dois são escritos no MESMO lugar (`anotarPosicao`),
+   * num manipulador de evento — nunca num efeito (regra do React Compiler).
+   * A âncora carrega a CONVERSA de que é: trocar de conversa a invalida
+   * sozinha, sem efeito de limpeza.
+   */
+  const [noFim, setNoFim] = useState(true);
+  const [ultimaVista, setUltimaVista] = useState<{ conversa: string | null; id: string | null }>({
+    conversa: null,
+    id: null,
+  });
+  const ultimaMensagemIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    ultimaMensagemIdRef.current = messages.length ? messages[messages.length - 1].id : null;
+  }, [messages]);
+
   const anotarPosicao = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -407,9 +428,20 @@ export function MessageThread({
     // A folga não é zero: `scrollTop` é fracionário em tela HiDPI, e exigir o
     // fim exato faria a conversa parar de acompanhar mensagem nova por causa
     // de meio pixel.
-    coladoNoFimRef.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-  }, []);
+    const colado = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    coladoNoFimRef.current = colado;
+    setNoFim(colado);
+    if (colado) {
+      const id = ultimaMensagemIdRef.current;
+      // `conversation?.id`, e não o `conversationId` derivado mais abaixo:
+      // este callback é declarado antes daquela linha, e a lista de
+      // dependências é avaliada no render (TDZ).
+      const conversa = conversation?.id ?? null;
+      setUltimaVista((v) =>
+        v.conversa === conversa && v.id === id ? v : { conversa, id },
+      );
+    }
+  }, [conversation?.id]);
 
   /**
    * O salto da busca está mandando na rolagem agora?
@@ -1183,6 +1215,50 @@ export function MessageThread({
     const quadro = requestAnimationFrame(centralizar);
     return () => cancelAnimationFrame(quadro);
   }, [alvoId, messages, execucoesDoFio]);
+
+  /**
+   * Clique na citação: rola até a mensagem citada e a destaca por 2,5 s, como
+   * no WhatsApp. Mesma medida do salto da busca (retângulos, não `offsetTop`).
+   * O `n` faz clicar DUAS vezes na mesma citação saltar de novo (o objeto
+   * muda, o efeito roda). Ao rolar para cima o `onScroll` anota que o operador
+   * saiu do fim, então mensagem nova não o puxa de volta — e o botão de
+   * "não lidas" passa a contar.
+   */
+  const [saltoDaCitacao, setSaltoDaCitacao] = useState<{ id: string; n: number } | null>(null);
+  const irParaCitada = useCallback((id: string) => {
+    setSaltoDaCitacao((s) => ({ id, n: (s?.n ?? 0) + 1 }));
+  }, []);
+  useEffect(() => {
+    if (!saltoDaCitacao) return;
+    const cont = scrollRef.current;
+    if (!cont) return;
+    const el = cont.querySelector<HTMLElement>(`[data-message-id="${saltoDaCitacao.id}"]`);
+    if (!el) return;
+    const centralizar = () => {
+      const rCont = cont.getBoundingClientRect();
+      const rAlvo = el.getBoundingClientRect();
+      cont.scrollTop += rAlvo.top - rCont.top - (cont.clientHeight - rAlvo.height) / 2;
+    };
+    centralizar();
+    const quadro = requestAnimationFrame(centralizar);
+    const apaga = setTimeout(() => setSaltoDaCitacao(null), 2500);
+    return () => {
+      cancelAnimationFrame(quadro);
+      clearTimeout(apaga);
+    };
+  }, [saltoDaCitacao]);
+
+  /** Quantas mensagens do cliente chegaram enquanto o operador lia lá em cima. */
+  const naoLidasAbaixo =
+    noFim || ultimaVista.conversa !== conversationId
+      ? 0
+      : contarNovasDoCliente(messages, ultimaVista.id);
+  const irParaOFim = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    coladoNoFimRef.current = true;
+    el.scrollTop = el.scrollHeight; // dispara o onScroll, que anota o fim e a âncora
+  }, []);
 
 
   /**
@@ -2344,7 +2420,7 @@ export function MessageThread({
                     // se desenha sozinha como faixa, e NÃO passa pelo
                     // MessageActions — responder, reagir ou apagar um aviso
                     // do sistema não quer dizer nada.
-                    const destacada = msg.id === alvoId;
+                    const destacada = msg.id === alvoId || msg.id === saltoDaCitacao?.id;
                     if (msg.content_type === "system") {
                       return (
                         <LinhaDaMensagem
@@ -2370,6 +2446,7 @@ export function MessageThread({
                               : parent.group_sender_name ||
                                 nomeDoContato(contact, t("unknownAuthor")),
                           preview: buildReplyPreview(parent, tQuote),
+                          id: parent.id,
                         }
                       : null;
                     const msgReactions = reactionsByMessageId.get(msg.id);
@@ -2436,6 +2513,7 @@ export function MessageThread({
                           baixandoAnexo={anexoEmCurso === msg.id}
                           onBaixarAnexo={() => baixarAnexoDoGrupo(msg.id)}
                           onAbrirGaleria={setGaleriaAbertaEm}
+                          onIrParaCitada={irParaCitada}
                         />
                       </MessageActions>
                       </LinhaDaMensagem>
@@ -2445,6 +2523,25 @@ export function MessageThread({
                 </div>
               </div>
             ))}
+          </div>
+        )}
+        {/* "N mensagens não lidas" — só existe quando o operador rolou para
+            cima e o cliente escreveu enquanto isso (`naoLidasAbaixo`). É o
+            ÚLTIMO filho do contêiner de rolagem e `sticky bottom`: gruda no
+            rodapé da área visível enquanto há o que ler embaixo e, no fim,
+            deixa de existir — sem embrulhar o contêiner em mais um `relative`
+            (o fio é uma coluna flex com `min-h-0`, e cada invólucro novo ali
+            já custou barra de rolagem escondida — ver CLAUDE.md). */}
+        {naoLidasAbaixo > 0 && (
+          <div className="pointer-events-none sticky bottom-2 z-10 flex justify-center">
+            <button
+              type="button"
+              onClick={irParaOFim}
+              className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-md hover:bg-primary/90"
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+              {t("naoLidasAbaixo", { count: naoLidasAbaixo })}
+            </button>
           </div>
         )}
       </div>
