@@ -2212,6 +2212,8 @@
       "notAuthenticated": "Não autenticado",
       "tagCreated": "Etiqueta criada",
       "failedToCreateTag": "Falha ao criar a etiqueta",
+      "tagAlreadyExists": "Você já tem a etiqueta “{nome}”. Nomes que só diferem por acento ou maiúscula contam como a mesma.",
+      "tagAlreadyExistsUnknown": "Já existe uma etiqueta com esse nome nesta conta. Nomes que só diferem por acento ou maiúscula contam como a mesma.",
       "tagDeleted": "Etiqueta excluída",
       "failedToDeleteTag": "Falha ao excluir a etiqueta",
       "deleteAria": "Excluir {name}",

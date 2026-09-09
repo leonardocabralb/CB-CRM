@@ -143,10 +143,14 @@ describe('resolveImportTagIds', () => {
     expect((db as unknown as { registro: { upserts: unknown[] } }).registro.upserts).toEqual([]);
   });
 
-  it('⚠️ inserção barrada por RLS (0 linhas, sem erro) vira "pulado", não mapa incompleto', async () => {
-    // RLS que recusa escrita devolve 0 linhas com `error: null`. Devolver um
-    // mapa sem aquele nome, calado, faria o chamador atribuir menos
-    // etiquetas do que pediu e não perceber.
+  it('⚠️ releitura que não enxerga o que foi escrito vira "pulado", não mapa incompleto', async () => {
+    // Devolver um mapa sem aquele nome, calado, faria o chamador atribuir
+    // menos etiquetas do que pediu e não perceber.
+    //
+    // ⚠️ Isto NÃO é o caso de RLS: INSERT barrado por RLS ESTOURA (42501,
+    // medido), e sai pelo `throw` do erro de criação. O que este ramo cobre
+    // é a releitura não ver o que acabou de ser gravado — atraso de réplica,
+    // ou alguém apagando entre as duas chamadas.
     const db = bancoCom([CATALOGO, CATALOGO]); // a releitura não traz a nova
     const r = await resolveImportTagIds(db, args(['Nova']));
 

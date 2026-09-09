@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+
+import { chaveDeTag } from '@/lib/contacts/chave-de-tag';
 import { Loader2, Plus, Tag as TagIcon, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
@@ -91,6 +93,24 @@ export function TagManager() {
       return;
     }
 
+    // Desde a 983/984 o banco tem índice único por
+    // `(account_id, name_key)`, e `name_key` ignora caixa E acento. Sem esta
+    // conferência, digitar "bancario" numa conta que já tem "Bancário" caía
+    // no `catch` lá embaixo e o operador via só "Falha ao criar a etiqueta"
+    // — sem nenhuma pista de que o motivo é já existir. Medido na tela.
+    //
+    // ⚠️ É MELHOR ESFORÇO, não garantia: `fetchTags` filtra por `user_id`,
+    // então uma etiqueta criada por OUTRO membro da conta não está nesta
+    // lista. Por isso o 23505 continua sendo tratado abaixo — ele é a rede
+    // de verdade, e também cobre a corrida entre duas abas.
+    const jaExiste = tags.find(
+      (tag) => chaveDeTag(tag.name) === chaveDeTag(newTagName)
+    );
+    if (jaExiste) {
+      toast.error(t('tagAlreadyExists', { nome: jaExiste.name }));
+      return;
+    }
+
     try {
       setSaving(true);
       if (!user || !accountId) {
@@ -115,7 +135,14 @@ export function TagManager() {
       await fetchTags(user.id);
     } catch (err) {
       console.error('Create error:', err);
-      toast.error(t('failedToCreateTag'));
+      // 23505 aqui só pode ser o índice único de `tags` (983/984). Não dá
+      // para NOMEAR a etiqueta que colidiu — ela pode ser de outro membro e
+      // não estar na lista carregada —, mas dizer o motivo já poupa o
+      // operador de tentar de novo achando que o sistema falhou.
+      const codigo = (err as { code?: string } | null)?.code;
+      toast.error(
+        codigo === '23505' ? t('tagAlreadyExistsUnknown') : t('failedToCreateTag')
+      );
     } finally {
       setSaving(false);
     }

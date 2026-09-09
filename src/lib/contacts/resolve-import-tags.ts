@@ -120,10 +120,22 @@ export async function resolveImportTagIds(
 
     tagIdByKey = await lerCatalogo();
 
-    // Sobrou nome que nem existia nem foi criado? Só acontece se a inserção
-    // for barrada por RLS — que devolve 0 linhas SEM erro. Reportar como
-    // pulado é melhor que devolver um mapa incompleto em silêncio, que faria
-    // o chamador atribuir menos etiquetas do que pediu e não perceber.
+    // Sobrou nome que nem existia nem foi criado? Reportar como pulado é
+    // melhor que devolver um mapa incompleto em silêncio, que faria o
+    // chamador atribuir menos etiquetas do que pediu e não perceber.
+    //
+    // ⚠️ NÃO é o caso de RLS. Uma versão anterior deste comentário dizia que
+    // "inserção barrada por RLS devolve 0 linhas sem erro" — isso vale para
+    // UPDATE e DELETE (a cláusula USING filtra as linhas), mas INSERT é
+    // diferente: o WITH CHECK ESTOURA. Medido em 2026-09-09 com
+    // `SET ROLE authenticated`: SQLSTATE 42501, "new row violates row-level
+    // security policy for table \"tags\"". Esse caminho sai pelo `throw
+    // createError` acima.
+    //
+    // O que sobra aqui é a releitura não enxergar o que acabou de ser
+    // escrito — atraso de réplica, ou alguém apagando a etiqueta entre as
+    // duas chamadas. Raro, e é justamente por ser raro que precisa aparecer
+    // em vez de sumir.
     for (const name of toCreate) {
       if (!tagIdByKey.has(chaveDeTag(name))) skippedNames.push(name);
     }
