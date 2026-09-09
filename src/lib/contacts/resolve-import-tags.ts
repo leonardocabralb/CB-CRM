@@ -1,22 +1,38 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { chaveDeTag } from './chave-de-tag';
+
 const DEFAULT_TAG_COLOR = '#3b82f6';
 
 export interface ResolveImportTagsResult {
-  /** Lowercase tag name → tag id. */
+  /** `chaveDeTag(nome)` → id da etiqueta. */
   tagIdByKey: Map<string, string>;
   /** Names that could not be matched and were not created. */
   skippedNames: string[];
 }
 
 /**
- * Resolve tag names from a CSV import to tag ids. Existing account tags
- * are matched case-insensitively. Missing names are created when
- * `canCreateTags` is true (admin+); otherwise they are reported in
+ * Resolve nomes de etiqueta para ids. Usado pelas TRÊS portas que criam
+ * etiqueta: o import de CSV, o `PATCH /api/v1/contacts/{id}` (substitutivo)
+ * e o `POST /api/v1/contacts/{id}/tags` (aditivo). Nome que não existe é
+ * criado quando `canCreateTags` é true (admin+); senão volta em
  * `skippedNames`.
  *
- * Unlike the manual contact form (existing tags only), import may
- * auto-create missing tag definitions for admin+ callers.
+ * ⚠️ O casamento é por `chaveDeTag` — sem acento, além de sem caixa. Até a
+ * migration 983 era só `toLowerCase()`, e a divergência entre as portas era
+ * real: a API aditiva casava sem acento e esta função casava com, então
+ * "bancario" num catálogo que tinha "Bancário" criava uma SEGUNDA etiqueta.
+ * Hoje a régua é uma só nas três portas E no banco (a coluna gerada
+ * `tags.name_key`).
+ *
+ * ⚠️ A criação é `upsert` com `ON CONFLICT DO NOTHING` sobre o índice único
+ * `(account_id, name_key)`, seguida de RELEITURA — nunca ler-então-inserir.
+ * Duas requisições concorrentes com o mesmo nome NOVO passavam as duas pela
+ * leitura e inseriam as duas; pior, cada uma aplicava a SUA ao contato e o
+ * gatilho `tag_added` disparava DUAS vezes, o que numa automação sem
+ * etiqueta específica é a mensagem saindo em dobro para o cliente. Com o
+ * índice, a segunda inserção não acontece; com a releitura, as duas
+ * requisições convergem no MESMO id. (Achado do Codex no PR #150.)
  */
 export async function resolveImportTagIds(
   supabase: SupabaseClient,
@@ -36,7 +52,10 @@ export async function resolveImportTagIds(
   for (const raw of tagNames) {
     const name = raw.trim();
     if (!name) continue;
-    const key = name.toLowerCase();
+    // Mesma chave da resolução: "Bancário" e "bancario" na mesma lista
+    // resolvem para a MESMA etiqueta, e sobreviverem como dois nomes faria a
+    // segunda passagem parecer uma atribuição a mais.
+    const key = chaveDeTag(name);
     if (seen.has(key)) continue;
     seen.add(key);
     uniqueNames.push(name);
@@ -46,46 +65,67 @@ export async function resolveImportTagIds(
     return { tagIdByKey: new Map(), skippedNames: [] };
   }
 
-  const { data: existing, error: fetchError } = await supabase
-    .from('tags')
-    .select('id, name')
-    .eq('account_id', accountId);
+  // ⚠️ ORDENADO: quando duas etiquetas colapsam na mesma chave — possível em
+  // base anterior à 983, que RENOMEIA em vez de apagar —, vence a MAIS
+  // ANTIGA. É a mesma régua do desempate da migration e da leitura de
+  // catálogo da API aditiva. Sem o ORDER BY o PostgREST devolve em ordem não
+  // determinística e duas chamadas iguais escolheriam etiquetas diferentes.
+  const lerCatalogo = async (): Promise<Map<string, string>> => {
+    const { data, error } = await supabase
+      .from('tags')
+      .select('id, name')
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true });
+    if (error) throw error;
 
-  if (fetchError) throw fetchError;
+    const mapa = new Map<string, string>();
+    for (const tag of data ?? []) {
+      const chave = chaveDeTag(tag.name as string);
+      if (!mapa.has(chave)) mapa.set(chave, tag.id as string);
+    }
+    return mapa;
+  };
 
-  const tagIdByKey = new Map<string, string>();
-  for (const tag of existing ?? []) {
-    const key = tag.name.trim().toLowerCase();
-    if (!tagIdByKey.has(key)) tagIdByKey.set(key, tag.id);
-  }
+  let tagIdByKey = await lerCatalogo();
 
   const skippedNames: string[] = [];
   const toCreate: string[] = [];
 
   for (const name of uniqueNames) {
-    const key = name.toLowerCase();
-    if (tagIdByKey.has(key)) continue;
+    if (tagIdByKey.has(chaveDeTag(name))) continue;
     if (canCreateTags) toCreate.push(name);
     else skippedNames.push(name);
   }
 
   if (toCreate.length > 0) {
-    const { data: created, error: createError } = await supabase
+    // `ignoreDuplicates` devolve SÓ as linhas realmente inseridas — quem
+    // perdeu a corrida não volta aqui. Por isso o id sai da releitura
+    // abaixo, e não do retorno: é ela que faz as duas requisições
+    // convergirem no mesmo id.
+    const { error: createError } = await supabase
       .from('tags')
-      .insert(
+      .upsert(
         toCreate.map((name) => ({
           user_id: userId,
           account_id: accountId,
           name,
           color: defaultColor,
-        }))
+        })),
+        { onConflict: 'account_id,name_key', ignoreDuplicates: true }
       )
-      .select('id, name');
+      .select('id');
 
     if (createError) throw createError;
 
-    for (const tag of created ?? []) {
-      tagIdByKey.set(tag.name.trim().toLowerCase(), tag.id);
+    tagIdByKey = await lerCatalogo();
+
+    // Sobrou nome que nem existia nem foi criado? Só acontece se a inserção
+    // for barrada por RLS — que devolve 0 linhas SEM erro. Reportar como
+    // pulado é melhor que devolver um mapa incompleto em silêncio, que faria
+    // o chamador atribuir menos etiquetas do que pediu e não perceber.
+    for (const name of toCreate) {
+      if (!tagIdByKey.has(chaveDeTag(name))) skippedNames.push(name);
     }
   }
 
@@ -114,7 +154,7 @@ export async function assignImportedContactTags(
   for (const { contactId, tagNames } of assignments) {
     const assignedTagIds = new Set<string>();
     for (const name of tagNames) {
-      const tagId = tagIdByKey.get(name.trim().toLowerCase());
+      const tagId = tagIdByKey.get(chaveDeTag(name));
       if (!tagId || assignedTagIds.has(tagId)) continue;
       assignedTagIds.add(tagId);
       rows.push({ contact_id: contactId, tag_id: tagId });

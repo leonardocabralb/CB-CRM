@@ -10,6 +10,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
+import { chaveDeTag } from '@/lib/contacts/chave-de-tag';
 import { resolveImportTagIds } from '@/lib/contacts/resolve-import-tags';
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
@@ -146,7 +147,8 @@ export async function findOrCreateContact(
     // Lost a race against a concurrent create — the unique index
     // rejected the duplicate. Re-resolve to the winner.
     if (isUniqueViolation(error)) {
-      const raced = (await findExistingContact(db, accountId, sanitized)).contato;
+      const raced = (await findExistingContact(db, accountId, sanitized))
+        .contato;
       if (raced) return { id: raced.id, created: false };
     }
     console.error('[api/v1/contacts] create error:', error);
@@ -175,7 +177,24 @@ export async function setContactTags(
     tagNames,
     canCreateTags: true,
   });
-  const desired = new Set(tagIdByKey.values());
+  // ⚠️⚠️ SÓ os nomes PEDIDOS, nunca `tagIdByKey.values()`.
+  //
+  // `resolveImportTagIds` devolve o CATÁLOGO INTEIRO da conta chaveado por
+  // nome (é assim desde sempre — o import de CSV consulta esse mapa por
+  // nome, linha a linha). Tomar os `values()` como "as etiquetas desejadas"
+  // fazia `PATCH /api/v1/contacts/{id}` com QUALQUER `tags` não-vazio
+  // aplicar TODAS as etiquetas da conta ao contato, em vez das pedidas — e
+  // a doc pública promete "replace the contact's tags".
+  //
+  // Defeito ANTIGO, achado só em 09/09/2026 na verificação e2e da 983:
+  // `contact_tags` estava zerada em produção e não havia chave de API ativa,
+  // então o caminho nunca tinha rodado com etiqueta de verdade. `tags: []`
+  // continua limpando tudo (a lista de pedidos é vazia).
+  const desired = new Set(
+    tagNames
+      .map((nome) => tagIdByKey.get(chaveDeTag(nome)))
+      .filter((id): id is string => Boolean(id))
+  );
 
   // Diff against the current joins rather than delete-all-then-insert:
   // a diff only touches tags that actually change, so a mid-operation
@@ -189,9 +208,7 @@ export async function setContactTags(
   if (readErr) {
     throw new ContactError('Failed to read contact tags', 500);
   }
-  const existing = new Set(
-    (current ?? []).map((r) => r.tag_id as string)
-  );
+  const existing = new Set((current ?? []).map((r) => r.tag_id as string));
 
   const toAdd = [...desired].filter((id) => !existing.has(id));
   const toRemove = [...existing].filter((id) => !desired.has(id));

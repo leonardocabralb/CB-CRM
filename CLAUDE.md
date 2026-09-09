@@ -3062,15 +3062,42 @@ Webhooks. Plano em `docs/PLANO-webhooks-de-entrada.md`; doc do operador em
 `tags: []` continua SUBSTITUTIVO — é contrato publicado. O que morde código
 novo:
 
-- ⚠️⚠️ **O casamento de nome é insensível a ACENTO (`chaveDeTag`), e isso
-  DIVERGE do `resolveImportTagIds`.** Medido na API em 08/09/2026: mandar
-  `"bancario"` num contato que já tinha **"Bancário"** criava uma SEGUNDA
-  etiqueta no catálogo do escritório, sem erro nem aviso — e no `remove` o
-  nome sem acento não achava nada e a resposta dizia "desconhecida" sobre
-  etiqueta que está lá. Quem escreve o nome aqui é um fluxo de fora,
-  configurado à mão, quase sempre sem acento. O import de CSV mantém a régua
-  dele (lá o arquivo vem de planilha). Usa `\p{Mn}`, nunca `\p{Diacritic}`
-  — a mesma armadilha de `semAcento()`.
+- ⚠️⚠️ **UMA régua de "mesma etiqueta", em QUATRO lugares.** `chaveDeTag`
+  (`src/lib/contacts/chave-de-tag.ts`) — aparado, sem acento, minúsculas —
+  vale nas três portas que criam etiqueta (API aditiva, `PATCH`
+  substitutivo, import de CSV) **e no banco**, pela coluna gerada
+  `tags.name_key` da 983. Até a 983 eram duas réguas: a API casava sem
+  acento e `resolveImportTagIds` casava com, então `"bancario"` num catálogo
+  com `"Bancário"` criava uma SEGUNDA etiqueta, sem erro nem aviso. Decisão
+  do operador em 09/09/2026: uma régua só.
+  ⚠️ O TS usa `\p{Mn}`, nunca `\p{Diacritic}` — a mesma armadilha de
+  `semAcento()`. E ele colapsa MAIS que o `translate` do SQL, de propósito:
+  a folga cai para o lado seguro (o código acha "é a mesma" e não tenta
+  criar). O contrário — SQL colapsando mais — faria o código pedir etiqueta
+  nova, levar 23505 e ela sumir em silêncio. Há teste lendo o mapa DO
+  PRÓPRIO SQL e conferindo par a par contra o TS
+  (`supabase/migrations/chave-de-tag-casa-com-o-ts.test.ts`).
+- ⚠️⚠️ **A criação é `upsert` com `ON CONFLICT DO NOTHING` + RELEITURA,
+  nunca ler-então-inserir**, e mora só em `resolveImportTagIds` para as três
+  portas herdarem. `tags` não tinha UNIQUE em `name`: duas requisições
+  concorrentes com o mesmo nome NOVO passavam as duas pela leitura, inseriam
+  as duas, e cada uma aplicava a SUA ao contato — o gatilho `tag_added`
+  disparava DUAS vezes, o que numa automação sem etiqueta específica é a
+  mensagem saindo em dobro para o cliente. O árbitro é a coluna GERADA
+  `name_key`, e não um índice sobre expressão, porque o `on_conflict` do
+  PostgREST aceita NOME DE COLUNA (mesma razão do `phone_normalized` da 022).
+  ⚠️ O id sai da RELEITURA, nunca do retorno do insert: com
+  `ignoreDuplicates`, quem perde a corrida recebe ZERO linhas.
+- ⚠️⚠️ **`setContactTags` aplica SÓ os nomes PEDIDOS — nunca
+  `tagIdByKey.values()`.** `resolveImportTagIds` devolve o CATÁLOGO INTEIRO
+  chaveado por nome (o import de CSV consulta esse mapa linha a linha), e
+  tomar os `values()` como "as desejadas" fazia o `PATCH
+  /api/v1/contacts/{id}` com QUALQUER `tags` não-vazio aplicar TODAS as
+  etiquetas da conta ao contato — enquanto a doc pública promete "replace the
+  contact's tags". Defeito ANTIGO, achado só em 09/09/2026 na verificação
+  e2e da 983: `contact_tags` estava zerada e não havia chave de API ativa,
+  então o caminho nunca tinha rodado com etiqueta de verdade. Pino em
+  `set-contact-tags.test.ts`.
 - ⚠️⚠️ **TODA comparação de nome de etiqueta neste arquivo passa por
   `chaveDeTag` — validação incluída.** As duas divergiram numa revisão (a
   validação em `toLowerCase()`, a resolução em `chaveDeTag`), e o resultado
@@ -3080,11 +3107,12 @@ novo:
   mensagem ao cliente por uma etiqueta que ele já tinha antes e continua
   tendo depois. A resposta ainda relatava a mesma etiqueta em `removidas` e
   em `adicionadas`. Há teste pinando as duas pontas (achado do revisor).
-- ⚠️ **Só o CASAMENTO é nosso; a CRIAÇÃO continua em `resolveImportTagIds`**
-  (é ele que sabe a cor padrão e o `user_id` de auditoria). O catálogo é lido
-  com `.order('created_at')`: na colisão de chave vence a etiqueta MAIS
-  ANTIGA — sem o ORDER BY o PostgREST devolve em ordem não determinística e
-  duas chamadas iguais escolheriam etiquetas diferentes.
+- ⚠️ **Toda leitura de catálogo é ORDENADA por `created_at, id`**: na
+  colisão de chave — possível em base anterior à 983, que RENOMEIA a
+  duplicata em vez de apagar — vence a MAIS ANTIGA, a que o escritório vem
+  usando. Sem o ORDER BY o PostgREST devolve em ordem não determinística e
+  duas chamadas iguais escolheriam etiquetas diferentes. A mesma régua está
+  no desempate da migration.
 - ⚠️ **Trabalha por NOME, não por UUID**, porque não havia como o integrador
   descobrir um id de tag. `GET /api/v1/tags` entrou junto, para descoberta.
 - ⚠️ **`ContactTagWriteError` NÃO é `ApiError`**: sem o ramo explícito no
@@ -3341,6 +3369,17 @@ que faltava. `mcp-server/` fica fora (tem `.env.example` e doc próprios).
     a tela lê pela rota. Aplicada em 2026-09-08 via conector, ANTES do merge,
     com autorização do operador; conferido por consulta (RLS ligada nas duas,
     `anon` e membro sem SELECT, `service_role` escrevendo, zero policies).
+
+  - **983_cb_etiqueta_sem_duplicata** — `tags.name_key` (coluna GERADA:
+    aparada, sem acento, minúsculas) + índice único `(account_id, name_key)`,
+    fechando a corrida que criava etiqueta duplicada. ⚠️ Duplicata que já
+    existe é RENOMEADA com sufixo, NUNCA apagada: `tags.id` é referenciado
+    por JSON que nenhuma FK protege — `automations.trigger_config.tag_id`,
+    `automation_steps.step_config`, config de nó de fluxo e o recorte salvo
+    da caixa de entrada (967) —, e apagar deixaria essas regras apontando
+    para um id morto, parando de casar EM SILÊNCIO. Aplicada em 2026-09-09
+    via conector, ANTES do merge; medido antes: zero duplicatas nesta
+    instalação, então o desempate foi no-op aqui.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

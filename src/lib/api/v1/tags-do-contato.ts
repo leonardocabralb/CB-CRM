@@ -11,6 +11,10 @@
 // "Bancário", "Cliente Fechado" e o que mais o escritório tivesse posto
 // na ficha — em silêncio, porque a resposta seria 200.
 //
+// ⚠️ A régua de "mesma etiqueta" mora em `@/lib/contacts/chave-de-tag` —
+// ela é compartilhada com o import de CSV e tem gêmeo em SQL (a coluna
+// gerada `tags.name_key`, migration 983).
+//
 // ⚠️ Trabalha por NOME, não por id. Não existe `GET /api/v1/tags`
 // desde sempre: quem integra não teria como descobrir um UUID de tag
 // sem entrar no banco. Casa por `lower(trim(nome))`, a mesma régua do
@@ -32,6 +36,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { chaveDeTag } from '@/lib/contacts/chave-de-tag';
 import { resolveImportTagIds } from '@/lib/contacts/resolve-import-tags';
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
 import {
@@ -41,35 +46,6 @@ import {
 
 /** Teto por chamada. Um corpo com centenas de nomes é engano, não uso. */
 export const MAX_TAGS_POR_CHAMADA = 50;
-
-/**
- * A chave pela qual dois nomes de etiqueta são "a mesma": minúsculas E SEM
- * ACENTO.
- *
- * ⚠️ Tirar o acento é uma divergência DELIBERADA do `resolveImportTagIds`,
- * que casa só por minúsculas. Medido em produção: mandar `"bancario"` num
- * contato que já tinha **"Bancário"** criava uma SEGUNDA etiqueta, e o
- * catálogo do escritório passava a ter as duas — sem erro, sem aviso. No
- * `remove` é pior: o nome sem acento não achava nada e a resposta dizia
- * "desconhecida" sobre uma etiqueta que está lá.
- *
- * Quem escreve o nome aqui é um fluxo de fora (Typebot, n8n), configurado à
- * mão, quase sempre sem acento — e num CRM em português essa é a regra, não
- * a exceção. O import de CSV continua com a régua dele, que é outro
- * contexto: lá o arquivo vem de uma planilha, e criar o que não existe é o
- * ponto.
- *
- * `\p{Mn}` e não `\p{Diacritic}`: a segunda faixa inclui o acento que
- * existe SOZINHO (`^`, `` ` ``, `´`, `¨`, `~`), e apagá-los transformaria
- * nomes distintos em iguais.
- */
-export function chaveDeTag(nome: string): string {
-  return nome
-    .trim()
-    .normalize('NFD')
-    .replace(/\p{Mn}/gu, '')
-    .toLowerCase();
-}
 
 export interface MudancaDeTags {
   /** Nomes a acrescentar, aparados e sem repetição (case-insensitive). */
@@ -255,32 +231,19 @@ export async function aplicarMudancaDeTags(
     if (mudanca.criarFaltantes) {
       // A CRIAÇÃO continua no helper compartilhado: é ele que sabe a cor
       // padrão e o `user_id` de auditoria. Só o CASAMENTO é nosso.
-      await resolveImportTagIds(db, {
+      // A criação — e a CONVERGÊNCIA — moram no helper compartilhado desde
+      // a 983: ele insere com `ON CONFLICT DO NOTHING` sobre o índice único
+      // `(account_id, name_key)` e relê, então duas requisições concorrentes
+      // com o mesmo nome novo terminam no MESMO id. O mapa que ele devolve
+      // já é o catálogo inteiro depois da criação, chaveado por
+      // `chaveDeTag` — a mesma chave usada aqui.
+      const { tagIdByKey } = await resolveImportTagIds(db, {
         accountId,
         userId: auditUserId,
         tagNames: faltantes,
         canCreateTags: true,
       });
-      // ⚠️ RELÊ o catálogo em vez de aproveitar o `tagIdByKey` devolvido, e
-      // o motivo é uma CORRIDA: `tags` não tem UNIQUE em `name` (nem numa
-      // forma normalizada), e `resolveImportTagIds` faz ler-então-inserir.
-      // Duas chamadas concorrentes com o mesmo nome NOVO criam duas linhas
-      // — e, confiando cada uma no id que ela mesma inseriu, o contato
-      // ganharia as DUAS etiquetas e o gatilho `tag_added` dispararia DUAS
-      // vezes (uma automação sem etiqueta específica mandaria a mensagem em
-      // dobro ao cliente).
-      //
-      // Relendo, as duas convergem para a MAIS ANTIGA: uma linha só em
-      // `contact_tags`, um disparo só — o 23505 do helper central torna a
-      // segunda um no-op.
-      //
-      // O que isto NÃO conserta: a linha duplicada continua no catálogo,
-      // visível para o operador apagar. Fechar de vez exige índice único em
-      // `(account_id, lower(btrim(name)))`, e essa migration precisa
-      // deduplicar o que já existe — vale para o `PATCH` e para o import de
-      // CSV também, que têm a mesma corrida desde sempre. (Achado do Codex
-      // no PR #150.)
-      porChave = await lerCatalogo();
+      porChave = tagIdByKey;
     } else {
       r.desconhecidas.push(...faltantes);
     }

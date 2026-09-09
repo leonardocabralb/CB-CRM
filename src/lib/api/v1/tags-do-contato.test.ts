@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
+import { chaveDeTag } from '@/lib/contacts/chave-de-tag';
+
 import {
   aplicarMudancaDeTags,
-  chaveDeTag,
   lerMudancaDeTags,
   MAX_TAGS_POR_CHAMADA,
 } from './tags-do-contato';
@@ -110,27 +111,6 @@ describe('lerMudancaDeTags', () => {
   });
 });
 
-describe('chaveDeTag', () => {
-  it('casa ignorando maiúscula E acento', () => {
-    // Medido em produção: sem tirar o acento, mandar "bancario" num contato
-    // que já tinha "Bancário" CRIAVA uma segunda etiqueta, e o catálogo do
-    // escritório ficava com as duas — sem erro nenhum.
-    expect(chaveDeTag('Bancário')).toBe(chaveDeTag('bancario'));
-    expect(chaveDeTag('  AÇÃO  ')).toBe(chaveDeTag('acao'));
-  });
-
-  it('não colapsa nomes de fato diferentes', () => {
-    expect(chaveDeTag('Bancário')).not.toBe(chaveDeTag('Bancária'));
-  });
-
-  it('usa \\p{Mn}, não \\p{Diacritic} — o acento sozinho é caractere', () => {
-    // `\p{Diacritic}` apagaria `^`, `´`, `~` isolados e tornaria iguais
-    // nomes distintos.
-    expect(chaveDeTag('a^b')).toBe('a^b');
-    expect(chaveDeTag('a~b')).toBe('a~b');
-  });
-});
-
 /**
  * Client de mentira: só a consulta do catálogo de etiquetas.
  *
@@ -226,14 +206,16 @@ describe('aplicarMudancaDeTags', () => {
     expect(r.inalteradas).toEqual(['Typebot']);
   });
 
-  it('⚠️ RELÊ o catálogo depois de criar — corrida converge na mais antiga', async () => {
-    // `tags` não tem UNIQUE em `name`, e `resolveImportTagIds` faz
-    // ler-então-inserir: duas chamadas concorrentes com o mesmo nome NOVO
-    // criam duas linhas. Confiando no id que cada uma inseriu, o contato
-    // ganharia AS DUAS etiquetas e o `tag_added` dispararia duas vezes.
-    // Relendo, as duas convergem para a mais antiga.
+  it('⚠️ confia no mapa do helper — é lá que a corrida converge', async () => {
+    // A criação conflict-safe e a releitura moram em `resolveImportTagIds`
+    // desde a 983, para que as TRÊS portas herdem. Aqui basta provar que
+    // este chamador usa o id que o helper devolve, e não um que ele mesmo
+    // tivesse guardado antes da criação.
     resolveImportTagIds.mockResolvedValue({
-      tagIdByKey: new Map([['nova', 'id-que-EU-inseri']]),
+      tagIdByKey: new Map([
+        ['nova', 'id-da-outra-requisicao'],
+        ['bancario', 'id-bancario'],
+      ]),
       skippedNames: [],
     });
     addContactTagAndDispatch.mockResolvedValue({
@@ -241,18 +223,11 @@ describe('aplicarMudancaDeTags', () => {
       dispatched: true,
     });
 
-    const db = bancoCom([
-      CATALOGO, // antes de criar
-      [{ id: 'id-da-outra-requisicao', name: 'Nova' }, ...CATALOGO], // depois
-    ]);
-
-    await aplicarMudancaDeTags(db, {
+    await aplicarMudancaDeTags(bancoCom(CATALOGO), {
       ...base,
       mudanca: { add: ['Nova'], remove: [], criarFaltantes: true },
     });
 
-    // O id que ESTA requisição inseriu é descartado em favor do que a
-    // releitura ordenada devolveu.
     expect(addContactTagAndDispatch).toHaveBeenCalledWith(
       expect.objectContaining({ tagId: 'id-da-outra-requisicao' })
     );
@@ -268,15 +243,10 @@ describe('aplicarMudancaDeTags', () => {
       dispatched: true,
     });
 
-    // Duas páginas: o catálogo ANTES da criação e o de DEPOIS, que é o que o
-    // banco devolveria de verdade na releitura.
-    const r = await aplicarMudancaDeTags(
-      bancoCom([CATALOGO, [...CATALOGO, { id: 'id-nova', name: 'Nova' }]]),
-      {
-        ...base,
-        mudanca: { add: ['Nova'], remove: [], criarFaltantes: true },
-      }
-    );
+    const r = await aplicarMudancaDeTags(bancoCom(CATALOGO), {
+      ...base,
+      mudanca: { add: ['Nova'], remove: [], criarFaltantes: true },
+    });
 
     expect(resolveImportTagIds).toHaveBeenCalledWith(
       expect.anything(),
