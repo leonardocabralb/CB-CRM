@@ -227,7 +227,7 @@ export async function POST(request: Request) {
               console.error('[evolution/webhook] achar alvo da edição cifrada falhou:', erroBusca.message);
               continue;
             }
-            const ids = (alvos ?? []).map((a) => a.id as string);
+            const ids = (alvos ?? []).map((a: { id: string }) => a.id);
             if (ids.length > 0) {
               const { error: erroEdicao } = await supabaseAdmin()
                 .from('messages')
