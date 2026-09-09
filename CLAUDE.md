@@ -958,6 +958,17 @@ por tamanho no webhook da Evolution. O que morde código novo:
   de grupo já o lesse. `'failed'` continua só em grupo, de propósito: é o
   estado que acende o botão "tentar de novo", e a rota sob demanda só
   existe lá. O `podeBaixarAnexo` já excluía `too_large`.
+- ⚠️⚠️ **Marcar `too_large` em GRUPO tem de APAGAR o ponteiro**
+  (`cb_message_media_ref`), e há teste estrutural cobrando cada escrita
+  (`ponteiro-de-midia.chamadores.test.ts`, verificado reprovando com a
+  limpeza removida). O ponteiro guarda o payload cru do Baileys, com as
+  CHAVES DE DECIFRAGEM da mídia — a regra "some com ele quando não for mais
+  necessário" já existia no caminho de sucesso, e o ramo novo saía por um
+  `continue` sem passar por ela. Como `too_large` desliga o download sob
+  demanda PARA SEMPRE, aquelas chaves ficariam no banco sem ninguém para
+  consumi-las (achado do Codex no PR #157). ⚠️ A limpeza só corre quando a
+  MARCAÇÃO deu certo: falhando, a mensagem segue `pending`, o botão continua
+  na tela e o ponteiro ainda é o único caminho para o arquivo.
 - ⚠️ **O nome do arquivo é gravado MESMO quando o anexo é recusado**
   (`nomeDeArquivoDeclarado`): é a única informação que sobra do documento
   que não coube, e sem ela a bolha cai no rótulo genérico.
