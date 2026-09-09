@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   extractMentionedJids,
   isGroupJid,
+  lidDoRemetente,
   mediaBytesOf,
   normalizeGroupUpsert,
   remetenteDoGrupo,
@@ -66,6 +67,37 @@ describe('remetenteDoGrupo', () => {
   it('devolve null quando não há participante nenhum', () => {
     expect(remetenteDoGrupo({ remoteJid: GRUPO })).toBeNull();
     expect(remetenteDoGrupo(undefined)).toBeNull();
+  });
+});
+
+// Baileys 7: quando `participant` é LID, `participantAlt` é o telefone — e
+// vice-versa. O nosso LID (916) é aprendido daqui; `remetenteDoGrupo` prefere
+// o telefone e por isso deixaria de servir para isto depois do upgrade
+// (docs/PLANO-baileys-7.md, ajuste 2).
+describe('lidDoRemetente', () => {
+  it('acha o LID em participant ou em participantAlt, qualquer que seja a ordem', () => {
+    expect(
+      lidDoRemetente({
+        participant: '247212345678590@lid',
+        participantAlt: '5516999998784@s.whatsapp.net',
+      }),
+    ).toBe('247212345678590@lid');
+    expect(
+      lidDoRemetente({
+        participant: '5516999998784@s.whatsapp.net',
+        participantAlt: '247212345678590@lid',
+      }),
+    ).toBe('247212345678590@lid');
+  });
+
+  it('forma da Baileys 6 (só participant, em @lid) continua valendo', () => {
+    expect(lidDoRemetente({ participant: '247212345678590@lid' })).toBe('247212345678590@lid');
+  });
+
+  it('sem LID nenhum devolve null — não inventa', () => {
+    expect(lidDoRemetente({ participant: '5516999998784@s.whatsapp.net' })).toBeNull();
+    expect(lidDoRemetente({ remoteJid: GRUPO })).toBeNull();
+    expect(lidDoRemetente(undefined)).toBeNull();
   });
 });
 
@@ -151,6 +183,7 @@ describe('normalizeGroupUpsert', () => {
       fromMe: false,
       groupJid: GRUPO,
       senderJid: '247212345678590@lid',
+      senderLid: '247212345678590@lid',
       senderName: 'Fulano',
       providerMessageId: 'ABC123',
       contentType: 'text',
@@ -194,6 +227,27 @@ describe('normalizeGroupUpsert', () => {
       'user',
     );
     expect(r?.fromMe).toBe(true);
+  });
+
+  it('⚠️ Baileys 7: senderJid prefere o telefone, senderLid guarda o LID — os dois viajam', () => {
+    // É o par que sustenta o nosso LID (916) depois do upgrade: a chave da
+    // NOSSA mensagem no grupo chega com `participant` = LID e
+    // `participantAlt` = telefone, e `aprenderNossoLid` só aceita `@lid`.
+    const r = normalizeGroupUpsert(
+      {
+        ...MSG_GRUPO,
+        key: {
+          ...MSG_GRUPO.key,
+          fromMe: true,
+          participant: '247212345678590@lid',
+          participantAlt: '5516999998784@s.whatsapp.net',
+        },
+      },
+      'acc',
+      'user',
+    );
+    expect(r?.senderJid).toBe('5516999998784@s.whatsapp.net');
+    expect(r?.senderLid).toBe('247212345678590@lid');
   });
 
   it('usa a legenda da mídia como texto e captura os bytes', () => {

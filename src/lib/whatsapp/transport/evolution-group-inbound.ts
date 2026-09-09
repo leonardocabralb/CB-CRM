@@ -41,6 +41,14 @@ export interface NormalizedGroupInbound {
    * `remetenteDoGrupo`.
    */
   senderJid: string | null;
+  /**
+   * O `@lid` de quem falou, quando houver — separado de `senderJid` porque
+   * aquele PREFERE o telefone. É daqui que `aprenderNossoLid` descobre o
+   * nosso próprio LID (916); na Baileys 6 o único campo era `participant`
+   * (sempre LID), na 7 o LID pode vir em `participant` OU em
+   * `participantAlt`, com o telefone no outro — ver `lidDoRemetente`.
+   */
+  senderLid: string | null;
   /** `pushName` do participante. É o que a bolha mostra. */
   senderName: string | null;
   providerMessageId: string;
@@ -74,12 +82,36 @@ export interface NormalizedGroupInbound {
  * Preferimos o telefone quando a Baileys o oferece (`participantPn` /
  * `participantAlt`), porque um dia ele permite ligar o participante a um
  * contato existente. Sem ele, o LID serve como identidade opaca e estável.
+ *
+ * ⚠️ Na Baileys 6.7.19 esses campos nunca vêm, então na prática o remetente
+ * gravado é o LID. Na Baileys 7 `participantAlt` traz o telefone e esta
+ * preferência passa a valer de fato — mudando a forma de
+ * `messages.group_sender_jid` nas linhas novas (hoje 100% LID). Se essa
+ * mudança for indesejada, a decisão é a P2 de docs/PLANO-baileys-7.md; o
+ * nosso LID já não depende daqui (ver `lidDoRemetente`).
  */
 export function remetenteDoGrupo(key: EvolutionMessageKey | undefined): string | null {
   for (const alt of [key?.participantPn, key?.participantAlt]) {
     if (alt && !isLidJid(alt) && /\d/.test(alt)) return alt;
   }
   return key?.participant ?? null;
+}
+
+/**
+ * O `@lid` de quem falou, se a chave trouxer um.
+ *
+ * Existe porque `remetenteDoGrupo` prefere o telefone, e o nosso LID (916) é
+ * aprendido do `participant` da NOSSA mensagem no grupo: com a Baileys 7, que
+ * entrega `participant` = LID e `participantAlt` = telefone (ou o inverso),
+ * `remetenteDoGrupo` passaria a devolver o telefone e `aprenderNossoLid` —
+ * que só aceita `@lid` — nunca mais aprenderia nada. Menção a nós ficaria
+ * apagada em todo canal novo. Ver docs/PLANO-baileys-7.md, ajuste 2.
+ */
+export function lidDoRemetente(key: EvolutionMessageKey | undefined): string | null {
+  for (const candidato of [key?.participant, key?.participantAlt, key?.participantPn]) {
+    if (candidato && isLidJid(candidato)) return candidato;
+  }
+  return null;
 }
 
 /**
@@ -147,6 +179,7 @@ export function normalizeGroupUpsert(
     fromMe: item.key?.fromMe === true,
     groupJid,
     senderJid: remetenteDoGrupo(item.key),
+    senderLid: lidDoRemetente(item.key),
     senderName: item.pushName || null,
     providerMessageId: id,
     timestamp: ts,

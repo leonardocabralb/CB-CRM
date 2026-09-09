@@ -3475,6 +3475,34 @@ transporte que a produção usa e não estavam documentadas: quem copiasse o
 exemplo e preenchesse tudo terminava sem WhatsApp e sem uma linha dizendo o
 que faltava. `mcp-server/` fica fora (tem `.env.example` e doc próprios).
 
+⚠️ **Baileys 7 / Evolution 2.4 — o plano vivo é `docs/PLANO-baileys-7.md`.** O
+"Aguardando mensagem" nas mensagens que o CRM envia é a Baileys 6.7.19 (dentro
+da Evolution 2.3.2) sem noção de LID: duas sessões de criptografia por aparelho,
+medidas no Redis. O conserto é a Baileys ≥ 7.0.0-rc13 via Evolution
+`develop`/`homolog` (2.4.0, com cadastro obrigatório). O que morde código novo,
+já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
+
+- ⚠️ **O LID muda de CAMPO conforme a versão da Evolution**: 2.3.2 põe o
+  telefone em `remoteJid` e o LID em `previousRemoteJid`; a `develop` TROCA
+  (`remoteJid` telefone, `remoteJidAlt` LID); a 2.3.7 põe telefone nos dois e
+  PERDE o LID. `lidJidFromKey` (`evolution-inbound.ts`) lê os três lugares —
+  ler só um deles faz `remote_jid_lid` nascer NULL depois do upgrade e devolve
+  o bug de 28/07 (apagar/editar mensagem do celular em conversa LID não faz
+  nada). Há teste para as três formas.
+- ⚠️ **O nosso LID em grupo vem de `senderLid`, nunca de `senderJid`**
+  (`lidDoRemetente`): `remetenteDoGrupo` prefere o telefone, e a Baileys 7
+  manda `participantAlt` com o número — `aprenderNossoLid` só aceita `@lid` e
+  deixaria de aprender para sempre.
+- ⚠️ **Participante de grupo na Baileys 7 é `Contact`** (`id`, `phoneNumber`
+  quando `id` é LID, `lid` quando `id` é telefone; `.jid` não existe mais).
+  `parseGroupInfo` lê as duas formas.
+- ⚠️ **`GROUP_UPDATE` só entra em `WEBHOOK_EVENTS` DEPOIS do upgrade**: a 2.3.2
+  recusa a lista inteira com evento desconhecido (conferido em 28/07/2026).
+- Operação: imagem SEMPRE por digest; `TELEMETRY_ENABLED=false`; `docker stack
+  deploy` continua proibido para a Evolution; backup do Redis é SÓ do db 8 (o
+  Redis é compartilhado com outros serviços); o log da Evolution morre no
+  reinício do contêiner.
+
 ## Branches — criação e nomenclatura
 
 - **Toda branch nova sai única e exclusivamente de `main`** e faz merge **de

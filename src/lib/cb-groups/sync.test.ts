@@ -88,6 +88,26 @@ describe('parseGroupInfo', () => {
     expect(parseGroupInfo(INFO, '+55 83 8874-5316').ourLid).toBe('222@lid');
   });
 
+  it('⚠️ Baileys 7: participante vem como Contact — `phoneNumber` no lugar de `jid`, e às vezes o LID só em `id`', () => {
+    // Forma do tipo `Contact` da Baileys 7 (`id` preferido; `phoneNumber`
+    // quando `id` é LID; `lid` quando `id` é telefone). `.jid` não existe
+    // mais — lendo só ele, a nossa linha nunca é achada e `ourLid`/`weAreAdmin`
+    // viram null em silêncio (docs/PLANO-baileys-7.md, ajuste 3).
+    const INFO7 = {
+      ...INFO,
+      participants: [
+        { id: '111@lid', phoneNumber: '5516999998784@s.whatsapp.net', admin: null },
+        { id: '222@lid', phoneNumber: '558388745316@s.whatsapp.net', admin: 'admin' },
+        { id: '5511222223333@s.whatsapp.net', lid: '333@lid', admin: null },
+      ],
+    };
+    const d = parseGroupInfo(INFO7, NOSSO);
+    expect(d.ourLid).toBe('222@lid');
+    expect(d.weAreAdmin).toBe(true);
+    // Quando o `id` preferido é o telefone, o LID vem em `.lid`.
+    expect(parseGroupInfo(INFO7, '5511222223333').ourLid).toBe('333@lid');
+  });
+
   it('sem o nosso número, não chuta quem somos', () => {
     const d = parseGroupInfo(INFO, null);
     expect(d.ourLid).toBeNull();
