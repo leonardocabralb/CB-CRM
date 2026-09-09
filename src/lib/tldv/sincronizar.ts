@@ -18,7 +18,8 @@ import { contatoParaVincular, emailsDeFora } from "./vinculo";
  * 2. VINCULAR pelo e-mail as que ainda não têm cliente e nunca tiveram
  *    (`vinculo_origem IS NULL`) — a desvinculada à mão fica desvinculada.
  * 3. BUSCAR a transcrição das `pendente`, até `TRANSCRICOES_POR_CICLO` por
- *    ciclo e dentro do prazo. Ainda não pronta = conta uma tentativa; depois
+ *    ciclo e dentro do prazo. Ainda não pronta (204 sem corpo, medido; ou
+ *    404) = conta uma tentativa; depois
  *    de `MAX_TENTATIVAS` (~3h a cada 15 min) vira `sem_transcricao` — o
  *    botão "Buscar de novo" da tela zera e recomeça.
  *

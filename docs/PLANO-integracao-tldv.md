@@ -138,6 +138,9 @@ RLS), com dublê do Supabase para a sincronização.
   ambas absorvidas: `happenedAt` vem no formato de `Date.toString()` ("Wed
   Sep 09 2026 19:19:07 GMT+0000 (…)"), não ISO — `lerReuniao` normaliza; e
   `template` não vem na listagem — não é usado. Pinos em `leitura.test.ts`.
+  Terceira divergência, achada na PRIMEIRA SINCRONIZAÇÃO real (17 reuniões
+  pendentes marcadas com `tldv_error`): transcrição ainda não pronta volta
+  como **204 sem corpo**, não 404 — corrigido no cliente, com pino.
 
 ## 4. Depois do merge (operador)
 

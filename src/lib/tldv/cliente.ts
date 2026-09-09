@@ -85,8 +85,9 @@ export interface ClienteTldv {
   reuniao(id: string): Promise<ReuniaoDoTldv>;
   /**
    * As frases da transcrição, ou `null` quando ela AINDA não está pronta —
-   * a doc diz que o endpoint "só devolve quando completa" (404), e uma lista
-   * vazia é tratada do mesmo jeito: não há o que gravar.
+   * a doc diz que o endpoint "só devolve quando completa"; MEDIDO: ele
+   * responde 204 sem corpo (a doc sugeria 404 — os dois são "ainda não"), e
+   * uma lista vazia é tratada do mesmo jeito: não há o que gravar.
    */
   transcricao(id: string): Promise<FraseDaTranscricao[] | null>;
   /** As notas da IA do tl;dv, ou `null` quando não há (404) ou o plano não dá (403). */
@@ -112,6 +113,12 @@ export function criarClienteTldv(chave: string, fetchFn: Fetch = fetch): Cliente
     } catch (e) {
       throw new TldvError("rede", semSegredo(e instanceof Error ? e.message : String(e), chave));
     }
+    // ⚠️ MEDIDO em produção (09/09/2026): transcrição ainda não pronta volta
+    // como 204 SEM CORPO — não o 404 que a doc sugere. Sem este ramo o corpo
+    // vazio virava "resposta sem data[]" → `tldv_error`, e a reunião recém-
+    // gravada ficava marcada como ERRO (e queimava as tentativas) por estar
+    // apenas esperando o tl;dv terminar.
+    if (resposta.status === 204) return { status: 204, corpo: null };
     const corpo: unknown = await resposta.json().catch(() => null);
     if (!resposta.ok) {
       if (aceitar.includes(resposta.status)) return { status: resposta.status, corpo };
@@ -160,7 +167,7 @@ export function criarClienteTldv(chave: string, fetchFn: Fetch = fetch): Cliente
 
     async transcricao(id) {
       const { status, corpo } = await pedir(`${BASE}/meetings/${encodeURIComponent(id)}/transcript`, [404]);
-      if (status === 404) return null;
+      if (status === 204 || status === 404) return null;
       const frases = lerTranscricao(corpo);
       if (frases === null) throw new TldvError("tldv_error", "resposta de /transcript sem `data[]`");
       return frases.length > 0 ? frases : null;
@@ -168,7 +175,7 @@ export function criarClienteTldv(chave: string, fetchFn: Fetch = fetch): Cliente
 
     async notas(id) {
       const { status, corpo } = await pedir(`${BASE}/meetings/${encodeURIComponent(id)}/notes`, [403, 404]);
-      if (status === 403 || status === 404) return null;
+      if (status === 204 || status === 403 || status === 404) return null;
       return lerNotas(corpo);
     },
   };

@@ -3216,8 +3216,11 @@ e a seção **Transcrições** dentro da aba Reuniões da ficha
 - ⚠️ **A janela é 7 dias SEMPRE, não "desde a última sincronização"**: o
   tl;dv processa a gravação depois da reunião e `happenedAt` é a hora da
   reunião. A idempotência é o UNIQUE `(account_id, tldv_meeting_id)`.
-- ⚠️ **403 vira `falhou` na hora; 404 na transcrição é "ainda não pronta"**
-  (conta tentativa; 12 → `sem_transcricao`). A doc diz que a exportação
+- ⚠️ **403 vira `falhou` na hora; 204 SEM CORPO (medido em produção, 09/09)
+  ou 404 na transcrição é "ainda não pronta"** (conta tentativa; 12 →
+  `sem_transcricao`). A doc sugeria 404; a API responde 204, e a primeira
+  versão lia o corpo vazio como `tldv_error` — reunião recém-gravada
+  aparecia como ERRO no cartão por estar só esperando. A doc diz que a exportação
   depende do PLANO de quem ORGANIZOU a reunião — insistir num 403 não muda.
   Chave inválida, limite e rede param o CICLO (são da conta).
 - ⚠️ **O prazo do ciclo é medido por `Date.now()`, nunca por `agora`**:

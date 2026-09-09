@@ -11,6 +11,8 @@ function fetchFalso(respostas: Record<string, { status: number; corpo: unknown }
     const caminho = new URL(url).pathname + new URL(url).search;
     const achada = Object.entries(respostas).find(([prefixo]) => caminho.startsWith(prefixo));
     const r = achada?.[1] ?? { status: 404, corpo: { name: "NotFoundError", message: "Meeting not found" } };
+    // 204 não pode ter corpo (o Node recusa `new Response("…", { status: 204 })`).
+    if (r.status === 204) return new Response(null, { status: 204 });
     return new Response(JSON.stringify(r.corpo), { status: r.status, headers: { "Content-Type": "application/json" } });
   };
 }
@@ -35,10 +37,19 @@ describe("cliente do tl;dv", () => {
     expect(chamadas[0].url).not.toContain(CHAVE);
   });
 
-  it("transcrição ainda não pronta (404) e lista vazia são `null`, não erro", async () => {
-    const cliente = criarClienteTldv(CHAVE, fetchFalso({ "/v1alpha1/meetings/vazia/transcript": { status: 200, corpo: { id: "t", meetingId: "vazia", data: [] } } }));
+  it("transcrição ainda não pronta — 204 sem corpo (MEDIDO), 404 (doc) — e lista vazia são `null`, não erro", async () => {
+    const cliente = criarClienteTldv(
+      CHAVE,
+      fetchFalso({
+        "/v1alpha1/meetings/vazia/transcript": { status: 200, corpo: { id: "t", meetingId: "vazia", data: [] } },
+        "/v1alpha1/meetings/processando/transcript": { status: 204, corpo: null },
+        "/v1alpha1/meetings/processando/notes": { status: 204, corpo: null },
+      }),
+    );
     expect(await cliente.transcricao("semtranscricao")).toBeNull();
     expect(await cliente.transcricao("vazia")).toBeNull();
+    expect(await cliente.transcricao("processando")).toBeNull();
+    expect(await cliente.notas("processando")).toBeNull();
   });
 
   it("transcrição pronta vem como frases", async () => {
