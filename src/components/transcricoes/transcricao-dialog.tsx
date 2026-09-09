@@ -9,6 +9,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { carregarReuniaoTranscrita } from '@/hooks/use-reunioes-transcritas';
 import { FUSO_PADRAO, diaNoFuso, horaNoFuso } from '@/lib/agenda/fuso';
+import { linhasDasNotas, type ParteDeNotas } from '@/lib/tldv/notas';
 import { formatarDuracao, tempoMmSs } from '@/lib/tldv/texto';
 import type { ReuniaoTranscrita } from '@/types';
 
@@ -198,7 +199,26 @@ export function TranscricaoDialog({ id, aberto, aoFechar, podeEditar, podeExclui
               {reuniao.notas && (
                 <details className="rounded-md border border-border bg-muted/30 px-3 py-2">
                   <summary className="cursor-pointer text-xs font-medium">{t('notas')}</summary>
-                  <pre className="mt-2 whitespace-pre-wrap font-sans text-xs leading-relaxed">{reuniao.notas}</pre>
+                  {/* Markdown simples do tl;dv em linhas legíveis: título, item e
+                      texto, com o carimbo de tempo virando link para o app deles.
+                      Cru, o `[02:31](/app/meetings/…)` ficava no meio da frase. */}
+                  <div className="mt-2 space-y-1 text-xs leading-relaxed">
+                    {linhasDasNotas(reuniao.notas).map((l, i) =>
+                      l.tipo === 'titulo' ? (
+                        <p key={i} className="pt-1.5 font-medium text-foreground">
+                          <Partes partes={l.partes} />
+                        </p>
+                      ) : l.tipo === 'item' ? (
+                        <p key={i} className="pl-3 before:mr-1.5 before:content-['•']">
+                          <Partes partes={l.partes} />
+                        </p>
+                      ) : (
+                        <p key={i}>
+                          <Partes partes={l.partes} />
+                        </p>
+                      ),
+                    )}
+                  </div>
                 </details>
               )}
 
@@ -266,5 +286,21 @@ export function TranscricaoDialog({ id, aberto, aoFechar, podeEditar, podeExclui
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function Partes({ partes }: { partes: ParteDeNotas[] }) {
+  return (
+    <>
+      {partes.map((p, i) =>
+        p.href ? (
+          <a key={i} href={p.href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+            {p.texto}
+          </a>
+        ) : (
+          <span key={i}>{p.texto}</span>
+        ),
+      )}
+    </>
   );
 }
