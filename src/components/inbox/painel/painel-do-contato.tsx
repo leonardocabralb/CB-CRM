@@ -38,6 +38,7 @@ import { OrigemDoContato } from '@/components/inbox/painel/origem-do-contato';
 import { ResponsavelMenu } from '@/components/inbox/painel/responsavel-menu';
 import { CopiarLinkDaConversa } from '@/components/inbox/copiar-link-da-conversa';
 import { useExecucoesDoContato } from '@/hooks/use-execucoes-do-contato';
+import { useExecucoesDoFio } from '@/hooks/use-execucoes-do-fio';
 import { statusAoEntrarNaEtapa } from '@/lib/pipelines/resultado';
 import { avisarDrenagemDeFunil } from '@/lib/automations/avisar-drenagem';
 import { CampoComSalvamento } from '@/components/contacts/campo-com-salvamento';
@@ -196,6 +197,10 @@ export function PainelDoContato({
    * sozinho na troca de contato (mesma régua de staleness das 7 queries).
    */
   const execucoes = useExecucoesDoContato(contact?.id ?? null);
+  // O que JÁ RODOU (985). No TOPO, como as outras buscas do painel: trocar de
+  // aba não pode refazer consulta, e a seção precisa distinguir "carregando"
+  // de "nada terminou" no primeiro render.
+  const historico = useExecucoesDoFio(contact?.id ?? null);
   /**
    * `true` só depois que as consultas POR-CONTATO do contato ATUAL
    * aterrissaram sem erro. Enquanto `false`, salvar campos e o cartão de
@@ -1452,6 +1457,9 @@ export function PainelDoContato({
             carregou={execucoes.carregou}
             erro={execucoes.erro}
             recarregar={execucoes.recarregar}
+            historico={historico.itens}
+            historicoPronto={historico.carregou}
+            historicoFalhou={historico.erro}
           />
         </TabsContent>
 

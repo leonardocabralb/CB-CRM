@@ -39,11 +39,13 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useCan } from '@/hooks/use-can';
 import type {
   GrupoDeEsperas,
   RoboAtivo,
 } from '@/hooks/use-execucoes-do-contato';
+import type { ItemDeExecucao } from '@/lib/execucoes/desfecho';
 import type { ItemDaLinha } from '@/lib/execucoes/linha-do-tempo';
 import { relativoAoInstante } from '@/lib/execucoes/tempo';
 import { TituloDeSecao } from './painel-do-contato';
@@ -55,6 +57,18 @@ interface AbaAutomacoesProps {
   carregou: boolean;
   erro: boolean;
   recarregar: () => void;
+  /**
+   * O que JÁ RODOU para este cliente (985).
+   *
+   * ⚠️ As três props são OBRIGATÓRIAS de propósito (o padrão de
+   * `aba-arquivos.tsx`): sem `historicoPronto`, a seção afirmaria "nenhuma
+   * automação terminou" enquanto a consulta está no ar — a armadilha do
+   * efeito passivo, que neste projeto já mordeu quatro vezes. Exigi-las faz
+   * o compilador cobrar de quem montar a aba numa tela nova.
+   */
+  historico: ItemDeExecucao[];
+  historicoPronto: boolean;
+  historicoFalhou: boolean;
 }
 
 const ICONE_POR_ESTADO: Record<ItemDaLinha['estado'], typeof Check> = {
@@ -72,6 +86,9 @@ export function AbaAutomacoes({
   carregou,
   erro,
   recarregar,
+  historico,
+  historicoPronto,
+  historicoFalhou,
 }: AbaAutomacoesProps) {
   const t = useTranslations('Inbox.execucoes');
   // Rótulo de cada passo — MESMAS chaves do resumo da grade do funil, de
@@ -390,6 +407,79 @@ export function AbaAutomacoes({
           </div>
         </div>
       )}
+
+      {/* ------------------------------------------------------------
+          JÁ RODOU (985) — o destino do clique no cartão de falha do fio.
+          
+          ⚠️ Sem expansão de linha do tempo aqui: `montarLinhaDoTempo` precisa
+          de uma ESPERA de referência para dizer "o que vem depois", e
+          fabricar uma faria a tela afirmar próximos passos que nunca vão
+          rodar. Execução encerrada não tem futuro.
+          ------------------------------------------------------------ */}
+      <div>
+        <TituloDeSecao>{t('tituloDaSecao')}</TituloDeSecao>
+        {!historicoPronto ? (
+          <p className="text-muted-foreground/70 text-[11px]">{t('carregando')}</p>
+        ) : historicoFalhou ? (
+          // ⚠️ Falha de leitura NÃO é "nada aconteceu": dizer vazio aqui
+          // afirmaria que a automação não rodou quando só a consulta caiu.
+          <p className="text-amber-500/90 text-[11px]">{t('falhouCarga')}</p>
+        ) : historico.length === 0 ? (
+          <p className="text-muted-foreground/70 text-[11px]">{t('vazio')}</p>
+        ) : (
+          <div className="space-y-1.5">
+            {[...historico].reverse().slice(0, 8).map((item) => (
+              <LinhaDoHistorico key={item.chave} item={item} agora={agora} t={t} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Uma execução encerrada na aba. É AQUI — e só aqui — que o motivo CRU do
+ * motor aparece: em inglês, com id dentro, a 11px, numa aba que o operador
+ * abriu de propósito. No fio ele ficaria no meio da conversa com o cliente.
+ */
+function LinhaDoHistorico({
+  item,
+  agora,
+  t,
+}: {
+  item: ItemDeExecucao;
+  agora: number;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const Icone =
+    item.desfecho === 'falhou' ? X : item.desfecho === 'barrada' ? GitBranch : Check;
+  const cor =
+    item.desfecho === 'falhou'
+      ? 'text-red-400'
+      : item.desfecho === 'barrada'
+        ? 'text-amber-400'
+        : 'text-primary';
+
+  return (
+    <div className="flex items-start gap-2">
+      <Icone className={cn('mt-0.5 h-3 w-3 shrink-0', cor)} />
+      <div className="min-w-0">
+        <p className="text-foreground text-xs">
+          {item.nome ?? t('semNome')}
+          {item.vezes > 1 && (
+            <span className="text-muted-foreground"> {t('vezes', { vezes: item.vezes })}</span>
+          )}
+        </p>
+        <p className="text-muted-foreground text-[11px]">
+          {relativoAoInstante(item.quando, agora)}
+        </p>
+        {item.desfecho === 'falhou' && item.motivoBruto && (
+          <p className="text-muted-foreground/80 mt-0.5 text-[11px] break-words whitespace-pre-wrap">
+            {item.motivoBruto}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

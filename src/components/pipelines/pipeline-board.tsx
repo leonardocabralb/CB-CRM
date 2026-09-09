@@ -20,6 +20,7 @@ import type { CbChannel } from "@/lib/cb-channels/repo";
 import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
 import { MessageSquare, Plus, Zap } from "lucide-react";
+import { useSinalDeExecucoes } from "@/hooks/use-sinal-de-execucoes";
 import { useChannels } from "@/hooks/use-channels";
 import { formatCurrency } from "@/lib/currency";
 import { contarAtivasNaEtapa } from "@/lib/automations/por-etapa";
@@ -68,6 +69,17 @@ export function PipelineBoard({
   // disparava um GET /api/cb/channels POR CARD (120 numa conta real) a cada
   // montagem — achado da revisão do PR #71.
   const { channels } = useChannels();
+  // Quais clientes têm automação agendada (985) — UMA consulta para o quadro
+  // inteiro. O mapa é memoizado por identidade do resumo: sem isso, um objeto
+  // novo a cada render derrubaria o `memo` dos ~120 cards.
+  const { resumo: sinalDeExecucoes } = useSinalDeExecucoes();
+  const esperasPorContato = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    for (const [id, info] of Object.entries(sinalDeExecucoes?.porContato ?? {})) {
+      mapa[id] = info.esperas;
+    }
+    return mapa;
+  }, [sinalDeExecucoes]);
 
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
@@ -232,6 +244,7 @@ export function PipelineBoard({
               automacoesAtivas={contarAtivasNaEtapa(automations, stage.id)}
               campos={campos}
               channels={channels}
+              esperasPorContato={esperasPorContato}
               onAddDeal={onAddDeal}
               onEditDeal={onEditDeal}
               onAbrirConversa={abrirConversa}
@@ -314,6 +327,7 @@ function StageColumn({
   automacoesAtivas,
   campos,
   channels,
+  esperasPorContato,
   onAddDeal,
   onEditDeal,
   onAbrirConversa,
@@ -326,6 +340,12 @@ function StageColumn({
   automacoesAtivas: number;
   campos: CamposDoCard;
   channels: CbChannel[];
+  /**
+   * contato → quantas automações agendadas (985). Um mapa só para o quadro
+   * inteiro, buscado UMA vez no board: um hook por card seria uma requisição
+   * por card, e um objeto novo por render quebraria o `memo` do `DealCard`.
+   */
+  esperasPorContato: Record<string, number>;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
   onAbrirConversa: (conversationId: string) => void;
@@ -417,6 +437,9 @@ function StageColumn({
               stage={stage}
               campos={campos}
               channels={channels}
+              esperasDeAutomacao={
+                esperasPorContato[deal.contact_id ?? ""] ?? 0
+              }
               onEdit={onEditDeal}
               onAbrirConversa={onAbrirConversa}
             />
@@ -442,6 +465,7 @@ function DraggableDealCard({
   stage,
   campos,
   channels,
+  esperasDeAutomacao,
   onEdit,
   onAbrirConversa,
 }: {
@@ -449,6 +473,8 @@ function DraggableDealCard({
   stage: PipelineStage;
   campos: CamposDoCard;
   channels: CbChannel[];
+  /** Número primitivo, para não quebrar o `memo` do card. */
+  esperasDeAutomacao: number;
   onEdit: (deal: Deal) => void;
   onAbrirConversa: (conversationId: string) => void;
 }) {
@@ -468,6 +494,7 @@ function DraggableDealCard({
         stage={stage}
         campos={campos}
         channels={channels}
+        esperasDeAutomacao={esperasDeAutomacao}
         onEdit={onEdit}
         onAbrirConversa={onAbrirConversa}
       />
