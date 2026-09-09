@@ -11,6 +11,7 @@ import {
   FileText,
   MapPin,
   LayoutTemplate,
+  FileWarning,
   ImageOff,
   CornerDownLeft,
   Sparkles,
@@ -159,6 +160,26 @@ function MediaUnavailable({ label, t }: { label: string, t: ReturnType<typeof us
   );
 }
 
+/**
+ * Passou do teto do Storage (`media_state = 'too_large'`, gravado pelo
+ * webhook desde 2026-09-09).
+ *
+ * ⚠️ Frase PRÓPRIA, e não o "indisponível" genérico: as duas dizem que o
+ * arquivo não está aqui, mas só esta diz POR QUE e onde achá-lo. A queixa que
+ * originou isto foi exatamente essa — o operador viu "Documento
+ * indisponível" e não tinha como saber se o cliente errou o envio, se o CRM
+ * falhou ou se bastava esperar. O `label` traz o NOME do arquivo quando o
+ * payload o declarou (969), então a bolha nomeia o que ficou de fora.
+ */
+function MediaGrandeDemais({ label, t }: { label: string, t: ReturnType<typeof useTranslations> }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+      <FileWarning className="h-4 w-4 shrink-0" />
+      <span>{t("tooLarge", { label })}</span>
+    </div>
+  );
+}
+
 /** Falta o anexo: ou está baixando, ou se perdeu. */
 function MediaPendente({
   message,
@@ -181,6 +202,11 @@ function MediaPendente({
     return () => clearTimeout(timer);
   }, [chegando, message.created_at]);
 
+  // O teto do Storage é decisão FINAL — não adianta esperar a janela de
+  // download nem oferecer nova tentativa.
+  if (message.media_state === "too_large") {
+    return <MediaGrandeDemais label={label} t={t} />;
+  }
   return chegando ? <MediaLoading t={t} /> : <MediaUnavailable label={label} t={t} />;
 }
 

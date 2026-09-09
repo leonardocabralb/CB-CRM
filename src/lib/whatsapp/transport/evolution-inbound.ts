@@ -142,6 +142,19 @@ export function unwrapMessage(
   return atual;
 }
 
+/**
+ * Legenda que não diz nada.
+ *
+ * ⚠️ MEDIDO em 2026-09-09 no payload real: documento mandado do iPhone chega
+ * com `caption: "\uFFFC"` — o OBJECT REPLACEMENT CHARACTER, o marcador
+ * invisível que o iOS usa no lugar do anexo. Ele não é legenda: gravado em
+ * `content_text`, vira uma CAIXINHA sob o nome do arquivo na bolha, na prévia
+ * da lista de conversas e no transcrito que o Radar manda para a IA.
+ */
+function legendaVazia(texto: string): boolean {
+  return texto.replace(/[\uFFFC\s]/g, '') === '';
+}
+
 export function extractText(message?: Record<string, unknown> | null): string | null {
   const m0 = unwrapMessage(message);
   if (!m0) return null;
@@ -150,7 +163,9 @@ export function extractText(message?: Record<string, unknown> | null): string | 
   if (ext && typeof ext.text === 'string') return ext.text;
   for (const key of ['imageMessage', 'videoMessage', 'documentMessage']) {
     const m = asRecord(m0[key]);
-    if (m && typeof m.caption === 'string' && m.caption) return m.caption;
+    if (m && typeof m.caption === 'string' && m.caption && !legendaVazia(m.caption)) {
+      return m.caption;
+    }
   }
   return null;
 }

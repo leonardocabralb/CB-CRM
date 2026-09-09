@@ -21,7 +21,11 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { buildMediaPath, MEDIA_MAX_BYTES_BY_KIND } from '@/lib/storage/upload-media';
+import {
+  buildMediaPath,
+  MEDIA_MAX_BYTES_BY_KIND,
+  MEDIA_MAX_BYTES_ENTRADA,
+} from '@/lib/storage/upload-media';
 import type { EvolutionClient } from './evolution-client';
 
 const BUCKET = 'chat-media';
@@ -113,10 +117,15 @@ export async function fetchAndStoreEvolutionMedia(args: {
     if (!base64) return null;
 
     const bytes = Buffer.from(base64, 'base64');
-    const limite = MEDIA_BYTES_LIMIT[kind];
-    if (bytes.byteLength > limite) {
+    // ⚠️ REDE DE SEGURANÇA, não o portão. Quem decide antes de gastar a banda
+    // é `anexoGrandeDemais` sobre o `fileLength` do payload — aqui só cai o
+    // anexo que não declarou tamanho. E o teto é o de ENTRADA (o do bucket),
+    // nunca o de envio da Meta: até 2026-09-09 era este último, e o
+    // `MEDIA_MAX_BYTES_BY_KIND.image` de 5 MiB recusava foto que o cliente
+    // mandou e o WhatsApp entregou.
+    if (bytes.byteLength > MEDIA_MAX_BYTES_ENTRADA) {
       console.warn(
-        `[evolution-media] anexo de ${bytes.byteLength} bytes excede o limite de ${limite} para ${kind}; mensagem persistida sem anexo`,
+        `[evolution-media] anexo de ${bytes.byteLength} bytes excede o teto de entrada de ${MEDIA_MAX_BYTES_ENTRADA}; mensagem persistida sem anexo`,
       );
       return null;
     }
@@ -150,4 +159,3 @@ export async function fetchAndStoreEvolutionMedia(args: {
   }
 }
 
-const MEDIA_BYTES_LIMIT = MEDIA_MAX_BYTES_BY_KIND;
