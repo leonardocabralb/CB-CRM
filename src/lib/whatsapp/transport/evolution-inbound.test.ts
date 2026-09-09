@@ -15,6 +15,7 @@ import {
   extractText,
   isNonChatJid,
   isReaction,
+  lidJidFromKey,
   normalizeUpsert,
   phoneFromJid,
   unwrapMessage,
@@ -279,6 +280,66 @@ describe('@lid — endereçamento novo do WhatsApp', () => {
   it('conversa normal segue intocada', () => {
     const it0 = item({ conversation: 'oi' }, { key: { remoteJid: TEL, fromMe: false, id: 'X' } });
     expect(normalizeUpsert(it0, 'conta', 'dono', 'canal')!.phone).toBe('558393124441');
+  });
+
+  // ⚠️ O LID muda de CAMPO conforme a versão da Evolution (ver `lidJidFromKey`
+  // e docs/PLANO-baileys-7.md, 4.2). Ler só um deles faz `remote_jid_lid`
+  // nascer NULL depois de um upgrade — e aí apagar/editar mensagem de
+  // conversa migrada volta a não fazer nada (bug de 28/07/2026, migration 917).
+  it('guarda o LID venha ele em previousRemoteJid (2.3.2), remoteJidAlt (2.4) ou no próprio remoteJid', () => {
+    const formas: Array<[string, Record<string, unknown>]> = [
+      ['2.3.2 (+lidfix)', { remoteJid: TEL, previousRemoteJid: LID }],
+      ['2.4 (troca)', { remoteJid: TEL, remoteJidAlt: LID, addressingMode: 'pn' }],
+      ['sem troca', { remoteJid: LID, remoteJidAlt: TEL }],
+    ];
+    for (const [versao, key] of formas) {
+      const out = normalizeUpsert(
+        item({ conversation: 'oi' }, { key: { fromMe: true, id: 'X', ...key } }),
+        'conta',
+        'dono',
+        'canal',
+      );
+      expect(out, versao).not.toBeNull();
+      expect(out!.remoteJidLid, versao).toBe(LID);
+      expect(out!.remoteJid, versao).toBe(TEL);
+    }
+  });
+
+  it('2.3.7 põe telefone nos dois campos e perde o LID: fica null, sem inventar', () => {
+    const out = normalizeUpsert(
+      item({ conversation: 'oi' }, { key: { remoteJid: TEL, remoteJidAlt: TEL, fromMe: true, id: 'X' } }),
+      'conta',
+      'dono',
+      'canal',
+    );
+    expect(out!.remoteJidLid).toBeNull();
+  });
+
+  it('conversa não migrada não ganha LID', () => {
+    const out = normalizeUpsert(
+      item({ conversation: 'oi' }, { key: { remoteJid: TEL, fromMe: false, id: 'X' } }),
+      'conta',
+      'dono',
+      'canal',
+    );
+    expect(out!.remoteJidLid).toBeNull();
+  });
+});
+
+describe('lidJidFromKey', () => {
+  const LID = '71176265142382@lid';
+  const TEL = '558393124441@s.whatsapp.net';
+
+  it('devolve o primeiro campo que for @lid, na ordem previousRemoteJid → remoteJidAlt → remoteJid', () => {
+    expect(lidJidFromKey({ remoteJid: TEL, previousRemoteJid: LID })).toBe(LID);
+    expect(lidJidFromKey({ remoteJid: TEL, remoteJidAlt: LID })).toBe(LID);
+    expect(lidJidFromKey({ remoteJid: LID, remoteJidAlt: TEL })).toBe(LID);
+  });
+
+  it('telefone em todo campo, ou chave ausente, é null', () => {
+    expect(lidJidFromKey({ remoteJid: TEL, remoteJidAlt: TEL })).toBeNull();
+    expect(lidJidFromKey({ remoteJid: TEL })).toBeNull();
+    expect(lidJidFromKey(undefined)).toBeNull();
   });
 });
 

@@ -215,9 +215,11 @@ export async function POST(request: Request) {
             if (await jaGravada(g.providerMessageId, g.fromMe)) continue;
 
             // A nossa própria mensagem no grupo é a fonte mais barata do
-            // nosso LID — sem ele, menção a nós nunca acende (916).
+            // nosso LID — sem ele, menção a nós nunca acende (916). Vai o
+            // `senderLid`, não o `senderJid`: este prefere o telefone, e com
+            // a Baileys 7 seria telefone sempre (ver `lidDoRemetente`).
             if (g.fromMe && route.channelId) {
-              await aprenderNossoLid(supabaseAdmin(), route.channelId, g.senderJid);
+              await aprenderNossoLid(supabaseAdmin(), route.channelId, g.senderLid);
             }
 
             const gravadaGrupo = g.fromMe
