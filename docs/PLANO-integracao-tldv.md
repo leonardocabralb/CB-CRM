@@ -24,8 +24,9 @@
 
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
-| **1** | Cartão em Integrações (chave da API, sincronização, webhook, últimas reuniões com vínculo de cliente), sincronização por cron + webhook + "colar link", vínculo automático pelo e-mail, seção **Transcrições** na aba Reuniões da ficha (lista, visualizador, "Do tl;dv", "Colar transcrição", desvincular/excluir/buscar de novo) | 🔧 **código pronto, aguardando revisão e aplicação** (2026-09-09) | `987_cb_tldv` — **criada, NÃO aplicada** (o conector do Supabase não estava autorizado nesta sessão; aplicar via conector ANTES do merge) | — |
-| **2** | Depois do deploy: operador cola a chave (plano Pro/Business do tl;dv), confere a primeira sincronização (30 dias), cola a URL do webhook no tl;dv (Settings → Webhooks, eventos `MeetingReady` + `TranscriptReady`) e faz `docker stack deploy` na VPS para o laço lento passar a chamar `cb/tldv` | ⏳ | — | — |
+| **1** | Cartão em Integrações (chave da API, sincronização, webhook, últimas reuniões com vínculo de cliente), sincronização por cron + webhook + "colar link", vínculo automático pelo e-mail (ficha → agendamento do Calendly), seção **Transcrições** na aba Reuniões da ficha (lista, visualizador, "Do tl;dv", "Colar transcrição", desvincular/excluir/buscar de novo) | ✅ **EM PRODUÇÃO** (2026-09-09) | `987_cb_tldv` **aplicada** (09/09, via conector, antes do merge) | [#163](https://github.com/leonardocabralb/CB-CRM/pull/163) + [#172](https://github.com/leonardocabralb/CB-CRM/pull/172) (204 = "ainda não pronta") + [#174](https://github.com/leonardocabralb/CB-CRM/pull/174) (notas legíveis) |
+| **1b** | O achado do Codex no #163 (rodízio do cron) aplicado também ao cron do Meta Ads | ✅ (09/09) | `988_cb_rodizio_do_cron_do_meta_ads` **aplicada** (09/09) | [#164](https://github.com/leonardocabralb/CB-CRM/pull/164) |
+| **2** | Depois do deploy: chave colada pelo operador (09/09, 19:33), primeira sincronização de 30 dias conferida (31 reuniões; 24 com transcrição depois de dois ciclos; 5 vinculadas sozinhas pela ponte do Calendly), `docker stack deploy` na VPS feito (09/09, com backup do stack anterior; o agendador já loga o laço com `tl;dv`). **Falta só colar a URL do webhook no tl;dv** (opcional; adianta a importação) | ✅ (09/09) — webhook opcional pendente | — | — |
 | **3** (ideias, não pedidas) | busca no corpo das transcrições (índice GIN, como a 929 fez para mensagens); transcrição como contexto do Radar/IA; seção na barra lateral da conversa; vínculo com a reunião AGENDADA (`cb_meetings`) por proximidade de horário | 💤 | — | — |
 
 **Decisões travadas pelo pedido (09/09):**
@@ -142,13 +143,33 @@ RLS), com dublê do Supabase para a sincronização.
   pendentes marcadas com `tldv_error`): transcrição ainda não pronta volta
   como **204 sem corpo**, não 404 — corrigido no cliente, com pino.
 
-## 4. Depois do merge (operador)
+## 4. Depois do merge — FEITO em 09/09/2026
 
-1. Aplicar a `987` via conector (antes do merge, como sempre).
-2. Na VPS, `docker stack deploy` com o `crm.env` carregado (as três linhas
-   do CLAUDE.md) — sem isso o laço lento não chama `cb/tldv`.
-3. Configurações → Integrações → tl;dv: colar a chave. Conferir o chip e a
-   primeira sincronização; se vier `sem_permissao`, é o plano de quem
-   organiza as reuniões (a doc é explícita).
-4. Colar a URL do webhook no tl;dv (opcional; adianta a importação).
-5. Abrir a ficha de um cliente que teve reunião: aba Reuniões → Transcrições.
+1. ✅ `987` e `988` aplicadas via conector antes dos merges.
+2. ✅ `docker stack deploy` na VPS (backup em `/root/docker-stack.yml.bak-*`,
+   `crm.env` carregado, imagem fixada na que rodava); conferido: segredo
+   dentro do container, rota de cron respondendo 401, agendador logando o
+   laço com `tl;dv`.
+3. ✅ Chave colada pelo operador; chip "Funcionando"; primeira sincronização
+   de 30 dias: 31 reuniões.
+4. ⏳ URL do webhook no tl;dv — opcional; sem ela a reunião entra no ciclo
+   seguinte (até 15 min).
+5. ✅ Testado no preview (worktree, 1440×900) contra o banco de produção:
+   cartão, tabela com vínculo inline, ficha do cliente (vínculo automático
+   "DOUGLAS BARBOSA"), visualizador com frases/tempos/notas, transcrição
+   manual (criar, ver, excluir), "Do tl;dv" (busca, vincular pela lista,
+   importar pelo link), "Tirar deste cliente" e "Sincronizar agora". A
+   reunião usada nos testes de vínculo voltou ao estado original por SQL.
+
+## 5. O que a primeira produção ensinou (para quem mexer depois)
+
+- **204 sem corpo = "ainda não pronta"** (a doc sugeria 404): 17 das 31
+  reuniões ficaram marcadas como erro no primeiro ciclo até a correção
+  (#172). Depois dela, "Sincronizar agora" levou as prontas de 14 para 24.
+- **A ponte pelo Calendly é o vínculo automático que funciona aqui**: dos
+  583 contatos só 1 tem e-mail na ficha; 5 das 31 reuniões foram ligadas
+  sozinhas, todas por agendamento do Calendly. As 26 restantes são
+  anteriores à integração do Calendly (07/09) — vínculo à mão, pelo cartão
+  ou pela ficha.
+- **O convidado chega sem nome** (só e-mail); o cartão mostra o e-mail no
+  lugar. O nome que vale é o do contato vinculado.
