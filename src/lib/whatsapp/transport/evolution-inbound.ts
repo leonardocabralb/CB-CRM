@@ -233,6 +233,45 @@ export function isReaction(message?: Record<string, unknown> | null): boolean {
 }
 
 /**
+ * Mensagem cifrada com "message secret" (`secretEncryptedMessage`).
+ *
+ * ⚠️ MEDIDO em 09/09/2026, no primeiro teste de EDIÇÃO depois do upgrade da
+ * Evolution para 2.4.0 / Baileys 7.0.0-rc13: quando o cliente (ou o celular
+ * pareado) edita uma mensagem, o WhatsApp manda a edição assim —
+ * `{ secretEncryptedMessage: { encIv, encPayload, secretEncType: 2,
+ * targetMessageKey: { id } } }` — e a Baileys rc13 NÃO decifra (PRs abertos
+ * no upstream: WhiskeySockets/Baileys #2690 e #2743). A Evolution entrega o
+ * item como um `messages.upsert` comum, de `messageType`
+ * 'secretEncryptedMessage' e sem texto nenhum: tratado como texto, virava
+ * uma BOLHA VAZIA na conversa (foi assim que apareceu na tela, duas vezes,
+ * às 19:44 e 19:45). Não tem conteúdo legível — descartar é a única verdade
+ * possível aqui; quem sabe o alvo da edição é `edicaoCifrada`.
+ */
+export function isSecretEncrypted(message?: Record<string, unknown> | null): boolean {
+  return !!asRecord(unwrapMessage(message)?.secretEncryptedMessage);
+}
+
+/**
+ * A edição cifrada: qual mensagem foi editada. O texto NOVO não é conhecido
+ * (vem em `encPayload`, cifrado); só o alvo é. `secretEncType` 2 é
+ * MESSAGE_EDIT no proto do WhatsApp (1 é edição de evento, que não
+ * modelamos). Quando a Evolution passar a decifrar, a edição vai chegar como
+ * `messages.edited` COM texto e o caminho existente na rota cuida — este aqui
+ * é o que dá para afirmar enquanto isso.
+ */
+export function edicaoCifrada(
+  message?: Record<string, unknown> | null,
+): { targetId: string } | null {
+  const sec = asRecord(unwrapMessage(message)?.secretEncryptedMessage);
+  if (!sec) return null;
+  const tipo = sec.secretEncType;
+  if (tipo !== 2 && tipo !== '2' && tipo !== 'MESSAGE_EDIT') return null;
+  const alvo = asRecord(sec.targetMessageKey);
+  const id = alvo?.id;
+  return typeof id === 'string' && id ? { targetId: id } : null;
+}
+
+/**
  * Normalize one upsert item. Returns null for messages the inbox should
  * ignore (group chats, our own echoes, or missing key/id). `channelId` é o
  * `cb_channels.id` por onde a mensagem entrou (Fase 3), propagado para o
@@ -249,6 +288,7 @@ export function normalizeUpsert(
   if (!bruto || !id) return null;
   if (isNonChatJid(bruto)) return null; // grupo, canal, status: não é 1:1
   if (isReaction(item.message)) return null; // reação não é mensagem (ver isReaction)
+  if (isSecretEncrypted(item.message)) return null; // edição cifrada: sem texto (ver isSecretEncrypted)
 
   // Endereço de TELEFONE da conversa. Um `@lid` sem contrapartida devolve
   // null e a mensagem é descartada — ver `phoneJidFromKey` para o porquê:
