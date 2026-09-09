@@ -49,8 +49,34 @@ function caixaDeMidia(
 export function mediaBytesOf(item: EvolutionUpsert): number | null {
   const m = caixaDeMidia(item);
   if (!m) return null;
-  const n = Number(m.fileLength);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  const n = bytesDeclarados(m.fileLength);
+  return n !== null && Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * O `fileLength` na forma em que cada versão da Evolution o entrega.
+ *
+ * ⚠️ Na 2.3.2 chegava como STRING (`'43407'`, medido nas amostras de
+ * 09/09/2026); na 2.4 (Baileys 7) chega como o objeto `Long` do protobuf,
+ * `{ low, high, unsigned }` — medido no primeiro anexo depois do upgrade
+ * (`fileLength: { low: 59064, high: 0, unsigned: true }`). `Number({...})` é
+ * NaN, e a versão anterior devolvia `null`: "tamanho desconhecido, tenta
+ * baixar" — inofensivo para o anexo pequeno, mas o portão por tamanho da
+ * 986 ficava cego, e um documento de 60 MiB era baixado inteiro (em base64)
+ * para ser recusado depois. Ver docs/PLANO-baileys-7.md, ajuste 4.
+ */
+export function bytesDeclarados(v: unknown): number | null {
+  if (v && typeof v === 'object' && 'low' in v) {
+    const { low, high } = v as { low?: unknown; high?: unknown };
+    const lo = Number(low);
+    const hi = Number(high ?? 0);
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+    // `low`/`high` são os 32 bits de baixo e de cima, como inteiros COM sinal
+    // — `>>> 0` os lê sem sinal antes de compor.
+    return (hi >>> 0) * 2 ** 32 + (lo >>> 0);
+  }
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 /**
