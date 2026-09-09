@@ -7,8 +7,7 @@ import { MEDIA_MAX_BYTES_ENTRADA } from "@/lib/storage/upload-media";
 import {
   anexoGrandeDemais,
   mediaBytesOf,
-  nomeDeArquivoDeclarado,
-} from "./anexo-declarado";
+  nomeDeArquivoDeclarado, bytesDeclarados } from "./anexo-declarado";
 import type { EvolutionUpsert } from "./evolution-inbound";
 
 /**
@@ -114,5 +113,30 @@ describe("o teto do código espelha a migration 986", () => {
     const m = sql.match(/SET file_size_limit = (\d+)/);
     expect(m, "a migration precisa continuar declarando o teto").not.toBeNull();
     expect(Number(m![1])).toBe(MEDIA_MAX_BYTES_ENTRADA);
+  });
+});
+
+describe('bytesDeclarados — a forma do fileLength muda com a versão da Evolution', () => {
+  it('2.3.2: string (amostras de 09/09/2026)', () => {
+    expect(bytesDeclarados('43407')).toBe(43407);
+    expect(bytesDeclarados('148421')).toBe(148421);
+  });
+
+  it('⚠️ 2.4 / Baileys 7: objeto Long {low, high, unsigned} (medido no primeiro anexo depois do upgrade)', () => {
+    expect(bytesDeclarados({ low: 59064, high: 0, unsigned: true })).toBe(59064);
+    expect(bytesDeclarados({ low: 60869, high: 0, unsigned: true })).toBe(60869);
+  });
+
+  it('Long acima de 2 GiB: low negativo (com sinal) e high compõem sem sinal', () => {
+    // 3 GiB = 0xC0000000 → como int32 com sinal, low = -1073741824
+    expect(bytesDeclarados({ low: -1073741824, high: 0, unsigned: true })).toBe(3 * 2 ** 30);
+    expect(bytesDeclarados({ low: 0, high: 1, unsigned: true })).toBe(2 ** 32);
+  });
+
+  it('número cru e lixo', () => {
+    expect(bytesDeclarados(1234)).toBe(1234);
+    expect(bytesDeclarados(undefined)).toBeNull();
+    expect(bytesDeclarados('abc')).toBeNull();
+    expect(bytesDeclarados({ low: 'x' })).toBeNull();
   });
 });
