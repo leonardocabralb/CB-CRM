@@ -35,7 +35,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { CHANNEL_STATUS_DOT, formatChannelPhone, summarizeScope } from '@/lib/cb-channels/display';
+import { CHANNEL_STATUS_DOT, identidadeDoCanal, summarizeScope } from '@/lib/cb-channels/display';
 import type { CbChannel } from '@/lib/cb-channels/repo';
 import { cn } from '@/lib/utils';
 
@@ -43,7 +43,7 @@ import { cn } from '@/lib/utils';
 const ALL = '__all__';
 
 function ChannelRow({ channel }: { channel: CbChannel }) {
-  const telefone = formatChannelPhone(channel.display_phone);
+  const telefone = identidadeDoCanal(channel);
   return (
     <span className="flex min-w-0 items-center gap-2">
       <span

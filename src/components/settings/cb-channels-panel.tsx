@@ -67,7 +67,14 @@ import { createClient } from '@/lib/supabase/client';
 import { ehUrlAlcancavel } from '@/lib/cb-channels/webhook-url';
 import { invalidarCacheDeCanais } from '@/hooks/use-channels';
 import { SettingsPanelHead } from './settings-panel-head';
-import { ehEvolution, ehMeta } from '@/lib/cb-channels/transporte';
+import { ehEvolution, ehInstagram, ehMeta, ehWhatsApp } from '@/lib/cb-channels/transporte';
+import { InstagramGlyph } from '@/components/channels/instagram-glyph';
+import { identidadeDoCanal } from '@/lib/cb-channels/display';
+import {
+  AVISO_DE_VENCIMENTO_DIAS,
+  CAMINHO_DO_WEBHOOK,
+  diasParaVencer,
+} from '@/lib/instagram/conexao';
 import type { CbChannelKind } from '@/lib/cb-channels/repo';
 import { IconeDoTransporte } from '@/components/channels/transporte-icone';
 
@@ -84,6 +91,9 @@ interface CbChannel {
   kind: CbChannelKind;
   label: string;
   display_phone: string | null;
+  ig_username: string | null;
+  ig_token_expires_at: string | null;
+  ig_human_agent: boolean;
   is_default: boolean;
   status: 'disconnected' | 'connecting' | 'connected';
   last_error: string | null;
@@ -110,7 +120,7 @@ interface StageOption {
   position: number;
 }
 
-type AddStep = 'choose' | 'evolution' | 'meta';
+type AddStep = 'choose' | 'evolution' | 'meta' | 'instagram';
 
 const POLL_MS = 5_000;
 
@@ -119,15 +129,6 @@ const STATUS_DOT: Record<CbChannel['status'], string> = {
   connecting: 'bg-amber-500',
   disconnected: 'bg-red-500',
 };
-
-function formatPhone(raw: string | null): string | null {
-  if (!raw) return null;
-  // A Meta (display_phone_number) já entrega formatado ("+55 11 9…"); só os
-  // dígitos crus da Evolution (ownerJid) precisam de formatação aqui.
-  if (/\D/.test(raw)) return raw;
-  const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(raw);
-  return m ? `+55 (${m[1]}) ${m[2]}-${m[3]}` : `+${raw}`;
-}
 
 export function CbChannelsPanel() {
   const t = useTranslations('Settings.channels');
@@ -150,6 +151,20 @@ export function CbChannelsPanel() {
   const [metaPin, setMetaPin] = useState('');
   const [showToken, setShowToken] = useState(false);
 
+  // Campos do assistente Instagram (D3 do plano: token colado, sem OAuth).
+  const [igAccessToken, setIgAccessToken] = useState('');
+  const [igAppSecret, setIgAppSecret] = useState('');
+  const [igHumanAgent, setIgHumanAgent] = useState(false);
+  const [showIgSecret, setShowIgSecret] = useState(false);
+  /** "Configure o webhook na Meta": abre ao criar e pelo botão do cartão. */
+  const [igWebhook, setIgWebhook] = useState<{
+    label: string;
+    verifyToken: string | null;
+  } | null>(null);
+  const [igRenewTarget, setIgRenewTarget] = useState<CbChannel | null>(null);
+  const [igRenewToken, setIgRenewToken] = useState('');
+  const [renewing, setRenewing] = useState(false);
+
   const [qrChannelId, setQrChannelId] = useState<string | null>(null);
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [qrConnected, setQrConnected] = useState(false);
@@ -164,6 +179,8 @@ export function CbChannelsPanel() {
   // ressincronização no diálogo.
   const [configGrupos, setConfigGrupos] = useState(false);
   const [configRadar, setConfigRadar] = useState(false);
+  /** Instagram: a tag HUMAN_AGENT (7 dias). Só aparece em canal Instagram. */
+  const [configHumanAgent, setConfigHumanAgent] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [pipelines, setPipelines] = useState<PipelineOption[]>([]);
@@ -191,6 +208,10 @@ export function CbChannelsPanel() {
   const webhookUrl =
     typeof window !== 'undefined'
       ? `${window.location.origin}/api/whatsapp/webhook`
+      : '';
+  const igWebhookUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}${CAMINHO_DO_WEBHOOK}`
       : '';
 
   const load = useCallback(async () => {
@@ -253,6 +274,10 @@ export function CbChannelsPanel() {
     setMetaVerifyToken('');
     setMetaPin('');
     setShowToken(false);
+    setIgAccessToken('');
+    setIgAppSecret('');
+    setIgHumanAgent(false);
+    setShowIgSecret(false);
   };
 
   const openQrFor = (channelId: string, qr: string | null) => {
@@ -410,6 +435,84 @@ export function CbChannelsPanel() {
     }
   };
 
+  const abrirWebhookDoInstagram = async (channel: CbChannel) => {
+    try {
+      const res = await fetch(`/api/cb/channels/${channel.id}/instagram`);
+      const payload = await res.json();
+      if (!res.ok) {
+        toast.error(payload.error || t('loadFailed'));
+        return;
+      }
+      setIgWebhook({ label: channel.label, verifyToken: payload.verifyToken ?? null });
+    } catch {
+      toast.error(t('networkError'));
+    }
+  };
+
+  const handleCreateInstagram = async () => {
+    setCreating(true);
+    try {
+      const res = await fetch('/api/cb/channels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'instagram',
+          label,
+          access_token: igAccessToken.trim(),
+          ig_app_secret: igAppSecret.trim(),
+          ig_human_agent: igHumanAgent,
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        toast.error(payload.error || t('createFailed'));
+        return;
+      }
+      toast.success(t('instagramConnectedToast', { username: payload.username ?? '' }));
+      setAddOpen(false);
+      resetAdd();
+      await load();
+      // A Meta só entrega depois do webhook configurado — o passo seguinte
+      // abre sozinho. O POST devolve o verify token em claro UMA vez (na
+      // criação); no recadastro ele vem do GET da conexão.
+      const verifyToken = payload.webhook?.verifyToken as string | undefined;
+      if (verifyToken) {
+        setIgWebhook({ label: payload.channel?.label ?? label, verifyToken });
+      } else if (payload.channel?.id) {
+        void abrirWebhookDoInstagram(payload.channel as CbChannel);
+      }
+    } catch {
+      toast.error(t('networkError'));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleRenewInstagram = async () => {
+    if (!igRenewTarget) return;
+    setRenewing(true);
+    try {
+      const res = await fetch(`/api/cb/channels/${igRenewTarget.id}/instagram`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ access_token: igRenewToken.trim() }),
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        toast.error(payload.error || t('instagramRenewFailed'));
+        return;
+      }
+      toast.success(t('instagramRenewed'));
+      setIgRenewTarget(null);
+      setIgRenewToken('');
+      await load();
+    } catch {
+      toast.error(t('networkError'));
+    } finally {
+      setRenewing(false);
+    }
+  };
+
   // Laço de pareamento. Ref para o id, senão o intervalo lê o valor velho.
   const qrChannelIdRef = useRef<string | null>(null);
   qrChannelIdRef.current = qrChannelId;
@@ -475,7 +578,17 @@ export function CbChannelsPanel() {
     setConfigStage(channel.default_stage_id ?? '');
     setConfigGrupos(channel.groups_enabled === true);
     setConfigRadar(channel.radar_enabled === true);
+    setConfigHumanAgent(channel.ig_human_agent === true);
   };
+
+  /**
+   * Quem pode SUCEDER um canal como padrão: só WhatsApp. O padrão é o número
+   * que responde conversa sem canal e alimenta o espelho `whatsapp_config`;
+   * o servidor recusa promover o Instagram, então oferecê-lo aqui seria um
+   * clique que sempre falha (Codex, PR #167).
+   */
+  const sucessoresDe = (canal: CbChannel) =>
+    channels.filter((c) => c.id !== canal.id && ehWhatsApp(c));
 
   const handleConfigure = async () => {
     if (!configTarget) return;
@@ -492,6 +605,9 @@ export function CbChannelsPanel() {
           default_stage_id: configPipeline ? configStage || null : null,
           groups_enabled: configGrupos,
           radar_enabled: configRadar,
+          // Só o Instagram tem a chave — e a chave presente é o que autoriza
+          // a rota a mexer (mesma disciplina do funil e do radar).
+          ...(ehInstagram(configTarget) ? { ig_human_agent: configHumanAgent } : {}),
         }),
       });
       const payload = await res.json();
@@ -603,6 +719,8 @@ export function CbChannelsPanel() {
 
   const metaFormValid =
     Boolean(label) && Boolean(metaPhoneNumberId.trim()) && Boolean(metaAccessToken.trim());
+  const igFormValid =
+    Boolean(label) && Boolean(igAccessToken.trim()) && Boolean(igAppSecret.trim());
 
   return (
     <div>
@@ -662,7 +780,7 @@ export function CbChannelsPanel() {
                     )}
                   </div>
                   <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-                    {formatPhone(channel.display_phone) ?? t('noNumberYet')}
+                    {identidadeDoCanal(channel) ?? t('noNumberYet')}
                     <span aria-hidden="true">·</span>
                     <span
                       aria-hidden="true"
@@ -670,6 +788,38 @@ export function CbChannelsPanel() {
                     />
                     {t(`status_${channel.status}`)}
                   </p>
+                  {/* O token do Instagram vence em 60 dias (D3). O cron renova
+                      (Fase 6); esta linha é o que o operador vê se a renovação
+                      falhar — âmbar perto do fim, vermelho depois. */}
+                  {ehInstagram(channel) &&
+                    (() => {
+                      const venceEm = channel.ig_token_expires_at;
+                      const dias = diasParaVencer(venceEm);
+                      if (dias === null || !venceEm) return null;
+                      if (dias < 0) {
+                        return (
+                          <p className="mt-1 text-xs text-destructive">
+                            {t('instagramTokenExpired')}
+                          </p>
+                        );
+                      }
+                      const data = new Date(venceEm).toLocaleDateString(undefined, {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                      });
+                      return (
+                        <p
+                          className={
+                            dias <= AVISO_DE_VENCIMENTO_DIAS
+                              ? 'mt-1 text-xs text-amber-600 dark:text-amber-400'
+                              : 'mt-1 text-xs text-muted-foreground'
+                          }
+                        >
+                          {t('instagramTokenValidUntil', { date: data, days: dias })}
+                        </p>
+                      );
+                    })()}
                   {/* O funil configurado, LIDO DE VOLTA. Apagar o funil na
                       tela de Funis zera `default_pipeline_id` (ON DELETE SET
                       NULL) e o roteamento para em silêncio — sem esta linha,
@@ -798,13 +948,39 @@ export function CbChannelsPanel() {
                         <RotateCcw className="h-4 w-4" />
                       </Button>
                     )}
+                    {ehInstagram(channel) && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void abrirWebhookDoInstagram(channel)}
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          {t('instagramWebhookAction')}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setIgRenewTarget(channel);
+                            setIgRenewToken('');
+                          }}
+                        >
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          {t('instagramRenewAction')}
+                        </Button>
+                      </>
+                    )}
                     {/* Texto visível, não só ícone: quem procura "funil" não
                         adivinha que ele mora atrás de um lápis mudo. */}
                     <Button variant="outline" size="sm" onClick={() => abrirConfig(channel)}>
                       <Pencil className="mr-2 h-4 w-4" />
                       {t('configureAction')}
                     </Button>
-                    {!channel.is_default && (
+                    {/* Instagram nunca é o padrão (o padrão é o número de
+                        WhatsApp que responde conversa sem canal): o servidor
+                        recusa, então o botão não promete. */}
+                    {!channel.is_default && !ehInstagram(channel) && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -834,7 +1010,7 @@ export function CbChannelsPanel() {
                       onClick={() => {
                         setConfirmDelete(channel);
                         setSuccessorId(
-                          channels.find((c) => c.id !== channel.id)?.id ?? '',
+                          sucessoresDe(channel)[0]?.id ?? '',
                         );
                       }}
                     >
@@ -861,7 +1037,11 @@ export function CbChannelsPanel() {
         }}
       >
         <DialogContent
-          className={addStep === 'meta' ? 'max-h-[85vh] overflow-y-auto sm:max-w-xl' : undefined}
+          className={
+            addStep === 'meta' || addStep === 'instagram'
+              ? 'max-h-[85vh] overflow-y-auto sm:max-w-xl'
+              : undefined
+          }
         >
           {addStep === 'choose' && (
             <>
@@ -895,6 +1075,19 @@ export function CbChannelsPanel() {
                     {t('chooseEvolutionTitle')}
                   </span>
                   <span className="text-xs text-muted-foreground">{t('chooseEvolutionDesc')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddStep('instagram')}
+                  className="flex flex-col items-start gap-2 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-foreground">
+                    <InstagramGlyph className="h-5 w-5" />
+                  </span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {t('chooseInstagramTitle')}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{t('chooseInstagramDesc')}</span>
                 </button>
               </div>
               <DialogFooter>
@@ -1091,6 +1284,131 @@ export function CbChannelsPanel() {
               </DialogFooter>
             </>
           )}
+
+          {addStep === 'instagram' && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t('instagramStepTitle')}</DialogTitle>
+                <DialogDescription>{t('instagramStepDescription')}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="cb-ig-label">{t('labelField')}</Label>
+                  <Input
+                    id="cb-ig-label"
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    placeholder={t('instagramLabelPlaceholder')}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="cb-ig-token">{t('instagramFieldAccessToken')}</Label>
+                  <div className="relative">
+                    <Input
+                      id="cb-ig-token"
+                      type={showToken ? 'text' : 'password'}
+                      value={igAccessToken}
+                      onChange={(e) => setIgAccessToken(e.target.value)}
+                      placeholder={t('instagramAccessTokenPlaceholder')}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      aria-label={t('metaToggleToken')}
+                      onClick={() => setShowToken((v) => !v)}
+                      className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{t('instagramAccessTokenHint')}</p>
+                </div>
+                <div>
+                  <Label htmlFor="cb-ig-secret">{t('instagramFieldAppSecret')}</Label>
+                  <div className="relative">
+                    <Input
+                      id="cb-ig-secret"
+                      type={showIgSecret ? 'text' : 'password'}
+                      value={igAppSecret}
+                      onChange={(e) => setIgAppSecret(e.target.value)}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      aria-label={t('metaToggleToken')}
+                      onClick={() => setShowIgSecret((v) => !v)}
+                      className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {showIgSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{t('instagramAppSecretHint')}</p>
+                </div>
+                <div className="rounded-md border border-border p-3">
+                  <label className="flex cursor-pointer items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={igHumanAgent}
+                      onChange={(e) => setIgHumanAgent(e.target.checked)}
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-foreground">
+                        {t('instagramHumanAgent')}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        {t('instagramHumanAgentHint')}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                <Accordion>
+                  <AccordionItem className="border-border">
+                    <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
+                      {t('instagramHelpToken')}
+                    </AccordionTrigger>
+                    <AccordionContent className="text-muted-foreground">
+                      <ol className="list-inside list-decimal space-y-1 text-sm">
+                        <li>{t('instagramHelpToken_1')}</li>
+                        <li>{t('instagramHelpToken_2')}</li>
+                        <li>{t('instagramHelpToken_3')}</li>
+                      </ol>
+                    </AccordionContent>
+                  </AccordionItem>
+                  <AccordionItem className="border-border">
+                    <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
+                      {t('instagramHelpSecret')}
+                    </AccordionTrigger>
+                    <AccordionContent className="text-muted-foreground">
+                      <ol className="list-inside list-decimal space-y-1 text-sm">
+                        <li>{t('instagramHelpSecret_1')}</li>
+                        <li>{t('instagramHelpSecret_2')}</li>
+                      </ol>
+                    </AccordionContent>
+                  </AccordionItem>
+                  <AccordionItem className="border-border">
+                    <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
+                      {t('instagramHelpWebhook')}
+                    </AccordionTrigger>
+                    <AccordionContent className="text-muted-foreground">
+                      <p className="text-sm">{t('instagramHelpWebhook_after')}</p>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAddStep('choose')}>
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  {t('back')}
+                </Button>
+                <Button onClick={handleCreateInstagram} disabled={creating || !igFormValid}>
+                  {creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {t('instagramCreate')}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1279,6 +1597,30 @@ export function CbChannelsPanel() {
                 </p>
               )}
             </div>
+
+            {/* Human Agent (D2 do plano do Instagram). A Meta aprova a feature
+                DEPOIS de a conta estar conectada — por isso o interruptor
+                mora aqui, não só na criação (Codex, PR #167). */}
+            {configTarget && ehInstagram(configTarget) && (
+              <div className="rounded-md border border-border p-3">
+                <label className="flex cursor-pointer items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={configHumanAgent}
+                    onChange={(e) => setConfigHumanAgent(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-foreground">
+                      {t('instagramHumanAgent')}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {t('instagramHumanAgentHint')}
+                    </span>
+                  </span>
+                </label>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfigTarget(null)}>
@@ -1348,7 +1690,9 @@ export function CbChannelsPanel() {
             <DialogDescription>
               {ehEvolution(confirmDelete)
                 ? t('deleteConfirmEvolutionDesc')
-                : t('deleteConfirmMetaDesc')}
+                : ehInstagram(confirmDelete)
+                  ? t('deleteConfirmInstagramDesc')
+                  : t('deleteConfirmMetaDesc')}
             </DialogDescription>
           </DialogHeader>
 
@@ -1393,14 +1737,16 @@ export function CbChannelsPanel() {
                 número de envio do escritório não pode ser efeito colateral
                 silencioso de um clique em "excluir". Quem sucede vai nomeado. */}
             {confirmDelete?.is_default &&
-              (channels.filter((c) => c.id !== confirmDelete.id).length === 0 ? (
+              (sucessoresDe(confirmDelete).length === 0 ? (
                 <p className="rounded-md border border-destructive/40 p-2 text-xs text-destructive">
                   {/* "Use Reparear" só vale para Evolution — canal Meta não
                       tem sessão de QR e nem desenha esse botão. Mandar o
                       operador procurá-lo seria beco sem saída. */}
                   {ehEvolution(confirmDelete)
                     ? t('deleteLastChannel')
-                    : t('deleteLastChannelMeta')}
+                    : ehInstagram(confirmDelete)
+                      ? t('deleteLastChannelInstagram')
+                      : t('deleteLastChannelMeta')}
                 </p>
               ) : (
                 <div>
@@ -1411,9 +1757,7 @@ export function CbChannelsPanel() {
                     onChange={(e) => setSuccessorId(e.target.value)}
                     className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
                   >
-                    {channels
-                      .filter((c) => c.id !== confirmDelete.id)
-                      .map((c) => (
+                    {sucessoresDe(confirmDelete).map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.label}
                         </option>
@@ -1435,7 +1779,7 @@ export function CbChannelsPanel() {
                 // Última conexão da conta: o servidor recusa (409), então o
                 // botão não deve nem prometer.
                 (confirmDelete?.is_default === true &&
-                  channels.filter((c) => c.id !== confirmDelete.id).length === 0)
+                  sucessoresDe(confirmDelete).length === 0)
               }
               onClick={() => confirmDelete && void handleDelete(confirmDelete)}
             >
@@ -1445,6 +1789,112 @@ export function CbChannelsPanel() {
                 <Trash2 className="mr-2 h-4 w-4" />
               )}
               {t('deleteAction')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Webhook do Instagram: a URL e o verify token que o painel da Meta
+          pede. Abre sozinho depois de conectar, e pelo botão do cartão. */}
+      <Dialog
+        open={igWebhook !== null}
+        onOpenChange={(open) => {
+          if (!open) setIgWebhook(null);
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>
+              {t('instagramWebhookTitle', { label: igWebhook?.label ?? '' })}
+            </DialogTitle>
+            <DialogDescription>{t('instagramWebhookDesc')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <ol className="list-inside list-decimal space-y-1 text-sm text-muted-foreground">
+              <li>{t('instagramWebhookStep_1')}</li>
+              <li>{t('instagramWebhookStep_2')}</li>
+              <li>{t('instagramWebhookStep_3')}</li>
+              <li>{t('instagramWebhookStep_4')}</li>
+            </ol>
+            <div className="space-y-1">
+              <Label>{t('instagramWebhookUrl')}</Label>
+              <div className="flex gap-2">
+                <Input readOnly value={igWebhookUrl} className="font-mono text-xs" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(igWebhookUrl);
+                    toast.success(t('instagramCopied'));
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>{t('instagramVerifyToken')}</Label>
+              <div className="flex gap-2">
+                <Input readOnly value={igWebhook?.verifyToken ?? ''} className="font-mono text-xs" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0"
+                  disabled={!igWebhook?.verifyToken}
+                  onClick={() => {
+                    if (!igWebhook?.verifyToken) return;
+                    void navigator.clipboard.writeText(igWebhook.verifyToken);
+                    toast.success(t('instagramCopied'));
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIgWebhook(null)}>{t('done')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Token novo do Instagram (60 dias). */}
+      <Dialog
+        open={igRenewTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIgRenewTarget(null);
+            setIgRenewToken('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('instagramRenewTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('instagramRenewDesc', { username: igRenewTarget?.ig_username ?? '' })}
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label htmlFor="cb-ig-renew">{t('instagramFieldAccessToken')}</Label>
+            <Input
+              id="cb-ig-renew"
+              type="password"
+              value={igRenewToken}
+              onChange={(e) => setIgRenewToken(e.target.value)}
+              placeholder={t('instagramAccessTokenPlaceholder')}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIgRenewTarget(null)}>
+              {t('cancel')}
+            </Button>
+            <Button onClick={handleRenewInstagram} disabled={renewing || !igRenewToken.trim()}>
+              {renewing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('instagramRenewAction')}
             </Button>
           </DialogFooter>
         </DialogContent>

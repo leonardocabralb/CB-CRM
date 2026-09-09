@@ -12,7 +12,7 @@
 // ============================================================
 
 import type { CbChannel } from './repo';
-import { ehMeta } from './transporte';
+import { ehInstagram, ehMeta } from './transporte';
 
 /**
  * Telefone do canal em forma legível. A Meta (`display_phone_number`) já
@@ -24,6 +24,19 @@ export function formatChannelPhone(raw: string | null | undefined): string | nul
   if (/\D/.test(raw)) return raw;
   const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(raw);
   return m ? `+55 (${m[1]}) ${m[2]}-${m[3]}` : `+${raw}`;
+}
+
+/**
+ * A identidade legível da conexão: o telefone formatado no WhatsApp, o `@`
+ * no Instagram. `null` quando ainda não há nenhuma (Evolution antes do QR).
+ * É o que substitui `formatChannelPhone(display_phone)` em toda tela que
+ * mostra "qual número é este" — no Instagram não há número.
+ */
+export function identidadeDoCanal(
+  c: Pick<CbChannel, 'kind' | 'display_phone' | 'ig_username'>,
+): string | null {
+  if (ehInstagram(c)) return c.ig_username ? `@${c.ig_username}` : null;
+  return formatChannelPhone(c.display_phone);
 }
 
 /** O canal, ou `null` quando o id não é (mais) da conta. */

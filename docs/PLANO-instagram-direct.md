@@ -88,7 +88,7 @@ Branch `feat/instagram-1-transporte`. Sem migration (ver acima).
       portão do CI); `InstagramGlyph` + `IconeDoTransporte` (switch exaustivo:
       transporte sem ícone não compila) no painel, no seletor do fio e no
       indicador de saúde.
-- [ ] **PR aberto e mesclado.**
+- [x] **PR #166 mesclado em 10/09/2026** (deploy de produção junto).
 
 ### Fase 1b — Identidade do contato sem telefone
 Branch `feat/instagram-1b-identidade` (construída em 10/09; PR aberto). Sem
@@ -115,30 +115,41 @@ foi caçado por grep.
       exigindo `phone`.
 
 ### Fase 2 — Conexão: cadastrar o canal na tela
+Branch `feat/instagram-2-conexao` (construída em 10/09; PR aberto).
 - [ ] Migration 989 (acima) — **aplicada em produção antes do merge** (pelo
       operador ou por sessão com o conector autorizado), conferida por leitura.
-- [ ] `CB_CHANNEL_SAFE_COLUMNS` + `CbChannel` com `ig_user_id`, `ig_username`,
-      `ig_token_expires_at`, `ig_human_agent` (nunca o token/segredo).
-- [ ] `POST /api/cb/channels` com `kind: 'instagram'` (rótulo, token, Instagram
-      App Secret, `ig_human_agent`): o servidor chama
-      `GET graph.instagram.com/v26.0/me?fields=user_id,username,name` para
-      **descobrir** `ig_user_id`/`ig_username` (o operador não digita ID),
-      gera `verify_token` aleatório, cifra token e segredo, grava
+      ⚠️ É o ÚNICO bloqueio do merge: `CB_CHANNEL_SAFE_COLUMNS` passa a pedir
+      as colunas novas, e sem elas o GET de canais cai no aviso de
+      "migration ausente" e o painel inteiro trava.
+- [x] `CB_CHANNEL_SAFE_COLUMNS` + `CbChannel` com `ig_user_id`, `ig_username`,
+      `ig_token_expires_at`, `ig_human_agent` (nunca o token/segredo);
+      `CbChannelWithSecrets.ig_app_secret`; `countChannels` conta só WhatsApp
+      (o primeiro WhatsApp nasce padrão mesmo numa conta que conectou o
+      Instagram antes).
+- [x] `POST /api/cb/channels` com `kind: 'instagram'` (rótulo, token, Instagram
+      App Secret, `ig_human_agent`): o servidor chama `/me` para **descobrir**
+      `ig_user_id`/`ig_username`, gera `verify_token` aleatório
+      (`verify-token.ts`, só servidor), cifra token e segredo, grava
       `ig_token_expires_at = now()+60d`, `status='connected'`, **nunca
-      `is_default`**.
-- [ ] Resposta e cartão mostram a **URL de callback**
-      (`/api/cb/instagram/webhook`) e o verify token para o operador colar no
-      painel da Meta (passo 3 do caso de uso) — e a instrução de ligar a
-      *Assinatura do webhook* da conta lá.
-- [ ] `PATCH` allowlist: `ig_human_agent`; `DELETE` já limpa acervo/agendadas.
-- [ ] `cb-channels-panel.tsx`: `AddStep = 'choose'|'evolution'|'meta'|'instagram'`,
-      formulário, cartão (username, validade do token, botão **Renovar token**
-      que recebe um token novo colado), textos de exclusão próprios.
-- [ ] `health.ts`: `GET /me` com o token, com cache TTL, → `connected`/`disconnected`
-      + `last_error` (token expirado aparece na tela, não no log).
-- [ ] `src/lib/instagram/graph.ts`: cliente mínimo (`me`, `perfil(igsid)`,
-      `enviar`, `refresh`), erros tipados, **token nunca em URL** (só header),
-      **mensagens de erro da Meta sem o token** (`semSegredo`, lição do Meta Ads).
+      `is_default`**; 23505 na MESMA conta = recadastro (token/segredo novos,
+      verify token preservado); em outra conta = 409.
+- [x] `GET/POST /api/cb/channels/[id]/instagram`: o verify token em claro para
+      o painel da Meta (fica cifrado fora do SAFE_COLUMNS) e o token novo
+      colado — conferido no `/me` como sendo da MESMA conta antes de gravar.
+- [x] Diálogo "Webhook do Instagram" (URL de callback + verify token, com
+      copiar), que abre sozinho depois de conectar e pelo botão do cartão; o
+      texto diz para ligar a *Assinatura do webhook* da conta e publicar o app.
+- [x] `PATCH` allowlist: `ig_human_agent`; `DELETE` já limpa acervo/agendadas.
+- [x] `cb-channels-panel.tsx`: terceiro cartão em "Conectar", formulário
+      (token e segredo com olho, Human Agent com aviso), `@username` no lugar
+      do telefone (`identidadeDoCanal`, também no seletor de canal), validade
+      do token (âmbar a 10 dias, vermelho vencido), botão **Renovar token**,
+      textos de exclusão próprios, "Tornar padrão" escondido.
+- [x] `health.ts`: `/me` com o token, com o cache TTL da Meta → verde/vermelho.
+- [x] `src/lib/instagram/graph.ts`: cliente mínimo (`me` por enquanto — os
+      outros métodos entram com as fases que os usam), erros tipados, **token
+      nunca em URL** (só header), **mensagens da Meta sem o token**
+      (`semSegredo`), host preso a `graph.instagram.com`.
 
 ### Fase 3 — Entrada: a DM vira mensagem na caixa
 - [ ] `src/lib/instagram/webhook.ts` (puro, testado): parse do payload →

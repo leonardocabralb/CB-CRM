@@ -134,3 +134,25 @@ describe('comCache — single-flight', () => {
     expect(chamadas).toBe(2);
   });
 });
+
+describe('estadoDaFalhaDoInstagram — rede fora não é queda', () => {
+  it('tempo esgotado ou host fora = "não sei" (null), nunca "caiu"', async () => {
+    const { estadoDaFalhaDoInstagram } = await import('./health');
+    const { InstagramApiError } = await import('@/lib/instagram/graph');
+    expect(estadoDaFalhaDoInstagram(new InstagramApiError('rede', 'timeout'))).toBeNull();
+    // Limite de chamadas e 5xx da Meta também não dizem nada sobre o token
+    // (revisão do PR #167).
+    expect(estadoDaFalhaDoInstagram(new InstagramApiError('limite', 'x', 429))).toBeNull();
+    expect(estadoDaFalhaDoInstagram(new InstagramApiError('meta_error', 'x', 503))).toBeNull();
+  });
+
+  it('resposta da Meta (token inválido, sem permissão, outro erro) = caiu', async () => {
+    const { estadoDaFalhaDoInstagram } = await import('./health');
+    const { InstagramApiError } = await import('@/lib/instagram/graph');
+    expect(estadoDaFalhaDoInstagram(new InstagramApiError('token_invalido', 'x', 400, 190))).toBe('close');
+    expect(estadoDaFalhaDoInstagram(new InstagramApiError('sem_permissao', 'x', 403))).toBe('close');
+    expect(estadoDaFalhaDoInstagram(new InstagramApiError('meta_error', 'x', 400))).toBe('close');
+    // Erro que não é da API (bug nosso, decrypt falhou): melhor acusar do que esconder.
+    expect(estadoDaFalhaDoInstagram(new Error('boom'))).toBe('close');
+  });
+});

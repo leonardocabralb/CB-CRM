@@ -30,7 +30,8 @@ export const CB_CHANNEL_SAFE_COLUMNS =
   'id, account_id, kind, label, display_phone, is_default, status, ' +
   'connected_at, last_error, phone_number_id, waba_id, server_url, ' +
   'instance_name, default_pipeline_id, default_stage_id, groups_enabled, ' +
-  'radar_enabled, created_at, updated_at';
+  'radar_enabled, ig_user_id, ig_username, ig_token_expires_at, ' +
+  'ig_human_agent, created_at, updated_at';
 
 /** Canal como o client o enxerga. */
 export interface CbChannel {
@@ -73,6 +74,20 @@ export interface CbChannel {
    * "escopo vazio = todos".
    */
   radar_enabled: boolean;
+  /**
+   * Instagram (989). `ig_user_id` é o IG user id da conta profissional — o
+   * `entry.id` do webhook; `ig_username` é o @ que a tela mostra no lugar do
+   * telefone. NULL em canal de WhatsApp.
+   */
+  ig_user_id: string | null;
+  ig_username: string | null;
+  /** Quando o token de 60 dias do Instagram vence (o cron renova antes). */
+  ig_token_expires_at: string | null;
+  /**
+   * Instagram: manda a tag HUMAN_AGENT fora das 24h (janela de 7 dias).
+   * Nasce desligado — exige a feature aprovada no painel da Meta (D2).
+   */
+  ig_human_agent: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -84,6 +99,8 @@ export interface CbChannelWithSecrets extends CbChannel {
   access_token: string | null;
   api_key: string | null;
   verify_token: string | null;
+  /** Instagram: o Instagram App Secret CIFRADO — é quem assina o webhook. */
+  ig_app_secret: string | null;
 }
 
 /**
@@ -127,7 +144,13 @@ export async function getChannelWithSecrets(
   return (data as CbChannelWithSecrets) ?? null;
 }
 
-/** Quantos canais a conta já tem (para decidir se o novo é o padrão). */
+/**
+ * Quantos canais de WHATSAPP a conta já tem — é o que decide se o novo é o
+ * padrão. O Instagram fica fora da conta de propósito: o padrão é o número
+ * por onde as conversas sem canal respondem e o que o espelho
+ * `whatsapp_config` copia. Numa conta que conectou o Instagram primeiro, o
+ * primeiro WhatsApp ainda precisa nascer padrão.
+ */
 export async function countChannels(
   db: SupabaseClient,
   accountId: string,
@@ -135,7 +158,8 @@ export async function countChannels(
   const { count, error } = await db
     .from('cb_channels')
     .select('id', { count: 'exact', head: true })
-    .eq('account_id', accountId);
+    .eq('account_id', accountId)
+    .in('kind', ['meta', 'evolution']);
 
   if (error) throw new Error(`Falha ao contar canais: ${error.message}`);
   return count ?? 0;

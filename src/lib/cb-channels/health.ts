@@ -29,7 +29,9 @@ import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { ehUrlAlcancavel } from './webhook-url';
 import type { CbChannelStatus, CbChannelKind } from './repo';
-import { ehEvolution, ehMeta } from './transporte';
+import { ehEvolution, ehInstagram, ehMeta } from './transporte';
+import { identidadeDoCanal } from './display';
+import { InstagramApiError, criarClienteInstagram } from '@/lib/instagram/graph';
 
 /** Cor do glifo. `unknown` = configuração incompleta, nem dá para sondar. */
 export type HealthTone = 'ok' | 'warn' | 'down' | 'unknown';
@@ -174,6 +176,22 @@ export function toneFor(e: EntradaDeCor): { tone: HealthTone; detail: string | n
   return { tone: 'ok', detail: null };
 }
 
+/**
+ * O que uma FALHA do `/me` do Instagram diz sobre o canal. Só a RESPOSTA da
+ * Meta prova queda (token vencido/revogado, sem permissão). Tempo esgotado ou
+ * rede fora é "não sei": fica `null`, e o tom vem do frescor do último
+ * estado gravado — senão um blip de rede gravava `disconnected` com carimbo
+ * novo, que é o verde mentiroso ao contrário (Codex, PR #167).
+ */
+export function estadoDaFalhaDoInstagram(err: unknown): 'close' | null {
+  if (!(err instanceof InstagramApiError)) return 'close';
+  // Rede fora, limite de chamadas (429) e 5xx da Meta são "não sei" — o
+  // token pode estar perfeito. Só 4xx com resposta (190, permissão) é queda.
+  if (err.codigo === 'rede' || err.codigo === 'limite') return null;
+  if (err.status !== null && err.status >= 500) return null;
+  return 'close';
+}
+
 /** O pior tom de um conjunto — é o que o glifo colapsado mostra. */
 export function piorTom(tons: HealthTone[]): HealthTone {
   const ordem: HealthTone[] = ['down', 'warn', 'unknown', 'ok'];
@@ -246,6 +264,7 @@ interface LinhaDeCanal {
   kind: CbChannelKind;
   label: string;
   display_phone: string | null;
+  ig_username: string | null;
   is_default: boolean;
   status: CbChannelStatus;
   connected_at: string | null;
@@ -255,6 +274,7 @@ interface LinhaDeCanal {
   server_url: string | null;
   instance_name: string | null;
   access_token: string | null;
+  ig_user_id: string | null;
 }
 
 export async function probeChannels(
@@ -266,7 +286,7 @@ export async function probeChannels(
     .select(
       'id, kind, label, display_phone, is_default, status, connected_at, ' +
         'last_error, last_checked_at, phone_number_id, server_url, ' +
-        'instance_name, access_token',
+        'instance_name, access_token, ig_user_id, ig_username',
     )
     .eq('account_id', accountId)
     .order('is_default', { ascending: false })
@@ -309,8 +329,8 @@ export async function probeChannels(
     let webhookOk: boolean | null = null;
     let incompleto = false;
 
-    // Instagram ainda não é conferido (a saúde por `/me` chega na Fase 2 do
-    // plano): nenhum ramo abaixo casa, e fica o status gravado no canal.
+    // Três transportes, três sondas: Evolution (instância + webhook), Meta
+    // (verify do número) e Instagram (`/me` com o token).
     if (ehEvolution(c)) {
       if (!c.server_url || !c.instance_name) {
         incompleto = true;
@@ -355,6 +375,26 @@ export async function probeChannels(
           estadoVivo = 'close';
         }
       }
+    } else if (ehInstagram(c)) {
+      // O `/me` responde 200 enquanto o token vale e 190 quando venceu ou
+      // foi revogado — é a mesma pergunta que a Meta responde com o verify.
+      if (!c.ig_user_id || !c.access_token) {
+        incompleto = true;
+      } else {
+        try {
+          await comCache(`ig:${c.id}`, TTL_META_MS, async () => {
+            await criarClienteInstagram(decrypt(c.access_token!)).me();
+            return true;
+          });
+          estadoVivo = 'open';
+        } catch (err) {
+          console.warn(
+            '[health] canal Instagram não validou:',
+            err instanceof Error ? err.message : err,
+          );
+          estadoVivo = estadoDaFalhaDoInstagram(err);
+        }
+      }
     }
 
     const { tone, detail } = toneFor({
@@ -389,7 +429,9 @@ export async function probeChannels(
       id: c.id,
       label: c.label,
       kind: c.kind,
-      phone: c.display_phone,
+      // No Instagram é o `@` — `formatChannelPhone` devolve texto com
+      // não-dígito como veio, então o popover mostra o @ sem saber que é.
+      phone: identidadeDoCanal(c),
       isDefault: c.is_default,
       tone,
       status: houveResposta ? novoStatus : c.status,

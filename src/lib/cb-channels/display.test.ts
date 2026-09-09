@@ -174,3 +174,26 @@ describe('channelsUsingPipeline / channelsUsingStage', () => {
     expect(channelsUsingStage(canais, 'e-lead').map((c) => c.id)).toEqual(['trabalhista']);
   });
 });
+
+describe('identidadeDoCanal', () => {
+  it('WhatsApp mostra o telefone formatado; Instagram, o @', async () => {
+    const { identidadeDoCanal } = await import('./display');
+    expect(
+      identidadeDoCanal({ kind: 'evolution', display_phone: '5583988745316', ig_username: null }),
+    ).toBe('+55 (83) 98874-5316');
+    expect(
+      identidadeDoCanal({ kind: 'meta', display_phone: '+55 83 9887-5316', ig_username: null }),
+    ).toBe('+55 83 9887-5316');
+    expect(
+      identidadeDoCanal({ kind: 'instagram', display_phone: null, ig_username: 'cbadv.bancario' }),
+    ).toBe('@cbadv.bancario');
+  });
+
+  it('sem identidade ainda, devolve null nos dois transportes', async () => {
+    const { identidadeDoCanal } = await import('./display');
+    expect(identidadeDoCanal({ kind: 'evolution', display_phone: null, ig_username: null })).toBeNull();
+    // Instagram sem @ não existe na prática (o /me sempre traz), mas o tipo
+    // permite — e um "@null" na tela seria pior que o travessão.
+    expect(identidadeDoCanal({ kind: 'instagram', display_phone: null, ig_username: null })).toBeNull();
+  });
+});
