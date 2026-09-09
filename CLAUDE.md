@@ -3071,12 +3071,25 @@ novo:
   com `"Bancário"` criava uma SEGUNDA etiqueta, sem erro nem aviso. Decisão
   do operador em 09/09/2026: uma régua só.
   ⚠️ O TS usa `\p{Mn}`, nunca `\p{Diacritic}` — a mesma armadilha de
-  `semAcento()`. E ele colapsa MAIS que o `translate` do SQL, de propósito:
-  a folga cai para o lado seguro (o código acha "é a mesma" e não tenta
-  criar). O contrário — SQL colapsando mais — faria o código pedir etiqueta
-  nova, levar 23505 e ela sumir em silêncio. Há teste lendo o mapa DO
-  PRÓPRIO SQL e conferindo par a par contra o TS
-  (`supabase/migrations/chave-de-tag-casa-com-o-ts.test.ts`).
+  `semAcento()`.
+  ⚠️⚠️ **Os DOIS lados normalizam para NFD ANTES de apagar o sinal, e isso
+  é a 984.** "Bancário" tem duas formas Unicode canonicamente equivalentes:
+  a precomposta (`á` = U+00E1) e a DECOMPOSTA (`a` + U+0301), que sai de
+  exportação feita no macOS e de vários geradores de CSV. A 983 normalizava
+  o SQL com um `translate` de acentos PRECOMPOSTOS: medido, ela devolvia
+  `bancario` para um e `bancário` para o outro, e o índice único deixava as
+  duas entrarem. O furo era pior que uma duplicata no catálogo — com as duas
+  inserções concorrentes, cada requisição podia reler antes do commit da
+  outra, aplicar ids DIFERENTES ao contato e disparar `tag_added` duas vezes
+  (achado do Codex no PR #151).
+  ⚠️ O intervalo `[\u0300-\u036f]` é escrito por ESCAPE no arquivo, nunca
+  com o caractere combinante literal — literal é invisível para quem lê e
+  some numa cópia descuidada (aconteceu ao escrever a própria 984). Há teste
+  cobrando a forma (`supabase/migrations/chave-de-tag-casa-com-o-ts.test.ts`).
+  ⚠️ O TS ainda colapsa um pouco mais que o SQL — `\p{Mn}` alcança sinal
+  combinante fora daquele bloco. A folga cai para o lado seguro: o código
+  acha "é a mesma" e não tenta criar. O contrário — SQL colapsando mais —
+  faria o código pedir etiqueta nova, levar 23505 e ela sumir em silêncio.
 - ⚠️⚠️ **A criação é `upsert` com `ON CONFLICT DO NOTHING` + RELEITURA,
   nunca ler-então-inserir**, e mora só em `resolveImportTagIds` para as três
   portas herdarem. `tags` não tinha UNIQUE em `name`: duas requisições
@@ -3380,6 +3393,13 @@ que faltava. `mcp-server/` fica fora (tem `.env.example` e doc próprios).
     para um id morto, parando de casar EM SILÊNCIO. Aplicada em 2026-09-09
     via conector, ANTES do merge; medido antes: zero duplicatas nesta
     instalação, então o desempate foi no-op aqui.
+  - **984_cb_chave_de_tag_normalizada** — recria `tags.name_key` com
+    `normalize(..., NFD)` + apagar `[\u0300-\u036f]`, no lugar do
+    `translate` de acentos precompostos da 983. Sem isso a forma DECOMPOSTA
+    de um nome acentuado gerava outra chave e o índice único deixava a
+    duplicata entrar. Aplicada em 2026-09-09 via conector, ANTES do merge;
+    conferido: precomposta e decomposta geram a mesma chave, a 2ª inserção é
+    barrada pelo índice, e zero colisões novas nesta instalação.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
