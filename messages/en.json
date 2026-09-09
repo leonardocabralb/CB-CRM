@@ -172,6 +172,7 @@
       "groupNoName": "Unnamed group",
       "searchPlaceholder": "Search name, number or message...",
       "filterUnread": "Unread",
+      "filterAwaiting": "Awaiting reply",
       "filterOpen": "Open",
       "filterClosed": "Closed",
       "tags": "Tags",

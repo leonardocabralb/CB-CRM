@@ -119,6 +119,7 @@ export function lerFiltroSalvo(bruto: unknown): FiltrosDoInbox {
     etapaId: textoOuNulo(o.etapaId),
     favoritas: o.favoritas === true,
     naoLidas: o.naoLidas === true,
+    emAtraso: o.emAtraso === true,
   };
 }
 
@@ -143,6 +144,7 @@ export function escreverFiltroSalvo(f: FiltrosDoInbox): Record<string, unknown> 
     etapaId: f.etapaId,
     favoritas: f.favoritas,
     naoLidas: f.naoLidas,
+    emAtraso: f.emAtraso,
   };
 }
 
@@ -191,6 +193,7 @@ export function mesmoFiltro(a: FiltrosDoInbox, b: FiltrosDoInbox): boolean {
     a.etapaId === b.etapaId &&
     a.favoritas === b.favoritas &&
     a.naoLidas === b.naoLidas &&
+    a.emAtraso === b.emAtraso &&
     etiquetasIguais &&
     (!modoImporta || a.modoDeEtiqueta === b.modoDeEtiqueta)
   );
@@ -219,6 +222,7 @@ export type ChaveDeRotulo =
   | "typeDirect"
   | "typeGroups"
   | "filterUnread"
+  | "filterAwaiting"
   | "favorites"
   | "channelFilter"
   | "assigneeNone"
@@ -427,6 +431,17 @@ export function descreverFiltro(
       chave: "favoritas",
       rotulo: { fonte: "i18n", chave: "favorites" },
       limpar: { favoritas: false },
+    });
+  }
+
+  // ⚠️ Não passa por `limparOrfaos`, como favoritas e não lidas: não é
+  // referência a linha nenhuma do banco, é uma pergunta sobre o relógio.
+  // "Ninguém em atraso agora" é uma resposta VERDADEIRA, não um id morto.
+  if (f.emAtraso) {
+    pedacos.push({
+      chave: "emAtraso",
+      rotulo: { fonte: "i18n", chave: "filterAwaiting" },
+      limpar: { emAtraso: false },
     });
   }
 

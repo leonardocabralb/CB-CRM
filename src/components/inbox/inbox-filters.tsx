@@ -23,7 +23,14 @@
 // ============================================================
 
 import { useMemo, useState } from "react";
-import { ChevronDown, MailOpen, SlidersHorizontal, Star, X } from "lucide-react";
+import {
+  AlarmClock,
+  ChevronDown,
+  MailOpen,
+  SlidersHorizontal,
+  Star,
+  X,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import {
@@ -285,6 +292,27 @@ export function InboxFilters({
             className={chipDaBarra(filtros.naoLidas)}
           >
             <MailOpen />
+          </button>
+          {/* "Em atraso" (pedido do operador, 2026-09-09). Fica na barra, e
+              não no painel, porque é a pergunta da manhã — quem está
+              esperando resposta agora — e porque o alerta que ele recorta já
+              está desenhado na linha ao lado.
+              ⚠️ MESMO ícone e MESMA cor do selo da linha: o chip é o
+              interruptor daquele selo, e um par ícone/cor diferente faria
+              parecer outra coisa. Âmbar como a estrela, e não é colisão: o
+              selo nasce âmbar (vermelho só depois dos 30 min) e os ícones não
+              se confundem.
+              ⚠️ Ele NÃO substitui "Não lidas" nem depende dela — quem espera
+              há 10 minutos costuma ter a conversa já aberta por alguém. */}
+          <button
+            type="button"
+            onClick={() => mexer({ emAtraso: !filtros.emAtraso })}
+            aria-pressed={filtros.emAtraso}
+            aria-label={t("filterAwaiting")}
+            title={t("filterAwaiting")}
+            className={chipDaBarra(filtros.emAtraso, "amber")}
+          >
+            <AlarmClock />
           </button>
 
           <button

@@ -78,6 +78,9 @@ function grupo(patch: Partial<Conversation> = {}): Conversation {
   });
 }
 
+/** Um instante fixo, para o recorte de atraso não depender do relógio real. */
+const AGORA = Date.parse("2026-09-09T12:00:00.000Z");
+
 const ctx = (patch: Partial<ContextoDosFiltros> = {}): ContextoDosFiltros => ({
   favoritas: new Set<string>(),
   etapaPorContato: new Map<string, Set<string>>(),
@@ -85,6 +88,7 @@ const ctx = (patch: Partial<ContextoDosFiltros> = {}): ContextoDosFiltros => ({
   busca: "",
   achadasNoTexto: new Set<string>(),
   recorteDeEtapaConfiavel: true,
+  agoraMs: AGORA,
   ...patch,
 });
 
@@ -729,6 +733,74 @@ describe("casaComASituacao — Abertas esconde encerrada; Encerradas mostra só 
       ctx({ busca: "bruno" }),
     );
     expect(favoritas).toHaveLength(0);
+  });
+});
+
+// ============================================================
+// Recorte "em atraso" (pedido do operador, 2026-09-09).
+//
+// A régua é a MESMA do selo da linha (`atrasoDeResposta`): o que estes testes
+// fixam é que ela vale aqui sem cópia e que o recorte SOMA com o resto — em
+// especial que ele NÃO exige mensagem não lida, que foi o pedido escrito.
+// ============================================================
+describe("recorte por atraso de resposta", () => {
+  const esperando = (minutos: number, patch: Partial<Conversation> = {}) =>
+    conversa({
+      id: `esp-${minutos}`,
+      aguardando_desde: new Date(AGORA - minutos * 60_000).toISOString(),
+      ...patch,
+    });
+
+  it("mantém só quem já passou dos 10 minutos", () => {
+    const saida = aplicarFiltros(
+      [esperando(3), esperando(11), conversa({ id: "sem-espera" })],
+      { ...FILTROS_VAZIOS, emAtraso: true },
+      ctx(),
+    );
+    expect(saida.map((c) => c.id)).toEqual(["esp-11"]);
+  });
+
+  it("não exige mensagem não lida — é o ponto do pedido", () => {
+    // A conversa já foi ABERTA por alguém (`unread_count` zerado) e mesmo
+    // assim ninguém respondeu: é justamente quem "Não lidas" esconderia.
+    const lida = esperando(40, { id: "lida", unread_count: 0 });
+    const saida = aplicarFiltros([lida], { ...FILTROS_VAZIOS, emAtraso: true }, ctx());
+    expect(saida.map((c) => c.id)).toEqual(["lida"]);
+  });
+
+  it("soma com os outros filtros (E lógico), como todo o resto", () => {
+    const comAtraso = esperando(30, { id: "com" });
+    const outra = esperando(30, { id: "outra", assigned_agent_id: "u2" });
+    const saida = aplicarFiltros(
+      [comAtraso, outra],
+      { ...FILTROS_VAZIOS, emAtraso: true, responsavelId: "u2" },
+      ctx(),
+    );
+    expect(saida.map((c) => c.id)).toEqual(["outra"]);
+  });
+
+  it("grupo e encerrada nunca entram — o selo também não acende neles", () => {
+    const encerrada = esperando(60, { id: "fechada", status: "closed" });
+    const emGrupo = grupo({
+      id: "grp",
+      aguardando_desde: new Date(AGORA - 60 * 60_000).toISOString(),
+    });
+    const saida = aplicarFiltros(
+      [encerrada, emGrupo],
+      { ...FILTROS_VAZIOS, emAtraso: true },
+      // Aba Encerradas, para a encerrada não ser barrada antes por situação.
+      ctx(),
+    );
+    expect(saida).toHaveLength(0);
+  });
+
+  it("desligado, não recorta nada", () => {
+    const lista = [esperando(1), esperando(99)];
+    expect(aplicarFiltros(lista, FILTROS_VAZIOS, ctx())).toHaveLength(2);
+  });
+
+  it("conta no distintivo", () => {
+    expect(contarFiltrosAtivos({ ...FILTROS_VAZIOS, emAtraso: true })).toBe(1);
   });
 });
 

@@ -22,6 +22,7 @@
 // um filtro enxergando 64 conversas e outro enxergando a página carregada.
 // ============================================================
 
+import { atrasoDeResposta } from "@/lib/inbox/atraso";
 import { semAcento } from "@/lib/inbox/busca-em-mensagens";
 import {
   matchesContactFilters,
@@ -119,6 +120,24 @@ export interface FiltrosDoInbox {
    * encerrada junto. Agora soma como todo o resto.
    */
   naoLidas: boolean;
+  /**
+   * Só as que estão com o alerta de atraso aceso (pedido do operador,
+   * 2026-09-09: "filtrar todos os clientes que estejam marcados como
+   * atraso").
+   *
+   * ⚠️ **É a MESMA régua do selo da linha** (`atrasoDeResposta`, 10 min sobre
+   * `conversations.aguardando_desde`), e tem de continuar sendo: um recorte
+   * com régua própria acenderia o botão sobre linhas sem selo, e o operador
+   * leria isso como selo faltando, não como dois números diferentes.
+   *
+   * ⚠️ **É INDEPENDENTE de lida/não lida** — foi o que o operador pediu por
+   * escrito. Quem espera resposta há 10 minutos costuma estar com a conversa
+   * já ABERTA por alguém (abrir zera `unread_count` e não responde nada), que
+   * é justamente o caso que "Não lidas" esconde.
+   *
+   * ⚠️ Depende do RELÓGIO, não só da linha: ver `ContextoDosFiltros.agoraMs`.
+   */
+  emAtraso: boolean;
 }
 
 export const FILTROS_VAZIOS: FiltrosDoInbox = {
@@ -133,6 +152,7 @@ export const FILTROS_VAZIOS: FiltrosDoInbox = {
   etapaId: null,
   favoritas: false,
   naoLidas: false,
+  emAtraso: false,
 };
 
 /**
@@ -168,6 +188,7 @@ export function contarFiltrosAtivos(f: FiltrosDoInbox): number {
   if (f.etapaId || f.funilId) n++;
   if (f.favoritas) n++;
   if (f.naoLidas) n++;
+  if (f.emAtraso) n++;
   return n;
 }
 
@@ -289,6 +310,19 @@ export interface ContextoDosFiltros {
    * errado, no máximo ainda não recorta (a tela mostra spinner/aviso).
    */
   recorteDeEtapaConfiavel: boolean;
+  /**
+   * O relógio do recorte de atraso, em milissegundos.
+   *
+   * ⚠️ Obrigatório pela MESMA razão de `achadasNoTexto` e
+   * `recorteDeEtapaConfiavel`: o atraso é a única pergunta desta máquina que
+   * o dado sozinho não responde — a linha não muda no banco quando os 10
+   * minutos vencem, quem muda é o tempo. Esquecê-lo não daria erro: o
+   * recorte responderia "nenhuma conversa" sobre uma caixa cheia de gente
+   * esperando, com cara de resposta certa. Campo exigido faz o compilador
+   * cobrar de quem consumir `aplicarFiltros` em outra tela — e lembrar que
+   * aquela tela precisa de um tique de um minuto, senão o recorte congela.
+   */
+  agoraMs: number;
 }
 
 /**
@@ -505,6 +539,11 @@ export function aplicarFiltros(
     if (!casaComOResponsavel(c, f.responsavelId)) return false;
     if (f.favoritas && !ctx.favoritas.has(c.id)) return false;
     if (f.naoLidas && c.unread_count <= 0) return false;
+    // ⚠️ A MESMA função que acende o selo da linha, e não uma cópia da régua:
+    // encerrada e grupo já saem de lá com `null`, então o recorte concorda
+    // com o que está desenhado na tela por construção. Na aba Encerradas ele
+    // devolve vazio de propósito — lá não há ninguém esperando resposta.
+    if (f.emAtraso && !atrasoDeResposta(c, ctx.agoraMs)) return false;
     // Ver `recorteDeEtapaConfiavel`: sem os dados por trás, o recorte de
     // funil/etapa é neutralizado — nunca aplicado sobre um mapa incompleto.
     // Os DOIS níveis caem juntos: o mapa que falta é o mesmo.
