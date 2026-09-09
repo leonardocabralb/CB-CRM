@@ -185,28 +185,37 @@ export async function POST(request: Request) {
           mid,
           timestampMs: null,
         });
-      // Perfil: na criação, sem @, ou a cada 30 dias (`avatar_checked_at`,
-      // a régua da foto do WhatsApp) — nunca a cada mensagem.
+      // Perfil: na criação e a cada 30 dias (`avatar_checked_at`, a régua da
+      // foto do WhatsApp) — nunca a cada mensagem. Um perfil que veio SEM @
+      // também respeita a régua: `!instagram_username` aqui furava o portão
+      // e custava uma chamada por mensagem (Codex, PR #178). E TUDO dentro
+      // do try: o `decrypt` do token fora dele derrubava o roteamento e o
+      // webhook depois de a mensagem já estar gravada.
       const enriquecer: Enriquecer = async (
         contato: ContatoDoInstagram,
         igsid: string
       ) => {
         if (!rota.accessTokenCifrado) return null;
         const agora = Date.now();
-        const precisa =
-          contato.wasCreated ||
-          !contato.instagram_username ||
-          precisaConferirFoto(contato, agora);
-        if (!precisa) return null;
-        return completarPerfilDoContato({
-          db,
-          accountId: rota.accountId,
-          contactId: contato.id,
-          igsid,
-          token: decrypt(rota.accessTokenCifrado),
-          nomeAtual: contato.name,
-          agoraMs: agora,
-        });
+        if (!contato.wasCreated && !precisaConferirFoto(contato, agora))
+          return null;
+        try {
+          return await completarPerfilDoContato({
+            db,
+            accountId: rota.accountId,
+            contactId: contato.id,
+            igsid,
+            token: decrypt(rota.accessTokenCifrado),
+            nomeAtual: contato.name,
+            agoraMs: agora,
+          });
+        } catch (err) {
+          console.error(
+            `${TAG} enriquecer perfil falhou:`,
+            err instanceof Error ? err.message : err
+          );
+          return null;
+        }
       };
 
       for (const ev of lista) {
