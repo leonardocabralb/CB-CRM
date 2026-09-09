@@ -41,9 +41,10 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useCan } from '@/hooks/use-can';
-import type {
-  GrupoDeEsperas,
-  RoboAtivo,
+import {
+  avisarExecucoesMudaram,
+  type GrupoDeEsperas,
+  type RoboAtivo,
 } from '@/hooks/use-execucoes-do-contato';
 import type { ItemDeExecucao } from '@/lib/execucoes/desfecho';
 import type { ItemDaLinha } from '@/lib/execucoes/linha-do-tempo';
@@ -128,6 +129,12 @@ export function AbaAutomacoes({
         toast.error(t('erroParar'));
         return;
       }
+      // ⚠️ Avisa QUEM ESTÁ FORA da conversa (985): a marca de "automação
+      // agendada" na linha da lista e no card do funil só recarrega por este
+      // evento. Sem ele, o raio seguia aceso depois de o operador parar a
+      // automação — a três centímetros do toast dizendo que parou (achado da
+      // revisão, 09/09).
+      avisarExecucoesMudaram();
       // 0 não é falha: a lista é uma foto de segundos atrás e a espera pode
       // ter acordado (ou o robô terminado) entre a carga e o clique.
       const efetivadas = data.paradas ?? data.canceladas ?? 0;
@@ -246,31 +253,34 @@ export function AbaAutomacoes({
     );
   }
 
-  // Falha de carga NUNCA vira "nada em execução": afirmar ausência com a
-  // consulta quebrada é o modo de falha que este projeto mais persegue.
-  if (erro) {
-    return (
-      <div className="py-8 text-center">
-        <p className="text-muted-foreground text-sm">{t('erroCarregar')}</p>
-        <Button size="sm" variant="outline" className="mt-3" onClick={recarregar}>
-          <RefreshCw className="size-3.5" />
-          {t('tentarDeNovo')}
-        </Button>
-      </div>
-    );
-  }
+
 
   const agora = Date.now();
   const nadaEmCurso = robos.length === 0 && esperas.length === 0;
 
   return (
     <div className="space-y-4">
+      {/* ⚠️ Falha de carga NUNCA vira "nada em execução" — afirmar ausência com
+          a consulta quebrada é o modo de falha que este projeto mais persegue.
+          Mas ela também não pode DEVOLVER a aba inteira: as duas fontes são
+          independentes de propósito (uma é rota, a outra é RLS direto), e a
+          falha de uma escondia o histórico da outra, que já estava carregado
+          em memória (achado da revisão, 09/09). */}
+      {erro && (
+        <div className="py-4 text-center">
+          <p className="text-muted-foreground text-sm">{t('erroCarregar')}</p>
+          <Button size="sm" variant="outline" className="mt-3" onClick={recarregar}>
+            <RefreshCw className="size-3.5" />
+            {t('tentarDeNovo')}
+          </Button>
+        </div>
+      )}
       {/* ⚠️ O vazio de "em execução" NÃO devolve mais a aba inteira. Ele fazia
           `return` antes da seção "Já rodou" — e o caso mais comum é
           exatamente esse: nada rodando agora, várias execuções terminadas.
           Medido no preview em 09/09: numa conversa sem espera pendente, o
           histórico não aparecia em tela nenhuma. */}
-      {nadaEmCurso && (
+      {!erro && nadaEmCurso && (
         <div className="py-6 text-center">
           <Zap className="text-muted-foreground/40 mx-auto h-8 w-8" />
           <p className="text-muted-foreground mt-2 text-sm">{t('nadaRodando')}</p>
@@ -477,7 +487,9 @@ function LinhaDoHistorico({
         <p className="text-muted-foreground text-[11px]">
           {relativoAoInstante(item.quando, agora)}
         </p>
-        {item.desfecho === 'falhou' && item.motivoBruto && (
+        {/* ⚠️ Em barrada isto também aparece: era calculado e nunca exibido
+            (achado da revisão). É na aba que o detalhe mora — no fio, não. */}
+        {item.motivoBruto && (
           <p className="text-muted-foreground/80 mt-0.5 text-[11px] break-words whitespace-pre-wrap">
             {item.motivoBruto}
           </p>

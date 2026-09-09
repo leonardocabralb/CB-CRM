@@ -42,8 +42,15 @@ export async function GET(request: Request) {
     const db = supabaseAdmin()
     const { data, error } = await db
       .from('automation_pending_executions')
-      .select('contact_id, run_at')
+      // ⚠️ `!inner` + `is_active`: desativar a automação NÃO poda a fila (quem
+      // transforma a linha em `cancelled` é o resume, e ele só roda quando o
+      // `run_at` daquela linha VENCE). Sem este recorte, o operador desligava
+      // o follow-up de 90 dias — o freio que a 936 criou exatamente para isso
+      // — e o raio seguia aceso por 90 dias dizendo "9 automações agendadas"
+      // (achado da revisão, 09/09).
+      .select('contact_id, run_at, automations!inner(is_active)')
       .eq('account_id', ctx.accountId)
+      .eq('automations.is_active', true)
       .eq('status', 'pending')
       // Disparo sem contato existe (automação sem alvo) e não tem linha na
       // lista nem card no funil — não há onde pintar marca.

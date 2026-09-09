@@ -205,7 +205,7 @@ export function ConversationList({
   // Quais clientes têm automação AGENDADA (985) — UMA consulta para a lista
   // inteira, não uma por linha. `null` = ainda não sei, e a marca cala: sem a
   // distinção, "não carregou" viraria a afirmação "não tem robô rodando".
-  const { resumo: sinalDeExecucoes } = useSinalDeExecucoes();
+  const { resumo: sinalDeExecucoes } = useSinalDeExecucoes(true, resyncToken);
   // Favoritas são de CADA MEMBRO (migration 924) — o hook já lê só as minhas.
   // `resyncToken` porque `cb_conversation_favorites` não está no realtime:
   // marcar no celular não apareceria nesta aba até recarregar a página.

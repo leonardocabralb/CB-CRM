@@ -171,15 +171,26 @@ describe('itensDoFio — o motivo da falha', () => {
 // ------------------------------------------------------------
 describe.each(['pt-BR.json', 'en.json'])('dicionário %s', (arquivo) => {
   const dic = JSON.parse(readFileSync(`messages/${arquivo}`, 'utf8'))
-  const aviso = dic?.Inbox?.execucoes?.aviso
 
-  it('tem uma chave por desfecho', () => {
-    expect(Object.keys(aviso ?? {}).sort()).toEqual(['barrada', 'concluida', 'falhou'])
-  })
+  // ⚠️ SÃO DOIS blocos de chaves montadas por desfecho, e a primeira versão
+  // deste teste cobria só o do fio. MEDIDO: apagando
+  // `Automations.logs.desfecho.barrada` dos dois dicionários, a suíte inteira,
+  // o `i18n-parity` e o `i18n-chaves-usadas` ficavam VERDES — e a etiqueta da
+  // tela de logs imprimia o caminho da chave cru (achado da revisão, 09/09).
+  const blocos = {
+    'Inbox.execucoes.aviso (o fio)': dic?.Inbox?.execucoes?.aviso,
+    'Automations.logs.desfecho (a tela de logs)': dic?.Automations?.logs?.desfecho,
+  }
 
-  it('nenhuma chave é vazia', () => {
-    for (const [k, v] of Object.entries(aviso ?? {})) {
-      expect(typeof v === 'string' && v.trim().length > 0, `${k} está vazia`).toBe(true)
-    }
-  })
+  for (const [onde, bloco] of Object.entries(blocos)) {
+    it(`${onde}: uma chave por desfecho, nenhuma órfã`, () => {
+      expect(Object.keys(bloco ?? {}).sort()).toEqual(['barrada', 'concluida', 'falhou'])
+    })
+
+    it(`${onde}: nenhuma chave vazia`, () => {
+      for (const [k, v] of Object.entries(bloco ?? {})) {
+        expect(typeof v === 'string' && v.trim().length > 0, `${k} está vazia`).toBe(true)
+      }
+    })
+  }
 })

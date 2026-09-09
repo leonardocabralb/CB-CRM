@@ -145,7 +145,8 @@ interface MessageThreadProps {
    * superfície da ficha abaixo de lg); no desktop reabre a coluna se o
    * operador a tiver fechado.
    */
-  onOpenContactPanel?: () => void;
+  /** `aba` opcional: o cartão de falha pede 'automacoes' (985). */
+  onOpenContactPanel?: (aba?: string) => void;
   /**
    * Increment to force the messages + reactions fetch effects to refire.
    * Parent bumps this on realtime reconnect / tab visibility → visible
@@ -958,7 +959,7 @@ export function MessageThread({
   // declarado mais abaixo): conversa de grupo tem `contact_id` NULO — é o
   // CHECK XOR da 906 —, então não há contato por quem perguntar. E automação
   // não roda em grupo, por garantia estrutural.
-  const { itens: execucoesDoFio } = useExecucoesDoFio(contact?.id);
+  const { itens: execucoesDoFio } = useExecucoesDoFio(contact?.id, resyncToken);
 
   // Anotações internas (migration 918). Chaveadas pela CONVERSA, não pelo
   // contato como a trilha acima — é a única chave que existe em grupo.
@@ -1135,7 +1136,7 @@ export function MessageThread({
       const el = scrollRef.current;
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages, leadEvents, notas]);
+  }, [messages, leadEvents, notas, execucoesDoFio]);
 
   /**
    * Rola até o alvo e o deixa no meio da tela.
@@ -1180,7 +1181,7 @@ export function MessageThread({
     centralizar();
     const quadro = requestAnimationFrame(centralizar);
     return () => cancelAnimationFrame(quadro);
-  }, [alvoId, messages]);
+  }, [alvoId, messages, execucoesDoFio]);
 
 
   /**
@@ -1969,7 +1970,9 @@ export function MessageThread({
           <h2 className="flex min-w-0">
           <button
             type="button"
-            onClick={onOpenContactPanel}
+            // ⚠️ Envolvido: passar a referência direta entregaria o EVENTO de
+            // clique como se fosse o nome da aba.
+            onClick={() => onOpenContactPanel?.()}
             title={t("showContact")}
             className="-m-1 flex min-w-0 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-muted/60 sm:gap-3"
           >
@@ -2303,7 +2306,11 @@ export function MessageThread({
                         <AvisoDeExecucao
                           key={item.chave}
                           item={item.execucao}
-                          aoAbrirDetalhes={onOpenContactPanel}
+                          aoAbrirDetalhes={
+                            onOpenContactPanel
+                              ? () => onOpenContactPanel('automacoes')
+                              : undefined
+                          }
                         />
                       );
                     }

@@ -19,7 +19,19 @@ import { useCallback, useEffect, useState } from "react";
 import { lerResumo, type ResumoDeEsperas } from "@/lib/execucoes/espera-resumida";
 import { EVENTO_EXECUCOES } from "./use-execucoes-do-contato";
 
-export function useSinalDeExecucoes(ativo = true): {
+export function useSinalDeExecucoes(
+  ativo = true,
+  /**
+   * O token de resync de quem monta (a lista o incrementa ao voltar à aba e no
+   * botão atualizar).
+   *
+   * ⚠️ Sem ele a marca só nascia na MONTAGEM: a `ConversationList` fica montada
+   * por horas, então uma automação agendada depois disso não acendia o raio
+   * até um recarregamento — e o inverso também, com o raio aceso o resto do
+   * expediente depois de a fila esvaziar (achado da revisão, 09/09).
+   */
+  resyncToken?: number,
+): {
   resumo: ResumoDeEsperas | null;
   recarregar: () => void;
 } {
@@ -60,7 +72,7 @@ export function useSinalDeExecucoes(ativo = true): {
     return () => {
       cancelado = true;
     };
-  }, [ativo, nonce]);
+  }, [ativo, nonce, resyncToken]);
 
   return { resumo, recarregar };
 }

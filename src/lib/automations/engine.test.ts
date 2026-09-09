@@ -22,6 +22,8 @@ const h = vi.hoisted(() => ({
     upsertCalls: [] as { table: string; payload: unknown }[],
     logInserts: [] as Record<string, unknown>[],
     logUpdates: [] as Record<string, unknown>[],
+    /** Filtros de cada update em `automation_logs` — a cerca de não-regressão. */
+    updateFiltros: [] as [string, string, unknown][][],
     taskInserts: [] as Record<string, unknown>[],
     notifInserts: [] as Record<string, unknown>[],
     // Valores de campo personalizado do contato, como o PostgREST os entrega
@@ -143,6 +145,7 @@ vi.mock("./admin-client", () => {
       }
       if (type === "update") {
         state.logUpdates.push(ops.payload as Record<string, unknown>);
+        state.updateFiltros.push([...ops.filters]);
         return { data: null, error: null };
       }
       return { data: { steps_executed: [], status: "success" }, error: null };
@@ -184,6 +187,10 @@ vi.mock("./admin-client", () => {
       in: (k: string, v: unknown) => (ops.filters.push(["in", k, v]), b),
       // A guarda de `fecharLog` exclui a espera em curso com `.neq('id', …)`.
       neq: (k: string, v: unknown) => (ops.filters.push(["neq", k, v]), b),
+      // `fecharLog` usa `.or('desfecho.is.null,desfecho.neq.falhou')` para
+      // NUNCA REGREDIR um 'falhou' já gravado. O mock só registra: o que os
+      // pinos medem é o payload do update, não o filtro do PostgREST.
+      or: (expr: string) => (ops.filters.push(["or", "expr", expr]), b),
       gte: (k: string, v: unknown) => (ops.recorte.push(["gte", k, v]), b),
       is: (k: string, v: unknown) => (ops.recorte.push(["is", k, v]), b),
       order: () => b,
@@ -254,6 +261,7 @@ beforeEach(() => {
   h.state.upsertCalls = [];
   h.state.logInserts = [];
   h.state.logUpdates = [];
+  h.state.updateFiltros = [];
   h.state.taskInserts = [];
   h.state.notifInserts = [];
   h.state.customValues = [];
@@ -1705,16 +1713,42 @@ describe("desfecho da execução (985)", () => {
     expect(statusGravado()).toBe("failed");
   });
 
-  it("CRÍTICO: espera VIVA impede o fechamento — o follow-up de 30 dias não 'conclui' na 1ª mensagem", async () => {
+  it("CRÍTICO: espera VIVA adia a HORA DE FIM, mas o desfecho é gravado", async () => {
+    // ⚠️ A régua mudou depois da revisão adversarial de 09/09: antes a espera
+    // viva fazia `fecharLog` DESCARTAR o desfecho — e o 'falhou' de um escopo
+    // cujo ramo continuava era perdido, para horas depois o resume daquele
+    // ramo gravar 'concluida' por cima. Hoje o desfecho é gravado sempre; o
+    // que a espera adia é só `finalizado_em`. Como a régua do fio exige os
+    // DOIS, a execução continua não aparecendo como encerrada — sem que o
+    // fato se perca.
     h.state.owned = { id: "c1" };
     h.state.automations = [automacaoSimples()];
     h.state.steps = [passoDeTrabalho("s-tag", 0)];
-    // Sobrou espera pendente deste log (o caso do ramo que continua).
     h.state.esperasVivas = [{ id: "espera-1" }];
 
     await dispara();
 
-    expect(h.state.logUpdates.filter((u) => "desfecho" in u)).toHaveLength(0);
+    const fechamento = desfechoGravado();
+    expect(fechamento?.desfecho).toBe("concluida");
+    expect(fechamento?.finalizado_em).toBeUndefined();
+  });
+
+  it("CRÍTICO: 'falhou' de um escopo NÃO é apagado pelo ramo que conclui depois", async () => {
+    // O cenário que a revisão achou, no nível do que dá para observar aqui:
+    // quando o desfecho não é 'falhou', o update sai com a cerca
+    // `desfecho.is.null,desfecho.neq.falhou` — é ela que impede a regressão
+    // no banco. 'falhou' grava sem cerca, porque é o pior desfecho.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [{ ...passoDeTrabalho("s-ruim", 0), step_type: "add_tag", step_config: { tag_id: "" } }];
+
+    await dispara();
+
+    const semCerca = h.state.updateFiltros.filter((f) =>
+      f.some(([op]) => op === "or"),
+    );
+    expect(desfechoGravado()?.desfecho).toBe("falhou");
+    expect(semCerca).toHaveLength(0);
   });
 });
 
@@ -1771,6 +1805,8 @@ describe("desfecho depois de uma ESPERA (achado do teste ponta a ponta)", () => 
       context: {},
     });
 
-    expect(h.state.logUpdates.filter((u) => "desfecho" in u)).toHaveLength(0);
+    // O desfecho é registrado; a HORA DE FIM é que espera a outra ponta.
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+    expect(desfechoGravado()?.finalizado_em).toBeUndefined();
   });
 });

@@ -12,8 +12,14 @@
 //
 //   concluida → pílula igual à do evento do lead (`LeadEventLine`): cinza,
 //               centralizada, 11px. É informação de fundo.
-//   barrada   → a mesma pílula em âmbar. Não é erro, mas MUDA a leitura:
-//               "a automação não rodou porque o cliente já tinha a etiqueta".
+//   barrada   → a MESMA pílula cinza, com ícone próprio (o desvio). ⚠️ Era
+//               âmbar até a revisão de 09/09, e âmbar estava errado: ramo
+//               vazio é o idioma NORMAL deste builder para escrever uma trava
+//               ("se já tem a etiqueta, não faz nada"), então a cor de atenção
+//               marcava o SUCESSO da trava. Com oito automações no ar, várias
+//               delas travas, o fio de um cliente ativo acumularia uma pílula
+//               âmbar por dia sem nada de errado ter acontecido. A informação
+//               fica (ele pediu para saber); o alarme sai.
 //   falhou    → CARTÃO, alinhado à esquerda como uma mensagem, com o passo
 //               que parou e o caminho para a aba. É o único que interrompe a
 //               leitura, e é o único que precisa.
@@ -27,7 +33,7 @@
 import { AlertTriangle, CheckCircle2, GitBranch } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { cn } from "@/lib/utils";
+import { descreverPasso } from "@/lib/automations/descrever-passo";
 
 import type { ItemDeExecucao } from "@/lib/execucoes/desfecho";
 
@@ -54,6 +60,12 @@ export function AvisoDeExecucao({
   aoAbrirDetalhes?: () => void;
 }) {
   const t = useTranslations("Inbox.execucoes");
+  // ⚠️ O passo sai TRADUZIDO. `passoQueParou` é o `step_type` cru em inglês
+  // (`send_webhook`), e o cartão fica no meio da conversa com o cliente. O
+  // projeto já tem uma tradução por tipo, com teste cobrando uma chave por
+  // tipo — e é `descreverPasso` que sabe normalizar os casos com variante
+  // (`wait` → `wait_hours`), então não se monta `resumo.<step_type>` na mão.
+  const tPasso = useTranslations("Pipelines.automacoes");
   const nome = item.nome ?? t("semNome");
   const texto = t(`aviso.${item.desfecho}` as Parameters<typeof t>[0], { nome });
   const repetido = item.vezes > 1 ? ` ${t("vezes", { vezes: item.vezes })}` : "";
@@ -75,7 +87,14 @@ export function AvisoDeExecucao({
               </p>
               {item.passoQueParou && (
                 <p className="mt-0.5 text-[11px] break-words text-red-700/80 dark:text-red-300/80">
-                  {t("no_passo", { passo: item.passoQueParou })}
+                  {t("no_passo", {
+                    passo: tPasso(
+                      `resumo.${descreverPasso({ step_type: item.passoQueParou }).chave}` as Parameters<
+                        typeof tPasso
+                      >[0],
+                      { alvo: "", quantidade: 0 },
+                    ),
+                  })}
                 </p>
               )}
               <p className="mt-0.5 text-[11px] text-muted-foreground">{hora(item.quando)}</p>
@@ -101,12 +120,7 @@ export function AvisoDeExecucao({
   return (
     <div className="flex justify-center py-1">
       <span
-        className={cn(
-          "inline-flex max-w-[85%] items-center gap-1.5 rounded-full px-3 py-1 text-center text-[11px]",
-          barrada
-            ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-            : "bg-muted/80 text-muted-foreground",
-        )}
+        className="bg-muted/80 text-muted-foreground inline-flex max-w-[85%] items-center gap-1.5 rounded-full px-3 py-1 text-center text-[11px]"
       >
         <Icone className="h-3 w-3 shrink-0" />
         <span className="min-w-0">

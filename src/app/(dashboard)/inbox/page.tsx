@@ -198,7 +198,14 @@ function InboxPageInner() {
   // Abrir a ficha pelo cabeçalho do fio. No desktop também vale (clicar no
   // nome com o painel já aberto é no-op) — o gesto fica idêntico nas duas
   // superfícies.
-  const handleAbrirPainelDoContato = useCallback(() => {
+  /** Aba que o fio pediu (985) — o cartão de falha leva às execuções. */
+  const [abaDoPainel, setAbaDoPainel] = useState<string | null>(null);
+
+  const handleAbrirPainelDoContato = useCallback((aba?: string) => {
+    // ⚠️ Setar a aba ANTES de abrir: no desktop o painel já está aberto e o
+    // `setContactPanelOpen(true)` é no-op — era por isso que "Ver execuções"
+    // não fazia nada no caso mais comum (achado da revisão, 09/09).
+    setAbaDoPainel(aba ?? null);
     if (ehDesktop) {
       setContactPanelOpen(true);
       try {
@@ -1012,6 +1019,8 @@ function InboxPageInner() {
             ) : (
               <ContactSidebar
                 contact={activeContact}
+                abaPedida={abaDoPainel}
+                aoConsumirAba={() => setAbaDoPainel(null)}
                 conversationId={activeConversation?.id ?? null}
                 // O responsável mora no painel desde 03/09 (era no fio).
                 conversation={activeConversation}

@@ -20,16 +20,21 @@
 // aparece. Nada de "limpar num efeito", que o lint do React Compiler recusa e
 // que deixa um render com a resposta errada.
 //
-// ⚠️ SEM realtime: `automation_logs` não está na publicação. Uma falha que
-// aconteça com a conversa aberta e parada na tela só aparece no próximo
-// resync (voltar à aba, reconexão) ou quando o `cb:execucoes-mudaram` avisa.
-// Publicar a tabela seria mexer na publicação do upstream para ganhar
-// segundos num evento raro.
+// ⚠️ SEM realtime: `automation_logs` não está na publicação. Quem traz a
+// execução nova é o `resyncToken` (o botão de atualizar do fio e a volta à
+// aba, exatamente como `useLeadEvents` e `useConversationNotes`) ou o evento
+// global `cb:execucoes-mudaram`. Publicar a tabela seria mexer na publicação
+// do upstream para ganhar segundos num evento raro.
+//
+// ⚠️ Uma versão deste cabeçalho PROMETIA o resync sem o hook receber o token —
+// as deps eram só `[contactId, nonce]`, e apertar "atualizar" não trazia a
+// falha (achado da revisão, 09/09). Nota mentindo é pior que ausência de nota.
 // ============================================================
 
 import { useEffect, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "./use-auth";
 import {
   itensDoFio,
   type ExecucaoEncerrada,
@@ -83,7 +88,12 @@ function mapear(linha: LinhaDeLog): ExecucaoEncerrada {
 
 const SEM_ITENS: ItemDeExecucao[] = [];
 
-export function useExecucoesDoFio(contactId: string | null | undefined): Resultado {
+export function useExecucoesDoFio(
+  contactId: string | null | undefined,
+  /** O mesmo token dos irmãos do fio: volta à aba e botão de atualizar. */
+  resyncToken?: number,
+): Resultado {
+  const { accountId } = useAuth();
   const [dados, setDados] = useState<Dados | null>(null);
   const [nonce, setNonce] = useState(0);
 
@@ -97,16 +107,22 @@ export function useExecucoesDoFio(contactId: string | null | undefined): Resulta
   }, []);
 
   useEffect(() => {
-    if (!contactId) return;
+    if (!contactId || !accountId) return;
     const supabase = createClient();
     let cancelado = false;
 
     void (async () => {
+      // ⚠️ `account_id` explícito mesmo sob RLS: a policy recorta o resultado,
+      // mas não dá bound à coluna LÍDER do índice `(account_id, contact_id,
+      // finalizado_em DESC)` — medido com EXPLAIN em produção, o plano varria
+      // o índice inteiro e ordenava por cima. Com 15 linhas não importa; a
+      // tabela cresce uma linha por execução (achado da revisão).
       const { data, error } = await supabase
         .from("automation_logs")
         .select(
           "id, automation_id, desfecho, finalizado_em, error_message, steps_executed, automations(name)",
         )
+        .eq("account_id", accountId)
         .eq("contact_id", contactId)
         // ⚠️ Só o que TERMINOU. Sem este recorte vêm as execuções em curso, que
         // carregam o `status: 'failed'` semeado no INSERT — e a régua as
@@ -130,7 +146,7 @@ export function useExecucoesDoFio(contactId: string | null | undefined): Resulta
     return () => {
       cancelado = true;
     };
-  }, [contactId, nonce]);
+  }, [accountId, contactId, nonce, resyncToken]);
 
   const atual = dados !== null && dados.contactId === contactId ? dados : null;
 
