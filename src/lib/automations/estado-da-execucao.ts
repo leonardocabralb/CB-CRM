@@ -66,3 +66,56 @@ export function desfechoDoRetorno(
   if (status === 'partial') return null
   return 'concluida'
 }
+
+/**
+ * Os mesmos dois sinais, lidos do REGISTRO PERSISTIDO (`steps_executed`).
+ *
+ * ⚠️⚠️ Existe porque as variáveis do motor vivem numa CHAMADA, e uma execução
+ * com "Aguardar" atravessa várias: quem retoma a espera acorda no meio da
+ * automação com os contadores zerados e só enxerga o trecho DEPOIS da espera.
+ * Medido no desenho de `[enviar][aguardar][condição de ramo vazio]` — que é a
+ * forma do follow-up de no-show: a retomada não fez trabalho, achou a
+ * barreira, e fechava o log como `barrada`, ou seja, "a automação não fez
+ * nada" sobre uma execução que já tinha falado com o cliente. É o inverso
+ * exato do que `desfechoDoEscopo` promete (Codex, PR #155).
+ *
+ * O histórico atravessa as chamadas porque `appendResults` acumula na coluna
+ * — os ramos inclusive, que gravam de dentro da recursão.
+ *
+ * ⚠️ Não SUBSTITUI os contadores do motor, soma-se a eles: a leitura do log
+ * pode voltar vazia (o `appendResults` ignora erro de leitura e regrava só o
+ * trecho novo), e o trecho em curso é o único que a memória conhece com
+ * certeza. Cada fonte cobre um pedaço do tempo; a régua é o OU.
+ *
+ * ⚠️ `wait` não conta como trabalho: esperar não é efeito no mundo. `condition`
+ * também não — avaliar não é agir, e é justamente essa distinção que faz
+ * `barrada` existir.
+ */
+export function sinaisDoHistorico(
+  passos: unknown,
+): { fezTrabalho: boolean; barrouPorCondicao: boolean } {
+  // JSONB: pode ter sido gravado por uma versão que não conhecia um campo de
+  // hoje, e a coluna é nula em todo log que ainda não rodou passo nenhum.
+  if (!Array.isArray(passos)) return { fezTrabalho: false, barrouPorCondicao: false }
+
+  let fezTrabalho = false
+  let barrouPorCondicao = false
+
+  for (const bruto of passos) {
+    if (!bruto || typeof bruto !== 'object') continue
+    const passo = bruto as { step_type?: unknown; status?: unknown }
+    const tipo = typeof passo.step_type === 'string' ? passo.step_type : ''
+    const status = typeof passo.status === 'string' ? passo.status : ''
+
+    if (tipo === 'condition') {
+      // O motor marca `skipped` na entrada da condição quando o ramo escolhido
+      // não tinha passo nenhum. É a assinatura da barreira.
+      if (status === 'skipped') barrouPorCondicao = true
+      continue
+    }
+    if (tipo === 'wait') continue
+    if (status === 'success') fezTrabalho = true
+  }
+
+  return { fezTrabalho, barrouPorCondicao }
+}

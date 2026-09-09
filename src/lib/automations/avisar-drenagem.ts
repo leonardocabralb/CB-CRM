@@ -1,3 +1,5 @@
+import { avisarExecucoesMudaram } from '@/lib/execucoes/aviso'
+
 /**
  * Avisa o servidor que um card se mexeu, para a fila de automações drenar
  * AGORA em vez de esperar o ciclo de 15 minutos do agendador.
@@ -20,7 +22,18 @@ export function avisarDrenagemDeFunil(): void {
   void fetch('/api/automations/events/drain', {
     method: 'POST',
     keepalive: true,
-  }).catch(() => {
-    // Silêncio proposital. O cron é a rede de segurança.
   })
+    .then((res) => {
+      // ⚠️ A rota AGUARDA a drenagem antes de responder, então neste ponto as
+      // automações daquele movimento já rodaram: ou criaram espera, ou
+      // terminaram. É o único instante em que dá para avisar a tela sem
+      // adivinhar — e sem ele, arrastar um card acendia a automação no
+      // servidor e o raio do quadro só aparecia no recarregamento seguinte,
+      // com o inverso valendo igual: o raio ficava aceso o expediente inteiro
+      // depois de a fila esvaziar (Codex, PR #155).
+      if (res.ok) avisarExecucoesMudaram()
+    })
+    .catch(() => {
+      // Silêncio proposital. O cron é a rede de segurança.
+    })
 }

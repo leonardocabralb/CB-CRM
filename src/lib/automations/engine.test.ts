@@ -24,6 +24,7 @@ const h = vi.hoisted(() => ({
     logUpdates: [] as Record<string, unknown>[],
     /** Filtros de cada update em `automation_logs` — a cerca de não-regressão. */
     updateFiltros: [] as [string, string, unknown][][],
+    historicoDoLog: [] as Array<Record<string, unknown>>,
     taskInserts: [] as Record<string, unknown>[],
     notifInserts: [] as Record<string, unknown>[],
     // Valores de campo personalizado do contato, como o PostgREST os entrega
@@ -148,7 +149,14 @@ vi.mock("./admin-client", () => {
         state.updateFiltros.push([...ops.filters]);
         return { data: null, error: null };
       }
-      return { data: { steps_executed: [], status: "success" }, error: null };
+      // ⚠️ O que já estava GRAVADO em `steps_executed` antes desta chamada.
+      // Configurável porque é a única forma de encenar uma execução que
+      // atravessou um "Aguardar": a retomada é um processo novo, e o que
+      // aconteceu antes da espera só existe nesta coluna.
+      return {
+        data: { steps_executed: state.historicoDoLog, status: "success" },
+        error: null,
+      };
     }
     if (table === "automation_steps") {
       // Recorte por ESCOPO (parent_step_id / branch / position), para os
@@ -262,6 +270,7 @@ beforeEach(() => {
   h.state.logInserts = [];
   h.state.logUpdates = [];
   h.state.updateFiltros = [];
+  h.state.historicoDoLog = [];
   h.state.taskInserts = [];
   h.state.notifInserts = [];
   h.state.customValues = [];
@@ -991,8 +1000,8 @@ describe("send_to_number — aviso para a equipe", () => {
     canalMock.resolveEngineChannelPreferring.mockResolvedValueOnce({ channelId: "ch-padrao" });
     await dispararAviso({ phone: "5583988745316", text: "oi", channel_id: "ch-apagado" });
     expect(engineSendText).not.toHaveBeenCalled();
-    // ⚠️ O update do STATUS, não o último: desde a 985 o último update do log é
-    // o do DESFECHO (`{desfecho, finalizado_em}`), escrito por `fecharLog`.
+    // ⚠️ O update do STATUS, não o último: desde a 985 `fecharLog` escreve
+    // depois dele (o desfecho e, em update próprio, a hora de fim).
     const log = h.state.logUpdates.filter((u) => "status" in u).at(-1) as
       | { status?: string; error_message?: string }
       | undefined;
@@ -1615,6 +1624,26 @@ const desfechoGravado = () =>
     | { desfecho?: string; finalizado_em?: string }
     | undefined);
 
+/**
+ * ⚠️ A HORA DE FIM vem em UPDATE PRÓPRIO desde a 2ª rodada da revisão: a cerca
+ * anti-regressão recusa a linha inteira quando o log já diz 'falhou', e
+ * juntas as duas colunas a falha ficava para sempre sem hora de fim — ou
+ * seja, invisível no fio, que exige as duas. Procurar `finalizado_em` dentro
+ * do update do desfecho passaria a medir sempre `undefined`.
+ */
+const horaDeFimGravada = () =>
+  (
+    h.state.logUpdates.filter((u) => "finalizado_em" in u).at(-1) as
+      | { finalizado_em?: string }
+      | undefined
+  )?.finalizado_em;
+
+/** Os filtros do update que carregou a hora de fim (para provar que vai SEM cerca). */
+const filtrosDaHoraDeFim = () => {
+  const i = h.state.logUpdates.findIndex((u) => "finalizado_em" in u);
+  return i < 0 ? null : h.state.updateFiltros[i];
+};
+
 const statusGravado = () =>
   (h.state.logUpdates.filter((u) => "status" in u).at(-1) as { status?: string } | undefined)
     ?.status;
@@ -1639,7 +1668,7 @@ describe("desfecho da execução (985)", () => {
     await dispara();
 
     expect(desfechoGravado()?.desfecho).toBe("barrada");
-    expect(desfechoGravado()?.finalizado_em).toBeTruthy();
+    expect(horaDeFimGravada()).toBeTruthy();
     // ⚠️ `status` continua nos três valores do upstream — é o que impede as
     // telas que o leem sem cobertura de tipo de pintar "barrada" de vermelho.
     expect(statusGravado()).toBe("success");
@@ -1728,9 +1757,8 @@ describe("desfecho da execução (985)", () => {
 
     await dispara();
 
-    const fechamento = desfechoGravado();
-    expect(fechamento?.desfecho).toBe("concluida");
-    expect(fechamento?.finalizado_em).toBeUndefined();
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+    expect(horaDeFimGravada()).toBeUndefined();
   });
 
   it("CRÍTICO: 'falhou' de um escopo NÃO é apagado pelo ramo que conclui depois", async () => {
@@ -1807,6 +1835,94 @@ describe("desfecho depois de uma ESPERA (achado do teste ponta a ponta)", () => 
 
     // O desfecho é registrado; a HORA DE FIM é que espera a outra ponta.
     expect(desfechoGravado()?.desfecho).toBe("concluida");
-    expect(desfechoGravado()?.finalizado_em).toBeUndefined();
+    expect(horaDeFimGravada()).toBeUndefined();
+  });
+});
+
+// ============================================================
+// A 2ª rodada da revisão (Codex, PR #155). Os dois achados são do mesmo
+// tronco: o desfecho é decidido por uma CHAMADA, e uma execução com
+// "Aguardar" atravessa várias.
+// ============================================================
+describe("desfecho: os dois furos da 2ª rodada da revisão", () => {
+  it("CRÍTICO: a HORA DE FIM vai SEM cerca — senão a falha nunca aparece", async () => {
+    // ⚠️ O cenário: um ramo estoura enquanto a espera irmã segue viva, então o
+    // log fica 'falhou' e SEM hora de fim. Horas depois a outra ponta termina
+    // bem e chama `fecharLog` com 'concluida' — que sai com a cerca
+    // `desfecho.is.null,desfecho.neq.falhou`. Com as duas colunas no MESMO
+    // update, a cerca recusava a linha inteira e a hora de fim nunca era
+    // gravada; como `itensDoFio` descarta linha sem hora de fim, a falha
+    // sumia do fio e do histórico — some justamente o cartão vermelho.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [passoDeTrabalho("s-tag", 0)];
+
+    await dispara();
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+    expect(horaDeFimGravada()).toBeTruthy();
+    // O update do desfecho leva a cerca; o da hora de fim, não.
+    expect(filtrosDaHoraDeFim()?.some(([op]) => op === "or")).toBe(false);
+    expect(h.state.updateFiltros.some((f) => f.some(([op]) => op === "or"))).toBe(true);
+  });
+
+  it("CRÍTICO: trabalho feito ANTES da espera impede o 'barrada' na retomada", async () => {
+    // ⚠️ `[enviar][aguardar][condição de ramo vazio]` — a forma do follow-up
+    // de no-show. A retomada não faz trabalho e acha a barreira, então os
+    // contadores DELA dizem "barrada": "a automação não fez nada", sobre uma
+    // execução que já mandou a mensagem. Quem sabe do trecho anterior é o
+    // registro persistido.
+    h.state.automations = [automacaoSimples("a-resume")];
+    h.state.steps = [
+      { ...passoCondicao("s-cond", 1), automation_id: "a-resume" },
+    ];
+    h.state.historicoDoLog = [
+      { step_id: "s-enviou", step_type: "send_message", status: "success" },
+      { step_id: "s-esperou", step_type: "wait", status: "success" },
+    ];
+    h.state.esperasVivas = [{ id: "espera-em-curso" }];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: {},
+    });
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+  });
+
+  it("sem trabalho nenhum no registro, a barreira da retomada CONTINUA valendo", async () => {
+    // A cerca de cima não pode virar "nunca mais barra": execução que só
+    // esperou e morreu numa trava é `barrada` de verdade.
+    h.state.automations = [automacaoSimples("a-resume")];
+    h.state.steps = [
+      { ...passoCondicao("s-cond", 1), automation_id: "a-resume" },
+    ];
+    h.state.historicoDoLog = [
+      { step_id: "s-esperou", step_type: "wait", status: "success" },
+    ];
+    h.state.esperasVivas = [{ id: "espera-em-curso" }];
+
+    await resumePendingExecution({
+      id: "espera-em-curso",
+      automation_id: "a-resume",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      contact_id: "c1",
+      log_id: "log-resume",
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: {},
+    });
+
+    expect(desfechoGravado()?.desfecho).toBe("barrada");
   });
 });

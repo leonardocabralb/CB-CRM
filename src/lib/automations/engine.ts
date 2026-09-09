@@ -61,6 +61,7 @@ import { chaveDeAutomacao, chaveDeFluxo, encadear, lerCadeia } from './cadeia'
 import {
   desfechoDoEscopo,
   desfechoDoRetorno,
+  sinaisDoHistorico,
   type Desfecho,
 } from './estado-da-execucao'
 
@@ -701,7 +702,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
   }
 
   if (args.parentStepId === null) {
-    await appendResults(args.logId, results, status, errorMessage)
+    const historico = await appendResults(args.logId, results, status, errorMessage)
     // O DESFECHO (985) é gravado só no escopo de FORA, e só aqui: é o ponto em
     // que se sabe se houve barreira e se houve trabalho.
     //
@@ -710,9 +711,22 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<AutomationLogStatus 
     // 'success' ou 'failed'). O caso que sobra é `ramoEmEspera`: o escopo
     // terminou mas um ramo continua parado, e aí quem impede o fechamento
     // prematuro é a guarda de espera viva de `fecharLog`, não um teste aqui.
+    //
+    // ⚠️⚠️ Os contadores acima só conhecem ESTA chamada, e uma execução com
+    // "Aguardar" atravessa várias: a retomada zera tudo e enxerga só o trecho
+    // depois da espera. Por isso somam-se os sinais do REGISTRO, que
+    // atravessa as chamadas. Sem isso, `[enviar][aguardar][condição de ramo
+    // vazio]` — a forma do follow-up de no-show — fechava como `barrada`, ou
+    // seja, "não fez nada" sobre uma execução que já falou com o cliente
+    // (Codex, PR #155).
+    const doRegistro = sinaisDoHistorico(historico)
     await fecharLog(
       args.logId,
-      desfechoDoEscopo({ falhou: status === 'failed', barrouPorCondicao, fezTrabalho }),
+      desfechoDoEscopo({
+        falhou: status === 'failed',
+        barrouPorCondicao: barrouPorCondicao || doRegistro.barrouPorCondicao,
+        fezTrabalho: fezTrabalho || doRegistro.fezTrabalho,
+      }),
       args.esperaEmCurso,
     )
   } else {
@@ -2039,13 +2053,20 @@ async function interpolate(
   })
 }
 
+/**
+ * Acumula os passos na coluna e devolve o HISTÓRICO COMPLETO da execução.
+ *
+ * ⚠️ Devolver o mesclado não é conveniência: é o que permite ao escopo raiz
+ * saber o que aconteceu ANTES de um "Aguardar" sem pagar uma segunda leitura
+ * — esta função já lê a linha para mesclar. Ver `sinaisDoHistorico`.
+ */
 async function appendResults(
   logId: string | null,
   newItems: AutomationLogStepResult[],
   status: 'success' | 'partial' | 'failed' | null,
   errorMessage: string | null,
-) {
-  if (!logId) return
+): Promise<AutomationLogStepResult[]> {
+  if (!logId) return newItems
   const db = supabaseAdmin()
   const { data: existing } = await db
     .from('automation_logs')
@@ -2063,6 +2084,7 @@ async function appendResults(
   }
   if (errorMessage) update.error_message = errorMessage
   await db.from('automation_logs').update(update).eq('id', logId)
+  return merged
 }
 
 async function finalizeLog(
@@ -2129,22 +2151,43 @@ async function fecharLog(
     // Sinal invertido, exatamente a mentira que a 985 existe para matar
     // (achado da revisão adversarial, 09/09).
     //
-    // A régua do fio exige desfecho E `finalizado_em`, então gravar só o
-    // desfecho registra o fato sem afirmar que a execução terminou.
-    const campos: Record<string, string> = { desfecho }
-    if (!aindaCorre) campos.finalizado_em = new Date().toISOString()
-
-    let update = db.from('automation_logs').update(campos).eq('id', logId)
-    // ⚠️ NUNCA REGREDIR: falha registrada não vira conclusão. Duas esperas
-    // irmãs (dois ramos parados) resolvem em ordem imprevisível, e a que
-    // termina bem não pode apagar a que estourou. `falhou` grava sem filtro
-    // porque é o pior desfecho — ele sempre pode sobrescrever os outros.
+    // ⚠️⚠️ SÃO DUAS ESCRITAS, e separá-las é o conserto do buraco que a
+    // primeira versão desta cerca abriu (Codex, PR #155). O filtro
+    // anti-regressão recusa a LINHA INTEIRA quando o log já diz 'falhou' —
+    // então ele descartava junto o `finalizado_em` que vinha no mesmo update.
+    // A régua do fio exige as DUAS colunas (`itensDoFio` descarta linha sem
+    // hora de fim), logo: ramo que estoura enquanto a espera irmã segue viva,
+    // e depois uma retomada que termina bem, deixava a execução SEM hora de
+    // fim e invisível no fio e no histórico — sumia justamente o cartão de
+    // falha, que é o que a 985 existe para mostrar.
+    //
+    // 1) O desfecho, com a cerca. NUNCA REGREDIR: falha registrada não vira
+    //    conclusão. Duas esperas irmãs (dois ramos parados) resolvem em ordem
+    //    imprevisível, e a que termina bem não pode apagar a que estourou.
+    //    `falhou` grava sem filtro porque é o pior desfecho — sempre pode
+    //    sobrescrever os outros.
+    let update = db.from('automation_logs').update({ desfecho }).eq('id', logId)
     if (desfecho !== 'falhou') {
       update = update.or('desfecho.is.null,desfecho.neq.falhou')
     }
-    const { error: erroUpdate } = await update
-    if (erroUpdate) {
-      console.error('[automations] fecharLog: update falhou:', erroUpdate.message)
+    const { error: erroDesfecho } = await update
+    if (erroDesfecho) {
+      console.error('[automations] fecharLog: desfecho falhou:', erroDesfecho.message)
+    }
+
+    // 2) A hora de fim, SEM cerca — ela não regride nada, só PUBLICA o que
+    //    já está gravado. Vai depois de propósito: entre as duas escritas a
+    //    linha tem desfecho e não tem hora, e a régua do fio simplesmente não
+    //    a mostra ainda. O inverso (publicar antes de decidir) exibiria por um
+    //    instante o desfecho da execução anterior.
+    if (!aindaCorre) {
+      const { error: erroFim } = await db
+        .from('automation_logs')
+        .update({ finalizado_em: new Date().toISOString() })
+        .eq('id', logId)
+      if (erroFim) {
+        console.error('[automations] fecharLog: hora de fim falhou:', erroFim.message)
+      }
     }
   } catch (err) {
     console.error('[automations] fecharLog estourou:', err)

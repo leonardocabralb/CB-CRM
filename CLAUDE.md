@@ -586,6 +586,24 @@ novo:
   vida da linha da fila. A guarda também conserta o furo da espera nascida
   DENTRO de um ramo, que o resume retoma com `parentStepId` preenchido — e
   naquele escopo o fim de `executeStepsFrom` não grava status nenhum.
+- ⚠️⚠️ **São DUAS ESCRITAS, e juntá-las apaga a falha do fio.** O desfecho sai
+  com a cerca anti-regressão (`desfecho.is.null,desfecho.neq.falhou`, para uma
+  espera irmã que termina bem não sobrescrever o `falhou` de um ramo que
+  estourou); a HORA DE FIM sai em update PRÓPRIO, sem cerca. Numa escrita só, a
+  cerca recusa a LINHA INTEIRA quando o log já diz 'falhou' — e como a régua do
+  fio exige as duas colunas, a falha ficava sem hora de fim e INVISÍVEL, que é
+  o oposto do que a 985 existe para fazer (Codex, PR #155, 2ª rodada).
+- ⚠️⚠️ **Os contadores do motor só conhecem UMA chamada; execução com
+  "Aguardar" atravessa várias.** `fezTrabalho`/`barrouPorCondicao` nascem
+  zerados na retomada, então `[enviar][aguardar][condição de ramo vazio]` — a
+  forma do follow-up de no-show — fechava como `barrada`, "parou numa
+  condição", sobre execução que já tinha falado com o cliente. Por isso
+  `appendResults` DEVOLVE o histórico mesclado (ele já lia a linha) e o
+  fechamento do escopo raiz soma `sinaisDoHistorico(...)` aos contadores. As
+  duas fontes cobrem pedaços diferentes do tempo e se somam com OU: o registro
+  pode voltar vazio (o `appendResults` engole erro de leitura e regrava só o
+  trecho novo) e a memória é o único lugar que conhece o trecho em curso.
+  Medido de ponta a ponta em 09/09.
 - ⚠️ **`barrada` é ESTREITA**: só quando a execução não fez trabalho nenhum.
   `[enviar][condição de ramo vazio]` é `concluida`, porque a mensagem SAIU.
   E o critério é "fez trabalho?", NUNCA a ordem de `steps_executed`, que não
@@ -598,6 +616,13 @@ novo:
   conclui uma vez POR MENSAGEM. É a lição do Radar (941).
 - ⚠️ **O motivo CRU do motor NÃO vai para o fio** — inglês, com id dentro. Ele
   fica na aba, numa expansão aberta de propósito.
+- ⚠️ **Quem mexe na fila avisa a tela pelo evento `cb:execucoes-mudaram`**, que
+  mora em `src/lib/execucoes/aviso.ts` (fora dos hooks, porque
+  `avisar-drenagem.ts` é módulo de biblioteca e não pode arrastar React). A
+  drenagem do funil o emite quando a rota responde — a rota AGUARDA o dreno,
+  então ali as automações do movimento já rodaram. Sem isso, arrastar um card
+  acendia a automação no servidor e o raio do quadro só aparecia no
+  recarregamento seguinte (Codex, PR #155).
 - ⚠️ **A marca "tem robô rodando" lê a FILA, não o log**: só ela sabe que
   AINDA VAI rodar, e é o que faz o botão Parar apagar a marca. Vai por ROTA
   porque `automation_pending_executions` é service-role only (RLS ligada, ZERO

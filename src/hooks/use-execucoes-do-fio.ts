@@ -43,8 +43,24 @@ import {
 import { EVENTO_EXECUCOES } from "./use-execucoes-do-contato";
 import type { AutomationLogDesfecho, AutomationLogStepResult } from "@/types";
 
-/** Quantas linhas encerradas buscar. O colapso e o teto vêm depois, na régua. */
-const LIMITE_DE_LINHAS = 60;
+/**
+ * Quantas linhas encerradas buscar. O colapso e o teto de itens vêm depois, na
+ * régua pura.
+ *
+ * ⚠️ O corte é de LINHAS CRUAS, e é por isso que ele é folgado: o colapso
+ * junta (automação, dia, desfecho), então uma automação de gatilho "mensagem
+ * recebida" pode consumir dezenas de linhas de um dia só e empurrar para fora
+ * da busca os desfechos DISTINTOS de dias anteriores — inclusive uma falha,
+ * que é o que mais precisa aparecer. Com 60 bastava um cliente conversador
+ * para isso acontecer numa tarde (Codex, PR #155).
+ *
+ * O que sobra de risco, escrito para não virar surpresa: acima de 200
+ * execuções recentes de uma mesma automação para o MESMO cliente, os grupos
+ * mais antigos deixam de caber aqui. A saída é o histórico DAQUELA automação
+ * (`/automations/<id>/logs`), que lista as 100 últimas execuções sem colapso,
+ * com o nome do cliente em cada linha — conferido, é o que aquela tela faz.
+ */
+const LIMITE_DE_LINHAS = 200;
 
 interface Resultado {
   /** Já colapsadas e com teto — prontas para o `intercalar`. */
