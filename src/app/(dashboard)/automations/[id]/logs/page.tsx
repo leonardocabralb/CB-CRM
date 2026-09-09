@@ -140,7 +140,7 @@ export default function AutomationLogsPage({
                   ) : (
                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   )}
-                  <StatusBadge status={log.status} t={t} />
+                  <StatusBadge status={log.status} desfecho={log.desfecho} t={t} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-foreground">
                       {log.contact?.name ?? log.contact?.phone ?? t("unknownContact")}
@@ -185,13 +185,41 @@ export default function AutomationLogsPage({
   )
 }
 
-function StatusBadge({ status, t }: { status: AutomationLog["status"], t: ReturnType<typeof useTranslations> }) {
-  const classes =
-    status === "success"
+/**
+ * ⚠️ O DESFECHO manda quando existe (985); `status` é a queda.
+ *
+ * `status` nasce `'failed'` no INSERT, ANTES do primeiro passo (semente
+ * pessimista da issue #409), então esta etiqueta pintava VERMELHO toda
+ * execução em curso — inclusive uma automação de 30 dias parada num
+ * "Aguardar", que fica `partial` mas só depois de enfileirar. E execução
+ * BARRADA por uma condição termina `'success'`, ou seja: verde para algo que
+ * não rodou.
+ *
+ * A queda para `status` continua porque as 15 execuções gravadas antes da 985
+ * não têm desfecho, e não há backfill possível (ninguém registrou quando cada
+ * uma terminou).
+ */
+function StatusBadge({
+  status,
+  desfecho,
+  t,
+}: {
+  status: AutomationLog["status"]
+  desfecho?: AutomationLog["desfecho"]
+  t: ReturnType<typeof useTranslations>
+}) {
+  const chave = desfecho ? `desfecho.${desfecho}` : `status.${status}`
+  const classes = desfecho
+    ? desfecho === "concluida"
+      ? "border-primary/30 bg-primary/10 text-primary"
+      : desfecho === "barrada"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+        : "border-red-500/30 bg-red-500/10 text-red-300"
+    : status === "success"
       ? "border-primary/30 bg-primary/10 text-primary"
       : status === "partial"
-      ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-      : "border-red-500/30 bg-red-500/10 text-red-300"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+        : "border-red-500/30 bg-red-500/10 text-red-300"
   return (
     <span
       className={cn(
@@ -199,7 +227,7 @@ function StatusBadge({ status, t }: { status: AutomationLog["status"], t: Return
         classes,
       )}
     >
-      {t(`status.${status}`)}
+      {t(chave as Parameters<typeof t>[0])}
     </span>
   )
 }

@@ -1567,7 +1567,12 @@
         "failed": "failed"
       },
       "back": "Back",
-      "backAria": "Back"
+      "backAria": "Back",
+      "desfecho": {
+        "concluida": "Completed",
+        "barrada": "Stopped at a condition",
+        "falhou": "Failed"
+      }
     },
     "builder": {
       "steps": {

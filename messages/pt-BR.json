@@ -1560,7 +1560,12 @@
         "failed": "falha"
       },
       "back": "Voltar",
-      "backAria": "Voltar"
+      "backAria": "Voltar",
+      "desfecho": {
+        "concluida": "Concluída",
+        "barrada": "Parou numa condição",
+        "falhou": "Falhou"
+      }
     },
     "builder": {
       "steps": {

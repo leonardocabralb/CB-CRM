@@ -28,6 +28,9 @@ const h = vi.hoisted(() => ({
     // (com a definição embutida) — é por eles que a interpolação de
     // `{{contact.campo.*}}` passa.
     customValues: [] as Record<string, unknown>[],
+    // A guarda de `fecharLog` (985) pergunta se sobrou espera VIVA deste log.
+    // Vazio = nenhuma, que é o caso da maioria dos testes.
+    esperasVivas: [] as Record<string, unknown>[],
     membros: [{ user_id: "agente-fallback", full_name: "Agente Um", email: "um@cb.test" }] as Record<string, unknown>[],
   },
 }));
@@ -90,6 +93,10 @@ vi.mock("./admin-client", () => {
       }
       state.dealSelects.push(ops.filters);
       return { data: state.dealExistente, error: null };
+    }
+    if (table === "automation_pending_executions") {
+      if (type === "select") return { data: state.esperasVivas, error: null };
+      return { data: null, error: null };
     }
     if (table === "cb_tasks") {
       if (type === "insert") {
@@ -220,6 +227,7 @@ beforeEach(() => {
   h.state.taskInserts = [];
   h.state.notifInserts = [];
   h.state.customValues = [];
+  h.state.esperasVivas = [];
   h.state.membros = [{ user_id: "agente-fallback", full_name: "Agente Um", email: "um@cb.test" }];
 });
 
@@ -945,7 +953,11 @@ describe("send_to_number — aviso para a equipe", () => {
     canalMock.resolveEngineChannelPreferring.mockResolvedValueOnce({ channelId: "ch-padrao" });
     await dispararAviso({ phone: "5583988745316", text: "oi", channel_id: "ch-apagado" });
     expect(engineSendText).not.toHaveBeenCalled();
-    const log = h.state.logUpdates.at(-1) as { status?: string; error_message?: string } | undefined;
+    // ⚠️ O update do STATUS, não o último: desde a 985 o último update do log é
+    // o do DESFECHO (`{desfecho, finalizado_em}`), escrito por `fecharLog`.
+    const log = h.state.logUpdates.filter((u) => "status" in u).at(-1) as
+      | { status?: string; error_message?: string }
+      | undefined;
     expect(log?.status).toBe("failed");
     expect(log?.error_message).toContain("conexão escolhida");
   });
@@ -1507,5 +1519,171 @@ describe("campo de data: formatado na mensagem, CRU no dado", () => {
     const corpo = String(fetchMock.mock.calls.at(-1)?.[1]?.body ?? "");
     expect(corpo).toContain("2026-08-30T19:00:00.000Z");
     expect(corpo).not.toContain("às 16:00h");
+  });
+});
+
+// ------------------------------------------------------------
+// DESFECHO da execução (migration 985).
+//
+// O que estes pinos protegem: a execução que uma condição barrou deixa de ser
+// registrada como "concluída com sucesso" (era o defeito que motivou a
+// feature), sem que `status` mude de vocabulário — as quatro telas que leem
+// `status` sem cobertura de tipo continuam vendo os mesmos três valores.
+// ------------------------------------------------------------
+
+function automacaoSimples(id = "a-desf") {
+  return {
+    id,
+    account_id: ACCOUNT,
+    user_id: "u1",
+    name: "Contrato fechado",
+    trigger_type: "new_message_received",
+    trigger_config: {},
+    is_active: true,
+  };
+}
+
+/** Condição no escopo raiz. Sem passo com este `parent_step_id`, o ramo é VAZIO. */
+function passoCondicao(id: string, position: number) {
+  return {
+    id,
+    automation_id: "a-desf",
+    step_type: "condition",
+    position,
+    parent_step_id: null,
+    step_config: { subject: "tag_presence", operand: "tag-x" },
+  };
+}
+
+/**
+ * Passo que representa TRABALHO FEITO. É `update_contact_field` e não
+ * `add_tag` porque o harness mocka a escrita em `contacts`, enquanto `add_tag`
+ * exige que a etiqueta exista na conta — o que aqui viraria falha e mediria
+ * outra coisa.
+ */
+function passoDeTrabalho(id: string, position: number) {
+  return {
+    id,
+    automation_id: "a-desf",
+    step_type: "update_contact_field",
+    position,
+    parent_step_id: null,
+    step_config: { field: "company", value: "trabalho feito" },
+  };
+}
+
+const desfechoGravado = () =>
+  (h.state.logUpdates.filter((u) => "desfecho" in u).at(-1) as
+    | { desfecho?: string; finalizado_em?: string }
+    | undefined);
+
+const statusGravado = () =>
+  (h.state.logUpdates.filter((u) => "status" in u).at(-1) as { status?: string } | undefined)
+    ?.status;
+
+async function dispara() {
+  await runAutomationsForTrigger({
+    accountId: ACCOUNT,
+    triggerType: "new_message_received",
+    contactId: "c1",
+    context: {},
+  });
+}
+
+describe("desfecho da execução (985)", () => {
+  it("condição de ramo vazio, sem trabalho: desfecho 'barrada' e status intocado", async () => {
+    // É a trava por etiqueta da automação de contrato fechado: o ramo "sim"
+    // existe vazio de propósito, para a segunda passada morrer nele.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [passoCondicao("s-cond", 0)];
+
+    await dispara();
+
+    expect(desfechoGravado()?.desfecho).toBe("barrada");
+    expect(desfechoGravado()?.finalizado_em).toBeTruthy();
+    // ⚠️ `status` continua nos três valores do upstream — é o que impede as
+    // telas que o leem sem cobertura de tipo de pintar "barrada" de vermelho.
+    expect(statusGravado()).toBe("success");
+  });
+
+  it("marca a própria condição como 'skipped', para a tela dizer qual desviou", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [passoCondicao("s-cond", 0)];
+
+    await dispara();
+
+    const passos = h.state.logUpdates
+      .flatMap((u) => (u.steps_executed as Array<Record<string, unknown>>) ?? [])
+      .filter((p) => p.step_type === "condition");
+    expect(passos.at(-1)).toMatchObject({ step_id: "s-cond", status: "skipped" });
+  });
+
+  it("barreira DEPOIS de trabalho feito é 'concluida', não 'barrada'", async () => {
+    // A etiqueta foi aplicada; chamar a execução de interrompida faria o
+    // operador ler "não rodou" sobre algo que rodou.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [passoDeTrabalho("s-tag", 0), passoCondicao("s-cond", 1)];
+
+    await dispara();
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+  });
+
+  it("a regra não depende da ORDEM em steps_executed", async () => {
+    // `[condição vazia][condição cheia]`: o ramo cheio faz seu próprio flush
+    // ANTES do escopo de fora, então uma régua baseada em `at(-1)` acharia a
+    // condição errada. Aqui a segunda condição tem um passo no ramo.
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [
+      passoCondicao("s-vazia", 0),
+      passoCondicao("s-cheia", 1),
+      {
+        id: "s-dentro",
+        automation_id: "a-desf",
+        step_type: "update_contact_field",
+        position: 0,
+        parent_step_id: "s-cheia",
+        // ⚠️ Ramo "no": o contato do harness não tem etiqueta, então
+        // `tag_presence` reprova e é este o ramo que o motor escolhe. Pôr o
+        // passo no "yes" deixaria os DOIS ramos vazios e o teste mediria
+        // 'barrada' — o oposto do que ele existe para provar.
+        branch: "no",
+        step_config: { field: "company", value: "dentro do ramo" },
+      },
+    ];
+
+    await dispara();
+
+    expect(desfechoGravado()?.desfecho).toBe("concluida");
+  });
+
+  it("passo que falha vira desfecho 'falhou'", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    // `add_tag` sem tag_id estoura dentro do motor.
+    h.state.steps = [
+      { ...passoDeTrabalho("s-ruim", 0), step_type: "add_tag", step_config: { tag_id: "" } },
+    ];
+
+    await dispara();
+
+    expect(desfechoGravado()?.desfecho).toBe("falhou");
+    expect(statusGravado()).toBe("failed");
+  });
+
+  it("CRÍTICO: espera VIVA impede o fechamento — o follow-up de 30 dias não 'conclui' na 1ª mensagem", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [passoDeTrabalho("s-tag", 0)];
+    // Sobrou espera pendente deste log (o caso do ramo que continua).
+    h.state.esperasVivas = [{ id: "espera-1" }];
+
+    await dispara();
+
+    expect(h.state.logUpdates.filter((u) => "desfecho" in u)).toHaveLength(0);
   });
 });
