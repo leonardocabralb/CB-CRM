@@ -211,6 +211,15 @@ export async function sincronizarTldv(admin: SupabaseClient, accountId: string, 
   const prazoMs = opcoes.prazoMs ?? Date.now() + PRAZO_PADRAO_MS;
   const config = await lerConfig(admin, accountId);
   if (!config.ok) return { ok: false, codigo: config.codigo };
+  // ⚠️ A TENTATIVA é carimbada ANTES de qualquer trabalho, dê certo ou
+  // errado: é por esta coluna que o cron ordena as contas, e é o que faz a
+  // conta deixada para trás num ciclo vir para a frente no seguinte
+  // (achado do Codex no PR #163). Carimbar só no sucesso deixaria a conta
+  // que falha na frente para sempre, comendo o orçamento das outras.
+  await admin
+    .from("cb_tldv_config")
+    .update({ last_sync_attempt_at: agora.toISOString() })
+    .eq("account_id", accountId);
   const cliente = (opcoes.cliente ?? criarClienteTldv)(config.chave);
   const janela = janelaDeSync(agora, opcoes.primeira ?? config.primeira);
 

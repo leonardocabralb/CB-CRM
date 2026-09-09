@@ -40,11 +40,21 @@ export async function GET(request: Request) {
   const inicio = Date.now();
   // Pagina: é a consulta que decide QUEM sincroniza, e o teto de 1000 do
   // PostgREST deixaria a cauda sem sincronizar para sempre, em silêncio.
+  //
+  // ⚠️ A ORDEM é o rodízio. Quem nunca foi tentada vem primeiro; depois, da
+  // tentativa mais antiga para a mais recente. `sincronizarTldv` carimba
+  // `last_sync_attempt_at` no começo de toda varredura, então a conta que
+  // ficou de fora do orçamento neste ciclo é a mais antiga do próximo — e
+  // vai para a frente. Ordenar por `account_id` (a forma do Meta Ads)
+  // deixava a mesma cauda de fora em todo ciclo (achado do Codex no PR
+  // #163). O desempate por `account_id` mantém a ordem estável entre
+  // páginas.
   const contas: { account_id: string }[] = [];
   for (let pagina = 0; pagina < 20; pagina++) {
     const { data, error } = await admin
       .from("cb_tldv_config")
       .select("account_id")
+      .order("last_sync_attempt_at", { ascending: true, nullsFirst: true })
       .order("account_id")
       .range(pagina * 1000, pagina * 1000 + 999);
     if (error) return NextResponse.json({ error: "db_error" }, { status: 500 });

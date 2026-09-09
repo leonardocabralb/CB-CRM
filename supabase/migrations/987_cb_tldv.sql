@@ -25,6 +25,13 @@
 --      consegue fazer o CRM consultar o tl;dv por um id, e o tl;dv só
 --      devolve o que a chave enxerga. Nada do corpo do webhook é gravado.
 --    - `last_sync_at`/`last_error`/`status`: o que o cartão mostra.
+--    - `last_sync_attempt_at`: carimbado no COMEÇO de toda varredura, dê
+--      certo ou errado. É o rodízio do cron: ele ordena as contas por esta
+--      coluna (nunca tentada primeiro), então quem ficou de fora do
+--      orçamento de 90 s num ciclo vai para a frente no seguinte. Sem isso a
+--      lista vinha sempre na mesma ordem e a cauda nunca sincronizava
+--      (achado do Codex no PR #163). Não é `last_sync_at`: a varredura que
+--      FALHA não carimba o sucesso e ficaria na frente para sempre.
 --
 -- 2) `cb_reunioes_transcritas` — N por conta. Molde da `cb_meetings` (945):
 --    o navegador LÊ direto sob RLS (a ficha do cliente monta a lista de lá,
@@ -66,6 +73,7 @@ CREATE TABLE IF NOT EXISTS cb_tldv_config (
   webhook_token  text NOT NULL UNIQUE,
   status         text NOT NULL DEFAULT 'conectado' CHECK (status IN ('conectado', 'erro')),
   last_sync_at   timestamptz,
+  last_sync_attempt_at timestamptz,
   last_event_at  timestamptz,
   last_error     text,
   created_by     uuid REFERENCES auth.users(id) ON DELETE SET NULL,

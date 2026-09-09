@@ -53,6 +53,7 @@ até o operador dizer o contrário):**
 | **D6** | Transcrição que o tl;dv não entrega | 12 tentativas (~3h a cada 15 min) → `sem_transcricao`; 403 (plano de quem organizou) → `falhou` na hora; botão "Buscar de novo" zera | a doc diz que o endpoint só responde "quando completa" e que a exportação depende do PLANO do ORGANIZADOR — insistir num 403 não muda nada |
 | **D7** | Quem pode o quê | config: admin; vincular/desvincular, colar link, colar transcrição, buscar de novo: `agent`+; excluir: só a MANUAL, pelo autor ou admin; ler: qualquer membro (RLS) | a importada do tl;dv não se apaga — a varredura a traria de volta sem cliente; dela se tira o cliente |
 | **D8** | Onde a transcrição é guardada | Postgres (`texto`, `segmentos jsonb`, `notas`), não Storage | ~80 KB por hora de reunião; a lista da ficha não seleciona as três colunas pesadas, só o visualizador |
+| **D9** | Ordem das contas no cron (Codex, PR #163) | por `last_sync_attempt_at` (nunca tentada primeiro), carimbada no COMEÇO de toda varredura | ordenar por `account_id` deixava a mesma cauda de fora do orçamento de 90 s em todo ciclo; carimbar só no sucesso deixaria a conta que falha na frente para sempre |
 
 ---
 

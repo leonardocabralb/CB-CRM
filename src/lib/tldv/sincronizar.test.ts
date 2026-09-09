@@ -256,7 +256,26 @@ describe("sincronizarTldv", () => {
     expect(r).toEqual({ ok: false, codigo: "chave_invalida" });
     expect(estado.config.patches.at(-1)).toMatchObject({ status: "erro", last_error: "chave_invalida" });
     expect(estado.config.patches.some((p) => "last_sync_at" in p)).toBe(false);
+    // A TENTATIVA fica carimbada mesmo assim: é o que manda a conta que
+    // falhou para o fim da fila do cron, em vez de deixá-la na frente para
+    // sempre (Codex, PR #163).
+    expect(estado.config.patches[0]).toEqual({ last_sync_attempt_at: agora.toISOString() });
     espiao.mockRestore();
+  });
+
+  it("carimba a tentativa ANTES de falar com o tl;dv — é o rodízio do cron", async () => {
+    const estado = estadoInicial();
+    let carimbadaAntes = false;
+    const cliente = clienteFalso({
+      listar: () => {
+        carimbadaAntes = estado.config.patches.some((p) => "last_sync_attempt_at" in p);
+        throw new TldvError("rede", "fora do ar");
+      },
+    });
+    const espiao = vi.spyOn(console, "error").mockImplementation(() => {});
+    await sincronizarTldv(dubleDoAdmin(estado), "conta", { agora, cliente: () => cliente });
+    espiao.mockRestore();
+    expect(carimbadaAntes).toBe(true);
   });
 
   it("sem config: `nao_conectado`, sem tocar o tl;dv", async () => {

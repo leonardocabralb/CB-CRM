@@ -3212,6 +3212,13 @@ e a seção **Transcrições** dentro da aba Reuniões da ficha
   `manual`, pelo autor ou admin.
 - ⚠️ **A chave vai no cabeçalho `x-api-key`, nunca na URL**, e toda mensagem
   de erro passa por `semSegredo()` (a mesma disciplina do Meta Ads/Calendly).
+- ⚠️ **O cron ordena as contas por `last_sync_attempt_at` (nunca tentada
+  primeiro), e a varredura carimba essa coluna ANTES de qualquer trabalho,
+  dê certo ou errado.** É o rodízio: a conta que ficou de fora do orçamento
+  de 90 s num ciclo é a mais antiga do próximo. Ordenar por `account_id`
+  (a forma do cron do Meta Ads) deixava a MESMA cauda de fora em todo ciclo
+  (Codex, PR #163) — e carimbar só no sucesso deixaria a conta que falha na
+  frente para sempre.
 - **`cb/tldv` está no laço LENTO do `docker-stack.yml`** — e o CI não relê o
   `command` do agendador: vale depois de `docker stack deploy` manual.
 
