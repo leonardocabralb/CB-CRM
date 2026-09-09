@@ -405,13 +405,20 @@ export function MessageThread({
    * sozinha, sem efeito de limpeza.
    */
   const [noFim, setNoFim] = useState(true);
-  const [ultimaVista, setUltimaVista] = useState<{ conversa: string | null; id: string | null }>({
-    conversa: null,
-    id: null,
-  });
-  const ultimaMensagemIdRef = useRef<string | null>(null);
+  const [ultimaVista, setUltimaVista] = useState<{
+    conversa: string | null;
+    id: string | null;
+    createdAt: string | null;
+  }>({ conversa: null, id: null, createdAt: null });
+  // Id E `created_at` da última mensagem: a âncora precisa dos dois, porque o
+  // id da bolha otimista morre quando o realtime a troca pela linha gravada
+  // (ver `contarNovasDoCliente`).
+  const ultimaMensagemRef = useRef<{ id: string; createdAt: string | null } | null>(null);
   useEffect(() => {
-    ultimaMensagemIdRef.current = messages.length ? messages[messages.length - 1].id : null;
+    const ultima = messages.length ? messages[messages.length - 1] : null;
+    ultimaMensagemRef.current = ultima
+      ? { id: ultima.id, createdAt: ultima.created_at ?? null }
+      : null;
   }, [messages]);
 
   const anotarPosicao = useCallback(() => {
@@ -432,13 +439,17 @@ export function MessageThread({
     coladoNoFimRef.current = colado;
     setNoFim(colado);
     if (colado) {
-      const id = ultimaMensagemIdRef.current;
+      const ultima = ultimaMensagemRef.current;
+      const id = ultima?.id ?? null;
+      const createdAt = ultima?.createdAt ?? null;
       // `conversation?.id`, e não o `conversationId` derivado mais abaixo:
       // este callback é declarado antes daquela linha, e a lista de
       // dependências é avaliada no render (TDZ).
       const conversa = conversation?.id ?? null;
       setUltimaVista((v) =>
-        v.conversa === conversa && v.id === id ? v : { conversa, id },
+        v.conversa === conversa && v.id === id && v.createdAt === createdAt
+          ? v
+          : { conversa, id, createdAt },
       );
     }
   }, [conversation?.id]);
@@ -1252,7 +1263,7 @@ export function MessageThread({
   const naoLidasAbaixo =
     noFim || ultimaVista.conversa !== conversationId
       ? 0
-      : contarNovasDoCliente(messages, ultimaVista.id);
+      : contarNovasDoCliente(messages, ultimaVista);
   const irParaOFim = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
