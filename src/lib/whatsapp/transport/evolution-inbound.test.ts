@@ -22,6 +22,7 @@ import {
   type EvolutionUpsert,
   edicaoCifrada,
   isSecretEncrypted,
+  quotedProviderId,
 } from './evolution-inbound';
 
 function item(message: Record<string, unknown>, over: Partial<EvolutionUpsert> = {}) {
@@ -525,5 +526,41 @@ describe('edição cifrada (secretEncryptedMessage, Baileys 7)', () => {
     expect(
       edicaoCifrada({ secretEncryptedMessage: { secretEncType: 2, targetMessageKey: {} } }),
     ).toBeNull();
+  });
+});
+
+describe('quotedProviderId — a citação muda de lugar com a versão da Evolution', () => {
+  const key = { remoteJid: '558388745316@s.whatsapp.net', fromMe: false, id: '3A414DC87A4CEB87F32F' };
+
+  it('2.4 com o patch da citação: stanzaId no contextInfo de cima (texto achatado em conversation)', () => {
+    const item = {
+      key,
+      message: { conversation: 'Sim' },
+      contextInfo: { stanzaId: '3EB0DBB1705F2F0E41CF56', participant: '5511964102992@s.whatsapp.net' },
+    };
+    expect(quotedProviderId(item)).toBe('3EB0DBB1705F2F0E41CF56');
+    expect(normalizeUpsert(item, 'acc', 'owner', null)?.quotedProviderId).toBe('3EB0DBB1705F2F0E41CF56');
+  });
+
+  it('2.3.2, e mídia na 2.4: stanzaId dentro do corpo (extendedTextMessage / imageMessage)', () => {
+    expect(
+      quotedProviderId({
+        key,
+        message: { extendedTextMessage: { text: 'Sim', contextInfo: { stanzaId: 'ABC' } } },
+      }),
+    ).toBe('ABC');
+    expect(
+      quotedProviderId({ key, message: { imageMessage: { mimetype: 'image/jpeg', contextInfo: { stanzaId: 'IMG' } } } }),
+    ).toBe('IMG');
+  });
+
+  it('⚠️ 2.4 SEM o patch: o contextInfo do texto é descartado e não há citação (issue #2713)', () => {
+    const item = {
+      key,
+      message: { messageContextInfo: { deviceListMetadataVersion: 2 }, conversation: 'Sim' },
+      contextInfo: { threadId: [], deviceListMetadataVersion: 2 },
+    };
+    expect(quotedProviderId(item)).toBeNull();
+    expect(normalizeUpsert(item, 'acc', 'owner', null)?.quotedProviderId).toBeNull();
   });
 });

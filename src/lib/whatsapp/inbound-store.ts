@@ -55,6 +55,13 @@ export interface NormalizedInbound {
    * editar); `remoteJid` é o para IDENTIFICAR a conversa. Migration 917.
    */
   remoteJidLid?: string | null;
+  /**
+   * Wamid da mensagem citada, quando esta é uma resposta. Vira
+   * `reply_to_message_id` se a citada estiver NESTA conversa (é o único
+   * escopo em que `message_id` é único — 040); citação de mensagem que o CRM
+   * não tem (anterior à integração, ou de outra conversa) fica nula.
+   */
+  quotedProviderId?: string | null;
   /** Unix seconds. */
   timestamp: number;
   contentType: 'text' | 'image' | 'video' | 'audio' | 'document' | 'location';
@@ -199,6 +206,30 @@ export interface PersistedInbound {
  * porque o risco é o esquecimento: uma função que NÃO chama o fan-out não
  * tem como fanar por engano.
  */
+/**
+ * `messages.id` da mensagem citada, dentro da conversa. Erro de consulta vira
+ * "sem citação" (log), nunca derruba a gravação da mensagem.
+ */
+async function idDaMensagemCitada(
+  db: SupabaseClient,
+  conversationId: string,
+  quotedProviderId: string | null | undefined,
+): Promise<string | null> {
+  if (!quotedProviderId) return null;
+  const { data, error } = await db
+    .from('messages')
+    .select('id')
+    .eq('conversation_id', conversationId)
+    .eq('message_id', quotedProviderId)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error('[inbound-store] achar mensagem citada falhou:', error.message);
+    return null;
+  }
+  return (data?.id as string | undefined) ?? null;
+}
+
 export async function persistDeviceMessage(
   db: SupabaseClient,
   m: NormalizedInbound
@@ -222,6 +253,7 @@ export async function persistDeviceMessage(
   );
   if (!convResult) return null;
   const conversation = convResult.conversation;
+  const replyToId = await idDaMensagemCitada(db, conversation.id, m.quotedProviderId);
 
   const contentType = ALLOWED_CONTENT_TYPES.has(m.contentType) ? m.contentType : 'text';
 
@@ -238,6 +270,7 @@ export async function persistDeviceMessage(
       // Endereço para AGIR sobre a mensagem quando a conversa migrou para
       // LID — ver migration 917. NULL é o caso normal.
       remote_jid_lid: m.remoteJidLid ?? null,
+      reply_to_message_id: replyToId,
       from_me: true,
       from_device: true,
       // Saiu do aparelho, logo o WhatsApp já a entregou à rede. O ACK
@@ -340,6 +373,7 @@ export async function persistInboundMessage(
   );
   if (!convResult) return null;
   const conversation = convResult.conversation;
+  const replyToId = await idDaMensagemCitada(db, conversation.id, m.quotedProviderId);
 
   if (convResult.created) {
     await dispatchWebhookEvent(db, m.accountId, 'conversation.created', {
@@ -373,6 +407,7 @@ export async function persistInboundMessage(
       // Endereço para AGIR sobre a mensagem quando a conversa migrou para
       // LID — ver migration 917. NULL é o caso normal.
       remote_jid_lid: m.remoteJidLid ?? null,
+      reply_to_message_id: replyToId,
       from_me: false,
       status: 'delivered',
       created_at: new Date(m.timestamp * 1000).toISOString(),

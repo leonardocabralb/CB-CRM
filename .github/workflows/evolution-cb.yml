@@ -1,0 +1,87 @@
+name: evolution-cb
+
+# Constrói a nossa imagem da Evolution 2.4 (develop) a partir de um commit
+# fixo do upstream, com o patch da citação do cliente e o prisma.config.ts
+# dentro da imagem. Ver docker/evolution-cb/README.md e docs/PLANO-baileys-7.md (P10).
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: 'Commit do evolution-foundation/evolution-api (o da imagem em produção)'
+        required: true
+        default: 'e273b904d53f5726970fd6a244ed9caa61dfeb9a'
+      tag:
+        description: 'Tag de saída'
+        required: true
+        default: '2.4.0-e273b904-citacao'
+
+env:
+  IMAGE: ghcr.io/leonardocabralb/evolution-api-cb
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fonte do upstream no commit fixo
+        uses: actions/checkout@v4
+        with:
+          repository: evolution-foundation/evolution-api
+          ref: ${{ inputs.upstream_ref }}
+          path: upstream
+
+      - name: Aplicar o patch da citação e copiar o prisma.config.ts na imagem
+        run: |
+          set -euo pipefail
+          cd upstream
+          git apply --check ../docker/evolution-cb/2708-citacao.patch
+          git apply ../docker/evolution-cb/2708-citacao.patch
+          test -f prisma.config.ts
+          # builder: o arquivo entra junto com o resto do fonte
+          sed -i 's#^COPY ./tsup.config.ts ./$#COPY ./tsup.config.ts ./\nCOPY ./prisma.config.ts ./#' Dockerfile
+          # imagem final: ao lado do tsup.config.ts
+          sed -i 's#^COPY --from=builder /evolution/tsup.config.ts ./tsup.config.ts$#COPY --from=builder /evolution/tsup.config.ts ./tsup.config.ts\nCOPY --from=builder /evolution/prisma.config.ts ./prisma.config.ts#' Dockerfile
+          grep -c 'prisma.config.ts' Dockerfile | grep -qx 2
+          grep -q 'quotedContext' src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts
+          echo "patch e Dockerfile ok"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build e publicar
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: upstream
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ env.IMAGE }}:${{ inputs.tag }}
+
+      - name: Como aplicar
+        run: |
+          {
+            echo '## Imagem pronta'
+            echo
+            echo '```'
+            echo '${{ env.IMAGE }}:${{ inputs.tag }}@${{ steps.build.outputs.digest }}'
+            echo '```'
+            echo
+            echo 'Na VPS, com o serviço a 0 e a foto final tirada (docs/PLANO-baileys-7.md, 6.2):'
+            echo
+            echo '```'
+            echo 'docker service update --image ${{ env.IMAGE }}:${{ inputs.tag }}@${{ steps.build.outputs.digest }} --mount-rm /evolution/prisma.config.ts evolution_evolution'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

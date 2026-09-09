@@ -48,6 +48,12 @@ export interface EvolutionUpsert {
   message?: Record<string, unknown> | null;
   messageType?: string;
   messageTimestamp?: number | string;
+  /**
+   * Na 2.4, o `prepareMessage` da Evolution sobe o `contextInfo` da mensagem
+   * para este nível — e, com o nosso patch (docker/evolution-cb), é aqui que
+   * o `stanzaId` da citação chega. Ver `quotedProviderId`.
+   */
+  contextInfo?: Record<string, unknown> | null;
 }
 
 /**
@@ -228,6 +234,40 @@ export function detectContentType(
  * Descartar é o comportamento correto até a reação ser modelada de verdade
  * (guardada e exibida na bolha da mensagem reagida, como no WhatsApp).
  */
+/** Mensagens que carregam `contextInfo` com a citação dentro do próprio corpo. */
+const CAIXAS_COM_CONTEXTO = [
+  'extendedTextMessage',
+  'imageMessage',
+  'videoMessage',
+  'audioMessage',
+  'documentMessage',
+  'stickerMessage',
+] as const;
+
+/**
+ * O wamid da mensagem CITADA, se esta for uma resposta.
+ *
+ * Duas moradas, porque a Evolution muda de versão: no nível de cima
+ * (`item.contextInfo.stanzaId`) — é onde a 2.4 com o patch da citação o
+ * entrega para texto — e dentro do corpo (`extendedTextMessage.contextInfo`
+ * etc.), como a 2.3.2 entregava e como a 2.4 ainda entrega para mídia (só o
+ * texto é achatado). ⚠️ Sem o patch, a 2.4 descarta o `contextInfo` do texto
+ * e esta função devolve null — a resposta entra sem citação (issue upstream
+ * #2713). Até 09/09/2026 o CRM nunca leu isto no transporte Evolution: só o
+ * caminho da Meta resolvia citação.
+ */
+export function quotedProviderId(item: EvolutionUpsert): string | null {
+  const topo = asRecord(item.contextInfo)?.stanzaId;
+  if (typeof topo === 'string' && topo) return topo;
+  const m = unwrapMessage(item.message);
+  if (!m) return null;
+  for (const caixa of CAIXAS_COM_CONTEXTO) {
+    const id = asRecord(asRecord(m[caixa])?.contextInfo)?.stanzaId;
+    if (typeof id === 'string' && id) return id;
+  }
+  return null;
+}
+
 export function isReaction(message?: Record<string, unknown> | null): boolean {
   return !!asRecord(unwrapMessage(message)?.reactionMessage);
 }
@@ -326,6 +366,7 @@ export function normalizeUpsert(
     // para a conversa "telefone" e a mensagem vive na "@lid". Só grava quando
     // é de fato um LID — em conversa não migrada o campo nem vem. Ver 917.
     remoteJidLid: lidJidFromKey(item.key),
+    quotedProviderId: quotedProviderId(item),
     timestamp: ts,
     contentType: detectContentType(item.message),
     text: extractText(item.message),
