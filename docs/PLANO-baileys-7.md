@@ -8,8 +8,8 @@
 | | |
 | --- | --- |
 | **Criado** | 09/09/2026 |
-| **Estado** | **Fase 0 CONCLUÍDA** (09/09/2026): backup com restauração de prova, limpeza das órfãs/hashes e amostras feitos na VPS; ajustes 1–3 do CRM mesclados no `main` (PR #161) e este plano mesclado (PR #162). Versão da Evolution **não** mudou — continua 2.3.2 + `lidfix`. |
-| **Próximo passo** | **Fase 1** (seção 6.2), numa janela marcada pelo operador com os 4 celulares à mão. Antes: pré-voo da seção 6.2.0 (dump novo, db 9 renovado, imagem conferida, P2). |
+| **Estado** | **Fase 0 CONCLUÍDA** (09/09/2026): backup com restauração de prova, limpeza das órfãs/hashes e amostras feitos na VPS; ajustes 1–3 do CRM mesclados no `main` (PR #161) e este plano mesclado (PR #162). **Pré-voo, parte só de leitura, feita em 09/09 18:10** (9.2): imagem candidata intacta (rc13), 4 conexões `open`, serviço atualiza em `stop-first`. Versão da Evolution **não** mudou — continua 2.3.2 + `lidfix`. |
+| **Próximo passo** | **Fase 1** (seção 6.2), numa janela marcada pelo operador com os 4 celulares à mão. Antes: a parte de backup do pré-voo (6.2.0, item 4 — dump novo, db 9 renovado, restauração de prova) e a decisão P2. A ordem do upgrade e do rollback mudou em 09/09 (revisão do Codex): **escalar a 0 antes de trocar a imagem**, e tirar a **foto final** com o serviço parado. |
 | **Como retomar sem contexto** | Ler a **seção 0** abaixo primeiro; o prompt de retomada está no **Anexo C**. A memória privada do executor (`baileys-7-plano-e-decisoes.md`) guarda o telefone do cadastro. |
 | **Estudo de origem** | seções 2–4 deste documento condensam o estudo de 09/09 |
 | **Docs relacionadas** | `docs/EVOLUTION-LID-FIX.md` (fica OBSOLETA com este plano), `docs/INFRA-VPS.md`, `docs/DEPLOY-VPS.md`, `docs/INSTALACAO.md` |
@@ -47,13 +47,18 @@ abaixo. Nada foi deixado implícito de propósito.
 | 09/09 | Amostras de payload da 2.3.2 guardadas na VPS (600) | 9.1 |
 | 09/09 | Ajustes 1–3 do CRM + testes (95/95, lint, typecheck) — **PR #161 mesclado no `main`** | seção 5 |
 | 09/09 | Este plano — **PR #162 mesclado** | — |
+| 09/09 18:43 | Segunda passada do pré-voo (itens 11–15): linhas de base de latência/entrada/decifragem, migrations da imagem, endpoint de licença, `DEL_INSTANCE`, `Chat` sem duplicata | 9.2 |
+| 09/09 noite | Revisão adversarial do roteiro (3 lentes + crítico): 6.2, 8.4, 10 e Anexo B reescritos — script por passo com preâmbulo, foto final conferida, rollback por **rename** de banco (sem `dropdb`), portão de licença só HTTP, `EVOLUTION_OPERATOR_EMAIL` morto, `AUTHENTICATION_API_KEY` exposta no boot (P9), migration em laço, `BGSAVE` | 0.4, 6.2, 8.4, 10, 14 |
+| 09/09 18:24 | Pré-voo, parte de backup: dump novo (14,3 MB), db 9 renovado (36 = 36), RDB, restauração de prova **bate em todas as tabelas, 0 avisos**. Achado da cascata do `DELETE` das órfãs (9.3) | 9.3 |
+| 09/09 18:10 | Revisão do Codex no #162 avaliada: rollback **reordenado** (escalar a 0 antes de trocar a imagem — procede); `FLUSHDB` do db 9 já estava no commit final; participante por `id` telefone já coberto no código do #161 (o texto de 5.3 estava defasado e foi sincronizado). Pré-voo **só de leitura** executado na VPS | 9.2, seção 10 |
 
 ### 0.3 O que NÃO foi feito (e é o próximo trabalho)
 
 - A **Fase 1** inteira (seção 6.2): trocar a imagem, ativar a licença, conferir as 4 conexões, rodar T1–T22, observar 48 h.
 - O **pré-voo** da Fase 1 (seção 6.2.0), no dia da janela.
 - P2 (forma de `group_sender_jid`), ajuste 4 (`fileLength`, depende de medição), ajuste 5 (`GROUP_UPDATE`, depois do upgrade), docs da seção 5.6, fixtures anonimizadas a partir das amostras.
-- Limpeza das worktrees `wt-plano` e `wt-fix` no scratchpad (já mescladas; `git worktree remove`).
+- A parte de **backup** do pré-voo (6.2.0, item 4) — só faz sentido no dia da janela, porque a foto envelhece.
+- **Apagar TODAS as worktrees paralelas ao fim de todo o trabalho** (pedido do operador em 09/09, para não ocupar espaço): `git worktree list` no checkout principal e `git worktree remove` de cada uma, inclusive as de outras sessões já encerradas (em 09/09 havia `wt-tldv`, `wt-calendly`, `wt-codex-2`, `migracao-kommo`, `wf_…/ensaio-2` e a desta sessão, `wt-pv`). As duas desta sessão da Fase 0 (`wt-plano`, `wt-fix`) já foram removidas em 09/09. Item na Fase 2.
 
 ### 0.4 Armadilhas encontradas na execução (para não repetir)
 
@@ -64,6 +69,13 @@ abaixo. Nada foi deixado implícito de propósito.
 - As chaves `evolution:baileys:*` têm TTL e expiram também na cópia do db 9; os hashes `evolution:instance:*` não têm TTL — são eles que importam.
 - Comandos longos por SSH (dump + restore) passam de 10 min: rodar em segundo plano e ler a saída depois.
 - O checkout principal pode estar em outra branch por causa de sessões paralelas: **sempre `git branch --show-current` antes de qualquer `checkout -b`**, e preferir worktree.
+- `docker service update --image` **começa a troca na hora** (o serviço está em `stop-first`, medido em 09/09): num rollback, trocar a imagem com o serviço vivo sobe a 2.3.2 contra o banco já migrado pela 2.4 e o Redis com estado v7 — **escalar a 0 primeiro** (achado do Codex no PR #162; seção 10).
+- **Apagar instância na Evolution apaga o histórico dela no banco da Evolution** (`onDelete: Cascade` em todas as tabelas filhas de `Instance`): as 2 órfãs levaram ~278 mil `Message`, 4,4 mil `Chat` e 11 mil `Contact` — invisíveis para as conexões vivas e duplicados no Supabase, mas o executor **não avisou isso antes** de pedir a autorização. Regra: antes de apagar instância, contar as linhas dela e dizer ao operador o que vai junto. Preservado no dump de 17:04 (9.3).
+- **Variável de shell envelhece**: `$CID` aponta para OUTRO contêiner depois de cada `scale`/`update` (e é vazio a 0 réplicas); sessão SSH nova não tem as variáveis da anterior; `docker exec $CID … > arquivo` com `$CID` vazio cria o arquivo **vazio** sem parar nada. Por isso o Anexo B virou blocos com preâmbulo, a `KEY` sai da especificação do serviço e os passos mandam **reler `CID`**. E o `pg_restore` da prova apontava para `evolution-$(date +%F).dump` enquanto o dump gravava `evolution-$CARIMBO.dump` — pego pela revisão adversarial antes de doer.
+- **O portão de licença só barra a API HTTP**: entre o `scale=1` e a ativação a Evolution **recebe** (instâncias conectam, webhooks chegam ao CRM) e o CRM **não consegue enviar nem baixar mídia** (503). Ativar imediatamente e recolher o intervalo (6.2, passos 4 e 8). O `fetchInstances` também responde 503 — o gatilho "open em 10 min" se mede no banco/log.
+- **Migration que falha vira laço**: `RestartPolicy any/5 s` recria o contêiner para sempre, cada subida repete o `prisma migrate deploy` (P3009), e `docker service scale` sem `--detach` espera uma convergência que não vem. Sempre `--detach` + `docker service ps`.
+- Cópia local de fonte pode ser **página de erro**: `baileys-v7-migration.md` e `CHANGELOG.md` no scratchpad eram um 503 do Varnish (470 bytes) até a noite de 09/09 — a revisão adversarial pegou. Conferir tamanho e `<title>` de tudo que se baixa antes de citar. Re-baixados: o guia v7 (283 KB, real) e `messages-recv.ts` da rc13 e da 6.7.19.
+- O estado Signal no Redis **muda a cada mensagem** (ratchet): uma cópia tirada horas antes restaura sessões velhas e o cliente não decifra o que vem depois. Por isso a **foto final** (dump + db 8 → db 9 + RDB) é tirada com o serviço **a 0**, segundos antes da troca (6.2, passo 1). A do pré-voo serve de prova de restauração.
 
 **Sumário**
 
@@ -366,10 +378,19 @@ seja atribuível à Evolution e não ao CRM.
 
 ### 5.3 Ajuste 3 — participantes de grupo (`src/lib/cb-groups/sync.ts`, `parseGroupInfo`)
 
-- Achar a nossa linha por `soDigitos(p.phoneNumber ?? p.jid) === nosso`.
-- `ourLid = p.lid ?? (isLidJid(p.id) ? p.id : null)`.
-- Teste com participante nas duas formas (`{id, jid, lid}` de hoje e
-  `{id, phoneNumber, lid?}` da v7).
+- **Como ficou no código (PR #161)** — o telefone do participante sai de
+  **três** lugares, nesta ordem: `p.phoneNumber` (v7, quando o `id` preferido
+  é o LID), `p.jid` (2.3.2) e o **próprio `p.id` quando termina em
+  `@s.whatsapp.net`** (v7, quando o `id` preferido é o telefone — aí o LID vem
+  em `p.lid`). A nossa linha é a que tem `soDigitos(telefone) === nosso`.
+- `ourLid` = `p.lid` se for `@lid`, senão `p.id` se for `@lid`, senão `null`.
+- Teste com participante nas **três** formas: `{id: lid, jid, lid}` de hoje,
+  `{id: lid, phoneNumber}` e `{id: telefone, lid}` da v7 (`sync.test.ts`).
+  ⚠️ Uma versão anterior deste item dizia só `phoneNumber ?? jid` — o Codex
+  apontou (PR #162) que a forma `{id: telefone, lid}` ficaria sem casar; o
+  código já cobria, o texto é que estava atrás. O `develop` devolve
+  `participants: group.participants` **cru** da Baileys (`findGroup`, conferido
+  no fonte), então a forma é a do tipo `GroupParticipant` da biblioteca.
 
 ### 5.4 Ajuste 4 — `fileLength` como objeto (`src/lib/whatsapp/transport/anexo-declarado.ts`)
 
@@ -457,53 +478,194 @@ Tudo na VPS (`vps.cbadvogados.com`, Swarm). **Regra que segue valendo:
 Todos os comandos estão no Anexo B. Ordem:
 
 1. **Confirmar com o operador**: janela aberta agora, os 4 celulares à mão,
-   equipe avisada (celular/outro CRM), decisão P2 tomada.
+   equipe avisada (celular/outro CRM), decisão P2 tomada. ✅ 09/09 noite: janela
+   aberta, equipe avisada, P2 = LID; **só 1 celular** — aceito porque os outros
+   3 números são conexões de teste sem uso (QR em 10/09 se pedirem).
 2. **CRM publicado com o PR #161**: na VPS, a imagem de `crm_crm` termina no
    sha do `main` que contém o merge do #161 (`git log origin/main`).
 3. **Fila de agendadas**: só a linha de teste de 2030 (P8) pode estar
    `pending`.
 4. **Backup NOVO** (o de 17:04 de 09/09 é anterior à limpeza e envelhece):
-   `pg_dump` com carimbo do dia; **`FLUSHDB` no db 9** (ele guarda a cópia
-   antiga) e copiar o db 8 de novo; `SAVE` + `docker cp` do RDB; `instances`;
-   log; env; e a **restauração de prova** com o corte de tempo (Anexo B).
+   `pg_dump` com carimbo; **`FLUSHDB` no db 9** (ele guarda a cópia antiga —
+   em 09/09 18:10 ainda tinha 10 hashes, os 6 apagados inclusos) e copiar o
+   db 8 de novo; `SAVE` + `docker cp` do RDB; `instances`; log; env; e a
+   **restauração de prova** com o corte de tempo (Anexo B). Este backup é a
+   **prova** de que a restauração funciona; o que o rollback restaura é a
+   **foto final**, tirada com o serviço a 0 no passo 1 da 6.2.
 5. **Imagem**: `docker image inspect evoapicloud/evolution-api:homolog` mostra
    o digest `1e656f95…`; `docker run --rm --entrypoint sh <imagem> -c 'grep
    version node_modules/baileys/package.json'` → `7.0.0-rc13`. Se a tag
    `homolog` tiver sido re-puxada e mudado, **parar e reavaliar** (é branch
-   sem release).
-6. **Linha de base**: `fetchInstances` 4 × `open`; contagem de sessões PN por
-   hash (Anexo B) — comparar com a de 8.3.
-7. **Log atual guardado** (`docker service logs --since 24h > /root/backups/…`).
+   sem release). ✅ 09/09 18:10: digest intacto, `2.4.0` / `7.0.0-rc13` /
+   Node `v24.18.0`.
+6. **Serviço**: `docker service inspect evolution_evolution --format '{{json
+   .Spec.UpdateConfig}}'` → `Order` tem de ser `stop-first` (é, medido em
+   09/09) — com `start-first` duas Evolutions abririam as mesmas 4 sessões ao
+   mesmo tempo. Como a 6.2 escala a 0 antes de trocar, isso vira só
+   conferência.
+7. **Linha de base**: `fetchInstances` 4 × `open`; contagem de sessões PN por
+   hash (Anexo B) — comparar com a de 8.3. ✅ 09/09 18:10 em 9.2.
+8. **Log atual guardado** (`docker service logs --since 24h > /root/backups/…`).
+9. **Imagem de rollback no nó**: `docker image inspect ghcr.io/…lidfix@sha256:dd3e46…`
+   responde (✅ 09/09: id `7e614b07…`, criada 28/07, 1,11 GB). Regra: **nenhum
+   `docker image prune`/`system prune`** na janela nem nas 48 h; o `service
+   update` do rollback não passa `--with-registry-auth`, então a imagem tem de
+   estar local.
+10. **Tempos medidos** (para o relógio dos gatilhos): dump **5 s**, restore de
+    prova **5 s** (14 MB, 09/09 18:24). A foto final leva menos de 1 min; o
+    relógio dos 10 min de 8.4 começa no `scale=1`.
+11. **O que dispara sozinho na reconexão** (Supabase, só leitura): automações
+    ativas com gatilho de entrada, esperas com `run_at` na janela e `flow_runs`
+    ativos — o WhatsApp entrega de uma vez o que chegou durante os minutos a 0,
+    e cada mensagem dispara isso contra o portão 503 (ou em rajada, se a
+    ativação for rápida). ✅ 09/09 18:43: **1** automação de entrada ativa
+    ("Teste do plano — follow-up (pode apagar)", `keyword_match` — só dispara
+    com a palavra-chave), **0** esperas, **0** fluxos ativos. Nada a pausar.
+12. **Migrations da imagem × produção**: `comm` entre `ls prisma/postgresql-
+    migrations` da imagem e `_prisma_migrations` — nada de produção pode faltar
+    na imagem. ✅ 09/09: imagem 59, produção 55, **as 4 novas**:
+    `20250918182355_add_kafka_integration`,
+    `20251122003044_add_chat_instance_remotejid_unique`,
+    `20251216143054_increase_token_length`,
+    `20260506184850_add_runtime_config`. E **`Chat` duplicado
+    `(instanceId, remoteJid)` = 0** (a 2ª migration cria índice único ali;
+    duplicata = P3009 em laço).
+13. **Endpoint de licença da imagem**: o Dockerfile do `develop` diz que a
+    URL entra XOR-codificada por build-arg e, vazia, cai num fallback de dev.
+    ✅ 09/09: o bundle não expõe a URL em claro (XOR de produção), e o
+    fallback de `endpoint.ts` **monta a mesma** `https://license.evolutionfoundation.com.br`
+    de partes — os dois caminhos apontam para produção. `SERVER_URL=https://api.cbadvogados.com`
+    no env, então o `register_url` que o 503 anuncia sai certo; conferir no
+    corpo do primeiro 503 depois do `scale=1`.
+14. **`DEL_INSTANCE`**: tem de ser `false` — instância desconectada por dias
+    (as 3 de teste até 10/09) seria apagada pelo monitor, com a cascata da
+    9.3. ✅ 09/09: `DEL_INSTANCE=false`, `QRCODE_LIMIT=1902`.
+15. **Linhas de base de 8.3** (latência, entrada por hora, decifragem)
+    registradas em 9.2. ✅ 09/09 18:43.
 
-### 6.2 Fase 1 — o upgrade (janela combinada; os 4 celulares à mão)
+### 6.2 Fase 1 — o upgrade (janela combinada; celulares à mão)
+
+Ordem revista em 09/09 (revisão do Codex no PR #162 e revisão adversarial da
+noite): a Evolution é **parada antes** de qualquer troca, a foto final é
+tirada com ela parada e **conferida**, e só então a imagem muda. O `stop-first`
+do serviço já evitaria duas Evolutions ao mesmo tempo, mas não daria a foto no
+instante certo — e é a foto que decide se o rollback devolve as sessões como
+estavam (0.4). Tudo abaixo roda por SSH em **scripts** (um por passo, com as
+variáveis definidas no topo — Anexo B), nunca colando linhas soltas: as
+variáveis de shell envelhecem entre os passos, e `$CID` aponta para outro
+contêiner depois de cada `scale`/`update`.
+
+**Antes do passo 0, na mesma hora**: navegador já em
+`https://api.cbadvogados.com/manager/login`, a caixa de e-mail
+`leonardocabralb@gmail.com` aberta e o telefone do cadastro à mão (o portão
+de licença bloqueia a API do CRM até a ativação — passo 4); `date` anotado a
+cada passo.
 
 ```bash
-# 1. imagem nova por digest (conferida em 09/09), telemetria desligada
+# 0. parar a Evolution (janela aberta; equipe no celular/outro CRM).
+#    Com 0 réplicas nada escreve no banco nem no Redis.
+docker service scale evolution_evolution=0
+docker service ps evolution_evolution --format '{{.Name}} {{.CurrentState}}' | head -3   # nenhuma Running
+
+# 1. FOTO FINAL, com o serviço a 0 (medido no pré-voo: dump 5 s, restore 5 s, 14 MB).
+#    Bloco "Backup" do Anexo B com CARIMBO=<data-hora>-final: dump + `pg_restore -l`
+#    + referência (count/max de Message, HLEN dos 4 hashes) em foto-$CARIMBO.txt +
+#    FLUSHDB do db 9 + cópia + DBSIZE 8 = DBSIZE 9 (exato, porque nada escreve) + RDB.
+#    ⚠️ SÓ SEGUIR depois do "DUMP-OK": um `prisma migrate deploy` com o dump ainda
+#    rodando ficaria preso atrás dos locks (a 2.4 cria índice único em Chat e a
+#    tabela RuntimeConfig) e o arquivo do rollback não estaria fechado em disco.
+
+# 2. trocar a especificação (0 réplicas: nenhuma tarefa sobe ainda)
 docker service update \
   --image evoapicloud/evolution-api:homolog@sha256:1e656f95aa1a2b7c2455a6a36d654637ddc2658c263794a5074ada798412a549 \
   --env-add TELEMETRY_ENABLED=false \
   evolution_evolution
 
-# 2. acompanhar: o entrypoint roda `prisma migrate deploy` (4 migrations) e sobe
-docker service logs evolution_evolution --since 5m -f
+# 3. subir SEM bloquear e vigiar: o entrypoint roda `prisma migrate deploy` (4 migrations)
+#    a CADA subida; com RestartPolicy any/5 s, migration que falha vira LAÇO de reinício
+#    (P3009 a cada volta) e um `scale` sem --detach esperaria para sempre.
+docker service scale --detach evolution_evolution=1
+docker service ps evolution_evolution --no-trunc --format '{{.Name}} {{.CurrentState}} {{.Error}}' | head -4   # repetir a cada 30 s
+timeout 300 docker service logs evolution_evolution --since 2m -f                      # "Migration failed" = gatilho (8.4)
+CID=$(docker ps -q -f name=evolution_evolution | head -1)                              # RELER: é outro contêiner
+docker exec $CID sh -c 'grep -m1 "\"version\"" package.json; grep -m1 "\"version\"" node_modules/baileys/package.json'   # 2.4.0 / 7.0.0-rc13
+PGCID=$(docker ps -q -f name=postgres_postgres | head -1)
+docker exec $PGCID psql -U postgres -d evolution -Atc 'select migration_name, finished_at from _prisma_migrations order by finished_at desc limit 6'
 ```
 
-3. **Cadastro/ativação**: `https://api.cbadvogados.com/manager/login` (o
-   Traefik já roteia `api.cbadvogados.com` para o serviço; `/manager` e
-   `/license/*` passam pelo portão). Registrar com o e-mail/telefone
-   decididos; ou, se o e-mail já estiver registrado, `--env-add
-   EVOLUTION_OPERATOR_EMAIL=…` antes do passo 1. Conferir:
-   `curl https://api.cbadvogados.com/license/status` (hoje responde **404** —
-   a rota não existe na 2.3.2; é a linha de base).
-4. **Conexões**: `instance/fetchInstances` → 4 × `open` sem QR. Se alguma
-   pedir QR: ler (é o custo aceito).
-5. **Sinais no Redis**: campos `lid-mapping-*` e `session-*_1.*` começam a
+4. **Ativar a licença IMEDIATAMENTE.** O portão (`gateMiddleware`) é só um
+   middleware HTTP de **entrada**: `main.ts` **aguarda** `initializeRuntime`
+   (que apresenta a chave global ao `/v1/activate`, com timeout de 10 s) no
+   começo do `bootstrap()`, sobe o HTTP e chama `initWA()` por último — e
+   `initWA` conecta as instâncias **sem olhar** o resultado da licença; nada
+   em `baileys.service.ts` a consulta. Ou seja, ~10–20 s depois do
+   `Migration succeeded`, as 4 instâncias **conectam** ao WhatsApp, a
+   migração PN→LID começa e os webhooks **chegam** ao CRM — mas **toda chamada do CRM à Evolution**
+   (enviar, marcar lida, baixar mídia, `fetchInstances`) responde
+   `503 LICENSE_REQUIRED` até a ativação. Consequências desse intervalo, e o
+   passo 8 as recolhe: anexo 1:1 recebido fica sem arquivo (o CRM baixa pela
+   API); automação/IA/agendada que dispare falha sem retentativa (5xx vira
+   `evolution_error`). Anotar o `date` do `scale=1` e o da ativação.
+   - `https://api.cbadvogados.com/manager/login` → cadastro com o e-mail e o
+     telefone decididos → `curl -s https://api.cbadvogados.com/license/status`
+     (linha de base hoje: **404**; depois tem de dizer ativo).
+   - **Guardar a ativação**: `docker exec $PGCID pg_dump -U postgres -Fc -t
+     '"RuntimeConfig"' evolution > /root/backups/evolution-runtimeconfig-$CARIMBO.dump`
+     — a licença local mora nessa tabela (`licensing-runtime.ts`,
+     `model RuntimeConfig`); a foto final é anterior à 2.4 e não a tem. Numa
+     2ª tentativa depois de rollback, restaurar só essa tabela depois do
+     `prisma migrate deploy` dispensa cadastrar de novo.
+   - ⚠️ **`EVOLUTION_OPERATOR_EMAIL` NÃO serve nesta instalação** (uma versão
+     deste plano o oferecia como alternativa): `initializeRuntime` só chama
+     `tryAutoRegisterFromEnv` quando `globalApiKey` está **vazia**, e
+     `globalApiKey` é a `AUTHENTICATION_API_KEY` (`main.ts:57`), que é a chave
+     HTTP do CRM e nunca está vazia. O `/manager` é o **único** caminho.
+   - ⚠️ **No boot sem licença a Evolution apresenta a nossa
+     `AUTHENTICATION_API_KEY` ao servidor da fundação** como candidata a chave
+     de licença: `POST /v1/activate` com o cabeçalho `X-Api-Key: <a chave>` em
+     claro (sobre TLS) mais assinatura HMAC (`transport.ts`). Falha, imprime o
+     banner e fica inativa — mas a chave HTTP do escritório viajou para um
+     terceiro, e viaja de novo a cada reinício até a ativação. Decisão **P9**:
+     rotacionar a chave depois da Fase 1 (é a mesma `EVOLUTION_GLOBAL_API_KEY`
+     do CRM: `crm.env` + `--env-add` nos dois serviços; as chaves por instância
+     em `cb_channels.api_key` não mudam).
+5. **Conexões — contando do `scale=1`, não do início do rollback.** Antes da
+   ativação o `fetchInstances` responde 503, então o estado sai do **banco** e
+   do **log**: `docker exec $PGCID psql -U postgres -d evolution -Atc 'select
+   name, "connectionStatus" from "Instance"'` (o `connection.update` grava
+   `open` ali) e `timeout 60 docker service logs evolution_evolution --since
+   10m 2>&1 | grep -ciE "connection.*open|CONNECTED"`. Depois da ativação, a
+   `KEY` lida da **especificação** do serviço (Anexo B) e `fetchInstances` →
+   4 × `open` sem QR. Se alguma pedir QR: ler (é o custo aceito; em 09/09 só 1
+   celular à mão — as outras ficam para 10/09, decisão do operador).
+   **Onde ler o QR**: *antes* da ativação o botão Reconectar do CRM não
+   funciona (`instance/connect` está atrás do portão → 503); o QR sai pelo
+   `/manager` (instância → conectar) ou pelo log em ASCII (`timeout 60 docker
+   service logs evolution_evolution --since 2m 2>&1 | grep -A 40
+   qrcodeCount`, num terminal com ≥ 45 linhas). *Depois* da ativação:
+   Conexões → Reconectar no CRM. Ordem preferida: ativar primeiro, ler QR
+   depois — o relógio de 8.4 já conta do `scale=1`. ⚠️ Instância em laço de
+   QR imprime o QR no log a cada renovação (444 `qrcodeCount` em 24 h com as
+   órfãs) e rotaciona o `json-file 10m×3`: **guardar o log a cada marco**
+   (depois das migrations, dos `open`, da ativação, ao fim dos testes e a
+   cada 12 h) e medir 8.3 sobre os arquivos, com `grep -v -E '▄|█|qrcodeCount'`.
+6. **Sinais no Redis**: campos `lid-mapping-*` e `session-*_1.*` começam a
    aparecer nos hashes vivos.
-6. **Testes** da seção 8 no lead de teste autorizado.
-7. **Observação de 48 h** com os medidores da seção 8.3.
-8. **Depois**: ajuste 5 (`GROUP_UPDATE` + Ressincronizar), atualizar
-   `/root/evolution.yaml` com a imagem por digest e `TELEMETRY_ENABLED=false`
-   (para um futuro `stack deploy`, ainda proibido, não regredir), docs.
+7. **Prova da FOTO FINAL** (não prolonga a parada — só I/O no Postgres):
+   `pg_restore --exit-on-error` da foto em `evolution_ensaio`, `count(*)` de
+   `Message` **igual** ao de `foto-$CARIMBO.txt` (total exato: o serviço estava
+   a 0), `dropdb evolution_ensaio`. Só depois disto o rollback tem dump
+   comprovado.
+8. **Recolher o intervalo `scale=1` → ativação** no Supabase: mensagens
+   recebidas nesse intervalo com mídia e sem arquivo (recuperar pelo caminho da
+   memória `recuperar-anexo-perdido-na-evolution`), `automation_logs` /
+   `cb_calendly_eventos` com falha, agendadas em `entrega_incerta`.
+9. **Testes** da seção 8 no lead de teste autorizado. **Antes do T22**, guardar
+   o log (`docker service logs --since 6h > /root/backups/evolution-log-pos-upgrade-…`).
+10. **Observação de 48 h** com os medidores da seção 8.3.
+11. **Depois**: ajuste 5 (`GROUP_UPDATE` + Ressincronizar), atualizar
+    `/root/evolution.yaml` com a imagem por digest e `TELEMETRY_ENABLED=false`
+    (para um futuro `stack deploy`, ainda proibido, não regredir), docs, P9.
 
 `CONFIG_SESSION_PHONE_VERSION` fica como está (é ignorada). Variáveis novas do
 `develop` (Kafka, SQS, métricas, proxy, EvoHub) são todas opcionais e
@@ -575,14 +737,24 @@ quebram em silêncio e se resolvem com o ajuste 1 + T17/T18.
 - **Gratuito.** Doc oficial: *"The community license is free"*, *"no usage,
   message or instance limit for the community tier"*, sem função bloqueada.
 - **Obrigatório**: sem ativação, toda rota de negócio responde
-  `503 LICENSE_REQUIRED`. Ativação uma vez (e-mail + telefone do operador) pelo
-  `/manager`, ou sem navegador com `EVOLUTION_OPERATOR_EMAIL` (e-mail já
-  registrado). Depois: **portão local** (hash no banco; funciona com o servidor
-  deles fora do ar — conferido em `licensing/runtime.ts`); heartbeat separado
-  e não bloqueante (relato de campo com heartbeat 404 e API normal).
+  `503 LICENSE_REQUIRED` — e **só** as rotas HTTP: as instâncias conectam e
+  os webhooks saem normalmente (`main.ts` aguarda `initializeRuntime` e depois
+  chama `initWA()` sem olhar o resultado; `baileys.service.ts` não consulta a
+  licença). Ativação
+  uma vez (e-mail + telefone do operador) pelo `/manager`. ⚠️ A alternativa
+  sem navegador (`EVOLUTION_OPERATOR_EMAIL`) **não vale aqui**: só é tentada
+  com `AUTHENTICATION_API_KEY` vazia, e ela é a chave do CRM (6.2, passo 4).
+  Depois: **portão local** (hash no banco; funciona com o servidor deles fora
+  do ar — conferido em `licensing/runtime.ts`); heartbeat separado e não
+  bloqueante (relato de campo com heartbeat 404 e API normal). A **primeira**
+  ativação, porém, exige o servidor deles no ar (`/v1/register/*` →
+  `/v1/activate`).
 - **O que sai**: na ativação, e-mail, telefone, versão e UUID da instância; nos
   heartbeats, versão, **contadores agregados** (ex.: total de mensagens no
-  período), features ligadas e IP. A doc diz que **não** manda mensagens,
+  período), features ligadas e IP. **E, a cada boot antes da ativação, a nossa
+  `AUTHENTICATION_API_KEY`** — apresentada em claro (`X-Api-Key`, sobre TLS)
+  ao `/v1/activate` como candidata a chave de licença (`transport.ts`,
+  `licensing-runtime.ts`). Achado da revisão adversarial de 09/09 → P9. A doc diz que **não** manda mensagens,
   contatos, números de clientes, mídia nem tokens. **Não documentado**: o que
   acontece se revogarem.
 - Reinstalação do zero exige ativar de novo (`RuntimeConfig`).
@@ -620,7 +792,7 @@ Evolution e do CRM abertos. Registrar resultado e data em cada linha.
 | **T18** | **Mensagem pelo WhatsApp Web para contato LID** | idem | |
 | T19 | Grupo: mensagem nossa e de participante, menção a nós | entra; `mentions_us` acende no canal com `own_lid`; `findGroupInfos` acha nossa linha | |
 | T20 | Agendar mensagem para +3 min | sai na hora, `sent`, sem duplicar | |
-| T21 | Latência de entrada | 5 mensagens espaçadas do cliente; atraso até o webhook (medir `messageTimestamp` × `created_at`) | |
+| T21 | Latência de entrada | 5 mensagens espaçadas do cliente; atraso = `conversations.last_message_at` (relógio do CRM) − `messages.created_at` (relógio do WhatsApp) da última mensagem da conversa. ⚠️ `messages.created_at` **é** o `messageTimestamp` (`inbound-store.ts`): comparar os dois dá zero por construção. Linha de base 09/09 (7 dias, n=186): **p50 1,2 s · p95 2,1 s · máx 3,5 s** | |
 | T22 | Reinício do serviço (`service update --force`) | 4 instâncias voltam `open` sem QR | |
 
 ### 8.2 O que só o teste responde
@@ -640,16 +812,36 @@ Evolution e do CRM abertos. Registrar resultado e data em cada linha.
 | `DESCARTADA: endereçada por @lid` | log do CRM (`crm_crm`) | **zero** |
 | campos `session-*_1.*` e `lid-mapping-*` | Redis db 8, hashes vivos | aparecem e crescem. **Linha de base (09/09 17:30, depois da limpeza)**: `44982408` (Bancário - Comercial) PN=291, `be282022` (Bancário - Jurídico) PN=35, `200ac9ef` (Trabalhista - Comercial) PN=152, `d1d9caf5` (Trabalhista - Jurídico) PN=140; LID=0 e `lid-mapping`=0 em todos |
 | acks (`MessageUpdate`) e `read` no CRM | banco da Evolution / `messages.status` | continuam chegando |
-| latência de entrada | T21 | segundos, não minutos |
-| relato de "Aguardando mensagem" | equipe / clientes | nenhum em 48 h |
+| latência de entrada | T21 (consulta em Anexo B) | segundos, não minutos. **Base 09/09: p50 1,2 s, p95 2,1 s** |
+| **entrada continua chegando** | Supabase: recebidas por hora (Anexo B) | **Base 09/09 (mediana por hora do dia, 7 dias)**: 8h–17h entre 20 e 48/h; 18h 14; noite 1–9/h. Hora cheia com 0 recebidas onde a base dá ≥ 5 = investigar na hora (webhook 401/400 é descartado sem retentativa pela Evolution e o CRM não loga o 401). A **primeira** mensagem de cliente depois do `scale=1` tem de aparecer no Supabase — prova de que o `Authorization` guardado na tabela `Webhook` ainda vale |
+| **falha de decifragem do NOSSO lado** (a direção silenciosa: a mensagem do cliente não vira webhook e ele vê ✓✓) | log da Evolution, contagens sobre o arquivo guardado por marco (`grep -ci`) | **Base 09/09, 24 h até 18:24** (inclui o laço de QR das órfãs até 17:27): `Bad MAC` **166**, `No matching sessions` 20, `failed to decrypt` 20, `Decrypt` 352, `SessionError` 10, `keep alive` 82, `stream:error` 4, `Closing open session` 3, `Closing stale` 24, `qrcodeCount` 444. Esperado depois: **cai ou zera**; SUBIR = sessão migrada errada para algum contato → abrir a conversa daquele JID no celular e comparar com o CRM |
+| relato de "Aguardando mensagem" | **ativo, não passivo**: (a) com T1 verde, a Dra. Isa volta ao CRM e reporta QUALQUER "Aguardando" na hora; (b) 3× por dia o operador abre no **celular do escritório** as conversas em que o CRM enviou texto e confere que a cópia **não** diz "Aguardando mensagem" (é o único detector do próprio sintoma que não depende de reclamação — seção 1) | 0/N em 24 h e 48 h |
 
 ### 8.4 Gatilhos de rollback (decididos antes, sem discutir na hora)
 
-- Alguma instância não volta a `open` em 10 min (nem com QR).
+- **`Migration failed` no log, ou a tarefa reiniciando em laço** (`docker
+  service ps` mostrando `Failed`/`Shutdown` com `non-zero exit` em sequência)
+  → `scale=0` na hora e seção 10. A 2ª tentativa exige o banco restaurado
+  (o rollback já faz) — nunca `scale=1` de novo sobre a migration marcada
+  como falha (P3009).
+- **A instância do celular à mão** (nomeada antes do `scale=0` — em 09/09 o
+  operador tinha 1 celular; ver P4) não volta a `open` em 10 min **contados
+  do `scale=1`** (nem com QR) — medido no banco/log, porque a API responde
+  503 até a ativação (6.2, passo 5). As outras 3 pedindo QR **não é
+  gatilho**: são conexões de teste, ficam em `connecting` até a leitura (em
+  10/09), e ao bater `QRCODE_LIMIT=1902` viram `refused` (o CRM marca
+  `disconnected`) — esperado; reconectar depois é **Reconectar** no CRM
+  (`instance/connect`), não recriar a conexão.
+- `RuntimeConfig table was not found` no log = a migration da 2.4 não entrou
+  (`initializeRuntime` faz `process.exit(1)` → laço) → primeira linha acima.
+- `/license/status` não fica ativo em **15 min** depois do `scale=1` → o
+  operador decide (o custo de esperar é a foto final envelhecendo); em
+  **30 min** → rollback.
 - Qualquer `463` no log.
 - T17 ou T18 reprovando **depois** dos ajustes do CRM.
 - T1 reprovando (texto do CRM não chega legível).
-- Latência de entrada consistentemente > 60 s (decisão do operador).
+- Latência de entrada: **p95 das últimas 2 h > 60 s** (base 09/09: p95 2,1 s),
+  pela consulta do Anexo B — não por impressão (decisão do operador).
 
 ---
 
@@ -659,16 +851,42 @@ Evolution e do CRM abertos. Registrar resultado e data em cada linha.
 
 - [x] Operador: e-mail e telefone do cadastro decididos (09/09)
 - [x] PR com os ajustes 1, 2, 3 + testes (5.1–5.3, 5.7) — **PR #161 mesclado no `main`** em 09/09 (95 testes verdes, lint e typecheck limpos); a publicação é o run do pipeline do `main` seguinte ao merge — conferir no pré-voo (6.2.0, item 2)
-- [ ] Decisão do ajuste 2 (`group_sender_jid` = LID) confirmada (P2) — **não bloqueia a Fase 1** (o código atual mantém a preferência antiga)
+- [x] Decisão do ajuste 2 (`group_sender_jid` = LID) confirmada pelo operador em 09/09 (P2) — nada muda no código
 - [x] Instâncias órfãs `Bancario` e `CBAdv` removidas (autorizado e executado 09/09 17:27; a API respondeu `Instance deleted` e a remoção completou em segundo plano — `Instance` ficou com 4 linhas)
 - [x] 6 hashes do Redis removidos (2 órfãs + 4 mortos); sobraram os 4 vivos
 - [x] `/root/backups/` criado (09/09 17:04): `evolution-20260909-1704.dump` (105,8 MB), `redis-20260909-1704.rdb` (33,9 MB), cópia do db 8 no **db 9**, `instances-…`, `evolution-log-…txt` (25.968 linhas), `evolution-env-…txt` (600), `evolution-image-…txt`, `evolution-migrations-…txt`
 - [x] Restauração de prova feita e removida (ver registro em 9.1)
 - [x] Payloads reais capturados: `/root/backups/evolution-amostras-20260909-1704.jsonl` (10 linhas, 600) — falta anonimizar e transformar em fixtures no repositório
 - [x] Fila de agendadas conferida: a única pendente é um resto de teste marcado para 2030 (P8) — nada real dispara na janela
-- [ ] Equipe avisada para usar celular/outro CRM na janela → vira o item 1 do pré-voo (6.2.0)
-- [ ] Janela marcada, 4 celulares confirmados → pré-voo (6.2.0)
-- [ ] Refazer o `pg_dump` e a cópia db 8 → db 9 imediatamente antes da janela → pré-voo (6.2.0, item 4)
+- [x] Equipe avisada para usar celular/outro CRM na janela (operador, 09/09 noite)
+- [x] Janela aberta em 09/09 (noite) com **1 celular** à mão — os outros 3 são conexões de teste sem uso; QR delas, se preciso, em 10/09 (P4)
+- [x] Refazer o `pg_dump` e a cópia db 8 → db 9 imediatamente antes da janela → feito no pré-voo de 09/09 18:24 (9.3); a **foto final** repete com o serviço a 0 (6.2, passo 1)
+
+#### 9.2 Registro do pré-voo — parte só de leitura (09/09/2026, 18:10, horário de Brasília)
+
+Executado por SSH, sem alterar nada (script no scratchpad do executor):
+
+- **Serviço** `evolution_evolution`: imagem `…lidfix:2.3.2-lidfix@sha256:dd3e46…`, 1 réplica, `UpdateConfig` = `{Parallelism 1, FailureAction pause, Monitor 5s, Order stop-first}`, `RollbackConfig` idem, `RestartPolicy` = `any`/5 s, volume `evolution_instances` → `/evolution/instances`. Tarefa atual `Running` há 3 h; as três falhas listadas são de **5 semanas atrás**. Dentro do contêiner: Evolution `2.3.2`, Baileys `6.7.19`.
+- **Imagem candidata**: `evoapicloud/evolution-api@sha256:1e656f95…` (criada 2026-07-14), `2.4.0` / Baileys `7.0.0-rc13` / Node `v24.18.0` — **intacta**.
+- **Instâncias** (`fetchInstances` e tabela `Instance` batem): `comercial-trabalhista-e7c7ea`, `juridico-bancario-d5a458`, `trabalhista-juridico-bf8a08`, `cbcrm-a3af0191-…-76ac04` — **4 × `open`**; `Session` = 4 linhas. `/license/status` → **404** (linha de base da 2.3.2).
+- **Redis**: db 8 = 42 chaves; db 9 = **10** chaves (só os hashes de 17:04, sem TTL — os 6 apagados ainda estão lá: daí o `FLUSHDB` do 9 antes da cópia nova). Sessões PN por hash: `200ac9ef` **154** (era 152), `d1d9caf5` **142** (era 140), `be282022` 35, `44982408` 291; LID = 0, `lid-mapping` = 0 em todos.
+- **Postgres**: banco `evolution` 579 MB, 6 conexões ativas (da Evolution); última migration `20250613143000_add_lid_column_to_is_onwhatsapp`.
+- **Log 24 h**: `Closing session`/`stale` = 45; `"463"` = **0**; `DESCARTADA: endereçada por @lid` no CRM = **0**.
+- **CRM**: `crm_crm` roda `cb-crm:7fe112d…` (= `origin/main` com o #161 e o #162) — item 2 do pré-voo **ok**.
+- **Agendadas `pending`**: só `625d0c42…` (01/01/2030, a P8) — item 3 **ok**.
+- **Máquina**: 65 GB livres em disco, ~5 GB de RAM disponíveis; `/root/backups/` com os 9 artefatos de 17:04.
+- **Segunda passada (18:43, itens 11–15 do pré-voo)**: `DEL_INSTANCE=false`, `QRCODE_LIMIT=1902`, `SERVER_URL=https://api.cbadvogados.com`. Log de 24 h (arquivo de 18:24, 73.722 linhas, inclui o laço das órfãs até 17:27): `Bad MAC` 166, `No matching sessions` 20, `failed to decrypt` 20, `Decrypt` 352, `SessionError` 10, `keep alive` 82, `stream:error` 4, `Closing open session` 3, `Closing stale` 24, `qrcodeCount` 444, `error` 656. Migrations: imagem 59 × produção 55, nada faltando, 4 novas (nomes no item 12). `Chat` duplicado = 0. Bundle da imagem sem URL de licença em claro; fallback = mesma URL de produção. CRM: 1 automação de entrada ativa (teste, `keyword_match`), 0 esperas, 0 fluxos ativos; recebidas em 7 dias **2.324**, mediana por hora do dia (BRT) 8h 21 · 9h 21 · 10h 20 · 11h 37 · 12h 28 · 13h 28 · 14h 39 · 15h 47 · 16h 48 · 17h 34 · 18h 14 · 19h 4 · 20h 9 · 21h 3 · 22h 2 · 23h–7h 1–7; latência de entrada (n=186) **p50 1,22 s · p90 1,82 s · p95 2,09 s · máx 3,46 s**. Imagem de rollback no nó (id `7e614b07…`, 1,11 GB).
+
+#### 9.3 Registro do pré-voo — parte de backup (09/09/2026, 18:24–18:25, horário de Brasília)
+
+Script `prevoo-backup.sh` em segundo plano na VPS (`/root/backups/prevoo-run.log`), com o serviço **vivo**; carimbo **`20260909-1824`**:
+
+- `pg_dump -Fc` → `evolution-20260909-1824.dump`, **14,3 MB em 5 s** (o de 17:04 tinha 105,8 MB — ver a cascata abaixo).
+- Redis: db 8 = 36 chaves (era 42 às 18:10 — chaves `evolution:baileys:*` com TTL expirando); **`FLUSHDB` do db 9** (tinha 10 hashes, os 6 apagados inclusos) e cópia nova: **36 copiadas, 0 falhas, db 9 = db 8 = 36**; os 4 hashes `evolution:instance:*` vivos conferidos no db 9. `SAVE` + `redis-20260909-1824.rdb` (3,2 MB — o de 17:04 tinha 33,9 MB porque carregava os 6 hashes mortos).
+- `instances-20260909-1824` (20 K, 4 pastas), log de 24 h (73.722 linhas), env (124 linhas, `chmod 600`), imagem, 55 migrations.
+- **Restauração de prova** (`evolution_ensaio`, `pg_restore` em **5 s, 0 avisos**), mesmo corte: `Message` até 1 h antes **70.482 = 70.482**, última hora **52 = 52**; `Chat` 2.607 = 2.607; `Contact` 6.220 = 6.220; `IsOnWhatsapp` 22.626 = 22.626; `Instance` 4 = 4; `Session` 4 = 4; `Webhook` 4 = 4; `Setting` 4 = 4; `MessageUpdate` 10.836 = 10.836; `Media` 0 = 0; 55 migrations; 4 instâncias `open` no ensaio. Banco de ensaio apagado. Disco: 65 GB livres.
+- ⚠️⚠️ **Achado: o `DELETE /instance/delete` das órfãs levou o HISTÓRICO delas junto.** Entre a prova de 17:25 (348.805 mensagens, 7.019 chats, 17.202 contatos, 6 instâncias) e esta (70.482 / 2.607 / 6.220, 4 instâncias) o banco perdeu ~278 mil linhas de `Message`: o `schema.prisma` da Evolution tem `onDelete: Cascade` de **toda** tabela filha para `Instance` (Message, Chat, Contact, MessageUpdate, IsOnWhatsapp não — ela é global —, Label, Media…). As linhas apagadas eram das instâncias `Bancario` e `CBAdv`: já **inalcançáveis** pelas conexões vivas (a Evolution consulta sempre por `instanceId`), e o CRM tem a cópia própria de tudo no Supabase. Nada do que as 4 conexões vivas usam mudou (hoje: `trabalhista-juridico` 30.280, `cbcrm-…` 26.916, `comercial-trabalhista` 11.908, `juridico-bancario` 1.430). O dump de **17:04** continua em `/root/backups/` com as 348 mil — é o único lugar onde o histórico das órfãs existe fora do Supabase. `pg_database_size` continua dizendo 579 MB (tuplas mortas até o `VACUUM`).
+  **Prova** (dump de 17:04 restaurado de novo em `evolution_ensaio` às 18:40, 20 s, 0 avisos, e apagado): `Bancario` **177.185** mensagens / 3.512 chats / 6.309 contatos, `CBAdv` **101.287** / 900 / 4.684 — as duas em `connecting` (laço de QR); as vivas tinham `trabalhista-juridico` 30.231, `cbcrm-…` 26.894, `comercial-trabalhista` 11.894, `juridico-bancario` 1.430 — hoje 30.280 / 26.916 / 11.908 / 1.430, ou seja, **só cresceram**. 177.185 + 101.287 = 278.472 = a diferença.
 
 #### 9.1 Registro da execução da Fase 0 (09/09/2026, 17:04–17:30)
 
@@ -683,11 +901,19 @@ Evolution e do CRM abertos. Registrar resultado e data em cada linha.
 
 ### Fase 1 — upgrade
 
-- [ ] `service update` com a imagem por digest + `TELEMETRY_ENABLED=false`
-- [ ] Migrations aplicadas (log) — anotar as 4 em `_prisma_migrations`
-- [ ] Cadastro/ativação feito; `/license/status` OK
-- [ ] 4 conexões `open` (QR lido em: ______)
+- [x] Pré-voo, parte só de leitura (6.2.0, itens 2, 3, 5, 6, 7) — 09/09 18:10, registro em 9.2
+- [x] Pré-voo, parte de backup (6.2.0, item 4): dump novo, `FLUSHDB` do db 9 + cópia, RDB, restauração de prova, log — 09/09 18:24, carimbo `20260909-1824`, registro em 9.3
+- [x] Operador confirmou janela e equipe avisada; **1 celular** à mão (os outros 3 números são de teste — QR em 10/09 se pedirem); P2 decidida (LID) — 09/09 noite
+- [ ] Instância do celular à mão **nomeada** (P4) — é a que conta em 8.4
+- [ ] `docker service scale evolution_evolution=0` e **foto final** (6.2, passos 0–1)
+- [ ] `service update` com a imagem por digest + `TELEMETRY_ENABLED=false` (a 0 réplicas) e `scale --detach =1`; `date` anotado
+- [ ] Migrations aplicadas (log) — anotar as 4 em `_prisma_migrations`; sem laço de reinício
+- [ ] Cadastro/ativação feito **imediatamente**; `/license/status` OK; `date` anotado; `pg_dump -t RuntimeConfig` guardado
+- [ ] 4 conexões `open` no banco/log (QR lido em: ______; as sem celular à mão ficam para 10/09)
 - [ ] `lid-mapping-*` / `session-*_1.*` no Redis
+- [ ] Prova da foto final em `evolution_ensaio` (count total igual) — depois do `scale=1`
+- [ ] Intervalo `scale=1` → ativação recolhido no Supabase (anexos sem arquivo, disparos com falha)
+- [ ] Log guardado a cada marco (migrations, `open`, ativação, fim dos testes) e antes do T22
 - [ ] T1–T22 executados e registrados (8.1)
 - [ ] Forma de `fileLength` anotada; ajuste 4 decidido
 
@@ -699,26 +925,68 @@ Evolution e do CRM abertos. Registrar resultado e data em cada linha.
 - [ ] `/root/evolution.yaml` atualizado (imagem por digest, `TELEMETRY_ENABLED`)
 - [ ] Docs e `CLAUDE.md` atualizados (5.6); `EVOLUTION-LID-FIX.md` marcado obsoleto
 - [ ] Memória do projeto atualizada
+- [ ] **Apagar todas as worktrees paralelas** (`git worktree list` → `git worktree remove` de cada uma, inclusive as de outras sessões já encerradas) — pedido do operador em 09/09, para não ocupar espaço
 - [ ] (Depois) log da Evolution fora do contêiner; desligar o outro CRM reduz aparelhos vinculados
 
 ---
 
 ## 10. Rollback
 
-1. `docker service update --image ghcr.io/leonardocabralb/evolution-api-lidfix:2.3.2-lidfix@sha256:dd3e46aadd696c07ac4a099f7e8e59b970f8a59e3df6c8c8beb4bf31f5848694 --env-rm TELEMETRY_ENABLED evolution_evolution`
-2. `docker service scale evolution_evolution=0` (para não escrever durante o restore).
-3. Postgres: `dropdb evolution` + `createdb evolution` + `pg_restore` do dump
-   (as 4 migrations novas **não** são desfeitas pela Evolution — só o dump volta).
-4. Redis db 8: `FLUSHDB` no 8 + `COPY` de cada chave do db 9 de volta para o 8.
-5. `docker service scale evolution_evolution=1`; conferir 4 × `open`.
-6. **Se chegar "Aguardando mensagem" no CRM depois do rollback**: os clientes já
-   usam as chaves publicadas pela v7 e o estado restaurado não as tem —
-   desconectar e ler QR nas 4 conexões. O celular do escritório não é afetado.
-7. O cadastro na fundação fica registrado (inofensivo). Mensagens recebidas
-   durante a janela quebrada ficam no celular/outro CRM, não no nosso.
+Gatilho batido (8.4) → executar na ordem, sem discutir. Comandos prontos no
+Anexo B (bloco "Rollback"), em script. ⚠️ A ordem foi **corrigida em 09/09**
+(revisão do Codex no PR #162): a versão anterior trocava a imagem **antes** de
+escalar a 0, e `service update --image` começa a troca na hora — a 2.3.2
+subiria contra o banco já migrado pela 2.4 e o Redis com estado v7, antes do
+restore. E o banco vivo **não é dropado**: a foto é restaurada num banco novo,
+conferida, e os dois trocam de nome (revisão adversarial da noite de 09/09) —
+um `pg_restore` interrompido no meio deixaria a Evolution sem banco nenhum.
+
+1. `docker service scale evolution_evolution=0` — **primeiro**; conferir
+   `docker service ps` sem tarefa `Running`. Com 0 réplicas nada escreve no
+   banco nem no Redis, e a troca de imagem do passo 4 não sobe tarefa nenhuma.
+2. Postgres, **sem dropar**: `createdb evolution_volta` → `pg_restore
+   --exit-on-error` da **foto final** (o dump mais recente com `-final`) em
+   `evolution_volta`, em segundo plano com log → `count(*)` de `Message` em
+   `evolution_volta` **igual** ao de `foto-<carimbo>.txt` → `pg_terminate_backend`
+   em `evolution` → `ALTER DATABASE evolution RENAME TO evolution_v24; ALTER
+   DATABASE evolution_volta RENAME TO evolution` (instantâneo; exige só que
+   ninguém esteja conectado). O `evolution_v24` fica como evidência — e guarda
+   a `RuntimeConfig` da licença. As 4 migrations novas **não** são desfeitas
+   pela Evolution — só o dump volta, e ele traz o `_prisma_migrations` da
+   2.3.2, então a 2.3.2 sobe sem migration pendente.
+3. Redis db 8: `FLUSHDB` no **8** + `COPY` de cada chave do db 9 (foto final)
+   de volta para o 8; `DBSIZE` do 8 = do 9 e `HLEN` dos 4 hashes = os de
+   `foto-<carimbo>.txt`.
+4. `docker service update --image ghcr.io/leonardocabralb/evolution-api-lidfix:2.3.2-lidfix@sha256:dd3e46aadd696c07ac4a099f7e8e59b970f8a59e3df6c8c8beb4bf31f5848694 --env-rm TELEMETRY_ENABLED evolution_evolution`
+   — a 0 réplicas, só a especificação muda. A imagem está no nó (id
+   `7e614b07…`, 1,11 GB, conferido em 09/09); **nenhum `docker image prune` /
+   `system prune`** na janela nem nas 48 h.
+5. `docker service scale --detach evolution_evolution=1`; **reler `CID`**;
+   versão `2.3.2`/`6.7.19` no contêiner; `Instance."connectionStatus"` = `open`
+   nas 4 (banco), depois `fetchInstances`.
+6. **Conferência obrigatória, não espera**: trocar mensagem nos dois sentidos
+   com o contato autorizado por cada conexão viva e `grep -E 'Bad MAC|No
+   session|Failed to decrypt|Closing stale'` no log da 2.3.2. Regra decidida
+   antes: rollback executado **depois de tráfego real com a v7** (T1 em
+   diante, ou minutos de mensagens do celular) → os clientes já usam as chaves
+   publicadas pela v7 e o estado restaurado não as tem → **desconectar e ler
+   QR** nas conexões (em 09/09 só a do celular à mão; as outras 3 em 10/09).
+   O celular do escritório não é afetado. O CRM **não enxerga** "Aguardando
+   mensagem" (seção 1) — por isso é conferência, não espera por reclamação.
+7. Licença: a ativação **local** fica em `evolution_v24` (tabela `RuntimeConfig`)
+   e no dump `evolution-runtimeconfig-…` do passo 4 da 6.2; numa 2ª tentativa,
+   restaurar só essa tabela depois do `prisma migrate deploy` dispensa novo
+   cadastro. O cadastro na fundação fica registrado (inofensivo para eles).
+   Mensagens recebidas durante a janela quebrada ficam no celular/outro CRM,
+   não no nosso.
 
 **O que o rollback NÃO devolve:** o que o WhatsApp registrou do lado dele
-(chaves/aparelho) — coberto pelo passo 6; e o cadastro.
+(chaves/aparelho) — coberto pelo passo 6; o volume `evolution_instances`, que
+fica como a 2.4 o deixou (28 K, **sem material de sessão**: as creds estão em
+`Session` e as chaves Signal no hash do Redis — `auth-prisma.ts`; a cópia do
+pré-voo `instances-<carimbo>` é o plano B); e as chaves `evolution:baileys:*`
+com TTL, que expiram no db 9 durante a janela — são cache de dedup/ack,
+recriadas sozinhas, não restauradas de propósito.
 
 ---
 
@@ -746,13 +1014,14 @@ duplicidade volta em dias ou semanas (relatos de 1–2 dias a semanas).
 | # | Pendência | De quem |
 | --- | --- | --- |
 | ~~P1~~ | **Resolvida 09/09**: cadastro com `leonardocabralb@gmail.com` (telefone informado ao executor, fora do repositório) | — |
-| P2 | `group_sender_jid` continua LID (5.2) | operador confirma |
+| ~~P2~~ | **Resolvida 09/09 (noite)**: `group_sender_jid` continua LID (5.2) — decisão do operador; nada muda no código | — |
 | ~~P3~~ | **Autorizada 09/09** e executada (seção 9, Fase 0) | — |
-| P4 | Janela do upgrade e disponibilidade dos 4 celulares | operador |
+| ~~P4~~ | **Resolvida 09/09 (noite)**: janela aberta; o operador tem **só 1 celular à mão** e aceitou o risco — os outros 3 números foram conectados **para teste**, ninguém os usa; se pedirem QR, ficam desconectados e a leitura fica para 10/09. Equipe avisada (celular/outro CRM). **Qual instância o celular à mão atende: ______ (confirmar antes do `scale=0` — é a única que entra no gatilho de 8.4)** | operador nomeia |
 | P5 | Forma de `fileLength` na versão nova → ajuste 4 | teste T5 |
 | P6 | Latência de entrada com rc13 (5.6 dos riscos) | teste T21 |
 | P7 | Log da Evolution fora do contêiner (fora deste plano, registrar) | depois |
-| P8 | A única agendada `pending` (09/09) é **resto de teste automatizado** de 30/08 ("TESTE Fase 3 - fora do escopo", autor "TESTE AUTOMATIZADO", marcada para 01/01/**2030**) — não dispara na janela; cancelar quando quiser | operador (sem urgência) |
+| P9 | **Rotacionar a `AUTHENTICATION_API_KEY` depois da Fase 1?** Ela viaja em claro (sobre TLS) ao servidor da fundação em todo boot sem licença (7.3). Custo: novo valor em `AUTHENTICATION_API_KEY` (Evolution) e `EVOLUTION_GLOBAL_API_KEY` (`crm.env` + `service update --env-add` no `crm_crm`); as chaves por instância em `cb_channels.api_key` não mudam | operador |
+| P8 | A única agendada `pending` (09/09) é **resto de teste automatizado** de 30/08 ("TESTE Fase 3 - fora do escopo", autor "TESTE AUTOMATIZADO", marcada para 01/01/**2030**) — não dispara na janela; cancelar quando quiser. Reconferida em 09/09 18:10: continua a única `pending` | operador (sem urgência) |
 
 ---
 
@@ -781,6 +1050,7 @@ desconectado) — sobras de teste.
 - Label `com.docker.stack.image` diz `evoapicloud/evolution-api:latest` — **stale**, como o `CLAUDE.md` já documenta; nunca pinar por ele.
 - Traefik: `Host(api.cbadvogados.com)`, entrypoint `websecure`.
 - Volume: `evolution_instances` → `/evolution/instances` (28 K).
+- `UpdateConfig` e `RollbackConfig` (medidos 09/09 18:10): `Order: stop-first`, `Parallelism 1`, `FailureAction pause`, `Monitor 5s`; `RestartPolicy: any`, atraso 5 s. Ou seja, um `service update` para a tarefa antiga antes de subir a nova — nunca há duas Evolutions vivas.
 - Log: `json-file`, `max-size 10m`, `max-file 3`.
 - Env relevante: `CACHE_REDIS_ENABLED=true`, `CACHE_LOCAL_ENABLED=false`,
   `CACHE_REDIS_SAVE_INSTANCES=false`, `CACHE_REDIS_PREFIX_KEY=evolution`,
@@ -792,7 +1062,7 @@ desconectado) — sobras de teste.
   (ela lê `TELEMETRY_ENABLED`).
 - Redis 7.4.2, `dir /data`; keyspace: db0 559 chaves (outros serviços), db2 4, db8 130 (Evolution). `COPY … DB n REPLACE` conferido funcionando (teste em db descartável).
 - Tabela `Session` (creds): uma linha por instância, as 6 presentes (1,2–3,2 KB cada); `psql -U postgres` pelo socket do contêiner entra sem senha.
-- Postgres: bancos `evolution` (579 MB), `n8n_queue` (262 MB), `postgres`.
+- Postgres: bancos `evolution` (579 MB), `n8n_queue` (262 MB), `postgres`. ⚠️ Depois da remoção das órfãs (17:27) o `evolution` tem **70,5 mil** `Message` (eram 348,8 mil): a cascata do `DELETE` — ver 9.3. O tamanho em disco não caiu (tuplas mortas).
 - VPS: 2 CPUs, 8 GB RAM (5 GB disponíveis), 67 GB livres em disco.
 - `/root/evolution.yaml` (28/07/2026) incompleto; `/root/backups` não existe.
 
@@ -810,52 +1080,97 @@ Zero `failed` em 12 dias.
 
 ## 14. Anexo B — comandos de referência
 
-Acesso: `ssh -i ~/.ssh/cb-crm-vps root@vps.cbadvogados.com` (chave da máquina do operador). Todos os comandos abaixo são de leitura, salvo onde marcado.
+Acesso: `ssh -i ~/.ssh/cb-crm-vps root@vps.cbadvogados.com` (chave da máquina
+do operador). Todos os comandos abaixo são de leitura, salvo onde marcado.
+⚠️ **Cada bloco começa pelo preâmbulo de variáveis** e roda como **script**
+(`nohup bash bloco.sh > /root/backups/bloco-$CARIMBO.log 2>&1 &`, e ler o log)
+— as variáveis de uma sessão SSH não existem na seguinte, `$CID` muda a cada
+`scale`/`update`, e `docker exec $CID …` sem contêiner falha em silêncio dentro
+de uma redireção (o arquivo nasce vazio). A `KEY` sai da **especificação** do
+serviço, que não depende de contêiner vivo.
 
 ```bash
+# Preâmbulo (repetir no topo de TODO bloco/script)
+set -uo pipefail
+CID=$(docker ps -q -f name=evolution_evolution | head -1)        # vazio com 0 réplicas — reler depois de scale/update
+RCID=$(docker ps -q -f name=redis_redis | head -1)
+PGCID=$(docker ps -q -f name=postgres_postgres | head -1)
+RC="docker exec $RCID redis-cli -n 8"
+KEY=$(docker service inspect evolution_evolution --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | sed -n 's/^AUTHENTICATION_API_KEY=//p')
+B=/root/backups; mkdir -p $B
+q() { docker exec $PGCID psql -U postgres -d "$1" -Atc "$2"; }   # ⚠️ -d ANTES de -Atc
+
 # Contêiner e imagem em execução
-CID=$(docker ps -q -f name=evolution_evolution | head -1)
 docker service inspect evolution_evolution --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+docker service inspect evolution_evolution --format '{{json .Spec.UpdateConfig}}'   # Order tem de ser stop-first
 docker exec $CID sh -c 'grep -m1 "\"version\"" package.json; grep -m1 "\"version\"" node_modules/baileys/package.json'
+docker image inspect ghcr.io/leonardocabralb/evolution-api-lidfix:2.3.2-lidfix@sha256:dd3e46aadd696c07ac4a099f7e8e59b970f8a59e3df6c8c8beb4bf31f5848694 --format '{{.Id}} {{.Created}}'   # imagem de rollback no nó
 
 # Medidores no log (o log só cobre desde o último reinício do contêiner)
-docker service logs evolution_evolution --since 24h 2>&1 | grep -cE 'Closing session|Closing stale'
-docker service logs evolution_evolution --since 24h 2>&1 | grep -c '"463"'
-docker service logs crm_crm --since 24h 2>&1 | grep -c 'DESCARTADA: endereçada por @lid'
+timeout 90 docker service logs evolution_evolution --since 24h 2>&1 | grep -cE 'Closing session|Closing stale'
+timeout 90 docker service logs evolution_evolution --since 24h 2>&1 | grep -c '"463"'
+timeout 90 docker service logs crm_crm --since 24h 2>&1 | grep -c 'DESCARTADA: endereçada por @lid'
 
-# Estado das instâncias (token não impresso)
-KEY=$(docker exec $CID printenv AUTHENTICATION_API_KEY)
-curl -s -H "apikey: $KEY" https://api.cbadvogados.com/instance/fetchInstances | python3 -c 'import sys,json; [print(i["name"], i["connectionStatus"]) for i in json.load(sys.stdin)]'
+# Estado das instâncias (token não impresso). ⚠️ Atrás do portão de licença: 503 até ativar — use o banco.
+curl -s -m 20 -H "apikey: $KEY" https://api.cbadvogados.com/instance/fetchInstances | python3 -c 'import sys,json; [print(i["name"], i["connectionStatus"]) for i in json.load(sys.stdin)]'
+q evolution 'select name, "connectionStatus", "ownerJid" from "Instance"'
 
 # Redis db 8: hashes e composição (só contagens)
-RC="docker exec $(docker ps -q -f name=redis_redis | head -1) redis-cli -n 8"
-$RC --scan --pattern 'evolution:instance:*'
-$RC HKEYS evolution:instance:<id> | awk '/^session-[0-9]+_1\./{lid++} /^session-[0-9]+\./{pn++} /^lid-mapping/{lm++} END{print "PN="pn" LID="lid" lid-mapping="lm}'
+for h in $($RC --scan --pattern 'evolution:instance:*'); do printf '%s ' "$h"; $RC HKEYS "$h" | awk '/^session-[0-9]+_1\./{lid++} /^session-[0-9]+\./{pn++} /^lid-mapping/{lm++} END{print "PN="pn+0" LID="lid+0" lid-mapping="lm+0}'; done
 
 # Postgres da Evolution (a senha está no env do contêiner; não imprimir)
-PGCID=$(docker ps -q -f name=postgres_postgres | head -1)
-docker exec $PGCID psql -U postgres -d evolution -Atc 'select name, "connectionStatus", "ownerJid" from "Instance"'
-docker exec $PGCID psql -U postgres -d evolution -Atc 'select migration_name from _prisma_migrations order by finished_at desc limit 5'
-docker exec $PGCID psql -U postgres -d evolution -Atc 'select "remoteJid", lid from "IsOnWhatsapp" where "remoteJid" like '"'"'55119953%'"'"''
+q evolution 'select migration_name from _prisma_migrations order by finished_at desc limit 5'
+q evolution 'select "remoteJid", lid from "IsOnWhatsapp" where "remoteJid" like '"'"'55119953%'"'"''
 
-# Backup (Fase 0 / pré-voo) — cria arquivos; não altera o serviço
-mkdir -p /root/backups
-docker exec $PGCID pg_dump -U postgres -Fc evolution > /root/backups/evolution-$(date +%F).dump
-# ⚠️ O db 9 já guarda a cópia de 09/09: esvaziar ANTES de copiar de novo (só o db 9!)
-docker exec $(docker ps -q -f name=redis_redis | head -1) redis-cli -n 9 FLUSHDB
-$RC --scan --pattern '*' | while read -r k; do $RC COPY "$k" "$k" DB 9 REPLACE >/dev/null; done   # db 8 → db 9
-$RC SAVE && docker cp $(docker ps -q -f name=redis_redis | head -1):/data/dump.rdb /root/backups/redis-$(date +%F).rdb
-docker cp $CID:/evolution/instances /root/backups/instances-$(date +%F)
+# Backup — pré-voo COM o serviço vivo (CARIMBO=<data-hora>) ou FOTO FINAL com o serviço a 0
+# (CARIMBO=<data-hora>-final). Cria arquivos; não altera o serviço. Medido em 09/09: dump 5 s.
+CARIMBO=$(date +%Y%m%d-%H%M)          # foto final: CARIMBO=$(date +%Y%m%d-%H%M)-final
+docker exec $PGCID pg_dump -U postgres -Fc evolution > $B/evolution-$CARIMBO.dump
+test -s $B/evolution-$CARIMBO.dump || { echo "DUMP VAZIO"; exit 1; }
+docker exec -i $PGCID pg_restore -l < $B/evolution-$CARIMBO.dump | grep -c 'TABLE DATA'   # arquivo truncado falha aqui
+ls -l $B/evolution-$CARIMBO.dump && echo DUMP-OK
+q evolution 'select count(*), max("messageTimestamp") from "Message"' > $B/foto-$CARIMBO.txt      # referência para o rollback
+# ⚠️ O db 9 guarda a cópia anterior: esvaziar ANTES de copiar de novo — só o db 9! (Codex, PR #162)
+docker exec $RCID redis-cli -n 9 FLUSHDB
+n=0; for k in $($RC --scan --pattern '*'); do r=$($RC COPY "$k" "$k" DB 9 REPLACE); n=$((n+1)); [ "$r" = 1 ] || echo "COPY falhou: $k"; done; echo "copiadas=$n"
+echo "db8=$($RC DBSIZE) db9=$(docker exec $RCID redis-cli -n 9 DBSIZE)"   # foto final (serviço a 0): IGUAIS. Pré-voo: podem diferir (chaves com TTL nascendo/expirando) — compare os 4 hashes:
+for h in $($RC --scan --pattern 'evolution:instance:*'); do echo "$h $($RC HLEN $h) $(docker exec $RCID redis-cli -n 9 HLEN $h)"; done | tee -a $B/foto-$CARIMBO.txt
+antes=$($RC LASTSAVE); $RC BGSAVE; until [ "$($RC LASTSAVE)" != "$antes" ]; do sleep 1; done   # BGSAVE, não SAVE: o Redis é compartilhado (db0/db2)
+docker cp $RCID:/data/dump.rdb $B/redis-$CARIMBO.rdb && ls -l $B/redis-$CARIMBO.rdb
+[ -n "$CID" ] && docker cp $CID:/evolution/instances $B/instances-$CARIMBO   # só com o contêiner vivo (pré-voo)
+timeout 120 docker service logs evolution_evolution --since 24h > $B/evolution-log-$CARIMBO.txt 2>&1
+[ -n "$CID" ] && { docker exec $CID printenv | sort > $B/evolution-env-$CARIMBO.txt; chmod 600 $B/evolution-env-$CARIMBO.txt; }
 
-# Restauração de prova (cria e apaga um banco de ensaio). ⚠️ `-d <banco>` vem ANTES
-# de `-Atc`; e a contagem de Message compara o MESMO corte de tempo (o id é cuid,
-# e a produção continua recebendo enquanto se confere) — ver 9.1.
+# Restauração de prova (cria e apaga um banco de ensaio). Mesmo $CARIMBO do dump acima.
+# Serviço VIVO: comparar Message no MESMO corte de messageTimestamp (o id é cuid; a produção
+# continua recebendo). Serviço a 0 (foto final, depois do scale=1): o count(*) TOTAL bate.
+docker exec $PGCID dropdb -U postgres --if-exists evolution_ensaio
 docker exec $PGCID createdb -U postgres evolution_ensaio
-docker exec -i $PGCID pg_restore -U postgres -d evolution_ensaio < /root/backups/evolution-$(date +%F).dump
-MTS=$(docker exec $PGCID psql -U postgres -d evolution_ensaio -Atc 'select max("messageTimestamp") from "Message"')
-docker exec $PGCID psql -U postgres -d evolution_ensaio -Atc "select count(*) from \"Message\" where \"messageTimestamp\" < $MTS - 3600"
-docker exec $PGCID psql -U postgres -d evolution        -Atc "select count(*) from \"Message\" where \"messageTimestamp\" < $MTS - 3600"   # têm de bater
+docker exec -i $PGCID pg_restore --exit-on-error -U postgres -d evolution_ensaio < $B/evolution-$CARIMBO.dump; echo "restore rc=$?"
+MTS=$(q evolution_ensaio 'select max("messageTimestamp") from "Message"')
+q evolution_ensaio "select count(*) from \"Message\" where \"messageTimestamp\" < $MTS - 3600"
+q evolution        "select count(*) from \"Message\" where \"messageTimestamp\" < $MTS - 3600"   # têm de bater
+q evolution_ensaio 'select count(*), max("messageTimestamp") from "Message"'; cat $B/foto-$CARIMBO.txt   # foto final: iguais
 docker exec $PGCID dropdb -U postgres evolution_ensaio
+
+# Rollback (DESTRUTIVO — só com um gatilho de 8.4 batido; a ORDEM é a da seção 10). FOTO=<carimbo>-final
+docker service scale evolution_evolution=0
+docker service ps evolution_evolution --format '{{.Name}} {{.CurrentState}}' | head -3      # nenhuma Running
+docker exec $PGCID dropdb -U postgres --if-exists evolution_volta; docker exec $PGCID createdb -U postgres evolution_volta
+docker exec -i $PGCID pg_restore --exit-on-error -U postgres -d evolution_volta < $B/evolution-$FOTO.dump; echo "restore rc=$?"   # rc tem de ser 0
+q evolution_volta 'select count(*), max("messageTimestamp") from "Message"'; cat $B/foto-$FOTO.txt   # IGUAIS, senão PARAR
+q postgres "select pg_terminate_backend(pid) from pg_stat_activity where datname in ('evolution','evolution_volta') and pid <> pg_backend_pid()"
+q postgres 'alter database evolution rename to evolution_v24'
+q postgres 'alter database evolution_volta rename to evolution'
+docker exec $RCID redis-cli -n 8 FLUSHDB     # só o db 8!
+for k in $(docker exec $RCID redis-cli -n 9 --scan --pattern '*'); do docker exec $RCID redis-cli -n 9 COPY "$k" "$k" DB 8 REPLACE >/dev/null; done
+echo "db8=$($RC DBSIZE) db9=$(docker exec $RCID redis-cli -n 9 DBSIZE)"   # iguais
+for h in $($RC --scan --pattern 'evolution:instance:*'); do echo "$h $($RC HLEN $h)"; done; cat $B/foto-$FOTO.txt   # HLEN iguais
+docker service update --image ghcr.io/leonardocabralb/evolution-api-lidfix:2.3.2-lidfix@sha256:dd3e46aadd696c07ac4a099f7e8e59b970f8a59e3df6c8c8beb4bf31f5848694 --env-rm TELEMETRY_ENABLED evolution_evolution
+docker service scale --detach evolution_evolution=1
+sleep 20; CID=$(docker ps -q -f name=evolution_evolution | head -1)                       # RELER
+docker exec $CID sh -c 'grep -m1 "\"version\"" package.json'                              # 2.3.2
+q evolution 'select name, "connectionStatus" from "Instance"'                             # 4 × open
 ```
 
 Consultas no Supabase do CRM (projeto `hxnhakmyxyhalbsktzwe`):
@@ -871,6 +1186,27 @@ select label, instance_name, display_phone, own_lid, groups_enabled, status from
 
 -- agendadas pendentes (tem de ser zero na janela)
 select count(*) from cb_scheduled_messages where status = 'pending';
+
+-- latência de entrada (T21 / 8.3): última mensagem do cliente por conversa, relógio do CRM − relógio do WhatsApp
+select percentile_cont(0.5) within group (order by extract(epoch from c.last_message_at - m.created_at)) p50,
+       percentile_cont(0.95) within group (order by extract(epoch from c.last_message_at - m.created_at)) p95, count(*)
+from conversations c join lateral (select created_at, from_me from messages where conversation_id = c.id order by created_at desc limit 1) m on true
+where not m.from_me and c.last_message_at > now() - interval '2 hours';
+
+-- entrada por hora (8.3): comparar com a mediana por hora do dia de 9.2
+select date_trunc('hour', created_at at time zone 'America/Sao_Paulo') h, count(*) from messages
+ where not from_me and created_at > now() - interval '48 hours' group by 1 order by 1;
+
+-- o que dispara sozinho na reconexão (6.2.0, item 11)
+select id, name, trigger_type from automations where is_active and trigger_type in ('new_message_received','first_inbound_message','keyword_match');
+select count(*) from automation_pending_executions where status = 'pending' and run_at < now() + interval '3 hours';
+select count(*) from flow_runs where status = 'active';
+
+-- intervalo scale=1 → ativação (6.2, passo 8): anexos recebidos sem arquivo, disparos que falharam
+select id, conversation_id, content_type, media_state, created_at from messages
+ where from_me = false and media_url is null and content_type in ('image','document','audio','video')
+   and created_at between '<scale=1>' and '<ativação>';
+select status, count(*) from cb_scheduled_messages where updated_at between '<scale=1>' and '<ativação>' group by 1;
 ```
 
 ---
@@ -895,6 +1231,8 @@ select count(*) from cb_scheduled_messages where status = 'pending';
 > a memória.
 
 ## 15. Fontes
+
+**Reverificado em 09/09 (noite)**, depois de a revisão adversarial achar que as cópias locais do guia e do changelog eram páginas 503: o guia v7 real (`baileys.wiki/migration/v7`) diz textualmente *"By default, all new Signal sessions in Baileys 7.x are created in the LID format, and existing sessions are migrated automatically"* (a premissa "sem QR" da 4.5/7.2) e descreve o `Contact` como o código do #161 implementa (*"id is the preferred identifier; phoneNumber is populated when id is a LID; lid is populated when id is a PN — these changes also affect participants on GroupMetadata"*). O guia também diz *"ACKs no longer sent"* — **não** é o recibo de entrega: `src/Socket/messages-recv.ts` da rc13 (linhas 1740–1758) manda `sendReceipt(remoteJid, participant, [id], type)` com `type` vazio (= entregue) exatamente como a 6.7.19 (linha 856); só o `read` depende de `sendActiveReceipts`. T14 continua sendo o teste. A release rc13 no GitHub é só o conserto do `protocolMessage` (`fromMe` falso) sobre a rc12.
 
 - Evolution API — fontes por tag/branch (`src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts`, `src/api/dto/*`, `src/validate/instance.schema.ts`, `src/api/integrations/event/**`, `src/config/env.config.ts`, `src/utils/use-multi-file-auth-state-prisma.ts`, `src/utils/sendTelemetry.ts`, `src/licensing/runtime.ts`, `src/api/guards/auth.guard.ts`, `prisma/postgresql-migrations/**`, `Dockerfile`, `package.json`): https://github.com/evolution-foundation/evolution-api — tags `2.3.2`, `2.3.7`, `2.4.0-rc2`, branch `develop` (commit de 14/07/2026)
 - Notas de release 2.3.3 → 2.4.0-rc2: https://github.com/evolution-foundation/evolution-api/releases
