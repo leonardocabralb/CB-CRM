@@ -93,23 +93,27 @@ export function TagManager() {
       return;
     }
 
-    // Desde a 983/984 o banco tem índice único por
-    // `(account_id, name_key)`, e `name_key` ignora caixa E acento. Sem esta
-    // conferência, digitar "bancario" numa conta que já tem "Bancário" caía
-    // no `catch` lá embaixo e o operador via só "Falha ao criar a etiqueta"
-    // — sem nenhuma pista de que o motivo é já existir. Medido na tela.
+    // Desde a 983/984 o banco tem índice único por `(account_id, name_key)`,
+    // e `name_key` ignora caixa E acento. Digitar "bancario" numa conta que
+    // já tem "Bancário" é recusado — e o `catch` lá embaixo mostrava só
+    // "Falha ao criar a etiqueta", sem pista nenhuma do motivo.
     //
-    // ⚠️ É MELHOR ESFORÇO, não garantia: `fetchTags` filtra por `user_id`,
-    // então uma etiqueta criada por OUTRO membro da conta não está nesta
-    // lista. Por isso o 23505 continua sendo tratado abaixo — ele é a rede
-    // de verdade, e também cobre a corrida entre duas abas.
-    const jaExiste = tags.find(
+    // Esta busca serve para DAR NOME ao erro, e nada mais. Ela NÃO barra a
+    // criação, de propósito:
+    //
+    // ⚠️ `tags` é uma foto de quando `fetchTags` rodou. Se a etiqueta que
+    // colidiria foi APAGADA noutra aba ou noutro aparelho, o banco aceitaria
+    // a criação — e uma guarda que desse `return` aqui recusaria para
+    // sempre, até a pessoa recarregar a página. O caminho que só depende do
+    // banco se cura sozinho; a guarda o transformava em estado preso.
+    // (Achado do Codex no PR #154.)
+    //
+    // ⚠️ E ela é incompleta por outro motivo: `fetchTags` filtra por
+    // `user_id`, então etiqueta criada por OUTRO membro da conta não está
+    // nesta lista. Quem decide é sempre o 23505.
+    const provavelColisao = tags.find(
       (tag) => chaveDeTag(tag.name) === chaveDeTag(newTagName)
     );
-    if (jaExiste) {
-      toast.error(t('tagAlreadyExists', { nome: jaExiste.name }));
-      return;
-    }
 
     try {
       setSaving(true);
@@ -140,8 +144,17 @@ export function TagManager() {
       // não estar na lista carregada —, mas dizer o motivo já poupa o
       // operador de tentar de novo achando que o sistema falhou.
       const codigo = (err as { code?: string } | null)?.code;
+      if (codigo !== '23505') {
+        toast.error(t('failedToCreateTag'));
+        return;
+      }
+      // O banco recusou por nome repetido. Se a lista carregada souber qual
+      // é, nomeamos; senão (etiqueta de outro membro, ou lista velha)
+      // dizemos o motivo sem apontar qual.
       toast.error(
-        codigo === '23505' ? t('tagAlreadyExistsUnknown') : t('failedToCreateTag')
+        provavelColisao
+          ? t('tagAlreadyExists', { nome: provavelColisao.name })
+          : t('tagAlreadyExistsUnknown')
       );
     } finally {
       setSaving(false);
