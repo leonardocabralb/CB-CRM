@@ -14,7 +14,12 @@ export const VALIDADE_DO_TOKEN_DIAS = 60;
 /** Abaixo disto a tela avisa que o token está para vencer. */
 export const AVISO_DE_VENCIMENTO_DIAS = 10;
 
-/** ISO do vencimento de um token gerado AGORA. */
+/**
+ * ISO do vencimento de um token gerado AGORA. É PRESUNÇÃO: o operador pode
+ * colar um token gerado dias antes, e a data fica otimista. O cron da Fase 6
+ * corrige pelo `expires_in` que a renovação devolve; até lá, a tela mostra
+ * o teto, não a medida.
+ */
 export function validadeDoToken(agora: Date = new Date()): string {
   return new Date(
     agora.getTime() + VALIDADE_DO_TOKEN_DIAS * 24 * 60 * 60 * 1000

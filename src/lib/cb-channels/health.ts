@@ -30,6 +30,7 @@ import { decrypt } from '@/lib/whatsapp/encryption';
 import { ehUrlAlcancavel } from './webhook-url';
 import type { CbChannelStatus, CbChannelKind } from './repo';
 import { ehEvolution, ehInstagram, ehMeta } from './transporte';
+import { identidadeDoCanal } from './display';
 import { InstagramApiError, criarClienteInstagram } from '@/lib/instagram/graph';
 
 /** Cor do glifo. `unknown` = configuração incompleta, nem dá para sondar. */
@@ -183,7 +184,12 @@ export function toneFor(e: EntradaDeCor): { tone: HealthTone; detail: string | n
  * novo, que é o verde mentiroso ao contrário (Codex, PR #167).
  */
 export function estadoDaFalhaDoInstagram(err: unknown): 'close' | null {
-  return err instanceof InstagramApiError && err.codigo === 'rede' ? null : 'close';
+  if (!(err instanceof InstagramApiError)) return 'close';
+  // Rede fora, limite de chamadas (429) e 5xx da Meta são "não sei" — o
+  // token pode estar perfeito. Só 4xx com resposta (190, permissão) é queda.
+  if (err.codigo === 'rede' || err.codigo === 'limite') return null;
+  if (err.status !== null && err.status >= 500) return null;
+  return 'close';
 }
 
 /** O pior tom de um conjunto — é o que o glifo colapsado mostra. */
@@ -258,6 +264,7 @@ interface LinhaDeCanal {
   kind: CbChannelKind;
   label: string;
   display_phone: string | null;
+  ig_username: string | null;
   is_default: boolean;
   status: CbChannelStatus;
   connected_at: string | null;
@@ -279,7 +286,7 @@ export async function probeChannels(
     .select(
       'id, kind, label, display_phone, is_default, status, connected_at, ' +
         'last_error, last_checked_at, phone_number_id, server_url, ' +
-        'instance_name, access_token, ig_user_id',
+        'instance_name, access_token, ig_user_id, ig_username',
     )
     .eq('account_id', accountId)
     .order('is_default', { ascending: false })
@@ -422,7 +429,9 @@ export async function probeChannels(
       id: c.id,
       label: c.label,
       kind: c.kind,
-      phone: c.display_phone,
+      // No Instagram é o `@` — `formatChannelPhone` devolve texto com
+      // não-dígito como veio, então o popover mostra o @ sem saber que é.
+      phone: identidadeDoCanal(c),
       isDefault: c.is_default,
       tone,
       status: houveResposta ? novoStatus : c.status,

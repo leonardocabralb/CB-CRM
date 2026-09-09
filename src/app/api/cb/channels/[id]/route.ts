@@ -233,11 +233,16 @@ export async function DELETE(
           ? body.promote_to.trim()
           : null;
 
+      // Sucessor do padrão tem de ser WhatsApp (o padrão responde conversa
+      // sem canal e alimenta `whatsapp_config`; `setDefaultChannel` recusa o
+      // Instagram). Contar o Instagram aqui dizia "escolha o sucessor" com
+      // um único candidato que o servidor recusaria em seguida.
       const { data: outros, error: outrosErr } = await ctx.supabase
         .from('cb_channels')
         .select('id')
         .eq('account_id', ctx.accountId)
-        .neq('id', id);
+        .neq('id', id)
+        .in('kind', ['meta', 'evolution']);
 
       if (outrosErr) {
         console.error('[cb/channels DELETE] contagem falhou:', outrosErr.message);
