@@ -107,6 +107,27 @@ describe('unwrapMessage', () => {
   });
 });
 
+describe('legenda invisível do iPhone', () => {
+  // MEDIDO no payload real (09/09/2026): documento mandado do iPhone traz
+  // `caption: '\uFFFC'`. Gravado, ele vira uma caixinha sob o nome do
+  // arquivo na bolha e na prévia da lista.
+  it('caption só com o marcador de objeto não vira texto', () => {
+    expect(
+      extractText({ documentMessage: { caption: '\uFFFC', fileName: 'a.pdf' } }),
+    ).toBeNull();
+    expect(
+      extractText({ documentMessage: { caption: ' \uFFFC \uFFFC ', fileName: 'a.pdf' } }),
+    ).toBeNull();
+  });
+
+  it('legenda de verdade continua passando, marcador junto ou não', () => {
+    expect(extractText({ documentMessage: { caption: 'segue o contrato' } })).toBe(
+      'segue o contrato',
+    );
+    expect(extractText({ documentMessage: { caption: '\uFFFCsegue' } })).toBe('\uFFFCsegue');
+  });
+});
+
 describe('extractText', () => {
   it('pega conversation e extendedTextMessage', () => {
     expect(extractText({ conversation: 'Oi' })).toBe('Oi');

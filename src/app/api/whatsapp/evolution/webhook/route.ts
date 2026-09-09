@@ -38,6 +38,11 @@ import { resolveInboundEvolutionChannel } from '@/lib/cb-channels/resolve-inboun
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
 import {
+  anexoGrandeDemais,
+  mediaBytesOf,
+  nomeDeArquivoDeclarado,
+} from '@/lib/whatsapp/transport/anexo-declarado';
+import {
   fetchAndStoreEvolutionMedia,
   type EvolutionMediaSalva,
 } from '@/lib/whatsapp/transport/evolution-media';
@@ -169,9 +174,17 @@ export async function POST(request: Request) {
         item: EvolutionUpsert;
         contentType: string;
         messageId: string;
-        /** Bytes declarados (só em grupo); decide baixar agora ou sob demanda. */
+        /**
+         * Bytes declarados no payload. Decide duas coisas: se o anexo cabe no
+         * Storage (1:1 e grupo) e, em grupo, se baixa agora ou sob demanda.
+         */
         bytes?: number | null;
-        /** Mensagem de grupo — só nela mexemos em `media_state`. */
+        /**
+         * Mensagem de grupo. Decide o adiamento do download e o `pending`/
+         * `failed` do `media_state` — os dois estados que existem para o
+         * botão "toque para baixar", que só grupo tem. (`too_large` é dos
+         * dois: ver o portão por tamanho no laço abaixo.)
+         */
         ehGrupo?: boolean;
       }[] = [];
       const paraFoto: NonNullable<PersistedInbound['contato']>[] = [];
@@ -263,6 +276,9 @@ export async function POST(request: Request) {
               item,
               contentType: normalized.contentType,
               messageId: gravada.messageId,
+              // Tamanho declarado no 1:1 também (antes só grupo lia): é o que
+              // evita baixar 46 MiB para descobrir que não cabe.
+              bytes: mediaBytesOf(item),
             });
           }
         } catch (err) {
@@ -272,6 +288,38 @@ export async function POST(request: Request) {
 
       for (const pendente of semAnexo) {
         try {
+          // ---- MAIOR QUE O BUCKET ----
+          // ⚠️ Vem ANTES de tudo, inclusive do adiamento de grupo: baixar um
+          // arquivo que o Storage vai recusar gasta banda e memória para
+          // terminar em "Documento indisponível", que não explica nada. Com
+          // `too_large` gravado, a bolha diz o NOME do arquivo e o motivo, e
+          // `podeBaixarAnexo` esconde o botão que nunca funcionaria.
+          //
+          // Vale para 1:1 e para grupo. Até 2026-09-09 o `media_state` era só
+          // de grupo — e `too_large` não tinha escritor nenhum, embora a rota
+          // de download já o lesse.
+          if (anexoGrandeDemais(pendente.bytes)) {
+            const nome = nomeDeArquivoDeclarado(pendente.item);
+            const { error: erroGrande } = await supabaseAdmin()
+              .from('messages')
+              .update({
+                media_state: 'too_large',
+                // Nome ausente não sobrescreve com NULL (a regra da 969).
+                ...(nome ? { media_filename: nome } : {}),
+              })
+              .eq('id', pendente.messageId);
+            if (erroGrande) {
+              // Falhar aqui devolve a bolha ao "indisponível" genérico — a
+              // mensagem em si está gravada. Vale o log: é a diferença entre
+              // o operador saber e não saber por que o anexo não veio.
+              console.error(
+                '[evolution/webhook] não pôde marcar anexo grande demais:',
+                erroGrande.message,
+              );
+            }
+            continue;
+          }
+
           // Em GRUPO o anexo grande fica sob demanda ("toque para baixar"),
           // e só ele: no 1:1 o comportamento segue exatamente como era.
           // Tamanho desconhecido conta como pequeno de propósito — o WhatsApp
@@ -294,8 +342,11 @@ export async function POST(request: Request) {
           );
 
           if (!midia) {
-            // Só a mensagem de grupo tem `media_state`; marcar a de 1:1
-            // mudaria o comportamento de um caminho que não está em jogo aqui.
+            // `failed` continua SÓ em grupo: é o estado que acende o botão
+            // de tentar de novo, e a rota de download sob demanda só existe
+            // para grupo. Marcar 1:1 aqui prometeria um botão que não há.
+            // (Diferente do `too_large` do portão acima, que não oferece
+            // botão nenhum — só explica.)
             if (pendente.ehGrupo) {
               await supabaseAdmin()
                 .from('messages')

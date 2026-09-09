@@ -16,12 +16,20 @@ import { createClient } from '@supabase/supabase-js';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit';
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
+import {
+  anexoGrandeDemais,
+  mediaBytesOf,
+} from '@/lib/whatsapp/transport/anexo-declarado';
 import { EvolutionClient } from '@/lib/whatsapp/transport/evolution-client';
+import type { EvolutionUpsert } from '@/lib/whatsapp/transport/evolution-inbound';
 import {
   fetchAndStoreEvolutionMedia,
   type EvolutionMediaSalva,
 } from '@/lib/whatsapp/transport/evolution-media';
 import { decrypt } from '@/lib/whatsapp/encryption';
+
+/** Uma frase só para os dois caminhos: o já marcado e o que acabou de ser. */
+const GRANDE_DEMAIS = 'Arquivo grande demais para o CRM guardar. Veja no celular.';
 
 export const maxDuration = 60;
 
@@ -70,10 +78,7 @@ export async function POST(
       return NextResponse.json({ media_url: (msg as { media_url: string }).media_url });
     }
     if ((msg as { media_state?: string | null }).media_state === 'too_large') {
-      return NextResponse.json(
-        { error: 'Arquivo grande demais para o CRM guardar. Veja no celular.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: GRANDE_DEMAIS }, { status: 400 });
     }
 
     const db = admin();
@@ -109,6 +114,14 @@ export async function POST(
       instance: canal.instance_name,
       apikey: decrypt(canal.api_key),
     });
+
+    // ⚠️ O mesmo portão do webhook, aqui também: esta rota pode receber uma
+    // mensagem marcada `pending` por uma versão anterior ao teto de entrada,
+    // e sem isto ela baixaria dezenas de MiB para o Storage recusar no fim.
+    if (anexoGrandeDemais(mediaBytesOf((ref as { payload: EvolutionUpsert }).payload))) {
+      await db.from('messages').update({ media_state: 'too_large' }).eq('id', messageId);
+      return NextResponse.json({ error: GRANDE_DEMAIS }, { status: 413 });
+    }
 
     let midia: EvolutionMediaSalva | null = null;
     try {

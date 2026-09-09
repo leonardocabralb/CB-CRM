@@ -11,6 +11,7 @@
 // grava") NÃO vale aqui, e aplicá-la por hábito jogaria fora mensagem real.
 // ============================================================
 
+import { mediaBytesOf as bytesDeclarados } from './anexo-declarado';
 import {
   detectContentType,
   extractText,
@@ -106,21 +107,14 @@ export function extractMentionedJids(item: EvolutionUpsert): string[] {
 }
 
 /**
- * Bytes declarados do anexo. Vem como STRING no payload da Evolution
- * (conferido na sondagem), então `Number()` é obrigatório — comparar a string
- * com o teto daria resultado errado sem erro nenhum.
+ * Bytes declarados do anexo.
+ *
+ * ⚠️ MUDOU DE CASA em 2026-09-09 (`anexo-declarado.ts`): a mesma leitura
+ * passou a valer para a conversa 1:1, e o caminho direto não pode importar
+ * do módulo de GRUPO — é o vínculo que a bifurcação da 906 existe para
+ * evitar. Re-exportado aqui para os call sites e o teste que já existiam.
  */
-export function mediaBytesOf(item: EvolutionUpsert): number | null {
-  const corpo = unwrapMessage(item.message);
-  if (!corpo) return null;
-  for (const chave of ['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage']) {
-    const m = corpo[chave] as { fileLength?: unknown } | undefined;
-    if (!m) continue;
-    const n = Number(m.fileLength);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  }
-  return null;
-}
+export { mediaBytesOf } from './anexo-declarado';
 
 /**
  * Normaliza um item de `messages.upsert` que veio de um GRUPO.
@@ -159,6 +153,6 @@ export function normalizeGroupUpsert(
     contentType: detectContentType(item.message),
     text: extractText(item.message),
     mentionedJids: extractMentionedJids(item),
-    mediaBytes: mediaBytesOf(item),
+    mediaBytes: bytesDeclarados(item),
   };
 }

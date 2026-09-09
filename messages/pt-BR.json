@@ -374,6 +374,7 @@
       "video": "Vídeo",
       "audio": "Áudio",
       "unavailable": "{label} indisponível",
+      "tooLarge": "{label} grande demais para o CRM — abra no WhatsApp do celular",
       "document": "Documento",
       "locationShared": "Localização compartilhada",
       "template": "Modelo",

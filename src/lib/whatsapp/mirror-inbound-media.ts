@@ -1,6 +1,9 @@
 import { downloadMedia } from "./meta-api";
 import { extensionForMime } from "@/lib/media/filename";
-import { buildMediaPath, MEDIA_MAX_BYTES } from "@/lib/storage/upload-media";
+import {
+  buildMediaPath,
+  MEDIA_MAX_BYTES_ENTRADA,
+} from "@/lib/storage/upload-media";
 
 /**
  * Copies inbound WhatsApp media into the `chat-media` bucket so it
@@ -165,12 +168,12 @@ export async function mirrorInboundMedia(
   const normalizedMime = normalizeMimeType(mimeType);
 
   // Skip oversized media BEFORE spending the transfer. The bucket
-  // rejects anything past its 16 MB `file_size_limit` anyway, and Meta
+  // rejects anything past its `file_size_limit` anyway, and Meta
   // allows documents up to 100 MB, so this is a real case rather than a
   // defensive one.
-  if (typeof fileSize === "number" && fileSize > MEDIA_MAX_BYTES) {
+  if (typeof fileSize === "number" && fileSize > MEDIA_MAX_BYTES_ENTRADA) {
     console.warn(
-      `[mirror-media] skipping ${mediaId}: ${fileSize} bytes exceeds the ${MEDIA_MAX_BYTES}-byte bucket limit`,
+      `[mirror-media] skipping ${mediaId}: ${fileSize} bytes exceeds the ${MEDIA_MAX_BYTES_ENTRADA}-byte bucket limit`,
     );
     return null;
   }
@@ -181,9 +184,9 @@ export async function mirrorInboundMedia(
     // Meta's `file_size` is advisory; the transfer is the truth. Check
     // again so an understated size can't push a rejected upload onto
     // the bucket.
-    if (buffer.byteLength > MEDIA_MAX_BYTES) {
+    if (buffer.byteLength > MEDIA_MAX_BYTES_ENTRADA) {
       console.warn(
-        `[mirror-media] skipping ${mediaId}: downloaded ${buffer.byteLength} bytes, over the ${MEDIA_MAX_BYTES}-byte bucket limit`,
+        `[mirror-media] skipping ${mediaId}: downloaded ${buffer.byteLength} bytes, over the ${MEDIA_MAX_BYTES_ENTRADA}-byte bucket limit`,
       );
       return null;
     }

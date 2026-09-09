@@ -15,7 +15,14 @@ import { buildMediaPath } from "./media-path";
  * composer call this so the logic lives in exactly one place.
  */
 
-/** 16 MB — matches the `file_size_limit` on both buckets (migrations 016/020/023). */
+/**
+ * 16 MB — o `file_size_limit` do bucket `flow-media` (016/020).
+ *
+ * ⚠️ Deixou de valer para o `chat-media`, que foi para 50 MiB na 986: quem
+ * responde por ele é `MEDIA_MAX_BYTES_ENTRADA` (entrada) ou
+ * `MEDIA_MAX_BYTES_BY_KIND` (envio). O comentário antigo dizia "both
+ * buckets" e ficaria mentindo aqui.
+ */
 export const MEDIA_MAX_BYTES = 16 * 1024 * 1024;
 
 /**
@@ -27,6 +34,28 @@ export const MEDIA_MAX_BYTES = 16 * 1024 * 1024;
  * (Meta allows 100 MB, but the bucket — and shared-hosting upload UX —
  * caps lower).
  */
+/**
+ * Teto do que o CRM aceita RECEBER de um cliente — 50 MiB, o `file_size_limit`
+ * do bucket `chat-media` desde a migration 986.
+ *
+ * ⚠️ É OUTRO número, e outra pergunta, do `MEDIA_MAX_BYTES_BY_KIND` abaixo.
+ * Aquele é o teto de ENVIO: espelha os limites da API da Meta para o arquivo
+ * ser barrado no navegador antes de virar órfão no bucket. Este responde
+ * "cabe no nosso Storage?" sobre um arquivo que o cliente JÁ mandou e que o
+ * WhatsApp já aceitou — recusá-lo não impede envio nenhum, só apaga o
+ * documento do fio.
+ *
+ * Os dois eram o MESMO valor até 2026-09-09, e o preço foi medido: sete
+ * documentos de cliente (extrato, contrato, regulamento — até 46 MiB)
+ * viraram "Documento indisponível", porque o teto de ENVIO da Meta estava
+ * decidindo o que o escritório podia RECEBER.
+ *
+ * ⚠️ Espelha a migration 986, como `MIMES_POR_TIPO` espelha a
+ * `allowed_mime_types` da 023: subir aqui sem subir lá troca a recusa do
+ * código por uma recusa do Storage, já com o arquivo baixado.
+ */
+export const MEDIA_MAX_BYTES_ENTRADA = 50 * 1024 * 1024;
+
 export const MEDIA_MAX_BYTES_BY_KIND = {
   image: 5 * 1024 * 1024,
   video: 16 * 1024 * 1024,

@@ -381,6 +381,7 @@
       "video": "Video",
       "audio": "Audio",
       "unavailable": "{label} unavailable",
+      "tooLarge": "{label} too large for the CRM — open it in WhatsApp on the phone",
       "document": "Document",
       "locationShared": "Location shared",
       "template": "Template",

@@ -5,7 +5,7 @@ import {
   mirrorInboundMedia,
   normalizeMimeType,
 } from "./mirror-inbound-media";
-import { MEDIA_MAX_BYTES } from "@/lib/storage/upload-media";
+import { MEDIA_MAX_BYTES_ENTRADA } from "@/lib/storage/upload-media";
 
 const ACCOUNT = "11111111-2222-3333-4444-555555555555";
 const MEDIA_ID = "1234567890123456";
@@ -205,7 +205,7 @@ describe("mirrorInboundMedia", () => {
       ...BASE,
       storage,
       mimeType: "application/pdf",
-      fileSize: MEDIA_MAX_BYTES + 1,
+      fileSize: MEDIA_MAX_BYTES_ENTRADA + 1,
       download,
     });
 
@@ -223,7 +223,7 @@ describe("mirrorInboundMedia", () => {
       storage,
       mimeType: "video/mp4",
       fileSize: 1024,
-      download: fakeDownload(MEDIA_MAX_BYTES + 1, "video/mp4"),
+      download: fakeDownload(MEDIA_MAX_BYTES_ENTRADA + 1, "video/mp4"),
     });
 
     expect(url).toBeNull();

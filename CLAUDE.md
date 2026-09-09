@@ -924,6 +924,48 @@ enxerga esse estado**. A cura é a página carimbar de quem é o array
 (`messagesDaConversa`) e passar `carregando` — prop OBRIGATÓRIA no
 `AbaArquivos`, para o compilador cobrar de quem montar a aba em tela nova.
 
+⚠️ **Anexo grande (986): o teto de ENVIO estava decidindo o que o escritório
+podia RECEBER.** `MEDIA_MAX_BYTES_ENTRADA` (`src/lib/storage/upload-media.ts`),
+`src/lib/whatsapp/transport/anexo-declarado.ts` (puro, com teste) e o portão
+por tamanho no webhook da Evolution. O que morde código novo:
+
+- ⚠️⚠️ **São DOIS tetos com perguntas diferentes, e usar um pelo outro apaga
+  documento de cliente.** `MEDIA_MAX_BYTES_BY_KIND` espelha os limites da
+  Meta e vale para o ENVIO (barra no navegador antes de virar órfão no
+  bucket); `MEDIA_MAX_BYTES_ENTRADA` = 50 MiB é o `file_size_limit` do
+  bucket e vale para o que CHEGA. Eram o mesmo valor até 09/09/2026, e o
+  preço foi MEDIDO: sete documentos de cliente (extrato, contrato,
+  regulamento — 16,4 a 46,1 MiB) viraram "Documento indisponível" desde
+  01/09. Seis foram recuperados; o sétimo a Evolution já não decifrava.
+- ⚠️ **50 MiB, e não 100 MB (o teto do WhatsApp), por dois motivos
+  escritos na migration**: o teto GLOBAL de upload de um projeto Supabase
+  começa em 50 MiB no plano gratuito — pedir mais valeria aqui e explodiria
+  na próxima instalação —, e o download da Evolution vem em BASE64, então
+  cada anexo ocupa ~1,33× o tamanho em string no processo Node da VPS.
+- ⚠️ **O número vive em DOIS lugares e há teste amarrando os dois**
+  (`anexo-declarado.test.ts` lê o SQL da 986). Subir só o código troca a
+  recusa nossa por uma recusa do Storage, já com o arquivo baixado; subir
+  só o bucket não muda nada, porque quem recusa primeiro é o código.
+- ⚠️ **O tamanho é lido do PAYLOAD antes de baixar** (`mediaBytesOf`, que
+  saiu do módulo de GRUPO para o neutro justamente por isto). Sem esse
+  portão o CRM baixava 46 MiB da Evolution para descartar em seguida.
+  ⚠️ `fileLength` vem como STRING — comparar sem `Number()` dá resultado
+  errado sem erro nenhum. Tamanho AUSENTE conta como pequeno (tenta baixar);
+  o teto real fica no backstop de `fetchAndStoreEvolutionMedia`.
+- ⚠️ **`media_state='too_large'` agora é gravado no 1:1 também**, e é o que
+  faz a bolha dizer o NOME do arquivo e o motivo em vez de "indisponível".
+  Até aqui esse valor não tinha ESCRITOR nenhum, embora a rota de download
+  de grupo já o lesse. `'failed'` continua só em grupo, de propósito: é o
+  estado que acende o botão "tentar de novo", e a rota sob demanda só
+  existe lá. O `podeBaixarAnexo` já excluía `too_large`.
+- ⚠️ **O nome do arquivo é gravado MESMO quando o anexo é recusado**
+  (`nomeDeArquivoDeclarado`): é a única informação que sobra do documento
+  que não coube, e sem ela a bolha cai no rótulo genérico.
+- **Legenda `\uFFFC` não é legenda**: documento mandado do iPhone chega com
+  o OBJECT REPLACEMENT CHARACTER no `caption`, e gravá-lo em `content_text`
+  põe uma caixinha na bolha, na prévia da lista e no transcrito do Radar.
+  `extractText` descarta legenda sem nada visível.
+
 ⚠️ **Nome do anexo (969): o nome SEMPRE chegou, e era descartado na porta.**
 `messages.media_filename`, `src/lib/media/filename.ts` (a cascata) e
 `src/lib/media/anexos.ts` (o acervo da conversa, puro e testado). O que morde
@@ -3563,6 +3605,12 @@ que faltava. `mcp-server/` fica fora (tem `.env.example` e doc próprios).
     duplicata entrar. Aplicada em 2026-09-09 via conector, ANTES do merge;
     conferido: precomposta e decomposta geram a mesma chave, a 2ª inserção é
     barrada pelo índice, e zero colisões novas nesta instalação.
+
+  - **986_cb_anexo_grande** — `chat-media.file_size_limit` de 16 MiB para 50
+    MiB, o teto que fazia o CRM descartar documento grande de cliente.
+    Aplicada em 2026-09-09 via conector, ANTES do merge; conferido por
+    consulta (52428800) e pela recuperação dos 6 anexos ainda vivos na
+    Evolution.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

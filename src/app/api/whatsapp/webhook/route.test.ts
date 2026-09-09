@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+import { MEDIA_MAX_BYTES_ENTRADA } from '@/lib/storage/upload-media'
+
 // Shared, hoisted state the module mocks close over. Reset per test.
 const h = vi.hoisted(() => ({
   runAutomationsForTrigger: vi.fn(),
@@ -480,7 +482,10 @@ describe('inbound webhook: inbound media is mirrored (#466)', () => {
     mockGetMediaUrl.mockResolvedValue({
       url: 'https://lookaside.fbsbx.com/whatsapp/big',
       mimeType: 'application/pdf',
-      fileSize: 40 * 1024 * 1024,
+      // ⚠️ Derivado do teto, nunca um número solto: a 986 subiu o limite do
+      // bucket para 50 MiB e um "40 MB" cravado passou a caber, então este
+      // teste afirmava o contrário do que o código faz.
+      fileSize: MEDIA_MAX_BYTES_ENTRADA + 1,
     })
 
     await runWebhook({
