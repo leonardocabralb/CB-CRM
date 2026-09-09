@@ -46,7 +46,7 @@ até o operador dizer o contrário):**
 | # | Decisão | Recomendação | Por quê |
 | --- | --- | --- | --- |
 | **D1** | Onde a transcrição aparece na ficha | **dentro da aba Reuniões**, numa seção "Transcrições" abaixo das reuniões agendadas | a agenda olha para a frente e a transcrição para trás, e as duas respondem "as reuniões com este cliente"; uma 9ª aba (a lista já quebra em duas linhas) esconderia a novidade |
-| **D2** | Como a reunião acha o cliente sozinha | **pelo e-mail do convidado**, tirando os e-mails da equipe (perfis da conta); vincula só quando TODOS os e-mails de fora apontam para UM contato | o tl;dv não conhece telefone — o payload tem só nome e e-mail; dois clientes na mesma reunião é decisão de gente |
+| **D2** | Como a reunião acha o cliente sozinha | **pelo e-mail do convidado**, tirando os e-mails da equipe (perfis da conta); primeiro contra o e-mail da FICHA, depois contra o e-mail do AGENDAMENTO do Calendly (977) que já resolveu o contato pelo telefone; vincula só quando TODOS os e-mails de fora apontam para UM contato | o tl;dv não conhece telefone — o payload tem só nome e e-mail, e MEDIDO na primeira conexão real (09/09): o convidado chega com o nome VAZIO e só o e-mail; dos 583 contatos da conta só 1 tem e-mail na ficha, enquanto 13 dos 15 agendamentos do Calendly guardam e-mail E contato. Sem a ponte, o automático quase nunca acontecia. Dois clientes na mesma reunião é decisão de gente |
 | **D3** | Quando a regra automática NÃO religa | depois de um "desvincular" à mão (`vinculo_origem = 'desvinculada'`) | sem isso, desvincular seria desfeito no ciclo seguinte |
 | **D4** | Janela da sincronização | 30 dias na primeira; 7 dias nas seguintes, SEMPRE (não "desde a última") | o tl;dv processa a gravação DEPOIS da reunião, e `happenedAt` é a hora da reunião; uma janela colada no último ciclo perdia a reunião de ontem que só ficou pronta hoje. A idempotência é o UNIQUE da 987 |
 | **D5** | Webhook do tl;dv sem assinatura | aceitar, mas tratar o corpo como AVISO: só o id da reunião é lido, e a reunião é buscada na API com a nossa chave | a doc não tem cabeçalho de assinatura; assim, uma entrega forjada só faz o CRM consultar o tl;dv por um id — e o tl;dv devolve só o que a chave enxerga |
@@ -130,9 +130,14 @@ RLS), com dublê do Supabase para a sincronização.
   `node scripts/i18n-chaves-usadas.mjs`: verdes em 09/09.
 - Suíte inteira em Node 22 (`npx -y node@22 node_modules/vitest/vitest.mjs run`):
   verde em 09/09 (3.195 testes, 258 arquivos), incluindo o `produto-gate`.
-- ⚠️ **Sem teste de ponta a ponta com o tl;dv real**: não há chave nesta
-  sessão. O cliente foi escrito contra a forma da doc e testado com `fetch`
-  falso — a primeira conexão real é o teste que falta (seção 4).
+- ✅ **Sondagem contra a API REAL (09/09, chave do operador, só leitura)**:
+  listagem com `from`/`to` em data-hora aceita (31 reuniões em 30 dias; 919
+  no total desde 23/06, 10 páginas de 100); transcrição com orador e tempos
+  (120 frases numa reunião de 35 min); notas em markdown (15,8 mil chars, 16
+  tópicos); id falso → 404 → `nao_encontrado`. Duas divergências da doc,
+  ambas absorvidas: `happenedAt` vem no formato de `Date.toString()` ("Wed
+  Sep 09 2026 19:19:07 GMT+0000 (…)"), não ISO — `lerReuniao` normaliza; e
+  `template` não vem na listagem — não é usado. Pinos em `leitura.test.ts`.
 
 ## 4. Depois do merge (operador)
 

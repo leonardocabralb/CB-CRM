@@ -3194,6 +3194,18 @@ e a seção **Transcrições** dentro da aba Reuniões da ficha
   cercado por `contact_id IS NULL`. `desvinculada` é o que impede a regra de
   religar o que uma pessoa desligou; sem a cerca, a regra atropelaria um
   vínculo manual feito entre a leitura e a escrita.
+- ⚠️⚠️ **O vínculo automático tem DUAS fontes, e a segunda é a que funciona
+  nesta conta**: o e-mail da FICHA e, quando ela não acha ninguém, o e-mail
+  do AGENDAMENTO do Calendly (`cb_calendly_eventos`, 977) que já resolveu o
+  contato pelo telefone. MEDIDO em 09/09/2026, na primeira conexão real: o
+  convidado chega do tl;dv com o nome VAZIO e só o e-mail; dos 583 contatos
+  só 1 tem e-mail na ficha; 13 dos 15 agendamentos do Calendly guardam
+  e-mail e contato. Quem "simplificar" tirando a ponte devolve o vínculo
+  automático a quase zero, sem erro nenhum.
+- ⚠️ **`happenedAt` NÃO vem em ISO** — vem no formato de `Date.toString()`
+  ("Wed Sep 09 2026 19:19:07 GMT+0000 (Coordinated Universal Time)"), ao
+  contrário do que a doc mostra. `lerReuniao` normaliza via `Date.parse`;
+  há pino com a forma real. E `template` não vem na listagem.
 - ⚠️ **A janela é 7 dias SEMPRE, não "desde a última sincronização"**: o
   tl;dv processa a gravação depois da reunião e `happenedAt` é a hora da
   reunião. A idempotência é o UNIQUE `(account_id, tldv_meeting_id)`.
@@ -3710,9 +3722,9 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
     ou colada à mão; SELECT por membro, escrita só pela rota). ⚠️ **Criada em
     2026-09-09 e NÃO aplicada** (o conector do Supabase não estava
     autorizado na sessão): aplicar via conector ANTES do merge, com
-    autorização do operador. Sem ela o cartão em Integrações mostra "Erro"
-    e a seção Transcrições da ficha "não foi possível carregar" — nada mais
-    quebra.
+    autorização do operador. **Aplicada em 2026-09-09 via conector, com a
+    autorização, ANTES do merge**; conferido por consulta (as duas tabelas,
+    `anon` sem nada, `authenticated` só com SELECT nas reuniões).
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

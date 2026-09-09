@@ -35,6 +35,13 @@ describe("lerReuniao", () => {
     });
   });
 
+  it("lê a forma REAL da listagem (09/09/2026): `happenedAt` no formato de `Date.toString`, sem `template`", () => {
+    const { template: _t, ...semTemplate } = reuniao({ happenedAt: "Wed Sep 09 2026 19:19:07 GMT+0000 (Coordinated Universal Time)" });
+    void _t;
+    const r = lerReuniao(semTemplate);
+    expect(r?.realizadaEm).toBe("2026-09-09T19:19:07.000Z");
+  });
+
   it("sem id ou sem data não é reunião", () => {
     expect(lerReuniao(reuniao({ id: "" }))).toBeNull();
     expect(lerReuniao(reuniao({ happenedAt: "ontem" }))).toBeNull();

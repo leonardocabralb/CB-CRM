@@ -27,13 +27,15 @@ interface Linha {
 interface Estado {
   linhas: Map<string, Linha>;
   contatos: { id: string; email: string }[];
+  /** agendamentos do Calendly (977) já ligados a um contato */
+  agendamentos: { contact_id: string; email: string }[];
   equipe: string[];
   config: { patches: Record<string, unknown>[] };
   upserts: Record<string, unknown>[];
 }
 
 function estadoInicial(extra: Partial<Estado> = {}): Estado {
-  return { linhas: new Map(), contatos: [], equipe: [], config: { patches: [] }, upserts: [], ...extra };
+  return { linhas: new Map(), contatos: [], agendamentos: [], equipe: [], config: { patches: [] }, upserts: [], ...extra };
 }
 
 function dubleDoAdmin(estado: Estado, semConfig = false): SupabaseClient {
@@ -49,10 +51,16 @@ function dubleDoAdmin(estado: Estado, semConfig = false): SupabaseClient {
 
     function resolverLista(): { data: unknown; error: null } {
       if (tabela === "profiles") return { data: estado.equipe.map((email) => ({ email })), error: null };
-      if (tabela === "contacts") {
+      if (tabela === "contacts" || tabela === "cb_calendly_eventos") {
         const or = filtros.find((f) => f.op === "or")?.val as string;
         const emails = [...or.matchAll(/email\.ilike\."([^"]+)"/g)].map((m) => m[1].replace(/\\(.)/g, "$1").toLowerCase());
-        return { data: estado.contatos.filter((c) => emails.includes(c.email.toLowerCase())).map((c) => ({ id: c.id })), error: null };
+        if (tabela === "contacts") {
+          return { data: estado.contatos.filter((c) => emails.includes(c.email.toLowerCase())).map((c) => ({ id: c.id })), error: null };
+        }
+        return {
+          data: estado.agendamentos.filter((a) => emails.includes(a.email.toLowerCase())).map((a) => ({ contact_id: a.contact_id })),
+          error: null,
+        };
       }
       if (tabela === "cb_reunioes_transcritas") {
         if (op === "update") {
@@ -76,6 +84,7 @@ function dubleDoAdmin(estado: Estado, semConfig = false): SupabaseClient {
       or: (s: string) => (filtros.push({ op: "or", col: "", val: s }), q),
       eq: (col: string, val: unknown) => (filtros.push({ op: "eq", col, val }), q),
       is: (col: string, val: unknown) => (filtros.push({ op: "is", col, val }), q),
+      not: (col: string, op: string, val: unknown) => (filtros.push({ op: `not.${op}`, col, val }), q),
       upsert: (linha: Record<string, unknown>) => {
         op = "upsert";
         linhasDoUpsert = linha;
@@ -196,6 +205,29 @@ describe("sincronizarTldv", () => {
     // o upsert leva SÓ metadados: nem status, nem cliente, nem vínculo
     expect(Object.keys(estado.upserts[0])).not.toEqual(expect.arrayContaining(["status", "contact_id", "vinculo_origem", "texto"]));
     expect(estado.config.patches.at(-1)).toMatchObject({ status: "conectado", last_error: null });
+  });
+
+  it("contato SEM e-mail na ficha, mas com agendamento no Calendly pelo mesmo e-mail: vincula pela ponte", async () => {
+    const estado = estadoInicial({
+      contatos: [],
+      agendamentos: [{ contact_id: "c-paulo", email: "Paulo@Yahoo.com.br" }],
+      equipe: ["leonardo@escritorio.example"],
+    });
+    // A forma REAL medida em 09/09: convidado sem nome, só o e-mail.
+    const cliente = clienteFalso({ reunioes: [reuniao(M1, [{ nome: "", email: "paulo@yahoo.com.br" }])] });
+    const r = await sincronizarTldv(dubleDoAdmin(estado), "conta", { agora, cliente: () => cliente });
+    expect(r.ok && r.vinculadas).toBe(1);
+    expect(estado.linhas.get(M1)).toMatchObject({ contact_id: "c-paulo", vinculo_origem: "email" });
+  });
+
+  it("a ficha vence a ponte: com e-mail na ficha, o Calendly nem é consultado", async () => {
+    const estado = estadoInicial({
+      contatos: [{ id: "c-ficha", email: "a@x.com" }],
+      agendamentos: [{ contact_id: "c-calendly", email: "a@x.com" }],
+    });
+    const cliente = clienteFalso({ reunioes: [reuniao(M1, [{ nome: "A", email: "a@x.com" }])] });
+    await sincronizarTldv(dubleDoAdmin(estado), "conta", { agora, cliente: () => cliente });
+    expect(estado.linhas.get(M1)!.contact_id).toBe("c-ficha");
   });
 
   it("dois clientes na mesma reunião: ninguém é vinculado (decisão de gente)", async () => {

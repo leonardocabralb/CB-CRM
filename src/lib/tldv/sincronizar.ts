@@ -120,9 +120,11 @@ function paraIlike(v: string): string {
 }
 
 /**
- * Vincula pelo e-mail quando dá para vincular sem dúvida. O UPDATE é
- * cercado por `contact_id IS NULL`: entre a leitura e a escrita alguém pode
- * ter vinculado à mão, e a regra não sobrescreve gente.
+ * Vincula pelo e-mail quando dá para vincular sem dúvida — primeiro pelo
+ * e-mail da FICHA, depois pelo e-mail do AGENDAMENTO do Calendly que já
+ * resolveu o contato. O UPDATE é cercado por `contact_id IS NULL`: entre a
+ * leitura e a escrita alguém pode ter vinculado à mão, e a regra não
+ * sobrescreve gente.
  */
 async function vincularPorEmail(
   admin: SupabaseClient,
@@ -134,13 +136,29 @@ async function vincularPorEmail(
 ): Promise<boolean> {
   const emails = emailsDeFora(reuniao, equipe);
   if (emails.length === 0) return false;
-  const { data: achados, error } = await admin
-    .from("contacts")
-    .select("id")
-    .eq("account_id", accountId)
-    .or(emails.map((e) => `email.ilike.${paraIlike(e)}`).join(","));
+  const porEmail = emails.map((e) => `email.ilike.${paraIlike(e)}`).join(",");
+  const { data: achados, error } = await admin.from("contacts").select("id").eq("account_id", accountId).or(porEmail);
   if (error || !achados) return false;
-  const contactId = contatoParaVincular(achados as { id: string }[]);
+  let candidatos = achados as { id: string }[];
+  if (candidatos.length === 0) {
+    // ⚠️ SEGUNDA FONTE: o agendamento do Calendly (977). Medido na primeira
+    // conexão real (09/09/2026): o convidado chega do tl;dv com o nome
+    // VAZIO e só o e-mail, e os contatos deste CRM vieram do WhatsApp —
+    // quase nenhum tem e-mail na ficha. Mas a reunião nasceu de um
+    // agendamento no Calendly, que guardou o MESMO e-mail e já resolveu o
+    // contato pelo telefone. Sem esta ponte o vínculo automático quase
+    // nunca acontecia. `contact_id` nulo fica de fora (agendamento sem
+    // ficha não liga ninguém).
+    const { data: agendamentos, error: erroAgendamentos } = await admin
+      .from("cb_calendly_eventos")
+      .select("contact_id")
+      .eq("account_id", accountId)
+      .not("contact_id", "is", null)
+      .or(porEmail);
+    if (erroAgendamentos || !agendamentos) return false;
+    candidatos = (agendamentos as { contact_id: string }[]).map((a) => ({ id: a.contact_id }));
+  }
+  const contactId = contatoParaVincular(candidatos);
   if (!contactId) return false;
   const { data: atualizada } = await admin
     .from("cb_reunioes_transcritas")
