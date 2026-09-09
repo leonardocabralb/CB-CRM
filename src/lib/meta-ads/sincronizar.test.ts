@@ -130,5 +130,35 @@ describe("sincronizarMetaAds — reconciliação da janela", () => {
     expect(r).toEqual({ ok: false, codigo: "sem_permissao" });
     expect(registro.atualizacoes.at(-1)).toMatchObject({ status: "erro", last_error: "sem_permissao" });
     expect(registro.atualizacoes.some((a) => "last_sync_at" in a)).toBe(false);
+    // A TENTATIVA fica carimbada mesmo assim: é o que manda a conta que
+    // falhou para o fim da fila do cron, em vez de deixá-la na frente para
+    // sempre (988; Codex, PR #163).
+    expect(registro.atualizacoes[0]).toEqual({ last_sync_attempt_at: agora.toISOString() });
+  });
+
+  it("carimba a tentativa ANTES de falar com a Meta — é o rodízio do cron (988)", async () => {
+    const { admin, registro } = dubleDoAdmin([]);
+    let carimbadaAntes = false;
+    const espiao = vi.spyOn(console, "error").mockImplementation(() => {});
+    await sincronizarMetaAds(admin, "conta", {
+      agora,
+      cliente: () => ({
+        ...clienteFalso([]),
+        campanhas: async () => {
+          carimbadaAntes = registro.atualizacoes.some((a) => "last_sync_attempt_at" in a);
+          throw new MetaAdsError("rede", "fora do ar");
+        },
+      }),
+    });
+    espiao.mockRestore();
+    expect(carimbadaAntes).toBe(true);
+  });
+
+  it("no sucesso, o carimbo da tentativa vem antes e o da sincronização depois", async () => {
+    const { admin, registro } = dubleDoAdmin([]);
+    const r = await sincronizarMetaAds(admin, "conta", { agora, cliente: () => clienteFalso([]) });
+    expect(r.ok).toBe(true);
+    expect(registro.atualizacoes[0]).toEqual({ last_sync_attempt_at: agora.toISOString() });
+    expect(registro.atualizacoes.at(-1)).toMatchObject({ status: "conectado", last_sync_at: agora.toISOString() });
   });
 });

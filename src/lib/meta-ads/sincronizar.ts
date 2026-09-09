@@ -43,6 +43,16 @@ export async function sincronizarMetaAds(
   if (erroConfig) return { ok: false, codigo: "db_error" };
   if (!config) return { ok: false, codigo: "nao_conectado" };
 
+  // ⚠️ A TENTATIVA é carimbada ANTES de qualquer trabalho, dê certo ou
+  // errado: é por esta coluna que o cron ordena as contas, e é o que faz a
+  // conta deixada para trás num ciclo vir para a frente no seguinte (988;
+  // achado do Codex no PR #163). Carimbar só no sucesso deixaria a conta
+  // que falha na frente para sempre, comendo o orçamento das outras.
+  await admin
+    .from("cb_meta_ads_config")
+    .update({ last_sync_attempt_at: agora.toISOString() })
+    .eq("account_id", accountId);
+
   let token: string;
   try {
     token = decrypt(config.access_token);
