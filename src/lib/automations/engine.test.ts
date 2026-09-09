@@ -1420,3 +1420,92 @@ describe("interpolação de campo de DATA", () => {
     expect(enviado.text).toBe("Reunião: amanhã de tarde");
   });
 });
+
+// ------------------------------------------------------------
+// O MESMO campo de data em dois modos (achado do Codex no PR #152).
+//
+// Em texto para gente, formatado. Onde a saída é DADO — `update_contact_field`
+// grava no banco, `send_webhook` fala com um sistema — cru. Trocar isto faz o
+// campo copiado ficar ilegível para a tela e, pior, invisível para a varredura
+// de lembretes (`cb_para_timestamp` de uma data em português devolve NULL, e o
+// lembrete nunca sai).
+// ------------------------------------------------------------
+
+function comCampoDeData(passo: Record<string, unknown>) {
+  h.state.owned = { id: "c1" };
+  h.state.customValues = [
+    {
+      value: "2026-08-30T19:00:00.000Z",
+      custom_fields: {
+        field_key: "data_e_hora_reuniao",
+        field_type: "datetime",
+        account_id: ACCOUNT,
+      },
+    },
+  ];
+  h.state.automations = [
+    {
+      id: "a-cru",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      trigger_type: "new_message_received",
+      trigger_config: {},
+      is_active: true,
+    },
+  ];
+  h.state.steps = [
+    { id: "s-cru", automation_id: "a-cru", position: 0, parent_step_id: null, ...passo },
+  ];
+}
+
+describe("campo de data: formatado na mensagem, CRU no dado", () => {
+  it("update_contact_field grava o ISO, não a data em português", async () => {
+    comCampoDeData({
+      step_type: "update_contact_field",
+      step_config: { field: "company", value: "{{contact.campo.data_e_hora_reuniao}}" },
+    });
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: {},
+    });
+
+    const escrita = h.state.updateCalls.find((u) => u.table === "contacts");
+    expect(escrita).toBeDefined();
+    // O payload do update passa pelo mock como `ops.payload`; aqui basta
+    // provar que o valor gravado é o instante, não "30/08/2026 às 16:00h".
+    expect(JSON.stringify(h.state.updateCalls)).not.toContain("às 16:00h");
+  });
+
+  it("send_webhook manda o ISO no corpo", async () => {
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: { body?: string }) =>
+        ({ ok: true, status: 200 }) as unknown as Response,
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    comCampoDeData({
+      step_type: "send_webhook",
+      step_config: {
+        // IP público literal: a guarda decide sem DNS (e sem mock, que
+        // quebraria o teste vizinho que prova o BLOQUEIO). O fetch está
+        // stubbed, então nada sai da máquina.
+        url: "https://8.8.8.8/hook",
+        body_template: '{"quando":"{{contact.campo.data_e_hora_reuniao}}"}',
+      },
+    });
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: {},
+    });
+
+    vi.unstubAllGlobals();
+    const corpo = String(fetchMock.mock.calls.at(-1)?.[1]?.body ?? "");
+    expect(corpo).toContain("2026-08-30T19:00:00.000Z");
+    expect(corpo).not.toContain("às 16:00h");
+  });
+});

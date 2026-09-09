@@ -807,7 +807,9 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId) throw new Error('update_contact_field needs a contact')
       // Resolve workflow variables ({{ vars.* }}, {{ message.text }}) so custom
       // values can be populated dynamically from the triggering context.
-      const value = await interpolate(cfg.value, args)
+      // ⚠️ CRU: este passo GRAVA. Ver `camposCru` — data formatada aqui deixa
+      // o campo de destino inútil para a tela e para o lembrete.
+      const value = await interpolate(cfg.value, args, { cru: true })
 
       // Custom fields are encoded as `custom:<custom_field_id>`; anything else
       // is a built-in contact column.
@@ -1135,7 +1137,11 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!(await isDeliverableUrl(cfg.url))) {
         throw new Error('send_webhook: destination not allowed')
       }
-      const body = cfg.body_template ? await interpolate(cfg.body_template, args) : JSON.stringify(args.context)
+      // ⚠️ CRU: do outro lado há um sistema, não uma pessoa — ISO é o formato
+      // que ele sabe ler, e trocá-lo quebraria integração já em pé.
+      const body = cfg.body_template
+        ? await interpolate(cfg.body_template, args, { cru: true })
+        : JSON.stringify(args.context)
       const res = await fetch(cfg.url, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...(cfg.headers ?? {}) },
@@ -1782,7 +1788,24 @@ function waitMs(cfg: WaitStepConfig): number {
 
 interface DadosDoContato {
   contato: { name: string; phone: string; email: string; company: string } | null
+  /**
+   * Para texto que GENTE lê: campo de data já formatado ("30/08/2026 às
+   * 16:00h").
+   */
   campos: Record<string, string>
+  /**
+   * ⚠️ O MESMO campo, exatamente como está guardado — e existe porque duas
+   * saídas de `interpolate` não são texto para gente: `update_contact_field`
+   * ESCREVE no banco e `send_webhook` manda para uma máquina.
+   *
+   * Copiar um campo de data para outro com o valor formatado deixaria o
+   * destino ilegível para o `<input type="datetime-local">` e, pior, para a
+   * varredura de lembretes: `cb_para_timestamp('30/08/2026 às 16:00h')`
+   * devolve NULL, e o lembrete simplesmente NUNCA sai — sem erro em lugar
+   * nenhum. E um consumidor de webhook que esperava ISO passaria a receber
+   * data em português. Achado do Codex no PR #152.
+   */
+  camposCru: Record<string, string>
   conversationId: string | null
 }
 
@@ -1799,7 +1822,8 @@ function dadosDoContato(args: ExecuteArgs): Promise<DadosDoContato> {
 
 async function carregarDadosDoContato(args: ExecuteArgs): Promise<DadosDoContato> {
   const conversaDoContexto = args.context.conversation_id ?? null
-  if (!args.contactId) return { contato: null, campos: {}, conversationId: conversaDoContexto }
+  if (!args.contactId)
+    return { contato: null, campos: {}, camposCru: {}, conversationId: conversaDoContexto }
   const db = supabaseAdmin()
   const accountId = args.automation.account_id
   const [contato, valores, conversa] = await Promise.all([
@@ -1829,6 +1853,7 @@ async function carregarDadosDoContato(args: ExecuteArgs): Promise<DadosDoContato
   ])
 
   const campos: Record<string, string> = {}
+  const camposCru: Record<string, string> = {}
   for (const linha of (valores.data ?? []) as Array<{
     value: string | null
     custom_fields: { field_key?: string; field_type?: string; account_id?: string } | null
@@ -1836,11 +1861,12 @@ async function carregarDadosDoContato(args: ExecuteArgs): Promise<DadosDoContato
     const def = linha.custom_fields
     if (!def?.field_key || def.account_id !== accountId) continue
     const bruto = linha.value ?? ''
-    // ⚠️ CAMPO DE DATA SAI FORMATADO, sempre. A coluna guarda ISO em UTC
-    // (`campo-data.ts`), então o valor cru numa mensagem chega ao cliente
-    // como "2026-08-30T19:00:00.000Z" — e, pior que feio, com a hora errada
-    // por três horas para quem souber lê-lo. Lixo no campo (é TEXT livre)
-    // cai no `?? bruto`: melhor o que a pessoa digitou do que nada.
+    camposCru[def.field_key] = bruto
+    // ⚠️ EM TEXTO PARA GENTE, campo de data sai FORMATADO. A coluna guarda
+    // ISO em UTC (`campo-data.ts`), então o valor cru numa mensagem chega ao
+    // cliente como "2026-08-30T19:00:00.000Z" — e, pior que feio, com a hora
+    // errada por três horas para quem souber lê-lo. Lixo no campo (é TEXT
+    // livre) cai no `|| bruto`: melhor o que a pessoa digitou do que nada.
     campos[def.field_key] =
       def.field_type === TIPO_DATA ? formatarParaMensagem(bruto) || bruto : bruto
   }
@@ -1850,6 +1876,7 @@ async function carregarDadosDoContato(args: ExecuteArgs): Promise<DadosDoContato
       ? { name: c.name ?? '', phone: c.phone ?? '', email: c.email ?? '', company: c.company ?? '' }
       : null,
     campos,
+    camposCru,
     conversationId: conversaDoContexto ?? ((conversa.data as { id?: string } | null)?.id ?? null),
   }
 }
@@ -1863,7 +1890,18 @@ function linkDoCrm(caminho: string): string {
 const RE_VARIAVEL = /\{\{\s*([\w.]+)\s*\}\}/g
 const RE_CITA_CONTATO = /\{\{\s*(contact|conversation)\./
 
-async function interpolate(s: string, args: ExecuteArgs): Promise<string> {
+/**
+ * ⚠️ `cru: true` para as saídas que NÃO são texto para gente —
+ * `update_contact_field` (escreve no banco) e `send_webhook` (fala com uma
+ * máquina). Só o campo de DATA difere entre os dois modos, e a diferença
+ * importa: formatado, o valor copiado para outro campo de data fica ilegível
+ * para a tela e invisível para a varredura de lembretes.
+ */
+async function interpolate(
+  s: string,
+  args: ExecuteArgs,
+  opcoes: { cru?: boolean } = {},
+): Promise<string> {
   if (!s) return ''
   const dados = RE_CITA_CONTATO.test(s) ? await dadosDoContato(args) : null
   return s.replace(RE_VARIAVEL, (_, key) => {
@@ -1875,7 +1913,10 @@ async function interpolate(s: string, args: ExecuteArgs): Promise<string> {
     // saber por qual número o cliente falou, sem depender do webhook nativo.
     if (ns === 'channel' && prop === 'id') return String(args.context.channel_id ?? '')
     if (ns === 'contact' && dados) {
-      if (prop === 'campo') return dados.campos[partes.slice(2).join('.')] ?? ''
+      if (prop === 'campo') {
+        const chave = partes.slice(2).join('.')
+        return (opcoes.cru ? dados.camposCru : dados.campos)[chave] ?? ''
+      }
       // "Campanha - Conjunto - Anúncio" dos campos de traqueamento da 949,
       // SÓ as partes preenchidas: escrito com três `contact.campo.*` no
       // texto, um contato sem anúncio saía como " -  - " (medido no

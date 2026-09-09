@@ -1,7 +1,7 @@
 import type { AutomationTriggerType } from '@/types'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { digitosDoTelefone } from '@/lib/contacts/telefone'
-import { MAX_TITULO, normalizarHora } from '@/lib/tasks/validar'
+import { MAX_DESCRICAO, MAX_TITULO, normalizarHora } from '@/lib/tasks/validar'
 import { motivoDeConfigInvalida } from './lembretes'
 
 // ------------------------------------------------------------
@@ -250,6 +250,16 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       // que confere: a lista de membros muda depois de a regra ser gravada.
       if (!nonEmpty(c.responsavel_user_id)) {
         issues.push({ path: `${path}.responsavel_user_id`, message: 'task assignee is required' })
+      }
+      // Mesmo teto do motor e da rota de tarefas. Sem isto a automação ativa
+      // com uma descrição longa demais e falha em TODA execução — o passo
+      // estoura em `normalizarDescricao` e a tarefa nunca é criada, que é
+      // exatamente o que esta validação existe para pegar antes (Codex, #152).
+      if (typeof c.descricao === 'string' && c.descricao.trim().length > MAX_DESCRICAO) {
+        issues.push({
+          path: `${path}.descricao`,
+          message: `task description must be at most ${MAX_DESCRICAO} chars`,
+        })
       }
       if (c.prazo_em_dias !== undefined && c.prazo_em_dias !== null) {
         const dias = Number(c.prazo_em_dias)
