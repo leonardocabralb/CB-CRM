@@ -9,7 +9,7 @@
 | --- | --- |
 | **Criado** | 09/09/2026 |
 | **Estado** | **FASE 1 NO AR desde 09/09/2026 19:02 (BRT)**: Evolution **2.4.0 / Baileys 7.0.0-rc13** em produção (imagem `homolog` por digest + `TELEMETRY_ENABLED=false` + bind mount do `prisma.config.ts`), 4 migrations aplicadas, 4 conexões reconectadas **sem QR**, licença **ativa** (19:13). Rodada 1 de testes: T1 e T17 passaram; ajustes 4 e 6 do CRM no PR #171. Registro completo em **9.4**. |
-| **Próximo passo** | Mesclar o PR #171 (deploy do CRM) e reaplicar os recibos das 4 mensagens de teste; rodada 2 dos testes (T2–T13, T15, T16, T18–T22); **observação de 48 h** com os medidores de 8.3 (Fase 2). Rollback: seção 10, a partir da foto final `20260909-1902-final`. |
+| **Próximo passo** | **Fase 2 — observação de 48 h** (até 11/09 à noite) com os medidores de 8.3 e o detector ativo de "Aguardando" (celular do escritório); testes que sobraram para 10/09: T5, T14/T15 (visual), T16, T19, T20, T21, T22, vídeo do T2, acervo do T3, reação nossa do T9. Decidir P9 (rotação da chave) e P10 (imagem própria para a citação). Rollback: seção 10, a partir da foto final `20260909-1902-final` — ⚠️ depois de tanto tráfego real com a v7, rollback = ler QR nas conexões (10, passo 6). |
 | **Como retomar sem contexto** | Ler a **seção 0** abaixo primeiro; o prompt de retomada está no **Anexo C**. A memória privada do executor (`baileys-7-plano-e-decisoes.md`) guarda o telefone do cadastro. |
 | **Estudo de origem** | seções 2–4 deste documento condensam o estudo de 09/09 |
 | **Docs relacionadas** | `docs/EVOLUTION-LID-FIX.md` (fica OBSOLETA com este plano), `docs/INFRA-VPS.md`, `docs/DEPLOY-VPS.md`, `docs/INSTALACAO.md` |
@@ -50,6 +50,7 @@ abaixo. Nada foi deixado implícito de propósito.
 | 09/09 18:43 | Segunda passada do pré-voo (itens 11–15): linhas de base de latência/entrada/decifragem, migrations da imagem, endpoint de licença, `DEL_INSTANCE`, `Chat` sem duplicata | 9.2 |
 | 09/09 19:02 | **Fase 1 no ar**: Evolution 2.4.0 / Baileys 7.0.0-rc13, 4 migrations, 4 conexões sem QR, licença ativa às 19:13 (operador). Tentativa 1 (18:53) falhou por falta do `prisma.config.ts` na imagem e voltou em 4 min | 9.4 |
 | 09/09 19:19 | Rodada 1 de testes: T1 e T17 passaram; achado o recibo fora de ordem (ajuste 6) e a forma `Long` do `fileLength` (ajuste 4) → PR #171; 2 anexos do intervalo do portão recuperados | 9.4, 5.4, 5.8 |
+| 09/09 19:39–20:08 | Rodada 2: 10 testes ✅; T13 (edição do cliente) cifrada → PR #175/#177; T7 (citação do cliente) perdida pela Evolution 2.4 (#2713) → P10. Operador decide **ficar na 2.4** (48 h) | 9.4, 8.1, 12 |
 | 09/09 noite | Revisão adversarial do roteiro (3 lentes + crítico): 6.2, 8.4, 10 e Anexo B reescritos — script por passo com preâmbulo, foto final conferida, rollback por **rename** de banco (sem `dropdb`), portão de licença só HTTP, `EVOLUTION_OPERATOR_EMAIL` morto, `AUTHENTICATION_API_KEY` exposta no boot (P9), migration em laço, `BGSAVE` | 0.4, 6.2, 8.4, 10, 14 |
 | 09/09 18:24 | Pré-voo, parte de backup: dump novo (14,3 MB), db 9 renovado (36 = 36), RDB, restauração de prova **bate em todas as tabelas, 0 avisos**. Achado da cascata do `DELETE` das órfãs (9.3) | 9.3 |
 | 09/09 18:10 | Revisão do Codex no #162 avaliada: rollback **reordenado** (escalar a 0 antes de trocar a imagem — procede); `FLUSHDB` do db 9 já estava no commit final; participante por `id` telefone já coberto no código do #161 (o texto de 5.3 estava defasado e foi sincronizado). Pré-voo **só de leitura** executado na VPS | 9.2, seção 10 |
@@ -80,6 +81,7 @@ abaixo. Nada foi deixado implícito de propósito.
 - **Recibos fora de ordem na 2.4**: `SERVER_ACK` chega DEPOIS do `DELIVERY_ACK` (5 recibos em 9 s por mensagem, alternando `@lid` e LID sem sufixo). Todo caminho que grave `messages.status` precisa da escada (`escada-de-status.ts`); "a Baileys não volta de READ para SENT" era verdade só na 6.7.19.
 - **Deploy do CRM durante a janela confunde a leitura**: outra sessão mesclou 3 PRs no `main` e o `crm_crm` reiniciou 3 vezes em 20 min (rollout `start-first`, 502 por segundos, webhooks retentados). Antes de atribuir reinício ao upgrade, olhar a IMAGEM de cada contêiner (`docker ps -a --filter name=crm_crm`).
 - **Anexo que chega durante o portão de licença fica sem arquivo** e a recuperação é manual: `getBase64FromMediaMessage` → Storage → `media_url` (script `recuperar-midia.js` no scratchpad do executor; a memória `recuperar-anexo-perdido-na-evolution` descreve o caminho). Por isso "ativar imediatamente" (6.2, passo 4).
+- **Dois defeitos são do UPSTREAM, não nossos, e têm issue aberta**: citação do cliente descartada pelo `prepareMessage` da 2.4 (evolution-api #2713, PRs #2654/#2708) e edição do cliente cifrada que a Baileys não decifra (Baileys #2690/#2743). Antes de "consertar" no CRM, conferir se o upstream já mesclou — o CRM só pode mostrar o que chega.
 - Cópia local de fonte pode ser **página de erro**: `baileys-v7-migration.md` e `CHANGELOG.md` no scratchpad eram um 503 do Varnish (470 bytes) até a noite de 09/09 — a revisão adversarial pegou. Conferir tamanho e `<title>` de tudo que se baixa antes de citar. Re-baixados: o guia v7 (283 KB, real) e `messages-recv.ts` da rc13 e da 6.7.19.
 - O estado Signal no Redis **muda a cada mensagem** (ratchet): uma cópia tirada horas antes restaura sessões velhas e o cliente não decifra o que vem depois. Por isso a **foto final** (dump + db 8 → db 9 + RDB) é tirada com o serviço **a 0**, segundos antes da troca (6.2, passo 1). A do pré-voo serve de prova de restauração.
 
@@ -798,21 +800,21 @@ Evolution e do CRM abertos. Registrar resultado e data em cada linha.
 | T | Teste | Passa quando | Resultado |
 | --- | --- | --- | --- |
 | T1 | Texto pelo CRM | legível no celular do cliente (sem "Aguardando"); ✓✓ no CRM | **09/09 19:19: chegou legível, ✓✓ no WhatsApp do escritório; no CRM ficou 1 ✓ até o ajuste 6 (PR #171)** |
-| T2 | Imagem, PDF e vídeo pelo CRM | abrem no cliente; `media_type`/`media_filename` gravados | |
-| T3 | Nota de voz (gravador e acervo), com e sem citação | toca como voz; com citação, encadeada | |
+| T2 | Imagem, PDF e vídeo pelo CRM | abrem no cliente; `media_type`/`media_filename` gravados | 09/09: imagem e PDF ✅; vídeo — 10/09 |
+| T3 | Nota de voz (gravador e acervo), com e sem citação | toca como voz; com citação, encadeada | 09/09: gravador ✅ (acervo e com citação — 10/09) |
 | T4 | Cliente manda foto | aparece no CRM com arquivo no Storage | 09/09 19:06 (cliente real, antes da ativação): entrou sem arquivo por causa do portão 503 — recuperada às 19:34; repetir depois da ativação |
 | T5 | Cliente manda documento >16 MiB e outro >50 MiB | o primeiro entra; o segundo vira `too_large` com nome; **anotar a forma de `fileLength`** | |
-| T6 | Texto com URL | preview do link no cliente | |
-| T7 / T8 | Responder citando mensagem do cliente / nossa | o cliente vê o preview da citação | |
-| T9 | Reagir a mensagem do cliente | reação aparece no celular dele | |
-| T10 / T11 | Apagar para todos: mensagem do CRM / do celular | some no cliente; `messages.delete` volta | |
-| T12 | Editar mensagem nossa (<15 min) | edita no cliente; `text_before_edit` gravado | |
-| T13 | Cliente apaga e edita mensagem dele | CRM risca / atualiza | |
+| T6 | Texto com URL | preview do link no cliente | 09/09 ✅ |
+| T7 / T8 | Responder citando mensagem do cliente / nossa | o cliente vê o preview da citação | 09/09: **T8 ✅** (o lead viu a citação); **T7 ❌** do lado do lead — a citação dele chega sem `contextInfo` (bug Evolution 2.4, #2713 → P10) |
+| T9 | Reagir a mensagem do cliente | reação aparece no celular dele | 09/09: reação DO lead (❤️) entrou em `message_reactions` ✅; a nossa para ele — 10/09 |
+| T10 / T11 | Apagar para todos: mensagem do CRM / do celular | some no cliente; `messages.delete` volta | 09/09 ✅ nos dois sentidos (celular e lead); a 2.4 manda um `messages.edited` vazio antes — ignorado |
+| T12 | Editar mensagem nossa (<15 min) | edita no cliente; `text_before_edit` gravado | 09/09 ✅ (pelo CRM). Pelo CELULAR: chega cifrada → só "editada" (P11) |
+| T13 | Cliente apaga e edita mensagem dele | CRM risca / atualiza | 09/09: apaga ✅; edita ❌ (cifrada, P11 — mitigada: "editada" sem texto novo) |
 | T14 | Cliente nos escreve | ele vê ✓✓ na mensagem dele | |
 | T15 | Abrir a conversa no CRM (marcar lida) | ✓✓ azul no cliente | |
 | T16 | Criar canal de teste pelo CRM, ler QR, Ressincronizar, apagar | `open`, webhook aplicado, mensagem entra | |
 | **T17** | **Mensagem pelo CELULAR pareado para contato LID** | **aparece no CRM "pelo celular"; `DESCARTADA` = 0** | **09/09 19:20: passou** (etiqueta CELULAR, `delivered`, `DESCARTADA` = 0) |
-| **T18** | **Mensagem pelo WhatsApp Web para contato LID** | idem | |
+| **T18** | **Mensagem pelo WhatsApp Web para contato LID** | idem | 09/09 ✅ (CELULAR, `DESCARTADA` = 0) |
 | T19 | Grupo: mensagem nossa e de participante, menção a nós | entra; `mentions_us` acende no canal com `own_lid`; `findGroupInfos` acha nossa linha | |
 | T20 | Agendar mensagem para +3 min | sai na hora, `sent`, sem duplicar | |
 | T21 | Latência de entrada | 5 mensagens espaçadas do cliente; atraso = `conversations.last_message_at` (relógio do CRM) − `messages.created_at` (relógio do WhatsApp) da última mensagem da conversa. ⚠️ `messages.created_at` **é** o `messageTimestamp` (`inbound-store.ts`): comparar os dois dá zero por construção. Linha de base 09/09 (7 dias, n=186): **p50 1,2 s · p95 2,1 s · máx 3,5 s** | |
@@ -924,6 +926,11 @@ Script `prevoo-backup.sh` em segundo plano na VPS (`/root/backups/prevoo-run.log
 - **`fileLength` (P5)**: chega como **objeto `Long`** `{ low: 59064, high: 0, unsigned: true }` (webhook e banco). `mediaBytesOf` devolvia `null` (tentava baixar, sem dano), mas o portão da 986 ficava cego → **ajuste 4** (`bytesDeclarados`) no mesmo PR #171. `mediaKey` chega como `Uint8Array` serializado.
 - **Reinícios do `crm_crm` (19:01, 19:10, 19:19)**: não foi defeito — foram **três deploys** do pipeline (PRs #163, #164, #168 de outra sessão mesclados no `main` durante a janela); o rollout `start-first` dá uns segundos de 502 no Traefik, e a Evolution registrou 8 × `Request failed with status code 502` nos webhooks às 19:19:57–19:20:15 — **retentados** (as mensagens do lead entraram). Lição em 0.4.
 - **Sinais aos 12 min**: `session-*_1.*` (LID) = 2 em `d1d9caf5` e `44982408`, `lid-mapping` 6 e 8; PN inalteradas.
+- **PR #171 mesclado e publicado (19:50–20:00)**: `crm_crm` em `1fc6efc…`; os 3 recibos pendentes das mensagens de teste reaplicados por replay (`delivered`) e um `SERVER_ACK` atrasado reaplicado **não rebaixou** — a escada está em produção.
+- **Rodada 2 de testes (19:39–20:08, lead autorizado)**: **T2** (foto e PDF pelo CRM) ✅ arquivo no Storage, `media_type` gravado; **T3** (nota de voz pelo gravador) ✅; **T4** (foto do lead, depois da ativação) — a foto do celular pareado entrou com arquivo ✅; **T6** (texto com link) ✅; **T8** (CRM citando mensagem do lead) ✅ — o lead viu a caixinha da citação; **T9** (reação ❤️ do lead) ✅ `reactionMessage` registrado em `message_reactions`; **T10/T11** (apagar para todos, do celular e do lead) ✅ — as duas riscadas no CRM (a 2.4 emite `messages.edited` VAZIO com `type: 0` antes do `messages.delete` — a rota ignora o edited sem texto, de propósito); **T12** (editar pelo CRM) ✅ `text_before_edit`/`edited_at`; **T18** (WhatsApp Web do escritório) ✅ etiqueta CELULAR, `DESCARTADA` = 0; **T15** (✓✓ azul) — a confirmar visualmente em 10/09.
+  ❌ **T13 (cliente/celular EDITA)**: a edição chega como `secretEncryptedMessage` (`secretEncType: 2`, `targetMessageKey`), cifrada com *message secret*, que a **Baileys rc13 não decifra** (PRs upstream WhiskeySockets/Baileys **#2690** e **#2743** abertos; nenhuma versão publicada decifra). O CRM inseria uma bolha VAZIA (aconteceu 2×). **Ajuste 7** (PR **#175**, mesclado 20:07): o item é descartado e a mensagem alvo ganha `edited_at` mantendo o texto antigo (a bolha diz "editada", sem o "era: …"). PR **#177**: escopo de conta no carimbo (achado do Codex).
+  ❌ **T7 (lead CITA uma mensagem nossa)**: a resposta chega como `conversation` **sem `contextInfo`** (sem `stanzaId`/`quotedMessage`) — no banco da Evolution e no webhook. Reteste limpo às 20:08 confirmou. É **bug da Evolution 2.4** (`prepareMessage` achata `extendedTextMessage` em `conversation` e descarta o `contextInfo`, linhas 5184–5187 do `develop`): issue **evolution-foundation/evolution-api #2713** ("incoming text replies flattened to 'conversation' — contextInfo lost", 26/08/2026) com PRs de correção **#2654** e **#2708** abertos e não mesclados. Nada a fazer no CRM (o dado não chega). Saída possível: imagem própria com o patch (P10).
+- **Decisão do operador (20:05)**: **ficar na 2.4** em observação de 48 h — o conserto principal funciona (texto do CRM chega sem "Aguardando", 4 conexões sem QR, entrada normal), e as duas perdas (edição do cliente, citação do cliente) são limitações do upstream, mitigadas/registradas.
 
 #### 9.1 Registro da execução da Fase 0 (09/09/2026, 17:04–17:30)
 
@@ -951,14 +958,16 @@ Script `prevoo-backup.sh` em segundo plano na VPS (`/root/backups/prevoo-run.log
 - [x] `lid-mapping-*` / `session-*_1.*` no Redis (19:15: LID = 2 em duas conexões, `lid-mapping` 2–8)
 - [ ] Prova da foto final em `evolution_ensaio` (count total igual) — depois do `scale=1`
 - [ ] Log guardado a cada marco (migrations, `open`, ativação, fim dos testes) e antes do T22
-- [ ] T1–T22 executados e registrados (8.1)
+- [x] Rodada 1 e 2 executadas em 09/09 (9.4): T1, T2, T3, T4, T6, T8, T9, T10, T11, T12, T17, T18 ✅; T7 ❌ (bug Evolution, P10); T13 ❌ (limitação Baileys, P11, mitigada); T5, T14, T15, T16, T19, T20, T21, T22 — 10/09
 - [x] Forma de `fileLength` anotada (objeto `Long`); ajuste 4 feito no PR #171
 - [x] Ajuste 6 (recibo fora de ordem) — PR #171
 - [x] Intervalo `scale=1` → ativação recolhido: 2 anexos recuperados (9.4); nenhuma agendada/automação disparou
 
 ### Fase 2 — observação (48 h) e fechamento
 
-- [ ] Medidores (8.3) registrados em 24 h e 48 h
+- [ ] Medidores (8.3) registrados em 24 h (10/09 ~19h) e 48 h (11/09 ~19h) — usar o script `prevoo-ro.sh`/`pos-ativacao.sh` do executor (contagens de log, sessões LID por hash, latência e entrada por hora no Supabase)
+- [ ] Testes que sobraram (T5, T14/T15, T16, T19, T20, T21, T22, vídeo, acervo, reação nossa) — 10/09
+- [ ] P9 (rotação da `AUTHENTICATION_API_KEY`) e P10 (imagem própria com o patch da citação) decididos
 - [ ] Nenhum "Aguardando mensagem" relatado
 - [ ] Ajuste 5 (`GROUP_UPDATE`) + Ressincronizar nas 4 conexões
 - [ ] `/root/evolution.yaml` atualizado (imagem por digest, `TELEMETRY_ENABLED`)
@@ -1060,6 +1069,8 @@ duplicidade volta em dias ou semanas (relatos de 1–2 dias a semanas).
 | ~~P3~~ | **Autorizada 09/09** e executada (seção 9, Fase 0) | — |
 | ~~P4~~ | **Resolvida 09/09 (noite)**: janela aberta; o operador tem **só 1 celular à mão** e aceitou o risco — os outros 3 números foram conectados **para teste**, ninguém os usa; se pedirem QR, ficam desconectados e a leitura fica para 10/09. Equipe avisada (celular/outro CRM). Celular à mão atende `cbcrm-a3af0191-…-76ac04` (11 96410-2992) — confirmado 09/09 18:50 | — |
 | ~~P5~~ | **Resolvida 09/09**: objeto `Long {low, high, unsigned}` → ajuste 4 (PR #171) | — |
+| P10 | **Citação do cliente perdida** (bug da Evolution 2.4, issue #2713, PRs #2654/#2708 abertos): esperar o upstream mesclar, ou construir imagem própria do `develop` com o patch de `prepareMessage` (como o `lidfix` da 2.3.2) + o `prisma.config.ts` dentro | operador decide |
+| P11 | **Edição do cliente cifrada** (limitação da Baileys rc13; PRs #2690/#2743 abertos): mitigada no CRM (PR #175/#177 — "editada" sem o texto novo). Quando o upstream decifrar, nada muda no CRM | acompanhar |
 | P6 | Latência de entrada com rc13 (5.6 dos riscos) | teste T21 |
 | P7 | Log da Evolution fora do contêiner (fora deste plano, registrar) | depois |
 | P9 | **Rotacionar a `AUTHENTICATION_API_KEY` depois da Fase 1?** Ela viaja em claro (sobre TLS) ao servidor da fundação em todo boot sem licença (7.3). Custo: novo valor em `AUTHENTICATION_API_KEY` (Evolution) e `EVOLUTION_GLOBAL_API_KEY` (`crm.env` + `service update --env-add` no `crm_crm`); as chaves por instância em `cb_channels.api_key` não mudam | operador |
