@@ -19,6 +19,13 @@ interface ReplyQuoteProps {
    *  quote must read against the primary surface rather than the neutral
    *  foreground — otherwise it goes low-contrast in light mode. */
   onPrimary?: boolean;
+  /**
+   * Presente → a citação embutida na bolha vira BOTÃO: clicar rola o fio até
+   * a mensagem citada e a destaca por um instante, como no WhatsApp. Ausente
+   * (o chip do compositor, ou mensagem citada que já não está no fio) → só
+   * exibe.
+   */
+  onJump?: () => void;
 }
 
 export function ReplyQuote({
@@ -26,21 +33,25 @@ export function ReplyQuote({
   preview,
   onDismiss,
   onPrimary = false,
+  onJump,
 }: ReplyQuoteProps) {
   const t = useTranslations("Inbox.replyQuote");
   const isChip = !!onDismiss;
-  return (
-    <div
-      className={cn(
-        "flex items-start gap-2 border-l-2 px-2 py-1",
-        onPrimary ? "border-primary-foreground/50" : "border-primary",
-        isChip
-          ? "rounded-md bg-muted/80"
-          : onPrimary
-            ? "mb-1.5 rounded-md bg-primary-foreground/15"
-            : "mb-1.5 rounded-md bg-background/20",
-      )}
-    >
+  const classes = cn(
+    "flex items-start gap-2 border-l-2 px-2 py-1",
+    onPrimary ? "border-primary-foreground/50" : "border-primary",
+    isChip
+      ? "rounded-md bg-muted/80"
+      : onPrimary
+        ? "mb-1.5 rounded-md bg-primary-foreground/15"
+        : "mb-1.5 rounded-md bg-background/20",
+    onJump &&
+      (onPrimary
+        ? "w-full cursor-pointer text-left hover:bg-primary-foreground/25"
+        : "w-full cursor-pointer text-left hover:bg-background/40"),
+  );
+  const conteudo = (
+    <>
       <div className="min-w-0 flex-1 overflow-hidden">
         <div
           className={cn(
@@ -56,8 +67,18 @@ export function ReplyQuote({
          *  lacked `min-w-0` at every step — pushed the entire inbox
          *  layout wider, shoving the contact sidebar off-screen.
          *  `break-words` also wraps long URLs that have no whitespace
-         *  to break on. Issue #165. */}
-        <div className="whitespace-pre-wrap break-words text-xs text-foreground/80">
+         *  to break on. Issue #165.
+         *
+         *  ⚠️ Na bolha NOSSA (violeta) o texto citado tem de ser claro:
+         *  `text-foreground/80` é quase preto no tema claro e ficava
+         *  ilegível sobre o roxo — o operador viu "o texto fica preto"
+         *  em 09/09/2026. O cabeçalho já trocava de cor; o texto, não. */}
+        <div
+          className={cn(
+            "whitespace-pre-wrap break-words text-xs",
+            onPrimary ? "text-primary-foreground/90" : "text-foreground/80",
+          )}
+        >
           {preview}
         </div>
       </div>
@@ -71,8 +92,16 @@ export function ReplyQuote({
           <X className="h-3.5 w-3.5" />
         </button>
       )}
-    </div>
+    </>
   );
+  if (onJump) {
+    return (
+      <button type="button" onClick={onJump} aria-label={t("jumpTo")} className={classes}>
+        {conteudo}
+      </button>
+    );
+  }
+  return <div className={classes}>{conteudo}</div>;
 }
 
 /** Build the one-line preview text shown inside a reply quote. */
