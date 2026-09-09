@@ -3613,6 +3613,20 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
   só quando alguma linha avançou. Quem escrever outro caminho de status repete
   a guarda — sem ela a bolha volta a um ✓ com a mensagem entregue.
 
+- ⚠️ **Edição de mensagem chega CIFRADA na 2.4 (medido 09/09/2026)**:
+  `secretEncryptedMessage` com `secretEncType` 2 (MESSAGE_EDIT) e
+  `targetMessageKey` — a Baileys rc13 não decifra (PRs upstream #2690/#2743
+  abertos). `normalizeUpsert` DESCARTA o item (sem ele virava bolha vazia) e
+  a rota carimba `edited_at` na mensagem alvo MANTENDO o texto antigo — a
+  bolha diz "editada" sem o "era: …". O texto novo não existe do nosso lado;
+  quem for "consertar" a bolha vazia de outro jeito, ou preencher o texto,
+  lê `isSecretEncrypted`/`edicaoCifrada` antes.
+- ⚠️ **Todo `protocolMessage` vira `messages.edited` na 2.4**, inclusive a
+  REVOGAÇÃO (`type: 0`, sem `editedMessage`): a rota ignora `messages.edited`
+  sem texto de propósito, e o apagar-para-todos continua chegando pelo
+  `messages.delete` de sempre. Não "consertar" o edited vazio como se fosse
+  edição.
+
 ## Branches — criação e nomenclatura
 
 - **Toda branch nova sai única e exclusivamente de `main`** e faz merge **de

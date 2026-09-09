@@ -20,6 +20,8 @@ import {
   phoneFromJid,
   unwrapMessage,
   type EvolutionUpsert,
+  edicaoCifrada,
+  isSecretEncrypted,
 } from './evolution-inbound';
 
 function item(message: Record<string, unknown>, over: Partial<EvolutionUpsert> = {}) {
@@ -471,5 +473,57 @@ describe('normalizeUpsert — endereço @lid da conversa', () => {
       );
       expect(out!.remoteJidLid, bruto).toBeNull();
     }
+  });
+});
+
+describe('edição cifrada (secretEncryptedMessage, Baileys 7)', () => {
+  // Payload REAL de 09/09/2026 19:44 (Evolution 2.4.0 / rc13): o cliente
+  // editou "Sim" → "Não" e a edição chegou assim, sem texto legível.
+  const EDICAO = {
+    key: {
+      remoteJid: '558388745316@s.whatsapp.net',
+      remoteJidAlt: '143838555439152@lid',
+      fromMe: false,
+      id: '3ADD98536C64480C3D21',
+      addressingMode: 'pn',
+    },
+    pushName: 'Leonardo Cabral Baptista',
+    message: {
+      messageContextInfo: { deviceListMetadataVersion: 2 },
+      secretEncryptedMessage: {
+        encIv: 'YJMJvA0NlXqnuSO4',
+        encPayload: 'e4fyGlVouS2/70+0eRwoUkPxXX+O8nBEh7vUTQySSOBM',
+        secretEncType: 2,
+        targetMessageKey: { id: '3A9AE00D793FDBEAB5CB', fromMe: true, remoteJid: '143838555439152@lid' },
+      },
+    },
+    messageType: 'secretEncryptedMessage',
+    messageTimestamp: 1788993842,
+  };
+
+  it('⚠️ não vira bolha: normalizeUpsert descarta', () => {
+    expect(normalizeUpsert(EDICAO, 'acc', 'owner', null)).toBeNull();
+    expect(isSecretEncrypted(EDICAO.message)).toBe(true);
+  });
+
+  it('aponta a mensagem editada (targetMessageKey.id)', () => {
+    expect(edicaoCifrada(EDICAO.message)).toEqual({ targetId: '3A9AE00D793FDBEAB5CB' });
+  });
+
+  it('só MESSAGE_EDIT (2) conta; edição de evento (1) e mensagem comum não', () => {
+    const evento = {
+      ...EDICAO.message,
+      secretEncryptedMessage: { ...EDICAO.message.secretEncryptedMessage, secretEncType: 1 },
+    };
+    expect(edicaoCifrada(evento)).toBeNull();
+    expect(isSecretEncrypted(evento)).toBe(true);
+    expect(edicaoCifrada({ conversation: 'oi' })).toBeNull();
+    expect(isSecretEncrypted({ conversation: 'oi' })).toBe(false);
+  });
+
+  it('sem alvo não há o que carimbar', () => {
+    expect(
+      edicaoCifrada({ secretEncryptedMessage: { secretEncType: 2, targetMessageKey: {} } }),
+    ).toBeNull();
   });
 });

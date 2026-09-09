@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { timingSafeEqual } from 'crypto';
 
 import {
+  edicaoCifrada,
   extractText,
   isLidJid,
   isReaction,
@@ -198,6 +199,29 @@ export async function POST(request: Request) {
           // pendurado na bolha da mensagem reagida.
           if (isReaction(item.message)) {
             await registrarReacao(item);
+            continue;
+          }
+
+          // Edição que chega CIFRADA (Baileys 7 / Evolution 2.4 — ver
+          // `isSecretEncrypted`). O texto novo não é conhecido, então o
+          // máximo de verdade é carimbar `edited_at` na mensagem editada,
+          // MANTENDO o texto antigo: a bolha passa a mostrar "editada"
+          // (sem o "era: …", porque `text_before_edit` fica nulo) e o
+          // operador sabe que o cliente mudou algo. Inventar texto ou apagar
+          // o original seriam as duas mentiras possíveis. Sem escopo de
+          // canal, pela mesma razão do bloco de `messages.update`: o
+          // `message_id` é único por mensagem. Sem isto o item caía em
+          // `normalizeUpsert` como texto vazio e virava bolha em branco.
+          const edicao = edicaoCifrada(item.message);
+          if (edicao) {
+            const { error: erroEdicao } = await supabaseAdmin()
+              .from('messages')
+              .update({ edited_at: new Date().toISOString() })
+              .eq('message_id', edicao.targetId)
+              .is('edited_at', null);
+            if (erroEdicao) {
+              console.error('[evolution/webhook] carimbar edição cifrada falhou:', erroEdicao.message);
+            }
             continue;
           }
 
