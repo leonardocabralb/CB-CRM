@@ -1278,6 +1278,22 @@ não dentro da lista. O que morde código novo:
 - **Escopo vazio = TUDO**, igual ao resto do projeto: `FILTROS_VAZIOS` não
   recorta nada, e "sem responsável"/"sem negócio" são opções explícitas, não
   a ausência de filtro.
+- ⚠️ **O chip "Em atraso" (09/09) reusa `atrasoDeResposta`, e o relógio entra
+  pelo ctx (`agoraMs`, campo OBRIGATÓRIO).** A régua é a MESMA que acende o
+  selo da linha — uma cópia faria o chip acender sobre linha sem selo, e a
+  leitura do operador seria "o selo sumiu", não "são duas contas". E o
+  `agoraMs` é exigido pelo mesmo motivo de `achadasNoTexto`: é a única
+  pergunta do recorte que o DADO sozinho não responde (a linha não muda no
+  banco quando os 10 minutos vencem), então esquecê-lo devolveria "nenhuma
+  conversa" sobre uma caixa cheia de gente esperando — sem erro nenhum. Quem
+  consumir `aplicarFiltros` em tela nova precisa de um tique de um minuto lá
+  também, senão o recorte congela. ⚠️ Não depende de "Não lidas", de
+  propósito (pedido do operador): quem espera há 10 minutos costuma ter a
+  conversa JÁ ABERTA por alguém — abrir zera `unread_count` sem responder
+  nada. ⚠️ Fica FORA de `limparOrfaos`: não é referência a linha do banco, e
+  "ninguém em atraso agora" é resposta verdadeira. ⚠️ O rótulo inglês é
+  "Overdue", não "Awaiting reply": o segundo descreveria toda espera aberta,
+  e o filtro só pega o que passou do limiar (Codex, PR #156).
 - **Filtro cujo dado não carregou some da tela.** Um seletor sem os dados por
   trás não fica inerte: ele responde ERRADO com cara de certo (o de etapa
   chegaria a dizer que 55 negócios não existem). Cada busca do painel tem
