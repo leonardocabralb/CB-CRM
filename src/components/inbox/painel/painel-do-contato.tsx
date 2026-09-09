@@ -33,6 +33,7 @@ import { DealForm } from '@/components/pipelines/deal-form';
 import { SeletorFunilEtapa } from '@/components/inbox/painel/seletor-funil-etapa';
 import { AbaAutomacoes } from '@/components/inbox/painel/aba-automacoes';
 import { AbaArquivos } from '@/components/inbox/painel/aba-arquivos';
+import type { AlvoDoSalto } from '@/lib/inbox/salto-no-fio';
 import { FotoAmpliavel } from '@/components/inbox/painel/foto-ampliavel';
 import { OrigemDoContato } from '@/components/inbox/painel/origem-do-contato';
 import { ResponsavelMenu } from '@/components/inbox/painel/responsavel-menu';
@@ -162,6 +163,12 @@ export interface PainelDoContatoProps {
    * "nenhum arquivo" enquanto as mensagens não chegaram — ver `AbaArquivos`.
    */
   messagesCarregando?: boolean;
+  /**
+   * "Ver na conversa" das abas Notas e Arquivos (09/09/2026): pede à
+   * página — dona do fio — que role até a mensagem ou a anotação. Ausente,
+   * os botões não aparecem.
+   */
+  onIrParaItemDoFio?: (alvo: AlvoDoSalto) => void;
 }
 
 export function PainelDoContato({
@@ -176,6 +183,7 @@ export function PainelDoContato({
   onContactUpdated,
   messages = [],
   messagesCarregando = false,
+  onIrParaItemDoFio,
 }: PainelDoContatoProps) {
   const tSidebar = useTranslations('Inbox.sidebar');
   /** A aba escolhida AQUI. `abaPedida` vence enquanto existir — ver a prop. */
@@ -1409,6 +1417,11 @@ export function PainelDoContato({
                   notaFixada.author_user_id === user?.id || podeAdministrar
                 }
                 onApagar={(id) => void apagarNota(id)}
+                onVerNaConversa={
+                  onIrParaItemDoFio
+                    ? () => onIrParaItemDoFio({ tipo: 'nota', id: notaFixada.id })
+                    : undefined
+                }
               />
             </div>
           )}
@@ -1450,6 +1463,11 @@ export function PainelDoContato({
                 // Apagar é do AUTOR ou de admin — mesma régua do fio.
                 podeApagar={note.author_user_id === user?.id || podeAdministrar}
                 onApagar={(id) => void apagarNota(id)}
+                onVerNaConversa={
+                  onIrParaItemDoFio
+                    ? () => onIrParaItemDoFio({ tipo: 'nota', id: note.id })
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -1493,7 +1511,15 @@ export function PainelDoContato({
           value="arquivos"
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
-          <AbaArquivos messages={messages} carregando={messagesCarregando} />
+          <AbaArquivos
+            messages={messages}
+            carregando={messagesCarregando}
+            onVerNaConversa={
+              onIrParaItemDoFio
+                ? (id) => onIrParaItemDoFio({ tipo: 'mensagem', id })
+                : undefined
+            }
+          />
         </TabsContent>
 
         {/* ---- Histórico de atividade (912) — o registro completo, POR

@@ -276,8 +276,9 @@ upstream sobrescrevê-los:
 | `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato e a seção/aba **Histórico** (912). (A linha "canal da conversa" que o painel do inbox exibia foi REMOVIDA em 2026-08-29 a pedido do operador — o seletor do cabeçalho do fio já responde isso.) No detail view a `TabsList` ganhou `flex-wrap` com a altura **prefixada** (`group-data-horizontal/tabs:h-auto` + `[&>button]:h-auto`, NUNCA `h-auto` cru — ver a armadilha do tailwind-merge abaixo; um merge que "simplifique" para `h-auto` quebra a tela de novo) — com 5 abas ela já estourava a largura do painel e escondia "Negócios" |
 | `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
 | `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página. Mais o menu de **filtros salvos** (967/968): o hook, os catálogos que dão nome aos ids, o `limparOrfaos` do aplicar e a semente do filtro padrão |
-| `src/components/inbox/message-thread.tsx` (canal, 2026-09-02) | o `SeparadorDeCanal` entre trechos, a faixa de divergência colada no compositor, a bolinha de cor no gatilho e nos itens do seletor de canal, e o `Fragment` que embrulha separador + `LinhaDaMensagem` (a `key` mudou de lugar) |
-| `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDaMensagem>` envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo), a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef` |
+| `src/components/inbox/message-thread.tsx` (canal, 2026-09-02) | o `SeparadorDeCanal` entre trechos, a faixa de divergência colada no compositor, a bolinha de cor no gatilho e nos itens do seletor de canal, e o `Fragment` que embrulha separador + `LinhaDoFio` (ex-`LinhaDaMensagem`; a `key` mudou de lugar) |
+| `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDoFio>` (ex-`LinhaDaMensagem`) envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo) E a anotação intercalada, a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef`. Mais (09/09/2026) a **busca dentro da conversa** (lupa do cabeçalho, `buscaLocal`/`termoEfetivo`) e o **salto pedido pelo painel** (`saltoPedido`, `destaqueDoSalto`) — ver a seção própria |
+| `src/components/inbox/conversation-list.tsx` (09/09/2026) | o interruptor **"Buscar também dentro das mensagens"** (`buscarNasMensagens`, desligado por padrão) e o placeholder que muda com ele; `useBuscaEmMensagens` ganhou o 2º parâmetro `ativa` |
 | `src/components/inbox/conversation-list.tsx` (canal, 2026-09-02) | a prop `corDoCanalDaLinha` do `ConversationItem` e a bolinha antes do nome — bolinha, e não trilha, porque a borda esquerda já é da seleção |
 | `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (963): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
 | `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem o contato; o canal passado é `conversation.channel_id ?? null` — o PR #74 trocou o `activeChannel` resolvido pelo cru DE PROPÓSITO, para a checagem de escopo da rota falhar aberta igual ao motor em conversa sem canal; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
@@ -2586,6 +2587,63 @@ que morde código novo:
 - **Chaves montadas (`areas.<id>`, `modelos.<papel>.*`) escapam do portão
   estático de i18n**: `editor.test.ts` as cobra nos dois dicionários, como
   `poderes.test.ts` faz com `poderes.<id>`.
+
+⚠️ **Busca do inbox atrás de um interruptor, busca DENTRO do fio e "Ver na
+conversa" (09/09/2026).** `variantesDoNonoDigito` em
+`src/lib/contacts/telefone.ts`, `src/lib/inbox/salto-no-fio.ts` (puro, com
+teste), o interruptor em `conversation-list.tsx`, a barra local e o salto
+pedido em `message-thread.tsx`, os botões em `painel/aba-arquivos.tsx` e
+`cartao-de-nota.tsx`, o pedido carimbado em `inbox/page.tsx`. Nasceu de
+quatro queixas do operador na mesma tarde. O que morde código novo:
+
+- ⚠️⚠️ **A busca no CORPO das mensagens é DESLIGADA por padrão** (2º
+  parâmetro `ativa` de `useBuscaEmMensagens`). Desligada, a RPC 929 não roda
+  e `termoAplicado` é `""` — o fio não destaca nada e a linha não mostra
+  trecho. Sempre ligada, buscar um NOME trazia junto toda conversa em que
+  ele foi citado, enterrando a conversa procurada (queixa do operador). As
+  três dicas da lista ("digite 3 letras", "buscando", "falhou") ficam ATRÁS
+  do interruptor, e o placeholder diz o que a caixa olha agora. Estado de
+  sessão, sem persistência: "por padrão" quer dizer a cada abertura.
+- ⚠️ **Só o lado do CONTATO ganha a variante do nono dígito, nunca o
+  termo** — o termo é o que a pessoa digitou, e alterá-lo inventaria uma
+  busca que ela não fez. E só celular com DDI 55 (13 ou 12 dígitos, local
+  começando em 6–9): é como `contacts.phone` guarda. A regra vale nos DOIS
+  irmãos (`casaComABusca` do inbox e `casaComContato` do seletor de
+  contato) — "(83) 98874-5316" tem de achar a ficha gravada como
+  `558388745316`, que é como o WhatsApp entrega número antigo.
+- ⚠️ **A barra de busca local SUBSTITUI a faixa da busca da lista enquanto
+  está aberta.** `termoEfetivo` é a ÚNICA origem de `acharNoFio`, `alvoId` e
+  das setas: as duas contam achados do MESMO fio, e duas contagens lado a
+  lado diriam coisas diferentes sobre a mesma tela. Enter anda para o achado
+  mais ANTIGO (o fio abre no mais recente, então "próximo" é para cima),
+  Shift+Enter volta, Esc fecha. A barra é carimbada com a conversa
+  (`buscaLocal.conversationId`, mesma assinatura da `escolhaNaBusca`), nunca
+  zerada por efeito ao trocar — o efeito passivo deixaria um quadro com a
+  barra da conversa anterior sobre a nova.
+- ⚠️⚠️ **O salto pedido pelo painel é EVENTO, não estado da busca**
+  (`PedidoDeSalto`, com `conversationId` + `n`). Quatro cercas, cada uma com
+  motivo: (1) atende UMA vez por `n` (`saltoAtendidoRef`) — o efeito depende
+  de `messages`/`notas` para atender o pedido feito durante uma carga, e sem
+  a memória toda mensagem nova re-centralizaria o alvo velho; (2) só pedido
+  DESTA conversa — sem o carimbo, trocar de conversa antes de o fio carregar
+  deixava um pedido pendente que disparava ao voltar; (3) chama
+  `liberarSalto()` antes de rolar, senão o efeito que centraliza o achado da
+  busca disputa a tela; (4) o timer que apaga o destaque vive num REF, fora
+  da limpeza do efeito — a limpeza roda a cada mensagem nova e, cancelando o
+  timer, deixaria o destaque aceso para sempre quando algo chegasse nos
+  2,5 s. O destaque é DERIVADO (`saltoPedido.n !== saltoApagado`), e o único
+  `setState` é o do timer — o React Compiler recusa `setState` síncrono em
+  efeito.
+- ⚠️ **`LinhaDoFio` (ex-`LinhaDaMensagem`) embrulha mensagem E anotação**,
+  com `data-message-id` OU `data-nota-id`; `seletorDoAlvo` conhece os dois
+  nomes e `salto-no-fio.test.ts` lê o fonte do fio cobrando os atributos —
+  renomear um lado sem o outro faz o botão não fazer NADA, sem erro.
+- **`AbaArquivos` e `CartaoDeNota` recebem `onVerNaConversa` OPCIONAL**: sem
+  ele (a ficha de `/contatos`, que não tem fio ao lado) o botão não existe.
+  O link continua abrindo o arquivo e a miniatura o visualizador; o botão é
+  IRMÃO deles (button dentro de `<a>`/`<button>` é inválido — a regra do
+  lápis do card do funil). No celular a página fecha o overlay do painel ao
+  atender o clique, senão o salto acontece atrás da ficha.
 
 ⚠️ **Anexo por ARRASTAR e por COLAR (08/09/2026).** `src/lib/inbox/arquivo-solto.ts`
 (puro, com teste) e os handlers em `message-composer.tsx`. Pedido do operador,

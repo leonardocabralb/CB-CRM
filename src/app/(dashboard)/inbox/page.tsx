@@ -19,6 +19,11 @@ import { conversaNoEscopo } from "@/lib/perfis/escopo";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { VoltarAoFunil } from "@/components/inbox/voltar-ao-funil";
 import { urlDoInbox } from "@/lib/inbox/url";
+import {
+  novoPedidoDeSalto,
+  type AlvoDoSalto,
+  type PedidoDeSalto,
+} from "@/lib/inbox/salto-no-fio";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { GroupSidebar } from "@/components/inbox/group-sidebar";
 import { toast } from "sonner";
@@ -217,6 +222,26 @@ function InboxPageInner() {
     }
     setPainelMobileAberto(true);
   }, [ehDesktop]);
+
+  /**
+   * "Ver na conversa" das abas Notas e Arquivos (09/09/2026). O painel e o
+   * fio são irmãos, e a página é o único caminho entre eles — o mesmo
+   * motivo do `termoDaBusca`. O pedido vai carimbado com a conversa e um
+   * contador (ver `salto-no-fio.ts`): o fio só atende pedido DESTA conversa,
+   * e o mesmo anexo clicado duas vezes rola duas vezes.
+   */
+  const [saltoPedido, setSaltoPedido] = useState<PedidoDeSalto | null>(null);
+  const handleIrParaItemDoFio = useCallback(
+    (alvo: AlvoDoSalto) => {
+      const conversaId = activeConversation?.id;
+      if (!conversaId) return;
+      setSaltoPedido((prev) => novoPedidoDeSalto(prev, conversaId, alvo));
+      // No celular o painel é overlay SOBRE o fio: fechá-lo é o que deixa o
+      // salto à vista. No desktop já está fechado, e isto é no-op.
+      setPainelMobileAberto(false);
+    },
+    [activeConversation?.id],
+  );
 
   // Fire the deep-link auto-select exactly once per URL — subsequent
   // list refreshes (realtime, manual refetch) must not snap the user
@@ -937,6 +962,7 @@ function InboxPageInner() {
             resyncToken={resyncToken}
             onRefresh={handleManualRefresh}
             termoDaBusca={termoDaBusca}
+            saltoPedido={saltoPedido}
           />
           )}
         </div>
@@ -1015,6 +1041,7 @@ function InboxPageInner() {
                 messagesCarregando={
                   messagesDaConversa !== activeConversation.id
                 }
+                onIrParaItemDoFio={handleIrParaItemDoFio}
               />
             ) : (
               <ContactSidebar
@@ -1035,6 +1062,7 @@ function InboxPageInner() {
                   !!activeConversation &&
                   messagesDaConversa !== activeConversation.id
                 }
+                onIrParaItemDoFio={handleIrParaItemDoFio}
               />
             )}
           </div>

@@ -164,7 +164,7 @@
       "typeDirect": "Conversas",
       "typeGroups": "Grupos",
       "groupNoName": "Grupo sem nome",
-      "searchPlaceholder": "Buscar nome, número ou mensagem...",
+      "searchPlaceholder": "Buscar por nome ou número...",
       "filterUnread": "Não lidas",
       "filterAwaiting": "Em atraso",
       "filterOpen": "Abertas",
@@ -252,7 +252,9 @@
       "channelsChosen": "{count, plural, one {# conexão} other {# conexões}}",
       "resultCount": "{count} de {total}",
       "novaConversa": "Nova conversa",
-      "automacaoRodando": "{n, plural, one {# automação agendada para este cliente} other {# automações agendadas para este cliente}}"
+      "automacaoRodando": "{n, plural, one {# automação agendada para este cliente} other {# automações agendadas para este cliente}}",
+      "searchPlaceholderInMessages": "Buscar por nome, número ou mensagem...",
+      "searchInsideMessages": "Buscar também dentro das mensagens"
     },
     "messageThread": {
       "unknownAuthor": "Desconhecido",
@@ -299,7 +301,13 @@
       "channelChangedUnknown": "outro número",
       "searchInThread": "“{termo}” — {atual} de {total}",
       "searchPrevHit": "Achado anterior",
-      "searchNextHit": "Próximo achado"
+      "searchNextHit": "Próximo achado",
+      "searchOpen": "Buscar nesta conversa",
+      "searchLocalPlaceholder": "Buscar nesta conversa...",
+      "searchLocalMinChars": "Digite {n} letras",
+      "searchLocalNone": "Nada encontrado",
+      "searchLocalCount": "{atual} de {total}",
+      "searchClose": "Fechar busca"
     },
     "sessionTimer": {
       "expired": "Expirada",
@@ -501,7 +509,8 @@
       "recebido": "Recebido",
       "enviado": "Enviado",
       "vazio": "Nenhum arquivo nesta conversa",
-      "vazioDica": "Fotos, documentos e áudios trocados aparecem aqui."
+      "vazioDica": "Fotos, documentos e áudios trocados aparecem aqui.",
+      "verNaConversa": "Ver na conversa"
     },
     "execucoes": {
       "roboAtivo": "Robô ativo",
@@ -627,7 +636,8 @@
       "unpin": "Desafixar anotação",
       "expand": "Ver a anotação inteira",
       "collapse": "Recolher anotação",
-      "pinError": "Não foi possível fixar a nota."
+      "pinError": "Não foi possível fixar a nota.",
+      "verNaConversa": "Ver na conversa"
     },
     "scheduled": {
       "sectionTitle": "Agendadas",

@@ -51,6 +51,7 @@ import { nomeDoGrupo, podeRenomearNoWhatsApp } from "@/lib/cb-groups/display";
 import { TituloDeSecao } from "@/components/inbox/painel/painel-do-contato";
 import { LinhaDeEdicao } from "@/components/inbox/painel/linha-de-edicao";
 import { AbaArquivos } from "@/components/inbox/painel/aba-arquivos";
+import type { AlvoDoSalto } from "@/lib/inbox/salto-no-fio";
 import { InternalNoteBox } from "@/components/inbox/internal-note-box";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -81,6 +82,8 @@ interface GroupSidebarProps {
   messages?: Message[];
   /** A carga do fio está em curso? Ver `AbaArquivos`. */
   messagesCarregando?: boolean;
+  /** "Ver na conversa" das abas Notas e Arquivos — ver `PainelDoContatoProps`. */
+  onIrParaItemDoFio?: (alvo: AlvoDoSalto) => void;
 }
 
 export function GroupSidebar({
@@ -92,6 +95,7 @@ export function GroupSidebar({
   onClose,
   messages = [],
   messagesCarregando = false,
+  onIrParaItemDoFio,
 }: GroupSidebarProps) {
   const t = useTranslations("Inbox.groupSidebar");
   const tSidebar = useTranslations("Inbox.sidebar");
@@ -417,6 +421,11 @@ export function GroupSidebar({
                 nota={note}
                 podeApagar={note.author_user_id === user?.id || podeAdministrar}
                 onApagar={(id) => void apagarNota(id)}
+                onVerNaConversa={
+                  onIrParaItemDoFio
+                    ? () => onIrParaItemDoFio({ tipo: "nota", id: note.id })
+                    : undefined
+                }
               />
             ))}
             {/* ⚠️ O vazio só vira afirmação quando a busca DESTA conversa
@@ -457,7 +466,15 @@ export function GroupSidebar({
           value="arquivos"
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
-          <AbaArquivos messages={messages} carregando={messagesCarregando} />
+          <AbaArquivos
+            messages={messages}
+            carregando={messagesCarregando}
+            onVerNaConversa={
+              onIrParaItemDoFio
+                ? (id) => onIrParaItemDoFio({ tipo: "mensagem", id })
+                : undefined
+            }
+          />
         </TabsContent>
       </Tabs>
     </div>

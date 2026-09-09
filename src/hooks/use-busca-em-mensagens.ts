@@ -62,7 +62,19 @@ export interface BuscaEmMensagens {
   termoAplicado: string;
 }
 
-export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
+/**
+ * @param ativa O interruptor "Buscar também dentro das mensagens" da lista
+ *   (09/09/2026). DESLIGADO por padrão: a caixa responde só pelo que a lista
+ *   tem na mão (nome, número, grupo, última mensagem), o banco NÃO é
+ *   consultado e tudo que sai daqui é vazio — inclusive o `termoAplicado`,
+ *   então o fio não destaca nada. Antes a busca no histórico inteiro era
+ *   sempre ligada, e buscar um nome trazia junto toda conversa em que
+ *   aquele nome foi CITADO, o que enterrava a conversa procurada.
+ */
+export function useBuscaEmMensagens(
+  busca: string,
+  ativa: boolean,
+): BuscaEmMensagens {
   const [achados, setAchados] = useState<AchadosNoTexto>(SEM_ACHADOS);
   const [buscando, setBuscando] = useState(false);
   const [falhou, setFalhou] = useState(false);
@@ -84,7 +96,7 @@ export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
     // deste arquivo. Escrever estado direto no corpo do efeito é justamente o
     // que o React Compiler recusa (renderização em cascata), e o resultado
     // seria o mesmo com um render a mais.
-    if (!termoBuscavel(busca)) return;
+    if (!ativa || !termoBuscavel(busca)) return;
 
     const perguntar = async () => {
       setBuscando(true);
@@ -148,13 +160,15 @@ export function useBuscaEmMensagens(busca: string): BuscaEmMensagens {
     }, ESPERA_MS);
 
     return () => clearTimeout(timer);
-  }, [busca]);
+  }, [busca, ativa]);
 
   // ⚠️ O estado guardado é o da ÚLTIMA consulta que voltou; o que a tela vê é
   // derivado do termo de AGORA. Sem isto, apagar a caixa até sobrar "co"
   // deixaria as conversas achadas por "contrato" na lista, sem nada explicando
   // por que elas estão ali.
-  const vale = termoBuscavel(busca);
+  // Desligar o interruptor com uma resposta na mão também zera a tela: a
+  // derivação é a mesma que apaga o resultado velho ao encurtar o termo.
+  const vale = ativa && termoBuscavel(busca);
 
   return {
     achados: vale ? achados : SEM_ACHADOS,
