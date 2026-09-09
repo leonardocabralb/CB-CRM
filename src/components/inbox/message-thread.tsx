@@ -2516,7 +2516,18 @@ export function MessageThread({
         onSendInteractive={handleSendInteractive}
         onOpenTemplates={handleOpenTemplates}
         replyTo={replyTo}
-        onClearReply={() => setReplyTo(null)}
+        // ⚠️ O `idQueSaiu` chega do envio da fila de anexos, que termina
+        // segundos depois do clique: comparar DENTRO do updater usa o estado
+        // mais fresco e não deixa janela para apagar a citação que o operador
+        // escolheu enquanto os anexos subiam (Codex, PR #149).
+        onClearReply={(idQueSaiu) =>
+          setReplyTo((atual) =>
+            // `typeof` e não `!== undefined`: quem passar esta função direto
+            // para um `onClick` mandaria o MouseEvent aqui, e a comparação
+            // silenciosa deixaria o botão de fechar a citação sem efeito.
+            typeof idQueSaiu !== "string" || atual?.id === idQueSaiu ? null : atual,
+          )
+        }
         onNoteCreated={acrescentarNotaDaConversa}
         onScheduled={() => setAgendadasResync((n) => n + 1)}
         onExecutarAutomacao={

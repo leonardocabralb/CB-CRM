@@ -83,7 +83,14 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     // O operador pode clicar Responder noutra mensagem enquanto os anexos
     // sobem; limpar o que estiver vigente apagaria a escolha nova.
     expect(corpo).toContain('const citada = replyTo?.id;');
-    expect(corpo).toContain('if (citadaAtualRef.current === citada) onClearReply?.();');
+    // ⚠️⚠️ Quem COMPARA é o dono do estado, dentro do updater — o compositor
+    // só informa qual citação saiu. A primeira versão comparava contra um ref
+    // alimentado por `useEffect`, e efeito é PASSIVO: a promessa do upload
+    // pode assentar depois de o React comprometer o `replyTo` novo e antes de
+    // o efeito atualizar o ref, e aí apaga-se exatamente a citação nova — o
+    // defeito que esta guarda existe para impedir (Codex, PR #149).
+    expect(corpo).toContain('onClearReply?.(citada);');
+    expect(corpo).not.toContain('citadaAtualRef');
     // E o que a fila manda é a citação CAPTURADA, não a lida a cada volta.
     expect(corpo).not.toContain('replyToId: replyTo?.id');
     expect(ocorrencias(corpo, 'replyToId: citada')).toBe(2);
@@ -96,8 +103,14 @@ describe('a fila de anexos e a troca de conversa (#146)', () => {
     const corpo = f.slice(f.indexOf('const handleSendMedia'), f.indexOf('const handleSendInteractive'));
     expect(corpo).toContain('publicarMensagemOtimista(optimisticMsg);');
     expect(corpo).not.toContain('setReplyTo(');
-    // E o compositor continua sendo quem limpa, depois da fila inteira.
-    expect(f).toContain('onClearReply={() => setReplyTo(null)}');
+    // E o compositor continua sendo quem PEDE a limpeza, depois da fila
+    // inteira — mas quem decide é este updater, com o estado mais fresco.
+    expect(f).toContain('setReplyTo((atual) =>');
+    expect(f).toContain('atual?.id === idQueSaiu ? null : atual');
+    // ⚠️ `typeof`, e não `!== undefined`: passar esta função direto para um
+    // `onClick` mandaria o MouseEvent como `idQueSaiu`, e o botão de fechar a
+    // citação morreria em silêncio.
+    expect(f).toContain('typeof idQueSaiu !== "string"');
     expect(compositor()).toContain('onClearReply?.();');
   });
 

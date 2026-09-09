@@ -218,7 +218,12 @@ interface MessageComposerProps {
   onSendInteractive: (payload: InteractiveMessagePayload, replyToId?: string) => void;
   onOpenTemplates: () => void;
   replyTo?: ReplyDraft | null;
-  onClearReply?: () => void;
+  /**
+   * Limpa a citação. Com `idQueSaiu`, o dono do estado só limpa se a citação
+   * vigente ainda for aquela — ver o envio da fila de anexos, que leva
+   * segundos e pode terminar depois de o operador escolher outra.
+   */
+  onClearReply?: (idQueSaiu?: string) => void;
   /**
    * Anotação interna recém-criada (migration 918). O compositor chama a rota
    * e devolve a linha pronta para o pai pôr no fio sem esperar o realtime —
@@ -528,14 +533,6 @@ export function MessageComposer({
   useEffect(() => {
     onClearReplyRef.current = onClearReply;
   }, [onClearReply]);
-
-  // Mesmo padrão, para a CITAÇÃO: o envio da fila leva horas de operador
-  // entre o clique e o fim, e no fim precisamos saber se a citação ainda é
-  // a MESMA que a fila mandou — não qual está selecionada agora.
-  const citadaAtualRef = useRef(replyTo?.id);
-  useEffect(() => {
-    citadaAtualRef.current = replyTo?.id;
-  }, [replyTo?.id]);
 
   // Ref espelhando a pendente: o cleanup do efeito de desmontagem precisa do
   // valor mais recente sem re-registrar o efeito a cada tecla.
@@ -1394,10 +1391,22 @@ export function MessageComposer({
         setDrafts((atual) => atual.filter((d) => d.id !== item.id));
       }
       setSelecionado(null);
-      // ⚠️ Só limpa se a citação ainda for a QUE SAIU. O operador pode clicar
-      // Responder noutra mensagem enquanto os anexos sobem, e limpar aqui
-      // apagaria a escolha que ele acabou de fazer (Codex, PR #148).
-      if (citadaAtualRef.current === citada) onClearReply?.();
+      // ⚠️⚠️ Limpa SÓ a citação que saiu, e quem compara é o DONO do estado.
+      //
+      // O operador pode clicar Responder noutra mensagem enquanto os anexos
+      // sobem, e limpar cegamente apagaria a escolha que ele acabou de fazer
+      // (Codex, PR #148). A primeira versão comparava contra um ref alimentado
+      // por `useEffect` — e aí a corrida volta pela porta dos fundos: efeito é
+      // PASSIVO, então a promessa do upload pode assentar depois de o React
+      // comprometer o `replyTo` novo e ANTES de o efeito atualizar o ref. Na
+      // janela, o ref ainda tem o id velho, a comparação passa, e apaga-se
+      // justamente a citação nova — o defeito que esta guarda existe para
+      // impedir (Codex, PR #149). É a armadilha de efeito passivo que o
+      // CLAUDE.md já registra quatro vezes.
+      //
+      // Passando o id, `setReplyTo` decide com o estado MAIS FRESCO, dentro do
+      // próprio updater. Não há janela: não há cópia a envelhecer.
+      onClearReply?.(citada);
     } finally {
       // ⚠️ CERCA DE POSSE: só solta quem ainda é o dono. Solto pelo efeito de
       // troca e com outro envio já em curso na conversa nova, limpar aqui
@@ -1472,7 +1481,11 @@ export function MessageComposer({
           <ReplyQuote
             authorLabel={replyTo.authorLabel}
             preview={replyTo.preview}
-            onDismiss={onClearReply}
+            // ⚠️ Embrulhado, nunca a referência crua: `onDismiss` vira o
+            // `onClick` do X, e o React passaria o MouseEvent como
+            // `idQueSaiu` — o dono compararia o id da citação com um evento,
+            // não limparia nada, e o botão morreria em silêncio.
+            onDismiss={() => onClearReply?.()}
           />
         </div>
       )}

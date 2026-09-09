@@ -2498,12 +2498,22 @@ que arrastava PDF para a conversa e nada acontecia. O que morde código novo:
   troca a zera, então toda navegação invalida o laço velho para sempre,
   qualquer que seja o caminho. Quem escrever outro laço com `await` sobre
   estado da tela usa a posse, nunca o id da conversa.
-- ⚠️⚠️ **O fim da fila só limpa a citação se ela ainda for A QUE SAIU**
-  (`citada` capturada na entrada, comparada contra `citadaAtualRef`). O
-  operador pode clicar Responder noutra mensagem enquanto os anexos sobem, e
-  um `onClearReply()` incondicional apagava a escolha que ele acabou de
-  fazer (Codex, PR #148). Pela mesma razão os dois envios levam a `citada`
-  capturada, não `replyTo?.id` lido a cada volta.
+- ⚠️⚠️ **O fim da fila só limpa a citação se ela ainda for A QUE SAIU, e quem
+  COMPARA é o dono do estado.** O compositor captura `citada` na entrada e
+  chama `onClearReply?.(citada)`; o fio decide dentro do `setReplyTo((atual)
+  => ...)`. O operador pode clicar Responder noutra mensagem enquanto os
+  anexos sobem, e um `onClearReply()` incondicional apagava a escolha que ele
+  acabou de fazer (Codex, PR #148). ⚠️ A primeira correção comparava contra um
+  ref alimentado por `useEffect` — e a corrida voltava pela porta dos fundos:
+  efeito é PASSIVO, então a promessa do upload pode assentar depois de o React
+  comprometer o `replyTo` novo e ANTES de o efeito atualizar o ref, e na janela
+  apaga-se exatamente a citação nova (Codex, PR #149). É a armadilha de efeito
+  passivo desta lista, na sua quinta aparição. O updater não tem janela porque
+  não guarda cópia. ⚠️ O teste é `typeof idQueSaiu !== "string"`, e não
+  `!== undefined`: passar `onClearReply` direto para um `onClick` (é o que o X
+  da citação fazia) mandaria o MouseEvent como id e o botão morreria em
+  silêncio. Pela mesma razão os dois envios levam a `citada` capturada, não
+  `replyTo?.id` lido a cada volta.
 - ⚠️⚠️ **`handleSendMedia` NÃO limpa a citação — quem limpa é o fim da
   fila** (`onClearReply`, depois de a fila INTEIRA sair). Ele tem três
   saídas `false` que RETÊM o anexo, e `MediaDraft` não guarda o id da
