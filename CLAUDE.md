@@ -958,17 +958,21 @@ por tamanho no webhook da Evolution. O que morde código novo:
   de grupo já o lesse. `'failed'` continua só em grupo, de propósito: é o
   estado que acende o botão "tentar de novo", e a rota sob demanda só
   existe lá. O `podeBaixarAnexo` já excluía `too_large`.
-- ⚠️⚠️ **Marcar `too_large` em GRUPO tem de APAGAR o ponteiro**
-  (`cb_message_media_ref`), e há teste estrutural cobrando cada escrita
-  (`ponteiro-de-midia.chamadores.test.ts`, verificado reprovando com a
-  limpeza removida). O ponteiro guarda o payload cru do Baileys, com as
-  CHAVES DE DECIFRAGEM da mídia — a regra "some com ele quando não for mais
-  necessário" já existia no caminho de sucesso, e o ramo novo saía por um
-  `continue` sem passar por ela. Como `too_large` desliga o download sob
-  demanda PARA SEMPRE, aquelas chaves ficariam no banco sem ninguém para
-  consumi-las (achado do Codex no PR #157). ⚠️ A limpeza só corre quando a
-  MARCAÇÃO deu certo: falhando, a mensagem segue `pending`, o botão continua
-  na tela e o ponteiro ainda é o único caminho para o arquivo.
+- ⚠️⚠️ **Marcar `too_large` passa por `marcarAnexoGrandeDemais`
+  (`src/lib/whatsapp/anexo-grande.ts`), nunca por UPDATE solto** — há teste
+  default-deny cobrando que ninguém escreva aquele valor fora do helper
+  (`anexo-grande.chamadores.test.ts`). São DOIS passos que precisam andar
+  juntos: gravar o estado e apagar o ponteiro `cb_message_media_ref` (906),
+  que guarda as CHAVES DE DECIFRAGEM da mídia e nunca mais será usado
+  (`too_large` desliga o download sob demanda para sempre).
+  ⚠️⚠️ **E o ponteiro só sai DEPOIS de a marcação dar certo.** O Supabase
+  devolve `error` em vez de lançar: apagando sem conferir, o UPDATE que
+  falha deixa a mensagem `pending` — botão "toque para baixar" na tela — sem
+  o ponteiro que o alimenta, e o clique seguinte responde 410 "o WhatsApp
+  não tem mais este arquivo", que é MENTIRA. Soltas nos call sites, essas
+  duas linhas divergiram em DOIS PRs seguidos (Codex, #157 e #158): primeiro
+  o webhook não limpava, depois a rota limpava sem conferir. Por isso o
+  helper.
 - ⚠️ **O nome do arquivo é gravado MESMO quando o anexo é recusado**
   (`nomeDeArquivoDeclarado`): é a única informação que sobra do documento
   que não coube, e sem ela a bolha cai no rótulo genérico.
