@@ -42,3 +42,36 @@ export function diasParaVencer(
 
 /** O caminho da rota real do webhook (Fase 3) — a tela mostra `origin` + isto. */
 export const CAMINHO_DO_WEBHOOK = '/api/cb/instagram/webhook';
+
+/**
+ * Onde o Instagram devolve a pessoa depois do login (OAuth). A tela mostra
+ * `origin` + isto para o operador registrar no painel da Meta ("URIs de
+ * redirecionamento OAuth válidos"); o servidor deriva a mesma URL do pedido.
+ */
+export const CAMINHO_DO_CALLBACK = '/api/cb/instagram/oauth/callback';
+
+/**
+ * Por que a volta do login do Instagram deu errado. O callback redireciona
+ * para Conexões com `?instagram=erro&motivo=<um destes>`, e a tela traduz
+ * cada um (`instagramOauthError*` — cobrado por teste nos dois dicionários).
+ */
+export const MOTIVOS_DO_OAUTH = [
+  'sessao',
+  'sem_permissao',
+  'limite',
+  'sem_app',
+  'recusado',
+  'estado',
+  'permissao',
+  'meta',
+  'outra_conta',
+  'erro',
+] as const;
+export type MotivoDoOAuth = (typeof MOTIVOS_DO_OAUTH)[number];
+
+/** Um motivo desconhecido na URL vira `erro`, nunca chave crua na tela. */
+export function motivoDoOAuth(valor: string | null | undefined): MotivoDoOAuth {
+  return (MOTIVOS_DO_OAUTH as readonly string[]).includes(valor ?? '')
+    ? (valor as MotivoDoOAuth)
+    : 'erro';
+}

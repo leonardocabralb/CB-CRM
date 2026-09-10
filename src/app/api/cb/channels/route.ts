@@ -43,7 +43,9 @@ import { provisionMetaChannel } from '@/lib/cb-channels/meta-admin';
 import { ehInstagram, ehMeta, transporteValido } from '@/lib/cb-channels/transporte';
 import { criarClienteInstagram, type PerfilDaConta } from '@/lib/instagram/graph';
 import { validadeDoToken } from '@/lib/instagram/conexao';
-import { novoVerifyToken } from '@/lib/instagram/verify-token';
+import { gravarCanalDoInstagram } from '@/lib/instagram/canal';
+import { lerAppDoInstagram } from '@/lib/instagram/app';
+import { supabaseAdmin } from '@/lib/automations/admin-client';
 
 const MAX_LABEL_LEN = 60;
 
@@ -474,13 +476,36 @@ async function createInstagramChannel(
     humanAgent: boolean;
   },
 ): Promise<NextResponse> {
-  const { label, accessToken, igAppSecret, humanAgent } = args;
+  const { label, accessToken, humanAgent } = args;
 
-  if (!accessToken || !igAppSecret) {
+  if (!accessToken) {
     return NextResponse.json(
-      { error: 'Token de acesso e Instagram App Secret são obrigatórios.' },
+      { error: 'Cole o token de acesso gerado no painel da Meta.' },
       { status: 400 },
     );
+  }
+
+  // Sem segredo digitado, vale o do app cadastrado (990) — é o caminho de
+  // quem já usa o login do Instagram e só quer colar um token avulso.
+  let igAppSecret = args.igAppSecret;
+  if (!igAppSecret) {
+    let app;
+    try {
+      app = await lerAppDoInstagram(supabaseAdmin(), ctx.accountId);
+    } catch (err) {
+      console.error('[cb/channels] app do Instagram ilegível:', err instanceof Error ? err.message : err);
+      return NextResponse.json(
+        { error: 'Não foi possível ler o app da Meta.' },
+        { status: 500 },
+      );
+    }
+    if (!app) {
+      return NextResponse.json(
+        { error: 'Informe o Instagram App Secret, ou cadastre o app da Meta antes.' },
+        { status: 400 },
+      );
+    }
+    igAppSecret = app.appSecret;
   }
 
   // Confere o token com o Instagram ANTES de gravar. A mensagem já vem sem o
@@ -497,95 +522,32 @@ async function createInstagramChannel(
     );
   }
 
-  const nowIso = new Date().toISOString();
-  const verifyToken = novoVerifyToken();
-  const credenciais = {
-    access_token: encrypt(accessToken),
-    ig_app_secret: encrypt(igAppSecret),
-    ig_username: perfil.username,
-    ig_token_expires_at: validadeDoToken(),
-    ig_token_refreshed_at: nowIso,
-    ig_human_agent: humanAgent,
-    status: 'connected',
-    connected_at: nowIso,
-    last_error: null,
-  };
-
-  const { data: channel, error } = await ctx.supabase
-    .from('cb_channels')
-    .insert({
-      account_id: ctx.accountId,
-      created_by: ctx.userId,
-      kind: 'instagram',
-      label,
-      is_default: false,
-      display_phone: null,
-      verify_token: encrypt(verifyToken),
-      ig_user_id: perfil.igUserId,
-      ...credenciais,
-    })
-    .select(CB_CHANNEL_SAFE_COLUMNS)
-    .single();
-
-  if (error) {
-    // O índice único GLOBAL de ig_user_id (989) barra a mesma conta do
-    // Instagram duas vezes. NESTA conta, o re-cadastro é recuperação (token
-    // novo, segredo novo): atualiza em vez de 409, como o caminho da Meta.
-    // Em OUTRA conta (linha invisível pela RLS) continua caindo no 409.
-    if (error.code === '23505') {
-      const { data: existing } = await ctx.supabase
-        .from('cb_channels')
-        .select('id')
-        .eq('account_id', ctx.accountId)
-        .eq('kind', 'instagram')
-        .eq('ig_user_id', perfil.igUserId)
-        .maybeSingle();
-
-      if (existing) {
-        const { data: updated, error: updErr } = await ctx.supabase
-          .from('cb_channels')
-          .update({ label, ...credenciais })
-          .eq('id', existing.id)
-          .eq('account_id', ctx.accountId)
-          .select(CB_CHANNEL_SAFE_COLUMNS)
-          .single();
-        if (updErr || !updated) {
-          console.error(
-            '[cb/channels] recadastro do Instagram falhou:',
-            updErr?.message,
-          );
-          return NextResponse.json(
-            { error: 'Não foi possível atualizar a conexão do Instagram.' },
-            { status: 500 },
-          );
-        }
-        // O verify token gravado NÃO muda no recadastro: o painel da Meta já
-        // o conhece. Quem precisar vê-lo usa o GET da conexão.
-        return NextResponse.json(
-          { channel: updated, reconnected: true, username: perfil.username },
-          { status: 200 },
-        );
-      }
-      return NextResponse.json(
-        {
-          error: `A conta @${perfil.username} já está conectada em outra conta deste CRM.`,
-        },
-        { status: 409 },
-      );
-    }
-    console.error(
-      '[cb/channels] erro ao inserir canal Instagram:',
-      error.code,
-      error.message,
-    );
+  const r = await gravarCanalDoInstagram(ctx.supabase, {
+    accountId: ctx.accountId,
+    userId: ctx.userId,
+    label,
+    accessToken,
+    igAppSecret,
+    humanAgent,
+    perfil,
+    // Token colado pode ter sido gerado dias antes: a validade é presunção
+    // (o login do Instagram grava a medida — ver o callback).
+    tokenExpiraEm: validadeDoToken(),
+  });
+  if (!r.ok) {
     return NextResponse.json(
-      { error: 'Não foi possível salvar a conexão do Instagram.' },
-      { status: 500 },
+      { error: r.mensagem },
+      { status: r.codigo === 'outra_conta' ? 409 : 500 },
     );
   }
-
+  if (r.reconectado) {
+    return NextResponse.json(
+      { channel: r.canal, reconnected: true, username: perfil.username },
+      { status: 200 },
+    );
+  }
   return NextResponse.json(
-    { channel, username: perfil.username, webhook: { verifyToken } },
+    { channel: r.canal, username: perfil.username, webhook: { verifyToken: r.verifyToken } },
     { status: 201 },
   );
 }

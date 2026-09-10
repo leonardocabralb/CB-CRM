@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -74,6 +75,7 @@ import {
   AVISO_DE_VENCIMENTO_DIAS,
   CAMINHO_DO_WEBHOOK,
   diasParaVencer,
+  motivoDoOAuth,
 } from '@/lib/instagram/conexao';
 import type { CbChannelKind } from '@/lib/cb-channels/repo';
 import { IconeDoTransporte } from '@/components/channels/transporte-icone';
@@ -164,6 +166,22 @@ export function CbChannelsPanel() {
   const [igRenewTarget, setIgRenewTarget] = useState<CbChannel | null>(null);
   const [igRenewToken, setIgRenewToken] = useState('');
   const [renewing, setRenewing] = useState(false);
+  /**
+   * O app da Meta da conta (990) e o login do Instagram. `null` = ainda não
+   * carregou (o passo "Instagram" busca ao abrir); `falhou` = a leitura não
+   * voltou, e a tela diz isso em vez de afirmar "nenhum app cadastrado".
+   */
+  const [igApp, setIgApp] = useState<{
+    configurado: boolean;
+    appId: string | null;
+    redirectUri: string;
+    falhou?: boolean;
+  } | null>(null);
+  const [igAppEditando, setIgAppEditando] = useState(false);
+  const [igAppId, setIgAppId] = useState('');
+  const [igAppSecretNovo, setIgAppSecretNovo] = useState('');
+  const [showIgAppSecret, setShowIgAppSecret] = useState(false);
+  const [salvandoApp, setSalvandoApp] = useState(false);
 
   const [qrChannelId, setQrChannelId] = useState<string | null>(null);
   const [qrImage, setQrImage] = useState<string | null>(null);
@@ -268,6 +286,10 @@ export function CbChannelsPanel() {
   const resetAdd = () => {
     setAddStep('choose');
     setLabel('');
+    setIgApp(null);
+    setIgAppEditando(false);
+    setIgAppId('');
+    setIgAppSecretNovo('');
     setMetaPhoneNumberId('');
     setMetaWabaId('');
     setMetaAccessToken('');
@@ -435,19 +457,138 @@ export function CbChannelsPanel() {
     }
   };
 
-  const abrirWebhookDoInstagram = async (channel: CbChannel) => {
+  const abrirWebhookDoInstagram = useCallback(
+    async (channel: { id: string; label: string }) => {
+      try {
+        const res = await fetch(`/api/cb/channels/${channel.id}/instagram`);
+        const payload = await res.json();
+        if (!res.ok) {
+          toast.error(payload.error || t('loadFailed'));
+          return;
+        }
+        setIgWebhook({ label: channel.label, verifyToken: payload.verifyToken ?? null });
+      } catch {
+        toast.error(t('networkError'));
+      }
+    },
+    [t],
+  );
+
+  // O app da Meta (990). Nenhum setState antes do primeiro `await`: a regra
+  // do React Compiler contra setState síncrono em efeito vale para quem o
+  // efeito chama.
+  const carregarAppDoInstagram = useCallback(async () => {
     try {
-      const res = await fetch(`/api/cb/channels/${channel.id}/instagram`);
+      const res = await fetch('/api/cb/instagram/app');
       const payload = await res.json();
       if (!res.ok) {
-        toast.error(payload.error || t('loadFailed'));
+        setIgApp({ configurado: false, appId: null, redirectUri: '', falhou: true });
+        toast.error(payload.error || t('instagramAppLoadFailed'));
         return;
       }
-      setIgWebhook({ label: channel.label, verifyToken: payload.verifyToken ?? null });
+      setIgApp({
+        configurado: Boolean(payload.configurado),
+        appId: typeof payload.appId === 'string' ? payload.appId : null,
+        redirectUri: typeof payload.redirectUri === 'string' ? payload.redirectUri : '',
+      });
+      setIgAppId(typeof payload.appId === 'string' ? payload.appId : '');
     } catch {
+      setIgApp({ configurado: false, appId: null, redirectUri: '', falhou: true });
       toast.error(t('networkError'));
     }
+  }, [t]);
+
+  useEffect(() => {
+    if (addStep === 'instagram') void carregarAppDoInstagram();
+  }, [addStep, carregarAppDoInstagram]);
+
+  const handleSalvarAppDoInstagram = async () => {
+    setSalvandoApp(true);
+    try {
+      const res = await fetch('/api/cb/instagram/app', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_id: igAppId.trim(), app_secret: igAppSecretNovo.trim() }),
+      });
+      const payload = await res.json();
+      if (!res.ok) {
+        toast.error(payload.error || t('instagramAppSaveFailed'));
+        return;
+      }
+      toast.success(t('instagramAppSaved'));
+      setIgApp({
+        configurado: true,
+        appId: typeof payload.appId === 'string' ? payload.appId : igAppId.trim(),
+        redirectUri:
+          typeof payload.redirectUri === 'string' ? payload.redirectUri : (igApp?.redirectUri ?? ''),
+      });
+      setIgAppEditando(false);
+      setIgAppSecretNovo('');
+    } catch {
+      toast.error(t('networkError'));
+    } finally {
+      setSalvandoApp(false);
+    }
   };
+
+  // A volta do login do Instagram: o callback redireciona para cá com
+  // `?instagram=conectado|erro`. Tratado UMA vez por montagem (ref), e a URL
+  // é limpa antes de qualquer coisa — um F5 não pode repetir o aviso.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const retornoDoOAuthRef = useRef(false);
+  useEffect(() => {
+    const situacao = searchParams.get('instagram');
+    if (!situacao || retornoDoOAuthRef.current) return;
+    retornoDoOAuthRef.current = true;
+    const canalId = searchParams.get('canal');
+    const username = searchParams.get('username') ?? '';
+    const primeira = searchParams.get('primeira') === '1';
+    const motivo = motivoDoOAuth(searchParams.get('motivo'));
+    const detalhe = searchParams.get('detalhe') ?? '';
+    const params = new URLSearchParams(searchParams.toString());
+    for (const chave of ['instagram', 'motivo', 'detalhe', 'canal', 'username', 'primeira']) {
+      params.delete(chave);
+    }
+    router.replace(`/settings?${params.toString()}`);
+    if (situacao === 'conectado') {
+      void (async () => {
+        await load();
+        // O sucesso é afirmado só depois de a conexão aparecer NESTA conta
+        // (o GET é escopado por conta): a URL é de quem a escreveu, e um
+        // link forjado não pode anunciar "Instagram conectado: @qualquer".
+        let payload: { igUsername?: string | null; verifyToken?: string | null } | null = null;
+        try {
+          const res = canalId ? await fetch(`/api/cb/channels/${canalId}/instagram`) : null;
+          if (res?.ok) payload = await res.json();
+        } catch {
+          payload = null;
+        }
+        if (!payload) {
+          toast.error(t('instagramOauthError_erro', { detalhe: '' }));
+          return;
+        }
+        const nome = `@${payload.igUsername ?? username}`;
+        toast.success(t('instagramConnectedToast', { username: nome.slice(1) }));
+        // O webhook no painel da Meta é UMA vez por app: o diálogo (que diz
+        // "nada chega até isto ser feito") só abre para a PRIMEIRA conexão;
+        // nas demais ele mentiria, e com um verify token diferente do
+        // registrado. O callback é quem sabe se foi a primeira.
+        if (primeira) {
+          setIgWebhook({ label: nome, verifyToken: payload.verifyToken ?? null });
+        } else {
+          toast.info(t('instagramWebhookAlreadyToast'));
+        }
+      })();
+      return;
+    }
+    toast.error(
+      t(`instagramOauthError_${motivo}` as Parameters<typeof t>[0], { detalhe }),
+    );
+    // A ref nunca é zerada: o botão navega com `window.location.assign`
+    // (página inteira), então cada volta do login é uma montagem nova.
+    // Trocar por navegação client-side quebraria esta premissa.
+  }, [searchParams, router, t, load]);
 
   const handleCreateInstagram = async () => {
     setCreating(true);
@@ -719,8 +860,12 @@ export function CbChannelsPanel() {
 
   const metaFormValid =
     Boolean(label) && Boolean(metaPhoneNumberId.trim()) && Boolean(metaAccessToken.trim());
+  // O segredo pode ficar em branco quando o app da Meta já está cadastrado
+  // (a rota usa o guardado).
   const igFormValid =
-    Boolean(label) && Boolean(igAccessToken.trim()) && Boolean(igAppSecret.trim());
+    Boolean(label) &&
+    Boolean(igAccessToken.trim()) &&
+    (Boolean(igAppSecret.trim()) || Boolean(igApp?.configurado));
 
   return (
     <div>
@@ -1292,107 +1437,296 @@ export function CbChannelsPanel() {
                 <DialogDescription>{t('instagramStepDescription')}</DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
-                <div>
-                  <Label htmlFor="cb-ig-label">{t('labelField')}</Label>
-                  <Input
-                    id="cb-ig-label"
-                    value={label}
-                    onChange={(e) => setLabel(e.target.value)}
-                    placeholder={t('instagramLabelPlaceholder')}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="cb-ig-token">{t('instagramFieldAccessToken')}</Label>
-                  <div className="relative">
-                    <Input
-                      id="cb-ig-token"
-                      type={showToken ? 'text' : 'password'}
-                      value={igAccessToken}
-                      onChange={(e) => setIgAccessToken(e.target.value)}
-                      placeholder={t('instagramAccessTokenPlaceholder')}
-                      className="pr-10"
-                    />
-                    <button
-                      type="button"
-                      aria-label={t('metaToggleToken')}
-                      onClick={() => setShowToken((v) => !v)}
-                      className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+                {/* 1. O app da Meta (990): cadastrado uma vez, serve a todas as
+                    contas do escritório. */}
+                <div className="space-y-3 rounded-md border border-border p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{t('instagramAppTitle')}</p>
+                      <p className="text-xs text-muted-foreground">{t('instagramAppDesc')}</p>
+                    </div>
+                    {igApp?.configurado && !igAppEditando && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => setIgAppEditando(true)}
+                      >
+                        {t('instagramAppChange')}
+                      </Button>
+                    )}
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{t('instagramAccessTokenHint')}</p>
-                </div>
-                <div>
-                  <Label htmlFor="cb-ig-secret">{t('instagramFieldAppSecret')}</Label>
-                  <div className="relative">
-                    <Input
-                      id="cb-ig-secret"
-                      type={showIgSecret ? 'text' : 'password'}
-                      value={igAppSecret}
-                      onChange={(e) => setIgAppSecret(e.target.value)}
-                      className="pr-10"
-                    />
-                    <button
-                      type="button"
-                      aria-label={t('metaToggleToken')}
-                      onClick={() => setShowIgSecret((v) => !v)}
-                      className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      {showIgSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{t('instagramAppSecretHint')}</p>
-                </div>
-                <div className="rounded-md border border-border p-3">
-                  <label className="flex cursor-pointer items-start gap-2">
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={igHumanAgent}
-                      onChange={(e) => setIgHumanAgent(e.target.checked)}
-                    />
-                    <span>
-                      <span className="block text-sm font-medium text-foreground">
-                        {t('instagramHumanAgent')}
-                      </span>
-                      <span className="block text-xs text-muted-foreground">
-                        {t('instagramHumanAgentHint')}
-                      </span>
-                    </span>
-                  </label>
+                  {igApp === null ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : igApp.falhou ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm text-red-700 dark:text-red-300">{t('instagramAppLoadFailed')}</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => void carregarAppDoInstagram()}
+                      >
+                        {t('instagramAppRetry')}
+                      </Button>
+                    </div>
+                  ) : igApp.configurado && !igAppEditando ? (
+                    <p className="flex items-center gap-1 text-sm text-foreground">
+                      <BadgeCheck className="h-4 w-4 text-emerald-500" />
+                      {t('instagramAppConfigured', { appId: igApp.appId ?? '' })}
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <Label htmlFor="cb-ig-app-id">{t('instagramAppIdField')}</Label>
+                        <Input
+                          id="cb-ig-app-id"
+                          inputMode="numeric"
+                          value={igAppId}
+                          onChange={(e) => setIgAppId(e.target.value)}
+                          className="font-mono"
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">{t('instagramAppIdHint')}</p>
+                      </div>
+                      <div>
+                        <Label htmlFor="cb-ig-app-secret">{t('instagramFieldAppSecret')}</Label>
+                        <div className="relative">
+                          <Input
+                            id="cb-ig-app-secret"
+                            type={showIgAppSecret ? 'text' : 'password'}
+                            value={igAppSecretNovo}
+                            onChange={(e) => setIgAppSecretNovo(e.target.value)}
+                            placeholder={igApp.configurado ? t('instagramAppSecretKeep') : undefined}
+                            className="pr-10"
+                          />
+                          <button
+                            type="button"
+                            aria-label={t('metaToggleToken')}
+                            onClick={() => setShowIgAppSecret((v) => !v)}
+                            className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                          >
+                            {showIgAppSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">{t('instagramAppSecretHint')}</p>
+                        {igApp.configurado && (
+                          <p className="mt-1 text-xs text-muted-foreground">{t('instagramAppChangeHint')}</p>
+                        )}
+                      </div>
+                      <Accordion>
+                        <AccordionItem className="border-border">
+                          <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
+                            {t('instagramHelpSecret')}
+                          </AccordionTrigger>
+                          <AccordionContent className="text-muted-foreground">
+                            <ol className="list-inside list-decimal space-y-1 text-sm">
+                              <li>{t('instagramHelpToken_1')}</li>
+                              <li>{t('instagramHelpSecret_1')}</li>
+                              <li>{t('instagramHelpSecret_2')}</li>
+                            </ol>
+                          </AccordionContent>
+                        </AccordionItem>
+                      </Accordion>
+                      <div className="flex justify-end gap-2">
+                        {igApp.configurado && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setIgAppEditando(false);
+                              setIgAppSecretNovo('');
+                              setIgAppId(igApp.appId ?? '');
+                            }}
+                          >
+                            {t('cancel')}
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleSalvarAppDoInstagram}
+                          disabled={
+                            salvandoApp ||
+                            !igAppId.trim() ||
+                            (!igApp.configurado && !igAppSecretNovo.trim())
+                          }
+                        >
+                          {salvandoApp && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          {t('instagramAppSave')}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {igApp?.redirectUri ? (
+                    <div className="space-y-1">
+                      <Label>{t('instagramRedirectUri')}</Label>
+                      <div className="flex gap-2">
+                        <Input readOnly value={igApp.redirectUri} className="font-mono text-xs" />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="shrink-0"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(igApp.redirectUri);
+                            toast.success(t('instagramCopied'));
+                          }}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{t('instagramRedirectUriHint')}</p>
+                    </div>
+                  ) : null}
                 </div>
 
+                {/* 2. O login do Instagram: a conta entra, autoriza, e o CRM
+                    recebe o token direto da Meta. É navegação, não fetch.
+                    A linha de baixo tem TRÊS estados de propósito — "ainda não
+                    li", "não consegui ler" e "li: não há app" — e só o terceiro
+                    manda cadastrar; senão a tela afirma o que não mediu (a
+                    "lista vazia virando afirmação" do CLAUDE.md). A falha mais
+                    provável da primeira vez acontece FORA do CRM (página de
+                    erro do Instagram), então o sintoma é nomeado aqui. */}
+                <div className="space-y-2 rounded-md border border-border p-3">
+                  <ol className="list-inside list-decimal space-y-1 text-xs text-muted-foreground">
+                    <li>{t('instagramOauthStep_1')}</li>
+                    <li>{t('instagramOauthStep_2')}</li>
+                  </ol>
+                  <Button
+                    type="button"
+                    className="w-full"
+                    disabled={!igApp?.configurado}
+                    onClick={() => window.location.assign('/api/cb/instagram/oauth/start')}
+                  >
+                    <InstagramGlyph className="mr-2 h-4 w-4" />
+                    {t('instagramOauthConnect')}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    {igApp === null
+                      ? t('instagramAppLoading')
+                      : igApp.falhou
+                        ? t('instagramAppLoadFailed')
+                        : igApp.configurado
+                          ? t('instagramOauthSymptom')
+                          : t('instagramOauthNeedsApp')}
+                  </p>
+                </div>
+
+                {/* 3. O token colado (o desenho original da D3) continua valendo. */}
                 <Accordion>
                   <AccordionItem className="border-border">
                     <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
-                      {t('instagramHelpToken')}
+                      {t('instagramManualTitle')}
                     </AccordionTrigger>
-                    <AccordionContent className="text-muted-foreground">
-                      <ol className="list-inside list-decimal space-y-1 text-sm">
-                        <li>{t('instagramHelpToken_1')}</li>
-                        <li>{t('instagramHelpToken_2')}</li>
-                        <li>{t('instagramHelpToken_3')}</li>
-                      </ol>
-                    </AccordionContent>
-                  </AccordionItem>
-                  <AccordionItem className="border-border">
-                    <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
-                      {t('instagramHelpSecret')}
-                    </AccordionTrigger>
-                    <AccordionContent className="text-muted-foreground">
-                      <ol className="list-inside list-decimal space-y-1 text-sm">
-                        <li>{t('instagramHelpSecret_1')}</li>
-                        <li>{t('instagramHelpSecret_2')}</li>
-                      </ol>
-                    </AccordionContent>
-                  </AccordionItem>
-                  <AccordionItem className="border-border">
-                    <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
-                      {t('instagramHelpWebhook')}
-                    </AccordionTrigger>
-                    <AccordionContent className="text-muted-foreground">
-                      <p className="text-sm">{t('instagramHelpWebhook_after')}</p>
+                    <AccordionContent>
+                      <div className="space-y-4 pt-1">
+                        <div>
+                          <Label htmlFor="cb-ig-label">{t('labelField')}</Label>
+                          <Input
+                            id="cb-ig-label"
+                            value={label}
+                            onChange={(e) => setLabel(e.target.value)}
+                            placeholder={t('instagramLabelPlaceholder')}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="cb-ig-token">{t('instagramFieldAccessToken')}</Label>
+                          <div className="relative">
+                            <Input
+                              id="cb-ig-token"
+                              type={showToken ? 'text' : 'password'}
+                              value={igAccessToken}
+                              onChange={(e) => setIgAccessToken(e.target.value)}
+                              placeholder={t('instagramAccessTokenPlaceholder')}
+                              className="pr-10"
+                            />
+                            <button
+                              type="button"
+                              aria-label={t('metaToggleToken')}
+                              onClick={() => setShowToken((v) => !v)}
+                              className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                            >
+                              {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">{t('instagramAccessTokenHint')}</p>
+                        </div>
+                        <div>
+                          <Label htmlFor="cb-ig-secret">{t('instagramFieldAppSecret')}</Label>
+                          <div className="relative">
+                            <Input
+                              id="cb-ig-secret"
+                              type={showIgSecret ? 'text' : 'password'}
+                              value={igAppSecret}
+                              onChange={(e) => setIgAppSecret(e.target.value)}
+                              className="pr-10"
+                            />
+                            <button
+                              type="button"
+                              aria-label={t('metaToggleToken')}
+                              onClick={() => setShowIgSecret((v) => !v)}
+                              className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                            >
+                              {showIgSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {igApp?.configurado ? t('instagramAppSecretOptionalHint') : t('instagramAppSecretHint')}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border p-3">
+                          <label className="flex cursor-pointer items-start gap-2">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={igHumanAgent}
+                              onChange={(e) => setIgHumanAgent(e.target.checked)}
+                            />
+                            <span>
+                              <span className="block text-sm font-medium text-foreground">
+                                {t('instagramHumanAgent')}
+                              </span>
+                              <span className="block text-xs text-muted-foreground">
+                                {t('instagramHumanAgentHint')}
+                              </span>
+                            </span>
+                          </label>
+                        </div>
+
+                        <Accordion>
+                          <AccordionItem className="border-border">
+                            <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
+                              {t('instagramHelpToken')}
+                            </AccordionTrigger>
+                            <AccordionContent className="text-muted-foreground">
+                              <ol className="list-inside list-decimal space-y-1 text-sm">
+                                <li>{t('instagramHelpToken_1')}</li>
+                                <li>{t('instagramHelpToken_2')}</li>
+                                <li>{t('instagramHelpToken_3')}</li>
+                              </ol>
+                            </AccordionContent>
+                          </AccordionItem>
+                          <AccordionItem className="border-border">
+                            <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
+                              {t('instagramHelpWebhook')}
+                            </AccordionTrigger>
+                            <AccordionContent className="text-muted-foreground">
+                              <p className="text-sm">{t('instagramHelpWebhook_after')}</p>
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
+
+                        <div className="flex justify-end">
+                          <Button onClick={handleCreateInstagram} disabled={creating || !igFormValid}>
+                            {creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {t('instagramCreate')}
+                          </Button>
+                        </div>
+                      </div>
                     </AccordionContent>
                   </AccordionItem>
                 </Accordion>
@@ -1401,10 +1735,6 @@ export function CbChannelsPanel() {
                 <Button variant="outline" onClick={() => setAddStep('choose')}>
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   {t('back')}
-                </Button>
-                <Button onClick={handleCreateInstagram} disabled={creating || !igFormValid}>
-                  {creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {t('instagramCreate')}
                 </Button>
               </DialogFooter>
             </>
@@ -1879,7 +2209,20 @@ export function CbChannelsPanel() {
             </DialogDescription>
           </DialogHeader>
           <div>
-            <Label htmlFor="cb-ig-renew">{t('instagramFieldAccessToken')}</Label>
+            {/* Reconectar pelo login: a MESMA conta autoriza de novo e o token
+              nasce com validade medida; rótulo e Human Agent ficam (canal.ts).
+              Sem app da Meta cadastrado, a rota volta com `sem_app`, e o
+              token colado abaixo continua valendo. */}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => window.location.assign('/api/cb/instagram/oauth/start')}
+          >
+            <InstagramGlyph className="mr-2 h-4 w-4" />
+            {t('instagramRenewByLogin')}
+          </Button>
+          <Label htmlFor="cb-ig-renew">{t('instagramFieldAccessToken')}</Label>
             <Input
               id="cb-ig-renew"
               type="password"
