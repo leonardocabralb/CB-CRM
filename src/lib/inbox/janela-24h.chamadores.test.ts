@@ -60,7 +60,22 @@ describe('o fio e a janela de 24h (F5)', () => {
     expect(f).toContain('setAgoraDaBadge(new Date())');
     // …e o memo depende dele. Sem o dep, o tique re-renderiza e o memo
     // devolve o valor velho — a badge congela igual.
-    expect(f).toContain('}, [messages, tTimer, agoraDaBadge]);');
+    expect(f).toContain('}, [messages, tTimer, agoraDaBadge, canalDaJanela]);');
+  });
+
+  it('janela POR NÚMERO: os dois relógios contam o canal de SAÍDA', () => {
+    // A janela da Meta é por número; contando o fio inteiro, o cliente que só
+    // escreveu pelo número por QR Code liberava texto livre no oficial. O
+    // canal é o mesmo do `expected_channel_id`, e a etiqueta e o portão do
+    // disparo têm de receber o MESMO — passar `null` num deles volta a contar
+    // o fio inteiro sem erro de compilação.
+    const f = fio();
+    expect(f).toContain('const canalDaJanela = activeChannel?.id ?? null;');
+    expect(f).toContain('janelaFechada(messages, agora, canalDaJanela)');
+    expect(f).toContain(
+      'janelaFechada(mensagensRef.current, new Date(), canalDaJanelaRef.current)',
+    );
+    expect(f).toContain('canalDaJanelaRef.current = canalDaJanela;');
   });
 
   it('M13/#84: o portão do disparo cobre os TRÊS caminhos', () => {

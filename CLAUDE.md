@@ -285,7 +285,7 @@ upstream sobrescrevê-los:
 | `src/components/inbox/conversation-list.tsx` (canal, 2026-09-02) | a prop `corDoCanalDaLinha` do `ConversationItem` e a bolinha antes do nome — bolinha, e não trilha, porque a borda esquerda já é da seleção |
 | `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (963): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
 | `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem o contato; o canal passado é `conversation.channel_id ?? null` — o PR #74 trocou o `activeChannel` resolvido pelo cru DE PROPÓSITO, para a checagem de escopo da rota falhar aberta igual ao motor em conversa sem canal; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
-| `src/components/inbox/message-thread.tsx` (#84) | a **janela de 24h**: a regra saiu para `src/lib/inbox/janela-24h.ts` (puro, com teste) e os TRÊS caminhos de envio (texto, mídia, interativa) passam por `janelaFechadaAgora()` antes do `fetch` — o portão lê o RELÓGIO no disparo, nunca `sessionInfo.expired` (que é `useMemo` em `[messages]` e não recomputa com o passar das horas). Um merge que traga o `sessionInfo` inline do upstream devolve os três buracos de uma vez |
+| `src/components/inbox/message-thread.tsx` (#84) | a **janela de 24h**: a regra saiu para `src/lib/inbox/janela-24h.ts` (puro, com teste) e os TRÊS caminhos de envio (texto, mídia, interativa) passam por `janelaFechadaAgora()` antes do `fetch` — o portão lê o RELÓGIO no disparo, nunca `sessionInfo.expired` (que é `useMemo` em `[messages]` e não recomputa com o passar das horas). Um merge que traga o `sessionInfo` inline do upstream devolve os três buracos de uma vez. Desde 10/09/2026 a janela é **POR NÚMERO**: os dois relógios passam `canalDaJanela` (= `activeChannel?.id`, o mesmo do `expected_channel_id`) — parâmetro OBRIGATÓRIO em `janelaFechada`/`minutosRestantes`, com pino estrutural cobrando o MESMO canal nos dois —, e a etiqueta fala minutos na última hora (`restanteParaExibir`; antes o ramo de minutos era código morto e a última hora aparecia inteira como "1h restantes") |
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
@@ -345,6 +345,17 @@ grupos), e o rótulo de canal acendia em TODAS. O que morde código novo:
   apagado, cujo `channel_id` foi anulado): tratá-las como trecho próprio
   desenharia um separador que não tem nome para escrever, e atribuí-las ao
   canal vizinho seria inventar.
+- ⚠️⚠️ **A janela de 24h da Meta também é POR NÚMERO** (`janela-24h.ts`,
+  10/09/2026). A Meta só conta a mensagem que o cliente mandou ao número
+  oficial por onde se vai responder; contando o fio inteiro, quem escreveu há
+  2h só pelo número por QR Code deixava a etiqueta em "22h restantes" e o
+  compositor livre, e a Meta recusava o texto (131047). A regra recebe o
+  canal de SAÍDA e conta só a mensagem do cliente carimbada com ele. Sem
+  carimbo NÃO conta (mesmo motivo do item acima); canal de saída NULO — a
+  conta sem conexão nenhuma, o legado de número único — conta o fio inteiro,
+  como antes. "Fio vazio = aberta" (PR #79) continua valendo para o FIO
+  inteiro, nunca para o recorte do canal: fio com mensagens pela outra
+  conexão e nenhuma do cliente no oficial é justamente o caso que a Meta recusa.
 - ⚠️ **A cor vive na BOLINHA em toda parte; texto colorido só no separador.**
   A bolha da equipe é `bg-primary` (violeta nesta conta): nome na cor do
   canal ficaria ilegível justamente no canal violeta, e o mesmo rótulo

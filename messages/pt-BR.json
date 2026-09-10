@@ -314,7 +314,7 @@
       "expired": "Expirada",
       "xhRemaining": "{hours}h restantes",
       "xmRemaining": "{minutes}min restantes",
-      "noCustomerMessages": "Nenhuma mensagem do cliente"
+      "noCustomerMessages": "Sem mensagem do cliente neste número"
     },
     "composer": {
       "draftHint": "Toque no ✨ para redigir uma resposta com IA — você pode editar antes de enviar",

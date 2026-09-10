@@ -16,7 +16,12 @@ import { CopiarLinkDaConversa } from "@/components/inbox/copiar-link-da-conversa
 import { AvataresNaConversa } from "./avatares-na-conversa";
 import { useQuemVeAConversa } from "@/hooks/use-conversa-aberta";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
-import { horasRestantes, janelaFechada } from "@/lib/inbox/janela-24h";
+import {
+  janelaFechada,
+  minutosRestantes,
+  restanteParaExibir,
+  ultimaDoClienteNoCanal,
+} from "@/lib/inbox/janela-24h";
 import { patchDeSituacao } from "@/lib/conversations/situacao";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
 import { semAcento, TERMO_MINIMO } from "@/lib/inbox/busca-em-mensagens";
@@ -802,6 +807,17 @@ export function MessageThread({
    */
   const janelaDe24h = !canaisCarregando && !canaisFalharam && !evolutionActive;
 
+  /**
+   * POR QUAL NÚMERO a janela é contada: o canal de SAÍDA — o mesmo que vai no
+   * `expected_channel_id` do envio. A janela da Meta é por número (ver o
+   * cabeçalho de `janela-24h.ts`): numa conversa mista, a mensagem que o
+   * cliente mandou pela outra conexão não abre a janela deste. Nulo quando
+   * não há canal resolvido — na prática, a conta sem conexão nenhuma (enquanto
+   * os canais carregam ou falham, `janelaDe24h` já é falso) —, e aí a regra
+   * conta o fio inteiro, como antes do multi-canal.
+   */
+  const canalDaJanela = activeChannel?.id ?? null;
+
   // O relógio da badge (M11): `sessionInfo` lê a hora, e hora PASSA — sem um
   // tique, o memo congelava em "1h restantes" num fio parado e a janela
   // fechava com o compositor liberado (o portão do disparo segurava o envio,
@@ -832,22 +848,30 @@ export function MessageThread({
     // de hora, e aí a janela sairia "aberta" com "0h restantes". O instante
     // vem do estado (não de `new Date()` aqui) para o memo envelhecer.
     const agora = agoraDaBadge;
-    if (janelaFechada(messages, agora)) {
-      const temCliente = messages.some((m) => m.sender_type === "customer");
+    if (janelaFechada(messages, agora, canalDaJanela)) {
+      // "Expirada" só quando o cliente JÁ escreveu por este número. Sem
+      // mensagem dele aqui a frase é outra: numa conversa mista ele pode ter
+      // escrito só pela outra conexão, e "Expirada" afirmaria uma janela que
+      // nunca abriu neste número.
+      const temCliente =
+        ultimaDoClienteNoCanal(messages, canalDaJanela) !== undefined;
       return {
         expired: true,
         remaining: temCliente ? tTimer("expired") : tTimer("noCustomerMessages"),
       };
     }
 
-    const hoursLeft = horasRestantes(messages, agora);
+    // Horas inteiras enquanto sobra ao menos uma; minutos na última hora.
+    const restante = restanteParaExibir(
+      minutosRestantes(messages, agora, canalDaJanela),
+    );
     const remaining =
-      hoursLeft >= 1
-        ? tTimer("xhRemaining", { hours: Math.floor(hoursLeft) })
-        : tTimer("xmRemaining", { minutes: Math.floor(hoursLeft * 60) });
+      restante.unidade === "h"
+        ? tTimer("xhRemaining", { hours: restante.valor })
+        : tTimer("xmRemaining", { minutes: restante.valor });
 
     return { expired: false, remaining };
-  }, [messages, tTimer, agoraDaBadge]);
+  }, [messages, tTimer, agoraDaBadge, canalDaJanela]);
 
   /**
    * O ÚLTIMO PORTÃO ANTES DA REDE: a janela está fechada NESTE instante?
@@ -880,12 +904,16 @@ export function MessageThread({
    */
   const janelaDe24hRef = useRef(false);
   const mensagensRef = useRef<Message[]>(messages);
+  const canalDaJanelaRef = useRef<string | null>(canalDaJanela);
   useEffect(() => {
     janelaDe24hRef.current = janelaDe24h;
     mensagensRef.current = messages;
+    canalDaJanelaRef.current = canalDaJanela;
   });
   const janelaFechadaAgora = useCallback(
-    () => janelaDe24hRef.current && janelaFechada(mensagensRef.current, new Date()),
+    () =>
+      janelaDe24hRef.current &&
+      janelaFechada(mensagensRef.current, new Date(), canalDaJanelaRef.current),
     [],
   );
 
