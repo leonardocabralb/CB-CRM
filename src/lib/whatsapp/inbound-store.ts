@@ -99,7 +99,14 @@ async function findOrCreateContact(
   // duplicado exato. Caminhos de GENTE respondem 500 em vez disso.
   const existing = (await findExistingContact(db, accountId, phone)).contato;
   if (existing) {
-    if (name && name !== existing.name) {
+    // ⚠️ Nunca RENOMEAR contato existente para um número: o `name` cai para o
+    // telefone quando a mensagem vem sem `pushName` (`normalizeUpsert`), e o
+    // upstream ainda tem um fallback que devolve o telefone do AUTOR CITADO
+    // como nome (`fetchMessages` da 2.4, achado do Codex no PR #184). Um
+    // "Leonardo Cabral" viraria "5583…" na primeira mensagem sem nome. Número
+    // só serve como nome na CRIAÇÃO, quando não há nada melhor.
+    const nomeEhNumero = name.replace(/[\s()+-]/g, '') !== '' && /^\d+$/.test(name.replace(/[\s()+-]/g, ''));
+    if (name && name !== existing.name && !nomeEhNumero) {
       await db
         .from('contacts')
         .update({ name, updated_at: new Date().toISOString() })
