@@ -275,6 +275,7 @@
       "showContact": "Show contact",
       "refresh": "Refresh",
       "refreshConversation": "Refresh conversation",
+      "naoLidasAbaixo": "{count, plural, one {# unread message} other {# unread messages}}",
       "tambemNaConversa": "{nome} is also viewing this conversation",
       "status": "Status",
       "statusOpen": "Open",
@@ -446,7 +447,8 @@
       "location": "[Location]",
       "template": "[Template]",
       "message": "[Message]",
-      "cancelReply": "Cancel reply"
+      "cancelReply": "Cancel reply",
+      "jumpTo": "Go to the quoted message"
     },
     "templatePicker": {
       "sendTemplate": "Send template",
@@ -2629,7 +2631,7 @@
         "aindaProcessando": "This booking is being processed right now. Wait a moment and try again."
       },
       "tldv": {
-        "desc": "Connect tl;dv so the CRM fetches recorded meetings and the full transcript of each one. Every 15 minutes it pulls the last 7 days of meetings, links each to the client by the invitee's e-mail, and the transcript shows up in the Meetings tab of the client's profile.",
+        "desc": "Connect tl;dv so the CRM fetches recorded meetings and the full transcript of each one. Every scheduler cycle (a 15-minute wait plus the time the other routes take) it pulls the last 7 days of meetings, links each to the client by the invitee's e-mail, and the transcript shows up in the Meetings tab of the client's profile.",
         "campoChave": "API key",
         "chaveVazia": "Paste the key generated in tl;dv",
         "chaveDica": "tl;dv → Settings → Personal Settings → API Keys → Generate. The API only exists on the Pro and Business plans, and only meetings ORGANIZED by someone on those plans are exported. The key is stored encrypted and never shown again.",
@@ -2646,7 +2648,7 @@
         "confirmarDesconectar": "Disconnect tl;dv? Meetings already imported stay on the clients' profiles; syncing stops.",
         "semCliente": "{n} meeting(s) without a client: link them below so they show up on the profile.",
         "webhookTitulo": "Webhook (optional — speeds up the import)",
-        "webhookAjuda": "In tl;dv, under Settings → Webhooks, paste this URL and enable the MeetingReady and TranscriptReady events. Without it the meeting arrives on the next cycle (up to 15 minutes).",
+        "webhookAjuda": "In tl;dv, under Settings → Webhooks, paste this URL and enable the MeetingReady and TranscriptReady events. Without it the meeting arrives on the next scheduler cycle (about 15 minutes, plus the time the other routes in the loop take).",
         "urlInalcancavel": "This address is not public — tl;dv could not deliver here. Set NEXT_PUBLIC_SITE_URL to the CRM's public URL.",
         "copiarUrl": "Copy",
         "urlCopiada": "Copied",
@@ -3617,7 +3619,7 @@
     "participantes": "Participants",
     "organizador": "organizer",
     "notas": "tl;dv notes",
-    "pendenteAjuda": "The fetch is retried every 15 minutes.",
+    "pendenteAjuda": "The fetch is retried every scheduler cycle (a 15-minute wait plus the time the other routes take).",
     "abrirNoTldv": "Open in tl;dv",
     "abrirLink": "Open link",
     "copiar": "Copy text",
@@ -3625,7 +3627,7 @@
     "copiarFalhou": "Could not copy.",
     "buscarDeNovo": "Fetch again",
     "buscouPronta": "Transcript saved.",
-    "buscouAindaNao": "tl;dv has not finished the transcript yet. The fetch is retried every 15 minutes.",
+    "buscouAindaNao": "tl;dv has not finished the transcript yet. The fetch is retried every scheduler cycle (a 15-minute wait plus the time the other routes take).",
     "desvincular": "Remove from this client",
     "confirmarDesvincular": "Remove this meeting from the client's profile? It stays imported, without a client — it can be linked again under Settings → Integrations.",
     "desvinculada": "Meeting unlinked.",
@@ -3634,7 +3636,7 @@
     "excluida": "Transcript deleted.",
     "vinculada": "Meeting linked to the client.",
     "importadaPronta": "Meeting imported, with transcript.",
-    "importadaPendente": "Meeting imported. tl;dv has not finished the transcript yet; the fetch is retried every 15 minutes.",
+    "importadaPendente": "Meeting imported. tl;dv has not finished the transcript yet; the fetch is retried every scheduler cycle (a 15-minute wait plus the time the other routes take).",
     "falha": "Failed: {motivo}",
     "status": {
       "pendente": "waiting for tl;dv",

@@ -5,11 +5,13 @@
 //
 // A foto vai pelo mesmo caminho da do WhatsApp (`guardarFoto`, 973): cópia
 // nossa em `chat-media`, caminho estável, `avatar_checked_at` carimbado.
-// ⚠️ O carimbo é gravado MESMO quando o perfil vem sem foto ou sem @: é
-// ele que impede a leitura a cada mensagem para uma conta que
-// permanentemente não tem foto — a mesma lição da Evolution (973), onde
-// `null` também significa "não tem". Falha da API (rede, token) NÃO
-// carimba: a próxima mensagem tenta de novo (Codex, PR #173).
+// ⚠️ O carimbo `avatar_checked_at` é o que impede a leitura a cada mensagem
+// para uma conta que permanentemente não tem foto nem @ — a mesma lição da
+// Evolution (973), onde `null` também significa "não tem". Por isso ele é
+// gravado AQUI quando o perfil vem SEM foto; COM foto, quem carimba é o
+// `guardarFoto` que deu certo — carimbar antes do download esconderia uma
+// falha transitória do CDN por 30 dias. Falha da API (rede, token) não
+// carimba: a próxima mensagem tenta de novo (Codex, PRs #173 e #178).
 //
 // O nome só entra quando a ficha NÃO tem nome — no WhatsApp o pushName
 // sobrescreve sempre (a queixa registrada no CLAUDE.md sobre o Calendly);
@@ -46,8 +48,10 @@ export async function completarPerfilDoContato(args: {
       : (perfil.nome ?? (perfil.username ? `@${perfil.username}` : null));
     const patch: Record<string, unknown> = {
       updated_at: new Date(agora).toISOString(),
-      // Perfil lido: a próxima leitura só em 30 dias, com ou sem foto.
-      avatar_checked_at: new Date(agora).toISOString(),
+      // Sem foto, o carimbo entra já; com foto, entra no `guardarFoto`.
+      ...(perfil.fotoUrl
+        ? {}
+        : { avatar_checked_at: new Date(agora).toISOString() }),
     };
     if (perfil.username) patch.instagram_username = perfil.username;
     if (nomeNovo) patch.name = nomeNovo;
@@ -62,13 +66,17 @@ export async function completarPerfilDoContato(args: {
       return null;
     }
     if (perfil.fotoUrl) {
-      await guardarFoto({
+      const r = await guardarFoto({
         db,
         accountId,
         contactId,
         url: perfil.fotoUrl,
         agoraMs: agora,
       });
+      // `falhou` fica SEM carimbo de propósito: a próxima mensagem tenta de novo.
+      if (r === 'falhou') {
+        console.warn(`${TAG} foto de ${igsid} não guardada; sem carimbo.`);
+      }
     }
     return { name: nomeAtual ?? nomeNovo };
   } catch (err) {

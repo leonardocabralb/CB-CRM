@@ -35,7 +35,9 @@ import type { CorDeCanal } from "@/lib/cb-channels/cores";
 interface MessageBubbleProps {
   message: Message;
   /** Pre-computed quote info for messages that reply to another. */
-  reply?: { authorLabel: string; preview: string } | null;
+  reply?: { id?: string; authorLabel: string; preview: string } | null;
+  /** Clicar na citação rola o fio até a mensagem citada (`messages.id`). */
+  onIrParaCitada?: (id: string) => void;
   reactions?: MessageReaction[];
   currentUserId?: string;
   onToggleReaction?: (emoji: string) => void;
@@ -600,6 +602,7 @@ function MessageContent({
 export function MessageBubble({
   message,
   reply,
+  onIrParaCitada,
   reactions,
   currentUserId,
   onToggleReaction,
@@ -745,6 +748,11 @@ export function MessageBubble({
             authorLabel={reply.authorLabel}
             preview={reply.preview}
             onPrimary={isAgent}
+            onJump={
+              reply.id && onIrParaCitada
+                ? () => onIrParaCitada(reply.id as string)
+                : undefined
+            }
           />
         )}
         {/* O estilo de apagada fica NESTE invólucro, não no contêiner da

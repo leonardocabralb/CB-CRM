@@ -268,6 +268,7 @@
       "showContact": "Exibir contato",
       "refresh": "Atualizar",
       "refreshConversation": "Atualizar conversa",
+      "naoLidasAbaixo": "{count, plural, one {# mensagem não lida} other {# mensagens não lidas}}",
       "tambemNaConversa": "{nome} também está com esta conversa aberta",
       "status": "Status",
       "statusOpen": "Aberta",
@@ -439,7 +440,8 @@
       "location": "[Localização]",
       "template": "[Modelo]",
       "message": "[Mensagem]",
-      "cancelReply": "Cancelar resposta"
+      "cancelReply": "Cancelar resposta",
+      "jumpTo": "Ir para a mensagem citada"
     },
     "templatePicker": {
       "sendTemplate": "Enviar modelo",
@@ -2622,7 +2624,7 @@
         "aindaProcessando": "Este agendamento está sendo processado agora. Espere um instante e tente de novo."
       },
       "tldv": {
-        "desc": "Conecte o tl;dv para o CRM buscar as reuniões gravadas e a transcrição completa de cada uma. A cada 15 minutos ele puxa as reuniões dos últimos 7 dias, liga cada uma ao cliente pelo e-mail do convidado, e a transcrição aparece na aba Reuniões da ficha do cliente.",
+        "desc": "Conecte o tl;dv para o CRM buscar as reuniões gravadas e a transcrição completa de cada uma. A cada ciclo do agendador (15 minutos de espera mais o tempo das outras rotas) ele puxa as reuniões dos últimos 7 dias, liga cada uma ao cliente pelo e-mail do convidado, e a transcrição aparece na aba Reuniões da ficha do cliente.",
         "campoChave": "Chave da API",
         "chaveVazia": "Cole a chave gerada no tl;dv",
         "chaveDica": "tl;dv → Settings → Personal Settings → API Keys → Generate. A API só existe nos planos Pro e Business, e só sai pela API a reunião de quem ORGANIZOU com um desses planos. A chave é guardada cifrada e nunca aparece de novo.",
@@ -2639,7 +2641,7 @@
         "confirmarDesconectar": "Desconectar o tl;dv? As reuniões já importadas continuam na ficha dos clientes; a sincronização para.",
         "semCliente": "{n} reunião(ões) sem cliente: vincule abaixo para elas aparecerem na ficha.",
         "webhookTitulo": "Webhook (opcional — adianta a importação)",
-        "webhookAjuda": "No tl;dv, em Settings → Webhooks, cole esta URL e marque os eventos MeetingReady e TranscriptReady. Sem ele a reunião entra no ciclo seguinte (até 15 minutos).",
+        "webhookAjuda": "No tl;dv, em Settings → Webhooks, cole esta URL e marque os eventos MeetingReady e TranscriptReady. Sem ele a reunião entra no ciclo seguinte do agendador (cerca de 15 minutos, mais o tempo das outras rotas do laço).",
         "urlInalcancavel": "Este endereço não é público — o tl;dv não conseguiria entregar aqui. Configure NEXT_PUBLIC_SITE_URL com a URL pública do CRM.",
         "copiarUrl": "Copiar",
         "urlCopiada": "Copiada",
@@ -3617,7 +3619,7 @@
     "participantes": "Participantes",
     "organizador": "organizador",
     "notas": "Notas do tl;dv",
-    "pendenteAjuda": "A busca é refeita a cada 15 minutos.",
+    "pendenteAjuda": "A busca é refeita a cada ciclo do agendador (15 minutos de espera mais o tempo das outras rotas).",
     "abrirNoTldv": "Abrir no tl;dv",
     "abrirLink": "Abrir link",
     "copiar": "Copiar texto",
@@ -3625,7 +3627,7 @@
     "copiarFalhou": "Não foi possível copiar.",
     "buscarDeNovo": "Buscar de novo",
     "buscouPronta": "Transcrição gravada.",
-    "buscouAindaNao": "O tl;dv ainda não terminou a transcrição. A busca é refeita a cada 15 minutos.",
+    "buscouAindaNao": "O tl;dv ainda não terminou a transcrição. A busca é refeita a cada ciclo do agendador (15 minutos de espera mais o tempo das outras rotas).",
     "desvincular": "Tirar deste cliente",
     "confirmarDesvincular": "Tirar esta reunião da ficha do cliente? Ela continua importada, sem cliente — dá para vincular de novo em Configurações → Integrações.",
     "desvinculada": "Reunião desvinculada.",
@@ -3634,7 +3636,7 @@
     "excluida": "Transcrição excluída.",
     "vinculada": "Reunião vinculada ao cliente.",
     "importadaPronta": "Reunião importada, com transcrição.",
-    "importadaPendente": "Reunião importada. O tl;dv ainda não terminou a transcrição; a busca é refeita a cada 15 minutos.",
+    "importadaPendente": "Reunião importada. O tl;dv ainda não terminou a transcrição; a busca é refeita a cada ciclo do agendador (15 minutos de espera mais o tempo das outras rotas).",
     "falha": "Falha: {motivo}",
     "status": {
       "pendente": "aguardando o tl;dv",

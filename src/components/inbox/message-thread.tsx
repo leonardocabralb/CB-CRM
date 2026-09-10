@@ -23,9 +23,11 @@ import { semAcento, TERMO_MINIMO } from "@/lib/inbox/busca-em-mensagens";
 import {
   DESTAQUE_DO_SALTO_MS,
   seletorDoAlvo,
+  type AlvoDoSalto,
   type PedidoDeSalto,
 } from "@/lib/inbox/salto-no-fio";
 import { Input } from "@/components/ui/input";
+import { contarNovasDoCliente } from "@/lib/inbox/nao-lidas-abaixo";
 import {
   aberturasDeCanal,
   canalDivergente,
@@ -293,6 +295,71 @@ function centralizarNoFio(cont: HTMLElement, el: HTMLElement) {
     rAlvo.top - rCont.top - (cont.clientHeight - rAlvo.height) / 2;
 }
 
+/** Um pedido de salto pontual: o alvo e um contador que o torna novo. */
+type SaltoPontual = AlvoDoSalto & { n: number };
+
+/**
+ * O salto PONTUAL: rola até o alvo, centraliza e o destaca por
+ * `DESTAQUE_DO_SALTO_MS`. Serve ao clique na citação E ao "Ver na conversa"
+ * do painel — cada origem instancia o hook com o SEU pedido, e a mecânica
+ * é uma só. Devolve o que está destacado agora, ou `null`.
+ *
+ * ⚠️ Quatro cercas, cada uma com motivo: (1) atende UMA vez por `n`
+ * (`atendidoRef`) — o efeito depende de `mensagens`/`notas` para atender o
+ * pedido feito durante uma carga (alvo ainda fora do DOM), e sem a memória
+ * toda mensagem nova re-centralizaria o alvo velho, arrastando o operador de
+ * volta; (2) chama `liberarSalto()` antes de rolar — o operador agiu, e o
+ * efeito que centraliza o achado da BUSCA disputaria a tela; (3) o timer do
+ * destaque vive num REF, fora da limpeza do efeito — a limpeza roda a cada
+ * mensagem nova e, cancelando o timer, deixaria o destaque aceso para sempre
+ * quando algo chegasse nos 2,5 s; (4) o destaque é DERIVADO
+ * (`pedido.n !== apagado`) e o único `setState` é o do timer — o React
+ * Compiler recusa `setState` síncrono em efeito.
+ */
+function useSaltoPontual(
+  pedido: SaltoPontual | null,
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  liberarSalto: () => void,
+  mensagens: readonly unknown[],
+  notas: readonly unknown[],
+): AlvoDoSalto | null {
+  const atendidoRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** O `n` do pedido cujo destaque já apagou. */
+  const [apagado, setApagado] = useState(0);
+
+  useEffect(() => {
+    if (!pedido || pedido.n === atendidoRef.current) return;
+    const cont = scrollRef.current;
+    if (!cont) return;
+    const el = cont.querySelector<HTMLElement>(seletorDoAlvo(pedido));
+    // Ainda não está no DOM (carga em curso): o efeito volta com `mensagens`.
+    if (!el) return;
+
+    atendidoRef.current = pedido.n;
+    liberarSalto();
+    centralizarNoFio(cont, el);
+    const quadro = requestAnimationFrame(() => centralizarNoFio(cont, el));
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(
+      () => setApagado(pedido.n),
+      DESTAQUE_DO_SALTO_MS,
+    );
+    return () => cancelAnimationFrame(quadro);
+  }, [pedido, scrollRef, liberarSalto, mensagens, notas]);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+
+  return pedido && pedido.n !== apagado
+    ? { tipo: pedido.tipo, id: pedido.id }
+    : null;
+}
+
 function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
   const date = new Date(dateStr);
   if (isToday(date)) return t("today");
@@ -433,6 +500,33 @@ export function MessageThread({
    */
   const coladoNoFimRef = useRef(true);
 
+  /**
+   * O ESPELHO em estado do `coladoNoFimRef`, mais a âncora do "N mensagens
+   * não lidas": o id da última mensagem que estava na tela da última vez em
+   * que o operador esteve colado no fim. O ref decide o auto-scroll (não pode
+   * re-renderizar a cada evento de rolagem); o estado é o que faz o botão
+   * aparecer e sumir. Os dois são escritos no MESMO lugar (`anotarPosicao`),
+   * num manipulador de evento — nunca num efeito (regra do React Compiler).
+   * A âncora carrega a CONVERSA de que é: trocar de conversa a invalida
+   * sozinha, sem efeito de limpeza.
+   */
+  const [noFim, setNoFim] = useState(true);
+  const [ultimaVista, setUltimaVista] = useState<{
+    conversa: string | null;
+    id: string | null;
+    createdAt: string | null;
+  }>({ conversa: null, id: null, createdAt: null });
+  // Id E `created_at` da última mensagem: a âncora precisa dos dois, porque o
+  // id da bolha otimista morre quando o realtime a troca pela linha gravada
+  // (ver `contarNovasDoCliente`).
+  const ultimaMensagemRef = useRef<{ id: string; createdAt: string | null } | null>(null);
+  useEffect(() => {
+    const ultima = messages.length ? messages[messages.length - 1] : null;
+    ultimaMensagemRef.current = ultima
+      ? { id: ultima.id, createdAt: ultima.created_at ?? null }
+      : null;
+  }, [messages]);
+
   const anotarPosicao = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -447,9 +541,24 @@ export function MessageThread({
     // A folga não é zero: `scrollTop` é fracionário em tela HiDPI, e exigir o
     // fim exato faria a conversa parar de acompanhar mensagem nova por causa
     // de meio pixel.
-    coladoNoFimRef.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-  }, []);
+    const colado = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    coladoNoFimRef.current = colado;
+    setNoFim(colado);
+    if (colado) {
+      const ultima = ultimaMensagemRef.current;
+      const id = ultima?.id ?? null;
+      const createdAt = ultima?.createdAt ?? null;
+      // `conversation?.id`, e não o `conversationId` derivado mais abaixo:
+      // este callback é declarado antes daquela linha, e a lista de
+      // dependências é avaliada no render (TDZ).
+      const conversa = conversation?.id ?? null;
+      setUltimaVista((v) =>
+        v.conversa === conversa && v.id === id && v.createdAt === createdAt
+          ? v
+          : { conversa, id, createdAt },
+      );
+    }
+  }, [conversation?.id]);
 
   /**
    * O salto da busca está mandando na rolagem agora?
@@ -1256,62 +1365,59 @@ export function MessageThread({
   }, [alvoId, messages, execucoesDoFio]);
 
   // ============================================================
-  // Salto pedido de fora — o "Ver na conversa" das abas do painel (09/09/2026)
+  // Salto PONTUAL — rola até um item e o destaca por 2,5 s (09/09/2026)
   // ============================================================
+  //
+  // Duas origens, UMA mecânica (`useSaltoPontual`, no fim do arquivo): o
+  // clique na citação (estado daqui, `irParaCitada`, PR #179) e o "Ver na
+  // conversa" das abas do painel (prop `saltoPedido`, carimbada pela
+  // página). O salto da BUSCA é outra coisa — derivado de um termo, fica de
+  // pé enquanto a busca existir — e mora logo acima.
 
   /**
-   * O `n` do último pedido ATENDIDO, para cada pedido rolar UMA vez.
-   *
-   * ⚠️ `messages` e `notas` estão nas dependências para o pedido feito
-   * durante uma carga (resync) ser atendido quando o alvo entrar no DOM — e
-   * é por isso que o `n` precisa ser lembrado: sem ele, toda mensagem nova
-   * re-centralizaria o alvo velho e arrastaria o operador de volta.
+   * Clique na citação: rola até a mensagem citada e a destaca, como no
+   * WhatsApp. O `n` faz clicar DUAS vezes na mesma citação saltar de novo (o
+   * objeto muda, o efeito roda). Ao rolar para cima o `onScroll` anota que o
+   * operador saiu do fim, então mensagem nova não o puxa de volta — e o
+   * botão de "não lidas" passa a contar.
    */
-  const saltoAtendidoRef = useRef(0);
-  /**
-   * O timer que apaga o destaque, FORA da limpeza do efeito: o efeito roda
-   * de novo a cada mensagem nova, e uma limpeza que cancelasse o timer
-   * deixaria o destaque aceso para sempre quando algo chegasse nos 2,5 s.
-   */
-  const timerDoDestaqueRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** O `n` do pedido cujo destaque já apagou. */
-  const [saltoApagado, setSaltoApagado] = useState(0);
-  const destaqueDoSalto =
-    saltoPedido &&
-    saltoPedido.conversationId === conversationId &&
-    saltoPedido.n !== saltoApagado
+  const [saltoDaCitacao, setSaltoDaCitacao] = useState<SaltoPontual | null>(null);
+  const irParaCitada = useCallback((id: string) => {
+    setSaltoDaCitacao((s) => ({ tipo: "mensagem", id, n: (s?.n ?? 0) + 1 }));
+  }, []);
+  const destaqueDaCitacao = useSaltoPontual(
+    saltoDaCitacao,
+    scrollRef,
+    liberarSalto,
+    messages,
+    notas,
+  );
+
+  // ⚠️ Só pedido DESTA conversa: sem o carimbo, trocar de conversa antes de
+  // o fio carregar deixava um pedido pendente que disparava ao voltar.
+  const pedidoDoPainel =
+    saltoPedido && saltoPedido.conversationId === conversationId
       ? saltoPedido
       : null;
-
-  useEffect(() => {
-    if (!saltoPedido || saltoPedido.conversationId !== conversationId) return;
-    if (saltoPedido.n === saltoAtendidoRef.current) return;
-    const cont = scrollRef.current;
-    if (!cont) return;
-    const el = cont.querySelector<HTMLElement>(seletorDoAlvo(saltoPedido));
-    // Ainda não está no DOM (carga em curso): o efeito volta com `messages`.
-    if (!el) return;
-
-    saltoAtendidoRef.current = saltoPedido.n;
-    // O operador agiu: a busca solta a rolagem, senão o efeito que
-    // centraliza o achado disputaria a tela com este.
-    liberarSalto();
-    centralizarNoFio(cont, el);
-    const quadro = requestAnimationFrame(() => centralizarNoFio(cont, el));
-    if (timerDoDestaqueRef.current) clearTimeout(timerDoDestaqueRef.current);
-    timerDoDestaqueRef.current = setTimeout(
-      () => setSaltoApagado(saltoPedido.n),
-      DESTAQUE_DO_SALTO_MS,
-    );
-    return () => cancelAnimationFrame(quadro);
-  }, [saltoPedido, conversationId, messages, notas, liberarSalto]);
-
-  useEffect(
-    () => () => {
-      if (timerDoDestaqueRef.current) clearTimeout(timerDoDestaqueRef.current);
-    },
-    [],
+  const destaqueDoPainel = useSaltoPontual(
+    pedidoDoPainel,
+    scrollRef,
+    liberarSalto,
+    messages,
+    notas,
   );
+
+  /** Quantas mensagens do cliente chegaram enquanto o operador lia lá em cima. */
+  const naoLidasAbaixo =
+    noFim || ultimaVista.conversa !== conversationId
+      ? 0
+      : contarNovasDoCliente(messages, ultimaVista);
+  const irParaOFim = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    coladoNoFimRef.current = true;
+    el.scrollTop = el.scrollHeight; // dispara o onScroll, que anota o fim e a âncora
+  }, []);
 
 
   /**
@@ -2544,8 +2650,8 @@ export function MessageThread({
                           tipo="nota"
                           id={item.nota.id}
                           destacada={
-                            destaqueDoSalto?.tipo === "nota" &&
-                            destaqueDoSalto.id === item.nota.id
+                            destaqueDoPainel?.tipo === "nota" &&
+                            destaqueDoPainel.id === item.nota.id
                           }
                         >
                         <NoteLine
@@ -2577,8 +2683,9 @@ export function MessageThread({
                     // do sistema não quer dizer nada.
                     const destacada =
                       msg.id === alvoId ||
-                      (destaqueDoSalto?.tipo === "mensagem" &&
-                        destaqueDoSalto.id === msg.id);
+                      destaqueDaCitacao?.id === msg.id ||
+                      (destaqueDoPainel?.tipo === "mensagem" &&
+                        destaqueDoPainel.id === msg.id);
                     if (msg.content_type === "system") {
                       return (
                         <LinhaDoFio
@@ -2604,6 +2711,7 @@ export function MessageThread({
                               : parent.group_sender_name ||
                                 nomeDoContato(contact, t("unknownAuthor")),
                           preview: buildReplyPreview(parent, tQuote),
+                          id: parent.id,
                         }
                       : null;
                     const msgReactions = reactionsByMessageId.get(msg.id);
@@ -2670,6 +2778,7 @@ export function MessageThread({
                           baixandoAnexo={anexoEmCurso === msg.id}
                           onBaixarAnexo={() => baixarAnexoDoGrupo(msg.id)}
                           onAbrirGaleria={setGaleriaAbertaEm}
+                          onIrParaCitada={irParaCitada}
                         />
                       </MessageActions>
                       </LinhaDoFio>
@@ -2679,6 +2788,25 @@ export function MessageThread({
                 </div>
               </div>
             ))}
+          </div>
+        )}
+        {/* "N mensagens não lidas" — só existe quando o operador rolou para
+            cima e o cliente escreveu enquanto isso (`naoLidasAbaixo`). É o
+            ÚLTIMO filho do contêiner de rolagem e `sticky bottom`: gruda no
+            rodapé da área visível enquanto há o que ler embaixo e, no fim,
+            deixa de existir — sem embrulhar o contêiner em mais um `relative`
+            (o fio é uma coluna flex com `min-h-0`, e cada invólucro novo ali
+            já custou barra de rolagem escondida — ver CLAUDE.md). */}
+        {naoLidasAbaixo > 0 && (
+          <div className="pointer-events-none sticky bottom-2 z-10 flex justify-center">
+            <button
+              type="button"
+              onClick={irParaOFim}
+              className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-md hover:bg-primary/90"
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+              {t("naoLidasAbaixo", { count: naoLidasAbaixo })}
+            </button>
           </div>
         )}
       </div>

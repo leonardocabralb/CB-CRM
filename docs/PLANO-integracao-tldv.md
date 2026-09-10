@@ -152,11 +152,14 @@ RLS), com dublê do Supabase para a sincronização.
    laço com `tl;dv`.
 3. ✅ Chave colada pelo operador; chip "Funcionando"; primeira sincronização
    de 30 dias: 31 reuniões.
-4. ⏳ URL do webhook no tl;dv — opcional; sem ela a reunião entra no ciclo
-   seguinte (até 15 min).
+4. ⏳ URL do webhook no tl;dv — opcional. Sem ela a reunião entra no ciclo
+   seguinte do agendador, e "ciclo" NÃO é um teto de 15 min: o laço lento é
+   SEQUENCIAL (agendadas, fluxos, radar, Meta Ads e só então tl;dv, cada
+   rota com teto de 120 s) e só dorme os 900 s depois de todas — o intervalo
+   real entre duas passadas do tl;dv pode chegar a ~25 min (Codex, PR #176).
 5. ✅ Testado no preview (worktree, 1440×900) contra o banco de produção:
-   cartão, tabela com vínculo inline, ficha do cliente (vínculo automático
-   "DOUGLAS BARBOSA"), visualizador com frases/tempos/notas, transcrição
+   cartão, tabela com vínculo inline, ficha de um cliente ligado sozinho
+   pela ponte do Calendly, visualizador com frases/tempos/notas, transcrição
    manual (criar, ver, excluir), "Do tl;dv" (busca, vincular pela lista,
    importar pelo link), "Tirar deste cliente" e "Sincronizar agora". A
    reunião usada nos testes de vínculo voltou ao estado original por SQL.

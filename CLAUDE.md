@@ -277,7 +277,7 @@ upstream sobrescrevê-los:
 | `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
 | `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página. Mais o menu de **filtros salvos** (967/968): o hook, os catálogos que dão nome aos ids, o `limparOrfaos` do aplicar e a semente do filtro padrão |
 | `src/components/inbox/message-thread.tsx` (canal, 2026-09-02) | o `SeparadorDeCanal` entre trechos, a faixa de divergência colada no compositor, a bolinha de cor no gatilho e nos itens do seletor de canal, e o `Fragment` que embrulha separador + `LinhaDoFio` (ex-`LinhaDaMensagem`; a `key` mudou de lugar) |
-| `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDoFio>` (ex-`LinhaDaMensagem`) envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo) E a anotação intercalada, a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef`. Mais (09/09/2026) a **busca dentro da conversa** (lupa do cabeçalho, `buscaLocal`/`termoEfetivo`) e o **salto pedido pelo painel** (`saltoPedido`, `destaqueDoSalto`) — ver a seção própria |
+| `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDoFio>` (ex-`LinhaDaMensagem`) envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo) E a anotação intercalada, a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef`. Mais (09/09/2026) a **busca dentro da conversa** (lupa do cabeçalho, `buscaLocal`/`termoEfetivo`) e o **salto PONTUAL** (`useSaltoPontual`, UMA mecânica para o clique na citação do PR #179 e para o "Ver na conversa" do painel — `destaqueDaCitacao`/`destaqueDoPainel`) — ver a seção própria |
 | `src/components/inbox/conversation-list.tsx` (09/09/2026) | o interruptor **"Buscar também dentro das mensagens"** (`buscarNasMensagens`, desligado por padrão) e o placeholder que muda com ele; `useBuscaEmMensagens` ganhou o 2º parâmetro `ativa` |
 | `src/components/inbox/conversation-list.tsx` (canal, 2026-09-02) | a prop `corDoCanalDaLinha` do `ConversationItem` e a bolinha antes do nome — bolinha, e não trilha, porque a borda esquerda já é da seleção |
 | `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (963): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
@@ -2638,18 +2638,27 @@ quatro queixas do operador na mesma tarde. O que morde código novo:
   (`buscaLocal.conversationId`, mesma assinatura da `escolhaNaBusca`), nunca
   zerada por efeito ao trocar — o efeito passivo deixaria um quadro com a
   barra da conversa anterior sobre a nova.
-- ⚠️⚠️ **O salto pedido pelo painel é EVENTO, não estado da busca**
-  (`PedidoDeSalto`, com `conversationId` + `n`). Quatro cercas, cada uma com
-  motivo: (1) atende UMA vez por `n` (`saltoAtendidoRef`) — o efeito depende
-  de `messages`/`notas` para atender o pedido feito durante uma carga, e sem
-  a memória toda mensagem nova re-centralizaria o alvo velho; (2) só pedido
-  DESTA conversa — sem o carimbo, trocar de conversa antes de o fio carregar
-  deixava um pedido pendente que disparava ao voltar; (3) chama
-  `liberarSalto()` antes de rolar, senão o efeito que centraliza o achado da
-  busca disputa a tela; (4) o timer que apaga o destaque vive num REF, fora
-  da limpeza do efeito — a limpeza roda a cada mensagem nova e, cancelando o
+- ⚠️⚠️ **O salto PONTUAL é EVENTO, não estado da busca, e tem UMA mecânica
+  para DUAS origens: `useSaltoPontual` (fim de `message-thread.tsx`).** O
+  clique na citação (PR #179, estado `saltoDaCitacao` via `irParaCitada`) e
+  o "Ver na conversa" do painel (prop `saltoPedido`, `PedidoDeSalto` com
+  `conversationId` + `n`) instanciam o MESMO hook, cada um com o seu pedido;
+  o hook devolve o que está destacado (`destaqueDaCitacao`,
+  `destaqueDoPainel`). Nasceu do merge dos dois PRs, que traziam duas cópias
+  de "centraliza e destaca por 2,5 s" — quem criar uma terceira origem
+  instancia o hook, não copia o efeito. Quatro cercas, cada uma com motivo:
+  (1) atende UMA vez por `n` (`atendidoRef`) — o efeito depende de
+  `messages`/`notas` para atender o pedido feito durante uma carga, e sem a
+  memória toda mensagem nova re-centralizaria o alvo velho; (2) o pedido do
+  painel só entra se for DESTA conversa (`pedidoDoPainel`) — sem o carimbo,
+  trocar de conversa antes de o fio carregar deixava um pedido pendente que
+  disparava ao voltar; (3) chama `liberarSalto()` antes de rolar, senão o
+  efeito que centraliza o achado da busca disputa a tela (a versão da
+  citação no #179 não chamava — e o achado da busca puxava de volta na
+  mensagem seguinte); (4) o timer que apaga o destaque vive num REF, fora da
+  limpeza do efeito — a limpeza roda a cada mensagem nova e, cancelando o
   timer, deixaria o destaque aceso para sempre quando algo chegasse nos
-  2,5 s. O destaque é DERIVADO (`saltoPedido.n !== saltoApagado`), e o único
+  2,5 s. O destaque é DERIVADO (`pedido.n !== apagado`), e o único
   `setState` é o do timer — o React Compiler recusa `setState` síncrono em
   efeito.
 - ⚠️ **`LinhaDoFio` (ex-`LinhaDaMensagem`) embrulha mensagem E anotação**,
