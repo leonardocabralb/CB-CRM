@@ -33,6 +33,8 @@ import { DealForm } from '@/components/pipelines/deal-form';
 import { SeletorFunilEtapa } from '@/components/inbox/painel/seletor-funil-etapa';
 import { AbaAutomacoes } from '@/components/inbox/painel/aba-automacoes';
 import { AbaArquivos } from '@/components/inbox/painel/aba-arquivos';
+import { ReunioesDoContato } from '@/components/agenda/reunioes-do-contato';
+import { ReunioesTranscritasDoContato } from '@/components/transcricoes/reunioes-transcritas-do-contato';
 import type { AlvoDoSalto } from '@/lib/inbox/salto-no-fio';
 import { FotoAmpliavel } from '@/components/inbox/painel/foto-ampliavel';
 import { OrigemDoContato } from '@/components/inbox/painel/origem-do-contato';
@@ -77,6 +79,7 @@ import {
   StickyNote,
   Plus,
   Building2,
+  CalendarDays,
   History,
   ListTodo,
   Paperclip,
@@ -966,6 +969,15 @@ export function PainelDoContato({
           >
             <ListTodo className="h-4 w-4" />
           </AbaDeIcone>
+          {/* Reuniões (945 + 987): a MESMA aba da ficha de Contatos — a agenda
+              com o cliente e as transcrições do tl;dv (ou coladas) —, montada
+              aqui para a transcrição estar à mão DURANTE o atendimento, sem
+              sair da conversa (pedido do operador, 09/09/2026). Depois de
+              Tarefas como na ficha: as duas são "o que combinei com este
+              cliente". */}
+          <AbaDeIcone value="reunioes" label={tSidebar('tabMeetings')}>
+            <CalendarDays className="h-4 w-4" />
+          </AbaDeIcone>
           {/* ⚠️ A aba Traqueamento (o megafone da 949) SAIU na 966: os campos
               de anúncio viraram um bloco como qualquer outro, dentro da
               Principal. Decisão do operador — uma gaveta fixa para dez campos
@@ -1480,6 +1492,24 @@ export function PainelDoContato({
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
           <ContactTasks contactId={contact.id} aoAlterar={recontarTarefas} />
+        </TabsContent>
+
+        {/* ---- Reuniões: agenda (945) em cima, transcrições (987) embaixo —
+             os dois componentes da aba Reuniões da ficha, sem cópia. A aba é
+             só-ícone, então a agenda ganha o título de seção que a ficha
+             dispensa (lá o nome está escrito no gatilho); a seção de
+             transcrições já traz o seu. ---- */}
+        <TabsContent
+          value="reunioes"
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          <TituloDeSecao icon={<CalendarDays className="h-3.5 w-3.5" />} className="mb-2">
+            {tSidebar('tabMeetings')}
+          </TituloDeSecao>
+          <ReunioesDoContato contactId={contact.id} />
+          <div className="mt-4">
+            <ReunioesTranscritasDoContato contactId={contact.id} />
+          </div>
         </TabsContent>
 
 

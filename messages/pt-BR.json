@@ -499,6 +499,7 @@
       "dealDetails": "Detalhes do negócio",
       "tabAutomations": "Automações",
       "tabFiles": "Arquivos",
+      "tabMeetings": "Reuniões",
       "fieldSaved": "Salvo",
       "fieldSaveError": "Não foi possível salvar \"{campo}\" em {cliente}."
     },

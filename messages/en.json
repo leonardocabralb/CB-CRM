@@ -506,6 +506,7 @@
       "dealDetails": "Deal details",
       "tabAutomations": "Automations",
       "tabFiles": "Files",
+      "tabMeetings": "Meetings",
       "fieldSaved": "Saved",
       "fieldSaveError": "Could not save \"{campo}\" for {cliente}."
     },

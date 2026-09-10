@@ -292,7 +292,7 @@ upstream sobrescrevê-los:
 | `src/app/(dashboard)/inbox/page.tsx`, `src/components/inbox/conversation-list.tsx`, `inbox-filters.tsx` | os params `?etapa=` (semeia o filtro de etapa UMA vez) e `?de=funil` (faixa "Voltar ao funil") — os `router.replace` usam `urlDoInbox`, que preserva `de` e derruba `etapa` DE PROPÓSITO; na lista, `etapaInicial` + `etapasResolvidas` e o recorte de etapa gateado por `etapasUsaveis`; nos filtros, o fallback da pastilha virou `labelStage` (era "Qualquer etapa" sobre filtro ativo) |
 | `src/app/(dashboard)/automations/new/page.tsx` | o `?stage=` que faz a automação nascer com o gatilho de funil já apontando para a etapa clicada |
 | `src/lib/automations/trigger-meta.ts` | `formatRelative` passou a usar `Intl.RelativeTimeFormat` e a receber o texto de "nunca" — devolvia `5m ago`/`never` em inglês nas três telas |
-| `src/components/contacts/contact-detail-view.tsx` (987) | a seção `<ReunioesTranscritasDoContato>` dentro da aba Reuniões, abaixo de `<ReunioesDoContato>` — um merge que traga a aba crua do upstream apaga o histórico de transcrições da ficha |
+| `src/components/contacts/contact-detail-view.tsx` (987) e `src/components/inbox/painel/painel-do-contato.tsx` | a seção `<ReunioesTranscritasDoContato>` dentro da aba Reuniões, abaixo de `<ReunioesDoContato>` — na ficha E na 7ª aba só-ícone (`reunioes`) do painel da conversa, montada em 09/09/2026 a pedido do operador para a transcrição estar à mão durante o atendimento. Um merge que traga a aba crua do upstream apaga o histórico de transcrições da ficha |
 | `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx`, `src/app/(dashboard)/notifications/page.tsx`, `src/components/layout/{sidebar,header}.tsx`, `src/app/(dashboard)/contacts/page.tsx`, `src/lib/rate-limit.ts` | as tarefas (944): 7ª aba na ficha (com `[&>button]:flex-none` na TabsList), seção na barra da conversa, ícones/navegação dos tipos `task_*` no sino (o `TYPE_ICON` é exaustivo — merge que trouxer tipo novo sem ícone quebra o typecheck), item "Tarefas" com etiqueta realtime no menu, deep link `?contact=`, bucket `tarefa` |
 | `src/lib/ai/types.ts`, `generate.ts`, `defaults.ts`, `config.ts`, `usage.ts`, `providers/` | o TERCEIRO provedor (`gemini`, 941) e o modo `'radar'` no log de uso — o upstream conhece só openai/anthropic. `structured.ts` e `providers/gemini.ts` são arquivos NOSSOS |
 | `src/components/settings/ai-config.tsx`, `src/app/api/ai/config/route.ts` | a opção Gemini no seletor e na validação do provider |
@@ -3269,8 +3269,8 @@ cliente vem pelo E-MAIL.** `src/lib/tldv/` (`cliente`, `leitura`, `texto`,
 `vinculo`, `janela`, `cartao` puros e testados; `sincronizar` e `conexao`
 são I/O), `src/lib/reunioes-transcritas/validar.ts`, rotas em
 `/api/cb/tldv/*` e `/api/cb/reunioes-transcritas/*`, cartão em Integrações
-e a seção **Transcrições** dentro da aba Reuniões da ficha
-(`src/components/transcricoes/`). Plano vivo em
+e a seção **Transcrições** dentro da aba Reuniões — da ficha de Contatos E
+do painel da conversa no inbox (`src/components/transcricoes/`). Plano vivo em
 `docs/PLANO-integracao-tldv.md`. O que morde código novo:
 
 - ⚠️⚠️ **O webhook do tl;dv NÃO é assinado, e por isso o corpo é AVISO,
@@ -3328,6 +3328,14 @@ e a seção **Transcrições** dentro da aba Reuniões da ficha
   frente para sempre.
 - **`cb/tldv` está no laço LENTO do `docker-stack.yml`** — e o CI não relê o
   `command` do agendador: vale depois de `docker stack deploy` manual.
+- ⚠️ **Os dois hooks da aba Reuniões (`use-reunioes.ts`,
+  `use-reunioes-transcritas.ts`) carimbam o DONO da lista (`{ de, reunioes }`)
+  e DERIVAM `carregando` de `de !== contactId`.** O painel da conversa não
+  remonta ao trocar de cliente: sem o carimbo, com a aba aberta, as reuniões
+  do cliente anterior ficavam clicáveis sob o nome do novo até a resposta
+  chegar (revisão do PR #187 — a aba entrou no painel em 09/09/2026). É a
+  armadilha do efeito passivo, na sexta aparição; a guarda é a mesma dos
+  campos personalizados (`{ de, mapa }`).
 
 ⚠️ **Webhooks de ENTRADA (982) e tags ADITIVAS na v1: o Typebot chama o CRM.**
 `src/lib/webhooks-de-entrada/` (`achatar.ts` e o `resultadoDoDisparo`/
