@@ -37,13 +37,17 @@ export function ReunioesTranscritasDoContato({ contactId }: { contactId: string 
 
   return (
     <div className="space-y-3 border-t border-border pt-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
+      {/* `flex-wrap` + `basis-40` no bloco do título: na ficha (≈480px de
+          conteúdo) tudo cabe numa linha, como sempre; no painel da conversa
+          (288–328px) os dois botões descem para a linha de baixo, à direita
+          (`ml-auto`), em vez de esmagar o título. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 flex-1 basis-40">
           <p className="text-sm font-medium">{t('titulo')}</p>
           <p className="text-xs text-muted-foreground">{t('descricao')}</p>
         </div>
         {podeEditar && (
-          <div className="flex shrink-0 gap-1.5">
+          <div className="ml-auto flex shrink-0 gap-1.5">
             <Button size="sm" variant="outline" onClick={() => setVincularAberto(true)}>
               <Link2 className="size-3.5" />
               {t('doTldv')}
