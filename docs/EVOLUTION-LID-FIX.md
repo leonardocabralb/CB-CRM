@@ -1,5 +1,13 @@
 # Mensagens enviadas pelo celular não aparecem no CRM (`@lid`)
 
+> ⚠️ **OBSOLETO desde 09/09/2026.** A produção deixou a Evolution 2.3.2 + `lidfix`
+> e roda a **2.4.0 / Baileys 7.0.0-rc13** (imagem própria `evolution-api-cb`),
+> em que o LID é nativo — o patch descrito aqui não existe mais nela. O que
+> substitui esta doc: `docs/PLANO-baileys-7.md` (diagnóstico, decisões,
+> roteiro, rollback) e `docs/INFRA-VPS.md` §4/§6 (o que está no ar e como
+> recriar). O workflow `evolution-lid-fix.yml` continua no repositório só para
+> quem ainda estiver na 2.3.x. As medições abaixo ficam como histórico.
+
 Procedimento para aplicar o conserto na Evolution da VPS.
 
 ## O que está acontecendo

@@ -28,8 +28,9 @@ abaixo. Nada foi deixado implícito de propósito.
 | VPS (Swarm) | `ssh -i ~/.ssh/cb-crm-vps root@vps.cbadvogados.com`. Serviços: `evolution_evolution` (Evolution), `crm_crm` (CRM), `postgres_postgres` (banco `evolution`, `psql -U postgres` pelo socket entra sem senha), `redis_redis` (db 8 = Evolution; **db 9 = cópia de backup**; db0/db2 são de outros serviços). |
 | Banco do CRM (Supabase) | projeto `hxnhakmyxyhalbsktzwe`, pelo conector MCP (`execute_sql`). |
 | Backups da Fase 0 | `/root/backups/` na VPS, carimbo `20260909-1704` (dump, RDB, instances, log, env, imagem, migrations, amostras). |
-| Imagem candidata | já **puxada** na VPS: `evoapicloud/evolution-api:homolog@sha256:1e656f95aa1a2b7c2455a6a36d654637ddc2658c263794a5074ada798412a549` (Evolution 2.4.0, Baileys 7.0.0-rc13, Node 24). |
-| Imagem atual (rollback) | `ghcr.io/leonardocabralb/evolution-api-lidfix:2.3.2-lidfix@sha256:dd3e46aadd696c07ac4a099f7e8e59b970f8a59e3df6c8c8beb4bf31f5848694` |
+| Imagem **em produção** (desde 09/09 21:11) | `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao@sha256:dc0f4e8b12de706414609464131b4099de5f0dd29d16bd011b74206089ff1adf` (Evolution 2.4.0, Baileys 7.0.0-rc13, patch da citação, `prisma.config.ts` dentro; GHCR público). Stack: `ops/vps/evolution-stack.yml` = `/root/evolution-stack.yml` + `/root/evolution.env`. |
+| Rollback curto (mesmo commit, sem tocar no banco) | `evoapicloud/evolution-api:homolog@sha256:1e656f95aa1a2b7c2455a6a36d654637ddc2658c263794a5074ada798412a549` **+** `--mount-add type=bind,source=/root/evolution/prisma.config.ts,target=/evolution/prisma.config.ts,readonly` |
+| Rollback total (2.3.2, seção 10) | `ghcr.io/leonardocabralb/evolution-api-lidfix:2.3.2-lidfix@sha256:dd3e46aadd696c07ac4a099f7e8e59b970f8a59e3df6c8c8beb4bf31f5848694` — ⚠️ o cron de prune da VPS pode tê-la apagado; `docker pull` de volta (P12) |
 | Cadastro da licença | e-mail `leonardocabralb@gmail.com`; **telefone só na memória privada** (`baileys-7-plano-e-decisoes.md`) ou com o operador. |
 | Contato para testes reais | "Leonardo Cabral Baptista" (memória `lead-de-teste-autorizado`; único destinatário autorizado para mensagem de teste). Testar num contato endereçado por LID: conferir em `IsOnWhatsapp`. |
 | Código do CRM que este plano mexeu | `src/lib/whatsapp/transport/evolution-inbound.ts` (`lidJidFromKey`), `evolution-group-inbound.ts` (`lidDoRemetente`, `senderLid`), `src/lib/cb-groups/persist.ts` (`aprenderNossoLid`), `src/lib/cb-groups/sync.ts` (`parseGroupInfo`), `src/app/api/whatsapp/evolution/webhook/route.ts`; nota em `CLAUDE.md` antes de "## Branches". |
@@ -984,7 +985,9 @@ Script `prevoo-backup.sh` em segundo plano na VPS (`/root/backups/prevoo-run.log
 - [ ] Medidores (8.3) registrados em 24 h (10/09 ~19h) e 48 h (11/09 ~19h) — usar o script `prevoo-ro.sh`/`pos-ativacao.sh` do executor (contagens de log, sessões LID por hash, latência e entrada por hora no Supabase)
 - [ ] Testes que sobraram (T5, T14/T15, T16, T19, T20, T21, T22, vídeo, acervo, reação nossa) — 10/09
 - [x] P10 feita (9.5); [ ] P9 (rotação da `AUTHENTICATION_API_KEY`) decidido
-- [ ] `/root/evolution.yaml`: registrar a imagem `evolution-api-cb` por digest (sem o mount) e `TELEMETRY_ENABLED=false`
+- [x] `/root/evolution.yaml` **substituído** (09/09 21:37) por `/root/evolution-stack.yml` + `/root/evolution.env` (600), gerados da especificação viva e validados com `docker stack config`; cópia sem segredos em `ops/vps/` (README explica quando usar)
+- [x] Docs e `CLAUDE.md` atualizados (5.6): `INFRA-VPS.md` (§1, §4, §6, §7, §8), `EVOLUTION-LID-FIX.md` marcado obsoleto, `INSTALACAO.md` 3.1, `ops/vps/README.md`, `cb-evo-baileys` reescrito para a 2.4 e reinstalado
+- [ ] Cron `docker image prune -af` × imagens de rollback (P12)
 - [ ] Nenhum "Aguardando mensagem" relatado
 - [ ] Ajuste 5 (`GROUP_UPDATE`) + Ressincronizar nas 4 conexões
 - [ ] `/root/evolution.yaml` atualizado (imagem por digest, `TELEMETRY_ENABLED`)
@@ -1087,6 +1090,7 @@ duplicidade volta em dias ou semanas (relatos de 1–2 dias a semanas).
 | ~~P4~~ | **Resolvida 09/09 (noite)**: janela aberta; o operador tem **só 1 celular à mão** e aceitou o risco — os outros 3 números foram conectados **para teste**, ninguém os usa; se pedirem QR, ficam desconectados e a leitura fica para 10/09. Equipe avisada (celular/outro CRM). Celular à mão atende `cbcrm-a3af0191-…-76ac04` (11 96410-2992) — confirmado 09/09 18:50 | — |
 | ~~P5~~ | **Resolvida 09/09**: objeto `Long {low, high, unsigned}` → ajuste 4 (PR #171) | — |
 | ~~P10~~ | **Resolvida 09/09 21:11**: imagem própria `evolution-api-cb` (workflow `evolution-cb.yml`, `docker/evolution-cb/`) com o patch do #2708 + `prisma.config.ts` dentro, em produção; CRM lê a referência (PRs #184/#186). T7 ✅. Quando o upstream mesclar o #2708, voltar à imagem oficial (9.5) | — |
+| P12 | **Cron `docker image prune -af --filter until=24h`** (00:17, diário) apaga as imagens de rollback (`homolog`, `lidfix`) na madrugada seguinte à troca. São públicas e voltam com `pull`, mas o rollback passa a depender de rede. Opções: tirar o `-a` do cron, ou `docker create --name manter-<nome> <imagem@digest> true` para segurá-las | operador decide |
 | P11 | **Edição do cliente cifrada** (limitação da Baileys rc13; PRs #2690/#2743 abertos): mitigada no CRM (PR #175/#177 — "editada" sem o texto novo). Quando o upstream decifrar, nada muda no CRM | acompanhar |
 | P6 | Latência de entrada com rc13 (5.6 dos riscos) | teste T21 |
 | P7 | Log da Evolution fora do contêiner (fora deste plano, registrar) | depois |

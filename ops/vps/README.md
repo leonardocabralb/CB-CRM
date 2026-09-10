@@ -26,7 +26,7 @@ O `sudoers` libera exatamente esses quatro caminhos, sem curinga.
 | `cb-status` | lista stacks e serviços, com a imagem em execução |
 | `cb-logs <serviço> [minutos] [padrão]` | log do CRM ou da Evolution |
 | `cb-inspect <serviço>` | imagem, tarefas e **nomes** das variáveis |
-| `cb-evo-baileys` | confere se o patch do `@lid` continua aplicado |
+| `cb-evo-baileys` | imagem em execução, versão da Evolution e da Baileys, e se o `prisma.config.ts` está na imagem (desde 09/09/2026; antes conferia o patch do `@lid` da 2.3.2) |
 
 Duas restrições estão **dentro** dos scripts, não no `sudoers`:
 
@@ -115,7 +115,7 @@ Confirmado idêntico em 29/07/2026:
 cb-status       36815dc110aa7913
 cb-logs         01b1a073358061cb
 cb-inspect      0c32fc69031ab942
-cb-evo-baileys  ed265ddd6314fb35
+cb-evo-baileys  eb7662f48a2c92f9   (reinstalado em 09/09/2026, versão para a Evolution 2.4)
 ```
 
 ## Revogar
@@ -128,3 +128,30 @@ userdel -r claude && rm -f /etc/sudoers.d/claude
 
 Os scripts podem ficar — sem o usuário e sem a regra do `sudoers`, ninguém os
 alcança.
+
+## Stack da Evolution — para recriar o serviço do zero
+
+Desde 09/09/2026 a definição do serviço `evolution_evolution` está versionada
+aqui, gerada a partir da **especificação viva** do Swarm (`docker service
+inspect`) e validada com `docker stack config` sem deploy:
+
+| Arquivo | Onde vive | O que é |
+| --- | --- | --- |
+| `evolution-stack.yml` | aqui e em `/root/evolution-stack.yml` | a stack completa: imagem **por digest**, `env_file`, volume `evolution_instances` (externo), rede `CBAdvNet` (externa), `stop-first`, os 8 rótulos do Traefik |
+| `evolution.env.example` | aqui | os **nomes** das 118 variáveis, com os segredos em `<preencher>` |
+| `evolution.env` | **só** em `/root/evolution.env` (600), fora do git | os valores reais |
+
+⚠️ **Este arquivo não se atualiza sozinho.** A troca de imagem do dia a dia é
+`docker service update --image …@sha256:…` (o roteiro em
+`docs/PLANO-baileys-7.md`, 6.2), e ela NÃO reescreve o `.yml`. Antes de
+qualquer `docker stack deploy -c /root/evolution-stack.yml evolution`, conferir
+a linha `image:` contra `docker service inspect evolution_evolution` — um
+deploy com imagem velha faz downgrade silencioso. O `stack deploy` é para
+**recriar** (VPS nova, serviço apagado), não para atualizar.
+
+⚠️ O `/root/evolution.yaml` de 28/07/2026 está **obsoleto** (imagem 2.3.2, sem
+as variáveis novas) e fica na VPS só como histórico.
+
+Para regenerar os três arquivos a partir do que está rodando:
+`/root/gerar-stack.py` (lê o `docker service inspect` mais recente gravado em
+`/root/backups/evolution-service-spec-*.json`).

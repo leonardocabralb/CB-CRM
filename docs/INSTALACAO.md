@@ -251,11 +251,17 @@ que traz esse telefone, e o CRM não consegue saber de qual conversa é a
 mensagem: ela é descartada. Na instalação onde isso foi medido, 119 de
 143 ecos se perderam em cerca de 29 horas.
 
-O repositório traz o conserto, de uma linha, como imagem derivada
-(`docker/evolution-lid-fix/`) e um workflow que a constrói
-(`.github/workflows/evolution-lid-fix.yml`). Rode o workflow informando a
-imagem base que você está usando e a tag de saída, depois aponte o
-serviço para a imagem resultante.
+Há dois caminhos. **Na 2.3.x**, o repositório traz o conserto, de uma linha,
+como imagem derivada (`docker/evolution-lid-fix/`) e um workflow que a
+constrói (`.github/workflows/evolution-lid-fix.yml`): rode-o informando a
+imagem base e a tag de saída, depois aponte o serviço para a imagem
+resultante. **Na 2.4 (Baileys 7)** o LID é nativo e o eco do celular chega
+certo sem patch — é o que a instalação de referência roda desde 09/09/2026 —,
+mas ela pede um cadastro gratuito de licença no `/manager` antes de a API
+responder, e a imagem oficial `homolog` não traz o `prisma.config.ts` que o
+Prisma 7 exige para migrar (monte o arquivo do repositório da Evolution em
+`/evolution/prisma.config.ts`, ou construa a imagem com ele dentro pelo
+`docker/evolution-cb/README.md`). O CRM lê os dois formatos de payload.
 
 > Antes de fazer isso, vale medir: mande uma mensagem pelo celular
 > pareado e veja se ela aparece na conversa certa no CRM. Se aparecer, a
