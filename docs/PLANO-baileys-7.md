@@ -8,7 +8,7 @@
 | | |
 | --- | --- |
 | **Criado** | 09/09/2026 |
-| **Estado** | **FASE 1 NO AR desde 09/09/2026 19:02 (BRT)**: Evolution **2.4.0 / Baileys 7.0.0-rc13** em produção (imagem `homolog` por digest + `TELEMETRY_ENABLED=false` + bind mount do `prisma.config.ts`), 4 migrations aplicadas, 4 conexões reconectadas **sem QR**, licença **ativa** (19:13). Rodada 1 de testes: T1 e T17 passaram; ajustes 4 e 6 do CRM no PR #171. Registro completo em **9.4**. |
+| **Estado** | **FASE 1 NO AR desde 09/09/2026 19:02 (BRT)**: Evolution **2.4.0 / Baileys 7.0.0-rc13** em produção. Desde **21:11** a imagem é a **nossa**, `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao@sha256:dc0f4e8b…` (mesmo commit da `homolog`, + patch da citação do cliente + `prisma.config.ts` dentro, sem bind mount), licença continuou **ativa**, 4 conexões sem QR. Testes: T1, T2, T3, T4, T6, **T7**, T8, T9, T10, T11, T12, T17, T18 ✅; T13 (edição do cliente) mitigada. Registro em **9.4** e **9.5**. |
 | **Próximo passo** | **Fase 2 — observação de 48 h** (até 11/09 à noite) com os medidores de 8.3 e o detector ativo de "Aguardando" (celular do escritório); testes que sobraram para 10/09: T5, T14/T15 (visual), T16, T19, T20, T21, T22, vídeo do T2, acervo do T3, reação nossa do T9. Decidir P9 (rotação da chave) e P10 (imagem própria para a citação). Rollback: seção 10, a partir da foto final `20260909-1902-final` — ⚠️ depois de tanto tráfego real com a v7, rollback = ler QR nas conexões (10, passo 6). |
 | **Como retomar sem contexto** | Ler a **seção 0** abaixo primeiro; o prompt de retomada está no **Anexo C**. A memória privada do executor (`baileys-7-plano-e-decisoes.md`) guarda o telefone do cadastro. |
 | **Estudo de origem** | seções 2–4 deste documento condensam o estudo de 09/09 |
@@ -50,6 +50,7 @@ abaixo. Nada foi deixado implícito de propósito.
 | 09/09 18:43 | Segunda passada do pré-voo (itens 11–15): linhas de base de latência/entrada/decifragem, migrations da imagem, endpoint de licença, `DEL_INSTANCE`, `Chat` sem duplicata | 9.2 |
 | 09/09 19:02 | **Fase 1 no ar**: Evolution 2.4.0 / Baileys 7.0.0-rc13, 4 migrations, 4 conexões sem QR, licença ativa às 19:13 (operador). Tentativa 1 (18:53) falhou por falta do `prisma.config.ts` na imagem e voltou em 4 min | 9.4 |
 | 09/09 19:19 | Rodada 1 de testes: T1 e T17 passaram; achado o recibo fora de ordem (ajuste 6) e a forma `Long` do `fileLength` (ajuste 4) → PR #171; 2 anexos do intervalo do portão recuperados | 9.4, 5.4, 5.8 |
+| 09/09 21:11 | **P10**: imagem `evolution-api-cb` (commit da homolog + patch #2708 + prisma.config.ts dentro) no ar; T7 ✅ às 21:14; aquecimento de 6 min com entrada em lotes, depois 0 s | 9.5 |
 | 09/09 19:39–20:08 | Rodada 2: 10 testes ✅; T13 (edição do cliente) cifrada → PR #175/#177; T7 (citação do cliente) perdida pela Evolution 2.4 (#2713) → P10. Operador decide **ficar na 2.4** (48 h) | 9.4, 8.1, 12 |
 | 09/09 noite | Revisão adversarial do roteiro (3 lentes + crítico): 6.2, 8.4, 10 e Anexo B reescritos — script por passo com preâmbulo, foto final conferida, rollback por **rename** de banco (sem `dropdb`), portão de licença só HTTP, `EVOLUTION_OPERATOR_EMAIL` morto, `AUTHENTICATION_API_KEY` exposta no boot (P9), migration em laço, `BGSAVE` | 0.4, 6.2, 8.4, 10, 14 |
 | 09/09 18:24 | Pré-voo, parte de backup: dump novo (14,3 MB), db 9 renovado (36 = 36), RDB, restauração de prova **bate em todas as tabelas, 0 avisos**. Achado da cascata do `DELETE` das órfãs (9.3) | 9.3 |
@@ -82,6 +83,8 @@ abaixo. Nada foi deixado implícito de propósito.
 - **Deploy do CRM durante a janela confunde a leitura**: outra sessão mesclou 3 PRs no `main` e o `crm_crm` reiniciou 3 vezes em 20 min (rollout `start-first`, 502 por segundos, webhooks retentados). Antes de atribuir reinício ao upgrade, olhar a IMAGEM de cada contêiner (`docker ps -a --filter name=crm_crm`).
 - **Anexo que chega durante o portão de licença fica sem arquivo** e a recuperação é manual: `getBase64FromMediaMessage` → Storage → `media_url` (script `recuperar-midia.js` no scratchpad do executor; a memória `recuperar-anexo-perdido-na-evolution` descreve o caminho). Por isso "ativar imediatamente" (6.2, passo 4).
 - **Dois defeitos são do UPSTREAM, não nossos, e têm issue aberta**: citação do cliente descartada pelo `prepareMessage` da 2.4 (evolution-api #2713, PRs #2654/#2708) e edição do cliente cifrada que a Baileys não decifra (Baileys #2690/#2743). Antes de "consertar" no CRM, conferir se o upstream já mesclou — o CRM só pode mostrar o que chega.
+- **`comando | grep -q` sob `set -o pipefail` é trava falsa**: o `grep -q` sai no primeiro acerto, o produtor leva SIGPIPE e a pipeline "falha" — abortou a troca de imagem com a Evolution a 0 (9.5). Escrever a saída em arquivo e contar depois.
+- **Aquecimento da Baileys 7**: nos ~6 min depois de (re)conectar, a entrada sai em lotes de 30–120 s (buffer da sincronização de pendências) e depois normaliza. Não é defeito nem gatilho; avisar o operador ANTES da janela, senão o print de "não chegou" chega antes da mensagem.
 - Cópia local de fonte pode ser **página de erro**: `baileys-v7-migration.md` e `CHANGELOG.md` no scratchpad eram um 503 do Varnish (470 bytes) até a noite de 09/09 — a revisão adversarial pegou. Conferir tamanho e `<title>` de tudo que se baixa antes de citar. Re-baixados: o guia v7 (283 KB, real) e `messages-recv.ts` da rc13 e da 6.7.19.
 - O estado Signal no Redis **muda a cada mensagem** (ratchet): uma cópia tirada horas antes restaura sessões velhas e o cliente não decifra o que vem depois. Por isso a **foto final** (dump + db 8 → db 9 + RDB) é tirada com o serviço **a 0**, segundos antes da troca (6.2, passo 1). A do pré-voo serve de prova de restauração.
 
@@ -805,7 +808,7 @@ Evolution e do CRM abertos. Registrar resultado e data em cada linha.
 | T4 | Cliente manda foto | aparece no CRM com arquivo no Storage | 09/09 19:06 (cliente real, antes da ativação): entrou sem arquivo por causa do portão 503 — recuperada às 19:34; repetir depois da ativação |
 | T5 | Cliente manda documento >16 MiB e outro >50 MiB | o primeiro entra; o segundo vira `too_large` com nome; **anotar a forma de `fileLength`** | |
 | T6 | Texto com URL | preview do link no cliente | 09/09 ✅ |
-| T7 / T8 | Responder citando mensagem do cliente / nossa | o cliente vê o preview da citação | 09/09: **T8 ✅** (o lead viu a citação); **T7 ❌** do lado do lead — a citação dele chega sem `contextInfo` (bug Evolution 2.4, #2713 → P10) |
+| T7 / T8 | Responder citando mensagem do cliente / nossa | o cliente vê o preview da citação | 09/09: **T8 ✅**; **T7 ✅ às 21:14** com a imagem `evolution-api-cb` (P10) — antes dela a citação do lead chegava sem `contextInfo` (#2713) |
 | T9 | Reagir a mensagem do cliente | reação aparece no celular dele | 09/09: reação DO lead (❤️) entrou em `message_reactions` ✅; a nossa para ele — 10/09 |
 | T10 / T11 | Apagar para todos: mensagem do CRM / do celular | some no cliente; `messages.delete` volta | 09/09 ✅ nos dois sentidos (celular e lead); a 2.4 manda um `messages.edited` vazio antes — ignorado |
 | T12 | Editar mensagem nossa (<15 min) | edita no cliente; `text_before_edit` gravado | 09/09 ✅ (pelo CRM). Pelo CELULAR: chega cifrada → só "editada" (P11) |
@@ -867,6 +870,9 @@ Evolution e do CRM abertos. Registrar resultado e data em cada linha.
 - T1 reprovando (texto do CRM não chega legível).
 - Latência de entrada: **p95 das últimas 2 h > 60 s** (base 09/09: p95 2,1 s),
   pela consulta do Anexo B — não por impressão (decisão do operador).
+  ⚠️ **Só depois de 10 min da (re)conexão**: nos primeiros minutos a Baileys 7
+  entrega em lotes de 30–120 s enquanto sincroniza pendências (9.5) — medido
+  duas vezes em 09/09, e normaliza sozinho.
 
 ---
 
@@ -932,6 +938,16 @@ Script `prevoo-backup.sh` em segundo plano na VPS (`/root/backups/prevoo-run.log
   ❌ **T7 (lead CITA uma mensagem nossa)**: a resposta chega como `conversation` **sem `contextInfo`** (sem `stanzaId`/`quotedMessage`) — no banco da Evolution e no webhook. Reteste limpo às 20:08 confirmou. É **bug da Evolution 2.4** (`prepareMessage` achata `extendedTextMessage` em `conversation` e descarta o `contextInfo`, linhas 5184–5187 do `develop`): issue **evolution-foundation/evolution-api #2713** ("incoming text replies flattened to 'conversation' — contextInfo lost", 26/08/2026) com PRs de correção **#2654** e **#2708** abertos e não mesclados. Nada a fazer no CRM (o dado não chega). Saída possível: imagem própria com o patch (P10).
 - **Decisão do operador (20:05)**: **ficar na 2.4** em observação de 48 h — o conserto principal funciona (texto do CRM chega sem "Aguardando", 4 conexões sem QR, entrada normal), e as duas perdas (edição do cliente, citação do cliente) são limitações do upstream, mitigadas/registradas.
 
+#### 9.5 Registro da P10 — imagem própria com a citação do cliente (09/09/2026, 20:50–21:25, BRT)
+
+- **Autorização**: "Faça a correção para a citação" (20:45). Conferido antes que o CRM **nunca** leu a citação no transporte Evolution (só o caminho da Meta resolvia `context.id`) — então eram duas partes.
+- **PR #184** (mesclado 20:59): workflow `.github/workflows/evolution-cb.yml` + `docker/evolution-cb/` (o diff do PR upstream #2708, 51 linhas, `git apply --check` limpo no commit `e273b904` = o `org.opencontainers.image.revision` da `homolog`; o Dockerfile ganha `COPY` do `prisma.config.ts` no builder e na imagem final); CRM: `quotedProviderId()` em `evolution-inbound.ts` (lê `contextInfo.stanzaId` no nível de cima — 2.4 com patch — ou dentro do corpo — 2.3.2 e mídia) e `inbound-store.ts` grava `reply_to_message_id` quando a citada está na mesma conversa. **PR #186** (Codex): `locationMessage` na leitura, e contato existente nunca é renomeado para um número (o fallback de `pushName` do patch fica em `fetchMessages`, fora do webhook — defesa em profundidade).
+- **Build**: run 34418839311 (GitHub Actions, ~10 min); conferido na VPS: `2.4.0` / `7.0.0-rc13`, `prisma.config.ts` com `DATABASE_CONNECTION_URI`, **59 migrations = 59 da produção** (troca sem tocar no banco), `quotedContext` não aparece no bundle minificado (o workflow confere no fonte antes do build).
+- **Troca (21:10–21:11)**: roteiro `fase1-troca-cb.sh`. ⚠️ A 1ª execução **abortou na trava do dump** com o serviço a 0: `pg_restore -l | grep -q` fecha o pipe cedo e, com `set -o pipefail`, o próprio `pg_restore` devolve erro — a trava (sugerida pelo Codex no #165 e escrita por mim no Anexo B) era falsa. Corrigida na hora (TOC para arquivo + `grep -c`) e reexecutada: foto final **`20260909-2110-final`** (dump 14,3 MB, `Message` 70.620, Redis 25 = 25, RDB, `RuntimeConfig` guardada), `service update --image …cb@dc0f4e8b… --mount-rm /evolution/prisma.config.ts`, `scale 1` às 21:10:54, `Migration succeeded` (nada a aplicar), **4 × CONNECTED em 20 s**, HTTP no ar 21:11:15, licença **ativa** sem reativar, `fetchInstances` 4 × `open`. Parada total: **71 s**, contando o abort.
+- **T7 ✅ (21:14)**: o lead respondeu citando o "oi" do CRM; a Evolution entregou `contextInfo.stanzaId = 3EB095D4…` + `quotedMessage`, e a linha no CRM nasceu com `reply_to_message_id = ecb206ba…`. A caixinha da citação aparece na bolha.
+- **Aquecimento da conexão (T21, P6)**: nos ~6 primeiros minutos depois da troca a entrada saiu em **lotes**: latências de **1 s, 105 s, 120 s, 73 s** (rajadas às 21:15:33 e 21:16:33, 60 s de intervalo); às **21:19:41 já era 0 s**. É a Baileys 7 segurando eventos em buffer durante a sincronização de pendências (`offline_preview` → `ev.buffer()`; descarga automática a cada **30 s** — `BUFFER_TIMEOUT_MS` em `event-buffer.ts`; `ev.flush()` no `ib offline`). O operador viu o CRM sem as mensagens às 21:15 e reportou "não chegam" — chegaram às 21:16:33. **Regra nova para 8.4**: latência só conta como gatilho **depois de 10 min** da (re)conexão.
+- Rollback agora: seção 10 com a foto `20260909-2110-final`; a imagem de volta é a `homolog@1e656f95…` **com** `--mount-add type=bind,source=/root/evolution/prisma.config.ts,target=/evolution/prisma.config.ts,readonly` (mesmo commit, sem migration).
+
 #### 9.1 Registro da execução da Fase 0 (09/09/2026, 17:04–17:30)
 
 - **Prova de restauração** (`evolution_ensaio`, 0 avisos do `pg_restore`), comparando o mesmo corte:
@@ -967,7 +983,8 @@ Script `prevoo-backup.sh` em segundo plano na VPS (`/root/backups/prevoo-run.log
 
 - [ ] Medidores (8.3) registrados em 24 h (10/09 ~19h) e 48 h (11/09 ~19h) — usar o script `prevoo-ro.sh`/`pos-ativacao.sh` do executor (contagens de log, sessões LID por hash, latência e entrada por hora no Supabase)
 - [ ] Testes que sobraram (T5, T14/T15, T16, T19, T20, T21, T22, vídeo, acervo, reação nossa) — 10/09
-- [ ] P9 (rotação da `AUTHENTICATION_API_KEY`) e P10 (imagem própria com o patch da citação) decididos
+- [x] P10 feita (9.5); [ ] P9 (rotação da `AUTHENTICATION_API_KEY`) decidido
+- [ ] `/root/evolution.yaml`: registrar a imagem `evolution-api-cb` por digest (sem o mount) e `TELEMETRY_ENABLED=false`
 - [ ] Nenhum "Aguardando mensagem" relatado
 - [ ] Ajuste 5 (`GROUP_UPDATE`) + Ressincronizar nas 4 conexões
 - [ ] `/root/evolution.yaml` atualizado (imagem por digest, `TELEMETRY_ENABLED`)
@@ -1069,7 +1086,7 @@ duplicidade volta em dias ou semanas (relatos de 1–2 dias a semanas).
 | ~~P3~~ | **Autorizada 09/09** e executada (seção 9, Fase 0) | — |
 | ~~P4~~ | **Resolvida 09/09 (noite)**: janela aberta; o operador tem **só 1 celular à mão** e aceitou o risco — os outros 3 números foram conectados **para teste**, ninguém os usa; se pedirem QR, ficam desconectados e a leitura fica para 10/09. Equipe avisada (celular/outro CRM). Celular à mão atende `cbcrm-a3af0191-…-76ac04` (11 96410-2992) — confirmado 09/09 18:50 | — |
 | ~~P5~~ | **Resolvida 09/09**: objeto `Long {low, high, unsigned}` → ajuste 4 (PR #171) | — |
-| P10 | **Citação do cliente perdida** (bug da Evolution 2.4, issue #2713, PRs #2654/#2708 abertos): esperar o upstream mesclar, ou construir imagem própria do `develop` com o patch de `prepareMessage` (como o `lidfix` da 2.3.2) + o `prisma.config.ts` dentro | operador decide |
+| ~~P10~~ | **Resolvida 09/09 21:11**: imagem própria `evolution-api-cb` (workflow `evolution-cb.yml`, `docker/evolution-cb/`) com o patch do #2708 + `prisma.config.ts` dentro, em produção; CRM lê a referência (PRs #184/#186). T7 ✅. Quando o upstream mesclar o #2708, voltar à imagem oficial (9.5) | — |
 | P11 | **Edição do cliente cifrada** (limitação da Baileys rc13; PRs #2690/#2743 abertos): mitigada no CRM (PR #175/#177 — "editada" sem o texto novo). Quando o upstream decifrar, nada muda no CRM | acompanhar |
 | P6 | Latência de entrada com rc13 (5.6 dos riscos) | teste T21 |
 | P7 | Log da Evolution fora do contêiner (fora deste plano, registrar) | depois |
@@ -1181,7 +1198,10 @@ q evolution 'select "remoteJid", lid from "IsOnWhatsapp" where "remoteJid" like 
 CARIMBO=$(date +%Y%m%d-%H%M)          # foto final: CARIMBO=$(date +%Y%m%d-%H%M)-final
 docker exec $PGCID pg_dump -U postgres -Fc evolution > $B/evolution-$CARIMBO.dump
 test -s $B/evolution-$CARIMBO.dump || { echo "DUMP VAZIO"; exit 1; }
-docker exec -i $PGCID pg_restore -l < $B/evolution-$CARIMBO.dump | grep -q 'TABLE DATA' \
+# ⚠️ TOC para ARQUIVO, nunca `| grep -q`: o grep fecha o pipe cedo e, com `set -o pipefail`,
+#    o próprio pg_restore devolve erro — abortou a troca de 09/09 21:10 com o serviço a 0 (9.5).
+docker exec -i $PGCID pg_restore -l < $B/evolution-$CARIMBO.dump > $B/toc-$CARIMBO.txt 2>/dev/null
+[ "$(grep -c 'TABLE DATA' $B/toc-$CARIMBO.txt)" -gt 20 ] \
   && ls -l $B/evolution-$CARIMBO.dump && echo DUMP-OK || { echo "DUMP RUIM (truncado?)"; exit 1; }   # o DUMP-OK depende da validação (Codex, PR #165)
 q evolution 'select count(*), max("messageTimestamp") from "Message"' > $B/foto-$CARIMBO.txt      # referência para o rollback
 # ⚠️ O db 9 guarda a cópia anterior: esvaziar ANTES de copiar de novo — só o db 9! (Codex, PR #162)
