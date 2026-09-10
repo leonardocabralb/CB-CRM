@@ -4241,6 +4241,19 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
   mesma.
 - Datas/moeda: usar `toLocaleDateString(undefined, ...)`, **nunca** locale fixo
   (`'en-US'`), senão a data sai em inglês com o app em português.
+- ⚠️ **O date-fns fala INGLÊS por padrão, e a regra acima não o alcança.** Toda
+  chamada dele que escreve PALAVRAS passa `locale: LOCALE_DAS_DATAS`
+  (`src/lib/idioma-das-datas.ts`, que lê o mesmo `NEXT_PUBLIC_APP_LOCALE` do
+  `request.ts`): as distâncias (`formatDistance*`, `formatRelative`) e o
+  `format` com mês ou dia da semana por extenso, AM/PM ou data localizada
+  (`MMM`, `EEE`, `a`, `P`, `p`). Sem ele, até 10/09/2026, a lista da caixa de
+  entrada mostrava "3 minutes" e o separador de dia da conversa, "September 8,
+  2026". Há pino (`idioma-das-datas.chamadores.test.ts`) com duas exceções
+  escritas — o eixo do gráfico de uso da IA e o `media-lightbox.tsx`, não
+  ligado —, e ele cobra que cada exceção continue necessária: quem consertar
+  uma a tira da lista. ⚠️ Só pôr o locale num padrão FIXO não basta:
+  `"MMMM d, yyyy"` com `ptBR` dá "setembro 8, 2026", na ordem do inglês — use
+  o padrão localizado (`PPP`).
 - ⚠️ Coluna Postgres `DATE` (ex.: `expected_close_date`) chega como
   `"2026-05-18"`, e `new Date()` interpreta isso como **meia-noite UTC** — no
   Brasil retrocede um dia. Concatenar `T00:00:00` antes de parsear.

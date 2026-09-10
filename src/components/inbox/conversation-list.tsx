@@ -54,6 +54,7 @@ import {
 } from "lucide-react";
 import { atrasoDeResposta } from "@/lib/inbox/atraso";
 import { formatDistanceToNow } from "date-fns";
+import { LOCALE_DAS_DATAS } from "@/lib/idioma-das-datas";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -1047,6 +1048,8 @@ function ConversationItem({
   const timeAgo = conversation.last_message_at
     ? formatDistanceToNow(new Date(conversation.last_message_at), {
         addSuffix: false,
+        // Sem o locale o date-fns fala inglês ("3 minutes") na tela em pt-BR.
+        locale: LOCALE_DAS_DATAS,
       })
     : "";
 

@@ -15,6 +15,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { LOCALE_DAS_DATAS } from "@/lib/idioma-das-datas";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -275,6 +276,7 @@ export default function NotificationsPage() {
                     <p className="mt-1 text-[11px] text-muted-foreground/70">
                       {formatDistanceToNow(new Date(n.created_at), {
                         addSuffix: true,
+                        locale: LOCALE_DAS_DATAS,
                       })}
                     </p>
                   </div>
