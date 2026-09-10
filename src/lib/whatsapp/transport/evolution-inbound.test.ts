@@ -554,6 +554,15 @@ describe('quotedProviderId — a citação muda de lugar com a versão da Evolut
     ).toBe('IMG');
   });
 
+  it('localização como resposta carrega a citação em locationMessage.contextInfo (Codex, PR #184)', () => {
+    expect(
+      quotedProviderId({
+        key,
+        message: { locationMessage: { degreesLatitude: -7.1, degreesLongitude: -34.8, contextInfo: { stanzaId: 'LOC' } } },
+      }),
+    ).toBe('LOC');
+  });
+
   it('⚠️ 2.4 SEM o patch: o contextInfo do texto é descartado e não há citação (issue #2713)', () => {
     const item = {
       key,

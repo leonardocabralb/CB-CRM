@@ -174,6 +174,39 @@ describe("casaComABusca — telefone escrito por gente (08/09/2026)", () => {
   });
 });
 
+describe("casaComABusca — o nono dígito (09/09/2026)", () => {
+  // O WhatsApp entrega o JID de número antigo SEM o 9; o operador lê o
+  // número no celular COM o 9. Digitar o completo não achava a ficha, e a
+  // busca virava exatidão onde deveria ser "contém".
+  const semNove = conversa({
+    contact: { ...conversa().contact!, phone: "558388745316", name: "Renato" },
+  });
+  const comNove = conversa({
+    contact: { ...conversa().contact!, phone: "5583988745316", name: "Renato" },
+  });
+
+  it("CRÍTICO: o número COM o 9 acha a ficha gravada SEM ele", () => {
+    expect(casaComABusca(semNove, "(83) 98874-5316")).toBe(true);
+    expect(casaComABusca(semNove, "+55 83 98874-5316")).toBe(true);
+    expect(casaComABusca(semNove, "83988745316")).toBe(true);
+  });
+
+  it("e o número SEM o 9 acha a ficha gravada COM ele", () => {
+    expect(casaComABusca(comNove, "(83) 8874-5316")).toBe(true);
+    expect(casaComABusca(comNove, "558388745316")).toBe(true);
+  });
+
+  it("o pedaço com o 9 na frente também acha (é 'contém', não exatidão)", () => {
+    expect(casaComABusca(semNove, "98874-5316")).toBe(true);
+    expect(casaComABusca(semNove, "9 8874")).toBe(true);
+  });
+
+  it("não passa a achar outro número por causa da variante", () => {
+    expect(casaComABusca(semNove, "(83) 98874-5317")).toBe(false);
+    expect(casaComABusca(comNove, "(84) 98874-5316")).toBe(false);
+  });
+});
+
 describe("digitosDeBuscaDeTelefone", () => {
   it("aceita dígitos e a pontuação com que se escreve telefone", () => {
     expect(digitosDeBuscaDeTelefone("(19) 98276-4080")).toBe("19982764080");

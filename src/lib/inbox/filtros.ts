@@ -24,6 +24,7 @@
 
 import { atrasoDeResposta } from "@/lib/inbox/atraso";
 import { semAcento } from "@/lib/inbox/busca-em-mensagens";
+import { variantesDoNonoDigito } from "@/lib/contacts/telefone";
 import {
   matchesContactFilters,
   matchesTypeFilter,
@@ -347,6 +348,14 @@ export interface ContextoDosFiltros {
  * forma que o cliente manda e que o próprio CRM exibe — não achava NADA, e
  * a leitura do operador é que o cliente não está no CRM (reportado da tela
  * em 08/09/2026, sobre um contato que existia). Ver `digitosDeBuscaDeTelefone`.
+ *
+ * ⚠️ E a comparação em dígitos olha as DUAS grafias do número gravado — com
+ * e sem o nono dígito (`variantesDoNonoDigito`). O cliente gravado como
+ * "558388745316" (sem o 9, como o WhatsApp entrega número antigo) não era
+ * achado por "(83) 98874-5316", que é como o operador o lê no celular — e
+ * a busca virava exatidão onde deveria ser "contém" (reportado em
+ * 09/09/2026). Só o lado do CONTATO ganha variante: o termo é o que a
+ * pessoa digitou, e alterá-lo inventaria uma busca que ela não fez.
  */
 export function casaComABusca(conversation: Conversation, busca: string): boolean {
   const q = semAcento(busca.trim());
@@ -355,6 +364,7 @@ export function casaComABusca(conversation: Conversation, busca: string): boolea
   const nome = semAcento(conversation.contact?.name ?? "");
   const telefone = semAcento(conversation.contact?.phone ?? "");
   const digitosBuscados = digitosDeBuscaDeTelefone(busca);
+  const grafiasDoTelefone = variantesDoNonoDigito(telefone.replace(/\D/g, ""));
   const grupo = conversation.group_id
     ? semAcento(
         `${conversation.group?.alias ?? ""} ${conversation.group?.subject ?? ""}`,
@@ -367,7 +377,8 @@ export function casaComABusca(conversation: Conversation, busca: string): boolea
   return (
     nome.includes(q) ||
     telefone.includes(q) ||
-    (digitosBuscados !== null && telefone.replace(/\D/g, "").includes(digitosBuscados)) ||
+    (digitosBuscados !== null &&
+      grafiasDoTelefone.some((grafia) => grafia.includes(digitosBuscados))) ||
     grupo.includes(q) ||
     ultima.includes(q)
   );

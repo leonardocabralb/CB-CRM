@@ -62,3 +62,38 @@ export function formatarTelefone(digitos: string | null | undefined): string {
   }
   return `+${digitos}`;
 }
+
+/**
+ * As grafias de um celular brasileiro que o CRM pode ter guardado: a que veio
+ * e a irmã com/sem o NONO DÍGITO.
+ *
+ * `contacts.phone` guarda só dígitos com DDI, e o mesmo cliente existe na
+ * base ora como "5583988745316" (13 dígitos, com o 9), ora como
+ * "558388745316" (12, sem) — depende de quem gravou: o WhatsApp entrega o
+ * JID sem o 9 para número antigo, o CSV vem como o escritório digitou, o
+ * Calendly como o cliente escreveu. `findExistingContact` já tolera isso ao
+ * CASAR (últimos 8 dígitos); a busca da caixa de entrada não tolerava —
+ * digitar o número com o 9 não achava a ficha gravada sem ele, e a leitura
+ * do operador era que o cliente não estava no CRM (reportado em 09/09/2026).
+ *
+ * ⚠️ Só celular: o 9 foi acrescentado apenas aos números móveis, que
+ * começam em 6, 7, 8 ou 9. Inserir um 9 num fixo fabricaria um número que
+ * não existe — inofensivo para a busca, mas a regra escrita é a real.
+ *
+ * ⚠️ Só com DDI 55 na frente, porque é assim que a coluna guarda. Um número
+ * sem DDI ou de outro país volta sozinho, sem irmã.
+ *
+ * A forma original vem SEMPRE primeiro; a irmã, só quando existe.
+ */
+export function variantesDoNonoDigito(digitos: string): string[] {
+  if (!digitos.startsWith("55")) return [digitos];
+  // 55 + DDD (2) + 9 + 8 dígitos = 13: a irmã é sem o 9.
+  if (digitos.length === 13 && digitos[4] === "9" && /[6-9]/.test(digitos[5])) {
+    return [digitos, digitos.slice(0, 4) + digitos.slice(5)];
+  }
+  // 55 + DDD (2) + 8 dígitos = 12: a irmã ganha o 9 depois do DDD.
+  if (digitos.length === 12 && /[6-9]/.test(digitos[4])) {
+    return [digitos, `${digitos.slice(0, 4)}9${digitos.slice(4)}`];
+  }
+  return [digitos];
+}

@@ -242,6 +242,9 @@ const CAIXAS_COM_CONTEXTO = [
   'audioMessage',
   'documentMessage',
   'stickerMessage',
+  // Localização também é resposta possível, e `detectContentType` a aceita —
+  // sem ela aqui a mensagem entrava e a citação se perdia (Codex, PR #184).
+  'locationMessage',
 ] as const;
 
 /**

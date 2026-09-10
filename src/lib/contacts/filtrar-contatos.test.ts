@@ -20,6 +20,16 @@ describe('casaComContato', () => {
     expect(casaComContato(semNome, '98765')).toBe(true);
   });
 
+  it('CRÍTICO: o número COM o 9 acha a ficha gravada SEM ele (nono dígito, 09/09/2026)', () => {
+    const semNove = { name: 'Renato', phone: '558388745316' };
+    expect(casaComContato(semNove, '(83) 98874-5316')).toBe(true);
+    expect(casaComContato(semNove, '98874-5316')).toBe(true);
+    const comNove = { name: 'Renato', phone: '5583988745316' };
+    expect(casaComContato(comNove, '(83) 8874-5316')).toBe(true);
+    // outro número continua fora
+    expect(casaComContato(semNove, '(83) 98874-5317')).toBe(false);
+  });
+
   it('termo SEM dígito nunca casa pelo telefone (armadilha da agulha vazia)', () => {
     // "ana" → soDigitos("") — sem a guarda, includes("") casaria todo mundo.
     expect(casaComContato(semNome, 'ana')).toBe(false);

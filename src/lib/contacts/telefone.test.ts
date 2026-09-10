@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { digitosDoTelefone, formatarTelefone, pareceTelefone } from "./telefone";
+import {
+  digitosDoTelefone,
+  formatarTelefone,
+  pareceTelefone,
+  variantesDoNonoDigito,
+} from "./telefone";
 
 describe("digitosDoTelefone", () => {
   it("o lembrete por SMS vem com DDI e entra como veio", () => {
@@ -71,5 +76,33 @@ describe("formatarTelefone", () => {
 
   it("vazio fica vazio", () => {
     expect(formatarTelefone(null)).toBe("");
+  });
+});
+
+describe("variantesDoNonoDigito", () => {
+  it("celular gravado COM o 9 ganha a irmã sem ele — a original primeiro", () => {
+    expect(variantesDoNonoDigito("5583988745316")).toEqual([
+      "5583988745316",
+      "558388745316",
+    ]);
+  });
+
+  it("celular gravado SEM o 9 ganha a irmã com ele", () => {
+    expect(variantesDoNonoDigito("558388745316")).toEqual([
+      "558388745316",
+      "5583988745316",
+    ]);
+  });
+
+  it("⚠️ fixo não ganha 9: o nono dígito é só de celular (6, 7, 8 ou 9)", () => {
+    expect(variantesDoNonoDigito("558333334444")).toEqual(["558333334444"]);
+    // 13 dígitos com 9 na 5ª posição mas 3 na 6ª: não é celular com 9 na frente.
+    expect(variantesDoNonoDigito("5583933334444")).toEqual(["5583933334444"]);
+  });
+
+  it("sem DDI 55, ou de outro país, volta sozinho", () => {
+    expect(variantesDoNonoDigito("83988745316")).toEqual(["83988745316"]);
+    expect(variantesDoNonoDigito("14045551234")).toEqual(["14045551234"]);
+    expect(variantesDoNonoDigito("")).toEqual([""]);
   });
 });

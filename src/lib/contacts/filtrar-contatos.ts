@@ -9,6 +9,7 @@
 // ------------------------------------------------------------
 
 import { semAcento } from '@/lib/inbox/busca-em-mensagens';
+import { variantesDoNonoDigito } from '@/lib/contacts/telefone';
 
 export interface ContatoPesquisavel {
   name: string | null;
@@ -30,6 +31,12 @@ function soDigitos(s: string): string {
  * guarda viraria `""` depois do strip, e `includes("")` é verdadeiro para
  * todo telefone — a mesma armadilha da agulha vazia documentada no salto
  * da busca (`achados-no-fio`).
+ *
+ * ⚠️ O telefone é comparado nas DUAS grafias do nono dígito
+ * (`variantesDoNonoDigito`), como no inbox: a ficha gravada sem o 9 tem de
+ * aparecer para quem digita o número com ele, que é como o número se lê no
+ * celular. Só o lado do CONTATO ganha variante — o termo é o que a pessoa
+ * digitou.
  */
 export function casaComContato(
   contato: ContatoPesquisavel,
@@ -50,7 +57,9 @@ export function casaComContato(
   const digitosDoTermo = soDigitos(termo);
   return (
     digitosDoTermo.length > 0 &&
-    soDigitos(contato.phone ?? '').includes(digitosDoTermo)
+    variantesDoNonoDigito(soDigitos(contato.phone ?? '')).some((grafia) =>
+      grafia.includes(digitosDoTermo)
+    )
   );
 }
 
