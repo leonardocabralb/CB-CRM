@@ -8,7 +8,7 @@
 | | |
 | --- | --- |
 | **Criado** | 09/09/2026 |
-| **Estado** | **FASE 1 NO AR desde 09/09/2026 19:02 (BRT)**: Evolution **2.4.0 / Baileys 7.0.0-rc13** em produção. Desde **21:11** a imagem é a **nossa**, `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao@sha256:dc0f4e8b…` (mesmo commit da `homolog`, + patch da citação do cliente + `prisma.config.ts` dentro, sem bind mount), licença continuou **ativa**, 4 conexões sem QR. Testes: T1, T2, T3, T4, T6, **T7**, T8, T9, T10, T11, T12, T17, T18 ✅; T13 (edição do cliente) mitigada. Registro em **9.4** e **9.5**. |
+| **Estado** | **FASE 1 NO AR desde 09/09/2026 19:02 (BRT)**: Evolution **2.4.0 / Baileys 7.0.0-rc13** em produção. Desde **21:11** a imagem é a **nossa**, `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao@sha256:dc0f4e8b…` (mesmo commit da `homolog`, + patch da citação do cliente + `prisma.config.ts` dentro, sem bind mount), licença continuou **ativa**, 4 conexões sem QR. Testes: T1, T2, T3, T4, T6, **T7**, T8, T9, T10, T11, T12, T17, T18 ✅; T13 (edição do cliente) mitigada. Registro em **9.4** e **9.5**. Em 10/09, o 1 ✓ das mensagens do celular: o recibo chegava ao CRM ANTES da mensagem — corrigido na rota (5.9, 9.6). |
 | **Próximo passo** | **Fase 2 — observação de 48 h** (até 11/09 à noite) com os medidores de 8.3 e o detector ativo de "Aguardando" (celular do escritório); testes que sobraram para 10/09: T5, T14/T15 (visual), T16, T19, T20, T21, T22, vídeo do T2, acervo do T3, reação nossa do T9. Decidir P9 (rotação da chave) e P10 (imagem própria para a citação). Rollback: seção 10, a partir da foto final `20260909-1902-final` — ⚠️ depois de tanto tráfego real com a v7, rollback = ler QR nas conexões (10, passo 6). |
 | **Como retomar sem contexto** | Ler a **seção 0** abaixo primeiro; o prompt de retomada está no **Anexo C**. A memória privada do executor (`baileys-7-plano-e-decisoes.md`) guarda o telefone do cadastro. |
 | **Estudo de origem** | seções 2–4 deste documento condensam o estudo de 09/09 |
@@ -56,6 +56,7 @@ abaixo. Nada foi deixado implícito de propósito.
 | 09/09 noite | Revisão adversarial do roteiro (3 lentes + crítico): 6.2, 8.4, 10 e Anexo B reescritos — script por passo com preâmbulo, foto final conferida, rollback por **rename** de banco (sem `dropdb`), portão de licença só HTTP, `EVOLUTION_OPERATOR_EMAIL` morto, `AUTHENTICATION_API_KEY` exposta no boot (P9), migration em laço, `BGSAVE` | 0.4, 6.2, 8.4, 10, 14 |
 | 09/09 18:24 | Pré-voo, parte de backup: dump novo (14,3 MB), db 9 renovado (36 = 36), RDB, restauração de prova **bate em todas as tabelas, 0 avisos**. Achado da cascata do `DELETE` das órfãs (9.3) | 9.3 |
 | 09/09 18:10 | Revisão do Codex no #162 avaliada: rollback **reordenado** (escalar a 0 antes de trocar a imagem — procede); `FLUSHDB` do db 9 já estava no commit final; participante por `id` telefone já coberto no código do #161 (o texto de 5.3 estava defasado e foi sincronizado). Pré-voo **só de leitura** executado na VPS | 9.2, seção 10 |
+| 10/09 09:55 | Operador: mensagens do celular com 1 ✓. Medido: o recibo chega ao CRM ANTES da mensagem — corrida da rota, anterior à 2.4 (~⅓ das mensagens do celular desde 20/08) → espera na rota (PR #191) | 5.9, 9.6 |
 
 ### 0.3 O que NÃO foi feito (e é o próximo trabalho)
 
@@ -420,6 +421,21 @@ da mesma mensagem, e a rota rebaixava o status. Agora o `UPDATE` só acerta
 linha em status inferior (`aceitamAvancoPara`), e o fan-out
 `message.status_updated` só dispara quando alguma linha avançou. Regra no
 `CLAUDE.md`.
+
+### 5.9 Recibo antes da mensagem (`webhook/route.ts`, `recibo-antes-da-mensagem.ts`) — **FEITO (PR #191)**
+
+Relatado pelo operador em 10/09 (mensagens do celular com 1 ✓) e medido no
+mesmo dia (9.6): a Evolution despacha o `messages.upsert` e o `messages.update`
+da mesma mensagem no mesmo segundo, e o CRM só grava a mensagem do celular
+depois de esperar 2 s de propósito (`jaGravada`: o prazo para o eco de um envio
+do próprio CRM aparecer), enquanto o recibo é um UPDATE só — o UPDATE rodava antes do
+INSERT, achava zero linhas e o recibo morria. **Anterior à 2.4**: 38% das
+mensagens do celular presas em `sent` antes do upgrade, 34% depois; o envio
+pelo CRM tem a mesma janela (a linha nasce depois que a Evolution responde).
+Correção: sem linha, a rota tenta de novo em pausas (1, 2, 4, 8 e 15 s);
+linha que existe e não avança é recibo velho (a escada do 5.8 recusou) e ela
+desiste; recibo de mensagem recebida (`fromMe` false) não espera. Testes em
+`recibo-antes-da-mensagem.test.ts`, com um pino na rota.
 
 ### 5.5 Ajuste 5 — `GROUP_UPDATE` (`evolution-provision.ts`) — **DEPOIS do upgrade**
 
@@ -817,7 +833,7 @@ Evolution e do CRM abertos. Registrar resultado e data em cada linha.
 | T14 | Cliente nos escreve | ele vê ✓✓ na mensagem dele | |
 | T15 | Abrir a conversa no CRM (marcar lida) | ✓✓ azul no cliente | |
 | T16 | Criar canal de teste pelo CRM, ler QR, Ressincronizar, apagar | `open`, webhook aplicado, mensagem entra | |
-| **T17** | **Mensagem pelo CELULAR pareado para contato LID** | **aparece no CRM "pelo celular"; `DESCARTADA` = 0** | **09/09 19:20: passou** (etiqueta CELULAR, `delivered`, `DESCARTADA` = 0) |
+| **T17** | **Mensagem pelo CELULAR pareado para contato LID** | **aparece no CRM "pelo celular"; `DESCARTADA` = 0** | **09/09 19:20: passou** (etiqueta CELULAR, `delivered`, `DESCARTADA` = 0). **10/09: ~⅓ das mensagens do celular ficavam em 1 ✓ — o recibo chegava antes da mensagem (5.9, 9.6)** |
 | **T18** | **Mensagem pelo WhatsApp Web para contato LID** | idem | 09/09 ✅ (CELULAR, `DESCARTADA` = 0) |
 | T19 | Grupo: mensagem nossa e de participante, menção a nós | entra; `mentions_us` acende no canal com `own_lid`; `findGroupInfos` acha nossa linha | |
 | T20 | Agendar mensagem para +3 min | sai na hora, `sent`, sem duplicar | |
@@ -949,6 +965,29 @@ Script `prevoo-backup.sh` em segundo plano na VPS (`/root/backups/prevoo-run.log
 - **Aquecimento da conexão (T21, P6)**: nos ~6 primeiros minutos depois da troca a entrada saiu em **lotes**: latências de **1 s, 105 s, 120 s, 73 s** (rajadas às 21:15:33 e 21:16:33, 60 s de intervalo); às **21:19:41 já era 0 s**. É a Baileys 7 segurando eventos em buffer durante a sincronização de pendências (`offline_preview` → `ev.buffer()`; descarga automática a cada **30 s** — `BUFFER_TIMEOUT_MS` em `event-buffer.ts`; `ev.flush()` no `ib offline`). O operador viu o CRM sem as mensagens às 21:15 e reportou "não chegam" — chegaram às 21:16:33. **Regra nova para 8.4**: latência só conta como gatilho **depois de 10 min** da (re)conexão.
 - Rollback agora: seção 10 com a foto `20260909-2110-final`; a imagem de volta é a `homolog@1e656f95…` **com** `--mount-add type=bind,source=/root/evolution/prisma.config.ts,target=/evolution/prisma.config.ts,readonly` (mesmo commit, sem migration).
 
+#### 9.6 Registro — 1 ✓ nas mensagens do celular (10/09/2026, 09:55–10:30, BRT)
+
+- **Relato**: na conversa de um lead, as mensagens de 06:00, 09:01 e 09:51 — mandadas pelo
+  outro CRM através do celular pareado — com 1 ✓ no CRM.
+- **A Evolution recebeu o recibo**: `MessageUpdate` tem `DELIVERY_ACK` para as três (e para as
+  do mesmo lead em 09/09); no CRM elas seguiam `sent`.
+- **A corrida, medida nas duas pontas**: no log da Evolution, mensagem e recibo saíram juntos
+  (06:00:27/06:00:28; 09:05:42/09:05:42; 09:51:55/09:51:55). No log do PostgREST, a das 09:51:
+  `PATCH …message_id=eq.3EB050AAE0004250FB26…status=in.(sending,sent)` às 12:51:55.708 UTC
+  e o `POST /rest/v1/messages` dela às 12:51:57.644 — o UPDATE rodou 1,9 s antes de a linha
+  existir, e o recibo morreu. As duas leituras `select=id&message_id=eq.…&limit=1` (12:51:55.531
+  e 12:51:57.568) são o `jaGravada` e a sua espera de 2 s — a causa do atraso da gravação.
+- **Tamanho**: desde 20/08, 1.267 de 3.315 mensagens do celular presas em `sent` antes do
+  upgrade (38%) e 51 de 149 depois (34%) — é da rota do CRM, não da Baileys 7. Pelo CRM:
+  20 de 147 antes, 5 de 12 depois. Correção na rota: 5.9.
+- **Acervo**: 1.361 mensagens `sent` (agent/bot) no CRM; **1.258** têm recibo guardado na
+  Evolution (celular: 999 → `delivered`, 237 → `read`; CRM: 15; robô: 7); 103 sem recibo
+  nenhum. **Decisão do operador (10/09): o acervo fica como está — basta valer daqui para frente.**
+- **À parte, não explicado**: as mensagens das 09:01 e das 09:51 só chegaram à Evolution às
+  09:05:42 e às 09:51:55 (4 min e 27 s depois do envio), sem reconexão registrada no
+  intervalo. Não afeta o ✓; afeta a hora em que a mensagem aparece no CRM. Acompanhar nos
+  medidores de 24/48 h (8.3).
+
 #### 9.1 Registro da execução da Fase 0 (09/09/2026, 17:04–17:30)
 
 - **Prova de restauração** (`evolution_ensaio`, 0 avisos do `pg_restore`), comparando o mesmo corte:
@@ -989,6 +1028,7 @@ Script `prevoo-backup.sh` em segundo plano na VPS (`/root/backups/prevoo-run.log
 - [x] Docs e `CLAUDE.md` atualizados (5.6): `INFRA-VPS.md` (§1, §4, §6, §7, §8), `EVOLUTION-LID-FIX.md` marcado obsoleto, `INSTALACAO.md` 3.1, `ops/vps/README.md`, `cb-evo-baileys` reescrito para a 2.4 e reinstalado
 - [ ] Cron `docker image prune -af` × imagens de rollback (P12)
 - [ ] Nenhum "Aguardando mensagem" relatado
+- [x] 1 ✓ nas mensagens do celular — recibo antes da mensagem, corrigido na rota (5.9, 9.6, PR #191); acervo de 1.258 mensagens presas em `sent`: **fica como está** (decisão do operador, 10/09)
 - [ ] Ajuste 5 (`GROUP_UPDATE`) + Ressincronizar nas 4 conexões
 - [ ] `/root/evolution.yaml` atualizado (imagem por digest, `TELEMETRY_ENABLED`)
 - [ ] Docs e `CLAUDE.md` atualizados (5.6); `EVOLUTION-LID-FIX.md` marcado obsoleto
