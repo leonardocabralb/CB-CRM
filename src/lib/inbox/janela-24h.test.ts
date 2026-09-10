@@ -10,14 +10,21 @@ import {
 
 const AGORA = new Date("2026-08-31T12:00:00.000Z");
 
-/** O número oficial (Meta) e um número por QR Code (Evolution) da mesma conta. */
-const OFICIAL = "canal-oficial";
-const QR_CODE = "canal-qr-code";
+/** Os números de uma conta: dois oficiais (Meta), um por QR Code, um Instagram. */
+const OFICIAL = { id: "canal-oficial", kind: "meta" } as const;
+const OUTRO_OFICIAL = { id: "canal-oficial-2", kind: "meta" } as const;
+const QR_CODE = { id: "canal-qr-code", kind: "evolution" } as const;
+const INSTAGRAM = { id: "canal-instagram", kind: "instagram" } as const;
+
+/** Ids de provedor como chegam de verdade: a Meta usa `wamid.`, o Baileys não. */
+const WAMID = "wamid.HBgMNTU4Mzg4NzQ1MzE2FQIAEhggQTJEMEMwRjE1RkE0";
+const ID_DO_BAILEYS = "3EB0C431C2A9F8E3B6A1";
 
 function msg(
   sender_type: string,
   horasAtras: number,
-  channel_id: string | null = null
+  channel_id: string | null = null,
+  message_id: string | null = null
 ): MensagemDaJanela {
   return {
     sender_type,
@@ -25,6 +32,7 @@ function msg(
       AGORA.getTime() - horasAtras * 3600_000
     ).toISOString(),
     channel_id,
+    message_id,
   };
 }
 
@@ -87,7 +95,7 @@ describe("janelaFechada — conta sem conexão (canal de saída desconhecido)", 
   });
 
   it("sem canal de saída, mensagem carimbada com qualquer número conta", () => {
-    expect(janelaFechada([msg("customer", 2, QR_CODE)], AGORA, null)).toBe(
+    expect(janelaFechada([msg("customer", 2, QR_CODE.id)], AGORA, null)).toBe(
       false
     );
   });
@@ -104,31 +112,42 @@ describe("janelaFechada — a janela é POR NÚMERO (conversa mista)", () => {
   it("cliente escreveu há 2h SÓ pelo número por QR Code → o oficial está FECHADO", () => {
     // O caso que motivou a regra: a etiqueta dizia "22h restantes", o
     // compositor liberava texto livre e a Meta recusava (erro 131047).
-    const fio = [msg("customer", 2, QR_CODE), msg("agent", 1, QR_CODE)];
+    const fio = [
+      msg("customer", 2, QR_CODE.id, ID_DO_BAILEYS),
+      msg("agent", 1, QR_CODE.id),
+    ];
     expect(janelaFechada(fio, AGORA, OFICIAL)).toBe(true);
   });
 
   it("…e a mesma conversa, respondida pelo número por QR Code, está aberta", () => {
-    const fio = [msg("customer", 2, QR_CODE), msg("agent", 1, QR_CODE)];
+    const fio = [
+      msg("customer", 2, QR_CODE.id, ID_DO_BAILEYS),
+      msg("agent", 1, QR_CODE.id),
+    ];
     expect(janelaFechada(fio, AGORA, QR_CODE)).toBe(false);
   });
 
   it("vale a última do cliente NO OFICIAL, mesmo com outra mais nova pelo QR Code", () => {
-    const fio = [msg("customer", 5, OFICIAL), msg("customer", 1, QR_CODE)];
+    const fio = [
+      msg("customer", 5, OFICIAL.id, WAMID),
+      msg("customer", 1, QR_CODE.id, ID_DO_BAILEYS),
+    ];
     expect(janelaFechada(fio, AGORA, OFICIAL)).toBe(false);
     expect(minutosRestantes(fio, AGORA, OFICIAL)).toBe(19 * 60);
   });
 
   it("oficial há mais de 24h + QR Code há 1h → FECHADA no oficial", () => {
-    const fio = [msg("customer", 30, OFICIAL), msg("customer", 1, QR_CODE)];
+    const fio = [
+      msg("customer", 30, OFICIAL.id, WAMID),
+      msg("customer", 1, QR_CODE.id, ID_DO_BAILEYS),
+    ];
     expect(janelaFechada(fio, AGORA, OFICIAL)).toBe(true);
   });
 
-  it("mensagem SEM carimbo NÃO conta quando o número de saída é conhecido", () => {
-    // Anterior ao multi-canal ou de conexão apagada: nunca do oficial de hoje.
-    expect(janelaFechada([msg("customer", 1, null)], AGORA, OFICIAL)).toBe(
-      true
-    );
+  it("carimbada com o OUTRO número oficial não conta — o carimbo vence a procedência", () => {
+    expect(
+      janelaFechada([msg("customer", 1, OUTRO_OFICIAL.id, WAMID)], AGORA, OFICIAL)
+    ).toBe(true);
   });
 
   it("fio VAZIO continua ABERTO com canal de saída (PR #79)", () => {
@@ -136,23 +155,69 @@ describe("janelaFechada — a janela é POR NÚMERO (conversa mista)", () => {
   });
 
   it("'vazio' é o FIO inteiro: só mensagens nossas pelo oficial → FECHADA", () => {
-    expect(janelaFechada([msg("agent", 1, OFICIAL)], AGORA, OFICIAL)).toBe(
+    expect(janelaFechada([msg("agent", 1, OFICIAL.id)], AGORA, OFICIAL)).toBe(
       true
     );
   });
 });
 
+describe("janelaFechada — mensagem SEM carimbo decide pela procedência (Codex, PR #192)", () => {
+  it("da API da Meta (wamid) CONTA para o número oficial — o carimbo que faltou não tranca o compositor", () => {
+    // Carimbo em UPDATE separado que falhou, ou canal resolvido nulo: o
+    // cliente acabou de escrever e o compositor não pode trancar.
+    expect(janelaFechada([msg("customer", 1, null, WAMID)], AGORA, OFICIAL)).toBe(
+      false
+    );
+  });
+
+  it("histórico da Meta de antes do multi-canal também conta (instalação que atualizou)", () => {
+    expect(
+      minutosRestantes([msg("customer", 3, null, WAMID)], AGORA, OFICIAL)
+    ).toBe(21 * 60);
+  });
+
+  it("da Evolution (id do Baileys) NÃO conta — é a conversa mista que a Meta recusa", () => {
+    expect(
+      janelaFechada([msg("customer", 1, null, ID_DO_BAILEYS)], AGORA, OFICIAL)
+    ).toBe(true);
+  });
+
+  it("sem id de provedor nenhum não conta", () => {
+    expect(janelaFechada([msg("customer", 1, null, null)], AGORA, OFICIAL)).toBe(
+      true
+    );
+  });
+
+  it("da API da Meta NÃO conta quando a saída é o Instagram", () => {
+    // A mensagem de WhatsApp não abre a janela do Direct.
+    expect(
+      janelaFechada([msg("customer", 1, null, WAMID)], AGORA, INSTAGRAM)
+    ).toBe(true);
+  });
+
+  it("a carimbada pelo oficial ainda vence uma sem carimbo mais antiga", () => {
+    const fio = [
+      msg("customer", 20, null, WAMID),
+      msg("customer", 2, OFICIAL.id, WAMID),
+    ];
+    expect(minutosRestantes(fio, AGORA, OFICIAL)).toBe(22 * 60);
+  });
+});
+
 describe("ultimaDoClienteNoCanal", () => {
   it("pega a mais recente do cliente naquele canal, ignorando os outros", () => {
-    const antiga = msg("customer", 10, OFICIAL);
-    const recente = msg("customer", 3, OFICIAL);
-    const fio = [antiga, recente, msg("customer", 1, QR_CODE)];
+    const antiga = msg("customer", 10, OFICIAL.id, WAMID);
+    const recente = msg("customer", 3, OFICIAL.id, WAMID);
+    const fio = [antiga, recente, msg("customer", 1, QR_CODE.id, ID_DO_BAILEYS)];
     expect(ultimaDoClienteNoCanal(fio, OFICIAL)).toBe(recente);
   });
 
   it("sem mensagem do cliente naquele canal devolve undefined", () => {
     expect(
-      ultimaDoClienteNoCanal([msg("customer", 1, QR_CODE)], OFICIAL)
+      ultimaDoClienteNoCanal(
+        [msg("customer", 1, QR_CODE.id, ID_DO_BAILEYS)],
+        OFICIAL
+      )
     ).toBeUndefined();
   });
 });
@@ -198,7 +263,7 @@ describe("restanteParaExibir", () => {
   });
 
   it("cliente que escreveu há 23h30 pelo oficial → 30 minutos", () => {
-    const fio = [msgMin("customer", 23 * 60 + 30, OFICIAL)];
+    const fio = [msgMin("customer", 23 * 60 + 30, OFICIAL.id)];
     expect(restanteParaExibir(minutosRestantes(fio, AGORA, OFICIAL))).toEqual({
       unidade: "min",
       valor: 30,

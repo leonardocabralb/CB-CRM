@@ -21,6 +21,7 @@ import {
   minutosRestantes,
   restanteParaExibir,
   ultimaDoClienteNoCanal,
+  type CanalDeSaida,
 } from "@/lib/inbox/janela-24h";
 import { patchDeSituacao } from "@/lib/conversations/situacao";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
@@ -782,6 +783,13 @@ export function MessageThread({
   // compositor nunca trava (ver as props do MessageComposer).
   const evolutionActive = ehEvolution(activeChannel);
 
+  // Grupo só existe na Evolution (a Cloud API da Meta não entrega grupo) e
+  // não tem janela de 24h. E o `activeChannel` de um grupo cai no canal
+  // PADRÃO da conta (a conversa de grupo tem `channel_id` nulo): com o padrão
+  // no número oficial, sem esta guarda a regra aplicava a janela da Meta ao
+  // grupo — e, contada por número, trancava o compositor de todo grupo.
+  const ehGrupo = !!conversation?.group_id;
+
   /**
    * ⚠️ Enquanto os canais não chegam, o transporte é DESCONHECIDO — e
    * `evolutionActive` responde `false`, que aqui significaria "é Meta, a
@@ -805,18 +813,19 @@ export function MessageThread({
    * Falha abre o compositor (o lado em que a Evolution está); o portão do
    * disparo abaixo continua recusando envio Meta fora da janela.
    */
-  const janelaDe24h = !canaisCarregando && !canaisFalharam && !evolutionActive;
+  const janelaDe24h = !canaisCarregando && !canaisFalharam && !evolutionActive && !ehGrupo;
 
   /**
    * POR QUAL NÚMERO a janela é contada: o canal de SAÍDA — o mesmo que vai no
    * `expected_channel_id` do envio. A janela da Meta é por número (ver o
    * cabeçalho de `janela-24h.ts`): numa conversa mista, a mensagem que o
-   * cliente mandou pela outra conexão não abre a janela deste. Nulo quando
-   * não há canal resolvido — na prática, a conta sem conexão nenhuma (enquanto
-   * os canais carregam ou falham, `janelaDe24h` já é falso) —, e aí a regra
-   * conta o fio inteiro, como antes do multi-canal.
+   * cliente mandou pela outra conexão não abre a janela deste. Vai o canal
+   * inteiro (id + transporte): o transporte decide o que fazer com a mensagem
+   * sem carimbo. Nulo quando não há canal resolvido — na prática, a conta sem
+   * conexão nenhuma (enquanto os canais carregam ou falham, `janelaDe24h` já
+   * é falso) —, e aí a regra conta o fio inteiro, como antes do multi-canal.
    */
-  const canalDaJanela = activeChannel?.id ?? null;
+  const canalDaJanela: CanalDeSaida | null = activeChannel;
 
   // O relógio da badge (M11): `sessionInfo` lê a hora, e hora PASSA — sem um
   // tique, o memo congelava em "1h restantes" num fio parado e a janela
@@ -904,7 +913,7 @@ export function MessageThread({
    */
   const janelaDe24hRef = useRef(false);
   const mensagensRef = useRef<Message[]>(messages);
-  const canalDaJanelaRef = useRef<string | null>(canalDaJanela);
+  const canalDaJanelaRef = useRef<CanalDeSaida | null>(canalDaJanela);
   useEffect(() => {
     janelaDe24hRef.current = janelaDe24h;
     mensagensRef.current = messages;
@@ -2134,8 +2143,8 @@ export function MessageThread({
   // ⚠️ A condição era `!conversation || !contact`, e era ELA que impedia
   // qualquer conversa de grupo de abrir: grupo não tem contato (o CHECK
   // `cb_conv_contato_xor_grupo` garante um ou outro), então toda conversa de
-  // grupo caía no estado vazio, como se nada estivesse selecionado.
-  const ehGrupo = !!conversation?.group_id;
+  // grupo caía no estado vazio, como se nada estivesse selecionado. (O
+  // `ehGrupo` é declarado lá em cima, junto da janela de 24h.)
   if (!conversation || (!contact && !ehGrupo)) {
     return (
       <div className={cn("flex flex-1 flex-col items-center justify-center", DOODLE_BG_CLASSES)}>

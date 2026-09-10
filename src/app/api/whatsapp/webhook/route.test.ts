@@ -17,6 +17,8 @@ const h = vi.hoisted(() => ({
     replyContextParent: null as { id: string } | null,
     conversation: { id: 'conv-1', unread_count: 0, account_id: 'acc-1' },
     upsertCalls: [] as { row: Record<string, unknown>; options: unknown }[],
+    /** Erros que as próximas chamadas do upsert devolvem, em ordem (um por chamada). */
+    messageUpsertErrors: [] as ({ code: string; message: string; details?: string } | null)[],
     rpcCalls: [] as { name: string; args: Record<string, unknown> }[],
     afterCallbacks: [] as (() => Promise<void> | void)[],
     automationStarted: 0,
@@ -129,12 +131,14 @@ vi.mock('@supabase/supabase-js', () => ({
             // Idempotent insert: upsert(...).select('id')
             upsert: (row: Record<string, unknown>, options: unknown) => {
               h.state.upsertCalls.push({ row, options })
+              const erro = h.state.messageUpsertErrors.shift() ?? null
               return {
                 select: () =>
-                  Promise.resolve({
-                    data: h.state.messageUpsertResult,
-                    error: null,
-                  }),
+                  Promise.resolve(
+                    erro
+                      ? { data: null, error: erro }
+                      : { data: h.state.messageUpsertResult, error: null }
+                  ),
               }
             },
           }
@@ -224,11 +228,20 @@ vi.mock('@/lib/ai/auto-reply', () => ({
 // Multi-canal: o carimbo e a resolucao do canal de entrada sao NOSSOS. Sao
 // substituidos aqui para que os casos de regressao no fim do arquivo possam
 // observar se o webhook realmente os chama — e com quais argumentos.
-vi.mock('@/lib/cb-channels/stamp', () => ({
-  stampMessageChannel: vi.fn(async () => {}),
-  followConversationChannel: vi.fn(async () => {}),
-  pinConversationChannel: vi.fn(async () => {}),
-}))
+vi.mock('@/lib/cb-channels/stamp', async () => {
+  const real = await vi.importActual<typeof import('@/lib/cb-channels/stamp')>(
+    '@/lib/cb-channels/stamp'
+  )
+  return {
+    stampMessageChannel: vi.fn(async () => {}),
+    followConversationChannel: vi.fn(async () => {}),
+    pinConversationChannel: vi.fn(async () => {}),
+    // A gravação com a rede da FK é a REAL: é ela que os casos de regressão
+    // no fim do arquivo exercitam (canal no upsert; repetição sem canal).
+    gravarComCanal: real.gravarComCanal,
+    violouFkDoCanal: real.violouFkDoCanal,
+  }
+})
 vi.mock('@/lib/cb-channels/resolve-inbound', () => ({
   resolveInboundMetaChannelId: vi.fn(async () => null),
   resolveInboundMetaChannel: vi.fn(async () => null),
@@ -292,6 +305,7 @@ beforeEach(() => {
   h.state.replyContextParent = null
   h.state.conversation = { id: 'conv-1', unread_count: 0, account_id: 'acc-1' }
   h.state.upsertCalls = []
+  h.state.messageUpsertErrors = []
   h.state.rpcCalls = []
   h.state.afterCallbacks = []
   h.state.automationStarted = 0
@@ -589,14 +603,15 @@ describe('inbound webhook: after() awaits automations (#368)', () => {
 // Nenhum deles olharia para o carimbo de canal — e o carimbo é a peça que
 // um "aceitar a versão deles" apagaria sem quebrar nada visível.
 //
-// O conflito #4 do webhook trocou o nosso `.insert()` pelo `.upsert()`
-// idempotente deles, e o carimbo que vinha logo abaixo lia `insertedMsg`,
-// uma variável que deixou de existir. Passou a ler `insertedRows`. Se
-// alguém reverter isso num merge futuro, TODA mensagem recebida deixa de
-// registrar por qual número entrou — e a conversa para de seguir o cliente.
+// Desde 10/09/2026 o carimbo vai NO PRÓPRIO upsert (`channel_id`). Antes era
+// um UPDATE separado, depois do bump, que engolia a falha: a mensagem podia
+// ficar sem carimbo, e a janela de 24h por número (janela-24h.ts) a leria como
+// vinda de outro número. Um merge que devolva o upsert cru do upstream apaga o
+// campo em silêncio — e toda mensagem recebida deixa de registrar por qual
+// número entrou.
 // ============================================================
 describe('regressão de merge: carimbo de canal na entrada (multi-canal)', () => {
-  it('carimba o canal da mensagem recém-inserida, lendo o retorno do upsert', async () => {
+  it('carimba o canal NO PRÓPRIO upsert, e a conversa segue o cliente', async () => {
     const { stampMessageChannel, followConversationChannel } = await import(
       '@/lib/cb-channels/stamp'
     )
@@ -608,14 +623,10 @@ describe('regressão de merge: carimbo de canal na entrada (multi-canal)', () =>
 
     await runWebhook()
 
-    // O id tem que vir do retorno do UPSERT. Antes do merge vinha de
-    // `insertedMsg`; ler a variável errada não quebra o build, só deixa de
-    // carimbar — silenciosamente.
-    expect(stampMessageChannel).toHaveBeenCalledWith(
-      expect.anything(),
-      'msg-77',
-      'canal-1'
-    )
+    // Na linha inserida, não num UPDATE depois — aquele era best-effort e
+    // deixava a mensagem sem número quando falhava.
+    expect(h.state.upsertCalls[0].row).toMatchObject({ channel_id: 'canal-1' })
+    expect(stampMessageChannel).not.toHaveBeenCalled()
     // E a conversa segue o número por onde o cliente escreveu.
     expect(followConversationChannel).toHaveBeenCalledWith(
       expect.anything(),
@@ -624,8 +635,8 @@ describe('regressão de merge: carimbo de canal na entrada (multi-canal)', () =>
     )
   })
 
-  it('numa REENTREGA não carimba nada — o upsert já barrou antes', async () => {
-    const { stampMessageChannel } = await import('@/lib/cb-channels/stamp')
+  it('numa REENTREGA a conversa não segue de novo — o upsert já barrou antes', async () => {
+    const { followConversationChannel } = await import('@/lib/cb-channels/stamp')
     const { resolveInboundMetaChannelId } = await import(
       '@/lib/cb-channels/resolve-inbound'
     )
@@ -635,13 +646,13 @@ describe('regressão de merge: carimbo de canal na entrada (multi-canal)', () =>
 
     await runWebhook()
 
-    expect(stampMessageChannel).not.toHaveBeenCalled()
+    expect(followConversationChannel).not.toHaveBeenCalled()
   })
 
-  it('conta de um número só: sem canal resolvido, nada é carimbado', async () => {
+  it('conta de um número só: sem canal resolvido, a linha nasce sem carimbo', async () => {
     // O comportamento anterior ao multi-canal, que precisa continuar
     // existindo — carimbar um canal inventado seria pior que não carimbar.
-    const { stampMessageChannel } = await import('@/lib/cb-channels/stamp')
+    const { followConversationChannel } = await import('@/lib/cb-channels/stamp')
     const { resolveInboundMetaChannelId } = await import(
       '@/lib/cb-channels/resolve-inbound'
     )
@@ -649,6 +660,44 @@ describe('regressão de merge: carimbo de canal na entrada (multi-canal)', () =>
 
     await runWebhook()
 
-    expect(stampMessageChannel).not.toHaveBeenCalled()
+    expect(h.state.upsertCalls[0].row).toMatchObject({ channel_id: null })
+    expect(followConversationChannel).not.toHaveBeenCalled()
+  })
+
+  it('conexão apagada no meio: a FK recusa o canal e a mensagem é gravada SEM ele, sem se perder', async () => {
+    const { followConversationChannel } = await import('@/lib/cb-channels/stamp')
+    const { resolveInboundMetaChannelId } = await import(
+      '@/lib/cb-channels/resolve-inbound'
+    )
+    vi.mocked(resolveInboundMetaChannelId).mockResolvedValue('canal-apagado')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    h.state.messageUpsertErrors = [
+      {
+        code: '23503',
+        message:
+          'insert or update on table "messages" violates foreign key constraint "messages_channel_id_fkey"',
+        details: 'Key (channel_id)=(canal-apagado) is not present in table "cb_channels".',
+      },
+    ]
+
+    await runWebhook()
+
+    // Duas gravações: com o canal (recusada pela FK) e sem ele (a que vale).
+    expect(h.state.upsertCalls.map((c) => c.row.channel_id)).toEqual([
+      'canal-apagado',
+      null,
+    ])
+    // A repetição mantém a idempotência: reentrega continua sendo reentrega.
+    expect(h.state.upsertCalls[1].options).toMatchObject({
+      onConflict: 'conversation_id,message_id',
+      ignoreDuplicates: true,
+    })
+    // O canal sumiu: a conversa não segue um número que não existe mais…
+    expect(followConversationChannel).not.toHaveBeenCalled()
+    // …mas a mensagem entrou, e o resto da entrada rodou (o bump de não lidas).
+    expect(h.state.rpcCalls.map((c) => c.name)).toContain(
+      'bump_conversation_on_inbound'
+    )
+    warn.mockRestore()
   })
 })

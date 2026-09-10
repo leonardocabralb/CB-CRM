@@ -6,9 +6,73 @@
 // ainda não rodou, o carimbo simplesmente não acontece e o fluxo de
 // mensagens segue intacto — o carimbo NUNCA está no caminho crítico do
 // insert da mensagem (que roda antes e sozinho).
+//
+// ⚠️ A ENTRADA não usa mais `stampMessageChannel` (10/09/2026): o webhook da
+// Meta e o `persistInboundMessage` da Evolution gravam `channel_id` no
+// PRÓPRIO insert, por `gravarComCanal` (abaixo), como o grupo e o
+// `persistDeviceMessage` já faziam. Mensagem de cliente que ficava sem carimbo
+// quando este UPDATE falhava era lida pela janela de 24h por número como
+// vinda de outro número. O helper segue nos envios (núcleo, robô), onde a
+// mensagem é nossa e não abre janela.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+/** O erro do PostgREST no formato que importa aqui. */
+interface ErroDoBanco {
+  code?: string;
+  message?: string;
+  details?: string;
+}
+
+/**
+ * O insert estourou a FK de `messages.channel_id` → `cb_channels(id)` (902)?
+ * Só ESSA: violação da FK de `conversation_id` ou de `reply_to_message_id`
+ * também é 23503, e repeti-la sem canal mascararia defeito de verdade.
+ */
+export function violouFkDoCanal(error: ErroDoBanco | null | undefined): boolean {
+  if (!error || error.code !== '23503') return false;
+  const texto = `${error.message ?? ''} ${error.details ?? ''}`;
+  return texto.includes('messages_channel_id_fkey') || texto.includes('(channel_id)');
+}
+
+/**
+ * Grava a mensagem RECEBIDA com o canal no próprio insert — com a rede de
+ * segurança da FK.
+ *
+ * O canal é resolvido ANTES, às vezes segundos antes (atrás do download de um
+ * anexo, ou dos fluxos e da IA do item anterior do lote). Se a conexão for
+ * apagada nesse intervalo, o insert com o canal antigo estoura 23503 — e a
+ * mensagem do cliente se PERDERIA: os provedores já receberam 200 e ninguém
+ * reenvia. Aqui a gravação é repetida SEM canal, que é o estado que o
+ * `ON DELETE SET NULL` da 902 deixaria um instante depois (achado da revisão
+ * do PR #192). Enquanto o canal ia num UPDATE separado, esse caso só fazia o
+ * carimbo falhar em silêncio.
+ *
+ * Devolve o resultado que valeu e o canal que FICOU gravado (nulo depois da
+ * repetição): quem chama usa esse canal para a conversa seguir o cliente.
+ */
+export async function gravarComCanal<
+  // O tipo da resposta sai de `Awaited<ReturnType<F>>`, que é o que o `await`
+  // do próprio query builder do Supabase produz. Inferir `R` de
+  // `PromiseLike<R>` falha com o `then` genérico do builder e cai no limite
+  // da restrição — o chamador perderia o `data`.
+  F extends (canal: string | null) => PromiseLike<{ error: ErroDoBanco | null }>,
+>(
+  channelId: string | null,
+  gravar: F,
+): Promise<{ resultado: Awaited<ReturnType<F>>; canal: string | null }> {
+  const primeiro = await gravar(channelId);
+  if (channelId !== null && violouFkDoCanal(primeiro.error)) {
+    console.warn(
+      '[cb-channels] a conexão sumiu durante a entrada; mensagem gravada sem canal:',
+      channelId,
+    );
+    const semCanal = await gravar(null);
+    return { resultado: semCanal as Awaited<ReturnType<F>>, canal: null };
+  }
+  return { resultado: primeiro as Awaited<ReturnType<F>>, canal: channelId };
+}
 
 /**
  * Marca por qual canal esta mensagem passou (`messages.channel_id`). No-op

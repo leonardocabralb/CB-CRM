@@ -5,6 +5,8 @@ import {
   stampMessageChannel,
   followConversationChannel,
   pinConversationChannel,
+  gravarComCanal,
+  violouFkDoCanal,
 } from './stamp';
 
 // Mock de UPDATE: `.update(payload).eq(col,val)...` é aguardável (thenable) e
@@ -175,5 +177,88 @@ describe('pinConversationChannel', () => {
     });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(await pinConversationChannel(db, 'acct', 'conv-1', 'ch-1')).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------
+// A entrada grava o canal no PRÓPRIO insert (10/09/2026). Se a conexão for
+// apagada entre a resolução do canal e o insert, a FK de `messages.channel_id`
+// estoura — e sem a repetição a mensagem do cliente se perderia, porque o
+// provedor já recebeu 200 (achado da revisão do PR #192).
+// ------------------------------------------------------------
+const FK_DO_CANAL = {
+  code: '23503',
+  message:
+    'insert or update on table "messages" violates foreign key constraint "messages_channel_id_fkey"',
+  details: 'Key (channel_id)=(ch-apagado) is not present in table "cb_channels".',
+};
+
+describe('violouFkDoCanal', () => {
+  it('reconhece a FK do canal pelo nome da restrição ou pelo detalhe', () => {
+    expect(violouFkDoCanal(FK_DO_CANAL)).toBe(true);
+    expect(
+      violouFkDoCanal({ code: '23503', details: 'Key (channel_id)=(x) is not present' }),
+    ).toBe(true);
+  });
+
+  it('outra FK (conversa, citação) NÃO conta — repetir mascararia defeito', () => {
+    expect(
+      violouFkDoCanal({
+        code: '23503',
+        message: 'violates foreign key constraint "messages_conversation_id_fkey"',
+        details: 'Key (conversation_id)=(x) is not present in table "conversations".',
+      }),
+    ).toBe(false);
+  });
+
+  it('outro código, ou erro nenhum → false', () => {
+    expect(violouFkDoCanal({ code: '23505', message: 'duplicate key value' })).toBe(false);
+    expect(violouFkDoCanal(null)).toBe(false);
+  });
+});
+
+describe('gravarComCanal', () => {
+  it('grava com o canal e não repete quando dá certo', async () => {
+    const gravar = vi.fn(async (canal: string | null) => ({
+      data: { id: 'm1', canal },
+      error: null,
+    }));
+    const r = await gravarComCanal('ch1', gravar);
+    expect(gravar).toHaveBeenCalledTimes(1);
+    expect(gravar).toHaveBeenCalledWith('ch1');
+    expect(r.canal).toBe('ch1');
+    expect(r.resultado.data).toEqual({ id: 'm1', canal: 'ch1' });
+  });
+
+  it('conexão apagada no meio: repete SEM canal e a mensagem não se perde', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const gravar = vi.fn(async (canal: string | null) =>
+      canal
+        ? { data: null, error: FK_DO_CANAL }
+        : { data: { id: 'm1' }, error: null },
+    );
+    const r = await gravarComCanal('ch-apagado', gravar);
+    expect(gravar.mock.calls).toEqual([['ch-apagado'], [null]]);
+    expect(r.canal).toBeNull();
+    expect(r.resultado).toEqual({ data: { id: 'm1' }, error: null });
+  });
+
+  it('outro erro NÃO repete — devolve o erro como veio', async () => {
+    const outro = {
+      code: '23503',
+      message: 'violates foreign key constraint "messages_conversation_id_fkey"',
+    };
+    const gravar = vi.fn(async () => ({ data: null, error: outro }));
+    const r = await gravarComCanal('ch1', gravar);
+    expect(gravar).toHaveBeenCalledTimes(1);
+    expect(r.resultado.error).toBe(outro);
+    expect(r.canal).toBe('ch1');
+  });
+
+  it('sem canal resolvido nunca repete', async () => {
+    const gravar = vi.fn(async () => ({ data: null, error: FK_DO_CANAL }));
+    const r = await gravarComCanal(null, gravar);
+    expect(gravar).toHaveBeenCalledTimes(1);
+    expect(r.canal).toBeNull();
   });
 });

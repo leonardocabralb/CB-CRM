@@ -20,8 +20,8 @@ import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import {
-  stampMessageChannel,
   followConversationChannel,
+  gravarComCanal,
 } from '@/lib/cb-channels/stamp';
 
 /** A message from any transport, reduced to what persistence needs. */
@@ -401,26 +401,37 @@ export async function persistInboundMessage(
     .eq('sender_type', 'customer');
   const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0;
 
-  const { data: insertedMsg, error: msgError } = await db
-    .from('messages')
-    .insert({
-      conversation_id: conversation.id,
-      sender_type: 'customer',
-      content_type: contentType,
-      content_text: m.text,
-      media_url: m.mediaUrl ?? null,
-      message_id: m.providerMessageId,
-      remote_jid: m.remoteJid ?? null,
-      // Endereço para AGIR sobre a mensagem quando a conversa migrou para
-      // LID — ver migration 917. NULL é o caso normal.
-      remote_jid_lid: m.remoteJidLid ?? null,
-      reply_to_message_id: replyToId,
-      from_me: false,
-      status: 'delivered',
-      created_at: new Date(m.timestamp * 1000).toISOString(),
-    })
-    .select('id')
-    .single();
+  // O canal vai NO PRÓPRIO insert (10/09/2026) — o mesmo motivo do webhook da
+  // Meta: o carimbo em UPDATE separado podia falhar em silêncio e deixar a
+  // mensagem sem número (o `persistDeviceMessage` e o grupo já gravavam
+  // assim). `gravarComCanal` repete SEM canal se a conexão foi apagada no
+  // meio — senão a FK estouraria e a mensagem do cliente se perderia.
+  const { resultado: gravacao, canal: canalGravado } = await gravarComCanal(
+    m.channelId ?? null,
+    (canal) =>
+      db
+        .from('messages')
+        .insert({
+          conversation_id: conversation.id,
+          sender_type: 'customer',
+          content_type: contentType,
+          content_text: m.text,
+          media_url: m.mediaUrl ?? null,
+          message_id: m.providerMessageId,
+          remote_jid: m.remoteJid ?? null,
+          // Endereço para AGIR sobre a mensagem quando a conversa migrou para
+          // LID — ver migration 917. NULL é o caso normal.
+          remote_jid_lid: m.remoteJidLid ?? null,
+          channel_id: canal,
+          reply_to_message_id: replyToId,
+          from_me: false,
+          status: 'delivered',
+          created_at: new Date(m.timestamp * 1000).toISOString(),
+        })
+        .select('id')
+        .single(),
+  );
+  const { data: insertedMsg, error: msgError } = gravacao;
   // `!insertedMsg` junto com o erro: sem ele o id abaixo seria `string |
   // undefined` e o chamador não teria onde pendurar o anexo.
   if (msgError || !insertedMsg) {
@@ -443,12 +454,10 @@ export async function persistInboundMessage(
   // e produção roda Evolution). Ver `reopen.ts`.
   await reopenClosedConversation(db, conversation);
 
-  // Carimbo de canal (Fase 3): marca por onde a mensagem entrou e faz a
-  // conversa "seguir o cliente" (a menos que fixada). Best-effort e
-  // deploy-safe — nunca afeta o insert acima nem o fan-out abaixo.
-  if (m.channelId) {
-    await stampMessageChannel(db, insertedMsg.id, m.channelId);
-    await followConversationChannel(db, conversation.id, m.channelId);
+  // A conversa "segue o cliente" (a menos que fixada), pelo canal que FICOU
+  // gravado na mensagem — nulo se a conexão foi apagada no meio.
+  if (canalGravado) {
+    await followConversationChannel(db, conversation.id, canalGravado);
   }
 
   // ---- downstream engines (parity with the Meta webhook) ----

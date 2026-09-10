@@ -44,8 +44,11 @@ function ocorrencias(texto: string, agulha: string): number {
 
 describe('o fio e a janela de 24h (F5)', () => {
   it('#06: falha na busca de canais conta como "não sei", nunca como "é Meta"', () => {
+    // `!ehGrupo` desde 10/09/2026: grupo é só Evolution e o `activeChannel`
+    // dele cai no canal padrão — com o padrão no oficial, a janela da Meta
+    // trancava o compositor de todo grupo.
     expect(fio()).toContain(
-      'const janelaDe24h = !canaisCarregando && !canaisFalharam && !evolutionActive;',
+      'const janelaDe24h = !canaisCarregando && !canaisFalharam && !evolutionActive && !ehGrupo;',
     );
   });
 
@@ -70,7 +73,9 @@ describe('o fio e a janela de 24h (F5)', () => {
     // disparo têm de receber o MESMO — passar `null` num deles volta a contar
     // o fio inteiro sem erro de compilação.
     const f = fio();
-    expect(f).toContain('const canalDaJanela = activeChannel?.id ?? null;');
+    // O canal inteiro (id + transporte): o transporte decide o que fazer com a
+    // mensagem sem carimbo (`janela-24h.ts`, achado do Codex no PR #192).
+    expect(f).toContain('const canalDaJanela: CanalDeSaida | null = activeChannel;');
     expect(f).toContain('janelaFechada(messages, agora, canalDaJanela)');
     expect(f).toContain(
       'janelaFechada(mensagensRef.current, new Date(), canalDaJanelaRef.current)',

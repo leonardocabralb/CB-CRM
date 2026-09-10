@@ -25,53 +25,96 @@
 
 import { differenceInMinutes } from 'date-fns';
 
+import type { CbChannel } from '@/lib/cb-channels/repo';
+import { ehMeta } from '@/lib/cb-channels/transporte';
+
 /** O mínimo que a regra precisa de uma mensagem. */
 export interface MensagemDaJanela {
   sender_type: string;
   created_at: string;
   /** Conexão por onde a mensagem passou (`messages.channel_id`, 902). Nulo =
-   *  sem carimbo: anterior ao multi-canal, ou de uma conexão já apagada. */
+   *  sem carimbo. */
   channel_id?: string | null;
+  /** Id do provedor (`messages.message_id`). O da API oficial da Meta começa
+   *  com `wamid.` — é o que identifica a mensagem da Meta sem carimbo. */
+  message_id?: string | null;
 }
+
+/** O número por onde se vai responder: o `id` casa o carimbo; o `kind`
+ *  decide o que fazer com a mensagem sem carimbo. */
+export type CanalDeSaida = Pick<CbChannel, 'id' | 'kind'>;
 
 export const HORAS_DA_JANELA = 24;
 const MINUTOS_DA_JANELA = HORAS_DA_JANELA * 60;
 
+/** Mensagem da API oficial da Meta: o id do provedor é um `wamid.`. Nem a
+ *  Evolution (ids hexadecimais do Baileys) nem o Instagram usam o prefixo. */
+function veioPelaApiDaMeta(m: MensagemDaJanela): boolean {
+  return typeof m.message_id === 'string' && m.message_id.startsWith('wamid.');
+}
+
 /**
- * A última mensagem do cliente que CONTA para a janela do número de saída.
+ * A mensagem do cliente CONTA para a janela deste número de saída?
  *
- * - `canalDeSaida` preenchido: só a carimbada com ESTE canal. ⚠️ Mensagem SEM
- *   carimbo não conta: ela é anterior ao multi-canal ou veio de uma conexão
- *   apagada — nos dois casos, não de um número que existe hoje —, e
- *   atribuí-la ao número de saída seria inventar (a mesma regra do separador
- *   de canal do fio, no CLAUDE.md).
- * - `canalDeSaida` nulo: o número de saída é DESCONHECIDO, e isso só acontece
- *   na conta sem conexão nenhuma — o legado de número único. Ali toda
- *   mensagem do cliente conta, como antes do multi-canal.
+ * - Carimbada: só se o carimbo for o do número de saída.
+ * - ⚠️ SEM carimbo é AMBÍGUA, e a regra decide pela PROCEDÊNCIA:
+ *   - veio pela API da Meta (`wamid.`) e a saída é um número Meta → CONTA.
+ *     É o carimbo que faltou: até 10/09/2026 ele era um UPDATE separado que
+ *     engolia a falha (hoje vai no próprio insert, mas o canal ainda resolve
+ *     nulo quando a consulta de `cb_channels` falha), ou é histórico de antes
+ *     do multi-canal, quando o número oficial era o único da conta. Não
+ *     contar trancava o compositor sobre um cliente que acabou de escrever —
+ *     e compositor trancado não tem saída na tela (achado do Codex no PR #192).
+ *   - qualquer outra (id da Evolution, ou saída que não é Meta) → NÃO conta.
+ *     Mensagem da Evolution sem carimbo numa conversa mista é justamente o
+ *     caso que a Meta recusa.
+ *   O resíduo aceito: numa conta com DOIS números oficiais, a mensagem da
+ *   Meta sem carimbo é atribuída ao número de saída. É raro — depende de uma
+ *   falha, ou de uma conexão oficial APAGADA (o `ON DELETE SET NULL` da 902
+ *   anula o carimbo das mensagens dela) — e o erro cai do lado da falha
+ *   VISÍVEL (a Meta recusa e a bolha fica em falha), nunca do compositor
+ *   trancado. Antes da regra por número, esse caso já contava do mesmo jeito.
+ * - `canalDeSaida` nulo: número de saída DESCONHECIDO, e isso só acontece na
+ *   conta sem conexão nenhuma (o legado de número único). Ali toda mensagem
+ *   do cliente conta, como antes do multi-canal.
  */
+function contaParaOCanal(
+  m: MensagemDaJanela,
+  canalDeSaida: CanalDeSaida | null
+): boolean {
+  if (canalDeSaida === null) return true;
+  if (m.channel_id) return m.channel_id === canalDeSaida.id;
+  return ehMeta(canalDeSaida) && veioPelaApiDaMeta(m);
+}
+
+/** A última mensagem do cliente que CONTA para a janela do número de saída. */
 export function ultimaDoClienteNoCanal(
   mensagens: readonly MensagemDaJanela[],
-  canalDeSaida: string | null
+  canalDeSaida: CanalDeSaida | null
 ): MensagemDaJanela | undefined {
   for (let i = mensagens.length - 1; i >= 0; i--) {
     const m = mensagens[i];
     if (m.sender_type !== 'customer') continue;
-    if (canalDeSaida !== null && m.channel_id !== canalDeSaida) continue;
-    return m;
+    if (contaParaOCanal(m, canalDeSaida)) return m;
   }
   return undefined;
 }
 
 /**
  * Minutos que ainda restam da janela, contados da última mensagem do cliente
- * NO CANAL DE SAÍDA. Zero quando não há mensagem dele ali ou quando as 24h já
- * passaram. Fica sempre entre 0 e 24h: relógio do aparelho atrasado em
- * relação ao carimbo da mensagem não produz "25h restantes".
+ * que conta para o NÚMERO DE SAÍDA. Zero quando não há mensagem dele ali ou
+ * quando as 24h já passaram. Fica sempre entre 0 e 24h: relógio do aparelho
+ * atrasado em relação ao carimbo da mensagem não produz "25h restantes".
+ *
+ * Os minutos já PASSADOS são truncados (`differenceInMinutes`), então o minuto
+ * em curso ainda conta como restante: a etiqueta pode prometer até 59
+ * segundos a mais. O portão não sofre disso — fechada é `restante === 0`, que
+ * equivale a 24h00 exatas já passadas.
  */
 export function minutosRestantes(
   mensagens: readonly MensagemDaJanela[],
   agora: Date,
-  canalDeSaida: string | null
+  canalDeSaida: CanalDeSaida | null
 ): number {
   const ultima = ultimaDoClienteNoCanal(mensagens, canalDeSaida);
   if (!ultima) return 0;
@@ -89,8 +132,9 @@ export function minutosRestantes(
  * recorte do canal: fio com mensagens por outro número e nenhuma do cliente
  * no de saída é justamente o caso que a Meta recusa.
  *
- * ⚠️ Fio COM mensagens e NENHUMA do cliente no canal de saída responde
- * `true`: só o cliente abre a janela, e ele nunca a abriu NESTE número.
+ * ⚠️ Fio COM mensagens e NENHUMA do cliente que conte para o canal de saída
+ * responde `true`: só o cliente abre a janela, e ele nunca a abriu NESTE
+ * número.
  *
  * Fechada é o mesmo que "não resta nenhum minuto" — a etiqueta e o portão
  * nunca discordam sobre o instante da virada.
@@ -102,7 +146,7 @@ export function minutosRestantes(
 export function janelaFechada(
   mensagens: readonly MensagemDaJanela[],
   agora: Date,
-  canalDeSaida: string | null
+  canalDeSaida: CanalDeSaida | null
 ): boolean {
   if (mensagens.length === 0) return false;
   return minutosRestantes(mensagens, agora, canalDeSaida) === 0;
@@ -110,8 +154,9 @@ export function janelaFechada(
 
 /**
  * Como a etiqueta fala o que resta: horas INTEIRAS enquanto sobra pelo menos
- * uma; na última hora, minutos. Arredonda sempre PARA BAIXO — a etiqueta nunca
- * promete tempo que não há.
+ * uma; na última hora, minutos. As horas arredondam PARA BAIXO — a etiqueta
+ * nunca promete uma hora que não há. Os minutos herdam o truncamento de
+ * `minutosRestantes` (até 59 segundos a mais; ver lá).
  *
  * ⚠️ Antes desta função o cálculo era em horas inteiras e o ramo de minutos
  * do cabeçalho nunca rodava: a última hora aparecia inteira como "1h
