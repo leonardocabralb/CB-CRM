@@ -36,7 +36,7 @@ export async function GET(request: Request) {
       app = await lerAppDoInstagram(supabaseAdmin(), ctx.accountId);
     } catch (err) {
       console.error('[cb/instagram/app] leitura falhou:', err instanceof Error ? err.message : err);
-      return NextResponse.json({ error: 'Não foi possível ler o app do Instagram.' }, { status: 500 });
+      return NextResponse.json({ error: 'Não foi possível ler o app da Meta.' }, { status: 500 });
     }
     return NextResponse.json({
       configurado: app !== null,
@@ -75,7 +75,7 @@ export async function PUT(request: Request) {
       });
     } catch (err) {
       console.error('[cb/instagram/app] gravação falhou:', err instanceof Error ? err.message : err);
-      return NextResponse.json({ error: 'Não foi possível salvar o app do Instagram.' }, { status: 500 });
+      return NextResponse.json({ error: 'Não foi possível salvar o app da Meta.' }, { status: 500 });
     }
     if (resultado === 'sem_app') {
       return NextResponse.json({ error: 'Informe o Instagram App Secret.' }, { status: 400 });

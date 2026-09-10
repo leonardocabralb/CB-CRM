@@ -543,24 +543,52 @@ export function CbChannelsPanel() {
     retornoDoOAuthRef.current = true;
     const canalId = searchParams.get('canal');
     const username = searchParams.get('username') ?? '';
+    const primeira = searchParams.get('primeira') === '1';
     const motivo = motivoDoOAuth(searchParams.get('motivo'));
     const detalhe = searchParams.get('detalhe') ?? '';
     const params = new URLSearchParams(searchParams.toString());
-    for (const chave of ['instagram', 'motivo', 'detalhe', 'canal', 'username']) params.delete(chave);
+    for (const chave of ['instagram', 'motivo', 'detalhe', 'canal', 'username', 'primeira']) {
+      params.delete(chave);
+    }
     router.replace(`/settings?${params.toString()}`);
     if (situacao === 'conectado') {
-      toast.success(t('instagramConnectedToast', { username }));
       void (async () => {
         await load();
-        // A Meta só entrega depois do webhook configurado (uma vez por app).
-        if (canalId) await abrirWebhookDoInstagram({ id: canalId, label: `@${username}` });
+        // O sucesso é afirmado só depois de a conexão aparecer NESTA conta
+        // (o GET é escopado por conta): a URL é de quem a escreveu, e um
+        // link forjado não pode anunciar "Instagram conectado: @qualquer".
+        let payload: { igUsername?: string | null; verifyToken?: string | null } | null = null;
+        try {
+          const res = canalId ? await fetch(`/api/cb/channels/${canalId}/instagram`) : null;
+          if (res?.ok) payload = await res.json();
+        } catch {
+          payload = null;
+        }
+        if (!payload) {
+          toast.error(t('instagramOauthError_erro', { detalhe: '' }));
+          return;
+        }
+        const nome = `@${payload.igUsername ?? username}`;
+        toast.success(t('instagramConnectedToast', { username: nome.slice(1) }));
+        // O webhook no painel da Meta é UMA vez por app: o diálogo (que diz
+        // "nada chega até isto ser feito") só abre para a PRIMEIRA conexão;
+        // nas demais ele mentiria, e com um verify token diferente do
+        // registrado. O callback é quem sabe se foi a primeira.
+        if (primeira) {
+          setIgWebhook({ label: nome, verifyToken: payload.verifyToken ?? null });
+        } else {
+          toast.info(t('instagramWebhookAlreadyToast'));
+        }
       })();
       return;
     }
     toast.error(
       t(`instagramOauthError_${motivo}` as Parameters<typeof t>[0], { detalhe }),
     );
-  }, [searchParams, router, t, load, abrirWebhookDoInstagram]);
+    // A ref nunca é zerada: o botão navega com `window.location.assign`
+    // (página inteira), então cada volta do login é uma montagem nova.
+    // Trocar por navegação client-side quebraria esta premissa.
+  }, [searchParams, router, t, load]);
 
   const handleCreateInstagram = async () => {
     setCreating(true);
@@ -1432,7 +1460,18 @@ export function CbChannelsPanel() {
                   {igApp === null ? (
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   ) : igApp.falhou ? (
-                    <p className="text-sm text-red-700 dark:text-red-300">{t('instagramAppLoadFailed')}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm text-red-700 dark:text-red-300">{t('instagramAppLoadFailed')}</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => void carregarAppDoInstagram()}
+                      >
+                        {t('instagramAppRetry')}
+                      </Button>
+                    </div>
                   ) : igApp.configurado && !igAppEditando ? (
                     <p className="flex items-center gap-1 text-sm text-foreground">
                       <BadgeCheck className="h-4 w-4 text-emerald-500" />
@@ -1472,7 +1511,24 @@ export function CbChannelsPanel() {
                           </button>
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">{t('instagramAppSecretHint')}</p>
+                        {igApp.configurado && (
+                          <p className="mt-1 text-xs text-muted-foreground">{t('instagramAppChangeHint')}</p>
+                        )}
                       </div>
+                      <Accordion>
+                        <AccordionItem className="border-border">
+                          <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
+                            {t('instagramHelpSecret')}
+                          </AccordionTrigger>
+                          <AccordionContent className="text-muted-foreground">
+                            <ol className="list-inside list-decimal space-y-1 text-sm">
+                              <li>{t('instagramHelpToken_1')}</li>
+                              <li>{t('instagramHelpSecret_1')}</li>
+                              <li>{t('instagramHelpSecret_2')}</li>
+                            </ol>
+                          </AccordionContent>
+                        </AccordionItem>
+                      </Accordion>
                       <div className="flex justify-end gap-2">
                         {igApp.configurado && (
                           <Button
@@ -1528,8 +1584,18 @@ export function CbChannelsPanel() {
                 </div>
 
                 {/* 2. O login do Instagram: a conta entra, autoriza, e o CRM
-                    recebe o token direto da Meta. É navegação, não fetch. */}
+                    recebe o token direto da Meta. É navegação, não fetch.
+                    A linha de baixo tem TRÊS estados de propósito — "ainda não
+                    li", "não consegui ler" e "li: não há app" — e só o terceiro
+                    manda cadastrar; senão a tela afirma o que não mediu (a
+                    "lista vazia virando afirmação" do CLAUDE.md). A falha mais
+                    provável da primeira vez acontece FORA do CRM (página de
+                    erro do Instagram), então o sintoma é nomeado aqui. */}
                 <div className="space-y-2 rounded-md border border-border p-3">
+                  <ol className="list-inside list-decimal space-y-1 text-xs text-muted-foreground">
+                    <li>{t('instagramOauthStep_1')}</li>
+                    <li>{t('instagramOauthStep_2')}</li>
+                  </ol>
                   <Button
                     type="button"
                     className="w-full"
@@ -1540,7 +1606,13 @@ export function CbChannelsPanel() {
                     {t('instagramOauthConnect')}
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    {igApp?.configurado ? t('instagramOauthHint') : t('instagramOauthNeedsApp')}
+                    {igApp === null
+                      ? t('instagramAppLoading')
+                      : igApp.falhou
+                        ? t('instagramAppLoadFailed')
+                        : igApp.configurado
+                          ? t('instagramOauthSymptom')
+                          : t('instagramOauthNeedsApp')}
                   </p>
                 </div>
 
@@ -1635,17 +1707,6 @@ export function CbChannelsPanel() {
                                 <li>{t('instagramHelpToken_1')}</li>
                                 <li>{t('instagramHelpToken_2')}</li>
                                 <li>{t('instagramHelpToken_3')}</li>
-                              </ol>
-                            </AccordionContent>
-                          </AccordionItem>
-                          <AccordionItem className="border-border">
-                            <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
-                              {t('instagramHelpSecret')}
-                            </AccordionTrigger>
-                            <AccordionContent className="text-muted-foreground">
-                              <ol className="list-inside list-decimal space-y-1 text-sm">
-                                <li>{t('instagramHelpSecret_1')}</li>
-                                <li>{t('instagramHelpSecret_2')}</li>
                               </ol>
                             </AccordionContent>
                           </AccordionItem>
@@ -2148,7 +2209,20 @@ export function CbChannelsPanel() {
             </DialogDescription>
           </DialogHeader>
           <div>
-            <Label htmlFor="cb-ig-renew">{t('instagramFieldAccessToken')}</Label>
+            {/* Reconectar pelo login: a MESMA conta autoriza de novo e o token
+              nasce com validade medida; rótulo e Human Agent ficam (canal.ts).
+              Sem app da Meta cadastrado, a rota volta com `sem_app`, e o
+              token colado abaixo continua valendo. */}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => window.location.assign('/api/cb/instagram/oauth/start')}
+          >
+            <InstagramGlyph className="mr-2 h-4 w-4" />
+            {t('instagramRenewByLogin')}
+          </Button>
+          <Label htmlFor="cb-ig-renew">{t('instagramFieldAccessToken')}</Label>
             <Input
               id="cb-ig-renew"
               type="password"

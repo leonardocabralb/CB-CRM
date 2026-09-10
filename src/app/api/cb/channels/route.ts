@@ -495,7 +495,7 @@ async function createInstagramChannel(
     } catch (err) {
       console.error('[cb/channels] app do Instagram ilegível:', err instanceof Error ? err.message : err);
       return NextResponse.json(
-        { error: 'Não foi possível ler o app do Instagram.' },
+        { error: 'Não foi possível ler o app da Meta.' },
         { status: 500 },
       );
     }

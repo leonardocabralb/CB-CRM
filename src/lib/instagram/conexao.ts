@@ -57,6 +57,7 @@ export const CAMINHO_DO_CALLBACK = '/api/cb/instagram/oauth/callback';
  */
 export const MOTIVOS_DO_OAUTH = [
   'sessao',
+  'sem_permissao',
   'limite',
   'sem_app',
   'recusado',

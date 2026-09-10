@@ -11,7 +11,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { supabaseAdmin } from '@/lib/automations/admin-client';
-import { requireRole } from '@/lib/auth/account';
+import { ForbiddenError, UnauthorizedError, requireRole } from '@/lib/auth/account';
 import {
   checkRateLimit,
   RATE_LIMITS,
@@ -28,6 +28,13 @@ import {
   urlDeRedirecionamento,
 } from '@/lib/instagram/oauth';
 
+/** Repetida no callback de propósito: route.ts só pode exportar handlers. */
+function motivoDaFalhaDeAcesso(err: unknown): MotivoDoOAuth {
+  if (err instanceof UnauthorizedError) return 'sessao';
+  if (err instanceof ForbiddenError) return 'sem_permissao';
+  return 'erro';
+}
+
 export async function GET(request: NextRequest) {
   const origem = origemDoPedido(request);
   const voltar = (motivo: MotivoDoOAuth) => {
@@ -41,8 +48,11 @@ export async function GET(request: NextRequest) {
   let ctx;
   try {
     ctx = await requireRole('admin');
-  } catch {
-    return voltar('sessao');
+  } catch (err) {
+    // Sem sessão o middleware já mandaria para o login; quem tem sessão e
+    // não é admin precisa ouvir que é o PERFIL, não a sessão; o resto é
+    // falha nossa (perfil que não carregou).
+    return voltar(motivoDaFalhaDeAcesso(err));
   }
   const limit = checkRateLimit(`cb:igOauth:${ctx.userId}`, RATE_LIMITS.adminAction);
   if (!limit.success) return voltar('limite');
@@ -57,7 +67,15 @@ export async function GET(request: NextRequest) {
   if (!app) return voltar('sem_app');
 
   const nonce = novoNonce();
-  const estado = criarEstado({ accountId: ctx.accountId, userId: ctx.userId, nonce });
+  let estado: string;
+  try {
+    estado = criarEstado({ accountId: ctx.accountId, userId: ctx.userId, nonce });
+  } catch (err) {
+    // ENCRYPTION_KEY ausente ou curta (o `crm.env` que não foi carregado):
+    // volta com motivo, não com a página 500 crua do Next.
+    console.error('[cb/instagram/oauth] sem chave para o state:', err instanceof Error ? err.message : err);
+    return voltar('erro');
+  }
   const resposta = NextResponse.redirect(
     urlDeAutorizacao({
       appId: app.appId,

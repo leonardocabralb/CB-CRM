@@ -178,11 +178,18 @@ Branch `feat/instagram-oauth` (construída em 09/09 à noite).
       copiar), botão "Conectar com Instagram", token colado num acordeão; a
       volta do login é tratada UMA vez (toast + diálogo do webhook); i18n nos
       dois dicionários com teste da chave montada (`retorno-do-oauth.test.ts`).
-- [ ] Painel da Meta: registrar a URI de retorno em Instagram → Business
-      login settings → "Valid OAuth Redirect URIs"; adicionar cada conta do
-      escritório ao app ("Gerar tokens de acesso" → adicionar conta). O
+- [ ] Painel da Meta: registrar a URI de retorno em Instagram → Configuração
+      da API com login do Instagram → "Configurar o login empresarial do
+      Instagram" → "Configurações de login empresarial" → "URIs de
+      redirecionamento OAuth" (a de produção E a do preview, se o teste local
+      for até o Instagram — a URI é derivada do pedido); adicionar cada conta
+      do escritório ao app ("Gerar tokens de acesso" → adicionar conta). O
       operador cadastra App ID + Secret no CRM e clica "Conectar com
       Instagram" em cada conta.
+- [x] Revisão em duas lentes (produto/convenções e segurança/correção) antes
+      do merge: reconectar preserva rótulo e Human Agent; diálogo do webhook
+      só na primeira conexão; três estados na linha do botão; state assinado
+      dentro do try; motivo `sem_permissao`; `outra_conta` com o @.
 - [ ] Medir na primeira conexão real: `subscribed_apps` aceita `message_edit`
       e `messaging_seen`? A troca pelo token longo aceita `Bearer` (para tirar
       o token curto da query)?

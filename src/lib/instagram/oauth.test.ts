@@ -29,23 +29,52 @@ function pedido(url: string, headers: Record<string, string> = {}): Request {
 }
 
 describe('origemDoPedido', () => {
-  it('usa os cabeçalhos x-forwarded-* que o Traefik escreve', () => {
+  const SITE = 'https://crm.exemplo.com/';
+
+  it('sem NEXT_PUBLIC_SITE_URL, usa os cabeçalhos x-forwarded-* que o Traefik escreve', () => {
     expect(
       origemDoPedido(
         pedido('http://localhost:3000/api/x', {
           'x-forwarded-proto': 'https',
           'x-forwarded-host': 'crm.exemplo.com',
-        })
+        }),
+        undefined
       )
     ).toBe('https://crm.exemplo.com');
   });
 
-  it('sem proxy, é a origem do próprio pedido (preview local)', () => {
-    expect(origemDoPedido(pedido('http://localhost:3131/api/x'))).toBe(
+  it('pedido do host do site vira a URL canônica, mesmo com proto forjado', () => {
+    expect(
+      origemDoPedido(
+        pedido('http://localhost:3000/api/x', {
+          'x-forwarded-proto': 'http',
+          'x-forwarded-host': 'crm.exemplo.com',
+        }),
+        SITE
+      )
+    ).toBe('https://crm.exemplo.com');
+  });
+
+  it('host PÚBLICO estranho no cabeçalho é ignorado: cai no site', () => {
+    // Sem sessão a rota redireciona antes de qualquer checagem — o Location
+    // não pode apontar para o host que veio no cabeçalho (revisão do #189).
+    expect(
+      origemDoPedido(
+        pedido('http://localhost:3000/api/x', {
+          'x-forwarded-proto': 'https',
+          'x-forwarded-host': 'evil.example',
+        }),
+        SITE
+      )
+    ).toBe('https://crm.exemplo.com');
+  });
+
+  it('o preview local passa como veio, mesmo com o site configurado', () => {
+    expect(origemDoPedido(pedido('http://localhost:3131/api/x'), SITE)).toBe(
       'http://localhost:3131'
     );
     expect(
-      origemDoPedido(pedido('http://x/api', { host: 'localhost:3131' }))
+      origemDoPedido(pedido('http://x/api', { host: 'localhost:3131' }), SITE)
     ).toBe('http://localhost:3131');
   });
 
@@ -54,12 +83,14 @@ describe('origemDoPedido', () => {
       origemDoPedido(
         pedido('http://localhost:3131/api/x', {
           'x-forwarded-host': 'evil.com/../?x=',
-        })
+        }),
+        undefined
       )
     ).toBe('http://localhost:3131');
     expect(
       origemDoPedido(
-        pedido('http://localhost:3131/api/x', { 'x-forwarded-proto': 'ftp' })
+        pedido('http://localhost:3131/api/x', { 'x-forwarded-proto': 'ftp' }),
+        undefined
       )
     ).toBe('http://localhost:3131');
   });
@@ -193,13 +224,13 @@ describe('trocarCodigoPorToken', () => {
     });
   });
 
-  it('aceita a forma chapada', async () => {
-    const r = await trocarCodigoPorToken(
-      args,
-      respondendo(200, { access_token: TOKEN_CURTO, user_id: '1', permissions: 'a' })
-    );
-    expect(r.igUserId).toBe('1');
-    expect(r.permissoes).toEqual(['a']);
+  it('só a forma documentada (`data[0]`) é aceita', async () => {
+    await expect(
+      trocarCodigoPorToken(
+        args,
+        respondendo(200, { access_token: TOKEN_CURTO, user_id: '1', permissions: 'a' })
+      )
+    ).rejects.toBeInstanceOf(InstagramApiError);
   });
 
   it('a mensagem de erro do api.instagram.com sai sem o segredo e sem o código', async () => {
@@ -217,6 +248,14 @@ describe('trocarCodigoPorToken', () => {
       message: `Invalid platform app ${MARCA_DE_TOKEN} code=${MARCA_DE_TOKEN}`,
       status: 400,
     });
+  });
+
+  it('sem o campo `permissions` a resposta é "não sei", não "não concedeu"', async () => {
+    const r = await trocarCodigoPorToken(
+      args,
+      respondendo(200, { data: [{ access_token: TOKEN_CURTO, user_id: '1' }] })
+    );
+    expect(r.permissoes).toBeNull();
   });
 
   it('resposta sem token é erro, não canal mudo', async () => {

@@ -17,10 +17,12 @@
 //     carrega conta, membro, nonce e validade; o nonce repete num cookie
 //     HttpOnly. Sem isso, um link de callback forjado amarraria o Instagram
 //     de um estranho à conta do escritório (login CSRF).
-//   · A URI de retorno é DERIVADA DO PEDIDO (`x-forwarded-*`, que o Traefik
-//     escreve), nunca de `NEXT_PUBLIC_SITE_URL`: a volta tem de cair na
-//     MESMA origem em que a sessão e o cookie vivem — no preview local isso
-//     é `localhost`, e a Meta só aceita o que está registrado no painel.
+//   · A URI de retorno tem de cair na MESMA origem em que a sessão e o
+//     cookie vivem. `origemDoPedido` lê o pedido (`x-forwarded-*`, que o
+//     Traefik escreve), mas quem manda é `NEXT_PUBLIC_SITE_URL`: pedido do
+//     host do site vira a URL canônica, host PÚBLICO estranho no cabeçalho
+//     é ignorado (cai no site), e só um host local/privado (o preview em
+//     `localhost`) passa como veio. A Meta só aceita o que está registrado.
 //   · Segredo, código e token passam por `semSegredo` em toda mensagem de
 //     erro (a Meta ecoa os três). O token CURTO viaja na query do passo 3
 //     porque é a forma documentada daquele endpoint: vive 1 h, nunca é
@@ -28,6 +30,8 @@
 // ============================================================
 
 import { createHmac, hkdfSync, randomBytes, timingSafeEqual } from 'node:crypto';
+
+import { ehUrlAlcancavel } from '@/lib/cb-channels/webhook-url';
 
 import { CAMINHO_DO_CALLBACK } from './conexao';
 import {
@@ -72,11 +76,21 @@ const TIMEOUT_MS = 15_000;
 // ------------------------------------------------------------
 
 /**
- * A origem que o NAVEGADOR usou para chegar aqui. Atrás do Traefik, os
- * cabeçalhos `x-forwarded-*` (que ele sobrescreve); no preview, o próprio
- * pedido. Cabeçalho com forma estranha cai na URL do pedido.
+ * A origem que o NAVEGADOR usou para chegar aqui — com `NEXT_PUBLIC_SITE_URL`
+ * como árbitro. O cabeçalho `Host`/`x-forwarded-host` é do cliente, e sem
+ * sessão a rota responde com um redirect antes de qualquer checagem: um
+ * `curl -H 'x-forwarded-host: evil.example'` não pode virar
+ * `Location: https://evil.example/...` (achado da revisão do PR #189).
+ *
+ *   · host do pedido == host do site → a URL canônica do site (proto incluído);
+ *   · host local/privado (o preview em `localhost`) → o pedido, como veio;
+ *   · qualquer outro host público → o site (o cabeçalho é ignorado);
+ *   · sem `NEXT_PUBLIC_SITE_URL` (instalação sem a env) → o pedido.
  */
-export function origemDoPedido(request: Request): string {
+export function origemDoPedido(
+  request: Request,
+  siteUrl: string | undefined = process.env.NEXT_PUBLIC_SITE_URL
+): string {
   const primeiro = (v: string | null) => v?.split(',')[0]?.trim() ?? '';
   const url = new URL(request.url);
   const proto =
@@ -86,10 +100,34 @@ export function origemDoPedido(request: Request): string {
     primeiro(request.headers.get('x-forwarded-host')) ||
     primeiro(request.headers.get('host')) ||
     url.host;
-  if (!/^https?$/.test(proto) || !/^[A-Za-z0-9.-]+(:\d{1,5})?$/.test(host)) {
-    return url.origin;
+  const pedido =
+    /^https?$/.test(proto) && /^[A-Za-z0-9.-]+(:\d{1,5})?$/.test(host)
+      ? `${proto}://${host}`
+      : url.origin;
+
+  const site = origemDoSite(siteUrl);
+  if (!site) return pedido;
+  if (hostnameDe(pedido) === hostnameDe(site)) return site;
+  if (!ehUrlAlcancavel(pedido)) return pedido;
+  return site;
+}
+
+function origemDoSite(siteUrl: string | undefined): string | null {
+  const bruto = siteUrl?.trim().replace(/\/+$/, '');
+  if (!bruto) return null;
+  try {
+    return new URL(bruto).origin;
+  } catch {
+    return null;
   }
-  return `${proto}://${host}`;
+}
+
+function hostnameDe(origem: string): string {
+  try {
+    return new URL(origem).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
 }
 
 export function urlDeRedirecionamento(origem: string): string {
@@ -281,8 +319,12 @@ async function pedir(
 export interface TokenCurto {
   token: string;
   igUserId: string;
-  /** As permissões que a pessoa CONCEDEU — pode ter desmarcado uma. */
-  permissoes: string[];
+  /**
+   * As permissões que a pessoa CONCEDEU — pode ter desmarcado uma. `null`
+   * quando a Meta não mandou o campo: "não sei" é diferente de "não
+   * concedeu", e tratar os dois igual recusaria a conexão para sempre.
+   */
+  permissoes: string[] | null;
 }
 
 export async function trocarCodigoPorToken(
@@ -309,9 +351,14 @@ export async function trocarCodigoPorToken(
     [args.appSecret, args.code],
     fetchFn
   );
-  // A doc mostra `{ data: [ { … } ] }`; a forma chapada é a do antigo Basic
-  // Display, e aceitá-la custa uma linha.
-  const item = Array.isArray(r.data) && ehObjeto(r.data[0]) ? r.data[0] : r;
+  // A doc mostra `{ data: [ { … } ] }` — só essa forma.
+  const item = Array.isArray(r.data) && ehObjeto(r.data[0]) ? r.data[0] : null;
+  if (!item) {
+    throw new InstagramApiError(
+      'meta_error',
+      'A troca do código veio sem `data[0]`'
+    );
+  }
   const token = item.access_token;
   const userId = item.user_id;
   if (typeof token !== 'string' || !token) {
@@ -331,7 +378,7 @@ export async function trocarCodigoPorToken(
           .filter(Boolean)
       : Array.isArray(item.permissions)
         ? item.permissions.filter((p): p is string => typeof p === 'string')
-        : [];
+        : null;
   return { token, igUserId: String(userId), permissoes };
 }
 

@@ -3532,19 +3532,38 @@ estrutural `transporte.chamadores.test.ts` (no `main` desde 10/09/2026, PR
     de 15 min, e o nonce repete no cookie HttpOnly `cb_ig_oauth`; o callback
     exige os dois E a sessão de admin da MESMA conta — sem isso um link
     forjado amarraria o Instagram de um estranho à conta (login CSRF).
-  · A URI de retorno é DERIVADA DO PEDIDO (`origemDoPedido`: `x-forwarded-*`
-    do Traefik, senão a URL do pedido), nunca de `NEXT_PUBLIC_SITE_URL`: a
-    volta tem de cair na origem onde a sessão e o cookie vivem (no preview,
-    `localhost`). O painel da Meta só aceita URI registrada — a tela mostra
-    a que registrar.
+  · A URI de retorno tem de cair na origem onde a sessão e o cookie vivem,
+    e `origemDoPedido` decide com `NEXT_PUBLIC_SITE_URL` como árbitro:
+    pedido do host do site → a URL canônica; host local/privado (o preview
+    em `localhost`) → o pedido; host PÚBLICO estranho no cabeçalho → o site
+    (ignorado). Sem sessão a rota redireciona ANTES de qualquer checagem,
+    então confiar no `Host` cru viraria `Location: https://evil…` a partir
+    de um `curl` (revisão do #189). O painel da Meta só aceita URI
+    registrada — a tela mostra a que registrar.
+  · Trocar o App Secret em `cb_instagram_config` NÃO repropaga para os
+    canais já conectados (cada `cb_channels.ig_app_secret` guarda o que
+    valia na conexão): a assinatura dos webhooks deles para de casar até
+    reconectar cada um pelo login. A tela avisa; e segredo em branco no
+    token colado supõe token gerado pelo app cadastrado — token de OUTRO
+    app passa no `/me` e nasce canal mudo.
   · `POST /me/subscribed_apps` é chamado ANTES de gravar o canal (o botão
     "Gerar token" do painel faz isso por baixo; o login não): canal que não
     recebe não pode nascer calado. A permissão de mensagens é conferida na
     resposta da troca (`permissions`) — dá para desmarcá-la no consentimento.
-  · O token CURTO viaja na query da troca pelo longo (forma documentada do
-    endpoint; vive 1 h, nunca é gravado, nenhum log imprime a URL) — a
-    ÚNICA exceção à regra do `Bearer`; `semSegredo` também apaga
-    `client_secret=`. O vencimento gravado é o `expires_in` MEDIDO.
+  · O token CURTO e o `client_secret` viajam na query da troca pelo longo
+    (forma documentada do endpoint; o token vive 1 h e nunca é gravado;
+    nenhum log imprime a URL) — a ÚNICA exceção à regra do `Bearer`;
+    `semSegredo` apaga `access_token=` E `client_secret=`. O vencimento
+    gravado é o `expires_in` MEDIDO.
+  · Conectar pelo login uma conta que JÁ estava conectada (por token colado
+    ou pelo login) SOBRESCREVE a linha — é o índice único global de
+    `ig_user_id`: token, segredo e validade novos; rótulo e Human Agent
+    FICAM (`canal.ts` só os grava quando o chamador manda, e o callback
+    manda `null`). Não nasce segunda conexão, e o diálogo do webhook só abre
+    na PRIMEIRA conexão de Instagram da conta (`?primeira=1`).
+  · Preview e produção geram URIs de retorno DIFERENTES (é derivada do
+    pedido), e as DUAS precisam estar registradas no painel da Meta — senão
+    o teste local morre na página de erro do Instagram, antes do callback.
   · Standard Access: só conta ADICIONADA ao app no painel da Meta consegue
     autorizar; conta de fora exigiria App Review (Tech Provider).
   · `force_reauth=true` na URL de autorização: com mais de uma conta do
@@ -3904,8 +3923,10 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
     ID + Instagram App Secret CIFRADO), a credencial que o login do
     Instagram (OAuth) exige antes de existir canal. FECHADA para o navegador
     (a tela lê pela rota, que devolve só o App ID). Aplicada em 2026-09-09
-    via conector, ANTES do merge do PR da Fase 2b e DEPOIS de o replay do CI
-    passar; aditiva — nada em produção a lê até o deploy.
+    via conector (histórico `20260910003817`), ANTES do merge do PR #189 e
+    DEPOIS de o replay do CI passar; aditiva — nada em produção a lê até o
+    deploy. Conferida por consulta: RLS ligada, `anon` e `authenticated`
+    sem SELECT, `service_role` com INSERT.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
