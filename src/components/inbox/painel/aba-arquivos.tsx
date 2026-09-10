@@ -19,7 +19,7 @@
 
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { FileText, Mic, Paperclip, Play } from "lucide-react";
+import { FileText, Locate, Mic, Paperclip, Play } from "lucide-react";
 
 import { coletarAnexos, filtrarPorTipo, type Anexo } from "@/lib/media/anexos";
 import { GaleriaDoFio } from "../media-gallery";
@@ -39,9 +39,21 @@ interface AbaArquivosProps {
    * conhecimento, e só quem chama sabe distinguir os dois.
    */
   carregando: boolean;
+  /**
+   * "Ver na conversa" (09/09/2026): leva o fio até a mensagem de onde o
+   * anexo veio — o dia, a hora e o que se disse em volta. Abrir o arquivo
+   * continua sendo o clique principal; isto é o botão ao lado. Ausente, o
+   * botão não aparece (a aba não sabe onde o fio está — quem sabe é a
+   * página, que a monta ao lado dele).
+   */
+  onVerNaConversa?: (messageId: string) => void;
 }
 
-export function AbaArquivos({ messages, carregando }: AbaArquivosProps) {
+export function AbaArquivos({
+  messages,
+  carregando,
+  onVerNaConversa,
+}: AbaArquivosProps) {
   const t = useTranslations("Inbox.arquivos");
   const anexos = useMemo(() => coletarAnexos(messages), [messages]);
 
@@ -92,7 +104,13 @@ export function AbaArquivos({ messages, carregando }: AbaArquivosProps) {
                 key={anexo.messageId}
                 anexo={anexo}
                 rotuloVideo={t("video")}
+                rotuloVer={t("verNaConversa")}
                 onAbrir={() => setAbertaEm(anexo.messageId)}
+                onVerNaConversa={
+                  onVerNaConversa
+                    ? () => onVerNaConversa(anexo.messageId)
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -108,6 +126,11 @@ export function AbaArquivos({ messages, carregando }: AbaArquivosProps) {
                 anexo={anexo}
                 icone={
                   <FileText className="text-muted-foreground h-4 w-4 shrink-0" />
+                }
+                onVerNaConversa={
+                  onVerNaConversa
+                    ? () => onVerNaConversa(anexo.messageId)
+                    : undefined
                 }
                 t={t}
               />
@@ -133,6 +156,11 @@ export function AbaArquivos({ messages, carregando }: AbaArquivosProps) {
                 // genérico e a data, que é mais honesto que o hexadecimal.
                 rotulo={anexo.transcricao ?? t("audioSemTranscricao")}
                 esmaecido={!anexo.transcricao}
+                onVerNaConversa={
+                  onVerNaConversa
+                    ? () => onVerNaConversa(anexo.messageId)
+                    : undefined
+                }
                 t={t}
               />
             ))}
@@ -180,19 +208,28 @@ function Secao({
 function MiniaturaDeMidia({
   anexo,
   rotuloVideo,
+  rotuloVer,
   onAbrir,
+  onVerNaConversa,
 }: {
   anexo: Anexo;
   rotuloVideo: string;
+  rotuloVer: string;
   onAbrir: () => void;
+  onVerNaConversa?: () => void;
 }) {
   const ehVideo = anexo.contentType === "video";
   return (
+    // O "Ver na conversa" é IRMÃO do botão da miniatura, num wrapper
+    // `relative` — button dentro de button é HTML inválido (a mesma
+    // regra do lápis do card do funil). Sem hover para aparecer: no toque
+    // não existe hover, e o botão simplesmente não existiria.
+    <div className="relative">
     <button
       type="button"
       onClick={onAbrir}
       title={anexo.nome}
-      className="bg-muted focus-visible:ring-ring group relative aspect-square overflow-hidden rounded focus-visible:ring-2 focus-visible:outline-none"
+      className="bg-muted focus-visible:ring-ring group relative block aspect-square w-full overflow-hidden rounded focus-visible:ring-2 focus-visible:outline-none"
     >
       {ehVideo ? (
         // Vídeo não vira `<img>`: o poster exigiria decodificar o arquivo.
@@ -216,6 +253,18 @@ function MiniaturaDeMidia({
         </span>
       )}
     </button>
+    {onVerNaConversa && (
+      <button
+        type="button"
+        onClick={onVerNaConversa}
+        aria-label={rotuloVer}
+        title={rotuloVer}
+        className="bg-background/85 text-muted-foreground hover:text-foreground focus-visible:ring-ring absolute top-0.5 right-0.5 flex h-6 w-6 items-center justify-center rounded shadow-sm focus-visible:ring-2 focus-visible:outline-none"
+      >
+        <Locate className="h-3.5 w-3.5" />
+      </button>
+    )}
+    </div>
   );
 }
 
@@ -224,6 +273,7 @@ function LinhaDeArquivo({
   icone,
   rotulo,
   esmaecido,
+  onVerNaConversa,
   t,
 }: {
   anexo: Anexo;
@@ -232,16 +282,21 @@ function LinhaDeArquivo({
   rotulo?: string;
   /** Rótulo genérico (áudio sem transcrição) — não compete com os de verdade. */
   esmaecido?: boolean;
+  /** Leva o fio até a mensagem do anexo. Ausente = sem botão. */
+  onVerNaConversa?: () => void;
   t: ReturnType<typeof useTranslations>;
 }) {
   const texto = rotulo ?? anexo.nome;
   return (
-    <li>
+    // O link ABRE o arquivo; o botão ao lado leva à mensagem. São irmãos
+    // (button dentro de `<a>` é inválido), e o link fica com o `flex-1`
+    // para o nome longo continuar truncando.
+    <li className="flex items-center gap-1">
       <a
         href={anexo.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="hover:bg-muted flex items-center gap-2 rounded px-2 py-1.5"
+        className="hover:bg-muted flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1.5"
       >
         {icone}
         {/* `min-w-0` é o que faz o `truncate` valer dentro do flex: sem ele o
@@ -267,6 +322,17 @@ function LinhaDeArquivo({
           </span>
         </span>
       </a>
+      {onVerNaConversa && (
+        <button
+          type="button"
+          onClick={onVerNaConversa}
+          aria-label={t("verNaConversa")}
+          title={t("verNaConversa")}
+          className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-7 w-7 shrink-0 items-center justify-center rounded"
+        >
+          <Locate className="h-3.5 w-3.5" />
+        </button>
+      )}
     </li>
   );
 }

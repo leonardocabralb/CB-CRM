@@ -1,6 +1,6 @@
 'use client';
 
-import { Pin, PinOff, Trash2 } from 'lucide-react';
+import { Locate, Pin, PinOff, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
@@ -37,6 +37,7 @@ export function CartaoDeNota({
   fixada = false,
   fixando = false,
   onFixar,
+  onVerNaConversa,
 }: {
   nota: ConversationNote;
   /** Autor ou admin — quem decide de verdade é a RLS; isto só esconde o botão. */
@@ -49,6 +50,12 @@ export function CartaoDeNota({
   fixando?: boolean;
   /** Ausente = a fixação não é oferecida (nota de grupo não fixa — 951). */
   onFixar?: (fixar: boolean) => void;
+  /**
+   * "Ver na conversa" (09/09/2026): leva o fio até esta anotação, no ponto
+   * da conversa em que foi escrita. Ausente = sem botão (a ficha de
+   * `/contatos` não tem fio ao lado).
+   */
+  onVerNaConversa?: () => void;
 }) {
   const t = useTranslations('Inbox.note');
   const tSidebar = useTranslations('Inbox.sidebar');
@@ -79,6 +86,17 @@ export function CartaoDeNota({
           </span>
         )}
         <span className="flex shrink-0 items-center gap-1.5">
+          {onVerNaConversa && (
+            <button
+              type="button"
+              onClick={onVerNaConversa}
+              aria-label={t('verNaConversa')}
+              title={t('verNaConversa')}
+              className="text-muted-foreground hover:text-foreground -m-1 p-1 transition-colors"
+            >
+              <Locate className="h-3.5 w-3.5" />
+            </button>
+          )}
           {onFixar && (
             <button
               type="button"

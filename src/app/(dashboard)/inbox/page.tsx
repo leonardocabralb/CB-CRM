@@ -19,6 +19,11 @@ import { conversaNoEscopo } from "@/lib/perfis/escopo";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { VoltarAoFunil } from "@/components/inbox/voltar-ao-funil";
 import { urlDoInbox } from "@/lib/inbox/url";
+import {
+  novoPedidoDeSalto,
+  type AlvoDoSalto,
+  type PedidoDeSalto,
+} from "@/lib/inbox/salto-no-fio";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { GroupSidebar } from "@/components/inbox/group-sidebar";
 import { toast } from "sonner";
@@ -217,6 +222,26 @@ function InboxPageInner() {
     }
     setPainelMobileAberto(true);
   }, [ehDesktop]);
+
+  /**
+   * "Ver na conversa" das abas Notas e Arquivos (09/09/2026). O painel e o
+   * fio são irmãos, e a página é o único caminho entre eles — o mesmo
+   * motivo do `termoDaBusca`. O pedido vai carimbado com a conversa e um
+   * contador (ver `salto-no-fio.ts`): o fio só atende pedido DESTA conversa,
+   * e o mesmo anexo clicado duas vezes rola duas vezes.
+   */
+  const [saltoPedido, setSaltoPedido] = useState<PedidoDeSalto | null>(null);
+  const handleIrParaItemDoFio = useCallback(
+    (alvo: AlvoDoSalto) => {
+      const conversaId = activeConversation?.id;
+      if (!conversaId) return;
+      setSaltoPedido((prev) => novoPedidoDeSalto(prev, conversaId, alvo));
+      // No celular o painel é overlay SOBRE o fio: fechá-lo é o que deixa o
+      // salto à vista. No desktop já está fechado, e isto é no-op.
+      setPainelMobileAberto(false);
+    },
+    [activeConversation?.id],
+  );
 
   // Fire the deep-link auto-select exactly once per URL — subsequent
   // list refreshes (realtime, manual refetch) must not snap the user
@@ -877,9 +902,17 @@ function InboxPageInner() {
         {/* Left panel: Conversation list.
             Hidden on mobile when a conversation is selected so the
             thread can occupy the full width. Always visible on lg+. */}
+        {/* ⚠️ `min-w-0` é load-bearing no CELULAR (09/09/2026): item de flex
+            nasce com `min-width: auto`, e a largura mínima desta coluna era o
+            texto SEM QUEBRA mais longo lá dentro — a prévia da última mensagem
+            é `truncate`, que é `nowrap`. Medido a 375px: a coluna saía com
+            3.042px, e a caixa de busca, as abas e a fileira de visões ficavam
+            cortadas na borda direita (reportado da tela pelo operador). No
+            desktop a lista tem largura fixa (`lg:w-80`) e o defeito não
+            aparece. Primo do `min-w-0` do fio logo abaixo (Issue #165). */}
         <div
           className={cn(
-            "flex h-full flex-1 lg:flex-none",
+            "flex h-full min-w-0 flex-1 lg:flex-none",
             hasActiveConv ? "hidden lg:flex" : "flex",
           )}
           inert={fundoInerte}
@@ -937,6 +970,7 @@ function InboxPageInner() {
             resyncToken={resyncToken}
             onRefresh={handleManualRefresh}
             termoDaBusca={termoDaBusca}
+            saltoPedido={saltoPedido}
           />
           )}
         </div>
@@ -1015,6 +1049,7 @@ function InboxPageInner() {
                 messagesCarregando={
                   messagesDaConversa !== activeConversation.id
                 }
+                onIrParaItemDoFio={handleIrParaItemDoFio}
               />
             ) : (
               <ContactSidebar
@@ -1035,6 +1070,7 @@ function InboxPageInner() {
                   !!activeConversation &&
                   messagesDaConversa !== activeConversation.id
                 }
+                onIrParaItemDoFio={handleIrParaItemDoFio}
               />
             )}
           </div>

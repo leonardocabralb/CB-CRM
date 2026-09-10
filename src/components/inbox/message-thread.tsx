@@ -19,6 +19,14 @@ import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe"
 import { horasRestantes, janelaFechada } from "@/lib/inbox/janela-24h";
 import { patchDeSituacao } from "@/lib/conversations/situacao";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
+import { semAcento, TERMO_MINIMO } from "@/lib/inbox/busca-em-mensagens";
+import {
+  DESTAQUE_DO_SALTO_MS,
+  seletorDoAlvo,
+  type AlvoDoSalto,
+  type PedidoDeSalto,
+} from "@/lib/inbox/salto-no-fio";
+import { Input } from "@/components/ui/input";
 import { contarNovasDoCliente } from "@/lib/inbox/nao-lidas-abaixo";
 import {
   aberturasDeCanal,
@@ -63,6 +71,7 @@ import {
   Search,
   ChevronUp,
   CornerUpLeft,
+  X,
 } from "lucide-react";
 import { nomeDoGrupo } from "@/lib/cb-groups/display";
 import type { CbChannel } from "@/lib/cb-channels/repo";
@@ -174,6 +183,14 @@ interface MessageThreadProps {
    * Opcional para os callers existentes.
    */
   termoDaBusca?: string;
+  /**
+   * Pedido de salto vindo de FORA do fio — o "Ver na conversa" das abas
+   * Notas e Arquivos do painel (09/09/2026). O fio centraliza a mensagem (ou
+   * a anotação) e a destaca por alguns segundos. Ver `salto-no-fio.ts` para
+   * a forma: carimbado com a conversa e com um contador, para o mesmo alvo
+   * clicado duas vezes rolar duas vezes.
+   */
+  saltoPedido?: PedidoDeSalto | null;
 }
 
 /**
@@ -190,6 +207,10 @@ interface MessageThreadProps {
  * O destaque fica de pé enquanto aquele for o achado corrente (some quando a
  * busca é apagada), e não por alguns segundos: com ↑/↓ é ele que responde "em
  * qual dos cinco eu estou" a cada passo.
+ *
+ * Desde 09/09/2026 embrulha também a ANOTAÇÃO intercalada (`tipo="nota"`,
+ * âncora `data-nota-id`): é o que o "Ver na conversa" da aba Notas procura.
+ * Os dois nomes de atributo são cobrados por `salto-no-fio.test.ts`.
  */
 /**
  * "Daqui para baixo a conversa passou a correr por este número."
@@ -233,18 +254,22 @@ function SeparadorDeCanal({
   );
 }
 
-function LinhaDaMensagem({
+function LinhaDoFio({
+  tipo = "mensagem",
   id,
   destacada,
   children,
 }: {
+  /** A anotação intercalada usa a MESMA moldura, com âncora própria. */
+  tipo?: "mensagem" | "nota";
   id: string;
   destacada: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div
-      data-message-id={id}
+      data-message-id={tipo === "mensagem" ? id : undefined}
+      data-nota-id={tipo === "nota" ? id : undefined}
       className={cn(
         "rounded-lg transition-colors",
         destacada && "bg-primary/10 ring-1 ring-primary/40",
@@ -253,6 +278,86 @@ function LinhaDaMensagem({
       {children}
     </div>
   );
+}
+
+/**
+ * Rola `cont` até `el` ficar no meio da tela.
+ *
+ * Mede pela diferença entre os retângulos em vez de usar `offsetTop`: o
+ * contêiner de rolagem não é `relative`, então `offsetTop` seria contado a
+ * partir de um ancestral qualquer e o salto pararia no lugar errado. Serve
+ * ao salto da busca e ao salto pedido pelo painel — a mesma conta nos dois.
+ */
+function centralizarNoFio(cont: HTMLElement, el: HTMLElement) {
+  const rCont = cont.getBoundingClientRect();
+  const rAlvo = el.getBoundingClientRect();
+  cont.scrollTop +=
+    rAlvo.top - rCont.top - (cont.clientHeight - rAlvo.height) / 2;
+}
+
+/** Um pedido de salto pontual: o alvo e um contador que o torna novo. */
+type SaltoPontual = AlvoDoSalto & { n: number };
+
+/**
+ * O salto PONTUAL: rola até o alvo, centraliza e o destaca por
+ * `DESTAQUE_DO_SALTO_MS`. Serve ao clique na citação E ao "Ver na conversa"
+ * do painel — cada origem instancia o hook com o SEU pedido, e a mecânica
+ * é uma só. Devolve o que está destacado agora, ou `null`.
+ *
+ * ⚠️ Quatro cercas, cada uma com motivo: (1) atende UMA vez por `n`
+ * (`atendidoRef`) — o efeito depende de `mensagens`/`notas` para atender o
+ * pedido feito durante uma carga (alvo ainda fora do DOM), e sem a memória
+ * toda mensagem nova re-centralizaria o alvo velho, arrastando o operador de
+ * volta; (2) chama `liberarSalto()` antes de rolar — o operador agiu, e o
+ * efeito que centraliza o achado da BUSCA disputaria a tela; (3) o timer do
+ * destaque vive num REF, fora da limpeza do efeito — a limpeza roda a cada
+ * mensagem nova e, cancelando o timer, deixaria o destaque aceso para sempre
+ * quando algo chegasse nos 2,5 s; (4) o destaque é DERIVADO
+ * (`pedido.n !== apagado`) e o único `setState` é o do timer — o React
+ * Compiler recusa `setState` síncrono em efeito.
+ */
+function useSaltoPontual(
+  pedido: SaltoPontual | null,
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  liberarSalto: () => void,
+  mensagens: readonly unknown[],
+  notas: readonly unknown[],
+): AlvoDoSalto | null {
+  const atendidoRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** O `n` do pedido cujo destaque já apagou. */
+  const [apagado, setApagado] = useState(0);
+
+  useEffect(() => {
+    if (!pedido || pedido.n === atendidoRef.current) return;
+    const cont = scrollRef.current;
+    if (!cont) return;
+    const el = cont.querySelector<HTMLElement>(seletorDoAlvo(pedido));
+    // Ainda não está no DOM (carga em curso): o efeito volta com `mensagens`.
+    if (!el) return;
+
+    atendidoRef.current = pedido.n;
+    liberarSalto();
+    centralizarNoFio(cont, el);
+    const quadro = requestAnimationFrame(() => centralizarNoFio(cont, el));
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(
+      () => setApagado(pedido.n),
+      DESTAQUE_DO_SALTO_MS,
+    );
+    return () => cancelAnimationFrame(quadro);
+  }, [pedido, scrollRef, liberarSalto, mensagens, notas]);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+
+  return pedido && pedido.n !== apagado
+    ? { tipo: pedido.tipo, id: pedido.id }
+    : null;
 }
 
 function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
@@ -346,6 +451,7 @@ export function MessageThread({
   resyncToken = 0,
   onRefresh,
   termoDaBusca = "",
+  saltoPedido = null,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -1090,14 +1196,48 @@ export function MessageThread({
   // ============================================================
 
   /**
+   * A busca DENTRO da conversa aberta (09/09/2026): a lupa do cabeçalho abre
+   * uma barra com campo próprio, e o termo digitado ali passa a mandar no
+   * salto — no lugar do termo da lista. Reusa TUDO do salto (achados, alvo,
+   * setas, destaque); só a origem do termo muda.
+   *
+   * ⚠️ Carimbada com a conversa em vez de zerada num efeito ao trocar: é a
+   * mesma assinatura da `escolhaNaBusca` — uma conversa diferente
+   * simplesmente não reconhece a barra aberta, sem o quadro em que o efeito
+   * ainda não rodou.
+   */
+  const [buscaLocal, setBuscaLocal] = useState<{
+    conversationId: string;
+    termo: string;
+  } | null>(null);
+  const buscaLocalAberta =
+    buscaLocal !== null && buscaLocal.conversationId === conversationId;
+  const termoEfetivo = buscaLocalAberta ? buscaLocal.termo : termoDaBusca;
+  // O piso é o de `acharNoFio` (3 caracteres, medidos no termo normalizado —
+  // a mesma régua do banco); abaixo dele a barra diz o que falta em vez de
+  // afirmar "nada encontrado".
+  const termoLocalCurto =
+    buscaLocalAberta &&
+    semAcento(buscaLocal.termo.trim()).length < TERMO_MINIMO;
+
+  const alternarBuscaLocal = useCallback(() => {
+    if (!conversationId) return;
+    setBuscaLocal((atual) =>
+      atual && atual.conversationId === conversationId
+        ? null
+        : { conversationId, termo: "" },
+    );
+  }, [conversationId]);
+
+  /**
    * As mensagens desta conversa que casam com o termo, em ordem cronológica.
    *
    * Roda em JS porque o fio já carregou a conversa inteira; o porquê disso não
    * ser "meio a meio" com o banco está em `achados-no-fio.ts`.
    */
   const achadosNoFio = useMemo(
-    () => acharNoFio(messages, termoDaBusca),
-    [messages, termoDaBusca],
+    () => acharNoFio(messages, termoEfetivo),
+    [messages, termoEfetivo],
   );
 
   /**
@@ -1118,7 +1258,7 @@ export function MessageThread({
   // há termo capaz de forjar a assinatura de outra conversa. (Aqui já morou um
   // U+0000 CRU, que deixava este arquivo BINÁRIO para o `grep` e o `file`: as
   // buscas passavam a devolver zero linhas em silêncio.)
-  const assinaturaDaBusca = `${conversationId ?? ""}|${termoDaBusca}`;
+  const assinaturaDaBusca = `${conversationId ?? ""}|${termoEfetivo}`;
   const escolhido =
     escolhaNaBusca?.assinatura === assinaturaDaBusca ? escolhaNaBusca.id : null;
 
@@ -1216,10 +1356,7 @@ export function MessageThread({
         `[data-message-id="${alvoId}"]`,
       );
       if (!el) return;
-      const rCont = cont.getBoundingClientRect();
-      const rAlvo = el.getBoundingClientRect();
-      cont.scrollTop +=
-        rAlvo.top - rCont.top - (cont.clientHeight - rAlvo.height) / 2;
+      centralizarNoFio(cont, el);
     };
 
     centralizar();
@@ -1227,37 +1364,48 @@ export function MessageThread({
     return () => cancelAnimationFrame(quadro);
   }, [alvoId, messages, execucoesDoFio]);
 
+  // ============================================================
+  // Salto PONTUAL — rola até um item e o destaca por 2,5 s (09/09/2026)
+  // ============================================================
+  //
+  // Duas origens, UMA mecânica (`useSaltoPontual`, no fim do arquivo): o
+  // clique na citação (estado daqui, `irParaCitada`, PR #179) e o "Ver na
+  // conversa" das abas do painel (prop `saltoPedido`, carimbada pela
+  // página). O salto da BUSCA é outra coisa — derivado de um termo, fica de
+  // pé enquanto a busca existir — e mora logo acima.
+
   /**
-   * Clique na citação: rola até a mensagem citada e a destaca por 2,5 s, como
-   * no WhatsApp. Mesma medida do salto da busca (retângulos, não `offsetTop`).
-   * O `n` faz clicar DUAS vezes na mesma citação saltar de novo (o objeto
-   * muda, o efeito roda). Ao rolar para cima o `onScroll` anota que o operador
-   * saiu do fim, então mensagem nova não o puxa de volta — e o botão de
-   * "não lidas" passa a contar.
+   * Clique na citação: rola até a mensagem citada e a destaca, como no
+   * WhatsApp. O `n` faz clicar DUAS vezes na mesma citação saltar de novo (o
+   * objeto muda, o efeito roda). Ao rolar para cima o `onScroll` anota que o
+   * operador saiu do fim, então mensagem nova não o puxa de volta — e o
+   * botão de "não lidas" passa a contar.
    */
-  const [saltoDaCitacao, setSaltoDaCitacao] = useState<{ id: string; n: number } | null>(null);
+  const [saltoDaCitacao, setSaltoDaCitacao] = useState<SaltoPontual | null>(null);
   const irParaCitada = useCallback((id: string) => {
-    setSaltoDaCitacao((s) => ({ id, n: (s?.n ?? 0) + 1 }));
+    setSaltoDaCitacao((s) => ({ tipo: "mensagem", id, n: (s?.n ?? 0) + 1 }));
   }, []);
-  useEffect(() => {
-    if (!saltoDaCitacao) return;
-    const cont = scrollRef.current;
-    if (!cont) return;
-    const el = cont.querySelector<HTMLElement>(`[data-message-id="${saltoDaCitacao.id}"]`);
-    if (!el) return;
-    const centralizar = () => {
-      const rCont = cont.getBoundingClientRect();
-      const rAlvo = el.getBoundingClientRect();
-      cont.scrollTop += rAlvo.top - rCont.top - (cont.clientHeight - rAlvo.height) / 2;
-    };
-    centralizar();
-    const quadro = requestAnimationFrame(centralizar);
-    const apaga = setTimeout(() => setSaltoDaCitacao(null), 2500);
-    return () => {
-      cancelAnimationFrame(quadro);
-      clearTimeout(apaga);
-    };
-  }, [saltoDaCitacao]);
+  const destaqueDaCitacao = useSaltoPontual(
+    saltoDaCitacao,
+    scrollRef,
+    liberarSalto,
+    messages,
+    notas,
+  );
+
+  // ⚠️ Só pedido DESTA conversa: sem o carimbo, trocar de conversa antes de
+  // o fio carregar deixava um pedido pendente que disparava ao voltar.
+  const pedidoDoPainel =
+    saltoPedido && saltoPedido.conversationId === conversationId
+      ? saltoPedido
+      : null;
+  const destaqueDoPainel = useSaltoPontual(
+    pedidoDoPainel,
+    scrollRef,
+    liberarSalto,
+    messages,
+    notas,
+  );
 
   /** Quantas mensagens do cliente chegaram enquanto o operador lia lá em cima. */
   const naoLidasAbaixo =
@@ -2121,6 +2269,26 @@ export function MessageThread({
               when realtime missed an event or the agent just wants to be
               sure nothing's stale. Only rendered when the parent wires
               up `onRefresh`. */}
+          {/* A lupa: busca DENTRO desta conversa (09/09/2026). Fica acesa
+              enquanto a barra está aberta; clicar de novo fecha. */}
+          {conversation && (
+            <button
+              type="button"
+              onClick={alternarBuscaLocal}
+              aria-label={t("searchOpen")}
+              aria-pressed={buscaLocalAberta}
+              title={t("searchOpen")}
+              className={cn(
+                "inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground",
+                buscaLocalAberta
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground",
+              )}
+            >
+              <Search className="h-3.5 w-3.5" />
+            </button>
+          )}
+
           {onRefresh && (
             <button
               type="button"
@@ -2279,12 +2447,85 @@ export function MessageThread({
           onde a divergência improvável entre o banco e o JS (caractere exótico
           que o `unaccent` do Postgres trate diferente) falha para o lado
           silencioso, em vez de mostrar um contador zerado. */}
-      {achadosNoFio.length > 0 && alvoId && (
+      {/* A busca DENTRO desta conversa — a barra que a lupa do cabeçalho
+          abre. SUBSTITUI a faixa da busca da lista enquanto estiver aberta:
+          as duas contam achados do MESMO fio, e duas contagens lado a lado
+          diriam coisas diferentes sobre a mesma tela. Enter anda para o
+          achado mais ANTIGO (o fio abre no mais recente, então "próximo" é
+          para cima), Shift+Enter volta, Esc fecha. */}
+      {buscaLocalAberta && buscaLocal && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/60 px-3 py-1.5">
+          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <Input
+            value={buscaLocal.termo}
+            onChange={(e) =>
+              setBuscaLocal({
+                conversationId: buscaLocal.conversationId,
+                termo: e.target.value,
+              })
+            }
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setBuscaLocal(null);
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                irParaAchado(e.shiftKey ? 1 : -1);
+              }
+            }}
+            placeholder={t("searchLocalPlaceholder")}
+            aria-label={t("searchOpen")}
+            autoFocus
+            className="h-7 flex-1 bg-background md:text-xs"
+          />
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+            {termoLocalCurto
+              ? t("searchLocalMinChars", { n: TERMO_MINIMO })
+              : achadosNoFio.length === 0
+                ? t("searchLocalNone")
+                : t("searchLocalCount", {
+                    atual: posicaoDoAlvo + 1,
+                    total: achadosNoFio.length,
+                  })}
+          </span>
+          <button
+            type="button"
+            onClick={() => irParaAchado(-1)}
+            disabled={posicaoDoAlvo <= 0}
+            aria-label={t("searchPrevHit")}
+            title={t("searchPrevHit")}
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+          >
+            <ChevronUp className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => irParaAchado(1)}
+            disabled={posicaoDoAlvo >= achadosNoFio.length - 1}
+            aria-label={t("searchNextHit")}
+            title={t("searchNextHit")}
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setBuscaLocal(null)}
+            aria-label={t("searchClose")}
+            title={t("searchClose")}
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {!buscaLocalAberta && achadosNoFio.length > 0 && alvoId && (
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/60 px-3 py-1.5">
           <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
             {t("searchInThread", {
-              termo: termoDaBusca,
+              termo: termoEfetivo,
               atual: posicaoDoAlvo + 1,
               total: achadosNoFio.length,
             })}
@@ -2404,8 +2645,16 @@ export function MessageThread({
                     // ramo de mensagem e derrubaria o fio inteiro em runtime.
                     if (item.nota) {
                       return (
-                        <NoteLine
+                        <LinhaDoFio
                           key={item.chave}
+                          tipo="nota"
+                          id={item.nota.id}
+                          destacada={
+                            destaqueDoPainel?.tipo === "nota" &&
+                            destaqueDoPainel.id === item.nota.id
+                          }
+                        >
+                        <NoteLine
                           nota={item.nota}
                           podeApagar={
                             item.nota.author_user_id === user?.id || podeAdministrar
@@ -2423,6 +2672,7 @@ export function MessageThread({
                               : undefined
                           }
                         />
+                        </LinhaDoFio>
                       );
                     }
                     const msg = item.mensagem!;
@@ -2431,16 +2681,20 @@ export function MessageThread({
                     // se desenha sozinha como faixa, e NÃO passa pelo
                     // MessageActions — responder, reagir ou apagar um aviso
                     // do sistema não quer dizer nada.
-                    const destacada = msg.id === alvoId || msg.id === saltoDaCitacao?.id;
+                    const destacada =
+                      msg.id === alvoId ||
+                      destaqueDaCitacao?.id === msg.id ||
+                      (destaqueDoPainel?.tipo === "mensagem" &&
+                        destaqueDoPainel.id === msg.id);
                     if (msg.content_type === "system") {
                       return (
-                        <LinhaDaMensagem
+                        <LinhaDoFio
                           key={msg.id}
                           id={msg.id}
                           destacada={destacada}
                         >
                           <MessageBubble message={msg} emGrupo />
-                        </LinhaDaMensagem>
+                        </LinhaDoFio>
                       );
                     }
                     const parent = msg.reply_to_message_id
@@ -2495,7 +2749,7 @@ export function MessageThread({
                           })}
                         />
                       )}
-                      <LinhaDaMensagem
+                      <LinhaDoFio
                         id={msg.id}
                         destacada={destacada}
                       >
@@ -2527,7 +2781,7 @@ export function MessageThread({
                           onIrParaCitada={irParaCitada}
                         />
                       </MessageActions>
-                      </LinhaDaMensagem>
+                      </LinhaDoFio>
                       </Fragment>
                     );
                   })}

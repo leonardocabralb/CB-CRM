@@ -171,7 +171,7 @@
       "typeDirect": "Direct chats",
       "typeGroups": "Groups",
       "groupNoName": "Unnamed group",
-      "searchPlaceholder": "Search name, number or message...",
+      "searchPlaceholder": "Search by name or number...",
       "filterUnread": "Unread",
       "filterAwaiting": "Overdue",
       "filterOpen": "Open",
@@ -259,7 +259,9 @@
       "channelsChosen": "{count, plural, one {# connection} other {# connections}}",
       "resultCount": "{count} of {total}",
       "novaConversa": "New conversation",
-      "automacaoRodando": "{n, plural, one {# automation scheduled for this contact} other {# automations scheduled for this contact}}"
+      "automacaoRodando": "{n, plural, one {# automation scheduled for this contact} other {# automations scheduled for this contact}}",
+      "searchPlaceholderInMessages": "Search by name, number or message...",
+      "searchInsideMessages": "Also search inside messages"
     },
     "messageThread": {
       "unknownAuthor": "Unknown",
@@ -307,7 +309,13 @@
       "channelChangedUnknown": "The customer",
       "searchInThread": "“{termo}” — {atual} of {total}",
       "searchPrevHit": "Previous match",
-      "searchNextHit": "Next match"
+      "searchNextHit": "Next match",
+      "searchOpen": "Search in this conversation",
+      "searchLocalPlaceholder": "Search in this conversation...",
+      "searchLocalMinChars": "Type {n} letters",
+      "searchLocalNone": "No matches",
+      "searchLocalCount": "{atual} of {total}",
+      "searchClose": "Close search"
     },
     "sessionTimer": {
       "expired": "Expired",
@@ -510,7 +518,8 @@
       "recebido": "Received",
       "enviado": "Sent",
       "vazio": "No files in this conversation",
-      "vazioDica": "Photos, documents and audio shared here will show up."
+      "vazioDica": "Photos, documents and audio shared here will show up.",
+      "verNaConversa": "Show in conversation"
     },
     "execucoes": {
       "roboAtivo": "Active bot",
@@ -636,7 +645,8 @@
       "unpin": "Unpin note",
       "expand": "Show the whole note",
       "collapse": "Collapse note",
-      "pinError": "Could not pin the note."
+      "pinError": "Could not pin the note.",
+      "verNaConversa": "Show in conversation"
     },
     "scheduled": {
       "sectionTitle": "Scheduled",

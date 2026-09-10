@@ -57,6 +57,7 @@ import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { NovaConversaDialog } from "@/components/inbox/nova-conversa-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -153,6 +154,16 @@ export function ConversationList({
   // Trocar uma pela outra apagaria a busca por texto de mensagem e por nome
   // de grupo, que é o que a revisão prévia desta fase encontrou.
   const [search, setSearch] = useState("");
+  /**
+   * "Buscar também dentro das mensagens" — DESLIGADO por padrão (decisão do
+   * operador, 09/09/2026). Ligado, a caixa passa a perguntar ao banco pelo
+   * histórico inteiro (RPC 929) e o fio destaca o que casou; desligado, a
+   * busca olha só nome, número, grupo e última mensagem. Sempre ligada, a
+   * busca por um nome trazia junto toda conversa em que o nome foi CITADO.
+   * Estado de sessão, sem persistência: "por padrão" quer dizer a cada
+   * abertura da caixa.
+   */
+  const [buscarNasMensagens, setBuscarNasMensagens] = useState(false);
   const [filtros, setFiltros] = useState<FiltrosDoInbox>(() =>
     etapaInicial ? { ...FILTROS_VAZIOS, etapaId: etapaInicial } : FILTROS_VAZIOS,
   );
@@ -417,7 +428,7 @@ export function ConversationList({
     buscando: buscandoNoTexto,
     falhou: falhouBuscaNoTexto,
     termoAplicado,
-  } = useBuscaEmMensagens(search);
+  } = useBuscaEmMensagens(search, buscarNasMensagens);
 
   // Espelha o termo assentado para quem estiver fora da lista (o fio da
   // conversa, que precisa dele para destacar as mensagens que casaram).
@@ -772,7 +783,14 @@ export function ConversationList({
             <Input
               value={search}
               onChange={handleSearchChange}
-              placeholder={t("searchPlaceholder")}
+              // O placeholder diz o que a caixa olha AGORA: prometer
+              // "mensagem" com o interruptor desligado faria o operador
+              // concluir que a mensagem não existe.
+              placeholder={
+                buscarNasMensagens
+                  ? t("searchPlaceholderInMessages")
+                  : t("searchPlaceholder")
+              }
               className="border-border bg-muted pl-9 text-sm text-foreground placeholder-muted-foreground focus:border-primary/50"
             />
           </div>
@@ -809,11 +827,30 @@ export function ConversationList({
           />
         )}
 
+        {/* O interruptor da metade da busca que mora no banco. Só aparece
+            com texto na caixa: sem termo não há o que ligar, e a coluna de
+            320px não tem linha sobrando para um controle inerte. */}
+        {search.trim().length > 0 && (
+          <label className="flex cursor-pointer items-center gap-2 px-0.5 text-[11px] text-muted-foreground">
+            <Checkbox
+              checked={buscarNasMensagens}
+              onCheckedChange={(checked) =>
+                setBuscarNasMensagens(checked === true)
+              }
+              className="size-3.5"
+            />
+            {t("searchInsideMessages")}
+          </label>
+        )}
         {/* O que está acontecendo com a metade da busca que mora no banco.
             ⚠️ As três linhas existem porque, sem elas, os três estados são
             indistinguíveis de "não existe mensagem com esse texto" — e o
-            operador conclui que a conversa que ele procura não existe. */}
-        {search.trim().length > 0 && !termoBuscavel(search) && (
+            operador conclui que a conversa que ele procura não existe.
+            Todas atrás do interruptor: desligado, o banco não é consultado
+            e não há o que explicar. */}
+        {buscarNasMensagens &&
+          search.trim().length > 0 &&
+          !termoBuscavel(search) && (
           <p className="px-0.5 text-[11px] text-muted-foreground">
             {t("searchMinChars", { n: TERMO_MINIMO })}
           </p>
