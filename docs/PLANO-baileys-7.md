@@ -426,8 +426,9 @@ linha em status inferior (`aceitamAvancoPara`), e o fan-out
 
 Relatado pelo operador em 10/09 (mensagens do celular com 1 ✓) e medido no
 mesmo dia (9.6): a Evolution despacha o `messages.upsert` e o `messages.update`
-da mesma mensagem no mesmo segundo, e o CRM grava a mensagem em ~2 s (contato,
-conversa, citação) enquanto o recibo é um UPDATE só — o UPDATE rodava antes do
+da mesma mensagem no mesmo segundo, e o CRM só grava a mensagem do celular
+depois de esperar 2 s de propósito (`jaGravada`: o prazo para o eco de um envio
+do próprio CRM aparecer), enquanto o recibo é um UPDATE só — o UPDATE rodava antes do
 INSERT, achava zero linhas e o recibo morria. **Anterior à 2.4**: 38% das
 mensagens do celular presas em `sent` antes do upgrade, 34% depois; o envio
 pelo CRM tem a mesma janela (a linha nasce depois que a Evolution responde).
@@ -974,13 +975,14 @@ Script `prevoo-backup.sh` em segundo plano na VPS (`/root/backups/prevoo-run.log
   (06:00:27/06:00:28; 09:05:42/09:05:42; 09:51:55/09:51:55). No log do PostgREST, a das 09:51:
   `PATCH …message_id=eq.3EB050AAE0004250FB26…status=in.(sending,sent)` às 12:51:55.708 UTC
   e o `POST /rest/v1/messages` dela às 12:51:57.644 — o UPDATE rodou 1,9 s antes de a linha
-  existir, e o recibo morreu.
+  existir, e o recibo morreu. As duas leituras `select=id&message_id=eq.…&limit=1` (12:51:55.531
+  e 12:51:57.568) são o `jaGravada` e a sua espera de 2 s — a causa do atraso da gravação.
 - **Tamanho**: desde 20/08, 1.267 de 3.315 mensagens do celular presas em `sent` antes do
   upgrade (38%) e 51 de 149 depois (34%) — é da rota do CRM, não da Baileys 7. Pelo CRM:
   20 de 147 antes, 5 de 12 depois. Correção na rota: 5.9.
 - **Acervo**: 1.361 mensagens `sent` (agent/bot) no CRM; **1.258** têm recibo guardado na
   Evolution (celular: 999 → `delivered`, 237 → `read`; CRM: 15; robô: 7); 103 sem recibo
-  nenhum. Corrigir o acervo espera decisão do operador.
+  nenhum. **Decisão do operador (10/09): o acervo fica como está — basta valer daqui para frente.**
 - **À parte, não explicado**: as mensagens das 09:01 e das 09:51 só chegaram à Evolution às
   09:05:42 e às 09:51:55 (4 min e 27 s depois do envio), sem reconexão registrada no
   intervalo. Não afeta o ✓; afeta a hora em que a mensagem aparece no CRM. Acompanhar nos
@@ -1026,7 +1028,7 @@ Script `prevoo-backup.sh` em segundo plano na VPS (`/root/backups/prevoo-run.log
 - [x] Docs e `CLAUDE.md` atualizados (5.6): `INFRA-VPS.md` (§1, §4, §6, §7, §8), `EVOLUTION-LID-FIX.md` marcado obsoleto, `INSTALACAO.md` 3.1, `ops/vps/README.md`, `cb-evo-baileys` reescrito para a 2.4 e reinstalado
 - [ ] Cron `docker image prune -af` × imagens de rollback (P12)
 - [ ] Nenhum "Aguardando mensagem" relatado
-- [x] 1 ✓ nas mensagens do celular — recibo antes da mensagem, corrigido na rota (5.9, 9.6, PR #191); [ ] acervo: 1.258 mensagens presas em `sent` com recibo guardado na Evolution (decisão do operador)
+- [x] 1 ✓ nas mensagens do celular — recibo antes da mensagem, corrigido na rota (5.9, 9.6, PR #191); acervo de 1.258 mensagens presas em `sent`: **fica como está** (decisão do operador, 10/09)
 - [ ] Ajuste 5 (`GROUP_UPDATE`) + Ressincronizar nas 4 conexões
 - [ ] `/root/evolution.yaml` atualizado (imagem por digest, `TELEMETRY_ENABLED`)
 - [ ] Docs e `CLAUDE.md` atualizados (5.6); `EVOLUTION-LID-FIX.md` marcado obsoleto

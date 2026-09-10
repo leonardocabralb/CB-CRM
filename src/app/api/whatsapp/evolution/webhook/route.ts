@@ -499,9 +499,10 @@ export async function POST(request: Request) {
           return atualizadas && atualizadas.length > 0 ? 'avancou' : 'nada';
         };
         // ⚠️ O recibo costuma chegar ANTES da mensagem que ele confirma: a
-        // Evolution despacha os dois no mesmo segundo e gravar a mensagem leva
-        // ~2 s. Sem linha, espera por ela; linha que existe e não avança é
-        // recibo atrasado ou repetido. Ver `recibo-antes-da-mensagem.ts`.
+        // Evolution despacha os dois no mesmo segundo, e a mensagem do celular
+        // só é gravada depois dos 2 s de `jaGravada` (acima). Sem linha, espera
+        // por ela; linha que existe e não avança é recibo atrasado ou repetido.
+        // Ver `recibo-antes-da-mensagem.ts`.
         const avancou = await aplicarReciboQuandoAMensagemExistir({
           tentar,
           existe: async () => {

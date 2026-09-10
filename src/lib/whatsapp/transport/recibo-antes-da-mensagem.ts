@@ -5,9 +5,10 @@
 // mesma mensagem colados — e o recibo ganha a corrida dentro do CRM. Medido
 // em 10/09/2026 nas mensagens que o celular pareado mandou a um cliente: a das
 // 09:51:28 e o recibo de entrega dela (09:51:31) saíram JUNTOS da Evolution
-// às 09:51:55, no mesmo lote da Baileys 7. Gravar a mensagem passa por
-// contato, conversa e citação antes do INSERT; o recibo é um UPDATE só. No
-// log do PostgREST: o PATCH do recibo às 12:51:55.708 (zero linhas) e o POST
+// às 09:51:55, no mesmo lote da Baileys 7. A mensagem do celular só é
+// gravada depois de uma espera de 2 s DE PROPÓSITO (`jaGravada`, na rota: é o
+// prazo para o eco de um envio do próprio CRM aparecer) e das consultas de
+// contato e conversa; o recibo é um UPDATE só. No log do PostgREST: o PATCH do recibo às 12:51:55.708 (zero linhas) e o POST
 // da mensagem às 12:51:57.644. O recibo era descartado e a bolha ficava num
 // ✓ até o cliente LER — quando chega outro recibo, bem depois.
 //
