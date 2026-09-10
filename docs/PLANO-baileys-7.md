@@ -56,7 +56,7 @@ abaixo. Nada foi deixado implícito de propósito.
 | 09/09 noite | Revisão adversarial do roteiro (3 lentes + crítico): 6.2, 8.4, 10 e Anexo B reescritos — script por passo com preâmbulo, foto final conferida, rollback por **rename** de banco (sem `dropdb`), portão de licença só HTTP, `EVOLUTION_OPERATOR_EMAIL` morto, `AUTHENTICATION_API_KEY` exposta no boot (P9), migration em laço, `BGSAVE` | 0.4, 6.2, 8.4, 10, 14 |
 | 09/09 18:24 | Pré-voo, parte de backup: dump novo (14,3 MB), db 9 renovado (36 = 36), RDB, restauração de prova **bate em todas as tabelas, 0 avisos**. Achado da cascata do `DELETE` das órfãs (9.3) | 9.3 |
 | 09/09 18:10 | Revisão do Codex no #162 avaliada: rollback **reordenado** (escalar a 0 antes de trocar a imagem — procede); `FLUSHDB` do db 9 já estava no commit final; participante por `id` telefone já coberto no código do #161 (o texto de 5.3 estava defasado e foi sincronizado). Pré-voo **só de leitura** executado na VPS | 9.2, seção 10 |
-| 10/09 09:55 | Operador: mensagens do celular com 1 ✓. Medido: o recibo chega ao CRM ANTES da mensagem — corrida da rota, anterior à 2.4 (~⅓ das mensagens do celular desde 20/08) → espera na rota (PR_RECIBO) | 5.9, 9.6 |
+| 10/09 09:55 | Operador: mensagens do celular com 1 ✓. Medido: o recibo chega ao CRM ANTES da mensagem — corrida da rota, anterior à 2.4 (~⅓ das mensagens do celular desde 20/08) → espera na rota (PR #191) | 5.9, 9.6 |
 
 ### 0.3 O que NÃO foi feito (e é o próximo trabalho)
 
@@ -422,7 +422,7 @@ linha em status inferior (`aceitamAvancoPara`), e o fan-out
 `message.status_updated` só dispara quando alguma linha avançou. Regra no
 `CLAUDE.md`.
 
-### 5.9 Recibo antes da mensagem (`webhook/route.ts`, `recibo-antes-da-mensagem.ts`) — **FEITO (PR_RECIBO)**
+### 5.9 Recibo antes da mensagem (`webhook/route.ts`, `recibo-antes-da-mensagem.ts`) — **FEITO (PR #191)**
 
 Relatado pelo operador em 10/09 (mensagens do celular com 1 ✓) e medido no
 mesmo dia (9.6): a Evolution despacha o `messages.upsert` e o `messages.update`
@@ -1026,7 +1026,7 @@ Script `prevoo-backup.sh` em segundo plano na VPS (`/root/backups/prevoo-run.log
 - [x] Docs e `CLAUDE.md` atualizados (5.6): `INFRA-VPS.md` (§1, §4, §6, §7, §8), `EVOLUTION-LID-FIX.md` marcado obsoleto, `INSTALACAO.md` 3.1, `ops/vps/README.md`, `cb-evo-baileys` reescrito para a 2.4 e reinstalado
 - [ ] Cron `docker image prune -af` × imagens de rollback (P12)
 - [ ] Nenhum "Aguardando mensagem" relatado
-- [x] 1 ✓ nas mensagens do celular — recibo antes da mensagem, corrigido na rota (5.9, 9.6, PR_RECIBO); [ ] acervo: 1.258 mensagens presas em `sent` com recibo guardado na Evolution (decisão do operador)
+- [x] 1 ✓ nas mensagens do celular — recibo antes da mensagem, corrigido na rota (5.9, 9.6, PR #191); [ ] acervo: 1.258 mensagens presas em `sent` com recibo guardado na Evolution (decisão do operador)
 - [ ] Ajuste 5 (`GROUP_UPDATE`) + Ressincronizar nas 4 conexões
 - [ ] `/root/evolution.yaml` atualizado (imagem por digest, `TELEMETRY_ENABLED`)
 - [ ] Docs e `CLAUDE.md` atualizados (5.6); `EVOLUTION-LID-FIX.md` marcado obsoleto
