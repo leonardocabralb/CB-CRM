@@ -3328,6 +3328,14 @@ do painel da conversa no inbox (`src/components/transcricoes/`). Plano vivo em
   frente para sempre.
 - **`cb/tldv` está no laço LENTO do `docker-stack.yml`** — e o CI não relê o
   `command` do agendador: vale depois de `docker stack deploy` manual.
+- ⚠️ **Os dois hooks da aba Reuniões (`use-reunioes.ts`,
+  `use-reunioes-transcritas.ts`) carimbam o DONO da lista (`{ de, reunioes }`)
+  e DERIVAM `carregando` de `de !== contactId`.** O painel da conversa não
+  remonta ao trocar de cliente: sem o carimbo, com a aba aberta, as reuniões
+  do cliente anterior ficavam clicáveis sob o nome do novo até a resposta
+  chegar (revisão do PR #187 — a aba entrou no painel em 09/09/2026). É a
+  armadilha do efeito passivo, na sexta aparição; a guarda é a mesma dos
+  campos personalizados (`{ de, mapa }`).
 
 ⚠️ **Webhooks de ENTRADA (982) e tags ADITIVAS na v1: o Typebot chama o CRM.**
 `src/lib/webhooks-de-entrada/` (`achatar.ts` e o `resultadoDoDisparo`/

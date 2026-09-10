@@ -118,18 +118,23 @@ export function useReunioes(
  * natureza (um cliente tem dezenas de reuniões, não milhares).
  */
 export function useReunioesDoContato(contactId: string | null | undefined) {
-  const [reunioes, setReunioes] = useState<Meeting[]>([]);
-  const [carregando, setCarregando] = useState(false);
+  // ⚠️ A lista leva o DONO junto (`de`), e `carregando` é DERIVADO dela. O
+  // painel da conversa NÃO remonta ao trocar de cliente — a instância fica,
+  // só a prop muda —, então entre a troca e a resposta existe um render com
+  // o contato NOVO e a lista do ANTERIOR, clicável. Guardar a lista sozinha
+  // e "limpar num efeito" deixa esse render passar (efeito é passivo); a
+  // comparação contra a prop do render atual é a mesma guarda dos campos
+  // personalizados (`{ de, mapa }`). Achado na revisão do PR #187.
+  const [estado, setEstado] = useState<{ de: string | null; reunioes: Meeting[] }>({
+    de: null,
+    reunioes: [],
+  });
 
   const buscar = useCallback(
     async (vivo: () => boolean = () => true) => {
-      if (!contactId) {
-        setReunioes([]);
-        return;
-      }
+      if (!contactId) return;
 
       const supabase = createClient();
-      setCarregando(true);
 
       const { data } = await supabase
         .from('cb_meetings')
@@ -140,14 +145,15 @@ export function useReunioesDoContato(contactId: string | null | undefined) {
       // Mesma razão do hook acima: a ficha troca de cliente com um clique.
       if (!vivo()) return;
 
-      setReunioes((data ?? []) as Meeting[]);
-      setCarregando(false);
+      setEstado({ de: contactId, reunioes: (data ?? []) as Meeting[] });
     },
     [contactId],
   );
 
   useEffect(() => {
     let vivo = true;
+    // A regra do React Compiler olha a função chamada, e `buscar` grava
+    // estado (depois do await). É a diretiva que o hook sempre teve.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void buscar(() => vivo);
     return () => {
@@ -155,5 +161,14 @@ export function useReunioesDoContato(contactId: string | null | undefined) {
     };
   }, [buscar]);
 
-  return { reunioes, carregando, recarregar: buscar };
+  // A lista em mãos é deste contato? Até lá a tela está carregando — no
+  // PRIMEIRO render inclusive (antes `carregando` nascia false e a aba dizia
+  // "nenhuma reunião marcada" por um quadro). `recarregar` depois de uma ação
+  // mantém a lista à vista: ela continua sendo deste contato.
+  const doContatoAtual = estado.de === contactId;
+  return {
+    reunioes: doContatoAtual ? estado.reunioes : [],
+    carregando: !!contactId && !doContatoAtual,
+    recarregar: buscar,
+  };
 }
