@@ -21,11 +21,11 @@ Para atualizar: `bash scripts/vps-inventario.sh`.
 |---|---|---|
 | Contatos, conversas, mensagens, funis, automações do **CB CRM** | ✅ **sim** | Supabase (gerenciado, fora da VPS) |
 | Arquivos de mídia do CRM | ✅ sim | Supabase Storage |
-| **Sessão do WhatsApp** (o pareamento) | ❌ **não** | `postgres_data` + `evolution_instances`, sem backup |
+| **Sessão do WhatsApp** (o pareamento) | ⚠️ **só se o disco sobreviver** | `postgres_data` + Redis db 8. Desde 09/09/2026 há dumps manuais em `/root/backups/` (banco `evolution`, Redis db 8, `RuntimeConfig` da licença), mas no **mesmo disco** e sem rotina |
 | **Fluxos do n8n** | ❌ **não** | `postgres_data`, sem backup |
 | Bots do Typebot | ❌ não | `typebot_typebot-db-data`, sem backup |
 | Base vetorial (pgvector) | ❌ não | `pgvector`, sem backup |
-| **Definições das stacks** (9 de 10) | ❌ **não** | só em `/root/*.yaml`, fora do git |
+| **Definições das stacks** (8 de 10) | ❌ **não** | só em `/root/*.yaml`, fora do git. A da Evolution está versionada desde 09/09/2026 (`ops/vps/evolution-stack.yml`; segredos em `/root/evolution.env`) |
 | Certificados TLS | ⚠️ regeneráveis | Let's Encrypt reemite sozinho |
 | Cache do Redis | ⚠️ descartável | por definição |
 
@@ -35,10 +35,18 @@ Chatwoot) existem **apenas como arquivo solto na VPS**. Só a do CRM está
 versionada (`docker-stack.yml`). Perder o disco significa reescrever tudo de
 memória.
 
-⚠️ **Não existe backup de nada.** Conferido em 2026-08-04: sem crontab do root,
-sem tarefa de dump, sem volume espelhado. O `/etc/cron.d` só tem `certbot`,
-`docker-image-prune`, `e2scrub_all` e `popularity-contest` — nenhum deles faz
-backup.
+⚠️ **Não existe backup automático.** Conferido em 2026-08-04 e de novo em
+09/09/2026: sem crontab do root, sem tarefa de dump, sem volume espelhado. O
+`/etc/cron.d` tem `certbot`, `docker-image-prune`, `docker-builder-prune`,
+`e2scrub_all` e `popularity-contest` — nenhum faz backup. O que existe são os
+**dumps manuais de 09/09** em `/root/backups/` (do plano da Baileys 7), no
+mesmo disco.
+
+⚠️ **`docker-image-prune` roda todo dia às 00:17 com `-a --filter until=24h`**:
+apaga TODA imagem sem contêiner e com mais de 24 h — inclusive as imagens de
+**rollback** da Evolution (`homolog@1e656f95…` e `lidfix@dd3e46…`). Elas são
+públicas (Docker Hub e GHCR) e voltam com `docker pull`, mas o rollback passa
+a depender de rede no pior momento. Ver §7.
 
 **O que isso custa na prática:** perder `postgres_data` significa **reler o QR
 code** de cada número de WhatsApp, com o escritório sem atendimento até alguém
@@ -139,7 +147,7 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `postgres` | `postgres_postgres` | `postgres:14` | 1 |
 | `redis` | `redis_redis` | `redis:latest` | 1 |
 | `pgvector` | `pgvector_pgvector` | `pgvector/pgvector:pg16` | 1 |
-| `evolution` | `evolution_evolution` | `ghcr.io/leonardocabralb/evolution-api-lidfix:2.3.2-lidfix` | 1 |
+| `evolution` | `evolution_evolution` | `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao` (por digest) | 1 |
 | `crm` | `crm_crm` | `ghcr.io/leonardocabralb/cb-crm:<sha>` | 1 |
 | `crm` | `crm_agendador` | `curlimages/curl:8.11.1` | 1 |
 | `n8n` | `n8n_n8n_editor` / `_webhook` / `_worker` | `n8nio/n8n:latest` | 1 / 1 / 1 |
@@ -147,11 +155,21 @@ Todos apontam para `82.25.76.63` e entram pelo `websecure`.
 | `portainer` | `portainer_portainer` / `_agent` | `portainer/*` | 1 / global |
 | `openclaw` | `openclaw_openclaw-gateway` | `ghcr.io/openclaw/openclaw:latest` | 1 |
 
-⚠️ **A Evolution é um FORK NOSSO**, não a imagem oficial:
-`ghcr.io/leonardocabralb/evolution-api-lidfix:2.3.2-lidfix`. Ela carrega a
-correção do `@lid` (ver `docs/EVOLUTION-LID-FIX.md`). Restaurar com a imagem
-oficial `evoapicloud/evolution-api` **traz o defeito de volta** — e o label
-`com.docker.stack.image` da stack ainda aponta para a oficial, o que engana.
+⚠️ **A Evolution é uma IMAGEM NOSSA**, não a oficial — desde **09/09/2026
+21:11**: `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao@sha256:dc0f4e8b12de706414609464131b4099de5f0dd29d16bd011b74206089ff1adf`
+(Evolution **2.4.0** / Baileys **7.0.0-rc13**, construída pelo workflow
+`.github/workflows/evolution-cb.yml` a partir do commit `e273b904` do
+`develop` oficial, com o patch da citação do cliente e o `prisma.config.ts`
+dentro — ver `docker/evolution-cb/README.md`). O pacote no GHCR é **público**:
+a VPS a puxou sem `docker login`. Restaurar com a `evoapicloud/evolution-api:homolog`
+oficial exige montar `/root/evolution/prisma.config.ts` em `/evolution/prisma.config.ts`
+(sem ele o Prisma 7 não migra e o serviço entra em laço) e perde a citação do
+cliente; restaurar com a 2.3.2 (`lidfix`) traz de volta o "Aguardando mensagem".
+A 2.4 exige **licença** (gratuita, cadastro no `/manager`); a ativação fica na
+tabela `RuntimeConfig` do banco `evolution` — restaurado o banco, ela volta;
+banco novo = cadastrar de novo. O label `com.docker.stack.image` ainda diz
+`evoapicloud/evolution-api:latest` — **engana**, nunca pinar por ele. O que
+foi medido, decidido e testado está em `docs/PLANO-baileys-7.md`.
 
 ⚠️ **Várias imagens estão em `:latest`** (n8n, redis, portainer, typebot,
 openclaw). Um `docker service update --force` nelas pode trazer versão nova sem
@@ -159,9 +177,12 @@ ninguém pedir. O CRM e a Evolution estão fixados por digest — que é o certo
 
 ### Arquivos de stack, todos em `/root/`
 
-`docker-stack.yml` (CRM, **versionado**), `traefik.yaml`, `postgres.yaml`,
-`redis.yaml`, `pgvector.yaml`, `evolution.yaml`, `n8n.yaml`, `typebot.yml`,
-`portainer.yaml`, `chatwoot.yaml` (stack desativada).
+`docker-stack.yml` (CRM, **versionado**), `evolution-stack.yml` + `evolution.env`
+(Evolution, **versionado** em `ops/vps/` sem os segredos, desde 09/09/2026),
+`traefik.yaml`, `postgres.yaml`, `redis.yaml`, `pgvector.yaml`, `n8n.yaml`,
+`typebot.yml`, `portainer.yaml`, `chatwoot.yaml` (stack desativada).
+⚠️ `evolution.yaml` (28/07/2026) está **obsoleto** — imagem 2.3.2, sem as
+variáveis novas; não usar.
 
 ### Volumes — o que morre com a máquina
 
@@ -305,8 +326,21 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
 5. **Traefik** — `docker stack deploy -c traefik.yaml traefik`. Sem certificado
    restaurado, ele reemite sozinho assim que o DNS apontar.
 6. **Postgres e Redis** — as stacks próprias, com os volumes já restaurados.
-7. **Evolution** — ⚠️ imagem do **nosso fork**. Sem `postgres_data` restaurado,
-   exige reler o QR de cada número.
+7. **Evolution** — recriar `/root/evolution.env` a partir de
+   `ops/vps/evolution.env.example` (os valores: `AUTHENTICATION_API_KEY` é a
+   mesma `EVOLUTION_GLOBAL_API_KEY` do `crm.env`; `DATABASE_CONNECTION_URI` e
+   `CACHE_REDIS_URI` apontam para `postgres`/`redis` desta rede) e
+   `docker stack deploy -c /root/evolution-stack.yml evolution` (imagem por
+   digest, pública no GHCR — sem login). Depois:
+   - com `postgres_data` **e** Redis db 8 restaurados: as 4 conexões voltam
+     `open` sozinhas e a licença já está ativa (`RuntimeConfig`);
+   - sem eles: o banco nasce vazio (as 59 migrations rodam no boot), a licença
+     tem de ser **ativada no `/manager`** (`leonardocabralb@gmail.com`;
+     telefone com o operador) e cada número precisa ser reconectado pelo CRM
+     (Conexões → Reconectar → **ler o QR**, 4 celulares).
+   Os backups de 09/09 (`/root/backups/evolution-*.dump`, `redis-*.rdb`,
+   `evolution-runtimeconfig-*.dump`) restauram os dois pedaços — se o disco
+   tiver sobrevivido, ou se tiverem sido copiados para fora.
 8. **Demais** (n8n, Typebot, pgvector, Portainer).
 9. **CRM** — recriar `/root/crm.env` (⚠️ com a **mesma** `ENCRYPTION_KEY`),
    `docker login ghcr.io`, e o `stack deploy` do `docker-stack.yml`.
@@ -317,11 +351,20 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
 
 ## 7. Dívidas conhecidas (em ordem de risco)
 
-1. ⚠️ **Sem backup nenhum.** `postgres_data` carrega a sessão do WhatsApp e os
-   fluxos do n8n. Um `pg_dump` diário para fora da máquina é barato e resolve o
-   pior caso.
-2. ⚠️ **9 das 10 stacks só existem em `/root/`.** Um repositório privado com os
-   `*.yaml` (sem segredos) elimina o risco de reescrever tudo de memória.
+1. ⚠️ **Sem backup automático, e nada fora da máquina.** `postgres_data` carrega
+   a sessão do WhatsApp e os fluxos do n8n. Desde 09/09/2026 há o roteiro de
+   dump manual (banco `evolution` em 3–5 s, Redis db 8 → db 9 + RDB, `RuntimeConfig`,
+   spec do serviço — Anexo B do `PLANO-baileys-7.md`), tudo em `/root/backups/`
+   no **mesmo disco**. Falta: cron diário + cópia para fora (destino a decidir
+   pelo operador).
+2. ⚠️ **8 das 10 stacks só existem em `/root/`.** A da Evolution já está em
+   `ops/vps/`; um `git add` dos outros `*.yaml` (sem segredos) fecha o resto.
+   ⚠️ **O cron `docker image prune -af --filter until=24h` apaga as imagens de
+   rollback** da Evolution na madrugada seguinte a qualquer troca. Ou o cron
+   perde o `-a` (prune só do que está pendurado, ao custo de imagens velhas do
+   CRM acumularem), ou as imagens de rollback ganham um contêiner parado que as
+   segure (`docker create --name manter-<nome> <imagem@digest> true`) — decisão
+   do operador.
 3. ⚠️ **Nada monitora o WhatsApp.** Em 2026-08-04 o escritório ficou ~1 h sem
    atendimento e a descoberta foi acidental. O CRM respondia 200 o tempo todo,
    então qualquer monitor de "o site está no ar?" teria dito que estava tudo bem.
@@ -336,6 +379,18 @@ o `stack deploy` manual descrito no `DEPLOY-VPS.md`.
 ---
 
 ## 8. Histórico de incidentes
+
+### 2026-09-09 — upgrade da Evolution para 2.4 (Baileys 7)
+
+Planejado e executado em `docs/PLANO-baileys-7.md`: 2 paradas de ~1 min
+(tentativa 1 falhou por falta do `prisma.config.ts` na imagem oficial; a
+segunda subiu com o arquivo montado) e uma terceira de 71 s para a troca pela
+imagem própria `evolution-api-cb`. Nenhuma conexão pediu QR. Lições que
+valem para esta doc: `docker service update --image` começa a troca na hora
+(escalar a 0 antes); a foto do Redis envelhece a cada mensagem (tirar com o
+serviço parado); `| grep -q` sob `pipefail` é trava falsa; e nos ~6 primeiros
+minutos depois de (re)conectar a Baileys 7 entrega a entrada em lotes de
+30–120 s antes de normalizar.
 
 ### 2026-08-04 — ~1 h sem WhatsApp após reboot da VPS
 

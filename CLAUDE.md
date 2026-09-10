@@ -94,6 +94,9 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API.
   ⚠️ Os demais arquivos de `docs/` (`PLANO-*`, `INFRA-VPS`, `DEPLOY-VPS`,
   `EVOLUTION-LID-FIX`) são INTERNOS: descrevem a nossa operação e não vão para
   quem instala. Ver `docs/PLANO-produto-vendavel.md`, Fase 4.4.
+  `EVOLUTION-LID-FIX.md` está **obsoleto** desde 09/09/2026 (a produção roda a
+  Evolution 2.4 / Baileys 7); o estado atual da VPS e como recriá-la estão em
+  `docs/INFRA-VPS.md`, e a stack da Evolution em `ops/vps/evolution-stack.yml`.
 - `.env.local` — segredos (Supabase URL/keys, `META_APP_SECRET`,
   `ENCRYPTION_KEY`). Gitignored; **nunca commitar**. Modelo em
   `.env.local.example`.
@@ -2258,7 +2261,10 @@ entrega mensagem de grupo. O que morde código novo:
   admin e o nosso LID.
 - **`GROUPS_UPDATE` não existe** na Evolution 2.3.2 e o enum recusa o pedido
   INTEIRO — incluí-lo derruba junto os eventos válidos da mesma lista.
-  Assináveis: `GROUPS_UPSERT` e `GROUP_PARTICIPANTS_UPDATE`.
+  Assináveis: `GROUPS_UPSERT` e `GROUP_PARTICIPANTS_UPDATE`. ⚠️ A produção
+  roda a **2.4** desde 09/09/2026, cujo enum tem `GROUP_UPDATE` — mas a lista
+  do CRM ainda NÃO o inclui (ajuste 5 do `docs/PLANO-baileys-7.md`, pendente:
+  exige conferir o enum da 2.4 e "Ressincronizar" as 4 conexões).
 - **Ligar `cb_channels.groups_enabled` não basta**: instância já conectada só
   recebe os eventos novos depois de reaplicar o webhook ("Ressincronizar").
 - **Menção chega em `@lid`, nunca em telefone** — daí `cb_channels.own_lid`
@@ -3714,10 +3720,18 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
   `parseGroupInfo` lê as duas formas.
 - ⚠️ **`GROUP_UPDATE` só entra em `WEBHOOK_EVENTS` DEPOIS do upgrade**: a 2.3.2
   recusa a lista inteira com evento desconhecido (conferido em 28/07/2026).
-- Operação: imagem SEMPRE por digest; `TELEMETRY_ENABLED=false`; `docker stack
-  deploy` continua proibido para a Evolution; backup do Redis é SÓ do db 8 (o
-  Redis é compartilhado com outros serviços); o log da Evolution morre no
-  reinício do contêiner.
+- Operação (estado em 09/09/2026 21:11): a imagem é a NOSSA,
+  `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao@sha256:dc0f4e8b…`
+  (commit `e273b904` do `develop` + patch da citação do cliente + `prisma.config.ts`
+  dentro — `docker/evolution-cb/`), SEMPRE por digest; `TELEMETRY_ENABLED=false`;
+  a licença está ativa (tabela `RuntimeConfig` do banco `evolution`); a stack
+  completa está em `ops/vps/evolution-stack.yml` (= `/root/evolution-stack.yml`,
+  segredos em `/root/evolution.env`), e `docker stack deploy` da Evolution só
+  vale para RECRIAR o serviço com esse arquivo, nunca para atualizar (o `.yml`
+  não acompanha o `service update`); backup do Redis é SÓ do db 8 (o Redis é
+  compartilhado com outros serviços); o log da Evolution morre no reinício do
+  contêiner; o cron `docker image prune -af` apaga as imagens de rollback na
+  madrugada seguinte (são públicas, voltam com `pull`).
 
 - ⚠️ **Recibo fora de ordem (medido 09/09/2026, primeira mensagem depois do
   upgrade)**: a 2.4 emite `SERVER_ACK` DEPOIS do `DELIVERY_ACK` da mesma
@@ -4196,7 +4210,8 @@ O locale é **global e fixo**, vindo de `NEXT_PUBLIC_APP_LOCALE` no `.env.local`
   diferente do meu local", checar build-arg antes de env de runtime.
 - Segredos de runtime vivem em `crm.env` **na VPS** (fora do git), espelhando o
   `.env.local`. A Evolution API roda como serviço `evolution_evolution` no mesmo
-  Swarm.
+  Swarm (imagem própria 2.4 por digest — ver o bloco da Baileys 7 acima e
+  `docs/INFRA-VPS.md`; os segredos DELA ficam em `/root/evolution.env`).
 - ⚠️⚠️ **`docker stack deploy` SEM carregar o `crm.env` ZERA TODOS os segredos
   de produção — e o site continua respondendo 200.** O `docker-stack.yml` usa
   `${VAR}`, que o Docker substitui pelo **ambiente do shell**: variável ausente

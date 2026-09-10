@@ -1,0 +1,52 @@
+# Stack da Evolution API na VPS - gerado em 09/09/2026 a partir da especificacao
+# viva do servico (docker service inspect evolution_evolution). Substitui o
+# /root/evolution.yaml de 28/07/2026, que ficou para tras (imagem, env, mount).
+#
+# Uso: SO para recriar o servico do zero (VPS nova, ou servico apagado):
+#   docker stack deploy -c /root/evolution-stack.yml evolution
+# No dia a dia a troca de imagem continua sendo `docker service update --image ...@sha256:...`
+# (docs/PLANO-baileys-7.md, 6.2). Antes de qualquer deploy, conferir a imagem
+# aqui contra a que esta rodando - este arquivo NAO se atualiza sozinho.
+#
+# Os valores de ambiente (chaves, senhas) estao em /root/evolution.env (600), fora do git.
+version: "3.8"
+
+services:
+  evolution:
+    image: ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao@sha256:dc0f4e8b12de706414609464131b4099de5f0dd29d16bd011b74206089ff1adf
+    env_file:
+      - /root/evolution.env
+    volumes:
+      - instances:/evolution/instances
+    networks:
+      - CBAdvNet
+    stop_grace_period: 10s
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: pause
+        monitor: 5s
+      labels:
+        - "traefik.enable=1"
+        - "traefik.http.routers.evolution.entrypoints=websecure"
+        - "traefik.http.routers.evolution.priority=1"
+        - "traefik.http.routers.evolution.rule=Host(`api.cbadvogados.com`)"
+        - "traefik.http.routers.evolution.service=evolution"
+        - "traefik.http.routers.evolution.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.evolution.loadbalancer.passHostHeader=true"
+        - "traefik.http.services.evolution.loadbalancer.server.port=8080"
+
+volumes:
+  instances:
+    name: evolution_instances
+    external: true
+
+networks:
+  CBAdvNet:
+    external: true

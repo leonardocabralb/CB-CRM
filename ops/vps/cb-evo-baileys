@@ -1,4 +1,10 @@
 #!/bin/sh
+# Confere a Evolution em execução: imagem, versão da Evolution e da Baileys, e o
+# prisma.config.ts. Até 09/09/2026 conferia o patch do @lid da 2.3.2 (grep de
+# sender_pn na Baileys 6.7.19); com a 2.4 (Baileys 7) o LID é nativo, e o que
+# importa é a imagem por digest e o arquivo do Prisma (sem ele o Prisma 7 não
+# migra e o serviço entra em laço). Ver docs/INFRA-VPS.md §4 e docs/PLANO-baileys-7.md.
 cid=$(docker ps -q -f name=evolution_evolution | head -1)
 [ -n "$cid" ] || { echo "evolution nao esta rodando"; exit 1; }
-docker exec "$cid" sh -c 'grep -m1 "\"version\"" /evolution/node_modules/baileys/package.json; grep -n "sender_pn" /evolution/node_modules/baileys/lib/Utils/decode-wa-message.js'
+docker service inspect evolution_evolution --format 'imagem: {{.Spec.TaskTemplate.ContainerSpec.Image}}'
+docker exec "$cid" sh -c 'echo "evolution: $(grep -m1 "\"version\"" /evolution/package.json)"; echo "baileys: $(grep -m1 "\"version\"" /evolution/node_modules/baileys/package.json)"; if [ -f /evolution/prisma.config.ts ]; then echo "prisma.config.ts: presente"; else echo "prisma.config.ts: AUSENTE (Prisma 7 nao migra sem ele)"; fi'
