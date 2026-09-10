@@ -2,8 +2,9 @@
 // Cliente mínimo da API do Instagram (Instagram API com login do Instagram).
 //
 // Host: `graph.instagram.com` — NÃO é o `graph.facebook.com` do WhatsApp
-// Cloud API nem do Meta Ads. O token é o de LONGA DURAÇÃO (60 dias) gerado
-// pelo botão do painel da Meta (D3 do plano), e viaja SÓ no cabeçalho
+// Cloud API nem do Meta Ads. O token é o de LONGA DURAÇÃO (60 dias), vindo
+// do login do Instagram (`oauth.ts`) ou colado do painel da Meta (D3 do
+// plano), e viaja SÓ no cabeçalho
 // `Authorization: Bearer`, nunca em `?access_token=` (vaza em log de proxy —
 // a mesma regra da chave do Gemini e do token do Meta Ads).
 //
@@ -41,10 +42,9 @@ export function doGraphDoInstagram(url: string): boolean {
 
 /** Tira o token de qualquer texto que possa ir para log ou para a tela. */
 export function semSegredo(texto: string, token: string): string {
-  let saida = texto.replaceAll(
-    /access_token=[^&\s"']+/gi,
-    `access_token=${MARCA_DE_TOKEN}`
-  );
+  let saida = texto
+    .replaceAll(/access_token=[^&\s"']+/gi, `access_token=${MARCA_DE_TOKEN}`)
+    .replaceAll(/client_secret=[^&\s"']+/gi, `client_secret=${MARCA_DE_TOKEN}`);
   if (token.length >= 8) saida = saida.replaceAll(token, MARCA_DE_TOKEN);
   return saida;
 }
@@ -130,6 +130,12 @@ export interface PerfilDoCliente {
 export interface ClienteInstagram {
   me(): Promise<PerfilDaConta>;
   perfil(igsid: string): Promise<PerfilDoCliente>;
+  /**
+   * `POST /me/subscribed_apps`: a conta passa a entregar estes campos ao
+   * app. A doc exige a chamada por conta; o botão "Gerar token" do painel a
+   * faz por baixo, o login do Instagram não — daí o callback chamar aqui.
+   */
+  assinarWebhooks(campos: readonly string[]): Promise<void>;
 }
 
 type Fetch = typeof fetch;
@@ -138,7 +144,10 @@ export function criarClienteInstagram(
   token: string,
   fetchFn: Fetch = fetch
 ): ClienteInstagram {
-  async function pedir(caminho: string): Promise<Record<string, unknown>> {
+  async function pedir(
+    caminho: string,
+    init: { method?: 'GET' | 'POST' } = {}
+  ): Promise<Record<string, unknown>> {
     const url = `${INSTAGRAM_GRAPH}/${INSTAGRAM_API_VERSION}/${caminho}`;
     if (!doGraphDoInstagram(url)) {
       throw new InstagramApiError(
@@ -149,6 +158,7 @@ export function criarClienteInstagram(
     let resposta: Response;
     try {
       resposta = await fetchFn(url, {
+        method: init.method ?? 'GET',
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/json',
@@ -197,6 +207,18 @@ export function criarClienteInstagram(
         username,
         nome: typeof r.name === 'string' && r.name ? r.name : null,
       };
+    },
+    async assinarWebhooks(campos) {
+      const r = await pedir(
+        `me/subscribed_apps?subscribed_fields=${encodeURIComponent(campos.join(','))}`,
+        { method: 'POST' }
+      );
+      if (r.success !== true) {
+        throw new InstagramApiError(
+          'meta_error',
+          'A assinatura do webhook não confirmou (`success` ausente)'
+        );
+      }
     },
     async perfil(igsid) {
       const r = await pedir(

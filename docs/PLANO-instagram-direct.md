@@ -21,7 +21,7 @@
 | --- | --- | --- |
 | D1 | **Automações, fluxos e IA NÃO respondem no Instagram na v1.** Os motores pulam canal Instagram com uma linha de log; os senders do robô falham FECHADO. O roteamento para o funil (card no primeiro contato) **entra**. | O objetivo é gente respondendo. Ligar o robô é uma decisão de produto à parte, com a janela de 24h no meio. |
 | D2 | **Janela de resposta: 24h.** Opção por canal `ig_human_agent` (desligada) que estende para **7 dias** e envia a tag `HUMAN_AGENT` fora das 24h — só depois de o operador **solicitar a feature "Human Agent"** no painel da Meta. | A feature exige aprovação própria; sem ela a tag é recusada. |
-| D3 | **Token colado na tela**, gerado pelo botão do painel da Meta (60 dias). Sem OAuth. Renovação por cron semanal, comparando `expires_in`. | Desenho do estudo (§2.2); a Meta dispensa o login flow para conta própria. |
+| D3 | **Login do Instagram (OAuth, Business Login) com Standard Access** — revista em 09/09 à noite, a pedido do operador ("mais de uma conta, todas do meu escritório"): App ID + App Secret cadastrados UMA vez (990), botão "Conectar com Instagram", token de 60 dias vindo da troca (validade MEDIDA pelo `expires_in`). O **token colado continua** como caminho alternativo. Renovação por cron (Fase 6). | Conta adicionada ao app no painel autoriza em Standard Access (sem App Review); o token deixa de passar pela área de transferência; a permissão de mensagens é conferida antes de gravar; o desenho original (só token colado) está no estudo, §2.2. |
 | D4 | **Contato do Instagram nasce como FICHA PRÓPRIA**, identificada por `contacts.instagram_id` (IGSID) — e o operador pode **UNIFICAR à mão** com a ficha de WhatsApp do mesmo cliente (Fase 5). Sem unificação automática. | Decisão do operador em 10/09 ("abrir possibilidade para unificar manualmente"). Não há como saber sozinho que é a mesma pessoa; e IGSID em `contacts.phone` funde ficha com cliente real (§4.3 do estudo). |
 | D5 | **MEDIDO em 10/09 na doc da API de mensagens do Instagram.** Cabe: **nota de voz** (a API aceita `aac, m4a, wav, mp4` até 25 MB — o gravador produz ogg/opus, então em conversa Instagram a gravação é convertida para **WAV no navegador**); **PDF** até 25 MB; reação (`sender_action: react`) — que fica FORA da v1 mesmo assim (o emoji livre daqui não se traduz na reação única de lá). NÃO cabe: **apagar-para-todos** (não existe endpoint de unsend; só o webhook `message_deletions`, quando o CLIENTE apaga), **responder citando** (o `POST /messages` não aceita `reply_to`; na ENTRADA a Meta manda `reply_to`, então o CRM MOSTRA "em resposta a…" mas não ENVIA citação), **documento que não seja PDF**, editar mensagem, modelo, interativa. Regra do operador: o que não cabe fica **inacessível quando o canal ativo da conversa é Instagram** — some da tela, e a rota recusa com frase clara. | Pedido do operador em 10/09: "veja se é possível colocar o apagar para todos e a nota de voz; se não conseguir, seguiremos sem, deixando essas opções inacessíveis". |
 | D6 | **Uma fase = um PR = um deploy**, mesclado com o CI verde, avisando o operador — **sem esperar aprovação a cada PR** (autorização de 10/09). | Fluxo do projeto. |
@@ -151,6 +151,41 @@ Branch `feat/instagram-2-conexao` (construída em 10/09; PR aberto).
       outros métodos entram com as fases que os usam), erros tipados, **token
       nunca em URL** (só header), **mensagens da Meta sem o token**
       (`semSegredo`), host preso a `graph.instagram.com`.
+
+### Fase 2b — Conexão pelo login do Instagram (OAuth)
+Branch `feat/instagram-oauth` (construída em 09/09 à noite).
+- [x] Migration **990_cb_instagram_config**: App ID + App Secret CIFRADO por
+      conta, tabela fechada ao navegador (conferências válidas em banco vazio;
+      teste `rls-das-tabelas-do-instagram.test.ts`).
+- [x] `src/lib/instagram/oauth.ts`: URL de autorização (`force_reauth`; só
+      `instagram_business_basic` + `instagram_business_manage_messages`),
+      `state` assinado (HKDF da `ENCRYPTION_KEY`, 15 min) + nonce em cookie,
+      `origemDoPedido` (`x-forwarded-*`), as duas trocas (código → curto →
+      longo; mensagens sem segredo, código ou token) e `vencimentoDoToken`
+      medido. Testado.
+- [x] `src/lib/instagram/app.ts` (ler/gravar o app), `canal.ts` (a escrita em
+      `cb_channels`, comum ao token colado e ao login), e `graph.ts` ganhou
+      `assinarWebhooks` (`POST /me/subscribed_apps`) e `semSegredo` apagando
+      `client_secret=`.
+- [x] Rotas: `GET/PUT /api/cb/instagram/app` (admin; o segredo não sai),
+      `GET /api/cb/instagram/oauth/start` (state + cookie → Instagram) e
+      `GET /api/cb/instagram/oauth/callback` (sessão + state + nonce → trocas
+      → permissão de mensagens → `/me` → `subscribed_apps` → grava →
+      `?instagram=conectado`; toda falha volta com `?instagram=erro&motivo=`,
+      traduzido pela tela).
+- [x] `POST /api/cb/channels` (token colado): segredo em branco usa o do app.
+- [x] Painel: bloco "App da Meta" (cadastrar/trocar, URI de retorno com
+      copiar), botão "Conectar com Instagram", token colado num acordeão; a
+      volta do login é tratada UMA vez (toast + diálogo do webhook); i18n nos
+      dois dicionários com teste da chave montada (`retorno-do-oauth.test.ts`).
+- [ ] Painel da Meta: registrar a URI de retorno em Instagram → Business
+      login settings → "Valid OAuth Redirect URIs"; adicionar cada conta do
+      escritório ao app ("Gerar tokens de acesso" → adicionar conta). O
+      operador cadastra App ID + Secret no CRM e clica "Conectar com
+      Instagram" em cada conta.
+- [ ] Medir na primeira conexão real: `subscribed_apps` aceita `message_edit`
+      e `messaging_seen`? A troca pelo token longo aceita `Bearer` (para tirar
+      o token curto da query)?
 
 ### Fase 3 — Entrada: a DM vira mensagem na caixa
 3a (parser + assinatura, PR #169) e 3b (rota, persistência, mídia, perfil)

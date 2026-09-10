@@ -3520,9 +3520,40 @@ estrutural `transporte.chamadores.test.ts` (no `main` desde 10/09/2026, PR
   `pipeline-routing.chamadores` e `reopen.chamadores`. O eco (`is_echo`)
   com `mid` já gravado é o nosso próprio envio e o UNIQUE descarta; sem
   linha, é o app do Instagram e entra como `from_device`.
+- ⚠️ **Conectar é pelo LOGIN DO INSTAGRAM (OAuth, Business Login) desde a
+  Fase 2b (09/09/2026), com o token colado como alternativa.** O app da
+  Meta (Instagram App ID + Instagram App Secret) fica POR CONTA em
+  `cb_instagram_config` (990, fechada ao navegador; a rota
+  `/api/cb/instagram/app` devolve só o App ID), e o canal criado pelo login
+  continua gravando o segredo em `cb_channels.ig_app_secret` — a rota do
+  webhook não mudou. O que morde (`src/lib/instagram/oauth.ts`):
+  · O `state` é ASSINADO (HMAC de chave DERIVADA por HKDF da
+    `ENCRYPTION_KEY`, `chaveDoEstado`) com conta, membro, nonce e validade
+    de 15 min, e o nonce repete no cookie HttpOnly `cb_ig_oauth`; o callback
+    exige os dois E a sessão de admin da MESMA conta — sem isso um link
+    forjado amarraria o Instagram de um estranho à conta (login CSRF).
+  · A URI de retorno é DERIVADA DO PEDIDO (`origemDoPedido`: `x-forwarded-*`
+    do Traefik, senão a URL do pedido), nunca de `NEXT_PUBLIC_SITE_URL`: a
+    volta tem de cair na origem onde a sessão e o cookie vivem (no preview,
+    `localhost`). O painel da Meta só aceita URI registrada — a tela mostra
+    a que registrar.
+  · `POST /me/subscribed_apps` é chamado ANTES de gravar o canal (o botão
+    "Gerar token" do painel faz isso por baixo; o login não): canal que não
+    recebe não pode nascer calado. A permissão de mensagens é conferida na
+    resposta da troca (`permissions`) — dá para desmarcá-la no consentimento.
+  · O token CURTO viaja na query da troca pelo longo (forma documentada do
+    endpoint; vive 1 h, nunca é gravado, nenhum log imprime a URL) — a
+    ÚNICA exceção à regra do `Bearer`; `semSegredo` também apaga
+    `client_secret=`. O vencimento gravado é o `expires_in` MEDIDO.
+  · Standard Access: só conta ADICIONADA ao app no painel da Meta consegue
+    autorizar; conta de fora exigiria App Review (Tech Provider).
+  · `force_reauth=true` na URL de autorização: com mais de uma conta do
+    escritório, o Instagram tem de PERGUNTAR qual — sem isso autorizaria a
+    que já está logada no navegador.
 - **Decisões do operador (10/09/2026), no plano**: robô fora (D1); janela de
   24h + `ig_human_agent` opcional, só depois da feature aprovada na Meta
-  (D2); token colado, sem OAuth (D3); ficha própria + unificação MANUAL com
+  (D2); login do Instagram com Standard Access, e o token colado como
+  alternativa (D3, revista em 09/09); ficha própria + unificação MANUAL com
   a ficha de WhatsApp (D4, Fase 5); o que a API não cobre — apagar-para-
   todos, responder citando, documento que não seja PDF, editar — fica
   INACESSÍVEL na conversa Instagram; nota de voz cabe via WAV (D5).
@@ -3869,6 +3900,12 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
     (ARRAY[…])`, as 6 colunas, `phone` anulável, os 2 índices, histórico
     `20260909223424`. É **989**, não 987: a 987 (tl;dv) e a 988 (rodízio)
     nasceram em branches paralelas — quarto caso de colisão evitada.
+  - **990_cb_instagram_config** — o app da Meta por conta (Instagram App
+    ID + Instagram App Secret CIFRADO), a credencial que o login do
+    Instagram (OAuth) exige antes de existir canal. FECHADA para o navegador
+    (a tela lê pela rota, que devolve só o App ID). Aplicada em 2026-09-09
+    via conector, ANTES do merge do PR da Fase 2b e DEPOIS de o replay do CI
+    passar; aditiva — nada em produção a lê até o deploy.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

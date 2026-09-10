@@ -138,3 +138,52 @@ describe('criarClienteInstagram().me', () => {
     expect(erro.message).not.toContain(TOKEN);
   });
 });
+
+describe('semSegredo — client_secret', () => {
+  it('apaga o segredo do app quando ele viaja na query documentada', () => {
+    expect(
+      semSegredo('https://x/?client_secret=abc123def&access_token=zzz', TOKEN)
+    ).toBe(
+      `https://x/?client_secret=${MARCA_DE_TOKEN}&access_token=${MARCA_DE_TOKEN}`
+    );
+  });
+});
+
+describe('assinarWebhooks', () => {
+  it('faz POST em /me/subscribed_apps com os campos, o token no cabeçalho', async () => {
+    let metodo: string | undefined;
+    let urlVista = '';
+    const fetchFn = (async (url: string | URL | Request, init?: RequestInit) => {
+      urlVista = String(url);
+      metodo = init?.method;
+      expect((init?.headers as Record<string, string>).Authorization).toBe(
+        `Bearer ${TOKEN}`
+      );
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    await criarClienteInstagram(TOKEN, fetchFn).assinarWebhooks([
+      'messages',
+      'message_edit',
+    ]);
+    expect(metodo).toBe('POST');
+    expect(urlVista).toBe(
+      'https://graph.instagram.com/v26.0/me/subscribed_apps?subscribed_fields=messages%2Cmessage_edit'
+    );
+    expect(urlVista).not.toContain(TOKEN);
+  });
+
+  it('sem `success: true` é erro — canal que não recebe não pode nascer calado', async () => {
+    const fetchFn = (async () =>
+      new Response(JSON.stringify({ success: false }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })) as unknown as typeof fetch;
+    await expect(
+      criarClienteInstagram(TOKEN, fetchFn).assinarWebhooks(['messages'])
+    ).rejects.toBeInstanceOf(InstagramApiError);
+  });
+});

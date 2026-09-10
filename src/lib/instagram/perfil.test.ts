@@ -39,6 +39,7 @@ describe('completarPerfilDoContato', () => {
       nomeAtual: null,
       cliente: {
         me: vi.fn(),
+        assinarWebhooks: async () => {},
         perfil: async () => ({ nome: 'Ana', username: 'ana', fotoUrl: null }),
       },
     });
@@ -60,6 +61,7 @@ describe('completarPerfilDoContato', () => {
       nomeAtual: 'Já tinha',
       cliente: {
         me: vi.fn(),
+        assinarWebhooks: async () => {},
         perfil: async () => ({
           nome: 'Ana',
           username: 'ana',
@@ -84,6 +86,7 @@ describe('completarPerfilDoContato', () => {
       nomeAtual: null,
       cliente: {
         me: vi.fn(),
+        assinarWebhooks: async () => {},
         perfil: async () => ({
           nome: null,
           username: 'ana',
@@ -103,6 +106,7 @@ describe('completarPerfilDoContato', () => {
       nomeAtual: null,
       cliente: {
         me: vi.fn(),
+        assinarWebhooks: async () => {},
         perfil: async () => {
           throw new Error('rede');
         },
