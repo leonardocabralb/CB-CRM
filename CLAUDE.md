@@ -3791,6 +3791,20 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
   só quando alguma linha avançou. Quem escrever outro caminho de status repete
   a guarda — sem ela a bolha volta a um ✓ com a mensagem entregue.
 
+- ⚠️ **Recibo ANTES da mensagem (medido 10/09/2026) — e isso NÃO é da
+  Baileys 7.** A Evolution despacha a mensagem e o recibo de entrega dela no
+  mesmo segundo; gravar a mensagem leva ~2 s (contato, conversa, citação) e o
+  recibo é um UPDATE só. No log do PostgREST, o PATCH do recibo saiu 1,9 s
+  ANTES do POST da mensagem, achou zero linhas e o recibo morreu — a bolha
+  ficava num ✓ até o cliente LER. Medido: 38% das mensagens do celular presas
+  em `sent` antes do upgrade, 34% depois; o envio pelo CRM tem a mesma janela
+  (a linha nasce depois que a Evolution responde). A rota passa o recibo por
+  `aplicarReciboQuandoAMensagemExistir` (`recibo-antes-da-mensagem.ts`): sem
+  linha, tenta de novo em pausas até ~30 s; linha que existe e não avança é
+  recibo velho, e ela desiste. Recibo de mensagem RECEBIDA (`fromMe` false)
+  não espera. Quem escrever outro consumidor de recibo repete a espera — o
+  UPDATE solto perde a corrida em silêncio.
+
 - ⚠️ **Edição de mensagem chega CIFRADA na 2.4 (medido 09/09/2026)**:
   `secretEncryptedMessage` com `secretEncType` 2 (MESSAGE_EDIT) e
   `targetMessageKey` — a Baileys rc13 não decifra (PRs upstream #2690/#2743

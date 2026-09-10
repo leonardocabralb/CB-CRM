@@ -14,6 +14,11 @@ import {
 } from '@/lib/whatsapp/transport/evolution-inbound';
 import { aceitamAvancoPara } from '@/lib/whatsapp/transport/escada-de-status';
 import {
+  PAUSAS_DO_RECIBO_MS,
+  aplicarReciboQuandoAMensagemExistir,
+  type Tentativa,
+} from '@/lib/whatsapp/transport/recibo-antes-da-mensagem';
+import {
   isGroupJid,
   normalizeGroupUpsert,
 } from '@/lib/whatsapp/transport/evolution-group-inbound';
@@ -457,9 +462,10 @@ export async function POST(request: Request) {
   }
 
   if (event === 'messages.update') {
-    const d = (body.data ?? {}) as { keyId?: string; status?: unknown };
+    const d = (body.data ?? {}) as { keyId?: string; status?: unknown; fromMe?: unknown };
     const status = ackToStatus(d.status);
-    if (d.keyId && status) {
+    const keyId = d.keyId;
+    if (keyId && status) {
       after(async () => {
         // Só toca nossas mensagens de saída (message_id === keyId). NÃO
         // escopamos por channel_id: o keyId da Baileys é único por mensagem,
@@ -470,29 +476,54 @@ export async function POST(request: Request) {
         // 'agent' é o envio manual do inbox; 'bot' é o que IA, flows e
         // automações gravam. Filtrar só por 'agent' deixava toda resposta
         // automática presa em "enviado", sem nunca virar entregue/lido.
-        let q = supabaseAdmin()
-          .from('messages')
-          .update({ status })
-          .eq('message_id', d.keyId)
-          .in('sender_type', ['agent', 'bot']);
-        // Ver `ACEITA_FALHA`: só marca falha o que ainda não passou de
-        // "enviado". ⚠️ O resto da escada TAMBÉM tem guarda desde 09/09/2026:
-        // a Evolution 2.4 (Baileys 7) emite SERVER_ACK DEPOIS do DELIVERY_ACK
-        // da mesma mensagem (medido: 5 recibos em 9 s, o último rebaixando),
-        // e sem a guarda a bolha voltava a um ✓ com a mensagem entregue. Uma
-        // versão deste comentário dizia que a escada "já era monotônica na
-        // prática" — era, na 6.7.19. Ver `escada-de-status.ts`.
-        if (status === 'failed') q = q.in('status', ACEITA_FALHA);
-        else q = q.in('status', aceitamAvancoPara(status));
-        const { data: atualizadas, error } = await q.select('id');
-        if (error) {
-          console.error('[evolution/webhook] status update failed:', error);
-          return;
-        }
+        const tentar = async (): Promise<Tentativa> => {
+          let q = supabaseAdmin()
+            .from('messages')
+            .update({ status })
+            .eq('message_id', keyId)
+            .in('sender_type', ['agent', 'bot']);
+          // Ver `ACEITA_FALHA`: só marca falha o que ainda não passou de
+          // "enviado". ⚠️ O resto da escada TAMBÉM tem guarda desde 09/09/2026:
+          // a Evolution 2.4 (Baileys 7) emite SERVER_ACK DEPOIS do DELIVERY_ACK
+          // da mesma mensagem (medido: 5 recibos em 9 s, o último rebaixando),
+          // e sem a guarda a bolha voltava a um ✓ com a mensagem entregue. Uma
+          // versão deste comentário dizia que a escada "já era monotônica na
+          // prática" — era, na 6.7.19. Ver `escada-de-status.ts`.
+          if (status === 'failed') q = q.in('status', ACEITA_FALHA);
+          else q = q.in('status', aceitamAvancoPara(status));
+          const { data: atualizadas, error } = await q.select('id');
+          if (error) {
+            console.error('[evolution/webhook] status update failed:', error);
+            return 'erro';
+          }
+          return atualizadas && atualizadas.length > 0 ? 'avancou' : 'nada';
+        };
+        // ⚠️ O recibo costuma chegar ANTES da mensagem que ele confirma: a
+        // Evolution despacha os dois no mesmo segundo e gravar a mensagem leva
+        // ~2 s. Sem linha, espera por ela; linha que existe e não avança é
+        // recibo atrasado ou repetido. Ver `recibo-antes-da-mensagem.ts`.
+        const avancou = await aplicarReciboQuandoAMensagemExistir({
+          tentar,
+          existe: async () => {
+            const { data, error } = await supabaseAdmin()
+              .from('messages')
+              .select('id')
+              .eq('message_id', keyId)
+              .in('sender_type', ['agent', 'bot'])
+              .limit(1);
+            // Leitura que falhou vale "ainda não": a espera tem fim.
+            return !error && (data?.length ?? 0) > 0;
+          },
+          esperar: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+          // Recibo de mensagem RECEBIDA (`fromMe` false: o "lido" que a equipe
+          // dá no celular) nunca acha linha de agent/bot — esperar por ela
+          // seriam ~30 s de consultas a cada mensagem lida.
+          pausas: d.fromMe === false ? [] : PAUSAS_DO_RECIBO_MS,
+        });
         // Recibo atrasado ou repetido: nenhuma linha avançou, nada a anunciar
         // — sem isto o fan-out abaixo contaria ao integrador um "sent" sobre
         // mensagem já entregue.
-        if (!atualizadas || atualizadas.length === 0) return;
+        if (!avancou) return;
 
         // Fan-out do webhook público. O lado Meta já emite
         // message.status_updated; sem isto, quem integra recebe o ✓✓ dos
@@ -501,7 +532,7 @@ export async function POST(request: Request) {
         const { data: msgRow } = await supabaseAdmin()
           .from('messages')
           .select('conversation_id, channel_id, conversations(account_id)')
-          .eq('message_id', d.keyId)
+          .eq('message_id', keyId)
           .in('sender_type', ['agent', 'bot'])
           .limit(1)
           .maybeSingle();
@@ -515,7 +546,7 @@ export async function POST(request: Request) {
             accountId,
             'message.status_updated',
             {
-              whatsapp_message_id: d.keyId,
+              whatsapp_message_id: keyId,
               conversation_id: msgRow.conversation_id,
               status,
               channel_id: msgRow.channel_id ?? null,
