@@ -30,6 +30,13 @@ const pageTitles: Record<string, string> = {
   "/pipelines": "pipelines",
   "/broadcasts": "broadcasts",
   "/agendadas": "scheduled",
+  // ⚠️ Faltava desde que a agenda nasceu (945): `/agenda` caía em "dashboard"
+  // e o cabeçalho dizia "Painel" sobre a agenda de reuniões. A chave
+  // `Header.agenda` já existia nos dois dicionários — só o mapa não a lia.
+  // ⚠️ DEPOIS de `/agendadas`, de propósito: `getPageTitleKey` casa por
+  // `startsWith` na ORDEM de inserção, e `/agendadas/...` começa com
+  // `/agenda` (a mesma armadilha que `telaDoCaminho` resolveu por tamanho).
+  "/agenda": "agenda",
   "/automations": "automations",
   // ⚠️ `/flows` e `/agents` faltavam aqui desde que as telas nasceram, e o
   // `getPageTitleKey` abaixo cai em "dashboard" para rota desconhecida — as

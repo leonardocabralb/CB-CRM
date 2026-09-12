@@ -207,7 +207,11 @@ export default function JoinPage() {
   const handleSignOutAndRetry = useCallback(async () => {
     setSigningOut(true);
     try {
-      await createClient().auth.signOut();
+      // GLOBAL por escrito (era o padrão implícito da biblioteca): "sair e
+      // tentar com outra conta" nunca precisou derrubar os outros aparelhos,
+      // mas mudar isso é decisão à parte (D4 do plano Meu dia) — aqui só o
+      // escopo passa a ser visível, sem trocar o comportamento.
+      await createClient().auth.signOut({ scope: "global" });
       // Hard reload so the new auth state propagates everywhere
       // (middleware, AuthProvider). Preserves the invite token in
       // the URL so the rebuilt page renders the signed-out CTA path.

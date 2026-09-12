@@ -306,6 +306,9 @@ upstream sobrescrevê-los:
 | `src/components/settings/settings-sections.ts`, `settings-chip.tsx`, `src/app/(dashboard)/settings/page.tsx` | a seção `integracoes` no rail e a variante `err` (vermelha) do chip |
 | `src/lib/ai/types.ts`, `config.ts`, `structured.ts`, `defaults.ts`, `src/lib/cb-radar/worker.ts`, `src/app/api/ai/config/route.ts` | o modelo do Radar separado do modelo de chat (946): `radarModel` no tipo e em `CONFIG_COLUMNS`, o parâmetro `model` do `generateStructured`, `AI_PROVIDER_MODELS`, e a validação do modelo do Radar no save |
 | `src/components/settings/ai-config.tsx` | `<datalist>` de sugestão no campo Modelo e a frase de escopo com link para Integrações |
+| `src/app/(dashboard)/dashboard-shell.tsx` (Meu dia, 12/09/2026) | envolve o layout INTEIRO (menu, cabeçalho, página, heartbeat) na `<PortaDeEntrada key={user.id}>`, abaixo do `if (!user) return null` — nunca renderizar pedaço do app fora dela; e o "Loading..." traduzido (`DashboardShell.loading`) |
+| `src/hooks/use-auth.tsx` (Meu dia) | `sessionId` no contexto (o `session_id` do token, publicado no MESMO passo que `user`, no init e no listener) e o `signOut({ scope: "global" })` por escrito — além do que já era nosso (lente de simulação, perfis, `resolvedUserIdRef`) |
+| `src/components/layout/header.tsx` (Meu dia) | `"/agenda": "agenda"` no `pageTitles`, DEPOIS de `/agendadas` (o mapa casa por `startsWith` na ordem de inserção) |
 
 ⚠️ **Qual NÚMERO nesta conversa: o critério é a CONVERSA, nunca a conta.**
 `src/lib/inbox/canais-do-fio.ts` e `src/lib/cb-channels/cores.ts` (puros, com
@@ -3693,6 +3696,96 @@ estrutural `transporte.chamadores.test.ts` (no `main` desde 10/09/2026, PR
   a ficha de WhatsApp (D4, Fase 5); o que a API não cobre — apagar-para-
   todos, responder citando, documento que não seja PDF, editar — fica
   INACESSÍVEL na conversa Instagram; nota de voz cabe via WAV (D5).
+
+⚠️ **Meu dia (12/09/2026): a tela de entrada SUBSTITUI o app até o
+"Continuar".** `src/lib/resumo-do-dia/{pendencia,contagens}.ts` e
+`src/lib/auth/{token,sair}.ts` (puros, com teste), `src/hooks/use-resumo-do-dia.ts`,
+`src/components/entrada/{porta-de-entrada,resumo-do-dia,limite-de-erro}.tsx`,
+o `sessionId` no `useAuth` e o pino `src/lib/auth/sair.chamadores.test.ts`.
+Plano vivo em `docs/PLANO-meu-dia.md`. Sem migration. O que morde código novo:
+
+- ⚠️⚠️ **NÃO é um Dialog por cima do app, e nada do app pode renderizar fora
+  da porta.** O layout inteiro do shell (menu, cabeçalho, página, o
+  `PresenceHeartbeat`) fica DENTRO de `<PortaDeEntrada>`: montado por trás,
+  um deep link `/inbox?c=X` abriria o fio e zeraria as não lidas da conversa
+  para a conta inteira, e a presença seria publicada antes da confirmação.
+  Consequência escrita: enquanto o Meu dia está aberto a pessoa aparece
+  OFFLINE para os colegas (só o heartbeat publica presença) — são segundos.
+- ⚠️⚠️ **Trava de MÃO ÚNICA, decidida uma vez por carga de página.** A regra
+  (`precisaMostrar`: sessão de login nova OU primeiro acesso do dia) roda no
+  inicializador do `useState` da porta e só FECHA. Nunca reavaliar por evento
+  de auth (`SIGNED_IN` dispara a cada volta à aba), por remontagem (o spinner
+  do "Ver como" e a troca de usuário remontam o que está abaixo do shell —
+  daí o `Set` de módulo `liberadosNestaCarga`) nem pela virada do dia com a
+  aba aberta. Abrir no meio do uso desmontaria o compositor: rascunho
+  perdido, anexo preparado apagado do bucket, mensagem na janela de desfazer
+  ENVIADA. Quem precisar reabrir (F2 do plano: 4 h sem atividade) escreve a
+  única exceção, de propósito.
+- ⚠️ **A chave "mesmo login" é o `session_id` do token de acesso**
+  (`sessionIdDoToken`, decodificado sem verificar assinatura — chave de
+  interface, não de autorização), publicado no contexto de auth no MESMO
+  passo que `user`. `sessionId` nulo decide SÓ pelo dia: `null === null`
+  como "mesma sessão" faria um registro sem sessão valer para todo login
+  futuro. Medido em 12/09/2026: o `session_id` NÃO muda quando o app renova
+  o token (`iat` 11:14 → 12:12, mesma claim), então "sessão nova" = login
+  novo de verdade.
+- ⚠️ **O registro é PARSE, nunca `as`** (`lerRegistro`): JSON estranho vira
+  "sem registro" = a tela aparece (mostrar um resumo a mais é barato;
+  esconder pendência não é). Chave `cb-meu-dia:<userId>`, uma por pessoa no
+  mesmo navegador. Storage que lança (modo privado) cai para a memória.
+- ⚠️ **Todo filtro "meu" é pelo `user.id` (= `profiles.user_id`), nunca
+  `profiles.id`**, e vai ESCRITO na consulta: `cb_tasks`, `conversations` e
+  `notifications` guardam `auth.users.id`, e em duas delas a RLS deixa a
+  conta inteira ler tudo. O id errado devolve ZERO sem erro — "nada
+  pendente" para quem tem 9 tarefas vencidas.
+- ⚠️ **Estado por BLOCO (carregando / falhou / pronto), nunca "0" sem
+  resposta** — é a armadilha "lista vazia virando afirmação": um bloco que
+  dissesse "0 vencidas" durante a carga liberaria o Continuar com uma
+  mentira. O botão espera as consultas até um teto de 8 s (`TETO_DE_ESPERA_MS`)
+  e depois libera de qualquer jeito (sem rede, a pessoa entra). Qualquer
+  estouro numa consulta — do banco ou da conta em JS — vira `falhou` daquele
+  bloco; o `LimiteDeErro` cobre só erro de RENDER e renderiza o APP, nunca a
+  entrada de novo (o repo não tem outro error boundary).
+- ⚠️ **Cada bloco usa a régua da TELA para onde o clique leva**, senão o número
+  do resumo e o da tela discordam: tarefas por `agruparPorPrazo` (o DIA,
+  nunca a hora), conversas por `atrasoDeResposta` (10 min; grupo e encerrada
+  fora) e por `conversaNoEscopo` em JS com o contexto REAL
+  (`{ papel: profile.account_role, perfil: perfilDeAcesso }`, nunca `acesso`,
+  que carrega a lente do "Ver como"). O select de conversas é ENXUTO
+  (`SELECT_DE_CONVERSA`), não o `CONVERSATION_SELECT` do inbox — a fila sem
+  responsável tem centenas de linhas — e leva `group:cb_groups(channel_id)`
+  porque o recorte por canal em JS precisa do canal do GRUPO.
+- ⚠️ **"Sem responsável" é ACERVO, e por isso é repartido pelo instante da
+  confirmação anterior** (medido em 12/09/2026: 235 esperando há mais de
+  10 min, 234 há mais de 30). Um "235" fixo toda manhã é o número que o olho
+  aprende a pular. `novas` = começaram a esperar depois da última confirmação;
+  `antigas` = o resto, em texto apagado. São DUAS consultas (≥ e < o instante),
+  porque numa só, ordenada por espera e com teto, quem cai primeiro é o FIM
+  da lista — as esperas mais recentes, que são as "novas" (a lição do Radar);
+  `truncada` (o `count: 'exact'` passou do teto) vira "mais de N", nunca um
+  número menor com cara de certo.
+- ⚠️ **"Novidades desde a sua última entrada" conta pelo `created_at` >
+  confirmação anterior (estrito), lidas ou não** — nunca as "não lidas" do
+  sino, que acumulam avisos tratados por outro caminho (`read_at` só muda na
+  página de Notificações; medido: 7 não lidas de 04/09 a 10/09, zero nas
+  últimas 24 h). Sem registro no aparelho, a janela é 24 h.
+- ⚠️⚠️ **Todo `auth.signOut(` em `src/` declara o escopo por escrito** — o
+  padrão da biblioteca é `'global'` (auth-js 2.108.2: revoga TODOS os
+  aparelhos) e é invisível. O "Sair" do menu continua global (D4 do plano,
+  em aberto), o do convite também; o "Não é você? Sair" da entrada é LOCAL
+  via `sairDesteAparelho`, que devolve o erro e só navega com sucesso (um
+  signOut que falha por rede NÃO apaga a sessão; navegar assim forma o laço
+  `/login` → `/dashboard`). O pino é deep-equal: chamada nova entra no
+  manifesto por decisão visível no diff.
+- ⚠️ **Todo link da tela CONFIRMA antes de navegar** (`onClick={onContinuar}`):
+  a porta fica acima da página roteada, então navegar sem confirmar trocaria
+  a URL e deixaria o resumo na frente da conversa pedida.
+- ⚠️ **Bloco cuja tela está fora do perfil (D8): número SEM link, com aviso.**
+  Esconder calaria uma obrigação atribuída à pessoa.
+- **Sem bloco de reuniões, de propósito** (D13): `cb_meetings` está VAZIA em
+  produção — as reuniões vivem no Calendly. Código para tabela vazia é código
+  para futuro hipotético; entra quando a agenda for usada ou quando o
+  Calendly gravar nela.
 
 ⚠️ **Dois testes novos fecham buracos de i18n que o portão do CI não
 alcança.** `src/lib/automations/rotulo-do-gatilho.test.ts` e
