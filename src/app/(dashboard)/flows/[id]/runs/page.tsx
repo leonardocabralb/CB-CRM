@@ -16,7 +16,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistance } from "date-fns";
+import { LOCALE_DAS_DATAS } from "@/lib/idioma-das-datas";
 
 import { useTranslations } from "next-intl";
 
@@ -276,9 +277,13 @@ function RunCard({
   const StatusIcon = meta.icon;
   const contactLabel =
     nomeDoContato(run.contact, t("unknownContact"));
+  // Quanto a execução DUROU (fim − início), que é o que o rótulo diz ("durou
+  // {duration}"). Até 10/09/2026 era `formatDistanceToNow(ended_at)`, isto é,
+  // há quanto tempo ela TERMINOU — uma execução de 2 segundos encerrada ontem
+  // aparecia como "durou 1 dia".
   const duration = run.ended_at
-    ? formatDistanceToNow(new Date(run.ended_at), {
-        addSuffix: false,
+    ? formatDistance(new Date(run.started_at), new Date(run.ended_at), {
+        locale: LOCALE_DAS_DATAS,
       })
     : null;
   return (
@@ -309,7 +314,7 @@ function RunCard({
             )}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-            <span>{t("started", { time: format(new Date(run.started_at), "PP p") })}</span>
+            <span>{t("started", { time: format(new Date(run.started_at), "PP p", { locale: LOCALE_DAS_DATAS }) })}</span>
             {run.reprompt_count > 0 && (
               <span>· {t("reprompts", { count: run.reprompt_count })}</span>
             )}

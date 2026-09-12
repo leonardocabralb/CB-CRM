@@ -82,6 +82,7 @@ import {
 import { nomeDoGrupo } from "@/lib/cb-groups/display";
 import type { CbChannel } from "@/lib/cb-channels/repo";
 import { format, isToday, isYesterday } from "date-fns";
+import { LOCALE_DAS_DATAS } from "@/lib/idioma-das-datas";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -370,7 +371,11 @@ function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslatio
   const date = new Date(dateStr);
   if (isToday(date)) return t("today");
   if (isYesterday(date)) return t("yesterday");
-  return format(date, "MMMM d, yyyy");
+  // "PPP" é a data por extenso DO locale ("8 de setembro de 2026" em pt-BR).
+  // O padrão fixo "MMMM d, yyyy" saía em inglês ("September 8, 2026") entre o
+  // "Hoje" e o "Ontem" já traduzidos — e só pôr o locale nele daria
+  // "setembro 8, 2026", na ordem do inglês.
+  return format(date, "PPP", { locale: LOCALE_DAS_DATAS });
 }
 
 /**
