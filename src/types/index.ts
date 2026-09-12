@@ -433,6 +433,16 @@ export interface Conversation {
    * esperando. A lista lê pela régua de `src/lib/inbox/atraso.ts`.
    */
   aguardando_desde?: string | null;
+  /**
+   * A janela de 24h da Meta (migration 991): quando chegou a última mensagem
+   * do CLIENTE pela API oficial, e por qual número. Mantidas por gatilho, só
+   * avançam. A lista lê pela régua de `src/lib/inbox/selo-da-janela.ts`.
+   * `janela_meta_canal_id` nulo com a data preenchida = mensagem da Meta sem
+   * carimbo (histórico, carimbo que falhou, conexão apagada): conta para
+   * qualquer número oficial de saída, como no fio.
+   */
+  janela_meta_desde?: string | null;
+  janela_meta_canal_id?: string | null;
 }
 
 // ============================================================

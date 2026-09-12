@@ -45,12 +45,16 @@ export interface MensagemDaJanela {
 export type CanalDeSaida = Pick<CbChannel, 'id' | 'kind'>;
 
 export const HORAS_DA_JANELA = 24;
-const MINUTOS_DA_JANELA = HORAS_DA_JANELA * 60;
+export const MINUTOS_DA_JANELA = HORAS_DA_JANELA * 60;
+
+/** O prefixo do id de provedor da API oficial da Meta. A 991 repete o
+ *  literal no SQL do gatilho — há teste cobrando os dois. */
+export const PREFIXO_DO_ID_DA_META = 'wamid.';
 
 /** Mensagem da API oficial da Meta: o id do provedor é um `wamid.`. Nem a
  *  Evolution (ids hexadecimais do Baileys) nem o Instagram usam o prefixo. */
 function veioPelaApiDaMeta(m: MensagemDaJanela): boolean {
-  return typeof m.message_id === 'string' && m.message_id.startsWith('wamid.');
+  return typeof m.message_id === 'string' && m.message_id.startsWith(PREFIXO_DO_ID_DA_META);
 }
 
 /**
