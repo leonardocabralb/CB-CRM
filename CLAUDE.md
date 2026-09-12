@@ -4117,8 +4117,14 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
   - **991_cb_janela_da_meta_na_conversa** — `conversations.janela_meta_desde`
     + `janela_meta_canal_id` (a última mensagem do CLIENTE pela API oficial,
     e por qual número), gatilho em `messages` e acervo — o fato que a
-    ampulheta da lista lê. Criada em 12/09/2026; aditiva: sem ela o app
-    degrada (a ampulheta não aparece), nada quebra. Aplicar ANTES do merge.
+    ampulheta da lista lê. Aditiva: sem ela o app degrada (a ampulheta não
+    aparece), nada quebra. Aplicada em 12/09/2026 ANTES do merge do PR #194,
+    SEM o conector: pela Management API (`POST /v1/projects/<ref>/database/
+    migrations`, o mesmo endpoint do `apply_migration` do conector, que
+    registra no histórico), com o access token digitado pelo operador num
+    `read` silencioso no terminal dele — a CLI 2.75 não tem comando de SQL e
+    guarda o token codificado no Keychain. Conferida pelo preview contra a
+    produção (a ampulheta apareceu), não por consulta.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
