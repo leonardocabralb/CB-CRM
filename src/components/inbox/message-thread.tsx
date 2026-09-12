@@ -16,7 +16,13 @@ import { CopiarLinkDaConversa } from "@/components/inbox/copiar-link-da-conversa
 import { AvataresNaConversa } from "./avatares-na-conversa";
 import { useQuemVeAConversa } from "@/hooks/use-conversa-aberta";
 import { intercalar, type ItemDaLinhaDoTempo } from "@/lib/lead-events/describe";
-import { horasRestantes, janelaFechada } from "@/lib/inbox/janela-24h";
+import {
+  janelaFechada,
+  minutosRestantes,
+  restanteParaExibir,
+  ultimaDoClienteNoCanal,
+  type CanalDeSaida,
+} from "@/lib/inbox/janela-24h";
 import { patchDeSituacao } from "@/lib/conversations/situacao";
 import { acharNoFio } from "@/lib/inbox/achados-no-fio";
 import { semAcento, TERMO_MINIMO } from "@/lib/inbox/busca-em-mensagens";
@@ -777,6 +783,13 @@ export function MessageThread({
   // compositor nunca trava (ver as props do MessageComposer).
   const evolutionActive = ehEvolution(activeChannel);
 
+  // Grupo só existe na Evolution (a Cloud API da Meta não entrega grupo) e
+  // não tem janela de 24h. E o `activeChannel` de um grupo cai no canal
+  // PADRÃO da conta (a conversa de grupo tem `channel_id` nulo): com o padrão
+  // no número oficial, sem esta guarda a regra aplicava a janela da Meta ao
+  // grupo — e, contada por número, trancava o compositor de todo grupo.
+  const ehGrupo = !!conversation?.group_id;
+
   /**
    * ⚠️ Enquanto os canais não chegam, o transporte é DESCONHECIDO — e
    * `evolutionActive` responde `false`, que aqui significaria "é Meta, a
@@ -800,7 +813,19 @@ export function MessageThread({
    * Falha abre o compositor (o lado em que a Evolution está); o portão do
    * disparo abaixo continua recusando envio Meta fora da janela.
    */
-  const janelaDe24h = !canaisCarregando && !canaisFalharam && !evolutionActive;
+  const janelaDe24h = !canaisCarregando && !canaisFalharam && !evolutionActive && !ehGrupo;
+
+  /**
+   * POR QUAL NÚMERO a janela é contada: o canal de SAÍDA — o mesmo que vai no
+   * `expected_channel_id` do envio. A janela da Meta é por número (ver o
+   * cabeçalho de `janela-24h.ts`): numa conversa mista, a mensagem que o
+   * cliente mandou pela outra conexão não abre a janela deste. Vai o canal
+   * inteiro (id + transporte): o transporte decide o que fazer com a mensagem
+   * sem carimbo. Nulo quando não há canal resolvido — na prática, a conta sem
+   * conexão nenhuma (enquanto os canais carregam ou falham, `janelaDe24h` já
+   * é falso) —, e aí a regra conta o fio inteiro, como antes do multi-canal.
+   */
+  const canalDaJanela: CanalDeSaida | null = activeChannel;
 
   // O relógio da badge (M11): `sessionInfo` lê a hora, e hora PASSA — sem um
   // tique, o memo congelava em "1h restantes" num fio parado e a janela
@@ -832,22 +857,30 @@ export function MessageThread({
     // de hora, e aí a janela sairia "aberta" com "0h restantes". O instante
     // vem do estado (não de `new Date()` aqui) para o memo envelhecer.
     const agora = agoraDaBadge;
-    if (janelaFechada(messages, agora)) {
-      const temCliente = messages.some((m) => m.sender_type === "customer");
+    if (janelaFechada(messages, agora, canalDaJanela)) {
+      // "Expirada" só quando o cliente JÁ escreveu por este número. Sem
+      // mensagem dele aqui a frase é outra: numa conversa mista ele pode ter
+      // escrito só pela outra conexão, e "Expirada" afirmaria uma janela que
+      // nunca abriu neste número.
+      const temCliente =
+        ultimaDoClienteNoCanal(messages, canalDaJanela) !== undefined;
       return {
         expired: true,
         remaining: temCliente ? tTimer("expired") : tTimer("noCustomerMessages"),
       };
     }
 
-    const hoursLeft = horasRestantes(messages, agora);
+    // Horas inteiras enquanto sobra ao menos uma; minutos na última hora.
+    const restante = restanteParaExibir(
+      minutosRestantes(messages, agora, canalDaJanela),
+    );
     const remaining =
-      hoursLeft >= 1
-        ? tTimer("xhRemaining", { hours: Math.floor(hoursLeft) })
-        : tTimer("xmRemaining", { minutes: Math.floor(hoursLeft * 60) });
+      restante.unidade === "h"
+        ? tTimer("xhRemaining", { hours: restante.valor })
+        : tTimer("xmRemaining", { minutes: restante.valor });
 
     return { expired: false, remaining };
-  }, [messages, tTimer, agoraDaBadge]);
+  }, [messages, tTimer, agoraDaBadge, canalDaJanela]);
 
   /**
    * O ÚLTIMO PORTÃO ANTES DA REDE: a janela está fechada NESTE instante?
@@ -880,12 +913,16 @@ export function MessageThread({
    */
   const janelaDe24hRef = useRef(false);
   const mensagensRef = useRef<Message[]>(messages);
+  const canalDaJanelaRef = useRef<CanalDeSaida | null>(canalDaJanela);
   useEffect(() => {
     janelaDe24hRef.current = janelaDe24h;
     mensagensRef.current = messages;
+    canalDaJanelaRef.current = canalDaJanela;
   });
   const janelaFechadaAgora = useCallback(
-    () => janelaDe24hRef.current && janelaFechada(mensagensRef.current, new Date()),
+    () =>
+      janelaDe24hRef.current &&
+      janelaFechada(mensagensRef.current, new Date(), canalDaJanelaRef.current),
     [],
   );
 
@@ -2106,8 +2143,8 @@ export function MessageThread({
   // ⚠️ A condição era `!conversation || !contact`, e era ELA que impedia
   // qualquer conversa de grupo de abrir: grupo não tem contato (o CHECK
   // `cb_conv_contato_xor_grupo` garante um ou outro), então toda conversa de
-  // grupo caía no estado vazio, como se nada estivesse selecionado.
-  const ehGrupo = !!conversation?.group_id;
+  // grupo caía no estado vazio, como se nada estivesse selecionado. (O
+  // `ehGrupo` é declarado lá em cima, junto da janela de 24h.)
   if (!conversation || (!contact && !ehGrupo)) {
     return (
       <div className={cn("flex flex-1 flex-col items-center justify-center", DOODLE_BG_CLASSES)}>

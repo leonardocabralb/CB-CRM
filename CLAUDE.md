@@ -263,7 +263,7 @@ upstream sobrescrevê-los:
 | `src/components/inbox/message-bubble.tsx` (canal, 2026-09-02) | a prop `canal` (nome + cor) no lugar do antigo `channelLabel`: o rótulo embaixo da mensagem ganhou a bolinha da cor, 10px (era 9) e teto de 9rem (era 7). ⚠️ Uma versão desta nota dizia que em 7rem os nomes truncavam "no ponto em que ainda são iguais" — MEDIDO em 02/09: os seis nomes da conta cabem em 7rem até a 10px (o mais longo, "Trabalhista - Comercial", dá 110px); o 9rem é folga, não conserto. A cor vive na BOLINHA, não no texto: a bolha da equipe é `bg-primary`, violeta nesta conta. Uma trilha de 3px na borda foi feita e DESCARTADA pelo operador na hora ("não gostei dessa borda colorida") |
 | `src/components/inbox/message-thread.tsx` | além do fio intercalado, renderiza a faixa `ScheduledBar` logo acima do compositor e guarda o contador que a liga ao compositor |
 | `src/components/inbox/message-thread.tsx` (rolagem, 2026-09-01) | ⚠️ `coladoNoFimRef` + `onScroll` guardam o auto-scroll, e o spinner só entra quando a CONVERSA muda (`conversaCarregadaRef`). Sem os dois, voltar de uma aba nova — o `visibilitychange` incrementa o `resyncToken` — perdia a posição de quem lia o histórico E o empurrava para o fim, três vezes por retorno (mensagens, eventos e notas chegam em buscas próprias). O `saltoAtivoRef` NÃO cobre isso: é armado só pelo salto da busca, e `liberarSalto` está no `onWheel`, então rolar à mão o DESLIGA. A guarda é re-armada em `publicarMensagemOtimista` e ao acrescentar nota — senão o autor manda e não vê |
-| `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
+| `src/app/api/whatsapp/webhook/route.ts` | carimba `channel_id` na entrada — **no próprio upsert** desde 10/09/2026 (o UPDATE separado `stampMessageChannel` engolia falha e deixava mensagem de cliente sem número, e a janela de 24h por número a leria como vinda de outro número; o mesmo no `persistInboundMessage` da Evolution). Os dois gravam por `gravarComCanal` (`stamp.ts`), que repete SEM canal quando a conexão foi apagada no meio (23503 da FK `messages_channel_id_fkey`) — senão a mensagem do cliente se perderia, porque o provedor já recebeu 200; há pino estrutural em `stamp.chamadores.test.ts`; varre `cb_channels` na verificação (GET); escopa o ACK por canal; passa `channelId` a flows/automações/IA |
 | `src/lib/whatsapp/inbound-store.ts` | idem, no lado Evolution |
 | `src/lib/automations/engine.ts` | `channelInScope`, condição `channel`, canal de saída por passo, e o `create_deal` que virou chamada a `createDeal` com a checagem "um card por contato" ANTES do insert — o índice da 911 é parcial (`source = 'channel'`) e não barra o insert da automação, então sem a checagem nasce card duplicado. Mais o `rotuloDoDisparo` opcional de `runAutomationById` (955): a execução manual da conversa grava `'manual'` no log — sem ele, o registro diria que outra automação chamou |
 | `src/app/api/whatsapp/webhook/route.ts`, `src/lib/whatsapp/inbound-store.ts` (×2) e `src/lib/whatsapp/send-message.ts` | a chamada a `routeContactToPipeline`. ⚠️ São **QUATRO** call sites: os dois de ingestão (não há função compartilhada de abrir conversa — enxertar só num faz a feature valer só num transporte, e produção roda Evolution), o `persistDeviceMessage` do celular pareado e o núcleo de envio. Ver "Quem abre negócio" abaixo |
@@ -285,7 +285,7 @@ upstream sobrescrevê-los:
 | `src/components/inbox/conversation-list.tsx` (canal, 2026-09-02) | a prop `corDoCanalDaLinha` do `ConversationItem` e a bolinha antes do nome — bolinha, e não trilha, porque a borda esquerda já é da seleção |
 | `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (963): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
 | `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem o contato; o canal passado é `conversation.channel_id ?? null` — o PR #74 trocou o `activeChannel` resolvido pelo cru DE PROPÓSITO, para a checagem de escopo da rota falhar aberta igual ao motor em conversa sem canal; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
-| `src/components/inbox/message-thread.tsx` (#84) | a **janela de 24h**: a regra saiu para `src/lib/inbox/janela-24h.ts` (puro, com teste) e os TRÊS caminhos de envio (texto, mídia, interativa) passam por `janelaFechadaAgora()` antes do `fetch` — o portão lê o RELÓGIO no disparo, nunca `sessionInfo.expired` (que é `useMemo` em `[messages]` e não recomputa com o passar das horas). Um merge que traga o `sessionInfo` inline do upstream devolve os três buracos de uma vez |
+| `src/components/inbox/message-thread.tsx` (#84) | a **janela de 24h**: a regra saiu para `src/lib/inbox/janela-24h.ts` (puro, com teste) e os TRÊS caminhos de envio (texto, mídia, interativa) passam por `janelaFechadaAgora()` antes do `fetch` — o portão lê o RELÓGIO no disparo, nunca `sessionInfo.expired` (um `useMemo`: recomputa no tique de 1 min da badge, nunca no instante exato do disparo). Um merge que traga o `sessionInfo` inline do upstream devolve os três buracos de uma vez. Desde 10/09/2026 a janela é **POR NÚMERO**: os dois relógios passam `canalDaJanela` (= `activeChannel`, id + transporte, o mesmo do `expected_channel_id`) — parâmetro OBRIGATÓRIO em `janelaFechada`/`minutosRestantes`, com pino estrutural cobrando o MESMO canal nos dois —, grupo fica fora (`!ehGrupo` em `janelaDe24h`), e a etiqueta fala minutos na última hora (`restanteParaExibir`; antes o ramo de minutos era código morto e a última hora aparecia inteira como "1h restantes") |
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
@@ -345,6 +345,23 @@ grupos), e o rótulo de canal acendia em TODAS. O que morde código novo:
   apagado, cujo `channel_id` foi anulado): tratá-las como trecho próprio
   desenharia um separador que não tem nome para escrever, e atribuí-las ao
   canal vizinho seria inventar.
+- ⚠️⚠️ **A janela de 24h da Meta também é POR NÚMERO** (`janela-24h.ts`,
+  10/09/2026). A Meta só conta a mensagem que o cliente mandou ao número
+  oficial por onde se vai responder; contando o fio inteiro, quem escreveu há
+  2h só pelo número por QR Code deixava a etiqueta em "22h restantes" e o
+  compositor livre, e a Meta recusava o texto (131047). A regra recebe o
+  canal de SAÍDA (id + transporte) e conta a mensagem do cliente carimbada
+  com ele. ⚠️⚠️ Sem carimbo, ao contrário do separador acima, a regra decide
+  pela PROCEDÊNCIA: conta se veio pela API da Meta (`message_id` com
+  `wamid.`) e a saída é Meta — é o carimbo que faltou (canal resolvido nulo,
+  ou histórico de antes do multi-canal) —, e NÃO conta se veio da Evolution.
+  Não contar nada trancava o compositor sobre cliente que acabou de escrever,
+  e compositor trancado não tem saída na tela (Codex, PR #192); contar tudo
+  reabria o 131047. Canal de saída NULO — a conta sem conexão nenhuma, o
+  legado de número único — conta o fio inteiro, como antes. "Fio vazio =
+  aberta" (PR #79) continua valendo para o FIO inteiro, nunca para o recorte
+  do canal. **Grupo não tem janela** (`ehGrupo` em `janelaDe24h`): é só
+  Evolution, e o `activeChannel` dele cai no canal padrão.
 - ⚠️ **A cor vive na BOLINHA em toda parte; texto colorido só no separador.**
   A bolha da equipe é `bg-primary` (violeta nesta conta): nome na cor do
   canal ficaria ilegível justamente no canal violeta, e o mesmo rótulo
@@ -908,7 +925,8 @@ teclas iam para o vazio. Reportado da tela pelo operador. A cura é o
 sinalizador do próprio hook (`janelaDe24h = !canaisCarregando &&
 !canaisFalharam && !evolutionActive` — TRÊS termos: a consulta que FALHOU
 também não autoriza afirmar "é Meta", e uma versão desta nota citava só
-dois) — `useChannels` expõe `loading` desde sempre, e
+dois; desde 10/09/2026 há um QUARTO, `&& !ehGrupo`: grupo é só Evolution e
+não tem janela) — `useChannels` expõe `loading` desde sempre, e
 `step1-choose-template.tsx` e `template-manager.tsx` já o usavam.
 ⚠️ **Conta SEM canal nenhum continua na regra da Meta**, de propósito: ali a
 lista resolveu vazia, e vazio-COM-resposta é conhecimento, não lacuna. A

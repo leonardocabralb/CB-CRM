@@ -25,8 +25,8 @@ import {
   resolveInboundMetaChannel,
 } from '@/lib/cb-channels/resolve-inbound'
 import {
-  stampMessageChannel,
   followConversationChannel,
+  gravarComCanal,
 } from '@/lib/cb-channels/stamp'
 
 // The `after()` callback in POST runs within this route's max duration.
@@ -813,35 +813,50 @@ async function processMessage(
   // ONLY on a genuine first insert — an empty result means this delivery
   // was a replay. This is the single idempotency boundary that must sit
   // BEFORE the unread bump and all downstream fan-out below (issue #367).
-  const { data: insertedRows, error: msgError } = await supabaseAdmin()
-    .from('messages')
-    .upsert(
-      {
-        conversation_id: conversation.id,
-        sender_type: 'customer',
-        content_type: contentType,
-        content_text: contentText,
-        media_url: mediaUrl,
-        // Meta's MIME type for the attachment (migration 042). Was
-        // discarded before, which forced the download path to guess an
-        // extension from the fetched blob — impossible to do until the
-        // bytes had already been fetched successfully.
-        media_type: mediaType,
-        // Nome do arquivo como o remetente enviou (969). Antes só existia
-        // dentro de `content_text`, e só quando não havia legenda.
-        media_filename: mediaFilename,
-        message_id: message.id,
-        status: 'delivered',
-        created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
-        reply_to_message_id: replyToInternalId,
-        // Only populated for content_type='interactive'. Migration 010 added
-        // the column; null for every other content_type so existing inserts
-        // behave identically.
-        interactive_reply_id: interactiveReplyId,
-      },
-      { onConflict: 'conversation_id,message_id', ignoreDuplicates: true }
-    )
-    .select('id')
+  //
+  // O canal (multi-canal) vai NO PRÓPRIO upsert desde 10/09/2026. Antes era um
+  // UPDATE separado depois do bump, best-effort e com a falha engolida: a
+  // mensagem podia ficar sem carimbo, e a janela de 24h por número
+  // (janela-24h.ts) a leria como vinda de outro número. `gravarComCanal`
+  // repete SEM canal quando a conexão foi apagada entre a resolução e este
+  // insert — senão a FK estouraria e a mensagem do cliente se perderia.
+  // `canalGravado` é o que ficou na linha (null = conta sem conexão, ou canal
+  // apagado no meio).
+  const { resultado: gravacao, canal: canalGravado } = await gravarComCanal(
+    channelId,
+    (canal) =>
+      supabaseAdmin()
+        .from('messages')
+        .upsert(
+          {
+            conversation_id: conversation.id,
+            sender_type: 'customer',
+            content_type: contentType,
+            content_text: contentText,
+            media_url: mediaUrl,
+            // Meta's MIME type for the attachment (migration 042). Was
+            // discarded before, which forced the download path to guess an
+            // extension from the fetched blob — impossible to do until the
+            // bytes had already been fetched successfully.
+            media_type: mediaType,
+            // Nome do arquivo como o remetente enviou (969). Antes só existia
+            // dentro de `content_text`, e só quando não havia legenda.
+            media_filename: mediaFilename,
+            message_id: message.id,
+            status: 'delivered',
+            created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+            reply_to_message_id: replyToInternalId,
+            // Only populated for content_type='interactive'. Migration 010
+            // added the column; null for every other content_type so existing
+            // inserts behave identically.
+            interactive_reply_id: interactiveReplyId,
+            channel_id: canal,
+          },
+          { onConflict: 'conversation_id,message_id', ignoreDuplicates: true }
+        )
+        .select('id')
+  )
+  const { data: insertedRows, error: msgError } = gravacao
 
   if (msgError) {
     console.error('Error inserting message:', msgError)
@@ -879,17 +894,12 @@ async function processMessage(
     console.error('Error updating conversation:', convError)
   }
 
-  // Carimbo de canal (multi-canal): marca por onde a mensagem entrou e faz a
-  // conversa "seguir o cliente" (a menos que fixada). Aditivo, best-effort e
-  // deploy-safe — nunca altera o insert/fluxo acima.
-  //
-  // Le `insertedRows` (upsert idempotente do #367) em vez do antigo
-  // `insertedMsg`: numa reentrega o fluxo ja retornou acima, entao aqui a
-  // linha e sempre a recem-inserida — carimbar duas vezes deixou de ser
-  // possivel.
-  if (channelId && insertedRows && insertedRows.length > 0) {
-    await stampMessageChannel(supabaseAdmin(), insertedRows[0].id, channelId)
-    await followConversationChannel(supabaseAdmin(), conversation.id, channelId)
+  // A conversa "segue o cliente" (a menos que fixada), pelo canal que FICOU
+  // gravado na mensagem — nulo se a conexão foi apagada no meio. Numa
+  // reentrega o fluxo já retornou antes daqui (upsert idempotente do #367),
+  // então isto roda uma vez por mensagem.
+  if (canalGravado && insertedRows && insertedRows.length > 0) {
+    await followConversationChannel(supabaseAdmin(), conversation.id, canalGravado)
   }
 
   // A customer writing again re-opens the thread (issue #409). Kept as a

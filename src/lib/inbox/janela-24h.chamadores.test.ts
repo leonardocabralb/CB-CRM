@@ -44,8 +44,11 @@ function ocorrencias(texto: string, agulha: string): number {
 
 describe('o fio e a janela de 24h (F5)', () => {
   it('#06: falha na busca de canais conta como "não sei", nunca como "é Meta"', () => {
+    // `!ehGrupo` desde 10/09/2026: grupo é só Evolution e o `activeChannel`
+    // dele cai no canal padrão — com o padrão no oficial, a janela da Meta
+    // trancava o compositor de todo grupo.
     expect(fio()).toContain(
-      'const janelaDe24h = !canaisCarregando && !canaisFalharam && !evolutionActive;',
+      'const janelaDe24h = !canaisCarregando && !canaisFalharam && !evolutionActive && !ehGrupo;',
     );
   });
 
@@ -60,7 +63,24 @@ describe('o fio e a janela de 24h (F5)', () => {
     expect(f).toContain('setAgoraDaBadge(new Date())');
     // …e o memo depende dele. Sem o dep, o tique re-renderiza e o memo
     // devolve o valor velho — a badge congela igual.
-    expect(f).toContain('}, [messages, tTimer, agoraDaBadge]);');
+    expect(f).toContain('}, [messages, tTimer, agoraDaBadge, canalDaJanela]);');
+  });
+
+  it('janela POR NÚMERO: os dois relógios contam o canal de SAÍDA', () => {
+    // A janela da Meta é por número; contando o fio inteiro, o cliente que só
+    // escreveu pelo número por QR Code liberava texto livre no oficial. O
+    // canal é o mesmo do `expected_channel_id`, e a etiqueta e o portão do
+    // disparo têm de receber o MESMO — passar `null` num deles volta a contar
+    // o fio inteiro sem erro de compilação.
+    const f = fio();
+    // O canal inteiro (id + transporte): o transporte decide o que fazer com a
+    // mensagem sem carimbo (`janela-24h.ts`, achado do Codex no PR #192).
+    expect(f).toContain('const canalDaJanela: CanalDeSaida | null = activeChannel;');
+    expect(f).toContain('janelaFechada(messages, agora, canalDaJanela)');
+    expect(f).toContain(
+      'janelaFechada(mensagensRef.current, new Date(), canalDaJanelaRef.current)',
+    );
+    expect(f).toContain('canalDaJanelaRef.current = canalDaJanela;');
   });
 
   it('M13/#84: o portão do disparo cobre os TRÊS caminhos', () => {
