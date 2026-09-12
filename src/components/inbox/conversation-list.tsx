@@ -45,6 +45,7 @@ import type {
 } from "@/types";
 import {
   AlarmClock,
+  Hourglass,
   Zap,
   Search,
   Users,
@@ -53,6 +54,8 @@ import {
   MessageSquarePlus,
 } from "lucide-react";
 import { atrasoDeResposta } from "@/lib/inbox/atraso";
+import { restanteParaExibir, type CanalDeSaida } from "@/lib/inbox/janela-24h";
+import { seloDaJanela, type CorDaJanela } from "@/lib/inbox/selo-da-janela";
 import { formatDistanceToNow } from "date-fns";
 import { LOCALE_DAS_DATAS } from "@/lib/idioma-das-datas";
 import { useTranslations } from "next-intl";
@@ -482,6 +485,18 @@ export function ConversationList({
   // Cor por conexão, para a bolinha da linha. Memoizada porque o `Map` é
   // recriado a cada render e as linhas o consultam uma vez cada.
   const coresDosCanais = useMemo(() => coresPorCanal(channels), [channels]);
+  // O número por onde cada linha RESPONDE, para o selo da janela de 24h — a
+  // mesma resolução do fio (`activeChannel`): o canal da conversa, senão o
+  // padrão da conta. As duas peças são memoizadas porque as linhas as
+  // consultam uma vez cada; quem gateia por carga/falha é o `map` abaixo.
+  const canaisPorId = useMemo(
+    () => new Map(channels.map((c) => [c.id, c])),
+    [channels],
+  );
+  const canalPadrao = useMemo(
+    () => channels.find((c) => c.is_default) ?? null,
+    [channels],
+  );
   const foraDoPerfil = useCallback(
     (c: Conversation) => !conversaNoEscopo(acesso, c),
     [acesso],
@@ -970,6 +985,16 @@ export function ConversationList({
                     ? corDoCanal(coresDosCanais, canalDaConversa(conv))
                     : null
                 }
+                // ⚠️ `null` enquanto os canais não chegaram ou a consulta
+                // falhou: a lista vazia não pode virar a afirmação "é Meta"
+                // — a armadilha do "Expirada" que piscava no cabeçalho do fio
+                // (2026-08-31). Conta SEM canal também cai em `null`: o selo
+                // depende de saber por qual número se responde.
+                canalDeSaidaDaLinha={
+                  canaisCarregando || canaisFalharam
+                    ? null
+                    : (canaisPorId.get(conv.channel_id ?? "") ?? canalPadrao)
+                }
                 t={t}
               />
             ))}
@@ -1007,8 +1032,29 @@ interface ConversationItemProps {
    * ausência de marca não pode afirmar "não tem robô rodando".
    */
   esperasDeAutomacao: number;
+  /**
+   * O número por onde esta linha RESPONDE (o canal da conversa, senão o
+   * padrão da conta — a resolução do fio), para o selo da janela de 24h.
+   * `null` = desconhecido (canais carregando, consulta falhou, conta sem
+   * canal): sem selo.
+   */
+  canalDeSaidaDaLinha: CanalDeSaida | null;
   t: ReturnType<typeof useTranslations>;
 }
+
+/**
+ * As cores da ampulheta, por tempo restante (decisão do operador,
+ * 10/09/2026). ⚠️ Classes LITERAIS, nunca montadas: o Tailwind varre o fonte
+ * e não executa código — a mesma regra da `PALETA_DE_CANAIS`. A padrão é o
+ * violeta da marca do robô (`Zap`), da família do `bg-primary` desta conta;
+ * âmbar e vermelho são os do selo de atraso, para as duas urgências lerem
+ * igual na mesma linha.
+ */
+const COR_DA_AMPULHETA: Record<CorDaJanela, string> = {
+  padrao: "bg-violet-500/15 text-violet-600 dark:text-violet-300",
+  ambar: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  vermelha: "bg-red-500/15 text-red-600 dark:text-red-400",
+};
 
 function ConversationItem({
   conversation,
@@ -1021,11 +1067,15 @@ function ConversationItem({
   corDoCanalDaLinha,
   agora,
   esperasDeAutomacao,
+  canalDeSaidaDaLinha,
   t,
 }: ConversationItemProps) {
   // As chaves da situação escrita moram no namespace do fio (`statusPending`,
   // `statusClosed`) — é o mesmo texto do menu do cabeçalho, de propósito.
   const tThread = useTranslations("Inbox.messageThread");
+  // O "22h restantes" da ampulheta é o MESMO texto da etiqueta do cabeçalho
+  // do fio, de propósito — duas frases para o mesmo relógio divergiriam.
+  const tTimer = useTranslations("Inbox.sessionTimer");
   const contact = conversation.contact;
   const ehGrupo = !!conversation.group_id;
   const displayName = tituloDaConversa(conversation, {
@@ -1067,6 +1117,20 @@ function ConversationItem({
             : "waitDays",
         { n: atraso.n },
       )
+    : null;
+
+  // O selo da janela de 24h da Meta (991): só a ampulheta, que expande no
+  // hover com o que resta. A régua é pura (`src/lib/inbox/selo-da-janela.ts`)
+  // e ESPELHA a do fio; o fato vem do banco (`janela_meta_desde`, gatilho da
+  // 991). Cor por tempo restante, decisão do operador (10/09/2026): padrão de
+  // 24h a 12h, âmbar de 12h a 3h, vermelha abaixo de 3h. Fora das Encerradas;
+  // só WhatsApp oficial.
+  const selo = seloDaJanela(conversation, canalDeSaidaDaLinha, agora);
+  const restanteDaJanela = selo ? restanteParaExibir(selo.restante) : null;
+  const rotuloDaJanela = restanteDaJanela
+    ? restanteDaJanela.unidade === "h"
+      ? tTimer("xhRemaining", { hours: restanteDaJanela.valor })
+      : tTimer("xmRemaining", { minutes: restanteDaJanela.valor })
     : null;
 
   return (
@@ -1139,6 +1203,25 @@ function ConversationItem({
                   direita já leva selo e hora, e o corte aqui é a marca, nunca
                   o nome do cliente. Quantas e quando ficam no `title` e na
                   aba do painel. */}
+              {/* A ampulheta da janela de 24h da Meta. Só o ícone: o tempo
+                  restante aparece ao passar o mouse (no toque vale só a cor)
+                  e no `title`. Vem ANTES do robô e do atraso porque é a
+                  marca menos urgente das três; a ampulheta vermelha e o
+                  despertador vermelho podem coexistir e se reforçam. */}
+              {selo && rotuloDaJanela && (
+                <span
+                  title={t("janelaDe24h", { tempo: rotuloDaJanela })}
+                  className={cn(
+                    "group/janela inline-flex items-center rounded-full px-1 py-px text-[10px] font-medium",
+                    COR_DA_AMPULHETA[selo.cor],
+                  )}
+                >
+                  <Hourglass className="h-3 w-3" aria-hidden="true" />
+                  <span className="hidden pl-0.5 group-hover/janela:inline">
+                    {rotuloDaJanela}
+                  </span>
+                </span>
+              )}
               {esperasDeAutomacao > 0 && (
                 <span
                   title={t("automacaoRodando", { n: esperasDeAutomacao })}

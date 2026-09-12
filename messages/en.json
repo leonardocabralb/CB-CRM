@@ -182,6 +182,7 @@
       "noConversations": "No conversations found",
       "noMessagesYet": "No messages yet",
       "awaitingReply": "Customer waiting for a reply for {tempo}",
+      "janelaDe24h": "Official WhatsApp 24-hour window: {tempo}",
       "waitMin": "{n} min",
       "waitHours": "{n} h",
       "waitDays": "{n} d",

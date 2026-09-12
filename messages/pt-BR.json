@@ -175,6 +175,7 @@
       "noConversations": "Nenhuma conversa encontrada",
       "noMessagesYet": "Nenhuma mensagem ainda",
       "awaitingReply": "Cliente aguardando resposta há {tempo}",
+      "janelaDe24h": "Janela de 24 horas do WhatsApp oficial: {tempo}",
       "waitMin": "{n} min",
       "waitHours": "{n} h",
       "waitDays": "{n} d",

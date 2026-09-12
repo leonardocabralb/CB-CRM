@@ -283,6 +283,7 @@ upstream sobrescrevê-los:
 | `src/components/inbox/message-thread.tsx` | o **salto da busca**: `<LinhaDoFio>` (ex-`LinhaDaMensagem`) envolvendo as duas formas de bolha (a comum e o aviso de sistema do grupo) E a anotação intercalada, a faixa "2 de 5" com ↑/↓, os efeitos de centralizar/suprimir e o `saltoAtivoRef`. Mais (09/09/2026) a **busca dentro da conversa** (lupa do cabeçalho, `buscaLocal`/`termoEfetivo`) e o **salto PONTUAL** (`useSaltoPontual`, UMA mecânica para o clique na citação do PR #179 e para o "Ver na conversa" do painel — `destaqueDaCitacao`/`destaqueDoPainel`) — ver a seção própria |
 | `src/components/inbox/conversation-list.tsx` (09/09/2026) | o interruptor **"Buscar também dentro das mensagens"** (`buscarNasMensagens`, desligado por padrão) e o placeholder que muda com ele; `useBuscaEmMensagens` ganhou o 2º parâmetro `ativa` |
 | `src/components/inbox/conversation-list.tsx` (canal, 2026-09-02) | a prop `corDoCanalDaLinha` do `ConversationItem` e a bolinha antes do nome — bolinha, e não trilha, porque a borda esquerda já é da seleção |
+| `src/components/inbox/conversation-list.tsx` (janela, 12/09/2026) | a AMPULHETA da janela de 24h da Meta (991): a prop `canalDeSaidaDaLinha` do `ConversationItem`, `canaisPorId`/`canalPadrao` no pai, o `tTimer` da linha e `COR_DA_AMPULHETA` — ver a seção "Selo da janela de 24h na lista" |
 | `src/app/(dashboard)/inbox/page.tsx` | espelha o termo da busca da lista para o fio — são irmãos, e a página é o único caminho entre eles. Mais o escritor da presença por conversa (963): `useMarcarConversaAberta(activeConversation?.id)` — a página é a dona da seleção |
 | `src/components/inbox/message-thread.tsx` (955/963) | monta o `<ExecutarAutomacaoDialog>` (é o fio que tem o contato; o canal passado é `conversation.channel_id ?? null` — o PR #74 trocou o `activeChannel` resolvido pelo cru DE PROPÓSITO, para a checagem de escopo da rota falhar aberta igual ao motor em conversa sem canal; grupo fica de fora) e os avatares `<AvataresNaConversa>` no cabeçalho, alimentados por `useQuemVeAConversa` |
 | `src/components/inbox/message-thread.tsx` (#84) | a **janela de 24h**: a regra saiu para `src/lib/inbox/janela-24h.ts` (puro, com teste) e os TRÊS caminhos de envio (texto, mídia, interativa) passam por `janelaFechadaAgora()` antes do `fetch` — o portão lê o RELÓGIO no disparo, nunca `sessionInfo.expired` (um `useMemo`: recomputa no tique de 1 min da badge, nunca no instante exato do disparo). Um merge que traga o `sessionInfo` inline do upstream devolve os três buracos de uma vez. Desde 10/09/2026 a janela é **POR NÚMERO**: os dois relógios passam `canalDaJanela` (= `activeChannel`, id + transporte, o mesmo do `expected_channel_id`) — parâmetro OBRIGATÓRIO em `janelaFechada`/`minutosRestantes`, com pino estrutural cobrando o MESMO canal nos dois —, grupo fica fora (`!ehGrupo` em `janelaDe24h`), e a etiqueta fala minutos na última hora (`restanteParaExibir`; antes o ramo de minutos era código morto e a última hora aparecia inteira como "1h restantes") |
@@ -1278,6 +1279,41 @@ referência" Chatguru).** Quatro mudanças pequenas com um motivo cada:
   conexão apagada) vira TRAVESSÃO, nunca o canal padrão. A primeira mensagem
   é comparada contra a prop do render atual (`de === conversationId`) — a
   armadilha do efeito passivo, de novo.
+
+⚠️ **Selo da janela de 24h na lista (991, 12/09/2026): a ampulheta lê o
+BANCO, e o banco espelha o fio.** `conversations.janela_meta_desde` +
+`janela_meta_canal_id` (gatilho na 991), `src/lib/inbox/selo-da-janela.ts`
+(puro, testado) e a ampulheta em `conversation-list.tsx`. Decisões do
+operador (10/09/2026): só a ampulheta, expandindo no hover; cor padrão de
+24h a 12h, âmbar de 12h a 3h, vermelha abaixo de 3h; fora das Encerradas; só
+WhatsApp oficial (não Instagram); sem filtro "janela aberta". O que morde
+código novo:
+
+- ⚠️⚠️ **O gatilho é ESPELHO de `contaParaOCanal` (`janela-24h.ts`), e há
+  teste lendo o SQL.** Mensagem do CLIENTE carimbada com conexão `meta`
+  avança as duas colunas; SEM carimbo, só se o id for `wamid.` — aí
+  `janela_meta_canal_id` fica NULO ("número oficial, qual não se sabe") e
+  conta para qualquer número oficial de saída, como no fio. Mensagem pelo QR
+  Code ou pelo Instagram não toca nas colunas. Mudou a regra num lado, muda
+  no outro: `selo-da-janela.test.ts` compara o `restante` da lista com o
+  `minutosRestantes` do fio sobre a mesma mensagem.
+- ⚠️ **Só AVANÇA, e mensagem apagada continua contando.** A janela da Meta
+  abre com o que o cliente MANDOU; "apagar para todos" não a fecha do lado
+  da Meta, e o fio também não olha `deleted_at`. Replay do webhook com
+  mensagem antiga não recua o relógio.
+- ⚠️ **O número de saída da linha é resolvido como no fio** (`activeChannel`:
+  canal da conversa, senão o padrão da conta) e vai `null` enquanto os
+  canais carregam ou a consulta falhou — a lista vazia não pode virar a
+  afirmação "é Meta" (a armadilha do "Expirada" de 31/08). Sem selo também
+  na conta sem canal nenhum: o selo depende de saber por qual número se
+  responde.
+- ⚠️ **Encerrada é escondida pela TELA, não pelo banco.** A coluna fica (a
+  reabertura acontece DEPOIS do insert, como na 972) e a reaberta volta a
+  mostrar. Grupo nunca, nos dois lados.
+- **Cores em classes LITERAIS** (`COR_DA_AMPULHETA`), nunca montadas — a
+  regra da `PALETA_DE_CANAIS`. O texto do hover é o MESMO da etiqueta do
+  cabeçalho do fio (`Inbox.sessionTimer.xhRemaining`/`xmRemaining`).
+- **No toque não há hover**: vale só a cor. O tempo também está no `title`.
 
 ⚠️ **Foto de perfil do contato (973): a URL do WhatsApp EXPIRA, a cópia é
 nossa.** `lib/contacts/foto-de-perfil.ts` (puro, testado),
@@ -4067,6 +4103,12 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
     DEPOIS de o replay do CI passar; aditiva — nada em produção a lê até o
     deploy. Conferida por consulta: RLS ligada, `anon` e `authenticated`
     sem SELECT, `service_role` com INSERT.
+
+  - **991_cb_janela_da_meta_na_conversa** — `conversations.janela_meta_desde`
+    + `janela_meta_canal_id` (a última mensagem do CLIENTE pela API oficial,
+    e por qual número), gatilho em `messages` e acervo — o fato que a
+    ampulheta da lista lê. Criada em 12/09/2026; aditiva: sem ela o app
+    degrada (a ampulheta não aparece), nada quebra. Aplicar ANTES do merge.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
