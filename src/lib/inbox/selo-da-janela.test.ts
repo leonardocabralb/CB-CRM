@@ -131,9 +131,12 @@ describe("a lista e o fio nunca discordam sobre o que resta", () => {
   // O fio conta sobre as MENSAGENS (`minutosRestantes`); a lista, sobre o
   // carimbo que o gatilho da 991 deixou na conversa. Mesma mensagem, mesmo
   // instante — mesmo número.
-  const casos = [1, 59, 60, 179, 180, 719, 720, 721, 1000, 1439];
+  // ⚠️ Os fracionários (0,5 e 1439,5) são o que pina o TRUNCAMENTO: em
+  // minuto inteiro trunc/round/floor/ceil coincidem, e a suíte ficava verde
+  // com a lista trocada para `Math.round` (achado da revisão do PR #194).
+  const casos = [0.5, 1, 59, 60, 179, 180, 719, 720, 721, 1000, 1439, 1439.5];
 
-  it.each(casos)("cliente escreveu há %i min pelo número oficial", (minutosAtras) => {
+  it.each(casos)("cliente escreveu há %s min pelo número oficial", (minutosAtras) => {
     const mensagens: MensagemDaJanela[] = [
       { sender_type: "agent", created_at: min(minutosAtras + 10), channel_id: OFICIAL.id },
       {
@@ -146,6 +149,29 @@ describe("a lista e o fio nunca discordam sobre o que resta", () => {
     const doFio = minutosRestantes(mensagens, new Date(AGORA), OFICIAL);
     const daLista = seloDaJanela(conversa(min(minutosAtras)), OFICIAL, AGORA);
     expect(daLista?.restante).toBe(doFio);
+  });
+
+  it("o minuto em curso ainda conta, nos dois lados", () => {
+    expect(seloDaJanela(conversa(min(1439.5)), OFICIAL, AGORA)?.restante).toBe(1);
+    expect(seloDaJanela(conversa(min(0.5)), OFICIAL, AGORA)?.restante).toBe(1440);
+  });
+
+  it("DIVERGÊNCIA CONHECIDA: dois oficiais, cliente escreveu aos dois, conversa fixada no mais antigo", () => {
+    // O banco guarda UM par por conversa (a mensagem oficial mais recente,
+    // aqui a do OUTRO_OFICIAL há 60 min); o fio conta por número sobre as
+    // mensagens e ainda vê a de 300 min no OFICIAL. Falso negativo da lista,
+    // aceito em 12/09/2026 (a conta tem um oficial) — ver o cabeçalho do
+    // módulo. Se este teste passar a falhar, alguém consertou de um lado só.
+    const mensagens: MensagemDaJanela[] = [
+      { sender_type: "customer", created_at: min(300), channel_id: OFICIAL.id },
+      { sender_type: "customer", created_at: min(60), channel_id: OUTRO_OFICIAL.id },
+    ];
+    expect(minutosRestantes(mensagens, new Date(AGORA), OFICIAL)).toBe(1140);
+    expect(seloDaJanela(conversa(min(60), OUTRO_OFICIAL.id), OFICIAL, AGORA)).toBeNull();
+    // Pelo número que recebeu a última, os dois concordam.
+    expect(seloDaJanela(conversa(min(60), OUTRO_OFICIAL.id), OUTRO_OFICIAL, AGORA)?.restante).toBe(
+      minutosRestantes(mensagens, new Date(AGORA), OUTRO_OFICIAL),
+    );
   });
 
   it("mensagem da Meta sem carimbo: os dois contam para o número oficial", () => {
@@ -170,17 +196,29 @@ describe("o gatilho da 991 espelha a regra do fio", () => {
   );
 
   it("reconhece a mensagem da Meta sem carimbo pelo MESMO prefixo", () => {
-    // Trigger e acervo: as duas ocorrências do LIKE usam o prefixo do fio.
+    // Gatilho, acervo e conferência: as TRÊS ocorrências do LIKE usam o
+    // prefixo do fio.
     const ocorrencias = sql.match(/LIKE '([^']+)%'/g) ?? [];
-    expect(ocorrencias.length).toBeGreaterThanOrEqual(2);
+    expect(ocorrencias).toHaveLength(3);
     for (const o of ocorrencias) {
       expect(o).toBe(`LIKE '${PREFIXO_DO_ID_DA_META}%'`);
     }
   });
 
-  it("só o cliente abre a janela, e só a conexão da Meta conta", () => {
+  it("a FORMA das linhas que carregam a regra, não só os literais", () => {
+    // Polaridade: sem carimbo, quem NÃO é wamid sai; quem é, segue e grava.
+    // (Uma inversão passava verde quando só o literal era conferido.)
+    expect(sql).toMatch(
+      /ELSIF NEW\.message_id IS NULL OR NEW\.message_id NOT LIKE 'wamid\.%' THEN\s+RETURN NEW;/,
+    );
+    // Carimbada: só a conexão da Meta segue.
+    expect(sql).toMatch(/IF v_kind IS DISTINCT FROM 'meta' THEN\s+RETURN NEW;/);
+    // Só o cliente dispara o gatilho.
     expect(sql).toMatch(/WHEN \(NEW\.sender_type = 'customer'\)/);
-    expect(sql).toMatch(/v_kind IS DISTINCT FROM 'meta'/);
+    // O UPDATE: grupo fora, só avança, e grava o número da mensagem.
+    expect(sql).toMatch(
+      /SET janela_meta_desde = v_em,\s+janela_meta_canal_id = NEW\.channel_id\s+WHERE id = NEW\.conversation_id\s+AND group_id IS NULL\s+AND \(janela_meta_desde IS NULL OR janela_meta_desde < v_em\)/,
+    );
   });
 
   it("conexão apagada anula o número, como a 902 faz com o carimbo", () => {

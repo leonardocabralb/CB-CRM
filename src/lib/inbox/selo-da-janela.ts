@@ -12,7 +12,18 @@
 // responder. O fio tem as mensagens; a lista não — ela lê o fato do banco:
 // `conversations.janela_meta_desde` (quando) e `janela_meta_canal_id` (por
 // qual número), mantidas por gatilho na 991, que ESPELHA `contaParaOCanal`.
-// Há teste cobrando que a lista e o fio nunca discordem sobre o que resta.
+// Com UM número oficial de saída, a lista e o fio devolvem o mesmo restante
+// sobre a mesma mensagem (há teste). Duas exceções, escritas:
+//   • conta SEM canal nenhum: o fio conta o fio inteiro (o legado de número
+//     único); a lista não tem como saber por qual número responde e cala;
+//   • DOIS números oficiais na mesma conta: o banco guarda UM par por
+//     conversa (a mensagem oficial mais recente, de qualquer número), e o fio
+//     conta por número sobre as mensagens. Cliente que escreveu aos dois, com
+//     a conversa FIXADA no mais antigo, tem o fio dizendo "aberta" e a lista
+//     sem ampulheta — falso NEGATIVO, nunca o contrário. Aceito em 12/09/2026
+//     porque a conta tem um oficial; se um segundo for conectado, o caminho
+//     é guardar a janela POR número (mapa canal→instante). Há teste pinando
+//     a divergência, para ela não voltar como surpresa.
 //
 // ⚠️ Aqui fica só a régua — pura, para o teste, e para a linha da lista não
 // carregar aritmética de tempo. Cor e classes ficam no componente.

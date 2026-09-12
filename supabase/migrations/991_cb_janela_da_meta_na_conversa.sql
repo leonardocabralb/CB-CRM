@@ -39,6 +39,15 @@
 --     902 anula o carimbo das mensagens dela — a régua volta a "qual não se
 --     sabe".
 --
+-- ⚠️ LIMITAÇÃO ESCRITA: é UM par por conversa — a mensagem oficial mais
+-- recente, de QUALQUER número oficial. O fio conta POR número sobre as
+-- mensagens. Com DOIS números oficiais na mesma conta, cliente que escreveu
+-- aos dois e conversa FIXADA no mais antigo: o fio diz "aberta" e a lista
+-- fica sem ampulheta (falso negativo, nunca o contrário). Aceito em
+-- 12/09/2026 porque a conta tem um oficial; se um segundo for conectado, o
+-- caminho é guardar a janela POR número (mapa canal→instante) numa migration
+-- nova. `selo-da-janela.test.ts` pina a divergência.
+--
 -- ⚠️ A conversa ENCERRADA também é carimbada: a reabertura acontece DEPOIS
 -- do insert (a mesma razão da 972), e é a TELA que esconde o selo na aba
 -- Encerradas (decisão do operador, 10/09/2026).

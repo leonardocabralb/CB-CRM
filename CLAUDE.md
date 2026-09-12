@@ -1296,7 +1296,17 @@ código novo:
   conta para qualquer número oficial de saída, como no fio. Mensagem pelo QR
   Code ou pelo Instagram não toca nas colunas. Mudou a regra num lado, muda
   no outro: `selo-da-janela.test.ts` compara o `restante` da lista com o
-  `minutosRestantes` do fio sobre a mesma mensagem.
+  `minutosRestantes` do fio sobre a mesma mensagem — com UM número oficial
+  de saída. ⚠️ **Duas divergências ESCRITAS, as duas para o lado sem selo:**
+  conta SEM canal nenhum (o fio conta o fio inteiro; a lista cala, porque não
+  sabe por qual número responde) e DOIS números oficiais na mesma conta (o
+  banco guarda UM par por conversa — a mensagem oficial mais recente, de
+  qualquer número — e o fio conta por número: cliente que escreveu aos dois
+  com a conversa FIXADA no mais antigo tem o fio "aberta" e a lista sem
+  ampulheta). A segunda foi aceita em 12/09/2026 porque a conta tem um
+  oficial; o conserto, se um segundo for conectado, é guardar a janela POR
+  número (mapa canal→instante). Há teste pinando a divergência, para ninguém
+  a "consertar" de um lado só.
 - ⚠️ **Só AVANÇA, e mensagem apagada continua contando.** A janela da Meta
   abre com o que o cliente MANDOU; "apagar para todos" não a fecha do lado
   da Meta, e o fio também não olha `deleted_at`. Replay do webhook com
