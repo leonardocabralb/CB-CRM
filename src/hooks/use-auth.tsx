@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { sessionIdDoToken } from "@/lib/auth/token";
 import type { User } from "@supabase/supabase-js";
 import {
   canEditSettings as canEditSettingsFor,
@@ -115,6 +116,15 @@ interface AuthContextValue {
    * during initial load and may take the "not opted in" branch incorrectly.
    */
   profileLoading: boolean;
+  /**
+   * `session_id` do token de acesso — a sessão de LOGIN —, ou nulo sem
+   * sessão ou com token sem a claim. Publicado no MESMO passo que `user`
+   * (init e listener), nunca como estado preenchido depois: é a chave com
+   * que a porta de entrada decide "este login já confirmou o Meu dia?"
+   * (`src/components/entrada/porta-de-entrada.tsx`). O `SIGNED_IN` do
+   * listener não serve para isso — dispara a cada carga e a cada volta à aba.
+   */
+  sessionId: string | null;
   signOut: () => Promise<void>;
   /** Re-fetch the current user's profile row — call after a save from
    *  the settings form so header/sidebar reflect the change without a
@@ -329,6 +339,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // settles later. Callers that gate on `profile.*` need to know which
   // window they're in — see the type doc above.
   const [profileLoading, setProfileLoading] = useState(true);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   // Tracks the user ID we've successfully initiated/completed fetching
   // a profile for. This prevents redundant re-fetches and toggling
@@ -531,6 +542,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!mounted) return;
         const currentUser = session?.user ?? null;
         setUser(currentUser);
+        setSessionId(sessionIdDoToken(session?.access_token));
 
         if (currentUser) {
           // Don't block session loading on profile fetch — chrome
@@ -560,6 +572,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       const currentUser = session?.user ?? null;
       setUser(currentUser);
+      setSessionId(sessionIdDoToken(session?.access_token));
 
       if (currentUser) {
         if (currentUser.id !== lastFetchedUserIdRef.current) {
@@ -592,7 +605,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    // ⚠️ GLOBAL por escrito: é o padrão da biblioteca e o comportamento de
+    // sempre deste botão — encerra a sessão em TODOS os aparelhos da pessoa.
+    // Passar a sair só deste aparelho é a decisão D4 do plano Meu dia
+    // (`docs/PLANO-meu-dia.md`), ainda em aberto; o pino
+    // `src/lib/auth/sair.chamadores.test.ts` exige que todo signOut declare
+    // o escopo, para a troca ser uma decisão visível no diff.
+    await supabase.auth.signOut({ scope: "global" });
     setUser(null);
     setProfile(null);
     setAccount(null);
@@ -731,6 +750,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         profile,
         loading,
+        sessionId,
         // A simulação pendente entra aqui de propósito: o shell troca a tela
         // por spinner e REMONTA a página quando isto é true — para começar
         // a ver como outro perfil, é exatamente o que se quer (a app
@@ -770,6 +790,7 @@ export function useAuth(): AuthContextValue {
       profile: null,
       loading: false,
       profileLoading: false,
+      sessionId: null,
       signOut: async () => {
         window.location.href = "/login";
       },
