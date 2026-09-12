@@ -4,6 +4,7 @@ import type { ContextoDeAcesso, PerfilDeAcesso } from '@/lib/perfis/tipos';
 import type { Conversation } from '@/types';
 import {
   TETO_DE_ITENS,
+  conversasEsperando,
   limitar,
   resumirConversas,
   resumirFila,
@@ -126,6 +127,33 @@ describe('resumirConversas (as atribuídas à pessoa)', () => {
     const r = resumirConversas([dentro, fora], ctx, AGORA);
     expect(r.atribuidas).toBe(1);
     expect(r.foraDoPerfil).toBe(1);
+  });
+});
+
+describe('conversasEsperando (a consulta própria das "esperando")', () => {
+  it('só o escopo, só quem espera 10 min ou mais, mais antiga primeiro; encerrada e grupo fora', () => {
+    const ctx = ctxComCanais(['canal-A']);
+    const r = conversasEsperando(
+      [
+        conversa({ channel_id: 'canal-A', esperaMin: 12 }),
+        conversa({ channel_id: 'canal-A', esperaMin: 90 }),
+        conversa({ channel_id: 'canal-B', esperaMin: 90 }),
+        conversa({ channel_id: 'canal-A', esperaMin: 90, status: 'closed' }),
+        conversa({
+          group_id: 'g',
+          contact_id: null,
+          channel_id: null,
+          esperaMin: 90,
+        }),
+        conversa({ channel_id: 'canal-A', esperaMin: 4 }),
+      ],
+      ctx,
+      AGORA
+    );
+    expect(r.map((e) => [e.atraso.n, e.atraso.unidade])).toEqual([
+      [1, 'h'],
+      [12, 'min'],
+    ]);
   });
 });
 

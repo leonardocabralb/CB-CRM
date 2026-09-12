@@ -229,7 +229,7 @@ export function ResumoDoDia({
                 <span className="text-sm">
                   {resumo.conversas.status === 'pronto' &&
                     t(
-                      resumo.conversas.dados.truncada
+                      resumo.conversas.dados.truncadaEsperando
                         ? 'waitingYoursAtLeast'
                         : 'waitingYours',
                       {

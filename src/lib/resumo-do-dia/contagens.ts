@@ -60,6 +60,27 @@ function esperando(c: Conversation, agoraMs: number): ConversaEsperando | null {
   return atraso ? { conversa: c, atraso } : null;
 }
 
+/**
+ * As conversas do escopo com cliente esperando há 10 min ou mais, mais antiga
+ * primeiro. Exportada porque o hook a chama sobre uma consulta PRÓPRIA (só as
+ * que têm `aguardando_desde`): assim o sinal de truncamento das "esperando"
+ * é delas, e não da lista de todas as atribuídas — com mil atribuídas e
+ * nenhuma esperando, a tela dizia "mais de 0 seus" (Codex, PR #197).
+ */
+export function conversasEsperando(
+  conversas: readonly Conversation[],
+  ctx: ContextoDeAcesso,
+  agoraMs: number
+): ConversaEsperando[] {
+  const saida: ConversaEsperando[] = [];
+  for (const c of conversas) {
+    if (c.status === 'closed' || !conversaNoEscopo(ctx, c)) continue;
+    const e = esperando(c, agoraMs);
+    if (e) saida.push(e);
+  }
+  return saida.sort(porEsperaMaisLonga);
+}
+
 export interface ResumoDasConversas {
   /** Abertas + pendentes atribuídas à pessoa, grupos incluídos, no escopo do perfil. */
   atribuidas: number;
@@ -81,19 +102,13 @@ export function resumirConversas(
   const saida: ResumoDasConversas = {
     atribuidas: 0,
     foraDoPerfil: 0,
-    esperando: [],
+    esperando: conversasEsperando(conversas, ctx, agoraMs),
   };
   for (const c of conversas) {
     if (c.status === 'closed') continue;
-    if (!conversaNoEscopo(ctx, c)) {
-      saida.foraDoPerfil++;
-      continue;
-    }
-    saida.atribuidas++;
-    const e = esperando(c, agoraMs);
-    if (e) saida.esperando.push(e);
+    if (!conversaNoEscopo(ctx, c)) saida.foraDoPerfil++;
+    else saida.atribuidas++;
   }
-  saida.esperando.sort(porEsperaMaisLonga);
   return saida;
 }
 

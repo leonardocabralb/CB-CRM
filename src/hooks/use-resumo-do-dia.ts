@@ -61,6 +61,7 @@ import { useEffect, useState } from 'react';
 import type { ContatoDaTarefa } from '@/hooks/use-tarefas';
 import type { ContextoDeAcesso } from '@/lib/perfis/tipos';
 import {
+  conversasEsperando,
   resumirConversas,
   resumirFila,
   type ResumoDaFila,
@@ -97,8 +98,14 @@ export interface Tarefas {
 }
 
 export interface Conversas extends ResumoDasConversas {
-  /** A consulta bateu no teto: os números são PELO MENOS os mostrados. */
+  /** A consulta das ATRIBUÍDAS bateu no teto: "atribuídas" é PELO MENOS o mostrado. */
   truncada: boolean;
+  /**
+   * A consulta das ESPERANDO bateu no teto — sinal PRÓPRIO, de consulta
+   * própria: derivá-lo da lista de todas as atribuídas dizia "mais de 0
+   * seus" para quem tem mil atribuídas e nenhuma esperando (Codex, PR #197).
+   */
+  truncadaEsperando: boolean;
 }
 
 export interface Fila extends ResumoDaFila {
@@ -291,18 +298,34 @@ export function useResumoDoDia(pedido: PedidoDoResumo): ResumoDoDia {
     });
 
     carregar('conversas', async () => {
-      const { data, error, count } = await supabase
-        .from('conversations')
-        .select(SELECT_DE_CONVERSA, { count: 'exact' })
-        .eq('account_id', accountId)
-        .eq('assigned_agent_id', userId)
-        .neq('status', 'closed')
-        .limit(TETO_DE_LINHAS);
-      if (error) throw new Error(error.message);
-      const linhas = conversasDe(data);
+      const atribuidas = () =>
+        supabase
+          .from('conversations')
+          .select(SELECT_DE_CONVERSA, { count: 'exact' })
+          .eq('account_id', accountId)
+          .eq('assigned_agent_id', userId)
+          .neq('status', 'closed')
+          .limit(TETO_DE_LINHAS);
+      // As "esperando" numa consulta PRÓPRIA (só quem tem `aguardando_desde`,
+      // mais antiga primeiro): o sinal de truncamento delas é delas.
+      const [todas, esperando] = await Promise.all([
+        atribuidas(),
+        atribuidas()
+          .is('group_id', null)
+          .not('aguardando_desde', 'is', null)
+          .order('aguardando_desde', { ascending: true }),
+      ]);
+      if (todas.error) throw new Error(todas.error.message);
+      if (esperando.error) throw new Error(esperando.error.message);
+      const linhas = conversasDe(todas.data);
+      const linhasEsperando = conversasDe(esperando.data);
       return {
         ...resumirConversas(linhas, ctx, agoraMs),
-        truncada: total(count, linhas.length) > linhas.length,
+        esperando: conversasEsperando(linhasEsperando, ctx, agoraMs),
+        truncada: total(todas.count, linhas.length) > linhas.length,
+        truncadaEsperando:
+          total(esperando.count, linhasEsperando.length) >
+          linhasEsperando.length,
       };
     });
 
