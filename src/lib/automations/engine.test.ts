@@ -16,7 +16,16 @@ const h = vi.hoisted(() => ({
     ownedCustomField: null as { id: string } | null,
     pipeline: null as { id: string } | null,
     stage: null as { id: string } | null,
-    dealExistente: null as { id: string } | null,
+    dealExistente: null as { id: string; stage_id?: string } | null,
+    /** Preenchido, a LEITURA de `deals` devolve este erro (18/09). */
+    erroNoNegocio: null as string | null,
+    /** Status gravados na fila (`markPending`), na ordem. */
+    statusDaFila: [] as unknown[],
+    /**
+     * A MARCA durável da execução (`automation_logs.interrompida_em`, 1005) —
+     * o que a retomada e o estacionamento (`cb_estacionar_espera`) consultam.
+     */
+    interrompida: false,
     dealSelects: [] as [string, string, unknown][][],
     dealInserts: [] as Record<string, unknown>[],
     automations: [] as Record<string, unknown>[],
@@ -34,8 +43,10 @@ const h = vi.hoisted(() => ({
     updateFiltros: [] as [string, string, unknown][][],
     historicoDoLog: [] as Array<Record<string, unknown>>,
     taskInserts: [] as Record<string, unknown>[],
-    /** O que o motor mandou para a fila — hoje só a retentativa (13/09). */
+    /** O que o motor mandou para a fila — o "Aguardar" e a retentativa. */
     esperasEnfileiradas: [] as Record<string, unknown>[],
+    /** Preenchido, a fila RECUSA o insert com esta mensagem (18/09). */
+    erroNaFila: null as string | null,
     notifInserts: [] as Record<string, unknown>[],
     // Valores de campo personalizado do contato, como o PostgREST os entrega
     // (com a definição embutida) — é por eles que a interpolação de
@@ -111,11 +122,26 @@ vi.mock('./admin-client', () => {
         };
       }
       state.dealSelects.push(ops.filters);
+      if (state.erroNoNegocio) {
+        return { data: null, error: { message: state.erroNoNegocio } };
+      }
       return { data: state.dealExistente, error: null };
     }
     if (table === 'automation_pending_executions') {
       if (type === 'insert') {
+        // O Supabase DEVOLVE o erro, não lança — é por isso que um insert
+        // não conferido falha em silêncio.
+        if (state.erroNaFila) {
+          return { data: null, error: { message: state.erroNaFila } };
+        }
         state.esperasEnfileiradas.push(ops.payload as Record<string, unknown>);
+        return { data: null, error: null };
+      }
+      if (type === 'update') {
+        state.statusDaFila.push((ops.payload as { status?: unknown })?.status);
+        // Registrado também em `updateCalls`, com os filtros: é como o pino do
+        // `stop_automation` confere as cercas da varredura.
+        state.updateCalls.push({ table, filters: ops.filters, payload: ops.payload });
         return { data: null, error: null };
       }
       if (type === 'select') {
@@ -171,14 +197,22 @@ vi.mock('./admin-client', () => {
       if (type === 'update') {
         state.logUpdates.push(ops.payload as Record<string, unknown>);
         state.updateFiltros.push([...ops.filters]);
-        return { data: null, error: null };
+        // Uma linha de volta: a anotação de interrupção grava com cerca
+        // ("ninguém acrescentou desde que li") e lê o RETURNING para saber se
+        // venceu. Os demais updates ignoram o retorno.
+        return { data: [{ id: 'log1' }], error: null };
       }
       // ⚠️ O que já estava GRAVADO em `steps_executed` antes desta chamada.
       // Configurável porque é a única forma de encenar uma execução que
       // atravessou um "Aguardar": a retomada é um processo novo, e o que
       // aconteceu antes da espera só existe nesta coluna.
       return {
-        data: { steps_executed: state.historicoDoLog, status: 'success' },
+        data: {
+          steps_executed: state.historicoDoLog,
+          status: 'success',
+          // A marca da 1005, lida pela retomada.
+          interrompida_em: state.interrompida ? '2026-09-18T12:00:00Z' : null,
+        },
         error: null,
       };
     }
@@ -223,6 +257,9 @@ vi.mock('./admin-client', () => {
       in: (k: string, v: unknown) => (ops.filters.push(['in', k, v]), b),
       // A guarda de `fecharLog` exclui a espera em curso com `.neq('id', …)`.
       neq: (k: string, v: unknown) => (ops.filters.push(['neq', k, v]), b),
+      not: (k: string, o: string, v: unknown) => (
+        ops.filters.push([`not.${o}`, k, v]), b
+      ),
       // `fecharLog` usa `.or('desfecho.is.null,desfecho.neq.falhou')` para
       // NUNCA REGREDIR um 'falhou' já gravado. O mock só registra: o que os
       // pinos medem é o payload do update, não o filtro do PostgREST.
@@ -245,7 +282,23 @@ vi.mock('./admin-client', () => {
         state.fromCalls.push(t);
         return builder(t);
       },
-      rpc: () => Promise.resolve({ error: null }),
+      // `cb_estacionar_espera` (1005) é a ÚNICA porta da fila pelo motor:
+      // registra o que foi mandado, recusa (null) com a execução marcada e
+      // devolve erro quando a fila recusa a linha.
+      rpc: (nome: string, args?: Record<string, unknown>) => {
+        if (nome === 'cb_estacionar_espera') {
+          if (state.erroNaFila) {
+            return Promise.resolve({
+              data: null,
+              error: { message: state.erroNaFila },
+            });
+          }
+          if (state.interrompida) return Promise.resolve({ data: null, error: null });
+          state.esperasEnfileiradas.push(args ?? {});
+          return Promise.resolve({ data: 'espera-nova', error: null });
+        }
+        return Promise.resolve({ data: null, error: null });
+      },
     }),
   };
 });
@@ -316,6 +369,10 @@ beforeEach(() => {
   h.state.notifInserts = [];
   h.state.customValues = [];
   h.state.esperasVivas = [];
+  h.state.erroNaFila = null;
+  h.state.erroNoNegocio = null;
+  h.state.statusDaFila = [];
+  h.state.interrompida = false;
   h.state.membros = [
     { user_id: 'agente-fallback', full_name: 'Agente Um', email: 'um@cb.test' },
   ];
@@ -2056,6 +2113,16 @@ describe('retentativa de passo que falhou (13/09/2026)', () => {
     expect(desfechoGravado()?.desfecho).toBe('falhou');
   });
 
+  it('⚠️ execução JÁ interrompida não volta à fila pela retentativa (Codex, 4ª rodada)', async () => {
+    h.state.interrompida = true;
+    await avisoQueFalha(new EvolutionApiError('Error: Connection Closed', 400));
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    // Sem desfecho: cancelamento não é erro, e a execução não terminou por
+    // conta própria — o mesmo estado da espera não estacionada.
+    expect(desfechoGravado()?.desfecho).toBeUndefined();
+  });
+
   it('⚠️ contador de OUTRO passo não consome as chances deste', async () => {
     // O passo 7 falhou duas vezes antes e se recuperou; este é o passo 0.
     await avisoQueFalha(new EvolutionApiError('recusado', 400), {
@@ -2483,5 +2550,398 @@ describe('desfecho: os fechadores que não têm o histórico em mão', () => {
     await dispara();
 
     expect(desfechoGravado()?.desfecho).toBe('concluida');
+  });
+});
+
+// ============================================================
+// Passo "Parar automação": a marca no registro e a segunda varredura (1005).
+// ============================================================
+describe('stop_automation — marca a execução e varre a fila DUAS vezes', () => {
+  it('cancela a foto da fila, MARCA os registros, e cancela de novo por log_id', async () => {
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [
+      {
+        id: 's-parar',
+        automation_id: 'a-desf',
+        step_type: 'stop_automation',
+        position: 0,
+        parent_step_id: null,
+        step_config: { automation_id: 'a-alvo' },
+      },
+    ];
+
+    await dispara();
+
+    const naFila = h.state.updateCalls.filter(
+      (c) => c.table === 'automation_pending_executions'
+    );
+    // Duas varreduras na fila: a foto (por automação + contato) e a segunda,
+    // por registro, DEPOIS da marca.
+    expect(naFila.length).toBeGreaterThanOrEqual(1);
+    expect(naFila[0].filters).toEqual(
+      expect.arrayContaining([
+        ['eq', 'automation_id', 'a-alvo'],
+        ['eq', 'contact_id', 'c1'],
+        ['eq', 'status', 'pending'],
+      ])
+    );
+  });
+});
+
+// ============================================================
+// "Aguardar — parar se o cliente responder" (18/09/2026).
+//
+// O motor só tem DUAS responsabilidades aqui, e as duas são sobre a MARCA no
+// contexto da fila: escrevê-la (ou limpá-la) a cada estacionamento, e tirá-la
+// na retomada. Quem cancela é `parar-se-responder.ts`, na ingestão.
+// ============================================================
+describe('Aguardar — parar se o cliente responder', () => {
+  beforeEach(() => {
+    h.state.esperasEnfileiradas = [];
+  });
+
+  const esperaMarcada = (config: Record<string, unknown>) => ({
+    id: 'esp-1',
+    automation_id: 'a-desf',
+    step_type: 'wait',
+    position: 0,
+    parent_step_id: null,
+    step_config: { amount: 30, unit: 'hours', ...config },
+  });
+
+  const contextoNaFila = () =>
+    h.state.esperasEnfileiradas[0]?.context as Record<string, unknown>;
+
+  /**
+   * A marca como o agendador a devolve: dentro do JSONB da fila. Entra por
+   * espalhamento porque NÃO faz parte de `AutomationContext` — de propósito:
+   * ela nunca vive num contexto de execução, só no contexto GRAVADO de uma
+   * espera (é o que a retomada garante). Mesmo trato do `_tentativa`.
+   */
+  const marcaDaEsperaAnterior: Record<string, unknown> = {
+    _parar_se_responder: 'esp-1',
+  };
+
+  it('marcada: a fila guarda o ID DO PASSO na marca', async () => {
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [esperaMarcada({ parar_se_responder: true })];
+
+    await dispara();
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(1);
+    // O id, e não `true`: é o que deixa anotar QUAL espera foi interrompida.
+    expect(contextoNaFila()._parar_se_responder).toBe('esp-1');
+  });
+
+  it('sem a caixa marcada, nenhuma marca vai para a fila', async () => {
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [esperaMarcada({})];
+
+    await dispara();
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(1);
+    expect('_parar_se_responder' in contextoNaFila()).toBe(false);
+  });
+
+  it('⚠️ só o booleano true liga — "true" e 1 chegam de JSONB e são truthy', async () => {
+    for (const valor of ['true', 1]) {
+      h.state.esperasEnfileiradas = [];
+      h.state.owned = { id: 'c1' };
+      h.state.automations = [automacaoSimples()];
+      h.state.steps = [esperaMarcada({ parar_se_responder: valor })];
+
+      await dispara();
+
+      expect('_parar_se_responder' in contextoNaFila()).toBe(false);
+    }
+  });
+
+  it('⚠️⚠️ a espera seguinte, NÃO marcada, nasce limpa mesmo com a marca no contexto', async () => {
+    // O contexto é copiado de ponta a ponta da execução. Sem a limpeza, a
+    // marca da 1ª espera viajaria para a 2ª — que o operador NÃO marcou — e
+    // a resposta do cliente pararia a sequência num ponto que ele não
+    // escolheu. São DUAS defesas: a retomada limpa (pino abaixo, pela
+    // retentativa) e o estacionamento reescreve a decisão — este pino.
+    h.state.automations = [automacaoSimples('a-resume')];
+    h.state.steps = [
+      {
+        ...esperaMarcada({}),
+        id: 'esp-2',
+        automation_id: 'a-resume',
+        position: 1,
+      },
+    ];
+
+    await resumePendingExecution({
+      id: 'espera-em-curso',
+      automation_id: 'a-resume',
+      account_id: ACCOUNT,
+      user_id: 'u1',
+      contact_id: 'c1',
+      log_id: 'log-resume',
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: { conversation_id: 'conv-1', ...marcaDaEsperaAnterior },
+    });
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(1);
+    expect('_parar_se_responder' in contextoNaFila()).toBe(false);
+    // O resto do contexto atravessa intacto — é o que carrega canal e negócio.
+    expect(contextoNaFila().conversation_id).toBe('conv-1');
+  });
+
+  it('⚠️⚠️ a RETOMADA tira a marca: a retentativa do passo seguinte não a herda', async () => {
+    // A retentativa reenfileira copiando `args.context` cru — ela não passa
+    // por `contextoDaEspera`. Se a retomada não limpasse, a marca da espera
+    // que JÁ ACABOU iria junto, e uma resposta do cliente nos 30 s da
+    // retentativa cancelaria a sequência num ponto que ninguém marcou.
+    // (Medido por mutação: sem a limpeza na retomada, só este pino reprova.)
+    vi.mocked(engineSendText).mockReset();
+    vi.mocked(engineSendText).mockRejectedValueOnce(
+      new EvolutionApiError('Error: Connection Closed', 400)
+    );
+    h.state.automations = [automacaoSimples('a-resume')];
+    h.state.steps = [
+      {
+        ...passoAvisar({ phone: '5583988745316', text: 'oi' }),
+        automation_id: 'a-resume',
+        position: 1,
+        parent_step_id: null,
+      },
+    ];
+
+    await resumePendingExecution({
+      id: 'espera-em-curso',
+      automation_id: 'a-resume',
+      account_id: ACCOUNT,
+      user_id: 'u1',
+      contact_id: 'c1',
+      log_id: 'log-resume',
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: { conversation_id: 'conv-1', ...marcaDaEsperaAnterior },
+    });
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(1);
+    // É a retentativa (mesma posição, contador gravado), e sem a marca.
+    expect(h.state.esperasEnfileiradas[0].next_step_position).toBe(1);
+    expect(contextoNaFila()._tentativa).toEqual({ pos: 1, n: 1 });
+    expect('_parar_se_responder' in contextoNaFila()).toBe(false);
+    vi.mocked(engineSendText).mockReset();
+    vi.mocked(engineSendText).mockResolvedValue({ whatsapp_message_id: 'm1' });
+  });
+
+  it('a retomada seguida de OUTRA espera marcada grava a marca da NOVA', async () => {
+    h.state.automations = [automacaoSimples('a-resume')];
+    h.state.steps = [
+      {
+        ...esperaMarcada({ parar_se_responder: true }),
+        id: 'esp-2',
+        automation_id: 'a-resume',
+        position: 1,
+      },
+    ];
+
+    await resumePendingExecution({
+      id: 'espera-em-curso',
+      automation_id: 'a-resume',
+      account_id: ACCOUNT,
+      user_id: 'u1',
+      contact_id: 'c1',
+      log_id: 'log-resume',
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: { ...marcaDaEsperaAnterior },
+    });
+
+    expect(contextoNaFila()._parar_se_responder).toBe('esp-2');
+  });
+
+  it('⚠️⚠️ execução JÁ interrompida pela resposta: a continuação que acorda depois não roda (Codex, PR #223)', async () => {
+    // A espera marcada estava num RAMO; o escopo de fora seguiu e estacionou a
+    // SUA espera — sem marca — um instante depois de o cliente responder. O
+    // cancelamento das irmãs não a viu (ainda não existia); quem a segura é a
+    // retomada, perguntando à fila se a execução já foi interrompida.
+    h.state.automations = [automacaoSimples('a-resume')];
+    h.state.steps = [
+      { ...passoDeTrabalho('s-msg-seguinte', 1), automation_id: 'a-resume' },
+    ];
+    h.state.interrompida = true;
+
+    await resumePendingExecution({
+      id: 'espera-irma',
+      automation_id: 'a-resume',
+      account_id: ACCOUNT,
+      user_id: 'u1',
+      contact_id: 'c1',
+      log_id: 'log-resume',
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: {},
+    });
+
+    expect(h.state.updateCalls.filter((c) => c.table === 'contacts')).toHaveLength(0);
+    expect(h.state.statusDaFila).toEqual(['cancelled']);
+  });
+
+  it('⚠️⚠️ execução JÁ interrompida NÃO estaciona espera nova (Codex, 4ª rodada) — sem linha zumbi na aba', async () => {
+    // A resposta do cliente cancelou a espera do ramo enquanto o escopo de
+    // fora ainda rodava; ao chegar no SEU "Aguardar", ele não pode criar uma
+    // linha `pending` que a aba mostraria por dias e a retomada cancelaria.
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [esperaMarcada({})];
+    h.state.interrompida = true;
+
+    await dispara();
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(statusGravado()).toBe('partial');
+    expect(desfechoGravado()).toBeUndefined();
+    const ultimo = h.state.logUpdates
+      .filter((u) => 'steps_executed' in u)
+      .flatMap((u) => u.steps_executed as { status: string; detail?: string }[])
+      .at(-1);
+    expect(ultimo).toMatchObject({ status: 'skipped' });
+    expect(ultimo?.detail).toMatch(/já foi interrompida/);
+  });
+
+  it('⚠️ fila que RECUSA a espera vira falha visível, não "esperando" para sempre', async () => {
+    // Até 18/09/2026 este INSERT não era conferido: recusado, o log dizia
+    // "waiting…", nada retomava, e a execução ficava `partial` eternamente —
+    // fora do fio e fora do bloco de correções do Meu dia.
+    h.state.erroNaFila = 'new row violates check constraint';
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automacaoSimples()];
+    h.state.steps = [esperaMarcada({ parar_se_responder: true })];
+
+    await dispara();
+
+    expect(h.state.esperasEnfileiradas).toHaveLength(0);
+    expect(statusGravado()).toBe('failed');
+    expect(desfechoGravado()?.desfecho).toBe('falhou');
+  });
+});
+
+
+// ============================================================
+// Automação PRESA À ETAPA (18/09/2026): a espera que acorda com o card fora
+// da etapa não retoma nada. Aqui se prende a ponta da RETOMADA — a garantia;
+// o cancelamento imediato no dreno do funil é de `so-na-etapa.test.ts`.
+// ============================================================
+describe('retomada de automação presa à etapa', () => {
+  const NO_SHOW = 'etapa-no-show';
+
+  const recuperacao = (config: Record<string, unknown>) => ({
+    ...automacaoSimples('a-noshow'),
+    name: 'No-Show Recuperação',
+    trigger_type: 'deal_stage_changed',
+    trigger_config: { stage_ids: [NO_SHOW], ...config },
+  });
+
+  async function acordar() {
+    h.state.steps = [
+      { ...passoDeTrabalho('s-msg-4', 1), automation_id: 'a-noshow' },
+    ];
+    await resumePendingExecution({
+      id: 'espera-1',
+      automation_id: 'a-noshow',
+      account_id: ACCOUNT,
+      user_id: 'u1',
+      contact_id: 'c1',
+      log_id: 'log-noshow',
+      parent_step_id: null,
+      branch: null,
+      next_step_position: 1,
+      context: { deal_id: 'deal-1', to_stage_id: NO_SHOW },
+    });
+  }
+
+  const passosGravados = () =>
+    h.state.logUpdates
+      .filter((u) => 'steps_executed' in u)
+      .flatMap((u) => u.steps_executed as { step_id: string; detail?: string; status: string }[]);
+
+  it('⚠️⚠️ o cliente REAGENDOU (card saiu da etapa): nada roda, a espera vira cancelled e o motivo fica escrito', async () => {
+    h.state.automations = [recuperacao({ parar_ao_sair: true })];
+    h.state.dealExistente = { id: 'deal-1', stage_id: 'etapa-reuniao-agendada' };
+
+    await acordar();
+
+    expect(h.state.updateCalls.filter((c) => c.table === 'contacts')).toHaveLength(0);
+    expect(h.state.statusDaFila).toEqual(['cancelled']);
+    // A MARCA da 1005 vai para o registro, com o motivo.
+    expect(h.state.logUpdates.some((u) => u.interrompida_por === 'etapa')).toBe(true);
+    expect(passosGravados().at(-1)).toMatchObject({
+      status: 'skipped',
+      detail: 'interrompida: o card saiu da etapa desta automação',
+    });
+    // Cancelamento não é desfecho: o precedente da 936.
+    expect(desfechoGravado()).toBeUndefined();
+  });
+
+  it('⚠️⚠️ card VOLTOU à etapa, mas a execução já tinha sido interrompida: a espera irmã não a ressuscita (Codex, 3ª rodada)', async () => {
+    // A saída cancelou a espera do ramo; a espera de fora, estacionada depois
+    // do evento, ficou fora do corte por data. O card reentra (execução NOVA
+    // começa) e ela acorda com o card NA etapa — sem o sinal, a execução
+    // antiga seguiria ao lado da nova, mandando a sequência em dobro.
+    h.state.automations = [recuperacao({ parar_ao_sair: true })];
+    h.state.dealExistente = { id: 'deal-1', stage_id: NO_SHOW };
+    h.state.interrompida = true;
+
+    await acordar();
+
+    expect(h.state.updateCalls.filter((c) => c.table === 'contacts')).toHaveLength(0);
+    expect(h.state.statusDaFila).toEqual(['cancelled']);
+  });
+
+  it('card ainda em No Show: a sequência segue', async () => {
+    h.state.automations = [recuperacao({ parar_ao_sair: true })];
+    h.state.dealExistente = { id: 'deal-1', stage_id: NO_SHOW };
+
+    await acordar();
+
+    expect(h.state.updateCalls.filter((c) => c.table === 'contacts')).toHaveLength(1);
+    expect(h.state.statusDaFila).toEqual(['done']);
+  });
+
+  it('⚠️ card APAGADO conta como fora da etapa', async () => {
+    h.state.automations = [recuperacao({ parar_ao_sair: true })];
+    h.state.dealExistente = null;
+
+    await acordar();
+
+    expect(h.state.updateCalls.filter((c) => c.table === 'contacts')).toHaveLength(0);
+    expect(h.state.statusDaFila).toEqual(['cancelled']);
+  });
+
+  it('⚠️⚠️ automação SEM a opção (gravada antes dela) segue mesmo com o card fora — nada muda retroativamente', async () => {
+    h.state.automations = [recuperacao({})];
+    h.state.dealExistente = { id: 'deal-1', stage_id: 'etapa-reuniao-agendada' };
+
+    await acordar();
+
+    expect(h.state.updateCalls.filter((c) => c.table === 'contacts')).toHaveLength(1);
+    expect(h.state.statusDaFila).toEqual(['done']);
+  });
+
+  it('⚠️⚠️ não consegui ler a etapa: falha VISÍVEL — nem segue cobrando, nem cancela calada', async () => {
+    h.state.automations = [recuperacao({ parar_ao_sair: true })];
+    h.state.erroNoNegocio = 'timeout';
+
+    await acordar();
+
+    expect(h.state.updateCalls.filter((c) => c.table === 'contacts')).toHaveLength(0);
+    expect(h.state.statusDaFila).toEqual(['failed']);
+    expect(statusGravado()).toBe('failed');
+    expect(desfechoGravado()?.desfecho).toBe('falhou');
+    expect(horaDeFimGravada()).toBeTruthy();
   });
 });
