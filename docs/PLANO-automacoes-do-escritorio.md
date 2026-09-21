@@ -79,12 +79,20 @@ Três coisas a saber:
   tem conexão nenhuma para herdar — que é exatamente o caso dos lembretes de
   reunião, cujo gatilho é uma data, não uma mensagem.
 
-**Decisão tomada na construção: os quatro lembretes ficaram HERDANDO**, sem
-conexão fixada. O pedido foi "independentemente da conexão", e herdar é o que
-faz o lembrete sair pelo mesmo número por onde o cliente conversa. O lead que
-nasceu do Calendly tem conversa sem conexão e cai na padrão da conta, que é
-Bancário - Comercial — o mesmo resultado que fixar daria, sem perder a herança
-para quem veio por outro número. Fixar é um clique, se preferir o contrário.
+**Decisão do operador (21/09): os quatro lembretes saem FIXADOS em
+Bancário - Comercial.** O gatilho deles é uma data, não uma mensagem, então
+não há conexão de disparo para herdar — sem fixar, a mensagem cairia na
+conexão da conversa e, para o lead nascido do Calendly (que tem conversa sem
+conexão), na padrão da conta. Fixado, o número é o mesmo sempre, por escolha e
+não por acidente.
+
+⚠️ Isso é diferente do recorte do GATILHO, que continua sem restrição: o
+lembrete dispara para lead de qualquer conexão, e responde por esta.
+
+⚠️ Na tela, a linha de ajuda abaixo do campo continua dizendo "a resposta sai
+pelo número por onde o cliente escreveu" mesmo com uma conexão escolhida — o
+texto descreve só o caso de herança e não muda com a seleção. O que vale é o
+nome no campo. É um defeito pequeno da tela, não da regra.
 
 ---
 
@@ -521,8 +529,7 @@ textos.
 | 3 | URL do webhook do Atlas e os campos que ele espera | 1 |
 | 4 | Título, prazo e responsável da tarefa | 1 |
 | 5 | O arquivo Excel dos documentos | 2 |
-| 6 | Os lembretes ficaram herdando a conexão. Fixar Bancário - Comercial? | 3 |
-| 7 | Ligar a de Desqualificado como está? | 4 |
+| 6 | Ligar a de Desqualificado como está? | 4 |
 
 ⚠️ **Antes de ligar os lembretes, saiba que eles pegam gente na hora.** Treze
 clientes têm reunião marcada no campo, seis delas amanhã. O lembrete de 24h
@@ -543,5 +550,7 @@ Registradas para não voltarem à discussão:
 - **Automação 2 é manual.** (08/09)
 - **Formato de data: `30/08/2026 às 16:00h`.** (08/09)
 - **Etiqueta de no-show aplicada uma vez só.** (20/09)
-- **Lembretes valem para qualquer conexão**, e só enquanto o lead estiver na
-  etapa Reunião Agendada. (20/09)
+- **Lembretes DISPARAM para qualquer conexão**, e só enquanto o lead estiver
+  na etapa Reunião Agendada. (20/09)
+- **Lembretes SAEM sempre por Bancário - Comercial**, fixado no passo de
+  mensagem. (21/09)
