@@ -80,7 +80,13 @@ describe("as cercas da recarga silenciosa (Codex, PR #216)", () => {
     expect(funil).toContain("buscarFunis(),");
     expect(funil).toContain("buscarAutomacoes(),");
     expect(funil).toContain("!extra.falhou");
-    expect(funil).toContain("if (etapas && negocios) {");
+    // Etapas e quadro só são gravados JUNTOS e quando os dois vieram: desde
+    // a carga em duas camadas (21/09/2026) o quadro depende das etapas (o
+    // conteúdo sai por etapa), e `buscarQuadro` devolve `null` na falha.
+    expect(funil).toMatch(
+      /etapas\s*\?\s*\{ etapas, quadro: await buscarQuadro\(funil, etapas, limites\) \}\s*:\s*null/,
+    );
+    expect(funil).toContain("if (doQuadro?.quadro) {");
   });
 
   it("o Funil só grava com o mesmo funil aberto e sem mudança no meio do caminho", () => {

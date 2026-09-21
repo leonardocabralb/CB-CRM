@@ -309,7 +309,7 @@ upstream sobrescrevê-los:
 | `src/lib/dashboard/queries.ts`, `src/components/dashboard/metric-card.tsx` | filtro por canal (parcial) e marca "conta inteira" |
 | `src/app/api/automations/[id]/duplicate/route.ts` | copia `channel_ids` (sem isso a cópia vira irrestrita) |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
-| `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil. Mais o funil-com-conversas (PR #71): botão de conversas por coluna, `navegarParaInbox`/restauração de rolagem no board (quadroRef vem da página), `useChannels` içado, select `DEAL_SELECT_DO_QUADRO` com plano B, popover de campos |
+| `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil. Mais o funil-com-conversas (PR #71): botão de conversas por coluna, `navegarParaInbox`/restauração de rolagem no board (quadroRef vem da página), `useChannels` içado, select `DEAL_SELECT_DO_QUADRO` com plano B, popover de campos. Mais (21/09/2026) a carga em DUAS camadas: `quadro` (enxuta + conteúdo) no lugar de `deals`, `buscarQuadro` por etapa, `carregarConteudo` e o `CardCarregando` — ver "O quadro do funil carrega em DUAS camadas" |
 | `src/components/pipelines/deal-card.tsx` | ⚠️ **reestruturado inteiro no PR #71 — manter a NOSSA versão** (como `conversation-list.tsx`): wrapper + botão do corpo (abre a CONVERSA) + lápis IRMÃO (edita; button aninhado é inválido), campos por `CamposDoCard`, etiquetas/última mensagem/não lidas, `memo` + canais por prop, barra de cor com `pointer-events-none` |
 | `src/components/pipelines/deal-form.tsx` | o título digitado FIXA o card (1007, `escritaDoTituloManual` nos dois ramos; o `payload` comum NÃO carrega `title`). Mais o que a linha antiga já dizia: o link "ver conversa" prefere a conversa do CONTATO (fallback no vínculo da 910), usa `urlDoInbox` e as props `origemFunil`/`aoIrParaConversa` da jornada do funil |
 | `src/app/(dashboard)/inbox/page.tsx`, `src/components/inbox/conversation-list.tsx`, `inbox-filters.tsx` | os params `?etapa=` (semeia o filtro de etapa UMA vez) e `?de=funil` (faixa "Voltar ao funil") — os `router.replace` usam `urlDoInbox`, que preserva `de` e derruba `etapa` DE PROPÓSITO; na lista, `etapaInicial` + `etapasResolvidas` e o recorte de etapa gateado por `etapasUsaveis`; nos filtros, o fallback da pastilha virou `labelStage` (era "Qualquer etapa" sobre filtro ativo) |
@@ -1723,6 +1723,44 @@ O que morde código novo:
   buscados UMA vez no board (`useChannels` dentro do card custava um GET por
   card) e o `DealCard` é `memo` com handlers `useCallback` — quem criar prop
   nova instável quebra isso e volta a re-renderizar 120 cards por tecla.
+
+⚠️⚠️ **O quadro do funil carrega em DUAS camadas (21/09/2026), e a ENXUTA é
+a verdade.** `src/lib/pipelines/quadro-enxuto.ts` (puro, com teste), o
+`buscarQuadro`/`carregarConteudo` da página e o `CardCarregando` do board.
+Medido antes: o Trabalhista tinha 3.669 cards e o quadro baixava 6,3 MB para
+desenhar 700 (100 por coluna, PR #231); com a 1032 o banco já respondia
+rápido, e o que sobrava era VOLUME — páginas em paralelo levavam o dobro do
+tempo cada uma. O que morde código novo:
+
+- ⚠️⚠️ **Contador, soma, os 6 indicadores e o arrasto saem da lista ENXUTA
+  de TODOS os cards (`DEAL_SELECT_ENXUTO`, ~180 bytes por card), nunca do
+  conteúdo completo.** O conteúdo existe só para os cards DESENHADOS; somar
+  a partir dele muda os números sem erro nenhum (a coluna de 1.152 diria
+  100). `PipelineAnalytics` recebe um `Pick` com os cinco campos que lê.
+- **O conteúdo completo sai POR ETAPA, na MESMA ordem da enxuta**
+  (`created_at DESC, id ASC`, `range(0, teto − 1)`), em paralelo com ela: os
+  primeiros de cada coluna são exatamente os que ela desenha. Ordem
+  diferente nos dois lados deixa card desenhado "carregando" para sempre.
+- ⚠️ **Card desenhado sem conteúdo é pedido por id** (`onFaltamDetalhes` →
+  `carregarConteudo`, fatias de 100 ids): o "carregar mais", coluna revelada
+  além de mil linhas, card que nasceu entre as duas consultas. A regra de
+  quem é desenhado é UMA (`idsDesenhados` usa `cardsDaColuna`, a mesma do
+  render). ⚠️ `pedidosDeConteudoRef` deduplica e é ZERADA a cada troca do
+  quadro inteiro (carga, recarga, volta ao app) — sem zerar, card que ainda
+  faltasse ali nunca seria pedido de novo; sem a memória, o efeito do board
+  repetiria o pedido a cada render. Pedido que falhou fica nela até a troca
+  seguinte, senão vira laço.
+- **O card sem conteúdo fica NO LUGAR** (`CardCarregando`, com o título da
+  enxuta): nunca some da coluna nem muda o contador, e não é arrastável.
+- ⚠️ **A carga lê o RETORNO do inbox** (`lerRetorno().limites`) e já baixa o
+  conteúdo das colunas expandidas: sem isso a rolagem seria restaurada sobre
+  cards ainda carregando, de outra altura. ⚠️ No Browser pane OCULTO o
+  `requestAnimationFrame` não dispara e o board não reaplica o teto — a
+  coluna fica em 100 mesmo com os 200 baixados. Não é defeito.
+- **O arrasto otimista mexe nas DUAS camadas** (`moverNoQuadro`): só a
+  enxuta punha o card na coluna nova com o selo velho.
+- **`quadro` é UM estado** (`{ negocios, detalhes }`), para as duas camadas
+  nunca serem gravadas em renders diferentes.
 
 ⚠️ **Caixa de entrada em DUAS ABAS (2026-09-02): encerrada SAI da caixa, e
 qualquer mensagem de gente a devolve.** `SituacaoDaCaixa` em

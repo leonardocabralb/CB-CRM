@@ -26,60 +26,21 @@ import { formatCurrency } from "@/lib/currency";
 import { contarAtivasNaEtapa } from "@/lib/automations/por-etapa";
 import { useTranslations } from "next-intl";
 import type { DealDoQuadro } from "@/lib/pipelines/cartao";
+import {
+  CARDS_POR_COLUNA,
+  cardsDaColuna,
+  idsDesenhados,
+  semConteudo,
+  type NegocioEnxuto,
+} from "@/lib/pipelines/quadro-enxuto";
 import type { CamposDoCard } from "@/lib/pipelines/campos-do-card";
 import { gravarRetorno, lerRetorno } from "@/lib/pipelines/retorno";
 import { urlDoInbox } from "@/lib/inbox/url";
 
-/**
- * Quantos cards uma coluna desenha de uma vez.
- *
- * ⚠️⚠️ O PR #227 consertou o DADO (a consulta de `deals` da página passou a
- * paginar); o RENDER continuava desenhando TUDO. Medido contra o que a
- * migração da Kommo traz: o funil "Trabalhista - Comercial" fica com ~8.400
- * cards, e a coluna "Perdido" sozinha com 2.719. Um `deals.map` por coluna
- * monta 8.400 componentes React e registra 8.400 `useDraggable` num commit
- * só, e a coluna estica a página para centenas de milhares de pixels: no
- * computador tranca a thread principal, e no CRM instalado no iPhone o
- * provável é o app ser morto pelo sistema — a tela principal do funil deixa
- * de abrir. Hoje o maior funil tem centenas de cards e nada disso aparece.
- *
- * 100 POR COLUNA, no molde da lista de leads (`funil/lista-de-leads.tsx`,
- * que usa o mesmo número para a tabela inteira). Com as colunas de um funil
- * real isso dá algumas centenas de cards no primeiro desenho — a faixa que
- * a produção já prova hoje —, contra os 8.400 de uma coluna sem teto.
- *
- * Sem biblioteca de virtualização, de propósito: o "carregar mais" é uma
- * linha de estado, e virtualizar DENTRO de um `DndContext` (cada card é um
- * `useDraggable`, a coluna é um `useDroppable`) é outra obra.
- */
-export const CARDS_POR_COLUNA = 100;
-
-/**
- * Os cards que a coluna desenha: os `limite` primeiros, mais o card que
- * ACABOU de ser solto aqui quando ele cairia fora do teto.
- *
- * ⚠️ A segunda metade não é zelo: sem ela o arrasto SOME com o card. A
- * ordem do quadro é `created_at DESC, id ASC` (a consulta da página) e
- * mover não reordena nada — o negócio de meses atrás arrastado para
- * "Perdido" entra na posição ~2.700 de uma coluna que desenha 100, e o
- * operador vê o card desaparecer no instante em que o soltou, sem erro
- * nenhum. Ele entra no TOPO porque é a única posição que existe qualquer
- * que seja o teto (a natural dele está atrás do "carregar mais").
- *
- * Nunca duplica: só entra quando NÃO está entre os visíveis.
- */
-export function cardsDaColuna<T extends { id: string }>(
-  deals: T[],
-  limite: number,
-  recemSolto: string | null,
-): T[] {
-  if (deals.length <= limite) return deals;
-  const visiveis = deals.slice(0, limite);
-  if (!recemSolto || visiveis.some((d) => d.id === recemSolto)) return visiveis;
-  // Nulo quando o card foi solto em OUTRA coluna — o id é do quadro inteiro.
-  const solto = deals.find((d) => d.id === recemSolto);
-  return solto ? [solto, ...visiveis] : visiveis;
-}
+// O teto por coluna e a regra do card recém-solto moraram aqui até
+// 21/09/2026; mudaram para o módulo puro do quadro enxuto, que também decide
+// o que se BAIXA por coluna. Reexportados para quem já os importava daqui.
+export { CARDS_POR_COLUNA, cardsDaColuna } from "@/lib/pipelines/quadro-enxuto";
 
 /**
  * Os tetos por coluna, carimbados com o funil a que pertencem. Exportado
@@ -92,7 +53,19 @@ export interface TetosDoQuadro {
 
 interface PipelineBoardProps {
   stages: PipelineStage[];
-  deals: DealDoQuadro[];
+  /**
+   * TODOS os cards do funil, na forma enxuta — a verdade sobre a coluna de
+   * cada um, o contador e a soma do cabeçalho. Ver `quadro-enxuto.ts`.
+   */
+  deals: NegocioEnxuto[];
+  /** O conteúdo completo, por id, dos cards que já foram baixados. */
+  detalhes: ReadonlyMap<string, DealDoQuadro>;
+  /**
+   * Os cards DESENHADOS que ainda não têm conteúdo — o "carregar mais" de
+   * uma coluna, o teto que a volta do inbox restaura, o card que nasceu
+   * entre as duas consultas. A página baixa e deduplica; o quadro só avisa.
+   */
+  onFaltamDetalhes: (ids: string[]) => void;
   /** Automações da conta, para a etiqueta por coluna (Fase 5). */
   automations: Automation[];
   /** O funil exibido — carimba o ponto de retorno ao sair para o inbox. */
@@ -127,6 +100,8 @@ interface PipelineBoardProps {
 export function PipelineBoard({
   stages,
   deals,
+  detalhes,
+  onFaltamDetalhes,
   automations,
   pipelineId,
   campos,
@@ -215,7 +190,7 @@ export function PipelineBoard({
   );
 
   const dealsByStage = useMemo(() => {
-    const map = new Map<string, DealDoQuadro[]>();
+    const map = new Map<string, NegocioEnxuto[]>();
     for (const stage of sortedStages) map.set(stage.id, []);
     for (const deal of deals) {
       const bucket = map.get(deal.stage_id);
@@ -223,6 +198,30 @@ export function PipelineBoard({
     }
     return map;
   }, [sortedStages, deals]);
+
+  /**
+   * Os cards desenhados sem conteúdo ainda — pedidos à página num efeito,
+   * que deduplica e baixa (o quadro não sabe o que já está em voo). A regra
+   * de quem é desenhado é a MESMA do render (`idsDesenhados` usa
+   * `cardsDaColuna`), senão um card desenhado ficaria para sempre
+   * "carregando", ou se baixaria card que ninguém vê.
+   */
+  const semConteudoAinda = useMemo(
+    () =>
+      semConteudo(
+        idsDesenhados(
+          deals,
+          sortedStages.map((s) => s.id),
+          limitesDoFunil,
+          recemSolto,
+        ),
+        detalhes,
+      ),
+    [deals, sortedStages, limitesDoFunil, recemSolto, detalhes],
+  );
+  useEffect(() => {
+    if (semConteudoAinda.length > 0) onFaltamDetalhes(semConteudoAinda);
+  }, [semConteudoAinda, onFaltamDetalhes]);
 
   /**
    * As duas portas de saída para o inbox (corpo do card e botão da coluna)
@@ -334,9 +333,9 @@ export function PipelineBoard({
     useSensor(KeyboardSensor),
   );
 
-  const activeDeal = activeDealId
-    ? deals.find((d) => d.id === activeDealId) ?? null
-    : null;
+  // Só card COM conteúdo é arrastável (o que ainda carrega não registra
+  // `useDraggable`), então o arrastado sempre está em `detalhes`.
+  const activeDeal = activeDealId ? detalhes.get(activeDealId) ?? null : null;
 
   function handleDragStart(event: DragStartEvent) {
     setActiveDealId(String(event.active.id));
@@ -393,6 +392,7 @@ export function PipelineBoard({
               key={stage.id}
               stage={stage}
               deals={stageDeals}
+              detalhes={detalhes}
               totalValue={totalValue}
               automacoesAtivas={contarAtivasNaEtapa(automations, stage.id)}
               campos={campos}
@@ -479,6 +479,7 @@ export function PipelineBoard({
 function StageColumn({
   stage,
   deals,
+  detalhes,
   totalValue,
   automacoesAtivas,
   campos,
@@ -494,7 +495,10 @@ function StageColumn({
   onOpenAutomations,
 }: {
   stage: PipelineStage;
-  deals: DealDoQuadro[];
+  /** A coluna INTEIRA, enxuta — contador, soma e quem é desenhado. */
+  deals: NegocioEnxuto[];
+  /** O conteúdo completo dos cards já baixados, por id. */
+  detalhes: ReadonlyMap<string, DealDoQuadro>;
   totalValue: number;
   automacoesAtivas: number;
   campos: CamposDoCard;
@@ -599,20 +603,27 @@ function StageColumn({
             {t("dropDealHere")}
           </div>
         ) : (
-          visiveis.map((deal) => (
-            <DraggableDealCard
-              key={deal.id}
-              deal={deal}
-              stage={stage}
-              campos={campos}
-              channels={channels}
-              esperasDeAutomacao={
-                esperasPorContato[deal.contact_id ?? ""] ?? 0
-              }
-              onEdit={onEditDeal}
-              onAbrirConversa={onAbrirConversa}
-            />
-          ))
+          visiveis.map((negocio) => {
+            const deal = detalhes.get(negocio.id);
+            // Sem conteúdo ainda: o card fica NO LUGAR, com o título que a
+            // lista enxuta já tem, até a página baixar o resto — nunca some
+            // da coluna nem muda o contador.
+            if (!deal) return <CardCarregando key={negocio.id} titulo={negocio.title} />;
+            return (
+              <DraggableDealCard
+                key={negocio.id}
+                deal={deal}
+                stage={stage}
+                campos={campos}
+                channels={channels}
+                esperasDeAutomacao={
+                  esperasPorContato[deal.contact_id ?? ""] ?? 0
+                }
+                onEdit={onEditDeal}
+                onAbrirConversa={onAbrirConversa}
+              />
+            );
+          })
         )}
 
         {/* Dentro da área de soltura, de propósito: quem arrasta até o fim
@@ -682,6 +693,27 @@ function DraggableDealCard({
         onEdit={onEdit}
         onAbrirConversa={onAbrirConversa}
       />
+    </div>
+  );
+}
+
+/**
+ * O card desenhado cujo conteúdo completo ainda não chegou. Mesma moldura do
+ * `DealCard` e altura parecida — a volta do inbox restaura a rolagem logo
+ * depois, e um espaço muito diferente do card real a deixaria fora do lugar.
+ * Não é arrastável: o arrasto e o clique precisam do negócio inteiro.
+ */
+function CardCarregando({ titulo }: { titulo: string }) {
+  const t = useTranslations("Pipelines.board");
+  return (
+    <div
+      aria-busy="true"
+      aria-label={t("carregandoCard", { titulo })}
+      className="rounded-lg border border-border bg-card p-3"
+    >
+      <p className="truncate text-sm font-medium text-muted-foreground">{titulo}</p>
+      <div className="mt-3 h-3 w-2/3 animate-pulse rounded bg-muted" />
+      <div className="mt-2 h-3 w-1/3 animate-pulse rounded bg-muted" />
     </div>
   );
 }
