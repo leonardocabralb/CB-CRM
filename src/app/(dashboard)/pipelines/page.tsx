@@ -160,6 +160,20 @@ function PipelinesPageInner() {
    * cada render, em laço.
    */
   const pedidosDeConteudoRef = useRef<Set<string>>(new Set());
+  /**
+   * A GERAÇÃO do quadro: avança a cada troca do quadro inteiro. O pedido de
+   * conteúdo guarda a geração em que saiu, e a resposta de um quadro que já
+   * foi trocado é DESCARTADA — sem isso, um "carregar mais" em voo durante a
+   * recarga (ou um A → B → A, que passa pela cerca do funil) gravava por cima
+   * do quadro novo os cards de antes da recarga (Codex, PR #248).
+   */
+  const geracaoDoQuadroRef = useRef(0);
+  /** A troca do quadro INTEIRO — carga, recarga, volta ao app. */
+  const trocarQuadroInteiro = useCallback((novo: QuadroCarregado) => {
+    geracaoDoQuadroRef.current += 1;
+    pedidosDeConteudoRef.current = new Set();
+    setQuadro(novo);
+  }, []);
   const [loading, setLoading] = useState(true);
 
   /**
@@ -653,15 +667,14 @@ function PipelinesPageInner() {
       if (cancelled) return;
       // ⚠️ Etapas e quadro no MESMO commit: a restauração do retorno, no
       // board, dispara quando as colunas existem e mede a altura real.
-      pedidosDeConteudoRef.current = new Set();
       setStages(s);
       setEtapasDe(selectedPipelineId);
-      setQuadro(q ?? QUADRO_VAZIO);
+      trocarQuadroInteiro(q ?? QUADRO_VAZIO);
     })();
     return () => {
       cancelled = true;
     };
-  }, [selectedPipelineId, loadStages, buscarQuadro]);
+  }, [selectedPipelineId, loadStages, buscarQuadro, trocarQuadroInteiro]);
 
   /**
    * Versão das mudanças LOCAIS da página. Toda ação que mexe por aqui nos
@@ -726,9 +739,8 @@ function PipelinesPageInner() {
       stages,
       tetos.funil === selectedPipelineId ? tetos.porEtapa : {},
     );
-    pedidosDeConteudoRef.current = new Set();
-    setQuadro(q ?? QUADRO_VAZIO);
-  }, [buscarQuadro, selectedPipelineId, stages]);
+    trocarQuadroInteiro(q ?? QUADRO_VAZIO);
+  }, [buscarQuadro, selectedPipelineId, stages, trocarQuadroInteiro]);
 
   // O app instalado no celular não tem botão de recarregar: voltar para ele
   // depois de um tempo fora atualiza o quadro do funil aberto, a lista de
@@ -764,6 +776,7 @@ function PipelinesPageInner() {
   const carregarConteudo = useCallback(
     (ids: string[]) => {
       const funil = selectedPipelineId;
+      const geracao = geracaoDoQuadroRef.current;
       const pedidos = pedidosDeConteudoRef.current;
       const novos = ids.filter((id) => !pedidos.has(id));
       if (!funil || novos.length === 0) return;
@@ -772,16 +785,28 @@ function PipelinesPageInner() {
         const lotes = await Promise.all(
           emFatias(novos, IDS_POR_PEDIDO).map((fatia) => buscarConteudoPorIds(fatia)),
         );
-        if (funilAbertoRef.current !== funil) return;
+        if (
+          funilAbertoRef.current !== funil ||
+          geracaoDoQuadroRef.current !== geracao
+        ) {
+          return;
+        }
         if (lotes.some((lote) => lote === null)) {
           toast.error(t("toastFailedLoadDeals"));
         }
         const chegaram = lotes.flatMap((lote) => lote ?? []);
         if (chegaram.length === 0) return;
+        // Só PREENCHE o que falta: card que ganhou conteúdo no meio do
+        // caminho (e talvez já foi arrastado) fica com o que tem.
         setQuadro((q) => {
           const detalhes = new Map(q.detalhes);
-          for (const d of chegaram) detalhes.set(d.id, d);
-          return { ...q, detalhes };
+          let mudou = false;
+          for (const d of chegaram) {
+            if (detalhes.has(d.id)) continue;
+            detalhes.set(d.id, d);
+            mudou = true;
+          }
+          return mudou ? { ...q, detalhes } : q;
         });
       })();
     },
@@ -830,9 +855,8 @@ function PipelinesPageInner() {
       }
 
       if (doQuadro?.quadro) {
-        pedidosDeConteudoRef.current = new Set();
         setStages(doQuadro.etapas);
-        setQuadro(doQuadro.quadro);
+        trocarQuadroInteiro(doQuadro.quadro);
       }
     })();
   });

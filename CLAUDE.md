@@ -1749,7 +1749,13 @@ tempo cada uma. O que morde código novo:
   quadro inteiro (carga, recarga, volta ao app) — sem zerar, card que ainda
   faltasse ali nunca seria pedido de novo; sem a memória, o efeito do board
   repetiria o pedido a cada render. Pedido que falhou fica nela até a troca
-  seguinte, senão vira laço.
+  seguinte, senão vira laço. ⚠️⚠️ Toda troca do quadro inteiro passa por
+  `trocarQuadroInteiro`, que avança a GERAÇÃO (`geracaoDoQuadroRef`): a
+  resposta de um pedido feito para um quadro já trocado é DESCARTADA, e a
+  que chega só PREENCHE o que falta, nunca sobrescreve. Sem as duas cercas,
+  um "carregar mais" em voo durante a recarga (ou num A → B → A, que passa
+  pela cerca do funil) gravava os cards de antes por cima dos novos (Codex,
+  PR #248).
 - **O card sem conteúdo fica NO LUGAR** (`CardCarregando`, com o título da
   enxuta): nunca some da coluna nem muda o contador, e não é arrastável.
 - ⚠️ **A carga lê o RETORNO do inbox** (`lerRetorno().limites`) e já baixa o
