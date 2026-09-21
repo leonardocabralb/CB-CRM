@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { statusAoEntrarNaEtapa } from "./resultado";
 import {
   CARDS_POR_COLUNA,
   DEAL_SELECT_ENXUTO,
@@ -9,6 +10,7 @@ import {
   limiteDaColuna,
   moverNoQuadro,
   semConteudo,
+  statusGravadoNoQuadro,
   type NegocioEnxuto,
 } from "./quadro-enxuto";
 
@@ -110,7 +112,7 @@ describe("moverNoQuadro", () => {
     const detalhes = new Map([
       ["d1", { id: "d1", stage_id: "a", status: "open" as const, title: "cheio" }],
     ]);
-    const depois = moverNoQuadro(negocios, detalhes, "d1", "b", "won");
+    const depois = moverNoQuadro(negocios, detalhes, "d1", "b", () => "won");
 
     expect(depois.negocios.find((n) => n.id === "d1")).toMatchObject({ stage_id: "b", status: "won" });
     expect(depois.detalhes.get("d1")).toMatchObject({ stage_id: "b", status: "won", title: "cheio" });
@@ -121,13 +123,80 @@ describe("moverNoQuadro", () => {
   });
 
   it("sem carimbo, o status fica como estava", () => {
-    const depois = moverNoQuadro([negocio("d1", "a", { status: "lost" })], new Map(), "d1", "b", null);
+    const depois = moverNoQuadro([negocio("d1", "a", { status: "lost" })], new Map(), "d1", "b", () => null);
     expect(depois.negocios[0]).toMatchObject({ stage_id: "b", status: "lost" });
   });
 
   it("card sem conteúdo baixado muda só na lista enxuta", () => {
-    const depois = moverNoQuadro([negocio("d1", "a")], new Map(), "d1", "b", null);
+    const depois = moverNoQuadro([negocio("d1", "a")], new Map(), "d1", "b", () => null);
     expect(depois.negocios[0].stage_id).toBe("b");
     expect(depois.detalhes.size).toBe(0);
+  });
+
+  // ⚠️ A 1031 (PR #245): o espelho do gatilho depende do status de ANTES. O
+  // palpite parte do status que o card tem na lista enxuta, e o mesmo
+  // carimbo vale para as duas camadas — com o espelho de verdade.
+  describe("com o espelho do gatilho (resultado.ts)", () => {
+    const etapas = [
+      { id: "neutra", resultado: null },
+      { id: "ganho", resultado: "ganho" },
+    ];
+    const mover = (status: NegocioEnxuto["status"], etapa: string) => {
+      const detalhes = new Map([["d1", { id: "d1", stage_id: "a", status }]]);
+      return moverNoQuadro([negocio("d1", "a", { status })], detalhes, "d1", etapa, (antes) =>
+        statusAoEntrarNaEtapa(etapas, etapa, antes),
+      );
+    };
+
+    it("o PERDIDO que entra numa etapa neutra volta aberto nas DUAS camadas", () => {
+      const depois = mover("lost", "neutra");
+      expect(depois.negocios[0]).toMatchObject({ stage_id: "neutra", status: "open" });
+      expect(depois.detalhes.get("d1")).toMatchObject({ stage_id: "neutra", status: "open" });
+    });
+
+    it("o GANHO que entra numa etapa neutra continua ganho", () => {
+      const depois = mover("won", "neutra");
+      expect(depois.negocios[0].status).toBe("won");
+      expect(depois.detalhes.get("d1")?.status).toBe("won");
+    });
+
+    it("a etapa com resultado carimba, qualquer que seja o status de antes", () => {
+      expect(mover("lost", "ganho").negocios[0].status).toBe("won");
+    });
+  });
+});
+
+describe("statusGravadoNoQuadro", () => {
+  const quadroCom = (status: NegocioEnxuto["status"], etapa: string) => ({
+    negocios: [negocio("d1", etapa, { status }), negocio("d2", etapa)],
+    detalhes: new Map([["d1", { id: "d1", stage_id: etapa, status, title: "cheio" }]]),
+  });
+
+  it("o status que o banco gravou chega às DUAS camadas", () => {
+    const antes = quadroCom("open", "b");
+    const depois = statusGravadoNoQuadro(antes, "d1", "b", "lost");
+    expect(depois.negocios[0]).toMatchObject({ id: "d1", status: "lost" });
+    expect(depois.detalhes.get("d1")).toMatchObject({ status: "lost", title: "cheio" });
+    // O vizinho e o quadro de antes ficam intocados.
+    expect(depois.negocios[1]).toBe(antes.negocios[1]);
+    expect(antes.negocios[0].status).toBe("open");
+    expect(antes.detalhes.get("d1")?.status).toBe("open");
+  });
+
+  it("card que já saiu da etapa não é tocado — o arrasto seguinte decide", () => {
+    const antes = quadroCom("open", "c");
+    expect(statusGravadoNoQuadro(antes, "d1", "b", "lost")).toBe(antes);
+  });
+
+  it("devolve o MESMO quadro quando o palpite já acertou", () => {
+    const antes = quadroCom("won", "b");
+    expect(statusGravadoNoQuadro(antes, "d1", "b", "won")).toBe(antes);
+  });
+
+  it("card sem conteúdo baixado: só a lista enxuta muda", () => {
+    const antes = { negocios: [negocio("d1", "b")], detalhes: new Map<string, { id: string; stage_id: string }>() };
+    const depois = statusGravadoNoQuadro(antes, "d1", "b", "won");
+    expect(depois.negocios[0].status).toBe("won");
+    expect(depois.detalhes).toBe(antes.detalhes);
   });
 });

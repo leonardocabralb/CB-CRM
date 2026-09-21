@@ -147,21 +147,36 @@ export function emFatias<T>(itens: readonly T[], tamanho: number): T[][] {
   return fatias;
 }
 
+type ItemDoQuadro = { id: string; stage_id: string; status?: Deal["status"] };
+
+/** As duas camadas, na forma em que a página as guarda. */
+export interface CamadasDoQuadro<D extends ItemDoQuadro> {
+  negocios: NegocioEnxuto[];
+  detalhes: ReadonlyMap<string, D>;
+}
+
 /**
  * O arrasto, otimista, nas DUAS camadas: a enxuta decide a coluna (e o
  * contador), e o conteúdo completo decide o selo do card. Mexer só numa
  * delas punha o card na coluna nova com o selo velho, ou o contrário.
- * `carimbo` é o status que o gatilho da 950 grava ao entrar numa etapa com
- * resultado (`statusAoEntrarNaEtapa`), ou nulo.
+ *
+ * `carimboPara` recebe o status que o card TEM — o da lista enxuta, a
+ * verdade do quadro — e devolve o que a etapa nova grava, ou nulo para
+ * "mantém": é o `statusAoEntrarNaEtapa`, espelho do gatilho da 950/1031
+ * (etapa com resultado carimba ganho/perdido, e o PERDIDO que entra numa
+ * etapa neutra volta aberto). Calculado UMA vez, vale para as duas camadas.
+ * ⚠️ É só o palpite: o status que o banco devolve na escrita vence
+ * (`statusGravadoNoQuadro`).
  */
-export function moverNoQuadro<D extends { id: string; stage_id: string; status?: Deal["status"] }>(
+export function moverNoQuadro<D extends ItemDoQuadro>(
   negocios: readonly NegocioEnxuto[],
   detalhes: ReadonlyMap<string, D>,
   dealId: string,
   etapaId: string,
-  carimbo: Deal["status"] | null,
+  carimboPara: (statusAntes: Deal["status"] | undefined) => Deal["status"] | null,
 ): { negocios: NegocioEnxuto[]; detalhes: Map<string, D> } {
-  const mudar = <T extends { stage_id: string; status?: Deal["status"] }>(item: T): T => ({
+  const carimbo = carimboPara(negocios.find((n) => n.id === dealId)?.status);
+  const mudar = <T extends ItemDoQuadro>(item: T): T => ({
     ...item,
     stage_id: etapaId,
     ...(carimbo ? { status: carimbo } : {}),
@@ -172,5 +187,43 @@ export function moverNoQuadro<D extends { id: string; stage_id: string; status?:
   return {
     negocios: negocios.map((n) => (n.id === dealId ? mudar(n) : n)),
     detalhes: novoDetalhe,
+  };
+}
+
+/**
+ * O status que o BANCO gravou no arrasto, nas DUAS camadas. O quadro não tem
+ * realtime: o status que a tela lembra pode ser de antes de outro operador
+ * fechar ou reabrir o card, e o gatilho decide pelo que está GRAVADO — por
+ * isso o palpite de `moverNoQuadro` é trocado pela resposta da escrita
+ * (Codex, PR #245).
+ *
+ * Só troca onde o card AINDA está na etapa para onde foi arrastado: um
+ * arrasto seguinte já decidiu por conta própria. ⚠️ Trocar só a enxuta
+ * compila, e deixa o selo do card (que vem do conteúdo) discordando da
+ * coluna e dos indicadores. Devolve o MESMO quadro quando nada muda.
+ */
+export function statusGravadoNoQuadro<D extends ItemDoQuadro>(
+  quadro: CamadasDoQuadro<D>,
+  dealId: string,
+  etapaId: string,
+  gravado: Deal["status"],
+): CamadasDoQuadro<D> {
+  const trocar = (item: ItemDoQuadro) =>
+    item.id === dealId && item.stage_id === etapaId && item.status !== gravado;
+  const naEnxuta = quadro.negocios.some(trocar);
+  const atual = quadro.detalhes.get(dealId);
+  const noConteudo = atual !== undefined && trocar(atual);
+  if (!naEnxuta && !noConteudo) return quadro;
+  let detalhes = quadro.detalhes;
+  if (atual && noConteudo) {
+    const copia = new Map(quadro.detalhes);
+    copia.set(dealId, { ...atual, status: gravado });
+    detalhes = copia;
+  }
+  return {
+    negocios: naEnxuta
+      ? quadro.negocios.map((n) => (trocar(n) ? { ...n, status: gravado } : n))
+      : quadro.negocios,
+    detalhes,
   };
 }

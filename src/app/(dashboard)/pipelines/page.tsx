@@ -69,6 +69,7 @@ import {
   emFatias,
   limiteDaColuna,
   moverNoQuadro,
+  statusGravadoNoQuadro,
   type NegocioEnxuto,
 } from "@/lib/pipelines/quadro-enxuto";
 import {
@@ -871,9 +872,13 @@ function PipelinesPageInner() {
       // ganho/perdido NO BANCO (BEFORE trigger, mesma escrita). Sem refletir
       // aqui, arrastar para "Contrato Fechado" gravava won mas o selo do
       // card só aparecia no reload — achado da auditoria de 2026-08-29.
-      const carimbo = statusAoEntrarNaEtapa(stages, newStageId);
+      // O palpite parte do status que o CARD tem (o da lista enxuta): o
+      // perdido que entra numa etapa neutra volta aberto (1031), e o
+      // espelho precisa saber de onde ele sai.
       setQuadro((q) =>
-        moverNoQuadro(q.negocios, q.detalhes, dealId, newStageId, carimbo),
+        moverNoQuadro(q.negocios, q.detalhes, dealId, newStageId, (statusAntes) =>
+          statusAoEntrarNaEtapa(stages, newStageId, statusAntes),
+        ),
       );
       // `.select("id")` = checagem de ROWCOUNT. Update que casa 0 linhas
       // volta `error: null` com cara de sucesso — acontece quando a RLS
@@ -885,12 +890,20 @@ function PipelinesPageInner() {
         .from("deals")
         .update({ stage_id: newStageId })
         .eq("id", dealId)
-        .select("id");
+        .select("id, status");
       if (error || !linhas || linhas.length === 0) {
         toast.error(t("toastFailedMoveDeal"));
         refreshDeals();
         return;
       }
+      // O status que o BANCO gravou vence o espelho acima: o quadro não tem
+      // realtime, e o `d.status` desta tela pode ser de antes de outro
+      // operador fechar ou reabrir o card — o gatilho decide pelo que está
+      // gravado, não pelo que a tela lembra (Codex, PR #245).
+      // Nas DUAS camadas: só a enxuta compilaria, e o selo do card (que vem
+      // do conteúdo) discordaria da coluna e dos indicadores.
+      const gravado = linhas[0].status as Deal["status"];
+      setQuadro((q) => statusGravadoNoQuadro(q, dealId, newStageId, gravado));
       // O trigger da 933 já enfileirou o evento. Este aviso só antecipa a
       // drenagem: sem ele a automação da etapa sairia no ciclo de 15 min do
       // agendador, e "arrastou → mandou a mensagem" viraria "arrastou →
