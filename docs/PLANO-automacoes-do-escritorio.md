@@ -5,46 +5,40 @@
 > confundir com `PLANO-automacoes-multicanal-e-funil.md`, que é sobre a
 > *ferramenta* de automações.
 >
-> Estado: **plano, nada montado.** Nenhuma automação foi criada nem alterada.
-> Escrito em 20/09/2026 a partir do pedido de 08/09 e do que o motor ganhou
-> desde então.
+> Estado: **as oito estão criadas, todas DESATIVADAS**, com o prefixo
+> `(PENDENTE)` no nome. Escrito em 20/09/2026 a partir do pedido de 08/09 e do
+> que o motor ganhou desde então; construído e testado em 21/09.
+>
+> ⚠️ **Nenhuma pode ser ligada por engano.** A validação de ativação é o
+> portão: a de contrato fechado, por exemplo, recusa com "webhook URL is
+> required" e "task assignee is required", e o interruptor volta sozinho para
+> desligado. Rascunho incompleto pode ser salvo; ativado, não.
 
 ---
 
 ## 1. Como está a conta hoje
 
-Oito automações existem, **sete desativadas**.
+| Automação | Gatilho | Passos | Ativa |
+| --- | --- | --- | --- |
+| (PENDENTE) Contrato fechado | entrou em Contrato Fechado | 12 | não |
+| (PENDENTE) Documentos de gestão de passivo | manual | 7 | não |
+| (PENDENTE) Lembrete de reunião · 24h antes | data de campo | 1 | não |
+| (PENDENTE) Lembrete de reunião · 4h antes | data de campo | 1 | não |
+| (PENDENTE) Lembrete de reunião · 1h antes | data de campo | 1 | não |
+| (PENDENTE) Lembrete de reunião · 10min antes | data de campo | 1 | não |
+| (PENDENTE) Desqualificado | entrou em Desqualificado | 2 | não |
+| (PENDENTE) No-show · recuperação | entrou em No Show | 20 | não |
+| Calendly → Reunião agendada | agendamento do Calendly | 7 | **sim** |
+| Cobrança · 1, 5 e 30 dias · vence hoje | Asaas | 1 cada | não |
 
-| Automação | Gatilho | Passos | Ativa | O que é |
-| --- | --- | --- | --- | --- |
-| Calendly → Reunião agendada | agendamento do Calendly | 7 | **sim** | em produção, funcionando |
-| Envio Webhook CB OS - Atlas | entrou em Contrato Fechado | 2 | não | **esboço da automação 1**, com URL de teste |
-| No-Show Recuperação | entrou em No Show | 1 | não | **esboço da automação 5**, só a etiqueta |
-| Desqualificado - Encerrar | entrou em Desqualificado | 2 | não | **a automação 4, pronta** |
-| Cobrança · 1 dia | cobrança vencida (Asaas) | 1 | não | régua de cobrança, assunto separado |
-| Cobrança · 5 dias | cobrança vencida (Asaas) | 1 | não | idem |
-| Cobrança · 30 dias | cobrança vencida (Asaas) | 1 | não | idem |
-| Lembrete · vence hoje | cobrança vence hoje (Asaas) | 1 | não | idem |
+As três que já existiam foram **transformadas, não duplicadas**: se nascesse
+uma segunda ao lado da do Atlas, ela aplicaria a etiqueta primeiro e a trava da
+nova barraria tudo. O que elas tinham antes:
 
-### O que já está montado, passo a passo
-
-**Desqualificado - Encerrar** — criada em 18/09, e está completa:
-
-1. Aplicar etiqueta `Desqualificado`
-2. Encerrar a conversa
-
-**No-Show Recuperação** — criada em 18/09, só o começo:
-
-1. Aplicar etiqueta `No-Show`
-
-**Envio Webhook CB OS - Atlas** — criada em 29/08, desativada em 19/09:
-
-1. Aplicar etiqueta `Cliente Fechado`
-2. Disparar webhook para `https:Teste.url.br` com corpo `testeteste`
-
-> A URL é um marcador de posição, não um endereço. Esta automação é o esboço
-> da automação 1 e será transformada, **não** duplicada: se nascer outra ao
-> lado, esta aplica a etiqueta primeiro e a trava da nova barra tudo.
+- **Envio Webhook CB OS - Atlas** (29/08): etiqueta + webhook para
+  `https:Teste.url.br` com corpo `testeteste`. Virou a de contrato fechado.
+- **No-Show Recuperação** (18/09): só a etiqueta. Virou a de no-show.
+- **Desqualificado - Encerrar** (18/09): já estava completa. Só foi renomeada.
 
 ### O que o motor ganhou desde 08/09
 
@@ -85,10 +79,12 @@ Três coisas a saber:
   tem conexão nenhuma para herdar — que é exatamente o caso dos lembretes de
   reunião, cujo gatilho é uma data, não uma mensagem.
 
-Nos lembretes, sem conexão fixada, a mensagem cai na conexão da conversa; e o
-lead que nasceu do agendamento do Calendly tem conversa sem conexão, então
-cairia na padrão da conta (**Bancário - Comercial**). O resultado é o certo,
-mas por acidente. **Proposta: fixar Bancário - Comercial nos quatro lembretes.**
+**Decisão tomada na construção: os quatro lembretes ficaram HERDANDO**, sem
+conexão fixada. O pedido foi "independentemente da conexão", e herdar é o que
+faz o lembrete sair pelo mesmo número por onde o cliente conversa. O lead que
+nasceu do Calendly tem conversa sem conexão e cai na padrão da conta, que é
+Bancário - Comercial — o mesmo resultado que fixar daria, sem perder a herança
+para quem veio por outro número. Fixar é um clique, se preferir o contrário.
 
 ---
 
@@ -99,23 +95,34 @@ mas por acidente. **Proposta: fixar Bancário - Comercial nos quatro lembretes.*
 **Gatilho:** card entrou em *Contrato Fechado* (funil Bancário - Comercial).
 **Interromper se o card sair da etapa: DESMARCADA.** Ver a nota no fim.
 
-| # | Passo | Configuração |
-| --- | --- | --- |
-| 1 | Condição | tem a etiqueta `Cliente Fechado`? → ramo **sim fica vazio** (trava) |
-| 2 | Aplicar etiqueta | `Cliente Fechado` |
-| 3 | Aplicar etiqueta | `Bancário` |
-| 4 | Mover card | para *Contrato Fechado* (redundante de propósito) |
-| 5 | Disparar webhook | **URL e corpo pendentes** |
-| 6 | Aguardar | 30 segundos |
-| 7 | Aguardar | 10 segundos |
-| 8 | Enviar mensagem | boas-vindas (texto no item 4) |
-| 9 | Aguardar | 10 segundos |
-| 10 | Criar tarefa | **título, prazo e responsável pendentes** |
-| 11 | Mover card | para *Bancário - Jurídico → Cliente Ativo* |
+A condição é o passo único do escopo de fora. **O corpo inteiro vive dentro do
+ramo NÃO** — "se ainda não tem a etiqueta, faça tudo isto":
 
-A trava do passo 1 é o que permite rodar a automação à mão sem repetir tudo em
-quem já fechou. Ramo vazio não é erro: o fio da conversa mostra "parou numa
-condição", em cinza.
+| # | Passo | Onde | Configuração |
+| --- | --- | --- | --- |
+| 1 | Condição | raiz | tem a etiqueta `Cliente Fechado`? |
+| 2 | Aplicar etiqueta | ramo NÃO | `Cliente Fechado` |
+| 3 | Aplicar etiqueta | ramo NÃO | `Bancário` |
+| 4 | Mover card | ramo NÃO | para *Contrato Fechado* (redundante de propósito) |
+| 5 | Disparar webhook | ramo NÃO | **URL pendente** — corpo já rascunhado |
+| 6 | Aguardar | ramo NÃO | 30 segundos |
+| 7 | Marcar ganho | ramo NÃO | redundante: a etapa já carrega o resultado |
+| 8 | Aguardar | ramo NÃO | 10 segundos |
+| 9 | Enviar mensagem | ramo NÃO | boas-vindas (texto no item 4) |
+| 10 | Aguardar | ramo NÃO | 10 segundos |
+| 11 | Criar tarefa | ramo NÃO | **responsável pendente**; título e prazo rascunhados |
+| 12 | Mover card | ramo NÃO | para *Bancário - Jurídico → Cliente Ativo* |
+
+> ⚠️⚠️ **O corpo TEM de ficar dentro do ramo, e a primeira versão deste plano
+> errava nisso.** Eu havia escrito "condição primeiro, ramo SIM vazio, corpo
+> depois". Não funciona: ramo vazio **não interrompe o escopo de fora** — o
+> motor segue nos passos seguintes, e a trava não travaria nada. Quem já
+> tivesse a etiqueta receberia as boas-vindas de novo a cada vez.
+>
+> Medido em 21/09 com uma automação temporária de mesma estrutura, rodada duas
+> vezes no card do Leonardo: sem a etiqueta, `branch=no` e o corpo executou;
+> com a etiqueta, `branch=yes`, nada executou e o desfecho foi **barrada**. O
+> fio mostra "parou numa condição", em cinza.
 
 > ⚠️ **Por que a caixa "interromper se o card sair" tem de ficar desmarcada
 > aqui.** Com ela ligada, executar a automação à mão num lead que não está em
@@ -462,6 +469,49 @@ já separou.
 
 ---
 
+## 4b. O que foi testado em 21/09
+
+Tudo no card do Leonardo Cabral Baptista, com automações temporárias que foram
+apagadas depois. Nenhuma das oito foi ativada em momento nenhum.
+
+**As variáveis, num envio real de WhatsApp.** Todas resolveram:
+
+| Variável | Saiu como |
+| --- | --- |
+| `{{contact.name}}` | Leonardo Cabral Baptista |
+| `{{contact.campo.data_e_hora_reuniao}}` | **09/09/2026 às 17:30h** |
+| `{{contact.campo.link_reuniao}}` | o link do Google Meet |
+| `{{contact.phone}}` | 558388745316 |
+| `{{contact.email}}` | leonardocabralb@gmail.com |
+| `{{conversation.link}}` | o link da conversa no CRM |
+| `{{contact.origem}}` | vazio (ele não veio de anúncio) |
+
+A data fica guardada em UTC e sai no fuso do escritório, no formato escolhido.
+⚠️ A mensagem sai com o prefixo `*CB Advogados:*` — a assinatura da conta está
+ligada e vale para toda mensagem de automação.
+
+**A trava por etiqueta**, rodada duas vezes: sem a etiqueta o corpo executou
+(`branch=no`, desfecho *concluída*); com a etiqueta nada executou
+(`branch=yes`, desfecho *barrada*). É o achado que corrigiu o plano.
+
+**O alvo dos lembretes**, sem enviar nada: a função que procura quem deve
+receber foi chamada com a janela de uma hora que o lembrete de 24h usaria, e
+devolveu os dois contatos com reunião ali dentro; com uma janela deslocada,
+devolveu zero. As quatro configurações de deslocamento passam na validação,
+inclusive a de 10 minutos, que tem zero horas.
+
+**O portão de ativação**, na tela: ligar a de contrato fechado e salvar foi
+recusado com os dois pontos que faltam, nomeados, e o interruptor voltou
+sozinho para desligado.
+
+**O que NÃO deu para testar:** o disparo automático de ponta a ponta. Para
+isso seria preciso ativar uma automação em produção, e **treze clientes reais
+têm reunião marcada**, seis delas amanhã — o risco de mandar texto não
+aprovado para gente de verdade não se justifica antes de você confirmar os
+textos.
+
+---
+
 ## 5. O que falta você decidir ou me mandar
 
 | # | O que | Trava qual automação |
@@ -471,12 +521,12 @@ já separou.
 | 3 | URL do webhook do Atlas e os campos que ele espera | 1 |
 | 4 | Título, prazo e responsável da tarefa | 1 |
 | 5 | O arquivo Excel dos documentos | 2 |
-| 6 | Fixar Bancário - Comercial nos lembretes? | 3 |
+| 6 | Os lembretes ficaram herdando a conexão. Fixar Bancário - Comercial? | 3 |
 | 7 | Ligar a de Desqualificado como está? | 4 |
 
-Com os itens 1, 2, 6 e 7 resolvidos dá para montar **três das cinco famílias**
-— sete automações no total — e deixar todas desativadas para você revisar na
-tela antes de ligar uma a uma.
+⚠️ **Antes de ligar os lembretes, saiba que eles pegam gente na hora.** Treze
+clientes têm reunião marcada no campo, seis delas amanhã. O lembrete de 24h
+começa a disparar para essas pessoas no mesmo dia em que for ligado.
 
 ---
 
