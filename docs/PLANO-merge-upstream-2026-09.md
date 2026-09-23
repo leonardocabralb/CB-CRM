@@ -863,27 +863,80 @@ real: ativo por minutos, desativado e apagado em seguida.
   no código (`engine.ts` mandava `cfg.text`, cabeçalho, rodapé e títulos crus)
   e é inerte hoje. ⚠️ O merge #259 DESCARTOU o `engine.ts` do original (caiu no
   "fica o nosso"), então este porte é o único caminho.
-- **Contrato de falha: fica o NOSSO**, que já existia e é mais forte: os dois
-  nós interativos registram `send_interactive_failed` e encerram o run
-  `failed`, e a re-pergunta que falha também encerra
-  (`reprompt_interactive_failed`) — o original mantém o run vivo ali, e num
-  canal Evolution (sem botões) ele engoliria toda mensagem seguinte do
-  cliente. Nada disso mudou.
+- **Contrato de falha: fica o NOSSO**, que já existia: os dois nós
+  interativos registram `send_interactive_failed` e encerram o run `failed`,
+  e a re-pergunta que falha também encerra (`reprompt_interactive_failed`).
+  São dois custos, escolhidos por escrito: o nosso libera o contato na hora e
+  deixa a falha visível, ao preço de perder o fluxo num erro TRANSITÓRIO (com
+  os botões ainda na tela do cliente); o original segura o run até esgotar
+  `max_reprompts` (2) ou o varredor de 24 h, consumindo as mensagens do
+  cliente nesse meio. No envio INICIAL os dois contratos são iguais. Nada
+  disso mudou, e agora há pino da re-pergunta (a revisão achou que nenhum
+  teste passava por ela).
 - **O que entrou:** `camposDosBotoes` e `camposDaLista` (puros, exportados)
   interpolam todo texto visível; o `reply_id` nunca; campo opcional ausente
   continua ausente; nada é cortado (o `meta-api` recusa com o motivo e o nó
   encerra o run). E um achado da auditoria do #259: a LISTA não passava o
   canal do nó (`preferredChannelId`), e um fluxo preso ao número X a mandava
-  pelo canal atual da conversa — agora passa, como os botões.
+  pelo canal atual da conversa — agora passa, como os botões. A revisão por
+  duas lentes achou o MESMO defeito na pergunta do `collect_input` (e na
+  re-pergunta dela): com a conversa fixada em outro número, o "Qual seu
+  nome?" saía numa conversa e o "Oi, Ana" noutra. Corrigido na mesma fase
+  (`channel_id` no tipo do nó, `nodeChannel` nos dois envios).
 - **Verificação:** `typecheck` limpo; lint sem aviso novo; suíte inteira no
-  Node 22 verde; **8 mutantes reprovam** (os dois envios sem a montagem, o
-  canal da lista, o `reply_id` interpolado nos dois nós, o opcional virando
-  "", o rótulo do botão e o título de seção crus).
-- **Teste real: PENDENTE.** A Meta só entrega botão/lista com a janela de 24h
-  aberta naquele número, e a última mensagem do lead de teste no número
-  oficial é de 12/09. Fica para quando o lead escrever ao número oficial: aí
-  o roteiro acima vale como está. Sem fluxo nenhum na produção, nada muda
-  para cliente até lá.
+  Node 22 verde; **16 mutantes reprovam** — os 8 da primeira rodada (os dois
+  envios sem a montagem, o canal da lista, o `reply_id` interpolado nos dois
+  nós, o opcional virando "", o rótulo do botão e o título de seção crus) e 8
+  da revisão: a montagem com `{}` no lugar de `run.vars` (botões e lista —
+  sobrevivia, porque os testes rodavam num run sem variável), o canal da
+  pergunta e o da re-pergunta do `collect_input`, a re-pergunta que falha sem
+  encerrar, cabeçalho e rodapé da lista crus e o `null` do JSONB virando "".
+- **Registrado para depois (fora desta fase, achados da revisão):** o
+  validador do save mede o título CRU (`{{vars.name}}` passa e pode estourar
+  no envio; "Confirmar, {{vars.name}}" é recusado mesmo cabendo depois) — um
+  aviso no editor resolveria; `interpolateVars` lê a cadeia de protótipo
+  (`{{vars.constructor}}` imprime a função; só o autor do fluxo provoca,
+  `Object.hasOwn` resolve); os passos `send_buttons`/`send_list` das
+  AUTOMAÇÕES mandam o texto cru (o mesmo defeito no outro motor; inerte, só
+  saem pela Meta); a nota do nó `handoff` não interpola, e a ajuda do editor
+  promete que sim; e o erro do validador da Meta leva o título interpolado ao
+  `flow_run_events` — aceito: o mesmo texto já está em `messages`.
+- **Teste real (23/09/2026, ~16h BRT), com o código da branch no preview:**
+  o operador abriu a janela de 24h escrevendo ao número oficial às 15:43.
+  Conferido antes que nada mais reagiria à entrada simulada (nenhuma
+  automação de mensagem, nenhum fluxo, IA desligada, nenhum webhook de saída,
+  nenhuma espera nem run do lead). Dois fluxos de teste criados pela API
+  (presos ao número oficial, palavra-chave exata improvável, ativados pela
+  rota — o validador aprovou "Sim, {{vars.name}}" com 18 letras) e entrada
+  simulada por POST assinado no webhook LOCAL da Meta:
+  - **Botões:** pergunta → "Ana Teste" → a Meta ENTREGOU (`delivered`)
+    "TESTE DO CRM: Oi Ana Teste, confirme:", com cabeçalho, rodapé e o botão
+    "Sim, Ana Teste" preenchidos, ids `sim`/`nao` crus; o toque simulado
+    encerrou o run (`end_node`).
+  - **Título acima do teto:** "Maria Aparecida dos Santos" → run `failed`,
+    `send_interactive_failed`, evento com o motivo; nada enviado.
+  - **Lista:** "Bia Teste" → saiu "TESTE DO CRM: Bia Teste, escolha uma
+    opção", com cabeçalho, rodapé, título da seção, título e descrição da
+    linha preenchidos e ids crus. A Meta aceitou (wamid), mas o recibo de
+    entrega não voltou (ficou `sent`). Causa provável, não medida: o recibo
+    da Meta é um UPDATE solto, e quem chega antes de a linha existir se
+    perde — o caminho da Evolution espera (`aplicarReciboQuandoAMensagemExistir`),
+    o da Meta não; em 10/09 uma mensagem do oficial já tinha ficado em `sent`
+    assim. Registrado, fora desta fase. Falta o operador confirmar no celular
+    que a lista chegou.
+  - ⚠️ Uma resposta mandada 2 s depois da palavra-chave, ANTES de a pergunta
+    sair, não foi capturada (o run ainda não existia): efeito do teste, não
+    defeito — cliente de verdade responde depois de a pergunta chegar.
+  - **Limpeza, conferida por consulta:** fluxos apagados pela rota (cascata
+    em nós, runs e eventos: 0 de cada), as 9 mensagens simuladas do
+    "cliente" apagadas, a conversa com a prévia e o `janela_meta` devolvidos
+    ao real (18:47:57, a última mensagem de verdade do lead no oficial);
+    situação, canal fixado e responsável intocados. As 5 mensagens reais do
+    robô ficaram no fio: chegaram ao celular.
+  - **Não exercitado:** o canal Evolution (o `meta-send.ts` não mudou; o
+    harness cobre o `failed` com o motivo) e o EDITOR de fluxos — a dívida
+    da Fase 1 continua aberta: os fluxos foram criados pela API, não pela
+    tela.
 
 ### Fase 5 — O motivo da falha da Meta na mensagem
 

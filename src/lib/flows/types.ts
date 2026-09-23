@@ -162,6 +162,12 @@ export interface CollectInputNodeConfig {
   regex?: string;
   /** Node to advance to after capture. */
   next_node_key: string;
+  /**
+   * Canal de SAIDA da pergunta. Ausente = canal travado no RUN (por onde o
+   * cliente entrou). Preenchido = forca aquele numero — como nos outros nos
+   * que enviam.
+   */
+  channel_id?: string | null;
 }
 
 export type ConditionOperator =

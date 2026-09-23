@@ -525,9 +525,9 @@ async function sendListAndSuspend(
     conversationId: run.conversation_id!,
     contactId: run.contact_id!,
     ...camposDaLista(cfg, run.vars ?? {}),
-    // O canal do NÓ, depois o do run — como os botões e as mensagens. A
-    // lista não o passava: um fluxo preso ao número X mandava a lista pelo
-    // canal atual da conversa (achado da auditoria do merge #259).
+    // O canal do NÓ, depois o do run — como todo nó que envia. A lista não
+    // o passava: um fluxo preso ao número X mandava a lista pelo canal atual
+    // da conversa (achado da auditoria do merge #259).
     preferredChannelId: nodeChannel(cfg, run),
   });
   await logEvent(db, run.id, "message_sent", node.node_key, {
@@ -777,6 +777,11 @@ async function advanceFromNodeKey(
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
           text: interpolateVars(cfg.prompt_text, run.vars),
+          // Sem isto a pergunta saía pelo canal ATUAL da conversa, e os
+          // botões logo depois pelo do run: com a conversa fixada em outro
+          // número, o cliente recebia "Qual seu nome?" numa conversa e o
+          // "Oi, Ana" noutra (revisão da Fase 4 do plano do upstream).
+          preferredChannelId: nodeChannel(cfg, run),
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
           node_type: "collect_input",
@@ -1184,10 +1189,12 @@ async function handleReplyForActiveRun(
         }
       } catch (err) {
         // O run está suspenso esperando uma resposta interativa. Se o
-        // prompt não pode ser reenviado (ex.: a conversa migrou para um
-        // canal Evolution, que não tem botões/listas), ele ficaria ativo
-        // para sempre engolindo as mensagens do cliente. Falhar libera o
-        // contato para automações e IA.
+        // prompt não pode ser reenviado (ex.: um erro da Meta), mantê-lo vivo
+        // consumiria as mensagens seguintes do cliente até esgotar
+        // `max_reprompts` — é o contrato do original. Encerrar libera o
+        // contato para automações e IA na hora e deixa a falha visível; o
+        // preço é perder o fluxo num erro TRANSITÓRIO, com os botões ainda
+        // na tela do cliente (o toque seguinte não acha run ativo).
         await logEvent(db, run.id, "error", currentNode.node_key, {
           reason: "reprompt_interactive_failed",
           detail: err instanceof Error ? err.message : String(err),
@@ -1206,6 +1213,7 @@ async function handleReplyForActiveRun(
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
           text: interpolateVars(cfg.prompt_text, run.vars),
+          preferredChannelId: nodeChannel(cfg, run),
         });
       } catch (err) {
         await logEvent(db, run.id, "error", currentNode.node_key, {

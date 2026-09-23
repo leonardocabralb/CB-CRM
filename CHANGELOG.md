@@ -60,8 +60,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Robô: botões e listas mostram as variáveis.** Depois de perguntar o
   nome, um nó de botões ou de lista mandava "Oi {{vars.name}}" ao cliente.
   Agora todo texto visível dos dois nós usa as variáveis do atendimento (o
-  identificador do botão, que decide o próximo passo, nunca muda). E a lista
-  passou a sair pelo número escolhido no nó, como os botões já faziam.
+  identificador do botão, que decide o próximo passo, nunca muda). O título
+  não é cortado: um botão (até 20 letras) ou uma linha da lista (até 24) que
+  passe do limite, ou fique vazio, depois de preenchida a variável faz o robô
+  parar naquele cliente, e o motivo fica no histórico de execuções do fluxo.
+  E a lista e a pergunta do "Coletar resposta" passaram a sair pelo mesmo
+  número das outras mensagens do robô (o do fluxo, ou aquele por onde o
+  cliente começou), e não mais pelo número em que a conversa estiver no
+  momento.
 - **Erro de banco ao escolher o número de uma campanha não é mais "conecte
   um número".** `POST /api/v1/broadcasts` (e as telas de disparo e de
   modelos) respondia `400 meta_channel_required` quando o CRM só não

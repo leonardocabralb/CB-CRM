@@ -354,6 +354,8 @@ describe("camposDaLista", () => {
   const cfg = {
     text: "{{vars.name}}, qual área?",
     button_label: "Ver {{vars.qtd}} opções",
+    header_text: "Caso {{vars.caso}}",
+    footer_text: "Equipe {{vars.area}}",
     sections: [
       {
         title: "Para {{vars.name}}",
@@ -365,17 +367,25 @@ describe("camposDaLista", () => {
       { rows: [{ reply_id: "r3", title: "Sem seção", next_node_key: "c" }] },
     ],
   };
-  const vars = { name: "Ana", qtd: 3, area: "Trabalhista" };
+  const vars = { name: "Ana", qtd: 3, area: "Trabalhista", caso: "77" };
 
-  it("interpola corpo, rótulo do botão, título de seção, título e descrição de linha", () => {
+  it("interpola corpo, rótulo, cabeçalho, rodapé, título de seção, título e descrição de linha", () => {
     const c = camposDaLista(cfg, vars);
     expect(c.bodyText).toBe("Ana, qual área?");
     expect(c.buttonLabel).toBe("Ver 3 opções");
+    expect(c.headerText).toBe("Caso 77");
+    expect(c.footerText).toBe("Equipe Trabalhista");
     expect(c.sections[0].title).toBe("Para Ana");
     expect(c.sections[0].rows[0]).toEqual({ id: "r_{{vars.name}}", title: "Área Trabalhista", description: "Com Ana" });
   });
 
-  it("opcional ausente continua ausente, e o reply_id da linha fica intacto", () => {
+  it("opcional ausente (ou nulo, como vem do JSONB) continua ausente", () => {
+    const c = camposDaLista({ ...cfg, header_text: undefined, footer_text: null } as never, vars);
+    expect(c.headerText).toBeUndefined();
+    expect(c.footerText).toBeUndefined();
+  });
+
+  it("o reply_id da linha fica intacto, e descrição/título de seção ausentes continuam ausentes", () => {
     const c = camposDaLista(cfg, vars);
     expect(c.sections[0].rows[1].description).toBeUndefined();
     expect(c.sections[1].title).toBeUndefined();
