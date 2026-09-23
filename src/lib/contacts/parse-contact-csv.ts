@@ -83,8 +83,11 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
     if (!line) continue;
 
     const values = parseCsvLine(line);
-    const phone = values[phoneIdx]?.replace(/["']/g, '').trim();
-    if (!phone) continue;
+    // A row with no usable phone is pushed through rather than dropped
+    // here (upstream #529) — `dedupeByPhone` counts it as INVALID, so the
+    // import result can say "N rows had no usable phone" instead of the
+    // row just vanishing, with the total silently short of the file.
+    const phone = values[phoneIdx]?.replace(/["']/g, '').trim() ?? '';
 
     rows.push({
       phone,

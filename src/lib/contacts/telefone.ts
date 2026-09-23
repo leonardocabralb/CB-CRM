@@ -39,6 +39,84 @@ export function digitosDoTelefone(texto: string | null | undefined): string | nu
   return digitos;
 }
 
+/** Por que um telefone DIGITADO foi recusado — cada motivo tem a sua frase. */
+export type MotivoDoTelefone = "vazio" | "curto" | "invalido";
+
+export type TelefoneDigitado =
+  | { ok: true; digitos: string }
+  | { ok: false; motivo: MotivoDoTelefone };
+
+/**
+ * Um telefone que uma PESSOA digitou (formulário, ficha, planilha), no
+ * formato de `contacts.phone` — ou o motivo de não servir.
+ *
+ * É a metade ADITIVA do #586 do original, com a NOSSA régua: lá o `+` virou
+ * obrigatório; aqui o número brasileiro sem `+` continua ganhando o 55
+ * (`digitosDoTelefone`), porque é assim que o escritório digita. O que muda
+ * é que, até aqui, as telas gravavam o texto CRU: "(81) 98874-5316" virava a
+ * ficha "81988745316", que sai para +81 (Japão) — e o CSV do disparo criava
+ * uma ficha nova assim em vez de achar a do cliente.
+ *
+ * Três recusas que `digitosDoTelefone` deixa passar, porque ele também serve
+ * a quem lê número de sistema (Calendly, Asaas), não só a quem digita:
+ * - ⚠️ **Sem `+`, menos de 10 dígitos é "curto"** (faltou o DDD): "98874-5316"
+ *   passaria como "988745316" e sairia para +98 (Irã). Com `+`, o piso é o de
+ *   `isValidE164` (8), porque ali o código do país foi escrito.
+ * - **Letra no meio é "invalido"**: `digitosDoTelefone` apaga tudo que não é
+ *   dígito, e "81 9887 ramal 45" viraria um número que ninguém escreveu.
+ * - **Começar em 0 é "invalido"** (tronco: "081 98874-5316"): cortar o 0
+ *   acertaria esse caso e erraria o "0800", então a pessoa reescreve.
+ * - **DDI 55 exige DDD + 8 ou 9 dígitos** (12 ou 13 no total): 55 é só o
+ *   Brasil, e "+55 81 9887-453" (faltou um dígito) iria para um número que
+ *   não existe.
+ */
+export function telefoneDigitado(texto: string | null | undefined): TelefoneDigitado {
+  const aparado = (texto ?? "").trim();
+  if (!aparado) return { ok: false, motivo: "vazio" };
+  if (!/^\+?[\d\s().-]+$/.test(aparado)) return { ok: false, motivo: "invalido" };
+
+  const comDdi = aparado.startsWith("+") || aparado.startsWith("00");
+  let escritos = aparado.replace(/\D/g, "");
+  if (aparado.startsWith("00")) escritos = escritos.slice(2);
+  if (escritos.length < (comDdi ? MIN_DIGITOS : 10)) return { ok: false, motivo: "curto" };
+
+  const digitos = digitosDoTelefone(aparado);
+  if (!digitos || digitos.startsWith("0")) return { ok: false, motivo: "invalido" };
+  if (digitos.startsWith("55") && digitos.length !== 12 && digitos.length !== 13) {
+    return { ok: false, motivo: "invalido" };
+  }
+  return { ok: true, digitos };
+}
+
+/**
+ * O que gravar em `contacts.phone` quando uma pessoa salva a ficha (o
+ * formulário de contato e a ficha de /contatos): `phone` AUSENTE = não mexe;
+ * string = os dígitos normalizados; `null` = a ficha fica sem telefone; ou o
+ * motivo da recusa. Uma decisão só para as duas telas — cada uma chama isto
+ * uma vez, e há pino cobrando (`telefone-digitado.chamadores.test.ts`).
+ *
+ * ⚠️ Na EDIÇÃO, "não mudou" não passa pela régua, de propósito: há fichas
+ * antigas fora dela (número estrangeiro de 11 dígitos, uma com `+`), e
+ * corrigir o NOME de uma delas não pode esbarrar num telefone que ninguém
+ * tocou — nem regravá-lo. A comparação é contra o que a TELA carregou,
+ * aparada dos dois lados. Na CRIAÇÃO não há "antes": tudo passa pela régua.
+ *
+ * `podeFicarSem` é a ficha só do Instagram (989): apagar o telefone dela é
+ * legítimo e grava `null` — nunca `""`, que entraria no índice único da 1024
+ * e colidiria com a próxima ficha sem telefone.
+ */
+export function escritaDoTelefone(
+  antes: string | null | undefined,
+  digitado: string,
+  opcoes: { criacao?: boolean; podeFicarSem?: boolean } = {},
+): { ok: true; phone?: string | null } | { ok: false; motivo: MotivoDoTelefone } {
+  if (!opcoes.criacao && digitado.trim() === (antes ?? "").trim()) return { ok: true };
+  const r = telefoneDigitado(digitado);
+  if (r.ok) return { ok: true, phone: r.digitos };
+  if (r.motivo === "vazio" && opcoes.podeFicarSem && !opcoes.criacao) return { ok: true, phone: null };
+  return r;
+}
+
 /**
  * O texto tem cara de telefone? Só dígitos e pontuação de telefone, com
  * 10 a 15 dígitos — "Rua 12, nº 340" tem dígitos e não passa (tem letras).

@@ -882,7 +882,7 @@
       "namePlaceholder": "Jane Doe",
       "phoneLabel": "Phone Number",
       "phonePlaceholder": "+1234567890",
-      "phoneHint": "Include country code, e.g. +1 for US",
+      "phoneHint": "A number without + is read as Brazilian (55 is added) — include the area code. Any other country: start with + and the country code (e.g. +1 404 555 1234).",
       "emailLabel": "Email",
       "emailPlaceholder": "jane@example.com",
       "companyLabel": "Company",
@@ -905,6 +905,11 @@
       "loadingTags": "Loading tags...",
       "noTagsAvailable": "No tags available. Create tags in Settings.",
       "phoneRequired": "Phone number is required"
+    },
+    "telefone": {
+      "curto": "The area code is missing. Write the number with it — e.g. (81) 98874-5316 — or, for another country, with + and the country code.",
+      "invalido": "Invalid phone number. Brazilian: with the area code, e.g. (81) 98874-5316. Any other country: with + and the country code, e.g. +1 404 555 1234.",
+      "regra": "Phone with area code. A number without + is read as Brazilian and gets 55; for any other country, write + and the country code."
     },
     "detailView": {
       "tabs": {
@@ -992,7 +997,10 @@
       "resultTags": "{count} tag assigned",
       "resultTags_plural": "{count} tags assigned",
       "resultSkipped": "{count} skipped",
+      "resultInvalidPhone": "{count, plural, one {# invalid phone} other {# invalid phones}}",
       "resultFailed": "{count} failed",
+      "failedRowsHeading": "Failed rows",
+      "unknownReason": "Unknown error",
       "willBeCreated": "{name} (will be created on import)",
       "columns": {
         "phone": "Phone",
@@ -1014,6 +1022,7 @@
       "toastTagsSkipped": "Unknown tags skipped (create them in Settings first): {sample}{more}",
       "toastSkipped": "{count} duplicate skipped",
       "toastSkipped_plural": "{count} duplicates skipped",
+      "toastInvalidPhone": "{count, plural, one {# row left out: blank or invalid phone} other {# rows left out: blank or invalid phone}}",
       "toastFailed": "{count} contact failed to import",
       "toastFailed_plural": "{count} contacts failed to import",
       "toastError": "Import failed"
@@ -1614,12 +1623,14 @@
         "value": "Value",
         "valuePlaceholder": "Value to match",
         "uploadCsv": "Upload CSV File",
-        "csvFormatDesc": "Must contain a 'phone' column (E.164 format). 'name' column is optional.",
+        "csvFormatDesc": "Must contain a 'phone' column, with the area code (a number from another country: with + and the country code). 'name' column is optional.",
         "csvContactsFound": "{count} valid contact(s) found in CSV.",
+        "csvInvalidPhones": "{count, plural, one {# row left out: blank or invalid phone (no area code, or a foreign number without +).} other {# rows left out: blank or invalid phone (no area code, or a foreign number without +).}}",
         "errorLoadTags": "Failed to load tags",
         "errorLoadFields": "Failed to load custom fields",
         "errorCsvParse": "Could not parse CSV file.",
-        "errorCsvMissingPhone": "CSV must have a 'phone' column."
+        "errorCsvMissingPhone": "CSV must have a 'phone' column.",
+        "errorCsvNoValidRows": "No row in the CSV has a valid phone. Write it with the area code — or, for another country, with + and the country code."
       },
       "personalize": {
         "title": "Personalize Variables",

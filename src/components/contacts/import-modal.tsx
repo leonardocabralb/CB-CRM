@@ -134,6 +134,7 @@ export function ImportModal({
   onImported,
 }: ImportModalProps) {
   const t = useTranslations('Contacts.importModal');
+  const tTelefone = useTranslations('Contacts.telefone');
   const supabase = createClient();
   const { accountId, canEditSettings, ownerUserId } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -149,7 +150,12 @@ export function ImportModal({
   const [result, setResult] = useState<{
     imported: number;
     skipped: number;
+    /** Linhas com telefone vazio ou fora da régua — NÃO são duplicatas. */
+    invalidPhone: number;
     failed: number;
+    /** Quem falhou e por quê (upstream #529): "N falharam" sem motivo não
+     *  separava uma recusa do banco de um soluço, nem dizia qual linha. */
+    failedDetails: { phone: string; name?: string; reason: string }[];
     tagsAssigned: number;
   } | null>(null);
 
@@ -235,11 +241,18 @@ export function ImportModal({
       let imported = 0;
       let skipped = 0;
       let failed = 0;
+      const failedDetails: { phone: string; name?: string; reason: string }[] = [];
 
       // 1) De-dupe within the file by PERSON (keep first) — the canonical
       //    ninth-digit spelling, so the same number written with and without
-      //    the 9 counts once (1024).
-      const { unique, duplicates: inFileDupes } = dedupeByPhone(parsedRows);
+      //    the 9 counts once (1024). The surviving rows carry the NORMALIZED
+      //    phone (a Brazilian number typed without 55 gets it), and a blank
+      //    or unusable phone is counted apart — it duplicated nothing.
+      const {
+        unique,
+        duplicates: inFileDupes,
+        invalid: invalidPhone,
+      } = dedupeByPhone(parsedRows);
       skipped += inFileDupes;
 
       // 2) Skip people already in this account, by the same key the unique
@@ -333,6 +346,15 @@ export function ImportModal({
               skipped++;
             } else {
               failed++;
+              // O erro do banco é o único que diz POR QUÊ — descartá-lo
+              // deixava só "N falharam" (upstream #529).
+              console.error('[contacts import] insert failed for', row.phone, singleErr);
+              failedDetails.push({
+                phone: row.phone,
+                name: row.name ?? undefined,
+                reason:
+                  (singleErr as { message?: string } | null)?.message || t('unknownReason'),
+              });
             }
           }
         } else {
@@ -365,7 +387,7 @@ export function ImportModal({
         toast.warning(t('toastTagsWarning'));
       }
 
-      setResult({ imported, skipped, failed, tagsAssigned });
+      setResult({ imported, skipped, invalidPhone, failed, failedDetails, tagsAssigned });
       if (imported > 0) {
         toast.success(t('toastImported', { count: imported }));
         onImported();
@@ -381,6 +403,9 @@ export function ImportModal({
       }
       if (skipped > 0) {
         toast.info(t('toastSkipped', { count: skipped }));
+      }
+      if (invalidPhone > 0) {
+        toast.warning(t('toastInvalidPhone', { count: invalidPhone }));
       }
       if (failed > 0) {
         toast.error(t('toastFailed', { count: failed }));
@@ -543,7 +568,7 @@ export function ImportModal({
                         >
                           <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
                             <PreviewCell
-                              value={row.phone}
+                              value={row.phone || '—'}
                               mono
                               maxWidth="max-w-[7.5rem]"
                             />
@@ -608,18 +633,48 @@ export function ImportModal({
                   </div>
                 )}
                 {result.skipped > 0 && (
-                  <div className="flex items-center gap-1.5 text-sm text-amber-400">
+                  <div className="flex items-center gap-1.5 text-sm text-amber-700 dark:text-amber-300">
                     <AlertTriangle className="size-4 shrink-0" />
                     {t('resultSkipped', { count: result.skipped })}
                   </div>
                 )}
+                {result.invalidPhone > 0 && (
+                  <div className="flex items-center gap-1.5 text-sm text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="size-4 shrink-0" />
+                    {t('resultInvalidPhone', { count: result.invalidPhone })}
+                  </div>
+                )}
                 {result.failed > 0 && (
-                  <div className="flex items-center gap-1.5 text-sm text-red-400">
+                  <div className="flex items-center gap-1.5 text-sm text-red-700 dark:text-red-300">
                     <XCircle className="size-4 shrink-0" />
                     {t('resultFailed', { count: result.failed })}
                   </div>
                 )}
               </div>
+
+              {result.invalidPhone > 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">{tTelefone('regra')}</p>
+              )}
+
+              {result.failedDetails.length > 0 && (
+                <div className="mt-3 space-y-1 border-t border-border/80 pt-3">
+                  <p className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+                    {t('failedRowsHeading')}
+                  </p>
+                  <ul className="max-h-32 space-y-1 overflow-y-auto text-xs">
+                    {result.failedDetails.map((row, i) => (
+                      <li key={i} className="flex min-w-0 items-baseline gap-2 text-muted-foreground">
+                        <span className="shrink-0 font-mono text-popover-foreground">
+                          {row.name ? `${row.name} (${row.phone})` : row.phone}
+                        </span>
+                        <span className="truncate" title={row.reason}>
+                          {row.reason}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </div>

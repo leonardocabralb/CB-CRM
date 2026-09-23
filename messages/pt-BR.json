@@ -875,7 +875,7 @@
       "namePlaceholder": "Maria Silva",
       "phoneLabel": "Número de telefone",
       "phonePlaceholder": "+5511999999999",
-      "phoneHint": "Inclua o código do país, ex.: +55 para o Brasil",
+      "phoneHint": "Com DDD, ex.: (81) 98874-5316. Número de outro país: com + e o código do país (ex.: +1 404 555 1234).",
       "emailLabel": "E-mail",
       "emailPlaceholder": "maria@exemplo.com",
       "companyLabel": "Empresa",
@@ -898,6 +898,11 @@
       "loadingTags": "Carregando etiquetas...",
       "noTagsAvailable": "Nenhuma etiqueta disponível. Crie etiquetas em Configurações.",
       "phoneRequired": "O número de telefone é obrigatório"
+    },
+    "telefone": {
+      "curto": "Faltou o DDD. Escreva o número com ele — ex.: (81) 98874-5316 — ou, se for de outro país, com + e o código do país.",
+      "invalido": "Telefone inválido. Número brasileiro: com DDD, ex.: (81) 98874-5316. De outro país: com + e o código do país, ex.: +1 404 555 1234.",
+      "regra": "Telefone com DDD. Número sem + é lido como brasileiro e ganha o 55; de outro país, escreva com + e o código do país."
     },
     "detailView": {
       "tabs": {
@@ -985,7 +990,10 @@
       "resultTags": "{count} etiqueta atribuída",
       "resultTags_plural": "{count} etiquetas atribuídas",
       "resultSkipped": "{count} ignorados",
+      "resultInvalidPhone": "{count, plural, one {# telefone inválido} other {# telefones inválidos}}",
       "resultFailed": "{count} com falha",
+      "failedRowsHeading": "Linhas que falharam",
+      "unknownReason": "Erro desconhecido",
       "willBeCreated": "{name} (será criada na importação)",
       "columns": {
         "phone": "Telefone",
@@ -1007,6 +1015,7 @@
       "toastTagsSkipped": "Etiquetas desconhecidas ignoradas (crie-as antes em Configurações): {sample}{more}",
       "toastSkipped": "{count} duplicado ignorado",
       "toastSkipped_plural": "{count} duplicados ignorados",
+      "toastInvalidPhone": "{count, plural, one {# linha ficou de fora: telefone vazio ou inválido} other {# linhas ficaram de fora: telefone vazio ou inválido}}",
       "toastFailed": "{count} contato não pôde ser importado",
       "toastFailed_plural": "{count} contatos não puderam ser importados",
       "toastError": "Falha na importação"
@@ -1607,12 +1616,14 @@
         "value": "Valor",
         "valuePlaceholder": "Valor a corresponder",
         "uploadCsv": "Importar arquivo CSV",
-        "csvFormatDesc": "Deve conter uma coluna 'phone' (formato E.164). A coluna 'name' é opcional.",
+        "csvFormatDesc": "Deve conter uma coluna 'phone', com DDD (número de outro país: com + e o código do país). A coluna 'name' é opcional.",
         "csvContactsFound": "{count} contato(s) válido(s) encontrado(s) no CSV.",
+        "csvInvalidPhones": "{count, plural, one {# linha ficou de fora: telefone vazio ou inválido (sem DDD, ou de outro país sem +).} other {# linhas ficaram de fora: telefone vazio ou inválido (sem DDD, ou de outro país sem +).}}",
         "errorLoadTags": "Falha ao carregar as etiquetas",
         "errorLoadFields": "Falha ao carregar os campos personalizados",
         "errorCsvParse": "Não foi possível ler o arquivo CSV.",
-        "errorCsvMissingPhone": "O CSV deve ter uma coluna 'phone'."
+        "errorCsvMissingPhone": "O CSV deve ter uma coluna 'phone'.",
+        "errorCsvNoValidRows": "Nenhuma linha do CSV tem telefone válido. Escreva com DDD — ou, se for de outro país, com + e o código do país."
       },
       "personalize": {
         "title": "Personalizar Variáveis",

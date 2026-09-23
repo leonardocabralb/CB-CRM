@@ -72,4 +72,19 @@ describe('parseContactCsv', () => {
       ],
     });
   });
+
+  it('keeps a row whose phone cell is empty — the dedupe counts it (upstream #529)', () => {
+    // Descartada aqui, a linha sumia sem contar em lugar nenhum: o total
+    // importado ficava menor que o arquivo sem dizer por quê.
+    const { rows } = parseContactCsv(`phone,name\n,Sem telefone\n+15551234567,Alice`);
+    expect(rows.map((r) => [r.phone, r.name])).toEqual([
+      ['', 'Sem telefone'],
+      ['+15551234567', 'Alice'],
+    ]);
+  });
+
+  it('still skips a fully blank line', () => {
+    const { rows } = parseContactCsv(`phone,name\n+15551234567,Alice\n\n   \n`);
+    expect(rows).toHaveLength(1);
+  });
 });

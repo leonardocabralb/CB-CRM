@@ -6,6 +6,11 @@ import { useAuth } from '@/hooks/use-auth';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { escritaDoNomeManual, marcaDoNomeManual } from '@/lib/contacts/nome-fixado';
 import { emailMudou, emailNormalizado } from '@/lib/contacts/email-espelhado';
+import {
+  escritaDoTelefone,
+  telefoneDigitado,
+  type MotivoDoTelefone,
+} from '@/lib/contacts/telefone';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag } from '@/types';
 import {
@@ -50,6 +55,7 @@ export function ContactForm({
   onViewExisting,
 }: ContactFormProps) {
   const t = useTranslations('Contacts.form');
+  const tTelefone = useTranslations('Contacts.telefone');
   const supabase = createClient();
   const { accountId, ownerUserId } = useAuth();
   const isEdit = !!contact;
@@ -89,11 +95,15 @@ export function ContactForm({
   // Runs on blur so we don't query on every keystroke.
   async function checkDuplicate() {
     if (isEdit || !accountId) return;
-    const value = phone.trim();
-    if (!value) {
+    // Procura pelo número JÁ normalizado: "81988745316" digitado sem o 55
+    // acha a ficha "5581988745316" pela grafia exata, e não pela tolerância
+    // dos 8 finais. Número fora da régua não é procurado — o Salvar recusa.
+    const telefone = telefoneDigitado(phone);
+    if (!telefone.ok) {
       setDupMatch(null);
       return;
     }
+    const value = telefone.digitos;
     setCheckingDup(true);
     try {
       // A conferência é CONSULTIVA (aviso de possível duplicata), então
@@ -141,16 +151,34 @@ export function ContactForm({
     );
   }
 
+  function avisarTelefone(motivo: MotivoDoTelefone) {
+    toast.error(
+      motivo === 'vazio'
+        ? t('phoneRequired')
+        : motivo === 'curto'
+          ? tTelefone('curto')
+          : tTelefone('invalido'),
+    );
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    // A ficha só do Instagram (989) não tem telefone, e editar o nome dela
-    // não pode exigir um. Na CRIAÇÃO o telefone continua obrigatório.
-    const semTelefonePermitido = isEdit && !!contact?.instagram_id;
-    if (!phone.trim() && !semTelefonePermitido) {
-      toast.error(t('phoneRequired'));
+    // O telefone DIGITADO vira os dígitos de `contacts.phone` (a nossa régua:
+    // brasileiro sem DDI ganha o 55). Gravado cru, "(81) 98874-5316" era a
+    // ficha "81988745316" — que sai para +81. Na EDIÇÃO, telefone que não
+    // mudou não é conferido nem regravado; a ficha só do Instagram (989) pode
+    // ficar sem. Na CRIAÇÃO o telefone continua obrigatório.
+    const escritaTelefone = escritaDoTelefone(contact?.phone, phone, {
+      criacao: !isEdit,
+      podeFicarSem: isEdit && !!contact?.instagram_id,
+    });
+    if (!escritaTelefone.ok) {
+      avisarTelefone(escritaTelefone.motivo);
       return;
     }
+    // Ausente = não mexe no telefone; null = a ficha do Instagram sem ele.
+    const telefoneNovo = escritaTelefone.phone;
 
     // Hard-block an exact duplicate on create (the DB unique index is
     // the real backstop; this avoids a round-trip + a raw error toast).
@@ -180,7 +208,7 @@ export function ContactForm({
             // e-mail não fixa o nome que veio do WhatsApp, e o formulário
             // aberto sobre a lista velha não devolve à ficha um nome antigo.
             ...escritaDoNomeManual(contact?.name, name, agora),
-            phone: phone.trim() || null,
+            ...(telefoneNovo !== undefined ? { phone: telefoneNovo } : {}),
             // O e-mail também só vai quando MUDOU (1000): ele é o campo
             // espelhado, que salva sozinho na ficha e na conversa. O formulário
             // é preenchido pela linha da lista, que não recarrega — mandá-lo
@@ -207,7 +235,7 @@ export function ContactForm({
             name: name.trim() || null,
             // Nome digitado na criação também fica fixado (999).
             ...marcaDoNomeManual(null, name, agora),
-            phone: phone.trim(),
+            phone: telefoneNovo,
             email: email.trim() || null,
             company: company.trim() || null,
           })
@@ -246,7 +274,7 @@ export function ContactForm({
           const { contato: existing } = await findExistingContact(
             supabase,
             accountId,
-            phone.trim(),
+            telefoneNovo ?? phone.trim(),
           );
           if (existing) setDupMatch({ contact: existing, exact: true });
         }
