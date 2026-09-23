@@ -188,7 +188,7 @@ describe("telefoneDigitado (a metade aditiva do #586, com a nossa régua)", () =
     expect(telefoneDigitado("8874-5316")).toEqual(nao("curto"));
   });
 
-  it("com +, o piso é o de isValidE164 (8 dígitos)", () => {
+  it("com +, o piso é de 8 dígitos (MIN_DIGITOS)", () => {
     expect(telefoneDigitado("+370 6394 983")).toEqual(ok("3706394983"));
     expect(telefoneDigitado("+1 555 12")).toEqual(nao("curto"));
   });
@@ -225,6 +225,14 @@ describe("telefoneDigitado (a metade aditiva do #586, com a nossa régua)", () =
     expect(telefoneDigitado("81 98874\u20135316")).toEqual(ok("5581988745316"));
     expect(telefoneDigitado("81\u200B98874-5316")).toEqual(ok("5581988745316"));
     expect(telefoneDigitado("\u00A0(81) 98874-5316\u00A0")).toEqual(ok("5581988745316"));
+  });
+
+  it("planilha que salvou o número como decimal (\"….0\") não ganha um zero", () => {
+    // Sem o corte, "81988745316.0" virava 819887453160 — +81.
+    expect(telefoneDigitado("81988745316.0")).toEqual(ok("5581988745316"));
+    expect(telefoneDigitado("5581988745316.00")).toEqual(ok("5581988745316"));
+    // Ponto no MEIO é separador, e continua valendo como antes.
+    expect(telefoneDigitado("81.98874.5316")).toEqual(ok("5581988745316"));
   });
 
   it("mais de 15 dígitos é inválido (o JID de grupo colado)", () => {
@@ -273,7 +281,7 @@ describe("escritaDoTelefone (editar a ficha)", () => {
   });
 
   it("a ficha só do Instagram pode ficar SEM telefone — null, nunca ''", () => {
-    // "" entraria no índice único da 1024 e colidiria com a próxima ficha sem.
+    // Ficha sem telefone é `phone IS NULL` (989); "" diria que ela tem um.
     expect(escritaDoTelefone("5581988745316", "", { podeFicarSem: true })).toEqual({
       ok: true,
       phone: null,

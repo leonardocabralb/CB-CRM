@@ -78,7 +78,11 @@ export function telefoneDigitado(texto: string | null | undefined): TelefoneDigi
   const aparado = (texto ?? "")
     .replace(/\p{Cf}/gu, "")
     .replace(/[\u2010-\u2015\u2212]/g, "-")
-    .trim();
+    .trim()
+    // Planilha salva pelo pandas (e por quem converte a coluna para número)
+    // escreve "81988745316.0": sem cortar o ".0", o zero vira um dígito a mais
+    // e o número sai para +81. Só a forma inteira "dígitos.0" é cortada.
+    .replace(/^(\+?\d+)\.0+$/, "$1");
   if (!aparado) return { ok: false, motivo: "vazio" };
   if (!/^\+?[\d\s().-]+$/.test(aparado)) return { ok: false, motivo: "invalido" };
 
@@ -109,8 +113,13 @@ export function telefoneDigitado(texto: string | null | undefined): TelefoneDigi
  * aparada dos dois lados. Na CRIAÇÃO não há "antes": tudo passa pela régua.
  *
  * `podeFicarSem` é a ficha só do Instagram (989): apagar o telefone dela é
- * legítimo e grava `null` — nunca `""`, que entraria no índice único da 1024
- * e colidiria com a próxima ficha sem telefone.
+ * legítimo e grava `null` — nunca `""`: a ficha sem telefone é `phone IS NULL`
+ * desde a 989, e é por aí que o disparo, as fotos e as telas a reconhecem.
+ *
+ * ⚠️ Limite aceito (revisão da Fase 3-II): número ESTRANGEIRO guardado só em
+ * dígitos com 10, ou 11 com 9 na 3ª posição (Peru "51912345678"), editado sem
+ * `+`, é relido como brasileiro. Medido em 23/09/2026: ZERO fichas assim — as
+ * 17 estrangeiras da base têm 12 dígitos ou mais.
  */
 export function escritaDoTelefone(
   antes: string | null | undefined,

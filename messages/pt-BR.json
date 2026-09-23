@@ -874,7 +874,7 @@
       "nameLabel": "Nome",
       "namePlaceholder": "Maria Silva",
       "phoneLabel": "Número de telefone",
-      "phonePlaceholder": "+5511999999999",
+      "phonePlaceholder": "(11) 99999-9999",
       "phoneHint": "Com DDD, ex.: (81) 98874-5316. Número de outro país: com + e o código do país (ex.: +1 404 555 1234).",
       "emailLabel": "E-mail",
       "emailPlaceholder": "maria@exemplo.com",
