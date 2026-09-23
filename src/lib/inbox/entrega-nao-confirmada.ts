@@ -21,13 +21,15 @@
 //
 // ⚠️ Cada recorte abaixo evita um alarme falso MEDIDO — não afrouxar sem
 // medir de novo:
-//   • só conexão da EVOLUTION (revisão do PR #272). A rota da Meta grava a
-//     situação SEM a escada de `escada-de-status.ts` — um "sent" atrasado
-//     rebaixa "delivered" — e não espera a mensagem existir para aplicar o
-//     recibo; o Instagram nem manda recibo de entrega. Nos dois, ✓ parado
-//     não prova nada. A Meta avisa a recusa de verdade com `failed`, que já
-//     tem o seu vermelho. Quando a rota da Meta ganhar a escada, dá para
-//     alargar — medindo de novo;
+//   • só conexão da EVOLUTION (revisão do PR #272). O Instagram nem manda
+//     recibo de entrega: lá ✓ parado não prova nada. A rota da Meta gravava a
+//     situação SEM a escada de `escada-de-status.ts` até 23/09/2026 — um
+//     "sent" atrasado rebaixava "delivered" — e não esperava a mensagem
+//     existir para aplicar o recibo. Ganhou as duas nesse dia, mas as
+//     mensagens gravadas ANTES continuam com a situação que o defeito deixou:
+//     alargar para a Meta pede medir de novo os falsos positivos, com corte
+//     no deploy do conserto, e a decisão do operador. A Meta avisa a recusa
+//     de verdade com `failed`, que já tem o seu vermelho;
 //   • só o que saiu PELO CRM (atendente, agendada, API, automação, robô). A
 //     mensagem do CELULAR pareado às vezes tem o recibo perdido pelo CRM (em
 //     23/09 uma foi gravada 38 s depois do recibo de "lida", além da espera

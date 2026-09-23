@@ -30,6 +30,15 @@ import {
   gravarComCanal,
 } from '@/lib/cb-channels/stamp'
 import { registrarEntrega } from '@/lib/cb-channels/atraso-de-entrega'
+import { aceitamORecibo } from '@/lib/whatsapp/transport/escada-de-status'
+import {
+  aplicarReciboQuandoAMensagemExistir,
+  type Tentativa,
+} from '@/lib/whatsapp/transport/recibo-antes-da-mensagem'
+import {
+  pausasDoReciboDaMeta,
+  reciboDaMeta,
+} from '@/lib/whatsapp/transport/recibo-da-meta'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -278,10 +287,54 @@ export async function POST(request: Request) {
   return NextResponse.json({ status: 'received' }, { status: 200 })
 }
 
+/** Um item de `value.statuses`: o recibo de uma mensagem que NÓS mandamos. */
+interface StatusDoWebhook {
+  id: string
+  status: string
+  timestamp: string
+  recipient_id: string
+}
+
+/** Recibo à espera da vez, com o canal do número que o recebeu. */
+interface ReciboPendente {
+  status: StatusDoWebhook
+  canal: string | null
+}
+
 async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
   if (!body.entry) return
 
-  for (const entry of body.entry) {
+  // Os recibos (statuses) deste POST são aplicados DEPOIS das mensagens dele
+  // (23/09/2026). Um recibo pode esperar alguns segundos pela linha da
+  // mensagem que ele confirma (`handleStatusUpdate`), e a mensagem do cliente
+  // que venha no mesmo POST não pode ficar na fila atrás dessa espera. O
+  // `finally` os aplica mesmo quando uma mensagem estoura — antes, eles
+  // vinham na frente dela.
+  //
+  // Eles vão um de cada vez, na ordem. Os dois espelhos gravam com a condição
+  // no WHERE, então rodá-los juntos seria seguro, mas não há ganho medido: em
+  // 23/09 a Meta mandou UM recibo por POST nas 24 h, e o preço da ordem (um
+  // recibo que espera segura os seguintes do mesmo POST) não se paga.
+  const recibos: ReciboPendente[] = []
+  try {
+    await processarEntradas(body.entry, recibos)
+  } finally {
+    for (const { status, canal } of recibos) {
+      // Um recibo que estoura não leva os seguintes junto.
+      try {
+        await handleStatusUpdate(status, canal)
+      } catch (err) {
+        console.error('Error applying status update:', err)
+      }
+    }
+  }
+}
+
+async function processarEntradas(
+  entries: WhatsAppWebhookEntry[],
+  recibos: ReciboPendente[],
+) {
+  for (const entry of entries) {
     for (const change of entry.changes) {
       // Template-lifecycle events (status / quality / components
       // updates from Meta) come in on a different change.field and
@@ -308,7 +361,8 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           value.metadata?.phone_number_id,
         ).catch(() => null)
         for (const status of value.statuses) {
-          await handleStatusUpdate(status, statusChannelId)
+          // Só enfileira: `processWebhook` aplica depois das mensagens.
+          recibos.push({ status, canal: statusChannelId })
         }
       }
 
@@ -461,49 +515,51 @@ function isValidStatusTransition(current: string, incoming: string): boolean {
   return ii > ci
 }
 
+/**
+ * As situações do destinatário a partir das quais `incoming` é uma transição
+ * válida — a lista que o UPDATE do espelho põe em `.in('status', …)`.
+ *
+ * ⚠️ NOSSO (23/09/2026). Conferir `isValidStatusTransition` sobre a linha
+ * LIDA não basta: dois recibos do mesmo destinatário, em POSTs separados,
+ * leem a mesma situação, os dois passam, e fica o último a gravar — um
+ * `delivered` por cima do `read` (a contagem de lidas perde um) ou um
+ * `failed` por cima do `delivered` (reproduzido pela revisão do PR #277). Com
+ * a condição no WHERE, quem decide é o banco. Derivada da própria
+ * `isValidStatusTransition` sobre os valores do CHECK (001), para as duas não
+ * divergirem.
+ */
+function origensDoDestinatario(incoming: string): string[] {
+  return [...RECIPIENT_STATUS_LADDER, 'failed'].filter((current) =>
+    isValidStatusTransition(current, incoming),
+  )
+}
+
 async function handleStatusUpdate(
-  status: {
-  id: string
-  status: string
-  timestamp: string
-    recipient_id: string
-  },
+  status: StatusDoWebhook,
   /** Canal que recebeu o status. `null` = desconhecido (nao escopa). */
   channelId: string | null = null,
 ) {
-  // 1) Mirror onto messages (legacy behavior) — Meta's status values
-  //    already match the CHECK constraint on messages.status. No
-  //    `.select()`: message_id is NOT unique (migration 009 — Meta ids
-  //    repeat across numbers), so this updates 0..N rows and must not
-  //    assume a single row.
-  //
-  //    Multi-canal: "Meta ids repeat across numbers" deixou de ser hipotese
-  //    com N numeros na mesma conta. O UPDATE passa a ser escopado ao canal
-  //    que recebeu o status — mas com `OR channel_id IS NULL`, senao o ✓✓ das
-  //    mensagens anteriores a Fase 3 (sem carimbo) congelaria.
-  let q = supabaseAdmin()
-    .from('messages')
-    .update({ status: status.status })
-    .eq('message_id', status.id)
-  if (channelId) {
-    q = q.or(`channel_id.eq.${channelId},channel_id.is.null`)
-  }
-  const { error: msgErr } = await q
-
-  if (msgErr) {
-    console.error('Error updating message status:', msgErr)
-  }
+  // O vocabulário da Meta traduzido para o da escada (`recibo-da-meta.ts`).
+  // Valor fora dele não tem o que aplicar: gravado cru, estourava o CHECK
+  // de `messages.status`.
+  const recibo = reciboDaMeta(status.status)
+  if (!recibo) return
 
   // Webhook fan-out for this status change happens at the END of this
-  // handler (after the broadcast mirror below), so a slow subscriber
-  // endpoint can't delay the broadcast_recipients update.
+  // handler (after both mirrors), so a slow subscriber endpoint can't
+  // delay the broadcast_recipients update.
 
-  // 2) Mirror onto broadcast_recipients via whatsapp_message_id
+  // 1) Mirror onto broadcast_recipients via whatsapp_message_id
   //    (added in migration 003). The aggregate trigger on
   //    broadcast_recipients re-derives the parent broadcast's
   //    sent/delivered/read/failed counts automatically.
-  const tsIso = new Date(parseInt(status.timestamp) * 1000).toISOString()
-
+  //
+  //    ⚠️ Vem ANTES das mensagens desde 23/09/2026: o recibo de mensagem
+  //    pode esperar a linha dela nascer (passo 2), e a contagem da campanha
+  //    não pode ficar atrás dessa espera. É também daqui que se sabe se o
+  //    recibo é de DISPARO — que não grava linha em `messages` e, por isso,
+  //    não espera por ela (quando o destinatário já tem o wamid; ver
+  //    `pausasDoReciboDaMeta`).
   const { data: recipient, error: recFetchErr } = await supabaseAdmin()
     .from('broadcast_recipients')
     .select('id, status')
@@ -518,6 +574,9 @@ async function handleStatusUpdate(
     // `failed` only from pre-delivered states.
     isValidStatusTransition(recipient.status, status.status)
   ) {
+    // Só aqui: um timestamp ilegível estoura o `toISOString()`, e calculado
+    // antes das mensagens ele impediria a gravação delas.
+    const tsIso = new Date(parseInt(status.timestamp) * 1000).toISOString()
     const update: Record<string, unknown> = { status: status.status }
     if (status.status === 'sent' && !('sent_at' in update)) update.sent_at = tsIso
     if (status.status === 'delivered') update.delivered_at = tsIso
@@ -527,21 +586,93 @@ async function handleStatusUpdate(
       .from('broadcast_recipients')
       .update(update)
       .eq('id', recipient.id)
+      // A conferência acima é sobre a linha LIDA; esta, sobre a que está no
+      // banco na hora da escrita (ver `origensDoDestinatario`).
+      .in('status', origensDoDestinatario(status.status))
 
     if (recUpdateErr) {
       console.error('Error updating broadcast recipient status:', recUpdateErr)
     }
   }
 
+  // 2) Mirror onto messages (legacy behavior). message_id is NOT unique
+  //    (migration 009 — Meta ids repeat across numbers), so this updates
+  //    0..N rows and must not assume a single row.
+  //
+  //    Multi-canal: "Meta ids repeat across numbers" deixou de ser hipotese
+  //    com N numeros na mesma conta. O UPDATE passa a ser escopado ao canal
+  //    que recebeu o status — mas com `OR channel_id IS NULL`, senao o ✓✓ das
+  //    mensagens anteriores a Fase 3 (sem carimbo) congelaria.
+  //
+  //    ⚠️ Com a ESCADA desde 23/09/2026 (`escada-de-status.ts`): o UPDATE só
+  //    alcança linha em degrau ABAIXO do recibo, e `failed` só antes da
+  //    entrega. O `sent` e o `delivered` da mesma mensagem chegam em POSTs
+  //    separados, com milissegundos de diferença, cada um no seu `after()`, e
+  //    eram gravados na ordem em que terminavam: medido na produção nesse
+  //    dia, o `sent` gravado por último rebaixou para um ✓ uma mensagem que o
+  //    destinatário respondeu por botão. Só linhas de SAÍDA (`agent`/`bot`):
+  //    recibo é de mensagem que nós mandamos.
+  //
+  //    ⚠️ E com a ESPERA (`recibo-antes-da-mensagem.ts`): a linha só nasce
+  //    depois de a Meta responder ao envio, e o recibo que chegava antes dela
+  //    achava zero linhas e morria. Linha que existe e não avança é recibo
+  //    atrasado ou repetido, e aí não se insiste.
+  //
+  //    O motivo da falha (Fase 5 do merge do upstream, colunas da 1039) entra
+  //    no patch DESTE update: o `failed` que a escada recusa chegou depois da
+  //    entrega e não tem motivo a gravar.
+  const avancadas: string[] = []
+  const tentar = async (): Promise<Tentativa> => {
+    let q = supabaseAdmin()
+      .from('messages')
+      .update({ status: recibo })
+      .eq('message_id', status.id)
+      .in('sender_type', ['agent', 'bot'])
+      .in('status', aceitamORecibo(recibo))
+    if (channelId) {
+      q = q.or(`channel_id.eq.${channelId},channel_id.is.null`)
+    }
+    const { data, error } = await q.select('id')
+    if (error) {
+      console.error('Error updating message status:', error)
+      return 'erro'
+    }
+    for (const linha of (data ?? []) as { id: string }[]) avancadas.push(linha.id)
+    return avancadas.length > 0 ? 'avancou' : 'nada'
+  }
+  const avancou = await aplicarReciboQuandoAMensagemExistir({
+    tentar,
+    existe: async () => {
+      let q = supabaseAdmin()
+        .from('messages')
+        .select('id')
+        .eq('message_id', status.id)
+        .in('sender_type', ['agent', 'bot'])
+      if (channelId) {
+        q = q.or(`channel_id.eq.${channelId},channel_id.is.null`)
+      }
+      const { data, error } = await q.limit(1)
+      // Leitura que falhou vale "ainda não": a espera tem fim.
+      return !error && (data?.length ?? 0) > 0
+    },
+    esperar: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    pausas: pausasDoReciboDaMeta(recibo, { deDisparo: Boolean(recipient) }),
+  })
+
   // 3) Webhook fan-out for messages we store (inbox / API sends).
   //    Runs last so a slow subscriber can't delay the mirrors above.
-  //    Bounded to one row (message_id isn't unique) purely to resolve
-  //    the owning account for delivery.
+  //
+  //    ⚠️ Só quando alguma linha AVANÇOU (23/09/2026), como na Evolution:
+  //    o recibo atrasado ou repetido que a escada recusou contaria ao
+  //    integrador um "sent" sobre mensagem já entregue. Por isso o `sent`
+  //    não é anunciado — a linha já nasce `sent`. A conta sai da linha que
+  //    avançou, e não de qualquer linha com o mesmo wamid.
+  if (!avancou || avancadas.length === 0) return
+
   const { data: msgRow } = await supabaseAdmin()
     .from('messages')
     .select('conversation_id, channel_id, conversations(account_id)')
-    .eq('message_id', status.id)
-    .limit(1)
+    .eq('id', avancadas[0])
     .maybeSingle()
 
   if (msgRow) {
@@ -555,7 +686,8 @@ async function handleStatusUpdate(
         {
           whatsapp_message_id: status.id,
           conversation_id: msgRow.conversation_id,
-          status: status.status,
+          // O que a linha passou a ser (o `played` da Meta chega como `read`).
+          status: recibo,
           // Carimbado no envio; vem de graça no select acima.
           channel_id: msgRow.channel_id ?? null,
         }

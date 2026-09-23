@@ -1225,6 +1225,18 @@ escopado por canal; status posterior não-falha NÃO limpa o motivo. Em
 portar o tooltip no X e a linha discreta para `message-bubble.tsx`.
 `Inbox.bubble.notDelivered` nos dois dicionários. Asserção no `verify-schema.sql`.
 Falha da Evolution não preenche essas colunas — dizer isso no código.
+⚠️ **O `handleStatusUpdate` mudou em 23/09/2026** (a escada e a espera no
+recibo da Meta; ver o CLAUDE.md, "A rota da META tem a mesma escada"). O UPDATE
+de `messages` mora agora no `tentar()` e só alcança linha em degrau abaixo
+(`aceitamORecibo`): os campos do erro entram no patch DELE quando o recibo é
+`failed`. O `failed` que chega depois da entrega é recusado inteiro e não grava
+motivo, de propósito. O espelho de `broadcast_recipients` passou para ANTES das
+mensagens, o status que chega a ele continua cru (`status.status`), e o UPDATE
+dele ficou condicional (`origensDoDestinatario`): o `error_message` entra no
+patch desse mesmo UPDATE, e a falha que ele recusa não grava motivo. No teste
+do preview, o passo "depois `delivered` → o motivo fica" confere também que a
+situação CONTINUA `failed`: a escada recusa o `delivered` depois da falha, e sem
+essa conferência o passo passa sem testar nada.
 
 **Teste no preview:** POST assinado LOCAL com `statuses[failed]` + `errors[0]`
 sobre uma mensagem de teste do canal oficial → colunas gravadas, bolha mostra o
