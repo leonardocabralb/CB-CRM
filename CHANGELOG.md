@@ -15,6 +15,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Não publicado]
 
+### Adicionado
+
+- **Vários apps da Meta na mesma instalação.** `META_APP_SECRET` aceita os
+  segredos de vários apps, separados por vírgula e **sem espaço**, para
+  números oficiais (WABAs) que estão em apps diferentes. Ver
+  [`docs/multi-waba.md`](./docs/multi-waba.md) — inclusive o aviso de que
+  todos os apps da lista precisam ser de confiança.
+
 ### Corrigido
 
 - **Telefone digitado sem o código do país não vai mais para outro país.**
@@ -33,6 +41,12 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   recusou aparece com o motivo. O CSV do disparo avisa quantas linhas
   ficaram de fora, e o arquivo sem nenhum telefone válido deixa de dizer
   "não foi possível ler o CSV".
+
+- **Erro de banco ao escolher o número de uma campanha não é mais "conecte
+  um número".** `POST /api/v1/broadcasts` (e as telas de disparo e de
+  modelos) respondia `400 meta_channel_required` quando o CRM só não
+  conseguiu ler as conexões naquele instante — e integração não repete um
+  400. Agora é `500 internal`: nada é criado, e dá para repetir o pedido.
 
 - **Fechar o cadastro não fecha mais os convites.** Com *Allow new users
   to sign up* desligado no Supabase, o link de convite do CRM deixava de
