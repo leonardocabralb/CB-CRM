@@ -113,6 +113,10 @@ async function buscarModeloDaConta(
   return { linha: melhor, erro: null }
 }
 
+// ⚠️ Gravação por `id` (atualizar) ou INSERT puro — nunca
+// `.upsert(..., { onConflict })`: a 903 trocou o índice único por DOIS índices
+// PARCIAIS (global e por canal), e índice parcial não serve de alvo de ON
+// CONFLICT (o Postgres responde 42P10 e nada é gravado).
 function atualizarModelo(
   supabase: SupabaseClient,
   id: string,
@@ -124,6 +128,41 @@ function atualizarModelo(
     .eq('id', id)
     .select()
     .single()
+}
+
+/**
+ * Regrava o RASCUNHO depois de uma recusa da Meta — só se a linha CONTINUA
+ * sem `meta_template_id` na hora da escrita.
+ *
+ * ⚠️ A cerca `.is('meta_template_id', null)` é do BANCO, não da foto tirada
+ * antes da Meta: enquanto esta submissão estava lá, outra (outra aba, outro
+ * admin, ou a sync) pode ter vinculado a mesma linha — e a recusa desta, que
+ * costuma ser justamente "o nome já existe", apagaria o id recém-gravado.
+ * `gravou: false` sem erro = a linha mudou (ou sumiu) no meio.
+ */
+async function regravarRascunho(
+  supabase: SupabaseClient,
+  id: string,
+  campos: CamposDoModelo,
+): Promise<{ gravou: boolean; erro: string | null }> {
+  const { data, error } = await supabase
+    .from('message_templates')
+    .update(campos)
+    .eq('id', id)
+    .is('meta_template_id', null)
+    .select('id')
+  if (error) return { gravou: false, erro: error.message }
+  return { gravou: (data ?? []).length > 0, erro: null }
+}
+
+/**
+ * O status HTTP da resposta da Meta, lido pela FORMA (`MetaApiError` carrega
+ * `httpStatus`; ver `MetaErrorLike` em meta-error-explain.ts). `null` = o erro
+ * não veio de uma resposta da Meta: rede, tempo esgotado, "aceitou sem id".
+ */
+function statusDaMeta(e: unknown): number | null {
+  const s = (e as { httpStatus?: unknown } | null)?.httpStatus
+  return typeof s === 'number' ? s : null
 }
 
 function inserirModelo(
@@ -149,8 +188,10 @@ function inserirModelo(
  *   - a Meta aceitou: atualiza a linha achada (religa, se estava velha) ou
  *     insere; um 23505 na inserção (corrida) busca de novo e atualiza;
  *   - a Meta recusou: sem linha, insere o rascunho; linha sem
- *     `meta_template_id`, atualiza o rascunho; linha VINCULADA à Meta, não
- *     toca em nada e responde com a dica (`code: 'modelo_ja_existe'`).
+ *     `meta_template_id`, regrava o rascunho SÓ se ela continua sem id na
+ *     hora da escrita; linha VINCULADA à Meta (na foto ou no banco, se mudou
+ *     no meio), não toca em nada. A dica `code: 'modelo_ja_existe'` sai só
+ *     com linha vinculada E recusa 4xx da Meta que não é limite de taxa.
  *
  * When WHATSAPP_TEMPLATES_DRY_RUN=true, we skip the network call and
  * insert a row with a synthetic `dry-run-<uuid>` meta_template_id so
@@ -287,21 +328,30 @@ export async function POST(request: Request) {
         metaStatus = meta.status
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Meta submit failed.'
-        const isRateLimit = /\b429\b/.test(message)
+        const httpStatus = statusDaMeta(e)
+        // `MetaApiError.message` é o texto da Meta, que nem sempre cita o
+        // 429; o status HTTP responde sem depender da frase.
+        const isRateLimit = httpStatus === 429 || /\b429\b/.test(message)
         const erro = isRateLimit
           ? 'Meta rate limit hit (100 template creates per hour). Try again later.'
           : message
         const status = isRateLimit ? 429 : 502
+        // A dica "já existe" só acompanha uma RECUSA da Meta (4xx que não é
+        // limite). Tempo esgotado, 5xx e rede não dizem nada sobre o nome.
+        const recusaDaMeta =
+          httpStatus !== null && httpStatus >= 400 && httpStatus < 500 && !isRateLimit
+        const respostaComModeloVinculado = () =>
+          NextResponse.json(
+            recusaDaMeta
+              ? { error: erro, code: 'modelo_ja_existe' }
+              : { error: erro },
+            { status },
+          )
 
         // ⚠️ A linha VINCULADA à Meta nunca é rebaixada. Reenviar pela tela
         // "Criar" um nome que já existe faz a Meta recusar, e gravar o
         // rascunho aqui apagaria o `meta_template_id` de um modelo em uso.
-        if (existente?.meta_template_id) {
-          return NextResponse.json(
-            isRateLimit ? { error: erro } : { error: erro, code: 'modelo_ja_existe' },
-            { status },
-          )
-        }
+        if (existente?.meta_template_id) return respostaComModeloVinculado()
 
         // Sem linha, ou só o rascunho local: guarda a tentativa para o
         // operador corrigir e reenviar.
@@ -310,13 +360,41 @@ export async function POST(request: Request) {
           metaTemplateId: null,
           submissionError: message,
         })
-        const { error: errRascunho } = existente
-          ? await atualizarModelo(supabase, existente.id, rascunho)
-          : await inserirModelo(supabase, accountId, userId, rascunho)
-        if (errRascunho) {
+        let naoGravou: string | null = null
+        let mudouNoMeio = false
+        if (existente) {
+          const r = await regravarRascunho(supabase, existente.id, rascunho)
+          if (r.erro) naoGravou = r.erro
+          else if (!r.gravou) mudouNoMeio = true
+        } else {
+          const { error } = await inserirModelo(
+            supabase,
+            accountId,
+            userId,
+            rascunho,
+          )
+          // 23505: outra submissão criou a linha enquanto esta estava na Meta.
+          if (error?.code === '23505') mudouNoMeio = true
+          else if (error) naoGravou = error.message
+        }
+        if (mudouNoMeio) {
+          // Quem decide é o banco: se a linha agora está VINCULADA, a
+          // resposta é a da linha vinculada — e nada foi gravado por cima.
+          const agora = await buscarModeloDaConta(
+            supabase,
+            accountId,
+            payload,
+            canalDoModelo,
+          )
+          if (agora.linha?.meta_template_id) return respostaComModeloVinculado()
+          console.warn(
+            '[templates/submit] o modelo mudou durante a chamada à Meta; rascunho não gravado.',
+          )
+        }
+        if (naoGravou) {
           console.error(
             '[templates/submit] rascunho não gravado depois da recusa da Meta:',
-            errRascunho.message,
+            naoGravou,
           )
         }
         return NextResponse.json({ error: erro }, { status })
