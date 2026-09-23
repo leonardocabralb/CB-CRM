@@ -57,6 +57,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **Um webhook de saída fora do ar não atrasa mais a primeira mensagem de
+  uma conversa nova.** O aviso `conversation.created` era entregue antes de
+  a mensagem do cliente ser gravada, e um endpoint que não respondia
+  segurava a mensagem (e o robô, as automações e a IA) por 5 segundos ou
+  mais. Agora a mensagem é gravada na hora; quem assina os dois eventos
+  continua recebendo `conversation.created` antes de `message.received`.
+
 - **Etiquetas e modelos da conta aparecem para toda a equipe em
   Configurações.** O gerenciador de etiquetas, a lista de modelos e as
   contagens da visão geral mostravam só o que o próprio membro tinha criado
