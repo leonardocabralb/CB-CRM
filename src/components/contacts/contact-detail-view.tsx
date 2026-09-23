@@ -63,6 +63,7 @@ import { identidadeDoContato } from '@/lib/contacts/identidade';
 import { campoDoEmail, emailMudou, emailNormalizado } from '@/lib/contacts/email-espelhado';
 import { escritaDoNomeManual } from '@/lib/contacts/nome-fixado';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
+import { escritaDoTelefone } from '@/lib/contacts/telefone';
 
 interface ContactDetailViewProps {
   open: boolean;
@@ -78,6 +79,7 @@ export function ContactDetailView({
   onUpdated,
 }: ContactDetailViewProps) {
   const t = useTranslations('Contacts.detailView');
+  const tTelefone = useTranslations('Contacts.telefone');
   /** Só para o rótulo do bloco Geral (966) — o mesmo nome que o catálogo e o
    *  painel da conversa usam. */
   const tCampos = useTranslations('Contacts.customFields');
@@ -230,7 +232,9 @@ export function ContactDetailView({
     if (data) {
       setContact(data);
       setEditName(data.name ?? '');
-      setEditPhone(data.phone);
+      // A ficha só do Instagram (989) tem `phone` nulo: sem o `?? ''` a caixa
+      // guardava null e o Salvar estourava no `.trim()`.
+      setEditPhone(data.phone ?? '');
       setEditEmail(data.email ?? '');
       setEditCompany(data.company ?? '');
     }
@@ -362,10 +366,27 @@ export function ContactDetailView({
   }
 
   async function saveDetails() {
-    if (!contactId || !editPhone.trim()) {
-      toast.error(t('toastPhoneRequired'));
+    if (!contactId) return;
+    // O telefone só vai quando MUDOU, e aí sai normalizado pela nossa régua
+    // (brasileiro sem DDI ganha o 55): gravado cru, "(81) 98874-5316" virava
+    // "81988745316", que sai para +81. Telefone que ninguém tocou não é
+    // conferido — há fichas antigas fora da régua, e corrigir o nome delas
+    // não pode esbarrar nele. A ficha só do Instagram (989) pode ficar sem.
+    const escritaTelefone = escritaDoTelefone(contact?.phone, editPhone, {
+      podeFicarSem: !!contact?.instagram_id,
+    });
+    if (!escritaTelefone.ok) {
+      toast.error(
+        escritaTelefone.motivo === 'vazio'
+          ? t('toastPhoneRequired')
+          : escritaTelefone.motivo === 'curto'
+            ? tTelefone('curto')
+            : tTelefone('invalido'),
+      );
       return;
     }
+    // Ausente = não mexe no telefone; null = a ficha do Instagram sem ele.
+    const telefoneNovo = escritaTelefone.phone;
 
     setSavingDetails(true);
     // ⚠️ O e-mail só viaja se MUDOU nesta caixa (1000). Ele também é o campo
@@ -382,7 +403,10 @@ export function ContactDetailView({
         // e-mail não fixa o nome que veio do WhatsApp, e a ficha aberta antes
         // de um agendamento não devolve o nome antigo por cima do novo.
         ...escritaDoNomeManual(contact?.name, editName, agora),
-        phone: editPhone.trim(),
+        // ⚠️ `phone:` à vista, e não num objeto espalhado: o pino da 1024
+        // (`chave-canonica.chamadores.test.ts`) procura os UPDATEs que gravam
+        // o telefone pelo literal, para cobrar o trato do 23505.
+        ...(telefoneNovo !== undefined ? { phone: telefoneNovo } : {}),
         ...(mudouEmail ? { email: emailNovo } : {}),
         company: editCompany.trim() || null,
         updated_at: agora,

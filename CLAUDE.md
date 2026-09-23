@@ -188,15 +188,29 @@ levar o texto novo dele para os **dois** dicionários).
   - `formatRelative(iso, nunca: string)` → `(iso, t: Translator)`: **NOSSO**.
     Mudança de comportamento, não renomeação — `automations/[id]/logs/page.tsx`
     voltou para a versão do `main`.
-  - `dedupeByPhone` ganhando `invalid` (o conserto #586 deles, que recusa
-    número sem código de país): **NOSSO**, e isto é uma PERDA consciente —
-    ver abaixo.
-- ⚠️ **O conserto #586 do upstream ficou de fora.** Ele recusa telefone sem
-  `+` e código de país, que a Meta entregaria no país errado. Pela regra do
-  merge, `dedupe.ts` ficou sendo o nosso, e caíram junto `broadcast-csv.ts`,
-  `step2-select-audience.tsx` e os testes deles. **É conserto de correção
-  real e vale reavaliar numa branch própria** — as chaves de i18n dele já
-  estão nos dois dicionários, então só falta o código.
+  - `dedupeByPhone` ganhando `invalid` (o #529/#586 deles): ficou o NOSSO no
+    merge, e a Fase 3-II (PR #265) acrescentou o `invalid` com a NOSSA régua
+    (`telefoneDigitado`), não com a deles — ver abaixo.
+  - ⚠️ **Chave de dicionário que os dois lados acrescentam ao MESMO objeto
+    vira chave REPETIDA, sem conflito nenhum**: o #259 pôs as chaves do
+    #529/#586 no fim de `Contacts.importModal`, o #265 pôs as suas no meio, e
+    o `JSON.parse` fica com a última — as do #259 venciam. Os três portões de
+    i18n usam `JSON.parse` e não enxergam isso; quem enxerga é
+    `src/i18n/chaves-duplicadas.test.ts`.
+- ⚠️⚠️ **O conserto #586 do upstream NÃO ficou de fora — entrou pela METADE,
+  pelos arquivos que não conflitaram**, e é o contrário da nossa régua (a
+  decisão P9 do `docs/PLANO-merge-upstream-2026-09.md`: número brasileiro
+  sem `+` ganha o 55, porque é o que o escritório digita). Pela regra do
+  merge, `dedupe.ts`, `broadcast-csv.ts` e `step2-select-audience.tsx`
+  ficaram os nossos; mas `phone-utils.ts` (`parseInternationalPhone` e o piso
+  de `isValidE164` de 7 para 8 dígitos), `broadcast-core.ts` (a API v1 de
+  disparo recusa destinatário sem `+`) e a checagem do `+` no
+  `contact-form.tsx` entraram SEM conflito — e a ficha nova com
+  "(11) 99999-9999" passou a ser recusada em produção. A Fase 3-II (PR #265)
+  tira a checagem do formulário (o pino `telefone-digitado.chamadores.test.ts`
+  reprova quem a trouxer de volta) e a 3-III põe a API v1 e o disparo na
+  mesma régua. A chave `phoneNeedsCountryCode` saiu dos dois dicionários, e o
+  `csvInvalidPhones` ficou com o texto da nossa régua.
 - ⚠️ **Migrations do upstream renumeradas de novo** (a 037 já avisava que isto
   volta): `040_contact_business_scoped_user_id` → **0043**,
   `042_message_failure_reason` → **0045**, com o cabeçalho de dentro corrigido
@@ -367,6 +381,7 @@ upstream sobrescrevê-los:
 | `src/app/api/automations/[id]/route.ts` e `duplicate/route.ts` (23/09/2026) | ⚠️⚠️ a automação é da CONTA, não de quem a criou: GET por qualquer membro, PATCH/DELETE/duplicar por qualquer ADMIN da conta (`ctx.accountId` de `requireRole`), nunca `user_id = user.id` (decisão do operador). O upstream filtra pelo autor — herança de quando cada login era uma conta —, e com um segundo admin ele recebia 404 ao abrir, ativar, duplicar ou mudar o escopo pela aba do funil. O DELETE confere quantas linhas saíram: antes, zero linhas voltavam `ok` e a tela dizia "excluída" sobre a automação intacta. Um merge que traga as rotas cruas devolve os dois sem conflito nenhum — há pino em `route.test.ts`. ⚠️ O #587 do original (GHSA-xvrq-88hg-44q6, ABERTO lá desde 17/09) faz o mesmo conserto com piso **`agent`** nas três escritas: num merge, fica o nosso `admin` — o pino cobra o papel PEDIDO (`requireRole('admin')`), não só que o `agent` é recusado. O UPDATE do PATCH também leva a conta e confere as linhas (Fase 1b do plano do upstream) |
 | `src/lib/automations/meta-send.ts`, `src/lib/flows/meta-send.ts` e `engine.ts` (23/09/2026, upstream #589) | a conversa do contexto é conferida por conta no disparo, em `resolveConversationId` e em cada envio do robô (`assertConversationInAccount`, ANTES do canal e do provedor); as prévias levam `.eq('account_id')`. Remetente NOVO do robô nestes arquivos repete a conferência — pino estrutural em `src/lib/whatsapp/conversation-scope.chamadores.test.ts` |
 | `src/lib/whatsapp/conversation-scope.ts` (23/09/2026) | ⚠️ DIVERGE do original do #589: com `contactId`, a conversa tem de ser DAQUELE contato também (Codex, 3ª rodada do PR #261) — só a conta deixava passar "contato A + conversa de B" da mesma conta, e o cliente A recebia o que aparece no fio de B. O disparo e `resolveConversationId` fazem o mesmo. Num merge, fica o nosso |
+| `src/components/contacts/contact-form.tsx`, `contact-detail-view.tsx`, `import-modal.tsx`, `src/lib/contacts/dedupe.ts` (`dedupeByPhone`), `src/lib/broadcast-csv.ts` e `step2-select-audience.tsx` (23/09/2026, Fase 3-II) | ⚠️⚠️ o telefone DIGITADO passa pela NOSSA régua (`telefoneDigitado`/`escritaDoTelefone`, em `telefone.ts`): brasileiro sem DDI ganha o 55, sem `+` e sem DDD é recusado, e a linha do CSV SAI normalizada. O upstream (#586) resolveu o mesmo defeito EXIGINDO o `+` nessas mesmas linhas (`parseInternationalPhone`) — o contrário do que o escritório digita. Num merge, fica o nosso; há pino estrutural (`telefone-digitado.chamadores.test.ts`) reprovando `parseInternationalPhone` nessas telas. Na edição, telefone que não mudou não é conferido nem regravado. O `invalid` do dedupe e o motivo por linha da importação são do #529, adotados. ⚠️ A "Nova conversa" (`/api/cb/conversas/abrir`) e a API v1 AINDA não passam pela régua (Fase 3-III do plano): lá "(81) 98874-5316" continua virando ficha +81 |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
 | `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil. Mais o funil-com-conversas (PR #71): botão de conversas por coluna, `navegarParaInbox`/restauração de rolagem no board (quadroRef vem da página), `useChannels` içado, select `DEAL_SELECT_DO_QUADRO` com plano B, popover de campos. Mais a carga em DUAS etapas (22/09/2026): lista enxuta de todos + conteúdo só dos desenhados, `CardDoQuadro` e o card "carregando" — um merge que traga a busca única do upstream devolve os ~3 s do Trabalhista |
 | `src/components/pipelines/deal-card.tsx` | ⚠️ **reestruturado inteiro no PR #71 — manter a NOSSA versão** (como `conversation-list.tsx`): wrapper + botão do corpo (abre a CONVERSA) + lápis IRMÃO (edita; button aninhado é inválido), campos por `CamposDoCard`, etiquetas/última mensagem/não lidas, `memo` + canais por prop, barra de cor com `pointer-events-none` |

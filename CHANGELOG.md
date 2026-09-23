@@ -57,6 +57,23 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **Telefone digitado sem o código do país não vai mais para outro país.**
+  O formulário de contato, a ficha e as duas planilhas (importar contatos e
+  o CSV do disparo) gravavam o número como foi escrito: "(81) 98874-5316"
+  virava a ficha "81988745316", e a mensagem saía para +81 (Japão) — no
+  disparo por CSV, ainda criava uma ficha nova em vez de achar a do
+  cliente. Agora o número sem `+` é lido como brasileiro e ganha o 55;
+  número de outro país continua sendo escrito com `+` e o código do país.
+  Número sem DDD, com letra ou incompleto é recusado com o motivo. Editar
+  o nome de uma ficha antiga não confere o telefone que ninguém mexeu.
+
+- **A importação de CSV diz o que ficou de fora e por quê.** Linha com
+  telefone vazio ou inválido deixa de ser contada como "duplicada" (e a
+  sem telefone deixa de sumir sem contar), e cada linha que o banco
+  recusou aparece com o motivo. O CSV do disparo avisa quantas linhas
+  ficaram de fora, e o arquivo sem nenhum telefone válido deixa de dizer
+  "não foi possível ler o CSV".
+
 - **O público do disparo é contado como o disparo é enviado.** Os passos 2 e
   4 do assistente mostravam no máximo 1.000 contatos por etiqueta, e o passo
   4 ignorava as etiquetas excluídas e dizia 0 para público por campo
