@@ -25,6 +25,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **Um webhook de saída fora do ar não atrasa mais a primeira mensagem de
+  uma conversa nova.** O aviso `conversation.created` era entregue antes de
+  a mensagem do cliente ser gravada, e um endpoint que não respondia
+  segurava a mensagem (e o robô, as automações e a IA) por 5 segundos ou
+  mais. Agora a mensagem é gravada na hora; quem assina os dois eventos
+  continua recebendo `conversation.created` antes de `message.received`.
+
 - **Erro de banco ao escolher o número de uma campanha não é mais "conecte
   um número".** `POST /api/v1/broadcasts` (e as telas de disparo e de
   modelos) respondia `400 meta_channel_required` quando o CRM só não
