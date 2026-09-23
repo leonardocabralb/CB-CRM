@@ -37,6 +37,7 @@ import {
 } from "@/lib/inbox/salto-no-fio";
 import { Input } from "@/components/ui/input";
 import { contarNovasDoCliente } from "@/lib/inbox/nao-lidas-abaixo";
+import { entregasNaoConfirmadas } from "@/lib/inbox/entrega-nao-confirmada";
 import {
   aberturasDeCanal,
   canalDivergente,
@@ -857,6 +858,11 @@ export function MessageThread({
   // seguinte (o portão do disparo segurava o envio, mas a tela mentia por
   // até um minuto). Um setState por minuto num fio parado é barato; o
   // relógio errado não é. (Achado do Codex no PR #96.)
+  //
+  // ⚠️ Segundo leitor (23/09/2026): `naoConfirmadas`, o balão vermelho da
+  // mensagem que o destinatário provavelmente não recebeu. Ele vale em QUALQUER
+  // transporte e também precisa do tique — condicionar o relógio à janela da
+  // Meta faria o aviso nunca acender num fio parado da Evolution.
   const [agoraDaBadge, setAgoraDaBadge] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setAgoraDaBadge(new Date()), 60_000);
@@ -896,6 +902,27 @@ export function MessageThread({
 
     return { expired: false, remaining };
   }, [messages, tTimer, agoraDaBadge, canalDaJanela]);
+
+  /**
+   * As mensagens nossas que o destinatário provavelmente NÃO recebeu: ficaram
+   * em ✓ enquanto o aparelho dele confirmava outra enviada depois, ou ele
+   * escrevia depois delas. O WhatsApp não anuncia essa falha (o link de
+   * 23/09/2026 nunca virou `failed`); a regra e os recortes que evitam alarme
+   * falso moram em `lib/inbox/entrega-nao-confirmada.ts`.
+   *
+   * O instante é o do relógio da badge, de propósito: o memo precisa
+   * envelhecer sozinho (a mensagem só pode ser acusada depois de 1 min
+   * esperando o próprio recibo) e `Date.now()` no render seria impuro. Com o
+   * tique de um minuto, o balão fica vermelho entre 1 e 2 minutos depois do
+   * envio — antes, se chegar alguma mensagem e o memo recomputar.
+   */
+  const naoConfirmadas = useMemo(
+    () =>
+      entregasNaoConfirmadas(messages, agoraDaBadge.getTime(), {
+        emGrupo: ehGrupo,
+      }),
+    [messages, agoraDaBadge, ehGrupo],
+  );
 
   /**
    * O ÚLTIMO PORTÃO ANTES DA REDE: a janela está fechada NESTE instante?
@@ -2892,6 +2919,7 @@ export function MessageThread({
                           onBaixarAnexo={() => baixarAnexoDoGrupo(msg.id)}
                           onAbrirGaleria={setGaleriaAbertaEm}
                           onIrParaCitada={irParaCitada}
+                          naoConfirmada={naoConfirmadas.has(msg.id)}
                         />
                       </MessageActions>
                       </LinhaDoFio>

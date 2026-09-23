@@ -2859,6 +2859,53 @@ mensagem. `POST /instance/restart/<instância>` segue como PALIATIVO (drena
 DESCARTADO por decisão do operador**: a atual foi escolhida para resolver o
 "Aguardando mensagem" (mensagens que não chegavam ao cliente).
 
+⚠️ **Link sai SEM prévia, e o balão fica vermelho quando o destinatário
+provavelmente não recebeu (23/09/2026).** `linkPreview: false` em
+`EvolutionClient.sendText` e `src/lib/inbox/entrega-nao-confirmada.ts` (puro,
+com teste). Diagnóstico, números e a verificação PENDENTE estão em
+`docs/PLANO-link-sem-previa.md`. O que morde código novo:
+
+- ⚠️⚠️ **Sem `linkPreview: false`, o link não chega a parte dos clientes.** A
+  Evolution 2.4 monta, para todo texto com link, uma prévia no formato de
+  ANÚNCIO (`contextInfo.externalAdReply`, commit 53f47d5f do upstream), e a
+  Baileys gera a dela por cima quando o campo vem ausente. Das 4 falhas de
+  entrega pelo CRM desde 09/09, as 4 eram links para Android: recibo ERROR
+  ("device could not display the message"), ou o aparelho pedindo a mensagem
+  de novo até desistir. iPhone recebeu 68 de 68. Nem todo Android falha
+  (depende do aparelho), e onde a mensagem chega o cartão vem com um quadro em
+  branco. Todo caminho novo de TEXTO pela Evolution repete o campo. Há pino em
+  `evolution-transport.test.ts`.
+- ⚠️⚠️ **O WhatsApp NÃO anuncia essa falha**: nenhuma das 3 falhas desde 11/09
+  virou `failed`, todas ficaram em ✓. O vermelho de `failed` já existia; o novo
+  ("Não confirmada") é INFERIDO. Ele acende quando a mensagem saiu pelo CRM,
+  está em ✓ há mais de 1 min, e há prova de que o aparelho estava no ar: uma
+  mensagem nossa posterior foi entregue ou lida (pelo CRM OU pelo celular), ou
+  o destinatário escreveu mais de 1 min depois. Três recortes, cada um evitando
+  um alarme falso MEDIDO:
+  - só o que saiu pelo CRM, porque o CRM às vezes perde o recibo de mensagem
+    do celular;
+  - só desde 11/09 00:00 UTC. Antes, recibo perdido era rotina, e as 2
+    primeiras mensagens da conexão da Meta saíram antes do webhook de status.
+    27 mensagens antigas ficariam vermelhas;
+  - grupo fica de fora.
+
+  Resultado: as 3 falhas reais em 153 mensagens, e nenhuma outra. Sem
+  evidência (mensagem única, destinatário calado), a regra não acusa.
+- ⚠️ **O relógio é o tique de 1 min da badge da janela de 24h**
+  (`agoraDaBadge`), agora com DOIS leitores. Condicioná-lo à janela da Meta
+  desligaria o vermelho num fio parado da Evolution.
+- ⚠️ **Mensagem de saída se mede por `sender_type`, nunca por `from_me`.** O
+  caminho da Meta grava `from_me` NULO, e a primeira medição deste trabalho
+  perdeu as mensagens da Meta por isso.
+- ⚠️ **Número que é CONEXÃO do CRM não serve de destino para teste de
+  entrega** (conferir `cb_channels.display_phone`). O Baileys da instância
+  confirma sozinho, e a outra conexão grava a mensagem como se fosse de
+  cliente. No teste de 23/09 isso reabriu uma conversa interna encerrada.
+- 🔭 **VERIFICAÇÃO PENDENTE** (pedido do operador, 23/09/2026): confirmar que
+  os links enviados PELO CRM a clientes Android passaram a chegar. As consultas
+  e o critério estão na seção 4 do plano. Link mandado pelo celular não prova
+  nada (não passa pela Evolution). Registrar o resultado lá e tirar esta linha.
+
 ⚠️ **Mensagem 1:1 em `@lid` SEM telefone (1010, 19/09/2026): não é mais
 jogada fora — o telefone sai do ACERVO, ou ela fica RETIDA até ele aparecer.**
 `src/lib/whatsapp/sem-telefone/` (`modo.ts` puro; `resolver-lid`, `retidas`,
