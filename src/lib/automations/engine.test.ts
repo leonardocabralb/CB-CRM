@@ -1869,17 +1869,20 @@ describe('send_to_number — aviso para a equipe', () => {
 
   it.each([
     // A régua dos sistemas (até a Fase 3-III) aceitava os dois: "98000-0016"
-    // virava +98 e o JID virava os dígitos dele — o aviso saía para outro.
-    ['sem DDD', '98000-0016'],
-    ['JID colado', '5583980000016@s.whatsapp.net'],
-  ])('%s falha antes de criar ficha (a régua das telas)', async (_caso, phone) => {
+    // virava +98, e o LID de um contato virava telefone — os 15 dígitos dele
+    // como destino do aviso. (O JID de pessoa, `…@s.whatsapp.net`, caía no
+    // número certo por acaso; agora é recusado junto, por não ser número.)
+    ['sem DDD', '98000-0016', 'curto demais (faltou o DDD?)'],
+    ['LID colado', '123456789012345@lid', 'não é um número'],
+  ])('%s falha antes de criar ficha (a régua das telas)', async (_caso, phone, frase) => {
     await dispararAviso({ phone, text: 'oi' });
     expect(destinatarioMock.resolverDestinatario).not.toHaveBeenCalled();
     expect(engineSendText).not.toHaveBeenCalled();
     const log = h.state.logUpdates.filter((u) => 'status' in u).at(-1) as
       { status?: string; error_message?: string } | undefined;
     expect(log?.status).toBe('failed');
-    expect(log?.error_message).toContain('send_to_number: telefone inválido');
+    // A frase, nunca o código do motivo ("curto"/"invalido").
+    expect(log?.error_message).toContain(`send_to_number: telefone inválido — ${frase}`);
   });
 
   it('texto vazio depois da interpolação falha antes de enviar', async () => {

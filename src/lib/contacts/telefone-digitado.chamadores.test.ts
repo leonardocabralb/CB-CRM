@@ -54,9 +54,13 @@ const PORTAS: Record<string, string[]> = {
   // construtor. A validação da ativação, o motor e o resumo do passo leem pela
   // MESMA régua — com a dos sistemas, "98000-0016" passava e o aviso ao
   // advogado saía para +98 (pedido do operador, 23/09/2026).
+  // ⚠️ No motor e no construtor a proibição dos ATALHOS vale para o ARQUIVO
+  // INTEIRO, de propósito (default-deny): um passo novo que precise da régua
+  // dos sistemas ali entra por decisão escrita — recortando o fonte a este
+  // passo antes do laço —, não por um `replace` que ninguém viu.
   'lib/automations/validate.ts': ["telefoneDigitado(typeof c.phone === 'string' ? c.phone : '')"],
   'lib/automations/engine.ts': ['telefoneDigitado(cfg.phone)', 'const digitos = lido.digitos;'],
-  'lib/automations/descrever-passo.ts': ['telefoneDigitado((cfg as unknown as SendToNumberStepConfig).phone)'],
+  'lib/automations/descrever-passo.ts': ['telefoneDigitado(phone)', 'formatarTelefone(lido.digitos)'],
   'components/automations/automation-builder.tsx': ['telefoneDigitado(valor)'],
 };
 

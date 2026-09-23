@@ -2393,7 +2393,14 @@ function TelefoneDoAviso({
   aoMudar: (phone: string) => void
 }) {
   const tTelefone = useTranslations("Contacts.telefone")
-  const [tocado, setTocado] = useState(false)
+  // Número já SALVO que a régua recusa (gravado antes dela, 23/09/2026) conta
+  // como tocado: o motivo aparece ao abrir o passo, sem precisar entrar e sair
+  // do campo — senão a automação que vai falhar no envio abre com cara de
+  // certa. Número vazio ou válido espera o blur, como antes.
+  const [tocado, setTocado] = useState(() => {
+    const salvo = telefoneDigitado(valor)
+    return !salvo.ok && salvo.motivo !== "vazio"
+  })
   const lido = telefoneDigitado(valor)
   return (
     <>

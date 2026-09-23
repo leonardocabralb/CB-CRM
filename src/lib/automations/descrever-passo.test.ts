@@ -127,9 +127,15 @@ describe('send_to_number (977)', () => {
     expect(descreverPasso(passo('send_to_number', { phone: '5583980000016' })).valores.alvo).toBe('(83) 98000-0016')
   })
 
-  it('telefone ausente ou inválido não vira "undefined"', () => {
+  it('telefone ausente não vira "undefined"', () => {
     expect(descreverPasso(passo('send_to_number', {})).valores.alvo).toBe('')
-    expect(descreverPasso(passo('send_to_number', { phone: '12' })).valores.alvo).toBe('')
+  })
+
+  it('telefone que a régua recusa aparece como foi escrito, nunca formatado', () => {
+    // Formatado pelos dígitos crus, "98000-0016" viraria "+980000016" — o
+    // destino errado que a régua existe para impedir, escrito no cartão.
+    expect(descreverPasso(passo('send_to_number', { phone: ' 98000-0016 ' })).valores.alvo).toBe('98000-0016')
+    expect(descreverPasso(passo('send_to_number', { phone: '123456789012345@lid' })).valores.alvo).toBe('123456789012345@lid')
   })
 })
 

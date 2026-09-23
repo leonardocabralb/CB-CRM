@@ -134,9 +134,13 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
     case 'send_to_number': {
       // O número, legível: é o que distingue dois avisos no mesmo quadro. A
       // mesma leitura do motor — "(83) 98000-0016" digitado sem DDI ganha o
-      // 55 antes de ser formatado, senão sairia "+83980000016".
-      const lido = telefoneDigitado((cfg as unknown as SendToNumberStepConfig).phone)
-      return simples(lido.ok ? formatarTelefone(lido.digitos) : '')
+      // 55 antes de ser formatado, senão sairia "+83980000016". Número que a
+      // régua recusa aparece como foi escrito: em branco, o cartão da
+      // automação que vai falhar ficaria "Avisar o número:" sem destino, com
+      // cara de defeito de tela; formatado, "98000-0016" viraria "+980000016".
+      const phone = (cfg as unknown as SendToNumberStepConfig).phone
+      const lido = telefoneDigitado(phone)
+      return simples(lido.ok ? formatarTelefone(lido.digitos) : typeof phone === 'string' ? phone.trim() : '')
     }
 
     case 'wait': {

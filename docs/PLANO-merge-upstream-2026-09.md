@@ -781,9 +781,9 @@ Codex e deploy próprios:
 | Sub-fase | O que entra | Estado |
 | --- | --- | --- |
 | **3-I** | 3b, 3c, 3d (só medir) e 3e — nada toca telefone | ✅ PR #262 |
-| **3-II** | 3a (#529) + a metade aditiva do #586 NAS TELAS: formulário e ficha do contato, importação de CSV, CSV do disparo — telefone digitado sai normalizado pela nossa régua, e o inválido é CONTADO com motivo, nunca chamado de duplicata | pendente |
+| **3-II** | 3a (#529) + a metade aditiva do #586 NAS TELAS: formulário e ficha do contato, importação de CSV, CSV do disparo — telefone digitado sai normalizado pela nossa régua, e o inválido é CONTADO com motivo, nunca chamado de duplicata | ✅ PR #265 (23/09) |
 | **3-III** | a mesma normalização na ENTRADA da API (v1 de contatos, mensagens e disparos) e em `/api/cb/conversas/abrir`, com `docs/public-api.md` — e, a pedido do operador, o webhook de entrada (Typebot) e o passo "Enviar para um número" | ✅ PR #276 (23/09); o passo "Enviar para um número" num PR próprio logo depois |
-| **3-IV** | 3f — a CONTAGEM do público do disparo (#594) truncando em 1000 (o envio já pagina) | em PR (ver o resultado abaixo) |
+| **3-IV** | 3f — a CONTAGEM do público do disparo (#594) truncando em 1000 (o envio já pagina) | ✅ PR #269 (23/09; ver o resultado abaixo) |
 
 **Resultado da 3-I (23/09/2026, PR #262):**
 
@@ -1101,6 +1101,19 @@ todo E.164 brasileiro e todo estrangeiro com `+` saem iguais.
   `telefoneDigitado`, e o campo mostra o motivo ao sair dele. MEDIDO antes:
   um passo só em produção ("Calendly → Reunião agendada"), com 13 dígitos —
   passa igual pelas duas réguas.
+
+  **Revisão (duas lentes, cético no achado; 4/4 mutantes mortos):**
+
+  | Achado | Destino |
+  | --- | --- |
+  | P2 (confirmado pelo cético, medido) — automação JÁ ATIVA com número que a régua velha lia certo (id do WhatsApp, `wa.me`, número com rótulo) passa a falhar no envio depois do deploy, e o passo que falha encerra a execução (o card do Calendly não anda); o CHANGELOG não avisava, e dizia que "com letra" o aviso ia para +98 | ✅ o CHANGELOG avisa quem atualiza, com a consulta que lista os passos, e a frase diz o que ia para outro país (sem DDD, e o `@lid`). Incidência nesta produção: zero |
+  | P3 (as duas) — os testes diziam que o JID `…@s.whatsapp.net` mandava o aviso a outro número; medido, caía no número certo (quem ia errado era o `@lid`) | ✅ o exemplo virou `@lid`, e o comentário diz as duas coisas |
+  | P3 (as duas) — número já SALVO fora da régua abria no construtor sem aviso nenhum | ✅ conta como tocado ao montar: o motivo aparece ao abrir o passo |
+  | P3 (Lente 1) — o registro da execução mostrava o código do motivo ("curto") | ✅ a frase ("curto demais (faltou o DDD?)"), testada |
+  | P3 (as duas) — o resumo do passo (grade do funil, linha do tempo) ficava "Avisar o número:" em branco para o número recusado | ✅ aparece como foi escrito, nunca formatado (seria "+980000016"); testado |
+  | P3 (as duas) — o pino proíbe os atalhos no motor e no construtor INTEIROS | aceito como default-deny, escrito no comentário do pino |
+  | P3 (as duas) — a tabela da Fase 3 com 3-II "pendente" e 3-IV "em PR", e o comentário de `SendToNumberStepConfig.phone` | ✅ |
+  | P3 (Lente 2) — o toast da ativação recusada sai em inglês cru (`phone is too short…`), e a chave da lista não mostra o motivo | anterior (todas as frases do `validate.ts` são assim); o motivo em português está no campo, que agora aparece ao abrir |
 - **O destinatário do disparo casado pela tolerância dos 8 finais** — a linha
   de `broadcast_recipients` pode ficar com uma ficha de outro número (a busca
   tolera o tronco), e o envio vai ao número lido. Anterior à fase; vale com
