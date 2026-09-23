@@ -36,12 +36,27 @@ function corpoDe(nomeDaFuncao: string): string {
   return fonte.slice(inicio, fim === -1 ? undefined : fim);
 }
 
+/**
+ * A busca das fichas que já existem saiu de `upsertCsvContacts` para o
+ * módulo (`fichasDoCsvNaBase`) na Fase 3-IV: a contagem do público passou a
+ * usar a mesma, para aplicar a exclusão ao CSV sem gravar nada. As garantias
+ * abaixo continuam as mesmas — só moram em outro lugar.
+ */
+function corpoDoModulo(nomeDaFuncao: string): string {
+  const inicio = fonte.indexOf(`async function ${nomeDaFuncao}(`);
+  expect(inicio).toBeGreaterThan(-1);
+  return fonte.slice(inicio, fonte.indexOf('\n}\n', inicio));
+}
+
 describe('upsertCsvContacts: resolução do merge do upstream (2026-09-05)', () => {
   const corpo = corpoDe('upsertCsvContacts');
+  const busca = corpoDoModulo('fichasDoCsvNaBase');
 
   it('casa o CSV pelo número normalizado, por CONTA (lado do upstream, #532)', () => {
-    expect(corpo).toContain(".eq('account_id', accountId)");
-    expect(corpo).toContain(".in('phone_normalized', fatia)");
+    expect(corpo).toContain('fichasDoCsvNaBase(supabase, accountId, chaves)');
+    expect(busca).toContain(".eq('account_id', accountId)");
+    expect(busca).toContain(".in('phone_normalized', fatia)");
+    expect(busca).not.toContain(".in('phone', ");
     expect(corpo).not.toContain(".in('phone', ");
   });
 });
@@ -53,18 +68,25 @@ describe('upsertCsvContacts: a MESMA PESSOA nas duas grafias do nono dígito (10
   // lote inteiro levava 23505 — a campanha não saía. Três peças, e o teste
   // cobra as três.
   const corpo = corpoDe('upsertCsvContacts');
+  const pessoas = fonte.slice(
+    fonte.indexOf('function pessoasDoCsv('),
+    fonte.indexOf('\n}\n', fonte.indexOf('function pessoasDoCsv(')),
+  );
+  const busca = corpoDoModulo('fichasDoCsvNaBase');
 
   it('deduplica e mapeia por pessoa (`chaveDePessoa`), nunca pela grafia', () => {
     expect(fonte).toContain(
       "import { chaveDePessoa, isUniqueViolation } from '@/lib/contacts/dedupe'"
     );
+    expect(corpo).toContain('pessoasDoCsv(csvRows)');
+    expect(pessoas).toContain('chaveDePessoa(row.phone)');
     expect(corpo).toContain('chaveDePessoa(row.phone)');
     expect(corpo).not.toContain('normalizeKey(');
   });
 
   it('busca as DUAS grafias de cada número, em fatias (teto de mil linhas)', () => {
-    expect(corpo).toContain('variantesDoNonoDigito(k)');
-    expect(corpo).toMatch(/grafias\.slice\(i, i \+ LOOKUP_CHUNK\)/);
+    expect(busca).toContain('variantesDoNonoDigito(k)');
+    expect(busca).toMatch(/grafias\.slice\(i, i \+ LOOKUP_CHUNK\)/);
   });
 
   it('a corrida (23505 no lote) relê e insere um a um, sem derrubar a campanha', () => {

@@ -1664,9 +1664,14 @@
         "errorLoadTags": "Falha ao carregar as etiquetas",
         "errorLoadFields": "Falha ao carregar os campos personalizados",
         "errorCsvMissingPhone": "O CSV deve ter uma coluna 'phone'.",
+        "contagemFalhou": "Não foi possível calcular o público agora.",
         "errorCsvNoValidRows": "Nenhuma linha do CSV tem telefone válido. Escreva com DDD — ou, se for de outro país, com + e o código do país.",
         "audienceSummary": "Resumo do público",
-        "calculating": "Calculando…"
+        "calculating": "Calculando…",
+        "estimatedRecipients": "{count, plural, =0 {destinatários estimados} one {destinatário estimado} other {destinatários estimados}}",
+        "pickAudienceHint": "Escolha quem recebe para ver a estimativa.",
+        "contagemTeto": "Este público passa do que a tela consegue contar (25.000 contatos). Recorte por etiquetas ou por um campo personalizado.",
+        "tentarDeNovo": "Tentar de novo"
       },
       "personalize": {
         "title": "Personalizar Variáveis",
@@ -1722,6 +1727,10 @@
         "preparing": "Preparando...",
         "progressDesc": "Processando {current} de {total} destinatários...",
         "toastFailedPreview": "Falha ao carregar os dados da pré-visualização",
+        "alcanceFalhou": "Não foi possível calcular.",
+        "tentarDeNovo": "Tentar de novo",
+        "alcanceTeto": "Passa do que a tela consegue contar (25.000). Volte e recorte o público.",
+        "ninguemNoPublico": "Ninguém a alcançar com este público.",
         "estimatedReach": "Alcance estimado",
         "language": "Idioma",
         "confirmTitle": "Confirmar disparo",

@@ -783,7 +783,7 @@ Codex e deploy próprios:
 | **3-I** | 3b, 3c, 3d (só medir) e 3e — nada toca telefone | ✅ PR #262 |
 | **3-II** | 3a (#529) + a metade aditiva do #586 NAS TELAS: formulário e ficha do contato, importação de CSV, CSV do disparo — telefone digitado sai normalizado pela nossa régua, e o inválido é CONTADO com motivo, nunca chamado de duplicata | pendente |
 | **3-III** | a mesma normalização na ENTRADA da API (v1 de contatos, mensagens e disparos) e em `/api/cb/conversas/abrir`, com `docs/public-api.md` | pendente |
-| **3-IV** | 3f — a CONTAGEM do público do disparo (#594) truncando em 1000 (o envio já pagina) | pendente |
+| **3-IV** | 3f — a CONTAGEM do público do disparo (#594) truncando em 1000 (o envio já pagina) | em PR (ver o resultado abaixo) |
 
 **Resultado da 3-I (23/09/2026, PR #262):**
 
@@ -927,6 +927,58 @@ linha) — não há como provocar a recusa sem mexer em policy; o ramo é o do
 | **Auditoria do #259** (10 agentes, 23/09): o merge deixou **4 chaves REPETIDAS** em `Contacts.importModal` — o #259 pôs as do #529/#586 no fim do objeto, o #265 as suas no meio, o Git juntou sem conflito e o `JSON.parse` ficava com as do #259 ("3 telefone inválido", sem o plural ICU). Os três portões de i18n usam `JSON.parse` e passaram verdes | ✅ o bloco do #259 saiu dos dois dicionários (com `toastPhoneNeedsCountryCode` e `invalidPhoneHint`, órfãs com o texto do `+` obrigatório); **teste novo** `src/i18n/chaves-duplicadas.test.ts` reprova chave repetida em qualquer `messages/*.json` (mutante reprova) |
 | Codex, 3ª rodada (HEAD `35d6f857`) | **sem revisão**: "usage limits" do Codex. As duas lentes e a auditoria do #259 ficam como a revisão desta rodada |
 | O `main` andou de novo (#266, a aba IDs da API e os avisos de negócio) depois do CI do `35d6f857` | ✅ mesclado; sem conflito textual (5 arquivos mudados dos dois lados); a importação combinada (etiqueta por id do #266 + inválido do #265) testada no preview |
+
+**Resultado da 3-IV (23/09/2026, a contagem do público do disparo, #594):**
+
+**Medido antes, na produção:** as etiquetas "kommo" (4.635 contatos),
+"Trabalhista" (3.611) e "Cliente Fechado" (1.081) apareciam como **1.000** no
+passo 2 e no passo 4 do assistente. O passo 4 também ignorava as exclusões e
+dizia **0** para público por campo personalizado — o número que a confirmação
+de um disparo PAGO mostra. O envio, que pagina, saía para o número certo: as
+telas tinham leitura própria, sem paginar.
+
+**O que mudou:** a contagem é a MESMA resolução do envio
+(`contarPublico` → `contatosDaBase` + `aplicarRecortes`, lendo só
+`id, phone`); as telas não leem mais `contacts`/`contact_tags`/
+`contact_custom_values` (pino). O upstream resolveu com uma RPC que conta no
+banco; aqui a escolha foi uma leitura só para as duas pontas, porque duas
+leituras divergem na primeira mudança — foi exatamente o defeito.
+
+**Revisão em duas lentes (independentes, e as duas acharam os três P2):**
+
+| Achado | Destino |
+| --- | --- |
+| P2 — CSV com exclusão: a contagem devolvia o tamanho da lista; a confirmação dizia 500 para um envio de 380 | ✅ a contagem lê as fichas do CSV que JÁ existem (pelas duas grafias do nono dígito, por conta) e tira as que têm etiqueta excluída — sem gravar nada. `pessoasDoCsv` e `fichasDoCsvNaBase` saíram de dentro de `upsertCsvContacts` para o módulo: envio e contagem usam as mesmas |
+| P2 — a contagem relia o público inteiro a cada clique e a cada TECLA do campo personalizado, e o pedido velho corria até o fim | ✅ espera de 400 ms antes de contar, e a contagem velha é INTERROMPIDA (`AbortSignal` levado até o `.abortSignal()` de cada consulta, e conferido entre as páginas) |
+| P2 (anterior à 3-IV, agora compartilhado) — "todos os contatos" por OFFSET: uma ficha criada no meio da leitura repetia a última linha de uma página na seguinte, e o envio mandava o modelo pago EM DOBRO (não há UNIQUE em `broadcast_recipients`); uma apagada pulava uma que existia | ✅ "todos" é lido POR CHAVE (`buscarPorChave`), com pino; o pino de paginação do disparo aceita as duas formas, cada uma com as suas invariantes |
+| P3 — lento: 47 idas ao banco em fila para a etiqueta "kommo" (~8 s MEDIDOS por clique) | ✅ as fatias de `.in('id', …)` (conjuntos FIXOS de 100 ids numa página só — fora da regra 5 do `paginar.ts`) correm 6 por vez: **2,7 s** medidos, com a espera inclusa |
+| P3 — alcance 0 deixava o botão de enviar livre, e o diálogo dizia "enviar para 0 contatos" | ✅ bloqueado, com "Ninguém a alcançar com este público." |
+| P3 — o teto (25.000) virava "tentar de novo", que nunca funcionaria | ✅ o erro carrega o motivo (`motivoDaLeitura`); com `teto` a tela diz que o público passa do que ela consegue contar, sem o botão. O passo 2 ganhou o "Tentar de novo" nas outras falhas |
+| P3 — o resumo do passo 2 em inglês ("Audience Summary", "Calculating…", "estimated recipients", "Select an audience type…"), com as duas primeiras chaves já nos dicionários pelo #259 sem uso | ✅ traduzido (duas chaves novas, com `=0` no plural: o `one` do português inclui o zero) |
+| P3 — testes: telefone `''`, exclusão que falha, etiquetas sobrepostas e teto sem caso; o pino das telas não proibia `from('contacts')`; o pino do envio não cobrava `'*'` | ✅ todos acrescentados; um mutante escapou na 1ª passada (dados simétricos no CSV) e o teste ganhou uma ficha a mais |
+| P3 — `aplicarRecortes` dizia receber `Contact[]` quando a contagem lê só `id, phone` | ✅ genérica sobre `Pick<Contact, 'id' \| 'phone'>`: um recorte novo que olhe outro campo não compila até a contagem ler a coluna |
+| P3 — a pastilha de etiqueta excluída em `text-red-300` sozinho (ilegível no claro, e o `dark:` está inerte) | ✅ `text-red-600 dark:text-red-300` |
+| Aceito — nos 400 ms da espera o passo 2 ainda mostra o número anterior | o passo 2 é só informativo; o passo 4 recalcula e é ele que libera o envio |
+| Fora da fase (vieram do #259) — `pt.json`/`es.json` e o `+` obrigatório | levados à correção do #259 e à 3-II/3-III |
+
+**Verificação:** `typecheck` limpo; lint com os mesmos 59 avisos de antes;
+suíte inteira no Node 22 verde; os dois portões de i18n verdes; os 8 mutantes da
+primeira passada e **os 10 desta revisão
+reprovam** (a leitura por chave, o CSV com exclusão, o `.eq('account_id')`, o
+telefone vazio, a exclusão que falha, o sinal, o `'*'` do envio, o filtro
+invertido, a chave de pessoa, a volta ao OFFSET).
+
+**Teste prático (preview, banco real, NADA enviado):** todos os contatos
+**5.172** (= o banco); "kommo" **4.635** (era 1.000); kommo sem "Cliente
+Fechado" **3.554**; campo personalizado com exclusão **1.999** no passo 2 e no
+passo 4 (era 0 no passo 4); três etiquetas somadas **3.984** (= o banco).
+Quatro cliques rápidos geraram UMA leitura (46 requisições). CSV com o lead de
+teste (na outra grafia do nono dígito) e dois números fictícios: 3; excluindo
+"kommo", **2**; excluindo "Trabalhista", 3. Só o lead com "kommo" excluída:
+passo 2 "0 destinatários estimados", passo 4 "Ninguém a alcançar" e o botão
+de enviar bloqueado. Leitura que falha (simulada): "Não foi possível
+calcular" com "Tentar de novo", que recupera. Conferido no banco depois: 0
+disparos, 0 fichas criadas.
 
 ### Fase 4 — Fluxos: `{{vars}}` em botões e listas
 
