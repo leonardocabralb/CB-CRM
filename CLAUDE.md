@@ -5983,9 +5983,24 @@ não conseguia receber no n8n "o lead mudou de etapa". O que morde código novo:
   teto. SEM backfill: o NULL do acervo é o que impede reenviar 30 dias.
   ⚠️⚠️ ORDEM DE DEPLOY: a migration ANTES do app — sem a coluna, o
   PostgREST recusa o UPDATE da reivindicação e NENHUMA automação de funil
-  dispara. ⚠️ O preço é a repetição (morto depois do POST e antes de
+  dispara. E, entre aplicar e mesclar, MEDIR a marca `api` (ver a origem,
+  abaixo): mover pelo PostgREST da produção, com a service role e o
+  cabeçalho `x-cb-origem: api` (o que o `clienteDaApi` manda) — ou por
+  `PATCH /api/v1/deals/{id}` com uma chave —, o card do lead de teste
+  autorizado entre duas etapas SEM automação; conferir `origem = 'api'` na
+  linha nova de `cb_automation_events`; devolver a etapa (é escrita em
+  produção: com autorização do operador). Sem `api` ali, NÃO mesclar.
+  ⚠️ O preço é a repetição (morto depois do POST e antes de
   limpar): a doc manda deduplicar pelo `id`, e dizia "never duplicated" até
-  aqui. Há pinos (`entregar-eventos-de-funil.chamadores.test.ts`,
+  aqui. ⚠️⚠️ A entrega RENOVA a posse (compare-and-swap no carimbo) logo
+  antes do catálogo e dos disparos de CADA conta, e limpa com o carimbo
+  renovado: o carimbo da reivindicação é do começo do ciclo, e o laço do
+  dreno (automações de até 50 eventos; 15 s por envio com a Evolution muda)
+  passa dos 10 min do prazo — sem renovar, a reentrega de outro pedido do
+  cron tomava a linha que esta entrega ainda ia mandar, e o aviso saía em
+  dobro sem ninguém ter morrido. O prazo cobre só o que vem depois da
+  renovação (a entrega de uma conta). Há pinos
+  (`entregar-eventos-de-funil.chamadores.test.ts`,
   `origem-e-aviso-duravel-1040.test.ts`).
 - ⚠️⚠️ **O INSERT do card entra na fila como `deal_stage_changed` sem "de
   onde"** (a regra do Kommo que as automações usam); para quem integra, isso é
@@ -6017,6 +6032,24 @@ não conseguia receber no n8n "o lead mudou de etapa". O que morde código novo:
   pelo `ctx.supabase`; um `supabaseAdmin()` ali sai `system` (pino). ⚠️ A
   marca é RÓTULO, não credencial. A trilha da 912 (`cb_lead_events`) ainda
   mistura API e automação em `sistema` — ficou de fora.
+  ⚠️⚠️ **A marca `api` NÃO FOI MEDIDA contra o PostgREST real** (23/09/2026):
+  a conferência da 1040 põe a GUC À MÃO, e os testes do TS só veem o
+  cabeçalho SAIR do cliente. Que o gateway da Supabase o repasse e o
+  PostgREST o publique em `request.headers` é premissa DOCUMENTADA (guia
+  "Securing your API": `current_setting('request.headers', true)::json->>
+  '<nome>'`) — a produção roda PostgREST 14.5 (MEDIDO por `pg_stat_activity`)
+  —, não medida. Por isso a medição é passo da ordem de deploy da 1040
+  (acima, no aviso durável). ⚠️⚠️ E a queda NÃO é inofensiva: sem o
+  cabeçalho, o movimento pela API sai `system`, e a receita da doc
+  (`source != api`) deixa de cortar o laço do fluxo que reage a
+  `deal.stage_changed` movendo o card pela API — que o filtro antigo
+  (`!= system`) cortava. Quem medir troca este parágrafo por "MEDIDO em
+  <data>". ⚠️ Mesmo com a marca, o filtro
+  `api` não corta o laço que ATRAVESSA uma automação do CRM (o fluxo move
+  para Y, uma automação de Y devolve para X como `automation`, o fluxo move
+  de novo): a escrita pela API grava `cadeia` vazia, então `fechaCiclo`
+  nunca vê repetição. A doc (public-api, webhooks, `receitas.etapa.laco`)
+  diz isso ao integrador.
 - ⚠️⚠️ **`dados-dos-eventos.ts` é o contrato, e o compilador o cobra nas três
   pontas**: `dispatchWebhookEvent` virou genérico sobre ele (os 8 pontos de
   disparo antigos compilam sem mudança), `exemplos.ts` é tipado por ele, e a

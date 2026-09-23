@@ -49,6 +49,17 @@
 // enquanto esta entrega ainda corria: limpar sem cerca apagaria a pendência
 // DELA.
 //
+// ⚠️⚠️ A POSSE É RENOVADA logo antes de entregar cada conta
+// (`renovarPosse`): o carimbo recebido é do COMEÇO do ciclo de quem
+// reivindicou, e até a entrega começar passa o ciclo INTEIRO — o laço do
+// dreno, que roda as automações de até 50 eventos (com a Evolution muda,
+// 15 s por envio), o resto do ciclo do cron e as contas anteriores do lote.
+// Sem renovar, a linha podia passar do prazo da reentrega ANTES de a entrega
+// começar, e outro pedido do cron a tomaria enquanto esta ainda ia mandá-la:
+// o aviso sairia duas vezes sem ninguém ter morrido. A renovação é o mesmo
+// compare-and-swap da reentrega — linha que ela JÁ tomou não casa e não é
+// entregue aqui — e a limpeza passa a usar o carimbo RENOVADO.
+//
 // ⚠️ Nunca lança, e continua importando: na queda para o `await` uma exceção
 // aqui atravessaria o dreno, que promete nunca lançar — e derrubaria o ciclo
 // do cron. Agendada, ela só sujaria o log com o erro genérico do `after()`.
@@ -278,6 +289,34 @@ async function encerrarPendencia(db: SupabaseClient, ids: string[], carimbo: str
   }
 }
 
+/**
+ * Renova a posse das linhas logo antes de entregá-las: `webhooks_pendente_desde`
+ * passa do carimbo recebido para AGORA, só onde ainda é o recebido
+ * (compare-and-swap, a cerca da reentrega). Devolve o carimbo novo — a cerca
+ * da limpeza daqui em diante — e os ids que continuam desta entrega; `null`
+ * quando a escrita falhou: nada sai, e as linhas ficam pendentes para a
+ * reentrega (o mesmo trato da leitura que falha). Ver o cabeçalho.
+ */
+async function renovarPosse(
+  db: SupabaseClient,
+  ids: string[],
+  carimbo: string
+): Promise<{ carimbo: string; ids: Set<string> } | null> {
+  const novo = new Date().toISOString();
+  try {
+    const { data, error } = await db
+      .from('cb_automation_events')
+      .update({ webhooks_pendente_desde: novo })
+      .in('id', ids)
+      .eq('webhooks_pendente_desde', carimbo)
+      .select('id');
+    if (error || !data) return null;
+    return { carimbo: novo, ids: new Set((data as { id: string }[]).map((l) => l.id)) };
+  } catch {
+    return null;
+  }
+}
+
 /** Roda `fn` sobre os itens, começando em ordem, com no máximo `limite` ao mesmo tempo. */
 async function emParalelo<T>(itens: T[], limite: number, fn: (item: T) => Promise<void>): Promise<void> {
   let proximo = 0;
@@ -331,18 +370,36 @@ async function entregarDaConta(
   );
   if (aEntregar.length === 0) return;
 
-  const catalogo = await lerCatalogo(db, conta, aEntregar);
+  // ⚠️ A posse é renovada AQUI, depois da leitura dos endpoints e antes do
+  // catálogo e dos disparos: é a janela até a limpeza que o prazo da
+  // reentrega precisa cobrir (ver o cabeçalho).
+  const posse = await renovarPosse(
+    db,
+    aEntregar.map((l) => l.id),
+    carimbo
+  );
+  if (!posse) {
+    console.error(
+      `[webhooks] eventos de funil: renovação da posse falhou — ${aEntregar.length} aviso(s) da conta ${conta} ficam pendentes para a reentrega`
+    );
+    return;
+  }
+  // Só o que continua desta entrega: a linha que a reentrega já tomou é dela.
+  const minhas = aEntregar.filter((l) => posse.ids.has(l.id));
+  if (minhas.length === 0) return;
+
+  const catalogo = await lerCatalogo(db, conta, minhas);
   if (!catalogo) {
     // Nenhum aviso saiu: as linhas ficam PENDENTES, e o cron as reentrega
     // (com o mesmo id). É melhor que um aviso afirmando "apagado" sobre o
     // que existe.
     console.error(
-      `[webhooks] eventos de funil: leitura do catálogo falhou — ${aEntregar.length} aviso(s) da conta ${conta} ficam pendentes para a reentrega`
+      `[webhooks] eventos de funil: leitura do catálogo falhou — ${minhas.length} aviso(s) da conta ${conta} ficam pendentes para a reentrega`
     );
     return;
   }
 
-  await emParalelo(aEntregar, ENTREGAS_SIMULTANEAS, async (linha) => {
+  await emParalelo(minhas, ENTREGAS_SIMULTANEAS, async (linha) => {
     // Por linha: uma que estoura (ex.: `montarAviso` sobre dado estranho) não
     // pode parar o trabalhador e deixar as seguintes sem tentativa.
     try {
@@ -352,7 +409,7 @@ async function entregarDaConta(
         occurredAt: linha.criado_em,
       });
       // `falhou_antes` = nenhum POST saiu: fica pendente para a reentrega.
-      if (resultado !== 'falhou_antes') await encerrarPendencia(db, [linha.id], carimbo);
+      if (resultado !== 'falhou_antes') await encerrarPendencia(db, [linha.id], posse.carimbo);
     } catch (err) {
       console.error(`[webhooks] eventos de funil: aviso ${linha.id} estourou — fica pendente para a reentrega`, err);
     }
@@ -364,7 +421,8 @@ async function entregarDaConta(
  * reentrega) reivindicou. Nunca lança.
  *
  * `carimbo` é o valor que QUEM REIVINDICOU gravou em
- * `webhooks_pendente_desde` — a cerca de posse da limpeza (ver o cabeçalho).
+ * `webhooks_pendente_desde` — a cerca da renovação da posse, que troca o
+ * carimbo antes de cada conta (ver o cabeçalho).
  *
  * ⚠️ Recebe só o que foi reivindicado — ≤ `LOTE` (50) linhas —, e as
  * leituras em lote por `.in()` contam com isso (URL curta, resposta abaixo do

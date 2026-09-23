@@ -12,6 +12,18 @@
 -- não só os avisos. O app antigo convive com ela: não escreve a coluna nova
 -- (fica NULL, "nada a reentregar") e não manda o cabeçalho `x-cb-origem`.
 --
+-- ⚠️⚠️ E, ENTRE APLICAR E MESCLAR, MEDIR A ORIGEM `api` (escrita em produção,
+-- com autorização do operador). A conferência abaixo põe `request.headers` À
+-- MÃO: ela prova o gatilho, não que o gateway da Supabase repasse o
+-- cabeçalho e o PostgREST o publique — isso é premissa DOCUMENTADA, não
+-- medida. O passo: mover pelo PostgREST da produção, com a service role e o
+-- cabeçalho `x-cb-origem: api` (o que o cliente das rotas v1 manda), o card
+-- do lead de teste autorizado entre duas etapas SEM automação; conferir
+-- `origem = 'api'` na linha nova de `cb_automation_events`; devolver a
+-- etapa. Sem `api` ali, NÃO mesclar: a queda não é inofensiva — o movimento
+-- pela API sairia `system`, e a receita da doc (`source != api`) deixaria de
+-- cortar o laço do fluxo que move o card pela API.
+--
 -- ------------------------------------------------------------
 -- (1) ORIGEM `api`
 --
@@ -63,10 +75,12 @@
 -- catálogo também descartava o lote, só com log.
 --
 -- `webhooks_pendente_desde` é gravada NA MESMA escrita da reivindicação (um
--- carimbo por ciclo) e limpa, com cerca de posse (`= carimbo`), depois de
--- cada entrega — com sucesso OU falha HTTP: continua sendo UMA tentativa por
--- endpoint. O cron reentrega, com o MESMO id, o que ficou pendente além do
--- prazo (`reentregar-eventos-de-funil.ts`), por compare-and-swap no carimbo
+-- carimbo por ciclo), RENOVADA por compare-and-swap logo antes de entregar
+-- cada conta (o ciclo do dreno pode passar do prazo da reentrega) e limpa,
+-- com cerca de posse (`= carimbo renovado`), depois de cada entrega — com
+-- sucesso OU falha HTTP: continua sendo UMA tentativa por endpoint. O cron
+-- reentrega, com o MESMO id, o que ficou pendente além do prazo
+-- (`reentregar-eventos-de-funil.ts`), por compare-and-swap no carimbo
 -- e com teto de tentativas em `webhooks_tentativas` — coluna PRÓPRIA:
 -- `tentativas` e `erro` são do motor de automações.
 --
@@ -122,9 +136,10 @@ ALTER TABLE public.cb_automation_events
   ADD COLUMN IF NOT EXISTS webhooks_tentativas integer NOT NULL DEFAULT 0;
 
 COMMENT ON COLUMN public.cb_automation_events.webhooks_pendente_desde IS
-  'Aviso deal.* reivindicado e ainda nao entregue: o carimbo de quem o '
-  'reivindicou (a cerca de posse da limpeza). NULL = nada a entregar. Sem '
-  'backfill: o acervo anterior a 1040 nunca e reenviado.';
+  'Aviso deal.* reivindicado e ainda nao entregue: o carimbo da posse vigente '
+  '(gravado na reivindicacao, renovado logo antes da entrega; a cerca da '
+  'limpeza). NULL = nada a entregar. Sem backfill: o acervo anterior a 1040 '
+  'nunca e reenviado.';
 COMMENT ON COLUMN public.cb_automation_events.webhooks_tentativas IS
   'Reentregas do aviso deal.* feitas pelo cron. Proprio dos webhooks: '
   '`tentativas` e `erro` sao do motor de automacoes. No teto, a linha fica '

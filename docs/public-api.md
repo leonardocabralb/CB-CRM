@@ -900,8 +900,15 @@ the change:
 
 ⚠️ If your flow reacts to `deal.stage_changed` by moving the card through
 this API, that move emits another event (`source: "api"`): filter `api`
-out so the flow cannot loop. The moves made by automations come as
-`automation` and are not affected by that filter.
+out so the flow does not loop on its own moves. The moves made by
+automations come as `automation` and are not affected by that filter —
+which also means the filter does **not** stop a loop that goes *through* a
+CRM automation: if an automation on the stage your flow moves the card to
+sends it back to the stage your flow watches, your flow receives that move
+(`automation`) and moves the card again. The CRM's own cycle guard only
+follows chains of automations, and every write through this API starts a
+new chain, so it does not cut this one either. Check the automations of
+the destination stage before wiring a flow that moves cards.
 
 Headers: `X-Wacrm-Event`, `X-Wacrm-Webhook-Id`, and `X-Wacrm-Signature`.
 

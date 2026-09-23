@@ -18,6 +18,13 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 // compartilhado, senão o movimento sai `system`. Há pino em
 // `cliente-da-api.test.ts`.
 //
+// ⚠️⚠️ Que o gateway da Supabase repasse o cabeçalho e o PostgREST o publique
+// em `request.headers` é premissa DOCUMENTADA (guia "Securing your API"), e a
+// medição contra a produção é passo da ordem de deploy da 1040 (CLAUDE.md).
+// Se um dia ele deixar de chegar, a queda NÃO é inofensiva: o movimento pela
+// API volta a sair `system`, sem erro nenhum, e a receita da doc
+// (`source != api`) deixa de cortar o laço do fluxo que move o card pela API.
+//
 // ⚠️ A marca é um RÓTULO, não uma credencial: quem tem a service role pode
 // mandar o cabeçalho que quiser. Ela só decide o texto de `source` no aviso;
 // nada de permissão depende dela. E o que uma automação faz continua saindo

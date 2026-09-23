@@ -27,6 +27,11 @@ import path from 'node:path';
 //      carimbo do ciclo que vai para a entrega (a cerca da limpeza); o cron —
 //      e só ele — reentrega o que ficou pendente; a poda poupa o pendente que
 //      ainda será tentado. Numa escrita separada, a janela de perda voltaria.
+//   4. (1040, revisão) A entrega RENOVA a posse por compare-and-swap logo
+//      antes do catálogo e dos disparos de cada conta, e limpa com o carimbo
+//      RENOVADO: o carimbo da reivindicação é do começo do ciclo, e o laço do
+//      dreno pode levar mais que o prazo da reentrega — sem renovar, a
+//      reentrega tomaria a linha que esta entrega ainda vai mandar.
 // ============================================================
 
 const src = path.join(__dirname, '..', '..');
@@ -168,6 +173,25 @@ describe('o aviso pendente (1040): a reivindicação, a reentrega e a poda', () 
   it('⚠️ a reentrega reivindica por compare-and-swap no carimbo que LEU', () => {
     expect(reentrega).toMatch(
       /\.eq\('id',\s*linha\.id\)\s*\.eq\('webhooks_pendente_desde',\s*linha\.webhooks_pendente_desde as string\)/
+    );
+  });
+
+  it('⚠️ a entrega renova a posse ANTES do catálogo e dos disparos, e limpa com o carimbo RENOVADO', () => {
+    const entrega = fonte('lib/webhooks/entregar-eventos-de-funil.ts');
+    const daConta = entrega.slice(entrega.indexOf('async function entregarDaConta'));
+    const renova = daConta.indexOf('await renovarPosse(');
+    expect(renova).toBeGreaterThan(-1);
+    expect(renova).toBeLessThan(daConta.indexOf('await lerCatalogo('));
+    expect(renova).toBeLessThan(daConta.indexOf('dispatchWebhookEvent('));
+    // O catálogo e os disparos só alcançam o que a renovação devolveu.
+    expect(daConta).toMatch(/lerCatalogo\(\s*db\s*,\s*conta\s*,\s*minhas\s*\)/);
+    expect(daConta).toMatch(/emParalelo\(\s*minhas\s*,/);
+    expect(daConta).toMatch(/encerrarPendencia\(\s*db\s*,\s*\[linha\.id\]\s*,\s*posse\.carimbo\s*\)/);
+    // A renovação é o compare-and-swap no carimbo recebido.
+    const inicioRenova = entrega.indexOf('async function renovarPosse');
+    const funcaoRenova = entrega.slice(inicioRenova, entrega.indexOf('async function', inicioRenova + 1));
+    expect(funcaoRenova).toMatch(
+      /\.update\(\{\s*webhooks_pendente_desde:\s*novo\s*\}\)\s*\.in\('id',\s*ids\)\s*\.eq\('webhooks_pendente_desde',\s*carimbo\)/
     );
   });
 

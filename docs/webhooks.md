@@ -196,10 +196,17 @@ mudança (`source`). O formato completo, com exemplo, está em
   então não quer dizer "lead que chegou"; `automation` são os passos
   "Criar negócio", "Mover card de etapa" e "Marcar ganho ou perdido" das
   automações; `api` é a API de negócios (`POST`/`PATCH /api/v1/deals`) —
-  filtre esse valor se o seu fluxo mover o card pela API, senão ele entra em
-  laço —; e `system` é o resto (uma correção feita direto no banco, por
-  exemplo). Até a migration `1040`, `system` misturava a API com os passos
-  de mover e marcar das automações.
+  filtre esse valor se o seu fluxo mover o card pela API, senão ele reage ao
+  próprio movimento —; e `system` é o resto (uma correção feita direto no
+  banco, por exemplo). Até a migration `1040`, `system` misturava a API com
+  os passos de mover e marcar das automações: quem filtrava `system` troca
+  o filtro para `api`.
+  ⚠️ O filtro **não** corta o laço que passa por uma automação do CRM: se
+  uma automação da etapa para onde o seu fluxo leva o card o devolver à
+  etapa que o fluxo observa, esse movimento chega como `automation`, o
+  fluxo move o card de novo — e a guarda de ciclo do CRM não enxerga esse
+  vaivém, porque cada escrita pela API começa um encadeamento novo. Confira
+  as automações da etapa de destino antes de montar o fluxo.
 - **`channel_id` pode vir vazio**: é o número da conversa do contato no
   momento do movimento, e o lead que ainda não conversou por nenhuma conexão
   não tem um — o que chegou por webhook recebido (Typebot) ou pelo Calendly

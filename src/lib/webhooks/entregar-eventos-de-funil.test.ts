@@ -30,13 +30,18 @@ interface Consulta {
   update?: Linha;
 }
 
-function bancoFalso(tabelas: Record<string, Linha[]>, falham: string[] = []) {
+function bancoFalso(
+  tabelas: Record<string, Linha[]>,
+  falham: string[] = [],
+  /** Falha só a consulta que casar — para derrubar UMA escrita da tabela, não todas. */
+  falhaSe: (c: Consulta) => boolean = () => false
+) {
   const consultas: Consulta[] = [];
   const from = (tabela: string) => {
     const c: Consulta = { tabela, select: '', eq: [], in: [], overlaps: [] };
     consultas.push(c);
     const resultado = () => {
-      if (falham.includes(tabela)) return { data: null, error: { message: `${tabela} caiu` } };
+      if (falham.includes(tabela) || falhaSe(c)) return { data: null, error: { message: `${tabela} caiu` } };
       let linhas = (tabelas[tabela] ?? []).filter(
         (l) =>
           c.eq.every(([k, v]) => l[k] === v) &&
@@ -46,8 +51,10 @@ function bancoFalso(tabelas: Record<string, Linha[]>, falham: string[] = []) {
           )
       );
       if (c.update) {
+        // O filtro acima rodou sobre os valores de ANTES: é o compare-and-swap.
         for (const l of linhas) Object.assign(l, c.update);
-        return { data: null, error: null };
+        // Com `.select(...)`, o PostgREST devolve as linhas que o UPDATE alcançou.
+        return { data: c.select ? linhas.map((l) => ({ id: l.id })) : null, error: null };
       }
       if (c.range) linhas = linhas.slice(c.range[0], c.range[1] + 1);
       return { data: linhas, error: null };
@@ -125,8 +132,24 @@ const GANHO = evento({
   criado_em: '2026-09-23T14:10:00.000Z',
 });
 
+/**
+ * Todos os ids de evento que os testes usam: a fila padrão os traz PENDENTES
+ * com o carimbo da reivindicação, que é o estado em que o dreno entrega — sem
+ * isso a renovação da posse não acharia linha e nada sairia.
+ */
+const IDS_DE_TESTE = [
+  ...new Set([
+    'evt-criado',
+    'evt-movido',
+    'evt-ganho',
+    'evt-outra',
+    ...Array.from({ length: 11 }, (_, i) => `evt-${i}`),
+  ]),
+];
+
 function tabelas(parcial: Record<string, Linha[]> = {}): Record<string, Linha[]> {
   return {
+    cb_automation_events: fila(IDS_DE_TESTE),
     webhook_endpoints: [
       { account_id: CONTA, is_active: true, events: ['deal.created', 'deal.stage_changed', 'deal.status_changed'] },
     ],
@@ -467,9 +490,12 @@ describe('entregarEventosDeFunil — a pendência do aviso (1040)', () => {
     const { db, escritas } = bancoFalso(t);
     await entregar(db, [CRIADO, MOVIDO, GANHO]);
 
-    expect(escritas().map((e) => e.in)).toEqual([
-      [['id', ['evt-criado', 'evt-movido']]],
-      [['id', ['evt-ganho']]],
+    // Encerra o que ninguém assina (cerca da reivindicação), renova a posse do
+    // assinado e só depois do disparo o encerra (cerca RENOVADA).
+    expect(escritas().map((e) => [e.in, e.eq])).toEqual([
+      [[['id', ['evt-criado', 'evt-movido']]], [['webhooks_pendente_desde', CARIMBO]]],
+      [[['id', ['evt-ganho']]], [['webhooks_pendente_desde', CARIMBO]]],
+      [[['id', ['evt-ganho']]], [['webhooks_pendente_desde', escritas()[1].update!.webhooks_pendente_desde]]],
     ]);
     expect(ordem).toEqual(['disparo:evt-ganho', 'pendente:true']);
     expect(pendentes(t)).toEqual([]);
@@ -518,30 +544,102 @@ describe('entregarEventosDeFunil — a pendência do aviso (1040)', () => {
       const { db, escritas } = bancoFalso(t, [tabela]);
       await entregar(db, [CRIADO, MOVIDO]);
       expect(chamadas()).toHaveLength(0);
-      expect(escritas()).toHaveLength(0);
+      // Nenhuma escrita ENCERRA (a renovação da posse, se houve, mantém pendente).
+      expect(escritas().filter((e) => e.update!.webhooks_pendente_desde === null)).toHaveLength(0);
       expect(pendentes(t)).toEqual(['evt-criado', 'evt-movido']);
     }
   );
 
-  it('⚠️ a cerca: linha que a REENTREGA tomou (outro carimbo) não é limpa por esta entrega', async () => {
+  it('⚠️ a cerca: linha que a REENTREGA tomou (outro carimbo) não é entregue nem limpa por esta entrega', async () => {
     const t = tabelas({
       cb_automation_events: [
         ...fila(['evt-criado']),
-        // A reentrega recarimbou esta enquanto a entrega antiga corria.
+        // A reentrega recarimbou esta enquanto o ciclo desta entrega ainda corria.
         ...fila(['evt-movido'], '2026-09-23T14:25:00.000Z'),
       ],
     });
     const { db } = bancoFalso(t);
     await entregar(db, [CRIADO, MOVIDO]);
-    expect(chamadas()).toHaveLength(2);
+    // Sem a renovação da posse, as DUAS saíam daqui — e a reentrega mandava
+    // `evt-movido` de novo: o aviso em dobro sem ninguém ter morrido.
+    expect(chamadas().map((c) => (c[4] as { id: string }).id)).toEqual(['evt-criado']);
     expect(pendentes(t)).toEqual(['evt-movido']);
+    expect(t.cb_automation_events.find((l) => l.id === 'evt-movido')!.webhooks_pendente_desde).toBe(
+      '2026-09-23T14:25:00.000Z'
+    );
+  });
+
+  it('⚠️ renova a posse ANTES do catálogo e dos disparos: compare-and-swap no carimbo recebido', async () => {
+    const t = tabelas({ cb_automation_events: fila(['evt-criado', 'evt-movido']) });
+    const { db, consultas } = bancoFalso(t);
+    let consultasNoPrimeiroDisparo = -1;
+    vi.mocked(dispatchWebhookEvent).mockImplementation(async () => {
+      if (consultasNoPrimeiroDisparo < 0) consultasNoPrimeiroDisparo = consultas.length;
+      return 'tentado';
+    });
+    await entregar(db, [CRIADO, MOVIDO]);
+
+    const renovacao = consultas.findIndex((c) => c.update && c.update.webhooks_pendente_desde !== null);
+    expect(renovacao).toBeGreaterThan(consultas.findIndex((c) => c.tabela === 'webhook_endpoints'));
+    expect(renovacao).toBeLessThan(consultas.findIndex((c) => c.tabela === 'deals'));
+    expect(renovacao).toBeLessThan(consultasNoPrimeiroDisparo);
+    const r = consultas[renovacao];
+    expect(r).toMatchObject({
+      tabela: 'cb_automation_events',
+      in: [['id', ['evt-criado', 'evt-movido']]],
+      eq: [['webhooks_pendente_desde', CARIMBO]],
+      select: 'id',
+    });
+    const renovado = r.update!.webhooks_pendente_desde as string;
+    expect(renovado).not.toBe(CARIMBO);
+    expect(Number.isFinite(Date.parse(renovado))).toBe(true);
+    // A limpeza usa o carimbo RENOVADO.
+    const limpezas = consultas.filter((c) => c.update && c.update.webhooks_pendente_desde === null);
+    expect(limpezas).toHaveLength(2);
+    for (const l of limpezas) expect(l.eq).toEqual([['webhooks_pendente_desde', renovado]]);
+    expect(pendentes(t)).toEqual([]);
+  });
+
+  it('duas contas no lote: cada uma renova a SUA posse logo antes da sua entrega', async () => {
+    const t = tabelas();
+    t.webhook_endpoints.push({ account_id: OUTRA_CONTA, is_active: true, events: ['deal.created'] });
+    const daOutra = evento({ id: 'evt-outra', account_id: OUTRA_CONTA, from_pipeline_id: null, from_stage_id: null, deal_id: 'd-9', contact_id: null });
+    const { db, consultas } = bancoFalso(t);
+    const consultasAoDisparar: number[] = [];
+    vi.mocked(dispatchWebhookEvent).mockImplementation(async () => {
+      consultasAoDisparar.push(consultas.length);
+      return 'tentado';
+    });
+    await entregar(db, [MOVIDO, daOutra]);
+
+    const renovacoes = consultas
+      .map((c, i) => ({ c, i }))
+      .filter(({ c }) => c.update && c.update.webhooks_pendente_desde !== null);
+    expect(renovacoes.map(({ c }) => c.in)).toEqual([[['id', ['evt-movido']]], [['id', ['evt-outra']]]]);
+    // A posse da segunda conta é renovada DEPOIS do disparo da primeira — não
+    // no começo do lote, senão a entrega lenta da primeira a envelheceria.
+    expect(renovacoes[1].i).toBeGreaterThanOrEqual(consultasAoDisparar[0]);
+    expect(pendentes(t).filter((id) => id === 'evt-movido' || id === 'evt-outra')).toEqual([]);
+  });
+
+  it('⚠️ a renovação da posse que FALHA: nada sai, e as linhas ficam pendentes com o carimbo da reivindicação', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const t = tabelas({ cb_automation_events: fila(['evt-criado', 'evt-movido']) });
+    const { db } = bancoFalso(t, [], (c) => !!c.update && c.update.webhooks_pendente_desde !== null);
+    await entregar(db, [CRIADO, MOVIDO]);
+    expect(chamadas()).toHaveLength(0);
+    expect(pendentes(t)).toEqual(['evt-criado', 'evt-movido']);
+    expect(t.cb_automation_events.every((l) => l.webhooks_pendente_desde === CARIMBO)).toBe(true);
+    expect(String(erro.mock.calls[0][0])).toMatch(/renovação da posse falhou — 2 aviso\(s\)/);
   });
 
   it('a escrita da limpeza que falha não lança nem impede a entrega (a linha só fica pendente)', async () => {
     const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { db } = bancoFalso(tabelas(), ['cb_automation_events']);
+    const t = tabelas();
+    const { db } = bancoFalso(t, [], (c) => !!c.update && c.update.webhooks_pendente_desde === null);
     await expect(entregar(db, [MOVIDO])).resolves.toBeUndefined();
     expect(chamadas()).toHaveLength(1);
+    expect(pendentes(t)).toContain('evt-movido');
     expect(String(erro.mock.calls[0][0])).toMatch(/continuam marcados como pendentes/);
   });
 });

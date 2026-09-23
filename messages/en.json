@@ -4054,7 +4054,7 @@
         "etapa": {
           "titulo": "When a lead changes stage, notify n8n",
           "texto": "Register an endpoint with the <code>deal.stage_changed</code> event and, in n8n, filter by the stage id (IDs tab) in an <b>IF</b> node:",
-          "laco": "⚠️ If your flow moves the card through the API, that produces another notification, with <code>source</code> equal to <code>api</code>, and the flow can loop. The filter above drops it. The automations' “Move deal to stage” step comes out as <code>automation</code> and still gets through."
+          "laco": "⚠️ If your flow moves the card through the API, that produces another notification, with <code>source</code> equal to <code>api</code>, and the flow would react to its own move. The filter above drops it. The automations' “Move deal to stage” step comes out as <code>automation</code> and still gets through — so the filter does not stop a loop that goes through an automation: if an automation on the stage your flow moves the card to sends it back to the stage the flow watches, the flow moves it again, and the CRM's cycle guard does not see that back-and-forth. Check the automations on the destination stage."
         },
         "negocio": {
           "titulo": "Create a deal in a stage",

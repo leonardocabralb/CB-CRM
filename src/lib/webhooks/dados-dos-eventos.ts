@@ -72,7 +72,9 @@ export interface ConversationCreatedData {
  *   disparou (a cadeia e o `source` são conferidos ANTES do cabeçalho);
  * - `api`: a API pública de negócios (`POST`/`PATCH /api/v1/deals`), pelo
  *   cliente próprio das rotas v1 (`src/lib/api/v1/cliente-da-api.ts`). É o
- *   que o integrador filtra para não entrar em laço;
+ *   que o integrador filtra para não reagir ao PRÓPRIO movimento — não corta
+ *   o laço que atravessa uma automação do CRM (ela sai `automation`, e a
+ *   escrita pela API começa uma cadeia nova, que `fechaCiclo` não liga);
  * - `system`: a sobra — escrita em service role fora desses caminhos (SQL à
  *   mão, por exemplo). Até a 1040 este valor misturava a API com os passos
  *   "Mover"/"Marcar" das automações.

@@ -315,10 +315,13 @@ export function assinaturaNoN8n(m: Marcadores): string {
 
 /**
  * O filtro da receita "quando o lead mudar de etapa". O `source` diferente
- * de `api` é o que corta o laço: mover o card pela API gera outro aviso, com
- * `source: "api"` (migration 1040). Até ali o filtro era `system`, que
- * descartava junto o "Mover card" das automações — o Calendly levando o lead
- * a "Reunião Agendada", justamente o evento que se quer receber.
+ * de `api` é o que corta o laço do PRÓPRIO movimento: mover o card pela API
+ * gera outro aviso, com `source: "api"` (migration 1040). Até ali o filtro
+ * era `system`, que descartava junto o "Mover card" das automações — o
+ * Calendly levando o lead a "Reunião Agendada", justamente o evento que se
+ * quer receber. ⚠️ O laço que ATRAVESSA uma automação do CRM (o fluxo move
+ * para Y, uma automação de Y devolve o card) passa por este filtro; o texto
+ * `receitas.etapa.laco` diz isso na tela.
  */
 export function filtroDeEtapaNoN8n(m: Marcadores): string {
   return [

@@ -20,8 +20,9 @@
 // (`.eq('webhooks_pendente_desde', <o valor que o SELECT viu>)`), a mesma
 // cerca de posse do Calendly e do Radar: dois ciclos do cron ao mesmo tempo
 // (no deploy `start-first` há dois processos vivos) leem a mesma linha, e só
-// um leva. O carimbo NOVO é também a cerca com que a entrega limpa depois —
-// a entrega antiga, se ainda estiver viva, não apaga a pendência desta.
+// um leva. O carimbo NOVO é também a cerca com que a entrega renova a posse
+// e limpa depois — a entrega antiga, se ainda estiver viva, não renova nem
+// apaga a pendência desta (e, sem posse renovada, não a manda de novo).
 //
 // ⚠️ SEM teto de IDADE (decisão do operador: evento atrasado sai sempre, com
 // a hora real em `occurred_at`). O teto é de TENTATIVAS: passado dele, a
@@ -41,11 +42,16 @@ import type { CbAutomationEvent } from '@/types';
 /**
  * Quanto tempo uma linha pode ficar pendente antes de ser reentregue.
  *
- * Folga larga sobre o pior caso LEGÍTIMO em processo: no cron, a entrega só
- * começa depois do ciclo inteiro (até ~50 s, o `-m` do curl do agendador) e
- * custa até ~65 s por conta com um endpoint lento. Curto demais, a reentrega
- * tomaria linha que a entrega original ainda está mandando — e o aviso sairia
- * duas vezes sem ninguém ter morrido.
+ * ⚠️ O prazo NÃO cobre o ciclo de quem reivindicou — e não conseguiria: o
+ * laço do dreno roda as automações de até 50 eventos (com a Evolution muda,
+ * 15 s por envio: 50 × 15 s já passa de 10 min), o `-m` do curl do agendador
+ * não para o handler, e a entrega só começa depois do ciclo inteiro. Quem
+ * fecha essa janela é a RENOVAÇÃO da posse logo antes de entregar cada conta
+ * (`renovarPosse`, em `entregar-eventos-de-funil.ts`). O prazo cobre só o que
+ * vem DEPOIS dela: a entrega de uma conta, até ~65 s com um endpoint lento
+ * mais as leituras. Curto demais, a reentrega tomaria linha que a entrega
+ * original ainda está mandando — e o aviso sairia duas vezes sem ninguém ter
+ * morrido.
  */
 export const PRAZO_PARA_REENTREGAR_MS = 10 * 60 * 1000;
 

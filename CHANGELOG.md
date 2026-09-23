@@ -63,7 +63,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   automações, e filtrar um (para o fluxo do n8n não entrar em laço)
   descartava o outro — o Calendly levando o lead a "Reunião Agendada", por
   exemplo. Agora a API sai `api`, os passos de mover e marcar das
-  automações saem `automation`, e `system` fica só para o resto. E o aviso
+  automações saem `automation`, e `system` fica só para o resto — quem
+  filtrava `system` no fluxo troca o filtro para `api`. E o aviso
   que o servidor não chegou a tentar entregar (reinício no meio, leitura do
   banco que falhou) é reenviado uns 10 minutos depois, com o **mesmo `id`**
   — descarte repetição por ele. **Migration necessária:**

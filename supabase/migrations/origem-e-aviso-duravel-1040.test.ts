@@ -124,4 +124,12 @@ describe('1040 — o aviso durável', () => {
   it('⚠️ a ordem de deploy está escrita no cabeçalho (sem a coluna, as automações de funil param)', () => {
     expect(cru).toMatch(/ORDEM DE DEPLOY: ESTA MIGRATION VAI PARA A PRODUÇÃO ANTES DO MERGE/)
   })
+
+  it('⚠️ …e nela, a MEDIÇÃO da origem `api` antes do merge (a conferência põe a GUC à mão)', () => {
+    // A premissa (gateway repassa o cabeçalho, PostgREST o publica em
+    // `request.headers`) é documentada, não medida; sem ela a receita
+    // `source != api` deixa de cortar o laço — a queda não é inofensiva.
+    expect(cru).toMatch(/ENTRE APLICAR E MESCLAR, MEDIR A ORIGEM `api`/)
+    expect(cru).toMatch(/Sem `api` ali, NÃO mesclar/)
+  })
 })

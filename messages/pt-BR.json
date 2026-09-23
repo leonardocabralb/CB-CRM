@@ -4047,7 +4047,7 @@
         "etapa": {
           "titulo": "Quando o lead mudar de etapa, avisar o n8n",
           "texto": "Cadastre um endereço com o evento <code>deal.stage_changed</code> e, no n8n, filtre pelo id da etapa (aba IDs) num nó <b>IF</b>:",
-          "laco": "⚠️ Se o seu fluxo mover o card pela API, isso gera outro aviso, com <code>source</code> igual a <code>api</code>, e o fluxo pode entrar em laço. O filtro acima o descarta. O passo “Mover card de etapa” das automações sai como <code>automation</code> e continua chegando."
+          "laco": "⚠️ Se o seu fluxo mover o card pela API, isso gera outro aviso, com <code>source</code> igual a <code>api</code>, e o fluxo reagiria ao próprio movimento. O filtro acima o descarta. O passo “Mover card de etapa” das automações sai como <code>automation</code> e continua chegando — por isso o filtro não corta o laço que passa por uma automação: se uma automação da etapa para onde o fluxo leva o card o devolver à etapa observada, o fluxo o move de novo, e a guarda de ciclo do CRM não enxerga esse vaivém. Confira as automações da etapa de destino."
         },
         "negocio": {
           "titulo": "Criar um negócio numa etapa",

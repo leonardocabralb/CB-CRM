@@ -60,10 +60,12 @@ import { cancelarEsperasAoSairDaEtapa } from './so-na-etapa'
 //     cai no `await`, como era antes.
 //   - ⚠️⚠️ O AVISO É DURÁVEL desde a 1040. A reivindicação grava, NA MESMA
 //     escrita de `processado_em`, `webhooks_pendente_desde = carimbo` (UM
-//     carimbo por ciclo, passado à entrega); a entrega limpa a coluna, com a
-//     cerca `= carimbo`, quando a tentativa aconteceu. Processo que morre
-//     entre reivindicar e entregar (SIGKILL do rollout, queda) deixa a linha
-//     PENDENTE, e o cron a reentrega com o MESMO id
+//     carimbo por ciclo, passado à entrega); a entrega RENOVA a posse
+//     (compare-and-swap no carimbo) logo antes de entregar cada conta — o
+//     laço abaixo pode levar mais que o prazo da reentrega — e limpa a
+//     coluna, com a cerca do carimbo renovado, quando a tentativa aconteceu.
+//     Processo que morre entre reivindicar e entregar (SIGKILL do rollout,
+//     queda) deixa a linha PENDENTE, e o cron a reentrega com o MESMO id
 //     (`reentregar-eventos-de-funil.ts`). Até a 1040 essa janela perdia os
 //     avisos sem rastro — e ela CRESCEU com o `after()` no caminho do cron,
 //     porque a entrega só começa quando a resposta sai.
