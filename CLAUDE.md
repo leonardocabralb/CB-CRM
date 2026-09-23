@@ -80,7 +80,10 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API.
   contra 3.070, e `src/i18n/request.ts` carrega o arquivo se ele existir —
   então `NEXT_PUBLIC_APP_LOCALE=ko` entregava metade da tela como caminho
   de chave cru. Sem o arquivo, aquele valor cai em inglês. **Todo merge do
-  upstream vai trazê-lo de volta: apagar de novo.**
+  upstream vai trazê-lo de volta: apagar de novo.** O mesmo vale para o
+  `pt.json` e o `es.json`, que o merge #259 trouxe (1.740 chaves) e a
+  correção dele apagou em 23/09/2026 — `src/i18n/dicionarios-servidos.test.ts`
+  reprova qualquer arquivo em `messages/` além de `en.json` e `pt-BR.json`.
 - `mcp-server/` — subprojeto separado (tem `package.json` próprio) que expõe o
   CRM via MCP. Rodar `npm` dentro dele, não na raiz.
 - `docs/` — a documentação ENTREGUE a quem instala o sistema: `README.md`
@@ -211,28 +214,78 @@ levar o texto novo dele para os **dois** dicionários).
   reprova quem a trouxer de volta) e a 3-III põe a API v1 e o disparo na
   mesma régua. A chave `phoneNeedsCountryCode` saiu dos dois dicionários, e o
   `csvInvalidPhones` ficou com o texto da nossa régua.
-- ⚠️ **Migrations do upstream renumeradas de novo** (a 037 já avisava que isto
-  volta): `040_contact_business_scoped_user_id` → **0043**,
-  `042_message_failure_reason` → **0045**, com o cabeçalho de dentro corrigido
-  junto (ele cita o próprio número). A `0044` NÃO existe: era a
-  `041_fix_broadcast_contact_id_ambiguity` deles, e o teste
-  `funcao-de-disparo-1030.test.ts` manda **APAGAR**, não renumerar — ela
-  redefine `create_broadcast_with_recipients` com 8 parâmetros, desfazendo a
-  forma final de 9 que a 1030 fixou. A lacuna no número é de propósito.
-- ⚠️ **0043 e 0045 NÃO estão aplicadas em produção** (o conector do Supabase
-  não estava autenticado na sessão do merge). Nenhum código lê o que elas
-  criam — `failure_reason` não aparece em `src/` —, então mesclar não quebra
-  nada; mas elas precisam ser aplicadas para o banco não divergir do
-  repositório.
+- ⚠️ **As migrations do upstream viraram 1038 e 1039** (PR de correções do
+  #259, 23/09/2026): `040_contact_business_scoped_user_id` →
+  `1038_cb_contato_bsuid` e `042_message_failure_reason` →
+  `1039_cb_motivo_da_falha_da_mensagem`, com o cabeçalho reescrito para a
+  nossa realidade e `lock_timeout`. O #259 as trouxera como `0043`/`0045`,
+  seguindo a linha "Migrations deste plano" do plano — que contradizia a
+  regra do `db push` escrita neste arquivo (número NOVO vem depois do maior
+  no `main`; a instalação que atualiza por `supabase db push` recusa o
+  número fora de ordem). Nenhuma das duas tinha sido aplicada em banco
+  nenhum, então renumerar não custou nada. A `041_fix_broadcast_contact_id_ambiguity`
+  deles continua APAGADA, não renumerada — ela redefine
+  `create_broadcast_with_recipients` com 8 parâmetros, desfazendo a forma
+  final de 9 que a 1030 fixou (pino `funcao-de-disparo-1030.test.ts`).
+  ⚠️ Com o cabeçalho reescrito, o Git NÃO pareia a 040/042 com a 1038/1039
+  (medido: apagar + criar). Uma edição do original na 040/042 volta como
+  conflito modify/delete, com o arquivo de 3 dígitos na árvore: apagar de
+  novo e portar à mão numa migration nova. Quem recebe edição do original EM
+  SILÊNCIO são as nossas `0040`–`0042` (as 037–039 deles, renomeadas a
+  92–94% de semelhança) — conferir `git diff --summary` em
+  `supabase/migrations/` a cada merge.
+- ⚠️ **NINGUÉM grava as colunas da 1038 e da 1039 ainda.** Gravar
+  o motivo da falha é a Fase 5 do plano, e a identidade BSUID, a Fase 11. O
+  único leitor hoje é `wa_username` no hook de notificação do navegador, que
+  não está montado. (A nota original deste merge dizia "nenhum código lê o
+  que elas criam — `failure_reason` não aparece em `src/`": nenhuma coluna se
+  chama `failure_reason`, e o hook lia `wa_username`.)
 - **`ci.yml` e `migrations.yml` apagados de novo**, como a nota do
-  `pipeline.yml` manda. Vão voltar no próximo merge.
+  `pipeline.yml` manda.
 - **Dicionários: UNIÃO, não substituição.** Nosso lado venceu o `en.json`
   inteiro, o que apagaria as chaves novas deles — e os componentes deles que
   entraram sem conflito as pedem, virando `MISSING_MESSAGE` na tela. Foram
-  195 chaves reunidas no `en.json` e 242 traduzidas no `pt-BR.json`. ⚠️ Duas
+  **240** chaves acrescentadas em cada dicionário (a nota original dizia 195
+  e 242; o `messages.test.ts` reprova diferença entre os dois). Umas ~129
+  delas não têm uso nenhum (heurística da auditoria) e ficam para a Fase 10;
+  as que contrariavam regra escrita já saíram: `Sidebar.title` (recriada) e
+  `Settings.invite.fallbackAccountName` ("our wacrm account"). ⚠️ Duas
   seções que vieram na união (`Settings.sections.whatsapp` e `.deals`) não
   existem no nosso `settings-sections.ts` e foram removidas — o
   `rotulo-da-secao.test.ts` reprova seção órfã.
+- ⚠️⚠️ **"O `main` vence por arquivo inteiro" valeu só para os 43 conflitos.**
+  Dos 23 arquivos que os dois lados mudaram e o Git mesclou SOZINHO, 16
+  ficaram com trechos do original (7 voltaram ao nosso); dos 43 que só o
+  original mudou, 37 entraram inteiros. Foi assim que
+  a metade do #586 entrou (o `+` obrigatório no formulário de contato e na API
+  de disparo) e que o `pt.json`/`es.json`, o cartão de notificação e a doc
+  `whatsapp-connection-troubleshooting.md` chegaram ao `main`. A auditoria de
+  23/09/2026 (10 agentes, cinco lentes com um cético cada) está registrada no
+  plano; o que ela achou e foi consertado:
+  - `messages/pt.json` e `messages/es.json` APAGADOS (1.740 chaves contra mais
+    de 4.000 — a armadilha do `ko.json`; pino em
+    `src/i18n/dicionarios-servidos.test.ts`) e o `docs/docker.md`, que o
+    #259 fez listar `en | ko | pt | es`, passou a dizer `en | pt-BR`.
+  - O cartão "Notificações do navegador" SAIU de *Seu perfil*: o ouvinte que
+    dispara os avisos não estava montado em lugar nenhum, e a pessoa ligava a
+    chave, recebia a notificação de teste e nunca a de uma mensagem real. Os
+    arquivos ficam (`browser-notify.ts`, o hook, o ouvinte, o cartão) para a
+    Fase 8, que monta o ouvinte DENTRO da `<PortaDeEntrada>`, com o recorte
+    do perfil e grupo de fora.
+  - A `docs/whatsapp-connection-troubleshooting.md` foi APAGADA: em inglês,
+    com "wacrm" sete vezes, descrevendo a tela legada que o fork não monta. A
+    Fase 7 a reescreve para *Conexões*, como a 3c fez com o `multi-waba.md`.
+  - As duas rotas que só nós guardamos por papel (`whatsapp/config` e
+    `whatsapp/templates/[id]`) sobreviveram, mas não tinham teste: pino em
+    `src/app/api/whatsapp/guarda-de-papel-so-nossa.test.ts`.
+- ⚠️⚠️ **Este merge FECHOU a ancestralidade: `aee1b01f` é ancestral do
+  `main`.** O próximo merge do original parte dali, e o que a resolução deste
+  descartou (tudo o que caiu no "fica o nosso") NÃO volta mais por merge —
+  sem conflito e sem aviso. A Fase 12 do plano (o merge de ancestralidade)
+  aconteceu sem querer, e as Fases 4 a 11 viraram portes MANUAIS, com o
+  inventário do que ficou de fora no plano. Pela mesma razão, as notas deste
+  arquivo que dizem "todo merge do upstream vai trazer X de volta" valem só
+  para mudança do original DEPOIS de `aee1b01f`.
 
 **Decisões fixadas no merge de 2026-08-26** (releia antes do próximo merge, são
 as que voltam a conflitar):
@@ -415,6 +468,7 @@ upstream sobrescrevê-los:
 | `src/app/api/v1/contacts/route.ts`, `[id]/route.ts`, `[id]/tags/route.ts`, `src/lib/api/v1/contacts.ts` (23/09/2026) | a etiqueta por NOME OU ID (`lerTagsPedidas` antes de qualquer escrita, `TagReferenceError`), o 400 para item de `tags` que não é string e para id de contato malformado. Ver "Tag ADITIVA na API v1" |
 | `src/lib/ai/types.ts`, `config.ts`, `structured.ts`, `defaults.ts`, `src/lib/cb-radar/worker.ts`, `src/app/api/ai/config/route.ts` | o modelo do Radar separado do modelo de chat (946): `radarModel` no tipo e em `CONFIG_COLUMNS`, o parâmetro `model` do `generateStructured`, `AI_PROVIDER_MODELS`, e a validação do modelo do Radar no save |
 | `src/components/settings/ai-config.tsx` | `<datalist>` de sugestão no campo Modelo e a frase de escopo com link para Integrações |
+| `src/components/settings/profile-form.tsx` (correção do #259, 23/09/2026) | o cartão `<BrowserNotificationsCard>` do original (#516) NÃO é montado: o ouvinte que dispara os avisos não está montado em lugar nenhum, e o cartão prometia notificações que nunca chegavam. Volta na Fase 8, junto com o ouvinte (dentro da `<PortaDeEntrada>`). Pino em `src/components/settings/cartao-de-notificacao.chamadores.test.ts` — um porte de tradução que traga a linha de volta sem o ouvinte reprova |
 | `src/app/(dashboard)/dashboard-shell.tsx` (Meu dia, 12/09/2026) | envolve o layout INTEIRO (menu, cabeçalho, página, heartbeat) na `<PortaDeEntrada key={user.id}>`, abaixo do `if (!user) return null` — nunca renderizar pedaço do app fora dela; e o "Loading..." traduzido (`DashboardShell.loading`) |
 | `dashboard-shell.tsx`, `inbox/page.tsx`, `message-composer.tsx`, `message-thread.tsx` e `src/app/globals.css` (teclado do celular, 14/09/2026) | a altura por `var(--altura-visivel,100dvh)` na casca e na caixa de entrada (um merge que devolva `h-screen`/`100vh` devolve o cabeçalho sumindo com o teclado) e o `useTelaAcimaDoTeclado()` na casca; no compositor, o Enter por `enterEnvia` e a dica por `useMediaQuery(MIDIA_DE_TOQUE)`; no fio, o `data-acima-do-teclado` na raiz, o `onTouchStart`/`onTouchMove` do contêiner (recolhe o teclado) e o `ResizeObserver` que mantém o fim; no CSS, a regra dos 16 px FORA de camada. Ver a seção "O teclado do celular" |
 | `src/hooks/use-auth.tsx` (Meu dia) | `sessionId` no contexto (o `session_id` do token, publicado no MESMO passo que `user`, no init e no listener) e o `signOut` do menu via `sairDesteAparelho` (escopo `local`, D4, 12/09/2026; erro vira toast e não navega) — além do que já era nosso (lente de simulação, perfis, `resolvedUserIdRef`) |
@@ -748,11 +802,13 @@ tinha relação com ele. O que morde código novo:
   `evolution_error`), e o `entrega_incerta` existe porque ela não se
   adivinha. `EvolutionApiError.status` é o que responde isso, e o erro
   chega INTEIRO ao motor porque `flows/meta-send.ts` o propaga cru.
-- ⚠️⚠️ **Só o transporte EVOLUTION retenta hoje.** Quem carrega o status
-  HTTP é `EvolutionApiError`; o cliente da Cloud API (`meta-api.ts`) lança
-  `Error` genérico, e sem status não dá para separar "a Meta recusou" de
-  "não sei se saiu" — a régua falha FECHADA e não repete. Quem quiser o
-  retry na Meta começa por dar um erro com status àquele cliente.
+- ⚠️⚠️ **Só o transporte EVOLUTION retenta hoje.** A régua
+  (`retentativa.ts`) só reconhece `EvolutionApiError`, que carrega o status
+  HTTP. Desde o merge #259 (23/09/2026) o cliente da Cloud API
+  (`meta-api.ts`) também lança um erro com status (`MetaApiError`, com
+  `httpStatus`), mas ligar a Meta à retentativa é decisão da Fase 7 do plano
+  do merge do upstream — é ali que se separa "a Meta recusou" (4xx) de "não
+  sei se saiu", e até lá a régua falha FECHADA e não repete.
 - ⚠️ **`PASSOS_DE_ENVIO` é allowlist**: passo novo nasce FORA, sem
   retentativa, até alguém decidir por escrito. Lista de exclusão faria o
   passo novo herdar o retry por esquecimento — que é como se manda mensagem
@@ -6897,8 +6953,13 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
   formato do nome de novo repete os três. Há teste cobrando o formato,
   a unicidade do número e ordem-por-nome == ordem-numérica
   (`supabase/migrations/nomes-das-migrations.test.ts`). **Todo merge do
-  upstream traz migration nova com 3 dígitos: renomeie para 4 no merge** — o
-  teste reprova até isso acontecer. Nas listas abaixo as migrations aparecem
+  upstream traz migration nova com 3 dígitos: RENUMERE para o número seguinte
+  ao maior do `main`, com prefixo `cb_` — nunca completando com zero à
+  esquerda** (`043_x` → `1040_cb_x`, não `0043_x`). O zero à esquerda ordena
+  a migration ANTES das já aplicadas, e o `supabase db push` de quem instalou
+  a recusa; foi o que o merge #259 fez com a `0043`/`0045` (renumeradas para
+  1038/1039 na correção dele). O teste reprova o arquivo de 3 dígitos E
+  qualquer número novo abaixo de 0900. Nas listas abaixo as migrations aparecem
   pelo número ("a 912"), que continua identificando o arquivo `0912_`.
   ⚠️⚠️ **UMA exceção: a `041_fix_broadcast_contact_id_ambiguity.sql` DELES é
   APAGADA, não renomeada** (não confundir com a nossa `0041_broadcast_resume`,
@@ -7603,6 +7664,19 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
     `20260923173150`), depois do replay do CI e antes do merge do PR #266;
     conferida no catálogo (`proacl` = `{postgres=X, service_role=X}`, `anon`
     e `authenticated` sem EXECUTE).
+  - **1038_cb_contato_bsuid** e **1039_cb_motivo_da_falha_da_mensagem** — as
+    `040`/`042` do original (#519/#533 e #535), que o merge #259 trouxe como
+    `0043`/`0045` sem aplicar em lugar nenhum; renumeradas pela regra do `db
+    push` na correção do #259. Três colunas anuláveis em `contacts` (BSUID,
+    BSUID do portfólio, nome de usuário) com um índice único PARCIAL, e três
+    em `messages` (código, título e detalhe da falha da Meta). Aditivas, com
+    `lock_timeout`. NINGUÉM as grava até as Fases 11 e 5 do plano do merge do
+    upstream. Aplicadas em 23/09/2026 pela Management API (histórico
+    `20260923202446` e `20260923202453`), depois do replay verde do CI e
+    antes do merge do #270, com a conferência de antes (nenhuma 1038/1039
+    ou 0043/0045 no histórico nem em branch remota, nenhuma das 6 colunas);
+    conferidas no catálogo depois: as 6 colunas e o índice
+    `(account_id, wa_user_id) WHERE (wa_user_id IS NOT NULL)`, UNIQUE.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

@@ -176,6 +176,31 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Mudado
 
+- **Atualização com o projeto original até `aee1b01f` (setembro/2026).**
+  Entraram as traduções das telas do original, o envio de vídeo e documento
+  como cabeçalho de modelo, a explicação dos erros de conexão com a Meta e
+  peças que as próximas versões vão ligar (as colunas do motivo da falha de
+  entrega, a notificação do navegador, o "digitando…", a identidade do
+  WhatsApp sem telefone). O que precisa saber quem instala:
+  - **`POST /api/v1/broadcasts` passou a recusar destinatário sem `+` e
+    código do país** (`"to": "+5583980000016"`). Os que vierem sem ele
+    contam como `rejected`, e sem nenhum válido a resposta é `400`. Uma
+    próxima versão volta a aceitar número brasileiro sem `+`, como o resto
+    do CRM.
+  - **O cabeçalho de vídeo e de documento também exige `META_APP_ID`**
+    (antes só o de imagem): o arquivo é enviado à Meta para a revisão do
+    modelo.
+  - **Este CRM não serve os dicionários `pt` e `es` que o original passou a
+    trazer** (cobriam menos da metade das telas). Com
+    `NEXT_PUBLIC_APP_LOCALE=pt` ou `es` a interface fica em inglês; o
+    português completo é `pt-BR`.
+  - **Migration necessária:** `supabase/migrations/1038_cb_contato_bsuid.sql`
+    e `1039_cb_motivo_da_falha_da_mensagem.sql` (o `supabase db push` as
+    aplica). Só acrescentam colunas vazias; nada as grava ainda.
+    ⚠️ Se você trouxe a versão anterior e rodou `supabase db push
+    --include-all`, o histórico ficou com `0043` e `0045`, que não existem
+    mais: rode antes `supabase migration repair --status reverted 0043 0045`.
+    As colunas ficam, e a 1038 e a 1039 não refazem nada.
 - **Nome e logo viraram configuração.** `NEXT_PUBLIC_APP_NAME` e
   `NEXT_PUBLIC_APP_LOGO_URL` definem como o CRM se apresenta. Sem valor,
   ele se chama "CRM". Nenhuma frase da interface cita mais o nome do
