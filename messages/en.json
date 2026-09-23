@@ -839,9 +839,7 @@
       "titulo": "New conversation",
       "descricao": "Opens the conversation so you can write in it. Nothing is sent yet.",
       "telefone": "Phone number",
-      "telefonePlaceholder": "55 11 91234-5678",
-      "telefoneDica": "With country and area code. Spaces and dashes are ignored.",
-      "telefoneInvalido": "This doesn't look like a phone number.",
+      "telefonePlaceholder": "(11) 91234-5678",
       "nome": "Name (optional)",
       "nomePlaceholder": "How this contact should appear",
       "canal": "Send from",
@@ -854,7 +852,6 @@
       "cancelar": "Cancel",
       "abertaNova": "Conversation opened.",
       "abertaExistente": "This contact already existed — opening their conversation.",
-      "erroTelefone": "Invalid phone number. Check the country and area code.",
       "erroCanal": "Pick which number to send from.",
       "erroCanalSumiu": "That connection no longer exists. Reload the page.",
       "erroGenerico": "Could not open the conversation. Try again."
@@ -943,7 +940,7 @@
     "telefone": {
       "curto": "The area code is missing. Write the number with it — e.g. (81) 98874-5316 — or, for another country, with + and the country code.",
       "invalido": "Invalid phone number. Brazilian: with the area code, e.g. (81) 98874-5316. Any other country: with + and the country code, e.g. +1 404 555 1234.",
-      "regra": "Phone with area code. A number without + is read as Brazilian and gets 55; for any other country, write + and the country code."
+      "regra": "Phone with area code. A number without + and without a country code is read as Brazilian and gets 55; for any other country, write + and the country code."
     },
     "detailView": {
       "tabs": {
@@ -4074,7 +4071,7 @@
         },
         "mensagem": {
           "titulo": "Send a message",
-          "texto": "By phone number, with country code. Without <code>channel_id</code>, it goes out on the number the conversation is already on (otherwise, the account default). With it, it goes out on that number and the conversation is PINNED to it — the client's reply comes back to the same number. A contact with no deal gets a card only if the connection the message went out on has a default pipeline. Scope <code>messages:send</code>."
+          "texto": "By phone number: with the area code — without + and without a country code it is read as Brazilian and gets 55, e.g. (81) 98874-5316; any other country, always with + and the country code. Without <code>channel_id</code>, it goes out on the number the conversation is already on (otherwise, the account default). With it, it goes out on that number and the conversation is PINNED to it — the client's reply comes back to the same number. A contact with no deal gets a card only if the connection the message went out on has a default pipeline. Scope <code>messages:send</code>."
         }
       },
       "erros": {
@@ -4957,7 +4954,8 @@
     "fixScheduledFailed": "{count, plural, =1 {1 scheduled message failed} other {{count} scheduled messages failed}}",
     "fixDeliveryUnsure": "{count, plural, =1 {1 scheduled message with unsure delivery — check before resending} other {{count} scheduled messages with unsure delivery — check before resending}}",
     "fixAutomationsFailed": "{count, plural, =1 {1 automation failed today} other {{count} automations failed today}}",
-    "fixIntakeStuck": "{count, plural, =1 {1 incoming booking or webhook didn't become a conversation} other {{count} incoming bookings or webhooks didn't become conversations}}",
+    "fixBookingsStuck": "{count, plural, =1 {1 Calendly booking didn't become a conversation} other {{count} Calendly bookings didn't become conversations}}",
+    "fixWebhooksStuck": "{count, plural, =1 {1 incoming webhook didn't become a conversation} other {{count} incoming webhooks didn't become conversations}}",
     "todayTitle": "The day so far",
     "todayMessages": "Messages sent",
     "todayTasks": "Tasks completed",

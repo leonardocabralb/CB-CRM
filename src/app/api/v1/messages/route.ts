@@ -12,7 +12,7 @@
 //
 // Body:
 //   {
-//     "to": "+14155550123",                 // required, E.164
+//     "to": "+14155550123",                 // required; telefoneDigitado (docs/public-api.md#phone-numbers)
 //     "type": "text",                        // text|template|image|video|document|audio (default: text)
 //     "text": "Hello!",                      // text body, or media caption
 //     "media_url": "https://…/file.pdf",     // required for image/video/document/audio

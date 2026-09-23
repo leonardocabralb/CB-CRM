@@ -29,9 +29,9 @@ export function registerWriteTools(server: McpServer, client: WacrmClient): void
     {
       title: 'Send WhatsApp message',
       description:
-        'Send a WhatsApp message to a phone number (E.164, e.g. +14155550123). The contact and conversation are found-or-created automatically. Use type "text" for a free-form message (only valid inside the 24-hour customer-service window), or "template" to send an approved template (required to open a new conversation). Media types (image/video/document/audio) require a media_url. This sends a real message to a real person — confirm the recipient and content with the user before calling.',
+        'Send a WhatsApp message to a phone number (with + and the country code, e.g. +14155550123, or a Brazilian number with its area code). The contact and conversation are found-or-created automatically. Use type "text" for a free-form message (only valid inside the 24-hour customer-service window), or "template" to send an approved template (required to open a new conversation). Media types (image/video/document/audio) require a media_url. This sends a real message to a real person — confirm the recipient and content with the user before calling.',
       inputSchema: {
-        to: z.string().describe('Recipient phone number in E.164 format, e.g. +14155550123.'),
+        to: z.string().describe('Recipient phone number. With + and the country code (e.g. +14155550123); a Brazilian number may be written without + but with its area code (e.g. (81) 98874-5316, stored as 5581988745316).'),
         type: z
           .enum(['text', 'template', 'image', 'video', 'document', 'audio'])
           .default('text')
@@ -68,9 +68,9 @@ export function registerWriteTools(server: McpServer, client: WacrmClient): void
     {
       title: 'Create contact',
       description:
-        'Create a contact by phone number (E.164, required). Find-or-create: if a contact with that phone already exists it is returned instead of a new one, and name, email and company are ignored — but tags, when passed, REPLACE that existing contact’s whole tag set unless tags_mode is "add". Optional: name, email, company, tags (tag names or tag ids from the account’s tag list; new names are created, an id that is not a tag of this account is rejected), and tags_mode.',
+        'Create a contact by phone number (required; with + and the country code, or a Brazilian number with its area code). Find-or-create: if a contact with that phone already exists it is returned instead of a new one, and name, email and company are ignored — but tags, when passed, REPLACE that existing contact’s whole tag set unless tags_mode is "add". Optional: name, email, company, tags (tag names or tag ids from the account’s tag list; new names are created, an id that is not a tag of this account is rejected), and tags_mode.',
       inputSchema: {
-        phone: z.string().describe('Phone number in E.164 format, e.g. +14155550123.'),
+        phone: z.string().describe('Phone number. With + and the country code (e.g. +14155550123); a Brazilian number may be written without + but with its area code (e.g. (81) 98874-5316, stored as 5581988745316).'),
         name: z.string().optional(),
         email: z.string().email().optional(),
         company: z.string().optional(),

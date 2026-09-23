@@ -19,8 +19,12 @@ export const EVENTOS_POR_PAGINA = 20;
  * - `falhou` não diz ONDE parou — o passo de envio pode ter saído antes do
  *   erro. Quem quiser retomar usa o histórico da automação.
  * - `sem_telefone` daria o mesmo resultado: o payload gravado é o mesmo, e
- *   sem telefone não há sobre quem agir. O caminho é arrumar o
- *   `campo_telefone` do webhook e mandar um acionamento novo.
+ *   sem telefone não há sobre quem agir. São dois casos (Fase 3-III): o
+ *   campo NÃO veio (coluna `telefone` nula) — o caminho é arrumar o
+ *   `campo_telefone` do webhook e mandar um acionamento novo —, ou VEIO e
+ *   não passou pela régua (`telefoneDigitado`: sem DDD, letra…) — aí o
+ *   formulário não reenvia, o Meu dia conta o caso por 7 dias, e o lead é
+ *   atendido pelo log (nome e respostas estão nele).
  * - `ignorado` é webhook desligado; ligar e reprocessar mandaria mensagem
  *   sobre um lead de dias atrás.
  *

@@ -31,7 +31,7 @@ import { after } from "next/server";
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { segredoDoHeader } from "@/lib/cb-channels/webhook-url";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
-import { achatarPayload, valorDoCampo } from "@/lib/webhooks-de-entrada/achatar";
+import { achatarPayload, comAlgoVisivel, valorDoCampo } from "@/lib/webhooks-de-entrada/achatar";
 import {
   comTetoDeProcessamento,
   TETO_DE_PROCESSAMENTO_MS,
@@ -122,7 +122,10 @@ export async function POST(
         // pelo UNIQUE, antes de disparar automação.
         ...(idExterno ? { id_externo: idExterno } : {}),
         nome: valorDoCampo(variaveis, webhook.campo_nome),
-        telefone: valorDoCampo(variaveis, webhook.campo_telefone),
+        // ⚠️ Em branco (só espaços ou marcas invisíveis) grava NULO: a régua
+        // lê esse texto como "vazio", e a coluna preenchida é o que o Meu dia
+        // conta como "o telefone VEIO e não serve" — os dois divergiriam.
+        telefone: comAlgoVisivel(valorDoCampo(variaveis, webhook.campo_telefone)),
         variaveis,
         resultado: "recebido",
         processando_desde: claimIso,

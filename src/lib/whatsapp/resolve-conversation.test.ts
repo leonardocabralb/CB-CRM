@@ -12,6 +12,8 @@ import { SendMessageError } from './send-message';
 type ContactRow = { id: string; phone: string; name?: string | null };
 
 interface Script {
+  /** Recebe a linha de cada INSERT em `contacts`, quando o teste quer lê-la. */
+  contatosInseridos?: unknown[];
   config?: { user_id: string } | null; // whatsapp_config.maybeSingle
   /** cb_channels count — a conta pode ter canais sem o espelho whatsapp_config. */
   channelCount?: number;
@@ -43,8 +45,9 @@ function makeDb(script: Script): SupabaseClient {
 
   const builder: Record<string, unknown> = {
     select: () => builder,
-    insert: () => {
+    insert: (linha: unknown) => {
       mode = 'insert';
+      if (table === 'contacts') script.contatosInseridos?.push(linha);
       return builder;
     },
     update: () => {
@@ -263,5 +266,49 @@ describe('resolveConversationByPhone', () => {
       contactId: 'c1',
       contactCreated: false,
     });
+  });
+});
+
+// ============================================================
+// Fase 3-III do merge do upstream: o `to` do integrador passa pela régua das
+// telas (`telefoneDigitado`). Antes, o que não era dígito era apagado —
+// "(81) 98874-5316" virava a ficha "81988745316" (+81), e um JID colado
+// virava os dígitos dele.
+// ============================================================
+describe('resolveConversationByPhone: o `to` passa pela régua', () => {
+  const semBanco = {
+    from() {
+      throw new Error('should not query');
+    },
+  } as unknown as SupabaseClient;
+
+  it('brasileiro sem + cria a ficha COM o 55', async () => {
+    const contatosInseridos: unknown[] = [];
+    const db = makeDb({
+      contatosInseridos,
+      config: { user_id: 'owner-1' },
+      accountOwner: 'owner-1',
+      contactCandidates: [],
+      insertedContactId: 'c9',
+      existingConversation: null,
+      insertedConversationId: 'cv9',
+    });
+    await resolveConversationByPhone(db, 'acct', '(81) 98874-5316');
+    expect(contatosInseridos).toHaveLength(1);
+    expect(contatosInseridos[0]).toMatchObject({ phone: '5581988745316' });
+  });
+
+  it.each([
+    ['sem DDD', '98874-5316', 'is too short'],
+    ['JID colado', '5581988745316@s.whatsapp.net', 'is not a valid phone number'],
+    ['LID', '123456789012345@lid', 'is not a valid phone number'],
+    ['grupo', '120363040000000000@g.us', 'is not a valid phone number'],
+  ])('%s → 400 antes de qualquer consulta', async (_caso, to, frase) => {
+    const erro = await resolveConversationByPhone(semBanco, 'acct', to).catch(
+      (e: unknown) => e
+    );
+    expect(erro).toBeInstanceOf(SendMessageError);
+    expect((erro as SendMessageError).status).toBe(400);
+    expect((erro as SendMessageError).message).toContain(`'to' ${frase}`);
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   achatarPayload,
+  comAlgoVisivel,
   MAX_TAMANHO_DO_VALOR,
   MAX_VARIAVEIS,
   nomeDeVariavel,
@@ -175,5 +176,22 @@ describe("valorDoCampo", () => {
 
   it("campo que não existe no payload devolve nulo", () => {
     expect(valorDoCampo(vars, "inexistente")).toBeNull();
+  });
+});
+
+describe("comAlgoVisivel", () => {
+  // A coluna `telefone` do log é gravada por aqui: preenchida, o Meu dia a
+  // conta como "o telefone VEIO e não serve" — em branco não pode contar.
+  it("em branco — espaços ou marcas invisíveis do WhatsApp — vira nulo", () => {
+    expect(comAlgoVisivel("   ")).toBeNull();
+    expect(comAlgoVisivel("‪‬")).toBeNull();
+    expect(comAlgoVisivel("‎ \n")).toBeNull();
+    expect(comAlgoVisivel("")).toBeNull();
+    expect(comAlgoVisivel(null)).toBeNull();
+  });
+
+  it("com algo visível, devolve o texto COMO VEIO (o log mostra o que chegou)", () => {
+    expect(comAlgoVisivel(" 98874-5316 ")).toBe(" 98874-5316 ");
+    expect(comAlgoVisivel("‪+55 81 98874-5316‬")).toBe("‪+55 81 98874-5316‬");
   });
 });
