@@ -40,14 +40,19 @@ ALTER TABLE contacts
   ADD COLUMN IF NOT EXISTS wa_username TEXT;
 
 COMMENT ON COLUMN contacts.wa_user_id IS
-  'BSUID do WhatsApp (ex.: "US.13491208655302741918"): estável por (usuário, portfólio de negócios). É a chave de entrada quando a Meta não manda o telefone. Nada o grava até a Fase 11.';
+  'BSUID do WhatsApp (ex.: "US.13491208655302741918"): estável por (usuário, portfólio de negócios). É a chave de entrada quando a Meta não manda o telefone.';
 COMMENT ON COLUMN contacts.wa_parent_user_id IS
   'BSUID do portfólio (ex.: "US.ENT.11815799212886844830"). Só referência; nunca chave de busca.';
 COMMENT ON COLUMN contacts.wa_username IS
   'Nome de usuário do WhatsApp, sem o @. Só exibição: a pessoa troca quando quer, então nunca é chave de identidade.';
 
--- Uma ficha por BSUID por conta — a mesma garantia que a 0022 deu ao
--- telefone. Parcial: as fichas sem BSUID (todas, hoje) ficam fora.
+-- Uma ficha por BSUID por conta — a chave do original. Parcial: as fichas
+-- sem BSUID (todas, hoje) ficam fora. ⚠️ O telefone é global; o BSUID é
+-- único só DENTRO de um portfólio da Meta. Com números oficiais em
+-- portfólios diferentes na mesma conta (a 3c aceita vários apps), a chave por
+-- conta pode juntar duas pessoas ou separar a mesma. A Fase 11 decide se a
+-- chave ganha o portfólio (`wa_parent_user_id`) ou o canal — enquanto nada
+-- grava a coluna, o índice está vazio e é barato de refazer.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_account_wa_user_id
   ON contacts (account_id, wa_user_id)
   WHERE wa_user_id IS NOT NULL;

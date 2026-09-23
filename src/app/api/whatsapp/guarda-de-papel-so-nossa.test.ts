@@ -67,5 +67,13 @@ describe.each(ROTAS)('$arquivo: a guarda de papel é NOSSA e vem primeiro', ({ a
       const chamada = corpo.search(new RegExp(`\\b${nome}\\(`))
       if (chamada !== -1) expect(guarda, `${nome} antes da guarda em ${handler}`).toBeLessThan(chamada)
     }
+
+    // E antes de qualquer ESCRITA: o DELETE de `whatsapp/config` não fala com
+    // a Meta nem lê corpo — o efeito dele é apagar a conexão e marcar o canal
+    // padrão, e é isso que a guarda protege (revisão da correção do #259).
+    const escritas = /\.(delete|update|insert|upsert)\(|\b(flagDefaultMetaChannelRemoved|syncDefaultMetaChannelFromConfig)\(/g
+    for (const m of corpo.matchAll(escritas)) {
+      expect(guarda, `escrita "${m[0]}" antes da guarda em ${handler}`).toBeLessThan(m.index!)
+    }
   })
 })

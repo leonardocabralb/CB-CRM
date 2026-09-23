@@ -13,7 +13,7 @@ import path from 'node:path';
 // 08/09/2026) e de novo com o `pt.json` e o `es.json` que o merge #259
 // trouxe do original (23/09/2026): 1.740 chaves contra mais de 4.000 —
 // quem instalasse com NEXT_PUBLIC_APP_LOCALE=pt ("português", o óbvio) via
-// 58% da tela como `Inbox.sidebar.tab…`. Os portões do CI olham só o
+// mais da metade da tela como `Inbox.sidebar.tab…`. Os portões do CI olham só o
 // pt-BR, então nada reprovava.
 //
 // Todo merge do original pode trazê-los de volta: apagar de novo. Quem for

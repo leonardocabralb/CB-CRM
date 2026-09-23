@@ -32,12 +32,28 @@ const sql = fs.readdirSync(DIR).filter((f) => f.endsWith('.sql'));
 describe('nomes dos arquivos de migration', () => {
   it('CRÍTICO: todo arquivo tem 4 dígitos, sublinhado e nome em snake_case', () => {
     const foraDoFormato = sql.filter((f) => !/^\d{4}_[a-z0-9_]+\.sql$/.test(f));
-    // Quem aparecer aqui: renomeie para 4 dígitos (`043_x.sql` → `0043_x.sql`).
+    // Quem aparecer aqui — quase sempre uma migration NOVA do upstream, com 3
+    // dígitos (`043_x.sql`): renumere para o número SEGUINTE ao maior do
+    // `main`, com prefixo `cb_` (`1040_cb_x.sql`), NUNCA completando com zero
+    // à esquerda. `0043_` ordena antes das que já estão aplicadas, e a
+    // instalação que atualiza por `supabase db push` recusa o número fora de
+    // ordem (foi o que o merge #259 fez; a correção dele renumerou para
+    // 1038/1039). O teste abaixo reprova número novo abaixo de 0900.
     // ⚠️ EXCETO a `041_fix_broadcast_contact_id_ambiguity.sql` do upstream: essa
     // é APAGADA, não renomeada — recria a função de disparo com OITO parâmetros
     // (o overload que a 0940 apagou), e o conserto equivalente é a nossa 1030.
     // Ver `funcao-de-disparo-1030.test.ts` e o CLAUDE.md ("Workflow de migrations").
     expect(foraDoFormato).toEqual([]);
+  });
+
+  it('nenhuma migration NOVA abaixo de 0900 — a faixa do upstream está fechada', () => {
+    // As 40 de `0001_` a `0042_` são as do upstream, renomeadas para 4
+    // dígitos em 14/09/2026 e aplicadas em todo banco. Número novo nessa
+    // faixa ordena ANTES de migrations já aplicadas, e o `supabase db push`
+    // recusa (sem `--include-all`). Renumere para depois do maior do `main`.
+    const abaixo = sql.filter((f) => Number(f.slice(0, 4)) < 900);
+    expect(abaixo.length).toBe(40);
+    expect(abaixo.at(-1)).toBe('0042_inbound_media_mirror.sql');
   });
 
   it('dois arquivos nunca dividem o mesmo número', () => {

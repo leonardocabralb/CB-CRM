@@ -85,6 +85,10 @@ gráfico de uso da IA, exceção já escrita). Os dois portões de i18n, o
 
 ## 3. A estratégia: PORTAR primeiro, MESCLAR por último
 
+> ⚠️ **Superada em 23/09/2026 pelo merge #259**, que fez o merge PRIMEIRO (e
+> cru). O método das fases continua; o merge de fechamento não existe mais —
+> ver a seção "O merge #259", no fim da seção 7.
+
 Cada correção do upstream entra **sozinha**, em branch própria saída de `main`
 (cherry-pick quando aplica limpo, port à mão quando o fork divergiu), passa
 pelo protocolo da seção 4 e vai para produção num deploy pequeno. O
@@ -864,9 +868,9 @@ real: ativo por minutos, desativado e apagado em seguida.
 **Origem:** #535 (`a52febf`). **Medido:** o nosso `handleStatusUpdate` grava só
 `status` (escopado por canal); 2 mensagens `failed` desde 10/09.
 
-**Implementação:** migration `0045_message_failure_reason.sql` (a `042` deles,
-3 colunas anuláveis — ler contra as regras de banco vazio antes; se precisar
-mudar, vira `103x_cb_…`). No webhook: os campos de erro entram no MESMO `UPDATE`
+**Implementação:** migration `1039_cb_motivo_da_falha_da_mensagem.sql` (a
+`042` deles, 3 colunas anuláveis; o #259 a trouxe como `0045`, e a correção
+dele a renumerou e APLICOU — o que falta aqui é o código). No webhook: os campos de erro entram no MESMO `UPDATE`
 escopado por canal; status posterior não-falha NÃO limpa o motivo. Em
 `broadcast_recipients`, o motivo é dobrado em `error_message`. A bolha é NOSSA:
 portar o tooltip no X e a linha discreta para `message-bubble.tsx`.
@@ -920,7 +924,9 @@ papel intacta.
 entram como vieram (o `message` do erro não muda — os consumidores atuais
 seguem). **Port do benefício:** explicação acionável e conferência do par
 WABA/telefone em `meta-admin.ts` / `POST /api/cb/channels`, exibidas no
-`cb-channels-panel.tsx`. `docs/whatsapp-connection-troubleshooting.md` adaptado.
+`cb-channels-panel.tsx`. A `docs/whatsapp-connection-troubleshooting.md` do
+original foi APAGADA na correção do #259 (em inglês, sobre a tela legada):
+aqui ela é escrita do zero, para *Conexões*.
 Anotado para depois, FORA deste plano: `MetaApiError.status` é o que faltava
 para a retentativa de automação valer na Meta.
 
@@ -1009,6 +1015,10 @@ situação.
 
 ### Fase 12 — Merge de ancestralidade e fechamento
 
+> ⚠️ **Superada**: o merge aconteceu no #259 (23/09/2026), cru e antes das
+> fases. O que resta da Fase 12 é o inventário da seção "O merge #259". O
+> texto abaixo fica como registro do plano original.
+
 `git merge 80c3f9a` em `chore/merge-upstream-2026-09-DD`. Todo conflito → o
 nosso (já contém os ports). Apagar de novo: `ko.json`, `pt.json`, `es.json`,
 `ci.yml`/`migrations.yml`, e os arquivos `040/041/042` deles (substituídos).
@@ -1052,12 +1062,12 @@ rotas protegidas recusando).
 | O `+` obrigatório do #586 entrou pela METADE (pelos arquivos sem conflito): o formulário de contato RECUSAVA "(11) 99999-9999" em produção, e a API v1 de disparo recusa destinatário sem `+` — o contrário da P9. A nota do CLAUDE.md dizia que o #586 "ficou de fora" | formulário: **PR #265** (3-II); API de disparo: **3-III** (a chave de API ativa, "Automação - Make", não tem escopo de disparo — nenhum integrador afetado, medido) |
 | 4 chaves REPETIDAS em `Contacts.importModal` depois do merge do #265 — as do #259 venceriam | **PR #265**, com o teste `chaves-duplicadas.test.ts` |
 | `pt.json` e `es.json` do original (1.740 chaves contra 4.000+): a armadilha do `ko.json`; e o `docs/docker.md` passou a anunciar `en \| ko \| pt \| es` | **correção do #259**: apagados, pino `dicionarios-servidos.test.ts`, docker.md `en \| pt-BR` |
-| O cartão "Notificações do navegador" montado em *Seu perfil* sem o ouvinte montado em lugar nenhum: a pessoa ligava, recebia o teste, e nunca a notificação real | **correção do #259**: o cartão sai até a Fase 8 |
+| O cartão "Notificações do navegador" montado em *Seu perfil* sem o ouvinte montado em lugar nenhum: a pessoa ligava, recebia o teste, e nunca a notificação real | **correção do #259**: o cartão sai até a Fase 8 (pino: cartão importado exige o ouvinte montado). ⚠️ Quem ligou a chave entre 16:40Z e o deploy da correção ficou com `wacrm:browser-notifications` no localStorage e a permissão concedida: a Fase 8 decide por escrito entre trocar a chave (zera o opt-in) e aceitar o antigo |
 | `docs/whatsapp-connection-troubleshooting.md`: doc entregue a quem instala, em inglês, com "wacrm" sete vezes, descrevendo a tela legada que o fork não monta | **correção do #259**: apagada; a Fase 7 a reescreve |
 | `0043`/`0045` abaixo da maior migration do `main` (a regra do `db push`), com cabeçalho do original (o `phone NOT NULL` que aqui é anulável desde a 0989), sem `lock_timeout` e não aplicadas | **correção do #259**: `1038`/`1039`, cabeçalho nosso, `lock_timeout`; aplicadas antes do merge |
 | `Sidebar.title` recriada (o CLAUDE.md manda não recriar) e `fallbackAccountName` "our wacrm account" | **correção do #259**: apagadas; pino |
 | As 2 guardas de papel só nossas sem teste nenhum | **correção do #259**: pino `guarda-de-papel-so-nossa.test.ts` (a ordem inclusive) |
-| A nota do CLAUDE.md sobre o merge: números errados (195/242 em vez de 240/240), "nenhum código lê" (o hook lê `wa_username`), sem os 18 arquivos auto-mesclados, sem pt/es, sem o cartão | **correção do #259** (e o #265 para o trecho do #586) |
+| A nota do CLAUDE.md sobre o merge: números errados (195/242 em vez de 240/240), "nenhum código lê" (o hook lê `wa_username`), sem os arquivos auto-mesclados (dos 23 mudados pelos dois lados, 16 ficaram com trechos do original), sem pt/es, sem o cartão | **correção do #259** (e o #265 para o trecho do #586) |
 | Stub de modelo desconhecido (#534) cru: resolve a conta por `whatsapp_config`, sem `channel_id`, com o `user_id` da config — inerte só porque a rota não passa o `wabaId` | **Fase 6b** (porte por `cb_channels.waba_id` + dono durável, e só então ligar o `wabaId`) |
 | Upload de cabeçalho de vídeo/documento lê o corpo inteiro (`arrayBuffer`) antes de conferir o teto de 100 MB | **Fase 6a** (`lerComTeto`) |
 | `Settings.templates.mediaHint` ainda diz "a Meta baixa uma vez… 24 h"; `.env.local.example` e `multi-waba.md` falam do `META_APP_ID` só para imagem | **Fase 6a** |
@@ -1083,9 +1093,9 @@ sem aviso —, e só entra se alguém o trouxer:
 | `flows/engine.ts` do #553 (`{{vars}}` em botões e listas; e o nó de LISTA sem o canal do nó — achado nosso) | Fase 4 |
 | `webhook/route.ts` do #535 (gravar o motivo), a bolha, os tipos e o espelho em `broadcast_recipients.error_message` | Fase 5 |
 | a fiação do #534 (`wabaId: entry.id` na rota) | Fase 6b |
-| `auto-reply.ts` e `flows/meta-send.ts` do #527 (o chamador do "digitando…"; `loadAccountMetaCredentials`) — ⚠️ a IA roda pelos DOIS transportes (a Evolution também chama `dispatchInboundToAiReply`), e o "digitando" só vale na Meta | Fase 9 |
+| `auto-reply.ts` e `flows/meta-send.ts` do #527 (o chamador do "digitando…"; `loadAccountMetaCredentials`), e a linha dele no `webhook/route.ts` (`inboundMessageId: message.id` na chamada de `dispatchInboundToAiReply` — sem o `wamid` o "digitando" não tem o que marcar) — ⚠️ a IA roda pelos DOIS transportes (a Evolution também chama `dispatchInboundToAiReply`), e o "digitando" só vale na Meta | Fase 9 |
 | a montagem do ouvinte do #516 no `dashboard-shell.tsx` | Fase 8 (DENTRO da `<PortaDeEntrada>`) |
-| a entrada e a saída do #519 (BSUID): `webhook/route.ts`, `send-message.ts`, `flows/meta-send.ts`, `automations/meta-send.ts`, `react/route.ts`, `contact-sidebar`, `contact-detail-view`, `message-thread`, tipos e o serializador da v1 | Fase 11 |
+| a entrada e a saída do #519 (BSUID): `webhook/route.ts`, `send-message.ts`, `flows/meta-send.ts`, `automations/meta-send.ts`, `react/route.ts`, `contact-sidebar`, `contact-detail-view`, `message-thread` e os tipos (o serializador da v1 é ADAPTAÇÃO nossa, não código dele) | Fase 11 |
 | o #577/#578 nos componentes NOSSOS (texto fixo em inglês em `message-composer.tsx`, `message-thread.tsx`, `automations/page.tsx`, `invite-member-dialog.tsx`, `ai-usage.tsx`…) | Fase 10 |
 | os testes de regressão do original para esses caminhos | com cada fase |
 
@@ -1099,7 +1109,7 @@ acima, depois das fases, mostrando só divergência NOSSA.
 | --- | --- | --- | --- |
 | P1 | ~~Fechar o #229 agora (com comentário apontando para este plano) ou só no fim~~ | ✅ FECHADO em 21/09/2026 por ordem do operador ("siga com sua orientação e feche o PR, mantendo a worktree do plano com todas as correções ainda pendentes — pra que possamos ir corrigindo por aqui") | — |
 | P2 | Notificação: respeitar o perfil e deixar grupo de fora | Sim | 8 |
-| P3 | Apagar `pt.json`/`es.json` depois de aproveitar as traduções | Sim | 10 |
+| P3 | Apagar `pt.json`/`es.json` depois de aproveitar as traduções | Sim — ✅ feito em 23/09/2026 na correção do #259 (o #259 os tinha trazido de volta) | 10 |
 | P4 | BSUID: `NULL` + CHECK alargado, em vez de `''` | `NULL` | 11 |
 | P5 | ~~Testes com efeito externo: modelo tarifado ao lead de teste (F2), modelo de teste na WABA (F6a), mensagem ao número oficial (F9)~~ | ✅ delegado pelo operador em 21/09 ("faça você o que precisar ser feito para o teste prático no preview e2e") — eu executo e limpo o que cada teste criar | — |
 | P6 | Alguma fase a DESCARTAR? (a 9 é inerte hoje) | Manter todas | — |

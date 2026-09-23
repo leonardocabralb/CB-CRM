@@ -213,10 +213,14 @@ levar o texto novo dele para os **dois** dicionários).
   deles continua APAGADA, não renumerada — ela redefine
   `create_broadcast_with_recipients` com 8 parâmetros, desfazendo a forma
   final de 9 que a 1030 fixou (pino `funcao-de-disparo-1030.test.ts`).
-  ⚠️ O Git lê a renumeração como RENOMEAÇÃO: uma edição futura do original na
-  040/042 cai em silêncio na 1038/1039. Aplicadas, isso é editar migration
-  aplicada — conferir à mão a cada merge.
-- ⚠️ **As colunas da 1038 e da 1039 existem, e NINGUÉM as grava ainda.** Gravar
+  ⚠️ Com o cabeçalho reescrito, o Git NÃO pareia a 040/042 com a 1038/1039
+  (medido: apagar + criar). Uma edição do original na 040/042 volta como
+  conflito modify/delete, com o arquivo de 3 dígitos na árvore: apagar de
+  novo e portar à mão numa migration nova. Quem recebe edição do original EM
+  SILÊNCIO são as nossas `0040`–`0042` (as 037–039 deles, renomeadas a
+  92–94% de semelhança) — conferir `git diff --summary` em
+  `supabase/migrations/` a cada merge.
+- ⚠️ **NINGUÉM grava as colunas da 1038 e da 1039 ainda.** Gravar
   o motivo da falha é a Fase 5 do plano, e a identidade BSUID, a Fase 11. O
   único leitor hoje é `wa_username` no hook de notificação do navegador, que
   não está montado. (A nota original deste merge dizia "nenhum código lê o
@@ -236,8 +240,9 @@ levar o texto novo dele para os **dois** dicionários).
   existem no nosso `settings-sections.ts` e foram removidas — o
   `rotulo-da-secao.test.ts` reprova seção órfã.
 - ⚠️⚠️ **"O `main` vence por arquivo inteiro" valeu só para os 43 conflitos.**
-  Os arquivos que o Git mesclou SOZINHO receberam os trechos do original sem
-  revisão nenhuma — 18 deles ficaram diferentes dos dois lados. Foi assim que
+  Dos 23 arquivos que os dois lados mudaram e o Git mesclou SOZINHO, 16
+  ficaram com trechos do original (7 voltaram ao nosso); dos 43 que só o
+  original mudou, 37 entraram inteiros. Foi assim que
   a metade do #586 entrou (o `+` obrigatório no formulário de contato e na API
   de disparo) e que o `pt.json`/`es.json`, o cartão de notificação e a doc
   `whatsapp-connection-troubleshooting.md` chegaram ao `main`. A auditoria de
@@ -245,8 +250,8 @@ levar o texto novo dele para os **dois** dicionários).
   plano; o que ela achou e foi consertado:
   - `messages/pt.json` e `messages/es.json` APAGADOS (1.740 chaves contra mais
     de 4.000 — a armadilha do `ko.json`; pino em
-    `src/i18n/dicionarios-servidos.test.ts`) e o `docs/docker.md` voltou a
-    dizer `en | pt-BR`.
+    `src/i18n/dicionarios-servidos.test.ts`) e o `docs/docker.md`, que o
+    #259 fez listar `en | ko | pt | es`, passou a dizer `en | pt-BR`.
   - O cartão "Notificações do navegador" SAIU de *Seu perfil*: o ouvinte que
     dispara os avisos não estava montado em lugar nenhum, e a pessoa ligava a
     chave, recebia a notificação de teste e nunca a de uma mensagem real. Os
@@ -445,6 +450,7 @@ upstream sobrescrevê-los:
 | `src/app/api/v1/contacts/route.ts`, `[id]/route.ts`, `[id]/tags/route.ts`, `src/lib/api/v1/contacts.ts` (23/09/2026) | a etiqueta por NOME OU ID (`lerTagsPedidas` antes de qualquer escrita, `TagReferenceError`), o 400 para item de `tags` que não é string e para id de contato malformado. Ver "Tag ADITIVA na API v1" |
 | `src/lib/ai/types.ts`, `config.ts`, `structured.ts`, `defaults.ts`, `src/lib/cb-radar/worker.ts`, `src/app/api/ai/config/route.ts` | o modelo do Radar separado do modelo de chat (946): `radarModel` no tipo e em `CONFIG_COLUMNS`, o parâmetro `model` do `generateStructured`, `AI_PROVIDER_MODELS`, e a validação do modelo do Radar no save |
 | `src/components/settings/ai-config.tsx` | `<datalist>` de sugestão no campo Modelo e a frase de escopo com link para Integrações |
+| `src/components/settings/profile-form.tsx` (correção do #259, 23/09/2026) | o cartão `<BrowserNotificationsCard>` do original (#516) NÃO é montado: o ouvinte que dispara os avisos não está montado em lugar nenhum, e o cartão prometia notificações que nunca chegavam. Volta na Fase 8, junto com o ouvinte (dentro da `<PortaDeEntrada>`). Pino em `src/components/settings/cartao-de-notificacao.chamadores.test.ts` — um porte de tradução que traga a linha de volta sem o ouvinte reprova |
 | `src/app/(dashboard)/dashboard-shell.tsx` (Meu dia, 12/09/2026) | envolve o layout INTEIRO (menu, cabeçalho, página, heartbeat) na `<PortaDeEntrada key={user.id}>`, abaixo do `if (!user) return null` — nunca renderizar pedaço do app fora dela; e o "Loading..." traduzido (`DashboardShell.loading`) |
 | `dashboard-shell.tsx`, `inbox/page.tsx`, `message-composer.tsx`, `message-thread.tsx` e `src/app/globals.css` (teclado do celular, 14/09/2026) | a altura por `var(--altura-visivel,100dvh)` na casca e na caixa de entrada (um merge que devolva `h-screen`/`100vh` devolve o cabeçalho sumindo com o teclado) e o `useTelaAcimaDoTeclado()` na casca; no compositor, o Enter por `enterEnvia` e a dica por `useMediaQuery(MIDIA_DE_TOQUE)`; no fio, o `data-acima-do-teclado` na raiz, o `onTouchStart`/`onTouchMove` do contêiner (recolhe o teclado) e o `ResizeObserver` que mantém o fim; no CSS, a regra dos 16 px FORA de camada. Ver a seção "O teclado do celular" |
 | `src/hooks/use-auth.tsx` (Meu dia) | `sessionId` no contexto (o `session_id` do token, publicado no MESMO passo que `user`, no init e no listener) e o `signOut` do menu via `sairDesteAparelho` (escopo `local`, D4, 12/09/2026; erro vira toast e não navega) — além do que já era nosso (lente de simulação, perfis, `resolvedUserIdRef`) |
@@ -778,11 +784,13 @@ tinha relação com ele. O que morde código novo:
   `evolution_error`), e o `entrega_incerta` existe porque ela não se
   adivinha. `EvolutionApiError.status` é o que responde isso, e o erro
   chega INTEIRO ao motor porque `flows/meta-send.ts` o propaga cru.
-- ⚠️⚠️ **Só o transporte EVOLUTION retenta hoje.** Quem carrega o status
-  HTTP é `EvolutionApiError`; o cliente da Cloud API (`meta-api.ts`) lança
-  `Error` genérico, e sem status não dá para separar "a Meta recusou" de
-  "não sei se saiu" — a régua falha FECHADA e não repete. Quem quiser o
-  retry na Meta começa por dar um erro com status àquele cliente.
+- ⚠️⚠️ **Só o transporte EVOLUTION retenta hoje.** A régua
+  (`retentativa.ts`) só reconhece `EvolutionApiError`, que carrega o status
+  HTTP. Desde o merge #259 (23/09/2026) o cliente da Cloud API
+  (`meta-api.ts`) também lança um erro com status (`MetaApiError`, com
+  `httpStatus`), mas ligar a Meta à retentativa é decisão da Fase 7 do plano
+  do merge do upstream — é ali que se separa "a Meta recusou" (4xx) de "não
+  sei se saiu", e até lá a régua falha FECHADA e não repete.
 - ⚠️ **`PASSOS_DE_ENVIO` é allowlist**: passo novo nasce FORA, sem
   retentativa, até alguém decidir por escrito. Lista de exclusão faria o
   passo novo herdar o retry por esquecimento — que é como se manda mensagem
@@ -6860,8 +6868,13 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
   formato do nome de novo repete os três. Há teste cobrando o formato,
   a unicidade do número e ordem-por-nome == ordem-numérica
   (`supabase/migrations/nomes-das-migrations.test.ts`). **Todo merge do
-  upstream traz migration nova com 3 dígitos: renomeie para 4 no merge** — o
-  teste reprova até isso acontecer. Nas listas abaixo as migrations aparecem
+  upstream traz migration nova com 3 dígitos: RENUMERE para o número seguinte
+  ao maior do `main`, com prefixo `cb_` — nunca completando com zero à
+  esquerda** (`043_x` → `1040_cb_x`, não `0043_x`). O zero à esquerda ordena
+  a migration ANTES das já aplicadas, e o `supabase db push` de quem instalou
+  a recusa; foi o que o merge #259 fez com a `0043`/`0045` (renumeradas para
+  1038/1039 na correção dele). O teste reprova o arquivo de 3 dígitos E
+  qualquer número novo abaixo de 0900. Nas listas abaixo as migrations aparecem
   pelo número ("a 912"), que continua identificando o arquivo `0912_`.
   ⚠️⚠️ **UMA exceção: a `041_fix_broadcast_contact_id_ambiguity.sql` DELES é
   APAGADA, não renomeada** (não confundir com a nossa `0041_broadcast_resume`,
@@ -7573,7 +7586,7 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
     BSUID do portfólio, nome de usuário) com um índice único PARCIAL, e três
     em `messages` (código, título e detalhe da falha da Meta). Aditivas, com
     `lock_timeout`. NINGUÉM as grava até as Fases 11 e 5 do plano do merge do
-    upstream. Aplicadas antes do merge do PR de correções do #259.
+    upstream. A APLICAR antes do merge do PR de correções do #259 (#270).
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
