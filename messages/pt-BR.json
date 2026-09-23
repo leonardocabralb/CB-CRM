@@ -440,6 +440,8 @@
       "botBadge": "Robô",
       "botBadgeTitle": "Enviada automaticamente por uma automação ou fluxo — não foi escrita por uma pessoa",
       "naoEntregue": "Não entregue — o destinatário não recebeu. Envie de novo.",
+      "naoConfirmada": "Não confirmada — o destinatário provavelmente não recebeu. Envie de novo ou confirme com ele.",
+      "naoConfirmadaDica": "O WhatsApp do destinatário não confirmou esta mensagem, embora tenha confirmado outra enviada depois dela (pelo CRM ou pelo celular) ou ele tenha escrito depois dela.",
       "download": "Baixar",
       "downloadFailed": "Não foi possível baixar o anexo",
       "viewImage": "Ver imagem",
