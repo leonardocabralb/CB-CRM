@@ -167,6 +167,45 @@ jobs:
           # não uma terça-feira em que o main fica vermelho.
           version: 2.113.0
 
+      # ⚠️ ESVAZIAR A VARIÁVEL É O CONSERTO — e ela só existe porque a action
+      # acima a escreve. `supabase/setup-cli@v3`, em `src/main.ts`, faz:
+      #
+      #     core.exportVariable("SUPABASE_INTERNAL_IMAGE_REGISTRY", "ghcr.io")
+      #
+      # `exportVariable` grava no `$GITHUB_ENV`, então isso VENCE qualquer
+      # `env:` do workflow ou do job — não adianta declarar outro valor lá em
+      # cima, ele é sobrescrito antes do `db start`.
+      #
+      # E, com a variável PREENCHIDA, a CLI passa a tentar UM registro só.
+      # Conferido no binário da 2.113.0:
+      #
+      #     ZaT()  variável vazia → undefined
+      #     oSR()  undefined      → "public.ecr.aws"   (o padrão dela)
+      #     DaT()  preenchida     → [um registro, sem reserva]
+      #            vazia          → [public.ecr.aws, ghcr.io/…, …]
+      #
+      # O GHCR limita pull ANÔNIMO por cota compartilhada das imagens do
+      # Supabase — todo projeto que usa Supabase no CI divide a mesma. Quando
+      # ela estoura, o `db start` morre antes de qualquer migration rodar:
+      #
+      #     toomanyrequests: retry-after: 470.101µs, allowed: 44000/minute
+      #     failed to pull docker image from all registries:
+      #       ghcr.io/supabase/postgres:17.6.1.158
+      #
+      # ⚠️ Nada disso se resolve tentando de novo. A imagem tem 29 camadas,
+      # cada uma é um pedido, e uma recusa derruba o download inteiro; um PR
+      # teve 16 re-runs sem passar. Login no GHCR também não resolve (medido
+      # no PR #274: "Login Succeeded!" e a mesma recusa 2s depois) — a cota é
+      # das imagens do Supabase, não da nossa conta.
+      #
+      # Esvaziando, a CLI volta a ter os três registros, com o ECR na frente.
+      # Os três servem a MESMA imagem (conferido: `17.6.1.158` existe no ECR
+      # com amd64, que é a arquitetura do runner).
+      #
+      # ⚠️ Há pino em `pipeline.test.ts`: apagar esta linha reprova o CI.
+      - name: Deixar a CLI usar os três registros (a action fixa o GHCR)
+        run: echo "SUPABASE_INTERNAL_IMAGE_REGISTRY=" >> "$GITHUB_ENV"
+
       - name: Start Postgres
         run: supabase db start
 
