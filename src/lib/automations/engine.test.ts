@@ -2548,6 +2548,122 @@ describe('campo de data: formatado na mensagem, CRU no dado', () => {
 });
 
 // ------------------------------------------------------------
+// Variáveis do NEGÓCIO e do instante (23/09/2026): {{deal.value}},
+// {{deal.created_at}} e {{now}} — o que o aviso do contrato fechado manda ao
+// sistema do escritório. Na mensagem, formatados; no webhook, crus. E o corpo
+// do webhook ESCAPA cada valor: um nome com aspas quebrava o JSON inteiro.
+// ------------------------------------------------------------
+
+function comNegocio(passo: Record<string, unknown>) {
+  h.state.owned = {
+    id: 'c1',
+    name: 'Ana "Aninha" Souza\nda Silva',
+    phone: '558388745316',
+  } as unknown as { id: string };
+  h.state.dealExistente = {
+    id: 'd1',
+    value: 3500.5,
+    created_at: '2025-07-09T19:25:23.000003+00:00',
+  } as unknown as { id: string };
+  h.state.automations = [automationWithUpdateStep()];
+  h.state.steps = [
+    {
+      id: 's-neg',
+      automation_id: 'a1',
+      position: 0,
+      parent_step_id: null,
+      ...passo,
+    },
+  ];
+}
+
+async function dispararComNegocio(context: Record<string, unknown> = {}) {
+  await runAutomationsForTrigger({
+    accountId: ACCOUNT,
+    triggerType: 'new_message_received',
+    contactId: 'c1',
+    context: { conversation_id: 'conv1', deal_id: 'd1', ...context },
+  });
+}
+
+describe('{{deal.*}} e {{now}}', () => {
+  beforeEach(() => vi.mocked(engineSendText).mockClear());
+
+  it('na mensagem, valor em reais e data do negócio no formato do escritório', async () => {
+    comNegocio({
+      step_type: 'send_message',
+      step_config: { text: '[{{deal.value}}] [{{deal.created_at}}]' },
+    });
+    await dispararComNegocio();
+    const texto = vi.mocked(engineSendText).mock.calls[0]?.[0]?.text;
+    // NBSP entre "R$" e o número — é o que o ICU produz (currency.ts).
+    expect(texto).toBe('[R$\u00a03.500,50] [09/07/2025 às 16:25h]');
+  });
+
+  it('{{now}} na mensagem sai formatado, nunca ISO', async () => {
+    comNegocio({ step_type: 'send_message', step_config: { text: '{{now}}' } });
+    await dispararComNegocio();
+    const texto = String(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text);
+    expect(texto).toMatch(/^\d{2}\/\d{2}\/\d{4} às \d{2}:\d{2}h$/);
+  });
+
+  it('sem negócio, as variáveis saem vazias (nunca "undefined")', async () => {
+    comNegocio({
+      step_type: 'send_message',
+      step_config: { text: '[{{deal.value}}][{{deal.created_at}}][{{deal.x}}]' },
+    });
+    h.state.dealExistente = null;
+    await dispararComNegocio({ deal_id: null });
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('[][][]');
+  });
+
+  it('texto sem `deal.` não lê o negócio', async () => {
+    comNegocio({ step_type: 'send_message', step_config: { text: 'oi' } });
+    h.state.dealSelects = [];
+    await dispararComNegocio();
+    expect(h.state.dealSelects).toHaveLength(0);
+  });
+
+  it('webhook: valor e datas CRUS, e o corpo continua JSON válido com aspas e quebra de linha no nome', async () => {
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: { body?: string }) =>
+        ({ ok: true, status: 200 }) as unknown as Response
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    comNegocio({
+      step_type: 'send_webhook',
+      step_config: {
+        url: 'https://8.8.8.8/hook',
+        body_template:
+          '{"nome":"{{contact.name}}","valor":"{{deal.value}}","entrada":"{{deal.created_at}}","agora":"{{now}}"}',
+      },
+    });
+    await dispararComNegocio();
+    vi.unstubAllGlobals();
+
+    const corpo = JSON.parse(
+      String(fetchMock.mock.calls.at(-1)?.[1]?.body ?? '')
+    ) as Record<string, string>;
+    expect(corpo.nome).toBe('Ana "Aninha" Souza\nda Silva');
+    expect(corpo.valor).toBe('3500.5');
+    expect(corpo.entrada).toBe('2025-07-09T19:25:23.000Z');
+    expect(corpo.agora).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  });
+
+  it('update_contact_field grava {{now}} em ISO — é o que a data da proposta usa', async () => {
+    comNegocio({
+      step_type: 'update_contact_field',
+      step_config: { field: 'company', value: '{{now}}' },
+    });
+    await dispararComNegocio();
+    const escrita = h.state.updateCalls.find((u) => u.table === 'contacts');
+    expect(String((escrita?.payload as { company?: string })?.company)).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+    );
+  });
+});
+
+// ------------------------------------------------------------
 // DESFECHO da execução (migration 985).
 //
 // O que estes pinos protegem: a execução que uma condição barrou deixa de ser

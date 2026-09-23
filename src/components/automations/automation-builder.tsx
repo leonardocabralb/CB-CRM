@@ -2945,6 +2945,9 @@ const VARIAVEIS_DE_TEXTO = [
   "{{contact.origem}}",
   "{{conversation.link}}",
   "{{contact.link}}",
+  "{{deal.value}}",
+  "{{deal.created_at}}",
+  "{{now}}",
   "{{message.text}}",
 ]
 
