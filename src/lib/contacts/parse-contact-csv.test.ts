@@ -83,8 +83,10 @@ describe('parseContactCsv', () => {
     ]);
   });
 
-  it('still skips a fully blank line', () => {
-    const { rows } = parseContactCsv(`phone,name\n+15551234567,Alice\n\n   \n`);
+  it('still skips a fully blank line — and a row of empty cells', () => {
+    // ",,," é o que o Excel deixa no fim de uma exportação: não é um contato
+    // sem telefone, e contá-lo diria "N linhas ficaram de fora" sobre nada.
+    const { rows } = parseContactCsv(`phone,name\n+15551234567,Alice\n\n   \n,\n"",""\n`);
     expect(rows).toHaveLength(1);
   });
 });

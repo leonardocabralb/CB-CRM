@@ -997,7 +997,7 @@
       "resultTags": "{count} tag assigned",
       "resultTags_plural": "{count} tags assigned",
       "resultSkipped": "{count} skipped",
-      "resultInvalidPhone": "{count, plural, one {# invalid phone} other {# invalid phones}}",
+      "resultInvalidPhone": "{count, plural, one {# without a valid phone} other {# without a valid phone}}",
       "resultFailed": "{count} failed",
       "failedRowsHeading": "Failed rows",
       "unknownReason": "Unknown error",
@@ -1628,7 +1628,6 @@
         "csvInvalidPhones": "{count, plural, one {# row left out: blank or invalid phone (no area code, or a foreign number without +).} other {# rows left out: blank or invalid phone (no area code, or a foreign number without +).}}",
         "errorLoadTags": "Failed to load tags",
         "errorLoadFields": "Failed to load custom fields",
-        "errorCsvParse": "Could not parse CSV file.",
         "errorCsvMissingPhone": "CSV must have a 'phone' column.",
         "errorCsvNoValidRows": "No row in the CSV has a valid phone. Write it with the area code — or, for another country, with + and the country code."
       },

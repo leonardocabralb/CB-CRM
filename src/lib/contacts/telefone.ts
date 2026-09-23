@@ -71,7 +71,14 @@ export type TelefoneDigitado =
  *   não existe.
  */
 export function telefoneDigitado(texto: string | null | undefined): TelefoneDigitado {
-  const aparado = (texto ?? "").trim();
+  // ⚠️ Copiar um número do WhatsApp traz marcas de direção invisíveis em volta
+  // (U+202A…U+202C), e editores trocam o hífen por traço tipográfico. Nada
+  // disso é "letra": sem esta limpeza, o número colado de lá era recusado como
+  // inválido sem nada visível errado na caixa (revisão da Fase 3-II).
+  const aparado = (texto ?? "")
+    .replace(/\p{Cf}/gu, "")
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .trim();
   if (!aparado) return { ok: false, motivo: "vazio" };
   if (!/^\+?[\d\s().-]+$/.test(aparado)) return { ok: false, motivo: "invalido" };
 

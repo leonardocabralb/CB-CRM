@@ -990,7 +990,7 @@
       "resultTags": "{count} etiqueta atribuída",
       "resultTags_plural": "{count} etiquetas atribuídas",
       "resultSkipped": "{count} ignorados",
-      "resultInvalidPhone": "{count, plural, one {# telefone inválido} other {# telefones inválidos}}",
+      "resultInvalidPhone": "{count, plural, one {# sem telefone válido} other {# sem telefone válido}}",
       "resultFailed": "{count} com falha",
       "failedRowsHeading": "Linhas que falharam",
       "unknownReason": "Erro desconhecido",
@@ -1621,7 +1621,6 @@
         "csvInvalidPhones": "{count, plural, one {# linha ficou de fora: telefone vazio ou inválido (sem DDD, ou de outro país sem +).} other {# linhas ficaram de fora: telefone vazio ou inválido (sem DDD, ou de outro país sem +).}}",
         "errorLoadTags": "Falha ao carregar as etiquetas",
         "errorLoadFields": "Falha ao carregar os campos personalizados",
-        "errorCsvParse": "Não foi possível ler o arquivo CSV.",
         "errorCsvMissingPhone": "O CSV deve ter uma coluna 'phone'.",
         "errorCsvNoValidRows": "Nenhuma linha do CSV tem telefone válido. Escreva com DDD — ou, se for de outro país, com + e o código do país."
       },

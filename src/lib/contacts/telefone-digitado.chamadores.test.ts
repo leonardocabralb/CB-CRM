@@ -47,8 +47,23 @@ describe('telefone digitado: a nossa régua, não o `+` obrigatório do original
     });
   }
 
-  it('as duas planilhas usam o dedupe que normaliza', () => {
+  it('as duas planilhas usam o dedupe que normaliza, e ninguém traz a régua do original', () => {
+    for (const arquivo of [
+      'components/contacts/import-modal.tsx',
+      'lib/broadcast-csv.ts',
+      'components/broadcasts/step2-select-audience.tsx',
+    ]) {
+      expect(fonte(arquivo)).not.toContain('parseInternationalPhone');
+    }
     expect(fonte('components/contacts/import-modal.tsx')).toContain('dedupeByPhone(');
     expect(fonte('lib/broadcast-csv.ts')).toContain('dedupeByPhone(');
+  });
+
+  it('o aviso de duplicata do formulário procura pelo número NORMALIZADO', () => {
+    // Voltar para `phone.trim()` faria "81988745316" digitado sem o 55 achar
+    // a ficha só pela tolerância dos 8 finais — aviso amarelo, não bloqueio.
+    expect(fonte('components/contacts/contact-form.tsx')).toMatch(
+      /const telefone = telefoneDigitado\(phone\);[\s\S]{0,200}const value = telefone\.digitos;/,
+    );
   });
 });

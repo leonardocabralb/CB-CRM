@@ -645,7 +645,7 @@ export function ImportModal({
                   </div>
                 )}
                 {result.failed > 0 && (
-                  <div className="flex items-center gap-1.5 text-sm text-red-700 dark:text-red-300">
+                  <div className="flex items-center gap-1.5 text-sm text-red-600 dark:text-red-300">
                     <XCircle className="size-4 shrink-0" />
                     {t('resultFailed', { count: result.failed })}
                   </div>

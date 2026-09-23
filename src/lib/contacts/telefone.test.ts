@@ -216,6 +216,17 @@ describe("telefoneDigitado (a metade aditiva do #586, com a nossa régua)", () =
     expect(telefoneDigitado("55819887453161")).toEqual(nao("invalido"));
   });
 
+  it("⚠️ número COLADO do WhatsApp (marcas invisíveis, traço tipográfico) passa", () => {
+    // Medido na revisão: sem a limpeza, os cinco eram recusados como
+    // "inválido" sem nada visível errado na caixa.
+    expect(telefoneDigitado("\u202A+55 81 98874-5316\u202C")).toEqual(ok("5581988745316"));
+    expect(telefoneDigitado("(81) 98874-5316\u200E")).toEqual(ok("5581988745316"));
+    expect(telefoneDigitado("81 98874\u20115316")).toEqual(ok("5581988745316"));
+    expect(telefoneDigitado("81 98874\u20135316")).toEqual(ok("5581988745316"));
+    expect(telefoneDigitado("81\u200B98874-5316")).toEqual(ok("5581988745316"));
+    expect(telefoneDigitado("\u00A0(81) 98874-5316\u00A0")).toEqual(ok("5581988745316"));
+  });
+
   it("mais de 15 dígitos é inválido (o JID de grupo colado)", () => {
     expect(telefoneDigitado("120363025246125888")).toEqual(nao("invalido"));
   });
