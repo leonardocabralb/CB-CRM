@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   EvolutionApiError,
@@ -109,5 +109,63 @@ describe('toEvolutionNumber', () => {
     expect(toEvolutionNumber('123456789-987654@g.us')).toBe(
       '123456789-987654@g.us'
     );
+  });
+});
+
+// ⚠️ Pino da prévia de link (23/09/2026). Sem `linkPreview: false`, a
+// Evolution 2.4 anexa ao texto com link uma prévia no formato de anúncio, e
+// a mensagem não chegava a parte dos clientes (Android) — ver o comentário
+// em `sendText` e o CLAUDE.md, "Link sai SEM prévia".
+describe('EvolutionClient.sendText', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function corpoDoEnvio(fetchSpy: ReturnType<typeof vi.fn>) {
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://evo.example.com/message/sendText/crm');
+    return JSON.parse(String(init.body)) as Record<string, unknown>;
+  }
+
+  function evolutionRespondendo() {
+    return vi.fn(async () =>
+      new Response(JSON.stringify({ key: { id: '3EB0TESTE' } }), { status: 201 })
+    );
+  }
+
+  const client = () =>
+    new EvolutionClient({ baseUrl: 'https://evo.example.com', apikey: 'k', instance: 'crm' });
+
+  it('sempre desliga a prévia de link', async () => {
+    const fetchSpy = evolutionRespondendo();
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const id = await client().sendText({
+      number: '5511999999999',
+      text: 'Link da videochamada: https://meet.google.com/',
+    });
+
+    expect(id).toBe('3EB0TESTE');
+    expect(corpoDoEnvio(fetchSpy)).toEqual({
+      number: '5511999999999',
+      text: 'Link da videochamada: https://meet.google.com/',
+      linkPreview: false,
+    });
+  });
+
+  it('desliga a prévia também ao responder citando', async () => {
+    const fetchSpy = evolutionRespondendo();
+    vi.stubGlobal('fetch', fetchSpy);
+    const citada = { remoteJid: '5511999999999@s.whatsapp.net', fromMe: false, id: 'ABC' };
+
+    await client().sendText({ number: '5511999999999', text: 'https://exemplo.com', quoted: citada });
+
+    expect(corpoDoEnvio(fetchSpy)).toEqual({
+      number: '5511999999999',
+      text: 'https://exemplo.com',
+      quoted: { key: citada },
+      linkPreview: false,
+    });
   });
 });
