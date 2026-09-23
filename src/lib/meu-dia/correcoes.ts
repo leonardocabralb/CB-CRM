@@ -18,7 +18,7 @@
 // `resumo-do-dia.tsx`: o que se sabe é o mínimo, não a desigualdade estrita.
 // ============================================================
 
-/** As oito fontes do bloco, na ordem em que a tela as mostra. */
+/** As nove fontes do bloco, na ordem em que a tela as mostra. */
 export type FonteDeCorrecao =
   | 'agendador'
   | 'conexoes'
@@ -27,7 +27,8 @@ export type FonteDeCorrecao =
   | 'agendadasFalharam'
   | 'entregaIncerta'
   | 'automacoesFalharam'
-  | 'entradasNaoProcessadas';
+  | 'agendamentosNaoProcessados'
+  | 'webhooksNaoProcessados';
 
 /**
  * A ordem é de GRAVIDADE, não alfabética nem de custo de consulta.
@@ -50,6 +51,12 @@ export type FonteDeCorrecao =
  * agendadas porque o conserto é de gente e é agora: olhar o celular daquela
  * conexão e responder por lá (o eco traz o número, e a fala entra sozinha na
  * conversa). Ver docs/PLANO-lid-sem-telefone.md.
+ *
+ * ⚠️ Calendly e webhooks recebidos são DUAS fontes (Fase 3-III do merge do
+ * upstream, revisão): eram uma soma com um destino só (Integrações), e o log
+ * dos webhooks mora em Webhooks → Recebidos. Desde que o telefone recusado
+ * do webhook passou a contar aqui — um caso cuja ÚNICA saída é ler o log e
+ * falar com o lead —, o clique precisa levar ao log certo.
  */
 export const ORDEM_DAS_FONTES: readonly FonteDeCorrecao[] = [
   'agendador',
@@ -59,7 +66,8 @@ export const ORDEM_DAS_FONTES: readonly FonteDeCorrecao[] = [
   'agendadasFalharam',
   'entregaIncerta',
   'automacoesFalharam',
-  'entradasNaoProcessadas',
+  'agendamentosNaoProcessados',
+  'webhooksNaoProcessados',
 ] as const;
 
 /**

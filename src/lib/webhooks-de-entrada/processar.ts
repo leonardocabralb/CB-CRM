@@ -19,7 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { dispararAutomacoes } from "@/lib/automations/engine";
 import { resolverDestinatario } from "@/lib/automations/destinatario";
-import { digitosDoTelefone } from "@/lib/contacts/telefone";
+import { type MotivoDoTelefone, telefoneDigitado } from "@/lib/contacts/telefone";
 import type { WebhookTriggerConfig } from "@/types";
 
 import { valorDoCampo } from "./achatar";
@@ -124,6 +124,26 @@ export function resultadoDoDisparo(
   };
 }
 
+/**
+ * O porquê do `sem_telefone`, na linha do log. O caso "veio e não dá para
+ * ler" é o que o Meu dia conta como pendência (a rota de pendências olha
+ * `telefone` preenchido): o lead EXISTE — nome e respostas estão no log —,
+ * só não virou ficha.
+ */
+export function detalheDoTelefone(
+  campo: string | null | undefined,
+  motivo: MotivoDoTelefone
+): string {
+  if (!campo) return "este webhook não tem campo de telefone configurado";
+  const regra =
+    "número brasileiro com DDD, ex.: (81) 98874-5316; de outro país, com + e o código do país";
+  if (motivo === "vazio") return `o campo "${campo}" não veio no payload, ou veio vazio`;
+  if (motivo === "curto") {
+    return `o telefone do campo "${campo}" é curto demais — faltou o DDD? (${regra})`;
+  }
+  return `o telefone do campo "${campo}" não é um telefone válido — letra, símbolo, 0 na frente ou tamanho errado (${regra})`;
+}
+
 export async function processarAcionamento(
   admin: SupabaseClient,
   accountId: string,
@@ -139,17 +159,24 @@ export async function processarAcionamento(
   }
 
   // ── 2) telefone ────────────────────────────────────────────
+  // A régua das telas e da API (`telefoneDigitado`, Fase 3-III): quem manda
+  // o telefone aqui é, na maioria, um formulário onde o LEAD digita — o
+  // Typebot, que não dá para mudar do lado de cá. "(81) 98874-5316" ganha o
+  // 55; "98874-5316" (sem DDD) e um JID colado são recusados com o motivo.
+  // Antes era `digitosDoTelefone`, a régua dos SISTEMAS, que aceita 8 e 9
+  // dígitos e apaga letra: a ficha nascia +98, e o `…@lid` virava telefone.
+  // (O bloco de telefone do Typebot já entrega "+55…" validado; a régua
+  // protege o resto — o bloco trocado por texto, o n8n, outro formulário.)
   const cru = valorDoCampo(acionamento.variaveis, webhook.campo_telefone);
-  const digitos = digitosDoTelefone(cru);
-  if (!digitos) {
+  const telefone = telefoneDigitado(cru);
+  if (!telefone.ok) {
     return {
       resultado: "sem_telefone",
-      detalhe: webhook.campo_telefone
-        ? `o campo "${webhook.campo_telefone}" não veio no payload, ou não parece um telefone`
-        : "este webhook não tem campo de telefone configurado",
+      detalhe: detalheDoTelefone(webhook.campo_telefone, telefone.motivo),
       contactId: null,
     };
   }
+  const digitos = telefone.digitos;
 
   // ── 3) alguém escuta? ──────────────────────────────────────
   const { data: automacoes, error: erroAuto } = await admin

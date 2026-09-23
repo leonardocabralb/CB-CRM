@@ -3,9 +3,10 @@
 //
 // The dashboard composer always has a `conversation_id` in hand. The
 // public API doesn't — an external automation knows a *phone number*,
-// not an internal UUID. This helper bridges that: given an E.164
-// phone, it finds-or-creates the contact and its conversation so the
-// shared `sendMessageToConversation` core can run unchanged.
+// not an internal UUID. This helper bridges that: given a phone as the
+// integrator wrote it (read by `telefoneDigitado`), it finds-or-creates
+// the contact and its conversation so the shared
+// `sendMessageToConversation` core can run unchanged.
 //
 // It deliberately reuses the exact find-or-create logic the inbound
 // webhook uses (the `findExistingContact` dedupe helper, the
@@ -21,9 +22,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
-import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
+import { telefoneDigitado } from '@/lib/contacts/telefone';
 import { SendMessageError } from '@/lib/whatsapp/send-message';
-import { resolveAuditUserId, ContactError } from '@/lib/api/v1/contacts';
+import {
+  resolveAuditUserId,
+  ContactError,
+  mensagemDoTelefoneDaApi,
+} from '@/lib/api/v1/contacts';
 
 export interface ResolvedConversation {
   conversationId: string;
@@ -44,14 +49,17 @@ export async function resolveConversationByPhone(
   phone: string,
   name?: string | null
 ): Promise<ResolvedConversation> {
-  const sanitized = sanitizePhoneForMeta(phone);
-  if (!isValidE164(sanitized)) {
+  // A régua das telas (Fase 3-III): brasileiro sem `+` ganha o 55, e texto
+  // com letra — um JID colado — é recusado em vez de virar os dígitos dele.
+  const telefone = telefoneDigitado(phone);
+  if (!telefone.ok) {
     throw new SendMessageError(
       'bad_request',
-      "'to' must be a valid phone number in E.164 format (e.g. +14155550123)",
+      mensagemDoTelefoneDaApi('to', telefone.motivo),
       400
     );
   }
+  const sanitized = telefone.digitos;
 
   // Fail fast (and create nothing) when the account has no WhatsApp
   // connected — the same error the send would raise anyway.

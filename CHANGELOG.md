@@ -87,6 +87,27 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Número sem DDD, com letra ou incompleto é recusado com o motivo. Editar
   o nome de uma ficha antiga não confere o telefone que ninguém mexeu.
 
+- **A mesma leitura do telefone na "Nova conversa", na API e nos webhooks
+  recebidos.** A "Nova conversa" da caixa de entrada e a API
+  (`POST /api/v1/contacts`, `/api/v1/messages` e `/api/v1/broadcasts`)
+  passam a ler o telefone como as telas de contato: "(81) 98874-5316" vira `5581988745316` (antes, a
+  ficha `81988745316`, que sai para +81). ⚠️ **Para quem integra:** o
+  disparo pela API deixa de exigir o `+` no número brasileiro, e texto com
+  letra — inclusive um id do WhatsApp colado, como `…@s.whatsapp.net` —
+  passa a ser recusado com `400` e o motivo, em vez de virar os dígitos
+  dele. Número mandado com `+` e o código do país é lido como antes; sem
+  o `+`, número estrangeiro de 10 dígitos, ou 11 com 9 na 3ª posição
+  (celular do Peru ou do Chile, por exemplo), passa a ser lido como
+  brasileiro — mande-o com `+`. A regra está em
+  [`docs/public-api.md`](./docs/public-api.md#phone-numbers). Os webhooks
+  de entrada (o Typebot) passam pela mesma régua: lá o número brasileiro sem
+  `+` já ganhava o 55, mas "98874-5316" (sem DDD) virava uma ficha de +98 e
+  um id do WhatsApp colado virava telefone. Agora o telefone que chega e não
+  serve não cria ficha: o log diz o porquê, e o Meu dia conta o caso por 7
+  dias, com um link para o log de *Webhooks → Recebidos*. O item do Meu dia
+  que somava o Calendly e os webhooks virou dois, cada um levando ao seu
+  log.
+
 - **A importação de CSV diz o que ficou de fora e por quê.** Linha com
   telefone vazio ou inválido deixa de ser contada como "duplicada" (e a
   sem telefone deixa de sumir sem contar), e cada linha que o banco

@@ -28,7 +28,7 @@ export function registerBroadcastTools(server: McpServer, client: WacrmClient): 
         recipients: z
           .array(
             z.object({
-              to: z.string().describe('Recipient phone number in E.164 format.'),
+              to: z.string().describe('Recipient phone number. With + and the country code (e.g. +14155550123); a Brazilian number may be written without + but with its area code (e.g. (81) 98874-5316, stored as 5581988745316). Numbers outside this rule are dropped and counted as rejected.'),
               params: z
                 .array(z.string())
                 .optional()
