@@ -20,6 +20,9 @@
 // A cura é esperar a linha: sem linha, tenta de novo em pausas curtas. A
 // linha EXISTIR e o UPDATE não avançar é o outro caso — recibo atrasado ou
 // repetido que a escada recusou (`escada-de-status.ts`) — e aí não se insiste.
+//
+// A rota da Meta usa a mesma espera desde 23/09/2026, com pausas próprias e
+// sem esperar quando não adianta (`recibo-da-meta.ts`).
 // ============================================================
 
 /** O que o UPDATE condicional respondeu. */
