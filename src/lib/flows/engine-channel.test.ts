@@ -17,13 +17,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ------------------------------------------------------------
 
 const sendInteractiveButtons = vi.fn();
+const sendInteractiveList = vi.fn();
 const sendText = vi.fn();
 
 vi.mock("./meta-send", () => ({
   engineSendText: (...a: unknown[]) => sendText(...a),
   engineSendMedia: vi.fn(),
   engineSendInteractiveButtons: (...a: unknown[]) => sendInteractiveButtons(...a),
-  engineSendInteractiveList: vi.fn(),
+  engineSendInteractiveList: (...a: unknown[]) => sendInteractiveList(...a),
 }));
 
 /** Estado observável do banco após o dispatch. */
@@ -35,6 +36,9 @@ interface Estado {
 
 let estado: Estado;
 let flowsNoBanco: Record<string, unknown>[];
+let nosNoBanco: Record<string, unknown>[];
+/** O run que `loadActiveRunForContact` enxerga. Vazio = nenhum em curso. */
+let runsAtivos: Record<string, unknown>[];
 
 vi.mock("./admin-client", () => ({
   supabaseAdmin: () => makeDb(),
@@ -71,7 +75,7 @@ function makeDb() {
     order: () => builder,
     limit: () => {
       if (table === "flow_runs" && mode === "select") {
-        return Promise.resolve({ data: [], error: null }); // sem run ativo
+        return Promise.resolve({ data: runsAtivos, error: null });
       }
       return Promise.resolve({ data: [], error: null });
     },
@@ -92,7 +96,7 @@ function makeDb() {
         return resolve({ data: flowsNoBanco, error: null });
       }
       if (table === "flow_nodes" && mode === "select") {
-        return resolve({ data: NODES, error: null });
+        return resolve({ data: nosNoBanco, error: null });
       }
       if (table === "messages" && mode === "select") {
         return resolve({ data: [], error: null });
@@ -157,7 +161,10 @@ const INPUT = {
 beforeEach(() => {
   estado = { runs: {}, eventos: [], runInserido: null };
   flowsNoBanco = [{ ...FLOW_BASE }];
+  nosNoBanco = NODES;
+  runsAtivos = [];
   sendInteractiveButtons.mockReset();
+  sendInteractiveList.mockReset();
   sendText.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -334,5 +341,296 @@ describe("regressão de merge: toque em botão respeita o canal", () => {
     });
 
     expect(estado.runInserido?.flow_id).toBe("f-por-id");
+  });
+});
+
+describe("nó de LISTA: o mesmo canal dos botões (Fase 4)", () => {
+  // A lista não passava o canal: um fluxo preso ao número X mandava a lista
+  // pelo canal atual da conversa. Achado da auditoria do merge #259.
+  const lista = (channel_id?: string) => [
+    NODES[0],
+    {
+      id: "n1",
+      flow_id: "f1",
+      node_key: "menu",
+      node_type: "send_list",
+      config: {
+        text: "Escolha",
+        button_label: "Ver",
+        ...(channel_id ? { channel_id } : {}),
+        sections: [{ rows: [{ reply_id: "a", title: "A", next_node_key: "end" }] }],
+      },
+    },
+    NODES[2],
+  ];
+
+  it("usa o canal do RUN quando o nó não fixa nenhum", async () => {
+    nosNoBanco = lista();
+    sendInteractiveList.mockResolvedValue({ whatsapp_message_id: "wamid.out" });
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    await dispatchInboundToFlows({ ...INPUT, channelId: "ch-comercial" });
+
+    expect(sendInteractiveList).toHaveBeenCalledWith(
+      expect.objectContaining({ preferredChannelId: "ch-comercial" }),
+    );
+  });
+
+  it("o canal FIXADO no nó vence o do run", async () => {
+    nosNoBanco = lista("ch-oficial");
+    sendInteractiveList.mockResolvedValue({ whatsapp_message_id: "wamid.out" });
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    await dispatchInboundToFlows({ ...INPUT, channelId: "ch-comercial" });
+
+    expect(sendInteractiveList).toHaveBeenCalledWith(
+      expect.objectContaining({ preferredChannelId: "ch-oficial" }),
+    );
+  });
+
+  it("lista que falha também encerra o run como failed", async () => {
+    nosNoBanco = lista();
+    sendInteractiveList.mockRejectedValue(new Error("título da linha passou de 24"));
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    await dispatchInboundToFlows({ ...INPUT, channelId: "ch-comercial" });
+
+    expect(estado.runs["r1"]?.status).toBe("failed");
+    expect(estado.runs["r1"]?.end_reason).toBe("send_interactive_failed");
+  });
+});
+
+describe("os dois nós interativos passam pela interpolação (Fase 4)", () => {
+  // As montagens (`camposDosBotoes`/`camposDaLista`) têm teste puro em
+  // engine.test.ts; este prova que os ENVIOS as usam. Num run novo não há
+  // variável nenhuma, então "{{vars.name}}" tem de sair vazio, não literal.
+  it("botões", async () => {
+    nosNoBanco = [
+      NODES[0],
+      {
+        ...NODES[1],
+        config: {
+          text: "Oi {{vars.name}}",
+          buttons: [{ reply_id: "a", title: "A {{vars.name}}", next_node_key: "end" }],
+        },
+      },
+      NODES[2],
+    ];
+    sendInteractiveButtons.mockResolvedValue({ whatsapp_message_id: "wamid.out" });
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    await dispatchInboundToFlows({ ...INPUT, channelId: "ch-comercial" });
+
+    expect(sendInteractiveButtons).toHaveBeenCalledWith(
+      expect.objectContaining({ bodyText: "Oi ", buttons: [{ id: "a", title: "A " }] }),
+    );
+  });
+
+  it("lista", async () => {
+    nosNoBanco = [
+      NODES[0],
+      {
+        id: "n1",
+        flow_id: "f1",
+        node_key: "menu",
+        node_type: "send_list",
+        config: {
+          text: "Oi {{vars.name}}",
+          button_label: "Ver",
+          sections: [{ rows: [{ reply_id: "a", title: "A", next_node_key: "end" }] }],
+        },
+      },
+      NODES[2],
+    ];
+    sendInteractiveList.mockResolvedValue({ whatsapp_message_id: "wamid.out" });
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    await dispatchInboundToFlows({ ...INPUT, channelId: "ch-comercial" });
+
+    expect(sendInteractiveList).toHaveBeenCalledWith(expect.objectContaining({ bodyText: "Oi " }));
+  });
+});
+
+describe("collect_input → nó interativo: a variável capturada chega ao envio (Fase 4)", () => {
+  // O coração do #553: sem estes, trocar `run.vars` por `{}` no envio deixava
+  // a suíte verde (os outros testes rodam num run NOVO, sem variável).
+  const pergunta = {
+    id: "n1",
+    flow_id: "f1",
+    node_key: "nome",
+    node_type: "collect_input",
+    config: { prompt_text: "Qual seu nome?", var_key: "name", next_node_key: "menu" },
+  };
+  const botoes = {
+    id: "n2",
+    flow_id: "f1",
+    node_key: "menu",
+    node_type: "send_buttons",
+    config: {
+      text: "Oi {{vars.name}}",
+      buttons: [{ reply_id: "a", title: "Sou {{vars.name}}", next_node_key: "end" }],
+    },
+  };
+  const lista = {
+    id: "n2",
+    flow_id: "f1",
+    node_key: "menu",
+    node_type: "send_list",
+    config: {
+      text: "{{vars.name}}, escolha",
+      button_label: "Ver",
+      sections: [{ title: "Para {{vars.name}}", rows: [{ reply_id: "a", title: "A", next_node_key: "end" }] }],
+    },
+  };
+  const fim = { id: "n3", flow_id: "f1", node_key: "end", node_type: "end", config: {} };
+  const runNaPergunta = (extra: Record<string, unknown> = {}) => ({
+    id: "r1",
+    flow_id: "f1",
+    account_id: "acct",
+    user_id: "u1",
+    contact_id: "c1",
+    conversation_id: "conv1",
+    status: "active",
+    current_node_key: "nome",
+    vars: {},
+    reprompt_count: 0,
+    channel_id: "ch-oficial",
+    ...extra,
+  });
+  const resposta = (texto: string) => ({
+    ...INPUT,
+    message: { kind: "text" as const, text: texto, meta_message_id: "wamid.2" },
+    isFirstInboundMessage: false,
+  });
+
+  it("botões: o nome capturado sai no corpo e no título, pelo canal do run", async () => {
+    nosNoBanco = [NODES[0], pergunta, botoes, fim];
+    runsAtivos = [runNaPergunta()];
+    sendInteractiveButtons.mockResolvedValue({ whatsapp_message_id: "wamid.out" });
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    await dispatchInboundToFlows(resposta("  Ana  "));
+
+    expect(sendInteractiveButtons).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bodyText: "Oi Ana",
+        buttons: [{ id: "a", title: "Sou Ana" }],
+        preferredChannelId: "ch-oficial",
+      }),
+    );
+  });
+
+  it("lista: o nome capturado sai no corpo e no título da seção", async () => {
+    nosNoBanco = [NODES[0], pergunta, lista, fim];
+    runsAtivos = [runNaPergunta()];
+    sendInteractiveList.mockResolvedValue({ whatsapp_message_id: "wamid.out" });
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    await dispatchInboundToFlows(resposta("Ana"));
+
+    const args = sendInteractiveList.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(args.bodyText).toBe("Ana, escolha");
+    expect((args.sections as { title?: string }[])[0].title).toBe("Para Ana");
+  });
+
+  it("a re-pergunta da lista sai interpolada com as variáveis do run", async () => {
+    nosNoBanco = [NODES[0], lista, fim];
+    runsAtivos = [runNaPergunta({ current_node_key: "menu", vars: { name: "Ana" } })];
+    sendInteractiveList.mockResolvedValue({ whatsapp_message_id: "wamid.out" });
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    // Texto solto num nó de lista não casa: vira re-pergunta.
+    await dispatchInboundToFlows(resposta("hã?"));
+
+    expect(sendInteractiveList).toHaveBeenCalledWith(
+      expect.objectContaining({ bodyText: "Ana, escolha", preferredChannelId: "ch-oficial" }),
+    );
+  });
+
+  it("⚠️ contrato NOSSO: a re-pergunta que falha ENCERRA o run (o original o mantém vivo)", async () => {
+    nosNoBanco = [NODES[0], botoes, fim];
+    runsAtivos = [runNaPergunta({ current_node_key: "menu", vars: { name: "Ana" } })];
+    sendInteractiveButtons.mockRejectedValue(new Error("Meta 5xx"));
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    await dispatchInboundToFlows(resposta("hã?"));
+
+    expect(estado.runs["r1"]?.status).toBe("failed");
+    expect(estado.runs["r1"]?.end_reason).toBe("reprompt_interactive_failed");
+    expect(estado.eventos.some((e) => e.payload.reason === "reprompt_interactive_failed")).toBe(true);
+  });
+});
+
+describe("collect_input: a pergunta sai pelo canal do run (revisão da Fase 4)", () => {
+  const nos = (channel_id?: string) => [
+    { ...NODES[0], config: { next_node_key: "nome" } },
+    {
+      id: "n1",
+      flow_id: "f1",
+      node_key: "nome",
+      node_type: "collect_input",
+      config: {
+        prompt_text: "Qual seu nome?",
+        var_key: "name",
+        next_node_key: "end",
+        ...(channel_id ? { channel_id } : {}),
+      },
+    },
+    NODES[2],
+  ];
+
+  it("a PERGUNTA usa o canal do run, não o da conversa", async () => {
+    nosNoBanco = nos();
+    sendText.mockResolvedValue({ whatsapp_message_id: "wamid.out" });
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    await dispatchInboundToFlows({ ...INPUT, channelId: "ch-comercial" });
+
+    expect(sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Qual seu nome?", preferredChannelId: "ch-comercial" }),
+    );
+  });
+
+  it("o canal fixado no nó vence o do run", async () => {
+    nosNoBanco = nos("ch-oficial");
+    sendText.mockResolvedValue({ whatsapp_message_id: "wamid.out" });
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    await dispatchInboundToFlows({ ...INPUT, channelId: "ch-comercial" });
+
+    expect(sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ preferredChannelId: "ch-oficial" }),
+    );
+  });
+
+  it("a RE-PERGUNTA também (resposta vazia depois de aparar)", async () => {
+    nosNoBanco = nos();
+    runsAtivos = [
+      {
+        id: "r1",
+        flow_id: "f1",
+        account_id: "acct",
+        user_id: "u1",
+        contact_id: "c1",
+        conversation_id: "conv1",
+        status: "active",
+        current_node_key: "nome",
+        vars: {},
+        reprompt_count: 0,
+        channel_id: "ch-oficial",
+      },
+    ];
+    sendText.mockResolvedValue({ whatsapp_message_id: "wamid.out" });
+    const { dispatchInboundToFlows } = await import("./engine");
+
+    await dispatchInboundToFlows({
+      ...INPUT,
+      message: { kind: "text" as const, text: "   ", meta_message_id: "wamid.3" },
+      isFirstInboundMessage: false,
+    });
+
+    expect(sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Qual seu nome?", preferredChannelId: "ch-oficial" }),
+    );
   });
 });

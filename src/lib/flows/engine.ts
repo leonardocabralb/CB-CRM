@@ -67,6 +67,66 @@ import {
 // ============================================================
 
 /**
+ * O que um nó `send_buttons` manda à Meta, com as variáveis do run
+ * aplicadas (upstream #553, Fase 4 do plano do merge do upstream). Até aqui
+ * o texto, o cabeçalho, o rodapé e os títulos iam CRUS: depois de um
+ * `collect_input`, o cliente recebia "Oi {{vars.name}}" literal.
+ *
+ * ⚠️ O `reply_id` NUNCA é interpolado: é a chave de roteamento que
+ * `matchReplyId` compara com o botão tocado, e tem de chegar à Meta como foi
+ * escrito. E nada é cortado: a interpolação pode passar o título do teto da
+ * Meta (20 no botão), e o validador do `meta-api` lança o erro com o motivo —
+ * o nó registra e encerra o run (`send_interactive_failed`), que é melhor que
+ * mandar um texto cortado que ninguém escreveu.
+ */
+export function camposDosBotoes(
+  cfg: SendButtonsNodeConfig,
+  vars: Record<string, unknown>,
+): {
+  bodyText: string;
+  headerText: string | undefined;
+  footerText: string | undefined;
+  buttons: { id: string; title: string }[];
+} {
+  return {
+    bodyText: interpolateVars(cfg.text, vars),
+    headerText: interpolateOptionalVars(cfg.header_text, vars),
+    footerText: interpolateOptionalVars(cfg.footer_text, vars),
+    buttons: cfg.buttons.map((b) => ({ id: b.reply_id, title: interpolateVars(b.title, vars) })),
+  };
+}
+
+/** A mesma coisa para o nó `send_list` — nunca o `reply_id` da linha. */
+export function camposDaLista(
+  cfg: SendListNodeConfig,
+  vars: Record<string, unknown>,
+): {
+  bodyText: string;
+  buttonLabel: string;
+  headerText: string | undefined;
+  footerText: string | undefined;
+  sections: {
+    title: string | undefined;
+    rows: { id: string; title: string; description: string | undefined }[];
+  }[];
+} {
+  return {
+    bodyText: interpolateVars(cfg.text, vars),
+    buttonLabel: interpolateVars(cfg.button_label, vars),
+    headerText: interpolateOptionalVars(cfg.header_text, vars),
+    footerText: interpolateOptionalVars(cfg.footer_text, vars),
+    sections: cfg.sections.map((sec) => ({
+      title: interpolateOptionalVars(sec.title, vars),
+      rows: sec.rows.map((r) => ({
+        id: r.reply_id,
+        title: interpolateVars(r.title, vars),
+        description: interpolateOptionalVars(r.description, vars),
+      })),
+    })),
+  };
+}
+
+/**
  * Given a node + the customer's reply_id, return the next_node_key
  * to advance to, or `null` if no option matches.
  */
@@ -430,10 +490,7 @@ async function sendButtonsAndSuspend(
     userId: run.user_id,
     conversationId: run.conversation_id!,
     contactId: run.contact_id!,
-    bodyText: cfg.text,
-    headerText: cfg.header_text,
-    footerText: cfg.footer_text,
-    buttons: cfg.buttons.map((b) => ({ id: b.reply_id, title: b.title })),
+    ...camposDosBotoes(cfg, run.vars ?? {}),
     preferredChannelId: nodeChannel(cfg, run),
   });
   await logEvent(db, run.id, "message_sent", node.node_key, {
@@ -467,18 +524,11 @@ async function sendListAndSuspend(
     userId: run.user_id,
     conversationId: run.conversation_id!,
     contactId: run.contact_id!,
-    bodyText: cfg.text,
-    buttonLabel: cfg.button_label,
-    headerText: cfg.header_text,
-    footerText: cfg.footer_text,
-    sections: cfg.sections.map((s) => ({
-      title: s.title,
-      rows: s.rows.map((r) => ({
-        id: r.reply_id,
-        title: r.title,
-        description: r.description,
-      })),
-    })),
+    ...camposDaLista(cfg, run.vars ?? {}),
+    // O canal do NÓ, depois o do run — como todo nó que envia. A lista não
+    // o passava: um fluxo preso ao número X mandava a lista pelo canal atual
+    // da conversa (achado da auditoria do merge #259).
+    preferredChannelId: nodeChannel(cfg, run),
   });
   await logEvent(db, run.id, "message_sent", node.node_key, {
     node_type: "send_list",
@@ -587,6 +637,19 @@ function interpolateVars(template: string, vars: Record<string, unknown>): strin
     const v = vars[key];
     return v === undefined || v === null ? "" : String(v);
   });
+}
+
+/**
+ * `interpolateVars` para campo OPCIONAL (cabeçalho, rodapé, título de seção,
+ * descrição de linha): ausente continua ausente, em vez de virar "". O
+ * `meta-api` trata esses campos por "tem valor?", então "" também não iria —
+ * mas o que se registra e se manda fica igual ao que o autor configurou.
+ */
+function interpolateOptionalVars(
+  template: string | null | undefined,
+  vars: Record<string, unknown>,
+): string | undefined {
+  return template === undefined || template === null ? undefined : interpolateVars(template, vars);
 }
 
 async function endRun(
@@ -714,6 +777,11 @@ async function advanceFromNodeKey(
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
           text: interpolateVars(cfg.prompt_text, run.vars),
+          // Sem isto a pergunta saía pelo canal ATUAL da conversa, e os
+          // botões logo depois pelo do run: com a conversa fixada em outro
+          // número, o cliente recebia "Qual seu nome?" numa conversa e o
+          // "Oi, Ana" noutra (revisão da Fase 4 do plano do upstream).
+          preferredChannelId: nodeChannel(cfg, run),
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
           node_type: "collect_input",
@@ -1121,10 +1189,12 @@ async function handleReplyForActiveRun(
         }
       } catch (err) {
         // O run está suspenso esperando uma resposta interativa. Se o
-        // prompt não pode ser reenviado (ex.: a conversa migrou para um
-        // canal Evolution, que não tem botões/listas), ele ficaria ativo
-        // para sempre engolindo as mensagens do cliente. Falhar libera o
-        // contato para automações e IA.
+        // prompt não pode ser reenviado (ex.: um erro da Meta), mantê-lo vivo
+        // consumiria as mensagens seguintes do cliente até esgotar
+        // `max_reprompts` — é o contrato do original. Encerrar libera o
+        // contato para automações e IA na hora e deixa a falha visível; o
+        // preço é perder o fluxo num erro TRANSITÓRIO, com os botões ainda
+        // na tela do cliente (o toque seguinte não acha run ativo).
         await logEvent(db, run.id, "error", currentNode.node_key, {
           reason: "reprompt_interactive_failed",
           detail: err instanceof Error ? err.message : String(err),
@@ -1143,6 +1213,7 @@ async function handleReplyForActiveRun(
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
           text: interpolateVars(cfg.prompt_text, run.vars),
+          preferredChannelId: nodeChannel(cfg, run),
         });
       } catch (err) {
         await logEvent(db, run.id, "error", currentNode.node_key, {
