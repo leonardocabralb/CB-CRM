@@ -296,11 +296,14 @@ describe('credenciais e filtros', () => {
     expect(chaveNoMake(M)).toContain('Key: Bearer SUA_CHAVE');
   });
 
-  it('o filtro da receita corta o laço (source system) e o envio de teste', () => {
+  it('o filtro da receita corta o laço (source api) e o envio de teste', () => {
     const texto = filtroDeEtapaNoN8n(M);
     expect(texto).toContain('deal.stage_changed');
     expect(texto).toContain('ID_DA_ETAPA');
-    expect(texto).toContain('is not equal to  system');
+    expect(texto).toContain('is not equal to  api');
+    // ⚠️ `system` NÃO: até a 1040 ele descartava junto o "Mover card" das
+    // automações, que é o evento que a receita quer receber.
+    expect(texto).not.toContain('system');
     expect(texto).toContain('$json.body.test');
   });
 });

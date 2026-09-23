@@ -137,8 +137,8 @@ const MENSAGEM: NormalizedInbound = {
 /** Uma promessa que só resolve quando o teste mandar. */
 function presa() {
   let soltar!: () => void;
-  const promessa = new Promise<void>((resolve) => {
-    soltar = resolve;
+  const promessa = new Promise<'tentado'>((resolve) => {
+    soltar = () => resolve('tentado');
   });
   return { promessa, soltar };
 }
@@ -150,14 +150,14 @@ beforeEach(() => {
   h.ordem = [];
   h.insertErro = null;
   h.conversaExiste = false;
-  dispatch.mockResolvedValue(undefined);
+  dispatch.mockResolvedValue('tentado');
 });
 
 describe('persistInboundMessage: conversation.created não segura a gravação', () => {
   it('com a entrega PRESA, a mensagem é gravada e os motores rodam', async () => {
     const entrega = presa();
     dispatch.mockImplementation((_db, _conta, evento) =>
-      evento === 'conversation.created' ? entrega.promessa : Promise.resolve(),
+      evento === 'conversation.created' ? entrega.promessa : Promise.resolve('tentado' as const),
     );
 
     let terminou = false;
@@ -182,6 +182,7 @@ describe('persistInboundMessage: conversation.created não segura a gravação',
       h.ordem.push(`${evento}:começou`);
       await new Promise((r) => setTimeout(r, 5));
       h.ordem.push(`${evento}:terminou`);
+      return 'tentado' as const;
     });
 
     await persistInboundMessage(fakeDb(), MENSAGEM);

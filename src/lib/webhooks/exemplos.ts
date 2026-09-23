@@ -110,6 +110,10 @@ const EXEMPLOS: { [E in WebhookEvent]: WebhookEventData[E] } = {
   },
   'deal.stage_changed': {
     ...BASE_DO_NEGOCIO,
+    // O caso típico: a automação do agendamento levando o lead de "Lead" a
+    // "Reunião Agendada". Sai `automation` desde a 1040 (antes, `system`,
+    // junto com a API — ver `DealEventSource`).
+    source: 'automation',
     from_pipeline: { id: ID.funil, name: 'Comercial' },
     from_stage: { id: ID.etapaAnterior, name: 'Lead', position: 2 },
   },

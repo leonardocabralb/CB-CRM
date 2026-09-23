@@ -13,7 +13,7 @@ import {
 } from '@/lib/whatsapp/transport/evolution-inbound';
 import { receberSemTelefone } from '@/lib/whatsapp/sem-telefone/receber';
 import { religarOResto, religarRetidas } from '@/lib/whatsapp/sem-telefone/religar';
-import { aceitamAvancoPara } from '@/lib/whatsapp/transport/escada-de-status';
+import { aceitamORecibo } from '@/lib/whatsapp/transport/escada-de-status';
 import {
   PAUSAS_DO_RECIBO_MS,
   aplicarReciboQuandoAMensagemExistir,
@@ -114,23 +114,6 @@ function ackToStatus(
   if (s === 'READ' || s === 'PLAYED' || s === '4' || s === '5') return 'read';
   return null;
 }
-
-/**
- * Situações a partir das quais `failed` é crível.
- *
- * ⚠️ A escada de status é de mão única, e `failed` é um desvio terminal válido
- * só no começo dela. Um `ERROR` que chegue DEPOIS de a mensagem ter sido
- * entregue ou lida é ruído da Baileys — aplicá-lo pintaria de "não entregue"
- * uma mensagem que o cliente comprovadamente leu.
- *
- * ⚠️ O lado Meta NÃO tem essa guarda nas MENSAGENS (conferido em
- * 23/09/2026): lá `isValidStatusTransition` só protege
- * `broadcast_recipients`, e o UPDATE de `messages` grava qualquer status —
- * um "sent" atrasado rebaixa "delivered". Uma versão deste comentário dizia o
- * contrário. É por isso que o balão "Não confirmada"
- * (`lib/inbox/entrega-nao-confirmada.ts`) só vale para a Evolution.
- */
-const ACEITA_FALHA = ['sending', 'sent'] as const;
 
 interface EvolutionWebhookBody {
   event?: string;
@@ -620,15 +603,16 @@ export async function POST(request: Request) {
             .update({ status })
             .eq('message_id', keyId)
             .in('sender_type', ['agent', 'bot']);
-          // Ver `ACEITA_FALHA`: só marca falha o que ainda não passou de
-          // "enviado". ⚠️ O resto da escada TAMBÉM tem guarda desde 09/09/2026:
-          // a Evolution 2.4 (Baileys 7) emite SERVER_ACK DEPOIS do DELIVERY_ACK
-          // da mesma mensagem (medido: 5 recibos em 9 s, o último rebaixando),
-          // e sem a guarda a bolha voltava a um ✓ com a mensagem entregue. Uma
-          // versão deste comentário dizia que a escada "já era monotônica na
-          // prática" — era, na 6.7.19. Ver `escada-de-status.ts`.
-          if (status === 'failed') q = q.in('status', ACEITA_FALHA);
-          else q = q.in('status', aceitamAvancoPara(status));
+          // Só marca falha o que ainda não passou de "enviado" (`ACEITA_FALHA`,
+          // em `escada-de-status.ts`: um ERROR que chegue depois da entrega é
+          // ruído da Baileys). ⚠️ O resto da escada TAMBÉM tem guarda desde
+          // 09/09/2026: a Evolution 2.4 (Baileys 7) emite SERVER_ACK DEPOIS do
+          // DELIVERY_ACK da mesma mensagem (medido: 5 recibos em 9 s, o último
+          // rebaixando), e sem a guarda a bolha voltava a um ✓ com a mensagem
+          // entregue. Uma versão deste comentário dizia que a escada "já era
+          // monotônica na prática" — era, na 6.7.19. A rota da Meta usa a
+          // mesma regra desde 23/09/2026.
+          q = q.in('status', aceitamORecibo(status));
           const { data: atualizadas, error } = await q.select('id');
           if (error) {
             console.error('[evolution/webhook] status update failed:', error);

@@ -113,8 +113,8 @@ const semMidia = async () => null;
 
 function presa() {
   let soltar!: () => void;
-  const promessa = new Promise<void>((resolve) => {
-    soltar = resolve;
+  const promessa = new Promise<'tentado'>((resolve) => {
+    soltar = () => resolve('tentado');
   });
   return { promessa, soltar };
 }
@@ -125,14 +125,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.ordem = [];
   h.insertErro = null;
-  dispatch.mockResolvedValue(undefined);
+  dispatch.mockResolvedValue('tentado');
 });
 
 describe('Instagram: conversation.created não segura a gravação', () => {
   it('com a entrega PRESA, a DM é gravada e a conversa segue o fluxo', async () => {
     const entrega = presa();
     dispatch.mockImplementation((_db, _conta, evento) =>
-      evento === 'conversation.created' ? entrega.promessa : Promise.resolve(),
+      evento === 'conversation.created' ? entrega.promessa : Promise.resolve('tentado' as const),
     );
 
     let terminou = false;

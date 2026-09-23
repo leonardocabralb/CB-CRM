@@ -57,6 +57,43 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **Avisos de negócio (`deal.*`): quem moveu pela API passa a se chamar
+  `api`, e um aviso interrompido por reinício sai de novo.** Até aqui o
+  `source` `system` misturava o card movido pela API com o "Mover card" das
+  automações, e filtrar um (para o fluxo do n8n não entrar em laço)
+  descartava o outro — o Calendly levando o lead a "Reunião Agendada", por
+  exemplo. Agora a API sai `api`, os passos de mover e marcar das
+  automações saem `automation`, e `system` fica só para o resto — quem
+  filtrava `system` no fluxo troca o filtro para `api`. E o aviso
+  que o servidor não chegou a tentar entregar (reinício no meio, leitura do
+  banco que falhou) é reenviado uns 10 minutos depois, com o **mesmo `id`**
+  — descarte repetição por ele. **Migration necessária:**
+  `supabase/migrations/1040_cb_origem_api_e_aviso_duravel_do_funil.sql`,
+  aplicada **antes** de publicar esta versão: sem ela, as automações de
+  funil param.
+
+- **Criar de novo um modelo que já existe não o tira mais de uso.** Criar
+  pela tela de modelos um nome e idioma que já existiam no mesmo número
+  fazia a Meta recusar, e o modelo aprovado virava rascunho: sumia dos
+  disparos, da caixa de entrada e das automações até alguém sincronizar da
+  Meta. Agora o modelo fica como estava — inclusive quando duas pessoas
+  enviam o mesmo modelo ao mesmo tempo — e o aviso aponta as ações do
+  modelo na lista. Com mais de um administrador, criar o modelo que um
+  colega já tinha começado também não gera mais uma segunda cópia com o
+  mesmo nome.
+
+- **A mensagem enviada pelo número oficial (Meta) não volta mais a um ✓
+  depois de entregue.** A Meta manda os recibos de uma mensagem em avisos
+  separados, com milissegundos de diferença, e o "enviada" que terminava por
+  último rebaixava a mensagem. Agora a situação só avança (uma falha só vale
+  antes da entrega), e o recibo que chega antes de o CRM gravar a mensagem
+  espera por ela. Para quem integra: `message.status_updated` das conexões
+  oficiais passa a sair só quando a situação avança, como já acontecia nas
+  conexões por QR Code. Não saem mais o `sent` (a mensagem já nasce
+  enviada) nem o recibo repetido ou atrasado, e a nota de voz ouvida chega
+  como `read`. Nas campanhas, dois recibos do mesmo destinatário chegando
+  juntos não se atropelam mais: um "lido" não volta a "entregue" (a contagem
+  de lidas deixava de contar um), e um "entregue" não vira falha.
 - **Caixa de entrada: a conversa que recebe mensagem sobe para o topo.**
   Até aqui a hora e a prévia da linha mudavam, mas ela ficava na posição em
   que estava quando a página abriu — uma conversa reaberta por mensagem

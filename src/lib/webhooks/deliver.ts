@@ -8,25 +8,32 @@
 // delivery must not affect the 200 OK returned to Meta.
 //
 // Delivery semantics (documented in docs/public-api.md):
-//   - UMA tentativa por evento, com prazo curto, e NENHUMA retentativa.
-//     Endpoint fora do ar na hora perde aquele aviso — não existe fila de
-//     reenvio.
+//   - UMA tentativa por evento e por endpoint, com prazo curto: endpoint que
+//     responde erro (ou não responde) perde aquele aviso — não há
+//     retentativa por falha HTTP.
 //   - Repetição só existe quando a ORIGEM repete o fato (ex.: a Meta
 //     reenvia um recibo). Aí o aviso sai de novo, e com `id` NOVO — cada
 //     chamada sorteia o seu —, então quem precisa deduplicar usa o que
 //     identifica o fato dentro do `data` (o `whatsapp_message_id`, por
 //     exemplo), nunca o `id` do envelope.
 //   - ⚠️ EXCETO nos eventos de negócio (`deal.*`): lá o `id` do envelope é o
-//     id da linha da fila do funil (`opcoes.id`), estável, e a fila é
-//     reivindicada uma vez só (`drain-events.ts`) — o mesmo fato nunca sai
-//     com dois ids.
+//     id da linha da fila do funil (`opcoes.id`), estável — o mesmo fato
+//     nunca sai com dois ids. E eles são entregues PELO MENOS UMA VEZ
+//     (1040): o aviso cuja entrega não chegou a ser tentada (processo morto
+//     no meio, leitura que falhou antes do POST) é reentregue pelo cron com
+//     o MESMO id (`reentregar-eventos-de-funil.ts`), e um processo que morre
+//     depois do POST e antes de registrar a entrega faz o aviso sair de novo
+//     — daí descartar repetição pelo `id` ser OBRIGATÓRIO nos `deal.*`. É o
+//     retorno desta função (`ResultadoDoDisparo`) que diz se a tentativa
+//     aconteceu.
 //   - Each consecutive failure bumps `failure_count`; once it crosses
 //     MAX_CONSECUTIVE_FAILURES the endpoint is auto-disabled
 //     (`is_active = false`) so a dead sink stops being hit. A success
 //     resets the counter and stamps `last_delivery_at`.
-//   - Durable retry-with-backoff would need a queue/worker (a
+//   - Retentativa por FALHA HTTP (backoff) pediria uma fila por endpoint (a
 //     follow-up); in-process retries inside `after()` would burn the
-//     route's duration budget without a real durability guarantee.
+//     route's duration budget without a real durability guarantee. A fila
+//     do funil só garante que a tentativa ACONTEÇA, não que dê certo.
 //
 // (Uma versão deste cabeçalho dizia "at-most-once" aqui e "at-least-once"
 // mais abaixo, sobre o mesmo `id`. As duas metades estavam erradas em
@@ -101,6 +108,19 @@ export function pedidoDeEntrega(args: {
 }
 
 /**
+ * O que aconteceu com UM disparo — é o que a fila do funil precisa saber
+ * para limpar (ou não) o aviso pendente (`entregar-eventos-de-funil.ts`):
+ *   - `tentado`: houve endpoint e cada um recebeu a SUA tentativa (com
+ *     sucesso ou falha HTTP — "uma tentativa por endpoint" continua valendo);
+ *   - `sem_destino`: a leitura deu certo e ninguém ativo assina o evento;
+ *   - `falhou_antes`: nenhum POST saiu (a leitura dos endpoints falhou, ou
+ *     algo estourou antes da entrega). Não é "sem destino": o aviso tem de
+ *     continuar pendente para a reentrega.
+ * Os pontos de disparo de mensagem ignoram o retorno, e está certo.
+ */
+export type ResultadoDoDisparo = 'tentado' | 'sem_destino' | 'falhou_antes';
+
+/**
  * Deliver `event` (+ `data`) to every active endpoint of `accountId`
  * subscribed to it. Never throws.
  *
@@ -121,7 +141,7 @@ export async function dispatchWebhookEvent<E extends WebhookEvent>(
   event: E,
   data: WebhookEventData[E],
   opcoes: { id?: string; occurredAt?: string } = {}
-): Promise<void> {
+): Promise<ResultadoDoDisparo> {
   try {
     const { data: rows, error } = await db
       .from('webhook_endpoints')
@@ -130,7 +150,13 @@ export async function dispatchWebhookEvent<E extends WebhookEvent>(
       .eq('is_active', true)
       .contains('events', [event]);
 
-    if (error || !rows || rows.length === 0) return;
+    // ⚠️ Erro de leitura NÃO é "sem destino": juntos, os dois faziam a fila
+    // do funil dar por entregue um aviso que nem saiu.
+    if (error || !rows) {
+      console.error(`[webhooks] dispatch: leitura dos endpoints falhou (${event})`, error);
+      return 'falhou_antes';
+    }
+    if (rows.length === 0) return 'sem_destino';
 
     // Sign the exact bytes we send so a receiver can recompute the
     // HMAC over the raw request body. `id` is what the receiver dedupes
@@ -151,9 +177,11 @@ export async function dispatchWebhookEvent<E extends WebhookEvent>(
         deliverOne(db, row, event, payload, tsSeconds)
       )
     );
+    return 'tentado';
   } catch (err) {
     // Never let a delivery problem bubble into the webhook response.
     console.error('[webhooks] dispatch failed:', err);
+    return 'falhou_antes';
   }
 }
 
