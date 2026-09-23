@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import type { Message, MessageReaction } from "@/types";
 import {
+  AlertTriangle,
   Clock,
   Check,
   CheckCheck,
@@ -68,6 +69,14 @@ interface MessageBubbleProps {
    * visualizador solo de sempre — call sites fora do fio não mudam.
    */
   onAbrirGaleria?: (messageId: string) => void;
+  /**
+   * O fio concluiu que o destinatário provavelmente NÃO recebeu esta
+   * mensagem, embora ela esteja em "enviada" (✓): o WhatsApp dele confirmou
+   * outra enviada depois, ou ele escreveu depois dela. A regra, com os
+   * recortes que evitam alarme falso, é `entregasNaoConfirmadas`
+   * (lib/inbox/entrega-nao-confirmada.ts). Sem a prop, nada muda.
+   */
+  naoConfirmada?: boolean;
 }
 
 /**
@@ -621,6 +630,7 @@ export function MessageBubble({
   onBaixarAnexo,
   baixandoAnexo = false,
   onAbrirGaleria,
+  naoConfirmada = false,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
 
@@ -647,6 +657,14 @@ export function MessageBubble({
    * numa mensagem do cliente pintaria a bolha dele de vermelho.
    */
   const naoEntregue = isAgent && message.status === "failed";
+  /**
+   * Sem recibo de erro, mas com prova de que o aparelho do destinatário
+   * estava no ar depois dela — a falha que o WhatsApp NÃO anuncia (o link
+   * que não chegou, 23/09/2026). Mesmo balão vermelho, frase diferente: aqui
+   * a certeza é menor, e a frase diz "provavelmente".
+   */
+  const semConfirmacao = isAgent && !naoEntregue && naoConfirmada;
+  const alertaDeEntrega = naoEntregue || semConfirmacao;
   // Quem falou, só em grupo e só do lado de quem recebeu: numa mensagem
   // nossa o nome seria o do próprio operador, que a bolha já identifica pelo
   // lado em que está.
@@ -708,7 +726,7 @@ export function MessageBubble({
           // condicionado a `isAgent` — que continua verdadeiro aqui. Trocar só
           // o fundo do contêiner deixava texto claro sobre fundo claro, ilegível
           // no tema claro. A exceção é o próprio aviso, que é vermelho.
-          naoEntregue &&
+          alertaDeEntrega &&
             "bg-destructive/10 text-foreground ring-2 ring-destructive/60 [&_*:not(.aviso-falha):not(.aviso-falha_*)]:!text-foreground",
         )}
       >
@@ -911,6 +929,15 @@ export function MessageBubble({
           <p className="aviso-falha mt-1 flex items-center gap-1 text-[11px] font-medium !text-destructive">
             <XCircle className="h-3 w-3 shrink-0" />
             {t("naoEntregue")}
+          </p>
+        )}
+        {semConfirmacao && (
+          <p
+            className="aviso-falha mt-1 flex items-center gap-1 text-[11px] font-medium !text-destructive"
+            title={t("naoConfirmadaDica")}
+          >
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            {t("naoConfirmada")}
           </p>
         )}
       </div>

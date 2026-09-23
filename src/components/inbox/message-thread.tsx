@@ -37,6 +37,8 @@ import {
 } from "@/lib/inbox/salto-no-fio";
 import { Input } from "@/components/ui/input";
 import { contarNovasDoCliente } from "@/lib/inbox/nao-lidas-abaixo";
+import { entregasNaoConfirmadas } from "@/lib/inbox/entrega-nao-confirmada";
+import { ehUuid } from "@/lib/tasks/validar";
 import {
   aberturasDeCanal,
   canalDivergente,
@@ -857,6 +859,12 @@ export function MessageThread({
   // seguinte (o portão do disparo segurava o envio, mas a tela mentia por
   // até um minuto). Um setState por minuto num fio parado é barato; o
   // relógio errado não é. (Achado do Codex no PR #96.)
+  //
+  // ⚠️ O relógio não é só da badge: a faixa de inadimplência também o lê, e
+  // desde 23/09/2026 `naoConfirmadas` (o balão vermelho da mensagem que o
+  // destinatário provavelmente não recebeu), que vale justamente na
+  // Evolution. Condicionar o tique à janela da Meta faria o aviso nunca
+  // acender num fio parado da Evolution.
   const [agoraDaBadge, setAgoraDaBadge] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setAgoraDaBadge(new Date()), 60_000);
@@ -896,6 +904,76 @@ export function MessageThread({
 
     return { expired: false, remaining };
   }, [messages, tTimer, agoraDaBadge, canalDaJanela]);
+
+  /**
+   * As mensagens nossas que o destinatário provavelmente NÃO recebeu: ficaram
+   * em ✓ enquanto o aparelho dele confirmava outra enviada depois, ou ele
+   * escrevia depois delas. O WhatsApp não anuncia essa falha (o link de
+   * 23/09/2026 nunca virou `failed`); a regra e os recortes que evitam alarme
+   * falso moram em `lib/inbox/entrega-nao-confirmada.ts`.
+   *
+   * O instante é o do relógio da badge, de propósito: o memo precisa
+   * envelhecer sozinho (a mensagem só pode ser acusada depois de 1 min
+   * esperando o próprio recibo) e `Date.now()` no render seria impuro. Com o
+   * tique de um minuto, o balão fica vermelho entre 1 e 2 minutos depois do
+   * envio — antes, se chegar alguma mensagem e o memo recomputar.
+   *
+   * Só conexão Evolution é candidata (ver o cabeçalho do módulo): enquanto
+   * os canais carregam, o conjunto vem vazio e nada acende — o lado seguro.
+   */
+  const canaisEvolution = useMemo(
+    () => new Set(channels.filter((c) => ehEvolution(c)).map((c) => c.id)),
+    [channels],
+  );
+  const naoConfirmadas = useMemo(
+    () =>
+      entregasNaoConfirmadas(messages, agoraDaBadge.getTime(), {
+        emGrupo: ehGrupo,
+        canaisEvolution,
+      }),
+    [messages, agoraDaBadge, ehGrupo, canaisEvolution],
+  );
+
+  /**
+   * ⚠️ Confere no BANCO antes de pintar (revisão do PR #272). A lista da tela
+   * pode estar ATRÁS do banco: a recarga da conversa (volta à aba, reconexão)
+   * substitui o array inteiro pelo resultado da consulta, e um recibo que o
+   * realtime aplicou entre a consulta e a resposta é atropelado — a mensagem
+   * volta a ✓ na tela com ✓✓ no banco. Pintar de vermelho sobre isso mandaria
+   * o operador reenviar ao cliente o que já chegou. Então: a candidata que o
+   * banco já confirmou tem a TELA corrigida (`onUpdateMessage`), e só fica
+   * vermelha a que o banco ainda diz "enviada". Consulta que falha não pinta
+   * nada. O id provisório da bolha otimista (`temp-…`) não é consultável e
+   * nunca é pintado. A consulta só roda quando o conjunto de candidatas muda
+   * — e candidata é rara.
+   */
+  const candidatasParaConferir = [...naoConfirmadas]
+    .filter((id) => ehUuid(id))
+    .sort()
+    .join(",");
+  const [confirmadasComoEnviadas, setConfirmadasComoEnviadas] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  useEffect(() => {
+    if (!candidatasParaConferir) return;
+    let cancelado = false;
+    void (async () => {
+      const { data, error } = await createClient()
+        .from("messages")
+        .select("id, status")
+        .in("id", candidatasParaConferir.split(","));
+      if (cancelado || error || !data) return;
+      const aindaEnviadas = new Set<string>();
+      for (const linha of data as Pick<Message, "id" | "status">[]) {
+        if (linha.status === "sent") aindaEnviadas.add(linha.id);
+        else onUpdateMessage(linha.id, { status: linha.status });
+      }
+      setConfirmadasComoEnviadas(aindaEnviadas);
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [candidatasParaConferir, onUpdateMessage]);
 
   /**
    * O ÚLTIMO PORTÃO ANTES DA REDE: a janela está fechada NESTE instante?
@@ -2892,6 +2970,10 @@ export function MessageThread({
                           onBaixarAnexo={() => baixarAnexoDoGrupo(msg.id)}
                           onAbrirGaleria={setGaleriaAbertaEm}
                           onIrParaCitada={irParaCitada}
+                          naoConfirmada={
+                            naoConfirmadas.has(msg.id) &&
+                            confirmadasComoEnviadas.has(msg.id)
+                          }
                         />
                       </MessageActions>
                       </LinhaDoFio>

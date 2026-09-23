@@ -114,3 +114,47 @@ describe('pipeline: o rollout não pode falhar em verde (M8)', () => {
     expect(iUpdate).toBeGreaterThan(rollout.indexOf('docker service inspect'));
   });
 });
+
+describe('pipeline: o replay não pode ficar preso ao GHCR', () => {
+  // 23/09/2026: mais de 70 execuções reprovaram no mesmo passo, em todos os
+  // PRs abertos, sem defeito em nenhum deles. A `supabase/setup-cli` escreve
+  // `SUPABASE_INTERNAL_IMAGE_REGISTRY=ghcr.io` (via `core.exportVariable`, que
+  // grava no `$GITHUB_ENV` e por isso VENCE o `env:` do job), e com a variável
+  // preenchida a CLI tenta UM registro só. A cota anônima das imagens do
+  // Supabase no GHCR é compartilhada por todo mundo que usa Supabase em CI;
+  // quando estoura, o `db start` morre antes de qualquer migration rodar.
+  //
+  // Esvaziar a variável devolve os três registros à CLI, com o AWS ECR na
+  // frente. Re-run não resolve (29 camadas, uma recusa derruba o download) e
+  // login no GHCR também não (a cota não é da nossa conta).
+  const jobDasMigrations = () =>
+    yml.slice(yml.indexOf('  migrations:'), yml.indexOf('  deploy:'));
+
+  it('esvazia a variável que a action fixa', () => {
+    expect(jobDasMigrations()).toMatch(
+      /SUPABASE_INTERNAL_IMAGE_REGISTRY=["']?\s*["']?\s*>>\s*"?\$GITHUB_ENV/,
+    );
+  });
+
+  it('esvazia DEPOIS de instalar a CLI, senão a action sobrescreve', () => {
+    const job = jobDasMigrations();
+    expect(job.indexOf('SUPABASE_INTERNAL_IMAGE_REGISTRY=')).toBeGreaterThan(
+      job.indexOf('supabase/setup-cli'),
+    );
+  });
+
+  it('e ANTES de subir o Postgres, que é quem puxa as imagens', () => {
+    const job = jobDasMigrations();
+    expect(job.indexOf('SUPABASE_INTERNAL_IMAGE_REGISTRY=')).toBeLessThan(
+      job.indexOf('supabase db start'),
+    );
+  });
+
+  it('não volta a fixar um registro único no env do job', () => {
+    // Pinar em `public.ecr.aws` parece conserto e tira a reserva: se o ECR
+    // apertar, não há para onde cair. E no `env:` do job nem chega a valer.
+    expect(jobDasMigrations()).not.toMatch(
+      /SUPABASE_INTERNAL_IMAGE_REGISTRY:\s*\S/,
+    );
+  });
+});
