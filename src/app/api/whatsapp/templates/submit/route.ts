@@ -18,29 +18,26 @@ import { ensureMediaHeaderHandle } from '@/lib/whatsapp/template-header-handle'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
 
 /**
- * Shared upsert payload builder — both the Meta-failure path and the
- * Meta-success path write nearly identical rows; dropping the shared
- * fields here means adding a column later only touches one spot.
+ * Os campos do modelo que a submissão grava — nos dois desfechos (a Meta
+ * aceitou / recusou) e nas duas formas (linha nova / linha achada).
+ *
+ * ⚠️ SEM `account_id` e SEM `user_id`: esses dois só entram na INSERÇÃO
+ * (`inserirModelo`). `user_id` é o AUTOR da linha, nunca recorte — e
+ * atualizar a linha que um colega criou não pode trocar o autor dela.
+ * Reatribuir autoria é decisão de produto pendente (M24 do plano de 31/08),
+ * porque `user_id` cascateia de `auth.users`.
  */
-function buildUpsertRow(
-  accountId: string,
-  userId: string,
+function camposDoModelo(
   payload: TemplatePayload,
+  channelId: string | null,
   extras: {
-    status: 'DRAFT' | string
+    status: string
     metaTemplateId: string | null
     submissionError: string | null
   },
 ) {
   return {
-    // Account tenancy — required NOT NULL on message_templates as
-    // of migration 017. Without this an INSERT throws on the
-    // not-null constraint.
-    account_id: accountId,
-    // Original author — kept as audit only. The unique index is
-    // still on (user_id, name, language) — see the upsert helper
-    // for the cross-teammate dedup follow-up.
-    user_id: userId,
+    channel_id: channelId,
     name: payload.name,
     category: payload.category,
     language: payload.language,
@@ -55,61 +52,112 @@ function buildUpsertRow(
     status: extras.status,
     meta_template_id: extras.metaTemplateId,
     submission_error: extras.submissionError,
-    // Clear stale rejection_reason whenever we re-submit; the
-    // webhook will set it again if Meta still rejects.
-    rejection_reason: extras.submissionError ? null : null,
+    // Limpa a recusa anterior a cada envio; o webhook a grava de novo se a
+    // Meta recusar outra vez.
+    rejection_reason: null,
     last_submitted_at: new Date().toISOString(),
   }
 }
 
-async function upsertTemplateRow(
+type CamposDoModelo = ReturnType<typeof camposDoModelo>
+
+/** O que a submissão precisa saber da linha local que já existe. */
+interface LinhaDoModelo {
+  id: string
+  channel_id: string | null
+  meta_template_id: string | null
+}
+
+/**
+ * Procura o modelo local pela CONTA — nome, idioma e canal igual OU nulo,
+ * a mesma régua da rota de sync.
+ *
+ * ⚠️ Até 23/09/2026 a busca era pelo AUTOR (`user_id`), DEPOIS da Meta, e o
+ * erro era descartado. Dois danos: com outro admin a busca não achava o
+ * modelo do colega e nascia um rascunho HOMÔNIMO (os índices únicos da 903
+ * são por autor e deixam passar — a sync daquele modelo passava a falhar no
+ * `maybeSingle` e `resolveTemplateRow` escolhia entre as duas sem critério);
+ * e reenviar pela tela "Criar" um nome que já existia fazia a Meta recusar
+ * e o caminho de falha REBAIXAR a linha aprovada para rascunho sem
+ * `meta_template_id` — o modelo sumia dos seletores de disparo, da caixa de
+ * entrada e das automações até alguém sincronizar da Meta.
+ *
+ * Lista, não `maybeSingle`: base antiga pode ter duas linhas (a do canal e
+ * a global de antes da 903, ou o homônimo que o bug acima criou). Prefere a
+ * do canal, depois a vinculada à Meta, depois a mais antiga. O recorte do
+ * canal é feito aqui, e não num `.or()`: em modo de ensaio o canal vem do
+ * corpo do pedido, e texto de fora não entra num filtro do PostgREST.
+ */
+async function buscarModeloDaConta(
   supabase: SupabaseClient,
-  row: ReturnType<typeof buildUpsertRow> & { channel_id?: string | null },
-) {
-  // ⚠️ NAO usa `.upsert(..., { onConflict })`. A migration 903 trocou o unico
-  // indice (user_id, name, language) por DOIS indices PARCIAIS — um para os
-  // modelos globais (channel_id IS NULL) e um por canal — porque o mesmo nome
-  // de modelo passa a ser legitimo em dois WABAs. Indice parcial nao serve
-  // como alvo de ON CONFLICT, entao o upsert quebraria.
-  //
-  // Lookup + insert/update escopado ao canal, no mesmo formato que a rota de
-  // sync ja usa.
-  let lookup = supabase
+  accountId: string,
+  payload: TemplatePayload,
+  channelId: string | null,
+): Promise<{ linha: LinhaDoModelo | null; erro: string | null }> {
+  const { data, error } = await supabase
     .from('message_templates')
-    .select('id')
-    .eq('user_id', row.user_id)
-    .eq('name', row.name)
-    .eq('language', row.language)
-  lookup = row.channel_id
-    ? lookup.eq('channel_id', row.channel_id)
-    : lookup.is('channel_id', null)
+    .select('id, channel_id, meta_template_id')
+    .eq('account_id', accountId)
+    .eq('name', payload.name)
+    .eq('language', payload.language)
+    .order('created_at', { ascending: true })
+  if (error) return { linha: null, erro: error.message }
 
-  const { data: existente } = await lookup.maybeSingle()
-
-  if (existente?.id) {
-    return supabase
-      .from('message_templates')
-      .update(row)
-      .eq('id', existente.id)
-      .select()
-      .single()
+  const pontos = (l: LinhaDoModelo) =>
+    (l.channel_id === channelId ? 2 : 0) + (l.meta_template_id ? 1 : 0)
+  let melhor: LinhaDoModelo | null = null
+  for (const l of (data ?? []) as LinhaDoModelo[]) {
+    if (l.channel_id !== channelId && l.channel_id !== null) continue
+    if (!melhor || pontos(l) > pontos(melhor)) melhor = l
   }
-  return supabase.from('message_templates').insert(row).select().single()
+  return { linha: melhor, erro: null }
+}
+
+function atualizarModelo(
+  supabase: SupabaseClient,
+  id: string,
+  campos: CamposDoModelo,
+) {
+  return supabase
+    .from('message_templates')
+    .update(campos)
+    .eq('id', id)
+    .select()
+    .single()
+}
+
+function inserirModelo(
+  supabase: SupabaseClient,
+  accountId: string,
+  autorId: string,
+  campos: CamposDoModelo,
+) {
+  return supabase
+    .from('message_templates')
+    // account_id é NOT NULL desde a 017; o autor só é gravado na criação.
+    .insert({ ...campos, account_id: accountId, user_id: autorId })
+    .select()
+    .single()
 }
 
 /**
  * Submit a template to Meta for approval AND persist it locally.
  *
- * Auth → fetch whatsapp_config → validate → (DRY_RUN short-circuit) →
- * POST to Meta → upsert local row by (user_id, name, language) with
- * status, meta_template_id, sample_values, last_submitted_at.
+ * Auth → validate → resolve o canal → busca a linha local PELA CONTA
+ * (erro de busca = 500, sem chamar a Meta) → (DRY_RUN short-circuit) →
+ * POST to Meta → grava:
+ *   - a Meta aceitou: atualiza a linha achada (religa, se estava velha) ou
+ *     insere; um 23505 na inserção (corrida) busca de novo e atualiza;
+ *   - a Meta recusou: sem linha, insere o rascunho; linha sem
+ *     `meta_template_id`, atualiza o rascunho; linha VINCULADA à Meta, não
+ *     toca em nada e responde com a dica (`code: 'modelo_ja_existe'`).
  *
  * When WHATSAPP_TEMPLATES_DRY_RUN=true, we skip the network call and
  * insert a row with a synthetic `dry-run-<uuid>` meta_template_id so
  * CI / local dev can exercise the full UI without a real Meta App.
  *
- * On the Meta side this is a one-way trip — a row can only be
- * submitted; editing or deleting requires hsm_id and lives in PR 4.
+ * On the Meta side this is a one-way trip — editing or deleting an
+ * already-submitted template lives in /api/whatsapp/templates/[id].
  */
 export async function POST(request: Request) {
   try {
@@ -151,9 +199,6 @@ export async function POST(request: Request) {
       process.env.WHATSAPP_TEMPLATES_DRY_RUN === 'true' ||
       process.env.WHATSAPP_TEMPLATES_DRY_RUN === '1'
 
-    let metaTemplateId: string
-    let metaStatus: string
-
     // Canal escolhido no corpo; o modelo nasce carimbado com ele.
     const canalPedido =
       typeof (payload as { channel_id?: unknown }).channel_id === 'string'
@@ -161,14 +206,13 @@ export async function POST(request: Request) {
         : null
     let canalDoModelo: string | null = canalPedido
 
-    if (dryRun) {
-      metaTemplateId = `dry-run-${crypto.randomUUID()}`
-      metaStatus = 'PENDING'
-    } else {
-      // Multi-canal: cria o modelo no WABA do canal PEDIDO. Antes ia sempre
-      // para o WABA do espelho — o operador cadastrava o 2o numero, criava um
-      // modelo achando que era "do numero 2", e ele nascia no WABA do 1o.
-      const canal = await resolveMetaChannel(supabase, accountId, canalPedido)
+    // Multi-canal: cria o modelo no WABA do canal PEDIDO. Antes ia sempre
+    // para o WABA do espelho — o operador cadastrava o 2o numero, criava um
+    // modelo achando que era "do numero 2", e ele nascia no WABA do 1o.
+    const canal = dryRun
+      ? null
+      : await resolveMetaChannel(supabase, accountId, canalPedido)
+    if (!dryRun) {
       if (!canal) {
         return NextResponse.json(
           {
@@ -187,7 +231,35 @@ export async function POST(request: Request) {
         )
       }
       canalDoModelo = canal.channelId
+    }
 
+    // ANTES de qualquer chamada à Meta (inclusive o upload do cabeçalho):
+    // sem saber que linha já existe, a rota não sabe o que pode gravar
+    // depois — e a chamada à Meta não se desfaz.
+    const busca = await buscarModeloDaConta(
+      supabase,
+      accountId,
+      payload,
+      canalDoModelo,
+    )
+    if (busca.erro) {
+      console.error('[templates/submit] busca do modelo falhou:', busca.erro)
+      return NextResponse.json(
+        {
+          error: `Could not check the existing templates: ${busca.erro}. Nothing was sent to Meta.`,
+        },
+        { status: 500 },
+      )
+    }
+    const existente = busca.linha
+
+    let metaTemplateId: string
+    let metaStatus: string
+
+    if (dryRun || !canal) {
+      metaTemplateId = `dry-run-${crypto.randomUUID()}`
+      metaStatus = 'PENDING'
+    } else {
       const accessToken = decrypt(canal.accessToken)
 
       // Media headers (image/video/document) need a Resumable-Upload
@@ -207,7 +279,7 @@ export async function POST(request: Request) {
       const metaPayload = buildMetaTemplatePayload(payload)
       try {
         const meta = await submitMessageTemplate({
-          wabaId: canal.wabaId,
+          wabaId: canal.wabaId as string,
           accessToken,
           payload: metaPayload,
         })
@@ -215,50 +287,72 @@ export async function POST(request: Request) {
         metaStatus = meta.status
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Meta submit failed.'
-        // Persist the failure so the user can retry; row stays DRAFT
-        // until they fix and re-submit.
-        await upsertTemplateRow(
-          supabase,
-          {
-            ...buildUpsertRow(accountId, userId, payload, {
-              status: 'DRAFT',
-              metaTemplateId: null,
-              submissionError: message,
-            }),
-            channel_id: canalDoModelo,
-          },
-        )
         const isRateLimit = /\b429\b/.test(message)
-        return NextResponse.json(
-          {
-            error: isRateLimit
-              ? 'Meta rate limit hit (100 template creates per hour). Try again later.'
-              : message,
-          },
-          { status: isRateLimit ? 429 : 502 },
-        )
+        const erro = isRateLimit
+          ? 'Meta rate limit hit (100 template creates per hour). Try again later.'
+          : message
+        const status = isRateLimit ? 429 : 502
+
+        // ⚠️ A linha VINCULADA à Meta nunca é rebaixada. Reenviar pela tela
+        // "Criar" um nome que já existe faz a Meta recusar, e gravar o
+        // rascunho aqui apagaria o `meta_template_id` de um modelo em uso.
+        if (existente?.meta_template_id) {
+          return NextResponse.json(
+            isRateLimit ? { error: erro } : { error: erro, code: 'modelo_ja_existe' },
+            { status },
+          )
+        }
+
+        // Sem linha, ou só o rascunho local: guarda a tentativa para o
+        // operador corrigir e reenviar.
+        const rascunho = camposDoModelo(payload, canalDoModelo, {
+          status: 'DRAFT',
+          metaTemplateId: null,
+          submissionError: message,
+        })
+        const { error: errRascunho } = existente
+          ? await atualizarModelo(supabase, existente.id, rascunho)
+          : await inserirModelo(supabase, accountId, userId, rascunho)
+        if (errRascunho) {
+          console.error(
+            '[templates/submit] rascunho não gravado depois da recusa da Meta:',
+            errRascunho.message,
+          )
+        }
+        return NextResponse.json({ error: erro }, { status })
       }
     }
 
-    const { data: row, error: upsertErr } = await upsertTemplateRow(
-      supabase,
-      {
-        ...buildUpsertRow(accountId, userId, payload, {
-          status: normalizeStatus(metaStatus),
-          metaTemplateId,
-          submissionError: null,
-        }),
-        channel_id: canalDoModelo,
-      },
-    )
+    const aceito = camposDoModelo(payload, canalDoModelo, {
+      status: normalizeStatus(metaStatus),
+      metaTemplateId,
+      submissionError: null,
+    })
+    let gravado = existente
+      ? await atualizarModelo(supabase, existente.id, aceito)
+      : await inserirModelo(supabase, accountId, userId, aceito)
 
-    if (upsertErr) {
+    // Corrida: outra submissão criou a linha entre a busca e a inserção.
+    // A Meta já aceitou — religar a linha que venceu, em vez de perder o id.
+    if (!existente && gravado.error?.code === '23505') {
+      const nova = await buscarModeloDaConta(
+        supabase,
+        accountId,
+        payload,
+        canalDoModelo,
+      )
+      if (nova.linha) {
+        gravado = await atualizarModelo(supabase, nova.linha.id, aceito)
+      }
+    }
+
+    if (gravado.error) {
       // The submit succeeded on Meta's side but we failed to persist
       // locally. That's a data-drift state — surface the meta_template_id
       // so the user can recover via "Sync from Meta".
       return NextResponse.json(
         {
-          error: `Submitted to Meta but failed to save locally: ${upsertErr.message}. Run "Sync from Meta" to recover.`,
+          error: `Submitted to Meta but failed to save locally: ${gravado.error.message}. Run "Sync from Meta" to recover.`,
           meta_template_id: metaTemplateId,
         },
         { status: 500 },
@@ -267,7 +361,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      template: row,
+      template: gravado.data,
       dry_run: dryRun,
     })
   } catch (error) {

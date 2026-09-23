@@ -2647,6 +2647,7 @@
       "headerTextLabel": "Header text",
       "editFailedHttp": "Edit failed (HTTP {status})",
       "submitFailedHttp": "Submit failed (HTTP {status})",
+      "submitTemplateExists": "A template with this name and language already exists on this number, and it was left as it was. To change it, use Edit (or Resubmit, if it was rejected) in the list instead of creating it again. Response from Meta: {error}",
       "uploadVideo": "Upload video",
       "uploadDocument": "Upload document",
       "uploadHintVideo": "MP4 or 3GPP, ≤16 MB",

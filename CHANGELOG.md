@@ -57,6 +57,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **Criar de novo um modelo que já existe não o tira mais de uso.** Criar
+  pela tela de modelos um nome e idioma que já existiam no mesmo número
+  fazia a Meta recusar, e o modelo aprovado virava rascunho: sumia dos
+  disparos, da caixa de entrada e das automações até alguém sincronizar da
+  Meta. Agora o modelo fica como estava, e o aviso manda usar Editar ou
+  Reenviar. Com mais de um administrador, criar o modelo que um colega já
+  tinha começado também não gera mais uma segunda cópia com o mesmo nome.
 - **Caixa de entrada: a conversa que recebe mensagem sobe para o topo.**
   Até aqui a hora e a prévia da linha mudavam, mas ela ficava na posição em
   que estava quando a página abriu — uma conversa reaberta por mensagem
