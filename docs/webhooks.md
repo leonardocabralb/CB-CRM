@@ -177,10 +177,23 @@ O CRM faz `POST` num endereço seu quando algo acontece aqui. Seis eventos:
 |---|---|
 | `message.received` | Chega mensagem de um contato |
 | `message.status_updated` | Muda o status de entrega de uma mensagem enviada |
-| `conversation.created` | Uma conversa nova é aberta |
+| `conversation.created` | O cliente abre uma conversa nova (veja abaixo) |
 | `deal.created` | Um card (negócio) nasce no funil, em qualquer etapa |
 | `deal.stage_changed` | Um card muda de etapa — ou de funil |
 | `deal.status_changed` | Um card é marcado ganho ou perdido, ou é reaberto |
+
+**`conversation.created` quer dizer "o cliente abriu a conversa".** Sai
+quando a primeira mensagem de um contato — no WhatsApp, ou a primeira DM no
+Instagram — cria a conversa dele (pela API oficial do WhatsApp, uma primeira
+reação também). A conversa que a **equipe** abre não gera o aviso, **nem
+quando o cliente responde depois**: a iniciada pelo celular pareado, pelo app
+do Instagram, pela tela do CRM ("Nova conversa", envio pela ficha) ou por
+`POST /api/v1/messages`. Também não geram as conversas criadas por automação
+e integração (webhook recebido, Calendly, régua do Asaas), por carga de
+migração, nem as de grupo. Para "lead novo no funil" — inclusive o que a
+equipe abordou primeiro —, assine `deal.created`: a conexão com funil padrão
+abre o card na primeira mensagem, do cliente ou da equipe
+(`source: "channel"`).
 
 Os três `deal.*` valem para **todo** jeito de mexer no card: arrastar no
 quadro, formulário, lista, painel da conversa, automações e a API. O aviso
@@ -249,6 +262,9 @@ no n8n e no Make está em **Configurações → API → Documentação**.
   endereço — levando junto os avisos de mensagem que ele assina.
 - **Sem ordem garantida.** As entregas saem em paralelo: nos `deal.*`, use
   `occurred_at` para ordenar e o `id` do envelope para descartar repetição.
+  A única ordem que o CRM garante: na mensagem que abre a conversa, a
+  entrega de `conversation.created` termina antes de a de `message.received`
+  começar.
 
 Os mesmos endereços também podem ser geridos pela API pública, com uma chave
 de escopo `webhooks:manage` — veja [`public-api.md`](./public-api.md).

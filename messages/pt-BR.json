@@ -3833,7 +3833,7 @@
         },
         "conversationCreated": {
           "rotulo": "Conversa aberta",
-          "descricao": "Começou uma conversa nova com um contato."
+          "descricao": "O cliente mandou a primeira mensagem e abriu uma conversa nova. Não sai para a conversa que a equipe abre (pelo CRM, pelo celular pareado ou pelo app do Instagram), nem para a aberta por automação, pela API ou em grupo — para lead novo no funil, use “Negócio criado”."
         },
         "dealCreated": {
           "rotulo": "Negócio criado",
@@ -4004,7 +4004,7 @@
         "chamar1": "Use o nó <b>HTTP Request</b>. Em <b>Authentication</b>, escolha <b>Generic Credential Type</b> e, em seguida, <b>Bearer Auth</b>.",
         "chamar2": "Na credencial, o <b>Bearer Token</b> é só a chave, sem a palavra “Bearer”: o n8n a acrescenta sozinho.",
         "chamar3": "Para POST e PATCH, ligue <b>Send Body</b> com <b>Body Content Type</b> = JSON. O botão <b>Import cURL</b> aceita colar os exemplos desta página.",
-        "paginacao": "Listas vêm em páginas de até {max} itens, e <code>meta.next_cursor</code> vem vazio na última. Para buscar todas:",
+        "paginacao": "As listas de contatos, conversas, mensagens, negócios, tarefas, agendadas, reuniões e anotações vêm em páginas de até {max} itens, e <code>meta.next_cursor</code> vem vazio na última (funis, etiquetas, conexões e endereços de webhook vêm inteiros, numa resposta só). Para buscar todas:",
         "receberTitulo": "Receber os avisos",
         "receber1": "Use o nó <b>Webhook</b>, método POST, e em <b>Respond</b> escolha <b>Immediately</b>: o CRM espera no máximo {segundos} segundos pela resposta.",
         "receber2": "Cadastre no CRM a <b>Production URL</b> e clique em <b>Publish</b> — salvar sem publicar não põe a versão nova no ar. O que chega aparece na aba <b>Executions</b>.",
@@ -4028,7 +4028,7 @@
         "regra": {
           "umaTentativa": "Uma tentativa por aviso, com {segundos} segundos de prazo e sem repetição. Responda 2xx logo; redirecionamento conta como falha.",
           "desliga": "{falhas} falhas seguidas desligam o endereço, e o contador é do ENDEREÇO, não do evento: uma fila de avisos de negócio represada (com o agendador parado, por exemplo) sai de uma vez e, se o seu sistema estiver fora do ar nessa hora, ela sozinha pode somar as {falhas} — desligando junto os avisos de mensagem. Religue na aba Enviados; isso zera o contador.",
-          "repeticao": "Não há ordem garantida. Nos eventos de negócio, o <code>id</code> do envelope (igual a <code>data.event_id</code>) é estável: use-o para descartar repetição.",
+          "repeticao": "Não há ordem garantida — a única exceção: na mensagem que abre a conversa, <code>conversation.created</code> chega antes de <code>message.received</code>. Nos eventos de negócio, o <code>id</code> do envelope (igual a <code>data.event_id</code>) é estável: use-o para descartar repetição.",
           "teste": "O botão Enviar teste manda dados fictícios com <code>\"test\": true</code>: filtre-os nos fluxos de produção.",
           "negocio": "Nos eventos de negócio, <code>deal</code> é o negócio NA HORA DO ENVIO e <code>stage</code> é a etapa DESTE movimento — leia <code>stage</code>, não <code>deal.stage_id</code>. <code>assignee</code> é o responsável e <code>contact</code> traz etiquetas e <code>custom_fields</code>. <code>source</code> diz quem causou: <code>user</code> (alguém nas telas do CRM), <code>channel</code> (a conexão abriu o card na primeira mensagem, do cliente ou da equipe), <code>automation</code> (o passo “Criar negócio”) ou <code>system</code> (a API e os passos “Mover card de etapa” e “Marcar ganho ou perdido” das automações). <code>channel_id</code> é o número da conversa do contato naquele momento, e vem vazio quando ele ainda não conversou por nenhuma conexão — lead de webhook recebido (Typebot) ou do Calendly que ainda não escreveu, ficha criada pela API, card sem contato. Quem filtra por número decide o que fazer com esses.",
           "atraso": "Aviso atrasado sai mesmo assim, com a hora real do fato em <code>occurred_at</code>.",

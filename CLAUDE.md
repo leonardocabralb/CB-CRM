@@ -5995,6 +5995,17 @@ não conseguia receber no n8n "o lead mudou de etapa". O que morde código novo:
   disparo antigos compilam sem mudança), `exemplos.ts` é tipado por ele, e a
   aba Documentação mostra esses exemplos. Evento novo sem entrada no mapa não
   compila (`CoberturaDosEventos`).
+- ⚠️⚠️ **`conversation.created` quer dizer SÓ "o cliente abriu a conversa"**
+  (decisão do operador, 23/09/2026): sai nos três caminhos de ENTRADA
+  (webhook da Meta, `persistInboundMessage`, a DM do Instagram), e o ECO do
+  Instagram não emite (`conv.created && !ev.ehEco`, pino em
+  `persistir.aviso.test.ts`). Quem CRIA conversa por outro caminho (celular
+  pareado, tela, API, automação, integração, grupo, carga) NÃO emite, e a
+  conversa aberta assim nunca emite depois. Emitir num caminho novo é mudar
+  o contrato publicado: a descrição mora em `events.ts`, nos dois
+  dicionários (`catalogoDeEventos.conversationCreated`), em
+  `docs/public-api.md` e em `docs/webhooks.md` — que remetem "lead novo" a
+  `deal.created`.
 - ⚠️ **O botão "Enviar teste" NÃO mexe no contador de falhas** e manda dados
   fictícios com `"test": true`, assinado pelo MESMO `pedidoDeEntrega` da
   entrega real. Ele posta na URL CADASTRADA: não alimenta o "Listen for test

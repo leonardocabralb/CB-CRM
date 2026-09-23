@@ -67,6 +67,12 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **A documentação da API dizia coisas que não valem mais.** O caminho
+  das chaves é *Configurações → API → Chaves*; só oito listas paginam (as
+  outras vêm inteiras); o envio por número de QR Code tem erros próprios
+  (`evolution_rejected`, nada saiu; `evolution_error`, pode ter saído); a
+  resposta do envio traz `channel_id`; e `GET /api/v1/channels` também
+  lista as contas do Instagram, que não servem de `channel_id` para enviar.
 - **Caixa de entrada: a conversa que recebe mensagem sobe para o topo.**
   Até aqui a hora e a prévia da linha mudavam, mas ela ficava na posição em
   que estava quando a página abriu — uma conversa reaberta por mensagem
@@ -203,6 +209,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Mudado
 
+- **`conversation.created` quer dizer só "o cliente abriu a conversa".** A
+  conversa aberta pela equipe pelo app do Instagram (a primeira DM mandada
+  de lá) deixou de gerar o aviso — no WhatsApp, a aberta pela equipe
+  (celular pareado, tela do CRM, API) já não gerava. Automação, integração
+  e grupo também não geram. Para saber de lead novo no funil, inclusive o
+  que a equipe abordou primeiro, assine `deal.created`. A descrição do
+  evento na tela e nos documentos passou a dizer isso.
 - **Atualização com o projeto original até `aee1b01f` (setembro/2026).**
   Entraram as traduções das telas do original, o envio de vídeo e documento
   como cabeçalho de modelo, a explicação dos erros de conexão com a Meta e

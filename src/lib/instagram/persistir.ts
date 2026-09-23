@@ -17,7 +17,9 @@
 //   enviou (Fase 4), a linha já existe com o mesmo `mid` e o UNIQUE
 //   `(conversation_id, message_id)` descarta a cópia; se foi digitada no app
 //   do Instagram, entra como `persistDeviceMessage` entra a do celular
-//   pareado: `sender_type='agent'`, `from_device=true`, sem motor.
+//   pareado: `sender_type='agent'`, `from_device=true`, sem motor e sem
+//   webhook de saída (nem `conversation.created` quando é ele que abre a
+//   conversa, nem `message.received`).
 //
 // TENANCY: toda leitura e escrita aqui passa pela CONTA da rota (`ctx`), e
 // as mensagens são alcançadas pela CONVERSA do cliente — nunca por
@@ -305,7 +307,14 @@ async function gravarMensagem(
   // mensagem de toda conversa nova. Esperada antes do message.received e em
   // todo retorno — promessa solta no `after()` pode não entregar. Nunca
   // rejeita.
-  const avisoDeConversaCriada = conv.created
+  //
+  // ⚠️ SÓ a ENTRADA do cliente emite (decisão do operador, 23/09/2026): o
+  // evento quer dizer "o cliente abriu a conversa", como no WhatsApp. O ECO
+  // — a equipe escrevendo primeiro pelo app do Instagram — abre a conversa
+  // calado, igual ao `persistDeviceMessage` do celular pareado, e a conversa
+  // aberta assim não emite nunca (a resposta do cliente já a encontra
+  // criada). Pino: `persistir.aviso.test.ts`.
+  const avisoDeConversaCriada = conv.created && !ev.ehEco
     ? dispatchWebhookEvent(db, ctx.accountId, 'conversation.created', {
         conversation_id: conversation.id,
         contact_id: contato.id,
@@ -462,8 +471,8 @@ async function gravarMensagem(
     conversationId: conversation.id,
   });
 
-  // conversation.created termina antes de message.received começar (e o eco
-  // que abriu a conversa também espera o seu aviso aqui).
+  // conversation.created termina antes de message.received começar. (No eco
+  // a promessa já nasce resolvida: ele não emite nenhum dos dois.)
   await avisoDeConversaCriada;
   if (!ev.ehEco) {
     await dispatchWebhookEvent(db, ctx.accountId, 'message.received', {

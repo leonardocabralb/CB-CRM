@@ -16,7 +16,7 @@ wacrm instance — this server just exposes the API as MCP tools.
 ## Prerequisites
 
 1. A running wacrm instance (your own self-hosted deploy).
-2. An API key: in the dashboard go to **Settings → API keys → New API
+2. An API key: in the dashboard go to **Settings → API → Keys → New API
    key** and grant only the scopes you need. The key is shown once.
 
 ## Install & configure

@@ -20,7 +20,7 @@ scoped by your instance exactly like any other API call.
 
 ## Quick start
 
-1. Create an API key in the dashboard: **Settings → API keys**. Grant
+1. Create an API key in the dashboard: **Settings → API → Keys**. Grant
    only the scopes your assistant needs (a read-only assistant only
    needs the `*:read` scopes).
 2. Build the server (Node 22, from the repository root):

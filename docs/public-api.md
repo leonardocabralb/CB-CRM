@@ -22,7 +22,7 @@ one it was created in. There is no cross-account access.
 
 ### Creating a key
 
-In the dashboard: **Settings → API keys → New API key**. Only
+In the dashboard: **Settings → API → Keys → New API key**. Only
 **admins and owners** can create keys.
 
 1. Give the key a name (after the integration that will use it).
@@ -33,7 +33,7 @@ In the dashboard: **Settings → API keys → New API key**. Only
 
 ### Revoking a key
 
-**Settings → API keys → Revoke.** Revocation is effective on the
+**Settings → API → Keys → Revoke.** Revocation is effective on the
 key's next request. Revoked keys stay in the list as an audit trail.
 
 ## Scopes
@@ -168,9 +168,15 @@ curl -X POST https://your-crm.example.com/api/v1/messages \
     "params": ["A123"]        // positional body vars, or a structured object
   },
   "reply_to_message_id": "<uuid>",  // optional; must be in the same conversation
-  "channel_id": "<uuid>"            // optional; which number to send FROM
+  "channel_id": "<uuid>",           // optional; which number to send FROM
+  "name": "Jane Doe"                // optional; see below
 }
 ```
+
+`name` names the contact when this call creates it. For a contact that
+already exists it **also replaces the name**, unless that name was fixed —
+typed by someone in the CRM or set by a Calendly booking; to rename a
+contact on purpose, use `PATCH /api/v1/contacts/{id}`.
 
 Response (201):
 
@@ -181,14 +187,29 @@ Response (201):
     "whatsapp_message_id": "wamid.…",
     "conversation_id": "…",
     "contact_id": "…",
-    "contact_created": true
+    "contact_created": true,
+    "channel_id": "…"
   }
 }
 ```
 
-Domain error codes beyond the table above: `whatsapp_not_configured`
-(400), `meta_error` (502 — the request reached Meta and it rejected the
-send), `template_malformed` (500).
+Domain error codes beyond the table above:
+
+- `whatsapp_not_configured` (400) — no usable number to send from.
+- `not_supported` (400) — the number can't send this: a template or an
+  interactive message through a QR-code (`evolution`) number, or any
+  message through an Instagram connection.
+- `meta_error` (502) — the request reached Meta and it rejected the send.
+- `evolution_rejected` (502) — a QR-code number's server refused the send;
+  nothing went out.
+- `evolution_error` (502) — a QR-code number timed out or failed: the
+  message **may** have gone out. Check the conversation
+  (`GET /api/v1/conversations/{id}/messages`) before retrying, or the
+  customer can get it twice.
+- `template_malformed` (500).
+- `db_error` (500) — a database failure. When it happens after the
+  provider accepted the message, the message went out but was not
+  recorded: check the conversation before retrying.
 
 ### `GET /api/v1/contacts`
 
@@ -421,7 +442,8 @@ current values in the response of its own writes).
 
 List conversations, newest first. Scope: `conversations:read`.
 Paginated. Optional filters: `?status=` (`open` / `pending` / `closed`)
-and `?contact_id=`. Each conversation embeds its contact + tags.
+and `?contact_id=`. Each conversation embeds its contact + tags. Group
+conversations are not listed.
 
 ### `GET /api/v1/conversations/{id}`
 
@@ -498,17 +520,21 @@ report.
 ### `GET /api/v1/broadcasts/{id}`
 
 Broadcast status + counts. Scope: `broadcasts:send`. `status` moves
-`sending` → `sent`; `delivered_count` / `read_count` keep climbing as
-Meta delivery webhooks arrive. `404` for another account's broadcast.
+`sending` → `sent` (or `failed`, when every recipient failed);
+`delivered_count` / `read_count` keep climbing as Meta delivery webhooks
+arrive. `404` for another account's broadcast.
 
 ### `GET /api/v1/channels`
 
-List the account's WhatsApp numbers. Scope: `channels:read`.
+List the account's connections: its WhatsApp numbers and, if any, its
+Instagram Direct accounts. Scope: `channels:read`. Not paginated.
 
 An account can have several numbers — official Meta (Cloud API) ones and
-unofficial QR-code ones. Every id returned here is a valid `channel_id`
-for `POST /api/v1/messages`. `POST /api/v1/broadcasts` only accepts the
-ones whose `kind` is `meta` (broadcasts are template-only).
+unofficial QR-code ones. The ids whose `kind` is `meta` or `evolution` are
+valid `channel_id`s for `POST /api/v1/messages`; an `instagram` one is not
+(the API does not send through Instagram — the call fails with
+`not_supported`), so don't pass it. `POST /api/v1/broadcasts` only accepts
+the ones whose `kind` is `meta` (broadcasts are template-only).
 
 ```jsonc
 {
@@ -516,7 +542,7 @@ ones whose `kind` is `meta` (broadcasts are template-only).
     {
       "id": "<uuid>",
       "label": "Comercial",
-      "kind": "meta",          // "meta" = official Cloud API; "evolution" = QR code
+      "kind": "meta",          // "meta" = official Cloud API; "evolution" = QR code; "instagram" = Instagram Direct
       "display_phone": "+55 11 …",
       "is_default": true,
       "status": "connected",
@@ -748,15 +774,22 @@ Notes are internal to the team — they are never sent to the customer.
 Create an internal note on a conversation. Scope: `notes:write`. Pass
 `conversation_id`, **or** `contact_id` to note on that contact's
 conversation (each contact has at most one). `texto` is required
-(≤ 4000 chars). @-mentions are dashboard-only. A contact that never
-exchanged a message has no conversation: `409` with code
-`contact_without_conversation`. Response: `201` with the note.
+(≤ 4000 chars). @-mentions are dashboard-only. A contact with no
+conversation yet — typically one created through `POST /api/v1/contacts`
+and never messaged — returns `409` with code
+`contact_without_conversation` (a lead that arrived by an incoming webhook
+or a Calendly booking already has one, even before writing). Response:
+`201` with the note.
 
 ## Pagination
 
-Every list endpoint pages the same way. Request a page size with
-`?limit=` (default 50, max 100) and read the next page with the opaque
-`meta.next_cursor` from the previous response:
+Every **paginated** list endpoint pages the same way: contacts,
+conversations, a conversation's messages, tasks, scheduled messages,
+deals, meetings and notes (each says "Paginated" above). The other lists —
+tags, pipelines, channels and webhooks — come whole in one response, and
+say "Not paginated". Request a page size with `?limit=` (default 50, max
+100) and read the next page with the opaque `meta.next_cursor` from the
+previous response:
 
 ```
 GET /api/v1/contacts?limit=50
@@ -782,10 +815,24 @@ things happen in your account. **Migration required:** apply
 | ------------------------ | -------------------------------------------------------------- |
 | `message.received`       | An inbound message arrives from a contact                      |
 | `message.status_updated` | A message you sent changed delivery status                     |
-| `conversation.created`   | A new conversation is opened for a contact                     |
+| `conversation.created`   | A contact's **inbound** message opens a new conversation (see below) |
 | `deal.created`           | A deal (pipeline card) is created, in any stage                |
 | `deal.stage_changed`     | A deal moves to another stage — or to another pipeline         |
 | `deal.status_changed`    | A deal is marked won or lost, or reopened                      |
+
+**`conversation.created` means "the customer opened the conversation".** It
+fires when a contact's first inbound message — on WhatsApp, or a first
+Direct message on Instagram — creates their conversation (on the official
+WhatsApp API, a first reaction does too). A conversation your team opens
+never fires it, **not even when the customer replies later**: one started
+from the paired phone, from the Instagram app, from the CRM ("New
+conversation", sending from a contact's page) or through
+`POST /api/v1/messages`. Nor do conversations created by automations and
+integrations (incoming webhooks, Calendly, the Asaas reminders), by bulk
+data migrations, or group conversations. For "a new lead reached the
+funnel" — including the ones your team approached first — listen to
+`deal.created` instead: a number with a default pipeline opens the card on
+the first message in either direction (`source: "channel"`).
 
 Every event carries `channel_id` in `data` — which of your numbers the
 event happened on. Without it, several numbers look like one
@@ -819,7 +866,7 @@ If you listen for "won", also check `deal.status` on `deal.created`.
 All under scope `webhooks:manage`.
 
 - `POST /api/v1/webhooks` — register `{ "url": "https://…", "events": ["message.received"] }`. `url` must be `https://`. **The response includes `secret` exactly once** — store it to verify signatures; wacrm keeps only an encrypted copy.
-- `GET /api/v1/webhooks` — list your endpoints (never returns the secret).
+- `GET /api/v1/webhooks` — list your endpoints (never returns the secret). Not paginated: `meta.next_cursor` is always `null`.
 - `GET /api/v1/webhooks/{id}` — read one.
 - `PATCH /api/v1/webhooks/{id}` — update `url`, `events`, or `is_active` (re-enabling clears the failure counter).
 - `DELETE /api/v1/webhooks/{id}` — remove one.
@@ -947,8 +994,11 @@ itself — but the *source* can repeat a fact: providers re-send and
 re-order status callbacks, so the same `message.status_updated` may arrive
 more than once (with a new `id`) or out of order. Deliveries run in
 parallel, so **don't assume ordering** — on `deal.*`, order by
-`occurred_at` and dedupe on `id`. `message.status_updated` covers messages
-the CRM stores (inbox + API sends), not broadcast-only sends. Each
+`occurred_at` and dedupe on `id`. The one order the CRM guarantees: for
+the message that opens a conversation, `conversation.created` finishes
+delivering before that message's `message.received` starts.
+`message.status_updated` covers messages the CRM stores (inbox + API
+sends), not broadcast-only sends. Each
 consecutive failure increments `failure_count`; after 15 consecutive
 failures the endpoint is auto-disabled (`is_active: false`) — re-enable it
 with `PATCH` (which resets the counter) or on the settings screen. ⚠️ The
@@ -963,10 +1013,11 @@ matters.
 
 **Testing.** *Settings → Webhooks → Outgoing* has a **"Send test"** button per
 endpoint: it signs and POSTs a sample of the event you pick (with
-`"test": true`) to the endpoint's **registered URL** and shows the HTTP
-status your endpoint answered. It works for events the endpoint does not
-subscribe to and on a switched-off endpoint, and it does not touch the
-failure counter.
+`"test": true`) to the endpoint's **registered URL** and shows what your
+endpoint answered: the HTTP status and the start of the response body (up
+to 2 KB, text only — a file or an image is not shown). It works for events
+the endpoint does not subscribe to and on a switched-off endpoint, and it
+does not touch the failure counter.
 
 It does **not** feed n8n's "Listen for test event": that only captures the
 **Test URL** (`/webhook-test/…`), while the URL you register is the

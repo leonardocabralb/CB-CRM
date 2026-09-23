@@ -3840,7 +3840,7 @@
         },
         "conversationCreated": {
           "rotulo": "Conversation opened",
-          "descricao": "A new conversation started with a contact."
+          "descricao": "A customer sent their first message and opened a new conversation. It doesn’t fire for a conversation your team opens (from the CRM, the paired phone or the Instagram app), nor for one opened by an automation, by the API or in a group — for a new lead in the pipeline, use “Deal created”."
         },
         "dealCreated": {
           "rotulo": "Deal created",
@@ -4011,7 +4011,7 @@
         "chamar1": "Use the <b>HTTP Request</b> node. Under <b>Authentication</b>, pick <b>Generic Credential Type</b>, then <b>Bearer Auth</b>.",
         "chamar2": "In the credential, the <b>Bearer Token</b> is just the key, without the word “Bearer”: n8n adds it on its own.",
         "chamar3": "For POST and PATCH, turn on <b>Send Body</b> with <b>Body Content Type</b> = JSON. The <b>Import cURL</b> button accepts the examples on this page.",
-        "paginacao": "Lists come in pages of up to {max} items, and <code>meta.next_cursor</code> is empty on the last one. To fetch them all:",
+        "paginacao": "The contact, conversation, message, deal, task, scheduled-message, meeting and note lists come in pages of up to {max} items, and <code>meta.next_cursor</code> is empty on the last one (pipelines, tags, connections and webhook endpoints come whole, in one response). To fetch them all:",
         "receberTitulo": "Receiving notifications",
         "receber1": "Use the <b>Webhook</b> node, POST method, and under <b>Respond</b> pick <b>Immediately</b>: the CRM waits at most {segundos} seconds for the answer.",
         "receber2": "Register the <b>Production URL</b> in the CRM and click <b>Publish</b> — saving without publishing does not put the new version live. What arrives shows in the <b>Executions</b> tab.",
@@ -4035,7 +4035,7 @@
         "regra": {
           "umaTentativa": "One attempt per notification, with a {segundos}-second deadline and no retry. Answer 2xx quickly; a redirect counts as a failure.",
           "desliga": "{falhas} consecutive failures switch the endpoint off, and the counter belongs to the ENDPOINT, not to the event: a backlog of deal notifications (with the scheduler down, for instance) goes out at once and, if your system is down at that moment, it alone can add up to {falhas} — switching off the message notifications along with it. Turn it back on in the Outgoing tab; that resets the counter.",
-          "repeticao": "Order is not guaranteed. On deal events, the envelope <code>id</code> (equal to <code>data.event_id</code>) is stable: use it to drop repeats.",
+          "repeticao": "Order is not guaranteed — the one exception: for the message that opens a conversation, <code>conversation.created</code> arrives before <code>message.received</code>. On deal events, the envelope <code>id</code> (equal to <code>data.event_id</code>) is stable: use it to drop repeats.",
           "teste": "The Send test button sends fictitious data with <code>\"test\": true</code>: filter it out of production flows.",
           "negocio": "On deal events, <code>deal</code> is the deal AS OF DELIVERY and <code>stage</code> is the stage of THIS move — read <code>stage</code>, not <code>deal.stage_id</code>. <code>assignee</code> is the owner and <code>contact</code> carries tags and <code>custom_fields</code>. <code>source</code> says who caused it: <code>user</code> (someone in the CRM screens), <code>channel</code> (the connection opened the card on the first message, from the client or from the team), <code>automation</code> (the “Create Deal” step) or <code>system</code> (the API and the automations' “Move deal to stage” and “Mark won or lost” steps). <code>channel_id</code> is the number of the contact's conversation at that moment, and comes empty when they have not talked through any connection yet — an incoming-webhook (Typebot) or Calendly lead who has not written, a contact created by the API, a card with no contact. If you filter by number, decide what to do with these.",
           "atraso": "A late notification still goes out, with the real time of the fact in <code>occurred_at</code>.",
