@@ -2600,6 +2600,56 @@ describe('{{deal.*}} e {{now}}', () => {
     expect(texto).toBe('[R$\u00a03.500,50] [09/07/2025 às 16:25h]');
   });
 
+  it('lê o negócio pelo id do contexto E pela conta', async () => {
+    comNegocio({
+      step_type: 'send_message',
+      step_config: { text: '{{deal.value}}' },
+    });
+    await dispararComNegocio();
+    const porId = h.state.dealSelects.find((f) =>
+      f.some(([op, k, v]) => op === 'eq' && k === 'id' && v === 'd1')
+    );
+    expect(porId).toBeDefined();
+    expect(
+      porId!.some(([op, k, v]) => op === 'eq' && k === 'account_id' && v === ACCOUNT)
+    ).toBe(true);
+  });
+
+  it('sem card no contexto nem aberto, lê o GANHO mais recente (só leitura)', async () => {
+    comNegocio({
+      step_type: 'send_message',
+      step_config: { text: '{{deal.value}}' },
+    });
+    h.state.dealPorStatus = {
+      open: null,
+      lost: null,
+      won: { id: 'dw', value: 1200, created_at: '2026-01-02T12:00:00Z' } as unknown as { id: string },
+    };
+    await dispararComNegocio({ deal_id: null });
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('R$\u00a01.200,00');
+  });
+
+  it('leitura do negócio que falha vira vazio e o passo segue', async () => {
+    comNegocio({
+      step_type: 'send_message',
+      step_config: { text: '[{{deal.value}}]' },
+    });
+    h.state.erroNoNegocio = 'fora do ar';
+    await dispararComNegocio();
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe('[]');
+  });
+
+  it('a MENSAGEM não é escapada: aspas e quebra de linha chegam como são', async () => {
+    comNegocio({
+      step_type: 'send_message',
+      step_config: { text: '{{contact.name}}' },
+    });
+    await dispararComNegocio();
+    expect(vi.mocked(engineSendText).mock.calls[0]?.[0]?.text).toBe(
+      'Ana "Aninha" Souza\nda Silva'
+    );
+  });
+
   it('{{now}} na mensagem sai formatado, nunca ISO', async () => {
     comNegocio({ step_type: 'send_message', step_config: { text: '{{now}}' } });
     await dispararComNegocio();
@@ -2650,14 +2700,15 @@ describe('{{deal.*}} e {{now}}', () => {
     expect(corpo.agora).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   });
 
-  it('update_contact_field grava {{now}} em ISO — é o que a data da proposta usa', async () => {
+  it('{{now}} no campo personalizado de data grava ISO — é o que a data da proposta usa', async () => {
     comNegocio({
       step_type: 'update_contact_field',
-      step_config: { field: 'company', value: '{{now}}' },
+      step_config: { field: 'custom:cf1', value: '{{now}}' },
     });
+    h.state.ownedCustomField = { id: 'cf1' };
     await dispararComNegocio();
-    const escrita = h.state.updateCalls.find((u) => u.table === 'contacts');
-    expect(String((escrita?.payload as { company?: string })?.company)).toMatch(
+    expect(h.state.upsertCalls).toHaveLength(1);
+    expect((h.state.upsertCalls[0].payload as { value: string }).value).toMatch(
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
     );
   });

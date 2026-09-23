@@ -2984,27 +2984,45 @@ interface DadosDoNegocio {
 /**
  * O negócio que `{{deal.*}}` descreve: o MESMO que as ações da execução mexem
  * (`negocioAlvo` — o card do contexto, fixado pelo evento de funil ou pelo
- * primeiro "Mover card"; senão o aberto mais recente do contato).
+ * primeiro "Mover card"/"Marcar status"; senão o aberto mais recente, senão o
+ * perdido). Sem nenhum desses, o GANHO mais recente: `negocioAlvo` o exclui
+ * para proteger ESCRITA (o card do caso no Jurídico), e aqui só se lê — sem a
+ * queda, a execução à mão sobre cliente já ganho mandava o valor vazio ao
+ * sistema do outro lado com cara de certo (revisão do PR #275).
  *
  * ⚠️ Lido a cada passo que cita `deal.`, SEM o cache por execução do contato:
- * o card muda no meio (o "Mover card" fixa outro id no contexto, e o valor
- * pode ser editado durante um "Aguardar" de dias). É uma leitura por chave
- * primária, e só nos passos que citam a variável.
+ * o valor pode ser editado durante um "Aguardar" de dias, e na execução à mão
+ * o card só entra no contexto no primeiro "Mover card". É uma leitura por
+ * chave primária, e só nos passos que citam a variável.
  *
  * Falha de leitura vira variável vazia, como no contato — nunca derruba o
- * passo.
+ * passo. ⚠️ `deals.value` é NOT NULL DEFAULT 0: card sem valor preenchido sai
+ * como 0, indistinguível de um zero de verdade.
  */
 async function carregarNegocio(
   args: ExecuteArgs
 ): Promise<DadosDoNegocio | null> {
   const db = supabaseAdmin();
   try {
-    const alvo = await negocioAlvo(db, args);
-    if (!alvo) return null;
+    let id = (await negocioAlvo(db, args))?.id ?? null;
+    if (!id && args.contactId) {
+      const { data: ganho, error: erroDoGanho } = await db
+        .from('deals')
+        .select('id')
+        .eq('account_id', args.automation.account_id)
+        .eq('contact_id', args.contactId)
+        .eq('status', 'won')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (erroDoGanho) throw new Error(erroDoGanho.message);
+      id = (ganho?.id as string | undefined) ?? null;
+    }
+    if (!id) return null;
     const { data, error } = await db
       .from('deals')
       .select('value, created_at')
-      .eq('id', alvo.id)
+      .eq('id', id)
       .eq('account_id', args.automation.account_id)
       .maybeSingle();
     if (error) {

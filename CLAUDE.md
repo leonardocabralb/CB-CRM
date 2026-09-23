@@ -5297,9 +5297,14 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   (23/09/2026)**, para o aviso do contrato fechado mandar ao sistema do
   escritório o que a Kommo mandava (valor do contrato, data de entrada,
   data da proposta). O negócio é o de `negocioAlvo` — o MESMO que as ações
-  mexem — e é lido a cada passo que cita `deal.`, SEM o cache por execução
-  do contato: o "Mover card" troca o card fixado no meio, e o valor pode
-  mudar durante um "Aguardar". Os dois modos valem aqui também: na
+  mexem —, com uma queda só para LEITURA: sem aberto nem perdido, o GANHO
+  mais recente (`negocioAlvo` o exclui para proteger escrita; sem a queda, a
+  execução à mão sobre cliente já ganho mandava valor vazio ao sistema de
+  fora). Lido a cada passo que cita `deal.`, SEM o cache por execução do
+  contato: o valor pode mudar durante um "Aguardar", e na execução à mão o
+  card só entra no contexto no primeiro "Mover card". ⚠️ `deals.value` é NOT
+  NULL DEFAULT 0 — card sem valor sai como 0, igual a um zero de verdade.
+  Os dois modos valem aqui também: na
   mensagem, "R$ 3.500,00" e "30/08/2026 às 16:00h"; no dado
   (`update_contact_field`, `send_webhook`), `3500` e ISO em UTC.
   ⚠️⚠️ **O corpo do `send_webhook` ESCAPA cada valor** (`json: true`): o
