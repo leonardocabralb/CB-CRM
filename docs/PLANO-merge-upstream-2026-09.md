@@ -922,8 +922,12 @@ real: ativo por minutos, desativado e apagado em seguida.
     da Meta é um UPDATE solto, e quem chega antes de a linha existir se
     perde — o caminho da Evolution espera (`aplicarReciboQuandoAMensagemExistir`),
     o da Meta não; em 10/09 uma mensagem do oficial já tinha ficado em `sent`
-    assim. Registrado, fora desta fase. Falta o operador confirmar no celular
-    que a lista chegou.
+    assim. Registrado, fora desta fase. **A lista CHEGOU:** o operador recebeu
+    as mensagens e, às 16:14, tocou no botão e na linha da lista — as duas
+    respostas entraram pelo webhook da PRODUÇÃO com os ids crus (`sim`, `r1`)
+    e os títulos preenchidos ("Sim, Ana Teste", "Opção de Bia Teste"). Como os
+    fluxos já estavam apagados, entraram como mensagens comuns: nenhum run e
+    nenhuma automação disparou (conferido).
   - ⚠️ Uma resposta mandada 2 s depois da palavra-chave, ANTES de a pergunta
     sair, não foi capturada (o run ainda não existia): efeito do teste, não
     defeito — cliente de verdade responde depois de a pergunta chegar.
