@@ -207,6 +207,11 @@ describe("telefoneDigitado (a metade aditiva do #586, com a nossa régua)", () =
 
   it("começar em 0 (tronco) é inválido", () => {
     expect(telefoneDigitado("081 98874-5316")).toEqual(nao("invalido"));
+    // DDD terminado em 9 + fixo: 11 dígitos com 9 na 3ª posição — ganharia o
+    // 55 e o 0 sumiria no meio ("5501934567890"). Codex, PR #265.
+    expect(telefoneDigitado("019 3456-7890")).toEqual(nao("invalido"));
+    expect(telefoneDigitado("(099) 3456-7890")).toEqual(nao("invalido"));
+    expect(telefoneDigitado("+0 81 98874-5316")).toEqual(nao("invalido"));
     expect(telefoneDigitado("0800 123 4567")).toEqual(nao("invalido"));
   });
 

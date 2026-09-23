@@ -90,9 +90,14 @@ export function telefoneDigitado(texto: string | null | undefined): TelefoneDigi
   let escritos = aparado.replace(/\D/g, "");
   if (aparado.startsWith("00")) escritos = escritos.slice(2);
   if (escritos.length < (comDdi ? MIN_DIGITOS : 10)) return { ok: false, motivo: "curto" };
+  // ⚠️ O 0 de tronco é conferido no que foi ESCRITO, antes de normalizar:
+  // "019 3456-7890" tem 11 dígitos com 9 na 3ª posição, ganha o 55 em
+  // `digitosDoTelefone`, e o 0 fica escondido no meio ("5501934567890") —
+  // passava pela régua (Codex, PR #265).
+  if (escritos.startsWith("0")) return { ok: false, motivo: "invalido" };
 
   const digitos = digitosDoTelefone(aparado);
-  if (!digitos || digitos.startsWith("0")) return { ok: false, motivo: "invalido" };
+  if (!digitos) return { ok: false, motivo: "invalido" };
   if (digitos.startsWith("55") && digitos.length !== 12 && digitos.length !== 13) {
     return { ok: false, motivo: "invalido" };
   }

@@ -917,6 +917,7 @@ linha) — não há como provocar a recusa sem mexer em policy; o ramo é o do
 | P3 — a nota do `CLAUDE.md` dava a entender que TODO telefone digitado já passa pela régua | ✅ diz que a "Nova conversa" e a API v1 são a 3-III |
 | P3 — número americano de 10 dígitos sem `+` vira DDD 40, que não existe | aceito: a dica manda escrever número de fora com `+`; validar DDD seria regra nova sem caso medido |
 | Anotado para a Fase 10 | `toastImported`/`importBtn` usam chaves `_plural` que o next-intl não lê — "Importar 6 contato" no singular (defeito antigo, visto no teste) |
+| **Codex, 1ª rodada (HEAD `5b4bb2b9`)**: P2 — "019 3456-7890" (DDD terminado em 9 + fixo, com o 0 de tronco) tem 11 dígitos com 9 na 3ª posição, ganhava o 55, e o 0 ficava escondido no meio (`5501934567890`) — a régua o aceitava | ✅ o 0 de tronco é conferido no que foi ESCRITO, antes de normalizar; 3 casos no teste, mutante reprova |
 
 ### Fase 4 — Fluxos: `{{vars}}` em botões e listas
 
