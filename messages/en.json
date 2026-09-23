@@ -2429,6 +2429,8 @@
       "tagAlreadyExistsUnknown": "A tag with that name already exists in this account. Names that differ only by accent or case count as the same one.",
       "tagDeleted": "Tag deleted",
       "failedToDeleteTag": "Failed to delete tag",
+      "tagAlreadyDeleted": "This tag no longer exists — someone deleted it first. The list has been refreshed.",
+      "deleteTagRefused": "Could not delete: your profile is not allowed to delete tags.",
       "deleteAria": "Delete {name}",
       "noTags": "No tags yet — create your first one below.",
       "noTagsReadOnly": "No tags in this account yet.",

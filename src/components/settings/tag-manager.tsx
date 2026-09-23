@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { chaveDeTag } from '@/lib/contacts/chave-de-tag';
+import { lerExclusao } from '@/lib/contacts/exclusao';
 import { Loader2, Plus, Tag as TagIcon, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
@@ -184,25 +185,47 @@ export function TagManager() {
     try {
       setDeleting(true);
       // ⚠️ `count`, nunca só `error`: RLS que barra DELETE devolve 0 linhas
-      // SEM erro, e a etiqueta sumiria da tela continuando no banco (o admin
-      // rebaixado com a página aberta, ou a que outra aba já apagou). Zero
-      // linhas = falha dita, e a lista é relida — ela mostra o que ficou.
+      // SEM erro, e a etiqueta sumiria da tela continuando no banco. E zero
+      // linhas tem DOIS significados — a policy recusou (o admin rebaixado
+      // com a página aberta) ou a etiqueta já não existia (outra aba a
+      // apagou) —, então o motivo é MEDIDO perguntando se ela ainda existe,
+      // a régua de `lerExclusao` (a mesma de Contatos).
       const { error, count } = await supabase
         .from('tags')
         .delete({ count: 'exact' })
         .eq('id', tagToDelete.id);
 
-      if (error) throw error;
-      if (!count) {
+      const apagados = count ?? 0;
+      let aindaExistem: number | null = 0;
+      if (!error && apagados === 0) {
+        const conferencia = await supabase
+          .from('tags')
+          .select('id', { count: 'exact', head: true })
+          .eq('id', tagToDelete.id);
+        aindaExistem = conferencia.error ? null : (conferencia.count ?? null);
+      }
+      const r = lerExclusao({
+        pedidos: 1,
+        apagados,
+        aindaExistem,
+        houveErro: !!error,
+      });
+      if (r === 'falhou') {
+        // Não se sabe o que houve: o diálogo fica aberto para tentar de novo.
+        if (error) console.error('Delete error:', error);
         toast.error(t('failedToDeleteTag'));
-        setDeleteDialogOpen(false);
-        setTagToDelete(null);
-        void fetchTags();
         return;
       }
-
-      toast.success(t('tagDeleted'));
-      setTags((prev) => prev.filter((t) => t.id !== tagToDelete.id));
+      if (r === 'apagado') {
+        toast.success(t('tagDeleted'));
+        setTags((prev) => prev.filter((t) => t.id !== tagToDelete.id));
+      } else {
+        // "Sumiu" não é falha nem falta de permissão: o que se queria aconteceu.
+        if (r === 'sumiu') toast.info(t('tagAlreadyDeleted'));
+        else toast.error(t('deleteTagRefused'));
+        // A lista relida mostra o que de fato ficou.
+        void fetchTags();
+      }
       setDeleteDialogOpen(false);
       setTagToDelete(null);
     } catch (err) {

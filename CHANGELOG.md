@@ -28,8 +28,10 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Etiquetas e modelos da conta aparecem para toda a equipe em
   Configurações.** O gerenciador de etiquetas, a lista de modelos e as
   contagens da visão geral mostravam só o que o próprio membro tinha criado
-  (quem não era o dono via "0"). Agora mostram o catálogo da conta, e criar
-  ou apagar etiqueta, que é de administrador, some da tela de quem não é.
+  (quem não era o dono via "0"). Agora mostram o catálogo da conta, e os
+  controles de escrita, que são de administrador (criar ou apagar etiqueta;
+  criar, sincronizar, editar, reenviar ou apagar modelo), somem da tela de
+  quem não é.
 
 - **Erro de banco ao escolher o número de uma campanha não é mais "conecte
   um número".** `POST /api/v1/broadcasts` (e as telas de disparo e de

@@ -19,6 +19,7 @@ import {
   MEDIA_MAX_BYTES_BY_KIND,
 } from '@/lib/storage/upload-media';
 import { useAuth } from '@/hooks/use-auth';
+import { useCan } from '@/hooks/use-can';
 import { useChannels } from '@/hooks/use-channels';
 import { metaChannels, preferredChannel } from '@/lib/cb-channels/display';
 import { ChannelCell } from '@/components/channels/channel-badge';
@@ -153,6 +154,13 @@ export function TemplateManager() {
   }, [canaisMeta, canalModelos]);
   const supabase = createClient();
   const { user, loading: authLoading } = useAuth();
+  // ⚠️ Criar, sincronizar, editar, reenviar e apagar são de ADMIN nas quatro
+  // rotas (`requireRole`/`barrarPorPapel`) e nas policies (017). Com o
+  // catálogo da conta inteira na tela, os controles SOMEM para quem não é
+  // admin (`ESCRITA_DA_SECAO.templates`): mostrados, eram botões que sempre
+  // davam 403 — e o Editar sobe a imagem do cabeçalho para o `chat-media`
+  // na ESCOLHA, então o 403 do salvar deixava um objeto órfão no bucket.
+  const podeEditar = useCan('edit-settings');
 
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
@@ -522,29 +530,33 @@ export function TemplateManager() {
         title={t('title')}
         description={t('description')}
         action={
-          <div className="flex items-center gap-2">
-            {canaisMeta.length >= 2 && (
-              <ChannelSelect
-                channels={canaisMeta}
-                value={canalModelos}
-                onChange={setCanalModelos}
-                className="w-48"
-              />
-            )}
-            <Button
-              variant="outline"
-              onClick={handleSyncFromMeta}
-              disabled={syncing}
-              title={t('syncTitle')}
-            >
-              <RefreshCw className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? t('syncing') : t('syncFromMeta')}
-            </Button>
-            <Button onClick={openCreate}>
-              <Plus className="size-4" />
-              {t('newTemplate')}
-            </Button>
-          </div>
+          // O seletor de WABA só decide onde CRIAR/SINCRONIZAR (não filtra a
+          // lista), então some junto com os dois botões.
+          podeEditar ? (
+            <div className="flex items-center gap-2">
+              {canaisMeta.length >= 2 && (
+                <ChannelSelect
+                  channels={canaisMeta}
+                  value={canalModelos}
+                  onChange={setCanalModelos}
+                  className="w-48"
+                />
+              )}
+              <Button
+                variant="outline"
+                onClick={handleSyncFromMeta}
+                disabled={syncing}
+                title={t('syncTitle')}
+              >
+                <RefreshCw className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? t('syncing') : t('syncFromMeta')}
+              </Button>
+              <Button onClick={openCreate}>
+                <Plus className="size-4" />
+                {t('newTemplate')}
+              </Button>
+            </div>
+          ) : undefined
         }
       />
 
@@ -562,9 +574,11 @@ export function TemplateManager() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-muted-foreground text-sm">{t('noTemplates')}</p>
-            <p className="text-muted-foreground text-xs mt-1">
-              {t('createFirst')}
-            </p>
+            {podeEditar ? (
+              <p className="text-muted-foreground text-xs mt-1">
+                {t('createFirst')}
+              </p>
+            ) : null}
           </CardContent>
         </Card>
       ) : (
@@ -632,57 +646,59 @@ export function TemplateManager() {
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 shrink-0 ml-2">
-                    {statusKey === 'APPROVED' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEdit(template)}
-                        title={t('editTitle')}
-                        aria-label={t('editLabel')}
-                        className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
-                      >
-                        <Pencil className="size-3.5" />
-                        {t('edit')}
-                      </Button>
-                    )}
-                    {(statusKey === 'REJECTED' || statusKey === 'PAUSED') && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEdit(template)}
-                        title={t('resubmitTitle')}
-                        aria-label={t('resubmitLabel')}
-                        className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
-                      >
-                        <RotateCcw className="size-3.5" />
-                        {t('resubmit')}
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setTemplateToDelete(template)}
-                      disabled={deletingId === template.id}
-                      aria-label={
-                        template.meta_template_id
-                          ? t('deleteMetaLocallyAria')
-                          : t('deleteLocallyAria')
-                      }
-                      title={
-                        template.meta_template_id
-                          ? t('deleteMetaLocallyTitle')
-                          : t('deleteLocallyTitle')
-                      }
-                      className="text-muted-foreground hover:text-red-400 hover:bg-red-950/30 h-8 w-8"
-                    >
-                      {deletingId === template.id ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="size-4" />
+                  {podeEditar ? (
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                      {statusKey === 'APPROVED' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEdit(template)}
+                          title={t('editTitle')}
+                          aria-label={t('editLabel')}
+                          className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
+                        >
+                          <Pencil className="size-3.5" />
+                          {t('edit')}
+                        </Button>
                       )}
-                    </Button>
-                  </div>
+                      {(statusKey === 'REJECTED' || statusKey === 'PAUSED') && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEdit(template)}
+                          title={t('resubmitTitle')}
+                          aria-label={t('resubmitLabel')}
+                          className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
+                        >
+                          <RotateCcw className="size-3.5" />
+                          {t('resubmit')}
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setTemplateToDelete(template)}
+                        disabled={deletingId === template.id}
+                        aria-label={
+                          template.meta_template_id
+                            ? t('deleteMetaLocallyAria')
+                            : t('deleteLocallyAria')
+                        }
+                        title={
+                          template.meta_template_id
+                            ? t('deleteMetaLocallyTitle')
+                            : t('deleteLocallyTitle')
+                        }
+                        className="text-muted-foreground hover:text-red-400 hover:bg-red-950/30 h-8 w-8"
+                      >
+                        {deletingId === template.id ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="size-4" />
+                        )}
+                      </Button>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             );
