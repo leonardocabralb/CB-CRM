@@ -1672,9 +1672,14 @@
         "errorLoadTags": "Failed to load tags",
         "errorLoadFields": "Failed to load custom fields",
         "errorCsvMissingPhone": "CSV must have a 'phone' column.",
+        "contagemFalhou": "Couldn't calculate the audience right now.",
         "errorCsvNoValidRows": "No row in the CSV has a valid phone. Write it with the area code — or, for another country, with + and the country code.",
         "audienceSummary": "Audience Summary",
-        "calculating": "Calculating…"
+        "calculating": "Calculating…",
+        "estimatedRecipients": "{count, plural, =0 {estimated recipients} one {estimated recipient} other {estimated recipients}}",
+        "pickAudienceHint": "Choose who receives it to see the estimate.",
+        "contagemTeto": "This audience is larger than the screen can count (25,000 contacts). Narrow it with tags or a custom field.",
+        "tentarDeNovo": "Try again"
       },
       "personalize": {
         "title": "Personalize Variables",
@@ -1730,6 +1735,10 @@
         "preparing": "Preparing...",
         "progressDesc": "Processing {current} of {total} recipients...",
         "toastFailedPreview": "Failed to load preview data",
+        "alcanceFalhou": "Couldn't calculate.",
+        "tentarDeNovo": "Try again",
+        "alcanceTeto": "Larger than the screen can count (25,000). Go back and narrow the audience.",
+        "ninguemNoPublico": "No one to reach with this audience.",
         "estimatedReach": "Estimated Reach",
         "language": "Language",
         "confirmTitle": "Confirm Broadcast",
