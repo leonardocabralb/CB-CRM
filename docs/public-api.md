@@ -231,8 +231,26 @@ new contact returns `201`. The response body is the serialized contact
 > ⚠️ **When the contact already exists, `tags` REPLACES its whole tag set**
 > (while `name`, `email` and `company` are ignored for it). Sending
 > `tags: ["Typebot"]` for a known phone removes every other tag that
-> contact had, and `tags: []` removes them all. To add a tag without touching the others, use
+> contact had, and `tags: []` removes them all. To add a tag without
+> touching the others, send `"tags_mode": "add"` (below) or use
 > [`POST /api/v1/contacts/{id}/tags`](#post-apiv1contactsidtags).
+
+`tags_mode` (optional) says how `tags` is applied:
+
+- `"replace"` — the default, and what happens when the field is absent or
+  `null`: the contact ends up with exactly the tags in the body.
+- `"add"` — only adds: the tags in the body are applied and **nothing is
+  removed**, whether the contact is new (`201`) or already existed (`200`).
+  `tags: []` with `"add"` changes nothing.
+
+Any other value (`"append"`, `"ADD"`, `true`…) is a `400 bad_request`,
+checked before anything is read or written — it never falls back to
+`"replace"`, because the caller asked not to remove anything.
+
+```jsonc
+// Labels the lead without touching the tags it already had
+{ "phone": "+5511900000000", "name": "Maria", "tags": ["Typebot"], "tags_mode": "add" }
+```
 
 Tags follow the same rules as in the additive endpoint below: text in the
 canonical UUID form is read as a tag id, an id that is not a tag of this
@@ -251,13 +269,16 @@ pass `tags` (an array of tag names or tag ids from `GET /api/v1/tags`) to
 above: an unknown tag id is a `400 unknown_tag_ids` and nothing is
 written, a non-string or empty item — or a `tags` that is neither an
 array nor `null` — is a `400 bad_request`, and `tags: null` leaves the tags
-alone. To clear every tag, send `tags: []`. A
+alone. To clear every tag, send `tags: []`. `tags_mode: "add"` works here
+too, with the same rules as on `POST /contacts` (only adds; an unknown value
+is a `400`). A
 contact in another account returns `404`; a contact id in the path that is
 not a UUID returns `400 bad_request` (here and on `/custom-fields` and
 `/tags` below).
 
 > ⚠️ `tags` here replaces the whole set — sending `["Lead"]` removes
-> every other tag the contact had. To add or drop individual tags, use
+> every other tag the contact had — unless you send `"tags_mode": "add"`.
+> To add AND drop individual tags in one call, use
 > `POST /api/v1/contacts/{id}/tags` below.
 
 ### `POST /api/v1/contacts/{id}/tags`

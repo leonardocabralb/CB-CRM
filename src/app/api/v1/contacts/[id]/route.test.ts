@@ -27,7 +27,11 @@ const helpers = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/auth/api-context', () => ({
-  requireApiKey: vi.fn(async () => ({ supabase: { from: helpers.from }, accountId: 'conta-1' })),
+  requireApiKey: vi.fn(async () => ({
+    supabase: { from: helpers.from },
+    accountId: 'conta-1',
+    keyId: 'chave-do-make',
+  })),
 }));
 vi.mock('@/lib/api/v1/contacts', () => ({
   getContactById: helpers.getContactById,
@@ -42,16 +46,22 @@ vi.mock('@/lib/api/v1/contacts', () => ({
 // classe importa.
 // `lerTagsDoCorpo` é o REAL: é a régua da forma de `tags` que estes testes
 // cobram. O resto do módulo fica de fora (arrasta o motor de automações).
-vi.mock('@/lib/api/v1/tags-do-contato', async (importOriginal) => ({
-  lerTagsDoCorpo: (await importOriginal<typeof import('@/lib/api/v1/tags-do-contato')>())
-    .lerTagsDoCorpo,
-  TagReferenceError: class TagReferenceError extends Error {
-    code = 'unknown_tag_ids';
-    status = 400;
-  },
-}));
+vi.mock('@/lib/api/v1/tags-do-contato', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/api/v1/tags-do-contato')>();
+  return {
+    // REAIS: a régua da forma de `tags`, a de `tags_mode` e o registro no log.
+    lerTagsDoCorpo: real.lerTagsDoCorpo,
+    lerModoDasTags: real.lerModoDasTags,
+    avisarRecusaDeEtiqueta: real.avisarRecusaDeEtiqueta,
+    TagReferenceError: class TagReferenceError extends Error {
+      code = 'unknown_tag_ids';
+      status = 400;
+    },
+  };
+});
 
 import { GET, PATCH } from './route';
+import { TagReferenceError } from '@/lib/api/v1/tags-do-contato';
 
 const ID = '11111111-2222-4333-8444-555555555555';
 const ETIQUETA = '0f0f0f0f-1111-4222-8333-444444444444';
@@ -144,6 +154,65 @@ describe('PATCH /api/v1/contacts/{id} — `tags` com forma errada é 400, sem es
     expect(res.status).toBe(200);
     expect(helpers.lerTagsPedidas).not.toHaveBeenCalled();
     expect(helpers.setContactTags).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/v1/contacts/{id} — `tags_mode`', () => {
+  const opcoesDe = () => helpers.setContactTags.mock.calls[0][5];
+
+  it('sem o campo: SUBSTITUI, como o contrato publicado', async () => {
+    await patch(ID, { tags: ['Typebot'] });
+    expect(opcoesDe()).toEqual({ somenteAcrescentar: false });
+  });
+
+  it('⚠️ `tags_mode: "add"` vale aqui também — senão o campo aprendido no POST seria IGNORADO e o PATCH apagaria as outras', async () => {
+    const res = await patch(ID, { tags: ['Typebot'], tags_mode: 'add' });
+    expect(res.status).toBe(200);
+    expect(opcoesDe()).toEqual({ somenteAcrescentar: true });
+  });
+
+  it('valor desconhecido é 400 antes de qualquer consulta ou escrita', async () => {
+    const res = await patch(ID, { name: 'Maria Exemplo', tags: ['Typebot'], tags_mode: 'append' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: { code: 'bad_request', message: `'tags_mode' must be "replace" or "add"` },
+    });
+    nadaFoiTocado();
+  });
+});
+
+describe('PATCH /api/v1/contacts/{id} — o 400 de etiqueta vai para o log', () => {
+  it.each([
+    ['forma de `tags`', { tags: [{ id: ETIQUETA }] }, 'bad_request'],
+    ['`tags_mode` desconhecido', { tags: ['x'], tags_mode: 'merge' }, 'bad_request'],
+  ])('%s', async (_, corpo, code) => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect((await patch(ID, corpo)).status).toBe(400);
+    expect(aviso).toHaveBeenCalledWith('[api/v1] 400 de etiqueta', {
+      rota: 'PATCH /api/v1/contacts/{id}',
+      code,
+      keyId: 'chave-do-make',
+    });
+    aviso.mockRestore();
+  });
+
+  it('`unknown_tag_ids` também', async () => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    helpers.lerTagsPedidas.mockRejectedValue(new TagReferenceError('unknown_tag_ids', 'ids desconhecidos'));
+    expect((await patch(ID, { tags: [ETIQUETA] })).status).toBe(400);
+    expect(aviso).toHaveBeenCalledWith('[api/v1] 400 de etiqueta', {
+      rota: 'PATCH /api/v1/contacts/{id}',
+      code: 'unknown_tag_ids',
+      keyId: 'chave-do-make',
+    });
+    aviso.mockRestore();
+  });
+
+  it('`{id}` malformado NÃO é 400 de etiqueta — fica fora do log', async () => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect((await patch('abc', { tags: ['x'] })).status).toBe(400);
+    expect(aviso).not.toHaveBeenCalled();
+    aviso.mockRestore();
   });
 });
 

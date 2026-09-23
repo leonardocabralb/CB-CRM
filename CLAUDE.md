@@ -465,7 +465,7 @@ upstream sobrescrevê-los:
 | `src/components/settings/settings-sections.ts`, `settings-chip.tsx`, `src/app/(dashboard)/settings/page.tsx` | a seção `integracoes` no rail e a variante `err` (vermelha) do chip. Mais (23/09/2026) `api: <ApiPanel/>` no lugar de `<ApiKeysSettings/>` e o `go()` apagando o parâmetro `aba` ao trocar de seção |
 | `src/lib/webhooks/events.ts`, `deliver.ts` (23/09/2026) | os três eventos `deal.*` e `DEAL_WEBHOOK_EVENTS`; `dispatchWebhookEvent` GENÉRICO sobre `WebhookEventData` com o 5º parâmetro `opcoes` (`id`/`occurredAt`), os `CABECALHO_*` e `pedidoDeEntrega` (o botão de teste assina pelo mesmo). Um merge que traga o `deliver.ts` cru devolve o `data: unknown` e desliga a cobrança do contrato nos pontos de disparo |
 | `src/components/settings/api-keys-settings.tsx` (23/09/2026) | virou o CORPO da aba Chaves: sem `SettingsPanelHead` (o cabeçalho é do `ApiPanel`), com o "Nova chave" no topo da aba e o estado de carga que falhou |
-| `src/app/api/v1/contacts/route.ts`, `[id]/route.ts`, `[id]/tags/route.ts`, `src/lib/api/v1/contacts.ts` (23/09/2026) | a etiqueta por NOME OU ID (`lerTagsPedidas` antes de qualquer escrita, `TagReferenceError`), o 400 para item de `tags` que não é string e para id de contato malformado. Ver "Tag ADITIVA na API v1" |
+| `src/app/api/v1/contacts/route.ts`, `[id]/route.ts`, `[id]/tags/route.ts`, `src/lib/api/v1/contacts.ts` (23/09/2026) | a etiqueta por NOME OU ID (`lerTagsPedidas` antes de qualquer escrita, `TagReferenceError`), o 400 para item de `tags` que não é string e para id de contato malformado. Mais (23/09/2026) o `tags_mode: "add"` do POST e do PATCH (`setContactTags(…, { somenteAcrescentar })`) e o `avisarRecusaDeEtiqueta` nos 400 de etiqueta das três rotas — um merge que traga a rota crua do upstream devolve o `tags` substitutivo sem saída numa chamada só. Ver "Tag ADITIVA na API v1" |
 | `src/lib/ai/types.ts`, `config.ts`, `structured.ts`, `defaults.ts`, `src/lib/cb-radar/worker.ts`, `src/app/api/ai/config/route.ts` | o modelo do Radar separado do modelo de chat (946): `radarModel` no tipo e em `CONFIG_COLUMNS`, o parâmetro `model` do `generateStructured`, `AI_PROVIDER_MODELS`, e a validação do modelo do Radar no save |
 | `src/components/settings/ai-config.tsx` | `<datalist>` de sugestão no campo Modelo e a frase de escopo com link para Integrações |
 | `src/components/settings/profile-form.tsx` (correção do #259, 23/09/2026) | o cartão `<BrowserNotificationsCard>` do original (#516) NÃO é montado: o ouvinte que dispara os avisos não está montado em lugar nenhum, e o cartão prometia notificações que nunca chegavam. Volta na Fase 8, junto com o ouvinte (dentro da `<PortaDeEntrada>`). Pino em `src/components/settings/cartao-de-notificacao.chamadores.test.ts` — um porte de tradução que traga a linha de volta sem o ouvinte reprova |
@@ -6014,6 +6014,16 @@ não conseguia receber no n8n "o lead mudou de etapa". O que morde código novo:
   `ssrf.ts`, a do original (#588, por octetos — o IPv6 mapeado em hexa
   `[::ffff:7f00:1]` incluso), que `enviar-teste.ts` chama antes de postar,
   como a entrega real. Não divergir dela: ver a nota do anexo do Instagram.
+  ⚠️⚠️ **E desde 23/09/2026 ele LÊ o começo do corpo** (até `TETO_DO_TRECHO`
+  = 2 KB, só `content-type` textual; `resultado-do-teste.ts` é o parse da
+  tela) — no 404 do n8n é o corpo que diz o motivo. Com isso, um DNS
+  rebinding que vença a guarda (`ssrf.ts` admite não cobrir) deixa de ser um
+  POST cego e passa a LER 2 KB de um serviço interno — só por admin da
+  conta, só com POST. Aceito com o teto; o conserto forte (fixar o IP
+  resolvido num dispatcher do undici) valeria também para `deliver.ts` e é
+  outra obra. Quem subir o teto ou tirar o filtro de `content-type` reabre
+  essa conta. Quem DECIDE o resultado continua sendo o status: corpo lento
+  ou quebrado num 2xx é "entregue", com o trecho `null`.
 
 ⚠️ **Configurações → API tem TRÊS abas (`?aba=chaves|ids|docs`) e a
 Documentação é gerada do código.** `api-panel.tsx`, `sub-abas.tsx`,
@@ -6038,8 +6048,17 @@ Documentação é gerada do código.** `api-panel.tsx`, `sub-abas.tsx`,
 - ⚠️ **Prosa no dicionário, código fora dele**: o dicionário inteiro vai ao
   navegador em toda página, e JSON de exemplo no ICU exige aspas em toda
   chave. A Documentação foi escrita CONCISA (~12 KB por idioma).
-- ⚠️ **`Settings.sections.api` virou "API"** (era "Chaves de API");
-  `SECTION_META.api.label` ainda diz "API keys" e o menu não o usa.
+- ⚠️ **A seção se chama "API", e NÃO "API e integrações"** (o nome do
+  plano) — decisão do operador em 23/09/2026: a seção `integracoes` (chaves
+  de IA, Calendly, tl;dv, Asaas, Meta Ads) já se chama "Integrações", e duas
+  entradas com a palavra no menu confundiriam. `Settings.sections.api` virou
+  "API" (era "Chaves de API") e `SECTION_META.api.label` foi alinhado ("API";
+  o menu não o lê). Não "completar" o nome.
+- ⚠️ **O link da seção Webhooks para a Documentação mora no CABEÇALHO da
+  seção** (vale em Recebidos e em Enviados — Recebidos é a que abre por
+  padrão) e SOME para quem não vê a seção API (`podeVerSecao` sobre o acesso
+  EFETIVO): é o espelho da regra do link inverso. Some, e não vira texto,
+  porque aqui sobraria um rótulo solto que não leva a lugar nenhum.
 
 ⚠️ **Tag ADITIVA na API v1: `POST /api/v1/contacts/{id}/tags`.**
 `src/lib/api/v1/tags-do-contato.ts` (parse puro, testado). O `PATCH` com
@@ -6125,6 +6144,24 @@ novo:
   enviada. O filtro `?tag=` de `GET /contacts` continua só por id.
   `setContactTags` virou duas fases (`lerTagsPedidas` só lê; escrever vem
   depois), para o 400 sair antes de qualquer mudança no contato.
+- ⚠️⚠️ **`tags_mode: "add"` (23/09/2026) é o opt-in aditivo de `POST
+  /contacts` e `PATCH /contacts/{id}`; o PADRÃO continua `replace`** — é
+  contrato publicado, e trocar o padrão é decisão de produto. No POST, o
+  `tags` substitutivo vale para o contato que JÁ existe (find-or-create), e
+  o caso comum do Make é justamente o lead que já escreveu. O modo é lido
+  PURO (`lerModoDasTags`), antes de qualquer consulta; valor desconhecido
+  (`"append"`, `"ADD"`) é 400, NUNCA queda para `replace` — quem pediu para
+  não apagar não pode ter apagado. Vale nos DOIS verbos de propósito: só no
+  POST, o campo aprendido lá e mandado no PATCH seria ignorado e o PATCH
+  apagaria as outras com 200. O aditivo é `setContactTags(…, {
+  somenteAcrescentar: true })` sobre o `TagsPedidas` já resolvido — nunca
+  `aplicarMudancaDeTags`, que relê o catálogo e poderia dar 400 DEPOIS de o
+  contato ter sido criado.
+- ⚠️ **Os 400 de etiqueta da v1 vão para o log** (`avisarRecusaDeEtiqueta`:
+  rota, código e `keyId` — nunca o corpo, que leva nome e telefone, nem a
+  chave) nas três rotas. A API não guarda respostas e `last_used_at` sobe
+  ANTES da validação; o log do contêiner some a cada deploy — é sinal para
+  a próxima conferência, não registro.
 - ⚠️ **Item de `tags` que não é string é 400, nunca descartado** (POST e PATCH
   de contato, `lerTagsDoCorpo` em `tags-do-contato.ts`): o filtro antigo
   (`typeof t === 'string'`) transformava os objetos `{id,name,color}` que o

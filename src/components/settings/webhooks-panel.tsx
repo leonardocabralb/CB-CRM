@@ -27,14 +27,21 @@ import {
   useRotulosDosGrupos,
 } from "@/components/settings/documentacao/rotulos-dos-eventos";
 import { SettingsChip } from "@/components/settings/settings-chip";
+import { TrechoDaResposta } from "@/components/settings/trecho-da-resposta";
 import { SubAbas } from "@/components/settings/sub-abas";
 import {
   FALHAS_QUE_DESLIGAM,
   PRAZO_DA_ENTREGA_SEGUNDOS,
 } from "@/lib/integracoes/exemplos-de-requisicao";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
+import { podeVerSecao } from "@/lib/perfis/visibilidade";
 import { RESULTADOS_REPROCESSAVEIS } from "@/lib/webhooks-de-entrada/log";
 import type { MotivoDaFalhaDoTeste } from "@/lib/webhooks/enviar-teste";
+import {
+  lerResultadoDoTeste,
+  type ResultadoLidoDoTeste,
+} from "@/lib/webhooks/resultado-do-teste";
 import {
   WEBHOOK_EVENTS,
   isWebhookEvent,
@@ -750,59 +757,13 @@ function AbaRecebidos() {
 // ------------------------------------------------------------
 
 /**
- * O resultado de `POST /api/cb/webhooks-de-saida/{id}/teste`, como a tela o
- * LÊ: campo a campo (`lerResultadoDoTeste`), nunca `as`. Um corpo
- * inesperado vira "não foi possível enviar", e não um "Entregue" inventado;
- * um motivo que esta tela não conhece (a rota ganhou um novo) vira `null`,
- * com texto genérico, em vez de chave crua.
- *
- * `import type`: `enviar-teste.ts` arrasta `node:crypto`, e só o tipo
- * atravessa para o navegador (é apagado na compilação).
+ * O resultado do teste é LIDO por `lerResultadoDoTeste`
+ * (`src/lib/webhooks/resultado-do-teste.ts`, puro e testado): campo a campo,
+ * nunca `as`.
  */
-const MOTIVOS_DE_FALHA = [
-  "http",
-  "redirecionamento",
-  "tempo",
-  "rede",
-  "endereco_bloqueado",
-  "segredo_ilegivel",
-] as const satisfies readonly MotivoDaFalhaDoTeste[];
-
-type ResultadoDoTeste =
-  | { ok: true; status: number; ms: number }
-  | {
-      ok: false;
-      status: number | null;
-      motivo: MotivoDaFalhaDoTeste | null;
-      ms: number;
-    };
-
-function lerResultadoDoTeste(corpo: unknown): ResultadoDoTeste | null {
-  if (typeof corpo !== "object" || corpo === null) return null;
-  const c = corpo as Record<string, unknown>;
-  // Arredondado: "312.4471 ms" na tela é ruído, e a rota pode medir com
-  // `performance.now()`.
-  const ms = typeof c.ms === "number" && Number.isFinite(c.ms) ? Math.round(c.ms) : 0;
-  if (c.ok === true && typeof c.status === "number") {
-    return { ok: true, status: c.status, ms };
-  }
-  if (c.ok === false) {
-    const motivo = (MOTIVOS_DE_FALHA as readonly unknown[]).includes(c.motivo)
-      ? (c.motivo as MotivoDaFalhaDoTeste)
-      : null;
-    return {
-      ok: false,
-      status: typeof c.status === "number" ? c.status : null,
-      motivo,
-      ms,
-    };
-  }
-  return null;
-}
-
 type EstadoDoTeste =
   | { tipo: "enviando" }
-  | { tipo: "resultado"; resultado: ResultadoDoTeste }
+  | { tipo: "resultado"; resultado: ResultadoLidoDoTeste }
   | { tipo: "erro"; mensagem: string };
 
 /** Os eventos na ordem do vocabulário — a ordem em que a tela os lista. */
@@ -1152,6 +1113,9 @@ function CartaoDoEndereco({
                 })}
           </p>
         ) : null}
+        {teste?.tipo === "resultado" && teste.resultado.resposta ? (
+          <TrechoDaResposta resposta={teste.resultado.resposta} />
+        ) : null}
         {teste?.tipo === "erro" ? (
           <p role="alert" className="basis-full text-xs text-destructive">
             {teste.mensagem}
@@ -1294,14 +1258,6 @@ function AbaEnviados() {
           falhas: FALHAS_QUE_DESLIGAM,
         })}
       </p>
-      <Link
-        href="/settings?tab=api&aba=docs"
-        className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-      >
-        <BookOpen className="size-3.5" />
-        {t("comoConfigurar")}
-      </Link>
-
       {segredoNovo ? (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
           <p className="text-xs font-medium text-foreground">
@@ -1435,11 +1391,32 @@ export function WebhooksPanel() {
     { id: "enviados" as const, rotulo: t("abaEnviados") },
   ];
 
+  // O link para a Documentação mora no CABEÇALHO da seção, e não numa das
+  // sub-abas: a Documentação cobre as duas direções (as seções "receber" e
+  // "avisos"), e Recebidos é a que abre por padrão. Só aparece para quem VÊ
+  // a seção API — a mesma régua do link inverso, `podeVerSecao` sobre o
+  // acesso EFETIVO (o "Ver como" também o tira). Sem a seção, a página de
+  // Configurações recusaria o destino e cairia na primeira seção visível,
+  // sem uma palavra dizendo por quê. Some por inteiro, em vez de virar texto
+  // como no sentido inverso: lá o nome da seção está no meio de uma frase;
+  // aqui sobraria um rótulo sozinho que não leva a lugar nenhum.
+  const { acesso } = useAuth();
+  const veApi = podeVerSecao(acesso, "api");
+
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-foreground">{t("titulo")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t("descricao")}</p>
+        {veApi ? (
+          <Link
+            href="/settings?tab=api&aba=docs"
+            className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+          >
+            <BookOpen className="size-3.5" />
+            {t("comoConfigurar")}
+          </Link>
+        ) : null}
       </div>
 
       <SubAbas abas={abas} ativa={aba} aoTrocar={irParaAba} rotulo={t("abasAria")} />

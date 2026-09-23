@@ -21,6 +21,7 @@ import {
 import { enviarTeste } from './enviar-teste';
 import { DEAL_WEBHOOK_EVENTS, WEBHOOK_EVENTS } from './events';
 import { exemploDoEvento } from './exemplos';
+import { TETO_DO_TRECHO } from './resultado-do-teste';
 import { verifySignatureHeader } from './sign';
 import { isDeliverableUrl } from './ssrf';
 
@@ -31,8 +32,26 @@ import { isDeliverableUrl } from './ssrf';
 const CONTA = '00000000-0000-4000-8000-00000000c0a7';
 const ENDPOINT = { id: 'ep-1', url: 'https://n8n.exemplo.com.br/webhook/crm', secret: 'segredo-do-endpoint' };
 
+/** Resposta SEM corpo (o status é o que importa nestes casos). */
 function respostaFalsa(status: number, extra: Partial<Response> = {}): Response {
-  return { ok: status >= 200 && status < 300, status, ...extra } as Response;
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: new Headers(),
+    body: null,
+    ...extra,
+  } as Response;
+}
+
+/** Uma resposta de verdade (`Response` do runtime), com corpo. */
+function respostaCom(
+  status: number,
+  corpo: BodyInit,
+  contentType: string | null = 'text/plain; charset=utf-8'
+): Response {
+  const headers = new Headers();
+  if (contentType) headers.set('content-type', contentType);
+  return new Response(corpo, { status, headers });
 }
 
 beforeEach(() => {
@@ -42,10 +61,15 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('enviarTeste', () => {
-  it('2xx: ok, com o status e o tempo', async () => {
+  it('2xx: ok, com o status e o tempo (sem corpo = trecho vazio)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respostaFalsa(204)));
     const r = await enviarTeste(ENDPOINT, 'deal.stage_changed', CONTA);
-    expect(r).toEqual({ ok: true, status: 204, ms: expect.any(Number) });
+    expect(r).toEqual({
+      ok: true,
+      status: 204,
+      ms: expect.any(Number),
+      resposta: { corpo: '', cortado: false },
+    });
     expect(r.ms).toBeGreaterThanOrEqual(0);
   });
 
@@ -203,6 +227,148 @@ describe('enviarTeste', () => {
       await enviarTeste({ ...ENDPOINT, secret: 'cifra-quebrada' }, 'deal.created', CONTA)
     ).toMatchObject({ ok: false, status: null, motivo: 'segredo_ilegivel' });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  describe('o que o endereço respondeu (o trecho do corpo)', () => {
+    it('⚠️ 404 com corpo de texto: motivo http E o corpo exato — é ele que diz o porquê', async () => {
+      const corpo =
+        '{"code":404,"message":"The requested webhook \\"POST crm\\" is not registered.","hint":"Click the \'Execute workflow\' button"}';
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respostaCom(404, corpo, 'application/json')));
+      expect(await enviarTeste(ENDPOINT, 'deal.created', CONTA)).toEqual({
+        ok: false,
+        status: 404,
+        motivo: 'http',
+        ms: expect.any(Number),
+        resposta: { corpo, cortado: false },
+      });
+    });
+
+    it('2xx com JSON: o corpo sai junto do "entregue"', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(respostaCom(200, '{"message":"Workflow was started"}', 'application/json; charset=utf-8'))
+      );
+      expect(await enviarTeste(ENDPOINT, 'deal.created', CONTA)).toMatchObject({
+        ok: true,
+        status: 200,
+        resposta: { corpo: '{"message":"Workflow was started"}', cortado: false },
+      });
+    });
+
+    it('3xx também leva o trecho (a página para onde ele mandaria)', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respostaCom(302, 'Found. Redirecting to /login', 'text/html')));
+      expect(await enviarTeste(ENDPOINT, 'deal.created', CONTA)).toMatchObject({
+        ok: false,
+        status: 302,
+        motivo: 'redirecionamento',
+        resposta: { corpo: 'Found. Redirecting to /login', cortado: false },
+      });
+    });
+
+    it('sem content-type conta como texto (é o caso comum)', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respostaCom(200, 'ok', null)));
+      expect((await enviarTeste(ENDPOINT, 'deal.created', CONTA)).resposta).toEqual({
+        corpo: 'ok',
+        cortado: false,
+      });
+    });
+
+    it('⚠️ corpo de 10 KB: só os primeiros 2048 bytes, "cortado", e o resto é SOLTO (cancel)', async () => {
+      let entregues = 0;
+      let cancelado = false;
+      const fluxo = new ReadableStream<Uint8Array>({
+        pull(c) {
+          if (entregues < 10) {
+            entregues++;
+            c.enqueue(new Uint8Array(1024).fill(0x61)); // "a"
+          } else {
+            c.close();
+          }
+        },
+        cancel() {
+          cancelado = true;
+        },
+      });
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respostaCom(500, fluxo)));
+      const r = await enviarTeste(ENDPOINT, 'deal.created', CONTA);
+      expect(r).toMatchObject({ ok: false, status: 500, motivo: 'http' });
+      expect(r.resposta).toEqual({ corpo: 'a'.repeat(TETO_DO_TRECHO), cortado: true });
+      expect(cancelado).toBe(true);
+      // Leu UM pedaço além do teto (para saber que passava), nunca os dez.
+      expect(entregues).toBeLessThan(10);
+    });
+
+    it('corpo de EXATAMENTE o teto não é "cortado"', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respostaCom(200, 'b'.repeat(TETO_DO_TRECHO))));
+      expect((await enviarTeste(ENDPOINT, 'deal.created', CONTA)).resposta).toEqual({
+        corpo: 'b'.repeat(TETO_DO_TRECHO),
+        cortado: false,
+      });
+    });
+
+    it('o caractere multibyte partido no teto fica de fora, sem "�" no fim', async () => {
+      // 2047 "a" + "é" (2 bytes): o teto cai no meio do "é".
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respostaCom(200, 'a'.repeat(TETO_DO_TRECHO - 1) + 'é' + 'z'.repeat(50))));
+      const r = await enviarTeste(ENDPOINT, 'deal.created', CONTA);
+      expect(r.resposta).toEqual({ corpo: 'a'.repeat(TETO_DO_TRECHO - 1), cortado: true });
+    });
+
+    it('⚠️ corpo que quebra DEPOIS dos cabeçalhos: vale o status, sem trecho', async () => {
+      const fluxo = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(new TextEncoder().encode('começo'));
+        },
+        pull(c) {
+          c.error(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+        },
+      });
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respostaCom(200, fluxo)));
+      // O 2xx continua "entregue" — nunca "tempo": quem decide é o status,
+      // como na entrega real.
+      expect(await enviarTeste(ENDPOINT, 'deal.created', CONTA)).toEqual({
+        ok: true,
+        status: 200,
+        ms: expect.any(Number),
+        resposta: null,
+      });
+    });
+
+    it('content-type binário: nada é decodificado, e o corpo é solto', async () => {
+      let cancelado = false;
+      const fluxo = new ReadableStream<Uint8Array>({
+        pull(c) {
+          c.enqueue(new Uint8Array([0x25, 0x50, 0x44, 0x46]));
+        },
+        cancel() {
+          cancelado = true;
+        },
+      });
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respostaCom(200, fluxo, 'application/pdf')));
+      expect((await enviarTeste(ENDPOINT, 'deal.created', CONTA)).resposta).toEqual({
+        corpo: null,
+        cortado: false,
+        binario: true,
+      });
+      expect(cancelado).toBe(true);
+    });
+
+    it('caracteres de controle saem; quebra de linha e tabulação ficam', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(respostaCom(400, 'linha 1\r\n\tlinha 2\u0000\u001b[31m\u0007fim\u009b'))
+      );
+      expect((await enviarTeste(ENDPOINT, 'deal.created', CONTA)).resposta).toEqual({
+        corpo: 'linha 1\n\tlinha 2[31mfim',
+        cortado: false,
+      });
+    });
+
+    it('tempo, rede, endereço bloqueado e segredo ilegível não levam trecho', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')));
+      expect(await enviarTeste(ENDPOINT, 'deal.created', CONTA)).not.toHaveProperty('resposta');
+      vi.mocked(isDeliverableUrl).mockResolvedValue(false);
+      expect(await enviarTeste(ENDPOINT, 'deal.created', CONTA)).not.toHaveProperty('resposta');
+    });
   });
 
   it.each(WEBHOOK_EVENTS)('tem exemplo para %s (todo evento assinável é testável)', async (evento) => {

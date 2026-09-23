@@ -225,13 +225,20 @@ export async function lerTagsPedidas(
  * uma etiqueta NOVA chamada com o UUID, aplicava-a, e — o pior — o id não
  * casava com a etiqueta real, então o "Typebot" que o contato já tinha ia
  * para `toRemove`. O integrador pedia para MANTER e a API tirava.
+ *
+ * `somenteAcrescentar` é o `tags_mode: "add"` das duas rotas: aplica as
+ * pedidas e NUNCA calcula nem apaga `toRemove`. Reaproveita o `TagsPedidas`
+ * que `lerTagsPedidas` já resolveu antes da primeira escrita — e não o
+ * `aplicarMudancaDeTags` do verbo aditivo, que relê o catálogo e poderia
+ * levantar `TagReferenceError` DEPOIS de o contato já ter sido criado.
  */
 export async function setContactTags(
   db: SupabaseClient,
   accountId: string,
   auditUserId: string,
   contactId: string,
-  pedidas: TagsPedidas
+  pedidas: TagsPedidas,
+  opcoes: { somenteAcrescentar?: boolean } = {}
 ): Promise<void> {
   // ⚠️⚠️ SÓ as etiquetas PEDIDAS, nunca `tagIdByKey.values()`.
   //
@@ -297,7 +304,9 @@ export async function setContactTags(
   const existing = new Set((current ?? []).map((r) => r.tag_id as string));
 
   const toAdd = [...desired].filter((id) => !existing.has(id));
-  const toRemove = [...existing].filter((id) => !desired.has(id));
+  const toRemove = opcoes.somenteAcrescentar
+    ? []
+    : [...existing].filter((id) => !desired.has(id));
 
   if (toRemove.length > 0) {
     const { error } = await db

@@ -3871,6 +3871,10 @@
       "testeAjuda": "Sends a fictitious sample, marked with \"test\": true, and does not count as a failure.",
       "testeEntregue": "Delivered: HTTP {status} in {ms} ms.",
       "testeFalhou": "Failed: {motivo}.",
+      "testeResposta": "What the address answered",
+      "testeRespostaVazia": "The address answered with no body.",
+      "testeRespostaCortada": "Showing only the first {kb} KB of the response.",
+      "testeRespostaBinaria": "The response is not text (a file, an image) and is not shown.",
       "testeMotivo": {
         "http": "the endpoint answered HTTP {status}",
         "redirecionamento": "the endpoint answered with a redirect (HTTP {status}); register the final URL",
@@ -4062,7 +4066,7 @@
         },
         "etiqueta": {
           "titulo": "Apply a tag",
-          "texto": "Adds without removing the others, by name or by id. Scope <code>contacts:write</code>."
+          "texto": "Adds without removing the others, by name or by id. Scope <code>contacts:write</code>. When creating the contact, you can do the same in a single call: <code>tags</code> with <code>\"tags_mode\": \"add\"</code> on <code>POST /api/v1/contacts</code> — without it, <code>tags</code> there replaces the tags of a contact that already exists."
         },
         "campo": {
           "titulo": "Fill in a custom field",
@@ -4079,6 +4083,7 @@
         "e429": "<b>429</b> — more than {limite} calls per minute. Wait for <code>Retry-After</code>; in n8n, use the interval between pages.",
         "e400": "<b>400</b> — the body has an error, and the message names the field. Dates and times need the timezone (<code>Z</code> or <code>-03:00</code>).",
         "etiquetaPorId": "<b>Tag sent by id</b> where a name was expected: it works when creating and editing a contact and when applying a tag. An id that is not from this account returns <code>400</code> (<code>unknown_tag_ids</code>) and nothing is written. The <code>?tag=</code> filter of the contact list, though, takes only the id — a name there is a <code>400</code>.",
+        "tagsSubstituem": "<b>Tags vanished from the contact</b> — <code>tags</code> on <code>POST /api/v1/contacts</code> for a phone already in the base (and on <code>PATCH</code>) REPLACES the contact's tags: the ones not in the body are removed. To only add, also send <code>\"tags_mode\": \"add\"</code>, or use <code>POST /api/v1/contacts/'{id}'/tags</code>.",
         "usuario": "<b>Assignee not found</b> — use the member's user id, not the id of something else on the same screen.",
         "testUrl": "<b>Nothing reaches n8n</b> — the Test URL only listens for 120 seconds. Register the Production URL, with the flow published.",
         "url": "<b>Address refused</b> — the CRM only delivers to a public https:// address: http, localhost and internal IPs do not work.",

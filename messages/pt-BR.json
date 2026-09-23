@@ -3864,6 +3864,10 @@
       "testeAjuda": "Manda um exemplo fictício, marcado com \"test\": true, e não conta como falha.",
       "testeEntregue": "Entregue: HTTP {status} em {ms} ms.",
       "testeFalhou": "Falhou: {motivo}.",
+      "testeResposta": "O que o endereço respondeu",
+      "testeRespostaVazia": "O endereço respondeu sem corpo.",
+      "testeRespostaCortada": "Mostrando só os primeiros {kb} KB da resposta.",
+      "testeRespostaBinaria": "A resposta não é texto (um arquivo, uma imagem) e não é mostrada.",
       "testeMotivo": {
         "http": "o endereço respondeu HTTP {status}",
         "redirecionamento": "o endereço respondeu com redirecionamento (HTTP {status}); cadastre a URL final",
@@ -4055,7 +4059,7 @@
         },
         "etiqueta": {
           "titulo": "Aplicar uma etiqueta",
-          "texto": "Acrescenta sem tirar as outras, pelo nome ou pelo id. Escopo <code>contacts:write</code>."
+          "texto": "Acrescenta sem tirar as outras, pelo nome ou pelo id. Escopo <code>contacts:write</code>. Ao criar o contato, dá para fazer o mesmo numa chamada só: <code>tags</code> com <code>\"tags_mode\": \"add\"</code> no <code>POST /api/v1/contacts</code> — sem ele, o <code>tags</code> dali substitui as etiquetas do contato que já existe."
         },
         "campo": {
           "titulo": "Preencher um campo personalizado",
@@ -4072,6 +4076,7 @@
         "e429": "<b>429</b> — mais de {limite} chamadas por minuto. Espere o <code>Retry-After</code>; no n8n, use o intervalo entre páginas.",
         "e400": "<b>400</b> — o corpo tem erro, e a mensagem diz qual campo. Data e hora precisam do fuso (<code>Z</code> ou <code>-03:00</code>).",
         "etiquetaPorId": "<b>Etiqueta pelo id</b> onde se esperava o nome: funciona ao criar e editar contato e ao aplicar etiqueta. Um id que não é desta conta volta <code>400</code> (<code>unknown_tag_ids</code>) sem gravar nada. Já o filtro <code>?tag=</code> da lista de contatos só aceita o id — um nome ali é <code>400</code>.",
+        "tagsSubstituem": "<b>Etiquetas sumiram do contato</b> — <code>tags</code> no <code>POST /api/v1/contacts</code> de um telefone que já está na base (e no <code>PATCH</code>) SUBSTITUI as etiquetas do contato: as que não vierem no corpo são retiradas. Para só acrescentar, mande junto <code>\"tags_mode\": \"add\"</code>, ou use <code>POST /api/v1/contacts/'{id}'/tags</code>.",
         "usuario": "<b>Responsável não encontrado</b> — use o id de usuário do membro, não o id de outra coisa da mesma tela.",
         "testUrl": "<b>Nada chega no n8n</b> — a Test URL só escuta 120 segundos. Cadastre a Production URL, com o fluxo publicado.",
         "url": "<b>Endereço recusado</b> — o CRM só entrega em https:// público: http, localhost e IP interno não servem.",

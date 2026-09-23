@@ -213,8 +213,11 @@ usa — o endereço novo nasce sem nenhum marcado. O segredo é mostrado uma
 assinatura. Os eventos de um endereço já criado podem ser trocados na mesma
 tela, e o botão **Enviar teste** manda um exemplo do evento escolhido (com
 `"test": true`) para a URL cadastrada e mostra o que o seu sistema
-respondeu. Ele funciona com o endereço desligado e para evento que o
-endereço não assina, e não conta como falha.
+respondeu: o status e, em **O que o endereço respondeu**, o começo do corpo
+da resposta (até 2 KB, só texto — um arquivo ou imagem não é mostrado). No
+404 do n8n é ali que aparece o motivo ("webhook … is not registered"). Ele
+funciona com o endereço desligado e para evento que o endereço não assina, e
+não conta como falha.
 
 ⚠️ **O Enviar teste não aparece no "Listen for test event" do n8n.** O
 Listen só escuta a **Test URL** (`/webhook-test/…`), e o endereço que se

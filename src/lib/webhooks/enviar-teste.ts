@@ -20,6 +20,14 @@
 //
 // Funciona com o endpoint desligado e para evento que ele NÃO assina: é teste
 // de FORMATO — o operador quer ver o `deal.stage_changed` antes de assiná-lo.
+//
+// ⚠️ Devolve também o COMEÇO do que o endereço respondeu (até
+// `TETO_DO_TRECHO` bytes, só texto). No erro mais comum do n8n — o 404 do
+// fluxo não publicado, ou da Test URL fora da janela — é o corpo que diz o
+// motivo; o status sozinho não diz. O teto é o que impede um endpoint que
+// despeja corpo grande de segurar memória e conexão. Quem DECIDE o resultado
+// continua sendo o status, como na entrega real (`deliver.ts`): um 2xx com
+// corpo lento ou quebrado é "entregue", com o trecho ausente.
 // ============================================================
 
 import { randomUUID } from 'node:crypto';
@@ -27,6 +35,7 @@ import { randomUUID } from 'node:crypto';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { pedidoDeEntrega } from '@/lib/webhooks/deliver';
 import { exemploDeEnvelope } from '@/lib/webhooks/exemplos';
+import { TETO_DO_TRECHO } from '@/lib/webhooks/resultado-do-teste';
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf';
 import type { WebhookEvent } from '@/lib/webhooks/events';
 
@@ -59,8 +68,99 @@ export type MotivoDaFalhaDoTeste =
  * `ms` é quanto o teste levou, do começo ao fim.
  */
 export type ResultadoDoTeste =
-  | { ok: true; status: number; ms: number }
-  | { ok: false; status: number | null; motivo: MotivoDaFalhaDoTeste; ms: number };
+  | { ok: true; status: number; ms: number; resposta?: TrechoDaResposta | null }
+  | {
+      ok: false;
+      status: number | null;
+      motivo: MotivoDaFalhaDoTeste;
+      ms: number;
+      /**
+       * Presente quando o endereço RESPONDEU (`http`, `redirecionamento`):
+       * é justamente na falha que o corpo mais importa. `null` = a leitura
+       * do corpo falhou (prazo, conexão caída no meio).
+       */
+      resposta?: TrechoDaResposta | null;
+    };
+
+/**
+ * O começo do corpo que o endereço devolveu.
+ *
+ * - `corpo`: o texto decodificado, sem caracteres de controle (menos `\n` e
+ *   `\t`); `""` = resposta sem corpo; `null` só quando `binario`.
+ * - `cortado`: o corpo passava de `TETO_DO_TRECHO` bytes.
+ * - `binario`: o `content-type` não é texto — o corpo nem é lido.
+ */
+export interface TrechoDaResposta {
+  corpo: string | null;
+  cortado: boolean;
+  binario?: boolean;
+}
+
+/** `text/*`, JSON, XML, HTML — e cabeçalho ausente, que é o caso comum. */
+function ehTextual(contentType: string | null): boolean {
+  if (!contentType) return true;
+  const tipo = contentType.split(';')[0].trim().toLowerCase();
+  if (!tipo) return true;
+  return tipo.startsWith('text/') || /json|xml|html/.test(tipo);
+}
+
+// Controle C0 e C1, menos a tabulação (\x09) e a quebra de linha (\x0A). O
+// `\r` sai também: a quebra de linha continua pelo `\n`.
+const CONTROLE = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g;
+
+/**
+ * Lê no máximo `teto` bytes do corpo e solta o resto. Nunca lança: a leitura
+ * que falha (o prazo de `pedidoDeEntrega` também corta o corpo) devolve
+ * `null`, e o resultado fica o que o status disse.
+ */
+async function trechoDaResposta(
+  resposta: Response,
+  teto: number = TETO_DO_TRECHO
+): Promise<TrechoDaResposta | null> {
+  if (!ehTextual(resposta.headers.get('content-type'))) {
+    await resposta.body?.cancel().catch(() => {});
+    return { corpo: null, cortado: false, binario: true };
+  }
+  if (!resposta.body) return { corpo: '', cortado: false };
+
+  const leitor = resposta.body.getReader();
+  const partes: Uint8Array[] = [];
+  let total = 0;
+  let cortado = false;
+  try {
+    // Lê UM pedaço além do teto para saber se o corpo passava dele: um
+    // corpo de exatamente `teto` bytes não é "cortado".
+    for (;;) {
+      if (total > teto) {
+        cortado = true;
+        break;
+      }
+      const { done, value } = await leitor.read();
+      if (done) break;
+      partes.push(value);
+      total += value.byteLength;
+    }
+  } catch {
+    await leitor.cancel().catch(() => {});
+    return null;
+  }
+  if (cortado) await leitor.cancel().catch(() => {});
+
+  const bytes = new Uint8Array(Math.min(total, teto));
+  let posicao = 0;
+  for (const parte of partes) {
+    if (posicao >= bytes.length) break;
+    const pedaco = parte.subarray(0, bytes.length - posicao);
+    bytes.set(pedaco, posicao);
+    posicao += pedaco.byteLength;
+  }
+  // `stream: true` no corte: o caractere multibyte partido no teto fica de
+  // fora, em vez de virar um "�" no fim do trecho.
+  const texto = new TextDecoder('utf-8', { fatal: false }).decode(bytes, {
+    stream: cortado,
+  });
+  return { corpo: texto.replace(CONTROLE, ''), cortado };
+}
 
 export interface EndpointDoTeste {
   id: string;
@@ -122,17 +222,23 @@ export async function enviarTeste(
     return { ok: false, status: null, motivo, ms: ms() };
   }
 
-  // Descarta o corpo da resposta: o que interessa é o status, e um corpo
-  // pendurado segura a conexão (e, com endpoint lento, o prazo) à toa.
-  await resposta.body?.cancel().catch(() => {});
+  // O começo do corpo, com teto — nunca o corpo inteiro: um corpo pendurado
+  // seguraria a conexão (e, com endpoint lento, o prazo) à toa.
+  const trecho = await trechoDaResposta(resposta);
 
   // Com `redirect: 'manual'` o Node devolve o 3xx como está; o navegador
   // devolveria `opaqueredirect` com status 0 — os dois contam.
   if (resposta.type === 'opaqueredirect' || (resposta.status >= 300 && resposta.status < 400)) {
-    return { ok: false, status: resposta.status || null, motivo: 'redirecionamento', ms: ms() };
+    return {
+      ok: false,
+      status: resposta.status || null,
+      motivo: 'redirecionamento',
+      ms: ms(),
+      resposta: trecho,
+    };
   }
   if (!resposta.ok) {
-    return { ok: false, status: resposta.status, motivo: 'http', ms: ms() };
+    return { ok: false, status: resposta.status, motivo: 'http', ms: ms(), resposta: trecho };
   }
-  return { ok: true, status: resposta.status, ms: ms() };
+  return { ok: true, status: resposta.status, ms: ms(), resposta: trecho };
 }
