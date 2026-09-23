@@ -83,12 +83,14 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
     if (!line) continue;
 
     const values = parseCsvLine(line);
+    // A row of empty cells (",,,," — Excel leaves them at the end of an
+    // export) is not a contact without a phone: skip it, or it would inflate
+    // the row count and report "N rows left out" about nothing.
+    if (values.every((v) => !v.replace(/["']/g, '').trim())) continue;
     // A row with no usable phone is pushed through rather than dropped
-    // here — dedupeByPhone (shared with the webhook/manual-form paths)
-    // already treats an empty normalized key as invalid, and counting
-    // it there means the import result can tell the user "N contacts
-    // had no phone" instead of the row just vanishing with the total
-    // row count silently short of what's actually in the file.
+    // here (upstream #529) — `dedupeByPhone` counts it as INVALID, so the
+    // import result can say "N rows had no usable phone" instead of the
+    // row just vanishing, with the total silently short of the file.
     const phone = values[phoneIdx]?.replace(/["']/g, '').trim() ?? '';
 
     rows.push({

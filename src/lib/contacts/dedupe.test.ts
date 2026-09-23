@@ -49,21 +49,45 @@ describe("isUniqueViolation", () => {
 
 describe("dedupeByPhone", () => {
   it("keeps the first occurrence and counts in-file duplicates", () => {
-    const { unique, duplicates } = dedupeByPhone([
-      { phone: "+1 555-1111", name: "A" },
-      { phone: "15551111", name: "B" }, // same digits as #1
-      { phone: "+1 555-2222", name: "C" },
+    const { unique, duplicates, invalid } = dedupeByPhone([
+      { phone: "+1 404 555-1111", name: "A" },
+      { phone: "14045551111", name: "B" }, // same digits as #1
+      { phone: "+1 404 555-2222", name: "C" },
     ]);
     expect(unique.map((r) => r.name)).toEqual(["A", "C"]);
     expect(duplicates).toBe(1);
+    expect(invalid).toBe(0);
   });
 
-  it("drops rows with no digits", () => {
-    const { unique, duplicates } = dedupeByPhone([
+  it("a blank or unusable phone is INVALID, never a duplicate (upstream #529)", () => {
+    // Ela não duplicou nada: contá-la como duplicata dizia "N duplicados
+    // ignorados" sobre linha que nunca teve par.
+    const { unique, duplicates, invalid } = dedupeByPhone([
       { phone: "   " },
-      { phone: "+1 555-3333" },
+      { phone: "" },
+      { phone: "98874-5316" }, // sem DDD: sairia para +98
+      { phone: "81 ramal 22" },
+      { phone: "+1 404 555-3333" },
     ]);
-    expect(unique).toHaveLength(1);
+    expect(unique.map((r) => r.phone)).toEqual(["14045553333"]);
+    expect(duplicates).toBe(0);
+    expect(invalid).toBe(4);
+  });
+
+  it("a linha única SAI com os dígitos normalizados — o 55 no número sem DDI", () => {
+    // "(81) 98874-5316" gravado cru virava a ficha "81988745316", que sai
+    // para +81, e o CSV do disparo criava ficha nova em vez de achar a do
+    // cliente. As outras colunas da linha ficam como vieram.
+    const { unique } = dedupeByPhone([{ phone: "(81) 98874-5316", name: "Ana" }]);
+    expect(unique).toEqual([{ phone: "5581988745316", name: "Ana" }]);
+  });
+
+  it("com e sem o DDI é a MESMA pessoa", () => {
+    const { unique, duplicates } = dedupeByPhone([
+      { phone: "81988745316", name: "sem DDI" },
+      { phone: "+55 81 98874-5316", name: "com DDI" },
+    ]);
+    expect(unique.map((r) => r.name)).toEqual(["sem DDI"]);
     expect(duplicates).toBe(1);
   });
 
