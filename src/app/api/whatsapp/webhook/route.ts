@@ -730,21 +730,31 @@ async function processMessage(
   // the reaction short-circuit below — so a conversation first opened by
   // a reaction still fires the event, and a subscriber always sees the
   // thread open before its first message.received.
-  if (convResult.created) {
-    await dispatchWebhookEvent(supabaseAdmin(), accountId, 'conversation.created', {
-      conversation_id: conversation.id,
-      contact_id: contactRecord.id,
-      // Sem o canal, N números viram um stream indistinguível para quem
-      // integra: não dá para rotear "só o que entrar pelo Comercial".
-      channel_id: channelId,
-    })
-  }
+  //
+  // ⚠️ NOSSO (23/09/2026): começa aqui mas SEM `await`. A entrega é uma
+  // consulta, um DNS sem prazo e um POST de até 5 s por endpoint — um
+  // endpoint fora do ar atrasava a gravação da PRIMEIRA mensagem de toda
+  // conversa nova (e a mídia, a reabertura, o robô, as automações e a IA).
+  // A promessa é esperada logo antes do message.received (a ordem acima
+  // continua valendo) e em todo retorno antecipado: dentro do `after()`,
+  // promessa solta pode ser congelada antes de entregar (o motivo do
+  // comentário do message.received, no fim). Nunca rejeita.
+  const avisoDeConversaCriada = convResult.created
+    ? dispatchWebhookEvent(supabaseAdmin(), accountId, 'conversation.created', {
+        conversation_id: conversation.id,
+        contact_id: contactRecord.id,
+        // Sem o canal, N números viram um stream indistinguível para quem
+        // integra: não dá para rotear "só o que entrar pelo Comercial".
+        channel_id: channelId,
+      })
+    : Promise.resolve()
 
   // Reactions short-circuit here — they aren't messages. We never insert
   // into `messages`, never bump unread_count, never update last_message_text.
   // Done before parseMessageContent so the media-URL fetch is skipped.
   if (message.type === 'reaction') {
     await handleReaction(message, conversation.id, contactRecord.id)
+    await avisoDeConversaCriada
     return
   }
 
@@ -862,6 +872,9 @@ async function processMessage(
 
   if (msgError) {
     console.error('Error inserting message:', msgError)
+    // A conversa FOI criada: o aviso sai mesmo assim (a próxima mensagem já
+    // não a cria, e ele se perderia para sempre).
+    await avisoDeConversaCriada
     return
   }
 
@@ -874,6 +887,7 @@ async function processMessage(
       '[webhook] duplicate inbound message ignored (idempotent replay):',
       message.id
     )
+    await avisoDeConversaCriada
     return
   }
 
@@ -1075,7 +1089,8 @@ async function processMessage(
   // be frozen before it delivers. `dispatchWebhookEvent` early-exits
   // when the account has no matching endpoint and never throws.
   // (conversation.created is emitted earlier, right after the thread is
-  // opened.)
+  // opened — and awaited here, so it settles before this one starts.)
+  await avisoDeConversaCriada
   await dispatchWebhookEvent(supabaseAdmin(), accountId, 'message.received', {
     conversation_id: conversation.id,
     contact_id: contactRecord.id,

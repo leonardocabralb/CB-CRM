@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { chaveDeTag } from '@/lib/contacts/chave-de-tag';
+import { lerExclusao } from '@/lib/contacts/exclusao';
 import { Loader2, Plus, Tag as TagIcon, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
+import { useCan } from '@/hooks/use-can';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -43,11 +45,24 @@ const PRESET_COLORS = [
  * Tags card — colour-coded contact labels. Creation is an inline row
  * (name + colour swatch + Add); deletion goes through a confirmation
  * dialog since it detaches the tag from every contact.
+ *
+ * ⚠️ O catálogo é DA CONTA: a leitura confia só na RLS (`tags_select`, por
+ * conta), como todo outro leitor de `tags`. Até 23/09/2026 ela filtrava por
+ * `user_id` — cada membro via só as etiquetas que ELE criou; as dos colegas
+ * e as criadas pela API e pelo Asaas (que gravam o dono ou o usuário de
+ * auditoria) ficavam fora da tela (medido: as 17 da conta eram do dono, e o
+ * administrador e os atendentes viam zero). `user_id` aqui é só quem criou.
+ *
+ * ⚠️ Criar e apagar são de ADMIN (`tags_insert`/`tags_delete`, 017) — de
+ * qualquer etiqueta da conta, não só das próprias. Fora do admin os controles
+ * SOMEM (a régua de `ESCRITA_DA_SECAO.fields`): com o catálogo inteiro na
+ * tela, o X de cada etiqueta seria um botão que a RLS recusa em silêncio.
  */
 export function TagManager() {
   const t = useTranslations('Settings.tagsAndFields');
   const supabase = createClient();
   const { user, accountId, loading: authLoading } = useAuth();
+  const podeEditar = useCan('edit-settings');
 
   const [loading, setLoading] = useState(true);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -64,17 +79,16 @@ export function TagManager() {
       setLoading(false);
       return;
     }
-    fetchTags(user.id);
+    fetchTags();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user?.id]);
 
-  async function fetchTags(userId: string) {
+  async function fetchTags() {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('tags')
         .select('*')
-        .eq('user_id', userId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -108,9 +122,9 @@ export function TagManager() {
     // banco se cura sozinho; a guarda o transformava em estado preso.
     // (Achado do Codex no PR #154.)
     //
-    // ⚠️ E ela é incompleta por outro motivo: `fetchTags` filtra por
-    // `user_id`, então etiqueta criada por OUTRO membro da conta não está
-    // nesta lista. Quem decide é sempre o 23505.
+    // A lista é o catálogo da conta inteira, então ela só erra quando está
+    // VELHA (etiqueta criada noutra aba depois da carga). Quem decide é
+    // sempre o 23505.
     const provavelColisao = tags.find(
       (tag) => chaveDeTag(tag.name) === chaveDeTag(newTagName)
     );
@@ -136,21 +150,20 @@ export function TagManager() {
       toast.success(t('tagCreated'));
       setNewTagName('');
       setSelectedColor(PRESET_COLORS[3].value);
-      await fetchTags(user.id);
+      await fetchTags();
     } catch (err) {
       console.error('Create error:', err);
-      // 23505 aqui só pode ser o índice único de `tags` (983/984). Não dá
-      // para NOMEAR a etiqueta que colidiu — ela pode ser de outro membro e
-      // não estar na lista carregada —, mas dizer o motivo já poupa o
-      // operador de tentar de novo achando que o sistema falhou.
+      // 23505 aqui só pode ser o índice único de `tags` (983/984). Nem
+      // sempre dá para NOMEAR a etiqueta que colidiu — a lista carregada
+      // pode estar velha —, mas dizer o motivo já poupa o operador de
+      // tentar de novo achando que o sistema falhou.
       const codigo = (err as { code?: string } | null)?.code;
       if (codigo !== '23505') {
         toast.error(t('failedToCreateTag'));
         return;
       }
       // O banco recusou por nome repetido. Se a lista carregada souber qual
-      // é, nomeamos; senão (etiqueta de outro membro, ou lista velha)
-      // dizemos o motivo sem apontar qual.
+      // é, nomeamos; senão (lista velha) dizemos o motivo sem apontar qual.
       toast.error(
         provavelColisao
           ? t('tagAlreadyExists', { nome: provavelColisao.name })
@@ -171,15 +184,48 @@ export function TagManager() {
 
     try {
       setDeleting(true);
-      const { error } = await supabase
+      // ⚠️ `count`, nunca só `error`: RLS que barra DELETE devolve 0 linhas
+      // SEM erro, e a etiqueta sumiria da tela continuando no banco. E zero
+      // linhas tem DOIS significados — a policy recusou (o admin rebaixado
+      // com a página aberta) ou a etiqueta já não existia (outra aba a
+      // apagou) —, então o motivo é MEDIDO perguntando se ela ainda existe,
+      // a régua de `lerExclusao` (a mesma de Contatos).
+      const { error, count } = await supabase
         .from('tags')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('id', tagToDelete.id);
 
-      if (error) throw error;
-
-      toast.success(t('tagDeleted'));
-      setTags((prev) => prev.filter((t) => t.id !== tagToDelete.id));
+      const apagados = count ?? 0;
+      let aindaExistem: number | null = 0;
+      if (!error && apagados === 0) {
+        const conferencia = await supabase
+          .from('tags')
+          .select('id', { count: 'exact', head: true })
+          .eq('id', tagToDelete.id);
+        aindaExistem = conferencia.error ? null : (conferencia.count ?? null);
+      }
+      const r = lerExclusao({
+        pedidos: 1,
+        apagados,
+        aindaExistem,
+        houveErro: !!error,
+      });
+      if (r === 'falhou') {
+        // Não se sabe o que houve: o diálogo fica aberto para tentar de novo.
+        if (error) console.error('Delete error:', error);
+        toast.error(t('failedToDeleteTag'));
+        return;
+      }
+      if (r === 'apagado') {
+        toast.success(t('tagDeleted'));
+        setTags((prev) => prev.filter((t) => t.id !== tagToDelete.id));
+      } else {
+        // "Sumiu" não é falha nem falta de permissão: o que se queria aconteceu.
+        if (r === 'sumiu') toast.info(t('tagAlreadyDeleted'));
+        else toast.error(t('deleteTagRefused'));
+        // A lista relida mostra o que de fato ficou.
+        void fetchTags();
+      }
       setDeleteDialogOpen(false);
       setTagToDelete(null);
     } catch (err) {
@@ -225,68 +271,72 @@ export function TagManager() {
                       style={{ backgroundColor: tag.color }}
                     />
                     {tag.name}
-                    <button
-                      type="button"
-                      onClick={() => confirmDelete(tag)}
-                      aria-label={t('deleteAria', { name: tag.name })}
-                      className="ml-0.5 rounded-full p-0.5 opacity-60 transition-opacity hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
-                    >
-                      <X className="size-3" />
-                    </button>
+                    {podeEditar ? (
+                      <button
+                        type="button"
+                        onClick={() => confirmDelete(tag)}
+                        aria-label={t('deleteAria', { name: tag.name })}
+                        className="ml-0.5 rounded-full p-0.5 opacity-60 transition-opacity hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    ) : null}
                   </span>
                 ))}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                {t('noTags')}
+                {podeEditar ? t('noTags') : t('noTagsReadOnly')}
               </p>
             )}
 
-            {/* Inline create row */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              <Input
-                placeholder={t('placeholder')}
-                value={newTagName}
-                onChange={(e) => setNewTagName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleCreate();
-                }}
-                disabled={saving}
-                maxLength={40}
-                className="min-w-[180px] flex-1"
-              />
-              <div className="flex gap-1.5">
-                {PRESET_COLORS.map((color) => (
-                  <button
-                    key={color.value}
-                    type="button"
-                    onClick={() => setSelectedColor(color.value)}
-                    aria-label={t('useColor', { color: t(`colors.${color.name}` as Parameters<typeof t>[0]) })}
-                    aria-pressed={selectedColor === color.value}
-                    className={cn(
-                      'size-6 rounded-md transition-transform hover:scale-110',
-                      selectedColor === color.value &&
-                        'outline outline-2 outline-offset-2 outline-primary',
-                    )}
-                    style={{ backgroundColor: color.value }}
-                    title={t(`colors.${color.name}` as Parameters<typeof t>[0])}
-                  />
-                ))}
+            {/* Inline create row — só para quem a RLS deixa criar. */}
+            {podeEditar ? (
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Input
+                  placeholder={t('placeholder')}
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreate();
+                  }}
+                  disabled={saving}
+                  maxLength={40}
+                  className="min-w-[180px] flex-1"
+                />
+                <div className="flex gap-1.5">
+                  {PRESET_COLORS.map((color) => (
+                    <button
+                      key={color.value}
+                      type="button"
+                      onClick={() => setSelectedColor(color.value)}
+                      aria-label={t('useColor', { color: t(`colors.${color.name}` as Parameters<typeof t>[0]) })}
+                      aria-pressed={selectedColor === color.value}
+                      className={cn(
+                        'size-6 rounded-md transition-transform hover:scale-110',
+                        selectedColor === color.value &&
+                          'outline outline-2 outline-offset-2 outline-primary',
+                      )}
+                      style={{ backgroundColor: color.value }}
+                      title={t(`colors.${color.name}` as Parameters<typeof t>[0])}
+                    />
+                  ))}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCreate}
+                  disabled={saving || !newTagName.trim()}
+                >
+                  {saving ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Plus className="size-4" />
+                  )}
+                  {t('addTag')}
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCreate}
-                disabled={saving || !newTagName.trim()}
-              >
-                {saving ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Plus className="size-4" />
-                )}
-                {t('addTag')}
-              </Button>
-            </div>
+            ) : null}
           </>
         )}
       </CardContent>
