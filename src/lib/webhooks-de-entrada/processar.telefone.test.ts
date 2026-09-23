@@ -94,7 +94,7 @@ describe("processarAcionamento — o telefone do lead", () => {
     });
 
     expect(r.resultado).toBe("sem_telefone");
-    expect(r.detalhe).toBe('o campo "phone" não veio no payload');
+    expect(r.detalhe).toBe('o campo "phone" não veio no payload, ou veio vazio');
     expect(destino.resolverDestinatario).not.toHaveBeenCalled();
   });
 });

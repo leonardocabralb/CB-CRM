@@ -70,6 +70,7 @@ export function BlocoDeCorrecoes({
   veAutomacoes,
   veConexoes,
   veIntegracoes,
+  veWebhooks,
   veInbox,
   veContatos,
 }: {
@@ -100,6 +101,8 @@ export function BlocoDeCorrecoes({
    */
   veConexoes: boolean;
   veIntegracoes: boolean;
+  /** A seção Webhooks é só de admin (`SECOES_SO_DE_ADMIN`): gate próprio. */
+  veWebhooks: boolean;
   /** Para onde levar a falha de automação: a conversa, senão a ficha. */
   veInbox: boolean;
   veContatos: boolean;
@@ -139,10 +142,8 @@ export function BlocoDeCorrecoes({
     agendadasFalharam: fonteDe(correcoes, (c) => c.agendadasFalharam),
     entregaIncerta: fonteDe(correcoes, (c) => c.entregaIncerta),
     automacoesFalharam: fonteDe(correcoes, (c) => c.automacoesFalharam),
-    entradasNaoProcessadas: fonteDe(
-      integracoes,
-      (i) => i.calendly + i.webhooks
-    ),
+    agendamentosNaoProcessados: fonteDe(integracoes, (i) => i.calendly),
+    webhooksNaoProcessados: fonteDe(integracoes, (i) => i.webhooks),
   };
   const resumo = resumirCorrecoes(estados);
 
@@ -162,9 +163,16 @@ export function BlocoDeCorrecoes({
     agendadasFalharam: { href: '/agendadas', ve: veAgendadas },
     entregaIncerta: { href: '/agendadas', ve: veAgendadas },
     automacoesFalharam: { href: '/automations', ve: veAutomacoes },
-    entradasNaoProcessadas: {
+    // O log do Calendly mora no cartão dele, em Integrações; o dos webhooks,
+    // em Webhooks → Recebidos — é lá que está o lead cujo telefone foi
+    // recusado (nome e respostas), e ele só se resolve lendo o log.
+    agendamentosNaoProcessados: {
       href: '/settings?tab=integracoes',
       ve: veIntegracoes,
+    },
+    webhooksNaoProcessados: {
+      href: '/settings?tab=webhooks&aba=recebidos',
+      ve: veWebhooks,
     },
   };
 
@@ -182,7 +190,9 @@ export function BlocoDeCorrecoes({
     if (fonte === 'entregaIncerta') return t('fixDeliveryUnsure', { count });
     if (fonte === 'automacoesFalharam')
       return t('fixAutomationsFailed', { count });
-    return t('fixIntakeStuck', { count });
+    if (fonte === 'agendamentosNaoProcessados')
+      return t('fixBookingsStuck', { count });
+    return t('fixWebhooksStuck', { count });
   };
 
   return (

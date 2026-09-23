@@ -39,7 +39,7 @@ const TELAS: Record<string, string[]> = {
 // conversa" apagavam o que não era dígito (`sanitizePhoneForMeta`) — e
 // "(81) 98874-5316" virava a ficha +81 —, e o disparo exigia o `+` do
 // original. Cada uma lê o texto pela régua, e nenhuma volta ao atalho.
-// A chamada e, nas quatro do servidor, de onde saem os dígitos GRAVADOS — a
+// A chamada e, nas cinco do servidor, de onde saem os dígitos GRAVADOS — a
 // chamada sozinha não prova nada se os dígitos vierem de outro lugar.
 const PORTAS: Record<string, string[]> = {
   'lib/api/v1/contacts.ts': ['telefoneDigitado(input.phone)', 'const sanitized = telefone.digitos;'],
@@ -61,7 +61,9 @@ const PORTAS: Record<string, string[]> = {
 const ATALHOS = [
   // A régua dos SISTEMAS (Calendly, Asaas): aceita 8 e 9 dígitos sem DDD e
   // apaga letra — num telefone que alguém digitou, é a ficha +98 e o LID.
-  'digitosDoTelefone(',
+  // O NOME, não a chamada: importado com apelido (`as lerDigitos`), a forma
+  // com parênteses passava (Lente 2 da revisão do webhook, medido).
+  'digitosDoTelefone',
   'sanitizePhoneForMeta',
   'normalizePhone',
   'isValidE164',

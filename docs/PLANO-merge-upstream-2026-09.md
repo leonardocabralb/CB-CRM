@@ -1040,11 +1040,15 @@ o operador. Nenhum endereço de webhook de saída cadastrado.
 
 **Verificação:** `typecheck` limpo; lint `✖ 58 problems (0 errors, 58
 warnings)` = base; suíte em Node 22 **5.538 testes** verdes; portões de i18n
-OK. **Mutação:** 11 mutantes, todos reprovam (cada porta volta ao atalho, o
+OK. **Mutação:** 21 mutantes, todos reprovam (cada porta volta ao atalho, o
 disparo volta ao `+`, o disparo manda os dígitos lidos ao find-or-create, a
 régua do original volta ao `phone-utils.ts`, as frases do 400 trocadas ou
-antigas, e — depois da revisão — a rota da "Nova conversa" tirando os dígitos
-de `normalizePhone` ou de um `replace` solto).
+antigas, a rota da "Nova conversa" tirando os dígitos de `normalizePhone` ou
+de um `replace` solto; e, com o webhook de entrada: a porta volta a apagar
+não-dígito, a frase do curto, a contagem do Meu dia sem o filtro do telefone,
+sem janela, com outra janela ou fora da soma, o clique dos webhooks de volta
+a Integrações, a fonte somando o Calendly, a coluna gravada em branco e a
+limpeza sem as marcas invisíveis).
 
 **Teste prático (preview `localhost:3130`, banco real; nada enviado):**
 
@@ -1073,6 +1077,21 @@ cético que tenta refutar medindo):** nenhum P0/P1.
 | P3 (Lente 2) — as notas diziam que o `@g.us` passava antes (o teto de 15 já o recusava) e que "as quatro primeiras" portas apagavam os não-dígitos (o disparo exigia o `+`) | ✅ CLAUDE.md, plano e comentário de `contacts.ts` |
 | P3 — comentários velhos: `// required, E.164` na rota de mensagens; "o mesmo `isValidE164` das outras portas" em `validate.ts` | ✅ |
 | P3 (as duas, fora do escopo declarado) — o webhook de ENTRADA (Typebot: o lead DIGITA o telefone num formulário público) e o passo `send_to_number` continuam em `digitosDoTelefone`: "98874-5316" vira ficha +98 e `…@lid` vira telefone | ✅ o webhook de entrada ENTROU na fase por decisão do operador (ver acima); `send_to_number` (número que o próprio operador digita no construtor) fica como pendência |
+
+**Revisão em duas lentes do commit do webhook de entrada** (3 agentes): nenhum
+P0/P1. A Lente 1 MEDIU o que o bloco Phone do Typebot entrega, lendo o código
+dele: o E.164 do libphonenumber-js, sem espaço, e o número inválido é pedido
+de novo antes de sair do Typebot — 33 formatos comparados nas duas réguas,
+todo E.164 brasileiro e todo estrangeiro com `+` saem iguais.
+
+| Achado | Destino |
+| --- | --- |
+| P2 (Lente 2, cético confirmou) — o clique "N entradas não viraram atendimento" do Meu dia levava a Integrações, que não tem o log dos webhooks; e agora conta um caso cuja única saída é ler esse log | ✅ duas fontes: `agendamentosNaoProcessados` → Integrações e `webhooksNaoProcessados` → Webhooks → Recebidos (gate da seção, só de admin), cada uma com chave própria |
+| P3 (as duas) — telefone só de espaços ou de marcas invisíveis: o log dizia "não veio" e o Meu dia contava como "veio e não serve" | ✅ a rota grava a coluna por `comAlgoVisivel` (em branco = nulo), testado; a frase do vazio diz "não veio, ou veio vazio" |
+| P3 (Lente 1) — o teste da janela só conferia que existe um `gte` | ✅ compara com a janela das retidas; um prazo diferente num lado só reprova |
+| P3 (Lente 2, medido) — o pino proibia `digitosDoTelefone(`, e um import com apelido passava | ✅ proíbe o nome |
+| P3 — o comentário de `RESULTADOS_REPROCESSAVEIS`, a linha "Sem contato" e a regra resumida em `docs/webhooks.md`, e o CHANGELOG que punha o webhook na frase do +81 (lá o 55 já era dado) | ✅ |
+| P3 (as duas) — a contagem é por ACIONAMENTO (o Typebot chama o mesmo webhook em vários pontos), e o `falhou` continua sem janela | aceito e escrito no comentário da rota: com o bloco Phone o caso nem nasce, e prazo para o `falhou` é decisão de produto |
 
 **Pendências que ficam desta fase (fora do escopo, cada uma com dono):**
 

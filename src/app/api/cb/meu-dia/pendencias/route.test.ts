@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // ============================================================
 // O webhook cujo telefone CHEGOU e não passou pela régua (Fase 3-III) conta
@@ -97,7 +99,14 @@ describe('GET /api/cb/meu-dia/pendencias — telefone ilegível do webhook', () 
     // legítimo) e com janela (sem ela o aviso ficaria aceso para sempre).
     expect(f).toContainEqual(['eq', 'account_id', 'conta-1']);
     expect(f).toContainEqual(['not', 'telefone', 'is', null]);
-    expect(f.some(([n, c2]) => n === 'gte' && c2 === 'recebido_em')).toBe(true);
+    // A MESMA janela das retidas (o texto da tela e a doc dizem "7 dias"):
+    // um prazo diferente num lado só tem de reprovar aqui.
+    const janela = f.find(([n, c2]) => n === 'gte' && c2 === 'recebido_em');
+    const retidas = estado.consultas.find((c) => c.tabela === 'cb_mensagens_sem_telefone');
+    const janelaDasRetidas = retidas?.filtros.find(([n, c2]) => n === 'gte' && c2 === 'recebida_em');
+    expect(janela).toBeDefined();
+    expect(janelaDasRetidas).toBeDefined();
+    expect(janela![2]).toBe(janelaDasRetidas![2]);
   });
 
   it('o Calendly NÃO ganha a contagem nova (lê o telefone por outra régua)', async () => {
@@ -107,6 +116,15 @@ describe('GET /api/cb/meu-dia/pendencias — telefone ilegível do webhook', () 
     expect(
       doCalendly[0].filtros.some(([n, c2, v]) => n === 'eq' && c2 === 'resultado' && v === 'sem_telefone')
     ).toBe(false);
+  });
+
+  it('a coluna que esta contagem lê é gravada SEM o em-branco (a rota de entrada)', () => {
+    // "Telefone preenchido" tem de querer dizer "veio algo": em branco a régua
+    // diz "vazio", e contar como "veio e não serve" contradiria o log.
+    const entrada = fs
+      .readFileSync(path.join(__dirname, '..', '..', 'entrada', '[token]', 'route.ts'), 'utf8')
+      .replace(/\/\/.*$/gm, '');
+    expect(entrada).toMatch(/telefone: comAlgoVisivel\(valorDoCampo\(variaveis, webhook\.campo_telefone\)\)/);
   });
 
   it('falha da contagem nova é 500, nunca zero', async () => {

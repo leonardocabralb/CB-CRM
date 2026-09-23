@@ -137,7 +137,7 @@ export function detalheDoTelefone(
   if (!campo) return "este webhook não tem campo de telefone configurado";
   const regra =
     "número brasileiro com DDD, ex.: (81) 98874-5316; de outro país, com + e o código do país";
-  if (motivo === "vazio") return `o campo "${campo}" não veio no payload`;
+  if (motivo === "vazio") return `o campo "${campo}" não veio no payload, ou veio vazio`;
   if (motivo === "curto") {
     return `o telefone do campo "${campo}" é curto demais — faltou o DDD? (${regra})`;
   }

@@ -121,6 +121,12 @@ export async function GET() {
     // mesmo `sem_telefone`, então não há como a linha sair da contagem — sem
     // janela o aviso ficaria aceso para sempre, e aviso eterno ensina a pular
     // o bloco. O lead continua no log de Webhooks → Recebidos.
+    // Aceito e escrito: (1) a contagem é por ACIONAMENTO — o Typebot chama o
+    // mesmo webhook em vários pontos, e um lead com telefone ruim num bloco
+    // de TEXTO viraria N "entradas" (com o bloco Phone de hoje, que valida,
+    // o caso nem nasce); (2) o `falhou` das duas tabelas também não é
+    // reprocessável e continua contado SEM janela — dar-lhe prazo é decisão
+    // de produto, não carona desta mudança.
     const telefoneIlegivel = db
       .from('cb_webhook_eventos')
       .select('id', { count: 'exact', head: true })

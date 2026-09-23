@@ -5844,10 +5844,11 @@ Webhooks. Plano em `docs/PLANO-webhooks-de-entrada.md`; doc do operador em
   Typebot já entrega "+55…" validado — a régua protege o resto (bloco de texto,
   n8n, outro formulário). O recusado vira `sem_telefone` com o motivo
   (`detalheDoTelefone`), e o caso "VEIO e não serve" (`telefone` preenchido na
-  linha) conta no Meu dia como entrada que não virou atendimento — com janela
-  de 7 dias, porque "Processar de novo" daria o mesmo resultado e o aviso
-  nunca apagaria. Há pino (`telefone-digitado.chamadores.test.ts`) e teste da
-  rota de pendências.
+  linha) conta no Meu dia — com janela de 7 dias, porque "Processar de novo"
+  daria o mesmo resultado e o aviso nunca apagaria. A rota grava a coluna
+  `telefone` por `comAlgoVisivel` (em branco = nulo): a régua lê o em-branco
+  como "vazio", e contá-lo como "veio e não serve" contradiria o log. Há pino
+  (`telefone-digitado.chamadores.test.ts`) e teste da rota de pendências.
 - ⚠️⚠️ **A consulta de automações vem ANTES de criar a ficha.** Ninguém
   escutando = `sem_automacao` sem materializar nada. Medido em produção: o
   disparo numa conta sem automação criou ZERO contatos. Inverter a ordem
@@ -6558,7 +6559,13 @@ morde código novo:
   `/api/cb/meu-dia/pendencias`, que é de QUALQUER membro porque devolve
   CONTAGENS (as rotas de log dessas tabelas são de admin porque devolvem o
   registro inteiro: telefone, respostas do formulário, payload do Typebot).
-  Erro lá vira 500, nunca `{}` com zeros.
+  Erro lá vira 500, nunca `{}` com zeros. ⚠️ São DUAS fontes no bloco
+  (`agendamentosNaoProcessados` → Integrações, onde mora o log do Calendly;
+  `webhooksNaoProcessados` → Webhooks → Recebidos, gate
+  `podeVerSecao(acesso, 'webhooks')`, seção só de admin). Até a Fase 3-III
+  eram uma soma com o destino de Integrações, que não tem log de webhook — e
+  o telefone recusado do webhook, que passou a contar ali, só se resolve
+  lendo o log.
 - ⚠️ **`messages` não tem `account_id`** — a conta entra pelo embed
   `conversations!inner`, senão a contagem é de todas as contas de que a
   pessoa é membro.
