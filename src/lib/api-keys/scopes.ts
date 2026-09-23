@@ -45,7 +45,8 @@ export const SCOPE_DESCRIPTIONS: Record<ApiScope, string> = {
   'contacts:read': 'List and read contacts',
   'contacts:write': 'Create and update contacts',
   'conversations:read': 'List and read conversations',
-  'channels:read': 'List the account WhatsApp numbers (channels)',
+  'channels:read':
+    'List the account connections (channels): WhatsApp numbers and Instagram accounts',
   'broadcasts:send': 'Launch broadcast campaigns',
   // ⚠️ Diz O QUE SAI, não só o verbo. Esta chave cadastra um endereço
   // qualquer e passa a receber lá o texto das mensagens dos clientes e, nos

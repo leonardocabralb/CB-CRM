@@ -289,3 +289,72 @@ describe('setContactTags', () => {
     expect(registroDe(db).apagados).toEqual([]);
   });
 });
+
+describe('setContactTags — `somenteAcrescentar` (o `tags_mode: "add"`)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    lerCatalogoDeTags.mockResolvedValue(catalogo());
+    resolveImportTagIds.mockResolvedValue({
+      tagIdByKey: catalogo().porChave,
+      nomePorId: catalogo().nomePorId,
+      skippedNames: [],
+    });
+    addContactTagAndDispatch.mockResolvedValue({ added: true, dispatched: true });
+  });
+
+  it('⚠️⚠️ NUNCA apaga: o lead que já tinha "Bancário" e "Demitida" continua com as duas', async () => {
+    const db = bancoCom([ID_BANCARIO, ID_DEMITIDA]);
+    const pedidas = await lerTagsPedidas(db, 'conta-1', ['Typebot']);
+    await setContactTags(db, 'conta-1', 'dono-1', 'contato-1', pedidas, {
+      somenteAcrescentar: true,
+    });
+
+    expect(registroDe(db).apagados).toEqual([]);
+    expect(addContactTagAndDispatch).toHaveBeenCalledTimes(1);
+    expect(addContactTagAndDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ tagId: ID_TYPEBOT })
+    );
+  });
+
+  it('a que já estava aplicada não dispara `tag_added` de novo', async () => {
+    const db = bancoCom([ID_TYPEBOT, ID_DEMITIDA]);
+    const pedidas = await lerTagsPedidas(db, 'conta-1', [ID_TYPEBOT]);
+    await setContactTags(db, 'conta-1', 'dono-1', 'contato-1', pedidas, {
+      somenteAcrescentar: true,
+    });
+
+    expect(registroDe(db).apagados).toEqual([]);
+    expect(addContactTagAndDispatch).not.toHaveBeenCalled();
+  });
+
+  it('lista vazia no modo aditivo não faz nada (no substitutivo, ela limpa tudo)', async () => {
+    const db = bancoCom([ID_BANCARIO, ID_TYPEBOT]);
+    await setContactTags(
+      db,
+      'conta-1',
+      'dono-1',
+      'contato-1',
+      { ids: [], nomesNovos: [] },
+      { somenteAcrescentar: true }
+    );
+    expect(registroDe(db).apagados).toEqual([]);
+    expect(addContactTagAndDispatch).not.toHaveBeenCalled();
+  });
+
+  it('nome novo é criado e aplicado, como no substitutivo', async () => {
+    resolveImportTagIds.mockResolvedValue({
+      tagIdByKey: new Map([['nova', '55555555-5555-4555-8555-555555555555']]),
+      nomePorId: new Map(),
+      skippedNames: [],
+    });
+    const db = bancoCom([ID_BANCARIO]);
+    const pedidas = await lerTagsPedidas(db, 'conta-1', ['Nova']);
+    await setContactTags(db, 'conta-1', 'dono-1', 'contato-1', pedidas, {
+      somenteAcrescentar: true,
+    });
+    expect(registroDe(db).apagados).toEqual([]);
+    expect(addContactTagAndDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ tagId: '55555555-5555-4555-8555-555555555555' })
+    );
+  });
+});

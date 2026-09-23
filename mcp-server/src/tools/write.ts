@@ -68,13 +68,17 @@ export function registerWriteTools(server: McpServer, client: WacrmClient): void
     {
       title: 'Create contact',
       description:
-        'Create a contact by phone number (required; with + and the country code, or a Brazilian number with its area code). Find-or-create: if a contact with that phone already exists it is returned instead of a new one, and name, email and company are ignored — but tags, when passed, REPLACE that existing contact’s whole tag set. Optional: name, email, company, and tags (tag names or tag ids from the account’s tag list; new names are created, an id that is not a tag of this account is rejected).',
+        'Create a contact by phone number (required; with + and the country code, or a Brazilian number with its area code). Find-or-create: if a contact with that phone already exists it is returned instead of a new one, and name, email and company are ignored — but tags, when passed, REPLACE that existing contact’s whole tag set unless tags_mode is "add". Optional: name, email, company, tags (tag names or tag ids from the account’s tag list; new names are created, an id that is not a tag of this account is rejected), and tags_mode.',
       inputSchema: {
         phone: z.string().describe('Phone number. With + and the country code (e.g. +14155550123); a Brazilian number may be written without + but with its area code (e.g. (81) 98874-5316, stored as 5581988745316).'),
         name: z.string().optional(),
         email: z.string().email().optional(),
         company: z.string().optional(),
-        tags: z.array(z.string()).optional().describe('Tag names or tag ids. New names are created; unknown ids are rejected. On an existing contact, replaces its tags.'),
+        tags: z.array(z.string()).optional().describe('Tag names or tag ids. New names are created; unknown ids are rejected. On an existing contact, replaces its tags unless tags_mode is "add".'),
+        tags_mode: z
+          .enum(['replace', 'add'])
+          .optional()
+          .describe('How tags is applied. "replace" (default): the contact ends up with exactly these tags. "add": only adds them — nothing is removed, even on an existing contact. Prefer "add" to label a lead without wiping its other tags.'),
       },
       annotations: { title: 'Create contact', readOnlyHint: false, openWorldHint: true },
     },
@@ -86,13 +90,17 @@ export function registerWriteTools(server: McpServer, client: WacrmClient): void
     {
       title: 'Update contact',
       description:
-        'Update an existing contact. Only the fields you pass are changed. Pass tags (an array of tag names or tag ids) to replace the contact’s tags entirely.',
+        'Update an existing contact. Only the fields you pass are changed. Pass tags (an array of tag names or tag ids) to replace the contact’s tags entirely — or, with tags_mode "add", only to add them.',
       inputSchema: {
         id: z.string().describe('Contact id.'),
         name: z.string().optional(),
         email: z.string().email().optional(),
         company: z.string().optional(),
-        tags: z.array(z.string()).optional().describe('Tag names or tag ids. Replaces the contact’s tags.'),
+        tags: z.array(z.string()).optional().describe('Tag names or tag ids. Replaces the contact’s tags unless tags_mode is "add".'),
+        tags_mode: z
+          .enum(['replace', 'add'])
+          .optional()
+          .describe('How tags is applied. "replace" (default) or "add" (only adds; nothing is removed).'),
       },
       annotations: { title: 'Update contact', readOnlyHint: false, openWorldHint: true },
     },

@@ -17,7 +17,9 @@
 //   enviou (Fase 4), a linha já existe com o mesmo `mid` e o UNIQUE
 //   `(conversation_id, message_id)` descarta a cópia; se foi digitada no app
 //   do Instagram, entra como `persistDeviceMessage` entra a do celular
-//   pareado: `sender_type='agent'`, `from_device=true`, sem motor.
+//   pareado: `sender_type='agent'`, `from_device=true`, sem motor e sem
+//   webhook de saída (nem `conversation.created` quando é ele que abre a
+//   conversa, nem `message.received`).
 //
 // TENANCY: toda leitura e escrita aqui passa pela CONTA da rota (`ctx`), e
 // as mensagens são alcançadas pela CONVERSA do cliente — nunca por
@@ -280,6 +282,37 @@ function previa(c: ConteudoDaMensagem): string {
   return c.content_text || `[${c.content_type}]`;
 }
 
+/**
+ * Apagada (pelo cliente, ou pela própria conta no app): só a marca de
+ * exibição — o texto fica, a mesma divergência deliberada do WhatsApp (o
+ * escritório precisa do registro).
+ *
+ * ⚠️ Pela CONVERSA que JÁ existe (`conversaDoCliente`, como a edição), nunca
+ * por `gravarMensagem`: a exclusão de uma DM anterior à integração criava
+ * ficha e conversa VAZIAS e emitia `conversation.created` sem mensagem
+ * nenhuma — o evento quer dizer "o cliente abriu a conversa", e apagar não é
+ * abrir. Sem conversa não há mensagem a marcar.
+ */
+async function marcarApagada(
+  db: SupabaseClient,
+  ctx: ContextoDoCanal,
+  ev: EventoMensagem
+): Promise<ResultadoDaPersistencia> {
+  const conversationId = await conversaDoCliente(db, ctx, clienteDe(ev));
+  if (!conversationId) return { resultado: 'ignorada' };
+  const { error } = await db
+    .from('messages')
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: ev.ehEco ? 'agent' : 'customer',
+    })
+    .eq('conversation_id', conversationId)
+    .eq('message_id', ev.mid)
+    .is('deleted_at', null);
+  if (error) console.error(`${TAG} marcar apagada falhou:`, error.message);
+  return { resultado: 'ignorada' };
+}
+
 async function gravarMensagem(
   db: SupabaseClient,
   ctx: ContextoDoCanal,
@@ -305,30 +338,20 @@ async function gravarMensagem(
   // mensagem de toda conversa nova. Esperada antes do message.received e em
   // todo retorno — promessa solta no `after()` pode não entregar. Nunca
   // rejeita.
-  const avisoDeConversaCriada = conv.created
+  //
+  // ⚠️ SÓ a ENTRADA do cliente emite (decisão do operador, 23/09/2026): o
+  // evento quer dizer "o cliente abriu a conversa", como no WhatsApp. O ECO
+  // — a equipe escrevendo primeiro pelo app do Instagram — abre a conversa
+  // calado, igual ao `persistDeviceMessage` do celular pareado, e a conversa
+  // aberta assim não emite nunca (a resposta do cliente já a encontra
+  // criada). Pino: `persistir.aviso.test.ts`.
+  const avisoDeConversaCriada = conv.created && !ev.ehEco
     ? dispatchWebhookEvent(db, ctx.accountId, 'conversation.created', {
         conversation_id: conversation.id,
         contact_id: contato.id,
         channel_id: ctx.channelId,
       })
     : Promise.resolve();
-
-  // Apagada pelo cliente: só a marca de exibição (o texto fica — é a mesma
-  // divergência deliberada do WhatsApp: o escritório precisa do registro).
-  if (ev.apagada) {
-    const { error } = await db
-      .from('messages')
-      .update({
-        deleted_at: new Date().toISOString(),
-        deleted_by: ev.ehEco ? 'agent' : 'customer',
-      })
-      .eq('conversation_id', conversation.id)
-      .eq('message_id', ev.mid)
-      .is('deleted_at', null);
-    if (error) console.error(`${TAG} marcar apagada falhou:`, error.message);
-    await avisoDeConversaCriada;
-    return { resultado: 'ignorada' };
-  }
 
   // Um `mid` = uma linha. O Instagram aceita VÁRIOS arquivos numa DM; o
   // primeiro fica na mensagem e os demais viram linhas irmãs com o mid
@@ -462,8 +485,8 @@ async function gravarMensagem(
     conversationId: conversation.id,
   });
 
-  // conversation.created termina antes de message.received começar (e o eco
-  // que abriu a conversa também espera o seu aviso aqui).
+  // conversation.created termina antes de message.received começar. (No eco
+  // a promessa já nasce resolvida: ele não emite nenhum dos dois.)
   await avisoDeConversaCriada;
   if (!ev.ehEco) {
     await dispatchWebhookEvent(db, ctx.accountId, 'message.received', {
@@ -563,7 +586,9 @@ export async function persistirEventoDoInstagram(
 ): Promise<ResultadoDaPersistencia> {
   switch (ev.tipo) {
     case 'mensagem':
-      return gravarMensagem(db, ctx, ev, salvarMidia, enriquecer);
+      return ev.apagada
+        ? marcarApagada(db, ctx, ev)
+        : gravarMensagem(db, ctx, ev, salvarMidia, enriquecer);
     case 'postback':
       return gravarPostback(db, ctx, ev, salvarMidia, enriquecer);
     case 'edicao':

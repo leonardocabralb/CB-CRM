@@ -34,7 +34,7 @@ export function loadConfig(): Config {
     throw new Error(
       `Missing required environment variable(s): ${missing.join(', ')}. ` +
         `Set WACRM_BASE_URL to your instance URL (e.g. https://crm.example.com) ` +
-        `and WACRM_API_KEY to a key from Settings → API keys.`,
+        `and WACRM_API_KEY to a key from Settings → API → Keys.`,
     );
   }
 

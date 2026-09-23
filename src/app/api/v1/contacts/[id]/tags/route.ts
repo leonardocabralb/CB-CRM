@@ -39,6 +39,7 @@ import {
 } from '@/lib/api/v1/contacts';
 import {
   aplicarMudancaDeTags,
+  avisarRecusaDeEtiqueta,
   lerMudancaDeTags,
   TagReferenceError,
 } from '@/lib/api/v1/tags-do-contato';
@@ -74,18 +75,26 @@ async function contatoEhDaConta(
   return Boolean(data);
 }
 
+const ROTA = 'POST /api/v1/contacts/{id}/tags';
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Fora do `try`: o `catch` registra o 400 de etiqueta com o id da chave.
+  let keyId: string | null = null;
   try {
     const ctx = await requireApiKey(request, 'contacts:write');
+    keyId = ctx.keyId;
     const { id } = await params;
     if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
 
     const corpo = await request.json().catch(() => null);
     const leitura = lerMudancaDeTags(corpo);
-    if (!leitura.ok) throw badRequest(leitura.erro);
+    if (!leitura.ok) {
+      avisarRecusaDeEtiqueta(ROTA, 'bad_request', keyId);
+      throw badRequest(leitura.erro);
+    }
 
     if (!(await contatoEhDaConta(ctx.supabase, ctx.accountId, id))) {
       return fail('not_found', 'Contact not found', 404);
@@ -118,6 +127,7 @@ export async function POST(
     // Id que não é desta conta, ou a mesma etiqueta nos dois lados por
     // nome e por id — os dois antes de qualquer escrita.
     if (err instanceof TagReferenceError) {
+      avisarRecusaDeEtiqueta(ROTA, err.code, keyId);
       return fail(err.code, err.message, err.status);
     }
     // ⚠️ `ContactTagWriteError` NÃO é `ApiError`: sem este ramo, um

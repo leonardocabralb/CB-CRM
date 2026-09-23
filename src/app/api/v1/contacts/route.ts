@@ -4,8 +4,16 @@
 //
 // List is keyset-paginated (see src/lib/api/v1/pagination.ts) and
 // supports `?search=` (name/phone) and `?tag=<tagId>` filters. Create
-// is find-or-create by phone: an existing match returns 200 with
-// `created: false`; a new row returns 201 with `created: true`.
+// is find-or-create by phone: an existing match returns 200, a new row
+// returns 201. The body is the serialized contact in both cases — the
+// status is the ONLY signal of "created" (there is no `created` field).
+//
+// ⚠️⚠️ Sobre o contato que JÁ existe, `tags` SUBSTITUI o conjunto dele (é o
+// contrato publicado, e o padrão): as etiquetas que não vierem no corpo são
+// retiradas. `tags_mode: "add"` só acrescenta — vale com o contato novo ou
+// existente, sem depender de qual dos dois a busca achou, então a corrida do
+// find-or-create também fica coberta. Valor desconhecido de `tags_mode` é
+// 400, lido junto com a forma de `tags`, antes de qualquer consulta.
 //
 // `tags` no POST aceita NOME ou ID de etiqueta (a régua de
 // `casarReferencias`, em `src/lib/api/v1/tags-do-contato.ts`) e é lido
@@ -34,7 +42,12 @@ import {
   resolveAuditUserId,
   ContactError,
 } from '@/lib/api/v1/contacts';
-import { lerTagsDoCorpo, TagReferenceError } from '@/lib/api/v1/tags-do-contato';
+import {
+  avisarRecusaDeEtiqueta,
+  lerModoDasTags,
+  lerTagsDoCorpo,
+  TagReferenceError,
+} from '@/lib/api/v1/tags-do-contato';
 import { pareceIdDeEtiqueta } from '@/lib/contacts/id-de-etiqueta';
 
 // PostgREST filter values are comma/paren-delimited; strip anything
@@ -116,9 +129,14 @@ export async function GET(request: Request) {
   }
 }
 
+const ROTA_DO_POST = 'POST /api/v1/contacts';
+
 export async function POST(request: Request) {
+  // Fora do `try`: o `catch` registra o 400 de etiqueta com o id da chave.
+  let keyId: string | null = null;
   try {
     const ctx = await requireApiKey(request, 'contacts:write');
+    keyId = ctx.keyId;
 
     const body = (await request.json().catch(() => null)) as Record<
       string,
@@ -133,9 +151,17 @@ export async function POST(request: Request) {
       return fail('bad_request', "'phone' is required", 400);
     }
 
-    // Forma de `tags`: puro, antes de qualquer consulta.
+    // Forma de `tags` e `tags_mode`: puro, antes de qualquer consulta.
     const tags = lerTagsDoCorpo(body.tags);
-    if (tags && !Array.isArray(tags)) return fail('bad_request', tags.erro, 400);
+    if (tags && !Array.isArray(tags)) {
+      avisarRecusaDeEtiqueta(ROTA_DO_POST, 'bad_request', keyId);
+      return fail('bad_request', tags.erro, 400);
+    }
+    const modo = lerModoDasTags(body.tags_mode);
+    if (typeof modo !== 'string') {
+      avisarRecusaDeEtiqueta(ROTA_DO_POST, 'bad_request', keyId);
+      return fail('bad_request', modo.erro, 400);
+    }
 
     // As etiquetas são lidas ANTES de criar a ficha (só leitura): um id que
     // não é desta conta volta 400 sem deixar contato criado para trás.
@@ -163,7 +189,8 @@ export async function POST(request: Request) {
         ctx.accountId,
         auditUserId,
         id,
-        tagsPedidas
+        tagsPedidas,
+        { somenteAcrescentar: modo === 'add' }
       );
     }
 
@@ -171,6 +198,7 @@ export async function POST(request: Request) {
     return ok(contact, created ? 201 : 200);
   } catch (err) {
     if (err instanceof TagReferenceError) {
+      avisarRecusaDeEtiqueta(ROTA_DO_POST, err.code, keyId);
       return fail(err.code, err.message, err.status);
     }
     if (err instanceof ContactError) {
