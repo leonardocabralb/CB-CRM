@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone, phonesMatch } from "@/lib/whatsapp/phone-utils";
-import { telefoneCanonico } from "@/lib/contacts/telefone";
+import { telefoneCanonico, telefoneDigitado } from "@/lib/contacts/telefone";
 
 /**
  * Contact de-duplication helpers, shared by the WhatsApp webhook, the
@@ -226,34 +226,44 @@ export function isUniqueViolation(error: unknown): boolean {
 
 /**
  * De-duplicate parsed CSV rows by PERSON (`chaveDePessoa`, a grafia canônica
- * do nono dígito), keeping the first occurrence of each. Rows with an empty
- * normalized phone are dropped (they can't be a valid contact). Returns the
- * unique rows plus the count removed as in-file duplicates.
+ * do nono dígito), keeping the first occurrence of each. Returns the unique
+ * rows plus the count removed as in-file duplicates and, SEPARATELY, the
+ * count dropped for a blank or unusable phone.
  *
  * ⚠️ Por pessoa, não por grafia (1024): o mesmo celular escrito com e sem o 9
  * no mesmo arquivo passava pelo dedupe e caía no mesmo lote de INSERT — e,
  * com o índice canônico, o lote inteiro levava 23505.
+ *
+ * ⚠️ O telefone é o DIGITADO numa planilha, então passa por `telefoneDigitado`
+ * e a linha única SAI com os dígitos normalizados (upstream #529 + a metade
+ * aditiva do #586, com a nossa régua). Sem isso, "(81) 98874-5316" no arquivo
+ * virava a ficha "81988745316" — que sai para +81 — e o CSV do disparo, em vez
+ * de achar a ficha do cliente, criava outra. E o telefone inválido deixa de
+ * ser contado como DUPLICATA: ele não duplicou nada, e a tela dizia "N
+ * duplicados ignorados" sobre linha que nunca teve par.
  */
 export function dedupeByPhone<T extends { phone: string }>(
   rows: T[],
-): { unique: T[]; duplicates: number } {
+): { unique: T[]; duplicates: number; invalid: number } {
   const seen = new Set<string>();
   const unique: T[] = [];
   let duplicates = 0;
+  let invalid = 0;
 
   for (const row of rows) {
-    const key = chaveDePessoa(row.phone);
-    if (!key) {
-      duplicates++;
+    const telefone = telefoneDigitado(row.phone);
+    if (!telefone.ok) {
+      invalid++;
       continue;
     }
+    const key = chaveDePessoa(telefone.digitos);
     if (seen.has(key)) {
       duplicates++;
       continue;
     }
     seen.add(key);
-    unique.push(row);
+    unique.push({ ...row, phone: telefone.digitos });
   }
 
-  return { unique, duplicates };
+  return { unique, duplicates, invalid };
 }
