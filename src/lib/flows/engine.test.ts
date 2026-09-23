@@ -6,6 +6,8 @@ import {
   isSuspending,
   isTerminal,
   evaluateConditionPredicate,
+  camposDosBotoes,
+  camposDaLista,
 } from "./engine";
 
 describe("matchReplyId", () => {
@@ -295,5 +297,88 @@ describe("evaluateConditionPredicate", () => {
         configValue: "anything",
       }),
     ).toBe(false);
+  });
+});
+
+// ============================================================
+// {{vars}} nos nós interativos (upstream #553, Fase 4 do plano do merge do
+// upstream). Até aqui os dois nós mandavam o texto CRU: depois de um
+// collect_input, o cliente recebia "Oi {{vars.name}}" literal.
+// ============================================================
+
+describe("camposDosBotoes", () => {
+  const cfg = {
+    text: "Oi {{vars.name}}, escolha:",
+    header_text: "Caso {{vars.caso}}",
+    footer_text: "Equipe {{vars.area}}",
+    buttons: [
+      { reply_id: "sim_{{vars.name}}", title: "Sim, {{vars.name}}", next_node_key: "a" },
+      { reply_id: "nao", title: "Não", next_node_key: "b" },
+    ],
+  };
+  const vars = { name: "Ana", caso: "123", area: "Bancário" };
+
+  it("interpola todo texto visível", () => {
+    const c = camposDosBotoes(cfg, vars);
+    expect(c.bodyText).toBe("Oi Ana, escolha:");
+    expect(c.headerText).toBe("Caso 123");
+    expect(c.footerText).toBe("Equipe Bancário");
+    expect(c.buttons.map((b) => b.title)).toEqual(["Sim, Ana", "Não"]);
+  });
+
+  it("⚠️ o reply_id NUNCA é interpolado: é a chave que matchReplyId compara", () => {
+    const c = camposDosBotoes(cfg, vars);
+    expect(c.buttons.map((b) => b.id)).toEqual(["sim_{{vars.name}}", "nao"]);
+  });
+
+  it("campo opcional ausente continua ausente (não vira \"\")", () => {
+    const c = camposDosBotoes({ text: "x", buttons: [] }, vars);
+    expect(c.headerText).toBeUndefined();
+    expect(c.footerText).toBeUndefined();
+  });
+
+  it("variável que não existe vira vazio, como no send_message", () => {
+    expect(camposDosBotoes({ text: "Oi {{vars.nada}}!", buttons: [] }, {}).bodyText).toBe("Oi !");
+  });
+
+  it("não corta título que a interpolação alongou — quem recusa é o meta-api, com o motivo", () => {
+    const longo = camposDosBotoes(
+      { text: "x", buttons: [{ reply_id: "a", title: "{{vars.name}}", next_node_key: "z" }] },
+      { name: "Um nome bem maior que vinte letras" },
+    );
+    expect(longo.buttons[0].title).toBe("Um nome bem maior que vinte letras");
+  });
+});
+
+describe("camposDaLista", () => {
+  const cfg = {
+    text: "{{vars.name}}, qual área?",
+    button_label: "Ver {{vars.qtd}} opções",
+    sections: [
+      {
+        title: "Para {{vars.name}}",
+        rows: [
+          { reply_id: "r_{{vars.name}}", title: "Área {{vars.area}}", description: "Com {{vars.name}}", next_node_key: "a" },
+          { reply_id: "r2", title: "Outra", next_node_key: "b" },
+        ],
+      },
+      { rows: [{ reply_id: "r3", title: "Sem seção", next_node_key: "c" }] },
+    ],
+  };
+  const vars = { name: "Ana", qtd: 3, area: "Trabalhista" };
+
+  it("interpola corpo, rótulo do botão, título de seção, título e descrição de linha", () => {
+    const c = camposDaLista(cfg, vars);
+    expect(c.bodyText).toBe("Ana, qual área?");
+    expect(c.buttonLabel).toBe("Ver 3 opções");
+    expect(c.sections[0].title).toBe("Para Ana");
+    expect(c.sections[0].rows[0]).toEqual({ id: "r_{{vars.name}}", title: "Área Trabalhista", description: "Com Ana" });
+  });
+
+  it("opcional ausente continua ausente, e o reply_id da linha fica intacto", () => {
+    const c = camposDaLista(cfg, vars);
+    expect(c.sections[0].rows[1].description).toBeUndefined();
+    expect(c.sections[1].title).toBeUndefined();
+    expect(c.sections.flatMap((sec) => sec.rows.map((r) => r.id))).toEqual(["r_{{vars.name}}", "r2", "r3"]);
   });
 });

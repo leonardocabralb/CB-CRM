@@ -857,7 +857,33 @@ chegam com o nome. Título acima do limite → run `failed` com evento. Canal
 Evolution → o motivo claro de hoje continua. ⚠️ Fluxo ativo vale para cliente
 real: ativo por minutos, desativado e apagado em seguida.
 
-**Resultado:** — (a preencher)
+**Resultado (23/09/2026):**
+
+- **Medido antes:** nenhum fluxo na produção (nem rascunho). O defeito existe
+  no código (`engine.ts` mandava `cfg.text`, cabeçalho, rodapé e títulos crus)
+  e é inerte hoje. ⚠️ O merge #259 DESCARTOU o `engine.ts` do original (caiu no
+  "fica o nosso"), então este porte é o único caminho.
+- **Contrato de falha: fica o NOSSO**, que já existia e é mais forte: os dois
+  nós interativos registram `send_interactive_failed` e encerram o run
+  `failed`, e a re-pergunta que falha também encerra
+  (`reprompt_interactive_failed`) — o original mantém o run vivo ali, e num
+  canal Evolution (sem botões) ele engoliria toda mensagem seguinte do
+  cliente. Nada disso mudou.
+- **O que entrou:** `camposDosBotoes` e `camposDaLista` (puros, exportados)
+  interpolam todo texto visível; o `reply_id` nunca; campo opcional ausente
+  continua ausente; nada é cortado (o `meta-api` recusa com o motivo e o nó
+  encerra o run). E um achado da auditoria do #259: a LISTA não passava o
+  canal do nó (`preferredChannelId`), e um fluxo preso ao número X a mandava
+  pelo canal atual da conversa — agora passa, como os botões.
+- **Verificação:** `typecheck` limpo; lint sem aviso novo; suíte inteira no
+  Node 22 verde; **8 mutantes reprovam** (os dois envios sem a montagem, o
+  canal da lista, o `reply_id` interpolado nos dois nós, o opcional virando
+  "", o rótulo do botão e o título de seção crus).
+- **Teste real: PENDENTE.** A Meta só entrega botão/lista com a janela de 24h
+  aberta naquele número, e a última mensagem do lead de teste no número
+  oficial é de 12/09. Fica para quando o lead escrever ao número oficial: aí
+  o roteiro acima vale como está. Sem fluxo nenhum na produção, nada muda
+  para cliente até lá.
 
 ### Fase 5 — O motivo da falha da Meta na mensagem
 
