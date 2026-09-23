@@ -1010,8 +1010,21 @@ disparos, 0 fichas criadas.
   do Chile), passa a ser lido como brasileiro. É a P9, e é o mesmo limite que
   a 3-II aceitou nas telas (medido: zero fichas assim); a doc manda número de
   fora com `+`.
+- **O webhook de entrada (o Typebot) entrou na fase, a pedido do operador**
+  (23/09/2026, depois da revisão: "não tenho como mexer no formulário do
+  Typebot" — o tratamento tem de ser do nosso lado). `processarAcionamento`
+  lê por `telefoneDigitado` (era `digitosDoTelefone`, a régua dos sistemas:
+  "98874-5316" virava a ficha +98), e o recusado vira `sem_telefone` com o
+  motivo no log. MEDIDO antes: ZERO eventos recebidos até hoje (o Typebot
+  ainda não foi ligado ao CRM); o fluxo exportado pergunta o telefone no
+  bloco Phone com país padrão Brasil, que valida e entrega "+55…" — esse
+  formato passa igual pelas duas réguas. ⚠️ Com a régua, o telefone que CHEGA
+  e não serve deixaria de virar ficha errada para sumir em silêncio
+  (`sem_telefone` não entra no Meu dia): a rota de pendências passou a contar
+  o `sem_telefone` com `telefone` preenchido, em 7 dias (sem janela o aviso
+  nunca apagaria — reprocessar dá o mesmo resultado).
 - **Docs:** seção "Phone numbers" em `docs/public-api.md` (com o aviso da
-  mudança para quem integra), as descrições das ferramentas do `mcp-server`, a
+  mudança para quem integra), a regra e o log em `docs/webhooks.md`, as descrições das ferramentas do `mcp-server`, a
   receita "Mandar uma mensagem" da aba Documentação, o CHANGELOG e as notas do
   CLAUDE.md.
 
@@ -1059,14 +1072,13 @@ cético que tenta refutar medindo):** nenhum P0/P1.
 | P3 (Lente 1) — entradas que antes entregavam no destino certo agora dão 400: `tel:`, `whatsapp:`, `,`/`;` no fim, `++`, `55+` | aceito e ESCRITO na doc pública; conferir o formato do cenário do Make é pendência do operador (não é observável daqui) |
 | P3 (Lente 2) — as notas diziam que o `@g.us` passava antes (o teto de 15 já o recusava) e que "as quatro primeiras" portas apagavam os não-dígitos (o disparo exigia o `+`) | ✅ CLAUDE.md, plano e comentário de `contacts.ts` |
 | P3 — comentários velhos: `// required, E.164` na rota de mensagens; "o mesmo `isValidE164` das outras portas" em `validate.ts` | ✅ |
-| P3 (as duas, fora do escopo declarado) — o webhook de ENTRADA (Typebot: o lead DIGITA o telefone num formulário público) e o passo `send_to_number` continuam em `digitosDoTelefone`: "98874-5316" vira ficha +98 e `…@lid` vira telefone | pendência registrada abaixo — não entra de carona |
+| P3 (as duas, fora do escopo declarado) — o webhook de ENTRADA (Typebot: o lead DIGITA o telefone num formulário público) e o passo `send_to_number` continuam em `digitosDoTelefone`: "98874-5316" vira ficha +98 e `…@lid` vira telefone | ✅ o webhook de entrada ENTROU na fase por decisão do operador (ver acima); `send_to_number` (número que o próprio operador digita no construtor) fica como pendência |
 
 **Pendências que ficam desta fase (fora do escopo, cada uma com dono):**
 
-- **Webhook de entrada e `send_to_number` fora da régua** — decidir se passam
-  por `telefoneDigitado` (uma sub-fase própria; o `sem_telefone` do webhook
-  ganharia o motivo). Hoje o formulário público do Typebot aceita "98874-5316"
-  e grava a ficha +98.
+- **`send_to_number` fora da régua** — o número que o operador digita no
+  passo da automação ainda é lido por `digitosDoTelefone` (a validação do
+  construtor e o motor); decidir se passa por `telefoneDigitado`.
 - **O destinatário do disparo casado pela tolerância dos 8 finais** — a linha
   de `broadcast_recipients` pode ficar com uma ficha de outro número (a busca
   tolera o tronco), e o envio vai ao número lido. Anterior à fase; vale com

@@ -41,6 +41,8 @@ const LIMITE = { limit: 30, windowMs: 60_000 };
  * Entrada que PAROU antes de virar trabalho. `sem_telefone` e `ignorado`
  * ficam de fora: são desfechos legítimos — o agendamento sem telefone não
  * tem como virar conversa, e `ignorado` é o que a própria regra descartou.
+ * ⚠️ MENOS o webhook cujo telefone VEIO e não passou pela régua (contado à
+ * parte, `telefoneIlegivel` abaixo): ali o lead existe e se perderia calado.
  * `em_espera` também fica de fora: a automação está num "Aguardar", e quem
  * a retoma é o agendador (a linha do evento não muda mais).
  */
@@ -108,16 +110,37 @@ export async function GET() {
       .order('recebida_em', { ascending: false })
       .limit(5);
 
-    const [calendly, webhooks, retidas] = await Promise.all([
+    // Webhook cujo telefone CHEGOU e não passou pela régua (`telefoneDigitado`,
+    // Fase 3-III): "98874-5316" sem DDD, um JID colado. O lead existe — nome e
+    // respostas estão no log —, mas não virou ficha, e sem esta contagem ele
+    // sumiria em silêncio (antes da régua ele virava uma ficha com o número
+    // errado, que ao menos aparecia). O campo que NÃO veio (`telefone` nulo)
+    // continua desfecho legítimo. O Calendly lê o telefone por outra régua e
+    // não entra aqui.
+    // ⚠️ Na janela das retidas (`desde`, 7 dias): "Processar de novo" daria o
+    // mesmo `sem_telefone`, então não há como a linha sair da contagem — sem
+    // janela o aviso ficaria aceso para sempre, e aviso eterno ensina a pular
+    // o bloco. O lead continua no log de Webhooks → Recebidos.
+    const telefoneIlegivel = db
+      .from('cb_webhook_eventos')
+      .select('id', { count: 'exact', head: true })
+      .eq('account_id', ctx.accountId)
+      .eq('resultado', 'sem_telefone')
+      .not('telefone', 'is', null)
+      .gte('recebido_em', desde);
+
+    const [calendly, webhooks, ilegiveis, retidas] = await Promise.all([
       parado('cb_calendly_eventos'),
       parado('cb_webhook_eventos'),
+      telefoneIlegivel,
       retidasDoPeriodo,
     ]);
 
-    if (calendly.error || webhooks.error) {
+    if (calendly.error || webhooks.error || ilegiveis.error) {
       console.error('[cb/meu-dia/pendencias]', {
         calendly: calendly.error?.message,
         webhooks: webhooks.error?.message,
+        telefoneIlegivel: ilegiveis.error?.message,
       });
       return NextResponse.json({ error: 'db_error' }, { status: 500 });
     }
@@ -133,7 +156,7 @@ export async function GET() {
     return NextResponse.json({
       naoProcessadas: {
         calendly: calendly.count ?? 0,
-        webhooks: webhooks.count ?? 0,
+        webhooks: (webhooks.count ?? 0) + (ilegiveis.count ?? 0),
       },
       retidas: retidas.error
         ? null

@@ -34,8 +34,8 @@ const TELAS: Record<string, string[]> = {
   'lib/contacts/dedupe.ts': ['telefoneDigitado('],
 };
 
-// Fase 3-III: as portas por onde um INTEGRADOR (API v1) ou o operador
-// ("Nova conversa") mandam um telefone. Antes, as três da API e a da "Nova
+// Fase 3-III: as portas por onde um INTEGRADOR (API v1), o operador ("Nova
+// conversa") ou um formulário (webhook de entrada) mandam um telefone. Antes, as três da API e a da "Nova
 // conversa" apagavam o que não era dígito (`sanitizePhoneForMeta`) — e
 // "(81) 98874-5316" virava a ficha +81 —, e o disparo exigia o `+` do
 // original. Cada uma lê o texto pela régua, e nenhuma volta ao atalho.
@@ -47,6 +47,9 @@ const PORTAS: Record<string, string[]> = {
   'lib/whatsapp/broadcast-core.ts': ['telefoneDigitado(to)', 'const sanitized = telefone.digitos;'],
   'app/api/cb/conversas/abrir/route.ts': ['telefoneDigitado(typeof telefone', 'const digitos = lido.digitos'],
   'components/inbox/nova-conversa-dialog.tsx': ['telefoneDigitado(telefone)'],
+  // O webhook de ENTRADA (o Typebot: o lead DIGITA num formulário público que
+  // não dá para mudar do lado de cá). Pedido do operador em 23/09/2026.
+  'lib/webhooks-de-entrada/processar.ts': ['telefoneDigitado(cru)', 'const digitos = telefone.digitos;'],
 };
 
 // O atalho de antes, em todas as formas que ele tem no código: apagar o que
@@ -56,6 +59,9 @@ const PORTAS: Record<string, string[]> = {
 // rota da "Nova conversa" — que não tem teste de comportamento — voltava ao
 // defeito sem nada reprovar).
 const ATALHOS = [
+  // A régua dos SISTEMAS (Calendly, Asaas): aceita 8 e 9 dígitos sem DDD e
+  // apaga letra — num telefone que alguém digitou, é a ficha +98 e o LID.
+  'digitosDoTelefone(',
   'sanitizePhoneForMeta',
   'normalizePhone',
   'isValidE164',

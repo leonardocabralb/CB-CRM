@@ -28,7 +28,14 @@ ficha se for número novo) → dispara as automações que têm o gatilho
   único por conta.
 - **Campo do telefone** — o nome do campo, **dentro do JSON**, que carrega o
   telefone do cliente. Sem ele o acionamento é registrado mas nenhuma
-  automação roda, porque não há sobre quem agir.
+  automação roda, porque não há sobre quem agir. O telefone é lido como nas
+  telas de contato e na API ([`public-api.md`](./public-api.md#phone-numbers)):
+  `+5581988745316`, `+55 81 98874-5316`, `5581988745316` e
+  `(81) 98874-5316` viram a mesma ficha (`5581988745316`) — o número sem `+`
+  e sem o código do país ganha o 55. Número sem DDD (`98874-5316`), com letra
+  ou símbolo (um id do WhatsApp colado), com 0 na frente ou com tamanho errado
+  é **recusado**: nenhuma ficha é criada, e o log diz o porquê. Número de
+  outro país precisa do `+`.
 - **Campo do nome** — opcional; usado só quando a ficha é criada.
 - **Campo do id** — opcional. Quando o sistema de fora manda um
   identificador estável do envio, o CRM ignora a reentrega do mesmo
@@ -121,7 +128,10 @@ Três comportamentos que valem para todo webhook recebido:
   valor, pelo nome** (`phone`, `name`, `email`, as UTMs…). Configure o
   **campo do telefone** do webhook com o nome da variável do telefone (ex.:
   `phone`) e use `{{vars.<nome da variável>}}` na automação. A pergunta ainda
-  não respondida simplesmente não vem. Se preferir montar um JSON próprio, use
+  não respondida simplesmente não vem. Pergunte o telefone com o bloco
+  **Phone** do Typebot, com o país padrão Brasil: ele confere o número e o
+  entrega já com o `+55`. Um bloco de texto comum também funciona, mas aí um
+  "98874-5316" sem DDD chega como está e é recusado (veja o log). Se preferir montar um JSON próprio, use
   os mesmos nomes nas chaves.
 - O Typebot **não repete** uma chamada que falhou (401, 404, 429 ou tempo
   esgotado): o ponto é perdido, e o erro só aparece em Typebot → *Results* →
@@ -142,7 +152,7 @@ antigo. É por ele que "configurei e não aconteceu nada" tem resposta:
 | **Disparado** | Automação executou até o fim | — |
 | **Em espera** | A automação parou num passo "Aguardar" | O restante sai pelo agendador; veja o histórico da automação |
 | **Sem automação** | Chegou, mas nenhuma automação ativa escuta este webhook | Crie a automação, ou confira o escopo dela |
-| **Sem telefone** | O campo do telefone não veio, ou não parecia um telefone | Confira o **campo do telefone** contra a lista de variáveis do log |
+| **Sem telefone** | O campo do telefone não veio, ou veio e não é um telefone utilizável (o detalhe diz qual: faltou o DDD, letra, tamanho errado) | Se não veio, confira o **campo do telefone** contra a lista de variáveis do log. Se veio e foi recusado, o lead está no log (nome e respostas): fale com ele por outro meio. O Meu dia conta esse caso por 7 dias |
 | **Sem contato** | Não foi possível criar/achar a ficha | Confira o formato do número |
 | **Ignorado** | O webhook está desligado | Ligue-o |
 | **Falhou** | Algum passo da automação deu erro | Veja o histórico da automação |
@@ -164,8 +174,9 @@ mais uma vez.
    no cabeçalho `Authorization`.
 3. Recebe **404**? A URL está errada, ou o webhook foi apagado.
 4. Recebe **400**? O corpo não é JSON válido.
-5. Chega mas dá "Sem telefone"? Abra o detalhe e compare os nomes das
-   variáveis com o que está no **campo do telefone**.
+5. Chega mas dá "Sem telefone"? Abra o detalhe: "não veio no payload" é o
+   nome do campo errado (compare com a lista de variáveis); "curto demais" ou
+   "não é um telefone válido" é o número que a pessoa digitou.
 
 ---
 
