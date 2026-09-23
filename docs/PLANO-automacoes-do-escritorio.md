@@ -20,7 +20,7 @@
 | --- | --- | --- | --- | --- |
 | 1 | Lembrete de reunião · 24h / 4h / 1h / 10min | **aprovados** | não | só a sua ordem |
 | 2 | (PENDENTE) No-show · recuperação | **aprovados** (9 mensagens) | não | link de agendamento, imagem (2.6), PDF (2.7) |
-| 3 | (PENDENTE) Contrato fechado | **boas-vindas aprovada** | não | link do Google, responsável da tarefa |
+| 3 | (PENDENTE) Contrato fechado | **boas-vindas aprovada** | não | link do Google, responsável da tarefa, **a de Documentos ligada antes** |
 | 4 | (PENDENTE) Documentos de gestão de passivo | **aprovados** (4 mensagens) | não | arquivo Excel da planilha |
 | 5 | Typebot · Abaixo de 150 mil com processo | texto 5.1 **fica para depois** | sim (sem mensagem) | — |
 | 6 | (PENDENTE) Desqualificado | não tem texto | não | só a sua palavra |
@@ -255,15 +255,19 @@ o cliente de receber tudo duas vezes). Sem a etiqueta, nesta ordem:
 5. manda as **boas-vindas pelo Bancário - Jurídico** (3.1);
 6. espera 10 s, cria a **tarefa** para a equipe (3.2);
 7. move o card para **Bancário - Jurídico → Cliente Ativo**;
-8. **avisa o Atlas e a planilha** (3.3);
-9. espera **2 minutos** e **aciona a automação de Documentos** (seção 4).
+8. espera **2 minutos** e **aciona a automação de Documentos** (seção 4);
+9. **por último, avisa o Atlas e a planilha** (3.3).
 
-> **Por que o aviso ao Atlas foi para o fim** (antes vinha logo depois do
+> **Por que o aviso ao Atlas é o último passo** (antes vinha logo depois do
 > passo 2): passo que falha encerra a execução, e a trava por etiqueta impede
-> rodar de novo. Com o aviso no começo, um soluço do n8n deixaria o cliente
-> sem boas-vindas, sem o card no Jurídico e sem os documentos — e sem como
-> repetir. No fim, uma falha dele só deixa de criar a linha no Atlas e na
-> planilha, e o resto já aconteceu.
+> rodar de novo. Com o aviso antes, um soluço do n8n (fora do ar, fluxo
+> desativado, mais de 10 s para responder) deixaria o cliente sem
+> boas-vindas, sem o card no Jurídico ou sem os documentos — e sem como
+> repetir. Por último, uma falha dele só deixa de criar a linha no Atlas e na
+> planilha, e o resto já aconteceu; a falha aparece na conversa como
+> automação que falhou, e a linha é criada à mão. (A primeira gravação deixou
+> o aviso antes dos documentos; a verificação independente pegou e a ordem
+> foi corrigida no mesmo dia.)
 
 **3.1 — boas-vindas ao cliente** ✅ aprovado · sai pelo **Bancário - Jurídico**
 
@@ -344,7 +348,10 @@ no Atlas aparece no **histórico de execuções do n8n**, como hoje — o CRM s�
 sabe que o n8n recebeu.
 
 **Falta para ligar:** o link do Google (3.1), o responsável da tarefa (3.2) e
-o fluxo do n8n importado e ativo.
+a **automação de Documentos ligada ANTES** (seção 4) — o motor se recusa a
+acionar automação desligada, e a execução terminaria "falhou" no passo 8, sem
+o aviso ao Atlas, com a trava por etiqueta impedindo repetir. A de Documentos,
+por sua vez, só liga com o Excel.
 
 ---
 
@@ -468,7 +475,7 @@ mensagem saem formatadas ("R$ 3.500,00", "30/08/2026 às 16:00h"); no webhook e
 ao gravar campo, cruas (`3500`, data ISO). O corpo do webhook passou a
 escapar cada valor — um nome com aspas quebrava o JSON inteiro.
 
-**O corpo que o CRM manda ao n8n** (passo 8 do contrato fechado):
+**O corpo que o CRM manda ao n8n** (o último passo do contrato fechado):
 
 ```
 {
@@ -524,9 +531,11 @@ resolvidas, o teste é o primeiro passo depois de ligar, num card de teste.
   2 minutos depois do contrato fechado, assinados pela Dra. Maura; Atlas e
   planilha pelo n8n; data da proposta = entrada em Proposta Realizada.**
   (23/09)
-- **O aviso ao Atlas é o último passo do contrato fechado antes dos
+- **O aviso ao Atlas é o ÚLTIMO passo do contrato fechado, depois dos
   documentos** (antes vinha logo depois do "mover"), para uma falha dele não
-  impedir o resto. (23/09)
+  impedir o resto. Escolha do implementador em 23/09, que substitui a decisão
+  de 08/09 "mover para o funil Jurídico é o último passo" — o "mover" continua
+  antes da espera e dos documentos.
 - **Atlas e planilha pelo n8n, não por integração própria do CRM**: o CRM
   manda os dados, o n8n formata e distribui; as chaves do Atlas e do Google
   ficam só no n8n. (23/09)
