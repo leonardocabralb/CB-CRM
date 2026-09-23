@@ -108,6 +108,12 @@ const fonte = fs.readFileSync(
 );
 
 /** Faixa [início, fim) do corpo de uma função do hook, no fonte. */
+function faixaDoModulo(nome: string): [number, number] {
+  const inicio = fonte.indexOf(`async function ${nome}(`);
+  expect(inicio).toBeGreaterThan(-1);
+  return [inicio, fonte.indexOf('\n}\n', inicio)];
+}
+
 function faixaDaFuncao(nome: string): [number, number] {
   const inicio = fonte.indexOf(`async function ${nome}(`);
   expect(inicio).toBeGreaterThan(-1);
@@ -123,7 +129,13 @@ function faixaDaFuncao(nome: string): [number, number] {
  * consertar mexe nos dois arquivos na mesma passada — e tira esta exceção
  * daqui, que é o que faz este teste cobrar o conserto.
  */
-const EXCECAO_DECLARADA = faixaDaFuncao('upsertCsvContacts');
+const EXCECOES_DECLARADAS = [
+  faixaDaFuncao('upsertCsvContacts'),
+  // A busca das fichas do CSV (saiu de `upsertCsvContacts` na Fase 3-IV):
+  // fatias de 200 grafias, e cada grafia casa no máximo UMA ficha (o índice
+  // exato da 022) — cada resposta fica abaixo do teto de mil por construção.
+  faixaDoModulo('fichasDoCsvNaBase'),
+];
 
 /** Tabelas cuja leitura cresce com a base — todas passam do teto de 1000. */
 const TABELAS_QUE_CRESCEM = [
@@ -156,7 +168,7 @@ function leiturasDoFonte(): Leitura[] {
     // consulta LÊ ou ESCREVE.
     const verbo = depois.match(/\.(select|insert|update|upsert|delete)\(/);
     if (verbo?.[1] !== 'select') continue;
-    if (indice >= EXCECAO_DECLARADA[0] && indice < EXCECAO_DECLARADA[1]) continue;
+    if (EXCECOES_DECLARADAS.some(([de, ate]) => indice >= de && indice < ate)) continue;
     achadas.push({ tabela: m[1], indice, trecho: depois });
   }
   return achadas;
@@ -178,7 +190,7 @@ describe('toda leitura que cresce com a base passa por `buscarPaginado`', () => 
     for (const leitura of daTabela) {
       const antes = fonte.slice(Math.max(0, leitura.indice - 400), leitura.indice);
       expect(
-        antes.includes('buscarPaginado'),
+        antes.includes('buscarPaginado') || antes.includes('buscarPorChave'),
         `leitura de ${tabela} fora de um laço paginado (offset ${leitura.indice})`,
       ).toBe(true);
     }
@@ -186,6 +198,16 @@ describe('toda leitura que cresce com a base passa por `buscarPaginado`', () => 
 
   it('cada leitura leva `count: exact` e ordem com desempate — as invariantes do laço', () => {
     for (const leitura of leituras) {
+      const antes = fonte.slice(Math.max(0, leitura.indice - 400), leitura.indice);
+      if (antes.includes('buscarPorChave')) {
+        // POR CHAVE (o "todos os contatos", Fase 3-IV): sem `count`, a página
+        // seguinte começa DEPOIS do último id visto, na ordem do id, com o
+        // tamanho da página — as três peças que o `buscarPorChave` exige.
+        expect(leitura.trecho, 'leitura por chave sem .gt(id)').toContain(".gt('id', depoisDe)");
+        expect(leitura.trecho, 'leitura por chave sem order(id)').toContain("order('id', { ascending: true })");
+        expect(leitura.trecho, 'leitura por chave sem limit(PAGINA)').toContain('.limit(PAGINA)');
+        continue;
+      }
       // Sem a contagem não há como distinguir "a coleção acabou" de "a
       // página veio cheia por acaso", e o laço fecha cedo.
       expect(
@@ -200,6 +222,17 @@ describe('toda leitura que cresce com a base passa por `buscarPaginado`', () => 
         `leitura de ${leitura.tabela} sem order('id')`,
       ).toContain("order('id'");
     }
+  });
+
+  it('"todos os contatos" é lido POR CHAVE, nunca por OFFSET (Fase 3-IV)', () => {
+    // Por OFFSET, uma ficha nova no meio da leitura repetia a última linha de
+    // uma página na seguinte: o mesmo cliente duas vezes em
+    // `broadcast_recipients`, e o modelo pago chegando em dobro.
+    const i = fonte.indexOf('async function lerContatos(');
+    const corpo = fonte.slice(i, fonte.indexOf('\n}\n', i));
+    const ramoTodos = corpo.slice(corpo.indexOf('if (ids === null)'), corpo.indexOf('emFatias('));
+    expect(ramoTodos).toContain('buscarPorChave');
+    expect(ramoTodos).not.toContain('buscarPaginado');
   });
 
   it('o índice de campos não chunkeia mais por 500 contatos', () => {
