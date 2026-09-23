@@ -53,9 +53,11 @@ export interface ConversationCreatedData {
 
 /**
  * Quem causou o movimento. Traduz `cb_automation_events.origem`, que o
- * gatilho da 0934 decide assim: há `auth.uid()` → `user`; senão, num INSERT
- * com `deals.source = 'channel'` → `channel`, com `'automation'` →
- * `automation`; todo o resto → `system`.
+ * gatilho da fila decide NESTA ordem (migration 1040): há `auth.uid()` →
+ * `user`; a RPC das automações carimbou a cadeia → `automation`; num INSERT,
+ * `deals.source = 'channel'` → `channel` e `'automation'` → `automation`; o
+ * pedido traz o cabeçalho `x-cb-origem: api` → `api`; todo o resto →
+ * `system`.
  *
  * - `user`: uma pessoa, nas telas do CRM (arrastar, formulário, lista,
  *   painel da conversa) — escrita sob RLS, com sessão;
@@ -65,14 +67,19 @@ export interface ConversationCreatedData {
  *   celular pareado, a agendada ou `POST /api/v1/messages`). Mesmo o envio
  *   feito por uma pessoa na tela sai `channel`, porque o roteador escreve em
  *   service role (sem `auth.uid()`);
- * - `automation`: o passo "Criar negócio" de uma automação;
- * - `system`: sem pessoa logada e fora dos dois casos acima — as escritas
- *   diretas em negócio pela API pública (`/api/v1/deals`, criar e mover) E
- *   os passos "Mover card de etapa"/"Marcar ganho ou perdido" das
- *   automações (`cb_atualizar_negocio`). O banco não separa os dois (os
- *   dois gravam em service role), e dizer mais seria inventar.
+ * - `automation`: os passos "Criar negócio", "Mover card de etapa" e "Marcar
+ *   ganho ou perdido" de uma automação — inclusive a que um pedido da API
+ *   disparou (a cadeia e o `source` são conferidos ANTES do cabeçalho);
+ * - `api`: a API pública de negócios (`POST`/`PATCH /api/v1/deals`), pelo
+ *   cliente próprio das rotas v1 (`src/lib/api/v1/cliente-da-api.ts`). É o
+ *   que o integrador filtra para não reagir ao PRÓPRIO movimento — não corta
+ *   o laço que atravessa uma automação do CRM (ela sai `automation`, e a
+ *   escrita pela API começa uma cadeia nova, que `fechaCiclo` não liga);
+ * - `system`: a sobra — escrita em service role fora desses caminhos (SQL à
+ *   mão, por exemplo). Até a 1040 este valor misturava a API com os passos
+ *   "Mover"/"Marcar" das automações.
  */
-export type DealEventSource = 'user' | 'channel' | 'automation' | 'system';
+export type DealEventSource = 'user' | 'channel' | 'automation' | 'api' | 'system';
 
 export interface DealEventPipeline {
   id: string;

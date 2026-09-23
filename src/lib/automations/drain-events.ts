@@ -3,6 +3,7 @@ import { after } from 'next/server'
 
 import type { CbAutomationEvent } from '@/types'
 import { entregarEventosDeFunil } from '@/lib/webhooks/entregar-eventos-de-funil'
+import { TETO_DE_REENTREGAS } from '@/lib/webhooks/reentregar-eventos-de-funil'
 import { supabaseAdmin } from './admin-client'
 import { runAutomationsForTrigger, type AutomationContext } from './engine'
 import { cancelarEsperasAoSairDaEtapa } from './so-na-etapa'
@@ -34,8 +35,9 @@ import { cancelarEsperasAoSairDaEtapa } from './so-na-etapa'
 // essas guardas existem para não mandar MENSAGEM ao cliente, e o aviso ao
 // integrador descreve o que aconteceu com o card — atrasado sai com a hora
 // real (`occurred_at`), card de grupo ou de contato apagado sai com
-// `contact: null`. A reivindicação vale para os dois consumidores: o mesmo
-// movimento nunca vira dois avisos.
+// `contact: null`. A reivindicação vale para os dois consumidores: dois
+// drenos simultâneos nunca entregam o mesmo movimento (a repetição que existe
+// é a da reentrega depois de uma queda, com o MESMO id — ver abaixo).
 //
 // ⚠️⚠️ A entrega dos webhooks roda DEPOIS da resposta (`after()`), não
 // dentro do dreno. Aguardada aqui, um endpoint lento custava até
@@ -56,15 +58,20 @@ import { cancelarEsperasAoSairDaEtapa } from './so-na-etapa'
 //     depois dele vem o SIGKILL, e uma entrega lenta no meio morre.
 //   - Fora de requisição (script, teste, worker) `after()` LANÇA; a entrega
 //     cai no `await`, como era antes.
-//   - ⚠️ A JANELA DE PERDA CONTINUA: processo que morre (SIGKILL, queda)
-//     entre reivindicar e entregar perde os avisos daquelas linhas, SEM
-//     RASTRO — a linha fica `processado_em` preenchido, nada a reentrega e
-//     `webhook_endpoints` não registra a tentativa. E ela NÃO encolheu com
-//     o `after()`: no caminho do cron ela CRESCEU pelo resto do ciclo
-//     (lembretes, batimento, retomadas), porque a entrega só começa quando
-//     a resposta sai. O ganho foi tirar a entrega do caminho de quem
-//     espera; fechar a janela pede registrar a entrega pendente num lugar
-//     durável (uma coluna na fila, ou uma fila própria), que é outra obra.
+//   - ⚠️⚠️ O AVISO É DURÁVEL desde a 1040. A reivindicação grava, NA MESMA
+//     escrita de `processado_em`, `webhooks_pendente_desde = carimbo` (UM
+//     carimbo por ciclo, passado à entrega); a entrega RENOVA a posse
+//     (compare-and-swap no carimbo) logo antes de entregar cada conta — o
+//     laço abaixo pode levar mais que o prazo da reentrega — e limpa a
+//     coluna, com a cerca do carimbo renovado, quando a tentativa aconteceu.
+//     Processo que morre entre reivindicar e entregar (SIGKILL do rollout,
+//     queda) deixa a linha PENDENTE, e o cron a reentrega com o MESMO id
+//     (`reentregar-eventos-de-funil.ts`). Até a 1040 essa janela perdia os
+//     avisos sem rastro — e ela CRESCEU com o `after()` no caminho do cron,
+//     porque a entrega só começa quando a resposta sai.
+//   - ⚠️ ORDEM DE DEPLOY: sem a coluna da 1040, o PostgREST recusa o UPDATE
+//     da reivindicação e NENHUMA automação de funil dispara. A migration vai
+//     para a produção antes do app.
 // ------------------------------------------------------------
 
 /** Teto por ciclo. Igual ao do cron de automações. */
@@ -196,6 +203,10 @@ export async function drenarEventosDeFunil(): Promise<ResultadoDaDrenagem> {
   // linhas que ficaram para trás — a entrega roda depois do `catch`.
   let db: SupabaseClient | null = null
   const paraOsWebhooks: CbAutomationEvent[] = []
+  // UM carimbo por ciclo: vai para `processado_em` E para
+  // `webhooks_pendente_desde` na mesma escrita, e é a cerca de posse com que
+  // a entrega limpa a pendência (ver o cabeçalho).
+  const carimbo = new Date().toISOString()
   try {
     db = supabaseAdmin()
 
@@ -222,9 +233,12 @@ export async function drenarEventosDeFunil(): Promise<ResultadoDaDrenagem> {
       // UPDATE é o que impede o aviso imediato e o cron de dispararem o mesmo
       // evento — sem ele o cliente receberia a mensagem duas vezes. Quem
       // carimbar primeiro leva; o outro vê 0 linhas e segue.
+      //
+      // ⚠️⚠️ `webhooks_pendente_desde` vai NESTA escrita, não numa depois: é
+      // a atomicidade que fecha a janela de perda do aviso `deal.*` (1040).
       const { data: reivindicado, error: erroClaim } = await db
         .from('cb_automation_events')
-        .update({ processado_em: new Date().toISOString() })
+        .update({ processado_em: carimbo, webhooks_pendente_desde: carimbo })
         .eq('id', linha.id)
         .is('processado_em', null)
         .select('id')
@@ -313,7 +327,7 @@ export async function drenarEventosDeFunil(): Promise<ResultadoDaDrenagem> {
   // falta de onde agendar. `entregarEventosDeFunil` nunca lança, então a
   // queda para o `await` não quebra a promessa de "nunca lança" do dreno.
   if (db && paraOsWebhooks.length > 0) {
-    const entregar = () => entregarEventosDeFunil(db, paraOsWebhooks)
+    const entregar = () => entregarEventosDeFunil(db, paraOsWebhooks, carimbo)
     try {
       after(entregar)
     } catch {
@@ -329,6 +343,12 @@ export async function drenarEventosDeFunil(): Promise<ResultadoDaDrenagem> {
  * A fila cresce para sempre sem isto. 30 dias é o suficiente para investigar
  * "por que essa automação não rodou?" e curto o bastante para a tabela não
  * virar um arquivo morto.
+ *
+ * ⚠️ Nunca apaga um aviso `deal.*` que a reentrega ainda vai tentar (1040):
+ * pendente e abaixo do teto. Evento atrasado SAI (decisão do operador), e
+ * apagado ele não sairia nunca — o caso é o agendador parado por mais de 30
+ * dias. O que chegou ao teto é o registro do aviso não entregue, e segue a
+ * régua de 30 dias do resto.
  */
 export async function podarEventosAntigos(): Promise<number> {
   try {
@@ -338,6 +358,7 @@ export async function podarEventosAntigos(): Promise<number> {
       .delete()
       .not('processado_em', 'is', null)
       .lt('processado_em', corte)
+      .or(`webhooks_pendente_desde.is.null,webhooks_tentativas.gte.${TETO_DE_REENTREGAS}`)
       .select('id')
     if (error) {
       console.error('[automations] poda da fila falhou', error)

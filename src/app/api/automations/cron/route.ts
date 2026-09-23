@@ -11,6 +11,7 @@ import {
   varrerLembretes,
   podarLembretesAntigos,
 } from '@/lib/automations/varrer-lembretes'
+import { reentregarEventosDeFunil } from '@/lib/webhooks/reentregar-eventos-de-funil'
 
 /**
  * Drain due `automation_pending_executions` rows. Meant to be hit
@@ -43,6 +44,11 @@ export async function GET(request: Request) {
   // chegou lá (aba fechada, rede caindo, SQL na mão). Vem primeiro e é
   // independente: uma falha aqui não pode impedir as esperas de resumirem.
   const funil = await drenarEventosDeFunil()
+  // Avisos `deal.*` que ficaram pendentes (processo morto no meio de uma
+  // entrega, leitura que falhou): SÓ aqui, nunca no aviso imediato. Depois do
+  // dreno e ANTES da poda — a poda poupa o pendente que ainda será tentado,
+  // mas a ordem deixa isso óbvio. A entrega em si vai por `after()`.
+  const reentrega = await reentregarEventosDeFunil()
   const podados = await podarEventosAntigos()
 
   // Lembretes por data (935). Não passam pela fila do funil: aquela existe
@@ -85,7 +91,7 @@ export async function GET(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!due || due.length === 0) {
-    return NextResponse.json({ processed: 0, funil, podados, lembretes, lembretesPodados })
+    return NextResponse.json({ processed: 0, funil, reentrega, podados, lembretes, lembretesPodados })
   }
 
   let processed = 0
@@ -117,5 +123,5 @@ export async function GET(request: Request) {
     processed++
   }
 
-  return NextResponse.json({ processed, funil, podados, lembretes, lembretesPodados })
+  return NextResponse.json({ processed, funil, reentrega, podados, lembretes, lembretesPodados })
 }
