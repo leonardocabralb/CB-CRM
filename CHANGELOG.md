@@ -72,6 +72,16 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   aplicada **antes** de publicar esta versão: sem ela, as automações de
   funil param.
 
+- **Criar de novo um modelo que já existe não o tira mais de uso.** Criar
+  pela tela de modelos um nome e idioma que já existiam no mesmo número
+  fazia a Meta recusar, e o modelo aprovado virava rascunho: sumia dos
+  disparos, da caixa de entrada e das automações até alguém sincronizar da
+  Meta. Agora o modelo fica como estava — inclusive quando duas pessoas
+  enviam o mesmo modelo ao mesmo tempo — e o aviso aponta as ações do
+  modelo na lista. Com mais de um administrador, criar o modelo que um
+  colega já tinha começado também não gera mais uma segunda cópia com o
+  mesmo nome.
+
 - **A mensagem enviada pelo número oficial (Meta) não volta mais a um ✓
   depois de entregue.** A Meta manda os recibos de uma mensagem em avisos
   separados, com milissegundos de diferença, e o "enviada" que terminava por

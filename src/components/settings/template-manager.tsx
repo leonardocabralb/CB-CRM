@@ -316,6 +316,14 @@ export function TemplateManager() {
       });
       const data = await res.json();
       if (!res.ok) {
+        // A Meta RECUSOU (4xx) e já existe um modelo VINCULADO com este nome
+        // e idioma: a rota não tocou nele. A recusa pode ter outro motivo —
+        // o texto diz "se foi pelo nome" e leva a resposta da Meta junto.
+        if (data?.code === 'modelo_ja_existe') {
+          throw new Error(
+            t('submitTemplateExists', { error: String(data.error ?? '') }),
+          );
+        }
         throw new Error(
           data?.error || t(isEdit ? 'editFailedHttp' : 'submitFailedHttp', { status: res.status }),
         );

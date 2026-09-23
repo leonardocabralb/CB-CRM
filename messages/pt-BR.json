@@ -2637,6 +2637,7 @@
       "headerTextLabel": "Texto do cabeçalho",
       "editFailedHttp": "A edição falhou (HTTP {status})",
       "submitFailedHttp": "O envio falhou (HTTP {status})",
+      "submitTemplateExists": "A Meta recusou o envio, e já existe um modelo com este nome e idioma — ele ficou como estava. Se a recusa foi pelo nome repetido, não crie o modelo de novo: use as ações dele na lista (Editar quando aprovado, Reenviar quando rejeitado ou pausado; em análise, aguarde a Meta). Resposta da Meta: {error}",
       "uploadVideo": "Enviar vídeo",
       "uploadDocument": "Enviar documento",
       "uploadHintVideo": "MP4 ou 3GPP, até 16 MB",

@@ -2644,6 +2644,7 @@
       "headerTextLabel": "Header text",
       "editFailedHttp": "Edit failed (HTTP {status})",
       "submitFailedHttp": "Submit failed (HTTP {status})",
+      "submitTemplateExists": "Meta refused the submission, and a template with this name and language already exists — it was left as it was. If the refusal was about the repeated name, don't create it again: use the template's actions in the list (Edit when approved, Resubmit when rejected or paused; while in review, wait for Meta). Response from Meta: {error}",
       "uploadVideo": "Upload video",
       "uploadDocument": "Upload document",
       "uploadHintVideo": "MP4 or 3GPP, ≤16 MB",
