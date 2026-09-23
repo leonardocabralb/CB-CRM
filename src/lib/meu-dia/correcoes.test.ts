@@ -68,14 +68,14 @@ describe('resumirCorrecoes', () => {
   it('ordena por GRAVIDADE, não pela ordem de chegada', () => {
     const estados: EstadoPorFonte = {
       ...tudoZerado(),
-      entradasNaoProcessadas: pronto(9),
+      webhooksNaoProcessados: pronto(9),
       agendador: pronto(1),
       automacoesFalharam: pronto(2),
     };
     expect(resumirCorrecoes(estados).achados.map((a) => a.fonte)).toEqual([
       'agendador',
       'automacoesFalharam',
-      'entradasNaoProcessadas',
+      'webhooksNaoProcessados',
     ]);
   });
 

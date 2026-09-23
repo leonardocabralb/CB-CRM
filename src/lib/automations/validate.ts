@@ -239,8 +239,9 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       // No config required.
       break
     case 'send_to_number': {
-      // Telefone com DDI (o mesmo `isValidE164` das outras portas de
-      // telefone): sem ele o passo não tem destinatário, e o motor
+      // Telefone pela régua dos SISTEMAS (`digitosDoTelefone`, a mesma do
+      // motor) — não a `telefoneDigitado` das telas e da API: sem ele o passo
+      // não tem destinatário, e o motor
       // estouraria em execução — o tipo de falha que esta validação existe
       // para pegar antes de ativar.
       if (!digitosDoTelefone(typeof c.phone === 'string' ? c.phone : '')) {

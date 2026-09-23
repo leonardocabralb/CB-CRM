@@ -160,7 +160,7 @@ describe("entregasNaoConfirmadas — o que NÃO pode ficar vermelho", () => {
     expect(entregasNaoConfirmadas(fio, agora, { ...OPCOES, emGrupo: true }).size).toBe(0);
   });
 
-  it("mensagem da Meta não é candidata (a rota dela grava a situação sem a escada)", () => {
+  it("mensagem da Meta não é candidata (o que ela gravou antes da escada não prova nada; alargar pede medir)", () => {
     const fio = [
       nossa("pela-meta", "2026-09-23T13:00:00Z", "sent", { channel_id: "meta" }),
       nossa("confirmada", depois, "read", { channel_id: "meta" }),
