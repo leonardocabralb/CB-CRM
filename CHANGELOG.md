@@ -57,6 +57,11 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **Caixa de entrada: a conversa que recebe mensagem sobe para o topo.**
+  Até aqui a hora e a prévia da linha mudavam, mas ela ficava na posição em
+  que estava quando a página abriu — uma conversa reaberta por mensagem
+  nova aparecia abaixo da dobra, e parecia que a mensagem não tinha
+  chegado até recarregar a página.
 - **Um webhook de saída fora do ar não atrasa mais a primeira mensagem de
   uma conversa nova.** O aviso `conversation.created` era entregue antes de
   a mensagem do cliente ser gravada, e um endpoint que não respondia
