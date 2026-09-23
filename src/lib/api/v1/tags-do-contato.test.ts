@@ -4,7 +4,9 @@ import { chaveDeTag } from '@/lib/contacts/chave-de-tag';
 
 import {
   aplicarMudancaDeTags,
+  avisarRecusaDeEtiqueta,
   casarReferencias,
+  lerModoDasTags,
   lerMudancaDeTags,
   MAX_TAGS_POR_CHAMADA,
   TagReferenceError,
@@ -581,5 +583,36 @@ describe('lerMudancaDeTags — com id', () => {
       remove: [ID_TYPEBOT.toUpperCase()],
     });
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('lerModoDasTags (`tags_mode` de POST /contacts e PATCH /contacts/{id})', () => {
+  it.each([[undefined], [null]])('%s: "replace" — o padrão publicado não muda', (valor) => {
+    expect(lerModoDasTags(valor)).toBe('replace');
+  });
+
+  it.each([['replace'], ['add']])('"%s" vale como veio', (valor) => {
+    expect(lerModoDasTags(valor)).toBe(valor);
+  });
+
+  it.each([['append'], ['ADD'], [' add '], [''], [true], [0], [['add']], [{ modo: 'add' }]])(
+    '⚠️ %j é erro — nunca "replace" por queda (quem pediu para não apagar não pode ter apagado)',
+    (valor) => {
+      expect(lerModoDasTags(valor)).toEqual({ erro: `'tags_mode' must be "replace" or "add"` });
+    }
+  );
+});
+
+describe('avisarRecusaDeEtiqueta', () => {
+  it('registra rota, código e o id da chave — e nada mais', () => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    avisarRecusaDeEtiqueta('POST /api/v1/contacts', 'unknown_tag_ids', 'chave-1');
+    expect(aviso).toHaveBeenCalledTimes(1);
+    expect(aviso).toHaveBeenCalledWith('[api/v1] 400 de etiqueta', {
+      rota: 'POST /api/v1/contacts',
+      code: 'unknown_tag_ids',
+      keyId: 'chave-1',
+    });
+    aviso.mockRestore();
   });
 });

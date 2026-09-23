@@ -193,6 +193,60 @@ export function lerTagsDoCorpo(valor: unknown): string[] | undefined | { erro: s
   return valor as string[];
 }
 
+/**
+ * Como `tags` é aplicado em `POST /contacts` e `PATCH /contacts/{id}`:
+ * `replace` (o padrão, e o contrato publicado) SUBSTITUI o conjunto;
+ * `add` só ACRESCENTA — nada é retirado.
+ */
+export type ModoDasTags = 'replace' | 'add';
+
+/**
+ * Lê o `tags_mode` do corpo. Puro, e chamado ANTES de qualquer consulta,
+ * como `lerTagsDoCorpo`. Ausente ou `null` = `replace`: o padrão NÃO muda —
+ * quem já integra com o `tags` substitutivo continua recebendo o que o
+ * contrato promete.
+ *
+ * ⚠️ Valor desconhecido é 400, nunca `replace` por queda. Quem escreveu
+ * `"tags_mode": "append"` (ou `"ADD"`) pediu para NÃO apagar; cair no padrão
+ * apagaria as outras etiquetas do contato, com 200 — o dano que o campo
+ * existe para evitar.
+ *
+ * Existe porque o caso comum do Make é o lead que JÁ escreveu pelo WhatsApp:
+ * o `POST /contacts` é find-or-create, e o `tags` substitutivo tirava dele
+ * "Bancário", "Cliente Fechado" e o que mais a ficha tivesse. A rota aditiva
+ * (`POST /contacts/{id}/tags`) continua valendo; isto poupa a segunda
+ * chamada.
+ */
+export function lerModoDasTags(valor: unknown): ModoDasTags | { erro: string } {
+  if (valor === undefined || valor === null) return 'replace';
+  if (valor === 'replace' || valor === 'add') return valor;
+  return { erro: `'tags_mode' must be "replace" or "add"` };
+}
+
+/**
+ * Registra no log do servidor um 400 de ETIQUETA da API v1 — a forma de
+ * `tags`/`tags_mode`, o corpo do verbo aditivo, e `TagReferenceError`
+ * (`unknown_tag_ids`, a mesma etiqueta nos dois lados).
+ *
+ * Existe porque a API não guarda as respostas que dá: `fail()` só monta o
+ * envelope, e `api_keys.last_used_at` sobe na autenticação, ANTES da
+ * validação — a chave "usada às 21:42" pode ter levado 400. Sem isto, saber
+ * se o cenário do Make tropeça numa regra de etiqueta dependia de abrir o
+ * histórico de execuções do Make.
+ *
+ * ⚠️ Só rota, código e o id da CHAVE (a linha de `api_keys`, nunca o
+ * segredo). Nunca o corpo: ele leva nome, telefone e o que mais o
+ * integrador mandou. O log do contêiner some a cada deploy — é sinal para a
+ * próxima conferência, não registro permanente.
+ */
+export function avisarRecusaDeEtiqueta(
+  rota: string,
+  code: string,
+  keyId: string | null
+): void {
+  console.warn('[api/v1] 400 de etiqueta', { rota, code, keyId });
+}
+
 export interface MudancaDeTags {
   /** Nomes ou ids a acrescentar, aparados e sem repetição (pela chave). */
   add: string[];

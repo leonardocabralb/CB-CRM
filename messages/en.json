@@ -3838,7 +3838,7 @@
         },
         "conversationCreated": {
           "rotulo": "Conversation opened",
-          "descricao": "A new conversation started with a contact."
+          "descricao": "A customer sent their first message and opened a new conversation. It doesn’t fire for a conversation your team opens (from the CRM, the paired phone or the Instagram app), nor for one opened by an automation, by the API or in a group — for a new lead in the pipeline, use “Deal created”."
         },
         "dealCreated": {
           "rotulo": "Deal created",
@@ -3869,6 +3869,10 @@
       "testeAjuda": "Sends a fictitious sample, marked with \"test\": true, and does not count as a failure.",
       "testeEntregue": "Delivered: HTTP {status} in {ms} ms.",
       "testeFalhou": "Failed: {motivo}.",
+      "testeResposta": "What the address answered",
+      "testeRespostaVazia": "The address answered with no body.",
+      "testeRespostaCortada": "Showing only the first {kb} KB of the response.",
+      "testeRespostaBinaria": "The response is not text (a file, an image) and is not shown.",
       "testeMotivo": {
         "http": "the endpoint answered HTTP {status}",
         "redirecionamento": "the endpoint answered with a redirect (HTTP {status}); register the final URL",
@@ -4005,7 +4009,7 @@
         "chamar1": "Use the <b>HTTP Request</b> node. Under <b>Authentication</b>, pick <b>Generic Credential Type</b>, then <b>Bearer Auth</b>.",
         "chamar2": "In the credential, the <b>Bearer Token</b> is just the key, without the word “Bearer”: n8n adds it on its own.",
         "chamar3": "For POST and PATCH, turn on <b>Send Body</b> with <b>Body Content Type</b> = JSON. The <b>Import cURL</b> button accepts the examples on this page.",
-        "paginacao": "Lists come in pages of up to {max} items, and <code>meta.next_cursor</code> is empty on the last one. To fetch them all:",
+        "paginacao": "The contact, conversation, message, deal, task, scheduled-message, meeting and note lists come in pages of up to {max} items, and <code>meta.next_cursor</code> is empty on the last one (pipelines, tags, connections and webhook endpoints come whole, in one response). To fetch them all:",
         "receberTitulo": "Receiving notifications",
         "receber1": "Use the <b>Webhook</b> node, POST method, and under <b>Respond</b> pick <b>Immediately</b>: the CRM waits at most {segundos} seconds for the answer.",
         "receber2": "Register the <b>Production URL</b> in the CRM and click <b>Publish</b> — saving without publishing does not put the new version live. What arrives shows in the <b>Executions</b> tab.",
@@ -4029,7 +4033,7 @@
         "regra": {
           "umaTentativa": "One attempt per notification and per endpoint, with a {segundos}-second deadline: an error response is not retried. Answer 2xx quickly; a redirect counts as a failure.",
           "desliga": "{falhas} consecutive failures switch the endpoint off, and the counter belongs to the ENDPOINT, not to the event: a backlog of deal notifications (with the scheduler down, for instance) goes out at once and, if your system is down at that moment, it alone can add up to {falhas} — switching off the message notifications along with it. Turn it back on in the Outgoing tab; that resets the counter.",
-          "repeticao": "Order is not guaranteed. On deal events, the envelope <code>id</code> (equal to <code>data.event_id</code>) is stable, and dropping repeats by it is REQUIRED: a deal notification cut short by a server restart goes out again, with the same <code>id</code>.",
+          "repeticao": "Order is not guaranteed — the one exception: for the message that opens a conversation, <code>conversation.created</code> arrives before <code>message.received</code>. On deal events, the envelope <code>id</code> (equal to <code>data.event_id</code>) is stable, and dropping repeats by it is REQUIRED: a deal notification cut short by a server restart goes out again, with the same <code>id</code>.",
           "teste": "The Send test button sends fictitious data with <code>\"test\": true</code>: filter it out of production flows.",
           "negocio": "On deal events, <code>deal</code> is the deal AS OF DELIVERY and <code>stage</code> is the stage of THIS move — read <code>stage</code>, not <code>deal.stage_id</code>. <code>assignee</code> is the owner and <code>contact</code> carries tags and <code>custom_fields</code>. <code>source</code> says who caused it: <code>user</code> (someone in the CRM screens), <code>channel</code> (the connection opened the card on the first message, from the client or from the team), <code>automation</code> (the automations' “Create Deal”, “Move deal to stage” and “Mark won or lost” steps), <code>api</code> (the deals API: creating and moving with a key) or <code>system</code> (anything else, such as a fix made straight in the database). <code>channel_id</code> is the number of the contact's conversation at that moment, and comes empty when they have not talked through any connection yet — an incoming-webhook (Typebot) or Calendly lead who has not written, a contact created by the API, a card with no contact. If you filter by number, decide what to do with these.",
           "atraso": "A late notification still goes out, with the real time of the fact in <code>occurred_at</code>.",
@@ -4060,7 +4064,7 @@
         },
         "etiqueta": {
           "titulo": "Apply a tag",
-          "texto": "Adds without removing the others, by name or by id. Scope <code>contacts:write</code>."
+          "texto": "Adds without removing the others, by name or by id. Scope <code>contacts:write</code>. When creating the contact, you can do the same in a single call: <code>tags</code> with <code>\"tags_mode\": \"add\"</code> on <code>POST /api/v1/contacts</code> — without it, <code>tags</code> there replaces the tags of a contact that already exists."
         },
         "campo": {
           "titulo": "Fill in a custom field",
@@ -4077,6 +4081,7 @@
         "e429": "<b>429</b> — more than {limite} calls per minute. Wait for <code>Retry-After</code>; in n8n, use the interval between pages.",
         "e400": "<b>400</b> — the body has an error, and the message names the field. Dates and times need the timezone (<code>Z</code> or <code>-03:00</code>).",
         "etiquetaPorId": "<b>Tag sent by id</b> where a name was expected: it works when creating and editing a contact and when applying a tag. An id that is not from this account returns <code>400</code> (<code>unknown_tag_ids</code>) and nothing is written. The <code>?tag=</code> filter of the contact list, though, takes only the id — a name there is a <code>400</code>.",
+        "tagsSubstituem": "<b>Tags vanished from the contact</b> — <code>tags</code> on <code>POST /api/v1/contacts</code> for a phone already in the base (and on <code>PATCH</code>) REPLACES the contact's tags: the ones not in the body are removed. To only add, also send <code>\"tags_mode\": \"add\"</code>, or use <code>POST /api/v1/contacts/'{id}'/tags</code>.",
         "usuario": "<b>Assignee not found</b> — use the member's user id, not the id of something else on the same screen.",
         "testUrl": "<b>Nothing reaches n8n</b> — the Test URL only listens for 120 seconds. Register the Production URL, with the flow published.",
         "url": "<b>Address refused</b> — the CRM only delivers to a public https:// address: http, localhost and internal IPs do not work.",

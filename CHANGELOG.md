@@ -38,7 +38,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   chave de leitura da base.
 - **Botão "Enviar teste"** em cada endereço da aba Enviados: manda um
   exemplo assinado do evento escolhido, com `"test": true`, para a URL
-  cadastrada, e mostra o que o seu sistema respondeu. Não conta como falha.
+  cadastrada, e mostra o que o seu sistema respondeu — o status e o começo
+  da resposta (até 2 KB, só texto). Não conta como falha.
   Ele não aparece no "Listen for test event" do n8n, que só escuta a Test
   URL — o jeito de vê-lo lá está em `docs/webhooks.md`.
 - **Configurações → API ganhou três abas.** **Chaves** (a tela de antes),
@@ -47,6 +48,15 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   e ao Make, com os exemplos já no endereço desta instalação). A aba
   Enviados de Webhooks passou a mostrar o nome de cada evento e a deixar
   trocar os eventos de um endereço já criado.
+- **`tags_mode: "add"` em `POST /api/v1/contacts` e
+  `PATCH /api/v1/contacts/{id}`**: aplica as etiquetas de `tags` sem tirar
+  as que o contato já tinha. Sem o campo, `tags` continua substituindo o
+  conjunto — e, no `POST`, isso vale para o contato que já existe (o
+  telefone já estava na base). A aba Documentação passou a avisar.
+- **A seção Webhooks tem o link "Como configurar no n8n e no Make"** no
+  cabeçalho, nas duas abas (antes só em Enviados).
+- **Os `400` de etiqueta da API v1 vão para o log do servidor**, com a rota,
+  o código e o id da chave (nunca o corpo nem a chave).
 - **Etiqueta pelo id na API.** `POST /api/v1/contacts`,
   `PATCH /api/v1/contacts/{id}` e `POST /api/v1/contacts/{id}/tags` aceitam
   o nome OU o id da etiqueta (o `id` que `GET /api/v1/tags` devolve). Até
@@ -56,6 +66,22 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `GET /api/v1/contacts` continua aceitando só o id.
 
 ### Corrigido
+
+- **A documentação da API dizia coisas que não valem mais.** O caminho
+  das chaves é *Configurações → API → Chaves*; só oito listas paginam (as
+  outras vêm inteiras); o envio por número de QR Code tem erros próprios
+  (`evolution_rejected`, nada saiu; `evolution_error`, pode ter saído); a
+  resposta do envio traz `channel_id`; e `GET /api/v1/channels` também
+  lista as contas do Instagram, que não servem de `channel_id` para enviar
+  (a descrição do escopo `channels:read` passou a dizer isso).
+- **`POST /api/v1/messages` com o `channel_id` de uma conta do Instagram
+  não prende mais a conversa nela.** A resposta continua `400
+  not_supported`, mas antes a conversa do telefone ficava fixada no
+  Instagram, e todo envio seguinte — pela tela ou pela API — falhava até
+  alguém trocar a conexão à mão. Agora o canal é conferido antes de
+  qualquer coisa ser criada ou mudada.
+- **Instagram: apagar uma DM anterior à integração não cria mais ficha e
+  conversa vazias**, nem manda `conversation.created` sem mensagem.
 
 - **Avisos de negócio (`deal.*`): quem moveu pela API passa a se chamar
   `api`, e um aviso interrompido por reinício sai de novo.** Até aqui o
@@ -267,6 +293,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Mudado
 
+- **`conversation.created` quer dizer só "o cliente abriu a conversa".** A
+  conversa aberta pela equipe pelo app do Instagram (a primeira DM mandada
+  de lá) deixou de gerar o aviso — no WhatsApp, a aberta pela equipe
+  (celular pareado, tela do CRM, API) já não gerava. Automação, integração
+  e grupo também não geram. Para saber de lead novo no funil, inclusive o
+  que a equipe abordou primeiro, assine `deal.created`. A descrição do
+  evento na tela e nos documentos passou a dizer isso.
 - **Atualização com o projeto original até `aee1b01f` (setembro/2026).**
   Entraram as traduções das telas do original, o envio de vídeo e documento
   como cabeçalho de modelo, a explicação dos erros de conexão com a Meta e

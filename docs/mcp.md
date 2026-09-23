@@ -20,7 +20,7 @@ scoped by your instance exactly like any other API call.
 
 ## Quick start
 
-1. Create an API key in the dashboard: **Settings → API keys**. Grant
+1. Create an API key in the dashboard: **Settings → API → Keys**. Grant
    only the scopes your assistant needs (a read-only assistant only
    needs the `*:read` scopes).
 2. Build the server (Node 22, from the repository root):
@@ -80,7 +80,9 @@ Two things worth knowing before choosing:
   API number and is the only kind that accepts templates and
   button/list messages. `evolution` is a QR-code number: plain text
   only. Broadcasts are template-only, so they always need a `meta`
-  number.
+  number. `list_channels` also shows the account's Instagram Direct
+  accounts (`kind: "instagram"`); they can't be used to send, and
+  `send_message` refuses them (`not_supported`).
 
 ## Safety
 

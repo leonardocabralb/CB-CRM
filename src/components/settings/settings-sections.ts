@@ -84,7 +84,10 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   // Integrações (CB Advogados) — chaves de IA, Google Agenda e o que
   // vier (TLDV, Calendly…), com estado ao vivo por integração.
   integracoes: { id: 'integracoes', label: 'Integrations', icon: Plug, group: 'workspace' },
-  api: { id: 'api', label: 'API keys', icon: KeyRound, group: 'workspace' },
+  // "API", e não "API e integrações" (decisão do operador, 23/09/2026): a
+  // seção `integracoes` logo acima já é "Integrações", e duas entradas com a
+  // palavra no menu confundiriam. O menu lê `Settings.sections.api`.
+  api: { id: 'api', label: 'API', icon: KeyRound, group: 'workspace' },
   webhooks: { id: 'webhooks', label: 'Webhooks', icon: Webhook, group: 'workspace' },
   perfis: { id: 'perfis', label: 'Perfis de acesso', icon: UserCog, group: 'workspace' },
 };

@@ -510,6 +510,10 @@ export function DocumentacaoDeIntegracao({
           </li>
           <li>{t.rich("erros.e400", rico)}</li>
           <li>{t.rich("erros.etiquetaPorId", rico)}</li>
+          {/* ⚠️ O aviso que só existia em `docs/public-api.md`: o `tags` do
+              find-or-create SUBSTITUI o conjunto do contato que já existe, e
+              o caso comum do Make é justamente o lead que já escreveu. */}
+          <li>{t.rich("erros.tagsSubstituem", rico)}</li>
           <li>{t.rich("erros.usuario", rico)}</li>
           <li>{t.rich("erros.testUrl", rico)}</li>
           <li>{t.rich("erros.url", rico)}</li>

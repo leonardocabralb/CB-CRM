@@ -5,7 +5,9 @@
 // Both are account-scoped: a contact belonging to another account
 // returns 404 (never 403 — don't reveal it exists elsewhere).
 // PATCH updates only the fields present in the body; pass `tags` (an
-// array of tag names or tag ids) to replace the contact's tags.
+// array of tag names or tag ids) to replace the contact's tags — or, with
+// `tags_mode: "add"`, only to add them (nothing is removed; the same
+// opt-in as `POST /contacts`, and an unknown value is a 400).
 //
 // ⚠️ `tags` é lido ANTES de gravar nome/e-mail/empresa (`lerTagsPedidas`,
 // só leitura): um id que não é desta conta volta 400 `unknown_tag_ids` com
@@ -29,7 +31,12 @@ import {
   resolveAuditUserId,
   ContactError,
 } from '@/lib/api/v1/contacts';
-import { lerTagsDoCorpo, TagReferenceError } from '@/lib/api/v1/tags-do-contato';
+import {
+  avisarRecusaDeEtiqueta,
+  lerModoDasTags,
+  lerTagsDoCorpo,
+  TagReferenceError,
+} from '@/lib/api/v1/tags-do-contato';
 import { ehUuid } from '@/lib/tasks/validar';
 
 export async function GET(
@@ -48,12 +55,17 @@ export async function GET(
   }
 }
 
+const ROTA_DO_PATCH = 'PATCH /api/v1/contacts/{id}';
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Fora do `try`: o `catch` registra o 400 de etiqueta com o id da chave.
+  let keyId: string | null = null;
   try {
     const ctx = await requireApiKey(request, 'contacts:write');
+    keyId = ctx.keyId;
     const { id } = await params;
     if (!ehUuid(id)) throw badRequest("'id' must be a UUID");
 
@@ -65,9 +77,20 @@ export async function PATCH(
       return fail('bad_request', 'Request body must be a JSON object', 400);
     }
 
-    // Forma de `tags`: puro, antes de qualquer consulta ou escrita.
+    // Forma de `tags` e `tags_mode`: puro, antes de qualquer consulta ou
+    // escrita. ⚠️ O `tags_mode` vale aqui também, e não só no POST: sem ele,
+    // quem aprendesse o campo no POST e o mandasse no PATCH teria as outras
+    // etiquetas APAGADAS com 200 — o campo desconhecido seria ignorado.
     const tags = lerTagsDoCorpo(body.tags);
-    if (tags && !Array.isArray(tags)) return fail('bad_request', tags.erro, 400);
+    if (tags && !Array.isArray(tags)) {
+      avisarRecusaDeEtiqueta(ROTA_DO_PATCH, 'bad_request', keyId);
+      return fail('bad_request', tags.erro, 400);
+    }
+    const modo = lerModoDasTags(body.tags_mode);
+    if (typeof modo !== 'string') {
+      avisarRecusaDeEtiqueta(ROTA_DO_PATCH, 'bad_request', keyId);
+      return fail('bad_request', modo.erro, 400);
+    }
 
     // Verify the contact is in this account before mutating anything.
     const existing = await getContactById(ctx.supabase, ctx.accountId, id);
@@ -113,7 +136,8 @@ export async function PATCH(
         ctx.accountId,
         auditUserId,
         id,
-        tagsPedidas
+        tagsPedidas,
+        { somenteAcrescentar: modo === 'add' }
       );
     }
 
@@ -121,6 +145,7 @@ export async function PATCH(
     return ok(contact);
   } catch (err) {
     if (err instanceof TagReferenceError) {
+      avisarRecusaDeEtiqueta(ROTA_DO_PATCH, err.code, keyId);
       return fail(err.code, err.message, err.status);
     }
     if (err instanceof ContactError) {

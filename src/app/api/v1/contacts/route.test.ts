@@ -23,7 +23,11 @@ const helpers = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/auth/api-context', () => ({
-  requireApiKey: vi.fn(async () => ({ supabase: { from: helpers.from }, accountId: 'conta-1' })),
+  requireApiKey: vi.fn(async () => ({
+    supabase: { from: helpers.from },
+    accountId: 'conta-1',
+    keyId: 'chave-do-make',
+  })),
 }));
 vi.mock('@/lib/api/v1/contacts', () => ({
   CONTACT_SELECT: '*',
@@ -40,16 +44,22 @@ vi.mock('@/lib/api/v1/contacts', () => ({
 // O módulo real arrasta o motor de automações (via `tag-events`).
 // `lerTagsDoCorpo` é o REAL: é a régua da forma de `tags` que estes testes
 // cobram. O resto do módulo fica de fora (arrasta o motor de automações).
-vi.mock('@/lib/api/v1/tags-do-contato', async (importOriginal) => ({
-  lerTagsDoCorpo: (await importOriginal<typeof import('@/lib/api/v1/tags-do-contato')>())
-    .lerTagsDoCorpo,
-  TagReferenceError: class TagReferenceError extends Error {
-    code = 'unknown_tag_ids';
-    status = 400;
-  },
-}));
+vi.mock('@/lib/api/v1/tags-do-contato', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/api/v1/tags-do-contato')>();
+  return {
+    // REAIS: a régua da forma de `tags`, a de `tags_mode` e o registro no log.
+    lerTagsDoCorpo: real.lerTagsDoCorpo,
+    lerModoDasTags: real.lerModoDasTags,
+    avisarRecusaDeEtiqueta: real.avisarRecusaDeEtiqueta,
+    TagReferenceError: class TagReferenceError extends Error {
+      code = 'unknown_tag_ids';
+      status = 400;
+    },
+  };
+});
 
 import { POST } from './route';
+import { TagReferenceError } from '@/lib/api/v1/tags-do-contato';
 
 const ETIQUETA = '0f0f0f0f-1111-4222-8333-444444444444';
 
@@ -114,5 +124,93 @@ describe('POST /api/v1/contacts — `tags` com forma errada é 400, sem ficha cr
     expect(res.status).toBe(200);
     expect(helpers.lerTagsPedidas).not.toHaveBeenCalled();
     expect(helpers.setContactTags).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/v1/contacts — `tags_mode`', () => {
+  const opcoesDe = () => helpers.setContactTags.mock.calls[0][5];
+
+  it('sem o campo: SUBSTITUI, como o contrato publicado', async () => {
+    const res = await post({ phone: '+5511900000000', tags: ['Typebot'] });
+    expect(res.status).toBe(200);
+    expect(opcoesDe()).toEqual({ somenteAcrescentar: false });
+  });
+
+  it.each([['replace'], [null]])('`tags_mode: %s` também substitui', async (tags_mode) => {
+    await post({ phone: '+5511900000000', tags: ['Typebot'], tags_mode });
+    expect(opcoesDe()).toEqual({ somenteAcrescentar: false });
+  });
+
+  it('⚠️ `tags_mode: "add"` só acrescenta — no contato que JÁ existe (200)', async () => {
+    const res = await post({ phone: '+5511900000000', tags: ['Typebot'], tags_mode: 'add' });
+    expect(res.status).toBe(200);
+    expect(opcoesDe()).toEqual({ somenteAcrescentar: true });
+  });
+
+  it('…e no contato novo (201) também: o modo não depende do `created`', async () => {
+    helpers.findOrCreateContact.mockResolvedValue({ id: 'c1', created: true });
+    const res = await post({ phone: '+5511900000000', tags: ['Typebot'], tags_mode: 'add' });
+    expect(res.status).toBe(201);
+    expect(opcoesDe()).toEqual({ somenteAcrescentar: true });
+  });
+
+  it.each([['append'], ['ADD'], [' add'], [true], [1], [['add']]])(
+    '⚠️ valor desconhecido (%j) é 400 ANTES de tocar o banco — nunca cai em "replace"',
+    async (tags_mode) => {
+      const res = await post({ phone: '+5511900000000', tags: ['Typebot'], tags_mode });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({
+        error: { code: 'bad_request', message: `'tags_mode' must be "replace" or "add"` },
+      });
+      expect(helpers.lerTagsPedidas).not.toHaveBeenCalled();
+      expect(helpers.findOrCreateContact).not.toHaveBeenCalled();
+      expect(helpers.setContactTags).not.toHaveBeenCalled();
+      expect(helpers.from).not.toHaveBeenCalled();
+    }
+  );
+
+  it('valor desconhecido é 400 mesmo sem `tags` (o campo foi escrito errado)', async () => {
+    const res = await post({ phone: '+5511900000000', tags_mode: 'merge' });
+    expect(res.status).toBe(400);
+    expect(helpers.findOrCreateContact).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/v1/contacts — o 400 de etiqueta vai para o log (rota, código, chave)', () => {
+  it.each([
+    ['forma de `tags`', { phone: '+5511900000000', tags: [{ name: 'Typebot' }] }],
+    ['`tags_mode` desconhecido', { phone: '+5511900000000', tags: ['x'], tags_mode: 'append' }],
+  ])('%s', async (_, corpo) => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await post(corpo);
+    expect(res.status).toBe(400);
+    expect(aviso).toHaveBeenCalledWith('[api/v1] 400 de etiqueta', {
+      rota: 'POST /api/v1/contacts',
+      code: 'bad_request',
+      keyId: 'chave-do-make',
+    });
+    // ⚠️ Nunca o corpo: ele leva nome e telefone.
+    expect(JSON.stringify(aviso.mock.calls)).not.toContain('5511900000000');
+    aviso.mockRestore();
+  });
+
+  it('`unknown_tag_ids` também', async () => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    helpers.lerTagsPedidas.mockRejectedValue(new TagReferenceError('unknown_tag_ids', 'ids desconhecidos'));
+    const res = await post({ phone: '+5511900000000', tags: [ETIQUETA] });
+    expect(res.status).toBe(400);
+    expect(aviso).toHaveBeenCalledWith('[api/v1] 400 de etiqueta', {
+      rota: 'POST /api/v1/contacts',
+      code: 'unknown_tag_ids',
+      keyId: 'chave-do-make',
+    });
+    aviso.mockRestore();
+  });
+
+  it('pedido aceito não registra nada', async () => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await post({ phone: '+5511900000000', tags: ['Typebot'], tags_mode: 'add' });
+    expect(aviso).not.toHaveBeenCalled();
+    aviso.mockRestore();
   });
 });

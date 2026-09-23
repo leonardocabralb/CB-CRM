@@ -8,9 +8,15 @@
 // ============================================================
 
 export const WEBHOOK_EVENTS = [
-  'message.received', // an inbound WhatsApp message landed
+  'message.received', // an inbound WhatsApp or Instagram message landed
   'message.status_updated', // a sent message advanced (sent/delivered/read)
-  'conversation.created', // a new conversation was opened for a contact
+  // A contact's INBOUND message opened a new 1:1 conversation (decisão do
+  // operador, 23/09/2026: só a ENTRADA do cliente). Conversa aberta pela
+  // equipe (celular pareado, eco do app do Instagram, Nova conversa, envio,
+  // API), por automação/integração, por carga histórica e grupo NÃO emitem —
+  // quem quer "card novo" assina `deal.created`. Mudar isto é mudar o texto
+  // aqui embaixo, nos dois dicionários e em docs/public-api.md e webhooks.md.
+  'conversation.created',
   // Eventos de NEGÓCIO (card do funil). Saem da fila `cb_automation_events`
   // (0933), que um gatilho de banco enche para TODO escritor de etapa —
   // arrastar, formulário, lista, painel da conversa, automações e API. Ver
@@ -34,13 +40,15 @@ export type DealWebhookEvent = (typeof DEAL_WEBHOOK_EVENTS)[number];
 /**
  * Human-readable descriptions (English, the public API's language). The
  * settings screen shows its OWN translated text per event — see
- * `webhooks-panel.tsx`.
+ * `src/components/settings/documentacao/rotulos-dos-eventos.ts` — and the
+ * two must say the same thing.
  */
 export const WEBHOOK_EVENT_DESCRIPTIONS: Record<WebhookEvent, string> = {
   'message.received': 'An inbound message was received from a contact',
   'message.status_updated':
     'A message you sent changed delivery status (sent/delivered/read/failed)',
-  'conversation.created': 'A new conversation was opened',
+  'conversation.created':
+    "A contact's inbound message opened a new conversation (conversations opened by your team, an automation or the API don't fire it)",
   'deal.created': 'A deal (pipeline card) was created',
   'deal.stage_changed': 'A deal moved to another stage or pipeline',
   'deal.status_changed': 'A deal was marked won or lost, or reopened',
