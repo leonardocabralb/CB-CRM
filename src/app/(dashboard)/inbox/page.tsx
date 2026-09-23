@@ -25,6 +25,7 @@ import { MessageThread } from "@/components/inbox/message-thread";
 import { VoltarAoFunil } from "@/components/inbox/voltar-ao-funil";
 import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
 import { urlDoInbox } from "@/lib/inbox/url";
+import { comMensagemNova } from "@/lib/inbox/ordem-da-lista";
 import {
   novoPedidoDeSalto,
   type AlvoDoSalto,
@@ -462,18 +463,14 @@ function InboxPageInner() {
         // knownConvIdsRef for why a closure flag inside the updater would
         // always read false here.
         if (knownConvIdsRef.current.has(newMsg.conversation_id)) {
+          // Hora e prévia só AVANÇAM (`comMensagemNova`): a lista reordena
+          // por elas, e a mensagem de carimbo antigo puxaria a linha para
+          // baixo.
+          const aberta = activeConversation?.id === newMsg.conversation_id;
           setConversations((prev) =>
             prev.map((c) =>
               c.id === newMsg.conversation_id
-                ? {
-                    ...c,
-                    last_message_text: newMsg.content_text ?? "",
-                    last_message_at: newMsg.created_at,
-                    unread_count:
-                      activeConversation?.id === newMsg.conversation_id
-                        ? 0
-                        : c.unread_count + 1,
-                  }
+                ? comMensagemNova(c, newMsg, aberta)
                 : c,
             ),
           );

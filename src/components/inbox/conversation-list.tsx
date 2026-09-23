@@ -57,6 +57,7 @@ import {
   MessageSquarePlus,
 } from "lucide-react";
 import { atrasoDeResposta } from "@/lib/inbox/atraso";
+import { ordenarComoOBanco } from "@/lib/inbox/ordem-da-lista";
 import { restanteParaExibir, type CanalDeSaida } from "@/lib/inbox/janela-24h";
 import { seloDaJanela, type CorDaJanela } from "@/lib/inbox/selo-da-janela";
 import { formatDistanceToNow } from "date-fns";
@@ -621,9 +622,13 @@ export function ConversationList({
     [conversations, filtros.status, search],
   );
 
+  // ⚠️ REORDENADA a cada render, na ordem da consulta: o tempo real só
+  // atualiza as linhas no lugar, e sem isto a conversa que recebe mensagem
+  // nova ficava onde a carga a deixou — abaixo da dobra (ver
+  // `ordem-da-lista.ts`).
   const filtered = useMemo(
     () =>
-      aplicarFiltros(conversations, filtros, {
+      ordenarComoOBanco(aplicarFiltros(conversations, filtros, {
         favoritas,
         etapaPorContato,
         funilPorEtapa,
@@ -636,7 +641,7 @@ export function ConversationList({
         agoraMs: agora,
         // `null` neutraliza o filtro "Inadimplentes" — ver `idsInadimplentes`.
         inadimplentes: idsInadimplentesDoAsaas,
-      }),
+      })),
     [
       conversations,
       filtros,
