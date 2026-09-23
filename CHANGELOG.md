@@ -57,6 +57,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **Etiquetas e modelos da conta aparecem para toda a equipe em
+  Configurações.** O gerenciador de etiquetas, a lista de modelos e as
+  contagens da visão geral mostravam só o que o próprio membro tinha criado
+  (quem não era o dono via "0"). Agora mostram o catálogo da conta, e os
+  controles de escrita, que são de administrador (criar ou apagar etiqueta;
+  criar, sincronizar, editar, reenviar ou apagar modelo), somem da tela de
+  quem não é.
+
 - **Telefone digitado sem o código do país não vai mais para outro país.**
   O formulário de contato, a ficha e as duas planilhas (importar contatos e
   o CSV do disparo) gravavam o número como foi escrito: "(81) 98874-5316"
