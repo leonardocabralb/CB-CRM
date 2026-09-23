@@ -908,7 +908,7 @@ de teste) · **A** = alto (perda de mensagem/dado possível).
 | 9 | Receber mídia | endpoint igual; `mediaKey` mais robusto desde a 2.3.3 | B | T4, T5 |
 | 10 | Tamanho declarado do anexo (`too_large`, "sob demanda") | forma de `fileLength` pode mudar (4.4) | M (degradação: baixa antes de decidir) | T5, ajuste 4 |
 | 11 | Pré-visualização de mídia no CRM | nada (é o nosso Storage) | B | — |
-| 12 | Link preview no envio | igual (`linkPreview` ligado por padrão) | B | T6 |
+| 12 | Link preview no envio | **mudou**: a 2.4 monta prévia no formato de ANÚNCIO (`externalAdReply`), e parte dos Android não exibia a mensagem. Desde 23/09 o CRM manda `linkPreview: false` (ver `docs/PLANO-link-sem-previa.md`) | B | T6 |
 | 13 | Citação — preview no aparelho do cliente | busca por `key.id` igual; `participant` montado pela v7 em conversa LID | M (cosmético, visível) | T7, T8 |
 | 14 | Reação (enviar) | passa por `sendMessageWithTyping` com bypass `@lid` | M | T9 |
 | 15 | Reação (receber) | nada | B | — |
@@ -994,7 +994,7 @@ Evolution e do CRM abertos. Registrar resultado e data em cada linha.
 | T3 | Nota de voz (gravador e acervo), com e sem citação | toca como voz; com citação, encadeada | 09/09: gravador ✅ (acervo e com citação — 10/09) |
 | T4 | Cliente manda foto | aparece no CRM com arquivo no Storage | 09/09 19:06 (cliente real, antes da ativação): entrou sem arquivo por causa do portão 503 — recuperada às 19:34; repetir depois da ativação |
 | T5 | Cliente manda documento >16 MiB e outro >50 MiB | o primeiro entra; o segundo vira `too_large` com nome; **anotar a forma de `fileLength`** | |
-| T6 | Texto com URL | preview do link no cliente | 09/09 ✅ |
+| T6 | Texto com URL | o link chega ao cliente (sem prévia desde 23/09) | 09/09 ✅ num iPhone; em Android falhou — ver `docs/PLANO-link-sem-previa.md` |
 | T7 / T8 | Responder citando mensagem do cliente / nossa | o cliente vê o preview da citação | 09/09: **T8 ✅**; **T7 ✅ às 21:14** com a imagem `evolution-api-cb` (P10) — antes dela a citação do lead chegava sem `contextInfo` (#2713) |
 | T9 | Reagir a mensagem do cliente | reação aparece no celular dele | 09/09: reação DO lead (❤️) entrou em `message_reactions` ✅; a nossa para ele — 10/09 |
 | T10 / T11 | Apagar para todos: mensagem do CRM / do celular | some no cliente; `messages.delete` volta | 09/09 ✅ nos dois sentidos (celular e lead); a 2.4 manda um `messages.edited` vazio antes — ignorado |
