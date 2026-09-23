@@ -463,7 +463,8 @@ upstream sobrescrevê-los:
 | `src/lib/api-keys/scopes.ts`, `docs/public-api.md`, `src/components/settings/api-keys-settings.tsx` | os doze escopos das features do fork (tarefas/agendadas/negócios/reuniões/anotações/campos personalizados) e a rolagem da lista no diálogo — o upstream tem só os 8 originais |
 | `src/lib/deals/create-deal.ts` | devolve `deal` (a linha inserida), não só `ok/created` — a rota v1 serializa a resposta a partir dele —, e aceita `tituloFixadoEm` (1007): a v1 fixa o título, o roteador e o passo `create_deal` derivam |
 | `src/components/settings/settings-sections.ts`, `settings-chip.tsx`, `src/app/(dashboard)/settings/page.tsx` | a seção `integracoes` no rail e a variante `err` (vermelha) do chip. Mais (23/09/2026) `api: <ApiPanel/>` no lugar de `<ApiKeysSettings/>` e o `go()` apagando o parâmetro `aba` ao trocar de seção |
-| `src/lib/webhooks/events.ts`, `deliver.ts` (23/09/2026) | os três eventos `deal.*` e `DEAL_WEBHOOK_EVENTS`; `dispatchWebhookEvent` GENÉRICO sobre `WebhookEventData` com o 5º parâmetro `opcoes` (`id`/`occurredAt`), os `CABECALHO_*` e `pedidoDeEntrega` (o botão de teste assina pelo mesmo). Um merge que traga o `deliver.ts` cru devolve o `data: unknown` e desliga a cobrança do contrato nos pontos de disparo |
+| `src/lib/webhooks/events.ts`, `deliver.ts` (23/09/2026) | os três eventos `deal.*` e `DEAL_WEBHOOK_EVENTS`; `dispatchWebhookEvent` GENÉRICO sobre `WebhookEventData` com o 5º parâmetro `opcoes` (`id`/`occurredAt`), os `CABECALHO_*` e `pedidoDeEntrega` (o botão de teste assina pelo mesmo). Um merge que traga o `deliver.ts` cru devolve o `data: unknown` e desliga a cobrança do contrato nos pontos de disparo. Mais (1040) o RETORNO `ResultadoDoDisparo` (`tentado`/`sem_destino`/`falhou_antes`): a fila do funil só dá o aviso por encerrado quando a tentativa aconteceu — o `deliver.ts` cru volta a `Promise<void>` e a leitura de endpoints que falha volta a parecer "sem destino" |
+| `src/lib/auth/api-context.ts` (1040) | `requireApiKey` devolve `clienteDaApi()` (`src/lib/api/v1/cliente-da-api.ts`, cabeçalho `x-cb-origem: api`), nunca o `supabaseAdmin()` compartilhado. Um merge que traga o arquivo cru do upstream faz os movimentos de card pela API voltarem a sair `system` nos avisos `deal.*`, sem erro nenhum — há pino em `cliente-da-api.test.ts` |
 | `src/components/settings/api-keys-settings.tsx` (23/09/2026) | virou o CORPO da aba Chaves: sem `SettingsPanelHead` (o cabeçalho é do `ApiPanel`), com o "Nova chave" no topo da aba e o estado de carga que falhou |
 | `src/app/api/v1/contacts/route.ts`, `[id]/route.ts`, `[id]/tags/route.ts`, `src/lib/api/v1/contacts.ts` (23/09/2026) | a etiqueta por NOME OU ID (`lerTagsPedidas` antes de qualquer escrita, `TagReferenceError`), o 400 para item de `tags` que não é string e para id de contato malformado. Ver "Tag ADITIVA na API v1" |
 | `src/lib/ai/types.ts`, `config.ts`, `structured.ts`, `defaults.ts`, `src/lib/cb-radar/worker.ts`, `src/app/api/ai/config/route.ts` | o modelo do Radar separado do modelo de chat (946): `radarModel` no tipo e em `CONFIG_COLUMNS`, o parâmetro `model` do `generateStructured`, `AI_PROVIDER_MODELS`, e a validação do modelo do Radar no save |
@@ -5967,11 +5968,25 @@ não conseguia receber no n8n "o lead mudou de etapa". O que morde código novo:
   dos lembretes, do batimento e das retomadas de "Aguardar". No SIGTERM
   gracioso o Next espera os `after()` pendentes, mas só até o
   `stop_grace_period` do Swarm (10 s, o padrão — o `docker-stack.yml` não o
-  muda); depois vem o SIGKILL. Processo que morre antes perde os avisos das
-  linhas já reivindicadas, sem rastro (a linha fica processada) — é a régua
-  de "uma tentativa" dos webhooks. ⚠️ No cron essa janela CRESCEU: a
-  entrega só começa quando a resposta sai, depois do ciclo inteiro. Fechá-la
-  pede registrar a entrega pendente em lugar durável, que é outra obra.
+  muda); depois vem o SIGKILL.
+- ⚠️⚠️ **O aviso é DURÁVEL desde a 1040 — `deal.*` sai PELO MENOS UMA VEZ,
+  com o mesmo id.** A reivindicação grava `webhooks_pendente_desde` NA MESMA
+  escrita de `processado_em` (UM carimbo por ciclo, passado à entrega); a
+  entrega o limpa, com a cerca `= carimbo`, quando a tentativa ACONTECEU —
+  sucesso ou falha HTTP (continua UMA tentativa por endpoint), ou ninguém
+  assina. Leitura de endpoints/catálogo que falha, disparo `falhou_antes` e
+  processo morto no meio deixam a linha pendente, e o CRON (só ele, nunca o
+  aviso imediato) a reentrega depois de 10 min por compare-and-swap no
+  carimbo (`reentregar-eventos-de-funil.ts`), até `TETO_DE_REENTREGAS` (5,
+  em `webhooks_tentativas` — `tentativas`/`erro` são do motor); no teto a
+  linha FICA marcada, como registro. A poda poupa o pendente abaixo do
+  teto. SEM backfill: o NULL do acervo é o que impede reenviar 30 dias.
+  ⚠️⚠️ ORDEM DE DEPLOY: a migration ANTES do app — sem a coluna, o
+  PostgREST recusa o UPDATE da reivindicação e NENHUMA automação de funil
+  dispara. ⚠️ O preço é a repetição (morto depois do POST e antes de
+  limpar): a doc manda deduplicar pelo `id`, e dizia "never duplicated" até
+  aqui. Há pinos (`entregar-eventos-de-funil.chamadores.test.ts`,
+  `origem-e-aviso-duravel-1040.test.ts`).
 - ⚠️⚠️ **O INSERT do card entra na fila como `deal_stage_changed` sem "de
   onde"** (a regra do Kommo que as automações usam); para quem integra, isso é
   `deal.created` (`eventoDaLinha`). Medido: 11 dos 12 últimos eventos da
@@ -5979,8 +5994,9 @@ não conseguia receber no n8n "o lead mudou de etapa". O que morde código novo:
   ⚠️ Card CRIADO já numa etapa de ganho/perdido nasce com o status e gera SÓ
   `deal.created`: o gatilho da 950 é BEFORE e a fila grava uma linha só.
 - ⚠️ **`stage` é a etapa DESTE evento; `deal` é lido NA HORA DA ENTREGA** e
-  pode já ter andado. Leitura do catálogo que FALHA não entrega nada (log):
-  nulo, para quem recebe, quer dizer "apagado".
+  pode já ter andado. Leitura do catálogo que FALHA não entrega nada (a
+  linha fica pendente para a reentrega): nulo, para quem recebe, quer dizer
+  "apagado".
 - ⚠️ **O `id` do envelope é o id da linha da fila** (`opcoes.id` de
   `dispatchWebhookEvent`), igual a `data.event_id`, e `occurred_at` é o
   `criado_em` do fato. Nos eventos de mensagem continua um uuid por envio.
@@ -5988,8 +6004,19 @@ não conseguia receber no n8n "o lead mudou de etapa". O que morde código novo:
   gatilho resolve) — e vem NULO para lead de formulário/Calendly que ainda não
   escreveu. `source`: `user` (tela), `channel` (o roteador abriu o card — na
   primeira mensagem do cliente OU no primeiro envio da equipe, inclusive por
-  `POST /api/v1/messages`), `automation` ("Criar negócio"), `system` (a API
-  de negócios e os passos "Mover card"/"Marcar status" — o banco não separa).
+  `POST /api/v1/messages`), `automation` ("Criar negócio", "Mover card",
+  "Marcar status"), `api` (`/api/v1/deals`) e `system` (a sobra: SQL à mão).
+  ⚠️⚠️ Desde a 1040 o gatilho decide NESTA ordem: `auth.uid()` → `cb.cadeia`
+  (a RPC das automações a carimba sempre) → `source` do INSERT → cabeçalho
+  `x-cb-origem: api` → resto. Cadeia e source vêm ANTES do cabeçalho: o que
+  uma automação faz é `automation` mesmo dentro de um pedido da API. O
+  cabeçalho vem do cliente PRÓPRIO das rotas v1 (`clienteDaApi`, via
+  `requireApiKey`) e chega ao gatilho pela GUC `request.headers` do
+  PostgREST — lido num bloco com EXCEPTION, porque um `::jsonb` sobre valor
+  malformado fora dele derrubaria toda escrita em `deals`. Rota v1 escreve
+  pelo `ctx.supabase`; um `supabaseAdmin()` ali sai `system` (pino). ⚠️ A
+  marca é RÓTULO, não credencial. A trilha da 912 (`cb_lead_events`) ainda
+  mistura API e automação em `sistema` — ficou de fora.
 - ⚠️⚠️ **`dados-dos-eventos.ts` é o contrato, e o compilador o cobra nas três
   pontas**: `dispatchWebhookEvent` virou genérico sobre ele (os 8 pontos de
   disparo antigos compilam sem mudança), `exemplos.ts` é tipado por ele, e a

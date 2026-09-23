@@ -7,8 +7,8 @@ import { __resetRateLimitForTests, RATE_LIMITS } from "@/lib/rate-limit";
 
 // Mock the service-role client factory — requireApiKey only stashes
 // the returned client in the context; tests never call through it.
-vi.mock("@/lib/flows/admin-client", () => ({
-  supabaseAdmin: () => ({ __isMockAdminClient: true }),
+vi.mock("@/lib/api/v1/cliente-da-api", () => ({
+  clienteDaApi: () => ({ __isMockClienteDaApi: true }),
 }));
 
 // Mock the store so we control which row a hash resolves to.
@@ -94,6 +94,8 @@ describe("requireApiKey", () => {
     expect(ctx.keyId).toBe("key-1");
     expect(ctx.scopes).toEqual(["messages:send"]);
     expect(touchLastUsed).toHaveBeenCalledWith("key-1");
+    // O cliente PRÓPRIO da API (marca a origem `api`), não o admin compartilhado.
+    expect(ctx.supabase).toEqual({ __isMockClienteDaApi: true });
   });
 
   it("accepts a bare key without the 'Bearer ' prefix", async () => {

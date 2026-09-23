@@ -2,14 +2,17 @@
 // Entrega dos eventos `deal.*` — a E/S de `eventos-de-funil.ts`.
 //
 // Quem chama é o DRENO da fila do funil (`drain-events.ts`), UMA vez por
-// ciclo, com as linhas que ELE reivindicou. A reivindicação é o que garante
-// que o mesmo movimento de card não sai duas vezes: o aviso imediato do
-// navegador e o cron drenam ao mesmo tempo, e só quem carimbou a linha a
-// entrega. Por isso o `id` do envelope é o id da linha — estável.
+// ciclo, com as linhas que ELE reivindicou — e a REENTREGA do cron
+// (`reentregar-eventos-de-funil.ts`), com as que ficaram pendentes. A
+// reivindicação é o que impede o aviso imediato do navegador e o cron,
+// drenando ao mesmo tempo, de entregarem o mesmo movimento em dobro: só quem
+// carimbou a linha a entrega. O `id` do envelope é o id da linha — estável,
+// inclusive na reentrega.
 //
 // Por conta, nesta ordem:
 //   1. UMA consulta: há endpoint ativo assinando algum `deal.*`? Sem nenhum,
-//      nada mais é lido — a conta que não integra não paga o catálogo.
+//      nada mais é lido — a conta que não integra não paga o catálogo (paga
+//      um UPDATE, que encerra a pendência das linhas dela).
 //   2. Só as linhas cujo evento ALGUÉM assina viram aviso.
 //   3. O catálogo é lido em LOTE (negócios, responsáveis, funis, etapas,
 //      contatos com etiquetas e campos personalizados), sempre recortado pela
@@ -24,8 +27,27 @@
 //
 // ⚠️ Roda DEPOIS da resposta: o dreno a agenda com `after()` e só a aguarda
 // quando não há requisição onde agendar (script, teste). Ver o cabeçalho de
-// `drain-events.ts` — inclusive a janela em que um processo morto perde os
-// avisos já reivindicados, que o `after()` não fechou.
+// `drain-events.ts`.
+//
+// ⚠️⚠️ O AVISO É DURÁVEL (1040). Quem chama já gravou, na MESMA escrita da
+// reivindicação, `webhooks_pendente_desde = carimbo`; este módulo LIMPA a
+// coluna — sempre com a cerca de posse `= carimbo` — quando a tentativa
+// aconteceu, e só então:
+//   - conta sem endpoint `deal.*`, ou linha cujo evento ninguém assina: limpa
+//     em lote (a resposta "ninguém quer" é uma resposta);
+//   - cada linha, depois do SEU disparo, com sucesso OU falha HTTP (`tentado`
+//     ou `sem_destino`): continua sendo UMA tentativa por endpoint;
+//   - leitura dos endpoints ou do catálogo que FALHA, disparo que falhou
+//     antes do POST (`falhou_antes`) ou linha que estourou: NÃO limpa. A
+//     linha fica pendente e o cron a reentrega com o MESMO id
+//     (`reentregar-eventos-de-funil.ts`). Até a 1040 esses casos descartavam
+//     o aviso, só com log.
+// Processo que morre antes da limpeza deixa a linha pendente — é o que fecha
+// a janela de perda. O preço é a repetição: morto DEPOIS do POST e antes de
+// limpar, o aviso sai de novo, com o mesmo id (a doc manda deduplicar).
+// A cerca existe porque a reentrega pode ter tomado a linha (novo carimbo)
+// enquanto esta entrega ainda corria: limpar sem cerca apagaria a pendência
+// DELA.
 //
 // ⚠️ Nunca lança, e continua importando: na queda para o `await` uma exceção
 // aqui atravessaria o dreno, que promete nunca lançar — e derrubaria o ciclo
@@ -49,7 +71,8 @@ import type { CbAutomationEvent, CustomField } from '@/types';
  * lote de 50 avisos custa ~ceil(50/4) = 13 rodadas de 5 s (65 s) no pior
  * caso — por conta, e as contas vão em série —; um por vez custaria 50. Isso
  * já não segura ninguém (a entrega roda depois da resposta, `drain-events.ts`),
- * mas ainda é o tempo em que um SIGKILL do rollout perde avisos: mais
+ * mas ainda é o tempo em que um SIGKILL do rollout interrompe entregas — que
+ * o cron reentrega (1040), com o risco de repetir o que já tinha saído: mais
  * paralelismo encurta a janela, e "todas de uma vez" dispararia 50 conexões
  * contra o mesmo n8n.
  */
@@ -233,6 +256,28 @@ async function lerCatalogo(
   return catalogo;
 }
 
+/**
+ * Dá por encerrado o aviso das linhas: `webhooks_pendente_desde` → NULL, só
+ * onde ele ainda é o carimbo DESTA entrega (a reentrega pode ter tomado a
+ * linha). Nunca lança; falhar aqui deixa a linha pendente, e o preço é uma
+ * repetição com o mesmo id — o lado seguro.
+ */
+async function encerrarPendencia(db: SupabaseClient, ids: string[], carimbo: string): Promise<void> {
+  if (ids.length === 0) return;
+  try {
+    const { error } = await db
+      .from('cb_automation_events')
+      .update({ webhooks_pendente_desde: null })
+      .in('id', ids)
+      .eq('webhooks_pendente_desde', carimbo);
+    if (error) {
+      console.error(`[webhooks] eventos de funil: ${ids.length} aviso(s) entregue(s) continuam marcados como pendentes`, error);
+    }
+  } catch (err) {
+    console.error(`[webhooks] eventos de funil: ${ids.length} aviso(s) entregue(s) continuam marcados como pendentes`, err);
+  }
+}
+
 /** Roda `fn` sobre os itens, começando em ordem, com no máximo `limite` ao mesmo tempo. */
 async function emParalelo<T>(itens: T[], limite: number, fn: (item: T) => Promise<void>): Promise<void> {
   let proximo = 0;
@@ -248,7 +293,8 @@ async function emParalelo<T>(itens: T[], limite: number, fn: (item: T) => Promis
 async function entregarDaConta(
   db: SupabaseClient,
   conta: string,
-  linhas: CbAutomationEvent[]
+  linhas: CbAutomationEvent[],
+  carimbo: string
 ): Promise<void> {
   const { data: endpoints, error } = await db
     .from('webhook_endpoints')
@@ -256,11 +302,11 @@ async function entregarDaConta(
     .eq('account_id', conta)
     .eq('is_active', true)
     .overlaps('events', [...DEAL_WEBHOOK_EVENTS]);
-  if (error) {
-    console.error(`[webhooks] eventos de funil: leitura dos endpoints falhou — ${linhas.length} aviso(s) não entregue(s)`, error);
+  if (error || !endpoints) {
+    // Nada saiu: as linhas ficam PENDENTES, e o cron as reentrega.
+    console.error(`[webhooks] eventos de funil: leitura dos endpoints falhou — ${linhas.length} aviso(s) ficam pendentes para a reentrega`, error);
     return;
   }
-  if (!endpoints || endpoints.length === 0) return;
 
   const assinados = new Set<DealWebhookEvent>();
   for (const e of endpoints as { events: string[] | null }[]) {
@@ -274,39 +320,60 @@ async function entregarDaConta(
   const aEntregar = linhas
     .filter((l) => assinados.has(eventoDaLinha(l)))
     .sort((a, b) => Date.parse(a.criado_em) - Date.parse(b.criado_em));
+
+  // Conta sem endpoint `deal.*`, ou evento que ninguém assina: não há o que
+  // entregar, e isso é resposta — a pendência dessas linhas acaba aqui.
+  const entregar = new Set(aEntregar.map((l) => l.id));
+  await encerrarPendencia(
+    db,
+    linhas.filter((l) => !entregar.has(l.id)).map((l) => l.id),
+    carimbo
+  );
   if (aEntregar.length === 0) return;
 
   const catalogo = await lerCatalogo(db, conta, aEntregar);
   if (!catalogo) {
-    // As linhas já foram reivindicadas pelo dreno: estes avisos não saem
-    // mais. É a mesma régua de "uma tentativa, sem retentativa" do resto dos
-    // webhooks — e é melhor que um aviso afirmando "apagado" sobre o que existe.
+    // Nenhum aviso saiu: as linhas ficam PENDENTES, e o cron as reentrega
+    // (com o mesmo id). É melhor que um aviso afirmando "apagado" sobre o
+    // que existe.
     console.error(
-      `[webhooks] eventos de funil: leitura do catálogo falhou — ${aEntregar.length} aviso(s) da conta ${conta} não entregue(s)`
+      `[webhooks] eventos de funil: leitura do catálogo falhou — ${aEntregar.length} aviso(s) da conta ${conta} ficam pendentes para a reentrega`
     );
     return;
   }
 
   await emParalelo(aEntregar, ENTREGAS_SIMULTANEAS, async (linha) => {
-    const aviso = montarAviso(linha, catalogo);
-    await dispatchWebhookEvent(db, conta, aviso.evento, aviso.data, {
-      id: linha.id,
-      occurredAt: linha.criado_em,
-    });
+    // Por linha: uma que estoura (ex.: `montarAviso` sobre dado estranho) não
+    // pode parar o trabalhador e deixar as seguintes sem tentativa.
+    try {
+      const aviso = montarAviso(linha, catalogo);
+      const resultado = await dispatchWebhookEvent(db, conta, aviso.evento, aviso.data, {
+        id: linha.id,
+        occurredAt: linha.criado_em,
+      });
+      // `falhou_antes` = nenhum POST saiu: fica pendente para a reentrega.
+      if (resultado !== 'falhou_antes') await encerrarPendencia(db, [linha.id], carimbo);
+    } catch (err) {
+      console.error(`[webhooks] eventos de funil: aviso ${linha.id} estourou — fica pendente para a reentrega`, err);
+    }
   });
 }
 
 /**
- * Entrega aos endpoints `deal.*` as linhas da fila do funil que o dreno
- * reivindicou. Nunca lança.
+ * Entrega aos endpoints `deal.*` as linhas da fila do funil que o dreno (ou a
+ * reentrega) reivindicou. Nunca lança.
  *
- * ⚠️ Recebe só o que o dreno reivindicou — ≤ `LOTE` (50) linhas —, e as
+ * `carimbo` é o valor que QUEM REIVINDICOU gravou em
+ * `webhooks_pendente_desde` — a cerca de posse da limpeza (ver o cabeçalho).
+ *
+ * ⚠️ Recebe só o que foi reivindicado — ≤ `LOTE` (50) linhas —, e as
  * leituras em lote por `.in()` contam com isso (URL curta, resposta abaixo do
  * teto de 1000). Quem chamar com mais linhas reparte antes.
  */
 export async function entregarEventosDeFunil(
   db: SupabaseClient,
-  linhas: CbAutomationEvent[]
+  linhas: CbAutomationEvent[],
+  carimbo: string
 ): Promise<void> {
   try {
     if (linhas.length === 0) return;
@@ -318,9 +385,10 @@ export async function entregarEventosDeFunil(
     }
     for (const [conta, daConta] of porConta) {
       try {
-        await entregarDaConta(db, conta, daConta);
+        await entregarDaConta(db, conta, daConta, carimbo);
       } catch (err) {
-        // Uma conta que estoura não leva as outras junto.
+        // Uma conta que estoura não leva as outras junto. O que dela não foi
+        // limpo fica pendente para a reentrega.
         console.error(`[webhooks] eventos de funil: entrega da conta ${conta} falhou`, err);
       }
     }

@@ -57,6 +57,19 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **Avisos de negócio (`deal.*`): quem moveu pela API passa a se chamar
+  `api`, e um aviso interrompido por reinício sai de novo.** Até aqui o
+  `source` `system` misturava o card movido pela API com o "Mover card" das
+  automações, e filtrar um (para o fluxo do n8n não entrar em laço)
+  descartava o outro — o Calendly levando o lead a "Reunião Agendada", por
+  exemplo. Agora a API sai `api`, os passos de mover e marcar das
+  automações saem `automation`, e `system` fica só para o resto. E o aviso
+  que o servidor não chegou a tentar entregar (reinício no meio, leitura do
+  banco que falhou) é reenviado uns 10 minutos depois, com o **mesmo `id`**
+  — descarte repetição por ele. **Migration necessária:**
+  `supabase/migrations/1040_cb_origem_api_e_aviso_duravel_do_funil.sql`,
+  aplicada **antes** de publicar esta versão: sem ela, as automações de
+  funil param.
 - **Caixa de entrada: a conversa que recebe mensagem sobe para o topo.**
   Até aqui a hora e a prévia da linha mudavam, mas ela ficava na posição em
   que estava quando a página abriu — uma conversa reaberta por mensagem

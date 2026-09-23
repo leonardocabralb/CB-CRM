@@ -193,9 +193,13 @@ mudança (`source`). O formato completo, com exemplo, está em
 - **`source`**: `user` é alguém nas telas do CRM; `channel` é a conexão
   abrindo o card — na primeira mensagem do cliente **ou** no primeiro envio
   da equipe (pela tela, pelo celular pareado ou por `POST /api/v1/messages`),
-  então não quer dizer "lead que chegou"; `automation` é o passo "Criar
-  negócio"; `system` são as escritas diretas em negócio pela API e os passos
-  "Mover card de etapa" e "Marcar ganho ou perdido" das automações.
+  então não quer dizer "lead que chegou"; `automation` são os passos
+  "Criar negócio", "Mover card de etapa" e "Marcar ganho ou perdido" das
+  automações; `api` é a API de negócios (`POST`/`PATCH /api/v1/deals`) —
+  filtre esse valor se o seu fluxo mover o card pela API, senão ele entra em
+  laço —; e `system` é o resto (uma correção feita direto no banco, por
+  exemplo). Até a migration `1040`, `system` misturava a API com os passos
+  de mover e marcar das automações.
 - **`channel_id` pode vir vazio**: é o número da conversa do contato no
   momento do movimento, e o lead que ainda não conversou por nenhuma conexão
   não tem um — o que chegou por webhook recebido (Typebot) ou pelo Calendly
@@ -235,9 +239,17 @@ no n8n e no Make está em **Configurações → API → Documentação**.
 
 ### Limitações que você precisa conhecer
 
-- **Uma tentativa por evento**, com 5 segundos de limite e **sem nova
-  tentativa**. Trate entrega perdida como possível e reconcilie pelos
+- **Uma tentativa por evento e por endereço**, com 5 segundos de limite:
+  se o seu sistema responder erro (ou não responder), o aviso **não é
+  repetido**. Trate entrega perdida como possível e reconcilie pelos
   endpoints de leitura da [API pública](./public-api.md) quando importar.
+- **Os avisos de negócio (`deal.*`) saem pelo menos uma vez.** O CRM
+  registra a tentativa; o aviso cuja tentativa não aconteceu (o servidor
+  reiniciou no meio, uma leitura do banco falhou) sai de novo uns 10
+  minutos depois, com o **mesmo `id`** e a hora real do fato — até 5 vezes.
+  Um reinício logo depois de o seu sistema responder também o faz sair de
+  novo. **Descarte repetição pelo `id`.** Os avisos de mensagem continuam
+  sem esse registro.
 - **Quinze falhas seguidas desligam o endereço sozinho.** Religar pela tela
   zera o contador. (O **Enviar teste** não conta como falha.) O contador é
   do ENDEREÇO, não do evento: uma fila de avisos de negócio represada (com o

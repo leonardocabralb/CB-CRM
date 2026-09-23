@@ -25,11 +25,17 @@
 // explicitly filtered by `ctx.accountId` (the same discipline the
 // dashboard's send route already follows). The key never escalates
 // past its own account because the account is fixed at lookup time.
+//
+// ⚠️ O cliente é o PRÓPRIO da API (`clienteDaApi`), nunca o
+// `supabaseAdmin()` compartilhado de `flows/admin-client.ts`: ele manda o
+// cabeçalho `x-cb-origem: api`, que o gatilho da fila do funil (1040) lê
+// para dizer, no aviso `deal.*`, que o card foi movido PELA API. Ver
+// `src/lib/api/v1/cliente-da-api.ts`.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { supabaseAdmin } from '@/lib/flows/admin-client';
+import { clienteDaApi } from '@/lib/api/v1/cliente-da-api';
 import { findActiveKeyByHash, touchLastUsed } from '@/lib/api-keys/store';
 import { hashApiKey, looksLikeApiKey } from '@/lib/api-keys/keys';
 import { hasScope, type ApiScope } from '@/lib/api-keys/scopes';
@@ -39,7 +45,10 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 export interface ApiKeyContext {
   /** Discriminant — lets shared logic tell key auth from cookie auth. */
   authType: 'api_key';
-  /** Service-role Supabase client. RLS-bypassing; scope by accountId. */
+  /**
+   * Service-role Supabase client. RLS-bypassing; scope by accountId.
+   * É o da API (`clienteDaApi`), que marca a origem dos movimentos de card.
+   */
   supabase: SupabaseClient;
   /** The account this key belongs to. */
   accountId: string;
@@ -109,7 +118,7 @@ export async function requireApiKey(
 
   return {
     authType: 'api_key',
-    supabase: supabaseAdmin(),
+    supabase: clienteDaApi(),
     accountId: row.account_id,
     keyId: row.id,
     scopes: row.scopes,

@@ -829,7 +829,10 @@ the dispatch code is typed against):
 
 - `id` — on the three `deal.*` events it is the id of the underlying fact
   (the same value as `data.event_id`), so it is stable and safe to dedupe
-  on. On the message/conversation events it is a fresh uuid per dispatch.
+  on — and you **must** dedupe on it: a `deal.*` delivery cut short by a
+  server restart is sent again with the same `id` (see **Delivery
+  semantics**). On the message/conversation events it is a fresh uuid per
+  dispatch.
 - `occurred_at` — on `deal.*` it is when the card changed (the database
   clock), even if the delivery goes out later; on the other events it is
   the dispatch time.
@@ -857,7 +860,7 @@ The three `deal.*` events share one shape:
 {
   "event_id": "…",                 // same as the envelope `id`
   "occurred_at": "2026-09-23T14:05:00.000Z",
-  "source": "user",                // user | channel | automation | system (see below)
+  "source": "user",                // user | channel | automation | api | system (see below)
   "deal_id": "…",
   "deal": { /* GET /api/v1/deals/{id} shape — the deal AS OF DELIVERY, null if deleted */ },
   "assignee": { "user_id": "…", "name": "Ana" },   // or null
@@ -887,15 +890,18 @@ the change:
   happens on the contact's **first message** *or* on the team's **first
   send** to them — from the CRM screens, from the paired phone, or through
   `POST /api/v1/messages` — so `channel` does not mean "inbound lead";
-- `automation` — an automation's "Create Deal" step;
-- `system` — direct deal writes through this API (`POST`/`PATCH
-  /api/v1/deals`) **and** an automation's "Move deal to stage" / "Mark won
-  or lost" steps. The database does not tell those two apart.
+- `automation` — an automation's "Create Deal", "Move deal to stage" or
+  "Mark won or lost" step — including an automation that one of your API
+  calls set off (a tag applied through this API, for instance);
+- `api` — deal writes through this API (`POST`/`PATCH /api/v1/deals`);
+- `system` — anything else done without a signed-in user (a fix run
+  straight in the database, for instance). Before migration `1040` this
+  value also covered the API and the automations' move/mark steps.
 
 ⚠️ If your flow reacts to `deal.stage_changed` by moving the card through
-this API, that move emits another event (`source: "system"`): make sure the
-flow cannot loop. Filtering out `system` also drops the moves made by
-automations' "Move deal to stage" step.
+this API, that move emits another event (`source: "api"`): filter `api`
+out so the flow cannot loop. The moves made by automations come as
+`automation` and are not affected by that filter.
 
 Headers: `X-Wacrm-Event`, `X-Wacrm-Webhook-Id`, and `X-Wacrm-Signature`.
 
@@ -919,14 +925,27 @@ const ok = expected.length === v1.length &&
 
 ### Delivery semantics
 
-Delivery is **best-effort**: a **single attempt** per event with a
-5-second timeout, and **redirects are not followed** (a 3xx counts as a
-failure). Nothing is retried, so a delivery is never duplicated by the CRM
-itself — but the *source* can repeat a fact: providers re-send and
-re-order status callbacks, so the same `message.status_updated` may arrive
-more than once (with a new `id`) or out of order. Deliveries run in
-parallel, so **don't assume ordering** — on `deal.*`, order by
-`occurred_at` and dedupe on `id`. `message.status_updated` covers messages
+Each endpoint gets a **single attempt** per event with a 5-second
+timeout, and **redirects are not followed** (a 3xx counts as a failure).
+An endpoint that answers with an error (or does not answer) is **not**
+retried: that notification is lost for it.
+
+- **`message.*` and `conversation.created`** are best-effort: if the
+  server stops before the attempt is made, the notification is lost. The
+  CRM never sends them twice itself — but the *source* can repeat a fact:
+  providers re-send and re-order status callbacks, so the same
+  `message.status_updated` may arrive more than once (with a new `id`) or
+  out of order.
+- **`deal.*`** are delivered **at least once**: the attempt is recorded,
+  and a notification whose attempt did not happen — the server restarted in
+  the middle, or a database read failed — is sent again by the scheduler
+  after about 10 minutes, with the **same `id`** and the original
+  `occurred_at` (up to 5 times; a late event still goes out). A restart
+  right after your endpoint answered and before the CRM recorded it also
+  sends it again. **Dedupe on `id`.**
+
+Deliveries run in parallel, so **don't assume ordering** — on `deal.*`,
+order by `occurred_at` and dedupe on `id`. `message.status_updated` covers messages
 the CRM stores (inbox + API sends), not broadcast-only sends. Each
 consecutive failure increments `failure_count`; after 15 consecutive
 failures the endpoint is auto-disabled (`is_active: false`) — re-enable it
@@ -935,10 +954,10 @@ counter belongs to the **endpoint**, not to the event: when the `deal.*`
 queue has been held back (the scheduler down, for instance) its backlog is
 delivered at once, and if your receiver is down at that moment the backlog
 alone can reach the 15 failures and switch the endpoint off — for every
-event it subscribes to, `message.*` included. Durable
-retry-with-backoff (a delivery queue) is a future enhancement; today, treat
-missed deliveries as possible and reconcile with the read endpoints when it
-matters.
+event it subscribes to, `message.*` included. Retrying a delivery your
+endpoint *rejected* (retry-with-backoff) is a future enhancement; today,
+treat missed deliveries as possible and reconcile with the read endpoints
+when it matters.
 
 **Testing.** *Settings → Webhooks → Outgoing* has a **"Send test"** button per
 endpoint: it signs and POSTs a sample of the event you pick (with

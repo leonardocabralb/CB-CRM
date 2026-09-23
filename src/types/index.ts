@@ -1266,7 +1266,12 @@ export interface CbAutomationEvent {
   to_stage_id: string | null;
   from_status: string | null;
   to_status: string | null;
-  origem: 'usuario' | 'conexao' | 'automacao' | 'sistema';
+  /**
+   * Quem causou (0934; `api` desde a 1040): pessoa logada, a conexão abrindo
+   * o card, uma automação ("Criar negócio", "Mover card", "Marcar status"),
+   * a API pública (`/api/v1/deals`) ou o resto (SQL à mão).
+   */
+  origem: 'usuario' | 'conexao' | 'automacao' | 'api' | 'sistema';
   /**
    * Por onde este encadeamento já passou (migration 934), como chaves
    * `deal:<id>|stage:<id>`. Vazia = ação de gente/conexão, cadeia nova.
@@ -1282,6 +1287,14 @@ export interface CbAutomationEvent {
   processado_em: string | null;
   tentativas: number;
   erro: string | null;
+  /**
+   * Aviso `deal.*` reivindicado e ainda não entregue (1040): o carimbo do
+   * ciclo que o reivindicou — a cerca de posse da limpeza. NULL = nada a
+   * entregar (inclusive todo o acervo anterior à 1040, de propósito).
+   */
+  webhooks_pendente_desde: string | null;
+  /** Reentregas feitas pelo cron (1040). `tentativas` é do MOTOR, não daqui. */
+  webhooks_tentativas: number;
 }
 
 /**

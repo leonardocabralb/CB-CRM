@@ -315,14 +315,16 @@ export function assinaturaNoN8n(m: Marcadores): string {
 
 /**
  * O filtro da receita "quando o lead mudar de etapa". O `source` diferente
- * de `system` é o que corta o laço: mover o card pela API gera outro aviso,
- * com `source: "system"`.
+ * de `api` é o que corta o laço: mover o card pela API gera outro aviso, com
+ * `source: "api"` (migration 1040). Até ali o filtro era `system`, que
+ * descartava junto o "Mover card" das automações — o Calendly levando o lead
+ * a "Reunião Agendada", justamente o evento que se quer receber.
  */
 export function filtroDeEtapaNoN8n(m: Marcadores): string {
   return [
     'IF → {{ $json.body.event }}  is equal to  deal.stage_changed',
     `     AND {{ $json.body.data.stage.id }}  is equal to  ${m.idDaEtapa}`,
-    '     AND {{ $json.body.data.source }}  is not equal to  system',
+    '     AND {{ $json.body.data.source }}  is not equal to  api',
     '     AND {{ $json.body.test }}  is not equal to  true',
   ].join('\n');
 }

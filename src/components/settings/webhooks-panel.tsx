@@ -1282,10 +1282,12 @@ function AbaEnviados() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">{t("enviadosAjuda")}</p>
-      {/* ⚠️ As limitações da entrega precisam estar na TELA: ela é
-          best-effort (uma tentativa, prazo curto, sem retry) e desliga o
-          endereço depois de uma sequência de falhas. Sem isso o operador
-          conta com garantia que não existe. Os números vêm das constantes
+      {/* ⚠️ As limitações da entrega precisam estar na TELA: uma
+          tentativa por endereço, prazo curto, sem retry quando o endereço
+          responde erro — e os `deal.*` interrompidos por um reinício saem de
+          novo com o mesmo id (1040) —, e o endereço é desligado depois de
+          uma sequência de falhas. Sem isso o operador conta com garantia
+          que não existe. Os números vêm das constantes
           espelhadas (amarradas ao `deliver.ts` por teste), nunca digitados
           no dicionário. */}
       <p className="text-[11px] text-muted-foreground">

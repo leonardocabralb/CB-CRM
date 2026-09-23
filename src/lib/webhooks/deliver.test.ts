@@ -150,6 +150,54 @@ describe('dispatchWebhookEvent', () => {
   });
 });
 
+// A fila do funil (1040) só dá o aviso `deal.*` por encerrado quando a
+// tentativa ACONTECEU — é este retorno que diz isso.
+describe('o resultado do disparo', () => {
+  it('tentado: houve endpoint e cada um teve a sua tentativa — inclusive a que FALHOU', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response));
+    const r = await dispatchWebhookEvent(
+      makeDb([{ id: 'b', url: 'https://b.test/hook', secret: 's2' }], emptyCalls()),
+      'acct-1',
+      'message.received',
+      MENSAGEM
+    );
+    expect(r).toBe('tentado');
+  });
+
+  it('sem_destino: a leitura deu certo e ninguém assina', async () => {
+    const r = await dispatchWebhookEvent(makeDb([], emptyCalls()), 'acct-1', 'message.received', MENSAGEM);
+    expect(r).toBe('sem_destino');
+  });
+
+  it('⚠️ falhou_antes: a leitura dos endpoints FALHOU — não é "sem destino", e nada é postado', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const b: Record<string, unknown> = {
+      select: () => b,
+      eq: () => b,
+      contains: () => Promise.resolve({ data: null, error: { message: 'caiu' } }),
+    };
+    const db = { from: () => b } as unknown as SupabaseClient;
+    const r = await dispatchWebhookEvent(db, 'acct-1', 'message.received', MENSAGEM);
+    expect(r).toBe('falhou_antes');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(erro).toHaveBeenCalled();
+    erro.mockRestore();
+  });
+
+  it('falhou_antes: estouro antes da entrega (nunca lança)', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const db = {
+      from: () => {
+        throw new Error('sem conexão');
+      },
+    } as unknown as SupabaseClient;
+    await expect(dispatchWebhookEvent(db, 'acct-1', 'message.received', MENSAGEM)).resolves.toBe('falhou_antes');
+    erro.mockRestore();
+  });
+});
+
 describe('o envelope', () => {
   it('sem opcoes: id sorteado por chamada, hora de agora e o data intacto', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 } as Response);
