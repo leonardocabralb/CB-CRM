@@ -123,7 +123,16 @@ describe('origemDoAviso', () => {
     expect(origemDoAviso('usuario')).toBe('user');
     expect(origemDoAviso('conexao')).toBe('channel');
     expect(origemDoAviso('automacao')).toBe('automation');
+    expect(origemDoAviso('api')).toBe('api');
     expect(origemDoAviso('sistema')).toBe('system');
+  });
+
+  it('⚠️ `api` e `automation` são valores DIFERENTES (1040): é o que corta o laço sem perder as automações', () => {
+    // O integrador filtra `api` (o movimento que ele mesmo fez) e continua
+    // recebendo o "Mover card" das automações — que até a 1040 saía `system`,
+    // junto com a API.
+    expect(origemDoAviso('api')).not.toBe(origemDoAviso('automacao'));
+    expect(origemDoAviso('automacao')).not.toBe('system');
   });
 
   it('valor desconhecido (coluna futura) vira system, nunca undefined', () => {

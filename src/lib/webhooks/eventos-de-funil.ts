@@ -62,6 +62,7 @@ const ORIGEM: Record<LinhaDaFila['origem'], DealEventSource> = {
   usuario: 'user',
   conexao: 'channel',
   automacao: 'automation',
+  api: 'api',
   sistema: 'system',
 };
 
