@@ -1632,7 +1632,8 @@
         "errorLoadTags": "Failed to load tags",
         "errorLoadFields": "Failed to load custom fields",
         "errorCsvParse": "Could not parse CSV file.",
-        "errorCsvMissingPhone": "CSV must have a 'phone' column."
+        "errorCsvMissingPhone": "CSV must have a 'phone' column.",
+        "contagemFalhou": "Couldn't calculate the audience right now."
       },
       "personalize": {
         "title": "Personalize Variables",
@@ -1680,7 +1681,9 @@
         "sending": "Sending...",
         "preparing": "Preparing...",
         "progressDesc": "Processing {current} of {total} recipients...",
-        "toastFailedPreview": "Failed to load preview data"
+        "toastFailedPreview": "Failed to load preview data",
+        "alcanceFalhou": "Couldn't calculate.",
+        "tentarDeNovo": "Try again"
       }
     }
   },

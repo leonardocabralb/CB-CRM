@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { parseBroadcastCsv } from '@/lib/broadcast-csv';
+import { contarPublico } from '@/hooks/use-broadcast-sending';
 import { CustomField, Tag } from '@/types';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -94,6 +95,10 @@ export function Step2SelectAudience({
   const [loadingFields, setLoadingFields] = useState(false);
   const [estimatedCount, setEstimatedCount] = useState<number | null>(null);
   const [loadingCount, setLoadingCount] = useState(false);
+  const [contagemFalhou, setContagemFalhou] = useState(false);
+  // Só a resposta do pedido MAIS NOVO vale: contar a base inteira leva uns
+  // segundos, e trocar de etiqueta nesse meio deixava o número da anterior.
+  const pedidoDaContagemRef = useRef(0);
   // The picked file's name, shown back to the user. The parsed rows
   // themselves live on `audience.csvContacts` (owned by the wizard) so
   // they survive stepping forward and back.
@@ -144,79 +149,46 @@ export function Step2SelectAudience({
   }, [audience.type]);
 
   const fetchEstimatedCount = useCallback(async () => {
+    const pedido = ++pedidoDaContagemRef.current;
+    // Público ainda incompleto — espera a pessoa terminar.
+    const incompleto =
+      (audience.type === 'tags' && !(audience.tagIds && audience.tagIds.length > 0)) ||
+      (audience.type === 'custom_field' &&
+        !(audience.customField?.fieldId && audience.customField.value)) ||
+      (audience.type === 'csv' && !(audience.csvContacts && audience.csvContacts.length > 0));
+    if (incompleto) {
+      setEstimatedCount(null);
+      setContagemFalhou(false);
+      setLoadingCount(false);
+      return;
+    }
+
     setLoadingCount(true);
     try {
-      const supabase = createClient();
-
-      // Base query — produces the superset before exclude is applied.
-      let baseIds: Set<string> | null = null; // null means "all contacts"
-
-      if (audience.type === 'all') {
-        // Handled below — full-table count adjusted by excludes.
-      } else if (
-        audience.type === 'tags' &&
-        audience.tagIds &&
-        audience.tagIds.length > 0
-      ) {
-        const { data } = await supabase
-          .from('contact_tags')
-          .select('contact_id')
-          .in('tag_id', audience.tagIds);
-        baseIds = new Set((data ?? []).map((r) => r.contact_id));
-      } else if (
-        audience.type === 'custom_field' &&
-        audience.customField?.fieldId &&
-        audience.customField.value
-      ) {
-        const { fieldId, operator, value } = audience.customField;
-        let q = supabase
-          .from('contact_custom_values')
-          .select('contact_id')
-          .eq('custom_field_id', fieldId);
-        if (operator === 'is') q = q.eq('value', value);
-        else if (operator === 'is_not') q = q.neq('value', value);
-        else q = q.ilike('value', `%${value}%`);
-        const { data } = await q;
-        baseIds = new Set((data ?? []).map((r) => r.contact_id));
-      } else if (
-        audience.type === 'csv' &&
-        audience.csvContacts &&
-        audience.csvContacts.length > 0
-      ) {
-        setEstimatedCount(audience.csvContacts.length);
-        return;
-      } else {
-        // Partially-configured audience — wait for the user to finish.
-        setEstimatedCount(null);
-        return;
-      }
-
-      // Apply exclude tags
-      let excludeSet: Set<string> | null = null;
-      if (audience.excludeTagIds && audience.excludeTagIds.length > 0) {
-        const { data: excludeRows } = await supabase
-          .from('contact_tags')
-          .select('contact_id')
-          .in('tag_id', audience.excludeTagIds);
-        excludeSet = new Set((excludeRows ?? []).map((r) => r.contact_id));
-      }
-
-      if (baseIds) {
-        const effective = [...baseIds].filter(
-          (id) => !excludeSet?.has(id),
-        );
-        setEstimatedCount(effective.length);
-      } else {
-        // "All" — fetch the total, then subtract exclude set if any.
-        const { count } = await supabase
-          .from('contacts')
-          .select('*', { count: 'exact', head: true });
-        const total = count ?? 0;
-        setEstimatedCount(excludeSet ? Math.max(0, total - excludeSet.size) : total);
-      }
+      // ⚠️ A MESMA resolução do envio (`contarPublico`): a contagem própria
+      // desta tela lia sem paginar e mostrava 1.000 para as etiquetas
+      // maiores que isso (hoje "kommo", "Trabalhista" e "Cliente Fechado").
+      const total = await contarPublico(createClient(), {
+        type: audience.type,
+        tagIds: audience.tagIds,
+        customField: audience.customField,
+        csvContacts: audience.csvContacts,
+        excludeTagIds: audience.excludeTagIds,
+      });
+      if (pedido !== pedidoDaContagemRef.current) return;
+      setEstimatedCount(total);
+      setContagemFalhou(false);
+    } catch (err) {
+      if (pedido !== pedidoDaContagemRef.current) return;
+      // Leitura que falhou ou veio incompleta não vira número menor.
+      console.error('[broadcast] contagem do público falhou', err);
+      setEstimatedCount(null);
+      setContagemFalhou(true);
     } finally {
-      setLoadingCount(false);
+      if (pedido === pedidoDaContagemRef.current) setLoadingCount(false);
     }
+    // Campo a campo, como antes: o objeto `audience` pode nascer de novo a
+    // cada render do assistente, e a contagem rodaria em laço.
   }, [
     audience.type,
     audience.tagIds,
@@ -526,6 +498,10 @@ export function Step2SelectAudience({
             </span>
             <span className="text-xs text-muted-foreground">estimated recipients</span>
           </div>
+        ) : contagemFalhou ? (
+          <p className="text-xs text-red-600 dark:text-red-300">
+            {t('selectAudience.contagemFalhou')}
+          </p>
         ) : (
           <p className="text-xs text-muted-foreground">
             Select an audience type to see the estimate.

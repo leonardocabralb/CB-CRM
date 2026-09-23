@@ -235,6 +235,7 @@ async function marcarDestinatario(
 async function lerContatos(
   supabase: ReturnType<typeof createClient>,
   ids: string[] | null,
+  colunas = '*',
 ): Promise<Contact[]> {
   const fatias: (string[] | null)[] =
     ids === null ? [null] : emFatias(ids, IDS_POR_CONSULTA);
@@ -243,13 +244,13 @@ async function lerContatos(
   for (const fatia of fatias) {
     const { linhas, erro, motivo } = await buscarPaginado<Contact>(
       async (de, ate) => {
-        const base = supabase.from('contacts').select('*', { count: 'exact' });
+        const base = supabase.from('contacts').select(colunas, { count: 'exact' });
         // O `.in()` antes de `order`/`range`: depois deles o builder já não
         // aceita filtro, e a ordem tem de desempatar por coluna única.
         const { data, error, count } = await (fatia ? base.in('id', fatia) : base)
           .order('id', { ascending: true })
           .range(de, ate);
-        return { data: (data ?? null) as Contact[] | null, error, count };
+        return { data: (data ?? null) as unknown as Contact[] | null, error, count };
       },
     );
     if (!linhas) {
@@ -299,6 +300,133 @@ async function contatosComAsEtiquetas(
   }
 
   return [...contactIds];
+}
+
+/**
+ * Os `contact_id` que casam o recorte por campo personalizado.
+ */
+async function idsDoCampoPersonalizado(
+  supabase: ReturnType<typeof createClient>,
+  filter: CustomFieldFilter,
+): Promise<string[]> {
+  const { fieldId, operator, value } = filter;
+
+  // Build the WHERE clause for the operator. PostgREST supports
+  // eq/neq/ilike via the query builder — use ilike with wildcards
+  // for "contains" so the match is case-insensitive.
+  //
+  // ⚠️ Paginada: este recorte casa a base inteira com facilidade — um
+  // `is_not` sobre valor raro devolve quase todo mundo —, e o corte de
+  // 1000 escolheria mil deles em silêncio.
+  const { linhas, erro, motivo } = await buscarPaginado<{ contact_id: string }>(
+    async (de, ate) => {
+      let query = supabase
+        .from('contact_custom_values')
+        .select('contact_id', { count: 'exact' })
+        .eq('custom_field_id', fieldId);
+
+      if (operator === 'is') query = query.eq('value', value);
+      else if (operator === 'is_not') query = query.neq('value', value);
+      else if (operator === 'contains')
+        query = query.ilike('value', `%${value}%`);
+
+      const { data, error, count } = await query
+        .order('id', { ascending: true })
+        .range(de, ate);
+      return {
+        data: (data ?? null) as { contact_id: string }[] | null,
+        error,
+        count,
+      };
+    },
+  );
+  if (!linhas) {
+    throw erroDeLeituraParcial(
+      'o recorte por campo personalizado',
+      motivo,
+      erro,
+    );
+  }
+
+  return [...new Set(linhas.map((m) => m.contact_id))];
+}
+
+/**
+ * Os contatos do público ANTES dos recortes (telefone e exclusão), para os
+ * tipos que vêm do banco. O CSV não passa aqui: ele é gravado primeiro
+ * (`upsertCsvContacts`), e isso só acontece no envio.
+ *
+ * ⚠️ É a MESMA função para o envio e para a contagem das telas (passo 2 e
+ * passo 4), mudando só as colunas lidas. Até 23/09/2026 a contagem tinha
+ * leitura própria, sem paginar: as etiquetas "kommo" (4.635 contatos),
+ * "Trabalhista" (3.611) e "Cliente Fechado" (1.081) apareciam como 1.000, o
+ * passo 4 ignorava as exclusões e dizia 0 para público por campo
+ * personalizado — enquanto o envio, que pagina, saía para o número certo.
+ * Duas leituras divergem na primeira mudança; uma só não tem como.
+ */
+async function contatosDaBase(
+  supabase: ReturnType<typeof createClient>,
+  audience: AudienceConfig,
+  colunas: string,
+): Promise<Contact[]> {
+  if (audience.type === 'all') return lerContatos(supabase, null, colunas);
+  if (audience.type === 'tags' && audience.tagIds && audience.tagIds.length > 0) {
+    const ids = await contatosComAsEtiquetas(supabase, audience.tagIds);
+    return ids.length > 0 ? lerContatos(supabase, ids, colunas) : [];
+  }
+  if (audience.type === 'custom_field' && audience.customField) {
+    const ids = await idsDoCampoPersonalizado(supabase, audience.customField);
+    return ids.length > 0 ? lerContatos(supabase, ids, colunas) : [];
+  }
+  return [];
+}
+
+/**
+ * Os recortes que valem para TODO público, inclusive o do CSV.
+ */
+async function aplicarRecortes(
+  supabase: ReturnType<typeof createClient>,
+  contacts: Contact[],
+  audience: AudienceConfig,
+): Promise<Contact[]> {
+  // Disparo é WhatsApp. A ficha só do Instagram (989) não tem telefone:
+  // a Meta não teria para onde mandar, e cada uma viraria um "failed" na
+  // lista de destinatários. Fica de fora aqui, antes de virar linha.
+  let recortados = contacts.filter((c) => !!c.phone);
+
+  // Apply exclude tags (works across all contact-derived audience types).
+  //
+  // ⚠️ A falha aqui também deixou de ser engolida (`const { data: excludeRows }`
+  // descartava o `error`): exclusão que não foi lida vira conjunto vazio, e
+  // conjunto vazio é indistinguível de "ninguém a poupar" — a campanha sai
+  // para todo mundo achando que respeitou o filtro.
+  if (audience.excludeTagIds && audience.excludeTagIds.length > 0) {
+    const excludedIds = new Set(
+      await contatosComAsEtiquetas(supabase, audience.excludeTagIds),
+    );
+    recortados = recortados.filter((c) => !excludedIds.has(c.id));
+  }
+
+  return recortados;
+}
+
+/**
+ * Quantos contatos o disparo vai alcançar, pela MESMA resolução do envio.
+ * Lança quando uma leitura falha ou vem incompleta — quem mostra o número
+ * diz que não conseguiu contar, nunca afirma um número menor.
+ *
+ * ⚠️ No CSV, é o tamanho da lista (já sem repetidos e sem inválidos): as
+ * fichas só existem depois de gravadas, e a exclusão por etiqueta — que o
+ * envio aplica às fichas do CSV também — não tem sobre o que agir antes
+ * disso. É o número de antes, e a tela o chama de estimativa.
+ */
+export async function contarPublico(
+  supabase: ReturnType<typeof createClient>,
+  audience: AudienceConfig,
+): Promise<number> {
+  if (audience.type === 'csv') return audience.csvContacts?.length ?? 0;
+  const base = await contatosDaBase(supabase, audience, 'id, phone');
+  return (await aplicarRecortes(supabase, base, audience)).length;
 }
 
 /**
@@ -370,49 +498,11 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
 
   async function resolveAudience(audience: AudienceConfig): Promise<Contact[]> {
     const supabase = createClient();
-
-    let contacts: Contact[] = [];
-
-    if (audience.type === 'all') {
-      contacts = await lerContatos(supabase, null);
-    } else if (
-      audience.type === 'tags' &&
-      audience.tagIds &&
-      audience.tagIds.length > 0
-    ) {
-      const uniqueContactIds = await contatosComAsEtiquetas(
-        supabase,
-        audience.tagIds,
-      );
-      if (uniqueContactIds.length > 0) {
-        contacts = await lerContatos(supabase, uniqueContactIds);
-      }
-    } else if (audience.type === 'custom_field' && audience.customField) {
-      contacts = await resolveCustomFieldAudience(supabase, audience.customField);
-    } else if (audience.type === 'csv' && audience.csvContacts) {
-      contacts = await upsertCsvContacts(supabase, audience.csvContacts);
-    }
-
-    // Disparo é WhatsApp. A ficha só do Instagram (989) não tem telefone:
-    // a Meta não teria para onde mandar, e cada uma viraria um "failed" na
-    // lista de destinatários. Fica de fora aqui, antes de virar linha.
-    contacts = contacts.filter((c) => !!c.phone);
-
-    // Apply exclude tags (works across all contact-derived audience
-    // types). CSV contacts are synthetic so exclusion doesn't apply.
-    //
-    // ⚠️ A falha aqui também deixou de ser engolida (`const { data: excludeRows }`
-    // descartava o `error`): exclusão que não foi lida vira conjunto vazio, e
-    // conjunto vazio é indistinguível de "ninguém a poupar" — a campanha sai
-    // para todo mundo achando que respeitou o filtro.
-    if (audience.excludeTagIds && audience.excludeTagIds.length > 0) {
-      const excludedIds = new Set(
-        await contatosComAsEtiquetas(supabase, audience.excludeTagIds),
-      );
-      contacts = contacts.filter((c) => !excludedIds.has(c.id));
-    }
-
-    return contacts;
+    const contacts =
+      audience.type === 'csv' && audience.csvContacts
+        ? await upsertCsvContacts(supabase, audience.csvContacts)
+        : await contatosDaBase(supabase, audience, '*');
+    return aplicarRecortes(supabase, contacts, audience);
   }
 
   /**
@@ -572,55 +662,6 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
     return keys
       .map((k) => byKey.get(k))
       .filter((c): c is Contact => Boolean(c));
-  }
-
-  async function resolveCustomFieldAudience(
-    supabase: ReturnType<typeof createClient>,
-    filter: CustomFieldFilter,
-  ): Promise<Contact[]> {
-    const { fieldId, operator, value } = filter;
-
-    // Build the WHERE clause for the operator. PostgREST supports
-    // eq/neq/ilike via the query builder — use ilike with wildcards
-    // for "contains" so the match is case-insensitive.
-    //
-    // ⚠️ Paginada: este recorte casa a base inteira com facilidade — um
-    // `is_not` sobre valor raro devolve quase todo mundo —, e o corte de
-    // 1000 escolheria mil deles em silêncio.
-    const { linhas, erro, motivo } = await buscarPaginado<{ contact_id: string }>(
-      async (de, ate) => {
-        let query = supabase
-          .from('contact_custom_values')
-          .select('contact_id', { count: 'exact' })
-          .eq('custom_field_id', fieldId);
-
-        if (operator === 'is') query = query.eq('value', value);
-        else if (operator === 'is_not') query = query.neq('value', value);
-        else if (operator === 'contains')
-          query = query.ilike('value', `%${value}%`);
-
-        const { data, error, count } = await query
-          .order('id', { ascending: true })
-          .range(de, ate);
-        return {
-          data: (data ?? null) as { contact_id: string }[] | null,
-          error,
-          count,
-        };
-      },
-    );
-    if (!linhas) {
-      throw erroDeLeituraParcial(
-        'o recorte por campo personalizado',
-        motivo,
-        erro,
-      );
-    }
-
-    const contactIds = [...new Set(linhas.map((m) => m.contact_id))];
-    if (contactIds.length === 0) return [];
-
-    return lerContatos(supabase, contactIds);
   }
 
   async function createAndSendBroadcast(payload: BroadcastPayload): Promise<string> {

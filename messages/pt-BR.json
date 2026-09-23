@@ -1625,7 +1625,8 @@
         "errorLoadTags": "Falha ao carregar as etiquetas",
         "errorLoadFields": "Falha ao carregar os campos personalizados",
         "errorCsvParse": "Não foi possível ler o arquivo CSV.",
-        "errorCsvMissingPhone": "O CSV deve ter uma coluna 'phone'."
+        "errorCsvMissingPhone": "O CSV deve ter uma coluna 'phone'.",
+        "contagemFalhou": "Não foi possível calcular o público agora."
       },
       "personalize": {
         "title": "Personalizar Variáveis",
@@ -1673,7 +1674,9 @@
         "sending": "Enviando...",
         "preparing": "Preparando...",
         "progressDesc": "Processando {current} de {total} destinatários...",
-        "toastFailedPreview": "Falha ao carregar os dados da pré-visualização"
+        "toastFailedPreview": "Falha ao carregar os dados da pré-visualização",
+        "alcanceFalhou": "Não foi possível calcular.",
+        "tentarDeNovo": "Tentar de novo"
       }
     }
   },

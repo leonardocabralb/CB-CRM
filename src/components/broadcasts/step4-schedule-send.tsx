@@ -19,12 +19,7 @@ import { useTranslations } from 'next-intl';
 import { useChannels } from '@/hooks/use-channels';
 import { channelLabel } from '@/lib/cb-channels/display';
 import { ehMeta } from '@/lib/cb-channels/transporte';
-
-interface AudienceConfig {
-  type: string;
-  tagIds?: string[];
-  csvContacts?: { phone: string; name?: string }[];
-}
+import { contarPublico, type AudienceConfig } from '@/hooks/use-broadcast-sending';
 
 interface Step4Props {
   name: string;
@@ -56,40 +51,36 @@ export function Step4ScheduleSend({
   const tCanais = useTranslations('Channels');
   const { channels } = useChannels();
   const [showConfirm, setShowConfirm] = useState(false);
-  const [estimatedReach, setEstimatedReach] = useState<number>(0);
+  // `null` = ainda não se sabe (carregando ou a conta falhou) — nunca 0.
+  const [estimatedReach, setEstimatedReach] = useState<number | null>(null);
   const [loadingReach, setLoadingReach] = useState(true);
+  const [tentativaDoAlcance, setTentativaDoAlcance] = useState(0);
 
   useEffect(() => {
+    let cancelado = false;
     async function calculateReach() {
       setLoadingReach(true);
       try {
-        const supabase = createClient();
-
-        if (audience.type === 'all') {
-          const { count } = await supabase
-            .from('contacts')
-            .select('*', { count: 'exact', head: true });
-          setEstimatedReach(count ?? 0);
-        } else if (audience.type === 'tags' && audience.tagIds && audience.tagIds.length > 0) {
-          const { data: contactTags } = await supabase
-            .from('contact_tags')
-            .select('contact_id')
-            .in('tag_id', audience.tagIds);
-
-          const uniqueIds = new Set((contactTags ?? []).map((ct) => ct.contact_id));
-          setEstimatedReach(uniqueIds.size);
-        } else if (audience.type === 'csv' && audience.csvContacts) {
-          setEstimatedReach(audience.csvContacts.length);
-        } else {
-          setEstimatedReach(0);
-        }
+        // ⚠️ A MESMA resolução do envio (`contarPublico`). A conta própria
+        // desta tela lia sem paginar (1.000 para etiqueta maior que isso),
+        // ignorava as exclusões e dizia 0 para público por campo
+        // personalizado — o número que a confirmação mostra antes de um
+        // disparo pago.
+        const total = await contarPublico(createClient(), audience);
+        if (!cancelado) setEstimatedReach(total);
+      } catch (err) {
+        console.error('[broadcast] alcance do disparo não foi calculado', err);
+        if (!cancelado) setEstimatedReach(null);
       } finally {
-        setLoadingReach(false);
+        if (!cancelado) setLoadingReach(false);
       }
     }
 
     calculateReach();
-  }, [audience]);
+    return () => {
+      cancelado = true;
+    };
+  }, [audience, tentativaDoAlcance]);
 
   const audienceLabel =
     audience.type === 'all'
@@ -137,6 +128,17 @@ export function Step4ScheduleSend({
             <div className="flex items-center gap-1.5">
               {loadingReach ? (
                 <Loader2 className="h-3 w-3 animate-spin text-primary" />
+              ) : estimatedReach === null ? (
+                <p className="text-xs text-red-600 dark:text-red-300">
+                  {t('scheduleSend.alcanceFalhou')}{' '}
+                  <button
+                    type="button"
+                    onClick={() => setTentativaDoAlcance((n) => n + 1)}
+                    className="font-medium underline underline-offset-2"
+                  >
+                    {t('scheduleSend.tentarDeNovo')}
+                  </button>
+                </p>
               ) : (
                 <>
                   <Users className="h-3.5 w-3.5 text-primary" />
@@ -213,7 +215,9 @@ export function Step4ScheduleSend({
           <DialogTrigger
             render={
               <Button
-                disabled={!name.trim() || isProcessing}
+                // Sem o alcance calculado não há o que confirmar: o diálogo
+                // afirmaria um número para um disparo pago (upstream #594).
+                disabled={!name.trim() || isProcessing || loadingReach || estimatedReach === null}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               />
             }
@@ -226,7 +230,7 @@ export function Step4ScheduleSend({
               <DialogTitle className="text-popover-foreground">Confirm Broadcast</DialogTitle>
               <DialogDescription className="text-muted-foreground">
                 You are about to send this broadcast to{' '}
-                <span className="font-medium text-popover-foreground">{estimatedReach.toLocaleString()}</span>{' '}
+                <span className="font-medium text-popover-foreground">{(estimatedReach ?? 0).toLocaleString()}</span>{' '}
                 contacts using the{' '}
                 <span className="font-medium text-popover-foreground">{template.name}</span> template.
                 This action cannot be undone.
