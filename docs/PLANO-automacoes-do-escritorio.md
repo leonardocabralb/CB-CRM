@@ -1,341 +1,160 @@
-# Plano — as automações do escritório
+# Automações do escritório — os textos para aprovar
 
-> Este documento é sobre **o conteúdo** das automações que o CB Advogados vai
-> usar (quais são, o que cada passo faz, que texto sai para o cliente). Não
-> confundir com `PLANO-automacoes-multicanal-e-funil.md`, que é sobre a
-> *ferramenta* de automações.
+> Este documento é sobre **o conteúdo** das automações do CB Advogados: quais
+> são, o que cada uma faz e **que texto sai para o cliente**. A *ferramenta*
+> de automações está em `PLANO-automacoes-multicanal-e-funil.md`.
 >
-> Estado: **as oito estão criadas, todas DESATIVADAS**, com o prefixo
-> `(PENDENTE)` no nome. Escrito em 20/09/2026 a partir do pedido de 08/09 e do
-> que o motor ganhou desde então; construído e testado em 21/09.
+> **Atualizado em 23/09/2026**, a partir do que está GRAVADO em cada
+> automação na produção — não do rascunho antigo. Duas coisas mudaram desde a
+> versão de 21/09:
 >
-> ⚠️ **Nenhuma pode ser ligada por engano.** A validação de ativação é o
-> portão: a de contrato fechado, por exemplo, recusa com "webhook URL is
-> required" e "task assignee is required", e o interruptor volta sozinho para
-> desligado. Rascunho incompleto pode ser salvo; ativado, não.
+> - **Os quatro lembretes de reunião foram reescritos em 21/09** (entre 17:57
+>   e 18:02), depois desta versão, e perderam o prefixo `(PENDENTE)` do nome.
+>   Os textos abaixo são esses, como estão gravados.
+> - **Os meus rascunhos das outras automações foram gravados SEM ACENTO**
+>   ("reuniao", "e so chamar aqui"). Do jeito que estão, sairiam errados para
+>   o cliente. Abaixo eles aparecem com a acentuação corrigida; ao aprovar,
+>   eu regravo cada automação com a versão aprovada.
+
+## Como aprovar
+
+Cada texto tem uma caixa **[ ] Aprovado**. Para aprovar, me responda com os
+números (ex.: "aprovo 2.1 a 2.10 e 3.1") ou corrija o texto e me mande. Nada
+é ligado sem você mandar ligar — aprovar o texto e ligar a automação são dois
+passos.
+
+⚠️ **Toda mensagem de automação chega com o prefixo `*CB Advogados:*`** — a
+assinatura da conta está ligada e vale para todas. Leia cada texto imaginando
+esse prefixo na frente. Os lembretes, por exemplo, falam em primeira pessoa
+("te encontro já!"). Se preferir, cada automação pode **assinar com outro
+nome** (campo "Assinar como", ex.: o nome da SDR); é só me dizer qual.
 
 ---
 
-## 1. Como está a conta hoje
+## 1. Como está a conta hoje (23/09)
 
-| Automação | Gatilho | Passos | Ativa |
-| --- | --- | --- | --- |
-| (PENDENTE) Contrato fechado | entrou em Contrato Fechado | 12 | não |
-| (PENDENTE) Documentos de gestão de passivo | manual | 7 | não |
-| (PENDENTE) Lembrete de reunião · 24h antes | data de campo | 1 | não |
-| (PENDENTE) Lembrete de reunião · 4h antes | data de campo | 1 | não |
-| (PENDENTE) Lembrete de reunião · 1h antes | data de campo | 1 | não |
-| (PENDENTE) Lembrete de reunião · 10min antes | data de campo | 1 | não |
-| (PENDENTE) Desqualificado | entrou em Desqualificado | 2 | não |
-| (PENDENTE) No-show · recuperação | entrou em No Show | 20 | não |
-| Calendly → Reunião agendada | agendamento do Calendly | 7 | **sim** |
-| Cobrança · 1, 5 e 30 dias · vence hoje | Asaas | 1 cada | não |
+| # | Automação | Gatilho | Ligada | Texto para o cliente |
+| --- | --- | --- | --- | --- |
+| 1 | Lembrete de reunião · 24h / 4h / 1h / 10min | data do campo "Data e Hora Reunião" | não | **4 textos — seção 1** |
+| 2 | (PENDENTE) No-show · recuperação | card entrou em No Show | não | **10 textos — seção 2** |
+| 3 | (PENDENTE) Contrato fechado | card entrou em Contrato Fechado | não | **boas-vindas + tarefa — seção 3** |
+| 4 | (PENDENTE) Documentos de gestão de passivo | manual (botão da conversa) | não | **3 textos + planilha — seção 4** |
+| 5 | Typebot · Abaixo de 150 mil com processo | Typebot (webhook) | **sim** | **texto NOVO — seção 5** |
+| 6 | (PENDENTE) Desqualificado | card entrou em Desqualificado | não | nenhum (etiqueta + encerra a conversa) |
+| 7 | Typebot · Lead e respostas / Recebeu o link / Desqualificado | Typebot (webhook) | **sim** | nenhum (só ficha e funil) |
+| 8 | Calendly → Reunião agendada | agendamento do Calendly | **sim** | aviso ao ADVOGADO — anexo A |
+| 9 | Cobrança · 1, 5 e 30 dias / Lembrete · vence hoje | Asaas | não | cobrança — anexo B |
 
-As três que já existiam foram **transformadas, não duplicadas**: se nascesse
-uma segunda ao lado da do Atlas, ela aplicaria a etiqueta primeiro e a trava da
-nova barraria tudo. O que elas tinham antes:
-
-- **Envio Webhook CB OS - Atlas** (29/08): etiqueta + webhook para
-  `https:Teste.url.br` com corpo `testeteste`. Virou a de contrato fechado.
-- **No-Show Recuperação** (18/09): só a etiqueta. Virou a de no-show.
-- **Desqualificado - Encerrar** (18/09): já estava completa. Só foi renomeada.
-
-### O que o motor ganhou desde 08/09
-
-Três coisas mudam o desenho combinado naquele dia:
-
-- **"Parar a automação se o cliente responder"**, uma caixa em cada passo
-  Aguardar. Resolve o cliente que responde na terceira mensagem e recebia as
-  outras sete.
-- **"Interromper se o card sair desta etapa"**, uma caixa no gatilho de etapa.
-  Lê a etapa do banco toda vez que a espera acorda, então vale por qualquer
-  caminho — inclusive quando o Calendly move o card porque o cliente
-  reagendou.
-- **Seletor de conexão por passo de mensagem.** Já existe na tela, e aparece
-  porque a conta tem mais de uma conexão.
-
-Juntas, as duas primeiras apagam a parte mais feia do plano antigo: a
-sequência de no-show ia precisar de uma condição "ainda está em No Show?"
-antes de cada mensagem, cada uma aninhada dentro do ramo da anterior. Dez
-níveis de profundidade. Agora é uma lista plana.
+**Quem pode mexer nelas:** decisão sua de 23/09, qualquer admin da conta
+abre, edita, duplica e exclui qualquer uma — correção no PR #260. Até ela
+entrar no ar, só quem criou consegue: as 17 foram criadas pelo login do
+Leonardo, e o Ricardo recebe "não encontrado" em todas.
 
 ---
 
-## 2. Sobre a conexão de saída
+## 2. O que muda o comportamento desde 21/09
 
-> Resposta à pergunta de 20/09: **sim, já existe.**
-
-Cada passo de mensagem tem um campo **Conexão de saída**. O padrão dele é
-*herdar a conexão do disparo*, com queda para a conexão atual da conversa.
-
-Três coisas a saber:
-
-- **Vazio não é "todas as conexões".** Uma mensagem sai por um número só.
-  Vazio quer dizer "herda", não "qualquer um".
-- **Herdar é o padrão certo na maioria dos casos.** É o que faz um follow-up
-  de 24 horas sair pelo mesmo número por onde o cliente falou. A conexão do
-  disparo viaja junto com a execução e sobrevive à espera.
-- **Fixar a conexão joga essa herança fora.** Vale a pena quando o disparo não
-  tem conexão nenhuma para herdar — que é exatamente o caso dos lembretes de
-  reunião, cujo gatilho é uma data, não uma mensagem.
-
-**Decisão do operador (21/09): os quatro lembretes saem FIXADOS em
-Bancário - Comercial.** O gatilho deles é uma data, não uma mensagem, então
-não há conexão de disparo para herdar — sem fixar, a mensagem cairia na
-conexão da conversa e, para o lead nascido do Calendly (que tem conversa sem
-conexão), na padrão da conta. Fixado, o número é o mesmo sempre, por escolha e
-não por acidente.
-
-⚠️ Isso é diferente do recorte do GATILHO, que continua sem restrição: o
-lembrete dispara para lead de qualquer conexão, e responde por esta.
-
-⚠️ Na tela, a linha de ajuda abaixo do campo continua dizendo "a resposta sai
-pelo número por onde o cliente escreveu" mesmo com uma conexão escolhida — o
-texto descreve só o caso de herança e não muda com a seleção. O que vale é o
-nome no campo. É um defeito pequeno da tela, não da regra.
+- **Reunião cancelada no Calendly desarma os lembretes** daquela data. Quem
+  desmarca não recebe "sua reunião começa em 10 minutos".
+- **Card PERDIDO volta a ser aberto** quando entra numa etapa neutra (21/09).
+  Um lead desqualificado que volta a "Lead - Type e Forms" pelo Typebot sai
+  da perda sozinho.
+- **As conversas criadas pelo Typebot nascem ENCERRADAS.** Mensagem de
+  automação não reabre conversa: ela volta para a caixa quando o lead
+  responder. Vale para o texto novo da seção 5.
 
 ---
 
-## 3. As cinco automações
+## Seção 1 — Lembretes de reunião
 
-### Automação 1 — Contrato fechado
+**Como funcionam:** quatro automações, uma por antecedência, todas lendo o
+campo "Data e Hora Reunião" (o que o Calendly preenche). Só disparam com o
+card em *Reunião Agendada*, saem **sempre por Bancário - Comercial** (fixado,
+decisão de 21/09) e a data sai no formato `30/08/2026 às 16:00h`.
+Reagendar recomeça a série; cancelar desarma.
 
-**Gatilho:** card entrou em *Contrato Fechado* (funil Bancário - Comercial).
-**Interromper se o card sair da etapa: DESMARCADA.** Ver a nota no fim.
+✅ **Os quatro textos abaixo são os seus, de 21/09, como estão gravados.**
+Deixei só sugestões pequenas embaixo de cada um — aprove como está ou com a
+sugestão.
 
-A condição é o passo único do escopo de fora. **O corpo inteiro vive dentro do
-ramo NÃO** — "se ainda não tem a etiqueta, faça tudo isto":
-
-| # | Passo | Onde | Configuração |
-| --- | --- | --- | --- |
-| 1 | Condição | raiz | tem a etiqueta `Cliente Fechado`? |
-| 2 | Aplicar etiqueta | ramo NÃO | `Cliente Fechado` |
-| 3 | Aplicar etiqueta | ramo NÃO | `Bancário` |
-| 4 | Mover card | ramo NÃO | para *Contrato Fechado* (redundante de propósito) |
-| 5 | Disparar webhook | ramo NÃO | **URL pendente** — corpo já rascunhado |
-| 6 | Aguardar | ramo NÃO | 30 segundos |
-| 7 | Marcar ganho | ramo NÃO | redundante: a etapa já carrega o resultado |
-| 8 | Aguardar | ramo NÃO | 10 segundos |
-| 9 | Enviar mensagem | ramo NÃO | boas-vindas (texto no item 4) |
-| 10 | Aguardar | ramo NÃO | 10 segundos |
-| 11 | Criar tarefa | ramo NÃO | **responsável pendente**; título e prazo rascunhados |
-| 12 | Mover card | ramo NÃO | para *Bancário - Jurídico → Cliente Ativo* |
-
-> ⚠️⚠️ **O corpo TEM de ficar dentro do ramo, e a primeira versão deste plano
-> errava nisso.** Eu havia escrito "condição primeiro, ramo SIM vazio, corpo
-> depois". Não funciona: ramo vazio **não interrompe o escopo de fora** — o
-> motor segue nos passos seguintes, e a trava não travaria nada. Quem já
-> tivesse a etiqueta receberia as boas-vindas de novo a cada vez.
->
-> Medido em 21/09 com uma automação temporária de mesma estrutura, rodada duas
-> vezes no card do Leonardo: sem a etiqueta, `branch=no` e o corpo executou;
-> com a etiqueta, `branch=yes`, nada executou e o desfecho foi **barrada**. O
-> fio mostra "parou numa condição", em cinza.
-
-> ⚠️ **Por que a caixa "interromper se o card sair" tem de ficar desmarcada
-> aqui.** Com ela ligada, executar a automação à mão num lead que não está em
-> Contrato Fechado **não manda nada** — o motor confere a etapa antes de cada
-> passo e o primeiro já encontra o card fora. E ela nasce marcada quando a
-> automação é criada pelo botão da grade do funil. Como você pediu justamente
-> para poder rodar isso à mão em lead de outra etapa, é preciso desmarcar de
-> propósito. O passo 11, que move o card para outro funil, também a
-> interromperia.
-
-**Falta para poder ligar:** URL do Atlas, campos que ele espera, e
-título/prazo/responsável da tarefa.
-
----
-
-### Automação 2 — Documentos de gestão de passivo
-
-**Gatilho:** manual (botão *Executar automação* no menu + da conversa).
-
-| # | Passo | Configuração |
-| --- | --- | --- |
-| 1 | Enviar mensagem | abertura (texto no item 4) |
-| 2 | Aguardar | 10 segundos |
-| 3 | Enviar mensagem | documentos pessoais |
-| 4 | Aguardar | 10 segundos |
-| 5 | Enviar mensagem | documentos das dívidas |
-| 6 | Aguardar | 10 segundos |
-| 7 | Enviar mídia | a planilha (Excel) |
-
-Sem gatilho automático: ela só roda quando alguém clica. Nenhuma espera leva
-"parar se o cliente responder" — são pausas de segundos, e o cliente não teria
-tempo de responder no meio.
-
-**Falta para poder ligar:** o arquivo Excel e a confirmação dos três textos.
-
----
-
-### Automação 3 — Lembretes de reunião
-
-**Quatro automações**, uma por antecedência. Gatilho de cada uma: *data de um
-campo*, lendo **Data e Hora Reunião** (o campo que o Calendly preenche).
-
-| Automação | Antecedência |
-| --- | --- |
-| Lembrete de reunião · 24h | 24 horas antes |
-| Lembrete de reunião · 4h | 4 horas antes |
-| Lembrete de reunião · 1h | 1 hora antes |
-| Lembrete de reunião · 10min | 10 minutos antes |
-
-Cada uma tem **um passo só**: enviar mensagem, com a conexão fixada em
-Bancário - Comercial.
-
-**Escopo: etapa *Reunião Agendada*.** O motor confere isso no instante do
-disparo, então lead que saiu da etapa não recebe lembrete. Sem escopo de
-conexão — vale para qualquer número, como você pediu.
-
-O que funciona sozinho, sem configuração:
-
-- **A data sai formatada** como você escolheu: `30/08/2026 às 16:00h`. O
-  campo guarda o instante cru e o motor formata na hora de montar a mensagem.
-- **Reagendamento recomeça a série.** O Calendly reescreve o campo, e a trava
-  que impede repetição é por valor de data — data nova, lembretes novos.
-- **Janela perdida é pulada.** Se o sistema ficar fora do ar na hora do
-  lembrete de 1 hora, aquele não sai e os seguintes saem. Você já aceitou isso.
-
-Hoje **53 contatos** têm esse campo preenchido.
-
-**Falta para poder ligar:** confirmação dos quatro textos.
-
----
-
-### Automação 4 — Desqualificado
-
-**Já está montada.** Gatilho: card entrou em *Desqualificado*.
-
-| # | Passo |
-| --- | --- |
-| 1 | Aplicar etiqueta `Desqualificado` |
-| 2 | Encerrar a conversa |
-
-Duas consequências a confirmar antes de ligar:
-
-- Encerrar **solta o responsável** da conversa.
-- Qualquer mensagem do cliente depois disso **devolve a conversa** para a
-  caixa de entrada, e ela volta sem responsável.
-
-**Falta para poder ligar:** só a sua palavra.
-
----
-
-### Automação 5 — No-show
-
-**Uma automação**, gatilho: card entrou em *No Show*.
-**Interromper se o card sair da etapa: MARCADA.**
-
-Estrutura plana — etiqueta, depois mensagem e espera alternando:
-
-| # | Passo | Quando cai |
-| --- | --- | --- |
-| 1 | Aplicar etiqueta `No-Show` | — |
-| 2 | Mensagem 1 | na hora |
-| 3 | Aguardar 1 hora | |
-| 4 | Mensagem 2 | 1h |
-| 5 | Aguardar 2 horas | |
-| 6 | Mensagem 3 | 3h |
-| 7 | Aguardar 21 horas | |
-| 8 | Mensagem 4 | 24h |
-| 9 | Aguardar 2 dias | |
-| 10 | Mensagem 5 | 72h |
-| 11 | Aguardar 4 dias | |
-| 12 | Mensagem 6 | 7 dias |
-| 13 | Aguardar 8 dias | |
-| 14 | Mensagem 7 | 15 dias |
-| 15 | Aguardar 15 dias | |
-| 16 | Mensagem 8 | 30 dias |
-| 17 | Aguardar 30 dias | |
-| 18 | Mensagem 9 | 60 dias |
-| 19 | Aguardar 30 dias | |
-| 20 | Mensagem 10 | 90 dias |
-
-As esperas são as **diferenças** entre os seus marcos, não os marcos.
-
-**Cada uma das nove esperas leva "parar se o cliente responder" marcada.** A
-etiqueta é aplicada uma vez só — o motor não duplica etiqueta que o contato já
-tem, e o card que sai e volta para No Show recomeça a sequência sem etiqueta
-nova.
-
-Duas formas de a sequência parar, e as duas são automáticas:
-
-1. **O cliente responde** — para na espera em curso.
-2. **O card sai de No Show** — inclusive quando o próprio Calendly o move para
-   Reunião Agendada porque o cliente reagendou.
-
-> ⚠️ **Limite honesto, a partir da espera de 30 dias.** A pergunta "o card se
-> mexeu desde que esta execução começou?" enxerga só os últimos 30 dias de
-> histórico de movimento; o mais antigo é podado. O que continua protegendo é
-> a **posição atual do card**: se ele não estiver em No Show na hora do envio,
-> a mensagem não sai. Na prática isso cobre o caso real, que é o cliente ter
-> reagendado. O furo teórico seria um card que saiu, voltou e ficou parado
-> mais de um mês.
-
-**Falta para poder ligar:** confirmação dos dez textos e o **link público de
-agendamento** (a página do Calendly onde o cliente escolhe novo horário).
-
----
-
-## 4. Esboço dos textos
-
-> **Tudo abaixo é rascunho meu, para você corrigir.** Não conheço o tom que o
-> escritório usa com o cliente. Marcadores entre chaves são preenchidos pelo
-> sistema; `[ENTRE COLCHETES]` é o que falta você me dar.
-
-### Lembretes de reunião
-
-**24 horas antes**
+**1.1 — 24 horas antes** · [ ] Aprovado
 
 ```
-Olá, {{contact.name}}! Tudo bem?
+Ola, {{contact.name}}! Tudo bem?
 
-Passando para lembrar da sua reunião com a equipe do CB Advogados:
+Passando para lembrar da sua reuniao com a equipe do CB Advogados:
 *{{contact.campo.data_e_hora_reuniao}}*
 
-É uma conversa por vídeo, de cerca de 30 minutos, para entendermos seu caso e
-te mostrarmos os caminhos possíveis.
+Nela o advogado irá te explicar as estratégias disponíveis para conseguirmos reduzir os débitos bancários e proteger o patrimônio da empresa.
 
-Link de acesso: {{contact.campo.link_reuniao}}
+Amanhã te enviarei o link da videochamada.
 
-Se precisar remarcar, é só me avisar por aqui.
+Qualquer dúvida, só chamar aqui!
 ```
 
-**4 horas antes**
+> Sugestões: "Ola" → **"Olá"** e "reuniao" → **"reunião"** (vieram do meu
+> rascunho sem acento). E uma pergunta: **"patrimônio da empresa"** vale para
+> o cliente pessoa física? O Typebot pergunta se a dívida é no CPF ou no CNPJ.
+
+**1.2 — 4 horas antes** · [ ] Aprovado
 
 ```
-Oi, {{contact.name}}! Sua reunião com o CB Advogados é hoje:
+Oi, {{contact.name}}! tô passando pra te lembrar da nossa reunião de hoje!
+
 *{{contact.campo.data_e_hora_reuniao}}*
 
 Link de acesso: {{contact.campo.link_reuniao}}
 
-Uma dica: se tiver em mãos os contratos ou extratos da dívida, a conversa
-rende bem mais.
+A apresentação da sua solução já está sendo finalizada pelo advogado responsável.
+
+Durante a reunião preciso que você esteja em um local tranquilo e preferencialmente no computador, ta certo?
+
+*Vamos conversar sobre pontos muito importantes e preciso da sua total atenção.*
 ```
 
-**1 hora antes**
+> Sugestões: "tô" → **"Tô"** (começa frase) e "ta certo?" → **"tá certo?"**.
+
+**1.3 — 1 hora antes** · [ ] Aprovado
 
 ```
-{{contact.name}}, falta *1 hora* para a sua reunião.
+{{contact.name}}, segue link da nossa reunião:
 
 Link de acesso: {{contact.campo.link_reuniao}}
 
-Já deixe aberto para não perder o horário.
+Nossa reunião será daqui *1 hora*, te encontro já!
 ```
 
-**10 minutos antes**
+**1.4 — 10 minutos antes** · [ ] Aprovado
 
 ```
-{{contact.name}}, sua reunião começa em *10 minutos*.
-
-Entre por aqui: {{contact.campo.link_reuniao}}
-
-Estamos te esperando!
+Oi! O advogado que realizará sua reunião está finalizando um atendimento e daqui 10 minutos entrará no link que te mandei acima pra te aguardar, ok?
 ```
 
-### No-show
+> ⚠️ **Antes de ligar, saiba que os lembretes pegam gente na hora.** Na
+> manhã de 23/09, **11 contatos tinham reunião futura** no campo — **5 nas
+> 24 horas seguintes**, a primeira às 10:00 daquele dia. O de 24h começa a
+> disparar para essas pessoas no mesmo dia em que for ligado.
 
-**1 — na hora**
+**Falta para ligar:** a sua aprovação dos quatro textos.
+
+---
+
+## Seção 2 — No-show · recuperação
+
+**Como funciona:** uma automação, gatilho "card entrou em No Show". Aplica a
+etiqueta `No-Show` e manda dez mensagens: na hora, 1h, 3h, 24h, 72h, 7 dias,
+15, 30, 60 e 90 dias. **A sequência para sozinha** se o cliente responder
+(cada espera tem "parar se o cliente responder") ou se o card sair de No Show
+— inclusive quando o Calendly o move porque o cliente reagendou.
+
+Só vale para quem ENTRAR em No Show depois de ligada: os **97 cards que já
+estão lá hoje** não recebem nada (dá para rodar à mão num card específico).
+
+✏️ **Os dez textos são rascunhos meus** — nunca foram revisados por você. O
+`[LINK DE AGENDAMENTO]` é o que falta você me dar: a página do Calendly onde
+o cliente escolhe um novo horário.
+
+**2.1 — na hora** · [ ] Aprovado
 
 ```
 {{contact.name}}, tentamos te encontrar na reunião agora e não conseguimos.
@@ -345,14 +164,13 @@ Imagino que algo tenha surgido — acontece.
 Quer remarcar para outro horário? É só escolher aqui: [LINK DE AGENDAMENTO]
 ```
 
-**2 — 1 hora depois**
+**2.2 — 1 hora depois** · [ ] Aprovado
 
 ```
-Oi, {{contact.name}}! Se preferir, me diga por aqui qual o melhor dia e
-horário para você, que eu encaixo na agenda do advogado.
+Oi, {{contact.name}}! Se preferir, me diga por aqui qual o melhor dia e horário para você, que eu encaixo na agenda do advogado.
 ```
 
-**3 — 3 horas depois**
+**2.3 — 3 horas depois** · [ ] Aprovado
 
 ```
 {{contact.name}}, a análise do seu caso continua reservada com a gente.
@@ -360,197 +178,329 @@ horário para você, que eu encaixo na agenda do advogado.
 Remarcar leva menos de um minuto: [LINK DE AGENDAMENTO]
 ```
 
-**4 — 24 horas depois**
+**2.4 — 24 horas depois** · [ ] Aprovado
 
 ```
-{{contact.name}}, passando rapidinho: sua consulta sobre a renegociação da
-dívida ainda está de pé.
+{{contact.name}}, passando rapidinho: sua consulta sobre a renegociação da dívida ainda está de pé.
 
-É sem compromisso e dura cerca de 30 minutos. Escolha um horário:
-[LINK DE AGENDAMENTO]
+É sem compromisso e dura cerca de 30 minutos. Escolha um horário: [LINK DE AGENDAMENTO]
 ```
 
-**5 — 3 dias depois**
+**2.5 — 3 dias depois** · [ ] Aprovado
 
 ```
-Oi, {{contact.name}}. Muita gente adia essa conversa por achar que não tem
-saída — e quase sempre tem.
+Oi, {{contact.name}}. Muita gente adia essa conversa por achar que não tem saída — e quase sempre tem.
 
 Se quiser entender o que dá para fazer no seu caso: [LINK DE AGENDAMENTO]
 ```
 
-**6 — 7 dias depois**
+**2.6 — 7 dias depois** · [ ] Aprovado
 
 ```
 {{contact.name}}, faz uma semana que tentamos falar sobre a sua dívida.
 
-Se o momento não for bom, tudo bem. Mas se quiser retomar, é só responder
-aqui.
+Se o momento não for bom, tudo bem. Mas se quiser retomar, é só responder aqui.
 ```
 
-**7 — 15 dias depois**
+**2.7 — 15 dias depois** · [ ] Aprovado
 
 ```
-Oi, {{contact.name}}! Uma dúvida rápida: você chegou a resolver a questão com
-o banco?
+Oi, {{contact.name}}! Uma dúvida rápida: você chegou a resolver a questão com o banco?
 
 Se ainda estiver em aberto, a gente conversa quando fizer sentido para você.
 ```
 
-**8 — 30 dias depois**
+**2.8 — 30 dias depois** · [ ] Aprovado
 
 ```
 {{contact.name}}, faz um mês que nos falamos.
 
-Se a situação mudou, ou se ficou mais apertada, podemos reavaliar seu caso sem
-custo: [LINK DE AGENDAMENTO]
+Se a situação mudou, ou se ficou mais apertada, podemos reavaliar seu caso sem custo: [LINK DE AGENDAMENTO]
 ```
 
-**9 — 60 dias depois**
+**2.9 — 60 dias depois** · [ ] Aprovado
 
 ```
-Oi, {{contact.name}}. Só para você saber: as regras sobre juros abusivos e
-superendividamento mudaram bastante nos últimos anos.
+Oi, {{contact.name}}. Só para você saber: as regras sobre juros abusivos e superendividamento mudaram bastante nos últimos anos.
 
 Se quiser uma análise atualizada do seu contrato, é só responder aqui.
 ```
 
-**10 — 90 dias depois**
+**2.10 — 90 dias depois** · [ ] Aprovado
 
 ```
-{{contact.name}}, esta é a última vez que te procuro sobre isso, para não
-ficar insistindo.
+{{contact.name}}, esta é a última vez que te procuro sobre isso, para não ficar insistindo.
 
 Se um dia quiser retomar, guarde este contato — a porta continua aberta.
 
 Um abraço, equipe CB Advogados.
 ```
 
-### Contrato fechado — boas-vindas
+> Dois pontos de conteúdo para você decidir: a 2.4 fala em "renegociação da
+> dívida" e a 2.7 em "questão com o banco" — cabem para todo lead do
+> Bancário? E a 2.10 assina "equipe CB Advogados", que o prefixo da conta já
+> faz.
+
+**Falta para ligar:** os dez textos e o link de agendamento.
+
+---
+
+## Seção 3 — Contrato fechado
+
+**Como funciona:** gatilho "card entrou em Contrato Fechado". Uma trava na
+frente: **se o contato já tem a etiqueta `Cliente Fechado`, nada acontece**
+(testado em 21/09). Sem a etiqueta, faz tudo, nesta ordem: aplica
+`Cliente Fechado` e `Bancário`, move para Contrato Fechado (redundante, para
+poder rodar à mão em lead de outra etapa), avisa o sistema do escritório por
+webhook, marca ganho, manda as boas-vindas, cria a tarefa e move o card para
+**Bancário - Jurídico → Cliente Ativo**.
+
+✏️ **Rascunhos meus.**
+
+**3.1 — boas-vindas ao cliente** · [ ] Aprovado
 
 ```
 {{contact.name}}, seja muito bem-vindo(a) ao CB Advogados!
 
-Seu contrato está assinado e seu caso já entrou na fila do nosso time
-jurídico.
+Seu contrato está assinado e seu caso já entrou na fila do nosso time jurídico.
 
-Este mesmo número continua sendo o seu canal com a gente. Qualquer dúvida
-sobre o andamento, é só chamar aqui.
+Este mesmo número continua sendo o seu canal com a gente. Qualquer dúvida sobre o andamento, é só chamar aqui.
 
 Em breve um dos nossos advogados entra em contato com os próximos passos.
 ```
 
-### Documentos de gestão de passivo
-
-**Mensagem 1 — abertura**
+**3.2 — a tarefa criada para a equipe** (não vai para o cliente) · [ ] Aprovado
 
 ```
-{{contact.name}}, para darmos andamento à gestão do seu passivo, vou precisar
-de alguns documentos seus.
+Título:     Novo cliente fechado: {{contact.name}}
+Descrição:  Contrato assinado. Dar início ao atendimento jurídico.
+Prazo:      1 dia
+Responsável: [QUEM?]
+```
+
+**3.3 — o que vai para o sistema do escritório (webhook)** (não vai para o cliente)
+
+```
+{
+  "nome": "{{contact.name}}",
+  "telefone": "{{contact.phone}}",
+  "email": "{{contact.email}}",
+  "origem": "{{contact.origem}}",
+  "link_crm": "{{conversation.link}}"
+}
+```
+
+**Falta para ligar:** o texto 3.1, o **responsável** da tarefa, e a **URL do
+webhook** do sistema do escritório (Atlas) com os campos que ele espera. A
+tela recusa ligar sem esses dois — testado.
+
+---
+
+## Seção 4 — Documentos de gestão de passivo
+
+**Como funciona:** só roda quando alguém clica em **Executar automação** no
+menu + da conversa. Manda três mensagens, com 10 segundos entre elas, e a
+planilha.
+
+✏️ **Rascunhos meus.**
+
+**4.1 — abertura** · [ ] Aprovado
+
+```
+{{contact.name}}, para darmos andamento à gestão do seu passivo, vou precisar de alguns documentos seus.
 
 Mando a lista em duas partes, para ficar mais fácil de organizar.
 ```
 
-**Mensagem 2 — documentos pessoais**
+**4.2 — documentos pessoais** · [ ] Aprovado
 
 ```
 *Documentos pessoais:*
 
-• RG e CPF, ou CNH
-• Comprovante de residência atualizado
-• Comprovante de renda dos últimos 3 meses
+- RG e CPF, ou CNH
+- Comprovante de residência atualizado
+- Comprovante de renda dos últimos 3 meses
 ```
 
-**Mensagem 3 — documentos das dívidas**
+**4.3 — documentos das dívidas** · [ ] Aprovado
 
 ```
 *Documentos das dívidas:*
 
-• Contratos de empréstimo e financiamento
-• Extratos bancários dos últimos 6 meses
-• Faturas do cartão de crédito
-• Notificações ou cobranças que você tenha recebido
+- Contratos de empréstimo e financiamento
+- Extratos bancários dos últimos 6 meses
+- Faturas do cartão de crédito
+- Notificações ou cobranças que você tenha recebido
 
-Na planilha em anexo está a relação completa, com um campo para marcar o que
-já separou.
+Na planilha em anexo está a relação completa, com um campo para marcar o que já separou.
+```
+
+> A lista de documentos é chute meu. Confira com o que o jurídico pede de
+> verdade — e se o cliente for empresa, entram contrato social e documentos
+> dos sócios?
+
+**Falta para ligar:** os três textos e o **arquivo Excel** da planilha.
+
+---
+
+## Seção 5 — Typebot · Abaixo de 150 mil com processo (TEXTO NOVO)
+
+**Como funciona hoje (ligada desde 21/09):** quando o lead responde no
+Typebot que a dívida é menor que R$ 150 mil e **tem processo judicial**, a
+automação grava a resposta no campo "Processo Judicial" e aplica a etiqueta
+`-150k`. Tudo atrás da trava de etapa: só age sobre card em
+*Lead - Type e Forms* — quem digitar o telefone de um cliente no formulário
+não o alcança.
+
+**O que o Typebot já disse ao lead nesse ponto:** *"Dentro de alguns
+instantes, um especialista irá entrar em contato com você."* A mensagem
+abaixo é esse primeiro contato, pelo WhatsApp.
+
+✏️ **Rascunho meu — é o texto que faltava** (você pediu em 21/09 que a
+mensagem ao lead fosse "posteriormente configurada").
+
+**5.1 — primeiro contato do especialista** · [ ] Aprovado
+
+```
+Olá, {{contact.name}}! Aqui é da equipe do CB Advogados.
+
+Recebemos suas respostas: a sua dívida já tem um processo judicial em andamento, e quero entender melhor o seu caso.
+
+Para adiantar, me mande por aqui:
+- o nome do banco (ou dos bancos);
+- o número do processo, se tiver em mãos.
+
+Em seguida um dos nossos especialistas continua o atendimento com você.
+```
+
+Três escolhas que vêm junto, para você confirmar:
+
+- **Sai na hora**, logo depois da etiqueta. Se preferir um intervalo (o
+  Typebot ainda está na tela do lead), me diga quantos minutos.
+- **Sai por Bancário - Comercial**, fixado — a conversa criada pelo Typebot
+  não tem conexão para herdar.
+- **A conversa continua ENCERRADA** depois do envio (mensagem de automação
+  não reabre). Ela volta para a caixa de entrada quando o lead responder,
+  sem responsável. Se quiser que ela já apareça em "Abertas" para a equipe
+  acompanhar, dá para acrescentar um passo que reabre — me diga.
+
+**Falta para ligar:** o texto (a automação já está ligada; o passo de
+mensagem entra quando você aprovar).
+
+---
+
+## Seção 6 — Desqualificado
+
+**Já montada, sem texto.** Gatilho: card entrou em *Desqualificado*. Aplica a
+etiqueta `Desqualificado` e **encerra a conversa**.
+
+- Encerrar **solta o responsável** da conversa.
+- Qualquer mensagem do cliente depois disso **devolve a conversa** para a
+  caixa de entrada, sem responsável.
+- ⚠️ Ligada, ela também pega os leads que o **Typebot** move para
+  Desqualificado. A conversa deles nasce encerrada; se o lead ainda não
+  respondeu, só a etiqueta muda.
+
+**Falta para ligar:** só a sua palavra.
+
+---
+
+## Anexo A — Já no ar: o aviso do Calendly (vai para o ADVOGADO, não ao cliente)
+
+Ligada desde 07/09; alterada pela última vez **hoje, 23/09, às 08:23**. Vai
+para o número 5583988745316 por Bancário - Comercial a cada agendamento.
+
+```
+*Novo Agendamento:*
+*Nome:* {{vars.agendamento_nome}}
+*Data:* {{vars.agendamento_data}}
+*Telefone:* {{vars.agendamento_telefone}}
+*Origem:* {{contact.origem}}
+*Tamanho da Dívida:* {{contact.campo.tamanho_da_divida}}
+*Link CRM:* {{conversation.link}}
+```
+
+Só para conferência — não faz parte desta aprovação.
+
+## Anexo B — Desligadas: a régua de cobrança do Asaas
+
+Os quatro textos foram escritos com a integração do Asaas (13/09) e estão
+**desligados** junto com a régua. Saem por Bancário - Comercial. Só para
+conferência; se quiser mexer, é outra frente.
+
+**Cobrança · 1, 5 e 30 dias** (o mesmo texto nas três):
+
+```
+Olá, {{vars.cliente_primeiro_nome}}! Aqui é do {{vars.escritorio_nome}}.
+Constam em aberto no seu cadastro {{vars.cobranca_quantidade}} parcela(s), num total de {{vars.cobranca_valor}}:
+{{vars.cobranca_detalhe}}
+{{vars.vence_hoje_detalhe}}
+Se já pagou, pode desconsiderar esta mensagem. Qualquer dúvida, é só responder por aqui.
+```
+
+**Lembrete · vence hoje:**
+
+```
+Olá, {{vars.cliente_primeiro_nome}}! Aqui é do {{vars.escritorio_nome}}.
+Passando para lembrar que {{vars.vencimento_texto}}:
+{{vars.cobranca_detalhe}}
+Se já pagou, pode desconsiderar. Qualquer dúvida, é só responder por aqui.
 ```
 
 ---
 
-## 4b. O que foi testado em 21/09
+## O que falta você me dar
 
-Tudo no card do Leonardo Cabral Baptista, com automações temporárias que foram
-apagadas depois. Nenhuma das oito foi ativada em momento nenhum.
-
-**As variáveis, num envio real de WhatsApp.** Todas resolveram:
-
-| Variável | Saiu como |
-| --- | --- |
-| `{{contact.name}}` | Leonardo Cabral Baptista |
-| `{{contact.campo.data_e_hora_reuniao}}` | **09/09/2026 às 17:30h** |
-| `{{contact.campo.link_reuniao}}` | o link do Google Meet |
-| `{{contact.phone}}` | 558388745316 |
-| `{{contact.email}}` | leonardocabralb@gmail.com |
-| `{{conversation.link}}` | o link da conversa no CRM |
-| `{{contact.origem}}` | vazio (ele não veio de anúncio) |
-
-A data fica guardada em UTC e sai no fuso do escritório, no formato escolhido.
-⚠️ A mensagem sai com o prefixo `*CB Advogados:*` — a assinatura da conta está
-ligada e vale para toda mensagem de automação.
-
-**A trava por etiqueta**, rodada duas vezes: sem a etiqueta o corpo executou
-(`branch=no`, desfecho *concluída*); com a etiqueta nada executou
-(`branch=yes`, desfecho *barrada*). É o achado que corrigiu o plano.
-
-**O alvo dos lembretes**, sem enviar nada: a função que procura quem deve
-receber foi chamada com a janela de uma hora que o lembrete de 24h usaria, e
-devolveu os dois contatos com reunião ali dentro; com uma janela deslocada,
-devolveu zero. As quatro configurações de deslocamento passam na validação,
-inclusive a de 10 minutos, que tem zero horas.
-
-**O portão de ativação**, na tela: ligar a de contrato fechado e salvar foi
-recusado com os dois pontos que faltam, nomeados, e o interruptor voltou
-sozinho para desligado.
-
-**O que NÃO deu para testar:** o disparo automático de ponta a ponta. Para
-isso seria preciso ativar uma automação em produção, e **treze clientes reais
-têm reunião marcada**, seis delas amanhã — o risco de mandar texto não
-aprovado para gente de verdade não se justifica antes de você confirmar os
-textos.
-
----
-
-## 5. O que falta você decidir ou me mandar
-
-| # | O que | Trava qual automação |
+| # | O quê | Destrava |
 | --- | --- | --- |
-| 1 | Confirmar ou corrigir os textos acima | todas |
-| 2 | Link público de agendamento do Calendly | 5 (no-show) |
-| 3 | URL do webhook do Atlas e os campos que ele espera | 1 |
-| 4 | Título, prazo e responsável da tarefa | 1 |
-| 5 | O arquivo Excel dos documentos | 2 |
-| 6 | Ligar a de Desqualificado como está? | 4 |
+| 1 | Aprovar ou corrigir os textos (1.1–1.4, 2.1–2.10, 3.1–3.2, 4.1–4.3, 5.1) | todas |
+| 2 | Link público de agendamento do Calendly | No-show |
+| 3 | URL do webhook do Atlas e os campos que ele espera | Contrato fechado |
+| 4 | Responsável da tarefa de contrato fechado | Contrato fechado |
+| 5 | O arquivo Excel dos documentos | Documentos de gestão de passivo |
+| 6 | Ligar a de Desqualificado como está? | Desqualificado |
+| 7 | Assinatura: fica `*CB Advogados:*` em todas, ou alguma assina com outro nome? | todas |
 
-⚠️ **Antes de ligar os lembretes, saiba que eles pegam gente na hora.** Treze
-clientes têm reunião marcada no campo, seis delas amanhã. O lembrete de 24h
-começa a disparar para essas pessoas no mesmo dia em que for ligado.
+## Referência técnica
 
----
+**As variáveis foram testadas num envio real em 21/09** (no card do
+Leonardo): `{{contact.name}}` (o nome da ficha), `{{contact.campo.data_e_hora_reuniao}}`
+(sai como **09/09/2026 às 17:30h** — gravada em UTC, sai no fuso do
+escritório), `{{contact.campo.link_reuniao}}` (o link do Meet),
+`{{contact.phone}}`, `{{contact.email}}`, `{{conversation.link}}` (o link da
+conversa no CRM) e `{{contact.origem}}` (vazio para quem não veio de anúncio).
 
-## 6. Decisões já travadas
+**A trava por etiqueta** (contrato fechado) foi rodada duas vezes: sem a
+etiqueta o corpo executou; com a etiqueta nada executou e o desfecho foi
+*barrada*. O corpo da automação TEM de ficar dentro do ramo "não tem a
+etiqueta" — ramo vazio não interrompe o resto, e a primeira versão deste
+plano errava nisso.
 
-Registradas para não voltarem à discussão:
+**A caixa "interromper se o card sair desta etapa"** fica DESMARCADA no
+contrato fechado (senão executar à mão num lead de outra etapa não manda
+nada, e o último passo, que muda o card de funil, a interromperia) e
+MARCADA no no-show.
 
-- **Contrato fechado é uma automação só**, com trava por etiqueta no primeiro
-  passo. (08/09)
-- **O passo redundante "mover para Contrato Fechado" fica**, porque a
-  automação pode ser executada à mão em lead de outra etapa. (08/09)
-- **Mover para o funil Jurídico é o último passo**, para quem só enxerga o
-  funil jurídico receber o lead já preparado. (08/09)
-- **Automação 2 é manual.** (08/09)
+**Limite do no-show a partir da espera de 30 dias:** a pergunta "o card se
+mexeu desde que a execução começou?" enxerga só 30 dias de histórico de
+movimento. O que continua protegendo é a posição atual do card: fora de No
+Show na hora do envio, a mensagem não sai.
+
+**O disparo automático de ponta a ponta não foi testado em produção** — seria
+preciso ligar uma automação com textos não aprovados, e há clientes reais com
+reunião marcada. Com os textos aprovados, o teste é o primeiro passo depois
+de ligar.
+
+## Decisões já travadas
+
+- **Contrato fechado é uma automação só**, com trava por etiqueta. (08/09)
+- **O passo redundante "mover para Contrato Fechado" fica**, para rodar à mão
+  em lead de outra etapa. (08/09)
+- **Mover para o funil Jurídico é o último passo.** (08/09)
+- **Documentos de gestão de passivo é manual.** (08/09)
 - **Formato de data: `30/08/2026 às 16:00h`.** (08/09)
 - **Etiqueta de no-show aplicada uma vez só.** (20/09)
-- **Lembretes DISPARAM para qualquer conexão**, e só enquanto o lead estiver
-  na etapa Reunião Agendada. (20/09)
-- **Lembretes SAEM sempre por Bancário - Comercial**, fixado no passo de
-  mensagem. (21/09)
+- **Lembretes DISPARAM para lead de qualquer conexão**, e só enquanto o card
+  estiver em Reunião Agendada. (20/09)
+- **Lembretes SAEM sempre por Bancário - Comercial.** (21/09)
+- **Qualquer admin da conta gerencia qualquer automação.** (23/09; PR #260)
