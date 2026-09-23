@@ -2875,13 +2875,19 @@ com teste). Diagnóstico, números e a verificação PENDENTE estão em
   (depende do aparelho), e onde a mensagem chega o cartão vem com um quadro em
   branco. Todo caminho novo de TEXTO pela Evolution repete o campo. Há pino em
   `evolution-transport.test.ts`.
-- ⚠️⚠️ **O WhatsApp NÃO anuncia essa falha**: nenhuma das 3 falhas desde 11/09
-  virou `failed`, todas ficaram em ✓. O vermelho de `failed` já existia; o novo
-  ("Não confirmada") é INFERIDO. Ele acende quando a mensagem saiu pelo CRM,
-  está em ✓ há mais de 1 min, e há prova de que o aparelho estava no ar: uma
-  mensagem nossa posterior foi entregue ou lida (pelo CRM OU pelo celular), ou
-  o destinatário escreveu mais de 1 min depois. Três recortes, cada um evitando
-  um alarme falso MEDIDO:
+- ⚠️⚠️ **O WhatsApp quase nunca anuncia essa falha**: das 4 falhas desde
+  11/09, só uma virou `failed` (recibo ERROR); as outras 3 ficaram em ✓. O
+  vermelho de `failed` já existia; o novo ("Não confirmada") é INFERIDO. Ele
+  acende quando a mensagem saiu pelo CRM, está em ✓ há mais de 1 min, e há
+  prova de que o aparelho estava no ar: uma mensagem nossa posterior foi
+  entregue ou lida (pelo CRM OU pelo celular, por qualquer conexão), ou o
+  destinatário escreveu mais de 1 min depois. Quatro recortes, cada um
+  evitando um alarme falso MEDIDO:
+  - só conexão EVOLUTION. A rota da Meta (`handleStatusUpdate`) grava a
+    situação SEM a escada — um "sent" atrasado rebaixa "delivered" — e não
+    espera a mensagem existir para aplicar o recibo. Uma versão do comentário
+    da rota da Evolution dizia que a Meta tinha a guarda: ela só protege
+    `broadcast_recipients`;
   - só o que saiu pelo CRM, porque o CRM às vezes perde o recibo de mensagem
     do celular;
   - só desde 11/09 00:00 UTC. Antes, recibo perdido era rotina, e as 2
@@ -2889,11 +2895,19 @@ com teste). Diagnóstico, números e a verificação PENDENTE estão em
     27 mensagens antigas ficariam vermelhas;
   - grupo fica de fora.
 
-  Resultado: as 3 falhas reais em 153 mensagens, e nenhuma outra. Sem
-  evidência (mensagem única, destinatário calado), a regra não acusa.
+  Resultado: as 3 falhas reais em 152 mensagens pela Evolution, e nenhuma
+  outra. Sem evidência (mensagem única, destinatário calado), a regra não
+  acusa.
+- ⚠️⚠️ **O fio CONFERE NO BANCO antes de pintar.** A recarga da conversa
+  (`handleMessagesLoaded` na página) substitui a lista inteira e pode
+  atropelar um recibo aplicado pelo realtime no meio do caminho: a tela fica
+  em ✓ com ✓✓ no banco, e pintar isso de vermelho levaria o operador a
+  reenviar ao cliente o que já chegou. A candidata que o banco já confirmou
+  tem a tela corrigida (`onUpdateMessage`); o id provisório `temp-…` nunca é
+  pintado.
 - ⚠️ **O relógio é o tique de 1 min da badge da janela de 24h**
-  (`agoraDaBadge`), agora com DOIS leitores. Condicioná-lo à janela da Meta
-  desligaria o vermelho num fio parado da Evolution.
+  (`agoraDaBadge`), que já alimentava a faixa de inadimplência. Condicioná-lo
+  à janela da Meta desligaria o vermelho num fio parado da Evolution.
 - ⚠️ **Mensagem de saída se mede por `sender_type`, nunca por `from_me`.** O
   caminho da Meta grava `from_me` NULO, e a primeira medição deste trabalho
   perdeu as mensagens da Meta por isso.

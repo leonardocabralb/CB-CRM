@@ -58,13 +58,38 @@ depende do aparelho de cada cliente, provavelmente da versão do WhatsApp.
    torna clicável sozinho. Conferido no banco da Evolution: com o campo, a
    mensagem sai sem `externalAdReply`. Pino em `evolution-transport.test.ts`.
 2. **Balão vermelho "Não confirmada"** (`src/lib/inbox/entrega-nao-confirmada.ts`,
-   com teste). A mensagem que saiu pelo CRM e continua em ✓ depois de 1
-   minuto, com prova de que o aparelho do destinatário estava no ar (uma
-   mensagem nossa posterior foi entregue ou lida, **pelo CRM ou pelo
-   celular**, ou o destinatário escreveu mais de 1 minuto depois dela), fica
-   com o mesmo balão vermelho do "Não entregue", com outra frase. Nas 153
-   mensagens enviadas pelo CRM de 11/09 até 23/09, ele marca exatamente as 3
-   falhas reais, e nenhuma outra.
+   com teste). Das 4 falhas desde 11/09, só uma virou `failed` (recibo ERROR,
+   que já tinha o seu balão vermelho). As outras 3 ficaram em ✓. O novo aviso
+   acende quando a mensagem saiu pelo CRM por uma conexão **Evolution** e
+   continua em ✓ depois de 1 minuto, com prova de que o aparelho do
+   destinatário estava no ar: uma mensagem nossa posterior foi entregue ou
+   lida (**pelo CRM ou pelo celular**, por qualquer conexão), ou o
+   destinatário escreveu mais de 1 minuto depois dela. Ele usa o mesmo balão
+   vermelho do "Não entregue", com outra frase. Nas 152 mensagens enviadas
+   pelo CRM pela Evolution de 11/09 até 23/09, marca exatamente as 3 falhas
+   reais, e nenhuma outra.
+   - **Só Evolution** (revisão do PR #272): a rota da Meta grava a situação
+     sem a escada (um "sent" atrasado rebaixa "delivered") e não espera a
+     mensagem existir para aplicar o recibo, então lá ✓ parado não prova
+     nada. A Meta avisa a recusa de verdade com `failed`.
+   - **Confere no banco antes de pintar**: a recarga da conversa substitui a
+     lista inteira e pode atropelar um recibo que acabou de chegar, deixando a
+     tela em ✓ com ✓✓ no banco. A candidata que o banco já confirmou tem a
+     tela corrigida; só fica vermelha a que o banco ainda diz "enviada".
+
+### Limites conhecidos
+
+- **Edição de mensagem** (`chat/updateMessage`): a Evolution não aceita
+  `linkPreview` ali. Ao editar um texto para incluir link, a Baileys ainda
+  pode gerar a prévia dela (a de anúncio, não). Não foi medido; é raro.
+- **Meta fora do aviso novo** até a rota dela ganhar a escada de status e a
+  espera pela mensagem (`src/app/api/whatsapp/webhook/route.ts`,
+  `handleStatusUpdate`). É defeito anterior a este trabalho: hoje um recibo
+  atrasado já rebaixa ✓✓ para ✓ na tela.
+- **Sem evidência não há aviso**: mensagem única e cliente calado ficam em
+  ✓. Daqui não há como separar "não chegou" de "celular desligado".
+- **A explicação ao passar o mouse não aparece no celular** (`title`). A
+  frase do balão, que diz o que fazer, aparece sempre.
 
 ## 4. Verificação pendente
 
@@ -136,6 +161,13 @@ where source = 'web' and (key->>'fromMe')::boolean
   and "messageType" = 'conversation'
   and to_timestamp("messageTimestamp") >= '2026-09-24 00:00:00+00';
 ```
+
+⚠️ A consulta B só enxerga o `externalAdReply` porque o patch da citação na
+nossa imagem (`docker/evolution-cb/2708-citacao.patch`) grava o
+`contextInfo` do texto na coluna `contextInfo`. Numa imagem sem esse patch, a
+coluna guarda só o `messageContextInfo`, e B daria zero sem provar nada.
+Antes de confiar no zero, confira que a coluna traz `mentionedJid` (que toda
+mensagem 1:1 pela API leva).
 
 Os recibos de uma mensagem específica ficam em `"MessageUpdate"`, pela coluna
 `"keyId"`. `ERROR` é a recusa do aparelho. Várias `SERVER_ACK` sem
