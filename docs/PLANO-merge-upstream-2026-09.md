@@ -182,7 +182,7 @@ quebrar, sabe-se qual.
 | **1** | Segurança e dependências (#563, #510, #506) | Real: estamos no Next 16.2.12 | Baixa | Médio-baixo | — | ✅ em produção (PR #239, 21/09) |
 | **2** | Função de disparo (#536) + 2 achados nossos (params em 2-D; `channel_id` descartado) | Real: quebrada na produção | Baixa → Média | Baixo | `1030` (aplicada 21/09) | ✅ em produção (PR #242, 21/09) |
 | **1b** | Segurança depois do alvo: #588 (SSRF), #587 (automação por conta), #589 (conversa por conta) — PRs ABERTOS do mantenedor — e a mídia do Instagram (achado nosso) | Real: brechas presentes; o #587 também dava 404 ao admin não-autor | Média | Médio-baixo | — | ✅ em produção (PR #261, 23/09) |
-| **3** | Pequenas e independentes: CSV (#529), textarea (#559), vários App Secrets (#500), tags da v1 (#560, só medir), e o resolvedor do canal Meta (3e — achado NOSSO da Fase 2, sem PR do upstream); com a P9, a normalização do telefone digitado — dividida em 3-I a 3-IV | Moderado | Baixa | Baixo | — | 3-I no PR #262; 3-II a 3-IV pendentes |
+| **3** | Pequenas e independentes: CSV (#529), textarea (#559), vários App Secrets (#500), tags da v1 (#560, só medir), e o resolvedor do canal Meta (3e — achado NOSSO da Fase 2, sem PR do upstream); com a P9, a normalização do telefone digitado — dividida em 3-I a 3-IV | Moderado | Baixa | Baixo | — | 3-I em produção (PR #262); 3-II em PR; 3-III e 3-IV pendentes |
 | **4** | Fluxos: `{{vars}}` em botões e listas (#553) | Inerte hoje (0 fluxos ativos) | Média | Médio-baixo | — | pendente |
 | **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `0045` | pendente |
 | **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | pendente |
@@ -836,7 +836,87 @@ produção para vê-lo.
 | Aceitos por escrito | as rotas de disparo e de retomada mostram "Internal server error" no lugar de "conecte um número" (mais honesto); na v1 o 500 é o contrato de erro interno |
 | **Codex no HEAD `e583b291`** | nenhum achado |
 
-**Pós-deploy:** — (a preencher)
+**Pós-deploy (23/09/2026):** PR #262 mesclado às 14:00Z (merge `c063629e`;
+a branch foi rebaseada sobre o `main` com a 1b e o Codex revisou de novo o
+HEAD `961a39a8`: limpo), rollout na primeira tentativa. Leituras anônimas: o
+webhook da Meta sem assinatura continua 401, crons 401, login 200; ingestão
+das quatro conexões da Evolution viva depois do rollout. ⚠️ A prova com uma
+entrega ASSINADA de verdade (o segredo da produção passando pelo
+`parseAppSecrets`) depende do próximo evento do número oficial — conferir no
+banco que ele continua gravando mensagem/status depois de 14:00Z.
+
+**Resultado da 3-II (23/09/2026, telefone digitado nas telas + #529):**
+
+- **A régua** (`src/lib/contacts/telefone.ts`, puros): `telefoneDigitado` usa
+  `digitosDoTelefone` (brasileiro sem DDI ganha o 55, como sempre) e recusa,
+  com o MOTIVO, o que ele deixaria passar: sem `+` e sem DDD (`curto` —
+  "98874-5316" sairia para +98), letra no meio, 0 de tronco, DDI 55 com
+  tamanho errado e mais de 15 dígitos (`invalido`). Antes, limpa as marcas
+  invisíveis que o WhatsApp põe num número copiado, o traço tipográfico e o
+  `.0` de planilha salva como decimal. `escritaDoTelefone` é a decisão ÚNICA
+  das duas telas: na edição, telefone que não mudou não é conferido nem
+  regravado; na criação, tudo passa; a ficha só do Instagram pode ficar sem
+  (`null`).
+- **Telas:** o formulário e a ficha do contato gravam o número normalizado, e
+  o aviso de duplicata do formulário procura pelo número normalizado (o
+  "81988745316" sem o 55 passa a BLOQUEAR como a ficha que já existe, em vez
+  do aviso amarelo). A ficha deixou de estourar no `.trim()` do telefone nulo
+  da ficha só do Instagram.
+- **Planilhas (#529 adotado):** o dedupe conta o inválido À PARTE e a linha
+  única sai normalizada — o CSV do disparo agora ACHA a ficha do cliente em
+  vez de criar outra com +81; o parser mantém a linha sem telefone para ela ser
+  contada (e pula a linha só de vírgulas); a importação mostra o motivo de cada
+  linha que o banco recusou; o passo 2 do disparo avisa quantas ficaram de fora
+  e o arquivo sem nenhum telefone válido deixa de dizer "não foi possível ler".
+- **Pino** (`telefone-digitado.chamadores.test.ts`): uma chamada da régua por
+  tela e nenhum `parseInternationalPhone` nas seis — o merge do original traz
+  o `+` obrigatório para essas mesmas linhas.
+
+**Medido antes, na produção:** 5.138 das 5.157 fichas já são dígitos com o
+55; 1 com `+`; 17 estrangeiras só em dígitos, todas com 12 dígitos ou mais
+(ZERO seriam relidas como brasileiras); 0 com `.0`.
+
+**Verificação:** `typecheck` limpo; lint `✖ 59 problems (0 errors, 59
+warnings)` = base; suíte em Node 22 **381 arquivos / 5.020 testes**; portões de
+i18n OK (os 5 avisos de ICU são antigos). **Mutação:** 26 mutantes, todos
+reprovam — um escapou na primeira rodada (o formulário tinha a régua em dois
+lugares e o pino só procurava a presença), e a decisão foi para o helper único.
+
+**Teste prático (preview `localhost:3130`, sessão do operador; números
+fictícios `55 99 90000-000x`, conferidos inexistentes antes):**
+
+| Caso | Resultado |
+| --- | --- |
+| Formulário: `90000-0001` / `99 90000 ramal 1` | "Faltou o DDD…" / "Telefone inválido…"; nada gravado |
+| Formulário: `(99) 90000-0001` | gravado `5599900000001`, nome fixado, dono da conta |
+| Formulário: `99900000001` de novo | bloqueado como duplicata; continua UMA ficha |
+| Ficha: `90000-0002` / `+55 (99) 90000-0002` | recusado / gravado `5599900000002` |
+| Ficha: só o nome | o corpo do PATCH não leva `phone` (conferido interceptando a requisição) |
+| Importação: válida, repetida, sem telefone, sem DDD, com letra, já existente | 1 importada (normalizada, dono da conta), 2 ignoradas, 3 "sem telefone válido", com a dica da régua |
+| CSV do disparo (só até o passo 2): as duas grafias do mesmo número + vazio + sem DDD | 1 contato, "2 linhas ficaram de fora"; só inválidos → a mensagem nova |
+| CSV do disparo, depois das revisões: número colado com marcas invisíveis, `.0`, traço tipográfico, linhas `,`/`,,` | 3 contatos, nenhum aviso de linha perdida |
+| Limpeza | as 2 fichas de teste apagadas; 0 disparos, 0 conversas, 0 negócios criados |
+
+Não testável ao vivo: a linha que o BANCO recusa na importação (o motivo por
+linha) — não há como provocar a recusa sem mexer em policy; o ramo é o do
+#529, lido no código.
+
+**Revisão em duas lentes:** nenhum P0/P1.
+
+| Achado | Destino |
+| --- | --- |
+| P2 (AS DUAS, medido) — número copiado do WhatsApp traz U+202A/U+202C, e traço tipográfico: a régua os recusava como "inválido" sem nada visível errado; antes, o texto cru era gravado e funcionava | ✅ limpos antes da régua (`\p{Cf}` e o intervalo de traços), com 6 casos no teste |
+| P2 (Lente 1, medido) — planilha salva pelo pandas escreve `81988745316.0`, e o zero virava dígito: +81 | ✅ o `.0` final da forma "dígitos.0" é cortado |
+| P2 (Lente 1) — estrangeiro guardado só em dígitos com 10, ou 11 com 9 na 3ª posição, editado ou importado sem `+`, é relido como brasileiro | aceito por escrito: MEDIDO zero fichas assim (as 17 estrangeiras têm 12+ dígitos) |
+| P2 (Lente 2, a medir) — ficha antiga gravada crua SEM o 55 deixaria de ser achada | MEDIDO: 1 ficha de 10/11 dígitos, e é dos EUA (`1` + DDD americano), não brasileira sem 55 — zero casos |
+| P3 — linha só de vírgulas (fim de exportação do Excel) contava como "telefone inválido" | ✅ o parser a pula |
+| P3 — vermelho da falha ilegível no escuro (`red-700` = 2,92) | ✅ `red-600`, MEDIDO no app: 4,77 claro / 3,94 escuro — o melhor dos dois modos (o `amber-700` já era o melhor âmbar) |
+| P3 — o pino não cobria as planilhas nem o aviso de duplicata | ✅ estendido |
+| P3 — "telefone inválido" também contava os vazios; `errorCsvParse` órfã | ✅ "sem telefone válido"; a chave saiu dos dois dicionários |
+| P3 — comentários imprecisos (o motivo do `null`; o piso de 8) e o placeholder pt-BR | ✅ |
+| P3 — a nota do `CLAUDE.md` dava a entender que TODO telefone digitado já passa pela régua | ✅ diz que a "Nova conversa" e a API v1 são a 3-III |
+| P3 — número americano de 10 dígitos sem `+` vira DDD 40, que não existe | aceito: a dica manda escrever número de fora com `+`; validar DDD seria regra nova sem caso medido |
+| Anotado para a Fase 10 | `toastImported`/`importBtn` usam chaves `_plural` que o next-intl não lê — "Importar 6 contato" no singular (defeito antigo, visto no teste) |
 
 ### Fase 4 — Fluxos: `{{vars}}` em botões e listas
 
@@ -1047,3 +1127,4 @@ de ser `80c3f9a` e passa a ser o commit que os contém — e as medições da se
 | 22/09/2026 | 3 (plano) | A pedido do operador, o cartão do `resolveMetaChannel` (P3 da revisão final do #242) entrou no plano como **item 3e**, depois de confirmado no `origin/main` (`ba5612ef`): o `error` descartado na busca por id, na lista e no espelho, e o `status` não conferido. Levantados os 7 chamadores (6 arquivos), todos traduzindo `null` em 400. Nada implementado — a pausa antes da Fase 3 continua. |
 | 23/09/2026 | 1b | Acrescentada a pedido do operador ("siga agora com todo o plano"): os 3 PRs de segurança ABERTOS do mantenedor valiam aqui, e o download da mídia do Instagram tinha SSRF com leitura. O #587 foi resolvido no meio da fase por OUTRA sessão (#260); ficou a versão dela, e esta fase acrescentou o que faltava. Quatro rodadas do Codex (3 com P2, todos corrigidos; a 4ª limpa). Mesclada e publicada; pós-deploy conferido. |
 | 23/09/2026 | 3-I | A P9 resolvida (a metade aditiva do #586, com a nossa régua) partiu a Fase 3 em quatro. 3b/3c/3e entraram, a 3d fechou sem mudança. A Lente 2 MEDIU em bash que `a, b` no `crm.env` apaga o `META_APP_SECRET` inteiro (401 em todo webhook) → a doc manda escrever sem espaço. Codex limpo na 1ª rodada. |
+| 23/09/2026 | 3-II | O telefone digitado nas telas e nas planilhas passa pela nossa régua, e a importação conta o inválido à parte (#529). As duas lentes, independentes, acharam o mesmo P2 — o número copiado do WhatsApp traz marcas invisíveis e era recusado —, e a Lente 1 achou o `.0` de planilha do pandas virando +81. Os dois P2 "de dado antigo" foram MEDIDOS na produção antes de decidir: zero casos. Um mutante escapou do pino na 1ª rodada e a decisão das telas virou um helper só. |
