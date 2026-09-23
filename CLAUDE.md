@@ -6032,19 +6032,17 @@ não conseguia receber no n8n "o lead mudou de etapa". O que morde código novo:
   pelo `ctx.supabase`; um `supabaseAdmin()` ali sai `system` (pino). ⚠️ A
   marca é RÓTULO, não credencial. A trilha da 912 (`cb_lead_events`) ainda
   mistura API e automação em `sistema` — ficou de fora.
-  ⚠️⚠️ **A marca `api` NÃO FOI MEDIDA contra o PostgREST real** (23/09/2026):
-  a conferência da 1040 põe a GUC À MÃO, e os testes do TS só veem o
-  cabeçalho SAIR do cliente. Que o gateway da Supabase o repasse e o
-  PostgREST o publique em `request.headers` é premissa DOCUMENTADA (guia
-  "Securing your API": `current_setting('request.headers', true)::json->>
-  '<nome>'`) — a produção roda PostgREST 14.5 (MEDIDO por `pg_stat_activity`)
-  —, não medida. Por isso a medição é passo da ordem de deploy da 1040
-  (acima, no aviso durável). ⚠️⚠️ E a queda NÃO é inofensiva: sem o
-  cabeçalho, o movimento pela API sai `system`, e a receita da doc
-  (`source != api`) deixa de cortar o laço do fluxo que reage a
-  `deal.stage_changed` movendo o card pela API — que o filtro antigo
-  (`!= system`) cortava. Quem medir troca este parágrafo por "MEDIDO em
-  <data>". ⚠️ Mesmo com a marca, o filtro
+  ✅ **A marca `api` foi MEDIDA contra o PostgREST real em 23/09/2026**,
+  logo depois de aplicar a 1040: o card do lead de teste autorizado foi da
+  etapa "MQL 1" para "MQL 2" e voltou, por `PATCH /rest/v1/deals` com a
+  service role e `x-cb-origem: api`, e as duas linhas novas de
+  `cb_automation_events` saíram `origem = 'api'` (o gateway da Supabase
+  repassa o cabeçalho e o PostgREST 14.5 o publica em `request.headers`).
+  ⚠️⚠️ Se um dia ele deixar de chegar (troca de gateway, cliente sem
+  `global.headers`), a queda NÃO é inofensiva: o movimento pela API volta a
+  sair `system`, sem erro nenhum, e a receita da doc (`source != api`) deixa
+  de cortar o laço do fluxo que reage a `deal.stage_changed` movendo o card
+  pela API. Quem mexer no cliente da API mede de novo do mesmo jeito. ⚠️ Mesmo com a marca, o filtro
   `api` não corta o laço que ATRAVESSA uma automação do CRM (o fluxo move
   para Y, uma automação de Y devolve para X como `automation`, o fluxo move
   de novo): a escrita pela API grava `cadeia` vazia, então `fechaCiclo`
@@ -7739,6 +7737,20 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
     ou 0043/0045 no histórico nem em branch remota, nenhuma das 6 colunas);
     conferidas no catálogo depois: as 6 colunas e o índice
     `(account_id, wa_user_id) WHERE (wa_user_id IS NOT NULL)`, UNIQUE.
+  - **1040_cb_origem_api_e_aviso_duravel_do_funil** — o CHECK de
+    `cb_automation_events.origem` passa a aceitar `api` (trocado ANTES da
+    função: o gatilho engole erro com WARNING), `cb_enfileira_evento_de_funil`
+    decide a origem pela ordem usuário → cadeia → conexão → automação →
+    cabeçalho `x-cb-origem: api` → sistema, e as colunas
+    `webhooks_pendente_desde`/`webhooks_tentativas` + índice parcial da
+    entrega durável dos `deal.*`, sem backfill. ⚠️ Foi para a produção ANTES
+    do merge do PR #279: o dreno novo grava a coluna na reivindicação, e sem
+    ela as automações de funil parariam. Aplicada em 23/09/2026 pela
+    Management API (histórico `20260923232600`), depois do replay verde do
+    CI; conferida no catálogo (CHECK com `api`, as duas colunas, o índice
+    com o predicado, a função com o cabeçalho, `anon` sem EXECUTE, 0
+    pendentes herdados) e medida contra o PostgREST real (ver a nota da
+    origem `api`).
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.

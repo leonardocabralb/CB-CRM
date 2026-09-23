@@ -18,9 +18,9 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 // compartilhado, senão o movimento sai `system`. Há pino em
 // `cliente-da-api.test.ts`.
 //
-// ⚠️⚠️ Que o gateway da Supabase repasse o cabeçalho e o PostgREST o publique
-// em `request.headers` é premissa DOCUMENTADA (guia "Securing your API"), e a
-// medição contra a produção é passo da ordem de deploy da 1040 (CLAUDE.md).
+// ✅ Que o gateway da Supabase repasse o cabeçalho e o PostgREST o publique
+// em `request.headers` foi MEDIDO contra a produção em 23/09/2026, depois de
+// aplicar a 1040 (ver a nota da origem `api` no CLAUDE.md).
 // Se um dia ele deixar de chegar, a queda NÃO é inofensiva: o movimento pela
 // API volta a sair `system`, sem erro nenhum, e a receita da doc
 // (`source != api`) deixa de cortar o laço do fluxo que move o card pela API.
