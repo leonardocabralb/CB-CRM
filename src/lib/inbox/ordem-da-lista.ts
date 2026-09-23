@@ -12,8 +12,21 @@
 // a página "resolvia" (a carga reordena). Mudar de aba do navegador também
 // resolvia, pelo `visibilitychange`, e é por isso que passou despercebido.
 //
-// Conversa NOVA já entrava no topo (a página a põe na frente ao hidratar), o
-// que tornava o defeito mais confuso: umas subiam, outras não.
+// O que muda junto, por escrito (revisão por duas lentes):
+// · Conversa NOVA deixa de ir para o topo ao nascer: ela nasce sem
+//   `last_message_at` e fica no FIM, como no banco, até o INSERT da primeira
+//   mensagem — normalmente dezenas de ms; até ~5 s quando a ingestão espera a
+//   entrega do `conversation.created` a um webhook lento. Antes ia para o
+//   topo pelo `[conv, ...prev]` da página, e com ela o grupo sincronizado sem
+//   mensagem, que a nota do `nullsFirst: false` quer no fim.
+// · A garantia "só avança" é do INSERT da mensagem (`comMensagemNova`). O
+//   UPDATE da conversa espalha a linha do BANCO inteira, e os gatilhos da
+//   ingestão (espera da 972, janela da 993, a reabertura) chegam com a hora
+//   ANTIGA antes do bump: a linha pode piscar de volta à posição antiga por
+//   um quadro. Converge no bump. Travar o UPDATE também prenderia no topo um
+//   carimbo do futuro (relógio adiantado) até recarregar.
+// · A lista se move sob o ponteiro, como no WhatsApp: quem mira uma linha
+//   pode abrir a de cima se chegar mensagem abaixo dela.
 // ============================================================
 
 import type { Conversation, Message } from "@/types";
@@ -51,6 +64,12 @@ export function ordenarComoOBanco<T extends Ordenavel>(lista: readonly T[]): T[]
 /**
  * A linha da lista depois de chegar `mensagem` pelo tempo real.
  *
+ * ⚠️ Aviso de SISTEMA do grupo ("Fulano entrou") não mexe na linha: o banco
+ * não sobe o grupo nem soma não lida por ele (`cb-groups/system-events.ts`,
+ * de propósito — grupo grande tem gente entrando o dia todo), e nenhum
+ * UPDATE da conversa viria corrigir a tela. É a régua de
+ * `nao-lidas-abaixo.ts`.
+ *
  * ⚠️ Hora e prévia só AVANÇAM. Com a lista reordenando, uma mensagem com
  * carimbo antigo — a histórica da 1010, a carga do histórico da 1033, o lote
  * que a Evolution drena fora de ordem — puxaria a conversa para baixo e
@@ -62,9 +81,10 @@ export function ordenarComoOBanco<T extends Ordenavel>(lista: readonly T[]): T[]
  */
 export function comMensagemNova<C extends Conversation>(
   conversa: C,
-  mensagem: Pick<Message, "created_at" | "content_text">,
+  mensagem: Pick<Message, "created_at" | "content_text"> & Partial<Pick<Message, "content_type">>,
   aberta: boolean,
 ): C {
+  if (mensagem.content_type === "system") return conversa;
   const atual = instante(conversa.last_message_at);
   const nova = instante(mensagem.created_at);
   const avanca = atual === null || (nova !== null && nova >= atual);

@@ -79,6 +79,15 @@ describe("comMensagemNova", () => {
     expect(c.last_message_text).toBe("");
   });
 
+  it("⚠️ aviso de SISTEMA do grupo não mexe na linha (o banco também não)", () => {
+    const c = comMensagemNova(
+      base,
+      { created_at: "2026-09-23T18:05:00+00:00", content_text: "Fulano entrou", content_type: "system" },
+      false,
+    );
+    expect(c).toBe(base);
+  });
+
   it("a conversa aberta fica com zero não lidas", () => {
     const c = comMensagemNova(base, { created_at: "2026-09-23T18:05:00+00:00", content_text: "Oi" }, true);
     expect(c.unread_count).toBe(0);
@@ -90,8 +99,10 @@ describe("pinos: quem usa a ordem", () => {
   const lista = readFileSync(join(raiz, "src/components/inbox/conversation-list.tsx"), "utf8");
   const pagina = readFileSync(join(raiz, "src/app/(dashboard)/inbox/page.tsx"), "utf8");
 
-  it("a lista exibida passa por ordenarComoOBanco", () => {
-    expect(lista).toMatch(/ordenarComoOBanco\(aplicarFiltros\(conversations,/);
+  it("a lista exibida passa por ordenarComoOBanco antes do recorte", () => {
+    expect(lista).toMatch(/ordenarComoOBanco\(\s*conversations\s*\)/);
+    expect(lista).toMatch(/aplicarFiltros\(\s*ordenadas\s*,/);
+    expect(lista).not.toMatch(/aplicarFiltros\(\s*conversations\s*,/);
   });
 
   it("a consulta da lista continua na ordem que ordenarComoOBanco espelha", () => {

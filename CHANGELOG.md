@@ -57,6 +57,11 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **Caixa de entrada: a conversa que recebe mensagem sobe para o topo.**
+  Até aqui a hora e a prévia da linha mudavam, mas ela ficava na posição em
+  que estava quando a página abriu — uma conversa reaberta por mensagem
+  nova aparecia abaixo da dobra, e parecia que a mensagem não tinha
+  chegado até recarregar a página.
 - **Erro de banco ao escolher o número de uma campanha não é mais "conecte
   um número".** `POST /api/v1/broadcasts` (e as telas de disparo e de
   modelos) respondia `400 meta_channel_required` quando o CRM só não

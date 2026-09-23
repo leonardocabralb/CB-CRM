@@ -622,13 +622,17 @@ export function ConversationList({
     [conversations, filtros.status, search],
   );
 
-  // ⚠️ REORDENADA a cada render, na ordem da consulta: o tempo real só
-  // atualiza as linhas no lugar, e sem isto a conversa que recebe mensagem
-  // nova ficava onde a carga a deixou — abaixo da dobra (ver
-  // `ordem-da-lista.ts`).
+  // ⚠️ REORDENADA na ordem da consulta sempre que a lista muda: o tempo real
+  // só atualiza as linhas no lugar, e sem isto a conversa que recebe
+  // mensagem nova ficava onde a carga a deixou — abaixo da dobra (ver
+  // `ordem-da-lista.ts`). Num memo próprio: o recorte roda a cada tecla e a
+  // cada minuto, a ordem só muda com `conversations`, e `aplicarFiltros` é
+  // um `.filter`, que preserva a ordem.
+  const ordenadas = useMemo(() => ordenarComoOBanco(conversations), [conversations]);
+
   const filtered = useMemo(
     () =>
-      ordenarComoOBanco(aplicarFiltros(conversations, filtros, {
+      aplicarFiltros(ordenadas, filtros, {
         favoritas,
         etapaPorContato,
         funilPorEtapa,
@@ -641,9 +645,9 @@ export function ConversationList({
         agoraMs: agora,
         // `null` neutraliza o filtro "Inadimplentes" — ver `idsInadimplentes`.
         inadimplentes: idsInadimplentesDoAsaas,
-      })),
+      }),
     [
-      conversations,
+      ordenadas,
       filtros,
       etapasStatus,
       agora,
