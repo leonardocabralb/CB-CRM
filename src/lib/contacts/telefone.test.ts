@@ -213,6 +213,14 @@ describe("telefoneDigitado (a metade aditiva do #586, com a nossa régua)", () =
     expect(telefoneDigitado("(099) 3456-7890")).toEqual(nao("invalido"));
     expect(telefoneDigitado("+0 81 98874-5316")).toEqual(nao("invalido"));
     expect(telefoneDigitado("0800 123 4567")).toEqual(nao("invalido"));
+    // O tronco DEPOIS do 55 escrito — 13 dígitos, passava pelo tamanho
+    // (Codex, 2ª rodada do PR #265). Com +, com 00 e sem nada na frente.
+    expect(telefoneDigitado("+55 011 3456-7890")).toEqual(nao("invalido"));
+    expect(telefoneDigitado("0055 011 3456-7890")).toEqual(nao("invalido"));
+    expect(telefoneDigitado("55 011 3456-7890")).toEqual(nao("invalido"));
+    expect(telefoneDigitado("+55 0 81 98874-5316")).toEqual(nao("invalido"));
+    // E o número certo, com o mesmo DDD, continua passando.
+    expect(telefoneDigitado("+55 11 3456-7890")).toEqual({ ok: true, digitos: "551134567890" });
   });
 
   it("DDI 55 exige DDD + 8 ou 9 dígitos", () => {

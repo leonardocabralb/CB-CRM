@@ -918,6 +918,8 @@ linha) — não há como provocar a recusa sem mexer em policy; o ramo é o do
 | P3 — número americano de 10 dígitos sem `+` vira DDD 40, que não existe | aceito: a dica manda escrever número de fora com `+`; validar DDD seria regra nova sem caso medido |
 | Anotado para a Fase 10 | `toastImported`/`importBtn` usam chaves `_plural` que o next-intl não lê — "Importar 6 contato" no singular (defeito antigo, visto no teste) |
 | **Codex, 1ª rodada (HEAD `5b4bb2b9`)**: P2 — "019 3456-7890" (DDD terminado em 9 + fixo, com o 0 de tronco) tem 11 dígitos com 9 na 3ª posição, ganhava o 55, e o 0 ficava escondido no meio (`5501934567890`) — a régua o aceitava | ✅ o 0 de tronco é conferido no que foi ESCRITO, antes de normalizar; 3 casos no teste, mutante reprova |
+| **Codex, 2ª rodada (HEAD `ce17e04c`)**: P2 — o 0 de tronco DEPOIS do 55 escrito ("+55 011 3456-7890") dá 13 dígitos e passava pela régua de tamanho | ✅ `digitos` começando em `550` é recusado (nenhum DDD começa em 0); 5 casos (com `+`, com `00`, sem nada, e o número certo com o mesmo DDD passando), 2 mutantes reprovam |
+| **Conflito com o `main` depois do #259** (o merge cru do upstream, mesclado por outra pessoa em 23/09) | ✅ resolvido pela P9. Três conflitos textuais (o parser de CSV e os dois dicionários: fica a nossa régua e o nosso `csvInvalidPhones`; entram as duas chaves novas do upstream). E um conflito SEM marca: o `contact-form.tsx` se mesclou sozinho com a checagem do `+` do upstream DEPOIS da nossa — a ficha nova com "(11) 99999-9999" seria recusada de novo. O pino `telefone-digitado.chamadores.test.ts` reprovava a mescla (medido com mutante); a checagem e a chave `phoneNeedsCountryCode` saíram |
 
 ### Fase 4 — Fluxos: `{{vars}}` em botões e listas
 

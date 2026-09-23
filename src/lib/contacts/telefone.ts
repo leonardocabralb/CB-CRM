@@ -65,7 +65,8 @@ export type TelefoneDigitado =
  * - **Letra no meio é "invalido"**: `digitosDoTelefone` apaga tudo que não é
  *   dígito, e "81 9887 ramal 45" viraria um número que ninguém escreveu.
  * - **Começar em 0 é "invalido"** (tronco: "081 98874-5316"): cortar o 0
- *   acertaria esse caso e erraria o "0800", então a pessoa reescreve.
+ *   acertaria esse caso e erraria o "0800", então a pessoa reescreve. Vale
+ *   também para o 0 logo depois do 55 escrito ("+55 011 3456-7890").
  * - **DDI 55 exige DDD + 8 ou 9 dígitos** (12 ou 13 no total): 55 é só o
  *   Brasil, e "+55 81 9887-453" (faltou um dígito) iria para um número que
  *   não existe.
@@ -101,6 +102,10 @@ export function telefoneDigitado(texto: string | null | undefined): TelefoneDigi
   if (digitos.startsWith("55") && digitos.length !== 12 && digitos.length !== 13) {
     return { ok: false, motivo: "invalido" };
   }
+  // O mesmo tronco DEPOIS do 55 escrito: "+55 011 3456-7890" tem 13 dígitos
+  // e passava pela régua de tamanho. Nenhum DDD começa em 0 (Codex, 2ª
+  // rodada do PR #265).
+  if (digitos.startsWith("550")) return { ok: false, motivo: "invalido" };
   return { ok: true, digitos };
 }
 
