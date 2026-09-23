@@ -401,15 +401,23 @@ export async function persistInboundMessage(
   const conversation = convResult.conversation;
   const replyToId = await idDaMensagemCitada(db, conversation.id, m.quotedProviderId);
 
-  if (convResult.created) {
-    await dispatchWebhookEvent(db, m.accountId, 'conversation.created', {
-      conversation_id: conversation.id,
-      contact_id: contact.id,
-      // Sem o canal, N números viram um stream indistinguível para quem
-      // integra: não dá para rotear "só o que entrar pelo Comercial".
-      channel_id: m.channelId ?? null,
-    });
-  }
+  // ⚠️ conversation.created sai AQUI mas SEM `await` (23/09/2026): a entrega
+  // é uma consulta, um DNS sem prazo e um POST de até 5 s por endpoint, e um
+  // endpoint fora do ar atrasava a gravação da PRIMEIRA mensagem de toda
+  // conversa nova — e junto a reabertura, o robô, as automações e a IA. A
+  // promessa é esperada logo antes do message.received (quem assina os dois
+  // continua recebendo nesta ordem) e em todo retorno antecipado: dentro do
+  // `after()`, promessa solta pode ser congelada antes de entregar. Nunca
+  // rejeita (`deliver.ts` engole tudo).
+  const avisoDeConversaCriada = convResult.created
+    ? dispatchWebhookEvent(db, m.accountId, 'conversation.created', {
+        conversation_id: conversation.id,
+        contact_id: contact.id,
+        // Sem o canal, N números viram um stream indistinguível para quem
+        // integra: não dá para rotear "só o que entrar pelo Comercial".
+        channel_id: m.channelId ?? null,
+      })
+    : Promise.resolve();
 
   const contentType = ALLOWED_CONTENT_TYPES.has(m.contentType) ? m.contentType : 'text';
 
@@ -455,6 +463,9 @@ export async function persistInboundMessage(
   // undefined` e o chamador não teria onde pendurar o anexo.
   if (msgError || !insertedMsg) {
     console.error('[inbound-store] insert message failed:', msgError);
+    // A conversa FOI criada: o aviso sai mesmo assim (a próxima mensagem já
+    // não a cria, e ele se perderia para sempre).
+    await avisoDeConversaCriada;
     return null;
   }
 
@@ -567,6 +578,8 @@ export async function persistInboundMessage(
     });
   }
 
+  // conversation.created termina ANTES de message.received começar.
+  await avisoDeConversaCriada;
   await dispatchWebhookEvent(db, m.accountId, 'message.received', {
     conversation_id: conversation.id,
     contact_id: contact.id,

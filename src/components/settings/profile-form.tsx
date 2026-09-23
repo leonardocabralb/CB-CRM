@@ -17,7 +17,6 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { useTranslations } from 'next-intl';
 import { SettingsPanelHead } from './settings-panel-head';
-import { BrowserNotificationsCard } from './browser-notifications-card';
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 const ALLOWED_MIME = new Set([
@@ -354,9 +353,13 @@ export function ProfileForm() {
         </div>
       </form>
 
-      {/* Device-scoped, so it lives outside the profile form and its
-          Save button — flipping the switch applies immediately. */}
-      <BrowserNotificationsCard className="mt-6" />
+      {/* ⚠️ O cartão "Notificações do navegador" do original (#516) NÃO é
+          montado aqui até a Fase 8 do docs/PLANO-merge-upstream-2026-09.md:
+          o merge #259 o trouxe, mas o ouvinte que dispara os avisos não
+          está montado em lugar nenhum — a pessoa ligava a chave, recebia a
+          notificação de teste e nunca recebia a de uma mensagem de verdade.
+          Quando o ouvinte entrar (dentro da <PortaDeEntrada>, com o recorte
+          do perfil e grupo de fora), o cartão volta junto. */}
     </section>
   );
 }

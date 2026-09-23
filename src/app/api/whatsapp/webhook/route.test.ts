@@ -16,6 +16,11 @@ const h = vi.hoisted(() => ({
     /** Row `lookupInternalIdByMetaId` resolves for a `context.id`. */
     replyContextParent: null as { id: string } | null,
     conversation: { id: 'conv-1', unread_count: 0, account_id: 'acc-1' },
+    /**
+     * A conversa ainda não existe: a busca volta vazia e o INSERT a cria —
+     * é o caso que dispara `conversation.created`.
+     */
+    criarConversa: false,
     upsertCalls: [] as { row: Record<string, unknown>; options: unknown }[],
     /** Erros que as próximas chamadas do upsert devolvem, em ordem (um por chamada). */
     messageUpsertErrors: [] as ({ code: string; message: string; details?: string } | null)[],
@@ -83,11 +88,18 @@ vi.mock('@supabase/supabase-js', () => ({
                   order: () => ({
                     limit: () =>
                       Promise.resolve({
-                        data: [h.state.conversation],
+                        data: h.state.criarConversa ? [] : [h.state.conversation],
                         error: null,
                       }),
                   }),
                 }),
+              }),
+            }),
+            // findOrCreateConversation, quando a busca volta vazia.
+            insert: () => ({
+              select: () => ({
+                single: () =>
+                  Promise.resolve({ data: h.state.conversation, error: null }),
               }),
             }),
           }
@@ -312,6 +324,7 @@ beforeEach(() => {
   h.state.priorCustomerMsgCount = 0
   h.state.replyContextParent = null
   h.state.conversation = { id: 'conv-1', unread_count: 0, account_id: 'acc-1' }
+  h.state.criarConversa = false
   h.state.upsertCalls = []
   h.state.messageUpsertErrors = []
   h.state.rpcCalls = []
@@ -707,5 +720,140 @@ describe('regressão de merge: carimbo de canal na entrada (multi-canal)', () =>
       'bump_conversation_on_inbound'
     )
     warn.mockRestore()
+  })
+})
+
+// ============================================================
+// conversation.created NÃO segura a gravação (23/09/2026).
+//
+// A entrega de webhook de saída é uma consulta, um DNS sem prazo e um POST de
+// até 5 s por endpoint. Aguardada ANTES do upsert, um endpoint fora do ar
+// atrasava a primeira mensagem de toda conversa nova — e a reabertura, o
+// robô, as automações e a IA junto. Agora ela começa no mesmo ponto, sem
+// `await`, e é esperada antes do message.received e em todo retorno.
+// ============================================================
+describe('conversation.created não segura a gravação da mensagem', () => {
+  /** Uma promessa que só resolve quando o teste mandar. */
+  function presa() {
+    let soltar!: () => void
+    const promessa = new Promise<void>((resolve) => {
+      soltar = resolve
+    })
+    return { promessa, soltar }
+  }
+
+  /** O nome do evento de cada chamada, na ordem. */
+  const eventos = () =>
+    h.dispatchWebhookEvent.mock.calls.map((c) => c[2] as string)
+
+  it('com a entrega PRESA, a mensagem é gravada e os motores rodam', async () => {
+    h.state.criarConversa = true
+    const entrega = presa()
+    h.dispatchWebhookEvent.mockImplementation(
+      (_db: unknown, _conta: string, evento: string) =>
+        evento === 'conversation.created' ? entrega.promessa : Promise.resolve(),
+    )
+
+    await POST(inboundRequest())
+    let terminou = false
+    const corrida = Promise.all(h.state.afterCallbacks.map((cb) => cb())).then(() => {
+      terminou = true
+    })
+
+    // Tudo o que vem depois da gravação acontece com o aviso ainda no ar.
+    await vi.waitFor(() => expect(h.dispatchInboundToAiReply).toHaveBeenCalled())
+    expect(h.state.upsertCalls).toHaveLength(1)
+    expect(h.state.rpcCalls.map((c) => c.name)).toContain('bump_conversation_on_inbound')
+    expect(h.dispatchInboundToFlows).toHaveBeenCalledTimes(1)
+    expect(h.state.automationCompleted).toBe(3)
+    // …mas o message.received ainda NÃO saiu, e o after() não terminou.
+    expect(eventos()).toEqual(['conversation.created'])
+    expect(terminou).toBe(false)
+
+    entrega.soltar()
+    await corrida
+    expect(eventos()).toEqual(['conversation.created', 'message.received'])
+  })
+
+  it('message.received só COMEÇA depois de conversation.created TERMINAR', async () => {
+    h.state.criarConversa = true
+    const ordem: string[] = []
+    h.dispatchWebhookEvent.mockImplementation(
+      async (_db: unknown, _conta: string, evento: string) => {
+        ordem.push(`${evento}:começou`)
+        // Uma entrega lenta: alguns giros de relógio, como um POST de verdade.
+        await new Promise((r) => setTimeout(r, 5))
+        ordem.push(`${evento}:terminou`)
+      },
+    )
+
+    await runWebhook()
+
+    expect(ordem).toEqual([
+      'conversation.created:começou',
+      'conversation.created:terminou',
+      'message.received:começou',
+      'message.received:terminou',
+    ])
+    // A conversa aberta é anunciada com o canal e o contato, como antes.
+    expect(h.dispatchWebhookEvent).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      'acc-1',
+      'conversation.created',
+      expect.objectContaining({ conversation_id: 'conv-1', contact_id: 'contact-1' }),
+    )
+  })
+
+  it('a gravação FALHA: a conversa foi criada e o aviso sai — e o after() espera por ele', async () => {
+    h.state.criarConversa = true
+    h.state.messageUpsertErrors = [{ code: 'XX000', message: 'boom' }]
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const entrega = presa()
+    h.dispatchWebhookEvent.mockImplementation(() => entrega.promessa)
+
+    await POST(inboundRequest())
+    let terminou = false
+    const corrida = Promise.all(h.state.afterCallbacks.map((cb) => cb())).then(() => {
+      terminou = true
+    })
+    await vi.waitFor(() => expect(h.state.upsertCalls).toHaveLength(1))
+    await new Promise((r) => setTimeout(r, 5))
+
+    // Nada depois da gravação rodou…
+    expect(h.dispatchInboundToFlows).not.toHaveBeenCalled()
+    expect(h.state.rpcCalls).toHaveLength(0)
+    // …mas o aviso da conversa criada saiu, e o retorno o ESPERA (solto, o
+    // `after()` poderia ser congelado antes da entrega).
+    expect(eventos()).toEqual(['conversation.created'])
+    expect(terminou).toBe(false)
+
+    entrega.soltar()
+    await corrida
+    expect(eventos()).toEqual(['conversation.created'])
+    erro.mockRestore()
+  })
+
+  it('conversa aberta por uma REAÇÃO ainda anuncia a conversa criada', async () => {
+    h.state.criarConversa = true
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await runWebhook({
+      id: 'wamid.REACT1',
+      from: '15551230000',
+      timestamp: '1700000000',
+      type: 'reaction',
+      reaction: { message_id: 'wamid.NAO-EXISTE', emoji: '👍' },
+    })
+
+    expect(h.state.upsertCalls).toHaveLength(0)
+    expect(eventos()).toEqual(['conversation.created'])
+    aviso.mockRestore()
+  })
+
+  it('conversa que JÁ existia não anuncia nada além do message.received', async () => {
+    await runWebhook()
+
+    expect(eventos()).toEqual(['message.received'])
   })
 })

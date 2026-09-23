@@ -55,10 +55,12 @@ export function SettingsOverview({
     if (!user || !accountId) return;
     let cancelled = false;
     const supabase = createClient();
-    const userId = user.id;
     const acctId = accountId;
 
     // Cheap counts — resolve fast, render immediately.
+    // ⚠️ Modelos e etiquetas são catálogos DA CONTA (RLS por conta): contar
+    // por `user_id` dizia "0 modelos · 0 etiquetas" a todo membro que não os
+    // criou — e são do dono. A RLS já recorta a conta, como em `custom_fields`.
     (async () => {
       setCountsLoading(true);
       const [membersRes, invitesRes, templatesTotal, templatesPending, tagsRes, fieldsRes] =
@@ -71,17 +73,14 @@ export function SettingsOverview({
             : Promise.resolve(null),
           supabase
             .from('message_templates')
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', userId),
+            .select('id', { count: 'exact', head: true }),
           supabase
             .from('message_templates')
             .select('id', { count: 'exact', head: true })
-            .eq('user_id', userId)
             .eq('status', 'PENDING'),
           supabase
             .from('tags')
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', userId),
+            .select('id', { count: 'exact', head: true }),
           supabase.from('custom_fields').select('id', { count: 'exact', head: true }),
         ]);
 

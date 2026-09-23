@@ -19,12 +19,12 @@ import { useTranslations } from 'next-intl';
 import { useChannels } from '@/hooks/use-channels';
 import { channelLabel } from '@/lib/cb-channels/display';
 import { ehMeta } from '@/lib/cb-channels/transporte';
-
-interface AudienceConfig {
-  type: string;
-  tagIds?: string[];
-  csvContacts?: { phone: string; name?: string }[];
-}
+import {
+  contarPublico,
+  motivoDaLeitura,
+  type AudienceConfig,
+} from '@/hooks/use-broadcast-sending';
+import { useAuth } from '@/hooks/use-auth';
 
 interface Step4Props {
   name: string;
@@ -56,40 +56,47 @@ export function Step4ScheduleSend({
   const tCanais = useTranslations('Channels');
   const { channels } = useChannels();
   const [showConfirm, setShowConfirm] = useState(false);
-  const [estimatedReach, setEstimatedReach] = useState<number>(0);
+  // `null` = ainda não se sabe (carregando ou a conta falhou) — nunca 0.
+  const [estimatedReach, setEstimatedReach] = useState<number | null>(null);
   const [loadingReach, setLoadingReach] = useState(true);
+  const [tentativaDoAlcance, setTentativaDoAlcance] = useState(0);
+  // O público passa do que a tela consegue ler: tentar de novo não resolve.
+  const [alcanceNoTeto, setAlcanceNoTeto] = useState(false);
+  const { accountId } = useAuth();
 
   useEffect(() => {
+    let cancelado = false;
+    const controle = new AbortController();
     async function calculateReach() {
       setLoadingReach(true);
+      setAlcanceNoTeto(false);
       try {
-        const supabase = createClient();
-
-        if (audience.type === 'all') {
-          const { count } = await supabase
-            .from('contacts')
-            .select('*', { count: 'exact', head: true });
-          setEstimatedReach(count ?? 0);
-        } else if (audience.type === 'tags' && audience.tagIds && audience.tagIds.length > 0) {
-          const { data: contactTags } = await supabase
-            .from('contact_tags')
-            .select('contact_id')
-            .in('tag_id', audience.tagIds);
-
-          const uniqueIds = new Set((contactTags ?? []).map((ct) => ct.contact_id));
-          setEstimatedReach(uniqueIds.size);
-        } else if (audience.type === 'csv' && audience.csvContacts) {
-          setEstimatedReach(audience.csvContacts.length);
-        } else {
-          setEstimatedReach(0);
-        }
+        // ⚠️ A MESMA resolução do envio (`contarPublico`). A conta própria
+        // desta tela lia sem paginar (1.000 para etiqueta maior que isso),
+        // ignorava as exclusões e dizia 0 para público por campo
+        // personalizado — o número que a confirmação mostra antes de um
+        // disparo pago.
+        const total = await contarPublico(createClient(), audience, {
+          accountId,
+          sinal: controle.signal,
+        });
+        if (!cancelado) setEstimatedReach(total);
+      } catch (err) {
+        if (cancelado) return;
+        console.error('[broadcast] alcance do disparo não foi calculado', err);
+        setEstimatedReach(null);
+        setAlcanceNoTeto(motivoDaLeitura(err) === 'teto');
       } finally {
-        setLoadingReach(false);
+        if (!cancelado) setLoadingReach(false);
       }
     }
 
     calculateReach();
-  }, [audience]);
+    return () => {
+      cancelado = true;
+      controle.abort();
+    };
+  }, [accountId, audience, tentativaDoAlcance]);
 
   const audienceLabel =
     audience.type === 'all'
@@ -137,6 +144,25 @@ export function Step4ScheduleSend({
             <div className="flex items-center gap-1.5">
               {loadingReach ? (
                 <Loader2 className="h-3 w-3 animate-spin text-primary" />
+              ) : estimatedReach === null && alcanceNoTeto ? (
+                <p className="text-xs text-red-600 dark:text-red-300">
+                  {t('scheduleSend.alcanceTeto')}
+                </p>
+              ) : estimatedReach === 0 ? (
+                <p className="text-xs text-red-600 dark:text-red-300">
+                  {t('scheduleSend.ninguemNoPublico')}
+                </p>
+              ) : estimatedReach === null ? (
+                <p className="text-xs text-red-600 dark:text-red-300">
+                  {t('scheduleSend.alcanceFalhou')}{' '}
+                  <button
+                    type="button"
+                    onClick={() => setTentativaDoAlcance((n) => n + 1)}
+                    className="font-medium underline underline-offset-2"
+                  >
+                    {t('scheduleSend.tentarDeNovo')}
+                  </button>
+                </p>
               ) : (
                 <>
                   <Users className="h-3.5 w-3.5 text-primary" />
@@ -213,7 +239,17 @@ export function Step4ScheduleSend({
           <DialogTrigger
             render={
               <Button
-                disabled={!name.trim() || isProcessing}
+                // Sem o alcance calculado não há o que confirmar: o diálogo
+                // afirmaria um número para um disparo pago (upstream #594).
+                // Nem com alcance 0: o diálogo diria "enviar para 0 contatos" e
+                // o envio morreria com um texto cru em inglês.
+                disabled={
+                  !name.trim() ||
+                  isProcessing ||
+                  loadingReach ||
+                  estimatedReach === null ||
+                  estimatedReach === 0
+                }
                 className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               />
             }
@@ -226,7 +262,7 @@ export function Step4ScheduleSend({
               <DialogTitle className="text-popover-foreground">{t('scheduleSend.confirmTitle')}</DialogTitle>
               <DialogDescription className="text-muted-foreground">
                 {t.rich('scheduleSend.confirmDesc', {
-                  count: estimatedReach,
+                  count: estimatedReach ?? 0,
                   template: template.name,
                   b: (chunks) => (
                     <span className="font-medium text-popover-foreground">{chunks}</span>

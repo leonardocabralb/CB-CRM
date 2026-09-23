@@ -300,13 +300,18 @@ async function gravarMensagem(
   if (!conv) return { resultado: 'falhou' };
   const conversation = conv.conversation;
 
-  if (conv.created) {
-    await dispatchWebhookEvent(db, ctx.accountId, 'conversation.created', {
-      conversation_id: conversation.id,
-      contact_id: contato.id,
-      channel_id: ctx.channelId,
-    });
-  }
+  // SEM `await` aqui (23/09/2026), como no `inbound-store`: um endpoint de
+  // saída fora do ar (até 5 s por POST) atrasava a gravação da primeira
+  // mensagem de toda conversa nova. Esperada antes do message.received e em
+  // todo retorno — promessa solta no `after()` pode não entregar. Nunca
+  // rejeita.
+  const avisoDeConversaCriada = conv.created
+    ? dispatchWebhookEvent(db, ctx.accountId, 'conversation.created', {
+        conversation_id: conversation.id,
+        contact_id: contato.id,
+        channel_id: ctx.channelId,
+      })
+    : Promise.resolve();
 
   // Apagada pelo cliente: só a marca de exibição (o texto fica — é a mesma
   // divergência deliberada do WhatsApp: o escritório precisa do registro).
@@ -321,6 +326,7 @@ async function gravarMensagem(
       .eq('message_id', ev.mid)
       .is('deleted_at', null);
     if (error) console.error(`${TAG} marcar apagada falhou:`, error.message);
+    await avisoDeConversaCriada;
     return { resultado: 'ignorada' };
   }
 
@@ -368,6 +374,7 @@ async function gravarMensagem(
     // O UNIQUE (conversation_id, message_id): reentrega da Meta, ou o eco
     // da mensagem que o PRÓPRIO CRM acabou de enviar (Fase 4). Nos dois
     // casos a linha certa já está lá.
+    await avisoDeConversaCriada;
     if (error && isUniqueViolation(error)) return { resultado: 'duplicada' };
     console.error(`${TAG} inserir mensagem falhou:`, error?.message);
     return { resultado: 'falhou' };
@@ -455,6 +462,9 @@ async function gravarMensagem(
     conversationId: conversation.id,
   });
 
+  // conversation.created termina antes de message.received começar (e o eco
+  // que abriu a conversa também espera o seu aviso aqui).
+  await avisoDeConversaCriada;
   if (!ev.ehEco) {
     await dispatchWebhookEvent(db, ctx.accountId, 'message.received', {
       conversation_id: conversation.id,

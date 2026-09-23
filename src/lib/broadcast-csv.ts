@@ -38,8 +38,16 @@ export type ParseBroadcastCsvResult =
   | {
       ok: true;
       contacts: BroadcastCsvContact[];
-      /** Rows dropped as same-number repeats (or as blank numbers). */
+      /** Rows dropped as same-number repeats. */
       duplicates: number;
+      /**
+       * Rows dropped because the number is blank or unusable
+       * (`telefoneDigitado`: no area code, letters, over 15 digits…). The
+       * wizard warns about these so a CSV doesn't silently shrink. The
+       * surviving rows carry the NORMALIZED digits — "(81) 98874-5316"
+       * becomes "5581988745316", which is what finds the client's record.
+       */
+      invalid: number;
     }
   | { ok: false; error: BroadcastCsvError };
 
@@ -48,7 +56,7 @@ export function parseBroadcastCsv(text: string): ParseBroadcastCsvResult {
 
   if (!hasPhoneColumn) return { ok: false, error: 'missing_phone_column' };
 
-  const { unique, duplicates } = dedupeByPhone(rows);
+  const { unique, duplicates, invalid } = dedupeByPhone(rows);
   if (unique.length === 0) return { ok: false, error: 'no_valid_rows' };
 
   return {
@@ -59,5 +67,6 @@ export function parseBroadcastCsv(text: string): ParseBroadcastCsvResult {
       name ? { phone, name } : { phone }
     ),
     duplicates,
+    invalid,
   };
 }

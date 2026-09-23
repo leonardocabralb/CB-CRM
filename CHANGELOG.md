@@ -57,6 +57,46 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **Um webhook de saída fora do ar não atrasa mais a primeira mensagem de
+  uma conversa nova.** O aviso `conversation.created` era entregue antes de
+  a mensagem do cliente ser gravada, e um endpoint que não respondia
+  segurava a mensagem (e o robô, as automações e a IA) por 5 segundos ou
+  mais. Agora a mensagem é gravada na hora; quem assina os dois eventos
+  continua recebendo `conversation.created` antes de `message.received`.
+
+- **Etiquetas e modelos da conta aparecem para toda a equipe em
+  Configurações.** O gerenciador de etiquetas, a lista de modelos e as
+  contagens da visão geral mostravam só o que o próprio membro tinha criado
+  (quem não era o dono via "0"). Agora mostram o catálogo da conta, e os
+  controles de escrita, que são de administrador (criar ou apagar etiqueta;
+  criar, sincronizar, editar, reenviar ou apagar modelo), somem da tela de
+  quem não é.
+
+- **Telefone digitado sem o código do país não vai mais para outro país.**
+  O formulário de contato, a ficha e as duas planilhas (importar contatos e
+  o CSV do disparo) gravavam o número como foi escrito: "(81) 98874-5316"
+  virava a ficha "81988745316", e a mensagem saía para +81 (Japão) — no
+  disparo por CSV, ainda criava uma ficha nova em vez de achar a do
+  cliente. Agora o número sem `+` é lido como brasileiro e ganha o 55;
+  número de outro país continua sendo escrito com `+` e o código do país.
+  Número sem DDD, com letra ou incompleto é recusado com o motivo. Editar
+  o nome de uma ficha antiga não confere o telefone que ninguém mexeu.
+
+- **A importação de CSV diz o que ficou de fora e por quê.** Linha com
+  telefone vazio ou inválido deixa de ser contada como "duplicada" (e a
+  sem telefone deixa de sumir sem contar), e cada linha que o banco
+  recusou aparece com o motivo. O CSV do disparo avisa quantas linhas
+  ficaram de fora, e o arquivo sem nenhum telefone válido deixa de dizer
+  "não foi possível ler o CSV".
+
+- **O público do disparo é contado como o disparo é enviado.** Os passos 2 e
+  4 do assistente mostravam no máximo 1.000 contatos por etiqueta, e o passo
+  4 ignorava as etiquetas excluídas e dizia 0 para público por campo
+  personalizado. Agora o número é o mesmo que o envio alcança — também no
+  CSV com exclusão —, e sem ele calculado (ou com 0) não dá para confirmar o
+  envio. Em "todos os contatos", uma ficha criada durante a leitura podia
+  fazer um cliente receber a mensagem duas vezes; não pode mais.
+
 - **Robô: botões e listas mostram as variáveis.** Depois de perguntar o
   nome, um nó de botões ou de lista mandava "Oi {{vars.name}}" ao cliente.
   Agora todo texto visível dos dois nós usa as variáveis do atendimento (o
@@ -148,6 +188,31 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Mudado
 
+- **Atualização com o projeto original até `aee1b01f` (setembro/2026).**
+  Entraram as traduções das telas do original, o envio de vídeo e documento
+  como cabeçalho de modelo, a explicação dos erros de conexão com a Meta e
+  peças que as próximas versões vão ligar (as colunas do motivo da falha de
+  entrega, a notificação do navegador, o "digitando…", a identidade do
+  WhatsApp sem telefone). O que precisa saber quem instala:
+  - **`POST /api/v1/broadcasts` passou a recusar destinatário sem `+` e
+    código do país** (`"to": "+5583980000016"`). Os que vierem sem ele
+    contam como `rejected`, e sem nenhum válido a resposta é `400`. Uma
+    próxima versão volta a aceitar número brasileiro sem `+`, como o resto
+    do CRM.
+  - **O cabeçalho de vídeo e de documento também exige `META_APP_ID`**
+    (antes só o de imagem): o arquivo é enviado à Meta para a revisão do
+    modelo.
+  - **Este CRM não serve os dicionários `pt` e `es` que o original passou a
+    trazer** (cobriam menos da metade das telas). Com
+    `NEXT_PUBLIC_APP_LOCALE=pt` ou `es` a interface fica em inglês; o
+    português completo é `pt-BR`.
+  - **Migration necessária:** `supabase/migrations/1038_cb_contato_bsuid.sql`
+    e `1039_cb_motivo_da_falha_da_mensagem.sql` (o `supabase db push` as
+    aplica). Só acrescentam colunas vazias; nada as grava ainda.
+    ⚠️ Se você trouxe a versão anterior e rodou `supabase db push
+    --include-all`, o histórico ficou com `0043` e `0045`, que não existem
+    mais: rode antes `supabase migration repair --status reverted 0043 0045`.
+    As colunas ficam, e a 1038 e a 1039 não refazem nada.
 - **Nome e logo viraram configuração.** `NEXT_PUBLIC_APP_NAME` e
   `NEXT_PUBLIC_APP_LOGO_URL` definem como o CRM se apresenta. Sem valor,
   ele se chama "CRM". Nenhuma frase da interface cita mais o nome do
