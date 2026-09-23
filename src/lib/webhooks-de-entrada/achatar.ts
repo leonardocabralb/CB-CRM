@@ -128,6 +128,17 @@ export function achatarPayload(payload: unknown): Record<string, string> {
  * seria pegar o telefone errado do payload e mandar a mensagem do lead para
  * outra pessoa.
  */
+/**
+ * O texto, se tiver algo VISÍVEL; senão `null` — a mesma limpeza que a régua
+ * do telefone faz (`\p{Cf}` e as pontas). A rota de entrada grava a coluna
+ * `telefone` por aqui: em branco, a régua diz "vazio", e a coluna preenchida
+ * é o que o Meu dia conta como "o telefone VEIO e não serve" — os dois
+ * divergiriam (revisão da Fase 3-III).
+ */
+export function comAlgoVisivel(texto: string | null): string | null {
+  return texto && texto.replace(/\p{Cf}/gu, "").trim() ? texto : null;
+}
+
 export function valorDoCampo(
   variaveis: Record<string, string>,
   campo: string | null | undefined

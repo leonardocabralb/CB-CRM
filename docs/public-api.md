@@ -107,6 +107,42 @@ Requests are limited **per key**: **120 requests per minute**. On a
 > `src/lib/rate-limit.ts`. The limit is otherwise unenforced across
 > instances.
 
+## Phone numbers
+
+Every endpoint that takes a phone — `phone` in `POST /api/v1/contacts`,
+`to` in `POST /api/v1/messages` and in each `POST /api/v1/broadcasts`
+recipient — reads it the way the CRM's own screens do:
+
+- **With `+`**, the country code is what you wrote: `+14155550123`,
+  `+41 55 555 12 12`. A leading `00` works like `+`.
+- **Without `+`**, 10 digits, or 11 digits with `9` in the third position
+  (area code + mobile), is read as **Brazilian** and gets `55`:
+  `(81) 98874-5316` → `5581988745316`. Anything else without `+` — 12
+  digits or more, or 11 without a `9` in the third position — is taken as
+  already carrying its country code (`5581988745316`, `14155550123`).
+- Spaces, dots, dashes and parentheses are ignored.
+- **Rejected** with `400 bad_request`, and the message says why: too short
+  (fewer than 10 digits without `+`, fewer than 8 with it), a trunk `0`
+  (`081 …`), any letter or other symbol — which includes a pasted WhatsApp
+  id such as `…@s.whatsapp.net` or `…@lid`, a `tel:` prefix and a trailing
+  `,` —, more than 15 digits, and a `55` number that is not area code + 8
+  or 9 digits. In a broadcast, a rejected recipient is dropped and counted
+  in `rejected`.
+
+A contact's stored `phone` is digits only, with the country code
+(`5581988745316`). Send a number from any other country **with `+`**: the
+US national `4155550123` without it is read as Brazilian (area code 41).
+
+> **Changed in September 2026.** Before, everything that was not a digit
+> was stripped: `(81) 98874-5316` became the contact `81988745316` —
+> delivered to +81 (Japan) —, and a pasted `…@s.whatsapp.net` was accepted
+> as its digits. `POST /api/v1/broadcasts` required the leading `+`. A
+> number sent **with `+`** and only digits and the separators above is
+> read as before. **Without `+`**, a foreign number that already carries
+> its country code and has 10 digits, or 11 with `9` in the third position
+> (a Peruvian or Chilean mobile, a Norwegian or Danish number), is now read
+> as Brazilian — send it with `+`.
+
 ## Endpoints
 
 ### `GET /api/v1/me`
@@ -132,8 +168,9 @@ curl https://your-crm.example.com/api/v1/me \
 ### `POST /api/v1/messages`
 
 Send a WhatsApp message to a phone number. Scope: `messages:send`. You
-pass an **E.164 number**, not an internal id — the endpoint
-finds-or-creates the contact + conversation, then sends.
+pass a **phone number** (read as in [Phone numbers](#phone-numbers)), not
+an internal id — the endpoint finds-or-creates the contact + conversation,
+then sends.
 
 > **Side effect — deals.** A successful send counts as the firm reaching
 > out, so if the contact has **no deal yet** in any pipeline, one is
@@ -221,7 +258,8 @@ there is a `400 bad_request`.
 
 ### `POST /api/v1/contacts`
 
-Create a contact. Scope: `contacts:write`. `phone` (E.164) is required;
+Create a contact. Scope: `contacts:write`. `phone` is required (read as in
+[Phone numbers](#phone-numbers));
 `name`, `email`, `company`, and `tags` (an array of tag names or tag ids
 from `GET /api/v1/tags`; new names are created) are optional. **Find-or-create
 by phone:** an existing match returns `200` with the existing contact; a
@@ -451,7 +489,8 @@ every call to this endpoint failed with `500 Failed to create broadcast`
 `params` could not be stored as lists.
 
 Recipients are capped at **1000 per request** — split larger sends.
-Invalid phone numbers are dropped and counted as `rejected`. Response
+Phone numbers outside the [rule](#phone-numbers) are dropped and counted
+as `rejected`. Response
 (202):
 
 ```json
@@ -922,10 +961,13 @@ const ok = expected.length === v1.length &&
 Delivery is **best-effort**: a **single attempt** per event with a
 5-second timeout, and **redirects are not followed** (a 3xx counts as a
 failure). Nothing is retried, so a delivery is never duplicated by the CRM
-itself — but the *source* can repeat a fact: providers re-send and
-re-order status callbacks, so the same `message.status_updated` may arrive
-more than once (with a new `id`) or out of order. Deliveries run in
-parallel, so **don't assume ordering** — on `deal.*`, order by
+itself. Providers re-send and re-order status callbacks, but
+`message.status_updated` is only sent when a status ADVANCES the stored
+message (sent → delivered → read, or `failed` before delivery): a repeated
+or late callback is dropped, and `sent` itself is not announced, because the
+CRM stores the message as sent already. Deliveries run in parallel, so
+**don't assume ordering**: two advances of the same message can reach you
+out of order, so keep the most advanced one. On `deal.*`, order by
 `occurred_at` and dedupe on `id`. `message.status_updated` covers messages
 the CRM stores (inbox + API sends), not broadcast-only sends. Each
 consecutive failure increments `failure_count`; after 15 consecutive

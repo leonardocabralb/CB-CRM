@@ -68,10 +68,12 @@ depende do aparelho de cada cliente, provavelmente da versão do WhatsApp.
    vermelho do "Não entregue", com outra frase. Nas 152 mensagens enviadas
    pelo CRM pela Evolution de 11/09 até 23/09, marca exatamente as 3 falhas
    reais, e nenhuma outra.
-   - **Só Evolution** (revisão do PR #272): a rota da Meta grava a situação
-     sem a escada (um "sent" atrasado rebaixa "delivered") e não espera a
-     mensagem existir para aplicar o recibo, então lá ✓ parado não prova
-     nada. A Meta avisa a recusa de verdade com `failed`.
+   - **Só Evolution** (revisão do PR #272): até 23/09/2026 a rota da Meta
+     gravava a situação sem a escada (um "sent" atrasado rebaixava
+     "delivered") e não esperava a mensagem existir para aplicar o recibo,
+     então lá ✓ parado não provava nada. A Meta avisa a recusa de verdade com
+     `failed`. A rota ganhou a escada e a espera nesse dia; o aviso continua
+     só na Evolution até a medição abaixo ("Limites conhecidos").
    - **Confere no banco antes de pintar**: a recarga da conversa substitui a
      lista inteira e pode atropelar um recibo que acabou de chegar, deixando a
      tela em ✓ com ✓✓ no banco. A candidata que o banco já confirmou tem a
@@ -82,10 +84,18 @@ depende do aparelho de cada cliente, provavelmente da versão do WhatsApp.
 - **Edição de mensagem** (`chat/updateMessage`): a Evolution não aceita
   `linkPreview` ali. Ao editar um texto para incluir link, a Baileys ainda
   pode gerar a prévia dela (a de anúncio, não). Não foi medido; é raro.
-- **Meta fora do aviso novo** até a rota dela ganhar a escada de status e a
-  espera pela mensagem (`src/app/api/whatsapp/webhook/route.ts`,
-  `handleStatusUpdate`). É defeito anterior a este trabalho: hoje um recibo
-  atrasado já rebaixa ✓✓ para ✓ na tela.
+- **Meta fora do aviso novo.** O defeito que a tirava daqui (a rota dela
+  gravava o recibo sem a escada de status e sem esperar a mensagem existir)
+  foi consertado em 23/09/2026 (`handleStatusUpdate`, em
+  `src/app/api/whatsapp/webhook/route.ts`). Medido no mesmo dia, antes do
+  conserto: uma interativa de teste que o destinatário respondeu por botão
+  ficou em ✓, rebaixada por um `sent` gravado depois do `delivered`. As
+  mensagens da Meta gravadas antes do conserto continuam com a situação que o
+  defeito deixou, então alargar o aviso pede: esperar mensagens suficientes
+  pela Meta depois do deploy, medir os falsos positivos só nelas (corte na
+  data do deploy, como o `RECIBOS_CONFIAVEIS_DESDE_MS` fez para a Evolution)
+  e a decisão do operador. Em 23/09 eram só 10 mensagens de saída pela Meta
+  desde 10/09, todas na conversa de teste.
 - **Sem evidência não há aviso**: mensagem única e cliente calado ficam em
   ✓. Daqui não há como separar "não chegou" de "celular desligado".
 - **A explicação ao passar o mouse não aparece no celular** (`title`). A

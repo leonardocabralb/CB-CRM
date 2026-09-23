@@ -300,6 +300,7 @@ function AreaDeTrabalho({
   // Por SEÇÃO: a tela de Configurações não é recortável, mas as seções são.
   const veConexoes = podeVerSecao(acesso, 'channels');
   const veIntegracoes = podeVerSecao(acesso, 'integracoes');
+  const veWebhooks = podeVerSecao(acesso, 'webhooks');
 
   const agora = new Date(pedido.agoraMs);
   const hora = agora.getHours();
@@ -465,6 +466,7 @@ function AreaDeTrabalho({
               veAutomacoes={veAutomacoes}
               veConexoes={veConexoes}
               veIntegracoes={veIntegracoes}
+              veWebhooks={veWebhooks}
               veInbox={veInbox}
               veContatos={veContatos}
             />

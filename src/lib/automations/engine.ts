@@ -38,6 +38,7 @@ import { ehGatilhoDaRegua } from '@/lib/asaas/regua';
 import { digitosDoTelefone } from '@/lib/contacts/telefone';
 import { nomeParaFixar } from '@/lib/contacts/nome-fixado';
 import { urlDoInbox } from '@/lib/inbox/url';
+import { formatCurrency } from '@/lib/currency';
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write';
 import {
   MAX_TAG_CHAIN_DEPTH,
@@ -2072,7 +2073,7 @@ async function runStep(
       // ⚠️ CRU: do outro lado há um sistema, não uma pessoa — ISO é o formato
       // que ele sabe ler, e trocá-lo quebraria integração já em pé.
       const body = cfg.body_template
-        ? await interpolate(cfg.body_template, args, { cru: true })
+        ? await interpolate(cfg.body_template, args, { cru: true, json: true })
         : JSON.stringify(args.context);
       const res = await fetch(cfg.url, {
         method: 'POST',
@@ -2828,7 +2829,9 @@ function waitMs(cfg: WaitStepConfig): number {
 // Namespaces:
 //   message.text, vars.<nome>, channel.id — do CONTEXTO do disparo (baratos);
 //   contact.name|phone|email|company|link, contact.campo.<chave_do_campo>,
-//   contact.origem, conversation.link — do CONTATO, carregados do banco (977).
+//   contact.origem, conversation.link — do CONTATO, carregados do banco (977);
+//   deal.value, deal.created_at — do NEGÓCIO da execução (23/09/2026);
+//   now — o instante do passo.
 //
 // ⚠️ O contato é carregado UMA vez por execução (WeakMap por `args`) e SÓ
 // quando o texto cita `contact.`/`conversation.`: sem a guarda, todo
@@ -2971,71 +2974,187 @@ function linkDoCrm(caminho: string): string {
 
 const RE_VARIAVEL = /\{\{\s*([\w.]+)\s*\}\}/g;
 const RE_CITA_CONTATO = /\{\{\s*(contact|conversation)\./;
+const RE_CITA_NEGOCIO = /\{\{\s*deal\./;
+
+interface DadosDoNegocio {
+  value: number | null;
+  created_at: string | null;
+}
+
+/**
+ * O negócio que `{{deal.*}}` descreve: o MESMO que as ações da execução mexem
+ * (`negocioAlvo` — o card do contexto, fixado pelo evento de funil ou pelo
+ * primeiro "Mover card"/"Marcar status"; senão o aberto mais recente, senão o
+ * perdido). Sem nenhum desses, o GANHO mais recente: `negocioAlvo` o exclui
+ * para proteger ESCRITA (o card do caso no Jurídico), e aqui só se lê — sem a
+ * queda, a execução à mão sobre cliente já ganho mandava o valor vazio ao
+ * sistema do outro lado com cara de certo (revisão do PR #275).
+ *
+ * ⚠️ Lido a cada passo que cita `deal.`, SEM o cache por execução do contato:
+ * o valor pode ser editado durante um "Aguardar" de dias, e na execução à mão
+ * o card só entra no contexto no primeiro "Mover card". É uma leitura por
+ * chave primária, e só nos passos que citam a variável.
+ *
+ * Falha de leitura vira variável vazia, como no contato — nunca derruba o
+ * passo. ⚠️ `deals.value` é NOT NULL DEFAULT 0: card sem valor preenchido sai
+ * como 0, indistinguível de um zero de verdade.
+ */
+async function carregarNegocio(
+  args: ExecuteArgs
+): Promise<DadosDoNegocio | null> {
+  const db = supabaseAdmin();
+  try {
+    let id = (await negocioAlvo(db, args))?.id ?? null;
+    if (!id && args.contactId) {
+      const { data: ganho, error: erroDoGanho } = await db
+        .from('deals')
+        .select('id')
+        .eq('account_id', args.automation.account_id)
+        .eq('contact_id', args.contactId)
+        .eq('status', 'won')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (erroDoGanho) throw new Error(erroDoGanho.message);
+      id = (ganho?.id as string | undefined) ?? null;
+    }
+    if (!id) return null;
+    const { data, error } = await db
+      .from('deals')
+      .select('value, created_at')
+      .eq('id', id)
+      .eq('account_id', args.automation.account_id)
+      .maybeSingle();
+    if (error) {
+      console.warn(
+        '[automations] {{deal.*}}: leitura do negócio falhou',
+        error
+      );
+      return null;
+    }
+    const d = data as { value?: unknown; created_at?: unknown } | null;
+    if (!d) return null;
+    const valor =
+      d.value === null || d.value === undefined ? NaN : Number(d.value);
+    return {
+      value: Number.isFinite(valor) ? valor : null,
+      created_at: typeof d.created_at === 'string' ? d.created_at : null,
+    };
+  } catch (err) {
+    console.warn('[automations] {{deal.*}}: busca do negócio falhou', err);
+    return null;
+  }
+}
+
+/** ISO em UTC ("…T19:00:00.000Z"), a forma que os campos de data guardam. */
+function isoUtc(v: string | null): string {
+  if (!v) return '';
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+}
 
 /**
  * ⚠️ `cru: true` para as saídas que NÃO são texto para gente —
  * `update_contact_field` (escreve no banco) e `send_webhook` (fala com uma
- * máquina). Só o campo de DATA difere entre os dois modos, e a diferença
- * importa: formatado, o valor copiado para outro campo de data fica ilegível
- * para a tela e invisível para a varredura de lembretes.
+ * máquina). Datas e o valor do negócio diferem entre os dois modos, e a
+ * diferença importa: formatado, o valor copiado para outro campo de data fica
+ * ilegível para a tela e invisível para a varredura de lembretes, e
+ * "R$ 3.500,00" não é número para o sistema do outro lado.
+ *
+ * ⚠️ `json: true` ESCAPA cada valor substituído para dentro de uma string
+ * JSON (o corpo do `send_webhook`). O modelo é texto com `{{…}}` no meio de um
+ * JSON: sem o escape, um nome com aspas ou uma quebra de linha no campo
+ * quebrava o corpo inteiro, e o sistema do outro lado recusava a entrega.
  */
 async function interpolate(
   s: string,
   args: ExecuteArgs,
-  opcoes: { cru?: boolean } = {}
+  opcoes: { cru?: boolean; json?: boolean } = {}
 ): Promise<string> {
   if (!s) return '';
   const dados = RE_CITA_CONTATO.test(s) ? await dadosDoContato(args) : null;
+  const negocio = RE_CITA_NEGOCIO.test(s) ? await carregarNegocio(args) : null;
   return s.replace(RE_VARIAVEL, (_, key) => {
-    const partes = String(key).split('.');
-    const [ns, prop] = partes;
-    if (ns === 'message' && prop === 'text')
-      return String(args.context.message_text ?? '');
-    if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '');
-    // `{{channel.id}}` no corpo de um send_webhook faz o sistema externo
-    // saber por qual número o cliente falou, sem depender do webhook nativo.
-    if (ns === 'channel' && prop === 'id')
-      return String(args.context.channel_id ?? '');
-    if (ns === 'contact' && dados) {
-      if (prop === 'campo') {
-        const chave = partes.slice(2).join('.');
-        return (opcoes.cru ? dados.camposCru : dados.campos)[chave] ?? '';
-      }
-      // "Campanha - Conjunto - Anúncio" dos campos de traqueamento da 949,
-      // SÓ as partes preenchidas: escrito com três `contact.campo.*` no
-      // texto, um contato sem anúncio saía como " -  - " (medido no
-      // primeiro aviso real, 07/09).
-      if (prop === 'origem') {
-        return [
-          dados.campos.nome_da_campanha,
-          dados.campos.nome_do_conjunto,
-          dados.campos.nome_do_anuncio,
-        ]
-          .map((v) => (v ?? '').trim())
-          .filter(Boolean)
-          .join(' - ');
-      }
-      if (prop === 'link')
-        return args.contactId
-          ? linkDoCrm(`/contacts?contact=${args.contactId}`)
-          : '';
-      if (
-        prop === 'name' ||
-        prop === 'phone' ||
-        prop === 'email' ||
-        prop === 'company'
-      ) {
-        return dados.contato?.[prop] ?? '';
-      }
-      return '';
+    const valor = valorDaVariavel(String(key), args, dados, negocio, opcoes);
+    return opcoes.json ? JSON.stringify(valor).slice(1, -1) : valor;
+  });
+}
+
+function valorDaVariavel(
+  key: string,
+  args: ExecuteArgs,
+  dados: DadosDoContato | null,
+  negocio: DadosDoNegocio | null,
+  opcoes: { cru?: boolean }
+): string {
+  const partes = key.split('.');
+  const [ns, prop] = partes;
+  // O instante do passo. É o que grava "quando o card entrou na etapa" num
+  // campo de data (a data da proposta), sem depender de gente.
+  if (ns === 'now' && prop === undefined) {
+    const agora = new Date().toISOString();
+    return opcoes.cru ? agora : formatarParaMensagem(agora);
+  }
+  if (ns === 'deal') {
+    if (!negocio) return '';
+    if (prop === 'value') {
+      if (negocio.value === null) return '';
+      return opcoes.cru
+        ? String(negocio.value)
+        : formatCurrency(negocio.value);
     }
-    if (ns === 'conversation' && prop === 'link' && dados) {
-      return dados.conversationId
-        ? linkDoCrm(urlDoInbox({ c: dados.conversationId }))
-        : '';
+    if (prop === 'created_at') {
+      const iso = isoUtc(negocio.created_at);
+      return opcoes.cru ? iso : formatarParaMensagem(iso);
     }
     return '';
-  });
+  }
+  if (ns === 'message' && prop === 'text')
+    return String(args.context.message_text ?? '');
+  if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '');
+  // `{{channel.id}}` no corpo de um send_webhook faz o sistema externo
+  // saber por qual número o cliente falou, sem depender do webhook nativo.
+  if (ns === 'channel' && prop === 'id')
+    return String(args.context.channel_id ?? '');
+  if (ns === 'contact' && dados) {
+    if (prop === 'campo') {
+      const chave = partes.slice(2).join('.');
+      return (opcoes.cru ? dados.camposCru : dados.campos)[chave] ?? '';
+    }
+    // "Campanha - Conjunto - Anúncio" dos campos de traqueamento da 949,
+    // SÓ as partes preenchidas: escrito com três `contact.campo.*` no
+    // texto, um contato sem anúncio saía como " -  - " (medido no
+    // primeiro aviso real, 07/09).
+    if (prop === 'origem') {
+      return [
+        dados.campos.nome_da_campanha,
+        dados.campos.nome_do_conjunto,
+        dados.campos.nome_do_anuncio,
+      ]
+        .map((v) => (v ?? '').trim())
+        .filter(Boolean)
+        .join(' - ');
+    }
+    if (prop === 'link')
+      return args.contactId
+        ? linkDoCrm(`/contacts?contact=${args.contactId}`)
+        : '';
+    if (
+      prop === 'name' ||
+      prop === 'phone' ||
+      prop === 'email' ||
+      prop === 'company'
+    ) {
+      return dados.contato?.[prop] ?? '';
+    }
+    return '';
+  }
+  if (ns === 'conversation' && prop === 'link' && dados) {
+    return dados.conversationId
+      ? linkDoCrm(urlDoInbox({ c: dados.conversationId }))
+      : '';
+  }
+  return '';
 }
 
 /**
