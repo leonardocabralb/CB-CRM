@@ -236,10 +236,12 @@ export function Step2SelectAudience({
     const result = parseBroadcastCsv(await selected.text());
 
     if (!result.ok) {
+      // `no_valid_rows` é "li o arquivo e nenhum telefone serve" — dizer
+      // "não foi possível ler o CSV" mandava a pessoa caçar o defeito errado.
       toast.error(
         result.error === 'missing_phone_column'
           ? t('selectAudience.errorCsvMissingPhone')
-          : t('selectAudience.errorCsvParse'),
+          : t('selectAudience.errorCsvNoValidRows'),
       );
       // Clear the input so re-picking the same corrected file still
       // fires `change` (the browser suppresses it for an identical value).
@@ -247,6 +249,13 @@ export function Step2SelectAudience({
       setPickedCsvName(null);
       onUpdate({ ...audience, csvContacts: undefined });
       return;
+    }
+
+    // Linha com telefone vazio ou fora da régua ficou de fora (upstream
+    // #529/#586, com a nossa régua). Dito aqui, senão a planilha que perdeu o
+    // DDD parece um público misteriosamente menor.
+    if (result.invalid > 0) {
+      toast.warning(t('selectAudience.csvInvalidPhones', { count: result.invalid }));
     }
 
     setPickedCsvName(selected.name);

@@ -917,7 +917,7 @@
       "namePlaceholder": "Jane Doe",
       "phoneLabel": "Phone Number",
       "phonePlaceholder": "+1234567890",
-      "phoneHint": "Include country code, e.g. +1 for US",
+      "phoneHint": "A number without + is read as Brazilian (55 is added) — include the area code. Any other country: start with + and the country code (e.g. +1 404 555 1234).",
       "emailLabel": "Email",
       "emailPlaceholder": "jane@example.com",
       "companyLabel": "Company",
@@ -939,8 +939,12 @@
       "dupSimilar": "A contact with a very similar number already exists.",
       "loadingTags": "Loading tags...",
       "noTagsAvailable": "No tags available. Create tags in Settings.",
-      "phoneRequired": "Phone number is required",
-      "phoneNeedsCountryCode": "Include the country code — the number must start with + (e.g. +14155550123)"
+      "phoneRequired": "Phone number is required"
+    },
+    "telefone": {
+      "curto": "The area code is missing. Write the number with it — e.g. (81) 98874-5316 — or, for another country, with + and the country code.",
+      "invalido": "Invalid phone number. Brazilian: with the area code, e.g. (81) 98874-5316. Any other country: with + and the country code, e.g. +1 404 555 1234.",
+      "regra": "Phone with area code. A number without + is read as Brazilian and gets 55; for any other country, write + and the country code."
     },
     "detailView": {
       "tabs": {
@@ -1011,7 +1015,6 @@
       "fieldSaved": "Saved",
       "toastCustomFieldFailed": "Could not save \"{campo}\" for {cliente}.",
       "saveCustomFieldsBtn": "Save Custom Fields",
-      "toastPhoneNeedsCountryCode": "Include the country code — the number must start with + (e.g. +14155550123)",
       "toastCustomFieldsSaved": "Custom fields saved",
       "toastCustomFieldsFailed": "Failed to save custom fields"
     },
@@ -1032,7 +1035,10 @@
       "resultTags": "{count} tag assigned",
       "resultTags_plural": "{count} tags assigned",
       "resultSkipped": "{count} skipped",
+      "resultInvalidPhone": "{count, plural, one {# without a valid phone} other {# without a valid phone}}",
       "resultFailed": "{count} failed",
+      "failedRowsHeading": "Failed rows",
+      "unknownReason": "Unknown error",
       "willBeCreated": "{name} (will be created on import)",
       "columns": {
         "phone": "Phone",
@@ -1054,18 +1060,12 @@
       "toastTagsSkipped": "Unknown tags skipped (create them in Settings first): {sample}{more}",
       "toastSkipped": "{count} duplicate skipped",
       "toastSkipped_plural": "{count} duplicates skipped",
+      "toastInvalidPhone": "{count, plural, one {# row left out: blank or invalid phone} other {# rows left out: blank or invalid phone}}",
       "toastFailed": "{count} contact failed to import",
       "toastFailed_plural": "{count} contacts failed to import",
       "toastError": "Import failed",
       "pareceId": "{name} looks like a tag id and does not exist in this account — it will be ignored",
-      "toastTagIdsSkipped": "Tag ids that do not exist in this account were ignored: {sample}{more}",
-      "resultInvalidPhone": "{count} invalid phone",
-      "resultInvalidPhone_plural": "{count} invalid phones",
-      "invalidPhoneHint": "Phone numbers must start with + and a country code (e.g. +14155550123). Numbers without one would be delivered to the wrong country.",
-      "failedRowsHeading": "Failed rows",
-      "unknownReason": "Unknown error",
-      "toastInvalidPhone": "{count} contact had no usable phone number",
-      "toastInvalidPhone_plural": "{count} contacts had no usable phone number"
+      "toastTagIdsSkipped": "Tag ids that do not exist in this account were ignored: {sample}{more}"
     },
     "customFields": {
       "title": "Custom fields",
@@ -1666,13 +1666,13 @@
         "value": "Value",
         "valuePlaceholder": "Value to match",
         "uploadCsv": "Upload CSV File",
-        "csvFormatDesc": "Must contain a 'phone' column (E.164 format). 'name' column is optional.",
+        "csvFormatDesc": "Must contain a 'phone' column, with the area code (a number from another country: with + and the country code). 'name' column is optional.",
         "csvContactsFound": "{count} valid contact(s) found in CSV.",
+        "csvInvalidPhones": "{count, plural, one {# row left out: blank or invalid phone (no area code, or a foreign number without +).} other {# rows left out: blank or invalid phone (no area code, or a foreign number without +).}}",
         "errorLoadTags": "Failed to load tags",
         "errorLoadFields": "Failed to load custom fields",
-        "errorCsvParse": "Could not parse CSV file.",
         "errorCsvMissingPhone": "CSV must have a 'phone' column.",
-        "csvInvalidPhones": "{count} row(s) skipped: phone numbers must start with + and a country code (e.g. +14155550123).",
+        "errorCsvNoValidRows": "No row in the CSV has a valid phone. Write it with the area code — or, for another country, with + and the country code.",
         "audienceSummary": "Audience Summary",
         "calculating": "Calculating…"
       },
