@@ -1,5 +1,7 @@
 // ============================================================
-// GET /api/v1/channels — list the account's WhatsApp numbers.
+// GET /api/v1/channels — list the account's connections: its WhatsApp
+// numbers and, if any, its Instagram Direct accounts (`kind: "instagram"`,
+// which are NOT valid `channel_id`s for POST /api/v1/messages).
 //
 // Exists because every other channel-aware endpoint takes a `channel_id`
 // (POST /api/v1/messages, and the broadcast/template routes) but nothing

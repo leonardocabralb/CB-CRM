@@ -18,7 +18,7 @@ import {
   CABECALHO_ENDPOINT,
   CABECALHO_EVENTO,
 } from './deliver';
-import { enviarTeste } from './enviar-teste';
+import { ehTextual, enviarTeste } from './enviar-teste';
 import { DEAL_WEBHOOK_EVENTS, WEBHOOK_EVENTS } from './events';
 import { exemploDoEvento } from './exemplos';
 import { TETO_DO_TRECHO } from './resultado-do-teste';
@@ -350,6 +350,39 @@ describe('enviarTeste', () => {
         binario: true,
       });
       expect(cancelado).toBe(true);
+    });
+
+    it('⚠️ planilha (xlsx) tem "xml" no content-type e é binário: omitida, nunca decodificada', async () => {
+      const xlsx = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(respostaCom(200, new Uint8Array([0x50, 0x4b, 0x03, 0x04]), xlsx))
+      );
+      expect((await enviarTeste(ENDPOINT, 'deal.created', CONTA)).resposta).toEqual({
+        corpo: null,
+        cortado: false,
+        binario: true,
+      });
+    });
+
+    it.each([
+      ['text/plain; charset=utf-8', true],
+      ['text/html', true],
+      ['application/json', true],
+      ['application/problem+json', true],
+      ['application/xml', true],
+      ['application/xhtml+xml', true],
+      ['TEXT/CSV', true],
+      [null, true],
+      ['', true],
+      ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', false],
+      ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', false],
+      ['application/pdf', false],
+      ['application/octet-stream', false],
+      ['image/png', false],
+      ['application/jsonp-archive', false],
+    ])('ehTextual(%j) = %s', (tipo, esperado) => {
+      expect(ehTextual(tipo)).toBe(esperado);
     });
 
     it('caracteres de controle saem; quebra de linha e tabulação ficam', async () => {

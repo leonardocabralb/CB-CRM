@@ -84,7 +84,7 @@ when their guard is set.
 | Tool                 | Group     | Scope needed         | What it does                                    |
 | -------------------- | --------- | -------------------- | ----------------------------------------------- |
 | `whoami`             | read      | _(any valid key)_    | Show the account + scopes the key carries       |
-| `list_channels`      | read      | `channels:read`      | List the account's WhatsApp numbers             |
+| `list_channels`      | read      | `channels:read`      | List the account's connections (WhatsApp numbers and Instagram accounts) |
 | `list_contacts`      | read      | `contacts:read`      | List/search contacts (paginated)                |
 | `get_contact`        | read      | `contacts:read`      | Read one contact                                |
 | `list_conversations` | read      | `conversations:read` | List conversations, filter by status/contact    |
@@ -108,7 +108,9 @@ Pass `channel_id` when the sending number matters.
 
 `kind` limits the number: only `meta` (official Cloud API) accepts
 templates and button/list messages. `evolution` (QR code) is text-only,
-so broadcasts always need a `meta` number.
+so broadcasts always need a `meta` number. `list_channels` also shows the
+account's Instagram Direct accounts (`kind: "instagram"`), which can't be
+used to send.
 
 ## Safety model
 

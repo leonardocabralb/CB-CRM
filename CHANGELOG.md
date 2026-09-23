@@ -72,7 +72,16 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   outras vêm inteiras); o envio por número de QR Code tem erros próprios
   (`evolution_rejected`, nada saiu; `evolution_error`, pode ter saído); a
   resposta do envio traz `channel_id`; e `GET /api/v1/channels` também
-  lista as contas do Instagram, que não servem de `channel_id` para enviar.
+  lista as contas do Instagram, que não servem de `channel_id` para enviar
+  (a descrição do escopo `channels:read` passou a dizer isso).
+- **`POST /api/v1/messages` com o `channel_id` de uma conta do Instagram
+  não prende mais a conversa nela.** A resposta continua `400
+  not_supported`, mas antes a conversa do telefone ficava fixada no
+  Instagram, e todo envio seguinte — pela tela ou pela API — falhava até
+  alguém trocar a conexão à mão. Agora o canal é conferido antes de
+  qualquer coisa ser criada ou mudada.
+- **Instagram: apagar uma DM anterior à integração não cria mais ficha e
+  conversa vazias**, nem manda `conversation.created` sem mensagem.
 - **Caixa de entrada: a conversa que recebe mensagem sobe para o topo.**
   Até aqui a hora e a prévia da linha mudavam, mas ela ficava na posição em
   que estava quando a página abriu — uma conversa reaberta por mensagem

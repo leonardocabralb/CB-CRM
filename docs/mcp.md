@@ -80,7 +80,9 @@ Two things worth knowing before choosing:
   API number and is the only kind that accepts templates and
   button/list messages. `evolution` is a QR-code number: plain text
   only. Broadcasts are template-only, so they always need a `meta`
-  number.
+  number. `list_channels` also shows the account's Instagram Direct
+  accounts (`kind: "instagram"`); they can't be used to send, and
+  `send_message` refuses them (`not_supported`).
 
 ## Safety
 

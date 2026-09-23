@@ -15,13 +15,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   ordem: [] as string[],
   insertErro: null as { code: string; message: string } | null,
+  contatoExiste: true,
+  conversaExiste: true,
+  filtrosDaExclusao: [] as [string, unknown][],
+  conversasAchadasOuCriadas: 0,
 }));
 
 vi.mock('@/lib/whatsapp/inbound-store', () => ({
-  findOrCreateConversation: vi.fn(async () => ({
-    conversation: { id: 'conv-1' },
-    created: true,
-  })),
+  findOrCreateConversation: vi.fn(async () => {
+    h.conversasAchadasOuCriadas++;
+    return { conversation: { id: 'conv-1' }, created: true };
+  }),
 }));
 vi.mock('@/lib/cb-channels/pipeline-routing', () => ({
   routeContactToPipeline: vi.fn(async () => {
@@ -58,13 +62,15 @@ function fakeDb() {
           eq: () => ({
             eq: () => ({
               maybeSingle: async () => ({
-                data: {
-                  id: 'contato-1',
-                  name: 'Cliente Teste',
-                  instagram_username: 'cliente',
-                  avatar_url: null,
-                  avatar_checked_at: null,
-                },
+                data: h.contatoExiste
+                  ? {
+                      id: 'contato-1',
+                      name: 'Cliente Teste',
+                      instagram_username: 'cliente',
+                      avatar_url: null,
+                      avatar_checked_at: null,
+                    }
+                  : null,
                 error: null,
               }),
             }),
@@ -81,10 +87,40 @@ function fakeDb() {
             return { error: null };
           },
         }),
+        // `conversaDoCliente`: a conversa que JÁ existe, sem criar nada.
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => ({
+                  maybeSingle: async () => ({
+                    data: h.conversaExiste ? { id: 'conv-existente' } : null,
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
       };
     }
     if (tabela === 'messages') {
       return {
+        update: (valores: Record<string, unknown>) => {
+          h.ordem.push('marca-apagada');
+          h.filtrosDaExclusao = [['deleted_by', valores.deleted_by]];
+          const cadeia = {
+            eq: (coluna: string, valor: unknown) => {
+              h.filtrosDaExclusao.push([coluna, valor]);
+              return cadeia;
+            },
+            is: async (coluna: string, valor: unknown) => {
+              h.filtrosDaExclusao.push([coluna, valor]);
+              return { error: null };
+            },
+          };
+          return cadeia;
+        },
         insert: () => ({
           select: () => ({
             single: async () => {
@@ -140,6 +176,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.ordem = [];
   h.insertErro = null;
+  h.contatoExiste = true;
+  h.conversaExiste = true;
+  h.filtrosDaExclusao = [];
+  h.conversasAchadasOuCriadas = 0;
   dispatch.mockResolvedValue(undefined);
 });
 
@@ -233,5 +273,56 @@ describe('Instagram: conversation.created é a ENTRADA do cliente', () => {
     });
     expect(eventos()).toEqual([]);
     erro.mockRestore();
+  });
+});
+
+describe('Instagram: DM APAGADA não abre conversa', () => {
+  const APAGADA: EventoDoInstagram = { ...DM, mid: 'mid-apagada', texto: null, apagada: true };
+
+  it('⚠️ cliente sem ficha: nada é criado e nada é emitido (antes: ficha e conversa vazias + conversation.created)', async () => {
+    h.contatoExiste = false;
+    expect(await persistirEventoDoInstagram(fakeDb(), CTX, APAGADA, semMidia)).toEqual({
+      resultado: 'ignorada',
+    });
+    expect(h.ordem).toEqual([]);
+    expect(h.conversasAchadasOuCriadas).toBe(0);
+    expect(eventos()).toEqual([]);
+  });
+
+  it('ficha sem conversa: também não cria a conversa', async () => {
+    h.conversaExiste = false;
+    expect(await persistirEventoDoInstagram(fakeDb(), CTX, APAGADA, semMidia)).toEqual({
+      resultado: 'ignorada',
+    });
+    expect(h.ordem).toEqual([]);
+    expect(h.conversasAchadasOuCriadas).toBe(0);
+    expect(eventos()).toEqual([]);
+  });
+
+  it('conversa existente: marca a mensagem pela CONVERSA do cliente, sem emitir nada', async () => {
+    expect(await persistirEventoDoInstagram(fakeDb(), CTX, APAGADA, semMidia)).toEqual({
+      resultado: 'ignorada',
+    });
+    expect(h.ordem).toEqual(['marca-apagada']);
+    expect(h.conversasAchadasOuCriadas).toBe(0);
+    expect(h.filtrosDaExclusao).toEqual([
+      ['deleted_by', 'customer'],
+      ['conversation_id', 'conv-existente'],
+      ['message_id', 'mid-apagada'],
+      ['deleted_at', null],
+    ]);
+    expect(eventos()).toEqual([]);
+  });
+
+  it('apagada pela própria conta (eco): a marca diz "agent"', async () => {
+    const ECO_APAGADO: EventoDoInstagram = {
+      ...APAGADA,
+      remetente: '100',
+      destinatario: '200',
+      ehEco: true,
+    };
+    await persistirEventoDoInstagram(fakeDb(), CTX, ECO_APAGADO, semMidia);
+    expect(h.filtrosDaExclusao[0]).toEqual(['deleted_by', 'agent']);
+    expect(eventos()).toEqual([]);
   });
 });

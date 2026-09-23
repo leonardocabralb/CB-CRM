@@ -96,12 +96,19 @@ export interface TrechoDaResposta {
   binario?: boolean;
 }
 
-/** `text/*`, JSON, XML, HTML — e cabeçalho ausente, que é o caso comum. */
-function ehTextual(contentType: string | null): boolean {
+/**
+ * `text/*` (HTML incluso), JSON e XML — e cabeçalho ausente, que é o caso
+ * comum. JSON/XML pelo SUBTIPO inteiro ou pelo sufixo (`+json`, `+xml`),
+ * nunca por "contém": `application/vnd.openxmlformats-…` (docx, xlsx) tem
+ * "xml" no nome, é um zip, e sairia na tela como 2 KB de lixo.
+ */
+export function ehTextual(contentType: string | null): boolean {
   if (!contentType) return true;
   const tipo = contentType.split(';')[0].trim().toLowerCase();
   if (!tipo) return true;
-  return tipo.startsWith('text/') || /json|xml|html/.test(tipo);
+  if (tipo.startsWith('text/')) return true;
+  const subtipo = tipo.slice(tipo.indexOf('/') + 1);
+  return /(^|\+)(json|xml)$/.test(subtipo);
 }
 
 // Controle C0 e C1, menos a tabulação (\x09) e a quebra de linha (\x0A). O

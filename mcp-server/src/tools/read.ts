@@ -32,7 +32,7 @@ export function registerReadTools(server: McpServer, client: WacrmClient): void 
     {
       title: 'List WhatsApp channels',
       description:
-        'List the account WhatsApp numbers (channels) with their id, label, phone, type and connection status. Call this before send_message or send_broadcast when you need to choose which number to send from — the ids returned here are the valid values for `channel_id`. `kind: "meta"` is an official Cloud API number (supports templates and interactive messages); `kind: "evolution"` is an unofficial QR-code number (plain text only). Requires the `channels:read` scope.',
+        'List the account connections (channels) — its WhatsApp numbers and any Instagram Direct accounts — with their id, label, phone, type and connection status. Call this before send_message or send_broadcast when you need to choose which number to send from — the ids of the WhatsApp numbers returned here are the valid values for `channel_id`. `kind: "meta"` is an official Cloud API number (supports templates and interactive messages); `kind: "evolution"` is an unofficial QR-code number (plain text only); `kind: "instagram"` is an Instagram Direct account — NOT a valid `channel_id` for sending (send_message refuses it). Requires the `channels:read` scope.',
       inputSchema: {},
       annotations: { ...READ_ONLY, title: 'List WhatsApp channels' },
     },

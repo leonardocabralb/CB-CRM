@@ -5999,7 +5999,11 @@ não conseguia receber no n8n "o lead mudou de etapa". O que morde código novo:
   (decisão do operador, 23/09/2026): sai nos três caminhos de ENTRADA
   (webhook da Meta, `persistInboundMessage`, a DM do Instagram), e o ECO do
   Instagram não emite (`conv.created && !ev.ehEco`, pino em
-  `persistir.aviso.test.ts`). Quem CRIA conversa por outro caminho (celular
+  `persistir.aviso.test.ts`). A DM APAGADA também não: ela vai por
+  `marcarApagada`, que só alcança a conversa que JÁ existe
+  (`conversaDoCliente`) — pelo `gravarMensagem`, apagar uma DM anterior à
+  integração criava ficha e conversa vazias e emitia o evento sem mensagem
+  nenhuma. Quem CRIA conversa por outro caminho (celular
   pareado, tela, API, automação, integração, grupo, carga) NÃO emite, e a
   conversa aberta assim nunca emite depois. Emitir num caminho novo é mudar
   o contrato publicado: a descrição mora em `events.ts`, nos dois
@@ -6252,6 +6256,15 @@ estrutural `transporte.chamadores.test.ts` (no `main` desde 10/09/2026, PR
   ficam ATRÁS de uma guarda de Instagram anterior no mesmo caminho, e é a
   guarda que os sustenta — o teste estrutural só pega o literal. Ramo novo
   de duas pernas sem guarda anterior é bug; o censo é `grep -n 'if (eh' src`.
+- ⚠️ **`pinConversationChannel` confere só a POSSE, nunca o transporte**, e
+  a conta do Instagram é conexão da conta. `POST /api/v1/messages` confere
+  `ehWhatsApp` ANTES de criar contato e de fixar (pino em
+  `src/app/api/v1/messages/route.test.ts`): até 23/09/2026 o `channel_id` de
+  uma conta do Instagram (que `GET /api/v1/channels` lista) era FIXADO na
+  conversa do telefone e só depois o núcleo recusava — a conversa ficava
+  presa e todo envio seguinte falhava. As duas rotas internas que também
+  fixam (`/api/whatsapp/send`, `/api/cb/conversas/abrir`) dependem da tela
+  oferecer só o que serve; quem expuser outro seletor repete a guarda.
 - ⚠️ **`Contact.phone` é `string | null`** (PR #168): a ficha só do Instagram
   não tem telefone. Toda tela que mostra "o telefone" passa por
   `identidadeDoContato`/`nomeDoContato` (`src/lib/contacts/identidade.ts`):

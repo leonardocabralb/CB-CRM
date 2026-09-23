@@ -45,6 +45,8 @@ import {
 } from '@/lib/whatsapp/send-message';
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive';
 import { pinConversationChannel } from '@/lib/cb-channels/stamp';
+import { ehWhatsApp } from '@/lib/cb-channels/transporte';
+import { ehUuid } from '@/lib/tasks/validar';
 
 export async function POST(request: Request) {
   try {
@@ -100,6 +102,55 @@ export async function POST(request: Request) {
       interactivePayload,
     });
 
+    // O canal pedido é conferido AQUI, antes de achar-ou-criar o contato e
+    // antes de fixar. ⚠️ Uma conta do INSTAGRAM é conexão desta conta (e
+    // `GET /api/v1/channels` a lista), então `pinConversationChannel`, que só
+    // confere a posse, a FIXAVA na conversa do telefone — e só depois o núcleo
+    // recusava com `not_supported`. A conversa ficava presa no Instagram, e
+    // todo envio seguinte (tela ou API) falhava até alguém trocar o canal à
+    // mão. Mesmo código e status de antes; só o efeito colateral sai.
+    const channelId =
+      typeof body.channel_id === 'string' ? body.channel_id.trim() : '';
+    if (channelId) {
+      // Sem a forma de UUID o Postgres recusa o filtro (22P02) e a leitura
+      // viraria 500 — antes era o 400 abaixo, e continua sendo.
+      if (!ehUuid(channelId)) {
+        return fail(
+          'bad_request',
+          "'channel_id' is not a channel of this account",
+          400
+        );
+      }
+      const { data: canal, error: erroDoCanal } = await ctx.supabase
+        .from('cb_channels')
+        .select('id, kind')
+        .eq('id', channelId)
+        .eq('account_id', ctx.accountId)
+        .maybeSingle();
+      // Erro de banco NÃO é "não encontrado".
+      if (erroDoCanal) {
+        console.error(
+          '[api/v1/messages] leitura do canal falhou:',
+          erroDoCanal.message
+        );
+        return fail('internal', 'Failed to verify the channel', 500);
+      }
+      if (!canal) {
+        return fail(
+          'bad_request',
+          "'channel_id' is not a channel of this account",
+          400
+        );
+      }
+      if (!ehWhatsApp(canal)) {
+        return fail(
+          'not_supported',
+          "'channel_id' is not a WhatsApp number: this endpoint sends through the account's WhatsApp numbers only",
+          400
+        );
+      }
+    }
+
     // Find-or-create the conversation for this phone, then send. Both
     // steps share `SendMessageError`, so one catch maps the whole
     // pipeline to the envelope.
@@ -115,9 +166,9 @@ export async function POST(request: Request) {
     // "segue o cliente" — um lembrete de audiência sairia pelo celular pessoal
     // do sócio só porque o cliente respondeu por lá na semana passada.
     // FIXAR (e não só usar uma vez) é deliberado: a resposta do cliente volta
-    // pelo mesmo número que ele viu.
-    const channelId =
-      typeof body.channel_id === 'string' ? body.channel_id.trim() : '';
+    // pelo mesmo número que ele viu. (A posse e o transporte já foram
+    // conferidos lá em cima; o pin confere a posse de novo porque o canal
+    // pode ter sido apagado no meio.)
     if (channelId) {
       const pinned = await pinConversationChannel(
         ctx.supabase,

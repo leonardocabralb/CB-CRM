@@ -48,7 +48,7 @@ it. Grant the minimum.
 | `contacts:read`      | List and read contacts                   |
 | `contacts:write`     | Create and update contacts               |
 | `conversations:read` | List and read conversations              |
-| `channels:read`      | List the account's WhatsApp numbers      |
+| `channels:read`      | List the account's connections (channels): WhatsApp numbers and Instagram accounts |
 | `broadcasts:send`    | Launch broadcast campaigns               |
 | `webhooks:manage`    | Register and manage outbound webhooks. ⚠️ The subscribed events carry message text and full contact and deal data (tags and custom fields included) — with no `contacts:read`, `deals:read` or `messages:read` needed |
 | `tasks:read`         | List and read tasks                      |
@@ -174,9 +174,11 @@ curl -X POST https://your-crm.example.com/api/v1/messages \
 ```
 
 `name` names the contact when this call creates it. For a contact that
-already exists it **also replaces the name**, unless that name was fixed —
-typed by someone in the CRM or set by a Calendly booking; to rename a
-contact on purpose, use `PATCH /api/v1/contacts/{id}`.
+already exists it **also replaces the name**, unless that name is marked
+as fixed in the CRM (a name chosen on purpose rather than taken from the
+WhatsApp profile — typed by someone, or set by an integration or an
+automation); to rename a contact on purpose, use
+`PATCH /api/v1/contacts/{id}`.
 
 Response (201):
 
@@ -533,7 +535,7 @@ An account can have several numbers — official Meta (Cloud API) ones and
 unofficial QR-code ones. The ids whose `kind` is `meta` or `evolution` are
 valid `channel_id`s for `POST /api/v1/messages`; an `instagram` one is not
 (the API does not send through Instagram — the call fails with
-`not_supported`), so don't pass it. `POST /api/v1/broadcasts` only accepts
+`not_supported` before anything is created or changed), so don't pass it. `POST /api/v1/broadcasts` only accepts
 the ones whose `kind` is `meta` (broadcasts are template-only).
 
 ```jsonc
