@@ -446,6 +446,7 @@ upstream sobrescrevê-los:
 | `src/lib/automations/engine.ts` (espera, 18/09/2026) | o "Aguardar" estaciona com `contextoDaEspera(...)` e CONFERE o erro do INSERT (fila que recusa vira falha visível); `resumePendingExecution` limpa a marca com `semMarcaDeResposta`. Um merge que traga o bloco do `wait` cru devolve o insert não conferido e a marca para de ser gravada — a caixa do construtor vira enfeite, sem erro nenhum. Ver a seção "Aguardar — parar se o cliente responder" |
 | `src/app/api/whatsapp/webhook/route.ts` (4ª linha nossa) e `src/lib/whatsapp/inbound-store.ts` | a chamada a `cancelarEsperasPorResposta`, ANTES de `dispatchInboundToFlows` — nos DOIS transportes (há pino estrutural com a ordem) |
 | `src/app/api/whatsapp/webhook/route.ts` (5ª linha nossa) | o `conversation.created` começa SEM `await` (`avisoDeConversaCriada`) e é esperado antes do `message.received` e em todo retorno antecipado (23/09/2026). O upstream o aguarda ANTES do upsert: um endpoint de saída fora do ar (até 5 s por POST) segurava a primeira mensagem de toda conversa nova e os motores atrás dela. Um merge que traga o `await` cru devolve o atraso sem conflito. O mesmo desenho está em `inbound-store.ts` e `instagram/persistir.ts` (esses dois são NOSSOS — o upstream não emite o evento neles). ⚠️ A ordem garantida é só `conversation.created` → `message.received`: robô, automações e IA já rodam com o aviso em voo, então o `message.status_updated` da resposta deles (outra requisição do provedor) pode chegar ao assinante antes do `conversation.created`. Pinos: os testes "conversation.created não segura a gravação" (`route.test.ts`, `inbound-store.test.ts`, `persistir.aviso.test.ts`) |
+| `src/app/api/whatsapp/webhook/route.ts` (6ª linha nossa) | o RECIBO (23/09/2026). `handleStatusUpdate` traduz o status por `reciboDaMeta` (`played` vira `read`; valor fora da lista não toca em nada), grava em `messages` só com a escada (`aceitamORecibo`, só linhas `agent`/`bot`, escopo por canal mantido) e pela espera da linha (`aplicarReciboQuandoAMensagemExistir` + `pausasDoReciboDaMeta`), e anuncia `message.status_updated` só quando alguma linha avançou, com a conta DESSA linha. O espelho de `broadcast_recipients` passou para ANTES (o disparo não grava em `messages` e não espera), e os recibos de um POST rodam DEPOIS das mensagens dele (`processarEntradas` + `finally`). O upstream grava o status cru: um merge que traga o `handleStatusUpdate` dele devolve a bolha rebaixada sem conflito nenhum. A Fase 5 do `PLANO-merge-upstream-2026-09.md` (o motivo da falha) põe as colunas do erro no patch do `tentar()`. Pinos: `route.recibo.test.ts` e `recibo-da-meta.test.ts` |
 | `src/components/automations/automation-builder.tsx` (18/09/2026) | a caixa "Parar a automação se o cliente responder" no passo Aguardar e o sufixo no resumo do cartão fechado |
 | `src/app/(dashboard)/automations/[id]/logs/page.tsx` | `skipped` com traço NEUTRO em vez do ✗ vermelho (`StepRow`) |
 | `src/app/(dashboard)/inbox/page.tsx` (18/09/2026) | no INSERT de mensagem do CLIENTE na conversa aberta, `setTimeout(avisarExecucoesMudaram, 3000)` — a aba Automações descobre o cancelamento por resposta sem recarregar a página |
@@ -2957,11 +2958,14 @@ com teste). Diagnóstico, números e a verificação PENDENTE estão em
   entregue ou lida (pelo CRM OU pelo celular, por qualquer conexão), ou o
   destinatário escreveu mais de 1 min depois. Quatro recortes, cada um
   evitando um alarme falso MEDIDO:
-  - só conexão EVOLUTION. A rota da Meta (`handleStatusUpdate`) grava a
-    situação SEM a escada — um "sent" atrasado rebaixa "delivered" — e não
-    espera a mensagem existir para aplicar o recibo. Uma versão do comentário
-    da rota da Evolution dizia que a Meta tinha a guarda: ela só protege
-    `broadcast_recipients`;
+  - só conexão EVOLUTION. Até 23/09/2026 a rota da Meta (`handleStatusUpdate`)
+    gravava a situação SEM a escada — um "sent" atrasado rebaixava
+    "delivered" — e não esperava a mensagem existir para aplicar o recibo.
+    Ela ganhou as duas nesse dia, mas as mensagens da Meta gravadas antes
+    continuam com a situação que o defeito deixou. Alargar para a Meta pede
+    medir de novo os falsos positivos, com corte no deploy do conserto, e a
+    decisão do operador (`docs/PLANO-link-sem-previa.md`, "Limites
+    conhecidos");
   - só o que saiu pelo CRM, porque o CRM às vezes perde o recibo de mensagem
     do celular;
   - só desde 11/09 00:00 UTC. Antes, recibo perdido era rotina, e as 2
@@ -6907,6 +6911,27 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
   recibo velho, e ela desiste. Recibo de mensagem RECEBIDA (`fromMe` false)
   não espera. Quem escrever outro consumidor de recibo repete a espera — o
   UPDATE solto perde a corrida em silêncio.
+
+- ⚠️ **A rota da META tem a mesma escada e a mesma espera desde 23/09/2026**
+  (`handleStatusUpdate` em `src/app/api/whatsapp/webhook/route.ts`,
+  `src/lib/whatsapp/transport/recibo-da-meta.ts`). Até ali ela gravava o
+  status cru. A desordem lá tem outra origem: a Meta manda `sent` e
+  `delivered` em POSTs separados, com milissegundos de diferença, e cada um
+  roda no seu `after()`. Medido no dia, uma interativa de teste que o
+  destinatário respondeu por botão ficou em ✓, com dois PATCH de status 39 ms
+  um do outro. A regra da falha (`ACEITA_FALHA`) e a lista do UPDATE
+  (`aceitamORecibo`) moram em `escada-de-status.ts`, para as duas rotas. Três
+  diferenças da Evolution, cada uma com motivo:
+  - a espera é de **7 s**, não 30 (`PAUSAS_DO_RECIBO_DA_META_MS`). Ninguém
+    segura a gravação de propósito, e a espera longa sairia cara: nas 24 h até
+    23/09, **46 das 51** mensagens cujo recibo chegou a esta rota NÃO
+    existiam no CRM (39 iam para outros números, mandadas por outro sistema
+    ligado ao mesmo número), e esse recibo espera até o fim toda vez;
+  - `sent` e o recibo de DISPARO **não esperam nada**: todo envio pela Meta
+    grava a linha já como `sent`, e a campanha não grava em `messages`. Há
+    pino nas duas premissas;
+  - os recibos de um POST rodam **depois das mensagens** dele, para a espera
+    não segurar a mensagem do cliente quando a Meta junta as duas coisas.
 
 - ⚠️ **Edição de mensagem chega CIFRADA na 2.4 (medido 09/09/2026)**:
   `secretEncryptedMessage` com `secretEncType` 2 (MESSAGE_EDIT) e

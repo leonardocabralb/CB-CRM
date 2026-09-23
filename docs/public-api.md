@@ -922,10 +922,13 @@ const ok = expected.length === v1.length &&
 Delivery is **best-effort**: a **single attempt** per event with a
 5-second timeout, and **redirects are not followed** (a 3xx counts as a
 failure). Nothing is retried, so a delivery is never duplicated by the CRM
-itself — but the *source* can repeat a fact: providers re-send and
-re-order status callbacks, so the same `message.status_updated` may arrive
-more than once (with a new `id`) or out of order. Deliveries run in
-parallel, so **don't assume ordering** — on `deal.*`, order by
+itself. Providers re-send and re-order status callbacks, but
+`message.status_updated` is only sent when a status ADVANCES the stored
+message (sent → delivered → read, or `failed` before delivery): a repeated
+or late callback is dropped, and `sent` itself is not announced, because the
+CRM stores the message as sent already. Deliveries run in parallel, so
+**don't assume ordering**: two advances of the same message can reach you
+out of order, so keep the most advanced one. On `deal.*`, order by
 `occurred_at` and dedupe on `id`. `message.status_updated` covers messages
 the CRM stores (inbox + API sends), not broadcast-only sends. Each
 consecutive failure increments `failure_count`; after 15 consecutive
