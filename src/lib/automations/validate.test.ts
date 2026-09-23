@@ -344,16 +344,39 @@ describe("validateTriggerForActivation", () => {
 });
 
 describe("send_to_number / calendly_booking (977)", () => {
-  it("exige telefone com DDI e texto", () => {
+  it("exige telefone (pela régua das telas) e texto", () => {
     expect(
       validateStepsForActivation([{ step_type: "send_to_number", step_config: { phone: "(83) 98000-0016", text: "oi" } }]),
     ).toEqual([]);
     expect(
       validateStepsForActivation([{ step_type: "send_to_number", step_config: { phone: "123", text: "oi" } }]),
-    ).toEqual([{ path: "steps[0].phone", message: "phone must be a valid number with country code" }]);
+    ).toEqual([{ path: "steps[0].phone", message: "phone is too short (missing the area code?)" }]);
+    expect(
+      validateStepsForActivation([{ step_type: "send_to_number", step_config: { text: "oi" } }]),
+    ).toEqual([{ path: "steps[0].phone", message: "phone is required" }]);
+    expect(
+      validateStepsForActivation([{ step_type: "send_to_number", step_config: { phone: "+1 404 555 1234", text: "oi" } }]),
+    ).toEqual([]);
     expect(
       validateStepsForActivation([{ step_type: "send_to_number", step_config: { phone: "5583980000016", text: " " } }]),
     ).toEqual([{ path: "steps[0].text", message: "message text is required" }]);
+  });
+
+  it("o número sem DDD e o id do WhatsApp colado são recusados na ATIVAÇÃO, não no envio", () => {
+    // Pela régua dos sistemas (`digitosDoTelefone`, até a Fase 3-III) passavam:
+    // "98000-0016" virava +98, e o LID virava telefone (os 15 dígitos dele como
+    // destino do aviso). O JID de pessoa caía no número certo por acaso, e é
+    // recusado junto — texto com letra não é número digitado.
+    for (const [phone, motivo] of [
+      ["98000-0016", "phone is too short (missing the area code?)"],
+      ["123456789012345@lid", "phone is not a valid number (Brazilian: with the area code; other countries: with + and the country code)"],
+      ["5583980000016@s.whatsapp.net", "phone is not a valid number (Brazilian: with the area code; other countries: with + and the country code)"],
+      ["083 98000-0016", "phone is not a valid number (Brazilian: with the area code; other countries: with + and the country code)"],
+    ]) {
+      expect(
+        validateStepsForActivation([{ step_type: "send_to_number", step_config: { phone, text: "oi" } }]),
+      ).toEqual([{ path: "steps[0].phone", message: motivo }]);
+    }
   });
 
   it("gatilho: vazio é 'qualquer evento'; só lixo é recusado", () => {

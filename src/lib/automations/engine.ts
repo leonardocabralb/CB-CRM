@@ -35,7 +35,7 @@ import { supabaseAdmin } from './admin-client';
 import { resolverDestinatario } from './destinatario';
 import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
 import { ehGatilhoDaRegua } from '@/lib/asaas/regua';
-import { digitosDoTelefone } from '@/lib/contacts/telefone';
+import { telefoneDigitado, type MotivoDoTelefone } from '@/lib/contacts/telefone';
 import { nomeParaFixar } from '@/lib/contacts/nome-fixado';
 import { urlDoInbox } from '@/lib/inbox/url';
 import { formatCurrency } from '@/lib/currency';
@@ -104,6 +104,13 @@ import {
   sinaisDoHistorico,
   type Desfecho,
 } from './estado-da-execucao';
+
+/** O motivo do `send_to_number` recusado, na frase que o registro mostra. */
+const POR_QUE_O_NUMERO_NAO_SERVE: Record<MotivoDoTelefone, string> = {
+  vazio: 'não preenchido',
+  curto: 'curto demais (faltou o DDD?)',
+  invalido: 'não é um número (com DDD; de outro país, com + e o código do país)',
+};
 
 // ------------------------------------------------------------
 // Public API
@@ -2097,11 +2104,15 @@ async function runStep(
       // ficha e conversa (é assim que a mensagem aparece no inbox), mas não
       // vira card no funil nem "conversa reaberta" a cada aviso.
       const cfg = step.step_config as SendToNumberStepConfig;
-      // A mesma leitura do telefone do Calendly: "(83) 98000-0016" ganha o 55,
-      // "+1 404…" entra como veio. Sem isso o número digitado sem DDI no
-      // editor saía para um destino que não existe.
-      const digitos = digitosDoTelefone(cfg.phone);
-      if (!digitos) throw new Error('send_to_number: telefone inválido');
+      // A régua das telas (`telefoneDigitado`), a mesma da validação do
+      // construtor: "(83) 98000-0016" ganha o 55, "+1 404…" entra como veio, e
+      // "98000-0016" (sem DDD) é recusado — pela régua dos sistemas ele virava
+      // +98. Número que passou pela validação passa aqui igual.
+      const lido = telefoneDigitado(cfg.phone);
+      // A frase vai crua para os registros da automação e para a aba da
+      // conversa: o código do motivo ("curto") não diz ao operador o que fazer.
+      if (!lido.ok) throw new Error(`send_to_number: telefone inválido — ${POR_QUE_O_NUMERO_NAO_SERVE[lido.motivo]}`);
+      const digitos = lido.digitos;
       const text = await interpolate(cfg.text ?? '', args);
       if (!text.trim()) throw new Error('send_to_number has empty text');
       const accountId = args.automation.account_id;

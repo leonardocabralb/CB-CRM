@@ -171,6 +171,22 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   que somava o Calendly e os webhooks virou dois, cada um levando ao seu
   log.
 
+- **Automações: o número do passo "Enviar para um número" é conferido ao
+  ativar.** O número que avisa a equipe (o advogado, no agendamento do
+  Calendly) passa pela mesma leitura das telas: "(83) 98000-0016" ganha o
+  55; um número sem DDD ("98000-0016") — que antes era aceito e mandava o
+  aviso para outro país (+98) — é recusado, e também o que não é só número:
+  com letra, com 0 na frente, um id do WhatsApp (`…@s.whatsapp.net`,
+  `…@lid`) ou um link `wa.me` colado. Salvar a automação ativa é recusado,
+  e o campo do construtor mostra o motivo.
+  ⚠️ **Automação que JÁ estava ativa não é conferida na atualização**: se o
+  número dela estiver num desses formatos, o aviso passa a falhar no envio —
+  e o passo que falha encerra a execução, então os passos seguintes (mover o
+  card, por exemplo) também não rodam. Antes de atualizar, confira o número
+  de cada passo "Enviar para um número" (ao abrir a automação, o campo já
+  mostra o motivo), ou liste-os no SQL Editor:
+  `select a.name, s.step_config->>'phone' from automation_steps s join automations a on a.id = s.automation_id where s.step_type = 'send_to_number';`
+
 - **A importação de CSV diz o que ficou de fora e por quê.** Linha com
   telefone vazio ou inválido deixa de ser contada como "duplicada" (e a
   sem telefone deixa de sumir sem contar), e cada linha que o banco

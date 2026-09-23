@@ -186,7 +186,7 @@ quebrar, sabe-se qual.
 | **1** | Segurança e dependências (#563, #510, #506) | Real: estamos no Next 16.2.12 | Baixa | Médio-baixo | — | ✅ em produção (PR #239, 21/09) |
 | **2** | Função de disparo (#536) + 2 achados nossos (params em 2-D; `channel_id` descartado) | Real: quebrada na produção | Baixa → Média | Baixo | `1030` (aplicada 21/09) | ✅ em produção (PR #242, 21/09) |
 | **1b** | Segurança depois do alvo: #588 (SSRF), #587 (automação por conta), #589 (conversa por conta) — PRs ABERTOS do mantenedor — e a mídia do Instagram (achado nosso) | Real: brechas presentes; o #587 também dava 404 ao admin não-autor | Média | Médio-baixo | — | ✅ em produção (PR #261, 23/09) |
-| **3** | Pequenas e independentes: CSV (#529), textarea (#559), vários App Secrets (#500), tags da v1 (#560, só medir), e o resolvedor do canal Meta (3e — achado NOSSO da Fase 2, sem PR do upstream); com a P9, a normalização do telefone digitado — dividida em 3-I a 3-IV | Moderado | Baixa | Baixo | — | 3-I, 3-II e 3-IV em produção (PRs #262, #265 e #269, 23/09); 3-III pendente |
+| **3** | Pequenas e independentes: CSV (#529), textarea (#559), vários App Secrets (#500), tags da v1 (#560, só medir), e o resolvedor do canal Meta (3e — achado NOSSO da Fase 2, sem PR do upstream); com a P9, a normalização do telefone digitado — dividida em 3-I a 3-IV | Moderado | Baixa | Baixo | — | ✅ em produção: 3-I, 3-II, 3-IV e 3-III (PRs #262, #265, #269 e #276, 23/09) |
 | **4** | Fluxos: `{{vars}}` em botões e listas (#553) | Inerte hoje (0 fluxos ativos) | Média | Médio-baixo | — | ✅ em produção (PR #271, 23/09): porte manual — o #259 **descartou** o `engine.ts` deles; teste real feito com a janela aberta pelo operador |
 | **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | colunas aplicadas (correção do #259); gravar, mostrar e espelhar pendentes — o #259 descartou o webhook deles |
 | **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | 6a CRU em produção pelo #259 (rotas com o canal preservado; falta o teste com a WABA e o teto da leitura); 6b CRU e inerte (a rota não passa o `wabaId`) |
@@ -781,9 +781,9 @@ Codex e deploy próprios:
 | Sub-fase | O que entra | Estado |
 | --- | --- | --- |
 | **3-I** | 3b, 3c, 3d (só medir) e 3e — nada toca telefone | ✅ PR #262 |
-| **3-II** | 3a (#529) + a metade aditiva do #586 NAS TELAS: formulário e ficha do contato, importação de CSV, CSV do disparo — telefone digitado sai normalizado pela nossa régua, e o inválido é CONTADO com motivo, nunca chamado de duplicata | pendente |
-| **3-III** | a mesma normalização na ENTRADA da API (v1 de contatos, mensagens e disparos) e em `/api/cb/conversas/abrir`, com `docs/public-api.md` | em PR (ver o resultado abaixo) |
-| **3-IV** | 3f — a CONTAGEM do público do disparo (#594) truncando em 1000 (o envio já pagina) | em PR (ver o resultado abaixo) |
+| **3-II** | 3a (#529) + a metade aditiva do #586 NAS TELAS: formulário e ficha do contato, importação de CSV, CSV do disparo — telefone digitado sai normalizado pela nossa régua, e o inválido é CONTADO com motivo, nunca chamado de duplicata | ✅ PR #265 (23/09) |
+| **3-III** | a mesma normalização na ENTRADA da API (v1 de contatos, mensagens e disparos) e em `/api/cb/conversas/abrir`, com `docs/public-api.md` — e, a pedido do operador, o webhook de entrada (Typebot) e o passo "Enviar para um número" | ✅ PR #276 (23/09); o passo "Enviar para um número" num PR próprio logo depois |
+| **3-IV** | 3f — a CONTAGEM do público do disparo (#594) truncando em 1000 (o envio já pagina) | ✅ PR #269 (23/09; ver o resultado abaixo) |
 
 **Resultado da 3-I (23/09/2026, PR #262):**
 
@@ -1095,9 +1095,25 @@ todo E.164 brasileiro e todo estrangeiro com `+` saem iguais.
 
 **Pendências que ficam desta fase (fora do escopo, cada uma com dono):**
 
-- **`send_to_number` fora da régua** — o número que o operador digita no
-  passo da automação ainda é lido por `digitosDoTelefone` (a validação do
-  construtor e o motor); decidir se passa por `telefoneDigitado`.
+- ~~**`send_to_number` fora da régua**~~ — resolvido a pedido do operador
+  (23/09/2026), num PR próprio depois do #276: a validação da ativação, o
+  motor, o resumo do passo e o campo do construtor leem por
+  `telefoneDigitado`, e o campo mostra o motivo ao sair dele. MEDIDO antes:
+  um passo só em produção ("Calendly → Reunião agendada"), com 13 dígitos —
+  passa igual pelas duas réguas.
+
+  **Revisão (duas lentes, cético no achado; 4/4 mutantes mortos):**
+
+  | Achado | Destino |
+  | --- | --- |
+  | P2 (confirmado pelo cético, medido) — automação JÁ ATIVA com número que a régua velha lia certo (id do WhatsApp, `wa.me`, número com rótulo) passa a falhar no envio depois do deploy, e o passo que falha encerra a execução (o card do Calendly não anda); o CHANGELOG não avisava, e dizia que "com letra" o aviso ia para +98 | ✅ o CHANGELOG avisa quem atualiza, com a consulta que lista os passos, e a frase diz o que ia para outro país (sem DDD, e o `@lid`). Incidência nesta produção: zero |
+  | P3 (as duas) — os testes diziam que o JID `…@s.whatsapp.net` mandava o aviso a outro número; medido, caía no número certo (quem ia errado era o `@lid`) | ✅ o exemplo virou `@lid`, e o comentário diz as duas coisas |
+  | P3 (as duas) — número já SALVO fora da régua abria no construtor sem aviso nenhum | ✅ conta como tocado ao montar: o motivo aparece ao abrir o passo |
+  | P3 (Lente 1) — o registro da execução mostrava o código do motivo ("curto") | ✅ a frase ("curto demais (faltou o DDD?)"), testada |
+  | P3 (as duas) — o resumo do passo (grade do funil, linha do tempo) ficava "Avisar o número:" em branco para o número recusado | ✅ aparece como foi escrito, nunca formatado (seria "+980000016"); testado |
+  | P3 (as duas) — o pino proíbe os atalhos no motor e no construtor INTEIROS | aceito como default-deny, escrito no comentário do pino |
+  | P3 (as duas) — a tabela da Fase 3 com 3-II "pendente" e 3-IV "em PR", e o comentário de `SendToNumberStepConfig.phone` | ✅ |
+  | P3 (Lente 2) — o toast da ativação recusada sai em inglês cru (`phone is too short…`), e a chave da lista não mostra o motivo | anterior (todas as frases do `validate.ts` são assim); o motivo em português está no campo, que agora aparece ao abrir |
 - **O destinatário do disparo casado pela tolerância dos 8 finais** — a linha
   de `broadcast_recipients` pode ficar com uma ficha de outro número (a busca
   tolera o tronco), e o envio vai ao número lido. Anterior à fase; vale com

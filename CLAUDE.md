@@ -5094,9 +5094,14 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   destinatário (Codex, PR #128). Na América do Norte o 2º dígito do código
   de área nunca é 9 (N9X reservado), então o teste separa os dois; número
   de outro país com 11 dígitos e 9 ali (Bulgária fixo) ainda colide —
-  a dica do editor manda escrever número de fora com `+`. Vale para o
-  passo `send_to_number` também — o mesmo helper, senão "(83) 98000-0016"
-  no editor saía para um número que não existe.
+  a dica do editor manda escrever número de fora com `+`. O passo
+  `send_to_number` usa a régua das TELAS (`telefoneDigitado`, desde
+  23/09/2026 — pedido do operador): o número que o operador digita no
+  construtor ganha o 55 do mesmo jeito, e "98000-0016" (sem DDD), letra ou
+  0 de tronco são recusados na ATIVAÇÃO (`validate.ts`, com o motivo) e no
+  motor. Com `digitosDoTelefone` eles passavam, e o aviso ao advogado saía
+  para +98. Validação, motor, resumo do passo e o campo da tela leem pela
+  mesma função — há pino em `telefone-digitado.chamadores.test.ts`.
 - ⚠️ **A assinatura é conferida sobre o corpo CRU** (`request.text()`),
   `Calendly-Webhook-Signature: t=…,v1=…` = HMAC-SHA256 de `t.corpo` com a
   chave que NÓS informamos ao assinar (cifrada em `signing_key`).
