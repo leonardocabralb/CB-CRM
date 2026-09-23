@@ -63,7 +63,6 @@
     "agenda": "Agenda",
     "unreadTasks": "{count} {count, plural, =1 {tarefa não lida} other {tarefas não lidas}}",
     "meuDia": "Meu dia",
-    "title": "CRM para WhatsApp",
     "primaryNav": "Principal"
   },
   "Header": {
@@ -2487,8 +2486,7 @@
       "whatsappMessage": "Entre em {accountName} no {appName} usando este link (válido por {expiresInDays} dias): {url}",
       "genericAccountName": "esta conta",
       "perfilLabel": "Perfil de acesso",
-      "networkError": "Não foi possível falar com o servidor. Tentar de novo?",
-      "fallbackAccountName": "nossa conta"
+      "networkError": "Não foi possível falar com o servidor. Tentar de novo?"
     },
     "tagsAndFields": {
       "title": "Campos e etiquetas",

@@ -6,11 +6,11 @@ fase e no diário do fim.
 
 | | |
 | --- | --- |
-| **Estado** | Fases 0, 1 e 2 concluídas. **Fase 1** (Next 16.3.5, `npm audit` 12 → 0) em produção desde 21/09/2026 15:08Z (PR #239). **Fase 2** (função de disparo, migration `1030`, `channel_id` respeitado) **em produção desde 21/09/2026 17:33Z** (PR #242), pós-deploy conferido. **Pausado a pedido do operador antes da Fase 3.** |
-| **Alvo PINADO** | `upstream/main` = **`80c3f9a`** (13/09/2026). Base comum com o nosso `main`: `98b5bd2` (upstream #532, 31/08). Tudo neste plano se refere a esse commit — se o upstream andar, é outro ciclo. ⚠️ **Ele ANDOU (medido em 21/09/2026): `upstream/main` = `aee1b01f`, 2 commits novos** — `b9969fa2` (#586: exige `+` e código do país em telefone digitado e na API; 21 arquivos) e `f8a1cc72` (chaves do modal de importação em `pt`/`es`). Estão FORA deste plano até a decisão P9 (seção 8). Conferido de novo em 22/09/2026: não andou mais. |
+| **Estado** | Fases 0, 1, 1b e 2 em produção; Fase 3 partida em 3-I a 3-IV (ver o mapa). ⚠️⚠️ **Em 23/09/2026 às 16:40Z o PR #259 — o merge CRU do original até `aee1b01f`, feito por outra pessoa — entrou no `main` e foi publicado.** Ele fechou a ancestralidade (a Fase 12 aconteceu sem querer) e pôs em produção, sem as adaptações, o conteúdo das Fases 4 a 11. A seção "O merge #259", no fim da seção 7, tem a auditoria e o que cada fase passa a ser. |
+| **Alvo PINADO** | `upstream/main` = **`80c3f9a`** (13/09/2026). Base comum com o nosso `main`: `98b5bd2` (upstream #532, 31/08). Tudo neste plano se refere a esse commit — se o upstream andar, é outro ciclo. ⚠️ **Ele ANDOU (medido em 21/09/2026): `upstream/main` = `aee1b01f`, 2 commits novos** — `b9969fa2` (#586: exige `+` e código do país em telefone digitado e na API; 21 arquivos) e `f8a1cc72` (chaves do modal de importação em `pt`/`es`). Estão FORA deste plano até a decisão P9 (seção 8). Conferido de novo em 22/09/2026: não andou mais. ⚠️ **Desde o #259 (23/09/2026), `aee1b01f` é ANCESTRAL do nosso `main`**: o próximo merge do original parte dali, e o que o #259 descartou não volta por merge. |
 | **Pedido do operador (21/09/2026)** | Trazer todas as atualizações como COMPLEMENTO ou CORREÇÃO, nunca retrocesso. BSUID por último (é o mais complexo e o de maior risco). Toda correção é **medida contra o nosso código**, **revisada em duas lentes** e **testada no preview, na prática**. Merge e migration estão autorizados quando o teste exigir. Só depois da validação passa-se à fase seguinte. |
 | **PR #229** | Aberto por `devgabrielslv` com head em `ArnasDon/wacrm:main`. **Não tinha como ser mesclado**: resolver conflito ali seria commitar no upstream, e o conteúdo dele muda sozinho (a origem é uma branch viva). **FECHADO em 21/09/2026 por decisão do operador (P1)**, com comentário apontando para este plano — fechar o PR não descarta o conteúdo: ele entra pelas fases daqui, e a worktree `.claude/worktrees/merge-upstream` fica de pé para isso. |
-| **Migrations deste plano** | Faixa **`1030+`** (decisão da Fase 0 — a sessão da Kommo aplicou a 1023 hoje e segue criando números; já houve 7 colisões de branches em paralelo). Migration do upstream aplicada SEM mudança entra na faixa `00xx` preservando a ordem deles: `040→0043`, `041→(não usada)`, `042→0045`. |
+| **Migrations deste plano** | Faixa **`1030+`** (decisão da Fase 0 — a sessão da Kommo aplicou a 1023 hoje e segue criando números; já houve 7 colisões de branches em paralelo). ~~Migration do upstream aplicada SEM mudança entra na faixa `00xx`~~ — **errado**: contradizia a regra do `db push` do CLAUDE.md (número novo vem depois do maior no `main`). O #259 seguiu esta linha e trouxe `0043`/`0045`; a correção do #259 as renumerou para **`1038`** (a 040, BSUID) e **`1039`** (a 042, motivo da falha). A `041` continua não usada (a 1030 a substitui). |
 
 ## 1. O problema, em uma frase
 
@@ -183,15 +183,15 @@ quebrar, sabe-se qual.
 | **2** | Função de disparo (#536) + 2 achados nossos (params em 2-D; `channel_id` descartado) | Real: quebrada na produção | Baixa → Média | Baixo | `1030` (aplicada 21/09) | ✅ em produção (PR #242, 21/09) |
 | **1b** | Segurança depois do alvo: #588 (SSRF), #587 (automação por conta), #589 (conversa por conta) — PRs ABERTOS do mantenedor — e a mídia do Instagram (achado nosso) | Real: brechas presentes; o #587 também dava 404 ao admin não-autor | Média | Médio-baixo | — | ✅ em produção (PR #261, 23/09) |
 | **3** | Pequenas e independentes: CSV (#529), textarea (#559), vários App Secrets (#500), tags da v1 (#560, só medir), e o resolvedor do canal Meta (3e — achado NOSSO da Fase 2, sem PR do upstream); com a P9, a normalização do telefone digitado — dividida em 3-I a 3-IV | Moderado | Baixa | Baixo | — | 3-I no PR #262; 3-II a 3-IV pendentes |
-| **4** | Fluxos: `{{vars}}` em botões e listas (#553) | Inerte hoje (0 fluxos ativos) | Média | Médio-baixo | — | pendente |
-| **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `0045` | pendente |
-| **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | pendente |
-| **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | pendente |
-| **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | pendente |
-| **9** | "Digitando…" da IA (#527), sobre o canal da conversa | Inerte hoje (auto-reply desligado) | Média | Médio | — | pendente |
-| **10** | i18n das telas em inglês (#577, #578, #579) | 219 chaves | Média (braçal) | Baixo | — | pendente |
-| **11** | **BSUID (#533)** — por último | Preventivo (0 fichas sem telefone) | **Alta** | **Alto** | `0043` ou adaptada | pendente |
-| **12** | Merge de ancestralidade e fechamento | Evita os 38 conflitos no próximo ciclo | Baixa (por construção) | Baixo | — | pendente |
+| **4** | Fluxos: `{{vars}}` em botões e listas (#553) | Inerte hoje (0 fluxos ativos) | Média | Médio-baixo | — | pendente — o #259 **descartou** o `engine.ts` deles: porte manual |
+| **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | colunas aplicadas (correção do #259); gravar, mostrar e espelhar pendentes — o #259 descartou o webhook deles |
+| **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | 6a CRU em produção pelo #259 (rotas com o canal preservado; falta o teste com a WABA e o teto da leitura); 6b CRU e inerte (a rota não passa o `wabaId`) |
+| **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | CRU só no caminho LEGADO (que não é montado); o porte para `cb-channels` pendente; a doc do original foi apagada até lá |
+| **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | biblioteca CRUA no `main`; o cartão ESCONDIDO (correção do #259) até o ouvinte ser montado com as adaptações |
+| **9** | "Digitando…" da IA (#527), sobre o canal da conversa | Inerte hoje (auto-reply desligado) | Média | Médio | — | só a função (`sendTypingIndicator`, sem chamador); o `auto-reply.ts` deles foi descartado |
+| **10** | i18n das telas em inglês (#577, #578, #579) | 219 chaves | Média (braçal) | Baixo | — | parcial pelo #259 (240 chaves unidas, telas DELES traduzidas); `pt.json`/`es.json` apagados (P3); faltam as telas NOSSAS e ~129 órfãs |
+| **11** | **BSUID (#533)** — por último | Preventivo (0 fichas sem telefone) | **Alta** | **Alto** | `1038` (+ a do CHECK da P4) | colunas aplicadas e a biblioteca (`wa-identity.ts`) no `main`; entrada, saída e tela pendentes |
+| **12** | ~~Merge de ancestralidade~~ → **inventário do que o #259 descartou** | O merge já aconteceu (#259) | Média | Baixo | — | a fazer: a lista está na seção "O merge #259" |
 
 ## 7. As fases
 
@@ -1021,6 +1021,78 @@ de ser `80c3f9a` e passa a ser o commit que os contém — e as medições da se
 
 **Resultado:** — (a preencher)
 
+### O merge #259 (23/09/2026) — a Fase 12 aconteceu sem querer
+
+**O fato:** o PR #259 (`chore/merge-upstream-2026-09-22`, 56 arquivos, sem
+descrição) foi mesclado no `main` às 16:40Z por `devgabrielslv` e publicado
+pelo pipeline. Ele é o `git merge` do original até `aee1b01f`, com os 43
+conflitos resolvidos "o `main` vence, por arquivo inteiro". Ou seja: tudo o
+que este plano previa portar fase a fase, com adaptação, entrou de uma vez —
+cru onde não havia conflito, descartado onde havia.
+
+**A auditoria (mesmo dia):** cinco lentes (telefone, conexão e modelos, robô
+e telas, notificação e i18n, migrations e ancestralidade), cada uma com um
+cético tentando refutar os achados — 10 agentes, só leitura dos objetos do
+Git, e o banco medido à parte. O que ela confirmou que SOBREVIVEU: as guardas
+de papel (`requireRole` nas 5 rotas, `barrarPorPapel` nas 2 nossas), o
+`channelId` nos 5 call sites de `resolveTemplateRow`, o `resolveMetaChannel`
+nos 7 chamadores, a guarda de SSRF do cabeçalho de modelo, o multi-segredo
+da 3c, o escopo de canal dos construtores, o canal do passo 1 do disparo, o
+recorte por perfil do menu, o `ko.json`/`ci.yml`/`migrations.yml`/`041`
+fora, o `verify-schema.sql` com a nossa asserção, a paridade dos dicionários
+(240 chaves unidas, nenhuma nossa apagada ou reescrita) e o webhook, o
+núcleo de envio, os remetentes do robô, o fio, a lista e o compositor
+intocados. A produção estava saudável na medição (as 5 conexões gravando,
+rotas protegidas recusando).
+
+**O que ela achou e onde foi resolvido:**
+
+| Achado | Destino |
+| --- | --- |
+| O `+` obrigatório do #586 entrou pela METADE (pelos arquivos sem conflito): o formulário de contato RECUSAVA "(11) 99999-9999" em produção, e a API v1 de disparo recusa destinatário sem `+` — o contrário da P9. A nota do CLAUDE.md dizia que o #586 "ficou de fora" | formulário: **PR #265** (3-II); API de disparo: **3-III** (a chave de API ativa, "Automação - Make", não tem escopo de disparo — nenhum integrador afetado, medido) |
+| 4 chaves REPETIDAS em `Contacts.importModal` depois do merge do #265 — as do #259 venceriam | **PR #265**, com o teste `chaves-duplicadas.test.ts` |
+| `pt.json` e `es.json` do original (1.740 chaves contra 4.000+): a armadilha do `ko.json`; e o `docs/docker.md` passou a anunciar `en \| ko \| pt \| es` | **correção do #259**: apagados, pino `dicionarios-servidos.test.ts`, docker.md `en \| pt-BR` |
+| O cartão "Notificações do navegador" montado em *Seu perfil* sem o ouvinte montado em lugar nenhum: a pessoa ligava, recebia o teste, e nunca a notificação real | **correção do #259**: o cartão sai até a Fase 8 |
+| `docs/whatsapp-connection-troubleshooting.md`: doc entregue a quem instala, em inglês, com "wacrm" sete vezes, descrevendo a tela legada que o fork não monta | **correção do #259**: apagada; a Fase 7 a reescreve |
+| `0043`/`0045` abaixo da maior migration do `main` (a regra do `db push`), com cabeçalho do original (o `phone NOT NULL` que aqui é anulável desde a 0989), sem `lock_timeout` e não aplicadas | **correção do #259**: `1038`/`1039`, cabeçalho nosso, `lock_timeout`; aplicadas antes do merge |
+| `Sidebar.title` recriada (o CLAUDE.md manda não recriar) e `fallbackAccountName` "our wacrm account" | **correção do #259**: apagadas; pino |
+| As 2 guardas de papel só nossas sem teste nenhum | **correção do #259**: pino `guarda-de-papel-so-nossa.test.ts` (a ordem inclusive) |
+| A nota do CLAUDE.md sobre o merge: números errados (195/242 em vez de 240/240), "nenhum código lê" (o hook lê `wa_username`), sem os 18 arquivos auto-mesclados, sem pt/es, sem o cartão | **correção do #259** (e o #265 para o trecho do #586) |
+| Stub de modelo desconhecido (#534) cru: resolve a conta por `whatsapp_config`, sem `channel_id`, com o `user_id` da config — inerte só porque a rota não passa o `wabaId` | **Fase 6b** (porte por `cb_channels.waba_id` + dono durável, e só então ligar o `wabaId`) |
+| Upload de cabeçalho de vídeo/documento lê o corpo inteiro (`arrayBuffer`) antes de conferir o teto de 100 MB | **Fase 6a** (`lerComTeto`) |
+| `Settings.templates.mediaHint` ainda diz "a Meta baixa uma vez… 24 h"; `.env.local.example` e `multi-waba.md` falam do `META_APP_ID` só para imagem | **Fase 6a** |
+| A POST legada de `/api/whatsapp/config` seleciona `account_role` em `whatsapp_config` (não existe) e morre em 500 — PRÉ-EXISTENTE (75daeb97), deixa o #505 dela inalcançável | **Fase 7** (corrigir ou aposentar a rota legada) |
+| `meta-error-explain.ts` com "wacrm" no texto devolvido; `listWabaPhoneNumbers` segue `paging.next` sem cerca de host | **Fase 7** (no porte para `cb-channels`) |
+| O comentário de `retentativa.ts` diz que a Cloud API lança `Error` genérico — agora é `MetaApiError` com `httpStatus` | **Fase 7** |
+| O ouvinte do #516, quando montado cru, avisaria mensagem de GRUPO, de conversa fora do perfil e a histórica (recuperada) | **Fase 8**, como a P2 já dizia |
+| ~129 das 240 chaves unidas sem uso | **Fase 10** |
+| Nenhuma entrada no CHANGELOG | **correção do #259** |
+
+**Aceito:** o #259 não é revertido. Reverter um merge publicado é trocar
+um estado conhecido e auditado por outro, e o que ele trouxe de útil (i18n
+das telas do original, as bibliotecas das Fases 5 a 11) teria de voltar
+depois. O caminho é corrigir o que a auditoria achou e seguir as fases.
+
+**O que muda no método:** as Fases 4 a 11 continuam, mas como PORTES À MÃO
+sobre um `main` que já tem os arquivos crus do original. O que o #259
+DESCARTOU (caiu no "fica o nosso") não volta mais por merge — sem conflito e
+sem aviso —, e só entra se alguém o trouxer:
+
+| O que ficou de fora | Onde entra |
+| --- | --- |
+| `flows/engine.ts` do #553 (`{{vars}}` em botões e listas; e o nó de LISTA sem o canal do nó — achado nosso) | Fase 4 |
+| `webhook/route.ts` do #535 (gravar o motivo), a bolha, os tipos e o espelho em `broadcast_recipients.error_message` | Fase 5 |
+| a fiação do #534 (`wabaId: entry.id` na rota) | Fase 6b |
+| `auto-reply.ts` e `flows/meta-send.ts` do #527 (o chamador do "digitando…"; `loadAccountMetaCredentials`) — ⚠️ a IA roda pelos DOIS transportes (a Evolution também chama `dispatchInboundToAiReply`), e o "digitando" só vale na Meta | Fase 9 |
+| a montagem do ouvinte do #516 no `dashboard-shell.tsx` | Fase 8 (DENTRO da `<PortaDeEntrada>`) |
+| a entrada e a saída do #519 (BSUID): `webhook/route.ts`, `send-message.ts`, `flows/meta-send.ts`, `automations/meta-send.ts`, `react/route.ts`, `contact-sidebar`, `contact-detail-view`, `message-thread`, tipos e o serializador da v1 | Fase 11 |
+| o #577/#578 nos componentes NOSSOS (texto fixo em inglês em `message-composer.tsx`, `message-thread.tsx`, `automations/page.tsx`, `invite-member-dialog.tsx`, `ai-usage.tsx`…) | Fase 10 |
+| os testes de regressão do original para esses caminhos | com cada fase |
+
+A prova da Fase 12 muda de forma: não é mais "o merge deu diff quase vazio",
+e sim `git diff aee1b01f origin/main -- <arquivo>` em cada arquivo da lista
+acima, depois das fases, mostrando só divergência NOSSA.
+
 ## 8. Decisões pendentes do operador
 
 | # | Decisão | Proposta | Trava qual fase |
@@ -1047,3 +1119,4 @@ de ser `80c3f9a` e passa a ser o commit que os contém — e as medições da se
 | 22/09/2026 | 3 (plano) | A pedido do operador, o cartão do `resolveMetaChannel` (P3 da revisão final do #242) entrou no plano como **item 3e**, depois de confirmado no `origin/main` (`ba5612ef`): o `error` descartado na busca por id, na lista e no espelho, e o `status` não conferido. Levantados os 7 chamadores (6 arquivos), todos traduzindo `null` em 400. Nada implementado — a pausa antes da Fase 3 continua. |
 | 23/09/2026 | 1b | Acrescentada a pedido do operador ("siga agora com todo o plano"): os 3 PRs de segurança ABERTOS do mantenedor valiam aqui, e o download da mídia do Instagram tinha SSRF com leitura. O #587 foi resolvido no meio da fase por OUTRA sessão (#260); ficou a versão dela, e esta fase acrescentou o que faltava. Quatro rodadas do Codex (3 com P2, todos corrigidos; a 4ª limpa). Mesclada e publicada; pós-deploy conferido. |
 | 23/09/2026 | 3-I | A P9 resolvida (a metade aditiva do #586, com a nossa régua) partiu a Fase 3 em quatro. 3b/3c/3e entraram, a 3d fechou sem mudança. A Lente 2 MEDIU em bash que `a, b` no `crm.env` apaga o `META_APP_SECRET` inteiro (401 em todo webhook) → a doc manda escrever sem espaço. Codex limpo na 1ª rodada. |
+| 23/09/2026 | #259 | O merge CRU do original (`aee1b01f`) entrou no `main` por outra pessoa e foi publicado, com as Fases 4 a 11 dentro e a ancestralidade fechada. Auditado por 10 agentes (5 lentes, cada uma com um cético): as guardas do fork sobreviveram; o `+` do #586 entrou pela metade (o formulário recusava número brasileiro sem `+`), voltaram `pt.json`/`es.json`, um cartão de notificação sem ouvinte, uma doc da tela que não existe, e as migrations com número fora da regra. Consertado no #265 e no PR de correções do #259; o resto foi distribuído às fases, e a Fase 12 virou inventário. |

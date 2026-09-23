@@ -63,7 +63,6 @@
     "agenda": "Calendar",
     "unreadTasks": "{count} unread {count, plural, =1 {task} other {tasks}}",
     "meuDia": "My day",
-    "title": "CRM Template for WhatsApp",
     "primaryNav": "Primary"
   },
   "Header": {
@@ -2494,8 +2493,7 @@
       "whatsappMessage": "Join {accountName} on {appName} using this link (valid for {expiresInDays} days): {url}",
       "genericAccountName": "this account",
       "perfilLabel": "Access profile",
-      "networkError": "Could not reach the server. Try again?",
-      "fallbackAccountName": "our wacrm account"
+      "networkError": "Could not reach the server. Try again?"
     },
     "tagsAndFields": {
       "title": "Fields & tags",

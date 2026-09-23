@@ -80,7 +80,10 @@ Supabase (Postgres + Auth + Storage + RLS) · Meta Cloud API.
   contra 3.070, e `src/i18n/request.ts` carrega o arquivo se ele existir —
   então `NEXT_PUBLIC_APP_LOCALE=ko` entregava metade da tela como caminho
   de chave cru. Sem o arquivo, aquele valor cai em inglês. **Todo merge do
-  upstream vai trazê-lo de volta: apagar de novo.**
+  upstream vai trazê-lo de volta: apagar de novo.** O mesmo vale para o
+  `pt.json` e o `es.json`, que o merge #259 trouxe (1.740 chaves) e a
+  correção dele apagou em 23/09/2026 — `src/i18n/dicionarios-servidos.test.ts`
+  reprova qualquer arquivo em `messages/` além de `en.json` e `pt-BR.json`.
 - `mcp-server/` — subprojeto separado (tem `package.json` próprio) que expõe o
   CRM via MCP. Rodar `npm` dentro dele, não na raiz.
 - `docs/` — a documentação ENTREGUE a quem instala o sistema: `README.md`
@@ -197,28 +200,73 @@ levar o texto novo dele para os **dois** dicionários).
   `step2-select-audience.tsx` e os testes deles. **É conserto de correção
   real e vale reavaliar numa branch própria** — as chaves de i18n dele já
   estão nos dois dicionários, então só falta o código.
-- ⚠️ **Migrations do upstream renumeradas de novo** (a 037 já avisava que isto
-  volta): `040_contact_business_scoped_user_id` → **0043**,
-  `042_message_failure_reason` → **0045**, com o cabeçalho de dentro corrigido
-  junto (ele cita o próprio número). A `0044` NÃO existe: era a
-  `041_fix_broadcast_contact_id_ambiguity` deles, e o teste
-  `funcao-de-disparo-1030.test.ts` manda **APAGAR**, não renumerar — ela
-  redefine `create_broadcast_with_recipients` com 8 parâmetros, desfazendo a
-  forma final de 9 que a 1030 fixou. A lacuna no número é de propósito.
-- ⚠️ **0043 e 0045 NÃO estão aplicadas em produção** (o conector do Supabase
-  não estava autenticado na sessão do merge). Nenhum código lê o que elas
-  criam — `failure_reason` não aparece em `src/` —, então mesclar não quebra
-  nada; mas elas precisam ser aplicadas para o banco não divergir do
-  repositório.
+- ⚠️ **As migrations do upstream viraram 1038 e 1039** (PR de correções do
+  #259, 23/09/2026): `040_contact_business_scoped_user_id` →
+  `1038_cb_contato_bsuid` e `042_message_failure_reason` →
+  `1039_cb_motivo_da_falha_da_mensagem`, com o cabeçalho reescrito para a
+  nossa realidade e `lock_timeout`. O #259 as trouxera como `0043`/`0045`,
+  seguindo a linha "Migrations deste plano" do plano — que contradizia a
+  regra do `db push` escrita neste arquivo (número NOVO vem depois do maior
+  no `main`; a instalação que atualiza por `supabase db push` recusa o
+  número fora de ordem). Nenhuma das duas tinha sido aplicada em banco
+  nenhum, então renumerar não custou nada. A `041_fix_broadcast_contact_id_ambiguity`
+  deles continua APAGADA, não renumerada — ela redefine
+  `create_broadcast_with_recipients` com 8 parâmetros, desfazendo a forma
+  final de 9 que a 1030 fixou (pino `funcao-de-disparo-1030.test.ts`).
+  ⚠️ O Git lê a renumeração como RENOMEAÇÃO: uma edição futura do original na
+  040/042 cai em silêncio na 1038/1039. Aplicadas, isso é editar migration
+  aplicada — conferir à mão a cada merge.
+- ⚠️ **As colunas da 1038 e da 1039 existem, e NINGUÉM as grava ainda.** Gravar
+  o motivo da falha é a Fase 5 do plano, e a identidade BSUID, a Fase 11. O
+  único leitor hoje é `wa_username` no hook de notificação do navegador, que
+  não está montado. (A nota original deste merge dizia "nenhum código lê o
+  que elas criam — `failure_reason` não aparece em `src/`": nenhuma coluna se
+  chama `failure_reason`, e o hook lia `wa_username`.)
 - **`ci.yml` e `migrations.yml` apagados de novo**, como a nota do
-  `pipeline.yml` manda. Vão voltar no próximo merge.
+  `pipeline.yml` manda.
 - **Dicionários: UNIÃO, não substituição.** Nosso lado venceu o `en.json`
   inteiro, o que apagaria as chaves novas deles — e os componentes deles que
   entraram sem conflito as pedem, virando `MISSING_MESSAGE` na tela. Foram
-  195 chaves reunidas no `en.json` e 242 traduzidas no `pt-BR.json`. ⚠️ Duas
+  **240** chaves acrescentadas em cada dicionário (a nota original dizia 195
+  e 242; o `messages.test.ts` reprova diferença entre os dois). Umas ~129
+  delas não têm uso nenhum (heurística da auditoria) e ficam para a Fase 10;
+  as que contrariavam regra escrita já saíram: `Sidebar.title` (recriada) e
+  `Settings.invite.fallbackAccountName` ("our wacrm account"). ⚠️ Duas
   seções que vieram na união (`Settings.sections.whatsapp` e `.deals`) não
   existem no nosso `settings-sections.ts` e foram removidas — o
   `rotulo-da-secao.test.ts` reprova seção órfã.
+- ⚠️⚠️ **"O `main` vence por arquivo inteiro" valeu só para os 43 conflitos.**
+  Os arquivos que o Git mesclou SOZINHO receberam os trechos do original sem
+  revisão nenhuma — 18 deles ficaram diferentes dos dois lados. Foi assim que
+  a metade do #586 entrou (o `+` obrigatório no formulário de contato e na API
+  de disparo) e que o `pt.json`/`es.json`, o cartão de notificação e a doc
+  `whatsapp-connection-troubleshooting.md` chegaram ao `main`. A auditoria de
+  23/09/2026 (10 agentes, cinco lentes com um cético cada) está registrada no
+  plano; o que ela achou e foi consertado:
+  - `messages/pt.json` e `messages/es.json` APAGADOS (1.740 chaves contra mais
+    de 4.000 — a armadilha do `ko.json`; pino em
+    `src/i18n/dicionarios-servidos.test.ts`) e o `docs/docker.md` voltou a
+    dizer `en | pt-BR`.
+  - O cartão "Notificações do navegador" SAIU de *Seu perfil*: o ouvinte que
+    dispara os avisos não estava montado em lugar nenhum, e a pessoa ligava a
+    chave, recebia a notificação de teste e nunca a de uma mensagem real. Os
+    arquivos ficam (`browser-notify.ts`, o hook, o ouvinte, o cartão) para a
+    Fase 8, que monta o ouvinte DENTRO da `<PortaDeEntrada>`, com o recorte
+    do perfil e grupo de fora.
+  - A `docs/whatsapp-connection-troubleshooting.md` foi APAGADA: em inglês,
+    com "wacrm" sete vezes, descrevendo a tela legada que o fork não monta. A
+    Fase 7 a reescreve para *Conexões*, como a 3c fez com o `multi-waba.md`.
+  - As duas rotas que só nós guardamos por papel (`whatsapp/config` e
+    `whatsapp/templates/[id]`) sobreviveram, mas não tinham teste: pino em
+    `src/app/api/whatsapp/guarda-de-papel-so-nossa.test.ts`.
+- ⚠️⚠️ **Este merge FECHOU a ancestralidade: `aee1b01f` é ancestral do
+  `main`.** O próximo merge do original parte dali, e o que a resolução deste
+  descartou (tudo o que caiu no "fica o nosso") NÃO volta mais por merge —
+  sem conflito e sem aviso. A Fase 12 do plano (o merge de ancestralidade)
+  aconteceu sem querer, e as Fases 4 a 11 viraram portes MANUAIS, com o
+  inventário do que ficou de fora no plano. Pela mesma razão, as notas deste
+  arquivo que dizem "todo merge do upstream vai trazer X de volta" valem só
+  para mudança do original DEPOIS de `aee1b01f`.
 
 **Decisões fixadas no merge de 2026-08-26** (releia antes do próximo merge, são
 as que voltam a conflitar):
@@ -7518,6 +7566,14 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
     `20260923173150`), depois do replay do CI e antes do merge do PR #266;
     conferida no catálogo (`proacl` = `{postgres=X, service_role=X}`, `anon`
     e `authenticated` sem EXECUTE).
+  - **1038_cb_contato_bsuid** e **1039_cb_motivo_da_falha_da_mensagem** — as
+    `040`/`042` do original (#519/#533 e #535), que o merge #259 trouxe como
+    `0043`/`0045` sem aplicar em lugar nenhum; renumeradas pela regra do `db
+    push` na correção do #259. Três colunas anuláveis em `contacts` (BSUID,
+    BSUID do portfólio, nome de usuário) com um índice único PARCIAL, e três
+    em `messages` (código, título e detalhe da falha da Meta). Aditivas, com
+    `lock_timeout`. NINGUÉM as grava até as Fases 11 e 5 do plano do merge do
+    upstream. Aplicadas antes do merge do PR de correções do #259.
 
   ⚠️ **Não existe 938/939**, nem local nem no histórico — não "preencher" a
   lacuna: a numeração é cronológica, não densa.
