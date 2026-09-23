@@ -299,7 +299,7 @@ describe('resolveConversationByPhone: o `to` passa pela régua', () => {
   });
 
   it.each([
-    ['sem DDD', '98874-5316', 'has no area code'],
+    ['sem DDD', '98874-5316', 'is too short'],
     ['JID colado', '5581988745316@s.whatsapp.net', 'is not a valid phone number'],
     ['LID', '123456789012345@lid', 'is not a valid phone number'],
     ['grupo', '120363040000000000@g.us', 'is not a valid phone number'],

@@ -95,8 +95,10 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   disparo pela API deixa de exigir o `+` no número brasileiro, e texto com
   letra — inclusive um id do WhatsApp colado, como `…@s.whatsapp.net` —
   passa a ser recusado com `400` e o motivo, em vez de virar os dígitos
-  dele. Número mandado com o código do país, com ou sem `+`, é lido como
-  antes. A regra está em
+  dele. Número mandado com `+` e o código do país é lido como antes; sem
+  o `+`, número estrangeiro de 10 dígitos, ou 11 com 9 na 3ª posição
+  (celular do Peru ou do Chile, por exemplo), passa a ser lido como
+  brasileiro — mande-o com `+`. A regra está em
   [`docs/public-api.md`](./docs/public-api.md#phone-numbers).
 
 - **A importação de CSV diz o que ficou de fora e por quê.** Linha com

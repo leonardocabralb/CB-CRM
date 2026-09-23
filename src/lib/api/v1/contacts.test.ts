@@ -81,7 +81,7 @@ describe('findOrCreateContact: o telefone passa pela régua', () => {
   } as unknown as SupabaseClient;
 
   it.each([
-    ['sem DDD', '98874-5316', "'phone' has no area code"],
+    ['sem DDD', '98874-5316', "'phone' is too short"],
     ['0 de tronco', '081 98874-5316', "'phone' is not a valid phone number"],
     ['JID colado', '5581988745316@s.whatsapp.net', "'phone' is not a valid phone number"],
     ['LID', '123456789012345@lid', "'phone' is not a valid phone number"],

@@ -782,7 +782,7 @@ Codex e deploy próprios:
 | --- | --- | --- |
 | **3-I** | 3b, 3c, 3d (só medir) e 3e — nada toca telefone | ✅ PR #262 |
 | **3-II** | 3a (#529) + a metade aditiva do #586 NAS TELAS: formulário e ficha do contato, importação de CSV, CSV do disparo — telefone digitado sai normalizado pela nossa régua, e o inválido é CONTADO com motivo, nunca chamado de duplicata | pendente |
-| **3-III** | a mesma normalização na ENTRADA da API (v1 de contatos, mensagens e disparos) e em `/api/cb/conversas/abrir`, com `docs/public-api.md` | pendente |
+| **3-III** | a mesma normalização na ENTRADA da API (v1 de contatos, mensagens e disparos) e em `/api/cb/conversas/abrir`, com `docs/public-api.md` | em PR (ver o resultado abaixo) |
 | **3-IV** | 3f — a CONTAGEM do público do disparo (#594) truncando em 1000 (o envio já pagina) | em PR (ver o resultado abaixo) |
 
 **Resultado da 3-I (23/09/2026, PR #262):**
@@ -979,6 +979,103 @@ passo 2 "0 destinatários estimados", passo 4 "Ninguém a alcançar" e o botão
 de enviar bloqueado. Leitura que falha (simulada): "Não foi possível
 calcular" com "Tentar de novo", que recupera. Conferido no banco depois: 0
 disparos, 0 fichas criadas.
+
+**Resultado da 3-III (23/09/2026, o telefone na API e na "Nova conversa"):**
+
+- **As cinco portas** passam pela régua da 3-II (`telefoneDigitado`):
+  `findOrCreateContact` (`POST /api/v1/contacts`), `resolveConversationByPhone`
+  (`POST /api/v1/messages`), `createBroadcast` (`POST /api/v1/broadcasts`), a
+  rota `/api/cb/conversas/abrir` e o diálogo "Nova conversa". Antes, as quatro
+  primeiras apagavam o que não era dígito (`sanitizePhoneForMeta` +
+  `isValidE164`) — "(81) 98874-5316" virava a ficha +81 e um JID de contato
+  colado (`…@lid`, `…@s.whatsapp.net`) virava os dígitos dele; o `@g.us` já
+  caía no teto de 15 — e o disparo exigia o `+` do #586.
+- **O texto CRU vai ao find-or-create** (`ContactInput.phone`): a régua não é
+  idempotente sobre o próprio resultado — os dígitos de "+41 55 555 12 12"
+  relidos sem o `+` ganham o 55. O disparo lê o destinatário e manda `to`, não
+  os dígitos lidos; há pino e teste.
+- **A frase do 400** diz o motivo (`mensagemDoTelefoneDaApi`: curto demais /
+  não é telefone, com a regra escrita); o código continua `bad_request`. A rota da
+  "Nova conversa" devolve o `motivo`, e o diálogo mostra a frase das telas de
+  contato (`Contacts.telefone.*`) ao sair do campo — digitando "(81" a régua
+  diz "faltou o DDD", verdade sobre o texto e mentira sobre a intenção. Saíram
+  as três chaves do diálogo que diziam "com DDI".
+- **`parseInternationalPhone` apagada** de `phone-utils.ts` (sem chamador): o
+  pino `telefone-digitado.chamadores.test.ts` reprova o nome em qualquer
+  arquivo de `src/`, e o atalho antigo nas cinco portas
+  (`sanitizePhoneForMeta`, `normalizePhone`, `isValidE164`, `replace(/\D/g`),
+  e cobra de onde saem os dígitos gravados.
+- **O custo, escrito na doc pública:** número ESTRANGEIRO com o código do
+  país e sem `+`, de 10 dígitos (ou 11 com 9 na 3ª posição — celular do Peru,
+  do Chile), passa a ser lido como brasileiro. É a P9, e é o mesmo limite que
+  a 3-II aceitou nas telas (medido: zero fichas assim); a doc manda número de
+  fora com `+`.
+- **Docs:** seção "Phone numbers" em `docs/public-api.md` (com o aviso da
+  mudança para quem integra), as descrições das ferramentas do `mcp-server`, a
+  receita "Mandar uma mensagem" da aba Documentação, o CHANGELOG e as notas do
+  CLAUDE.md.
+
+**Medido antes, na produção:** a chave "Automação - Make" (a única ativa) tem
+`messages:send` e `contacts:write` e foi usada hoje — ela passa pelas portas
+desta fase. O formato que o cenário manda não é observável daqui (o CRM grava
+só os dígitos). Nenhuma ficha fora da régua veio da API: as de 11 dígitos sem
+55 são um americano e um francês que ESCREVERAM ao escritório; a única de 14
+dígitos com 55 (um número que não existe: 55 + 12) veio da carga da Kommo
+(está no livro-razão, com trilha `retroativo`), que lê por `digitosDoTelefone`
+e não confere o tamanho do 55 — fora do escopo desta fase, fica anotada para
+o operador. Nenhum endereço de webhook de saída cadastrado.
+
+**Verificação:** `typecheck` limpo; lint `✖ 58 problems (0 errors, 58
+warnings)` = base; suíte em Node 22 **5.538 testes** verdes; portões de i18n
+OK. **Mutação:** 11 mutantes, todos reprovam (cada porta volta ao atalho, o
+disparo volta ao `+`, o disparo manda os dígitos lidos ao find-or-create, a
+régua do original volta ao `phone-utils.ts`, as frases do 400 trocadas ou
+antigas, e — depois da revisão — a rota da "Nova conversa" tirando os dígitos
+de `normalizePhone` ou de um `replace` solto).
+
+**Teste prático (preview `localhost:3130`, banco real; nada enviado):**
+
+| Caso | Resultado |
+| --- | --- |
+| API, chave de teste de 20 min (revogada no fim): `POST /contacts` "(99) 90000-0011" / "99900000011" | 201 `5599900000011` / 200 a MESMA ficha |
+| `POST /contacts` sem DDD / JID colado | 400 "is too short" / 400 "is not a valid phone number" (a frase de "curto" foi trocada na revisão; a sonda repetida depois) |
+| `POST /messages` JID colado / sem DDD (canal Evolution desconectado + modelo inexistente, para nada sair mesmo com a régua quebrada) | 400 / 400, antes de qualquer consulta |
+| `POST /broadcasts` só com destinatários recusados também pelo `+` antigo | 400 com a frase NOVA — é ela que prova qual código respondeu |
+| Rota da "Nova conversa": sem DDD, `@g.us`, 18 dígitos, `081 …`, vazio | 400 `INVALID_PHONE` com `motivo` curto / invalido / invalido / invalido / vazio |
+| Rota: "(99) 90000-0019" | ficha `5599900000019` do dono da conta, nome fixado, conversa FIXADA no canal escolhido, 0 negócios |
+| Diálogo: digitando "90000-0019" / ao sair do campo / JID colado | sem erro, botão desabilitado / "Faltou o DDD…" / "Telefone inválido…" |
+| Aba Documentação | a receita nova renderiza |
+| Limpeza | as 2 fichas de teste apagadas (a conversa foi junto, sem mensagens); 0 disparos; a única chave ativa é a do Make |
+
+**Revisão em duas lentes (5 agentes: as duas lentes, cada achado P0–P2 com um
+cético que tenta refutar medindo):** nenhum P0/P1.
+
+| Achado | Destino |
+| --- | --- |
+| P2 (AS DUAS lentes, cético confirmou, medido) — a nota "lido exatamente como antes" da doc pública e do CHANGELOG era falsa: número estrangeiro com o código do país e SEM `+` (Peru, Chile, Noruega…) de 10 dígitos, ou 11 com 9 na 3ª posição, ganha o 55; e o disparo, que recusava sem `+`, passa a aceitar | ✅ a nota diz o que muda e manda número de fora com `+`, nos dois lugares; a nota do CLAUDE.md escreve o custo |
+| P2 (Lente 1) — o disparo pode gravar o destinatário na ficha estrangeira (casada pelos 8 finais) e mandar para o número lido | ❌ refutado pelo cético: os `params` vêm do pedido, não da ficha, e a troca de ficha pela tolerância dos 8 finais é ANTERIOR à fase e vale também com `+` no `main` — anotado como pendência abaixo |
+| P3 (Lente 2, medido) — o pino exigia a CHAMADA da régua mas não de onde saem os dígitos, e não proibia `normalizePhone` (o mesmo `replace`): a rota da "Nova conversa", sem teste de comportamento, voltava ao defeito sem nada reprovar | ✅ o pino cobra os dígitos gravados e proíbe as cinco formas do atalho; 2 mutantes novos reprovam |
+| P3 (as duas) — "número sem + ganha o 55" generaliza (não vale para `5581…` nem `1415…`); a frase de "curto" dizia "no area code" também para número COM `+` curto; a lista de recusas não citava o `+` curto nem os símbolos (`,` `/` `tel:`) | ✅ "sem + e sem o código do país" na frase do 400, na receita e na regra das telas; "is too short (missing the area code?)"; a lista completa |
+| P3 (Lente 1) — entradas que antes entregavam no destino certo agora dão 400: `tel:`, `whatsapp:`, `,`/`;` no fim, `++`, `55+` | aceito e ESCRITO na doc pública; conferir o formato do cenário do Make é pendência do operador (não é observável daqui) |
+| P3 (Lente 2) — as notas diziam que o `@g.us` passava antes (o teto de 15 já o recusava) e que "as quatro primeiras" portas apagavam os não-dígitos (o disparo exigia o `+`) | ✅ CLAUDE.md, plano e comentário de `contacts.ts` |
+| P3 — comentários velhos: `// required, E.164` na rota de mensagens; "o mesmo `isValidE164` das outras portas" em `validate.ts` | ✅ |
+| P3 (as duas, fora do escopo declarado) — o webhook de ENTRADA (Typebot: o lead DIGITA o telefone num formulário público) e o passo `send_to_number` continuam em `digitosDoTelefone`: "98874-5316" vira ficha +98 e `…@lid` vira telefone | pendência registrada abaixo — não entra de carona |
+
+**Pendências que ficam desta fase (fora do escopo, cada uma com dono):**
+
+- **Webhook de entrada e `send_to_number` fora da régua** — decidir se passam
+  por `telefoneDigitado` (uma sub-fase própria; o `sem_telefone` do webhook
+  ganharia o motivo). Hoje o formulário público do Typebot aceita "98874-5316"
+  e grava a ficha +98.
+- **O destinatário do disparo casado pela tolerância dos 8 finais** — a linha
+  de `broadcast_recipients` pode ficar com uma ficha de outro número (a busca
+  tolera o tronco), e o envio vai ao número lido. Anterior à fase; vale com
+  `+`.
+- **O formato do cenário "Automação - Make"** — conferir no histórico de
+  execuções do Make que o `phone`/`to` não leva `tel:`, JID ou pontuação no
+  fim (passa a dar 400).
+- **A ficha de 14 dígitos da carga da Kommo** (55 + 12) — um número que não
+  existe; decisão do operador.
 
 ### Fase 4 — Fluxos: `{{vars}}` em botões e listas
 
@@ -1354,3 +1451,4 @@ acima, depois das fases, mostrando só divergência NOSSA.
 | 23/09/2026 | #259 | O merge CRU do original (`aee1b01f`) entrou no `main` por outra pessoa e foi publicado, com as Fases 4 a 11 dentro e a ancestralidade fechada. Auditado por 10 agentes (5 lentes, cada uma com um cético): as guardas do fork sobreviveram; o `+` do #586 entrou pela metade (o formulário recusava número brasileiro sem `+`), voltaram `pt.json`/`es.json`, um cartão de notificação sem ouvinte, uma doc da tela que não existe, e as migrations com número fora da regra. Consertado no #265 e no PR de correções do #259; o resto foi distribuído às fases, e a Fase 12 virou inventário. |
 | 23/09/2026 | 3-IV, #259, 4 | O CI dos PRs #265, #269, #270 e #271 ficou horas parado pelo limite de downloads do GHCR (incidente do GitHub); outra sessão consertou o pipeline (#274, a CLI cai para outros registros) e trouxe o `main` às branches — conferido: merges automáticos, árvores idênticas às do Git. Ordem de merge: #265 → #269 → #270 → #271, cada um com o `main` anterior dentro; a `1038`/`1039` aplicadas ANTES do #270 (histórico `20260923202446`/`20260923202453`). O #271 e a resolução do conflito do #273 foram feitos pelo Gabriel no meio da fila — conferido: ele mesclou a cabeça já resolvida do #271, e a resolução do #273 só tirou as marcas do CHANGELOG. Pós-deploy de cada um: saúde anônima e ingestão viva. Codex sem cota em todos. |
 | 23/09/2026 | fora do plano | Relato do operador na mensagem de teste da Fase 4: a conversa "não aparecia" na caixa de entrada até recarregar. Medido: a lista nunca reordenava pelo tempo real (defeito do original) — a conversa reaberta entrava em Abertas na posição da carga, abaixo da dobra. PR #273: ordena como o banco e só avança hora/prévia; a revisão pegou o aviso de sistema do grupo subindo a linha. Reproduzido antes e conferido depois no preview, só no lead de teste, e desfeito. |
+| 23/09/2026 | 3-III | A API v1 (contatos, mensagens, disparo) e a "Nova conversa" passam pela régua da 3-II; `parseInternationalPhone` sai do código. As duas lentes acharam, independentes, a mesma frase falsa na doc pública ("lido exatamente como antes"), e a Lente 2 mostrou que o pino deixava a rota da "Nova conversa" voltar ao defeito por `normalizePhone`. O P2 do disparo (ficha casada pela tolerância) foi refutado pelo cético — anterior à fase, virou pendência, junto com o webhook de entrada fora da régua. |

@@ -113,9 +113,9 @@ export async function resolveAuditUserId(
  */
 export function mensagemDoTelefoneDaApi(campo: string, motivo: MotivoDoTelefone): string {
   const regra =
-    'Write a Brazilian number with its area code (e.g. 81 98874-5316 — a number without + is read as Brazilian and gets 55) or any other country\'s with + and the country code (e.g. +14155550123).';
+    'Write a Brazilian number with its area code (e.g. 81 98874-5316 — without + and without a country code it gets 55) or any other country\'s with + and the country code (e.g. +14155550123).';
   if (motivo === 'vazio') return `'${campo}' is required`;
-  if (motivo === 'curto') return `'${campo}' has no area code. ${regra}`;
+  if (motivo === 'curto') return `'${campo}' is too short (missing the area code?). ${regra}`;
   return `'${campo}' is not a valid phone number. ${regra}`;
 }
 
@@ -146,8 +146,8 @@ export async function findOrCreateContact(
   // O telefone do integrador passa pela MESMA régua das telas (Fase 3-III do
   // merge do upstream): "(81) 98874-5316" ganha o 55 — cru, virava a ficha
   // "81988745316", que sai para +81 — e texto com letra é recusado, o que
-  // inclui um JID colado (`…@lid`, `…@g.us`): apagar as letras e ficar com os
-  // dígitos faria do LID ou do grupo um telefone de ficha.
+  // inclui um JID colado (`…@lid`, `…@s.whatsapp.net`): apagar as letras e
+  // ficar com os dígitos faria do LID um telefone de ficha.
   const telefone = telefoneDigitado(input.phone);
   if (!telefone.ok) {
     throw new ContactError(mensagemDoTelefoneDaApi('phone', telefone.motivo), 400);

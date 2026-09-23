@@ -117,15 +117,17 @@ recipient — reads it the way the CRM's own screens do:
   `+41 55 555 12 12`. A leading `00` works like `+`.
 - **Without `+`**, 10 digits, or 11 digits with `9` in the third position
   (area code + mobile), is read as **Brazilian** and gets `55`:
-  `(81) 98874-5316` → `5581988745316`. Any other length is taken as already
-  carrying its country code (`5581988745316`, `14155550123`).
+  `(81) 98874-5316` → `5581988745316`. Anything else without `+` — 12
+  digits or more, or 11 without a `9` in the third position — is taken as
+  already carrying its country code (`5581988745316`, `14155550123`).
 - Spaces, dots, dashes and parentheses are ignored.
-- **Rejected** with `400 bad_request`, and the message says why: no area
-  code (fewer than 10 digits without `+`), a trunk `0` (`081 …`), letters
-  anywhere — which includes a pasted WhatsApp id such as
-  `…@s.whatsapp.net`, `…@lid` or `…@g.us` —, more than 15 digits, and a
-  `55` number that is not area code + 8 or 9 digits. In a broadcast, a
-  rejected recipient is dropped and counted in `rejected`.
+- **Rejected** with `400 bad_request`, and the message says why: too short
+  (fewer than 10 digits without `+`, fewer than 8 with it), a trunk `0`
+  (`081 …`), any letter or other symbol — which includes a pasted WhatsApp
+  id such as `…@s.whatsapp.net` or `…@lid`, a `tel:` prefix and a trailing
+  `,` —, more than 15 digits, and a `55` number that is not area code + 8
+  or 9 digits. In a broadcast, a rejected recipient is dropped and counted
+  in `rejected`.
 
 A contact's stored `phone` is digits only, with the country code
 (`5581988745316`). Send a number from any other country **with `+`**: the
@@ -135,8 +137,11 @@ US national `4155550123` without it is read as Brazilian (area code 41).
 > was stripped: `(81) 98874-5316` became the contact `81988745316` —
 > delivered to +81 (Japan) —, and a pasted `…@s.whatsapp.net` was accepted
 > as its digits. `POST /api/v1/broadcasts` required the leading `+`. A
-> number sent with its country code, with or without `+`, is read exactly
-> as before.
+> number sent **with `+`** and only digits and the separators above is
+> read as before. **Without `+`**, a foreign number that already carries
+> its country code and has 10 digits, or 11 with `9` in the third position
+> (a Peruvian or Chilean mobile, a Norwegian or Danish number), is now read
+> as Brazilian — send it with `+`.
 
 ## Endpoints
 

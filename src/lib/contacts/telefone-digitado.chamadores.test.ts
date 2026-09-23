@@ -39,13 +39,29 @@ const TELAS: Record<string, string[]> = {
 // conversa" apagavam o que não era dígito (`sanitizePhoneForMeta`) — e
 // "(81) 98874-5316" virava a ficha +81 —, e o disparo exigia o `+` do
 // original. Cada uma lê o texto pela régua, e nenhuma volta ao atalho.
-const PORTAS: Record<string, string> = {
-  'lib/api/v1/contacts.ts': 'telefoneDigitado(input.phone)',
-  'lib/whatsapp/resolve-conversation.ts': 'telefoneDigitado(phone)',
-  'lib/whatsapp/broadcast-core.ts': 'telefoneDigitado(to)',
-  'app/api/cb/conversas/abrir/route.ts': 'telefoneDigitado(typeof telefone',
-  'components/inbox/nova-conversa-dialog.tsx': 'telefoneDigitado(telefone)',
+// A chamada e, nas quatro do servidor, de onde saem os dígitos GRAVADOS — a
+// chamada sozinha não prova nada se os dígitos vierem de outro lugar.
+const PORTAS: Record<string, string[]> = {
+  'lib/api/v1/contacts.ts': ['telefoneDigitado(input.phone)', 'const sanitized = telefone.digitos;'],
+  'lib/whatsapp/resolve-conversation.ts': ['telefoneDigitado(phone)', 'const sanitized = telefone.digitos;'],
+  'lib/whatsapp/broadcast-core.ts': ['telefoneDigitado(to)', 'const sanitized = telefone.digitos;'],
+  'app/api/cb/conversas/abrir/route.ts': ['telefoneDigitado(typeof telefone', 'const digitos = lido.digitos'],
+  'components/inbox/nova-conversa-dialog.tsx': ['telefoneDigitado(telefone)'],
 };
+
+// O atalho de antes, em todas as formas que ele tem no código: apagar o que
+// não é dígito aceitava "…@lid" como telefone de ficha, e o `+` obrigatório
+// do original recusava o jeito como o escritório escreve. `normalizePhone` é
+// o mesmo `replace` com outro nome (Lente 2 da revisão: sem ele na lista, a
+// rota da "Nova conversa" — que não tem teste de comportamento — voltava ao
+// defeito sem nada reprovar).
+const ATALHOS = [
+  'sanitizePhoneForMeta',
+  'normalizePhone',
+  'isValidE164',
+  'parseInternationalPhone',
+  'replace(/\\D/g',
+];
 
 function arquivosDe(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -80,16 +96,11 @@ describe('telefone digitado: a nossa régua, não o `+` obrigatório do original
     expect(fonte('lib/broadcast-csv.ts')).toContain('dedupeByPhone(');
   });
 
-  for (const [arquivo, chamada] of Object.entries(PORTAS)) {
+  for (const [arquivo, trechos] of Object.entries(PORTAS)) {
     it(`${arquivo} lê o telefone recebido pela régua`, () => {
       const src = fonte(arquivo);
-      expect(src).toContain(chamada);
-      // O atalho de antes (apagar o que não é dígito) aceitava "…@lid" e
-      // "…@g.us" como telefone de ficha, e o `+` obrigatório do original
-      // recusava o jeito como o escritório escreve.
-      expect(src).not.toContain('sanitizePhoneForMeta');
-      expect(src).not.toContain('isValidE164');
-      expect(src).not.toContain('parseInternationalPhone');
+      for (const trecho of trechos) expect(src).toContain(trecho);
+      for (const atalho of ATALHOS) expect(src).not.toContain(atalho);
     });
   }
 
