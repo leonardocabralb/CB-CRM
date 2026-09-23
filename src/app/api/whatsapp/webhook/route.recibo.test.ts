@@ -363,6 +363,42 @@ describe('o disparo (campanha)', () => {
   });
 });
 
+describe('o disparo: dois recibos do mesmo destinatário ao mesmo tempo', () => {
+  /** Os dois POSTs leram o destinatário antes de qualquer um gravar? */
+  const leramAntesDeGravar = () =>
+    h.estado.log.filter((l) => l.startsWith('broadcast_recipients')).slice(0, 2);
+
+  beforeEach(() => {
+    h.estado.tabelas.broadcast_recipients.push({
+      id: 'dest-1',
+      whatsapp_message_id: WAMID,
+      status: 'sent',
+    });
+  });
+
+  it('⚠️ read e delivered juntos: fica read, e a contagem de lidas não perde um', async () => {
+    const lido = await recibo('read');
+    const entregue = await recibo('delivered');
+
+    await Promise.all([lido(), entregue()]);
+
+    // A intercalação que a revisão do PR #277 reproduziu: sem ela, este
+    // teste não provaria nada.
+    expect(leramAntesDeGravar()).toEqual(['broadcast_recipients:select', 'broadcast_recipients:select']);
+    expect(h.estado.tabelas.broadcast_recipients[0].status).toBe('read');
+  });
+
+  it('⚠️ failed junto com delivered: o destinatário entregue não vira falha', async () => {
+    const entregue = await recibo('delivered');
+    const falhou = await recibo('failed');
+
+    await Promise.all([entregue(), falhou()]);
+
+    expect(leramAntesDeGravar()).toEqual(['broadcast_recipients:select', 'broadcast_recipients:select']);
+    expect(h.estado.tabelas.broadcast_recipients[0].status).toBe('delivered');
+  });
+});
+
 describe('o que o UPDATE alcança', () => {
   it('escopo por canal: a homônima de OUTRO número fica intacta; a sem carimbo (anterior à Fase 3) avança', async () => {
     h.estado.tabelas.messages.push(

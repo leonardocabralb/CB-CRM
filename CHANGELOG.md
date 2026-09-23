@@ -66,7 +66,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   oficiais passa a sair só quando a situação avança, como já acontecia nas
   conexões por QR Code. Não saem mais o `sent` (a mensagem já nasce
   enviada) nem o recibo repetido ou atrasado, e a nota de voz ouvida chega
-  como `read`.
+  como `read`. Nas campanhas, dois recibos do mesmo destinatário chegando
+  juntos não se atropelam mais: um "lido" não volta a "entregue" (a contagem
+  de lidas deixava de contar um), e um "entregue" não vira falha.
 - **Caixa de entrada: a conversa que recebe mensagem sobe para o topo.**
   Até aqui a hora e a prévia da linha mudavam, mas ela ficava na posição em
   que estava quando a página abriu — uma conversa reaberta por mensagem

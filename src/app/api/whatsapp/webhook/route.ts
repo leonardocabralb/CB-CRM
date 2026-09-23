@@ -311,11 +311,10 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
   // `finally` os aplica mesmo quando uma mensagem estoura — antes, eles
   // vinham na frente dela.
   //
-  // Eles vão um de cada vez, na ordem: o espelho de `broadcast_recipients`
-  // lê e depois grava, e dois recibos do mesmo destinatário ao mesmo tempo
-  // se atropelariam. O preço é que um recibo que espera segura os seguintes
-  // — medido em 23/09, a Meta mandou UM recibo por POST nas 24 h, então essa
-  // fila não se forma na prática.
+  // Eles vão um de cada vez, na ordem. Os dois espelhos gravam com a condição
+  // no WHERE, então rodá-los juntos seria seguro, mas não há ganho medido: em
+  // 23/09 a Meta mandou UM recibo por POST nas 24 h, e o preço da ordem (um
+  // recibo que espera segura os seguintes do mesmo POST) não se paga.
   const recibos: ReciboPendente[] = []
   try {
     await processarEntradas(body.entry, recibos)
@@ -516,6 +515,25 @@ function isValidStatusTransition(current: string, incoming: string): boolean {
   return ii > ci
 }
 
+/**
+ * As situações do destinatário a partir das quais `incoming` é uma transição
+ * válida — a lista que o UPDATE do espelho põe em `.in('status', …)`.
+ *
+ * ⚠️ NOSSO (23/09/2026). Conferir `isValidStatusTransition` sobre a linha
+ * LIDA não basta: dois recibos do mesmo destinatário, em POSTs separados,
+ * leem a mesma situação, os dois passam, e fica o último a gravar — um
+ * `delivered` por cima do `read` (a contagem de lidas perde um) ou um
+ * `failed` por cima do `delivered` (reproduzido pela revisão do PR #277). Com
+ * a condição no WHERE, quem decide é o banco. Derivada da própria
+ * `isValidStatusTransition` sobre os valores do CHECK (001), para as duas não
+ * divergirem.
+ */
+function origensDoDestinatario(incoming: string): string[] {
+  return [...RECIPIENT_STATUS_LADDER, 'failed'].filter((current) =>
+    isValidStatusTransition(current, incoming),
+  )
+}
+
 async function handleStatusUpdate(
   status: StatusDoWebhook,
   /** Canal que recebeu o status. `null` = desconhecido (nao escopa). */
@@ -568,6 +586,9 @@ async function handleStatusUpdate(
       .from('broadcast_recipients')
       .update(update)
       .eq('id', recipient.id)
+      // A conferência acima é sobre a linha LIDA; esta, sobre a que está no
+      // banco na hora da escrita (ver `origensDoDestinatario`).
+      .in('status', origensDoDestinatario(status.status))
 
     if (recUpdateErr) {
       console.error('Error updating broadcast recipient status:', recUpdateErr)
