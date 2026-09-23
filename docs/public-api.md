@@ -107,6 +107,37 @@ Requests are limited **per key**: **120 requests per minute**. On a
 > `src/lib/rate-limit.ts`. The limit is otherwise unenforced across
 > instances.
 
+## Phone numbers
+
+Every endpoint that takes a phone — `phone` in `POST /api/v1/contacts`,
+`to` in `POST /api/v1/messages` and in each `POST /api/v1/broadcasts`
+recipient — reads it the way the CRM's own screens do:
+
+- **With `+`**, the country code is what you wrote: `+14155550123`,
+  `+41 55 555 12 12`. A leading `00` works like `+`.
+- **Without `+`**, 10 digits, or 11 digits with `9` in the third position
+  (area code + mobile), is read as **Brazilian** and gets `55`:
+  `(81) 98874-5316` → `5581988745316`. Any other length is taken as already
+  carrying its country code (`5581988745316`, `14155550123`).
+- Spaces, dots, dashes and parentheses are ignored.
+- **Rejected** with `400 bad_request`, and the message says why: no area
+  code (fewer than 10 digits without `+`), a trunk `0` (`081 …`), letters
+  anywhere — which includes a pasted WhatsApp id such as
+  `…@s.whatsapp.net`, `…@lid` or `…@g.us` —, more than 15 digits, and a
+  `55` number that is not area code + 8 or 9 digits. In a broadcast, a
+  rejected recipient is dropped and counted in `rejected`.
+
+A contact's stored `phone` is digits only, with the country code
+(`5581988745316`). Send a number from any other country **with `+`**: the
+US national `4155550123` without it is read as Brazilian (area code 41).
+
+> **Changed in September 2026.** Before, everything that was not a digit
+> was stripped: `(81) 98874-5316` became the contact `81988745316` —
+> delivered to +81 (Japan) —, and a pasted `…@s.whatsapp.net` was accepted
+> as its digits. `POST /api/v1/broadcasts` required the leading `+`. A
+> number sent with its country code, with or without `+`, is read exactly
+> as before.
+
 ## Endpoints
 
 ### `GET /api/v1/me`
@@ -132,8 +163,9 @@ curl https://your-crm.example.com/api/v1/me \
 ### `POST /api/v1/messages`
 
 Send a WhatsApp message to a phone number. Scope: `messages:send`. You
-pass an **E.164 number**, not an internal id — the endpoint
-finds-or-creates the contact + conversation, then sends.
+pass a **phone number** (read as in [Phone numbers](#phone-numbers)), not
+an internal id — the endpoint finds-or-creates the contact + conversation,
+then sends.
 
 > **Side effect — deals.** A successful send counts as the firm reaching
 > out, so if the contact has **no deal yet** in any pipeline, one is
@@ -221,7 +253,8 @@ there is a `400 bad_request`.
 
 ### `POST /api/v1/contacts`
 
-Create a contact. Scope: `contacts:write`. `phone` (E.164) is required;
+Create a contact. Scope: `contacts:write`. `phone` is required (read as in
+[Phone numbers](#phone-numbers));
 `name`, `email`, `company`, and `tags` (an array of tag names or tag ids
 from `GET /api/v1/tags`; new names are created) are optional. **Find-or-create
 by phone:** an existing match returns `200` with the existing contact; a
@@ -451,7 +484,8 @@ every call to this endpoint failed with `500 Failed to create broadcast`
 `params` could not be stored as lists.
 
 Recipients are capped at **1000 per request** — split larger sends.
-Invalid phone numbers are dropped and counted as `rejected`. Response
+Phone numbers outside the [rule](#phone-numbers) are dropped and counted
+as `rejected`. Response
 (202):
 
 ```json

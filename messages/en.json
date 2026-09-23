@@ -839,9 +839,7 @@
       "titulo": "New conversation",
       "descricao": "Opens the conversation so you can write in it. Nothing is sent yet.",
       "telefone": "Phone number",
-      "telefonePlaceholder": "55 11 91234-5678",
-      "telefoneDica": "With country and area code. Spaces and dashes are ignored.",
-      "telefoneInvalido": "This doesn't look like a phone number.",
+      "telefonePlaceholder": "(11) 91234-5678",
       "nome": "Name (optional)",
       "nomePlaceholder": "How this contact should appear",
       "canal": "Send from",
@@ -854,7 +852,6 @@
       "cancelar": "Cancel",
       "abertaNova": "Conversation opened.",
       "abertaExistente": "This contact already existed — opening their conversation.",
-      "erroTelefone": "Invalid phone number. Check the country and area code.",
       "erroCanal": "Pick which number to send from.",
       "erroCanalSumiu": "That connection no longer exists. Reload the page.",
       "erroGenerico": "Could not open the conversation. Try again."
@@ -4070,7 +4067,7 @@
         },
         "mensagem": {
           "titulo": "Send a message",
-          "texto": "By phone number, with country code. Without <code>channel_id</code>, it goes out on the number the conversation is already on (otherwise, the account default). With it, it goes out on that number and the conversation is PINNED to it — the client's reply comes back to the same number. A contact with no deal gets a card only if the connection the message went out on has a default pipeline. Scope <code>messages:send</code>."
+          "texto": "By phone number: with the area code, and a number without + is read as Brazilian and gets 55 — e.g. (81) 98874-5316; any other country, with + and the country code. Without <code>channel_id</code>, it goes out on the number the conversation is already on (otherwise, the account default). With it, it goes out on that number and the conversation is PINNED to it — the client's reply comes back to the same number. A contact with no deal gets a card only if the connection the message went out on has a default pipeline. Scope <code>messages:send</code>."
         }
       },
       "erros": {

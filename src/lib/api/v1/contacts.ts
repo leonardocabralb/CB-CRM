@@ -17,7 +17,7 @@ import {
   resolveImportTagIds,
 } from '@/lib/contacts/resolve-import-tags';
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
-import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
+import { type MotivoDoTelefone, telefoneDigitado } from '@/lib/contacts/telefone';
 
 import { casarReferencias, erroDeIdsDesconhecidos } from './tags-do-contato';
 
@@ -106,7 +106,25 @@ export async function resolveAuditUserId(
   return owner;
 }
 
+/**
+ * A frase do 400 quando o telefone que o integrador mandou não passa pela
+ * régua (`telefoneDigitado`). Uma só para `phone` (contatos) e `to`
+ * (mensagens), para as duas portas explicarem a mesma regra do mesmo jeito.
+ */
+export function mensagemDoTelefoneDaApi(campo: string, motivo: MotivoDoTelefone): string {
+  const regra =
+    'Write a Brazilian number with its area code (e.g. 81 98874-5316 — a number without + is read as Brazilian and gets 55) or any other country\'s with + and the country code (e.g. +14155550123).';
+  if (motivo === 'vazio') return `'${campo}' is required`;
+  if (motivo === 'curto') return `'${campo}' has no area code. ${regra}`;
+  return `'${campo}' is not a valid phone number. ${regra}`;
+}
+
 export interface ContactInput {
+  /**
+   * O telefone COMO CHEGOU no corpo, nunca já normalizado: a régua lê o `+`
+   * para saber se o código do país foi escrito, e "4155551212" (os dígitos
+   * de um "+41 55 555 12 12" suíço) relido sem ele ganharia o 55.
+   */
   phone: string;
   name?: string | null;
   email?: string | null;
@@ -125,13 +143,16 @@ export async function findOrCreateContact(
   auditUserId: string,
   input: ContactInput
 ): Promise<{ id: string; created: boolean }> {
-  const sanitized = sanitizePhoneForMeta(input.phone);
-  if (!isValidE164(sanitized)) {
-    throw new ContactError(
-      "'phone' must be a valid phone number in E.164 format (e.g. +14155550123)",
-      400
-    );
+  // O telefone do integrador passa pela MESMA régua das telas (Fase 3-III do
+  // merge do upstream): "(81) 98874-5316" ganha o 55 — cru, virava a ficha
+  // "81988745316", que sai para +81 — e texto com letra é recusado, o que
+  // inclui um JID colado (`…@lid`, `…@g.us`): apagar as letras e ficar com os
+  // dígitos faria do LID ou do grupo um telefone de ficha.
+  const telefone = telefoneDigitado(input.phone);
+  if (!telefone.ok) {
+    throw new ContactError(mensagemDoTelefoneDaApi('phone', telefone.motivo), 400);
   }
+  const sanitized = telefone.digitos;
 
   // ⚠️ Erro de banco NÃO é "não encontrado" — a lição da própria v1 no
   // CLAUDE.md: um timeout tratado como "não achei" faz a rota CRIAR de novo

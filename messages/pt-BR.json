@@ -832,9 +832,7 @@
       "titulo": "Nova conversa",
       "descricao": "Abre a conversa para você escrever nela. Nada é enviado agora.",
       "telefone": "Telefone",
-      "telefonePlaceholder": "55 11 91234-5678",
-      "telefoneDica": "Com DDI e DDD. Espaços e traços são ignorados.",
-      "telefoneInvalido": "Isto não parece um telefone.",
+      "telefonePlaceholder": "(11) 91234-5678",
       "nome": "Nome (opcional)",
       "nomePlaceholder": "Como este contato deve aparecer",
       "canal": "Enviar pelo número",
@@ -847,7 +845,6 @@
       "cancelar": "Cancelar",
       "abertaNova": "Conversa aberta.",
       "abertaExistente": "Este contato já existia — abrindo a conversa dele.",
-      "erroTelefone": "Telefone inválido. Confira o DDI e o DDD.",
       "erroCanal": "Escolha por qual número enviar.",
       "erroCanalSumiu": "Essa conexão não existe mais. Recarregue a página.",
       "erroGenerico": "Não foi possível abrir a conversa. Tente de novo."
@@ -4063,7 +4060,7 @@
         },
         "mensagem": {
           "titulo": "Mandar uma mensagem",
-          "texto": "Pelo telefone, com DDI. Sem <code>channel_id</code>, sai pelo número em que a conversa já está (senão, pelo padrão da conta). Com ele, sai por aquele número e a conversa fica FIXADA nele — a resposta do cliente volta ao mesmo número. Contato sem negócio ganha um card só se a conexão por onde a mensagem saiu tiver funil padrão. Escopo <code>messages:send</code>."
+          "texto": "Pelo telefone: com DDD, e o número sem + é lido como brasileiro e ganha o 55 — ex.: (81) 98874-5316; de outro país, com + e o código do país. Sem <code>channel_id</code>, sai pelo número em que a conversa já está (senão, pelo padrão da conta). Com ele, sai por aquele número e a conversa fica FIXADA nele — a resposta do cliente volta ao mesmo número. Contato sem negócio ganha um card só se a conexão por onde a mensagem saiu tiver funil padrão. Escopo <code>messages:send</code>."
         }
       },
       "erros": {

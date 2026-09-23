@@ -35,20 +35,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { ChannelSelect } from "@/components/channels/channel-select";
 import type { CbChannel } from "@/lib/cb-channels/repo";
-
-/**
- * Espelho da validação do servidor (`isValidE164` sobre os dígitos).
- *
- * ⚠️ O teto de 15 não é cosmético: a busca de contato casa pelos ÚLTIMOS 8
- * DÍGITOS com tolerância a prefixo de tronco, então um JID de grupo (~18
- * dígitos) colado aqui poderia FUNDIR com o celular de um cliente real. A
- * rota recusa de novo — isto é só para o operador ver o erro antes de
- * enviar.
- */
-function telefoneValido(bruto: string): boolean {
-  const digitos = bruto.replace(/\D/g, "");
-  return /^[1-9]\d{6,14}$/.test(digitos);
-}
+import { type MotivoDoTelefone, telefoneDigitado } from "@/lib/contacts/telefone";
 
 export function NovaConversaDialog({
   open,
@@ -73,8 +60,13 @@ export function NovaConversaDialog({
   onAberta: (conversationId: string) => void;
 }) {
   const t = useTranslations("Inbox.novaConversa");
+  const tTelefone = useTranslations("Contacts.telefone");
 
   const [telefone, setTelefone] = useState("");
+  // O motivo da recusa só aparece depois de a pessoa SAIR do campo (ou tentar
+  // abrir): enquanto ela digita "(81" a régua diz "faltou o DDD" — verdade
+  // sobre o texto, mentira sobre a intenção.
+  const [tocado, setTocado] = useState(false);
   const [nome, setNome] = useState("");
   const [canalId, setCanalId] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -95,6 +87,7 @@ export function NovaConversaDialog({
   useEffect(() => {
     if (!open) return;
     setTelefone("");
+    setTocado(false);
     setNome("");
   }, [open]);
 
@@ -107,7 +100,15 @@ export function NovaConversaDialog({
     setCanalId(unicoCanalId);
   }, [open, unicoCanalId]);
 
-  const numeroOk = telefoneValido(telefone);
+  // A MESMA régua da rota e das telas de contato: brasileiro sem `+` ganha o
+  // 55; letra (um JID colado, `@g.us`) e mais de 15 dígitos são recusados — a
+  // busca de contato casa pelos ÚLTIMOS 8 DÍGITOS, e o JID de grupo poderia
+  // FUNDIR com o celular de um cliente real. A rota confere de novo; isto é
+  // para o operador ver o motivo antes de enviar.
+  const lido = telefoneDigitado(telefone);
+  const numeroOk = lido.ok;
+  const fraseDoMotivo = (motivo: MotivoDoTelefone) =>
+    tTelefone(motivo === "curto" ? "curto" : "invalido");
   const podeAbrir = numeroOk && !!canalId && !enviando;
 
   async function abrir() {
@@ -130,9 +131,12 @@ export function NovaConversaDialog({
         // Cada código tem frase própria: "erro ao abrir conversa" mandaria o
         // operador tentar de novo o que nunca vai funcionar (número inválido)
         // ou desconfiar do número quando o problema é a conexão.
+        if (payload?.error === "INVALID_PHONE") {
+          toast.error(fraseDoMotivo(payload?.motivo === "curto" ? "curto" : "invalido"));
+          return;
+        }
         const chave =
           {
-            INVALID_PHONE: "erroTelefone",
             INVALID_CHANNEL: "erroCanal",
             CHANNEL_NOT_FOUND: "erroCanalSumiu",
           }[payload?.error as string] ?? "erroGenerico";
@@ -180,9 +184,11 @@ export function NovaConversaDialog({
               id="nc-telefone"
               value={telefone}
               onChange={(e) => setTelefone(e.target.value)}
+              onBlur={() => setTocado(true)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
+                  setTocado(true);
                   void abrir();
                 }
               }}
@@ -190,11 +196,11 @@ export function NovaConversaDialog({
               inputMode="tel"
               autoFocus
             />
-            {/* Só depois de algo digitado: o campo vazio ao abrir não é erro. */}
-            {telefone.trim().length > 0 && !numeroOk && (
-              <p className="text-[11px] text-destructive">{t("telefoneInvalido")}</p>
+            {/* Só depois de sair do campo, e nunca sobre o campo vazio. */}
+            {tocado && !lido.ok && lido.motivo !== "vazio" && (
+              <p className="text-[11px] text-destructive">{fraseDoMotivo(lido.motivo)}</p>
             )}
-            <p className="text-[11px] text-muted-foreground">{t("telefoneDica")}</p>
+            <p className="text-[11px] text-muted-foreground">{tTelefone("regra")}</p>
           </div>
 
           <div className="space-y-1.5">

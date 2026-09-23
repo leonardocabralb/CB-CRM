@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { canSendMessages, isAccountRole } from '@/lib/auth/roles'
 import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { marcaDoNomeManual } from '@/lib/contacts/nome-fixado'
-import { isValidE164, sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils'
+import { telefoneDigitado } from '@/lib/contacts/telefone'
 import { pinConversationChannel } from '@/lib/cb-channels/stamp'
 
 /**
@@ -80,15 +80,19 @@ export async function POST(request: Request) {
   }
 
   // ---- Telefone ----
-  // `isValidE164` aceita 7 a 15 dígitos, e o teto é load-bearing: o
-  // `findExistingContact` abaixo casa pelos ÚLTIMOS 8 DÍGITOS, então um JID
-  // de grupo (~18 dígitos) colado aqui poderia FUNDIR com o celular de um
-  // cliente real e escrever na conversa errada. Grupo tem caminho próprio
-  // (`cb_groups`) e não entra por aqui.
-  const digitos = sanitizePhoneForMeta(typeof telefone === 'string' ? telefone : '')
-  if (!digitos || !isValidE164(digitos)) {
-    return NextResponse.json({ error: 'INVALID_PHONE' }, { status: 400 })
+  // A régua das telas de contato (`telefoneDigitado`, Fase 3-III do merge do
+  // upstream): "(81) 98874-5316" ganha o 55 — antes a ficha nascia
+  // "81988745316", que sai para +81.
+  // ⚠️ A recusa é load-bearing: o `findExistingContact` abaixo casa pelos
+  // ÚLTIMOS 8 DÍGITOS, então um JID de grupo (~18 dígitos) colado aqui poderia
+  // FUNDIR com o celular de um cliente real e escrever na conversa errada. A
+  // régua recusa letra (`@g.us`, `@lid`) e mais de 15 dígitos. Grupo tem
+  // caminho próprio (`cb_groups`) e não entra por aqui.
+  const lido = telefoneDigitado(typeof telefone === 'string' ? telefone : '')
+  if (!lido.ok) {
+    return NextResponse.json({ error: 'INVALID_PHONE', motivo: lido.motivo }, { status: 400 })
   }
+  const digitos = lido.digitos
 
   // ---- Canal ----
   // Obrigatório e explícito, mesmo numa conta de um número só. Deixar o

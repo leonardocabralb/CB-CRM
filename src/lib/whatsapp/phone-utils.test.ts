@@ -3,7 +3,6 @@ import {
   isRecipientNotAllowedError,
   isValidE164,
   normalizePhone,
-  parseInternationalPhone,
   phoneVariants,
   phonesMatch,
   sanitizePhoneForMeta,
@@ -72,10 +71,11 @@ describe("isValidE164", () => {
     expect(isValidE164("+123456789012345")).toBe(true); // 15 digits — upper bound
   });
 
-  it("still accepts a national-format digit string — rejecting those is parseInternationalPhone's job", () => {
+  it("still accepts a national-format digit string — reading typed input is telefoneDigitado's job", () => {
     // A stored/inbound digit string carries no country-code marker, so
-    // "4155551212" is indistinguishable from a Swiss number here. Raw
-    // input must go through parseInternationalPhone (issue #586).
+    // "4155551212" is indistinguishable from a Swiss number here. A phone
+    // typed by a person or an integrator goes through `telefoneDigitado`
+    // (src/lib/contacts/telefone.ts) instead.
     expect(isValidE164("4155551212")).toBe(true);
   });
 
@@ -100,48 +100,6 @@ describe("isValidE164", () => {
 
   it("rejects the empty string", () => {
     expect(isValidE164("")).toBe(false);
-  });
-});
-
-describe("parseInternationalPhone", () => {
-  it("returns Meta's digits-only form for a + number, tolerating formatting", () => {
-    expect(parseInternationalPhone("+14155551212")).toBe("14155551212");
-    expect(parseInternationalPhone("+1 (415) 555-1212")).toBe("14155551212");
-    expect(parseInternationalPhone("  +370 639.49836 ")).toBe("37063949836");
-  });
-
-  it("rejects national-format numbers with no country code", () => {
-    expect(parseInternationalPhone("4155551212")).toBeNull(); // US national → would parse as +41 (CH)
-    expect(parseInternationalPhone("07700900123")).toBeNull(); // UK national, trunk 0
-    expect(parseInternationalPhone("9876543210")).toBeNull(); // 10-digit national → would parse as +98 (IR)
-  });
-
-  it("rejects digits that carry a country code but no + (the caller cannot tell)", () => {
-    expect(parseInternationalPhone("14155551212")).toBeNull();
-    expect(parseInternationalPhone("37063949836")).toBeNull();
-  });
-
-  it("rejects a + followed by an invalid digit string", () => {
-    expect(parseInternationalPhone("+0123456789")).toBeNull(); // leading 0 after +
-    expect(parseInternationalPhone("+1234567")).toBeNull(); // 7 digits — below the floor
-    expect(parseInternationalPhone("++14155551212")).toBeNull();
-    expect(parseInternationalPhone("+1415555abcd")).toBeNull();
-    expect(parseInternationalPhone("+")).toBeNull();
-  });
-
-  it("returns null for empty and nullish input", () => {
-    expect(parseInternationalPhone("")).toBeNull();
-    expect(parseInternationalPhone("   ")).toBeNull();
-    expect(parseInternationalPhone(null)).toBeNull();
-    expect(parseInternationalPhone(undefined)).toBeNull();
-  });
-
-  it("agrees with normalizePhone for the numbers it accepts (shared dedupe key)", () => {
-    // dedupeByPhone uses this as the key that must equal the DB's
-    // phone_normalized (digits only) for `+` numbers.
-    for (const s of ["+1 (415) 555-1212", "+370 639 49836"]) {
-      expect(parseInternationalPhone(s)).toBe(normalizePhone(s));
-    }
   });
 });
 

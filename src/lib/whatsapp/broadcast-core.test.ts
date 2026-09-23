@@ -406,3 +406,98 @@ describe('o canal pedido chega ao resolvedor', () => {
     }
   });
 });
+
+// ============================================================
+// Fase 3-III do merge do upstream: o destinatário do disparo pela API lê o
+// telefone pela NOSSA régua (`telefoneDigitado`), e não pelo `+` obrigatório
+// do original (#586). O escritório escreve "(81) 98874-5316"; o `+` continua
+// sendo o jeito de dizer "é de outro país".
+// ============================================================
+describe('createBroadcast: o telefone do destinatário passa pela régua', () => {
+  // Um contato por texto recebido, para o dedupe por contato não esconder
+  // destinatário nenhum.
+  function comContatoPorTelefone() {
+    vi.mocked(findOrCreateContact).mockClear();
+    vi.mocked(findOrCreateContact).mockImplementation(async (_db, _acc, _u, input) => ({
+      id: `c:${input.phone}`,
+      created: true,
+    }));
+  }
+
+  it('brasileiro sem + ganha o 55; com + sai como veio', async () => {
+    comContatoPorTelefone();
+    const { db, calls } = makeDb({
+      data: [
+        { broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:(81) 98874-5316' },
+        { broadcast_id: 'b-1', recipient_id: 'r-2', contact_id: 'c:+1 415 555 0123' },
+      ],
+      error: null,
+    });
+
+    const plan = await createBroadcast(db, 'acc', 'user', {
+      templateName: 'promo',
+      recipients: [{ to: '(81) 98874-5316' }, { to: '+1 415 555 0123' }],
+    });
+
+    expect(plan.rejected).toBe(0);
+    expect(plan.planned.map((p) => p.phone)).toEqual(['5581988745316', '14155550123']);
+    expect(calls.rpc).toHaveLength(1);
+  });
+
+  it('⚠️ o find-or-create recebe o texto CRU — "+41 55 555 12 12" não vira brasileiro', async () => {
+    comContatoPorTelefone();
+    const { db } = makeDb({
+      data: [{ broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:+41 55 555 12 12' }],
+      error: null,
+    });
+
+    const plan = await createBroadcast(db, 'acc', 'user', {
+      templateName: 'promo',
+      recipients: [{ to: '+41 55 555 12 12' }],
+    });
+
+    // Os dígitos lidos são os da Suíça, e o find-or-create os lê DE NOVO a
+    // partir do texto: passados já lidos ("41555551212", sem o +), ganhariam
+    // o 55 e a ficha nasceria com outro número.
+    expect(plan.planned.map((p) => p.phone)).toEqual(['41555551212']);
+    expect(vi.mocked(findOrCreateContact).mock.calls[0][3]).toEqual({ phone: '+41 55 555 12 12' });
+  });
+
+  it('fora da régua é descartado e contado: sem DDD, JID colado, LID', async () => {
+    comContatoPorTelefone();
+    const { db } = makeDb({
+      data: [{ broadcast_id: 'b-1', recipient_id: 'r-1', contact_id: 'c:5581988745316' }],
+      error: null,
+    });
+
+    const plan = await createBroadcast(db, 'acc', 'user', {
+      templateName: 'promo',
+      recipients: [
+        { to: '5581988745316' },
+        { to: '98874-5316' }, // sem DDD: sairia para +98
+        { to: '5581988745316@s.whatsapp.net' }, // JID: letra no meio
+        { to: '123456789012345@lid' }, // o LID não é telefone
+      ],
+    });
+
+    expect(plan.rejected).toBe(3);
+    expect(plan.planned.map((p) => p.phone)).toEqual(['5581988745316']);
+    expect(findOrCreateContact).toHaveBeenCalledTimes(1);
+  });
+
+  it('nenhum destinatário válido → 400 com a regra escrita, sem criar contato nem campanha', async () => {
+    comContatoPorTelefone();
+    const { db, calls } = makeDb({ data: [], error: null });
+
+    const erro = await createBroadcast(db, 'acc', 'user', {
+      templateName: 'promo',
+      recipients: [{ to: '98874-5316' }, { to: '120363040000000000@g.us' }],
+    }).catch((e: unknown) => e);
+
+    expect(erro).toBeInstanceOf(BroadcastError);
+    expect((erro as BroadcastError).status).toBe(400);
+    expect((erro as BroadcastError).message).toContain('Brazilian number with its area code');
+    expect(findOrCreateContact).not.toHaveBeenCalled();
+    expect(calls.rpc).toHaveLength(0);
+  });
+});

@@ -59,12 +59,66 @@ describe('serializeContact', () => {
 describe('findOrCreateContact', () => {
   const noopDb = {} as SupabaseClient;
 
-  it('rejects a non-E.164 phone with a 400 ContactError', async () => {
+  it('rejects a phone outside the rule with a 400 ContactError', async () => {
     await expect(
       findOrCreateContact(noopDb, 'acc', 'user', { phone: 'not-a-number' })
     ).rejects.toMatchObject({ status: 400 });
     await expect(
       findOrCreateContact(noopDb, 'acc', 'user', { phone: 'not-a-number' })
     ).rejects.toBeInstanceOf(ContactError);
+  });
+});
+
+// ============================================================
+// Fase 3-III do merge do upstream: o `phone` do integrador passa pela régua
+// das telas (`telefoneDigitado`), com a frase do motivo.
+// ============================================================
+describe('findOrCreateContact: o telefone passa pela régua', () => {
+  const noopDb = {
+    from() {
+      throw new Error('should not query');
+    },
+  } as unknown as SupabaseClient;
+
+  it.each([
+    ['sem DDD', '98874-5316', "'phone' has no area code"],
+    ['0 de tronco', '081 98874-5316', "'phone' is not a valid phone number"],
+    ['JID colado', '5581988745316@s.whatsapp.net', "'phone' is not a valid phone number"],
+    ['LID', '123456789012345@lid', "'phone' is not a valid phone number"],
+    ['mais de 15 dígitos', '+1204360400000000000', "'phone' is not a valid phone number"],
+  ])('%s → 400 antes de qualquer consulta', async (_caso, phone, frase) => {
+    const erro = await findOrCreateContact(noopDb, 'acc', 'user', { phone }).catch(
+      (e: unknown) => e
+    );
+    expect(erro).toBeInstanceOf(ContactError);
+    expect((erro as ContactError).status).toBe(400);
+    expect((erro as ContactError).message).toContain(frase);
+  });
+
+  it.each([
+    ['(81) 98874-5316', '5581988745316'],
+    ['81 3456-7890', '558134567890'],
+    ['+1 415 555 0123', '14155550123'],
+    ['5581988745316', '5581988745316'],
+  ])('%s é gravado como %s', async (phone, esperado) => {
+    const inseridos: Record<string, unknown>[] = [];
+    const cadeia: Record<string, unknown> = {
+      select: () => cadeia,
+      eq: () => cadeia,
+      order: () => cadeia,
+      like: () => Promise.resolve({ data: [], error: null }),
+      insert: (linha: Record<string, unknown>) => {
+        inseridos.push(linha);
+        return cadeia;
+      },
+      single: () => Promise.resolve({ data: { id: 'novo' }, error: null }),
+    };
+    const db = { from: () => cadeia } as unknown as SupabaseClient;
+
+    const r = await findOrCreateContact(db, 'acc', 'user', { phone });
+
+    expect(r).toEqual({ id: 'novo', created: true });
+    expect(inseridos).toHaveLength(1);
+    expect(inseridos[0]).toMatchObject({ phone: esperado, name: esperado });
   });
 });

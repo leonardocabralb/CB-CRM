@@ -41,7 +41,11 @@ export function phonesMatch(phone1: string, phone2: string): boolean {
  * form Meta uses. It cannot tell a national number from an international
  * one ("4155551212" is a US number to the person who typed it and a Swiss
  * one to Meta), which is why numbers entered by a person or an integrator
- * must go through `parseInternationalPhone` instead (issue #586).
+ * go through `telefoneDigitado` (src/lib/contacts/telefone.ts) instead: a
+ * number without `+` is read as Brazilian and gets 55, any other country
+ * needs the `+`. (The original, issue #586, made the `+` mandatory with a
+ * `parseInternationalPhone` that this fork removed — the office writes
+ * numbers without it; see `telefone-digitado.chamadores.test.ts`.)
  *
  * The floor is 8 digits, not E.164's theoretical 7: a country code plus the
  * shortest national numbering plans in real use is 8+, and 7 admitted most
@@ -50,30 +54,6 @@ export function phonesMatch(phone1: string, phone2: string): boolean {
  */
 export function isValidE164(phone: string): boolean {
   return /^\+?[1-9]\d{7,14}$/.test(phone)
-}
-
-/**
- * Parse a phone number as typed by a person or sent by an API integrator.
- *
- * Requires the international `+` prefix so the country code is explicit,
- * then returns the digits-only form Meta wants — or null. Formatting noise
- * (spaces, dots, dashes, parentheses) between the digits is tolerated:
- * "+1 (415) 555-1212" → "14155551212".
- *
- * Without the `+` requirement a national-format number passes `isValidE164`
- * and is delivered to whichever country its leading digits happen to spell:
- * "4155551212" (US, national) is sent as +41 55 555 12 12 (Switzerland),
- * Meta accepts it, and the send looks successful (issue #586). Making the
- * `+` load-bearing at every boundary where raw input enters is what the
- * error messages ("E.164 format, e.g. +14155550123") already promised.
- */
-export function parseInternationalPhone(raw: string | null | undefined): string | null {
-  if (!raw) return null
-  const compact = raw.trim().replace(/[\s().-]/g, '')
-  if (!compact.startsWith('+')) return null
-  const digits = compact.slice(1)
-  if (!/^\d+$/.test(digits)) return null
-  return isValidE164(digits) ? digits : null
 }
 
 /**

@@ -21,10 +21,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendTemplateMessage } from '@/lib/whatsapp/meta-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import {
-  parseInternationalPhone,
   phoneVariants,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils';
+import { telefoneDigitado } from '@/lib/contacts/telefone';
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/api/v1/contacts';
@@ -79,7 +79,7 @@ export interface BroadcastPlan {
   accessToken: string;
   templateRow: MessageTemplate | null;
   planned: PlannedRecipient[];
-  /** Phones rejected up front (invalid E.164) — counted as failed. */
+  /** Phones rejected up front (fora da régua `telefoneDigitado`) — counted as failed. */
   rejected: number;
 }
 
@@ -154,18 +154,24 @@ export async function createBroadcast(
 
   // Resolve each recipient to a contact. Invalid phones are dropped
   // (counted as rejected) rather than aborting the whole broadcast.
-  // `to` is raw integrator input, so the leading `+` is required — a
-  // national-format number would otherwise be delivered to whichever
-  // country its leading digits spell (issue #586).
+  // `to` is raw integrator input, read by the SAME rule as the screens
+  // (`telefoneDigitado`, Fase 3-III do merge do upstream): a Brazilian number
+  // without `+` gets 55, any other country needs the `+`. The original
+  // (#586) made the `+` mandatory instead — the opposite of how the office
+  // writes numbers.
   const resolved: { contactId: string; phone: string; params: string[] }[] = [];
   let rejected = 0;
   for (const r of recipients) {
     const to = typeof r.to === 'string' ? r.to : '';
-    const sanitized = parseInternationalPhone(to);
-    if (!sanitized) {
+    const telefone = telefoneDigitado(to);
+    if (!telefone.ok) {
       rejected++;
       continue;
     }
+    const sanitized = telefone.digitos;
+    // ⚠️ `to` CRU, nunca `sanitized`: `findOrCreateContact` passa o texto
+    // pela régua de novo, e os dígitos de um "+41 55 555 12 12" relidos sem
+    // o `+` ganhariam o 55 — a ficha nasceria com outro número.
     const { id } = await findOrCreateContact(db, accountId, auditUserId, {
       phone: to,
     });
@@ -193,7 +199,7 @@ export async function createBroadcast(
   if (deduped.length === 0) {
     throw new BroadcastError(
       'bad_request',
-      'No recipients had a valid international phone number (leading + and country code, e.g. +14155550123)',
+      'No recipients had a valid phone number: a Brazilian number with its area code (e.g. 81 98874-5316), or any other country\'s with + and the country code (e.g. +14155550123)',
       400
     );
   }

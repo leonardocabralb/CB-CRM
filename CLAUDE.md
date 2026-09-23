@@ -211,9 +211,11 @@ levar o texto novo dele para os **dois** dicionários).
   `contact-form.tsx` entraram SEM conflito — e a ficha nova com
   "(11) 99999-9999" passou a ser recusada em produção. A Fase 3-II (PR #265)
   tira a checagem do formulário (o pino `telefone-digitado.chamadores.test.ts`
-  reprova quem a trouxer de volta) e a 3-III põe a API v1 e o disparo na
-  mesma régua. A chave `phoneNeedsCountryCode` saiu dos dois dicionários, e o
-  `csvInvalidPhones` ficou com o texto da nossa régua.
+  reprova quem a trouxer de volta) e a 3-III (23/09/2026) pôs a API v1 —
+  contatos, mensagens e disparo — e a "Nova conversa" na mesma régua, e
+  APAGOU o `parseInternationalPhone` (o pino reprova o nome em qualquer
+  arquivo de `src/`). A chave `phoneNeedsCountryCode` saiu dos dois
+  dicionários, e o `csvInvalidPhones` ficou com o texto da nossa régua.
 - ⚠️ **As migrations do upstream viraram 1038 e 1039** (PR de correções do
   #259, 23/09/2026): `040_contact_business_scoped_user_id` →
   `1038_cb_contato_bsuid` e `042_message_failure_reason` →
@@ -435,7 +437,8 @@ upstream sobrescrevê-los:
 | `src/app/api/automations/[id]/route.ts` e `duplicate/route.ts` (23/09/2026) | ⚠️⚠️ a automação é da CONTA, não de quem a criou: GET por qualquer membro, PATCH/DELETE/duplicar por qualquer ADMIN da conta (`ctx.accountId` de `requireRole`), nunca `user_id = user.id` (decisão do operador). O upstream filtra pelo autor — herança de quando cada login era uma conta —, e com um segundo admin ele recebia 404 ao abrir, ativar, duplicar ou mudar o escopo pela aba do funil. O DELETE confere quantas linhas saíram: antes, zero linhas voltavam `ok` e a tela dizia "excluída" sobre a automação intacta. Um merge que traga as rotas cruas devolve os dois sem conflito nenhum — há pino em `route.test.ts`. ⚠️ O #587 do original (GHSA-xvrq-88hg-44q6, ABERTO lá desde 17/09) faz o mesmo conserto com piso **`agent`** nas três escritas: num merge, fica o nosso `admin` — o pino cobra o papel PEDIDO (`requireRole('admin')`), não só que o `agent` é recusado. O UPDATE do PATCH também leva a conta e confere as linhas (Fase 1b do plano do upstream) |
 | `src/lib/automations/meta-send.ts`, `src/lib/flows/meta-send.ts` e `engine.ts` (23/09/2026, upstream #589) | a conversa do contexto é conferida por conta no disparo, em `resolveConversationId` e em cada envio do robô (`assertConversationInAccount`, ANTES do canal e do provedor); as prévias levam `.eq('account_id')`. Remetente NOVO do robô nestes arquivos repete a conferência — pino estrutural em `src/lib/whatsapp/conversation-scope.chamadores.test.ts` |
 | `src/lib/whatsapp/conversation-scope.ts` (23/09/2026) | ⚠️ DIVERGE do original do #589: com `contactId`, a conversa tem de ser DAQUELE contato também (Codex, 3ª rodada do PR #261) — só a conta deixava passar "contato A + conversa de B" da mesma conta, e o cliente A recebia o que aparece no fio de B. O disparo e `resolveConversationId` fazem o mesmo. Num merge, fica o nosso |
-| `src/components/contacts/contact-form.tsx`, `contact-detail-view.tsx`, `import-modal.tsx`, `src/lib/contacts/dedupe.ts` (`dedupeByPhone`), `src/lib/broadcast-csv.ts` e `step2-select-audience.tsx` (23/09/2026, Fase 3-II) | ⚠️⚠️ o telefone DIGITADO passa pela NOSSA régua (`telefoneDigitado`/`escritaDoTelefone`, em `telefone.ts`): brasileiro sem DDI ganha o 55, sem `+` e sem DDD é recusado, e a linha do CSV SAI normalizada. O upstream (#586) resolveu o mesmo defeito EXIGINDO o `+` nessas mesmas linhas (`parseInternationalPhone`) — o contrário do que o escritório digita. Num merge, fica o nosso; há pino estrutural (`telefone-digitado.chamadores.test.ts`) reprovando `parseInternationalPhone` nessas telas. Na edição, telefone que não mudou não é conferido nem regravado. O `invalid` do dedupe e o motivo por linha da importação são do #529, adotados. ⚠️ A "Nova conversa" (`/api/cb/conversas/abrir`) e a API v1 AINDA não passam pela régua (Fase 3-III do plano): lá "(81) 98874-5316" continua virando ficha +81 |
+| `src/components/contacts/contact-form.tsx`, `contact-detail-view.tsx`, `import-modal.tsx`, `src/lib/contacts/dedupe.ts` (`dedupeByPhone`), `src/lib/broadcast-csv.ts` e `step2-select-audience.tsx` (23/09/2026, Fase 3-II) | ⚠️⚠️ o telefone DIGITADO passa pela NOSSA régua (`telefoneDigitado`/`escritaDoTelefone`, em `telefone.ts`): brasileiro sem DDI ganha o 55, sem `+` e sem DDD é recusado, e a linha do CSV SAI normalizada. O upstream (#586) resolveu o mesmo defeito EXIGINDO o `+` nessas mesmas linhas (`parseInternationalPhone`) — o contrário do que o escritório digita. Num merge, fica o nosso; há pino estrutural (`telefone-digitado.chamadores.test.ts`) reprovando `parseInternationalPhone` nessas telas. Na edição, telefone que não mudou não é conferido nem regravado. O `invalid` do dedupe e o motivo por linha da importação são do #529, adotados. |
+| `src/lib/api/v1/contacts.ts` (`findOrCreateContact`), `src/lib/whatsapp/resolve-conversation.ts`, `broadcast-core.ts`, `src/app/api/cb/conversas/abrir/route.ts` e `nova-conversa-dialog.tsx` (23/09/2026, Fase 3-III) | a MESMA régua (`telefoneDigitado`) no telefone que chega pela API v1 e pela "Nova conversa". Antes as quatro primeiras apagavam o que não era dígito (`sanitizePhoneForMeta` + `isValidE164`): "(81) 98874-5316" virava a ficha +81, e um JID colado (`…@lid`, `…@g.us`) virava os dígitos dele — o LID como telefone de ficha. O disparo exigia o `+` do #586. ⚠️ `ContactInput.phone` é o texto CRU: o disparo manda `to`, nunca os dígitos já lidos — "+41 55 555 12 12" relido sem o `+` ganharia o 55 (há pino). A frase do 400 é `mensagemDoTelefoneDaApi`; a regra para quem integra está em `docs/public-api.md#phone-numbers` |
 | `src/app/api/cb/channels/[id]/route.ts` (DELETE) | barra a exclusão quando há agendada na FILA e limpa o acervo — a FK da 925 é RESTRICT |
 | `src/components/pipelines/pipeline-board.tsx`, `src/app/(dashboard)/pipelines/page.tsx` | o painel por etapa (Fase 5): o raio com contador no cabeçalho da coluna e a carga das automações de funil. Mais o funil-com-conversas (PR #71): botão de conversas por coluna, `navegarParaInbox`/restauração de rolagem no board (quadroRef vem da página), `useChannels` içado, select `DEAL_SELECT_DO_QUADRO` com plano B, popover de campos. Mais a carga em DUAS etapas (22/09/2026): lista enxuta de todos + conteúdo só dos desenhados, `CardDoQuadro` e o card "carregando" — um merge que traga a busca única do upstream devolve os ~3 s do Trabalhista |
 | `src/components/pipelines/deal-card.tsx` | ⚠️ **reestruturado inteiro no PR #71 — manter a NOSSA versão** (como `conversation-list.tsx`): wrapper + botão do corpo (abre a CONVERSA) + lápis IRMÃO (edita; button aninhado é inválido), campos por `CamposDoCard`, etiquetas/última mensagem/não lidas, `memo` + canais por prop, barra de cor com `pointer-events-none` |
@@ -3705,10 +3708,13 @@ id; a página recarrega a lista e navega por `?c=`. O que morde código novo:
   `conversaRecemAbertaRef` na página do inbox, consumida antes do caminho de
   deep link. (Também do Codex no #79 — o fluxo passou no teste manual porque
   a navegação costuma ganhar a corrida.)
-- ⚠️ **O teto de 15 dígitos é load-bearing.** `findExistingContact` casa
+- ⚠️ **A recusa do telefone é load-bearing.** `findExistingContact` casa
   pelos ÚLTIMOS 8 DÍGITOS com tolerância a tronco, então um JID de grupo
   (~18 dígitos) colado no campo poderia FUNDIR com o celular de um cliente
-  real. `isValidE164` barra nos dois lados (tela e rota).
+  real. `telefoneDigitado` barra nos dois lados (tela e rota): letra (o
+  `@g.us`) e mais de 15 dígitos são recusados. Desde a Fase 3-III
+  (23/09/2026) é a régua das telas de contato — "(81) 98874-5316" ganha o
+  55; até ali era `isValidE164` sobre os dígitos, e a ficha nascia +81.
 - **Reusa `findExistingContact`**, não uma busca própria: sem isso, digitar
   o número com o nono dígito quando o cliente já existe sem ele criaria uma
   segunda ficha, cada uma com metade do histórico.
