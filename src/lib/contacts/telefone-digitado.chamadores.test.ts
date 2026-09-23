@@ -39,7 +39,7 @@ const TELAS: Record<string, string[]> = {
 // conversa" apagavam o que não era dígito (`sanitizePhoneForMeta`) — e
 // "(81) 98874-5316" virava a ficha +81 —, e o disparo exigia o `+` do
 // original. Cada uma lê o texto pela régua, e nenhuma volta ao atalho.
-// A chamada e, nas cinco do servidor, de onde saem os dígitos GRAVADOS — a
+// A chamada e, nas portas que gravam, de onde saem os dígitos GRAVADOS — a
 // chamada sozinha não prova nada se os dígitos vierem de outro lugar.
 const PORTAS: Record<string, string[]> = {
   'lib/api/v1/contacts.ts': ['telefoneDigitado(input.phone)', 'const sanitized = telefone.digitos;'],
@@ -50,6 +50,14 @@ const PORTAS: Record<string, string[]> = {
   // O webhook de ENTRADA (o Typebot: o lead DIGITA num formulário público que
   // não dá para mudar do lado de cá). Pedido do operador em 23/09/2026.
   'lib/webhooks-de-entrada/processar.ts': ['telefoneDigitado(cru)', 'const digitos = telefone.digitos;'],
+  // O passo "Enviar para um número" (977): o número que o OPERADOR digita no
+  // construtor. A validação da ativação, o motor e o resumo do passo leem pela
+  // MESMA régua — com a dos sistemas, "98000-0016" passava e o aviso ao
+  // advogado saía para +98 (pedido do operador, 23/09/2026).
+  'lib/automations/validate.ts': ["telefoneDigitado(typeof c.phone === 'string' ? c.phone : '')"],
+  'lib/automations/engine.ts': ['telefoneDigitado(cfg.phone)', 'const digitos = lido.digitos;'],
+  'lib/automations/descrever-passo.ts': ['telefoneDigitado((cfg as unknown as SendToNumberStepConfig).phone)'],
+  'components/automations/automation-builder.tsx': ['telefoneDigitado(valor)'],
 };
 
 // O atalho de antes, em todas as formas que ele tem no código: apagar o que

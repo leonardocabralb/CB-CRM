@@ -1867,6 +1867,21 @@ describe('send_to_number — aviso para a equipe', () => {
     expect(engineSendText).not.toHaveBeenCalled();
   });
 
+  it.each([
+    // A régua dos sistemas (até a Fase 3-III) aceitava os dois: "98000-0016"
+    // virava +98 e o JID virava os dígitos dele — o aviso saía para outro.
+    ['sem DDD', '98000-0016'],
+    ['JID colado', '5583980000016@s.whatsapp.net'],
+  ])('%s falha antes de criar ficha (a régua das telas)', async (_caso, phone) => {
+    await dispararAviso({ phone, text: 'oi' });
+    expect(destinatarioMock.resolverDestinatario).not.toHaveBeenCalled();
+    expect(engineSendText).not.toHaveBeenCalled();
+    const log = h.state.logUpdates.filter((u) => 'status' in u).at(-1) as
+      { status?: string; error_message?: string } | undefined;
+    expect(log?.status).toBe('failed');
+    expect(log?.error_message).toContain('send_to_number: telefone inválido');
+  });
+
   it('texto vazio depois da interpolação falha antes de enviar', async () => {
     await dispararAviso({ phone: '5583980000016', text: '{{vars.nada}}' });
     expect(engineSendText).not.toHaveBeenCalled();

@@ -1,6 +1,6 @@
 import type { AutomationTriggerType } from '@/types'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
-import { digitosDoTelefone } from '@/lib/contacts/telefone'
+import { telefoneDigitado } from '@/lib/contacts/telefone'
 import { MAX_DESCRICAO, MAX_TITULO, normalizarHora } from '@/lib/tasks/validar'
 import { motivoDeConfigInvalida } from './lembretes'
 import { ehGatilhoDaRegua, horaDeEnvioValida } from '@/lib/asaas/regua'
@@ -239,13 +239,24 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       // No config required.
       break
     case 'send_to_number': {
-      // Telefone pela régua dos SISTEMAS (`digitosDoTelefone`, a mesma do
-      // motor) — não a `telefoneDigitado` das telas e da API: sem ele o passo
-      // não tem destinatário, e o motor
-      // estouraria em execução — o tipo de falha que esta validação existe
-      // para pegar antes de ativar.
-      if (!digitosDoTelefone(typeof c.phone === 'string' ? c.phone : '')) {
-        issues.push({ path: `${path}.phone`, message: 'phone must be a valid number with country code' })
+      // O número que o OPERADOR digita no construtor passa pela régua das
+      // telas (`telefoneDigitado`, a mesma do motor desde a Fase 3-III):
+      // "(83) 98000-0016" ganha o 55, e "98000-0016" (sem DDD) é recusado
+      // aqui, com o motivo — pela régua dos sistemas ele passava e o aviso ao
+      // advogado saía para +98. Sem telefone o passo não tem destinatário, e o
+      // motor estouraria em execução — o tipo de falha que esta validação
+      // existe para pegar antes de ativar.
+      const telefone = telefoneDigitado(typeof c.phone === 'string' ? c.phone : '')
+      if (!telefone.ok) {
+        issues.push({
+          path: `${path}.phone`,
+          message:
+            telefone.motivo === 'vazio'
+              ? 'phone is required'
+              : telefone.motivo === 'curto'
+                ? 'phone is too short (missing the area code?)'
+                : 'phone is not a valid number (Brazilian: with the area code; other countries: with + and the country code)',
+        })
       }
       if (!nonEmpty(c.text)) {
         issues.push({ path: `${path}.text`, message: 'message text is required' })

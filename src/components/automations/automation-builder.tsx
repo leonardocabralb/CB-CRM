@@ -92,6 +92,7 @@ import type { CbChannel } from "@/lib/cb-channels/repo"
 import { ChannelMultiSelect, ChannelSelect } from "@/components/channels/channel-select"
 import { validateChannelScopeForActivation } from "@/lib/automations/validate"
 import { TIPO_DATA } from "@/lib/contacts/campo-data"
+import { telefoneDigitado } from "@/lib/contacts/telefone"
 import { uploadAccountMedia, MEDIA_MAX_BYTES_BY_KIND } from "@/lib/storage/upload-media"
 import { CHAT_MEDIA_BUCKET } from "@/lib/storage/buckets"
 import { origemDoConstrutor, urlDoConstrutor, voltaDoConstrutor } from "@/lib/pipelines/url"
@@ -2377,6 +2378,42 @@ function SeletorDeRobo({
   )
 }
 
+/**
+ * O número do passo "Enviar para um número", lido pela régua das telas
+ * (`telefoneDigitado`) — a mesma da validação da ativação e do motor. O
+ * motivo da recusa aparece depois de a pessoa SAIR do campo: enquanto ela
+ * digita "(83" a régua diz "faltou o DDD" — verdade sobre o texto, mentira
+ * sobre a intenção (o mesmo desenho da "Nova conversa").
+ */
+function TelefoneDoAviso({
+  valor,
+  aoMudar,
+}: {
+  valor: string
+  aoMudar: (phone: string) => void
+}) {
+  const tTelefone = useTranslations("Contacts.telefone")
+  const [tocado, setTocado] = useState(false)
+  const lido = telefoneDigitado(valor)
+  return (
+    <>
+      <Input
+        value={valor}
+        onChange={(e) => aoMudar(e.target.value)}
+        onBlur={() => setTocado(true)}
+        placeholder="(83) 98000-0016"
+        inputMode="tel"
+        className="bg-muted text-foreground"
+      />
+      {tocado && !lido.ok && lido.motivo !== "vazio" && (
+        <p className="mt-1 text-[11px] text-destructive">
+          {tTelefone(lido.motivo === "curto" ? "curto" : "invalido")}
+        </p>
+      )}
+    </>
+  )
+}
+
 function StepEditor({
   step,
   onChange,
@@ -2806,12 +2843,9 @@ function StepEditor({
       return (
         <>
           <FieldBlock label={t("config.phoneLabel")}>
-            <Input
-              value={(cfg.phone as string) ?? ""}
-              onChange={(e) => set({ phone: e.target.value })}
-              placeholder="5583980000016"
-              inputMode="tel"
-              className="bg-muted text-foreground"
+            <TelefoneDoAviso
+              valor={(cfg.phone as string) ?? ""}
+              aoMudar={(phone) => set({ phone })}
             />
             <p className="mt-1 text-[11px] text-muted-foreground">{t("config.phoneHint")}</p>
           </FieldBlock>

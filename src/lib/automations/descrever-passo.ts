@@ -14,7 +14,7 @@ import type {
   UpdateContactFieldStepConfig,
   WaitStepConfig,
 } from '@/types'
-import { digitosDoTelefone, formatarTelefone } from '@/lib/contacts/telefone'
+import { formatarTelefone, telefoneDigitado } from '@/lib/contacts/telefone'
 
 /**
  * "O que esta automação FAZ", em uma linha — o texto em negrito do cartão da
@@ -131,11 +131,13 @@ export function descreverPasso(passo: PassoResumivel, nomes: NomesConhecidos = {
     case 'update_contact_field':
       return simples((cfg as unknown as UpdateContactFieldStepConfig).field ?? '')
 
-    case 'send_to_number':
+    case 'send_to_number': {
       // O número, legível: é o que distingue dois avisos no mesmo quadro. A
       // mesma leitura do motor — "(83) 98000-0016" digitado sem DDI ganha o
       // 55 antes de ser formatado, senão sairia "+83980000016".
-      return simples(formatarTelefone(digitosDoTelefone((cfg as unknown as SendToNumberStepConfig).phone)))
+      const lido = telefoneDigitado((cfg as unknown as SendToNumberStepConfig).phone)
+      return simples(lido.ok ? formatarTelefone(lido.digitos) : '')
+    }
 
     case 'wait': {
       const w = cfg as unknown as WaitStepConfig

@@ -2003,7 +2003,7 @@
         "matchWord": "Palavra inteira",
         "matchWordHint": "Casa a palavra-chave apenas como palavra isolada, então \"k\" deixa de disparar em \"obrigada\". Ideal para palavras-chave curtas; use Contém para idiomas escritos sem espaços.",
         "phoneLabel": "Número que recebe o aviso",
-        "phoneHint": "Com DDI e DDD, só dígitos (ex.: 5583980000016). Número brasileiro sem DDI ganha o 55; número de outro país, escreva com + (ex.: +1 404 555 1234).",
+        "phoneHint": "Com DDD, ex.: (83) 98000-0016. Número de outro país: com + e o código do país (ex.: +1 404 555 1234).",
         "contactNameLabel": "Nome na ficha (opcional)",
         "contactNameHint": "Usado só se o número ainda não for um contato — a ficha nasce com este nome.",
         "placeholderNotifyText": "Novo agendamento: {nome} em {data}",

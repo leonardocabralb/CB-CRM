@@ -108,6 +108,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   que somava o Calendly e os webhooks virou dois, cada um levando ao seu
   log.
 
+- **Automações: o número do passo "Enviar para um número" é conferido ao
+  ativar.** O número que avisa a equipe (o advogado, no agendamento do
+  Calendly) passa pela mesma leitura das telas: "(83) 98000-0016" ganha o
+  55, e um número sem DDD ("98000-0016"), com letra ou com 0 na frente é
+  recusado ao ativar a automação, com o motivo — antes ele era aceito e o
+  aviso saía para outro país (+98). O campo mostra o motivo ao sair dele.
+
 - **A importação de CSV diz o que ficou de fora e por quê.** Linha com
   telefone vazio ou inválido deixa de ser contada como "duplicada" (e a
   sem telefone deixa de sumir sem contar), e cada linha que o banco
