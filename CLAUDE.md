@@ -5299,6 +5299,26 @@ resto.** `src/lib/calendly/` (`payload`, `assinatura`, `variaveis`, `cartao`,
   três consultas. A chave do campo é a `field_key` do catálogo (948), não
   o nome exibido. Links usam `NEXT_PUBLIC_SITE_URL`; sem ela, caminho
   relativo.
+  ⚠️ **E ganhou `{{deal.value}}`, `{{deal.created_at}}` e `{{now}}`
+  (23/09/2026)**, para o aviso do contrato fechado mandar ao sistema do
+  escritório o que a Kommo mandava (valor do contrato, data de entrada,
+  data da proposta). O negócio é o de `negocioAlvo` — o MESMO que as ações
+  mexem —, com uma queda só para LEITURA: sem aberto nem perdido, o GANHO
+  mais recente (`negocioAlvo` o exclui para proteger escrita; sem a queda, a
+  execução à mão sobre cliente já ganho mandava valor vazio ao sistema de
+  fora). Lido a cada passo que cita `deal.`, SEM o cache por execução do
+  contato: o valor pode mudar durante um "Aguardar", e na execução à mão o
+  card só entra no contexto no primeiro "Mover card". ⚠️ `deals.value` é NOT
+  NULL DEFAULT 0 — card sem valor sai como 0, igual a um zero de verdade.
+  Os dois modos valem aqui também: na
+  mensagem, "R$ 3.500,00" e "30/08/2026 às 16:00h"; no dado
+  (`update_contact_field`, `send_webhook`), `3500` e ISO em UTC.
+  ⚠️⚠️ **O corpo do `send_webhook` ESCAPA cada valor** (`json: true`): o
+  modelo é texto com `{{…}}` no meio de um JSON, e um nome com aspas ou
+  uma quebra de linha num campo quebrava o corpo inteiro — o sistema do
+  outro lado recusava a entrega e o passo falhava. Consequência: variável
+  só pode ficar DENTRO de string no modelo (`"valor": "{{deal.value}}"`),
+  e o receptor converte o tipo.
 - **Na grade por etapa do funil ela aparece como cartão de CHEGADA** sob
   "Reunião Agendada" (07/09): `cartoesDeChegada` em `grade-do-funil.ts`
   posiciona automação de OUTRO gatilho pela etapa de destino do
