@@ -57,6 +57,16 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **A mensagem enviada pelo número oficial (Meta) não volta mais a um ✓
+  depois de entregue.** A Meta manda os recibos de uma mensagem em avisos
+  separados, com milissegundos de diferença, e o "enviada" que terminava por
+  último rebaixava a mensagem. Agora a situação só avança (uma falha só vale
+  antes da entrega), e o recibo que chega antes de o CRM gravar a mensagem
+  espera por ela. Para quem integra: `message.status_updated` das conexões
+  oficiais passa a sair só quando a situação avança, como já acontecia nas
+  conexões por QR Code. Não saem mais o `sent` (a mensagem já nasce
+  enviada) nem o recibo repetido ou atrasado, e a nota de voz ouvida chega
+  como `read`.
 - **Caixa de entrada: a conversa que recebe mensagem sobe para o topo.**
   Até aqui a hora e a prévia da linha mudavam, mas ela ficava na posição em
   que estava quando a página abriu — uma conversa reaberta por mensagem

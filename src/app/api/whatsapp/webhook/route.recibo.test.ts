@@ -236,7 +236,10 @@ describe('recibo da Meta fora de ordem', () => {
     ]);
   });
 
-  it('os dois ao mesmo tempo, cada um no seu after(): termina em delivered', async () => {
+  it('os dois no mesmo instante: termina em delivered, e só o delivered é anunciado', async () => {
+    // No banco de mentira os UPDATEs rodam na ordem de chegada (aqui, sent
+    // antes de delivered): este caso NÃO reproduz a desordem — quem a fixa
+    // é o teste de cima. Ele confere a linha e o anúncio sob Promise.all.
     h.estado.tabelas.messages.push(mensagem());
     const enviado = await recibo('sent');
     const entregue = await recibo('delivered');
@@ -393,13 +396,20 @@ describe('o que o UPDATE alcança', () => {
     expect(linha()?.status).toBe('delivered');
   });
 
-  it('linha de CLIENTE com o mesmo id não é tocada: recibo é de mensagem que nós mandamos', async () => {
+  it('linha de CLIENTE com o mesmo id não é tocada nem conta como "a linha já existe"', async () => {
+    // Recibo é de mensagem que nós mandamos: o filtro de saída vale no
+    // UPDATE e na pergunta "a linha já existe?", senão a espera pela nossa
+    // terminaria na hora.
     h.estado.tabelas.messages.push(mensagem({ id: 'do-cliente', sender_type: 'customer' }));
-    const fim = (await recibo('delivered'))();
+    const aplicar = await recibo('delivered');
+    setTimeout(() => h.estado.tabelas.messages.push(mensagem()), 1_500);
+
+    const fim = aplicar();
     await vi.advanceTimersByTimeAsync(10_000);
     await fim;
 
     expect(linha('do-cliente')?.status).toBe('sent');
+    expect(linha()?.status).toBe('delivered');
   });
 
   it('o anúncio sai com a conversa da linha que AVANÇOU, não da primeira com o mesmo id', async () => {
@@ -412,6 +422,32 @@ describe('o que o UPDATE alcança', () => {
     expect(h.estado.disparos).toEqual([
       expect.objectContaining({ conta: 'conta-1', conversation_id: 'conv-1' }),
     ]);
+  });
+});
+
+describe('timestamp ilegível', () => {
+  it('não impede a gravação da mensagem: o timestamp só serve à contagem da campanha', async () => {
+    h.estado.tabelas.messages.push(mensagem());
+    await (await receber(corpo({ statuses: [{ ...statusDaMeta('delivered'), timestamp: 'x' }] })))();
+
+    expect(linha()?.status).toBe('delivered');
+  });
+
+  it('o recibo de disparo que estoura não leva junto o seguinte do mesmo POST', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    h.estado.tabelas.broadcast_recipients.push({
+      id: 'dest-1',
+      whatsapp_message_id: 'wamid.DISPARO',
+      status: 'sent',
+    });
+    h.estado.tabelas.messages.push(mensagem());
+    const body = corpo({
+      statuses: [{ ...statusDaMeta('delivered', 'wamid.DISPARO'), timestamp: 'x' }, statusDaMeta('delivered')],
+    });
+    await (await receber(body))();
+
+    expect(linha()?.status).toBe('delivered');
+    expect(erro).toHaveBeenCalledWith('Error applying status update:', expect.any(RangeError));
   });
 });
 

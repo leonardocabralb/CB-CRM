@@ -70,7 +70,7 @@ describe('a desordem da Meta (23/09/2026)', () => {
     expect(aplicarRecibos('sent', ['sent', 'delivered'])).toBe('delivered');
   });
 
-  it('read sem delivered antes (a Meta pula o delivered quando a conversa está aberta)', () => {
+  it('read sem delivered antes (a doc da Meta: com a conversa aberta, o delivered não é enviado)', () => {
     expect(aplicarRecibos('sent', ['read', 'delivered', 'sent'])).toBe('read');
   });
 });

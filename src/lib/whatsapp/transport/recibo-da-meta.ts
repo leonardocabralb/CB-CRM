@@ -59,9 +59,15 @@ export const PAUSAS_DO_RECIBO_DA_META_MS: readonly number[] = [1_000, 2_000, 4_0
  *   • `sent`: todo envio pela Meta grava a linha já como `sent`
  *     (`send-message.ts`, `flows/meta-send.ts` e `automations/meta-send.ts`
  *     — há pino no teste), então esse recibo nunca tem o que avançar;
- *   • o recibo de DISPARO (campanha): `broadcast-core.ts` escreve só em
- *     `broadcast_recipients`, nunca em `messages`, e a espera seria sempre
- *     inteira, para nada.
+ *   • o recibo de DISPARO (campanha) cujo destinatário já tem o wamid
+ *     gravado: disparo nenhum escreve em `messages` (`broadcast-core.ts` e a
+ *     rota da tela, `api/whatsapp/broadcast` — há pino), e a espera seria
+ *     sempre inteira, para nada.
+ *
+ * ⚠️ No disparo pela TELA o wamid só chega a `broadcast_recipients` quando o
+ * lote de 10 volta ao navegador (`use-broadcast-sending.ts`). O recibo que
+ * chega antes disso não é reconhecido como de disparo, espera os 7 s e se
+ * perde para a contagem da campanha — essa perda é anterior à espera.
  */
 export function pausasDoReciboDaMeta(
   recibo: StatusDoRecibo,

@@ -96,8 +96,12 @@ describe('as premissas das duas exceções', () => {
     }
   });
 
-  it('⚠️ o disparo não grava linha em messages', () => {
-    for (const arquivo of ['lib/whatsapp/broadcast-core.ts', 'lib/whatsapp/broadcast-resume.ts']) {
+  it('⚠️ o disparo não grava linha em messages (nem o da API, nem o da tela)', () => {
+    for (const arquivo of [
+      'lib/whatsapp/broadcast-core.ts',
+      'lib/whatsapp/broadcast-resume.ts',
+      'app/api/whatsapp/broadcast/route.ts',
+    ]) {
       expect(fonte(arquivo), arquivo).not.toMatch(/\.from\(\s*'messages'\s*\)/);
     }
   });
@@ -116,9 +120,9 @@ describe('a rota do webhook da Meta usa a escada e a espera', () => {
     expect(rota).not.toMatch(/\.update\(\{\s*status:\s*status\.status\s*\}\)/);
   });
 
-  it('os recibos do POST são aplicados no finally, depois das mensagens', () => {
+  it('os recibos do POST são aplicados no finally, depois das mensagens, cada um no seu try', () => {
     expect(rota).toMatch(
-      /finally\s*\{\s*for \(const \{ status, canal \} of recibos\) \{\s*await handleStatusUpdate\(status, canal\)/,
+      /finally\s*\{\s*for \(const \{ status, canal \} of recibos\) \{\s*try \{\s*await handleStatusUpdate\(status, canal\)\s*\} catch/,
     );
     const entradas = rota.slice(
       rota.indexOf('async function processarEntradas('),

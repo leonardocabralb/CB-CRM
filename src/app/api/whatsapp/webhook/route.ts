@@ -310,12 +310,23 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
   // que venha no mesmo POST não pode ficar na fila atrás dessa espera. O
   // `finally` os aplica mesmo quando uma mensagem estoura — antes, eles
   // vinham na frente dela.
+  //
+  // Eles vão um de cada vez, na ordem: o espelho de `broadcast_recipients`
+  // lê e depois grava, e dois recibos do mesmo destinatário ao mesmo tempo
+  // se atropelariam. O preço é que um recibo que espera segura os seguintes
+  // — medido em 23/09, a Meta mandou UM recibo por POST nas 24 h, então essa
+  // fila não se forma na prática.
   const recibos: ReciboPendente[] = []
   try {
     await processarEntradas(body.entry, recibos)
   } finally {
     for (const { status, canal } of recibos) {
-      await handleStatusUpdate(status, canal)
+      // Um recibo que estoura não leva os seguintes junto.
+      try {
+        await handleStatusUpdate(status, canal)
+      } catch (err) {
+        console.error('Error applying status update:', err)
+      }
     }
   }
 }
@@ -529,9 +540,8 @@ async function handleStatusUpdate(
   //    pode esperar a linha dela nascer (passo 2), e a contagem da campanha
   //    não pode ficar atrás dessa espera. É também daqui que se sabe se o
   //    recibo é de DISPARO — que não grava linha em `messages` e, por isso,
-  //    não espera por ela.
-  const tsIso = new Date(parseInt(status.timestamp) * 1000).toISOString()
-
+  //    não espera por ela (quando o destinatário já tem o wamid; ver
+  //    `pausasDoReciboDaMeta`).
   const { data: recipient, error: recFetchErr } = await supabaseAdmin()
     .from('broadcast_recipients')
     .select('id, status')
@@ -546,6 +556,9 @@ async function handleStatusUpdate(
     // `failed` only from pre-delivered states.
     isValidStatusTransition(recipient.status, status.status)
   ) {
+    // Só aqui: um timestamp ilegível estoura o `toISOString()`, e calculado
+    // antes das mensagens ele impediria a gravação delas.
+    const tsIso = new Date(parseInt(status.timestamp) * 1000).toISOString()
     const update: Record<string, unknown> = { status: status.status }
     if (status.status === 'sent' && !('sent_at' in update)) update.sent_at = tsIso
     if (status.status === 'delivered') update.delivered_at = tsIso
