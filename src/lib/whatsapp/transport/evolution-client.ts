@@ -257,6 +257,20 @@ export class EvolutionClient {
         number: args.number,
         text: args.text,
         ...(args.quoted ? { quoted: { key: args.quoted } } : {}),
+        // ⚠️ Load-bearing (23/09/2026): sem isto, o LINK NÃO CHEGA a parte
+        // dos clientes. Com o campo ausente, a Evolution 2.4 anexa a todo
+        // texto com link uma prévia no formato de ANÚNCIO
+        // (`contextInfo.externalAdReply`, commit 53f47d5f do upstream, de
+        // 04/01/2026), e a Baileys ainda gera a prévia dela por cima. Das 4
+        // falhas de entrega pelo CRM desde 09/09, as 4 eram mensagens com
+        // link, em aparelhos Android: o aparelho não exibia (recibo ERROR,
+        // "device could not display the message") ou pedia a mensagem de
+        // novo até desistir. Um desses clientes tinha recebido link pelo CRM
+        // em 08/09, antes da atualização. E, onde chega, o cartão vem com um
+        // quadro grande em branco. Com `false`, a mensagem sai no formato de
+        // um texto sem link e o WhatsApp torna o endereço clicável sozinho.
+        // Ver o CLAUDE.md, "Link sai SEM prévia".
+        linkPreview: false,
       }
     );
     return this.extractId(res);

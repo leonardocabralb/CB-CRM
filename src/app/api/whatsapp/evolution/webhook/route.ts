@@ -121,8 +121,14 @@ function ackToStatus(
  * ⚠️ A escada de status é de mão única, e `failed` é um desvio terminal válido
  * só no começo dela. Um `ERROR` que chegue DEPOIS de a mensagem ter sido
  * entregue ou lida é ruído da Baileys — aplicá-lo pintaria de "não entregue"
- * uma mensagem que o cliente comprovadamente leu. O lado Meta já tem essa
- * guarda (`isValidStatusTransition`); aqui não tinha.
+ * uma mensagem que o cliente comprovadamente leu.
+ *
+ * ⚠️ O lado Meta NÃO tem essa guarda nas MENSAGENS (conferido em
+ * 23/09/2026): lá `isValidStatusTransition` só protege
+ * `broadcast_recipients`, e o UPDATE de `messages` grava qualquer status —
+ * um "sent" atrasado rebaixa "delivered". Uma versão deste comentário dizia o
+ * contrário. É por isso que o balão "Não confirmada"
+ * (`lib/inbox/entrega-nao-confirmada.ts`) só vale para a Evolution.
  */
 const ACEITA_FALHA = ['sending', 'sent'] as const;
 
