@@ -2431,6 +2431,7 @@
       "failedToDeleteTag": "Failed to delete tag",
       "deleteAria": "Delete {name}",
       "noTags": "No tags yet — create your first one below.",
+      "noTagsReadOnly": "No tags in this account yet.",
       "placeholder": "e.g. Newsletter",
       "useColor": "Use {color}",
       "addTag": "Add tag",

@@ -25,6 +25,12 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **Etiquetas e modelos da conta aparecem para toda a equipe em
+  Configurações.** O gerenciador de etiquetas, a lista de modelos e as
+  contagens da visão geral mostravam só o que o próprio membro tinha criado
+  (quem não era o dono via "0"). Agora mostram o catálogo da conta, e criar
+  ou apagar etiqueta, que é de administrador, some da tela de quem não é.
+
 - **Erro de banco ao escolher o número de uma campanha não é mais "conecte
   um número".** `POST /api/v1/broadcasts` (e as telas de disparo e de
   modelos) respondia `400 meta_channel_required` quando o CRM só não

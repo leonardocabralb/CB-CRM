@@ -2424,6 +2424,7 @@
       "failedToDeleteTag": "Falha ao excluir a etiqueta",
       "deleteAria": "Excluir {name}",
       "noTags": "Nenhuma etiqueta ainda — crie a primeira abaixo.",
+      "noTagsReadOnly": "Nenhuma etiqueta nesta conta ainda.",
       "placeholder": "ex.: Newsletter",
       "useColor": "Usar {color}",
       "addTag": "Adicionar etiqueta",

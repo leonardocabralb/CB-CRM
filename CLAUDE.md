@@ -298,6 +298,7 @@ upstream sobrescrevê-los:
 | páginas de `automations`, `flows`, `broadcasts`, `dashboard` | etiqueta e filtro de canal, coluna de canal nos históricos, filtro do painel |
 | `src/components/broadcasts/step{1,4}-*.tsx`, `src/hooks/use-broadcast-sending.ts` | canal escolhido no passo 1, `channel_id` no corpo da API e na linha de `broadcasts`. No hook, mais: `marcarDestinatario` (update conferido pelo retorno, #15) e o `ownerUserId` do `upsertCsvContacts` (ver a decisão do merge de 2026-09-05 acima) |
 | `src/components/settings/template-manager.tsx` | seletor de WABA para criar/sincronizar, etiqueta de canal por modelo |
+| `src/components/settings/{template-manager,tag-manager,settings-overview}.tsx` (23/09/2026) | a leitura do catálogo SEM `.eq('user_id', …)` (ver a nota do M24 em "Iniciar conversa pelo CRM"), e no `tag-manager` os controles de criar/apagar só para admin e o `count` do DELETE. O upstream filtra por quem criou: um merge cru devolve o catálogo vazio a todo membro que não é o dono |
 | `src/components/contacts/contact-detail-view.tsx`, `src/components/inbox/contact-sidebar.tsx` | canal no primeiro contato e a seção/aba **Histórico** (912). (A linha "canal da conversa" que o painel do inbox exibia foi REMOVIDA em 2026-08-29 a pedido do operador — o seletor do cabeçalho do fio já responde isso.) No detail view a `TabsList` ganhou `flex-wrap` com a altura **prefixada** (`group-data-horizontal/tabs:h-auto` + `[&>button]:h-auto`, NUNCA `h-auto` cru — ver a armadilha do tailwind-merge abaixo; um merge que "simplifique" para `h-auto` quebra a tela de novo) — com 5 abas ela já estourava a largura do painel e escondia "Negócios" |
 | `src/components/inbox/message-thread.tsx` | `groupMessagesByDate` virou `groupTimelineByDate`, sobre mensagens **e** eventos do lead intercalados (`intercalar`), e o laço de render passou a ramificar em `item.evento` |
 | `src/components/inbox/conversation-list.tsx` | ⚠️ **praticamente reescrito** (924): todo o recorte saiu para `src/lib/inbox/filtros.ts`, a barra de filtros virou `<InboxFilters>`, e cada linha ganhou a estrela de favoritar. Num merge do upstream, esperar conflito grande e **manter a nossa versão**, levando só o que for novo dele. Mais o `onTermoDeBusca`, que espelha o termo assentado para a página. Mais o menu de **filtros salvos** (967/968): o hook, os catálogos que dão nome aos ids, o `limparOrfaos` do aplicar e a semente do filtro padrão |
@@ -3488,9 +3489,15 @@ id; a página recarrega a lista e navega por `?c=`. O que morde código novo:
   `conversations` e `custom_fields` para o novo dono na mesma transação
   (Codex, PR #90). SÓ essas três, de propósito: `tags`, `message_templates`,
   `pipelines`, `automations`, `flows`, `broadcasts` e cia. têm o MESMO
-  CASCADE, mas guardam quem CRIOU e telas do upstream ainda filtram por
-  essa coluna — mover mudaria o que cada pessoa vê; é decisão de produto
-  pendente (M24 do plano de 31/08), não carona.
+  CASCADE, mas guardam quem CRIOU — mover é decisão de produto pendente
+  (M24 do plano de 31/08), não carona.
+  ⚠️ **Nessas tabelas `user_id` é AUTORIA, nunca recorte de tela.** Até
+  23/09/2026 o gerenciador de etiquetas, a lista de modelos e a visão geral
+  de Configurações liam com `.eq('user_id', user.id)` (herança do upstream),
+  e todo membro que não era o dono via o catálogo da conta VAZIO — medido:
+  as 17 etiquetas e os 9 modelos eram do dono. Tabela com RLS por conta se
+  lê confiando na RLS; `.eq('user_id', …)` numa tela só é certo quando o
+  dado é da PESSOA (favoritas, filtros salvos, avisos, o próprio perfil).
 - ⚠️ **Selecionar a conversa recém-aberta NÃO pode depender do `?c=`.** O
   refetch (`resyncToken`) e o `router.replace` saem juntos, e se a consulta
   voltar antes de a navegação propagar os searchParams, `deepLinkConvId`
