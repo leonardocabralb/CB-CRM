@@ -12,7 +12,9 @@ import {
 import { chaveDePessoa, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { variantesDoNonoDigito } from '@/lib/contacts/telefone';
 import {
+  PAGINA,
   buscarPaginado,
+  buscarPorChave,
   type ErroDoPostgrest,
   type MotivoDaDesconfianca,
 } from '@/lib/supabase/paginar';
@@ -135,11 +137,36 @@ export function erroDeLeituraParcial(
     teto: 'passou do teto de 25.000 linhas por consulta',
   };
   const detalhe = erro?.message ? ` (${erro.message})` : '';
-  return new Error(
+  const falha = new Error(
     `Disparo cancelado: não foi possível ler ${oQueFaltou} por inteiro — ` +
       `${motivo ? porque[motivo] : 'motivo desconhecido'}${detalhe}. ` +
       'Nada foi enviado.',
-  );
+  ) as Error & { motivo?: MotivoDaDesconfianca | null };
+  falha.motivo = motivo;
+  return falha;
+}
+
+/**
+ * O motivo de uma leitura que não fechou, para a CONTAGEM das telas: `teto`
+ * não se resolve tentando de novo (o público passa do que a tela consegue
+ * ler), e oferecer "tentar de novo" ali seria um botão que nunca funciona.
+ */
+export function motivoDaLeitura(erro: unknown): MotivoDaDesconfianca | null {
+  const motivo = (erro as { motivo?: unknown } | null)?.motivo;
+  return motivo === 'erro' ||
+    motivo === 'sem_contagem' ||
+    motivo === 'incompleto' ||
+    motivo === 'teto'
+    ? motivo
+    : null;
+}
+
+/**
+ * A contagem das telas é refeita a cada clique; a leitura que ficou velha
+ * PARA entre uma consulta e outra, em vez de correr até o fim à toa.
+ */
+function interromperSe(sinal: AbortSignal | undefined) {
+  if (sinal?.aborted) throw new DOMException('A contagem ficou velha.', 'AbortError');
 }
 
 function sleep(ms: number) {
@@ -221,6 +248,15 @@ async function marcarDestinatario(
 }
 
 /**
+ * Quantas fatias de `.in('id', …)` correm ao mesmo tempo. Cada fatia é um
+ * conjunto FIXO de até 100 ids numa página só, então a regra 5 do
+ * `paginar.ts` (páginas por OFFSET em fila) não se aplica aqui. Em fila, a
+ * etiqueta "kommo" (4.635 contatos) custava 47 idas ao banco uma depois da
+ * outra — ~8 s MEDIDOS no passo 2, a cada clique.
+ */
+const FATIAS_EM_PARALELO = 6;
+
+/**
  * Os contatos da conta. `ids === null` traz todos; uma lista traz só eles.
  *
  * ⚠️⚠️ PAGINADA, e aqui o corte silencioso de 1000 linhas do PostgREST não
@@ -231,35 +267,70 @@ async function marcarDestinatario(
  * o envio saía para uma amostra ARBITRÁRIA de mil — sem erro, sem toast,
  * sem nada no console. O `.in()` por fatias é a segunda metade do conserto:
  * ver `IDS_POR_CONSULTA`.
+ *
+ * ⚠️⚠️ "Todos os contatos" é lido POR CHAVE (`buscarPorChave`), nunca por
+ * OFFSET: a ingestão cria fichas o tempo todo, e uma ficha nova no meio da
+ * leitura empurrava a última linha de uma página para a seguinte — o mesmo
+ * contato duas vezes na lista, duas linhas em `broadcast_recipients` (não há
+ * UNIQUE ali) e o modelo PAGO chegando em dobro ao cliente. Uma ficha
+ * apagada no meio pulava uma que existia. Por chave, entrar ou sair da
+ * coleção não desloca as outras linhas (revisão da Fase 3-IV).
  */
 async function lerContatos(
   supabase: ReturnType<typeof createClient>,
   ids: string[] | null,
   colunas = '*',
+  sinal?: AbortSignal,
 ): Promise<Contact[]> {
-  const fatias: (string[] | null)[] =
-    ids === null ? [null] : emFatias(ids, IDS_POR_CONSULTA);
-  const contatos: Contact[] = [];
-
-  for (const fatia of fatias) {
-    const { linhas, erro, motivo } = await buscarPaginado<Contact>(
-      async (de, ate) => {
-        const base = supabase.from('contacts').select(colunas, { count: 'exact' });
-        // O `.in()` antes de `order`/`range`: depois deles o builder já não
-        // aceita filtro, e a ordem tem de desempatar por coluna única.
-        const { data, error, count } = await (fatia ? base.in('id', fatia) : base)
-          .order('id', { ascending: true })
-          .range(de, ate);
-        return { data: (data ?? null) as unknown as Contact[] | null, error, count };
-      },
-    );
+  if (ids === null) {
+    const { linhas, erro, motivo } = await buscarPorChave<Contact>(async (depoisDe) => {
+      interromperSe(sinal);
+      const base = supabase.from('contacts').select(colunas);
+      const consulta = (depoisDe ? base.gt('id', depoisDe) : base)
+        .order('id', { ascending: true })
+        .limit(PAGINA);
+      const { data, error } = await (sinal ? consulta.abortSignal(sinal) : consulta);
+      return { data: (data ?? null) as unknown as Contact[] | null, error };
+    });
     if (!linhas) {
       throw erroDeLeituraParcial('a lista de contatos da audiência', motivo, erro);
     }
-    contatos.push(...linhas);
+    return linhas;
   }
 
-  return contatos;
+  const fatias = emFatias(ids, IDS_POR_CONSULTA);
+  const lidas: Contact[][] = [];
+
+  for (let i = 0; i < fatias.length; i += FATIAS_EM_PARALELO) {
+    interromperSe(sinal);
+    const grupo = fatias.slice(i, i + FATIAS_EM_PARALELO);
+    const resultados = await Promise.all(
+      grupo.map((fatia) =>
+        buscarPaginado<Contact>(async (de, ate) => {
+          const base = supabase.from('contacts').select(colunas, { count: 'exact' });
+          // O `.in()` antes de `order`/`range`: depois deles o builder já não
+          // aceita filtro, e a ordem tem de desempatar por coluna única.
+          const consulta = base
+            .in('id', fatia)
+            .order('id', { ascending: true })
+            .range(de, ate);
+          const { data, error, count } = await (sinal
+            ? consulta.abortSignal(sinal)
+            : consulta);
+          return { data: (data ?? null) as unknown as Contact[] | null, error, count };
+        }),
+      ),
+    );
+    for (const { linhas, erro, motivo } of resultados) {
+      if (!linhas) {
+        throw erroDeLeituraParcial('a lista de contatos da audiência', motivo, erro);
+      }
+      // Na ordem das fatias: o envio grava os destinatários nesta ordem.
+      lidas.push(linhas);
+    }
+  }
+
+  return lidas.flat();
 }
 
 /**
@@ -274,18 +345,23 @@ async function lerContatos(
 async function contatosComAsEtiquetas(
   supabase: ReturnType<typeof createClient>,
   tagIds: string[],
+  sinal?: AbortSignal,
 ): Promise<string[]> {
   const contactIds = new Set<string>();
 
   for (const fatia of emFatias(tagIds, IDS_POR_CONSULTA)) {
     const { linhas, erro, motivo } = await buscarPaginado<{ contact_id: string }>(
       async (de, ate) => {
-        const { data, error, count } = await supabase
+        interromperSe(sinal);
+        const consulta = supabase
           .from('contact_tags')
           .select('contact_id', { count: 'exact' })
           .in('tag_id', fatia)
           .order('id', { ascending: true })
           .range(de, ate);
+        const { data, error, count } = await (sinal
+          ? consulta.abortSignal(sinal)
+          : consulta);
         return {
           data: (data ?? null) as { contact_id: string }[] | null,
           error,
@@ -308,6 +384,7 @@ async function contatosComAsEtiquetas(
 async function idsDoCampoPersonalizado(
   supabase: ReturnType<typeof createClient>,
   filter: CustomFieldFilter,
+  sinal?: AbortSignal,
 ): Promise<string[]> {
   const { fieldId, operator, value } = filter;
 
@@ -320,6 +397,7 @@ async function idsDoCampoPersonalizado(
   // 1000 escolheria mil deles em silêncio.
   const { linhas, erro, motivo } = await buscarPaginado<{ contact_id: string }>(
     async (de, ate) => {
+      interromperSe(sinal);
       let query = supabase
         .from('contact_custom_values')
         .select('contact_id', { count: 'exact' })
@@ -330,9 +408,8 @@ async function idsDoCampoPersonalizado(
       else if (operator === 'contains')
         query = query.ilike('value', `%${value}%`);
 
-      const { data, error, count } = await query
-        .order('id', { ascending: true })
-        .range(de, ate);
+      const consulta = query.order('id', { ascending: true }).range(de, ate);
+      const { data, error, count } = await (sinal ? consulta.abortSignal(sinal) : consulta);
       return {
         data: (data ?? null) as { contact_id: string }[] | null,
         error,
@@ -368,27 +445,34 @@ async function contatosDaBase(
   supabase: ReturnType<typeof createClient>,
   audience: AudienceConfig,
   colunas: string,
+  sinal?: AbortSignal,
 ): Promise<Contact[]> {
-  if (audience.type === 'all') return lerContatos(supabase, null, colunas);
+  if (audience.type === 'all') return lerContatos(supabase, null, colunas, sinal);
   if (audience.type === 'tags' && audience.tagIds && audience.tagIds.length > 0) {
-    const ids = await contatosComAsEtiquetas(supabase, audience.tagIds);
-    return ids.length > 0 ? lerContatos(supabase, ids, colunas) : [];
+    const ids = await contatosComAsEtiquetas(supabase, audience.tagIds, sinal);
+    return ids.length > 0 ? lerContatos(supabase, ids, colunas, sinal) : [];
   }
   if (audience.type === 'custom_field' && audience.customField) {
-    const ids = await idsDoCampoPersonalizado(supabase, audience.customField);
-    return ids.length > 0 ? lerContatos(supabase, ids, colunas) : [];
+    const ids = await idsDoCampoPersonalizado(supabase, audience.customField, sinal);
+    return ids.length > 0 ? lerContatos(supabase, ids, colunas, sinal) : [];
   }
   return [];
 }
 
 /**
  * Os recortes que valem para TODO público, inclusive o do CSV.
+ *
+ * ⚠️ Genérica DE PROPÓSITO: a contagem das telas lê só `id, phone`, e um
+ * recorte novo que olhasse outro campo (nome, e-mail) compilaria e passaria
+ * a recortar o envio de um jeito e a contagem de outro. Tipada assim, ele
+ * não compila até a contagem ler a coluna também.
  */
-async function aplicarRecortes(
+async function aplicarRecortes<T extends Pick<Contact, 'id' | 'phone'>>(
   supabase: ReturnType<typeof createClient>,
-  contacts: Contact[],
+  contacts: T[],
   audience: AudienceConfig,
-): Promise<Contact[]> {
+  sinal?: AbortSignal,
+): Promise<T[]> {
   // Disparo é WhatsApp. A ficha só do Instagram (989) não tem telefone:
   // a Meta não teria para onde mandar, e cada uma viraria um "failed" na
   // lista de destinatários. Fica de fora aqui, antes de virar linha.
@@ -402,7 +486,7 @@ async function aplicarRecortes(
   // para todo mundo achando que respeitou o filtro.
   if (audience.excludeTagIds && audience.excludeTagIds.length > 0) {
     const excludedIds = new Set(
-      await contatosComAsEtiquetas(supabase, audience.excludeTagIds),
+      await contatosComAsEtiquetas(supabase, audience.excludeTagIds, sinal),
     );
     recortados = recortados.filter((c) => !excludedIds.has(c.id));
   }
@@ -411,22 +495,103 @@ async function aplicarRecortes(
 }
 
 /**
+ * As pessoas de um CSV, uma por chave (`chaveDePessoa`, a grafia canônica do
+ * nono dígito — a chave do índice único de `contacts` desde a 1024). A MESMA
+ * régua para o envio e para a contagem. Número que não vira chave fica de
+ * fora nos dois.
+ */
+function pessoasDoCsv(
+  csvRows: { phone: string; name?: string }[],
+): Map<string, { phone: string; name?: string }> {
+  const porChave = new Map<string, { phone: string; name?: string }>();
+  for (const row of csvRows) {
+    const key = chaveDePessoa(row.phone);
+    if (key && !porChave.has(key)) porChave.set(key, row);
+  }
+  return porChave;
+}
+
+/**
+ * As fichas que JÁ existem para as chaves de um CSV, pelas DUAS grafias do
+ * nono dígito. Só LÊ: o envio a usa antes de criar as que faltam, e a
+ * contagem a usa para saber quem do CSV a exclusão vai poupar.
+ *
+ * Lookup of existing contacts. Scoped by ACCOUNT, not by who clicked:
+ * contacts born from ingestion (or from a teammate) carry the account
+ * owner's user_id, and filtering by `user.id` missed them. Matched on the
+ * generated `phone_normalized` column (upstream #532) by BOTH spellings of
+ * each number (`variantesDoNonoDigito` over the canonical key): the
+ * ingestion stores the JID, which comes WITHOUT the 9 for older numbers,
+ * while the CSV comes as the office typed it — matching one spelling only
+ * treated the client as new, and since 1024 the insert then hits the
+ * canonical index.
+ *
+ * ⚠️ Em FATIAS de `LOOKUP_CHUNK` grafias: cada grafia casa no máximo uma
+ * ficha (o índice exato da 022), então cada resposta fica bem abaixo do
+ * teto de mil linhas do PostgREST. Numa consulta só, acima de mil chaves
+ * o PostgREST devolvia as primeiras mil, os contatos que não vieram eram
+ * tratados como novos e a campanha morria com um 23505 cru na tela.
+ */
+const LOOKUP_CHUNK = 200;
+async function fichasDoCsvNaBase(
+  supabase: ReturnType<typeof createClient>,
+  accountId: string,
+  chaves: string[],
+  colunas = '*',
+  sinal?: AbortSignal,
+): Promise<Contact[]> {
+  const grafias = chaves.flatMap((k) => variantesDoNonoDigito(k));
+  const achados: Contact[] = [];
+  for (let i = 0; i < grafias.length; i += LOOKUP_CHUNK) {
+    interromperSe(sinal);
+    const fatia = grafias.slice(i, i + LOOKUP_CHUNK);
+    const consulta = supabase
+      .from('contacts')
+      .select(colunas)
+      .eq('account_id', accountId)
+      .in('phone_normalized', fatia);
+    const { data: existing, error: lookupErr } = await (sinal
+      ? consulta.abortSignal(sinal)
+      : consulta);
+    if (lookupErr) {
+      throw new Error(`Failed to look up CSV contacts: ${lookupErr.message}`);
+    }
+    achados.push(...((existing ?? []) as unknown as Contact[]));
+  }
+  return achados;
+}
+
+/**
  * Quantos contatos o disparo vai alcançar, pela MESMA resolução do envio.
  * Lança quando uma leitura falha ou vem incompleta — quem mostra o número
  * diz que não conseguiu contar, nunca afirma um número menor.
  *
- * ⚠️ No CSV, é o tamanho da lista (já sem repetidos e sem inválidos): as
- * fichas só existem depois de gravadas, e a exclusão por etiqueta — que o
- * envio aplica às fichas do CSV também — não tem sobre o que agir antes
- * disso. É o número de antes, e a tela o chama de estimativa.
+ * ⚠️ No CSV, sem gravar nada: as pessoas do arquivo (a régua do envio),
+ * menos as que JÁ têm ficha com uma etiqueta excluída. Ficha que ainda vai
+ * nascer não tem etiqueta, então nunca é poupada — é o que o envio faz
+ * depois de gravar. Até a revisão da 3-IV aqui voltava o tamanho da lista,
+ * e a confirmação de um disparo pago dizia 500 para um envio de 380.
  */
 export async function contarPublico(
   supabase: ReturnType<typeof createClient>,
   audience: AudienceConfig,
+  opcoes: { accountId: string | null; sinal?: AbortSignal },
 ): Promise<number> {
-  if (audience.type === 'csv') return audience.csvContacts?.length ?? 0;
-  const base = await contatosDaBase(supabase, audience, 'id, phone');
-  return (await aplicarRecortes(supabase, base, audience)).length;
+  const { accountId, sinal } = opcoes;
+  if (audience.type === 'csv') {
+    const chaves = [...pessoasDoCsv(audience.csvContacts ?? []).keys()];
+    const excluir = audience.excludeTagIds ?? [];
+    if (chaves.length === 0 || excluir.length === 0) return chaves.length;
+    if (!accountId) throw new Error('A conta ainda não foi resolvida.');
+    const naBase = await fichasDoCsvNaBase(supabase, accountId, chaves, 'id, phone', sinal);
+    const poupados = new Set(await contatosComAsEtiquetas(supabase, excluir, sinal));
+    const barradas = new Set(
+      naBase.filter((c) => poupados.has(c.id)).map((c) => chaveDePessoa(c.phone ?? '')),
+    );
+    return chaves.filter((k) => !barradas.has(k)).length;
+  }
+  const base = await contatosDaBase(supabase, audience, 'id, phone', sinal);
+  return (await aplicarRecortes(supabase, base, audience, sinal)).length;
 }
 
 /**
@@ -543,11 +708,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
     // "+1 555-0100" and "15550100" survived as two rows; keyed on the digits
     // only (up to 1024), "5583980000016" and "558380000016" did — and the
     // insert below died on a 23505, failing the whole broadcast.
-    const uniqueByKey = new Map<string, { phone: string; name?: string }>();
-    for (const row of csvRows) {
-      const key = chaveDePessoa(row.phone);
-      if (key && !uniqueByKey.has(key)) uniqueByKey.set(key, row);
-    }
+    const uniqueByKey = pessoasDoCsv(csvRows);
     const keys = [...uniqueByKey.keys()];
 
     const byKey = new Map<string, Contact>();
@@ -558,39 +719,10 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       }
     };
 
-    // Lookup of existing contacts. Scoped by ACCOUNT, not by who clicked:
-    // contacts born from ingestion (or from a teammate) carry the account
-    // owner's user_id, and filtering by `user.id` missed them. Matched on the
-    // generated `phone_normalized` column (upstream #532) by BOTH spellings of
-    // each number (`variantesDoNonoDigito` over the canonical key): the
-    // ingestion stores the JID, which comes WITHOUT the 9 for older numbers,
-    // while the CSV comes as the office typed it — matching one spelling only
-    // treated the client as new, and since 1024 the insert then hits the
-    // canonical index.
-    //
-    // ⚠️ Em FATIAS de `LOOKUP_CHUNK` grafias: cada grafia casa no máximo uma
-    // ficha (o índice exato da 022), então cada resposta fica bem abaixo do
-    // teto de mil linhas do PostgREST. Numa consulta só, acima de mil chaves
-    // o PostgREST devolvia as primeiras mil, os contatos que não vieram eram
-    // tratados como novos e a campanha morria com um 23505 cru na tela.
-    const LOOKUP_CHUNK = 200;
-    const buscarExistentes = async (chaves: string[]): Promise<Contact[]> => {
-      const grafias = chaves.flatMap((k) => variantesDoNonoDigito(k));
-      const achados: Contact[] = [];
-      for (let i = 0; i < grafias.length; i += LOOKUP_CHUNK) {
-        const fatia = grafias.slice(i, i + LOOKUP_CHUNK);
-        const { data: existing, error: lookupErr } = await supabase
-          .from('contacts')
-          .select('*')
-          .eq('account_id', accountId)
-          .in('phone_normalized', fatia);
-        if (lookupErr) {
-          throw new Error(`Failed to look up CSV contacts: ${lookupErr.message}`);
-        }
-        achados.push(...((existing ?? []) as Contact[]));
-      }
-      return achados;
-    };
+    // A busca das fichas que já existem (por conta, pelas duas grafias, em
+    // fatias) mora em `fichasDoCsvNaBase`: a contagem das telas usa a mesma.
+    const buscarExistentes = (chaves: string[]) =>
+      fichasDoCsvNaBase(supabase, accountId, chaves);
     lembrar(await buscarExistentes(keys));
 
     // Insert only missing contacts, in one batch per 200 rows (PostgREST

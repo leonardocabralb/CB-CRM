@@ -25,6 +25,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **O público do disparo é contado como o disparo é enviado.** Os passos 2 e
+  4 do assistente mostravam no máximo 1.000 contatos por etiqueta, e o passo
+  4 ignorava as etiquetas excluídas e dizia 0 para público por campo
+  personalizado. Agora o número é o mesmo que o envio alcança — também no
+  CSV com exclusão —, e sem ele calculado (ou com 0) não dá para confirmar o
+  envio. Em "todos os contatos", uma ficha criada durante a leitura podia
+  fazer um cliente receber a mensagem duas vezes; não pode mais.
 - **Erro de banco ao escolher o número de uma campanha não é mais "conecte
   um número".** `POST /api/v1/broadcasts` (e as telas de disparo e de
   modelos) respondia `400 meta_channel_required` quando o CRM só não

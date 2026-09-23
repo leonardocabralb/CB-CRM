@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { parseBroadcastCsv } from '@/lib/broadcast-csv';
-import { contarPublico } from '@/hooks/use-broadcast-sending';
+import { contarPublico, motivoDaLeitura } from '@/hooks/use-broadcast-sending';
+import { useAuth } from '@/hooks/use-auth';
 import { CustomField, Tag } from '@/types';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -21,6 +22,9 @@ import {
 import { useTranslations } from 'next-intl';
 
 type AudienceType = 'all' | 'tags' | 'custom_field' | 'csv';
+
+/** Quanto esperar a pessoa parar de mexer antes de recontar o público. */
+const ESPERA_DA_CONTAGEM_MS = 400;
 type CustomFieldOperator = 'is' | 'is_not' | 'contains';
 
 interface CustomFieldFilter {
@@ -95,7 +99,10 @@ export function Step2SelectAudience({
   const [loadingFields, setLoadingFields] = useState(false);
   const [estimatedCount, setEstimatedCount] = useState<number | null>(null);
   const [loadingCount, setLoadingCount] = useState(false);
-  const [contagemFalhou, setContagemFalhou] = useState(false);
+  // `teto` não se resolve tentando de novo; `falhou` sim.
+  const [falhaDaContagem, setFalhaDaContagem] = useState<'falhou' | 'teto' | null>(null);
+  const [tentativaDaContagem, setTentativaDaContagem] = useState(0);
+  const { accountId } = useAuth();
   // Só a resposta do pedido MAIS NOVO vale: contar a base inteira leva uns
   // segundos, e trocar de etiqueta nesse meio deixava o número da anterior.
   const pedidoDaContagemRef = useRef(0);
@@ -148,7 +155,7 @@ export function Step2SelectAudience({
     fetchFields();
   }, [audience.type]);
 
-  const fetchEstimatedCount = useCallback(async () => {
+  const fetchEstimatedCount = useCallback(async (sinal: AbortSignal) => {
     const pedido = ++pedidoDaContagemRef.current;
     // Público ainda incompleto — espera a pessoa terminar.
     const incompleto =
@@ -158,7 +165,7 @@ export function Step2SelectAudience({
       (audience.type === 'csv' && !(audience.csvContacts && audience.csvContacts.length > 0));
     if (incompleto) {
       setEstimatedCount(null);
-      setContagemFalhou(false);
+      setFalhaDaContagem(null);
       setLoadingCount(false);
       return;
     }
@@ -168,28 +175,33 @@ export function Step2SelectAudience({
       // ⚠️ A MESMA resolução do envio (`contarPublico`): a contagem própria
       // desta tela lia sem paginar e mostrava 1.000 para as etiquetas
       // maiores que isso (hoje "kommo", "Trabalhista" e "Cliente Fechado").
-      const total = await contarPublico(createClient(), {
-        type: audience.type,
-        tagIds: audience.tagIds,
-        customField: audience.customField,
-        csvContacts: audience.csvContacts,
-        excludeTagIds: audience.excludeTagIds,
-      });
+      const total = await contarPublico(
+        createClient(),
+        {
+          type: audience.type,
+          tagIds: audience.tagIds,
+          customField: audience.customField,
+          csvContacts: audience.csvContacts,
+          excludeTagIds: audience.excludeTagIds,
+        },
+        { accountId, sinal },
+      );
       if (pedido !== pedidoDaContagemRef.current) return;
       setEstimatedCount(total);
-      setContagemFalhou(false);
+      setFalhaDaContagem(null);
     } catch (err) {
       if (pedido !== pedidoDaContagemRef.current) return;
       // Leitura que falhou ou veio incompleta não vira número menor.
       console.error('[broadcast] contagem do público falhou', err);
       setEstimatedCount(null);
-      setContagemFalhou(true);
+      setFalhaDaContagem(motivoDaLeitura(err) === 'teto' ? 'teto' : 'falhou');
     } finally {
       if (pedido === pedidoDaContagemRef.current) setLoadingCount(false);
     }
     // Campo a campo, como antes: o objeto `audience` pode nascer de novo a
     // cada render do assistente, e a contagem rodaria em laço.
   }, [
+    accountId,
     audience.type,
     audience.tagIds,
     audience.customField,
@@ -198,8 +210,21 @@ export function Step2SelectAudience({
   ]);
 
   useEffect(() => {
-    fetchEstimatedCount();
-  }, [fetchEstimatedCount]);
+    // ⚠️ Espera a pessoa parar de clicar e de digitar: cada contagem relê o
+    // público inteiro (a mesma leitura do envio), e o valor do campo
+    // personalizado mudava a cada tecla. A contagem que ficou velha é
+    // INTERROMPIDA (o sinal), não só ignorada — antes, três cliques rápidos
+    // deixavam três leituras inteiras correndo até o fim.
+    const controle = new AbortController();
+    const espera = setTimeout(() => {
+      void fetchEstimatedCount(controle.signal);
+    }, ESPERA_DA_CONTAGEM_MS);
+    return () => {
+      clearTimeout(espera);
+      controle.abort();
+    };
+    // `tentativaDaContagem` é o "Tentar de novo": só dispara esta espera outra vez.
+  }, [fetchEstimatedCount, tentativaDaContagem]);
 
   async function handleCsvChange(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0];
@@ -466,7 +491,7 @@ export function Step2SelectAudience({
                   onClick={() => toggleExcludeTag(tag.id)}
                   className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-all ${
                     isExcluded
-                      ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                      ? 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-300'
                       : 'border-border bg-muted text-muted-foreground hover:border-border'
                   }`}
                 >
@@ -484,11 +509,11 @@ export function Step2SelectAudience({
 
       {/* Audience Summary */}
       <div className="rounded-xl border border-border bg-card/50 p-4">
-        <p className="mb-2 text-sm font-medium text-foreground">Audience Summary</p>
+        <p className="mb-2 text-sm font-medium text-foreground">{t('selectAudience.audienceSummary')}</p>
         {loadingCount ? (
           <div className="flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            <span className="text-xs text-muted-foreground">Calculating…</span>
+            <span className="text-xs text-muted-foreground">{t('selectAudience.calculating')}</span>
           </div>
         ) : estimatedCount !== null ? (
           <div className="flex items-center gap-2">
@@ -496,15 +521,28 @@ export function Step2SelectAudience({
             <span className="text-sm text-foreground">
               {estimatedCount.toLocaleString()}
             </span>
-            <span className="text-xs text-muted-foreground">estimated recipients</span>
+            <span className="text-xs text-muted-foreground">
+              {t('selectAudience.estimatedRecipients', { count: estimatedCount })}
+            </span>
           </div>
-        ) : contagemFalhou ? (
+        ) : falhaDaContagem === 'teto' ? (
           <p className="text-xs text-red-600 dark:text-red-300">
-            {t('selectAudience.contagemFalhou')}
+            {t('selectAudience.contagemTeto')}
+          </p>
+        ) : falhaDaContagem ? (
+          <p className="text-xs text-red-600 dark:text-red-300">
+            {t('selectAudience.contagemFalhou')}{' '}
+            <button
+              type="button"
+              onClick={() => setTentativaDaContagem((n) => n + 1)}
+              className="font-medium underline underline-offset-2"
+            >
+              {t('selectAudience.tentarDeNovo')}
+            </button>
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Select an audience type to see the estimate.
+            {t('selectAudience.pickAudienceHint')}
           </p>
         )}
       </div>

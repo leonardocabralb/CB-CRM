@@ -1664,6 +1664,10 @@
         "contagemFalhou": "Não foi possível calcular o público agora.",
         "audienceSummary": "Resumo do público",
         "calculating": "Calculando…",
+        "estimatedRecipients": "{count, plural, =0 {destinatários estimados} one {destinatário estimado} other {destinatários estimados}}",
+        "pickAudienceHint": "Escolha quem recebe para ver a estimativa.",
+        "contagemTeto": "Este público passa do que a tela consegue contar (25.000 contatos). Recorte por etiquetas ou por um campo personalizado.",
+        "tentarDeNovo": "Tentar de novo",
         "csvInvalidPhones": "{count} linha(s) ignorada(s): os telefones precisam começar com + e o código do país (ex.: +5585999998888)."
       },
       "personalize": {
@@ -1722,6 +1726,8 @@
         "toastFailedPreview": "Falha ao carregar os dados da pré-visualização",
         "alcanceFalhou": "Não foi possível calcular.",
         "tentarDeNovo": "Tentar de novo",
+        "alcanceTeto": "Passa do que a tela consegue contar (25.000). Volte e recorte o público.",
+        "ninguemNoPublico": "Ninguém a alcançar com este público.",
         "estimatedReach": "Alcance estimado",
         "language": "Idioma",
         "confirmTitle": "Confirmar disparo",
