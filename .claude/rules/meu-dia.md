@@ -237,6 +237,9 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   conversa lida sem dono avisa na hora mesmo que a automação a entregue a
   outra pessoa em seguida, e a estacionada com dono de outra pessoa não é
   solta se a conversa ficar SEM dono (o filtro do realtime não casa NULO).
+  E com DUAS abas: a vista numa aba não chega à outra (cada aba tem o seu
+  ouvinte desde o original, e aviso com a mesma `tag` se substitui) — no
+  máximo um aviso redundante, nunca um perdido.
 - ⚠️ **A tela é conferida DE NOVO antes de exibir** (`vendoAgora`): entre o
   INSERT e o aviso cabem a consulta e, na estacionada, minutos — a pessoa pode
   ter aberto a conversa nesse meio.
