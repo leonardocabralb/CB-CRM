@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { corDoRemetente, podeBaixarAnexo } from "@/lib/cb-groups/display";
 import { mediaFilename, nomeDeclarado } from "@/lib/media/filename";
+import { motivoNaBolha } from "@/lib/inbox/motivo-da-falha";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
 import { FormattedText } from "./formatted-text";
@@ -657,6 +658,8 @@ export function MessageBubble({
    * numa mensagem do cliente pintaria a bolha dele de vermelho.
    */
   const naoEntregue = isAgent && message.status === "failed";
+  /** O porquê, quando a Meta o deu (1039). Nulo na Evolution e no histórico. */
+  const motivo = naoEntregue ? motivoNaBolha(message) : null;
   /**
    * Sem recibo de erro, mas com prova de que o aparelho do destinatário
    * estava no ar depois dela — a falha que o WhatsApp NÃO anuncia (o link
@@ -926,9 +929,22 @@ export function MessageBubble({
             não alcança quem não distingue vermelho. A frase é a única coisa
             que faz o operador entender que precisa mandar de novo. */}
         {naoEntregue && (
-          <p className="aviso-falha mt-1 flex items-center gap-1 text-[11px] font-medium !text-destructive">
+          <p
+            className="aviso-falha mt-1 flex items-center gap-1 text-[11px] font-medium !text-destructive"
+            title={motivo ?? undefined}
+          >
             <XCircle className="h-3 w-3 shrink-0" />
             {t("naoEntregue")}
+          </p>
+        )}
+        {/* O motivo da Meta, discreto e em até duas linhas: os detalhes dela
+            chegam a um parágrafo, e o texto inteiro fica no `title`. */}
+        {motivo && (
+          <p
+            className="aviso-falha mt-0.5 line-clamp-2 text-[10px] leading-tight !text-muted-foreground"
+            title={motivo}
+          >
+            {t("motivoDaFalha", { motivo })}
           </p>
         )}
         {semConfirmacao && (

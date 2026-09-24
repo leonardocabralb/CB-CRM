@@ -453,7 +453,7 @@
       "viewImage": "View image",
       "expandVideo": "Expand video",
       "imageAlt": "Shared image",
-      "notDelivered": "Not delivered"
+      "motivoDaFalha": "Reason given by Meta: {motivo}"
     },
     "audioPlayer": {
       "tocar": "Play audio",

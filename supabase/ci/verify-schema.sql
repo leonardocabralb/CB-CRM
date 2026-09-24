@@ -167,6 +167,19 @@ BEGIN
     END IF;
   END;
 
+  -- As colunas do motivo da falha (1039; a 042 do original) só são escritas
+  -- pelo webhook da Meta, num UPDATE sem tipo: coluna ausente não quebra o
+  -- build, quebra em produção — e leva junto a situação `failed`, que vai no
+  -- mesmo UPDATE.
+  IF (
+    SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'messages'
+      AND column_name IN ('error_code', 'error_title', 'error_details')
+  ) <> 3 THEN
+    RAISE EXCEPTION
+      'messages.error_code/error_title/error_details não existem — a 1039 não aplicou';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;

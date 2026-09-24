@@ -236,12 +236,13 @@ levar o texto novo dele para os **dois** dicionários).
   SILÊNCIO são as nossas `0040`–`0042` (as 037–039 deles, renomeadas a
   92–94% de semelhança) — conferir `git diff --summary` em
   `supabase/migrations/` a cada merge.
-- ⚠️ **NINGUÉM grava as colunas da 1038 e da 1039 ainda.** Gravar
-  o motivo da falha é a Fase 5 do plano, e a identidade BSUID, a Fase 11. O
-  único leitor hoje é `wa_username` no hook de notificação do navegador, que
-  não está montado. (A nota original deste merge dizia "nenhum código lê o
-  que elas criam — `failure_reason` não aparece em `src/`": nenhuma coluna se
-  chama `failure_reason`, e o hook lia `wa_username`.)
+- ⚠️ **NINGUÉM grava as colunas da 1038 ainda** (a identidade BSUID é a
+  Fase 11 do plano). O único leitor delas hoje é `wa_username` no hook de
+  notificação do navegador, que não está montado. (A nota original deste
+  merge dizia "nenhum código lê o que elas criam — `failure_reason` não
+  aparece em `src/`": nenhuma coluna se chama `failure_reason`, e o hook lia
+  `wa_username`.) As da **1039** (o motivo da falha da Meta) são gravadas pelo
+  webhook da Meta desde a Fase 5 — ver a linha do RECIBO na tabela abaixo.
 - **`ci.yml` e `migrations.yml` apagados de novo**, como a nota do
   `pipeline.yml` manda.
 - **Dicionários: UNIÃO, não substituição.** Nosso lado venceu o `en.json`
@@ -450,7 +451,7 @@ upstream sobrescrevê-los:
 | `src/lib/automations/engine.ts` (espera, 18/09/2026) | o "Aguardar" estaciona com `contextoDaEspera(...)` e CONFERE o erro do INSERT (fila que recusa vira falha visível); `resumePendingExecution` limpa a marca com `semMarcaDeResposta`. Um merge que traga o bloco do `wait` cru devolve o insert não conferido e a marca para de ser gravada — a caixa do construtor vira enfeite, sem erro nenhum. Ver a seção "Aguardar — parar se o cliente responder" |
 | `src/app/api/whatsapp/webhook/route.ts` (4ª linha nossa) e `src/lib/whatsapp/inbound-store.ts` | a chamada a `cancelarEsperasPorResposta`, ANTES de `dispatchInboundToFlows` — nos DOIS transportes (há pino estrutural com a ordem) |
 | `src/app/api/whatsapp/webhook/route.ts` (5ª linha nossa) | o `conversation.created` começa SEM `await` (`avisoDeConversaCriada`) e é esperado antes do `message.received` e em todo retorno antecipado (23/09/2026). O upstream o aguarda ANTES do upsert: um endpoint de saída fora do ar (até 5 s por POST) segurava a primeira mensagem de toda conversa nova e os motores atrás dela. Um merge que traga o `await` cru devolve o atraso sem conflito. O mesmo desenho está em `inbound-store.ts` e `instagram/persistir.ts` (esses dois são NOSSOS — o upstream não emite o evento neles). ⚠️ A ordem garantida é só `conversation.created` → `message.received`: robô, automações e IA já rodam com o aviso em voo, então o `message.status_updated` da resposta deles (outra requisição do provedor) pode chegar ao assinante antes do `conversation.created`. Pinos: os testes "conversation.created não segura a gravação" (`route.test.ts`, `inbound-store.test.ts`, `persistir.aviso.test.ts`) |
-| `src/app/api/whatsapp/webhook/route.ts` (6ª linha nossa) | o RECIBO (23/09/2026). `handleStatusUpdate` traduz o status por `reciboDaMeta` (`played` vira `read`; valor fora da lista não toca em nada), grava em `messages` só com a escada (`aceitamORecibo`, só linhas `agent`/`bot`, escopo por canal mantido) e pela espera da linha (`aplicarReciboQuandoAMensagemExistir` + `pausasDoReciboDaMeta`), e anuncia `message.status_updated` só quando alguma linha avançou, com a conta DESSA linha. O espelho de `broadcast_recipients` passou para ANTES (o disparo não grava em `messages` e não espera), e o UPDATE dele ficou CONDICIONAL (`origensDoDestinatario`, derivada de `isValidStatusTransition`): o do upstream lê, confere em memória e grava sem condição, e dois recibos do mesmo destinatário ao mesmo tempo se atropelavam (um `delivered` por cima do `read`, um `failed` por cima do `delivered`). Os recibos de um POST rodam DEPOIS das mensagens dele (`processarEntradas` + `finally`). O upstream grava o status cru. A reescrita cobre a função inteira, então mudança futura dele nela CONFLITA — e resolver o conflito com a versão deles, ou colá-la no porte manual da Fase 5 do `PLANO-merge-upstream-2026-09.md` (o motivo da falha), devolve a bolha rebaixada. As colunas do erro entram no patch do `tentar()`. Pinos: `route.recibo.test.ts` e `recibo-da-meta.test.ts` |
+| `src/app/api/whatsapp/webhook/route.ts` (6ª linha nossa) | o RECIBO (23/09/2026). `handleStatusUpdate` traduz o status por `reciboDaMeta` (`played` vira `read`; valor fora da lista não toca em nada), grava em `messages` só com a escada (`aceitamORecibo`, só linhas `agent`/`bot`, escopo por canal mantido) e pela espera da linha (`aplicarReciboQuandoAMensagemExistir` + `pausasDoReciboDaMeta`), e anuncia `message.status_updated` só quando alguma linha avançou, com a conta DESSA linha. O espelho de `broadcast_recipients` passou para ANTES (o disparo não grava em `messages` e não espera), e o UPDATE dele ficou CONDICIONAL (`origensDoDestinatario`, derivada de `isValidStatusTransition`): o do upstream lê, confere em memória e grava sem condição, e dois recibos do mesmo destinatário ao mesmo tempo se atropelavam (um `delivered` por cima do `read`, um `failed` por cima do `delivered`). Os recibos de um POST rodam DEPOIS das mensagens dele (`processarEntradas` + `finally`). O upstream grava o status cru. A reescrita cobre a função inteira, então mudança futura dele nela CONFLITA — e resolver o conflito com a versão deles devolve a bolha rebaixada. O motivo da falha (#535, Fase 5 do `PLANO-merge-upstream-2026-09.md`, colunas da 1039) foi portado À MÃO: `motivoDaFalhaDaMeta` (PARSE do `errors[0]`, nunca `as` — um `code` em texto ou fora do `integer` derrubaria o UPDATE que pinta a falha) entra no patch do `tentar()` e no `error_message` do destinatário, nos MESMOS updates condicionais; a falha que a escada recusa não grava motivo, e recibo posterior não o apaga (a falha é terminal). A bolha mostra o texto da Meta (`motivoNaBolha`, em `src/lib/inbox/motivo-da-falha.ts`). Pinos: `route.recibo.test.ts` e `recibo-da-meta.test.ts` |
 | `src/components/automations/automation-builder.tsx` (18/09/2026) | a caixa "Parar a automação se o cliente responder" no passo Aguardar e o sufixo no resumo do cartão fechado |
 | `src/app/(dashboard)/automations/[id]/logs/page.tsx` | `skipped` com traço NEUTRO em vez do ✗ vermelho (`StepRow`) |
 | `src/app/(dashboard)/inbox/page.tsx` (18/09/2026) | no INSERT de mensagem do CLIENTE na conversa aberta, `setTimeout(avisarExecucoesMudaram, 3000)` — a aba Automações descobre o cancelamento por resposta sem recarregar a página |
@@ -7872,8 +7873,9 @@ já valendo ANTES do upgrade (os ajustes são retrocompatíveis):
     push` na correção do #259. Três colunas anuláveis em `contacts` (BSUID,
     BSUID do portfólio, nome de usuário) com um índice único PARCIAL, e três
     em `messages` (código, título e detalhe da falha da Meta). Aditivas, com
-    `lock_timeout`. NINGUÉM as grava até as Fases 11 e 5 do plano do merge do
-    upstream. Aplicadas em 23/09/2026 pela Management API (histórico
+    `lock_timeout`. As da 1039 são gravadas pelo webhook da Meta desde a
+    Fase 5 do plano do merge do upstream; as da 1038, ninguém grava até a
+    Fase 11. Aplicadas em 23/09/2026 pela Management API (histórico
     `20260923202446` e `20260923202453`), depois do replay verde do CI e
     antes do merge do #270, com a conferência de antes (nenhuma 1038/1039
     ou 0043/0045 no histórico nem em branch remota, nenhuma das 6 colunas);

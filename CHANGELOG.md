@@ -64,6 +64,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   próprio id e a aplicava ao contato — e, no `PATCH`, tirava do contato a
   etiqueta verdadeira. Um id nunca cria etiqueta. O filtro `?tag=` de
   `GET /api/v1/contacts` continua aceitando só o id.
+- **A mensagem "Não entregue" diz o motivo que a Meta deu.** Nas conexões
+  oficiais, a bolha da mensagem que falhou mostra o motivo da Meta (número
+  bloqueado, janela de 24 horas fechada, limite de mensagens de marketing…),
+  no texto dela, com o código do erro; nos disparos, o mesmo motivo vai para o
+  registro do destinatário. Vale para as falhas a partir desta versão. As
+  conexões por QR Code não informam motivo. Sem migration nova: as colunas
+  vieram na `1039_cb_motivo_da_falha_da_mensagem.sql`.
 
 ### Corrigido
 

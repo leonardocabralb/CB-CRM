@@ -36,6 +36,8 @@ import {
   type Tentativa,
 } from '@/lib/whatsapp/transport/recibo-antes-da-mensagem'
 import {
+  linhaDoMotivo,
+  motivoDaFalhaDaMeta,
   pausasDoReciboDaMeta,
   reciboDaMeta,
 } from '@/lib/whatsapp/transport/recibo-da-meta'
@@ -110,12 +112,7 @@ interface WhatsAppWebhookEntry {
         wa_id: string
       }>
       messages?: WhatsAppMessage[]
-      statuses?: Array<{
-        id: string
-        status: string
-        timestamp: string
-        recipient_id: string
-      }>
+      statuses?: StatusDoWebhook[]
     }
     field: string
   }>
@@ -293,6 +290,12 @@ interface StatusDoWebhook {
   status: string
   timestamp: string
   recipient_id: string
+  /**
+   * Só no `failed`: o motivo da Meta (`code`, `title`, `error_data.details`).
+   * `unknown` de propósito — quem lê é `motivoDaFalhaDaMeta`, que confere
+   * cada campo antes de ele chegar ao UPDATE.
+   */
+  errors?: unknown
 }
 
 /** Recibo à espera da vez, com o canal do número que o recebeu. */
@@ -545,6 +548,16 @@ async function handleStatusUpdate(
   const recibo = reciboDaMeta(status.status)
   if (!recibo) return
 
+  // O motivo da falha (upstream #535; colunas da 1039). Só existe no
+  // `failed`, e entra no MESMO UPDATE da situação nos dois espelhos abaixo:
+  // a falha que a escada recusa (chegou depois da entrega) não grava motivo,
+  // e um recibo posterior que não é falha não o apaga — ele nem alcança a
+  // linha `failed` (a escada não sai da falha).
+  const motivo = motivoDaFalhaDaMeta(status.status, status.errors)
+  if (motivo) {
+    console.warn(`WhatsApp message ${status.id} failed: ${linhaDoMotivo(motivo)}`)
+  }
+
   // Webhook fan-out for this status change happens at the END of this
   // handler (after both mirrors), so a slow subscriber endpoint can't
   // delay the broadcast_recipients update.
@@ -581,6 +594,9 @@ async function handleStatusUpdate(
     if (status.status === 'sent' && !('sent_at' in update)) update.sent_at = tsIso
     if (status.status === 'delivered') update.delivered_at = tsIso
     if (status.status === 'read') update.read_at = tsIso
+    // O destinatário já tem `error_message` (001): o motivo entra nele, numa
+    // linha, em vez de três colunas a mais (a escolha do original).
+    if (motivo) update.error_message = linhaDoMotivo(motivo)
 
     const { error: recUpdateErr } = await supabaseAdmin()
       .from('broadcast_recipients')
@@ -622,10 +638,16 @@ async function handleStatusUpdate(
   //    no patch DESTE update: o `failed` que a escada recusa chegou depois da
   //    entrega e não tem motivo a gravar.
   const avancadas: string[] = []
+  const patch: Record<string, unknown> = { status: recibo }
+  if (motivo) {
+    patch.error_code = motivo.codigo
+    patch.error_title = motivo.titulo
+    patch.error_details = motivo.detalhes
+  }
   const tentar = async (): Promise<Tentativa> => {
     let q = supabaseAdmin()
       .from('messages')
-      .update({ status: recibo })
+      .update(patch)
       .eq('message_id', status.id)
       .in('sender_type', ['agent', 'bot'])
       .in('status', aceitamORecibo(recibo))

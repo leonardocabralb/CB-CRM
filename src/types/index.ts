@@ -645,6 +645,15 @@ export interface Message {
    * badge in the inbox. Migration 033.
    */
   ai_generated?: boolean;
+  /**
+   * O motivo que a Meta deu para a falha (`errors[0]` do recibo `failed`:
+   * código, título, `error_data.details`). Migration 1039, gravado pelo
+   * webhook da Meta no mesmo UPDATE que marca `failed`; nunca apagado por
+   * recibo posterior. ⚠️ Só a Meta: falha da Evolution fica com os três nulos.
+   */
+  error_code?: number | null;
+  error_title?: string | null;
+  error_details?: string | null;
   /** Canal (cb_channels) por onde esta mensagem entrou/saiu. Migration 902. */
   channel_id?: string | null;
   /**

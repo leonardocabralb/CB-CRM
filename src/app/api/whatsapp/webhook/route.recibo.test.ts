@@ -519,3 +519,96 @@ describe('o recibo não segura a mensagem do cliente', () => {
     expect(erro).toHaveBeenCalledWith('Error processing webhook:', expect.any(Error));
   });
 });
+
+// ------------------------------------------------------------
+// O motivo da falha (Fase 5 do merge do upstream, #535; colunas da 1039).
+// ------------------------------------------------------------
+
+describe('o motivo da falha que a Meta manda no recibo', () => {
+  const ERRO = {
+    code: 131026,
+    title: 'Message undeliverable',
+    error_data: { details: 'Unable to deliver message.' },
+  };
+  const falhaComMotivo = (errors: unknown = [ERRO]) =>
+    receber(corpo({ statuses: [{ ...statusDaMeta('failed'), errors }] }));
+
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  it('grava código, título e detalhes no MESMO update que marca a falha', async () => {
+    h.estado.tabelas.messages.push(mensagem());
+    await (await falhaComMotivo())();
+
+    expect(linha()).toMatchObject({
+      status: 'failed',
+      error_code: 131026,
+      error_title: 'Message undeliverable',
+      error_details: 'Unable to deliver message.',
+    });
+    expect(h.estado.updates).toEqual([1]);
+    expect(h.estado.disparos.map((d) => d.status)).toEqual(['failed']);
+    expect(console.warn).toHaveBeenCalledWith(
+      `WhatsApp message ${WAMID} failed: [131026] Message undeliverable: Unable to deliver message.`,
+    );
+  });
+
+  it('no disparo, o motivo vai para o error_message do destinatário', async () => {
+    h.estado.tabelas.broadcast_recipients.push({ id: 'dest-1', whatsapp_message_id: WAMID, status: 'sent' });
+    await (await falhaComMotivo())();
+
+    expect(h.estado.tabelas.broadcast_recipients[0]).toMatchObject({
+      status: 'failed',
+      error_message: '[131026] Message undeliverable: Unable to deliver message.',
+    });
+  });
+
+  it('failed sem errors grava só a situação', async () => {
+    h.estado.tabelas.messages.push(mensagem());
+    await (await recibo('failed'))();
+
+    expect(linha()?.status).toBe('failed');
+    expect(linha()).not.toHaveProperty('error_code');
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ a falha que chega depois da entrega não grava motivo (a escada a recusa inteira)', async () => {
+    h.estado.tabelas.messages.push(mensagem({ status: 'delivered' }));
+    h.estado.tabelas.broadcast_recipients.push({ id: 'dest-1', whatsapp_message_id: WAMID, status: 'delivered' });
+    await (await falhaComMotivo())();
+
+    expect(linha()?.status).toBe('delivered');
+    expect(linha()).not.toHaveProperty('error_code');
+    expect(h.estado.tabelas.broadcast_recipients[0]).not.toHaveProperty('error_message');
+  });
+
+  it('⚠️ um recibo depois da falha não apaga o motivo — e a situação continua failed', async () => {
+    h.estado.tabelas.messages.push(mensagem());
+    await (await falhaComMotivo())();
+    await (await recibo('delivered'))();
+    await (await recibo('read'))();
+
+    // Sem conferir a situação, este caso passaria sem testar nada: é a escada
+    // (a falha é terminal) que impede o recibo seguinte de alcançar a linha.
+    expect(linha()).toMatchObject({ status: 'failed', error_code: 131026, error_title: 'Message undeliverable' });
+  });
+
+  it('a falha que chega antes da gravação espera a linha e grava o motivo junto', async () => {
+    const aplicar = await falhaComMotivo();
+    setTimeout(() => h.estado.tabelas.messages.push(mensagem()), 800);
+
+    const fim = aplicar();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await fim;
+
+    expect(linha()).toMatchObject({ status: 'failed', error_code: 131026 });
+  });
+
+  it('⚠️ campo de tipo errado não derruba a gravação da falha', async () => {
+    h.estado.tabelas.messages.push(mensagem());
+    await (await falhaComMotivo([{ code: '131026', title: 'Message undeliverable' }]))();
+
+    expect(linha()).toMatchObject({ status: 'failed', error_code: null, error_title: 'Message undeliverable' });
+  });
+});

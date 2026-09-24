@@ -446,7 +446,7 @@
       "viewImage": "Ver imagem",
       "expandVideo": "Ampliar vídeo",
       "imageAlt": "Imagem enviada",
-      "notDelivered": "Não entregue"
+      "motivoDaFalha": "Motivo informado pela Meta: {motivo}"
     },
     "audioPlayer": {
       "tocar": "Reproduzir áudio",
