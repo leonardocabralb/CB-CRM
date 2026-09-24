@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
 import { buildMediaPath } from "./media-path";
+// NOSSO: as duas falhas antes do upload levam um motivo que a tela traduz
+// (`mensagemDoUpload`); a mensagem em inglês fica na exceção.
+import { ErroDeUpload } from "./erro-de-upload";
 
 /**
  * Shared media-upload helper for Supabase Storage buckets that use the
@@ -101,7 +104,7 @@ export async function uploadAccountMedia(
     error: userErr,
   } = await supabase.auth.getUser();
   if (userErr || !user) {
-    throw new Error("Not signed in.");
+    throw new ErroDeUpload("semSessao", "Not signed in.");
   }
 
   // Resolve account_id so the path is account-scoped (matches the
@@ -113,7 +116,7 @@ export async function uploadAccountMedia(
     .eq("user_id", user.id)
     .maybeSingle();
   if (profileErr || !profile?.account_id) {
-    throw new Error("Could not resolve your account.");
+    throw new ErroDeUpload("semConta", "Could not resolve your account.");
   }
 
   const path = buildMediaPath(

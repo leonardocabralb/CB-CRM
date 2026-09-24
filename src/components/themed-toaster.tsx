@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { useTranslations } from "next-intl";
 import { Toaster } from "sonner";
 
 import { useTheme } from "@/hooks/use-theme";
@@ -35,8 +36,12 @@ function useIsClient() {
 export function ThemedToaster() {
   const { mode } = useTheme();
   const isClient = useIsClient();
+  const t = useTranslations("Toaster");
   return (
     <Toaster
+      // Sem a prop o sonner anuncia "Notifications" (em inglês) ao leitor de
+      // tela, com o atalho alt+T que ele acrescenta sozinho.
+      containerAriaLabel={t("rotulo")}
       theme={isClient ? mode : DEFAULT_MODE}
       position="top-right"
       toastOptions={{

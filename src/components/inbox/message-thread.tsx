@@ -1705,7 +1705,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send message:", reason);
-          toast.error(`Failed to send: ${reason}`);
+          toast.error(t("sendFailed", { reason }));
           // Mark the optimistic bubble as failed so the user sees what happened
           onUpdateMessage(tempId, { status: "failed" });
           return;
@@ -1724,8 +1724,8 @@ export function MessageThread({
         marcarEnviada(tempId, payload);
       } catch (err) {
         console.error("Failed to send message:", err);
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send: ${reason}`);
+        const reason = err instanceof Error ? err.message : t("networkError");
+        toast.error(t("sendFailed", { reason }));
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
@@ -1828,7 +1828,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send media:", reason);
-          toast.error(`Failed to send: ${reason}`);
+          toast.error(t("sendFailed", { reason }));
           onUpdateMessage(tempId, { status: "failed" });
           // ⚠️ O objeto FICA — ver o cabeçalho: o compositor volta a ser dono.
           return false;
@@ -1839,8 +1839,8 @@ export function MessageThread({
         return true;
       } catch (err) {
         console.error("Failed to send media:", err);
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send: ${reason}`);
+        const reason = err instanceof Error ? err.message : t("networkError");
+        toast.error(t("sendFailed", { reason }));
         onUpdateMessage(tempId, { status: "failed" });
         return false;
       }
@@ -1906,7 +1906,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send interactive message:", reason);
-          toast.error(`Failed to send: ${reason}`);
+          toast.error(t("sendFailed", { reason }));
           onUpdateMessage(tempId, { status: "failed" });
           return;
         }
@@ -1915,8 +1915,8 @@ export function MessageThread({
         marcarEnviada(tempId, data);
       } catch (err) {
         console.error("Failed to send interactive message:", err);
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send: ${reason}`);
+        const reason = err instanceof Error ? err.message : t("networkError");
+        toast.error(t("sendFailed", { reason }));
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
@@ -2024,7 +2024,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send template:", reason);
-          toast.error(`Failed to send template: ${reason}`);
+          toast.error(t("sendTemplateFailed", { reason }));
           onUpdateMessage(tempId, { status: "failed" });
           return;
         }
@@ -2032,8 +2032,8 @@ export function MessageThread({
         marcarEnviada(tempId, payload);
       } catch (err) {
         console.error("Failed to send template:", err);
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send template: ${reason}`);
+        const reason = err instanceof Error ? err.message : t("networkError");
+        toast.error(t("sendTemplateFailed", { reason }));
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
@@ -2043,6 +2043,7 @@ export function MessageThread({
       onUpdateMessage,
       marcarEnviada,
       activeChannel?.id,
+      t,
     ],
   );
 
@@ -2065,9 +2066,9 @@ export function MessageThread({
     return map;
   }, [reactions]);
 
-  const contactDisplayName = nomeDoContato(contact, "Customer");
+  const contactDisplayName = nomeDoContato(contact, t("customer"));
 
-  // Author label for a quoted message: "You" when we sent the parent,
+  // Author label for a quoted message: "você" (tQuote("you")) when we sent the parent,
   // contact name when the customer sent it.
   //
   // ⚠️ Em GRUPO o autor é o participante, não "o contato" — que nem existe.
@@ -2077,10 +2078,10 @@ export function MessageThread({
     (m: Message): string => {
       const isAgentMsg =
         m.sender_type === "agent" || m.sender_type === "bot";
-      if (isAgentMsg) return "You";
+      if (isAgentMsg) return tQuote("you");
       return m.group_sender_name || contactDisplayName;
     },
-    [contactDisplayName],
+    [contactDisplayName, tQuote],
   );
 
   const handleStartReply = useCallback(
@@ -2202,7 +2203,7 @@ export function MessageThread({
         return;
       }
       if (messageId.startsWith("temp-")) {
-        toast.error("Wait for the message to finish sending");
+        toast.error(t("waitForSending"));
         return;
       }
 
@@ -2247,12 +2248,12 @@ export function MessageThread({
           throw new Error(payload?.error || `HTTP ${res.status}`);
         }
       } catch (err) {
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Reaction failed: ${reason}`);
+        const reason = err instanceof Error ? err.message : t("networkError");
+        toast.error(t("reactionFailed", { reason }));
         setReactions(snapshot);
       }
     },
-    [conversation, user?.id],
+    [conversation, user?.id, t],
   );
 
   const handleChannelChange = useCallback(
@@ -2895,7 +2896,11 @@ export function MessageThread({
                       ? {
                           authorLabel:
                             parent.sender_type === "agent" || parent.sender_type === "bot"
-                              ? t("me")
+                              // O MESMO rótulo da citação no compositor
+                              // (`authorLabelFor`): `t("me")` é o sufixo
+                              // " (eu)" do menu de responsável, e saía assim,
+                              // com espaço e parênteses, no topo da citação.
+                              ? tQuote("you")
                               // Em grupo o autor citado é o participante.
                               // Sem isto, citar qualquer um mostrava o
                               // literal "Unknown" — texto fixo em inglês.

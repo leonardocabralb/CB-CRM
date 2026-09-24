@@ -33,7 +33,7 @@
 //
 //   <GatedButton
 //     canAct={canCreate}
-//     gateReason="create broadcasts"
+//     gateReason="createBroadcasts"
 //     onClick={() => router.push("/broadcasts/new")}
 //   >
 //     <Plus className="h-4 w-4" /> New Broadcast
@@ -41,8 +41,14 @@
 //
 // `canAct` defaults to true so unrelated usages still work.
 // When `canAct` is false, the button is `disabled` and the
-// wrapping span gets a `title` of `"Read-only — your role
-// can't ${gateReason}"`.
+// wrapping span gets the translated "Read-only — your role
+// can't <action>" title.
+//
+// ⚠️ NOSSO (Fase 10 do merge do upstream): `gateReason` era uma frase em
+// INGLÊS escrita em cada call site ("create broadcasts"), e o tooltip saía
+// "Somente leitura — seu papel não permite create broadcasts". Agora é um id
+// TIPADO (`AcaoBloqueada`), traduzido aqui por chave LITERAL — ação nova não
+// compila sem entrar no union e no `switch`.
 // ============================================================
 
 import { useTranslations } from "next-intl";
@@ -51,16 +57,54 @@ import type { ComponentProps, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+/** O que o botão faz — completa "seu papel não permite …". */
+export type AcaoBloqueada =
+  | "createBroadcasts"
+  | "deleteBroadcasts"
+  | "createAutomations"
+  | "createFlows"
+  | "createPipelines"
+  | "createDeals"
+  | "addOrImportContacts"
+  | "sendMessages";
+
+function rotuloDaAcao(
+  acao: AcaoBloqueada,
+  t: ReturnType<typeof useTranslations<"GatedButton">>,
+): string {
+  switch (acao) {
+    case "createBroadcasts":
+      return t("acoes.createBroadcasts");
+    case "deleteBroadcasts":
+      return t("acoes.deleteBroadcasts");
+    case "createAutomations":
+      return t("acoes.createAutomations");
+    case "createFlows":
+      return t("acoes.createFlows");
+    case "createPipelines":
+      return t("acoes.createPipelines");
+    case "createDeals":
+      return t("acoes.createDeals");
+    case "addOrImportContacts":
+      return t("acoes.addOrImportContacts");
+    case "sendMessages":
+      return t("acoes.sendMessages");
+    default: {
+      const nunca: never = acao;
+      return nunca;
+    }
+  }
+}
+
 interface GatedButtonProps extends Omit<ComponentProps<typeof Button>, "title"> {
   /** False → button is disabled and the wrapper span shows the
    *  "Read-only" tooltip. Defaults to `true` so a `<GatedButton>`
    *  without the prop is just a Button. */
   canAct?: boolean;
-  /** Verb phrase that completes the sentence
-   *  `"Read-only — your role can't <gateReason>"`. Provided
-   *  per-call so each CTA can name what it does ("create flows",
-   *  "send messages", "add contacts"). */
-  gateReason?: string;
+  /** The action that completes the sentence
+   *  "Read-only — your role can't <action>". Provided per-call so
+   *  each CTA names what it does; translated by `rotuloDaAcao`. */
+  gateReason?: AcaoBloqueada;
   /** Optional fallback title for the non-gated case. */
   title?: string;
   children?: ReactNode;
@@ -78,7 +122,7 @@ export function GatedButton({
   const t = useTranslations("GatedButton");
   const effectivelyDisabled = disabled || !canAct;
   const tooltip = !canAct && gateReason
-    ? t("readOnlyTooltip", { reason: gateReason })
+    ? t("readOnlyTooltip", { reason: rotuloDaAcao(gateReason, t) })
     : title;
 
   return (

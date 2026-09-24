@@ -28,7 +28,7 @@ interface UsePresenceResult {
   getRow: (userId: string) => PresenceRow | undefined;
   /**
    * The clock value the hook is currently deriving against. Pass this
-   * to `presenceLabel` / `formatLastSeen` so labels stay in lockstep
+   * to `useRotuloDePresenca` / `formatLastSeen` so labels stay in lockstep
    * with the dots (both advance on the same ~15s re-derive tick).
    */
   now: number;

@@ -88,6 +88,7 @@ export function ContactDetailView({
   // Mesmo namespace do fio: a frase "{autor} anotou:" é a MESMA nas quatro
   // telas que mostram anotação, e uma segunda chave divergiria na tradução.
   const tNote = useTranslations('Inbox.note');
+  const tThread = useTranslations('Inbox.messageThread');
   const supabase = createClient();
   // `accountId` saiu com o insert direto: a anotação agora nasce na rota,
   // que resolve a conta no servidor a partir da sessão.
@@ -612,8 +613,8 @@ export function ContactDetailView({
 
       toast.success(t('toastTemplateSent', { name: template.name }));
     } catch (err) {
-      const reason = err instanceof Error ? err.message : 'network error';
-      toast.error(`Failed to send template: ${reason}`);
+      const reason = err instanceof Error ? err.message : tThread('networkError');
+      toast.error(t('toastTemplateFailed', { reason }));
     } finally {
       setSendingTemplate(false);
     }
