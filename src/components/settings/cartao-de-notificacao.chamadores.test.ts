@@ -69,7 +69,7 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     // silêncio dela CALA o aviso: chamar a régua e ignorar a resposta passaria
     // numa conferência que só procurasse a chamada (medido por mutante).
     expect(hook).toMatch(/const silencio = silencioDoAviso\(/);
-    expect(hook).toMatch(/if \(silencio\) return;\s*\n\s*const labels = labelsRef\.current;/);
+    expect(hook).toMatch(/if \(silencio\) return;\s*if \(\(avisadas[^\n]*\n\s*\n\s*const labels = labelsRef\.current;/);
     // ...o nome pela régua da casa (telefone, senão @instagram)...
     expect(hook).toMatch(/nomeDoContato\(/);
     expect(hook).not.toMatch(/pickContactDisplayName\(/);
@@ -78,6 +78,66 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     // ...e o contexto REAL: `acesso` do useAuth carrega a lente do "Ver como".
     expect(hook).not.toMatch(/\bacesso\b/);
     expect(hook).toMatch(/papel: profile\?\.account_role/);
+  });
+
+  it('lê o pino do canal; a mensagem que não é sua ESPERA a atribuição; e a tela é conferida de novo', () => {
+    // Codex, PR #287: sem `channel_pinned` a régua não sabe se a conversa
+    // segue o cliente, e "só as minhas" perdia a mensagem que a automação
+    // atribui depois do INSERT. Codex, PR #289: um prazo fixo não garante a
+    // atribuição (outros passos podem vir antes), e depois dele a pessoa pode
+    // já estar lendo a conversa.
+    const hook = semComentarios(ler('hooks/use-browser-notifications.ts'));
+    expect(hook).toMatch(/"id, channel_id, channel_pinned, group_id, assigned_agent_id, "/);
+    expect(hook).not.toMatch(/setTimeout\(/);
+    expect(hook).toMatch(
+      /if \(esperaAtribuicao\(silencio\)\) \{\s*if \(!podeEstacionar\) return;[\s\S]*?estacionadas\.set\(msg\.conversation_id,/,
+    );
+    // A atribuição que chega com a consulta no ar não se perde...
+    expect(hook).toMatch(/const consultouEm = Date\.now\(\);\s*const \{ data, error \} = await supabase/);
+    expect(hook).toMatch(
+      /if \(atribuidaEm !== undefined && atribuidaEm >= consultouEm\) \{\s*void avisar\(msg, false, ordem\);\s*return;\s*\}/,
+    );
+    expect(hook).toMatch(/atribuidasAgora\.set\(id, agora\);\s*const parada = estacionadas\.get\(id\);\s*if \(!parada\) return;\s*estacionadas\.delete\(id\);/);
+    // ...a mais antiga não substitui a mais nova (consultas fora de ordem),
+    // pela ordem de CHEGADA do realtime — o carimbo empata no milissegundo...
+    expect(hook).toMatch(
+      /const atual = estacionadas\.get\(msg\.conversation_id\);\s*if \(atual && atual\.ordem > ordem\) return;[\s\S]{0,400}?estacionadas\.set\(msg\.conversation_id, \{ msg, ate: base \+ JANELA_DA_ATRIBUICAO_MS, ordem \}\);/,
+    );
+    expect(hook).toMatch(/void avisar\(msg, true, \+\+chegadas\);/);
+    // ...a estacionada da conversa que a pessoa está VENDO sai da fila (a não
+    // lida é da conta e uma aba oculta a zera — não serve de sinal)...
+    expect(hook).not.toMatch(/unread_count/);
+    expect(hook).toMatch(/if \(agora > parada\.ate\) estacionadas\.delete\(id\);\s*else if \(vendoAgora\(id\)\) marcarVista\(id\);/);
+    // ...a vista é uma GERAÇÃO (a chegada até a abertura): a consulta que
+    // estava no ar quando a pessoa abriu não estaciona nem avisa depois...
+    expect(hook).toMatch(/vistas\.set\(conversaId, \{ ate: chegadas, em: Date\.now\(\) \}\);\s*estacionadas\.delete\(conversaId\);/);
+    expect(hook).toMatch(/if \(\(vistas\.get\(msg\.conversation_id\)\?\.ate \?\? 0\) >= ordem\) return;\s*if \(esperaAtribuicao\(silencio\)\) \{/);
+    expect(hook).toMatch(/window\.clearInterval\(varredura\);/);
+    // ...por EVENTO da caixa de entrada (a amostragem perdia quem abre e sai
+    // entre dois tiques) e na volta à aba...
+    expect(hook).toMatch(/if \(typeof id === "string" && document\.visibilityState === "visible"\) marcarVista\(id\);/);
+    expect(hook).toMatch(/window\.addEventListener\(EVENTO_CONVERSA_ABERTA, aoAbrirConversa\);/);
+    expect(hook).toMatch(/document\.addEventListener\("visibilitychange", varrer\);/);
+    const pagina = semComentarios(ler('app/(dashboard)/inbox/page.tsx'));
+    expect(pagina).toMatch(
+      /conversaAbertaRef\.current = activeConversation\?\.id \?\? null;\s*if \(activeConversation\?\.id\) \{\s*window\.dispatchEvent\(\s*new CustomEvent\(EVENTO_CONVERSA_ABERTA, \{ detail: activeConversation\.id \}\),?\s*\);\s*\}\s*\}, \[activeConversation\?\.id\]\);/,
+    );
+    // ...a soltura de uma estacionada velha não troca o aviso da mais nova...
+    expect(hook).toMatch(/if \(silencio\) return;\s*if \(\(avisadas\.get\(msg\.conversation_id\)\?\.ordem \?\? 0\) > ordem\) return;/);
+    expect(hook).toMatch(/avisadas\.set\(msg\.conversation_id, \{ ordem, em: Date\.now\(\) \}\);\s*descartarAte\(msg\.conversation_id, ordem\);/);
+    // ...e o prazo conta da mensagem, não do estacionamento...
+    expect(hook).toMatch(/Math\.min\(Date\.now\(\), escrita\)/);
+    // ...e "vendo agora" é a tela de verdade (visível E na conversa).
+    expect(hook).toMatch(
+      /const vendoAgora = \(conversaId: string\) =>\s*document\.visibilityState === "visible" &&\s*viewedConversationFromLocation\(window\.location\.pathname, window\.location\.search\) ===\s*conversaId;/,
+    );
+    expect(hook).toMatch(
+      /event: "UPDATE",\s*schema: "public",\s*table: "conversations",\s*filter: `assigned_agent_id=eq\.\$\{userId\}`/,
+    );
+    expect(hook).toMatch(/void avisar\(parada\.msg, false, parada\.ordem\)/);
+    expect(hook).toMatch(
+      /if \(vendoAgora\(msg\.conversation_id\)\) \{\s*descartarAte\(msg\.conversation_id, ordem\);\s*return;\s*\}\s*avisadas\.set\([^\n]*\n\s*descartarAte\([^\n]*\n\s*try \{\s*const notificacao = new Notification\(/,
+    );
   });
 
   it('o clique abre a conversa também com o inbox já montado', () => {

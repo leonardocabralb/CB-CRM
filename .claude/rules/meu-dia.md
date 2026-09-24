@@ -211,9 +211,38 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   troca a query — a página não remonta e o deep link só é lido quando a lista
   recarrega. A página escuta e abre pelo caminho do "Nova conversa", sem
   reabrir a que já está ativa (zeraria o fio carregado).
-- ⚠️ **Conversa NOVA pode ser lida sem `channel_id`** (o canal chega à
-  conversa depois do INSERT da mensagem): na 1:1 sem canal, o recorte usa o
-  canal carimbado NA mensagem — senão a conversa de outra conexão passaria.
+- ⚠️ **O canal do recorte: conversa FIXADA usa o dela; SOLTA usa o da
+  MENSAGEM** (o `follow` grava o canal novo depois do INSERT, e o ouvinte pode
+  ler antes — a coluna diria o número velho, ou nulo na conversa nova). Por
+  isso o select traz `channel_pinned`.
+- ⚠️ **A mensagem calada por "não é sua" fica ESTACIONADA
+  (`JANELA_DA_ATRIBUICAO_MS` = `LIMITE_DE_ATRASO_MS`, 1 h: a cadeia de passos
+  antes de atribuir não tem teto; depois de 1 h já não é aviso de mensagem
+  nova; a mais antiga nunca substitui a mais nova — pela ordem de CHEGADA do
+  realtime, não pelo carimbo, que empata no milissegundo) e o UPDATE da conversa atribuída à
+  pessoa (realtime, `assigned_agent_id=eq.<id>`) a solta** — decidida de novo,
+  lendo a conversa como está. A automação disparada pela própria mensagem pode
+  atribuí-la depois do INSERT, e sem prazo: um sono fixo (a 1ª versão, 3 s)
+  não garante nada, porque outros passos podem vir antes (Codex, #287 e #289).
+  As cercas: a atribuição que chega com a consulta ainda no ar é guardada
+  (`atribuidasAgora`) e decide na hora de estacionar; a conversa que a
+  pessoa ABRE fica marcada como VISTA até aquela chegada, por evento da
+  caixa de entrada (`EVENTO_CONVERSA_ABERTA`; amostrar a URL perdia quem abre
+  e sai entre dois tiques) e na volta à aba — uma geração, não só a fila,
+  porque a consulta no ar estacionaria depois (⚠️ nunca pela não lida,
+  que é da conta: uma aba oculta com o fio aberto a zera e calaria quem não
+  viu); a soltura de uma estacionada velha não troca o aviso de uma mais nova
+  já exibida (`avisadas`); o prazo conta da MENSAGEM. ⚠️ Aceito e escrito, porque hoje nenhuma automação
+  atribui conversa (medido em 24/09/2026): em "minhas e sem responsável", a
+  conversa lida sem dono avisa na hora mesmo que a automação a entregue a
+  outra pessoa em seguida, e a estacionada com dono de outra pessoa não é
+  solta se a conversa ficar SEM dono (o filtro do realtime não casa NULO).
+  E com DUAS abas: a vista numa aba não chega à outra (cada aba tem o seu
+  ouvinte desde o original, e aviso com a mesma `tag` se substitui) — no
+  máximo um aviso redundante, nunca um perdido.
+- ⚠️ **A tela é conferida DE NOVO antes de exibir** (`vendoAgora`): entre o
+  INSERT e o aviso cabem a consulta e, na estacionada, minutos — a pessoa pode
+  ter aberto a conversa nesse meio.
 - ⚠️ **Aparelho de toque é "não suportado"** (`avisoPossivelNoAparelho`,
   `MIDIA_DE_TOQUE`): sem service worker, `new Notification()` lança no Chrome
   do Android e no app instalado no iPhone — a chave ligaria e nada chegaria.

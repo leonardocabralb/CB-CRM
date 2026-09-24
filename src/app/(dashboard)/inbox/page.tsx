@@ -24,7 +24,7 @@ import { conversaNoEscopo } from "@/lib/perfis/escopo";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { VoltarAoFunil } from "@/components/inbox/voltar-ao-funil";
 import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
-import { EVENTO_ABRIR_CONVERSA, urlDoInbox } from "@/lib/inbox/url";
+import { EVENTO_ABRIR_CONVERSA, EVENTO_CONVERSA_ABERTA, urlDoInbox } from "@/lib/inbox/url";
 import { comMensagemNova } from "@/lib/inbox/ordem-da-lista";
 import {
   novoPedidoDeSalto,
@@ -288,6 +288,13 @@ function InboxPageInner() {
   const conversaAbertaRef = useRef<string | null>(null);
   useEffect(() => {
     conversaAbertaRef.current = activeConversation?.id ?? null;
+    // O aviso do navegador tira da fila de espera a mensagem desta conversa:
+    // ela está na tela (ver `EVENTO_CONVERSA_ABERTA`).
+    if (activeConversation?.id) {
+      window.dispatchEvent(
+        new CustomEvent(EVENTO_CONVERSA_ABERTA, { detail: activeConversation.id }),
+      );
+    }
   }, [activeConversation?.id]);
 
   // Tracks conversations whose hydrate fetch is currently in flight. The

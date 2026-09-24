@@ -83,8 +83,11 @@ function main() {
     const base = args[0] ?? 'origin/main'
     caminhos = [
       ...new Set([
-        ...git('diff', '--name-only', `${base}...HEAD`),
-        ...git('diff', '--name-only', 'HEAD'),
+        // --no-renames: com a detecção de renomeação, o arquivo movido entre
+        // áreas sai só com o DESTINO, e as regras da origem somem (Codex, PR
+        // #286). Sem ela, a origem aparece como apagada e o destino como novo.
+        ...git('diff', '--name-only', '--no-renames', `${base}...HEAD`),
+        ...git('diff', '--name-only', '--no-renames', 'HEAD'),
         ...git('ls-files', '--others', '--exclude-standard'),
       ]),
     ].sort()
