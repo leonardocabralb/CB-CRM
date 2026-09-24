@@ -57,15 +57,34 @@ describe('listWabaPhoneNumbers', () => {
   });
 
   it('os dois erros locais são "a Meta respondeu", nunca "não foi possível falar com a Meta"', async () => {
+    // 1) cursor fora do Graph
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
         resposta({ data: [], paging: { next: 'https://outro.example/x' } }),
       ),
     );
-    const erro = await listWabaPhoneNumbers({ wabaId: 'W', accessToken: 'tok' }).catch((e) => e);
-    expect(erro).toBeInstanceOf(MetaApiError);
-    expect(explainMetaError(erro, 'waba_phone_numbers').motivo).toBe('outro');
+    const foraDoGraph = await listWabaPhoneNumbers({ wabaId: 'W', accessToken: 'tok' }).catch(
+      (e) => e,
+    );
+    expect(foraDoGraph).toBeInstanceOf(MetaApiError);
+    expect(explainMetaError(foraDoGraph, 'waba_phone_numbers').motivo).toBe('outro');
+
+    // 2) o teto de páginas acaba com página sobrando
+    let n = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        n += 1;
+        return resposta({
+          data: [{ id: String(n) }],
+          paging: { next: `https://graph.facebook.com/v21.0/W/phone_numbers?after=${n}` },
+        });
+      }),
+    );
+    const noTeto = await listWabaPhoneNumbers({ wabaId: 'W', accessToken: 'tok' }).catch((e) => e);
+    expect(noTeto).toBeInstanceOf(MetaApiError);
+    expect(explainMetaError(noTeto, 'waba_phone_numbers').motivo).toBe('outro');
   });
 
   it('bater no teto de páginas com página sobrando LANÇA, nunca devolve meia lista', async () => {

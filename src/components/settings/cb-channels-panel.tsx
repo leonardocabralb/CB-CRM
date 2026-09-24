@@ -502,7 +502,12 @@ export function CbChannelsPanel() {
         const falha = lerFalhaDaMeta(payload.falha);
         if (falha) {
           if (vigente) setMetaFalha(falha);
-          toast.error(textoDaFalha(falha), { duration: 10_000 });
+          // Sem o aviso do diálogo (envio abandonado), o código e o trace id
+          // que a frase manda ler "logo abaixo" vão na segunda linha.
+          toast.error(textoDaFalha(falha), {
+            duration: vigente ? 10_000 : 20_000,
+            ...(vigente ? {} : { description: detalhesDaFalha(falha) }),
+          });
         } else {
           toast.error(payload.error || t('createFailed'));
         }
