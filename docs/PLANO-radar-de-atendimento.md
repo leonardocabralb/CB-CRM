@@ -115,9 +115,14 @@ congelada segue fiel) e os cartões contam só a pendência dela.
   O feedback POR CONVERSA já existe: `observacoes_por_atendente` na
   análise, com autoria validada. ⚠️ A restrição a quem gerencia a equipe
   é DE TELA — o dado bruto viaja a qualquer membro logado (policy da 941
-  é por conta, sem papel). Barreira real = a PRÓXIMA migration livre (a
-  943 virou a transcrição de áudio): coluna sem grant + rota server-side,
-  desenhada no CLAUDE.md, ainda não feita.
+  é por conta, sem papel) e um `agent` lê a própria avaliação pela aba
+  Network. **Barreira real, PENDENTE (ainda não feita), numa migration
+  nova:** (1) coluna separada para o feedback, sem GRANT ao
+  `authenticated`; (2) rota server-side com `requireRole` que a entrega a
+  quem gerencia a equipe; (3) trocar o `select('*')` do hook por colunas
+  nomeadas — senão a coluna sem grant derruba a consulta inteira do
+  painel. (A receita vivia no CLAUDE.md até 24/09/2026; esta é a casa da
+  pendência.)
 - Notificação no sino para urgência alta.
 - Tendência da nota por semana; expediente configurável por conta
   (hoje: constante em `src/lib/cb-radar/horario-comercial.ts`).

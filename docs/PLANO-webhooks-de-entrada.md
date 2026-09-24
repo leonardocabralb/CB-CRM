@@ -351,3 +351,70 @@ cerca de posse, rowcount nas escritas, e a migration num banco vazio.
 | 1 | ❌ **Falso positivo** | "`id_externo` omitido vira NULL e o insert estoura". O `columns` do postgrest-js só é fixado para ARRAY (`index.mjs:4438`); com objeto único o PostgREST deriva as colunas das chaves presentes e a omitida usa o DEFAULT — a doc do `defaultToNull` diz "only applies for bulk inserts". O e2e já havia provado ao vivo: três acionamentos gravados com `campo_id` vazio, todos 200. |
 | 2 | ⚠️ **Real, parcialmente corrigido** | Corrida na criação de etiqueta nova: `tags` não tem UNIQUE em `name` e `resolveImportTagIds` faz ler-então-inserir. Mitigado relendo o catálogo depois da criação — as duas requisições convergem na etiqueta MAIS ANTIGA, então o contato ganha uma linha só e o `tag_added` dispara uma vez só. **Sobra**: a linha duplicada no catálogo. Fechar de vez exige índice único em `(account_id, lower(btrim(name)))` com deduplicação do que já existe — vale para o `PATCH` e para o import de CSV também, que têm a mesma corrida desde sempre. Fica para PR próprio. |
 | 3 | ✅ **Real, corrigido** | A seção `webhooks` não estava em `SECOES_SO_DE_ADMIN`, e `podeVerSecao` tem fail-open para membro sem perfil — a seção aparecia para não-admin como tela permanentemente quebrada. Corrigido, e o teste do editor passou a DERIVAR da constante em vez de cravar `"perfis"`. |
+
+## Typebot → CRM: a configuração do escritório (21/09/2026)
+
+Movida do `CLAUDE.md` em 24/09/2026, sem reescrever. É CONFIGURAÇÃO deste
+escritório (o fluxo, os webhooks e as automações pelo nome), por isso fica
+aqui e não no `docs/webhooks.md`, que vai para quem instala. As regras
+genéricas que ela ensina — escrita vinda de formulário público atrás de uma
+CONDIÇÃO de etapa, nunca de escopo; nenhum webhook grava o nome; o Typebot
+não repete POST — estão condensadas em `.claude/rules/webhooks.md`. As
+referências entre aspas ("Etapa com RESULTADO", "a nota no motor") são
+seções do `CLAUDE.md` antigo, hoje em `.claude/rules/`; o texto integral está
+em `git show f5879b3f:CLAUDE.md`.
+
+⚠️ **Typebot → CRM (21/09/2026): QUATRO webhooks e QUATRO automações, tudo
+CONFIGURAÇÃO — e toda escrita passa por uma TRAVA de etapa.** O fluxo
+"CB Advogados - Gestão de passivos" chama `Typebot · Lead e respostas` (em
+vários pontos: depois do telefone, do e-mail, das respostas), `Typebot ·
+Recebeu o link` (clicou "Agendar horário"), `Typebot · Desqualificado` e
+`Typebot · Abaixo de 150 mil com processo` (etiqueta `-150k`; o passo de
+mensagem ao lead entra quando o operador escrever o texto). A de lead PUXA
+para "Lead - Type e Forms" o card que está em Contato Avulso, Desqualificado
+ou Perdido (decisão do operador) — os dois últimos saem da perda pela 1031.
+Os blocos do Typebot mandam o corpo PADRÃO (Custom body desligado: todas as
+variáveis pelo nome, fbp/fbc/ip/user_agent inclusive). O passo a passo
+genérico está em `docs/webhooks.md`. O que morde:
+
+- ⚠️⚠️ **O formulário é PÚBLICO e não prova posse do telefone.** Qualquer um
+  que digite o número de um cliente aciona as automações sobre a ficha DELE.
+  Por isso toda escrita (etiqueta, e-mail, respostas, campanha) e todo
+  movimento vivem no ramo SIM de uma condição `deal_stage == Lead - Type e
+  Forms`: só o card que o próprio Typebot criou (ou que alguém pôs ali) é
+  tocado. Cliente com card adiante ou noutro funil não ganha nada. ⚠️ O card
+  PERDIDO é alcançado de propósito (a "Lead e respostas" puxa o desqualificado
+  de volta), MENOS o de contato que tem card GANHO — esse é cliente, e fica
+  intocado (ver "Etapa com RESULTADO").
+  Tirar a trava faz o formulário reescrever e-mail, campanha e "Tamanho da
+  Divida" de quem já é cliente — o e-mail é o que liga tl;dv e Asaas.
+- ⚠️ **Nenhuma automação do Typebot grava o NOME.** O lead novo nasce com o
+  nome digitado (`campo_nome`); o passo de nome gravaria FIXADO e o gatilho da
+  1007 retitularia o card aberto de qualquer funil. Quem fixa é o Calendly, no
+  agendamento.
+- ⚠️ **Condição, e não escopo de etapa (`automations.stage_ids`), nas três.**
+  O escopo FALHA ABERTO em erro de leitura (`stageInScope`) — e aí o
+  `move_deal_stage` arrasta o card de um cliente do Jurídico para o comercial,
+  marcado perdido. E fora do escopo o acionamento vira `sem_automacao`, que o
+  bloco de correções do Meu dia conta para sempre (lead que refaz o Typebot já
+  em No Show acontece toda semana). A condição falha FECHADO e termina
+  `barrada`, que o Meu dia não conta.
+- ⚠️ **O corpo é o retrato PADRÃO do Typebot** ("Custom body" desligado):
+  toda variável com valor, chaveada pelo NOME (`phone`, `name`, `email`, …),
+  inclusive as de sessão — conferido no fonte (`parseAnswers`, que lê
+  `typebot.variables` sem filtrar `isSessionVariable`). O webhook lê
+  `campo_telefone = phone`. Pergunta não respondida vem AUSENTE (não "") e a
+  automação a ignora (`update_contact_field` vazio não grava).
+- ⚠️ **O Typebot NUNCA repete POST** (401, 404, 429, timeout: perdido), e o
+  CRM não registra 401/404/429 — eles voltam antes do INSERT do log. Ponto que
+  "não chegou" só aparece em Typebot → Results → logs.
+- ⚠️ **No grupo "Group #19" a seta ENTRA no 3º bloco (o texto)**, e os dois
+  webhooks do topo nunca rodaram. O bloco do CRM ali vai DEPOIS do texto.
+- **Variável vazia não apaga campo** (`update_contact_field`, mesma data): o
+  Typebot manda todas as variáveis em todo ponto, e as não respondidas chegam
+  como "". Ver a nota no motor.
+- **O delta do corte da Kommo MOVE o card que o Typebot criou aqui** para a
+  etapa da Kommo (decisão 11 da migração): enquanto o Make ainda manda o mesmo
+  lead para lá, a pessoa existe nos dois lados. É o certo enquanto a equipe
+  trabalha na Kommo — mas quem rodar o delta sabe que agora há cards do
+  Typebot nascendo aqui.

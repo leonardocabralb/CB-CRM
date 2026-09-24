@@ -6,7 +6,7 @@ fase e no diário do fim.
 
 | | |
 | --- | --- |
-| **Estado** | Fases 0, 1, 1b e 2 em produção; Fase 3 partida em 3-I a 3-IV (ver o mapa). ⚠️⚠️ **Em 23/09/2026 às 16:40Z o PR #259 — o merge CRU do original até `aee1b01f`, feito por outra pessoa — entrou no `main` e foi publicado.** Ele fechou a ancestralidade (a Fase 12 aconteceu sem querer) e pôs em produção, sem as adaptações, o conteúdo das Fases 4 a 11. A seção "O merge #259", no fim da seção 7, tem a auditoria e o que cada fase passa a ser. |
+| **Estado** | Fases 0 a 7 em produção (a 3 partida em 3-I a 3-IV; ver o mapa); a próxima é a 8. Falta o teste REAL da Fase 5 (disparo fora da janela, depois de 24/09 19:14Z). ⚠️⚠️ **Em 23/09/2026 às 16:40Z o PR #259 — o merge CRU do original até `aee1b01f`, feito por outra pessoa — entrou no `main` e foi publicado.** Ele fechou a ancestralidade (a Fase 12 aconteceu sem querer) e pôs em produção, sem as adaptações, o conteúdo das Fases 4 a 11. A seção "O merge #259", no fim da seção 7, tem a auditoria e o que cada fase passa a ser. |
 | **Alvo PINADO** | `upstream/main` = **`80c3f9a`** (13/09/2026). Base comum com o nosso `main`: `98b5bd2` (upstream #532, 31/08). Tudo neste plano se refere a esse commit — se o upstream andar, é outro ciclo. ⚠️ **Ele ANDOU (medido em 21/09/2026): `upstream/main` = `aee1b01f`, 2 commits novos** — `b9969fa2` (#586: exige `+` e código do país em telefone digitado e na API; 21 arquivos) e `f8a1cc72` (chaves do modal de importação em `pt`/`es`). Estão FORA deste plano até a decisão P9 (seção 8). Conferido de novo em 22/09/2026: não andou mais. ⚠️ **Desde o #259 (23/09/2026), `aee1b01f` é ANCESTRAL do nosso `main`**: o próximo merge do original parte dali, e o que o #259 descartou não volta por merge. |
 | **Pedido do operador (21/09/2026)** | Trazer todas as atualizações como COMPLEMENTO ou CORREÇÃO, nunca retrocesso. BSUID por último (é o mais complexo e o de maior risco). Toda correção é **medida contra o nosso código**, **revisada em duas lentes** e **testada no preview, na prática**. Merge e migration estão autorizados quando o teste exigir. Só depois da validação passa-se à fase seguinte. |
 | **PR #229** | Aberto por `devgabrielslv` com head em `ArnasDon/wacrm:main`. **Não tinha como ser mesclado**: resolver conflito ali seria commitar no upstream, e o conteúdo dele muda sozinho (a origem é uma branch viva). **FECHADO em 21/09/2026 por decisão do operador (P1)**, com comentário apontando para este plano — fechar o PR não descarta o conteúdo: ele entra pelas fases daqui, e a worktree `.claude/worktrees/merge-upstream` fica de pé para isso. |
@@ -193,7 +193,7 @@ quebrar, sabe-se qual.
 | **4** | Fluxos: `{{vars}}` em botões e listas (#553) | Inerte hoje (0 fluxos ativos) | Média | Médio-baixo | — | ✅ em produção (PR #271, 23/09): porte manual — o #259 **descartou** o `engine.ts` deles; teste real feito com a janela aberta pelo operador |
 | **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | ✅ em produção (PR #283, merge `6cedb67a`, rollout 24/09 00:24Z): porte manual — o #259 descartou o webhook deles; falta o disparo REAL fora da janela (a janela do lead de teste fecha 24/09 19:14Z) |
 | **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | ✅ em produção (PR #284, merge `fe2a7530`, rollout 24/09 12:24:56Z): 6a (o teto na leitura) e 6b (stub COMPLETO por `cb_channels`, ligado), com E2E contra a Meta; pós-deploy conferido (seção da fase) |
-| **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | ✅ mesclada (PR #285): o motivo da falha em *Conexões* (`POST /api/cb/channels`), o par WABA/número conferido, a assinatura da WABA fatal, o token limpo das mensagens, o POST legado aposentado (410) e `docs/conexao-meta.md`; testado contra a Meta real com o token da conexão oficial (só leituras); o pós-deploy é registrado no PR da Fase 8 |
+| **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | ✅ em produção (PR #285, merge `f5879b3f`, rollout 24/09 14:17:55Z, na reexecução): o motivo da falha em *Conexões* (`POST /api/cb/channels`), o par WABA/número conferido, a assinatura da WABA fatal, o token limpo das mensagens, o POST legado aposentado (410) e `docs/conexao-meta.md`; testado contra a Meta real com o token da conexão oficial (só leituras); pós-deploy conferido (seção da fase) |
 | **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | biblioteca CRUA no `main`; o cartão ESCONDIDO (correção do #259) até o ouvinte ser montado com as adaptações |
 | **9** | "Digitando…" da IA (#527), sobre o canal da conversa | Inerte hoje (auto-reply desligado) | Média | Médio | — | só a função (`sendTypingIndicator`, sem chamador); o `auto-reply.ts` deles foi descartado |
 | **10** | i18n das telas em inglês (#577, #578, #579) | 219 chaves | Média (braçal) | Baixo | — | parcial pelo #259 (240 chaves unidas, telas DELES traduzidas); `pt.json`/`es.json` apagados (P3); faltam as telas NOSSAS e ~129 órfãs |
@@ -1390,7 +1390,7 @@ adota o stub. Limpeza: apagar o stub.
   | P3 — CHANGELOG × INSTALACAO.md (os campos do webhook; o stub de qualidade nascia DRAFT) | ✅ alinhados; o stub lê a situação na Meta |
   | P3 — o teste de rota do #534 não veio | ✅ portado (`route.test.ts`), e o pino estrutural ficou mais estrito |
   | P3 — cópia desnecessária do Buffer | ✅ sem cópia |
-  | P3 — o primeiro Sincronizar troca o dono do stub pelo admin que sincroniza | registrado (defeito anterior da sincronização, M24) |
+  | P3 — o Sincronizar troca o dono (`user_id`) pelo admin que clicou, e não só no stub nem só no primeiro: em TODO modelo que ele atualiza (`templates/sync/route.ts`, conferido em 24/09). Como a coluna apaga em cascata (`0001`), apagar o login desse admin apaga os modelos da conta no CRM até o próximo Sincronizar | registrado (defeito anterior da sincronização, M24) |
   | P3 — stub do dono e linha de OUTRO admin no mesmo instante podem nascer juntos (o índice único leva o `user_id`) | aceito e escrito no CLAUDE.md (raro: um vai-e-volta ao banco) |
   | 2ª revisão (só o commit das correções, um revisor com cético): nenhum P0–P2; mediu no Node 22 que o prazo vencido na leitura do corpo é `TimeoutError` e a queda é `TypeError('terminated')`, e que o Buffer sem cópia sai com os bytes certos | — |
   | P3 (2ª revisão) — a asserção "não cai no ramo de mensagens" do teste de rota portado passava por acidente | ✅ o valor do evento leva também a forma de uma mensagem; o mutante sem o `continue` reprova |
@@ -1517,6 +1517,14 @@ registrar nem reconfigurar o número oficial da produção.
      copiá-lo; Phone Number ID inexistente → código 100/33, "a Meta não
      encontra o Phone Number ID". Nada gravado: `cb_channels` continua com 7
      conexões, 1 oficial.
+
+- **Merge e pós-deploy (24/09/2026):** PR #285 mesclado às 14:06:58Z (merge
+  `f5879b3f`, cabeça `3c23f456`; o `main` não tinha andado). O rollout
+  estourou o tempo do SSH até a VPS nas DUAS tentativas do job (run
+  `36010441272`, falha de rede, não do código); `gh run rerun --failed`
+  convergiu às 14:17:55Z. Conferido depois: saúde anônima em ordem e
+  ingestão viva (16 mensagens, 5 de cliente, até 14:23:33Z). Codex sem cota —
+  a revisão ficou nas duas lentes e no cético.
 
 ### Fase 8 — Notificação do navegador
 
@@ -1672,9 +1680,9 @@ sem aviso —, e só entra se alguém o trouxer:
 
 | O que ficou de fora | Onde entra |
 | --- | --- |
-| `flows/engine.ts` do #553 (`{{vars}}` em botões e listas; e o nó de LISTA sem o canal do nó — achado nosso) | Fase 4 |
-| `webhook/route.ts` do #535 (gravar o motivo), a bolha, os tipos e o espelho em `broadcast_recipients.error_message` | Fase 5 |
-| a fiação do #534 (`wabaId: entry.id` na rota) | Fase 6b |
+| `flows/engine.ts` do #553 (`{{vars}}` em botões e listas; e o nó de LISTA sem o canal do nó — achado nosso) | ✅ Fase 4 (PR #271) |
+| `webhook/route.ts` do #535 (gravar o motivo), a bolha, os tipos e o espelho em `broadcast_recipients.error_message` | ✅ Fase 5 (PR #283) |
+| a fiação do #534 (`wabaId: entry.id` na rota) | ✅ Fase 6b (PR #284) |
 | `auto-reply.ts` e `flows/meta-send.ts` do #527 (o chamador do "digitando…"; `loadAccountMetaCredentials`), e a linha dele no `webhook/route.ts` (`inboundMessageId: message.id` na chamada de `dispatchInboundToAiReply` — sem o `wamid` o "digitando" não tem o que marcar) — ⚠️ a IA roda pelos DOIS transportes (a Evolution também chama `dispatchInboundToAiReply`), e o "digitando" só vale na Meta | Fase 9 |
 | a montagem do ouvinte do #516 no `dashboard-shell.tsx` | Fase 8 (DENTRO da `<PortaDeEntrada>`) |
 | a entrada e a saída do #519 (BSUID): `webhook/route.ts`, `send-message.ts`, `flows/meta-send.ts`, `automations/meta-send.ts`, `react/route.ts`, `contact-sidebar`, `contact-detail-view`, `message-thread` e os tipos (o serializador da v1 é ADAPTAÇÃO nossa, não código dele) | Fase 11 |
@@ -1690,14 +1698,14 @@ acima, depois das fases, mostrando só divergência NOSSA.
 | # | Decisão | Proposta | Trava qual fase |
 | --- | --- | --- | --- |
 | P1 | ~~Fechar o #229 agora (com comentário apontando para este plano) ou só no fim~~ | ✅ FECHADO em 21/09/2026 por ordem do operador ("siga com sua orientação e feche o PR, mantendo a worktree do plano com todas as correções ainda pendentes — pra que possamos ir corrigindo por aqui") | — |
-| P2 | Notificação: respeitar o perfil e deixar grupo de fora | Sim | 8 |
+| P2 | ~~Notificação: respeitar o perfil e deixar grupo de fora~~ | ✅ Decidida em 24/09/2026: só as conexões do PERFIL, grupo fora, e a pessoa pode DESLIGAR e CONFIGURAR a notificação do navegador | 8 |
 | P3 | Apagar `pt.json`/`es.json` depois de aproveitar as traduções | Sim — ✅ feito em 23/09/2026 na correção do #259 (o #259 os tinha trazido de volta) | 10 |
-| P4 | BSUID: `NULL` + CHECK alargado, em vez de `''` | `NULL` | 11 |
+| P4 | ~~BSUID: `NULL` + CHECK alargado, em vez de `''`~~ | ✅ Decidida em 24/09/2026: `NULL`, com a regra do banco alargada para "telefone OU Instagram OU BSUID"; a chave única do BSUID vale para a CONTA inteira (a que a 1038 já criou) | 11 |
 | P5 | ~~Testes com efeito externo: modelo tarifado ao lead de teste (F2), modelo de teste na WABA (F6a), mensagem ao número oficial (F9)~~ | ✅ delegado pelo operador em 21/09 ("faça você o que precisar ser feito para o teste prático no preview e2e") — eu executo e limpo o que cada teste criar | — |
-| P6 | Alguma fase a DESCARTAR? (a 9 é inerte hoje) | Manter todas | — |
+| P6 | ~~Alguma fase a DESCARTAR? (a 9 é inerte hoje)~~ | ✅ Decidida em 24/09/2026: manter todas. A 9 entra inerte — e o operador sabe que o "digitando…" da Meta marca a mensagem do cliente como LIDA (tique azul) | — |
 | P7 | `agentRules: false` (o `next dev` da 16.3 não reescreve o `AGENTS.md`) — ou aceitar o bloco que o Next gera e commitá-lo | Manter desligado | nenhuma (já aplicado na Fase 1, reversível em uma linha) |
 | P8 | ~~Restaurar para 4 as não lidas da conversa que o teste da Fase 1 abriu por engano~~ | ✅ feito em 21/09 (o operador: "faça o que precisar para o teste prático e2e") | — |
-| P9 | Os 2 commits que o original publicou DEPOIS do alvo (`b9969fa2` #586 e `f8a1cc72`): fase extra antes do fechamento, ou próximo ciclo? | A decidir na retomada. ⚠️ O #586 **exige `+` e código do país** em telefone digitado e na API — a nossa regra (`digitosDoTelefone`) faz o contrário de propósito: completa o 55 no número brasileiro sem `+`, que é como o escritório digita. E ele mexe nos MESMOS arquivos da Fase 3a (`dedupe.ts`, `import-modal.tsx`, `broadcast-csv.ts`) e no `broadcast-core.ts` da Fase 2. Medir contra o nosso código antes de qualquer coisa | 3a (se entrar junto) ou 12 |
+| P9 | ~~Os 2 commits que o original publicou DEPOIS do alvo (`b9969fa2` #586 e `f8a1cc72`): fase extra antes do fechamento, ou próximo ciclo?~~ | ✅ Resolvida na retomada (23/09/2026): a metade ADITIVA do #586 entrou com a NOSSA régua — o 55 completado no número brasileiro digitado sem `+` — e partiu a Fase 3 em 3-I a 3-IV; o `+` obrigatório ficou de fora (formulário no PR #265, API no #276). O `f8a1cc72` só traz chaves de `pt`/`es`, que não servimos (P3). Desde o #259 os dois são ancestrais do `main` | — |
 
 ## 9. Diário
 
@@ -1720,3 +1728,4 @@ acima, depois das fases, mostrando só divergência NOSSA.
 | 24/09/2026 | 5 | O motivo da falha da Meta gravado na mensagem e no disparo, nos mesmos updates condicionais da escada; o `errors[0]` lido por parse (código estranho, NUL e surrogate solto derrubariam o UPDATE — medido num Postgres 16). PR #283, rollout 00:24Z; pós-deploy: a primeira mensagem entrou às 00:47Z. Falta o disparo REAL fora da janela (depois de 24/09 19:14Z). |
 | 24/09/2026 | 6 | 6a (o teto na leitura do cabeçalho) e 6b (o stub por `cb_channels`). A revisão em duas lentes achou 4 P2 — o mais sério, o stub de corpo vazio virando o modelo do envio e derrubando o envio pelo nome com variáveis; consertado lendo o modelo na Meta com a conversão da sincronização (`modelo-da-meta.ts`). E2E refeito contra a Meta; mutantes 20/20. Dois workers de mutante órfãos (stream sem fim, rodada anterior) giraram 7,5 h e derrubaram a suíte por carga — mortos, e a regra foi para o handoff. PR #284. A passagem de sessão está em `docs/HANDOFF-merge-upstream-2026-09.md`. |
 | 24/09/2026 | 7 | O #505 portado para *Conexões* (`POST /api/cb/channels`): o motivo da falha em lista fechada, traduzido num aviso que fica, com o campo destacado, o código e o trace id; o par WABA/número conferido; a assinatura da WABA fatal; o token limpo das mensagens da Meta; `paging.next` cercado; o token do upload fora da URL; o POST legado aposentado (410). Duas lentes: nenhum P0–P2, quatro P3 corrigidos. O teste com o token REAL da conexão oficial (só leituras, autorizado pelo operador) mostrou que a WABA trocada volta "nonexisting field" e era lida como "valor recusado" — a frase entrou na regra. Mutantes 21/21. Pós-deploy da Fase 6 registrado. PR #285. |
+| 24/09/2026 | fora do plano (instruções) | O `CLAUDE.md` (626 KB, carregado INTEIRO em toda sessão e de novo a cada compactação; um subagente estourou 211 mil tokens antes de começar) virou uma raiz de 36 KB com as regras transversais e as decisões do operador, 32 regras de área em `.claude/rules/` (cada uma com `paths:`, só carregam quando a Read abre um arquivo da área) e duas listas de consulta (`docs/MERGE-UPSTREAM.md`, `docs/MIGRATIONS-APLICADAS.md`). Portão novo `scripts/instrucoes.test.ts` (teto de 40 KB/25 KB, `paths:` obrigatório, glob morto reprova, índice completo) e a consulta `scripts/regras-do-diff.mjs`. Seis revisores de cobertura, um por faixa do texto antigo (~1.160 regras conferidas), acharam 18 faltas, todas corrigidas, e nenhuma distorção além de um intervalo Unicode escrito com os caracteres literais; a segunda lente corrigiu a visibilidade (regra que só carregava longe de quem precisa dela). No mesmo PR: o pós-deploy da Fase 7, a P9 resolvida, P2/P4/P6 decididas pelo operador e a nota do Sincronizar corrigida. |

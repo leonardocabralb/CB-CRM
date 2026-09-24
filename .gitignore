@@ -47,8 +47,11 @@ yarn-error.log*
 next-env.d.ts
 
 # --- CB Advogados (customizacoes do fork) ---
-# Config local do Claude Code (launch.json p/ subir o dev server, settings locais)
-.claude/
+# Config local do Claude Code (launch.json p/ subir o dev server, settings
+# locais, worktrees). As regras por área (.claude/rules/) SÃO versionadas:
+# são o CLAUDE.md dividido por assunto (ver o topo do CLAUDE.md).
+.claude/*
+!.claude/rules/
 
 # Capturas e logs do Playwright MCP. Sem isto elas poluem o `git status`
 # a cada sessao — foi assim que um `channel-select 2.tsx` (copia do Finder)

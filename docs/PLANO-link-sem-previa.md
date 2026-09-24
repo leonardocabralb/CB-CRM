@@ -196,3 +196,11 @@ Os recibos de uma mensagem específica ficam em `"MessageUpdate"`, pela coluna
   23/09 já estão fora, porque `linkPreview: false` desliga as duas prévias.
 
 Resultado da verificação: *(preencher: data, números de A e B, conclusão)*.
+
+Até 24/09/2026 esta pendência também estava escrita no `CLAUDE.md` (o 🔭
+"VERIFICAÇÃO PENDENTE" da seção do link sem prévia), com a ordem de
+registrar o resultado aqui e tirar a linha de lá. Com a reestruturação, esta
+seção é a casa da pendência. Ao registrar o resultado, apague também todo
+aviso de "verificação pendente" que ainda aponte para cá —
+`grep -rn "PLANO-link-sem-previa" CLAUDE.md .claude/rules` acha os que
+sobrarem.
