@@ -2068,7 +2068,7 @@ export function MessageThread({
 
   const contactDisplayName = nomeDoContato(contact, t("customer"));
 
-  // Author label for a quoted message: "You" when we sent the parent,
+  // Author label for a quoted message: "você" (tQuote("you")) when we sent the parent,
   // contact name when the customer sent it.
   //
   // ⚠️ Em GRUPO o autor é o participante, não "o contato" — que nem existe.
@@ -2078,10 +2078,10 @@ export function MessageThread({
     (m: Message): string => {
       const isAgentMsg =
         m.sender_type === "agent" || m.sender_type === "bot";
-      if (isAgentMsg) return "You";
+      if (isAgentMsg) return tQuote("you");
       return m.group_sender_name || contactDisplayName;
     },
-    [contactDisplayName],
+    [contactDisplayName, tQuote],
   );
 
   const handleStartReply = useCallback(
@@ -2896,7 +2896,11 @@ export function MessageThread({
                       ? {
                           authorLabel:
                             parent.sender_type === "agent" || parent.sender_type === "bot"
-                              ? t("me")
+                              // O MESMO rótulo da citação no compositor
+                              // (`authorLabelFor`): `t("me")` é o sufixo
+                              // " (eu)" do menu de responsável, e saía assim,
+                              // com espaço e parênteses, no topo da citação.
+                              ? tQuote("you")
                               // Em grupo o autor citado é o participante.
                               // Sem isto, citar qualquer um mostrava o
                               // literal "Unknown" — texto fixo em inglês.

@@ -87,7 +87,9 @@ export default function AutomationsPage() {
       if (fetchErr) throw fetchErr
       setAutomations((data ?? []) as Automation[])
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load automations")
+      // "" = falhou sem mensagem: o texto traduzido entra no render, e o
+      // `load` fica sem `t` (senão o efeito de montagem pede `load` nas deps).
+      setError(err instanceof Error && err.message ? err.message : "")
     }
   }
 
@@ -153,10 +155,10 @@ export default function AutomationsPage() {
     router.push(`/automations/new?template=${slug}`)
   }
 
-  if (error) {
+  if (error !== null) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2">
-        <p className="text-sm text-red-400">{error}</p>
+        <p className="text-sm text-red-400">{error || t("loadError")}</p>
         <Button variant="outline" onClick={() => window.location.reload()}>
           {t("retry")}
         </Button>

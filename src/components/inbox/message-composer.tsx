@@ -1033,9 +1033,11 @@ export function MessageComposer({
       const max = MEDIA_MAX_BYTES_BY_KIND[kind];
       if (file.size > max) {
         toast.error(
-          `File is ${(file.size / 1024 / 1024).toFixed(1)} MB — ${kind} limit is ${Math.round(
-            max / 1024 / 1024,
-          )} MB.`,
+          t("arquivoGrandeDemais", {
+            tamanho: Math.round((file.size / 1024 / 1024) * 10) / 10,
+            tipo: kind,
+            limite: Math.round(max / 1024 / 1024),
+          }),
         );
         return;
       }
@@ -1057,12 +1059,12 @@ export function MessageComposer({
         setDrafts((atual) => [...atual, item]);
         setSelecionado((atual) => atual ?? item.id);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Upload failed.");
+        toast.error(err instanceof Error ? err.message : t("uploadFailed"));
       } finally {
         setBusy(false);
       }
     },
-    [removeStaged, conversationId],
+    [removeStaged, conversationId, t],
   );
 
   /**
@@ -1258,7 +1260,7 @@ export function MessageComposer({
         setDrafts((atual) => [...atual, nota]);
         setSelecionado((atual) => atual ?? nota.id);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Upload failed.");
+        toast.error(err instanceof Error ? err.message : t("uploadFailed"));
       } finally {
         setBusy(false);
       }

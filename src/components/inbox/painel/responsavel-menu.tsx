@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { usePresence } from "@/hooks/use-presence";
-import { presenceLabel } from "@/lib/presence";
+import { useRotuloDePresenca } from "@/hooks/use-rotulo-de-presenca";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Profile } from "@/types";
@@ -52,6 +52,7 @@ export function ResponsavelMenu({
   const t = useTranslations("Inbox.messageThread");
   const { user } = useAuth();
   const { getPresence, getRow, now } = usePresence();
+  const presenceLabel = useRotuloDePresenca();
   const [profiles, setProfiles] = useState<Profile[]>([]);
 
   // Perfis sob RLS — hoje só os membros da conta. Uma busca por montagem,

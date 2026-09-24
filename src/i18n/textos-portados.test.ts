@@ -15,6 +15,8 @@ const ler = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf8')
 
 const PROIBIDOS: Record<string, string[]> = {
   'components/inbox/message-thread.tsx': [
+    'return "You"',
+    '? t("me")',
     'Failed to send: ${',
     'Failed to send template: ${',
     'Wait for the message to finish sending',
@@ -30,10 +32,20 @@ const PROIBIDOS: Record<string, string[]> = {
     'Recording is too long',
     "Voice recording isn't supported",
     'Microphone access denied',
+    '"Upload failed."',
+    '} MB — ${kind} limit is',
   ],
-  'app/(dashboard)/automations/page.tsx': ['aria-label="active"', 'aria-label="Open menu"'],
-  'components/settings/invite-member-dialog.tsx': ['Could not reach the server'],
+  'app/(dashboard)/automations/page.tsx': ['aria-label="active"', 'aria-label="Open menu"', 'Failed to load automations'],
+  'components/settings/invite-member-dialog.tsx': ['Could not reach the server', 'Failed to create invitation'],
   'components/contacts/contact-detail-view.tsx': ['Failed to send template: ${', ": 'network error'"],
+  // Fase 10c
+  'components/flows/flow-editor-state.tsx': ['Save failed', 'Status update failed', 'Delete failed'],
+  'app/(dashboard)/contacts/page.tsx': ['`Filter by ${', '`Remove ${', '`Select ${'],
+  'components/settings/template-manager.tsx': ['alt="Header sample"'],
+  'lib/presence.ts': ['"just now"', '} minutes ago`', '"a while ago"', '"Online — active now"', 'last seen ${'],
+  'app/(dashboard)/broadcasts/[id]/page.tsx': ["'Unknown'", "'Unknown error'"],
+  'lib/dashboard/queries.ts': ["'Unknown'", 'New message from', 'New contact: ${', '`Deal "', '`Broadcast "', '`Automation "', "'a contact'"],
+  'components/contacts/import-modal.tsx': [' more)`'],
 }
 
 describe('textos portados para o dicionário (Fase 10)', () => {
@@ -43,6 +55,40 @@ describe('textos portados para o dicionário (Fase 10)', () => {
       expect(textos.filter((t) => fonte.includes(t))).toEqual([])
     })
   }
+
+  it('título em JSX que era texto fixo (Funil do disparo, Pré-visualização da interativa)', () => {
+    expect(ler('app/(dashboard)/broadcasts/[id]/page.tsx')).not.toMatch(/>\s*Funnel\s*</);
+    expect(ler('components/interactive/interactive-builder.tsx')).not.toMatch(/^\s*Preview\s*$/m);
+  });
+
+  // O next-intl NÃO lê o sufixo `_plural` (é convenção do i18next): as
+  // chaves `Contacts.importModal.*_plural` nunca eram pedidas e a tela saía
+  // sempre no singular ("Importar 6 contato"). O plural mora na chave-base,
+  // em ICU.
+  describe('plural do import de contatos', () => {
+    const dic = (arq: string) =>
+      JSON.parse(fs.readFileSync(path.join(SRC, '..', 'messages', arq), 'utf8')) as Record<string, unknown>;
+    const BASES = [
+      'rowsReady', 'previewTags', 'moreRows', 'resultTags', 'importBtn',
+      'toastImported', 'toastTagsAssigned', 'toastSkipped', 'toastFailed',
+    ];
+    for (const arq of ['en.json', 'pt-BR.json']) {
+      it(`${arq}: a chave-base é plural ICU e não sobra chave \`_plural\``, () => {
+        const modal = (dic(arq).Contacts as Record<string, Record<string, string>>).importModal;
+        for (const b of BASES) expect(modal[b], b).toMatch(/\{\w+, plural,/);
+        const sufixos: string[] = [];
+        const varre = (o: unknown, caminho: string) => {
+          if (!o || typeof o !== 'object') return;
+          for (const [k, v] of Object.entries(o)) {
+            if (k.endsWith('_plural')) sufixos.push(`${caminho}${k}`);
+            varre(v, `${caminho}${k}.`);
+          }
+        };
+        varre(dic(arq), '');
+        expect(sufixos).toEqual([]);
+      });
+    }
+  });
 
   it('a lista de automações escreve o gatilho pela chave do construtor, nunca pelo `label` do TRIGGER_META', () => {
     const fonte = ler('app/(dashboard)/automations/page.tsx')

@@ -13,6 +13,7 @@ import {
 import type { ComponentType } from 'react'
 import type { ActivityItem, ActivityKind } from '@/lib/dashboard/types'
 import { cn } from '@/lib/utils'
+import { getBroadcastStatus } from '@/lib/broadcast-status'
 import { EmptyState } from './empty-state'
 import { Skeleton } from './skeleton'
 
@@ -42,6 +43,7 @@ import { useTranslations } from 'next-intl'
 
 export function ActivityFeed({ items, loading }: ActivityFeedProps) {
   const t = useTranslations('Dashboard.activityFeed')
+  const tStatus = useTranslations('Broadcasts.status')
   // Start at 5 — a quick scan of the most recent events without
   // dominating vertical real estate. User expands explicitly via the
   // footer control when they want deeper history.
@@ -103,7 +105,7 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
                     <Icon className="h-3.5 w-3.5" />
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                    {it.text}
+                    {textoDoItem(it, t, tStatus)}
                   </span>
                   <span className="flex-shrink-0 text-xs text-muted-foreground tabular-nums">
                     {relativeTime(it.at, t)}
@@ -155,6 +157,44 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
       )}
     </section>
   )
+}
+
+/**
+ * A frase da linha, no idioma do app. O item chega em DADO (ver
+ * `ActivityItem`); nome desconhecido vira o texto de queda traduzido.
+ */
+function textoDoItem(
+  it: ActivityItem,
+  t: ReturnType<typeof useTranslations>,
+  tStatus: ReturnType<typeof useTranslations>,
+): string {
+  switch (it.kind) {
+    case 'message':
+      return t('eventos.message', { quem: it.quem ?? t('eventos.desconhecido') })
+    case 'contact':
+      return t('eventos.contact', { quem: it.quem ?? t('eventos.desconhecido') })
+    case 'deal':
+      return it.etapa
+        ? t('eventos.dealNaEtapa', { titulo: it.titulo, etapa: it.etapa })
+        : t('eventos.dealAtualizado', { titulo: it.titulo })
+    case 'broadcast':
+      return it.status === 'sent'
+        ? t('eventos.broadcastEnviado', { nome: it.nome, total: it.total })
+        : t('eventos.broadcastSituacao', {
+            nome: it.nome,
+            situacao: tStatus(getBroadcastStatus(it.status).label),
+            total: it.total,
+          })
+    case 'automation': {
+      const valores = {
+        automacao: it.automacao ?? t('eventos.automacaoSemNome'),
+        quem: it.quem ?? t('eventos.umContato'),
+      }
+      return it.falhou
+        ? t('eventos.automationFalhou', valores)
+        : t('eventos.automationDisparou', valores)
+    }
+  }
 }
 
 function relativeTime(iso: string, t: ReturnType<typeof useTranslations>): string {

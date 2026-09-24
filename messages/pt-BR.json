@@ -1,6 +1,5 @@
 {
   "Channels": {
-    "label": "Canal",
     "all": "Todos os canais",
     "manyCount": "{count} canais",
     "selectPlaceholder": "Escolha um canal",
@@ -122,7 +121,20 @@
       "timeS": "há {sec}s",
       "timeM": "há {min}min",
       "timeH": "há {hr}h",
-      "timeD": "há {day}d"
+      "timeD": "há {day}d",
+      "eventos": {
+        "message": "Nova mensagem de {quem}",
+        "contact": "Novo contato: {quem}",
+        "dealNaEtapa": "Negócio \"{titulo}\" em {etapa}",
+        "dealAtualizado": "Negócio \"{titulo}\" atualizado",
+        "broadcastEnviado": "Disparo \"{nome}\" enviado para {total, plural, =1 {# contato} other {# contatos}}",
+        "broadcastSituacao": "Disparo \"{nome}\": {situacao} ({total, plural, =1 {# destinatário} other {# destinatários}})",
+        "automationFalhou": "Automação \"{automacao}\" falhou para {quem}",
+        "automationDisparou": "Automação \"{automacao}\" disparada para {quem}",
+        "desconhecido": "Desconhecido",
+        "umContato": "um contato",
+        "automacaoSemNome": "Automação"
+      }
     },
     "conversationsChart": {
       "title": "Conversas ao longo do tempo",
@@ -199,7 +211,6 @@
       "favoriteFailed": "Não deu para salvar o favorito. Tente de novo.",
       "filters": "Filtros",
       "favorites": "Favoritas",
-      "showingCount": "Exibindo {count} de {total}",
       "labelType": "Tipo",
       "labelStatus": "Situação",
       "labelAssignee": "Responsável",
@@ -217,7 +228,6 @@
       "tagModeAll": "Todas elas",
       "favoritesLoadFailed": "Não deu para carregar as suas conversas favoritas.",
       "assigneeUnnamed": "Membro sem nome",
-      "removeFilter": "Remover o filtro {filtro}",
       "searchMinChars": "Digite {n} letras para buscar também dentro das mensagens.",
       "searchingInMessages": "Buscando dentro das mensagens...",
       "stageFilterUnavailable": "Não foi possível carregar as etapas — o recorte por funil/etapa não está sendo aplicado.",
@@ -227,8 +237,6 @@
       "savedFilters": "Salvos",
       "savedFiltersLoading": "Carregando…",
       "savedFiltersLoadFailed": "Não foi possível carregar os filtros salvos.",
-      "savedFiltersEmpty": "Nenhum filtro salvo ainda.",
-      "saveCurrentFilter": "Salvar filtro atual…",
       "manageSavedFilters": "Gerenciar filtros",
       "saveFilterTitle": "Salvar filtro atual",
       "saveFilterNamePlaceholder": "Ex.: Bancário · Reunião marcada",
@@ -251,8 +259,6 @@
       "unsetAsDefault": "Deixar de ser meu padrão",
       "defaultSet": "Este filtro passa a abrir a sua caixa de entrada.",
       "defaultUnset": "A caixa de entrada volta a abrir sem filtro.",
-      "defaultFilterBanner": "Filtro padrão: {nome}",
-      "showEverything": "mostrar tudo",
       "viewAll": "Todas",
       "saveView": "Salvar",
       "saveViewChanges": "Salvar alterações",
@@ -396,7 +402,9 @@
       "aiUnreachable": "Não foi possível falar com o assistente de IA.",
       "recordingTooLong": "A gravação é longa demais (acima de 16 MB).",
       "recordingUnsupported": "Este navegador não permite gravar voz.",
-      "microphoneDenied": "Acesso ao microfone negado ou indisponível."
+      "microphoneDenied": "Acesso ao microfone negado ou indisponível.",
+      "uploadFailed": "Falha ao enviar o arquivo.",
+      "arquivoGrandeDemais": "O arquivo tem {tamanho, number} MB — o limite para {tipo, select, image {imagem} video {vídeo} audio {áudio} document {documento} other {arquivo}} é de {limite, number} MB."
     },
     "bubble": {
       "transcricao": "Transcrição",
@@ -458,7 +466,6 @@
     "actions": {
       "reply": "Responder",
       "copyText": "Copiar texto",
-      "delete": "Excluir",
       "react": "Reagir",
       "reactWith": "Reagir com {emoji}",
       "nothingToCopy": "Nada para copiar",
@@ -480,12 +487,12 @@
       "video": "[Vídeo]",
       "document": "[Documento]",
       "audio": "[Áudio]",
-      "voiceMessage": "[Mensagem de voz]",
       "location": "[Localização]",
       "template": "[Modelo]",
       "message": "[Mensagem]",
       "cancelReply": "Cancelar resposta",
-      "jumpTo": "Ir para a mensagem citada"
+      "jumpTo": "Ir para a mensagem citada",
+      "you": "Você"
     },
     "templatePicker": {
       "sendTemplate": "Enviar modelo",
@@ -503,14 +510,10 @@
       "send": "Enviar modelo"
     },
     "sidebar": {
-      "contactInfo": "Dados do contato",
       "tags": "Etiquetas",
-      "notes": "Notas",
       "deals": "Negócios",
       "noTags": "Nenhuma etiqueta",
       "noDeals": "Nenhum negócio",
-      "addNotePlaceholder": "Adicionar uma nota...",
-      "noteSaveError": "Não foi possível salvar a anotação.",
       "tabMain": "Principal",
       "tabHistory": "Histórico",
       "originTitle": "Origem do contato",
@@ -539,7 +542,6 @@
       "pinnedNote": "Fixada",
       "openFullDeal": "Abrir negócio completo",
       "dealSaveError": "Não foi possível atualizar o negócio.",
-      "statusOpen": "Aberto",
       "dealDetails": "Detalhes do negócio",
       "tabAutomations": "Automações",
       "tabFiles": "Arquivos",
@@ -682,8 +684,7 @@
       "tituloDaSecao": "Já rodou",
       "vazio": "Nenhuma automação terminou para este cliente ainda.",
       "carregando": "Carregando execuções…",
-      "falhouCarga": "Não consegui ler as execuções.",
-      "rodando": "{n, plural, one {# automação rodando} other {# automações rodando}}"
+      "falhouCarga": "Não consegui ler as execuções."
     },
     "aiBanner": {
       "pausedTitle": "O assistente de IA está pausado aqui",
@@ -892,7 +893,10 @@
       "toastBulkDeleted": "{count} contatos excluídos",
       "toastDeleteRefused": "Não foi possível excluir: seu perfil não tem permissão para apagar contatos.",
       "toastDeleteGone": "Este contato já não existe — alguém o excluiu antes. A lista foi atualizada.",
-      "selectAllOnPage": "Selecionar todos os contatos desta página"
+      "selectAllOnPage": "Selecionar todos os contatos desta página",
+      "filterByTag": "Filtrar por {name}",
+      "removeTagFilter": "Tirar o filtro {name}",
+      "selectContact": "Selecionar {name}"
     },
     "form": {
       "addTitle": "Adicionar contato",
@@ -909,11 +913,7 @@
       "companyLabel": "Empresa",
       "companyPlaceholder": "Acme Ltda",
       "tagsLabel": "Etiquetas",
-      "tagsPlaceholder": "Selecione as etiquetas...",
-      "noTagsFound": "Nenhuma etiqueta encontrada.",
-      "createTagAction": "Criar etiqueta \"{value}\"",
       "cancel": "Cancelar",
-      "save": "Salvar contato",
       "update": "Atualizar",
       "create": "Criar",
       "toastSuccessAdd": "Contato criado com sucesso",
@@ -935,41 +935,23 @@
     "detailView": {
       "tabs": {
         "details": "Detalhes",
-        "activity": "Atividade",
         "notes": "Notas",
         "custom": "Campos personalizados",
         "deals": "Negócios",
         "tasks": "Tarefas",
         "billing": "Cobranças",
-        "tags": "Etiquetas",
-        "noTags": "Sem etiquetas",
-        "noDeals": "Sem negócios",
-        "addNotePlaceholder": "Adicione uma nota..."
+        "tags": "Etiquetas"
       },
-      "actions": {
-        "edit": "Editar",
-        "message": "Mensagem",
-        "delete": "Excluir"
-      },
-      "contactInfo": "Informações do contato",
       "unnamed": "Desconhecido",
       "contactDetailsDesc": "Detalhes do contato",
       "phone": "Telefone",
       "email": "E-mail",
       "company": "Empresa",
-      "createdAt": "Criado em",
-      "customFields": "Campos personalizados",
       "noCustomFields": "Nenhum campo personalizado definido. Crie-os em Configurações.",
       "customLoadError": "Não foi possível carregar os campos deste cliente.",
       "customRetry": "Tentar de novo",
-      "manageFields": "Gerenciar campos",
       "enterCustomField": "Informe {name}...",
-      "activityTab": {
-        "title": "Histórico de atividades",
-        "noActivity": "Nenhuma atividade ainda."
-      },
       "notesTab": {
-        "title": "Notas internas",
         "placeholder": "Escreva uma nota...",
         "save": "Adicionar nota",
         "noNotes": "Nenhuma nota ainda."
@@ -988,7 +970,6 @@
       "toastUpdateFailed": "Falha ao atualizar contato",
       "toastPhoneConflict": "Já existe outra ficha com este número (com ou sem o nono dígito). Nada foi salvo.",
       "toastUpdated": "Contato atualizado",
-      "toastNotAuthenticated": "Não autenticado",
       "toastNoteAddFailed": "Falha ao adicionar nota",
       "toastNoteAdded": "Nota adicionada",
       "toastNoteDeleteFailed": "Falha ao excluir nota",
@@ -1006,17 +987,13 @@
       "desc": "Envie um CSV com a coluna obrigatória <phoneCode>phone</phoneCode>. Opcionais: <nameCode>name</nameCode>, <emailCode>email</emailCode>, <companyCode>company</companyCode>, <tagsCode>tags</tagsCode> (separadas por vírgula; use aspas em células com várias etiquetas).",
       "uploadDropzone": "Clique para escolher um arquivo CSV",
       "uploadHint": ".csv até o limite do seu navegador",
-      "rowsReady": "{count} linha pronta",
-      "rowsReady_plural": "{count} linhas prontas",
+      "rowsReady": "{count, plural, =1 {# linha pronta} other {# linhas prontas}}",
       "preview": "Prévia · primeiros {count}",
-      "previewTags": "{tags} etiqueta · {contacts} contato",
-      "previewTags_plural": "{tags} etiquetas · {contacts} contatos",
-      "moreRows": "+ {count} linha não exibida",
-      "moreRows_plural": "+ {count} linhas não exibidas",
+      "previewTags": "{tags, plural, =1 {# etiqueta} other {# etiquetas}} · {contacts, plural, =1 {# contato} other {# contatos}}",
+      "moreRows": "+ {count, plural, =1 {# linha não exibida} other {# linhas não exibidas}}",
       "importComplete": "Importação concluída",
       "resultImported": "{count} importados",
-      "resultTags": "{count} etiqueta atribuída",
-      "resultTags_plural": "{count} etiquetas atribuídas",
+      "resultTags": "{count, plural, =1 {# etiqueta atribuída} other {# etiquetas atribuídas}}",
       "resultSkipped": "{count} ignorados",
       "resultInvalidPhone": "{count, plural, one {# sem telefone válido} other {# sem telefone válido}}",
       "resultFailed": "{count} com falha",
@@ -1032,20 +1009,15 @@
       },
       "cancel": "Cancelar",
       "close": "Fechar",
-      "importBtn": "Importar {count} contato",
-      "importBtn_plural": "Importar {count} contatos",
+      "importBtn": "Importar {count, plural, =1 {# contato} other {# contatos}}",
       "toastNoValidRows": "Nenhuma linha válida encontrada. Verifique se o CSV tem a coluna \"phone\".",
       "toastTagsWarning": "Contatos importados, mas algumas etiquetas não foram atribuídas.",
-      "toastImported": "{count} contato importado",
-      "toastImported_plural": "{count} contatos importados",
-      "toastTagsAssigned": "{count} atribuição de etiqueta aplicada",
-      "toastTagsAssigned_plural": "{count} atribuições de etiquetas aplicadas",
+      "toastImported": "{count, plural, =1 {# contato importado} other {# contatos importados}}",
+      "toastTagsAssigned": "{count, plural, =1 {# atribuição de etiqueta aplicada} other {# atribuições de etiquetas aplicadas}}",
       "toastTagsSkipped": "Etiquetas desconhecidas ignoradas (crie-as antes em Configurações): {sample}{more}",
-      "toastSkipped": "{count} duplicado ignorado",
-      "toastSkipped_plural": "{count} duplicados ignorados",
+      "toastSkipped": "{count, plural, =1 {# duplicado ignorado} other {# duplicados ignorados}}",
       "toastInvalidPhone": "{count, plural, one {# linha ficou de fora: telefone vazio ou inválido} other {# linhas ficaram de fora: telefone vazio ou inválido}}",
-      "toastFailed": "{count} contato não pôde ser importado",
-      "toastFailed_plural": "{count} contatos não puderam ser importados",
+      "toastFailed": "{count, plural, =1 {# contato não pôde ser importado} other {# contatos não puderam ser importados}}",
       "toastError": "Falha na importação",
       "pareceId": "{name} parece um id de etiqueta e não existe nesta conta — será ignorado",
       "toastTagIdsSkipped": "Ids de etiqueta que não existem nesta conta foram ignorados: {sample}{more}"
@@ -1083,9 +1055,6 @@
       "optionsPlaceholder": "Opção A, Opção B",
       "toastOptionsFailed": "Não foi possível salvar as opções.",
       "copyKeyTitle": "Copiar identificador",
-      "category": "Categoria",
-      "categoryGeneral": "Geral",
-      "categoryTracking": "Traqueamento",
       "group": "Bloco",
       "groupGeneral": "Geral",
       "newGroup": "Nome do novo bloco…",
@@ -1125,7 +1094,6 @@
       "cancel": "Cancelar",
       "creating": "Criando...",
       "createPipelineBtn": "Criar funil",
-      "toastFailedLoadPipelines": "Falha ao carregar os funis",
       "toastFailedMoveDeal": "Falha ao mover o negócio",
       "toastFailedLoadDeals": "Não foi possível carregar os negócios — recarregue a página",
       "toastFailedCreatePipeline": "Falha ao criar o funil",
@@ -1154,7 +1122,6 @@
       "won": "Ganho",
       "lost": "Perdido",
       "cameFrom": "Chegou pelo número {channel}",
-      "openConversationOf": "Abrir a conversa de {titulo}",
       "editDeal": "Editar negócio",
       "editDealTitled": "Editar o negócio {titulo}",
       "unreadCount": "{count, plural, one {# mensagem não lida} other {# mensagens não lidas}}",
@@ -1406,7 +1373,6 @@
           "noDia": "{n} lead(s) no dia"
         },
         "investimento": {
-          "titulo": "Investimento em anúncios",
           "investimento": "Investimento no período",
           "custoPorLead": "Custo por lead",
           "cac": "CAC",
@@ -1541,8 +1507,7 @@
       "pending": "Pendente",
       "delivered": "Entregue",
       "read": "Lido",
-      "replied": "Respondido",
-      "unknown": "Desconhecido"
+      "replied": "Respondido"
     },
     "detail": {
       "backToBroadcasts": "Voltar para Disparos",
@@ -1592,7 +1557,9 @@
       "retryFailed": "Tentar de novo os que falharam ({count})",
       "toastResumeStarted": "Enviando para {count} destinatários em segundo plano.",
       "toastResumeStartedCapped": "Enviando para {count} destinatários em segundo plano. Outros {remaining} vão precisar de mais uma rodada.",
-      "toastResumeFailed": "Não foi possível retomar: {error}"
+      "toastResumeFailed": "Não foi possível retomar: {error}",
+      "unknownContact": "Desconhecido",
+      "unknownError": "erro desconhecido"
     },
     "new": {
       "title": "Novo Disparo",
@@ -1629,29 +1596,22 @@
           "customField": "Campo Personalizado",
           "csv": "Importar CSV"
         },
-        "allDesc": "Enviar para todos os {count} contatos da sua base.",
         "allDescLoading": "Enviar para todos os contatos da sua base.",
         "tagDesc": "Enviar para contatos que tenham etiquetas específicas.",
         "customFieldDesc": "Enviar para contatos que atendam a uma regra de campo personalizado.",
         "csvDesc": "Importe um CSV com números de telefone (e nomes opcionais).",
         "selectTags": "Selecionar Etiquetas",
-        "searchTags": "Buscar etiquetas...",
         "noTagsFound": "Nenhuma etiqueta encontrada.",
         "excludeTags": "Excluir Etiquetas (Opcional)",
-        "searchExcludeTags": "Buscar etiquetas para excluir...",
-        "field": "Campo",
         "selectField": "Selecione um campo...",
-        "operator": "Operador",
         "operatorIs": "É",
         "operatorIsNot": "Não é",
         "operatorContains": "Contém",
-        "value": "Valor",
         "valuePlaceholder": "Valor a corresponder",
         "uploadCsv": "Importar arquivo CSV",
         "csvFormatDesc": "Deve conter uma coluna 'phone', com DDD (número de outro país: com + e o código do país). A coluna 'name' é opcional.",
         "csvContactsFound": "{count} contato(s) válido(s) encontrado(s) no CSV.",
         "csvInvalidPhones": "{count, plural, one {# linha ficou de fora: telefone vazio ou inválido (sem DDD, ou de outro país sem +).} other {# linhas ficaram de fora: telefone vazio ou inválido (sem DDD, ou de outro país sem +).}}",
-        "errorLoadTags": "Falha ao carregar as etiquetas",
         "errorLoadFields": "Falha ao carregar os campos personalizados",
         "errorCsvMissingPhone": "O CSV deve ter uma coluna 'phone'.",
         "contagemFalhou": "Não foi possível calcular o público agora.",
@@ -1670,8 +1630,6 @@
         "headerImageDesc": "Este modelo exige uma imagem de cabeçalho.",
         "imageUrl": "URL da Imagem",
         "imageUrlPlaceholder": "https://example.com/image.jpg",
-        "variables": "Variáveis",
-        "varDesc": "Defina os valores de '{{name}}'",
         "type": "Tipo",
         "typeStatic": "Valor Fixo",
         "typeContact": "Campo do Contato",
@@ -1679,7 +1637,6 @@
         "staticValue": "Valor Fixo",
         "contactField": "Campo do Contato",
         "selectContactField": "Selecione o campo...",
-        "customField": "Campo Personalizado",
         "selectCustomField": "Selecione o campo personalizado...",
         "preview": "Pré-visualização",
         "previewSample": "Exibindo a pré-visualização com dados de exemplo.",
@@ -1709,14 +1666,9 @@
         "audienceTags": "Filtrado por etiquetas",
         "audienceField": "Filtrado por campo personalizado",
         "audienceCsv": "Importação de CSV",
-        "variables": "Variáveis:",
-        "variablesMapped": "{count} associada(s)",
         "saveDraft": "Salvar como Rascunho",
         "sendNow": "Enviar Disparo",
         "sending": "Enviando...",
-        "preparing": "Preparando...",
-        "progressDesc": "Processando {current} de {total} destinatários...",
-        "toastFailedPreview": "Falha ao carregar os dados da pré-visualização",
         "alcanceFalhou": "Não foi possível calcular.",
         "tentarDeNovo": "Tentar de novo",
         "alcanceTeto": "Passa do que a tela consegue contar (25.000). Volte e recorte o público.",
@@ -1760,10 +1712,10 @@
       },
       "never": "nunca",
       "activeIndicator": "ativa",
-      "openMenu": "Abrir menu"
+      "openMenu": "Abrir menu",
+      "loadError": "Falha ao carregar as automações"
     },
     "edit": {
-      "loading": "Carregando...",
       "loadError": "Falha ao carregar ({status})",
       "back": "Voltar para Automações"
     },
@@ -1983,10 +1935,7 @@
         "placeholderContact": "name / email / company",
         "placeholderTag": "id da etiqueta",
         "urlLabel": "URL",
-        "headersLabel": "Cabeçalhos",
-        "placeholderHeaders": "'{\"Authorization\": \"Bearer ...\"}'",
         "bodyTemplateLabel": "Modelo do corpo",
-        "placeholderBody": "'{\"id\": \"{{ contact.id }}\"}'",
         "matchType": "Tipo de correspondência",
         "matchContains": "Contém",
         "matchExact": "Exata",
@@ -2218,8 +2167,6 @@
       "deleteNode": "Excluir nó",
       "canvasView": "Canvas",
       "listView": "Lista",
-      "noNodeSelected": "Nenhum nó selecionado",
-      "noNodeDesc": "Selecione um nó no canvas para editar a configuração dele.",
       "form": {
         "advancesTo": "Avança para",
         "textToCustomer": "Texto enviado ao cliente",
@@ -2344,7 +2291,13 @@
       "statusActivated": "Fluxo ativado.",
       "statusArchived": "Arquivado.",
       "statusDraft": "Salvo como rascunho.",
-      "deleteConfirm": "Apagar \"{name}\"? Qualquer execução ativa termina na hora. Não dá para desfazer."
+      "deleteConfirm": "Apagar \"{name}\"? Qualquer execução ativa termina na hora. Não dá para desfazer.",
+      "saveFailed": "Falha ao salvar",
+      "saveFailedStatus": "Falha ao salvar ({status})",
+      "statusFailed": "Falha ao mudar a situação do fluxo",
+      "statusFailedStatus": "Falha ao mudar a situação do fluxo ({status})",
+      "deleteFailed": "Falha ao apagar o fluxo",
+      "deleteFailedStatus": "Falha ao apagar o fluxo ({status})"
     },
     "summary": {
       "options": "{count} {count, plural, =1 {opção} other {opções}}",
@@ -2414,7 +2367,6 @@
       "you": "Você",
       "unnamed": "Sem nome",
       "joined": "Entrou em {date}",
-      "remove": "Remover",
       "removedToast": "{name} removido",
       "updatedToast": "{name} atualizado para {role}",
       "pendingInvitations": "Convites pendentes",
@@ -2477,7 +2429,8 @@
       "whatsappMessage": "Entre em {accountName} no {appName} usando este link (válido por {expiresInDays} dias): {url}",
       "genericAccountName": "esta conta",
       "perfilLabel": "Perfil de acesso",
-      "networkError": "Não foi possível falar com o servidor. Tentar de novo?"
+      "networkError": "Não foi possível falar com o servidor. Tentar de novo?",
+      "createFailed": "Não foi possível criar o convite"
     },
     "tagsAndFields": {
       "title": "Campos e etiquetas",
@@ -2626,7 +2579,8 @@
       "uploadHintDocument": "PDF, Word, PowerPoint, Excel ou texto, até 16 MB",
       "toastInvalidVideo": "O vídeo do cabeçalho precisa ser MP4 ou 3GPP.",
       "toastInvalidDocument": "O documento do cabeçalho precisa ser PDF, Word, PowerPoint, Excel ou texto.",
-      "toastMediaTooLarge": "O arquivo tem {size} MB — o limite de envio é {max} MB."
+      "toastMediaTooLarge": "O arquivo tem {size} MB — o limite de envio é {max} MB.",
+      "headerSampleAlt": "Amostra do cabeçalho"
     },
     "roles": {
       "admin": "Administrador",
@@ -3023,7 +2977,6 @@
         "expirada": "a chave expirou em {dia} — gere uma nova no Asaas e conecte de novo",
         "levantar": "Rodar levantamento",
         "levantando": "Lendo a conta do Asaas…",
-        "levantamentoAjuda": "Lê a conta inteira do Asaas (só leitura, nada é gravado) e mostra o que há lá dentro: quantos clientes e cobranças vencidas, em que formato vêm os telefones, e quantos clientes o CRM conseguiria ligar sozinho a uma ficha.",
         "levantamentoTitulo": "Levantamento de {quando}",
         "copiarRelatorio": "Copiar relatório",
         "relatorioCopiado": "Copiado",
@@ -3239,7 +3192,6 @@
           "naoCobrar": "Não cobrar automaticamente",
           "cobrarDeNovo": "Voltar a cobrar automaticamente",
           "excecao": "sem cobrança automática",
-          "excecaoDesde": "sem cobrança automática desde {quando}, por {quem}",
           "trocada": "Este cliente não recebe mais a cobrança automática.",
           "religada": "Este cliente volta a receber a cobrança automática.",
           "erroTrocar": "Não foi possível mudar a cobrança automática deste cliente."
@@ -3466,7 +3418,6 @@
       "pipelineField": "Funil padrão",
       "pipelineNone": "Nenhum — não criar negócio",
       "pipelineHint": "Quem escrever neste número entra automaticamente neste funil.",
-      "pipelineBadge": "Entra no funil {pipeline}",
       "pipelineStageBadge": "Entra no funil {pipeline} · etapa {stage}",
       "pipelineNoStage": "Entra no funil {pipeline}, mas sem etapa de entrada — os leads caem na primeira etapa da lista. Escolha a etapa em Configurar.",
       "pipelineMissing": "O funil configurado foi apagado — escolha outro.",
@@ -4145,12 +4096,6 @@
         "template": "📋 Modelo"
       }
     }
-  },
-  "roles": {
-    "owner": "Proprietário",
-    "admin": "Administrador",
-    "agent": "Atendente",
-    "viewer": "Visualizador"
   },
   "Agents": {
     "playground": {
@@ -4875,7 +4820,6 @@
     "queueNewAtLeast": "mais de {count} clientes começaram a esperar desde a sua última entrada",
     "queueNew24hAtLeast": "mais de {count} clientes começaram a esperar nas últimas 24 horas",
     "refresh": "Atualizar",
-    "introPage": "O que está com você hoje.",
     "openMyDay": "Abrir Meu dia",
     "loadingShort": "—",
     "failedShort": "não carregou"
@@ -4925,5 +4869,11 @@
   "DashboardShell": {
     "loading": "Carregando…",
     "signOutError": "Não foi possível sair: {message}"
+  },
+  "Presence": {
+    "online": "Online — ativo agora",
+    "away": "Ausente — inativo",
+    "offline": "Offline",
+    "offlineLastSeen": "Offline — visto por último {quando}"
   }
 }
