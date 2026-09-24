@@ -56,7 +56,11 @@ describe("formatLastSeen", () => {
   it("rolls up into hours and days", () => {
     expect(formatLastSeen(ago(60 * 60_000), NOW, "pt-BR")).toBe("há 1 hora");
     expect(formatLastSeen(ago(2 * 60 * 60_000), NOW, "pt-BR")).toBe("há 2 horas");
-    expect(formatLastSeen(ago(24 * 60 * 60_000), NOW, "pt-BR")).toBe("ontem");
+    expect(formatLastSeen(ago(24 * 60 * 60_000), NOW, "pt-BR")).toBe("há 1 dia");
+    // Blocos de 24 h não são dias de calendário: nunca "ontem"/"anteontem".
+    expect(formatLastSeen(ago(47 * 60 * 60_000), NOW, "pt-BR")).toBe("há 1 dia");
+    expect(formatLastSeen(ago(71 * 60 * 60_000), NOW, "pt-BR")).toBe("há 2 dias");
+    expect(formatLastSeen(ago(47 * 60 * 60_000), NOW, "en-US")).toBe("1 day ago");
     expect(formatLastSeen(ago(3 * 24 * 60 * 60_000), NOW, "pt-BR")).toBe("há 3 dias");
     expect(formatLastSeen(ago(2 * 60 * 60_000), NOW, "en-US")).toBe("2 hours ago");
   });

@@ -70,7 +70,10 @@ describe('textos portados para o dicionário (Fase 10)', () => {
   // "create broadcasts", "delete broadcasts", "create automations", "create
   // flows", "create pipelines", "create deals", "add or import contacts",
   // "send messages" — viravam "seu papel não permite create broadcasts". O
-  // tipo já recusa frase; este pino pega também quem contornar com `as`.
+  // tipo já recusa frase; este pino pega também o literal DENTRO de chaves —
+  // `{"create broadcasts" as AcaoBloqueada}` compila — e deixa passar a
+  // expressão legítima (`{pode ? "createFlows" : "createDeals"}`).
+  const FRASE_NO_GATE = /gateReason=\{?\s*["'`][^"'`]*\s[^"'`]*["'`]/g
   it('nenhum `gateReason` é frase (com espaço) em nenhum arquivo', () => {
     const achados: string[] = []
     const varre = (dir: string) => {
@@ -78,13 +81,32 @@ describe('textos portados para o dicionário (Fase 10)', () => {
         const c = path.join(dir, nome)
         if (fs.statSync(c).isDirectory()) varre(c)
         else if (/\.tsx?$/.test(nome) && !/\.test\.tsx?$/.test(nome)) {
-          for (const m of fs.readFileSync(c, 'utf8').matchAll(/gateReason=["'{][^"'}]*\s[^"'}]*["'}]/g))
+          for (const m of fs.readFileSync(c, 'utf8').matchAll(FRASE_NO_GATE))
             achados.push(`${path.relative(SRC, c)}: ${m[0]}`)
         }
       }
     }
     varre(SRC)
     expect(achados).toEqual([])
+  })
+
+  it('o pino do gateReason pega o contorno com `as` e deixa passar a expressão legítima', () => {
+    const re = new RegExp(FRASE_NO_GATE.source)
+    expect(re.test('gateReason="create broadcasts"')).toBe(true)
+    expect(re.test('gateReason={"create broadcasts" as AcaoBloqueada}')).toBe(true)
+    expect(re.test('gateReason={`create broadcasts`}')).toBe(true)
+    expect(re.test('gateReason="createBroadcasts"')).toBe(false)
+    expect(re.test('gateReason={pode ? "createFlows" : "createDeals"}')).toBe(false)
+  })
+
+  it('o plural do "N destinatários falharam" e o rótulo das notificações flutuantes', () => {
+    for (const arq of ['en.json', 'pt-BR.json']) {
+      const d = JSON.parse(fs.readFileSync(path.join(SRC, '..', 'messages', arq), 'utf8'))
+      expect(d.Broadcasts.detail.resumeHint, arq).toMatch(/\{count, plural,/)
+      expect(d.Broadcasts.detail.resumeStalledHint, arq).toMatch(/\{count, plural,/)
+    }
+    // Sem a prop, o leitor de tela anuncia "Notifications alt+T" em inglês.
+    expect(ler('components/themed-toaster.tsx')).toMatch(/containerAriaLabel=\{t\("rotulo"\)\}/)
   })
 
   it('título em JSX que era texto fixo (Funil do disparo, Pré-visualização da interativa)', () => {

@@ -1558,8 +1558,8 @@
       "toastStatusWritesLost": "The broadcast went out, but {count} status update(s) didn't save — reload the report to verify.",
       "resumeTitle": "Some recipients need another attempt",
       "resumeStalledTitle": "This campaign stopped part-way",
-      "resumeHint": "{count} recipients failed. Retrying sends them again from the server.",
-      "resumeStalledHint": "{count} recipients were never sent — the browser tab running this campaign was closed before it finished. Resuming completes it from the server.",
+      "resumeHint": "{count, plural, =1 {# recipient failed. Retrying sends it again from the server.} other {# recipients failed. Retrying sends them again from the server.}}",
+      "resumeStalledHint": "{count, plural, =1 {# recipient was never sent — the browser tab running this campaign was closed before it finished. Resuming completes it from the server.} other {# recipients were never sent — the browser tab running this campaign was closed before it finished. Resuming completes it from the server.}}",
       "resumePending": "Resume sending ({count})",
       "retryFailed": "Retry failed ({count})",
       "toastResumeStarted": "Sending {count} recipients in the background.",
@@ -4280,7 +4280,15 @@
     "emptyDescription": "You'll see a notice here when someone assigns you a conversation or mentions you in a note.",
     "unread": "Unread",
     "markReadError": "Failed to mark notification as read",
-    "markAllReadError": "Failed to mark all as read"
+    "markAllReadError": "Failed to mark all as read",
+    "tipos": {
+      "atribuida": {
+        "titulo": "Conversation assigned to you",
+        "corpo": "{autor} assigned you the conversation with {contato}",
+        "corpoSemAutor": "The conversation with {contato} was assigned to you",
+        "contatoSemNome": "a contact"
+      }
+    }
   },
   "SignupPage": {
     "passwordsDoNotMatch": "Passwords do not match",
@@ -4915,5 +4923,8 @@
   "Upload": {
     "semSessao": "Not signed in. Sign in again to upload the file.",
     "semConta": "Could not resolve your account."
+  },
+  "Toaster": {
+    "rotulo": "Notifications"
   }
 }

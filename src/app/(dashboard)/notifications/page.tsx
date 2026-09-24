@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useMembros } from "@/hooks/use-membros";
 import type { Notification } from "@/types";
+import { textoDoAviso, type AvisoComContato } from "@/lib/notifications/texto-do-aviso";
 import {
   AtSign,
   Bell,
@@ -34,9 +36,17 @@ const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
 
 export default function NotificationsPage() {
   const t = useTranslations("NotificationsPage");
+  const tTipos = useTranslations("NotificationsPage.tipos");
   const router = useRouter();
   const { accountId } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[] | null>(
+  // Quem atribuiu: `actor_user_id` → nome. Sem a lista (carregando ou
+  // falhou), o texto do aviso fica na voz passiva, sem nome.
+  const { membros } = useMembros();
+  const nomePorUsuario = useMemo(
+    () => new Map(membros.map((m) => [m.user_id, m.full_name])),
+    [membros],
+  );
+  const [notifications, setNotifications] = useState<AvisoComContato[] | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +57,9 @@ export default function NotificationsPage() {
     const supabase = createClient();
     const { data, error: fetchErr } = await supabase
       .from("notifications")
-      .select("*")
+      // O contato vem junto: o aviso de atribuição é escrito aqui, com o
+      // nome dele (o texto gravado pelo gatilho da 0027 é em inglês).
+      .select("*, contact:contacts(name, phone, instagram_username)")
       .eq("account_id", accountId)
       .order("created_at", { ascending: false })
       .limit(100);
@@ -55,8 +67,12 @@ export default function NotificationsPage() {
       setError(fetchErr.message);
       return;
     }
-    setNotifications((data ?? []) as Notification[]);
+    setNotifications((data ?? []) as AvisoComContato[]);
   }, [accountId]);
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  });
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -80,6 +96,9 @@ export default function NotificationsPage() {
               if (prev.some((n) => n.id === row.id)) return prev;
               return [row, ...prev];
             });
+            // O realtime não traz o contato embutido: relê para o aviso
+            // ganhar o nome (a linha já aparece, sem ele, até a volta).
+            void loadRef.current();
           } else if (payload.eventType === "UPDATE") {
             const row = payload.new as Notification;
             setNotifications((prev) =>
@@ -225,6 +244,11 @@ export default function NotificationsPage() {
           {notifications.map((n) => {
             const Icon = TYPE_ICON[n.type] ?? Bell;
             const isUnread = !n.read_at;
+            const texto = textoDoAviso(
+              n,
+              n.actor_user_id ? (nomePorUsuario.get(n.actor_user_id) ?? null) : null,
+              tTipos,
+            );
             return (
               <li key={n.id}>
                 <button
@@ -259,7 +283,7 @@ export default function NotificationsPage() {
                           isUnread ? "text-foreground" : "text-muted-foreground",
                         )}
                       >
-                        {n.title}
+                        {texto.titulo}
                       </span>
                       {isUnread && (
                         <span
@@ -268,9 +292,9 @@ export default function NotificationsPage() {
                         />
                       )}
                     </div>
-                    {n.body && (
+                    {texto.corpo && (
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {n.body}
+                        {texto.corpo}
                       </p>
                     )}
                     <p className="mt-1 text-[11px] text-muted-foreground/70">

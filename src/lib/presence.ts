@@ -57,7 +57,7 @@ export function derivePresence(
 /**
  * Relative "last seen" string for tooltips, in the given language
  * (`Intl.RelativeTimeFormat`): "há 5 minutos" / "5 minutes ago",
- * "ontem" / "yesterday". Coarse on purpose — the issue calls for relative
+ * "há 1 dia" / "1 day ago". Coarse on purpose — the issue calls for relative
  * time only, never a precise timestamp. Returns `null` when there is no
  * usable timestamp; the caller decides what to say then.
  *
@@ -91,7 +91,14 @@ export function formatLastSeen(
   const hours = Math.floor(mins / 60);
   if (hours < 24) return rtf.format(-hours, "hour");
 
-  return rtf.format(-Math.floor(hours / 24), "day");
+  // ⚠️ `numeric: "always"` nos dias: o "auto" diria "ontem"/"anteontem", que
+  // são palavras de CALENDÁRIO, sobre blocos de 24 h — visto segunda 9h e
+  // olhado quarta 8h (47 h) sairia "ontem" (revisão da Fase 10). "Há 1 dia"
+  // é verdade para tempo decorrido.
+  return new Intl.RelativeTimeFormat(idioma, { numeric: "always" }).format(
+    -Math.floor(hours / 24),
+    "day",
+  );
 }
 
 /** Roster header summary, e.g. for "3 online · 1 away · 1 offline". */
