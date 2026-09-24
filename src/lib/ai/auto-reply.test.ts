@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   retrieveKnowledge: vi.fn(),
   generateReply: vi.fn(),
   engineSendText: vi.fn(),
+  mostrarDigitando: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     autoResponders: [] as { id: string }[],
@@ -22,6 +23,7 @@ vi.mock('./context', () => ({ buildConversationContext: h.buildConversationConte
 vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
 vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
+vi.mock('./digitando', () => ({ mostrarDigitando: h.mostrarDigitando }))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
     from: (table: string) => {
@@ -97,6 +99,7 @@ beforeEach(() => {
   h.retrieveKnowledge.mockResolvedValue([])
   h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false })
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
+  h.mostrarDigitando.mockReset().mockResolvedValue('enviado')
 })
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
@@ -209,5 +212,46 @@ describe('dispatchInboundToAiReply — handoff', () => {
       ai_autoreply_disabled: true,
       assigned_agent_id: 'agent-7',
     })
+  })
+})
+
+describe('dispatchInboundToAiReply — "digitando…" (#527, Fase 9)', () => {
+  it('depois de todos os portões e ANTES de gerar, com o wamid recebido', async () => {
+    const ordem: string[] = []
+    h.mostrarDigitando.mockImplementation(async () => {
+      ordem.push('digitando')
+      return 'enviado'
+    })
+    h.generateReply.mockImplementation(async () => {
+      ordem.push('gerar')
+      return { text: 'Olá!', handoff: false }
+    })
+    // (O dublê de banco não imita a consulta a `cb_channels` do interruptor
+    // por canal — coberta em channel-scope.test.ts; aqui a entrada vem sem
+    // canal, e o canal repassado é o mesmo `null`.)
+    await dispatchInboundToAiReply({ ...ARGS, inboundMessageId: 'wamid.X' })
+    expect(h.mostrarDigitando).toHaveBeenCalledWith(expect.anything(), {
+      accountId: 'acct-1',
+      conversationId: 'conv-1',
+      channelId: null,
+      inboundMessageId: 'wamid.X',
+    })
+    expect(ordem).toEqual(['digitando', 'gerar'])
+  })
+
+  it('portão que barra (gente atribuída, IA desligada, teto): nada de "digitando…"', async () => {
+    h.state.conv = { assigned_agent_id: 'u1', ai_autoreply_disabled: false, ai_reply_count: 0 }
+    await dispatchInboundToAiReply({ ...ARGS, inboundMessageId: 'wamid.X' })
+    h.state.conv = { assigned_agent_id: null, ai_autoreply_disabled: false, ai_reply_count: 3 }
+    await dispatchInboundToAiReply({ ...ARGS, inboundMessageId: 'wamid.X' })
+    h.loadAiConfig.mockResolvedValueOnce(null)
+    await dispatchInboundToAiReply({ ...ARGS, inboundMessageId: 'wamid.X' })
+    expect(h.mostrarDigitando).not.toHaveBeenCalled()
+  })
+
+  it('a falha do "digitando…" não segura a resposta', async () => {
+    h.mostrarDigitando.mockResolvedValueOnce('falhou')
+    await dispatchInboundToAiReply({ ...ARGS, inboundMessageId: 'wamid.X' })
+    expect(h.engineSendText).toHaveBeenCalledTimes(1)
   })
 })

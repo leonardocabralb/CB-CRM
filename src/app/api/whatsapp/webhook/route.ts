@@ -1236,6 +1236,8 @@ async function processMessage(
       contactId: contactRecord.id,
       configOwnerUserId,
       channelId: channelId,
+      // O "digitando…" marca ESTA mensagem como lida (#527, Fase 9).
+      inboundMessageId: message.id,
     })
   }
 
