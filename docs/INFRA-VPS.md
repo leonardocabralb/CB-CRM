@@ -1,5 +1,13 @@
 # INFRA-VPS — o que existe na VPS e como reconstruir
 
+> ⚠️ **Leia este documento INTEIRO antes de qualquer comando na VPS** —
+> `docker service`/`docker stack`, reinício de contêiner ou de instância,
+> Redis, `crm.env`. É a leitura obrigatória que a raiz do `CLAUDE.md` aponta
+> (seção 0, item c). Documento INTERNO: descreve a nossa operação e não vai
+> para quem instala. A operação da imagem da Evolution 2.4 e a receita do
+> `docker stack deploy` do CRM estão nas §9 e §10; o que envelheceu nesta
+> página está anotado na §11.
+
 O banco tem migrations, histórico e ordem de aplicação. A infraestrutura não
 tinha nada disso. Este documento é a resposta: **inventário do que roda hoje +
 runbook para levantar do zero**.
@@ -420,3 +428,121 @@ Confirmado pelo fluxo de mensagens voltando a 10 por 10 minutos.
 **Efeito colateral registrado:** este mesmo reboot derrubou o `crm_agendador`
 às ~17:03. O plano de automações havia registrado essa queda como "causa não
 identificada" — era o reboot.
+
+---
+
+## 9. Evolution 2.4 — operação da imagem
+
+Movido do `CLAUDE.md` em 24/09/2026 (a seção "Baileys 7 / Evolution 2.4"),
+sem reescrever. É estado que envelhece: confira com `docker service inspect`
+antes de agir. O que foi medido e decidido está em `docs/PLANO-baileys-7.md`.
+
+- Operação (estado em 17/09/2026 12:39 BRT): a imagem é a NOSSA,
+  `ghcr.io/leonardocabralb/evolution-api-cb:2.4.0-e273b904-citacao-foto@sha256:a7d56788…`
+  (commit `e273b904` do `develop` + patch da citação do cliente + patch da
+  foto de perfil + `prisma.config.ts` dentro — `docker/evolution-cb/`), SEMPRE
+  por digest; `TELEMETRY_ENABLED=false`;
+  a licença está ativa (tabela `RuntimeConfig` do banco `evolution`); a stack
+  completa está em `ops/vps/evolution-stack.yml` (= `/root/evolution-stack.yml`,
+  segredos em `/root/evolution.env`), e `docker stack deploy` da Evolution só
+  vale para RECRIAR o serviço com esse arquivo, nunca para atualizar (o `.yml`
+  não acompanha o `service update`); backup do Redis é SÓ do db 8 (o Redis é
+  compartilhado com outros serviços); o log da Evolution morre no reinício do
+  contêiner; o cron `docker image prune -af` apaga as imagens de rollback na
+  madrugada seguinte (são públicas, voltam com `pull`).
+  ⚠️ **Desde 17/09/2026 12:39 BRT a imagem carrega DOIS patches** (o da
+  citação e o da foto de perfil que travava a fila de entrada — ver o
+  `docs/PLANO-baileys-7.md`, 5.10 e a seção 16). Trocada por `docker service update
+  --image …@sha256:a7d56788…` (stop-first: 17 s de troca, as 4 conexões
+  voltaram `open` em < 1 min, `prisma migrate deploy` sem pendência). Rollback
+  = o digest anterior, `…citacao@sha256:dc0f4e8b…` (mesmo commit, mesmas
+  migrations). O `.yml` da stack acompanha o digest. ⚠️⚠️ **Trocar o
+  contêiner com a fila de entrada represada PERDE a fila para o CRM** (a
+  Baileys acka ao servidor ANTES do handler; medido em 17/09: os ~27 min
+  represados da Bancário-Comercial ficaram só no celular). Reinício de
+  contêiner ou troca de imagem SÓ com `entrega_recebida_em − entrega_carimbo_em`
+  da 1002 em ~0 s em todas as conexões.
+
+**Antes de reiniciar o contêiner ou trocar a imagem, confira a fila** (no
+Supabase do CRM):
+
+```sql
+select label, entrega_carimbo_em, entrega_recebida_em,
+       entrega_recebida_em - entrega_carimbo_em as atraso
+from cb_channels
+where kind = 'evolution'
+order by label;
+```
+
+Só com `atraso` perto de zero em TODAS as conexões. A medição vale por 1 h (a
+régua da 1002): `entrega_recebida_em` velho não diz nada sobre agora —
+espere chegar uma mensagem nova.
+
+- `POST /instance/restart/<instância>` (a API da Evolution) segue como
+  PALIATIVO do atraso de entrega: drena a fila (16 min em 1 min, medido em
+  16/09), não tira a causa. Causa e conserto: `docs/PLANO-baileys-7.md`, 5.10.
+- ⚠️ **Voltar de versão da imagem está DESCARTADO por decisão do operador**:
+  a atual foi escolhida para resolver o "Aguardando mensagem" (mensagens que
+  não chegavam ao cliente). O rollback curto é o digest anterior, no mesmo
+  commit (acima).
+
+## 10. Deploy do CRM por `docker stack deploy`
+
+Movido do `CLAUDE.md` (seção "Deploy"), que guarda só a versão curta. O CI
+publica com `docker service update --image` e NÃO relê o `docker-stack.yml`:
+mudança no `command` do agendador, em variável ou em serviço exige este
+deploy à mão (ver também o `docs/DEPLOY-VPS.md`).
+
+- ⚠️⚠️ **`docker stack deploy` SEM carregar o `crm.env` ZERA TODOS os segredos
+  de produção — e o site continua respondendo 200.** O `docker-stack.yml` usa
+  `${VAR}`, que o Docker substitui pelo **ambiente do shell**: variável ausente
+  vira **string vazia**, sem erro nem aviso. O front sobrevive porque todo
+  `NEXT_PUBLIC_*` foi inlinado no build, então a tela de login pinta normal
+  enquanto o servidor inteiro está sem credencial — webhook não grava mensagem,
+  envio não sai, IA não roda, e **as quatro rotas de cron passam a devolver 503**
+  (`if (!expected) return 503`), o que derruba agendadas, automações, fluxos e
+  Radar de uma vez. Aconteceu em 2026-08-27 e passou despercebido por horas
+  porque as verificações usuais (site 200, digest da imagem intocado) **não
+  cobrem env vars**. A forma correta, sempre as três linhas juntas:
+  ```bash
+  set -a; . /root/crm.env; set +a          # sem isto, tudo vira ""
+  export CRM_IMAGE="$(docker service inspect crm_crm \
+    --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' | cut -d@ -f1)"  # senão volta para :latest
+  docker stack deploy -c /root/docker-stack.yml crm
+  ```
+  ⚠️ **A imagem sai de `.Spec.TaskTemplate.ContainerSpec.Image`, NUNCA do
+  rótulo `com.docker.stack.image`.** Esse rótulo só é reescrito por
+  `docker stack deploy`; o CI publica com `docker service update --image`
+  (`pipeline.yml`), que não o toca — então ele guarda a imagem do último
+  deploy MANUAL e envelhece a cada merge. Medido em 2026-08-29, minutos
+  depois de um deploy pelo CI: o rótulo dizia `30bf0b6` (PR #37, dois dias e
+  **dez merges** atrás) enquanto o serviço rodava `823061a`. Pinar pelo
+  rótulo aqui **rola a produção para trás em silêncio** — e esta é
+  justamente a receita que se roda quando algo já está quebrado. O
+  `docs/DEPLOY-VPS.md` já usava o campo certo; era esta seção que estava
+  fora de passo.
+  **Conferir DEPOIS, dentro do container** (o spec do serviço engana — mostra o
+  nome da variável mesmo com valor vazio):
+  ```bash
+  cid=$(docker ps --filter name=crm_crm --format '{{.ID}}' | head -1)
+  docker exec $cid printenv SUPABASE_SERVICE_ROLE_KEY | wc -c   # 0 = quebrado
+  curl -s -o /dev/null -w '%{http_code}\n' https://crm.cbadvogados.com/api/cb/scheduled/cron
+  # 401 = segredo no lugar · 503 = env vazia, produção cega
+  ```
+
+⚠️ **`META_APP_SECRET` com vários segredos: sem espaço depois da vírgula.**
+Carregado pelo shell (`set -a; . /root/crm.env`), `a, b` faz a variável
+SUMIR — todo webhook da Meta vira 401 com o site respondendo 200. Confira no
+contêiner com `printenv META_APP_SECRET | wc -c`.
+
+## 11. Divergências conhecidas desta página (conferido em 24/09/2026)
+
+Nada acima foi apagado. O que envelheceu fica anotado aqui até alguém
+reescrever a seção.
+
+- §5.2: o laço rápido do agendador é de **15 s** (`sleep 15`), não 60 s. O
+  lento (900 s) chama `cb/scheduled`, `flows`, `cb/radar`, `cb/meta-ads`,
+  `cb/tldv` e `cb/asaas`. Conferido no `docker-stack.yml`.
+- §4 (Segredos), §5.3 e §6 item 10 citam `deploy.yml`: desde 26/08/2026 o
+  workflow é o `.github/workflows/pipeline.yml` (o antigo foi consolidado
+  nele).

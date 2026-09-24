@@ -1659,3 +1659,151 @@ e depois — nada disparou.
 — nada referencia a tabela. **No dia do corte**, rodar de novo atualiza as
 linhas pela chave `(account_id, kommo_lead_id)` e acrescenta as reuniões que
 tiverem passado até lá.
+
+## Notas que viviam no CLAUDE.md: o histórico do WhatsApp e as migrations da carga
+
+Movidas do `CLAUDE.md` em 24/09/2026. A seção "O histórico de conversa de
+2026", acima, aponta para a seção "Histórico importado do WhatsApp" do
+`CLAUDE.md`: ela mora agora aqui, sem reescrever. As regras que valem para
+código novo (a carga de mensagem antiga cala os gatilhos da 0972 dentro da
+transação; o backfill nunca passa pela ingestão) estão condensadas em
+`.claude/rules/supabase.md` e `.claude/rules/ingestao.md`. As referências a
+seções entre aspas são do `CLAUDE.md` antigo, hoje em `.claude/rules/`; o
+texto integral está em `git show f5879b3f:CLAUDE.md`.
+
+### Histórico importado do WhatsApp (1033)
+
+⚠️⚠️ **Histórico importado do WhatsApp (1033, aplicada como 1027 em 21/09/2026): mensagem com
+`gravada_em` NULA pode ser do backfill, e o registro é o que diz.** A conversa
+de 2026 dos leads da Kommo ficou lá (a API dela só entrega metadado); o texto
+existia na Evolution — a conexão viva (jun–set) e o backup de 09/09 da conexão
+antiga "Bancario", o mesmo número do Bancário - Comercial (jan–ago). Um script
+fora do repositório (o conteúdo é de cliente) normaliza cada mensagem com o
+próprio `normalizeUpsert` e escreve pela `cb_importar_historico_whatsapp`. Plano
+e números: a seção "O histórico de conversa de 2026", acima. O que morde código novo:
+
+- ⚠️⚠️ **O backfill NÃO passa pela ingestão, e é isso que o deixa mudo**:
+  automação, robô, IA, funil e reabertura moram no código de
+  `inbound-store`/webhook. Quem um dia "reaproveitar" `persistInboundMessage`
+  para importar histórico dispara tudo isso por mensagem antiga.
+- ⚠️⚠️ **Os dois gatilhos AFTER INSERT de `messages` ficam calados dentro do
+  lote**, pelo nome: o da 0972 decide "em atraso" pela ORDEM DE INSERÇÃO — a
+  fala de junho inserida hoje preencheria `aguardando_desde` (que sobrevive
+  à reabertura) e um eco antigo apagaria uma espera verdadeira. Quem criar
+  outra carga de mensagem antiga repete o desligar-religar, dentro da
+  transação.
+- ⚠️ **`gravada_em` vai NULA de propósito**: com o default `now()`,
+  `clienteRespondeuDesde` leria a fala antiga como "o cliente respondeu
+  agora" e cancelaria a sequência. Consequência: `gravada_em IS NULL` não
+  distingue mais "antes da 1003" de "importado" — quem precisar saber
+  pergunta ao registro.
+- ⚠️⚠️ **Teto de 600 mensagens por conversa, mantendo as mais RECENTES.** O
+  fio carrega a conversa inteira em ordem crescente, sem paginar, e o
+  PostgREST corta em 1000 linhas (`max_rows` MEDIDO: 1000): o que passasse
+  sumiria pelo lado das mensagens de HOJE. 600, e não 700: as conversas
+  cortadas são as dos clientes mais ativos, e 300 de folga seriam semanas.
+  2.986 mensagens antigas de 13 fichas ficaram de fora (medido na carga de
+  22/09); trazê-las exige o fio
+  buscar as mais recentes antes (defeito que já existia para qualquer
+  conversa acima de 1000).
+- ⚠️⚠️ **As travas são pegas no COMEÇO do lote, `messages` e depois
+  `conversations`** (a ordem do gatilho da 0972), com `lock_timeout` de 1 s.
+  A primeira versão travava linhas de `conversations` e só depois a tabela, e
+  a ingestão viva que chegasse no meio fechava um ciclo com o lote — o
+  detector abortava a INGESTÃO (mensagem de cliente perdida, com a Evolution
+  já respondida). Achado da revisão adversarial, antes de aplicar.
+- **Apagada e editada entram marcadas** (`deleted_at`/`deleted_by`,
+  `edited_at` — da edição comum e da cifrada da 2.4), como a ingestão
+  guardaria. Entre cópias repetidas da mesma mensagem, a MAIS ANTIGA; figurinha
+  fica de fora (sem arquivo viraria "Foto indisponível"). "Celular" no
+  histórico quer dizer celular, WhatsApp Web ou a integração antiga — é o que
+  `persistDeviceMessage` faria, e não há sinal confiável para separar.
+- **A conversa que não existia nasce ENCERRADA** (dono durável, sem
+  responsável, sem não lida); a encerrada existente só ganha prévia quando o
+  histórico é mais novo que ela, com `set_updated_at` calado — o desfazer do
+  encerramento em lote (1020) só devolve conversa com `updated_at <=
+  encerrado_em`. Conversa ABERTA nunca é tocada.
+- **Mídia sem arquivo** (`media_url` e `media_state` nulos): a bolha diz
+  "indisponível", e o documento leva `media_filename`. Nunca `'failed'`/
+  `'pending'` em 1:1 (acenderia botão de baixar que só existe em grupo), nunca
+  `'too_large'` (afirmaria um motivo falso).
+- ⚠️ **O carimbo de canal é o da conexão de ORIGEM** (a antiga "Bancario" →
+  Bancário - Comercial): 68 conversas passaram a ter dois números no fio, e o
+  separador aparece — é verdade, o histórico correu por aquele número.
+- ⚠️ **O tempo real da carga chega a toda aba de inbox aberta**: sem filtro
+  por idade, a página soma não lida NA TELA (nunca no banco) até recarregar —
+  por isso a carga grande roda fora do expediente. (Prévia e posição da
+  linha não mudam mais com mensagem antiga desde 23/09/2026:
+  `comMensagemNova` só avança.)
+- ⚠️ **Desfazer: `cb_desfazer_historico_whatsapp` ANTES de
+  `cb_kommo_desfazer`** (conversa com mensagem fica presa no desfazer da
+  carga) **e antes de `cb_desfazer_encerramento_em_lote`** (que devolveria a
+  espera da foto a uma conversa cuja prévia o backfill trocou). Ele anda EM
+  PEDAÇOS (`p_limite`, repetir até `terminou`), sem DDL em `messages`, e só
+  apaga a conversa que o backfill criou se ninguém a tocou — pergunta ao
+  CATÁLOGO que tabela aponta para ela (`cb_historico_conversa_apontada`), para
+  não levar pelo CASCADE uma agendada pendente. Retém a mensagem importada que
+  uma mensagem de fora cita. A linha deste backfill não pode ir para o
+  `livro_razao` — o desfazer da Kommo aborta em tabela que não conhece.
+
+### As migrations da carga — o que importa para operar e desfazer
+
+Resumo operacional das entradas 1012, 1014–1024 e 1033–1036 do
+`docs/MIGRATIONS-APLICADAS.md`, onde está a entrada completa de cada uma.
+
+**Número do arquivo × número aplicado.** O histórico do Supabase guarda o
+nome da época, e nada reaplica:
+
+| Arquivo | Aplicada como | O quê |
+| --- | --- | --- |
+| `1033_cb_historico_do_whatsapp` | 1027 | o registro e as funções do histórico do WhatsApp |
+| `1034_cb_kommo_acompanhamento` | 1025 | o acompanhamento do #232 (as duas etapas na troca de funil; a folga de 2 min conferida no UPDATE do encerramento) |
+| `1035_cb_kommo_entrada_sem_texto_vazio` | 1026 | "" tratado como ausente em toda guarda de evento do lote |
+
+Não existem arquivos 1025 a 1029 — não "preencher" a lacuna.
+
+**Como cada uma foi ensaiada antes de aplicar:**
+
+- 1014: dois ensaios contra a produção em transação encerrada com ROLLBACK —
+  carga + reexecução (idempotente) e carga + desfazer (o banco volta ao
+  estado anterior, card movido inclusive).
+- 1015–1023: cada uma depois de um ensaio contra a produção em transação
+  encerrada por `raise exception` (histórico `20260921024652` em diante).
+- 1024: aplicada DEPOIS do deploy, porque ela restringe. O pré-voo PARA (em
+  vez de fundir) se já houver par de irmãs. Medido imediatamente antes: 5.106
+  fichas, zero pares, 2.839 ganham a chave com o 9; conferido depois: 2.840.
+- 1033: dois ensaios em transação desfeita e o ensaio REAL `ensaio-1` (5
+  fichas, 540 mensagens): nenhuma conversa existente mudou situação, não
+  lidas, espera, responsável, `updated_at` nem canal; 0 notificação, 0 evento
+  de automação, gatilhos religados. A carga `carga-1` (22/09) está na seção
+  "O histórico de conversa de 2026", acima.
+- 1034: dois ensaios em transação desfeita.
+- 1036: conferência antes de gravar; 1.196 linhas no lote `reunioes-1`;
+  notificações, eventos de automação e execuções iguais antes e depois.
+
+**A ordem dos desfazeres.** A ordem errada deixa conversa presa ou devolve
+estado velho:
+
+1. ⚠️ Antes de tudo, confira `cb_scheduled_messages` PENDENTES com
+   `reply_to_message_id` apontando para mensagem do registro do histórico
+   (1033). A retenção do desfazer olha só a citação em `messages`, e a
+   agendada perderia a citação (Codex, PR #243).
+2. `cb_desfazer_historico_whatsapp` (1033), em pedaços (`p_limite`, repetir
+   até `terminou`). Desfazer POR LOTE só é certo porque `ensaio-1` e
+   `carga-1` não se sobrepõem; desfazer tudo não depende disso.
+3. Depois do 2 — a ordem entre os dois não está registrada:
+   - `cb_kommo_desfazer`: rodado antes do 2, a conversa com mensagem fica
+     presa. Repetível; só devolve o que continua intocado (seção
+     "Desfazer", acima).
+   - `cb_desfazer_encerramento_em_lote` (1018): rodado antes do 2, devolveria a
+     espera da foto a uma conversa cuja prévia o backfill trocou. ⚠️ É da
+     CONTA INTEIRA: rodado depois de um encerramento novo, devolve também o
+     que o de 21/09 ainda guarda na foto (medido no ensaio: 899 linhas para
+     64 da operação).
+4. As reuniões (1036) não dependem de nada: `delete from
+   public.cb_reunioes_da_kommo where lote = 'reunioes-1'`.
+
+⚠️ Limite comum aos dois desfazeres por "intocado" (registrado na 1034, não
+corrigido): `updated_at` é o INÍCIO da transação de quem escreveu, então um
+salvamento em voo quando o lote começou passaria por intocado. Medido:
+nenhuma linha da carga tem essa assinatura.

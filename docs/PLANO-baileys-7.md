@@ -1647,3 +1647,41 @@ LID: 60 s; por telefone: < 1 s.
 - Baileys rc13 — fontes conferidos: `src/Socket/messages-recv.ts` (recibos), `src/Types/Contact.ts` e `src/Types/GroupMetadata.ts` (participantes), `src/Defaults/index.ts` (opções padrão)
 - Docker Hub `evoapicloud/evolution-api` (tags/datas) e inspeção local da imagem `homolog` na VPS (09/09/2026)
 - Medições próprias de 09/09/2026: Supabase do CRM, banco `evolution`, Redis db 8, logs e serviço na VPS, código do CRM (`src/lib/whatsapp/transport/*`, `src/app/api/whatsapp/evolution/webhook/route.ts`, `src/lib/whatsapp/inbound-store.ts`, `src/lib/cb-groups/*`, `src/lib/contacts/foto-de-perfil.ts`, `src/lib/whatsapp/send-message.ts`)
+
+## 16. A nota que vivia no CLAUDE.md: o atraso de entrega é uma linha da Evolution 2.4
+
+Movida do `CLAUDE.md` em 24/09/2026, sem reescrever. O detalhe (prova, patch,
+medição) está em 5.10 e 9.7; esta é a versão curta que as sessões liam. O
+`CLAUDE.md` e `.claude/rules/whatsapp-evolution.md` guardam só a regra: causa
+e patch, o restart como paliativo, e trocar a imagem ou reiniciar o contêiner
+só com a fila de entrada vazia (receita em `docs/INFRA-VPS.md`, §9). A
+operação da imagem que vivia junto (digests, rollback, licença, prune) foi
+para o `docs/INFRA-VPS.md`, §9.
+
+⚠️ **O atraso de entrega NÃO é bug do CRM — é UMA LINHA da Evolution 2.4, e
+o restart não o conserta (só esvazia a fila).** Uma versão desta nota dizia
+"o atraso está entre o WhatsApp e o Baileys" — era a metade errada. Provado
+por três vias em 17/09/2026 (o fonte recuperado do `dist/main.js.map`, o
+cronômetro no endpoint `chat/fetchProfilePictureUrl`, a assinatura no log):
+o `BaileysMessageProcessor` passa todo `messages.upsert` por um `concatMap`
+(UM lote por vez; os recibos NÃO passam por ali), e dentro do handler há
+`await this.profilePicture(received.key.remoteJid)` — consulta de rede ao
+WhatsApp feita com o **LID**, que o servidor não responde (7 de 8 estouram),
+enquanto 30 linhas antes a própria Evolution já trocou o LID pelo telefone em
+`messageRaw.key.remoteJid`. A Baileys 7 espera `defaultQueryTimeoutMs` =
+**60 s**, e a Evolution não o configura. Resultado: **1 mensagem por minuto
+por conexão**, nos dois sentidos (o eco do celular pareado paga igual —
+intervalos de 120/181/241/362 s no log são múltiplos de 60). Só vira atraso
+quando o tráfego passa de 1/min — daí "intermitente e rotativo" desde 10/09,
+dia seguinte ao upgrade (a Baileys 7 tornou o LID o endereçamento padrão:
+681 mensagens em LID × 0 por telefone na Trabalhista-Jurídico em 48 h). O
+campo que a consulta preenche (`profilePicUrl` do `contacts.update`) o CRM
+NUNCA lê — a foto vem da 973. **Conserto:**
+`docker/evolution-cb/foto-de-perfil-por-telefone-com-teto.patch` (consulta
+pelo telefone + teto de 5 s só naquele chamador); o `develop` do upstream em
+17/09 ainda tem o defeito. **Verificação:** 5.10, acima —
+o instrumento é `messages.gravada_em` (1003), `gravada_em − created_at` por
+mensagem. `POST /instance/restart/<instância>` segue como PALIATIVO (drena
+16 min em 1 min, medido em 16/09). ⚠️ **Voltar de versão da imagem está
+DESCARTADO por decisão do operador**: a atual foi escolhida para resolver o
+"Aguardando mensagem" (mensagens que não chegavam ao cliente).
