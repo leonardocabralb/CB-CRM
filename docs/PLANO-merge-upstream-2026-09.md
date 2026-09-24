@@ -178,6 +178,9 @@ quebrar, sabe-se qual.
   ali é portado, nunca aceito cru.
 - Divergência achada no `CLAUDE.md` é corrigida no mesmo PR.
 
+> **Retomada em outra sessão:** comece por `docs/HANDOFF-merge-upstream-2026-09.md`
+> (onde paramos, o que foi corrigido, o que falta).
+
 ## 6. Mapa das fases
 
 | Fase | O que entra (PR upstream) | Valor hoje (medido) | Complexidade | Risco | Migration | Estado |
@@ -188,8 +191,8 @@ quebrar, sabe-se qual.
 | **1b** | Segurança depois do alvo: #588 (SSRF), #587 (automação por conta), #589 (conversa por conta) — PRs ABERTOS do mantenedor — e a mídia do Instagram (achado nosso) | Real: brechas presentes; o #587 também dava 404 ao admin não-autor | Média | Médio-baixo | — | ✅ em produção (PR #261, 23/09) |
 | **3** | Pequenas e independentes: CSV (#529), textarea (#559), vários App Secrets (#500), tags da v1 (#560, só medir), e o resolvedor do canal Meta (3e — achado NOSSO da Fase 2, sem PR do upstream); com a P9, a normalização do telefone digitado — dividida em 3-I a 3-IV | Moderado | Baixa | Baixo | — | ✅ em produção: 3-I, 3-II, 3-IV e 3-III (PRs #262, #265, #269 e #276, 23/09) |
 | **4** | Fluxos: `{{vars}}` em botões e listas (#553) | Inerte hoje (0 fluxos ativos) | Média | Médio-baixo | — | ✅ em produção (PR #271, 23/09): porte manual — o #259 **descartou** o `engine.ts` deles; teste real feito com a janela aberta pelo operador |
-| **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | colunas aplicadas (correção do #259); gravar, mostrar e espelhar: em PR (porte manual — o #259 descartou o webhook deles) |
-| **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | 6a CRU em produção pelo #259 (rotas com o canal preservado; falta o teste com a WABA e o teto da leitura); 6b CRU e inerte (a rota não passa o `wabaId`) |
+| **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | ✅ em produção (PR #283, merge `6cedb67a`, rollout 24/09 00:24Z): porte manual — o #259 descartou o webhook deles; falta o disparo REAL fora da janela (a janela do lead de teste fecha 24/09 19:14Z) |
+| **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | ✅ mesclada (PR #284): 6a (o teto na leitura) e 6b (stub COMPLETO por `cb_channels`, ligado), com E2E contra a Meta; o pós-deploy é registrado no PR da Fase 7 (e já está na memória) |
 | **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | CRU só no caminho LEGADO (que não é montado); o porte para `cb-channels` pendente; a doc do original foi apagada até lá |
 | **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | biblioteca CRUA no `main`; o cartão ESCONDIDO (correção do #259) até o ouvinte ser montado com as adaptações |
 | **9** | "Digitando…" da IA (#527), sobre o canal da conversa | Inerte hoje (auto-reply desligado) | Média | Médio | — | só a função (`sendTypingIndicator`, sem chamador); o `auto-reply.ts` deles foi descartado |
@@ -1329,13 +1332,82 @@ peço OK na hora** (cria um modelo de teste, apagável no painel da Meta).
 `template-webhook.ts` é idêntico à base (só atualiza; evento de modelo criado no
 painel da Meta é descartado). O stub deles resolve a conta por
 `whatsapp_config.waba_id` — na produção nunca casaria. **Port:** resolver por
-`cb_channels.waba_id`, carimbar `channel_id` (senão nasce um modelo "global"
-fantasma ao lado do da sincronização) e gravar o dono da conta em `user_id`.
+`cb_channels.waba_id`, carimbar `channel_id` (o catálogo é por WABA: uma
+linha sem canal valeria para qualquer número da conta) e gravar o dono da
+conta em `user_id`.
 Teste: POST assinado LOCAL de `message_template_status_update` para id
 desconhecido → stub COM canal; segundo evento atualiza, não duplica; "Sincronizar"
 adota o stub. Limpeza: apagar o stub.
 
-**Resultado:** — (a preencher)
+**Resultado (24/09/2026):**
+
+- **Medido antes:** 9 modelos, todos na conexão oficial (uma só, WABA
+  `1138963437989735`); nenhum com `channel_id` nulo. O token e a WABA das
+  rotas de criar e editar modelo já saíam do canal (`resolveMetaChannel`) —
+  o #259 manteve isso. O `META_APP_ID` não está no `.env.local`; a preview
+  subiu com ele por variável de ambiente (é o id público do app, o mesmo do
+  `crm.env` da VPS).
+- **6a:** `lerComTeto` saiu de `instagram/midia.ts` para
+  `src/lib/http/ler-com-teto.ts` (o Instagram reexporta); o cabeçalho confere
+  o `content-length` antes (mensagem com o tamanho) e lê com teto (mensagem
+  "larger than"). Os testes passaram a usar resposta de verdade, em stream —
+  o dublê com só `arrayBuffer` esconderia a leitura sem teto — e um corpo
+  de 64 MB sem `content-length` para no teto de 16 MB do vídeo (FINITO de
+  propósito: sem fim, o mutante trava em vez de reprovar). Textos:
+  `Settings.templates.mediaHint` ("nós o enviamos à Meta"),
+  `.env.local.example` e `docs/multi-waba.md` (o `META_APP_ID` serve a
+  imagem, vídeo e documento).
+- **6b:** o stub por `cb_channels.waba_id` (`kind = 'meta'`, exatamente uma
+  conexão), com `channel_id` e o DONO da conta em `user_id`, e sem nascer ao
+  lado de uma linha de mesmo nome/idioma no canal (o índice único da 903 leva
+  o `user_id`). A rota passa `wabaId: entry.id`. Pino estrutural lendo a rota
+  e o módulo.
+- **E2E na preview, contra a Meta de verdade** (P5, delegado pelo operador):
+  1. `POST /api/whatsapp/templates/submit` com cabeçalho `document` e o PDF
+     público de teste do W3C → 200, `header_handle` obtido pelo upload da
+     Meta, modelo `teste_crm_cabecalho_pdf` criado `PENDING` na WABA (id
+     `1643195673986609`), a linha com o canal e o dono;
+  2. a linha LOCAL apagada (a Meta ainda o tem) e um `message_template_status_update`
+     assinado mandado ao webhook LOCAL → stub com o canal, o dono como autor,
+     o id da Meta, sem corpo;
+  3. `message_template_quality_update` para o mesmo id → a MESMA linha
+     (total continua 10);
+  4. **Sincronizar** → 10 atualizados, 0 inseridos: o stub foi ADOTADO (a
+     mesma linha ganhou o cabeçalho `document` e o `header_handle`);
+  5. limpeza: `DELETE /api/whatsapp/templates/<id>` → apagado na Meta e no
+     CRM; um segundo Sincronizar confirma 9 modelos na Meta.
+
+  **Revisão (duas lentes, cético no achado):**
+
+  | Achado | Destino |
+  | --- | --- |
+  | P2 (confirmado, medido) — o stub nascia com o corpo VAZIO e virava o modelo do envio: `buildSendComponents` contava zero variáveis e mandava `parameters: []`, e o envio pelo nome (API v1, disparo) de um modelo criado no painel, que funcionava sem linha local, passava a ser recusado pela Meta. Os seletores o mostravam como aprovado, sem campos | ✅ o stub lê o modelo na Meta pelo id (token da conexão) e usa a MESMA conversão da sincronização (`modelo-da-meta.ts`, extraída da rota); leitura que falha = nenhum stub. Pino: o envio com o stub leva os parâmetros |
+  | P2 (confirmado, medido) — o `catch` sem filtro em volta do `lerComTeto` transformava tempo esgotado e conexão cortada em "maior que o limite da Meta" | ✅ `TetoExcedido`; tempo esgotado e queda têm frase própria |
+  | P2 (confirmado) — o evento de exclusão (`PENDING_DELETION`) de um modelo apagado pelo CRM o ressuscitava como stub | ✅ evento de saída (valor cru) não cria stub |
+  | P2 (confirmado, medido num Postgres 16) — a conferência "já existe" olhava só o canal; a sincronização adota a linha SEM canal, e o stub nascia ao lado dela, fazendo a sincronização daquele modelo falhar para sempre | ✅ `.or(canal, nulo)`, a régua da sincronização e da submissão |
+  | P3 — frases do CLAUDE.md e do plano ("corpo sem fim", "qualquer membro", o motivo do `channel_id`, a regra do `arrayBuffer` sem a exceção da foto de perfil) e dois comentários velhos | ✅ corrigidas |
+  | P3 — textos do #562 que não vieram ("Imagem enviada" depois de um PDF; a dica do documento sem os dois limites; `toastImageTooLarge` sem uso; comentários do bucket e do `docker-stack.yml`) | ✅ portados/corrigidos |
+  | P3 — CHANGELOG × INSTALACAO.md (os campos do webhook; o stub de qualidade nascia DRAFT) | ✅ alinhados; o stub lê a situação na Meta |
+  | P3 — o teste de rota do #534 não veio | ✅ portado (`route.test.ts`), e o pino estrutural ficou mais estrito |
+  | P3 — cópia desnecessária do Buffer | ✅ sem cópia |
+  | P3 — o primeiro Sincronizar troca o dono do stub pelo admin que sincroniza | registrado (defeito anterior da sincronização, M24) |
+  | P3 — stub do dono e linha de OUTRO admin no mesmo instante podem nascer juntos (o índice único leva o `user_id`) | aceito e escrito no CLAUDE.md (raro: um vai-e-volta ao banco) |
+  | 2ª revisão (só o commit das correções, um revisor com cético): nenhum P0–P2; mediu no Node 22 que o prazo vencido na leitura do corpo é `TimeoutError` e a queda é `TypeError('terminated')`, e que o Buffer sem cópia sai com os bytes certos | — |
+  | P3 (2ª revisão) — a asserção "não cai no ramo de mensagens" do teste de rota portado passava por acidente | ✅ o valor do evento leva também a forma de uma mensagem; o mutante sem o `continue` reprova |
+  | P3 (2ª revisão) — a dica prometia 100 MB por link, mas o prazo de 10 s vale para o corpo | ✅ a dica e o CHANGELOG dizem "precisa baixar em até 10 segundos" |
+  | P3 (2ª revisão) — a leitura na Meta (até 10 s) roda em série no laço do webhook, antes das mensagens do mesmo POST | aceito e registrado no handoff (raro: modelo desconhecido e mensagem no mesmo POST) |
+
+- **E2E refeito depois das correções** (P5): modelo `teste_crm_stub_completo`
+  (cabeçalho PDF + `{{1}}` no corpo) criado na WABA (id `1037758085962344`),
+  linha local apagada, evento assinado → o stub nasceu COMPLETO (corpo com a
+  variável, cabeçalho `document` com o handle, o exemplo, a categoria e a
+  situação que a Meta já tinha — APPROVED, embora o evento dissesse PENDING),
+  com o canal e o dono; evento de qualidade → a MESMA linha (10); evento para
+  um id que não existe na Meta → nenhum stub, e o log diz só
+  `HTTP 400 (code 100)`; **Sincronizar** (a rota refatorada, contra os dados
+  reais) → 10 atualizados, 0 inseridos, sem erro; limpeza pelo `DELETE` do CRM;
+  `PENDING_DELETION` assinado em seguida → nada ressuscitou (9); Sincronizar →
+  9 na Meta.
 
 ### Fase 7 — Por que a conexão com a Meta falhou
 
@@ -1557,3 +1629,6 @@ acima, depois das fases, mostrando só divergência NOSSA.
 | 23/09/2026 | 3-IV, #259, 4 | O CI dos PRs #265, #269, #270 e #271 ficou horas parado pelo limite de downloads do GHCR (incidente do GitHub); outra sessão consertou o pipeline (#274, a CLI cai para outros registros) e trouxe o `main` às branches — conferido: merges automáticos, árvores idênticas às do Git. Ordem de merge: #265 → #269 → #270 → #271, cada um com o `main` anterior dentro; a `1038`/`1039` aplicadas ANTES do #270 (histórico `20260923202446`/`20260923202453`). O #271 e a resolução do conflito do #273 foram feitos pelo Gabriel no meio da fila — conferido: ele mesclou a cabeça já resolvida do #271, e a resolução do #273 só tirou as marcas do CHANGELOG. Pós-deploy de cada um: saúde anônima e ingestão viva. Codex sem cota em todos. |
 | 23/09/2026 | fora do plano | Relato do operador na mensagem de teste da Fase 4: a conversa "não aparecia" na caixa de entrada até recarregar. Medido: a lista nunca reordenava pelo tempo real (defeito do original) — a conversa reaberta entrava em Abertas na posição da carga, abaixo da dobra. PR #273: ordena como o banco e só avança hora/prévia; a revisão pegou o aviso de sistema do grupo subindo a linha. Reproduzido antes e conferido depois no preview, só no lead de teste, e desfeito. |
 | 23/09/2026 | 3-III | A API v1 (contatos, mensagens, disparo) e a "Nova conversa" passam pela régua da 3-II; `parseInternationalPhone` sai do código. As duas lentes acharam, independentes, a mesma frase falsa na doc pública ("lido exatamente como antes"), e a Lente 2 mostrou que o pino deixava a rota da "Nova conversa" voltar ao defeito por `normalizePhone`. O P2 do disparo (ficha casada pela tolerância) foi refutado pelo cético — anterior à fase, virou pendência, junto com o webhook de entrada fora da régua. |
+| 23/09/2026 | fora do plano | O passo "Enviar para um número" das automações lia o telefone pela régua dos sistemas ("98000-0016" virava +98; um `…@lid` virava telefone). PR #282: a régua das telas na ativação, no motor, no resumo e no campo do construtor; o CHANGELOG traz a consulta das automações antigas afetadas. Mesclado por outra sessão com a cabeça anterior — conferido: árvore idêntica. |
+| 24/09/2026 | 5 | O motivo da falha da Meta gravado na mensagem e no disparo, nos mesmos updates condicionais da escada; o `errors[0]` lido por parse (código estranho, NUL e surrogate solto derrubariam o UPDATE — medido num Postgres 16). PR #283, rollout 00:24Z; pós-deploy: a primeira mensagem entrou às 00:47Z. Falta o disparo REAL fora da janela (depois de 24/09 19:14Z). |
+| 24/09/2026 | 6 | 6a (o teto na leitura do cabeçalho) e 6b (o stub por `cb_channels`). A revisão em duas lentes achou 4 P2 — o mais sério, o stub de corpo vazio virando o modelo do envio e derrubando o envio pelo nome com variáveis; consertado lendo o modelo na Meta com a conversão da sincronização (`modelo-da-meta.ts`). E2E refeito contra a Meta; mutantes 20/20. Dois workers de mutante órfãos (stream sem fim, rodada anterior) giraram 7,5 h e derrubaram a suíte por carga — mortos, e a regra foi para o handoff. PR #284. A passagem de sessão está em `docs/HANDOFF-merge-upstream-2026-09.md`. |

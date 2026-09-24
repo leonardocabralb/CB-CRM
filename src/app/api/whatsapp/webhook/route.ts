@@ -345,8 +345,10 @@ async function processarEntradas(
       // dedicated handler. Skip the messaging branches below so we
       // don't try to read message-shaped fields off a template event.
       if (isTemplateWebhookField(change.field)) {
+        // `entry.id` é a WABA nos eventos de modelo: é por ela que o modelo
+        // criado direto no painel da Meta vira stub no canal certo (Fase 6b).
         await handleTemplateWebhookChange(
-          { field: change.field, value: change.value as unknown },
+          { field: change.field, value: change.value as unknown, wabaId: entry.id },
           supabaseAdmin(),
         )
         continue

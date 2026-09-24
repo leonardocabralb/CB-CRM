@@ -233,7 +233,7 @@ vi.mock('@/lib/whatsapp/webhook-signature', () => ({
   verifyMetaWebhookSignature: () => true,
 }))
 vi.mock('@/lib/whatsapp/template-webhook', () => ({
-  isTemplateWebhookField: () => false,
+  isTemplateWebhookField: (field: string) => field.startsWith('message_template_'),
   handleTemplateWebhookChange: vi.fn(),
 }))
 vi.mock('@/lib/automations/engine', () => ({
@@ -276,6 +276,7 @@ vi.mock('@/lib/webhooks/deliver', () => ({
 
 import { POST } from './route'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
+import { handleTemplateWebhookChange } from '@/lib/whatsapp/template-webhook'
 
 const mockGetMediaUrl = vi.mocked(getMediaUrl)
 const mockDownloadMedia = vi.mocked(downloadMedia)
@@ -855,5 +856,50 @@ describe('conversation.created não segura a gravação da mensagem', () => {
     await runWebhook()
 
     expect(eventos()).toEqual(['message.received'])
+  })
+})
+
+// Porte do teste do original (#534), que o merge #259 não trouxe: o evento de
+// modelo passa pela rota de verdade, chega ao handler com a WABA do envelope,
+// e não cai no ramo de mensagens.
+describe('template-lifecycle webhooks: WABA id is threaded to the handler (#534)', () => {
+  it('passes entry.id as wabaId so an unknown template can be stubbed for the right account', async () => {
+    // O valor carrega TAMBÉM a forma de uma mensagem: sem o `continue` da rota
+    // ele cairia no ramo de mensagens e seria gravado — é isso que a última
+    // asserção prova (com o valor só de modelo, ela passava por acidente).
+    const value = {
+      event: 'APPROVED',
+      message_template_id: '4242',
+      message_template_name: 'created_in_meta',
+      message_template_language: 'en_US',
+      metadata: { phone_number_id: 'pn-1' },
+      contacts: [{ wa_id: '15551230000', profile: { name: 'Ada' } }],
+      messages: [TEXT_MESSAGE],
+    }
+    const body = {
+      entry: [
+        {
+          id: 'WABA-1',
+          changes: [{ field: 'message_template_status_update', value }],
+        },
+      ],
+    }
+    const req = {
+      text: async () => JSON.stringify(body),
+      headers: { get: () => 'sha256=stub' },
+    } as unknown as Request
+
+    await POST(req)
+    for (const cb of h.state.afterCallbacks) await cb()
+
+    const mockHandle = vi.mocked(handleTemplateWebhookChange)
+    expect(mockHandle).toHaveBeenCalledTimes(1)
+    expect(mockHandle.mock.calls[0][0]).toEqual({
+      field: 'message_template_status_update',
+      value,
+      wabaId: 'WABA-1',
+    })
+    // A template event must not fall through to the messaging branch.
+    expect(h.state.upsertCalls).toHaveLength(0)
   })
 })

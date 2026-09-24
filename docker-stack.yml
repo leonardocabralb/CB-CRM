@@ -46,7 +46,7 @@ services:
       # servidor lê esteja nesta lista. Vazias valem o mesmo que ausentes:
       # META_APP_ID vazio dá o mesmo erro de hoje, a lista de convite vazia
       # é "sem restrição", e AI_* vazias caem no padrão (30 s, 20 mensagens).
-      # Modelo com cabeçalho de imagem (Resumable Upload da Meta).
+      # Modelo com cabeçalho de imagem, vídeo ou documento (Resumable Upload da Meta).
       META_APP_ID: ${META_APP_ID:-}
       # Hosts aceitos no link de convite (lista separada por vírgula).
       ALLOWED_INVITE_HOSTS: ${ALLOWED_INVITE_HOSTS:-}

@@ -494,7 +494,10 @@ valor antigo e passariam a ser recusadas.
 - Callback URL: `https://crm.seudominio.com/api/whatsapp/webhook`
 - Verify Token: o mesmo que você inventou
 - Assine o campo `messages` (obrigatório) e, se quiser status de modelos
-  em tempo real, `message_template_status_update`.
+  em tempo real, `message_template_status_update` — com ele, o modelo
+  criado direto no painel da Meta também aparece no CRM sozinho, sem
+  precisar de *Sincronizar*. `message_template_quality_update` (a nota de
+  qualidade) é opcional.
 
 A ordem importa: registrar na Meta antes de salvar no CRM faz a
 verificação falhar, porque o CRM ainda não conhece o Verify Token.
