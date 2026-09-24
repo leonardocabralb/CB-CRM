@@ -275,10 +275,7 @@
       "novaConversa": "New conversation",
       "automacaoRodando": "{n, plural, one {# automation scheduled for this contact} other {# automations scheduled for this contact}}",
       "searchPlaceholderInMessages": "Search by name, number or message...",
-      "searchInsideMessages": "Also search inside messages",
-      "filterAll": "All",
-      "filterPending": "Pending",
-      "company": "Company"
+      "searchInsideMessages": "Also search inside messages"
     },
     "messageThread": {
       "unknownAuthor": "Unknown",
@@ -334,12 +331,11 @@
       "searchLocalCount": "{atual} of {total}",
       "searchClose": "Close search",
       "customer": "Customer",
-      "unknown": "Unknown",
       "sendFailed": "Failed to send: {reason}",
       "sendTemplateFailed": "Failed to send template: {reason}",
       "waitForSending": "Wait for the message to finish sending",
       "reactionFailed": "Reaction failed: {reason}",
-      "assignmentUpdateFailed": "Failed to update assignment"
+      "networkError": "network error"
     },
     "sessionTimer": {
       "expired": "Expired",
@@ -401,7 +397,7 @@
       "removeAllAttachments": "Remove all",
       "addCaptionFor": "Caption for {arquivo}",
       "enviarNAnexos": "{n} messages",
-      "aiNotConfigured": "AI isn't set up yet — enable it in Settings → AI Assistant.",
+      "aiNotConfigured": "The AI assistant isn't on yet — turn it on in AI Agents (the key lives in Settings → Integrations).",
       "draftFailed": "Couldn't draft a reply.",
       "draftEmpty": "The assistant didn't return a reply.",
       "aiUnreachable": "Couldn't reach the AI assistant.",
@@ -1010,10 +1006,7 @@
       "toastNoteNeedsConversation": "This contact has no conversation yet, so there is nowhere to attach the note. Send a message first.",
       "toastNoteDeleteForbidden": "Only the author or an admin can delete this note.",
       "fieldSaved": "Saved",
-      "toastCustomFieldFailed": "Could not save \"{campo}\" for {cliente}.",
-      "saveCustomFieldsBtn": "Save Custom Fields",
-      "toastCustomFieldsSaved": "Custom fields saved",
-      "toastCustomFieldsFailed": "Failed to save custom fields"
+      "toastCustomFieldFailed": "Could not save \"{campo}\" for {cliente}."
     },
     "importModal": {
       "title": "Import Contacts",
@@ -1220,8 +1213,7 @@
       "contactSearchHint": "Type at least 2 letters to search.",
       "contactSearchEmpty": "No contact matches the search.",
       "contactSearchFailed": "The search failed. Type again to retry.",
-      "contactSearchMore": "Showing the first {count}. Keep typing to narrow it down.",
-      "currency": "Currency"
+      "contactSearchMore": "Showing the first {count}. Keep typing to narrow it down."
     },
     "settings": {
       "managePipeline": "Manage Pipeline",
@@ -2147,13 +2139,6 @@
       "kindCondition": "Condition",
       "kindWait": "Wait",
       "kindAction": "Action"
-    },
-    "relative": {
-      "never": "never",
-      "justNow": "just now",
-      "minutesAgo": "{n}m ago",
-      "hoursAgo": "{n}h ago",
-      "daysAgo": "{n}d ago"
     }
   },
   "Flows": {
@@ -2401,10 +2386,7 @@
       "descriptionLabel": "Flow description",
       "statusDraft": "Draft",
       "statusActive": "Active",
-      "statusArchived": "Archived",
-      "namePlaceholder": "Flow name",
-      "unsavedHint": "Unsaved changes — hit Save to persist",
-      "fixIssues": "Fix the issues below before activating"
+      "statusArchived": "Archived"
     }
   },
   "Settings": {
@@ -4169,18 +4151,6 @@
         "location": "📍 Location",
         "template": "📋 Template"
       }
-    },
-    "deals": {
-      "title": "Deals & currency",
-      "description": "The currency used for new deals and for pipeline and dashboard totals.",
-      "defaultCurrency": "Default currency",
-      "defaultCurrencyDesc": "New deals default to this currency, and pipeline and dashboard totals are shown in it. Existing deals keep the currency they were saved with.",
-      "currencyLabel": "Currency",
-      "adminOnlyHint": "Only account admins can change the default currency.",
-      "save": "Save",
-      "saving": "Saving...",
-      "saveFailed": "Failed to save default currency",
-      "saveSuccess": "Default currency updated"
     }
   },
   "roles": {
@@ -4202,14 +4172,7 @@
       "inputPlaceholder": "Type a customer message…",
       "errorNotConfigured": "No agent configured yet — finish Setup first.",
       "errorNoReply": "Couldn't get a reply.",
-      "errorUnreachable": "Couldn't reach the agent.",
-      "emptyTitle": "Send a message to see how your agent would reply.",
-      "emptyDesc": "It uses your knowledge base and behaves exactly like the auto-reply bot — including handoff.",
-      "handoff": "Would hand off to a human here",
-      "placeholder": "Type a customer message…",
-      "notConfigured": "No agent configured yet — finish Setup first.",
-      "noReply": "Couldn't get a reply.",
-      "unreachable": "Couldn't reach the agent."
+      "errorUnreachable": "Couldn't reach the agent."
     },
     "usage": {
       "loadError": "Failed to load usage",
@@ -4227,14 +4190,7 @@
       "tokensPerDay": "Tokens per day",
       "byModel": "By model",
       "modelStats": "{tokens} tok · {calls, plural, =1 {# call} other {# calls}}",
-      "truncatedNotice": "Showing a partial window — usage is high enough that only the most recent records are summarized here.",
-      "window": "Last {days} days",
-      "loadFailed": "Failed to load usage",
-      "empty": "No AI usage in the last {days} days yet.",
-      "emptyHint": "This fills in as the assistant drafts and auto-replies.",
-      "tokens": "Tokens",
-      "modelCalls": "{tokens} tok · {count, plural, =1 {# call} other {# calls}}",
-      "partialWindow": "Showing a partial window — usage is high enough that only the most recent records are summarized here."
+      "truncatedNotice": "Showing a partial window — usage is high enough that only the most recent records are summarized here."
     },
     "title": "AI Agents",
     "description": "Your bring-your-own-key AI agent — set it up, then test it in the playground before it replies to customers in the inbox.",
@@ -4252,11 +4208,7 @@
     "emailPlaceholder": "you@example.com",
     "sending": "Sending...",
     "submitButton": "Send reset link",
-    "linkExpired": "That link has expired or was already used. Ask for a new one below.",
-    "checkEmailTitle": "Check your email",
-    "checkEmailDesc": "We've sent a password reset link to <strong>{email}</strong>. Please check your inbox.",
-    "desc": "Enter your email and we'll send you a reset link",
-    "sendLink": "Send reset link"
+    "linkExpired": "That link has expired or was already used. Ask for a new one below."
   },
   "ResetPasswordPage": {
     "title": "Choose a new password",
@@ -4302,28 +4254,7 @@
       "bodyPlaceholder": "Message body…",
       "buttonFallback": "Button",
       "menuFallback": "Menu"
-    },
-    "replyButtons": "Reply buttons",
-    "list": "List",
-    "body": "Body",
-    "bodyPlaceholder": "What the customer reads above the options",
-    "header": "Header (optional)",
-    "footer": "Footer (optional)",
-    "showIds": "Show reply IDs (advanced)",
-    "previewBody": "Message body…",
-    "previewButton": "Button",
-    "previewMenu": "Menu",
-    "buttonsCount": "Buttons ({count}/{max})",
-    "idPlaceholder": "id",
-    "buttonLabelPlaceholder": "Button label",
-    "addButton": "Add button",
-    "listButtonLabel": "List button label",
-    "rowsCount": "Rows ({count}/{max})",
-    "sectionTitlePlaceholder": "Section title (optional)",
-    "rowTitlePlaceholder": "Row title",
-    "rowDescriptionPlaceholder": "Description (optional)",
-    "addRow": "Add row",
-    "addSection": "Add section"
+    }
   },
   "JoinPage": {
     "roleAdmin": "Admin",
@@ -4357,29 +4288,7 @@
     "signingOut": "Signing out…",
     "signOutDifferentEmail": "Sign out & use a different email",
     "createAccountAndJoin": "Create account & join",
-    "alreadyHaveAccount": "I already have an account",
-    "fail": {
-      "notFoundTitle": "Invite not found",
-      "notFoundBody": "This link doesn't match a valid invitation. Double-check the URL or ask the person who invited you to send a new one.",
-      "usedTitle": "Invite already used",
-      "usedBody": "This invitation has already been accepted. If that wasn't you, ask the account admin to send a fresh link.",
-      "expiredTitle": "Invite expired",
-      "expiredBody": "This invitation has expired. Ask the account admin to send a new one — they take a few seconds to generate.",
-      "serverErrorTitle": "Something went wrong",
-      "serverErrorBody": "We couldn't verify this invitation right now. Try refreshing the page in a moment."
-    },
-    "conflictDefault": "You are already in another account. Sign in with a different email to join this one.",
-    "acceptFailed": "Failed to accept invitation",
-    "welcome": "Welcome to the team",
-    "serverUnreachable": "Could not reach the server",
-    "signOutFailed": "Could not sign out. Try refreshing the page.",
-    "createNewAccount": "Create a new account instead",
-    "invitedTo": "You're invited to <account>{name}</account>",
-    "joinAs": "You'll join as <badge>{role}</badge>. Link valid until {date}.",
-    "conflictBody": "To join <account>{name}</account>, sign out and sign up again with a different email address. The invite link stays valid as long as it hasn't expired.",
-    "signOutSwitch": "Sign out & use a different email",
-    "createAndJoin": "Create account & join",
-    "haveAccount": "I already have an account"
+    "alreadyHaveAccount": "I already have an account"
   },
   "NotificationsPage": {
     "title": "Notifications",
@@ -4423,15 +4332,7 @@
     "signedUpButSignInFailed": "The account was created and is already in the team, but signing in failed just now. Use \"Sign in\" with the email and password you chose.",
     "tooManyAttempts": "Too many attempts in a row. Wait a few minutes and try again.",
     "closedTitle": "Sign-ups are closed",
-    "passwordTooLong": "The password is too long: the limit is 72 bytes, and each accented letter counts as two.",
-    "passwordsMismatch": "Passwords do not match",
-    "checkEmailDesc": "We've sent a confirmation link to <strong>{email}</strong>. Please check your inbox and click the link to verify your account.",
-    "titleJoin": "Create account & join",
-    "descJoin": "Verify your email, then accept the invitation to join your team.",
-    "desc": "Get started with CRM Template for WhatsApp",
-    "creating": "Creating account...",
-    "submit": "Create account",
-    "haveAccount": "Already have an account?"
+    "passwordTooLong": "The password is too long: the limit is 72 bytes, and each accented letter counts as two."
   },
   "ChannelHealth": {
     "title": "WhatsApp connections",
@@ -5024,16 +4925,5 @@
   "DashboardShell": {
     "loading": "Loading…",
     "signOutError": "Could not sign out: {message}"
-  },
-  "Notifications": {
-    "title": "Notifications",
-    "description": "Conversations other teammates assign to you show up here.",
-    "markAllRead": "Mark all as read",
-    "markReadFailed": "Failed to mark notification as read",
-    "markAllFailed": "Failed to mark all as read",
-    "retry": "Retry",
-    "emptyTitle": "No notifications yet",
-    "emptyDesc": "You'll see an alert here when someone assigns you a conversation.",
-    "unread": "Unread"
   }
 }

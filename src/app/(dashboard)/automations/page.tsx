@@ -45,7 +45,7 @@ import { ChannelScopeBadge } from "@/components/channels/channel-badge"
 import { ChannelFilter } from "@/components/channels/channel-filter"
 import { useChannels } from "@/hooks/use-channels"
 import type { CbChannel } from "@/lib/cb-channels/repo"
-import { triggerMeta, formatRelative } from "@/lib/automations/trigger-meta"
+import { TRIGGER_META, triggerMeta, formatRelative } from "@/lib/automations/trigger-meta"
 import { cn } from "@/lib/utils"
 
 const TEMPLATE_ORDER: TemplateSlug[] = [
@@ -320,6 +320,7 @@ function AutomationCard({
   t: ReturnType<typeof useTranslations>
 }) {
   const meta = triggerMeta(automation.trigger_type)
+  const tGatilhos = useTranslations("Automations.builder.triggers")
   return (
     <li className="rounded-xl border border-border bg-card transition-colors hover:border-border">
       <div className="flex items-center gap-4 p-4">
@@ -340,7 +341,7 @@ function AutomationCard({
               {automation.name}
             </span>
             {automation.is_active && (
-              <span className="relative flex h-2 w-2" aria-label="active">
+              <span className="relative flex h-2 w-2" aria-label={t("activeIndicator")}>
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
               </span>
@@ -356,7 +357,9 @@ function AutomationCard({
                 meta.pillClass,
               )}
             >
-              {meta.label}
+              {automation.trigger_type in TRIGGER_META
+                ? tGatilhos(`${automation.trigger_type}.label` as Parameters<typeof tGatilhos>[0])
+                : meta.label}
             </span>
             <span className="tabular-nums">
               {automation.execution_count === 1
@@ -384,7 +387,7 @@ function AutomationCard({
 
           <DropdownMenu>
             <DropdownMenuTrigger
-              aria-label="Open menu"
+              aria-label={t("openMenu")}
               className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[popup-open]:bg-muted"
             >
               <MoreVertical className="h-4 w-4" />

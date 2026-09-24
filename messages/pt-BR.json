@@ -268,10 +268,7 @@
       "novaConversa": "Nova conversa",
       "automacaoRodando": "{n, plural, one {# automação agendada para este cliente} other {# automações agendadas para este cliente}}",
       "searchPlaceholderInMessages": "Buscar por nome, número ou mensagem...",
-      "searchInsideMessages": "Buscar também dentro das mensagens",
-      "filterAll": "Todas",
-      "filterPending": "Pendentes",
-      "company": "Empresa"
+      "searchInsideMessages": "Buscar também dentro das mensagens"
     },
     "messageThread": {
       "unknownAuthor": "Desconhecido",
@@ -327,12 +324,11 @@
       "searchLocalCount": "{atual} de {total}",
       "searchClose": "Fechar busca",
       "customer": "Cliente",
-      "unknown": "Desconhecido",
       "sendFailed": "Falha ao enviar: {reason}",
       "sendTemplateFailed": "Falha ao enviar o modelo: {reason}",
       "waitForSending": "Espere a mensagem terminar de ser enviada",
       "reactionFailed": "A reação falhou: {reason}",
-      "assignmentUpdateFailed": "Falha ao atualizar o responsável"
+      "networkError": "erro de rede"
     },
     "sessionTimer": {
       "expired": "Expirada",
@@ -394,7 +390,7 @@
       "removeAllAttachments": "Remover todos",
       "addCaptionFor": "Legenda de {arquivo}",
       "enviarNAnexos": "{n} mensagens",
-      "aiNotConfigured": "A IA ainda não está configurada — ative em Configurações → Assistente de IA.",
+      "aiNotConfigured": "O assistente de IA ainda não está ligado — ative em Agentes de IA (a chave fica em Configurações → Integrações).",
       "draftFailed": "Não foi possível redigir uma resposta.",
       "draftEmpty": "O assistente não devolveu resposta.",
       "aiUnreachable": "Não foi possível falar com o assistente de IA.",
@@ -1003,10 +999,7 @@
       "toastNoteDeleteForbidden": "Só o autor ou um admin pode excluir esta anotação.",
       "name": "Nome",
       "fieldSaved": "Salvo",
-      "toastCustomFieldFailed": "Não foi possível salvar \"{campo}\" em {cliente}.",
-      "saveCustomFieldsBtn": "Salvar campos personalizados",
-      "toastCustomFieldsSaved": "Campos personalizados salvos",
-      "toastCustomFieldsFailed": "Falha ao salvar os campos personalizados"
+      "toastCustomFieldFailed": "Não foi possível salvar \"{campo}\" em {cliente}."
     },
     "importModal": {
       "title": "Importar contatos",
@@ -1213,8 +1206,7 @@
       "contactSearchHint": "Digite ao menos 2 letras para buscar.",
       "contactSearchEmpty": "Nenhum contato encontrado para a busca.",
       "contactSearchFailed": "A busca falhou. Digite de novo para tentar.",
-      "contactSearchMore": "Mostrando os {count} primeiros. Continue digitando para afinar.",
-      "currency": "Moeda"
+      "contactSearchMore": "Mostrando os {count} primeiros. Continue digitando para afinar."
     },
     "settings": {
       "managePipeline": "Gerenciar funil",
@@ -2140,13 +2132,6 @@
       "kindCondition": "Condição",
       "kindWait": "Espera",
       "kindAction": "Ação"
-    },
-    "relative": {
-      "never": "nunca",
-      "justNow": "agora mesmo",
-      "minutesAgo": "há {n}min",
-      "hoursAgo": "há {n}h",
-      "daysAgo": "há {n}d"
     }
   },
   "Flows": {
@@ -2394,10 +2379,7 @@
       "descriptionLabel": "Descrição do fluxo",
       "statusDraft": "Rascunho",
       "statusActive": "Ativo",
-      "statusArchived": "Arquivado",
-      "namePlaceholder": "Nome do fluxo",
-      "unsavedHint": "Alterações não salvas — clique em Salvar para gravar",
-      "fixIssues": "Resolva os problemas abaixo antes de ativar"
+      "statusArchived": "Arquivado"
     }
   },
   "Settings": {
@@ -4162,18 +4144,6 @@
         "location": "📍 Localização",
         "template": "📋 Modelo"
       }
-    },
-    "deals": {
-      "title": "Negócios e moeda",
-      "description": "A moeda usada em negócios novos e nos totais do funil e do painel.",
-      "defaultCurrency": "Moeda padrão",
-      "defaultCurrencyDesc": "Negócios novos nascem nesta moeda, e os totais do funil e do painel são exibidos nela. Negócios existentes mantêm a moeda com que foram salvos.",
-      "currencyLabel": "Moeda",
-      "adminOnlyHint": "Só administradores da conta podem mudar a moeda padrão.",
-      "save": "Salvar",
-      "saving": "Salvando...",
-      "saveFailed": "Falha ao salvar a moeda padrão",
-      "saveSuccess": "Moeda padrão atualizada"
     }
   },
   "roles": {
@@ -4195,14 +4165,7 @@
       "inputPlaceholder": "Digite uma mensagem de cliente…",
       "errorNotConfigured": "Nenhum agente configurado ainda — conclua a configuração primeiro.",
       "errorNoReply": "Não foi possível obter uma resposta.",
-      "errorUnreachable": "Não foi possível conectar ao agente.",
-      "emptyTitle": "Mande uma mensagem para ver como o seu agente responderia.",
-      "emptyDesc": "Ele usa a sua base de conhecimento e se comporta exatamente como o robô de resposta automática — inclusive na passagem para um humano.",
-      "handoff": "Aqui ele passaria para um humano",
-      "placeholder": "Digite uma mensagem de cliente…",
-      "notConfigured": "Nenhum agente configurado ainda — conclua a configuração primeiro.",
-      "noReply": "Não foi possível obter uma resposta.",
-      "unreachable": "Não foi possível falar com o agente."
+      "errorUnreachable": "Não foi possível conectar ao agente."
     },
     "usage": {
       "loadError": "Falha ao carregar o uso",
@@ -4220,14 +4183,7 @@
       "tokensPerDay": "Tokens por dia",
       "byModel": "Por modelo",
       "modelStats": "{tokens} tok · {calls, plural, =1 {# chamada} other {# chamadas}}",
-      "truncatedNotice": "Mostrando uma janela parcial — o uso é alto o suficiente para que apenas os registros mais recentes sejam resumidos aqui.",
-      "window": "Últimos {days} dias",
-      "loadFailed": "Falha ao carregar o uso",
-      "empty": "Nenhum uso de IA nos últimos {days} dias.",
-      "emptyHint": "Isto se preenche conforme o assistente redige e responde sozinho.",
-      "tokens": "Tokens",
-      "modelCalls": "{tokens} tok · {count, plural, =1 {# chamada} other {# chamadas}}",
-      "partialWindow": "Exibindo uma janela parcial — o uso é alto o bastante para que só os registros mais recentes sejam resumidos aqui."
+      "truncatedNotice": "Mostrando uma janela parcial — o uso é alto o suficiente para que apenas os registros mais recentes sejam resumidos aqui."
     },
     "title": "Agentes de IA",
     "description": "O seu agente de IA com chave própria — configure e teste no playground antes de ele responder a clientes na caixa de entrada.",
@@ -4245,11 +4201,7 @@
     "emailPlaceholder": "voce@exemplo.com",
     "sending": "Enviando...",
     "submitButton": "Enviar link de redefinição",
-    "linkExpired": "Esse link expirou ou já foi usado. Peça outro abaixo.",
-    "checkEmailTitle": "Confira seu e-mail",
-    "checkEmailDesc": "Enviamos um link de redefinição de senha para <strong>{email}</strong>. Confira a caixa de entrada.",
-    "desc": "Informe seu e-mail e enviaremos um link de redefinição",
-    "sendLink": "Enviar link de redefinição"
+    "linkExpired": "Esse link expirou ou já foi usado. Peça outro abaixo."
   },
   "ResetPasswordPage": {
     "title": "Escolha uma senha nova",
@@ -4295,28 +4247,7 @@
       "bodyPlaceholder": "Corpo da mensagem…",
       "buttonFallback": "Botão",
       "menuFallback": "Menu"
-    },
-    "replyButtons": "Botões de resposta",
-    "list": "Lista",
-    "body": "Corpo",
-    "bodyPlaceholder": "O que o cliente lê acima das opções",
-    "header": "Cabeçalho (opcional)",
-    "footer": "Rodapé (opcional)",
-    "showIds": "Mostrar IDs de resposta (avançado)",
-    "previewBody": "Corpo da mensagem…",
-    "previewButton": "Botão",
-    "previewMenu": "Menu",
-    "buttonsCount": "Botões ({count}/{max})",
-    "idPlaceholder": "id",
-    "buttonLabelPlaceholder": "Rótulo do botão",
-    "addButton": "Acrescentar botão",
-    "listButtonLabel": "Rótulo do botão da lista",
-    "rowsCount": "Linhas ({count}/{max})",
-    "sectionTitlePlaceholder": "Título da seção (opcional)",
-    "rowTitlePlaceholder": "Título da linha",
-    "rowDescriptionPlaceholder": "Descrição (opcional)",
-    "addRow": "Acrescentar linha",
-    "addSection": "Acrescentar seção"
+    }
   },
   "JoinPage": {
     "roleAdmin": "Administrador",
@@ -4350,29 +4281,7 @@
     "signingOut": "Saindo…",
     "signOutDifferentEmail": "Sair e usar outro e-mail",
     "createAccountAndJoin": "Criar conta e participar",
-    "alreadyHaveAccount": "Já tenho uma conta",
-    "fail": {
-      "notFoundTitle": "Convite não encontrado",
-      "notFoundBody": "Este link não corresponde a um convite válido. Confira a URL ou peça um novo a quem convidou você.",
-      "usedTitle": "Convite já usado",
-      "usedBody": "Este convite já foi aceito. Se não foi você, peça ao administrador da conta um link novo.",
-      "expiredTitle": "Convite expirado",
-      "expiredBody": "Este convite expirou. Peça um novo ao administrador da conta — leva alguns segundos para gerar.",
-      "serverErrorTitle": "Algo deu errado",
-      "serverErrorBody": "Não conseguimos verificar este convite agora. Tente recarregar a página em instantes."
-    },
-    "conflictDefault": "Você já está em outra conta. Entre com outro e-mail para participar desta.",
-    "acceptFailed": "Falha ao aceitar o convite",
-    "welcome": "Boas-vindas ao time",
-    "serverUnreachable": "Não foi possível falar com o servidor",
-    "signOutFailed": "Não foi possível sair. Tente recarregar a página.",
-    "createNewAccount": "Criar uma conta nova",
-    "invitedTo": "Você foi convidado para <account>{name}</account>",
-    "joinAs": "Você entra como <badge>{role}</badge>. Link válido até {date}.",
-    "conflictBody": "Para entrar em <account>{name}</account>, saia e cadastre-se de novo com outro e-mail. O link do convite continua valendo enquanto não expirar.",
-    "signOutSwitch": "Sair e usar outro e-mail",
-    "createAndJoin": "Criar conta e entrar",
-    "haveAccount": "Já tenho uma conta"
+    "alreadyHaveAccount": "Já tenho uma conta"
   },
   "NotificationsPage": {
     "title": "Notificações",
@@ -4416,15 +4325,7 @@
     "signedUpButSignInFailed": "A conta foi criada e já está na equipe, mas não foi possível entrar agora. Use \"Entrar\" com o e-mail e a senha que você escolheu.",
     "tooManyAttempts": "Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.",
     "closedTitle": "Cadastro fechado",
-    "passwordTooLong": "A senha é longa demais: o limite é de 72 bytes, e cada letra com acento conta como duas.",
-    "passwordsMismatch": "As senhas não coincidem",
-    "checkEmailDesc": "Enviamos um link de confirmação para <strong>{email}</strong>. Confira a caixa de entrada e clique no link para verificar sua conta.",
-    "titleJoin": "Criar conta e entrar",
-    "descJoin": "Verifique seu e-mail e aceite o convite para entrar no time.",
-    "desc": "Comece a usar o CRM para WhatsApp",
-    "creating": "Criando conta...",
-    "submit": "Criar conta",
-    "haveAccount": "Já tem uma conta?"
+    "passwordTooLong": "A senha é longa demais: o limite é de 72 bytes, e cada letra com acento conta como duas."
   },
   "ChannelHealth": {
     "title": "Conexões de WhatsApp",
@@ -5024,16 +4925,5 @@
   "DashboardShell": {
     "loading": "Carregando…",
     "signOutError": "Não foi possível sair: {message}"
-  },
-  "Notifications": {
-    "title": "Notificações",
-    "description": "Conversas que outros colegas atribuem a você aparecem aqui.",
-    "markAllRead": "Marcar todas como lidas",
-    "markReadFailed": "Falha ao marcar a notificação como lida",
-    "markAllFailed": "Falha ao marcar todas como lidas",
-    "retry": "Tentar de novo",
-    "emptyTitle": "Nenhuma notificação ainda",
-    "emptyDesc": "Você verá um aviso aqui quando alguém atribuir uma conversa a você.",
-    "unread": "Não lidas"
   }
 }
