@@ -493,6 +493,8 @@ export async function loadResponseTime(
 
 // --- 5. Activity feed --------------------------------------------------
 
+type ContatoDoFeed = { name: string | null; phone: string | null; instagram_username?: string | null }
+
 export async function loadActivity(
   db: DB,
   limit = 20,
@@ -515,7 +517,7 @@ export async function loadActivity(
         db
           .from('messages')
           .select(
-            'id, content_text, sender_type, created_at, conversation_id, conversations!inner(group_id, contact_id, contacts(name, phone))',
+            'id, content_text, sender_type, created_at, conversation_id, conversations!inner(group_id, contact_id, contacts(name, phone, instagram_username))',
           )
           .eq('sender_type', 'customer'),
       ),
@@ -547,7 +549,7 @@ export async function loadActivity(
     porCanal(
       db
         .from('automation_logs')
-        .select('id, trigger_event, status, created_at, automation:automations(name), contact:contacts(name, phone)'),
+        .select('id, trigger_event, status, created_at, automation:automations(name), contact:contacts(name, phone, instagram_username)'),
       channelId,
     )
       .order('created_at', { ascending: false })
@@ -564,17 +566,16 @@ export async function loadActivity(
     created_at: string
     conversation_id: string
     conversations:
-      | { contact_id: string | null; contacts: { name: string | null; phone: string }[] | { name: string | null; phone: string } | null }[]
-      | { contact_id: string | null; contacts: { name: string | null; phone: string }[] | { name: string | null; phone: string } | null }
+      | { contact_id: string | null; contacts: ContatoDoFeed[] | ContatoDoFeed | null }[]
+      | { contact_id: string | null; contacts: ContatoDoFeed[] | ContatoDoFeed | null }
       | null
   }>) {
     const conv = Array.isArray(m.conversations) ? m.conversations[0] : m.conversations
     const contact = Array.isArray(conv?.contacts) ? conv?.contacts[0] : conv?.contacts
-    const who = contact?.name || contact?.phone || 'Unknown'
     items.push({
       id: `msg-${m.id}`,
       kind: 'message',
-      text: `New message from ${who}`,
+      quem: nomeDoContato(contact, '') || null,
       at: m.created_at,
       href: `/inbox?c=${m.conversation_id}`,
     })
@@ -584,7 +585,7 @@ export async function loadActivity(
     items.push({
       id: `contact-${c.id}`,
       kind: 'contact',
-      text: `New contact: ${nomeDoContato(c, '—')}`,
+      quem: nomeDoContato(c, '') || null,
       at: c.created_at,
       href: '/contacts',
     })
@@ -600,9 +601,8 @@ export async function loadActivity(
     items.push({
       id: `deal-${d.id}`,
       kind: 'deal',
-      text: stage?.name
-        ? `Deal "${d.title}" in ${stage.name}`
-        : `Deal "${d.title}" updated`,
+      titulo: d.title,
+      etapa: stage?.name ?? null,
       at: d.updated_at,
       href: '/pipelines',
     })
@@ -612,17 +612,16 @@ export async function loadActivity(
     id: string
     name: string
     status: string
-    total_recipients: number
+    total_recipients: number | null
     created_at: string
   }>) {
-    const label =
-      b.status === 'sent'
-        ? `sent to ${b.total_recipients} contacts`
-        : `${b.status} (${b.total_recipients} recipients)`
     items.push({
       id: `broadcast-${b.id}`,
       kind: 'broadcast',
-      text: `Broadcast "${b.name}" ${label}`,
+      nome: b.name,
+      status: b.status,
+      // A coluna é anulável (001) e vai para um plural ICU, que quer número.
+      total: b.total_recipients ?? 0,
       at: b.created_at,
       href: '/broadcasts',
     })
@@ -634,16 +633,16 @@ export async function loadActivity(
     status: string
     created_at: string
     automation: { name: string }[] | { name: string } | null
-    contact: { name: string | null; phone: string }[] | { name: string | null; phone: string } | null
+    contact: ContatoDoFeed[] | ContatoDoFeed | null
   }>) {
     const automation = Array.isArray(l.automation) ? l.automation[0] : l.automation
     const contact = Array.isArray(l.contact) ? l.contact[0] : l.contact
-    const who = contact?.name || contact?.phone || 'a contact'
-    const autoName = automation?.name || 'Automation'
     items.push({
       id: `auto-${l.id}`,
       kind: 'automation',
-      text: `Automation "${autoName}" ${l.status === 'failed' ? 'failed for' : 'triggered for'} ${who}`,
+      automacao: automation?.name || null,
+      falhou: l.status === 'failed',
+      quem: nomeDoContato(contact, '') || null,
       at: l.created_at,
     })
   }

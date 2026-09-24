@@ -94,6 +94,7 @@ import { validateChannelScopeForActivation } from "@/lib/automations/validate"
 import { TIPO_DATA } from "@/lib/contacts/campo-data"
 import { telefoneDigitado } from "@/lib/contacts/telefone"
 import { uploadAccountMedia, MEDIA_MAX_BYTES_BY_KIND } from "@/lib/storage/upload-media"
+import { mensagemDoUpload } from "@/lib/storage/erro-de-upload"
 import { CHAT_MEDIA_BUCKET } from "@/lib/storage/buckets"
 import { origemDoConstrutor, urlDoConstrutor, voltaDoConstrutor } from "@/lib/pipelines/url"
 
@@ -2168,6 +2169,7 @@ function EditorDeMidia({
 }) {
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const tUpload = useTranslations("Upload")
   const kind = (cfg.kind as MediaKindUI) ?? "image"
   const url = (cfg.url as string) ?? ""
 
@@ -2188,7 +2190,7 @@ function EditorDeMidia({
       // perder a informação se o operador trocar o tipo depois.
       set({ url: publicUrl, filename: file.name })
     } catch (err) {
-      setErro(err instanceof Error ? err.message : String(err))
+      setErro(mensagemDoUpload(err, tUpload, String(err)))
     } finally {
       setEnviando(false)
     }

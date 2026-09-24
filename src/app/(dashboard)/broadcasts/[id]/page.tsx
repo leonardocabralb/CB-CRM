@@ -45,6 +45,7 @@ import {
   getRecipientStatus,
 } from '@/lib/broadcast-status';
 import { useTranslations } from 'next-intl';
+import { nomeDoContato } from '@/lib/contacts/identidade';
 
 interface StatCardProps {
   label: string;
@@ -81,11 +82,11 @@ interface FunnelStep {
  * Width is relative to the largest step (typically Sent) so we
  * always render a full bar at the top and proportional tails.
  */
-function FunnelChart({ steps }: { steps: FunnelStep[] }) {
+function FunnelChart({ titulo, steps }: { titulo: string; steps: FunnelStep[] }) {
   const max = Math.max(...steps.map((s) => s.value), 1);
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <h3 className="mb-4 text-sm font-medium text-foreground">Funnel</h3>
+      <h3 className="mb-4 text-sm font-medium text-foreground">{titulo}</h3>
       <div className="space-y-2">
         {steps.map((step) => {
           const pctOfMax = Math.max(5, Math.round((step.value / max) * 100));
@@ -278,7 +279,7 @@ export default function BroadcastDetailPage() {
     } catch (err) {
       toast.error(
         t('toastResumeFailed', {
-          error: err instanceof Error ? err.message : 'Unknown error',
+          error: err instanceof Error ? err.message : t('unknownError'),
         }),
       );
     } finally {
@@ -420,7 +421,7 @@ export default function BroadcastDetailPage() {
              erro (achado #15). */
           <GatedButton
             canAct={podeGerir}
-            gateReason="delete broadcasts"
+            gateReason="deleteBroadcasts"
             variant="outline"
             size="sm"
             disabled={broadcast.status === 'sending'}
@@ -533,7 +534,7 @@ export default function BroadcastDetailPage() {
         />
       </div>
 
-      <FunnelChart steps={funnelSteps} />
+      <FunnelChart titulo={t('funnel')} steps={funnelSteps} />
 
       {/* Recipients Table */}
       <div className="rounded-xl border border-border bg-card">
@@ -626,7 +627,7 @@ export default function BroadcastDetailPage() {
                   return (
                     <TableRow key={recipient.id} className="border-border">
                       <TableCell className="font-medium text-foreground">
-                        {recipient.contact?.name ?? 'Unknown'}
+                        {nomeDoContato(recipient.contact, t('unknownContact'))}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {recipient.contact?.phone ?? '-'}

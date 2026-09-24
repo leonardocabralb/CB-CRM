@@ -73,13 +73,27 @@ export type ActivityKind =
   | 'automation'
   | 'contact'
 
-export interface ActivityItem {
+interface ActivityBase {
   id: string
-  kind: ActivityKind
-  /** Primary line of text rendered in the feed. Pre-formatted. */
-  text: string
   /** ISO timestamp the item happened at, drives relative-time + sort. */
   at: string
   /** Optional deep-link for the whole row (not all items have a target). */
   href?: string
 }
+
+/**
+ * Uma linha do feed, em DADO — a frase é montada na TELA, pelo dicionário
+ * (`Dashboard.activityFeed.eventos.*`, em `activity-feed.tsx`). Até a Fase
+ * 10 do merge do upstream a consulta devolvia a frase pronta, em inglês
+ * ("New message from …", "Automation … triggered for …"), e o Painel
+ * mostrava o feed inteiro em inglês. `null` num nome = não se sabe quem: a
+ * tela escreve o texto de queda traduzido.
+ */
+export type ActivityItem = ActivityBase &
+  (
+    | { kind: 'message'; quem: string | null }
+    | { kind: 'contact'; quem: string | null }
+    | { kind: 'deal'; titulo: string; etapa: string | null }
+    | { kind: 'broadcast'; nome: string; status: string; total: number }
+    | { kind: 'automation'; automacao: string | null; falhou: boolean; quem: string | null }
+  )

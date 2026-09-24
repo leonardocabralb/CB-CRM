@@ -1,6 +1,5 @@
 {
   "Channels": {
-    "label": "Channel",
     "all": "All channels",
     "manyCount": "{count} channels",
     "selectPlaceholder": "Pick a channel",
@@ -129,7 +128,20 @@
       "timeS": "{sec}s ago",
       "timeM": "{min}m ago",
       "timeH": "{hr}h ago",
-      "timeD": "{day}d ago"
+      "timeD": "{day}d ago",
+      "eventos": {
+        "message": "New message from {quem}",
+        "contact": "New contact: {quem}",
+        "dealNaEtapa": "Deal \"{titulo}\" in {etapa}",
+        "dealAtualizado": "Deal \"{titulo}\" updated",
+        "broadcastEnviado": "Broadcast \"{nome}\" sent to {total, plural, =1 {# contact} other {# contacts}}",
+        "broadcastSituacao": "Broadcast \"{nome}\": {situacao} ({total, plural, =1 {# recipient} other {# recipients}})",
+        "automationFalhou": "Automation \"{automacao}\" failed for {quem}",
+        "automationDisparou": "Automation \"{automacao}\" triggered for {quem}",
+        "desconhecido": "Unknown",
+        "umContato": "a contact",
+        "automacaoSemNome": "Automation"
+      }
     },
     "conversationsChart": {
       "title": "Conversations Over Time",
@@ -206,7 +218,6 @@
       "favoriteFailed": "Could not save the favourite. Try again.",
       "filters": "Filters",
       "favorites": "Favourites",
-      "showingCount": "Showing {count} of {total}",
       "labelType": "Type",
       "labelStatus": "Status",
       "labelAssignee": "Assignee",
@@ -224,7 +235,6 @@
       "tagModeAll": "All of them",
       "favoritesLoadFailed": "Could not load your favourite conversations.",
       "assigneeUnnamed": "Unnamed member",
-      "removeFilter": "Remove the {filtro} filter",
       "searchMinChars": "Type {n} letters to also search inside messages.",
       "searchingInMessages": "Searching inside messages...",
       "stageFilterUnavailable": "Stages could not be loaded — the pipeline/stage filter is not being applied.",
@@ -234,8 +244,6 @@
       "savedFilters": "Saved",
       "savedFiltersLoading": "Loading…",
       "savedFiltersLoadFailed": "Could not load the saved filters.",
-      "savedFiltersEmpty": "No saved filters yet.",
-      "saveCurrentFilter": "Save current filter…",
       "manageSavedFilters": "Manage filters",
       "saveFilterTitle": "Save current filter",
       "saveFilterNamePlaceholder": "e.g. Banking · Meeting booked",
@@ -258,8 +266,6 @@
       "unsetAsDefault": "Stop being my default",
       "defaultSet": "This filter now opens your inbox.",
       "defaultUnset": "Your inbox opens unfiltered again.",
-      "defaultFilterBanner": "Default filter: {nome}",
-      "showEverything": "show everything",
       "viewAll": "All",
       "saveView": "Save",
       "saveViewChanges": "Save changes",
@@ -275,10 +281,7 @@
       "novaConversa": "New conversation",
       "automacaoRodando": "{n, plural, one {# automation scheduled for this contact} other {# automations scheduled for this contact}}",
       "searchPlaceholderInMessages": "Search by name, number or message...",
-      "searchInsideMessages": "Also search inside messages",
-      "filterAll": "All",
-      "filterPending": "Pending",
-      "company": "Company"
+      "searchInsideMessages": "Also search inside messages"
     },
     "messageThread": {
       "unknownAuthor": "Unknown",
@@ -334,12 +337,11 @@
       "searchLocalCount": "{atual} of {total}",
       "searchClose": "Close search",
       "customer": "Customer",
-      "unknown": "Unknown",
       "sendFailed": "Failed to send: {reason}",
       "sendTemplateFailed": "Failed to send template: {reason}",
       "waitForSending": "Wait for the message to finish sending",
       "reactionFailed": "Reaction failed: {reason}",
-      "assignmentUpdateFailed": "Failed to update assignment"
+      "networkError": "network error"
     },
     "sessionTimer": {
       "expired": "Expired",
@@ -401,13 +403,15 @@
       "removeAllAttachments": "Remove all",
       "addCaptionFor": "Caption for {arquivo}",
       "enviarNAnexos": "{n} messages",
-      "aiNotConfigured": "AI isn't set up yet — enable it in Settings → AI Assistant.",
+      "aiNotConfigured": "The AI assistant isn't on yet — turn it on in AI Agents (the key lives in Settings → Integrations).",
       "draftFailed": "Couldn't draft a reply.",
       "draftEmpty": "The assistant didn't return a reply.",
       "aiUnreachable": "Couldn't reach the AI assistant.",
       "recordingTooLong": "Recording is too long (over 16 MB).",
       "recordingUnsupported": "Voice recording isn't supported in this browser.",
-      "microphoneDenied": "Microphone access denied or unavailable."
+      "microphoneDenied": "Microphone access denied or unavailable.",
+      "uploadFailed": "Upload failed.",
+      "arquivoGrandeDemais": "File is {tamanho, number} MB — the {tipo, select, image {image} video {video} audio {audio} document {document} other {file}} limit is {limite, number} MB."
     },
     "bubble": {
       "transcricao": "Transcript",
@@ -469,7 +473,6 @@
     "actions": {
       "reply": "Reply",
       "copyText": "Copy text",
-      "delete": "Delete",
       "react": "React",
       "reactWith": "React with {emoji}",
       "nothingToCopy": "Nothing to copy",
@@ -491,12 +494,12 @@
       "video": "[Video]",
       "document": "[Document]",
       "audio": "[Audio]",
-      "voiceMessage": "[Voice message]",
       "location": "[Location]",
       "template": "[Template]",
       "message": "[Message]",
       "cancelReply": "Cancel reply",
-      "jumpTo": "Go to the quoted message"
+      "jumpTo": "Go to the quoted message",
+      "you": "You"
     },
     "templatePicker": {
       "sendTemplate": "Send template",
@@ -514,14 +517,10 @@
       "send": "Send template"
     },
     "sidebar": {
-      "contactInfo": "Contact info",
       "tags": "Tags",
-      "notes": "Notes",
       "deals": "Deals",
       "noTags": "No tags",
       "noDeals": "No deals",
-      "addNotePlaceholder": "Add a note...",
-      "noteSaveError": "Could not save the note.",
       "tabMain": "Main",
       "tabHistory": "History",
       "originTitle": "Contact origin",
@@ -550,7 +549,6 @@
       "pinnedNote": "Pinned",
       "openFullDeal": "Open full deal",
       "dealSaveError": "Could not update the deal.",
-      "statusOpen": "Open",
       "dealDetails": "Deal details",
       "tabAutomations": "Automations",
       "tabFiles": "Files",
@@ -693,8 +691,7 @@
       "tituloDaSecao": "Already ran",
       "vazio": "No automation has finished for this contact yet.",
       "carregando": "Loading runs…",
-      "falhouCarga": "Couldn't load the runs.",
-      "rodando": "{n, plural, one {# automation running} other {# automations running}}"
+      "falhouCarga": "Couldn't load the runs."
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",
@@ -903,7 +900,10 @@
       "toastBulkDeleted": "{count} contacts deleted",
       "toastDeleteRefused": "Could not delete: your profile is not allowed to delete contacts.",
       "toastDeleteGone": "This contact no longer exists — someone deleted it first. The list has been refreshed.",
-      "selectAllOnPage": "Select all contacts on this page"
+      "selectAllOnPage": "Select all contacts on this page",
+      "filterByTag": "Filter by {name}",
+      "removeTagFilter": "Remove the {name} filter",
+      "selectContact": "Select {name}"
     },
     "form": {
       "addTitle": "Add Contact",
@@ -920,11 +920,7 @@
       "companyLabel": "Company",
       "companyPlaceholder": "Acme Corp",
       "tagsLabel": "Tags",
-      "tagsPlaceholder": "Select tags...",
-      "noTagsFound": "No tags found.",
-      "createTagAction": "Create tag \"{value}\"",
       "cancel": "Cancel",
-      "save": "Save Contact",
       "update": "Update",
       "create": "Create",
       "toastSuccessAdd": "Contact created successfully",
@@ -946,42 +942,24 @@
     "detailView": {
       "tabs": {
         "details": "Details",
-        "activity": "Activity",
         "notes": "Notes",
         "custom": "Custom Fields",
         "deals": "Deals",
         "tasks": "Tasks",
         "billing": "Billing",
-        "tags": "Tags",
-        "noTags": "No tags",
-        "noDeals": "No deals",
-        "addNotePlaceholder": "Add a note..."
+        "tags": "Tags"
       },
-      "actions": {
-        "edit": "Edit",
-        "message": "Message",
-        "delete": "Delete"
-      },
-      "contactInfo": "Contact Information",
       "unnamed": "Unknown",
       "contactDetailsDesc": "Contact details",
       "name": "Name",
       "phone": "Phone",
       "email": "Email",
       "company": "Company",
-      "createdAt": "Created At",
-      "customFields": "Custom Fields",
       "noCustomFields": "No custom fields defined. Create them in Settings.",
       "customLoadError": "Couldn't load this client's fields.",
       "customRetry": "Try again",
-      "manageFields": "Manage fields",
       "enterCustomField": "Enter {name}...",
-      "activityTab": {
-        "title": "Activity History",
-        "noActivity": "No activity yet."
-      },
       "notesTab": {
-        "title": "Internal Notes",
         "placeholder": "Write a note...",
         "save": "Add Note",
         "noNotes": "No notes yet."
@@ -1000,7 +978,6 @@
       "toastUpdateFailed": "Failed to update contact",
       "toastPhoneConflict": "Another contact already has this number (with or without the ninth digit). Nothing was saved.",
       "toastUpdated": "Contact updated",
-      "toastNotAuthenticated": "Not authenticated",
       "toastNoteAddFailed": "Failed to add note",
       "toastNoteAdded": "Note added",
       "toastNoteDeleteFailed": "Failed to delete note",
@@ -1010,27 +987,20 @@
       "toastNoteNeedsConversation": "This contact has no conversation yet, so there is nowhere to attach the note. Send a message first.",
       "toastNoteDeleteForbidden": "Only the author or an admin can delete this note.",
       "fieldSaved": "Saved",
-      "toastCustomFieldFailed": "Could not save \"{campo}\" for {cliente}.",
-      "saveCustomFieldsBtn": "Save Custom Fields",
-      "toastCustomFieldsSaved": "Custom fields saved",
-      "toastCustomFieldsFailed": "Failed to save custom fields"
+      "toastCustomFieldFailed": "Could not save \"{campo}\" for {cliente}."
     },
     "importModal": {
       "title": "Import Contacts",
       "desc": "Upload a CSV with a required <phoneCode>phone</phoneCode> column. Optional: <nameCode>name</nameCode>, <emailCode>email</emailCode>, <companyCode>company</companyCode>, <tagsCode>tags</tagsCode> (comma-separated; quote multi-tag cells).",
       "uploadDropzone": "Click to choose a CSV file",
       "uploadHint": ".csv up to your browser limit",
-      "rowsReady": "{count} row ready",
-      "rowsReady_plural": "{count} rows ready",
+      "rowsReady": "{count, plural, =1 {# row ready} other {# rows ready}}",
       "preview": "Preview · first {count}",
-      "previewTags": "{tags} tag · {contacts} contact",
-      "previewTags_plural": "{tags} tags · {contacts} contacts",
-      "moreRows": "+ {count} more row not shown",
-      "moreRows_plural": "+ {count} more rows not shown",
+      "previewTags": "{tags, plural, =1 {# tag} other {# tags}} · {contacts, plural, =1 {# contact} other {# contacts}}",
+      "moreRows": "+ {count, plural, =1 {# more row not shown} other {# more rows not shown}}",
       "importComplete": "Import complete",
       "resultImported": "{count} imported",
-      "resultTags": "{count} tag assigned",
-      "resultTags_plural": "{count} tags assigned",
+      "resultTags": "{count, plural, =1 {# tag assigned} other {# tags assigned}}",
       "resultSkipped": "{count} skipped",
       "resultInvalidPhone": "{count, plural, one {# without a valid phone} other {# without a valid phone}}",
       "resultFailed": "{count} failed",
@@ -1046,20 +1016,15 @@
       },
       "cancel": "Cancel",
       "close": "Close",
-      "importBtn": "Import {count} contact",
-      "importBtn_plural": "Import {count} contacts",
+      "importBtn": "Import {count, plural, =1 {# contact} other {# contacts}}",
       "toastNoValidRows": "No valid rows found. Ensure CSV has a \"phone\" column header.",
       "toastTagsWarning": "Contacts imported, but some tag assignments failed.",
-      "toastImported": "{count} contact imported",
-      "toastImported_plural": "{count} contacts imported",
-      "toastTagsAssigned": "{count} tag assignment applied",
-      "toastTagsAssigned_plural": "{count} tag assignments applied",
+      "toastImported": "{count, plural, =1 {# contact imported} other {# contacts imported}}",
+      "toastTagsAssigned": "{count, plural, =1 {# tag assignment applied} other {# tag assignments applied}}",
       "toastTagsSkipped": "Unknown tags skipped (create them in Settings first): {sample}{more}",
-      "toastSkipped": "{count} duplicate skipped",
-      "toastSkipped_plural": "{count} duplicates skipped",
+      "toastSkipped": "{count, plural, =1 {# duplicate skipped} other {# duplicates skipped}}",
       "toastInvalidPhone": "{count, plural, one {# row left out: blank or invalid phone} other {# rows left out: blank or invalid phone}}",
-      "toastFailed": "{count} contact failed to import",
-      "toastFailed_plural": "{count} contacts failed to import",
+      "toastFailed": "{count, plural, =1 {# contact failed to import} other {# contacts failed to import}}",
       "toastError": "Import failed",
       "pareceId": "{name} looks like a tag id and does not exist in this account — it will be ignored",
       "toastTagIdsSkipped": "Tag ids that do not exist in this account were ignored: {sample}{more}"
@@ -1097,9 +1062,6 @@
       "optionsPlaceholder": "Option A, Option B",
       "toastOptionsFailed": "Could not save the options.",
       "copyKeyTitle": "Copy identifier",
-      "category": "Category",
-      "categoryGeneral": "General",
-      "categoryTracking": "Tracking",
       "group": "Block",
       "groupGeneral": "General",
       "newGroup": "New block name…",
@@ -1139,7 +1101,6 @@
       "cancel": "Cancel",
       "creating": "Creating...",
       "createPipelineBtn": "Create Pipeline",
-      "toastFailedLoadPipelines": "Failed to load pipelines",
       "toastFailedMoveDeal": "Failed to move deal",
       "toastFailedLoadDeals": "Failed to load deals — try refreshing the page",
       "toastFailedCreatePipeline": "Failed to create pipeline",
@@ -1168,7 +1129,6 @@
       "won": "Won",
       "lost": "Lost",
       "cameFrom": "Arrived through {channel}",
-      "openConversationOf": "Open the conversation for {titulo}",
       "editDeal": "Edit deal",
       "editDealTitled": "Edit deal {titulo}",
       "unreadCount": "{count, plural, one {# unread message} other {# unread messages}}",
@@ -1220,8 +1180,7 @@
       "contactSearchHint": "Type at least 2 letters to search.",
       "contactSearchEmpty": "No contact matches the search.",
       "contactSearchFailed": "The search failed. Type again to retry.",
-      "contactSearchMore": "Showing the first {count}. Keep typing to narrow it down.",
-      "currency": "Currency"
+      "contactSearchMore": "Showing the first {count}. Keep typing to narrow it down."
     },
     "settings": {
       "managePipeline": "Manage Pipeline",
@@ -1421,7 +1380,6 @@
           "noDia": "{n} lead(s) on the day"
         },
         "investimento": {
-          "titulo": "Ad spend",
           "investimento": "Spend in the period",
           "custoPorLead": "Cost per lead",
           "cac": "CAC",
@@ -1556,8 +1514,7 @@
       "pending": "Pending",
       "delivered": "Delivered",
       "read": "Read",
-      "replied": "Replied",
-      "unknown": "Unknown"
+      "replied": "Replied"
     },
     "detail": {
       "backToBroadcasts": "Back to Broadcasts",
@@ -1601,13 +1558,15 @@
       "toastStatusWritesLost": "The broadcast went out, but {count} status update(s) didn't save — reload the report to verify.",
       "resumeTitle": "Some recipients need another attempt",
       "resumeStalledTitle": "This campaign stopped part-way",
-      "resumeHint": "{count} recipients failed. Retrying sends them again from the server.",
-      "resumeStalledHint": "{count} recipients were never sent — the browser tab running this campaign was closed before it finished. Resuming completes it from the server.",
+      "resumeHint": "{count, plural, =1 {# recipient failed. Retrying sends it again from the server.} other {# recipients failed. Retrying sends them again from the server.}}",
+      "resumeStalledHint": "{count, plural, =1 {# recipient was never sent — the browser tab running this campaign was closed before it finished. Resuming completes it from the server.} other {# recipients were never sent — the browser tab running this campaign was closed before it finished. Resuming completes it from the server.}}",
       "resumePending": "Resume sending ({count})",
       "retryFailed": "Retry failed ({count})",
       "toastResumeStarted": "Sending {count} recipients in the background.",
       "toastResumeStartedCapped": "Sending {count} recipients in the background. {remaining} more will need another run.",
-      "toastResumeFailed": "Could not resume: {error}"
+      "toastResumeFailed": "Could not resume: {error}",
+      "unknownContact": "Unknown",
+      "unknownError": "unknown error"
     },
     "new": {
       "title": "New Broadcast",
@@ -1644,29 +1603,22 @@
           "customField": "Custom Field",
           "csv": "Upload CSV"
         },
-        "allDesc": "Send to all {count} contacts in your database.",
         "allDescLoading": "Send to all contacts in your database.",
         "tagDesc": "Send to contacts matching specific tags.",
         "customFieldDesc": "Send to contacts matching a custom field rule.",
         "csvDesc": "Upload a CSV with phone numbers (and optional names).",
         "selectTags": "Select Tags",
-        "searchTags": "Search tags...",
         "noTagsFound": "No tags found.",
         "excludeTags": "Exclude Tags (Optional)",
-        "searchExcludeTags": "Search tags to exclude...",
-        "field": "Field",
         "selectField": "Select a field...",
-        "operator": "Operator",
         "operatorIs": "Is",
         "operatorIsNot": "Is not",
         "operatorContains": "Contains",
-        "value": "Value",
         "valuePlaceholder": "Value to match",
         "uploadCsv": "Upload CSV File",
         "csvFormatDesc": "Must contain a 'phone' column, with the area code (a number from another country: with + and the country code). 'name' column is optional.",
         "csvContactsFound": "{count} valid contact(s) found in CSV.",
         "csvInvalidPhones": "{count, plural, one {# row left out: blank or invalid phone (no area code, or a foreign number without +).} other {# rows left out: blank or invalid phone (no area code, or a foreign number without +).}}",
-        "errorLoadTags": "Failed to load tags",
         "errorLoadFields": "Failed to load custom fields",
         "errorCsvMissingPhone": "CSV must have a 'phone' column.",
         "contagemFalhou": "Couldn't calculate the audience right now.",
@@ -1685,8 +1637,6 @@
         "headerImageDesc": "This template requires a header image.",
         "imageUrl": "Image URL",
         "imageUrlPlaceholder": "https://example.com/image.jpg",
-        "variables": "Variables",
-        "varDesc": "Set values for '{{name}}'",
         "type": "Type",
         "typeStatic": "Static Value",
         "typeContact": "Contact Field",
@@ -1694,7 +1644,6 @@
         "staticValue": "Static Value",
         "contactField": "Contact Field",
         "selectContactField": "Select field...",
-        "customField": "Custom Field",
         "selectCustomField": "Select custom field...",
         "preview": "Preview",
         "previewSample": "Showing preview with sample data.",
@@ -1724,14 +1673,9 @@
         "audienceTags": "Filtered by tags",
         "audienceField": "Filtered by custom field",
         "audienceCsv": "CSV upload",
-        "variables": "Variables:",
-        "variablesMapped": "{count} mapped",
         "saveDraft": "Save as Draft",
         "sendNow": "Send Broadcast",
         "sending": "Sending...",
-        "preparing": "Preparing...",
-        "progressDesc": "Processing {current} of {total} recipients...",
-        "toastFailedPreview": "Failed to load preview data",
         "alcanceFalhou": "Couldn't calculate.",
         "tentarDeNovo": "Try again",
         "alcanceTeto": "Larger than the screen can count (25,000). Go back and narrow the audience.",
@@ -1775,10 +1719,10 @@
       },
       "never": "never",
       "activeIndicator": "active",
-      "openMenu": "Open menu"
+      "openMenu": "Open menu",
+      "loadError": "Failed to load automations"
     },
     "edit": {
-      "loading": "Loading...",
       "loadError": "Failed to load ({status})",
       "back": "Back to Automations"
     },
@@ -1998,10 +1942,7 @@
         "placeholderContact": "name / email / company",
         "placeholderTag": "tag id",
         "urlLabel": "URL",
-        "headersLabel": "Headers",
-        "placeholderHeaders": "'{\"Authorization\": \"Bearer ...\"}'",
         "bodyTemplateLabel": "Body template",
-        "placeholderBody": "'{\"id\": \"{{ contact.id }}\"}'",
         "matchType": "Match type",
         "matchContains": "Contains",
         "matchWord": "Whole word",
@@ -2147,13 +2088,6 @@
       "kindCondition": "Condition",
       "kindWait": "Wait",
       "kindAction": "Action"
-    },
-    "relative": {
-      "never": "never",
-      "justNow": "just now",
-      "minutesAgo": "{n}m ago",
-      "hoursAgo": "{n}h ago",
-      "daysAgo": "{n}d ago"
     }
   },
   "Flows": {
@@ -2240,8 +2174,6 @@
       "deleteNode": "Delete node",
       "canvasView": "Canvas",
       "listView": "List",
-      "noNodeSelected": "No node selected",
-      "noNodeDesc": "Select a node on the canvas to edit its configuration.",
       "form": {
         "advancesTo": "Advances to",
         "textToCustomer": "Text sent to the customer",
@@ -2366,7 +2298,13 @@
       "statusActivated": "Flow activated.",
       "statusArchived": "Archived.",
       "statusDraft": "Saved as draft.",
-      "deleteConfirm": "Delete \"{name}\"? Any active runs end immediately. This can't be undone."
+      "deleteConfirm": "Delete \"{name}\"? Any active runs end immediately. This can't be undone.",
+      "saveFailed": "Save failed",
+      "saveFailedStatus": "Save failed ({status})",
+      "statusFailed": "Status update failed",
+      "statusFailedStatus": "Status update failed ({status})",
+      "deleteFailed": "Delete failed",
+      "deleteFailedStatus": "Delete failed ({status})"
     },
     "summary": {
       "options": "{count} {count, plural, =1 {option} other {options}}",
@@ -2401,10 +2339,7 @@
       "descriptionLabel": "Flow description",
       "statusDraft": "Draft",
       "statusActive": "Active",
-      "statusArchived": "Archived",
-      "namePlaceholder": "Flow name",
-      "unsavedHint": "Unsaved changes — hit Save to persist",
-      "fixIssues": "Fix the issues below before activating"
+      "statusArchived": "Archived"
     }
   },
   "Settings": {
@@ -2439,7 +2374,6 @@
       "you": "You",
       "unnamed": "Unnamed",
       "joined": "Joined {date}",
-      "remove": "Remove",
       "removedToast": "Removed {name}",
       "updatedToast": "Updated {name} to {role}",
       "pendingInvitations": "Pending invitations",
@@ -2502,7 +2436,8 @@
       "whatsappMessage": "Join {accountName} on {appName} using this link (valid for {expiresInDays} days): {url}",
       "genericAccountName": "this account",
       "perfilLabel": "Access profile",
-      "networkError": "Could not reach the server. Try again?"
+      "networkError": "Could not reach the server. Try again?",
+      "createFailed": "Failed to create invitation"
     },
     "tagsAndFields": {
       "title": "Fields & tags",
@@ -2651,7 +2586,8 @@
       "uploadHintDocument": "PDF, Word, PowerPoint, Excel or text, ≤16 MB",
       "toastInvalidVideo": "Header video must be an MP4 or 3GPP file.",
       "toastInvalidDocument": "Header document must be a PDF, Word, PowerPoint, Excel or text file.",
-      "toastMediaTooLarge": "File is {size} MB — the upload limit is {max} MB."
+      "toastMediaTooLarge": "File is {size} MB — the upload limit is {max} MB.",
+      "headerSampleAlt": "Header sample"
     },
     "roles": {
       "admin": "Admin",
@@ -3048,7 +2984,6 @@
         "expirada": "the key expired on {dia} — generate a new one in Asaas and connect again",
         "levantar": "Run survey",
         "levantando": "Reading the Asaas account…",
-        "levantamentoAjuda": "Reads the whole Asaas account (read-only, nothing is stored) and shows what is in there: how many customers and overdue charges, what format the phone numbers come in, and how many customers the CRM could link to a contact on its own.",
         "levantamentoTitulo": "Survey of {quando}",
         "copiarRelatorio": "Copy report",
         "relatorioCopiado": "Copied",
@@ -3264,7 +3199,6 @@
           "naoCobrar": "Skip automatic billing",
           "cobrarDeNovo": "Resume automatic billing",
           "excecao": "no automatic billing",
-          "excecaoDesde": "no automatic billing since {quando}, by {quem}",
           "trocada": "This customer no longer receives automatic billing.",
           "religada": "This customer receives automatic billing again.",
           "erroTrocar": "Could not change this customer's automatic billing."
@@ -3491,7 +3425,6 @@
       "pipelineField": "Default pipeline",
       "pipelineNone": "None — do not create a deal",
       "pipelineHint": "Anyone who writes to this number is added to this pipeline automatically.",
-      "pipelineBadge": "Enters the {pipeline} pipeline",
       "pipelineStageBadge": "Enters pipeline {pipeline} · stage {stage}",
       "pipelineNoStage": "Enters pipeline {pipeline}, but no entry stage is set — leads land in whichever stage comes first. Pick one under Configure.",
       "pipelineMissing": "The configured pipeline was deleted — pick another one.",
@@ -4169,25 +4102,7 @@
         "location": "📍 Location",
         "template": "📋 Template"
       }
-    },
-    "deals": {
-      "title": "Deals & currency",
-      "description": "The currency used for new deals and for pipeline and dashboard totals.",
-      "defaultCurrency": "Default currency",
-      "defaultCurrencyDesc": "New deals default to this currency, and pipeline and dashboard totals are shown in it. Existing deals keep the currency they were saved with.",
-      "currencyLabel": "Currency",
-      "adminOnlyHint": "Only account admins can change the default currency.",
-      "save": "Save",
-      "saving": "Saving...",
-      "saveFailed": "Failed to save default currency",
-      "saveSuccess": "Default currency updated"
     }
-  },
-  "roles": {
-    "owner": "Owner",
-    "admin": "Admin",
-    "agent": "Agent",
-    "viewer": "Viewer"
   },
   "Agents": {
     "playground": {
@@ -4202,14 +4117,7 @@
       "inputPlaceholder": "Type a customer message…",
       "errorNotConfigured": "No agent configured yet — finish Setup first.",
       "errorNoReply": "Couldn't get a reply.",
-      "errorUnreachable": "Couldn't reach the agent.",
-      "emptyTitle": "Send a message to see how your agent would reply.",
-      "emptyDesc": "It uses your knowledge base and behaves exactly like the auto-reply bot — including handoff.",
-      "handoff": "Would hand off to a human here",
-      "placeholder": "Type a customer message…",
-      "notConfigured": "No agent configured yet — finish Setup first.",
-      "noReply": "Couldn't get a reply.",
-      "unreachable": "Couldn't reach the agent."
+      "errorUnreachable": "Couldn't reach the agent."
     },
     "usage": {
       "loadError": "Failed to load usage",
@@ -4227,14 +4135,7 @@
       "tokensPerDay": "Tokens per day",
       "byModel": "By model",
       "modelStats": "{tokens} tok · {calls, plural, =1 {# call} other {# calls}}",
-      "truncatedNotice": "Showing a partial window — usage is high enough that only the most recent records are summarized here.",
-      "window": "Last {days} days",
-      "loadFailed": "Failed to load usage",
-      "empty": "No AI usage in the last {days} days yet.",
-      "emptyHint": "This fills in as the assistant drafts and auto-replies.",
-      "tokens": "Tokens",
-      "modelCalls": "{tokens} tok · {count, plural, =1 {# call} other {# calls}}",
-      "partialWindow": "Showing a partial window — usage is high enough that only the most recent records are summarized here."
+      "truncatedNotice": "Showing a partial window — usage is high enough that only the most recent records are summarized here."
     },
     "title": "AI Agents",
     "description": "Your bring-your-own-key AI agent — set it up, then test it in the playground before it replies to customers in the inbox.",
@@ -4252,11 +4153,7 @@
     "emailPlaceholder": "you@example.com",
     "sending": "Sending...",
     "submitButton": "Send reset link",
-    "linkExpired": "That link has expired or was already used. Ask for a new one below.",
-    "checkEmailTitle": "Check your email",
-    "checkEmailDesc": "We've sent a password reset link to <strong>{email}</strong>. Please check your inbox.",
-    "desc": "Enter your email and we'll send you a reset link",
-    "sendLink": "Send reset link"
+    "linkExpired": "That link has expired or was already used. Ask for a new one below."
   },
   "ResetPasswordPage": {
     "title": "Choose a new password",
@@ -4275,7 +4172,17 @@
     "saving": "Saving…"
   },
   "GatedButton": {
-    "readOnlyTooltip": "Read-only — your role can't {reason}"
+    "readOnlyTooltip": "Read-only — your role can't {reason}",
+    "acoes": {
+      "createBroadcasts": "create broadcasts",
+      "deleteBroadcasts": "delete broadcasts",
+      "createAutomations": "create automations",
+      "createFlows": "create flows",
+      "createPipelines": "create pipelines",
+      "createDeals": "create deals",
+      "addOrImportContacts": "add or import contacts",
+      "sendMessages": "send messages"
+    }
   },
   "Interactive": {
     "builder": {
@@ -4303,27 +4210,32 @@
       "buttonFallback": "Button",
       "menuFallback": "Menu"
     },
-    "replyButtons": "Reply buttons",
-    "list": "List",
-    "body": "Body",
-    "bodyPlaceholder": "What the customer reads above the options",
-    "header": "Header (optional)",
-    "footer": "Footer (optional)",
-    "showIds": "Show reply IDs (advanced)",
-    "previewBody": "Message body…",
-    "previewButton": "Button",
-    "previewMenu": "Menu",
-    "buttonsCount": "Buttons ({count}/{max})",
-    "idPlaceholder": "id",
-    "buttonLabelPlaceholder": "Button label",
-    "addButton": "Add button",
-    "listButtonLabel": "List button label",
-    "rowsCount": "Rows ({count}/{max})",
-    "sectionTitlePlaceholder": "Section title (optional)",
-    "rowTitlePlaceholder": "Row title",
-    "rowDescriptionPlaceholder": "Description (optional)",
-    "addRow": "Add row",
-    "addSection": "Add section"
+    "validacao": {
+      "payloadAusente": "Interactive message payload is required.",
+      "corpoAusente": "Interactive message body text is required.",
+      "corpoLongo": "Body text exceeds the {max}-character limit.",
+      "cabecalhoLongo": "Header exceeds the {max}-character limit.",
+      "rodapeLongo": "Footer exceeds the {max}-character limit.",
+      "botoesAusentes": "Add at least one reply button.",
+      "botoesDemais": "A reply-button message allows at most {max} buttons.",
+      "botaoSemId": "Every button needs an id.",
+      "botaoIdDuplicado": "Duplicate button id \"{id}\".",
+      "botaoSemRotulo": "Every button needs a label.",
+      "botaoRotuloLongo": "Button label \"{texto}\" exceeds the {max}-character limit.",
+      "listaSemRotuloDoBotao": "The list needs a button label.",
+      "listaRotuloDoBotaoLongo": "List button label exceeds the {max}-character limit.",
+      "secoesAusentes": "Add at least one list section.",
+      "secoesDemais": "A list allows at most {max} sections.",
+      "secaoSemLinhas": "Every list section needs rows.",
+      "linhaSemId": "Every list row needs an id.",
+      "linhaIdDuplicado": "Duplicate list row id \"{id}\".",
+      "linhaSemTitulo": "Every list row needs a title.",
+      "linhaTituloLongo": "List row title \"{texto}\" exceeds the {max}-character limit.",
+      "linhaDescricaoLonga": "List row description exceeds the {max}-character limit.",
+      "linhasAusentes": "Add at least one list row.",
+      "linhasDemais": "A list allows at most {max} rows in total.",
+      "tipoInvalido": "Interactive message must be reply buttons or a list."
+    }
   },
   "JoinPage": {
     "roleAdmin": "Admin",
@@ -4357,29 +4269,7 @@
     "signingOut": "Signing out…",
     "signOutDifferentEmail": "Sign out & use a different email",
     "createAccountAndJoin": "Create account & join",
-    "alreadyHaveAccount": "I already have an account",
-    "fail": {
-      "notFoundTitle": "Invite not found",
-      "notFoundBody": "This link doesn't match a valid invitation. Double-check the URL or ask the person who invited you to send a new one.",
-      "usedTitle": "Invite already used",
-      "usedBody": "This invitation has already been accepted. If that wasn't you, ask the account admin to send a fresh link.",
-      "expiredTitle": "Invite expired",
-      "expiredBody": "This invitation has expired. Ask the account admin to send a new one — they take a few seconds to generate.",
-      "serverErrorTitle": "Something went wrong",
-      "serverErrorBody": "We couldn't verify this invitation right now. Try refreshing the page in a moment."
-    },
-    "conflictDefault": "You are already in another account. Sign in with a different email to join this one.",
-    "acceptFailed": "Failed to accept invitation",
-    "welcome": "Welcome to the team",
-    "serverUnreachable": "Could not reach the server",
-    "signOutFailed": "Could not sign out. Try refreshing the page.",
-    "createNewAccount": "Create a new account instead",
-    "invitedTo": "You're invited to <account>{name}</account>",
-    "joinAs": "You'll join as <badge>{role}</badge>. Link valid until {date}.",
-    "conflictBody": "To join <account>{name}</account>, sign out and sign up again with a different email address. The invite link stays valid as long as it hasn't expired.",
-    "signOutSwitch": "Sign out & use a different email",
-    "createAndJoin": "Create account & join",
-    "haveAccount": "I already have an account"
+    "alreadyHaveAccount": "I already have an account"
   },
   "NotificationsPage": {
     "title": "Notifications",
@@ -4390,7 +4280,15 @@
     "emptyDescription": "You'll see a notice here when someone assigns you a conversation or mentions you in a note.",
     "unread": "Unread",
     "markReadError": "Failed to mark notification as read",
-    "markAllReadError": "Failed to mark all as read"
+    "markAllReadError": "Failed to mark all as read",
+    "tipos": {
+      "atribuida": {
+        "titulo": "Conversation assigned to you",
+        "corpo": "{autor} assigned you the conversation with {contato}",
+        "corpoSemAutor": "The conversation with {contato} was assigned to you",
+        "contatoSemNome": "a contact"
+      }
+    }
   },
   "SignupPage": {
     "passwordsDoNotMatch": "Passwords do not match",
@@ -4423,15 +4321,7 @@
     "signedUpButSignInFailed": "The account was created and is already in the team, but signing in failed just now. Use \"Sign in\" with the email and password you chose.",
     "tooManyAttempts": "Too many attempts in a row. Wait a few minutes and try again.",
     "closedTitle": "Sign-ups are closed",
-    "passwordTooLong": "The password is too long: the limit is 72 bytes, and each accented letter counts as two.",
-    "passwordsMismatch": "Passwords do not match",
-    "checkEmailDesc": "We've sent a confirmation link to <strong>{email}</strong>. Please check your inbox and click the link to verify your account.",
-    "titleJoin": "Create account & join",
-    "descJoin": "Verify your email, then accept the invitation to join your team.",
-    "desc": "Get started with CRM Template for WhatsApp",
-    "creating": "Creating account...",
-    "submit": "Create account",
-    "haveAccount": "Already have an account?"
+    "passwordTooLong": "The password is too long: the limit is 72 bytes, and each accented letter counts as two."
   },
   "ChannelHealth": {
     "title": "WhatsApp connections",
@@ -4974,7 +4864,6 @@
     "queueNewAtLeast": "more than {count} customers started waiting since your last visit",
     "queueNew24hAtLeast": "more than {count} customers started waiting in the last 24 hours",
     "refresh": "Refresh",
-    "introPage": "What is on your plate today.",
     "openMyDay": "Open My day",
     "loadingShort": "—",
     "failedShort": "couldn't load"
@@ -5025,15 +4914,17 @@
     "loading": "Loading…",
     "signOutError": "Could not sign out: {message}"
   },
-  "Notifications": {
-    "title": "Notifications",
-    "description": "Conversations other teammates assign to you show up here.",
-    "markAllRead": "Mark all as read",
-    "markReadFailed": "Failed to mark notification as read",
-    "markAllFailed": "Failed to mark all as read",
-    "retry": "Retry",
-    "emptyTitle": "No notifications yet",
-    "emptyDesc": "You'll see an alert here when someone assigns you a conversation.",
-    "unread": "Unread"
+  "Presence": {
+    "online": "Online — active now",
+    "away": "Away — idle",
+    "offline": "Offline",
+    "offlineLastSeen": "Offline — last seen {quando}"
+  },
+  "Upload": {
+    "semSessao": "Not signed in. Sign in again to upload the file.",
+    "semConta": "Could not resolve your account."
+  },
+  "Toaster": {
+    "rotulo": "Notifications"
   }
 }

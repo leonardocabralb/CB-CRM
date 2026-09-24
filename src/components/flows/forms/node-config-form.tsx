@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { uploadAccountMedia, MEDIA_MAX_BYTES } from "@/lib/storage/upload-media";
+import { mensagemDoUpload } from "@/lib/storage/erro-de-upload";
 import { slugify, type BuilderNode } from "../shared";
 import { NextNodeRow, NodeKeySelect, TextRow } from "./fields";
 
@@ -903,6 +904,7 @@ function SendMediaForm({
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const tUpload = useTranslations("Upload");
 
   const mediaType = cfg.media_type ?? "image";
   const isDocument = mediaType === "document";
@@ -931,13 +933,12 @@ function SendMediaForm({
         });
         toast.success(t("fileUploaded"));
       } catch (err) {
-        const msg = err instanceof Error ? err.message : t("uploadFailed");
-        toast.error(msg);
+        toast.error(mensagemDoUpload(err, tUpload, t("uploadFailed")));
       } finally {
         setUploading(false);
       }
     },
-    [onUpdateConfig, t],
+    [onUpdateConfig, t, tUpload],
   );
 
   const handleClear = () => {

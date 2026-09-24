@@ -16,6 +16,7 @@ import {
   type InteractiveListPayload,
   type InteractiveMessagePayload,
 } from "@/lib/whatsapp/interactive";
+import { mensagemDaInterativa } from "@/lib/whatsapp/interativa-mensagem";
 import { InteractivePreview } from "./interactive-preview";
 
 // ------------------------------------------------------------
@@ -73,6 +74,9 @@ export function InteractiveBuilder({
   showPreview = true,
 }: InteractiveBuilderProps) {
   const t = useTranslations("Interactive.builder");
+  // NOSSO: o `error` da validação é inglês (contrato das rotas); a tela
+  // traduz pelo `codigo`.
+  const tValidacao = useTranslations("Interactive.validacao");
   const [advanced, setAdvanced] = useState(false);
   const validation = validateInteractivePayload(value);
 
@@ -166,14 +170,14 @@ export function InteractiveBuilder({
           </label>
 
           {!validation.ok && (
-            <p className="text-xs text-red-400">{validation.error}</p>
+            <p className="text-xs text-red-400">{mensagemDaInterativa(validation, tValidacao)}</p>
           )}
         </div>
 
         {showPreview && (
           <div className="flex shrink-0 flex-col gap-1.5 @2xl:w-[280px]">
             <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Preview
+              {t("preview")}
             </span>
             <div className="rounded-lg bg-muted/40 p-3">
               <InteractivePreview payload={value} />
