@@ -289,7 +289,11 @@ export async function listWabaPhoneNumbers(
     // would receive the token), and a partial list must not be read as
     // "this number is not under the WABA".
     if (!isGraphUrl(url)) {
-      throw new Error('Meta returned a paging link outside graph.facebook.com.')
+      // MetaApiError (sem código): a Meta RESPONDEU — um Error simples cairia
+      // em "não foi possível falar com a Meta" na explicação da tela.
+      throw new MetaApiError('Meta returned a paging link outside graph.facebook.com.', {
+        httpStatus: 200,
+      })
     }
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -305,7 +309,10 @@ export async function listWabaPhoneNumbers(
     url = data.paging?.next
   }
   if (url) {
-    throw new Error('Meta lists more phone numbers under this WABA than the CRM reads (500).')
+    throw new MetaApiError(
+      'Meta lists more phone numbers under this WABA than the CRM reads (500).',
+      { httpStatus: 200 },
+    )
   }
   return out
 }

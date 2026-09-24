@@ -104,8 +104,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   responder `410`: ela não era usada pela interface e respondia `500` a
   qualquer chamada. Quem a chamava por script usa `POST /api/cb/channels`.
   O token da Meta deixou de ir na URL do envio do cabeçalho de modelo (vai
-  no cabeçalho da requisição), e a mensagem de erro da Meta, que pode ecoar
-  o token, é limpa antes de ir para a tela ou para o log.
+  no cabeçalho da requisição), e, ao conectar (e nas rotas antigas de
+  conferência da conexão), a mensagem de erro da Meta — que pode ecoar o
+  token digitado — é limpa antes de ir para a tela ou para o log.
 
 - **Modelo com cabeçalho de vídeo ou documento: o arquivo é conferido
   enquanto é baixado.** O CRM baixava o arquivo inteiro antes de conferir o

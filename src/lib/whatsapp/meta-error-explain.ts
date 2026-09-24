@@ -377,8 +377,11 @@ export function explainMetaError(
 }
 
 /**
- * The `meta` object POST /api/whatsapp/config attaches to every failed
- * Meta call — everything a user needs to quote to support.
+ * The `meta` object the legacy GET /api/whatsapp/config attaches to a failed
+ * Meta call — everything a user needs to quote to support. (NOSSO: the
+ * legacy POST that also attached it was retired in phase 7 of the upstream
+ * merge plan; the Conexões screen gets a `FalhaDaMeta` from
+ * `src/lib/cb-channels/falha-da-meta.ts` instead.)
  */
 export function metaErrorPayload(x: MetaErrorExplanation): {
   code: number | null

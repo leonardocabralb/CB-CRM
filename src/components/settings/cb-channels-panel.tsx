@@ -157,6 +157,10 @@ export function CbChannelsPanel() {
   // upstream). Fica NO diálogo, não só num toast: o toast some antes de dar
   // para ler a instrução ou copiar o trace id que o suporte da Meta pede.
   const [metaFalha, setMetaFalha] = useState<FalhaDaMeta | null>(null);
+  // Qual envio do diálogo Meta está VIGENTE. Fechar o diálogo ou voltar
+  // avança o número: a resposta que chega depois não devolve o aviso a um
+  // formulário limpo, nem fecha e limpa um diálogo que já é outro.
+  const envioMetaRef = useRef(0);
 
   // Campos do assistente Instagram (D3 do plano: token colado, sem OAuth).
   const [igAccessToken, setIgAccessToken] = useState('');
@@ -302,6 +306,7 @@ export function CbChannelsPanel() {
     setMetaPin('');
     setShowToken(false);
     setMetaFalha(null);
+    envioMetaRef.current += 1;
     setIgAccessToken('');
     setIgAppSecret('');
     setIgHumanAgent(false);
@@ -453,9 +458,10 @@ export function CbChannelsPanel() {
     });
   };
 
-  /** Código · trace id · detalhe, o que o suporte da Meta pede. */
+  /** Etapa · código · trace id · detalhe, o que o suporte da Meta pede. */
   const detalhesDaFalha = (f: FalhaDaMeta): string =>
     [
+      f.etapa ? t(`metaEtapa.${f.etapa}` as Parameters<typeof t>[0]) : null,
       f.codigo != null
         ? t('metaErroCodigo', {
             codigo: f.subcodigo != null ? `${f.codigo}/${f.subcodigo}` : String(f.codigo),
@@ -473,6 +479,7 @@ export function CbChannelsPanel() {
       return;
     }
     setMetaFalha(null);
+    const envio = ++envioMetaRef.current;
     setCreating(true);
     try {
       const res = await fetch('/api/cb/channels', {
@@ -489,10 +496,12 @@ export function CbChannelsPanel() {
         }),
       });
       const payload = await res.json();
+      // O diálogo foi fechado (ou se voltou) enquanto a Meta respondia.
+      const vigente = envioMetaRef.current === envio;
       if (!res.ok) {
         const falha = lerFalhaDaMeta(payload.falha);
         if (falha) {
-          setMetaFalha(falha);
+          if (vigente) setMetaFalha(falha);
           toast.error(textoDaFalha(falha), { duration: 10_000 });
         } else {
           toast.error(payload.error || t('createFailed'));
@@ -503,20 +512,27 @@ export function CbChannelsPanel() {
         | { registered?: boolean; skipped?: boolean; error?: string | null; falha?: unknown }
         | undefined;
       if (reg?.error) {
+        // O diálogo fecha em seguida: o código e o trace id que a frase
+        // manda levar ao suporte da Meta vão na segunda linha do aviso.
         const falhaDoRegistro = lerFalhaDaMeta(reg.falha);
         toast.error(
           t('metaRegistrationFailed', {
             error: falhaDoRegistro ? textoDaFalha(falhaDoRegistro) : reg.error,
           }),
-          { duration: 12_000 },
+          {
+            duration: 20_000,
+            ...(falhaDoRegistro ? { description: detalhesDaFalha(falhaDoRegistro) } : {}),
+          },
         );
       } else if (reg?.skipped) {
         toast.success(t('metaRegistrationSkipped'), { duration: 10_000 });
       } else {
         toast.success(t('metaConnectedToast'));
       }
-      setAddOpen(false);
-      resetAdd();
+      if (vigente) {
+        setAddOpen(false);
+        resetAdd();
+      }
       await load();
     } catch {
       toast.error(t('networkError'));
@@ -1508,6 +1524,7 @@ export function CbChannelsPanel() {
                   variant="outline"
                   onClick={() => {
                     setMetaFalha(null);
+                    envioMetaRef.current += 1;
                     setAddStep('choose');
                   }}
                 >

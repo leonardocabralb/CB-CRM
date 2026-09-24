@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { listWabaPhoneNumbers } from './meta-api';
+import { MetaApiError, listWabaPhoneNumbers } from './meta-api';
+import { explainMetaError } from './meta-error-explain';
 
 // NOSSO (Fase 7 do plano do merge do upstream). `paging.next` é uma URL que
 // vem da RESPOSTA, e o token viaja no cabeçalho: seguir um cursor de outro
@@ -53,6 +54,18 @@ describe('listWabaPhoneNumbers', () => {
       /outside graph\.facebook\.com/,
     );
     expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('os dois erros locais são "a Meta respondeu", nunca "não foi possível falar com a Meta"', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        resposta({ data: [], paging: { next: 'https://outro.example/x' } }),
+      ),
+    );
+    const erro = await listWabaPhoneNumbers({ wabaId: 'W', accessToken: 'tok' }).catch((e) => e);
+    expect(erro).toBeInstanceOf(MetaApiError);
+    expect(explainMetaError(erro, 'waba_phone_numbers').motivo).toBe('outro');
   });
 
   it('bater no teto de páginas com página sobrando LANÇA, nunca devolve meia lista', async () => {

@@ -192,7 +192,7 @@ quebrar, sabe-se qual.
 | **3** | Pequenas e independentes: CSV (#529), textarea (#559), vários App Secrets (#500), tags da v1 (#560, só medir), e o resolvedor do canal Meta (3e — achado NOSSO da Fase 2, sem PR do upstream); com a P9, a normalização do telefone digitado — dividida em 3-I a 3-IV | Moderado | Baixa | Baixo | — | ✅ em produção: 3-I, 3-II, 3-IV e 3-III (PRs #262, #265, #269 e #276, 23/09) |
 | **4** | Fluxos: `{{vars}}` em botões e listas (#553) | Inerte hoje (0 fluxos ativos) | Média | Médio-baixo | — | ✅ em produção (PR #271, 23/09): porte manual — o #259 **descartou** o `engine.ts` deles; teste real feito com a janela aberta pelo operador |
 | **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | ✅ em produção (PR #283, merge `6cedb67a`, rollout 24/09 00:24Z): porte manual — o #259 descartou o webhook deles; falta o disparo REAL fora da janela (a janela do lead de teste fecha 24/09 19:14Z) |
-| **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | ✅ mesclada (PR #284): 6a (o teto na leitura) e 6b (stub COMPLETO por `cb_channels`, ligado), com E2E contra a Meta; o pós-deploy é registrado no PR da Fase 7 (e já está na memória) |
+| **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | ✅ em produção (PR #284, merge `fe2a7530`, rollout 24/09 12:24:56Z): 6a (o teto na leitura) e 6b (stub COMPLETO por `cb_channels`, ligado), com E2E contra a Meta; pós-deploy conferido (seção da fase) |
 | **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | CRU só no caminho LEGADO (que não é montado); o porte para `cb-channels` pendente; a doc do original foi apagada até lá |
 | **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | biblioteca CRUA no `main`; o cartão ESCONDIDO (correção do #259) até o ouvinte ser montado com as adaptações |
 | **9** | "Digitando…" da IA (#527), sobre o canal da conversa | Inerte hoje (auto-reply desligado) | Média | Médio | — | só a função (`sendTypingIndicator`, sem chamador); o `auto-reply.ts` deles foi descartado |
@@ -1408,6 +1408,12 @@ adota o stub. Limpeza: apagar o stub.
   reais) → 10 atualizados, 0 inseridos, sem erro; limpeza pelo `DELETE` do CRM;
   `PENDING_DELETION` assinado em seguida → nada ressuscitou (9); Sincronizar →
   9 na Meta.
+- **Merge e pós-deploy (24/09/2026):** PR #284 mesclado às 12:19:32Z (merge
+  `fe2a7530`, cabeça `f8e27b2f`; o `main` não tinha andado), rollout
+  "converged" às 12:24:56Z na primeira tentativa. Conferido depois: login
+  200, `/inbox` 307, crons, API e webhooks 401 (segredos no lugar), manifesto
+  200; ingestão viva (3 mensagens, 2 de cliente, até 12:26Z); 9 modelos na
+  conta. Codex sem cota — a revisão ficou nas duas lentes e no cético.
 
 ### Fase 7 — Por que a conexão com a Meta falhou
 
