@@ -98,6 +98,10 @@ describe('cartão de notificação do navegador × ouvinte', () => {
       /if \(atribuidaEm !== undefined && atribuidaEm >= consultouEm\) \{\s*void avisar\(msg, false\);\s*return;\s*\}/,
     );
     expect(hook).toMatch(/atribuidasAgora\.set\(id, agora\);\s*const parada = estacionadas\.get\(id\);\s*if \(!parada\) return;\s*estacionadas\.delete\(id\);/);
+    // ...a mais antiga não substitui a mais nova (consultas fora de ordem)...
+    expect(hook).toMatch(
+      /const atual = estacionadas\.get\(msg\.conversation_id\);\s*if \(atual && instanteDaMensagem\(atual\.msg\) > instanteDaMensagem\(msg\)\) return;\s*estacionadas\.set\(/,
+    );
     // ...a mensagem que alguém já abriu durante a espera não vira aviso...
     expect(hook).toMatch(/if \(!podeEstacionar && !conversa\.unread_count\) return;/);
     // ...e "vendo agora" é a tela de verdade (visível E na conversa).

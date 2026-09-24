@@ -112,14 +112,26 @@ export type ConversaDoAviso = Pick<
 /**
  * Por quanto tempo a mensagem calada por "não é sua" espera a conversa ser
  * ATRIBUÍDA a quem recebe. A automação disparada pela própria mensagem pode
- * atribuí-la DEPOIS do INSERT que o realtime entrega — e sem prazo fixo:
- * antes do passo de atribuir podem rodar outros, com envio de rede (Codex, PRs
- * #287 e #289). Por isso não se dorme um tempo e se lê de novo: a mensagem
- * fica ESTACIONADA, e o UPDATE da conversa atribuída a esta pessoa (realtime)
- * a solta. Passado o prazo, ela é esquecida — atribuição que vem depois de um
- * "Aguardar" já não é resposta a esta mensagem.
+ * atribuí-la DEPOIS do INSERT que o realtime entrega — e sem prazo: antes do
+ * passo de atribuir podem rodar outros, um webhook leva até 10 s, e a cadeia
+ * não tem teto (Codex, PR #287 e duas rodadas no #289). Por isso não se dorme
+ * um tempo e se lê de novo: a mensagem fica ESTACIONADA, e o UPDATE da
+ * conversa atribuída a esta pessoa (realtime) a solta.
+ *
+ * O limite é o MESMO que separa mensagem nova de história
+ * (`LIMITE_DE_ATRASO_MS`, 1 h): um aviso que sairia mais de uma hora depois
+ * da mensagem já não é aviso de mensagem nova. Na soltura, a não lida zerada
+ * (alguém abriu a conversa na espera) também cala.
  */
-export const JANELA_DA_ATRIBUICAO_MS = 2 * 60 * 1000;
+export const JANELA_DA_ATRIBUICAO_MS = LIMITE_DE_ATRASO_MS;
+
+/** Instante da mensagem para ordenar as estacionadas: a gravação, senão o carimbo. */
+export function instanteDaMensagem(m: MensagemDoAviso): number {
+  const gravada = m.gravada_em ? Date.parse(m.gravada_em) : NaN;
+  if (!Number.isNaN(gravada)) return gravada;
+  const carimbo = Date.parse(m.created_at);
+  return Number.isNaN(carimbo) ? 0 : carimbo;
+}
 
 export type SilencioDoAviso =
   | "sem_caixa_de_entrada"

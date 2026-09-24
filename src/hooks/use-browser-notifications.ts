@@ -20,6 +20,7 @@ import {
   JANELA_DA_ATRIBUICAO_MS,
   chaveDaPreferencia,
   esperaAtribuicao,
+  instanteDaMensagem,
   lerPreferencia,
   silencioDoAviso,
   type ConversaDoAviso,
@@ -227,6 +228,10 @@ export function useBrowserNotifications(): void {
         }
         const agora = Date.now();
         for (const [id, parada] of estacionadas) if (agora > parada.ate) estacionadas.delete(id);
+        // As consultas de duas mensagens da mesma conversa podem voltar fora
+        // de ordem: a mais ANTIGA não substitui a mais nova (Codex, PR #289).
+        const atual = estacionadas.get(msg.conversation_id);
+        if (atual && instanteDaMensagem(atual.msg) > instanteDaMensagem(msg)) return;
         estacionadas.set(msg.conversation_id, { msg, ate: agora + JANELA_DA_ATRIBUICAO_MS });
         return;
       }

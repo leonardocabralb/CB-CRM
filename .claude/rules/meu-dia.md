@@ -216,7 +216,9 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   ler antes — a coluna diria o número velho, ou nulo na conversa nova). Por
   isso o select traz `channel_pinned`.
 - ⚠️ **A mensagem calada por "não é sua" fica ESTACIONADA
-  (`JANELA_DA_ATRIBUICAO_MS`, 2 min) e o UPDATE da conversa atribuída à
+  (`JANELA_DA_ATRIBUICAO_MS` = `LIMITE_DE_ATRASO_MS`, 1 h: a cadeia de passos
+  antes de atribuir não tem teto; depois de 1 h já não é aviso de mensagem
+  nova; a mais antiga nunca substitui a mais nova) e o UPDATE da conversa atribuída à
   pessoa (realtime, `assigned_agent_id=eq.<id>`) a solta** — decidida de novo,
   lendo a conversa como está. A automação disparada pela própria mensagem pode
   atribuí-la depois do INSERT, e sem prazo: um sono fixo (a 1ª versão, 3 s)

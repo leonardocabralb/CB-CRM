@@ -5,6 +5,8 @@ import {
   PREFERENCIA_PADRAO,
   chaveDaPreferencia,
   esperaAtribuicao,
+  instanteDaMensagem,
+  JANELA_DA_ATRIBUICAO_MS,
   lerPreferencia,
   silencioDoAviso,
   type ConversaDoAviso,
@@ -133,6 +135,20 @@ describe("silencioDoAviso — quem recebe o aviso (P2)", () => {
     ).toBeNull();
     // Sem carimbo na mensagem, fica o da conversa.
     expect(decide({ conversa: { channel_id: "canal-b" }, canalDaMensagem: null })).toBe("fora_do_perfil");
+  });
+
+  it("a espera pela atribuição dura o mesmo que separa mensagem nova de história", () => {
+    // Uma cadeia de passos antes de atribuir não tem teto (webhook de até
+    // 10 s cada): 2 min perdia o aviso (Codex, PR #289).
+    expect(JANELA_DA_ATRIBUICAO_MS).toBe(LIMITE_DE_ATRASO_MS);
+  });
+
+  it("o instante da mensagem é a gravação, senão o carimbo", () => {
+    expect(instanteDaMensagem({ created_at: "2026-09-24T10:00:00Z", gravada_em: "2026-09-24T10:05:00Z" }))
+      .toBe(Date.parse("2026-09-24T10:05:00Z"));
+    expect(instanteDaMensagem({ created_at: "2026-09-24T10:00:00Z", gravada_em: null }))
+      .toBe(Date.parse("2026-09-24T10:00:00Z"));
+    expect(instanteDaMensagem({ created_at: "lixo" })).toBe(0);
   });
 
   it("só o \"não é sua\" espera a atribuição (perfil, grupo e antiga não mudam com ela)", () => {
