@@ -26,7 +26,7 @@ import {
   type PreferenciaDeAviso,
 } from "@/lib/notifications/aviso-no-navegador";
 import { nomeDoContato, type ContatoIdentificavel } from "@/lib/contacts/identidade";
-import { EVENTO_ABRIR_CONVERSA, urlDoInbox } from "@/lib/inbox/url";
+import { EVENTO_ABRIR_CONVERSA, EVENTO_CONVERSA_ABERTA, urlDoInbox } from "@/lib/inbox/url";
 import { MIDIA_DE_TOQUE } from "@/lib/celular/teclado";
 
 // ⚠️ Este arquivo veio do original (#516) e foi PORTADO na Fase 8 do plano do
@@ -334,12 +334,19 @@ export function useBrowserNotifications(): void {
       )
       .subscribe();
 
-    // A varredura: tira da fila a estacionada vencida e a da conversa que a
-    // pessoa está VENDO nesta aba (ela leu; soltá-la depois seria aviso de
-    // mensagem já lida). ⚠️ Não use a não lida da conversa para isso: ela é da
-    // CONTA, e qualquer fio aberto — até numa aba oculta — a zera, o que
-    // calaria o aviso de quem nunca viu a mensagem (revisão do PR #289).
-    const varredura = window.setInterval(() => {
+    // A conversa ABERTA nesta aba sai da fila: a pessoa viu a mensagem, e
+    // soltá-la depois seria aviso de mensagem já lida. Por EVENTO da caixa de
+    // entrada — amostrar a URL perdia quem abre e sai entre dois tiques — e,
+    // para a conversa que já estava aberta numa aba oculta, na volta dela.
+    // ⚠️ Nunca pela não lida da conversa: ela é da CONTA, e qualquer fio
+    // aberto — até numa aba oculta — a zera, o que calaria o aviso de quem
+    // nunca viu a mensagem (revisão do PR #289).
+    const aoAbrirConversa = (e: Event) => {
+      const id = (e as CustomEvent<unknown>).detail;
+      if (typeof id === "string") estacionadas.delete(id);
+    };
+    window.addEventListener(EVENTO_CONVERSA_ABERTA, aoAbrirConversa);
+    const varrer = () => {
       const agora = Date.now();
       for (const [id, parada] of estacionadas) {
         if (agora > parada.ate || vendoAgora(id)) estacionadas.delete(id);
@@ -350,11 +357,17 @@ export function useBrowserNotifications(): void {
       for (const [id, a] of avisadas) {
         if (agora - a.em > JANELA_DA_ATRIBUICAO_MS) avisadas.delete(id);
       }
-    }, VARREDURA_MS);
+    };
+    document.addEventListener("visibilitychange", varrer);
+    // A varredura periódica tira a VENCIDA (e cobre a volta à aba que não
+    // disparou evento nenhum).
+    const varredura = window.setInterval(varrer, VARREDURA_MS);
 
     return () => {
       cancelado = true;
       window.clearInterval(varredura);
+      window.removeEventListener(EVENTO_CONVERSA_ABERTA, aoAbrirConversa);
+      document.removeEventListener("visibilitychange", varrer);
       estacionadas.clear();
       atribuidasAgora.clear();
       avisadas.clear();

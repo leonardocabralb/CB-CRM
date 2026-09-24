@@ -225,8 +225,10 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   atribuí-la depois do INSERT, e sem prazo: um sono fixo (a 1ª versão, 3 s)
   não garante nada, porque outros passos podem vir antes (Codex, #287 e #289).
   As cercas: a atribuição que chega com a consulta ainda no ar é guardada
-  (`atribuidasAgora`) e decide na hora de estacionar; a varredura de 5 s
-  tira da fila a conversa que a pessoa está VENDO (⚠️ nunca pela não lida,
+  (`atribuidasAgora`) e decide na hora de estacionar; a conversa que a
+  pessoa ABRE sai da fila por evento da caixa de entrada
+  (`EVENTO_CONVERSA_ABERTA`; amostrar a URL perdia quem abre e sai entre
+  dois tiques) e na volta à aba (⚠️ nunca pela não lida,
   que é da conta: uma aba oculta com o fio aberto a zera e calaria quem não
   viu); a soltura de uma estacionada velha não troca o aviso de uma mais nova
   já exibida (`avisadas`); o prazo conta da MENSAGEM. ⚠️ Aceito e escrito, porque hoje nenhuma automação

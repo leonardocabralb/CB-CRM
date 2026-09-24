@@ -109,6 +109,15 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     expect(hook).not.toMatch(/unread_count/);
     expect(hook).toMatch(/if \(agora > parada\.ate \|\| vendoAgora\(id\)\) estacionadas\.delete\(id\);/);
     expect(hook).toMatch(/window\.clearInterval\(varredura\);/);
+    // ...por EVENTO da caixa de entrada (a amostragem perdia quem abre e sai
+    // entre dois tiques) e na volta à aba...
+    expect(hook).toMatch(/if \(typeof id === "string"\) estacionadas\.delete\(id\);/);
+    expect(hook).toMatch(/window\.addEventListener\(EVENTO_CONVERSA_ABERTA, aoAbrirConversa\);/);
+    expect(hook).toMatch(/document\.addEventListener\("visibilitychange", varrer\);/);
+    const pagina = semComentarios(ler('app/(dashboard)/inbox/page.tsx'));
+    expect(pagina).toMatch(
+      /conversaAbertaRef\.current = activeConversation\?\.id \?\? null;\s*if \(activeConversation\?\.id\) \{\s*window\.dispatchEvent\(\s*new CustomEvent\(EVENTO_CONVERSA_ABERTA, \{ detail: activeConversation\.id \}\),?\s*\);\s*\}\s*\}, \[activeConversation\?\.id\]\);/,
+    );
     // ...a soltura de uma estacionada velha não troca o aviso da mais nova...
     expect(hook).toMatch(/if \(silencio\) return;\s*if \(\(avisadas\.get\(msg\.conversation_id\)\?\.ordem \?\? 0\) > ordem\) return;/);
     expect(hook).toMatch(/avisadas\.set\(msg\.conversation_id, \{ ordem, em: Date\.now\(\) \}\);\s*descartarAte\(msg\.conversation_id, ordem\);/);
