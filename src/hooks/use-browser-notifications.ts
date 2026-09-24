@@ -355,7 +355,10 @@ export function useBrowserNotifications(): void {
     // nunca viu a mensagem (revisão do PR #289).
     const aoAbrirConversa = (e: Event) => {
       const id = (e as CustomEvent<unknown>).detail;
-      if (typeof id === "string") marcarVista(id);
+      // Só com a aba VISÍVEL: a aba oculta que termina de carregar uma
+      // conversa por link também dispara o evento, e ninguém a viu (Codex,
+      // PR #289). A volta à aba (`visibilitychange`) cobre o resto.
+      if (typeof id === "string" && document.visibilityState === "visible") marcarVista(id);
     };
     window.addEventListener(EVENTO_CONVERSA_ABERTA, aoAbrirConversa);
     const varrer = () => {

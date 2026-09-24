@@ -115,7 +115,7 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     expect(hook).toMatch(/window\.clearInterval\(varredura\);/);
     // ...por EVENTO da caixa de entrada (a amostragem perdia quem abre e sai
     // entre dois tiques) e na volta à aba...
-    expect(hook).toMatch(/if \(typeof id === "string"\) marcarVista\(id\);/);
+    expect(hook).toMatch(/if \(typeof id === "string" && document\.visibilityState === "visible"\) marcarVista\(id\);/);
     expect(hook).toMatch(/window\.addEventListener\(EVENTO_CONVERSA_ABERTA, aoAbrirConversa\);/);
     expect(hook).toMatch(/document\.addEventListener\("visibilitychange", varrer\);/);
     const pagina = semComentarios(ler('app/(dashboard)/inbox/page.tsx'));
