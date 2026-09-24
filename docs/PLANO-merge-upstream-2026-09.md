@@ -194,7 +194,7 @@ quebrar, sabe-se qual.
 | **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | ✅ em produção (PR #283, merge `6cedb67a`, rollout 24/09 00:24Z): porte manual — o #259 descartou o webhook deles; falta o disparo REAL fora da janela (a janela do lead de teste fecha 24/09 19:14Z) |
 | **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | ✅ em produção (PR #284, merge `fe2a7530`, rollout 24/09 12:24:56Z): 6a (o teto na leitura) e 6b (stub COMPLETO por `cb_channels`, ligado), com E2E contra a Meta; pós-deploy conferido (seção da fase) |
 | **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | ✅ em produção (PR #285, merge `f5879b3f`, rollout 24/09 14:17:55Z, na reexecução): o motivo da falha em *Conexões* (`POST /api/cb/channels`), o par WABA/número conferido, a assinatura da WABA fatal, o token limpo das mensagens, o POST legado aposentado (410) e `docs/conexao-meta.md`; testado contra a Meta real com o token da conexão oficial (só leituras); pós-deploy conferido (seção da fase) |
-| **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | biblioteca CRUA no `main`; o cartão ESCONDIDO (correção do #259) até o ouvinte ser montado com as adaptações |
+| **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | ✅ mesclada (PR #287): o ouvinte montado na casca, dentro da `<PortaDeEntrada>`, com a régua do operador (perfil, grupo fora, "quais conversas", texto opcional, mensagem antiga calada), a preferência por pessoa e o cartão de volta em *Seu perfil*; testado na preview; o pós-deploy é registrado no PR da Fase 9 |
 | **9** | "Digitando…" da IA (#527), sobre o canal da conversa | Inerte hoje (auto-reply desligado) | Média | Médio | — | só a função (`sendTypingIndicator`, sem chamador); o `auto-reply.ts` deles foi descartado |
 | **10** | i18n das telas em inglês (#577, #578, #579) | 219 chaves | Média (braçal) | Baixo | — | parcial pelo #259 (240 chaves unidas, telas DELES traduzidas); `pt.json`/`es.json` apagados (P3); faltam as telas NOSSAS e ~129 órfãs |
 | **11** | **BSUID (#533)** — por último | Preventivo (0 fichas sem telefone) | **Alta** | **Alto** | `1038` (+ a do CHECK da P4) | colunas aplicadas e a biblioteca (`wa-identity.ts`) no `main`; entrada, saída e tela pendentes |
@@ -1541,7 +1541,64 @@ aba em outra conversa → notificação (espiã de `Notification` na página; o 
 do sistema operacional fica para o operador conferir); mensagem de grupo e de
 conexão fora do perfil → nada; clique abre `/inbox?c=`.
 
-**Resultado:** — (a preencher)
+**Resultado (24/09/2026):**
+
+- **Medido antes:** o #259 trouxe a biblioteca, o hook, o ouvinte e o cartão,
+  mas o ouvinte não estava montado em lugar nenhum e o cartão tinha saído de
+  *Seu perfil* (correção do #259). A régua do original avisa TODA mensagem de
+  cliente da conta — grupo, conexão fora do perfil, e também a mensagem antiga
+  gravada agora (a carga da Kommo, a recuperada tardia pela 1010) — e a
+  preferência morava numa chave GLOBAL do navegador
+  (`wacrm:browser-notifications`): quem entrasse depois no mesmo computador
+  herdava o "ligado". `conversations.last_message_at` não serve para "alguém
+  escreveu depois": a ingestão o carimba com o relógio do servidor.
+- **O que entrou:** `src/lib/notifications/aviso-no-navegador.ts` (puro) —
+  `silencioDoAviso` (perfil sem a Caixa de entrada, grupo, fora do perfil pelo
+  contexto REAL, "quais conversas", mensagem gravada mais de 1 h depois do
+  próprio carimbo) e `lerPreferencia` (parse, nunca `as`); o hook portado
+  (preferência POR PESSOA em `cb-notificacoes:<userId>`, a chave antiga apagada
+  ao gravar; título por `nomeDoContato`; corpo escondido quando a pessoa pede;
+  clique por `urlDoInbox`); o ouvinte na casca, dentro da `<PortaDeEntrada>`,
+  só com `!entradaPendente`; o cartão de volta em *Seu perfil* (só com a Caixa
+  de entrada no perfil), com as duas configurações. Decisão escrita sobre o
+  opt-in antigo: a chave foi TROCADA — o "ligado" dado ao cartão do #259 nunca
+  mandou aviso nenhum, e a chave global era o defeito.
+- **Verificado:** typecheck; lint (60, a base); suíte no Node 22 (430
+  arquivos, 6.140 testes); os dois portões de i18n; mutantes 18/18 (na
+  primeira rodada escapou o que ignorava o silêncio da régua — o pino só
+  conferia que ela era CHAMADA — e o pino foi reforçado).
+- **E2E na preview** (mensagens inseridas direto na tabela, na conversa do
+  lead de teste autorizado — o que esta fase muda é o OUVINTE do realtime, não
+  a ingestão, e assim nenhuma automação, robô ou reabertura rodou; `Notification`
+  trocada por uma espiã, porque o Browser pane não tem a caixa de permissão):
+  1. o cartão aparece em *Seu perfil*; ligar grava `cb-notificacoes:<user>` e
+     mostra as configurações;
+  2. mensagem nova → aviso com o nome da ficha, o texto e a etiqueta da conversa;
+  3. "Mostrar o texto" desligado → o aviso diz só "Mensagem nova";
+  4. "Só as conversas atribuídas a você", conversa sem responsável → silêncio;
+  5. mensagem com a hora de 2 h atrás (gravada agora) → silêncio; a seguinte,
+     nova → aviso (prova de que o silêncio foi da régua, não do realtime);
+  6. o clique abre `/inbox?c=<a conversa>`; com o pane OCULTO a mensagem
+     seguinte avisou — o certo: o original só cala com a aba VISÍVEL naquela
+     conversa (caso coberto pelo teste dele).
+  Limpeza: as 6 mensagens apagadas e a conversa restaurada ao retrato
+  (encerrada, sem não lidas, sem espera, a mesma última mensagem), conferido
+  por consulta; a preferência de teste apagada do pane.
+  7. (depois da revisão) com `/inbox` JÁ montado e nenhuma conversa aberta,
+     o clique no aviso abriu a conversa no fio, na MESMA página (sem
+     recarregar) — antes só a URL mudava. Limpeza conferida de novo.
+- **Revisão** (duas lentes, um cético por achado; Codex sem cota):
+
+  | Achado | Destino |
+  | --- | --- |
+  | P2 (AS DUAS lentes) — com o inbox já montado noutra conversa (segundo monitor), o clique no aviso só trocava a URL: a página não remonta, e o fio ficava na conversa antiga até uma recarga — que depois pulava de conversa sozinha | ✅ `EVENTO_ABRIR_CONVERSA`: a página abre pelo caminho do "Nova conversa" e não reabre a ativa; pino e mutante; E2E 7 |
+  | P3 — no celular (Chrome do Android, app instalado no iPhone) a API existe e a permissão é dada, mas o construtor lança: a chave ligaria e nada chegaria | ✅ aparelho de toque é "não suportado", no cartão e no ouvinte |
+  | P3 — conversa NOVA lida antes de receber o `channel_id` escaparia do recorte do perfil | ✅ na 1:1 sem canal vale o canal carimbado na mensagem; teste e mutante |
+  | Refutados pelo cético (5): canal de realtime com nome fixo (o `leave` do phoenix 0.4.4 fecha o canal na hora); consulta antes dos cortes baratos (custo desprezível: uma leitura por PK por mensagem de cliente, só com o aviso ligado); `gravada_em` nulo tratado como ao vivo (a régua cai no relógio da tela, e a carga do histórico grava hora antiga); fila entregue depois de mais de 1 h fora do ar calada (é o recorte pedido — a conversa segue com a não lida); o cartão seguir a lente do "Ver como" e o ouvinte o contexto real (é a regra da casa: tela sob a lente, efeito como quem é) | — |
+
+  Mutantes: 18/18 (os quatro das correções incluídos; um escapou na primeira
+  rodada porque o pino procurava o `new CustomEvent(...)` e não o disparo, e
+  foi amarrado ao `window.dispatchEvent`).
 
 ### Fase 9 — "Digitando…" enquanto a IA responde
 
@@ -1728,4 +1785,5 @@ acima, depois das fases, mostrando só divergência NOSSA.
 | 24/09/2026 | 5 | O motivo da falha da Meta gravado na mensagem e no disparo, nos mesmos updates condicionais da escada; o `errors[0]` lido por parse (código estranho, NUL e surrogate solto derrubariam o UPDATE — medido num Postgres 16). PR #283, rollout 00:24Z; pós-deploy: a primeira mensagem entrou às 00:47Z. Falta o disparo REAL fora da janela (depois de 24/09 19:14Z). |
 | 24/09/2026 | 6 | 6a (o teto na leitura do cabeçalho) e 6b (o stub por `cb_channels`). A revisão em duas lentes achou 4 P2 — o mais sério, o stub de corpo vazio virando o modelo do envio e derrubando o envio pelo nome com variáveis; consertado lendo o modelo na Meta com a conversão da sincronização (`modelo-da-meta.ts`). E2E refeito contra a Meta; mutantes 20/20. Dois workers de mutante órfãos (stream sem fim, rodada anterior) giraram 7,5 h e derrubaram a suíte por carga — mortos, e a regra foi para o handoff. PR #284. A passagem de sessão está em `docs/HANDOFF-merge-upstream-2026-09.md`. |
 | 24/09/2026 | 7 | O #505 portado para *Conexões* (`POST /api/cb/channels`): o motivo da falha em lista fechada, traduzido num aviso que fica, com o campo destacado, o código e o trace id; o par WABA/número conferido; a assinatura da WABA fatal; o token limpo das mensagens da Meta; `paging.next` cercado; o token do upload fora da URL; o POST legado aposentado (410). Duas lentes: nenhum P0–P2, quatro P3 corrigidos. O teste com o token REAL da conexão oficial (só leituras, autorizado pelo operador) mostrou que a WABA trocada volta "nonexisting field" e era lida como "valor recusado" — a frase entrou na regra. Mutantes 21/21. Pós-deploy da Fase 6 registrado. PR #285. |
-| 24/09/2026 | fora do plano (instruções) | O `CLAUDE.md` (626 KB, carregado INTEIRO em toda sessão e de novo a cada compactação; um subagente estourou 211 mil tokens antes de começar) virou uma raiz de 36 KB com as regras transversais e as decisões do operador, 32 regras de área em `.claude/rules/` (cada uma com `paths:`, só carregam quando a Read abre um arquivo da área) e duas listas de consulta (`docs/MERGE-UPSTREAM.md`, `docs/MIGRATIONS-APLICADAS.md`). Portão novo `scripts/instrucoes.test.ts` (teto de 40 KB/25 KB, `paths:` obrigatório, glob morto reprova, índice completo) e a consulta `scripts/regras-do-diff.mjs`. Seis revisores de cobertura, um por faixa do texto antigo (~1.160 regras conferidas), acharam 18 faltas, todas corrigidas, e nenhuma distorção além de um intervalo Unicode escrito com os caracteres literais; a segunda lente corrigiu a visibilidade (regra que só carregava longe de quem precisa dela). No mesmo PR: o pós-deploy da Fase 7, a P9 resolvida, P2/P4/P6 decididas pelo operador e a nota do Sincronizar corrigida. |
+| 24/09/2026 | fora do plano (instruções) | O `CLAUDE.md` (626 KB, carregado INTEIRO em toda sessão e de novo a cada compactação; um subagente estourou 211 mil tokens antes de começar) virou uma raiz de 36 KB com as regras transversais e as decisões do operador, 32 regras de área em `.claude/rules/` (cada uma com `paths:`, só carregam quando a Read abre um arquivo da área) e duas listas de consulta (`docs/MERGE-UPSTREAM.md`, `docs/MIGRATIONS-APLICADAS.md`). Portão novo `scripts/instrucoes.test.ts` (teto de 40 KB/25 KB, `paths:` obrigatório, glob morto reprova, índice completo) e a consulta `scripts/regras-do-diff.mjs`. Seis revisores de cobertura, um por faixa do texto antigo (~1.160 regras conferidas), acharam 18 faltas, todas corrigidas, e nenhuma distorção além de um intervalo Unicode escrito com os caracteres literais; a segunda lente corrigiu a visibilidade (regra que só carregava longe de quem precisa dela). No mesmo PR: o pós-deploy da Fase 7, a P9 resolvida, P2/P4/P6 decididas pelo operador e a nota do Sincronizar corrigida. PR #286: merge `9da89dcb` às 16:06:16Z, rollout "converged" às 16:12:48Z na primeira tentativa; saúde anônima em ordem e ingestão viva. |
+| 24/09/2026 | 8 | O #516 portado: `silencioDoAviso` (perfil pelo contexto real, grupo fora, "quais conversas", mensagem gravada mais de 1 h depois calada), preferência por pessoa, cartão de volta com as duas configurações (P2). Duas lentes: um P2 das duas (o clique com o inbox já montado só trocava a URL) e dois P3 (celular; conversa nova sem canal), corrigidos; 5 refutados. Mutantes 18/18. E2E na preview com mensagens inseridas direto na conversa do lead de teste, limpas no fim. PR #287. |

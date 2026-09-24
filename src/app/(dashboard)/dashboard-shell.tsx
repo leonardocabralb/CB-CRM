@@ -8,6 +8,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { AccountAccessAlert } from '@/components/layout/account-access-alert';
 import { PresenceHeartbeat } from '@/components/presence/presence-heartbeat';
+import { BrowserNotificationsListener } from '@/components/notifications/browser-notifications-listener';
 import { TelaBloqueada } from '@/components/auth/tela-bloqueada';
 import { FaixaDeSimulacao } from '@/components/auth/faixa-de-simulacao';
 import { PortaDeEntrada } from '@/components/entrada/porta-de-entrada';
@@ -111,6 +112,9 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
           {/* Reports this tab's online/away presence once we know a user is
             signed in. Headless — renders nothing. */}
           {!entradaPendente && <PresenceHeartbeat />}
+          {/* Notificação do navegador (#516): UMA por aba, e só depois do
+            "Continuar" — como a presença, é efeito que a porta segura. */}
+          {!entradaPendente && <BrowserNotificationsListener />}
           <Sidebar open={sidebarOpen} onClose={closeSidebar} />
           <div className="flex flex-1 flex-col overflow-hidden">
             {/* "Ver como": acima do cabeçalho, em toda página, com a saída —

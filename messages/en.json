@@ -4139,7 +4139,7 @@
     "sectionsNav": "Settings sections",
     "browserNotifications": {
       "title": "Browser notifications",
-      "description": "Get a desktop alert for every new customer message, even while you're on another page. Saved to this device.",
+      "description": "Get a desktop alert for each new customer message, even while on another page. Saved in this browser, for your user only.",
       "toggleLabel": "Notify me about new customer messages",
       "toggleDesc": "Works only while the app is open in a browser tab.",
       "statusGranted": "Allowed by your browser.",
@@ -4151,6 +4151,15 @@
       "testTitle": "Test notification",
       "testBody": "Notifications are working. New customer messages will show up like this.",
       "permissionDeniedToast": "Your browser blocked notifications",
+      "whichLabel": "Alert me about",
+      "which": {
+        "todas": "All conversations on your connections",
+        "minhas_e_sem_responsavel": "Conversations assigned to you or unassigned",
+        "minhas": "Only conversations assigned to you"
+      },
+      "showTextLabel": "Show the message text",
+      "showTextDesc": "Off: the alert only says who wrote — useful when others can see your screen.",
+      "scopeNote": "Only the connections in your access profile. Group messages never alert.",
       "labels": {
         "fallbackTitle": "New message",
         "image": "📷 Photo",

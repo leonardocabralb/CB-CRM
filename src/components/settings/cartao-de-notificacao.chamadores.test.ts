@@ -3,19 +3,28 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // ============================================================
-// O cartão "Notificações do navegador" (#516 do original) só aparece com o
-// OUVINTE montado.
+// Notificação do navegador (#516 do original): o cartão e o OUVINTE andam
+// juntos, e o ouvinte é o NOSSO.
 //
-// O merge #259 (23/09/2026) montou o cartão em Seu perfil e deixou o
-// ouvinte sem montar: a pessoa ligava a chave, o navegador pedia permissão,
-// a notificação de teste chegava — e nenhuma mensagem real avisava nada. A
-// correção do #259 tirou o cartão até a Fase 8 do plano do merge do
-// upstream, que monta o ouvinte DENTRO da <PortaDeEntrada>, com o recorte do
-// perfil e grupo de fora. Um porte de tradução (o #578 mexeu no
-// profile-form) traria a linha do cartão de volta sem conflito nenhum.
+// O merge #259 (23/09/2026) montou o cartão em Seu perfil e deixou o ouvinte
+// sem montar: a pessoa ligava a chave, recebia a notificação de teste e
+// nunca a de uma mensagem real. A Fase 8 do plano do merge do upstream
+// montou o ouvinte na casca, DENTRO da <PortaDeEntrada>, com a régua do
+// operador (P2): só as conexões do perfil, grupo fora, configurável.
+//
+// Um merge que traga a versão crua do original devolve, sem conflito:
+// o aviso de GRUPO e de conexão fora do perfil (o hook dele avisa toda
+// mensagem de cliente), a preferência GLOBAL do navegador (quem entra depois
+// herda o "ligado") e o ouvinte montado antes do "Continuar".
 // ============================================================
 
 const SRC = path.join(__dirname, '../..');
+const ler = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf8');
+
+/** O fonte sem comentários: uma nota que cite a forma proibida não conta. */
+function semComentarios(fonte: string): string {
+  return fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+}
 
 function arquivos(dir: string): string[] {
   const saida: string[] = [];
@@ -30,24 +39,65 @@ function arquivos(dir: string): string[] {
 describe('cartão de notificação do navegador × ouvinte', () => {
   const quemMontaOCartao = arquivos(SRC).filter((p) => {
     if (p.endsWith('browser-notifications-card.tsx')) return false;
-    return /\bBrowserNotificationsCard\b/.test(fs.readFileSync(p, 'utf8'));
+    return /<BrowserNotificationsCard\b/.test(fs.readFileSync(p, 'utf8'));
   });
-  const shell = fs.readFileSync(path.join(SRC, 'app/(dashboard)/dashboard-shell.tsx'), 'utf8');
-  const ouvinteMontado = /<BrowserNotificationsListener\b/.test(shell);
+  const shell = semComentarios(ler('app/(dashboard)/dashboard-shell.tsx'));
 
-  it('o cartão só é usado se o ouvinte estiver montado na casca', () => {
-    if (quemMontaOCartao.length > 0) {
-      expect(
-        ouvinteMontado,
-        `o cartão aparece em ${quemMontaOCartao.map((p) => path.relative(SRC, p)).join(', ')} sem o ouvinte montado no dashboard-shell`,
-      ).toBe(true);
-    }
+  it('o ouvinte é montado UMA vez, na casca, e só depois do "Continuar"', () => {
+    const montagens = shell.match(/<BrowserNotificationsListener\b/g) ?? [];
+    expect(montagens).toHaveLength(1);
+    // Antes do "Continuar" a porta segura a página e a presença; o aviso é o
+    // mesmo tipo de efeito (e o clique navegaria por trás do resumo).
+    expect(shell).toMatch(/\{!entradaPendente && <BrowserNotificationsListener \/>\}/);
+    const fora = arquivos(SRC).filter(
+      (p) =>
+        !p.endsWith('dashboard-shell.tsx') &&
+        /<BrowserNotificationsListener\b/.test(semComentarios(fs.readFileSync(p, 'utf8'))),
+    );
+    expect(fora).toEqual([]);
   });
 
-  it('hoje (até a Fase 8) nenhum dos dois está montado', () => {
-    // Quando a Fase 8 montar o ouvinte, este caso é o que muda — e junto a
-    // nota da tabela de divergências do CLAUDE.md (profile-form.tsx).
-    expect(quemMontaOCartao).toEqual([]);
-    expect(ouvinteMontado).toBe(false);
+  it('o cartão está em Seu perfil, e só em Seu perfil', () => {
+    expect(quemMontaOCartao.map((p) => path.relative(SRC, p))).toEqual([
+      'components/settings/profile-form.tsx',
+    ]);
+  });
+
+  it('o ouvinte usa a NOSSA régua e o contexto REAL', () => {
+    const hook = semComentarios(ler('hooks/use-browser-notifications.ts'));
+    // A régua do operador (perfil, grupo, "quais", mensagem antiga)... — e o
+    // silêncio dela CALA o aviso: chamar a régua e ignorar a resposta passaria
+    // numa conferência que só procurasse a chamada (medido por mutante).
+    expect(hook).toMatch(/const silencio = silencioDoAviso\(/);
+    expect(hook).toMatch(/if \(silencio\) return;\s*\n\s*const labels = labelsRef\.current;/);
+    // ...o nome pela régua da casa (telefone, senão @instagram)...
+    expect(hook).toMatch(/nomeDoContato\(/);
+    expect(hook).not.toMatch(/pickContactDisplayName\(/);
+    // ...a preferência POR PESSOA, nunca a global do original...
+    expect(hook).not.toMatch(/readBrowserNotifyPref|BROWSER_NOTIFY_STORAGE_KEY/);
+    // ...e o contexto REAL: `acesso` do useAuth carrega a lente do "Ver como".
+    expect(hook).not.toMatch(/\bacesso\b/);
+    expect(hook).toMatch(/papel: profile\?\.account_role/);
+  });
+
+  it('o clique abre a conversa também com o inbox já montado', () => {
+    // Só o `router.push` troca a query e a página não remonta: a URL dizia
+    // uma conversa e o fio mostrava outra (revisão da Fase 8, P2).
+    const hook = semComentarios(ler('hooks/use-browser-notifications.ts'));
+    expect(hook).toMatch(
+      /window\.dispatchEvent\(\s*new CustomEvent\(EVENTO_ABRIR_CONVERSA, \{ detail: msg\.conversation_id \}\)/,
+    );
+    const inbox = semComentarios(ler('app/(dashboard)/inbox/page.tsx'));
+    expect(inbox).toMatch(/window\.addEventListener\(EVENTO_ABRIR_CONVERSA, /);
+    // ...sem reabrir a que já está ativa (zeraria o fio carregado).
+    expect(inbox).toMatch(/if \(conversaAbertaRef\.current === id\) return;\s*conversaRecemAbertaRef\.current = id;/);
+  });
+
+  it('aparelho de toque não liga o aviso (sem service worker o construtor lança)', () => {
+    const hook = semComentarios(ler('hooks/use-browser-notifications.ts'));
+    expect(hook).toMatch(/if \(!avisoPossivelNoAparelho\(\)\) return;/);
+    expect(hook).toMatch(/matchMedia\?\.\(MIDIA_DE_TOQUE\)\.matches/);
+    const cartao = semComentarios(ler('components/settings/browser-notifications-card.tsx'));
+    expect(cartao).toMatch(/const supported = permission !== 'unsupported' && !toque;/);
   });
 });
