@@ -218,15 +218,18 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
 - ⚠️ **A mensagem calada por "não é sua" fica ESTACIONADA
   (`JANELA_DA_ATRIBUICAO_MS` = `LIMITE_DE_ATRASO_MS`, 1 h: a cadeia de passos
   antes de atribuir não tem teto; depois de 1 h já não é aviso de mensagem
-  nova; a mais antiga nunca substitui a mais nova) e o UPDATE da conversa atribuída à
+  nova; a mais antiga nunca substitui a mais nova — pela ordem de CHEGADA do
+  realtime, não pelo carimbo, que empata no milissegundo) e o UPDATE da conversa atribuída à
   pessoa (realtime, `assigned_agent_id=eq.<id>`) a solta** — decidida de novo,
   lendo a conversa como está. A automação disparada pela própria mensagem pode
   atribuí-la depois do INSERT, e sem prazo: um sono fixo (a 1ª versão, 3 s)
   não garante nada, porque outros passos podem vir antes (Codex, #287 e #289).
-  Duas cercas: a atribuição que chega com a consulta ainda no ar é guardada
-  (`atribuidasAgora`) e decide na hora de estacionar; e, na soltura, a não
-  lida zerada (alguém abriu a conversa na espera) cala — a atribuição já
-  avisa pelo sino. ⚠️ Aceito e escrito, porque hoje nenhuma automação
+  As cercas: a atribuição que chega com a consulta ainda no ar é guardada
+  (`atribuidasAgora`) e decide na hora de estacionar; a varredura de 5 s
+  tira da fila a conversa que a pessoa está VENDO (⚠️ nunca pela não lida,
+  que é da conta: uma aba oculta com o fio aberto a zera e calaria quem não
+  viu); a soltura de uma estacionada velha não troca o aviso de uma mais nova
+  já exibida (`avisadas`); o prazo conta da MENSAGEM. ⚠️ Aceito e escrito, porque hoje nenhuma automação
   atribui conversa (medido em 24/09/2026): em "minhas e sem responsável", a
   conversa lida sem dono avisa na hora mesmo que a automação a entregue a
   outra pessoa em seguida, e a estacionada com dono de outra pessoa não é

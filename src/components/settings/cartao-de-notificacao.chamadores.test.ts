@@ -69,7 +69,7 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     // silêncio dela CALA o aviso: chamar a régua e ignorar a resposta passaria
     // numa conferência que só procurasse a chamada (medido por mutante).
     expect(hook).toMatch(/const silencio = silencioDoAviso\(/);
-    expect(hook).toMatch(/if \(silencio\) return;\s*\n\s*const labels = labelsRef\.current;/);
+    expect(hook).toMatch(/if \(silencio\) return;\s*if \(\(avisadas[^\n]*\n\s*\n\s*const labels = labelsRef\.current;/);
     // ...o nome pela régua da casa (telefone, senão @instagram)...
     expect(hook).toMatch(/nomeDoContato\(/);
     expect(hook).not.toMatch(/pickContactDisplayName\(/);
@@ -87,7 +87,7 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     // atribuição (outros passos podem vir antes), e depois dele a pessoa pode
     // já estar lendo a conversa.
     const hook = semComentarios(ler('hooks/use-browser-notifications.ts'));
-    expect(hook).toMatch(/"id, channel_id, channel_pinned, group_id, assigned_agent_id, unread_count, "/);
+    expect(hook).toMatch(/"id, channel_id, channel_pinned, group_id, assigned_agent_id, "/);
     expect(hook).not.toMatch(/setTimeout\(/);
     expect(hook).toMatch(
       /if \(esperaAtribuicao\(silencio\)\) \{\s*if \(!podeEstacionar\) return;[\s\S]*?estacionadas\.set\(msg\.conversation_id,/,
@@ -95,15 +95,25 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     // A atribuição que chega com a consulta no ar não se perde...
     expect(hook).toMatch(/const consultouEm = Date\.now\(\);\s*const \{ data, error \} = await supabase/);
     expect(hook).toMatch(
-      /if \(atribuidaEm !== undefined && atribuidaEm >= consultouEm\) \{\s*void avisar\(msg, false\);\s*return;\s*\}/,
+      /if \(atribuidaEm !== undefined && atribuidaEm >= consultouEm\) \{\s*void avisar\(msg, false, ordem\);\s*return;\s*\}/,
     );
     expect(hook).toMatch(/atribuidasAgora\.set\(id, agora\);\s*const parada = estacionadas\.get\(id\);\s*if \(!parada\) return;\s*estacionadas\.delete\(id\);/);
-    // ...a mais antiga não substitui a mais nova (consultas fora de ordem)...
+    // ...a mais antiga não substitui a mais nova (consultas fora de ordem),
+    // pela ordem de CHEGADA do realtime — o carimbo empata no milissegundo...
     expect(hook).toMatch(
-      /const atual = estacionadas\.get\(msg\.conversation_id\);\s*if \(atual && instanteDaMensagem\(atual\.msg\) > instanteDaMensagem\(msg\)\) return;\s*estacionadas\.set\(/,
+      /const atual = estacionadas\.get\(msg\.conversation_id\);\s*if \(atual && atual\.ordem > ordem\) return;[\s\S]{0,400}?estacionadas\.set\(msg\.conversation_id, \{ msg, ate: base \+ JANELA_DA_ATRIBUICAO_MS, ordem \}\);/,
     );
-    // ...a mensagem que alguém já abriu durante a espera não vira aviso...
-    expect(hook).toMatch(/if \(!podeEstacionar && !conversa\.unread_count\) return;/);
+    expect(hook).toMatch(/void avisar\(msg, true, \+\+chegadas\);/);
+    // ...a estacionada da conversa que a pessoa está VENDO sai da fila (a não
+    // lida é da conta e uma aba oculta a zera — não serve de sinal)...
+    expect(hook).not.toMatch(/unread_count/);
+    expect(hook).toMatch(/if \(agora > parada\.ate \|\| vendoAgora\(id\)\) estacionadas\.delete\(id\);/);
+    expect(hook).toMatch(/window\.clearInterval\(varredura\);/);
+    // ...a soltura de uma estacionada velha não troca o aviso da mais nova...
+    expect(hook).toMatch(/if \(silencio\) return;\s*if \(\(avisadas\.get\(msg\.conversation_id\)\?\.ordem \?\? 0\) > ordem\) return;/);
+    expect(hook).toMatch(/avisadas\.set\(msg\.conversation_id, \{ ordem, em: Date\.now\(\) \}\);\s*descartarAte\(msg\.conversation_id, ordem\);/);
+    // ...e o prazo conta da mensagem, não do estacionamento...
+    expect(hook).toMatch(/Math\.min\(Date\.now\(\), escrita\)/);
     // ...e "vendo agora" é a tela de verdade (visível E na conversa).
     expect(hook).toMatch(
       /const vendoAgora = \(conversaId: string\) =>\s*document\.visibilityState === "visible" &&\s*viewedConversationFromLocation\(window\.location\.pathname, window\.location\.search\) ===\s*conversaId;/,
@@ -111,9 +121,9 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     expect(hook).toMatch(
       /event: "UPDATE",\s*schema: "public",\s*table: "conversations",\s*filter: `assigned_agent_id=eq\.\$\{userId\}`/,
     );
-    expect(hook).toMatch(/void avisar\(parada\.msg, false\)/);
+    expect(hook).toMatch(/void avisar\(parada\.msg, false, parada\.ordem\)/);
     expect(hook).toMatch(
-      /if \(vendoAgora\(msg\.conversation_id\)\) return;\s*try \{\s*const notificacao = new Notification\(/,
+      /if \(vendoAgora\(msg\.conversation_id\)\) \{\s*descartarAte\(msg\.conversation_id, ordem\);\s*return;\s*\}\s*avisadas\.set\([^\n]*\n\s*descartarAte\([^\n]*\n\s*try \{\s*const notificacao = new Notification\(/,
     );
   });
 

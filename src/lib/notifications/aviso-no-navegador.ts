@@ -119,19 +119,11 @@ export type ConversaDoAviso = Pick<
  * conversa atribuída a esta pessoa (realtime) a solta.
  *
  * O limite é o MESMO que separa mensagem nova de história
- * (`LIMITE_DE_ATRASO_MS`, 1 h): um aviso que sairia mais de uma hora depois
- * da mensagem já não é aviso de mensagem nova. Na soltura, a não lida zerada
- * (alguém abriu a conversa na espera) também cala.
+ * (`LIMITE_DE_ATRASO_MS`, 1 h), contado da MENSAGEM: um aviso que sairia mais
+ * de uma hora depois dela já não é aviso de mensagem nova.
  */
 export const JANELA_DA_ATRIBUICAO_MS = LIMITE_DE_ATRASO_MS;
 
-/** Instante da mensagem para ordenar as estacionadas: a gravação, senão o carimbo. */
-export function instanteDaMensagem(m: MensagemDoAviso): number {
-  const gravada = m.gravada_em ? Date.parse(m.gravada_em) : NaN;
-  if (!Number.isNaN(gravada)) return gravada;
-  const carimbo = Date.parse(m.created_at);
-  return Number.isNaN(carimbo) ? 0 : carimbo;
-}
 
 export type SilencioDoAviso =
   | "sem_caixa_de_entrada"

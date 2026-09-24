@@ -20,7 +20,6 @@ import {
   JANELA_DA_ATRIBUICAO_MS,
   chaveDaPreferencia,
   esperaAtribuicao,
-  instanteDaMensagem,
   lerPreferencia,
   silencioDoAviso,
   type ConversaDoAviso,
@@ -111,13 +110,17 @@ export function usePreferenciaDeAviso(): {
 
 /** O que a consulta da conversa traz: a régua (`silencioDoAviso`) e o nome. */
 const SELECT_DA_CONVERSA =
-  "id, channel_id, channel_pinned, group_id, assigned_agent_id, unread_count, " +
+  "id, channel_id, channel_pinned, group_id, assigned_agent_id, " +
   "contact:contacts(name, phone, instagram_username), group:cb_groups(channel_id)";
 
 type ConversaDaConsulta = ConversaDoAviso & {
-  unread_count?: number | null;
   contact?: ContatoIdentificavel | null;
 };
+
+/** De quanto em quanto tempo a fila de estacionadas é varrida. */
+const VARREDURA_MS = 5_000;
+/** Por quanto tempo uma atribuição fica guardada para a corrida da consulta. */
+const JANELA_DA_CORRIDA_MS = 60_000;
 
 /**
  * Aviso na área de trabalho a cada mensagem nova de cliente. Montado UMA vez
@@ -175,12 +178,25 @@ export function useBrowserNotifications(): void {
     // Mensagens caladas por "não é sua", à espera de a conversa ser atribuída
     // a esta pessoa (ver `JANELA_DA_ATRIBUICAO_MS`). Uma por conversa: o aviso
     // também é um por conversa (`tag`).
-    const estacionadas = new Map<string, { msg: Message; ate: number }>();
+    const estacionadas = new Map<string, { msg: Message; ate: number; ordem: number }>();
+    // Ordem de CHEGADA pelo realtime, que entrega os INSERTs na ordem em que
+    // foram gravados. É ela que diz qual mensagem é a mais nova: as consultas
+    // de `avisar` voltam em qualquer ordem, e o carimbo empata no mesmo
+    // milissegundo (Codex, PR #289).
+    let chegadas = 0;
     // Quando cada conversa foi atribuída a esta pessoa (o UPDATE do realtime).
     // A atribuição pode chegar ENQUANTO a consulta de `avisar` está no ar: a
     // resposta volta com o dono velho, e a mensagem estacionaria DEPOIS de a
     // soltura já ter passado (revisão do PR #289).
     const atribuidasAgora = new Map<string, number>();
+    // A ordem da última mensagem AVISADA de cada conversa: a soltura de uma
+    // estacionada mais antiga, que pode chegar depois, não troca o aviso da
+    // mais nova (mesma `tag`) por texto velho (revisão do PR #289).
+    const avisadas = new Map<string, { ordem: number; em: number }>();
+    const descartarAte = (conversaId: string, ordem: number) => {
+      const parada = estacionadas.get(conversaId);
+      if (parada && parada.ordem <= ordem) estacionadas.delete(conversaId);
+    };
 
     // A pessoa está com ESTA conversa na tela agora? Conferido de novo na hora
     // de exibir: entre o INSERT e o aviso cabem a consulta e, na estacionada,
@@ -190,7 +206,7 @@ export function useBrowserNotifications(): void {
       viewedConversationFromLocation(window.location.pathname, window.location.search) ===
         conversaId;
 
-    const avisar = async (msg: Message, podeEstacionar: boolean) => {
+    const avisar = async (msg: Message, podeEstacionar: boolean, ordem: number) => {
       const consultouEm = Date.now();
       const { data, error } = await supabase
         .from("conversations")
@@ -215,32 +231,36 @@ export function useBrowserNotifications(): void {
         quais: pref.quais,
         agoraMs: Date.now(),
       });
-      // Na soltura, a não lida zerada diz que alguém já abriu a conversa
-      // durante a espera: a mensagem foi vista, e a atribuição já avisa pelo
-      // sino (o gatilho de `notifications`) — revisão do PR #289.
-      if (!podeEstacionar && !conversa.unread_count) return;
       if (esperaAtribuicao(silencio)) {
         if (!podeEstacionar) return;
         const atribuidaEm = atribuidasAgora.get(msg.conversation_id);
         if (atribuidaEm !== undefined && atribuidaEm >= consultouEm) {
-          void avisar(msg, false);
+          void avisar(msg, false, ordem);
           return;
         }
-        const agora = Date.now();
-        for (const [id, parada] of estacionadas) if (agora > parada.ate) estacionadas.delete(id);
         // As consultas de duas mensagens da mesma conversa podem voltar fora
         // de ordem: a mais ANTIGA não substitui a mais nova (Codex, PR #289).
         const atual = estacionadas.get(msg.conversation_id);
-        if (atual && instanteDaMensagem(atual.msg) > instanteDaMensagem(msg)) return;
-        estacionadas.set(msg.conversation_id, { msg, ate: agora + JANELA_DA_ATRIBUICAO_MS });
+        if (atual && atual.ordem > ordem) return;
+        // O prazo conta da MENSAGEM, não do estacionamento: a que chegou com
+        // 50 min de atraso de entrega tem 10 min, não mais uma hora.
+        const escrita = Date.parse(msg.created_at);
+        const base = Number.isNaN(escrita) ? Date.now() : Math.min(Date.now(), escrita);
+        estacionadas.set(msg.conversation_id, { msg, ate: base + JANELA_DA_ATRIBUICAO_MS, ordem });
         return;
       }
       if (silencio) return;
+      if ((avisadas.get(msg.conversation_id)?.ordem ?? 0) > ordem) return;
 
       const labels = labelsRef.current;
       const titulo = nomeDoContato(conversa.contact, labels.fallbackTitle);
       const { body } = buildNotificationContent(msg, titulo, labels);
-      if (vendoAgora(msg.conversation_id)) return;
+      if (vendoAgora(msg.conversation_id)) {
+        descartarAte(msg.conversation_id, ordem);
+        return;
+      }
+      avisadas.set(msg.conversation_id, { ordem, em: Date.now() });
+      descartarAte(msg.conversation_id, ordem);
 
       try {
         const notificacao = new Notification(titulo, {
@@ -286,7 +306,7 @@ export function useBrowserNotifications(): void {
             seen: seenRef.current,
           });
           if (!deveAvisar) return;
-          void avisar(msg, true);
+          void avisar(msg, true, ++chegadas);
         },
       )
       .on(
@@ -303,24 +323,41 @@ export function useBrowserNotifications(): void {
           const id = (payload.new as { id?: string }).id;
           if (!id) return;
           const agora = Date.now();
-          for (const [k, em] of atribuidasAgora) {
-            if (agora - em > JANELA_DA_ATRIBUICAO_MS) atribuidasAgora.delete(k);
-          }
           atribuidasAgora.set(id, agora);
           const parada = estacionadas.get(id);
           if (!parada) return;
           estacionadas.delete(id);
           if (Date.now() > parada.ate) return;
           if (getNotificationPermission() !== "granted") return;
-          void avisar(parada.msg, false);
+          void avisar(parada.msg, false, parada.ordem);
         },
       )
       .subscribe();
 
+    // A varredura: tira da fila a estacionada vencida e a da conversa que a
+    // pessoa está VENDO nesta aba (ela leu; soltá-la depois seria aviso de
+    // mensagem já lida). ⚠️ Não use a não lida da conversa para isso: ela é da
+    // CONTA, e qualquer fio aberto — até numa aba oculta — a zera, o que
+    // calaria o aviso de quem nunca viu a mensagem (revisão do PR #289).
+    const varredura = window.setInterval(() => {
+      const agora = Date.now();
+      for (const [id, parada] of estacionadas) {
+        if (agora > parada.ate || vendoAgora(id)) estacionadas.delete(id);
+      }
+      for (const [id, em] of atribuidasAgora) {
+        if (agora - em > JANELA_DA_CORRIDA_MS) atribuidasAgora.delete(id);
+      }
+      for (const [id, a] of avisadas) {
+        if (agora - a.em > JANELA_DA_ATRIBUICAO_MS) avisadas.delete(id);
+      }
+    }, VARREDURA_MS);
+
     return () => {
       cancelado = true;
+      window.clearInterval(varredura);
       estacionadas.clear();
       atribuidasAgora.clear();
+      avisadas.clear();
       supabase.removeChannel(canal);
     };
   }, [ativo, userId, router]);
