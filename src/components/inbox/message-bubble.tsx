@@ -119,7 +119,14 @@ const CORES_DE_REMETENTE = [
  * 3,0 que a WCAG pede para elemento gráfico, e distinguidos por MATIZ
  * (branco × ciano), não por luminosidade.
  */
-function StatusIcon({ status }: { status: Message["status"] }) {
+function StatusIcon({
+  status,
+  motivo,
+}: {
+  status: Message["status"];
+  /** O motivo da Meta para a falha (1039), no `title` do X. */
+  motivo?: string | null;
+}) {
   switch (status) {
     case "sending":
       return <Clock className="h-3 w-3 text-primary-foreground/80" />;
@@ -130,7 +137,11 @@ function StatusIcon({ status }: { status: Message["status"] }) {
     case "read":
       return <CheckCheck className="h-3 w-3 text-cyan-300" />;
     case "failed":
-      return <XCircle className="h-3 w-3 text-red-300" />;
+      return (
+        <span className="inline-flex" title={motivo ?? undefined}>
+          <XCircle className="h-3 w-3 text-red-300" />
+        </span>
+      );
     default:
       return null;
   }
@@ -922,7 +933,7 @@ export function MessageBubble({
           >
             {time}
           </span>
-          {isAgent && <StatusIcon status={message.status} />}
+          {isAgent && <StatusIcon status={message.status} motivo={motivo} />}
         </div>
 
         {/* ⚠️ Em PALAVRAS, não só em cor. Cor sozinha não diz o que houve, e
@@ -934,7 +945,10 @@ export function MessageBubble({
             title={motivo ?? undefined}
           >
             <XCircle className="h-3 w-3 shrink-0" />
-            {t("naoEntregue")}
+            {/* Com motivo, a frase não manda "envie de novo": nos motivos
+                mais comuns da Meta (janela de 24 h, limite de marketing,
+                número fora do WhatsApp) reenviar igual falha de novo. */}
+            {motivo ? t("naoEntregueComMotivo") : t("naoEntregue")}
           </p>
         )}
         {/* O motivo da Meta, discreto e em até duas linhas: os detalhes dela

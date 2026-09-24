@@ -1278,16 +1278,42 @@ isso só depois do deploy.
 - **Porte manual** (o #259 descartou o webhook deles, e o #277 reescreveu
   `handleStatusUpdate`): `motivoDaFalhaDaMeta` e `linhaDoMotivo` em
   `recibo-da-meta.ts` — PARSE do `errors[0]`, porque o motivo vai no MESMO
-  UPDATE que pinta a falha, e um `code` em texto ou fora do `integer`
-  derrubaria a situação junto (a versão do original grava cru). O patch do
-  `tentar()` leva as três colunas; o UPDATE condicional do destinatário leva
-  o `error_message` (`[código] título: detalhes`). A bolha é NOSSA: ela já
-  dizia "Não entregue" em palavras, então o motivo entra numa linha discreta
-  abaixo (`motivoNaBolha`, em `src/lib/inbox/motivo-da-falha.ts`, até duas
-  linhas, o texto inteiro no `title`) e no `title` da linha vermelha. A chave
+  UPDATE que pinta a falha, e um código não numérico, fracionário ou fora do
+  `integer`, ou um texto com NUL ou surrogate solto, derrubaria a situação
+  junto (a versão do original grava cru). O código numérico que chegue em
+  texto é aceito (o Postgres o converteria). O patch do `tentar()` leva as
+  três colunas; o UPDATE condicional do destinatário leva o `error_message`
+  (`[código] título: detalhes`). A bolha é NOSSA: ela já dizia "Não entregue"
+  em palavras, então o motivo entra numa linha discreta abaixo
+  (`motivoNaBolha`, em `src/lib/inbox/motivo-da-falha.ts`, até duas linhas, o
+  texto inteiro no `title`), no `title` da linha vermelha e no do X do
+  rodapé (o do original). Com motivo, a linha vermelha troca "Envie de novo"
+  por "veja o motivo abaixo antes de enviar de novo" (`naoEntregueComMotivo`):
+  nos motivos mais comuns da Meta, reenviar igual falha de novo. A chave
   `Inbox.bubble.notDelivered` do original SAIU dos dois dicionários (ficaria
-  sem uso: a nossa frase é `naoEntregue`); entrou `motivoDaFalha`. Asserção
-  das três colunas no `verify-schema.sql`.
+  sem uso: a nossa frase é `naoEntregue`); entraram `motivoDaFalha` e
+  `naoEntregueComMotivo`. Asserção das três colunas no `verify-schema.sql`.
+- **Verificação:** suíte inteira no Node 22, typecheck, lint na base (60),
+  os dois portões de i18n; mutantes (ver o PR). **Preview**, com o dev
+  server subido com o `META_APP_SECRET` de TESTE: um recibo `failed` com
+  motivo, assinado e mandado ao webhook LOCAL sobre a interativa de teste da
+  Fase 4 (`bd2f0e6d…`, conexão oficial, conversa do lead de teste) → as três
+  colunas gravadas no mesmo UPDATE, a bolha com o motivo em duas linhas
+  (contraste 4,46 no claro e 6,01 no escuro, contra 3,86/4,09 da linha
+  vermelha que já existia), uma linha de `console.warn`; depois `delivered`
+  e `read` → a situação CONTINUA `failed` e o motivo fica. Restaurada
+  (`sent`, sem motivo) por UPDATE cercado; nenhuma sobra. Ninguém assina
+  `message.status_updated` nesta conta, então nada saiu para o n8n.
+
+  **Revisão (duas lentes, cético no achado):**
+
+  | Achado | Destino |
+  | --- | --- |
+  | P2 (confirmado) — o CHANGELOG dizia, na mesma versão, que nada grava as colunas da 1039 | ✅ as duas frases corrigidas |
+  | P3 (Lente 1, medido num Postgres 16) — NUL ou surrogate solto no texto da Meta derrubaria o UPDATE que marca a falha (a mensagem ficaria `sent` para sempre) | ✅ `texto()` limpa o conteúdo, testado |
+  | P3 (Lente 1) — "Envie de novo" logo acima de um motivo que diz que reenviar não adianta | ✅ `naoEntregueComMotivo` |
+  | P3 (Lente 2, medido) — "um `code` em texto derrubaria" é falso para texto numérico | ✅ a frase corrigida nos três lugares, e o código numérico em texto passa a ser aceito |
+  | P3 (Lente 2) — o tooltip no X do original não foi portado, sem decisão escrita | ✅ portado |
 
 ### Fase 6 — Modelos da Meta
 

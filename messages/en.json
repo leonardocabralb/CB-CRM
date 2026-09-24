@@ -446,6 +446,7 @@
       "botBadge": "Bot",
       "botBadgeTitle": "Sent automatically by an automation or flow — not written by a person",
       "naoEntregue": "Not delivered — the recipient did not receive this. Send it again.",
+      "naoEntregueComMotivo": "Not delivered — the recipient did not receive this. Check the reason below before sending it again.",
       "naoConfirmada": "Not confirmed — the recipient probably did not receive this. Send it again or check with them.",
       "naoConfirmadaDica": "The recipient's WhatsApp did not confirm this message, even though it confirmed a later one (sent from the CRM or the phone) or the recipient wrote after it.",
       "download": "Download",

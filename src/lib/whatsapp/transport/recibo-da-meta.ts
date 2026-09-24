@@ -59,27 +59,42 @@ export interface MotivoDaFalha {
 /** Teto do `integer` do Postgres: valor fora dele derrubaria o UPDATE inteiro. */
 const MAIOR_INTEIRO = 2_147_483_647;
 
+/**
+ * O texto como o Postgres o aceita. Além do tipo, o CONTEÚDO: o NUL (`\u0000`)
+ * não cabe em `text`, e um surrogate solto (metade de um emoji) torna o JSON
+ * inválido — os dois fazem o PostgREST recusar o UPDATE inteiro (medido num
+ * Postgres 16 na revisão da Fase 5). O NUL sai; o surrogate solto vira `�`.
+ */
 function texto(valor: unknown): string | null {
-  return typeof valor === 'string' && valor.trim() ? valor.trim() : null;
+  if (typeof valor !== 'string') return null;
+  const limpo = valor
+    .replaceAll('\u0000', '')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD')
+    .trim();
+  return limpo || null;
+}
+
+/** O código como inteiro do Postgres; a Meta o documenta como número. */
+function codigoDoErro(code: unknown): number | null {
+  const n = typeof code === 'string' && /^-?\d+$/.test(code.trim()) ? Number(code) : code;
+  return typeof n === 'number' && Number.isInteger(n) && Math.abs(n) <= MAIOR_INTEIRO ? n : null;
 }
 
 /**
  * Lê `errors[0]` de um recibo `failed`; qualquer outro status devolve `null`.
  *
  * ⚠️ PARSE, nunca `as`: o motivo vai no MESMO UPDATE da situação (é ele que
- * pinta a bolha de vermelho), e um campo de tipo errado — um `code` em texto,
- * um número fora do `integer` — faria o PostgREST recusar a gravação inteira.
- * A falha ficaria sem a bolha vermelha por causa do texto que a explica.
+ * pinta a bolha de vermelho), e um campo que o Postgres recusa — um código
+ * não numérico, fracionário ou fora do `integer`, um texto com NUL — faria o
+ * PostgREST recusar a gravação inteira. A falha ficaria sem a bolha vermelha
+ * por causa do texto que a explica.
  */
 export function motivoDaFalhaDaMeta(status: unknown, errors: unknown): MotivoDaFalha | null {
   if (reciboDaMeta(status) !== 'failed' || !Array.isArray(errors)) return null;
   const erro = errors[0];
   if (!erro || typeof erro !== 'object') return null;
   const { code, title, message, error_data } = erro as Record<string, unknown>;
-  const codigo =
-    typeof code === 'number' && Number.isInteger(code) && Math.abs(code) <= MAIOR_INTEIRO
-      ? code
-      : null;
+  const codigo = codigoDoErro(code);
   // `title` é o rótulo curto; `message` costuma repetir o mesmo texto e só
   // serve quando o título não veio.
   const titulo = texto(title) ?? texto(message);

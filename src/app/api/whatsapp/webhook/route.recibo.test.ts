@@ -607,7 +607,7 @@ describe('o motivo da falha que a Meta manda no recibo', () => {
 
   it('⚠️ campo de tipo errado não derruba a gravação da falha', async () => {
     h.estado.tabelas.messages.push(mensagem());
-    await (await falhaComMotivo([{ code: '131026', title: 'Message undeliverable' }]))();
+    await (await falhaComMotivo([{ code: 'sem-codigo', title: 'Message undeliverable' }]))();
 
     expect(linha()).toMatchObject({ status: 'failed', error_code: null, error_title: 'Message undeliverable' });
   });

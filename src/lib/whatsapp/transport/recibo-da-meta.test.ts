@@ -88,12 +88,15 @@ describe('o motivo da falha (Fase 5, #535)', () => {
     expect(motivoDaFalhaDaMeta('failed', [{ href: 'https://x' }])).toBeNull();
   });
 
-  it('⚠️ campo de tipo errado vira nulo, nunca vai cru ao UPDATE (derrubaria a situação junto)', () => {
-    expect(motivoDaFalhaDaMeta('failed', [{ code: '131049', title: 'T' }])).toEqual({
+  it('⚠️ campo que o Postgres recusaria vira nulo, nunca vai cru ao UPDATE (derrubaria a situação junto)', () => {
+    expect(motivoDaFalhaDaMeta('failed', [{ code: 'abc', title: 'T' }])).toEqual({
       codigo: null,
       titulo: 'T',
       detalhes: null,
     });
+    // Código numérico em texto: o Postgres o converteria, e o dado não se perde.
+    expect(motivoDaFalhaDaMeta('failed', [{ code: ' 131049 ', title: 'T' }])?.codigo).toBe(131049);
+    expect(motivoDaFalhaDaMeta('failed', [{ code: '99999999999', title: 'T' }])?.codigo).toBeNull();
     // Fora do `integer` do Postgres, e não inteiro.
     expect(motivoDaFalhaDaMeta('failed', [{ code: 2 ** 31, title: 'T' }])?.codigo).toBeNull();
     expect(motivoDaFalhaDaMeta('failed', [{ code: 1.5, title: 'T' }])?.codigo).toBeNull();
@@ -102,6 +105,16 @@ describe('o motivo da falha (Fase 5, #535)', () => {
       titulo: null,
       detalhes: null,
     });
+  });
+
+  it('⚠️ o CONTEÚDO também: NUL sai e surrogate solto vira \uFFFD, senão o Postgres recusa o UPDATE', () => {
+    const m = motivoDaFalhaDaMeta('failed', [
+      { code: 1, title: 'a\u0000b', error_data: { details: 'x\uD800y \uDC00z \uD83D\uDE00' } },
+    ]);
+    expect(m?.titulo).toBe('ab');
+    // O par completo (o emoji) fica; só as metades soltas são trocadas.
+    expect(m?.detalhes).toBe('x\uFFFDy \uFFFDz \uD83D\uDE00');
+    expect(motivoDaFalhaDaMeta('failed', [{ title: '\u0000 ' }])).toBeNull();
   });
 
   it('sem title, o message serve de título; texto em branco não conta', () => {
