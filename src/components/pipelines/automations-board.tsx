@@ -125,7 +125,7 @@ export function AutomationsBoard({
               </h3>
               <GatedButton
                 canAct={canCreate}
-                gateReason="create automations"
+                gateReason="createAutomations"
                 variant="ghost"
                 size="icon-xs"
                 aria-label={t("novaAqui")}

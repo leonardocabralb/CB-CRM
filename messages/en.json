@@ -4172,7 +4172,17 @@
     "saving": "Saving…"
   },
   "GatedButton": {
-    "readOnlyTooltip": "Read-only — your role can't {reason}"
+    "readOnlyTooltip": "Read-only — your role can't {reason}",
+    "acoes": {
+      "createBroadcasts": "create broadcasts",
+      "deleteBroadcasts": "delete broadcasts",
+      "createAutomations": "create automations",
+      "createFlows": "create flows",
+      "createPipelines": "create pipelines",
+      "createDeals": "create deals",
+      "addOrImportContacts": "add or import contacts",
+      "sendMessages": "send messages"
+    }
   },
   "Interactive": {
     "builder": {
@@ -4199,6 +4209,32 @@
       "bodyPlaceholder": "Message body…",
       "buttonFallback": "Button",
       "menuFallback": "Menu"
+    },
+    "validacao": {
+      "payloadAusente": "Interactive message payload is required.",
+      "corpoAusente": "Interactive message body text is required.",
+      "corpoLongo": "Body text exceeds the {max}-character limit.",
+      "cabecalhoLongo": "Header exceeds the {max}-character limit.",
+      "rodapeLongo": "Footer exceeds the {max}-character limit.",
+      "botoesAusentes": "Add at least one reply button.",
+      "botoesDemais": "A reply-button message allows at most {max} buttons.",
+      "botaoSemId": "Every button needs an id.",
+      "botaoIdDuplicado": "Duplicate button id \"{id}\".",
+      "botaoSemRotulo": "Every button needs a label.",
+      "botaoRotuloLongo": "Button label \"{texto}\" exceeds the {max}-character limit.",
+      "listaSemRotuloDoBotao": "The list needs a button label.",
+      "listaRotuloDoBotaoLongo": "List button label exceeds the {max}-character limit.",
+      "secoesAusentes": "Add at least one list section.",
+      "secoesDemais": "A list allows at most {max} sections.",
+      "secaoSemLinhas": "Every list section needs rows.",
+      "linhaSemId": "Every list row needs an id.",
+      "linhaIdDuplicado": "Duplicate list row id \"{id}\".",
+      "linhaSemTitulo": "Every list row needs a title.",
+      "linhaTituloLongo": "List row title \"{texto}\" exceeds the {max}-character limit.",
+      "linhaDescricaoLonga": "List row description exceeds the {max}-character limit.",
+      "linhasAusentes": "Add at least one list row.",
+      "linhasDemais": "A list allows at most {max} rows in total.",
+      "tipoInvalido": "Interactive message must be reply buttons or a list."
     }
   },
   "JoinPage": {
@@ -4875,5 +4911,9 @@
     "away": "Away — idle",
     "offline": "Offline",
     "offlineLastSeen": "Offline — last seen {quando}"
+  },
+  "Upload": {
+    "semSessao": "Not signed in. Sign in again to upload the file.",
+    "semConta": "Could not resolve your account."
   }
 }

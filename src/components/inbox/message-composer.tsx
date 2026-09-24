@@ -77,6 +77,8 @@ import {
   blankButtonsPayload,
 } from "@/components/interactive/interactive-builder";
 import { validateInteractivePayload } from "@/lib/whatsapp/interactive";
+import { mensagemDaInterativa } from "@/lib/whatsapp/interativa-mensagem";
+import { mensagemDoUpload } from "@/lib/storage/erro-de-upload";
 import type { InteractiveMessagePayload, QuickReply } from "@/types";
 import { QuickReplyPicker } from "./quick-reply-picker";
 import { AcervoPicker } from "./acervo-picker";
@@ -280,6 +282,10 @@ export function MessageComposer({
   // Namespace próprio: os textos de agendar são compartilhados com a
   // faixa AGENDADAS, que é outro componente.
   const tAgendadas = useTranslations("Inbox.scheduled");
+  // A falha da interativa chega com `codigo` (o `error` é inglês, contrato
+  // das rotas); a frase sai de `mensagemDaInterativa`.
+  const tValidacao = useTranslations("Interactive.validacao");
+  const tUpload = useTranslations("Upload");
 
   const [text, setText] = useState("");
   const [drafting, setDrafting] = useState(false);
@@ -947,19 +953,19 @@ export function MessageComposer({
   const sendInteractive = useCallback(() => {
     const result = validateInteractivePayload(interactivePayload);
     if (!result.ok) {
-      toast.error(result.error);
+      toast.error(mensagemDaInterativa(result, tValidacao));
       return;
     }
     onSendInteractive(interactivePayload, replyTo?.id);
     setInteractiveOpen(false);
     onClearReply?.();
-  }, [interactivePayload, onSendInteractive, replyTo?.id, onClearReply]);
+  }, [interactivePayload, onSendInteractive, replyTo?.id, onClearReply, tValidacao]);
 
   // Persist the current builder payload as a reusable interactive snippet.
   const saveAsQuickReply = useCallback(async () => {
     const result = validateInteractivePayload(interactivePayload);
     if (!result.ok) {
-      toast.error(result.error);
+      toast.error(mensagemDaInterativa(result, tValidacao));
       return;
     }
     const title = window
@@ -988,7 +994,7 @@ export function MessageComposer({
     } finally {
       setSavingQuickReply(false);
     }
-  }, [interactivePayload, t]);
+  }, [interactivePayload, t, tValidacao]);
 
   // A picked quick reply: text fills the composer; interactive opens the
   // builder pre-filled so the agent can tweak before sending.
@@ -1059,12 +1065,12 @@ export function MessageComposer({
         setDrafts((atual) => [...atual, item]);
         setSelecionado((atual) => atual ?? item.id);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : t("uploadFailed"));
+        toast.error(mensagemDoUpload(err, tUpload, t("uploadFailed")));
       } finally {
         setBusy(false);
       }
     },
-    [removeStaged, conversationId, t],
+    [removeStaged, conversationId, t, tUpload],
   );
 
   /**
@@ -1260,12 +1266,12 @@ export function MessageComposer({
         setDrafts((atual) => [...atual, nota]);
         setSelecionado((atual) => atual ?? nota.id);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : t("uploadFailed"));
+        toast.error(mensagemDoUpload(err, tUpload, t("uploadFailed")));
       } finally {
         setBusy(false);
       }
     },
-    [removeStaged, conversationId, t],
+    [removeStaged, conversationId, t, tUpload],
   );
 
   const startRecording = useCallback(async () => {
@@ -1742,7 +1748,7 @@ export function MessageComposer({
               variant="ghost"
               size="sm"
               canAct={!readOnly}
-              gateReason="send messages"
+              gateReason="sendMessages"
               title={readOnly ? undefined : t("sendTemplate")}
               className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
               onClick={onOpenTemplates}
@@ -1755,7 +1761,7 @@ export function MessageComposer({
             variant="ghost"
             size="sm"
             canAct={!readOnly}
-            gateReason="send messages"
+            gateReason="sendMessages"
             disabled={drafting}
             title={readOnly ? undefined : t("draftWithAI")}
             className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-primary"
@@ -1870,7 +1876,7 @@ export function MessageComposer({
           <GatedButton
             size="sm"
             canAct={!readOnly}
-            gateReason="send messages"
+            gateReason="sendMessages"
             disabled={!text.trim() || sessionExpired || agendando}
             onClick={handleSend}
             // O rótulo muda junto com a etiqueta: o mesmo botão faz coisas
@@ -2151,7 +2157,7 @@ function MediaDraftPreview({
         <GatedButton
           size="sm"
           canAct={!readOnly}
-          gateReason="send messages"
+          gateReason="sendMessages"
           disabled={busy || agendando}
           onClick={onSend}
           // O mesmo botão faz coisas diferentes conforme a hora esteja

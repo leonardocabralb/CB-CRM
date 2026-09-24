@@ -38,6 +38,7 @@ import {
   MEDIA_MAX_BYTES_BY_KIND,
   uploadAccountMedia,
 } from '@/lib/storage/upload-media';
+import { mensagemDoUpload } from '@/lib/storage/erro-de-upload';
 import type { MediaLibraryItem } from '@/types';
 
 import { SettingsPanelHead } from './settings-panel-head';
@@ -60,6 +61,7 @@ const ICONE: Record<TipoDeMidia, typeof FileText> = {
  */
 export function AcervoManager() {
   const t = useTranslations('Settings.acervo');
+  const tUpload = useTranslations('Upload');
   const podeGerenciar = useCan('manage-members');
   const { itens, jaCarregou, falhou, recarregar } = useAcervo();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -140,7 +142,7 @@ export function AcervoManager() {
         toast.success(t('addedToast'));
         await recarregar();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : t('uploadError'));
+        toast.error(mensagemDoUpload(err, tUpload, t('uploadError')));
         if (caminho) {
           void deleteAccountMedia(CHAT_MEDIA_BUCKET, caminho).catch(() => {});
         }
@@ -148,7 +150,7 @@ export function AcervoManager() {
         setSubindo(false);
       }
     },
-    [recarregar, t]
+    [recarregar, t, tUpload]
   );
 
   const salvarEdicao = useCallback(async () => {

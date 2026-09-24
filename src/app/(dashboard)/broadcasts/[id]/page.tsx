@@ -421,7 +421,7 @@ export default function BroadcastDetailPage() {
              erro (achado #15). */
           <GatedButton
             canAct={podeGerir}
-            gateReason="delete broadcasts"
+            gateReason="deleteBroadcasts"
             variant="outline"
             size="sm"
             disabled={broadcast.status === 'sending'}

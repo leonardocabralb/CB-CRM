@@ -34,6 +34,10 @@ const PROIBIDOS: Record<string, string[]> = {
     'Microphone access denied',
     '"Upload failed."',
     '} MB — ${kind} limit is',
+    // Fase 10d: a falha da interativa sai pelo `codigo` (mensagemDaInterativa).
+    'toast.error(result.error)',
+    // e a do upload passa por `mensagemDoUpload` (o "Not signed in." em inglês).
+    'err instanceof Error ? err.message : t("uploadFailed")',
   ],
   'app/(dashboard)/automations/page.tsx': ['aria-label="active"', 'aria-label="Open menu"', 'Failed to load automations'],
   'components/settings/invite-member-dialog.tsx': ['Could not reach the server', 'Failed to create invitation'],
@@ -41,11 +45,16 @@ const PROIBIDOS: Record<string, string[]> = {
   // Fase 10c
   'components/flows/flow-editor-state.tsx': ['Save failed', 'Status update failed', 'Delete failed'],
   'app/(dashboard)/contacts/page.tsx': ['`Filter by ${', '`Remove ${', '`Select ${'],
-  'components/settings/template-manager.tsx': ['alt="Header sample"'],
   'lib/presence.ts': ['"just now"', '} minutes ago`', '"a while ago"', '"Online — active now"', 'last seen ${'],
   'app/(dashboard)/broadcasts/[id]/page.tsx': ["'Unknown'", "'Unknown error'"],
   'lib/dashboard/queries.ts': ["'Unknown'", 'New message from', 'New contact: ${', '`Deal "', '`Broadcast "', '`Automation "', "'a contact'"],
   'components/contacts/import-modal.tsx': [' more)`'],
+  // Fase 10d
+  'components/interactive/interactive-builder.tsx': ['{validation.error}'],
+  'components/settings/acervo-manager.tsx': ["err instanceof Error ? err.message : t('uploadError')"],
+  'components/settings/template-manager.tsx': ['alt="Header sample"', "err instanceof Error ? err.message : t('toastUploadFailed')"],
+  'components/flows/forms/node-config-form.tsx': ['err instanceof Error ? err.message : t("uploadFailed")'],
+  'components/automations/automation-builder.tsx': ['err instanceof Error ? err.message : String(err)'],
 }
 
 describe('textos portados para o dicionário (Fase 10)', () => {
@@ -55,6 +64,28 @@ describe('textos portados para o dicionário (Fase 10)', () => {
       expect(textos.filter((t) => fonte.includes(t))).toEqual([])
     })
   }
+
+  // Fase 10d: `gateReason` virou id TIPADO (`AcaoBloqueada`), traduzido no
+  // GatedButton. Os oito textos em inglês que os call sites passavam —
+  // "create broadcasts", "delete broadcasts", "create automations", "create
+  // flows", "create pipelines", "create deals", "add or import contacts",
+  // "send messages" — viravam "seu papel não permite create broadcasts". O
+  // tipo já recusa frase; este pino pega também quem contornar com `as`.
+  it('nenhum `gateReason` é frase (com espaço) em nenhum arquivo', () => {
+    const achados: string[] = []
+    const varre = (dir: string) => {
+      for (const nome of fs.readdirSync(dir)) {
+        const c = path.join(dir, nome)
+        if (fs.statSync(c).isDirectory()) varre(c)
+        else if (/\.tsx?$/.test(nome) && !/\.test\.tsx?$/.test(nome)) {
+          for (const m of fs.readFileSync(c, 'utf8').matchAll(/gateReason=["'{][^"'}]*\s[^"'}]*["'}]/g))
+            achados.push(`${path.relative(SRC, c)}: ${m[0]}`)
+        }
+      }
+    }
+    varre(SRC)
+    expect(achados).toEqual([])
+  })
 
   it('título em JSX que era texto fixo (Funil do disparo, Pré-visualização da interativa)', () => {
     expect(ler('app/(dashboard)/broadcasts/[id]/page.tsx')).not.toMatch(/>\s*Funnel\s*</);

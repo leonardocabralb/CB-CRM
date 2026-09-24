@@ -4165,7 +4165,17 @@
     "saving": "Salvando…"
   },
   "GatedButton": {
-    "readOnlyTooltip": "Somente leitura — seu papel não permite {reason}"
+    "readOnlyTooltip": "Somente leitura — seu papel não permite {reason}",
+    "acoes": {
+      "createBroadcasts": "criar disparos",
+      "deleteBroadcasts": "excluir disparos",
+      "createAutomations": "criar automações",
+      "createFlows": "criar fluxos",
+      "createPipelines": "criar funis",
+      "createDeals": "criar negócios",
+      "addOrImportContacts": "adicionar ou importar contatos",
+      "sendMessages": "enviar mensagens"
+    }
   },
   "Interactive": {
     "builder": {
@@ -4192,6 +4202,32 @@
       "bodyPlaceholder": "Corpo da mensagem…",
       "buttonFallback": "Botão",
       "menuFallback": "Menu"
+    },
+    "validacao": {
+      "payloadAusente": "Falta a mensagem interativa.",
+      "corpoAusente": "Escreva o corpo da mensagem.",
+      "corpoLongo": "O corpo passa do limite de {max} caracteres.",
+      "cabecalhoLongo": "O cabeçalho passa do limite de {max} caracteres.",
+      "rodapeLongo": "O rodapé passa do limite de {max} caracteres.",
+      "botoesAusentes": "Acrescente pelo menos um botão de resposta.",
+      "botoesDemais": "A mensagem com botões aceita no máximo {max} botões.",
+      "botaoSemId": "Todo botão precisa de um ID de resposta.",
+      "botaoIdDuplicado": "ID de resposta repetido nos botões: \"{id}\".",
+      "botaoSemRotulo": "Todo botão precisa de um rótulo.",
+      "botaoRotuloLongo": "O rótulo \"{texto}\" passa do limite de {max} caracteres.",
+      "listaSemRotuloDoBotao": "A lista precisa do rótulo do botão.",
+      "listaRotuloDoBotaoLongo": "O rótulo do botão da lista passa do limite de {max} caracteres.",
+      "secoesAusentes": "Acrescente pelo menos uma seção à lista.",
+      "secoesDemais": "A lista aceita no máximo {max} seções.",
+      "secaoSemLinhas": "Toda seção da lista precisa de linhas.",
+      "linhaSemId": "Toda linha da lista precisa de um ID de resposta.",
+      "linhaIdDuplicado": "ID de resposta repetido nas linhas: \"{id}\".",
+      "linhaSemTitulo": "Toda linha da lista precisa de um título.",
+      "linhaTituloLongo": "O título da linha \"{texto}\" passa do limite de {max} caracteres.",
+      "linhaDescricaoLonga": "A descrição de uma linha passa do limite de {max} caracteres.",
+      "linhasAusentes": "Acrescente pelo menos uma linha à lista.",
+      "linhasDemais": "A lista aceita no máximo {max} linhas no total.",
+      "tipoInvalido": "A mensagem interativa tem de ser de botões de resposta ou de lista."
     }
   },
   "JoinPage": {
@@ -4875,5 +4911,9 @@
     "away": "Ausente — inativo",
     "offline": "Offline",
     "offlineLastSeen": "Offline — visto por último {quando}"
+  },
+  "Upload": {
+    "semSessao": "Sua sessão expirou. Entre de novo para enviar o arquivo.",
+    "semConta": "Não foi possível identificar a sua conta."
   }
 }

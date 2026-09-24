@@ -200,7 +200,7 @@ export default function AutomationsPage() {
           />
           <GatedButton
             canAct={canCreate}
-            gateReason="create automations"
+            gateReason="createAutomations"
             onClick={() => router.push("/automations/new")}
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
