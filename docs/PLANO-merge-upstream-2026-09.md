@@ -1491,6 +1491,9 @@ registrar nem reconfigurar o número oficial da produção.
   | P3 — resposta que chega depois de o diálogo fechar ou voltar devolvia o aviso vermelho a um formulário limpo (e, no sucesso, fechava um diálogo que já era outro) | ✅ `envioMetaRef` marca o envio vigente |
   | P3 — comentários que citavam o POST aposentado, e a frase do CHANGELOG sobre a limpeza do token prometendo mais que o código | ✅ corrigidos |
   | Pré-existente — a sonda de saúde (`health.ts`, ramo Meta) loga a mensagem crua da Meta, que pode ecoar o token | registrado, não corrigido (fora do escopo; quem lê o log da VPS já tem a `ENCRYPTION_KEY`) |
+  | 2ª revisão (só os commits de correção, um revisor com cético): nenhum P0–P2; confirmou que o `envioMetaRef` cobre toda saída e que o `nonexisting field` não classifica errado caso real | — |
+  | P3 (2ª revisão) — falha de um envio ABANDONADO não mostra o aviso fixo, e o toast mandava ler código e trace id "logo abaixo" sem mostrá-los | ✅ nesse caso a segunda linha do toast leva a etapa e os detalhes (conferido no preview contra a Meta: 190 e o trace id) |
+  | P3 (2ª revisão) — o teste "os dois erros locais" só cobria o cursor fora do Graph | ✅ cobre o teto de páginas também; o mutante reprova |
 
 - **E2E na preview** (P5; o operador entrou e autorizou o script com o token
   real):
