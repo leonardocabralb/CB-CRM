@@ -520,6 +520,7 @@ sozinha: é o teste do agendador.
 
 | Sintoma | Causa provável |
 |---|---|
+| Aviso vermelho ao salvar a conexão Meta | A Meta recusou algo (token, id, PIN, par WABA/número). Cada aviso está explicado em [`conexao-meta.md`](./conexao-meta.md) |
 | Envia mas não recebe (Meta) | `META_APP_SECRET` errado ou ausente, ou campo `messages` não assinado |
 | Envia mas não recebe (Evolution) | `EVOLUTION_WEBHOOK_SECRET` diferente do que está gravado na instância. Use "Ressincronizar" |
 | "Conectado" mas nenhum evento chega | Falta o registro do número (PIN de duas etapas, na Meta) |

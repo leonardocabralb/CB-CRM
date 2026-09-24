@@ -5,6 +5,9 @@ import {
   getSubscribedApps,
   verifyPhoneNumber,
 } from '@/lib/whatsapp/meta-api'
+// NOSSO: a mensagem da Meta pode ECOAR o token ("Malformed access token
+// EAAB…") — e esta resposta vai a qualquer membro da conta.
+import { semTokenDaMeta } from '@/lib/cb-channels/falha-da-meta'
 
 /**
  * GET /api/whatsapp/config/verify-registration
@@ -20,9 +23,15 @@ import {
  *   1. phone_info  — GET /{phone_number_id} succeeds
  *   2. waba_subscription — our app appears in
  *                    GET /{waba_id}/subscribed_apps
- *   3. registered_at — local timestamp set by POST /config when
+ *   3. registered_at — local timestamp the legacy POST /config set when
  *                    /register last succeeded; NULL means the
- *                    number was saved but never actually subscribed
+ *                    number was saved but never actually subscribed.
+ *                    ⚠️ NOSSO: that POST was retired (410) in phase 7 of
+ *                    the upstream merge plan, so nothing writes this column
+ *                    any more — the check is legacy, and the only screen
+ *                    that calls this route (whatsapp-config.tsx) is not
+ *                    mounted. Meta numbers connect through
+ *                    POST /api/cb/channels.
  *
  * Returns 200 in every case so the UI can render diagnostic detail
  * rather than a generic error toast. The combined `live` flag is
@@ -108,7 +117,10 @@ export async function GET() {
     checks.phone_metadata_ok = true
   } catch (err) {
     errors.push(
-      `Phone metadata check failed: ${err instanceof Error ? err.message : String(err)}`,
+      semTokenDaMeta(
+        `Phone metadata check failed: ${err instanceof Error ? err.message : String(err)}`,
+        accessToken,
+      ),
     )
   }
 
@@ -131,7 +143,10 @@ export async function GET() {
       }
     } catch (err) {
       errors.push(
-        `WABA subscription check failed: ${err instanceof Error ? err.message : String(err)}`,
+        semTokenDaMeta(
+          `WABA subscription check failed: ${err instanceof Error ? err.message : String(err)}`,
+          accessToken,
+        ),
       )
     }
   } else {

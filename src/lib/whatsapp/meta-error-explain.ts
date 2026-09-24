@@ -46,9 +46,43 @@ export interface MetaErrorLike {
   details?: string | null
 }
 
+/**
+ * Machine-readable cause — one per branch of `explainMetaError`. NOSSO (not
+ * in the original #505): `summary` is English and the legacy route's text;
+ * the Conexões screen (`POST /api/cb/channels`) returns this key and the
+ * panel translates it, like the Calendly/tl;dv/Meta Ads cards do with their
+ * error codes. A new branch needs a new value here AND a key in both
+ * dictionaries (`Settings.channels.metaErro.<motivo>`) — there is a test.
+ */
+export const MOTIVOS_DO_ERRO_DA_META = [
+  'sem_resposta',
+  'token_expirado',
+  'token_invalidado',
+  'token_invalido',
+  'sem_permissao',
+  'acesso_negado',
+  'id_nao_encontrado',
+  'pin_recusado',
+  'parametro_recusado',
+  'nao_registrado',
+  'pin_errado',
+  'pin_bloqueado',
+  'reverificar_numero',
+  'numero_apagado_recentemente',
+  'conta_restrita',
+  'bloqueio_por_politica',
+  'limite',
+  'temporario',
+  'outro',
+] as const
+
+export type MotivoDoErroDaMeta = (typeof MOTIVOS_DO_ERRO_DA_META)[number]
+
 export interface MetaErrorExplanation {
   /** Actionable, user-facing text. */
   summary: string
+  /** Machine-readable cause (see `MOTIVOS_DO_ERRO_DA_META`). NOSSO. */
+  motivo: MotivoDoErroDaMeta
   field: MetaErrorField
   /** Who has to change something. Drives the HTTP status. */
   side: 'user' | 'meta'
@@ -123,6 +157,7 @@ export function explainMetaError(
       summary:
         `Could not reach the Meta Graph API while ${STEP_LABEL[step]}: ${message}. ` +
         'Check that this server has outbound internet access to graph.facebook.com and try again.',
+      motivo: 'sem_resposta',
       field: null,
       side: 'meta',
       httpStatus: 502,
@@ -141,11 +176,13 @@ export function explainMetaError(
   const target = objectForStep(step, ctx)
 
   const build = (
+    motivo: MotivoDoErroDaMeta,
     summary: string,
     field: MetaErrorField,
     side: 'user' | 'meta',
   ): MetaErrorExplanation => ({
     summary,
+    motivo,
     field,
     side,
     httpStatus: side === 'user' ? 400 : 502,
@@ -164,7 +201,14 @@ export function explainMetaError(
         : subcode === 460 || subcode === 467
           ? 'The access token has been invalidated (password change, revoked session, or token reset).'
           : 'Meta rejected the access token as invalid.'
+    const motivo: MotivoDoErroDaMeta =
+      subcode === 463
+        ? 'token_expirado'
+        : subcode === 460 || subcode === 467
+          ? 'token_invalidado'
+          : 'token_invalido'
     return build(
+      motivo,
       `${why} Temporary tokens from the API Setup page expire after 24 hours. ${TOKEN_HINT}`,
       'access_token',
       'user',
@@ -174,6 +218,7 @@ export function explainMetaError(
   // --- Permissions --------------------------------------------------------
   if (code === 10 || (code !== null && code >= 200 && code <= 299)) {
     return build(
+      'sem_permissao',
       `The access token is not allowed to perform this action (${STEP_LABEL[step]}). ` +
         'Its System User needs the whatsapp_business_management and whatsapp_business_messaging ' +
         'permissions AND must be assigned to this WhatsApp Business Account ' +
@@ -185,6 +230,7 @@ export function explainMetaError(
 
   if (code === 131005) {
     return build(
+      'acesso_negado',
       `Meta denied access while ${STEP_LABEL[step]}: the business that owns the token cannot manage ` +
         `${withId(target.noun, target.id)}. Assign the System User to this WhatsApp Business Account ` +
         'in Business Settings and make sure the token has whatsapp_business_management.',
@@ -198,11 +244,17 @@ export function explainMetaError(
     code === 33 ||
     (code === 100 && subcode === 33) ||
     (code === 100 &&
-      /unsupported (get|post) request|does not exist|cannot be loaded due to missing permissions|unknown path components/i.test(
+      // NOSSO: "nonexisting field" — MEDIDO contra a Meta em 24/09/2026 (Fase
+      // 7 do plano do merge do upstream): um WABA ID errado em
+      // `/{waba}/phone_numbers` volta "(#100) Tried accessing nonexisting
+      // field (phone_numbers)", sem subcódigo. É o que acontece quando se
+      // cola o id do portfólio ou do app no campo da WABA.
+      /unsupported (get|post) request|does not exist|cannot be loaded due to missing permissions|unknown path components|nonexisting field/i.test(
         err.message,
       ))
   if (looksLikeMissingObject) {
     return build(
+      'id_nao_encontrado',
       `Meta cannot find ${withId(target.noun, target.id)}, or the business that owns the access token ` +
         `does not own it. Copy the ${target.noun} exactly from Meta → WhatsApp → API Setup and check the ` +
         'token was generated inside the same Business portfolio.',
@@ -214,6 +266,7 @@ export function explainMetaError(
   if (code === 100) {
     if (step === 'register' && /pin/i.test(err.message)) {
       return build(
+        'pin_recusado',
         `Meta rejected the two-step verification PIN: ${err.message}. Enter the 6-digit PIN set in ` +
           'WhatsApp Manager → Phone numbers → Two-step verification.',
         'pin',
@@ -221,6 +274,7 @@ export function explainMetaError(
       )
     }
     return build(
+      'parametro_recusado',
       `Meta rejected a parameter while ${STEP_LABEL[step]}: ${err.message}. Check that the ` +
         `${target.noun} is copied exactly (digits only, no spaces).`,
       target.field,
@@ -231,14 +285,16 @@ export function explainMetaError(
   // --- Registration / PIN --------------------------------------------------
   if (code === 133010) {
     return build(
+      'nao_registrado',
       'This phone number is not registered with the WhatsApp Cloud API yet. Enter the two-step ' +
-        'verification PIN below and save again so wacrm can register it (POST /register).',
+        'verification PIN below and save again so the CRM can register it (POST /register).',
       'pin',
       'user',
     )
   }
   if (code === 133005 || code === 136025) {
     return build(
+      'pin_errado',
       'The two-step verification PIN is wrong. Use the 6-digit PIN set in WhatsApp Manager → ' +
         'Phone numbers → Two-step verification (or reset it there), then save again.',
       'pin',
@@ -247,6 +303,7 @@ export function explainMetaError(
   }
   if (code === 133008 || code === 133009) {
     return build(
+      'pin_bloqueado',
       'Meta has temporarily locked PIN attempts for this number after too many wrong guesses. ' +
         'Wait a while before saving again with the correct PIN.',
       'pin',
@@ -255,6 +312,7 @@ export function explainMetaError(
   }
   if (code === 133006) {
     return build(
+      'reverificar_numero',
       'Meta requires this phone number to be re-verified. Open WhatsApp Manager → Phone numbers, ' +
         'complete verification (SMS or voice), then save again.',
       'meta_account',
@@ -263,6 +321,7 @@ export function explainMetaError(
   }
   if (code === 133015) {
     return build(
+      'numero_apagado_recentemente',
       'This phone number was recently deleted from WhatsApp and cannot be registered yet. ' +
         'Meta blocks re-registration for a period after deletion — try again later.',
       'meta_account',
@@ -273,7 +332,8 @@ export function explainMetaError(
   // --- Account state ------------------------------------------------------
   if (code === 131031) {
     return build(
-      'Meta has restricted or locked this WhatsApp Business Account, so nothing in wacrm can ' +
+      'conta_restrita',
+      'Meta has restricted or locked this WhatsApp Business Account, so nothing in the CRM can ' +
         'connect it. Open Meta Business Manager → Account quality (or WhatsApp Manager → Overview) ' +
         'to see the restriction and appeal it.',
       'meta_account',
@@ -282,6 +342,7 @@ export function explainMetaError(
   }
   if (code === 368) {
     return build(
+      'bloqueio_por_politica',
       'Meta has temporarily blocked this account for a policy violation. Review the notice in ' +
         'Meta Business Manager → Account quality; the block lifts on its own or after an appeal.',
       'meta_account',
@@ -292,6 +353,7 @@ export function explainMetaError(
   // --- Throttling / transient ------------------------------------------------
   if (RATE_LIMIT_CODES.has(code ?? -1)) {
     return build(
+      'limite',
       'Meta is rate-limiting this app or WhatsApp Business Account right now. Nothing needs ' +
         'changing — wait a few minutes and try again.',
       null,
@@ -300,6 +362,7 @@ export function explainMetaError(
   }
   if (TEMPORARY_CODES.has(code ?? -1)) {
     return build(
+      'temporario',
       `Meta returned a temporary error while ${STEP_LABEL[step]} (code ${code}). Retry in a minute; ` +
         'if it keeps happening, check metastatus.com and quote the trace id to Meta support.',
       null,
@@ -311,6 +374,7 @@ export function explainMetaError(
   const trace = fbtraceId ? ` Trace id ${fbtraceId}.` : ''
   const codeText = code !== null ? ` (code ${code}${subcode !== null ? `/${subcode}` : ''})` : ''
   return build(
+    'outro',
     `Meta returned an error while ${STEP_LABEL[step]}${codeText}: ${metaMessage}.${trace}`,
     null,
     'meta',
@@ -318,8 +382,11 @@ export function explainMetaError(
 }
 
 /**
- * The `meta` object POST /api/whatsapp/config attaches to every failed
- * Meta call — everything a user needs to quote to support.
+ * The `meta` object the legacy GET /api/whatsapp/config attaches to a failed
+ * Meta call — everything a user needs to quote to support. (NOSSO: the
+ * legacy POST that also attached it was retired in phase 7 of the upstream
+ * merge plan; the Conexões screen gets a `FalhaDaMeta` from
+ * `src/lib/cb-channels/falha-da-meta.ts` instead.)
  */
 export function metaErrorPayload(x: MetaErrorExplanation): {
   code: number | null

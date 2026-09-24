@@ -12,7 +12,21 @@
 import { isBusinessScopedUserId } from './wa-identity'
 
 const META_API_VERSION = 'v21.0'
-const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
+const META_GRAPH_ORIGIN = 'https://graph.facebook.com'
+const META_API_BASE = `${META_GRAPH_ORIGIN}/${META_API_VERSION}`
+
+/**
+ * NOSSO. A URL de paginação (`paging.next`) vem da RESPOSTA, e o token viaja
+ * no cabeçalho: seguir uma URL de outro host entregaria o token a ele. É a
+ * cerca do `doGraph` do Meta Ads (`src/lib/meta-ads/cliente.ts`).
+ */
+function isGraphUrl(url: string): boolean {
+  try {
+    return new URL(url).origin === META_GRAPH_ORIGIN
+  } catch {
+    return false
+  }
+}
 
 export interface MetaSendResult {
   messageId: string
@@ -254,12 +268,14 @@ export interface WabaPhoneNumber {
 /**
  * List the phone numbers that live under a WABA.
  *
- * Used by POST /api/whatsapp/config to prove the Phone Number ID the
- * user typed actually belongs to the WABA ID they typed. A mismatch
- * used to save fine and surface days later as "the webhook never
- * fires" — the WABA that got subscribed wasn't the one owning the
- * number (issue #505). Follows `paging.next` a few pages in case a
- * WABA holds more numbers than one page returns.
+ * Used by the Meta connection flow (`provisionMetaChannel`, POST
+ * /api/cb/channels) to prove the Phone Number ID the user typed actually
+ * belongs to the WABA ID they typed. A mismatch used to save fine and
+ * surface days later as "the webhook never fires" — the WABA that got
+ * subscribed wasn't the one owning the number (issue #505). Follows
+ * `paging.next` a few pages in case a WABA holds more numbers than one
+ * page returns — and THROWS when the cap is hit with pages left (NOSSO):
+ * a partial list would be read as "not under this WABA".
  */
 export async function listWabaPhoneNumbers(
   args: ListWabaPhoneNumbersArgs
@@ -269,6 +285,16 @@ export async function listWabaPhoneNumbers(
   let url: string | undefined =
     `${META_API_BASE}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name&limit=100`
   for (let page = 0; url && page < 5; page++) {
+    // Fail closed: a cursor outside the Graph host is never followed (it
+    // would receive the token), and a partial list must not be read as
+    // "this number is not under the WABA".
+    if (!isGraphUrl(url)) {
+      // MetaApiError (sem código): a Meta RESPONDEU — um Error simples cairia
+      // em "não foi possível falar com a Meta" na explicação da tela.
+      throw new MetaApiError('Meta returned a paging link outside graph.facebook.com.', {
+        httpStatus: 200,
+      })
+    }
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
@@ -281,6 +307,12 @@ export async function listWabaPhoneNumbers(
     }
     out.push(...(data.data ?? []))
     url = data.paging?.next
+  }
+  if (url) {
+    throw new MetaApiError(
+      'Meta lists more phone numbers under this WABA than the CRM reads (500).',
+      { httpStatus: 200 },
+    )
   }
   return out
 }
@@ -575,12 +607,17 @@ export async function sendTemplateMessage(
 // two-step Resumable Upload API, which is keyed on the Meta APP id (not
 // the phone number / WABA):
 //
-//   1. POST /{app_id}/uploads?file_name&file_length&file_type&access_token
-//        → { id: "upload:<session>" }
+//   1. POST /{app_id}/uploads?file_name&file_length&file_type
+//        (Authorization: OAuth <token>) → { id: "upload:<session>" }
 //   2. POST /{id}  (Authorization: OAuth <token>, file_offset: 0, raw bytes)
 //        → { h: "<handle>" }
 //
 // See https://developers.facebook.com/docs/graph-api/guides/upload
+//
+// ⚠️ NOSSO: Meta's example puts the token in `?access_token=` on step 1.
+// Here it goes in the header, like step 2 — the house rule (CLAUDE.md:
+// Gemini, Meta Ads, Instagram): a token in a URL leaks through proxy logs
+// and error messages that quote the URL.
 
 export interface UploadResumableMediaArgs {
   /** Meta App id (env META_APP_ID) — resumable upload is app-scoped. */
@@ -606,11 +643,10 @@ export async function uploadResumableMedia(
     file_name: fileName,
     file_length: String(bytes.byteLength),
     file_type: mimeType,
-    access_token: accessToken,
   })
   const startRes = await fetch(
     `${META_API_BASE}/${appId}/uploads?${startParams.toString()}`,
-    { method: 'POST' },
+    { method: 'POST', headers: { Authorization: `OAuth ${accessToken}` } },
   )
   if (!startRes.ok) {
     await throwMetaError(startRes, `Resumable upload start failed: ${startRes.status}`)

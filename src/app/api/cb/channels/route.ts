@@ -4,7 +4,8 @@
 //   GET  — lista os canais de WhatsApp da conta (sem segredos).
 //   POST — cria um canal. body.kind='evolution' (padrão): nova instância no
 //          servidor compartilhado + QR. body.kind='meta': assistente por token
-//          (verify → register → subscribe), grava em cb_channels.
+//          (verify → par WABA/número → register → subscribe), grava em
+//          cb_channels.
 //
 // Rota NOSSA (prefixo /api/cb/), fora de /api/whatsapp/ do upstream/Gabriel.
 //
@@ -39,7 +40,14 @@ import {
   evolutionWebhookConfig,
   provisionChannelInstance,
 } from '@/lib/cb-channels/evolution-admin';
-import { provisionMetaChannel } from '@/lib/cb-channels/meta-admin';
+import { ErroNaConexaoMeta, provisionMetaChannel } from '@/lib/cb-channels/meta-admin';
+import {
+  falhaDeIdNaoNumerico,
+  statusDaFalha,
+  textoCurtoDaFalha,
+  type FalhaDaMeta,
+} from '@/lib/cb-channels/falha-da-meta';
+import { isNumericMetaId } from '@/lib/whatsapp/waba-pairing';
 import { ehInstagram, ehMeta, transporteValido } from '@/lib/cb-channels/transporte';
 import { criarClienteInstagram, type PerfilDaConta } from '@/lib/instagram/graph';
 import { validadeDoToken } from '@/lib/instagram/conexao';
@@ -153,8 +161,10 @@ export async function POST(request: Request) {
     }
 
     // ---- Canal Meta (API oficial): assistente por token ----
+    // `await`: sem ele, o erro inesperado (o que não é `ErroNaConexaoMeta`)
+    // escaparia deste try e não passaria pelo `toErrorResponse`.
     if (ehMeta(kind)) {
-      return createMetaChannel(ctx, {
+      return await createMetaChannel(ctx, {
         label,
         isDefault,
         phoneNumberId: asStr(body?.phone_number_id),
@@ -272,12 +282,23 @@ export async function POST(request: Request) {
 }
 
 // ============================================================
-// Criação de canal Meta (API oficial). Espelha o pipeline de
-// /api/whatsapp/config (verify → register → subscribe), gravando em
-// cb_channels em vez de whatsapp_config. NÃO cria estado remoto irreversível:
-// register/subscribe são idempotentes na Meta, então uma falha de insert não
-// deixa órfão (diferente da instância Evolution).
+// Criação de canal Meta (API oficial): verify → par WABA/número → register →
+// subscribe (`provisionMetaChannel`), gravando em cb_channels. NÃO cria estado
+// remoto irreversível: register/subscribe são idempotentes na Meta, então uma
+// falha de insert não deixa órfão (diferente da instância Evolution).
+//
+// Falha da Meta volta como `{ error, falha }` (Fase 7 do plano do merge do
+// upstream, #505): `falha` traz o MOTIVO de lista fechada que o painel traduz,
+// o campo a conferir, a etapa, o código e o trace id — `error` é o texto curto
+// para quem chama sem o painel. 400 = quem preenche resolve; 502 = a Meta.
 // ============================================================
+function respostaDaFalha(falha: FalhaDaMeta): NextResponse {
+  return NextResponse.json(
+    { error: textoCurtoDaFalha(falha), falha },
+    { status: statusDaFalha(falha) },
+  );
+}
+
 async function createMetaChannel(
   ctx: AdminCtx,
   args: {
@@ -305,9 +326,18 @@ async function createMetaChannel(
       { status: 400 },
     );
   }
+  // Os ids da Meta são só dígitos. O engano clássico — colar o telefone, o
+  // nome ou a URL — vira uma frase que nomeia o campo, em vez do "(#100)
+  // Unsupported get request" da Meta (#505).
+  if (!isNumericMetaId(phoneNumberId)) {
+    return respostaDaFalha(falhaDeIdNaoNumerico('phone_number_id'));
+  }
+  if (wabaId && !isNumericMetaId(wabaId)) {
+    return respostaDaFalha(falhaDeIdNaoNumerico('waba_id'));
+  }
 
-  // Valida na Meta ANTES de gravar (verify lança → 400). register/subscribe
-  // são best-effort dentro de provisionMetaChannel.
+  // Tudo o que fala com a Meta, ANTES de gravar. Só o register é
+  // best-effort: o erro dele volta no resultado e a conexão é salva.
   let prov;
   try {
     prov = await provisionMetaChannel({
@@ -317,11 +347,8 @@ async function createMetaChannel(
       pin,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Erro desconhecido';
-    return NextResponse.json(
-      { error: `Erro da Meta: ${message}` },
-      { status: 400 },
-    );
+    if (err instanceof ErroNaConexaoMeta) return respostaDaFalha(err.falha);
+    throw err;
   }
 
   const registrationError = prov.registrationError;
@@ -335,6 +362,7 @@ async function createMetaChannel(
     registered: prov.registeredAt != null,
     skipped: prov.registrationSkipped,
     error: registrationError,
+    falha: prov.registrationFalha,
   };
 
   // Espelho whatsapp_config do canal PADRÃO — o que o código herdado (envio,

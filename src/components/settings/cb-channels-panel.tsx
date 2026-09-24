@@ -78,6 +78,7 @@ import {
   motivoDoOAuth,
 } from '@/lib/instagram/conexao';
 import type { CbChannelKind } from '@/lib/cb-channels/repo';
+import { lerFalhaDaMeta, type FalhaDaMeta } from '@/lib/cb-channels/falha-da-meta';
 import { IconeDoTransporte } from '@/components/channels/transporte-icone';
 
 /** Chave do rótulo em `Settings.channels`, por transporte — chave MONTADA,
@@ -152,6 +153,14 @@ export function CbChannelsPanel() {
   const [metaVerifyToken, setMetaVerifyToken] = useState('');
   const [metaPin, setMetaPin] = useState('');
   const [showToken, setShowToken] = useState(false);
+  // Por que a Meta recusou a conexão (#505, Fase 7 do plano do merge do
+  // upstream). Fica NO diálogo, não só num toast: o toast some antes de dar
+  // para ler a instrução ou copiar o trace id que o suporte da Meta pede.
+  const [metaFalha, setMetaFalha] = useState<FalhaDaMeta | null>(null);
+  // Qual envio do diálogo Meta está VIGENTE. Fechar o diálogo ou voltar
+  // avança o número: a resposta que chega depois não devolve o aviso a um
+  // formulário limpo, nem fecha e limpa um diálogo que já é outro.
+  const envioMetaRef = useRef(0);
 
   // Campos do assistente Instagram (D3 do plano: token colado, sem OAuth).
   const [igAccessToken, setIgAccessToken] = useState('');
@@ -296,6 +305,8 @@ export function CbChannelsPanel() {
     setMetaVerifyToken('');
     setMetaPin('');
     setShowToken(false);
+    setMetaFalha(null);
+    envioMetaRef.current += 1;
     setIgAccessToken('');
     setIgAppSecret('');
     setIgHumanAgent(false);
@@ -410,11 +421,65 @@ export function CbChannelsPanel() {
     }
   };
 
+  /**
+   * A frase acionável de uma falha da Meta. Chaves MONTADAS
+   * (`metaErro.<motivo>`, `metaEtapa.<etapa>`): a lista é fechada em
+   * `MOTIVOS_DA_CONEXAO_META`, e `falha-da-meta.test.ts` cobra as duas
+   * listas nos dois dicionários — o portão estático de i18n não alcança
+   * chave montada.
+   */
+  const textoDaFalha = (f: FalhaDaMeta): string => {
+    // O nome do id NÃO se traduz: é o rótulo do painel da Meta.
+    const nome =
+      f.motivo === 'id_nao_numerico'
+        ? f.campo === 'waba_id'
+          ? 'WABA ID'
+          : 'Phone Number ID'
+        : f.etapa === 'verify_number' || f.etapa === 'register'
+          ? 'Phone Number ID'
+          : 'WABA ID';
+    const numeros = f.numerosDaWaba;
+    const lista = !numeros
+      ? ''
+      : numeros.total === 0
+        ? t('metaErroWabaVazia')
+        : t('metaErroWabaLista', {
+            numeros: numeros.citados.join(', '),
+            mais: Math.max(0, numeros.total - numeros.citados.length),
+          });
+    return t(`metaErro.${f.motivo}` as Parameters<typeof t>[0], {
+      etapa: f.etapa ? t(`metaEtapa.${f.etapa}` as Parameters<typeof t>[0]) : '',
+      nome,
+      alvo: f.id ? `${nome} ${f.id}` : nome,
+      id: f.id ?? '',
+      waba: f.waba ?? '',
+      codigo: f.codigo ?? '',
+      lista,
+    });
+  };
+
+  /** Etapa · código · trace id · detalhe, o que o suporte da Meta pede. */
+  const detalhesDaFalha = (f: FalhaDaMeta): string =>
+    [
+      f.etapa ? t(`metaEtapa.${f.etapa}` as Parameters<typeof t>[0]) : null,
+      f.codigo != null
+        ? t('metaErroCodigo', {
+            codigo: f.subcodigo != null ? `${f.codigo}/${f.subcodigo}` : String(f.codigo),
+          })
+        : null,
+      f.fbtraceId ? t('metaErroTrace', { trace: f.fbtraceId }) : null,
+      f.mensagemDaMeta ? t('metaErroDetalhe', { mensagem: f.mensagemDaMeta }) : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
   const handleCreateMeta = async () => {
     if (metaPin && !/^\d{6}$/.test(metaPin)) {
       toast.error(t('metaPinInvalid'));
       return;
     }
+    setMetaFalha(null);
+    const envio = ++envioMetaRef.current;
     setCreating(true);
     try {
       const res = await fetch('/api/cb/channels', {
@@ -431,24 +496,48 @@ export function CbChannelsPanel() {
         }),
       });
       const payload = await res.json();
+      // O diálogo foi fechado (ou se voltou) enquanto a Meta respondia.
+      const vigente = envioMetaRef.current === envio;
       if (!res.ok) {
-        toast.error(payload.error || t('createFailed'));
+        const falha = lerFalhaDaMeta(payload.falha);
+        if (falha) {
+          if (vigente) setMetaFalha(falha);
+          // Sem o aviso do diálogo (envio abandonado), o código e o trace id
+          // que a frase manda ler "logo abaixo" vão na segunda linha.
+          toast.error(textoDaFalha(falha), {
+            duration: vigente ? 10_000 : 20_000,
+            ...(vigente ? {} : { description: detalhesDaFalha(falha) }),
+          });
+        } else {
+          toast.error(payload.error || t('createFailed'));
+        }
         return;
       }
       const reg = payload.registration as
-        | { registered?: boolean; skipped?: boolean; error?: string | null }
+        | { registered?: boolean; skipped?: boolean; error?: string | null; falha?: unknown }
         | undefined;
       if (reg?.error) {
-        toast.error(t('metaRegistrationFailed', { error: reg.error }), {
-          duration: 12_000,
-        });
+        // O diálogo fecha em seguida: o código e o trace id que a frase
+        // manda levar ao suporte da Meta vão na segunda linha do aviso.
+        const falhaDoRegistro = lerFalhaDaMeta(reg.falha);
+        toast.error(
+          t('metaRegistrationFailed', {
+            error: falhaDoRegistro ? textoDaFalha(falhaDoRegistro) : reg.error,
+          }),
+          {
+            duration: 20_000,
+            ...(falhaDoRegistro ? { description: detalhesDaFalha(falhaDoRegistro) } : {}),
+          },
+        );
       } else if (reg?.skipped) {
         toast.success(t('metaRegistrationSkipped'), { duration: 10_000 });
       } else {
         toast.success(t('metaConnectedToast'));
       }
-      setAddOpen(false);
-      resetAdd();
+      if (vigente) {
+        setAddOpen(false);
+        resetAdd();
+      }
       await load();
     } catch {
       toast.error(t('networkError'));
@@ -1281,6 +1370,20 @@ export function CbChannelsPanel() {
                 <DialogDescription>{t('metaStepDescription')}</DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
+                {metaFalha && (
+                  <Alert variant="destructive" data-testid="meta-falha">
+                    <AlertTriangle />
+                    <AlertTitle>{t('metaErroTitulo')}</AlertTitle>
+                    <AlertDescription>
+                      <p>{textoDaFalha(metaFalha)}</p>
+                      {detalhesDaFalha(metaFalha) && (
+                        <p className="mt-1 text-xs break-words text-muted-foreground select-all">
+                          {detalhesDaFalha(metaFalha)}
+                        </p>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <div>
                   <Label htmlFor="cb-meta-label">{t('labelField')}</Label>
                   <Input
@@ -1294,6 +1397,7 @@ export function CbChannelsPanel() {
                   <Label htmlFor="cb-meta-pnid">{t('metaFieldPhoneNumberId')}</Label>
                   <Input
                     id="cb-meta-pnid"
+                    aria-invalid={metaFalha?.campo === 'phone_number_id' || undefined}
                     value={metaPhoneNumberId}
                     onChange={(e) => setMetaPhoneNumberId(e.target.value)}
                     placeholder="100234567890123"
@@ -1306,6 +1410,7 @@ export function CbChannelsPanel() {
                   </Label>
                   <Input
                     id="cb-meta-waba"
+                    aria-invalid={metaFalha?.campo === 'waba_id' || undefined}
                     value={metaWabaId}
                     onChange={(e) => setMetaWabaId(e.target.value)}
                     placeholder="100234567890456"
@@ -1316,6 +1421,7 @@ export function CbChannelsPanel() {
                   <div className="relative">
                     <Input
                       id="cb-meta-token"
+                      aria-invalid={metaFalha?.campo === 'access_token' || undefined}
                       type={showToken ? 'text' : 'password'}
                       value={metaAccessToken}
                       onChange={(e) => setMetaAccessToken(e.target.value)}
@@ -1351,6 +1457,7 @@ export function CbChannelsPanel() {
                   </Label>
                   <Input
                     id="cb-meta-pin"
+                    aria-invalid={metaFalha?.campo === 'pin' || undefined}
                     inputMode="numeric"
                     maxLength={6}
                     value={metaPin}
@@ -1418,7 +1525,14 @@ export function CbChannelsPanel() {
                 </Accordion>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setAddStep('choose')}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setMetaFalha(null);
+                    envioMetaRef.current += 1;
+                    setAddStep('choose');
+                  }}
+                >
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   {t('back')}
                 </Button>
