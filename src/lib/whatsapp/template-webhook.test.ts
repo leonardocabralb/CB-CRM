@@ -1,17 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { MessageTemplate } from '@/types';
+
+// O token da conexão é decifrado antes de ler o modelo na Meta.
+vi.mock('./encryption', () => ({ decrypt: (s: string) => `claro:${s}` }));
+
 import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from './template-webhook';
+import { buildSendComponents } from './template-send-builder';
+import { isMessageTemplate } from './template-row-guard';
 
 // A mock query builder that records every call for inspection. It answers
 // the four lookups this module makes:
 //   message_templates: .update().eq().select()  → selectResult (then
 //                      retrySelectResult for the 2nd UPDATE, if given)
-//                      .select().eq()×4.limit() → { data: existentes }
+//                      .select().eq().or().eq()×2.limit() → { data: existentes }
 //                      .insert()                → { error: insertError }
 //   cb_channels:       .select().eq('kind').eq('waba_id') → { data: canais }
 //   accounts:          .select().eq('id').maybeSingle()   → the owner
@@ -23,7 +30,7 @@ type SelectResult = {
 function makeSupabaseStub(
   selectResult: SelectResult = { data: [{ id: 'row-1' }], error: null },
   opts: {
-    canais?: { id: string; account_id: string }[];
+    canais?: { id: string; account_id: string; access_token?: string | null }[];
     existentes?: { id: string }[];
     /** O dono da conta; `null` = conta sem dono resolvido. */
     dono?: string | null;
@@ -81,6 +88,10 @@ function makeSupabaseStub(
         eq(column: string, value: unknown) {
           entry.filter = { column, value };
           entry.filters.push([column, value]);
+          return q;
+        },
+        or(filtro: string) {
+          entry.filters.push(['or', filtro]);
           return q;
         },
         limit() {
@@ -232,12 +243,45 @@ describe('handleTemplateWebhookChange — status update', () => {
 describe('handleTemplateWebhookChange — unknown template stub (#534, porte da Fase 6b)', () => {
   // A conexão oficial desta WABA. O original resolvia a conta por
   // `whatsapp_config` — o espelho de um número, que nesta produção não casa.
-  const CANAL = { id: 'canal-meta-1', account_id: 'acc-1' };
+  const CANAL = { id: 'canal-meta-1', account_id: 'acc-1', access_token: 'tok-cifrado' };
+
+  /** O modelo como a Meta o devolve em `GET /{id}` — com corpo e variáveis. */
+  const modeloDaMeta = (over: Record<string, unknown> = {}) => ({
+    id: '555',
+    name: 'created_in_meta',
+    language: 'de',
+    status: 'APPROVED',
+    category: 'UTILITY',
+    components: [
+      { type: 'HEADER', format: 'DOCUMENT', example: { header_handle: ['h:1'] } },
+      {
+        type: 'BODY',
+        text: 'Olá {{1}}, o boleto de {{2}} vence hoje.',
+        example: { body_text: [['Ana', 'R$ 10']] },
+      },
+    ],
+    ...over,
+  });
+
+  let fetchDaMeta: ReturnType<typeof vi.fn>;
+  const respondeMeta = (corpo: unknown, status = 200) =>
+    fetchDaMeta.mockResolvedValue(
+      new Response(JSON.stringify(corpo), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
 
   beforeEach(() => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'info').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
+    fetchDaMeta = vi.fn();
+    vi.stubGlobal('fetch', fetchDaMeta);
+    respondeMeta(modeloDaMeta());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   const statusDe = (over: Record<string, unknown> = {}, wabaId: string | undefined = 'WABA-1') => ({
@@ -252,7 +296,7 @@ describe('handleTemplateWebhookChange — unknown template stub (#534, porte da 
     wabaId,
   });
 
-  it('inserts a stub WITH the channel, owned by the account owner, for a 0-row status update', async () => {
+  it('reads the template from Meta and inserts it COMPLETE, with the channel and the account owner', async () => {
     const { stub, calls } = makeSupabaseStub({ data: [], error: null }, { canais: [CANAL] });
     await handleTemplateWebhookChange(statusDe(), stub);
 
@@ -267,27 +311,59 @@ describe('handleTemplateWebhookChange — unknown template stub (#534, porte da 
       ['kind', 'meta'],
       ['waba_id', 'WABA-1'],
     ]);
-    expect(calls[2].filters).toEqual([
-      ['account_id', 'acc-1'],
-      ['channel_id', 'canal-meta-1'],
-      ['name', 'created_in_meta'],
-      ['language', 'de'],
-    ]);
+
+    // A leitura: pelo id, com o token DECIFRADO da conexão, no cabeçalho.
+    expect(fetchDaMeta).toHaveBeenCalledOnce();
+    const [url, init] = fetchDaMeta.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      'https://graph.facebook.com/v21.0/555?fields=id,name,language,status,category,components,quality_score',
+    );
+    expect(init.headers).toEqual({ Authorization: 'Bearer claro:tok-cifrado' });
+
     expect(calls[4].insert).toEqual({
       account_id: 'acc-1',
       user_id: 'dono-1',
       channel_id: 'canal-meta-1',
-      meta_template_id: '555',
       name: 'created_in_meta',
+      category: 'Utility',
       language: 'de',
-      body_text: '',
+      header_type: 'document',
+      header_content: null,
+      header_handle: 'h:1',
+      body_text: 'Olá {{1}}, o boleto de {{2}} vence hoje.',
+      footer_text: null,
+      buttons: null,
+      sample_values: { body: ['Ana', 'R$ 10'] },
       status: 'APPROVED',
+      meta_template_id: '555',
+      quality_score: null,
       rejection_reason: null,
-      submission_error: null,
     });
   });
 
-  it('carries the rejection reason into the stub on REJECTED and defaults language to en_US', async () => {
+  it('⚠️ the stub is a template the send path can use: the caller parameters are NOT dropped', async () => {
+    // O defeito que a revisão mediu: com `body_text: ''` o stub virava o
+    // modelo do envio, `buildSendComponents` contava zero variáveis e mandava
+    // `parameters: []` — a Meta recusava o que funcionava sem linha local.
+    const { stub, calls } = makeSupabaseStub({ data: [], error: null }, { canais: [CANAL] });
+    await handleTemplateWebhookChange(statusDe(), stub);
+    const linha = { id: 'row-stub', ...calls.find((c) => c.insert)?.insert } as unknown;
+    expect(isMessageTemplate(linha)).toBe(true);
+    const componentes = buildSendComponents(linha as MessageTemplate, {
+      body: ['Ana', 'R$ 10'],
+      headerMediaUrl: 'https://x.test/boleto.pdf',
+    });
+    expect(componentes.find((c) => c.type === 'body')).toEqual({
+      type: 'body',
+      parameters: [
+        { type: 'text', text: 'Ana' },
+        { type: 'text', text: 'R$ 10' },
+      ],
+    });
+  });
+
+  it('carries the event rejection reason when Meta says REJECTED, and takes the language from Meta', async () => {
+    respondeMeta(modeloDaMeta({ id: '556', name: 'spammy', language: 'pt_BR', status: 'REJECTED' }));
     const { stub, calls } = makeSupabaseStub({ data: [], error: null }, { canais: [CANAL] });
     await handleTemplateWebhookChange(
       statusDe({
@@ -302,16 +378,66 @@ describe('handleTemplateWebhookChange — unknown template stub (#534, porte da 
     expect(calls.find((c) => c.insert)?.insert).toMatchObject({
       status: 'REJECTED',
       rejection_reason: 'INVALID_FORMAT',
-      language: 'en_US',
+      language: 'pt_BR',
       channel_id: 'canal-meta-1',
     });
   });
+
+  it('⚠️ reading from Meta fails = no stub, and the log never carries the Meta message (it can echo the token)', async () => {
+    const warn = vi.spyOn(console, 'warn');
+    respondeMeta({ error: { code: 190, message: 'Malformed access token EAAB-segredo' } }, 400);
+    const { stub, calls } = makeSupabaseStub({ data: [], error: null }, { canais: [CANAL] });
+    await handleTemplateWebhookChange(statusDe(), stub);
+    expect(calls.some((c) => c.insert)).toBe(false);
+    const mensagem = String(warn.mock.calls[0][0]);
+    expect(mensagem).toContain('HTTP 400 (code 190)');
+    expect(mensagem).not.toContain('EAAB');
+  });
+
+  it('a network failure reading from Meta creates nothing either', async () => {
+    fetchDaMeta.mockRejectedValue(new TypeError('fetch failed'));
+    const { stub, calls } = makeSupabaseStub({ data: [], error: null }, { canais: [CANAL] });
+    await handleTemplateWebhookChange(statusDe(), stub);
+    expect(calls.some((c) => c.insert)).toBe(false);
+  });
+
+  it('refuses the answer when Meta returns another template id', async () => {
+    respondeMeta(modeloDaMeta({ id: '999' }));
+    const { stub, calls } = makeSupabaseStub({ data: [], error: null }, { canais: [CANAL] });
+    await handleTemplateWebhookChange(statusDe(), stub);
+    expect(calls.some((c) => c.insert)).toBe(false);
+  });
+
+  it('a connection without an access token does not call Meta', async () => {
+    const erro = vi.spyOn(console, 'error');
+    const { stub, calls } = makeSupabaseStub(
+      { data: [], error: null },
+      { canais: [{ ...CANAL, access_token: null }] },
+    );
+    await handleTemplateWebhookChange(statusDe(), stub);
+    expect(fetchDaMeta).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.insert)).toBe(false);
+    expect(String(erro.mock.calls[0][0])).toContain('no usable access token');
+  });
+
+  it.each(['PENDING_DELETION', 'DELETED', 'ARCHIVED'])(
+    '⚠️ %s for an unknown template does NOT resurrect it as a stub',
+    async (evento) => {
+      // A rota de exclusão apaga na Meta e em seguida a linha local; o aviso
+      // que a Meta manda depois não pode trazer o modelo de volta.
+      const { stub, calls } = makeSupabaseStub({ data: [], error: null }, { canais: [CANAL] });
+      await handleTemplateWebhookChange(statusDe({ event: evento }), stub);
+      expect(calls.map((c) => `${c.table}:${c.op}`)).toEqual(['message_templates:update']);
+      expect(fetchDaMeta).not.toHaveBeenCalled();
+    },
+  );
 
   it('warns with the WABA id and inserts nothing when no official connection matches', async () => {
     const warn = vi.spyOn(console, 'warn');
     const { stub, calls } = makeSupabaseStub({ data: [], error: null }, { canais: [] });
     await handleTemplateWebhookChange(statusDe({ message_template_id: '557' }, 'WABA-NOBODY'), stub);
     expect(calls.some((c) => c.insert)).toBe(false);
+    expect(fetchDaMeta).not.toHaveBeenCalled();
     const message = String(warn.mock.calls[0][0]);
     expect(message).toContain('WABA WABA-NOBODY');
     expect(message).toContain('557');
@@ -322,22 +448,30 @@ describe('handleTemplateWebhookChange — unknown template stub (#534, porte da 
     const warn = vi.spyOn(console, 'warn');
     const { stub, calls } = makeSupabaseStub(
       { data: [], error: null },
-      { canais: [CANAL, { id: 'canal-meta-2', account_id: 'acc-1' }] },
+      { canais: [CANAL, { id: 'canal-meta-2', account_id: 'acc-1', access_token: 'x' }] },
     );
     await handleTemplateWebhookChange(statusDe({ message_template_id: '558' }), stub);
     expect(calls.some((c) => c.insert)).toBe(false);
     expect(String(warn.mock.calls[0][0])).toContain('2 official connections');
   });
 
-  it('⚠️ does not duplicate a local row of the same name/language in the channel, whoever wrote it', async () => {
-    // O índice único leva o `user_id` (903): o stub do dono passaria por ele
-    // ao lado de um modelo criado por outro admin.
+  it('⚠️ looks for a same-name row in the channel OR without a channel — the sync rule', async () => {
+    // A sincronização adota a linha sem canal; o stub nascendo ao lado dela
+    // fazia o `maybeSingle` da sincronização falhar para aquele modelo em
+    // toda sincronização (revisão da Fase 6). O índice único leva o `user_id`
+    // (903), então nem o autor diferente segura a duplicata.
     const warn = vi.spyOn(console, 'warn');
     const { stub, calls } = makeSupabaseStub(
       { data: [], error: null },
-      { canais: [CANAL], existentes: [{ id: 'row-de-outro-admin' }] },
+      { canais: [CANAL], existentes: [{ id: 'row-global-antiga' }] },
     );
     await handleTemplateWebhookChange(statusDe(), stub);
+    expect(calls[2].filters).toEqual([
+      ['account_id', 'acc-1'],
+      ['or', 'channel_id.eq.canal-meta-1,channel_id.is.null'],
+      ['name', 'created_in_meta'],
+      ['language', 'de'],
+    ]);
     expect(calls.some((c) => c.insert)).toBe(false);
     expect(String(warn.mock.calls[0][0])).toContain('not linked to this meta_template_id');
   });
@@ -350,8 +484,9 @@ describe('handleTemplateWebhookChange — unknown template stub (#534, porte da 
     expect(String(erro.mock.calls[0][0])).toContain('account owner lookup failed');
   });
 
-  it('inserts a stub with quality_score (and no status) for a 0-row quality update', async () => {
+  it('a 0-row quality update creates the stub with the status Meta reports (not DRAFT)', async () => {
     const warn = vi.spyOn(console, 'warn');
+    respondeMeta(modeloDaMeta({ id: '559', status: 'PAUSED', quality_score: { score: 'RED' } }));
     const { stub, calls } = makeSupabaseStub({ data: [], error: null }, { canais: [CANAL] });
     await handleTemplateWebhookChange(
       {
@@ -368,19 +503,13 @@ describe('handleTemplateWebhookChange — unknown template stub (#534, porte da 
       stub,
     );
     expect(calls[0].update).toEqual({ quality_score: 'RED' });
-    const insert = calls.find((c) => c.insert)?.insert;
-    expect(insert).toEqual({
-      account_id: 'acc-1',
-      user_id: 'dono-1',
-      channel_id: 'canal-meta-1',
+    expect(calls.find((c) => c.insert)?.insert).toMatchObject({
       meta_template_id: '559',
-      name: 'created_in_meta',
-      language: 'en_US',
-      body_text: '',
+      status: 'PAUSED',
       quality_score: 'RED',
+      body_text: 'Olá {{1}}, o boleto de {{2}} vence hoje.',
+      rejection_reason: null,
     });
-    // `status` is deliberately absent — the column default applies.
-    expect(insert).not.toHaveProperty('status');
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -402,6 +531,7 @@ describe('handleTemplateWebhookChange — unknown template stub (#534, porte da 
 
   it('retries the update once when the stub insert hits a unique violation', async () => {
     const warn = vi.spyOn(console, 'warn');
+    respondeMeta(modeloDaMeta({ id: '561', name: 'raced', status: 'PAUSED' }));
     const { stub, calls } = makeSupabaseStub(
       { data: [], error: null },
       {
@@ -421,15 +551,13 @@ describe('handleTemplateWebhookChange — unknown template stub (#534, porte da 
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('does not create a stub when the event has no template name', async () => {
-    const warn = vi.spyOn(console, 'warn');
+  it('an event without the template name still creates it — the name comes from Meta', async () => {
     const { stub, calls } = makeSupabaseStub({ data: [], error: null }, { canais: [CANAL] });
     await handleTemplateWebhookChange(
-      { field: 'message_template_status_update', value: { event: 'APPROVED', message_template_id: '562' }, wabaId: 'WABA-1' },
+      { field: 'message_template_status_update', value: { event: 'APPROVED', message_template_id: '555' }, wabaId: 'WABA-1' },
       stub,
     );
-    expect(calls).toHaveLength(1);
-    expect(String(warn.mock.calls[0][0])).toContain('no message_template_name');
+    expect(calls.find((c) => c.insert)?.insert).toMatchObject({ name: 'created_in_meta', language: 'de' });
   });
 });
 
@@ -513,11 +641,12 @@ describe('a rota do webhook liga o stub (Fase 6b)', () => {
         .replace(/\/\/.*$/gm, '');
     // Sem o `wabaId`, todo modelo criado direto no painel da Meta só vira
     // log — o stub fica inerte, que era o estado do #259.
-    expect(semComentarios('app/api/whatsapp/webhook/route.ts')).toMatch(
-      /handleTemplateWebhookChange\(\s*\{[^}]*wabaId:\s*entry\.id/,
-    );
+    const rota = semComentarios('app/api/whatsapp/webhook/route.ts');
+    // UMA chamada, e com a WABA do próprio envelope (`entry.id`, nada depois).
+    expect(rota.match(/handleTemplateWebhookChange\(/g)).toHaveLength(1);
+    expect(rota).toMatch(/handleTemplateWebhookChange\(\s*\{[^}]*wabaId:\s*entry\.id\s*\}/);
     const modulo = semComentarios('lib/whatsapp/template-webhook.ts');
-    expect(modulo).toContain(".from('cb_channels')");
-    expect(modulo).not.toContain("from('whatsapp_config')");
+    expect(modulo).toMatch(/\.from\(\s*['"]cb_channels['"]\s*\)/);
+    expect(modulo).not.toMatch(/from\(\s*['"`]whatsapp_config['"`]/);
   });
 });

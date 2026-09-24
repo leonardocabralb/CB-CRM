@@ -543,9 +543,10 @@ export function TemplateManager() {
       toast.error(t(invalidTypeKey[kind]));
       return;
     }
-    // The upload lands in the chat-media bucket, whose 16 MB ceiling is
-    // below Meta's 100 MB document cap — so this is the bucket-side
-    // limit, not Meta's. A larger document can still be pasted as a link.
+    // The upload uses the chat SEND cap (`MEDIA_MAX_BYTES_BY_KIND`: 16 MB for
+    // a document), below Meta's 100 MB template-header document cap — so this
+    // is our limit, not Meta's. A larger document can still be pasted as a
+    // link (the `documentHint` says so).
     const maxBytes = MEDIA_MAX_BYTES_BY_KIND[kind];
     if (file.size > maxBytes) {
       toast.error(

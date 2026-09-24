@@ -10,12 +10,24 @@
  *
  * Nasceu no download da mídia do Instagram (Fase 1b do merge do upstream) e
  * mudou para cá quando o cabeçalho de modelo (Fase 6a) precisou dele.
+ *
+ * O teto estourado lança {@link TetoExcedido}; o resto (tempo esgotado,
+ * conexão que cai no meio) sai como veio. Quem traduz o erro para a tela
+ * separa os dois: dizer "grande demais" sobre um download lento manda a
+ * pessoa encolher um arquivo que não é grande.
  */
+export class TetoExcedido extends Error {
+  constructor(mensagem: string) {
+    super(mensagem);
+    this.name = 'TetoExcedido';
+  }
+}
+
 export async function lerComTeto(r: Response, teto: number): Promise<Buffer> {
   const declarado = Number(r.headers.get('content-length'));
   if (Number.isFinite(declarado) && declarado > teto) {
     await r.body?.cancel().catch(() => {});
-    throw new Error(`Media download refused: ${declarado} bytes over the ${teto}-byte limit`);
+    throw new TetoExcedido(`Media download refused: ${declarado} bytes over the ${teto}-byte limit`);
   }
   if (!r.body) return Buffer.alloc(0);
   const leitor = r.body.getReader();
@@ -27,7 +39,7 @@ export async function lerComTeto(r: Response, teto: number): Promise<Buffer> {
     total += value.byteLength;
     if (total > teto) {
       await leitor.cancel().catch(() => {});
-      throw new Error(`Media download refused: over the ${teto}-byte limit`);
+      throw new TetoExcedido(`Media download refused: over the ${teto}-byte limit`);
     }
     pedacos.push(value);
   }

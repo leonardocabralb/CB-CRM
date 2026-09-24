@@ -32,16 +32,21 @@
  * events used to match 0 rows and be dropped. Both handlers now fall
  * back to creating a stub row: the WABA id on the webhook entry
  * resolves the official connection via `cb_channels.waba_id` (OURS — the
- * original used `whatsapp_config`; see `createStubForUnknownTemplate`),
- * and the stub carries the identity (name / language / meta_template_id) plus
- * whatever the event told us (status, rejection reason, quality
- * score). Components are NOT known at this point — `body_text` is
- * stored as '' (the same placeholder the sync route uses for a
- * body-less template) and "Sync from Meta" backfills them, matching
- * the stub on (account_id, name, language).
+ * original used `whatsapp_config`; see `createStubForUnknownTemplate`).
+ *
+ * ⚠️ NOSSO também: o stub nasce com o CONTEÚDO do modelo, lido na Meta
+ * pelo id (`lerModeloNaMeta`, com o token da conexão) e convertido pela
+ * MESMA função da sincronização. O original gravava `body_text: ''`, e a
+ * linha vazia virava o modelo do envio: `buildSendComponents` contava zero
+ * variáveis e descartava os parâmetros de quem mandava pelo nome — o envio
+ * que funcionava sem linha local passava a ser recusado pela Meta (revisão da
+ * Fase 6). Leitura que falha = nenhum stub, e o evento só vai para o log,
+ * como antes; "Sync from Meta" continua sendo a saída.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { decrypt } from './encryption'
+import { conteudoDoModeloDaMeta, lerModeloNaMeta } from './modelo-da-meta'
 import { normalizeStatus } from './template-status-normalize'
 
 const TEMPLATE_WEBHOOK_FIELDS = new Set([
@@ -87,9 +92,14 @@ export interface TemplateWebhookChange {
   wabaId?: string
 }
 
-/** `body_text` is NOT NULL; the sync route uses '' for a body-less template too. */
-const STUB_BODY_TEXT = ''
-const DEFAULT_TEMPLATE_LANGUAGE = 'en_US'
+/**
+ * Eventos de um modelo que está SAINDO da Meta. Sem linha local, eles não
+ * criam stub: a rota de exclusão apaga na Meta e em seguida a linha local, e
+ * o aviso que a Meta manda depois (`PENDING_DELETION`) ressuscitaria o modelo
+ * que o operador acabou de apagar — a sincronização nunca remove linha. O
+ * valor é o CRU do evento: `normalizeStatus` achata DELETED/ARCHIVED em PENDING.
+ */
+const EVENTOS_DE_SAIDA = new Set(['PENDING_DELETION', 'DELETED', 'ARCHIVED'])
 /** Postgres unique_violation — the row appeared between our UPDATE and INSERT. */
 const PG_UNIQUE_VIOLATION = '23505'
 
@@ -174,13 +184,18 @@ async function handleStatusUpdate(
     return
   }
   if (!data || data.length === 0) {
+    if (EVENTOS_DE_SAIDA.has(value.event.toUpperCase())) {
+      console.info(
+        `[template-webhook] ${value.event} for unknown template meta_template_id ${metaTemplateId} (${value.message_template_name ?? 'unnamed'}) — nothing local to update, and a template on its way out is not stubbed.`,
+      )
+      return
+    }
     await createStubForUnknownTemplate({
       kind: 'status update',
       metaTemplateId,
       name: value.message_template_name,
-      language: value.message_template_language,
       wabaId,
-      fields: update,
+      motivoDaRecusa: status === 'REJECTED' ? (update.rejection_reason as string) : null,
       retryUpdate: () =>
         supabase
           .from('message_templates')
@@ -240,16 +255,14 @@ async function handleQualityUpdate(
     return
   }
   if (!data || data.length === 0) {
-    // A quality event carries no status. Leave `status` to the column
-    // default (DRAFT) rather than guessing APPROVED — Meta does score
-    // PAUSED templates too. "Sync from Meta" fixes it up.
+    // O evento de qualidade não traz situação — o stub a lê na Meta junto
+    // com o conteúdo, em vez de nascer com o padrão da coluna (DRAFT).
     await createStubForUnknownTemplate({
       kind: 'quality update',
       metaTemplateId,
       name: value.message_template_name,
-      language: value.message_template_language,
       wabaId,
-      fields: update,
+      motivoDaRecusa: null,
       retryUpdate: runUpdate,
       supabase,
     })
@@ -260,11 +273,11 @@ interface StubParams {
   /** For log lines — 'status update' | 'quality update'. */
   kind: string
   metaTemplateId: string
+  /** Só para o log — o nome gravado é o que a Meta devolve. */
   name: string | undefined
-  language: string | undefined
   wabaId: string | undefined
-  /** Event-derived columns (status / rejection_reason / quality_score). */
-  fields: Record<string, unknown>
+  /** O motivo do evento REJECTED: a leitura da Meta não o traz. */
+  motivoDaRecusa: string | null
   /** Re-runs the original UPDATE if the INSERT loses a race. */
   retryUpdate: () => PromiseLike<{
     data: { id: string }[] | null
@@ -279,12 +292,8 @@ interface StubParams {
  * row so the event isn't lost. Every early-return path logs the WABA
  * id so an operator can tell which tenant needs a "Sync from Meta".
  *
- * NOTE: the sync itself is not triggered here. Its logic lives inside
- * the POST handler of /api/whatsapp/templates/sync (behind
- * requireRole('admin') and the caller's session), so there is nothing
- * reusable from a webhook context without refactoring that route.
- * The stub is enough for the status / quality to show up in the UI;
- * components arrive on the next manual sync.
+ * O stub é uma linha COMPLETA: o conteúdo vem da Meta, pelo id do modelo,
+ * com o token da conexão dona da WABA. Sem ele, não há stub.
  */
 async function createStubForUnknownTemplate(p: StubParams): Promise<void> {
   const { kind, metaTemplateId, name, wabaId, supabase } = p
@@ -296,22 +305,17 @@ async function createStubForUnknownTemplate(p: StubParams): Promise<void> {
     )
     return
   }
-  if (!name) {
-    console.warn(
-      `[template-webhook] ${kind} for unknown template ${where} — event has no message_template_name, cannot create a stub row; run "Sync from Meta".`,
-    )
-    return
-  }
 
   // ⚠️ NOSSO (Fase 6b do merge do upstream). O original resolve a conta por
   // `whatsapp_config.waba_id` — o espelho de UM número, que nesta produção
   // nunca casaria (o número oficial vive em `cb_channels`). E o catálogo é
-  // POR WABA (903): o stub nasce com o `channel_id` da conexão, senão seria
-  // um modelo "global" fantasma ao lado do que a sincronização cria para o
-  // canal. `.eq('kind', 'meta')`: só a conexão oficial tem WABA.
+  // POR WABA (903): o stub nasce com o `channel_id` da conexão — uma linha
+  // sem canal valeria para QUALQUER número da conta (`resolveTemplateRow`), e
+  // a sincronização de outra WABA poderia adotá-la. `.eq('kind', 'meta')`: só
+  // a conexão oficial tem WABA.
   const { data: canais, error: canalError } = await supabase
     .from('cb_channels')
-    .select('id, account_id')
+    .select('id, account_id, access_token')
     .eq('kind', 'meta')
     .eq('waba_id', wabaId)
 
@@ -322,7 +326,7 @@ async function createStubForUnknownTemplate(p: StubParams): Promise<void> {
     )
     return
   }
-  const rows = (canais ?? []) as { id: string; account_id: string }[]
+  const rows = (canais ?? []) as { id: string; account_id: string; access_token: string | null }[]
   if (rows.length !== 1) {
     // Dois números na MESMA WABA: cada um tem o seu catálogo (a sincronização
     // cria uma linha por canal), e escolher um aqui seria adivinhar.
@@ -332,18 +336,47 @@ async function createStubForUnknownTemplate(p: StubParams): Promise<void> {
     return
   }
   const canal = rows[0]
-  const language = p.language || DEFAULT_TEMPLATE_LANGUAGE
 
-  // A linha com o mesmo nome e idioma NESTE canal, de qualquer autor: é ela
-  // que a sincronização adotaria. O índice único leva o `user_id` (903), então
-  // o stub com outro autor passaria por ele e nasceria DUPLICATA.
+  // O conteúdo, na Meta. Linha sem ele viraria o modelo do envio com zero
+  // variáveis (ver o cabeçalho deste arquivo).
+  let token: string
+  try {
+    if (!canal.access_token) throw new Error('no access token')
+    token = decrypt(canal.access_token)
+  } catch (e) {
+    console.error(
+      `[template-webhook] ${kind} for unknown template ${where} — connection ${canal.id} has no usable access token (${e instanceof Error ? e.message : 'decrypt failed'}); run "Sync from Meta".`,
+    )
+    return
+  }
+  const leitura = await lerModeloNaMeta(metaTemplateId, token)
+  if (!leitura.ok) {
+    console.warn(
+      `[template-webhook] ${kind} for unknown template ${where} — could not read it from Meta (${leitura.falha}); not creating a stub. Run "Sync from Meta".`,
+    )
+    return
+  }
+  if (leitura.modelo.id !== metaTemplateId) {
+    console.warn(
+      `[template-webhook] ${kind} for unknown template ${where} — Meta answered with template ${leitura.modelo.id}; not creating a stub.`,
+    )
+    return
+  }
+  const conteudo = conteudoDoModeloDaMeta(leitura.modelo)
+
+  // A linha com o mesmo nome e idioma NESTE canal OU sem canal, de qualquer
+  // autor: é a régua da sincronização (e da submissão), que adota as duas. O
+  // índice único leva o `user_id` e os dois índices da 903 são parciais —
+  // o stub nasceria ao lado dela, e o `maybeSingle` da sincronização passaria
+  // a falhar para aquele modelo em toda sincronização. O id do canal vem do
+  // banco, não de fora, então o `.or()` é seguro.
   const { data: existente, error: existenteError } = await supabase
     .from('message_templates')
     .select('id')
     .eq('account_id', canal.account_id)
-    .eq('channel_id', canal.id)
-    .eq('name', name)
-    .eq('language', language)
+    .or(`channel_id.eq.${canal.id},channel_id.is.null`)
+    .eq('name', conteudo.name)
+    .eq('language', conteudo.language)
     .limit(1)
   if (existenteError) {
     console.error(
@@ -375,17 +408,15 @@ async function createStubForUnknownTemplate(p: StubParams): Promise<void> {
     return
   }
 
-  // `category` and `status` fall back to their column defaults unless
-  // the event supplied them (status events do, quality events don't).
+  // A linha espelha a Meta AGORA (a leitura é posterior ao evento); do
+  // evento sobra só o motivo da recusa, que a leitura não traz.
   const stub = {
     account_id: canal.account_id,
     user_id: dono,
     channel_id: canal.id,
-    meta_template_id: metaTemplateId,
-    name,
-    language,
-    body_text: STUB_BODY_TEXT,
-    ...p.fields,
+    ...conteudo,
+    rejection_reason:
+      conteudo.status === 'REJECTED' ? p.motivoDaRecusa ?? 'Rejected by Meta' : null,
   }
 
   const { error: insertError } = await supabase
@@ -394,7 +425,7 @@ async function createStubForUnknownTemplate(p: StubParams): Promise<void> {
 
   if (!insertError) {
     console.info(
-      `[template-webhook] ${kind} for unknown template ${where} — created stub row for account ${canal.account_id}, channel ${canal.id}; run "Sync from Meta" to backfill components.`,
+      `[template-webhook] ${kind} for unknown template ${where} — created it from Meta for account ${canal.account_id}, channel ${canal.id}.`,
     )
     return
   }
@@ -407,11 +438,9 @@ async function createStubForUnknownTemplate(p: StubParams): Promise<void> {
     return
   }
 
-  // Unique violation: either a concurrent sync/webhook just created the
-  // row, or the account already has a local (user_id, name, language)
-  // row that isn't linked to this meta_template_id. Retry the original
-  // UPDATE once — it covers the first case; the second still needs a
-  // sync and is logged as such.
+  // Unique violation: a concurrent webhook or sync just created the row (the
+  // unlinked same-name row was ruled out above). Retry the original UPDATE
+  // once so this event still lands on it.
   const { data, error } = await p.retryUpdate()
   if (error) {
     console.error(

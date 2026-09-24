@@ -64,6 +64,19 @@ function respostaGrande(type: string, pedacos: number): { res: Response; lidos: 
   return { res: new Response(stream, { status: 200, headers: { 'content-type': type } }), lidos: () => lidos };
 }
 
+/** Um corpo que entrega 1 MB e então falha com `erro` — tempo esgotado ou queda. */
+function respostaQueFalha(type: string, erro: unknown): Response {
+  let enviou = false;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controle) {
+      if (enviou) return controle.error(erro);
+      enviou = true;
+      controle.enqueue(new Uint8Array(MB));
+    },
+  });
+  return new Response(stream, { status: 200, headers: { 'content-type': type } });
+}
+
 /** The (fileName, mimeType) pair the helper handed to the Resumable Upload. */
 function uploadedAs(): { fileName: string; mimeType: string } {
   const args = vi.mocked(uploadResumableMedia).mock.calls[0][0];
@@ -191,7 +204,7 @@ describe('ensureMediaHeaderHandle', () => {
       expect(uploadResumableMedia).not.toHaveBeenCalled();
     });
 
-    it('allows documents above the 16 MB chat-media bucket cap (Meta allows 100 MB)', async () => {
+    it('allows documents above the video cap (Meta allows 100 MB for documents)', async () => {
       vi.stubEnv('META_APP_ID', 'app-1');
       vi.stubGlobal('fetch', vi.fn(async () => mediaResponse('application/pdf', 40 * MB)));
       await ensureMediaHeaderHandle(doc(), 'tok');
@@ -224,7 +237,7 @@ describe('ensureMediaHeaderHandle', () => {
   describe('the sample is read with a ceiling (inventário do #259)', () => {
     it('⚠️ stops reading at the limit: a body 4× over it is never read whole', async () => {
       // O original lia o corpo INTEIRO (`arrayBuffer`) antes de conferir o
-      // teto — com uma URL colada por qualquer membro. Vídeo (16 MB) com um
+      // teto — com uma URL colada pelo admin. Vídeo (16 MB) com um
       // corpo de 64 MB sem `content-length`.
       vi.stubEnv('META_APP_ID', 'app-1');
       const grande = respostaGrande('video/mp4', 64);
@@ -238,6 +251,36 @@ describe('ensureMediaHeaderHandle', () => {
       // Para no pedaço 17 (mais a folga da leitura adiantada do stream).
       expect(grande.lidos()).toBeLessThanOrEqual(19);
       expect(uploadResumableMedia).not.toHaveBeenCalled();
+    });
+
+    // Revisão da Fase 6: o `catch` sem filtro transformava QUALQUER falha da
+    // leitura em "passa do limite da Meta" — e o prazo de 10 s do fetch vale
+    // também para o corpo. O admin ia encolher um PDF que não era grande.
+    it('⚠️ a download that times out mid-body is NOT reported as too large', async () => {
+      vi.stubEnv('META_APP_ID', 'app-1');
+      const prazo = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      vi.stubGlobal('fetch', vi.fn(async () => respostaQueFalha('application/pdf', prazo)));
+      const erro = await ensureMediaHeaderHandle(
+        payload({ header_type: 'document', header_media_url: 'https://x.test/lento.pdf' }),
+        'tok',
+      ).catch((e: Error) => e.message);
+      expect(erro).toMatch(/Header document took longer than 10 seconds to download/);
+      expect(erro).not.toMatch(/larger than/);
+      expect(uploadResumableMedia).not.toHaveBeenCalled();
+    });
+
+    it('⚠️ a connection cut mid-body is reported as unreachable, not as too large', async () => {
+      vi.stubEnv('META_APP_ID', 'app-1');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => respostaQueFalha('application/pdf', new TypeError('terminated'))),
+      );
+      const erro = await ensureMediaHeaderHandle(
+        payload({ header_type: 'document', header_media_url: 'https://x.test/caiu.pdf' }),
+        'tok',
+      ).catch((e: Error) => e.message);
+      expect(erro).toMatch(/publicly reachable/);
+      expect(erro).not.toMatch(/larger than/);
     });
   });
 
@@ -278,8 +321,8 @@ describe('ensureMediaHeaderHandle', () => {
     });
   });
 
-  // Regression: `header_media_url` is caller-supplied and any authenticated
-  // member can submit a template, so a non-public destination has to be
+  // Regression: `header_media_url` is caller-supplied (the admin who submits
+  // or edits the template), so a non-public destination has to be
   // refused *before* the server issues the request — otherwise the status
   // and content-type carried back in the thrown error are an SSRF oracle for
   // loopback, RFC1918 and cloud-metadata addresses.

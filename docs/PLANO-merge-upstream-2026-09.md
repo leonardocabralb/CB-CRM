@@ -1329,8 +1329,9 @@ peço OK na hora** (cria um modelo de teste, apagável no painel da Meta).
 `template-webhook.ts` é idêntico à base (só atualiza; evento de modelo criado no
 painel da Meta é descartado). O stub deles resolve a conta por
 `whatsapp_config.waba_id` — na produção nunca casaria. **Port:** resolver por
-`cb_channels.waba_id`, carimbar `channel_id` (senão nasce um modelo "global"
-fantasma ao lado do da sincronização) e gravar o dono da conta em `user_id`.
+`cb_channels.waba_id`, carimbar `channel_id` (o catálogo é por WABA: uma
+linha sem canal valeria para qualquer número da conta) e gravar o dono da
+conta em `user_id`.
 Teste: POST assinado LOCAL de `message_template_status_update` para id
 desconhecido → stub COM canal; segundo evento atualiza, não duplica; "Sincronizar"
 adota o stub. Limpeza: apagar o stub.
@@ -1347,10 +1348,12 @@ adota o stub. Limpeza: apagar o stub.
   `src/lib/http/ler-com-teto.ts` (o Instagram reexporta); o cabeçalho confere
   o `content-length` antes (mensagem com o tamanho) e lê com teto (mensagem
   "larger than"). Os testes passaram a usar resposta de verdade, em stream —
-  o dublê com só `arrayBuffer` esconderia a leitura sem teto — e há um corpo
-  sem fim que para no teto. Textos: `Settings.templates.mediaHint` ("nós o
-  enviamos à Meta"), `.env.local.example` e `docs/multi-waba.md` (o
-  `META_APP_ID` serve a imagem, vídeo e documento).
+  o dublê com só `arrayBuffer` esconderia a leitura sem teto — e um corpo
+  de 64 MB sem `content-length` para no teto de 16 MB do vídeo (FINITO de
+  propósito: sem fim, o mutante trava em vez de reprovar). Textos:
+  `Settings.templates.mediaHint` ("nós o enviamos à Meta"),
+  `.env.local.example` e `docs/multi-waba.md` (o `META_APP_ID` serve a
+  imagem, vídeo e documento).
 - **6b:** o stub por `cb_channels.waba_id` (`kind = 'meta'`, exatamente uma
   conexão), com `channel_id` e o DONO da conta em `user_id`, e sem nascer ao
   lado de uma linha de mesmo nome/idioma no canal (o índice único da 903 leva
@@ -1370,6 +1373,34 @@ adota o stub. Limpeza: apagar o stub.
      mesma linha ganhou o cabeçalho `document` e o `header_handle`);
   5. limpeza: `DELETE /api/whatsapp/templates/<id>` → apagado na Meta e no
      CRM; um segundo Sincronizar confirma 9 modelos na Meta.
+
+  **Revisão (duas lentes, cético no achado):**
+
+  | Achado | Destino |
+  | --- | --- |
+  | P2 (confirmado, medido) — o stub nascia com o corpo VAZIO e virava o modelo do envio: `buildSendComponents` contava zero variáveis e mandava `parameters: []`, e o envio pelo nome (API v1, disparo) de um modelo criado no painel, que funcionava sem linha local, passava a ser recusado pela Meta. Os seletores o mostravam como aprovado, sem campos | ✅ o stub lê o modelo na Meta pelo id (token da conexão) e usa a MESMA conversão da sincronização (`modelo-da-meta.ts`, extraída da rota); leitura que falha = nenhum stub. Pino: o envio com o stub leva os parâmetros |
+  | P2 (confirmado, medido) — o `catch` sem filtro em volta do `lerComTeto` transformava tempo esgotado e conexão cortada em "maior que o limite da Meta" | ✅ `TetoExcedido`; tempo esgotado e queda têm frase própria |
+  | P2 (confirmado) — o evento de exclusão (`PENDING_DELETION`) de um modelo apagado pelo CRM o ressuscitava como stub | ✅ evento de saída (valor cru) não cria stub |
+  | P2 (confirmado, medido num Postgres 16) — a conferência "já existe" olhava só o canal; a sincronização adota a linha SEM canal, e o stub nascia ao lado dela, fazendo a sincronização daquele modelo falhar para sempre | ✅ `.or(canal, nulo)`, a régua da sincronização e da submissão |
+  | P3 — frases do CLAUDE.md e do plano ("corpo sem fim", "qualquer membro", o motivo do `channel_id`, a regra do `arrayBuffer` sem a exceção da foto de perfil) e dois comentários velhos | ✅ corrigidas |
+  | P3 — textos do #562 que não vieram ("Imagem enviada" depois de um PDF; a dica do documento sem os dois limites; `toastImageTooLarge` sem uso; comentários do bucket e do `docker-stack.yml`) | ✅ portados/corrigidos |
+  | P3 — CHANGELOG × INSTALACAO.md (os campos do webhook; o stub de qualidade nascia DRAFT) | ✅ alinhados; o stub lê a situação na Meta |
+  | P3 — o teste de rota do #534 não veio | ✅ portado (`route.test.ts`), e o pino estrutural ficou mais estrito |
+  | P3 — cópia desnecessária do Buffer | ✅ sem cópia |
+  | P3 — o primeiro Sincronizar troca o dono do stub pelo admin que sincroniza | registrado (defeito anterior da sincronização, M24) |
+  | P3 — stub do dono e linha de OUTRO admin no mesmo instante podem nascer juntos (o índice único leva o `user_id`) | aceito e escrito no CLAUDE.md (raro: um vai-e-volta ao banco) |
+
+- **E2E refeito depois das correções** (P5): modelo `teste_crm_stub_completo`
+  (cabeçalho PDF + `{{1}}` no corpo) criado na WABA (id `1037758085962344`),
+  linha local apagada, evento assinado → o stub nasceu COMPLETO (corpo com a
+  variável, cabeçalho `document` com o handle, o exemplo, a categoria e a
+  situação que a Meta já tinha — APPROVED, embora o evento dissesse PENDING),
+  com o canal e o dono; evento de qualidade → a MESMA linha (10); evento para
+  um id que não existe na Meta → nenhum stub, e o log diz só
+  `HTTP 400 (code 100)`; **Sincronizar** (a rota refatorada, contra os dados
+  reais) → 10 atualizados, 0 inseridos, sem erro; limpeza pelo `DELETE` do CRM;
+  `PENDING_DELETION` assinado em seguida → nada ressuscitou (9); Sincronizar →
+  9 na Meta.
 
 ### Fase 7 — Por que a conexão com a Meta falhou
 

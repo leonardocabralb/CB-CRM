@@ -1,4 +1,4 @@
-import { lerComTeto } from '@/lib/http/ler-com-teto'
+import { TetoExcedido, lerComTeto } from '@/lib/http/ler-com-teto'
 import { uploadResumableMedia } from '@/lib/whatsapp/meta-api'
 import { MEDIA_HEADER_SPECS, isMediaHeaderKind } from '@/lib/whatsapp/media-header-types'
 import type { TemplatePayload } from '@/lib/whatsapp/template-validators'
@@ -42,8 +42,9 @@ export async function ensureMediaHeaderHandle(
     )
   }
 
-  // SSRF guard: `header_media_url` is caller-supplied (any authenticated
-  // member can submit a template) and the fetch below happens server-side,
+  // SSRF guard: `header_media_url` is caller-supplied (the admin who submits
+  // or edits the template — both routes require admin here) and the fetch
+  // below happens server-side,
   // so refuse any destination that resolves to a private / loopback /
   // link-local / reserved address. Same guard as the two other
   // outbound-fetch call sites (see lib/webhooks/ssrf.ts) — matching the
@@ -76,9 +77,10 @@ export async function ensureMediaHeaderHandle(
   }
 
   // ⚠️ O teto é conferido DURANTE a leitura (`lerComTeto`), nunca depois de
-  // um `arrayBuffer()`: a URL pode ser colada por qualquer membro, e um corpo
-  // de gigabytes derrubaria o processo Node — o teto do documento é 100 MB, e
-  // o original lia tudo antes de conferir (inventário do #259, Fase 6a).
+  // um `arrayBuffer()`: a URL colada pelo admin pode apontar para um corpo de
+  // gigabytes, que derrubaria o processo Node de todas as contas — o teto do
+  // documento é 100 MB, e o original lia tudo antes de conferir (inventário
+  // do #259, Fase 6a).
   const limiteMb = spec.maxBytes / 1024 / 1024
   const declarado = Number(res.headers.get('content-length'))
   if (Number.isFinite(declarado) && declarado > spec.maxBytes) {
@@ -89,9 +91,22 @@ export async function ensureMediaHeaderHandle(
   }
   let bytes: Uint8Array
   try {
-    bytes = new Uint8Array(await lerComTeto(res, spec.maxBytes))
-  } catch {
-    throw new Error(`Header ${kind} is larger than Meta's limit of ${limiteMb} MB.`)
+    // Sem cópia: o Buffer já é um Uint8Array, e copiar dobraria a memória no teto.
+    bytes = await lerComTeto(res, spec.maxBytes)
+  } catch (e) {
+    // Só o teto é "grande demais". O prazo de 10 s do fetch vale também para
+    // a leitura do corpo, e um PDF de 30 MB num link lento — ou uma conexão
+    // que cai no meio — não pode chegar ao admin como "passa de 100 MB".
+    if (e instanceof TetoExcedido) {
+      throw new Error(`Header ${kind} is larger than Meta's limit of ${limiteMb} MB.`)
+    }
+    // O motivo do `AbortSignal.timeout` é um DOMException de nome TimeoutError.
+    if ((e as { name?: unknown } | null)?.name === 'TimeoutError') {
+      throw new Error(
+        `Header ${kind} took longer than 10 seconds to download. Use a faster link or upload the file here.`,
+      )
+    }
+    throw new Error(UNREACHABLE_MESSAGE)
   }
   if (bytes.byteLength === 0) {
     throw new Error(`Header ${kind} is empty.`)
