@@ -244,7 +244,12 @@ export function explainMetaError(
     code === 33 ||
     (code === 100 && subcode === 33) ||
     (code === 100 &&
-      /unsupported (get|post) request|does not exist|cannot be loaded due to missing permissions|unknown path components/i.test(
+      // NOSSO: "nonexisting field" — MEDIDO contra a Meta em 24/09/2026 (Fase
+      // 7 do plano do merge do upstream): um WABA ID errado em
+      // `/{waba}/phone_numbers` volta "(#100) Tried accessing nonexisting
+      // field (phone_numbers)", sem subcódigo. É o que acontece quando se
+      // cola o id do portfólio ou do app no campo da WABA.
+      /unsupported (get|post) request|does not exist|cannot be loaded due to missing permissions|unknown path components|nonexisting field/i.test(
         err.message,
       ))
   if (looksLikeMissingObject) {

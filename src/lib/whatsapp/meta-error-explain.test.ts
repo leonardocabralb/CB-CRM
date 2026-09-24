@@ -237,6 +237,8 @@ describe("explainMetaError — o motivo de cada ramo", () => {
     ["131005", { code: 131005, type: "x" }, "verify_number", "acesso_negado"],
     ["100/33", { code: 100, subcode: 33, type: "x" }, "verify_number", "id_nao_encontrado"],
     ["100 unsupported", { code: 100, type: "x", message: "Unsupported get request." }, "waba_phone_numbers", "id_nao_encontrado"],
+    // Medido contra a Meta em 24/09/2026: WABA ID errado em /{waba}/phone_numbers.
+    ["100 nonexisting field", { code: 100, type: "OAuthException", message: "(#100) Tried accessing nonexisting field (phone_numbers)" }, "waba_phone_numbers", "id_nao_encontrado"],
     ["100 PIN no register", { code: 100, type: "x", message: "Invalid PIN" }, "register", "pin_recusado"],
     ["100 outro", { code: 100, type: "x", message: "Invalid parameter" }, "verify_number", "parametro_recusado"],
     ["133010", { code: 133010, type: "x" }, "register", "nao_registrado"],
