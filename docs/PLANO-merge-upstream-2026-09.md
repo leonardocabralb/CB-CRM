@@ -188,7 +188,7 @@ quebrar, sabe-se qual.
 | **1b** | Segurança depois do alvo: #588 (SSRF), #587 (automação por conta), #589 (conversa por conta) — PRs ABERTOS do mantenedor — e a mídia do Instagram (achado nosso) | Real: brechas presentes; o #587 também dava 404 ao admin não-autor | Média | Médio-baixo | — | ✅ em produção (PR #261, 23/09) |
 | **3** | Pequenas e independentes: CSV (#529), textarea (#559), vários App Secrets (#500), tags da v1 (#560, só medir), e o resolvedor do canal Meta (3e — achado NOSSO da Fase 2, sem PR do upstream); com a P9, a normalização do telefone digitado — dividida em 3-I a 3-IV | Moderado | Baixa | Baixo | — | ✅ em produção: 3-I, 3-II, 3-IV e 3-III (PRs #262, #265, #269 e #276, 23/09) |
 | **4** | Fluxos: `{{vars}}` em botões e listas (#553) | Inerte hoje (0 fluxos ativos) | Média | Médio-baixo | — | ✅ em produção (PR #271, 23/09): porte manual — o #259 **descartou** o `engine.ts` deles; teste real feito com a janela aberta pelo operador |
-| **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | colunas aplicadas (correção do #259); gravar, mostrar e espelhar pendentes — o #259 descartou o webhook deles |
+| **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | colunas aplicadas (correção do #259); gravar, mostrar e espelhar: em PR (porte manual — o #259 descartou o webhook deles) |
 | **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | 6a CRU em produção pelo #259 (rotas com o canal preservado; falta o teste com a WABA e o teto da leitura); 6b CRU e inerte (a rota não passa o `wabaId`) |
 | **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | CRU só no caminho LEGADO (que não é montado); o porte para `cb-channels` pendente; a doc do original foi apagada até lá |
 | **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | biblioteca CRUA no `main`; o cartão ESCONDIDO (correção do #259) até o ouvinte ser montado com as adaptações |
@@ -782,7 +782,7 @@ Codex e deploy próprios:
 | --- | --- | --- |
 | **3-I** | 3b, 3c, 3d (só medir) e 3e — nada toca telefone | ✅ PR #262 |
 | **3-II** | 3a (#529) + a metade aditiva do #586 NAS TELAS: formulário e ficha do contato, importação de CSV, CSV do disparo — telefone digitado sai normalizado pela nossa régua, e o inválido é CONTADO com motivo, nunca chamado de duplicata | ✅ PR #265 (23/09) |
-| **3-III** | a mesma normalização na ENTRADA da API (v1 de contatos, mensagens e disparos) e em `/api/cb/conversas/abrir`, com `docs/public-api.md` — e, a pedido do operador, o webhook de entrada (Typebot) e o passo "Enviar para um número" | ✅ PR #276 (23/09); o passo "Enviar para um número" num PR próprio logo depois |
+| **3-III** | a mesma normalização na ENTRADA da API (v1 de contatos, mensagens e disparos) e em `/api/cb/conversas/abrir`, com `docs/public-api.md` — e, a pedido do operador, o webhook de entrada (Typebot) e o passo "Enviar para um número" | ✅ PR #276 (23/09); o passo "Enviar para um número" no ✅ PR #282 (23/09, merge `d7e597fd`, rollout 23:53Z; saúde, ingestão e o único passo de aviso conferidos) |
 | **3-IV** | 3f — a CONTAGEM do público do disparo (#594) truncando em 1000 (o envio já pagina) | ✅ PR #269 (23/09; ver o resultado abaixo) |
 
 **Resultado da 3-I (23/09/2026, PR #262):**
@@ -1267,7 +1267,53 @@ verdade, e responde a pergunta que a Fase 2 deixou aberta (131049? 131050?
 130472? 131042?). ⚠️ O webhook que recebe esse status é o da PRODUÇÃO — por
 isso só depois do deploy.
 
-**Resultado:** — (a preencher)
+**Resultado (em andamento, 23/09/2026):**
+
+- **Medido antes, na produção:** as três colunas da 1039 existem
+  (`error_code` integer, `error_title` e `error_details` text) e estão
+  vazias. Das mensagens `failed`, nenhuma é da conexão oficial — as 3 são da
+  Evolution (a "2 `failed` desde 10/09" da tabela era outra foto). Um
+  destinatário de disparo `failed` (o da Fase 2, 21/09) com `error_message`
+  nulo. A mudança vale daqui para a frente.
+- **Porte manual** (o #259 descartou o webhook deles, e o #277 reescreveu
+  `handleStatusUpdate`): `motivoDaFalhaDaMeta` e `linhaDoMotivo` em
+  `recibo-da-meta.ts` — PARSE do `errors[0]`, porque o motivo vai no MESMO
+  UPDATE que pinta a falha, e um código não numérico, fracionário ou fora do
+  `integer`, ou um texto com NUL ou surrogate solto, derrubaria a situação
+  junto (a versão do original grava cru). O código numérico que chegue em
+  texto é aceito (o Postgres o converteria). O patch do `tentar()` leva as
+  três colunas; o UPDATE condicional do destinatário leva o `error_message`
+  (`[código] título: detalhes`). A bolha é NOSSA: ela já dizia "Não entregue"
+  em palavras, então o motivo entra numa linha discreta abaixo
+  (`motivoNaBolha`, em `src/lib/inbox/motivo-da-falha.ts`, até duas linhas, o
+  texto inteiro no `title`), no `title` da linha vermelha e no do X do
+  rodapé (o do original). Com motivo, a linha vermelha troca "Envie de novo"
+  por "veja o motivo abaixo antes de enviar de novo" (`naoEntregueComMotivo`):
+  nos motivos mais comuns da Meta, reenviar igual falha de novo. A chave
+  `Inbox.bubble.notDelivered` do original SAIU dos dois dicionários (ficaria
+  sem uso: a nossa frase é `naoEntregue`); entraram `motivoDaFalha` e
+  `naoEntregueComMotivo`. Asserção das três colunas no `verify-schema.sql`.
+- **Verificação:** suíte inteira no Node 22, typecheck, lint na base (60),
+  os dois portões de i18n; mutantes (ver o PR). **Preview**, com o dev
+  server subido com o `META_APP_SECRET` de TESTE: um recibo `failed` com
+  motivo, assinado e mandado ao webhook LOCAL sobre a interativa de teste da
+  Fase 4 (`bd2f0e6d…`, conexão oficial, conversa do lead de teste) → as três
+  colunas gravadas no mesmo UPDATE, a bolha com o motivo em duas linhas
+  (contraste 4,46 no claro e 6,01 no escuro, contra 3,86/4,09 da linha
+  vermelha que já existia), uma linha de `console.warn`; depois `delivered`
+  e `read` → a situação CONTINUA `failed` e o motivo fica. Restaurada
+  (`sent`, sem motivo) por UPDATE cercado; nenhuma sobra. Ninguém assina
+  `message.status_updated` nesta conta, então nada saiu para o n8n.
+
+  **Revisão (duas lentes, cético no achado):**
+
+  | Achado | Destino |
+  | --- | --- |
+  | P2 (confirmado) — o CHANGELOG dizia, na mesma versão, que nada grava as colunas da 1039 | ✅ as duas frases corrigidas |
+  | P3 (Lente 1, medido num Postgres 16) — NUL ou surrogate solto no texto da Meta derrubaria o UPDATE que marca a falha (a mensagem ficaria `sent` para sempre) | ✅ `texto()` limpa o conteúdo, testado |
+  | P3 (Lente 1) — "Envie de novo" logo acima de um motivo que diz que reenviar não adianta | ✅ `naoEntregueComMotivo` |
+  | P3 (Lente 2, medido) — "um `code` em texto derrubaria" é falso para texto numérico | ✅ a frase corrigida nos três lugares, e o código numérico em texto passa a ser aceito |
+  | P3 (Lente 2) — o tooltip no X do original não foi portado, sem decisão escrita | ✅ portado |
 
 ### Fase 6 — Modelos da Meta
 

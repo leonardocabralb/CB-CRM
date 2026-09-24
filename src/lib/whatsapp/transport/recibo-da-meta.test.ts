@@ -3,6 +3,8 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   PAUSAS_DO_RECIBO_DA_META_MS,
+  linhaDoMotivo,
+  motivoDaFalhaDaMeta,
   pausasDoReciboDaMeta,
   reciboDaMeta,
 } from './recibo-da-meta';
@@ -51,6 +53,81 @@ describe('o vocabulário do recibo da Meta', () => {
     for (const estranho of ['deleted', 'warning', 'pending', 'replied', '', 'SENT', null, undefined, 3]) {
       expect(reciboDaMeta(estranho)).toBeNull();
     }
+  });
+});
+
+describe('o motivo da falha (Fase 5, #535)', () => {
+  // A forma que a Meta documenta para `statuses[].errors[]`; o texto é
+  // ilustrativo.
+  const erro = {
+    code: 131049,
+    title: 'This message was not delivered to maintain healthy ecosystem engagement.',
+    message: 'This message was not delivered to maintain healthy ecosystem engagement.',
+    error_data: { details: 'In order to maintain a healthy ecosystem engagement, the message failed to be delivered.' },
+    href: 'https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes/',
+  };
+
+  it('lê código, título e detalhes do primeiro erro de um recibo failed', () => {
+    expect(motivoDaFalhaDaMeta('failed', [erro, { code: 1, title: 'outro' }])).toEqual({
+      codigo: 131049,
+      titulo: erro.title,
+      detalhes: erro.error_data.details,
+    });
+  });
+
+  it('só no failed: outro status com errors não tem motivo', () => {
+    for (const s of ['sent', 'delivered', 'read', 'played', 'deleted']) {
+      expect(motivoDaFalhaDaMeta(s, [erro])).toBeNull();
+    }
+  });
+
+  it('failed sem errors (ou com errors vazio ou estranho) não tem motivo', () => {
+    for (const errors of [undefined, null, [], [null], ['texto'], {}, 'x']) {
+      expect(motivoDaFalhaDaMeta('failed', errors)).toBeNull();
+    }
+    expect(motivoDaFalhaDaMeta('failed', [{ href: 'https://x' }])).toBeNull();
+  });
+
+  it('⚠️ campo que o Postgres recusaria vira nulo, nunca vai cru ao UPDATE (derrubaria a situação junto)', () => {
+    expect(motivoDaFalhaDaMeta('failed', [{ code: 'abc', title: 'T' }])).toEqual({
+      codigo: null,
+      titulo: 'T',
+      detalhes: null,
+    });
+    // Código numérico em texto: o Postgres o converteria, e o dado não se perde.
+    expect(motivoDaFalhaDaMeta('failed', [{ code: ' 131049 ', title: 'T' }])?.codigo).toBe(131049);
+    expect(motivoDaFalhaDaMeta('failed', [{ code: '99999999999', title: 'T' }])?.codigo).toBeNull();
+    // Fora do `integer` do Postgres, e não inteiro.
+    expect(motivoDaFalhaDaMeta('failed', [{ code: 2 ** 31, title: 'T' }])?.codigo).toBeNull();
+    expect(motivoDaFalhaDaMeta('failed', [{ code: 1.5, title: 'T' }])?.codigo).toBeNull();
+    expect(motivoDaFalhaDaMeta('failed', [{ code: 131026, title: 5, error_data: 'x' }])).toEqual({
+      codigo: 131026,
+      titulo: null,
+      detalhes: null,
+    });
+  });
+
+  it('⚠️ o CONTEÚDO também: NUL sai e surrogate solto vira \uFFFD, senão o Postgres recusa o UPDATE', () => {
+    const m = motivoDaFalhaDaMeta('failed', [
+      { code: 1, title: 'a\u0000b', error_data: { details: 'x\uD800y \uDC00z \uD83D\uDE00' } },
+    ]);
+    expect(m?.titulo).toBe('ab');
+    // O par completo (o emoji) fica; só as metades soltas são trocadas.
+    expect(m?.detalhes).toBe('x\uFFFDy \uFFFDz \uD83D\uDE00');
+    expect(motivoDaFalhaDaMeta('failed', [{ title: '\u0000 ' }])).toBeNull();
+  });
+
+  it('sem title, o message serve de título; texto em branco não conta', () => {
+    expect(motivoDaFalhaDaMeta('failed', [{ code: 1, title: '  ', message: 'M' }])?.titulo).toBe('M');
+    expect(motivoDaFalhaDaMeta('failed', [{ code: 1, error_data: { details: ' ' } }])?.detalhes).toBeNull();
+  });
+
+  it('a linha do disparo: [código] título: detalhes, sem pedaço vazio', () => {
+    expect(linhaDoMotivo({ codigo: 131049, titulo: 'T', detalhes: 'D' })).toBe('[131049] T: D');
+    expect(linhaDoMotivo({ codigo: 131049, titulo: 'T', detalhes: null })).toBe('[131049] T');
+    expect(linhaDoMotivo({ codigo: null, titulo: 'T', detalhes: 'D' })).toBe('T: D');
+    expect(linhaDoMotivo({ codigo: null, titulo: null, detalhes: 'D' })).toBe('D');
+    expect(linhaDoMotivo({ codigo: 7, titulo: null, detalhes: null })).toBe('[7]');
   });
 });
 

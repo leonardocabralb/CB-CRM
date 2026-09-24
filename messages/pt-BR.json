@@ -439,6 +439,7 @@
       "botBadge": "Robô",
       "botBadgeTitle": "Enviada automaticamente por uma automação ou fluxo — não foi escrita por uma pessoa",
       "naoEntregue": "Não entregue — o destinatário não recebeu. Envie de novo.",
+      "naoEntregueComMotivo": "Não entregue — o destinatário não recebeu. Veja o motivo abaixo antes de enviar de novo.",
       "naoConfirmada": "Não confirmada — o destinatário provavelmente não recebeu. Envie de novo ou confirme com ele.",
       "naoConfirmadaDica": "O WhatsApp do destinatário não confirmou esta mensagem, embora tenha confirmado outra enviada depois dela (pelo CRM ou pelo celular) ou ele tenha escrito depois dela.",
       "download": "Baixar",
@@ -446,7 +447,7 @@
       "viewImage": "Ver imagem",
       "expandVideo": "Ampliar vídeo",
       "imageAlt": "Imagem enviada",
-      "notDelivered": "Não entregue"
+      "motivoDaFalha": "Motivo informado pela Meta: {motivo}"
     },
     "audioPlayer": {
       "tocar": "Reproduzir áudio",

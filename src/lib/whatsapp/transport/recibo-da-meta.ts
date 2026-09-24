@@ -41,6 +41,85 @@ export function reciboDaMeta(status: unknown): StatusDoRecibo | null {
 }
 
 /**
+ * O motivo que a Meta manda num recibo `failed` (`errors[0]`), nas colunas da
+ * 1039 (`messages.error_code`/`error_title`/`error_details`) — upstream #535,
+ * Fase 5 do merge do upstream. Sem ele, o operador via a bolha "Não entregue"
+ * sem saber se o número está bloqueado, se a janela de 24 h fechou ou se foi
+ * o limite de marketing.
+ *
+ * ⚠️ Só a Meta tem motivo. A falha da Evolution (recibo ERROR, envio recusado)
+ * não preenche estas colunas: a Evolution não diz por quê.
+ */
+export interface MotivoDaFalha {
+  codigo: number | null;
+  titulo: string | null;
+  detalhes: string | null;
+}
+
+/** Teto do `integer` do Postgres: valor fora dele derrubaria o UPDATE inteiro. */
+const MAIOR_INTEIRO = 2_147_483_647;
+
+/**
+ * O texto como o Postgres o aceita. Além do tipo, o CONTEÚDO: o NUL (`\u0000`)
+ * não cabe em `text`, e um surrogate solto (metade de um emoji) torna o JSON
+ * inválido — os dois fazem o PostgREST recusar o UPDATE inteiro (medido num
+ * Postgres 16 na revisão da Fase 5). O NUL sai; o surrogate solto vira `�`.
+ */
+function texto(valor: unknown): string | null {
+  if (typeof valor !== 'string') return null;
+  const limpo = valor
+    .replaceAll('\u0000', '')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD')
+    .trim();
+  return limpo || null;
+}
+
+/** O código como inteiro do Postgres; a Meta o documenta como número. */
+function codigoDoErro(code: unknown): number | null {
+  const n = typeof code === 'string' && /^-?\d+$/.test(code.trim()) ? Number(code) : code;
+  return typeof n === 'number' && Number.isInteger(n) && Math.abs(n) <= MAIOR_INTEIRO ? n : null;
+}
+
+/**
+ * Lê `errors[0]` de um recibo `failed`; qualquer outro status devolve `null`.
+ *
+ * ⚠️ PARSE, nunca `as`: o motivo vai no MESMO UPDATE da situação (é ele que
+ * pinta a bolha de vermelho), e um campo que o Postgres recusa — um código
+ * não numérico, fracionário ou fora do `integer`, um texto com NUL — faria o
+ * PostgREST recusar a gravação inteira. A falha ficaria sem a bolha vermelha
+ * por causa do texto que a explica.
+ */
+export function motivoDaFalhaDaMeta(status: unknown, errors: unknown): MotivoDaFalha | null {
+  if (reciboDaMeta(status) !== 'failed' || !Array.isArray(errors)) return null;
+  const erro = errors[0];
+  if (!erro || typeof erro !== 'object') return null;
+  const { code, title, message, error_data } = erro as Record<string, unknown>;
+  const codigo = codigoDoErro(code);
+  // `title` é o rótulo curto; `message` costuma repetir o mesmo texto e só
+  // serve quando o título não veio.
+  const titulo = texto(title) ?? texto(message);
+  const detalhes =
+    error_data && typeof error_data === 'object'
+      ? texto((error_data as Record<string, unknown>).details)
+      : null;
+  if (codigo === null && !titulo && !detalhes) return null;
+  return { codigo, titulo, detalhes };
+}
+
+/**
+ * O motivo numa linha só — o `error_message` do destinatário do disparo, que
+ * já existe desde a 001 (a 1039 não abriu colunas lá). Forma do original:
+ * `[código] título: detalhes`.
+ */
+export function linhaDoMotivo(motivo: MotivoDaFalha): string {
+  const cabeca = [motivo.codigo !== null ? `[${motivo.codigo}]` : null, motivo.titulo]
+    .filter(Boolean)
+    .join(' ');
+  if (!motivo.detalhes) return cabeca;
+  return cabeca ? `${cabeca}: ${motivo.detalhes}` : motivo.detalhes;
+}
+
+/**
  * Pausas entre as tentativas quando a linha da mensagem ainda não existe: 7 s
  * ao todo, contra os 30 s da Evolution. Na Meta ninguém segura a gravação de
  * propósito (a Evolution espera 2 s no `jaGravada` e despeja lotes ao
