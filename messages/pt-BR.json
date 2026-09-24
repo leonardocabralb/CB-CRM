@@ -3645,7 +3645,7 @@
       "enableAssistant": "Ativar assistente de IA",
       "enableAssistantDesc": "Controle geral. Ativa o botão “Rascunho com IA” na caixa de entrada.",
       "autoReply": "Responder automaticamente às mensagens recebidas",
-      "autoReplyDesc": "O bot responde automaticamente às novas mensagens recebidas (apenas quando nenhum fluxo as trata e nenhum atendente está atribuído). Encaminha para um humano quando não consegue ajudar.",
+      "autoReplyDesc": "O bot responde automaticamente às novas mensagens recebidas (apenas quando nenhum fluxo as trata e nenhum atendente está atribuído). Encaminha para um humano quando não consegue ajudar. No número oficial (API da Meta), a mensagem do cliente aparece como lida, com \"digitando…\", enquanto a resposta é preparada — inclusive quando ela acaba passando para uma pessoa.",
       "maxAutoReplies": "Máximo de respostas automáticas por conversa",
       "maxAutoRepliesDesc": "Depois desse número de respostas do bot em uma mesma conversa, o bot para de responder.",
       "handoffTo": "Encaminhar para",

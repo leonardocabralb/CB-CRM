@@ -264,6 +264,14 @@ Radar.
 
 ### Assistente e provedores (`src/lib/ai/`)
 
+- ⚠️ **O "digitando…" (#527) sai pelo MESMO canal da resposta**
+  (`mostrarDigitando`, `src/lib/ai/digitando.ts`): a resolução de
+  `engineSendText` com o canal da entrada, só em canal Meta e só com id
+  `wamid.` (o webhook da Meta o passa; a Evolution não tem o recurso). Nunca as
+  credenciais da CONTA, como no original. Melhor esforço, sem `await`: nunca
+  lança nem segura a resposta, e o log passa por `semTokenDaMeta`. ⚠️ A Meta
+  marca a mensagem do cliente como LIDA junto (decisão do operador, P6).
+  Chamado depois de TODOS os portões, antes de gerar a resposta.
 - **`generateStructured` (`structured.ts`) é separado de `generateReply` DE
   PROPÓSITO**: o auto-reply e o rascunho não podem herdar regressão do caminho
   de análise. Não fundir.

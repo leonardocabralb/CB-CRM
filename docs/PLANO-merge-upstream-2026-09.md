@@ -194,8 +194,8 @@ quebrar, sabe-se qual.
 | **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | ✅ em produção (PR #283, merge `6cedb67a`, rollout 24/09 00:24Z): porte manual — o #259 descartou o webhook deles; falta o disparo REAL fora da janela (a janela do lead de teste fecha 24/09 19:14Z) |
 | **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | ✅ em produção (PR #284, merge `fe2a7530`, rollout 24/09 12:24:56Z): 6a (o teto na leitura) e 6b (stub COMPLETO por `cb_channels`, ligado), com E2E contra a Meta; pós-deploy conferido (seção da fase) |
 | **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | ✅ em produção (PR #285, merge `f5879b3f`, rollout 24/09 14:17:55Z, na reexecução): o motivo da falha em *Conexões* (`POST /api/cb/channels`), o par WABA/número conferido, a assinatura da WABA fatal, o token limpo das mensagens, o POST legado aposentado (410) e `docs/conexao-meta.md`; testado contra a Meta real com o token da conexão oficial (só leituras); pós-deploy conferido (seção da fase) |
-| **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | ✅ mesclada (PR #287): o ouvinte montado na casca, dentro da `<PortaDeEntrada>`, com a régua do operador (perfil, grupo fora, "quais conversas", texto opcional, mensagem antiga calada), a preferência por pessoa e o cartão de volta em *Seu perfil*; testado na preview; o pós-deploy é registrado no PR da Fase 9 |
-| **9** | "Digitando…" da IA (#527), sobre o canal da conversa | Inerte hoje (auto-reply desligado) | Média | Médio | — | só a função (`sendTypingIndicator`, sem chamador); o `auto-reply.ts` deles foi descartado |
+| **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | ✅ em produção (PR #287, merge `789370a0`, rollout 24/09 16:44:28Z): o ouvinte montado na casca, dentro da `<PortaDeEntrada>`, com a régua do operador (perfil, grupo fora, "quais conversas", texto opcional, mensagem antiga calada), a preferência por pessoa e o cartão de volta em *Seu perfil*; testado na preview; pós-deploy conferido (seção da fase) |
+| **9** | "Digitando…" da IA (#527), sobre o canal da conversa | Inerte hoje (auto-reply desligado) | Média | Médio | — | ✅ mesclada (PR #288): o "digitando…" pelo canal da resposta, só Meta e com `wamid.`, melhor esforço; inerte (resposta automática desligada); aceito pela Meta real; o pós-deploy é registrado no PR da Fase 10 |
 | **10** | i18n das telas em inglês (#577, #578, #579) | 219 chaves | Média (braçal) | Baixo | — | parcial pelo #259 (240 chaves unidas, telas DELES traduzidas); `pt.json`/`es.json` apagados (P3); faltam as telas NOSSAS e ~129 órfãs |
 | **11** | **BSUID (#533)** — por último | Preventivo (0 fichas sem telefone) | **Alta** | **Alto** | `1038` (+ a do CHECK da P4) | colunas aplicadas e a biblioteca (`wa-identity.ts`) no `main`; entrada, saída e tela pendentes |
 | **12** | ~~Merge de ancestralidade~~ → **inventário do que o #259 descartou** | O merge já aconteceu (#259) | Média | Baixo | — | a fazer: a lista está na seção "O merge #259" |
@@ -1600,6 +1600,11 @@ conexão fora do perfil → nada; clique abre `/inbox?c=`.
   rodada porque o pino procurava o `new CustomEvent(...)` e não o disparo, e
   foi amarrado ao `window.dispatchEvent`).
 
+- **Merge e pós-deploy (24/09/2026):** PR #287 mesclado às 16:37:58Z (merge
+  `789370a0`, cabeça `64d4b670`; o `main` não tinha andado), rollout
+  "converged" às 16:44:28Z na primeira tentativa. Conferido depois: login 200,
+  `/inbox` 307, crons 401, manifesto 200; ingestão viva. Codex sem cota.
+
 ### Fase 9 — "Digitando…" enquanto a IA responde
 
 **Origem:** #527 (`ec010c7`). **Medido:** resposta automática DESLIGADA na
@@ -1611,7 +1616,38 @@ aviso no log e nunca segura a resposta.
 mensagem do celular dele ao número oficial e um script local dispara o indicador
 para aquele `wamid`. ⚠️ Depende do operador (decisão P5).
 
-**Resultado:** — (a preencher)
+**Resultado (24/09/2026):**
+
+- **Medido antes:** o #259 trouxe `sendTypingIndicator` (`meta-api.ts`) e o teste
+  dele, mas não o chamador: a resposta automática não disparava o indicador e o
+  webhook da Meta não passava o `wamid`. O original lê as credenciais da CONTA
+  (`loadAccountMetaCredentials`, o número padrão): com dois números oficiais,
+  marcaria a mensagem num número e responderia pelo outro. A resposta automática
+  está DESLIGADA na produção — a fase entra inerte.
+- **O que entrou:** `src/lib/ai/digitando.ts` (`mostrarDigitando`) — resolve o
+  canal pela MESMA função da resposta (`resolveEngineChannelPreferring` com o
+  canal da entrada), só age em canal Meta e com id `wamid.`, melhor esforço
+  (nunca lança, sem `await`, log por `semTokenDaMeta`); chamado na resposta
+  automática depois de TODOS os portões e antes de gerar o texto; o webhook da
+  Meta passa `inboundMessageId: message.id`. A Evolution não passa nada.
+  Decisão do operador (P6): manter, sabendo que a Meta marca a mensagem do
+  cliente como LIDA junto.
+- **Verificado:** typecheck; lint (60, a base); suíte no Node 22 (432 arquivos,
+  6.150 testes); os dois portões de i18n; mutantes 9/9 (o do canal da entrada, depois da revisão).
+- **Teste contra a Meta REAL** (P5, delegado pelo operador; o código da branch
+  rodado por um script local, com o token decifrado só em memória), na última
+  mensagem que o lead de teste mandou ao número oficial (a janela aberta até
+  24/09 19:14Z): id da Evolution → pulado, sem chamada; o `wamid` do lead →
+  "digitando…" ACEITO pela Meta (o efeito — a mensagem lida e o indicador no
+  celular dele — não foi conferido na tela do aparelho); `wamid` inexistente → a Meta recusou (131009), a função não
+  lançou, e o log saiu sem o token.
+- **Revisão** (duas lentes, um cético por achado; Codex sem cota): nenhum P0–P2.
+
+  | Achado | Destino |
+  | --- | --- |
+  | P3 — nenhum pino fixava que o indicador usa o canal da ENTRADA: `channelId: null` passava verde (medido por mutante) | ✅ o pino exige `channelId` na chamada e o `preferredChannelId: channelId` da resposta; mutante morto |
+  | P3 — a ajuda de "Responder automaticamente" não dizia que, no número oficial, a mensagem do cliente passa a aparecer como LIDA (inclusive quando a conversa acaba indo para uma pessoa) | ✅ a frase entrou nos dois dicionários |
+  | Refutados pelo cético (4): o indicador sai antes do handoff, da falha do provedor e da corrida do teto (é o desenho do original, escrito no código dele: "nothing to undo on the handoff path"; e o que a P6 aceitou); o `void` no lugar do `await` do original (troca deliberada e escrita: o `await` sem prazo seguraria a resposta; a ordem já vem quase garantida pelas idas ao banco e pela geração) — as duas lentes levantaram os dois | — |
 
 ### Fase 10 — i18n das telas que estavam em inglês
 
@@ -1787,3 +1823,4 @@ acima, depois das fases, mostrando só divergência NOSSA.
 | 24/09/2026 | 7 | O #505 portado para *Conexões* (`POST /api/cb/channels`): o motivo da falha em lista fechada, traduzido num aviso que fica, com o campo destacado, o código e o trace id; o par WABA/número conferido; a assinatura da WABA fatal; o token limpo das mensagens da Meta; `paging.next` cercado; o token do upload fora da URL; o POST legado aposentado (410). Duas lentes: nenhum P0–P2, quatro P3 corrigidos. O teste com o token REAL da conexão oficial (só leituras, autorizado pelo operador) mostrou que a WABA trocada volta "nonexisting field" e era lida como "valor recusado" — a frase entrou na regra. Mutantes 21/21. Pós-deploy da Fase 6 registrado. PR #285. |
 | 24/09/2026 | fora do plano (instruções) | O `CLAUDE.md` (626 KB, carregado INTEIRO em toda sessão e de novo a cada compactação; um subagente estourou 211 mil tokens antes de começar) virou uma raiz de 36 KB com as regras transversais e as decisões do operador, 32 regras de área em `.claude/rules/` (cada uma com `paths:`, só carregam quando a Read abre um arquivo da área) e duas listas de consulta (`docs/MERGE-UPSTREAM.md`, `docs/MIGRATIONS-APLICADAS.md`). Portão novo `scripts/instrucoes.test.ts` (teto de 40 KB/25 KB, `paths:` obrigatório, glob morto reprova, índice completo) e a consulta `scripts/regras-do-diff.mjs`. Seis revisores de cobertura, um por faixa do texto antigo (~1.160 regras conferidas), acharam 18 faltas, todas corrigidas, e nenhuma distorção além de um intervalo Unicode escrito com os caracteres literais; a segunda lente corrigiu a visibilidade (regra que só carregava longe de quem precisa dela). No mesmo PR: o pós-deploy da Fase 7, a P9 resolvida, P2/P4/P6 decididas pelo operador e a nota do Sincronizar corrigida. PR #286: merge `9da89dcb` às 16:06:16Z, rollout "converged" às 16:12:48Z na primeira tentativa; saúde anônima em ordem e ingestão viva. |
 | 24/09/2026 | 8 | O #516 portado: `silencioDoAviso` (perfil pelo contexto real, grupo fora, "quais conversas", mensagem gravada mais de 1 h depois calada), preferência por pessoa, cartão de volta com as duas configurações (P2). Duas lentes: um P2 das duas (o clique com o inbox já montado só trocava a URL) e dois P3 (celular; conversa nova sem canal), corrigidos; 5 refutados. Mutantes 18/18. E2E na preview com mensagens inseridas direto na conversa do lead de teste, limpas no fim. PR #287. |
+| 24/09/2026 | 9 | O #527 portado: `mostrarDigitando` pelo MESMO canal da resposta (não pelas credenciais da conta, como o original), só Meta e com `wamid.`, sem `await`, log sem token; a ajuda da resposta automática avisa do "lida" (P6). Teste contra a Meta real no `wamid` do lead de teste. Duas lentes: dois P3 corrigidos, quatro refutados. PR #288. |

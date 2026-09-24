@@ -8,6 +8,7 @@ import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
+import { mostrarDigitando } from './digitando'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
 interface DispatchArgs {
@@ -20,6 +21,9 @@ interface DispatchArgs {
   configOwnerUserId: string
   /** Canal por onde a mensagem entrou. Decide QUAL agente responde, se algum. */
   channelId?: string | null
+  /** O `wamid` da mensagem RECEBIDA (só o webhook da Meta passa): o
+   *  "digitando…" marca ESTA mensagem como lida. Ver `digitando.ts`. */
+  inboundMessageId?: string | null
 }
 
 /**
@@ -139,6 +143,17 @@ export async function dispatchInboundToAiReply(
       )
       return
     }
+
+    // "Digitando…" (#527): todos os portões passaram e a resposta vai ser
+    // gerada. Melhor esforço e sem esperar — nunca lança nem segura a
+    // resposta. ⚠️ Marca a mensagem do cliente como LIDA (tique azul): é
+    // assim que a Meta faz, e o operador decidiu manter (P6).
+    void mostrarDigitando(db, {
+      accountId,
+      conversationId,
+      channelId,
+      inboundMessageId: args.inboundMessageId,
+    })
 
     // Ground the reply in the account's knowledge base (best-effort).
     const knowledge = await retrieveKnowledge(
