@@ -24,7 +24,8 @@ import {
   type PreferenciaDeAviso,
 } from "@/lib/notifications/aviso-no-navegador";
 import { nomeDoContato, type ContatoIdentificavel } from "@/lib/contacts/identidade";
-import { urlDoInbox } from "@/lib/inbox/url";
+import { EVENTO_ABRIR_CONVERSA, urlDoInbox } from "@/lib/inbox/url";
+import { MIDIA_DE_TOQUE } from "@/lib/celular/teclado";
 
 // ⚠️ Este arquivo veio do original (#516) e foi PORTADO na Fase 8 do plano do
 // merge do upstream: a preferência é POR PESSOA, a régua de quem recebe
@@ -33,6 +34,18 @@ import { urlDoInbox } from "@/lib/inbox/url";
 // versão dele crua devolve o aviso de grupo e de conexão fora do perfil.
 
 const semServidor = () => null;
+
+/**
+ * O aviso pode aparecer NESTE aparelho? Sem service worker, `new
+ * Notification()` só funciona no computador: no Chrome do Android e no app
+ * instalado no iPhone a API existe, a permissão é concedida — e o construtor
+ * lança. O cartão ligaria e nada chegaria (o defeito que tirou o cartão no
+ * #259). Aparelho de toque conta como "não suportado".
+ */
+export function avisoPossivelNoAparelho(): boolean {
+  if (getNotificationPermission() === "unsupported") return false;
+  return !window.matchMedia?.(MIDIA_DE_TOQUE).matches;
+}
 
 function lerTexto(chave: string | null): string | null {
   if (!chave || typeof window === "undefined") return null;
@@ -149,7 +162,7 @@ export function useBrowserNotifications(): void {
 
   useEffect(() => {
     if (!ativo || !userId) return;
-    if (getNotificationPermission() === "unsupported") return;
+    if (!avisoPossivelNoAparelho()) return;
 
     const supabase = createClient();
     let cancelado = false;
@@ -195,6 +208,11 @@ export function useBrowserNotifications(): void {
         notificacao.onclick = () => {
           window.focus();
           router.push(urlDoInbox({ c: msg.conversation_id }));
+          // Com a caixa de entrada já montada, o push só troca a query: a
+          // página abre a conversa por este sinal (ninguém escuta fora dela).
+          window.dispatchEvent(
+            new CustomEvent(EVENTO_ABRIR_CONVERSA, { detail: msg.conversation_id }),
+          );
           notificacao.close();
         };
       } catch (err) {

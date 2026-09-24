@@ -206,3 +206,14 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   componente renderizar sem parar.
 - **O título sai de `nomeDoContato`** (telefone, senão `@instagram`), nunca do
   `pickContactDisplayName` do original.
+- ⚠️ **O clique dispara `EVENTO_ABRIR_CONVERSA` além do `router.push`**: com
+  o inbox já montado (visível noutra conversa, num segundo monitor), o push só
+  troca a query — a página não remonta e o deep link só é lido quando a lista
+  recarrega. A página escuta e abre pelo caminho do "Nova conversa", sem
+  reabrir a que já está ativa (zeraria o fio carregado).
+- ⚠️ **Conversa NOVA pode ser lida sem `channel_id`** (o canal chega à
+  conversa depois do INSERT da mensagem): na 1:1 sem canal, o recorte usa o
+  canal carimbado NA mensagem — senão a conversa de outra conexão passaria.
+- ⚠️ **Aparelho de toque é "não suportado"** (`avisoPossivelNoAparelho`,
+  `MIDIA_DE_TOQUE`): sem service worker, `new Notification()` lança no Chrome
+  do Android e no app instalado no iPhone — a chave ligaria e nada chegaria.

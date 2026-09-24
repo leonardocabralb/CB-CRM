@@ -24,7 +24,7 @@ import { conversaNoEscopo } from "@/lib/perfis/escopo";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { VoltarAoFunil } from "@/components/inbox/voltar-ao-funil";
 import { avisarExecucoesMudaram } from "@/lib/execucoes/aviso";
-import { urlDoInbox } from "@/lib/inbox/url";
+import { EVENTO_ABRIR_CONVERSA, urlDoInbox } from "@/lib/inbox/url";
 import { comMensagemNova } from "@/lib/inbox/ordem-da-lista";
 import {
   novoPedidoDeSalto,
@@ -872,6 +872,27 @@ function InboxPageInner() {
     window.addEventListener("popstate", aoAndar);
     return () => window.removeEventListener("popstate", aoAndar);
   }, [limparConversaAberta]);
+
+  /**
+   * O clique no aviso do navegador, com esta página JÁ montada (a caixa de
+   * entrada visível noutra conversa, num segundo monitor). Abre pelo mesmo
+   * caminho do "Nova conversa": `conversaRecemAbertaRef` + recarga da lista,
+   * que seleciona a linha quando ela chega — sem olhar a URL, que pode ainda
+   * não ter propagado. ⚠️ A conversa que já está ativa não é reaberta: o
+   * ramo da recém-aberta zera `messages`, e o fio já carregado leria "nenhuma
+   * mensagem" (a mesma armadilha que o deep link documenta).
+   */
+  useEffect(() => {
+    const aoPedirAbertura = (e: Event) => {
+      const id = (e as CustomEvent<unknown>).detail;
+      if (typeof id !== "string" || !id) return;
+      if (conversaAbertaRef.current === id) return;
+      conversaRecemAbertaRef.current = id;
+      setResyncToken((n) => n + 1);
+    };
+    window.addEventListener(EVENTO_ABRIR_CONVERSA, aoPedirAbertura);
+    return () => window.removeEventListener(EVENTO_ABRIR_CONVERSA, aoPedirAbertura);
+  }, []);
 
 
   const handleMessagesLoaded = useCallback(

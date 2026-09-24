@@ -35,3 +35,12 @@ export function urlDoInbox(params: {
   if (params.de === "funil") partes.push(`de=${params.de}`);
   return partes.length > 0 ? `/inbox?${partes.join("&")}` : "/inbox";
 }
+
+/**
+ * Pedido de abertura de conversa vindo de FORA da página do inbox com ela já
+ * montada — hoje, o clique no aviso do navegador. O `router.push` sozinho só
+ * troca a query: a página não remonta, o deep link só é lido quando a lista
+ * recarrega, e a URL passava a dizer uma conversa com o fio mostrando outra.
+ * O `detail` é o id da conversa.
+ */
+export const EVENTO_ABRIR_CONVERSA = "cb:abrir-conversa";

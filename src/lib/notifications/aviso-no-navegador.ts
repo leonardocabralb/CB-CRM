@@ -99,6 +99,8 @@ export interface MensagemDoAviso {
   created_at: string;
   /** O `now()` da gravação (1003). Nulo na carga antiga: cai no relógio da tela. */
   gravada_em?: string | null;
+  /** O canal carimbado NA mensagem (no próprio INSERT). */
+  channel_id?: string | null;
 }
 
 /** O que a decisão lê da conversa (a consulta do ouvinte). */
@@ -133,7 +135,14 @@ export function silencioDoAviso(args: {
   // O clique leva à caixa de entrada: perfil sem ela cairia na TelaBloqueada.
   if (!podeVerTela(ctx, "inbox")) return "sem_caixa_de_entrada";
   if (conversa.group_id) return "grupo";
-  if (!conversaNoEscopo(ctx, conversa as Conversation)) return "fora_do_perfil";
+  // ⚠️ Conversa NOVA nasce sem `channel_id`: o canal chega à conversa três
+  // idas ao banco depois do INSERT da mensagem, e o ouvinte pode lê-la antes.
+  // Com a coluna nula o recorte deixaria passar (conversa sem canal passa).
+  // A mensagem já nasce carimbada, e é esse o canal que o `follow` grava.
+  const comCanal = conversa.channel_id
+    ? conversa
+    : { ...conversa, channel_id: mensagem.channel_id ?? null };
+  if (!conversaNoEscopo(ctx, comCanal as Conversation)) return "fora_do_perfil";
 
   const dono = conversa.assigned_agent_id ?? null;
   if (quais === "minhas" && dono !== userId) return "nao_e_sua";

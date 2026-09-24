@@ -42,11 +42,13 @@ function decide(over: {
   quais?: QuaisConversas;
   created_at?: string;
   gravada_em?: string | null;
+  canalDaMensagem?: string | null;
 } = {}) {
   return silencioDoAviso({
     mensagem: {
       created_at: over.created_at ?? new Date(AGORA - 5_000).toISOString(),
       gravada_em: over.gravada_em === undefined ? new Date(AGORA).toISOString() : over.gravada_em,
+      channel_id: over.canalDaMensagem ?? null,
     },
     conversa: conversa(over.conversa),
     ctx: over.ctx ?? RESTRITO,
@@ -104,6 +106,17 @@ describe("silencioDoAviso — quem recebe o aviso (P2)", () => {
 
   it("conversa SEM canal (anterior à 903) passa: não se esconde por ignorância", () => {
     expect(decide({ conversa: { channel_id: null } })).toBeNull();
+  });
+
+  it("conversa NOVA, ainda sem canal: vale o canal carimbado na mensagem", () => {
+    // O canal chega à conversa depois do INSERT da mensagem; lida antes, a
+    // coluna nula deixaria passar a conversa de outra conexão.
+    expect(decide({ conversa: { channel_id: null }, canalDaMensagem: "canal-b" })).toBe("fora_do_perfil");
+    expect(decide({ conversa: { channel_id: null }, canalDaMensagem: "canal-a" })).toBeNull();
+    // Com a conversa já carimbada, ela manda (a mensagem pode ser de outro número).
+    expect(decide({ conversa: { channel_id: "canal-a" }, canalDaMensagem: "canal-b" })).toBeNull();
+    // Grupo continua fora, com ou sem canal na mensagem.
+    expect(decide({ conversa: { channel_id: null, group_id: "g1" }, canalDaMensagem: "canal-a" })).toBe("grupo");
   });
 
   it("perfil sem a Caixa de entrada não avisa (o clique cairia na TelaBloqueada)", () => {

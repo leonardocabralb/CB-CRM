@@ -22,6 +22,8 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { usePreferenciaDeAviso } from '@/hooks/use-browser-notifications';
+import { useMediaQuery } from '@/hooks/use-media-query';
+import { MIDIA_DE_TOQUE } from '@/lib/celular/teclado';
 import {
   BROWSER_NOTIFY_CHANGE_EVENT,
   getNotificationPermission,
@@ -63,7 +65,11 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
   );
   const [requesting, setRequesting] = useState(false);
 
-  const supported = permission !== 'unsupported';
+  // Aparelho de toque: a API existe, mas sem service worker o aviso nunca
+  // aparece (ver `avisoPossivelNoAparelho`). Dizer "não suportado" é melhor
+  // que uma chave que liga e não faz nada.
+  const toque = useMediaQuery(MIDIA_DE_TOQUE);
+  const supported = permission !== 'unsupported' && !toque;
   const checked = preferencia.ativo && permission === 'granted';
 
   const onToggle = async (next: boolean) => {

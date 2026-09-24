@@ -79,4 +79,25 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     expect(hook).not.toMatch(/\bacesso\b/);
     expect(hook).toMatch(/papel: profile\?\.account_role/);
   });
+
+  it('o clique abre a conversa também com o inbox já montado', () => {
+    // Só o `router.push` troca a query e a página não remonta: a URL dizia
+    // uma conversa e o fio mostrava outra (revisão da Fase 8, P2).
+    const hook = semComentarios(ler('hooks/use-browser-notifications.ts'));
+    expect(hook).toMatch(
+      /window\.dispatchEvent\(\s*new CustomEvent\(EVENTO_ABRIR_CONVERSA, \{ detail: msg\.conversation_id \}\)/,
+    );
+    const inbox = semComentarios(ler('app/(dashboard)/inbox/page.tsx'));
+    expect(inbox).toMatch(/window\.addEventListener\(EVENTO_ABRIR_CONVERSA, /);
+    // ...sem reabrir a que já está ativa (zeraria o fio carregado).
+    expect(inbox).toMatch(/if \(conversaAbertaRef\.current === id\) return;\s*conversaRecemAbertaRef\.current = id;/);
+  });
+
+  it('aparelho de toque não liga o aviso (sem service worker o construtor lança)', () => {
+    const hook = semComentarios(ler('hooks/use-browser-notifications.ts'));
+    expect(hook).toMatch(/if \(!avisoPossivelNoAparelho\(\)\) return;/);
+    expect(hook).toMatch(/matchMedia\?\.\(MIDIA_DE_TOQUE\)\.matches/);
+    const cartao = semComentarios(ler('components/settings/browser-notifications-card.tsx'));
+    expect(cartao).toMatch(/const supported = permission !== 'unsupported' && !toque;/);
+  });
 });
