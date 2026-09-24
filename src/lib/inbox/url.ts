@@ -44,3 +44,11 @@ export function urlDoInbox(params: {
  * O `detail` é o id da conversa.
  */
 export const EVENTO_ABRIR_CONVERSA = "cb:abrir-conversa";
+
+/**
+ * A caixa de entrada ABRIU esta conversa (o `detail` é o id). Quem ouve: o
+ * aviso do navegador, que tira da fila de espera a mensagem que a pessoa
+ * acabou de ver. Amostrar a URL de tempos em tempos perdia quem abre e sai
+ * entre dois tiques, e a mensagem já lida virava aviso depois (Codex, PR #289).
+ */
+export const EVENTO_CONVERSA_ABERTA = "cb:conversa-aberta";

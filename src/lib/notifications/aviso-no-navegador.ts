@@ -106,8 +106,24 @@ export interface MensagemDoAviso {
 /** O que a decisão lê da conversa (a consulta do ouvinte). */
 export type ConversaDoAviso = Pick<
   Conversation,
-  "id" | "channel_id" | "group_id" | "group" | "assigned_agent_id"
+  "id" | "channel_id" | "channel_pinned" | "group_id" | "group" | "assigned_agent_id"
 >;
+
+/**
+ * Por quanto tempo a mensagem calada por "não é sua" espera a conversa ser
+ * ATRIBUÍDA a quem recebe. A automação disparada pela própria mensagem pode
+ * atribuí-la DEPOIS do INSERT que o realtime entrega — e sem prazo: antes do
+ * passo de atribuir podem rodar outros, um webhook leva até 10 s, e a cadeia
+ * não tem teto (Codex, PR #287 e duas rodadas no #289). Por isso não se dorme
+ * um tempo e se lê de novo: a mensagem fica ESTACIONADA, e o UPDATE da
+ * conversa atribuída a esta pessoa (realtime) a solta.
+ *
+ * O limite é o MESMO que separa mensagem nova de história
+ * (`LIMITE_DE_ATRASO_MS`, 1 h), contado da MENSAGEM: um aviso que sairia mais
+ * de uma hora depois dela já não é aviso de mensagem nova.
+ */
+export const JANELA_DA_ATRIBUICAO_MS = LIMITE_DE_ATRASO_MS;
+
 
 export type SilencioDoAviso =
   | "sem_caixa_de_entrada"
@@ -135,26 +151,43 @@ export function silencioDoAviso(args: {
   // O clique leva à caixa de entrada: perfil sem ela cairia na TelaBloqueada.
   if (!podeVerTela(ctx, "inbox")) return "sem_caixa_de_entrada";
   if (conversa.group_id) return "grupo";
-  // ⚠️ Conversa NOVA nasce sem `channel_id`: o canal chega à conversa três
-  // idas ao banco depois do INSERT da mensagem, e o ouvinte pode lê-la antes.
-  // Com a coluna nula o recorte deixaria passar (conversa sem canal passa).
-  // A mensagem já nasce carimbada, e é esse o canal que o `follow` grava.
-  const comCanal = conversa.channel_id
-    ? conversa
-    : { ...conversa, channel_id: mensagem.channel_id ?? null };
+  // ⚠️ Qual canal decide o recorte. Conversa FIXADA: o dela — é por ele que
+  // ela aparece no inbox e responde, e o `follow` não a troca. Conversa SOLTA
+  // segue o cliente: o `follow` grava o canal da mensagem DEPOIS do INSERT
+  // (três idas ao banco), e o ouvinte pode ler antes — a coluna ainda diria o
+  // número VELHO (Codex, PR #287) ou nulo (conversa nova). A mensagem já nasce
+  // carimbada, e é esse o canal que a conversa vai ter.
+  const canal =
+    conversa.channel_pinned && conversa.channel_id
+      ? conversa.channel_id
+      : (mensagem.channel_id ?? conversa.channel_id ?? null);
+  const comCanal = { ...conversa, channel_id: canal };
   if (!conversaNoEscopo(ctx, comCanal as Conversation)) return "fora_do_perfil";
 
-  const dono = conversa.assigned_agent_id ?? null;
-  if (quais === "minhas" && dono !== userId) return "nao_e_sua";
-  if (quais === "minhas_e_sem_responsavel" && dono !== null && dono !== userId) {
-    return "nao_e_sua";
-  }
-
+  // ⚠️ A ANTIGA vem antes do "não é sua": este vira espera pela atribuição
+  // (a mensagem estaciona), e uma carga de histórico em conversas de outra
+  // pessoa estacionaria uma mensagem por conversa sem nenhuma poder avisar
+  // (Codex, PR #289). Perfil, grupo e antiga são os silêncios definitivos.
   const carimbo = Date.parse(mensagem.created_at);
   const gravada = mensagem.gravada_em ? Date.parse(mensagem.gravada_em) : NaN;
   const referencia = Number.isNaN(gravada) ? agoraMs : gravada;
   if (!Number.isNaN(carimbo) && referencia - carimbo > LIMITE_DE_ATRASO_MS) {
     return "antiga";
   }
+
+  const dono = conversa.assigned_agent_id ?? null;
+  if (quais === "minhas" && dono !== userId) return "nao_e_sua";
+  if (quais === "minhas_e_sem_responsavel" && dono !== null && dono !== userId) {
+    return "nao_e_sua";
+  }
   return null;
+}
+
+/**
+ * O silêncio pode virar aviso se a conversa for atribuída a quem recebe?
+ * Só o "não é sua": perfil, grupo e mensagem antiga não mudam com a
+ * atribuição.
+ */
+export function esperaAtribuicao(silencio: SilencioDoAviso | null): boolean {
+  return silencio === "nao_e_sua";
 }
