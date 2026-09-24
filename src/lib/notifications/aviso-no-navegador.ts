@@ -172,17 +172,21 @@ export function silencioDoAviso(args: {
   const comCanal = { ...conversa, channel_id: canal };
   if (!conversaNoEscopo(ctx, comCanal as Conversation)) return "fora_do_perfil";
 
-  const dono = conversa.assigned_agent_id ?? null;
-  if (quais === "minhas" && dono !== userId) return "nao_e_sua";
-  if (quais === "minhas_e_sem_responsavel" && dono !== null && dono !== userId) {
-    return "nao_e_sua";
-  }
-
+  // ⚠️ A ANTIGA vem antes do "não é sua": este vira espera pela atribuição
+  // (a mensagem estaciona), e uma carga de histórico em conversas de outra
+  // pessoa estacionaria uma mensagem por conversa sem nenhuma poder avisar
+  // (Codex, PR #289). Perfil, grupo e antiga são os silêncios definitivos.
   const carimbo = Date.parse(mensagem.created_at);
   const gravada = mensagem.gravada_em ? Date.parse(mensagem.gravada_em) : NaN;
   const referencia = Number.isNaN(gravada) ? agoraMs : gravada;
   if (!Number.isNaN(carimbo) && referencia - carimbo > LIMITE_DE_ATRASO_MS) {
     return "antiga";
+  }
+
+  const dono = conversa.assigned_agent_id ?? null;
+  if (quais === "minhas" && dono !== userId) return "nao_e_sua";
+  if (quais === "minhas_e_sem_responsavel" && dono !== null && dono !== userId) {
+    return "nao_e_sua";
   }
   return null;
 }

@@ -137,6 +137,14 @@ describe("silencioDoAviso — quem recebe o aviso (P2)", () => {
     expect(decide({ conversa: { channel_id: "canal-b" }, canalDaMensagem: null })).toBe("fora_do_perfil");
   });
 
+  it("a mensagem ANTIGA de conversa de outra pessoa é \"antiga\", não \"não é sua\" (não estaciona)", () => {
+    // Codex, PR #289: uma carga de histórico estacionaria uma mensagem por
+    // conversa sem nenhuma poder avisar.
+    const velha = { created_at: new Date(AGORA - 2 * LIMITE_DE_ATRASO_MS).toISOString() };
+    expect(decide({ ...velha, quais: "minhas", conversa: { assigned_agent_id: OUTRO } })).toBe("antiga");
+    expect(esperaAtribuicao(decide({ ...velha, quais: "minhas" }))).toBe(false);
+  });
+
   it("a espera pela atribuição dura o mesmo que separa mensagem nova de história", () => {
     // Uma cadeia de passos antes de atribuir não tem teto (webhook de até
     // 10 s cada): 2 min perdia o aviso (Codex, PR #289).
