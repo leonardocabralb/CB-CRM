@@ -193,7 +193,7 @@ quebrar, sabe-se qual.
 | **4** | Fluxos: `{{vars}}` em botões e listas (#553) | Inerte hoje (0 fluxos ativos) | Média | Médio-baixo | — | ✅ em produção (PR #271, 23/09): porte manual — o #259 **descartou** o `engine.ts` deles; teste real feito com a janela aberta pelo operador |
 | **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | ✅ em produção (PR #283, merge `6cedb67a`, rollout 24/09 00:24Z): porte manual — o #259 descartou o webhook deles; falta o disparo REAL fora da janela (a janela do lead de teste fecha 24/09 19:14Z) |
 | **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | ✅ em produção (PR #284, merge `fe2a7530`, rollout 24/09 12:24:56Z): 6a (o teto na leitura) e 6b (stub COMPLETO por `cb_channels`, ligado), com E2E contra a Meta; pós-deploy conferido (seção da fase) |
-| **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | CRU só no caminho LEGADO (que não é montado); o porte para `cb-channels` pendente; a doc do original foi apagada até lá |
+| **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | ✅ mesclada (PR #285): o motivo da falha em *Conexões* (`POST /api/cb/channels`), o par WABA/número conferido, a assinatura da WABA fatal, o token limpo das mensagens, o POST legado aposentado (410) e `docs/conexao-meta.md`; testado contra a Meta real com o token da conexão oficial (só leituras); o pós-deploy é registrado no PR da Fase 8 |
 | **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | biblioteca CRUA no `main`; o cartão ESCONDIDO (correção do #259) até o ouvinte ser montado com as adaptações |
 | **9** | "Digitando…" da IA (#527), sobre o canal da conversa | Inerte hoje (auto-reply desligado) | Média | Médio | — | só a função (`sendTypingIndicator`, sem chamador); o `auto-reply.ts` deles foi descartado |
 | **10** | i18n das telas em inglês (#577, #578, #579) | 219 chaves | Média (braçal) | Baixo | — | parcial pelo #259 (240 chaves unidas, telas DELES traduzidas); `pt.json`/`es.json` apagados (P3); faltam as telas NOSSAS e ~129 órfãs |
@@ -1435,7 +1435,85 @@ para a retentativa de automação valer na Meta.
 trocada → mensagem acionável. ⚠️ **Só caminhos de falha e leitura** — nada de
 registrar nem reconfigurar o número oficial da produção.
 
-**Resultado:** — (a preencher)
+**Resultado (24/09/2026):**
+
+- **Medido antes:** o `explainMetaError`, o `waba-pairing` e o `MetaApiError`
+  do #505 chegaram pelo #259 só à rota LEGADA (`/api/whatsapp/config`), cuja
+  tela não é montada; e o POST dela respondia 500 a TODA chamada desde 27/07
+  (`75daeb97`, nosso: pedia `account_role` a `whatsapp_config`). Quem conecta
+  número oficial de verdade passa por *Conexões* (`POST /api/cb/channels` →
+  `meta-admin.ts`), que mostrava a frase crua da Meta num toast que sumia,
+  aceitava WABA de outro número (a conexão salvava e o webhook nunca chegava)
+  e engolia a falha da assinatura da WABA (a conexão nascia "conectada" sem
+  receber nada). Em produção: 7 conexões, 1 oficial.
+- **O que entrou:**
+  - `explainMetaError` ganhou o campo `motivo`, de lista fechada
+    (`MOTIVOS_DO_ERRO_DA_META`); a rota devolve `{ error, falha }`
+    (`falha-da-meta.ts`, puro) e o painel traduz o motivo
+    (`Settings.channels.metaErro.<motivo>`, 36 chaves por dicionário) num
+    aviso que FICA no diálogo, com o campo a conferir destacado e, embaixo, a
+    etapa, o código, o trace id e a mensagem da Meta.
+  - `provisionMetaChannel` na ordem do #505: ids só-dígitos (recusados antes
+    de chamar a Meta, nomeando o campo) → leitura do número → par WABA/número
+    (`listWabaPhoneNumbers`) → registro por PIN (continua best-effort: a
+    conexão salva desconectada, e o toast diz por quê) → assinatura da WABA,
+    agora FATAL (nada é gravado).
+  - A mensagem da Meta ECOA o token: `semTokenDaMeta` (o token inteiro,
+    `access_token=` e qualquer `EAA…`) antes da tela e do log — também no GET
+    e no `verify-registration` legados.
+  - `meta-api.ts`: `paging.next` só dentro de `https://graph.facebook.com`, e
+    o teto de páginas LANÇA em vez de devolver meia lista (meia lista diria
+    "o número não mora nesta WABA"); o token do início do upload de cabeçalho
+    de modelo sai da URL para `Authorization: OAuth` (a pendência que a Fase 6
+    deixou).
+  - O POST legado foi APOSENTADO (410, apontando para *Conexões*): consertado,
+    ele gravaria a credencial da Meta por cima do espelho de uma conta
+    Evolution, sem criar conexão. O pino da guarda de papel cobra a
+    aposentadoria; `syncDefaultMetaChannelFromConfig` saiu junto.
+  - "wacrm" → "the CRM" no texto do original; `docs/conexao-meta.md` reescreve
+    para *Conexões* a doc que a correção do #259 apagou; o comentário de
+    `retentativa.ts` e o CLAUDE.md dizem que ligar a Meta à retentativa ficou
+    FORA do plano (seria uma régua por `code`: o 4xx da Meta costuma ser
+    determinístico).
+- **Verificado:** typecheck limpo; lint 60 avisos (a base); i18n OK; 5.956
+  testes em 428 arquivos no Node 22; mutantes 21/21 (cerca de origem, teto de
+  páginas, token na URL, assinatura engolida, par não conferido, registro
+  fatal, token ecoado, motivo trocado de ramo, frase faltando no pt-BR, id
+  não numérico, erro que não é da Meta, `await` do ramo Meta, POST legado
+  falando com a Meta ou respondendo 200, erro local lido como "sem resposta",
+  WABA trocada lida como "valor recusado" e outros); nenhum worker órfão.
+- **Revisão (duas lentes, cético por achado):** nenhum P0–P2.
+
+  | Achado | Destino |
+  | --- | --- |
+  | P3 — o registro que falha fecha o diálogo, e o toast mandava ler código e trace id "logo abaixo" sem mostrá-los | ✅ a segunda linha do toast leva a etapa e os detalhes, e fica 20 s |
+  | P3 — cursor fora do Graph e teto de páginas lançavam `Error` simples, lido como "não foi possível falar com a Meta" | ✅ `MetaApiError` (a Meta respondeu), cai em `outro` |
+  | P3 — resposta que chega depois de o diálogo fechar ou voltar devolvia o aviso vermelho a um formulário limpo (e, no sucesso, fechava um diálogo que já era outro) | ✅ `envioMetaRef` marca o envio vigente |
+  | P3 — comentários que citavam o POST aposentado, e a frase do CHANGELOG sobre a limpeza do token prometendo mais que o código | ✅ corrigidos |
+  | Pré-existente — a sonda de saúde (`health.ts`, ramo Meta) loga a mensagem crua da Meta, que pode ecoar o token | registrado, não corrigido (fora do escopo; quem lê o log da VPS já tem a `ENCRYPTION_KEY`) |
+
+- **E2E na preview** (P5; o operador entrou e autorizou o script com o token
+  real):
+  1. Phone Number ID que não é só dígitos → 400 antes de qualquer chamada à
+     Meta, com o campo nomeado e destacado;
+  2. token inválido contra a Meta de verdade → código 190; o aviso fica no
+     diálogo com o código, o trace id e a mensagem da Meta, e o campo do
+     token destacado;
+  3. resposta atrasada: Voltar com a requisição no ar → a resposta que chega
+     depois não devolve o aviso ao formulário limpo;
+  4. upload de cabeçalho de modelo com o token no cabeçalho, contra a Meta:
+     modelo de teste criado `PENDING` na WABA (id `2260845154760772`) e
+     apagado pelo CRM — 9 modelos de novo;
+  5. **com o token REAL da conexão oficial**, lido e decifrado só em memória
+     por um script local, nunca impresso, só leituras (os dois casos param
+     antes do registro e da assinatura): WABA trocada (número e token certos)
+     → a Meta responde "(#100) Tried accessing nonexisting field
+     (phone_numbers)", que a primeira versão lia como "a Meta recusou um
+     valor" — a frase entrou na regra do código 100 (medido; mutante morto) e
+     a tela passou a dizer que a Meta não encontra o WABA ID, com onde
+     copiá-lo; Phone Number ID inexistente → código 100/33, "a Meta não
+     encontra o Phone Number ID". Nada gravado: `cb_channels` continua com 7
+     conexões, 1 oficial.
 
 ### Fase 8 — Notificação do navegador
 
@@ -1564,7 +1642,7 @@ rotas protegidas recusando).
 | 4 chaves REPETIDAS em `Contacts.importModal` depois do merge do #265 — as do #259 venceriam | **PR #265**, com o teste `chaves-duplicadas.test.ts` |
 | `pt.json` e `es.json` do original (1.740 chaves contra 4.000+): a armadilha do `ko.json`; e o `docs/docker.md` passou a anunciar `en \| ko \| pt \| es` | **correção do #259**: apagados, pino `dicionarios-servidos.test.ts`, docker.md `en \| pt-BR` |
 | O cartão "Notificações do navegador" montado em *Seu perfil* sem o ouvinte montado em lugar nenhum: a pessoa ligava, recebia o teste, e nunca a notificação real | **correção do #259**: o cartão sai até a Fase 8 (pino: cartão importado exige o ouvinte montado). ⚠️ Quem ligou a chave entre 16:40Z e o deploy da correção ficou com `wacrm:browser-notifications` no localStorage e a permissão concedida: a Fase 8 decide por escrito entre trocar a chave (zera o opt-in) e aceitar o antigo |
-| `docs/whatsapp-connection-troubleshooting.md`: doc entregue a quem instala, em inglês, com "wacrm" sete vezes, descrevendo a tela legada que o fork não monta | **correção do #259**: apagada; a Fase 7 a reescreve |
+| `docs/whatsapp-connection-troubleshooting.md`: doc entregue a quem instala, em inglês, com "wacrm" sete vezes, descrevendo a tela legada que o fork não monta | **correção do #259**: apagada; ✅ a Fase 7 a reescreveu para *Conexões* (`docs/conexao-meta.md`, PR #285) |
 | `0043`/`0045` abaixo da maior migration do `main` (a regra do `db push`), com cabeçalho do original (o `phone NOT NULL` que aqui é anulável desde a 0989), sem `lock_timeout` e não aplicadas | **correção do #259**: `1038`/`1039`, cabeçalho nosso, `lock_timeout`; aplicadas antes do merge |
 | `Sidebar.title` recriada (o CLAUDE.md manda não recriar) e `fallbackAccountName` "our wacrm account" | **correção do #259**: apagadas; pino |
 | As 2 guardas de papel só nossas sem teste nenhum | **correção do #259**: pino `guarda-de-papel-so-nossa.test.ts` (a ordem inclusive) |
@@ -1572,9 +1650,9 @@ rotas protegidas recusando).
 | Stub de modelo desconhecido (#534) cru: resolve a conta por `whatsapp_config`, sem `channel_id`, com o `user_id` da config — inerte só porque a rota não passa o `wabaId` | **Fase 6b** (porte por `cb_channels.waba_id` + dono durável, e só então ligar o `wabaId`) |
 | Upload de cabeçalho de vídeo/documento lê o corpo inteiro (`arrayBuffer`) antes de conferir o teto de 100 MB | **Fase 6a** (`lerComTeto`) |
 | `Settings.templates.mediaHint` ainda diz "a Meta baixa uma vez… 24 h"; `.env.local.example` e `multi-waba.md` falam do `META_APP_ID` só para imagem | **Fase 6a** |
-| A POST legada de `/api/whatsapp/config` seleciona `account_role` em `whatsapp_config` (não existe) e morre em 500 — PRÉ-EXISTENTE (75daeb97), deixa o #505 dela inalcançável | **Fase 7** (corrigir ou aposentar a rota legada) |
-| `meta-error-explain.ts` com "wacrm" no texto devolvido; `listWabaPhoneNumbers` segue `paging.next` sem cerca de host | **Fase 7** (no porte para `cb-channels`) |
-| O comentário de `retentativa.ts` diz que a Cloud API lança `Error` genérico — agora é `MetaApiError` com `httpStatus` | **Fase 7** |
+| A POST legada de `/api/whatsapp/config` seleciona `account_role` em `whatsapp_config` (não existe) e morre em 500 — PRÉ-EXISTENTE (75daeb97), deixa o #505 dela inalcançável | ✅ **Fase 7** (PR #285): aposentada (410); o #505 portado para `POST /api/cb/channels` |
+| `meta-error-explain.ts` com "wacrm" no texto devolvido; `listWabaPhoneNumbers` segue `paging.next` sem cerca de host | ✅ **Fase 7** (PR #285): "the CRM"; cerca de `graph.facebook.com` e teto que lança |
+| O comentário de `retentativa.ts` diz que a Cloud API lança `Error` genérico — agora é `MetaApiError` com `httpStatus` | ✅ **Fase 7** (PR #285): reescrito — ligar a Meta à retentativa ficou fora do plano |
 | O ouvinte do #516, quando montado cru, avisaria mensagem de GRUPO, de conversa fora do perfil e a histórica (recuperada) | **Fase 8**, como a P2 já dizia |
 | ~129 das 240 chaves unidas sem uso | **Fase 10** |
 | Nenhuma entrada no CHANGELOG | **correção do #259** |
@@ -1638,3 +1716,4 @@ acima, depois das fases, mostrando só divergência NOSSA.
 | 23/09/2026 | fora do plano | O passo "Enviar para um número" das automações lia o telefone pela régua dos sistemas ("98000-0016" virava +98; um `…@lid` virava telefone). PR #282: a régua das telas na ativação, no motor, no resumo e no campo do construtor; o CHANGELOG traz a consulta das automações antigas afetadas. Mesclado por outra sessão com a cabeça anterior — conferido: árvore idêntica. |
 | 24/09/2026 | 5 | O motivo da falha da Meta gravado na mensagem e no disparo, nos mesmos updates condicionais da escada; o `errors[0]` lido por parse (código estranho, NUL e surrogate solto derrubariam o UPDATE — medido num Postgres 16). PR #283, rollout 00:24Z; pós-deploy: a primeira mensagem entrou às 00:47Z. Falta o disparo REAL fora da janela (depois de 24/09 19:14Z). |
 | 24/09/2026 | 6 | 6a (o teto na leitura do cabeçalho) e 6b (o stub por `cb_channels`). A revisão em duas lentes achou 4 P2 — o mais sério, o stub de corpo vazio virando o modelo do envio e derrubando o envio pelo nome com variáveis; consertado lendo o modelo na Meta com a conversão da sincronização (`modelo-da-meta.ts`). E2E refeito contra a Meta; mutantes 20/20. Dois workers de mutante órfãos (stream sem fim, rodada anterior) giraram 7,5 h e derrubaram a suíte por carga — mortos, e a regra foi para o handoff. PR #284. A passagem de sessão está em `docs/HANDOFF-merge-upstream-2026-09.md`. |
+| 24/09/2026 | 7 | O #505 portado para *Conexões* (`POST /api/cb/channels`): o motivo da falha em lista fechada, traduzido num aviso que fica, com o campo destacado, o código e o trace id; o par WABA/número conferido; a assinatura da WABA fatal; o token limpo das mensagens da Meta; `paging.next` cercado; o token do upload fora da URL; o POST legado aposentado (410). Duas lentes: nenhum P0–P2, quatro P3 corrigidos. O teste com o token REAL da conexão oficial (só leituras, autorizado pelo operador) mostrou que a WABA trocada volta "nonexisting field" e era lida como "valor recusado" — a frase entrou na regra. Mutantes 21/21. Pós-deploy da Fase 6 registrado. PR #285. |
