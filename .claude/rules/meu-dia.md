@@ -171,11 +171,38 @@ Sete blocos (`src/lib/meu-dia/`, `use-area-de-trabalho.ts`,
   reagendamento. O bloco é só `cb_meetings`, e diz por quê; juntar exige casar
   cada agendamento com o seu cancelamento.
 
-### Notificações do navegador
+### Notificações do navegador (#516, portado na Fase 8)
 
-- ⚠️ **O cartão `<BrowserNotificationsCard>` NÃO é montado em *Seu perfil***
-  (`profile-form.tsx`): o ouvinte que dispara os avisos não está montado em
-  lugar nenhum, e o cartão prometia notificações que nunca chegavam. Volta junto
-  com o ouvinte, DENTRO da `<PortaDeEntrada>`, com o recorte do perfil e grupo
-  de fora. Os arquivos ficam. Pino:
-  `src/components/settings/cartao-de-notificacao.chamadores.test.ts`.
+`src/lib/notifications/aviso-no-navegador.ts` (puro, pino
+`aviso-no-navegador.test.ts`), o hook `use-browser-notifications.ts`, o ouvinte
+na casca e o cartão em *Seu perfil*. Pino estrutural:
+`src/components/settings/cartao-de-notificacao.chamadores.test.ts`.
+
+- ⚠️⚠️ **Quem recebe aviso é decidido por `silencioDoAviso`, não pela régua
+  do original** (que avisa toda mensagem de cliente da conta). Decisão do
+  operador (P2): só as conexões do PERFIL (`conversaNoEscopo`), GRUPO nunca, e
+  a pessoa escolhe quais conversas (todas / suas e sem responsável / só as
+  suas) e se o texto aparece. Perfil sem a Caixa de entrada não recebe aviso
+  (o clique cairia na `TelaBloqueada`), e o cartão nem aparece.
+- ⚠️ **O contexto é o REAL** (`{ papel: profile.account_role, perfil:
+  perfilDeAcesso }`), nunca `acesso`: quem simula pelo "Ver como" continua
+  sendo quem recebe o aviso.
+- ⚠️ **O ouvinte monta UMA vez, na casca, e só com `!entradaPendente`** (como
+  o `PresenceHeartbeat`): é efeito que a porta segura.
+- ⚠️ **Conversa ilegível = silêncio**: sem ela não se sabe se é grupo ou de
+  outra conexão — exatamente o que a P2 manda calar. A não lida continua na
+  caixa de entrada.
+- ⚠️ **Mensagem gravada mais de 1 h depois do próprio carimbo não avisa**
+  (`LIMITE_DE_ATRASO_MS`, medido por `gravada_em`, com queda no relógio da
+  tela): a carga do histórico e a fala recuperada tarde despejariam um aviso
+  por conversa. O atraso de entrega real (até 50 min medidos) ainda avisa.
+  Não use `conversations.last_message_at` para "alguém escreveu depois": a
+  ingestão o carimba com o relógio do SERVIDOR, não com o do WhatsApp.
+- ⚠️ **A preferência é POR PESSOA neste navegador** (`cb-notificacoes:<userId>`,
+  JSON lido por `lerPreferencia`, nunca `as`): a chave global do original
+  (`wacrm:browser-notifications`, apagada ao gravar a nova) fazia quem entrasse
+  depois no mesmo computador herdar o "ligado". O snapshot do
+  `useSyncExternalStore` é o TEXTO cru — objeto novo a cada leitura faria o
+  componente renderizar sem parar.
+- **O título sai de `nomeDoContato`** (telefone, senão `@instagram`), nunca do
+  `pickContactDisplayName` do original.

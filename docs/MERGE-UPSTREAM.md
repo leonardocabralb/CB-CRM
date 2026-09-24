@@ -154,11 +154,9 @@ Releia antes do próximo merge: são as que voltam a conflitar.
   92–94% de semelhança) — conferir `git diff --summary` em
   `supabase/migrations/` a cada merge.
 - ⚠️ **NINGUÉM grava as colunas da 1038 ainda** (a identidade BSUID é a
-  Fase 11 do plano). O único leitor delas hoje é `wa_username` no hook de
-  notificação do navegador, que não está montado. (A nota original deste
-  merge dizia "nenhum código lê o que elas criam — `failure_reason` não
-  aparece em `src/`": nenhuma coluna se chama `failure_reason`, e o hook lia
-  `wa_username`.) As da **1039** (o motivo da falha da Meta) são gravadas pelo
+  Fase 11 do plano). Nenhum código as lê: o hook de notificação do
+  navegador lia `wa_username` e, portado na Fase 8, passou a usar
+  `nomeDoContato` (telefone, senão `@instagram`). As da **1039** (o motivo da falha da Meta) são gravadas pelo
   webhook da Meta desde a Fase 5 — ver a linha do RECIBO na tabela abaixo.
 - **`ci.yml` e `migrations.yml` apagados de novo**, como a nota do
   `pipeline.yml` manda.
@@ -188,10 +186,10 @@ Releia antes do próximo merge: são as que voltam a conflitar.
     #259 fez listar `en | ko | pt | es`, passou a dizer `en | pt-BR`.
   - O cartão "Notificações do navegador" SAIU de *Seu perfil*: o ouvinte que
     dispara os avisos não estava montado em lugar nenhum, e a pessoa ligava a
-    chave, recebia a notificação de teste e nunca a de uma mensagem real. Os
-    arquivos ficam (`browser-notify.ts`, o hook, o ouvinte, o cartão) para a
-    Fase 8, que monta o ouvinte DENTRO da `<PortaDeEntrada>`, com o recorte
-    do perfil e grupo de fora.
+    chave, recebia a notificação de teste e nunca a de uma mensagem real. A Fase 8
+    (24/09/2026) portou o hook, montou o ouvinte DENTRO da `<PortaDeEntrada>`
+    e devolveu o cartão — ver as linhas do hook, do cartão e da casca na
+    tabela abaixo.
   - A `docs/whatsapp-connection-troubleshooting.md` foi APAGADA: em inglês,
     com "wacrm" sete vezes, descrevendo a tela legada que o fork não monta. A
     Fase 7 (24/09/2026) a reescreveu para *Conexões*: é a
@@ -406,7 +404,10 @@ upstream sobrescrevê-los:
 | `src/app/api/v1/contacts/route.ts`, `[id]/route.ts`, `[id]/tags/route.ts`, `src/lib/api/v1/contacts.ts` (23/09/2026) | a etiqueta por NOME OU ID (`lerTagsPedidas` antes de qualquer escrita, `TagReferenceError`), o 400 para item de `tags` que não é string e para id de contato malformado. Mais (23/09/2026) o `tags_mode: "add"` do POST e do PATCH (`setContactTags(…, { somenteAcrescentar })`) e o `avisarRecusaDeEtiqueta` nos 400 de etiqueta das três rotas — um merge que traga a rota crua do upstream devolve o `tags` substitutivo sem saída numa chamada só. Ver "Tag ADITIVA na API v1" |
 | `src/lib/ai/types.ts`, `config.ts`, `structured.ts`, `defaults.ts`, `src/lib/cb-radar/worker.ts`, `src/app/api/ai/config/route.ts` | o modelo do Radar separado do modelo de chat (946): `radarModel` no tipo e em `CONFIG_COLUMNS`, o parâmetro `model` do `generateStructured`, `AI_PROVIDER_MODELS`, e a validação do modelo do Radar no save |
 | `src/components/settings/ai-config.tsx` | `<datalist>` de sugestão no campo Modelo e a frase de escopo com link para Integrações |
-| `src/components/settings/profile-form.tsx` (correção do #259, 23/09/2026) | o cartão `<BrowserNotificationsCard>` do original (#516) NÃO é montado: o ouvinte que dispara os avisos não está montado em lugar nenhum, e o cartão prometia notificações que nunca chegavam. Volta na Fase 8, junto com o ouvinte (dentro da `<PortaDeEntrada>`). Pino em `src/components/settings/cartao-de-notificacao.chamadores.test.ts` — um porte de tradução que traga a linha de volta sem o ouvinte reprova |
+| `src/components/settings/profile-form.tsx` (Fase 8, 24/09/2026) | o cartão `<BrowserNotificationsCard>` do original (#516) só aparece com a Caixa de entrada no perfil (`podeVerTela(acesso, 'inbox')`). Pino em `src/components/settings/cartao-de-notificacao.chamadores.test.ts` |
+| `src/hooks/use-browser-notifications.ts` (Fase 8, 24/09/2026) | PORTADO: a preferência é POR PESSOA (`usePreferenciaDeAviso`, chave `cb-notificacoes:<userId>`); quem recebe aviso é `silencioDoAviso` (perfil pelo contexto REAL, grupo fora, "quais conversas", mensagem antiga); o título é `nomeDoContato`; o corpo esconde o texto quando a pessoa pede; o clique usa `urlDoInbox`. A versão crua do original avisa grupo e conexão fora do perfil — manter a nossa inteira. Pino no mesmo arquivo de teste |
+| `src/components/settings/browser-notifications-card.tsx` (Fase 8, 24/09/2026) | lê e grava pela `usePreferenciaDeAviso` e ganhou as duas configurações (quais conversas e mostrar o texto). Manter a nossa |
+| `src/app/(dashboard)/dashboard-shell.tsx` (Fase 8, 24/09/2026) | `{!entradaPendente && <BrowserNotificationsListener />}` ao lado do `PresenceHeartbeat`, dentro da `<PortaDeEntrada>` |
 | `src/app/(dashboard)/dashboard-shell.tsx` (Meu dia, 12/09/2026) | envolve o layout INTEIRO (menu, cabeçalho, página, heartbeat) na `<PortaDeEntrada key={user.id}>`, abaixo do `if (!user) return null` — nunca renderizar pedaço do app fora dela; e o "Loading..." traduzido (`DashboardShell.loading`) |
 | `dashboard-shell.tsx`, `inbox/page.tsx`, `message-composer.tsx`, `message-thread.tsx` e `src/app/globals.css` (teclado do celular, 14/09/2026) | a altura por `var(--altura-visivel,100dvh)` na casca e na caixa de entrada (um merge que devolva `h-screen`/`100vh` devolve o cabeçalho sumindo com o teclado) e o `useTelaAcimaDoTeclado()` na casca; no compositor, o Enter por `enterEnvia` e a dica por `useMediaQuery(MIDIA_DE_TOQUE)`; no fio, o `data-acima-do-teclado` na raiz, o `onTouchStart`/`onTouchMove` do contêiner (recolhe o teclado) e o `ResizeObserver` que mantém o fim; no CSS, a regra dos 16 px FORA de camada. Ver a seção "O teclado do celular" |
 | `src/hooks/use-auth.tsx` (Meu dia) | `sessionId` no contexto (o `session_id` do token, publicado no MESMO passo que `user`, no init e no listener) e o `signOut` do menu via `sairDesteAparelho` (escopo `local`, D4, 12/09/2026; erro vira toast e não navega) — além do que já era nosso (lente de simulação, perfis, `resolvedUserIdRef`) |

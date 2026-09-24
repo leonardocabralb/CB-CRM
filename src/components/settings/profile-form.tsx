@@ -17,6 +17,8 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { useTranslations } from 'next-intl';
 import { SettingsPanelHead } from './settings-panel-head';
+import { BrowserNotificationsCard } from './browser-notifications-card';
+import { podeVerTela } from '@/lib/perfis/visibilidade';
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 const ALLOWED_MIME = new Set([
@@ -33,7 +35,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function ProfileForm() {
   const t = useTranslations('Settings.profile');
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile, acesso } = useAuth();
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -353,13 +355,11 @@ export function ProfileForm() {
         </div>
       </form>
 
-      {/* ⚠️ O cartão "Notificações do navegador" do original (#516) NÃO é
-          montado aqui até a Fase 8 do docs/PLANO-merge-upstream-2026-09.md:
-          o merge #259 o trouxe, mas o ouvinte que dispara os avisos não
-          está montado em lugar nenhum — a pessoa ligava a chave, recebia a
-          notificação de teste e nunca recebia a de uma mensagem de verdade.
-          Quando o ouvinte entrar (dentro da <PortaDeEntrada>, com o recorte
-          do perfil e grupo de fora), o cartão volta junto. */}
+      {/* Notificações do navegador (#516, Fase 8 do plano do merge do
+          upstream): o ouvinte está montado na casca, dentro da
+          <PortaDeEntrada>. Só com a Caixa de entrada no perfil — é para lá
+          que o aviso leva, e sem ela o ouvinte não avisa nada. */}
+      {podeVerTela(acesso, 'inbox') && <BrowserNotificationsCard className="mt-6" />}
     </section>
   );
 }

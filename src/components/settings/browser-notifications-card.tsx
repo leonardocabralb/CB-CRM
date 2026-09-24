@@ -13,14 +13,21 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { useBrowserNotifyPref } from '@/hooks/use-browser-notifications';
+import { usePreferenciaDeAviso } from '@/hooks/use-browser-notifications';
 import {
   BROWSER_NOTIFY_CHANGE_EVENT,
   getNotificationPermission,
-  writeBrowserNotifyPref,
   type BrowserNotifyPermission,
 } from '@/lib/notifications/browser-notify';
+import type { QuaisConversas } from '@/lib/notifications/aviso-no-navegador';
 
 // `Notification.permission` has no change event of its own. Re-read it
 // whenever the tab regains focus (the user may have flipped the site
@@ -40,14 +47,15 @@ function subscribePermission(onChange: () => void): () => void {
 const serverPermission = (): BrowserNotifyPermission => 'unsupported';
 
 /**
- * "Browser notifications" card — device-scoped opt-in for desktop
- * alerts about new customer messages (issue #516). Persistence is
- * localStorage; the browser's own permission grant is the real gate,
- * so the switch reads as off whenever that grant is missing.
+ * Cartão "Notificações do navegador" (#516 do original), em Seu perfil.
+ * A permissão do navegador é a porta de verdade, então a chave aparece
+ * desligada sempre que ela falta. Portado na Fase 8 do plano do merge do
+ * upstream: a preferência é POR PESSOA neste navegador, e a pessoa escolhe
+ * QUAIS conversas avisam e se o aviso mostra o texto (decisão P2).
  */
 export function BrowserNotificationsCard({ className }: { className?: string }) {
   const t = useTranslations('Settings.browserNotifications');
-  const enabled = useBrowserNotifyPref();
+  const { preferencia, gravar } = usePreferenciaDeAviso();
   const permission = useSyncExternalStore(
     subscribePermission,
     getNotificationPermission,
@@ -56,15 +64,15 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
   const [requesting, setRequesting] = useState(false);
 
   const supported = permission !== 'unsupported';
-  const checked = enabled && permission === 'granted';
+  const checked = preferencia.ativo && permission === 'granted';
 
   const onToggle = async (next: boolean) => {
     if (!next) {
-      writeBrowserNotifyPref(false);
+      gravar({ ...preferencia, ativo: false });
       return;
     }
     if (permission === 'granted') {
-      writeBrowserNotifyPref(true);
+      gravar({ ...preferencia, ativo: true });
       return;
     }
     if (permission === 'denied') {
@@ -74,8 +82,8 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
     setRequesting(true);
     try {
       const result = await Notification.requestPermission();
-      // Also dispatches the change event, which refreshes `permission`.
-      writeBrowserNotifyPref(result === 'granted');
+      // Também dispara o evento de mudança, que relê `permission`.
+      gravar({ ...preferencia, ativo: result === 'granted' });
       if (result === 'denied') {
         toast.error(t('permissionDeniedToast'), { description: t('deniedHint') });
       }
@@ -89,7 +97,7 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
       new Notification(t('testTitle'), {
         body: t('testBody'),
         icon: '/icon',
-        tag: 'wacrm-test-notification',
+        tag: 'cb-teste-de-notificacao',
       });
     } catch {
       toast.error(t('unsupported'));
@@ -102,6 +110,13 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
       : permission === 'denied'
         ? 'statusDenied'
         : 'statusDefault';
+
+  // Chave por opção, LITERAL: chave montada escapa do portão de i18n do CI.
+  const rotuloDeQuais: Record<QuaisConversas, string> = {
+    todas: t('which.todas'),
+    minhas_e_sem_responsavel: t('which.minhas_e_sem_responsavel'),
+    minhas: t('which.minhas'),
+  };
 
   return (
     <Card className={className}>
@@ -147,6 +162,50 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
                 <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
                 <span>{t('deniedHint')}</span>
               </p>
+            )}
+
+            {checked && (
+              <div className="space-y-4 rounded-md border border-border p-3">
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium text-foreground">{t('whichLabel')}</p>
+                  <Select
+                    value={preferencia.quais}
+                    onValueChange={(v) =>
+                      v && gravar({ ...preferencia, quais: v as QuaisConversas })
+                    }
+                  >
+                    <SelectTrigger
+                      className="w-full bg-muted border-border text-foreground"
+                      aria-label={t('whichLabel')}
+                    >
+                      <SelectValue>{rotuloDeQuais[preferencia.quais]}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todas">{rotuloDeQuais.todas}</SelectItem>
+                      <SelectItem value="minhas_e_sem_responsavel">
+                        {rotuloDeQuais.minhas_e_sem_responsavel}
+                      </SelectItem>
+                      <SelectItem value="minhas">{rotuloDeQuais.minhas}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      {t('showTextLabel')}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{t('showTextDesc')}</p>
+                  </div>
+                  <Switch
+                    checked={preferencia.mostrarTexto}
+                    onCheckedChange={(next) => gravar({ ...preferencia, mostrarTexto: next })}
+                    aria-label={t('showTextLabel')}
+                  />
+                </div>
+
+                <p className="text-xs text-muted-foreground">{t('scopeNote')}</p>
+              </div>
             )}
 
             <Button

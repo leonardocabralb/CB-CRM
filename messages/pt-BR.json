@@ -4132,7 +4132,7 @@
     "sectionsNav": "Seções das configurações",
     "browserNotifications": {
       "title": "Notificações do navegador",
-      "description": "Receba um aviso na área de trabalho a cada mensagem nova de cliente, mesmo estando em outra página. Salvo neste dispositivo.",
+      "description": "Receba um aviso na área de trabalho a cada mensagem nova de cliente, mesmo estando em outra página. Salvo neste navegador, só para o seu usuário.",
       "toggleLabel": "Avisar sobre mensagens novas de clientes",
       "toggleDesc": "Funciona só com o app aberto numa aba do navegador.",
       "statusGranted": "Permitido pelo seu navegador.",
@@ -4144,6 +4144,15 @@
       "testTitle": "Notificação de teste",
       "testBody": "As notificações estão funcionando. Mensagens novas de clientes aparecem assim.",
       "permissionDeniedToast": "Seu navegador bloqueou as notificações",
+      "whichLabel": "Avisar sobre",
+      "which": {
+        "todas": "Todas as conversas das suas conexões",
+        "minhas_e_sem_responsavel": "Conversas atribuídas a você ou sem responsável",
+        "minhas": "Só as conversas atribuídas a você"
+      },
+      "showTextLabel": "Mostrar o texto da mensagem",
+      "showTextDesc": "Desligado, o aviso diz só quem escreveu — útil quando outras pessoas veem a sua tela.",
+      "scopeNote": "Só as conexões do seu perfil de acesso. Mensagem de grupo nunca gera aviso.",
       "labels": {
         "fallbackTitle": "Mensagem nova",
         "image": "📷 Foto",
