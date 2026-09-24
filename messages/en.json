@@ -3652,7 +3652,7 @@
       "enableAssistant": "Enable AI assistant",
       "enableAssistantDesc": "Master switch. Turns on the “Draft with AI” button in the inbox.",
       "autoReply": "Auto-reply to inbound messages",
-      "autoReplyDesc": "The bot answers new inbound messages automatically (only when no flow handles them and no agent is assigned). Hands off to a human when it can’t help.",
+      "autoReplyDesc": "The bot answers new inbound messages automatically (only when no flow handles them and no agent is assigned). Hands off to a human when it can’t help. On an official number (Meta API), the customer's message shows as read, with \"typing…\", while the reply is prepared — even when it ends up handed off to a person.",
       "maxAutoReplies": "Max auto-replies per conversation",
       "maxAutoRepliesDesc": "After this many bot replies in one thread, the bot goes quiet.",
       "handoffTo": "Hand off to",

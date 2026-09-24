@@ -194,7 +194,7 @@ quebrar, sabe-se qual.
 | **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | ✅ em produção (PR #283, merge `6cedb67a`, rollout 24/09 00:24Z): porte manual — o #259 descartou o webhook deles; falta o disparo REAL fora da janela (a janela do lead de teste fecha 24/09 19:14Z) |
 | **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | ✅ em produção (PR #284, merge `fe2a7530`, rollout 24/09 12:24:56Z): 6a (o teto na leitura) e 6b (stub COMPLETO por `cb_channels`, ligado), com E2E contra a Meta; pós-deploy conferido (seção da fase) |
 | **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | ✅ em produção (PR #285, merge `f5879b3f`, rollout 24/09 14:17:55Z, na reexecução): o motivo da falha em *Conexões* (`POST /api/cb/channels`), o par WABA/número conferido, a assinatura da WABA fatal, o token limpo das mensagens, o POST legado aposentado (410) e `docs/conexao-meta.md`; testado contra a Meta real com o token da conexão oficial (só leituras); pós-deploy conferido (seção da fase) |
-| **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | ✅ mesclada (PR #287): o ouvinte montado na casca, dentro da `<PortaDeEntrada>`, com a régua do operador (perfil, grupo fora, "quais conversas", texto opcional, mensagem antiga calada), a preferência por pessoa e o cartão de volta em *Seu perfil*; testado na preview; o pós-deploy é registrado no PR da Fase 9 |
+| **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | ✅ em produção (PR #287, merge `789370a0`, rollout 24/09 16:44:28Z): o ouvinte montado na casca, dentro da `<PortaDeEntrada>`, com a régua do operador (perfil, grupo fora, "quais conversas", texto opcional, mensagem antiga calada), a preferência por pessoa e o cartão de volta em *Seu perfil*; testado na preview; pós-deploy conferido (seção da fase) |
 | **9** | "Digitando…" da IA (#527), sobre o canal da conversa | Inerte hoje (auto-reply desligado) | Média | Médio | — | só a função (`sendTypingIndicator`, sem chamador); o `auto-reply.ts` deles foi descartado |
 | **10** | i18n das telas em inglês (#577, #578, #579) | 219 chaves | Média (braçal) | Baixo | — | parcial pelo #259 (240 chaves unidas, telas DELES traduzidas); `pt.json`/`es.json` apagados (P3); faltam as telas NOSSAS e ~129 órfãs |
 | **11** | **BSUID (#533)** — por último | Preventivo (0 fichas sem telefone) | **Alta** | **Alto** | `1038` (+ a do CHECK da P4) | colunas aplicadas e a biblioteca (`wa-identity.ts`) no `main`; entrada, saída e tela pendentes |
@@ -1600,6 +1600,11 @@ conexão fora do perfil → nada; clique abre `/inbox?c=`.
   rodada porque o pino procurava o `new CustomEvent(...)` e não o disparo, e
   foi amarrado ao `window.dispatchEvent`).
 
+- **Merge e pós-deploy (24/09/2026):** PR #287 mesclado às 16:37:58Z (merge
+  `789370a0`, cabeça `64d4b670`; o `main` não tinha andado), rollout
+  "converged" às 16:44:28Z na primeira tentativa. Conferido depois: login 200,
+  `/inbox` 307, crons 401, manifesto 200; ingestão viva. Codex sem cota.
+
 ### Fase 9 — "Digitando…" enquanto a IA responde
 
 **Origem:** #527 (`ec010c7`). **Medido:** resposta automática DESLIGADA na
@@ -1611,7 +1616,38 @@ aviso no log e nunca segura a resposta.
 mensagem do celular dele ao número oficial e um script local dispara o indicador
 para aquele `wamid`. ⚠️ Depende do operador (decisão P5).
 
-**Resultado:** — (a preencher)
+**Resultado (24/09/2026):**
+
+- **Medido antes:** o #259 trouxe `sendTypingIndicator` (`meta-api.ts`) e o teste
+  dele, mas não o chamador: a resposta automática não disparava o indicador e o
+  webhook da Meta não passava o `wamid`. O original lê as credenciais da CONTA
+  (`loadAccountMetaCredentials`, o número padrão): com dois números oficiais,
+  marcaria a mensagem num número e responderia pelo outro. A resposta automática
+  está DESLIGADA na produção — a fase entra inerte.
+- **O que entrou:** `src/lib/ai/digitando.ts` (`mostrarDigitando`) — resolve o
+  canal pela MESMA função da resposta (`resolveEngineChannelPreferring` com o
+  canal da entrada), só age em canal Meta e com id `wamid.`, melhor esforço
+  (nunca lança, sem `await`, log por `semTokenDaMeta`); chamado na resposta
+  automática depois de TODOS os portões e antes de gerar o texto; o webhook da
+  Meta passa `inboundMessageId: message.id`. A Evolution não passa nada.
+  Decisão do operador (P6): manter, sabendo que a Meta marca a mensagem do
+  cliente como LIDA junto.
+- **Verificado:** typecheck; lint (60, a base); suíte no Node 22 (432 arquivos,
+  6.150 testes); os dois portões de i18n; mutantes 9/9 (o do canal da entrada, depois da revisão).
+- **Teste contra a Meta REAL** (P5, delegado pelo operador; o código da branch
+  rodado por um script local, com o token decifrado só em memória), na última
+  mensagem que o lead de teste mandou ao número oficial (a janela aberta até
+  24/09 19:14Z): id da Evolution → pulado, sem chamada; o `wamid` do lead →
+  "digitando…" ACEITO pela Meta (o efeito — a mensagem lida e o indicador no
+  celular dele — não foi conferido na tela do aparelho); `wamid` inexistente → a Meta recusou (131009), a função não
+  lançou, e o log saiu sem o token.
+- **Revisão** (duas lentes, um cético por achado; Codex sem cota): nenhum P0–P2.
+
+  | Achado | Destino |
+  | --- | --- |
+  | P3 — nenhum pino fixava que o indicador usa o canal da ENTRADA: `channelId: null` passava verde (medido por mutante) | ✅ o pino exige `channelId` na chamada e o `preferredChannelId: channelId` da resposta; mutante morto |
+  | P3 — a ajuda de "Responder automaticamente" não dizia que, no número oficial, a mensagem do cliente passa a aparecer como LIDA (inclusive quando a conversa acaba indo para uma pessoa) | ✅ a frase entrou nos dois dicionários |
+  | Refutados pelo cético (4): o indicador sai antes do handoff, da falha do provedor e da corrida do teto (é o desenho do original, escrito no código dele: "nothing to undo on the handoff path"; e o que a P6 aceitou); o `void` no lugar do `await` do original (troca deliberada e escrita: o `await` sem prazo seguraria a resposta; a ordem já vem quase garantida pelas idas ao banco e pela geração) — as duas lentes levantaram os dois | — |
 
 ### Fase 10 — i18n das telas que estavam em inglês
 

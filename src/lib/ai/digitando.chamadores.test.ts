@@ -21,6 +21,13 @@ describe('quem passa o wamid ao "digitando…"', () => {
 
   it('a resposta automática chama `mostrarDigitando` com o id recebido', () => {
     const auto = semComentarios(fs.readFileSync(path.join(SRC, 'lib/ai/auto-reply.ts'), 'utf8'))
-    expect(auto).toMatch(/mostrarDigitando\(db, \{[^}]*inboundMessageId: args\.inboundMessageId,[^}]*\}\)/)
+    // ...e com o canal da ENTRADA (o mesmo `preferredChannelId` da resposta):
+    // `channelId: null` cairia no canal da conversa e poderia marcar a
+    // mensagem num número enquanto a resposta sai por outro (revisão da
+    // Fase 9, medido por mutante).
+    expect(auto).toMatch(
+      /mostrarDigitando\(db, \{\s*accountId,\s*conversationId,\s*channelId,\s*inboundMessageId: args\.inboundMessageId,\s*\}\)/,
+    )
+    expect(auto).toMatch(/preferredChannelId: channelId,/)
   })
 })
