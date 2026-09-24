@@ -5,6 +5,9 @@ import {
   getSubscribedApps,
   verifyPhoneNumber,
 } from '@/lib/whatsapp/meta-api'
+// NOSSO: a mensagem da Meta pode ECOAR o token ("Malformed access token
+// EAAB…") — e esta resposta vai a qualquer membro da conta.
+import { semTokenDaMeta } from '@/lib/cb-channels/falha-da-meta'
 
 /**
  * GET /api/whatsapp/config/verify-registration
@@ -108,7 +111,10 @@ export async function GET() {
     checks.phone_metadata_ok = true
   } catch (err) {
     errors.push(
-      `Phone metadata check failed: ${err instanceof Error ? err.message : String(err)}`,
+      semTokenDaMeta(
+        `Phone metadata check failed: ${err instanceof Error ? err.message : String(err)}`,
+        accessToken,
+      ),
     )
   }
 
@@ -131,7 +137,10 @@ export async function GET() {
       }
     } catch (err) {
       errors.push(
-        `WABA subscription check failed: ${err instanceof Error ? err.message : String(err)}`,
+        semTokenDaMeta(
+          `WABA subscription check failed: ${err instanceof Error ? err.message : String(err)}`,
+          accessToken,
+        ),
       )
     }
   } else {

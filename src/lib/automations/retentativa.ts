@@ -31,13 +31,16 @@
 
 /**
  * ⚠️⚠️ SÓ O TRANSPORTE EVOLUTION RETENTA HOJE, e é uma assimetria
- * conhecida: quem carrega o status HTTP é `EvolutionApiError`, enquanto o
- * cliente da Cloud API (`meta-api.ts`) lança `Error` genérico. Sem o
- * status não dá para separar "a Meta recusou" de "não sei se saiu", e a
- * régua deste módulo falha FECHADA — não repete. Quem quiser o retry
- * também na Meta começa por dar um erro com status ao cliente dela; até
- * lá, envio pela Cloud API que falha segue encerrando a execução, como
- * sempre foi, e aparece no bloco de correções do Meu dia.
+ * conhecida: esta régua só reconhece `EvolutionApiError`. Desde o merge
+ * #259 (23/09/2026) o cliente da Cloud API (`meta-api.ts`) também lança um
+ * erro com status — `MetaApiError`, com `httpStatus`, `code` e `subcode` —,
+ * mas ligar a Meta aqui NÃO é trocar a classe: um 4xx da Meta costuma ser
+ * DETERMINÍSTICO (janela de 24 h fechada, número que não recebe, parâmetro
+ * recusado), e repeti-lo só adia o aviso. Seria uma régua por `code`, e é
+ * decisão do operador, fora do plano do merge do upstream (Fase 7,
+ * 24/09/2026). Até lá a régua falha FECHADA para a Meta — não repete —, e o
+ * envio pela Cloud API que falha segue encerrando a execução, como sempre
+ * foi, e aparece no bloco de correções do Meu dia.
  */
 
 /**

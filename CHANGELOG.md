@@ -84,6 +84,29 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Corrigido
 
+- **A conexão com um número oficial (Meta) que falha diz por quê.** Em
+  *Configurações → Conexões*, quando a Meta recusa a conexão, o diálogo
+  mostra um aviso que fica na tela: o que está errado (token vencido ou sem
+  permissão, id que a Meta não acha, PIN, conta restrita, limite da Meta…),
+  o campo a conferir destacado, e embaixo o código, o trace id e a mensagem
+  da Meta — o que o suporte dela pede. Antes aparecia só a frase crua da
+  Meta, como "(#100) Unsupported get request", num aviso que sumia.
+  Três conferências novas, todas antes de gravar: o Phone Number ID e o WABA
+  ID têm de ser só dígitos (colar o telefone no lugar é o engano comum); com
+  o WABA ID preenchido, o número tem de estar entre os que a Meta lista sob
+  aquela WABA (uma WABA de outro número era aceita, e o webhook nunca
+  chegava); e a falha ao assinar a WABA no app impede salvar (antes a
+  conexão nascia "conectada" e a Meta não entregava nada). O registro que
+  falha por PIN continua salvando a conexão, desconectada, para tentar de
+  novo. Cada aviso está explicado em
+  [`docs/conexao-meta.md`](./docs/conexao-meta.md).
+  ⚠️ A rota antiga de um número só, `POST /api/whatsapp/config`, passou a
+  responder `410`: ela não era usada pela interface e respondia `500` a
+  qualquer chamada. Quem a chamava por script usa `POST /api/cb/channels`.
+  O token da Meta deixou de ir na URL do envio do cabeçalho de modelo (vai
+  no cabeçalho da requisição), e a mensagem de erro da Meta, que pode ecoar
+  o token, é limpa antes de ir para a tela ou para o log.
+
 - **Modelo com cabeçalho de vídeo ou documento: o arquivo é conferido
   enquanto é baixado.** O CRM baixava o arquivo inteiro antes de conferir o
   limite da Meta (100 MB no documento), e um link para um arquivo enorme
@@ -331,8 +354,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   evento na tela e nos documentos passou a dizer isso.
 - **Atualização com o projeto original até `aee1b01f` (setembro/2026).**
   Entraram as traduções das telas do original, o envio de vídeo e documento
-  como cabeçalho de modelo, a explicação dos erros de conexão com a Meta e
-  peças que as próximas versões vão ligar (a notificação do navegador, o
+  como cabeçalho de modelo e peças que as próximas versões vão ligar (a
+  explicação dos erros de conexão com a Meta — ligada depois, ver
+  Corrigido —, a notificação do navegador, o
   "digitando…", a identidade do WhatsApp sem telefone; as colunas do motivo
   da falha de entrega já são gravadas — ver Adicionado). O que precisa saber
   quem instala:

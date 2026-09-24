@@ -144,7 +144,7 @@ describe("explainMetaError — registration and PIN", () => {
 });
 
 describe("explainMetaError — account state and throttling", () => {
-  it("131031 → account restricted, Meta side, nothing to fix in wacrm", () => {
+  it("131031 → account restricted, Meta side, nothing to fix in the CRM", () => {
     const x = explainMetaError(metaErr({ code: 131031 }), "verify_number");
     expect(x.field).toBe("meta_account");
     expect(x.side).toBe("meta");
@@ -216,5 +216,52 @@ describe("metaErrorPayload", () => {
       field: "access_token",
       message: "expired",
     });
+  });
+});
+
+// ============================================================
+// NOSSO: o `motivo` legível por máquina de cada ramo. É ele que a tela de
+// Conexões traduz (`Settings.channels.metaErro.<motivo>`); o `summary` em
+// inglês é o texto da rota legada. Um ramo novo sem motivo não compila, e um
+// motivo trocado de ramo muda a frase que o operador lê — daí a tabela.
+// ============================================================
+
+describe("explainMetaError — o motivo de cada ramo", () => {
+  const casos: Array<[string, Partial<MetaErrorLike>, Parameters<typeof explainMetaError>[1], string]> = [
+    ["190/463", { code: 190, subcode: 463 }, "verify_number", "token_expirado"],
+    ["190/460", { code: 190, subcode: 460 }, "verify_number", "token_invalidado"],
+    ["190", { code: 190 }, "verify_number", "token_invalido"],
+    ["OAuthException sem código", { code: null, type: "OAuthException" }, "subscribe_waba", "token_invalido"],
+    ["10", { code: 10, type: "x" }, "subscribe_waba", "sem_permissao"],
+    ["200", { code: 200, type: "x" }, "subscribe_waba", "sem_permissao"],
+    ["131005", { code: 131005, type: "x" }, "verify_number", "acesso_negado"],
+    ["100/33", { code: 100, subcode: 33, type: "x" }, "verify_number", "id_nao_encontrado"],
+    ["100 unsupported", { code: 100, type: "x", message: "Unsupported get request." }, "waba_phone_numbers", "id_nao_encontrado"],
+    ["100 PIN no register", { code: 100, type: "x", message: "Invalid PIN" }, "register", "pin_recusado"],
+    ["100 outro", { code: 100, type: "x", message: "Invalid parameter" }, "verify_number", "parametro_recusado"],
+    ["133010", { code: 133010, type: "x" }, "register", "nao_registrado"],
+    ["133005", { code: 133005, type: "x" }, "register", "pin_errado"],
+    ["136025", { code: 136025, type: "x" }, "register", "pin_errado"],
+    ["133008", { code: 133008, type: "x" }, "register", "pin_bloqueado"],
+    ["133006", { code: 133006, type: "x" }, "register", "reverificar_numero"],
+    ["133015", { code: 133015, type: "x" }, "register", "numero_apagado_recentemente"],
+    ["131031", { code: 131031, type: "x" }, "subscribe_waba", "conta_restrita"],
+    ["368", { code: 368, type: "x" }, "subscribe_waba", "bloqueio_por_politica"],
+    ["80007", { code: 80007, type: "x" }, "subscribe_waba", "limite"],
+    ["131000", { code: 131000, type: "x" }, "subscribe_waba", "temporario"],
+    ["999999", { code: 999999, type: "x" }, "subscribe_waba", "outro"],
+  ];
+  it.each(casos)("%s → motivo esperado", (_nome, erro, etapa, motivo) => {
+    expect(explainMetaError(metaErr(erro), etapa).motivo).toBe(motivo);
+  });
+
+  it("erro que não é da Meta → sem_resposta", () => {
+    expect(explainMetaError(new TypeError("fetch failed"), "verify_number").motivo).toBe("sem_resposta");
+  });
+
+  it("nenhum texto cita o nome do produto do original", () => {
+    for (const [, erro, etapa] of casos) {
+      expect(explainMetaError(metaErr(erro), etapa).summary).not.toMatch(/wacrm/i);
+    }
   });
 });
