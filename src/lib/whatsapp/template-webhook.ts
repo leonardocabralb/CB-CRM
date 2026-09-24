@@ -31,8 +31,9 @@
  * row until someone presses "Sync from Meta", so its status / quality
  * events used to match 0 rows and be dropped. Both handlers now fall
  * back to creating a stub row: the WABA id on the webhook entry
- * resolves the owning account via `whatsapp_config.waba_id`, and the
- * stub carries the identity (name / language / meta_template_id) plus
+ * resolves the official connection via `cb_channels.waba_id` (OURS — the
+ * original used `whatsapp_config`; see `createStubForUnknownTemplate`),
+ * and the stub carries the identity (name / language / meta_template_id) plus
  * whatever the event told us (status, rejection reason, quality
  * score). Components are NOT known at this point — `body_text` is
  * stored as '' (the same placeholder the sync route uses for a
@@ -302,37 +303,87 @@ async function createStubForUnknownTemplate(p: StubParams): Promise<void> {
     return
   }
 
-  const { data: configs, error: configError } = await supabase
-    .from('whatsapp_config')
-    .select('account_id, user_id')
+  // ⚠️ NOSSO (Fase 6b do merge do upstream). O original resolve a conta por
+  // `whatsapp_config.waba_id` — o espelho de UM número, que nesta produção
+  // nunca casaria (o número oficial vive em `cb_channels`). E o catálogo é
+  // POR WABA (903): o stub nasce com o `channel_id` da conexão, senão seria
+  // um modelo "global" fantasma ao lado do que a sincronização cria para o
+  // canal. `.eq('kind', 'meta')`: só a conexão oficial tem WABA.
+  const { data: canais, error: canalError } = await supabase
+    .from('cb_channels')
+    .select('id, account_id')
+    .eq('kind', 'meta')
     .eq('waba_id', wabaId)
 
-  if (configError) {
+  if (canalError) {
     console.error(
-      `[template-webhook] ${kind} for unknown template ${where} — whatsapp_config lookup failed:`,
-      configError.message,
+      `[template-webhook] ${kind} for unknown template ${where} — cb_channels lookup failed:`,
+      canalError.message,
     )
     return
   }
-  const rows = (configs ?? []) as { account_id: string; user_id: string }[]
+  const rows = (canais ?? []) as { id: string; account_id: string }[]
   if (rows.length !== 1) {
+    // Dois números na MESMA WABA: cada um tem o seu catálogo (a sincronização
+    // cria uma linha por canal), e escolher um aqui seria adivinhar.
     console.warn(
-      `[template-webhook] ${kind} for unknown template ${where} — ${rows.length === 0 ? 'no' : rows.length} whatsapp_config rows match that WABA id; not creating a stub. Run "Sync from Meta" for the owning account.`,
+      `[template-webhook] ${kind} for unknown template ${where} — ${rows.length === 0 ? 'no' : rows.length} official connections match that WABA id; not creating a stub. Run "Sync from Meta" for the owning account.`,
+    )
+    return
+  }
+  const canal = rows[0]
+  const language = p.language || DEFAULT_TEMPLATE_LANGUAGE
+
+  // A linha com o mesmo nome e idioma NESTE canal, de qualquer autor: é ela
+  // que a sincronização adotaria. O índice único leva o `user_id` (903), então
+  // o stub com outro autor passaria por ele e nasceria DUPLICATA.
+  const { data: existente, error: existenteError } = await supabase
+    .from('message_templates')
+    .select('id')
+    .eq('account_id', canal.account_id)
+    .eq('channel_id', canal.id)
+    .eq('name', name)
+    .eq('language', language)
+    .limit(1)
+  if (existenteError) {
+    console.error(
+      `[template-webhook] ${kind} for unknown template ${where} — local lookup failed:`,
+      existenteError.message,
+    )
+    return
+  }
+  if ((existente ?? []).length > 0) {
+    console.warn(
+      `[template-webhook] ${kind} for unknown template ${where} — a local row with the same name/language exists but is not linked to this meta_template_id; run "Sync from Meta" to link it.`,
     )
     return
   }
 
-  const config = rows[0]
-  // account_id is tenancy; user_id is the NOT NULL audit FK — the
-  // config owner, same convention the webhook uses for inbound writes.
+  // O autor é o DONO da conta, nunca um membro: `message_templates.user_id`
+  // CASCADEia de `auth.users` (a regra dos contatos, M24 do plano de 31/08).
+  const { data: conta, error: contaError } = await supabase
+    .from('accounts')
+    .select('owner_user_id')
+    .eq('id', canal.account_id)
+    .maybeSingle()
+  const dono = (conta as { owner_user_id?: string } | null)?.owner_user_id
+  if (contaError || !dono) {
+    console.error(
+      `[template-webhook] ${kind} for unknown template ${where} — account owner lookup failed:`,
+      contaError?.message ?? 'no owner',
+    )
+    return
+  }
+
   // `category` and `status` fall back to their column defaults unless
   // the event supplied them (status events do, quality events don't).
   const stub = {
-    account_id: config.account_id,
-    user_id: config.user_id,
+    account_id: canal.account_id,
+    user_id: dono,
+    channel_id: canal.id,
     meta_template_id: metaTemplateId,
     name,
-    language: p.language || DEFAULT_TEMPLATE_LANGUAGE,
+    language,
     body_text: STUB_BODY_TEXT,
     ...p.fields,
   }
@@ -343,7 +394,7 @@ async function createStubForUnknownTemplate(p: StubParams): Promise<void> {
 
   if (!insertError) {
     console.info(
-      `[template-webhook] ${kind} for unknown template ${where} — created stub row for account ${config.account_id}; run "Sync from Meta" to backfill components.`,
+      `[template-webhook] ${kind} for unknown template ${where} — created stub row for account ${canal.account_id}, channel ${canal.id}; run "Sync from Meta" to backfill components.`,
     )
     return
   }

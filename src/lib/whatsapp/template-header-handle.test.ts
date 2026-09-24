@@ -30,13 +30,38 @@ function payload(over: Partial<TemplatePayload> = {}): TemplatePayload {
   };
 }
 
-function mediaResponse(type: string | null = 'image/jpeg', size = 1024, ok = true, status = 200): Response {
-  return {
-    ok,
-    status,
-    headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? type : null) },
-    arrayBuffer: async () => new ArrayBuffer(size),
-  } as unknown as Response;
+/**
+ * Uma resposta de verdade, com o corpo em stream — o helper lê por
+ * `lerComTeto`, e um dublê com só `arrayBuffer` esconderia a leitura sem
+ * teto. `declarar` põe o `content-length`, que a maioria dos servidores manda.
+ */
+function mediaResponse(
+  type: string | null = 'image/jpeg',
+  size = 1024,
+  { declarar = false }: { declarar?: boolean } = {},
+): Response {
+  const headers: Record<string, string> = {};
+  if (type) headers['content-type'] = type;
+  if (declarar) headers['content-length'] = String(size);
+  return new Response(new Uint8Array(size), { status: 200, headers });
+}
+
+/**
+ * Um corpo sem `content-length`, em pedaços de 1 MB, que conta quanto foi
+ * lido. FINITO de propósito: sem fim, a leitura sem teto nunca cede ao
+ * relógio e o teste TRAVA em vez de reprovar (medido pelos mutantes da Fase
+ * 6) — com fim, ela termina e a asserção reprova na hora.
+ */
+function respostaGrande(type: string, pedacos: number): { res: Response; lidos: () => number } {
+  let lidos = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controle) {
+      if (lidos >= pedacos) return controle.close();
+      lidos += 1;
+      controle.enqueue(new Uint8Array(MB));
+    },
+  });
+  return { res: new Response(stream, { status: 200, headers: { 'content-type': type } }), lidos: () => lidos };
 }
 
 /** The (fileName, mimeType) pair the helper handed to the Resumable Upload. */
@@ -173,12 +198,45 @@ describe('ensureMediaHeaderHandle', () => {
       expect(uploadResumableMedia).toHaveBeenCalledOnce();
     });
 
-    it('rejects a document over 100 MB', async () => {
+    it('rejects a document over 100 MB by its declared size, without reading it', async () => {
       vi.stubEnv('META_APP_ID', 'app-1');
-      vi.stubGlobal('fetch', vi.fn(async () => mediaResponse('application/pdf', 101 * MB)));
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => mediaResponse('application/pdf', 101 * MB, { declarar: true })),
+      );
       await expect(ensureMediaHeaderHandle(doc(), 'tok')).rejects.toThrow(
         /Header document is 101\.0 MB — Meta's limit is 100 MB/,
       );
+      expect(uploadResumableMedia).not.toHaveBeenCalled();
+    });
+
+    it('rejects a document over 100 MB that does not declare its size', async () => {
+      vi.stubEnv('META_APP_ID', 'app-1');
+      vi.stubGlobal('fetch', vi.fn(async () => mediaResponse('application/pdf', 101 * MB)));
+      await expect(ensureMediaHeaderHandle(doc(), 'tok')).rejects.toThrow(
+        /Header document is larger than Meta's limit of 100 MB/,
+      );
+      expect(uploadResumableMedia).not.toHaveBeenCalled();
+    });
+
+  });
+
+  describe('the sample is read with a ceiling (inventário do #259)', () => {
+    it('⚠️ stops reading at the limit: a body 4× over it is never read whole', async () => {
+      // O original lia o corpo INTEIRO (`arrayBuffer`) antes de conferir o
+      // teto — com uma URL colada por qualquer membro. Vídeo (16 MB) com um
+      // corpo de 64 MB sem `content-length`.
+      vi.stubEnv('META_APP_ID', 'app-1');
+      const grande = respostaGrande('video/mp4', 64);
+      vi.stubGlobal('fetch', vi.fn(async () => grande.res));
+      await expect(
+        ensureMediaHeaderHandle(
+          payload({ header_type: 'video', header_media_url: 'https://x.test/grande.mp4' }),
+          'tok',
+        ),
+      ).rejects.toThrow(/Header video is larger than Meta's limit of 16 MB/);
+      // Para no pedaço 17 (mais a folga da leitura adiantada do stream).
+      expect(grande.lidos()).toBeLessThanOrEqual(19);
       expect(uploadResumableMedia).not.toHaveBeenCalled();
     });
   });

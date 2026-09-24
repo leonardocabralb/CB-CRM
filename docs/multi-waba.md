@@ -61,12 +61,12 @@ segredo de um app de terceiro.
 
 ## O que NÃO funciona com apps diferentes
 
-`META_APP_ID` é **um só**: ele é usado no envio da imagem de cabeçalho de
-modelo (o upload da Meta é por app), e esse upload passa SEMPRE pelo app cujo
-ID está na variável, com o token da conexão. Com WABAs em outro app, confira
-se a Meta aceita o token delas ali antes de contar com modelo de cabeçalho de
-imagem nelas — isso não foi medido. Texto, botões e modelos sem cabeçalho de
-mídia não dependem dele.
+`META_APP_ID` é **um só**: ele é usado no envio da mídia de cabeçalho de
+modelo — imagem, vídeo ou documento (o upload da Meta é por app) —, e esse
+upload passa SEMPRE pelo app cujo ID está na variável, com o token da
+conexão. Com WABAs em outro app, confira se a Meta aceita o token delas ali
+antes de contar com modelo de cabeçalho de mídia nelas — isso não foi medido.
+Texto, botões e modelos sem cabeçalho de mídia não dependem dele.
 
 ## Como conferir
 

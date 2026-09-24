@@ -71,8 +71,23 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   registro do destinatário. Vale para as falhas a partir desta versão. As
   conexões por QR Code não informam motivo. Sem migration nova: as colunas
   vieram na `1039_cb_motivo_da_falha_da_mensagem.sql`.
+- **Modelo criado direto no painel da Meta aparece no CRM sozinho.** Quando a
+  Meta avisa a situação (aprovado, recusado, pausado) ou a qualidade de um
+  modelo que o CRM ainda não conhece, ele passa a existir na lista de
+  modelos da conexão oficial, com a situação que a Meta mandou; o texto e o
+  cabeçalho chegam no próximo **Sincronizar**. Exige os campos de modelo
+  assinados no webhook do app da Meta (`message_template_status_update` e
+  `message_template_quality_update`). Com dois números na mesma WABA, o
+  modelo só aparece pelo Sincronizar.
 
 ### Corrigido
+
+- **Modelo com cabeçalho de vídeo ou documento: o arquivo é conferido
+  enquanto é baixado.** O CRM baixava o arquivo inteiro antes de conferir o
+  limite da Meta (100 MB no documento), e um link para um arquivo enorme
+  podia derrubar o servidor; agora o download para no limite. A dica da tela
+  para vídeo e documento deixou de dizer que a Meta baixa o link durante a
+  revisão — o CRM envia o arquivo à Meta, como já fazia com a imagem.
 
 - **A documentação da API dizia coisas que não valem mais.** O caminho
   das chaves é *Configurações → API → Chaves*; só oito listas paginam (as

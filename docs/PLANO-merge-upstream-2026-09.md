@@ -188,8 +188,8 @@ quebrar, sabe-se qual.
 | **1b** | Segurança depois do alvo: #588 (SSRF), #587 (automação por conta), #589 (conversa por conta) — PRs ABERTOS do mantenedor — e a mídia do Instagram (achado nosso) | Real: brechas presentes; o #587 também dava 404 ao admin não-autor | Média | Médio-baixo | — | ✅ em produção (PR #261, 23/09) |
 | **3** | Pequenas e independentes: CSV (#529), textarea (#559), vários App Secrets (#500), tags da v1 (#560, só medir), e o resolvedor do canal Meta (3e — achado NOSSO da Fase 2, sem PR do upstream); com a P9, a normalização do telefone digitado — dividida em 3-I a 3-IV | Moderado | Baixa | Baixo | — | ✅ em produção: 3-I, 3-II, 3-IV e 3-III (PRs #262, #265, #269 e #276, 23/09) |
 | **4** | Fluxos: `{{vars}}` em botões e listas (#553) | Inerte hoje (0 fluxos ativos) | Média | Médio-baixo | — | ✅ em produção (PR #271, 23/09): porte manual — o #259 **descartou** o `engine.ts` deles; teste real feito com a janela aberta pelo operador |
-| **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | colunas aplicadas (correção do #259); gravar, mostrar e espelhar: em PR (porte manual — o #259 descartou o webhook deles) |
-| **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | 6a CRU em produção pelo #259 (rotas com o canal preservado; falta o teste com a WABA e o teto da leitura); 6b CRU e inerte (a rota não passa o `wabaId`) |
+| **5** | Motivo da falha da Meta (#535) | 2 `failed` desde 10/09 | Média | Baixo | `1039` | ✅ em produção (PR #283, merge `6cedb67a`, rollout 24/09 00:24Z): porte manual — o #259 descartou o webhook deles; falta o disparo REAL fora da janela (a janela do lead de teste fecha 24/09 19:14Z) |
+| **6** | Modelos: cabeçalho de mídia (#562) e stub (#534) | Moderado | Média | Médio-baixo | — | em PR: 6a (o teto na leitura; teste com a WABA feito) e 6b (stub por `cb_channels`, ligado) |
 | **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | CRU só no caminho LEGADO (que não é montado); o porte para `cb-channels` pendente; a doc do original foi apagada até lá |
 | **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | biblioteca CRUA no `main`; o cartão ESCONDIDO (correção do #259) até o ouvinte ser montado com as adaptações |
 | **9** | "Digitando…" da IA (#527), sobre o canal da conversa | Inerte hoje (auto-reply desligado) | Média | Médio | — | só a função (`sendTypingIndicator`, sem chamador); o `auto-reply.ts` deles foi descartado |
@@ -1335,7 +1335,41 @@ Teste: POST assinado LOCAL de `message_template_status_update` para id
 desconhecido → stub COM canal; segundo evento atualiza, não duplica; "Sincronizar"
 adota o stub. Limpeza: apagar o stub.
 
-**Resultado:** — (a preencher)
+**Resultado (24/09/2026):**
+
+- **Medido antes:** 9 modelos, todos na conexão oficial (uma só, WABA
+  `1138963437989735`); nenhum com `channel_id` nulo. O token e a WABA das
+  rotas de criar e editar modelo já saíam do canal (`resolveMetaChannel`) —
+  o #259 manteve isso. O `META_APP_ID` não está no `.env.local`; a preview
+  subiu com ele por variável de ambiente (é o id público do app, o mesmo do
+  `crm.env` da VPS).
+- **6a:** `lerComTeto` saiu de `instagram/midia.ts` para
+  `src/lib/http/ler-com-teto.ts` (o Instagram reexporta); o cabeçalho confere
+  o `content-length` antes (mensagem com o tamanho) e lê com teto (mensagem
+  "larger than"). Os testes passaram a usar resposta de verdade, em stream —
+  o dublê com só `arrayBuffer` esconderia a leitura sem teto — e há um corpo
+  sem fim que para no teto. Textos: `Settings.templates.mediaHint` ("nós o
+  enviamos à Meta"), `.env.local.example` e `docs/multi-waba.md` (o
+  `META_APP_ID` serve a imagem, vídeo e documento).
+- **6b:** o stub por `cb_channels.waba_id` (`kind = 'meta'`, exatamente uma
+  conexão), com `channel_id` e o DONO da conta em `user_id`, e sem nascer ao
+  lado de uma linha de mesmo nome/idioma no canal (o índice único da 903 leva
+  o `user_id`). A rota passa `wabaId: entry.id`. Pino estrutural lendo a rota
+  e o módulo.
+- **E2E na preview, contra a Meta de verdade** (P5, delegado pelo operador):
+  1. `POST /api/whatsapp/templates/submit` com cabeçalho `document` e o PDF
+     público de teste do W3C → 200, `header_handle` obtido pelo upload da
+     Meta, modelo `teste_crm_cabecalho_pdf` criado `PENDING` na WABA (id
+     `1643195673986609`), a linha com o canal e o dono;
+  2. a linha LOCAL apagada (a Meta ainda o tem) e um `message_template_status_update`
+     assinado mandado ao webhook LOCAL → stub com o canal, o dono como autor,
+     o id da Meta, sem corpo;
+  3. `message_template_quality_update` para o mesmo id → a MESMA linha
+     (total continua 10);
+  4. **Sincronizar** → 10 atualizados, 0 inseridos: o stub foi ADOTADO (a
+     mesma linha ganhou o cabeçalho `document` e o `header_handle`);
+  5. limpeza: `DELETE /api/whatsapp/templates/<id>` → apagado na Meta e no
+     CRM; um segundo Sincronizar confirma 9 modelos na Meta.
 
 ### Fase 7 — Por que a conexão com a Meta falhou
 

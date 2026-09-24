@@ -1,3 +1,4 @@
+import { lerComTeto } from '@/lib/http/ler-com-teto'
 import { uploadResumableMedia } from '@/lib/whatsapp/meta-api'
 import { MEDIA_HEADER_SPECS, isMediaHeaderKind } from '@/lib/whatsapp/media-header-types'
 import type { TemplatePayload } from '@/lib/whatsapp/template-validators'
@@ -74,14 +75,26 @@ export async function ensureMediaHeaderHandle(
     throw new Error(`Header ${kind} must be ${spec.formats} (got ${contentType}).`)
   }
 
-  const bytes = new Uint8Array(await res.arrayBuffer())
+  // ⚠️ O teto é conferido DURANTE a leitura (`lerComTeto`), nunca depois de
+  // um `arrayBuffer()`: a URL pode ser colada por qualquer membro, e um corpo
+  // de gigabytes derrubaria o processo Node — o teto do documento é 100 MB, e
+  // o original lia tudo antes de conferir (inventário do #259, Fase 6a).
+  const limiteMb = spec.maxBytes / 1024 / 1024
+  const declarado = Number(res.headers.get('content-length'))
+  if (Number.isFinite(declarado) && declarado > spec.maxBytes) {
+    await res.body?.cancel().catch(() => {})
+    throw new Error(
+      `Header ${kind} is ${(declarado / 1024 / 1024).toFixed(1)} MB — Meta's limit is ${limiteMb} MB.`,
+    )
+  }
+  let bytes: Uint8Array
+  try {
+    bytes = new Uint8Array(await lerComTeto(res, spec.maxBytes))
+  } catch {
+    throw new Error(`Header ${kind} is larger than Meta's limit of ${limiteMb} MB.`)
+  }
   if (bytes.byteLength === 0) {
     throw new Error(`Header ${kind} is empty.`)
-  }
-  if (bytes.byteLength > spec.maxBytes) {
-    throw new Error(
-      `Header ${kind} is ${(bytes.byteLength / 1024 / 1024).toFixed(1)} MB — Meta's limit is ${spec.maxBytes / 1024 / 1024} MB.`,
-    )
   }
 
   // A sample served without a Content-Type is assumed to be the kind's
