@@ -80,14 +80,36 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     expect(hook).toMatch(/papel: profile\?\.account_role/);
   });
 
-  it('lê o pino do canal e espera a atribuição antes de ler o responsável', () => {
+  it('lê o pino do canal; a mensagem que não é sua ESPERA a atribuição; e a tela é conferida de novo', () => {
     // Codex, PR #287: sem `channel_pinned` a régua não sabe se a conversa
-    // segue o cliente; sem a espera, "só as minhas" perde a mensagem que a
-    // automação atribui logo depois do INSERT.
+    // segue o cliente, e "só as minhas" perdia a mensagem que a automação
+    // atribui depois do INSERT. Codex, PR #289: um prazo fixo não garante a
+    // atribuição (outros passos podem vir antes), e depois dele a pessoa pode
+    // já estar lendo a conversa.
     const hook = semComentarios(ler('hooks/use-browser-notifications.ts'));
-    expect(hook).toMatch(/"id, channel_id, channel_pinned, group_id, assigned_agent_id, "/);
+    expect(hook).toMatch(/"id, channel_id, channel_pinned, group_id, assigned_agent_id, unread_count, "/);
+    expect(hook).not.toMatch(/setTimeout\(/);
     expect(hook).toMatch(
-      /if \(dependeDoResponsavel\(vivoRef\.current\.preferencia\.quais\)\) \{\s*await new Promise\(\(r\) => setTimeout\(r, ESPERA_PELA_ATRIBUICAO_MS\)\);\s*if \(cancelado\) return;\s*\}\s*const \{ data, error \} = await supabase/,
+      /if \(esperaAtribuicao\(silencio\)\) \{\s*if \(!podeEstacionar\) return;[\s\S]*?estacionadas\.set\(msg\.conversation_id,/,
+    );
+    // A atribuição que chega com a consulta no ar não se perde...
+    expect(hook).toMatch(/const consultouEm = Date\.now\(\);\s*const \{ data, error \} = await supabase/);
+    expect(hook).toMatch(
+      /if \(atribuidaEm !== undefined && atribuidaEm >= consultouEm\) \{\s*void avisar\(msg, false\);\s*return;\s*\}/,
+    );
+    expect(hook).toMatch(/atribuidasAgora\.set\(id, agora\);\s*const parada = estacionadas\.get\(id\);\s*if \(!parada\) return;\s*estacionadas\.delete\(id\);/);
+    // ...a mensagem que alguém já abriu durante a espera não vira aviso...
+    expect(hook).toMatch(/if \(!podeEstacionar && !conversa\.unread_count\) return;/);
+    // ...e "vendo agora" é a tela de verdade (visível E na conversa).
+    expect(hook).toMatch(
+      /const vendoAgora = \(conversaId: string\) =>\s*document\.visibilityState === "visible" &&\s*viewedConversationFromLocation\(window\.location\.pathname, window\.location\.search\) ===\s*conversaId;/,
+    );
+    expect(hook).toMatch(
+      /event: "UPDATE",\s*schema: "public",\s*table: "conversations",\s*filter: `assigned_agent_id=eq\.\$\{userId\}`/,
+    );
+    expect(hook).toMatch(/void avisar\(parada\.msg, false\)/);
+    expect(hook).toMatch(
+      /if \(vendoAgora\(msg\.conversation_id\)\) return;\s*try \{\s*const notificacao = new Notification\(/,
     );
   });
 

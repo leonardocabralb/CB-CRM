@@ -4,7 +4,7 @@ import {
   LIMITE_DE_ATRASO_MS,
   PREFERENCIA_PADRAO,
   chaveDaPreferencia,
-  dependeDoResponsavel,
+  esperaAtribuicao,
   lerPreferencia,
   silencioDoAviso,
   type ConversaDoAviso,
@@ -135,10 +135,12 @@ describe("silencioDoAviso — quem recebe o aviso (P2)", () => {
     expect(decide({ conversa: { channel_id: "canal-b" }, canalDaMensagem: null })).toBe("fora_do_perfil");
   });
 
-  it("só as opções que leem o responsável esperam a atribuição", () => {
-    expect(dependeDoResponsavel("todas")).toBe(false);
-    expect(dependeDoResponsavel("minhas")).toBe(true);
-    expect(dependeDoResponsavel("minhas_e_sem_responsavel")).toBe(true);
+  it("só o \"não é sua\" espera a atribuição (perfil, grupo e antiga não mudam com ela)", () => {
+    expect(esperaAtribuicao("nao_e_sua")).toBe(true);
+    expect(esperaAtribuicao(null)).toBe(false);
+    for (const s of ["sem_caixa_de_entrada", "grupo", "fora_do_perfil", "antiga"] as const) {
+      expect(esperaAtribuicao(s)).toBe(false);
+    }
   });
 
   it("perfil sem a Caixa de entrada não avisa (o clique cairia na TelaBloqueada)", () => {

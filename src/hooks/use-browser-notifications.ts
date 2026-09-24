@@ -17,9 +17,9 @@ import {
 } from "@/lib/notifications/browser-notify";
 import {
   CHAVE_ANTIGA,
-  ESPERA_PELA_ATRIBUICAO_MS,
+  JANELA_DA_ATRIBUICAO_MS,
   chaveDaPreferencia,
-  dependeDoResponsavel,
+  esperaAtribuicao,
   lerPreferencia,
   silencioDoAviso,
   type ConversaDoAviso,
@@ -110,10 +110,13 @@ export function usePreferenciaDeAviso(): {
 
 /** O que a consulta da conversa traz: a régua (`silencioDoAviso`) e o nome. */
 const SELECT_DA_CONVERSA =
-  "id, channel_id, channel_pinned, group_id, assigned_agent_id, " +
+  "id, channel_id, channel_pinned, group_id, assigned_agent_id, unread_count, " +
   "contact:contacts(name, phone, instagram_username), group:cb_groups(channel_id)";
 
-type ConversaDaConsulta = ConversaDoAviso & { contact?: ContatoIdentificavel | null };
+type ConversaDaConsulta = ConversaDoAviso & {
+  unread_count?: number | null;
+  contact?: ContatoIdentificavel | null;
+};
 
 /**
  * Aviso na área de trabalho a cada mensagem nova de cliente. Montado UMA vez
@@ -168,14 +171,26 @@ export function useBrowserNotifications(): void {
 
     const supabase = createClient();
     let cancelado = false;
+    // Mensagens caladas por "não é sua", à espera de a conversa ser atribuída
+    // a esta pessoa (ver `JANELA_DA_ATRIBUICAO_MS`). Uma por conversa: o aviso
+    // também é um por conversa (`tag`).
+    const estacionadas = new Map<string, { msg: Message; ate: number }>();
+    // Quando cada conversa foi atribuída a esta pessoa (o UPDATE do realtime).
+    // A atribuição pode chegar ENQUANTO a consulta de `avisar` está no ar: a
+    // resposta volta com o dono velho, e a mensagem estacionaria DEPOIS de a
+    // soltura já ter passado (revisão do PR #289).
+    const atribuidasAgora = new Map<string, number>();
 
-    const avisar = async (msg: Message) => {
-      // Nas opções que leem o responsável, dá tempo à automação da própria
-      // mensagem de atribuir a conversa (ver `ESPERA_PELA_ATRIBUICAO_MS`).
-      if (dependeDoResponsavel(vivoRef.current.preferencia.quais)) {
-        await new Promise((r) => setTimeout(r, ESPERA_PELA_ATRIBUICAO_MS));
-        if (cancelado) return;
-      }
+    // A pessoa está com ESTA conversa na tela agora? Conferido de novo na hora
+    // de exibir: entre o INSERT e o aviso cabem a consulta e, na estacionada,
+    // minutos — ela pode ter aberto a conversa nesse meio (Codex, PR #289).
+    const vendoAgora = (conversaId: string) =>
+      document.visibilityState === "visible" &&
+      viewedConversationFromLocation(window.location.pathname, window.location.search) ===
+        conversaId;
+
+    const avisar = async (msg: Message, podeEstacionar: boolean) => {
+      const consultouEm = Date.now();
       const { data, error } = await supabase
         .from("conversations")
         .select(SELECT_DA_CONVERSA)
@@ -199,11 +214,28 @@ export function useBrowserNotifications(): void {
         quais: pref.quais,
         agoraMs: Date.now(),
       });
+      // Na soltura, a não lida zerada diz que alguém já abriu a conversa
+      // durante a espera: a mensagem foi vista, e a atribuição já avisa pelo
+      // sino (o gatilho de `notifications`) — revisão do PR #289.
+      if (!podeEstacionar && !conversa.unread_count) return;
+      if (esperaAtribuicao(silencio)) {
+        if (!podeEstacionar) return;
+        const atribuidaEm = atribuidasAgora.get(msg.conversation_id);
+        if (atribuidaEm !== undefined && atribuidaEm >= consultouEm) {
+          void avisar(msg, false);
+          return;
+        }
+        const agora = Date.now();
+        for (const [id, parada] of estacionadas) if (agora > parada.ate) estacionadas.delete(id);
+        estacionadas.set(msg.conversation_id, { msg, ate: agora + JANELA_DA_ATRIBUICAO_MS });
+        return;
+      }
       if (silencio) return;
 
       const labels = labelsRef.current;
       const titulo = nomeDoContato(conversa.contact, labels.fallbackTitle);
       const { body } = buildNotificationContent(msg, titulo, labels);
+      if (vendoAgora(msg.conversation_id)) return;
 
       try {
         const notificacao = new Notification(titulo, {
@@ -249,13 +281,41 @@ export function useBrowserNotifications(): void {
             seen: seenRef.current,
           });
           if (!deveAvisar) return;
-          void avisar(msg);
+          void avisar(msg, true);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "conversations",
+          filter: `assigned_agent_id=eq.${userId}`,
+        },
+        (payload) => {
+          // A conversa foi atribuída a esta pessoa: a mensagem estacionada
+          // dela é decidida DE NOVO, lendo a conversa como está agora.
+          const id = (payload.new as { id?: string }).id;
+          if (!id) return;
+          const agora = Date.now();
+          for (const [k, em] of atribuidasAgora) {
+            if (agora - em > JANELA_DA_ATRIBUICAO_MS) atribuidasAgora.delete(k);
+          }
+          atribuidasAgora.set(id, agora);
+          const parada = estacionadas.get(id);
+          if (!parada) return;
+          estacionadas.delete(id);
+          if (Date.now() > parada.ate) return;
+          if (getNotificationPermission() !== "granted") return;
+          void avisar(parada.msg, false);
         },
       )
       .subscribe();
 
     return () => {
       cancelado = true;
+      estacionadas.clear();
+      atribuidasAgora.clear();
       supabase.removeChannel(canal);
     };
   }, [ativo, userId, router]);

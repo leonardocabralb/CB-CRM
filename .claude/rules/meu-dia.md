@@ -215,10 +215,23 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   MENSAGEM** (o `follow` grava o canal novo depois do INSERT, e o ouvinte pode
   ler antes — a coluna diria o número velho, ou nulo na conversa nova). Por
   isso o select traz `channel_pinned`.
-- ⚠️ **"Só as minhas" e "minhas e sem responsável" esperam
-  `ESPERA_PELA_ATRIBUICAO_MS` (3 s) antes de ler o responsável**: a automação
-  disparada pela própria mensagem pode atribuir a conversa logo depois do
-  INSERT. "Todas" não lê o responsável e avisa na hora.
+- ⚠️ **A mensagem calada por "não é sua" fica ESTACIONADA
+  (`JANELA_DA_ATRIBUICAO_MS`, 2 min) e o UPDATE da conversa atribuída à
+  pessoa (realtime, `assigned_agent_id=eq.<id>`) a solta** — decidida de novo,
+  lendo a conversa como está. A automação disparada pela própria mensagem pode
+  atribuí-la depois do INSERT, e sem prazo: um sono fixo (a 1ª versão, 3 s)
+  não garante nada, porque outros passos podem vir antes (Codex, #287 e #289).
+  Duas cercas: a atribuição que chega com a consulta ainda no ar é guardada
+  (`atribuidasAgora`) e decide na hora de estacionar; e, na soltura, a não
+  lida zerada (alguém abriu a conversa na espera) cala — a atribuição já
+  avisa pelo sino. ⚠️ Aceito e escrito, porque hoje nenhuma automação
+  atribui conversa (medido em 24/09/2026): em "minhas e sem responsável", a
+  conversa lida sem dono avisa na hora mesmo que a automação a entregue a
+  outra pessoa em seguida, e a estacionada com dono de outra pessoa não é
+  solta se a conversa ficar SEM dono (o filtro do realtime não casa NULO).
+- ⚠️ **A tela é conferida DE NOVO antes de exibir** (`vendoAgora`): entre o
+  INSERT e o aviso cabem a consulta e, na estacionada, minutos — a pessoa pode
+  ter aberto a conversa nesse meio.
 - ⚠️ **Aparelho de toque é "não suportado"** (`avisoPossivelNoAparelho`,
   `MIDIA_DE_TOQUE`): sem service worker, `new Notification()` lança no Chrome
   do Android e no app instalado no iPhone — a chave ligaria e nada chegaria.

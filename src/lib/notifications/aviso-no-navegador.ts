@@ -110,20 +110,16 @@ export type ConversaDoAviso = Pick<
 >;
 
 /**
- * Espera antes de ler o RESPONSÁVEL, nas opções que dependem dele ("só as
- * minhas" e "minhas e sem responsável"): a automação disparada pela própria
- * mensagem pode atribuir a conversa DEPOIS do INSERT que o realtime entrega, e
- * lida na hora a conversa ainda estaria sem dono ou com o anterior (Codex, PR
- * #287). É a mesma folga que a caixa de entrada dá à automação que roda depois
- * da mensagem (`avisarExecucoesMudaram`, 3 s). Atribuição depois de um
- * "Aguardar" fica fora — ali a mensagem já é outra.
+ * Por quanto tempo a mensagem calada por "não é sua" espera a conversa ser
+ * ATRIBUÍDA a quem recebe. A automação disparada pela própria mensagem pode
+ * atribuí-la DEPOIS do INSERT que o realtime entrega — e sem prazo fixo:
+ * antes do passo de atribuir podem rodar outros, com envio de rede (Codex, PRs
+ * #287 e #289). Por isso não se dorme um tempo e se lê de novo: a mensagem
+ * fica ESTACIONADA, e o UPDATE da conversa atribuída a esta pessoa (realtime)
+ * a solta. Passado o prazo, ela é esquecida — atribuição que vem depois de um
+ * "Aguardar" já não é resposta a esta mensagem.
  */
-export const ESPERA_PELA_ATRIBUICAO_MS = 3000;
-
-/** A opção lê o responsável? ("todas" não lê, e avisa sem esperar.) */
-export function dependeDoResponsavel(quais: QuaisConversas): boolean {
-  return quais !== "todas";
-}
+export const JANELA_DA_ATRIBUICAO_MS = 2 * 60 * 1000;
 
 export type SilencioDoAviso =
   | "sem_caixa_de_entrada"
@@ -177,4 +173,13 @@ export function silencioDoAviso(args: {
     return "antiga";
   }
   return null;
+}
+
+/**
+ * O silêncio pode virar aviso se a conversa for atribuída a quem recebe?
+ * Só o "não é sua": perfil, grupo e mensagem antiga não mudam com a
+ * atribuição.
+ */
+export function esperaAtribuicao(silencio: SilencioDoAviso | null): boolean {
+  return silencio === "nao_e_sua";
 }
