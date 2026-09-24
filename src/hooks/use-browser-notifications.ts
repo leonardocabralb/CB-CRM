@@ -17,7 +17,9 @@ import {
 } from "@/lib/notifications/browser-notify";
 import {
   CHAVE_ANTIGA,
+  ESPERA_PELA_ATRIBUICAO_MS,
   chaveDaPreferencia,
+  dependeDoResponsavel,
   lerPreferencia,
   silencioDoAviso,
   type ConversaDoAviso,
@@ -108,7 +110,7 @@ export function usePreferenciaDeAviso(): {
 
 /** O que a consulta da conversa traz: a régua (`silencioDoAviso`) e o nome. */
 const SELECT_DA_CONVERSA =
-  "id, channel_id, group_id, assigned_agent_id, " +
+  "id, channel_id, channel_pinned, group_id, assigned_agent_id, " +
   "contact:contacts(name, phone, instagram_username), group:cb_groups(channel_id)";
 
 type ConversaDaConsulta = ConversaDoAviso & { contact?: ContatoIdentificavel | null };
@@ -168,6 +170,12 @@ export function useBrowserNotifications(): void {
     let cancelado = false;
 
     const avisar = async (msg: Message) => {
+      // Nas opções que leem o responsável, dá tempo à automação da própria
+      // mensagem de atribuir a conversa (ver `ESPERA_PELA_ATRIBUICAO_MS`).
+      if (dependeDoResponsavel(vivoRef.current.preferencia.quais)) {
+        await new Promise((r) => setTimeout(r, ESPERA_PELA_ATRIBUICAO_MS));
+        if (cancelado) return;
+      }
       const { data, error } = await supabase
         .from("conversations")
         .select(SELECT_DA_CONVERSA)

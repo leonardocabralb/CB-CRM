@@ -4,6 +4,7 @@ import {
   LIMITE_DE_ATRASO_MS,
   PREFERENCIA_PADRAO,
   chaveDaPreferencia,
+  dependeDoResponsavel,
   lerPreferencia,
   silencioDoAviso,
   type ConversaDoAviso,
@@ -113,10 +114,31 @@ describe("silencioDoAviso — quem recebe o aviso (P2)", () => {
     // coluna nula deixaria passar a conversa de outra conexão.
     expect(decide({ conversa: { channel_id: null }, canalDaMensagem: "canal-b" })).toBe("fora_do_perfil");
     expect(decide({ conversa: { channel_id: null }, canalDaMensagem: "canal-a" })).toBeNull();
-    // Com a conversa já carimbada, ela manda (a mensagem pode ser de outro número).
-    expect(decide({ conversa: { channel_id: "canal-a" }, canalDaMensagem: "canal-b" })).toBeNull();
+    // Conversa FIXADA: manda o canal dela (a mensagem pode ser de outro número).
+    expect(
+      decide({ conversa: { channel_id: "canal-a", channel_pinned: true }, canalDaMensagem: "canal-b" }),
+    ).toBeNull();
     // Grupo continua fora, com ou sem canal na mensagem.
     expect(decide({ conversa: { channel_id: null, group_id: "g1" }, canalDaMensagem: "canal-a" })).toBe("grupo");
+  });
+
+  it("conversa SOLTA com o canal velho: vale o da mensagem (o `follow` troca depois do INSERT)", () => {
+    // O cliente escreveu pelo número B numa conversa que estava no A e não
+    // tem pino: quem é do A não recebe, quem é do B recebe (Codex, PR #287).
+    expect(
+      decide({ conversa: { channel_id: "canal-a", channel_pinned: false }, canalDaMensagem: "canal-b" }),
+    ).toBe("fora_do_perfil");
+    expect(
+      decide({ conversa: { channel_id: "canal-b", channel_pinned: false }, canalDaMensagem: "canal-a" }),
+    ).toBeNull();
+    // Sem carimbo na mensagem, fica o da conversa.
+    expect(decide({ conversa: { channel_id: "canal-b" }, canalDaMensagem: null })).toBe("fora_do_perfil");
+  });
+
+  it("só as opções que leem o responsável esperam a atribuição", () => {
+    expect(dependeDoResponsavel("todas")).toBe(false);
+    expect(dependeDoResponsavel("minhas")).toBe(true);
+    expect(dependeDoResponsavel("minhas_e_sem_responsavel")).toBe(true);
   });
 
   it("perfil sem a Caixa de entrada não avisa (o clique cairia na TelaBloqueada)", () => {

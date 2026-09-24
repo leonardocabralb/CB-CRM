@@ -211,9 +211,14 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   troca a query — a página não remonta e o deep link só é lido quando a lista
   recarrega. A página escuta e abre pelo caminho do "Nova conversa", sem
   reabrir a que já está ativa (zeraria o fio carregado).
-- ⚠️ **Conversa NOVA pode ser lida sem `channel_id`** (o canal chega à
-  conversa depois do INSERT da mensagem): na 1:1 sem canal, o recorte usa o
-  canal carimbado NA mensagem — senão a conversa de outra conexão passaria.
+- ⚠️ **O canal do recorte: conversa FIXADA usa o dela; SOLTA usa o da
+  MENSAGEM** (o `follow` grava o canal novo depois do INSERT, e o ouvinte pode
+  ler antes — a coluna diria o número velho, ou nulo na conversa nova). Por
+  isso o select traz `channel_pinned`.
+- ⚠️ **"Só as minhas" e "minhas e sem responsável" esperam
+  `ESPERA_PELA_ATRIBUICAO_MS` (3 s) antes de ler o responsável**: a automação
+  disparada pela própria mensagem pode atribuir a conversa logo depois do
+  INSERT. "Todas" não lê o responsável e avisa na hora.
 - ⚠️ **Aparelho de toque é "não suportado"** (`avisoPossivelNoAparelho`,
   `MIDIA_DE_TOQUE`): sem service worker, `new Notification()` lança no Chrome
   do Android e no app instalado no iPhone — a chave ligaria e nada chegaria.

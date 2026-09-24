@@ -106,8 +106,24 @@ export interface MensagemDoAviso {
 /** O que a decisão lê da conversa (a consulta do ouvinte). */
 export type ConversaDoAviso = Pick<
   Conversation,
-  "id" | "channel_id" | "group_id" | "group" | "assigned_agent_id"
+  "id" | "channel_id" | "channel_pinned" | "group_id" | "group" | "assigned_agent_id"
 >;
+
+/**
+ * Espera antes de ler o RESPONSÁVEL, nas opções que dependem dele ("só as
+ * minhas" e "minhas e sem responsável"): a automação disparada pela própria
+ * mensagem pode atribuir a conversa DEPOIS do INSERT que o realtime entrega, e
+ * lida na hora a conversa ainda estaria sem dono ou com o anterior (Codex, PR
+ * #287). É a mesma folga que a caixa de entrada dá à automação que roda depois
+ * da mensagem (`avisarExecucoesMudaram`, 3 s). Atribuição depois de um
+ * "Aguardar" fica fora — ali a mensagem já é outra.
+ */
+export const ESPERA_PELA_ATRIBUICAO_MS = 3000;
+
+/** A opção lê o responsável? ("todas" não lê, e avisa sem esperar.) */
+export function dependeDoResponsavel(quais: QuaisConversas): boolean {
+  return quais !== "todas";
+}
 
 export type SilencioDoAviso =
   | "sem_caixa_de_entrada"
@@ -135,13 +151,17 @@ export function silencioDoAviso(args: {
   // O clique leva à caixa de entrada: perfil sem ela cairia na TelaBloqueada.
   if (!podeVerTela(ctx, "inbox")) return "sem_caixa_de_entrada";
   if (conversa.group_id) return "grupo";
-  // ⚠️ Conversa NOVA nasce sem `channel_id`: o canal chega à conversa três
-  // idas ao banco depois do INSERT da mensagem, e o ouvinte pode lê-la antes.
-  // Com a coluna nula o recorte deixaria passar (conversa sem canal passa).
-  // A mensagem já nasce carimbada, e é esse o canal que o `follow` grava.
-  const comCanal = conversa.channel_id
-    ? conversa
-    : { ...conversa, channel_id: mensagem.channel_id ?? null };
+  // ⚠️ Qual canal decide o recorte. Conversa FIXADA: o dela — é por ele que
+  // ela aparece no inbox e responde, e o `follow` não a troca. Conversa SOLTA
+  // segue o cliente: o `follow` grava o canal da mensagem DEPOIS do INSERT
+  // (três idas ao banco), e o ouvinte pode ler antes — a coluna ainda diria o
+  // número VELHO (Codex, PR #287) ou nulo (conversa nova). A mensagem já nasce
+  // carimbada, e é esse o canal que a conversa vai ter.
+  const canal =
+    conversa.channel_pinned && conversa.channel_id
+      ? conversa.channel_id
+      : (mensagem.channel_id ?? conversa.channel_id ?? null);
+  const comCanal = { ...conversa, channel_id: canal };
   if (!conversaNoEscopo(ctx, comCanal as Conversation)) return "fora_do_perfil";
 
   const dono = conversa.assigned_agent_id ?? null;

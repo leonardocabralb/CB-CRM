@@ -88,6 +88,12 @@ describe('instruções do assistente', () => {
     })
   }
 
+  it('a consulta desliga a detecção de renomeação (arquivo movido entre áreas leva as regras das duas)', () => {
+    // Codex, PR #286: com a detecção, `--name-only` lista só o destino.
+    const script = readFileSync(join(RAIZ, 'scripts', 'regras-do-diff.mjs'), 'utf8')
+    expect(script.match(/git\('diff', '--name-only', '--no-renames'/g) ?? []).toHaveLength(2)
+  })
+
   it('o índice da raiz não aponta para regra que não existe', () => {
     const citadas = [...new Set(raiz.match(/\.claude\/rules\/[\w./-]+\.md/g) ?? [])]
     const existentes = new Set(regras.map((r) => relative(RAIZ, r)))

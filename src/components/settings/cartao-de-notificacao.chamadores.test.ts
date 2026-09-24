@@ -80,6 +80,17 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     expect(hook).toMatch(/papel: profile\?\.account_role/);
   });
 
+  it('lê o pino do canal e espera a atribuição antes de ler o responsável', () => {
+    // Codex, PR #287: sem `channel_pinned` a régua não sabe se a conversa
+    // segue o cliente; sem a espera, "só as minhas" perde a mensagem que a
+    // automação atribui logo depois do INSERT.
+    const hook = semComentarios(ler('hooks/use-browser-notifications.ts'));
+    expect(hook).toMatch(/"id, channel_id, channel_pinned, group_id, assigned_agent_id, "/);
+    expect(hook).toMatch(
+      /if \(dependeDoResponsavel\(vivoRef\.current\.preferencia\.quais\)\) \{\s*await new Promise\(\(r\) => setTimeout\(r, ESPERA_PELA_ATRIBUICAO_MS\)\);\s*if \(cancelado\) return;\s*\}\s*const \{ data, error \} = await supabase/,
+    );
+  });
+
   it('o clique abre a conversa também com o inbox já montado', () => {
     // Só o `router.push` troca a query e a página não remonta: a URL dizia
     // uma conversa e o fio mostrava outra (revisão da Fase 8, P2).
