@@ -76,7 +76,9 @@
   stub; a busca "já existe" olhava só o canal, e o stub nascia ao lado da linha
   sem canal que a sincronização adota → busca por canal OU nulo.
 - **Verificado:** typecheck limpo; lint 60 avisos (igual ao `main`); i18n OK;
-  5.848 testes verdes no Node 22; mutantes 20/20; E2E contra a Meta de verdade
+  5.848 testes verdes no Node 22; mutantes 21/21; duas revisões (duas lentes
+  com cético no commit da fase; um revisor com cético no commit das correções,
+  sem P0–P2); E2E contra a Meta de verdade
   (modelo de teste criado, stub completo, qualidade na mesma linha, id
   inexistente sem stub, Sincronizar adotando, exclusão sem ressurreição, tudo
   limpo — 9 modelos na Meta e no CRM).
@@ -109,7 +111,12 @@ cada fase estão na seção 7 do plano.
 - **Registrados, não corrigidos (Fase 6):** o primeiro Sincronizar troca o
   dono do stub pelo admin que sincroniza (defeito anterior da rota de
   sincronização, M24); stub do dono e linha de outro admin no mesmo instante
-  podem nascer juntos (raro).
+  podem nascer juntos (raro); a leitura do modelo na Meta (até 10 s) roda em
+  série no laço do webhook, então mensagens que a Meta mande no MESMO POST de
+  um evento de modelo desconhecido esperam por ela (raro — conserto possível:
+  tratar os eventos de modelo depois das mensagens, como os recibos); e o
+  `uploadResumableMedia` (anterior, do original) põe o `access_token` na
+  query do início do upload — vale olhar na Fase 7.
 - **Outras pendências de sessões anteriores** — conferir na memória antes de
   agir: a conferência do cenário do Make pelo operador; a ficha da Kommo com
   14 dígitos; a tolerância de 8 dígitos do disparo (P2 refutado na 3-III,

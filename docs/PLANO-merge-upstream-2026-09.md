@@ -1392,6 +1392,10 @@ adota o stub. Limpeza: apagar o stub.
   | P3 — cópia desnecessária do Buffer | ✅ sem cópia |
   | P3 — o primeiro Sincronizar troca o dono do stub pelo admin que sincroniza | registrado (defeito anterior da sincronização, M24) |
   | P3 — stub do dono e linha de OUTRO admin no mesmo instante podem nascer juntos (o índice único leva o `user_id`) | aceito e escrito no CLAUDE.md (raro: um vai-e-volta ao banco) |
+  | 2ª revisão (só o commit das correções, um revisor com cético): nenhum P0–P2; mediu no Node 22 que o prazo vencido na leitura do corpo é `TimeoutError` e a queda é `TypeError('terminated')`, e que o Buffer sem cópia sai com os bytes certos | — |
+  | P3 (2ª revisão) — a asserção "não cai no ramo de mensagens" do teste de rota portado passava por acidente | ✅ o valor do evento leva também a forma de uma mensagem; o mutante sem o `continue` reprova |
+  | P3 (2ª revisão) — a dica prometia 100 MB por link, mas o prazo de 10 s vale para o corpo | ✅ a dica e o CHANGELOG dizem "precisa baixar em até 10 segundos" |
+  | P3 (2ª revisão) — a leitura na Meta (até 10 s) roda em série no laço do webhook, antes das mensagens do mesmo POST | aceito e registrado no handoff (raro: modelo desconhecido e mensagem no mesmo POST) |
 
 - **E2E refeito depois das correções** (P5): modelo `teste_crm_stub_completo`
   (cabeçalho PDF + `{{1}}` no corpo) criado na WABA (id `1037758085962344`),

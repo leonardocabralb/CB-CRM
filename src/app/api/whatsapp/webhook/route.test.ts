@@ -864,11 +864,17 @@ describe('conversation.created não segura a gravação da mensagem', () => {
 // e não cai no ramo de mensagens.
 describe('template-lifecycle webhooks: WABA id is threaded to the handler (#534)', () => {
   it('passes entry.id as wabaId so an unknown template can be stubbed for the right account', async () => {
+    // O valor carrega TAMBÉM a forma de uma mensagem: sem o `continue` da rota
+    // ele cairia no ramo de mensagens e seria gravado — é isso que a última
+    // asserção prova (com o valor só de modelo, ela passava por acidente).
     const value = {
       event: 'APPROVED',
       message_template_id: '4242',
       message_template_name: 'created_in_meta',
       message_template_language: 'en_US',
+      metadata: { phone_number_id: 'pn-1' },
+      contacts: [{ wa_id: '15551230000', profile: { name: 'Ada' } }],
+      messages: [TEXT_MESSAGE],
     }
     const body = {
       entry: [

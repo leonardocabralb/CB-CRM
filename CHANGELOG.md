@@ -91,8 +91,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ou que cai no meio é informado como tal, e não como arquivo grande demais.
   A dica da tela para vídeo e documento deixou de dizer que a Meta baixa o
   link durante a revisão — o CRM envia o arquivo à Meta, como já fazia com a
-  imagem —, a do documento diz os dois limites (100 MB por link, 16 MB
-  enviando pela tela), e o aviso depois de enviar um vídeo ou PDF diz
+  imagem —, a do documento diz os dois limites (100 MB por link, que precisa
+  baixar em até 10 segundos; 16 MB enviando pela tela), e o aviso depois de
+  enviar um vídeo ou PDF diz
   "Arquivo enviado", não "Imagem enviada".
 
 - **A documentação da API dizia coisas que não valem mais.** O caminho

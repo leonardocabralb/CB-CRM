@@ -2593,7 +2593,7 @@
       "imageHint": "Upload a JPEG/PNG (≤5 MB, ≥800×418 px recommended) or paste a public HTTPS link — we upload it to Meta for review automatically.",
       "mediaHint": "Upload the file or paste a public HTTPS link — we upload it to Meta for review automatically.",
       "videoHint": " Recommended: MP4 / 3GPP, ≤16 MB, ≤60 seconds.",
-      "documentHint": " PDF, Word, PowerPoint, Excel or text: ≤100 MB via link (≤16 MB when uploaded here).",
+      "documentHint": " PDF, Word, PowerPoint, Excel or text: ≤100 MB via link, which must download within 10 seconds (≤16 MB when uploaded here).",
       "bodyText": "Body Text",
       "bodyPlaceholder": "Hello '{{1}}', your order '{{2}}' is confirmed.",
       "bodyHint": "Use '{{1}}', '{{2}}' for variables (must be contiguous starting at '{{1}}').",
