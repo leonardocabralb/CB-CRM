@@ -193,6 +193,15 @@ export function useBrowserNotifications(): void {
     // estacionada mais antiga, que pode chegar depois, não troca o aviso da
     // mais nova (mesma `tag`) por texto velho (revisão do PR #289).
     const avisadas = new Map<string, { ordem: number; em: number }>();
+    // Até qual CHEGADA a pessoa já viu cada conversa (aberta nesta aba). É uma
+    // geração, e não só apagar a fila: a consulta de uma mensagem que chegou
+    // ANTES da abertura pode ainda estar no ar e estacionar depois — ou a da
+    // soltura, que já tirou a mensagem da fila (Codex, PR #289).
+    const vistas = new Map<string, { ate: number; em: number }>();
+    const marcarVista = (conversaId: string) => {
+      vistas.set(conversaId, { ate: chegadas, em: Date.now() });
+      estacionadas.delete(conversaId);
+    };
     const descartarAte = (conversaId: string, ordem: number) => {
       const parada = estacionadas.get(conversaId);
       if (parada && parada.ordem <= ordem) estacionadas.delete(conversaId);
@@ -231,6 +240,9 @@ export function useBrowserNotifications(): void {
         quais: pref.quais,
         agoraMs: Date.now(),
       });
+      // Mensagem que chegou até a última vez que a pessoa ABRIU esta conversa
+      // já foi vista: nem estaciona nem avisa.
+      if ((vistas.get(msg.conversation_id)?.ate ?? 0) >= ordem) return;
       if (esperaAtribuicao(silencio)) {
         if (!podeEstacionar) return;
         const atribuidaEm = atribuidasAgora.get(msg.conversation_id);
@@ -343,13 +355,17 @@ export function useBrowserNotifications(): void {
     // nunca viu a mensagem (revisão do PR #289).
     const aoAbrirConversa = (e: Event) => {
       const id = (e as CustomEvent<unknown>).detail;
-      if (typeof id === "string") estacionadas.delete(id);
+      if (typeof id === "string") marcarVista(id);
     };
     window.addEventListener(EVENTO_CONVERSA_ABERTA, aoAbrirConversa);
     const varrer = () => {
       const agora = Date.now();
       for (const [id, parada] of estacionadas) {
-        if (agora > parada.ate || vendoAgora(id)) estacionadas.delete(id);
+        if (agora > parada.ate) estacionadas.delete(id);
+        else if (vendoAgora(id)) marcarVista(id);
+      }
+      for (const [id, v] of vistas) {
+        if (agora - v.em > JANELA_DA_ATRIBUICAO_MS) vistas.delete(id);
       }
       for (const [id, em] of atribuidasAgora) {
         if (agora - em > JANELA_DA_CORRIDA_MS) atribuidasAgora.delete(id);
@@ -371,6 +387,7 @@ export function useBrowserNotifications(): void {
       estacionadas.clear();
       atribuidasAgora.clear();
       avisadas.clear();
+      vistas.clear();
       supabase.removeChannel(canal);
     };
   }, [ativo, userId, router]);

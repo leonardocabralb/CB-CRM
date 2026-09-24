@@ -107,11 +107,15 @@ describe('cartão de notificação do navegador × ouvinte', () => {
     // ...a estacionada da conversa que a pessoa está VENDO sai da fila (a não
     // lida é da conta e uma aba oculta a zera — não serve de sinal)...
     expect(hook).not.toMatch(/unread_count/);
-    expect(hook).toMatch(/if \(agora > parada\.ate \|\| vendoAgora\(id\)\) estacionadas\.delete\(id\);/);
+    expect(hook).toMatch(/if \(agora > parada\.ate\) estacionadas\.delete\(id\);\s*else if \(vendoAgora\(id\)\) marcarVista\(id\);/);
+    // ...a vista é uma GERAÇÃO (a chegada até a abertura): a consulta que
+    // estava no ar quando a pessoa abriu não estaciona nem avisa depois...
+    expect(hook).toMatch(/vistas\.set\(conversaId, \{ ate: chegadas, em: Date\.now\(\) \}\);\s*estacionadas\.delete\(conversaId\);/);
+    expect(hook).toMatch(/if \(\(vistas\.get\(msg\.conversation_id\)\?\.ate \?\? 0\) >= ordem\) return;\s*if \(esperaAtribuicao\(silencio\)\) \{/);
     expect(hook).toMatch(/window\.clearInterval\(varredura\);/);
     // ...por EVENTO da caixa de entrada (a amostragem perdia quem abre e sai
     // entre dois tiques) e na volta à aba...
-    expect(hook).toMatch(/if \(typeof id === "string"\) estacionadas\.delete\(id\);/);
+    expect(hook).toMatch(/if \(typeof id === "string"\) marcarVista\(id\);/);
     expect(hook).toMatch(/window\.addEventListener\(EVENTO_CONVERSA_ABERTA, aoAbrirConversa\);/);
     expect(hook).toMatch(/document\.addEventListener\("visibilitychange", varrer\);/);
     const pagina = semComentarios(ler('app/(dashboard)/inbox/page.tsx'));

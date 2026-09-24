@@ -226,9 +226,10 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   não garante nada, porque outros passos podem vir antes (Codex, #287 e #289).
   As cercas: a atribuição que chega com a consulta ainda no ar é guardada
   (`atribuidasAgora`) e decide na hora de estacionar; a conversa que a
-  pessoa ABRE sai da fila por evento da caixa de entrada
-  (`EVENTO_CONVERSA_ABERTA`; amostrar a URL perdia quem abre e sai entre
-  dois tiques) e na volta à aba (⚠️ nunca pela não lida,
+  pessoa ABRE fica marcada como VISTA até aquela chegada, por evento da
+  caixa de entrada (`EVENTO_CONVERSA_ABERTA`; amostrar a URL perdia quem abre
+  e sai entre dois tiques) e na volta à aba — uma geração, não só a fila,
+  porque a consulta no ar estacionaria depois (⚠️ nunca pela não lida,
   que é da conta: uma aba oculta com o fio aberto a zera e calaria quem não
   viu); a soltura de uma estacionada velha não troca o aviso de uma mais nova
   já exibida (`avisadas`); o prazo conta da MENSAGEM. ⚠️ Aceito e escrito, porque hoje nenhuma automação
