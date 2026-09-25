@@ -94,8 +94,10 @@ const UNIVERSO: Record<
     callSites: 2,
   },
   'lib/api/v1/contacts.ts': {
-    // `resolveApiAuthor` (authorship.ts): usuário de auditoria da v1 com
-    // queda para o dono da conta — nunca um membro comum.
+    // `resolveAuditUserId`: o dono DA CONTA (`accounts.owner_user_id`), e
+    // só ele — até a decisão 7 da Fase 11 preferia `whatsapp_config.user_id`
+    // (quem conectou o número). O teste "a API resolve o dono pela CONTA"
+    // abaixo amarra a origem.
     fontes: ['auditUserId'],
     callSites: 1,
   },
@@ -295,6 +297,19 @@ describe('dono durável: quem cria contato/conversa/campo grava o dono da conta'
       .filter((v) => v !== 'string'); // a anotação de tipo do `resolved`
     expect(donos.sort()).toEqual(['ch.ownerUserId', 'dono']);
     expect(meta).toMatch(/const dono = await donoDaConta\(supabaseAdmin\(\), config\.account_id\)/);
+  });
+
+  it('a API resolve o dono pela CONTA (`resolveAuditUserId`), nunca por quem conectou o número', () => {
+    const src = fontesDe.get('lib/api/v1/contacts.ts') ?? '';
+    const decl = src.match(/export async function resolveAuditUserId[\s\S]*?\n}\n/);
+    expect(decl, 'cadê o resolveAuditUserId?').not.toBeNull();
+    expect(decl![0]).toMatch(/from\(\s*['"]accounts['"]\s*\)/);
+    // Nenhuma outra tabela: era `whatsapp_config` primeiro, com a conta de queda.
+    expect([...decl![0].matchAll(/from\(\s*['"]([a-z_]+)['"]\s*\)/g)].map((m) => m[1])).toEqual([
+      'accounts',
+    ]);
+    // Sem dono (ou leitura que falha) = 500, nunca queda.
+    expect(decl![0]).toMatch(/if \(error \|\| !owner\)/);
   });
 
   it('no client, `ownerUserId` vem do useAuth() e não é redeclarado', () => {
