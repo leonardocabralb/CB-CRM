@@ -83,9 +83,11 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   `supabaseAdmin()`: sob a RLS do operador um `agent` deixaria de abrir card em
   silêncio. Gatilho por ESTADO ("o contato já tem card?"). Abrir conversa não
   cria negócio (decisão do operador): o card nasce no primeiro envio. ⚠️ O
-  sender REAL do robô é `src/lib/flows/meta-send.ts` (o de `automations/` é
-  wrapper). "Reusar o núcleo no broadcast" traz o roteador junto — 500 cards
-  de uma vez. Pino `pipeline-routing.chamadores.test.ts` (default-deny).
+  robô envia por DOIS remetentes reais: `src/lib/flows/meta-send.ts` (fluxo,
+  IA, mídia, botões e lista) e `sendViaMeta` em `automations/meta-send.ts`
+  (texto, modelo, `send_to_number` e a régua) — nenhum dos dois é wrapper.
+  "Reusar o núcleo no broadcast" traz o roteador junto — 500 cards de uma
+  vez. Pino `pipeline-routing.chamadores.test.ts` (default-deny).
 - ⚠️⚠️ **`cancelarEsperasPorResposta` ANTES de `dispatchInboundToFlows`**, sem
   olhar `flowConsumed`, SÓ nos dois caminhos de CLIENTE do WhatsApp (Meta e
   `persistInboundMessage`). Depois do despacho, a mensagem cancelaria a espera

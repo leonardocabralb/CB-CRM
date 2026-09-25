@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { SendMessageError } from '@/lib/whatsapp/send-message';
 import { sendMessageToConversation } from '@/lib/whatsapp/send-message';
 import { dispararUma, dispararVencidas } from './dispatch';
+import { FRASE_SO_NUMERO_OFICIAL } from '@/lib/whatsapp/alvo-de-envio';
 
 vi.mock('@/lib/whatsapp/send-message', async () => {
   const real =
@@ -661,5 +662,25 @@ describe('recusa determinística vs "não sei" (932)', () => {
     await dispararVencidas(db);
 
     expect(desfechos()[0].payload!.entrega_incerta).toBe(true);
+  });
+});
+
+describe('ficha só-BSUID por conexão que não é da Meta (Fase 11.3)', () => {
+  it('a recusa `not_supported` é "nada saiu": failed, SEM entrega incerta, com o motivo em português', async () => {
+    // A agendada fixou uma conexão por QR Code e, depois, a ficha ficou só com
+    // o BSUID (o telefone apagado da ficha). O núcleo recusa ANTES de chamar
+    // provedor nenhum — reenviar é seguro, e a tela precisa oferecer o
+    // "Tentar de novo". `not_supported` fica FORA de `CODIGOS_POS_ENTREGA`.
+    enviar.mockRejectedValue(
+      new SendMessageError('not_supported', FRASE_SO_NUMERO_OFICIAL, 400),
+    );
+    const { db, desfechos } = makeDb({ vencidas: [LINHA] });
+
+    await dispararVencidas(db);
+
+    const gravado = desfechos()[0].payload!;
+    expect(gravado.status).toBe('failed');
+    expect(gravado.entrega_incerta).toBe(false);
+    expect(gravado.error).toBe(FRASE_SO_NUMERO_OFICIAL);
   });
 });

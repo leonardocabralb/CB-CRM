@@ -14,6 +14,7 @@
 // ============================================================
 
 import { EvolutionClient, type EvolutionMessageKey } from './evolution-client';
+import { isBusinessScopedUserId } from '../wa-identity';
 import type {
   ConnectionState,
   InboundMedia,
@@ -30,9 +31,19 @@ import type {
  * Reduce any phone form (E.164 `+55 11 9…`, JID `…@s.whatsapp.net`) to
  * the digits-only string Evolution expects for `number`. Group JIDs
  * (`@g.us`) are returned unchanged so callers can detect/handle them.
+ *
+ * ⚠️ Segunda trava da Fase 11.3: o BSUID da Meta ("BR.1349…") LANÇA. Sem
+ * isto, as letras sumiriam e a mensagem sairia para o número formado pelos
+ * dígitos do BSUID — um desconhecido. A primeira trava é `alvoDeEnvio`, que
+ * nunca entrega o BSUID a um canal que não é da Meta.
  */
 export function toEvolutionNumber(phoneOrJid: string): string {
   if (phoneOrJid.endsWith('@g.us')) return phoneOrJid;
+  if (isBusinessScopedUserId(phoneOrJid)) {
+    throw new Error(
+      'a WhatsApp username id (BSUID) cannot be sent through Evolution — only the official Meta API reaches it',
+    );
+  }
   const bare = phoneOrJid.replace(/@s\.whatsapp\.net$|@lid$/, '');
   return bare.replace(/\D/g, '');
 }

@@ -704,9 +704,21 @@ message would fire at the wrong hour with no error anywhere.
 
 The sending channel is resolved **now** and frozen on the row (it does
 not follow the conversation later). Domain error codes: `no_channel`
-(409 — the account has no registered connection) and
-`group_channel_unknown` (409 — a group whose number isn't known yet).
+(409 — the account has no registered connection),
+`group_channel_unknown` (409 — a group whose number isn't known yet) and
+`not_supported` (409 — see below).
 Response: `201` with the scheduled message.
+
+**Contacts without a phone number (WhatsApp usernames).** When a
+customer has adopted a WhatsApp username, Meta may deliver their
+messages with no phone number at all — only a business-scoped user ID.
+Their contact has `phone: null`, and **only the official Meta API
+connection can reach them**. This endpoint is the API's only way to
+message such a contact (`POST /api/v1/messages` addresses by phone):
+schedule it on a conversation whose channel is the official Meta number.
+If the resolved channel is a QR Code (Evolution) connection, the request
+is refused with `409 not_supported` and nothing is queued — otherwise the
+refusal would only surface at dispatch time, with nobody watching.
 
 > Scheduled rows are dispatched by the external scheduler hitting the
 > cron endpoint — the API only enqueues.
