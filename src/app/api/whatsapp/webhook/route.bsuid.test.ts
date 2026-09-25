@@ -223,6 +223,9 @@ vi.mock('@/lib/cb-channels/stamp', async () => {
   }
 })
 vi.mock('@/lib/cb-channels/resolve-inbound', () => ({
+  // O dono DURÁVEL da conta — de propósito diferente do `user_id` da linha de
+  // `whatsapp_config` ('user-1', quem conectou o número).
+  donoDaConta: vi.fn(async () => 'dono-da-conta'),
   resolveInboundMetaChannelId: vi.fn(async () => null),
   resolveInboundMetaChannel: vi.fn(async () => null),
 }))
@@ -295,6 +298,21 @@ const disparos = (evento: string) =>
   h.runAutomationsForTrigger.mock.calls.filter((c) => c[0] === evento || c[1] === evento).length
 
 describe('entrada só-BSUID (a Meta sem telefone)', () => {
+  it('conta sem dono resolvível: nada é criado — nunca cai para quem conectou o número', async () => {
+    const { donoDaConta } = await import('@/lib/cb-channels/resolve-inbound')
+    vi.mocked(donoDaConta).mockResolvedValueOnce(null)
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await entregar([mensagem({ from_user_id: BSUID })], [{ user_id: BSUID, profile: { name: 'Ana' } }])
+    expect(h.state.contatos).toHaveLength(0)
+    expect(h.state.conversas).toHaveLength(0)
+    expect(h.state.upserts).toHaveLength(0)
+    expect(erro).toHaveBeenCalledWith(
+      '[whatsapp-webhook] conta sem dono resolvível; mensagens descartadas:',
+      expect.anything(),
+    )
+    erro.mockRestore()
+  })
+
   it('duas entregas só-BSUID → UMA ficha (phone NULL, nunca ""), UMA conversa, UM conversation.created', async () => {
     const semTelefone = [{ user_id: BSUID, profile: { name: 'Ana' } }]
     await entregar([mensagem({ from_user_id: BSUID })], semTelefone)
@@ -302,6 +320,8 @@ describe('entrada só-BSUID (a Meta sem telefone)', () => {
 
     expect(h.state.contatos).toHaveLength(1)
     expect(h.state.contatos[0]).toMatchObject({ phone: null, wa_user_id: BSUID, name: 'Ana' })
+    // O dono é o da CONTA, nunca quem conectou o número (`whatsapp_config.user_id`).
+    expect(h.state.contatos[0].user_id).toBe('dono-da-conta')
     expect(h.state.inserts[0].phone).toBeNull()
     expect(h.state.conversas).toHaveLength(1)
     expect(h.state.upserts).toHaveLength(2)
