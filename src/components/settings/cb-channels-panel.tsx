@@ -947,8 +947,13 @@ export function CbChannelsPanel() {
     }
   };
 
+  // O WABA ID é obrigatório: sem ele a WABA não é assinada ao app e a Meta
+  // não entrega as mensagens recebidas (a rota também recusa).
   const metaFormValid =
-    Boolean(label) && Boolean(metaPhoneNumberId.trim()) && Boolean(metaAccessToken.trim());
+    Boolean(label) &&
+    Boolean(metaPhoneNumberId.trim()) &&
+    Boolean(metaWabaId.trim()) &&
+    Boolean(metaAccessToken.trim());
   // O segredo pode ficar em branco quando o app da Meta já está cadastrado
   // (a rota usa o guardado).
   const igFormValid =
@@ -1404,10 +1409,7 @@ export function CbChannelsPanel() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="cb-meta-waba">
-                    {t('metaFieldWabaId')}{' '}
-                    <span className="text-muted-foreground">{t('metaOptional')}</span>
-                  </Label>
+                  <Label htmlFor="cb-meta-waba">{t('metaFieldWabaId')}</Label>
                   <Input
                     id="cb-meta-waba"
                     aria-invalid={metaFalha?.campo === 'waba_id' || undefined}

@@ -201,6 +201,11 @@ ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
 
 ### Graph API e configuração da conexão
 
+- ⚠️ **O WABA ID é OBRIGATÓRIO na conexão Meta** (`POST /api/cb/channels` e o
+  formulário, 25/09/2026): é a WABA que `provisionMetaChannel` assina ao app,
+  e sem ela a conexão nascia `connected` sem a Meta entregar nada. O teste
+  que fixava "WABA em branco continua opcional" virou o contrário
+  (`route.meta.test.ts`). Revisão do PR #285.
 - ⚠️ `listWabaPhoneNumbers` só segue `paging.next` dentro de
   `https://graph.facebook.com` (`isGraphUrl`: o cursor vem da RESPOSTA e o
   token vai no cabeçalho) e LANÇA quando o teto de páginas acaba com página
