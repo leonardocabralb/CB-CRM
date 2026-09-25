@@ -263,6 +263,9 @@ vi.mock('@/lib/cb-channels/stamp', async () => {
   }
 })
 vi.mock('@/lib/cb-channels/resolve-inbound', () => ({
+  // O dono DURÁVEL da conta — de propósito diferente do `user_id` da linha de
+  // `whatsapp_config` ('user-1', quem conectou o número).
+  donoDaConta: vi.fn(async () => 'dono-da-conta'),
   resolveInboundMetaChannelId: vi.fn(async () => null),
   resolveInboundMetaChannel: vi.fn(async () => null),
 }))

@@ -22,7 +22,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface InboundEvolutionRoute {
   accountId: string;
-  /** Dono de registro para inserts NOT NULL (contatos/conversas). */
+  /**
+   * DONO DURÁVEL da conta (`accounts.owner_user_id`): o `user_id` das fichas,
+   * conversas e grupos que a ingestão cria. Ver `donoDaConta`.
+   */
   ownerUserId: string;
   /** `cb_channels.id`; NULL no fallback `whatsapp_config` (transição). */
   channelId: string | null;
@@ -41,6 +44,42 @@ export interface InboundEvolutionRoute {
 }
 
 /**
+ * O DONO DURÁVEL da conta (`accounts.owner_user_id`, NOT NULL e ON DELETE
+ * RESTRICT) — o `user_id` de toda ficha, conversa e grupo que a ingestão cria.
+ *
+ * ⚠️ Nunca `cb_channels.created_by` nem `whatsapp_config.user_id` (quem
+ * CONECTOU o número): `contacts.user_id` e `conversations.user_id` CASCADEiam
+ * de `auth.users`, e apagar o login de quem conectou — o passo normal de
+ * quando alguém sai do escritório — levaria junto os clientes que a conexão
+ * trouxe, com as conversas e as mensagens (decisão 7 da Fase 11 do
+ * `docs/PLANO-merge-upstream-2026-09.md`; pino em `dono-duravel.test.ts`).
+ *
+ * Consulta pontual por id, nunca embed (`accounts!inner(...)`): o embed depende
+ * do cache de relações do PostgREST (a nota em `src/lib/auth/account.ts`).
+ * A leitura que FALHA é repetida uma vez: na ingestão, desistir é perder a
+ * mensagem do cliente, que o provedor já deu por entregue. Sem dono, `null` —
+ * e o chamador descarta com log, sem cair para quem conectou.
+ */
+export async function donoDaConta(
+  db: SupabaseClient,
+  accountId: string,
+): Promise<string | null> {
+  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    const { data, error } = await db
+      .from('accounts')
+      .select('owner_user_id')
+      .eq('id', accountId)
+      .maybeSingle();
+    if (!error) return data?.owner_user_id ?? null;
+    console.error(
+      `[cb-channels] ler o dono da conta falhou (tentativa ${tentativa}):`,
+      error.message,
+    );
+  }
+  return null;
+}
+
+/**
  * Descobre conta / dono / canal de uma instância Evolution que entregou um
  * webhook. Tenta `cb_channels` (multi-canal) e cai em `whatsapp_config`
  * (single-channel do Gabriel / transição) com aviso. Retorna `null` quando a
@@ -53,26 +92,16 @@ export async function resolveInboundEvolutionChannel(
   // 1. cb_channels por instance_name (chave de roteamento única global).
   const { data: channel } = await db
     .from('cb_channels')
-    .select('id, account_id, created_by, groups_enabled, own_lid')
+    .select('id, account_id, groups_enabled, own_lid')
     .eq('instance_name', instanceName)
     .eq('kind', 'evolution')
     .maybeSingle();
 
   if (channel) {
-    let ownerUserId: string | null = channel.created_by ?? null;
-    if (!ownerUserId) {
-      // created_by anulado (membro removido, ON DELETE SET NULL) — cai para
-      // o dono do espelho whatsapp_config da conta.
-      const { data: wc } = await db
-        .from('whatsapp_config')
-        .select('user_id')
-        .eq('account_id', channel.account_id)
-        .maybeSingle();
-      ownerUserId = wc?.user_id ?? null;
-    }
+    const ownerUserId = await donoDaConta(db, channel.account_id);
     if (!ownerUserId) {
       console.error(
-        '[cb-channels] canal Evolution sem dono resolvível (created_by e whatsapp_config.user_id nulos); mensagem descartada:',
+        '[cb-channels] canal Evolution sem dono da conta resolvível; mensagem descartada:',
         instanceName,
       );
       return null;
@@ -89,7 +118,7 @@ export async function resolveInboundEvolutionChannel(
   // 2. Fallback de transição: whatsapp_config por instance_name (Gabriel).
   const { data: cfg } = await db
     .from('whatsapp_config')
-    .select('account_id, user_id')
+    .select('account_id')
     .eq('instance_name', instanceName)
     .eq('provider', 'evolution')
     .maybeSingle();
@@ -99,9 +128,17 @@ export async function resolveInboundEvolutionChannel(
       '[cb-channels] instância só em whatsapp_config; roteando pelo fallback de transição:',
       instanceName,
     );
+    const ownerUserId = await donoDaConta(db, cfg.account_id);
+    if (!ownerUserId) {
+      console.error(
+        '[cb-channels] instância do fallback sem dono da conta resolvível; mensagem descartada:',
+        instanceName,
+      );
+      return null;
+    }
     return {
       accountId: cfg.account_id,
-      ownerUserId: cfg.user_id,
+      ownerUserId,
       channelId: null,
       // Fallback de transição não tem canal em cb_channels, logo não tem onde
       // ligar grupos — e o padrão seguro é não receber.
@@ -136,6 +173,7 @@ export async function resolveInboundMetaChannelId(
 
 export interface InboundMetaRoute {
   accountId: string;
+  /** DONO DURÁVEL da conta (`donoDaConta`), nunca quem conectou o número. */
   ownerUserId: string;
   /** access_token AINDA CRIPTOGRAFADO (o webhook decripta, como faz hoje). */
   accessToken: string;
@@ -156,24 +194,16 @@ export async function resolveInboundMetaChannel(
 ): Promise<InboundMetaRoute | null> {
   const { data: channel } = await db
     .from('cb_channels')
-    .select('id, account_id, created_by, access_token')
+    .select('id, account_id, access_token')
     .eq('phone_number_id', phoneNumberId)
     .eq('kind', 'meta')
     .maybeSingle();
   if (!channel || !channel.access_token) return null;
 
-  let ownerUserId: string | null = channel.created_by ?? null;
-  if (!ownerUserId) {
-    const { data: wc } = await db
-      .from('whatsapp_config')
-      .select('user_id')
-      .eq('account_id', channel.account_id)
-      .maybeSingle();
-    ownerUserId = wc?.user_id ?? null;
-  }
+  const ownerUserId = await donoDaConta(db, channel.account_id);
   if (!ownerUserId) {
     console.error(
-      '[cb-channels] canal Meta sem dono resolvível (created_by e whatsapp_config nulos); mensagem descartada:',
+      '[cb-channels] canal Meta sem dono da conta resolvível; mensagem descartada:',
       phoneNumberId,
     );
     return null;
@@ -226,18 +256,14 @@ export async function resolveInboundInstagramChannel(
   }
   if (!channel || !channel.ig_app_secret) return null;
 
-  const { data: conta } = await db
-    .from('accounts')
-    .select('owner_user_id')
-    .eq('id', channel.account_id)
-    .maybeSingle();
-  if (!conta?.owner_user_id) {
+  const ownerUserId = await donoDaConta(db, channel.account_id);
+  if (!ownerUserId) {
     console.error('[cb-channels] conta sem dono resolvível; entrega do Instagram descartada:', igUserId);
     return null;
   }
   return {
     accountId: channel.account_id,
-    ownerUserId: conta.owner_user_id,
+    ownerUserId,
     channelId: channel.id,
     igAppSecretCifrado: channel.ig_app_secret,
     accessTokenCifrado: channel.access_token ?? null,

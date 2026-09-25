@@ -16,8 +16,9 @@ interface DispatchArgs {
   accountId: string
   conversationId: string
   contactId: string
-  /** The account's WhatsApp config owner, used for the outbound send's
-   *  audit columns (mirrors how the flow runner passes it through). */
+  /** The account OWNER (`donoDaConta`, never who connected the number),
+   *  used for the outbound send's audit columns (mirrors how the flow
+   *  runner passes it through). */
   configOwnerUserId: string
   /** Canal por onde a mensagem entrou. Decide QUAL agente responde, se algum. */
   channelId?: string | null
