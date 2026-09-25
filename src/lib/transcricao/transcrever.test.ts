@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-vi.mock('@/lib/ai/config', () => ({ loadAiConfig: vi.fn() }))
+vi.mock('@/lib/ia-chaves/repo', () => ({ lerChave: vi.fn() }))
 vi.mock('@/lib/ai/usage', () => ({ logAiUsage: vi.fn(async () => {}) }))
 
-import { loadAiConfig } from '@/lib/ai/config'
+import { lerChave } from '@/lib/ia-chaves/repo'
 import { logAiUsage } from '@/lib/ai/usage'
 import { MODELO_TRANSCRICAO, transcreverAudio } from './transcrever'
 
@@ -71,7 +71,7 @@ const msgBase = {
   transcricao_tentativas: 0,
   conversation: { account_id: 'a1', channel_id: 'ch1' },
 }
-const configGemini = { provider: 'gemini', model: 'chat-model', apiKey: 'chave-g' }
+const chaveGemini = { chave: 'chave-g', ilegivel: false }
 
 const respostaGemini = {
   candidates: [
@@ -100,7 +100,7 @@ function fakeFetchOk() {
 }
 
 beforeEach(() => {
-  vi.mocked(loadAiConfig).mockResolvedValue(configGemini as never)
+  vi.mocked(lerChave).mockResolvedValue(chaveGemini)
   vi.mocked(logAiUsage).mockClear()
 })
 afterEach(() => {
@@ -132,20 +132,17 @@ describe('transcreverAudio', () => {
     expect(r.status).toBe('recusada')
   })
 
-  it('a chave é resolvida PELO CANAL da conversa, como a análise do Radar', async () => {
-    // Sem o canal, conta com padrão OpenAI e agente Gemini no canal
-    // recusava tudo — e o inverso mandava o áudio ao Google num canal
-    // apontado para outro provedor.
+  it('a chave é a do GEMINI da conta, sem depender do canal nem do agente (1042)', async () => {
+    // Até a 1042 a chave vinha do agente do canal da conversa, e um agente de
+    // outro provedor naquela conexão fazia a transcrição recusar tudo. A
+    // transcrição só fala com o Gemini: a chave é a do provedor, da conta.
     const admin = fakeAdmin(
       [{ data: msgBase }, { data: { id: 'm1' } }, { data: { id: 'm1' } }],
       [],
     )
     vi.stubGlobal('fetch', fakeFetchOk())
     await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })
-    expect(loadAiConfig).toHaveBeenCalledWith(expect.anything(), 'a1', {
-      requireActive: false,
-      channelId: 'ch1',
-    })
+    expect(lerChave).toHaveBeenCalledWith('a1', 'gemini')
   })
 
   it('MAX_TOKENS registra o uso e vira recusada TERMINAL (determinístico)', async () => {
@@ -223,7 +220,7 @@ describe('transcreverAudio', () => {
   })
 
   it('SEM chave: recusada SEM gravar — configurar a chave reativa o botão', async () => {
-    vi.mocked(loadAiConfig).mockResolvedValue(null)
+    vi.mocked(lerChave).mockResolvedValue({ chave: null, ilegivel: false })
     const chamadas: Chamada[] = []
     const admin = fakeAdmin([{ data: msgBase }], chamadas)
     const r = await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })
@@ -231,12 +228,21 @@ describe('transcreverAudio', () => {
     expect(chamadas.filter((c) => c.op === 'update')).toHaveLength(0)
   })
 
-  it('provedor não-Gemini: recusada sem gravar (transcrição é Gemini-only)', async () => {
-    vi.mocked(loadAiConfig).mockResolvedValue({ ...configGemini, provider: 'openai' } as never)
+  it('chave ilegível (ENCRYPTION_KEY trocada): recusada sem gravar', async () => {
+    vi.mocked(lerChave).mockResolvedValue({ chave: null, ilegivel: true })
     const chamadas: Chamada[] = []
     const admin = fakeAdmin([{ data: msgBase }], chamadas)
     const r = await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })
     expect(r.status).toBe('recusada')
+    expect(chamadas.filter((c) => c.op === 'update')).toHaveLength(0)
+  })
+
+  it('falha ao LER a chave: `falhou` sem gravar — nunca "sem chave"', async () => {
+    vi.mocked(lerChave).mockRejectedValue(new Error('[ia-chaves] leitura falhou: timeout'))
+    const chamadas: Chamada[] = []
+    const admin = fakeAdmin([{ data: msgBase }], chamadas)
+    const r = await transcreverAudio(admin, { accountId: 'a1', messageId: 'm1' })
+    expect(r.status).toBe('falhou')
     expect(chamadas.filter((c) => c.op === 'update')).toHaveLength(0)
   })
 

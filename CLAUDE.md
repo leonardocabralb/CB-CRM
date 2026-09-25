@@ -473,8 +473,9 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Ficha: um bloco de campos por vez, em menu horizontal.
 - Canal: a faixa de divergência só informa, não bloqueia; cor derivada; anel
   no avatar e trilha colorida foram descartados.
-- IA: modelo e chave por MÓDULO, para a conta toda — nunca por conexão
-  (28/08/2026).
+- IA: chave por PROVEDOR, uma para a conta toda — nunca por conexão
+  (28/08/2026; `cb_ia_chaves`, 1042). O modelo é do módulo (Radar) e, com os
+  agentes, de cada agente (D1 de `docs/PLANO-agentes-de-ia.md`).
 - Automação presa à etapa: caixa por automação, marcada só nas criadas pela
   grade; as antigas não mudam (18/09/2026).
 - Asaas: o CRM cria a ficha, com nome fixado; ligar a régua não é

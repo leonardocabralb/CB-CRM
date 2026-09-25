@@ -11,21 +11,23 @@ import { validateAiCredentials } from '@/lib/ai/validate';
 import { embedTexts, EMBEDDING_MODEL } from '@/lib/ai/embeddings';
 import { MODELO_TRANSCRICAO } from '@/lib/transcricao/transcrever';
 import { AiError, type AiProvider } from '@/lib/ai/types';
-import { decrypt } from '@/lib/whatsapp/encryption';
+import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
+import { lerChave, lerEstado } from '@/lib/ia-chaves/repo';
 import {
   montarCartoes,
-  type ConfigParaMontar,
+  type ChaveParaMontar,
+  type ProviderId,
   type Teste,
 } from '@/lib/integracoes/montar';
 
 /**
  * GET /api/cb/integracoes/status  (admin+)
  *
- * A aba de Integrações num pedido só: as credenciais de IA da conta
- * agrupadas por provedor, com um ping REAL em cada uma (o mesmo
- * `validateAiCredentials` do botão "Testar chave" — testa exatamente o
- * modelo/chave que o agente usa, não um genérico), mais o ping da chave
- * de embeddings (RAG, OpenAI-only) e o cartão do Google Agenda.
+ * A aba de Integrações num pedido só: a chave de cada provedor de IA da
+ * conta (`cb_ia_chaves`, 1042), com um ping REAL em cada uma (o mesmo
+ * `validateAiCredentials` do botão "Testar chave" — com o modelo que o
+ * assistente usa quando é o provedor dele), mais o ping de embeddings com
+ * a chave da OpenAI (RAG) e o cartão do Google Agenda.
  *
  * `?ping=0` pula os testes e devolve só a configuração — é a carga
  * instantânea da tela; o ping (que custa uma geração paga por agente)
@@ -85,14 +87,10 @@ async function pingEmbeddings(apiKey: string): Promise<Teste> {
   }
 }
 
-interface LinhaDeConfig {
-  id: string;
-  channel_id: string | null;
+interface LinhaPadrao {
   provider: AiProvider;
   model: string;
   radar_model: string | null;
-  api_key: string | null;
-  embeddings_api_key: string | null;
   is_active: boolean;
 }
 
@@ -103,7 +101,7 @@ export async function GET(request: Request) {
     const pingar = new URL(request.url).searchParams.get('ping') !== '0';
 
     // ⚠️ Baldes diferentes: a carga sem ping só lê o banco; a COM ping
-    // gasta uma geração paga por agente da conta.
+    // gasta uma geração paga por chave da conta.
     const limite = pingar
       ? checkRateLimit(
           `cb:integracoes:ping:${ctx.userId}`,
@@ -115,56 +113,64 @@ export async function GET(request: Request) {
         );
     if (!limite.success) return rateLimitResponse(limite);
 
-    const [{ data: linhas, error }, canais] = await Promise.all([
-      ctx.supabase
-        .from('ai_configs')
-        .select(
-          'id, channel_id, provider, model, radar_model, api_key, embeddings_api_key, is_active'
-        )
-        .eq('account_id', ctx.accountId),
-      listChannels(ctx.supabase, ctx.accountId),
-    ]);
-
-    if (error) {
-      console.error('[integracoes] leitura de ai_configs falhou:', error.message);
+    // ⚠️ Desde a 1042 a chave é do PROVEDOR (`cb_ia_chaves`, fechada ao
+    // navegador — lida pelo serviço); a linha PADRÃO de `ai_configs` é a
+    // configuração dos módulos (provedor e modelo do Radar) e do assistente
+    // legado. Só a padrão: não existe escritor de linha por canal.
+    let estado: Awaited<ReturnType<typeof lerEstado>>;
+    let padrao: LinhaPadrao | null;
+    let canais: Awaited<ReturnType<typeof listChannels>>;
+    try {
+      const [estadoLido, padraoLido, canaisLidos] = await Promise.all([
+        lerEstado(ctx.accountId),
+        ctx.supabase
+          .from('ai_configs')
+          .select('provider, model, radar_model, is_active')
+          .eq('account_id', ctx.accountId)
+          .is('channel_id', null)
+          .maybeSingle(),
+        listChannels(ctx.supabase, ctx.accountId),
+      ]);
+      if (padraoLido.error) throw new Error(padraoLido.error.message);
+      estado = estadoLido;
+      padrao = (padraoLido.data as LinhaPadrao | null) ?? null;
+      canais = canaisLidos;
+    } catch (err) {
+      console.error('[integracoes] leitura falhou:', err instanceof Error ? err.message : err);
       return NextResponse.json(
         { error: 'Não foi possível carregar as integrações.' },
         { status: 500 }
       );
     }
 
-    const configs = ((linhas ?? []) as LinhaDeConfig[]).filter(
-      (l) => !!l.api_key
-    );
-
-    // ⚠️ A chave de embeddings é a DO AGENTE PADRÃO (`channel_id IS
-    // NULL`) — é a única que `loadEmbeddingsKey` consegue ler. Pegar
-    // "a primeira linha com chave" testaria uma credencial de canal que
-    // o RAG nunca usa, e o cartão ficaria verde com a busca semântica
-    // apontando para outra chave.
-    const configEmbeddings = ((linhas ?? []) as LinhaDeConfig[]).find(
-      (l) => l.channel_id === null && !!l.embeddings_api_key
-    );
-
-    // Tudo em paralelo: os pings dos agentes e o do embeddings. Em série
-    // o pior caso somava o teto de um ao do outro.
+    // Um ping por chave cadastrada, com o modelo que ela vai rodar: o do
+    // assistente quando é o provedor dele, senão o padrão do provedor. Mais o
+    // ping dos embeddings com a chave da OpenAI (a busca da base). Tudo em
+    // paralelo: em série o pior caso somava o teto de um ao do outro.
     const [testes, embeddingsTeste] = await Promise.all([
       Promise.all(
-        configs.map(async (l): Promise<Teste> => {
-          if (!pingar) return null;
-          let chave: string;
+        estado.map(async (e): Promise<ChaveParaMontar> => {
+          const base = { provedor: e.provedor as ProviderId, existe: e.existe };
+          if (!pingar || !e.existe) return { ...base, teste: null };
+          let chave: string | null;
           try {
-            chave = decrypt(l.api_key as string);
+            const lida = await lerChave(ctx.accountId, e.provedor);
+            if (lida.ilegivel) return { ...base, teste: { ok: false, motivo: 'chave_ilegivel' } };
+            chave = lida.chave;
           } catch {
-            return { ok: false, motivo: 'chave_ilegivel' };
+            return { ...base, teste: { ok: false, motivo: 'provider_error' } };
           }
+          if (!chave) return { ...base, existe: false, teste: null };
           try {
             await validateAiCredentials({
-              provider: l.provider,
-              // ⚠️ O ping testa o modelo do CHAT. O do Radar é validado no
-              // SAVE (/api/ai/config) — pingá-lo aqui seria uma segunda
-              // chamada paga a cada carga desta tela.
-              model: l.model,
+              provider: e.provedor,
+              // ⚠️ O ping testa o modelo do CHAT (ou o padrão do provedor).
+              // O do Radar é validado no SAVE — pingá-lo aqui seria uma
+              // segunda chamada paga a cada carga desta tela.
+              model:
+                padrao && padrao.provider === e.provedor
+                  ? padrao.model
+                  : AI_PROVIDER_DEFAULT_MODEL[e.provedor],
               radarModel: null,
               apiKey: chave,
               systemPrompt: null,
@@ -174,39 +180,36 @@ export async function GET(request: Request) {
               handoffAgentId: null,
               embeddingsApiKey: null,
             });
-            return { ok: true };
+            return { ...base, teste: { ok: true } };
           } catch (err) {
-            return { ok: false, motivo: motivoSeguro(err) };
+            return { ...base, teste: { ok: false, motivo: motivoSeguro(err) } };
           }
         })
       ),
       (async (): Promise<Teste> => {
-        if (!pingar || !configEmbeddings) return null;
-        let chave: string;
+        const temOpenai = estado.some((e) => e.provedor === 'openai' && e.existe);
+        if (!pingar || !temOpenai) return null;
         try {
-          chave = decrypt(configEmbeddings.embeddings_api_key as string);
+          const lida = await lerChave(ctx.accountId, 'openai');
+          if (lida.ilegivel) return { ok: false, motivo: 'chave_ilegivel' };
+          if (!lida.chave) return null;
+          return pingEmbeddings(lida.chave);
         } catch {
-          return { ok: false, motivo: 'chave_ilegivel' };
+          return { ok: false, motivo: 'provider_error' };
         }
-        return pingEmbeddings(chave);
       })(),
     ]);
 
     const cartoes = montarCartoes(
-      configs.map(
-        (l, i): ConfigParaMontar => ({
-          id: l.id,
-          channelId: l.channel_id,
-          provider: l.provider as ConfigParaMontar['provider'],
-          model: l.model,
-          radarModel: l.radar_model,
-          isActive: l.is_active,
-          teste: testes[i],
-          // Só a chave do agente PADRÃO conta como RAG configurado —
-          // ver a nota do `configEmbeddings` acima.
-          temEmbeddings: l.channel_id === null && !!l.embeddings_api_key,
-        })
-      ),
+      testes,
+      padrao
+        ? {
+            provider: padrao.provider as ProviderId,
+            model: padrao.model,
+            radarModel: padrao.radar_model,
+            isActive: padrao.is_active,
+          }
+        : null,
       canais.map((c) => ({
         id: c.id,
         label: c.label,

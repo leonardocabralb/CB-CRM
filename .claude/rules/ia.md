@@ -156,7 +156,11 @@ testado) e `worker.ts`, no servidor.
   (client-safe). Número digitado no dicionário mente na primeira mudança.
 - **`loadAiConfig` do Radar usa `requireActive: false`**: o Radar precisa da
   CREDENCIAL; `is_active` é o interruptor do assistente de conversa, e
-  amarrar os dois calava a análise quando o auto-reply era desligado.
+  amarrar os dois calava a análise quando o auto-reply era desligado. ⚠️ E
+  SEM `channelId` (1042): a configuração do Radar é do módulo, da conta
+  inteira — pelo canal, um agente criado para uma conexão trocaria em
+  silêncio a chave e o modelo do Radar ali (pino
+  `src/lib/ia-chaves/chaves.chamadores.test.ts`).
 - **O upsert em `cb_conversation_insights` funciona** porque o UNIQUE de
   `conversation_id` é TOTAL.
 
@@ -175,12 +179,14 @@ bolha e ao worker do Radar.
   10 min recolhida pelo próprio cadeado; escrita final e falha com cerca
   (`transcricao_desde`).
 - ⚠️ **Problema de CONFIGURAÇÃO devolve `recusada` SEM GRAVAR** (sem chave
-  Gemini, provedor ≠ gemini, mensagem apagada, não-áudio, conta errada, áudio
+  Gemini, chave ilegível, mensagem apagada, não-áudio, conta errada, áudio
   recém-chegado ainda sem `media_url` — janela de 2 min): gravar o estado
   terminal mataria o botão para sempre por um problema passageiro. `recusada`
   GRAVADA é só para o irreversível da própria mensagem (URL relativa antiga,
-  áudio grande demais, `MAX_TOKENS`, tentativas esgotadas). A chave é resolvida
-  PELO CANAL da conversa.
+  áudio grande demais, `MAX_TOKENS`, tentativas esgotadas). ⚠️ A chave é a do
+  GEMINI da conta (`lerChave(conta, 'gemini')`, 1042), direto — não depende de
+  agente nem do canal (um agente de outro provedor na conexão fazia recusar
+  tudo). Erro de LEITURA da chave é `falhou` sem gravar, nunca "sem chave".
 - ⚠️ **O modelo é FIXADO em `MODELO_TRANSCRICAO`**, separado do modelo de chat
   e de análise, e é UM para os dois chamadores, de propósito: não existe
   "transcrever de novo", quem chega primeiro fixa o modelo daquele áudio,
@@ -212,12 +218,21 @@ bolha e ao worker do Radar.
 conversa. Nasceu de um engano real: um único campo "Modelo" servia ao chat e ao
 Radar.
 
-- ⚠️ **Configuração POR MÓDULO, uma para a conta inteira** (decisão do
-  operador, 28/08/2026) — nunca chave por conexão. `montar.ts` lê só o agente
-  PADRÃO, e a lista de canais aparece SÓ no Radar (onde é o `radar_enabled`, de
-  privacidade). ⚠️ O backend (`loadAiConfig`) ainda resolve canal → padrão e o
-  schema permite linha por canal, mas não existe escritor de agente por canal:
-  se nascer, `montar.ts` volta a espelhar o backend, senão a tela mente.
+- ⚠️⚠️ **A CHAVE é do PROVEDOR, uma por conta, em `cb_ia_chaves` (1042)** —
+  nunca por conexão (decisão do operador, 28/08/2026, mantida na D1 do
+  `docs/PLANO-agentes-de-ia.md`). A tabela é FECHADA ao navegador (RLS sem
+  policy): só `src/lib/ia-chaves/repo.ts` a toca, com o cliente de SERVIÇO (a
+  sessão do usuário leria zero linhas sem erro — "sem chave" com cara de
+  certo); pino `chaves.chamadores.test.ts`. A de embeddings é a chave da
+  OpenAI da conta. `ai_configs.api_key`/`embeddings_api_key` ficaram só para o
+  app anterior poder voltar atrás: nada lê nem grava essas colunas.
+- ⚠️ **A linha PADRÃO de `ai_configs` é a configuração dos MÓDULOS** (provedor
+  e modelo do Radar) e do assistente legado, para a conta inteira. `montar.ts`
+  monta um cartão por provedor a partir da CHAVE (não de um agente) e lê só a
+  linha padrão; a lista de canais aparece SÓ no Radar (o `radar_enabled`, de
+  privacidade). O `PUT /api/cb/ia/chaves` cria a linha padrão (assistente
+  DESLIGADO) quando a conta ainda não tem: sem ela o Radar ficaria em `sem_ia`
+  com a chave cadastrada.
 - ⚠️ **Só o Radar tem coluna própria (`ai_configs.radar_model`; NULL = herda
   `model`).** Transcrição e RAG têm constante no código (`MODELO_TRANSCRICAO`,
   `EMBEDDING_MODEL`), que entra em `montarCartoes` por PARÂMETRO, importada na
@@ -230,10 +245,14 @@ Radar.
   por `{...config, model}`: o spread não deixa rastro no tipo, e um merge que
   reescreva `structured.ts` devolveria o Radar ao modelo do chat sem quebrar o
   typecheck.
-- ⚠️ **O formulário de Integrações ECOA os campos que não edita**:
-  `POST /api/ai/config` reescreve a linha (`system_prompt` ausente vira NULL,
-  `is_active` ausente vira false) — salvar a chave dali apagaria as instruções
-  da empresa e desligaria o assistente.
+- ⚠️ **`POST /api/ai/config` reescreve a linha** (`system_prompt` ausente vira
+  NULL, `is_active` ausente vira false): por isso Integrações NÃO passa mais
+  por ele — a chave vai por `/api/cb/ia/chaves` e o modelo do Radar por
+  `PATCH /api/cb/ia/radar`, que grava SÓ `radar_model`. Quem voltar a usar o
+  POST de outra tela ecoa os campos que não edita. O POST ignora `api_key` no
+  corpo e recusa com `sem_chave` quando o provedor não tem chave; o `DELETE`
+  dele foi REMOVIDO (apagava, sem aviso, a chave do Radar e da transcrição).
+  Apagar chave é em Integrações, com confirmação que diz o que para.
 - ⚠️ **`radar_model` ausente do corpo = "não mexe"** (a convenção de
   `handoff_agent_id`): senão um save vindo de Agentes zeraria o modelo do Radar.
 - ⚠️ **O modelo do Radar é validado no SAVE, contra o provedor** — inclusive
@@ -244,7 +263,7 @@ Radar.
   em dois tempos (config na hora, pings depois), o botão repete só os pings, e
   o `useEffect` tem guarda própria (`disparouRef`) contra o StrictMode dobrar
   as chamadas.
-- **Nenhuma chave sai da rota de STATUS, nem mascarada**: a falha volta como
+- **Nenhuma chave sai da rota de STATUS nem da de chaves, nem mascarada**: a falha volta como
   CÓDIGO, nunca como `AiError.message` (a OpenAI ecoa a chave). ⚠️ O SAVE do
   modelo do Radar devolve a mensagem do provedor (é ela que diz "modelo não
   encontrado") — EXCETO com `code === 'invalid_key'`, que vira texto genérico.

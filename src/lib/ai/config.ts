@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { lerChave } from '@/lib/ia-chaves/repo'
 import type { AiConfig } from './types'
 
 interface AiConfigRow {
@@ -7,33 +7,37 @@ interface AiConfigRow {
   model: string
   /** Migration 946. NULL = herda `model`. Só o Radar lê. */
   radar_model: string | null
-  api_key: string
   system_prompt: string | null
   is_active: boolean
   auto_reply_enabled: boolean
   auto_reply_max_per_conversation: number
   handoff_agent_id: string | null
-  embeddings_api_key: string | null
 }
 
 // ⚠️ Colunas nomeadas, não `*`: uma coluna sem GRANT derrubaria a
 // consulta inteira. Acrescentar aqui exige que a migration correspondente
 // JÁ esteja aplicada em produção — o caminho do agente padrão faz
 // `throw` no erro, então uma coluna ausente derruba rascunho,
-// auto-reply, Radar e transcrição de uma vez.
+// auto-reply e Radar de uma vez.
+//
+// ⚠️ A CHAVE não é lida daqui desde a 1042: ela mora em `cb_ia_chaves`, uma
+// por PROVEDOR para a conta inteira (D1 do docs/PLANO-agentes-de-ia.md).
+// `ai_configs.api_key` e `embeddings_api_key` ficam só para o app anterior
+// poder voltar atrás; nada novo lê nem grava essas colunas.
 const CONFIG_COLUMNS =
-  'provider, model, radar_model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key'
+  'provider, model, radar_model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id'
 
 /**
  * Load and decrypt the account's AI config for *use* (draft or
- * auto-reply). Returns `null` when there's no row or the master switch
- * (`is_active`) is off — both mean "AI is not available", which callers
- * treat identically. Throws only if the stored key can't be decrypted
- * (mismatched `ENCRYPTION_KEY`), so that distinct failure surfaces
- * rather than looking like "not configured".
+ * auto-reply). Returns `null` when there's no row, no key for its
+ * provider, or the master switch (`is_active`) is off — all mean "AI is
+ * not available", which callers treat identically.
  *
- * Works with any client: pass the RLS-scoped SSR client from a
- * dashboard route, or the service-role admin client from the webhook.
+ * Works with any client for the `ai_configs` row (RLS-scoped SSR client
+ * from a dashboard route, or the service-role client from the webhook);
+ * the KEY is always read with the service role, because `cb_ia_chaves`
+ * is closed to the browser session. The account id comes from a caller
+ * that already authenticated it.
  */
 export async function loadAiConfig(
   db: SupabaseClient,
@@ -47,6 +51,9 @@ export async function loadAiConfig(
   // UNIQUE), entao o bot se apresentava com o discurso comercial respondendo
   // quem escreveu no numero do juridico. A 903 trocou o UNIQUE por dois
   // indices parciais: um agente padrao (channel_id NULL) + um por canal.
+  // ⚠️ Só o assistente de conversa passa `channelId`. O Radar e a
+  // transcrição NÃO resolvem mais pelo canal (1042): a configuração deles é
+  // do módulo, da conta inteira.
   if (channelId) {
     const { data: doCanal, error: erroCanal } = await db
       .from('ai_configs')
@@ -83,40 +90,30 @@ export async function loadAiConfig(
 }
 
 /**
- * Linha -> AiConfig. Extraido para que o agente POR CANAL e o agente PADRAO
- * compartilhem exatamente o mesmo mapeamento (incl. o tratamento de chave de
- * embeddings corrompida), em vez de duas copias que podem divergir.
+ * Linha -> AiConfig, com a chave do PROVEDOR da linha (`cb_ia_chaves`).
+ * Extraido para que o agente POR CANAL e o agente PADRAO compartilhem
+ * exatamente o mesmo mapeamento, em vez de duas copias que podem divergir.
  *
- * Devolve null quando a linha nao e utilizavel (sem api_key).
+ * Devolve null quando a conta não tem chave (utilizável) para o provedor.
  */
-function mapAiConfigRow(row: AiConfigRow, accountId: string): AiConfig | null {
-  // Defensive: the column is NOT NULL, but a partial write / manual DB
-  // edit could leave it empty. Treat a missing key as "not configured"
-  // rather than letting decrypt() throw on null.
-  if (!row.api_key) return null
-
-  // The embeddings key is optional and independent of the chat key —
-  // a corrupt/undecryptable one should downgrade to lexical KB, not
-  // take down draft/auto-reply, so decrypt failures are swallowed here.
-  let embeddingsApiKey: string | null = null
-  if (row.embeddings_api_key) {
-    try {
-      embeddingsApiKey = decrypt(row.embeddings_api_key)
-    } catch {
-      // Not silent — a rotated/mismatched ENCRYPTION_KEY here means
-      // semantic search quietly stops working, so leave a breadcrumb.
-      console.error(
-        `[ai config] embeddings key for account ${accountId} could not be decrypted — check ENCRYPTION_KEY; semantic search is disabled until it is re-entered.`,
-      )
-      embeddingsApiKey = null
-    }
-  }
+async function mapAiConfigRow(row: AiConfigRow, accountId: string): Promise<AiConfig | null> {
+  const [doChat, deEmbeddings] = await Promise.all([
+    lerChave(accountId, row.provider),
+    // A chave de embeddings é a da OpenAI da conta, seja qual for o provedor
+    // do chat (o modelo de embeddings é fixo, `vector(1536)`). Ilegível ou
+    // ausente rebaixa a base para a busca por palavras — nunca derruba o
+    // rascunho nem a resposta automática.
+    row.provider === 'openai' ? null : lerChave(accountId, 'openai'),
+  ])
+  if (!doChat.chave) return null
+  const embeddingsApiKey =
+    row.provider === 'openai' ? doChat.chave : (deEmbeddings?.chave ?? null)
 
   return {
     provider: row.provider,
     model: row.model,
     radarModel: row.radar_model ?? null,
-    apiKey: decrypt(row.api_key),
+    apiKey: doChat.chave,
     systemPrompt: row.system_prompt,
     isActive: row.is_active,
     autoReplyEnabled: row.auto_reply_enabled,
@@ -127,40 +124,26 @@ function mapAiConfigRow(row: AiConfigRow, accountId: string): AiConfig | null {
 }
 
 /**
- * Load + decrypt just the embeddings key, independent of `is_active`.
- * Used by the knowledge-base ingest routes so the KB gets embedded (and
- * semantic search works) whenever an embeddings key is present, even if
- * the assistant's master switch is currently off.
+ * A chave de embeddings (a da OpenAI da conta), independente de
+ * `is_active`. Usada pelas rotas que indexam a base de conhecimento, para
+ * a base ser indexada (e a busca por sentido funcionar) sempre que houver
+ * a chave, mesmo com o assistente desligado.
  *
  * Returns `{ key, corrupt }`: `key` is null when there's no key OR it
  * can't be decrypted; `corrupt` distinguishes those cases so callers can
  * warn ("a key is set but unusable") rather than silently indexing
- * lexical-only and reporting success.
+ * lexical-only and reporting success. Falha de LEITURA também vira "sem
+ * chave" aqui (com log): a indexação cai na busca por palavras, como antes.
  */
 export async function loadEmbeddingsKey(
-  db: SupabaseClient,
+  _db: SupabaseClient,
   accountId: string,
 ): Promise<{ key: string | null; corrupt: boolean }> {
-  // ⚠️ `.is('channel_id', null)` é obrigatório desde a 903: `ai_configs`
-  // deixou de ter UNIQUE por conta (virou um par de índices parciais —
-  // agente padrão + um por canal), então filtrar só por `account_id` faz
-  // o `.maybeSingle()` ESTOURAR na conta que tem agente de canal. O erro
-  // era engolido logo abaixo e a base de conhecimento passava a indexar
-  // só lexical, em silêncio. A chave de embeddings é uma por conta e
-  // mora no agente padrão.
-  const { data, error } = await db
-    .from('ai_configs')
-    .select('embeddings_api_key')
-    .eq('account_id', accountId)
-    .is('channel_id', null)
-    .maybeSingle()
-  if (error || !data?.embeddings_api_key) return { key: null, corrupt: false }
   try {
-    return { key: decrypt(data.embeddings_api_key), corrupt: false }
-  } catch {
-    console.error(
-      `[ai config] embeddings key for account ${accountId} could not be decrypted — check ENCRYPTION_KEY.`,
-    )
-    return { key: null, corrupt: true }
+    const { chave, ilegivel } = await lerChave(accountId, 'openai')
+    return { key: chave, corrupt: ilegivel }
+  } catch (err) {
+    console.error('[ai config] leitura da chave de embeddings falhou:', err)
+    return { key: null, corrupt: false }
   }
 }

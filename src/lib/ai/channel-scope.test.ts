@@ -59,9 +59,12 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
-// decrypt real quebraria no formato falso; basta o shape passar.
-vi.mock('@/lib/whatsapp/encryption', () => ({
-  decrypt: (v: string) => `dec(${v})`,
+// A chave vem de `cb_ia_chaves` (1042), pelo provedor da linha.
+vi.mock('@/lib/ia-chaves/repo', () => ({
+  lerChave: vi.fn(async (_conta: string, provedor: string) => ({
+    chave: `chave-${provedor}`,
+    ilegivel: false,
+  })),
 }));
 
 describe('loadAiConfig — agente por canal', () => {

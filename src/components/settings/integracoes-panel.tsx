@@ -8,7 +8,7 @@ import { CalendarDays, ChevronDown, RefreshCw, Sparkles } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AI_PROVIDER_DEFAULT_MODEL, AI_PROVIDER_MODELS } from '@/lib/ai/defaults';
+import { AI_PROVIDER_MODELS } from '@/lib/ai/defaults';
 import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
 import { AsaasCard } from './asaas-card';
@@ -38,32 +38,16 @@ import type {
  * "Modelo" servia ao assistente, à resposta automática, ao Playground e
  * ao Radar, e trocar um trocava todos sem avisar.
  *
- * ⚠️ A escrita reusa `POST /api/ai/config`, a ÚNICA rota que grava
- * `ai_configs` — nada de regra duplicada. Como aquela rota reescreve a
- * linha inteira, o formulário CARREGA a config atual e devolve os campos
- * que não edita; sem isso um save daqui zeraria as instruções da empresa
- * e desligaria o assistente.
- *
- * ⚠️ Escopo: o agente PADRÃO da conta (`channel_id IS NULL`). Não há
- * escritor de agente por canal em lugar nenhum do app.
+ * ⚠️ Desde a 1042 a CHAVE é do PROVEDOR, uma por conta (`cb_ia_chaves`,
+ * D1 do docs/PLANO-agentes-de-ia.md), gravada por `/api/cb/ia/chaves`; o
+ * modelo do Radar tem rota PRÓPRIA (`PATCH /api/cb/ia/radar`), que só mexe
+ * nessa coluna. Nenhum formulário daqui passa mais pelo `POST
+ * /api/ai/config`, que reescreve a linha inteira do assistente.
  *
  * A carga é em dois tempos: `?ping=0` pinta a tela na hora com a
  * configuração; a segunda chamada roda os pings de verdade (uma geração
  * mínima por agente) e resolve os chips. O botão repete só o ping.
  */
-
-/** O que `GET /api/ai/config` devolve (sem as chaves, por desenho). */
-interface ConfigAtual {
-  configured?: boolean;
-  has_key?: boolean;
-  provider?: string;
-  model?: string;
-  radar_model?: string | null;
-  system_prompt?: string | null;
-  is_active?: boolean;
-  auto_reply_enabled?: boolean;
-  auto_reply_max_per_conversation?: number;
-}
 
 /**
  * Traduz o CÓDIGO de falha que a rota devolve. A rota nunca manda a
@@ -376,14 +360,12 @@ function Cartao({
                   <ul className="space-y-1.5">
                     {cartao.agentes.map((a) => (
                       <li
-                        key={a.configId}
+                        key={a.escopo}
                         className="flex flex-wrap items-center gap-x-2 gap-y-0.5"
                       >
                         <Bolinha ok={a.teste === null ? null : a.teste.ok} />
                         <span className="text-foreground">
-                          {a.escopo === 'padrao'
-                            ? t('agentePadrao')
-                            : (a.canalLabel ?? '—')}
+                          {t('agentePadrao')}
                         </span>
                         <code className="text-[11px] text-muted-foreground">
                           {a.model}
@@ -412,15 +394,24 @@ function Cartao({
 
               <Usos cartao={cartao} />
 
-              {/* ⚠️ A dica "cole a chave abaixo" mora DENTRO do formulário,
-                  depois do early-return de outro-provedor-ativo: fora dele
-                  ela aparecia nos cartões da OpenAI/Anthropic prometendo um
-                  campo que o formulário, logo abaixo, decidia não desenhar. */}
               <FormularioDaChave
                 provedor={cartao.id as 'gemini' | 'openai' | 'anthropic'}
-                semAgentes={cartao.agentes.length === 0}
+                cartao={cartao}
                 onSalvo={onSalvo}
               />
+              {/* O modelo do Radar só no cartão do provedor DELE (a linha
+                  padrão): nos outros ele não teria efeito. */}
+              {cartao.ehDoRadar ? (
+                <FormularioDoRadar
+                  provedor={cartao.id as 'gemini' | 'openai' | 'anthropic'}
+                  modeloDoAgente={cartao.agentes[0]?.model ?? ''}
+                  modeloAtual={
+                    cartao.usos.find((u) => u.modulo === 'radar' && u.origem === 'proprio')
+                      ?.modelo ?? ''
+                  }
+                  onSalvo={onSalvo}
+                />
+              ) : null}
 
               <Link
                 href="/agents"
@@ -501,120 +492,218 @@ function Bolinha({ ok }: { ok: boolean | null }) {
 }
 
 /**
- * Configuração da credencial e do modelo do Radar, dentro do cartão.
+ * A chave DESTE provedor (`/api/cb/ia/chaves`, 1042): gravar (ou trocar) e
+ * apagar. A chave nunca volta do servidor — o campo só diz se há uma.
  *
- * ⚠️ CARREGA a config atual e a devolve inteira no save. `POST
- * /api/ai/config` reescreve a linha: `system_prompt` ausente vira NULL e
- * `is_active` ausente vira false. Sem este eco, salvar a chave aqui
- * apagaria as instruções da empresa e desligaria o assistente — sem
- * nenhum aviso, e a partir de uma tela que fala de outro assunto.
- *
- * A chave em branco significa "mantém a guardada" (mesma convenção da
- * tela de Agentes); só é enviada quando o admin digita uma nova.
+ * ⚠️ Apagar pede confirmação e DIZ O QUE PARA, a partir dos usos do próprio
+ * cartão: o "Remover" antigo da tela de Agentes apagava, sem aviso, a chave
+ * que o Radar e a transcrição usam.
  */
 function FormularioDaChave({
   provedor,
-  semAgentes,
+  cartao,
   onSalvo,
 }: {
   provedor: 'gemini' | 'openai' | 'anthropic';
-  /** O cartão não tem nenhum agente — mostra a dica de primeira chave. */
-  semAgentes: boolean;
+  cartao: CartaoDeIntegracao;
   onSalvo: () => void;
 }) {
   const t = useTranslations('Settings.integracoes');
-  const [cfg, setCfg] = useState<ConfigAtual | null>(null);
-  // ⚠️ `cfg === null` TRAVA o Salvar, e falha de carga NÃO destrava. O eco
-  // dos campos que este formulário não edita só protege quando há o que
-  // ecoar: salvar com a config não carregada mandaria `system_prompt:
-  // null` e `is_active: false` ecoados DE NADA — apagando as instruções
-  // da empresa e desligando o assistente a partir de uma tela que fala de
-  // outro assunto. Conta ainda não configurada NÃO é falha: o GET devolve
-  // `{ configured: false }` e o formulário funciona como primeira
-  // configuração.
-  const [falhouCfg, setFalhouCfg] = useState(false);
   const [chave, setChave] = useState('');
-  const [modeloRadar, setModeloRadar] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [confirmandoApagar, setConfirmandoApagar] = useState(false);
+  const [recado, setRecado] = useState<{ ok: boolean; texto: string } | null>(
+    null
+  );
+
+  // O que deixa de funcionar sem a chave: os módulos que hoje a usam (os
+  // marcados `sem_chave` já não a usam).
+  const paraSemChave = cartao.usos
+    .filter((u) => u.indisponivel !== 'sem_chave')
+    .map((u) => t(`modulo.${u.modulo}`));
+
+  async function salvar() {
+    if (!chave.trim()) return;
+    setSalvando(true);
+    setRecado(null);
+    try {
+      const res = await fetch('/api/cb/ia/chaves', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provedor, chave: chave.trim() }),
+      });
+      const dados = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        code?: string;
+        aviso?: string | null;
+      };
+      if (!res.ok) {
+        setRecado({
+          ok: false,
+          texto:
+            dados.code === 'invalid_key'
+              ? t('motivo.invalid_key')
+              : (dados.error ?? t('salvarFalhou')),
+        });
+        return;
+      }
+      setChave('');
+      setRecado({ ok: true, texto: dados.aviso ? dados.aviso : t('salvo') });
+      onSalvo();
+    } catch {
+      setRecado({ ok: false, texto: t('salvarFalhou') });
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function apagar() {
+    setSalvando(true);
+    setRecado(null);
+    try {
+      const res = await fetch(`/api/cb/ia/chaves?provedor=${provedor}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        setRecado({ ok: false, texto: t('apagarFalhou') });
+        return;
+      }
+      setConfirmandoApagar(false);
+      setRecado({ ok: true, texto: t('chaveApagada') });
+      onSalvo();
+    } catch {
+      setRecado({ ok: false, texto: t('apagarFalhou') });
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-md border border-border bg-muted/30 p-3">
+      {!cartao.temChave ? (
+        <p className="max-w-[62ch] text-xs text-muted-foreground">
+          {t('naoConfiguradaDica')}
+        </p>
+      ) : null}
+      <div className="space-y-1.5 sm:max-w-md">
+        <Label htmlFor={`chave-${provedor}`} className="text-muted-foreground">
+          {t('campoChave')}
+        </Label>
+        <Input
+          id={`chave-${provedor}`}
+          type="password"
+          autoComplete="off"
+          value={chave}
+          placeholder={cartao.temChave ? t('chaveGuardada') : t('chaveVazia')}
+          onChange={(e) => setChave(e.target.value)}
+        />
+      </div>
+
+      {confirmandoApagar ? (
+        <div className="space-y-2 rounded-md border border-red-300 bg-red-50/40 p-3 dark:border-red-900 dark:bg-red-950/20">
+          <p className="max-w-[62ch] text-xs text-red-700 dark:text-red-300">
+            {paraSemChave.length > 0
+              ? t('apagarConfirmaUsos', { modulos: paraSemChave.join(', ') })
+              : t('apagarConfirma')}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              disabled={salvando}
+              onClick={() => void apagar()}
+            >
+              {t('apagarChave')}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={salvando}
+              onClick={() => setConfirmandoApagar(false)}
+            >
+              {t('cancelar')}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => void salvar()}
+          disabled={salvando || !chave.trim()}
+        >
+          {salvando ? t('salvando') : t('salvar')}
+        </Button>
+        {cartao.temChave && !confirmandoApagar ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="text-destructive hover:text-destructive"
+            disabled={salvando}
+            onClick={() => setConfirmandoApagar(true)}
+          >
+            {t('apagarChave')}
+          </Button>
+        ) : null}
+        {recado ? (
+          <span
+            className={cn(
+              'text-xs',
+              recado.ok
+                ? 'text-emerald-600 dark:text-emerald-300'
+                : 'text-red-600 dark:text-red-300'
+            )}
+          >
+            {recado.texto}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * O modelo do Radar (946), por rota PRÓPRIA (`PATCH /api/cb/ia/radar`), que
+ * grava só essa coluna — nada de ecoar a linha do assistente. Em branco = o
+ * Radar usa o modelo do assistente.
+ */
+function FormularioDoRadar({
+  provedor,
+  modeloDoAgente,
+  modeloAtual,
+  onSalvo,
+}: {
+  provedor: 'gemini' | 'openai' | 'anthropic';
+  modeloDoAgente: string;
+  modeloAtual: string;
+  onSalvo: () => void;
+}) {
+  const t = useTranslations('Settings.integracoes');
+  const [modeloRadar, setModeloRadar] = useState(modeloAtual);
   const [salvando, setSalvando] = useState(false);
   const [recado, setRecado] = useState<{ ok: boolean; texto: string } | null>(
     null
   );
 
-  useEffect(() => {
-    let vivo = true;
-    void (async () => {
-      try {
-        const res = await fetch('/api/ai/config');
-        if (!res.ok) throw new Error(String(res.status));
-        const corpo = (await res.json()) as ConfigAtual;
-        if (!vivo) return;
-        setCfg(corpo);
-        setModeloRadar(corpo.radar_model ?? '');
-      } catch {
-        if (vivo) setFalhouCfg(true);
-      }
-    })();
-    return () => {
-      vivo = false;
-    };
-  }, []);
-
-  // ⚠️ Só edita a linha cujo provedor é ESTE. Salvar a partir do cartão
-  // da OpenAI quando a conta usa Gemini trocaria o provedor da conta
-  // inteira — uma consequência que o cartão não anuncia. Com `cfg` nulo
-  // (carregando ou falhou) NÃO cai aqui: o formulário renderiza travado,
-  // nunca fail-open nos três cartões.
-  if (cfg?.configured && cfg.provider !== provedor) {
-    return (
-      <p className="max-w-[62ch] text-xs text-muted-foreground">
-        {t('outroProvedorAtivo', { atual: NOMES[cfg.provider as 'gemini'] ?? cfg.provider })}
-      </p>
-    );
-  }
-
-  if (falhouCfg) {
-    return (
-      <p className="max-w-[62ch] text-xs text-muted-foreground">
-        {t('configFalhou')}
-      </p>
-    );
-  }
-
-  // Na PRIMEIRA configuração (conta sem agente) não há modelo salvo para
-  // ecoar — a rota exige um, então cai no padrão do provedor.
-  const modeloDoAgente = cfg?.model ?? '';
-  const modeloParaSalvar = modeloDoAgente || AI_PROVIDER_DEFAULT_MODEL[provedor];
-
   async function salvar() {
     setSalvando(true);
     setRecado(null);
     try {
-      const corpo: Record<string, unknown> = {
-        provider: provedor,
-        // Ecoados para não serem zerados — ver a nota do componente.
-        model: modeloParaSalvar,
-        system_prompt: cfg?.system_prompt ?? null,
-        is_active: cfg?.is_active ?? false,
-        auto_reply_enabled: cfg?.auto_reply_enabled ?? false,
-        auto_reply_max_per_conversation:
-          cfg?.auto_reply_max_per_conversation ?? 3,
-        radar_model: modeloRadar.trim() || null,
-      };
-      if (chave.trim()) corpo.api_key = chave.trim();
-
-      const res = await fetch('/api/ai/config', {
-        method: 'POST',
+      const res = await fetch('/api/cb/ia/radar', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(corpo),
+        body: JSON.stringify({ radar_model: modeloRadar.trim() || null }),
       });
-      const dados = (await res.json().catch(() => ({}))) as {
-        error?: string;
-      };
+      const dados = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
         setRecado({ ok: false, texto: dados.error ?? t('salvarFalhou') });
         return;
       }
-      setChave('');
       setRecado({ ok: true, texto: t('salvo') });
       onSalvo();
     } catch {
@@ -626,61 +715,37 @@ function FormularioDaChave({
 
   return (
     <div className="space-y-3 rounded-md border border-border bg-muted/30 p-3">
-      {/* A dica de primeira chave mora AQUI, junto do campo que ela
-          promete — nos cartões de outro provedor este JSX nem renderiza. */}
-      {semAgentes ? (
-        <p className="max-w-[62ch] text-xs text-muted-foreground">
-          {t('naoConfiguradaDica')}
-        </p>
-      ) : null}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor={`chave-${provedor}`} className="text-muted-foreground">
-            {t('campoChave')}
-          </Label>
-          <Input
-            id={`chave-${provedor}`}
-            type="password"
-            autoComplete="off"
-            value={chave}
-            placeholder={cfg?.has_key ? t('chaveGuardada') : t('chaveVazia')}
-            onChange={(e) => setChave(e.target.value)}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor={`radar-${provedor}`} className="text-muted-foreground">
-            {t('campoModeloRadar')}
-          </Label>
-          <Input
-            id={`radar-${provedor}`}
-            list={`modelos-${provedor}`}
-            value={modeloRadar}
-            placeholder={
-              modeloDoAgente
-                ? t('modeloHerdado', { model: modeloDoAgente })
-                : t('modeloHerdadoVazio')
-            }
-            onChange={(e) => setModeloRadar(e.target.value)}
-          />
-          {/* Sugestão, nunca allow-list: o campo aceita qualquer id. */}
-          <datalist id={`modelos-${provedor}`}>
-            {AI_PROVIDER_MODELS[provedor].map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
-        </div>
+      <div className="space-y-1.5 sm:max-w-md">
+        <Label htmlFor={`radar-${provedor}`} className="text-muted-foreground">
+          {t('campoModeloRadar')}
+        </Label>
+        <Input
+          id={`radar-${provedor}`}
+          list={`modelos-${provedor}`}
+          value={modeloRadar}
+          placeholder={
+            modeloDoAgente
+              ? t('modeloHerdado', { model: modeloDoAgente })
+              : t('modeloHerdadoVazio')
+          }
+          onChange={(e) => setModeloRadar(e.target.value)}
+        />
+        {/* Sugestão, nunca allow-list: o campo aceita qualquer id. */}
+        <datalist id={`modelos-${provedor}`}>
+          {AI_PROVIDER_MODELS[provedor].map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
       </div>
-
       <p className="max-w-[62ch] text-xs text-muted-foreground">
         {t('modeloRadarDica')}
       </p>
-
       <div className="flex flex-wrap items-center gap-3">
         <Button
           type="button"
           size="sm"
           onClick={() => void salvar()}
-          disabled={salvando || cfg === null}
+          disabled={salvando || modeloRadar.trim() === modeloAtual}
         >
           {salvando ? t('salvando') : t('salvar')}
         </Button>
