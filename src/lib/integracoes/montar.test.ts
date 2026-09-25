@@ -215,7 +215,7 @@ describe('rótulos montados de Integrações', () => {
       for (const m of ['invalid_key', 'rate_limited', 'timeout', 'network', 'provider_error', 'chave_ilegivel', 'leitura_falhou']) {
         expect(integracoes.motivo[m], m).toBeTruthy();
       }
-      for (const a of ['embeddings_recusado', 'modulos_nao_criados']) {
+      for (const a of ['embeddings_recusado', 'embeddings_nao_conferido', 'modulos_nao_criados']) {
         expect(integracoes.avisoDaChave[a], a).toBeTruthy();
       }
       for (const e of ['chave_vazia', 'sem_chave', 'sem_configuracao', 'banco']) {

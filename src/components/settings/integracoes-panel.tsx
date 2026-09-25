@@ -541,7 +541,10 @@ function FormularioDaChave({
       }
       setChave('');
       const avisos = (dados.avisos ?? []).filter(
-        (a) => a === 'embeddings_recusado' || a === 'modulos_nao_criados'
+        (a) =>
+          a === 'embeddings_recusado' ||
+          a === 'embeddings_nao_conferido' ||
+          a === 'modulos_nao_criados'
       );
       setRecado(
         avisos.length > 0

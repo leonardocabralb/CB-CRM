@@ -3205,7 +3205,8 @@
         }
       },
       "avisoDaChave": {
-        "embeddings_recusado": "Chave salva: ela gera texto, mas a OpenAI recusou a busca da base de conhecimento (embeddings) — confira as permissões do projeto.",
+        "embeddings_recusado": "Chave salva: ela gera texto, mas a OpenAI recusou a busca da base de conhecimento (embeddings). A base passa a usar só a busca por palavras — confira as permissões do projeto e salve a chave de novo.",
+        "embeddings_nao_conferido": "Chave salva, mas não foi possível conferir se ela serve à busca da base de conhecimento (embeddings). Se a busca falhar, salve a chave de novo.",
         "modulos_nao_criados": "Chave salva, mas não foi possível criar a configuração do Radar — recarregue a página e confira o cartão."
       },
       "erroDaChave": {

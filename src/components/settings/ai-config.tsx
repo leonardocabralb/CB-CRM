@@ -60,6 +60,9 @@ export function AiConfig() {
   // ⚠️ `null` = NÃO SEI (a carga falhou): nunca afirmar "sem chave" sobre uma
   // conta que pode ter a chave cadastrada.
   const [chaves, setChaves] = useState<Record<AiProvider, boolean> | null>(null);
+  // A busca por sentido: a chave da OpenAI, MENOS a que a OpenAI recusou
+  // para embeddings ao ser gravada. `null` = não sei (a leitura falhou).
+  const [embeddingsUtilizavel, setEmbeddingsUtilizavel] = useState<boolean | null>(null);
   const [systemPrompt, setSystemPrompt] = useState('');
   const [isActive, setIsActive] = useState(false);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
@@ -81,6 +84,7 @@ export function AiConfig() {
       const data = await res.json();
       if (!res.ok) {
         setChaves(null);
+        setEmbeddingsUtilizavel(null);
         toast.error(t('loadFailed'));
         return;
       }
@@ -89,6 +93,7 @@ export function AiConfig() {
         if (c.provedor in lidas) lidas[c.provedor] = c.existe === true;
       }
       setChaves(lidas);
+      setEmbeddingsUtilizavel(data.has_embeddings_key === true);
       if (data.configured) {
         setProvider(data.provider);
         setModel(data.model);
@@ -428,7 +433,7 @@ export function AiConfig() {
         <AiKnowledgeCard
           accountId={accountId}
           canEdit={canEdit}
-          hasEmbeddingsKey={chaves === null ? null : chaves.openai}
+          hasEmbeddingsKey={embeddingsUtilizavel}
         />
 
         <div className="flex items-center justify-end">

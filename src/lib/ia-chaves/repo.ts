@@ -55,35 +55,95 @@ export async function lerChave(
   }
 }
 
+/**
+ * A chave da OpenAI para os EMBEDDINGS da base de conhecimento:
+ * 1. a chave PRÓPRIA dos embeddings (`embeddings_api_key`), quando a conta
+ *    tinha uma diferente da do chat no app anterior (a 1042 a guardou);
+ * 2. senão a chave da OpenAI (`api_key`), menos quando a OpenAI RECUSOU o
+ *    embedding ao gravá-la (`serve_embeddings = false`, chave de projeto
+ *    restrita): aí `chave: null` e `recusada: true`, e a base usa a busca
+ *    por palavras em vez de tentar (e falhar) a cada resposta e indexação.
+ * NULL em `serve_embeddings` (não conferida) vale como "serve", como antes.
+ */
+export async function lerChaveDeEmbeddings(
+  accountId: string,
+): Promise<{ chave: string | null; ilegivel: boolean; recusada: boolean }> {
+  const { data, error } = await supabaseAdmin()
+    .from('cb_ia_chaves')
+    .select('api_key, serve_embeddings, embeddings_api_key')
+    .eq('account_id', accountId)
+    .eq('provedor', 'openai')
+    .maybeSingle()
+  if (error) throw new Error(`[ia-chaves] leitura falhou: ${error.message}`)
+  if (!data?.api_key) return { chave: null, ilegivel: false, recusada: false }
+  const propria = typeof data.embeddings_api_key === 'string' && data.embeddings_api_key !== ''
+  if (!propria && data.serve_embeddings === false) {
+    return { chave: null, ilegivel: false, recusada: true }
+  }
+  try {
+    return {
+      chave: decrypt((propria ? data.embeddings_api_key : data.api_key) as string),
+      ilegivel: false,
+      recusada: false,
+    }
+  } catch {
+    console.error(
+      `[ia-chaves] a chave openai da conta ${accountId} não decifra — confira a ENCRYPTION_KEY; cadastre a chave de novo em Integrações.`,
+    )
+    return { chave: null, ilegivel: true, recusada: false }
+  }
+}
+
 export interface EstadoDaChave {
   provedor: AiProvider
   existe: boolean
   atualizadaEm: string | null
+  /** Só da OpenAI: `false` = a OpenAI recusou o embedding ao gravar. */
+  serveEmbeddings: boolean | null
+  /** Só da OpenAI: há uma chave PRÓPRIA dos embeddings (herdada da 1042). */
+  temChaveDeEmbeddings: boolean
 }
 
 /** O que a TELA pode saber: se cada provedor tem chave, e desde quando. */
 export async function lerEstado(accountId: string): Promise<EstadoDaChave[]> {
   const { data, error } = await supabaseAdmin()
     .from('cb_ia_chaves')
-    .select('provedor, updated_at')
+    .select('provedor, updated_at, serve_embeddings, embeddings_api_key')
     .eq('account_id', accountId)
   if (error) throw new Error(`[ia-chaves] leitura do estado falhou: ${error.message}`)
   const porProvedor = new Map(
-    (data ?? []).map((l) => [l.provedor as string, l.updated_at as string]),
+    (data ?? []).map((l) => [
+      l.provedor as string,
+      {
+        atualizadaEm: l.updated_at as string,
+        serveEmbeddings: typeof l.serve_embeddings === 'boolean' ? l.serve_embeddings : null,
+        temChaveDeEmbeddings: typeof l.embeddings_api_key === 'string' && l.embeddings_api_key !== '',
+      },
+    ]),
   )
   return PROVEDORES.map((provedor) => ({
     provedor,
     existe: porProvedor.has(provedor),
-    atualizadaEm: porProvedor.get(provedor) ?? null,
+    atualizadaEm: porProvedor.get(provedor)?.atualizadaEm ?? null,
+    serveEmbeddings: porProvedor.get(provedor)?.serveEmbeddings ?? null,
+    temChaveDeEmbeddings: porProvedor.get(provedor)?.temChaveDeEmbeddings ?? false,
   }))
 }
 
-/** Grava (ou troca) a chave do provedor. A chave já foi VALIDADA por quem chama. */
+/**
+ * Grava (ou troca) a chave do provedor. A chave já foi VALIDADA por quem chama.
+ * `serveEmbeddings` (só OpenAI) é o resultado da conferência do embedding
+ * feita AGORA, com esta chave: toda gravação o reescreve, senão a recusa da
+ * chave antiga valeria para a nova. Com `true`, a chave PRÓPRIA dos
+ * embeddings herdada da 1042 sai: a nova serve às duas coisas, e uma chave
+ * velha escondida continuaria sendo usada (e cobrada) sem aparecer na tela.
+ */
 export async function gravarChave(
   accountId: string,
   provedor: AiProvider,
   chaveCrua: string,
   userId: string | null,
+  serveEmbeddings: boolean | null = null,
 ): Promise<void> {
   const agora = new Date().toISOString()
   // O UNIQUE (account_id, provedor) é TOTAL: serve de alvo do ON CONFLICT
@@ -95,6 +155,9 @@ export async function gravarChave(
         account_id: accountId,
         provedor,
         api_key: encrypt(chaveCrua),
+        serve_embeddings: provedor === 'openai' ? serveEmbeddings : null,
+        // Ausente do objeto = o upsert não toca a coluna (a própria continua).
+        ...(provedor === 'openai' && serveEmbeddings === true ? { embeddings_api_key: null } : {}),
         atualizada_por: userId,
         updated_at: agora,
       },

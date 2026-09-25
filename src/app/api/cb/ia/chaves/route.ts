@@ -125,18 +125,31 @@ export async function PUT(request: Request) {
     // Avisos saem como CÓDIGO (a tela traduz e pinta de âmbar, não de verde):
     // - `embeddings_recusado`: a chave da OpenAI também serve à base de
     //   conhecimento, e uma chave de projeto RESTRITA pode gerar texto e não
-    //   gerar embedding. Grava assim mesmo (o chat funciona) e avisa.
+    //   gerar embedding. Grava assim mesmo (o chat funciona), GUARDA a recusa
+    //   (`serve_embeddings = false`, e a base passa a usar só a busca por
+    //   palavras em vez de tentar e falhar a cada resposta) e avisa.
+    // - `embeddings_nao_conferido`: a conferência não chegou a uma resposta
+    //   (rede, limite, erro do provedor). Nada é afirmado: a coluna fica
+    //   nula ("serve", como antes) e a tela avisa.
     // - `modulos_nao_criados`: ver abaixo.
     const avisos: string[] = []
+    let serveEmbeddings: boolean | null = null
     if (provedor === 'openai') {
       try {
         await embedTexts(chave, ['ping'])
-      } catch {
-        avisos.push('embeddings_recusado')
+        serveEmbeddings = true
+      } catch (err) {
+        // Só a RECUSA (401/403, `invalid_key`) é resposta sobre a chave.
+        if (err instanceof AiError && err.code === 'invalid_key') {
+          serveEmbeddings = false
+          avisos.push('embeddings_recusado')
+        } else {
+          avisos.push('embeddings_nao_conferido')
+        }
       }
     }
 
-    await gravarChave(ctx.accountId, provedor, chave, ctx.userId)
+    await gravarChave(ctx.accountId, provedor, chave, ctx.userId, serveEmbeddings)
 
     // PRIMEIRA configuração da conta: sem a linha padrão de `ai_configs`, o
     // Radar não teria provedor nem modelo e ficaria em `sem_ia` com a chave

@@ -3212,7 +3212,8 @@
         }
       },
       "avisoDaChave": {
-        "embeddings_recusado": "Key saved: it generates text, but OpenAI refused the knowledge-base search (embeddings) — check the project's permissions.",
+        "embeddings_recusado": "Key saved: it generates text, but OpenAI refused the knowledge-base search (embeddings). The knowledge base now uses keyword search only — check the project's permissions and save the key again.",
+        "embeddings_nao_conferido": "Key saved, but it could not be checked for the knowledge-base search (embeddings). If the search fails, save the key again.",
         "modulos_nao_criados": "Key saved, but the Radar configuration could not be created — reload the page and check the card."
       },
       "erroDaChave": {
