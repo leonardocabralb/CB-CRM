@@ -1585,6 +1585,13 @@ async function completarFicha(
   // O BSUID na ficha achada pelo TELEFONE — é o que mantém a história num
   // lugar só: a próxima mensagem, talvez sem telefone, acha esta ficha.
   if (!porBsuid && waUserId && contato.wa_user_id !== waUserId) {
+    // ⚠️ Ficha do telefone com OUTRO BSUID: a mensagem fica NELA. Mesmo
+    // telefone com BSUID diferente quase sempre é a mesma pessoa (outro
+    // portfólio da Meta — o BSUID é por portfólio —, ou a conta recriada no
+    // mesmo número). Só o número RECICLADO é outra pessoa, e para ele vale o
+    // que valia antes do BSUID. Criar aqui uma ficha só-BSUID duplicaria cada
+    // cliente que fala com dois portfólios (achado do Codex no #291, mantido;
+    // mudar é decisão do operador).
     if (contato.wa_user_id) {
       console.warn(
         '[webhook] a ficha achada pelo telefone já tem OUTRO BSUID; nada é sobrescrito:',

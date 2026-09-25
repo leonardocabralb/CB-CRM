@@ -124,7 +124,13 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   depois pelo telefone. Os preenchimentos (BSUID, telefone, `@`) são UPDATEs
   SEPARADOS do nome, cada um com a cerca no WHERE. 23505 num preenchimento =
   a mesma pessoa com duas fichas: só log com os dois ids, sem fusão, e a
-  mensagem fica na ficha do BSUID (decisão do operador, 24/09/2026). Sem
+  mensagem fica na ficha do BSUID (decisão do operador, 24/09/2026). Ficha
+  achada pelo TELEFONE que já tem OUTRO BSUID: a mensagem fica nela e nada é
+  sobrescrito (só log). Mesmo telefone com outro BSUID quase sempre é a mesma
+  pessoa (outro portfólio da Meta, conta recriada no mesmo número); só no
+  número RECICLADO é outra pessoa, e aí vale o comportamento de antes do
+  BSUID. Criar ficha só-BSUID ali duplicaria cada cliente de dois portfólios
+  — mudar é decisão do operador. Sem
   telefone nem BSUID, nada é criado; reação só-BSUID não cria ficha. O nome é
   SÓ o do perfil, nunca o `@` nem o BSUID (o gatilho do título os leria como
   nome e congelaria o card). Só esta rota escreve `wa_*` (pino
