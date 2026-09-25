@@ -8,7 +8,7 @@ import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
-import { mostrarDigitando } from './digitando'
+import { concluirDigitando, mostrarDigitando } from './digitando'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
 interface DispatchArgs {
@@ -145,14 +145,17 @@ export async function dispatchInboundToAiReply(
     }
 
     // "Digitando…" (#527): todos os portões passaram e a resposta vai ser
-    // gerada. Melhor esforço e sem esperar — nunca lança nem segura a
-    // resposta. ⚠️ Marca a mensagem do cliente como LIDA (tique azul): é
+    // gerada. Corre em paralelo com a geração e nunca lança; a resposta o
+    // espera terminar (no máximo 2 s) antes de sair — `concluirDigitando`,
+    // lá embaixo. ⚠️ Marca a mensagem do cliente como LIDA (tique azul): é
     // assim que a Meta faz, e o operador decidiu manter (P6).
-    void mostrarDigitando(db, {
+    const cancelarDigitando = new AbortController()
+    const digitando = mostrarDigitando(db, {
       accountId,
       conversationId,
       channelId,
       inboundMessageId: args.inboundMessageId,
+      sinal: cancelarDigitando.signal,
     })
 
     // Ground the reply in the account's knowledge base (best-effort).
@@ -239,6 +242,7 @@ export async function dispatchInboundToAiReply(
     }
     if (claimed !== true) return // lost the per-conversation cap race
 
+    await concluirDigitando(digitando, cancelarDigitando)
     await engineSendText({
       accountId,
       userId: configOwnerUserId,

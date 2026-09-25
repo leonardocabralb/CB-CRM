@@ -870,6 +870,8 @@ export interface SendTypingIndicatorArgs {
   /** Meta's wamid of the INBOUND message we're about to answer — must
    *  come from a received-message webhook, not one of our own sends. */
   messageId: string
+  /** Cancela o pedido — o "digitando…" não pode chegar depois da resposta. */
+  signal?: AbortSignal
 }
 
 /**
@@ -889,10 +891,11 @@ export interface SendTypingIndicatorArgs {
 export async function sendTypingIndicator(
   args: SendTypingIndicatorArgs
 ): Promise<void> {
-  const { phoneNumberId, accessToken, messageId } = args
+  const { phoneNumberId, accessToken, messageId, signal } = args
   const url = `${META_API_BASE}/${phoneNumberId}/messages`
   const response = await fetch(url, {
     method: 'POST',
+    signal,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
