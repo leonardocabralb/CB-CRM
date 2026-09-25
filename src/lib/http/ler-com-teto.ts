@@ -31,7 +31,15 @@ export async function lerComTeto(r: Response, teto: number): Promise<Buffer> {
   }
   if (!r.body) return Buffer.alloc(0);
   const leitor = r.body.getReader();
-  const pedacos: Uint8Array[] = [];
+  // ⚠️ Com o tamanho declarado, UM buffer, preenchido na chegada: juntar os
+  // pedaços no fim (`Buffer.concat`) segura os pedaços E a cópia ao mesmo
+  // tempo — ~200 MB de pico para o documento de 100 MB (revisão do PR #284).
+  // O que passar do declarado vai para `resto` e é juntado no fim: o
+  // `content-length` de resposta comprimida conta os bytes comprimidos, e o
+  // fetch entrega o corpo descomprimido. Sem o declarado, é só `resto`.
+  const inicio = Number.isInteger(declarado) && declarado > 0 ? Buffer.alloc(declarado) : null;
+  let noInicio = 0;
+  const resto: Uint8Array[] = [];
   let total = 0;
   for (;;) {
     const { done, value } = await leitor.read();
@@ -41,7 +49,14 @@ export async function lerComTeto(r: Response, teto: number): Promise<Buffer> {
       await leitor.cancel().catch(() => {});
       throw new TetoExcedido(`Media download refused: over the ${teto}-byte limit`);
     }
-    pedacos.push(value);
+    if (inicio && resto.length === 0 && noInicio + value.byteLength <= inicio.byteLength) {
+      inicio.set(value, noInicio);
+      noInicio += value.byteLength;
+    } else {
+      resto.push(value);
+    }
   }
-  return Buffer.concat(pedacos);
+  if (!inicio) return Buffer.concat(resto);
+  if (resto.length === 0) return inicio.subarray(0, noInicio);
+  return Buffer.concat([inicio.subarray(0, noInicio), ...resto]);
 }
