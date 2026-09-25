@@ -5,6 +5,7 @@ import {
   PREFERENCIA_PADRAO,
   chaveDaPreferencia,
   esperaAtribuicao,
+  trocaDeDonoSolta,
   JANELA_DA_ATRIBUICAO_MS,
   lerPreferencia,
   silencioDoAviso,
@@ -213,5 +214,48 @@ describe("silencioDoAviso — mensagem ANTIGA gravada agora não avisa", () => {
     expect(
       decide({ created_at: new Date(carimbo).toISOString(), gravada_em: new Date(carimbo + 60_000).toISOString() }),
     ).toBeNull();
+  });
+});
+
+describe("trocaDeDonoSolta — a troca de responsável que solta a mensagem estacionada", () => {
+  it("passou a ser minha: solta em qualquer preferência", () => {
+    for (const quais of ["minhas", "minhas_e_sem_responsavel", "todas"] as QuaisConversas[]) {
+      expect(trocaDeDonoSolta(EU, EU, quais)).toBe(true);
+    }
+  });
+
+  it("⚠️ ficou SEM responsável: solta só para \"minhas e sem responsável\" (revisão do PR #289)", () => {
+    expect(trocaDeDonoSolta(null, EU, "minhas_e_sem_responsavel")).toBe(true);
+    expect(trocaDeDonoSolta(null, EU, "minhas")).toBe(false);
+  });
+
+  it("foi para OUTRA pessoa: não solta", () => {
+    expect(trocaDeDonoSolta(OUTRO, EU, "minhas_e_sem_responsavel")).toBe(false);
+    expect(trocaDeDonoSolta(OUTRO, EU, "minhas")).toBe(false);
+  });
+
+  it("o que ela solta, a régua de aviso aceita (as duas concordam)", () => {
+    // Estacionou porque era de OUTRO; ficou sem dono (a coluna nula chega
+    // como ausente no tipo da conversa).
+    const conversa = { assigned_agent_id: undefined };
+    expect(trocaDeDonoSolta(null, EU, "minhas_e_sem_responsavel")).toBe(true);
+    expect(decide({ quais: "minhas_e_sem_responsavel", conversa })).toBeNull();
+    expect(trocaDeDonoSolta(null, EU, "minhas")).toBe(false);
+    expect(decide({ quais: "minhas", conversa })).toBe("nao_e_sua");
+  });
+});
+
+describe("o hook ouve as DUAS trocas de responsável (pino, revisão do PR #289)", () => {
+  it("atribuída a mim E sem responsável, pela mesma regra", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const hook = fs.readFileSync(
+      path.join(__dirname, "../../hooks/use-browser-notifications.ts"),
+      "utf8",
+    );
+    expect(hook).toContain("filter: `assigned_agent_id=eq.${userId}`");
+    expect(hook).toContain('filter: "assigned_agent_id=is.null"');
+    expect(hook.match(/aoTrocarDono,\n/g)).toHaveLength(2);
+    expect(hook).toContain("trocaDeDonoSolta(dono, userId, vivoRef.current.preferencia.quais)");
   });
 });

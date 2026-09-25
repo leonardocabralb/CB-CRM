@@ -191,3 +191,20 @@ export function silencioDoAviso(args: {
 export function esperaAtribuicao(silencio: SilencioDoAviso | null): boolean {
   return silencio === "nao_e_sua";
 }
+
+/**
+ * A troca de responsável pode SOLTAR a mensagem estacionada ("não é sua")?
+ * Quando a conversa passa a ser desta pessoa, ou fica SEM responsável e a
+ * pessoa pediu "minhas e sem responsável". O ouvinte só via a primeira: a
+ * conversa que ficava sem dono deixava a mensagem vencer em uma hora, sem
+ * aviso (revisão do PR #289). Quem solta decide de novo pela conversa lida na
+ * hora (`silencioDoAviso`).
+ */
+export function trocaDeDonoSolta(
+  novoDono: string | null,
+  userId: string,
+  quais: QuaisConversas,
+): boolean {
+  if (novoDono === userId) return true;
+  return novoDono === null && quais === "minhas_e_sem_responsavel";
+}
