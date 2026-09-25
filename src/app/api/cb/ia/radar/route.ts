@@ -30,7 +30,7 @@ export async function PATCH(request: Request) {
 
     const corpo = (await request.json().catch(() => null)) as { radar_model?: unknown } | null
     if (!corpo || !('radar_model' in corpo)) {
-      return NextResponse.json({ error: 'Informe radar_model.', code: 'corpo_invalido' }, { status: 400 })
+      return NextResponse.json({ error: 'corpo_invalido', code: 'corpo_invalido' }, { status: 400 })
     }
     // ⚠️ Vazio NÃO pode virar string vazia na coluna: o CHECK da 946 barraria,
     // e no Gemini a URL viraria `/models/:generateContent`.
@@ -47,11 +47,11 @@ export async function PATCH(request: Request) {
       .maybeSingle()
     if (error) {
       console.error('[cb/ia/radar] leitura falhou:', error.message)
-      return NextResponse.json({ error: 'Não foi possível ler a configuração.' }, { status: 500 })
+      return NextResponse.json({ error: 'banco', code: 'banco' }, { status: 500 })
     }
     if (!padrao) {
       return NextResponse.json(
-        { error: 'Cadastre primeiro a chave de um provedor.', code: 'sem_configuracao' },
+        { error: 'sem_configuracao', code: 'sem_configuracao' },
         { status: 400 },
       )
     }
@@ -61,16 +61,16 @@ export async function PATCH(request: Request) {
       let chave: string | null
       try {
         const lida = await lerChave(ctx.accountId, provedor)
+        if (lida.ilegivel) {
+          return NextResponse.json({ error: 'chave_ilegivel', code: 'chave_ilegivel' }, { status: 400 })
+        }
         chave = lida.chave
       } catch (err) {
         console.error('[cb/ia/radar] leitura da chave falhou:', err)
-        return NextResponse.json({ error: 'Não foi possível ler a chave.' }, { status: 500 })
+        return NextResponse.json({ error: 'banco', code: 'banco' }, { status: 500 })
       }
       if (!chave) {
-        return NextResponse.json(
-          { error: 'Cadastre a chave deste provedor antes de escolher o modelo.', code: 'sem_chave' },
-          { status: 400 },
-        )
+        return NextResponse.json({ error: 'sem_chave', code: 'sem_chave' }, { status: 400 })
       }
       try {
         await validateAiCredentials({
@@ -90,11 +90,10 @@ export async function PATCH(request: Request) {
         // `invalid_key`, que ecoa a chave (mensagemSeguraDeAiError).
         const motivo =
           err instanceof AiError ? mensagemSeguraDeAiError(err) : 'erro desconhecido do provedor'
+        // O `motivo` é a mensagem do PROVEDOR (em inglês), já sem eco de chave:
+        // é ela que diz "modelo não encontrado". A frase em volta a tela traduz.
         return NextResponse.json(
-          {
-            error: `O modelo do Radar (${radarModel}) não respondeu: ${motivo}`,
-            code: 'radar_model_invalid',
-          },
+          { error: 'radar_model_invalid', code: 'radar_model_invalid', modelo: radarModel, motivo },
           { status: 400 },
         )
       }
@@ -107,11 +106,11 @@ export async function PATCH(request: Request) {
       .eq('account_id', ctx.accountId)
     if (erroUpdate) {
       console.error('[cb/ia/radar] gravação falhou:', erroUpdate.message)
-      return NextResponse.json({ error: 'Não foi possível gravar.' }, { status: 500 })
+      return NextResponse.json({ error: 'banco', code: 'banco' }, { status: 500 })
     }
     // RLS que barra escrita devolve 0 linhas com `error: null`.
     if (!count) {
-      return NextResponse.json({ error: 'Nada foi gravado.', code: 'nada_gravado' }, { status: 409 })
+      return NextResponse.json({ error: 'nada_gravado', code: 'nada_gravado' }, { status: 409 })
     }
     return NextResponse.json({ ok: true })
   } catch (err) {

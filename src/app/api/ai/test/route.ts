@@ -51,19 +51,13 @@ export async function POST(request: Request) {
         lida = await lerChave(accountId, provider)
       } catch (err) {
         console.error('[ai/test] leitura da chave falhou:', err)
-        return NextResponse.json({ error: 'Could not read the stored key.' }, { status: 500 })
+        return NextResponse.json({ code: 'banco' }, { status: 500 })
       }
       if (lida.ilegivel) {
-        return NextResponse.json(
-          { error: 'Stored API key could not be decrypted — re-enter it in Integrations.' },
-          { status: 400 },
-        )
+        return NextResponse.json({ code: 'chave_ilegivel' }, { status: 400 })
       }
       if (!lida.chave) {
-        return NextResponse.json(
-          { error: 'This provider has no API key — add one in Settings → Integrations.', code: 'sem_chave' },
-          { status: 400 },
-        )
+        return NextResponse.json({ code: 'sem_chave' }, { status: 400 })
       }
       apiKeyPlain = lida.chave
     }

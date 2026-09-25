@@ -162,13 +162,13 @@ export async function POST(request: Request) {
       const lida = await lerChave(accountId, provider)
       if (lida.ilegivel) {
         return NextResponse.json(
-          { error: 'A chave deste provedor não pôde ser lida — cadastre-a de novo em Integrações.', code: 'chave_ilegivel' },
+          { error: 'chave_ilegivel', code: 'chave_ilegivel' },
           { status: 400 },
         )
       }
       if (!lida.chave) {
         return NextResponse.json(
-          { error: 'Cadastre a chave deste provedor em Configurações → Integrações.', code: 'sem_chave' },
+          { error: 'sem_chave', code: 'sem_chave' },
           { status: 400 },
         )
       }
