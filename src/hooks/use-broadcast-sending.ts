@@ -379,6 +379,25 @@ async function contatosComAsEtiquetas(
 }
 
 /**
+ * O valor digitado como TEXTO LITERAL numa expressão regular do Postgres:
+ * cada metacaractere ganha uma barra.
+ *
+ * ⚠️⚠️ "Contém" já foi `ilike('%valor%')` sem escape (revisão do PR #231,
+ * P1): `%` e `_` digitados viravam curingas, e "contém %" casava todo contato
+ * com o campo preenchido — contagem e envio concordando sobre o público
+ * ERRADO de uma campanha paga. Escapar `\ % _` não bastaria: o PostgREST
+ * troca TODO `*` de um padrão `like`/`ilike` por `%` (o atalho de URL da
+ * documentação dele), sem forma de escapar, e "contém *" continuaria
+ * alcançando todo mundo. No `imatch` (`~*`) o PostgREST não reescreve nada,
+ * e ele ignora a caixa como o `ilike` — medido no Postgres da produção em
+ * 25/09/2026: `'Bancário' ~* 'BANCÁRIO'`, `'a*b' ~* 'a\*b'` e
+ * `'axb' ~* 'a\*b'` falso.
+ */
+export function literalParaRegex(valor: string): string {
+  return valor.replace(/[\\^$.|?*+()[\]{}]/g, '\\$&');
+}
+
+/**
  * Os `contact_id` que casam o recorte por campo personalizado.
  */
 async function idsDoCampoPersonalizado(
@@ -388,9 +407,8 @@ async function idsDoCampoPersonalizado(
 ): Promise<string[]> {
   const { fieldId, operator, value } = filter;
 
-  // Build the WHERE clause for the operator. PostgREST supports
-  // eq/neq/ilike via the query builder — use ilike with wildcards
-  // for "contains" so the match is case-insensitive.
+  // O WHERE do operador; "contém" é `imatch` com o valor literal
+  // (`literalParaRegex`), nunca `ilike`.
   //
   // ⚠️ Paginada: este recorte casa a base inteira com facilidade — um
   // `is_not` sobre valor raro devolve quase todo mundo —, e o corte de
@@ -406,7 +424,7 @@ async function idsDoCampoPersonalizado(
       if (operator === 'is') query = query.eq('value', value);
       else if (operator === 'is_not') query = query.neq('value', value);
       else if (operator === 'contains')
-        query = query.ilike('value', `%${value}%`);
+        query = query.regexIMatch('value', literalParaRegex(value));
 
       const consulta = query.order('id', { ascending: true }).range(de, ate);
       const { data, error, count } = await (sinal ? consulta.abortSignal(sinal) : consulta);
@@ -610,13 +628,20 @@ export async function contarPublico(
  * ⚠️ E a falha deixou de ser engolida (`const { data }` descartava o
  * `error`): índice incompleto é indistinguível de "o contato não tem esse
  * campo", e o disparo seguiria com placeholder vazio. Aborta.
+ *
+ * ⚠️ Lê SÓ os campos que o modelo usa (`camposUsados`, os `custom_field`
+ * das variáveis), e nada quando ele não usa nenhum (revisão do PR #231):
+ * antes toda campanha lia todos os campos de todos os destinatários, em
+ * voltas sequenciais de 100 contatos — 130 consultas para 13 mil
+ * destinatários antes de a campanha nascer, para um índice que ninguém lia.
  */
-async function fetchCustomValueIndex(
+export async function fetchCustomValueIndex(
   supabase: ReturnType<typeof createClient>,
   contactIds: string[],
+  camposUsados: string[],
 ): Promise<CustomValueIndex> {
   const index: CustomValueIndex = new Map();
-  if (contactIds.length === 0) return index;
+  if (contactIds.length === 0 || camposUsados.length === 0) return index;
 
   for (const fatia of emFatias(contactIds, IDS_POR_CONSULTA)) {
     const { linhas, erro, motivo } = await buscarPaginado<{
@@ -628,6 +653,7 @@ async function fetchCustomValueIndex(
         .from('contact_custom_values')
         .select('contact_id, custom_field_id, value', { count: 'exact' })
         .in('contact_id', fatia)
+        .in('custom_field_id', camposUsados)
         .order('id', { ascending: true })
         .range(de, ate);
       return {
@@ -845,6 +871,13 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       const customValueIndex = await fetchCustomValueIndex(
         supabase,
         contacts.map((c) => c.id),
+        [
+          ...new Set(
+            Object.values(payload.variables)
+              .filter((v) => v.type === 'custom_field')
+              .map((v) => v.value),
+          ),
+        ],
       );
       const paramsByContact = new Map(
         contacts.map((contact) => [
