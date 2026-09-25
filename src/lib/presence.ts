@@ -55,58 +55,50 @@ export function derivePresence(
 }
 
 /**
- * Relative "last seen" string for tooltips. Coarse on purpose — the
- * issue calls for relative time only, never a precise timestamp.
+ * Relative "last seen" string for tooltips, in the given language
+ * (`Intl.RelativeTimeFormat`): "há 5 minutos" / "5 minutes ago",
+ * "há 1 dia" / "1 day ago". Coarse on purpose — the issue calls for relative
+ * time only, never a precise timestamp. Returns `null` when there is no
+ * usable timestamp; the caller decides what to say then.
+ *
+ * ⚠️ The language is a PARAMETER, never the browser's: the app locale is
+ * fixed per build (`LOCALE_DAS_DATAS.code`), and `undefined` would print
+ * English on an English browser with the rest of the screen in Portuguese.
+ * The frame around it ("Offline — last seen …") lives in the dictionary
+ * (`Presence.*`, see `use-rotulo-de-presenca.ts`).
  *
  * Deliberately separate from `formatRelative` in
  * src/lib/automations/trigger-meta.ts: that one reads `Date.now()`
- * internally (not injectable) and emits terse chip wording ("2h ago"),
- * whereas presence needs an injected `now` — so the dots and labels
- * advance in lockstep and the unit tests stay deterministic — plus
- * full-sentence wording for the tooltip ("Offline — last seen …").
+ * internally (not injectable), whereas presence needs an injected `now` —
+ * so the dots and labels advance in lockstep and the unit tests stay
+ * deterministic.
  */
 export function formatLastSeen(
   lastSeenAt: string | null | undefined,
   now: number,
-): string {
-  if (!lastSeenAt) return "a while ago";
+  idioma: string,
+): string | null {
+  if (!lastSeenAt) return null;
   const last = new Date(lastSeenAt).getTime();
-  if (Number.isNaN(last)) return "a while ago";
+  if (Number.isNaN(last)) return null;
 
+  const rtf = new Intl.RelativeTimeFormat(idioma, { numeric: "auto" });
   const diff = Math.max(0, now - last);
   const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins === 1) return "1 minute ago";
-  if (mins < 60) return `${mins} minutes ago`;
+  if (mins < 1) return rtf.format(0, "second");
+  if (mins < 60) return rtf.format(-mins, "minute");
 
   const hours = Math.floor(mins / 60);
-  if (hours === 1) return "1 hour ago";
-  if (hours < 24) return `${hours} hours ago`;
+  if (hours < 24) return rtf.format(-hours, "hour");
 
-  const days = Math.floor(hours / 24);
-  if (days === 1) return "1 day ago";
-  return `${days} days ago`;
-}
-
-/**
- * Tooltip / aria label for a presence dot, e.g.
- *   "Online — active now"
- *   "Away — idle"
- *   "Offline — last seen 2 hours ago"
- */
-export function presenceLabel(
-  status: PresenceStatus,
-  lastSeenAt: string | null | undefined,
-  now: number,
-): string {
-  switch (status) {
-    case "online":
-      return "Online — active now";
-    case "away":
-      return "Away — idle";
-    case "offline":
-      return `Offline — last seen ${formatLastSeen(lastSeenAt, now)}`;
-  }
+  // ⚠️ `numeric: "always"` nos dias: o "auto" diria "ontem"/"anteontem", que
+  // são palavras de CALENDÁRIO, sobre blocos de 24 h — visto segunda 9h e
+  // olhado quarta 8h (47 h) sairia "ontem" (revisão da Fase 10). "Há 1 dia"
+  // é verdade para tempo decorrido.
+  return new Intl.RelativeTimeFormat(idioma, { numeric: "always" }).format(
+    -Math.floor(hours / 24),
+    "day",
+  );
 }
 
 /** Roster header summary, e.g. for "3 online · 1 away · 1 offline". */

@@ -77,7 +77,14 @@ describe('validateInteractivePayload — buttons', () => {
         { id: 'dup', title: 'B' },
       ],
     })
-    expect(res).toEqual({ ok: false, error: 'Duplicate button id "dup".' })
+    // NOSSO: a falha leva também o `codigo` + `params` que a tela traduz
+    // (`interativa-mensagem.ts`); o `error` em inglês segue sendo o contrato.
+    expect(res).toEqual({
+      ok: false,
+      error: 'Duplicate button id "dup".',
+      codigo: 'botaoIdDuplicado',
+      params: { id: 'dup' },
+    })
   })
 
   it('rejects empty button id / title', () => {

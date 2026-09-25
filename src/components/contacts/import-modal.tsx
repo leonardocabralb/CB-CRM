@@ -496,8 +496,9 @@ export function ImportModal({
       const nomesPulados = skippedNames.filter((n) => !pareceIdDeEtiqueta(n));
       if (nomesPulados.length > 0) {
         const sample = nomesPulados.slice(0, 3).join(', ');
-        const more =
-          nomesPulados.length > 3 ? ` (+${nomesPulados.length - 3} more)` : '';
+        // Sem palavra ("+2"), como o sufixo dos ids abaixo: o "more" em
+        // inglês saía no meio da frase em português.
+        const more = nomesPulados.length > 3 ? ` (+${nomesPulados.length - 3})` : '';
         toast.info(t('toastTagsSkipped', { sample, more }));
       }
       if (idsPulados.length > 0) {

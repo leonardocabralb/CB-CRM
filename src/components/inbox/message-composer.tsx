@@ -77,6 +77,8 @@ import {
   blankButtonsPayload,
 } from "@/components/interactive/interactive-builder";
 import { validateInteractivePayload } from "@/lib/whatsapp/interactive";
+import { mensagemDaInterativa } from "@/lib/whatsapp/interativa-mensagem";
+import { mensagemDoUpload } from "@/lib/storage/erro-de-upload";
 import type { InteractiveMessagePayload, QuickReply } from "@/types";
 import { QuickReplyPicker } from "./quick-reply-picker";
 import { AcervoPicker } from "./acervo-picker";
@@ -280,6 +282,10 @@ export function MessageComposer({
   // Namespace próprio: os textos de agendar são compartilhados com a
   // faixa AGENDADAS, que é outro componente.
   const tAgendadas = useTranslations("Inbox.scheduled");
+  // A falha da interativa chega com `codigo` (o `error` é inglês, contrato
+  // das rotas); a frase sai de `mensagemDaInterativa`.
+  const tValidacao = useTranslations("Interactive.validacao");
+  const tUpload = useTranslations("Upload");
 
   const [text, setText] = useState("");
   const [drafting, setDrafting] = useState(false);
@@ -905,15 +911,15 @@ export function MessageComposer({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.code === "ai_not_configured") {
-          toast.error("AI isn't set up yet — enable it in Settings → AI Assistant.");
+          toast.error(t("aiNotConfigured"));
         } else {
-          toast.error(data.error ?? "Couldn't draft a reply.");
+          toast.error(data.error ?? t("draftFailed"));
         }
         return;
       }
       const draftText = typeof data.draft === "string" ? data.draft.trim() : "";
       if (!draftText) {
-        toast.error("The assistant didn't return a reply.");
+        toast.error(t("draftEmpty"));
         return;
       }
       setText(draftText);
@@ -928,11 +934,11 @@ export function MessageComposer({
         }
       });
     } catch {
-      toast.error("Couldn't reach the AI assistant.");
+      toast.error(t("aiUnreachable"));
     } finally {
       setDrafting(false);
     }
-  }, [drafting, conversationId, adjustHeight]);
+  }, [drafting, conversationId, adjustHeight, t]);
 
   // ---- Interactive message + quick replies --------------------------
 
@@ -947,19 +953,19 @@ export function MessageComposer({
   const sendInteractive = useCallback(() => {
     const result = validateInteractivePayload(interactivePayload);
     if (!result.ok) {
-      toast.error(result.error);
+      toast.error(mensagemDaInterativa(result, tValidacao));
       return;
     }
     onSendInteractive(interactivePayload, replyTo?.id);
     setInteractiveOpen(false);
     onClearReply?.();
-  }, [interactivePayload, onSendInteractive, replyTo?.id, onClearReply]);
+  }, [interactivePayload, onSendInteractive, replyTo?.id, onClearReply, tValidacao]);
 
   // Persist the current builder payload as a reusable interactive snippet.
   const saveAsQuickReply = useCallback(async () => {
     const result = validateInteractivePayload(interactivePayload);
     if (!result.ok) {
-      toast.error(result.error);
+      toast.error(mensagemDaInterativa(result, tValidacao));
       return;
     }
     const title = window
@@ -988,7 +994,7 @@ export function MessageComposer({
     } finally {
       setSavingQuickReply(false);
     }
-  }, [interactivePayload, t]);
+  }, [interactivePayload, t, tValidacao]);
 
   // A picked quick reply: text fills the composer; interactive opens the
   // builder pre-filled so the agent can tweak before sending.
@@ -1033,9 +1039,11 @@ export function MessageComposer({
       const max = MEDIA_MAX_BYTES_BY_KIND[kind];
       if (file.size > max) {
         toast.error(
-          `File is ${(file.size / 1024 / 1024).toFixed(1)} MB — ${kind} limit is ${Math.round(
-            max / 1024 / 1024,
-          )} MB.`,
+          t("arquivoGrandeDemais", {
+            tamanho: Math.round((file.size / 1024 / 1024) * 10) / 10,
+            tipo: kind,
+            limite: Math.round(max / 1024 / 1024),
+          }),
         );
         return;
       }
@@ -1057,12 +1065,12 @@ export function MessageComposer({
         setDrafts((atual) => [...atual, item]);
         setSelecionado((atual) => atual ?? item.id);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Upload failed.");
+        toast.error(mensagemDoUpload(err, tUpload, t("uploadFailed")));
       } finally {
         setBusy(false);
       }
     },
-    [removeStaged, conversationId],
+    [removeStaged, conversationId, t, tUpload],
   );
 
   /**
@@ -1234,7 +1242,7 @@ export function MessageComposer({
       });
       if (file.size === 0) return; // cancelled / empty take
       if (file.size > MEDIA_MAX_BYTES_BY_KIND.audio) {
-        toast.error("Recording is too long (over 16 MB).");
+        toast.error(t("recordingTooLong"));
         return;
       }
       const origem = conversationId;
@@ -1258,18 +1266,18 @@ export function MessageComposer({
         setDrafts((atual) => [...atual, nota]);
         setSelecionado((atual) => atual ?? nota.id);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Upload failed.");
+        toast.error(mensagemDoUpload(err, tUpload, t("uploadFailed")));
       } finally {
         setBusy(false);
       }
     },
-    [removeStaged, conversationId],
+    [removeStaged, conversationId, t, tUpload],
   );
 
   const startRecording = useCallback(async () => {
     if (inputsDisabled || busy || recording) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === "undefined") {
-      toast.error("Voice recording isn't supported in this browser.");
+      toast.error(t("recordingUnsupported"));
       return;
     }
     try {
@@ -1296,9 +1304,9 @@ export function MessageComposer({
     } catch {
       void recorderRef.current?.stop().catch(() => {});
       recorderRef.current = null;
-      toast.error("Microphone access denied or unavailable.");
+      toast.error(t("microphoneDenied"));
     }
-  }, [inputsDisabled, busy, recording, finalizeRecording]);
+  }, [inputsDisabled, busy, recording, finalizeRecording, t]);
 
   const stopRecording = useCallback(() => {
     clearTimer();
@@ -1740,7 +1748,7 @@ export function MessageComposer({
               variant="ghost"
               size="sm"
               canAct={!readOnly}
-              gateReason="send messages"
+              gateReason="sendMessages"
               title={readOnly ? undefined : t("sendTemplate")}
               className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
               onClick={onOpenTemplates}
@@ -1753,7 +1761,7 @@ export function MessageComposer({
             variant="ghost"
             size="sm"
             canAct={!readOnly}
-            gateReason="send messages"
+            gateReason="sendMessages"
             disabled={drafting}
             title={readOnly ? undefined : t("draftWithAI")}
             className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-primary"
@@ -1868,7 +1876,7 @@ export function MessageComposer({
           <GatedButton
             size="sm"
             canAct={!readOnly}
-            gateReason="send messages"
+            gateReason="sendMessages"
             disabled={!text.trim() || sessionExpired || agendando}
             onClick={handleSend}
             // O rótulo muda junto com a etiqueta: o mesmo botão faz coisas
@@ -2149,7 +2157,7 @@ function MediaDraftPreview({
         <GatedButton
           size="sm"
           canAct={!readOnly}
-          gateReason="send messages"
+          gateReason="sendMessages"
           disabled={busy || agendando}
           onClick={onSend}
           // O mesmo botão faz coisas diferentes conforme a hora esteja

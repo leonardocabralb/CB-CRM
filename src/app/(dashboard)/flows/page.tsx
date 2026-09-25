@@ -236,7 +236,7 @@ export default function FlowsPage() {
           />
           <GatedButton
             canAct={canCreate}
-            gateReason="create flows"
+            gateReason="createFlows"
             onClick={() => setCreateOpen(true)}
           >
             <Plus className="h-4 w-4" />
@@ -372,7 +372,7 @@ function EmptyState({
       </p>
       <GatedButton
         canAct={canCreate}
-        gateReason="create flows"
+        gateReason="createFlows"
         onClick={onCreate}
         className="mt-5"
       >

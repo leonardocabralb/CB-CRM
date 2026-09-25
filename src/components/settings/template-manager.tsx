@@ -18,6 +18,7 @@ import {
   uploadAccountMedia,
   MEDIA_MAX_BYTES_BY_KIND,
 } from '@/lib/storage/upload-media';
+import { mensagemDoUpload } from '@/lib/storage/erro-de-upload';
 import {
   MEDIA_HEADER_SPECS,
   isMediaHeaderKind,
@@ -137,6 +138,7 @@ function emptyButton(type: TemplateButton['type']): TemplateButton {
 
 export function TemplateManager() {
   const t = useTranslations('Settings.templates');
+  const tUpload = useTranslations('Upload');
 
   // Multi-canal (Fase 5): templates são um conceito da API oficial. Quando
   // a conta tem canais e NENHUM é Meta, o gestor mostra uma guarda graciosa
@@ -563,7 +565,7 @@ export function TemplateManager() {
       setForm((f) => ({ ...f, header_media_url: publicUrl }));
       toast.success(t('toastUploadSuccess'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('toastUploadFailed'));
+      toast.error(mensagemDoUpload(err, tUpload, t('toastUploadFailed')));
     } finally {
       setUploadingHeader(false);
     }
@@ -968,7 +970,7 @@ export function TemplateManager() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={form.header_media_url}
-                      alt="Header sample"
+                      alt={t('headerSampleAlt')}
                       className="max-h-28 rounded-md border border-border object-contain"
                     />
                   )}
