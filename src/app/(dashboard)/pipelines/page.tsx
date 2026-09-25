@@ -746,6 +746,12 @@ function PipelinesPageInner() {
    * pedir de novo o que já está a caminho: a coluna avisa a cada mudança do
    * quadro. Uma falha fica no toast, e a coluna pede de novo na mudança
    * seguinte do quadro (arrasto, "mostrar mais", recarga).
+   *
+   * ⚠️ A resposta só TIRA do quadro o card que não voltou se ainda cair na
+   * lista do pedido: o mesmo funil aberto e nenhuma leitura gravada no meio
+   * (`ultimoGravadoRef`). Senão ela só preenche — o card transferido de A
+   * para B enquanto A buscava o conteúdo sumia do quadro de B (revisão do
+   * PR #251; ver `juntarConteudo`).
    */
   const emVooRef = useRef(new Set<string>());
   const carregarConteudo = useCallback(
@@ -754,6 +760,7 @@ function PipelinesPageInner() {
       const novos = ids.filter((id) => !emVoo.has(id));
       if (novos.length === 0) return;
       for (const id of novos) emVoo.add(id);
+      const gravadoNoPedido = ultimoGravadoRef.current;
       void (async () => {
         let conteudo: Map<string, DealDoQuadro> | null = null;
         try {
@@ -770,10 +777,12 @@ function PipelinesPageInner() {
           return;
         }
         const recebido = conteudo;
+        const listaDoPedido =
+          funilAbertoRef.current === funil && ultimoGravadoRef.current === gravadoNoPedido;
         // Mudança local, como o arrasto: a recarga da volta ao app que estiver
         // no ar já não grava por cima (ver `versaoDoQuadroRef`).
         versaoDoQuadroRef.current += 1;
-        setDeals((prev) => juntarConteudo(prev, novos, recebido));
+        setDeals((prev) => juntarConteudo(prev, novos, recebido, listaDoPedido));
       })();
     },
     [buscarConteudo, t],
