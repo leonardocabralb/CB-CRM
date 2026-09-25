@@ -79,6 +79,6 @@ describe("textoDoAviso", () => {
     expect(pagina).toMatch(/const texto = textoDoAviso\(/);
     expect(pagina).toMatch(/\{texto\.titulo\}/);
     expect(pagina).not.toMatch(/\{n\.title\}|\{n\.body\}/);
-    expect(pagina).toMatch(/\.select\("\*, contact:contacts\(name, phone, instagram_username\)"\)/);
+    expect(pagina).toMatch(/\.select\("\*, contact:contacts\(name, phone, wa_username, instagram_username\)"\)/);
   });
 });

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Contact, CustomField, MessageTemplate } from '@/types';
+import { nomeDoContato } from '@/lib/contacts/identidade';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -235,8 +236,10 @@ export function Step3Personalize({
     firstContactCustomValues,
   ]);
 
+  // `nomeDoContato` (Fase 11.4): o `name || phone` cru ficava vazio na ficha
+  // sem telefone — o disparo pula essa ficha, mas o rótulo não pode mentir.
   const previewLabel = firstContact
-    ? firstContact.name || firstContact.phone
+    ? nomeDoContato(firstContact, t('personalize.previewSample'))
     : t('personalize.previewSample');
 
   return (

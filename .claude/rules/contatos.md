@@ -50,7 +50,13 @@ decide mais "mesma pessoa".
 - Ficha só-BSUID (a Meta sem telefone; 1041): `phone` nulo, identidade em
   `wa_user_id`, único POR CONTA (índice parcial da 1038). O BSUID nunca passa
   por `findExistingContact`: casamento EXATO, `buscarPorBsuid`/
-  `fichaQueVenceuPorBsuid` (`src/lib/contacts/bsuid.ts`).
+  `fichaQueVenceuPorBsuid` (`src/lib/contacts/bsuid.ts`). Na tela ela aparece
+  pelo `@` do WhatsApp (`identidadeDoContato`, nunca o BSUID); o telefone é
+  apagável quando há outra identidade (`podeFicarSemTelefone`: Instagram OU
+  BSUID). As três buscas (`casaComABusca`, `casaComContato`,
+  `ramosDaBuscaDeContato` — que o seletor da agenda também usa) casam pelos
+  dois `@`; "@" sozinho não casa nada (agulha vazia). Limite escrito: a busca
+  de /contatos (RPC 025) e o `?search=` da v1 não olham o `@`.
 - Fundir fichas NÃO é `merge_duplicate_contacts` (apaga tarefas do perdedor e
   agrupa por grafia exata): a receita está em `supabase.md`.
 

@@ -15,6 +15,7 @@ export interface ContatoPesquisavel {
   name: string | null;
   /** NULO na ficha só do Instagram (989). */
   phone: string | null;
+  wa_username?: string | null;
   instagram_username?: string | null;
 }
 
@@ -46,10 +47,16 @@ export function casaComContato(
   if (!q) return true;
 
   if (semAcento(contato.name ?? '').includes(q)) return true;
-  // O @ do Instagram conta como nome: é como a equipe conhece o cliente.
+  // O @ conta como nome — o do WhatsApp (a ficha só-BSUID, Fase 11.4) e o do
+  // Instagram: é como a equipe conhece o cliente. ⚠️ Só com agulha: o termo
+  // "@" sozinho vira "" sem a arroba, e `includes("")` casaria toda ficha que
+  // tem um @.
+  const agulha = q.replace(/^@/, '');
   if (
-    contato.instagram_username &&
-    semAcento(contato.instagram_username).includes(q.replace(/^@/, ''))
+    agulha &&
+    [contato.wa_username, contato.instagram_username].some(
+      (arroba) => !!arroba && semAcento(arroba).includes(agulha)
+    )
   ) {
     return true;
   }

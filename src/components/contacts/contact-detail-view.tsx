@@ -59,7 +59,11 @@ import {
   LayoutTemplate,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { identidadeDoContato } from '@/lib/contacts/identidade';
+import {
+  identidadeDoContato,
+  nomeDoContato,
+  podeFicarSemTelefone,
+} from '@/lib/contacts/identidade';
 import { campoDoEmail, emailMudou, emailNormalizado } from '@/lib/contacts/email-espelhado';
 import { escritaDoNomeManual } from '@/lib/contacts/nome-fixado';
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
@@ -372,9 +376,10 @@ export function ContactDetailView({
     // (brasileiro sem DDI ganha o 55): gravado cru, "(81) 98874-5316" virava
     // "81988745316", que sai para +81. Telefone que ninguém tocou não é
     // conferido — há fichas antigas fora da régua, e corrigir o nome delas
-    // não pode esbarrar nele. A ficha só do Instagram (989) pode ficar sem.
+    // não pode esbarrar nele. A ficha com outra identidade (Instagram, 989,
+    // ou o BSUID do WhatsApp, 1041) pode ficar sem.
     const escritaTelefone = escritaDoTelefone(contact?.phone, editPhone, {
-      podeFicarSem: !!contact?.instagram_id,
+      podeFicarSem: podeFicarSemTelefone(contact),
     });
     if (!escritaTelefone.ok) {
       toast.error(
@@ -544,7 +549,7 @@ export function ContactDetailView({
           t('toastCustomFieldFailed', {
             campo:
               customFields.find((f) => f.id === fieldId)?.field_name ?? fieldId,
-            cliente: contact?.name || contact?.phone || '',
+            cliente: nomeDoContato(contact, ''),
           })
         );
         return false;

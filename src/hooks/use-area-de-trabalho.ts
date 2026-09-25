@@ -48,6 +48,7 @@ export interface ContatoDoGanho {
   id: string;
   name: string | null;
   phone: string | null;
+  wa_username?: string | null;
   instagram_username?: string | null;
 }
 
@@ -298,7 +299,7 @@ export function useAreaDeTrabalho(pedido: PedidoDaArea): AreaDeTrabalho {
         supabase
           .from('automation_logs')
           .select(
-            'id, contact_id, automations(name), contact:contacts(id, name, phone, instagram_username)',
+            'id, contact_id, automations(name), contact:contacts(id, name, phone, wa_username, instagram_username)',
             { count: 'exact' }
           )
           .eq('account_id', accountId)
@@ -406,7 +407,7 @@ export function useAreaDeTrabalho(pedido: PedidoDaArea): AreaDeTrabalho {
         supabase
           .from('cb_lead_events')
           .select(
-            'id, occurred_at, contact:contacts(id, name, phone, instagram_username)',
+            'id, occurred_at, contact:contacts(id, name, phone, wa_username, instagram_username)',
             { count: 'exact' }
           )
           .eq('account_id', accountId)

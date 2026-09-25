@@ -120,6 +120,7 @@ import {
 import { ehEvolution } from "@/lib/cb-channels/transporte";
 import { IconeDoTransporte } from "@/components/channels/transporte-icone";
 import { identidadeDoContato, nomeDoContato } from "@/lib/contacts/identidade";
+import { alvoDeEnvio } from "@/lib/whatsapp/alvo-de-envio";
 
 interface ReplyDraft {
   id: string;
@@ -2535,9 +2536,24 @@ export function MessageThread({
                   const isSelected =
                     Boolean(conversation.channel_pinned) &&
                     c.id === activeChannel.id;
+                  // Fase 11.4 (decisão do operador, 24/09/2026): a ficha que a
+                  // Meta manda só com o nome de usuário (BSUID, sem telefone)
+                  // só é alcançável pela API oficial. As conexões que não a
+                  // alcançam (QR Code, Instagram) ficam DESABILITADAS, com o
+                  // motivo — a mesma régua do envio (`alvoDeEnvio`), senão o
+                  // menu ofereceria um número que o núcleo recusaria.
+                  const naoAlcanca =
+                    !ehGrupo &&
+                    !!contact &&
+                    (() => {
+                      const alvo = alvoDeEnvio(contact, c);
+                      return !alvo.ok && alvo.motivo === "so_numero_oficial";
+                    })();
                   return (
                     <DropdownMenuItem
                       key={c.id}
+                      disabled={naoAlcanca}
+                      title={naoAlcanca ? t("channelSoOficial") : undefined}
                       onClick={() => handleChannelChange(c.id)}
                       className={cn(
                         "text-sm",
@@ -2552,7 +2568,14 @@ export function MessageThread({
                         )}
                       />
                       <IconeDoTransporte kind={c.kind} className="mr-2 h-3.5 w-3.5" />
-                      <span className="flex-1">{c.label}</span>
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span>{c.label}</span>
+                        {naoAlcanca && (
+                          <span className="text-xs text-muted-foreground">
+                            {t("channelSoOficial")}
+                          </span>
+                        )}
+                      </span>
                       {isSelected && <Check className="ml-2 h-3 w-3" />}
                     </DropdownMenuItem>
                   );

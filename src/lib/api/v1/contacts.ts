@@ -26,7 +26,11 @@ export const CONTACT_SELECT = '*, contact_tags(tags(*))';
 
 export interface ApiContact {
   id: string;
-  /** `null` em contato só do Instagram (989) — ele carrega `instagram_id`. */
+  /**
+   * `null` em contato só do Instagram (989) — ele carrega `instagram_id` — e
+   * no que a Meta manda só com o nome de usuário do WhatsApp (1041) — ele
+   * carrega `whatsapp_user_id`.
+   */
   phone: string | null;
   name: string | null;
   email: string | null;
@@ -34,6 +38,15 @@ export interface ApiContact {
   avatar_url: string | null;
   instagram_id: string | null;
   instagram_username: string | null;
+  /**
+   * O BSUID do WhatsApp (Fase 11, decisão do operador de 24/09/2026: só
+   * leitura) — a identidade que a Meta manda de quem adotou nome de usuário,
+   * às vezes SEM o telefone. Sem ele, o integrador recebia `phone: null` sem
+   * identificador nenhum. Coluna `wa_user_id`.
+   */
+  whatsapp_user_id: string | null;
+  /** O `@` do WhatsApp, sem a arroba, quando a Meta o manda (`wa_username`). */
+  whatsapp_username: string | null;
   tags: { id: string; name: string; color: string }[];
   created_at: string;
   updated_at: string;
@@ -63,6 +76,8 @@ export function serializeContact(row: Record<string, unknown>): ApiContact {
     avatar_url: (row.avatar_url as string | null) ?? null,
     instagram_id: (row.instagram_id as string | null) ?? null,
     instagram_username: (row.instagram_username as string | null) ?? null,
+    whatsapp_user_id: (row.wa_user_id as string | null) ?? null,
+    whatsapp_username: (row.wa_username as string | null) ?? null,
     tags: joins
       .map((j) => j.tags)
       .filter((t): t is NonNullable<RawTagJoin['tags']> => t != null)

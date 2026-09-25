@@ -118,7 +118,7 @@ export async function POST(request: Request) {
   if (typeof corpo.contact_id === 'string' && UUID.test(corpo.contact_id)) {
     const { data: contato } = await admin
       .from('contacts')
-      .select('id, name, phone')
+      .select('id, name, phone, wa_username, instagram_username')
       .eq('id', corpo.contact_id)
       .eq('account_id', accountId)
       .maybeSingle();

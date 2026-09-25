@@ -47,6 +47,21 @@ describe('casaComContato', () => {
   });
 });
 
+describe('o @ do WhatsApp (ficha só-BSUID, Fase 11.4)', () => {
+  const soBsuid = { name: null, phone: null, wa_username: 'ana.silva' };
+
+  it('o @ do WhatsApp conta como nome, com ou sem a arroba digitada', () => {
+    expect(casaComContato(soBsuid, 'ana.s')).toBe(true);
+    expect(casaComContato(soBsuid, '@ana.silva')).toBe(true);
+    expect(casaComContato(soBsuid, 'joana')).toBe(false);
+  });
+
+  it('"@" sozinho não casa toda ficha que tem um @ (a agulha vazia)', () => {
+    expect(casaComContato(soBsuid, '@')).toBe(false);
+    expect(casaComContato({ name: null, phone: null, instagram_username: 'ana.ig' }, '@')).toBe(false);
+  });
+});
+
 describe('ficha só do Instagram (989)', () => {
   it('telefone nulo não estoura, e o @ conta como nome', async () => {
     const { casaComContato } = await import('./filtrar-contatos');

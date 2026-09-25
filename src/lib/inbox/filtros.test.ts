@@ -121,6 +121,25 @@ describe("casaComABusca", () => {
     expect(casaComABusca(conversa(), "99999")).toBe(true);
   });
 
+  it("acha pelo @ do WhatsApp e do Instagram — a ficha sem telefone (Fase 11.4)", () => {
+    const comArroba = (extra: Record<string, unknown>) =>
+      conversa({
+        contact: { ...conversa().contact!, name: null, phone: null, ...extra } as unknown as Conversation["contact"],
+      });
+    expect(casaComABusca(comArroba({ wa_username: "ana.silva" }), "ana.s")).toBe(true);
+    expect(casaComABusca(comArroba({ wa_username: "ana.silva" }), "@ana.silva")).toBe(true);
+    expect(casaComABusca(comArroba({ instagram_username: "ana.ig" }), "@ana.ig")).toBe(true);
+    expect(casaComABusca(comArroba({ wa_username: "ana.silva" }), "joana")).toBe(false);
+  });
+
+  it('"@" sozinho não casa toda ficha que tem um @ (a agulha vazia)', () => {
+    const c = conversa({
+      contact: { ...conversa().contact!, name: null, phone: null, wa_username: "ana" } as unknown as Conversation["contact"],
+      last_message_text: undefined,
+    });
+    expect(casaComABusca(c, "@")).toBe(false);
+  });
+
   it("acha GRUPO pelo nome — grupo não tem contato", () => {
     // Sem este ramo, buscar não acharia grupo nenhum: nome e telefone são
     // ambos vazios numa conversa de grupo.

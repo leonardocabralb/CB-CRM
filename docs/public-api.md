@@ -279,6 +279,17 @@ there is a `400 bad_request`.
 > still requires `phone` — Instagram contacts are created by the Direct
 > webhook, never by the API.
 
+> **WhatsApp usernames (since migration 1041):** Meta may deliver a message
+> from a customer who adopted a WhatsApp username with **no phone number**,
+> only a business-scoped user ID (BSUID). Every contact object carries two
+> read-only fields: `whatsapp_user_id` (the BSUID, e.g.
+> `"BR.13491208655302741918"`) and `whatsapp_username` (the `@` without the
+> arroba, when Meta sends it). Both are `null` when unknown. A contact known
+> only by BSUID has `phone: null`, can be reached **only through the
+> official Meta number**, and the only API path to message it is
+> [`POST /api/v1/scheduled-messages`](#post-apiv1scheduled-messages). The
+> `?search=` filter above matches name and phone only, not usernames.
+
 ### `POST /api/v1/contacts`
 
 Create a contact. Scope: `contacts:write`. `phone` is required (read as in
@@ -482,8 +493,9 @@ current values in the response of its own writes).
 
 List conversations, newest first. Scope: `conversations:read`.
 Paginated. Optional filters: `?status=` (`open` / `pending` / `closed`)
-and `?contact_id=`. Each conversation embeds its contact + tags. Group
-conversations are not listed.
+and `?contact_id=`. Each conversation embeds its contact (`id`, `phone`,
+`name`, `email`, `company`, `whatsapp_user_id`, `whatsapp_username`) +
+tags. Group conversations are not listed.
 
 ### `GET /api/v1/conversations/{id}`
 

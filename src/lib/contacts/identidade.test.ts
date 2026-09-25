@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { identidadeDoContato, nomeDoContato } from './identidade';
+import { identidadeDoContato, nomeDoContato, podeFicarSemTelefone } from './identidade';
 
 describe('identidadeDoContato', () => {
   it('telefone primeiro, @ do Instagram depois', () => {
@@ -25,6 +25,38 @@ describe('identidadeDoContato', () => {
   });
 });
 
+describe('identidadeDoContato — o @ do WhatsApp (Fase 11.4)', () => {
+  // Decisão do operador (24/09/2026): telefone, senão o @ do WhatsApp, senão
+  // o do Instagram — o @ puro, sem dizer de onde veio.
+  it('ficha só-BSUID com @: o @ do WhatsApp', () => {
+    expect(
+      identidadeDoContato({ phone: null, wa_username: 'ana.silva' })
+    ).toBe('@ana.silva');
+  });
+
+  it('ficha só-BSUID sem @: nula — o BSUID nunca aparece', () => {
+    expect(
+      identidadeDoContato({ phone: null, wa_username: null, wa_user_id: 'BR.1349120865530274' } as never)
+    ).toBeNull();
+  });
+
+  it('com telefone, o telefone vence os dois @', () => {
+    expect(
+      identidadeDoContato({ phone: '+5583980000016', wa_username: 'ana', instagram_username: 'ana.ig' })
+    ).toBe('+5583980000016');
+  });
+
+  it('os dois @: o do WhatsApp primeiro', () => {
+    expect(
+      identidadeDoContato({ phone: null, wa_username: 'ana', instagram_username: 'ana.ig' })
+    ).toBe('@ana');
+  });
+
+  it('nomeDoContato cai no @ do WhatsApp quando não há nome', () => {
+    expect(nomeDoContato({ name: null, phone: null, wa_username: 'ana' }, '?')).toBe('@ana');
+  });
+});
+
 describe('nomeDoContato', () => {
   it('nome, senão identidade, senão o fallback da tela', () => {
     expect(nomeDoContato({ name: 'Ana', phone: '+55' }, '?')).toBe('Ana');
@@ -40,5 +72,18 @@ describe('nomeDoContato', () => {
   it('contato ausente cai no fallback, sem estourar', () => {
     expect(nomeDoContato(null, 'Sem contato')).toBe('Sem contato');
     expect(nomeDoContato(undefined, 'Sem contato')).toBe('Sem contato');
+  });
+});
+
+describe('podeFicarSemTelefone — o CHECK de identidade (1041)', () => {
+  it('Instagram ou BSUID: pode ficar sem telefone', () => {
+    expect(podeFicarSemTelefone({ instagram_id: '1234567890123456' })).toBe(true);
+    expect(podeFicarSemTelefone({ wa_user_id: 'BR.1349120865530274' })).toBe(true);
+  });
+
+  it('sem outra identidade: não pode (o banco recusaria o UPDATE)', () => {
+    expect(podeFicarSemTelefone({ instagram_id: null, wa_user_id: null })).toBe(false);
+    expect(podeFicarSemTelefone({})).toBe(false);
+    expect(podeFicarSemTelefone(null)).toBe(false);
   });
 });

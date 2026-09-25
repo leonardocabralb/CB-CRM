@@ -190,6 +190,8 @@ function tabelas(parcial: Record<string, Linha[]> = {}): Record<string, Linha[]>
         avatar_url: null,
         instagram_id: null,
         instagram_username: null,
+        whatsapp_user_id: null,
+        whatsapp_username: null,
         created_at: '2026-09-20T12:00:00.000Z',
         updated_at: '2026-09-23T14:00:00.000Z',
         contact_tags: [{ tags: { id: 't-1', name: 'Typebot', color: '#3b82f6' } }, { tags: null }],
