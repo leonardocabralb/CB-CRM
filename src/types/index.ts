@@ -102,7 +102,8 @@ export interface Contact {
   user_id: string;
   account_id: string;
   /**
-   * NULL em ficha só do Instagram (989): a identidade é `instagram_id`.
+   * NULL em ficha só do Instagram (989: a identidade é `instagram_id`) e em
+   * ficha só-BSUID (1041: a identidade é `wa_user_id`) — nunca `''`.
    * Toda tela que mostra "o telefone" passa por `identidadeDoContato`
    * (`src/lib/contacts/identidade.ts`), que cai no @ e no nome.
    */
@@ -113,6 +114,17 @@ export interface Contact {
   /** IGSID + @ da pessoa no Instagram (989). NULL em ficha de WhatsApp. */
   instagram_id?: string | null;
   instagram_username?: string | null;
+  /**
+   * BSUID do WhatsApp (1038): único por CONTA, e a única identidade que a
+   * Meta manda de quem adotou nome de usuário. Ficha só-BSUID = `phone`
+   * NULL. Só o webhook da Meta grava (pino `bsuid.chamadores.test.ts`).
+   */
+  wa_user_id?: string | null;
+  /** BSUID do portfólio. Só referência — nunca chave de busca. */
+  wa_parent_user_id?: string | null;
+  /** Nome de usuário do WhatsApp, sem o `@`. Só exibição (a pessoa troca
+   *  quando quer): nunca chave, e nunca vira `name`. */
+  wa_username?: string | null;
   name?: string;
   email?: string;
   company?: string;

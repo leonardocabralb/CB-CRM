@@ -3,8 +3,14 @@ import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { mirrorInboundMedia } from '@/lib/whatsapp/mirror-inbound-media'
-import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import type { WaContactPayload } from '@/lib/whatsapp/wa-identity'
+import {
+  contatoDaMensagem,
+  identidadeNaEntrada,
+  type IdentidadeNaEntrada,
+} from '@/lib/whatsapp/identidade-na-entrada'
 import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
+import { fichaQueVenceuPorBsuid } from '@/lib/contacts/bsuid'
 import { reopenClosedConversation } from '@/lib/conversations/reopen'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing'
@@ -63,7 +69,17 @@ function supabaseAdmin() {
 
 interface WhatsAppMessage {
   id: string
-  from: string
+  /**
+   * Telefone de quem escreveu. ⚠️ OPCIONAL desde os nomes de usuário do
+   * WhatsApp (#519, Fase 11): quem adotou um e não tem histórico recente com
+   * a empresa chega SEM telefone, só com `from_user_id` (o BSUID). Ver
+   * `identidade-na-entrada.ts`.
+   */
+  from?: string
+  /** BSUID de quem escreveu. */
+  from_user_id?: string
+  /** BSUID do portfólio de quem escreveu. */
+  from_parent_user_id?: string
   timestamp: string
   type: string
   text?: { body: string }
@@ -107,10 +123,8 @@ interface WhatsAppWebhookEntry {
         display_phone_number: string
         phone_number_id: string
       }
-      contacts?: Array<{
-        profile: { name: string }
-        wa_id: string
-      }>
+      /** `wa_id` some para quem só tem BSUID (ver `WhatsAppMessage.from`). */
+      contacts?: WaContactPayload[]
       messages?: WhatsAppMessage[]
       statuses?: StatusDoWebhook[]
     }
@@ -289,7 +303,10 @@ interface StatusDoWebhook {
   id: string
   status: string
   timestamp: string
-  recipient_id: string
+  /** Telefone do destinatário — ausente quando ele só tem BSUID (#519). */
+  recipient_id?: string
+  /** BSUID do destinatário. Só tipo: o recibo casa pelo wamid. */
+  recipient_user_id?: string
   /**
    * Só no `failed`: o motivo da Meta (`code`, `title`, `error_data.details`).
    * `unknown` de propósito — quem lê é `motivoDaFalhaDaMeta`, que confere
@@ -371,8 +388,11 @@ async function processarEntradas(
         }
       }
 
-      // Handle incoming messages
-      if (!value.messages || !value.contacts) continue
+      // Handle incoming messages. ⚠️ Sem exigir `contacts[]` (Fase 11.2): ele
+      // só traz o perfil, e quem é o remetente está na própria mensagem
+      // (`from`/`from_user_id`). Exigi-lo descartava a entrega que viesse sem
+      // ele — e `contacts: []` passava pelo portão e estourava logo abaixo.
+      if (!value.messages) continue
 
       const phoneNumberId = value.metadata.phone_number_id
 
@@ -458,7 +478,10 @@ async function processarEntradas(
 
       for (let i = 0; i < value.messages.length; i++) {
         const message = value.messages[i]
-        const contact = value.contacts[i] || value.contacts[0]
+        // Pareada pela IDENTIDADE, não só pela posição: com duas pessoas no
+        // mesmo POST, o BSUID e o nome de uma iriam para a ficha da outra —
+        // e para sempre (ver `contatoDaMensagem`).
+        const contact = contatoDaMensagem(message, value.contacts, i)
 
         await processMessage(
           message,
@@ -842,7 +865,8 @@ async function handleReaction(
 
 async function processMessage(
   message: WhatsAppMessage,
-  contact: { profile: { name: string }; wa_id: string },
+  // A entrada de `contacts[]` DESTA mensagem, ou nada (`contatoDaMensagem`).
+  contact: WaContactPayload | undefined,
   // Tenancy. Resolved from the matched whatsapp_config row; every
   // contact / conversation / message row created downstream is
   // stamped with this so any member of the account can see it.
@@ -860,15 +884,26 @@ async function processMessage(
   // See parseMessageContent for what it turns off.
   mirrorMedia: boolean = true
 ) {
-  const senderPhone = normalizePhone(message.from)
-  const contactName = contact.profile.name
+  // Telefone OU BSUID (Fase 11.2): a Meta manda só o BSUID de quem adotou
+  // nome de usuário (#519). Sem os dois não há chave para achar nem criar a
+  // ficha — descartar ANTES de criar qualquer coisa: uma ficha e uma conversa
+  // que nunca mais se casam com nada seriam a mesma duplicação de antes.
+  const identidade = identidadeNaEntrada(message, contact)
+  if (!identidade.telefone && !identidade.waUserId) {
+    console.error(
+      '[webhook] mensagem sem telefone e sem BSUID; descartada:',
+      message.id,
+    )
+    return
+  }
 
-  // Find or create contact
+  // Find or create contact. A reação só-BSUID só ACHA a ficha: sem ela não há
+  // mensagem sobre a qual reagir (ver `findOrCreateContact`).
   const contactOutcome = await findOrCreateContact(
     accountId,
     configOwnerUserId,
-    senderPhone,
-    contactName
+    identidade,
+    !(message.type === 'reaction' && !identidade.telefone),
   )
   if (!contactOutcome) return
   const contactRecord = contactOutcome.contact
@@ -1500,66 +1535,235 @@ interface ContactOutcome {
   wasCreated: boolean
 }
 
+/**
+ * (b) O que esta entrega ensinou sobre uma ficha que JÁ existia. Devolve a
+ * ficha em que a mensagem fica.
+ *
+ * ⚠️ NOSSO (Fase 11.2). O original junta tudo num patch só
+ * (`contactIdentityPatch`): nome, BSUID, @, pai e telefone no MESMO UPDATE,
+ * sem condição no WHERE. Aqui são UPDATEs SEPARADOS, cada um com objeto
+ * LITERAL e a sua cerca no WHERE, e nenhum lança:
+ *   · o NOME leva `.is('nome_fixado_em', null)` (999) — no mesmo UPDATE, a
+ *     guarda do nome barraria também o BSUID da ficha de nome fixado, e sem
+ *     ela o perfil trocaria o nome escolhido;
+ *   · o BSUID só preenche em BRANCO (`.is('wa_user_id', null)`): a chave é
+ *     POR CONTA (P4), e trocar o BSUID de uma ficha a separaria da história;
+ *   · o TELEFONE só preenche em branco (`.is('phone', null)`), e o que já
+ *     está gravado nunca é reescrito (a autocorreção do envio é quem cuida);
+ *   · o `@` e o pai acompanham a pessoa, só quando mudaram, e só na ficha que
+ *     ainda é deste BSUID (`.eq('wa_user_id', …)`).
+ * 23505 num preenchimento = a mesma pessoa tem DUAS fichas (uma pelo
+ * telefone, outra pelo BSUID). Decisão do operador (24/09/2026): só log, com
+ * os dois ids, sem fusão — e a mensagem fica na ficha do BSUID.
+ */
+async function completarFicha(
+  accountId: string,
+  achada: ContactRow,
+  achadaPor: 'bsuid' | 'telefone',
+  identidade: IdentidadeNaEntrada,
+): Promise<ContactRow> {
+  const { telefone, waUserId } = identidade
+  let contato = achada
+  let porBsuid = achadaPor === 'bsuid'
+  // Já se sabe que o telefone é de OUTRA ficha: não há o que preencher.
+  let telefoneEmOutraFicha = false
+
+  // O BSUID na ficha achada pelo TELEFONE — é o que mantém a história num
+  // lugar só: a próxima mensagem, talvez sem telefone, acha esta ficha.
+  if (!porBsuid && waUserId && contato.wa_user_id !== waUserId) {
+    if (contato.wa_user_id) {
+      console.warn(
+        '[webhook] a ficha achada pelo telefone já tem OUTRO BSUID; nada é sobrescrito:',
+        contato.id,
+      )
+    } else {
+      const { error } = await supabaseAdmin()
+        .from('contacts')
+        .update({
+          wa_user_id: waUserId,
+          wa_parent_user_id: identidade.waParentUserId,
+          wa_username: identidade.waUsername,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', contato.id)
+        .is('wa_user_id', null)
+      if (error && isUniqueViolation(error)) {
+        // Outra ficha já tem este BSUID (nasceu no meio, ou a busca pelo
+        // BSUID não conseguiu ler): a mensagem vai para ELA.
+        const doBsuid = (await fichaQueVenceuPorBsuid(supabaseAdmin(), accountId, waUserId)).contato
+        console.warn('[webhook] ficha duplicada — o BSUID é de outra ficha; sem fusão:', {
+          fichaDoTelefone: contato.id,
+          fichaDoBsuid: doBsuid?.id ?? null,
+        })
+        if (doBsuid) {
+          contato = doBsuid
+          porBsuid = true
+          telefoneEmOutraFicha = true
+        }
+      } else if (error) {
+        console.error('[webhook] gravar o BSUID na ficha falhou:', error.message)
+      }
+    }
+  }
+
+  if (porBsuid && waUserId) {
+    // O `@` e o pai: acompanham a pessoa, só quando mudaram. Valor ausente na
+    // entrega não apaga o que já está gravado.
+    const novoUsername = identidade.waUsername && identidade.waUsername !== contato.wa_username
+    const novoPai =
+      identidade.waParentUserId && identidade.waParentUserId !== contato.wa_parent_user_id
+    if (novoUsername || novoPai) {
+      const { error } = await supabaseAdmin()
+        .from('contacts')
+        .update({
+          wa_username: identidade.waUsername ?? contato.wa_username ?? null,
+          wa_parent_user_id: identidade.waParentUserId ?? contato.wa_parent_user_id ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', contato.id)
+        .eq('wa_user_id', waUserId)
+      if (error) console.error('[webhook] atualizar o @ da ficha falhou:', error.message)
+    }
+
+    // O telefone, quando a Meta enfim o manda: a ficha só-BSUID passa a ser
+    // achada por todo caminho que casa por telefone.
+    if (telefone && !contato.phone && !telefoneEmOutraFicha) {
+      const { error } = await supabaseAdmin()
+        .from('contacts')
+        .update({ phone: telefone, updated_at: new Date().toISOString() })
+        .eq('id', contato.id)
+        .is('phone', null)
+      if (error && isUniqueViolation(error)) {
+        const doTelefone = (await findExistingContact(supabaseAdmin(), accountId, telefone)).contato
+        console.warn('[webhook] ficha duplicada — o telefone é de outra ficha; sem fusão:', {
+          fichaDoBsuid: contato.id,
+          fichaDoTelefone: doTelefone?.id ?? null,
+        })
+      } else if (error) {
+        console.error('[webhook] gravar o telefone na ficha falhou:', error.message)
+      }
+    }
+  }
+
+  // Update name if it changed — por ÚLTIMO, na ficha em que a mensagem fica.
+  // ⚠️ NOSSO (999): nome FIXADO por fonte deliberada (o agendamento do
+  // Calendly) não volta a ser o do perfil. Um merge do upstream que traga
+  // este bloco cru derruba a guarda — há teste estrutural cobrando.
+  const name = identidade.nome
+  if (name && name !== contato.name) {
+    await supabaseAdmin()
+      .from('contacts')
+      .update({ name, updated_at: new Date().toISOString() })
+      .eq('id', contato.id)
+      .is('nome_fixado_em', null)
+  }
+  return contato
+}
+
 async function findOrCreateContact(
   accountId: string,
   configOwnerUserId: string,
-  phone: string,
-  name: string
+  identidade: IdentidadeNaEntrada,
+  /** `false` = só ACHAR (a reação só-BSUID): sem ficha, devolve `null`. */
+  criar: boolean = true,
 ): Promise<ContactOutcome | null> {
-  // Find an existing contact for this account by phone. The shared
-  // helper pre-filters in SQL by the last-8-digit suffix (so we don't
-  // pull every contact on every inbound message) then applies the
-  // strict `phonesMatch` in JS on the small candidate set. The same
-  // helper backs the manual contact form and CSV import, so all three
-  // paths agree on what "same number" means (issue #212).
+  const { telefone, waUserId } = identidade
+
+  // (a) BSUID primeiro (Fase 11.2, #519): ele é estável por (pessoa,
+  // portfólio) e a Meta continua mandando depois que o telefone some.
+  // ⚠️ A leitura que FALHA é repetida (`fichaQueVenceuPorBsuid`): cair direto
+  // no telefone deixaria a mensagem na ficha achada pelo telefone quando a do
+  // BSUID existe — o contrário da decisão "na colisão, fica na do BSUID".
+  if (waUserId) {
+    const porBsuid = await fichaQueVenceuPorBsuid(supabaseAdmin(), accountId, waUserId)
+    if (porBsuid.contato) {
+      return {
+        contact: await completarFicha(accountId, porBsuid.contato, 'bsuid', identidade),
+        wasCreated: false,
+      }
+    }
+  }
+
+  // Depois o telefone — só quando HÁ telefone (`findExistingContact('')` não
+  // acha nada, e era assim que nascia uma ficha por mensagem). The shared
+  // helper pre-filters in SQL by the last-8-digit suffix (so we don't pull
+  // every contact on every inbound message) then applies the strict
+  // `phonesMatch` in JS on the small candidate set. The same helper backs the
+  // manual contact form and CSV import, so all three paths agree on what
+  // "same number" means (issue #212).
   //
   // ⚠️ `falhou` deliberadamente NÃO derruba a ingestão: perder a mensagem do
   // cliente é pior que arriscar uma ficha duplicada de variante de tronco —
   // e o backstop 23505 logo abaixo cobre o duplicado exato. Os caminhos de
   // GENTE (abrir conversa, API v1) fazem o oposto e respondem 500.
-  const existingContact = (
-    await findExistingContact(supabaseAdmin(), accountId, phone)
-  ).contato
-
-  if (existingContact) {
-    // Update name if it changed
-    // ⚠️ NOSSO (999): nome FIXADO por fonte deliberada (o agendamento do
-    // Calendly) não volta a ser o do perfil. Um merge do upstream que traga
-    // este bloco cru derruba a guarda — há teste estrutural cobrando.
-    if (name && name !== existingContact.name) {
-      await supabaseAdmin()
-        .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
-        .eq('id', existingContact.id)
-        .is('nome_fixado_em', null)
+  if (telefone) {
+    const existingContact = (
+      await findExistingContact(supabaseAdmin(), accountId, telefone)
+    ).contato
+    if (existingContact) {
+      return {
+        contact: await completarFicha(accountId, existingContact, 'telefone', identidade),
+        wasCreated: false,
+      }
     }
-    return { contact: existingContact, wasCreated: false }
   }
 
-  // Create new contact. account_id is the tenancy column;
+  // Reação só-BSUID de quem não tem ficha: nada a criar. A reação só vale sobre
+  // uma mensagem que já existe — numa ficha nova ela seria descartada logo
+  // depois (`handleReaction` não acha o alvo), deixando ficha, conversa e
+  // `conversation.created` fantasmas (Fase 11.2).
+  if (!criar) return null
+
+  // (c) Create new contact. account_id is the tenancy column;
   // user_id is the NOT NULL FK audit column (no inbound message
   // has a single "user who created" it — we attribute to the
   // WhatsApp config owner as a stable default).
+  //
+  // ⚠️ Ficha só-BSUID: `phone` NULO, nunca `''` (P4; o CHECK da 1041 aceita a
+  // ficha com só o `wa_user_id`). E o nome é SÓ o do perfil, senão o
+  // telefone — nunca o `@` nem o BSUID (o gatilho do título os leria como
+  // nome e congelaria o card; sem nome, o card nasce "Novo contato").
   const { data: newContact, error: createError } = await supabaseAdmin()
     .from('contacts')
     .insert({
       account_id: accountId,
       user_id: configOwnerUserId,
-      phone,
-      name: name || phone,
+      phone: telefone ?? null,
+      name: identidade.nome ?? telefone ?? null,
+      wa_user_id: waUserId,
+      wa_parent_user_id: identidade.waParentUserId,
+      wa_username: identidade.waUsername,
     })
     .select()
     .single()
 
   if (createError) {
-    // Lost a race: a concurrent inbound delivery (or another path)
-    // created this contact between our lookup and insert, and the unique
-    // index rejected the duplicate — o canônico da 1024 inclusive, que barra
-    // a irmã do nono dígito. Relê a ficha que VENCEU (com nova tentativa se a
-    // leitura falhar) em vez de descartar a mensagem do cliente.
+    // (d) Lost a race: a concurrent inbound delivery (or another path)
+    // created this contact between our lookup and insert, and a unique
+    // index rejected the duplicate — o do BSUID (1038) ou o canônico do
+    // telefone (1024), que barra a irmã do nono dígito. Relê a ficha que
+    // VENCEU (com nova tentativa se a leitura falhar), pelo BSUID primeiro, em
+    // vez de descartar a mensagem do cliente — e a completa como se a tivesse
+    // achado na busca.
     if (isUniqueViolation(createError)) {
-      const raced = (await fichaQueVenceu(supabaseAdmin(), accountId, phone)).contato
-      if (raced) return { contact: raced, wasCreated: false }
+      if (waUserId) {
+        const raced = (await fichaQueVenceuPorBsuid(supabaseAdmin(), accountId, waUserId)).contato
+        if (raced) {
+          return {
+            contact: await completarFicha(accountId, raced, 'bsuid', identidade),
+            wasCreated: false,
+          }
+        }
+      }
+      if (telefone) {
+        const raced = (await fichaQueVenceu(supabaseAdmin(), accountId, telefone)).contato
+        if (raced) {
+          return {
+            contact: await completarFicha(accountId, raced, 'telefone', identidade),
+            wasCreated: false,
+          }
+        }
+      }
     }
     console.error('Error creating contact:', createError)
     return null

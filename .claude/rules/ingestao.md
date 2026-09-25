@@ -112,6 +112,21 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   seguinte. O `pushName` de mensagem NOSSA (celular) é descartado — é o nome do
   advogado. Pino `nome-fixado.chamadores.test.ts` (conjunto exato de
   escritores de `contacts.name`).
+- ⚠️⚠️ **Meta: quem escreveu é o telefone OU o BSUID** (Fase 11.2; a 1041
+  aceita a ficha só com `wa_user_id`). A Meta manda só o BSUID de quem adotou
+  nome de usuário. `identidadeNaEntrada` dá telefone `null` — nunca `''`, que
+  passaria no CHECK, ficaria fora dos índices e criaria uma ficha por
+  mensagem —, e `contatoDaMensagem` pareia o `contacts[]` pela IDENTIDADE
+  (por posição, o BSUID de uma pessoa iria para a ficha de outra, para
+  sempre). A busca é pelo BSUID primeiro, com releitura quando falha, e
+  depois pelo telefone. Os preenchimentos (BSUID, telefone, `@`) são UPDATEs
+  SEPARADOS do nome, cada um com a cerca no WHERE. 23505 num preenchimento =
+  a mesma pessoa com duas fichas: só log com os dois ids, sem fusão, e a
+  mensagem fica na ficha do BSUID (decisão do operador, 24/09/2026). Sem
+  telefone nem BSUID, nada é criado; reação só-BSUID não cria ficha. O nome é
+  SÓ o do perfil, nunca o `@` nem o BSUID (o gatilho do título os leria como
+  nome e congelaria o card). Só esta rota escreve `wa_*` (pino
+  `bsuid.chamadores.test.ts`); pinos de comportamento em `route.bsuid.test.ts`.
 - ⚠️ **INSERT em `contacts` trata o 23505 da chave canônica** por
   `fichaQueVenceu` (relê, com nova tentativa se a leitura falhar): desistir na
   primeira leitura descarta a mensagem que o provedor deu por entregue.
