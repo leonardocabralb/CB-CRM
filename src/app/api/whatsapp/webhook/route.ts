@@ -1208,8 +1208,7 @@ async function processMessage(
   // Fire any automations that react to this webhook event. All dispatches
   // run here (not earlier) so the contact, conversation, and inbound
   // message all exist before any step — including send_message — runs.
-  // Fire-and-forget: a slow or failing automation must not block the
-  // webhook's 200 OK response to Meta.
+  // The provider already has its 200: this whole block runs inside `after()`.
   const inboundText = contentText ?? message.text?.body ?? ''
   const automationTriggers: (
     | 'new_contact_created'
@@ -1248,10 +1247,16 @@ async function processMessage(
   // este bloco já roda dentro do `after()`, com o 200 devolvido antes. E o
   // passo `wait` é ponto de suspensão (enfileira em
   // automation_pending_executions e retorna), então nada fica preso aqui.
-  const disparosDeAutomacao: Promise<void>[] = []
+  // ⚠️ E EM SEQUÊNCIA, um tipo de gatilho por vez, na ordem da lista
+  // (primeira mensagem → contato novo → mensagem/palavra-chave/botão), como
+  // o original (#409). Em paralelo (a forma que o merge de 26/08 deixou),
+  // a boas-vindas e a resposta à palavra-chave saíam em qualquer ordem, e a
+  // checagem "um card por contato" do `create_deal` corria entre duas
+  // automações: as duas liam "sem card" e criavam dois (Fase 12 do
+  // `docs/PLANO-merge-upstream-2026-09.md`). O `.catch` por tipo mantém: a
+  // falha de um não pula os seguintes. O mesmo em `inbound-store.ts`.
   for (const triggerType of automationTriggers) {
-    disparosDeAutomacao.push(
-      runAutomationsForTrigger({
+    await runAutomationsForTrigger({
       accountId,
       triggerType,
       contactId: contactRecord.id,
@@ -1265,10 +1270,8 @@ async function processMessage(
         // gravado intacto como JSONB em automation_pending_executions.
         channel_id: channelId,
       },
-      }).catch((err) => console.error('[automations] dispatch failed:', err)),
-    )
+    }).catch((err) => console.error('[automations] dispatch failed:', err))
   }
-  await Promise.allSettled(disparosDeAutomacao)
 
   // Funil padrão da conexão. Fora do laço de automações de propósito: o
   // gatilho aqui é por ESTADO ("este contato já tem card neste funil?"), não
