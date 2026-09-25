@@ -1,3 +1,7 @@
+import { createHash } from 'node:crypto';
+import { createServer } from 'node:http';
+import { gzipSync } from 'node:zlib';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import { TetoExcedido, lerComTeto } from './ler-com-teto';
@@ -57,5 +61,93 @@ describe('lerComTeto', () => {
 
   it('o declarado acima do teto recusa sem ler', async () => {
     await expect(lerComTeto(resposta([seq(0, 10)], 5000), 1000)).rejects.toBeInstanceOf(TetoExcedido);
+  });
+});
+
+describe('lerComTeto contra um servidor HTTP de verdade (fetch do Node)', () => {
+  // 3 MB com conteúdo que não se repete: qualquer byte fora do lugar muda o hash.
+  const arquivo = Buffer.alloc(3 * 1024 * 1024);
+  for (let i = 0; i < arquivo.length; i++) arquivo[i] = (i * 31 + (i >> 11)) % 251;
+  const hash = (b: Uint8Array) => createHash('sha256').update(b).digest('hex');
+
+  async function servir(
+    tratar: (res: import('node:http').ServerResponse) => void,
+    corpo: (url: string) => Promise<void>,
+  ) {
+    const servidor = createServer((_req, res) => tratar(res));
+    await new Promise<void>((ok) => servidor.listen(0, '127.0.0.1', ok));
+    const { port } = servidor.address() as import('node:net').AddressInfo;
+    try {
+      await corpo(`http://127.0.0.1:${port}/`);
+    } finally {
+      await new Promise<void>((ok) => servidor.close(() => ok()));
+    }
+  }
+
+  it('com content-length: chega inteiro, e num buffer só', async () => {
+    await servir(
+      (res) => {
+        res.writeHead(200, { 'content-length': String(arquivo.length) });
+        res.end(arquivo);
+      },
+      async (url) => {
+        const concat = vi.spyOn(Buffer, 'concat');
+        try {
+          const lido = await lerComTeto(await fetch(url), 10 * 1024 * 1024);
+          expect(hash(lido)).toBe(hash(arquivo));
+          expect(concat).not.toHaveBeenCalled();
+        } finally {
+          concat.mockRestore();
+        }
+      },
+    );
+  });
+
+  it('sem content-length (chunked): chega inteiro', async () => {
+    await servir(
+      (res) => {
+        res.writeHead(200);
+        for (let i = 0; i < arquivo.length; i += 100_000) res.write(arquivo.subarray(i, i + 100_000));
+        res.end();
+      },
+      async (url) => {
+        const lido = await lerComTeto(await fetch(url), 10 * 1024 * 1024);
+        expect(hash(lido)).toBe(hash(arquivo));
+      },
+    );
+  });
+
+  it('gzip: o content-length é o COMPRIMIDO e o fetch entrega descomprimido — chega inteiro', async () => {
+    const comprimido = gzipSync(arquivo);
+    expect(comprimido.length).toBeLessThan(arquivo.length);
+    await servir(
+      (res) => {
+        res.writeHead(200, {
+          'content-encoding': 'gzip',
+          'content-length': String(comprimido.length),
+        });
+        res.end(comprimido);
+      },
+      async (url) => {
+        const lido = await lerComTeto(await fetch(url), 10 * 1024 * 1024);
+        expect(hash(lido)).toBe(hash(arquivo));
+      },
+    );
+  });
+
+  it('o teto vale sobre o DESCOMPRIMIDO (uma bomba de gzip não passa)', async () => {
+    const comprimido = gzipSync(arquivo);
+    await servir(
+      (res) => {
+        res.writeHead(200, {
+          'content-encoding': 'gzip',
+          'content-length': String(comprimido.length),
+        });
+        res.end(comprimido);
+      },
+      async (url) => {
+        await expect(lerComTeto(await fetch(url), 1024 * 1024)).rejects.toBeInstanceOf(TetoExcedido);
+      },
+    );
   });
 });
