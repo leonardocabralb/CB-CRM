@@ -155,6 +155,10 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   `persistir.aviso.test.ts`). ⚠️ O evento quer dizer SÓ "o cliente abriu a
   conversa" (decisão do operador): emiti-lo noutro caminho (envio, eco,
   histórica) muda o contrato publicado — ver `.claude/rules/webhooks.md`.
+- ⚠️ **As automações da mensagem rodam EM SEQUÊNCIA, um tipo de gatilho por
+  vez** (Meta e `inbound-store`, como o original #409): a ordem das mensagens
+  e o "um card por contato" do `create_deal` dependem disso. Detalhe em
+  `automacoes.md`.
 - ⚠️⚠️ **Motores (robô, automações, IA) só nos caminhos de cliente do
   WhatsApp.** Grupo, `historica.ts`, `tardia.ts` e Instagram (decisão D1) não
   importam motor nenhum — garantia ESTRUTURAL (`persist.test.ts`,

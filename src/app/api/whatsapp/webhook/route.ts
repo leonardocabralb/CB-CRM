@@ -1238,8 +1238,8 @@ async function processMessage(
   if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
   if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
   // ⚠️ AGUARDADAS, não fire-and-forget, por causa do roteador de funil logo
-  // abaixo. O passo `create_deal` de automação não tem dedup própria, e a
-  // guarda do roteador é read-then-write: solto, o SELECT do roteador corre
+  // abaixo. A checagem "um card por contato" do passo `create_deal` e a guarda
+  // do roteador são as duas ler-e-depois-inserir: solto, o SELECT do roteador corre
   // antes do INSERT da automação (ele chega ao banco com uma consulta, a
   // automação com quatro) e os dois criam card no mesmo funil — o índice
   // único não barra, porque o predicado dele é `source = 'channel'`.
@@ -1252,9 +1252,12 @@ async function processMessage(
   // o original (#409). Em paralelo (a forma que o merge de 26/08 deixou),
   // a boas-vindas e a resposta à palavra-chave saíam em qualquer ordem, e a
   // checagem "um card por contato" do `create_deal` corria entre duas
-  // automações: as duas liam "sem card" e criavam dois (Fase 12 do
-  // `docs/PLANO-merge-upstream-2026-09.md`). O `.catch` por tipo mantém: a
-  // falha de um não pula os seguintes. O mesmo em `inbound-store.ts`.
+  // automações da MESMA mensagem: as duas liam "sem card" e criavam dois
+  // (Fase 12 do `docs/PLANO-merge-upstream-2026-09.md`). ⚠️ Só dentro de UMA
+  // mensagem: duas mensagens em POSTs diferentes rodam cada uma no seu
+  // `after()`, ao mesmo tempo, e a corrida entre elas continua. O `.catch`
+  // por tipo mantém: a falha de um não pula os seguintes. O mesmo em
+  // `inbound-store.ts`.
   for (const triggerType of automationTriggers) {
     await runAutomationsForTrigger({
       accountId,

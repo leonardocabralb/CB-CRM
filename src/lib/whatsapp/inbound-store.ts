@@ -539,7 +539,9 @@ export async function persistInboundMessage(
   // ⚠️ E EM SEQUÊNCIA, um tipo de gatilho por vez, na ordem da lista, como o
   // original (#409): em paralelo, as mensagens das automações saíam em
   // qualquer ordem e a checagem "um card por contato" do `create_deal`
-  // corria entre duas delas (ver o comentário gêmeo no webhook da Meta).
+  // corria entre duas delas — dentro desta mensagem; entre duas mensagens
+  // em POSTs diferentes a corrida continua (ver o comentário gêmeo no
+  // webhook da Meta).
   for (const triggerType of triggers) {
     await runAutomationsForTrigger({
       accountId: m.accountId,
