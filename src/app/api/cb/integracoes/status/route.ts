@@ -13,6 +13,7 @@ import { MODELO_TRANSCRICAO } from '@/lib/transcricao/transcrever';
 import { AiError, type AiProvider } from '@/lib/ai/types';
 import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
 import { lerChave, lerEstado } from '@/lib/ia-chaves/repo';
+import { listarAgentes } from '@/lib/ia-agentes/repo';
 import {
   montarCartoes,
   type ChaveParaMontar,
@@ -222,7 +223,22 @@ export async function GET(request: Request) {
       // redigitadas aqui nem no dicionário: a tela mentiria na primeira
       // troca de modelo.
       MODELO_TRANSCRICAO,
-      EMBEDDING_MODEL
+      EMBEDDING_MODEL,
+      // Os agentes de IA (1043) de cada provedor. Leitura que falha só tira a
+      // lista do cartão (log) — não derruba a tela das chaves.
+      await listarAgentes(ctx.accountId)
+        .then((lista) =>
+          lista.map((a) => ({
+            nome: a.nome,
+            provedor: a.provedor as ProviderId,
+            modelo: a.modelo,
+            ativo: a.ativo,
+          }))
+        )
+        .catch((err) => {
+          console.error('[integracoes] leitura dos agentes falhou:', err instanceof Error ? err.message : err);
+          return [];
+        })
     );
 
     return NextResponse.json({

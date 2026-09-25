@@ -57,6 +57,9 @@ export async function POST(request: Request, { params }: Contexto) {
     let chave: string | null
     try {
       const lida = await lerChave(ctx.accountId, agente.provedor)
+      if (lida.ilegivel) {
+        return NextResponse.json({ error: 'chave_ilegivel', code: 'chave_ilegivel' }, { status: 400 })
+      }
       chave = lida.chave
     } catch (err) {
       console.error('[ia-playground] leitura da chave falhou:', err)

@@ -15,8 +15,8 @@
 | Fase | Escopo | Estado | Migration | PR |
 | --- | --- | --- | --- | --- |
 | F0 | Medições baratas (links do Asaas, testes que fixam a semântica de hoje) | links medidos (seção 9); testes na F1a | — | — |
-| F1a | Chaves por provedor: Radar, transcrição, embeddings e Integrações leem a chave nova. Conferido em produção | a fazer | sim | — |
-| F1b | Agentes (lista e detalhe), Playground e Uso por agente. **Nenhum agente responde ainda** | a fazer | sim | — |
+| F1a | Chaves por provedor: Radar, transcrição, embeddings e Integrações leem a chave nova. Conferido em produção | código pronto, revisado; falta aplicar a 1042 e o merge | 1042 | #294 |
+| F1b | Agentes (lista e detalhe), Playground e Uso por agente. **Nenhum agente responde ainda** | código pronto; falta revisão, aplicar a 1043 e o merge | 1043 | (a abrir) |
 | F2 | Quem responde: agente de entrada da conexão, agente ativo da conversa, passo "Atribuir agente", pausa por gente, fila de turnos, resposta em texto. Piloto na **Bancário - Comercial** (D22). **Porta: a P8** | a fazer | sim | — |
 | F3 | O que cada agente vê (ficha, campos, negócio, cobranças, transcrições) + base de conhecimento por agente (D20) | a fazer | sim | — |
 | F4a | Medição das ferramentas no Gemini + o laço de ferramentas + as de leitura, transferir e passar para outro agente | a fazer | talvez | — |
@@ -393,6 +393,8 @@ Ficam para a hora de cada fase, sem bloquear as anteriores:
 
 Registrar cada fase ao concluir: data, PR, arquivos, resultado medido.
 
+- **25/09/2026 — F1a (PR #294, branch `feat/ia-chaves-por-provedor`).** Migration 1042 (`cb_ia_chaves`) testada num Postgres 16 descartável: cópia nas três formas (padrão, conexão, embeddings), idempotente, banco vazio, privilégios. Revisão independente: 0 graves, 2 médios, 7 menores, todos corrigidos (chave ilegível lança `key_decrypt_failed`; apagar limpa a cópia legada; validação com o modelo padrão; avisos por código). Codex: 4 falhas "unknown error" no #292 e 1 no #294, junto com falhas no PR de outra frente (#293) no mesmo horário — serviço fora; a tentar de novo. Suíte inteira em Node 22 verde.
+- **25/09/2026 — F1b (branch `feat/ia-agentes-f1b`, sobre a F1a).** Migration 1043 testada no Postgres descartável (nome único entre não arquivados, arquivar libera o nome, apagar conexão a tira dos agentes, `cb_ia_uso` por dia no fuso de São Paulo, `radar_model` materializado, privilégios, banco vazio). Lista e detalhe em `/agents` (Configuração com as regras, Playground, Uso em R$), o assistente anterior em `/agents/legado`, e os agentes de cada provedor em Integrações. Preços conferidos em 25/09 (Gemini 3.7/3.6 Flash com a vigência de 01/01/2027, GPT-5.4 e mini/nano, Claude Haiku 4.5 e Sonnet 5); os outros modelos saem "sem preço".
 - **25/09/2026 — F0, medição do Asaas** (somente leitura, pelo `supabase-cb`): 432 parcelas devidas (`OVERDUE`/`PENDING`, não apagadas) no espelho — 406 por boleto, 20 por cartão de crédito, 6 com a forma indefinida; **todas com `link_fatura`**; sem `link_boleto` ficam exatamente as 20 de cartão. A 2ª via da D6 tem link em toda parcela devida. A ferramenta `consultar_cobrancas` oferece a fatura sempre e o boleto quando houver. Na mesma consulta: `ai_configs` com 1 linha, `ai_usage_log` com 1.881, base de conhecimento vazia, e a Bancário - Comercial é `f2f9820b-3cbe-4581-870b-92415fd547aa` (Evolution).
 
 ---

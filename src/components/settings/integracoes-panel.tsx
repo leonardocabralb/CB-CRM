@@ -393,6 +393,25 @@ function Cartao({
                 </div>
               ) : null}
 
+              {cartao.agentesDeIa.length > 0 ? (
+                <div>
+                  <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                    {t('agentesDeIa')}
+                  </p>
+                  <ul className="space-y-1.5">
+                    {cartao.agentesDeIa.map((a) => (
+                      <li key={a.nome} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span className="text-foreground">{a.nome}</span>
+                        <code className="text-[11px] text-muted-foreground">{a.modelo}</code>
+                        {!a.ativo ? (
+                          <span className="text-xs text-muted-foreground">{t('desligado')}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
               <Usos cartao={cartao} />
 
               <FormularioDaChave

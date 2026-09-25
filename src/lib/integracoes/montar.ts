@@ -112,6 +112,14 @@ export type EstadoDaIntegracao =
   /** Há credencial, mas o ping ainda não rodou (carga rápida). */
   | 'conferindo';
 
+/** Um agente de IA (1043) que usa a chave deste provedor. */
+export interface AgenteDeIaNoCartao {
+  nome: string;
+  provedor: ProviderId;
+  modelo: string;
+  ativo: boolean;
+}
+
 export interface CartaoDeIntegracao {
   id: ProviderId | 'google_calendar';
   estado: EstadoDaIntegracao;
@@ -120,6 +128,8 @@ export interface CartaoDeIntegracao {
   /** Este provedor é o do Radar (a linha padrão): o cartão edita o modelo dele. */
   ehDoRadar: boolean;
   agentes: AgenteNoCartao[];
+  /** Os agentes de IA (1043) deste provedor, que passam a usar esta chave. */
+  agentesDeIa: AgenteDeIaNoCartao[];
   /** Onde esta chave é usada, com o modelo de cada módulo. */
   usos: UsoNoCartao[];
 }
@@ -146,7 +156,8 @@ export function montarCartoes(
   canais: CanalParaMontar[],
   embeddingsTeste: Teste,
   modeloTranscricao: string,
-  modeloEmbeddings: string
+  modeloEmbeddings: string,
+  agentesDeIa: AgenteDeIaNoCartao[] = []
 ): CartaoDeIntegracao[] {
   const cartoes: CartaoDeIntegracao[] = PROVIDERS.map((p) => {
     const chave = chaves.find((c) => c.provedor === p);
@@ -250,6 +261,7 @@ export function montarCartoes(
       temChave,
       ehDoRadar: ehDoPadrao,
       agentes,
+      agentesDeIa: agentesDeIa.filter((a) => a.provedor === p),
       usos,
     };
   });
@@ -263,6 +275,7 @@ export function montarCartoes(
     temChave: false,
     ehDoRadar: false,
     agentes: [],
+    agentesDeIa: [],
     usos: [],
   });
 
