@@ -330,8 +330,34 @@ describe('entrada só-BSUID (a Meta sem telefone)', () => {
     expect(h.state.upserts).toHaveLength(0)
   })
 
-  it('entrega sem `contacts[]` é processada (o remetente está na mensagem)', async () => {
+  it('entrega SEM `contacts` é descartada, como no original — é o formato da mensagem de sistema', async () => {
+    // A Meta manda o aviso de troca de número sem `contacts`. Com o portão
+    // relaxado (a 1ª versão da 11.2), ele entrava como fala do cliente
+    // (revisão da Fase 11).
+    await entregar([mensagem({ from: TELEFONE, type: 'system', system: { type: 'user_changed_number', body: 'x' } })])
     await entregar([mensagem({ from_user_id: BSUID })])
+    expect(h.state.contatos).toHaveLength(0)
+    expect(h.state.upserts).toHaveLength(0)
+    expect(h.runAutomationsForTrigger).not.toHaveBeenCalled()
+    expect(h.dispatchWebhookEvent).not.toHaveBeenCalled()
+  })
+
+  it('mensagem de SISTEMA não vira fala do cliente, mesmo vindo com `contacts`', async () => {
+    ficha({ id: 'c-antiga', phone: TELEFONE, name: 'Ana' })
+    await entregar(
+      [mensagem({ from: TELEFONE, type: 'system', system: { type: 'user_changed_user_id', user_id: BSUID } })],
+      [{ wa_id: TELEFONE, profile: { name: 'Ana' } }],
+    )
+    expect(h.state.upserts).toHaveLength(0)
+    expect(h.state.conversas).toHaveLength(0)
+    expect(h.dispatchInboundToFlows).not.toHaveBeenCalled()
+    expect(h.dispatchInboundToAiReply).not.toHaveBeenCalled()
+    expect(h.runAutomationsForTrigger).not.toHaveBeenCalled()
+    expect(h.dispatchWebhookEvent).not.toHaveBeenCalled()
+  })
+
+  it('`contacts: []` não estoura: o remetente está na mensagem e ela é processada', async () => {
+    await entregar([mensagem({ from_user_id: BSUID })], [])
     expect(h.state.contatos).toHaveLength(1)
     expect(h.state.upserts).toHaveLength(1)
   })

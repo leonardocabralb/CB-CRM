@@ -388,11 +388,15 @@ async function processarEntradas(
         }
       }
 
-      // Handle incoming messages. ⚠️ Sem exigir `contacts[]` (Fase 11.2): ele
-      // só traz o perfil, e quem é o remetente está na própria mensagem
-      // (`from`/`from_user_id`). Exigi-lo descartava a entrega que viesse sem
-      // ele — e `contacts: []` passava pelo portão e estourava logo abaixo.
-      if (!value.messages) continue
+      // Handle incoming messages. ⚠️ `contacts` continua EXIGIDO, como no
+      // original: a Meta manda a mensagem de SISTEMA ("o cliente trocou de
+      // número") SEM ele, e com o portão relaxado ela entrava como fala do
+      // cliente — reabria a conversa, disparava robô, automações e IA, abria
+      // card e emitia `message.received` (revisão da Fase 11, reproduzido
+      // contra a rota). A mensagem só-BSUID vem COM `contacts[]` (é lá que
+      // estão o `user_id` e o perfil). `contacts: []` passa pelo portão, e o
+      // pareamento pela identidade (`contatoDaMensagem`) não estoura com ele.
+      if (!value.messages || !value.contacts) continue
 
       const phoneNumberId = value.metadata.phone_number_id
 
@@ -478,6 +482,16 @@ async function processarEntradas(
 
       for (let i = 0; i < value.messages.length; i++) {
         const message = value.messages[i]
+        // ⚠️ Mensagem de SISTEMA (`type: 'system'`: troca de número, troca do
+        // identificador do usuário) não é fala do cliente, nem quando vier
+        // com `contacts`: gravada, ela acionaria tudo o que uma mensagem de
+        // cliente aciona. Tratar a troca de identidade que ela anuncia é
+        // pendência escrita no plano (Fase 11), não tarefa desta porta.
+        if (message.type === 'system') {
+          const sistema = (message as { system?: { type?: string } }).system
+          console.log('[whatsapp-webhook] mensagem de sistema ignorada:', sistema?.type ?? 'sem tipo')
+          continue
+        }
         // Pareada pela IDENTIDADE, não só pela posição: com duas pessoas no
         // mesmo POST, o BSUID e o nome de uma iriam para a ficha da outra —
         // e para sempre (ver `contatoDaMensagem`).

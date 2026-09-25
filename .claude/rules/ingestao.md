@@ -129,6 +129,14 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   SÓ o do perfil, nunca o `@` nem o BSUID (o gatilho do título os leria como
   nome e congelaria o card). Só esta rota escreve `wa_*` (pino
   `bsuid.chamadores.test.ts`); pinos de comportamento em `route.bsuid.test.ts`.
+- ⚠️⚠️ **O portão da Meta EXIGE `contacts`, e a mensagem `type: 'system'` é
+  descartada** (revisão da Fase 11): a Meta manda o aviso de troca de número
+  sem `contacts`, e com o portão relaxado ele entrava como fala do cliente —
+  reabria a conversa, disparava robô, automações e IA, abria card e emitia
+  `message.received`. A só-BSUID vem COM `contacts[]`; `contacts: []` passa e
+  não estoura. A troca de identidade que o aviso anuncia
+  (`user_changed_user_id`, `user_id_update`) não é tratada — pendência no
+  plano.
 - ⚠️ **INSERT em `contacts` trata o 23505 da chave canônica** por
   `fichaQueVenceu` (relê, com nova tentativa se a leitura falhar): desistir na
   primeira leitura descarta a mensagem que o provedor deu por entregue.
