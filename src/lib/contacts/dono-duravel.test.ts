@@ -185,7 +185,10 @@ describe('dono durável: quem cria contato/conversa/campo grava o dono da conta'
       // tem de ser uma fonte declarada (pega também as construções de
       // `rows` fora do argumento, e ignora o `user_id` legítimo de outras
       // tabelas — ex.: a autoria do insert de `broadcasts`).
-      const gravacoes = [...src.matchAll(/user_id\s*:\s*([A-Za-z0-9_.?]+)/g)];
+      // ⚠️ `(?<![\w])`: o `user_id:` DENTRO de `wa_user_id:` e de
+      // `wa_parent_user_id:` (o BSUID da Meta, Fase 11.2) não é o dono — sem a
+      // borda, o valor do BSUID seria lido como a fonte do `user_id`.
+      const gravacoes = [...src.matchAll(/(?<![\w])user_id\s*:\s*([A-Za-z0-9_.?]+)/g)];
       expect(gravacoes.length, `${arquivo}: nenhum user_id gravado?`).toBeGreaterThan(0);
       for (const g of gravacoes) {
         const antes = src.slice(0, g.index);
@@ -213,7 +216,9 @@ describe('dono durável: quem cria contato/conversa/campo grava o dono da conta'
         ).toBe(false);
         if (!viaVariavel) {
           expect(
-            /user_id\s*:/.test(site.argumento),
+            // A mesma borda: com `wa_user_id:` no objeto, sem ela o insert
+            // passaria aqui mesmo sem gravar o dono.
+            /(?<![\w])user_id\s*:/.test(site.argumento),
             `${arquivo}: o insert de ${site.tabela} não grava user_id inline — ` +
               `se passou a montar as linhas fora, marque \`viaVariavel\` no UNIVERSO`,
           ).toBe(true);

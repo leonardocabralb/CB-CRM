@@ -35,6 +35,8 @@ Vale ao mexer nas rotas `/api/v1`, nas chaves e escopos, na doc pública (`docs/
 - **Escrita de negócio chama `drenarEventosDeFunil()`** (fire-and-forget), como a tela: sem isso a automação de etapa espera o próximo batimento do agendador.
 - **Nome carimbado vem de `resolveApiAuthor`** (`authorship.ts`): usuário de auditoria da v1, com queda para o DONO da conta, e `membro: false` quando nem ele resolve. Quem exige um membro de verdade (dono de reunião) confere o sinalizador.
 - **Grupo fica fora da v1** (`.is('group_id', null)` nas conversas); a agendada resolve o canal por `cb_groups` quando a conversa é de grupo.
+- **O contato da v1 traz `whatsapp_user_id` e `whatsapp_username`** (só leitura, decisão 5 do operador), no GET de contatos, no contato embutido na conversa e no contato dos avisos `deal.*` (`serializeContact`).
+- ⚠️ **A ficha só-BSUID (sem telefone; Fase 11.3) só é alcançável por `POST /v1/scheduled-messages`** (`POST /v1/messages` endereça por telefone), e só pela API oficial: com o canal resolvido numa conexão por QR Code, 409 `not_supported` e nada entra na fila — espelho de `/api/cb/scheduled`. Pino `src/app/api/v1/scheduled-messages/route.test.ts`.
 - ⚠️ **O que a doc pública promete, a rota cumpre:** `POST /api/v1/broadcasts` leva o `channel_id` do corpo até `createBroadcast` (a rota do upstream o descarta; com dois números oficiais a campanha sairia por um escolhido ao acaso). Canal inválido = 400 `meta_channel_required`, nada enviado. Pino: `src/app/api/v1/broadcasts/route.test.ts`.
 - ⚠️ **`src/lib/rate-limit.ts` é um `Map` em memória POR PROCESSO.** No deploy `start-first` há dois processos vivos: o limite não serializa nada. Idempotência de verdade (não pagar duas vezes, não enviar duas vezes) mora no banco, por cadeado.
 

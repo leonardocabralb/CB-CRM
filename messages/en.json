@@ -308,6 +308,7 @@
       "me": " (me)",
       "channelTitle": "Reply channel",
       "channelAuto": "Automatic (follows the customer)",
+      "channelSoOficial": "Only the official number reaches this contact (no phone number)",
       "channelUpdateFailed": "Could not switch the channel.",
       "statusUpdateFailed": "Could not change the conversation status.",
       "copyLink": "Copy conversation link",

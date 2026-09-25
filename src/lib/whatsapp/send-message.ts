@@ -52,10 +52,15 @@ import { reopenClosedConversation } from '@/lib/conversations/reopen';
 import { abortActiveRunsForContact } from '@/lib/flows/parar-run';
 import {
   sanitizePhoneForMeta,
-  isValidE164,
   phoneVariants,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils';
+import {
+  alvoDeEnvio,
+  FRASE_MODELO_DE_AUTENTICACAO,
+  FRASE_SO_NUMERO_OFICIAL,
+  modeloExigeTelefone,
+} from '@/lib/whatsapp/alvo-de-envio';
 import type { CbGroup, MessageTemplate } from '@/types';
 import {
   resolveTemplateRow,
@@ -307,7 +312,10 @@ export async function sendMessageToConversation(
   const ehGrupo = !!conversation.group_id;
 
   const contact = conversation.contact;
-  if (!ehGrupo && !contact?.phone) {
+  // Telefone OU BSUID (Fase 11.3): a ficha de quem a Meta identifica só pelo
+  // nome de usuário não tem telefone. Se o BSUID serve depende do CANAL, e
+  // isso é decidido lá embaixo, depois de resolvê-lo (`alvoDeEnvio`).
+  if (!ehGrupo && !contact?.phone && !contact?.wa_user_id) {
     throw new SendMessageError(
       'bad_request',
       'Contact phone number not found',
@@ -324,20 +332,9 @@ export async function sendMessageToConversation(
     );
   }
 
-  const sanitizedPhone = ehGrupo ? '' : sanitizePhoneForMeta(contact!.phone);
-  if (!ehGrupo && !isValidE164(sanitizedPhone)) {
-    throw new SendMessageError(
-      'bad_request',
-      'Invalid phone number format',
-      400
-    );
-  }
-
-  /**
-   * Para onde a mensagem vai. Em grupo é o JID; `toEvolutionNumber` preserva
-   * o sufixo `@g.us` intacto de propósito — ver o comentário lá.
-   */
-  const destinatario = ehGrupo ? grupo!.jid : sanitizedPhone;
+  // O telefone sanitizado — vazio na ficha só-BSUID. É a base das variantes
+  // do nono dígito e da autocorreção, que só valem para TELEFONE.
+  const sanitizedPhone = ehGrupo ? '' : sanitizePhoneForMeta(contact!.phone ?? '');
 
   /**
    * ASSINATURA (923). Resolvida aqui — depois de a conversa existir e antes
@@ -480,6 +477,28 @@ export async function sendMessageToConversation(
     );
   }
 
+  /**
+   * Para onde a mensagem vai — decidido DEPOIS do canal e das recusas dele.
+   * Em grupo é o JID (`toEvolutionNumber` preserva o `@g.us` de propósito).
+   * No contato, telefone válido em qualquer transporte, ou o BSUID SÓ na API
+   * oficial da Meta (`alvoDeEnvio`, Fase 11.3): pela Evolution o BSUID viraria
+   * o número formado pelos dígitos dele.
+   */
+  let destinatario: string;
+  let ehTelefone = true;
+  if (ehGrupo) {
+    destinatario = grupo!.jid;
+  } else {
+    const alvo = alvoDeEnvio(contact, channel);
+    if (!alvo.ok) {
+      throw alvo.motivo === 'so_numero_oficial'
+        ? new SendMessageError('not_supported', FRASE_SO_NUMERO_OFICIAL, 400)
+        : new SendMessageError('bad_request', 'Invalid phone number format', 400);
+    }
+    destinatario = alvo.alvo;
+    ehTelefone = alvo.ehTelefone;
+  }
+
   // Meta keeps its token in access_token; Evolution its instance key in
   // api_key. Only the Meta path decrypts here (and self-heals legacy CBC —
   // only for the whatsapp_config fallback; channels are GCM from creation).
@@ -566,10 +585,20 @@ export async function sendMessageToConversation(
     }
     templateRow = resolved.row;
     sendLanguage = resolved.language;
+
+    // Fase 11.3: o BSUID não recebe modelo de AUTENTICAÇÃO — a Meta exige
+    // telefone para código de acesso. Recusado ANTES dela, com a frase.
+    if (!ehTelefone && modeloExigeTelefone(templateRow)) {
+      throw new SendMessageError(
+        'not_supported',
+        FRASE_MODELO_DE_AUTENTICACAO,
+        400
+      );
+    }
   }
 
   let waMessageId = '';
-  let workingPhone = sanitizedPhone;
+  let workingPhone = destinatario;
   // For Evolution rows: the recipient JID, persisted so reactions/replies
   // can rebuild the Baileys key later. NULL for Meta.
   let outboundRemoteJid: string | null = null;
@@ -650,7 +679,7 @@ export async function sendMessageToConversation(
     // inválido e quebraria a citação de toda mensagem que enviarmos ao grupo.
     outboundRemoteJid = ehGrupo
       ? destinatario
-      : `${toEvolutionNumber(sanitizedPhone)}@s.whatsapp.net`;
+      : `${toEvolutionNumber(destinatario)}@s.whatsapp.net`;
   } else {
     const attempt = async (phone: string): Promise<string> => {
       if (messageType === 'template') {
@@ -722,7 +751,8 @@ export async function sendMessageToConversation(
     // with "recipient not in allowed list"; persist a working variant
     // back to the contact so the next send goes straight through.
     try {
-      const variants = phoneVariants(sanitizedPhone);
+      // Variantes só para TELEFONE: o BSUID é opaco e tem uma grafia só.
+      const variants = ehTelefone ? phoneVariants(sanitizedPhone) : [destinatario];
       let lastError: unknown = null;
 
       for (const variant of variants) {
@@ -751,7 +781,9 @@ export async function sendMessageToConversation(
       throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
     }
 
-    if (workingPhone !== sanitizedPhone) {
+    // ⚠️ Só com TELEFONE: sem o `ehTelefone`, o envio a um BSUID gravaria o
+    // BSUID em `contacts.phone` (o `workingPhone` difere do telefone vazio).
+    if (ehTelefone && workingPhone !== sanitizedPhone) {
       console.log(
         `[send-message] Auto-corrected contact phone: ${sanitizedPhone} → ${workingPhone}`
       );

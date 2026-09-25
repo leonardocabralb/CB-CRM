@@ -55,13 +55,29 @@ describe("a régua do Asaas sai pelo caminho do robô (D16)", () => {
   // `lerClientesLigados` cita o predicado por extenso, e um `toContain` sobre
   // o fonte cru ficava verde com a régua própria de volta no código (revisão
   // da 4ª rodada do PR #206).
+  // ⚠️ O remetente da régua é o das AUTOMAÇÕES (`sendViaMeta`, em
+  // `automations/meta-send.ts`: a mensagem sai por `send_message`), e não o
+  // dos fluxos — este pino lia o arquivo errado e só passava porque os dois
+  // tinham o mesmo trecho (Fase 11.3). Desde a 11.3 o remetente decide o alvo
+  // por `alvoDoRobo` → `alvoDeEnvio` → `resolveContactSendTarget`, e a cadeia
+  // inteira é conferida aqui; a EQUIVALÊNCIA, amostra por amostra, está em
+  // `src/lib/whatsapp/alvo-de-envio.test.ts`.
   it("a varredura confere o telefone com o predicado do remetente do robô", () => {
     const semComentarios = (arquivo: string) => fs.readFileSync(arquivo, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
     const varredura = semComentarios(path.join(RAIZ, "varrer-regua.ts"));
-    const remetente = semComentarios(path.join(RAIZ, "..", "flows", "meta-send.ts"));
+    const remetente = semComentarios(path.join(RAIZ, "..", "automations", "meta-send.ts"));
+    const alvo = semComentarios(path.join(RAIZ, "..", "whatsapp", "alvo-de-envio.ts"));
+    const identidade = semComentarios(path.join(RAIZ, "..", "whatsapp", "wa-identity.ts"));
     expect(varredura).toMatch(/!isValidE164\(sanitizePhoneForMeta\(telefone\)\)/);
     expect(varredura).not.toMatch(/telefone\.replace\(/);
-    expect(remetente).toMatch(/const sanitized = sanitizePhoneForMeta\(contact\.phone\)/);
-    expect(remetente).toMatch(/!isValidE164\(sanitized\)/);
+    // O remetente da régua: alvo decidido pelo canal, e o ramo Evolution manda
+    // esse alvo (telefone — o BSUID é recusado fora da Meta).
+    expect(remetente).toMatch(/const \{ alvo, ehTelefone \} = alvoDoRobo\(contact, channel\)/);
+    expect(remetente).toMatch(/transport\.sendText\(\{ to: alvo,/);
+    // A cadeia até o predicado.
+    expect(alvo).toMatch(/const alvo = resolveContactSendTarget\(contato\)/);
+    expect(alvo).toMatch(/if \(alvo\.isPhone\) return \{ ok: true, alvo: alvo\.target, ehTelefone: true \}/);
+    expect(identidade).toMatch(/const sanitized = sanitizePhoneForMeta\(contact\?\.phone \?\? ''\)/);
+    expect(identidade).toMatch(/if \(isValidE164\(sanitized\)\) return \{ target: sanitized, isPhone: true \}/);
   });
 });

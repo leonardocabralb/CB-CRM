@@ -403,10 +403,22 @@ export function casaComABusca(conversation: Conversation, busca: string): boolea
   const ultima = semAcento(
     stripWhatsAppFormat(conversation.last_message_text),
   );
+  // O @ conta como nome (Fase 11.4): o do WhatsApp — a ficha que a Meta manda
+  // só com o nome de usuário, sem telefone — e o do Instagram. O @ digitado é
+  // descartado (as colunas guardam sem ele); ⚠️ "@" sozinho vira agulha
+  // vazia, e `includes("")` casaria toda ficha que tem um @.
+  const agulhaDoArroba = q.replace(/^@/, "");
+  const arrobas = [
+    conversation.contact?.wa_username,
+    conversation.contact?.instagram_username,
+  ]
+    .filter((a): a is string => !!a)
+    .map(semAcento);
 
   return (
     nome.includes(q) ||
     telefone.includes(q) ||
+    (agulhaDoArroba !== "" && arrobas.some((a) => a.includes(agulhaDoArroba))) ||
     (digitosBuscados !== null &&
       grafiasDoTelefone.some((grafia) => grafia.includes(digitosBuscados))) ||
     grupo.includes(q) ||

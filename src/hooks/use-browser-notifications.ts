@@ -111,7 +111,7 @@ export function usePreferenciaDeAviso(): {
 /** O que a consulta da conversa traz: a régua (`silencioDoAviso`) e o nome. */
 const SELECT_DA_CONVERSA =
   "id, channel_id, channel_pinned, group_id, assigned_agent_id, " +
-  "contact:contacts(name, phone, instagram_username), group:cb_groups(channel_id)";
+  "contact:contacts(name, phone, wa_username, instagram_username), group:cb_groups(channel_id)";
 
 type ConversaDaConsulta = ConversaDoAviso & {
   contact?: ContatoIdentificavel | null;

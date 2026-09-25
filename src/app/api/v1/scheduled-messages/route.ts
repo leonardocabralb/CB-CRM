@@ -14,6 +14,9 @@
 //    scheduled message must promise which number it leaves through;
 //  - group conversations resolve the channel from `cb_groups`
 //    (`conversations.channel_id` is always NULL for groups);
+//  - a username-only contact (BSUID, no phone) is refused with 409
+//    unless that channel is the official Meta API — the only one that
+//    reaches them;
 //  - the time is checked against the SERVER clock, in the future,
 //    at most 365 days ahead (a typo'd year would park a pending row
 //    forever and, via the RESTRICT FK, block deleting the channel);
@@ -42,6 +45,7 @@ import { serializeScheduled } from '@/lib/api/v1/scheduled';
 import { instanteValido } from '@/lib/agenda/validar';
 import { resolveChannelForConversation } from '@/lib/cb-channels/resolve';
 import { ehUuid } from '@/lib/tasks/validar';
+import { alvoDeEnvio } from '@/lib/whatsapp/alvo-de-envio';
 
 /** Same ceilings as the dashboard route and the 925 CHECK. */
 const MAX_TEXTO = 4000;
@@ -150,7 +154,9 @@ export async function POST(request: Request) {
     // resolving via the account default would stamp the wrong number.
     const { data: conversa, error: conversaErr } = await ctx.supabase
       .from('conversations')
-      .select('id, channel_id, group_id, group:cb_groups(channel_id)')
+      .select(
+        'id, channel_id, group_id, group:cb_groups(channel_id), contact:contacts(phone, wa_user_id)'
+      )
       .eq('id', conversationId)
       .eq('account_id', ctx.accountId)
       .maybeSingle();
@@ -165,6 +171,7 @@ export async function POST(request: Request) {
       channel_id?: string | null;
       group_id?: string | null;
       group?: { channel_id?: string | null } | null;
+      contact?: { phone?: string | null; wa_user_id?: string | null } | null;
     };
     const ehGrupo = !!linha.group_id;
     const canalDaConversa = ehGrupo
@@ -192,6 +199,22 @@ export async function POST(request: Request) {
         'This account has no registered WhatsApp connection to schedule from.',
         409
       );
+    }
+
+    // Phase 11.3 — a username-only contact (Meta withheld the phone; only
+    // the BSUID is known) is reachable through the official Meta API only.
+    // Fail closed HERE, like the channel check above: otherwise the refusal
+    // would surface at dispatch time, hours later, with nobody watching.
+    // Mirror of `/api/cb/scheduled`.
+    if (!ehGrupo) {
+      const alvo = alvoDeEnvio(linha.contact, canal);
+      if (!alvo.ok && alvo.motivo === 'so_numero_oficial') {
+        return fail(
+          'not_supported',
+          'This contact has no phone number: WhatsApp identifies them only by username, and only an official Meta number can reach them. Move the conversation to the official number before scheduling.',
+          409
+        );
+      }
     }
 
     const author = await resolveApiAuthor(ctx.supabase, ctx.accountId);

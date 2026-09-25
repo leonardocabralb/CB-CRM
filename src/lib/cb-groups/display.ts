@@ -9,6 +9,7 @@
 // visível escapar do dicionário e nunca ser traduzida.
 // ============================================================
 
+import { nomeDoContato } from '@/lib/contacts/identidade';
 import type { CbGroup, Conversation } from '@/types';
 
 /** A conversa é de grupo? */
@@ -49,7 +50,10 @@ export function tituloDaConversa(
   textos: { semNome: string; desconhecido: string },
 ): string {
   if (conversa.group_id) return nomeDoGrupo(conversa.group, textos.semNome);
-  return conversa.contact?.name?.trim() || conversa.contact?.phone || textos.desconhecido;
+  // A regra única da identidade (Fase 11.4): nome, senão telefone, senão o
+  // `@` do WhatsApp ou do Instagram. O `name || phone` cru mostrava
+  // "Desconhecido" para a ficha sem telefone (Instagram e só-BSUID).
+  return nomeDoContato(conversa.contact, textos.desconhecido);
 }
 
 /**

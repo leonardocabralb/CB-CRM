@@ -122,7 +122,8 @@ export function telefoneDigitado(texto: string | null | undefined): TelefoneDigi
  * tocou — nem regravá-lo. A comparação é contra o que a TELA carregou,
  * aparada dos dois lados. Na CRIAÇÃO não há "antes": tudo passa pela régua.
  *
- * `podeFicarSem` é a ficha só do Instagram (989): apagar o telefone dela é
+ * `podeFicarSem` é a ficha com outra identidade (`podeFicarSemTelefone`: o
+ * Instagram, 989, ou o BSUID do WhatsApp, 1041): apagar o telefone dela é
  * legítimo e grava `null` — nunca `""`: a ficha sem telefone é `phone IS NULL`
  * desde a 989, e é por aí que o disparo, as fotos e as telas a reconhecem.
  *

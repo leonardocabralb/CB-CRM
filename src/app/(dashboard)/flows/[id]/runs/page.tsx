@@ -68,7 +68,7 @@ interface RunRow {
    * nos runs anteriores à 903.
    */
   channel_id: string | null;
-  contact: { id: string; name: string | null; phone: string | null; instagram_username?: string | null } | null;
+  contact: { id: string; name: string | null; phone: string | null; wa_username?: string | null; instagram_username?: string | null } | null;
 }
 
 interface EventRow {

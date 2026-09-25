@@ -211,7 +211,7 @@ export async function PATCH(
     } else if (UUID_OK(corpo.contact_id)) {
       const { data: contato } = await admin
         .from('contacts')
-        .select('id, name, phone')
+        .select('id, name, phone, wa_username, instagram_username')
         .eq('id', corpo.contact_id)
         .eq('account_id', ctx.accountId)
         .maybeSingle();

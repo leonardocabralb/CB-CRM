@@ -42,6 +42,22 @@ describe('serializeConversation', () => {
     expect(serializeConversation(semCanal).channel_id).toBeNull();
   });
 
+  it('o contato da conversa traz o BSUID e o @ do WhatsApp (Fase 11, decisão 5)', () => {
+    const conv = {
+      id: 'conv1',
+      contact_id: 'c1',
+      status: 'open',
+      contact: { id: 'c1', phone: null, name: null, wa_user_id: 'BR.1349120865530274', wa_username: 'ana', tags: [] },
+    } as unknown as Conversation;
+    const out = serializeConversation(conv);
+    expect(out.contact?.whatsapp_user_id).toBe('BR.1349120865530274');
+    expect(out.contact?.whatsapp_username).toBe('ana');
+
+    const semBsuid = { ...conv, contact: { id: 'c1', phone: '+1', tags: [] } } as unknown as Conversation;
+    expect(serializeConversation(semBsuid).contact?.whatsapp_user_id).toBeNull();
+    expect(serializeConversation(semBsuid).contact?.whatsapp_username).toBeNull();
+  });
+
   it('não explode com conversa de grupo (contato nulo)', () => {
     // As rotas da v1 filtram `.is('group_id', null)`, então isto NÃO deve
     // acontecer. O teste existe para a rota nova que alguém escrever amanhã

@@ -301,6 +301,7 @@
       "me": " (eu)",
       "channelTitle": "Canal de resposta",
       "channelAuto": "Automático (segue o cliente)",
+      "channelSoOficial": "Só o número oficial alcança este contato (sem telefone)",
       "channelUpdateFailed": "Não foi possível trocar o canal.",
       "statusUpdateFailed": "Não foi possível trocar a situação da conversa.",
       "copyLink": "Copiar link da conversa",

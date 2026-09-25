@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { sendReactionMessage } from '@/lib/whatsapp/meta-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
-import { sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils';
+import { alvoDeEnvio } from '@/lib/whatsapp/alvo-de-envio';
 import {
   resolveEngineChannel,
   evolutionTransportFor,
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
 
     const { data: conversation, error: convError } = await supabase
       .from('conversations')
-      .select('id, account_id, group_id, contact:contacts(phone)')
+      .select('id, account_id, group_id, contact:contacts(phone, wa_user_id)')
       .eq('id', targetMessage.conversation_id)
       .eq('account_id', accountId)
       .maybeSingle();
@@ -98,15 +98,12 @@ export async function POST(request: Request) {
       );
     }
 
+    // O telefone deixou de ser exigido aqui (Fase 11.3): a reação pela
+    // Evolution usa só a CHAVE da mensagem, e a da Meta decide o alvo mais
+    // abaixo, depois do canal — telefone ou, na ficha só-BSUID, o BSUID.
     const contact = Array.isArray(conversation.contact)
       ? conversation.contact[0]
       : conversation.contact;
-    if (!contact?.phone) {
-      return NextResponse.json(
-        { error: 'Contact phone number not found' },
-        { status: 400 },
-      );
-    }
 
     // Canal da conversa (multi-canal, Fase 5): a reação sai pelo MESMO
     // número da conversa — Meta via Graph, Evolution via transport
@@ -128,8 +125,6 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-
-    const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
 
     if (ehEvolution(channel)) {
       try {
@@ -158,13 +153,22 @@ export async function POST(request: Request) {
           { status: 400 },
         );
       }
+      // O canal aqui é o oficial: telefone, ou o BSUID (#519). Nenhum dos
+      // dois, e não há para quem mandar a reação.
+      const alvo = alvoDeEnvio(contact, channel);
+      if (!alvo.ok) {
+        return NextResponse.json(
+          { error: 'Contact has no phone number or WhatsApp user ID' },
+          { status: 400 },
+        );
+      }
       const accessToken = decrypt(channel.access_token);
 
       try {
         await sendReactionMessage({
           phoneNumberId: channel.phone_number_id,
           accessToken,
-          to: sanitizedPhone,
+          to: alvo.alvo,
           targetMessageId: targetMessage.message_id,
           emoji,
         });

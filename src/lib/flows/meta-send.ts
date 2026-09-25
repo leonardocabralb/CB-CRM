@@ -17,11 +17,10 @@ import {
 } from '@/lib/cb-channels/engine-send'
 import { stampMessageChannel } from '@/lib/cb-channels/stamp'
 import {
-  sanitizePhoneForMeta,
-  isValidE164,
   phoneVariants,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
+import { alvoDoRobo } from '@/lib/whatsapp/alvo-de-envio'
 import { supabaseAdmin } from './admin-client'
 import { aplicarAssinatura } from '@/lib/assinatura/assinatura'
 import { nomeAutomaticoParaAssinar } from '@/lib/assinatura/resolver'
@@ -106,13 +105,16 @@ export async function engineSendText(
   const textoFinal = aplicarAssinatura(args.text, nomeQueAssina) as string
 
 
+  // `wa_user_id` (Fase 11.3): a ficha de quem a Meta identifica só pelo nome
+  // de usuário não tem telefone, e o alvo pode ser o BSUID — decidido lá
+  // embaixo, depois do canal (`alvoDoRobo`).
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, wa_user_id')
     .eq('id', args.contactId)
     .eq('account_id', args.accountId)
     .maybeSingle()
-  if (contactErr || !contact?.phone) {
+  if (contactErr || !contact) {
     throw new Error('contact not found for this account')
   }
 
@@ -122,18 +124,6 @@ export async function engineSendText(
   // outra conta gravava mensagem no fio desta. Conferido ANTES do provedor —
   // depois de a mensagem sair não há o que desfazer. Ver conversation-scope.ts.
   await assertConversationInAccount(db, args.conversationId, args.accountId, args.contactId)
-
-  // Ficha só do Instagram (989) não tem telefone — e o robô não responde no
-  // Direct na v1 (D1). Dizer isso é melhor que "contact phone invalid: null".
-  if (!contact.phone) {
-    throw new Error(
-      'contact has no phone number (Instagram-only contact) — flows and automations do not send on Instagram (v1)',
-    )
-  }
-  const sanitized = sanitizePhoneForMeta(contact.phone)
-  if (!isValidE164(sanitized)) {
-    throw new Error(`contact phone invalid: ${contact.phone}`)
-  }
 
   // Canal da conversa (multi-canal, Fase 5): resolve como o envio manual —
   // conversations.channel_id → canal padrão → fallback whatsapp_config.
@@ -147,17 +137,23 @@ export async function engineSendText(
     throw new Error('WhatsApp not configured for this account')
   }
 
+  exigirWhatsApp(channel)
+  // O alvo, DEPOIS do canal: telefone em qualquer transporte, o BSUID só na
+  // API oficial. A ficha sem nenhum dos dois (a do Instagram) e o telefone
+  // inválido falham aqui, com o motivo.
+  const { alvo, ehTelefone } = alvoDoRobo(contact, channel)
+
   let waMessageId = ''
-  let workingPhone = sanitized
+  let workingPhone = alvo
   let outboundRemoteJid: string | null = null
 
-  exigirWhatsApp(channel)
   if (ehEvolution(channel)) {
     // Texto sai pelo transport da Evolution (Baileys) — sem janela de 24h.
+    // `alvo` é telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
     const transport = evolutionTransportFor(channel)
-    const res = await transport.sendText({ to: sanitized, text: textoFinal })
+    const res = await transport.sendText({ to: alvo, text: textoFinal })
     waMessageId = res.providerMessageId
-    outboundRemoteJid = evolutionRemoteJid(sanitized)
+    outboundRemoteJid = evolutionRemoteJid(alvo)
   } else {
     if (!channel.phone_number_id || !channel.access_token) {
       throw new Error('WhatsApp (Meta) connection is incomplete for this account')
@@ -174,7 +170,8 @@ export async function engineSendText(
       return r.messageId
     }
 
-    const variants = phoneVariants(sanitized)
+    // Variantes do nono dígito só para TELEFONE: o BSUID tem uma grafia só.
+    const variants = ehTelefone ? phoneVariants(alvo) : [alvo]
     let lastError: unknown = null
     for (const v of variants) {
       try {
@@ -190,7 +187,8 @@ export async function engineSendText(
     }
     if (lastError) throw lastError
 
-    if (workingPhone !== sanitized) {
+    // ⚠️ Só com TELEFONE: o BSUID jamais vai para `contacts.phone`.
+    if (ehTelefone && workingPhone !== alvo) {
       await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
     }
   }
@@ -271,13 +269,14 @@ export async function engineSendMedia(
   const legendaFinal = aplicarAssinatura(args.caption, nomeQueAssina) ?? undefined
 
 
+  // `wa_user_id`: o alvo pode ser o BSUID (Fase 11.3), decidido depois do canal.
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, wa_user_id')
     .eq('id', args.contactId)
     .eq('account_id', args.accountId)
     .maybeSingle()
-  if (contactErr || !contact?.phone) {
+  if (contactErr || !contact) {
     throw new Error('contact not found for this account')
   }
 
@@ -287,18 +286,6 @@ export async function engineSendMedia(
   // outra conta gravava mensagem no fio desta. Conferido ANTES do provedor —
   // depois de a mensagem sair não há o que desfazer. Ver conversation-scope.ts.
   await assertConversationInAccount(db, args.conversationId, args.accountId, args.contactId)
-
-  // Ficha só do Instagram (989) não tem telefone — e o robô não responde no
-  // Direct na v1 (D1). Dizer isso é melhor que "contact phone invalid: null".
-  if (!contact.phone) {
-    throw new Error(
-      'contact has no phone number (Instagram-only contact) — flows and automations do not send on Instagram (v1)',
-    )
-  }
-  const sanitized = sanitizePhoneForMeta(contact.phone)
-  if (!isValidE164(sanitized)) {
-    throw new Error(`contact phone invalid: ${contact.phone}`)
-  }
 
   // Canal da conversa (multi-canal, Fase 5) — mesmo resolve do envio manual.
   const channel = await resolveEngineChannelPreferring(
@@ -311,23 +298,26 @@ export async function engineSendMedia(
     throw new Error('WhatsApp not configured for this account')
   }
 
+  exigirWhatsApp(channel)
+  const { alvo, ehTelefone } = alvoDoRobo(contact, channel)
+
   let waMessageId = ''
-  let workingPhone = sanitized
+  let workingPhone = alvo
   let outboundRemoteJid: string | null = null
 
-  exigirWhatsApp(channel)
   if (ehEvolution(channel)) {
-    // Mídia sai pelo transport da Evolution (aceita URL pública).
+    // Mídia sai pelo transport da Evolution (aceita URL pública). `alvo` é
+    // telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
     const transport = evolutionTransportFor(channel)
     const res = await transport.sendMedia({
-      to: sanitized,
+      to: alvo,
       kind: args.kind,
       media: args.link,
       caption: legendaFinal,
       filename: args.filename,
     })
     waMessageId = res.providerMessageId
-    outboundRemoteJid = evolutionRemoteJid(sanitized)
+    outboundRemoteJid = evolutionRemoteJid(alvo)
   } else {
     if (!channel.phone_number_id || !channel.access_token) {
       throw new Error('WhatsApp (Meta) connection is incomplete for this account')
@@ -347,7 +337,8 @@ export async function engineSendMedia(
       return r.messageId
     }
 
-    const variants = phoneVariants(sanitized)
+    // Variantes do nono dígito só para TELEFONE: o BSUID tem uma grafia só.
+    const variants = ehTelefone ? phoneVariants(alvo) : [alvo]
     let lastError: unknown = null
     for (const v of variants) {
       try {
@@ -363,7 +354,8 @@ export async function engineSendMedia(
     }
     if (lastError) throw lastError
 
-    if (workingPhone !== sanitized) {
+    // ⚠️ Só com TELEFONE: o BSUID jamais vai para `contacts.phone`.
+    if (ehTelefone && workingPhone !== alvo) {
       await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
     }
   }
@@ -485,13 +477,14 @@ async function sendInteractiveViaMeta(
   // Scope the contact + whatsapp_config lookups by account_id —
   // same defense-in-depth rationale as automations/meta-send.ts.
   // Migration 017 moved both tables to account-scoped tenancy.
+  // `wa_user_id`: o alvo pode ser o BSUID (Fase 11.3), decidido depois do canal.
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, wa_user_id')
     .eq('id', input.contactId)
     .eq('account_id', input.accountId)
     .maybeSingle()
-  if (contactErr || !contact?.phone) {
+  if (contactErr || !contact) {
     throw new Error('contact not found for this account')
   }
 
@@ -501,18 +494,6 @@ async function sendInteractiveViaMeta(
   // outra conta gravava mensagem no fio desta. Conferido ANTES do provedor —
   // depois de a mensagem sair não há o que desfazer. Ver conversation-scope.ts.
   await assertConversationInAccount(db, input.conversationId, input.accountId, input.contactId)
-
-  // Ficha só do Instagram (989) não tem telefone — e o robô não responde no
-  // Direct na v1 (D1). Dizer isso é melhor que "contact phone invalid: null".
-  if (!contact.phone) {
-    throw new Error(
-      'contact has no phone number (Instagram-only contact) — flows and automations do not send on Instagram (v1)',
-    )
-  }
-  const sanitized = sanitizePhoneForMeta(contact.phone)
-  if (!isValidE164(sanitized)) {
-    throw new Error(`contact phone invalid: ${contact.phone}`)
-  }
 
   // Canal da conversa (multi-canal). Botões/listas não entregam via
   // Baileys — em canal Evolution o nó falha com motivo CLARO (o run
@@ -535,6 +516,8 @@ async function sendInteractiveViaMeta(
   if (!channel.phone_number_id || !channel.access_token) {
     throw new Error('WhatsApp (Meta) connection is incomplete for this account')
   }
+  // Aqui o canal é da Meta: o alvo é o telefone ou, sem ele, o BSUID.
+  const { alvo, ehTelefone } = alvoDoRobo(contact, channel)
 
   const accessToken = decrypt(channel.access_token)
 
@@ -567,8 +550,9 @@ async function sendInteractiveViaMeta(
   // Same phone-variant retry as automations/meta-send.ts. Numbers
   // registered with/without a trunk 0 + Meta's sandbox quirks all
   // need this to reliably land a message.
-  const variants = phoneVariants(sanitized)
-  let workingPhone = sanitized
+  // Variantes do nono dígito só para TELEFONE: o BSUID tem uma grafia só.
+  const variants = ehTelefone ? phoneVariants(alvo) : [alvo]
+  let workingPhone = alvo
   let waMessageId = ''
   let lastError: unknown = null
   for (const v of variants) {
@@ -585,7 +569,8 @@ async function sendInteractiveViaMeta(
   }
   if (lastError) throw lastError
 
-  if (workingPhone !== sanitized) {
+  // ⚠️ Só com TELEFONE: o BSUID jamais vai para `contacts.phone`.
+  if (ehTelefone && workingPhone !== alvo) {
     await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
   }
 

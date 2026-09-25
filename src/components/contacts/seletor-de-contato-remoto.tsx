@@ -40,13 +40,14 @@ import { identidadeDoContato, nomeDoContato } from '@/lib/contacts/identidade';
 import { cn } from '@/lib/utils';
 
 /** Só o que a linha desenha — nunca `select('*')`, que traz a ficha inteira. */
-const COLUNAS = 'id, name, phone, instagram_username';
+const COLUNAS = 'id, name, phone, wa_username, instagram_username';
 
 export interface ContatoAchado {
   id: string;
   name: string | null;
   /** NULO na ficha só do Instagram (989). */
   phone: string | null;
+  wa_username?: string | null;
   instagram_username?: string | null;
 }
 

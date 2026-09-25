@@ -59,7 +59,7 @@ export default function NotificationsPage() {
       .from("notifications")
       // O contato vem junto: o aviso de atribuição é escrito aqui, com o
       // nome dele (o texto gravado pelo gatilho da 0027 é em inglês).
-      .select("*, contact:contacts(name, phone, instagram_username)")
+      .select("*, contact:contacts(name, phone, wa_username, instagram_username)")
       .eq("account_id", accountId)
       .order("created_at", { ascending: false })
       .limit(100);

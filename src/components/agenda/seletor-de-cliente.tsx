@@ -6,9 +6,14 @@ import { Search, X } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
 import { createClient } from '@/lib/supabase/client';
+import { ramosDaBuscaDeContato } from '@/lib/contacts/busca-remota';
 import { cn } from '@/lib/utils';
 import type { Contact } from '@/types';
-import { identidadeDoContato, nomeDoContato } from '@/lib/contacts/identidade';
+import {
+  identidadeDoContato,
+  nomeDoContato,
+  type ContatoIdentificavel,
+} from '@/lib/contacts/identidade';
 
 /**
  * Escolher o cliente de uma reunião (migration 945).
@@ -56,8 +61,13 @@ export function SeletorDeCliente({ valor, nomeAtual, aoEscolher, travado }: Prop
   }, []);
 
   useEffect(() => {
-    const limpo = termo.trim();
-    if (limpo.length < 2) {
+    // O `.or()` do termo vem do módulo compartilhado (Fase 11.4), o mesmo do
+    // seletor remoto de negócio e tarefa: o escape nas duas camadas, o
+    // telefone por DÍGITOS em `phone_normalized` (com as duas grafias do nono
+    // dígito) e o @ do WhatsApp e do Instagram — a ficha sem telefone era
+    // inalcançável aqui. `null` = abaixo do piso: não consulta.
+    const ramos = ramosDaBuscaDeContato(termo);
+    if (!ramos) {
       // Mesmo padrão do `use-conversation-notes`: a regra aponta o `setState`
       // de dentro do efeito, não a linha do `useEffect`.
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -78,26 +88,10 @@ export function SeletorDeCliente({ valor, nomeAtual, aoEscolher, travado }: Prop
     let vivo = true;
     const timer = setTimeout(async () => {
       const supabase = createClient();
-      // ⚠️ O valor viaja DENTRO da árvore do `.or()`, onde vírgula e
-      // parênteses são delimitadores — "(27) 9283" sem aspas vira filtro
-      // malformado, o erro era descartado e a tela mentia "nenhum cliente".
-      // Duas camadas de escape, nesta ordem: primeiro o do LIKE (\ % _),
-      // depois o das aspas do PostgREST (" e \).
-      const paraIlike = (v: string) => {
-        const like = v.replace(/[\\%_]/g, (c) => `\\${c}`);
-        return `"%${like.replace(/(["\\])/g, '\\$1')}%"`;
-      };
-      // Telefone casa por DÍGITOS: o banco guarda "5527…" sem máscara, e o
-      // operador digita "(27) 9283" — comparar o termo cru exigiria digitar
-      // exatamente como está gravado (mesma decisão do seletor de tarefas).
-      const digitos = limpo.replace(/\D/g, '');
-      const ramos = [`name.ilike.${paraIlike(limpo)}`];
-      if (digitos.length > 0) ramos.push(`phone.ilike.${paraIlike(digitos)}`);
-
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
-        .or(ramos.join(','))
+        .or(ramos)
         .order('name', { nullsFirst: false })
         .limit(LIMITE);
 
@@ -135,7 +129,7 @@ export function SeletorDeCliente({ valor, nomeAtual, aoEscolher, travado }: Prop
     let vivo = true;
     void createClient()
       .from('contacts')
-      .select('name, phone')
+      .select('name, phone, wa_username, instagram_username')
       .eq('id', valor)
       .maybeSingle()
       .then(({ data }) => {
@@ -143,9 +137,9 @@ export function SeletorDeCliente({ valor, nomeAtual, aoEscolher, travado }: Prop
         // Contato apagado ou consulta falhou: o travessão mantém o chip de
         // pé (com o X de desvincular quando couber) em vez de degradar para
         // a caixa de busca com um vínculo ainda gravado.
-        setNomeBuscado(
-          ((data?.name as string | null) || (data?.phone as string | undefined)) ?? '—'
-        );
+        // `nomeDoContato` (Fase 11.4): nome, telefone, senão o @ — a ficha
+        // sem telefone caía no travessão com o vínculo gravado.
+        setNomeBuscado(nomeDoContato(data as ContatoIdentificavel | null, '—'));
       });
     return () => {
       vivo = false;

@@ -187,7 +187,7 @@ export async function POST(request: Request) {
       }
       const { data: contato, error: contatoErr } = await ctx.supabase
         .from('contacts')
-        .select('id, name, phone')
+        .select('id, name, phone, wa_username, instagram_username')
         .eq('id', body.contact_id)
         .eq('account_id', ctx.accountId)
         .maybeSingle();

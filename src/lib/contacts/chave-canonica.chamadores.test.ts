@@ -22,6 +22,9 @@ const SRC = path.join(__dirname, '..', '..');
 type Trato =
   // servidor: relê a ficha que VENCEU, com nova tentativa se a leitura falhar
   | 'releitura'
+  // a entrada da Meta (Fase 11.2): o 23505 pode ser do BSUID (1038) ou do
+  // telefone — relê pelo BSUID primeiro, depois pelo telefone
+  | 'releitura-bsuid'
   // tela: aponta a ficha dona do número / conta como "já existia"
   | 'tela'
   // lote do CSV do disparo: relê e insere um a um, sem derrubar a campanha
@@ -31,7 +34,7 @@ type Trato =
 
 const INSERTS: Record<string, { n: number; trato: Trato }> = {
   'app/api/cb/conversas/abrir/route.ts': { n: 1, trato: 'releitura' },
-  'app/api/whatsapp/webhook/route.ts': { n: 1, trato: 'releitura' },
+  'app/api/whatsapp/webhook/route.ts': { n: 1, trato: 'releitura-bsuid' },
   'lib/api/v1/contacts.ts': { n: 1, trato: 'releitura' },
   'lib/asaas/criar-ficha.ts': { n: 1, trato: 'releitura' },
   'lib/automations/destinatario.ts': { n: 1, trato: 'releitura' },
@@ -45,7 +48,10 @@ const INSERTS: Record<string, { n: number; trato: Trato }> = {
 
 // UPDATE que grava `phone` numa ficha existente: trocar para a irmã de OUTRA
 // ficha agora é recusado.
-const UPDATES_DE_TELEFONE: Record<string, { n: number; trato: 'tela' | 'correcao-descartada' }> = {
+const UPDATES_DE_TELEFONE: Record<
+  string,
+  { n: number; trato: 'tela' | 'correcao-descartada' | 'preenche-em-branco' }
+> = {
   // A pessoa vê o conflito ("já existe outra ficha com este número").
   'components/contacts/contact-form.tsx': { n: 1, trato: 'tela' },
   'components/contacts/contact-detail-view.tsx': { n: 1, trato: 'tela' },
@@ -56,6 +62,12 @@ const UPDATES_DE_TELEFONE: Record<string, { n: number; trato: 'tela' | 'correcao
   'lib/whatsapp/send-message.ts': { n: 1, trato: 'correcao-descartada' },
   'lib/automations/meta-send.ts': { n: 1, trato: 'correcao-descartada' },
   'lib/flows/meta-send.ts': { n: 3, trato: 'correcao-descartada' },
+  // A entrada da Meta (Fase 11.2) preenche o telefone da ficha só-BSUID
+  // quando a Meta enfim o manda — só em BRANCO (`.is('phone', null)` no
+  // próprio UPDATE), e o 23505 (o número já é de OUTRA ficha) vira log com os
+  // dois ids, sem fusão (decisão do operador, 24/09/2026). Sem a cerca no
+  // WHERE, uma ficha que ganhou telefone no meio o teria reescrito.
+  'app/api/whatsapp/webhook/route.ts': { n: 1, trato: 'preenche-em-branco' },
 };
 
 function* todosOsFontes(dir: string): Generator<string> {
@@ -123,11 +135,36 @@ describe('chave canônica (1024): todo escritor de ficha trata o 23505', () => {
         // falha (na ingestão, desistir é perder a mensagem do cliente).
         expect(src).toContain('isUniqueViolation(');
         expect(src).toContain('fichaQueVenceu(');
+      } else if (trato === 'releitura-bsuid') {
+        // As DUAS releituras: sem a do BSUID, a entrega só-BSUID que perde a
+        // corrida do INSERT não tem telefone por onde reler — e se perde.
+        expect(src).toContain('isUniqueViolation(');
+        expect(src).toContain('fichaQueVenceuPorBsuid(');
+        expect(src).toContain('fichaQueVenceu(');
       } else if (trato === 'tela' || trato === 'lote-csv') {
         expect(src).toContain('isUniqueViolation(');
       } else {
         expect(src).toMatch(/phone:\s*null/);
       }
+    });
+  }
+
+  for (const [arquivo, { trato }] of Object.entries(UPDATES_DE_TELEFONE)) {
+    if (trato !== 'preenche-em-branco') continue;
+    it(`${arquivo}: o telefone só preenche em BRANCO, e o 23505 é tratado`, () => {
+      const src = fontes.get(arquivo) ?? '';
+      // A cerca mora NA CADEIA do UPDATE que grava `phone` (até a próxima
+      // consulta), não em qualquer lugar do arquivo.
+      const cadeias = [...src.matchAll(RE_UPDATE)]
+        .map((m) => {
+          const inicio = m.index ?? 0;
+          const fim = src.indexOf('.from(', inicio + 5);
+          return src.slice(inicio, fim === -1 ? undefined : fim);
+        })
+        .filter((c) => /\bphone\s*:/.test(c));
+      expect(cadeias).toHaveLength(1);
+      expect(cadeias[0]).toMatch(/\.is\(\s*['"]phone['"]\s*,\s*null\s*\)/);
+      expect(src).toContain('isUniqueViolation(');
     });
   }
 

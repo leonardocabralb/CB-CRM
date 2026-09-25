@@ -150,7 +150,7 @@ const IDS_POR_CONSULTA = 500;
  */
 const SELECT_DE_CONVERSA =
   'id, status, assigned_agent_id, channel_id, group_id, aguardando_desde, ' +
-  'contact:contacts(id, name, phone, instagram_username), group:cb_groups(channel_id)';
+  'contact:contacts(id, name, phone, wa_username, instagram_username), group:cb_groups(channel_id)';
 
 /** O cliente do Supabase devolve `any[]`; as colunas acima são as do tipo que as réguas pedem. */
 const conversasDe = (data: unknown): Conversation[] =>
@@ -290,7 +290,7 @@ export function useResumoDoDia(pedido: PedidoDoResumo): ResumoDoDia {
       const abertas = () =>
         supabase
           .from('cb_tasks')
-          .select('*, contact:contacts(id, name, phone, instagram_username)', {
+          .select('*, contact:contacts(id, name, phone, wa_username, instagram_username)', {
             count: 'exact',
           })
           .eq('account_id', accountId)

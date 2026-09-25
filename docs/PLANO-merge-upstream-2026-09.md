@@ -6,7 +6,7 @@ fase e no diário do fim.
 
 | | |
 | --- | --- |
-| **Estado** | Fases 0 a 9 em produção (a 3 partida em 3-I a 3-IV; ver o mapa); a 10 no PR dela; a próxima é a 11 (BSUID, medida em 24/09 — o desenho está na seção da fase). Falta o teste REAL da Fase 5 (disparo fora da janela, depois de 24/09 19:14Z). ⚠️⚠️ **Em 23/09/2026 às 16:40Z o PR #259 — o merge CRU do original até `aee1b01f`, feito por outra pessoa — entrou no `main` e foi publicado.** Ele fechou a ancestralidade (a Fase 12 aconteceu sem querer) e pôs em produção, sem as adaptações, o conteúdo das Fases 4 a 11. A seção "O merge #259", no fim da seção 7, tem a auditoria e o que cada fase passa a ser. |
+| **Estado** | Fases 0 a 10 em produção (a 3 partida em 3-I a 3-IV; ver o mapa), e o #289 (os achados do Codex nas Fases 8 e no #286) também; a 11 (BSUID) em andamento — o desenho e as decisões do operador estão na seção da fase. A prova real da Fase 5 foi feita em 24/09 (o modelo fora da janela foi ENTREGUE; ver a seção). ⚠️⚠️ **Em 23/09/2026 às 16:40Z o PR #259 — o merge CRU do original até `aee1b01f`, feito por outra pessoa — entrou no `main` e foi publicado.** Ele fechou a ancestralidade (a Fase 12 aconteceu sem querer) e pôs em produção, sem as adaptações, o conteúdo das Fases 4 a 11. A seção "O merge #259", no fim da seção 7, tem a auditoria e o que cada fase passa a ser. |
 | **Alvo PINADO** | `upstream/main` = **`80c3f9a`** (13/09/2026). Base comum com o nosso `main`: `98b5bd2` (upstream #532, 31/08). Tudo neste plano se refere a esse commit — se o upstream andar, é outro ciclo. ⚠️ **Ele ANDOU (medido em 21/09/2026): `upstream/main` = `aee1b01f`, 2 commits novos** — `b9969fa2` (#586: exige `+` e código do país em telefone digitado e na API; 21 arquivos) e `f8a1cc72` (chaves do modal de importação em `pt`/`es`). Estão FORA deste plano até a decisão P9 (seção 8). Conferido de novo em 22/09/2026: não andou mais. ⚠️ **Desde o #259 (23/09/2026), `aee1b01f` é ANCESTRAL do nosso `main`**: o próximo merge do original parte dali, e o que o #259 descartou não volta por merge. |
 | **Pedido do operador (21/09/2026)** | Trazer todas as atualizações como COMPLEMENTO ou CORREÇÃO, nunca retrocesso. BSUID por último (é o mais complexo e o de maior risco). Toda correção é **medida contra o nosso código**, **revisada em duas lentes** e **testada no preview, na prática**. Merge e migration estão autorizados quando o teste exigir. Só depois da validação passa-se à fase seguinte. |
 | **PR #229** | Aberto por `devgabrielslv` com head em `ArnasDon/wacrm:main`. **Não tinha como ser mesclado**: resolver conflito ali seria commitar no upstream, e o conteúdo dele muda sozinho (a origem é uma branch viva). **FECHADO em 21/09/2026 por decisão do operador (P1)**, com comentário apontando para este plano — fechar o PR não descarta o conteúdo: ele entra pelas fases daqui, e a worktree `.claude/worktrees/merge-upstream` fica de pé para isso. |
@@ -196,7 +196,7 @@ quebrar, sabe-se qual.
 | **7** | Erros de conexão explicados (#505), portado para `cb-channels` | Moderado | Média | Baixo | — | ✅ em produção (PR #285, merge `f5879b3f`, rollout 24/09 14:17:55Z, na reexecução): o motivo da falha em *Conexões* (`POST /api/cb/channels`), o par WABA/número conferido, a assinatura da WABA fatal, o token limpo das mensagens, o POST legado aposentado (410) e `docs/conexao-meta.md`; testado contra a Meta real com o token da conexão oficial (só leituras); pós-deploy conferido (seção da fase) |
 | **8** | Notificação do navegador (#516), com recorte por perfil | Bom no computador | Média | Médio | — | ✅ em produção (PR #287, merge `789370a0`, rollout 24/09 16:44:28Z): o ouvinte montado na casca, dentro da `<PortaDeEntrada>`, com a régua do operador (perfil, grupo fora, "quais conversas", texto opcional, mensagem antiga calada), a preferência por pessoa e o cartão de volta em *Seu perfil*; testado na preview; pós-deploy conferido (seção da fase) |
 | **9** | "Digitando…" da IA (#527), sobre o canal da conversa | Inerte hoje (auto-reply desligado) | Média | Médio | — | ✅ em produção (PR #288, merge `7a082fdb`, rollout 24/09 17:02:35Z): o "digitando…" pelo canal da resposta, só Meta e com `wamid.`, melhor esforço; inerte (resposta automática desligada); aceito pela Meta real; pós-deploy conferido (seção da fase) |
-| **10** | i18n das telas em inglês (#577, #578, #579) | 219 chaves | Média (braçal) | Baixo | — | ✅ mesclada (PR da fase, 10a–10e): as traduções prontas ligadas, o inglês fixo das telas NOSSAS no dicionário, 183 chaves órfãs fora, o aviso de atribuição escrito pelo tipo; o pós-deploy é registrado no PR da Fase 11 |
+| **10** | i18n das telas em inglês (#577, #578, #579) | 219 chaves | Média (braçal) | Baixo | — | ✅ em produção (PR #290, merge `6959c5ec`, rollout 24/09 18:48:36Z): as traduções prontas ligadas, o inglês fixo das telas NOSSAS no dicionário, 183 chaves órfãs fora, o aviso de atribuição escrito pelo tipo; pós-deploy conferido (seção da fase) |
 | **11** | **BSUID (#533)** — por último | Preventivo (0 fichas sem telefone) | **Alta** | **Alto** | `1038` (+ a do CHECK da P4) | colunas aplicadas e a biblioteca (`wa-identity.ts`) no `main`; entrada, saída e tela pendentes |
 | **12** | ~~Merge de ancestralidade~~ → **inventário do que o #259 descartou** | O merge já aconteceu (#259) | Média | Baixo | — | a fazer: a lista está na seção "O merge #259" |
 
@@ -1270,6 +1270,20 @@ verdade, e responde a pergunta que a Fase 2 deixou aberta (131049? 131050?
 130472? 131042?). ⚠️ O webhook que recebe esse status é o da PRODUÇÃO — por
 isso só depois do deploy.
 
+**Prova real (24/09/2026, 19:16Z):** o disparo repetido — o modelo de
+Marketing `lembrete_reuniao_kckkhz` ao lead de teste, pelo número oficial,
+FORA da janela (a última mensagem dele ao oficial era de 23/09 19:14:26Z),
+pela API v1 com uma chave criada e revogada no próprio script, pedido só ao
+`localhost` — foi **202** e a Meta o **ENTREGOU** 2 s depois (campanha
+`c14a8942…`, `delivered`, sem erro). A falha da Fase 2 não se repetiu: era
+decisão da Meta naquele dia (a família dos limites de marketing), não defeito
+nosso. Sem falha, não há motivo a ler: a prova do caminho "a Meta falha → o
+motivo aparece" continua sendo a do preview (recibo assinado local), e a
+primeira falha real vai gravá-lo — conferido na mesma hora: nenhuma linha com
+motivo desde o deploy desta fase (`messages.error_*` e
+`broadcast_recipients.error_message`, 0 e 0). A campanha fica no banco,
+rotulada "TESTE Fase 5".
+
 **Resultado (em andamento, 23/09/2026):**
 
 - **Medido antes, na produção:** as três colunas da 1039 existem
@@ -1612,17 +1626,33 @@ conexão fora do perfil → nada; clique abre `/inbox?c=`.
   perdia a mensagem que a automação atribui logo depois do INSERT. A 1ª
   versão (sono de 3 s) levou mais dois P2 do Codex (prazo fixo não garante a
   atribuição; depois do sono a pessoa podia já estar lendo a conversa) e,
-  depois deles, mais dois (2 min também não; consultas fora de ordem) e um
-  (a mensagem antiga de conversa alheia estacionava). Ficou: a mensagem
-  calada por "não é sua" ESTACIONA (até 1 h, o mesmo limite de "mensagem
-  nova"; a antiga é decidida antes e nunca estaciona) e o UPDATE da conversa
-  atribuída à pessoa (realtime) a solta; a tela é conferida de novo antes de
-  exibir; a atribuição que chega com a consulta no ar é guardada; na soltura,
-  a não lida zerada cala. Revisão em duas lentes (cinco P3 confirmados: três
-  corrigidos, dois aceitos e escritos na regra), mutantes 17/17, E2E no
-  preview contra o banco (só a conversa de teste; limpo e conferido). O P2 do
-  #286 (arquivo movido entre áreas: `regras-do-diff.mjs` via só o destino)
-  foi no mesmo PR: `--no-renames`.
+  depois deles, uma borda por rodada — nove rodadas no total (oito do Codex,
+  uma auditoria com cético por achado antes da quinta). Ficou: a mensagem
+  calada por "não é sua" ESTACIONA (até 1 h contada da MENSAGEM, o mesmo
+  limite de "mensagem nova"; a antiga é decidida antes e nunca estaciona) e o
+  UPDATE da conversa atribuída à pessoa (realtime) a solta, relendo a
+  conversa; a mais nova é decidida pela ordem de CHEGADA do realtime (o
+  carimbo empata no milissegundo); a soltura de uma estacionada velha não
+  troca o aviso de uma mais nova já exibida (`avisadas`); a atribuição que
+  chega com a consulta no ar é guardada; a conversa que a pessoa ABRE com a
+  aba visível vira uma GERAÇÃO de vista (`EVENTO_CONVERSA_ABERTA` da caixa de
+  entrada, e a volta à aba) que toda consulta respeita; e a tela é conferida
+  de novo antes de exibir. ⚠️ A cerca "a não lida zerada = alguém viu", que
+  existiu por uma rodada, SAIU: a não lida é da CONTA, e uma aba oculta com o
+  fio aberto a zera — calava o aviso de quem nunca viu. Aceitos e escritos na
+  regra (latentes: nenhuma automação atribui conversa hoje): em "minhas e sem
+  responsável", a conversa sem dono avisa na hora mesmo que a automação a
+  entregue a outra pessoa em seguida; a estacionada de conversa alheia não é
+  solta se a conversa ficar SEM dono; e com DUAS abas a vista numa não chega
+  à outra (cada aba tem o seu ouvinte desde o original; no máximo um aviso
+  redundante, nunca um perdido — o P2 da última rodada, aceito sem outra).
+  Mutantes 30/30; E2E no preview contra o banco, duas vezes (só a conversa de
+  teste; limpo e conferido contra o retrato). O P2 do #286 (arquivo movido
+  entre áreas: `regras-do-diff.mjs` via só o destino) foi no mesmo PR:
+  `--no-renames`. **Mesclado** em 24/09 21:16:44Z (merge `2f969c65`),
+  rollout "converged" às 21:22:43Z na primeira tentativa; conferido depois:
+  login 200, `/inbox` 307, crons 401, manifesto 200; ingestão viva (67
+  mensagens, 29 de clientes, entre 21:24Z e 01:19Z).
 
 ### Fase 9 — "Digitando…" enquanto a IA responde
 
@@ -1734,6 +1764,11 @@ interativa, toasts) — nenhuma chave crua, nenhum inglês novo.
   | P3 — o pino do `gateReason` não pegava a frase atrás de `as` (`{"create broadcasts" as AcaoBloqueada}` compila) e reprovaria um ternário legítimo (o cético refutou como defeito de TELA, porque nenhum call site o usa) | ✅ o regex casa o literal dentro de chaves; um regex só para a varredura e para o teste dele; mutante com o contorno morto |
   | Achados MEUS no preview: "1 destinatários falharam"; o sonner anunciando "Notifications alt+T"; o aviso de atribuição em inglês na página de Notificações | ✅ plural ICU; `containerAriaLabel`; `textoDoAviso` |
 
+- **Merge e pós-deploy (24/09/2026):** PR #290 mesclado às 18:42:02Z (merge
+  `6959c5ec`; o `main` não tinha andado; o Codex, na abertura, sem achados),
+  rollout "converged" às 18:48:36Z na primeira tentativa. Conferido depois:
+  login 200, `/inbox` 307, crons 401, manifesto 200; ingestão viva (mensagem
+  de cliente às 18:49:19Z).
 - **Fora desta fase, escrito:** os problemas que a ATIVAÇÃO de automação
   devolve (`src/lib/automations/validate.ts`) são frases do servidor, em
   inglês, em toda a lista — contrato; traduzir pede código por problema, é
@@ -1788,7 +1823,7 @@ situação.
 - Preenchimentos em UPDATEs **separados** do UPDATE de nome, cada um com objeto LITERAL e cerca no WHERE.
 - `wa_user_id` só é preenchido quando está em branco (P4: a chave é por conta). `wa_username` e o pai são atualizados quando mudam.
 - Na colisão, a mensagem fica na ficha achada pelo BSUID.
-- O portão `!value.contacts` fica relaxado. Isso também conserta o TypeError com `contacts: []` (`route.ts:461`/`:864`).
+- ~~O portão `!value.contacts` fica relaxado.~~ ⚠️ REVERTIDO na revisão da fase (25/09/2026): a mensagem de SISTEMA da Meta vem sem `contacts`, e com o portão relaxado entrava como fala do cliente (reabria a conversa, robô, automações, IA, card, `message.received`). O portão voltou a exigir `contacts`, como o original; `type: 'system'` é descartada; o `contacts: []` segue sem estourar pelo pareamento pela identidade.
 - `recipient_type` segue o original.
 - Modelo de categoria Authentication com alvo BSUID é recusado antes da Meta, com frase em pt-BR.
 - A busca pelo @ entra no inbox e no seletor remoto. `/contatos` e a RPC 025 ficam como limite escrito.
@@ -1948,7 +1983,7 @@ Antes de criar, conferir `ls` e `list_migrations`.
 - (baixa) Faltam limites e buscas na lista. A busca de cliente da agenda é uma terceira busca, fora da 11.4. A RPC da lista do funil não traz o @, e os "limites escritos" citam só a RPC 025. Dois criadores de ficha gêmea não aparecem na lista.
 - (baixa) Dois arquivos de teste da 11.3 não existem: vão ser criados do zero, não editados. E o pino default-deny `bsuid.chamadores.test.ts` cobre só `wa_user_id`, deixando de fora os escritores de `wa_username` e `wa_parent_user_id`, que a 11.2 também grava.
 
-**Decisões ainda abertas (perguntar ao operador ANTES da 11.2; a recomendação vem primeiro):**
+**Decisões (24/09/2026).** O operador respondeu a 1, a 2, a 3 e a 5 — em todas, a recomendação: ficha sem nome fica `name` NULO; `@usuario` puro (telefone → @WhatsApp → @Instagram); duplicata só no log; a API v1, os webhooks de saída e o MCP ganham `whatsapp_user_id`/`whatsapp_username`, só leitura. Na 4, na 6 e na 7 segue a recomendação sem pergunta (seletor desabilitado com o motivo; `{{contact.phone}}` só documentado; o dono durável da entrada da Meta corrigido num PR PRÓPRIO, depois da Fase 11 — uma versão desta linha dizia "commit próprio da 11.2"; ficou fora da fase porque o defeito é anterior ao BSUID e alcança toda ficha da Meta e da Evolution). O texto original das sete:
 1. Ficha só-BSUID sem nome no perfil. Recomendação: `name` NULL, e o card nasce 'Novo contato' (o gatilho da 1008 troca pelo nome quando ele chegar). A alternativa é '@usuario', que congela o título, porque `cb_nome_para_titulo` lê '@x' como nome; mudar isso exige migration e afeta o Instagram também.
 2. Exibição do @ do WhatsApp. Recomendação: '@usuario' puro, como já é com o Instagram. A alternativa é mostrar também de onde veio (WhatsApp ou Instagram). E na ficha que tem os dois @, qual aparece primeiro? Recomendação: telefone, depois @ do WhatsApp, depois @ do Instagram.
 3. Ficha duplicada da mesma pessoa (uma achada pelo telefone, outra pelo BSUID): quando o telefone não pode ser gravado porque outra ficha já tem aquele número. Recomendação: nesta fase, só registrar no log, e a mensagem fica na ficha do BSUID. A alternativa é um aviso visível (bloco no Meu dia ou aviso na ficha) pedindo para unificar à mão.
@@ -1959,7 +1994,23 @@ Antes de criar, conferir `ls` e `list_migrations`.
 
 Medido em 24/09/2026 para a decisão 7: hoje a única conexão oficial foi criada pelo dono da conta e nenhuma ficha tem outro dono — o defeito é latente aqui e real numa instalação em que outro admin conecta o número.
 
-**Resultado:** — (a preencher)
+**Resultado (25/09/2026, PR #291):**
+
+- **Commits:** `94d931ad` (11.1, a 1041), `5c7af736` (11.2, entrada), `312e2675` (11.3, saída), `f90016fc` (11.4, telas), `e7663e70` (a correção da revisão) e o do aviso do seletor (abaixo).
+- **Verificação:** `tsc` limpo; lint nos 60 avisos da base; suíte no Node 22 com 6.357 testes; os dois portões de i18n. Mutantes: 11.2 — 14/14; 11.3 — 23/27, e os 4 que escapam são EQUIVALENTES (nos remetentes do robô a autocorreção do 131030 compara o telefone que entregou com o próprio alvo, e com BSUID as variantes são só ele — a guarda `ehTelefone &&` é a mesma, redundante, do original); 11.4 — 14/14; correção da revisão — 2/2.
+- **A recusa do modelo de AUTENTICAÇÃO** (item baixo da crítica) foi CONFIRMADA na documentação da Meta sobre BSUID antes de entrar: modelos de código de acesso exigem telefone. Entrou nos dois remetentes que mandam modelo (`send-message.ts` e `sendViaMeta` das automações).
+- **Revisão em duas lentes (correção e regressão do fork), um cético por achado:** 1 defeito confirmado pelas DUAS lentes, que o cético não refutou (reproduziu contra a rota): relaxar o portão `!value.contacts` (decisão técnica da 11.0) fazia a mensagem de SISTEMA da Meta — a troca de número, que vem sem `contacts`, com `from` = o número antigo — entrar como fala do cliente, reabrindo a conversa e disparando robô, automações, IA, card e `message.received`. Corrigido: o portão voltou a exigir `contacts` e `type: 'system'` é descartada (a linha da 11.0 está riscada acima). 1 refutado: "quem troca de número segue recebendo no antigo" — a Meta gera BSUID NOVO na troca de número. Codex: 👍 no `e7663e70`, sem achado.
+- **1041 aplicada em 25/09/2026** (histórico `20260925152808`), depois do CI verde e antes do merge; conferida no catálogo.
+- **11.5, ponta a ponta no preview (autorizado pelo operador: "Completo, ficha fictícia")**, com entregas ASSINADAS ao webhook local e BSUID fictício `ZZ.99111100000011`:
+  1. Entrega só-BSUID com `@teste.bsuid.cb` e sem nome → UMA ficha (`phone` NULL, `wa_user_id` e `wa_username` gravados, nome NULL, dono = dono da conta), UMA conversa no número oficial, a mensagem carimbada com o canal, o card "Novo contato" em Contato Avulso.
+  2. Tela: a lista, o cabeçalho do fio e o painel mostram `@teste.bsuid.cb`; o BSUID não aparece em lugar nenhum. O seletor de conexão desabilita as quatro conexões por QR Code (clicar não fixa nada) e deixa o número oficial.
+  3. Segunda entrega, mesmo BSUID, agora com nome no perfil → a MESMA ficha (sem duplicata), o nome preenchido e o card renomeado pelo gatilho da 1007/1008 ("Novo contato" virou o nome). A busca `@teste.bsu` acha a conversa.
+  4. Efeitos: nenhum registro de automação, execução de robô ou aviso novo (86/0/12, iguais antes e depois); o evento de funil do card foi drenado pela produção e o `deal.created` foi entregue ao Make (o operador foi avisado antes de autorizar).
+  5. **Ajuste que a tela pediu:** o motivo repetido nas quatro conexões (em quatro linhas cada, no menu estreito) virou UMA nota no topo do menu; as conexões seguem desabilitadas, com o motivo no `title`. Conferido também numa conversa com telefone: nenhuma nota, as seis opções habilitadas.
+- **Fora do ponta a ponta, de propósito:** a entrega com telefone (o operador autorizou duas mensagens sem telefone; o preenchimento fica nos testes da rota) e qualquer envio — nem pela API oficial a um BSUID fictício, nem a recusa real pela rota de envio (a promessa era nenhuma mensagem sair; as recusas estão nos testes de rota e do núcleo). O envio real a um BSUID segue esperando um cliente de verdade.
+- **Dados de teste em produção:** ficha `67c481c8-9d7a-441a-bb55-2b68c6496485` (conversa `75b7c892-c08c-4ddd-8278-368ec21749b4`, duas mensagens), card `483c8867-885e-4ab4-ad07-e25da04cc786`, o evento de funil do card e a linha da trilha. APAGADOS em 25/09/2026 com autorização do operador ("Apagar agora"), num bloco só que conferia cada contagem; conferido depois: nenhuma linha dos ids de teste e nenhuma ficha sem telefone na conta.
+- **Codex no `2a6e8e29` (P1, `route.ts`, a ficha achada pelo telefone que já tem OUTRO BSUID):** pedia criar uma ficha só-BSUID para o BSUID novo, supondo número reciclado. MANTIDO o comportamento (a mensagem fica na ficha do telefone, só log): mesmo telefone com outro BSUID quase sempre é a mesma pessoa — outro portfólio da Meta (o BSUID é por portfólio, e o limite do portfólio está escrito acima) ou a conta recriada no mesmo número —, e a ficha nova duplicaria cada cliente que fala com dois portfólios. No número reciclado vale o comportamento de antes do BSUID. Escrito no código, em `ingestao.md` e respondido no PR; mudar é decisão do operador.
+- **Fica para depois:** o dono durável da entrada da Meta e da Evolution (PR próprio, decisão 7); tratar a troca de identidade que a mensagem de sistema anuncia (`user_changed_user_id`, `user_id_update`); a busca de /contatos e o `?search=` da v1 pelo @; o avatar da ficha sem nome mostra "@" como inicial (o mesmo da ficha só-Instagram).
 
 ### Fase 12 — Merge de ancestralidade e fechamento
 
