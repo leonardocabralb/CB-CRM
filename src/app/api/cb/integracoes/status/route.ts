@@ -12,7 +12,7 @@ import { embedTexts, EMBEDDING_MODEL } from '@/lib/ai/embeddings';
 import { MODELO_TRANSCRICAO } from '@/lib/transcricao/transcrever';
 import { AiError, type AiProvider } from '@/lib/ai/types';
 import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
-import { lerChave, lerEstado } from '@/lib/ia-chaves/repo';
+import { lerChave, lerChaveDeEmbeddings, lerEstado } from '@/lib/ia-chaves/repo';
 import { listarAgentes } from '@/lib/ia-agentes/repo';
 import {
   montarCartoes,
@@ -193,8 +193,12 @@ export async function GET(request: Request) {
         const temOpenai = estado.some((e) => e.provedor === 'openai' && e.existe);
         if (!pingar || !temOpenai) return null;
         try {
-          const lida = await lerChave(ctx.accountId, 'openai');
+          // A MESMA chave que a base usa: a própria dos embeddings (1042), ou
+          // a da OpenAI — que, recusada pela OpenAI ao ser gravada, não é
+          // pingada de novo (é a resposta que já se tem).
+          const lida = await lerChaveDeEmbeddings(ctx.accountId);
           if (lida.ilegivel) return { ok: false, motivo: 'chave_ilegivel' };
+          if (lida.recusada) return { ok: false, motivo: 'invalid_key' };
           if (!lida.chave) return null;
           return pingEmbeddings(lida.chave);
         } catch {

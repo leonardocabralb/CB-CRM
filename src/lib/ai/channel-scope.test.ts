@@ -65,6 +65,7 @@ vi.mock('@/lib/ia-chaves/repo', () => ({
     chave: `chave-${provedor}`,
     ilegivel: false,
   })),
+  lerChaveDeEmbeddings: vi.fn(async () => ({ chave: 'chave-openai', ilegivel: false, recusada: false })),
 }));
 
 describe('loadAiConfig — agente por canal', () => {

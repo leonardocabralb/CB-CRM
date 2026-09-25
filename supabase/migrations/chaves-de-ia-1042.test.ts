@@ -47,6 +47,23 @@ describe('1042 — chaves de IA por provedor', () => {
     expect(/'openai'/.test(insercoes[1])).toBe(true);
   });
 
+  it('serve_embeddings: só a OpenAI tem, e NULO é "não conferida" (a cópia não afirma nada)', () => {
+    expect(/serve_embeddings\s+boolean\s+CHECK\s*\(\s*provedor\s*=\s*'openai'\s+OR\s+serve_embeddings\s+IS\s+NULL\s*\)/i.test(semComentarios)).toBe(true);
+    // A cópia não inventa conferência: nenhum INSERT grava a coluna.
+    for (const i of semComentarios.match(/INSERT\s+INTO\s+cb_ia_chaves[\s\S]*?;/gi) ?? []) {
+      expect(/serve_embeddings/i.test(i)).toBe(false);
+    }
+  });
+
+  it('a chave DEDICADA de embeddings não se perde: fica em embeddings_api_key da linha da OpenAI (Codex, #295)', () => {
+    expect(/embeddings_api_key\s+text\s+CHECK/i.test(semComentarios)).toBe(true);
+    const atualizacao = semComentarios.match(/UPDATE\s+cb_ia_chaves\s+k[\s\S]*?;/i)?.[0] ?? '';
+    expect(/SET\s+embeddings_api_key\s*=\s*c\.embeddings_api_key/i.test(atualizacao)).toBe(true);
+    // Só preenche o vazio (reexecução não sobrescreve).
+    expect(/k\.embeddings_api_key\s+IS\s+NULL/i.test(atualizacao)).toBe(true);
+    expect(/k\.provedor\s*=\s*'openai'/i.test(atualizacao)).toBe(true);
+  });
+
   it('ai_configs.api_key perde o NOT NULL (a linha padrão existe sem chave)', () => {
     expect(/ALTER\s+TABLE\s+ai_configs\s+ALTER\s+COLUMN\s+api_key\s+DROP\s+NOT\s+NULL/i.test(semComentarios)).toBe(true);
   });

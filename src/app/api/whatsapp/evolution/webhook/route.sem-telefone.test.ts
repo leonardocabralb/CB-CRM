@@ -102,10 +102,14 @@ const LID = '100000000000000@lid';
 const TEL = '5583900000000@s.whatsapp.net';
 const AGORA = 1789747434; // 2026-09-18T16:03:54Z
 
+// Quem conectou o número ≠ o dono da conta: o `configOwnerUserId` ('dono-1')
+// cobrado abaixo prova que a ingestão grava o dono DURÁVEL (`donoDaConta`).
+const conta: Linha = { id: 'conta-1', owner_user_id: 'dono-1' };
+
 const canal: Linha = {
   id: 'canal-1',
   account_id: 'conta-1',
-  created_by: 'dono-1',
+  created_by: 'membro-que-conectou',
   groups_enabled: false,
   own_lid: null,
   instance_name: INSTANCIA,
@@ -156,7 +160,7 @@ beforeEach(() => {
   process.env.EVOLUTION_WEBHOOK_SECRET = SEGREDO;
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://banco.de.teste';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'chave-de-teste';
-  h.banco = criarBanco({ cb_channels: [canal], messages: [] });
+  h.banco = criarBanco({ accounts: [conta], cb_channels: [canal], messages: [] });
   h.after = [];
   h.ordem = [];
   vi.mocked(persistInboundMessage).mockClear();

@@ -4,10 +4,16 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // A chave vem de `cb_ia_chaves` (1042), pelo PROVEDOR da linha — nunca de
 // `ai_configs.api_key`.
 const chaves: Record<string, { chave: string | null; ilegivel: boolean }> = {}
+// A da OpenAI que a OpenAI RECUSOU para embeddings ao ser gravada.
+let recusadaParaEmbeddings = false
 vi.mock('@/lib/ia-chaves/repo', () => ({
   lerChave: vi.fn(async (_conta: string, provedor: string) =>
     chaves[provedor] ?? { chave: null, ilegivel: false },
   ),
+  lerChaveDeEmbeddings: vi.fn(async () => {
+    if (recusadaParaEmbeddings) return { chave: null, ilegivel: false, recusada: true }
+    return { ...(chaves.openai ?? { chave: null, ilegivel: false }), recusada: false }
+  }),
 }))
 
 import { loadAiConfig } from './config'
@@ -36,6 +42,7 @@ const ROW = {
 
 beforeEach(() => {
   for (const k of Object.keys(chaves)) delete chaves[k]
+  recusadaParaEmbeddings = false
   chaves.openai = { chave: 'chave-openai', ilegivel: false }
 })
 
@@ -90,6 +97,13 @@ describe('loadAiConfig — a chave é a do PROVEDOR (1042)', () => {
     expect(config!.apiKey).toBe('chave-gemini')
     expect(config!.embeddingsApiKey).toBeNull()
   })
+
+  it('chave da OpenAI RECUSADA para embeddings ao gravar: o chat usa a chave, a base não (Codex, #294)', async () => {
+    recusadaParaEmbeddings = true
+    const config = await loadAiConfig(dbReturning(ROW), 'acct', { requireActive: false })
+    expect(config!.apiKey).toBe('chave-openai')
+    expect(config!.embeddingsApiKey).toBeNull()
+  })
 })
 
 describe('loadAiConfig — "não decifra" e "não sei" não viram "não configurado"', () => {
@@ -101,10 +115,9 @@ describe('loadAiConfig — "não decifra" e "não sei" não viram "não configur
   })
 
   it('a leitura da chave de EMBEDDINGS que falha não derruba o chat (Radar, rascunho)', async () => {
-    const { lerChave } = await import('@/lib/ia-chaves/repo')
+    const { lerChaveDeEmbeddings } = await import('@/lib/ia-chaves/repo')
     chaves.gemini = { chave: 'chave-gemini', ilegivel: false }
-    vi.mocked(lerChave).mockImplementationOnce(async () => chaves.gemini)
-    vi.mocked(lerChave).mockImplementationOnce(async () => {
+    vi.mocked(lerChaveDeEmbeddings).mockImplementationOnce(async () => {
       throw new Error('[ia-chaves] leitura falhou: timeout')
     })
     const config = await loadAiConfig(dbReturning({ ...ROW, provider: 'gemini' }), 'acct', {

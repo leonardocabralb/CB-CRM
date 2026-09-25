@@ -62,17 +62,27 @@ export async function GET() {
       )
     }
     const temChave = (p: string) => estado.some((e) => e.provedor === p && e.existe)
+    // A busca por sentido existe com a chave da OpenAI — MENOS a que a
+    // OpenAI recusou para embeddings ao ser gravada (chave restrita), a não
+    // ser que haja a chave PRÓPRIA dos embeddings herdada da 1042.
+    const embeddingsUtilizavel = estado.some(
+      (e) =>
+        e.provedor === 'openai' &&
+        e.existe &&
+        (e.temChaveDeEmbeddings || e.serveEmbeddings !== false),
+    )
 
     if (!data) {
       return NextResponse.json({
         configured: false,
+        has_embeddings_key: embeddingsUtilizavel,
         chaves: estado.map((e) => ({ provedor: e.provedor, existe: e.existe })),
       })
     }
     return NextResponse.json({
       configured: true,
       has_key: temChave(data.provider as string),
-      has_embeddings_key: temChave('openai'),
+      has_embeddings_key: embeddingsUtilizavel,
       chaves: estado.map((e) => ({ provedor: e.provedor, existe: e.existe })),
       ...data,
     })

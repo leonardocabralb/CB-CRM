@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { lerChave } from '@/lib/ia-chaves/repo'
+import { lerChave, lerChaveDeEmbeddings } from '@/lib/ia-chaves/repo'
 import { AiError, type AiConfig } from './types'
 
 interface AiConfigRow {
@@ -105,14 +105,13 @@ async function mapAiConfigRow(row: AiConfigRow, accountId: string): Promise<AiCo
     lerChave(accountId, row.provider),
     // A chave de embeddings é a da OpenAI da conta, seja qual for o provedor
     // do chat (o modelo de embeddings é fixo, `vector(1536)`). Ilegível,
-    // ausente ou com a LEITURA falhando rebaixa a base para a busca por
-    // palavras — nunca derruba o rascunho, a resposta automática nem o Radar.
-    row.provider === 'openai'
-      ? null
-      : lerChave(accountId, 'openai').catch((err) => {
-          console.error('[ai config] leitura da chave de embeddings falhou:', err)
-          return { chave: null, ilegivel: false }
-        }),
+    // ausente, RECUSADA pela OpenAI ao gravar (chave de projeto restrita)
+    // ou com a LEITURA falhando rebaixa a base para a busca por palavras —
+    // nunca derruba o rascunho, a resposta automática nem o Radar.
+    lerChaveDeEmbeddings(accountId).catch((err) => {
+      console.error('[ai config] leitura da chave de embeddings falhou:', err)
+      return { chave: null, ilegivel: false, recusada: false }
+    }),
   ])
   if (doChat.ilegivel) {
     throw new AiError('Stored API key could not be decrypted.', {
@@ -121,8 +120,7 @@ async function mapAiConfigRow(row: AiConfigRow, accountId: string): Promise<AiCo
     })
   }
   if (!doChat.chave) return null
-  const embeddingsApiKey =
-    row.provider === 'openai' ? doChat.chave : (deEmbeddings?.chave ?? null)
+  const embeddingsApiKey = deEmbeddings.chave
 
   return {
     provider: row.provider,
@@ -155,7 +153,9 @@ export async function loadEmbeddingsKey(
   accountId: string,
 ): Promise<{ key: string | null; corrupt: boolean }> {
   try {
-    const { chave, ilegivel } = await lerChave(accountId, 'openai')
+    // Recusada pela OpenAI ao gravar = sem chave de embeddings: a indexação
+    // vai só por palavras, sem uma chamada condenada por documento.
+    const { chave, ilegivel } = await lerChaveDeEmbeddings(accountId)
     return { key: chave, corrupt: ilegivel }
   } catch (err) {
     console.error('[ai config] leitura da chave de embeddings falhou:', err)
