@@ -45,7 +45,21 @@ reentrega): `.claude/rules/webhooks.md`.
   do insert**: o índice único da 911 é parcial (`source = 'channel'`) e não
   barra a automação. Desiste em silêncio quando já há card — por isso é o
   passo que vem antes de `move_deal_stage` (que LANÇA sem card) em automação
-  que recebe lead novo.
+  que recebe lead novo. A checagem é ler-e-depois-inserir, sem trava: a
+  sequência da ingestão (abaixo) a protege entre automações da MESMA
+  mensagem; duas mensagens em POSTs diferentes ainda correm, cada uma no seu
+  `after()` (e os outros disparadores — Calendly, webhook de entrada, dreno do
+  funil — correm com elas), e podem criar dois cards (conhecido, não
+  tratado).
+- ⚠️ **Na ingestão (webhook da Meta e `inbound-store.ts`), os tipos de gatilho
+  rodam EM SEQUÊNCIA, com `await` no laço**, na ordem primeira mensagem →
+  contato novo → mensagem/palavra-chave/botão, como o original (#409). Em
+  paralelo (`Promise.allSettled`, a forma que ficou do merge de 26/08), as
+  mensagens de automações diferentes saíam em qualquer ordem e duas com
+  `create_deal` liam "sem card" e criavam dois. Custo: as conferências de
+  cada tipo (posse do contato e da conversa, a busca das automações) passam
+  a somar em série — dezenas de ms por mensagem. Pino nos testes das duas
+  rotas ("em sequência").
 - ⚠️ **Título LITERAL do `create_deal` nasce fixado; com `{{…}}` ou vazio fica
   solto** (`tituloFixadoEm`, 1007): o literal é escolha do autor; o
   `{{vars.agendamento_nome}}` tem de seguir a ficha.

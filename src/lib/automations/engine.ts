@@ -266,14 +266,14 @@ const DISPARO_VAZIO: ResultadoDoDisparo = {
  * Fire all active automations matching the given trigger for an
  * account.
  *
- * Must never throw — callers use fire-and-forget from the webhook.
- * All errors are caught and logged; per-automation failures are
- * recorded into automation_logs with status='failed'.
+ * Must never throw. All errors are caught and logged; per-automation
+ * failures are recorded into automation_logs with status='failed'.
  *
- * Devolve `void` de propósito: os chamadores do upstream (webhook da Meta,
- * `inbound-store`) empilham a promessa num `Promise<void>[]`, e mudar o
- * tipo aqui mexeria em arquivos que o merge do upstream reescreve. Quem
- * precisa saber o que aconteceu chama `dispararAutomacoes`.
+ * Devolve `void` de propósito: os chamadores da ingestão (webhook da Meta,
+ * `inbound-store`) aguardam um tipo de gatilho por vez, EM SEQUÊNCIA, e só
+ * precisam saber que terminou; mudar o tipo aqui mexeria em arquivos que o
+ * merge do upstream reescreve. Quem precisa saber o que aconteceu chama
+ * `dispararAutomacoes`.
  */
 export async function runAutomationsForTrigger(
   input: DispatchInput
