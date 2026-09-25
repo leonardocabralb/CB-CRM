@@ -206,9 +206,11 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   rotas), `recibo-da-meta.test.ts`, `escada-de-status.test.ts`.
 - ⚠️ Recibo de DISPARO só é reconhecido quando o destinatário JÁ tem o wamid.
   No disparo pela tela, o wamid é gravado quando o lote de 10 volta ao
-  navegador; o recibo que chega antes espera os 7 s como mensagem comum e se
-  perde para a contagem da campanha. A perda é anterior à espera: aumentar a
-  pausa não conserta. Limite conhecido, não tratado.
+  navegador; por isso o recibo que não achou destinatário RECONFERE o
+  destinatário a cada tentativa da espera de 7 s (revisão do PR #277; antes
+  conferia uma vez só e se perdia). O que chega mais de 7 s antes da gravação
+  ainda se perde — limite conhecido. `sent` não espera nem reconfere: o
+  navegador grava o destinatário já `sent`.
 - Consumidor novo de recibo repete escada E espera.
 
 ## Conteúdo e anexo na entrada

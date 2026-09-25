@@ -361,6 +361,79 @@ describe('o disparo (campanha)', () => {
       h.estado.log.indexOf('messages:update'),
     );
   });
+
+  // Revisão do PR #277: no disparo pela TELA o wamid só chega ao destinatário
+  // quando o lote de 10 volta ao navegador.
+  const gravarDestinatarioEm = (ms: number) =>
+    setTimeout(
+      () =>
+        h.estado.tabelas.broadcast_recipients.push({
+          id: 'dest-1',
+          whatsapp_message_id: WAMID,
+          status: 'sent',
+        }),
+      ms,
+    );
+
+  it('⚠️ o delivered que chega ANTES de o navegador gravar o wamid não se perde', async () => {
+    const aplicar = await recibo('delivered');
+    gravarDestinatarioEm(2_500);
+
+    const fim = aplicar();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await fim;
+
+    const destinatario = h.estado.tabelas.broadcast_recipients[0];
+    expect(destinatario.status).toBe('delivered');
+    expect(destinatario.delivered_at).toBe(new Date(1790000000 * 1000).toISOString());
+    // Disparo não tem linha em `messages`: nada a anunciar, e achado o
+    // destinatário a espera acaba (sem ir até o fim das pausas).
+    expect(h.estado.disparos).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(h.estado.log.filter((l) => l === 'broadcast_recipients:select')).toHaveLength(3);
+  });
+
+  it('⚠️ a falha que chega antes também vale, com o motivo', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const aplicar = await receber(
+      corpo({
+        statuses: [
+          {
+            ...statusDaMeta('failed'),
+            errors: [{ code: 131049, title: 'Marketing limit', error_data: { details: 'x' } }],
+          },
+        ],
+      }),
+    );
+    gravarDestinatarioEm(800);
+
+    const fim = aplicar();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await fim;
+
+    expect(h.estado.tabelas.broadcast_recipients[0]).toMatchObject({
+      status: 'failed',
+      error_message: '[131049] Marketing limit: x',
+    });
+  });
+
+  it('o limite escrito: gravado depois do fim da espera (7 s), o recibo ainda se perde', async () => {
+    const aplicar = await recibo('delivered');
+    gravarDestinatarioEm(PAUSAS_DO_RECIBO_DA_META_MS.reduce((a, b) => a + b, 0) + 1_000);
+
+    const fim = aplicar();
+    await vi.advanceTimersByTimeAsync(20_000);
+    await fim;
+
+    expect(h.estado.tabelas.broadcast_recipients[0].status).toBe('sent');
+  });
+
+  it('sent não espera nem reconfere: o navegador grava o destinatário já como sent', async () => {
+    await (await recibo('sent'))();
+
+    expect(h.estado.log.filter((l) => l === 'broadcast_recipients:select')).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
 
 describe('o disparo: dois recibos do mesmo destinatário ao mesmo tempo', () => {

@@ -145,8 +145,9 @@ export const PAUSAS_DO_RECIBO_DA_META_MS: readonly number[] = [1_000, 2_000, 4_0
  *
  * ⚠️ No disparo pela TELA o wamid só chega a `broadcast_recipients` quando o
  * lote de 10 volta ao navegador (`use-broadcast-sending.ts`). O recibo que
- * chega antes disso não é reconhecido como de disparo, espera os 7 s e se
- * perde para a contagem da campanha — essa perda é anterior à espera.
+ * chega antes disso não é reconhecido como de disparo e espera os 7 s como
+ * mensagem comum — e a rota RECONFERE o destinatário a cada tentativa dessa
+ * espera (revisão do PR #277). O que chega mais de 7 s antes ainda se perde.
  */
 export function pausasDoReciboDaMeta(
   recibo: StatusDoRecibo,
