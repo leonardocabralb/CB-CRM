@@ -1994,7 +1994,22 @@ Antes de criar, conferir `ls` e `list_migrations`.
 
 Medido em 24/09/2026 para a decisão 7: hoje a única conexão oficial foi criada pelo dono da conta e nenhuma ficha tem outro dono — o defeito é latente aqui e real numa instalação em que outro admin conecta o número.
 
-**Resultado:** — (a preencher)
+**Resultado (25/09/2026, PR #291):**
+
+- **Commits:** `94d931ad` (11.1, a 1041), `5c7af736` (11.2, entrada), `312e2675` (11.3, saída), `f90016fc` (11.4, telas), `e7663e70` (a correção da revisão) e o do aviso do seletor (abaixo).
+- **Verificação:** `tsc` limpo; lint nos 60 avisos da base; suíte no Node 22 com 6.357 testes; os dois portões de i18n. Mutantes: 11.2 — 14/14; 11.3 — 23/27, e os 4 que escapam são EQUIVALENTES (nos remetentes do robô a autocorreção do 131030 compara o telefone que entregou com o próprio alvo, e com BSUID as variantes são só ele — a guarda `ehTelefone &&` é a mesma, redundante, do original); 11.4 — 14/14; correção da revisão — 2/2.
+- **A recusa do modelo de AUTENTICAÇÃO** (item baixo da crítica) foi CONFIRMADA na documentação da Meta sobre BSUID antes de entrar: modelos de código de acesso exigem telefone. Entrou nos dois remetentes que mandam modelo (`send-message.ts` e `sendViaMeta` das automações).
+- **Revisão em duas lentes (correção e regressão do fork), um cético por achado:** 1 defeito confirmado pelas DUAS lentes, que o cético não refutou (reproduziu contra a rota): relaxar o portão `!value.contacts` (decisão técnica da 11.0) fazia a mensagem de SISTEMA da Meta — a troca de número, que vem sem `contacts`, com `from` = o número antigo — entrar como fala do cliente, reabrindo a conversa e disparando robô, automações, IA, card e `message.received`. Corrigido: o portão voltou a exigir `contacts` e `type: 'system'` é descartada (a linha da 11.0 está riscada acima). 1 refutado: "quem troca de número segue recebendo no antigo" — a Meta gera BSUID NOVO na troca de número. Codex: 👍 no `e7663e70`, sem achado.
+- **1041 aplicada em 25/09/2026** (histórico `20260925152808`), depois do CI verde e antes do merge; conferida no catálogo.
+- **11.5, ponta a ponta no preview (autorizado pelo operador: "Completo, ficha fictícia")**, com entregas ASSINADAS ao webhook local e BSUID fictício `ZZ.99111100000011`:
+  1. Entrega só-BSUID com `@teste.bsuid.cb` e sem nome → UMA ficha (`phone` NULL, `wa_user_id` e `wa_username` gravados, nome NULL, dono = dono da conta), UMA conversa no número oficial, a mensagem carimbada com o canal, o card "Novo contato" em Contato Avulso.
+  2. Tela: a lista, o cabeçalho do fio e o painel mostram `@teste.bsuid.cb`; o BSUID não aparece em lugar nenhum. O seletor de conexão desabilita as quatro conexões por QR Code (clicar não fixa nada) e deixa o número oficial.
+  3. Segunda entrega, mesmo BSUID, agora com nome no perfil → a MESMA ficha (sem duplicata), o nome preenchido e o card renomeado pelo gatilho da 1007/1008 ("Novo contato" virou o nome). A busca `@teste.bsu` acha a conversa.
+  4. Efeitos: nenhum registro de automação, execução de robô ou aviso novo (86/0/12, iguais antes e depois); o evento de funil do card foi drenado pela produção e o `deal.created` foi entregue ao Make (o operador foi avisado antes de autorizar).
+  5. **Ajuste que a tela pediu:** o motivo repetido nas quatro conexões (em quatro linhas cada, no menu estreito) virou UMA nota no topo do menu; as conexões seguem desabilitadas, com o motivo no `title`. Conferido também numa conversa com telefone: nenhuma nota, as seis opções habilitadas.
+- **Fora do ponta a ponta, de propósito:** a entrega com telefone (o operador autorizou duas mensagens sem telefone; o preenchimento fica nos testes da rota) e qualquer envio — nem pela API oficial a um BSUID fictício, nem a recusa real pela rota de envio (a promessa era nenhuma mensagem sair; as recusas estão nos testes de rota e do núcleo). O envio real a um BSUID segue esperando um cliente de verdade.
+- **Dados de teste em produção:** ficha `67c481c8-9d7a-441a-bb55-2b68c6496485` (conversa `75b7c892-c08c-4ddd-8278-368ec21749b4`, duas mensagens), card `483c8867-885e-4ab4-ad07-e25da04cc786`, o evento de funil do card e a linha da trilha. A limpeza espera a confirmação do operador.
+- **Fica para depois:** o dono durável da entrada da Meta e da Evolution (PR próprio, decisão 7); tratar a troca de identidade que a mensagem de sistema anuncia (`user_changed_user_id`, `user_id_update`); a busca de /contatos e o `?search=` da v1 pelo @; o avatar da ficha sem nome mostra "@" como inicial (o mesmo da ficha só-Instagram).
 
 ### Fase 12 — Merge de ancestralidade e fechamento
 
