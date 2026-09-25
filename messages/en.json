@@ -2744,7 +2744,8 @@
         "timeout": "the provider did not answer in time",
         "network": "could not reach the provider",
         "provider_error": "the provider returned an error",
-        "chave_ilegivel": "the stored key could not be read — re-enter it"
+        "chave_ilegivel": "the stored key could not be read — re-enter it",
+        "leitura_falhou": "could not read the key from the database — try again"
       },
       "usos": "Where it is used",
       "naoConfiguradaDica": "Paste the provider's key below. There is one per account: the Radar, transcription (Gemini), the knowledge base (OpenAI) and this provider's agents start using it as soon as it is saved.",
@@ -2953,6 +2954,7 @@
       "modeloHerdado": "Same as the agent ({model})",
       "modeloHerdadoVazio": "Same as the agent",
       "modeloRadarDica": "Leave blank to use the same model as the conversation agent. The transcription model is fixed in the system and is not configurable.",
+      "radarModeloInvalido": "The Radar model ({modelo}) did not respond: {motivo}",
       "salvar": "Save",
       "salvando": "Saving…",
       "salvo": "Saved.",
@@ -3208,6 +3210,16 @@
           "religada": "This customer receives automatic billing again.",
           "erroTrocar": "Could not change this customer's automatic billing."
         }
+      },
+      "avisoDaChave": {
+        "embeddings_recusado": "Key saved: it generates text, but OpenAI refused the knowledge-base search (embeddings) — check the project's permissions.",
+        "modulos_nao_criados": "Key saved, but the Radar configuration could not be created — reload the page and check the card."
+      },
+      "erroDaChave": {
+        "chave_vazia": "Paste the key before saving.",
+        "sem_chave": "Add this provider's key before choosing the model.",
+        "sem_configuracao": "Add a provider's key first.",
+        "banco": "Could not save right now — try again."
       }
     },
     "groups": {
@@ -3576,7 +3588,9 @@
       "model": "Model",
       "keyStatusSaved": "The {provider} key is saved.",
       "keyStatusMissing": "{provider} has no key yet.",
+      "keyStatusUnknown": "Could not check the keys right now.",
       "keyManageLink": "Manage keys in Integrations",
+      "keyUnreadable": "This provider's key could not be read — add it again in Settings → Integrations.",
       "testKey": "Test key",
       "testSuccess": "Key works — the provider responded.",
       "testRejected": "The provider rejected the request.",

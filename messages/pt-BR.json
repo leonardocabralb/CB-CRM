@@ -2737,7 +2737,8 @@
         "timeout": "o provedor não respondeu a tempo",
         "network": "não foi possível falar com o provedor",
         "provider_error": "o provedor devolveu um erro",
-        "chave_ilegivel": "a chave guardada não pôde ser lida — cadastre de novo"
+        "chave_ilegivel": "a chave guardada não pôde ser lida — cadastre de novo",
+        "leitura_falhou": "não foi possível ler a chave no banco — tente de novo"
       },
       "usos": "Onde é usada",
       "naoConfiguradaDica": "Cole a chave do provedor abaixo. Ela é uma só para a conta inteira: o Radar, a transcrição (Gemini), a base de conhecimento (OpenAI) e os agentes deste provedor passam a usá-la assim que ela é salva.",
@@ -2946,6 +2947,7 @@
       "modeloHerdado": "Mesmo do agente ({model})",
       "modeloHerdadoVazio": "Mesmo do agente",
       "modeloRadarDica": "Em branco, o Radar usa o mesmo modelo do agente de conversa. O modelo da transcrição é fixo no sistema e não é configurável.",
+      "radarModeloInvalido": "O modelo do Radar ({modelo}) não respondeu: {motivo}",
       "salvar": "Salvar",
       "salvando": "Salvando…",
       "salvo": "Salvo.",
@@ -3201,6 +3203,16 @@
           "religada": "Este cliente volta a receber a cobrança automática.",
           "erroTrocar": "Não foi possível mudar a cobrança automática deste cliente."
         }
+      },
+      "avisoDaChave": {
+        "embeddings_recusado": "Chave salva: ela gera texto, mas a OpenAI recusou a busca da base de conhecimento (embeddings) — confira as permissões do projeto.",
+        "modulos_nao_criados": "Chave salva, mas não foi possível criar a configuração do Radar — recarregue a página e confira o cartão."
+      },
+      "erroDaChave": {
+        "chave_vazia": "Cole a chave antes de salvar.",
+        "sem_chave": "Cadastre a chave deste provedor antes de escolher o modelo.",
+        "sem_configuracao": "Cadastre primeiro a chave de um provedor.",
+        "banco": "Não foi possível gravar agora — tente de novo."
       }
     },
     "groups": {
@@ -3569,7 +3581,9 @@
       "model": "Modelo",
       "keyStatusSaved": "A chave do {provider} está cadastrada.",
       "keyStatusMissing": "O {provider} ainda não tem chave cadastrada.",
+      "keyStatusUnknown": "Não foi possível conferir as chaves agora.",
       "keyManageLink": "Gerenciar as chaves em Integrações",
+      "keyUnreadable": "A chave deste provedor não pôde ser lida — cadastre-a de novo em Configurações → Integrações.",
       "testKey": "Testar chave",
       "testSuccess": "A chave funciona — o provedor respondeu.",
       "testRejected": "O provedor rejeitou a requisição.",

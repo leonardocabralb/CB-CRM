@@ -91,3 +91,26 @@ describe('loadAiConfig — a chave é a do PROVEDOR (1042)', () => {
     expect(config!.embeddingsApiKey).toBeNull()
   })
 })
+
+describe('loadAiConfig — "não decifra" e "não sei" não viram "não configurado"', () => {
+  it('chave ILEGÍVEL lança key_decrypt_failed (o rascunho não diz "configure o assistente")', async () => {
+    chaves.openai = { chave: null, ilegivel: true }
+    await expect(
+      loadAiConfig(dbReturning(ROW), 'acct', { requireActive: false }),
+    ).rejects.toMatchObject({ code: 'key_decrypt_failed' })
+  })
+
+  it('a leitura da chave de EMBEDDINGS que falha não derruba o chat (Radar, rascunho)', async () => {
+    const { lerChave } = await import('@/lib/ia-chaves/repo')
+    chaves.gemini = { chave: 'chave-gemini', ilegivel: false }
+    vi.mocked(lerChave).mockImplementationOnce(async () => chaves.gemini)
+    vi.mocked(lerChave).mockImplementationOnce(async () => {
+      throw new Error('[ia-chaves] leitura falhou: timeout')
+    })
+    const config = await loadAiConfig(dbReturning({ ...ROW, provider: 'gemini' }), 'acct', {
+      requireActive: false,
+    })
+    expect(config!.apiKey).toBe('chave-gemini')
+    expect(config!.embeddingsApiKey).toBeNull()
+  })
+})

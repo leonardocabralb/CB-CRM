@@ -57,11 +57,9 @@ export function AiConfig() {
   // ⚠️ As chaves são do PROVEDOR, uma por conta, e moram em Integrações
   // (`cb_ia_chaves`, 1042). Aqui só se mostra QUAIS provedores têm chave,
   // para o seletor dizer se o escolhido vai funcionar.
-  const [chaves, setChaves] = useState<Record<AiProvider, boolean>>({
-    openai: false,
-    anthropic: false,
-    gemini: false,
-  });
+  // ⚠️ `null` = NÃO SEI (a carga falhou): nunca afirmar "sem chave" sobre uma
+  // conta que pode ter a chave cadastrada.
+  const [chaves, setChaves] = useState<Record<AiProvider, boolean> | null>(null);
   const [systemPrompt, setSystemPrompt] = useState('');
   const [isActive, setIsActive] = useState(false);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
@@ -82,7 +80,8 @@ export function AiConfig() {
       const res = await fetch('/api/ai/config');
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? t('loadFailed'));
+        setChaves(null);
+        toast.error(t('loadFailed'));
         return;
       }
       const lidas: Record<AiProvider, boolean> = { openai: false, anthropic: false, gemini: false };
@@ -100,11 +99,22 @@ export function AiConfig() {
         setHandoffAgentId(data.handoff_agent_id ?? '');
       }
     } catch {
+      setChaves(null);
       toast.error(t('loadFailed'));
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // As rotas devolvem CÓDIGO; a frase sai do dicionário.
+  const textoDoCodigo = (codigo: unknown, padrao: string): string =>
+    codigo === 'sem_chave'
+      ? t('missingApiKey')
+      : codigo === 'chave_ilegivel'
+        ? t('keyUnreadable')
+        : codigo === 'invalid_key'
+          ? t('testRejected')
+          : padrao;
 
   useEffect(() => {
     if (!accountId || loadedAccountIdRef.current === accountId) return;
@@ -149,7 +159,7 @@ export function AiConfig() {
       });
       const data = await res.json();
       if (res.ok) toast.success(t('testSuccess'));
-      else toast.error(data.error ?? t('testRejected'));
+      else toast.error(textoDoCodigo(data.code, data.error ?? t('testRejected')));
     } catch {
       toast.error(t('testNetworkError'));
     } finally {
@@ -162,7 +172,7 @@ export function AiConfig() {
       toast.error(t('missingModel'));
       return;
     }
-    if (!chaves[provider]) {
+    if (chaves && !chaves[provider]) {
       toast.error(t('missingApiKey'));
       return;
     }
@@ -178,7 +188,7 @@ export function AiConfig() {
         toast.success(t('saveSuccess'));
         await fetchConfig();
       } else {
-        toast.error(data.error ?? t('saveFailed'));
+        toast.error(textoDoCodigo(data.code, data.error ?? t('saveFailed')));
       }
     } catch {
       toast.error(t('saveFailed'));
@@ -282,9 +292,11 @@ export function AiConfig() {
             {/* A chave do provedor escolhido: mora em Integrações (1042). */}
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3">
               <p className="text-sm text-muted-foreground">
-                {chaves[provider]
-                  ? t('keyStatusSaved', { provider: PROVIDER_LABEL[provider] })
-                  : t('keyStatusMissing', { provider: PROVIDER_LABEL[provider] })}{' '}
+                {chaves === null
+                  ? t('keyStatusUnknown')
+                  : chaves[provider]
+                    ? t('keyStatusSaved', { provider: PROVIDER_LABEL[provider] })
+                    : t('keyStatusMissing', { provider: PROVIDER_LABEL[provider] })}{' '}
                 <Link
                   href="/settings?tab=integracoes"
                   className="text-primary underline-offset-2 hover:underline"
@@ -295,7 +307,7 @@ export function AiConfig() {
               <Button
                 variant="outline"
                 onClick={handleTest}
-                disabled={disabled || testing || !chaves[provider]}
+                disabled={disabled || testing || chaves === null || !chaves[provider]}
               >
                 {testing ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -416,7 +428,7 @@ export function AiConfig() {
         <AiKnowledgeCard
           accountId={accountId}
           canEdit={canEdit}
-          hasEmbeddingsKey={chaves.openai}
+          hasEmbeddingsKey={chaves === null ? null : chaves.openai}
         />
 
         <div className="flex items-center justify-end">

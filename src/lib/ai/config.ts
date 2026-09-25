@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { lerChave } from '@/lib/ia-chaves/repo'
-import type { AiConfig } from './types'
+import { AiError, type AiConfig } from './types'
 
 interface AiConfigRow {
   provider: 'openai' | 'anthropic' | 'gemini'
@@ -94,17 +94,32 @@ export async function loadAiConfig(
  * Extraido para que o agente POR CANAL e o agente PADRAO compartilhem
  * exatamente o mesmo mapeamento, em vez de duas copias que podem divergir.
  *
- * Devolve null quando a conta não tem chave (utilizável) para o provedor.
+ * Devolve null quando a conta NÃO TEM chave para o provedor. ⚠️ Chave que
+ * existe e não decifra LANÇA `key_decrypt_failed`, e falha de leitura do banco
+ * lança como veio: "não sei" e "não decifra" não podem virar "não configurado"
+ * (o rascunho diria "configure o assistente" sobre uma chave cadastrada, e o
+ * Radar gravaria `sem_ia` em vez de falhar e tentar de novo).
  */
 async function mapAiConfigRow(row: AiConfigRow, accountId: string): Promise<AiConfig | null> {
   const [doChat, deEmbeddings] = await Promise.all([
     lerChave(accountId, row.provider),
     // A chave de embeddings é a da OpenAI da conta, seja qual for o provedor
-    // do chat (o modelo de embeddings é fixo, `vector(1536)`). Ilegível ou
-    // ausente rebaixa a base para a busca por palavras — nunca derruba o
-    // rascunho nem a resposta automática.
-    row.provider === 'openai' ? null : lerChave(accountId, 'openai'),
+    // do chat (o modelo de embeddings é fixo, `vector(1536)`). Ilegível,
+    // ausente ou com a LEITURA falhando rebaixa a base para a busca por
+    // palavras — nunca derruba o rascunho, a resposta automática nem o Radar.
+    row.provider === 'openai'
+      ? null
+      : lerChave(accountId, 'openai').catch((err) => {
+          console.error('[ai config] leitura da chave de embeddings falhou:', err)
+          return { chave: null, ilegivel: false }
+        }),
   ])
+  if (doChat.ilegivel) {
+    throw new AiError('Stored API key could not be decrypted.', {
+      code: 'key_decrypt_failed',
+      status: 400,
+    })
+  }
   if (!doChat.chave) return null
   const embeddingsApiKey =
     row.provider === 'openai' ? doChat.chave : (deEmbeddings?.chave ?? null)

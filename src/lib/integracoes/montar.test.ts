@@ -211,6 +211,16 @@ describe('rótulos montados de Integrações', () => {
       const integracoes = dic.Settings.integracoes;
       for (const m of MODULOS) expect(integracoes.modulo[m], m).toBeTruthy();
       for (const i of INDISPONIVEIS) expect(integracoes.indisponivel[i], i).toBeTruthy();
+      // Os códigos que o painel traduz (`motivo.*`, `avisoDaChave.*`, `erroDaChave.*`).
+      for (const m of ['invalid_key', 'rate_limited', 'timeout', 'network', 'provider_error', 'chave_ilegivel', 'leitura_falhou']) {
+        expect(integracoes.motivo[m], m).toBeTruthy();
+      }
+      for (const a of ['embeddings_recusado', 'modulos_nao_criados']) {
+        expect(integracoes.avisoDaChave[a], a).toBeTruthy();
+      }
+      for (const e of ['chave_vazia', 'sem_chave', 'sem_configuracao', 'banco']) {
+        expect(integracoes.erroDaChave[e], e).toBeTruthy();
+      }
     });
   }
 });

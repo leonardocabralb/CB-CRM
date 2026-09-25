@@ -65,6 +65,7 @@ function motivoLegivel(
     'network',
     'provider_error',
     'chave_ilegivel',
+    'leitura_falhou',
   ];
   return t(
     `motivo.${codigo && conhecidos.includes(codigo) ? codigo : 'provider_error'}`
@@ -512,9 +513,7 @@ function FormularioDaChave({
   const [chave, setChave] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [confirmandoApagar, setConfirmandoApagar] = useState(false);
-  const [recado, setRecado] = useState<{ ok: boolean; texto: string } | null>(
-    null
-  );
+  const [recado, setRecado] = useState<Recado | null>(null);
 
   // O que deixa de funcionar sem a chave: os módulos que hoje a usam (os
   // marcados `sem_chave` já não a usam).
@@ -533,25 +532,25 @@ function FormularioDaChave({
         body: JSON.stringify({ provedor, chave: chave.trim() }),
       });
       const dados = (await res.json().catch(() => ({}))) as {
-        error?: string;
         code?: string;
-        aviso?: string | null;
+        avisos?: string[];
       };
       if (!res.ok) {
-        setRecado({
-          ok: false,
-          texto:
-            dados.code === 'invalid_key'
-              ? t('motivo.invalid_key')
-              : (dados.error ?? t('salvarFalhou')),
-        });
+        setRecado({ tom: 'erro', texto: textoDoErroDaChave(t, dados.code) });
         return;
       }
       setChave('');
-      setRecado({ ok: true, texto: dados.aviso ? dados.aviso : t('salvo') });
+      const avisos = (dados.avisos ?? []).filter(
+        (a) => a === 'embeddings_recusado' || a === 'modulos_nao_criados'
+      );
+      setRecado(
+        avisos.length > 0
+          ? { tom: 'aviso', texto: avisos.map((a) => t(`avisoDaChave.${a}`)).join(' ') }
+          : { tom: 'ok', texto: t('salvo') }
+      );
       onSalvo();
     } catch {
-      setRecado({ ok: false, texto: t('salvarFalhou') });
+      setRecado({ tom: 'erro', texto: t('salvarFalhou') });
     } finally {
       setSalvando(false);
     }
@@ -565,14 +564,14 @@ function FormularioDaChave({
         method: 'DELETE',
       });
       if (!res.ok) {
-        setRecado({ ok: false, texto: t('apagarFalhou') });
+        setRecado({ tom: 'erro', texto: t('apagarFalhou') });
         return;
       }
       setConfirmandoApagar(false);
-      setRecado({ ok: true, texto: t('chaveApagada') });
+      setRecado({ tom: 'ok', texto: t('chaveApagada') });
       onSalvo();
     } catch {
-      setRecado({ ok: false, texto: t('apagarFalhou') });
+      setRecado({ tom: 'erro', texto: t('apagarFalhou') });
     } finally {
       setSalvando(false);
     }
@@ -650,18 +649,7 @@ function FormularioDaChave({
             {t('apagarChave')}
           </Button>
         ) : null}
-        {recado ? (
-          <span
-            className={cn(
-              'text-xs',
-              recado.ok
-                ? 'text-emerald-600 dark:text-emerald-300'
-                : 'text-red-600 dark:text-red-300'
-            )}
-          >
-            {recado.texto}
-          </span>
-        ) : null}
+        {recado ? <TextoDoRecado recado={recado} /> : null}
       </div>
     </div>
   );
@@ -686,9 +674,7 @@ function FormularioDoRadar({
   const t = useTranslations('Settings.integracoes');
   const [modeloRadar, setModeloRadar] = useState(modeloAtual);
   const [salvando, setSalvando] = useState(false);
-  const [recado, setRecado] = useState<{ ok: boolean; texto: string } | null>(
-    null
-  );
+  const [recado, setRecado] = useState<Recado | null>(null);
 
   async function salvar() {
     setSalvando(true);
@@ -699,15 +685,28 @@ function FormularioDoRadar({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ radar_model: modeloRadar.trim() || null }),
       });
-      const dados = (await res.json().catch(() => ({}))) as { error?: string };
+      const dados = (await res.json().catch(() => ({}))) as {
+        code?: string;
+        modelo?: string;
+        motivo?: string;
+      };
       if (!res.ok) {
-        setRecado({ ok: false, texto: dados.error ?? t('salvarFalhou') });
+        setRecado({
+          tom: 'erro',
+          texto:
+            dados.code === 'radar_model_invalid'
+              ? t('radarModeloInvalido', {
+                  modelo: dados.modelo ?? modeloRadar.trim(),
+                  motivo: dados.motivo ?? '',
+                })
+              : textoDoErroDaChave(t, dados.code),
+        });
         return;
       }
-      setRecado({ ok: true, texto: t('salvo') });
+      setRecado({ tom: 'ok', texto: t('salvo') });
       onSalvo();
     } catch {
-      setRecado({ ok: false, texto: t('salvarFalhou') });
+      setRecado({ tom: 'erro', texto: t('salvarFalhou') });
     } finally {
       setSalvando(false);
     }
@@ -749,19 +748,51 @@ function FormularioDoRadar({
         >
           {salvando ? t('salvando') : t('salvar')}
         </Button>
-        {recado ? (
-          <span
-            className={cn(
-              'text-xs',
-              recado.ok
-                ? 'text-emerald-600 dark:text-emerald-300'
-                : 'text-red-600 dark:text-red-300'
-            )}
-          >
-            {recado.texto}
-          </span>
-        ) : null}
+        {recado ? <TextoDoRecado recado={recado} /> : null}
       </div>
     </div>
   );
+}
+
+type Recado = { tom: 'ok' | 'aviso' | 'erro'; texto: string };
+
+/** Verde = feito; âmbar = feito, com ressalva; vermelho = não feito. */
+function TextoDoRecado({ recado }: { recado: Recado }) {
+  return (
+    <span
+      className={cn(
+        'text-xs',
+        recado.tom === 'ok'
+          ? 'text-emerald-600 dark:text-emerald-300'
+          : recado.tom === 'aviso'
+            ? 'text-amber-700 dark:text-amber-300'
+            : 'text-red-600 dark:text-red-300'
+      )}
+    >
+      {recado.texto}
+    </span>
+  );
+}
+
+/**
+ * As rotas de chave e de modelo devolvem CÓDIGO, nunca frase: o texto sai do
+ * dicionário, no idioma da instalação. Código desconhecido cai no genérico.
+ */
+function textoDoErroDaChave(
+  t: ReturnType<typeof useTranslations>,
+  codigo: string | undefined
+): string {
+  const conhecidos = [
+    'invalid_key',
+    'rate_limited',
+    'timeout',
+    'network',
+    'provider_error',
+    'chave_ilegivel',
+    'leitura_falhou',
+  ];
+  if (codigo && conhecidos.includes(codigo)) return t(`motivo.${codigo}`);
+  const proprios = ['chave_vazia', 'sem_chave', 'sem_configuracao', 'banco'];
+  if (codigo && proprios.includes(codigo)) return t(`erroDaChave.${codigo}`);
+  return t('salvarFalhou');
 }

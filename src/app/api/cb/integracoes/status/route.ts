@@ -158,7 +158,9 @@ export async function GET(request: Request) {
             if (lida.ilegivel) return { ...base, teste: { ok: false, motivo: 'chave_ilegivel' } };
             chave = lida.chave;
           } catch {
-            return { ...base, teste: { ok: false, motivo: 'provider_error' } };
+            // Falha de LEITURA do banco não é o provedor recusando: a tela mandaria
+            // trocar uma chave boa.
+            return { ...base, teste: { ok: false, motivo: 'leitura_falhou' } };
           }
           if (!chave) return { ...base, existe: false, teste: null };
           try {
@@ -195,7 +197,7 @@ export async function GET(request: Request) {
           if (!lida.chave) return null;
           return pingEmbeddings(lida.chave);
         } catch {
-          return { ok: false, motivo: 'provider_error' };
+          return { ok: false, motivo: 'leitura_falhou' };
         }
       })(),
     ]);
