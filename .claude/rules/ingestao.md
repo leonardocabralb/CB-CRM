@@ -167,6 +167,18 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   Como importar: `supabase.md`.
 
 ## Webhook: o que responde
+- ⚠️⚠️ **O dono do que a entrada cria é o DONO DA CONTA** (`donoDaConta`,
+  `resolve-inbound.ts`), nunca quem conectou o número (`cb_channels.created_by`,
+  `whatsapp_config.user_id`): `contacts`/`conversations.user_id` CASCADEiam de
+  `auth.users`. Os quatro resolvedores (Evolution, o fallback
+  `whatsapp_config`, o 2º número da Meta, Instagram) e o número padrão da Meta
+  passam por ele; a leitura que falha é repetida uma vez, e sem dono a entrega
+  é descartada com log — nunca a queda para quem conectou. Pino
+  `dono-duravel.test.ts`. Na Evolution a leitura roda antes de separar os
+  eventos: se falhar duas vezes, o recibo e o `connection.update` daquela
+  entrega caem junto — aceito na revisão (a leitura de `cb_channels` logo antes
+  já descartava tudo assim). A API v1 segue a mesma régua
+  (`resolveAuditUserId`, 500 sem dono).
 - Só assinatura inválida vale 4xx; o resto responde 200 com log e trabalha em
   `after()` — 4xx repetido faz o provedor desativar a entrega. A Evolution não
   reentrega: o 200 sai antes do `after()`.

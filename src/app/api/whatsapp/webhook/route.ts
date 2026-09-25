@@ -28,6 +28,7 @@ import {
 // resolveInboundMetaChannel é o FALLBACK para receber de um 2º número Meta que
 // vive só em cb_channels.
 import {
+  donoDaConta,
   resolveInboundMetaChannelId,
   resolveInboundMetaChannel,
 } from '@/lib/cb-channels/resolve-inbound'
@@ -443,9 +444,20 @@ async function processarEntradas(
 
       if (configRows && configRows.length === 1) {
         const config = configRows[0]
+        // ⚠️ NOSSO: o DONO DURÁVEL da conta, nunca `config.user_id` (quem
+        // conectou o número) — as fichas e conversas criadas aqui CASCADEiam
+        // do login gravado. Ver `donoDaConta`.
+        const dono = await donoDaConta(supabaseAdmin(), config.account_id)
+        if (!dono) {
+          console.error(
+            '[whatsapp-webhook] conta sem dono resolvível; mensagens descartadas:',
+            phoneNumberId,
+          )
+          continue
+        }
         resolved = {
           accountId: config.account_id,
-          ownerUserId: config.user_id,
+          ownerUserId: dono,
           accessToken: decrypt(config.access_token),
           channelId: await resolveInboundMetaChannelId(supabaseAdmin(), phoneNumberId),
           mirrorMedia: config.mirror_inbound_media !== false,
@@ -1756,9 +1768,8 @@ async function findOrCreateContact(
   if (!criar) return null
 
   // (c) Create new contact. account_id is the tenancy column;
-  // user_id is the NOT NULL FK audit column (no inbound message
-  // has a single "user who created" it — we attribute to the
-  // WhatsApp config owner as a stable default).
+  // user_id is the NOT NULL FK audit column — o DONO DURÁVEL da conta
+  // (`donoDaConta`, resolvido na rota), nunca quem conectou o número.
   //
   // ⚠️ Ficha só-BSUID: `phone` NULO, nunca `''` (P4; o CHECK da 1041 aceita a
   // ficha com só o `wa_user_id`). E o nome é SÓ o do perfil, senão o

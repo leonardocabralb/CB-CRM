@@ -92,30 +92,26 @@ export function serializeContact(row: Record<string, unknown>): ApiContact {
  * of truth used by every public-API write (contacts, messages,
  * broadcasts, resolve-conversation), so the same key's writes are
  * always attributed to the same human. API callers have no logged-in
- * user, so — like the inbound webhook — we attribute writes to the
- * **WhatsApp config owner** (the webhook's own convention). Contacts
- * can be created before WhatsApp is connected, so we fall back to the
- * account owner when there's no config yet.
+ * user, so we attribute writes to the ACCOUNT OWNER
+ * (`accounts.owner_user_id`, NOT NULL e ON DELETE RESTRICT).
+ *
+ * ⚠️ NOSSO (decisão 7 da Fase 11): nunca `whatsapp_config.user_id` (quem
+ * conectou o número), que era a convenção herdada do webhook.
+ * `contacts.user_id` e `conversations.user_id` CASCADEiam de `auth.users`:
+ * apagar o login de quem conectou levaria junto os clientes que a API criou.
+ * Leitura que falha ou conta sem dono = 500, nunca queda para outra pessoa.
  */
 export async function resolveAuditUserId(
   db: SupabaseClient,
   accountId: string
 ): Promise<string> {
-  const { data: config } = await db
-    .from('whatsapp_config')
-    .select('user_id')
-    .eq('account_id', accountId)
-    .maybeSingle();
-  const configOwner = config?.user_id as string | undefined;
-  if (configOwner) return configOwner;
-
-  const { data: account } = await db
+  const { data: account, error } = await db
     .from('accounts')
     .select('owner_user_id')
     .eq('id', accountId)
     .maybeSingle();
   const owner = account?.owner_user_id as string | undefined;
-  if (!owner) {
+  if (error || !owner) {
     throw new ContactError('Account owner could not be resolved', 500);
   }
   return owner;

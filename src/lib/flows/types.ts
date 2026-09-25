@@ -382,7 +382,7 @@ export interface DispatchInboundInput {
    *  idempotency check for previously-seen inbound message_ids. */
   accountId: string;
   /** Sender-of-record for the bot's outbound prompts on engine
-   *  sends. Set by the webhook to the WhatsApp config owner. */
+   *  sends. Set by the webhook to the account owner (`donoDaConta`). */
   userId: string;
   contactId: string;
   conversationId: string;
