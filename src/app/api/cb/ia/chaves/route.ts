@@ -62,6 +62,16 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
     .select('provider, model, radar_model, channel_id, is_active')
     .eq('account_id', accountId)
   if (error) throw new Error(`[ia-chaves] leitura dos modelos em uso falhou: ${error.message}`)
+  // O Radar só roda nas conexões com o interruptor ligado (`radar_enabled`,
+  // 941): sem nenhuma, os modelos dele não estão em uso (Codex, #294).
+  const { data: comRadar, error: erroRadar } = await supabaseAdmin()
+    .from('cb_channels')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('radar_enabled', true)
+    .limit(1)
+  if (erroRadar) throw new Error(`[ia-chaves] leitura das conexões com Radar falhou: ${erroRadar.message}`)
+  const radarLigado = (comRadar ?? []).length > 0
   // A transcrição chama SEMPRE o modelo fixo com a chave do Gemini, qualquer
   // que seja o provedor dos agentes (Codex, #294): primeiro da lista.
   const modelos: string[] = provedor === 'gemini' ? [MODELO_TRANSCRICAO] : []
@@ -74,7 +84,17 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
   for (const linha of ordenadas) {
     if (linha.provider !== provedor) continue
     if (linha.channel_id !== null && linha.is_active === false) continue
-    const candidatos = linha.channel_id === null ? [linha.model, linha.radar_model] : [linha.model]
+    // Na linha padrão, só o que RODA (Codex, #294): o modelo do assistente
+    // quando ele está ligado ou quando o Radar ligado o herda (sem modelo
+    // próprio); o do Radar quando o Radar está ligado em alguma conexão. Um
+    // modelo que nada usa não pode recusar a troca da chave.
+    const candidatos =
+      linha.channel_id === null
+        ? [
+            linha.is_active !== false || (radarLigado && !linha.radar_model) ? linha.model : null,
+            radarLigado ? linha.radar_model : null,
+          ]
+        : [linha.model]
     for (const m of candidatos) {
       if (typeof m === 'string' && m.trim() && !modelos.includes(m.trim())) modelos.push(m.trim())
     }

@@ -129,7 +129,14 @@ describe('GET /api/cb/integracoes/status — a chave da OpenAI que é SÓ da bas
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gpt-conexao')
   })
 
-  it('a chave de chat de verdade continua pingada no padrão do provedor', async () => {
+  it('a OpenAI que nada de chat usa não é pingada no chat, mesmo com a chave vinda de uma conexão desligada', async () => {
+    estadoComOpenai(false)
+    await GET(new Request('http://x/api/cb/integracoes/status'))
+    expect(validateAiCredentials.mock.calls.some((c) => c[0].provider === 'openai')).toBe(false)
+  })
+
+  it('a OpenAI usada no chat (linha padrão) é pingada', async () => {
+    linhas = [{ channel_id: null, provider: 'openai', model: 'gpt-x', radar_model: null, is_active: true }]
     estadoComOpenai(false)
     await GET(new Request('http://x/api/cb/integracoes/status'))
     expect(validateAiCredentials.mock.calls.some((c) => c[0].provider === 'openai')).toBe(true)

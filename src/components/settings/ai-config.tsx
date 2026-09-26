@@ -102,6 +102,17 @@ export function AiConfig() {
         setAutoReplyEnabled(data.auto_reply_enabled);
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
         setHandoffAgentId(data.handoff_agent_id ?? '');
+      } else {
+        // Conta SEM configuração (na troca de conta com a tela montada): os
+        // campos voltam ao começo — senão o Salvar gravaria nesta conta o
+        // prompt e as escolhas da anterior (Codex, #294).
+        setProvider('openai');
+        setModel(AI_PROVIDER_DEFAULT_MODEL.openai);
+        setSystemPrompt('');
+        setIsActive(false);
+        setAutoReplyEnabled(false);
+        setMaxPerConversation(3);
+        setHandoffAgentId('');
       }
     } catch {
       setChaves(null);
