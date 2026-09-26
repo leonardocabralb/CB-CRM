@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // resposta automática legada chama o modelo da linha dela, e um modelo
 // aposentado ali falharia com o cartão dizendo "funcionando" (Codex, #294).
 
-const validateAiCredentials = vi.fn(async (cfg: { model: string }) => {
+const validateAiCredentials = vi.fn(async (cfg: { model: string; provider?: string }) => {
   if (modelosQueFalham.includes(cfg.model)) {
     const { AiError } = await import('@/lib/ai/types')
     throw new AiError('model not found', { code: 'model_not_found', status: 400 })
@@ -35,7 +35,7 @@ vi.mock('@/lib/cb-channels/repo', () => ({
   listChannels: vi.fn(async () => [{ id: 'canal-1', label: 'Comercial', radar_enabled: true }]),
 }))
 vi.mock('@/lib/ai/validate', () => ({
-  validateAiCredentials: (cfg: { model: string }) => validateAiCredentials(cfg),
+  validateAiCredentials: (cfg: { model: string; provider?: string }) => validateAiCredentials(cfg),
 }))
 vi.mock('@/lib/ai/embeddings', () => ({ embedTexts: vi.fn(), EMBEDDING_MODEL: 'emb' }))
 vi.mock('@/lib/transcricao/transcrever', () => ({ MODELO_TRANSCRICAO: 'trans' }))
@@ -102,5 +102,36 @@ describe('GET /api/cb/integracoes/status — chave da OpenAI recusada para a bas
     const openai = corpo.cartoes.find((c) => c.id === 'openai')!
     expect(openai.usos.find((u) => u.modulo === 'rag')?.indisponivel).toBe('embeddings_recusados')
     expect(openai.estado).not.toBe('erro')
+  })
+})
+
+describe('GET /api/cb/integracoes/status — a chave da OpenAI que é SÓ da base (Codex, #294)', () => {
+  function estadoComOpenai(soDaBase: boolean) {
+    vi.mocked(lerEstado).mockResolvedValueOnce([
+      { provedor: 'gemini', existe: true },
+      { provedor: 'openai', existe: true, soDaBase },
+      { provedor: 'anthropic', existe: false },
+    ] as never)
+    vi.mocked(lerChaveDeEmbeddings).mockResolvedValueOnce({ chave: 'sk-emb', ilegivel: false, recusada: false } as never)
+  }
+
+  it('nada de chat usa a OpenAI: a chave só da base não é pingada no modelo de chat', async () => {
+    estadoComOpenai(true)
+    const res = await GET(new Request('http://x/api/cb/integracoes/status'))
+    expect(res.status).toBe(200)
+    expect(validateAiCredentials.mock.calls.some((c) => c[0].provider === 'openai')).toBe(false)
+  })
+
+  it('uma conexão usa a OpenAI no chat: aí o chat é pingado', async () => {
+    linhas.push({ channel_id: 'canal-9', provider: 'openai', model: 'gpt-conexao', radar_model: null, is_active: true })
+    estadoComOpenai(true)
+    await GET(new Request('http://x/api/cb/integracoes/status'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gpt-conexao')
+  })
+
+  it('a chave de chat de verdade continua pingada no padrão do provedor', async () => {
+    estadoComOpenai(false)
+    await GET(new Request('http://x/api/cb/integracoes/status'))
+    expect(validateAiCredentials.mock.calls.some((c) => c[0].provider === 'openai')).toBe(true)
   })
 })

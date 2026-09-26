@@ -73,7 +73,13 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
   // que seja o provedor dos agentes (Codex, #294): primeiro da lista (e
   // dentro do teto de modelos conferidos).
   const candidatos: unknown[] = provedor === 'gemini' ? [MODELO_TRANSCRICAO] : []
-  for (const linha of data ?? []) {
+  // A linha PADRÃO (assistente e Radar) antes das de conexão e dos agentes,
+  // pela régua e não pela ordem que o banco devolveu: com teto de modelos
+  // conferidos, os da conta não podem cair para depois dele (Codex, #295).
+  const ordenadas = [...(data ?? [])].sort(
+    (a, b) => (a.channel_id === null ? 0 : 1) - (b.channel_id === null ? 0 : 1),
+  )
+  for (const linha of ordenadas) {
     if (linha.provider !== provedor) continue
     if (linha.channel_id !== null && linha.is_active === false) continue
     candidatos.push(...(linha.channel_id === null ? [linha.model, linha.radar_model] : [linha.model]))

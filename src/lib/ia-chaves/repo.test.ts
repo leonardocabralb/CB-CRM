@@ -88,6 +88,19 @@ describe('gravarChave — a chave própria falsa dos embeddings sai na troca', (
     expect(upserts[0]).not.toHaveProperty('embeddings_api_key')
   })
 
+  it('a própria igual à chave NOVA sai — o veredito da gravação passa a valer (Codex, #295)', async () => {
+    linhaOpenai = { api_key: 'cifra:90:sk-a', embeddings_api_key: 'cifra:91:sk-b' }
+    await gravarChave('conta-1', 'openai', 'sk-b', 'user-1', false)
+    expect(upserts[0]).toHaveProperty('embeddings_api_key', null)
+    expect(upserts[0]).toHaveProperty('serve_embeddings', false)
+  })
+
+  it('a chave que era SÓ da base e é a MESMA da nova também sai (a linha passa a ser do chat)', async () => {
+    linhaOpenai = { api_key: 'cifra:90:sk-da-base', embeddings_api_key: 'cifra:90:sk-da-base' }
+    await gravarChave('conta-1', 'openai', 'sk-da-base', 'user-1', false)
+    expect(upserts[0]).toHaveProperty('embeddings_api_key', null)
+  })
+
   it('outro provedor não consulta nada da OpenAI', async () => {
     linhaOpenai = { api_key: 'cifra:90:x', embeddings_api_key: 'cifra:91:x' }
     await gravarChave('conta-1', 'gemini', 'g-nova', 'user-1', null)
