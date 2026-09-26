@@ -536,22 +536,24 @@ export async function persistInboundMessage(
   // ⚠️ AGUARDADAS, não fire-and-forget — ver o comentário gêmeo no webhook da
   // Meta. Solto, o SELECT do roteador de funil (abaixo) corre antes do INSERT
   // do passo `create_deal` de automação e os dois criam card no mesmo funil.
-  const disparosDeAutomacao: Promise<void>[] = [];
+  // ⚠️ E EM SEQUÊNCIA, um tipo de gatilho por vez, na ordem da lista, como o
+  // original (#409): em paralelo, as mensagens das automações saíam em
+  // qualquer ordem e a checagem "um card por contato" do `create_deal`
+  // corria entre duas delas — dentro desta mensagem; entre duas mensagens
+  // em POSTs diferentes a corrida continua (ver o comentário gêmeo no
+  // webhook da Meta).
   for (const triggerType of triggers) {
-    disparosDeAutomacao.push(
-      runAutomationsForTrigger({
-        accountId: m.accountId,
-        triggerType,
-        contactId: contact.id,
-        context: {
-          message_text: inboundText,
-          conversation_id: conversation.id,
-          channel_id: m.channelId ?? null,
-        },
-      }).catch((err) => console.error('[inbound-store] automation dispatch failed:', err)),
-    );
+    await runAutomationsForTrigger({
+      accountId: m.accountId,
+      triggerType,
+      contactId: contact.id,
+      context: {
+        message_text: inboundText,
+        conversation_id: conversation.id,
+        channel_id: m.channelId ?? null,
+      },
+    }).catch((err) => console.error('[inbound-store] automation dispatch failed:', err));
   }
-  await Promise.allSettled(disparosDeAutomacao);
 
   // Funil padrão da conexão. Fora do laço de automações de propósito: o
   // gatilho aqui é por ESTADO ("este contato já tem card neste funil?"), não
