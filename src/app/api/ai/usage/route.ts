@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
+import { diaNoFuso, FUSO_PADRAO, paraInstante } from '@/lib/agenda/fuso'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
-import { daysAgoStart, lastNDayKeys, localDayKey } from '@/lib/dashboard/date-utils'
+import { somarDias } from '@/lib/tasks/prazo'
 
 // Rows are aggregated in-process over a bounded window. An active
 // account writes a handful of rows per conversation, so 30 days sits
@@ -43,13 +44,17 @@ export async function GET(request: Request) {
         ? Math.min(90, Math.floor(rawDays))
         : DEFAULT_WINDOW_DAYS
 
-    // Align the query cutoff to the START of the oldest local day we'll
-    // chart (not a rolling `now - N*24h` instant). Otherwise rows in the
-    // oldest partial day would be counted in the totals but fall outside
-    // every daily bucket, so the chart's bars wouldn't sum to the
-    // headline total. Local-day boundaries match every other dashboard
-    // chart (see lib/dashboard/date-utils).
-    const since = daysAgoStart(days - 1)
+    // Align the query cutoff to the START of the oldest day we'll chart
+    // (not a rolling `now - N*24h` instant). Otherwise rows in the oldest
+    // partial day would be counted in the totals but fall outside every
+    // daily bucket, so the chart's bars wouldn't sum to the headline total.
+    //
+    // ⚠️ O dia é o do FUSO DO ESCRITÓRIO, nunca o do processo. Esta rota roda
+    // no servidor, e o contêiner está em UTC: os helpers de "dia local" de
+    // `lib/dashboard/date-utils` (feitos para o NAVEGADOR) viravam o dia às 21h
+    // de Brasília, e o uso da noite caía no dia seguinte.
+    const primeiroDia = somarDias(diaNoFuso(new Date(), FUSO_PADRAO), -(days - 1))
+    const since = paraInstante(primeiroDia, '00:00', FUSO_PADRAO)
 
     const { data, error } = await supabase
       .from('ai_usage_log')
@@ -91,10 +96,11 @@ export async function GET(request: Request) {
     >()
 
     // Zero-filled daily buckets so the chart shows quiet days as gaps,
-    // not missing points. Local-day keys, oldest → newest — the same
-    // helper every other dashboard chart uses, so day boundaries agree.
+    // not missing points. Day keys in the office time zone, oldest → newest
+    // (calendar arithmetic on `YYYY-MM-DD`, never `+ 24h`).
     const daily = new Map<string, { date: string; tokens: number; calls: number }>()
-    for (const key of lastNDayKeys(days)) {
+    for (let i = 0; i < days; i++) {
+      const key = somarDias(primeiroDia, i)
       daily.set(key, { date: key, tokens: 0, calls: 0 })
     }
 
@@ -120,7 +126,7 @@ export async function GET(request: Request) {
       m.tokens += r.total_tokens
       modelMap.set(mk, m)
 
-      const bucket = daily.get(localDayKey(r.created_at))
+      const bucket = daily.get(diaNoFuso(new Date(r.created_at), FUSO_PADRAO))
       if (bucket) {
         bucket.tokens += r.total_tokens
         bucket.calls += 1

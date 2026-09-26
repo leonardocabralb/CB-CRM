@@ -5,7 +5,6 @@ import {
   contarClientes,
   contarCobrancas,
   decidirVinculo,
-  diasDeAtraso,
   faixaDeAtraso,
   fimDoTelefone,
   formatoDoTelefone,
@@ -75,16 +74,9 @@ describe('mascaramento', () => {
   })
 })
 
-describe('diasDeAtraso e faixaDeAtraso', () => {
-  // ⚠️ `new Date("2026-09-01")` é meia-noite UTC e no Brasil cai em 31/08 —
-  // o atraso sairia um dia maior.
-  it('conta em dias LOCAIS', () => {
-    const agora = new Date(2026, 8, 12, 23, 0)
-    expect(diasDeAtraso('2026-09-12', agora)).toBe(0)
-    expect(diasDeAtraso('2026-09-11', agora)).toBe(1)
-    expect(diasDeAtraso('não é dia', agora)).toBeNull()
-  })
-
+describe('faixaDeAtraso', () => {
+  // A conta dos dias é o `diasDeAtraso` de `inadimplencia.ts` (fuso do
+  // escritório), pinada lá; aqui fica só a régua das faixas.
   it('as faixas são as do pedido: 1 dia, 5 dias, 30 dias "e assim por diante"', () => {
     expect(faixaDeAtraso(-1)).toBe('ainda não venceu')
     expect(faixaDeAtraso(1)).toBe('até 1 dia')
@@ -201,7 +193,24 @@ describe('contarClientes', () => {
 })
 
 describe('contarCobrancas', () => {
-  const agora = new Date(2026, 8, 12)
+  const agora = new Date('2026-09-12T15:00:00Z') // 12/09/2026, meio-dia em Brasília
+
+  // ⚠️ O levantamento roda no SERVIDOR, e o contêiner está em UTC. Às 23h30 de
+  // 12/09 em Brasília a parcela de 07/09 tem 5 dias de atraso e a de 13/09 ainda
+  // não venceu; contando pelo relógio do processo já seria dia 13, e as duas
+  // cairiam na faixa seguinte.
+  it('a faixa de atraso conta os dias no fuso do escritório, não no do servidor', () => {
+    const noite = new Date('2026-09-13T02:30:00Z') // 12/09/2026, 23:30 em Brasília
+    const c = contarCobrancas(
+      [
+        cobranca({ id: 'p1', clienteId: 'cus_1', vencimento: '2026-09-07' }),
+        cobranca({ id: 'p2', clienteId: 'cus_2', vencimento: '2026-09-13' }),
+      ],
+      new Set(),
+      noite,
+    )
+    expect(c.porFaixaDeAtraso).toEqual({ '2 a 5 dias': 1, 'ainda não venceu': 1 })
+  })
 
   it('soma valores, acha o vencimento mais antigo e conta quem tem ficha', () => {
     const c = contarCobrancas(

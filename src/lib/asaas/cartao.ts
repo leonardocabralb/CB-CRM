@@ -3,6 +3,8 @@
  * (SEM a chave — a rota já a devolve sem a coluna). Puro.
  */
 
+import { diasDeAtraso } from "./inadimplencia";
+
 /**
  * Os códigos que a tela sabe traduzir. ⚠️ A lista mora AQUI, e não dentro do
  * componente, porque há teste cobrando uma chave
@@ -192,15 +194,17 @@ export function webhookDoCartao(config: ConfigDoAsaas): WebhookDoCartao {
 export const AVISAR_EXPIRACAO_EM_DIAS = 30;
 
 /**
- * Dias de calendário entre hoje e `AAAA-MM-DD`, no fuso de quem lê.
- * ⚠️ Nunca `new Date("2026-09-01")`: aquilo é meia-noite UTC e retrocede um
- * dia no Brasil — a chave pareceria expirar um dia antes.
+ * Dias de calendário entre HOJE no fuso do escritório e `AAAA-MM-DD`: é o
+ * `diasDeAtraso` de `inadimplencia.ts` com o sinal trocado.
+ * ⚠️ O fuso é o do escritório, nunca o do processo: esta conta roda no
+ * SERVIDOR (a rota `/api/cb/asaas` monta o cartão), e o contêiner está em UTC
+ * — das 21h à meia-noite de Brasília o "hoje" dele já é amanhã, e a chave
+ * pareceria expirar um dia antes.
  */
 export function diasAte(dia: string, agora: Date): number | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return null;
-  const alvo = new Date(`${dia}T00:00:00`);
-  const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
-  return Math.round((alvo.getTime() - hoje.getTime()) / 86_400_000);
+  const atraso = diasDeAtraso(dia, agora);
+  // `0 -` e não `-`: no próprio dia, `-0` não é `0` para quem compara com `Object.is`.
+  return atraso === null ? null : 0 - atraso;
 }
 
 export function cartaoDoAsaas(config: ConfigDoAsaas | null, agora: Date = new Date()): CartaoDoAsaas {
