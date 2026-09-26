@@ -79,14 +79,16 @@ REVOKE ALL ON TABLE cb_ia_chaves FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE cb_ia_chaves TO service_role;
 
 -- A cópia. A linha padrão (channel_id NULL) vence a de conexão para o mesmo
--- provedor: `ORDER BY` + `DISTINCT ON`, e o `ON CONFLICT DO NOTHING` não
+-- provedor, e entre as de conexão a LIGADA vence a desligada (é a que roda:
+-- a chave velha de uma desligada derrubaria a resposta automática da ligada —
+-- Codex, #294): `ORDER BY` + `DISTINCT ON`, e o `ON CONFLICT DO NOTHING` não
 -- sobrescreve o que já estiver na tabela (reexecução).
 INSERT INTO cb_ia_chaves (account_id, provedor, api_key, atualizada_por, created_at, updated_at)
 SELECT DISTINCT ON (c.account_id, c.provider)
        c.account_id, c.provider, c.api_key, c.created_by, now(), now()
   FROM ai_configs c
  WHERE c.api_key IS NOT NULL AND c.api_key <> ''
- ORDER BY c.account_id, c.provider, (c.channel_id IS NULL) DESC, c.created_at
+ ORDER BY c.account_id, c.provider, (c.channel_id IS NULL) DESC, c.is_active DESC, c.created_at
 ON CONFLICT (account_id, provedor) DO NOTHING;
 
 -- A de embeddings entra no slot da OpenAI VAZIO como a chave dele E como a

@@ -55,6 +55,10 @@ describe('1042 — chaves de IA por provedor', () => {
     expect(/c\.embeddings_api_key,\s*c\.embeddings_api_key/i.test(insercoes[1])).toBe(true);
   });
 
+  it('entre as linhas de conexão, a LIGADA vence a desligada na cópia (Codex, #294)', () => {
+    expect(semComentarios).toMatch(/ORDER\s+BY\s+c\.account_id,\s*c\.provider,\s*\(c\.channel_id\s+IS\s+NULL\)\s+DESC,\s*c\.is_active\s+DESC,\s*c\.created_at/i)
+  })
+
   it('serve_embeddings: só a OpenAI tem, e NULO é "não conferida" (a cópia não afirma nada)', () => {
     expect(/serve_embeddings\s+boolean\s+CHECK\s*\(\s*provedor\s*=\s*'openai'\s+OR\s+serve_embeddings\s+IS\s+NULL\s*\)/i.test(semComentarios)).toBe(true);
     // A cópia não inventa conferência: nenhum INSERT grava um veredito (o
