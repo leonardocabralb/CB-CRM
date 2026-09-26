@@ -57,6 +57,10 @@ vi.mock('@/lib/ai/admin-client', () => ({
     }),
   }),
 }))
+let agentesDaConta: { provedor: string; modelo: string }[] = []
+vi.mock('@/lib/ia-agentes/repo', () => ({
+  listarAgentes: vi.fn(async () => agentesDaConta),
+}))
 vi.mock('@/lib/ia-chaves/repo', () => ({
   apagarChave: vi.fn(),
   ehProvedor: (v: unknown) => v === 'openai' || v === 'gemini' || v === 'anthropic',
@@ -82,6 +86,7 @@ beforeEach(() => {
   linhaPadrao = null
   alcanca = () => true
   chaveAtual = null
+  agentesDaConta = []
 })
 
 describe('PUT /api/cb/ia/chaves — a chave da OpenAI guarda se serve aos embeddings', () => {
@@ -160,5 +165,26 @@ describe('PUT /api/cb/ia/chaves — a chave nova é conferida nos modelos EM USO
     embedTexts.mockResolvedValue([[0.1]])
     await PUT(pedido('gemini'))
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash'])
+  })
+})
+
+describe('PUT /api/cb/ia/chaves — os modelos dos AGENTES também contam (F1b)', () => {
+  it('confere o modelo de cada agente deste provedor, sem repetir', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-a' }
+    agentesDaConta = [
+      { provedor: 'gemini', modelo: 'gemini-b' },
+      { provedor: 'gemini', modelo: 'gemini-a' },
+      { provedor: 'openai', modelo: 'gpt-x' },
+    ]
+    await PUT(pedido('gemini'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a', 'gemini-b'])
+  })
+
+  it('a nova não alcança o modelo de um agente que a atual alcança: recusa', async () => {
+    agentesDaConta = [{ provedor: 'gemini', modelo: 'gemini-do-agente' }]
+    chaveAtual = 'sk-atual'
+    alcanca = (chave, modelo) => !(chave === 'sk-teste' && modelo === 'gemini-do-agente')
+    const res = await PUT(pedido('gemini'))
+    expect(await res.json()).toMatchObject({ code: 'modelo_em_uso_recusado', modelo: 'gemini-do-agente' })
   })
 })

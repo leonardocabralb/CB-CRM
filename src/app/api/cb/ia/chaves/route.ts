@@ -14,6 +14,7 @@ import {
   lerChave,
   lerEstado,
 } from '@/lib/ia-chaves/repo'
+import { listarAgentes } from '@/lib/ia-agentes/repo'
 
 /**
  * Chaves de IA por PROVEDOR (migration 1042, D1 do
@@ -46,10 +47,10 @@ export async function GET() {
 
 /**
  * Os modelos que a conta USA com este provedor: o do assistente e o do Radar
- * (a linha padrão de `ai_configs`, quando o provedor dela é este). A chave
- * nova é conferida em CADA um (Codex, #294): passando só no modelo padrão, uma
- * chave sem acesso ao modelo em uso era aceita e o Radar e o rascunho
- * quebravam na troca.
+ * (a linha padrão de `ai_configs`, quando o provedor dela é este) e os dos
+ * agentes de IA deste provedor (F1b). A chave nova é conferida em CADA um
+ * (Codex, #294): passando só no modelo padrão, uma chave sem acesso ao modelo
+ * em uso era aceita e o Radar, o rascunho e os agentes quebravam na troca.
  */
 async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<string[]> {
   const { data, error } = await supabaseAdmin()
@@ -59,9 +60,18 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
     .is('channel_id', null)
     .maybeSingle()
   if (error) throw new Error(`[ia-chaves] leitura dos modelos em uso falhou: ${error.message}`)
-  if (!data || data.provider !== provedor) return []
+  let agentes: Awaited<ReturnType<typeof listarAgentes>>
+  try {
+    agentes = await listarAgentes(accountId)
+  } catch (err) {
+    throw new Error(`[ia-chaves] leitura dos agentes falhou: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  const candidatos = [
+    ...(data && data.provider === provedor ? [data.model, data.radar_model] : []),
+    ...agentes.filter((a) => a.provedor === provedor).map((a) => a.modelo),
+  ]
   const modelos: string[] = []
-  for (const m of [data.model, data.radar_model]) {
+  for (const m of candidatos) {
     if (typeof m === 'string' && m.trim() && !modelos.includes(m.trim())) modelos.push(m.trim())
   }
   return modelos
