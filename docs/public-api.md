@@ -512,6 +512,13 @@ Paginated. Each message includes its `direction` (`inbound` /
 `content_*`. The conversation is verified to belong to your account
 first (`404` otherwise).
 
+**WhatsApp calls** are listed here too (WhatsApp connections by QR code
+only), with `content_type: "call"` and `content_text: null`. A call nobody
+answered is `inbound`; a call answered on one of the office's phones is
+`outbound`. Their `whatsapp_message_id` is `call:<call id>`, not a WhatsApp
+message id — it can't be replied to, reacted to or deleted. The CRM does not
+carry call audio: the row only records that the call happened.
+
 ### `POST /api/v1/broadcasts`
 
 Launch a template broadcast to a list of recipients. Scope:
@@ -895,11 +902,14 @@ never fires it, **not even when the customer replies later**: one started
 from the paired phone, from the Instagram app, from the CRM ("New
 conversation", sending from a contact's page) or through
 `POST /api/v1/messages`. Nor do conversations created by automations and
-integrations (incoming webhooks, Calendly, the Asaas reminders), by bulk
-data migrations, or group conversations. For "a new lead reached the
+integrations (incoming webhooks, Calendly, the Asaas reminders), by a
+WhatsApp **call** (a number that calls before writing: the conversation is
+born from the call, and the event doesn't fire even when they write later),
+by bulk data migrations, or group conversations. For "a new lead reached the
 funnel" — including the ones your team approached first — listen to
 `deal.created` instead: a number with a default pipeline opens the card on
-the first message in either direction (`source: "channel"`).
+the first message in either direction, or on the first WhatsApp call
+(`source: "channel"`).
 
 Every event carries `channel_id` in `data` — which of your numbers the
 event happened on. Without it, several numbers look like one
