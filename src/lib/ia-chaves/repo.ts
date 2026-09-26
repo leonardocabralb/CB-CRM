@@ -230,6 +230,10 @@ async function propriaEhAMesmaDoChat(accountId: string): Promise<boolean> {
     .eq('provedor', 'openai')
     .maybeSingle()
   if (error || !data?.api_key || !data.embeddings_api_key) return false
+  // Texto cifrado IDÊNTICO é a marca da 1042 para a chave que ERA só da base
+  // (a conta usava outro provedor no chat): ela é própria de verdade e fica
+  // (Codex, #294). A duplicata falsa tem a mesma chave com cifras diferentes.
+  if (data.api_key === data.embeddings_api_key) return false
   try {
     return decrypt(data.api_key as string) === decrypt(data.embeddings_api_key as string)
   } catch {
