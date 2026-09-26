@@ -765,6 +765,26 @@ nome da época em que foram aplicadas.
   replay verde do CI e antes do merge do PR #300; conferida no catálogo (RLS
   sem policy, `anon`/`authenticated` sem SELECT, UM CHECK com `'call'`, a
   coluna jsonb, a FK composta com `SET NULL (channel_id)`).
+- **1046_cb_celular_dos_membros** — `cb_celulares_dos_membros` (uma linha por
+  login, CASCADE em `auth.users`): a pessoa lê o próprio celular e os
+  administradores da conta dela leem o da equipe (policy na forma da 1032);
+  `authenticated` só tem SELECT, e quem grava é a rota
+  `PUT /api/cb/meu-celular`. A exigência do celular ao abrir o CRM
+  (`.claude/rules/meu-dia.md`). ADITIVA — sem ela a leitura falha e o cartão
+  não aparece (ninguém é trancado, nada é pedido). 1046, e não 1045: a 1042 e
+  a 1043 estavam nos PRs #294/#295 e havia um `1044_cb_ia_quem_responde` em
+  outra worktree, que vai precisar de número novo. A conferência troca de
+  papel (membro comum lê só o próprio, administrador lê a equipe, outra conta
+  não lê, o navegador não grava) num subbloco desfeito por `P1046`. Testada
+  num Postgres 16 descartável (banco vazio, reaplicação, os cenários de
+  leitura, CHECK, saída da equipe e login apagado; mutação: sem o
+  `GRANT SELECT` em `profiles`, reprova num banco novo). Aplicada em
+  26/09/2026 pela Management API (histórico `20260926125842`), depois do
+  replay verde do CI no commit exato e antes do merge do PR #302, com
+  autorização do operador; conferida no catálogo (RLS, UMA policy com o
+  predicado, `anon` sem SELECT, `authenticated` só SELECT, `service_role`
+  grava, 0 linhas). O teste de ponta a ponta gravou um número de teste no
+  usuário do operador e o apagou em seguida (tabela de volta a 0 linhas).
 
 ## Notas do histórico
 
