@@ -19,7 +19,7 @@
 | F0 | Medições baratas (links do Asaas, testes que fixam a semântica de hoje) | links medidos (seção 9); testes na F1a | — | — |
 | F1a | Chaves por provedor: Radar, transcrição, embeddings e Integrações leem a chave nova. Conferido em produção | **no ar** (26/09): 1047 aplicada, e2e no preview ok, PR mesclado e publicado | 1047 | #294 |
 | F1b | Agentes (lista e detalhe), Playground e Uso por agente. **Nenhum agente responde ainda** | **no ar** (26/09): 1048 aplicada depois do deploy da F1a, PR mesclado | 1048 | #295 |
-| F2 | **Desenho simplificado (26/09, D24–D27):** o agente atua nas ETAPAS do funil que o administrador marca; a triagem move o card para a etapa do agente escolhido; gente respondeu → para até "Retomar IA"; só cards que entram na etapa depois de o agente ser ligado. Motor, telas (onde atua, faixa, bolha, sub-aba Turnos) e o fim do auto-reply legado num PR só | em implementação | 1049 | — |
+| F2 | **Desenho simplificado (26/09, D24–D27):** o agente atua nas ETAPAS do funil que o administrador marca; a triagem move o card para a etapa do agente escolhido; gente respondeu → para até "Retomar IA"; só cards que entram na etapa depois de o agente ser ligado. Motor, telas (onde atua, faixa, bolha, sub-aba Turnos) e o fim do auto-reply legado num PR só | 1049 aplicada (26/09, antes do deploy); e2e no preview ok: triagem passou e moveu o card, o destino respondeu por WhatsApp, a resposta da equipe pausou, "Retomar" religou, card antigo não atendido (D27) | 1049 | #309 |
 | Piloto | **Bancário - Comercial** (D22), com dois agentes. ⚠️ Só depois do corte da Kommo (medição de 25/09, seção 9) | aguardando o corte | — | — |
 | F3 | O que cada agente vê (ficha, campos, negócio, cobranças, transcrições) + base de conhecimento por agente (D20) | a fazer | sim | — |
 | F4a | Medição das ferramentas no Gemini + o laço de ferramentas + as de leitura, transferir e passar para outro agente | a fazer | talvez | — |
@@ -399,6 +399,14 @@ Um mapa do código em sete frentes (ingestão, envio, banco, fila, telas, automa
 ---
 
 ## 7. Riscos e armadilhas
+
+**Limites conhecidos da F2 (26/09/2026), aceitos por serem raros e do lado seguro ou de janela de milissegundos:**
+
+- Uma resposta de gente gravada entre a reserva do envio e o envio (milissegundos) não impede aquela resposta da IA; a pausa vale dali em diante.
+- Uma automação de "nova mensagem" cujo passo de envio falha ANTES de chamar o provedor conta como "falou" e cala a IA naquela mensagem.
+- Salvar o agente com nome repetido depois de as etapas já terem sido gravadas deixa as etapas novas e recusa o nome; salvar de novo com outro nome resolve.
+- Card movido durante a espera da rajada (8 s): o turno descarta e ninguém responde aquela mensagem.
+- ⚠️ **Delta da Kommo:** a carga cala os gatilhos de `deals`, e o card que ela CRIA ganha `etapa_desde` = hora da carga — pareceria "entrou agora" para um agente já ligado na etapa (D27). Rodar o delta ANTES de marcar etapas nos agentes, ou logo depois dele: `UPDATE deals SET etapa_desde = created_at WHERE kommo_lead_id IS NOT NULL AND etapa_desde > created_at`.
 
 - **Radar e transcrição dependem da chave de hoje.** A F1a muda de onde ela é lida; um erro ali para a análise de todas as conversas e todo áudio. Por isso a F1a vai sozinha e é conferida em produção.
 - **`logAiUsage` engole erro:** modo novo sem a migration aplicada some do uso sem aviso.

@@ -1543,12 +1543,13 @@ describe('executarTurno — a passagem (D25)', () => {
     expect(conversa().ai_autoreply_disabled).toBe(false)
   })
 
-  it('a fila recusa o turno do destino: `passou` com o motivo (o card já mudou)', async () => {
+  it('a fila recusa o turno do destino: TRANSFERE para gente (o card já mudou e ninguém responderia) — Codex, #309', async () => {
     comDestino()
     triagemPassa()
     banco.rpcs.cb_ia_enfileirar_turno = () => ({ data: null, error: { message: 'lock timeout' } })
     await executarTurno(TURNO)
-    expect(turno()).toMatchObject({ status: 'passou', erro: 'o turno do agente de destino não foi enfileirado' })
+    expect(turno().status).toBe('transferiu')
+    expect(conversa()).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'transferencia' })
     expect(card().stage_id).toBe(ETAPA_DESTINO)
   })
 })

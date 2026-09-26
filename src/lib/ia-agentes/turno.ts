@@ -629,7 +629,9 @@ async function passar(
     mensagemId: gatilho.id,
     veioDePassagem: true,
   })
-  if (!novo) return { status: 'passou', erro: 'o turno do agente de destino não foi enfileirado' }
+  // A fila recusou o turno do destino (erro do banco): o card já mudou e
+  // ninguém responderia — a conversa vai para a equipe (Codex, #309).
+  if (!novo) return { status: 'transferiu', motivo: 'sentinela' }
   // Quem o roda é `rodarPendentesDaConversa`, logo que este termina; o
   // disparo agendado é a segunda porta (relógios diferentes), e a rede do
   // cron a terceira. A reivindicação é atômica: roda uma vez só.
