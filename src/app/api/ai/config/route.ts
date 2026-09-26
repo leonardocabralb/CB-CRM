@@ -122,6 +122,21 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== 'object') return bad('Invalid request body')
 
+    // ⚠️ Aba ABERTA do app anterior à 1042 manda a chave aqui. Ignorá-la e
+    // responder "salvo" faria a pessoa revogar a chave antiga achando que a
+    // nova ficou (Codex, #294): recusa pedindo para recarregar — a chave agora
+    // se cadastra em Configurações → Integrações.
+    const temChave = (v: unknown) => typeof v === 'string' && v.trim() !== ''
+    if (temChave(body.api_key) || temChave(body.embeddings_api_key) || body.embeddings_api_key === null) {
+      return NextResponse.json(
+        {
+          error: 'Esta página está desatualizada: recarregue e cadastre a chave em Configurações → Integrações.',
+          code: 'tela_desatualizada',
+        },
+        { status: 409 },
+      )
+    }
+
     const provider = body.provider as AiProvider
     if (provider !== 'openai' && provider !== 'anthropic' && provider !== 'gemini') {
       return bad('provider must be "openai", "anthropic" or "gemini"')

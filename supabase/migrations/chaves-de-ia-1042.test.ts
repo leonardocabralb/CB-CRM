@@ -38,7 +38,12 @@ describe('1042 — chaves de IA por provedor', () => {
   });
 
   it('copia as chaves de hoje sem sobrescrever (reexecução) e a de embeddings só no slot vazio da OpenAI', () => {
-    const insercoes = semComentarios.match(/INSERT\s+INTO\s+cb_ia_chaves[\s\S]*?;/gi) ?? [];
+    // A CÓPIA (fora do gatilho da janela, que sobrescreve de propósito).
+    const semOGatilho = semComentarios.replace(
+      /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.cb_ia_chaves_segue_o_legado[\s\S]*?\$\$;/i,
+      '',
+    );
+    const insercoes = semOGatilho.match(/INSERT\s+INTO\s+cb_ia_chaves[\s\S]*?;/gi) ?? [];
     expect(insercoes).toHaveLength(2);
     for (const i of insercoes) {
       expect(/ON\s+CONFLICT\s*\(\s*account_id\s*,\s*provedor\s*\)\s+DO\s+NOTHING/i.test(i)).toBe(true);
@@ -49,9 +54,11 @@ describe('1042 — chaves de IA por provedor', () => {
 
   it('serve_embeddings: só a OpenAI tem, e NULO é "não conferida" (a cópia não afirma nada)', () => {
     expect(/serve_embeddings\s+boolean\s+CHECK\s*\(\s*provedor\s*=\s*'openai'\s+OR\s+serve_embeddings\s+IS\s+NULL\s*\)/i.test(semComentarios)).toBe(true);
-    // A cópia não inventa conferência: nenhum INSERT grava a coluna.
+    // A cópia não inventa conferência: nenhum INSERT grava um veredito (o
+    // gatilho da janela ZERA para "não conferida" quando a chave muda).
     for (const i of semComentarios.match(/INSERT\s+INTO\s+cb_ia_chaves[\s\S]*?;/gi) ?? []) {
-      expect(/serve_embeddings/i.test(i)).toBe(false);
+      expect(/serve_embeddings\s*=\s*(true|false)/i.test(i)).toBe(false);
+      expect(/\(\s*[^)]*\bserve_embeddings\b[^)]*\)\s*VALUES/i.test(i)).toBe(false);
     }
   });
 
@@ -66,5 +73,17 @@ describe('1042 — chaves de IA por provedor', () => {
 
   it('ai_configs.api_key perde o NOT NULL (a linha padrão existe sem chave)', () => {
     expect(/ALTER\s+TABLE\s+ai_configs\s+ALTER\s+COLUMN\s+api_key\s+DROP\s+NOT\s+NULL/i.test(semComentarios)).toBe(true);
+  });
+
+  it('o gatilho da JANELA leva a chave do app anterior para cb_ia_chaves — só a escrita do navegador (Codex, #294)', () => {
+    const fn = semComentarios.match(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.cb_ia_chaves_segue_o_legado[\s\S]*?\$\$;/i)?.[0] ?? '';
+    expect(fn).toMatch(/SECURITY\s+DEFINER/i);
+    expect(fn).toMatch(/SET\s+search_path/i);
+    // O espelho do app novo é gravado pelo serviço: copiá-lo de volta recriaria
+    // a falsa chave própria dos embeddings.
+    expect(fn).toMatch(/request\.jwt\.claims[\s\S]*'role'[\s\S]*'authenticated'/i);
+    expect(fn).toMatch(/NEW\.channel_id\s+IS\s+NOT\s+NULL/i);
+    expect(/REVOKE\s+EXECUTE\s+ON\s+FUNCTION\s+public\.cb_ia_chaves_segue_o_legado\(\)\s+FROM\s+PUBLIC,\s*anon,\s*authenticated/i.test(semComentarios)).toBe(true);
+    expect(/CREATE\s+TRIGGER\s+cb_ia_chaves_segue_o_legado\s+AFTER\s+INSERT\s+OR\s+UPDATE\s+OF\s+api_key,\s*embeddings_api_key\s+ON\s+ai_configs/i.test(semComentarios)).toBe(true);
   });
 });
