@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { Checkbox } from '@/components/ui/checkbox';
+import { useAuth } from '@/hooks/use-auth';
 import { createClient } from '@/lib/supabase/client';
 
 interface Funil {
@@ -46,30 +47,51 @@ export function OndeAtua({
   const t = useTranslations('IaAgentes.ondeAtua');
   const [carga, setCarga] = useState<Carga>({ fase: 'carregando' });
   const [funilEscolhido, setFunilEscolhido] = useState<string | null>(null);
+  // ⚠️ Recortado pela conta ATIVA: a RLS deixa ler os funis de TODA conta de
+  // que a pessoa é membro, e a etapa de outra conta seria oferecida e recusada
+  // no salvar (`etapa_de_outra_conta`; Codex, #309).
+  const { accountId } = useAuth();
 
   useEffect(() => {
+    if (!accountId) return;
     let vivo = true;
     void (async () => {
       const supabase = createClient();
-      const [funis, etapasDosFunis] = await Promise.all([
-        supabase.from('pipelines').select('id, name').order('created_at').order('id'),
-        supabase.from('pipeline_stages').select('id, name, pipeline_id, position').order('position').order('id'),
-      ]);
+      const funis = await supabase
+        .from('pipelines')
+        .select('id, name')
+        .eq('account_id', accountId)
+        .order('created_at')
+        .order('id');
       if (!vivo) return;
-      if (funis.error || etapasDosFunis.error) {
+      if (funis.error) {
         setCarga({ fase: 'falhou' });
         return;
       }
-      setCarga({
-        fase: 'pronto',
-        funis: (funis.data ?? []) as Funil[],
-        etapas: (etapasDosFunis.data ?? []) as Etapa[],
-      });
+      const lista = (funis.data ?? []) as Funil[];
+      const etapasDosFunis =
+        lista.length === 0
+          ? { data: [] as Etapa[], error: null }
+          : await supabase
+              .from('pipeline_stages')
+              .select('id, name, pipeline_id, position')
+              .in(
+                'pipeline_id',
+                lista.map((f) => f.id),
+              )
+              .order('position')
+              .order('id');
+      if (!vivo) return;
+      if (etapasDosFunis.error) {
+        setCarga({ fase: 'falhou' });
+        return;
+      }
+      setCarga({ fase: 'pronto', funis: lista, etapas: (etapasDosFunis.data ?? []) as Etapa[] });
     })();
     return () => {
       vivo = false;
     };
-  }, []);
+  }, [accountId]);
 
   if (carga.fase === 'carregando') return <div className="h-24 animate-pulse rounded-md bg-muted/40" />;
   if (carga.fase === 'falhou') return <p className="text-xs text-red-700 dark:text-red-300">{t('falhou')}</p>;

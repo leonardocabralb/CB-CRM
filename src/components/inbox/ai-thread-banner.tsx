@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Sparkles, Pause, Undo2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EVENTO_EXECUCOES } from "@/lib/execucoes/aviso";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
@@ -134,6 +135,16 @@ export function AiThreadBanner({ conversationId, iaAgenteId, disabled, pausadaPo
       vivo = false;
     };
   }, [conversationId, disabled, pausadaPor, iaAgenteId, recarga]);
+
+  // Quem responde depende da ETAPA do card, e mover o card só muda `deals`:
+  // nenhuma das props acima muda. O aviso das execuções sai quando uma tela
+  // move o card (painel, formulário, quadro — `avisarDrenagemDeFunil`) e
+  // quando chega mensagem do cliente na conversa aberta (Codex, #309).
+  useEffect(() => {
+    const aoMudar = () => setRecarga((n) => n + 1);
+    window.addEventListener(EVENTO_EXECUCOES, aoMudar);
+    return () => window.removeEventListener(EVENTO_EXECUCOES, aoMudar);
+  }, []);
 
   async function alternar(pausar: boolean) {
     setBusy(true);

@@ -809,6 +809,17 @@ nome da época em que foram aplicadas.
   só-de-admin supõe a faixa de IA e o rascunho lendo pelo serviço). Era 1043.
   Aplicada em 26/09/2026 pela Management API, depois do deploy do PR #294 e do
   replay verde do CI, antes do merge do PR #295, com autorização do operador.
+- **1049_cb_ia_quem_responde** — a F2 dos agentes de IA no desenho por ETAPA
+  (D24–D27): `cb_ia_agente_etapas` (uma etapa, um agente), `cb_ia_agentes.
+  ativado_em`, `deals.etapa_desde` (gatilho BEFORE UPDATE OF stage_id), as
+  colunas de pausa e de agente em `conversations`, a fila `cb_ia_turnos`
+  (fechada ao navegador) e as RPCs `cb_ia_enfileirar_turno`,
+  `cb_ia_reivindicar_turno` e `cb_ia_reservar_envio`; o gatilho que PAUSA a IA
+  quando gente responde; e o índice `cb_deals_contato_aberto_idx`. Aplicada em
+  26/09/2026 pela Management API (histórico `20260926204239`), depois do
+  replay verde do CI e ANTES do merge do PR #309, com autorização do operador;
+  conferida no catálogo e pelo teste de ponta a ponta no preview contra a
+  produção (funil de teste criado e apagado).
 
 ## Notas do histórico
 

@@ -32,3 +32,17 @@ describe('apagar a chave — o aviso conta os Playgrounds desligados (Codex, #29
     expect(painel).not.toContain('agentesDeIa.filter((a) => a.ativo)')
   })
 })
+
+describe('Codex, #309 — o recorte da conta ativa e as leituras que envelhecem', () => {
+  it('"Onde atua" lê só os funis da conta ATIVA (a RLS devolve os de toda conta de que a pessoa é membro)', () => {
+    const fonte = ler('src/components/agentes-de-ia/onde-atua.tsx')
+    expect(fonte).toContain(".eq('account_id', accountId)")
+    expect(fonte).toContain(".in(\n                'pipeline_id',")
+  })
+  it('a faixa de IA pergunta de novo quando uma tela move o card (o aviso das execuções)', () => {
+    expect(ler('src/components/inbox/ai-thread-banner.tsx')).toContain('window.addEventListener(EVENTO_EXECUCOES, aoMudar)')
+  })
+  it('o nome do agente na bolha vence (renomear com a página aberta)', () => {
+    expect(ler('src/components/agentes-de-ia/nomes-dos-agentes.ts')).toContain('Date.now() - buscadoEm > VALIDADE_MS')
+  })
+})
