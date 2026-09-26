@@ -184,14 +184,18 @@ export async function GET(request: Request) {
           // cada agente de CONEXÃO ligado deste provedor: a resposta
           // automática legada chama o modelo da linha dela, e um modelo
           // aposentado ali falharia com o cartão dizendo "funcionando"
-          // (Codex, #294). O do Radar é validado no SAVE — pingá-lo aqui
-          // seria uma segunda chamada paga a cada carga desta tela.
+          // (Codex, #294). E o modelo PRÓPRIO do Radar, quando o Radar está
+          // ligado em alguma conexão e o modelo difere do chat: validado no
+          // save, ele ainda pode sair do ar depois, e o cartão ficaria verde
+          // com toda análise falhando (Codex, #295). Vem logo depois do chat.
+          const radarLigado = canais.some((c) => c.radar_enabled === true);
           const modelos = [
             padrao && padrao.provider === e.provedor
               ? padrao.model
               : AI_PROVIDER_DEFAULT_MODEL[e.provedor],
+            padrao && padrao.provider === e.provedor && radarLigado ? padrao.radar_model : null,
             ...deConexao.filter((l) => l.provider === e.provedor).map((l) => l.model),
-          ].filter((m, i, todos) => typeof m === 'string' && m.trim() !== '' && todos.indexOf(m) === i);
+          ].filter((m, i, todos): m is string => typeof m === 'string' && m.trim() !== '' && todos.indexOf(m) === i);
           const falhas = await Promise.all(
             modelos.map(async (model) => {
               try {

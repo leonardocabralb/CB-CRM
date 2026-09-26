@@ -51,6 +51,7 @@ vi.mock('@/lib/ia-chaves/repo', () => ({
 
 import { GET } from './route'
 import { lerChaveDeEmbeddings, lerEstado } from '@/lib/ia-chaves/repo'
+import { listChannels } from '@/lib/cb-channels/repo'
 
 beforeEach(() => {
   validateAiCredentials.mockClear()
@@ -140,5 +141,26 @@ describe('GET /api/cb/integracoes/status — a chave da OpenAI que é SÓ da bas
     estadoComOpenai(false)
     await GET(new Request('http://x/api/cb/integracoes/status'))
     expect(validateAiCredentials.mock.calls.some((c) => c[0].provider === 'openai')).toBe(true)
+  })
+})
+
+describe('GET /api/cb/integracoes/status — o modelo PRÓPRIO do Radar (Codex, #295)', () => {
+  it('Radar ligado numa conexão e modelo próprio diferente do chat: é pingado', async () => {
+    linhas[0] = { channel_id: null, provider: 'gemini', model: 'gemini-padrao', radar_model: 'gemini-radar', is_active: true }
+    await cartaoGemini()
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gemini-radar')
+  })
+
+  it('Radar desligado em todas as conexões: o modelo dele não é pingado', async () => {
+    linhas[0] = { channel_id: null, provider: 'gemini', model: 'gemini-padrao', radar_model: 'gemini-radar', is_active: true }
+    vi.mocked(listChannels).mockResolvedValueOnce([{ id: 'canal-1', label: 'Comercial', radar_enabled: false }] as never)
+    await cartaoGemini()
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).not.toContain('gemini-radar')
+  })
+
+  it('o modelo do Radar fora do ar deixa o cartão em erro', async () => {
+    linhas[0] = { channel_id: null, provider: 'gemini', model: 'gemini-padrao', radar_model: 'gemini-radar', is_active: true }
+    modelosQueFalham = ['gemini-radar']
+    expect((await cartaoGemini()).estado).toBe('erro')
   })
 })

@@ -264,8 +264,8 @@ Radar.
   `handoff_agent_id`): senão um save vindo de Agentes zeraria o modelo do Radar.
 - ⚠️ **O modelo do Radar é validado no SAVE, contra o provedor** — inclusive
   quando só o PROVEDOR muda (senão o Radar falha de madrugada). O ping da aba
-  testa só o modelo do CHAT: pingar o do Radar seria outra chamada paga a cada
-  carga.
+  testa o do CHAT e, com o Radar ligado em alguma conexão, o PRÓPRIO do Radar
+  quando difere (pode sair do ar depois do save; Codex, #295).
 - ⚠️ **`?ping=0` existe porque cada ping é uma geração PAGA**: a tela carrega
   em dois tempos (config na hora, pings depois), o botão repete só os pings, e
   o `useEffect` tem guarda própria (`disparouRef`) contra o StrictMode dobrar
