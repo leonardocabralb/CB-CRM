@@ -11,6 +11,7 @@ import {
 } from '@/lib/broadcast-retry';
 import { chaveDePessoa, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { variantesDoNonoDigito } from '@/lib/contacts/telefone';
+import { literalParaRegex } from '@/lib/postgrest/literal';
 import {
   PAGINA,
   buscarPaginado,
@@ -173,11 +174,20 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-interface BroadcastApiResult {
+export interface BroadcastApiResult {
   phone: string;
   status: 'sent' | 'failed';
   whatsapp_message_id?: string;
   error?: string;
+  /** A linha de `broadcast_recipients` do pedido, devolvida pela rota. */
+  recipient_id?: string;
+  /**
+   * `true` = a rota JÁ gravou o envio na linha, na hora em que a Meta o
+   * aceitou (`anotarEnvio`, em `api/whatsapp/broadcast`). O navegador não
+   * regrava: nesse meio-tempo o recibo da Meta pode ter levado a linha a
+   * "entregue".
+   */
+  anotado?: boolean;
 }
 
 /** contactId → (customFieldId → value). */
@@ -243,8 +253,122 @@ async function marcarDestinatario(
     .from('broadcast_recipients')
     .update(patch)
     .eq('id', recipientId)
+    // ⚠️ Só a linha que ainda não andou. Desde que a rota do lote anota o
+    // envio na hora (`anotado`), a linha pode chegar aqui já `sent` e até
+    // `delivered` pelo recibo — regravar `sent` a rebaixaria, e um `failed`
+    // do lote que estourou por cima apagaria um envio que aconteceu.
+    .eq('status', 'pending')
     .select('id');
   return !error && (data?.length ?? 0) > 0;
+}
+
+/**
+ * A situação atual das linhas que `marcarDestinatario` não mudou (0 linhas).
+ * Isso já quis dizer só "a RLS barrou ou deu erro"; com a rota anotando o
+ * envio, quer dizer também "a linha já saiu de `pending`", que não é escrita
+ * perdida nem falha. `null` = a leitura falhou (quem chama conta como
+ * escrita perdida, que é o de antes).
+ */
+async function situacaoDasLinhas(
+  supabase: ReturnType<typeof createClient>,
+  ids: string[],
+): Promise<Map<string, string> | null> {
+  const { data, error } = await supabase
+    .from('broadcast_recipients')
+    .select('id, status')
+    .in('id', ids);
+  if (error || !data) return null;
+  return new Map(data.map((l) => [l.id as string, l.status as string]));
+}
+
+/** O que voltou de um lote enviado à rota `api/whatsapp/broadcast`. */
+export type DesfechoDoLote = { resultados: BroadcastApiResult[] } | { erro: string };
+
+/**
+ * Grava nas linhas de um lote o que a rota respondeu — ou o erro que
+ * derrubou o lote inteiro — e devolve quantas falharam e quantas escritas se
+ * perderam.
+ *
+ * ⚠️ A linha que a rota já anotou (`anotado`) não é tocada, e nenhuma
+ * escrita daqui mexe em linha fora de `pending` (`marcarDestinatario`). O
+ * erro do lote pode ter chegado DEPOIS de a rota mandar e anotar parte dele
+ * (a conexão caiu no meio): marcar tudo como `failed`, como antes, apagaria
+ * envios que aconteceram. Quem não gravou é conferido numa leitura só
+ * (`situacaoDasLinhas`): continua `pending` = escrita perdida, como sempre;
+ * já saiu de `pending` = outro escritor gravou, e só conta como falha se
+ * estiver `failed`.
+ */
+export async function gravarDesfechoDoLote(
+  supabase: ReturnType<typeof createClient>,
+  lote: { id: string; contact: { phone?: string | null } | null }[],
+  desfecho: DesfechoDoLote,
+): Promise<{ falhas: number; escritasPerdidas: number }> {
+  let falhas = 0;
+  let escritasPerdidas = 0;
+  const naoGravados: { id: string; falha: boolean }[] = [];
+  const escrever = async (id: string, patch: Record<string, unknown>) => {
+    const falha = patch.status === 'failed';
+    if (!(await marcarDestinatario(supabase, id, patch))) naoGravados.push({ id, falha });
+    else if (falha) falhas++;
+  };
+
+  if ('erro' in desfecho) {
+    for (const linha of lote) {
+      await escrever(linha.id, { status: 'failed', error_message: desfecho.erro });
+    }
+  } else {
+    const porLinha = new Map<string, BroadcastApiResult>();
+    const porTelefone = new Map<string, BroadcastApiResult>();
+    for (const r of desfecho.resultados) {
+      if (r.recipient_id) porLinha.set(r.recipient_id, r);
+      porTelefone.set(r.phone, r);
+    }
+
+    for (const linha of lote) {
+      const phone = linha.contact?.phone;
+      const result = porLinha.get(linha.id) ?? (phone ? porTelefone.get(phone) : undefined);
+
+      if (!result) {
+        await escrever(linha.id, {
+          status: 'failed',
+          error_message: 'No phone number on contact',
+        });
+      } else if (result.status === 'sent') {
+        // A rota já anotou: nada a gravar daqui (ver `anotado`).
+        if (result.anotado) continue;
+        await escrever(linha.id, {
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          whatsapp_message_id: result.whatsapp_message_id ?? null,
+          error_message: null,
+        });
+      } else {
+        await escrever(linha.id, {
+          status: 'failed',
+          error_message: result.error ?? 'Unknown error',
+        });
+      }
+    }
+  }
+
+  if (naoGravados.length > 0) {
+    const atual = await situacaoDasLinhas(
+      supabase,
+      naoGravados.map((n) => n.id),
+    );
+    for (const { id, falha } of naoGravados) {
+      const status = atual?.get(id);
+      if (status === undefined || status === 'pending') {
+        // Ninguém gravou: é a escrita perdida de sempre (RLS/erro).
+        escritasPerdidas++;
+        if (falha) falhas++;
+      } else if (status === 'failed') {
+        falhas++;
+      }
+    }
+  }
+
+  return { falhas, escritasPerdidas };
 }
 
 /**
@@ -376,25 +500,6 @@ async function contatosComAsEtiquetas(
   }
 
   return [...contactIds];
-}
-
-/**
- * O valor digitado como TEXTO LITERAL numa expressão regular do Postgres:
- * cada metacaractere ganha uma barra.
- *
- * ⚠️⚠️ "Contém" já foi `ilike('%valor%')` sem escape (revisão do PR #231,
- * P1): `%` e `_` digitados viravam curingas, e "contém %" casava todo contato
- * com o campo preenchido — contagem e envio concordando sobre o público
- * ERRADO de uma campanha paga. Escapar `\ % _` não bastaria: o PostgREST
- * troca TODO `*` de um padrão `like`/`ilike` por `%` (o atalho de URL da
- * documentação dele), sem forma de escapar, e "contém *" continuaria
- * alcançando todo mundo. No `imatch` (`~*`) o PostgREST não reescreve nada,
- * e ele ignora a caixa como o `ilike` — medido no Postgres da produção em
- * 25/09/2026: `'Bancário' ~* 'BANCÁRIO'`, `'a*b' ~* 'a\*b'` e
- * `'axb' ~* 'a\*b'` falso.
- */
-export function literalParaRegex(valor: string): string {
-  return valor.replace(/[\\^$.|?*+()[\]{}]/g, '\\$&');
 }
 
 /**
@@ -1028,6 +1133,9 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
         const apiRecipients = batch
           .filter((r) => r.contact?.phone)
           .map((r) => ({
+            // Com a linha, a rota grava o wamid assim que a Meta aceita o
+            // envio (`anotado`), antes de o lote inteiro voltar para cá.
+            recipient_id: r.id,
             phone: r.contact!.phone as string,
             // Read back off the row rather than re-resolved, so this
             // pass and any later resume send identical params.
@@ -1037,6 +1145,8 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
 
         if (apiRecipients.length === 0) continue;
 
+        // O que a rota respondeu, ou o erro que derrubou o lote inteiro.
+        let desfecho: DesfechoDoLote;
         try {
           // Send the batch, waiting out a 429 rather than writing the
           // whole batch off as failed. Only 429 is replayed — see
@@ -1069,64 +1179,14 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             await sleep(retryIn);
           }
 
-          const resultsByPhone = new Map<string, BroadcastApiResult>();
-          for (const r of (data.results ?? []) as BroadcastApiResult[]) {
-            resultsByPhone.set(r.phone, r);
-          }
-
-          for (const recipient of batch) {
-            const phone = recipient.contact?.phone;
-            const result = phone ? resultsByPhone.get(phone) : undefined;
-
-            if (!result) {
-              failedCount++;
-              if (
-                !(await marcarDestinatario(supabase, recipient.id, {
-                  status: 'failed',
-                  error_message: 'No phone number on contact',
-                }))
-              ) {
-                escritasPerdidas++;
-              }
-              continue;
-            }
-
-            if (result.status === 'sent') {
-              if (
-                !(await marcarDestinatario(supabase, recipient.id, {
-                  status: 'sent',
-                  sent_at: new Date().toISOString(),
-                  whatsapp_message_id: result.whatsapp_message_id ?? null,
-                  error_message: null,
-                }))
-              ) {
-                escritasPerdidas++;
-              }
-            } else {
-              failedCount++;
-              if (
-                !(await marcarDestinatario(supabase, recipient.id, {
-                  status: 'failed',
-                  error_message: result.error ?? 'Unknown error',
-                }))
-              ) {
-                escritasPerdidas++;
-              }
-            }
-          }
+          desfecho = { resultados: (data.results ?? []) as BroadcastApiResult[] };
         } catch (err) {
-          for (const recipient of batch) {
-            failedCount++;
-            if (
-              !(await marcarDestinatario(supabase, recipient.id, {
-                status: 'failed',
-                error_message: err instanceof Error ? err.message : 'Unknown error',
-              }))
-            ) {
-              escritasPerdidas++;
-            }
-          }
+          desfecho = { erro: err instanceof Error ? err.message : 'Unknown error' };
         }
+
+        const gravado = await gravarDesfechoDoLote(supabase, batch, desfecho);
+        failedCount += gravado.falhas;
+        escritasPerdidas += gravado.escritasPerdidas;
 
         const progressPct =
           30 + Math.round(((i + batch.length) / totalRecipients) * 60);
