@@ -90,6 +90,9 @@ describe('1042 — chaves de IA por provedor', () => {
     expect(/CREATE\s+TRIGGER\s+cb_ia_chaves_segue_o_legado\s+AFTER\s+INSERT\s+OR\s+UPDATE\s+OF\s+api_key,\s*embeddings_api_key\s+OR\s+DELETE\s+ON\s+ai_configs/i.test(semComentarios)).toBe(true);
     // O "Remover" do app anterior apaga a cópia também (Codex, #295).
     expect(fn).toMatch(/TG_OP\s*=\s*'DELETE'[\s\S]*DELETE\s+FROM\s+cb_ia_chaves\s+WHERE\s+account_id\s*=\s*OLD\.account_id\s+AND\s+provedor\s*=\s*OLD\.provider/i);
+    // ...menos quando um agente de CONEXÃO ligado do mesmo provedor continua:
+    // a chave passa a ser a dele (Codex, #294).
+    expect(fn).toMatch(/c\.channel_id\s+IS\s+NOT\s+NULL\s+AND\s+c\.is_active[\s\S]*UPDATE\s+cb_ia_chaves\s+SET\s+api_key\s*=\s*v_da_conexao/i)
     // ...e a linha da OpenAI que era SÓ a chave da base sai inteira — no
     // Remover e quando a tela antiga apaga a chave própria (Codex, #295).
     const apagaASoDaBase = fn.match(/DELETE\s+FROM\s+cb_ia_chaves\s+WHERE\s+account_id\s*=\s*(OLD|NEW)\.account_id\s+AND\s+provedor\s*=\s*'openai'\s+AND\s+api_key\s*=\s*embeddings_api_key/gi) ?? [];

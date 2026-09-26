@@ -101,9 +101,16 @@ type Veredito =
   | { ok: true; modelosIndisponiveis: string[]; transcricaoIndisponivel: boolean }
   | { ok: false; erro: unknown; modelo?: string }
 
-/** Falha passageira: não é resposta sobre a chave nem sobre o modelo. */
+/**
+ * Falha passageira: não é resposta sobre a chave nem sobre o modelo — tempo
+ * esgotado, rede, limite, e o 5xx do provedor (Codex, #294: o 5xx chega como
+ * `provider_error`, o mesmo código do modelo inexistente; quem separa é o
+ * status que o provedor devolveu).
+ */
 function falhaPassageira(err: unknown): boolean {
-  return err instanceof AiError && ['timeout', 'network_error', 'rate_limited'].includes(err.code)
+  if (!(err instanceof AiError)) return false
+  if (['timeout', 'network_error', 'rate_limited'].includes(err.code)) return true
+  return err.code === 'provider_error' && (err.upstreamStatus ?? 0) >= 500
 }
 
 /**

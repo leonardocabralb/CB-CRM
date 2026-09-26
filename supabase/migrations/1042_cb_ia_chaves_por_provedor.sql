@@ -151,6 +151,8 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
+DECLARE
+  v_da_conexao text;
 BEGIN
   IF coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', '') <> 'authenticated' THEN
     RETURN coalesce(NEW, OLD);
@@ -161,7 +163,23 @@ BEGIN
   -- app novo subiria usando a chave que a pessoa mandou esquecer (Codex, #295).
   IF TG_OP = 'DELETE' THEN
     IF OLD.channel_id IS NULL THEN
-      DELETE FROM cb_ia_chaves WHERE account_id = OLD.account_id AND provedor = OLD.provider;
+      -- Um agente de CONEXÃO ligado do mesmo provedor continua configurado: a
+      -- chave do provedor passa a ser a DELE (a mesma escolha da cópia do
+      -- item 1), em vez de sumir — sem isso a resposta automática dele pararia
+      -- no deploy (Codex, #294). A da linha apagada sai do mesmo jeito.
+      SELECT c.api_key INTO v_da_conexao
+        FROM ai_configs c
+       WHERE c.account_id = OLD.account_id AND c.provider = OLD.provider
+         AND c.channel_id IS NOT NULL AND c.is_active
+         AND c.api_key IS NOT NULL AND c.api_key <> ''
+       ORDER BY c.created_at
+       LIMIT 1;
+      IF v_da_conexao IS NOT NULL THEN
+        UPDATE cb_ia_chaves SET api_key = v_da_conexao, serve_embeddings = NULL, updated_at = now()
+         WHERE account_id = OLD.account_id AND provedor = OLD.provider;
+      ELSE
+        DELETE FROM cb_ia_chaves WHERE account_id = OLD.account_id AND provedor = OLD.provider;
+      END IF;
       IF OLD.embeddings_api_key IS NOT NULL AND OLD.embeddings_api_key <> '' THEN
         -- A linha da OpenAI que nasceu SÓ da chave da base (as duas colunas com
         -- o MESMO texto cifrado — a marca de origem do item 2) é essa chave
