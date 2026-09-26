@@ -7,6 +7,7 @@ import { embedTexts } from '@/lib/ai/embeddings'
 import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults'
 import { AiError, mensagemSeguraDeAiError, type AiProvider } from '@/lib/ai/types'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { MODELO_TRANSCRICAO } from '@/lib/transcricao/transcrever'
 import {
   apagarChave,
   ehProvedor,
@@ -61,7 +62,9 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
     .select('provider, model, radar_model, channel_id, is_active')
     .eq('account_id', accountId)
   if (error) throw new Error(`[ia-chaves] leitura dos modelos em uso falhou: ${error.message}`)
-  const modelos: string[] = []
+  // A transcrição chama SEMPRE o modelo fixo com a chave do Gemini, qualquer
+  // que seja o provedor dos agentes (Codex, #294): primeiro da lista.
+  const modelos: string[] = provedor === 'gemini' ? [MODELO_TRANSCRICAO] : []
   for (const linha of data ?? []) {
     if (linha.provider !== provedor) continue
     if (linha.channel_id !== null && linha.is_active === false) continue
