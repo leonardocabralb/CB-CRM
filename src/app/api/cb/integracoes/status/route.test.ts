@@ -156,6 +156,21 @@ describe('GET /api/cb/integracoes/status — a chave da OpenAI que é SÓ da bas
     await GET(new Request('http://x/api/cb/integracoes/status'))
     expect(validateAiCredentials.mock.calls.some((c) => c[0].provider === 'openai')).toBe(true)
   })
+
+  it('a linha padrão DESLIGADA (a que a chave só da base cria) com o Radar desligado não conta como chat', async () => {
+    linhas = [{ channel_id: null, provider: 'openai', model: 'gpt-x', radar_model: null, is_active: false }]
+    vi.mocked(listChannels).mockResolvedValueOnce([{ id: 'canal-1', label: 'Comercial', radar_enabled: false }] as never)
+    estadoComOpenai(false)
+    await GET(new Request('http://x/api/cb/integracoes/status'))
+    expect(validateAiCredentials.mock.calls.some((c) => c[0].provider === 'openai')).toBe(false)
+  })
+
+  it('a linha padrão desligada com o Radar ligado conta: o Radar roda sobre ela', async () => {
+    linhas = [{ channel_id: null, provider: 'openai', model: 'gpt-x', radar_model: null, is_active: false }]
+    estadoComOpenai(false)
+    await GET(new Request('http://x/api/cb/integracoes/status'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gpt-x')
+  })
 })
 
 describe('GET /api/cb/integracoes/status — o modelo PRÓPRIO do Radar (Codex, #295)', () => {
