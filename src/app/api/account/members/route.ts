@@ -10,6 +10,9 @@
 //   admin+. Agents and viewers see name + avatar + role + joined
 //   date only. This mirrors the design decision from the planning
 //   phase: "agent/viewer sees names only".
+//
+//   O celular (1046) segue a mesma regra, e com barreira no banco: ver o
+//   comentário na leitura, abaixo.
 // ============================================================
 
 import { NextResponse } from "next/server";
@@ -49,6 +52,36 @@ export async function GET() {
 
     const canSeeEmails = canManageMembers(ctx.role);
 
+    // O celular de cada membro (1046) segue a regra do e-mail: só para
+    // administradores. Aqui a barreira é também o banco — o cliente é o do
+    // CHAMADOR, e a RLS de `cb_celulares_dos_membros` só entrega a um
+    // administrador o número da própria equipe. Leitura que falha deixa o
+    // campo AUSENTE ("não sei"), nunca `null`, que a tela lê como "não
+    // informou".
+    let celulares: Map<string, string> | null = null;
+    if (canSeeEmails) {
+      const leitura = await ctx.supabase
+        .from("cb_celulares_dos_membros")
+        .select("user_id, celular")
+        .in(
+          "user_id",
+          (data as ProfileRow[]).map((row) => row.user_id),
+        );
+      if (leitura.error) {
+        console.error("[GET /api/account/members] celulares:", {
+          code: leitura.error.code,
+          message: leitura.error.message,
+        });
+      } else {
+        celulares = new Map(
+          (leitura.data as { user_id: string; celular: string }[]).map((l) => [
+            l.user_id,
+            l.celular,
+          ]),
+        );
+      }
+    }
+
     const members: AccountMember[] = (data as ProfileRow[]).flatMap((row) => {
       // Defensive: the DB enum should never let an unknown role
       // through, but if a migration ever broadens the enum without
@@ -62,6 +95,7 @@ export async function GET() {
           avatar_url: row.avatar_url,
           role: row.account_role,
           joined_at: row.created_at,
+          ...(celulares ? { celular: celulares.get(row.user_id) ?? null } : {}),
         },
       ];
     });
