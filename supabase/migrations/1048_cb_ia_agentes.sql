@@ -1,10 +1,10 @@
--- 1043_cb_ia_agentes.sql
+-- 1048_cb_ia_agentes.sql
 --
 -- F1b do plano dos agentes de IA (docs/PLANO-agentes-de-ia.md, 5.2): a conta
 -- passa a ter VÁRIOS agentes, cada um com instruções e regras (D23), provedor
 -- e modelo (D1), conexões, horário, teto e o destino da transferência. Nesta
 -- fase nenhum agente responde cliente: eles são criados, testados no
--- Playground e medidos no uso. A chave é a do PROVEDOR (`cb_ia_chaves`, 1042).
+-- Playground e medidos no uso. A chave é a do PROVEDOR (`cb_ia_chaves`, 1047).
 --
 -- O que faz:
 --  1. `cb_ia_agentes`:
@@ -44,7 +44,7 @@
 --     campo não fechava nada. Quem não é admin e precisa da configuração (a
 --     faixa de IA da conversa e o rascunho) lê pelo SERVIDOR, com a conta
 --     conferida na sessão.
---  8. Apaga o gatilho TEMPORÁRIO da 1042 (`cb_ia_chaves_segue_o_legado`): ele
+--  8. Apaga o gatilho TEMPORÁRIO da 1047 (`cb_ia_chaves_segue_o_legado`): ele
 --     cobria a janela em que o app anterior ainda gravava a chave em
 --     `ai_configs`. Com a F1a no ar (a ORDEM abaixo), a chave só se grava em
 --     `cb_ia_chaves`, e o gatilho só atrapalharia.
@@ -191,7 +191,7 @@ UPDATE ai_configs
    AND model IS NOT NULL
    AND btrim(model) <> '';
 
--- 8) A janela da 1042 fechou: o gatilho temporário sai.
+-- 8) A janela da 1047 fechou: o gatilho temporário sai.
 DROP TRIGGER IF EXISTS cb_ia_chaves_segue_o_legado ON ai_configs;
 DROP FUNCTION IF EXISTS public.cb_ia_chaves_segue_o_legado();
 
@@ -262,40 +262,40 @@ GRANT SELECT ON TABLE ai_usage_log TO service_role;
 DO $$
 BEGIN
   IF to_regclass('public.cb_ia_agentes') IS NULL THEN
-    RAISE EXCEPTION '1043: cb_ia_agentes ausente';
+    RAISE EXCEPTION '1048: cb_ia_agentes ausente';
   END IF;
   IF has_table_privilege('anon', 'public.cb_ia_agentes', 'SELECT') THEN
-    RAISE EXCEPTION '1043: anon lê cb_ia_agentes';
+    RAISE EXCEPTION '1048: anon lê cb_ia_agentes';
   END IF;
   IF has_table_privilege('authenticated', 'public.cb_ia_agentes', 'INSERT')
      OR has_table_privilege('authenticated', 'public.cb_ia_agentes', 'UPDATE')
      OR has_table_privilege('authenticated', 'public.cb_ia_agentes', 'DELETE') THEN
-    RAISE EXCEPTION '1043: authenticated escreve em cb_ia_agentes — a escrita é da rota';
+    RAISE EXCEPTION '1048: authenticated escreve em cb_ia_agentes — a escrita é da rota';
   END IF;
   IF NOT has_table_privilege('authenticated', 'public.cb_ia_agentes', 'SELECT') THEN
-    RAISE EXCEPTION '1043: authenticated sem SELECT em cb_ia_agentes (a policy de admin não teria o que filtrar)';
+    RAISE EXCEPTION '1048: authenticated sem SELECT em cb_ia_agentes (a policy de admin não teria o que filtrar)';
   END IF;
   IF NOT has_table_privilege('service_role', 'public.cb_ia_agentes', 'INSERT')
      OR NOT has_table_privilege('service_role', 'public.cb_ia_agentes', 'UPDATE') THEN
-    RAISE EXCEPTION '1043: service_role sem escrita em cb_ia_agentes';
+    RAISE EXCEPTION '1048: service_role sem escrita em cb_ia_agentes';
   END IF;
   IF has_function_privilege('anon', 'public.cb_ia_uso(uuid, timestamptz, text)', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.cb_ia_uso(uuid, timestamptz, text)', 'EXECUTE') THEN
-    RAISE EXCEPTION '1043: cb_ia_uso aberta ao navegador';
+    RAISE EXCEPTION '1048: cb_ia_uso aberta ao navegador';
   END IF;
   IF NOT has_function_privilege('service_role', 'public.cb_ia_uso(uuid, timestamptz, text)', 'EXECUTE') THEN
-    RAISE EXCEPTION '1043: service_role sem EXECUTE em cb_ia_uso';
+    RAISE EXCEPTION '1048: service_role sem EXECUTE em cb_ia_uso';
   END IF;
   IF has_function_privilege('anon', 'public.cb_tira_conexao_dos_agentes_de_ia()', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.cb_tira_conexao_dos_agentes_de_ia()', 'EXECUTE')
      OR has_function_privilege('anon', 'public.cb_ia_agente_arquivado_sai_das_passagens()', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.cb_ia_agente_arquivado_sai_das_passagens()', 'EXECUTE') THEN
-    RAISE EXCEPTION '1043: função de gatilho exposta como RPC';
+    RAISE EXCEPTION '1048: função de gatilho exposta como RPC';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_trigger
                   WHERE tgname = 'cb_ia_agentes_arquivado_sai_das_passagens'
                     AND tgrelid = 'public.cb_ia_agentes'::regclass) THEN
-    RAISE EXCEPTION '1043: gatilho do arquivamento ausente';
+    RAISE EXCEPTION '1048: gatilho do arquivamento ausente';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.check_constraints
@@ -303,7 +303,7 @@ BEGIN
        AND constraint_name = 'ai_usage_log_mode_check'
        AND check_clause LIKE '%agente_teste%'
   ) THEN
-    RAISE EXCEPTION '1043: o CHECK de mode não aceita agente_teste — o uso do Playground sumiria calado';
+    RAISE EXCEPTION '1048: o CHECK de mode não aceita agente_teste — o uso do Playground sumiria calado';
   END IF;
 
   IF NOT EXISTS (
@@ -312,11 +312,11 @@ BEGIN
        AND policyname = 'ai_configs_select'
        AND qual LIKE '%cb_contas_do_usuario(''admin''%'
   ) THEN
-    RAISE EXCEPTION '1043: ai_configs ainda legível por qualquer membro (o prompt do assistente)';
+    RAISE EXCEPTION '1048: ai_configs ainda legível por qualquer membro (o prompt do assistente)';
   END IF;
 
   IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'cb_ia_chaves_segue_o_legado') THEN
-    RAISE EXCEPTION '1043: o gatilho temporário da 1042 continua de pé';
+    RAISE EXCEPTION '1048: o gatilho temporário da 1047 continua de pé';
   END IF;
 
   -- A função de soma é CHAMADA (o corpo só é analisado quando roda): numa

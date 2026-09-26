@@ -1,5 +1,5 @@
 // ============================================================
-// O agente de IA (1043, docs/PLANO-agentes-de-ia.md, 5.2): a forma, a
+// O agente de IA (1048, docs/PLANO-agentes-de-ia.md, 5.2): a forma, a
 // leitura da linha e a validação do que a tela manda. PURO, testado.
 //
 // ⚠️ "Agente" no resto do código quer dizer PESSOA (`assigned_agent_id`, o

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // criarAgente / atualizarAgente — o provedor ESCOLHIDO precisa de uma chave
-// que sirva ao CHAT. A chave da OpenAI que nasceu SÓ da base (1042) pode ser
+// que sirva ao CHAT. A chave da OpenAI que nasceu SÓ da base (1047) pode ser
 // restrita aos embeddings: o agente nasceria mudo (Codex, #295).
 
 let estado: { provedor: string; existe: boolean; soDaBase: boolean }[] = []

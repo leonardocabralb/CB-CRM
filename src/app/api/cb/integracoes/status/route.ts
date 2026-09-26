@@ -152,7 +152,7 @@ export async function GET(request: Request) {
       );
     }
 
-    // Os agentes de IA (1043). Leitura que falha só tira a lista do cartão e
+    // Os agentes de IA (1048). Leitura que falha só tira a lista do cartão e
     // os modelos deles do ping (log) — não derruba a tela das chaves.
     const agentes = await listarAgentes(ctx.accountId).catch((err) => {
       console.error('[integracoes] leitura dos agentes falhou:', err instanceof Error ? err.message : err);
@@ -281,7 +281,7 @@ export async function GET(request: Request) {
         model: l.model,
         canal: canais.find((c) => c.id === l.channel_id)?.label ?? l.channel_id,
       })),
-      // Os agentes de IA (1043) de cada provedor.
+      // Os agentes de IA (1048) de cada provedor.
       agentes.map((a) => ({
         nome: a.nome,
         provedor: a.provedor as ProviderId,

@@ -3,18 +3,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // ============================================================
-// 1043 — agentes de IA. Os pinos que a conferência de dentro da migration não
+// 1048 — agentes de IA. Os pinos que a conferência de dentro da migration não
 // cobre (ela confere GRANT, não a forma da policy nem o que a tabela recusa).
 // LIMITE DECLARADO: lê o `.sql`.
 // ============================================================
 
-const sql = fs.readFileSync(path.join(__dirname, '1043_cb_ia_agentes.sql'), 'utf8');
+const sql = fs.readFileSync(path.join(__dirname, '1048_cb_ia_agentes.sql'), 'utf8');
 const semComentarios = sql
   .split('\n')
   .map((linha) => linha.replace(/--.*$/, ''))
   .join('\n');
 
-describe('1043 — agentes de IA', () => {
+describe('1048 — agentes de IA', () => {
   it('leitura SÓ para administrador (D14), na forma da 1032', () => {
     expect(
       /CREATE\s+POLICY\s+cb_ia_agentes_select\s+ON\s+cb_ia_agentes\s+FOR\s+SELECT\s+USING\s*\(\s*account_id\s*=\s*ANY\s*\(\s*ARRAY\s*\(\s*SELECT\s+public\.cb_contas_do_usuario\s*\(\s*'admin'::public\.account_role_enum\s*\)\s*\)\s*\)\s*\)/i.test(
@@ -35,7 +35,7 @@ describe('1043 — agentes de IA', () => {
     ).toBe(true);
   });
 
-  it('apaga o gatilho TEMPORÁRIO da janela da 1042 (a F1a já está no ar)', () => {
+  it('apaga o gatilho TEMPORÁRIO da janela da 1047 (a F1a já está no ar)', () => {
     expect(/DROP\s+TRIGGER\s+IF\s+EXISTS\s+cb_ia_chaves_segue_o_legado\s+ON\s+ai_configs/i.test(semComentarios)).toBe(true);
     expect(/DROP\s+FUNCTION\s+IF\s+EXISTS\s+public\.cb_ia_chaves_segue_o_legado\(\)/i.test(semComentarios)).toBe(true);
   });

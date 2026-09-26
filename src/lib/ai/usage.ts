@@ -8,7 +8,7 @@ export interface LogAiUsageArgs {
   conversationId: string | null
   /** 'radar' = análise em lote do Radar de Atendimento (941 ampliou o CHECK).
    *  'agente' / 'agente_teste' = um agente de IA em produção / no Playground
-   *  (1043, D13 do docs/PLANO-agentes-de-ia.md). */
+   *  (1048, D13 do docs/PLANO-agentes-de-ia.md). */
   mode: 'auto_reply' | 'draft' | 'radar' | 'transcricao' | 'agente' | 'agente_teste'
   /** Canal por onde a conversa corre — atribui o custo por numero. */
   channelId?: string | null
@@ -16,7 +16,7 @@ export interface LogAiUsageArgs {
   model: string
   /** Provider usage; a no-op when null (nothing worth recording). */
   usage: AiUsage | null
-  /** O agente de IA da chamada (1043) e o nome dele CONGELADO — o uso antigo
+  /** O agente de IA da chamada (1048) e o nome dele CONGELADO — o uso antigo
    *  mantém o nome mesmo que o agente seja renomeado ou arquivado. */
   iaAgenteId?: string | null
   iaAgenteNome?: string | null
@@ -52,7 +52,7 @@ export async function logAiUsage(
       completion_tokens: args.usage.completionTokens,
       total_tokens: args.usage.totalTokens,
       // Só quando há agente: a linha de Radar/transcrição não carrega as colunas
-      // (e o app anterior à 1043, sem elas no banco, continua gravando).
+      // (e o app anterior à 1048, sem elas no banco, continua gravando).
       ...(args.iaAgenteId
         ? { ia_agente_id: args.iaAgenteId, ia_agente_nome: args.iaAgenteNome ?? null }
         : {}),

@@ -1,5 +1,5 @@
 // ============================================================
-// Agentes de IA no banco (1043). Servidor, com o cliente de SERVIÇO.
+// Agentes de IA no banco (1048). Servidor, com o cliente de SERVIÇO.
 //
 // ⚠️ `cb_ia_agentes` só dá SELECT ao ADMINISTRADOR (D14) e nenhuma escrita ao
 // navegador: toda escrita passa por aqui, e toda consulta leva a conta
@@ -91,7 +91,7 @@ async function conferirReferencias(
     if (!doProvedor?.existe) {
       throw new ErroDoAgente('provedor_sem_chave', 'o provedor escolhido não tem chave')
     }
-    // A chave da OpenAI que nasceu SÓ da base (1042) pode ser restrita aos
+    // A chave da OpenAI que nasceu SÓ da base (1047) pode ser restrita aos
     // embeddings: o agente nasceria mudo, e o Playground falharia em toda
     // geração. Vale até uma chave de CHAT da OpenAI ser gravada (Codex, #295).
     if (doProvedor.soDaBase) {
@@ -195,7 +195,7 @@ export async function atualizarAgente(
 
 /**
  * Apagar é ARQUIVAR (o uso antigo mantém o nome). Desliga o agente; quem o
- * tira das listas "pode passar para" dos outros agentes é um GATILHO da 1043,
+ * tira das listas "pode passar para" dos outros agentes é um GATILHO da 1048,
  * num UPDATE só (ler e regravar o array aqui perderia uma edição concorrente).
  */
 export async function arquivarAgente(accountId: string, userId: string, id: string): Promise<void> {

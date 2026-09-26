@@ -132,7 +132,7 @@ export type EstadoDaIntegracao =
   /** Há credencial, mas o ping ainda não rodou (carga rápida). */
   | 'conferindo';
 
-/** Um agente de IA (1043) que usa a chave deste provedor. */
+/** Um agente de IA (1048) que usa a chave deste provedor. */
 export interface AgenteDeIaNoCartao {
   nome: string;
   provedor: ProviderId;
@@ -148,7 +148,7 @@ export interface CartaoDeIntegracao {
   /** Este provedor é o do Radar (a linha padrão): o cartão edita o modelo dele. */
   ehDoRadar: boolean;
   agentes: AgenteNoCartao[];
-  /** Os agentes de IA (1043) deste provedor, que passam a usar esta chave. */
+  /** Os agentes de IA (1048) deste provedor, que passam a usar esta chave. */
   agentesDeIa: AgenteDeIaNoCartao[];
   /** Onde esta chave é usada, com o modelo de cada módulo. */
   usos: UsoNoCartao[];

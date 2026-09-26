@@ -292,7 +292,7 @@ Radar.
   existe (as colunas `google_*` da 945 nascem nulas); quando existir, é este
   cartão que vira o ponto de conexão.
 
-### Agentes de IA (1043, `src/lib/ia-agentes/`, `/agents`)
+### Agentes de IA (1048, `src/lib/ia-agentes/`, `/agents`)
 
 O plano vivo é `docs/PLANO-agentes-de-ia.md` (decisões D1–D23). Na F1b os
 agentes são criados, testados no Playground e medidos; NENHUM responde

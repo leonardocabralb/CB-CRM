@@ -1,7 +1,7 @@
 // ============================================================
 // O uso da IA, somado (docs/PLANO-agentes-de-ia.md, 5.8). PURO, testado.
 //
-// A entrada são as linhas da RPC `cb_ia_uso` (1043: uma por dia, modo,
+// A entrada são as linhas da RPC `cb_ia_uso` (1048: uma por dia, modo,
 // agente, provedor e modelo — a soma é feita no BANCO, porque ler linha a
 // linha esbarrava no corte de 1000 do PostgREST). Aqui só se reagrupa e se
 // estima o custo.

@@ -7,7 +7,7 @@ import { criarAgente, listarAgentes } from '@/lib/ia-agentes/repo'
 import { recusa, respostaDoErro } from '@/lib/ia-agentes/resposta'
 
 /**
- * Agentes de IA da conta (1043, docs/PLANO-agentes-de-ia.md). Só
+ * Agentes de IA da conta (1048, docs/PLANO-agentes-de-ia.md). Só
  * administrador (D14): as instruções e as regras ficam ocultas para quem não
  * é. `GET` lista os não arquivados; `POST` cria.
  */

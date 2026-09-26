@@ -51,7 +51,7 @@ async function lerUsoInteiro(
 /**
  * GET /api/cb/ia/uso?dias=30  (admin)
  *
- * O uso de IA da conta, SOMADO NO BANCO (`cb_ia_uso`, 1043): por modo, por
+ * O uso de IA da conta, SOMADO NO BANCO (`cb_ia_uso`, 1048): por modo, por
  * agente (produção e teste separados, D13), por dia, e o custo estimado em R$
  * pela cotação da conta (D21). A rota antiga lia linha a linha e o PostgREST
  * cortava em 1000 sem avisar.
