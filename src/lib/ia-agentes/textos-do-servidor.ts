@@ -32,7 +32,13 @@ export async function textosDaTransferencia(
   motivo: MotivoDeTransferencia,
 ): Promise<{ autor: string; texto: string }> {
   const { locale, messages } = await dicionario()
-  const t = createTranslator({ locale, messages, namespace: 'IaAgentes.transferencia' })
+  // O dicionário é carregado em tempo de execução (o do idioma da instalação),
+  // então o tradutor não tem as chaves tipadas: a função é tipada à mão. As
+  // chaves existem nos dois dicionários — `textos-do-servidor.test.ts` cobra.
+  const t = createTranslator({ locale, messages, namespace: 'IaAgentes.transferencia' }) as unknown as (
+    chave: string,
+    valores: Record<string, string>,
+  ) => string
   return {
     autor: t('autor', { agente }),
     texto: t(`nota.${motivo}`, { agente }),

@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest'
 import {
   claimVivo,
   descarteFoiSobreFalha,
+  mensagemParaMetricas,
   precisaDeAnalise,
   THROTTLE_MS,
   TRAVADA_MIN,
 } from './worker'
+import { calcularMetricas } from './metricas'
 
 // A regra de candidatura já produziu o bug mais caro da revisão da 941:
 // linha `failed` que nunca teve sucesso (janela_fim NULL) era lida como
@@ -252,5 +254,122 @@ describe('cerca do recolhedor de travadas (Codex, PR #89)', () => {
     const corpo = fonte.slice(inicio, fim)
     expect(corpo).toContain('.maybeSingle()')
     expect(corpo).toContain('else if (!data)')
+  })
+})
+
+// ============================================================
+// D11 do docs/PLANO-agentes-de-ia.md: a resposta do AGENTE DE IA fecha a
+// pendência do cliente, mas não entra no tempo de resposta DA EQUIPE — e
+// `houveHumanoNaJanela` NÃO muda (a IA não é gente para aquela pergunta).
+// ============================================================
+
+describe('mensagemParaMetricas — quem fecha a pendência (D11)', () => {
+  const base = {
+    id: 'm1',
+    sender_id: null,
+    from_device: false,
+    ia_agente_id: null,
+    created_at: '2026-08-26T13:00:00Z',
+  }
+  const nenhuma = new Set<string>()
+
+  it('resposta do agente de IA: fecha a pendência, mas não é gente', () => {
+    const r = mensagemParaMetricas(
+      { ...base, sender_type: 'bot', ia_agente_id: 'agente-1' },
+      nenhuma,
+    )
+    expect(r.porAgenteDeIa).toBe(true)
+    expect(r.porGente).toBe(false)
+  })
+
+  it('⚠️ robô SEM `ia_agente_id` (fluxo, automação) continua não fechando', () => {
+    const r = mensagemParaMetricas({ ...base, sender_type: 'bot' }, nenhuma)
+    expect(r.porAgenteDeIa).toBe(false)
+    expect(r.porGente).toBe(false)
+  })
+
+  it('coluna AUSENTE (fora do select) não fecha — erra para o lado do alarme', () => {
+    const semColuna = { ...base, sender_type: 'bot' as const, ia_agente_id: undefined }
+    expect(
+      mensagemParaMetricas(
+        semColuna as unknown as Parameters<typeof mensagemParaMetricas>[0],
+        nenhuma,
+      ).porAgenteDeIa,
+    ).toBe(false)
+  })
+
+  it('`ia_agente_id` só vale no `bot` — o mesmo predicado do ramo da 1044', () => {
+    const r = mensagemParaMetricas(
+      { ...base, sender_type: 'agent', ia_agente_id: 'agente-1' },
+      nenhuma,
+    )
+    expect(r.porAgenteDeIa).toBe(false)
+  })
+
+  it('gente continua sendo gente: `sender_id` ou celular pareado, menos a agendada', () => {
+    expect(
+      mensagemParaMetricas({ ...base, sender_type: 'agent', sender_id: 'u1' }, nenhuma)
+        .porGente,
+    ).toBe(true)
+    expect(
+      mensagemParaMetricas({ ...base, sender_type: 'agent', from_device: true }, nenhuma)
+        .porGente,
+    ).toBe(true)
+    expect(
+      mensagemParaMetricas(
+        { ...base, sender_type: 'agent', sender_id: 'u1' },
+        new Set(['m1']),
+      ).porGente,
+    ).toBe(false)
+  })
+
+  it('de ponta a ponta: a IA apaga a pendência sem mexer na mediana da equipe', () => {
+    type Entrada = Parameters<typeof mensagemParaMetricas>[0]
+    const msg = (
+      id: string,
+      hora: string,
+      o: Pick<Entrada, 'sender_type'> & Partial<Entrada>,
+    ): Entrada => ({ ...base, id, created_at: `2026-08-26T${hora}:00-03:00`, ...o })
+    const janela = [
+      msg('c1', '10:00', { sender_type: 'customer' }),
+      msg('a1', '10:30', { sender_type: 'agent', from_device: true }), // 30 min de gente
+      msg('c2', '11:00', { sender_type: 'customer' }),
+      msg('b1', '11:00', { sender_type: 'bot', ia_agente_id: 'agente-1' }),
+    ]
+    const r = calcularMetricas(janela.map((m) => mensagemParaMetricas(m, nenhuma)))
+    expect(r.aguardandoDesde).toBeNull()
+    expect(r.respostaMedianaSeg).toBe(30 * 60)
+
+    // A mesma janela com o robô de fluxo no lugar da IA: pendência aberta.
+    const comRobo = janela.map((m) => (m.id === 'b1' ? { ...m, ia_agente_id: null } : m))
+    const r2 = calcularMetricas(comRobo.map((m) => mensagemParaMetricas(m, nenhuma)))
+    expect(r2.aguardandoDesde).toEqual(new Date('2026-08-26T11:00:00-03:00'))
+  })
+})
+
+describe('o worker lê `ia_agente_id`, e `houveHumanoNaJanela` não o usa (D11)', () => {
+  const fonte = fs
+    .readFileSync(path.join(__dirname, 'worker.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '')
+
+  it('o select das mensagens da janela traz `ia_agente_id`', () => {
+    // Sem a coluna no select, `ia_agente_id` chega `undefined` e a resposta
+    // da IA deixa de fechar a pendência em silêncio: o Radar volta a acusar
+    // "aguardando" sobre cliente que o agente respondeu.
+    expect(fonte).toMatch(/select\(\s*'id, sender_type, sender_id, from_device, ia_agente_id,/)
+  })
+
+  it('as métricas passam pela função com teste, não por um mapeamento solto', () => {
+    expect(fonte).toContain('mensagemParaMetricas(m, deAgendada)')
+  })
+
+  it('`houveHumanoNaJanela` segue sem `ia_agente_id` — a IA não é gente ali', () => {
+    const inicio = fonte.indexOf('const houveHumanoNaJanela')
+    expect(inicio).toBeGreaterThan(-1)
+    const fim = fonte.indexOf(')', fonte.indexOf('deAgendada.has', inicio))
+    const trecho = fonte.slice(inicio, fim)
+    expect(trecho).not.toContain('ia_agente_id')
+    expect(trecho).not.toContain('bot')
   })
 })

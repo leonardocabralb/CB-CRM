@@ -57,14 +57,17 @@ describe('quemResponde — a ordem das regras (5.3)', () => {
     expect(quemResponde(fatos({ entrada: { agente: TRIAGEM, desde: null } })).quem).toBe('ninguem')
   })
 
-  it('o agente ativo desligado, arquivado ou de OUTRA conexão não atende — e a entrada pode assumir (D16)', () => {
+  it('o agente ativo desligado, arquivado ou de OUTRA conexão não atende — e a entrada NÃO o substitui (Codex, #292)', () => {
     for (const a of [
       { ...COBRANCA, ativo: false },
       { ...COBRANCA, arquivado: true },
       { ...COBRANCA, conexoes: ['canal-b'] },
     ]) {
-      expect(quemResponde(fatos({ agenteAtivo: a }))).toEqual({ quem: 'agente', agenteId: 'triagem', via: 'entrada' })
-      expect(quemResponde(fatos({ agenteAtivo: a, entrada: null }))).toEqual({ quem: 'ninguem', motivo: 'sem_agente' })
+      expect(quemResponde(fatos({ agenteAtivo: a }))).toEqual({ quem: 'ninguem', motivo: 'agente_ativo_indisponivel' })
+      expect(quemResponde(fatos({ agenteAtivo: a, entrada: null }))).toEqual({
+        quem: 'ninguem',
+        motivo: 'agente_ativo_indisponivel',
+      })
     }
   })
 

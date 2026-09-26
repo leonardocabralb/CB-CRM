@@ -84,6 +84,13 @@ interface SendTextEngineArgs {
    * registrado e o INSERT segue.
    */
   aoSair?: (providerMessageId: string) => Promise<void> | void
+  /**
+   * Chamado logo ANTES da primeira chamada ao provedor. Erro lançado antes
+   * dele (contato, conversa, canal, alvo) garante que NADA saiu; depois dele,
+   * só a recusa comprovada do provedor (4xx) garante — o resto pode ter saído.
+   * É o que o turno do agente usa para separar `falhou` de `incerto`.
+   */
+  antesDoProvedor?: () => void
 }
 
 /**
@@ -201,6 +208,7 @@ export async function engineSendText(
     // Texto sai pelo transport da Evolution (Baileys) — sem janela de 24h.
     // `alvo` é telefone aqui: `alvoDoRobo` recusa o BSUID fora da Meta.
     const transport = evolutionTransportFor(channel)
+    args.antesDoProvedor?.()
     const res = await transport.sendText({ to: alvo, text: textoFinal })
     waMessageId = res.providerMessageId
     outboundRemoteJid = evolutionRemoteJid(alvo)
@@ -209,6 +217,7 @@ export async function engineSendText(
       throw new Error('WhatsApp (Meta) connection is incomplete for this account')
     }
     const accessToken = decrypt(channel.access_token)
+    args.antesDoProvedor?.()
 
     const attempt = async (phone: string): Promise<string> => {
       const r = await sendTextMessage({

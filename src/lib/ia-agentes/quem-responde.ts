@@ -14,9 +14,14 @@
 //   4. há AGENTE ATIVO, ligado, e a conexão da mensagem é dele → ele. O
 //      responsável humano NÃO cala o agente ativo (a atribuição deixou de ser
 //      portão);
-//   5. a conexão tem AGENTE DE ENTRADA, ligado e dono da conexão, a conversa
-//      NUNCA recebeu resposta de gente (D16) e o contato foi criado DEPOIS de
-//      a entrada ser ligada (P8, E3) → ele, e ele vira o agente ativo;
+//   5. a conversa NÃO tem agente ativo, a conexão tem AGENTE DE ENTRADA,
+//      ligado e dono da conexão, a conversa NUNCA recebeu resposta de gente
+//      (D16) e o contato foi criado DEPOIS de a entrada ser ligada (P8, E3) →
+//      ele, e ele vira o agente ativo. ⚠️ Com agente ativo que não pode
+//      responder (desligado, ou a mensagem veio por outra conexão), a entrada
+//      NÃO o substitui: desligar o especialista pararia de funcionar como
+//      freio, e o cliente que escreve para outro número trocaria o agente da
+//      conversa inteira sem ninguém decidir (Codex, #292);
 //   6. senão → ninguém.
 // ============================================================
 
@@ -62,6 +67,8 @@ export type MotivoDeNinguem =
   | 'robo'
   | 'automacao'
   | 'pausada'
+  /** Há agente ativo, mas ele não responde aqui (desligado ou fora da conexão). */
+  | 'agente_ativo_indisponivel'
   | 'sem_agente'
 
 function atende(agente: AgenteParaDecidir, canalId: string): boolean {
@@ -88,8 +95,9 @@ export function quemResponde(f: FatosDaMensagem): QuemResponde {
   if (f.automacaoFalou) return { quem: 'ninguem', motivo: 'automacao' }
   if (f.pausada) return { quem: 'ninguem', motivo: 'pausada' }
 
-  if (f.agenteAtivo && atende(f.agenteAtivo, f.canalId)) {
-    return { quem: 'agente', agenteId: f.agenteAtivo.id, via: 'ativo' }
+  if (f.agenteAtivo) {
+    if (atende(f.agenteAtivo, f.canalId)) return { quem: 'agente', agenteId: f.agenteAtivo.id, via: 'ativo' }
+    return { quem: 'ninguem', motivo: 'agente_ativo_indisponivel' }
   }
 
   if (f.entrada && atende(f.entrada.agente, f.canalId) && f.nuncaTeveGente) {

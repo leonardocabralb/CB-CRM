@@ -430,11 +430,56 @@ interface MensagemDaJanela {
   sender_id: string | null
   /** Saiu do celular pareado — gente digitando, sem usuário do CRM atrás. */
   from_device: boolean | null
+  /** O agente de IA que escreveu (1044): preenchido SÓ pelo envio do turno. */
+  ia_agente_id: string | null
   content_type: string
   content_text: string | null
   transcricao: string | null
   transcricao_status: string | null
   created_at: string | null
+}
+
+/**
+ * A mensagem da janela nas réguas de `calcularMetricas`: quem FECHA a
+ * pendência do cliente e quem conta no tempo de resposta DA EQUIPE.
+ * `deAgendada` = os ids das mensagens nascidas de `cb_scheduled_messages`.
+ *
+ * ⚠️ A régua do PAINEL, e não a de `houveHumanoNaJanela` (mais abaixo, em
+ * `analisarConversaReivindicada`): aqui a pergunta é "alguém RESPONDEU a
+ * este cliente?", e o celular pareado responde (`from_device`, `sender_id`
+ * nulo). Lá a pergunta é outra — "vale preservar a análise congelada?" — e
+ * fica DELIBERADAMENTE sem o alargamento do `from_device` (uma saída solta
+ * pelo celular não é motivo para refazer análise). ⚠️ Já a exclusão da
+ * AGENDADA vale para as DUAS réguas (#21 do plano de 31/08): ela ESTREITA
+ * "humano", e sem ela lá embaixo o follow-up agendado zerava o alarme do
+ * cliente esquecido. Não unificar as duas expressões sem responder às duas
+ * perguntas.
+ *
+ * ⚠️ A resposta do AGENTE DE IA (D11 do docs/PLANO-agentes-de-ia.md) fecha a
+ * pendência mas NÃO é gente: vai em `porAgenteDeIa`, e `calcularMetricas` a
+ * deixa fora da mediana da equipe. O predicado é o MESMO do ramo
+ * "respondido" da 1044 (`sender_type = 'bot' AND ia_agente_id IS NOT NULL`)
+ * — o alerta de atraso da caixa e o Radar concordam sobre quem respondeu.
+ * Robô de fluxo e automação também são `bot`, mas sem `ia_agente_id`: não
+ * fecham nada. A IA não entra em `deAgendada` (a agendada sai como `agent`).
+ */
+export function mensagemParaMetricas(
+  m: Pick<
+    MensagemDaJanela,
+    'id' | 'sender_type' | 'sender_id' | 'from_device' | 'ia_agente_id' | 'created_at'
+  >,
+  deAgendada: ReadonlySet<string>,
+): MensagemParaMetricas {
+  return {
+    senderType: m.sender_type,
+    porGente:
+      (m.sender_id !== null || m.from_device === true) && !deAgendada.has(m.id),
+    // `typeof`, e não `!== null`: se a coluna sumir do select ela chega
+    // `undefined`, e `!== null` a leria como preenchida — todo robô de fluxo
+    // passaria a fechar a pendência. Assim, o esquecimento erra para o alarme.
+    porAgenteDeIa: m.sender_type === 'bot' && typeof m.ia_agente_id === 'string',
+    createdAt: new Date(m.created_at as string),
+  }
 }
 
 /**
@@ -476,7 +521,7 @@ export async function analisarConversaReivindicada(
   const { data: mensagens, error: msgErr } = await admin
     .from('messages')
     .select(
-      'id, sender_type, sender_id, from_device, content_type, content_text, transcricao, transcricao_status, created_at',
+      'id, sender_type, sender_id, from_device, ia_agente_id, content_type, content_text, transcricao, transcricao_status, created_at',
     )
     .eq('conversation_id', args.conversationId)
     .gte('created_at', janelaInicio.toISOString())
@@ -538,26 +583,10 @@ export async function analisarConversaReivindicada(
     (enviosAgendados ?? []).map((r) => r.message_id as string),
   )
 
+  // A régua de quem fecha a pendência e de quem conta no tempo da equipe
+  // mora em `mensagemParaMetricas` (com teste) — ver o comentário de lá.
   const metricas = calcularMetricas(
-    comData.map(
-      (m): MensagemParaMetricas => ({
-        senderType: m.sender_type,
-        // ⚠️ A régua do PAINEL, e não a de `houveHumanoNaJanela` logo abaixo:
-        // aqui a pergunta é "alguém RESPONDEU a este cliente?", e o celular
-        // pareado responde (`from_device`, `sender_id` nulo). Lá a pergunta é
-        // outra — "vale preservar a análise congelada?" — e fica
-        // DELIBERADAMENTE sem o alargamento do `from_device` (uma saída
-        // solta pelo celular não é motivo para refazer análise). ⚠️ Já a
-        // exclusão da AGENDADA vale para as DUAS réguas (#21 do plano de
-        // 31/08): ela ESTREITA "humano", e sem ela lá embaixo o follow-up
-        // agendado zerava o alarme do cliente esquecido. Não unificar as
-        // duas expressões sem responder às duas perguntas.
-        porGente:
-          (m.sender_id !== null || m.from_device === true) &&
-          !deAgendada.has(m.id),
-        createdAt: new Date(m.created_at as string),
-      }),
-    ),
+    comData.map((m) => mensagemParaMetricas(m, deAgendada)),
   )
 
   // Áudio do CLIENTE vira texto ANTES do transcrito, pela MESMA função
@@ -747,6 +776,11 @@ export async function analisarConversaReivindicada(
   // marca d'água (`janela_fim`) e preserva a análise congelada inteira —
   // que é exatamente o que o painel promete exibir. Resposta HUMANA na
   // janela segue fechando a pendência pelo UPDATE completo abaixo.
+  // ⚠️ A resposta do AGENTE DE IA (`bot` + `ia_agente_id`, D11) NÃO conta
+  // aqui, de propósito: ela fecha a pendência nas métricas, mas não é
+  // gente. E a IA só responde a fala FRESCA do cliente (o turno leva
+  // segundos), então janela com resposta da IA quase sempre tem o cliente
+  // também: `semClienteNaJanela` é falso e ela cai no UPDATE completo.
   const houveHumanoNaJanela = comData.some(
     (m) =>
       m.sender_type === 'agent' && m.sender_id !== null && !deAgendada.has(m.id),

@@ -38,19 +38,44 @@ export interface MensagemParaMetricas {
    * Sem isto, um "recebemos seu contato" automático da terça apagava do
    * painel a pendência aberta na segunda — o alarme que o Radar existe
    * para acender. Irrelevante quando `senderType === 'customer'`.
+   *
+   * ⚠️ Desde a F2 dos agentes de IA, "fecha a pendência" e "conta no tempo
+   * de resposta da equipe" são DUAS perguntas: gente responde às duas, o
+   * agente de IA só à primeira (ver `porAgenteDeIa`).
    */
   porGente: boolean
+  /**
+   * Resposta de um AGENTE DE IA (`sender_type = 'bot' AND ia_agente_id IS
+   * NOT NULL` — o ramo "respondido" da 1044, D11 do
+   * docs/PLANO-agentes-de-ia.md). Fecha a pendência do cliente, como uma
+   * resposta de gente, mas NÃO entra no tempo de resposta DA EQUIPE: a IA
+   * responde em segundos, e somá-la à mediana diria que o escritório atende
+   * em 30 s quando os advogados levam horas.
+   *
+   * ⚠️ Robô de FLUXO, automação, disparo e agendada continuam de fora: saem
+   * sem `ia_agente_id`, e o predicado de quem chama exige a coluna — é o
+   * que impede um "recebemos seu contato" de passar por resposta.
+   *
+   * Opcional, e AUSENTE = `false` de propósito: quem esquecer de passar
+   * erra para o lado do ALARME (a pendência continua aberta), nunca para o
+   * de apagar o cliente esquecido. Irrelevante quando `senderType ===
+   * 'customer'`.
+   */
+  porAgenteDeIa?: boolean
   createdAt: Date
 }
 
 export interface MetricasDaConversa {
   /** Da 1ª mensagem sem resposta do cliente até a 1ª resposta da equipe,
-   *  em segundos úteis. Null quando não houve par pergunta→resposta. */
+   *  em segundos úteis. Null quando não houve par pergunta→resposta.
+   *  Só rodada fechada por GENTE — a do agente de IA não é medida. */
   primeiraRespostaSeg: number | null
-  /** Mediana dos tempos de resposta da janela, em segundos úteis. */
+  /** Mediana dos tempos de resposta da janela, em segundos úteis (idem:
+   *  só gente). */
   respostaMedianaSeg: number | null
   /** O cliente falou por último e nada foi respondido: desde quando.
-   *  Null quando a última palavra é da equipe (ou não há mensagens). */
+   *  Null quando a última palavra é da equipe ou do agente de IA (ou não
+   *  há mensagens). */
   aguardandoDesde: Date | null
   msgsCliente: number
   msgsEquipe: number
@@ -67,6 +92,13 @@ export interface MetricasDaConversa {
  * massa não é resposta a este cliente, e contá-lo como tal faria a métrica
  * dizer que a equipe respondeu em 2 minutos uma pergunta ainda sem resposta.
  * `msgsEquipe` continua contando tudo que saiu: é volume, não atendimento.
+ *
+ * ⚠️ A resposta do AGENTE DE IA (`porAgenteDeIa`) fecha a rodada SEM
+ * medi-la: o cliente foi respondido, mas não pela equipe. Por isso
+ * `primeiraRespostaSeg` e `respostaMedianaSeg` falam só das rodadas que
+ * GENTE fechou — numa conversa em que a IA respondeu tudo, os dois ficam
+ * nulos, e a rodada que a pessoa assume depois de uma transferência é
+ * medida a partir da fala do cliente que a abriu.
  */
 export function calcularMetricas(
   mensagens: MensagemParaMetricas[],
@@ -88,6 +120,9 @@ export function calcularMetricas(
       msgsEquipe += 1
       if (inicioPendencia && m.porGente) {
         temposSeg.push(segundosUteisEntre(inicioPendencia, m.createdAt))
+        inicioPendencia = null
+      } else if (inicioPendencia && m.porAgenteDeIa === true) {
+        // Respondido, mas não pela equipe: fecha sem entrar em `temposSeg`.
         inicioPendencia = null
       }
     }
