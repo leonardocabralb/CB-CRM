@@ -57,6 +57,19 @@ export interface PadraoParaMontar {
   isActive: boolean;
 }
 
+/**
+ * Uma linha de CONEXÃO de `ai_configs` ligada (o agente por canal do app
+ * anterior): sem escritor no app, mas herdada e ainda lida pela resposta
+ * automática legada. Entra como uso da chave do provedor dela — sem isto,
+ * apagar a chave diria que nada para, e pararia a resposta daquela conexão
+ * (Codex, #294).
+ */
+export interface AgenteDeConexaoParaMontar {
+  provider: ProviderId;
+  model: string;
+  canal: string;
+}
+
 export interface CanalParaMontar {
   id: string;
   label: string;
@@ -95,8 +108,9 @@ export interface UsoNoCartao {
   modelo: string;
   origem: OrigemDoModelo;
   /**
-   * SÓ o Radar preenche: conexões com `radar_enabled` ligado. Nos demais
-   * módulos fica vazio — a configuração vale para a conta inteira, e
+   * O Radar preenche com as conexões de `radar_enabled` ligado, e o
+   * assistente POR CONEXÃO (linha de canal herdada) com a conexão dele. Nos
+   * demais módulos fica vazio — a configuração vale para a conta inteira, e
    * listar canais sugeriria chave por conexão (modelo descartado).
    */
   canais: string[];
@@ -157,6 +171,7 @@ export function montarCartoes(
   embeddingsTeste: Teste,
   modeloTranscricao: string,
   modeloEmbeddings: string,
+  agentesDeConexao: AgenteDeConexaoParaMontar[] = [],
   agentesDeIa: AgenteDeIaNoCartao[] = []
 ): CartaoDeIntegracao[] {
   const cartoes: CartaoDeIntegracao[] = PROVIDERS.map((p) => {
@@ -196,6 +211,24 @@ export function montarCartoes(
             ? {}
             : { indisponivel: 'conversa_desligada' as const }
           : semChave),
+      });
+    }
+
+    // ---- Assistente POR CONEXÃO (linhas de canal herdadas, ligadas) ----
+    // Um uso por modelo, com as conexões que o rodam.
+    const porModelo = new Map<string, string[]>();
+    for (const a of agentesDeConexao) {
+      if (a.provider !== p) continue;
+      porModelo.set(a.model, [...(porModelo.get(a.model) ?? []), a.canal]);
+    }
+    for (const [modelo, conexoes] of porModelo) {
+      usos.push({
+        modulo: 'conversa',
+        modelo,
+        origem: 'agente',
+        canais: conexoes,
+        canaisDesligados: [],
+        ...semChave,
       });
     }
 

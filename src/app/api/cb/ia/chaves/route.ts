@@ -53,12 +53,13 @@ export async function GET() {
  * em uso era aceita e o Radar, o rascunho e os agentes quebravam na troca.
  */
 async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<string[]> {
-  // TODAS as linhas da conta: a padrão (assistente e Radar) e as de conexão
-  // (agente por canal do app anterior), que também usam a chave do provedor
-  // (Codex, #294).
+  // A padrão (assistente e Radar — o Radar a lê desligada ou não) e as de
+  // conexão LIGADAS (agente por canal do app anterior): a desligada não roda
+  // (`loadAiConfig` devolve null), e conferi-la travaria a troca por um
+  // modelo que nada usa (Codex, #294).
   const { data, error } = await supabaseAdmin()
     .from('ai_configs')
-    .select('provider, model, radar_model, channel_id')
+    .select('provider, model, radar_model, channel_id, is_active')
     .eq('account_id', accountId)
   if (error) throw new Error(`[ia-chaves] leitura dos modelos em uso falhou: ${error.message}`)
   let agentes: Awaited<ReturnType<typeof listarAgentes>>
@@ -70,9 +71,12 @@ async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<st
   const candidatos: unknown[] = []
   for (const linha of data ?? []) {
     if (linha.provider !== provedor) continue
+    if (linha.channel_id !== null && linha.is_active === false) continue
     candidatos.push(...(linha.channel_id === null ? [linha.model, linha.radar_model] : [linha.model]))
   }
-  candidatos.push(...agentes.filter((a) => a.provedor === provedor).map((a) => a.modelo))
+  // Só os agentes LIGADOS: o desligado não roda, e conferi-lo travaria a troca
+  // por um modelo que nada usa (a mesma régua da linha de conexão).
+  candidatos.push(...agentes.filter((a) => a.provedor === provedor && a.ativo).map((a) => a.modelo))
   const modelos: string[] = []
   for (const m of candidatos) {
     if (typeof m === 'string' && m.trim() && !modelos.includes(m.trim())) modelos.push(m.trim())
@@ -96,12 +100,30 @@ function configDeTeste(provedor: AiProvider, modelo: string, apiKey: string) {
 }
 
 type Veredito =
-  | { ok: true; modelosIndisponiveis: string[] }
+  | { ok: true; modelosIndisponiveis: string[]; naoConferidos: string[] }
   | { ok: false; erro: unknown; modelo?: string }
 
 /**
+ * Teto de modelos conferidos numa gravação (Codex, #295): cada um é uma
+ * geração PAGA com a chave da conta, e com muitos agentes em modelos
+ * diferentes uma troca de chave custaria N chamadas e N × 30 s. Os primeiros
+ * (o do assistente e o do Radar vêm antes dos agentes) são conferidos, em
+ * PARALELO; os demais voltam num aviso, para o operador saber que não foram.
+ */
+const MAX_MODELOS_CONFERIDOS = 5
+
+async function alcanca(provedor: AiProvider, modelo: string, chave: string): Promise<unknown | null> {
+  try {
+    await validateAiCredentials(configDeTeste(provedor, modelo, chave))
+    return null
+  } catch (err) {
+    return err ?? new Error('falhou')
+  }
+}
+
+/**
  * A chave nova serve? Conferida em cada modelo EM USO (senão, no padrão do
- * provedor). Um modelo em uso que ela não alcança:
+ * provedor), até o teto. Um modelo em uso que ela não alcança:
  * - a chave ATUAL alcança → recusa (`modelo_em_uso_recusado`): trocar quebraria
  *   o que funciona hoje, e a chave atual continua valendo;
  * - nem a atual alcança → o MODELO é que não vale mais (aposentado): aceita, e
@@ -117,29 +139,25 @@ async function validarChaveNova(
 ): Promise<Veredito> {
   const padrao = AI_PROVIDER_DEFAULT_MODEL[provedor]
   const emUso = await modelosEmUso(accountId, provedor)
-  const aTestar = emUso.length > 0 ? emUso : [padrao]
-  const recusados: { modelo: string; erro: unknown }[] = []
-  for (const modelo of aTestar) {
-    try {
-      await validateAiCredentials(configDeTeste(provedor, modelo, chave))
-    } catch (err) {
-      // Chave recusada não melhora com outro modelo.
-      if (err instanceof AiError && err.code === 'invalid_key') return { ok: false, erro: err }
-      recusados.push({ modelo, erro: err })
-    }
-  }
-  if (recusados.length === 0) return { ok: true, modelosIndisponiveis: [] }
+  const aTestar = emUso.length > 0 ? emUso.slice(0, MAX_MODELOS_CONFERIDOS) : [padrao]
+  const naoConferidos = emUso.slice(MAX_MODELOS_CONFERIDOS)
+
+  const erros = await Promise.all(aTestar.map((m) => alcanca(provedor, m, chave)))
+  // Chave recusada não melhora com outro modelo.
+  const chaveRecusada = erros.find((e) => e instanceof AiError && e.code === 'invalid_key')
+  if (chaveRecusada) return { ok: false, erro: chaveRecusada }
+  const recusados = aTestar
+    .map((modelo, i) => ({ modelo, erro: erros[i] }))
+    .filter((r): r is { modelo: string; erro: unknown } => r.erro !== null)
+
+  if (recusados.length === 0) return { ok: true, modelosIndisponiveis: [], naoConferidos }
   if (emUso.length === 0) return { ok: false, erro: recusados[0].erro }
 
   // Nenhum modelo em uso respondeu: a chave alcança ao menos o padrão?
-  if (recusados.length === aTestar.length && !aTestar.includes(padrao)) {
-    try {
-      await validateAiCredentials(configDeTeste(provedor, padrao, chave))
-    } catch (err) {
-      return { ok: false, erro: err }
-    }
-  } else if (recusados.length === aTestar.length) {
-    return { ok: false, erro: recusados[0].erro }
+  if (recusados.length === aTestar.length) {
+    if (aTestar.includes(padrao)) return { ok: false, erro: recusados[0].erro }
+    const noPadrao = await alcanca(provedor, padrao, chave)
+    if (noPadrao !== null) return { ok: false, erro: noPadrao }
   }
 
   // A chave ATUAL alcança o modelo que a nova não alcança?
@@ -149,17 +167,13 @@ async function validarChaveNova(
   } catch {
     atual = null
   }
-  if (atual) {
-    for (const r of recusados) {
-      try {
-        await validateAiCredentials(configDeTeste(provedor, r.modelo, atual))
-        return { ok: false, erro: 'modelo_em_uso_recusado', modelo: r.modelo }
-      } catch {
-        // A atual também não alcança: o modelo é que não vale mais.
-      }
-    }
+  const chaveAtual = atual
+  if (chaveAtual) {
+    const comAtual = await Promise.all(recusados.map((r) => alcanca(provedor, r.modelo, chaveAtual)))
+    const i = comAtual.findIndex((e) => e === null)
+    if (i >= 0) return { ok: false, erro: 'modelo_em_uso_recusado', modelo: recusados[i].modelo }
   }
-  return { ok: true, modelosIndisponiveis: recusados.map((r) => r.modelo) }
+  return { ok: true, modelosIndisponiveis: recusados.map((r) => r.modelo), naoConferidos }
 }
 
 export async function PUT(request: Request) {
@@ -217,6 +231,7 @@ export async function PUT(request: Request) {
     // - `modulos_nao_criados`: ver abaixo.
     const avisos: string[] = []
     if (veredito.modelosIndisponiveis.length > 0) avisos.push('modelo_em_uso_indisponivel')
+    if (veredito.naoConferidos.length > 0) avisos.push('modelos_nao_conferidos')
     let serveEmbeddings: boolean | null = null
     if (provedor === 'openai') {
       try {
@@ -268,7 +283,12 @@ export async function PUT(request: Request) {
     // criada precisa existir para receber a cópia.
     await gravarChave(ctx.accountId, provedor, chave, ctx.userId, serveEmbeddings)
 
-    return NextResponse.json({ ok: true, avisos, modelos: veredito.modelosIndisponiveis })
+    return NextResponse.json({
+      ok: true,
+      avisos,
+      modelos: veredito.modelosIndisponiveis,
+      naoConferidos: veredito.naoConferidos,
+    })
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('[ia-chaves]')) {
       console.error(err.message)

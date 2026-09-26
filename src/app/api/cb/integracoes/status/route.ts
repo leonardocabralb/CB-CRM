@@ -117,24 +117,29 @@ export async function GET(request: Request) {
     // ⚠️ Desde a 1042 a chave é do PROVEDOR (`cb_ia_chaves`, fechada ao
     // navegador — lida pelo serviço); a linha PADRÃO de `ai_configs` é a
     // configuração dos módulos (provedor e modelo do Radar) e do assistente
-    // legado. Só a padrão: não existe escritor de linha por canal.
+    // legado. As linhas de CONEXÃO (herdadas; não há escritor no app) entram
+    // só como USO da chave do provedor delas, e só as ligadas — é o que a
+    // resposta automática legada lê (Codex, #294).
     let estado: Awaited<ReturnType<typeof lerEstado>>;
     let padrao: LinhaPadrao | null;
+    let deConexao: (LinhaPadrao & { channel_id: string })[];
     let canais: Awaited<ReturnType<typeof listChannels>>;
     try {
-      const [estadoLido, padraoLido, canaisLidos] = await Promise.all([
+      const [estadoLido, linhasLidas, canaisLidos] = await Promise.all([
         lerEstado(ctx.accountId),
         ctx.supabase
           .from('ai_configs')
-          .select('provider, model, radar_model, is_active')
-          .eq('account_id', ctx.accountId)
-          .is('channel_id', null)
-          .maybeSingle(),
+          .select('channel_id, provider, model, radar_model, is_active')
+          .eq('account_id', ctx.accountId),
         listChannels(ctx.supabase, ctx.accountId),
       ]);
-      if (padraoLido.error) throw new Error(padraoLido.error.message);
+      if (linhasLidas.error) throw new Error(linhasLidas.error.message);
+      const linhas = (linhasLidas.data ?? []) as (LinhaPadrao & { channel_id: string | null })[];
       estado = estadoLido;
-      padrao = (padraoLido.data as LinhaPadrao | null) ?? null;
+      padrao = linhas.find((l) => l.channel_id === null) ?? null;
+      deConexao = linhas.filter(
+        (l): l is LinhaPadrao & { channel_id: string } => l.channel_id !== null && l.is_active
+      );
       canais = canaisLidos;
     } catch (err) {
       console.error('[integracoes] leitura falhou:', err instanceof Error ? err.message : err);
@@ -228,6 +233,11 @@ export async function GET(request: Request) {
       // troca de modelo.
       MODELO_TRANSCRICAO,
       EMBEDDING_MODEL,
+      deConexao.map((l) => ({
+        provider: l.provider as ProviderId,
+        model: l.model,
+        canal: canais.find((c) => c.id === l.channel_id)?.label ?? l.channel_id,
+      })),
       // Os agentes de IA (1043) de cada provedor. Leitura que falha só tira a
       // lista do cartão (log) — não derruba a tela das chaves.
       await listarAgentes(ctx.accountId)

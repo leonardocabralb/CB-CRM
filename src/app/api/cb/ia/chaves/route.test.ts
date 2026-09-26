@@ -177,16 +177,16 @@ describe('PUT /api/cb/ia/chaves — os modelos dos AGENTES também contam (F1b)'
   it('confere o modelo de cada agente deste provedor, sem repetir', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-a' }
     agentesDaConta = [
-      { provedor: 'gemini', modelo: 'gemini-b' },
-      { provedor: 'gemini', modelo: 'gemini-a' },
-      { provedor: 'openai', modelo: 'gpt-x' },
+      { provedor: 'gemini', modelo: 'gemini-b', ativo: true },
+      { provedor: 'gemini', modelo: 'gemini-a', ativo: true },
+      { provedor: 'openai', modelo: 'gpt-x', ativo: true },
     ]
     await PUT(pedido('gemini'))
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a', 'gemini-b'])
   })
 
   it('a nova não alcança o modelo de um agente que a atual alcança: recusa', async () => {
-    agentesDaConta = [{ provedor: 'gemini', modelo: 'gemini-do-agente' }]
+    agentesDaConta = [{ provedor: 'gemini', modelo: 'gemini-do-agente', ativo: true }]
     chaveAtual = 'sk-atual'
     alcanca = (chave, modelo) => !(chave === 'sk-teste' && modelo === 'gemini-do-agente')
     const res = await PUT(pedido('gemini'))
@@ -203,5 +203,14 @@ describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex
     ]
     await PUT(pedido('gemini'))
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a', 'gemini-da-conexao'])
+  })
+
+  it('a conexão DESLIGADA não conta (não roda); a padrão desligada conta (o Radar a lê)', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null, is_active: false }
+    linhasPorConexao = [
+      { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-desligado', radar_model: null, is_active: false },
+    ]
+    await PUT(pedido('gemini'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a'])
   })
 })
