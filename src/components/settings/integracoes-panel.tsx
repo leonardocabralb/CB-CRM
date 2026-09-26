@@ -469,7 +469,7 @@ function Usos({ cartao }: { cartao: CartaoDeIntegracao }) {
       </p>
       <ul className="space-y-2">
         {cartao.usos.map((u) => (
-          <li key={`${u.modulo}:${u.modelo}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <li key={`${u.modulo}:${u.modelo}:${u.canais.join(',')}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="text-foreground">{t(`modulo.${u.modulo}`)}</span>
             <code className="text-[11px] text-muted-foreground">{u.modelo}</code>
             <span className="text-[11px] text-muted-foreground">
@@ -563,6 +563,7 @@ function FormularioDaChave({
         avisos?: string[];
         modelo?: string;
         modelos?: string[];
+        naoConferidos?: string[];
       };
       if (!res.ok) {
         setRecado({ tom: 'erro', texto: textoDoErroDaChave(t, dados.code, dados.modelo) });
@@ -574,12 +575,19 @@ function FormularioDaChave({
           a === 'embeddings_recusado' ||
           a === 'embeddings_nao_conferido' ||
           a === 'modelo_em_uso_indisponivel' ||
+          a === 'modelos_nao_conferidos' ||
           a === 'modulos_nao_criados'
       );
-      const modelos = (dados.modelos ?? []).join(', ');
+      const listaDoAviso = (a: string) =>
+        (a === 'modelos_nao_conferidos' ? (dados.naoConferidos ?? []) : (dados.modelos ?? [])).join(', ');
       setRecado(
         avisos.length > 0
-          ? { tom: 'aviso', texto: avisos.map((a) => t(`avisoDaChave.${a}`, { modelos })).join(' ') }
+          ? {
+              tom: 'aviso',
+              texto: avisos
+                .map((a) => t(`avisoDaChave.${a}` as Parameters<typeof t>[0], { modelos: listaDoAviso(a) }))
+                .join(' '),
+            }
           : { tom: 'ok', texto: t('salvo') }
       );
       onSalvo();

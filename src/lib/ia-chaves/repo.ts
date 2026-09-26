@@ -153,6 +153,16 @@ export async function gravarChave(
   serveEmbeddings: boolean | null = null,
 ): Promise<void> {
   const agora = new Date().toISOString()
+  // A chave PRÓPRIA dos embeddings só é própria se for OUTRA chave. A 1042 a
+  // copiou comparando os textos CIFRADOS, e a cifra é aleatória (AES-GCM com
+  // IV sorteado): a mesma chave digitada nos dois campos virou "própria". Na
+  // troca, ela seria preservada e continuaria sendo usada — mesmo revogada
+  // junto com a antiga (Codex, #294). Decifradas as duas, igual = não é
+  // própria, e sai.
+  const semPropriaFalsa =
+    provedor === 'openai' && serveEmbeddings !== true && (await propriaEhAMesmaDoChat(accountId))
+      ? { embeddings_api_key: null }
+      : {}
   // O UNIQUE (account_id, provedor) é TOTAL: serve de alvo do ON CONFLICT
   // (os índices parciais da 903 em `ai_configs` não serviriam).
   const { error } = await supabaseAdmin()
@@ -165,6 +175,7 @@ export async function gravarChave(
         serve_embeddings: provedor === 'openai' ? serveEmbeddings : null,
         // Ausente do objeto = o upsert não toca a coluna (a própria continua).
         ...(provedor === 'openai' && serveEmbeddings === true ? { embeddings_api_key: null } : {}),
+        ...semPropriaFalsa,
         atualizada_por: userId,
         updated_at: agora,
       },
@@ -192,6 +203,26 @@ export async function gravarChave(
       '[ia-chaves] o espelho na cópia legada falhou (só a volta atrás do deploy depende dele):',
       erroLegado?.message ?? erroEmbeddings?.message,
     )
+  }
+}
+
+/**
+ * A chave "própria" dos embeddings é, decifrada, a MESMA do chat? Leitura que
+ * falha ou chave que não decifra = não (fica como está: na dúvida não se apaga
+ * credencial).
+ */
+async function propriaEhAMesmaDoChat(accountId: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin()
+    .from('cb_ia_chaves')
+    .select('api_key, embeddings_api_key')
+    .eq('account_id', accountId)
+    .eq('provedor', 'openai')
+    .maybeSingle()
+  if (error || !data?.api_key || !data.embeddings_api_key) return false
+  try {
+    return decrypt(data.api_key as string) === decrypt(data.embeddings_api_key as string)
+  } catch {
+    return false
   }
 }
 

@@ -94,8 +94,12 @@ ON CONFLICT (account_id, provedor) DO NOTHING;
 
 -- Slot da OpenAI JÁ ocupado pela chave do chat: a de embeddings fica como a
 -- chave PRÓPRIA da base. Compara o texto CIFRADO: a mesma chave cifrada duas
--- vezes dá textos diferentes (IV aleatório), e aí ela é guardada duas vezes
--- — inofensivo, é a mesma chave. Só preenche o que está vazio (reexecução).
+-- vezes dá textos diferentes (IV aleatório), e aí ela é guardada duas vezes.
+-- ⚠️ Isso NÃO é inofensivo na TROCA: a chave velha, tida como "própria",
+-- seria preservada e continuaria sendo usada. O SQL não decifra (a chave de
+-- cifra é do app); quem separa é o app, na troca (`gravarChave` confere as
+-- duas DECIFRADAS e apaga a falsa — Codex, #294). Só preenche o que está
+-- vazio (reexecução).
 UPDATE cb_ia_chaves k
    SET embeddings_api_key = c.embeddings_api_key
   FROM ai_configs c

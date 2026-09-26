@@ -224,3 +224,36 @@ describe('rótulos montados de Integrações', () => {
     });
   }
 });
+
+describe('montarCartoes — assistente POR CONEXÃO herdado (Codex, #294)', () => {
+  it('a linha de conexão ligada vira uso da chave DO PROVEDOR DELA, com a conexão', () => {
+    const cartoes = montarCartoes(
+      [chave('gemini'), chave('anthropic')],
+      padrao(),
+      CANAIS,
+      null,
+      MODELO_TRANSCRICAO,
+      MODELO_EMBEDDINGS,
+      [{ provider: 'anthropic', model: 'claude-x', canal: 'Comercial' }]
+    );
+    expect(uso(cartoes, 'anthropic', 'conversa')).toMatchObject({
+      modelo: 'claude-x',
+      origem: 'agente',
+      canais: ['Comercial'],
+    });
+    expect(uso(cartoes, 'anthropic', 'conversa').indisponivel).toBeUndefined();
+  });
+
+  it('sem a chave, o uso aparece marcado sem_chave', () => {
+    const cartoes = montarCartoes(
+      [chave('gemini')],
+      padrao(),
+      CANAIS,
+      null,
+      MODELO_TRANSCRICAO,
+      MODELO_EMBEDDINGS,
+      [{ provider: 'openai', model: 'gpt-x', canal: 'Pessoal' }]
+    );
+    expect(uso(cartoes, 'openai', 'conversa').indisponivel).toBe('sem_chave');
+  });
+});

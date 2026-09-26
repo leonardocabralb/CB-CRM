@@ -8,6 +8,9 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit
 import { lerChave, lerEstado } from '@/lib/ia-chaves/repo'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { AiError, mensagemSeguraDeAiError, type AiProvider } from '@/lib/ai/types'
+import { hasMinRole } from '@/lib/auth/roles'
+import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { encrypt } from '@/lib/whatsapp/encryption'
 
 function bad(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
@@ -20,12 +23,20 @@ function bad(message: string) {
  * whether AI is set up. No key is ever returned — only `has_key` (the
  * provider of this config has a key in `cb_ia_chaves`) and `chaves`
  * (which providers have one).
+ *
+ * ⚠️ O `system_prompt` só sai para ADMINISTRADOR (D14 do
+ * docs/PLANO-agentes-de-ia.md: o prompt fica oculto para quem não é — a tela
+ * esconde, e a rota tem de esconder junto; Codex, #295).
  */
 export async function GET() {
   try {
-    const { supabase, accountId } = await getCurrentAccount()
+    const { accountId, role } = await getCurrentAccount()
 
-    const { data, error } = await supabase
+    // ⚠️ Pelo SERVIÇO, com a conta da sessão: desde a 1043 a regra de leitura
+    // de `ai_configs` é só de administrador (o prompt vivia legível pelo
+    // PostgREST), e a faixa de IA da conversa chama esta rota para qualquer
+    // membro. Quem decide o que sai é o papel, logo abaixo.
+    const { data, error } = await supabaseAdmin()
       .from('ai_configs')
       .select(
         'provider, model, radar_model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id',
@@ -79,12 +90,14 @@ export async function GET() {
         chaves: estado.map((e) => ({ provedor: e.provedor, existe: e.existe })),
       })
     }
+    const { system_prompt, ...semPrompt } = data
     return NextResponse.json({
       configured: true,
       has_key: temChave(data.provider as string),
       has_embeddings_key: embeddingsUtilizavel,
       chaves: estado.map((e) => ({ provedor: e.provedor, existe: e.existe })),
-      ...data,
+      ...semPrompt,
+      ...(hasMinRole(role, 'admin') ? { system_prompt } : {}),
     })
   } catch (err) {
     return toErrorResponse(err)
@@ -293,6 +306,10 @@ export async function POST(request: Request) {
     const shared: Record<string, unknown> = {
       provider,
       model,
+      // ⚠️ Na TROCA de provedor, a cópia legada da chave (só para voltar atrás
+      // do deploy, 1042) passa a ser a do provedor NOVO: sem isso a volta
+      // atrás chamaria o provedor novo com a chave do antigo (Codex, #294).
+      ...(providerMudou ? { api_key: encrypt(apiKeyPlain) } : {}),
       system_prompt: systemPrompt,
       is_active: isActive,
       auto_reply_enabled: autoReplyEnabled,
