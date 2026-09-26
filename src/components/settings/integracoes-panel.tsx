@@ -447,7 +447,7 @@ function Usos({ cartao }: { cartao: CartaoDeIntegracao }) {
       </p>
       <ul className="space-y-2">
         {cartao.usos.map((u) => (
-          <li key={`${u.modulo}:${u.modelo}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <li key={`${u.modulo}:${u.modelo}:${u.canais.join(',')}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="text-foreground">{t(`modulo.${u.modulo}`)}</span>
             <code className="text-[11px] text-muted-foreground">{u.modelo}</code>
             <span className="text-[11px] text-muted-foreground">

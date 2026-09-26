@@ -178,4 +178,13 @@ describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex
     await PUT(pedido('gemini'))
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a', 'gemini-da-conexao'])
   })
+
+  it('a conexão DESLIGADA não conta (não roda); a padrão desligada conta (o Radar a lê)', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null, is_active: false }
+    linhasPorConexao = [
+      { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-desligado', radar_model: null, is_active: false },
+    ]
+    await PUT(pedido('gemini'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-a'])
+  })
 })

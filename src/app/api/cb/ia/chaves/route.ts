@@ -52,17 +52,19 @@ export async function GET() {
  * quebravam na troca.
  */
 async function modelosEmUso(accountId: string, provedor: AiProvider): Promise<string[]> {
-  // TODAS as linhas da conta: a padrão (assistente e Radar) e as de conexão
-  // (agente por canal do app anterior), que também usam a chave do provedor
-  // (Codex, #294).
+  // A padrão (assistente e Radar — o Radar a lê desligada ou não) e as de
+  // conexão LIGADAS (agente por canal do app anterior): a desligada não roda
+  // (`loadAiConfig` devolve null), e conferi-la travaria a troca por um
+  // modelo que nada usa (Codex, #294).
   const { data, error } = await supabaseAdmin()
     .from('ai_configs')
-    .select('provider, model, radar_model, channel_id')
+    .select('provider, model, radar_model, channel_id, is_active')
     .eq('account_id', accountId)
   if (error) throw new Error(`[ia-chaves] leitura dos modelos em uso falhou: ${error.message}`)
   const modelos: string[] = []
   for (const linha of data ?? []) {
     if (linha.provider !== provedor) continue
+    if (linha.channel_id !== null && linha.is_active === false) continue
     const candidatos = linha.channel_id === null ? [linha.model, linha.radar_model] : [linha.model]
     for (const m of candidatos) {
       if (typeof m === 'string' && m.trim() && !modelos.includes(m.trim())) modelos.push(m.trim())
