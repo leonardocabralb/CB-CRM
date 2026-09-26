@@ -191,6 +191,9 @@ export function lerAlteracao(corpo: unknown, criacao: boolean): LeituraDaAlterac
     if (!m || m.length > LIMITES.modelo) return { ok: false, codigo: 'modelo_vazio' }
     v.modelo = m
   }
+  // Trocar o provedor exige o modelo junto: o modelo guardado é do provedor
+  // anterior, e toda geração falharia (Codex, #295). A tela manda os dois.
+  if (v.provedor !== undefined && v.modelo === undefined) return { ok: false, codigo: 'modelo_vazio' }
   if ('ativo' in c) v.ativo = c.ativo === true
   if ('conexoes' in c) {
     const ids = lerIds(c.conexoes)

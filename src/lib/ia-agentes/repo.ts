@@ -173,7 +173,16 @@ export async function atualizarAgente(
   id: string,
   a: AlteracaoDoAgente,
 ): Promise<IaAgente> {
-  await conferirReferencias(accountId, a, id)
+  // LIGAR confere a chave do provedor GUARDADO, mesmo sem trocá-lo: a tela
+  // manda só `{ ativo: true }`, e a chave pode ter sido apagada (ou trocada
+  // por uma só da base) com o agente desligado — ele ligaria mudo (Codex, #295).
+  let provedorAConferir = a.provedor
+  if (a.ativo === true && provedorAConferir === undefined) {
+    const atual = await obterAgente(accountId, id)
+    if (!atual) throw new ErroDoAgente('nao_encontrado', 'agente não encontrado')
+    provedorAConferir = atual.provedor
+  }
+  await conferirReferencias(accountId, { ...a, provedor: provedorAConferir }, id)
   const { data, error } = await supabaseAdmin()
     .from('cb_ia_agentes')
     .update({
