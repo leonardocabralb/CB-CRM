@@ -585,6 +585,7 @@ function FormularioDaChave({
           a === 'modelo_em_uso_indisponivel' ||
           a === 'modelos_nao_conferidos' ||
           a === 'transcricao_indisponivel' ||
+          a === 'so_da_base' ||
           a === 'modulos_nao_criados'
       );
       const listaDoAviso = (a: string) =>

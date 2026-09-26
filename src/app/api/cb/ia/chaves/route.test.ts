@@ -142,28 +142,28 @@ describe('PUT /api/cb/ia/chaves — a chave da OpenAI guarda se serve aos embedd
     const res = await PUT(pedido('openai'))
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ ok: true, avisos: [] })
-    expect(gravarChave).toHaveBeenCalledWith('conta-1', 'openai', 'sk-teste', 'user-1', true)
+    expect(gravarChave).toHaveBeenCalledWith('conta-1', 'openai', 'sk-teste', 'user-1', true, { soDaBase: false })
   })
 
   it('a OpenAI RECUSOU (invalid_key): grava `false` e avisa `embeddings_recusado`', async () => {
     embedTexts.mockRejectedValue(new AiError('OpenAI embeddings rejected the API key', { code: 'invalid_key', status: 401 }))
     const res = await PUT(pedido('openai'))
     expect(await res.json()).toMatchObject({ ok: true, avisos: ['embeddings_recusado'] })
-    expect(gravarChave).toHaveBeenCalledWith('conta-1', 'openai', 'sk-teste', 'user-1', false)
+    expect(gravarChave).toHaveBeenCalledWith('conta-1', 'openai', 'sk-teste', 'user-1', false, { soDaBase: false })
   })
 
   it('sem resposta (rede, limite): não afirma nada (`null`) e avisa `embeddings_nao_conferido`', async () => {
     embedTexts.mockRejectedValue(new AiError('rate limit', { code: 'rate_limited', status: 429 }))
     const res = await PUT(pedido('openai'))
     expect(await res.json()).toMatchObject({ ok: true, avisos: ['embeddings_nao_conferido'] })
-    expect(gravarChave).toHaveBeenCalledWith('conta-1', 'openai', 'sk-teste', 'user-1', null)
+    expect(gravarChave).toHaveBeenCalledWith('conta-1', 'openai', 'sk-teste', 'user-1', null, { soDaBase: false })
   })
 
   it('outro provedor não confere embedding nenhum', async () => {
     const res = await PUT(pedido('gemini'))
     expect(await res.json()).toMatchObject({ ok: true, avisos: [] })
     expect(embedTexts).not.toHaveBeenCalled()
-    expect(gravarChave).toHaveBeenCalledWith('conta-1', 'gemini', 'sk-teste', 'user-1', null)
+    expect(gravarChave).toHaveBeenCalledWith('conta-1', 'gemini', 'sk-teste', 'user-1', null, { soDaBase: false })
   })
 })
 
@@ -449,14 +449,32 @@ describe('PUT /api/cb/ia/chaves — a conexão só conta com a resposta automát
 })
 
 describe('PUT /api/cb/ia/chaves — a OpenAI que nenhum chat usa é conferida pelos embeddings (Codex, #294)', () => {
-  it('chave só de embeddings: aceita sem pedir o modelo de chat', async () => {
+  it('chave só de embeddings (o chat recusa): aceita e grava MARCADA como só da base, com aviso (Codex, #295)', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null, is_active: true }
     embedTexts.mockResolvedValue([[0.1]])
-    alcanca = () => false // o chat recusaria
+    alcanca = () => false // o chat recusa
     const res = await PUT(pedido('openai'))
     expect(res.status).toBe(200)
-    expect(validateAiCredentials).not.toHaveBeenCalled()
-    expect(gravarChave).toHaveBeenCalled()
+    expect(await res.json()).toMatchObject({ avisos: ['so_da_base'] })
+    expect(gravarChave).toHaveBeenCalledWith('conta-1', 'openai', 'sk-teste', 'user-1', true, { soDaBase: true })
+  })
+
+  it('gera embedding E texto: chave comum, sem a marca', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null, is_active: true }
+    embedTexts.mockResolvedValue([[0.1]])
+    const res = await PUT(pedido('openai'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ avisos: [] })
+    expect(gravarChave).toHaveBeenCalledWith('conta-1', 'openai', 'sk-teste', 'user-1', true, { soDaBase: false })
+  })
+
+  it('gera embedding e o chat falha de passagem: nada é gravado (tenta de novo)', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null, is_active: true }
+    embedTexts.mockResolvedValue([[0.1]])
+    passageira = () => 'timeout'
+    const res = await PUT(pedido('openai'))
+    expect(res.status).toBe(400)
+    expect(gravarChave).not.toHaveBeenCalled()
   })
 
   it('embeddings recusados: segue pelo chat — a chave de chat é aceita (pode ser para passar o assistente à OpenAI)', async () => {

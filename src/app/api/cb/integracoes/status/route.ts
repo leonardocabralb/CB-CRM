@@ -194,8 +194,17 @@ export async function GET(request: Request) {
           // usa: não é pingada no modelo de chat — pode ser restrita aos
           // embeddings, e o cartão diria "falhando" sobre o único uso que ela
           // tem. Quem diz se ela funciona é o ping dos embeddings (Codex, #294).
+          // A linha padrão só conta como uso quando o assistente está LIGADO
+          // ou o Radar roda sobre ela: a chave que nasce só da base cria uma
+          // padrão DESLIGADA, e contá-la pingaria a chave dos embeddings no
+          // chat (Codex, #294).
+          const radarLigado = canais.some((c) => c.radar_enabled === true);
+          const doPadrao = padrao && padrao.provider === e.provedor ? padrao : null;
+          const modeloDoChat = doPadrao?.is_active ? doPadrao.model : null;
+          const modeloDoRadar = doPadrao && radarLigado ? (doPadrao.radar_model ?? doPadrao.model) : null;
           const usadaNoChat =
-            padrao?.provider === e.provedor ||
+            modeloDoChat !== null ||
+            modeloDoRadar !== null ||
             deConexao.some((l) => l.provider === e.provedor) ||
             agentes.some((a) => a.ativo && a.provedor === e.provedor);
           // E a da OpenAI que nada de chat usa, qualquer que seja a origem (a
@@ -215,12 +224,10 @@ export async function GET(request: Request) {
           // E, na do Gemini, o modelo FIXO da transcrição: ela lê a chave do
           // Gemini qualquer que seja o chat, e o cartão ficaria verde com
           // todo áudio falhando se só aquele modelo saísse do ar (Codex, #294).
-          const radarLigado = canais.some((c) => c.radar_enabled === true);
           const modelos = [
-            padrao && padrao.provider === e.provedor
-              ? padrao.model
-              : AI_PROVIDER_DEFAULT_MODEL[e.provedor],
-            padrao && padrao.provider === e.provedor && radarLigado ? padrao.radar_model : null,
+            // Sem chat nem Radar deste provedor, o padrão dele (confere a chave).
+            modeloDoChat ?? (modeloDoRadar ? null : AI_PROVIDER_DEFAULT_MODEL[e.provedor]),
+            modeloDoRadar,
             e.provedor === 'gemini' ? MODELO_TRANSCRICAO : null,
             ...deConexao.filter((l) => l.provider === e.provedor).map((l) => l.model),
             // E o de cada agente de IA LIGADO deste provedor (Codex, #295): um

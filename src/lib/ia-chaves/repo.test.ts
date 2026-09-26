@@ -107,3 +107,21 @@ describe('gravarChave — a chave própria falsa dos embeddings sai na troca', (
     expect(upserts[0]).not.toHaveProperty('embeddings_api_key')
   })
 })
+
+describe('gravarChave — a chave que só gera embedding leva a MARCA de só da base (Codex, #295)', () => {
+  it('o MESMO texto cifrado nas duas colunas (é o que tira a chave da escolha do chat)', async () => {
+    await gravarChave('conta-1', 'openai', 'sk-restrita', 'user-1', true, { soDaBase: true })
+    expect(upserts[0].api_key).toMatch(/sk-restrita$/)
+    expect(upserts[0].embeddings_api_key).toBe(upserts[0].api_key)
+  })
+
+  it('sem a marca, a chave que serve às duas coisas não fica só da base', async () => {
+    await gravarChave('conta-1', 'openai', 'sk-comum', 'user-1', true, { soDaBase: false })
+    expect(upserts[0]).toHaveProperty('embeddings_api_key', null)
+  })
+
+  it('a marca não vale fora da OpenAI', async () => {
+    await gravarChave('conta-1', 'gemini', 'g-nova', 'user-1', null, { soDaBase: true })
+    expect(upserts[0]).not.toHaveProperty('embeddings_api_key')
+  })
+})

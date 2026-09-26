@@ -79,16 +79,21 @@ REVOKE ALL ON TABLE cb_ia_chaves FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE cb_ia_chaves TO service_role;
 
 -- A cópia. A linha padrão (channel_id NULL) vence a de conexão para o mesmo
--- provedor, e entre as de conexão a LIGADA vence a desligada (é a que roda:
--- a chave velha de uma desligada derrubaria a resposta automática da ligada —
--- Codex, #294): `ORDER BY` + `DISTINCT ON`, e o `ON CONFLICT DO NOTHING` não
--- sobrescreve o que já estiver na tabela (reexecução).
+-- provedor, e entre as de conexão vence a que RESPONDE — ligada, com a
+-- resposta automática ligada nela e na conexão, os três portões de
+-- `dispatchInboundToAiReply` —, depois a ligada (a chave velha de uma parada
+-- derrubaria a resposta automática da que roda — Codex, #294): `ORDER BY` +
+-- `DISTINCT ON`, e o `ON CONFLICT DO NOTHING` não sobrescreve o que já estiver
+-- na tabela (reexecução).
 INSERT INTO cb_ia_chaves (account_id, provedor, api_key, atualizada_por, created_at, updated_at)
 SELECT DISTINCT ON (c.account_id, c.provider)
        c.account_id, c.provider, c.api_key, c.created_by, now(), now()
   FROM ai_configs c
+  LEFT JOIN cb_channels ch ON ch.id = c.channel_id
  WHERE c.api_key IS NOT NULL AND c.api_key <> ''
- ORDER BY c.account_id, c.provider, (c.channel_id IS NULL) DESC, c.is_active DESC, c.created_at
+ ORDER BY c.account_id, c.provider, (c.channel_id IS NULL) DESC,
+          (c.is_active AND c.auto_reply_enabled IS TRUE AND ch.ai_autoreply_enabled IS NOT FALSE) DESC,
+          c.is_active DESC, c.created_at
 ON CONFLICT (account_id, provedor) DO NOTHING;
 
 -- ⚠️ A chave passa a ser UMA por provedor (D1). A conta que tinha, EM USO, mais
@@ -106,12 +111,14 @@ BEGIN
   FOR r IN
     SELECT c.account_id, c.provider, count(DISTINCT c.api_key) AS textos
       FROM ai_configs c
+      LEFT JOIN cb_channels ch ON ch.id = c.channel_id
      WHERE c.api_key IS NOT NULL AND c.api_key <> ''
-       AND (c.channel_id IS NULL OR c.is_active)
+       AND (c.channel_id IS NULL
+            OR (c.is_active AND c.auto_reply_enabled IS TRUE AND ch.ai_autoreply_enabled IS NOT FALSE))
      GROUP BY c.account_id, c.provider
     HAVING count(DISTINCT c.api_key) > 1
   LOOP
-    RAISE WARNING '1047: a conta % usava % chaves (ou a mesma chave digitada em lugares diferentes) do provedor %; ficou a da linha padrão ou, sem ela, a da conexão ligada mais antiga. Confira em Configurações → Integrações.',
+    RAISE WARNING '1047: a conta % usava % chaves (ou a mesma chave digitada em lugares diferentes) do provedor %; ficou a da linha padrão ou, sem ela, a da conexão que responde mais antiga. Confira em Configurações → Integrações.',
       r.account_id, r.textos, r.provider;
   END LOOP;
 END $$;
@@ -196,10 +203,11 @@ BEGIN
       -- no deploy (Codex, #294). A da linha apagada sai do mesmo jeito.
       SELECT c.api_key INTO v_da_conexao
         FROM ai_configs c
+        LEFT JOIN cb_channels ch ON ch.id = c.channel_id
        WHERE c.account_id = OLD.account_id AND c.provider = OLD.provider
          AND c.channel_id IS NOT NULL AND c.is_active
          AND c.api_key IS NOT NULL AND c.api_key <> ''
-       ORDER BY c.created_at
+       ORDER BY (c.auto_reply_enabled IS TRUE AND ch.ai_autoreply_enabled IS NOT FALSE) DESC, c.created_at
        LIMIT 1;
       IF v_da_conexao IS NOT NULL THEN
         UPDATE cb_ia_chaves SET api_key = v_da_conexao, serve_embeddings = NULL, updated_at = now()
@@ -235,10 +243,11 @@ BEGIN
   IF TG_OP = 'UPDATE' AND OLD.provider IS DISTINCT FROM NEW.provider THEN
     SELECT c.api_key INTO v_da_conexao
       FROM ai_configs c
+      LEFT JOIN cb_channels ch ON ch.id = c.channel_id
      WHERE c.account_id = OLD.account_id AND c.provider = OLD.provider
        AND c.channel_id IS NOT NULL AND c.is_active
        AND c.api_key IS NOT NULL AND c.api_key <> ''
-     ORDER BY c.created_at
+     ORDER BY (c.auto_reply_enabled IS TRUE AND ch.ai_autoreply_enabled IS NOT FALSE) DESC, c.created_at
      LIMIT 1;
     IF v_da_conexao IS NOT NULL THEN
       UPDATE cb_ia_chaves SET api_key = v_da_conexao, serve_embeddings = NULL, updated_at = now()

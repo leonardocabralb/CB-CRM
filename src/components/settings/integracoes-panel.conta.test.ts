@@ -14,8 +14,8 @@ describe('integracoes-panel — conta à vista', () => {
     expect(fonte).toMatch(/<Conteudo\s+key=\{accountId\b/)
   })
 
-  it('a confirmação de apagar lista só os módulos que rodam hoje', () => {
-    expect(fonte).toMatch(/\.filter\(\(u\)\s*=>\s*!u\.indisponivel\)/)
+  it('a confirmação de apagar lista os módulos que rodam hoje, e o assistente desligado (o Playground dele roda)', () => {
+    expect(fonte).toMatch(/\.filter\(\(u\)\s*=>\s*!u\.indisponivel\s*\|\|\s*u\.indisponivel\s*===\s*'conversa_desligada'\)/)
     expect(fonte).not.toMatch(/u\.indisponivel\s*!==\s*'sem_chave'/)
   })
 })
