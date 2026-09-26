@@ -36,6 +36,10 @@ const sql1010 = semComentarios(ler('1010_cb_mensagens_sem_telefone.sql'));
 // Codex achou a corrida do eco). Os pinos do CORPO leem a definição VIGENTE —
 // pinar a da 1010 seria vigiar um texto que o banco já não executa.
 const sql1011 = semComentarios(ler('1011_cb_historica_eco_e_resposta_concorrente.sql'));
+// ⚠️ E REDEFINIDA DE NOVO pela 1044 (F2a dos agentes de IA): as três perguntas
+// "gente respondeu?" ganharam o ramo da resposta do AGENTE (D11). A versão
+// VIGENTE, que os pinos do corpo leem, é a da 1044.
+const sqlVigente = semComentarios(ler('1044_cb_ia_quem_responde.sql'));
 const sql972 = semComentarios(ler('0972_cb_aguardando_resposta.sql'));
 const TABELA = 'cb_mensagens_sem_telefone';
 
@@ -99,9 +103,9 @@ describe('1010 — a tabela das mensagens sem telefone é fechada ao navegador',
 });
 
 describe('1010 × 972 — a função desfaz só o que ESTA mensagem estragou', () => {
-  /** O corpo VIGENTE da função (1011), do `as $$` ao `$$;` — sem espaços nem caixa. */
+  /** O corpo VIGENTE da função (1044), do `as $$` ao `$$;` — sem espaços nem caixa. */
   const corpo = (() => {
-    const texto = compacto(sql1011);
+    const texto = compacto(sqlVigente);
     const ini = texto.indexOf('create or replace function public.cb_assentar_mensagem_historica');
     expect(ini).toBeGreaterThan(-1);
     const abre = texto.indexOf('as $$', ini);
@@ -117,6 +121,8 @@ describe('1010 × 972 — a função desfaz só o que ESTA mensagem estragou', (
     // 1011), o eco ANTERIOR a ela, e a fala do cliente.
     expect(corpo.split(regua).length - 1).toBe(3);
     expect(corpo.split('h.deleted_at is null').length - 1).toBe(3);
+    // E a resposta do AGENTE de IA conta junto, nas mesmas três (1044, D11).
+    expect(corpo.split("(h.sender_type = 'bot' and h.ia_agente_id is not null)").length - 1).toBe(3);
     expect(corpo).toContain('m.deleted_at is null');
   });
 
@@ -140,6 +146,9 @@ describe('1010 × 972 — a função desfaz só o que ESTA mensagem estragou', (
       compacto(sql).match(/create or replace function public\.cb_assentar_mensagem_historica\(([^)]*)\)/)?.[1];
     expect(assinatura(sql1011)).toBeTruthy();
     expect(assinatura(sql1011)).toBe(assinatura(sql1010));
+    // A 1044 também só troca o corpo, e confere que sobrou UMA.
+    expect(assinatura(sqlVigente)).toBe(assinatura(sql1010));
+    expect(compacto(sqlVigente)).toContain("p.proname = 'cb_assentar_mensagem_historica'");
     expect(compacto(sql1011)).toContain("p.proname = 'cb_assentar_mensagem_historica'");
     expect(compacto(sql1011)).toContain('set local role service_role');
   });
