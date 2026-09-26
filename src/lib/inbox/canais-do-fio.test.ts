@@ -5,6 +5,7 @@ import {
   canaisDoFio,
   canalDivergente,
   fioMulticanal,
+  naOrdemDoFio,
   ultimoCanalDoCliente,
   type MensagemDoFio,
 } from './canais-do-fio';
@@ -192,5 +193,47 @@ describe('canalDivergente', () => {
     expect(
       canalDivergente({ messages: antigo, canalDeSaida: JUR, ...fixada }),
     ).toBeNull();
+  });
+});
+
+describe('a ordem é a do DESENHO, não a da lista em memória (Codex, PR #304)', () => {
+  // O tempo real acrescenta no FIM, e a ligação (1044) entra com o carimbo da
+  // hora real — segundos no passado. A lista em memória fica fora de ordem até
+  // recarregar; as perguntas de trecho seguem o carimbo, como o fio desenha.
+  const em = (id: string, sender_type: string, channel_id: string | null, created_at: string) => ({
+    id,
+    sender_type,
+    channel_id,
+    created_at,
+  });
+
+  it('a ligação acrescentada no fim com carimbo anterior não abre trecho no lugar errado', () => {
+    const fio = [
+      em('a', 'customer', COM, '2026-09-26T13:20:00.000+00:00'),
+      em('b', 'agent', JUR, '2026-09-26T13:22:03.000+00:00'),
+      // chegou por último, mas tocou ANTES da resposta pelo Jurídico
+      em('ligacao', 'customer', JUR, '2026-09-26T13:21:54.000+00:00'),
+    ];
+    const aberturas = aberturasDeCanal(fio, false);
+    expect([...aberturas.entries()]).toEqual([
+      ['a', COM],
+      ['ligacao', JUR],
+    ]);
+  });
+
+  it('"a última do cliente" é a mais recente pelo carimbo, não a última da lista', () => {
+    const fio = [
+      em('a', 'customer', JUR, '2026-09-26T13:25:00.000+00:00'),
+      em('ligacao', 'customer', COM, '2026-09-26T13:21:54.000+00:00'),
+    ];
+    expect(ultimoCanalDoCliente(fio)).toBe(JUR);
+  });
+
+  it('lista já em ordem volta sem cópia', () => {
+    const fio = [
+      em('a', 'customer', COM, '2026-09-26T13:20:00.000+00:00'),
+      em('b', 'customer', JUR, '2026-09-26T13:21:00.000+00:00'),
+    ];
+    expect(naOrdemDoFio(fio)).toBe(fio);
   });
 });

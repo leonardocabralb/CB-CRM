@@ -42,6 +42,13 @@ bolinha antes do nome na lista.
 - ⚠️ **As classes da `PALETA_DE_CANAIS` são LITERAIS** (`'bg-violet-500'`):
   `bg-${cor}-500` não é gerada pelo Tailwind e a bolinha nasce transparente.
   Pino: a regex de `cores.test.ts`.
+- ⚠️⚠️ **As perguntas de ORDEM (`aberturasDeCanal`, `ultimoCanalDoCliente`)
+  passam por `naOrdemDoFio`** (`created_at`, desempate pelo id — o comparador
+  de `intercalar`, que desenha o fio). A lista em memória não é cronológica: o
+  tempo real acrescenta no fim, e a ligação (1044) e a recuperada (1010) entram
+  com carimbo no passado. Na ordem crua, o separador caía na mensagem errada e
+  o aviso de número fixado lia uma mensagem antiga como "a última do cliente"
+  (Codex, PR #304). Pergunta nova que dependa de ordem passa pelo mesmo helper.
 - ⚠️ **Mensagem SEM carimbo não abre nem fecha trecho de canal** (histórico
   anterior ao multi-canal, acervo de conexão apagada): um separador não teria
   nome para escrever, e atribuí-la ao canal vizinho seria inventar.

@@ -86,8 +86,14 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
   HISTÓRIA: não reabre, não sobe a conversa, não segue o canal, e chama
   `cb_assentar_mensagem_historica` (1011), que acerta a espera e a não lida
   pela hora real — o gatilho da 972 decide pela ORDEM DE INSERÇÃO. A espera de
-  antes e o "há mensagem depois?" são lidos ANTES do insert, para a reabertura
-  continuar colada nele. A faixa escreve `ligacao.inicio`.
+  antes e o "há mensagem depois?" são lidos ANTES do insert, e a pergunta se
+  REPETE logo depois da reabertura (colada no insert): uma resposta gravada no
+  meio faria a bolha subir a conversa sobre cliente atendido (Codex, PR #304).
+  A faixa escreve `ligacao.inicio`.
+- Com a conversa aberta, a bolha "no passado" é acrescentada no FIM da lista
+  em memória (o tempo real não reordena, de propósito): quem pergunta por
+  ORDEM (`aberturasDeCanal`, `ultimoCanalDoCliente`) passa por `naOrdemDoFio`
+  — ver `canal-na-conversa.md`.
 - A ficha e a conversa nascem por `resolverDestinatario` (dono durável) quando
   o número nunca escreveu (decisão do operador), com o telefone no lugar do
   nome — o aviso não traz o perfil.

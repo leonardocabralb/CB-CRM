@@ -309,6 +309,28 @@ describe('a bolha entra na hora REAL da ligação (teste real de 26/09/2026)', (
     expect(followConversationChannel).not.toHaveBeenCalled();
   });
 
+  it('⚠️ a resposta gravada ENTRE a pergunta e o insert: a 2ª pergunta a vê (Codex, PR #304)', async () => {
+    // A reabertura roda colada no insert; é nela que a resposta "chega".
+    reopenClosedConversation.mockImplementation(async () => {
+      banco.tabelas.messages.push({
+        id: 'resposta-no-meio',
+        conversation_id: 'conversa-1',
+        sender_type: 'agent',
+        from_device: true,
+        sender_id: null,
+        deleted_at: null,
+        content_type: 'text',
+        created_at: new Date(T0 + 45_000).toISOString(),
+      });
+    });
+    await registrar(evento('offer'));
+    await registrar(evento('terminate'));
+
+    expect(ordem).toEqual(['reabre', 'rpc:cb_assentar_mensagem_historica', 'esperas', 'funil']);
+    expect(banco.rpcs[0]).toMatchObject({ args: { p_conta_nao_lida: false } });
+    expect(followConversationChannel).not.toHaveBeenCalled();
+  });
+
   it('a perdida histórica sem resposta de gente depois dela conta como não lida', async () => {
     banco.tabelas.messages = [
       {

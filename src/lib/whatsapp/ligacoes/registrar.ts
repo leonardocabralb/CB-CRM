@@ -426,13 +426,30 @@ async function gravarNoFio(
     return;
   }
 
-  if (historica) {
+  // Não é atômico, e a pergunta se repete DEPOIS do insert (Codex, PR #304):
+  // uma resposta gravada entre a primeira pergunta e o insert faria a bolha
+  // subir a conversa e somar a não lida sobre um cliente já atendido. A
+  // reabertura fica colada no insert (`reopen.ts`); reabrir por uma ligação que
+  // afinal não é a última é inofensivo — ela é contato real do cliente, e toda
+  // mensagem de gente também reabre. Sobra a janela entre a 2ª pergunta e a
+  // escrita na conversa: uma ida ao banco, a mesma que a 1010 aceitou.
+  let ehHistorica = historica;
+  if (!historica) {
+    // LOGO DEPOIS de gravar (ver `reopen.ts`): a janela entre gravar e reabrir é
+    // onde um encerramento posterior seria atropelado. Sem responsável, como a
+    // mensagem do cliente e a do celular pareado.
+    await reopenClosedConversation(db, { id: destino.conversationId });
+    ehHistorica = await haMensagemDepois(db, destino.conversationId, carimbo);
+  }
+
+  if (ehHistorica) {
     // Já há mensagem DEPOIS da ligação (a atendida que veio logo em seguida,
     // uma resposta): ela é história, como a mensagem recuperada da 1010. Não
-    // reabre (quem decidiu a situação da conversa sabia de mais coisa), não
-    // mexe na prévia nem na posição da lista (a última é outra) e não segue o
-    // canal (o da conversa é o da mensagem mais recente). O que ela faz é
-    // assentar a conversa: a espera e a não lida pela hora REAL da ligação.
+    // reabre quando já se sabia antes do insert (quem decidiu a situação da
+    // conversa sabia de mais coisa), não mexe na prévia nem na posição da
+    // lista (a última é outra) e não segue o canal (o da conversa é o da
+    // mensagem mais recente). O que ela faz é assentar a conversa: a espera e
+    // a não lida pela hora REAL da ligação.
     const contaNaoLida =
       perdida && !(await genteRespondeuDepois(db, destino.conversationId, carimbo));
     const { error: erroAoAssentar } = await db.rpc('cb_assentar_mensagem_historica', {
@@ -444,11 +461,6 @@ async function gravarNoFio(
     });
     if (erroAoAssentar) console.error('[ligacoes] assentar a conversa falhou:', erroAoAssentar.message);
   } else {
-    // LOGO DEPOIS de gravar (ver `reopen.ts`): a janela entre gravar e reabrir é
-    // onde um encerramento posterior seria atropelado. Sem responsável, como a
-    // mensagem do cliente e a do celular pareado.
-    await reopenClosedConversation(db, { id: destino.conversationId });
-
     if (perdida) {
       // Não lida atômica, prévia e posição na lista numa escrita só.
       const { error: erroDoBump } = await db.rpc('bump_conversation_on_inbound', {
