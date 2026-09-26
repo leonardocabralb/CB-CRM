@@ -358,13 +358,15 @@ export async function DELETE(request: Request) {
     if (!ehProvedor(provedor)) {
       return NextResponse.json({ error: 'provedor_invalido', code: 'provedor_invalido' }, { status: 400 })
     }
-    const apagada = await apagarChave(ctx.accountId, provedor)
-
     // ⚠️ A cópia LEGADA também sai. A 1047 deixou `ai_configs.api_key` (e
     // `embeddings_api_key`) com o texto cifrado de antes, para o app anterior
     // poder voltar atrás — e qualquer membro lê essa coluna pelo PostgREST.
     // Sem limpar, a chave "apagada" continuaria no banco e voltaria a valer
     // numa reversão do deploy (ou num replay da cópia da 1047).
+    // ⚠️ A cópia sai ANTES da chave de verdade (Codex, #294): se a limpeza
+    // falha, nada foi apagado e a tela diz "falhou" com a verdade; na ordem
+    // inversa, a chave já tinha saído (e o assistente, o Radar e a transcrição
+    // parado) com a tela dizendo que a exclusão falhou.
     const db = supabaseAdmin()
     const { error: erroLegado } = await db
       .from('ai_configs')
@@ -380,8 +382,9 @@ export async function DELETE(request: Request) {
         '[cb/ia/chaves DELETE] limpeza da cópia legada falhou:',
         erroLegado?.message ?? erroEmbeddings?.message,
       )
-      return NextResponse.json({ error: 'banco', code: 'banco', apagada }, { status: 500 })
+      return NextResponse.json({ error: 'banco', code: 'banco' }, { status: 500 })
     }
+    const apagada = await apagarChave(ctx.accountId, provedor)
     return NextResponse.json({ ok: true, apagada })
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('[ia-chaves]')) {

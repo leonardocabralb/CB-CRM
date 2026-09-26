@@ -60,6 +60,7 @@ vi.mock('@/lib/ai/embeddings', () => ({ embedTexts: (...a: unknown[]) => embedTe
 let linhasPorConexao: Record<string, unknown>[] = []
 // Há conexão com o Radar ligado? (os modelos do Radar só contam com ele.)
 let radarLigado = true
+let erroNoLegado: { message: string } | null = null
 vi.mock('@/lib/ai/admin-client', () => ({
   supabaseAdmin: () => ({
     from: (tabela: string) =>
@@ -70,6 +71,14 @@ vi.mock('@/lib/ai/admin-client', () => ({
             }),
           }
         : ({
+      // O espelho legado de `ai_configs` (o DELETE limpa a cópia).
+      update: () => {
+        const fim = { error: erroNoLegado }
+        const eq: Record<string, unknown> = {}
+        eq.eq = () => eq
+        eq.then = (r: (v: unknown) => unknown) => r(fim)
+        return eq
+      },
       select: () => ({
         eq: async () => ({
           data: [...(linhaPadrao ? [{ channel_id: null, ...linhaPadrao }] : []), ...linhasPorConexao],
@@ -88,7 +97,8 @@ vi.mock('@/lib/ia-chaves/repo', () => ({
 }))
 
 import { AiError } from '@/lib/ai/types'
-import { PUT } from './route'
+import { DELETE, PUT } from './route'
+import { apagarChave } from '@/lib/ia-chaves/repo'
 
 function pedido(provedor: string) {
   return new Request('http://x/api/cb/ia/chaves', {
@@ -107,6 +117,7 @@ beforeEach(() => {
   passageira = () => null
   chaveAtual = null
   radarLigado = true
+  erroNoLegado = null
 })
 
 describe('PUT /api/cb/ia/chaves — a chave da OpenAI guarda se serve aos embeddings', () => {
@@ -342,5 +353,26 @@ describe('PUT /api/cb/ia/chaves — só os modelos que RODAM são conferidos (Co
     const res = await PUT(pedido('gemini'))
     expect(res.status).toBe(200)
     expect(gravarChave).toHaveBeenCalled()
+  })
+})
+
+describe('DELETE /api/cb/ia/chaves — a cópia legada sai ANTES da chave (Codex, #294)', () => {
+  const apagar = (provedor: string) =>
+    DELETE(new Request(`http://x/api/cb/ia/chaves?provedor=${provedor}`, { method: 'DELETE' }))
+
+  it('limpeza da cópia falhou: 500 e a chave de verdade NÃO sai (a tela diz a verdade)', async () => {
+    vi.mocked(apagarChave).mockClear()
+    erroNoLegado = { message: 'timeout' }
+    const res = await apagar('gemini')
+    expect(res.status).toBe(500)
+    expect(apagarChave).not.toHaveBeenCalled()
+  })
+
+  it('limpeza ok: a chave sai e a resposta diz ok', async () => {
+    vi.mocked(apagarChave).mockClear().mockResolvedValue(true)
+    const res = await apagar('gemini')
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, apagada: true })
+    expect(apagarChave).toHaveBeenCalledWith('conta-1', 'gemini')
   })
 })
