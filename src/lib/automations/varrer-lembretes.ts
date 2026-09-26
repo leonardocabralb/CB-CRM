@@ -1,5 +1,7 @@
 import type { Automation, DateFieldTriggerConfig } from '@/types'
 import { PAGINA } from '@/lib/supabase/paginar'
+// Função pura (o instante como chave); nada de I/O vem junto.
+import { chaveDaTrava } from '@/lib/calendly/cancelamento'
 import { supabaseAdmin } from './admin-client'
 import { dispararAutomacoes } from './engine'
 import {
@@ -243,7 +245,59 @@ export async function varrerLembretes(): Promise<ResultadoDaVarredura> {
         saida.cancelados += encontrados.length - lista.length
       }
 
+      // ⚠️⚠️ A TRAVA ANTIGA, GRAVADA PELO TEXTO, TAMBÉM CONTA (Codex, PR #305).
+      // Até aqui a trava guardava o valor como veio do campo
+      // ("…17:30:00.000000Z", do Calendly); agora guarda o instante canônico
+      // ("…17:30:00.000Z"). O UNIQUE continua sendo de TEXTO, então sem esta
+      // leitura a trava gravada antes da mudança não barraria a nova, e o
+      // cliente receberia o lembrete de novo. O mesmo vale para o deploy
+      // `start-first`, com a versão anterior ainda gravando pelo texto ao
+      // lado desta. Aqui se compara pelo INSTANTE, dos dois lados; o INSERT
+      // abaixo continua sendo a reivindicação entre os ciclos desta versão.
+      // Estreita e em fatias, como a leitura dos cancelados, e leitura
+      // incompleta é FALHA FECHADA: a automação fica para o ciclo seguinte.
+      const jaTravados = new Set<string>()
+      if (lista.length > 0) {
+        let leituraFalhou = false
+        for (let i = 0; i < lista.length; i += ALVOS_POR_CONSULTA) {
+          const contatos = [
+            ...new Set(lista.slice(i, i + ALVOS_POR_CONSULTA).map((a) => a.contact_id)),
+          ]
+          const {
+            data,
+            error: erroTravas,
+            count,
+          } = await db
+            .from('cb_automation_reminders')
+            .select('contact_id, valor', { count: 'exact' })
+            .eq('automation_id', bruta.id)
+            .in('contact_id', contatos)
+            .range(0, PAGINA - 1)
+          if (erroTravas || !data || count == null || count > data.length) {
+            console.error(
+              '[automations] leitura das travas falhou ou veio incompleta',
+              bruta.id,
+              { count, lidas: data?.length ?? null },
+              erroTravas,
+            )
+            leituraFalhou = true
+            break
+          }
+          for (const t of data as { contact_id: string; valor: string }[]) {
+            jaTravados.add(`${t.contact_id}|${chaveDaTrava(t.valor)}`)
+          }
+        }
+        if (leituraFalhou) {
+          saida.falhas += 1
+          continue
+        }
+      }
+
       for (const alvo of lista) {
+        if (jaTravados.has(`${alvo.contact_id}|${chaveDaTrava(alvo.valor)}`)) {
+          saida.repetidos += 1
+          continue
+        }
         // ⚠️ A TRAVA VEM ANTES DO DISPARO, e o INSERT é a própria
         // reivindicação. Ler-depois-escrever abriria janela para dois ciclos
         // sobrepostos mandarem o mesmo lembrete duas vezes ao cliente.
@@ -253,7 +307,11 @@ export async function varrerLembretes(): Promise<ResultadoDaVarredura> {
             account_id: bruta.account_id,
             automation_id: bruta.id,
             contact_id: alvo.contact_id,
-            valor: alvo.valor,
+            // ⚠️⚠️ O INSTANTE, não o texto (`chaveDaTrava`): o campo é gravado
+            // pelo Calendly e pela API v1 com ~1 s de diferença, em formatos
+            // diferentes do mesmo horário. Pelo texto, o ciclo que lia entre as
+            // duas escritas travava a 1ª forma e o seguinte disparava de novo.
+            valor: chaveDaTrava(alvo.valor),
             // `motivo` separa esta linha da que o CANCELAMENTO do Calendly
             // pré-arma (1013): lá `disparado_em` estaria preenchido sem
             // envio nenhum.

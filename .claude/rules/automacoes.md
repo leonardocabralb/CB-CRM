@@ -70,6 +70,13 @@ reentrega): `.claude/rules/webhooks.md`.
   por cima de um nome fixado e a marca o congelava. Pino:
   `src/lib/contacts/nome-fixado.chamadores.test.ts` (enxerga a chave
   computada `[cfg.field]`). Nome nas telas: `.claude/rules/campos-e-nome.md`.
+- ⚠️ **`update_contact_field` em campo de DATA (`field_type = 'datetime'`)
+  grava `instanteCanonico(valor)`** (UTC, 3 casas; sem fuso escrito ou
+  ilegível, como veio): o Calendly manda "…:00.000000Z" e a API v1
+  "…:00.000Z" para o mesmo horário, e o texto é chave da trava do lembrete
+  (ver `.claude/rules/integracoes-calendly.md`). O select de `custom_fields`
+  traz `field_type` por isso — tirá-lo desliga a forma canônica em silêncio
+  (o mock do `engine.test.ts` só devolve o tipo quando ele é pedido).
 - **`runAutomationById` aceita `rotuloDoDisparo`**: a execução manual grava
   `'manual'`; sem ele o log diria que outra automação chamou.
 - ⚠️ **`dispararAutomacoes` DEVOLVE o que fez** (`ResultadoDoDisparo`:
@@ -226,6 +233,10 @@ e no `validate.ts`.
   upstream devolve o bug sem conflito. Pino: `src/lib/pipelines/url.test.ts`.
 - **A tela de registros pinta `skipped` NEUTRO** (`StepRow`, traço cinza):
   "parou porque o cliente respondeu" e condição de ramo vazio não são erro.
+- ⚠️ **A tela de registros troca id por nome NA TELA** (`registro-legivel.ts`),
+  nunca no motor: vale para os registros antigos e mostra o id que o passo
+  USOU. Id sem nome só vira "(etapa apagada)" se aquele catálogo carregou;
+  consulta que falhou deixa o id cru.
 
 ### A visão Automações do funil
 

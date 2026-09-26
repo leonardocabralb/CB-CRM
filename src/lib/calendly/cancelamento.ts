@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { DateFieldTriggerConfig } from "@/types";
+import { instanteCanonico } from "@/lib/contacts/campo-data";
 
 import { TETO_DE_PROCESSAMENTO_MS } from "./claim";
 import type { ProcessamentoDoAgendamento } from "./processar";
@@ -45,6 +46,23 @@ export function mesmaReuniao(valor: string | null | undefined, inicio: string | 
   const b = Date.parse(inicio);
   if (Number.isFinite(a) && Number.isFinite(b)) return a === b;
   return valor.trim() === inicio.trim();
+}
+
+/**
+ * A chave da trava da 935 (`cb_automation_reminders.valor`) para um valor do
+ * campo de data: o INSTANTE, não o texto. Sem fuso escrito (ou ilegível), o
+ * texto como veio.
+ *
+ * ⚠️⚠️ Os DOIS escritores da trava passam por aqui (a varredura e o
+ * cancelamento pré-armado); há pino em `trava-do-lembrete.chamadores.test.ts`.
+ * Medido em produção: o campo "Data e Hora Reunião" é gravado com ~1 s de
+ * diferença pela automação do Calendly ("…17:30:00.000000Z") e pela API v1
+ * ("…17:30:00.000Z"). Pelo texto, a varredura que lia entre as duas escritas
+ * travava a primeira forma, a seguinte lia a segunda e o cliente recebia o
+ * lembrete DUAS vezes.
+ */
+export function chaveDaTrava(valor: string): string {
+  return instanteCanonico(valor) ?? valor;
 }
 
 /** O campo de data que um gatilho de lembrete observa, ou null. */
@@ -277,7 +295,9 @@ export async function processarCancelamento(
       account_id: accountId,
       automation_id: a.id,
       contact_id: contactId,
-      valor: a.valor,
+      // A MESMA chave da varredura: pré-armada pelo texto cru, ela não casaria
+      // com a trava que a varredura grava pelo instante.
+      valor: chaveDaTrava(a.valor),
       motivo: "cancelamento",
     })),
     // ⚠️⚠️ PROMOVE a linha que já existe (sem `ignoreDuplicates`), e isso é

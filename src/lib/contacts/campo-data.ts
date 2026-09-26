@@ -47,6 +47,52 @@ export function deEntradaLocal(local: string | null | undefined): string {
 }
 
 /**
+ * Data + hora + fuso ESCRITO. Os grupos separam as partes para
+ * `instanteCanonico` remontar a forma estrita antes do parse.
+ */
+const INSTANTE_COM_OFFSET =
+  /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}(?::?\d{2})?)$/i
+
+/**
+ * O MESMO instante escrito sempre do MESMO jeito: `toISOString()` (UTC, 3
+ * casas). "2026-09-28T17:30:00.000000Z" (a automação do Calendly),
+ * "…17:30:00.000Z" (a API v1), "… 17:30:00+00" (o PostgREST) e
+ * "…14:30:00-03:00" viram o mesmo texto.
+ *
+ * Existe porque texto é chave: a trava do lembrete (935) é por VALOR, e dois
+ * escritores gravando o mesmo horário em formatos diferentes mandavam o
+ * lembrete duas vezes.
+ *
+ * ⚠️ Só aceita valor com fuso ESCRITO (`Z` ou `±HH[:MM]`). Sem fuso, o JS lê
+ * na hora local do processo e o Postgres na do banco: "canonizar" ali seria
+ * escolher um dos dois em silêncio. Devolve `null` e quem chama decide.
+ *
+ * ⚠️ A forma é remontada ANTES do parse (espaço → `T`, `+00` → `+00:00`,
+ * fração em 3 casas): o `Date.parse` do V8 recusa `T…+00` e `-03` sem
+ * minutos, e só aceita o espaço pelo parser legado. A fração é CORTADA, como
+ * o V8 já faz com microssegundos.
+ */
+export function instanteCanonico(texto: string | null | undefined): string | null {
+  if (typeof texto !== 'string') return null
+  const m = INSTANTE_COM_OFFSET.exec(texto.trim())
+  if (!m) return null
+  const [, data, horaMinuto, segundos, fracao, fusoBruto] = m
+  // ⚠️ Dia que não existe no mês ("2026-02-29", "2026-09-31") é RECUSADO: o
+  // `Date.parse` do V8 o empurra para o mês seguinte, e o Postgres o recusa.
+  // Canonizado, o passo `update_contact_field` gravaria na ficha uma data que
+  // ninguém mandou — e o lembrete sairia nela (revisão do PR #305).
+  const [ano, mes, dia] = data.split('-').map(Number)
+  if (new Date(Date.UTC(ano, mes - 1, dia)).getUTCDate() !== dia) return null
+  const fuso = /^z$/i.test(fusoBruto)
+    ? 'Z'
+    : `${fusoBruto.slice(0, 3)}:${fusoBruto.slice(3).replace(':', '') || '00'}`
+  const ms = (fracao ?? '').padEnd(3, '0').slice(0, 3)
+  const estrito = `${data}T${horaMinuto}:${segundos ?? '00'}.${ms}${fuso}`
+  const instante = Date.parse(estrito)
+  return Number.isFinite(instante) ? new Date(instante).toISOString() : null
+}
+
+/**
  * O fuso do escritório. O Brasil não tem horário de verão desde 2019; se
  * voltar, muda aqui.
  */
