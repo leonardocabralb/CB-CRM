@@ -24,13 +24,21 @@ vi.mock('@/lib/ai/admin-client', () => ({
         const c: Consulta = { tabela, filtros: [] }
         consultas.push(c)
         const q: Record<string, unknown> = {}
-        for (const m of ['eq', 'order', 'limit', 'not']) {
+        for (const m of ['eq', 'order', 'limit', 'not', 'in', 'is']) {
           q[m] = (...a: unknown[]) => {
             c.filtros.push([m, ...a])
             return q
           }
         }
         q.maybeSingle = async () => ({ data: banco[tabela] ?? null, error: banco[`${tabela}:erro`] ?? null })
+        // Lista (a leitura das últimas mensagens do cliente, `canalDaIaNaConversa`).
+        q.then = (ok: (r: unknown) => unknown, erro: (e: unknown) => unknown) => {
+          const v = banco[tabela]
+          return Promise.resolve({
+            data: Array.isArray(v) ? v : v ? [v] : [],
+            error: banco[`${tabela}:erro`] ?? null,
+          }).then(ok, erro)
+        }
         return q
       },
     }),
@@ -134,11 +142,23 @@ describe('GET /api/cb/ia/conversa/[id]', () => {
 
   it('a conexão é a da ÚLTIMA mensagem do cliente, não a fixada na conversa — Codex, #309', async () => {
     banco.conversations = { ...(banco.conversations as object), channel_id: 'canal-2' }
-    banco.messages = { channel_id: 'canal-1' }
+    banco.messages = [{ channel_id: 'canal-1', content_type: 'text', content_text: 'oi', media_type: null }]
     expect(await (await chamar()).json()).toMatchObject({ agente: { id: 'ag-1', nome: 'Triagem' } })
     const ultima = consultas.find((c) => c.tabela === 'messages')!
     expect(ultima.filtros).toContainEqual(['eq', 'conversation_id', CONV])
     expect(ultima.filtros).toContainEqual(['eq', 'sender_type', 'customer'])
+    expect(ultima.filtros).toContainEqual(['is', 'deleted_at', null])
+  })
+
+  it('figurinha, localização e texto vazio NÃO mudam a conexão: vale a última que abre turno — Codex, #309', async () => {
+    banco.conversations = { ...(banco.conversations as object), channel_id: 'canal-2' }
+    banco.messages = [
+      { channel_id: 'canal-2', content_type: 'image', content_text: null, media_type: 'image/webp' },
+      { channel_id: 'canal-2', content_type: 'location', content_text: null, media_type: null },
+      { channel_id: 'canal-2', content_type: 'text', content_text: null, media_type: null },
+      { channel_id: 'canal-1', content_type: 'text', content_text: 'quero o boleto', media_type: null },
+    ]
+    expect(await (await chamar()).json()).toMatchObject({ agente: { id: 'ag-1', nome: 'Triagem' } })
   })
 
   it('conexão da conversa fora das do agente — ninguém', async () => {

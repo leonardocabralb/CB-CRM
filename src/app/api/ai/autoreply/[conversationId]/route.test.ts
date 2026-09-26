@@ -32,9 +32,19 @@ function leitura(tabela: string, resposta: () => { data: Linha; error: unknown }
       filtros.push([`not.${coluna}.${op}`, valor])
       return cadeia
     },
+    in: () => cadeia,
+    is: (coluna: string, valor: unknown) => {
+      filtros.push([`is.${coluna}`, valor])
+      return cadeia
+    },
     order: () => cadeia,
     limit: () => cadeia,
     maybeSingle: async () => resposta(),
+    // Lista (as últimas mensagens do cliente, `canalDaIaNaConversa`).
+    then: (ok: (r: unknown) => unknown, erro: (e: unknown) => unknown) => {
+      const r = resposta()
+      return Promise.resolve({ data: r.data ? [r.data] : [], error: r.error }).then(ok, erro)
+    },
   }
   return cadeia
 }
@@ -186,7 +196,7 @@ describe('POST /api/ai/autoreply — onde a IA não atua', () => {
     // Fixada no Instagram, mas o cliente escreveu por último no WhatsApp:
     // é o agente do WhatsApp que a faixa mostra, e o botão tem de valer.
     conversa = { id: 'conv-1', group_id: null, channel_id: 'canal-instagram' }
-    ultimaDoCliente = { channel_id: 'canal-1' }
+    ultimaDoCliente = { channel_id: 'canal-1', content_type: 'text', content_text: 'oi', media_type: null }
     const res = await chamar({ paused: true })
     expect(res.status).toBe(200)
     const doCanal = leituras.find((l) => l.tabela === 'cb_channels')
@@ -196,6 +206,7 @@ describe('POST /api/ai/autoreply — onde a IA não atua', () => {
       ['conversation_id', 'conv-1'],
       ['sender_type', 'customer'],
       ['not.channel_id.is', null],
+      ['is.deleted_at', null],
     ])
   })
 
