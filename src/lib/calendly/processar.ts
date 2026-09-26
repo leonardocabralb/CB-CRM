@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { resolverDestinatario } from "@/lib/automations/destinatario";
+import { conversaDoContato, resolverDestinatario } from "@/lib/automations/destinatario";
 import { dispararAutomacoes } from "@/lib/automations/engine";
 import { findExistingContact } from "@/lib/contacts/dedupe";
 import { nomeParaFixar } from "@/lib/contacts/nome-fixado";
@@ -173,7 +173,7 @@ export async function processarAgendamento(
   // fala — é o que o recorte por conexão da automação lê. Ficha recém-criada
   // já devolveu a conversa; a conexão dela é NULA, e `channelInScope` deixa
   // passar nesse caso (a mesma passagem livre do resíduo de ingestão).
-  const { data: conversa } = conversaDaFichaNova
+  const { data: conversaAchada } = conversaDaFichaNova
     ? { data: { id: conversaDaFichaNova, channel_id: null as string | null } }
     : await admin
         .from("conversations")
@@ -183,6 +183,26 @@ export async function processarAgendamento(
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
+
+  // ⚠️ A ficha que JÁ existia pode não ter conversa: a integração do
+  // formulário cria a ficha pela API minutos antes do agendamento (desde
+  // 24/09/2026), e criar ficha pela API não cria conversa. Ela ganha a
+  // conversa aqui, como a ficha nova — sem ela o `{{conversation.link}}` do
+  // aviso ao advogado sai vazio, o cliente não aparece na caixa de entrada, e
+  // os lembretes e o No-show, que falam com o cliente, falham por falta de
+  // conversa. Falhar aqui NÃO segura o aviso: a automação roda sem conversa,
+  // como antes, e o motivo fica no detalhe do evento.
+  let conversa = conversaAchada as { id: string; channel_id: string | null } | null;
+  let avisoDaConversa: string | null = null;
+  if (!conversa) {
+    try {
+      conversa = { id: await conversaDoContato(admin, accountId, contactId), channel_id: null };
+    } catch (e) {
+      const motivo = e instanceof Error ? e.message : "erro";
+      console.error("[calendly] não foi possível criar a conversa do cliente:", motivo);
+      avisoDaConversa = `a conversa do cliente não foi criada (${motivo}) — o link da conversa sai vazio`;
+    }
+  }
 
   const r = await dispararAutomacoes({
     accountId,
@@ -208,7 +228,8 @@ export async function processarAgendamento(
   // mesmo UPDATE alcança o card que já existia e o que acabou de nascer.
   // Ficha que não gravou não renomeia o card: os dois contariam nomes diferentes.
   const avisoDoCard = ficha.nome ? await renomearCardAberto(admin, accountId, contactId, ficha.nome) : null;
-  return comAvisoDoNome(comFichaNova(resultadoDoDisparo(r, contactId), fichaNova), ficha.aviso ?? avisoDoCard);
+  const avisos = [ficha.aviso ?? avisoDoCard, avisoDaConversa].filter(Boolean).join(" · ") || null;
+  return comAvisoDoNome(comFichaNova(resultadoDoDisparo(r, contactId), fichaNova), avisos);
 }
 
 /**
@@ -343,7 +364,7 @@ async function renomearCardAberto(
   return null;
 }
 
-/** Puro: acrescenta ao detalhe do evento o que não gravou no nome. */
+/** Puro: acrescenta ao detalhe do evento o que não gravou (nome, card, conversa). */
 export function comAvisoDoNome(r: ProcessamentoDoAgendamento, aviso: string | null): ProcessamentoDoAgendamento {
   if (!aviso) return r;
   return { ...r, detalhe: r.detalhe ? `${r.detalhe} · ${aviso}` : aviso };
