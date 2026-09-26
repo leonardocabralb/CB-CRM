@@ -820,6 +820,15 @@ nome da época em que foram aplicadas.
   replay verde do CI e ANTES do merge do PR #309, com autorização do operador;
   conferida no catálogo e pelo teste de ponta a ponta no preview contra a
   produção (funil de teste criado e apagado).
+- **1050_cb_ia_rajada_fica_com_a_mais_nova** — só o CORPO de
+  `cb_ia_enfileirar_turno`: a mensagem gravada ANTES da do pendente não troca
+  o gatilho nem o agente, o card e a etapa (ingestões fora de ordem deixavam
+  o turno na mensagem velha, e ele se descartava pela nova; Codex, #309).
+  Mesma assinatura e concessões. Aplicada em 26/09/2026 pela Management API
+  (histórico `20260926214756`), depois do replay verde do CI no commit exato e
+  antes do merge do PR #309, com autorização do operador; conferida no
+  catálogo (UMA função, o corpo novo, EXECUTE só do `service_role`, a
+  conferência sem sobra).
 
 ## Notas do histórico
 
