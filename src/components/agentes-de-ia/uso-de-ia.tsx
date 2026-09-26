@@ -148,6 +148,9 @@ export function UsoDeIa({ agenteId }: { agenteId?: string }) {
             <p className="text-xs text-muted-foreground">
               {t('uso.tokensEChamadas', { tokens: tokens(resumo.total.tokensTotal), chamadas: resumo.total.chamadas })}
             </p>
+            {/* Os embeddings da base e os pings de Integrações não geram
+                registro de uso: o total não os afirma (Codex, #295). */}
+            <p className="mt-2 max-w-[62ch] text-xs text-muted-foreground">{t('uso.totalNota')}</p>
           </div>
 
           <div className="overflow-x-auto">

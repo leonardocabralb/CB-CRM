@@ -4266,7 +4266,8 @@
     "uso": {
       "explicacao": "Últimos {dias} dias. Os valores em R$ são uma ESTIMATIVA pelo preço de lista de cada modelo e pela cotação de hoje.",
       "falhou": "Não foi possível carregar o uso.",
-      "total": "Total da conta",
+      "total": "Total registrado da conta",
+      "totalNota": "Conta as gerações registradas (agentes, assistente, Radar, transcrição e rascunho). A busca da base de conhecimento (embeddings) e as conferências das chaves em Integrações também usam a sua chave, mas não entram aqui.",
       "tokensEChamadas": "{tokens} tokens em {chamadas} chamadas",
       "agente": "Agente",
       "producao": "Atendimento",

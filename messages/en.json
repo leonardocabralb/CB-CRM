@@ -4273,7 +4273,8 @@
     "uso": {
       "explicacao": "Last {dias} days. Amounts in R$ are an ESTIMATE from each model's list price and today's exchange rate.",
       "falhou": "Could not load usage.",
-      "total": "Account total",
+      "total": "Recorded account total",
+      "totalNota": "Counts the recorded generations (agents, assistant, Radar, transcription and drafts). The knowledge-base search (embeddings) and the key checks in Integrations also use your key, but are not included here.",
       "tokensEChamadas": "{tokens} tokens in {chamadas} calls",
       "agente": "Agent",
       "producao": "Customer service",
