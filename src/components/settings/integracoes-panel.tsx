@@ -38,7 +38,7 @@ import type {
  * "Modelo" servia ao assistente, à resposta automática, ao Playground e
  * ao Radar, e trocar um trocava todos sem avisar.
  *
- * ⚠️ Desde a 1042 a CHAVE é do PROVEDOR, uma por conta (`cb_ia_chaves`,
+ * ⚠️ Desde a 1047 a CHAVE é do PROVEDOR, uma por conta (`cb_ia_chaves`,
  * D1 do docs/PLANO-agentes-de-ia.md), gravada por `/api/cb/ia/chaves`; o
  * modelo do Radar tem rota PRÓPRIA (`PATCH /api/cb/ia/radar`), que só mexe
  * nessa coluna. Nenhum formulário daqui passa mais pelo `POST
@@ -498,7 +498,7 @@ function Bolinha({ ok }: { ok: boolean | null }) {
 }
 
 /**
- * A chave DESTE provedor (`/api/cb/ia/chaves`, 1042): gravar (ou trocar) e
+ * A chave DESTE provedor (`/api/cb/ia/chaves`, 1047): gravar (ou trocar) e
  * apagar. A chave nunca volta do servidor — o campo só diz se há uma.
  *
  * ⚠️ Apagar pede confirmação e DIZ O QUE PARA, a partir dos usos do próprio

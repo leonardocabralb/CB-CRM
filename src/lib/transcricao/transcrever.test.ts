@@ -132,8 +132,8 @@ describe('transcreverAudio', () => {
     expect(r.status).toBe('recusada')
   })
 
-  it('a chave é a do GEMINI da conta, sem depender do canal nem do agente (1042)', async () => {
-    // Até a 1042 a chave vinha do agente do canal da conversa, e um agente de
+  it('a chave é a do GEMINI da conta, sem depender do canal nem do agente (1047)', async () => {
+    // Até a 1047 a chave vinha do agente do canal da conversa, e um agente de
     // outro provedor naquela conexão fazia a transcrição recusar tudo. A
     // transcrição só fala com o Gemini: a chave é a do provedor, da conta.
     const admin = fakeAdmin(

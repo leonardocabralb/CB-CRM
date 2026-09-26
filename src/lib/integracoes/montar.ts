@@ -17,7 +17,7 @@
 // Sem essa etiqueta, o operador lê o modelo do agente e conclui que ele
 // vale para tudo — foi exatamente o engano que originou esta tela.
 //
-// ⚠️ Desde a 1042 a CHAVE é do PROVEDOR, uma por conta (`cb_ia_chaves`,
+// ⚠️ Desde a 1047 a CHAVE é do PROVEDOR, uma por conta (`cb_ia_chaves`,
 // D1 do docs/PLANO-agentes-de-ia.md): o cartão de um provedor existe pela
 // chave dele, não por uma linha de agente. A configuração dos MÓDULOS
 // (provedor e modelo do Radar, e o assistente legado) continua sendo a
@@ -255,7 +255,7 @@ export function montarCartoes(
     }
 
     // ---- Transcrição de áudio ----
-    // Gemini-only, modelo FIXO, e desde a 1042 lê a chave do Gemini
+    // Gemini-only, modelo FIXO, e desde a 1047 lê a chave do Gemini
     // DIRETO — não depende do provedor de agente nenhum. Só no cartão do
     // Gemini.
     if (p === 'gemini') {

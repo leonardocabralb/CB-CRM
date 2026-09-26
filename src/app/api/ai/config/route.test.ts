@@ -14,7 +14,7 @@ vi.mock('@/lib/auth/account', () => ({
     accountId: 'conta-1',
     userId: 'user-1',
     role: papel,
-    // O cliente da SESSÃO não lê `ai_configs` (1043: só admin lê direto); a
+    // O cliente da SESSÃO não lê `ai_configs` (1048: só admin lê direto); a
     // rota lê pelo serviço. Se voltar a ler por aqui, o teste estoura.
     supabase: {
       from: () => {
@@ -112,7 +112,7 @@ describe('POST /api/ai/config — a gravação da linha vai pelo serviço (Codex
   it('nenhuma escrita em ai_configs pelo cliente da sessão', () => {
     const fonte = readFileSync(join(__dirname, 'route.ts'), 'utf8').replace(/\/\/.*$/gm, '')
     const post = fonte.slice(fonte.indexOf('export async function POST'))
-    // O gatilho da janela (1042) copia a escrita do NAVEGADOR para
+    // O gatilho da janela (1047) copia a escrita do NAVEGADOR para
     // cb_ia_chaves; o espelho do app novo não pode passar por ali.
     expect(post).not.toMatch(/supabase\s*\.from\(\s*'ai_configs'\s*\)\s*\.(update|insert|upsert|delete)\(/)
     expect(post).not.toMatch(/await\s+supabase\s*\n?\s*\.from\(\s*'ai_configs'\s*\)\s*\n?\s*\.(update|insert|upsert|delete)\(/)

@@ -73,7 +73,7 @@ function uso(
   return usos[0];
 }
 
-describe('montarCartoes — chave por PROVEDOR (1042)', () => {
+describe('montarCartoes — chave por PROVEDOR (1047)', () => {
   it('sem chave nenhuma, todos os provedores ficam não configurados', () => {
     const cartoes = montar([], null);
     for (const id of ['gemini', 'openai', 'anthropic', 'google_calendar']) {
@@ -147,7 +147,7 @@ describe('montarCartoes — chave por PROVEDOR (1042)', () => {
   });
 
   it('a transcrição mora no cartão do GEMINI, mesmo com o Radar em outro provedor', () => {
-    // Desde a 1042 a transcrição lê a chave do Gemini direto — não depende
+    // Desde a 1047 a transcrição lê a chave do Gemini direto — não depende
     // do provedor da linha padrão.
     const cartoes = montar(
       [chave('gemini'), chave('openai')],

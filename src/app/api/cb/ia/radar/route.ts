@@ -17,7 +17,7 @@ import { lerChave } from '@/lib/ia-chaves/repo'
  * Aqui só a coluna `radar_model` muda.
  *
  * O modelo é validado contra o provedor da linha, com a chave DELE
- * (`cb_ia_chaves`, 1042), antes de gravar: o Radar só rodaria no próximo
+ * (`cb_ia_chaves`, 1047), antes de gravar: o Radar só rodaria no próximo
  * ciclo do agendador, de madrugada, sem ninguém na tela para ler o erro.
  * `null` (ou vazio) = herda o modelo do assistente.
  */

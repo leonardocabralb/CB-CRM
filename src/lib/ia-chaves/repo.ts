@@ -1,5 +1,5 @@
 // ============================================================
-// Chaves de IA por PROVEDOR (migration 1042, D1 do
+// Chaves de IA por PROVEDOR (migration 1047, D1 do
 // docs/PLANO-agentes-de-ia.md): uma chave por provedor para a conta
 // inteira, em `cb_ia_chaves`, cifrada com `ENCRYPTION_KEY`.
 //
@@ -58,7 +58,7 @@ export async function lerChave(
 /**
  * A chave da OpenAI para os EMBEDDINGS da base de conhecimento:
  * 1. a chave PRÓPRIA dos embeddings (`embeddings_api_key`), quando a conta
- *    tinha uma diferente da do chat no app anterior (a 1042 a guardou);
+ *    tinha uma diferente da do chat no app anterior (a 1047 a guardou);
  * 2. senão a chave da OpenAI (`api_key`), menos quando a OpenAI RECUSOU o
  *    embedding ao gravá-la (`serve_embeddings = false`, chave de projeto
  *    restrita): aí `chave: null` e `recusada: true`, e a base usa a busca
@@ -100,10 +100,10 @@ export interface EstadoDaChave {
   atualizadaEm: string | null
   /** Só da OpenAI: `false` = a OpenAI recusou o embedding ao gravar. */
   serveEmbeddings: boolean | null
-  /** Só da OpenAI: há uma chave PRÓPRIA dos embeddings (herdada da 1042). */
+  /** Só da OpenAI: há uma chave PRÓPRIA dos embeddings (herdada da 1047). */
   temChaveDeEmbeddings: boolean
   /**
-   * Só da OpenAI: a linha nasceu SÓ da chave da base (1042 — as duas colunas
+   * Só da OpenAI: a linha nasceu SÓ da chave da base (1047 — as duas colunas
    * com o MESMO texto cifrado). Essa credencial pode ser restrita aos
    * embeddings: pingá-la no modelo de chat mentiria "falhando" (Codex, #294).
    */
@@ -148,12 +148,12 @@ export async function lerEstado(accountId: string): Promise<EstadoDaChave[]> {
  * `serveEmbeddings` (só OpenAI) é o resultado da conferência do embedding
  * feita AGORA, com esta chave: toda gravação o reescreve, senão a recusa da
  * chave antiga valeria para a nova. Com `true`, a chave PRÓPRIA dos
- * embeddings herdada da 1042 sai: a nova serve às duas coisas, e uma chave
+ * embeddings herdada da 1047 sai: a nova serve às duas coisas, e uma chave
  * velha escondida continuaria sendo usada (e cobrada) sem aparecer na tela.
  *
  * ⚠️ E ESPELHA a chave na cópia legada (`ai_configs.api_key` das linhas deste
  * provedor; na OpenAI que serve aos embeddings, também o `embeddings_api_key`
- * da linha padrão), que a 1042 manteve para uma volta atrás do deploy: sem o
+ * da linha padrão), que a 1047 manteve para uma volta atrás do deploy: sem o
  * espelho, o app anterior voltaria com a chave VELHA — quase sempre revogada
  * na troca (Codex, #294). A cópia sai com a limpeza de uma fase posterior. A
  * falha do espelho não derruba a gravação (a chave nova já vale): fica no log.
@@ -166,7 +166,7 @@ export async function gravarChave(
   serveEmbeddings: boolean | null = null,
 ): Promise<void> {
   const agora = new Date().toISOString()
-  // A chave PRÓPRIA dos embeddings só é própria se for OUTRA chave. A 1042 a
+  // A chave PRÓPRIA dos embeddings só é própria se for OUTRA chave. A 1047 a
   // copiou comparando os textos CIFRADOS, e a cifra é aleatória (AES-GCM com
   // IV sorteado): a mesma chave digitada nos dois campos virou "própria". Na
   // troca, ela seria preservada e continuaria sendo usada — mesmo revogada
@@ -255,7 +255,7 @@ async function propriaEhRedundante(accountId: string, chaveNova: string): Promis
   }
   if (propria === chaveNova) return true
   if (!data.api_key) return false
-  // Texto cifrado IDÊNTICO é a marca da 1042 para a chave que ERA só da base
+  // Texto cifrado IDÊNTICO é a marca da 1047 para a chave que ERA só da base
   // (a conta usava outro provedor no chat): ela é própria de verdade e fica
   // (Codex, #294). A duplicata falsa tem a mesma chave com cifras diferentes.
   if (data.api_key === data.embeddings_api_key) return false

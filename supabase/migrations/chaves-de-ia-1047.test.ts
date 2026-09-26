@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // ============================================================
-// 1042 — a chave de IA é do PROVEDOR, uma por conta (`cb_ia_chaves`), e a
+// 1047 — a chave de IA é do PROVEDOR, uma por conta (`cb_ia_chaves`), e a
 // tabela é FECHADA ao navegador: a chave cifrada não passa pelo PostgREST
 // com a sessão de ninguém. A conferência DENTRO da migration testa GRANT
 // (não RLS); este teste roda no job `verificar`, que é portão.
@@ -11,13 +11,13 @@ import path from 'node:path';
 // LIMITE DECLARADO: lê o `.sql`.
 // ============================================================
 
-const sql = fs.readFileSync(path.join(__dirname, '1042_cb_ia_chaves_por_provedor.sql'), 'utf8');
+const sql = fs.readFileSync(path.join(__dirname, '1047_cb_ia_chaves_por_provedor.sql'), 'utf8');
 const semComentarios = sql
   .split('\n')
   .map((linha) => linha.replace(/--.*$/, ''))
   .join('\n');
 
-describe('1042 — chaves de IA por provedor', () => {
+describe('1047 — chaves de IA por provedor', () => {
   it('RLS ligada, NENHUMA policy e nada para anon/authenticated', () => {
     expect(/ALTER\s+TABLE\s+cb_ia_chaves\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/i.test(semComentarios)).toBe(true);
     expect(

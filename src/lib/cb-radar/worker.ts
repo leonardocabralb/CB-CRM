@@ -663,7 +663,7 @@ export async function analisarConversaReivindicada(
   // interruptor do assistente DE CONVERSA (auto-reply/rascunho). Amarrar os
   // dois fazia "desliguei as respostas automáticas" silenciar a análise sem
   // nenhum aviso na tela.
-  // ⚠️ SEM `channelId` desde a 1042 (docs/PLANO-agentes-de-ia.md, 5.10): a
+  // ⚠️ SEM `channelId` desde a 1047 (docs/PLANO-agentes-de-ia.md, 5.10): a
   // configuração do Radar é do módulo, da conta inteira, e a chave é a do
   // PROVEDOR (`cb_ia_chaves`). Resolver pelo canal deixava um agente criado
   // para uma conexão trocar, em silêncio, a chave e o modelo do Radar ali.

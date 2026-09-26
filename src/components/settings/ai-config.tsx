@@ -55,7 +55,7 @@ export function AiConfig() {
   const [provider, setProvider] = useState<AiProvider>('openai');
   const [model, setModel] = useState(AI_PROVIDER_DEFAULT_MODEL.openai);
   // ⚠️ As chaves são do PROVEDOR, uma por conta, e moram em Integrações
-  // (`cb_ia_chaves`, 1042). Aqui só se mostra QUAIS provedores têm chave,
+  // (`cb_ia_chaves`, 1047). Aqui só se mostra QUAIS provedores têm chave,
   // para o seletor dizer se o escolhido vai funcionar.
   // ⚠️ `null` = NÃO SEI (a carga falhou): nunca afirmar "sem chave" sobre uma
   // conta que pode ter a chave cadastrada.
@@ -297,7 +297,7 @@ export function AiConfig() {
               </div>
             </div>
 
-            {/* A chave do provedor escolhido: mora em Integrações (1042). */}
+            {/* A chave do provedor escolhido: mora em Integrações (1047). */}
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3">
               <p className="text-sm text-muted-foreground">
                 {chaves === null

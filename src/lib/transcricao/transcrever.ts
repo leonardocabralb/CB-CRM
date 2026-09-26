@@ -188,7 +188,7 @@ export async function transcreverAudio(
   }
 
   // Chave ANTES do cadeado (ver cabeçalho: sem chave não se grava estado).
-  // ⚠️ A chave do GEMINI da conta, direto (1042, D1 do
+  // ⚠️ A chave do GEMINI da conta, direto (1047, D1 do
   // docs/PLANO-agentes-de-ia.md): a transcrição só fala com o Gemini e tem
   // modelo fixo, então não depende do provedor de agente nenhum. Antes ela
   // era resolvida pelo canal da conversa, e um agente de outro provedor

@@ -474,7 +474,7 @@ O detalhe mora na regra da área; mudar qualquer uma é pergunta ao operador.
 - Canal: a faixa de divergência só informa, não bloqueia; cor derivada; anel
   no avatar e trilha colorida foram descartados.
 - IA: chave por PROVEDOR, uma para a conta toda — nunca por conexão
-  (28/08/2026; `cb_ia_chaves`, 1042). O modelo é do módulo (Radar) e, com os
+  (28/08/2026; `cb_ia_chaves`, 1047). O modelo é do módulo (Radar) e, com os
   agentes, de cada agente (D1 de `docs/PLANO-agentes-de-ia.md`).
 - Automação presa à etapa: caixa por automação, marcada só nas criadas pela
   grade; as antigas não mudam (18/09/2026).
