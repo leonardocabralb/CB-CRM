@@ -199,12 +199,19 @@ export function esperaAtribuicao(silencio: SilencioDoAviso | null): boolean {
  * conversa que ficava sem dono deixava a mensagem vencer em uma hora, sem
  * aviso (revisão do PR #289). Quem solta decide de novo pela conversa lida na
  * hora (`silencioDoAviso`).
+ *
+ * ⚠️ Conversa ENCERRADA não solta: encerrar também ZERA o responsável
+ * (`patchDeSituacao` e o passo `close_conversation`), e sem esta guarda o fim
+ * normal de todo atendimento — responder e encerrar — soltaria o aviso de uma
+ * mensagem que outra pessoa já tratou.
  */
 export function trocaDeDonoSolta(
   novoDono: string | null,
   userId: string,
   quais: QuaisConversas,
+  situacao: string | null | undefined,
 ): boolean {
+  if (situacao === "closed") return false;
   if (novoDono === userId) return true;
   return novoDono === null && quais === "minhas_e_sem_responsavel";
 }

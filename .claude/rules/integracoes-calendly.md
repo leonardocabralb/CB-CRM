@@ -220,7 +220,11 @@ evento cancelado.
   cancelamento que chega DURANTE um processamento lento lê — sem isso,
   passado o teto de 4 min a linha ficava `falhou` com contato NULO e a
   varredura não tinha por onde casar. As duas rotas passam `{ eventoId }`
-  (pino em `processar.cancelamento.test.ts`).
+  (pino em `processar.cancelamento.test.ts`). ⚠️ Por isso achar o contato NÃO
+  encerra a espera do cancelamento: ele relê até o processamento TERMINAR
+  (a automação ainda vai gravar a data), senão desarmava "nada" e ficava sem
+  a trava; esgotado o teto com o contato já na linha, segue COM ele (o evento
+  de cancelamento com contato é o que a varredura usa).
 - ⚠️ **Conhecido, não tratado**: cancelamento que FALHOU (erro) antes de achar
   o contato, e a leitura que falha na pergunta acima com a reunião de fato já
   cancelada, deixam a linha do cancelamento sem contato — a automação roda e

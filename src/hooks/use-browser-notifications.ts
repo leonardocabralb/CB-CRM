@@ -302,14 +302,19 @@ export function useBrowserNotifications(): void {
 
     // A troca de responsável que pode soltar a mensagem estacionada: a
     // conversa passou a ser desta pessoa, ou ficou SEM responsável (quem pediu
-    // "minhas e sem responsável"; ver `trocaDeDonoSolta`). A estacionada é
-    // decidida DE NOVO, lendo a conversa como está agora.
+    // "minhas e sem responsável") e não foi ENCERRADA — encerrar também zera o
+    // responsável (ver `trocaDeDonoSolta`). A estacionada é decidida DE NOVO,
+    // lendo a conversa como está agora.
     const aoTrocarDono = (payload: { new: unknown }) => {
-      const nova = payload.new as { id?: string; assigned_agent_id?: string | null };
+      const nova = payload.new as {
+        id?: string;
+        assigned_agent_id?: string | null;
+        status?: string | null;
+      };
       const id = nova.id;
       if (!id) return;
       const dono = nova.assigned_agent_id ?? null;
-      if (!trocaDeDonoSolta(dono, userId, vivoRef.current.preferencia.quais)) return;
+      if (!trocaDeDonoSolta(dono, userId, vivoRef.current.preferencia.quais, nova.status)) return;
       const agora = Date.now();
       atribuidasAgora.set(id, agora);
       const parada = estacionadas.get(id);

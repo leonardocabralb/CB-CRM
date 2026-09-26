@@ -220,27 +220,33 @@ describe("silencioDoAviso — mensagem ANTIGA gravada agora não avisa", () => {
 describe("trocaDeDonoSolta — a troca de responsável que solta a mensagem estacionada", () => {
   it("passou a ser minha: solta em qualquer preferência", () => {
     for (const quais of ["minhas", "minhas_e_sem_responsavel", "todas"] as QuaisConversas[]) {
-      expect(trocaDeDonoSolta(EU, EU, quais)).toBe(true);
+      expect(trocaDeDonoSolta(EU, EU, quais, "open")).toBe(true);
     }
   });
 
   it("⚠️ ficou SEM responsável: solta só para \"minhas e sem responsável\" (revisão do PR #289)", () => {
-    expect(trocaDeDonoSolta(null, EU, "minhas_e_sem_responsavel")).toBe(true);
-    expect(trocaDeDonoSolta(null, EU, "minhas")).toBe(false);
+    expect(trocaDeDonoSolta(null, EU, "minhas_e_sem_responsavel", "open")).toBe(true);
+    expect(trocaDeDonoSolta(null, EU, "minhas_e_sem_responsavel", "pending")).toBe(true);
+    expect(trocaDeDonoSolta(null, EU, "minhas", "open")).toBe(false);
+  });
+
+  it("⚠️ ENCERRADA não solta: encerrar também zera o responsável, e o aviso seria de mensagem já tratada", () => {
+    expect(trocaDeDonoSolta(null, EU, "minhas_e_sem_responsavel", "closed")).toBe(false);
+    expect(trocaDeDonoSolta(null, EU, "todas", "closed")).toBe(false);
   });
 
   it("foi para OUTRA pessoa: não solta", () => {
-    expect(trocaDeDonoSolta(OUTRO, EU, "minhas_e_sem_responsavel")).toBe(false);
-    expect(trocaDeDonoSolta(OUTRO, EU, "minhas")).toBe(false);
+    expect(trocaDeDonoSolta(OUTRO, EU, "minhas_e_sem_responsavel", "open")).toBe(false);
+    expect(trocaDeDonoSolta(OUTRO, EU, "minhas", "open")).toBe(false);
   });
 
   it("o que ela solta, a régua de aviso aceita (as duas concordam)", () => {
     // Estacionou porque era de OUTRO; ficou sem dono (a coluna nula chega
     // como ausente no tipo da conversa).
     const conversa = { assigned_agent_id: undefined };
-    expect(trocaDeDonoSolta(null, EU, "minhas_e_sem_responsavel")).toBe(true);
+    expect(trocaDeDonoSolta(null, EU, "minhas_e_sem_responsavel", "open")).toBe(true);
     expect(decide({ quais: "minhas_e_sem_responsavel", conversa })).toBeNull();
-    expect(trocaDeDonoSolta(null, EU, "minhas")).toBe(false);
+    expect(trocaDeDonoSolta(null, EU, "minhas", "open")).toBe(false);
     expect(decide({ quais: "minhas", conversa })).toBe("nao_e_sua");
   });
 });
@@ -256,6 +262,6 @@ describe("o hook ouve as DUAS trocas de responsável (pino, revisão do PR #289)
     expect(hook).toContain("filter: `assigned_agent_id=eq.${userId}`");
     expect(hook).toContain('filter: "assigned_agent_id=is.null"');
     expect(hook.match(/aoTrocarDono,\n/g)).toHaveLength(2);
-    expect(hook).toContain("trocaDeDonoSolta(dono, userId, vivoRef.current.preferencia.quais)");
+    expect(hook).toContain("trocaDeDonoSolta(dono, userId, vivoRef.current.preferencia.quais, nova.status)");
   });
 });
