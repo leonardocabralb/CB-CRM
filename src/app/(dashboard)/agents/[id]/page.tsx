@@ -11,7 +11,8 @@ import { useAuth } from '@/hooks/use-auth';
 export default function AgentePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const t = useTranslations('IaAgentes');
-  const { profileLoading } = useAuth();
+  // Remonta ao trocar de conta: o agente carregado é da conta anterior (Codex, #295).
+  const { profileLoading, accountId } = useAuth();
   return (
     <RequireRole
       min="admin"
@@ -23,7 +24,7 @@ export default function AgentePage({ params }: { params: Promise<{ id: string }>
         )
       }
     >
-      <DetalheDoAgente key={id} id={id} />
+      <DetalheDoAgente key={`${accountId ?? 'sem-conta'}:${id}`} id={id} />
     </RequireRole>
   );
 }

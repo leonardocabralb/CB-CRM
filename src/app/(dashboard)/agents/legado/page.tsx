@@ -22,7 +22,7 @@ type Tab = 'playground' | 'setup' | 'usage';
 export default function AgentsLegadoPage() {
   const t = useTranslations('Agents');
   const tIa = useTranslations('IaAgentes');
-  const { accountRole, profileLoading } = useAuth();
+  const { accountRole, profileLoading, accountId } = useAuth();
   const canViewUsage = accountRole ? canEditSettings(accountRole) : false;
   const [tab, setTab] = useState<Tab>('playground');
   const [decided, setDecided] = useState(false);
@@ -72,6 +72,8 @@ export default function AgentsLegadoPage() {
       >
       {decided && (
         <Tabs
+          // Remonta ao trocar de conta: o Playground e o Uso são da conta (Codex, #295).
+          key={accountId ?? 'sem-conta'}
           value={tab}
           onValueChange={(v) => setTab(v as Tab)}
           className="mt-6"

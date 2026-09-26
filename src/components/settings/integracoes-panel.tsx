@@ -544,13 +544,16 @@ function FormularioDaChave({
 
   // O que deixa de funcionar sem a chave: os módulos que hoje a usam (os
   // marcados `sem_chave` já não a usam).
-  // Só o que RODA hoje: módulo já parado por outro motivo (assistente
-  // desligado, Radar sem conexão, base só por palavras) não "deixa de
-  // funcionar" com a exclusão (Codex, #294). E os agentes de IA LIGADOS deste
-  // provedor também param (o Playground deles, e na F2 a resposta ao cliente).
+  // Só o que RODA hoje: módulo já parado por outro motivo (Radar sem conexão,
+  // base só por palavras) não "deixa de funcionar" com a exclusão (Codex,
+  // #294). MENOS o assistente desligado e os agentes desligados: o Playground
+  // deles roda assim mesmo, e para com a chave apagada (Codex, #295). Todo
+  // agente deste provedor entra (a lista do cartão já vem sem os arquivados).
   const paraSemChave = [
-    ...cartao.usos.filter((u) => !u.indisponivel).map((u) => t(`modulo.${u.modulo}`)),
-    ...cartao.agentesDeIa.filter((a) => a.ativo).map((a) => t('agenteDeIaNaConfirmacao', { nome: a.nome })),
+    ...cartao.usos
+      .filter((u) => !u.indisponivel || u.indisponivel === 'conversa_desligada')
+      .map((u) => t(`modulo.${u.modulo}`)),
+    ...cartao.agentesDeIa.map((a) => t('agenteDeIaNaConfirmacao', { nome: a.nome })),
   ];
 
   async function salvar() {
