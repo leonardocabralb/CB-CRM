@@ -12,7 +12,7 @@ tentou ligar, para alguém ver e retornar?"
 | 0 | Estudo de viabilidade (medido em produção) | ✅ 25/09/2026 |
 | 1 | Back-end: assinar `CALL`, `cb_ligacoes`, desfecho, bolha, efeitos | ✅ código e testes (PR em rascunho) |
 | 2 | Tela: faixa no fio, prévia na lista e no card, textos | ✅ código e testes (mesmo PR) |
-| 3 | Aplicar a 1044 → teste ponta a ponta no preview → merge → deploy | ⏳ falta autorização para aplicar a 1044 |
+| 3 | Aplicar a 1044 → teste ponta a ponta no preview → merge → deploy | ⏳ em andamento (autorizada em 26/09/2026) |
 | 4 | "Ressincronizar" o Bancário - Comercial → ligações de teste do operador → conferir | ⏳ depois do deploy |
 | 5 | "Ressincronizar" as outras conexões por QR Code | ⏳ depois da 4 |
 | 6 | Pesquisa: atender e ligar pelo sistema (Wavoip) | ⏳ pedida para o fim |
@@ -111,6 +111,12 @@ tentou ligar, para alguém ver e retornar?"
 - `messages.content_type` aceita `'call'` (CHECK do upstream, estendido pela
   0010 e pela 0906).
 - `messages.ligacao jsonb`.
+- Conferência só de CATÁLOGO (a trava exclusiva de `messages` fica presa até
+  o fim da transação): exige UM CHECK sobre `content_type`. A prova de que a
+  bolha entra e os gatilhos a aceitam é o teste ponta a ponta.
+- Testada num Postgres 16 descartável (26/09/2026): aplica duas vezes, chave,
+  CHECKs, SET NULL das três FKs e privilégios; com um segundo CHECK sobre
+  `content_type`, a conferência reprova.
 - Aditiva; **aplicar ANTES do deploy**. Sem ela, o INSERT da bolha leva
   23514/42703 e a ligação some (a Evolution já recebeu 200).
 - ⚠️ 1044, e não 1042: a 1042 e a 1043 estão reservadas pelos PRs #294/#295
@@ -180,5 +186,5 @@ tentou ligar, para alguém ver e retornar?"
   `cb-radar/worker.ts`, `dashboard/queries.ts`, `use-area-de-trabalho.ts`,
   `types/index.ts`, os dois dicionários, `docs/public-api.md` e os pinos
   (`ligacoes.chamadores.test.ts`, `ligacoes-1044.test.ts` e as allowlists de
-  funil, reabertura e esperas). Testes: 18 das regras + 17 da orquestração +
-  os estruturais.
+  funil, reabertura e esperas). Testes: 18 das regras + 16 da orquestração +
+  os estruturais. Regra de área: `.claude/rules/ligacoes.md`.

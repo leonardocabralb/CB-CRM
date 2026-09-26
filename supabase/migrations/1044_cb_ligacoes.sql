@@ -125,14 +125,28 @@ COMMENT ON COLUMN messages.ligacao IS
   'Só em content_type=call (1044): {desfecho, video, inicio, fim, tocou_seg, encerramento}. A bolha escreve a frase a partir disto; content_text fica nulo.';
 
 -- ============================================================
--- Conferência — afirma ausência, deriva o dado, nunca exige linha.
+-- Conferência — SÓ CATÁLOGO. Depois da primeira ALTER em `messages` a
+-- transação segura a trava exclusiva da tabela mais quente do banco até o
+-- fim: nada aqui lê nem escreve linha (regra da 1032). A prova de que a
+-- bolha entra e os gatilhos de `messages` a aceitam é o teste ponta a ponta
+-- no preview, feito com a migration aplicada.
 -- ============================================================
 DO $$
 DECLARE
-  v_def  text;
-  v_conv uuid;
+  v_def    text;
+  v_checks int;
 BEGIN
   -- 1. UM CHECK de tipo em messages, validado, com o 'call' e os de antes.
+  --    Um segundo CHECK sobre content_type (de outro nome, vindo de um merge)
+  --    continuaria recusando a ligação com 23514, e este acima passaria verde.
+  SELECT count(*) INTO v_checks
+  FROM pg_constraint
+  WHERE conrelid = 'public.messages'::regclass
+    AND contype = 'c'
+    AND pg_get_constraintdef(oid) ~ '\mcontent_type\M';
+  IF v_checks <> 1 THEN
+    RAISE EXCEPTION '1044: esperava UM CHECK sobre messages.content_type, achou %', v_checks;
+  END IF;
   SELECT pg_get_constraintdef(oid) INTO v_def
   FROM pg_constraint
   WHERE conrelid = 'public.messages'::regclass
@@ -178,27 +192,13 @@ BEGIN
     RAISE EXCEPTION '1044: cb_ligacoes_channel_fkey ausente ou sem o SET NULL (channel_id)';
   END IF;
 
-  -- 5. Na prática: uma bolha de ligação entra numa conversa real e os gatilhos
-  --    de `messages` a aceitam. Num subbloco DESFEITO pelo SQLSTATE próprio.
-  SELECT id INTO v_conv FROM conversations WHERE group_id IS NULL LIMIT 1;
-  IF v_conv IS NULL THEN
-    RAISE NOTICE '1044: banco sem conversa, a bolha na prática fica para o descartável.';
-  ELSE
-    BEGIN
-      INSERT INTO messages (
-        conversation_id, sender_type, content_type, content_text,
-        message_id, from_me, status, ligacao
-      ) VALUES (
-        v_conv, 'customer', 'call', NULL,
-        'call:1044-conferencia', false, 'delivered',
-        jsonb_build_object('desfecho', 'perdida', 'video', false)
-      );
-      RAISE EXCEPTION USING ERRCODE = 'P1044', MESSAGE = 'desfaz a conferência';
-    EXCEPTION
-      -- ⚠️ Só o SQLSTATE próprio: `WHEN OTHERS` engoliria justamente o erro
-      -- que a prova existe para mostrar.
-      WHEN SQLSTATE 'P1044' THEN
-        RAISE NOTICE '1044: a bolha de ligação entra e os gatilhos a aceitam (desfeito).';
-    END;
+  -- 5. A chave do upsert é TOTAL (alvo do ON CONFLICT do código).
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cb_ligacoes_conta_chamada_key'
+      AND conrelid = 'public.cb_ligacoes'::regclass
+      AND contype = 'u'
+  ) THEN
+    RAISE EXCEPTION '1044: cb_ligacoes sem a chave única (account_id, call_id)';
   END IF;
 END $$;

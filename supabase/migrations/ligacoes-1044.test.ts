@@ -84,9 +84,19 @@ describe('1044 — messages aceita a ligação', () => {
     expect(semComentarios).toMatch(/SET LOCAL lock_timeout = '5s'/);
   });
 
-  it('a conferência chama a bolha de verdade e se desfaz pelo SQLSTATE próprio (nunca WHEN OTHERS)', () => {
-    expect(semComentarios).toContain("ERRCODE = 'P1044'");
-    expect(semComentarios).toContain("WHEN SQLSTATE 'P1044'");
+  it('a conferência é SÓ catálogo: depois da ALTER em messages, nenhuma linha é lida nem escrita', () => {
+    // A trava exclusiva de `messages` fica presa até o fim da transação
+    // (regra da 1032): escrever ali, ou varrer tabela, segura a ingestão.
+    const primeiraAlter = semComentarios.search(/ALTER\s+TABLE\s+messages\b/i);
+    expect(primeiraAlter).toBeGreaterThan(0);
+    const depois = semComentarios.slice(primeiraAlter);
+    expect(/\b(INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM)\b/i.test(depois)).toBe(false);
+    expect(/\bFROM\s+(public\.)?(messages|conversations|contacts)\b/i.test(depois)).toBe(false);
     expect(/WHEN\s+OTHERS/i.test(semComentarios)).toBe(false);
+  });
+
+  it('a conferência exige UM CHECK sobre content_type (um segundo, de outro nome, recusaria a ligação)', () => {
+    expect(semComentarios).toMatch(/contype = 'c'\s+AND pg_get_constraintdef\(oid\) ~ '\\mcontent_type\\M'/);
+    expect(semComentarios).toContain('esperava UM CHECK sobre messages.content_type');
   });
 });
