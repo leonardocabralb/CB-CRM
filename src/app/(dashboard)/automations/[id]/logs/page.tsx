@@ -27,6 +27,7 @@ import { useChannels } from "@/hooks/use-channels"
 import { nomeDoContato } from "@/lib/contacts/identidade"
 import {
   idsCitados,
+  lotesDeIds,
   textoComNomes,
   type NomesDoRegistro,
   type TipoDoAlvo,
@@ -48,26 +49,47 @@ async function carregarNomes(
   ids: string[],
 ): Promise<NomesDoRegistro> {
   if (ids.length === 0) return SEM_NOMES
+  // Em lotes: a lista vai na URL, e inteira ela passava do limite de tamanho
+  // do pedido — todas as consultas falhavam e a tela voltava aos ids crus.
+  const lotes = lotesDeIds(ids)
+  type Resultado = { data: unknown; error: unknown }
+  const emLotes = async (
+    consulta: (lote: string[]) => PromiseLike<Resultado>,
+  ): Promise<Resultado> => {
+    const partes = await Promise.all(lotes.map(consulta))
+    return {
+      data: partes.flatMap((p) => (Array.isArray(p.data) ? p.data : [])),
+      error: partes.find((p) => p.error)?.error ?? null,
+    }
+  }
   const [tags, etapas, membros, campos, tarefas] = await Promise.all([
-    supabase.from("tags").select("id, name").in("id", ids),
-    supabase
-      .from("pipeline_stages")
-      .select("id, name, pipeline:pipelines(name)")
-      .in("id", ids),
-    supabase.from("profiles").select("user_id, full_name").in("user_id", ids),
-    supabase.from("custom_fields").select("id, field_name").in("id", ids),
-    supabase.from("cb_tasks").select("id, titulo").in("id", ids),
+    emLotes((l) => supabase.from("tags").select("id, name").in("id", l)),
+    emLotes((l) =>
+      supabase
+        .from("pipeline_stages")
+        .select("id, name, pipeline:pipelines(name)")
+        .in("id", l),
+    ),
+    emLotes((l) =>
+      supabase.from("profiles").select("user_id, full_name").in("user_id", l),
+    ),
+    emLotes((l) =>
+      supabase.from("custom_fields").select("id, field_name").in("id", l),
+    ),
+    emLotes((l) => supabase.from("cb_tasks").select("id, titulo").in("id", l)),
   ])
 
   const porId: Record<string, string> = {}
   const carregados = new Set<TipoDoAlvo>()
   const guardar = (
     tipo: TipoDoAlvo,
-    res: { data: unknown; error: unknown },
+    res: Resultado,
     linha: (r: Record<string, unknown>) => [unknown, unknown],
   ) => {
-    if (res.error) return
-    carregados.add(tipo)
+    // O que veio dos lotes que responderam vale; mas o catálogo só conta como
+    // CARREGADO com todos os lotes de pé — senão um id do lote que falhou
+    // apareceria como "(apagado)" sem ter sido procurado.
+    if (!res.error) carregados.add(tipo)
     for (const r of (res.data ?? []) as Record<string, unknown>[]) {
       const [id, nome] = linha(r)
       if (typeof id === "string" && typeof nome === "string" && nome.trim()) {

@@ -50,6 +50,22 @@ const RE_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
 const RE_ID_NO_TEXTO = /(custom:)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi
 
 /** Os ids que os textos citam, sem repetição e em minúsculas. */
+/**
+ * Quantos ids vão numa consulta `.in(...)`. A lista viaja na URL do
+ * PostgREST: com 100 execuções de uma automação que cria tarefa (um id novo
+ * por execução), a lista inteira passava do limite de tamanho da linha do
+ * pedido, TODAS as consultas de nome falhavam e a tela voltava aos ids crus
+ * (Codex, PR #298). 50 UUIDs dão ~1,9 mil caracteres.
+ */
+export const IDS_POR_CONSULTA = 50
+
+/** Fatia a lista de ids em lotes de `IDS_POR_CONSULTA`, na ordem. */
+export function lotesDeIds(ids: readonly string[], tamanho = IDS_POR_CONSULTA): string[][] {
+  const lotes: string[][] = []
+  for (let i = 0; i < ids.length; i += tamanho) lotes.push(ids.slice(i, i + tamanho))
+  return lotes
+}
+
 export function idsCitados(textos: ReadonlyArray<string | null | undefined>): string[] {
   const vistos = new Set<string>()
   for (const texto of textos) {

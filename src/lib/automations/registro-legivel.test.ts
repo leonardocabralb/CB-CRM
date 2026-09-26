@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import {
+  IDS_POR_CONSULTA,
   idsCitados,
+  lotesDeIds,
   textoComNomes,
   TIPOS_DO_ALVO,
   type NomesDoRegistro,
@@ -105,5 +107,24 @@ describe.each(['pt-BR.json', 'en.json'])('dicionário %s', (arquivo) => {
     const logs = JSON.parse(readFileSync(`messages/${arquivo}`, 'utf8')).Automations.logs
     const faltando = TIPOS_DO_ALVO.filter((t) => typeof logs?.orfao?.[t] !== 'string' || !logs.orfao[t].trim())
     expect(faltando).toEqual([])
+  })
+})
+
+describe('lotesDeIds', () => {
+  it('fatia em lotes do tamanho da consulta, sem perder nem repetir id', () => {
+    const ids = Array.from({ length: 123 }, (_, i) => `id-${i}`)
+    const lotes = lotesDeIds(ids)
+    expect(lotes.map((l) => l.length)).toEqual([IDS_POR_CONSULTA, IDS_POR_CONSULTA, 23])
+    expect(lotes.flat()).toEqual(ids)
+  })
+
+  it('lista vazia não gera consulta', () => {
+    expect(lotesDeIds([])).toEqual([])
+  })
+
+  it('o lote cabe na URL: 50 UUIDs ficam bem abaixo de 8 mil caracteres', () => {
+    const uuid = '3ab137e6-1be6-439e-a88d-3b66ac59dee7'
+    const lote = lotesDeIds(Array.from({ length: 500 }, () => uuid))[0]
+    expect(`in.(${lote.join(',')})`.length).toBeLessThan(2500)
   })
 })
