@@ -472,6 +472,21 @@ describe('lerDadosDoAcesso', () => {
     expect(texto(dados)).toContain('- Stage: Lead')
   })
 
+  it('⚠️ o card do turno que passou a ser de OUTRO contato não é lido (Codex, #312)', async () => {
+    const tabelas = tabelasCompletas()
+    const velho = tabelas.deals.find((d) => d.id === 'd-velho')!
+    velho.contact_id = 'outro-contato'
+    const { db } = criarBanco(tabelas)
+    const dados = await lerDadosDoAcesso(db, {
+      accountId: CONTA,
+      contactId: CONTATO,
+      dealId: 'd-velho',
+      acesso: { ...FECHADO, negocio: true },
+      agora: AGORA,
+    })
+    expect(dados.negocio).toEqual({ ok: true, valor: null })
+  })
+
   it('Asaas sem configuração: "não conectado", nunca "em dia"', async () => {
     const tabelas = tabelasCompletas()
     tabelas.cb_asaas_config = []

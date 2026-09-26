@@ -33,6 +33,9 @@ interface Documento {
   updated_at: string;
 }
 
+/** O teto de linhas do PostgREST: lista com isto (ou mais) pode ter sido cortada. */
+const TETO_DO_POSTGREST = 1000;
+
 type Carga =
   | { fase: 'carregando' }
   | { fase: 'falhou' }
@@ -93,8 +96,12 @@ export function BaseDoAgente({
     if (!naoSalvo || marcados === null || carga.fase !== 'pronto') return;
     // Só o que existe na base de agora: documento apagado por fora sai sozinho
     // (o vínculo cai em cascata), e mandá-lo faria a rota recusar a lista.
+    // ⚠️ Mas só uma lista COMPLETA prova que ele sumiu: no teto de linhas do
+    // PostgREST ela pode ter sido cortada, e descartar ali apagaria do agente
+    // o documento que ficou fora da página (Codex, #312).
     const existentes = new Set(carga.documentos.map((d) => d.id));
-    const documentoIds = marcados.filter((id) => existentes.has(id));
+    const completa = carga.documentos.length < TETO_DO_POSTGREST;
+    const documentoIds = completa ? marcados.filter((id) => existentes.has(id)) : marcados;
     setSalvando(true);
     try {
       const res = await fetch(`/api/cb/ia/agentes/${agenteId}/documentos`, {

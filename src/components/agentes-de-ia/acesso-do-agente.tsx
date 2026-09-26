@@ -23,6 +23,7 @@ import { RefreshCw, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { useAuth } from '@/hooks/use-auth';
 import { LIMITES } from '@/lib/ia-agentes/agente';
 import { semAcento } from '@/lib/inbox/busca-em-mensagens';
 import { createClient } from '@/lib/supabase/client';
@@ -35,7 +36,10 @@ interface Campo {
   field_name: string;
 }
 
-type Carga = { fase: 'carregando' } | { fase: 'falhou' } | { fase: 'pronto'; campos: Campo[] };
+type Carga = { fase: 'carregando' } | { fase: 'falhou' } | { fase: 'pronto'; campos: Campo[]; completo: boolean };
+
+/** O teto de linhas do PostgREST: lista com isto (ou mais) pode ter sido cortada. */
+const TETO_DO_POSTGREST = 1000;
 
 /** Acima disto a lista de campos ganha a caixa de busca. */
 const CAMPOS_PARA_BUSCAR = 10;
@@ -59,16 +63,23 @@ export function AcessoDoAgente({
   const [busca, setBusca] = useState('');
   const [salvando, setSalvando] = useState(false);
 
+  // ⚠️ Recortado pela conta ATIVA: a RLS deixa ler os campos de TODA conta de
+  // que a pessoa é membro (a mesma lição do "Onde atua", Codex #309).
+  const { accountId } = useAuth();
+
   const carregar = useCallback(async () => {
+    if (!accountId) return;
     const { data, error } = await createClient()
       .from('custom_fields')
       .select('id, field_name')
+      .eq('account_id', accountId)
       // ⚠️ Alfabética: lista PLANA. `posicao` é a ordem DENTRO do bloco (966)
       // e reinicia em cada um — só quem REAGRUPA pode ordenar por ela.
       .order('field_name')
       .order('id');
-    setCarga(error ? { fase: 'falhou' } : { fase: 'pronto', campos: (data ?? []) as Campo[] });
-  }, []);
+    const campos = (data ?? []) as Campo[];
+    setCarga(error ? { fase: 'falhou' } : { fase: 'pronto', campos, completo: campos.length < TETO_DO_POSTGREST });
+  }, [accountId]);
 
   useEffect(() => {
     void (async () => {
@@ -81,8 +92,11 @@ export function AcessoDoAgente({
     aoMudarNaoSalvo?.(naoSalvo);
   }, [naoSalvo, aoMudarNaoSalvo]);
 
+  // ⚠️ Só uma lista COMPLETA prova que o campo sumiu: cortada pelo teto do
+  // PostgREST, o Salvar apagaria do agente o campo que ficou fora da página
+  // (Codex, #312). Sem a prova, nada é descartado.
   const existentes = useMemo(
-    () => (carga.fase === 'pronto' ? new Set(carga.campos.map((c) => c.id)) : null),
+    () => (carga.fase === 'pronto' && carga.completo ? new Set(carga.campos.map((c) => c.id)) : null),
     [carga]
   );
   // Só os marcados que ainda existem contam para o teto (o Salvar descarta os outros).

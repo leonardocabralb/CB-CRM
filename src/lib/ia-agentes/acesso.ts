@@ -416,8 +416,11 @@ async function lerNegocio(
   dealId: string | null,
 ): Promise<NegocioLido | null> {
   const base = db.from('deals').select('id, pipeline_id, stage_id, value, etapa_desde').eq('account_id', accountId)
+  // ⚠️ O card do turno TAMBÉM pelo contato: se alguém trocou o contato do
+  // card entre a conferência e esta leitura, os dados dele iriam ao provedor
+  // na conversa de outra pessoa (Codex, #312).
   const { data, error } = dealId
-    ? await base.eq('id', dealId).maybeSingle()
+    ? await base.eq('id', dealId).eq('contact_id', contactId).maybeSingle()
     : await base
         .eq('contact_id', contactId)
         .eq('status', 'open')
