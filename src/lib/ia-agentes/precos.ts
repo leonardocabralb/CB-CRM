@@ -34,11 +34,16 @@ export const PRECOS: readonly LinhaDePreco[] = [
   { provedor: 'gemini', modelo: 'gemini-3.7-flash', desde: '2027-01-01', entrada: 1.5, saida: 7.5, fonte: 'ai.google.dev/gemini-api/docs/pricing (a partir de 01/01/2027)' },
   { provedor: 'gemini', modelo: 'gemini-3.6-flash', desde: null, entrada: 0.75, saida: 3.75, fonte: 'cloud.google.com, Agent Platform pricing (até 31/12/2026)' },
   { provedor: 'gemini', modelo: 'gemini-3.6-flash', desde: '2027-01-01', entrada: 1.5, saida: 7.5, fonte: 'cloud.google.com, Agent Platform pricing (a partir de 01/01/2027)' },
+  // Conferido em 26/09/2026 (ai.google.dev/gemini-api/docs/pricing): os outros três que a tela sugere.
+  { provedor: 'gemini', modelo: 'gemini-3.5-flash', desde: null, entrada: 1.5, saida: 9, fonte: 'ai.google.dev/gemini-api/docs/pricing' },
+  { provedor: 'gemini', modelo: 'gemini-3.5-flash-lite', desde: null, entrada: 0.3, saida: 2.5, fonte: 'ai.google.dev/gemini-api/docs/pricing' },
+  { provedor: 'gemini', modelo: 'gemini-3.1-flash-lite', desde: null, entrada: 0.25, saida: 1.5, fonte: 'ai.google.dev/gemini-api/docs/pricing (texto; áudio 0,50)' },
   { provedor: 'openai', modelo: 'gpt-5.4', desde: null, entrada: 2.5, saida: 15, fonte: 'azure.microsoft.com/pricing/details/azure-openai (GPT-5.4, global; e inworld.ai, que repassa o preço da OpenAI)' },
   { provedor: 'openai', modelo: 'gpt-5.4-mini', desde: null, entrada: 0.75, saida: 4.5, fonte: 'openai.com/index/introducing-gpt-5-4-mini-and-nano' },
   { provedor: 'openai', modelo: 'gpt-5.4-nano', desde: null, entrada: 0.2, saida: 1.25, fonte: 'openai.com/index/introducing-gpt-5-4-mini-and-nano' },
   { provedor: 'anthropic', modelo: 'claude-haiku-4-5-20251001', desde: null, entrada: 1, saida: 5, fonte: 'anthropic.com/claude/haiku' },
   { provedor: 'anthropic', modelo: 'claude-sonnet-5', desde: null, entrada: 2, saida: 10, fonte: 'platform.claude.com/docs/en/models/overview' },
+  { provedor: 'anthropic', modelo: 'claude-sonnet-4-5-20250929', desde: null, entrada: 3, saida: 15, fonte: 'platform.claude.com/docs/en/about-claude/pricing (26/09/2026)' },
 ]
 
 /** O preço vigente no DIA (YYYY-MM-DD) — a linha mais recente cujo `desde` já chegou. */
