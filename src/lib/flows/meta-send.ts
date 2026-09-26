@@ -15,7 +15,7 @@ import {
   evolutionTransportFor,
   evolutionRemoteJid,
 } from '@/lib/cb-channels/engine-send'
-import { stampMessageChannel } from '@/lib/cb-channels/stamp'
+import { gravarComCanal, stampMessageChannel } from '@/lib/cb-channels/stamp'
 import {
   phoneVariants,
   isRecipientNotAllowedError,
@@ -61,6 +61,42 @@ interface SendTextEngineArgs {
   /** Canal de saida preferido (passo/no do operador, ou o canal do RUN).
    *  Ausente = canal atual da conversa — o comportamento de antes. */
   preferredChannelId?: string | null
+  /**
+   * O agente de IA que escreveu (F2 dos agentes, E6). ⚠️ SÓ o turno passa:
+   * a 972 conta `bot` COM `ia_agente_id` como "respondido" e apaga o alerta
+   * de atraso — um fluxo ou uma automação que o passassem calariam o alerta
+   * de todo cliente esperando. Pino default-deny em
+   * `src/lib/ia-agentes/envio.chamadores.test.ts`.
+   */
+  iaAgenteId?: string | null
+  /**
+   * Falha FECHADA quando o canal resolvido não é o `preferredChannelId`
+   * (E6): `resolveEngineChannelPreferring` cai em silêncio no canal da
+   * conversa ou no padrão, e para o agente isso é responder por uma conexão
+   * que não é a da mensagem nem, talvez, uma das dele.
+   */
+  exigirCanal?: boolean
+  /**
+   * Chamado com o id do PROVEDOR assim que o envio volta, ANTES do INSERT
+   * (E5): o turno grava o id para a ingestão reconhecer o eco (Evolution) —
+   * se o INSERT atrasar, o eco chegaria antes e seria gravado como mensagem
+   * do celular, pausando o agente. Um erro aqui não desfaz o envio: é
+   * registrado e o INSERT segue.
+   */
+  aoSair?: (providerMessageId: string) => Promise<void> | void
+}
+
+/**
+ * A mensagem SAIU pelo provedor e o INSERT falhou. Quem chama não pode repetir
+ * o envio (o cliente já recebeu); o id do provedor vem junto.
+ */
+export class EnviadaSemRegistroError extends Error {
+  constructor(
+    public readonly providerMessageId: string,
+    detalhe: string,
+  ) {
+    super(`sent but DB insert failed: ${detalhe}`)
+  }
 }
 
 /**
@@ -136,6 +172,9 @@ export async function engineSendText(
   if (!channel) {
     throw new Error('WhatsApp not configured for this account')
   }
+  if (args.exigirCanal && channel.channelId !== (args.preferredChannelId ?? null)) {
+    throw new Error('the required channel could not be resolved; nothing was sent')
+  }
 
   exigirWhatsApp(channel)
   // O alvo, DEPOIS do canal: telefone em qualquer transporte, o BSUID só na
@@ -193,29 +232,42 @@ export async function engineSendText(
     }
   }
 
-  const { data: insertedMsg, error: msgErr } = await db
-    .from('messages')
-    .insert({
-      conversation_id: args.conversationId,
-      sender_type: 'bot',
-      content_type: 'text',
-      // O texto ASSINADO: e o que o cliente recebeu.
-      content_text: textoFinal,
-      message_id: waMessageId,
-      // Partes da chave Baileys — só Evolution (NULL no Meta).
-      remote_jid: outboundRemoteJid,
-      from_me: ehEvolution(channel) ? true : null,
-      status: 'sent',
-      ai_generated: args.aiGenerated ?? false,
-    })
-    .select('id')
-    .single()
-  if (msgErr) {
-    throw new Error(`sent but DB insert failed: ${msgErr.message}`)
+  if (args.aoSair) {
+    try {
+      await args.aoSair(waMessageId)
+    } catch (err) {
+      console.error('[flows/meta-send] aoSair falhou (o envio já saiu):', err)
+    }
   }
 
-  // Carimbo de canal (Fase 3) — best-effort; NULL no fallback → no-op.
-  if (insertedMsg) await stampMessageChannel(db, insertedMsg.id, channel.channelId)
+  // O canal vai NO PRÓPRIO INSERT (por `gravarComCanal`, com a rede da FK da
+  // conexão apagada no meio): o "desta conexão" do contexto do agente e o
+  // gatilho AFTER INSERT da 972 leem a linha como ela nasce — um UPDATE
+  // depois, de melhor esforço, deixava a fala do agente sem conexão.
+  const { resultado: gravacao } = await gravarComCanal(channel.channelId, (canal) =>
+    db
+      .from('messages')
+      .insert({
+        conversation_id: args.conversationId,
+        sender_type: 'bot',
+        content_type: 'text',
+        // O texto ASSINADO: e o que o cliente recebeu.
+        content_text: textoFinal,
+        message_id: waMessageId,
+        // Partes da chave Baileys — só Evolution (NULL no Meta).
+        remote_jid: outboundRemoteJid,
+        from_me: ehEvolution(channel) ? true : null,
+        status: 'sent',
+        ai_generated: args.aiGenerated ?? false,
+        channel_id: canal,
+        ...(args.iaAgenteId ? { ia_agente_id: args.iaAgenteId } : {}),
+      })
+      .select('id')
+      .single(),
+  )
+  if (gravacao.error) {
+    throw new EnviadaSemRegistroError(waMessageId, gravacao.error.message ?? 'erro desconhecido')
+  }
 
   await db
     .from('conversations')

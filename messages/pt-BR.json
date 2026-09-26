@@ -1263,6 +1263,7 @@
         "stop_flow": "Parar o robô",
         "set_ai_on": "Ligar a resposta da IA",
         "set_ai_off": "Desligar a resposta da IA",
+        "assign_ia_agent": "Atribuir agente de IA: {alvo}",
         "send_media_image": "Enviar imagem",
         "send_media_video": "Enviar vídeo",
         "send_media_document": "Enviar documento",
@@ -1764,6 +1765,7 @@
         "run_flow": "Acionar robô",
         "stop_flow": "Parar robô",
         "set_ai": "Assistente de IA",
+        "assign_ia_agent": "Atribuir agente de IA",
         "send_media": "Enviar arquivo",
         "send_to_number": "Avisar um número",
         "create_task": "Criar tarefa"
@@ -4341,6 +4343,15 @@
         "descricao": "Tira dúvidas sobre boletos, faturas e pagamentos já existentes.",
         "instrucoes": "Você atende dúvidas sobre pagamentos: segunda via, link da fatura e datas de vencimento. Informe só o que estiver no sistema e seja objetivo.",
         "regras": "Jamais mude vencimento ou valor, nem dê baixa em pagamento.\nMande a segunda via ou o link que já existe; nunca crie cobrança nova.\nPedido de desconto, parcelamento ou negociação vai para uma pessoa."
+      }
+    },
+    "transferencia": {
+      "autor": "IA · {agente}",
+      "nota": {
+        "sentinela": "{agente} passou a conversa para a equipe: o cliente precisa de alguém do escritório.",
+        "teto": "{agente} passou a conversa para a equipe: chegou ao limite de respostas nesta conversa.",
+        "audio": "{agente} passou a conversa para a equipe: não conseguiu ouvir o áudio do cliente.",
+        "incerto": "{agente} passou a conversa para a equipe: não dá para saber se a última resposta chegou ao cliente — confira antes de responder."
       }
     }
   },

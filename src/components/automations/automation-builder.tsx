@@ -44,6 +44,7 @@ import {
   Upload,
   BellRing,
   ListTodo,
+  BrainCircuit,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -205,6 +206,10 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   run_flow: { label: "run_flow", icon: Bot, border: "border-l-violet-500" },
   stop_flow: { label: "stop_flow", icon: BotOff, border: "border-l-violet-500" },
   set_ai: { label: "set_ai", icon: Sparkles, border: "border-l-violet-500" },
+  // Agentes de IA (F2): orquestração, como o `set_ai`. Ainda FORA de
+  // `ADDABLE_STEPS` — o seletor do agente chega com as telas da F2b; a
+  // entrada aqui é o que desenha um passo que já exista.
+  assign_ia_agent: { label: "assign_ia_agent", icon: BrainCircuit, border: "border-l-violet-500" },
   send_media: { label: "send_media", icon: Paperclip, border: "border-l-primary" },
   wait: { label: "wait", icon: Hourglass, border: "border-l-border" },
   condition: { label: "condition", icon: GitBranch, border: "border-l-amber-500" },

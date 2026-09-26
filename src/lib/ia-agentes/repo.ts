@@ -54,6 +54,17 @@ export async function listarAgentes(
     .filter((a): a is IaAgente => a !== null)
 }
 
+/** Os agentes da conta na forma que a validação da régua usa (arquivados inclusive). */
+export async function agentesParaValidar(
+  accountId: string,
+): Promise<{ id: string; conexoes: string[]; arquivado: boolean }[]> {
+  return (await listarAgentes(accountId, { incluirArquivados: true })).map((a) => ({
+    id: a.id,
+    conexoes: a.conexoes,
+    arquivado: a.arquivadoEm !== null,
+  }))
+}
+
 export async function obterAgente(accountId: string, id: string): Promise<IaAgente | null> {
   const { data, error } = await supabaseAdmin()
     .from('cb_ia_agentes')

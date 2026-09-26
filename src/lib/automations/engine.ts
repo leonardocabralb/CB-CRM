@@ -23,6 +23,7 @@ import type {
   AutomationRefStepConfig,
   RunFlowStepConfig,
   SetAiStepConfig,
+  AssignIaAgentStepConfig,
   SendMediaStepConfig,
   SendToNumberStepConfig,
   CalendlyTriggerConfig,
@@ -34,7 +35,20 @@ import type {
 import { supabaseAdmin } from './admin-client';
 import { resolverDestinatario } from './destinatario';
 import { resolveEngineChannelPreferring } from '@/lib/cb-channels/engine-send';
-import { ehGatilhoDaRegua } from '@/lib/asaas/regua';
+import { ehGatilhoDaRegua, PASSOS_QUE_FALAM_COM_O_CONTATO } from '@/lib/asaas/regua';
+import { ehInstagram } from '@/lib/cb-channels/transporte';
+
+/**
+ * Os passos que calam o agente de IA quando rodam por causa da mensagem do
+ * cliente (F2 dos agentes, E4): os que falam com o contato, e — por
+ * conservadorismo — os que iniciam um robô ou outra automação, que podem
+ * falar. O "Aguardar" conta à parte (quem espera, fala depois).
+ */
+const PASSOS_QUE_CALAM_O_AGENTE: ReadonlySet<string> = new Set([
+  ...PASSOS_QUE_FALAM_COM_O_CONTATO,
+  'run_flow',
+  'run_automation',
+]);
 import { telefoneDigitado, type MotivoDoTelefone } from '@/lib/contacts/telefone';
 import { nomeParaFixar } from '@/lib/contacts/nome-fixado';
 import { urlDoInbox } from '@/lib/inbox/url';
@@ -252,6 +266,14 @@ export interface ResultadoDoDisparo {
    * (upstream #589), ou banco fora na conferência. Nenhuma automação rodou.
    */
   erro?: string;
+  /**
+   * NOSSO (F2 dos agentes de IA, E4): alguma automação deste disparo FALOU
+   * (ou vai falar) com o contato — um envio que deu certo ou foi
+   * reenfileirado, um "Aguardar", um robô ou outra automação iniciados. Com
+   * isso o agente de IA fica calado nesta mensagem: o cliente não recebe
+   * duas respostas. Opcional para os fakes antigos continuarem valendo.
+   */
+  falou?: boolean;
 }
 
 const DISPARO_VAZIO: ResultadoDoDisparo = {
@@ -421,7 +443,9 @@ export async function dispararAutomacoes(
         }
       }
       try {
-        const status = await executeAutomation(input, automation);
+        const status = await executeAutomation(input, automation, undefined, () => {
+          r.falou = true;
+        });
         r.executadas += 1;
         if (status === 'failed') r.comFalha += 1;
         else if (status === 'partial') r.emEspera += 1;
@@ -823,7 +847,9 @@ async function executeAutomation(
    * esta automação respondeu a uma mensagem — quando na verdade outra
    * automação a chamou, e a diferença é tudo ao investigar um laço.
    */
-  rotuloDoDisparo?: string
+  rotuloDoDisparo?: string,
+  /** Chamado quando um passo desta execução fala (ou vai falar) com o contato (E4). */
+  aoFalar?: () => void
 ): Promise<AutomationLogStatus> {
   const db = supabaseAdmin();
 
@@ -875,6 +901,7 @@ async function executeAutomation(
       startPosition: 0,
       logId: log.id,
       triggerEvent: rotuloDoDisparo ?? input.triggerType,
+      aoFalar,
     })) ?? 'success';
 
   // Atomic counter update via the SQL function from migration 007.
@@ -924,6 +951,14 @@ interface ExecuteArgs {
    * quando ninguém fez nada além de avaliar condições (achado da revisão).
    */
   acumulador?: { fezTrabalho: boolean; barrouPorCondicao: boolean };
+  /**
+   * NOSSO (F2 dos agentes de IA, E4): avisa quem disparou que esta execução
+   * falou ou vai falar com o contato. Desce pelos ramos com o `...args`, e é
+   * chamado NO MOMENTO (envio que deu certo ou foi reenfileirado, "Aguardar",
+   * robô ou automação iniciados) — o relato do `acumulador` só sobe no fim do
+   * escopo, e o "Aguardar" e a retentativa saem antes por `return`.
+   */
+  aoFalar?: () => void;
 }
 
 /**
@@ -1085,6 +1120,7 @@ async function executeStepsFrom(
     // `wait` is the suspension point: enqueue and stop processing this
     // scope. The cron endpoint will pick it up later.
     if (step.step_type === 'wait') {
+      args.aoFalar?.();
       const cfg = step.step_config as WaitStepConfig;
       const ms = waitMs(cfg);
       // ⚠️⚠️ ESTACIONA PELA FUNÇÃO `cb_estacionar_espera` (1005), nunca por
@@ -1217,6 +1253,7 @@ async function executeStepsFrom(
         detail,
       });
       fezTrabalho = true;
+      if (PASSOS_QUE_CALAM_O_AGENTE.has(step.step_type)) args.aoFalar?.();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
 
@@ -1290,6 +1327,8 @@ async function executeStepsFrom(
         // sempre — invisível no fio e fora do bloco de correções do Meu dia.
         // Falhando o enfileiramento, o comportamento é o de antes.
         if (!erroDaFila) {
+          // Vai falar daqui a 30 s ou 5 min: o agente não responde por cima.
+          if (PASSOS_QUE_CALAM_O_AGENTE.has(step.step_type)) args.aoFalar?.();
           results.push({
             step_id: step.id,
             step_type: step.step_type,
@@ -2006,33 +2045,127 @@ async function runStep(
       if (conv.group_id)
         throw new Error('set_ai não vale em conversa de grupo');
 
-      const update: Record<string, unknown> = {
-        ai_autoreply_disabled: !cfg.enabled,
-      };
-      if (cfg.enabled) {
-        // Espelha a rota manual: devolver o fio ao robô exige soltar QUALQUER
-        // atribuição, não só a de quem clicou — a IA fica muda enquanto houver
-        // humano atribuído, então um responsável esquecido faria "religar" ser
-        // um nada silencioso.
-        update.assigned_agent_id = null;
-        // ⚠️ Zera o teto de respostas da IA nesta conversa, por decisão do
-        // operador (D10). O comentário da rota manual dizia que isso era
-        // "não-automatizável de propósito": o contador é o que impede o robô
-        // de responder para sempre, e a lentidão humana era a proteção.
-        // Automatizado, o teto passa a depender de quem monta a regra — "a
-        // cada mensagem recebida, religar a IA" fura o teto para sempre.
-        update.ai_reply_count = 0;
-        update.ai_handoff_summary = null;
+      // ⚠️ NOSSO (F2 dos agentes de IA, E13): o `set_ai` segue a régua da
+      // pausa com MOTIVO (1044). Desligar pausa por `automacao` (sem pisar
+      // num motivo que já estava lá). Ligar retoma SÓ a pausa por `gente` ou
+      // por `automacao`: `botao` e `transferencia` foram decisões de gente
+      // sobre aquela conversa, e pausa sem motivo (anterior à 1044) conta
+      // como `botao`. E NÃO solta mais o responsável humano: a atribuição
+      // deixou de ser portão do agente (5.3). A conta decide no WHERE — a
+      // leitura só dá o texto do registro.
+      if (!cfg.enabled) {
+        const { error: upErr } = await db
+          .from('conversations')
+          .update({
+            ai_autoreply_disabled: true,
+            ia_pausada_por: 'automacao',
+            ia_pausada_em: new Date().toISOString(),
+          })
+          .eq('id', conversationId)
+          .eq('account_id', args.automation.account_id)
+          .eq('ai_autoreply_disabled', false);
+        if (upErr) throw new Error(`set_ai falhou: ${upErr.message}`);
+        return 'IA desligada na conversa';
       }
 
-      const { error: upErr } = await db
+      // ⚠️ Ligar zera o teto de respostas da IA nesta conversa, por decisão
+      // do operador (D10). Automatizado, o teto passa a depender de quem
+      // monta a regra — "a cada mensagem recebida, religar a IA" fura o teto
+      // para sempre.
+      const { data: retomada, error: upErr } = await db
         .from('conversations')
-        .update(update)
+        .update({
+          ai_autoreply_disabled: false,
+          ia_pausada_por: null,
+          ia_pausada_em: null,
+          ai_reply_count: 0,
+          ai_handoff_summary: null,
+        })
         .eq('id', conversationId)
-        .eq('account_id', args.automation.account_id);
+        .eq('account_id', args.automation.account_id)
+        .or('ai_autoreply_disabled.eq.false,ia_pausada_por.in.(gente,automacao)')
+        .select('id');
       if (upErr) throw new Error(`set_ai falhou: ${upErr.message}`);
+      if (!retomada || retomada.length === 0) {
+        return 'IA segue pausada: a pausa foi de gente (botão ou transferência)';
+      }
+      return 'IA ligada na conversa';
+    }
 
-      return cfg.enabled ? 'IA ligada na conversa' : 'IA desligada na conversa';
+    case 'assign_ia_agent': {
+      // NOSSO (F2 dos agentes de IA, D9/D17/E12): grava o agente ATIVO da
+      // conversa. A regra da pausa (retoma a pausa por gente, salvo resposta
+      // de gente nas últimas 24 h; nunca retoma botão nem transferência)
+      // roda no BANCO, com a conversa travada (`cb_atribuir_agente_de_ia`).
+      // Nunca toca o responsável humano.
+      const cfg = step.step_config as AssignIaAgentStepConfig;
+      if (!cfg?.ia_agente_id) throw new Error('Atribuir agente de IA: nenhum agente escolhido');
+      const conversationId = await resolveConversationId(args);
+      const { data: conv, error: convErr } = await db
+        .from('conversations')
+        .select('group_id, channel_id')
+        .eq('id', conversationId)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle();
+      if (convErr) throw new Error(`Atribuir agente de IA: leitura da conversa falhou: ${convErr.message}`);
+      if (!conv) throw new Error('Atribuir agente de IA: conversa não encontrada nesta conta');
+      if (conv.group_id) throw new Error('Atribuir agente de IA não vale em conversa de grupo');
+      if (conv.channel_id) {
+        const { data: canal, error: canalErr } = await db
+          .from('cb_channels')
+          .select('kind')
+          .eq('id', conv.channel_id)
+          .eq('account_id', args.automation.account_id)
+          .maybeSingle();
+        if (canalErr) throw new Error(`Atribuir agente de IA: leitura da conexão falhou: ${canalErr.message}`);
+        if (canal && ehInstagram(canal as { kind: string })) {
+          throw new Error('Atribuir agente de IA não vale no Instagram (o agente não responde no Direct)');
+        }
+      }
+      const { data: agente, error: agenteErr } = await db
+        .from('cb_ia_agentes')
+        .select('nome, ativo, conexoes, arquivado_em')
+        .eq('id', cfg.ia_agente_id)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle();
+      if (agenteErr) throw new Error(`Atribuir agente de IA: leitura do agente falhou: ${agenteErr.message}`);
+      if (!agente || agente.arquivado_em) {
+        throw new Error('Atribuir agente de IA: o agente não existe mais (foi arquivado?)');
+      }
+      const { data: linhas, error: rpcErr } = await db.rpc('cb_atribuir_agente_de_ia', {
+        p_account_id: args.automation.account_id,
+        p_conversation_id: conversationId,
+        p_ia_agente_id: cfg.ia_agente_id,
+      });
+      if (rpcErr) throw new Error(`Atribuir agente de IA falhou: ${rpcErr.message}`);
+      const r = (Array.isArray(linhas) ? linhas[0] : linhas) as
+        | { resultado?: string; pausada_por?: string | null }
+        | null;
+      const nome = agente.nome as string;
+      // Avisos que NÃO falham o passo: o agente fica atribuído, e o turno
+      // confere de novo a cada mensagem (desligado ou fora da conexão = não
+      // responde). O registro diz por quê.
+      const avisos: string[] = [];
+      if (!agente.ativo) avisos.push('o agente está desligado');
+      const conexoes = (agente.conexoes as string[] | null) ?? [];
+      if (conv.channel_id && !conexoes.includes(conv.channel_id)) {
+        avisos.push('o agente não atende a conexão desta conversa');
+      }
+      const sufixo = avisos.length > 0 ? ` (${avisos.join('; ')})` : '';
+      switch (r?.resultado) {
+        case 'retomada':
+          return `agente de IA "${nome}" atribuído; IA retomada${sufixo}`;
+        case 'pausada_gente':
+          return `agente de IA "${nome}" atribuído; IA segue pausada: a equipe respondeu nas últimas 24 h${sufixo}`;
+        case 'pausada_mantida':
+          return `agente de IA "${nome}" atribuído; IA segue pausada (${r.pausada_por ?? 'botão'})${sufixo}`;
+        case 'grupo':
+          throw new Error('Atribuir agente de IA não vale em conversa de grupo');
+        case 'agente_indisponivel':
+          throw new Error('Atribuir agente de IA: o agente não existe mais (foi arquivado?)');
+        default:
+          throw new Error('Atribuir agente de IA: conversa não encontrada nesta conta');
+      }
     }
 
     case 'send_media': {

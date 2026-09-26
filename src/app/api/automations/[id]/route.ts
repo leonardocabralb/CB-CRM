@@ -11,8 +11,10 @@ import {
   validateStepsForActivation,
   validateChannelScopeForActivation,
   validateAsaasReguaForActivation,
+  temPassoDeAgenteDeIa,
   validateTriggerForActivation,
 } from '@/lib/automations/validate'
+import { agentesParaValidar } from '@/lib/ia-agentes/repo'
 import { ehGatilhoDaRegua } from '@/lib/asaas/regua'
 import { normalizarAssinatura } from '@/lib/assinatura/assinatura'
 
@@ -133,7 +135,14 @@ export async function PATCH(
     const issues = [
       ...validateTriggerForActivation(mergedTriggerType, mergedTriggerConfig),
       ...validateStepsForActivation(mergedSteps),
-      ...validateAsaasReguaForActivation(mergedTriggerType, mergedSteps),
+      ...validateAsaasReguaForActivation(
+        mergedTriggerType,
+        mergedSteps,
+        // Só carrega os agentes se a automação tem o passo (D19).
+        temPassoDeAgenteDeIa(mergedSteps)
+          ? await agentesParaValidar(existing.account_id as string)
+          : undefined,
+      ),
       ...validateChannelScopeForActivation(
         mergedSteps,
         (('channel_ids' in update

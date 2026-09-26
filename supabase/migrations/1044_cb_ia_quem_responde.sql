@@ -156,6 +156,10 @@ CREATE TABLE IF NOT EXISTS cb_ia_turnos (
                        )),
   executar_apos        timestamptz NOT NULL DEFAULT now(),
   rodando_desde        timestamptz,
+  -- Carimbado logo ANTES de chamar o provedor: é o que deixa o recolhedor
+  -- separar "morreu antes de enviar" (falhou, sem transferir) de "morreu no
+  -- meio do envio" (incerto: pode ter saído — transfere, nunca reenvia).
+  enviando_desde       timestamptz,
   -- O id do PROVEDOR da resposta, gravado ANTES do INSERT da mensagem: é o
   -- que a ingestão do eco consulta (E5).
   mensagem_enviada_id  text,

@@ -1095,6 +1095,11 @@ export type AutomationStepType =
   | 'stop_flow'
   /** Liga ou desliga a resposta automática da IA nesta conversa — 936. */
   | 'set_ai'
+  /**
+   * Atribui o agente de IA ATIVO da conversa (F2 dos agentes, D9/D17). A
+   * regra da pausa roda no banco (`cb_atribuir_agente_de_ia`, 1044).
+   */
+  | 'assign_ia_agent'
   /** Envia imagem, vídeo, documento ou áudio (Fase 4). */
   | 'send_media'
   | 'wait'
@@ -1566,13 +1571,19 @@ export interface SendMediaStepConfig {
  * automação: "a cada mensagem recebida, religar a IA" fura o teto para sempre.
  * A decisão é do operador; o aviso fica aqui e na tela.
  *
- * `agent_id` é o encaixe reservado para os agentes de IA nomeados (D7/§4.7 do
- * plano) — hoje o motor o IGNORA. Existe para que a config gravada agora não
- * precise de migração de dados quando a feature chegar.
+ * ⚠️ Com os agentes de IA (F2, E13): desligar pausa por `automacao`; ligar
+ * retoma só a pausa por `gente` ou `automacao` e NÃO solta mais o responsável.
+ * `agent_id` ficou sem uso: o agente nomeado é o passo `assign_ia_agent`, com
+ * a chave `ia_agente_id` — `agent_id` é GENTE em outros configs.
  */
 export interface SetAiStepConfig {
   enabled: boolean;
   agent_id?: string;
+}
+
+/** Passo "Atribuir agente de IA" (F2 dos agentes). A chave é `ia_agente_id`, NUNCA `agent_id` (que é gente). */
+export interface AssignIaAgentStepConfig {
+  ia_agente_id: string;
 }
 
 export type AutomationStepConfig =
@@ -1588,6 +1599,7 @@ export type AutomationStepConfig =
   | AutomationRefStepConfig
   | RunFlowStepConfig
   | SetAiStepConfig
+  | AssignIaAgentStepConfig
   | SendMediaStepConfig
   | WaitStepConfig
   | ConditionStepConfig

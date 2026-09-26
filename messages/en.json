@@ -1270,6 +1270,7 @@
         "stop_flow": "Stop the bot",
         "set_ai_on": "Turn AI replies on",
         "set_ai_off": "Turn AI replies off",
+        "assign_ia_agent": "Assign AI agent: {alvo}",
         "send_media_image": "Send image",
         "send_media_video": "Send video",
         "send_media_document": "Send document",
@@ -1771,6 +1772,7 @@
         "run_flow": "Run bot",
         "stop_flow": "Stop bot",
         "set_ai": "AI assistant",
+        "assign_ia_agent": "Assign AI agent",
         "send_media": "Send file",
         "send_to_number": "Notify a number",
         "create_task": "Create task"
@@ -4348,6 +4350,15 @@
         "descricao": "Answers questions about existing boletos, invoices and payments.",
         "instrucoes": "You answer payment questions: duplicate invoice, invoice link and due dates. State only what is in the system and be direct.",
         "regras": "Never change a due date or amount, or mark a payment as paid.\nSend the duplicate or the existing link; never create a new charge.\nRequests for discounts, installments or negotiation go to a person."
+      }
+    },
+    "transferencia": {
+      "autor": "AI · {agente}",
+      "nota": {
+        "sentinela": "{agente} handed the conversation to the team: the customer needs someone from the office.",
+        "teto": "{agente} handed the conversation to the team: it reached the reply limit for this conversation.",
+        "audio": "{agente} handed the conversation to the team: it could not hear the customer's audio.",
+        "incerto": "{agente} handed the conversation to the team: there is no way to know whether the last reply reached the customer — check before replying."
       }
     }
   },
