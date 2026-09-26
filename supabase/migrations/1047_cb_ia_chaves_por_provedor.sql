@@ -91,6 +91,31 @@ SELECT DISTINCT ON (c.account_id, c.provider)
  ORDER BY c.account_id, c.provider, (c.channel_id IS NULL) DESC, c.is_active DESC, c.created_at
 ON CONFLICT (account_id, provedor) DO NOTHING;
 
+-- ⚠️ A chave passa a ser UMA por provedor (D1). A conta que tinha, EM USO, mais
+-- de uma chave do mesmo provedor — a padrão e a de uma conexão ligada, ou duas
+-- conexões ligadas — fica com a escolhida acima, e cada caso é AVISADO aqui
+-- para quem aplica conferir em Integrações e gravar a chave certa (Codex,
+-- #294). Não PARA: o banco não decifra a chave (a cifra é do app, com IV
+-- sorteado), então a mesma chave digitada em dois lugares tem textos cifrados
+-- diferentes e é indistinguível de duas chaves — parar travaria a atualização
+-- justamente nesse caso comum. Nada disso é escrito; é só o aviso.
+DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT c.account_id, c.provider, count(DISTINCT c.api_key) AS textos
+      FROM ai_configs c
+     WHERE c.api_key IS NOT NULL AND c.api_key <> ''
+       AND (c.channel_id IS NULL OR c.is_active)
+     GROUP BY c.account_id, c.provider
+    HAVING count(DISTINCT c.api_key) > 1
+  LOOP
+    RAISE WARNING '1047: a conta % usava % chaves (ou a mesma chave digitada em lugares diferentes) do provedor %; ficou a da linha padrão ou, sem ela, a da conexão ligada mais antiga. Confira em Configurações → Integrações.',
+      r.account_id, r.textos, r.provider;
+  END LOOP;
+END $$;
+
 -- A de embeddings entra no slot da OpenAI VAZIO como a chave dele E como a
 -- chave PRÓPRIA da base, com o MESMO texto cifrado nos dois campos. É a marca
 -- de origem: texto cifrado IDÊNTICO = "esta chave É a da base" (o app a
