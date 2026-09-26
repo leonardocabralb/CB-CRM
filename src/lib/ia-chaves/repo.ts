@@ -185,6 +185,17 @@ export async function gravarChave(
 
   const cifrada = encrypt(chaveCrua)
   const db = supabaseAdmin()
+  // A cópia legada da falsa "própria" sai junto: sem isto, a volta atrás do
+  // deploy usaria nos embeddings a chave velha — muitas vezes já revogada
+  // (Codex, #294). Sem ela, o app anterior cai na busca por palavras.
+  if ('embeddings_api_key' in semPropriaFalsa) {
+    const { error: erroLimpeza } = await db
+      .from('ai_configs')
+      .update({ embeddings_api_key: null })
+      .eq('account_id', accountId)
+      .is('channel_id', null)
+    if (erroLimpeza) console.error('[ia-chaves] limpar a cópia legada da chave de embeddings falhou:', erroLimpeza.message)
+  }
   const { error: erroLegado } = await db
     .from('ai_configs')
     .update({ api_key: cifrada })

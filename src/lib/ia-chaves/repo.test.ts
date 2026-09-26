@@ -17,6 +17,7 @@ vi.mock('@/lib/whatsapp/encryption', () => ({
 
 let linhaOpenai: { api_key: string; embeddings_api_key: string | null } | null = null
 const upserts: Record<string, unknown>[] = []
+const legados: Record<string, unknown>[] = []
 
 vi.mock('@/lib/ai/admin-client', () => ({
   supabaseAdmin: () => ({
@@ -40,7 +41,12 @@ vi.mock('@/lib/ai/admin-client', () => ({
       eq.eq = () => eq
       eq.is = async () => fim
       eq.then = (r: (v: unknown) => unknown) => r(fim)
-      return { update: () => eq }
+      return {
+        update: (campos: Record<string, unknown>) => {
+          legados.push(campos)
+          return eq
+        },
+      }
     },
   }),
 }))
@@ -49,6 +55,7 @@ import { gravarChave } from './repo'
 
 beforeEach(() => {
   upserts.length = 0
+  legados.length = 0
   linhaOpenai = null
 })
 
@@ -57,12 +64,15 @@ describe('gravarChave — a chave própria falsa dos embeddings sai na troca', (
     linhaOpenai = { api_key: 'cifra:90:sk-velha', embeddings_api_key: 'cifra:91:sk-velha' }
     await gravarChave('conta-1', 'openai', 'sk-nova', 'user-1', null)
     expect(upserts[0]).toHaveProperty('embeddings_api_key', null)
+    // E a cópia legada sai junto (a volta atrás do deploy não a usaria).
+    expect(legados).toContainEqual({ embeddings_api_key: null })
   })
 
   it('a própria DIFERENTE fica (o upsert não toca a coluna)', async () => {
     linhaOpenai = { api_key: 'cifra:90:sk-velha', embeddings_api_key: 'cifra:91:sk-dos-embeddings' }
     await gravarChave('conta-1', 'openai', 'sk-nova', 'user-1', null)
     expect(upserts[0]).not.toHaveProperty('embeddings_api_key')
+    expect(legados).not.toContainEqual({ embeddings_api_key: null })
   })
 
   it('chave que não decifra: na dúvida, não apaga', async () => {

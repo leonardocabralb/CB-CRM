@@ -45,7 +45,12 @@
 --     faixa de IA da conversa e o rascunho) lê pelo SERVIDOR, com a conta
 --     conferida na sessão.
 --
--- Aditiva: aplicar ANTES do deploy. Idempotente. `anon` sem nada;
+-- ⚠️ ORDEM: aplicar DEPOIS de a F1a estar em produção e ANTES do deploy da
+-- F1b. A regra de leitura só-de-admin do item 7 (Codex, #295) supõe que a faixa
+-- de IA da conversa e o rascunho já leem `ai_configs` pelo SERVIÇO — é o
+-- código da F1a; com o app anterior a ela, todo membro que não é admin veria a
+-- IA como "não configurada" até o deploy. O resto da migration é aditivo.
+-- Idempotente. `anon` sem nada;
 -- `service_role` com tudo, POR ESCRITO.
 
 SET LOCAL lock_timeout = '5s';
