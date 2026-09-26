@@ -2,8 +2,11 @@
 
 // ============================================================
 // Uso de IA em tokens e em R$ (F1b, 5.8, D13, D21). Sem `agenteId`: a conta
-// inteira (por agente e por módulo) e o campo da cotação. Com `agenteId`: só
-// aquele agente, produção e teste separados.
+// inteira (por agente e por módulo) e a cotação. Com `agenteId`: só aquele
+// agente, produção e teste separados.
+//
+// A cotação é AUTOMÁTICA (PTAX do Banco Central + IOF do cartão, calculada na
+// rota), e o campo é só para quem quer o número da fatura (com o spread).
 //
 // ⚠️ R$ é ESTIMATIVA pela cotação de HOJE, para todo o período; modelo fora da
 // tabela de preço aparece como "sem preço", nunca como zero. ⚠️ Falha de carga
@@ -24,7 +27,11 @@ import { textoDoCodigo } from './textos';
 
 interface Resposta {
   dias: number;
+  /** A cotação USADA: a manual, senão a PTAX com o IOF; nula = nenhuma das duas. */
   cotacao: number | null;
+  cotacaoManual: number | null;
+  ptax: { valor: number; dia: string } | null;
+  iof: number;
   resumo: ResumoDoUso;
 }
 
@@ -53,7 +60,7 @@ export function UsoDeIa({ agenteId }: { agenteId?: string }) {
       if (!res.ok) throw new Error(String(res.status));
       const corpo = (await res.json()) as Resposta;
       setDados(corpo);
-      setCotacao(corpo.cotacao === null ? '' : formatarCotacao(locale, corpo.cotacao));
+      setCotacao(corpo.cotacaoManual === null ? '' : formatarCotacao(locale, corpo.cotacaoManual));
       setFalhou(false);
     } catch {
       setFalhou(true);
@@ -66,13 +73,13 @@ export function UsoDeIa({ agenteId }: { agenteId?: string }) {
     })();
   }, [carregar]);
 
-  async function salvarCotacao() {
+  async function salvarCotacao(valor: string) {
     setSalvandoCotacao(true);
     try {
       const res = await fetch('/api/cb/ia/cotacao', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cotacao: cotacao.trim() === '' ? null : cotacao.trim() }),
+        body: JSON.stringify({ cotacao: valor.trim() === '' ? null : valor.trim() }),
       });
       const corpo = (await res.json().catch(() => ({}))) as { code?: string };
       if (!res.ok) {
@@ -117,6 +124,19 @@ export function UsoDeIa({ agenteId }: { agenteId?: string }) {
     return s.parcial ? `${valor} ${t('uso.parcial')}` : valor;
   };
   const tokens = (n: number) => n.toLocaleString(undefined);
+  // "R$ 5,3811": a cotação tem 4 casas, e o formatCurrency arredondaria para 2.
+  const cotacaoEmReais = (n: number) => `R$ ${formatarCotacao(locale, n)}`;
+  const cotacaoUsada =
+    dados.cotacaoManual !== null
+      ? t('uso.cotacaoUsadaManual', { valor: cotacaoEmReais(dados.cotacaoManual) })
+      : dados.ptax && dados.cotacao !== null
+        ? t('uso.cotacaoUsadaAutomatica', {
+            valor: cotacaoEmReais(dados.cotacao),
+            dia: new Date(`${dados.ptax.dia}T12:00:00`).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' }),
+            ptax: cotacaoEmReais(dados.ptax.valor),
+            iof: `${(dados.iof * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`,
+          })
+        : t('uso.cotacaoIndisponivel');
   // No detalhe de um agente, "sem preço" fala só dos modelos DELE — a lista da
   // conta traria o modelo do Radar para dentro da tela do agente.
   const semPreco = agenteId ? (doAgente?.semPreco ?? []) : resumo.semPreco;
@@ -215,20 +235,26 @@ export function UsoDeIa({ agenteId }: { agenteId?: string }) {
       ) : null}
 
       {!agenteId ? (
-        <div className="space-y-1.5 rounded-lg border border-border p-4 sm:max-w-md">
-          <Label htmlFor="ia-cotacao">{t('uso.cotacao')}</Label>
+        <div className="space-y-1.5 rounded-lg border border-border p-4 sm:max-w-xl">
+          <p className="text-sm text-foreground">{cotacaoUsada}</p>
+          <Label htmlFor="ia-cotacao" className="pt-2">{t('uso.cotacao')}</Label>
           <div className="flex gap-2">
             <Input
               id="ia-cotacao"
               inputMode="decimal"
               className="w-32"
               value={cotacao}
-              placeholder={formatarCotacao(locale, 5.6)}
+              placeholder={dados.cotacaoManual === null && dados.cotacao !== null ? formatarCotacao(locale, dados.cotacao) : ''}
               onChange={(e) => setCotacao(e.target.value)}
             />
-            <Button size="sm" onClick={() => void salvarCotacao()} disabled={salvandoCotacao}>
+            <Button size="sm" onClick={() => void salvarCotacao(cotacao)} disabled={salvandoCotacao}>
               {t('uso.salvarCotacao')}
             </Button>
+            {dados.cotacaoManual !== null ? (
+              <Button size="sm" variant="outline" onClick={() => void salvarCotacao('')} disabled={salvandoCotacao}>
+                {t('uso.usarAutomatica')}
+              </Button>
+            ) : null}
           </div>
           <p className="text-xs text-muted-foreground">{t('uso.cotacaoDica')}</p>
         </div>

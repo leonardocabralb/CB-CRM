@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // ler tudo, falha em vez de somar pela metade.
 // ============================================================
 
+let cotacaoDaConta: string | null = '5.5'
+const buscarPtax = vi.fn(async (): Promise<{ valor: number; dia: string } | null> => ({ valor: 5.2, dia: '2026-09-25' }))
 let paginas: Array<{ data: unknown[] | null; error: { message: string } | null; count: number | null }> = []
 const ranges: Array<[number, number]> = []
 
@@ -39,6 +41,10 @@ vi.mock('@/lib/ia-agentes/repo', () => ({
     { id: 'ag-1', nome: 'Triagem (nome novo)', arquivadoEm: null },
   ]),
 }))
+vi.mock('@/lib/ia-agentes/cotacao-automatica', async (original) => ({
+  ...(await original<typeof import('@/lib/ia-agentes/cotacao-automatica')>()),
+  buscarPtax: () => buscarPtax(),
+}))
 vi.mock('@/lib/ai/admin-client', () => ({
   supabaseAdmin: () => {
     const rpc = () => {
@@ -55,7 +61,7 @@ vi.mock('@/lib/ai/admin-client', () => ({
       rpc,
       from: () => ({
         select: () => ({
-          eq: () => ({ is: () => ({ maybeSingle: async () => ({ data: { cotacao_dolar: '5.5' }, error: null }) }) }),
+          eq: () => ({ is: () => ({ maybeSingle: async () => ({ data: { cotacao_dolar: cotacaoDaConta }, error: null }) }) }),
         }),
       }),
     }
@@ -65,6 +71,8 @@ vi.mock('@/lib/ai/admin-client', () => ({
 import { GET } from './route'
 
 beforeEach(() => {
+  cotacaoDaConta = '5.5'
+  buscarPtax.mockClear()
   paginas = []
   ranges.length = 0
 })
@@ -106,5 +114,35 @@ describe('GET /api/cb/ia/uso — paginado', () => {
     const res = await GET(new Request('http://x/api/cb/ia/uso?dias=30'))
     const corpo = (await res.json()) as { resumo: { porAgente: { nome: string; arquivado: boolean }[] } }
     expect(corpo.resumo.porAgente[0]).toMatchObject({ nome: 'Triagem (nome novo)', arquivado: false })
+  })
+})
+
+describe('GET /api/cb/ia/uso — cotação', () => {
+  it('a cotação informada vence, e a PTAX nem é buscada', async () => {
+    const res = await GET(new Request('http://x/api/cb/ia/uso'))
+    const corpo = (await res.json()) as { cotacao: number; cotacaoManual: number | null; ptax: unknown }
+    expect(corpo).toMatchObject({ cotacao: 5.5, cotacaoManual: 5.5, ptax: null })
+    expect(buscarPtax).not.toHaveBeenCalled()
+  })
+
+  it('sem cotação informada: a PTAX do Banco Central mais o IOF de 3,5%', async () => {
+    cotacaoDaConta = null
+    const res = await GET(new Request('http://x/api/cb/ia/uso'))
+    const corpo = (await res.json()) as Record<string, unknown>
+    expect(corpo).toMatchObject({
+      cotacao: 5.382,
+      cotacaoManual: null,
+      ptax: { valor: 5.2, dia: '2026-09-25' },
+      iof: 0.035,
+    })
+  })
+
+  it('PTAX fora do ar e nada informado: cotação nula (sem R$), nunca zero', async () => {
+    cotacaoDaConta = null
+    buscarPtax.mockResolvedValueOnce(null)
+    const res = await GET(new Request('http://x/api/cb/ia/uso'))
+    const corpo = (await res.json()) as { cotacao: number | null }
+    expect(res.status).toBe(200)
+    expect(corpo.cotacao).toBeNull()
   })
 })
