@@ -60,16 +60,35 @@ vi.mock('@/lib/ai/embeddings', () => ({ embedTexts: (...a: unknown[]) => embedTe
 let linhasPorConexao: Record<string, unknown>[] = []
 // Há conexão com o Radar ligado? (os modelos do Radar só contam com ele.)
 let radarLigado = true
+let erroNoLegado: { message: string } | null = null
+let semRespostaAutomatica: string[] = []
 vi.mock('@/lib/ai/admin-client', () => ({
   supabaseAdmin: () => ({
     from: (tabela: string) =>
       tabela === 'cb_channels'
         ? {
             select: () => ({
-              eq: () => ({ eq: () => ({ limit: async () => ({ data: radarLigado ? [{ id: 'canal-r' }] : [], error: null }) }) }),
+              eq: () => ({
+                eq: (coluna: string) => {
+                  // `radar_enabled = true` (com limit) ou `ai_autoreply_enabled = false`.
+                  if (coluna === 'radar_enabled') {
+                    return { limit: async () => ({ data: radarLigado ? [{ id: 'canal-r' }] : [], error: null }) }
+                  }
+                  const fim = { data: semRespostaAutomatica.map((id) => ({ id })), error: null }
+                  return { then: (r: (v: unknown) => unknown) => r(fim) }
+                },
+              }),
             }),
           }
         : ({
+      // O espelho legado de `ai_configs` (o DELETE limpa a cópia).
+      update: () => {
+        const fim = { error: erroNoLegado }
+        const eq: Record<string, unknown> = {}
+        eq.eq = () => eq
+        eq.then = (r: (v: unknown) => unknown) => r(fim)
+        return eq
+      },
       select: () => ({
         eq: async () => ({
           data: [...(linhaPadrao ? [{ channel_id: null, ...linhaPadrao }] : []), ...linhasPorConexao],
@@ -92,7 +111,8 @@ vi.mock('@/lib/ia-chaves/repo', () => ({
 }))
 
 import { AiError } from '@/lib/ai/types'
-import { PUT } from './route'
+import { DELETE, PUT } from './route'
+import { apagarChave } from '@/lib/ia-chaves/repo'
 
 function pedido(provedor: string) {
   return new Request('http://x/api/cb/ia/chaves', {
@@ -112,6 +132,8 @@ beforeEach(() => {
   chaveAtual = null
   agentesDaConta = []
   radarLigado = true
+  erroNoLegado = null
+  semRespostaAutomatica = []
 })
 
 describe('PUT /api/cb/ia/chaves — a chave da OpenAI guarda se serve aos embeddings', () => {
@@ -218,8 +240,8 @@ describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex
   it('confere o modelo do agente de uma conexão do mesmo provedor (e só o model dele)', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null }
     linhasPorConexao = [
-      { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-da-conexao', radar_model: 'nao-conta' },
-      { channel_id: 'canal-2', provider: 'openai', model: 'gpt-x', radar_model: null },
+      { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-da-conexao', radar_model: 'nao-conta', auto_reply_enabled: true },
+      { channel_id: 'canal-2', provider: 'openai', model: 'gpt-x', radar_model: null, auto_reply_enabled: true },
     ]
     await PUT(pedido('gemini'))
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a', 'gemini-da-conexao'])
@@ -228,7 +250,7 @@ describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex
   it('a linha PADRÃO vem antes das de conexão, qualquer que seja a ordem do banco (Codex, #295)', async () => {
     linhaPadrao = null
     linhasPorConexao = [
-      { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-da-conexao', radar_model: null },
+      { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-da-conexao', radar_model: null, auto_reply_enabled: true },
       { channel_id: null, provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-radar' },
     ]
     await PUT(pedido('gemini'))
@@ -243,7 +265,7 @@ describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex
   it('a conexão DESLIGADA não conta (não roda); a padrão desligada conta (o Radar a lê)', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null, is_active: false }
     linhasPorConexao = [
-      { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-desligado', radar_model: null, is_active: false },
+      { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-desligado', radar_model: null, is_active: false, auto_reply_enabled: true },
     ]
     await PUT(pedido('gemini'))
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a'])
@@ -387,5 +409,71 @@ describe('PUT /api/cb/ia/chaves — só os modelos que RODAM são conferidos (Co
     const res = await PUT(pedido('gemini'))
     expect(res.status).toBe(200)
     expect(gravarChave).toHaveBeenCalled()
+  })
+})
+
+describe('DELETE /api/cb/ia/chaves — a cópia legada sai ANTES da chave (Codex, #294)', () => {
+  const apagar = (provedor: string) =>
+    DELETE(new Request(`http://x/api/cb/ia/chaves?provedor=${provedor}`, { method: 'DELETE' }))
+
+  it('limpeza da cópia falhou: 500 e a chave de verdade NÃO sai (a tela diz a verdade)', async () => {
+    vi.mocked(apagarChave).mockClear()
+    erroNoLegado = { message: 'timeout' }
+    const res = await apagar('gemini')
+    expect(res.status).toBe(500)
+    expect(apagarChave).not.toHaveBeenCalled()
+  })
+
+  it('limpeza ok: a chave sai e a resposta diz ok', async () => {
+    vi.mocked(apagarChave).mockClear().mockResolvedValue(true)
+    const res = await apagar('gemini')
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, apagada: true })
+    expect(apagarChave).toHaveBeenCalledWith('conta-1', 'gemini')
+  })
+})
+
+describe('PUT /api/cb/ia/chaves — a conexão só conta com a resposta automática ligada (Codex, #294)', () => {
+  it('desligada na linha ou na conexão: o modelo dela não é conferido', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null, is_active: true }
+    linhasPorConexao = [
+      { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-linha-sem-auto', radar_model: null, is_active: true, auto_reply_enabled: false },
+      { channel_id: 'canal-2', provider: 'gemini', model: 'gemini-conexao-sem-auto', radar_model: null, is_active: true, auto_reply_enabled: true },
+    ]
+    semRespostaAutomatica = ['canal-2']
+    await PUT(pedido('gemini'))
+    const modelos = validateAiCredentials.mock.calls.map((c) => c[0].model)
+    expect(modelos).not.toContain('gemini-linha-sem-auto')
+    expect(modelos).not.toContain('gemini-conexao-sem-auto')
+  })
+})
+
+describe('PUT /api/cb/ia/chaves — a OpenAI que nenhum chat usa é conferida pelos embeddings (Codex, #294)', () => {
+  it('chave só de embeddings: aceita sem pedir o modelo de chat', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null, is_active: true }
+    embedTexts.mockResolvedValue([[0.1]])
+    alcanca = () => false // o chat recusaria
+    const res = await PUT(pedido('openai'))
+    expect(res.status).toBe(200)
+    expect(validateAiCredentials).not.toHaveBeenCalled()
+    expect(gravarChave).toHaveBeenCalled()
+  })
+
+  it('embeddings recusados: segue pelo chat — a chave de chat é aceita (pode ser para passar o assistente à OpenAI)', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null, is_active: true }
+    embedTexts.mockRejectedValue(new AiError('no', { code: 'invalid_key' }))
+    const res = await PUT(pedido('openai'))
+    expect(res.status).toBe(200)
+    expect(validateAiCredentials).toHaveBeenCalled()
+    expect(await res.json()).toMatchObject({ avisos: ['embeddings_recusado'] })
+  })
+
+  it('nem embedding nem chat: a chave é recusada', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null, is_active: true }
+    embedTexts.mockRejectedValue(new AiError('no', { code: 'invalid_key' }))
+    alcanca = () => false
+    const res = await PUT(pedido('openai'))
+    expect(res.status).toBe(400)
+    expect(gravarChave).not.toHaveBeenCalled()
   })
 })

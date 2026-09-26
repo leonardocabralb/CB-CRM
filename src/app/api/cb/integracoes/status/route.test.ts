@@ -13,15 +13,22 @@ const validateAiCredentials = vi.fn(async (cfg: { model: string; provider?: stri
 })
 let modelosQueFalham: string[] = []
 let linhas: Record<string, unknown>[] = []
+let semRespostaAutomatica: string[] = []
 
 vi.mock('@/lib/auth/account', () => ({
   requireRole: vi.fn(async () => ({
     accountId: 'conta-1',
     userId: 'user-1',
     supabase: {
-      from: () => ({
-        select: () => ({ eq: async () => ({ data: linhas, error: null }) }),
-      }),
+      from: (tabela: string) =>
+        tabela === 'cb_channels'
+          ? {
+              // As conexões com a resposta automática DESLIGADA.
+              select: () => ({
+                eq: () => ({ eq: async () => ({ data: semRespostaAutomatica.map((id) => ({ id })), error: null }) }),
+              }),
+            }
+          : { select: () => ({ eq: async () => ({ data: linhas, error: null }) }) },
     },
   })),
   toErrorResponse: vi.fn(() => new Response('erro', { status: 500 })),
@@ -62,9 +69,10 @@ beforeEach(() => {
   modelosQueFalham = []
   linhas = [
     { channel_id: null, provider: 'gemini', model: 'gemini-padrao', radar_model: null, is_active: true },
-    { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-da-conexao', radar_model: null, is_active: true },
-    { channel_id: 'canal-2', provider: 'gemini', model: 'gemini-desligado', radar_model: null, is_active: false },
+    { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-da-conexao', radar_model: null, is_active: true, auto_reply_enabled: true },
+    { channel_id: 'canal-2', provider: 'gemini', model: 'gemini-desligado', radar_model: null, is_active: false, auto_reply_enabled: true },
   ]
+  semRespostaAutomatica = []
 })
 
 async function cartaoGemini() {
@@ -79,7 +87,13 @@ describe('GET /api/cb/integracoes/status — o ping cobre os agentes de conexão
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model).sort()).toEqual([
       'gemini-da-conexao',
       'gemini-padrao',
+      'trans',
     ])
+  })
+
+  it('o modelo fixo da transcrição fora do ar deixa o cartão do Gemini em erro', async () => {
+    modelosQueFalham = ['trans']
+    expect((await cartaoGemini()).estado).toBe('erro')
   })
 
   it('o modelo da conexão falhando deixa o cartão em erro', async () => {
@@ -128,7 +142,7 @@ describe('GET /api/cb/integracoes/status — a chave da OpenAI que é SÓ da bas
   })
 
   it('uma conexão usa a OpenAI no chat: aí o chat é pingado', async () => {
-    linhas.push({ channel_id: 'canal-9', provider: 'openai', model: 'gpt-conexao', radar_model: null, is_active: true })
+    linhas.push({ channel_id: 'canal-9', provider: 'openai', model: 'gpt-conexao', radar_model: null, is_active: true, auto_reply_enabled: true })
     estadoComOpenai(true)
     await GET(new Request('http://x/api/cb/integracoes/status'))
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gpt-conexao')
@@ -200,5 +214,19 @@ describe('GET /api/cb/integracoes/status — o modelo PRÓPRIO do Radar (Codex, 
     agentesDaConta = ['a1', 'a2', 'a3', 'a4', 'a5'].map((modelo) => ({ nome: modelo, provedor: 'gemini', modelo, ativo: true }))
     await cartaoGemini()
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gemini-radar')
+  })
+})
+
+describe('GET /api/cb/integracoes/status — a linha de conexão só conta com a resposta automática ligada (Codex, #294)', () => {
+  it('resposta automática desligada na LINHA: o modelo dela não é pingado', async () => {
+    linhas[1] = { ...linhas[1], auto_reply_enabled: false }
+    await cartaoGemini()
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).not.toContain('gemini-da-conexao')
+  })
+
+  it('resposta automática desligada na CONEXÃO: o modelo dela não é pingado', async () => {
+    semRespostaAutomatica = ['canal-1']
+    await cartaoGemini()
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).not.toContain('gemini-da-conexao')
   })
 })
