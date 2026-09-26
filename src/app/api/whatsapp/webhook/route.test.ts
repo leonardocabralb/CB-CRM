@@ -618,6 +618,36 @@ describe('inbound webhook: after() awaits automations (#368)', () => {
     // here — the callback would have resolved before the timers fired.
     expect(h.state.automationCompleted).toBe(3)
   })
+
+  it('os tipos de gatilho rodam EM SEQUÊNCIA, na ordem do original (#409; Fase 12)', async () => {
+    const passos: string[] = []
+    h.runAutomationsForTrigger.mockImplementation(async ({ triggerType }: { triggerType: string }) => {
+      passos.push(`início ${triggerType}`)
+      await new Promise((r) => setTimeout(r, 0))
+      passos.push(`fim ${triggerType}`)
+    })
+    await runWebhook()
+    expect(passos).toEqual([
+      'início first_inbound_message',
+      'fim first_inbound_message',
+      'início new_message_received',
+      'fim new_message_received',
+      'início keyword_match',
+      'fim keyword_match',
+    ])
+  })
+
+  it('a falha de um tipo de gatilho não pula os seguintes', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const tipos: string[] = []
+    h.runAutomationsForTrigger.mockImplementation(async ({ triggerType }: { triggerType: string }) => {
+      tipos.push(triggerType)
+      if (triggerType === 'first_inbound_message') throw new Error('falhou')
+    })
+    await runWebhook()
+    expect(tipos).toEqual(['first_inbound_message', 'new_message_received', 'keyword_match'])
+    erro.mockRestore()
+  })
 })
 
 // ============================================================

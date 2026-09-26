@@ -71,6 +71,7 @@ vi.mock('@/lib/cb-channels/atraso-de-entrega', () => ({
 }));
 
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import { runAutomationsForTrigger } from '@/lib/automations/engine';
 
 import { persistInboundMessage, type NormalizedInbound } from './inbound-store';
 
@@ -236,5 +237,37 @@ describe('persistInboundMessage: conversation.created não segura a gravação',
     await persistInboundMessage(fakeDb(), MENSAGEM);
 
     expect(eventos()).toEqual(['message.received']);
+  });
+});
+
+describe('persistInboundMessage: as automações rodam EM SEQUÊNCIA (Fase 12)', () => {
+  it('um tipo de gatilho só começa quando o anterior TERMINA, na ordem do original (#409)', async () => {
+    const passos: string[] = [];
+    vi.mocked(runAutomationsForTrigger).mockImplementation(async ({ triggerType }) => {
+      passos.push(`início ${triggerType}`);
+      await new Promise((r) => setTimeout(r, 0));
+      passos.push(`fim ${triggerType}`);
+    });
+    await persistInboundMessage(fakeDb(), MENSAGEM);
+    expect(passos).toEqual([
+      'início first_inbound_message',
+      'fim first_inbound_message',
+      'início new_message_received',
+      'fim new_message_received',
+      'início keyword_match',
+      'fim keyword_match',
+    ]);
+  });
+
+  it('a falha de um tipo não pula os seguintes', async () => {
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const tipos: string[] = [];
+    vi.mocked(runAutomationsForTrigger).mockImplementation(async ({ triggerType }) => {
+      tipos.push(triggerType);
+      if (triggerType === 'first_inbound_message') throw new Error('falhou');
+    });
+    await persistInboundMessage(fakeDb(), MENSAGEM);
+    expect(tipos).toEqual(['first_inbound_message', 'new_message_received', 'keyword_match']);
+    erro.mockRestore();
   });
 });
