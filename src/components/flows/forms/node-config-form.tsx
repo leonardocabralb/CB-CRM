@@ -26,6 +26,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Library,
   Loader2,
   Paperclip,
   Plus,
@@ -48,8 +49,14 @@ import {
 import { cn } from "@/lib/utils";
 import { uploadAccountMedia, MEDIA_MAX_BYTES } from "@/lib/storage/upload-media";
 import { mensagemDoUpload } from "@/lib/storage/erro-de-upload";
+import { AcervoPicker } from "@/components/inbox/acervo-picker";
+import { useAcervo } from "@/hooks/use-acervo";
+import { audioViraNotaDeVozNaMeta } from "@/lib/flows/tipo-da-midia";
+import type { MediaLibraryItem } from "@/types";
 import { slugify, type BuilderNode } from "../shared";
 import { NextNodeRow, NodeKeySelect, TextRow } from "./fields";
+import { SalvarRespostaRow } from "./salvar-resposta";
+import { MoverCardForm } from "./mover-card";
 
 interface NodeConfigFormProps {
   node: BuilderNode;
@@ -165,6 +172,11 @@ export function NodeConfigForm({
               .
             </p>
           </div>
+          <SalvarRespostaRow
+            nodeType="collect_input"
+            value={(cfg as { salvar_em?: string | null }).salvar_em}
+            onChange={(v) => onUpdateConfig({ salvar_em: v })}
+          />
           <NextNodeRow
             value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
             allNodes={allNodes}
@@ -197,6 +209,16 @@ export function NodeConfigForm({
         />
       );
 
+    case "move_deal_stage":
+      return (
+        <MoverCardForm
+          cfg={cfg as { pipeline_id?: string; stage_id?: string; origem_stage_ids?: string[]; next_node_key?: string }}
+          allNodes={allNodes}
+          currentKey={node.node_key}
+          onUpdateConfig={onUpdateConfig}
+        />
+      );
+
     case "handoff":
       return (
         <TextRow
@@ -223,6 +245,7 @@ export function NodeConfigForm({
 interface SendButtonsCfg {
   text?: string;
   footer_text?: string;
+  salvar_em?: string | null;
   buttons?: Array<{ reply_id: string; title: string; next_node_key: string }>;
 }
 
@@ -343,6 +366,12 @@ function SendButtonsForm({
           </Button>
         )}
       </div>
+      <SalvarRespostaRow
+        nodeType="send_buttons"
+        value={cfg.salvar_em}
+        onChange={(v) => onUpdateConfig({ salvar_em: v })}
+        titulosDasOpcoes={buttons.map((b) => b.title)}
+      />
     </>
   );
 }
@@ -355,6 +384,7 @@ interface SendListCfg {
   text?: string;
   button_label?: string;
   footer_text?: string;
+  salvar_em?: string | null;
   sections?: Array<{
     title?: string;
     rows: Array<{
@@ -582,6 +612,12 @@ function SendListForm({
           </Button>
         )}
       </div>
+      <SalvarRespostaRow
+        nodeType="send_list"
+        value={cfg.salvar_em}
+        onChange={(v) => onUpdateConfig({ salvar_em: v })}
+        titulosDasOpcoes={sections.flatMap((sec) => sec.rows.map((r) => r.title))}
+      />
     </>
   );
 }
@@ -869,8 +905,10 @@ function useUserTags(): UserTag[] {
 // ============================================================
 
 interface SendMediaCfg {
-  media_type?: "image" | "video" | "document";
+  media_type?: "image" | "video" | "document" | "audio";
   media_url?: string;
+  /** Item do acervo (CB, 26/09/2026) — ver `src/lib/flows/midia-do-no.ts`. */
+  acervo_id?: string | null;
   caption?: string;
   filename?: string;
   next_node_key?: string;
@@ -880,7 +918,11 @@ interface SendMediaCfg {
 // sync with the storage policy so the picker rejects unsupported files
 // before they hit the network rather than failing with a confusing
 // Supabase RLS / mime-type error.
-const MEDIA_ACCEPT: Record<NonNullable<SendMediaCfg["media_type"]>, string> = {
+//
+// ⚠️ ÁUDIO não está aqui de propósito: o bucket `flow-media` não aceita
+// áudio. O áudio do robô vem do ACERVO (bucket `chat-media`, que aceita) —
+// é o caminho pedido pelo operador ("um arquivo pré-gravado do acervo").
+const MEDIA_ACCEPT: Record<"image" | "video" | "document", string> = {
   image: "image/png,image/jpeg,image/webp",
   video: "video/mp4,video/3gpp",
   document:
@@ -904,13 +946,40 @@ function SendMediaForm({
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [acervoAberto, setAcervoAberto] = useState(false);
   const tUpload = useTranslations("Upload");
+  const tResumo = useTranslations("Flows.summary");
 
   const mediaType = cfg.media_type ?? "image";
   const isDocument = mediaType === "document";
+  const isAudio = mediaType === "audio";
+  const acervoId = cfg.acervo_id || null;
+
+  // O acervo só é lido quando o nó aponta para um item: é o que diz se o
+  // item ainda existe (apagado, o robô falharia no envio) e o título atual.
+  const acervo = useAcervo(Boolean(acervoId));
+  // ⚠️ O item escolhido AGORA vem do seletor, que leu o acervo na hora — a
+  // lista acima pode ser de antes de ele existir (subido noutra aba), e sem
+  // esta foto a tela diria "apagado do acervo" sobre o item recém-escolhido.
+  const [escolhido, setEscolhido] = useState<MediaLibraryItem | null>(null);
+  const itemDoAcervo = acervoId
+    ? escolhido?.id === acervoId
+      ? escolhido
+      : (acervo.itens.find((i) => i.id === acervoId) ?? null)
+    : null;
+  const itemApagado =
+    Boolean(acervoId) && acervo.jaCarregou && !acervo.falhou && !itemDoAcervo;
+  // ⚠️ No número OFICIAL só .ogg (Opus) vira nota de voz; .mp3/.m4a gravado
+  // no celular chega como ARQUIVO de áudio. Avisar aqui é o que evita o
+  // operador contar com a "voz do Dr." e o cliente receber um anexo.
+  const audioSemNotaDeVozNaMeta =
+    isAudio && itemDoAcervo !== null && !audioViraNotaDeVozNaMeta(itemDoAcervo.mime_type);
+
   const displayName =
+    itemDoAcervo?.titulo ||
     cfg.filename ||
     (cfg.media_url ? cfg.media_url.split("/").pop() ?? "" : "");
+  const temArquivo = Boolean(acervoId || cfg.media_url);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -926,10 +995,12 @@ function SendMediaForm({
         // uploadAccountMedia + migration 020's flow-media RLS policy.
         const { publicUrl } = await uploadAccountMedia(FLOW_MEDIA_BUCKET, file);
         // Patch all fields in one call so the form doesn't re-render
-        // with a half-uploaded state.
+        // with a half-uploaded state. O upload SOLTA o item do acervo:
+        // com `acervo_id` o motor ignoraria o arquivo novo.
         onUpdateConfig({
           media_url: publicUrl,
           filename: file.name,
+          acervo_id: null,
         });
         toast.success(t("fileUploaded"));
       } catch (err) {
@@ -941,8 +1012,28 @@ function SendMediaForm({
     [onUpdateConfig, t, tUpload],
   );
 
+  const escolherDoAcervo = (item: MediaLibraryItem) => {
+    // O TIPO vem do item (o operador escolhe "qualquer arquivo"); a URL fica
+    // só para a tela mostrar — o motor copia o item a cada envio. Áudio perde
+    // a legenda: a nota de voz não leva texto (932).
+    // O seletor mostra o acervo INTEIRO: quem estava em "Áudio" e tocou num
+    // PDF vê o passo virar "Documento" — dito, não em silêncio.
+    if (cfg.media_type && cfg.media_type !== item.tipo) {
+      toast.info(t("mediaTypeFollowsLibrary", { tipo: tResumo(item.tipo) }));
+    }
+    onUpdateConfig({
+      acervo_id: item.id,
+      media_type: item.tipo,
+      media_url: item.media_url,
+      filename: item.filename,
+      ...(item.tipo === "audio" ? { caption: "" } : {}),
+    });
+    setEscolhido(item);
+    setAcervoAberto(false);
+  };
+
   const handleClear = () => {
-    onUpdateConfig({ media_url: "", filename: "" });
+    onUpdateConfig({ media_url: "", filename: "", acervo_id: null });
   };
 
   return (
@@ -955,10 +1046,13 @@ function SendMediaForm({
             // Changing type clears the existing file — the bucket
             // accepts different MIME sets per type and a previously
             // uploaded PDF can't be sent as an image.
+            const tipo = v as NonNullable<SendMediaCfg["media_type"]>;
             onUpdateConfig({
-              media_type: v as NonNullable<SendMediaCfg["media_type"]>,
+              media_type: tipo,
               media_url: "",
               filename: "",
+              acervo_id: null,
+              ...(tipo === "audio" ? { caption: "" } : {}),
             });
           }}
         >
@@ -971,17 +1065,22 @@ function SendMediaForm({
             <SelectItem value="document">
               {t("documentLabel")}
             </SelectItem>
+            <SelectItem value="audio">{t("audioLabel")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <div>
         <label className="mb-1 block text-xs text-muted-foreground">{t("fileLabel")}</label>
-        {cfg.media_url ? (
+        {temArquivo ? (
           <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs">
-            <Paperclip className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+            {acervoId ? (
+              <Library className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+            ) : (
+              <Paperclip className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+            )}
             <a
-              href={cfg.media_url}
+              href={itemDoAcervo?.media_url || cfg.media_url}
               target="_blank"
               rel="noopener noreferrer"
               className="min-w-0 flex-1 truncate text-foreground hover:text-cyan-300"
@@ -989,6 +1088,11 @@ function SendMediaForm({
             >
               {displayName || cfg.media_url}
             </a>
+            {acervoId && (
+              <span className="shrink-0 rounded-full bg-background px-2 py-0.5 text-[10px] text-muted-foreground">
+                {t("fromLibraryBadge")}
+              </span>
+            )}
             <button
               type="button"
               onClick={handleClear}
@@ -1000,45 +1104,84 @@ function SendMediaForm({
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-border bg-card px-3 py-4 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {uploading ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {t("uploading")}
-              </>
-            ) : (
-              <>
-                <Upload className="h-3.5 w-3.5" />
-                {t("clickToUpload")}
-              </>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => setAcervoAberto(true)}
+              className="flex flex-1 items-center justify-center gap-2 rounded-md border border-dashed border-border bg-card px-3 py-4 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Library className="h-3.5 w-3.5" />
+              {t("pickFromLibrary")}
+            </button>
+            {/* Upload do computador só para imagem, vídeo e documento: o
+                bucket do robô não aceita áudio (ver MEDIA_ACCEPT). */}
+            {!isAudio && (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="flex flex-1 items-center justify-center gap-2 rounded-md border border-dashed border-border bg-card px-3 py-4 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {t("uploading")}
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-3.5 w-3.5" />
+                    {t("clickToUpload")}
+                  </>
+                )}
+              </button>
             )}
-          </button>
+          </div>
         )}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={MEDIA_ACCEPT[mediaType]}
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void handleFile(f);
-            // Reset so picking the same file twice still fires onChange.
-            e.target.value = "";
-          }}
+        {itemApagado && (
+          <p className="mt-1 text-[10px] text-red-700 dark:text-red-300">
+            {t("libraryItemMissing")}
+          </p>
+        )}
+        {isAudio && (
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            {t("audioHelp")}
+          </p>
+        )}
+        {audioSemNotaDeVozNaMeta && (
+          <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
+            {t("audioNotOggWarning")}
+          </p>
+        )}
+        {!isAudio && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={MEDIA_ACCEPT[mediaType]}
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void handleFile(f);
+              // Reset so picking the same file twice still fires onChange.
+              e.target.value = "";
+            }}
+          />
+        )}
+        <AcervoPicker
+          open={acervoAberto}
+          onOpenChange={setAcervoAberto}
+          onPick={escolherDoAcervo}
         />
       </div>
 
-      <TextRow
-        label={t("captionLabel")}
-        value={cfg.caption ?? ""}
-        onChange={(v) => onUpdateConfig({ caption: v })}
-        rows={2}
-      />
+      {/* Áudio não leva legenda (932): a nota de voz não tem campo de texto. */}
+      {!isAudio && (
+        <TextRow
+          label={t("captionLabel")}
+          value={cfg.caption ?? ""}
+          onChange={(v) => onUpdateConfig({ caption: v })}
+          rows={2}
+        />
+      )}
 
       {isDocument && (
         <div>

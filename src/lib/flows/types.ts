@@ -41,6 +41,21 @@ export interface SendMessageNodeConfig {
   next_node_key: string;
 }
 
+/**
+ * Onde o robô GRAVA a resposta do cliente na ficha (CB, 26/09/2026). A forma
+ * é a mesma do passo `update_contact_field` das automações:
+ *
+ *   · `'name'` — o NOME do contato, gravado FIXADO (999). Só no
+ *     `collect_input`: o título de um botão não é nome de ninguém.
+ *   · `'custom:<id do campo>'` — um campo personalizado da conta. Nos botões e
+ *     na lista grava o TÍTULO da opção tocada.
+ *
+ * Ausente/nulo = não grava nada (o comportamento de antes). Quem interpreta é
+ * `destinoDaResposta` (`resposta-na-ficha.ts`); quem grava,
+ * `gravarRespostaNaFicha`.
+ */
+export type SalvarRespostaEm = string | null;
+
 export interface SendButtonsNodeConfig {
   text: string;
   /**
@@ -49,6 +64,8 @@ export interface SendButtonsNodeConfig {
    * pelo nao-oficial, mas a confirmacao formal sai pelo oficial".
    */
   channel_id?: string | null;
+  /** Grava o título do botão tocado num campo da ficha. Ver `SalvarRespostaEm`. */
+  salvar_em?: SalvarRespostaEm;
 
   /** Optional header / footer lines around the buttons. */
   header_text?: string;
@@ -72,6 +89,8 @@ export interface SendListNodeConfig {
    * pelo nao-oficial, mas a confirmacao formal sai pelo oficial".
    */
   channel_id?: string | null;
+  /** Grava o título da linha tocada num campo da ficha. Ver `SalvarRespostaEm`. */
+  salvar_em?: SalvarRespostaEm;
 
   /** Label of the tap-to-expand button on the message bubble. */
   button_label: string;
@@ -101,9 +120,13 @@ export interface SendListNodeConfig {
  * filename-on-document quirk. Modeling three node types would triple
  * the builder forms, engine cases, and add-menu entries for no
  * meaningful behavioural difference.
+ *
+ * ⚠️ CB (26/09/2026): o nó também manda ÁUDIO (como nota de voz — o mesmo
+ * caminho do gravador e do acervo) e escolhe o arquivo do ACERVO de mídias da
+ * conta (`acervo_id`, migration 953). Ver `midia-do-no.ts`.
  */
 export interface SendMediaNodeConfig {
-  media_type: "image" | "video" | "document";
+  media_type: "image" | "video" | "document" | "audio";
   /**
    * Canal de SAIDA deste no. Ausente = canal travado no RUN (por onde o
    * cliente entrou). Preenchido = forca aquele numero — e o "a triagem chega
@@ -111,9 +134,26 @@ export interface SendMediaNodeConfig {
    */
   channel_id?: string | null;
 
-  /** Public URL Meta will fetch. Uploaded via the builder's file picker. */
+  /**
+   * Public URL Meta will fetch. Uploaded via the builder's file picker.
+   *
+   * Com `acervo_id`, guarda a URL do item só para a tela mostrar o arquivo: o
+   * motor NÃO a usa — ele copia o item a cada envio (`prepararMidiaDoNo`).
+   */
   media_url: string;
-  /** Optional caption shown under the media (Meta caps at 1024 chars). */
+  /**
+   * Item do acervo (`cb_media_library.id`). Presente = o arquivo vem do
+   * acervo, e o TIPO também (o item não troca de arquivo nem de tipo — trocar
+   * é apagar e cadastrar de novo). Ausente = o nó antigo, com `media_url`.
+   */
+  acervo_id?: string | null;
+  /**
+   * Optional caption shown under the media (Meta caps at 1024 chars).
+   *
+   * ⚠️ ÁUDIO NÃO TEM LEGENDA (a regra da 932): a nota de voz não leva texto, e
+   * um texto aqui apareceria no fio para a equipe sem ter viajado. Barrado na
+   * validação, escondido na tela e descartado pelo motor.
+   */
   caption?: string;
   /**
    * Filename shown in the recipient's chat. Documents only — Meta
@@ -153,6 +193,12 @@ export interface CollectInputNodeConfig {
    * `condition` nodes and `handoff` notes via interpolation.
    */
   var_key: string;
+  /**
+   * Grava a resposta também na FICHA: `'name'` (nome do contato, fixado) ou
+   * `'custom:<id>'` (campo personalizado). Ver `SalvarRespostaEm`. A variável
+   * do run continua sendo gravada do mesmo jeito.
+   */
+  salvar_em?: SalvarRespostaEm;
   /**
    * Reserved for v2. Accepted on the config but ignored by the v1.5
    * runner — captures any non-empty text.
@@ -207,6 +253,31 @@ export interface SetTagNodeConfig {
   next_node_key: string;
 }
 
+/**
+ * "Mover card de etapa" (CB, 26/09/2026, migration 1053). Leva o card do
+ * contato à etapa `stage_id` do funil `pipeline_id`, pela MESMA RPC das
+ * automações (`cb_atualizar_negocio`), e segue o robô. Quem executa é
+ * `moverCardDoNo` (`src/lib/flows/mover-card.ts`).
+ *
+ *   · O card é o que as automações achariam (`negocioAlvo`): o aberto mais
+ *     recente; sem aberto, o perdido — menos de quem tem card GANHO.
+ *   · `origem_stage_ids` vazio/ausente = move de QUALQUER etapa, de qualquer
+ *     funil. Preenchido, o card que está fora dessas etapas NÃO é movido: o
+ *     motivo vai para o registro do run e o robô segue.
+ *   · Contato sem card NENHUM ganha um, criado já na etapa de destino
+ *     (`createDeal`, título pela regra da 1007). A lista de origem não vale
+ *     aqui — não há de onde vir.
+ */
+export interface MoveDealStageNodeConfig {
+  /** Funil de destino. A etapa tem de ser dele (conferido na ativação). */
+  pipeline_id: string;
+  /** Etapa de destino. */
+  stage_id: string;
+  /** Etapas de onde o card pode sair. Vazio = qualquer uma. */
+  origem_stage_ids?: string[];
+  next_node_key: string;
+}
+
 // Terminal nodes carry no config — they just stop the run.
 export type EndNodeConfig = Record<string, never>;
 
@@ -227,6 +298,7 @@ export type FlowNodeConfig =
   | { node_type: "collect_input"; config: CollectInputNodeConfig }
   | { node_type: "condition"; config: ConditionNodeConfig }
   | { node_type: "set_tag"; config: SetTagNodeConfig }
+  | { node_type: "move_deal_stage"; config: MoveDealStageNodeConfig }
   | { node_type: "handoff"; config: HandoffNodeConfig }
   | { node_type: "end"; config: EndNodeConfig };
 

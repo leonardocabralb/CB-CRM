@@ -222,7 +222,8 @@ mudança (`source`). O formato completo, com exemplo, está em
   da equipe (pela tela, pelo celular pareado ou por `POST /api/v1/messages`),
   então não quer dizer "lead que chegou"; `automation` são os passos
   "Criar negócio", "Mover card de etapa" e "Marcar ganho ou perdido" das
-  automações; `api` é a API de negócios (`POST`/`PATCH /api/v1/deals`) —
+  automações e o bloco "Mover card de etapa" dos robôs (que também cria o
+  card quando o contato não tem nenhum); `api` é a API de negócios (`POST`/`PATCH /api/v1/deals`) —
   filtre esse valor se o seu fluxo mover o card pela API, senão ele reage ao
   próprio movimento —; e `system` é o resto (uma correção feita direto no
   banco, por exemplo). Até a migration `1040`, `system` misturava a API com

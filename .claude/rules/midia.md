@@ -158,6 +158,15 @@ Tabela `cb_media_library`, `src/lib/acervo/` (puro, com teste), rotas em
 - **Áudio do acervo sai como NOTA DE VOZ** (`sendWhatsAppAudio`, PTT na
   Evolution). O seletor diz isso na linha do item, senão o operador manda "um
   arquivo" e o cliente recebe voz.
+- ⚠️ **No número OFICIAL (API da Meta) só áudio .ogg (Opus) vira nota de
+  voz**; mp3/m4a/aac/amr chegam como ARQUIVO de áudio. Pela Evolution todo
+  áudio sai como nota de voz. O editor do robô avisa
+  (`audioViraNotaDeVozNaMeta`, `src/lib/flows/tipo-da-midia.ts`); o selo "como
+  nota de voz" do seletor do acervo no compositor ainda afirma sem distinguir.
+- **A cópia mora em `copiarDoAcervo` (`src/lib/acervo/copiar.ts`)**, com DOIS
+  chamadores: a rota `copiar` (compositor) e o nó "Enviar mídia" do robô, que
+  copia a cada envio (`.claude/rules/whatsapp-envio.md`). Erro de banco é
+  `leitura`, nunca `nao_encontrado`.
 
 ### Leitura de corpo com teto e visualizador
 

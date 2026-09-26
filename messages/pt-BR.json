@@ -2262,7 +2262,49 @@
         "fileUploaded": "Arquivo enviado.",
         "uploadFailed": "O envio falhou.",
         "fileTooLarge": "O arquivo tem {size} MB — o limite é 16 MB.",
-        "defaultOptionTitle": "Opção"
+        "defaultOptionTitle": "Opção",
+        "audioLabel": "Áudio (do acervo de mídias)",
+        "pickFromLibrary": "Escolher do acervo de mídias",
+        "fromLibraryBadge": "do acervo",
+        "libraryItemMissing": "Este arquivo foi apagado do acervo — escolha outro, senão o robô falha neste passo.",
+        "audioHelp": "O áudio vem do acervo de mídias e sai sem legenda. Pela conexão por QR Code, sai sempre como nota de voz; pelo número oficial (API da Meta), só arquivo .ogg (Opus) aparece como nota de voz.",
+        "audioNotOggWarning": "Este áudio não é .ogg: no número oficial ele chega ao cliente como ARQUIVO de áudio, não como nota de voz. Para sair como nota de voz, converta-o para .ogg (Opus) e suba de novo no acervo.",
+        "mediaTypeFollowsLibrary": "O tipo do passo mudou para {tipo}, o do arquivo escolhido no acervo.",
+        "saveAnswerLabel": "Salvar a resposta na ficha",
+        "saveAnswerNone": "Não salvar",
+        "saveAnswerName": "Nome do contato",
+        "saveAnswerGeneralGroup": "Geral",
+        "saveAnswerUnknownField": "Campo apagado",
+        "saveAnswerHelpInput": "A resposta digitada vai para o campo escolhido. Nome do contato: só grava se a resposta parecer um nome (sem saudação, número ou frase), fica fixado (a mensagem seguinte do WhatsApp não troca) e não substitui um nome já fixado por alguém da equipe ou por uma integração.",
+        "saveAnswerHelpOptions": "O título da opção que o cliente tocar vai para o campo escolhido.",
+        "saveAnswerNoDates": "Campos de data não aparecem: o que o cliente digita não vira data.",
+        "saveAnswerNoDatesOrNumbers": "Campos de data, de número e o E-mail não aparecem: o título de uma opção não vira nenhum deles.",
+        "saveAnswerFreeTextInList": "O cliente digita livremente: a resposta é gravada como veio, mesmo fora das opções da lista — filtros e condições por opção podem não casar.",
+        "saveAnswerLoadError": "Não foi possível carregar os campos personalizados. Abra o passo de novo para tentar outra vez.",
+        "saveAnswerOrphan": "Este campo não existe mais ou não serve a este passo (campo de data; número ou e-mail num passo de botões ou lista). Escolha outro, senão a resposta não é salva.",
+        "saveAnswerNotInOptions": "Estas opções não existem na lista do campo e serão gravadas assim mesmo: {titulos}",
+        "saveAnswerChosenField": "Campo escolhido",
+        "movePipelineLabel": "Funil",
+        "movePickPipeline": "Escolha o funil",
+        "movePipelineChosen": "O funil escolhido",
+        "movePipelineMissing": "Funil apagado",
+        "moveStageLabel": "Etapa de destino",
+        "movePickStage": "Escolha a etapa",
+        "moveStageChosen": "A etapa escolhida",
+        "moveStageMissing": "Etapa apagada",
+        "moveLoading": "Carregando os funis…",
+        "moveLoadError": "Não foi possível carregar os funis e as etapas.",
+        "moveLoadRetry": "Tentar de novo",
+        "moveNoStages": "Este funil não tem etapas. Crie uma em Funis antes de usá-lo aqui.",
+        "moveDestinationMissing": "O destino escolhido aqui não existe mais. Escolha outro — o robô não pode ser ativado assim.",
+        "moveOriginLabel": "Só mover o card que estiver numa destas etapas",
+        "moveOriginAny": "Nenhuma marcada: o card é movido de qualquer etapa, de qualquer funil — inclusive o de um cliente com caso em andamento em outro funil, que sai de lá e vem para cá. Marque as etapas de onde o card pode sair para evitar isso.",
+        "moveOriginCount": "{count, plural, =1 {Só o card que estiver na etapa marcada é movido.} other {Só o card que estiver numa das # etapas marcadas é movido.}} Em qualquer outra, o card fica onde está e o robô segue.",
+        "moveOriginMissing": "{count, plural, =1 {Uma etapa marcada foi apagada} other {# etapas marcadas foram apagadas}} — o robô não pode ser ativado assim.",
+        "moveOriginRemoveMissing": "{count, plural, =1 {Tirar a etapa apagada} other {Tirar as # etapas apagadas}}",
+        "moveOriginMissingAll": "Sem nenhuma marcada, o card passa a vir de qualquer etapa, de qualquer funil — marque de novo as etapas de onde ele pode sair.",
+        "moveHelp": "O card é o que as automações mexeriam: o card aberto mais recente do contato (sem nenhum aberto, o perdido). Contato sem card ganha um, criado já na etapa de destino. Contato que só tem card ganho (cliente) não é mexido. O robô nunca para aqui: o que não moveu fica escrito em Execuções.",
+        "moveHelpOrder": "Se uma automação da etapa de destino aciona outro robô, deixe o Mover card por último, logo antes de Fim ou Transferir: em segundos o outro robô assume a conversa e este para. Na primeira mensagem do contato, o robô roda antes do funil da conexão: um Mover card logo no começo cria o card direto na etapa escolhida, e a etapa de entrada da conexão (com as automações dela) é pulada."
       },
       "categories": {
         "messaging": "Mensagens",
@@ -2301,6 +2343,10 @@
         "set_tag": {
           "label": "Etiquetar contato",
           "blurb": "Adiciona ou remove uma etiqueta do contato"
+        },
+        "move_deal_stage": {
+          "label": "Mover card de etapa",
+          "blurb": "Leva o card do contato a uma etapa do funil"
         },
         "handoff": {
           "label": "Transferir para atendente",
@@ -2348,7 +2394,12 @@
       "modeAdd": "Adicionar",
       "modeRemove": "Remover",
       "tagPicked": "{mode} etiqueta {tag}…",
-      "tagNone": "{mode} etiqueta (nenhuma escolhida)"
+      "tagNone": "{mode} etiqueta (nenhuma escolhida)",
+      "savesToProfile": "grava na ficha",
+      "moveNone": "Mover card (nenhuma etapa escolhida)",
+      "moveTo": "Mover o card para {etapa}",
+      "movePicked": "Mover o card para a etapa escolhida",
+      "moveFromOnly": "{count, plural, =1 {só de 1 etapa} other {só de # etapas}}"
     },
     "header": {
       "backToFlows": "Voltar para Fluxos",
@@ -4050,7 +4101,7 @@
           "desliga": "{falhas} falhas seguidas desligam o endereço, e o contador é do ENDEREÇO, não do evento: uma fila de avisos de negócio represada (com o agendador parado, por exemplo) sai de uma vez e, se o seu sistema estiver fora do ar nessa hora, ela sozinha pode somar as {falhas} — desligando junto os avisos de mensagem. Religue na aba Enviados; isso zera o contador.",
           "repeticao": "Não há ordem garantida — a única exceção: na mensagem que abre a conversa, <code>conversation.created</code> chega antes de <code>message.received</code>. Nos eventos de negócio, o <code>id</code> do envelope (igual a <code>data.event_id</code>) é estável, e descartar repetição por ele é OBRIGATÓRIO: um aviso de negócio interrompido por um reinício do servidor sai de novo, com o mesmo <code>id</code>.",
           "teste": "O botão Enviar teste manda dados fictícios com <code>\"test\": true</code>: filtre-os nos fluxos de produção.",
-          "negocio": "Nos eventos de negócio, <code>deal</code> é o negócio NA HORA DO ENVIO e <code>stage</code> é a etapa DESTE movimento — leia <code>stage</code>, não <code>deal.stage_id</code>. <code>assignee</code> é o responsável e <code>contact</code> traz etiquetas e <code>custom_fields</code>. <code>source</code> diz quem causou: <code>user</code> (alguém nas telas do CRM), <code>channel</code> (a conexão abriu o card na primeira mensagem, do cliente ou da equipe), <code>automation</code> (os passos “Criar negócio”, “Mover card de etapa” e “Marcar ganho ou perdido” das automações), <code>api</code> (a API de negócios: criar e mover pela chave) ou <code>system</code> (o resto, como uma correção feita direto no banco). <code>channel_id</code> é o número da conversa do contato naquele momento, e vem vazio quando ele ainda não conversou por nenhuma conexão — lead de webhook recebido (Typebot) ou do Calendly que ainda não escreveu, ficha criada pela API, card sem contato. Quem filtra por número decide o que fazer com esses.",
+          "negocio": "Nos eventos de negócio, <code>deal</code> é o negócio NA HORA DO ENVIO e <code>stage</code> é a etapa DESTE movimento — leia <code>stage</code>, não <code>deal.stage_id</code>. <code>assignee</code> é o responsável e <code>contact</code> traz etiquetas e <code>custom_fields</code>. <code>source</code> diz quem causou: <code>user</code> (alguém nas telas do CRM), <code>channel</code> (a conexão abriu o card na primeira mensagem, do cliente ou da equipe), <code>automation</code> (os passos “Criar negócio”, “Mover card de etapa” e “Marcar ganho ou perdido” das automações, e o bloco “Mover card de etapa” dos robôs), <code>api</code> (a API de negócios: criar e mover pela chave) ou <code>system</code> (o resto, como uma correção feita direto no banco). <code>channel_id</code> é o número da conversa do contato naquele momento, e vem vazio quando ele ainda não conversou por nenhuma conexão — lead de webhook recebido (Typebot) ou do Calendly que ainda não escreveu, ficha criada pela API, card sem contato. Quem filtra por número decide o que fazer com esses.",
           "atraso": "Aviso atrasado sai mesmo assim, com a hora real do fato em <code>occurred_at</code>.",
           "doisAvisos": "Levar um card a uma etapa marcada como ganho ou perdido gera dois avisos: mudou de etapa e mudou de status. Já o card CRIADO numa etapa assim nasce com esse status e gera só <code>deal.created</code>: quem espera o “ganho” confere também o <code>deal.status</code> desse aviso.",
           "migracao": "Carga em massa de migração de dados não gera aviso."
@@ -4071,7 +4122,7 @@
         "etapa": {
           "titulo": "Quando o lead mudar de etapa, avisar o n8n",
           "texto": "Cadastre um endereço com o evento <code>deal.stage_changed</code> e, no n8n, filtre pelo id da etapa (aba IDs) num nó <b>IF</b>:",
-          "laco": "⚠️ Se o seu fluxo mover o card pela API, isso gera outro aviso, com <code>source</code> igual a <code>api</code>, e o fluxo reagiria ao próprio movimento. O filtro acima o descarta. O passo “Mover card de etapa” das automações sai como <code>automation</code> e continua chegando — por isso o filtro não corta o laço que passa por uma automação: se uma automação da etapa para onde o fluxo leva o card o devolver à etapa observada, o fluxo o move de novo, e a guarda de ciclo do CRM não enxerga esse vaivém. Confira as automações da etapa de destino."
+          "laco": "⚠️ Se o seu fluxo mover o card pela API, isso gera outro aviso, com <code>source</code> igual a <code>api</code>, e o fluxo reagiria ao próprio movimento. O filtro acima o descarta. O passo “Mover card de etapa” das automações (e o bloco de mesmo nome dos robôs) sai como <code>automation</code> e continua chegando — por isso o filtro não corta o laço que passa por uma automação: se uma automação da etapa para onde o fluxo leva o card o devolver à etapa observada, o fluxo o move de novo, e a guarda de ciclo do CRM não enxerga esse vaivém. Confira as automações da etapa de destino."
         },
         "negocio": {
           "titulo": "Criar um negócio numa etapa",

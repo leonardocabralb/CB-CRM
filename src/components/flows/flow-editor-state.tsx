@@ -56,6 +56,7 @@ import { unlinkNodeReferences } from "@/lib/flows/edges";
 import type { CbChannel } from "@/lib/cb-channels/repo";
 import type { FlowNodeRow, FlowRow } from "@/lib/flows/types";
 import { NODE_META, slugify, type BuilderNode, type NodeType } from "./shared";
+import { useCatalogoDoFunil, type CatalogoDoFunil } from "./catalogo-do-funil";
 
 // ============================================================
 // State shape
@@ -88,6 +89,15 @@ export interface FlowEditorContextValue {
    * do flow — duas chamadas do hook na mesma tela dariam duas buscas.
    */
   channels: CbChannel[];
+
+  /**
+   * Funis e etapas da conta (CB, 26/09/2026): o nó "Mover card" escolhe o
+   * destino por eles e o cartão do nó mostra o nome da etapa. Uma consulta
+   * para o editor inteiro — ver `catalogo-do-funil.ts`.
+   */
+  catalogoDoFunil: CatalogoDoFunil;
+  /** Refaz a leitura do catálogo (o botão do aviso "não foi possível carregar"). */
+  recarregarCatalogoDoFunil: () => void;
 
   // Authored state
   state: BuilderState;
@@ -200,6 +210,8 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
       };
     case "set_tag":
       return { mode: "add", tag_id: "", next_node_key: "" };
+    case "move_deal_stage":
+      return { pipeline_id: "", stage_id: "", origem_stage_ids: [], next_node_key: "" };
     case "handoff":
       return { note: "" };
     case "end":
@@ -257,6 +269,9 @@ export function FlowEditorProvider({
   const router = useRouter();
   const t = useTranslations("Flows.editorState");
   const { channels } = useChannels();
+  // Recortado pela conta DO ROBÔ — ver `catalogo-do-funil.ts`.
+  const { catalogo: catalogoDoFunil, tentarDeNovo: recarregarCatalogoDoFunil } =
+    useCatalogoDoFunil(initialFlow.account_id);
 
   const [state, setStateRaw] = useState<BuilderState>(() => ({
     name: initialFlow.name,
@@ -551,6 +566,8 @@ export function FlowEditorProvider({
     () => ({
       flow: initialFlow,
       channels,
+      catalogoDoFunil,
+      recarregarCatalogoDoFunil,
       state,
       setState,
       dirty,
@@ -573,6 +590,8 @@ export function FlowEditorProvider({
     [
       initialFlow,
       channels,
+      catalogoDoFunil,
+      recarregarCatalogoDoFunil,
       state,
       setState,
       dirty,

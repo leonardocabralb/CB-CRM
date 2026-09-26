@@ -24,6 +24,8 @@
  */
 
 import { INTERACTIVE_LIMITS } from "@/lib/whatsapp/meta-api";
+import { ehTipoDaMidiaDoNo } from "./tipo-da-midia";
+import { destinoDaResposta } from "./resposta-na-ficha";
 import { ehMeta } from "@/lib/cb-channels/transporte";
 import type { CbChannelKind } from "@/lib/cb-channels/repo";
 
@@ -246,30 +248,40 @@ function validateNode(
 
     case "send_media": {
       const cfg = node.config as {
-        media_type?: "image" | "video" | "document";
+        media_type?: string;
         media_url?: string;
+        acervo_id?: string | null;
         caption?: string;
         next_node_key?: string;
       };
-      if (
-        !cfg.media_type ||
-        !["image", "video", "document"].includes(cfg.media_type)
-      ) {
+      if (!ehTipoDaMidiaDoNo(cfg.media_type)) {
         issues.push({
           severity: "error",
           scope: "node",
           node_key: node.node_key,
           field: "media_type",
-          message: "Send-media node needs a media type (image, video, or document).",
+          message: "Send-media node needs a media type (image, video, document, or audio).",
         });
       }
-      if (!cfg.media_url?.trim()) {
+      // CB: o arquivo pode vir do ACERVO (`acervo_id`) em vez do upload.
+      if (!cfg.media_url?.trim() && !cfg.acervo_id?.trim()) {
         issues.push({
           severity: "error",
           scope: "node",
           node_key: node.node_key,
           field: "media_url",
           message: "Send-media node needs a file (upload one before activating).",
+        });
+      }
+      // ⚠️ Áudio não leva legenda (a regra da 932): a nota de voz não tem
+      // campo de texto, e a legenda apareceria no fio sem ter viajado.
+      if (cfg.media_type === "audio" && cfg.caption?.trim()) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "caption",
+          message: "Áudio sai como nota de voz e não leva legenda — apague o texto da legenda.",
         });
       }
       // Caption cap mirrors Meta's interactive body cap; documented as a
@@ -703,6 +715,89 @@ function validateNode(
       break;
     }
 
+    case "move_deal_stage": {
+      // CB (26/09/2026, 1053). Aqui só a FORMA: que a etapa pertence ao funil
+      // e que as etapas existem é conferido na ROTA de ativação, com o banco
+      // (`referencias-do-robo.ts`) — este validador roda no navegador, sem
+      // banco.
+      const cfg = node.config as {
+        pipeline_id?: unknown;
+        stage_id?: unknown;
+        origem_stage_ids?: unknown;
+        next_node_key?: string;
+      };
+      const texto = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+      if (!texto(cfg.pipeline_id)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "pipeline_id",
+          message: `"Mover card" no passo "${node.node_key}" precisa do funil de destino.`,
+        });
+      }
+      if (!texto(cfg.stage_id)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "stage_id",
+          message: `"Mover card" no passo "${node.node_key}" precisa da etapa de destino.`,
+        });
+      }
+      if (
+        cfg.origem_stage_ids !== undefined &&
+        cfg.origem_stage_ids !== null &&
+        !(
+          Array.isArray(cfg.origem_stage_ids) &&
+          cfg.origem_stage_ids.every((v) => typeof v === "string" && v.trim() !== "")
+        )
+      ) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "origem_stage_ids",
+          message: `"Mover card" no passo "${node.node_key}" tem uma lista de etapas de origem inválida.`,
+        });
+      } else if (
+        cfg.origem_stage_ids === undefined ||
+        cfg.origem_stage_ids === null ||
+        (Array.isArray(cfg.origem_stage_ids) && cfg.origem_stage_ids.length === 0)
+      ) {
+        // AVISO, não erro: "vazio = qualquer etapa" é a especificação, e o nó
+        // NASCE assim. Mas é o lado perigoso — o card aberto do cliente com
+        // caso em outro funil (os do Jurídico ficam abertos) sai de lá e vem
+        // para cá, a régua que já fazia o Calendly arrastar o caso para o
+        // comercial. Dito no painel, sem impedir a ativação.
+        issues.push({
+          severity: "warning",
+          scope: "node",
+          node_key: node.node_key,
+          field: "origem_stage_ids",
+          message: `"Mover card" no passo "${node.node_key}" não tem etapa de origem marcada: o card aberto de QUALQUER funil é trazido — inclusive o de um cliente com caso em andamento em outro funil. Marque as etapas de onde o card pode sair.`,
+        });
+      }
+      if (!cfg.next_node_key) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: `"Mover card" no passo "${node.node_key}" precisa apontar para o próximo passo.`,
+        });
+      } else if (!knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: `"Mover card" aponta para um passo que não existe ("${cfg.next_node_key}").`,
+        });
+      }
+      break;
+    }
+
     case "handoff":
     case "end":
       // Terminal nodes have no outgoing edges; nothing to validate
@@ -718,7 +813,34 @@ function validateNode(
       });
   }
 
+  issues.push(...validarSalvarEm(node));
+
   return issues;
+}
+
+/**
+ * CB (26/09/2026): "Salvar a resposta" (`salvar_em`) — ver
+ * `resposta-na-ficha.ts`. Ausente/vazio não grava nada e não é erro. Nome só
+ * no "Coletar resposta": o título de um botão não é nome de ninguém, e gravado
+ * FIXADO não sairia mais da ficha.
+ */
+function validarSalvarEm(node: NodeInput): ValidationIssue[] {
+  const bruto = (node.config as { salvar_em?: unknown }).salvar_em;
+  if (bruto === undefined || bruto === null || bruto === "") return [];
+  if (destinoDaResposta(node.node_type, bruto)) return [];
+  const soNome =
+    bruto === "name" && (node.node_type === "send_buttons" || node.node_type === "send_list");
+  return [
+    {
+      severity: "error",
+      scope: "node",
+      node_key: node.node_key,
+      field: "salvar_em",
+      message: soNome
+        ? "Botões e listas gravam a resposta num campo da ficha, não no nome do contato."
+        : `"Salvar a resposta" aponta para um destino inválido ("${String(bruto)}").`,
+    },
+  ];
 }
 
 // ============================================================
@@ -753,7 +875,8 @@ function outgoingEdges(node: NodeInput): string[] {
     case "send_message":
     case "send_media":
     case "collect_input":
-    case "set_tag": {
+    case "set_tag":
+    case "move_deal_stage": {
       const cfg = node.config as { next_node_key?: string };
       return cfg.next_node_key ? [cfg.next_node_key] : [];
     }

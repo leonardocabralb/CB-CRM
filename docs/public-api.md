@@ -1050,8 +1050,10 @@ the change:
   send** to them — from the CRM screens, from the paired phone, or through
   `POST /api/v1/messages` — so `channel` does not mean "inbound lead";
 - `automation` — an automation's "Create Deal", "Move deal to stage" or
-  "Mark won or lost" step — including an automation that one of your API
-  calls set off (a tag applied through this API, for instance);
+  "Mark won or lost" step, or a robot's (flow's) "Move card" block
+  (which also creates the card when the contact has none) — including an
+  automation that one of your API calls set off (a tag applied through this
+  API, for instance);
 - `api` — deal writes through this API (`POST`/`PATCH /api/v1/deals`);
 - `system` — anything else done without a signed-in user (a fix run
   straight in the database, for instance). Before migration `1040` this
