@@ -173,7 +173,11 @@ vi.mock('@/lib/ai/digitando', async (original) => ({
   mostrarDigitando: vi.fn(async () => 'pulado'),
 }))
 vi.mock('@/lib/automations/drain-events', () => ({ drenarEventosDeFunil: vi.fn(async () => ({})) }))
-vi.mock('@/lib/ia-chaves/repo', () => ({ lerChave: vi.fn() }))
+vi.mock('@/lib/ia-chaves/repo', () => ({
+  lerChave: vi.fn(),
+  // A base do agente (F3) sem chave da OpenAI: só a busca por palavras.
+  lerChaveDeEmbeddings: vi.fn(async () => ({ chave: null, ilegivel: false, recusada: false })),
+}))
 vi.mock('@/lib/transcricao/transcrever', () => ({ transcreverAudio: vi.fn() }))
 vi.mock('@/lib/rate-limit', () => ({
   checkRateLimit: vi.fn(() => ({ success: true })),
@@ -922,6 +926,9 @@ describe('executarTurno — horário, teto e limite', () => {
     expect(turno().status).toBe('sem_resposta')
     expect(generateReply).not.toHaveBeenCalled()
     expect(conversa().ai_autoreply_disabled).toBe(false)
+    // O turno barrado não lê o que o agente vê nem a base (F3), nem grava retrato.
+    expect(banco.chamadas.some((c) => c.tabela === 'cb_ia_agente_documentos')).toBe(false)
+    expect(turno().contexto ?? null).toBeNull()
   })
 })
 
@@ -1782,6 +1789,21 @@ describe('executarTurno — áudio', () => {
       expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
       expect(generateReply).not.toHaveBeenCalled()
       expect(notas()).toHaveLength(0)
+      // A PRÉVIA do prazo vem antes da vaga da conta: reagendar não a gasta (Codex, #312).
+      expect(checkRateLimit).not.toHaveBeenCalled()
+    })
+
+    it('sobra prazo para gerar, mas não para ler o contexto (o embedding): reagenda SEM gastar a vaga', async () => {
+      gatilhoDeAudio(10_000)
+      vi.mocked(transcreverAudio).mockImplementation(async () => {
+        // 45 s − 10 s de reserva = 35 s; sobram ~7 s: dá para gerar, não para o teto do embedding (8 s).
+        vi.setSystemTime(Date.now() + 28_000)
+        return { status: 'pronta', transcricao: 'quero falar do contrato' }
+      })
+      await executarTurno(TURNO)
+      expect(turno()).toMatchObject({ status: 'aguardando', rodando_desde: null })
+      expect(checkRateLimit).not.toHaveBeenCalled()
+      expect(generateReply).not.toHaveBeenCalled()
     })
 
     it('⚠️ nada foi transcrito nesta rodada: `falhou` — sem laço de reagendamento', async () => {
@@ -1828,5 +1850,118 @@ describe('executarTurno — áudio', () => {
     await executarTurno(TURNO)
     expect(turno()).toMatchObject({ status: 'descartado', erro: 'mensagem mais nova do cliente' })
     expect(after).not.toHaveBeenCalled()
+  })
+})
+
+// ------------------------------------------------------------
+// O que o agente vê (F3): blocos de acesso, a base DELE e o retrato
+// ------------------------------------------------------------
+
+describe('executarTurno — o que o agente vê (F3)', () => {
+  const pedido = () => vi.mocked(generateReply).mock.calls[0][0].systemPrompt as string
+
+  function comEtiquetas(): void {
+    agenteLido().acesso = { etiquetas: true, negocio: true }
+    banco.tabelas.contact_tags = [{ contact_id: 'contato-1', tag_id: 'tag-1' }]
+    banco.tabelas.tags = [{ id: 'tag-1', account_id: CONTA, name: 'bancário' }]
+    banco.tabelas.pipelines[0].account_id = CONTA
+    banco.tabelas.pipelines[0].name = 'Comercial'
+    banco.tabelas.pipeline_stages[0].name = 'Triagem'
+  }
+
+  it('nada marcado e nenhum documento: o pedido não fala do cliente, e o retrato fica vazio', async () => {
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(pedido()).not.toContain('What you know about this customer')
+    expect(turno().contexto).toEqual({ blocos: [], documentos: [], trechos: [] })
+    // Nada marcado = nada lido.
+    expect(banco.chamadas.some((c) => ['contacts', 'tags', 'contact_tags', 'cb_asaas_config'].includes(c.tabela))).toBe(false)
+  })
+
+  it('os blocos marcados entram no pedido — o negócio é o CARD do turno — e o retrato é gravado', async () => {
+    comEtiquetas()
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(pedido()).toContain('What you know about this customer')
+    expect(pedido()).toContain('Deal (open):\n- Pipeline: Comercial\n- Stage: Triagem')
+    expect(pedido()).toContain('Tags: bancário')
+    expect(turno().contexto).toEqual({
+      blocos: [
+        expect.objectContaining({ bloco: 'negocio' }),
+        { bloco: 'etiquetas', texto: 'Tags: bancário' },
+      ],
+      documentos: [],
+      trechos: [],
+    })
+  })
+
+  it('⚠️ bloco que não se lê vai como "unavailable" e NÃO derruba o turno', async () => {
+    comEtiquetas()
+    banco.falhas.push({ tabela: 'contact_tags', op: 'select', erro: { message: 'timeout' } })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(pedido()).toContain('Tags: unavailable right now.')
+    expect(pedido()).toContain('- Stage: Triagem')
+  })
+
+  it('a base DO AGENTE: os trechos dos documentos dele entram, com o documento no retrato', async () => {
+    banco.tabelas.cb_ia_agente_documentos = [{ account_id: CONTA, ia_agente_id: AGENTE, documento_id: 'doc-faq' }]
+    banco.rpcs.cb_ia_buscar_conhecimento_fts = (a) => ({
+      data:
+        a.p_ia_agente_id === AGENTE && a.p_account_id === CONTA
+          ? [{ id: 'chunk-1', documento_id: 'doc-faq', content: 'Atendemos das 9h às 18h.', score: 1 }]
+          : [],
+      error: null,
+    })
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(pedido()).toContain('[1] Atendemos das 9h às 18h.')
+    expect(turno().contexto).toEqual({
+      blocos: [],
+      documentos: ['doc-faq'],
+      trechos: [{ documento: 'doc-faq', texto: 'Atendemos das 9h às 18h.' }],
+    })
+    // A consulta é a mensagem do cliente.
+    expect(banco.rpcChamadas.find((r) => r.nome === 'cb_ia_buscar_conhecimento_fts')?.args.p_query).toBe(
+      'Oi, preciso de ajuda',
+    )
+  })
+
+  it('a base que falha fica vazia e o turno segue', async () => {
+    banco.tabelas.cb_ia_agente_documentos = [{ account_id: CONTA, ia_agente_id: AGENTE, documento_id: 'doc-faq' }]
+    // Sem a RPC registrada, o banco falso devolve erro (a função não existe).
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('respondeu')
+    expect(pedido()).not.toContain('Reference material')
+  })
+
+  it('o retrato é gravado com a cerca de posse: turno recolhido no meio não é sobrescrito', async () => {
+    comEtiquetas()
+    banco.antes = (tabela, op) => {
+      if (tabela === 'cb_ia_turnos' && op === 'update' && turno().status === 'rodando' && !turno().contexto) {
+        banco.antes = null
+        Object.assign(turno(), { status: 'incerto', rodando_desde: haMs(0) })
+      }
+    }
+    await executarTurno(TURNO)
+    expect(turno().contexto).toBeUndefined()
+    expect(engineSendText).not.toHaveBeenCalled()
+    // Posse perdida = abandona ANTES de gerar: sem gasto no provedor (Codex, #312).
+    expect(generateReply).not.toHaveBeenCalled()
+    expect(turno().status).toBe('incerto')
+  })
+
+  it('ERRO de banco ao gravar o retrato não para o turno (melhor esforço)', async () => {
+    comEtiquetas()
+    let uma = true
+    banco.antes = (tabela, op) => {
+      if (uma && tabela === 'cb_ia_turnos' && op === 'update' && turno().status === 'rodando' && !turno().contexto) {
+        uma = false
+        banco.falhas.push({ tabela: 'cb_ia_turnos', op: 'update', erro: { message: 'timeout' } })
+      }
+    }
+    await executarTurno(TURNO)
+    expect(generateReply).toHaveBeenCalled()
+    expect(turno().status).toBe('respondeu')
   })
 })

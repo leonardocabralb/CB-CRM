@@ -1,5 +1,7 @@
 import type { useTranslations } from 'next-intl';
 
+import { BLOCOS_DO_ACESSO } from './tipos';
+
 /**
  * Os CÓDIGOS que as rotas dos agentes devolvem, traduzidos pelo dicionário
  * (`IaAgentes.erro.<código>`). Chave MONTADA: o teste
@@ -33,6 +35,8 @@ export const CODIGOS_CONHECIDOS = [
   'sem_mensagens',
   'sem_configuracao',
   'cotacao_invalida',
+  'documento_invalido',
+  'contato_nao_encontrado',
   'invalid_key',
   'rate_limited',
   'timeout',
@@ -87,4 +91,16 @@ export function rotuloDoStatusDoTurno(t: ReturnType<typeof useTranslations>, sta
   return (STATUS_DO_TURNO as readonly string[]).includes(status)
     ? t(`turnos.status.${status}`)
     : t('turnos.statusDesconhecido', { status });
+}
+
+/**
+ * O nome de um bloco do acesso (F3) — na sub-aba Acesso, no "o agente viu"
+ * do Playground e no retrato da sub-aba Turnos (`IaAgentes.acesso.bloco.<b>`).
+ * Chave MONTADA, cobrada em `textos.test.ts`. Bloco fora da lista (um novo no
+ * servidor antes da tela) cai em `acesso.blocoDesconhecido`, nunca na chave crua.
+ */
+export function rotuloDoBloco(t: ReturnType<typeof useTranslations>, bloco: string): string {
+  return (BLOCOS_DO_ACESSO as readonly string[]).includes(bloco)
+    ? t(`acesso.bloco.${bloco}`)
+    : t('acesso.blocoDesconhecido', { bloco });
 }

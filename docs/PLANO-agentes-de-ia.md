@@ -21,7 +21,7 @@
 | F1b | Agentes (lista e detalhe), Playground e Uso por agente. **Nenhum agente responde ainda** | **no ar** (26/09): 1048 aplicada depois do deploy da F1a, PR mesclado | 1048 | #295 |
 | F2 | **Desenho simplificado (26/09, D24–D27):** o agente atua nas ETAPAS do funil que o administrador marca; a triagem move o card para a etapa do agente escolhido; gente respondeu → para até "Retomar IA"; só cards que entram na etapa depois de o agente ser ligado. Motor, telas (onde atua, faixa, bolha, sub-aba Turnos) e o fim do auto-reply legado num PR só | 1049 aplicada (26/09, antes do deploy); e2e no preview ok: triagem passou e moveu o card, o destino respondeu por WhatsApp, a resposta da equipe pausou, "Retomar" religou, card antigo não atendido (D27); 1050 (a rajada fica com a mensagem mais nova, Codex) | 1049, 1050 | #309 |
 | Piloto | **Bancário - Comercial** (D22), com dois agentes. ⚠️ Só depois do corte da Kommo (medição de 25/09, seção 9) | aguardando o corte | — | — |
-| F3 | O que cada agente vê (ficha, campos, negócio, cobranças, transcrições) + base de conhecimento por agente (D20) | a fazer | sim | — |
+| F3 | O que cada agente vê (ficha, campos, negócio, etiquetas, cobranças, reunião) + base de conhecimento por agente (D20) | 1052 aplicada (26/09, antes do deploy); e2e no preview ok: o agente de cobrança viu a ficha e as cobranças do contato escolhido e não a base; o de triagem viu só o documento marcado e respondeu por ele ("qual o horário de atendimento de vocês?", que a busca antiga não acharia); uso = banco | 1052 | #312 |
 | F4a | Medição das ferramentas no Gemini + o laço de ferramentas + as de leitura, transferir e passar para outro agente | a fazer | talvez | — |
 | F4b | Ferramentas de escrita (mover etapa, etiquetas, campo, tarefa, executar automação) com origem `ia` na trilha | a fazer | sim | — |
 | F5 | Medição do Calendly + reagendamento pela IA (horários livres e agendamento) | a fazer | talvez | — |
@@ -88,6 +88,7 @@ As respostas às 15 perguntas da análise.
 | D25 | Triagem | Um agente como os outros, na etapa de entrada do funil. Quando decide, **move o card para a etapa do agente escolhido** (entre os de "pode passar para"), e esse agente responde a mesma mensagem em seguida. Uma passagem por mensagem. |
 | D26 | Gente respondeu | **A IA para naquela conversa até alguém clicar "Retomar IA"** — mudar o card de etapa não retoma (D10, agora pegajosa). |
 | D27 | Cards antigos | **Só cards que ENTRAREM na etapa depois de o agente ser ligado nela.** Card parado na etapa (os da Kommo) não é atendido. Substitui D16, D17 e a P8. |
+| D28 | Ferramentas (26/09/2026) | **Ações JUNTO com a resposta**, não um laço de ferramentas: o agente devolve a resposta ao cliente e as ações que quer fazer (mover o card, etiquetar, preencher campo, criar tarefa, executar automação; na F5, marcar reunião); o servidor confere cada ação contra o que foi liberado NAQUELE agente e executa antes de enviar. Uma chamada ao modelo por resposta, nos três provedores. O que o agente precisa LER (cobranças com o link, horários livres) chega pronto nos blocos de acesso (F3). Substitui o laço de ferramentas da 5.6/5.7 e da F4a. |
 
 ---
 
@@ -220,6 +221,8 @@ Cada agente marca o que entra no contexto; **nada marcado = só a conversa** (fe
 ⚠️ Mensagem sem carimbo de conexão (histórico anterior ao multi-canal) **não entra** — atribuí-la a uma conexão seria inventar, a regra de `canais-do-fio.ts`.
 
 ### 5.6 Ferramentas (F4a, F4b, F5; D5–D8)
+
+> ⚠️ **Substituído em parte pela D28 (26/09/2026):** as ações vêm JUNTO com a resposta, numa chamada só, e o que o agente lê vem nos blocos de acesso — não há laço de ferramentas, adaptador por provedor nem `thoughtSignature`. Continuam valendo: ids do servidor, parâmetros travados por agente, a D5 (nada fora do CRM) e a trava de link inventado.
 
 Regras que valem para todas:
 - **Ids vêm do servidor, nunca do modelo.** Conta, contato, conversa, negócio e cobrança saem do contexto do turno; o modelo escolhe só entre opções que o servidor ofereceu (etapas permitidas, etiquetas permitidas…). É a defesa contra o cliente que escreve "marque minha fatura como paga".

@@ -4335,20 +4335,78 @@
       "sumiu": "Este agente não existe mais (ou foi arquivado).",
       "abas": "Seções do agente",
       "configuracao": "Configuração",
+      "acesso": "Acesso",
+      "base": "Base de conhecimento",
       "playground": "Playground",
       "uso": "Uso",
       "turnos": "Turnos"
     },
+    "acesso": {
+      "explicacao": "O que este agente pode ver do cliente, além da conversa. É dado do cliente enviado ao provedor de IA a cada resposta: marque só o que o trabalho dele pede. Nada marcado, ele vê só a conversa.",
+      "soAConversa": "Nada marcado: hoje este agente vê só a conversa.",
+      "bloco": {
+        "ficha": "Ficha",
+        "campos": "Campos personalizados",
+        "negocio": "Negócio",
+        "etiquetas": "Etiquetas",
+        "cobrancas": "Cobranças",
+        "reuniao": "Reunião"
+      },
+      "blocoDesconhecido": "Outro ({bloco})",
+      "dica": {
+        "ficha": "Nome, telefone, e-mail e empresa do contato.",
+        "negocio": "O card aberto do contato: funil, etapa, valor e há quanto tempo está na etapa.",
+        "etiquetas": "As etiquetas do contato.",
+        "cobrancas": "As parcelas em aberto no Asaas, com vencimento e valor, e se a leitura está atualizada. Só leitura.",
+        "reuniao": "A próxima reunião marcada pelo Calendly e o link para remarcar."
+      },
+      "campos": {
+        "dica": "Marque um a um os campos que o agente pode ler. Campo não marcado não vai para a IA.",
+        "buscar": "Buscar campo…",
+        "falhou": "Não foi possível carregar os campos personalizados.",
+        "nenhum": "Esta conta não tem campos personalizados.",
+        "nenhumNaBusca": "Nenhum campo com esse nome.",
+        "marcados": "{n, plural, =0 {Nenhum marcado} one {# marcado} other {# marcados}}",
+        "limite": "No máximo {max} campos por agente. Desmarque um para marcar outro."
+      },
+      "salvar": "Salvar acesso",
+      "salvo": "Acesso salvo."
+    },
+    "base": {
+      "explicacao": "Os documentos da base de conhecimento que este agente consulta para responder. Documento não marcado, o agente não usa; nenhum marcado, ele responde sem base.",
+      "gerenciar": "Gerenciar documentos",
+      "usar": "Usar neste agente",
+      "falhou": "Não foi possível carregar a base de conhecimento.",
+      "vazia": "A conta ainda não tem documentos na base de conhecimento. Crie-os em Gerenciar documentos.",
+      "atualizado": "Atualizado em {data}",
+      "marcados": "{n, plural, =0 {Nenhum documento marcado: o agente responde sem base.} one {# documento marcado} other {# documentos marcados}}",
+      "salvar": "Salvar base",
+      "salvo": "Base de conhecimento salva.",
+      "teto": "É o máximo por agente ({n} documentos): para marcar outro, desmarque um."
+    },
     "playground": {
-      "explicacao": "Converse como se fosse o cliente. Vale o que está SALVO na Configuração, com o mesmo modelo da produção; o gasto conta como teste.",
-      "configNaoSalva": "Há alterações não salvas na Configuração. O Playground testa o que está SALVO.",
+      "explicacao": "Converse como se fosse o cliente. Vale o que está SALVO no agente (Configuração, Acesso e Base de conhecimento), com o mesmo modelo da produção; o gasto conta como teste.",
+      "naoSalvo": "Há alterações não salvas em {abas}. O Playground testa o que está SALVO.",
       "recomecar": "Recomeçar",
       "vazio": "Envie uma mensagem para ver como este agente responderia.",
       "transferiria": "Aqui o agente transferiria para uma pessoa",
       "passaria": "Aqui o agente passaria a conversa para {agente}, que responderia esta mesma mensagem",
       "tokens": "{n} tokens",
       "pensando": "Pensando…",
-      "placeholder": "Escreva como o cliente escreveria…"
+      "placeholder": "Escreva como o cliente escreveria…",
+      "contato": "Cliente do teste",
+      "contatoDica": "Opcional. Com um cliente escolhido, o agente vê os dados dele que estão marcados em Acesso; sem cliente, só a conversa. Trocar de cliente recomeça a conversa.",
+      "contatoNenhum": "Nenhum (só a conversa)",
+      "contatoBuscar": "Buscar por nome ou telefone…",
+      "contatoAjuda": "Digite ao menos 2 letras para buscar.",
+      "carregandoContatos": "Carregando clientes…",
+      "contatoVazio": "Nenhum cliente encontrado para a busca.",
+      "contatoFalhou": "A busca falhou. Digite de novo para tentar.",
+      "contatoMais": "Mostrando os {count} primeiros. Continue digitando para afinar.",
+      "limparContato": "Tirar o cliente",
+      "viu": "O agente viu: {itens} · {trechos}",
+      "conversa": "a conversa",
+      "trechos": "{n, plural, =0 {nenhum trecho da base} one {# trecho da base} other {# trechos da base}}"
     },
     "uso": {
       "explicacao": "Últimos {dias} dias. Os valores em R$ são uma ESTIMATIVA pelo preço de lista de cada modelo e pela cotação de hoje.",
@@ -4391,6 +4449,13 @@
       "vazio": "Este agente ainda não foi chamado a responder.",
       "falhou": "Não foi possível carregar os turnos.",
       "semContato": "Contato sem nome",
+      "contexto": {
+        "titulo": "O que o agente viu",
+        "soAConversa": "Só a conversa: nenhum dado do cliente entrou neste turno.",
+        "base": "{n, plural, =0 {Nenhum trecho da base} one {Trechos de # documento da base} other {Trechos de # documentos da base}}",
+        "documentoApagado": "(documento apagado)",
+        "documento": "(documento)"
+      },
       "statusDesconhecido": "Outro ({status})",
       "status": {
         "aguardando": "Aguardando",
@@ -4444,6 +4509,8 @@
       "sem_mensagens": "Escreva uma mensagem para testar.",
       "sem_configuracao": "Cadastre primeiro a chave de um provedor em Integrações.",
       "cotacao_invalida": "Informe a cotação como um número, por exemplo 5,60.",
+      "documento_invalido": "Um dos documentos marcados não existe mais na base. Recarregue a página e tente de novo.",
+      "contato_nao_encontrado": "Este cliente não foi encontrado nesta conta. Escolha outro.",
       "invalid_key": "O provedor recusou a chave.",
       "rate_limited": "O provedor pediu para esperar — tente em instantes.",
       "timeout": "O provedor não respondeu a tempo.",

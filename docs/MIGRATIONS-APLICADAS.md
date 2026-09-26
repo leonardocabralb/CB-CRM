@@ -829,6 +829,19 @@ nome da época em que foram aplicadas.
   antes do merge do PR #309, com autorização do operador; conferida no
   catálogo (UMA função, o corpo novo, EXECUTE só do `service_role`, a
   conferência sem sobra).
+- **1052_cb_ia_agente_documentos** — a F3 dos agentes de IA:
+  `cb_ia_agente_documentos` (a base de conhecimento POR AGENTE; fechada ao
+  navegador, FKs compostas pela conta, CASCADE), o `UNIQUE (id, account_id)`
+  de `ai_knowledge_documents` que a FK exige, as buscas
+  `cb_ia_buscar_conhecimento_semantico`/`_fts` (só os documentos do agente;
+  agente nulo = nada; por palavras em OU) e `cb_ia_turnos.contexto`. Era 1050
+  (a 1050 virou a da rajada; a 1051 não existe — o Previdenciário, que a tinha
+  reservado, usou a 1053).
+  Aplicada em 26/09/2026 pela Management API (histórico `20260926221248`),
+  depois do replay verde do CI e antes do merge do PR #312, com autorização
+  do operador; conferida no catálogo (RLS sem policy, `anon`/`authenticated`
+  sem nada, as buscas só do `service_role`, a coluna e o índice único, a
+  conferência sem sobra) e pelo e2e no preview.
 - **1053_cb_robo_mover_card** — o CHECK de `flow_nodes.node_type` ganha
   `'move_deal_stage'` (o nó "Mover card de etapa" do robô; a config mora no
   JSONB). DROP pela FORMA (a 010 escreveu o CHECK inline) + ADD com o nome

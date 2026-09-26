@@ -17,7 +17,31 @@ export const LIMITES = {
   modelo: 100,
   tetoMin: 1,
   tetoMax: 100,
+  /** Campos personalizados que um agente pode ver (F3). */
+  campos: 50,
+  /** Documentos da base marcados para um agente (F3, D20). */
+  documentos: 200,
 } as const
+
+/**
+ * O que o agente VÊ além da conversa (F3, plano 5.5). Fechado por padrão:
+ * nada marcado = só a conversa — é dado de cliente indo a provedor externo,
+ * a mesma régua do `radar_enabled`. `campos` são ids de `custom_fields`,
+ * escolhidos um a um. O JSON gravado em `cb_ia_agentes.acesso` usa as
+ * MESMAS chaves.
+ */
+export interface AcessoDoAgente {
+  ficha: boolean
+  campos: string[]
+  negocio: boolean
+  etiquetas: boolean
+  cobrancas: boolean
+  reuniao: boolean
+}
+
+/** Os blocos do acesso, na ordem em que o pedido os mostra ao modelo. */
+export const BLOCOS_DO_ACESSO = ['ficha', 'campos', 'negocio', 'etiquetas', 'cobrancas', 'reuniao'] as const
+export type BlocoDoAcesso = (typeof BLOCOS_DO_ACESSO)[number]
 
 /** Horário de funcionamento: dias da semana (0 = domingo) e a janela do dia. */
 export interface Horario {
@@ -45,6 +69,8 @@ export interface IaAgente {
   podePassarPara: string[]
   /** Membro que recebe a transferência; nulo = fila sem responsável. */
   transferirPara: string | null
+  /** O que ele vê além da conversa (F3). */
+  acesso: AcessoDoAgente
   /** Quando foi LIGADO pela última vez (gatilho da 1049); nulo = nunca. D27. */
   ativadoEm: string | null
   arquivadoEm: string | null
@@ -68,7 +94,7 @@ export type AgenteComEtapas = IaAgente & { etapas: EtapaDoAgente[] }
 
 /** Colunas lidas: nomeadas, nunca `*` (uma coluna sem GRANT derrubaria a consulta). */
 export const COLUNAS_DO_AGENTE =
-  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, ativado_em, arquivado_em, created_at, updated_at'
+  'id, account_id, nome, descricao, instrucoes, regras, provedor, modelo, ativo, conexoes, horario, teto_respostas, pode_passar_para, transferir_para, acesso, ativado_em, arquivado_em, created_at, updated_at'
 
 function ehProvedor(v: unknown): v is AiProvider {
   return v === 'openai' || v === 'anthropic' || v === 'gemini'
@@ -79,6 +105,35 @@ function listaDeTexto(v: unknown): string[] {
 }
 
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Lê o `acesso` guardado (ou mandado pela tela) — parse, nunca `as`. Só o
+ * booleano `true` liga: do JSONB, `"true"` e `1` são truthy e ligariam um
+ * bloco que ninguém marcou. `campos`: só uuids, sem repetição, até
+ * `LIMITES.campos`. Forma estranha = nada marcado (fechado), nunca exceção.
+ * Id de campo que não existe mais fica aqui e é ignorado na LEITURA.
+ */
+export function lerAcesso(v: unknown): AcessoDoAgente {
+  const a = v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
+  const campos = Array.isArray(a.campos)
+    ? [...new Set(a.campos.filter((x): x is string => typeof x === 'string' && UUID.test(x)))].slice(0, LIMITES.campos)
+    : []
+  return {
+    ficha: a.ficha === true,
+    campos,
+    negocio: a.negocio === true,
+    etiquetas: a.etiquetas === true,
+    cobrancas: a.cobrancas === true,
+    reuniao: a.reuniao === true,
+  }
+}
+
+/** O bloco está marcado? (`campos` = pelo menos um campo escolhido.) */
+export function blocoMarcado(acesso: AcessoDoAgente, bloco: BlocoDoAcesso): boolean {
+  return bloco === 'campos' ? acesso.campos.length > 0 : acesso[bloco]
+}
 
 /** Lê o `horario` guardado; forma estranha vira nulo (= sempre), nunca exceção. */
 export function lerHorario(v: unknown): Horario | null {
@@ -112,6 +167,7 @@ export function lerLinhaDoAgente(linha: Record<string, unknown>): IaAgente | nul
     tetoRespostas: typeof linha.teto_respostas === 'number' ? linha.teto_respostas : 10,
     podePassarPara: listaDeTexto(linha.pode_passar_para),
     transferirPara: typeof linha.transferir_para === 'string' ? linha.transferir_para : null,
+    acesso: lerAcesso(linha.acesso),
     ativadoEm: typeof linha.ativado_em === 'string' ? linha.ativado_em : null,
     arquivadoEm: typeof linha.arquivado_em === 'string' ? linha.arquivado_em : null,
     createdAt: typeof linha.created_at === 'string' ? linha.created_at : '',
@@ -133,6 +189,7 @@ export interface AlteracaoDoAgente {
   tetoRespostas?: number
   podePassarPara?: string[]
   transferirPara?: string | null
+  acesso?: AcessoDoAgente
   /** Ids das etapas em que atua (D24). Não é coluna do agente: vai para `cb_ia_agente_etapas`. */
   etapas?: string[]
 }
@@ -154,8 +211,6 @@ export type CodigoDeRecusa =
 export type LeituraDaAlteracao =
   | { ok: true; valor: AlteracaoDoAgente }
   | { ok: false; codigo: CodigoDeRecusa }
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function lerIds(v: unknown): string[] | null {
   if (!Array.isArray(v)) return null
@@ -242,6 +297,19 @@ export function lerAlteracao(corpo: unknown, criacao: boolean): LeituraDaAlterac
     }
     v.tetoRespostas = n
   }
+  if ('acesso' in c) {
+    // A tela manda o objeto inteiro. `campos` fora da forma (não lista, id
+    // que não é uuid, mais que o teto) RECUSA — descartar em silêncio tiraria
+    // do agente um campo que o administrador acabou de marcar.
+    const a = c.acesso
+    if (!a || typeof a !== 'object' || Array.isArray(a)) return { ok: false, codigo: 'lista_invalida' }
+    const campos = (a as Record<string, unknown>).campos
+    if (campos !== undefined) {
+      const ids = lerIds(campos)
+      if (!ids || ids.length > LIMITES.campos) return { ok: false, codigo: 'lista_invalida' }
+    }
+    v.acesso = lerAcesso(a)
+  }
   if ('horario' in c) {
     if (c.horario === null) v.horario = null
     else {
@@ -268,7 +336,19 @@ export function colunasDaAlteracao(a: AlteracaoDoAgente): Record<string, unknown
   if (a.tetoRespostas !== undefined) c.teto_respostas = a.tetoRespostas
   if (a.podePassarPara !== undefined) c.pode_passar_para = a.podePassarPara
   if (a.transferirPara !== undefined) c.transferir_para = a.transferirPara
+  if (a.acesso !== undefined) c.acesso = a.acesso
   return c
+}
+
+/**
+ * O corpo do `PUT …/documentos` (D20): `{ documentoIds: string[] }`, a lista
+ * INTEIRA. `null` = forma errada (não é lista, id que não é uuid, mais que o
+ * teto). Sem repetição.
+ */
+export function lerDocumentosPedidos(corpo: unknown): string[] | null {
+  if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) return null
+  const ids = lerIds((corpo as Record<string, unknown>).documentoIds)
+  return ids && ids.length <= LIMITES.documentos ? ids : null
 }
 
 /** Linha de `cb_ia_agente_etapas` (com `pipeline_stages(pipeline_id)` embutido) → etapa. */

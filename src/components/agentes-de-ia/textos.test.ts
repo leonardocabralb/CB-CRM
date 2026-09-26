@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { CODIGOS_CONHECIDOS, STATUS_DO_TURNO } from './textos'
-import { MODELOS_DE_PARTIDA } from './tipos'
+import { BLOCOS_DO_ACESSO, CAIXAS_DO_ACESSO, MODELOS_DE_PARTIDA } from './tipos'
 
 // As telas dos agentes de IA pedem chaves MONTADAS (`erro.${código}`,
 // `modelos.${m}.*`, `dia.${d}`, `uso.modo.${m}`), que escapam dos portões de
@@ -43,6 +43,12 @@ describe.each(['en.json', 'pt-BR.json'])('IaAgentes em %s', (arquivo) => {
   it('cada status de turno tem texto (a sub-aba Turnos), e o desconhecido também', () => {
     for (const s of STATUS_DO_TURNO) expect(em(d, `turnos.status.${s}`), s).toBeTruthy()
     expect(em(d, 'turnos.statusDesconhecido')).toBeTruthy()
+  })
+
+  it('cada bloco do acesso (F3) tem nome, cada caixa tem dica, e o desconhecido também', () => {
+    for (const b of BLOCOS_DO_ACESSO) expect(em(d, `acesso.bloco.${b}`), b).toBeTruthy()
+    for (const c of CAIXAS_DO_ACESSO) expect(em(d, `acesso.dica.${c}`), c).toBeTruthy()
+    expect(em(d, 'acesso.blocoDesconhecido')).toBeTruthy()
   })
 
   it('os dias e os modos de uso', () => {

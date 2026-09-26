@@ -40,6 +40,12 @@
 //  - Evento de funil ainda não drenado cuja etapa tem automação escutando
 //    REAGENDA o turno (a boas-vindas da etapa ainda vai sair), por até
 //    `JANELA_DO_AUDIO_MS` contada do gatilho (`funilAindaVaiFalar`).
+//  - O que o agente VÊ além da conversa (F3): os blocos de acesso marcados e
+//    os trechos da base DELE, lidos UMA vez por turno, antes de gerar
+//    (`lerOQueOAgenteVe`). Bloco que não se lê vai como "unavailable", base
+//    que falha fica vazia — nenhum dos dois derruba o turno. O RETRATO do que
+//    entrou no pedido é gravado em `cb_ia_turnos.contexto` (1052), com a
+//    cerca de posse, antes da geração.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -62,7 +68,9 @@ import { lerChave } from '@/lib/ia-chaves/repo'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { transcreverAudio } from '@/lib/transcricao/transcrever'
 
+import { lerOQueOAgenteVe } from './acesso'
 import type { IaAgente } from './agente'
+import { consultaDaUltimaMensagem, PRAZO_DO_EMBEDDING_MS } from './conhecimento'
 import { lerConversaDaConexao } from './contexto'
 import {
   agendarDisparo,
@@ -744,11 +752,11 @@ async function conduzir(
 
   const opcoes = await agentesParaPassar(turno, agente)
 
-  const restante = PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS
-  if (restante < 3_000) {
-    // A transcrição comeu o prazo: ela é idempotente e já ficou gravada, e o
-    // turno seguinte começa com o prazo cheio. ⚠️ Só quando ela AVANÇOU nesta
-    // rodada — é o que impede o laço.
+  // PRÉVIA do prazo ANTES de gastar a vaga da conta: a leitura do que o agente
+  // vê (F3) ainda pode levar até `PRAZO_DO_EMBEDDING_MS`, e o turno que a
+  // transcrição quase esgotou reagendaria DEPOIS de ter gasto a vaga — 30
+  // áudios assim secavam a cota da conta (Codex, #312).
+  if (PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS - PRAZO_DO_EMBEDDING_MS < 3_000) {
     if (andamento.transcreveu) return { status: 'reagendar' }
     return { status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' }
   }
@@ -757,9 +765,45 @@ async function conduzir(
   // mesmo tempo não pode estourar o limite do provedor. Passou → sem resposta
   // (a mensagem fica na caixa para gente; o alerta de atraso segue valendo).
   // ⚠️ Conta só quando VAI gerar: o áudio ainda baixando reagenda a cada 10 s,
-  // e contado antes gastava a cota da conta sem gerar nada (Codex, #309).
+  // e contado antes gastava a cota da conta sem gerar nada (Codex, #309). E
+  // ANTES de ler o que o agente vê (F3): o turno barrado não lê dado do
+  // cliente nem paga a busca da base.
   const limite = checkRateLimit(`ai-autoreply:${turno.account_id}`, RATE_LIMITS.aiAutoReplyAccount)
   if (!limite.success) return { status: 'sem_resposta', erro: 'limite de respostas por minuto da conta' }
+
+  // O que o agente vê além da conversa (F3), lido antes de medir o prazo que
+  // sobra para gerar. Nunca lança.
+  const visto = await lerOQueOAgenteVe(db, {
+    accountId: turno.account_id,
+    agente,
+    contactId: primeira.contactId,
+    dealId: turno.deal_id,
+    consulta: consultaDaUltimaMensagem(conversa),
+    agora: new Date(),
+  })
+  // O RETRATO (1052): é o que responde "por que a IA fez isso?" depois que a
+  // ficha, o card ou o documento mudarem. Escrita separada do desfecho, com a
+  // cerca de posse: ERRO de banco é melhor esforço (segue), mas ZERO linhas é
+  // posse perdida — o recolhedor tomou o turno enquanto o contexto carregava,
+  // e gerar pagaria o provedor por uma resposta que não sai (Codex, #312).
+  const { data: comRetrato, error: erroRetrato } = await db
+    .from('cb_ia_turnos')
+    .update({ contexto: visto.retrato, updated_at: new Date().toISOString() })
+    .eq('id', turno.id)
+    .eq('status', 'rodando')
+    .eq('rodando_desde', turno.rodando_desde)
+    .select('id')
+  if (erroRetrato) console.error('[ia-agentes] gravar o retrato do turno falhou:', turno.id, erroRetrato.message)
+  else if ((comRetrato?.length ?? 0) === 0) return { status: 'abandonado' }
+
+  const restante = PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS
+  if (restante < 3_000) {
+    // A transcrição comeu o prazo: ela é idempotente e já ficou gravada, e o
+    // turno seguinte começa com o prazo cheio. ⚠️ Só quando ela AVANÇOU nesta
+    // rodada — é o que impede o laço.
+    if (andamento.transcreveu) return { status: 'reagendar' }
+    return { status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' }
+  }
 
   // "Digitando…" só quando vai gerar (só conexão Meta; nunca lança). Corre em
   // paralelo com a geração, mas a resposta o ESPERA antes de sair
@@ -783,6 +827,8 @@ async function conduzir(
         regras: agente.regras,
         agora: new Date(),
         passagens: opcoes.map((a) => ({ nome: a.nome, descricao: a.descricao })),
+        blocos: visto.blocos,
+        conhecimento: visto.trechos.map((t) => t.content),
       }),
       messages: conversa,
       timeoutMs: restante,
@@ -910,7 +956,14 @@ async function encerrar(
     const executarApos = new Date(Date.now() + REAGENDAR_AUDIO_MS).toISOString()
     const { data, error } = await db
       .from('cb_ia_turnos')
-      .update({ status: 'aguardando', rodando_desde: null, executar_apos: executarApos, updated_at: new Date().toISOString() })
+      .update({
+        status: 'aguardando',
+        rodando_desde: null,
+        executar_apos: executarApos,
+        // O retrato é da rodada que acabou: a próxima grava o seu (revisão da F3).
+        contexto: null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', turno.id)
       .eq('status', 'rodando')
       .eq('rodando_desde', turno.rodando_desde)

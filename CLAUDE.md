@@ -546,6 +546,8 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
   ficha criada pelo CRM, cadeado do ciclo, webhook, régua.
 - `.claude/rules/ia.md` — Radar, transcrição de áudio, chaves e modelos por
   módulo (Integrações).
+- `.claude/rules/ia-agentes.md` — o que cada agente de IA vê (acesso, blocos)
+  e a base de conhecimento por agente (1052).
 - `.claude/rules/reunioes.md` — agenda (EXCLUDE, fuso), tl;dv e
   transcrições.
 - `.claude/rules/agendadas.md` — mensagem agendada, anexo e citação, tela
