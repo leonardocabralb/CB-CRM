@@ -196,6 +196,15 @@ describe("buildNotificationContent", () => {
     ).toBe("Yes, book it");
   });
 
+  it("a ligação perdida (1044), sem texto, ganha o rótulo — nunca o corpo vazio", () => {
+    expect(
+      buildNotificationContent(
+        customerMsg({ content_type: "call", content_text: null }),
+        "Ada",
+      ).body,
+    ).toBe("📞 Missed call");
+  });
+
   it("accepts caller-supplied (translated) labels", () => {
     const labels = {
       ...DEFAULT_NOTIFICATION_LABELS,

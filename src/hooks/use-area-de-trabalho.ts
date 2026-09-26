@@ -390,6 +390,9 @@ export function useAreaDeTrabalho(pedido: PedidoDaArea): AreaDeTrabalho {
           .eq('conversation.account_id', accountId)
           .eq('sender_type', 'agent')
           .or('sender_id.not.is.null,from_device.is.true')
+          // A ligação atendida no celular (1044) passa na régua de resposta
+          // de gente — é gente falando com o cliente —, mas não é mensagem.
+          .neq('content_type', 'call')
           .is('deleted_at', null)
           .gte('created_at', inicioDoDia),
         // ⚠️ "Suas tarefas concluídas", nunca "que você concluiu": não

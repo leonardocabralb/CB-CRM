@@ -503,6 +503,9 @@ Abra pela Read o arquivo da área antes de editar, criar ou revisar nela
 - `.claude/rules/whatsapp-evolution.md` — Evolution 2.4/Baileys 7, LID sem
   telefone (retida, tardia, histórica), recibos fora de ordem, edição
   cifrada, link sem prévia, grupos.
+- `.claude/rules/ligacoes.md` — ligação de WhatsApp vira faixa no fio (1044):
+  aviso CALL, desfecho com folga, quem ligou, o que não roda, quem lê
+  `content_type`.
 - `.claude/rules/whatsapp-envio.md` — núcleo de envio, entrega incerta,
   modelos da Meta por WABA, `resolveTemplateRow`, escopo da conversa.
 - `.claude/rules/canais.md` — peças de UI de canal, escopo vazio = todos,
