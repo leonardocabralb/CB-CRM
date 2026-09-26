@@ -585,7 +585,26 @@ export type ContentType =
    * mudou"). Não é mensagem de ninguém: renderiza como faixa cinza no meio da
    * conversa, em ordem cronológica. Migration 906.
    */
-  | 'system';
+  | 'system'
+  /**
+   * Ligação de WhatsApp (1044): perdida (`sender_type = 'customer'`) ou
+   * atendida num aparelho do escritório (`'agent'` + `from_device`). Não tem
+   * texto — a bolha escreve a frase a partir de `ligacao` — e não tem ações
+   * (responder, reagir, apagar).
+   */
+  | 'call';
+
+/** Os detalhes de uma ligação (`messages.ligacao`, 1044). */
+export interface DetalhesDaLigacao {
+  desfecho: 'perdida' | 'atendida';
+  video: boolean;
+  /** Quando começou a tocar (relógio do WhatsApp). */
+  inicio: string | null;
+  /** Quando parou de tocar (perdida) ou foi atendida. */
+  fim: string | null;
+  tocou_seg: number | null;
+  encerramento: 'terminate' | 'timeout' | 'reject' | null;
+}
 export type MessageStatus =
   'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
@@ -632,6 +651,8 @@ export interface Message {
   transcricao_desde?: string | null;
   transcricao_em?: string | null;
   template_name?: string;
+  /** Só em `content_type === 'call'` (1044). Nulo em toda outra mensagem. */
+  ligacao?: DetalhesDaLigacao | null;
   message_id?: string;
   status: MessageStatus;
   created_at: string;

@@ -213,11 +213,29 @@ evento cancelado.
   mandariam o aviso do evento cancelado.
 - **O cancelamento não cria ficha, não dispara automação e não move o card.**
   Tirar o card de "Reunião Agendada" é decisão de produto pendente.
-- ⚠️ **Conhecido, não tratado**: cancelamento que falhou ANTES de resolver o
-  contato, ou agendamento que passou do teto de 4 min (grava `falhou` com
-  contato NULO), deixam a varredura sem por onde casar — e a automação em voo
-  pode gravar a data depois. Fechar pede gravar o contato na linha assim que
-  resolvido (guarda `contact_id is null`) e ligar pelo `invitee_uri`.
+- ⚠️⚠️ **Cancelamento FORA DE ORDEM (revisão do PR #235, 25/09/2026)**:
+  `processarAgendamento` pergunta primeiro se há `invitee.canceled` gravado
+  para o mesmo convite (`houveCancelamento`) e, havendo, termina `ignorado`
+  sem buscar contato, criar ficha nem disparar nada. Leitura que falha SEGUE
+  (falha aberta, ao contrário do "Processar de novo"): recusar calaria o aviso
+  ao advogado de um agendamento de verdade por um soluço do banco.
+- ⚠️⚠️ **O contato vai para a linha do agendamento ASSIM QUE é resolvido**
+  (`gravarContatoCedo`, antes do disparo; guarda `contact_id IS NULL`, sem a
+  cerca do cadeado, que depois do teto já é nula), e `gravarResultado` não
+  apaga contato com resultado sem contato (teto, erro). É o que o
+  cancelamento que chega DURANTE um processamento lento lê — sem isso,
+  passado o teto de 4 min a linha ficava `falhou` com contato NULO e a
+  varredura não tinha por onde casar. As duas rotas passam `{ eventoId }`
+  (pino em `processar.cancelamento.test.ts`). ⚠️ Por isso achar o contato NÃO
+  encerra a espera do cancelamento: ele relê até o processamento TERMINAR
+  (a automação ainda vai gravar a data), senão desarmava "nada" e ficava sem
+  a trava; esgotado o teto com o contato já na linha, segue COM ele (o evento
+  de cancelamento com contato é o que a varredura usa).
+- ⚠️ **Conhecido, não tratado**: cancelamento que FALHOU (erro) antes de achar
+  o contato, e a leitura que falha na pergunta acima com a reunião de fato já
+  cancelada, deixam a linha do cancelamento sem contato — a automação roda e
+  a varredura não casa. Fechar de vez é a varredura ligar o cancelamento ao
+  contato pelo `invitee_uri` (mexe no motor de lembretes, que falha fechado).
 
 ### A trava do lembrete é devolvida quando o recorte barra
 
