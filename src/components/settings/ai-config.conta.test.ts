@@ -17,3 +17,13 @@ describe('ai-config — conta sem configuração', () => {
     }
   })
 })
+
+describe('ai-config — carga que falhou', () => {
+  it('bloqueia o Salvar até uma carga dar certo', () => {
+    expect(fonte).toMatch(/const disabled = [^;]*cargaFalhou/)
+    expect(fonte).toMatch(/const handleSave = async \(\) => \{\s*if \(cargaFalhou\)/)
+    // As duas saídas de falha marcam; a carga boa desmarca.
+    expect(fonte.match(/setCargaFalhou\(true\)/g)?.length).toBe(2)
+    expect(fonte).toContain('setCargaFalhou(false)')
+  })
+})
