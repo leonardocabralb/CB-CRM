@@ -4,6 +4,7 @@ import {
   formatarParaMensagem,
   paraEntradaLocal,
   deEntradaLocal,
+  instanteCanonico,
 } from './campo-data'
 
 // ------------------------------------------------------------
@@ -59,5 +60,83 @@ describe('ida e volta do formulário (regressão da convenção)', () => {
   it('o que o input devolve volta a ser o mesmo instante', () => {
     const iso = '2026-08-30T19:00:00.000Z'
     expect(deEntradaLocal(paraEntradaLocal(iso))).toBe(iso)
+  })
+})
+
+// ------------------------------------------------------------
+// O instante numa forma só (a chave da trava do lembrete, 935).
+//
+// Medido em produção: o campo da reunião era gravado pela automação do
+// Calendly ("…:00.000000Z") e, ~1 s depois, pela API v1 ("…:00.000Z"). Como
+// a trava é por TEXTO, as duas formas do mesmo horário mandavam o lembrete
+// duas vezes.
+// ------------------------------------------------------------
+
+describe('instanteCanonico', () => {
+  const CANONICO = '2026-09-28T17:30:00.000Z'
+
+  it('CRÍTICO: o mesmo instante em todos os formatos vistos dá o mesmo texto', () => {
+    for (const forma of [
+      '2026-09-28T17:30:00.000000Z', // a automação do Calendly
+      '2026-09-28T17:30:00.000Z', // a API v1 (toISOString)
+      '2026-09-28T17:30:00Z',
+      '2026-09-28T17:30:00+00:00',
+      '2026-09-28 17:30:00+00', // o PostgREST, com espaço
+      '2026-09-28 17:30:00.000000+00',
+      '2026-09-28T14:30:00-03:00',
+      '2026-09-28T14:30:00-0300',
+      '2026-09-28T17:30Z', // sem segundos
+      '2026-09-28t17:30:00z', // caixa baixa
+    ]) {
+      expect(instanteCanonico(forma), forma).toBe(CANONICO)
+    }
+  })
+
+  it('CRÍTICO: as formas que o Date.parse do V8 recusa sozinhas são remontadas', () => {
+    // `T…+00` e `-03` sem minutos dão NaN no Node 22 e no 24 (medido).
+    expect(instanteCanonico('2026-09-28T17:30:00+00')).toBe(CANONICO)
+    expect(instanteCanonico('2026-09-28T14:30:00-03')).toBe(CANONICO)
+  })
+
+  it('apara as pontas', () => {
+    expect(instanteCanonico('  2026-09-28T17:30:00.000000Z \n')).toBe(CANONICO)
+  })
+
+  it('microssegundos são CORTADOS em milissegundos, como o V8 já faz', () => {
+    expect(instanteCanonico('2026-09-28T17:30:00.123456Z')).toBe('2026-09-28T17:30:00.123Z')
+    expect(instanteCanonico('2026-09-28T17:30:00.5Z')).toBe('2026-09-28T17:30:00.500Z')
+  })
+
+  it('instantes diferentes continuam diferentes', () => {
+    expect(instanteCanonico('2026-09-28T18:30:00Z')).not.toBe(CANONICO)
+    expect(instanteCanonico('2026-09-28T17:30:00-03:00')).toBe('2026-09-28T20:30:00.000Z')
+  })
+
+  it('CRÍTICO: sem fuso escrito devolve null — o JS e o Postgres leriam em fusos diferentes', () => {
+    expect(instanteCanonico('2026-09-28T17:30:00')).toBeNull()
+    expect(instanteCanonico('2026-09-28 17:30')).toBeNull()
+    expect(instanteCanonico('2026-09-28')).toBeNull()
+  })
+
+  it('o que não é instante devolve null', () => {
+    expect(instanteCanonico('30/08/2026 às 16:00h')).toBeNull()
+    expect(instanteCanonico('amanhã de tarde')).toBeNull()
+    expect(instanteCanonico('2026-13-45T17:30:00Z')).toBeNull()
+    expect(instanteCanonico('')).toBeNull()
+    expect(instanteCanonico('   ')).toBeNull()
+    expect(instanteCanonico(null)).toBeNull()
+    expect(instanteCanonico(undefined)).toBeNull()
+  })
+
+  it('CRÍTICO: dia que não existe no mês devolve null — o V8 o empurraria para o mês seguinte', () => {
+    expect(instanteCanonico('2026-02-29T10:00:00Z')).toBeNull()
+    expect(instanteCanonico('2026-02-30T10:00:00Z')).toBeNull()
+    expect(instanteCanonico('2026-09-31T14:00:00-03:00')).toBeNull()
+    expect(instanteCanonico('2026-04-31 10:00:00+00')).toBeNull()
+    expect(instanteCanonico('2026-09-00T10:00:00Z')).toBeNull()
+    // ano bissexto e o último dia de verdade continuam valendo
+    expect(instanteCanonico('2028-02-29T10:00:00Z')).toBe('2028-02-29T10:00:00.000Z')
+    expect(instanteCanonico('2026-09-30T10:00:00Z')).toBe('2026-09-30T10:00:00.000Z')
+    expect(instanteCanonico('2026-12-31T23:59:59Z')).toBe('2026-12-31T23:59:59.000Z')
   })
 })

@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { RECOLHER_CLAIM_MS, TETO_DE_PROCESSAMENTO_MS } from "./claim";
-import { TETO_DO_CANCELAMENTO_MS, campoDoLembrete, houveCancelamento, mesmaReuniao, processarCancelamento } from "./cancelamento";
+import {
+  TETO_DO_CANCELAMENTO_MS,
+  campoDoLembrete,
+  chaveDaTrava,
+  houveCancelamento,
+  mesmaReuniao,
+  processarCancelamento,
+} from "./cancelamento";
 import { EVENTO_CANCELADO, type Cancelamento } from "./payload";
 
 // ------------------------------------------------------------
@@ -97,6 +104,28 @@ describe("mesmaReuniao", () => {
   });
 });
 
+describe("chaveDaTrava", () => {
+  it("CRÍTICO: o mesmo instante em formatos diferentes é a MESMA chave", () => {
+    // Medido: o Calendly grava "…000000Z" e a API v1 "…000Z", com ~1 s de
+    // diferença. Por texto, a trava de um não barrava o outro.
+    const chave = chaveDaTrava("2026-09-28T17:30:00.000000Z");
+    expect(chave).toBe("2026-09-28T17:30:00.000Z");
+    expect(chaveDaTrava("2026-09-28T17:30:00.000Z")).toBe(chave);
+    expect(chaveDaTrava("2026-09-28 17:30:00+00")).toBe(chave);
+    expect(chaveDaTrava("2026-09-28T14:30:00-03:00")).toBe(chave);
+  });
+
+  it("instantes diferentes são chaves diferentes — o reagendamento re-arma", () => {
+    expect(chaveDaTrava("2026-09-28T18:30:00Z")).not.toBe(chaveDaTrava("2026-09-28T17:30:00Z"));
+  });
+
+  it("sem fuso ou ilegível: o texto como veio", () => {
+    expect(chaveDaTrava("2026-09-28T17:30:00")).toBe("2026-09-28T17:30:00");
+    expect(chaveDaTrava("qualquer coisa")).toBe("qualquer coisa");
+    expect(chaveDaTrava("")).toBe("");
+  });
+});
+
 describe("campoDoLembrete", () => {
   it("lê o campo do gatilho por campo personalizado", () => {
     expect(campoDoLembrete({ custom_field_id: "c1" })).toBe("c1");
@@ -129,9 +158,24 @@ describe("processarCancelamento", () => {
       account_id: "conta-1",
       automation_id: "a24",
       contact_id: "contato-1",
-      valor: "2026-09-25T17:00:00Z",
+      // A chave é o INSTANTE canônico, a mesma que a varredura grava.
+      valor: "2026-09-25T17:00:00.000Z",
       motivo: "cancelamento",
     });
+  });
+
+  it("CRÍTICO: ficha com o texto do Calendly (…000000Z) pré-arma com a chave CANÔNICA", async () => {
+    // A varredura trava por `chaveDaTrava`; pré-armada pelo texto cru, a
+    // trava do cancelamento não casaria com a dela e o lembrete sairia.
+    const { db, travas } = bancoFalso({
+      original: { contact_id: "contato-1" },
+      automacoes: [LEMBRETE("a24", "campo-data")],
+      valores: [{ custom_field_id: "campo-data", value: "2026-09-25T17:00:00.000000Z" }],
+    });
+    const r = await processarCancelamento(db, "conta-1", CANCELAMENTO);
+    expect(r.resultado).toBe("cancelado");
+    expect(travas).toHaveLength(1);
+    expect(travas[0].valor).toBe("2026-09-25T17:00:00.000Z");
   });
 
   it("CRÍTICO: reagendamento TRAVA o horário antigo enquanto a ficha ainda o guarda", async () => {

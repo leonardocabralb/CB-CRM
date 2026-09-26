@@ -186,7 +186,8 @@ isto, a data ficava na ficha e os quatro lembretes saíam com o link de um
 evento cancelado.
 
 - ⚠️⚠️ **O desarme NÃO apaga a data da ficha: ele PRÉ-ARMA a trava da 935**
-  (`cb_automation_reminders`, por automação + contato + VALOR) com
+  (`cb_automation_reminders`, por automação + contato + VALOR, com o valor por
+  `chaveDaTrava` como a varredura — ver abaixo) com
   `motivo: 'cancelamento'`. Apagar destruiria informação e exigiria adivinhar
   o campo; a trava pelo valor deixa o reagendamento re-armar sozinho. Sem a
   coluna `motivo`, `disparado_em` afirmaria envio que não houve.
@@ -237,8 +238,25 @@ evento cancelado.
   a varredura não casa. Fechar de vez é a varredura ligar o cancelamento ao
   contato pelo `invitee_uri` (mexe no motor de lembretes, que falha fechado).
 
-### A trava do lembrete é devolvida quando o recorte barra
+### A trava do lembrete: chave pelo INSTANTE, devolvida quando o recorte barra
 
+- ⚠️⚠️ **A chave da trava é o INSTANTE (`chaveDaTrava`, em `cancelamento.ts`:
+  `instanteCanonico` do valor, ou o texto como veio quando não há fuso
+  escrito), nunca o texto, nos DOIS escritores** — a varredura e o
+  cancelamento pré-armado. Medido em produção: o campo da reunião é gravado
+  pela automação do Calendly ("…17:30:00.000000Z") e, ~1 s depois, pela
+  iMotion pela API v1 ("…17:30:00.000Z"). O UNIQUE é por TEXTO: o ciclo que
+  lia entre as duas escritas travava a 1ª forma, o seguinte lia a 2ª e o
+  lembrete saía DUAS vezes. Pino default-deny dos escritores:
+  `src/lib/automations/trava-do-lembrete.chamadores.test.ts`.
+- ⚠️ **Antes do INSERT, a varredura LÊ as travas da automação para os
+  contatos da janela e compara pelo instante** (as duas pontas por
+  `chaveDaTrava`). É o que faz a trava gravada PELO TEXTO — a da versão
+  anterior, ou a da instância antiga viva durante o deploy `start-first` —
+  continuar barrando o lembrete (Codex, PR #305). Sem migração: o UNIQUE
+  segue de texto, e o INSERT canônico continua sendo a reivindicação entre
+  ciclos desta versão. Estreita, em fatias de contato, e leitura incompleta é
+  falha FECHADA (a automação fica para o ciclo seguinte).
 - ⚠️⚠️ **A trava da 935 é gravada ANTES do disparo (o INSERT é a
   reivindicação), mas o disparo ainda passa por conexão, gatilho e escopo de
   etapa.** Recusado ali, o lembrete nunca mais saía. `travaDeveSerDevolvida`
@@ -251,10 +269,14 @@ evento cancelado.
   `runAutomationsForTrigger` (`void`).
 
 ### O campo da reunião é do Calendly
-- ⚠️ **"Data e Hora Reunião" é o campo que os lembretes leem, e só o
-  agendamento escreve nele.** Carga ou importação de reunião ANTIGA nunca grava
-  ali: sobrescreveria um agendamento real e dispararia lembrete sobre reunião
-  passada. As reuniões da Kommo moram numa tabela própria e fechada (1036).
+- ⚠️ **"Data e Hora Reunião" é o campo que os lembretes leem, e DOIS
+  escritores gravam nele no agendamento**: a automação do Calendly
+  (`update_contact_field`) e a iMotion pela API v1 (`custom_fields:write`),
+  com ~1 s de diferença e em formatos diferentes do mesmo instante — daí a
+  chave da trava pelo instante (acima). Carga ou importação de reunião ANTIGA
+  nunca grava ali: sobrescreveria um agendamento real e dispararia lembrete
+  sobre reunião passada. As reuniões da Kommo moram numa tabela própria e
+  fechada (1036).
 
 ### O gatilho e a grade
 

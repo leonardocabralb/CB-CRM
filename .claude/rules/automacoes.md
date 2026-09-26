@@ -70,6 +70,13 @@ reentrega): `.claude/rules/webhooks.md`.
   por cima de um nome fixado e a marca o congelava. Pino:
   `src/lib/contacts/nome-fixado.chamadores.test.ts` (enxerga a chave
   computada `[cfg.field]`). Nome nas telas: `.claude/rules/campos-e-nome.md`.
+- ⚠️ **`update_contact_field` em campo de DATA (`field_type = 'datetime'`)
+  grava `instanteCanonico(valor)`** (UTC, 3 casas; sem fuso escrito ou
+  ilegível, como veio): o Calendly manda "…:00.000000Z" e a API v1
+  "…:00.000Z" para o mesmo horário, e o texto é chave da trava do lembrete
+  (ver `.claude/rules/integracoes-calendly.md`). O select de `custom_fields`
+  traz `field_type` por isso — tirá-lo desliga a forma canônica em silêncio
+  (o mock do `engine.test.ts` só devolve o tipo quando ele é pedido).
 - **`runAutomationById` aceita `rotuloDoDisparo`**: a execução manual grava
   `'manual'`; sem ele o log diria que outra automação chamou.
 - ⚠️ **`dispararAutomacoes` DEVOLVE o que fez** (`ResultadoDoDisparo`:
