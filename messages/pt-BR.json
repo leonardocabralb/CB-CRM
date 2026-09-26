@@ -1749,6 +1749,13 @@
         "concluida": "Concluída",
         "barrada": "Parou numa condição",
         "falhou": "Falhou"
+      },
+      "orfao": {
+        "etiqueta": "(etiqueta apagada)",
+        "etapa": "(etapa apagada)",
+        "membro": "(ex-membro)",
+        "campo": "(campo apagado)",
+        "tarefa": "(tarefa apagada)"
       }
     },
     "builder": {
