@@ -179,6 +179,21 @@ describe('PUT /api/cb/ia/chaves — as linhas POR CONEXÃO também contam (Codex
     expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a', 'gemini-da-conexao'])
   })
 
+  it('a linha PADRÃO vem antes das de conexão, qualquer que seja a ordem do banco (Codex, #295)', async () => {
+    linhaPadrao = null
+    linhasPorConexao = [
+      { channel_id: 'canal-1', provider: 'gemini', model: 'gemini-da-conexao', radar_model: null },
+      { channel_id: null, provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-radar' },
+    ]
+    await PUT(pedido('gemini'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual([
+      'gemini-3.7-flash',
+      'gemini-a',
+      'gemini-radar',
+      'gemini-da-conexao',
+    ])
+  })
+
   it('a conexão DESLIGADA não conta (não roda); a padrão desligada conta (o Radar a lê)', async () => {
     linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: null, is_active: false }
     linhasPorConexao = [

@@ -173,7 +173,7 @@ export async function gravarChave(
   // junto com a antiga (Codex, #294). Decifradas as duas, igual = não é
   // própria, e sai.
   const semPropriaFalsa =
-    provedor === 'openai' && serveEmbeddings !== true && (await propriaEhAMesmaDoChat(accountId))
+    provedor === 'openai' && serveEmbeddings !== true && (await propriaEhRedundante(accountId, chaveCrua))
       ? { embeddings_api_key: null }
       : {}
   // O UNIQUE (account_id, provedor) é TOTAL: serve de alvo do ON CONFLICT
@@ -231,24 +231,36 @@ export async function gravarChave(
 }
 
 /**
- * A chave "própria" dos embeddings é, decifrada, a MESMA do chat? Leitura que
- * falha ou chave que não decifra = não (fica como está: na dúvida não se apaga
- * credencial).
+ * A chave "própria" dos embeddings é, decifrada, a MESMA da chave NOVA ou da
+ * do chat de antes? Então ela não é própria: sai, e o veredito
+ * `serve_embeddings` da gravação passa a valer. Sem comparar com a NOVA, trocar
+ * o chat A pela própria B (recusada nos embeddings) guardaria B como própria,
+ * e a base seguiria chamando a credencial que acabou de ser recusada (Codex,
+ * #295). Leitura que falha ou chave que não decifra = não (fica como está: na
+ * dúvida não se apaga credencial).
  */
-async function propriaEhAMesmaDoChat(accountId: string): Promise<boolean> {
+async function propriaEhRedundante(accountId: string, chaveNova: string): Promise<boolean> {
   const { data, error } = await supabaseAdmin()
     .from('cb_ia_chaves')
     .select('api_key, embeddings_api_key')
     .eq('account_id', accountId)
     .eq('provedor', 'openai')
     .maybeSingle()
-  if (error || !data?.api_key || !data.embeddings_api_key) return false
+  if (error || !data?.embeddings_api_key) return false
+  let propria: string
+  try {
+    propria = decrypt(data.embeddings_api_key as string)
+  } catch {
+    return false
+  }
+  if (propria === chaveNova) return true
+  if (!data.api_key) return false
   // Texto cifrado IDÊNTICO é a marca da 1042 para a chave que ERA só da base
   // (a conta usava outro provedor no chat): ela é própria de verdade e fica
   // (Codex, #294). A duplicata falsa tem a mesma chave com cifras diferentes.
   if (data.api_key === data.embeddings_api_key) return false
   try {
-    return decrypt(data.api_key as string) === decrypt(data.embeddings_api_key as string)
+    return decrypt(data.api_key as string) === propria
   } catch {
     return false
   }
