@@ -54,6 +54,7 @@ vi.mock('@/lib/ia-agentes/repo', () => ({ listarAgentes: vi.fn(async () => agent
 
 import { GET } from './route'
 import { lerChaveDeEmbeddings, lerEstado } from '@/lib/ia-chaves/repo'
+import { listChannels } from '@/lib/cb-channels/repo'
 
 beforeEach(() => {
   agentesDaConta = []
@@ -171,5 +172,33 @@ describe('GET /api/cb/integracoes/status — os modelos dos agentes de IA ligado
     const modelos = validateAiCredentials.mock.calls.map((c) => c[0].model)
     expect(modelos).toHaveLength(5)
     expect(modelos).toContain('gemini-padrao')
+  })
+})
+
+describe('GET /api/cb/integracoes/status — o modelo PRÓPRIO do Radar (Codex, #295)', () => {
+  it('Radar ligado numa conexão e modelo próprio diferente do chat: é pingado', async () => {
+    linhas[0] = { channel_id: null, provider: 'gemini', model: 'gemini-padrao', radar_model: 'gemini-radar', is_active: true }
+    await cartaoGemini()
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gemini-radar')
+  })
+
+  it('Radar desligado em todas as conexões: o modelo dele não é pingado', async () => {
+    linhas[0] = { channel_id: null, provider: 'gemini', model: 'gemini-padrao', radar_model: 'gemini-radar', is_active: true }
+    vi.mocked(listChannels).mockResolvedValueOnce([{ id: 'canal-1', label: 'Comercial', radar_enabled: false }] as never)
+    await cartaoGemini()
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).not.toContain('gemini-radar')
+  })
+
+  it('o modelo do Radar fora do ar deixa o cartão em erro', async () => {
+    linhas[0] = { channel_id: null, provider: 'gemini', model: 'gemini-padrao', radar_model: 'gemini-radar', is_active: true }
+    modelosQueFalham = ['gemini-radar']
+    expect((await cartaoGemini()).estado).toBe('erro')
+  })
+
+  it('com o teto, o do Radar vem antes dos agentes', async () => {
+    linhas[0] = { channel_id: null, provider: 'gemini', model: 'gemini-padrao', radar_model: 'gemini-radar', is_active: true }
+    agentesDaConta = ['a1', 'a2', 'a3', 'a4', 'a5'].map((modelo) => ({ nome: modelo, provedor: 'gemini', modelo, ativo: true }))
+    await cartaoGemini()
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toContain('gemini-radar')
   })
 })

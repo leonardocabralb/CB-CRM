@@ -60,6 +60,10 @@ export function AiConfig() {
   // ⚠️ `null` = NÃO SEI (a carga falhou): nunca afirmar "sem chave" sobre uma
   // conta que pode ter a chave cadastrada.
   const [chaves, setChaves] = useState<Record<AiProvider, boolean> | null>(null);
+  // A carga da configuração DESTA conta falhou: o formulário pode estar com os
+  // valores de outra conta (troca de conta com a tela montada), e o Salvar os
+  // gravaria nela (Codex, #294). Fica bloqueado até uma carga dar certo.
+  const [cargaFalhou, setCargaFalhou] = useState(false);
   // A busca por sentido: a chave da OpenAI, MENOS a que a OpenAI recusou
   // para embeddings ao ser gravada. `null` = não sei (a leitura falhou).
   const [embeddingsUtilizavel, setEmbeddingsUtilizavel] = useState<boolean | null>(null);
@@ -85,9 +89,11 @@ export function AiConfig() {
       if (!res.ok) {
         setChaves(null);
         setEmbeddingsUtilizavel(null);
+        setCargaFalhou(true);
         toast.error(t('loadFailed'));
         return;
       }
+      setCargaFalhou(false);
       const lidas: Record<AiProvider, boolean> = { openai: false, anthropic: false, gemini: false };
       for (const c of (data.chaves ?? []) as { provedor: AiProvider; existe: boolean }[]) {
         if (c.provedor in lidas) lidas[c.provedor] = c.existe === true;
@@ -119,6 +125,7 @@ export function AiConfig() {
       // Sem a resposta, a base NÃO sabe se a busca por sentido vale: o valor
       // da carga anterior (outra conta, na troca de conta) mentiria (Codex, #294).
       setEmbeddingsUtilizavel(null);
+      setCargaFalhou(true);
       toast.error(t('loadFailed'));
     } finally {
       setLoading(false);
@@ -187,6 +194,10 @@ export function AiConfig() {
   };
 
   const handleSave = async () => {
+    if (cargaFalhou) {
+      toast.error(t('loadFailed'));
+      return;
+    }
     if (!model.trim()) {
       toast.error(t('missingModel'));
       return;
@@ -225,7 +236,7 @@ export function AiConfig() {
     );
   }
 
-  const disabled = !canEdit || saving;
+  const disabled = !canEdit || saving || cargaFalhou;
 
   return (
     <div>

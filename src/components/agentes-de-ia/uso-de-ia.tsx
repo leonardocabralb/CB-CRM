@@ -106,6 +106,9 @@ export function UsoDeIa({ agenteId }: { agenteId?: string }) {
   // ⚠️ Menos de meio centavo arredondaria para "R$ 0,00" — que afirma ZERO
   // sobre o caso normal de alguns testes no Playground (revisão da F1b).
   const reais = (s: Soma) => {
+    // Nenhuma chamada no período: o custo é ZERO, não "sem preço" — a mesma
+    // tela diz 0 tokens em 0 chamadas (Codex, #295).
+    if (s.chamadas === 0) return formatCurrency(0);
     if (s.reais === null) return s.dolar === null ? t('uso.semPreco') : t('uso.semCotacao');
     const valor =
       s.reais > 0 && s.reais < 0.005

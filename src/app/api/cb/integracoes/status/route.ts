@@ -197,22 +197,26 @@ export async function GET(request: Request) {
           // cada agente de CONEXÃO ligado deste provedor: a resposta
           // automática legada chama o modelo da linha dela, e um modelo
           // aposentado ali falharia com o cartão dizendo "funcionando"
-          // (Codex, #294). O do Radar é validado no SAVE — pingá-lo aqui
-          // seria uma segunda chamada paga a cada carga desta tela.
+          // (Codex, #294). E o modelo PRÓPRIO do Radar, quando o Radar está
+          // ligado em alguma conexão e o modelo difere do chat: validado no
+          // save, ele ainda pode sair do ar depois, e o cartão ficaria verde
+          // com toda análise falhando (Codex, #295). Vem logo depois do chat.
+          const radarLigado = canais.some((c) => c.radar_enabled === true);
           const modelos = [
             padrao && padrao.provider === e.provedor
               ? padrao.model
               : AI_PROVIDER_DEFAULT_MODEL[e.provedor],
+            padrao && padrao.provider === e.provedor && radarLigado ? padrao.radar_model : null,
             ...deConexao.filter((l) => l.provider === e.provedor).map((l) => l.model),
             // E o de cada agente de IA LIGADO deste provedor (Codex, #295): um
             // modelo trocado para um aposentado deixaria o cartão verde com o
             // Playground e a produção falhando.
             ...agentes.filter((a) => a.ativo && a.provedor === e.provedor).map((a) => a.modelo),
           ]
-            .filter((m, i, todos) => typeof m === 'string' && m.trim() !== '' && todos.indexOf(m) === i)
+            .filter((m, i, todos): m is string => typeof m === 'string' && m.trim() !== '' && todos.indexOf(m) === i)
             // Cada ping é uma geração PAGA a cada carga da tela: teto por
-            // provedor, a linha do chat primeiro. O agente além do teto se
-            // confere no Playground dele.
+            // provedor, o do chat e o do Radar primeiro. O agente além do teto
+            // se confere no Playground dele.
             .slice(0, MAX_MODELOS_PINGADOS);
           const falhas = await Promise.all(
             modelos.map(async (model) => {
