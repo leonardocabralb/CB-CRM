@@ -188,3 +188,15 @@ tentou ligar, para alguém ver e retornar?"
   (`ligacoes.chamadores.test.ts`, `ligacoes-1044.test.ts` e as allowlists de
   funil, reabertura e esperas). Testes: 18 das regras + 16 da orquestração +
   os estruturais. Regra de área: `.claude/rules/ligacoes.md`.
+- **Fase 3** (26/09/2026): 1044 aplicada (histórico `20260926112303`) e
+  conferida no catálogo. Ponta a ponta no preview, com avisos sintéticos no
+  webhook LOCAL da Evolution e só o lead de teste: perdida com o telefone
+  pelo acervo LID (reabriu a encerrada, 1 não lida, "em atraso" aceso,
+  prévia `[call]`); atendida com o fim chegando ANTES do `accept` (resposta
+  da equipe, "em atraso" apagado, não lida mantida); reentrega sem bolha
+  dupla; fim antes do `offer` + vídeo + LID fora do acervo com `callerPn`
+  (perdida, telefone "pelo whatsapp"); LID sem acervo e sem `callerPn`
+  (`sem_telefone`, sem bolha); chamada de grupo (nada gravado); e uma perdida
+  com a conversa aberta (a faixa e a linha da lista mudaram sem recarregar).
+  Nenhuma automação, robô, aviso, trilha nem card mexido. Limpo no fim, com a
+  conversa devolvida ao retrato (menos `updated_at`).
