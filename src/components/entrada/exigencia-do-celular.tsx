@@ -155,7 +155,8 @@ function CartaoDoCelular({
     // mesma queda; `min-h`, e não `h`: o cartão alto cresce e a página rola.
     <div className="bg-background flex min-h-[var(--altura-visivel,100dvh)] items-center justify-center px-4 py-8">
       <Card className="border-border bg-card w-full max-w-md">
-        <CardHeader className="items-center text-center">
+        {/* O CardHeader é `grid`: o centro horizontal é `justify-items`. */}
+        <CardHeader className="items-center justify-items-center text-center">
           <div className="bg-primary/10 mb-2 flex size-12 items-center justify-center rounded-xl">
             <Smartphone className="text-primary size-6" aria-hidden />
           </div>
