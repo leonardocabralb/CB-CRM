@@ -5,7 +5,8 @@
 //
 // A ordem das regras É a regra:
 //   0. fora do alcance (grupo, Instagram, sem conexão, mensagem que não
-//      abre turno — `abreTurno`) → ninguém;
+//      abre turno — `abreTurno`, inclusive o tipo que a Meta entrega e a
+//      rota não sabe ler) → ninguém;
 //   1. o robô consumiu a mensagem → ninguém;
 //   2. uma automação desta mensagem FALOU (ou vai falar) com o contato
 //      (`ResultadoDoDisparo.falou`, E4) → ninguém: o cliente não recebe
@@ -38,6 +39,19 @@ export const TIPOS_QUE_ABREM_TURNO: ReadonlySet<string> = new Set(['text', 'audi
  */
 export const MIME_DA_FIGURINHA = 'image/webp'
 
+/**
+ * O começo do texto com que o webhook da META grava o tipo de mensagem que
+ * ele não sabe ler — cartão de contato (`contacts`), `system`, `unsupported`,
+ * e o que a Meta inventar depois: `content_type = 'text'` e `content_text =
+ * "[Unsupported message type: contacts]"`. Não é fala do cliente, é o rótulo
+ * que a rota escreve (E9: o cartão de contato não abre turno — na Evolution
+ * ele chega com o texto NULO e já não abria). ⚠️ UMA constante para as duas
+ * pontas: o webhook MONTA o texto com ela e `abreTurno` a RECUSA. Texto
+ * reescrito só num lado volta a abrir turno — e a abrir o turno que DESCARTA
+ * o turno em curso (E10), calando a resposta à pergunta de verdade.
+ */
+export const PREFIXO_DE_TIPO_NAO_SUPORTADO = '[Unsupported message type:'
+
 /** O conteúdo da mensagem COMO FICOU GRAVADO (`content_type`, `content_text`, `media_type`). */
 export interface ConteudoDaMensagem {
   tipo: string
@@ -59,12 +73,15 @@ function temTextoVisivel(texto: string | null): boolean {
  *
  * Não abrem: tipo fora de `TIPOS_QUE_ABREM_TURNO` (localização, botão),
  * figurinha e texto sem nada visível — na Evolution, cartão de contato,
- * enquete e resposta de botão chegam como `text` com `content_text` nulo.
+ * enquete e resposta de botão chegam como `text` com `content_text` nulo —,
+ * e o rótulo do tipo que a Meta entrega e a rota não sabe ler
+ * (`PREFIXO_DE_TIPO_NAO_SUPORTADO`), que também é gravado como `text`.
  */
 export function abreTurno(c: ConteudoDaMensagem): boolean {
   if (!TIPOS_QUE_ABREM_TURNO.has(c.tipo)) return false
   if (c.tipo === 'image' && c.mime?.split(';')[0].trim().toLowerCase() === MIME_DA_FIGURINHA) return false
   if (c.tipo === 'text' && !temTextoVisivel(c.texto)) return false
+  if (c.tipo === 'text' && c.texto?.startsWith(PREFIXO_DE_TIPO_NAO_SUPORTADO)) return false
   return true
 }
 

@@ -29,19 +29,46 @@ import { SettingsPanelHead } from './settings-panel-head';
 import { AiKnowledgeCard } from './ai-knowledge';
 import { AI_PROVIDER_DEFAULT_MODEL, AI_PROVIDER_MODELS } from '@/lib/ai/defaults';
 import type { AiProvider } from '@/lib/ai/types';
-import type { AccountMember } from '@/types';
-import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
 import { useTranslations } from 'next-intl';
-
-// Radix Select can't use an empty-string item value, so the "leave
-// unassigned" choice gets a sentinel that maps to null in the payload.
-const HANDOFF_QUEUE = '__queue__';
 
 const PROVIDER_LABEL: Record<AiProvider, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic (Claude)',
   gemini: 'Google (Gemini)',
 };
+
+/**
+ * O corpo do `POST /api/ai/config`.
+ *
+ * ⚠️⚠️ NOSSO (F2a dos agentes de IA, E2 do docs/PLANO-agentes-de-ia.md): a
+ * resposta automática desta configuração saiu — quem responde o cliente são os
+ * agentes de IA. O interruptor, o máximo por conversa e o "Encaminhar para"
+ * sumiram da tela, mas `auto_reply_enabled` e `auto_reply_max_per_conversation`
+ * continuam no corpo com o valor LIDO: a rota reescreve a linha e grava
+ * `false`/3 no que não vier, e a volta atrás do deploy leria a linha mexida.
+ *
+ * `handoff_agent_id` NÃO vai, de propósito: ausente, a rota não toca a coluna
+ * ("Absent → left unchanged"); presente, ela exige que o id seja membro da
+ * conta HOJE. Com o seletor escondido, um destino que saiu da equipe travaria
+ * o "Salvar" da tela inteira com um 400 que ninguém teria como consertar.
+ */
+export function corpoDoSalvamento(estado: {
+  provider: AiProvider;
+  model: string;
+  systemPrompt: string;
+  isActive: boolean;
+  autoReplyEnabled: boolean;
+  maxPerConversation: number;
+}) {
+  return {
+    provider: estado.provider,
+    model: estado.model.trim(),
+    system_prompt: estado.systemPrompt.trim() || null,
+    is_active: estado.isActive,
+    auto_reply_enabled: estado.autoReplyEnabled,
+    auto_reply_max_per_conversation: estado.maxPerConversation,
+  };
+}
 
 export function AiConfig() {
   const { accountId, accountRole, profileLoading } = useAuth();
@@ -65,11 +92,10 @@ export function AiConfig() {
   const [embeddingsUtilizavel, setEmbeddingsUtilizavel] = useState<boolean | null>(null);
   const [systemPrompt, setSystemPrompt] = useState('');
   const [isActive, setIsActive] = useState(false);
+  // Sem controle na tela desde a F2a (ver `corpoDoSalvamento`): só lidos e
+  // devolvidos como vieram.
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
   const [maxPerConversation, setMaxPerConversation] = useState(3);
-  // Empty string = leave unassigned (shared queue).
-  const [handoffAgentId, setHandoffAgentId] = useState('');
-  const [members, setMembers] = useState<AccountMember[]>([]);
 
   // Guard keyed on the account (not a bare boolean) so an in-place
   // account switch — ownership transfer, multi-account membership —
@@ -101,7 +127,6 @@ export function AiConfig() {
         setIsActive(data.is_active);
         setAutoReplyEnabled(data.auto_reply_enabled);
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
-        setHandoffAgentId(data.handoff_agent_id ?? '');
       }
     } catch {
       setChaves(null);
@@ -128,10 +153,6 @@ export function AiConfig() {
     if (!accountId || loadedAccountIdRef.current === accountId) return;
     loadedAccountIdRef.current = accountId;
     void fetchConfig();
-    // Members populate the handoff-target picker. Best-effort — on an
-    // older deployment without the endpoint the picker just shows the
-    // queue option.
-    void fetchAccountMembers().then(setMembers);
   }, [accountId, fetchConfig]);
 
   // Swap the model default when the provider changes, unless the user
@@ -144,15 +165,15 @@ export function AiConfig() {
     if (isDefaultModel) setModel(AI_PROVIDER_DEFAULT_MODEL[next]);
   };
 
-  const buildBody = () => ({
-    provider,
-    model: model.trim(),
-    system_prompt: systemPrompt.trim() || null,
-    is_active: isActive,
-    auto_reply_enabled: autoReplyEnabled,
-    auto_reply_max_per_conversation: maxPerConversation,
-    handoff_agent_id: handoffAgentId || null,
-  });
+  const buildBody = () =>
+    corpoDoSalvamento({
+      provider,
+      model,
+      systemPrompt,
+      isActive,
+      autoReplyEnabled,
+      maxPerConversation,
+    });
 
   const handleTest = async () => {
     setTesting(true);
@@ -281,8 +302,9 @@ export function AiConfig() {
                   ))}
                 </datalist>
                 {/* ⚠️ O escopo deste campo escrito na tela. Ele serve ao
-                    assistente, à resposta automática e ao Playground — e
-                    NÃO ao Radar nem à transcrição, que têm modelo próprio.
+                    assistente (o rascunho) e ao Playground — e NÃO aos
+                    agentes de IA, ao Radar nem à transcrição, que têm
+                    modelo próprio.
                     Sem esta frase o operador cadastra um modelo "para o
                     Radar" e configura outra coisa. */}
                 <p className="text-xs text-muted-foreground">
@@ -364,72 +386,21 @@ export function AiConfig() {
               />
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  {t('autoReply')}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {t('autoReplyDesc')}
-                </p>
-              </div>
-              <Switch
-                checked={autoReplyEnabled}
-                onCheckedChange={setAutoReplyEnabled}
-                disabled={disabled || !isActive}
-              />
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <Label htmlFor="ai-max">{t('maxAutoReplies')}</Label>
-                <p className="text-xs text-muted-foreground">
-                  {t('maxAutoRepliesDesc')}
-                </p>
-              </div>
-              <Input
-                id="ai-max"
-                type="number"
-                min={1}
-                max={20}
-                value={maxPerConversation}
-                onChange={(e) =>
-                  setMaxPerConversation(
-                    Math.min(20, Math.max(1, Number(e.target.value) || 1)),
-                  )
-                }
-                disabled={disabled || !autoReplyEnabled}
-                className="w-20"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ai-handoff">{t('handoffTo')}</Label>
-              <p className="text-xs text-muted-foreground">
-                {t('handoffToDesc')}
-              </p>
-              <Select
-                value={handoffAgentId || HANDOFF_QUEUE}
-                onValueChange={(v) =>
-                  setHandoffAgentId(!v || v === HANDOFF_QUEUE ? '' : v)
-                }
-                disabled={disabled || !autoReplyEnabled}
+            {/* ⚠️ NOSSO (F2a, E2): a resposta automática desta configuração
+                saiu — o interruptor, o máximo por conversa e o "Encaminhar
+                para" não faziam mais nada. Quem responde o cliente são os
+                agentes de IA; esta linha diz onde eles moram. Um merge que
+                traga os controles de volta oferece um liga-desliga sem
+                efeito nenhum. */}
+            <p className="text-xs text-muted-foreground">
+              {t('autoReplyMoved')}{' '}
+              <Link
+                href="/agents"
+                className="text-primary underline-offset-2 hover:underline"
               >
-                <SelectTrigger id="ai-handoff">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={HANDOFF_QUEUE}>
-                    {t('handoffQueue')}
-                  </SelectItem>
-                  {members.map((m) => (
-                    <SelectItem key={m.user_id} value={m.user_id}>
-                      {memberLabel(m)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                {t('autoReplyMovedLink')}
+              </Link>
+            </p>
           </CardContent>
         </Card>
 

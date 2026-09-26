@@ -76,8 +76,21 @@ describe('1044 — a D17 decide no BANCO (E12)', () => {
     const corpo = funcao('public.cb_atribuir_agente_de_ia');
     expect(corpo).toContain('for update');
     expect(corpo).toContain("c.ia_pausada_por is null or c.ia_pausada_por in ('botao', 'transferencia')");
-    expect(corpo).toContain("interval '24 hours'");
+    // A pergunta das 24 h é UMA função, que o `set_ai` também usa (E13).
+    expect(corpo).toContain('public.cb_ia_gente_respondeu_em_24h(p_conversation_id)');
+    expect(corpo).not.toContain("interval '24 hours'");
     expect(corpo).not.toContain('assigned_agent_id');
+  });
+
+  it('a pergunta das 24 h: resposta de GENTE (sender_id ou celular, sem agente), pelo created_at', () => {
+    const corpo = funcao('public.cb_ia_gente_respondeu_em_24h');
+    expect(corpo).toContain('h.conversation_id = p_conversation_id');
+    expect(corpo).toContain("h.sender_type = 'agent'");
+    expect(corpo).toContain('h.sender_id is not null or h.from_device');
+    expect(corpo).toContain('h.ia_agente_id is null');
+    expect(corpo).toContain("h.created_at > now() - interval '24 hours'");
+    // Apagada inclusive (a D17 conta a resposta que existiu).
+    expect(corpo).not.toContain('deleted_at');
   });
 
   it('relê o agente na EXECUÇÃO: arquivado ou desligado não é atribuído (Codex, #292)', () => {
@@ -85,6 +98,70 @@ describe('1044 — a D17 decide no BANCO (E12)', () => {
     expect(corpo).toMatch(/a\.arquivado_em is null and a\.ativo/);
     // E atende a conexão do disparo, quando ela vem (Codex, #292).
     expect(corpo).toContain('p_canal_id is null or p_canal_id = any (a.conexoes)');
+  });
+});
+
+describe('1044 — o "ligar" do set_ai passa pela MESMA regra (E13)', () => {
+  const corpo = () => funcao('public.cb_retomar_ia_por_automacao');
+
+  it('trava a conversa DA CONTA antes de decidir', () => {
+    expect(corpo()).toContain('where cv.id = p_conversation_id and cv.account_id = p_account_id for update');
+    expect(corpo()).toContain("return 'sem_conversa'");
+    expect(corpo()).toContain("return 'grupo'");
+  });
+
+  it('só retoma pausa por gente ou por automação, e só sem resposta de gente em 24 h', () => {
+    const c = corpo();
+    expect(c).toContain("c.ia_pausada_por is null or c.ia_pausada_por not in ('gente', 'automacao')");
+    expect(c).toContain('public.cb_ia_gente_respondeu_em_24h(p_conversation_id)');
+    // A ordem é a regra: botão/transferência, depois as 24 h, e só então retoma.
+    const mantida = c.indexOf("return 'pausada_mantida'");
+    const gente = c.indexOf("return 'pausada_gente'");
+    const retomada = c.indexOf("return 'retomada'");
+    expect(mantida).toBeGreaterThan(-1);
+    expect(gente).toBeGreaterThan(mantida);
+    expect(retomada).toBeGreaterThan(gente);
+    expect(c.slice(gente, retomada)).toContain('ai_autoreply_disabled = false');
+  });
+
+  it('nunca toca o responsável humano nem o agente ativo', () => {
+    expect(corpo()).not.toContain('assigned_agent_id');
+    expect(corpo()).not.toContain('ia_agente_id');
+  });
+
+  it('só o service_role executa (as duas metades + o GRANT), e a conferência a CHAMA', () => {
+    for (const f of ['public.cb_retomar_ia_por_automacao(uuid, uuid)', 'public.cb_ia_gente_respondeu_em_24h(uuid)']) {
+      expect(compacto).toContain(`revoke execute on function ${f} from public, anon, authenticated`);
+      expect(compacto).toContain(`grant execute on function ${f} to service_role`);
+      expect(compacto).toContain(`'${f}'`);
+    }
+    const conferencia = compacto.slice(compacto.lastIndexOf('do $$'));
+    const subbloco = conferencia.slice(conferencia.indexOf('set local role service_role'), conferencia.indexOf("exception when sqlstate 'p1044'"));
+    expect(subbloco).toContain('public.cb_retomar_ia_por_automacao(');
+  });
+});
+
+describe('1044 — as FKs que o Postgres não indexa', () => {
+  it('as duas de mensagem e a do log de uso: índices PARCIAIS; a da conversa: índice cheio', () => {
+    expect(compacto).toMatch(
+      /cb_ia_turnos_mensagem_gatilho_idx on cb_ia_turnos \(mensagem_gatilho_id\) where mensagem_gatilho_id is not null/,
+    );
+    expect(compacto).toMatch(
+      /cb_ia_turnos_mensagem_inicial_idx on cb_ia_turnos \(mensagem_inicial_id\) where mensagem_inicial_id is not null/,
+    );
+    expect(compacto).toMatch(/ai_usage_log_turno_idx on ai_usage_log \(turno_id\) where turno_id is not null/);
+    expect(compacto).toMatch(/cb_ia_turnos_conversa_idx on cb_ia_turnos \(conversation_id\);/);
+  });
+
+  it('a conferência cobra os quatro no catálogo', () => {
+    for (const i of [
+      'cb_ia_turnos_mensagem_gatilho_idx',
+      'cb_ia_turnos_mensagem_inicial_idx',
+      'cb_ia_turnos_conversa_idx',
+      'ai_usage_log_turno_idx',
+    ]) {
+      expect(compacto).toContain(`'public.${i}'`);
+    }
   });
 });
 

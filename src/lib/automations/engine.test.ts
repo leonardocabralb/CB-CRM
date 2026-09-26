@@ -30,6 +30,12 @@ const h = vi.hoisted(() => ({
     rpcMoverRecusa: null as string | null,
     /** O status que `cb_atualizar_negocio` devolve como gravado (o motor o fixa no contexto, 1031). */
     rpcStatusGravado: 'open' as string,
+    /** As chamadas a `cb_retomar_ia_por_automacao` (o "ligar" do `set_ai`, E13). */
+    rpcRetomar: [] as Record<string, unknown>[],
+    /** O que `cb_retomar_ia_por_automacao` responde. */
+    retomarResposta: 'retomada' as string | null,
+    /** Preenchido, `cb_retomar_ia_por_automacao` devolve este erro. */
+    retomarErro: null as string | null,
     /** Preenchido, a LEITURA de `deals` devolve este erro (18/09). */
     erroNoNegocio: null as string | null,
     /**
@@ -140,7 +146,7 @@ vi.mock('./admin-client', () => {
       // justamente o que se quer observar (a conversa do disparo vs. todas as
       // do contato).
       if (type === 'update') {
-        state.updateCalls.push({ table, filters: ops.filters });
+        state.updateCalls.push({ table, filters: ops.filters, payload: ops.payload });
         return { data: null, error: null };
       }
       // Leitura POR ID = a conferência de posse (upstream #589): a linha só
@@ -430,6 +436,13 @@ vi.mock('./admin-client', () => {
             error: null,
           });
         }
+        if (nome === 'cb_retomar_ia_por_automacao') {
+          state.rpcRetomar.push(args ?? {});
+          if (state.retomarErro) {
+            return Promise.resolve({ data: null, error: { message: state.retomarErro } });
+          }
+          return Promise.resolve({ data: state.retomarResposta, error: null });
+        }
         return Promise.resolve({ data: null, error: null });
       },
     }),
@@ -494,6 +507,9 @@ beforeEach(() => {
   h.state.depoisDeMover = null;
   h.state.rpcMoverRecusa = null;
   h.state.rpcStatusGravado = 'open';
+  h.state.rpcRetomar = [];
+  h.state.retomarResposta = 'retomada';
+  h.state.retomarErro = null;
   h.state.dealSelects = [];
   h.state.dealInserts = [];
   h.state.automations = [];
@@ -1465,6 +1481,89 @@ describe('assign_conversation — alvo', () => {
     );
     expect(conversas).toHaveLength(1);
     expect(conversas[0].filters.map((f) => f[1])).toContain('contact_id');
+  });
+});
+
+describe('set_ai — o "ligar" pela MESMA regra da atribuição (E13)', () => {
+  function passoSetAi(enabled: boolean) {
+    return {
+      id: 's1',
+      automation_id: 'a1',
+      step_type: 'set_ai',
+      position: 0,
+      parent_step_id: null,
+      step_config: { enabled },
+    };
+  }
+
+  async function rodar(enabled: boolean) {
+    h.state.owned = { id: 'c1' };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [passoSetAi(enabled)];
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: 'new_message_received',
+      contactId: 'c1',
+      context: { conversation_id: 'conv-1' },
+    });
+  }
+
+  function passos() {
+    return h.state.logUpdates.flatMap(
+      (u) => (u.steps_executed as { status: string; detail?: string }[] | undefined) ?? []
+    );
+  }
+
+  function statusDoLog() {
+    return h.state.logUpdates.filter((u) => 'status' in u).at(-1) as
+      | { status?: string; error_message?: string }
+      | undefined;
+  }
+
+  it('ligar chama a RPC com a conta e a conversa, e não escreve na conversa por conta própria', async () => {
+    await rodar(true);
+    expect(h.state.rpcRetomar).toEqual([{ p_account_id: ACCOUNT, p_conversation_id: 'conv-1' }]);
+    // A retomada é do BANCO (a pausa por gente com resposta nas últimas 24 h
+    // fica): nenhum UPDATE solto em `conversations` pelo motor.
+    expect(h.state.updateCalls.filter((u) => u.table === 'conversations')).toHaveLength(0);
+    expect(passos()).toContainEqual(
+      expect.objectContaining({ status: 'success', detail: 'IA ligada na conversa' })
+    );
+  });
+
+  it('a equipe respondeu nas últimas 24 h: o passo registra que a IA SEGUE pausada', async () => {
+    h.state.retomarResposta = 'pausada_gente';
+    await rodar(true);
+    expect(passos()).toContainEqual(
+      expect.objectContaining({
+        status: 'success',
+        detail: 'IA segue pausada: a equipe respondeu nas últimas 24 h',
+      })
+    );
+    expect(h.state.updateCalls.filter((u) => u.table === 'conversations')).toHaveLength(0);
+  });
+
+  it('erro da RPC vira falha VISÍVEL do passo', async () => {
+    h.state.retomarErro = 'function cb_retomar_ia_por_automacao does not exist';
+    await rodar(true);
+    const log = statusDoLog();
+    expect(log?.status).toBe('failed');
+    expect(log?.error_message).toContain('set_ai falhou: function cb_retomar_ia_por_automacao does not exist');
+  });
+
+  it('resposta que o motor não conhece também falha, nunca vira "ligada"', async () => {
+    h.state.retomarResposta = null;
+    await rodar(true);
+    expect(statusDoLog()?.status).toBe('failed');
+    expect(statusDoLog()?.error_message).toContain('resposta inesperada do banco');
+  });
+
+  it('desligar continua gravando a pausa por automação, sem a RPC', async () => {
+    await rodar(false);
+    expect(h.state.rpcRetomar).toHaveLength(0);
+    const conversas = h.state.updateCalls.filter((u) => u.table === 'conversations');
+    expect(conversas).toHaveLength(1);
+    expect(conversas[0].payload).toMatchObject({ ai_autoreply_disabled: true, ia_pausada_por: 'automacao' });
   });
 });
 

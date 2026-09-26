@@ -44,6 +44,7 @@ vi.mock('@/lib/automations/engine', () => ({
     h.ordem.push('automação');
     return { candidatas: 0, foraDoEscopo: 0, executadas: 0, comFalha: 0, emEspera: 0 };
   }),
+  etapaTemQuemFale: vi.fn(async () => false),
 }));
 vi.mock('@/lib/automations/parar-se-responder', () => ({
   cancelarEsperasPorResposta: vi.fn(async () => {}),
@@ -74,7 +75,8 @@ vi.mock('@/lib/cb-channels/atraso-de-entrega', () => ({
 }));
 
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
-import { dispararAutomacoes, type ResultadoDoDisparo } from '@/lib/automations/engine';
+import { dispararAutomacoes, etapaTemQuemFale, type ResultadoDoDisparo } from '@/lib/automations/engine';
+import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { aoChegarMensagemDoCliente } from '@/lib/ia-agentes/entrada';
 
@@ -412,5 +414,95 @@ describe('persistInboundMessage: os fatos da mensagem vão para o agente de IA',
 
     expect(agente).not.toHaveBeenCalled();
     erro.mockRestore();
+  });
+
+  // ⚠️ E4: o card que o funil ACABOU de criar entra na fila do funil, e a
+  // automação de boas-vindas da etapa de entrada fala DEPOIS, no dreno — com
+  // o agente já tendo feito a triagem da mesma mensagem. Conta como fala.
+  describe('o card NOVO do funil conta como fala quando a etapa de entrada tem automação', () => {
+    const quemFala = vi.mocked(etapaTemQuemFale);
+    function funilCria(etapa: string | null) {
+      vi.mocked(routeContactToPipeline).mockImplementationOnce(async () => {
+        h.ordem.push('funil');
+        return etapa;
+      });
+    }
+
+    it('card novo numa etapa com automação escutando: o agente cala', async () => {
+      funilCria('etapa-lead');
+      quemFala.mockResolvedValueOnce(true);
+
+      await persistInboundMessage(fakeDb(), MENSAGEM);
+
+      expect(quemFala).toHaveBeenCalledWith(expect.anything(), 'conta-1', 'etapa-lead');
+      expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }));
+    });
+
+    it('card novo numa etapa SEM automação escutando: o agente segue', async () => {
+      funilCria('etapa-lead');
+      quemFala.mockResolvedValueOnce(false);
+
+      await persistInboundMessage(fakeDb(), MENSAGEM);
+
+      expect(quemFala).toHaveBeenCalledTimes(1);
+      expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: false }));
+    });
+
+    it('contato que JÁ tinha card (o roteador não criou nada): não conta, e nem consulta', async () => {
+      funilCria(null);
+
+      await persistInboundMessage(fakeDb(), MENSAGEM);
+
+      expect(quemFala).not.toHaveBeenCalled();
+      expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: false }));
+    });
+
+    it('a leitura das automações FALHA: conta como fala (a régua real do motor, sobre o banco que erra)', async () => {
+      funilCria('etapa-lead');
+      const real = await vi.importActual<typeof import('@/lib/automations/engine')>('@/lib/automations/engine');
+      quemFala.mockImplementationOnce(real.etapaTemQuemFale);
+      const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const base = fakeDb() as unknown as { from: (t: string) => unknown };
+      const db = {
+        from: (tabela: string) =>
+          tabela === 'automations'
+            ? {
+                select: () => ({
+                  eq: () => ({ eq: () => ({ eq: async () => ({ data: null, error: { message: 'timeout' } }) }) }),
+                }),
+              }
+            : base.from(tabela),
+      } as never;
+
+      await persistInboundMessage(db, MENSAGEM);
+
+      expect(quemFala).toHaveBeenCalledTimes(1);
+      // Quem respondeu "fala" foi a régua do motor lendo o erro — não a rede
+      // de segurança da ingestão (o `.catch`, que é o caso abaixo).
+      expect(erro).toHaveBeenCalledWith(expect.stringContaining('quem escuta a etapa'), 'timeout');
+      expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }));
+      erro.mockRestore();
+    });
+
+    it('a conferência que LANÇA também conta como fala', async () => {
+      funilCria('etapa-lead');
+      quemFala.mockRejectedValueOnce(new Error('rede caiu'));
+      const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await persistInboundMessage(fakeDb(), MENSAGEM);
+
+      expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }));
+      erro.mockRestore();
+    });
+
+    it('uma automação da mensagem já falou: a etapa nem é consultada', async () => {
+      funilCria('etapa-lead');
+      vi.mocked(dispararAutomacoes).mockResolvedValue({ ...DISPARO, executadas: 1, falou: true });
+
+      await persistInboundMessage(fakeDb(), MENSAGEM);
+
+      expect(quemFala).not.toHaveBeenCalled();
+      expect(agente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }));
+    });
   });
 });

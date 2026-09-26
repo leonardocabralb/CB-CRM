@@ -1,61 +1,109 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Sparkles, Hand, Undo2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
-import { useAuth } from "@/hooks/use-auth";
 
-// ------------------------------------------------------------
-// Account AI status is the same for every conversation, so cache it per
-// account and reuse it across thread switches instead of hitting
-// /api/ai/config every time the agent opens a chat.
+// ============================================================
+// ⚠️⚠️ NOSSO (F2a dos agentes de IA, docs/PLANO-agentes-de-ia.md, 5.3/5.4/5.9
+// e E2/E13). A faixa lê a CONVERSA, nunca a configuração da conta.
 //
-// Keyed by accountId (a multi-account user switching workspaces must not
-// see the previous account's status), and only *successful* fetches are
-// cached — a transient failure returns a default without poisoning the
-// cache, so it retries on the next thread open rather than hiding the
-// banner for the whole session.
-// ------------------------------------------------------------
-interface AiAccountStatus {
-  autoReplyOn: boolean;
-}
-const statusCache = new Map<string, AiAccountStatus>();
+// No upstream ela perguntava ao `/api/ai/config` se o auto-reply estava ligado
+// (`is_active && auto_reply_enabled`, com cache por conta) e se escondia quando
+// havia responsável humano, porque a atribuição era o portão do robô. As duas
+// coisas mentem desde a F2: o auto-reply legado saiu (E2) — com as flags
+// ligadas a faixa diria "respondendo" onde ninguém responde, e desligadas
+// esconderia um agente que responde —, e o responsável humano NÃO cala o
+// agente ativo (5.3, regra 4). Um merge que traga a faixa crua devolve as duas
+// mentiras sem conflito nenhum.
+//
+// E "Retomar" NÃO solta mais o responsável: a rota deixou de zerar
+// `assigned_agent_id` (E13, `src/app/api/ai/autoreply/[conversationId]/route.ts`),
+// e zerar aqui, na tela, tiraria a conversa da fila de quem a atende até o
+// realtime corrigir — ou para sempre, se o realtime cair.
+// ============================================================
 
-async function fetchAiAccountStatus(accountId: string): Promise<AiAccountStatus> {
-  const cached = statusCache.get(accountId);
-  if (cached) return cached;
-  try {
-    const res = await fetch("/api/ai/config", { cache: "no-store" });
-    if (!res.ok) return { autoReplyOn: false }; // don't cache a transient failure
-    const j = await res.json();
-    const status = {
-      // AI auto-reply is "live" only when configured, the master switch
-      // is on, and the inbound bot is enabled.
-      autoReplyOn: !!(j?.configured && j?.is_active && j?.auto_reply_enabled),
-    };
-    statusCache.set(accountId, status);
-    return status;
-  } catch {
-    return { autoReplyOn: false }; // don't cache
+/**
+ * O que a tela escreve na conversa depois de um clique que DEU CERTO.
+ * "Assumir" pausa e atribui a quem clicou (a rota faz o mesmo com
+ * `assign_to_me`); "Retomar" só tira a pausa — nunca menciona o responsável.
+ */
+export function patchDoClique(
+  pausar: boolean,
+  currentUserId: string | null | undefined,
+): { ai_autoreply_disabled: boolean; assigned_agent_id?: string } {
+  if (!pausar) return { ai_autoreply_disabled: false };
+  return currentUserId
+    ? { ai_autoreply_disabled: true, assigned_agent_id: currentUserId }
+    : { ai_autoreply_disabled: true };
+}
+
+/** Qual frase do dicionário explica a recusa da rota. Nunca o `error` cru (inglês). */
+export type ErroDaFaixa =
+  | "grupo"
+  | "instagram"
+  | "nadaGravado"
+  | "naoEncontrada"
+  | "semPermissao"
+  | "muitasTentativas"
+  | "generico";
+
+export function erroDaResposta(status: number, code: unknown): ErroDaFaixa {
+  if (code === "grupo") return "grupo";
+  if (code === "instagram") return "instagram";
+  if (code === "nada_gravado") return "nadaGravado";
+  if (status === 404) return "naoEncontrada";
+  if (status === 403) return "semPermissao";
+  if (status === 429) return "muitasTentativas";
+  return "generico";
+}
+
+/**
+ * A pausa que a tela mostra: a do banco, salvo um clique ainda não confirmado
+ * pelo realtime NESTA conversa. Derivada no render, nunca guardada por efeito
+ * — o efeito passivo mostraria, por um quadro, a pausa da conversa anterior.
+ * O clique vale enquanto o banco continuar dizendo o que dizia quando ele foi
+ * dado (`base`); qualquer mudança no banco (o realtime confirmando, ou o
+ * gatilho da 1044 pausando porque alguém respondeu) passa a mandar.
+ */
+export interface CliqueOtimista {
+  conversa: string;
+  base: boolean;
+  pausada: boolean;
+}
+
+export function pausadaNaTela(
+  otimista: CliqueOtimista | null,
+  conversationId: string,
+  disabled: boolean,
+): boolean {
+  if (otimista && otimista.conversa === conversationId && otimista.base === disabled) {
+    return otimista.pausada;
   }
+  return disabled;
 }
 
 interface AiThreadBannerProps {
   conversationId: string;
-  /** `conversations.ai_autoreply_disabled` — bot paused on this thread. */
+  /**
+   * `conversations.ia_agente_id` (1044) — o agente de IA ATIVO. É ele que
+   * acende a faixa: sem agente, a IA não responde nesta conversa (a entrada
+   * da conexão, quando atende, grava o agente antes de responder).
+   */
+  iaAgenteId: string | null;
+  /** `conversations.ai_autoreply_disabled` — a IA pausada nesta conversa. */
   disabled: boolean;
-  /** `conversations.ai_handoff_summary` — note the bot left on handoff. */
+  /** `conversations.ia_pausada_por` (1044) — por que pausou (`gente` |
+   *  `transferencia` | `botao` | `automacao`; nulo = pausa anterior ao motivo). */
+  pausadaPor?: string | null;
+  /** `conversations.ai_handoff_summary` — nota do auto-reply anterior. */
   handoffSummary?: string | null;
-  /** Current assignee; when a human owns the thread the bot won't run,
-   *  so the "AI active" banner is suppressed. */
-  assignedAgentId?: string | null;
-  /** The acting agent — "Take over" assigns the thread to them. */
+  /** Quem clica — "Assumir" atribui a conversa a essa pessoa. */
   currentUserId?: string | null;
-  /** Called after a successful toggle so the parent can patch its local
-   *  conversation state (the realtime UPDATE also arrives, but this keeps
-   *  the banner instant). */
+  /** Chamado depois de um clique que deu certo, para a página remendar o
+   *  estado local (o UPDATE do realtime também chega). */
   onChange?: (patch: {
     ai_autoreply_disabled: boolean;
     assigned_agent_id?: string | null;
@@ -63,86 +111,94 @@ interface AiThreadBannerProps {
 }
 
 /**
- * Inbox banner that surfaces + controls the AI auto-reply bot per
- * conversation:
- *   - bot active here → "AI is replying automatically" + [Take over]
- *   - bot paused here → the handoff note (if any) + [Resume AI]
- * Renders nothing when the account has no auto-reply configured, or when
- * the bot is active but a human already owns the thread (nothing to do).
+ * Faixa do fio com o agente de IA da conversa:
+ *   - agente ativo, sem pausa → "respondendo automaticamente" + [Assumir]
+ *   - agente ativo, pausado   → a pausa, com o motivo, + [Retomar IA]
+ * Sem agente ativo, não desenha nada.
  */
 export function AiThreadBanner({
   conversationId,
+  iaAgenteId,
   disabled,
+  pausadaPor,
   handoffSummary,
-  assignedAgentId,
   currentUserId,
   onChange,
 }: AiThreadBannerProps) {
   const t = useTranslations("Inbox.aiBanner");
-  const { accountId } = useAuth();
-  const [autoReplyOn, setAutoReplyOn] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
-  // Optimistic local mirror of the pause flag so the banner flips
-  // instantly on click; re-seeds whenever the thread (or its server
-  // state via realtime) changes.
-  const [paused, setPaused] = useState(disabled);
-  useEffect(() => setPaused(disabled), [conversationId, disabled]);
+  const [otimista, setOtimista] = useState<CliqueOtimista | null>(null);
+  const paused = pausadaNaTela(otimista, conversationId, disabled);
 
-  useEffect(() => {
-    if (!accountId) return;
-    let alive = true;
-    fetchAiAccountStatus(accountId).then((s) => alive && setAutoReplyOn(s.autoReplyOn));
-    return () => {
-      alive = false;
-    };
-  }, [accountId]);
+  // As chaves são LITERAIS (nunca montadas): o portão de i18n do CI só
+  // confere chave escrita por extenso.
+  const textoDoErro = useCallback(
+    (erro: ErroDaFaixa): string => {
+      switch (erro) {
+        case "grupo":
+          return t("erroGrupo");
+        case "instagram":
+          return t("erroInstagram");
+        case "nadaGravado":
+          return t("erroNadaGravado");
+        case "naoEncontrada":
+          return t("erroNaoEncontrada");
+        case "semPermissao":
+          return t("erroSemPermissao");
+        case "muitasTentativas":
+          return t("erroMuitasTentativas");
+        case "generico":
+          return t("updateError");
+      }
+    },
+    [t],
+  );
 
   const toggle = useCallback(
-    async (paused: boolean) => {
+    async (pausar: boolean) => {
       setBusy(true);
       try {
         const res = await fetch(`/api/ai/autoreply/${conversationId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // "Take over" also assigns the thread to the acting agent.
-          body: JSON.stringify({ paused, assign_to_me: paused }),
+          // "Assumir" também atribui a conversa a quem clicou.
+          body: JSON.stringify({ paused: pausar, assign_to_me: pausar }),
         });
         if (!res.ok) {
           const j = await res.json().catch(() => ({}));
-          toast.error(j?.error ?? t("updateError"));
+          toast.error(textoDoErro(erroDaResposta(res.status, j?.code)));
           return;
         }
-        setPaused(paused);
-        onChange?.({
-          ai_autoreply_disabled: paused,
-          // Take over assigns to the acting agent; resume releases only
-          // the caller's own assignment. The realtime UPDATE reconciles
-          // the exact value either way.
-          ...(paused
-            ? currentUserId
-              ? { assigned_agent_id: currentUserId }
-              : {}
-            : { assigned_agent_id: null }),
-        });
-        toast.success(paused ? t("tookOver") : t("resumed"));
+        setOtimista({ conversa: conversationId, base: disabled, pausada: pausar });
+        onChange?.(patchDoClique(pausar, currentUserId));
+        toast.success(pausar ? t("tookOver") : t("resumed"));
       } catch {
         toast.error(t("networkError"));
       } finally {
         setBusy(false);
       }
     },
-    [conversationId, currentUserId, onChange, t],
+    [conversationId, currentUserId, disabled, onChange, t, textoDoErro],
   );
 
-  // Account has no auto-reply → nothing to show. (Still loading → nothing.)
-  if (!autoReplyOn) return null;
+  if (!iaAgenteId) return null;
 
-  // Paused here (a human took over, or the model handed off).
   if (paused) {
+    const motivo =
+      pausadaPor === "gente"
+        ? t("pausadaPorGente")
+        : pausadaPor === "transferencia"
+          ? t("pausadaPorTransferencia")
+          : pausadaPor === "botao"
+            ? t("pausadaPeloBotao")
+            : pausadaPor === "automacao"
+              ? t("pausadaPorAutomacao")
+              : null;
     return (
       <Banner tone="muted">
         <div className="min-w-0 flex-1">
           <p className="font-medium text-foreground">{t("pausedTitle")}</p>
+          {motivo && <p className="text-muted-foreground">{motivo}</p>}
           {handoffSummary && (
             <p className="truncate text-muted-foreground" title={handoffSummary}>
               {handoffSummary}
@@ -156,10 +212,6 @@ export function AiThreadBanner({
     );
   }
 
-  // Active, but a human already owns it → the bot won't fire; no banner.
-  if (assignedAgentId) return null;
-
-  // Active on this thread.
   return (
     <Banner tone="primary">
       <div className="flex min-w-0 flex-1 items-center gap-1.5">

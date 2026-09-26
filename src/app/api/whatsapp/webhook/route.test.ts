@@ -5,6 +5,7 @@ import { MEDIA_MAX_BYTES_ENTRADA } from '@/lib/storage/upload-media'
 // Shared, hoisted state the module mocks close over. Reset per test.
 const h = vi.hoisted(() => ({
   dispararAutomacoes: vi.fn(),
+  etapaTemQuemFale: vi.fn(),
   dispatchInboundToFlows: vi.fn(),
   aoChegarMensagemDoCliente: vi.fn(),
   dispatchWebhookEvent: vi.fn(),
@@ -238,6 +239,7 @@ vi.mock('@/lib/whatsapp/template-webhook', () => ({
 }))
 vi.mock('@/lib/automations/engine', () => ({
   dispararAutomacoes: h.dispararAutomacoes,
+  etapaTemQuemFale: h.etapaTemQuemFale,
 }))
 vi.mock('@/lib/flows/engine', () => ({
   dispatchInboundToFlows: h.dispatchInboundToFlows,
@@ -281,6 +283,8 @@ vi.mock('@/lib/webhooks/deliver', () => ({
 
 import { POST } from './route'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
+import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing'
+import { abreTurno } from '@/lib/ia-agentes/quem-responde'
 import { handleTemplateWebhookChange } from '@/lib/whatsapp/template-webhook'
 
 const mockGetMediaUrl = vi.mocked(getMediaUrl)
@@ -351,6 +355,7 @@ beforeEach(() => {
   })
   h.dispatchInboundToFlows.mockResolvedValue({ consumed: false })
   h.aoChegarMensagemDoCliente.mockResolvedValue(undefined)
+  h.etapaTemQuemFale.mockResolvedValue(false)
   h.dispatchWebhookEvent.mockResolvedValue(undefined)
   h.dispararAutomacoes.mockImplementation(() => {
     h.state.automationStarted++
@@ -1043,6 +1048,80 @@ describe('os fatos da mensagem vão para o agente de IA', () => {
     expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(
       expect.objectContaining({ tipo: 'image', mime: 'image/webp' }),
     )
+  })
+
+  it('⚠️ E9: o tipo que a rota não sabe ler (cartão de contato) é gravado com o rótulo que a régua do agente RECUSA', async () => {
+    // A Meta entrega `contacts` (e `system`, …): a rota grava `text` com o
+    // rótulo do tipo. Sem a constante única, esse texto abria turno — e o
+    // turno do cartão DESCARTAVA o da pergunta de verdade (E10).
+    await runWebhook({
+      id: 'wamid.CTT1',
+      from: '15551230000',
+      timestamp: '1700000000',
+      type: 'contacts',
+      contacts: [{ name: { formatted_name: 'Fulano' }, phones: [{ phone: '+5511999990000' }] }],
+    })
+
+    expect(h.state.upsertCalls[0].row).toMatchObject({
+      content_type: 'text',
+      content_text: '[Unsupported message type: contacts]',
+    })
+    const fatos = h.aoChegarMensagemDoCliente.mock.calls[0][0] as { tipo: string; texto: string | null; mime: string | null }
+    expect(fatos).toMatchObject({ tipo: 'text', texto: '[Unsupported message type: contacts]' })
+    // As duas pontas: o que a rota GRAVOU não abre turno na régua da entrada e do turno.
+    expect(abreTurno({ tipo: fatos.tipo, texto: fatos.texto, mime: fatos.mime })).toBe(false)
+  })
+
+  describe('⚠️ E4: o card que o funil ACABOU de criar conta como fala se a etapa de entrada tem automação', () => {
+    it('card novo numa etapa com automação escutando: o agente cala', async () => {
+      vi.mocked(routeContactToPipeline).mockResolvedValueOnce('etapa-lead')
+      h.etapaTemQuemFale.mockResolvedValueOnce(true)
+
+      await runWebhook()
+
+      expect(h.etapaTemQuemFale).toHaveBeenCalledWith(expect.anything(), 'acc-1', 'etapa-lead')
+      expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }))
+    })
+
+    it('card novo numa etapa SEM automação escutando: o agente segue', async () => {
+      vi.mocked(routeContactToPipeline).mockResolvedValueOnce('etapa-lead')
+      h.etapaTemQuemFale.mockResolvedValueOnce(false)
+
+      await runWebhook()
+
+      expect(h.etapaTemQuemFale).toHaveBeenCalledTimes(1)
+      expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: false }))
+    })
+
+    it('contato que JÁ tinha card (o roteador não criou nada): não conta, e nem consulta', async () => {
+      vi.mocked(routeContactToPipeline).mockResolvedValueOnce(null)
+
+      await runWebhook()
+
+      expect(h.etapaTemQuemFale).not.toHaveBeenCalled()
+      expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: false }))
+    })
+
+    it('a conferência que LANÇA conta como fala (o lado de uma resposta só)', async () => {
+      vi.mocked(routeContactToPipeline).mockResolvedValueOnce('etapa-lead')
+      h.etapaTemQuemFale.mockRejectedValueOnce(new Error('rede caiu'))
+      const erro = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await runWebhook()
+
+      expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }))
+      erro.mockRestore()
+    })
+
+    it('uma automação da mensagem já falou: a etapa nem é consultada', async () => {
+      vi.mocked(routeContactToPipeline).mockResolvedValueOnce('etapa-lead')
+      h.dispararAutomacoes.mockResolvedValue({ ...DISPARO, falou: true })
+
+      await runWebhook()
+
+      expect(h.etapaTemQuemFale).not.toHaveBeenCalled()
+      expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }))
+    })
   })
 
   it('DEPOIS das automações, ANTES do message.received', async () => {

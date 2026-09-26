@@ -65,6 +65,56 @@ describe('abre negócio: os caminhos decididos por gente', () => {
   });
 });
 
+// ============================================================
+// E4 dos agentes de IA: o card NOVO conta como fala.
+//
+// O card que o roteador cria entra na fila do funil (`deal_stage_changed`), e
+// a automação de boas-vindas da etapa de entrada fala DEPOIS, no dreno — com
+// o agente de IA já tendo feito a triagem da mesma mensagem. As DUAS ingestões
+// de cliente somam a etapa devolvida ao `automacaoFalou` (`etapaTemQuemFale`)
+// ANTES de entregar os fatos à entrada do agente. Mock nenhum pega "esqueci de
+// usar o retorno": o teste de comportamento dubla o roteador E o motor.
+// ============================================================
+describe('as ingestões de cliente somam o card novo ao que calou o agente', () => {
+  const INGESTOES = [
+    { arquivo: 'lib/whatsapp/inbound-store.ts', inicio: 'export async function persistInboundMessage' },
+    { arquivo: 'app/api/whatsapp/webhook/route.ts', inicio: 'async function processMessage' },
+  ];
+
+  for (const { arquivo, inicio } of INGESTOES) {
+    it(`${arquivo}: roteador → etapaTemQuemFale(etapa devolvida) → entrada do agente`, () => {
+      const src = fonte(arquivo);
+      const de = src.indexOf(inicio);
+      expect(de).toBeGreaterThan(-1);
+      const corpo = src.slice(de);
+      const funil = corpo.indexOf('routeContactToPipeline(');
+      const conta = corpo.indexOf('etapaTemQuemFale(', funil);
+      const entrada = corpo.indexOf('aoChegarMensagemDoCliente(');
+      expect(funil).toBeGreaterThan(-1);
+      expect(conta).toBeGreaterThan(funil);
+      expect(entrada).toBeGreaterThan(conta);
+      // O retorno do roteador é GUARDADO e é ele que vai à consulta.
+      const guardado = corpo.slice(0, funil).match(/const\s+(\w+)\s*=\s*await\s*$/);
+      expect(guardado).not.toBeNull();
+      expect(corpo.slice(conta, entrada)).toContain(guardado![1]);
+      // …e o resultado vai para o MESMO `automacaoFalou` que a entrada recebe.
+      expect(corpo.slice(funil, entrada)).toMatch(/automacaoFalou\s*=\s*await\s+etapaTemQuemFale\(/);
+    });
+  }
+
+  it('celular pareado, núcleo de envio e Instagram ignoram o retorno — não há agente a calar ali', () => {
+    for (const arquivo of ['lib/whatsapp/send-message.ts', 'lib/instagram/persistir.ts']) {
+      expect(fonte(arquivo), arquivo).not.toContain('etapaTemQuemFale');
+    }
+    const src = fonte('lib/whatsapp/inbound-store.ts');
+    const doCelular = src.slice(
+      src.indexOf('export async function persistDeviceMessage'),
+      src.indexOf('export async function persistInboundMessage'),
+    );
+    expect(doCelular).not.toContain('etapaTemQuemFale');
+  });
+});
+
 describe('NÃO abre negócio: disparo em massa e resposta de robô', () => {
   // Não são omissões: são a decisão. Um broadcast não é o escritório
   // decidindo abordar 500 pessoas uma a uma, e um fluxo respondendo não é

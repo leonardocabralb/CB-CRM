@@ -281,6 +281,9 @@ describe('aoChegarMensagemDoCliente — portões que não leem o banco', () => {
     ['figurinha', { tipo: 'image', texto: null, mime: 'image/webp' }],
     ['texto nulo (cartão de contato, enquete, botão)', { tipo: 'text', texto: null }],
     ['texto sem nada visível', { tipo: 'text', texto: ' \uFFFC\n' }],
+    // A Meta: o tipo que o webhook não sabe ler (cartão de contato) é gravado
+    // como `text` com o rótulo — E9, não abre turno.
+    ['cartão de contato pela Meta (tipo não suportado)', { tipo: 'text', texto: '[Unsupported message type: contacts]' }],
     ['localização', { tipo: 'location' }],
   ])('%s: nem abre o cliente do banco', async (_rotulo, p) => {
     await aoChegarMensagemDoCliente(msg(p))

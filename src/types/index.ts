@@ -429,6 +429,15 @@ export interface Conversation {
   ai_reply_count?: number;
   ai_handoff_summary?: string | null;
   /**
+   * Agentes de IA (migration 1044): o agente ATIVO da conversa (nulo = nenhum;
+   * encerrar zera) e por que a IA está pausada (`gente` | `transferencia` |
+   * `botao` | `automacao`; nulo em pausa anterior ao motivo). Chegam pelo `*`
+   * do `CONVERSATION_SELECT` e pelo realtime; a faixa do fio lê os dois. Fora
+   * da API v1 de propósito: o serializer dela projeta um subconjunto fixo.
+   */
+  ia_agente_id?: string | null;
+  ia_pausada_por?: string | null;
+  /**
    * Multi-canal (migration 902): por qual número (cb_channels) a conversa
    * responde. `channel_pinned` = o atendente fixou o canal na mão; enquanto
    * false, o inbound move `channel_id` para o canal da última mensagem do

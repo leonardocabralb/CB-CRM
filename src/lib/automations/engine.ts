@@ -2084,12 +2084,16 @@ async function runStep(
 
       // ⚠️ NOSSO (F2 dos agentes de IA, E13): o `set_ai` segue a régua da
       // pausa com MOTIVO (1044). Desligar pausa por `automacao` (sem pisar
-      // num motivo que já estava lá). Ligar retoma SÓ a pausa por `gente` ou
-      // por `automacao`: `botao` e `transferencia` foram decisões de gente
-      // sobre aquela conversa, e pausa sem motivo (anterior à 1044) conta
-      // como `botao`. E NÃO solta mais o responsável humano: a atribuição
-      // deixou de ser portão do agente (5.3). A conta decide no WHERE — a
-      // leitura só dá o texto do registro.
+      // num motivo que já estava lá). Ligar passa pela MESMA regra da
+      // atribuição (D17), decidida no BANCO com a conversa travada
+      // (`cb_retomar_ia_por_automacao`): retoma SÓ a pausa por `gente` ou por
+      // `automacao`, e só se ninguém da equipe respondeu nas últimas 24 h —
+      // sem isso, o advogado respondia pelo celular, uma automação "Ligar IA"
+      // rodava e a IA voltava a falar no meio do atendimento (D10). `botao` e
+      // `transferencia` foram decisões de gente sobre aquela conversa, e
+      // pausa sem motivo (anterior à 1044) conta como `botao`. E NÃO solta
+      // mais o responsável humano: a atribuição deixou de ser portão do
+      // agente (5.3).
       if (!cfg.enabled) {
         const { error: upErr } = await db
           .from('conversations')
@@ -2105,28 +2109,31 @@ async function runStep(
         return 'IA desligada na conversa';
       }
 
-      // ⚠️ Ligar zera o teto de respostas da IA nesta conversa, por decisão
-      // do operador (D10). Automatizado, o teto passa a depender de quem
-      // monta a regra — "a cada mensagem recebida, religar a IA" fura o teto
-      // para sempre.
-      const { data: retomada, error: upErr } = await db
-        .from('conversations')
-        .update({
-          ai_autoreply_disabled: false,
-          ia_pausada_por: null,
-          ia_pausada_em: null,
-          ai_reply_count: 0,
-          ai_handoff_summary: null,
-        })
-        .eq('id', conversationId)
-        .eq('account_id', args.automation.account_id)
-        .or('ai_autoreply_disabled.eq.false,ia_pausada_por.in.(gente,automacao)')
-        .select('id');
-      if (upErr) throw new Error(`set_ai falhou: ${upErr.message}`);
-      if (!retomada || retomada.length === 0) {
-        return 'IA segue pausada: a pausa foi de gente (botão ou transferência)';
+      // ⚠️ Ligar (retomando ou já ligada) zera o teto de respostas da IA
+      // nesta conversa, por decisão do operador (D10). Automatizado, o teto
+      // passa a depender de quem monta a regra — "a cada mensagem recebida,
+      // religar a IA" fura o teto para sempre.
+      const { data: resultado, error: rpcErr } = await db.rpc('cb_retomar_ia_por_automacao', {
+        p_account_id: args.automation.account_id,
+        p_conversation_id: conversationId,
+      });
+      if (rpcErr) throw new Error(`set_ai falhou: ${rpcErr.message}`);
+      switch (resultado) {
+        case 'retomada':
+          return 'IA ligada na conversa';
+        case 'ja_ligada':
+          return 'IA já estava ligada; teto de respostas zerado';
+        case 'pausada_gente':
+          return 'IA segue pausada: a equipe respondeu nas últimas 24 h';
+        case 'pausada_mantida':
+          return 'IA segue pausada: a pausa foi de gente (botão ou transferência)';
+        case 'grupo':
+          throw new Error('set_ai não vale em conversa de grupo');
+        case 'sem_conversa':
+          throw new Error('set_ai: conversa não encontrada nesta conta');
+        default:
+          throw new Error(`set_ai: resposta inesperada do banco (${String(resultado)})`);
       }
-      return 'IA ligada na conversa';
     }
 
     case 'assign_ia_agent': {
@@ -2912,42 +2919,6 @@ function stepChannel(
 }
 
 /**
- * Qual negócio esta ação vai mexer.
- *
- * ⚠️ O contexto vence sempre. Num gatilho de funil o evento carrega o card
- * EXATO que se moveu — e é o único jeito de acertar quando o contato tem mais
- * de um negócio aberto (o CRM permite; só a 911 garante unicidade para card
- * nascido de conexão).
- *
- * Sem card no contexto (ex.: "quando chegar mensagem → mova o card"), a regra
- * é o negócio ABERTO mais recente (D8). Sem nenhum aberto, o PERDIDO mais
- * recente (1031, decisão do operador em 21/09/2026): o lead desqualificado
- * pode voltar a ser qualificado — ele refaz o formulário, ou agenda pelo
- * Calendly —, e sem isto nenhuma automação o enxergava: o "Mover card"
- * lançava "nenhum negócio aberto" e o card ficava preso na coluna de perda
- * para sempre. Movido para etapa neutra, o gatilho da 1031 o reabre.
- *
- * ⚠️ GANHO fica de fora, sempre. O card ganho é o do cliente que fechou (e
- * que foi transferido para o funil do Jurídico): o aviso do Calendly de um
- * cliente que marca outra reunião arrastaria o card do caso dele para o
- * comercial. Lá, "nenhum negócio" continua sendo a resposta.
- * ⚠️⚠️ E contato com card GANHO não tem o PERDIDO puxado: é cliente, e o
- * perdido é história de outra área (a Kommo trouxe um card por pessoa e por
- * área). Sem isto, quem digitasse o telefone de um cliente no formulário
- * público do Typebot reabriria o perdido antigo dele, e a trava de etapa
- * passaria a gravar e-mail e respostas por cima da ficha (revisão do PR #245).
- * ⚠️ Conferido numa ida ao banco ANTES da escrita, não dentro dela: outro
- * card do contato ganho exatamente nesse intervalo não é visto (Codex, PR
- * #245, 5ª rodada). Aceito: o abuso do formulário não depende de
- * concorrência, e fechar a janela pede travar todos os cards do contato na
- * RPC.
- *
- * `statusVisto` é o status que a escrita deve encontrar: o que a BUSCA viu,
- * ou — card do contexto — o que a própria execução gravou por último
- * (`deal_status_fixado`; ausente no card do evento ainda não escrito). A RPC
- * só escreve se ele não mudou no meio.
- */
-/**
  * FALA ADIADA DO FUNIL (E4 dos agentes de IA). O "Mover card" e o "Criar
  * negócio" só gravam um evento em `cb_automation_events`; a automação de
  * `deal_stage_changed` que escuta a etapa de destino roda DEPOIS, no dreno
@@ -2995,6 +2966,42 @@ async function etapaAtualDoCard(
   return (data?.stage_id as string | null | undefined) ?? null;
 }
 
+/**
+ * Qual negócio esta ação vai mexer.
+ *
+ * ⚠️ O contexto vence sempre. Num gatilho de funil o evento carrega o card
+ * EXATO que se moveu — e é o único jeito de acertar quando o contato tem mais
+ * de um negócio aberto (o CRM permite; só a 911 garante unicidade para card
+ * nascido de conexão).
+ *
+ * Sem card no contexto (ex.: "quando chegar mensagem → mova o card"), a regra
+ * é o negócio ABERTO mais recente (D8). Sem nenhum aberto, o PERDIDO mais
+ * recente (1031, decisão do operador em 21/09/2026): o lead desqualificado
+ * pode voltar a ser qualificado — ele refaz o formulário, ou agenda pelo
+ * Calendly —, e sem isto nenhuma automação o enxergava: o "Mover card"
+ * lançava "nenhum negócio aberto" e o card ficava preso na coluna de perda
+ * para sempre. Movido para etapa neutra, o gatilho da 1031 o reabre.
+ *
+ * ⚠️ GANHO fica de fora, sempre. O card ganho é o do cliente que fechou (e
+ * que foi transferido para o funil do Jurídico): o aviso do Calendly de um
+ * cliente que marca outra reunião arrastaria o card do caso dele para o
+ * comercial. Lá, "nenhum negócio" continua sendo a resposta.
+ * ⚠️⚠️ E contato com card GANHO não tem o PERDIDO puxado: é cliente, e o
+ * perdido é história de outra área (a Kommo trouxe um card por pessoa e por
+ * área). Sem isto, quem digitasse o telefone de um cliente no formulário
+ * público do Typebot reabriria o perdido antigo dele, e a trava de etapa
+ * passaria a gravar e-mail e respostas por cima da ficha (revisão do PR #245).
+ * ⚠️ Conferido numa ida ao banco ANTES da escrita, não dentro dela: outro
+ * card do contato ganho exatamente nesse intervalo não é visto (Codex, PR
+ * #245, 5ª rodada). Aceito: o abuso do formulário não depende de
+ * concorrência, e fechar a janela pede travar todos os cards do contato na
+ * RPC.
+ *
+ * `statusVisto` é o status que a escrita deve encontrar: o que a BUSCA viu,
+ * ou — card do contexto — o que a própria execução gravou por último
+ * (`deal_status_fixado`; ausente no card do evento ainda não escrito). A RPC
+ * só escreve se ele não mudou no meio.
+ */
 async function negocioAlvo(
   db: ReturnType<typeof supabaseAdmin>,
   args: ExecuteArgs

@@ -20,8 +20,10 @@
 --     navegador. `ai_usage_log.turno_id`.
 --  5. RPCs (só `service_role`): enfileirar (rajada: a mensagem nova empurra o
 --     `executar_apos` e troca o gatilho), reivindicar (com o relógio do
---     banco; o 23505 do `rodando` vira "ocupado", nunca erro) e atribuir o
---     agente com a regra da D17 DENTRO da transação (E12).
+--     banco; o 23505 do `rodando` vira "ocupado", nunca erro), atribuir o
+--     agente com a regra da D17 DENTRO da transação (E12) e o "ligar" do
+--     `set_ai` com a MESMA regra (E13) — a pergunta das 24 h mora numa
+--     função só. Mais os índices das FKs que o Postgres não cria.
 --  6. Gatilho da PAUSA POR GENTE: resposta com `sender_id` ou `from_device`,
 --     sem `ia_agente_id`, gravada de verdade (`gravada_em` preenchida — a carga
 --     da 1033 grava nula e cala os gatilhos antigos pelo NOME, não este)
@@ -209,6 +211,19 @@ CREATE INDEX IF NOT EXISTS cb_ia_turnos_enviada_idx
 -- A sub-aba Turnos (F2b): os turnos de um agente, mais novos primeiro.
 CREATE INDEX IF NOT EXISTS cb_ia_turnos_agente_idx
   ON cb_ia_turnos (account_id, ia_agente_id, created_at DESC);
+-- ⚠️ As FKs que o Postgres NÃO indexa sozinho: sem índice, cada linha apagada
+-- do lado referenciado varre esta tabela inteira. Apagar mensagem (o desfazer
+-- do histórico da 1033 apaga ~68 mil) passa pelas duas de mensagem; apagar
+-- contato ou conversa cascateia pela da conversa. PARCIAIS nas anuláveis: o
+-- `col = $1` da checagem da FK implica `col IS NOT NULL`, e o índice serve.
+CREATE INDEX IF NOT EXISTS cb_ia_turnos_mensagem_gatilho_idx
+  ON cb_ia_turnos (mensagem_gatilho_id)
+  WHERE mensagem_gatilho_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS cb_ia_turnos_mensagem_inicial_idx
+  ON cb_ia_turnos (mensagem_inicial_id)
+  WHERE mensagem_inicial_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS cb_ia_turnos_conversa_idx
+  ON cb_ia_turnos (conversation_id);
 
 ALTER TABLE cb_ia_turnos ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE cb_ia_turnos FROM PUBLIC, anon, authenticated;
@@ -216,6 +231,12 @@ GRANT ALL ON TABLE cb_ia_turnos TO service_role;
 
 ALTER TABLE ai_usage_log
   ADD COLUMN IF NOT EXISTS turno_id uuid REFERENCES cb_ia_turnos (id) ON DELETE SET NULL;
+-- Turno sai em lote (a conversa apagada o leva em CASCADE; a poda de 90 dias
+-- do plano também apagará): sem índice, cada turno apagado varreria o log de
+-- uso inteiro.
+CREATE INDEX IF NOT EXISTS ai_usage_log_turno_idx
+  ON ai_usage_log (turno_id)
+  WHERE turno_id IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- 5) RPCs da fila e da atribuição (só service_role)
@@ -276,6 +297,28 @@ BEGIN
 EXCEPTION WHEN unique_violation THEN
   RETURN;
 END;
+$$;
+
+-- A pergunta da D17 — "alguém da equipe respondeu nas últimas 24 h?" — num
+-- lugar só: a atribuição do agente e o "ligar" do `set_ai` (E13) a fazem, e
+-- duas cópias divergiriam na primeira mudança. Pelo `created_at` (apagada
+-- inclusive): `gravada_em` é nula na carga da 1033 e "agora" na mensagem
+-- recuperada pela 1010.
+CREATE OR REPLACE FUNCTION public.cb_ia_gente_respondeu_em_24h(p_conversation_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path TO 'public'
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM messages h
+     WHERE h.conversation_id = p_conversation_id
+       AND h.sender_type = 'agent'
+       AND (h.sender_id IS NOT NULL OR h.from_device)
+       AND h.ia_agente_id IS NULL
+       AND h.created_at > now() - interval '24 hours'
+  );
 $$;
 
 -- Atribui o agente com a regra da D17, DENTRO da transação e com a conversa
@@ -346,14 +389,7 @@ BEGIN
     RETURN;
   END IF;
 
-  SELECT EXISTS (
-    SELECT 1 FROM messages h
-     WHERE h.conversation_id = p_conversation_id
-       AND h.sender_type = 'agent'
-       AND (h.sender_id IS NOT NULL OR h.from_device)
-       AND h.ia_agente_id IS NULL
-       AND h.created_at > now() - interval '24 hours'
-  ) INTO v_gente;
+  v_gente := public.cb_ia_gente_respondeu_em_24h(p_conversation_id);
 
   IF v_gente THEN
     UPDATE conversations
@@ -380,6 +416,81 @@ BEGIN
 END;
 $$;
 
+-- O "ligar" do `set_ai` legado (E13) com a MESMA regra da atribuição, no
+-- banco e com a conversa travada: sem ela, o advogado respondia há 5 min pelo
+-- celular, a conversa estava pausada por `gente`, uma automação com "Ligar IA"
+-- rodava e a IA voltava a falar no meio do atendimento (D10).
+--   · sem pausa: nada a retomar — "ligar" só zera o teto de respostas (D10,
+--     decisão do operador) → `ja_ligada`.
+--   · pausa por `botao` ou `transferencia` (ou sem motivo, anterior à 1044):
+--     decisão de gente, NUNCA retomada por automação → `pausada_mantida`,
+--     nada gravado.
+--   · pausa por `gente` ou `automacao` com resposta de gente nas últimas 24 h:
+--     segue pausada, e o motivo passa a ser `gente` (é o que aconteceu)
+--     → `pausada_gente`.
+--   · senão: retomada, teto zerado → `retomada`.
+-- Nunca toca `assigned_agent_id` nem o agente ativo.
+CREATE OR REPLACE FUNCTION public.cb_retomar_ia_por_automacao(
+  p_account_id      uuid,
+  p_conversation_id uuid
+)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  c record;
+BEGIN
+  SELECT cv.group_id, cv.ai_autoreply_disabled, cv.ia_pausada_por
+    INTO c
+    FROM conversations cv
+   WHERE cv.id = p_conversation_id AND cv.account_id = p_account_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN 'sem_conversa';
+  END IF;
+  IF c.group_id IS NOT NULL THEN
+    RETURN 'grupo';
+  END IF;
+
+  IF NOT c.ai_autoreply_disabled THEN
+    UPDATE conversations
+       SET ai_reply_count = 0,
+           ai_handoff_summary = NULL
+     WHERE id = p_conversation_id;
+    RETURN 'ja_ligada';
+  END IF;
+
+  IF c.ia_pausada_por IS NULL OR c.ia_pausada_por NOT IN ('gente', 'automacao') THEN
+    RETURN 'pausada_mantida';
+  END IF;
+
+  IF public.cb_ia_gente_respondeu_em_24h(p_conversation_id) THEN
+    IF c.ia_pausada_por <> 'gente' THEN
+      UPDATE conversations
+         SET ia_pausada_por = 'gente',
+             ia_pausada_em = now()
+       WHERE id = p_conversation_id;
+    END IF;
+    RETURN 'pausada_gente';
+  END IF;
+
+  UPDATE conversations
+     SET ai_autoreply_disabled = false,
+         ia_pausada_por = NULL,
+         ia_pausada_em = NULL,
+         ai_reply_count = 0,
+         ai_handoff_summary = NULL
+   WHERE id = p_conversation_id;
+  RETURN 'retomada';
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.cb_ia_gente_respondeu_em_24h(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.cb_retomar_ia_por_automacao(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.cb_ia_gente_respondeu_em_24h(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.cb_retomar_ia_por_automacao(uuid, uuid) TO service_role;
 REVOKE EXECUTE ON FUNCTION public.cb_ia_enfileirar_turno(uuid, uuid, uuid, uuid, uuid, integer) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.cb_ia_reivindicar_turno(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.cb_atribuir_agente_de_ia(uuid, uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
@@ -721,6 +832,8 @@ BEGIN
     'public.cb_ia_enfileirar_turno(uuid, uuid, uuid, uuid, uuid, integer)',
     'public.cb_ia_reivindicar_turno(uuid)',
     'public.cb_atribuir_agente_de_ia(uuid, uuid, uuid, uuid)',
+    'public.cb_ia_gente_respondeu_em_24h(uuid)',
+    'public.cb_retomar_ia_por_automacao(uuid, uuid)',
     'public.claim_ai_reply_slot(uuid, integer)',
     'public.cb_ia_reservar_envio(uuid, uuid, uuid, integer)',
     'public.cb_assentar_mensagem_historica(uuid, timestamptz, boolean, timestamptz, boolean)'
@@ -747,6 +860,15 @@ BEGIN
      OR has_table_privilege('authenticated', 'public.cb_ia_turnos', 'INSERT') THEN
     RAISE EXCEPTION '1044: cb_ia_turnos aberta ao navegador';
   END IF;
+
+  FOREACH f IN ARRAY ARRAY[
+    'public.cb_ia_turnos_mensagem_gatilho_idx', 'public.cb_ia_turnos_mensagem_inicial_idx',
+    'public.cb_ia_turnos_conversa_idx', 'public.ai_usage_log_turno_idx'
+  ] LOOP
+    IF to_regclass(f) IS NULL THEN
+      RAISE EXCEPTION '1044: índice da FK % não existe', f;
+    END IF;
+  END LOOP;
 
   SELECT count(*) INTO v_quantas FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname = 'public' AND p.proname = 'cb_assentar_mensagem_historica';
@@ -776,7 +898,18 @@ BEGIN
     IF v_res <> 'mudou' THEN
       RAISE EXCEPTION '1044: reserva de envio com agente estranho respondeu %', v_res;
     END IF;
+    -- O "ligar" do `set_ai` numa conversa que não existe responde sem escrever.
+    v_res := public.cb_retomar_ia_por_automacao(coalesce(v_conta, gen_random_uuid()), gen_random_uuid());
+    IF v_res <> 'sem_conversa' THEN
+      RAISE EXCEPTION '1044: retomada em conversa inexistente respondeu %', v_res;
+    END IF;
     IF v_conv IS NOT NULL THEN
+      -- ...e numa conversa de verdade passa pelo corpo inteiro (a pergunta das
+      -- 24 h inclusive); o que gravar se desfaz com o subbloco.
+      v_res := public.cb_retomar_ia_por_automacao(v_conta, v_conv);
+      IF v_res NOT IN ('retomada', 'ja_ligada', 'pausada_gente', 'pausada_mantida') THEN
+        RAISE EXCEPTION '1044: retomada numa conversa da conta respondeu %', v_res;
+      END IF;
       -- A rajada: duas mensagens na mesma conversa e conexão = UM pendente.
       SELECT t.id INTO v_t1 FROM public.cb_ia_enfileirar_turno(v_conta, v_conv, NULL, NULL, NULL, 8000) t;
       SELECT t.id INTO v_t2 FROM public.cb_ia_enfileirar_turno(v_conta, v_conv, NULL, NULL, NULL, 8000) t;

@@ -51,6 +51,12 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   com `ia_agente_id`), nunca como mensagem do celular. É o INSERT do envio por
   outra mão: nenhum motor, funil, reabertura, `registrarEntrega` nem
   `cancelarEsperasPorResposta` (pino `eco.test.ts`). Ver `ia.md`.
+- **Agente de IA nas duas ingestões de cliente** (F2a, `ia.md`): o tipo que o
+  webhook da Meta não lê é gravado com `PREFIXO_DE_TIPO_NAO_SUPORTADO`
+  (`quem-responde.ts`), a mesma constante com que `abreTurno` o recusa — nunca
+  o literal. E a etapa que `routeContactToPipeline` devolve (card CRIADO) passa
+  por `etapaTemQuemFale` antes de `aoChegarMensagemDoCliente` (pino
+  `pipeline-routing.chamadores.test.ts`).
 - **Núcleo de envio**: `sendMessageToConversation` (`send-message.ts`) —
   compositor, ficha, agendada e API v1. Broadcast, fluxo, automação e IA NÃO
   passam por ele, e é assim que ficam de fora das regras de "gente".

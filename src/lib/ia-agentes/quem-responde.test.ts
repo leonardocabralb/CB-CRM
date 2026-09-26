@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { abreTurno, MIME_DA_FIGURINHA, quemResponde, TIPOS_QUE_ABREM_TURNO, type FatosDaMensagem } from './quem-responde'
+import {
+  abreTurno,
+  MIME_DA_FIGURINHA,
+  PREFIXO_DE_TIPO_NAO_SUPORTADO,
+  quemResponde,
+  TIPOS_QUE_ABREM_TURNO,
+  type FatosDaMensagem,
+} from './quem-responde'
 
 const CANAL = 'canal-a'
 const TRIAGEM = { id: 'triagem', ativo: true, arquivado: false, conexoes: [CANAL] }
@@ -97,6 +104,8 @@ describe('quemResponde — a ordem das regras (5.3)', () => {
       { conteudo: { tipo: 'image', texto: null, mime: 'image/webp' } },
       { conteudo: { tipo: 'location', texto: 'Rua X', mime: null } },
       { conteudo: { tipo: 'text', texto: null, mime: null } },
+      // O cartão de contato pela META: o webhook grava `text` com o rótulo do tipo.
+      { conteudo: { tipo: 'text', texto: '[Unsupported message type: contacts]', mime: null } },
     ] as Partial<FatosDaMensagem>[]) {
       expect(quemResponde(fatos(p)), JSON.stringify(p)).toEqual({ quem: 'ninguem', motivo: 'fora_do_alcance' })
     }
@@ -134,7 +143,20 @@ describe('abreTurno — a régua do conteúdo (a entrada e o turno usam a mesma)
     ['só caractere de formatação', { tipo: 'text', texto: '\u200B\u200D', mime: null }],
     ['localização', { tipo: 'location', texto: 'Rua X', mime: null }],
     ['toque em botão (Meta)', { tipo: 'interactive', texto: 'Sim', mime: null }],
+    // A forma GRAVADA pelo webhook da Meta para o tipo que ele não sabe ler
+    // (`contacts`, `system`, …): `text` com o rótulo. E9: não é fala do cliente.
+    ['cartão de contato pela Meta (tipo não suportado)', { tipo: 'text', texto: '[Unsupported message type: contacts]', mime: null }],
+    ['outro tipo não suportado pela Meta', { tipo: 'text', texto: '[Unsupported message type: system]', mime: null }],
   ])('não abre: %s', (_rotulo, c) => {
     expect(abreTurno(c)).toBe(false)
+  })
+
+  it('o prefixo recusado é o que a rota da Meta grava — o texto de sempre, sem mudar uma letra', () => {
+    // A rota monta `${PREFIXO} ${tipo}]`; o inbox e a busca já leem esse texto.
+    expect(`${PREFIXO_DE_TIPO_NAO_SUPORTADO} contacts]`).toBe('[Unsupported message type: contacts]')
+  })
+
+  it('só o COMEÇO do texto conta: o cliente que cita o rótulo no meio da frase abre turno', () => {
+    expect(abreTurno({ tipo: 'text', texto: 'apareceu [Unsupported message type: contacts] aqui', mime: null })).toBe(true)
   })
 })

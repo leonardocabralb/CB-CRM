@@ -34,8 +34,9 @@ export async function GET() {
 
     // ⚠️ Pelo SERVIÇO, com a conta da sessão: desde a 1043 a regra de leitura
     // de `ai_configs` é só de administrador (o prompt vivia legível pelo
-    // PostgREST), e a faixa de IA da conversa chama esta rota para qualquer
-    // membro. Quem decide o que sai é o papel, logo abaixo.
+    // PostgREST), e esta rota continua aberta a qualquer membro (a faixa de IA
+    // da conversa a chamava até a F2a; hoje lê a conversa). Quem decide o que
+    // sai é o papel, logo abaixo.
     const { data, error } = await supabaseAdmin()
       .from('ai_configs')
       .select(
