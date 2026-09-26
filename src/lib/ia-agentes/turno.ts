@@ -35,7 +35,8 @@
 //    etapa do agente n (UPDATE condicional: ainda na etapa do turno e
 //    aberto), fica uma anotação, e um turno NOVO do agente de destino
 //    (`veio_de_passagem`) responde à MESMA mensagem. Esse não passa de novo:
-//    se tentar, transfere para gente.
+//    se tentar, transfere para gente. Com automação ligada escutando a etapa
+//    de destino, ELA fala e o turno do destino não nasce (E4).
 //  - Evento de funil ainda não drenado cuja etapa tem automação escutando
 //    REAGENDA o turno (a boas-vindas da etapa ainda vai sair), por até
 //    `JANELA_DO_AUDIO_MS` contada do gatilho (`funilAindaVaiFalar`).
@@ -574,7 +575,8 @@ async function etapaDoAgente(
  * A triagem respondeu `[[PASSAR:n]]`: move o card para a etapa do agente n
  * (UPDATE condicional — o card ainda aberto e na etapa do turno), anota, e
  * enfileira o turno do destino sobre a MESMA mensagem (`veio_de_passagem`,
- * sem a espera da rajada).
+ * sem a espera da rajada) — menos quando uma automação ligada escuta a etapa
+ * de destino: aí ela fala, e o destino responde a próxima mensagem (E4).
  * Passagem de passagem, agente n que não serve e card que já saiu da etapa
  * TRANSFEREM para gente.
  */
@@ -606,8 +608,7 @@ async function passar(
     .select('id')
   if (error) return { status: 'falhou', erro: `mover o card falhou: ${error.message}` }
   if (!movidos || movidos.length === 0) return { status: 'transferiu', motivo: 'sentinela' }
-  // A automação da etapa de destino (a boas-vindas) roda já, como a tela faz;
-  // o turno do destino espera por ela (`funilAindaVaiFalar`).
+  // A automação da etapa de destino (a boas-vindas) roda já, como a tela faz.
   void drenarEventosDeFunil().catch(() => {})
 
   const { autor, texto } = await textosDaPassagem(conferido.agente.nome, destino.nome)
@@ -618,6 +619,13 @@ async function passar(
     autor,
     texto,
   })
+
+  // Alguma automação ligada escuta a etapa de destino: ELA fala desta vez, e
+  // o agente responde a partir da próxima mensagem do cliente — a regra da
+  // entrada (E4). Esperar pelo dreno não basta: o evento é reivindicado antes
+  // de a automação rodar, e um "Aguardar" ou a retentativa do envio faria a
+  // boas-vindas sair DEPOIS da resposta do agente (Codex, #309).
+  if (await etapaTemQuemFale(db, turno.account_id, etapa.id)) return { status: 'passou' }
 
   const novo = await enfileirarTurno(db, {
     accountId: turno.account_id,

@@ -1443,6 +1443,36 @@ describe('executarTurno — a passagem (D25)', () => {
     expect(conversa().ai_autoreply_disabled).toBe(false)
   })
 
+  it.each<[string, Linha]>([
+    ['escuta a etapa de destino', { trigger_config: { stage_ids: [ETAPA_DESTINO] } }],
+    ['escuta TODA etapa', { trigger_config: { stage_ids: [] } }],
+  ])('automação ligada que %s: ela fala, e o destino NÃO responde a esta mensagem (E4)', async (_rotulo, p) => {
+    banco.tabelas.automations = [
+      { id: 'auto-destino', account_id: CONTA, trigger_type: 'deal_stage_changed', is_active: true, ...p },
+    ]
+    comDestino()
+    triagemPassa()
+    await executarTurno(TURNO)
+    expect(turno().status).toBe('passou')
+    expect(card().stage_id).toBe(ETAPA_DESTINO)
+    expect(drenarEventosDeFunil).toHaveBeenCalledTimes(1)
+    expect(notas()).toHaveLength(1)
+    expect(turnoDoDestino()).toBeUndefined()
+    expect(engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('automação DESLIGADA ou de outra etapa não segura o destino', async () => {
+    banco.tabelas.automations = [
+      { id: 'a1', account_id: CONTA, trigger_type: 'deal_stage_changed', is_active: false, trigger_config: { stage_ids: [ETAPA_DESTINO] } },
+      { id: 'a2', account_id: CONTA, trigger_type: 'deal_stage_changed', is_active: true, trigger_config: { stage_ids: ['outra'] } },
+    ]
+    comDestino()
+    triagemPassa()
+    await executarTurno(TURNO)
+    expect(turnoDoDestino()?.status).toBe('respondeu')
+    expect(engineSendText).toHaveBeenCalledTimes(1)
+  })
+
   it('a etapa de destino é a de MENOR posição do destino no funil do card', async () => {
     comDestino({}, [{ stage_id: ETAPA_DESTINO }, { stage_id: 'etapa-meio' }])
     triagemPassa()

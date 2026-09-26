@@ -406,6 +406,8 @@ Um mapa do código em sete frentes (ingestão, envio, banco, fila, telas, automa
 - Uma automação de "nova mensagem" cujo passo de envio falha ANTES de chamar o provedor conta como "falou" e cala a IA naquela mensagem.
 - Salvar o agente com nome repetido depois de as etapas já terem sido gravadas deixa as etapas novas e recusa o nome; salvar de novo com outro nome resolve.
 - Card movido durante a espera da rajada (8 s): o turno descarta e ninguém responde aquela mensagem.
+- Passagem para uma etapa com automação ligada escutando: a automação fala (a boas-vindas) e o agente de destino responde a partir da próxima mensagem do cliente — a mesma regra da entrada (E4). Automação que escuta a etapa e não manda nada deixa aquela mensagem sem resposta.
+- Resposta pelo número OFICIAL (Meta) que sai e cujo registro no CRM falha (erro do banco no instante seguinte ao envio): o cliente recebe, mas a mensagem não aparece no fio e não conta no teto — a Meta não devolve eco que a recrie. É o comportamento de todo envio do robô (`EnviadaSemRegistroError`); o log registra o id.
 - ⚠️ **Delta da Kommo:** a carga cala os gatilhos de `deals`, e o card que ela CRIA ganha `etapa_desde` = hora da carga — pareceria "entrou agora" para um agente já ligado na etapa (D27). Rodar o delta ANTES de marcar etapas nos agentes, ou logo depois dele: `UPDATE deals SET etapa_desde = created_at WHERE kommo_lead_id IS NOT NULL AND etapa_desde > created_at`.
 
 - **Radar e transcrição dependem da chave de hoje.** A F1a muda de onde ela é lida; um erro ali para a análise de todas as conversas e todo áudio. Por isso a F1a vai sozinha e é conferida em produção.

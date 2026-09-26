@@ -299,8 +299,13 @@ ingestões), `fila.ts`, `turno.ts`, `rede.ts` (no topo de `/api/automations/cron
   transferência vence a passagem. Depois da 2ª conferência: etapa do destino
   no mesmo funil (menor `position`), senão no funil mais antigo; UPDATE
   CONDICIONAL de `deals` (`pipeline_id` + `stage_id`; a etapa do turno e
-  `open`) e `drenarEventosDeFunil()`; anotação; turno do destino com
-  `veio_de_passagem` sobre a MESMA mensagem, sem espera; este termina `passou`
+  `open`) e `drenarEventosDeFunil()`; anotação; e, se NENHUMA automação
+  ligada escuta a etapa de destino (`etapaTemQuemFale`), turno do destino com
+  `veio_de_passagem` sobre a MESMA mensagem, sem espera — com automação
+  escutando, ELA fala e o destino responde a próxima mensagem (a regra E4 da
+  entrada; esperar pelo dreno não basta, porque o evento é reivindicado antes
+  de a automação rodar e um "Aguardar" a faria falar DEPOIS; Codex, #309);
+  este termina `passou`
   ANTES de o novo ser reivindicado (um `rodando` por conversa). Passagem de
   passagem, n inválido, destino sem etapa ou UPDATE que não casa = transfere.
   É um escritor de etapa sem `auth.uid()` (trilha `sistema`, `deal.*` com
