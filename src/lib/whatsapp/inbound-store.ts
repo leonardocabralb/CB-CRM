@@ -3,7 +3,7 @@
 //
 // Mirrors the Meta webhook's `processMessage` (find/create contact +
 // conversation, insert the message, bump the conversation, then fan out
-// to flows / automations / AI auto-reply / outbound webhooks) but takes a
+// to flows / automations / agentes de IA / outbound webhooks) but takes a
 // already-normalized message so any transport (Evolution now, Meta later)
 // can reuse it. The race-safe find-or-create logic matches the Meta
 // webhook exactly by sharing `findExistingContact` + the unique-violation
@@ -15,10 +15,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { fichaQueVenceu, findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { routeContactToPipeline } from '@/lib/cb-channels/pipeline-routing';
 import { reopenClosedConversation } from '@/lib/conversations/reopen';
-import { runAutomationsForTrigger } from '@/lib/automations/engine';
+import { dispararAutomacoes } from '@/lib/automations/engine';
 import { cancelarEsperasPorResposta } from '@/lib/automations/parar-se-responder';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
-import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
+import { aoChegarMensagemDoCliente } from '@/lib/ia-agentes/entrada';
+import { MIME_DA_FIGURINHA } from '@/lib/ia-agentes/quem-responde';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import {
   followConversationChannel,
@@ -69,6 +70,14 @@ export interface NormalizedInbound {
   contentType: 'text' | 'image' | 'video' | 'audio' | 'document' | 'location';
   text: string | null;
   mediaUrl?: string | null;
+  /**
+   * A imagem é FIGURINHA (`stickerMessage`). Ela é gravada como `image`, e o
+   * que a distingue de uma foto na linha é o `media_type` — que a Evolution
+   * só daria no download, DEPOIS. Por isso `persistInboundMessage` o grava já
+   * no insert: é o que a régua do agente de IA lê (`abreTurno`) na entrada e
+   * no turno, que confere a mensagem mais nova pela linha.
+   */
+  figurinha?: boolean;
 }
 
 const ALLOWED_CONTENT_TYPES = new Set([
@@ -420,6 +429,7 @@ export async function persistInboundMessage(
     : Promise.resolve();
 
   const contentType = ALLOWED_CONTENT_TYPES.has(m.contentType) ? m.contentType : 'text';
+  const mimeNaChegada = m.figurinha && contentType === 'image' ? MIME_DA_FIGURINHA : null;
 
   const { count: priorCustomerMsgCount } = await db
     .from('messages')
@@ -444,6 +454,9 @@ export async function persistInboundMessage(
           content_type: contentType,
           content_text: m.text,
           media_url: m.mediaUrl ?? null,
+          // Só a figurinha tem o MIME já no insert (ver `figurinha`); o resto
+          // o ganha no download, como sempre.
+          ...(mimeNaChegada ? { media_type: mimeNaChegada } : {}),
           message_id: m.providerMessageId,
           remote_jid: m.remoteJid ?? null,
           // Endereço para AGIR sobre a mensagem quando a conversa migrou para
@@ -542,8 +555,13 @@ export async function persistInboundMessage(
   // corria entre duas delas — dentro desta mensagem; entre duas mensagens
   // em POSTs diferentes a corrida continua (ver o comentário gêmeo no
   // webhook da Meta).
+  // ⚠️ `dispararAutomacoes`, e não `runAutomationsForTrigger` (que é `void`):
+  // o agente de IA só fala se NENHUMA automação desta mensagem falou (ou vai
+  // falar) com o contato — somados TODOS os gatilhos da mensagem (E4 do
+  // docs/PLANO-agentes-de-ia.md). Gêmeo do webhook da Meta.
+  let automacaoFalou = false;
   for (const triggerType of triggers) {
-    await runAutomationsForTrigger({
+    const disparo = await dispararAutomacoes({
       accountId: m.accountId,
       triggerType,
       contactId: contact.id,
@@ -552,7 +570,13 @@ export async function persistInboundMessage(
         conversation_id: conversation.id,
         channel_id: m.channelId ?? null,
       },
-    }).catch((err) => console.error('[inbound-store] automation dispatch failed:', err));
+    }).catch((err) => {
+      console.error('[inbound-store] automation dispatch failed:', err);
+      // O motor não lança; se lançar, não se sabe se algum passo já falou
+      // com o cliente — o agente fica calado (o lado de uma resposta só).
+      return { falou: true };
+    });
+    if (disparo.falou) automacaoFalou = true;
   }
 
   // Funil padrão da conexão. Fora do laço de automações de propósito: o
@@ -570,15 +594,29 @@ export async function persistInboundMessage(
     conversationId: conversation.id,
   });
 
-  if (!flowConsumed && inboundText.trim()) {
-    await dispatchInboundToAiReply({
-      accountId: m.accountId,
-      conversationId: conversation.id,
-      contactId: contact.id,
-      configOwnerUserId: m.configOwnerUserId,
-      channelId: m.channelId ?? null,
-    });
-  }
+  // O agente de IA (F2 do docs/PLANO-agentes-de-ia.md, 5.3): DEPOIS do robô,
+  // das automações e do funil, com os fatos desta mensagem — quem decide se
+  // alguém responde é a entrada (`quemResponde`), não este caminho. Ela só
+  // ENFILEIRA o turno (quem gera e envia roda depois da espera da rajada,
+  // num `after()` próprio ou na rede do cron) e nunca lança. ⚠️ Sem o portão antigo de "texto não vazio": áudio, imagem e
+  // documento também abrem turno (E9). O canal é o GRAVADO na linha — nulo
+  // se a conexão foi apagada no meio, e aí não há IA.
+  await aoChegarMensagemDoCliente({
+    accountId: m.accountId,
+    conversationId: conversation.id,
+    canalGravado,
+    mensagemId: insertedMsg.id,
+    tipo: contentType,
+    // O texto e o MIME como ficaram GRAVADOS: é a linha que o turno relê.
+    texto: m.text,
+    mime: mimeNaChegada,
+    ehGrupo: false,
+    // A Evolution não entrega toque em botão: mensagem interativa só sai pela
+    // Meta (`evolution-transport.ts` a recusa), e o normalizador nem a lê.
+    ehRespostaDeBotao: false,
+    roboConsumiu: flowConsumed,
+    automacaoFalou,
+  });
 
   // conversation.created termina ANTES de message.received começar.
   await avisoDeConversaCriada;

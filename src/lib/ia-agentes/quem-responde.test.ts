@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { quemResponde, type FatosDaMensagem } from './quem-responde'
+import { abreTurno, MIME_DA_FIGURINHA, quemResponde, TIPOS_QUE_ABREM_TURNO, type FatosDaMensagem } from './quem-responde'
 
 const CANAL = 'canal-a'
 const TRIAGEM = { id: 'triagem', ativo: true, arquivado: false, conexoes: [CANAL] }
@@ -11,7 +11,7 @@ function fatos(p: Partial<FatosDaMensagem> = {}): FatosDaMensagem {
     ehGrupo: false,
     ehInstagram: false,
     canalId: CANAL,
-    tipoDaMensagem: 'text',
+    conteudo: { tipo: 'text', texto: 'Oi', mime: null },
     ehRespostaDeBotao: false,
     roboConsumiu: false,
     automacaoFalou: false,
@@ -82,8 +82,9 @@ describe('quemResponde — a ordem das regras (5.3)', () => {
       { ehInstagram: true },
       { canalId: null },
       { ehRespostaDeBotao: true },
-      { tipoDaMensagem: 'sticker' },
-      { tipoDaMensagem: 'location' },
+      { conteudo: { tipo: 'image', texto: null, mime: 'image/webp' } },
+      { conteudo: { tipo: 'location', texto: 'Rua X', mime: null } },
+      { conteudo: { tipo: 'text', texto: null, mime: null } },
     ] as Partial<FatosDaMensagem>[]) {
       expect(quemResponde(fatos(p)), JSON.stringify(p)).toEqual({ quem: 'ninguem', motivo: 'fora_do_alcance' })
     }
@@ -91,7 +92,37 @@ describe('quemResponde — a ordem das regras (5.3)', () => {
 
   it('áudio, imagem, documento e vídeo abrem turno (E9)', () => {
     for (const tipo of ['audio', 'image', 'document', 'video']) {
-      expect(quemResponde(fatos({ tipoDaMensagem: tipo })).quem, tipo).toBe('agente')
+      expect(quemResponde(fatos({ conteudo: { tipo, texto: null, mime: null } })).quem, tipo).toBe('agente')
     }
+  })
+})
+
+describe('abreTurno — a régua do conteúdo (a entrada e o turno usam a mesma)', () => {
+  it('vídeo está entre os tipos que abrem turno (E9)', () => {
+    expect(TIPOS_QUE_ABREM_TURNO.has('video')).toBe(true)
+  })
+
+  it.each([
+    ['texto', { tipo: 'text', texto: 'Oi', mime: null }],
+    ['foto sem legenda', { tipo: 'image', texto: null, mime: 'image/jpeg' }],
+    ['foto ainda sem MIME (a Evolution grava no download)', { tipo: 'image', texto: null, mime: null }],
+    ['áudio', { tipo: 'audio', texto: null, mime: 'audio/ogg' }],
+    ['documento', { tipo: 'document', texto: null, mime: 'application/pdf' }],
+    ['vídeo', { tipo: 'video', texto: null, mime: 'video/mp4' }],
+  ])('abre: %s', (_rotulo, c) => {
+    expect(abreTurno(c)).toBe(true)
+  })
+
+  it.each([
+    ['figurinha (gravada como image/webp)', { tipo: 'image', texto: null, mime: MIME_DA_FIGURINHA }],
+    ['figurinha com parâmetro no MIME', { tipo: 'image', texto: null, mime: 'Image/WebP; x=1' }],
+    ['texto nulo (cartão de contato, enquete, botão na Evolution)', { tipo: 'text', texto: null, mime: null }],
+    ['texto em branco', { tipo: 'text', texto: '  \n\t ', mime: null }],
+    ['só o marcador do iOS', { tipo: 'text', texto: '\uFFFC', mime: null }],
+    ['só caractere de formatação', { tipo: 'text', texto: '\u200B\u200D', mime: null }],
+    ['localização', { tipo: 'location', texto: 'Rua X', mime: null }],
+    ['toque em botão (Meta)', { tipo: 'interactive', texto: 'Sim', mime: null }],
+  ])('não abre: %s', (_rotulo, c) => {
+    expect(abreTurno(c)).toBe(false)
   })
 })

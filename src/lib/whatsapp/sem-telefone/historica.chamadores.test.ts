@@ -26,10 +26,20 @@ const PROIBIDOS = [
   // os motores de conversa
   '@/lib/automations/engine',
   '@/lib/flows/engine',
-  '@/lib/ai/auto-reply',
   'runAutomationsForTrigger',
+  'dispararAutomacoes',
   'dispatchInboundToFlows',
-  'dispatchInboundToAiReply',
+  // o agente de IA (F2, docs/PLANO-agentes-de-ia.md): a porta da ingestão, a
+  // fila e o turno. Até a F2 era a resposta automática (`ai/auto-reply`,
+  // apagada — E2); a regra é a mesma: fala antiga não abre turno.
+  '@/lib/ia-agentes/entrada',
+  '@/lib/ia-agentes/fila',
+  '@/lib/ia-agentes/turno',
+  'aoChegarMensagemDoCliente',
+  'enfileirarTurno',
+  'agendarTurno',
+  'executarTurno',
+  'cb_ia_enfileirar_turno',
   // o que decide por gente
   'routeContactToPipeline',
   'reopenClosedConversation',

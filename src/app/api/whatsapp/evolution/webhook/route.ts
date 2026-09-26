@@ -60,6 +60,7 @@ import { decrypt } from '@/lib/whatsapp/encryption';
 import { precisaConferirFoto } from '@/lib/contacts/foto-de-perfil';
 import { atualizarFotoDoContato } from '@/lib/whatsapp/foto-do-contato';
 import { ehEvolution } from '@/lib/cb-channels/transporte';
+import { assumirEcoDoTurno, type EcoPossivel } from '@/lib/ia-agentes/eco';
 
 // Inbound processing fans out to flows / automations / AI, so give the
 // after() block headroom beyond the platform default.
@@ -261,7 +262,13 @@ export async function POST(request: Request) {
               route.channelId,
             );
             if (!g) continue;
-            if (await jaGravada(g.providerMessageId, g.fromMe)) continue;
+            // O item vai junto para o eco de um turno do agente de IA (ver
+            // `jaGravada`) — em grupo o agente não responde, mas a regra é UMA
+            // para todo eco: nenhum `fromMe` sem linha vira mensagem do celular
+            // sem antes perguntar ao turno.
+            if (await jaGravada(g.providerMessageId, g.fromMe, { accountId: route.accountId, item })) {
+              continue;
+            }
 
             // A nossa própria mensagem no grupo é a fonte mais barata do
             // nosso LID — sem ele, menção a nós nunca acende (916). Vai o
@@ -311,7 +318,10 @@ export async function POST(request: Request) {
               db: supabaseAdmin(),
               item,
               rota: route,
-              jaGravada,
+              // Com o item: o eco da resposta de um agente de IA pode chegar
+              // assim também (ver `jaGravada`).
+              jaGravada: (id, esperar) =>
+                jaGravada(id, esperar, { accountId: route.accountId, item }),
             });
             semAnexo.push(...chegada.anexos);
             // Ficou retida e o acervo JÁ conhece o LID (o eco entrou no meio):
@@ -325,11 +335,20 @@ export async function POST(request: Request) {
             continue;
           }
 
-          if (await jaGravada(normalized.providerMessageId, normalized.fromMe)) continue;
+          if (
+            await jaGravada(normalized.providerMessageId, normalized.fromMe, {
+              accountId: route.accountId,
+              item,
+            })
+          ) {
+            continue;
+          }
 
-          // `fromMe` que sobreviveu ao teste acima não é eco nosso — foi
-          // digitado no celular pareado, que divide a conta de WhatsApp
-          // com o CRM. Caminho separado: sem fan-out e sem não-lido.
+          // `fromMe` que sobreviveu ao teste acima não é eco nosso — nem do
+          // envio do CRM, nem da resposta de um agente de IA (`jaGravada` a
+          // grava como do agente) — foi digitado no celular pareado, que
+          // divide a conta de WhatsApp com o CRM. Caminho separado: sem
+          // fan-out e sem não-lido.
           const gravada = normalized.fromMe
             ? await persistDeviceMessage(supabaseAdmin(), normalized)
             : await persistInboundMessage(supabaseAdmin(), normalized);
@@ -912,8 +931,23 @@ export async function POST(request: Request) {
  * Evolution mas ainda não gravou a linha: o envio grava DEPOIS de receber
  * o id de volta, então o eco pode chegar primeiro. Sem essa espera, o
  * próprio envio do operador viraria uma segunda bolha "pelo celular".
+ *
+ * ⚠️⚠️ E um terceiro, com o `eco` (E5 do docs/PLANO-agentes-de-ia.md):
+ * passada a espera sem a linha, o id pode ser a resposta de um AGENTE DE IA
+ * cujo INSERT atrasou ou nunca aconteceu. Aí o eco é gravado COMO a resposta
+ * do agente (`assumirEcoDoTurno`, `src/lib/ia-agentes/eco.ts`) e devolve
+ * `true` — quem chama não o grava como mensagem do celular. Sem isto ele
+ * virava `from_device`: a conversa passava a "ter tido gente" (D16) para
+ * sempre. Nenhum motor roda para ele: é a resposta do próprio agente. Todo
+ * chamador que espera a corrida (`fromMe`) passa o item — há pino em
+ * `route.eco.test.ts`. A religação das retidas não espera e não passa: o
+ * limite está no cabeçalho de `eco.ts`.
  */
-async function jaGravada(providerMessageId: string, esperarCorrida = false): Promise<boolean> {
+async function jaGravada(
+  providerMessageId: string,
+  esperarCorrida = false,
+  eco?: EcoPossivel,
+): Promise<boolean> {
   const existe = async () => {
     const { data } = await supabaseAdmin()
       .from('messages')
@@ -928,7 +962,9 @@ async function jaGravada(providerMessageId: string, esperarCorrida = false): Pro
   if (!esperarCorrida) return false;
 
   await new Promise((r) => setTimeout(r, 2_000));
-  return existe();
+  if (await existe()) return true;
+  if (!eco) return false;
+  return assumirEcoDoTurno(supabaseAdmin(), { ...eco, providerMessageId });
 }
 
 /**

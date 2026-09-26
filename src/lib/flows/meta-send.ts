@@ -149,7 +149,7 @@ export async function engineSendText(
    * ASSINATURA (923) — fluxo e IA NUNCA assinam com nome de gente.
    *
    * ⚠️ Este caminho serve os DOIS: `engineSendText` e chamado pelo motor de
-   * fluxos e tambem pela resposta automatica da IA (`ai/auto-reply.ts`). Nem
+   * fluxos e tambem pelo TURNO do agente de IA (`ia-agentes/turno.ts`). Nem
    * um nem outro tem autor humano — o `userId` que chega aqui e o dono da
    * configuracao, nao quem respondeu. Assinar com ele diria ao cliente que
    * aquela pessoa leu o caso. Quem assina e o escritorio (P1.5), e o selo de

@@ -10,6 +10,11 @@
 //       - `enviando_desde` sem `mensagem_enviada_id` → pode ter saído →
 //         `incerto`, e a conversa vai para gente;
 //       - com `mensagem_enviada_id` → saiu → `respondeu`, com o erro.
+//     ⚠️ O turno lento ainda pode gravar `mensagem_enviada_id` DEPOIS desta
+//     leitura (`gravarIdEnviado`, a única escrita dele sem cerca de posse —
+//     o eco precisa do id). Isso não muda o desfecho gravado aqui (o id não
+//     reescreve `status`) nem reenvia nada: o recolhedor nunca re-executa, e
+//     o turno que perdeu a posse não escreve mais o status.
 //  2. RODAR os pendentes vencidos que o disparo imediato não rodou (a
 //     conversa estava ocupada, ou o processo caiu na espera da rajada).
 //
@@ -71,6 +76,10 @@ async function recolherOrfaos(db: SupabaseClient): Promise<void> {
     if (!tomado || tomado.length === 0) continue
     console.warn('[ia-agentes] turno órfão recolhido:', o.id, status)
 
+    // `incerto` vai para gente — menos quando alguém já pausou a conversa
+    // (a equipe respondeu, o botão Pausar): `transferirParaGente` não passa
+    // por cima da pausa (a de gente é a que a automação retoma) e não
+    // escreve nada. O `incerto` fica: ele fala do ENVIO, não da transferência.
     if (status === 'incerto' && o.ia_agente_id) {
       const agente = await obterAgente(o.account_id, o.ia_agente_id).catch(() => null)
       const { data: conv } = await db

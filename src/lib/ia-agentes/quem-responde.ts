@@ -4,8 +4,8 @@
 // esta função decide; o turno confere tudo de novo antes de gerar.
 //
 // A ordem das regras É a regra:
-//   0. fora do alcance (grupo, Instagram, sem conexão, tipo de mensagem que
-//      não abre turno) → ninguém;
+//   0. fora do alcance (grupo, Instagram, sem conexão, mensagem que não
+//      abre turno — `abreTurno`) → ninguém;
 //   1. o robô consumiu a mensagem → ninguém;
 //   2. uma automação desta mensagem FALOU (ou vai falar) com o contato
 //      (`ResultadoDoDisparo.falou`, E4) → ninguém: o cliente não recebe
@@ -25,8 +25,48 @@
 //   6. senão → ninguém.
 // ============================================================
 
-/** Tipos de mensagem que abrem turno (E9). Figurinha, localização, contato e toque em botão não. */
+/** Tipos de mensagem que abrem turno (E9). Localização e toque em botão (`interactive`) não. */
 export const TIPOS_QUE_ABREM_TURNO: ReadonlySet<string> = new Set(['text', 'audio', 'image', 'document', 'video'])
+
+/**
+ * O MIME da figurinha do WhatsApp (sempre WebP, estática ou animada). ⚠️ As
+ * DUAS ingestões gravam a figurinha como `content_type = 'image'` (o CHECK de
+ * `messages` não tem `sticker`): o que a separa de uma foto na LINHA é o
+ * `media_type`. A Meta o grava no próprio insert (`sticker.mime_type`); a
+ * Evolution só o grava no download, depois — por isso `persistInboundMessage`
+ * o grava já no insert quando o payload é `stickerMessage`.
+ */
+export const MIME_DA_FIGURINHA = 'image/webp'
+
+/** O conteúdo da mensagem COMO FICOU GRAVADO (`content_type`, `content_text`, `media_type`). */
+export interface ConteudoDaMensagem {
+  tipo: string
+  texto: string | null
+  mime: string | null
+}
+
+/** Algo visível no texto: sem espaço, sem caractere de formatação (`\p{Cf}`) e sem o `\uFFFC` do iOS. */
+function temTextoVisivel(texto: string | null): boolean {
+  return !!texto && texto.replace(/[\s\p{Cf}\uFFFC]/gu, '') !== ''
+}
+
+/**
+ * A mensagem ABRE turno? (E9) A MESMA régua na entrada (`entrada.ts`, com o
+ * que a ingestão gravou) e no turno (`turno.ts`, lendo a linha): a mensagem
+ * mais nova só DESCARTA o turno em curso se abrir o dela (E10). Duas réguas
+ * diferentes = o cliente manda texto e figurinha, o turno do texto é
+ * descartado pela figurinha, e a figurinha não abre turno — ninguém responde.
+ *
+ * Não abrem: tipo fora de `TIPOS_QUE_ABREM_TURNO` (localização, botão),
+ * figurinha e texto sem nada visível — na Evolution, cartão de contato,
+ * enquete e resposta de botão chegam como `text` com `content_text` nulo.
+ */
+export function abreTurno(c: ConteudoDaMensagem): boolean {
+  if (!TIPOS_QUE_ABREM_TURNO.has(c.tipo)) return false
+  if (c.tipo === 'image' && c.mime?.split(';')[0].trim().toLowerCase() === MIME_DA_FIGURINHA) return false
+  if (c.tipo === 'text' && !temTextoVisivel(c.texto)) return false
+  return true
+}
 
 export interface AgenteParaDecidir {
   id: string
@@ -41,7 +81,8 @@ export interface FatosDaMensagem {
   ehInstagram: boolean
   /** A conexão que ficou gravada na mensagem (nula = sem IA). */
   canalId: string | null
-  tipoDaMensagem: string
+  /** O conteúdo gravado — a régua de `abreTurno`. */
+  conteudo: ConteudoDaMensagem
   /** Toque em botão de modelo (Meta): não abre turno (a regra de hoje). */
   ehRespostaDeBotao: boolean
   roboConsumiu: boolean
@@ -87,7 +128,7 @@ export function quemResponde(f: FatosDaMensagem): QuemResponde {
     f.ehInstagram ||
     !f.canalId ||
     f.ehRespostaDeBotao ||
-    !TIPOS_QUE_ABREM_TURNO.has(f.tipoDaMensagem)
+    !abreTurno(f.conteudo)
   ) {
     return { quem: 'ninguem', motivo: 'fora_do_alcance' }
   }

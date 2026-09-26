@@ -8,14 +8,15 @@
 // ⚠️ Nunca lança e nunca espera o agente: a ingestão ainda tem o webhook de
 // saída `message.received` e os itens seguintes do lote atrás dela.
 // ⚠️ O caso comum é "nenhum agente": duas leituras curtas (conversa e
-// conexão) e volta.
+// conexão) e volta. Quando o robô ou uma automação respondeu, nenhuma
+// leitura: um UPDATE que descarta o pendente da conexão, e volta.
 // ============================================================
 
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { ehInstagram } from '@/lib/cb-channels/transporte'
 
-import { enfileirarTurno } from './fila'
-import { quemResponde, TIPOS_QUE_ABREM_TURNO, type AgenteParaDecidir } from './quem-responde'
+import { descartarPendente, enfileirarTurno } from './fila'
+import { abreTurno, quemResponde, type AgenteParaDecidir, type ConteudoDaMensagem } from './quem-responde'
 import { obterAgente } from './repo'
 import { agendarTurno } from './turno'
 
@@ -28,6 +29,13 @@ export interface MensagemDoCliente {
   mensagemId: string
   /** `messages.content_type`. */
   tipo: string
+  /** `messages.content_text`, como GRAVADO. */
+  texto: string | null
+  /**
+   * `messages.media_type`, como GRAVADO no insert — é o que separa a
+   * figurinha (gravada como `image`) de uma foto. Ver `abreTurno`.
+   */
+  mime: string | null
   ehGrupo: boolean
   /** Toque em botão de modelo (Meta): não abre turno. */
   ehRespostaDeBotao: boolean
@@ -42,24 +50,34 @@ function paraDecidir(a: Awaited<ReturnType<typeof obterAgente>>): AgenteParaDeci
 }
 
 export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<void> {
-  // Os portões que não precisam do banco, antes de qualquer leitura.
-  if (
-    m.ehGrupo ||
-    !m.canalGravado ||
-    m.ehRespostaDeBotao ||
-    m.roboConsumiu ||
-    m.automacaoFalou ||
-    !TIPOS_QUE_ABREM_TURNO.has(m.tipo)
-  ) {
+  if (m.ehGrupo || !m.canalGravado) return
+  const canalId = m.canalGravado
+  // O robô ou uma automação JÁ respondeu a esta mensagem: ela não abre turno,
+  // e o PENDENTE desta conexão (o texto de antes, na mesma rajada) sai — senão
+  // o cliente que escreve e toca num botão recebe a resposta da automação e,
+  // 8 s depois, a do agente (Codex, #292). Uma escrita só, sem leitura; e só
+  // quando alguém de fato falou: figurinha ou botão SEM automação falando não
+  // cancelam nada.
+  if (m.roboConsumiu || m.automacaoFalou) {
+    try {
+      await descartarPendente(supabaseAdmin(), { accountId: m.accountId, conversationId: m.conversationId, canalId })
+    } catch (err) {
+      console.error('[ia-agentes] descartar o pendente na entrada falhou:', err)
+    }
     return
   }
-  const canalId = m.canalGravado
+  // Os portões de conteúdo, sem banco. `abreTurno` é a MESMA régua com que o
+  // turno decide se uma mensagem mais nova o descarta (E10): figurinha e
+  // texto sem nada visível (cartão de contato, enquete, botão na Evolution)
+  // não abrem turno.
+  const conteudo: ConteudoDaMensagem = { tipo: m.tipo, texto: m.texto, mime: m.mime }
+  if (m.ehRespostaDeBotao || !abreTurno(conteudo)) return
   try {
     const db = supabaseAdmin()
     const [{ data: conv, error: erroConv }, { data: canal, error: erroCanal }] = await Promise.all([
       db
         .from('conversations')
-        .select('id, contact_id, group_id, ia_agente_id, ai_autoreply_disabled')
+        .select('id, contact_id, group_id, status, ia_agente_id, ai_autoreply_disabled')
         .eq('id', m.conversationId)
         .eq('account_id', m.accountId)
         .maybeSingle(),
@@ -75,6 +93,10 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
       return
     }
     if (!conv || !canal) return
+    // Uma automação desta mensagem pode ter ENCERRADO a conversa sem "falar"
+    // (`close_conversation`, depois da reabertura da ingestão): o agente não
+    // responde numa conversa fechada (Codex, #292).
+    if (conv.status === 'closed') return
     // O caso comum: nenhum agente em lugar nenhum.
     if (!conv.ia_agente_id && !canal.ia_agente_entrada_id) return
 
@@ -118,7 +140,7 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
       ehGrupo: conv.group_id !== null,
       ehInstagram: ehInstagram({ kind: canal.kind }),
       canalId,
-      tipoDaMensagem: m.tipo,
+      conteudo,
       ehRespostaDeBotao: m.ehRespostaDeBotao,
       roboConsumiu: m.roboConsumiu,
       automacaoFalou: m.automacaoFalou,
@@ -137,6 +159,7 @@ export async function aoChegarMensagemDoCliente(m: MensagemDoCliente): Promise<v
         p_account_id: m.accountId,
         p_conversation_id: m.conversationId,
         p_ia_agente_id: decisao.agenteId,
+        p_canal_id: canalId,
       })
       if (error) {
         console.error('[ia-agentes] atribuir o agente de entrada falhou:', error.message)

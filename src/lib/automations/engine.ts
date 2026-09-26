@@ -291,11 +291,12 @@ const DISPARO_VAZIO: ResultadoDoDisparo = {
  * Must never throw. All errors are caught and logged; per-automation
  * failures are recorded into automation_logs with status='failed'.
  *
- * Devolve `void` de propósito: os chamadores da ingestão (webhook da Meta,
- * `inbound-store`) aguardam um tipo de gatilho por vez, EM SEQUÊNCIA, e só
- * precisam saber que terminou; mudar o tipo aqui mexeria em arquivos que o
- * merge do upstream reescreve. Quem precisa saber o que aconteceu chama
- * `dispararAutomacoes`.
+ * Devolve `void` de propósito, para quem só precisa saber que terminou (a
+ * rota manual `/api/automations/engine`, as etiquetas de `tag-events.ts` e o
+ * dreno do funil). ⚠️ As INGESTÕES (webhook da Meta, `inbound-store`) NÃO a
+ * chamam mais: usam `dispararAutomacoes`, porque o `falou` do resultado é o
+ * que cala o agente de IA (E4) — e o passo `add_tag` também, pelo mesmo
+ * motivo. Quem precisa saber o que aconteceu chama `dispararAutomacoes`.
  */
 export async function runAutomationsForTrigger(
   input: DispatchInput
@@ -1545,7 +1546,13 @@ async function runStep(
         return `tag ${cfg.tag_id} added; tag_added dispatch skipped at depth ${depth}`;
       }
 
-      await runAutomationsForTrigger({
+      // `dispararAutomacoes`, e não `runAutomationsForTrigger` (que é `void`):
+      // se a automação de `tag_added` FALOU (ou vai falar) com o contato, a
+      // execução de cima falou junto — é pelo `falou` dela que a ingestão
+      // cala o agente de IA (E4). Descartado, o agente de entrada respondia
+      // uma segunda vez à mesma mensagem. Só a fala aninhada sobe: a que só
+      // etiqueta continua não contando (Codex, #292).
+      const aninhado = await dispararAutomacoes({
         accountId: args.automation.account_id,
         triggerType: 'tag_added',
         contactId: args.contactId,
@@ -1558,6 +1565,7 @@ async function runStep(
           },
         },
       });
+      if (aninhado.falou) args.aoFalar?.();
       return `tag ${cfg.tag_id} added and tag_added dispatched`;
     }
 
@@ -1787,6 +1795,11 @@ async function runStep(
       });
 
       if (!criado.ok) throw new Error(`create_deal falhou: ${criado.message}`);
+      // O card NASCEU na etapa: a automação que escuta a entrada nela fala
+      // depois, no dreno — conta agora (E4, `etapaTemQuemFale`).
+      if (criado.created && args.aoFalar && (await etapaTemQuemFale(db, args.automation.account_id, cfg.stage_id))) {
+        args.aoFalar();
+      }
       // `created: false` (colisão de índice único) não acontece com source
       // 'automation' — o índice da 911 não alcança este insert. Quem barra
       // duplicata aqui é a checagem acima; o ramo fica pelo contrato de
@@ -1809,6 +1822,21 @@ async function runStep(
       if (!ehMover && !cfg.status)
         throw new Error('set_deal_status precisa de status');
 
+
+      // FALA ADIADA (E4): quem escuta a entrada na etapa de destino fala
+      // depois, no dreno. Só vale se o card MUDAR de etapa (sem mudança o
+      // gatilho da 934 não enfileira evento nenhum) — e a RPC não diz se
+      // mudou: a etapa de antes é lida aqui, e só quando alguém escuta a de
+      // destino (o caso comum fica numa consulta só). Leitura que falha =
+      // conta como fala (`undefined` nunca é a etapa de destino).
+      const escutaODestino =
+        ehMover &&
+        !!cfg.stage_id &&
+        !!args.aoFalar &&
+        (await etapaTemQuemFale(db, args.automation.account_id, cfg.stage_id));
+      const etapaAntes = escutaODestino
+        ? await etapaAtualDoCard(db, args.automation.account_id, alvo.id)
+        : undefined;
 
       // ⚠️ O "Mover" NÃO pede status: quem reabre o PERDIDO levado a uma
       // etapa neutra — inclusive a etapa em que ele já está, o card marcado
@@ -1849,6 +1877,7 @@ async function runStep(
       // para o "Aguardar" junto com o resto do contexto.
       if (!args.context.deal_id) args.context.deal_id = alvo.id;
       args.context.deal_status_fixado = (r.status_gravado as DealStatus | null) ?? null;
+      if (escutaODestino && etapaAntes !== cfg.stage_id) args.aoFalar?.();
 
       return ehMover
         ? `negócio movido para ${cfg.stage_id}`
@@ -2124,45 +2153,41 @@ async function runStep(
       }
       const { data: agente, error: agenteErr } = await db
         .from('cb_ia_agentes')
-        .select('nome, ativo, conexoes, arquivado_em')
+        .select('nome')
         .eq('id', cfg.ia_agente_id)
         .eq('account_id', args.automation.account_id)
         .maybeSingle();
       if (agenteErr) throw new Error(`Atribuir agente de IA: leitura do agente falhou: ${agenteErr.message}`);
-      if (!agente || agente.arquivado_em) {
-        throw new Error('Atribuir agente de IA: o agente não existe mais (foi arquivado?)');
-      }
+      if (!agente) throw new Error('Atribuir agente de IA: o agente não existe nesta conta');
+      // A conexão do DISPARO (a da mensagem, ou a do passo de envio da régua),
+      // senão a da conversa: o banco só atribui agente LIGADO, não arquivado e
+      // que ATENDE essa conexão (Codex, #292) — atribuído fora dela, ele não
+      // responderia e a entrada não o substituiria.
+      const canalDoDisparo = args.context.channel_id ?? conv.channel_id ?? null;
       const { data: linhas, error: rpcErr } = await db.rpc('cb_atribuir_agente_de_ia', {
         p_account_id: args.automation.account_id,
         p_conversation_id: conversationId,
         p_ia_agente_id: cfg.ia_agente_id,
+        p_canal_id: canalDoDisparo,
       });
       if (rpcErr) throw new Error(`Atribuir agente de IA falhou: ${rpcErr.message}`);
       const r = (Array.isArray(linhas) ? linhas[0] : linhas) as
         | { resultado?: string; pausada_por?: string | null }
         | null;
       const nome = agente.nome as string;
-      // Avisos que NÃO falham o passo: o agente fica atribuído, e o turno
-      // confere de novo a cada mensagem (desligado ou fora da conexão = não
-      // responde). O registro diz por quê.
-      const avisos: string[] = [];
-      if (!agente.ativo) avisos.push('o agente está desligado');
-      const conexoes = (agente.conexoes as string[] | null) ?? [];
-      if (conv.channel_id && !conexoes.includes(conv.channel_id)) {
-        avisos.push('o agente não atende a conexão desta conversa');
-      }
-      const sufixo = avisos.length > 0 ? ` (${avisos.join('; ')})` : '';
       switch (r?.resultado) {
         case 'retomada':
-          return `agente de IA "${nome}" atribuído; IA retomada${sufixo}`;
+          return `agente de IA "${nome}" atribuído; IA retomada`;
         case 'pausada_gente':
-          return `agente de IA "${nome}" atribuído; IA segue pausada: a equipe respondeu nas últimas 24 h${sufixo}`;
+          return `agente de IA "${nome}" atribuído; IA segue pausada: a equipe respondeu nas últimas 24 h`;
         case 'pausada_mantida':
-          return `agente de IA "${nome}" atribuído; IA segue pausada (${r.pausada_por ?? 'botão'})${sufixo}`;
+          return `agente de IA "${nome}" atribuído; IA segue pausada (${r.pausada_por ?? 'botão'})`;
         case 'grupo':
           throw new Error('Atribuir agente de IA não vale em conversa de grupo');
         case 'agente_indisponivel':
-          throw new Error('Atribuir agente de IA: o agente não existe mais (foi arquivado?)');
+          throw new Error(
+            `Atribuir agente de IA: o agente "${nome}" está desligado, arquivado ou não atende esta conexão`,
+          );
         default:
           throw new Error('Atribuir agente de IA: conversa não encontrada nesta conta');
       }
@@ -2914,6 +2939,54 @@ function stepChannel(
  * (`deal_status_fixado`; ausente no card do evento ainda não escrito). A RPC
  * só escreve se ele não mudou no meio.
  */
+/**
+ * FALA ADIADA DO FUNIL (E4 dos agentes de IA). O "Mover card" e o "Criar
+ * negócio" só gravam um evento em `cb_automation_events`; a automação de
+ * `deal_stage_changed` que escuta a etapa de destino roda DEPOIS, no dreno
+ * (`drain-events.ts`), e pode mandar mensagem ao contato — com o agente já
+ * tendo respondido a mesma mensagem (o turno roda 8 s depois dela). Por isso
+ * o passo conta como fala quando alguma automação LIGADA da conta dispararia
+ * para essa etapa, pela MESMA régua do motor (`triggerMatches`: lista vazia =
+ * qualquer etapa). Sem olhar os passos dela, nem os recortes de canal e de
+ * escopo — o lado conservador, como `run_automation`: o agente cala. Erro de
+ * leitura = fala, pelo mesmo motivo.
+ */
+async function etapaTemQuemFale(
+  db: ReturnType<typeof supabaseAdmin>,
+  accountId: string,
+  stageId: string
+): Promise<boolean> {
+  const { data, error } = await db
+    .from('automations')
+    .select('id, trigger_type, trigger_config')
+    .eq('account_id', accountId)
+    .eq('trigger_type', 'deal_stage_changed')
+    .eq('is_active', true);
+  if (error) {
+    console.error('[automations] quem escuta a etapa não pôde ser conferido (conta como fala):', error.message);
+    return true;
+  }
+  return ((data ?? []) as Automation[]).some(
+    (a) => a.trigger_type === 'deal_stage_changed' && triggerMatches(a, { to_stage_id: stageId })
+  );
+}
+
+/** A etapa do card agora (`null` = sem etapa). `undefined` = a leitura falhou. */
+async function etapaAtualDoCard(
+  db: ReturnType<typeof supabaseAdmin>,
+  accountId: string,
+  dealId: string
+): Promise<string | null | undefined> {
+  const { data, error } = await db
+    .from('deals')
+    .select('stage_id')
+    .eq('id', dealId)
+    .eq('account_id', accountId)
+    .maybeSingle();
+  if (error) return undefined;
+  return (data?.stage_id as string | null | undefined) ?? null;
+}
+
 async function negocioAlvo(
   db: ReturnType<typeof supabaseAdmin>,
   args: ExecuteArgs

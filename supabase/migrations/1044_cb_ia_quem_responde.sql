@@ -287,11 +287,15 @@ $$;
 -- Zera o contador de respostas. O agente é relido AQUI, na execução: desligado
 -- ou arquivado depois de a automação ser salva = `agente_indisponivel`, nada
 -- gravado (Codex, #292) — senão a conversa ficaria com um agente que não
--- responde, e a próxima mensagem cairia na entrada.
+-- responde, e a próxima mensagem cairia na entrada. Com `p_canal_id` (a conexão
+-- do disparo), o agente também tem de ATENDER essa conexão: atribuído fora
+-- dela, ele não responderia (regra 4) e a entrada não o substitui (regra 5).
+DROP FUNCTION IF EXISTS public.cb_atribuir_agente_de_ia(uuid, uuid, uuid);
 CREATE OR REPLACE FUNCTION public.cb_atribuir_agente_de_ia(
   p_account_id      uuid,
   p_conversation_id uuid,
-  p_ia_agente_id    uuid
+  p_ia_agente_id    uuid,
+  p_canal_id        uuid DEFAULT NULL
 )
 RETURNS TABLE (resultado text, pausada_por text)
 LANGUAGE plpgsql
@@ -320,6 +324,7 @@ BEGIN
     SELECT 1 FROM cb_ia_agentes a
      WHERE a.id = p_ia_agente_id AND a.account_id = p_account_id
        AND a.arquivado_em IS NULL AND a.ativo
+       AND (p_canal_id IS NULL OR p_canal_id = ANY (a.conexoes))
   ) THEN
     RETURN QUERY SELECT 'agente_indisponivel'::text, NULL::text;
     RETURN;
@@ -373,10 +378,10 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.cb_ia_enfileirar_turno(uuid, uuid, uuid, uuid, uuid, integer) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.cb_ia_reivindicar_turno(uuid) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.cb_atribuir_agente_de_ia(uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.cb_atribuir_agente_de_ia(uuid, uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.cb_ia_enfileirar_turno(uuid, uuid, uuid, uuid, uuid, integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.cb_ia_reivindicar_turno(uuid) TO service_role;
-GRANT EXECUTE ON FUNCTION public.cb_atribuir_agente_de_ia(uuid, uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.cb_atribuir_agente_de_ia(uuid, uuid, uuid, uuid) TO service_role;
 -- As funções são INVOKER: quem chama precisa ler e escrever o que elas tocam
 -- (no-op na produção; em banco novo não há default privilege que conceda).
 GRANT SELECT, INSERT, UPDATE ON TABLE cb_ia_turnos TO service_role;
@@ -655,7 +660,7 @@ BEGIN
   FOREACH f IN ARRAY ARRAY[
     'public.cb_ia_enfileirar_turno(uuid, uuid, uuid, uuid, uuid, integer)',
     'public.cb_ia_reivindicar_turno(uuid)',
-    'public.cb_atribuir_agente_de_ia(uuid, uuid, uuid)',
+    'public.cb_atribuir_agente_de_ia(uuid, uuid, uuid, uuid)',
     'public.claim_ai_reply_slot(uuid, integer)',
     'public.cb_assentar_mensagem_historica(uuid, timestamptz, boolean, timestamptz, boolean)'
   ] LOOP

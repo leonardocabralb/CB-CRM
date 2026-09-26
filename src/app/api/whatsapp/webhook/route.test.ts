@@ -4,9 +4,9 @@ import { MEDIA_MAX_BYTES_ENTRADA } from '@/lib/storage/upload-media'
 
 // Shared, hoisted state the module mocks close over. Reset per test.
 const h = vi.hoisted(() => ({
-  runAutomationsForTrigger: vi.fn(),
+  dispararAutomacoes: vi.fn(),
   dispatchInboundToFlows: vi.fn(),
-  dispatchInboundToAiReply: vi.fn(),
+  aoChegarMensagemDoCliente: vi.fn(),
   dispatchWebhookEvent: vi.fn(),
   state: {
     // Result the message upsert's .select() resolves to. A genuine insert
@@ -237,13 +237,15 @@ vi.mock('@/lib/whatsapp/template-webhook', () => ({
   handleTemplateWebhookChange: vi.fn(),
 }))
 vi.mock('@/lib/automations/engine', () => ({
-  runAutomationsForTrigger: h.runAutomationsForTrigger,
+  dispararAutomacoes: h.dispararAutomacoes,
 }))
 vi.mock('@/lib/flows/engine', () => ({
   dispatchInboundToFlows: h.dispatchInboundToFlows,
 }))
-vi.mock('@/lib/ai/auto-reply', () => ({
-  dispatchInboundToAiReply: h.dispatchInboundToAiReply,
+// O agente de IA (F2): a rota só entrega os fatos à entrada — o motor em si
+// tem os seus testes em `src/lib/ia-agentes/`.
+vi.mock('@/lib/ia-agentes/entrada', () => ({
+  aoChegarMensagemDoCliente: h.aoChegarMensagemDoCliente,
 }))
 // Multi-canal: o carimbo e a resolucao do canal de entrada sao NOSSOS. Sao
 // substituidos aqui para que os casos de regressao no fim do arquivo possam
@@ -348,14 +350,14 @@ beforeEach(() => {
     contentType: 'image/jpeg',
   })
   h.dispatchInboundToFlows.mockResolvedValue({ consumed: false })
-  h.dispatchInboundToAiReply.mockResolvedValue(undefined)
+  h.aoChegarMensagemDoCliente.mockResolvedValue(undefined)
   h.dispatchWebhookEvent.mockResolvedValue(undefined)
-  h.runAutomationsForTrigger.mockImplementation(() => {
+  h.dispararAutomacoes.mockImplementation(() => {
     h.state.automationStarted++
-    return new Promise<void>((resolve) => {
+    return new Promise((resolve) => {
       setTimeout(() => {
         h.state.automationCompleted++
-        resolve()
+        resolve({ candidatas: 0, foraDoEscopo: 0, executadas: 0, comFalha: 0, emEspera: 0 })
       }, 0)
     })
   })
@@ -388,8 +390,8 @@ describe('inbound webhook: idempotent insert (#367)', () => {
     // None of the downstream side effects fire on a replay.
     expect(h.state.rpcCalls).toHaveLength(0)
     expect(h.dispatchInboundToFlows).not.toHaveBeenCalled()
-    expect(h.runAutomationsForTrigger).not.toHaveBeenCalled()
-    expect(h.dispatchInboundToAiReply).not.toHaveBeenCalled()
+    expect(h.dispararAutomacoes).not.toHaveBeenCalled()
+    expect(h.aoChegarMensagemDoCliente).not.toHaveBeenCalled()
     expect(h.dispatchWebhookEvent).not.toHaveBeenCalled()
   })
 })
@@ -445,13 +447,15 @@ describe('inbound webhook: template quick-reply buttons (#478)', () => {
         },
       }),
     )
-    const triggers = h.runAutomationsForTrigger.mock.calls.map(
+    const triggers = h.dispararAutomacoes.mock.calls.map(
       (call) => (call[0] as { triggerType: string }).triggerType,
     )
     expect(triggers).toContain('interactive_reply')
-    // The AI auto-reply must stay out of it — a button tap is not a
-    // free-text question.
-    expect(h.dispatchInboundToAiReply).not.toHaveBeenCalled()
+    // The AI agent must stay out of it — a button tap is not a free-text
+    // question. A rota entrega o FATO; quem cala é a entrada (`quemResponde`).
+    expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(
+      expect.objectContaining({ ehRespostaDeBotao: true, tipo: 'interactive' }),
+    )
   })
 
   it('falls back to the label when the template button carries no payload', async () => {
@@ -621,10 +625,11 @@ describe('inbound webhook: after() awaits automations (#368)', () => {
 
   it('os tipos de gatilho rodam EM SEQUÊNCIA, na ordem do original (#409; Fase 12)', async () => {
     const passos: string[] = []
-    h.runAutomationsForTrigger.mockImplementation(async ({ triggerType }: { triggerType: string }) => {
+    h.dispararAutomacoes.mockImplementation(async ({ triggerType }: { triggerType: string }) => {
       passos.push(`início ${triggerType}`)
       await new Promise((r) => setTimeout(r, 0))
       passos.push(`fim ${triggerType}`)
+      return {}
     })
     await runWebhook()
     expect(passos).toEqual([
@@ -640,9 +645,10 @@ describe('inbound webhook: after() awaits automations (#368)', () => {
   it('a falha de um tipo de gatilho não pula os seguintes', async () => {
     const erro = vi.spyOn(console, 'error').mockImplementation(() => {})
     const tipos: string[] = []
-    h.runAutomationsForTrigger.mockImplementation(async ({ triggerType }: { triggerType: string }) => {
+    h.dispararAutomacoes.mockImplementation(async ({ triggerType }: { triggerType: string }) => {
       tipos.push(triggerType)
       if (triggerType === 'first_inbound_message') throw new Error('falhou')
+      return {}
     })
     await runWebhook()
     expect(tipos).toEqual(['first_inbound_message', 'new_message_received', 'keyword_match'])
@@ -795,7 +801,7 @@ describe('conversation.created não segura a gravação da mensagem', () => {
     })
 
     // Tudo o que vem depois da gravação acontece com o aviso ainda no ar.
-    await vi.waitFor(() => expect(h.dispatchInboundToAiReply).toHaveBeenCalled())
+    await vi.waitFor(() => expect(h.aoChegarMensagemDoCliente).toHaveBeenCalled())
     expect(h.state.upsertCalls).toHaveLength(1)
     expect(h.state.rpcCalls.map((c) => c.name)).toContain('bump_conversation_on_inbound')
     expect(h.dispatchInboundToFlows).toHaveBeenCalledTimes(1)
@@ -934,5 +940,126 @@ describe('template-lifecycle webhooks: WABA id is threaded to the handler (#534)
     })
     // A template event must not fall through to the messaging branch.
     expect(h.state.upsertCalls).toHaveLength(0)
+  })
+})
+
+// ============================================================
+// O agente de IA (F2 do docs/PLANO-agentes-de-ia.md): a rota entrega os
+// FATOS da mensagem à entrada (`aoChegarMensagemDoCliente`), que decide. A
+// resposta automática antiga (`ai/auto-reply`) foi apagada (E2).
+// ============================================================
+describe('os fatos da mensagem vão para o agente de IA', () => {
+  const DISPARO = { candidatas: 0, foraDoEscopo: 0, executadas: 0, comFalha: 0, emEspera: 0 }
+
+  async function comCanal(canal: string | null) {
+    const { resolveInboundMetaChannelId } = await import('@/lib/cb-channels/resolve-inbound')
+    vi.mocked(resolveInboundMetaChannelId).mockResolvedValue(canal)
+  }
+  // `clearAllMocks` não desfaz implementação: os casos de canal acima deixam
+  // o último canal resolvido para trás.
+  beforeEach(() => comCanal(null))
+
+  it('com os ids GRAVADOS, o tipo da linha e nenhum portão aceso', async () => {
+    await comCanal('canal-1')
+    h.state.messageUpsertResult = [{ id: 'msg-77' }]
+
+    await runWebhook()
+
+    expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledTimes(1)
+    expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith({
+      accountId: 'acc-1',
+      conversationId: 'conv-1',
+      canalGravado: 'canal-1',
+      // O id da LINHA (uuid), não o wamid: o turno relê o `message_id` dela.
+      mensagemId: 'msg-77',
+      tipo: 'text',
+      // O texto e o MIME GRAVADOS: a régua do conteúdo (`abreTurno`).
+      texto: expect.any(String),
+      mime: null,
+      ehGrupo: false,
+      ehRespostaDeBotao: false,
+      roboConsumiu: false,
+      automacaoFalou: false,
+    })
+  })
+
+  it('o canal é o que FICOU na linha: conexão apagada no meio = sem canal (e sem IA)', async () => {
+    await comCanal('canal-apagado')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    h.state.messageUpsertErrors = [
+      {
+        code: '23503',
+        message: 'insert or update on table "messages" violates foreign key constraint "messages_channel_id_fkey"',
+      },
+    ]
+
+    await runWebhook()
+
+    expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ canalGravado: null }))
+    warn.mockRestore()
+  })
+
+  it('⚠️ E4: basta UM gatilho da mensagem ter falado — os seguintes não apagam', async () => {
+    h.dispararAutomacoes.mockImplementation(async ({ triggerType }: { triggerType: string }) => ({
+      ...DISPARO,
+      falou: triggerType === 'first_inbound_message' ? true : undefined,
+    }))
+
+    await runWebhook()
+
+    expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ automacaoFalou: true }))
+  })
+
+  it('o robô consumiu a mensagem: o fato vai junto (quem cala é a entrada)', async () => {
+    h.dispatchInboundToFlows.mockResolvedValue({ consumed: true })
+
+    await runWebhook()
+
+    expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ roboConsumiu: true }))
+  })
+
+  it('⚠️ E9: áudio SEM texto também chega à entrada (o portão antigo de "texto não vazio" saiu)', async () => {
+    await runWebhook({
+      id: 'wamid.AUD1',
+      from: '15551230000',
+      timestamp: '1700000000',
+      type: 'audio',
+      audio: { id: '6543210987654321', mime_type: 'audio/ogg' },
+    })
+
+    expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'audio' }))
+  })
+
+  it('⚠️ FIGURINHA: chega como `image` COM `image/webp` — o que a entrada usa para não abrir turno', async () => {
+    await runWebhook({
+      id: 'wamid.STK1',
+      from: '15551230000',
+      timestamp: '1700000000',
+      type: 'sticker',
+      sticker: { id: '1122334455667788', mime_type: 'image/webp' },
+    })
+
+    expect(h.state.upsertCalls[0].row).toMatchObject({ content_type: 'image', media_type: 'image/webp' })
+    expect(h.aoChegarMensagemDoCliente).toHaveBeenCalledWith(
+      expect.objectContaining({ tipo: 'image', mime: 'image/webp' }),
+    )
+  })
+
+  it('DEPOIS das automações, ANTES do message.received', async () => {
+    const ordem: string[] = []
+    h.dispararAutomacoes.mockImplementation(async () => {
+      ordem.push('automação')
+      return DISPARO
+    })
+    h.aoChegarMensagemDoCliente.mockImplementation(async () => {
+      ordem.push('agente')
+    })
+    h.dispatchWebhookEvent.mockImplementation(async (_db: unknown, _conta: string, evento: string) => {
+      ordem.push(evento)
+    })
+
+    await runWebhook()
+
+    expect(ordem).toEqual(['automação', 'automação', 'automação', 'agente', 'message.received'])
   })
 })

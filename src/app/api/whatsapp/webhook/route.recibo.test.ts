@@ -116,9 +116,9 @@ vi.mock('@/lib/whatsapp/template-webhook', () => ({
   isTemplateWebhookField: () => false,
   handleTemplateWebhookChange: vi.fn(),
 }));
-vi.mock('@/lib/automations/engine', () => ({ runAutomationsForTrigger: vi.fn() }));
+vi.mock('@/lib/automations/engine', () => ({ dispararAutomacoes: vi.fn() }));
 vi.mock('@/lib/flows/engine', () => ({ dispatchInboundToFlows: vi.fn() }));
-vi.mock('@/lib/ai/auto-reply', () => ({ dispatchInboundToAiReply: vi.fn() }));
+vi.mock('@/lib/ia-agentes/entrada', () => ({ aoChegarMensagemDoCliente: vi.fn() }));
 vi.mock('@/lib/cb-channels/pipeline-routing', () => ({ routeContactToPipeline: vi.fn() }));
 vi.mock('@/lib/cb-channels/resolve-inbound', () => ({
   resolveInboundMetaChannelId: vi.fn(async () => h.estado.canal),

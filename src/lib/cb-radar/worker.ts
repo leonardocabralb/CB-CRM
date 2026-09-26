@@ -678,6 +678,11 @@ export async function analisarConversaReivindicada(
           m.sender_type === 'agent' && m.sender_id
             ? (nomePorAtendente.get(m.sender_id) ?? null)
             : null,
+        // A resposta do AGENTE DE IA vira "IA" no transcrito (e escapa do
+        // colapso do robô) — o MESMO predicado de `mensagemParaMetricas`,
+        // com o `typeof` pelo mesmo motivo de lá. Sem o nome do agente: o
+        // rótulo cai no genérico "IA".
+        porAgenteDeIa: m.sender_type === 'bot' && typeof m.ia_agente_id === 'string',
         createdAt: new Date(m.created_at as string),
         texto: textoDe(m) as string,
       }),

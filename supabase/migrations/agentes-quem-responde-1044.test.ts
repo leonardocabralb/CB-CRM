@@ -63,7 +63,7 @@ describe('1044 — a fila de turnos', () => {
     for (const f of [
       'public.cb_ia_enfileirar_turno(uuid, uuid, uuid, uuid, uuid, integer)',
       'public.cb_ia_reivindicar_turno(uuid)',
-      'public.cb_atribuir_agente_de_ia(uuid, uuid, uuid)',
+      'public.cb_atribuir_agente_de_ia(uuid, uuid, uuid, uuid)',
     ]) {
       expect(compacto).toContain(`revoke execute on function ${f} from public, anon, authenticated`);
       expect(compacto).toContain(`grant execute on function ${f} to service_role`);
@@ -83,6 +83,8 @@ describe('1044 — a D17 decide no BANCO (E12)', () => {
   it('relê o agente na EXECUÇÃO: arquivado ou desligado não é atribuído (Codex, #292)', () => {
     const corpo = funcao('public.cb_atribuir_agente_de_ia');
     expect(corpo).toMatch(/a\.arquivado_em is null and a\.ativo/);
+    // E atende a conexão do disparo, quando ela vem (Codex, #292).
+    expect(corpo).toContain('p_canal_id is null or p_canal_id = any (a.conexoes)');
   });
 });
 

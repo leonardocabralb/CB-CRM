@@ -37,6 +37,16 @@ describe('montarConversa — o que o agente lê', () => {
     ).toEqual(['[document: extrato.pdf] segue', '[document: extrato.pdf]', '[image]'])
   })
 
+  it('vídeo entra como descrição, com a legenda — como a imagem (E9)', () => {
+    expect(
+      montarConversa([
+        { sender_type: 'customer', content_type: 'video', content_text: 'olha o vazamento' },
+        { sender_type: 'customer', content_type: 'video', content_text: null },
+        { sender_type: 'customer', content_type: 'image', content_text: 'o boleto' },
+      ]).map((m) => m.content),
+    ).toEqual(['[video] olha o vazamento', '[video]', '[image] o boleto'])
+  })
+
   it('texto vazio não vira turno vazio', () => {
     expect(montarConversa([{ sender_type: 'customer', content_type: 'text', content_text: '   ' }])).toEqual([])
   })

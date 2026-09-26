@@ -8,7 +8,9 @@
 // ⚠️⚠️ As regras que seguram o turno, e o motivo de cada uma:
 //  - CERCA DE POSSE em toda escrita no turno (`status = 'rodando'` e o
 //    `rodando_desde` do PRÓPRIO claim): o recolhedor pode ter tomado a linha
-//    de um processo lento, e sem a cerca os dois escreveriam.
+//    de um processo lento, e sem a cerca os dois escreveriam. A exceção é o
+//    id do provedor da resposta (`gravarIdEnviado`), que o eco precisa ler
+//    mesmo depois do recolhimento.
 //  - NUNCA reenviar. Erro no meio do envio (tempo esgotado, 5xx, rede) pode
 //    ter entregado a mensagem: vira `incerto` e transfere para gente. Só a
 //    recusa COMPROVADA do provedor (4xx) ou erro antes da primeira chamada a
@@ -17,8 +19,11 @@
 //    (E8): a pausa 'transferencia' é permanente, o problema é passageiro, e o
 //    alerta de atraso já chama a equipe. Transferem: o sentinela, a resposta
 //    vazia, o teto de respostas, o áudio que não se ouve e o envio incerto.
-//  - Mensagem mais nova do cliente NA MESMA CONEXÃO descarta o turno (E10):
-//    o turno dela já está na fila.
+//  - Mensagem mais nova do cliente NA MESMA CONEXÃO descarta o turno (E10)
+//    — só a que ABRE turno (`abreTurno`, a régua da entrada): o turno dela
+//    já está na fila.
+//  - A transferência não passa por cima de pausa que já existe
+//    (`transferirParaGente`): a de gente é a que a automação pode retomar.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -52,7 +57,7 @@ import {
 } from './fila'
 import { dentroDoHorario } from './horario'
 import { montarPedidoDoAgente } from './pedido'
-import { TIPOS_QUE_ABREM_TURNO } from './quem-responde'
+import { abreTurno, TIPOS_QUE_ABREM_TURNO } from './quem-responde'
 import { obterAgente } from './repo'
 import { textosDaTransferencia, type MotivoDeTransferencia } from './textos-do-servidor'
 
@@ -72,6 +77,7 @@ interface Conversa {
   id: string
   contact_id: string | null
   group_id: string | null
+  status: string
   ia_agente_id: string | null
   ai_autoreply_disabled: boolean
   ai_reply_count: number
@@ -92,7 +98,7 @@ export type Desfecho =
   | { status: 'reagendar' }
   | { status: 'abandonado' }
 
-const COLUNAS_DA_CONVERSA = 'id, contact_id, group_id, ia_agente_id, ai_autoreply_disabled, ai_reply_count'
+const COLUNAS_DA_CONVERSA = 'id, contact_id, group_id, status, ia_agente_id, ai_autoreply_disabled, ai_reply_count'
 
 // ------------------------------------------------------------
 // Escrita no turno, sempre com a cerca de posse
@@ -117,15 +123,51 @@ async function gravarNoTurno(
   return (data?.length ?? 0) > 0
 }
 
+/**
+ * O id do provedor da resposta, ANTES do INSERT dela: é o que a ingestão do
+ * eco consulta (E5, `eco.ts`). ⚠️ A ÚNICA escrita do turno SEM a cerca de
+ * posse — cercada só pelo id do turno e por `mensagem_enviada_id` ainda nulo.
+ * Se o recolhedor tomou o turno no meio do envio (processo lento), com a
+ * cerca o id se perdia: o eco da Evolution não era reconhecido, virava
+ * mensagem do celular e o gatilho da 1044 pausava o agente por "gente".
+ * Não reescreve `status`: o desfecho que o recolhedor gravou fica (ele leu o
+ * id nulo e escreveu `incerto` — a conversa já foi para gente, e nada é
+ * reenviado: o recolhedor nunca re-executa, e o turno que perdeu a posse não
+ * escreve mais nada, `encerrar` inclusive).
+ */
+async function gravarIdEnviado(db: SupabaseClient, turno: LinhaDoTurno, id: string): Promise<void> {
+  const { error } = await db
+    .from('cb_ia_turnos')
+    .update({ mensagem_enviada_id: id, updated_at: new Date().toISOString() })
+    .eq('id', turno.id)
+    .is('mensagem_enviada_id', null)
+  if (error) console.error('[ia-agentes] gravar o id da resposta falhou:', turno.id, error.message)
+}
+
 // ------------------------------------------------------------
 // Transferência para gente
 // ------------------------------------------------------------
+
+/**
+ * O que a transferência fez: `transferiu` (pausou, e daí atribuiu e anotou);
+ * `nada_mudou` (a conversa JÁ estava pausada, ou não é mais deste agente —
+ * nada foi escrito); `falhou` (a pausa não pôde ser gravada).
+ */
+export type ResultadoDaTransferencia = 'transferiu' | 'nada_mudou' | 'falhou'
 
 /**
  * Pausa a IA na conversa (`'transferencia'`), atribui o destino do agente
  * quando ninguém é responsável, e deixa uma anotação interna de verdade
  * (autor sem usuário, nome congelado "IA · <agente>"). Cercada pelo agente:
  * se a conversa já é de outro agente (ou de nenhum), nada muda.
+ *
+ * ⚠️ E só se a conversa ainda NÃO está pausada. Sem essa cerca, o advogado
+ * que responde pelo celular enquanto o modelo pensa (o gatilho da 1044 grava
+ * a pausa `'gente'`) tinha a pausa TROCADA por `'transferencia'`: a
+ * automação deixava de poder retomar o agente (D17 — `'gente'` retoma,
+ * `'transferencia'` não), e sobravam anotação e atribuição sobre conversa que
+ * alguém já tinha pegado. O mesmo vale para o botão Pausar e para outra
+ * transferência. Zero linhas = `nada_mudou`, e nada mais é escrito.
  * Melhor esforço: erro vira log, o turno termina assim mesmo.
  */
 export async function transferirParaGente(
@@ -139,7 +181,7 @@ export async function transferirParaGente(
     transferirPara: string | null
     motivo: MotivoDeTransferencia
   },
-): Promise<void> {
+): Promise<ResultadoDaTransferencia> {
   const agora = new Date().toISOString()
   try {
     const { data: pausadas, error } = await db
@@ -148,12 +190,13 @@ export async function transferirParaGente(
       .eq('id', args.conversationId)
       .eq('account_id', args.accountId)
       .eq('ia_agente_id', args.iaAgenteId)
+      .eq('ai_autoreply_disabled', false)
       .select('id')
     if (error) {
       console.error('[ia-agentes] pausar na transferência falhou:', error.message)
-      return
+      return 'falhou'
     }
-    if (!pausadas || pausadas.length === 0) return
+    if (!pausadas || pausadas.length === 0) return 'nada_mudou'
 
     if (args.transferirPara) {
       // O destino tem de ser MEMBRO desta conta hoje: `transferir_para` é
@@ -185,8 +228,10 @@ export async function transferirParaGente(
       texto,
     })
     if (erroNota) console.error('[ia-agentes] anotação da transferência falhou:', erroNota.message)
+    return 'transferiu'
   } catch (err) {
     console.error('[ia-agentes] transferência falhou:', err)
+    return 'falhou'
   }
 }
 
@@ -205,8 +250,92 @@ async function lerConversa(db: SupabaseClient, turno: LinhaDoTurno): Promise<Con
   return (data as Conversa | null) ?? null
 }
 
-/** Chegou mensagem do cliente MAIS NOVA na mesma conexão (que abre turno)? */
+/** Teto da leitura das mensagens mais novas (a régua do conteúdo roda em JS). */
+const MAIS_NOVAS_LIDAS = 50
+
+/**
+ * Chegou mensagem do cliente MAIS NOVA na mesma conexão que ABRE turno (E10)?
+ * Só essa descarta: o turno dela é o substituto. ⚠️ A régua é `abreTurno`, a
+ * MESMA do portão da entrada, sobre a linha GRAVADA — figurinha (`image` com
+ * `image/webp`), localização, botão e texto sem nada visível não abrem turno,
+ * e descartar por elas deixava o cliente sem resposta nenhuma (texto +
+ * figurinha). Apagada também não conta: ela não abriu turno que sobreviva
+ * (o turno dela descarta a si mesmo). Filtro de conteúdo em JS: "algo
+ * visível" e o MIME da figurinha não cabem num filtro do PostgREST.
+ */
 async function haMensagemMaisNova(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+  gatilho: Gatilho,
+): Promise<boolean> {
+  if (!gatilho.gravada_em || !turno.canal_id) return false
+  const { data, error } = await db
+    .from('messages')
+    .select('id, content_type, content_text, media_type')
+    .eq('conversation_id', turno.conversation_id)
+    .eq('channel_id', turno.canal_id)
+    .eq('sender_type', 'customer')
+    .in('content_type', [...TIPOS_QUE_ABREM_TURNO])
+    .is('deleted_at', null)
+    .gt('gravada_em', gatilho.gravada_em)
+    .order('gravada_em', { ascending: true })
+    .limit(MAIS_NOVAS_LIDAS)
+  if (error) throw new Error(`leitura de mensagem mais nova falhou: ${error.message}`)
+  return ((data ?? []) as Array<{ content_type: string; content_text: string | null; media_type: string | null }>).some(
+    (m) => abreTurno({ tipo: m.content_type, texto: m.content_text, mime: m.media_type }),
+  )
+}
+
+/**
+ * Alguém da EQUIPE respondeu depois da mensagem do cliente (D10)? O gatilho de
+ * pausa da 1044 cobre o caso comum, mas não a corrida da ENTRADA: a resposta
+ * do advogado que chega entre a leitura da D16 e a atribuição do agente é
+ * gravada sem agente ativo na conversa (o gatilho não tem o que pausar), e a
+ * mensagem do celular tem o relógio do aparelho — pode ser anterior ao
+ * `ia_agente_desde`. Pela ordem de GRAVAÇÃO, a resposta de gente sempre vence
+ * (Codex, #292). A resposta do próprio agente (`ia_agente_id`) não conta, nem
+ * a APAGADA — o critério do Radar (`use-radar.ts`): o cliente não a vê.
+ */
+async function haRespostaDeGenteDepois(
+  db: SupabaseClient,
+  turno: LinhaDoTurno,
+  gatilho: Gatilho,
+): Promise<boolean> {
+  if (!gatilho.gravada_em) return false
+  const { data, error } = await db
+    .from('messages')
+    .select('id')
+    .eq('conversation_id', turno.conversation_id)
+    .eq('sender_type', 'agent')
+    .is('ia_agente_id', null)
+    .is('deleted_at', null)
+    .or('sender_id.not.is.null,from_device.is.true')
+    .gt('gravada_em', gatilho.gravada_em)
+    .limit(1)
+  if (error) throw new Error(`leitura de resposta da equipe falhou: ${error.message}`)
+  return (data?.length ?? 0) > 0
+}
+
+/**
+ * O ROBÔ ou uma AUTOMAÇÃO mandou mensagem nesta conversa, POR ESTA CONEXÃO,
+ * depois da mensagem-gatilho? Os dois gravam `sender_type = 'bot'`
+ * (`engineSendText`, `engineSendMedia`, as interativas e o modelo de
+ * `automations/meta-send.ts`) — e só a resposta do AGENTE leva
+ * `ia_agente_id`, que não conta. ⚠️ Só a MESMA conexão do turno: o contexto
+ * do agente é por conexão (D4), e uma automação que respondeu pela conexão B
+ * não responde a quem escreveu pela A (Codex, #292). A mídia, as interativas
+ * e o modelo carimbam o canal num UPDATE logo depois do INSERT — no instante
+ * entre os dois a linha ainda não conta. Se sim, o
+ * cliente já foi respondido e o turno sai: o caso é o toque em botão durante
+ * a rajada — ele não abre turno (E9) nem descarta o do texto (E10), mas a
+ * automação de `button_response` responde, e o turno do texto responderia de
+ * novo 8 s depois (Codex, #292). A entrada cancela o PENDENTE
+ * (`descartarPendente`); isto pega o que já estava rodando. ⚠️ O preço,
+ * aceito: um aviso da régua ou um lembrete que sai no mesmo instante também
+ * cala o agente nesta mensagem — duas respostas é o erro pior. Apagada não
+ * conta.
+ */
+async function haSaidaDoRoboDepois(
   db: SupabaseClient,
   turno: LinhaDoTurno,
   gatilho: Gatilho,
@@ -217,11 +346,12 @@ async function haMensagemMaisNova(
     .select('id')
     .eq('conversation_id', turno.conversation_id)
     .eq('channel_id', turno.canal_id)
-    .eq('sender_type', 'customer')
-    .in('content_type', [...TIPOS_QUE_ABREM_TURNO])
+    .eq('sender_type', 'bot')
+    .is('ia_agente_id', null)
+    .is('deleted_at', null)
     .gt('gravada_em', gatilho.gravada_em)
     .limit(1)
-  if (error) throw new Error(`leitura de mensagem mais nova falhou: ${error.message}`)
+  if (error) throw new Error(`leitura de resposta do robô falhou: ${error.message}`)
   return (data?.length ?? 0) > 0
 }
 
@@ -231,8 +361,9 @@ type Conferencia =
 
 /**
  * A conversa continua sendo deste agente, sem pausa, sem mensagem mais nova,
- * e o agente continua ligado e dono da conexão? Roda antes de gerar e de novo
- * antes de enviar (o advogado pode ter respondido pelo celular no meio).
+ * sem resposta de gente nem do robô/automação, e o agente continua ligado e
+ * dono da conexão? Roda antes de gerar e de novo antes de enviar (o advogado
+ * pode ter respondido pelo celular no meio).
  */
 async function conferir(
   db: SupabaseClient,
@@ -241,6 +372,7 @@ async function conferir(
 ): Promise<Conferencia> {
   const conversa = await lerConversa(db, turno)
   if (!conversa || conversa.group_id) return { ok: false, desfecho: { status: 'descartado', erro: 'conversa' } }
+  if (conversa.status === 'closed') return { ok: false, desfecho: { status: 'descartado', erro: 'conversa encerrada' } }
   if (conversa.ai_autoreply_disabled) return { ok: false, desfecho: { status: 'pausado_no_meio' } }
   if (!turno.ia_agente_id || conversa.ia_agente_id !== turno.ia_agente_id) {
     return { ok: false, desfecho: { status: 'descartado', erro: 'o agente da conversa mudou' } }
@@ -251,6 +383,21 @@ async function conferir(
   }
   if (await haMensagemMaisNova(db, turno, gatilho)) {
     return { ok: false, desfecho: { status: 'descartado', erro: 'mensagem mais nova do cliente' } }
+  }
+  if (await haRespostaDeGenteDepois(db, turno, gatilho)) {
+    // Pausa como o gatilho pausaria (a corrida o deixou de fora), cercada
+    // pelo agente e só se ainda não houver pausa.
+    await db
+      .from('conversations')
+      .update({ ai_autoreply_disabled: true, ia_pausada_por: 'gente', ia_pausada_em: new Date().toISOString() })
+      .eq('id', turno.conversation_id)
+      .eq('account_id', turno.account_id)
+      .eq('ia_agente_id', agente.id)
+      .eq('ai_autoreply_disabled', false)
+    return { ok: false, desfecho: { status: 'pausado_no_meio', erro: 'a equipe respondeu' } }
+  }
+  if (await haSaidaDoRoboDepois(db, turno, gatilho)) {
+    return { ok: false, desfecho: { status: 'descartado', erro: 'o robô ou uma automação respondeu' } }
   }
   return { ok: true, conversa, agente }
 }
@@ -455,6 +602,14 @@ async function conduzir(
   if (!segunda.ok) return segunda.desfecho
   andamento.conversa = segunda.conversa
 
+  // Dono e contato ANTES da vaga do teto: a vaga é consumida por UPDATE, e
+  // gastá-la para terminar `falhou`/`descartado` sem nada ter saído encurtava
+  // o teto da conversa à toa.
+  const dono = await donoDaConta(db, turno.account_id)
+  if (!dono) return { status: 'falhou', erro: 'a conta não tem dono' }
+  const contactId = segunda.conversa.contact_id
+  if (!contactId) return { status: 'descartado', erro: 'conversa sem contato' }
+
   // A posse, carimbando o começo do envio (o recolhedor distingue "morreu
   // antes de enviar" de "morreu no meio"). Perdida = outro processo recolheu.
   const tokens = andamento.usage
@@ -476,16 +631,12 @@ async function conduzir(
   if (erroVaga) return { status: 'falhou', erro: `reservar a resposta falhou: ${erroVaga.message}` }
   if (vaga !== true) return { status: 'transferiu', motivo: 'teto' }
 
-  const dono = await donoDaConta(db, turno.account_id)
-  if (!dono) return { status: 'falhou', erro: 'a conta não tem dono' }
-  if (!segunda.conversa.contact_id) return { status: 'descartado', erro: 'conversa sem contato' }
-
   try {
     const r = await engineSendText({
       accountId: turno.account_id,
       userId: dono,
       conversationId: turno.conversation_id,
-      contactId: segunda.conversa.contact_id,
+      contactId,
       text: texto,
       aiGenerated: true,
       preferredChannelId: turno.canal_id,
@@ -496,9 +647,7 @@ async function conduzir(
       },
       aoSair: async (id) => {
         andamento.enviadaId = id
-        // O id do provedor ANTES do INSERT: é o que a ingestão do eco consulta
-        // (E5). Sem posse, nada a fazer — quem recolheu decide o turno.
-        await gravarNoTurno(db, turno, { mensagem_enviada_id: id })
+        await gravarIdEnviado(db, turno, id)
       },
     })
     return { status: 'respondeu', mensagemEnviadaId: r.whatsapp_message_id }
@@ -553,26 +702,44 @@ async function encerrar(
       : 'erro' in desfecho
         ? (desfecho.erro ?? null)
         : null
+  const terminadoEm = new Date().toISOString()
   const escreveu = await gravarNoTurno(db, turno, {
     status: desfecho.status,
     erro,
-    terminado_em: new Date().toISOString(),
+    terminado_em: terminadoEm,
     ...(desfecho.status === 'respondeu' ? { mensagem_enviada_id: desfecho.mensagemEnviadaId } : {}),
   })
   if (!escreveu) return
 
   const motivo: MotivoDeTransferencia | null =
     desfecho.status === 'transferiu' ? desfecho.motivo : desfecho.status === 'incerto' ? 'incerto' : null
-  if (motivo && andamento.agente) {
-    await transferirParaGente(db, {
-      accountId: turno.account_id,
-      conversationId: turno.conversation_id,
-      contactId: andamento.conversa?.contact_id ?? null,
-      iaAgenteId: andamento.agente.id,
-      nomeDoAgente: andamento.agente.nome,
-      transferirPara: andamento.agente.transferirPara,
-      motivo,
-    })
+  if (!motivo || !andamento.agente) return
+  const transferencia = await transferirParaGente(db, {
+    accountId: turno.account_id,
+    conversationId: turno.conversation_id,
+    contactId: andamento.conversa?.contact_id ?? null,
+    iaAgenteId: andamento.agente.id,
+    nomeDoAgente: andamento.agente.nome,
+    transferirPara: andamento.agente.transferirPara,
+    motivo,
+  })
+  // Alguém pausou antes (a equipe respondeu enquanto o modelo pensava, o
+  // botão Pausar, outra transferência): o agente NÃO transferiu — o registro
+  // diz o que houve. Cercado pela PRÓPRIA escrita de acima (o turno já não é
+  // `rodando`, e ninguém mais escreve nele). O `incerto` fica: ele fala do
+  // ENVIO (pode ter saído), não da transferência.
+  if (transferencia === 'nada_mudou' && desfecho.status === 'transferiu') {
+    const { error } = await db
+      .from('cb_ia_turnos')
+      .update({
+        status: 'pausado_no_meio',
+        erro: `não transferiu (${desfecho.motivo}): a conversa já estava pausada ou mudou de agente`,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', turno.id)
+      .eq('status', 'transferiu')
+      .eq('terminado_em', terminadoEm)
+    if (error) console.error('[ia-agentes] corrigir o desfecho da transferência falhou:', turno.id, error.message)
   }
 }
 

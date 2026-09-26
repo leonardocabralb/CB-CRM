@@ -23,6 +23,8 @@ function fonte(relativo: string): string {
 }
 
 const CHAMADA = 'cancelarEsperasPorResposta('
+/** O despacho das automações da mensagem nas duas ingestões. */
+const DESPACHO = 'dispararAutomacoes('
 
 describe('a resposta do cliente cancela a espera nos DOIS transportes', () => {
   it('Evolution: dentro de persistInboundMessage, ANTES de robôs e automações', () => {
@@ -34,17 +36,28 @@ describe('a resposta do cliente cancela a espera nos DOIS transportes', () => {
     const cancela = corpo.indexOf(CHAMADA)
     expect(cancela).toBeGreaterThan(-1)
     // ⚠️ A ORDEM é a feature: depois do despacho, a mensagem cancelaria a
-    // espera da automação que ela mesma acabou de iniciar.
-    expect(cancela).toBeLessThan(corpo.indexOf('dispatchInboundToFlows('))
-    expect(cancela).toBeLessThan(corpo.indexOf('runAutomationsForTrigger('))
+    // espera da automação que ela mesma acabou de iniciar. O despacho é
+    // `dispararAutomacoes` desde a F2 dos agentes de IA (o resultado diz se
+    // alguma automação falou — E4); `indexOf` de uma chamada que sumiu daria
+    // -1 e a ordem passaria em branco, por isso a presença é cobrada antes.
+    const robo = corpo.indexOf('dispatchInboundToFlows(')
+    const automacoes = corpo.indexOf(DESPACHO)
+    expect(robo).toBeGreaterThan(-1)
+    expect(automacoes).toBeGreaterThan(-1)
+    expect(cancela).toBeLessThan(robo)
+    expect(cancela).toBeLessThan(automacoes)
   })
 
   it('Meta: no webhook, ANTES de robôs e automações', () => {
     const arquivo = fonte('app/api/whatsapp/webhook/route.ts')
     const cancela = arquivo.indexOf(CHAMADA)
     expect(cancela).toBeGreaterThan(-1)
-    expect(cancela).toBeLessThan(arquivo.indexOf('dispatchInboundToFlows('))
-    expect(cancela).toBeLessThan(arquivo.indexOf('runAutomationsForTrigger('))
+    const robo = arquivo.indexOf('dispatchInboundToFlows(')
+    const automacoes = arquivo.indexOf(DESPACHO)
+    expect(robo).toBeGreaterThan(-1)
+    expect(automacoes).toBeGreaterThan(-1)
+    expect(cancela).toBeLessThan(robo)
+    expect(cancela).toBeLessThan(automacoes)
   })
 
   it('⚠️ mensagem da EQUIPE pelo celular pareado não cancela nada', () => {

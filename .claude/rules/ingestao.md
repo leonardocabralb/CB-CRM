@@ -45,6 +45,12 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
 - **Recuperada sem telefone** (1010): `sem-telefone/` — modo `nova` vai pelo
   caminho normal; `tardia`/`historica` por `tardia.ts`/`historica.ts`.
 - **Grupo**: `src/lib/cb-groups/persist.ts`.
+- **Eco da resposta do agente de IA** (Evolution, F2a): `src/lib/ia-agentes/eco.ts`
+  — o `fromMe` cujo id é o `mensagem_enviada_id` de um turno, ainda sem linha
+  depois da espera do `jaGravada`, é gravado COMO a resposta do agente (`bot`
+  com `ia_agente_id`), nunca como mensagem do celular. É o INSERT do envio por
+  outra mão: nenhum motor, funil, reabertura, `registrarEntrega` nem
+  `cancelarEsperasPorResposta` (pino `eco.test.ts`). Ver `ia.md`.
 - **Núcleo de envio**: `sendMessageToConversation` (`send-message.ts`) —
   compositor, ficha, agendada e API v1. Broadcast, fluxo, automação e IA NÃO
   passam por ele, e é assim que ficam de fora das regras de "gente".
