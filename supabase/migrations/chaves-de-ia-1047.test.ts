@@ -98,7 +98,10 @@ describe('1047 — chaves de IA por provedor', () => {
     expect(fn).toMatch(/request\.jwt\.claims[\s\S]*'role'[\s\S]*'authenticated'/i);
     expect(fn).toMatch(/NEW\.channel_id\s+IS\s+NOT\s+NULL/i);
     expect(/REVOKE\s+EXECUTE\s+ON\s+FUNCTION\s+public\.cb_ia_chaves_segue_o_legado\(\)\s+FROM\s+PUBLIC,\s*anon,\s*authenticated/i.test(semComentarios)).toBe(true);
-    expect(/CREATE\s+TRIGGER\s+cb_ia_chaves_segue_o_legado\s+AFTER\s+INSERT\s+OR\s+UPDATE\s+OF\s+api_key,\s*embeddings_api_key\s+OR\s+DELETE\s+ON\s+ai_configs/i.test(semComentarios)).toBe(true);
+    expect(/CREATE\s+TRIGGER\s+cb_ia_chaves_segue_o_legado\s+AFTER\s+INSERT\s+OR\s+UPDATE\s+OF\s+api_key,\s*embeddings_api_key,\s*provider\s+OR\s+DELETE\s+ON\s+ai_configs/i.test(semComentarios)).toBe(true);
+    // A troca de PROVEDOR pelo app anterior retira a cópia do provedor antigo
+    // (menos o que ainda a usa: conexão ligada, ou a própria da base) (Codex, #295).
+    expect(fn).toMatch(/OLD\.provider\s+IS\s+DISTINCT\s+FROM\s+NEW\.provider[\s\S]*SET\s+api_key\s*=\s*embeddings_api_key[\s\S]*DELETE\s+FROM\s+cb_ia_chaves\s+WHERE\s+account_id\s*=\s*OLD\.account_id\s+AND\s+provedor\s*=\s*OLD\.provider/i);
     // O "Remover" do app anterior apaga a cópia também (Codex, #295).
     expect(fn).toMatch(/TG_OP\s*=\s*'DELETE'[\s\S]*DELETE\s+FROM\s+cb_ia_chaves\s+WHERE\s+account_id\s*=\s*OLD\.account_id\s+AND\s+provedor\s*=\s*OLD\.provider/i);
     // ...menos quando um agente de CONEXÃO ligado do mesmo provedor continua:

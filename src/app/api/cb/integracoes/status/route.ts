@@ -187,7 +187,11 @@ export async function GET(request: Request) {
             padrao?.provider === e.provedor ||
             deConexao.some((l) => l.provider === e.provedor) ||
             agentes.some((a) => a.ativo && a.provedor === e.provedor);
-          if (e.soDaBase && !usadaNoChat) return { ...base, teste: { ok: true } };
+          // E a da OpenAI que nada de chat usa, qualquer que seja a origem (a
+          // cópia de uma conexão DESLIGADA também — a 1047 a pega na falta de
+          // outra): o uso dela é a base, e quem responde por ela é o ping dos
+          // embeddings (Codex, #294).
+          if ((e.soDaBase || e.provedor === 'openai') && !usadaNoChat) return { ...base, teste: { ok: true } };
           const apiKey = chave;
           // ⚠️ O ping testa o modelo do CHAT (ou o padrão do provedor) E o de
           // cada agente de CONEXÃO ligado deste provedor: a resposta

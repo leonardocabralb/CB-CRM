@@ -58,9 +58,18 @@ vi.mock('@/lib/ai/validate', () => ({
 }))
 vi.mock('@/lib/ai/embeddings', () => ({ embedTexts: (...a: unknown[]) => embedTexts(...a) }))
 let linhasPorConexao: Record<string, unknown>[] = []
+// Há conexão com o Radar ligado? (os modelos do Radar só contam com ele.)
+let radarLigado = true
 vi.mock('@/lib/ai/admin-client', () => ({
   supabaseAdmin: () => ({
-    from: () => ({
+    from: (tabela: string) =>
+      tabela === 'cb_channels'
+        ? {
+            select: () => ({
+              eq: () => ({ eq: () => ({ limit: async () => ({ data: radarLigado ? [{ id: 'canal-r' }] : [], error: null }) }) }),
+            }),
+          }
+        : ({
       select: () => ({
         eq: async () => ({
           data: [...(linhaPadrao ? [{ channel_id: null, ...linhaPadrao }] : []), ...linhasPorConexao],
@@ -102,6 +111,7 @@ beforeEach(() => {
   passageira = () => null
   chaveAtual = null
   agentesDaConta = []
+  radarLigado = true
 })
 
 describe('PUT /api/cb/ia/chaves — a chave da OpenAI guarda se serve aos embeddings', () => {
@@ -346,5 +356,36 @@ describe('PUT /api/cb/ia/chaves — o 5xx do provedor também é passageiro (Cod
     const res = await PUT(pedido('gemini'))
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ avisos: ['modelo_em_uso_indisponivel'] })
+  })
+})
+
+describe('PUT /api/cb/ia/chaves — só os modelos que RODAM são conferidos (Codex, #294)', () => {
+  it('assistente desligado e o Radar com modelo próprio: o modelo do assistente não conta', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-sem-uso', radar_model: 'gemini-radar', is_active: false }
+    await PUT(pedido('gemini'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-radar'])
+  })
+
+  it('assistente desligado e o Radar HERDANDO: o modelo do assistente conta', async () => {
+    linhaPadrao = { provider: 'gemini', model: 'gemini-herdado', radar_model: null, is_active: false }
+    await PUT(pedido('gemini'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-herdado'])
+  })
+
+  it('nenhuma conexão com o Radar: o modelo do Radar não conta', async () => {
+    radarLigado = false
+    linhaPadrao = { provider: 'gemini', model: 'gemini-a', radar_model: 'gemini-radar', is_active: true }
+    await PUT(pedido('gemini'))
+    expect(validateAiCredentials.mock.calls.map((c) => c[0].model)).toEqual(['gemini-3.7-flash', 'gemini-a'])
+  })
+
+  it('a nova não alcança um modelo que nada usa: não recusa', async () => {
+    radarLigado = false
+    linhaPadrao = { provider: 'gemini', model: 'gemini-sem-uso', radar_model: null, is_active: false }
+    chaveAtual = 'sk-atual'
+    alcanca = (chave, modelo) => !(chave === 'sk-teste' && modelo === 'gemini-sem-uso')
+    const res = await PUT(pedido('gemini'))
+    expect(res.status).toBe(200)
+    expect(gravarChave).toHaveBeenCalled()
   })
 })
