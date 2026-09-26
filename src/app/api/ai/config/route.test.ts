@@ -121,3 +121,14 @@ describe('POST /api/ai/config — a gravação da linha vai pelo serviço (Codex
     expect(post).toMatch(/db\.from\(\s*'ai_configs'\s*\)\.insert\(/)
   })
 })
+
+describe('POST /api/ai/config — a chave só da base não liga o assistente (Codex, #295)', () => {
+  it('confere a marca ANTES de decidir se valida (ligar só muda o interruptor e pula a validação)', () => {
+    const fonte = readFileSync(join(__dirname, 'route.ts'), 'utf8').replace(/\/\/.*$/gm, '')
+    const post = fonte.slice(fonte.indexOf('export async function POST'))
+    const marca = post.search(/provider\s*===\s*'openai'\s*&&\s*\(isActive\s*\|\|\s*autoReplyEnabled\)[\s\S]{0,200}soDaBase/)
+    expect(marca).toBeGreaterThan(-1)
+    expect(post.slice(marca, marca + 400)).toContain("code: 'provedor_so_da_base'")
+    expect(marca).toBeLessThan(post.indexOf('const credentialsChanged'))
+  })
+})

@@ -140,7 +140,9 @@ export function AiConfig() {
         ? t('keyUnreadable')
         : codigo === 'invalid_key'
           ? t('testRejected')
-          : padrao;
+          : codigo === 'provedor_so_da_base'
+            ? t('keySoDaBase')
+            : padrao;
 
   useEffect(() => {
     if (!accountId || loadedAccountIdRef.current === accountId) return;

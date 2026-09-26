@@ -23,7 +23,9 @@ const MAX_TURNS = 20
  */
 export async function POST(request: Request) {
   try {
-    const { supabase, accountId, userId } = await requireRole('agent')
+    // Só administrador (D14 do docs/PLANO-agentes-de-ia.md): o Playground
+    // expõe o comportamento do assistente e gasta a chave da conta.
+    const { supabase, accountId, userId } = await requireRole('admin')
 
     const limit = checkRateLimit(`ai-playground:${userId}`, RATE_LIMITS.aiDraft)
     if (!limit.success) return rateLimitResponse(limit)

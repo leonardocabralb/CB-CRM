@@ -1,0 +1,240 @@
+'use client';
+
+// ============================================================
+// Uso de IA em tokens e em R$ (F1b, 5.8, D13, D21). Sem `agenteId`: a conta
+// inteira (por agente e por módulo) e o campo da cotação. Com `agenteId`: só
+// aquele agente, produção e teste separados.
+//
+// ⚠️ R$ é ESTIMATIVA pela cotação de HOJE, para todo o período; modelo fora da
+// tabela de preço aparece como "sem preço", nunca como zero. ⚠️ Falha de carga
+// diz que falhou — nunca "nenhum uso".
+// ============================================================
+
+import { useCallback, useEffect, useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
+import { toast } from 'sonner';
+import { RefreshCw } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { formatCurrency } from '@/lib/currency';
+import type { ResumoDoUso, Soma } from '@/lib/ia-agentes/uso';
+import { textoDoCodigo } from './textos';
+
+interface Resposta {
+  dias: number;
+  cotacao: number | null;
+  resumo: ResumoDoUso;
+}
+
+/** A cotação no separador decimal do IDIOMA da instalação ("5,60" / "5.60"); a rota aceita os dois. */
+function formatarCotacao(locale: string, n: number): string {
+  return new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+    useGrouping: false,
+  }).format(n);
+}
+
+const MODOS = ['agente', 'agente_teste', 'radar', 'transcricao', 'auto_reply', 'draft'] as const;
+
+export function UsoDeIa({ agenteId }: { agenteId?: string }) {
+  const t = useTranslations('IaAgentes');
+  const locale = useLocale();
+  const [dados, setDados] = useState<Resposta | null>(null);
+  const [falhou, setFalhou] = useState(false);
+  const [cotacao, setCotacao] = useState('');
+  const [salvandoCotacao, setSalvandoCotacao] = useState(false);
+
+  const carregar = useCallback(async () => {
+    try {
+      const res = await fetch('/api/cb/ia/uso?dias=30', { cache: 'no-store' });
+      if (!res.ok) throw new Error(String(res.status));
+      const corpo = (await res.json()) as Resposta;
+      setDados(corpo);
+      setCotacao(corpo.cotacao === null ? '' : formatarCotacao(locale, corpo.cotacao));
+      setFalhou(false);
+    } catch {
+      setFalhou(true);
+    }
+  }, [locale]);
+
+  useEffect(() => {
+    void (async () => {
+      await carregar();
+    })();
+  }, [carregar]);
+
+  async function salvarCotacao() {
+    setSalvandoCotacao(true);
+    try {
+      const res = await fetch('/api/cb/ia/cotacao', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cotacao: cotacao.trim() === '' ? null : cotacao.trim() }),
+      });
+      const corpo = (await res.json().catch(() => ({}))) as { code?: string };
+      if (!res.ok) {
+        toast.error(textoDoCodigo(t, corpo.code));
+        return;
+      }
+      toast.success(t('uso.cotacaoSalva'));
+      await carregar();
+    } catch {
+      toast.error(t('erro.generico'));
+    } finally {
+      setSalvandoCotacao(false);
+    }
+  }
+
+  if (falhou && !dados) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">{t('uso.falhou')}</p>
+        <Button variant="outline" size="sm" onClick={() => void carregar()}>
+          <RefreshCw className="size-4" /> {t('tentarDeNovo')}
+        </Button>
+      </div>
+    );
+  }
+  if (!dados) return <div className="h-40 animate-pulse rounded-lg border border-border bg-muted/40" />;
+
+  const { resumo } = dados;
+  const doAgente = agenteId ? resumo.porAgente.find((a) => a.iaAgenteId === agenteId) : undefined;
+
+  // ⚠️ Menos de meio centavo arredondaria para "R$ 0,00" — que afirma ZERO
+  // sobre o caso normal de alguns testes no Playground (revisão da F1b).
+  const reais = (s: Soma) => {
+    // Nenhuma chamada no período: o custo é ZERO, não "sem preço" — a mesma
+    // tela diz 0 tokens em 0 chamadas (Codex, #295).
+    if (s.chamadas === 0) return formatCurrency(0);
+    if (s.reais === null) return s.dolar === null ? t('uso.semPreco') : t('uso.semCotacao');
+    const valor =
+      s.reais > 0 && s.reais < 0.005
+        ? t('uso.menosDeUmCentavo', { valor: formatCurrency(0.01) })
+        : formatCurrency(s.reais);
+    return s.parcial ? `${valor} ${t('uso.parcial')}` : valor;
+  };
+  const tokens = (n: number) => n.toLocaleString(undefined);
+  // No detalhe de um agente, "sem preço" fala só dos modelos DELE — a lista da
+  // conta traria o modelo do Radar para dentro da tela do agente.
+  const semPreco = agenteId ? (doAgente?.semPreco ?? []) : resumo.semPreco;
+
+  return (
+    <div className="space-y-5">
+      <p className="text-xs text-muted-foreground">{t('uso.explicacao', { dias: dados.dias })}</p>
+
+      {agenteId ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {(['producao', 'teste'] as const).map((k) => {
+            const s = doAgente?.[k];
+            return (
+              <div key={k} className="rounded-lg border border-border p-4">
+                <p className="text-xs text-muted-foreground">{t(`uso.${k}`)}</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">{s ? reais(s) : formatCurrency(0)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('uso.tokensEChamadas', { tokens: tokens(s?.tokensTotal ?? 0), chamadas: s?.chamadas ?? 0 })}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <>
+          <div className="rounded-lg border border-border p-4">
+            <p className="text-xs text-muted-foreground">{t('uso.total')}</p>
+            <p className="mt-1 text-xl font-semibold text-foreground">{reais(resumo.total)}</p>
+            <p className="text-xs text-muted-foreground">
+              {t('uso.tokensEChamadas', { tokens: tokens(resumo.total.tokensTotal), chamadas: resumo.total.chamadas })}
+            </p>
+            {/* Os embeddings da base e os pings de Integrações não geram
+                registro de uso: o total não os afirma (Codex, #295). */}
+            <p className="mt-2 max-w-[62ch] text-xs text-muted-foreground">{t('uso.totalNota')}</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">{t('uso.agente')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('uso.producao')}</th>
+                  <th className="py-2 font-medium">{t('uso.teste')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resumo.porAgente.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="py-3 text-xs text-muted-foreground">
+                      {t('uso.nenhumAgente')}
+                    </td>
+                  </tr>
+                ) : (
+                  resumo.porAgente.map((a) => (
+                    <tr key={a.iaAgenteId ?? '—'} className="border-b border-border/60">
+                      <td className="py-2 pr-3">
+                        {a.nome ?? t('uso.agenteApagado')}
+                        {a.arquivado ? (
+                          <span className="ml-1 text-xs text-muted-foreground">{t('uso.arquivado')}</span>
+                        ) : null}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {reais(a.producao)}{' '}
+                        <span className="text-xs text-muted-foreground">({tokens(a.producao.tokensTotal)})</span>
+                      </td>
+                      <td className="py-2">
+                        {reais(a.teste)}{' '}
+                        <span className="text-xs text-muted-foreground">({tokens(a.teste.tokensTotal)})</span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{t('uso.porModulo')}</p>
+            <ul className="space-y-1 text-sm">
+              {MODOS.filter((m) => resumo.porModo[m]).map((m) => (
+                <li key={m} className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="text-foreground">{t(`uso.modo.${m}`)}</span>
+                  <span className="text-muted-foreground">{reais(resumo.porModo[m])}</span>
+                  <span className="text-xs text-muted-foreground">({tokens(resumo.porModo[m].tokensTotal)})</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
+
+      {semPreco.length > 0 ? (
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          {t('uso.modelosSemPreco', { modelos: semPreco.join(', ') })}
+        </p>
+      ) : null}
+
+      {!agenteId ? (
+        <div className="space-y-1.5 rounded-lg border border-border p-4 sm:max-w-md">
+          <Label htmlFor="ia-cotacao">{t('uso.cotacao')}</Label>
+          <div className="flex gap-2">
+            <Input
+              id="ia-cotacao"
+              inputMode="decimal"
+              className="w-32"
+              value={cotacao}
+              placeholder={formatarCotacao(locale, 5.6)}
+              onChange={(e) => setCotacao(e.target.value)}
+            />
+            <Button size="sm" onClick={() => void salvarCotacao()} disabled={salvandoCotacao}>
+              {t('uso.salvarCotacao')}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('uso.cotacaoDica')}</p>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">{t('uso.cotacaoNaLista')}</p>
+      )}
+    </div>
+  );
+}

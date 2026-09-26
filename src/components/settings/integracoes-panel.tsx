@@ -398,6 +398,25 @@ function Cartao({
                 </div>
               ) : null}
 
+              {cartao.agentesDeIa.length > 0 ? (
+                <div>
+                  <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                    {t('agentesDeIa')}
+                  </p>
+                  <ul className="space-y-1.5">
+                    {cartao.agentesDeIa.map((a) => (
+                      <li key={a.nome} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span className="text-foreground">{a.nome}</span>
+                        <code className="text-[11px] text-muted-foreground">{a.modelo}</code>
+                        {!a.ativo ? (
+                          <span className="text-xs text-muted-foreground">{t('desligado')}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
               <Usos cartao={cartao} />
 
               <FormularioDaChave
@@ -419,8 +438,11 @@ function Cartao({
                 />
               ) : null}
 
+              {/* O "Assistente da conta" deste cartão é o anterior, que mora em
+                  /agents/legado até a F2: na lista nova, ligar um agente não
+                  liga o rascunho nem a resposta automática. */}
               <Link
-                href="/agents"
+                href="/agents/legado"
                 className={buttonVariants({ variant: 'outline', size: 'sm' })}
               >
                 {t('abrirAgentes')}
@@ -522,13 +544,17 @@ function FormularioDaChave({
 
   // O que deixa de funcionar sem a chave: os módulos que hoje a usam (os
   // marcados `sem_chave` já não a usam).
-  const paraSemChave = cartao.usos
-    // Só o que RODA hoje: módulo já parado por outro motivo (Radar sem
-    // conexão, base só por palavras) não "deixa de funcionar" com a exclusão
-    // (Codex, #294). MENOS o assistente desligado: o Playground dele roda
-    // assim mesmo, e para com a chave apagada (Codex, #295).
-    .filter((u) => !u.indisponivel || u.indisponivel === 'conversa_desligada')
-    .map((u) => t(`modulo.${u.modulo}`));
+  // Só o que RODA hoje: módulo já parado por outro motivo (Radar sem conexão,
+  // base só por palavras) não "deixa de funcionar" com a exclusão (Codex,
+  // #294). MENOS o assistente desligado e os agentes desligados: o Playground
+  // deles roda assim mesmo, e para com a chave apagada (Codex, #295). Todo
+  // agente deste provedor entra (a lista do cartão já vem sem os arquivados).
+  const paraSemChave = [
+    ...cartao.usos
+      .filter((u) => !u.indisponivel || u.indisponivel === 'conversa_desligada')
+      .map((u) => t(`modulo.${u.modulo}`)),
+    ...cartao.agentesDeIa.map((a) => t('agenteDeIaNaConfirmacao', { nome: a.nome })),
+  ];
 
   async function salvar() {
     if (!chave.trim()) return;
@@ -545,6 +571,7 @@ function FormularioDaChave({
         avisos?: string[];
         modelo?: string;
         modelos?: string[];
+        naoConferidos?: string[];
       };
       if (!res.ok) {
         setRecado({ tom: 'erro', texto: textoDoErroDaChave(t, dados.code, dados.modelo) });
@@ -556,14 +583,21 @@ function FormularioDaChave({
           a === 'embeddings_recusado' ||
           a === 'embeddings_nao_conferido' ||
           a === 'modelo_em_uso_indisponivel' ||
+          a === 'modelos_nao_conferidos' ||
           a === 'transcricao_indisponivel' ||
           a === 'so_da_base' ||
           a === 'modulos_nao_criados'
       );
-      const modelos = (dados.modelos ?? []).join(', ');
+      const listaDoAviso = (a: string) =>
+        (a === 'modelos_nao_conferidos' ? (dados.naoConferidos ?? []) : (dados.modelos ?? [])).join(', ');
       setRecado(
         avisos.length > 0
-          ? { tom: 'aviso', texto: avisos.map((a) => t(`avisoDaChave.${a}`, { modelos })).join(' ') }
+          ? {
+              tom: 'aviso',
+              texto: avisos
+                .map((a) => t(`avisoDaChave.${a}` as Parameters<typeof t>[0], { modelos: listaDoAviso(a) }))
+                .join(' '),
+            }
           : { tom: 'ok', texto: t('salvo') }
       );
       onSalvo();

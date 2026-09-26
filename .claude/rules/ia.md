@@ -16,6 +16,10 @@ paths:
   - "src/components/settings/ai-knowledge.tsx"
   - "src/components/agents/**"
   - "src/app/*/agents/**"
+  - "src/lib/ia-chaves/**"
+  - "src/lib/ia-agentes/**"
+  - "src/components/agentes-de-ia/**"
+  - "src/app/api/cb/ia/**"
 ---
 
 # IA (Radar, transcrição, Integrações, assistente) — regras
@@ -292,6 +296,39 @@ Radar.
 - **Google Agenda é cartão "não conectado" de propósito**: a integração não
   existe (as colunas `google_*` da 945 nascem nulas); quando existir, é este
   cartão que vira o ponto de conexão.
+
+### Agentes de IA (1048, `src/lib/ia-agentes/`, `/agents`)
+
+O plano vivo é `docs/PLANO-agentes-de-ia.md` (decisões D1–D23). Na F1b os
+agentes são criados, testados no Playground e medidos; NENHUM responde
+cliente — quem responde ainda é o assistente anterior (`ai_configs`, tela em
+`/agents/legado`), até a F2.
+
+- ⚠️⚠️ **"Agente" no código é PESSOA** (`assigned_agent_id`, o papel `agent`).
+  Agente de IA leva `ia_agente` no nome (`cb_ia_agentes`, `ia_agente_id`).
+- ⚠️ **`cb_ia_agentes` só dá SELECT ao ADMINISTRADOR** (D14, forma da 1032) e
+  nenhuma escrita ao navegador: `src/lib/ia-agentes/repo.ts` escreve com o
+  cliente de serviço, com a conta em toda consulta e os ids das listas
+  conferidos contra a conta (arrays sem FK). Nome e id para quem não é admin
+  (bolha, faixa, `descreverPasso`) saem por rota, nunca pela tabela.
+- ⚠️ **`conexoes` vazio = NENHUMA conexão**, nunca "todas" (a exceção do
+  `radar_enabled`: dado de cliente indo a provedor externo). Apagar conexão a
+  tira dos agentes por gatilho.
+- **Apagar é ARQUIVAR**: o uso antigo guarda o nome CONGELADO
+  (`ai_usage_log.ia_agente_nome`); o nome é único só entre os não arquivados.
+- **Instruções e regras (D23) em campos separados**; o pedido ao modelo sai
+  de UMA função pura (`montarPedidoDoAgente`): texto-base em inglês (é para o
+  modelo; ele responde no idioma do cliente), data e hora no fuso do
+  escritório, instruções, regras numeradas, base de conhecimento. O
+  Playground usa a mesma montagem — ele testa o que a produção vai mandar.
+- **O gasto do Playground é `agente_teste`** (D13), separado de `agente`. A
+  soma do uso é no BANCO (`cb_ia_uso`): a rota antiga lia linha a linha e o
+  PostgREST cortava em 1000.
+- ⚠️ **Custo em R$ (D21) é ESTIMATIVA**: preço de lista em US$ com VIGÊNCIA
+  por linha (`precos.ts` — mudança de preço entra como linha nova, senão o
+  histórico é recalculado) × a cotação de hoje (`ai_configs.cotacao_dolar`,
+  rota própria). Modelo fora da tabela é "sem preço", NUNCA zero; a saída
+  cobrada do Gemini é `max(saída, total − entrada)` (os pensamentos).
 
 ### Assistente e provedores (`src/lib/ai/`)
 

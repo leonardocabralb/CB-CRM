@@ -13,12 +13,16 @@ import { MODELO_TRANSCRICAO } from '@/lib/transcricao/transcrever';
 import { AiError, type AiProvider } from '@/lib/ai/types';
 import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
 import { lerChave, lerChaveDeEmbeddings, lerEstado } from '@/lib/ia-chaves/repo';
+import { listarAgentes } from '@/lib/ia-agentes/repo';
 import {
   montarCartoes,
   type ChaveParaMontar,
   type ProviderId,
   type Teste,
 } from '@/lib/integracoes/montar';
+
+/** Modelos pingados por provedor numa carga da tela (cada um é uma geração paga). */
+const MAX_MODELOS_PINGADOS = 5;
 
 /**
  * GET /api/cb/integracoes/status  (admin+)
@@ -159,6 +163,13 @@ export async function GET(request: Request) {
       );
     }
 
+    // Os agentes de IA (1048). Leitura que falha só tira a lista do cartão e
+    // os modelos deles do ping (log) — não derruba a tela das chaves.
+    const agentes = await listarAgentes(ctx.accountId).catch((err) => {
+      console.error('[integracoes] leitura dos agentes falhou:', err instanceof Error ? err.message : err);
+      return [] as Awaited<ReturnType<typeof listarAgentes>>;
+    });
+
     // Um ping por chave cadastrada, com o modelo que ela vai rodar: o do
     // assistente quando é o provedor dele, senão o padrão do provedor. Mais o
     // ping dos embeddings com a chave da OpenAI (a busca da base). Tudo em
@@ -192,7 +203,10 @@ export async function GET(request: Request) {
           const modeloDoChat = doPadrao?.is_active ? doPadrao.model : null;
           const modeloDoRadar = doPadrao && radarLigado ? (doPadrao.radar_model ?? doPadrao.model) : null;
           const usadaNoChat =
-            modeloDoChat !== null || modeloDoRadar !== null || deConexao.some((l) => l.provider === e.provedor);
+            modeloDoChat !== null ||
+            modeloDoRadar !== null ||
+            deConexao.some((l) => l.provider === e.provedor) ||
+            agentes.some((a) => a.ativo && a.provedor === e.provedor);
           // E a da OpenAI que nada de chat usa, qualquer que seja a origem (a
           // cópia de uma conexão DESLIGADA também — a 1047 a pega na falta de
           // outra): o uso dela é a base, e quem responde por ela é o ping dos
@@ -211,17 +225,28 @@ export async function GET(request: Request) {
           // Gemini qualquer que seja o chat, e o cartão ficaria verde com
           // todo áudio falhando se só aquele modelo saísse do ar (Codex, #294).
           const daConexao = deConexao.filter((l) => l.provider === e.provedor).map((l) => l.model);
+          // E o de cada agente de IA LIGADO deste provedor (Codex, #295): um
+          // modelo trocado para um aposentado deixaria o cartão verde com o
+          // Playground e a produção falhando.
+          const dosAgentes = agentes.filter((a) => a.ativo && a.provedor === e.provedor).map((a) => a.modelo);
           // O modelo padrão do provedor só quando NADA deste provedor roda (só
           // confere a chave): testá-lo ao lado do modelo da conexão acusaria
           // "falhando" por um modelo que ninguém usa (Codex, #294).
-          const nadaRoda = modeloDoChat === null && modeloDoRadar === null && daConexao.length === 0;
+          const nadaRoda =
+            modeloDoChat === null && modeloDoRadar === null && daConexao.length === 0 && dosAgentes.length === 0;
           const modelos = [
             modeloDoChat,
             nadaRoda ? AI_PROVIDER_DEFAULT_MODEL[e.provedor] : null,
             modeloDoRadar,
-            ...daConexao,
             e.provedor === 'gemini' ? MODELO_TRANSCRICAO : null,
-          ].filter((m, i, todos): m is string => typeof m === 'string' && m.trim() !== '' && todos.indexOf(m) === i);
+            ...daConexao,
+            ...dosAgentes,
+          ]
+            .filter((m, i, todos): m is string => typeof m === 'string' && m.trim() !== '' && todos.indexOf(m) === i)
+            // Cada ping é uma geração PAGA a cada carga da tela: teto por
+            // provedor, o do chat, o do Radar e o da transcrição primeiro. O
+            // agente além do teto se confere no Playground dele.
+            .slice(0, MAX_MODELOS_PINGADOS);
           const falhas = await Promise.all(
             modelos.map(async (model) => {
               try {
@@ -292,6 +317,13 @@ export async function GET(request: Request) {
         provider: l.provider as ProviderId,
         model: l.model,
         canal: canais.find((c) => c.id === l.channel_id)?.label ?? l.channel_id,
+      })),
+      // Os agentes de IA (1048) de cada provedor.
+      agentes.map((a) => ({
+        nome: a.nome,
+        provedor: a.provedor as ProviderId,
+        modelo: a.modelo,
+        ativo: a.ativo,
       }))
     );
 
