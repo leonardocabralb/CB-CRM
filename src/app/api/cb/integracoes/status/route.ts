@@ -169,29 +169,42 @@ export async function GET(request: Request) {
             return { ...base, teste: { ok: false, motivo: 'leitura_falhou' } };
           }
           if (!chave) return { ...base, existe: false, teste: null };
-          try {
-            await validateAiCredentials({
-              provider: e.provedor,
-              // ⚠️ O ping testa o modelo do CHAT (ou o padrão do provedor).
-              // O do Radar é validado no SAVE — pingá-lo aqui seria uma
-              // segunda chamada paga a cada carga desta tela.
-              model:
-                padrao && padrao.provider === e.provedor
-                  ? padrao.model
-                  : AI_PROVIDER_DEFAULT_MODEL[e.provedor],
-              radarModel: null,
-              apiKey: chave,
-              systemPrompt: null,
-              isActive: true,
-              autoReplyEnabled: false,
-              autoReplyMaxPerConversation: 3,
-              handoffAgentId: null,
-              embeddingsApiKey: null,
-            });
-            return { ...base, teste: { ok: true } };
-          } catch (err) {
-            return { ...base, teste: { ok: false, motivo: motivoSeguro(err) } };
-          }
+          const apiKey = chave;
+          // ⚠️ O ping testa o modelo do CHAT (ou o padrão do provedor) E o de
+          // cada agente de CONEXÃO ligado deste provedor: a resposta
+          // automática legada chama o modelo da linha dela, e um modelo
+          // aposentado ali falharia com o cartão dizendo "funcionando"
+          // (Codex, #294). O do Radar é validado no SAVE — pingá-lo aqui
+          // seria uma segunda chamada paga a cada carga desta tela.
+          const modelos = [
+            padrao && padrao.provider === e.provedor
+              ? padrao.model
+              : AI_PROVIDER_DEFAULT_MODEL[e.provedor],
+            ...deConexao.filter((l) => l.provider === e.provedor).map((l) => l.model),
+          ].filter((m, i, todos) => typeof m === 'string' && m.trim() !== '' && todos.indexOf(m) === i);
+          const falhas = await Promise.all(
+            modelos.map(async (model) => {
+              try {
+                await validateAiCredentials({
+                  provider: e.provedor,
+                  model,
+                  radarModel: null,
+                  apiKey,
+                  systemPrompt: null,
+                  isActive: true,
+                  autoReplyEnabled: false,
+                  autoReplyMaxPerConversation: 3,
+                  handoffAgentId: null,
+                  embeddingsApiKey: null,
+                });
+                return null;
+              } catch (err) {
+                return motivoSeguro(err);
+              }
+            })
+          );
+          const falha = falhas.find((f) => f !== null);
+          return { ...base, teste: falha ? { ok: false, motivo: falha } : { ok: true } };
         })
       ),
       (async (): Promise<Teste> => {
