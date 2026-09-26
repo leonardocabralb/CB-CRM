@@ -26,7 +26,11 @@ export const CONTACT_SELECT = '*, contact_tags(tags(*))';
 
 export interface ApiContact {
   id: string;
-  /** `null` em contato só do Instagram (989) — ele carrega `instagram_id`. */
+  /**
+   * `null` em contato só do Instagram (989) — ele carrega `instagram_id` — e
+   * no que a Meta manda só com o nome de usuário do WhatsApp (1041) — ele
+   * carrega `whatsapp_user_id`.
+   */
   phone: string | null;
   name: string | null;
   email: string | null;
@@ -34,6 +38,15 @@ export interface ApiContact {
   avatar_url: string | null;
   instagram_id: string | null;
   instagram_username: string | null;
+  /**
+   * O BSUID do WhatsApp (Fase 11, decisão do operador de 24/09/2026: só
+   * leitura) — a identidade que a Meta manda de quem adotou nome de usuário,
+   * às vezes SEM o telefone. Sem ele, o integrador recebia `phone: null` sem
+   * identificador nenhum. Coluna `wa_user_id`.
+   */
+  whatsapp_user_id: string | null;
+  /** O `@` do WhatsApp, sem a arroba, quando a Meta o manda (`wa_username`). */
+  whatsapp_username: string | null;
   tags: { id: string; name: string; color: string }[];
   created_at: string;
   updated_at: string;
@@ -63,6 +76,8 @@ export function serializeContact(row: Record<string, unknown>): ApiContact {
     avatar_url: (row.avatar_url as string | null) ?? null,
     instagram_id: (row.instagram_id as string | null) ?? null,
     instagram_username: (row.instagram_username as string | null) ?? null,
+    whatsapp_user_id: (row.wa_user_id as string | null) ?? null,
+    whatsapp_username: (row.wa_username as string | null) ?? null,
     tags: joins
       .map((j) => j.tags)
       .filter((t): t is NonNullable<RawTagJoin['tags']> => t != null)
@@ -77,30 +92,26 @@ export function serializeContact(row: Record<string, unknown>): ApiContact {
  * of truth used by every public-API write (contacts, messages,
  * broadcasts, resolve-conversation), so the same key's writes are
  * always attributed to the same human. API callers have no logged-in
- * user, so — like the inbound webhook — we attribute writes to the
- * **WhatsApp config owner** (the webhook's own convention). Contacts
- * can be created before WhatsApp is connected, so we fall back to the
- * account owner when there's no config yet.
+ * user, so we attribute writes to the ACCOUNT OWNER
+ * (`accounts.owner_user_id`, NOT NULL e ON DELETE RESTRICT).
+ *
+ * ⚠️ NOSSO (decisão 7 da Fase 11): nunca `whatsapp_config.user_id` (quem
+ * conectou o número), que era a convenção herdada do webhook.
+ * `contacts.user_id` e `conversations.user_id` CASCADEiam de `auth.users`:
+ * apagar o login de quem conectou levaria junto os clientes que a API criou.
+ * Leitura que falha ou conta sem dono = 500, nunca queda para outra pessoa.
  */
 export async function resolveAuditUserId(
   db: SupabaseClient,
   accountId: string
 ): Promise<string> {
-  const { data: config } = await db
-    .from('whatsapp_config')
-    .select('user_id')
-    .eq('account_id', accountId)
-    .maybeSingle();
-  const configOwner = config?.user_id as string | undefined;
-  if (configOwner) return configOwner;
-
-  const { data: account } = await db
+  const { data: account, error } = await db
     .from('accounts')
     .select('owner_user_id')
     .eq('id', accountId)
     .maybeSingle();
   const owner = account?.owner_user_id as string | undefined;
-  if (!owner) {
+  if (error || !owner) {
     throw new ContactError('Account owner could not be resolved', 500);
   }
   return owner;

@@ -50,14 +50,18 @@ dispara (e não dispara) está também em `.claude/rules/ingestao.md`.
 ### Contato sem telefone
 
 - ⚠️ **`Contact.phone` é `string | null`**: a ficha só do Instagram não tem
-  telefone. Toda tela que mostra "o telefone" passa por
-  `identidadeDoContato`/`nomeDoContato` (`identidade.ts`): telefone, senão
-  `@usuario`, senão o fallback que a TELA escolhe — parâmetro OBRIGATÓRIO, senão
-  um padrão escondido sairia em inglês numa tela e em português noutra. Nunca o
-  IGSID na tela. O `tsc` não vê `{contact.phone}` em JSX, `name || phone` nem
-  tipo local com `phone: string`: caçar por grep. Pino: `identidade.test.ts`.
-- ⚠️ **Consulta que EMBUTE o contato leva `instagram_username` junto**, senão o
-  `@` não chega e a ficha sem nome vira "contato desconhecido".
+  telefone (nem a só-BSUID do WhatsApp, 1041). Toda tela que mostra "o
+  telefone" passa por `identidadeDoContato`/`nomeDoContato` (`identidade.ts`):
+  telefone, senão o `@` do WhatsApp, senão o do Instagram (decisão do
+  operador, 24/09/2026), senão o fallback que a TELA escolhe — parâmetro
+  OBRIGATÓRIO, senão um padrão escondido sairia em inglês numa tela e em
+  português noutra. Nunca o IGSID nem o BSUID na tela. O `tsc` não vê
+  `{contact.phone}` em JSX, `name || phone` nem tipo local com
+  `phone: string`: caçar por grep. Pino: `identidade.test.ts`.
+- ⚠️ **Consulta que EMBUTE o contato leva `instagram_username` E
+  `wa_username` junto**, senão o `@` não chega e a ficha sem nome vira
+  "contato desconhecido". Pino default-deny `identidade-nos-embeds.test.ts`
+  (toda lista `name, phone` em `src/`).
 - ⚠️ **IGSID nunca vai para `contacts.phone`**: `findExistingContact` casa
   pelos últimos 8 dígitos e fundiria com um cliente real. A identidade do
   Instagram é `contacts.instagram_id` (989).

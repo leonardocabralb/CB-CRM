@@ -5,6 +5,7 @@ import { requireRole, toErrorResponse } from "@/lib/auth/account";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import { cartaoDoTldv, type ConfigDoTldv } from "@/lib/tldv/cartao";
 import { origemPublica, urlDoWebhook } from "@/lib/tldv/conexao";
+import { nomeDoContato, type ContatoIdentificavel } from "@/lib/contacts/identidade";
 
 /** As últimas reuniões importadas, no cartão. */
 export const REUNIOES_NO_CARTAO = 20;
@@ -50,8 +51,13 @@ export async function GET(request: Request) {
     const idsDeContato = [...new Set(linhas.map((l) => l.contact_id).filter((id): id is string => id !== null))];
     const nomes = new Map<string, string>();
     if (idsDeContato.length > 0) {
-      const { data: contatos } = await admin.from("contacts").select("id, name, phone").eq("account_id", ctx.accountId).in("id", idsDeContato);
-      for (const c of (contatos ?? []) as { id: string; name: string | null; phone: string }[]) nomes.set(c.id, c.name || c.phone);
+      // `nomeDoContato` com as colunas do @: a ficha sem telefone (Instagram,
+      // só-BSUID) saía com o nome nulo no cartão.
+      const { data: contatos } = await admin.from("contacts").select("id, name, phone, wa_username, instagram_username").eq("account_id", ctx.accountId).in("id", idsDeContato);
+      for (const c of (contatos ?? []) as (ContatoIdentificavel & { id: string })[]) {
+        const nome = nomeDoContato(c, "");
+        if (nome) nomes.set(c.id, nome);
+      }
     }
 
     const linha = (config.data ?? null) as (ConfigDoTldv & { webhook_token: string }) | null;

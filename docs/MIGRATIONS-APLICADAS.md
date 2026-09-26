@@ -34,7 +34,7 @@ Como ler:
 - As entradas usam o número da época. Desde 14/09/2026 todo arquivo tem 4
   dígitos: "a 912" é o arquivo `0912_…`.
 - O "(última conferência: 2026-08-28 …)" logo abaixo é da consolidação da
-  lista naquela data. A última entrada é a 1040 (23/09/2026).
+  lista naquela data. A última entrada é a 1041 (25/09/2026).
 
 ## Lista
 
@@ -741,6 +741,18 @@ nome da época em que foram aplicadas.
   com o predicado, a função com o cabeçalho, `anon` sem EXECUTE, 0
   pendentes herdados) e medida contra o PostgREST real (ver a nota da
   origem `api`).
+- **1041_cb_identidade_do_contato_com_bsuid** — o CHECK de identidade de
+  `contacts` passa de "telefone OU instagram" para "telefone OU instagram OU
+  BSUID" (`wa_user_id`): a ficha que a Meta manda só com o nome de usuário do
+  WhatsApp, sem telefone (Fase 11 do plano do merge do upstream). ADITIVA —
+  sem ela o INSERT dessa ficha leva 23514 e a mensagem se perde, porque a Meta
+  já recebeu 200. A conferência chama o INSERT de duas fichas só-BSUID, do
+  BSUID repetido (23505) e da ficha sem identidade (23514) num subbloco
+  desfeito por `P1041`. Aplicada em 25/09/2026 pela Management API (histórico
+  `20260925152808`), depois do replay verde do CI no commit exato e antes do
+  merge do PR #291; conferida no catálogo (UM CHECK, as três pernas,
+  validado), sem sobra da conferência e com 0 fichas sem telefone. Ensaiada
+  antes contra a produção numa transação desfeita (1× e reaplicada).
 
 ## Notas do histórico
 

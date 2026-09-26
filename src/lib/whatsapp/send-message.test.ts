@@ -279,9 +279,24 @@ vi.mock('@/lib/flows/admin-client', () => ({
   }),
 }));
 
+// O transporte da Evolution é espiado: os casos da Fase 11.3 provam que a
+// ficha só-BSUID é recusada ANTES de ele ser montado — a Evolution tiraria as
+// letras do BSUID e mandaria ao número formado pelos dígitos dele.
+const evolutionSendText = vi.fn(async () => ({ providerMessageId: 'evo.1' }));
+vi.mock('@/lib/whatsapp/transport', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getTransport: vi.fn(() => ({
+    sendText: (...a: unknown[]) =>
+      (evolutionSendText as unknown as (...x: unknown[]) => unknown)(...a),
+    sendMedia: vi.fn(async () => ({ providerMessageId: 'evo.media' })),
+  })),
+}));
+
 interface CapturedWrites {
   message?: Record<string, unknown>;
   conversation?: Record<string, unknown>;
+  /** Toda escrita em `contacts` (a autocorreção do telefone depois de 131030). */
+  contactUpdates?: Record<string, unknown>[];
 }
 
 /**
@@ -292,11 +307,12 @@ interface CapturedWrites {
  */
 function sendPathDb(
   templateRows: unknown[],
-  captured: CapturedWrites
+  captured: CapturedWrites,
+  contact: Record<string, unknown> = { id: 'ct-1', phone: '+15551234567' }
 ): SupabaseClient {
   const conversation = {
     id: 'cv-1',
-    contact: { id: 'ct-1', phone: '+15551234567' },
+    contact,
   };
   const config = {
     id: 'cfg-1',
@@ -318,6 +334,9 @@ function sendPathDb(
           // depois dela e, capturada, apagaria o que estes testes conferem.
           if (table === 'conversations' && 'last_message_text' in row) {
             captured.conversation = row;
+          }
+          if (table === 'contacts') {
+            (captured.contactUpdates ??= []).push(row);
           }
           return builder;
         },
@@ -535,5 +554,287 @@ describe('regressão de merge: o texto persistido é o ASSINADO', () => {
     });
 
     expect(captured.message?.content_text).toBe('Bom dia');
+  });
+});
+
+// ============================================================
+// Fase 11.3 — o BSUID (issue #519, 2cf9806): a ficha de quem a Meta
+// identifica só pelo nome de usuário não tem telefone.
+//
+// Os cinco primeiros casos são os do original, portados (as frases de erro
+// são as nossas; a ficha só-BSUID daqui guarda `phone` NULO, e a do original
+// guardava `''` — os dois são cobertos). Os seguintes são do fork: o BSUID SÓ
+// pela API oficial da Meta — pela Evolution ele viraria o número formado
+// pelos dígitos dele — e JAMAIS na autocorreção do telefone depois de 131030.
+// ============================================================
+
+const BSUID = 'US.13491208655302741918';
+
+describe('sendMessageToConversation — alvo por BSUID (Fase 11.3)', () => {
+  const META = {
+    channelId: 'canal-meta',
+    provider: 'meta',
+    phone_number_id: 'pn-1',
+    access_token: 'tok-1',
+  };
+  const EVOLUTION = {
+    channelId: 'canal-evo',
+    provider: 'evolution',
+    base_url: 'https://evo.test',
+    instance_name: 'inst',
+    api_key: 'k',
+  };
+
+  async function comCanal(canal: Record<string, unknown>) {
+    const { resolveChannelForConversation } = await import(
+      '@/lib/cb-channels/resolve'
+    );
+    vi.mocked(resolveChannelForConversation).mockResolvedValue(
+      canal as unknown as Awaited<ReturnType<typeof resolveChannelForConversation>>
+    );
+  }
+
+  async function envioDeTexto() {
+    const { sendTextMessage } = await import('@/lib/whatsapp/meta-api');
+    return vi.mocked(sendTextMessage);
+  }
+
+  beforeEach(async () => {
+    const enviar = await envioDeTexto();
+    enviar.mockReset();
+    enviar.mockResolvedValue({ messageId: 'wamid.text' });
+    evolutionSendText.mockClear();
+    const { getTransport } = await import('@/lib/whatsapp/transport');
+    vi.mocked(getTransport).mockClear();
+    await comCanal(META);
+  });
+
+  it('manda ao BSUID quando a ficha não tem telefone (phone nulo ou vazio)', async () => {
+    for (const phone of [null, '']) {
+      const captured: CapturedWrites = {};
+      const enviar = await envioDeTexto();
+      enviar.mockClear();
+      await sendMessageToConversation(
+        sendPathDb([], captured, { id: 'ct-1', phone, wa_user_id: BSUID }),
+        'acct-1',
+        { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+      );
+      expect(enviar).toHaveBeenCalledTimes(1);
+      expect(enviar).toHaveBeenCalledWith(expect.objectContaining({ to: BSUID }));
+      // O BSUID JAMAIS vai para `contacts.phone` (a autocorreção é só de
+      // telefone — sem o `ehTelefone`, o BSUID "difere" do telefone vazio).
+      expect(captured.contactUpdates ?? []).toEqual([]);
+    }
+  });
+
+  it('prefere o telefone quando a ficha tem os dois', async () => {
+    const captured: CapturedWrites = {};
+    await sendMessageToConversation(
+      sendPathDb([], captured, {
+        id: 'ct-1',
+        phone: '+15551234567',
+        wa_user_id: BSUID,
+      }),
+      'acct-1',
+      { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+    );
+    expect(await envioDeTexto()).toHaveBeenCalledWith(
+      expect.objectContaining({ to: '15551234567' })
+    );
+  });
+
+  it('cai no BSUID quando o telefone gravado é inutilizável', async () => {
+    const captured: CapturedWrites = {};
+    await sendMessageToConversation(
+      sendPathDb([], captured, {
+        id: 'ct-1',
+        phone: 'not-a-number',
+        wa_user_id: BSUID,
+      }),
+      'acct-1',
+      { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+    );
+    expect(await envioDeTexto()).toHaveBeenCalledWith(
+      expect.objectContaining({ to: BSUID })
+    );
+    expect(captured.contactUpdates ?? []).toEqual([]);
+  });
+
+  it('400 quando não há telefone utilizável nem BSUID', async () => {
+    const captured: CapturedWrites = {};
+    await expect(
+      sendMessageToConversation(
+        sendPathDb([], captured, { id: 'ct-1', phone: '' }),
+        'acct-1',
+        { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+      )
+    ).rejects.toMatchObject({ status: 400 });
+    expect(await envioDeTexto()).not.toHaveBeenCalled();
+  });
+
+  it('ignora um wa_user_id que não tem forma de BSUID', async () => {
+    const captured: CapturedWrites = {};
+    await expect(
+      sendMessageToConversation(
+        sendPathDb([], captured, { id: 'ct-1', phone: '', wa_user_id: 'lixo' }),
+        'acct-1',
+        { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+      )
+    ).rejects.toMatchObject({ code: 'bad_request', status: 400 });
+    expect(await envioDeTexto()).not.toHaveBeenCalled();
+  });
+
+  it('pela Evolution, a ficha só-BSUID é recusada ANTES de montar o transporte', async () => {
+    await comCanal(EVOLUTION);
+    const captured: CapturedWrites = {};
+    await expect(
+      sendMessageToConversation(
+        sendPathDb([], captured, { id: 'ct-1', phone: null, wa_user_id: BSUID }),
+        'acct-1',
+        { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+      )
+    ).rejects.toMatchObject({ code: 'not_supported', status: 400 });
+    const { getTransport } = await import('@/lib/whatsapp/transport');
+    expect(vi.mocked(getTransport)).not.toHaveBeenCalled();
+    expect(evolutionSendText).not.toHaveBeenCalled();
+    expect(await envioDeTexto()).not.toHaveBeenCalled();
+    expect(captured.message).toBeUndefined();
+  });
+
+  it('a recusa da Evolution diz o que fazer, em português', async () => {
+    await comCanal(EVOLUTION);
+    await expect(
+      sendMessageToConversation(
+        sendPathDb([], {}, { id: 'ct-1', phone: null, wa_user_id: BSUID }),
+        'acct-1',
+        { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+      )
+    ).rejects.toThrow(/número oficial/);
+  });
+
+  it('pela Evolution, a ficha com telefone E BSUID sai pelo TELEFONE', async () => {
+    await comCanal(EVOLUTION);
+    const captured: CapturedWrites = {};
+    await sendMessageToConversation(
+      sendPathDb([], captured, {
+        id: 'ct-1',
+        phone: '+15551234567',
+        wa_user_id: BSUID,
+      }),
+      'acct-1',
+      { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+    );
+    expect(evolutionSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ to: '15551234567' })
+    );
+    expect(captured.message?.remote_jid).toBe('15551234567@s.whatsapp.net');
+  });
+
+  it('131030 com BSUID: UMA tentativa, sem variantes e sem tocar em contacts', async () => {
+    const enviar = await envioDeTexto();
+    enviar.mockRejectedValue(new Error('(#131030) Recipient phone number not in allowed list'));
+    const captured: CapturedWrites = {};
+    await expect(
+      sendMessageToConversation(
+        sendPathDb([], captured, { id: 'ct-1', phone: null, wa_user_id: BSUID }),
+        'acct-1',
+        { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+      )
+    ).rejects.toMatchObject({ code: 'meta_error' });
+    expect(enviar).toHaveBeenCalledTimes(1);
+    expect(enviar).toHaveBeenCalledWith(expect.objectContaining({ to: BSUID }));
+    expect(captured.contactUpdates ?? []).toEqual([]);
+  });
+
+  it('modelo de AUTENTICAÇÃO a quem só tem BSUID: recusado ANTES da Meta, com a frase', async () => {
+    // A doc da Meta sobre BSUID exclui o código de acesso do envio por
+    // `recipient`: só vai a telefone.
+    sendTemplateMessage.mockClear();
+    const captured: CapturedWrites = {};
+    await expect(
+      sendMessageToConversation(
+        sendPathDb(
+          [{ ...TEMPLATE_ROW, category: 'Authentication' }],
+          captured,
+          { id: 'ct-1', phone: null, wa_user_id: BSUID }
+        ),
+        'acct-1',
+        { conversationId: 'cv-1', messageType: 'template', templateName: 'order_update' }
+      )
+    ).rejects.toMatchObject({ code: 'not_supported', status: 400 });
+    expect(sendTemplateMessage).not.toHaveBeenCalled();
+    expect(captured.message).toBeUndefined();
+  });
+
+  it('a categoria vem da Meta em maiúsculas também (AUTHENTICATION)', async () => {
+    sendTemplateMessage.mockClear();
+    await expect(
+      sendMessageToConversation(
+        sendPathDb(
+          [{ ...TEMPLATE_ROW, category: 'AUTHENTICATION' }],
+          {},
+          { id: 'ct-1', phone: null, wa_user_id: BSUID }
+        ),
+        'acct-1',
+        { conversationId: 'cv-1', messageType: 'template', templateName: 'order_update' }
+      )
+    ).rejects.toThrow(/autenticação/);
+    expect(sendTemplateMessage).not.toHaveBeenCalled();
+  });
+
+  it('modelo UTILITÁRIO a quem só tem BSUID: sai no BSUID', async () => {
+    sendTemplateMessage.mockClear();
+    await sendMessageToConversation(
+      sendPathDb([TEMPLATE_ROW], {}, { id: 'ct-1', phone: null, wa_user_id: BSUID }),
+      'acct-1',
+      {
+        conversationId: 'cv-1',
+        messageType: 'template',
+        templateName: 'order_update',
+        templateParams: ['A1', 'sexta'],
+      }
+    );
+    expect(sendTemplateMessage).toHaveBeenCalledTimes(1);
+    expect(sendTemplateMessage).toHaveBeenCalledWith(expect.objectContaining({ to: BSUID }));
+  });
+
+  it('modelo de AUTENTICAÇÃO a quem TEM telefone: sai, pelo telefone', async () => {
+    sendTemplateMessage.mockClear();
+    await sendMessageToConversation(
+      sendPathDb(
+        [{ ...TEMPLATE_ROW, category: 'Authentication' }],
+        {},
+        { id: 'ct-1', phone: '+15551234567', wa_user_id: BSUID }
+      ),
+      'acct-1',
+      {
+        conversationId: 'cv-1',
+        messageType: 'template',
+        templateName: 'order_update',
+        templateParams: ['A1', 'sexta'],
+      }
+    );
+    expect(sendTemplateMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ to: '15551234567' })
+    );
+  });
+
+  it('131030 com TELEFONE: as variantes rodam e a que entrega corrige a ficha', async () => {
+    // O controle positivo do caso acima: a autocorreção continua viva para
+    // quem tem telefone.
+    const enviar = await envioDeTexto();
+    enviar
+      .mockRejectedValueOnce(new Error('(#131030) Recipient phone number not in allowed list'))
+      .mockResolvedValue({ messageId: 'wamid.variante' });
+    const captured: CapturedWrites = {};
+    await sendMessageToConversation(
+      sendPathDb([], captured, { id: 'ct-1', phone: '+15551234567' }),
+      'acct-1',
+      { conversationId: 'cv-1', messageType: 'text', contentText: 'oi' }
+    );
+    expect(enviar.mock.calls.length).toBeGreaterThan(1);
+    const variante = (enviar.mock.calls[1]?.[0] as { to: string }).to;
+    expect(variante).not.toBe('15551234567');
+    expect(captured.contactUpdates).toEqual([{ phone: variante }]);
   });
 });

@@ -69,6 +69,8 @@ const CONTATO_COMPLETO: DealEventContact = {
   avatar_url: null,
   instagram_id: null,
   instagram_username: null,
+  whatsapp_user_id: null,
+  whatsapp_username: null,
   tags: [{ id: 't1', name: 'Typebot', color: '#3b82f6' }],
   created_at: '2026-09-20T12:00:00.000Z',
   updated_at: '2026-09-23T14:05:00.000Z',

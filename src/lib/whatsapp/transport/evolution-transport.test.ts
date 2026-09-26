@@ -110,6 +110,13 @@ describe('toEvolutionNumber', () => {
       '123456789-987654@g.us'
     );
   });
+
+  // Segunda trava da Fase 11.3: sem ela, as letras do BSUID sumiriam e a
+  // mensagem iria ao número formado pelos dígitos dele — um desconhecido.
+  it('LANÇA com o BSUID da Meta (e com o do portfólio)', () => {
+    expect(() => toEvolutionNumber('BR.13491208655302741918')).toThrow(/BSUID/);
+    expect(() => toEvolutionNumber('US.ENT.11815799212886844830')).toThrow(/BSUID/);
+  });
 });
 
 // ⚠️ Pino da prévia de link (23/09/2026). Sem `linkPreview: false`, a

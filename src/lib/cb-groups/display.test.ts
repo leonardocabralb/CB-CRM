@@ -68,6 +68,29 @@ describe('tituloDaConversa', () => {
     expect(tituloDaConversa(conv({}), textos)).toBe('Desconhecido');
   });
 
+  // Fase 11.4: a regra única da identidade. O `name || phone` cru dizia
+  // "Desconhecido" para a ficha sem telefone (Instagram e só-BSUID).
+  it('ficha sem nome e sem telefone mostra o @ (WhatsApp antes do Instagram)', () => {
+    expect(
+      tituloDaConversa(conv({ contact: { name: null, phone: null, wa_username: 'ana.silva' } as never }), textos),
+    ).toBe('@ana.silva');
+    expect(
+      tituloDaConversa(conv({ contact: { name: null, phone: null, instagram_username: 'ana.ig' } as never }), textos),
+    ).toBe('@ana.ig');
+    expect(
+      tituloDaConversa(
+        conv({ contact: { name: null, phone: null, wa_username: 'ana.silva', instagram_username: 'ana.ig' } as never }),
+        textos,
+      ),
+    ).toBe('@ana.silva');
+  });
+
+  it('o BSUID nunca vira título', () => {
+    expect(
+      tituloDaConversa(conv({ contact: { name: null, phone: null, wa_user_id: 'BR.1349120865530274' } as never }), textos),
+    ).toBe('Desconhecido');
+  });
+
   it('⚠️ grupo sem o join hidratado ainda mostra algo utilizável', () => {
     // O payload de tempo real do Supabase não traz joins: uma conversa de
     // grupo recém-criada chega com `group_id` e sem `group`. Sem este caso a

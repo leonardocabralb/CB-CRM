@@ -87,6 +87,37 @@ abrir negócio e carimbo de canal na ingestão estão em
   na doc pública: estrangeiro sem `+` com 10–11 dígitos é lido como
   brasileiro.
 
+### O destino: telefone ou BSUID (Fase 11.3)
+
+A Meta manda só o BSUID (`wa_user_id`) de quem adotou nome de usuário, e a
+ficha dessa pessoa não tem telefone. A Cloud API a alcança pelo campo
+`recipient` (`recipientFields` de `meta-api.ts` decide pelo FORMATO do alvo).
+
+- ⚠️⚠️ **O destino sai de `alvoDeEnvio` (`alvo-de-envio.ts`; no robô,
+  `alvoDoRobo`), decidido DEPOIS do canal e das recusas dele**: telefone válido
+  vale em qualquer transporte; o BSUID, SÓ com `ehMeta`. Pela Evolution as
+  letras sumiriam e a mensagem iria ao número formado pelos dígitos do BSUID.
+  `resolveContactSendTarget` (do original, ignora o transporte) só é chamado
+  ali. Segunda trava: `toEvolutionNumber` LANÇA com BSUID. Pino
+  `alvo-de-envio.chamadores.test.ts` (default-deny dos remetentes).
+- ⚠️ **Variantes do nono dígito e a autocorreção do 131030 só com
+  `ehTelefone`**: sem a guarda, o envio ao BSUID gravaria o BSUID em
+  `contacts.phone`. Nos três remetentes (núcleo e os dois `meta-send.ts`).
+- ⚠️ **A recusa vem ANTES do efeito**: `/api/whatsapp/send` confere antes de
+  `pinConversationChannel` (senão a conversa ficava presa num número que não
+  alcança o cliente); `/api/cb/scheduled` e `POST /v1/scheduled-messages`
+  dão 409 no AGENDAMENTO. `not_supported` fica fora de `CODIGOS_POS_ENTREGA`:
+  nada saiu, reenviar é seguro.
+- ⚠️ **Modelo de AUTENTICAÇÃO (código de acesso) não vai a BSUID** — a
+  documentação da Meta sobre BSUID o exclui (`modeloExigeTelefone`, no núcleo
+  e em `sendViaMeta`): recusado antes da Meta, com a frase. Sem linha local a
+  categoria é desconhecida, e a Meta decide.
+- A reação pela Evolution usa só a CHAVE da mensagem (o telefone da ficha
+  nunca foi usado ali); pela Meta, o alvo.
+- Continuam só com telefone: disparo em massa, a régua do Asaas (a varredura
+  pula ficha sem telefone), `send_to_number`, "nova conversa" e
+  `POST /v1/messages`.
+
 ### Conversa do contexto (`conversation-scope.ts`)
 
 - ⚠️⚠️ **A conversa do contexto é conferida por CONTA E por CONTATO**
@@ -99,10 +130,12 @@ abrir negócio e carimbo de canal na ingestão estão em
 
 ### Robô e fluxos
 
-- ⚠️ **Há DOIS `meta-send.ts`**: o sender REAL é `src/lib/flows/meta-send.ts`
-  (fluxo, resposta de IA, mídia de automação); `src/lib/automations/meta-send.ts`
-  só delega. Pino ou guarda que vigie o wrapper deixa o sender real
-  descoberto.
+- ⚠️ **Há DOIS `meta-send.ts`, e os DOIS enviam**: `src/lib/flows/meta-send.ts`
+  (fluxo, resposta de IA, mídia de automação, botões e lista) e `sendViaMeta`
+  em `src/lib/automations/meta-send.ts` (`send_message`, `send_template`,
+  `send_to_number` e a régua do Asaas). Só botão e lista da automação delegam
+  aos fluxos. Uma versão desta nota chamava o segundo de "só um wrapper", e o
+  pino da régua lia o arquivo errado. Guarda nova de envio vai nos DOIS.
 - ⚠️⚠️ **O sender do robô propaga o erro do transporte CRU**
   (`EvolutionApiError`, com `.status`): a retentativa das automações decide
   por ele entre "recusou, nada saiu" (4xx, repete) e "pode ter saído" (5xx,

@@ -105,6 +105,17 @@ describe('ramosDaBuscaDeContato', () => {
   it('o @ digitado não entra na comparação — a coluna guarda sem ele', () => {
     const ramos = ramosDaBuscaDeContato('@joana')!;
     expect(ramos).toContain('instagram_username.ilike."%joana%"');
+    expect(ramos).toContain('wa_username.ilike."%joana%"');
+  });
+
+  it('busca pelo @ do WhatsApp — a ficha só-BSUID não tem telefone (Fase 11.4)', () => {
+    const ramos = ramosDaBuscaDeContato('ana.silva')!;
+    expect(ramos).toContain('wa_username.ilike."%ana.silva%"');
+  });
+
+  it('"@" sozinho fica abaixo do piso — não consulta (a agulha do @ seria vazia)', () => {
+    expect(ramosDaBuscaDeContato('@')).toBeNull();
+    expect(ramosDaBuscaDeContato('@ ')).toBeNull();
   });
 
   it('termo sem dígito não gera ramo de telefone', () => {
@@ -136,6 +147,8 @@ describe('ramosDaBuscaDeContato', () => {
     // os ramos é só a que este módulo escreveu.
     const ramos = ramosDaBuscaDeContato('silva, jr')!;
     expect(ramos.split('","').length).toBe(1);
-    expect(ramos).toBe('name.ilike."%silva, jr%",instagram_username.ilike."%silva, jr%"');
+    expect(ramos).toBe(
+      'name.ilike."%silva, jr%",wa_username.ilike."%silva, jr%",instagram_username.ilike."%silva, jr%"',
+    );
   });
 });

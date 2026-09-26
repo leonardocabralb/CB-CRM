@@ -83,9 +83,11 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   `supabaseAdmin()`: sob a RLS do operador um `agent` deixaria de abrir card em
   silêncio. Gatilho por ESTADO ("o contato já tem card?"). Abrir conversa não
   cria negócio (decisão do operador): o card nasce no primeiro envio. ⚠️ O
-  sender REAL do robô é `src/lib/flows/meta-send.ts` (o de `automations/` é
-  wrapper). "Reusar o núcleo no broadcast" traz o roteador junto — 500 cards
-  de uma vez. Pino `pipeline-routing.chamadores.test.ts` (default-deny).
+  robô envia por DOIS remetentes reais: `src/lib/flows/meta-send.ts` (fluxo,
+  IA, mídia, botões e lista) e `sendViaMeta` em `automations/meta-send.ts`
+  (texto, modelo, `send_to_number` e a régua) — nenhum dos dois é wrapper.
+  "Reusar o núcleo no broadcast" traz o roteador junto — 500 cards de uma
+  vez. Pino `pipeline-routing.chamadores.test.ts` (default-deny).
 - ⚠️⚠️ **`cancelarEsperasPorResposta` ANTES de `dispatchInboundToFlows`**, sem
   olhar `flowConsumed`, SÓ nos dois caminhos de CLIENTE do WhatsApp (Meta e
   `persistInboundMessage`). Depois do despacho, a mensagem cancelaria a espera
@@ -112,6 +114,35 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   seguinte. O `pushName` de mensagem NOSSA (celular) é descartado — é o nome do
   advogado. Pino `nome-fixado.chamadores.test.ts` (conjunto exato de
   escritores de `contacts.name`).
+- ⚠️⚠️ **Meta: quem escreveu é o telefone OU o BSUID** (Fase 11.2; a 1041
+  aceita a ficha só com `wa_user_id`). A Meta manda só o BSUID de quem adotou
+  nome de usuário. `identidadeNaEntrada` dá telefone `null` — nunca `''`, que
+  passaria no CHECK, ficaria fora dos índices e criaria uma ficha por
+  mensagem —, e `contatoDaMensagem` pareia o `contacts[]` pela IDENTIDADE
+  (por posição, o BSUID de uma pessoa iria para a ficha de outra, para
+  sempre). A busca é pelo BSUID primeiro, com releitura quando falha, e
+  depois pelo telefone. Os preenchimentos (BSUID, telefone, `@`) são UPDATEs
+  SEPARADOS do nome, cada um com a cerca no WHERE. 23505 num preenchimento =
+  a mesma pessoa com duas fichas: só log com os dois ids, sem fusão, e a
+  mensagem fica na ficha do BSUID (decisão do operador, 24/09/2026). Ficha
+  achada pelo TELEFONE que já tem OUTRO BSUID: a mensagem fica nela e nada é
+  sobrescrito (só log). Mesmo telefone com outro BSUID quase sempre é a mesma
+  pessoa (outro portfólio da Meta, conta recriada no mesmo número); só no
+  número RECICLADO é outra pessoa, e aí vale o comportamento de antes do
+  BSUID. Criar ficha só-BSUID ali duplicaria cada cliente de dois portfólios
+  — mudar é decisão do operador. Sem
+  telefone nem BSUID, nada é criado; reação só-BSUID não cria ficha. O nome é
+  SÓ o do perfil, nunca o `@` nem o BSUID (o gatilho do título os leria como
+  nome e congelaria o card). Só esta rota escreve `wa_*` (pino
+  `bsuid.chamadores.test.ts`); pinos de comportamento em `route.bsuid.test.ts`.
+- ⚠️⚠️ **O portão da Meta EXIGE `contacts`, e a mensagem `type: 'system'` é
+  descartada** (revisão da Fase 11): a Meta manda o aviso de troca de número
+  sem `contacts`, e com o portão relaxado ele entrava como fala do cliente —
+  reabria a conversa, disparava robô, automações e IA, abria card e emitia
+  `message.received`. A só-BSUID vem COM `contacts[]`; `contacts: []` passa e
+  não estoura. A troca de identidade que o aviso anuncia
+  (`user_changed_user_id`, `user_id_update`) não é tratada — pendência no
+  plano.
 - ⚠️ **INSERT em `contacts` trata o 23505 da chave canônica** por
   `fichaQueVenceu` (relê, com nova tentativa se a leitura falhar): desistir na
   primeira leitura descarta a mensagem que o provedor deu por entregue.
@@ -124,6 +155,10 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   `persistir.aviso.test.ts`). ⚠️ O evento quer dizer SÓ "o cliente abriu a
   conversa" (decisão do operador): emiti-lo noutro caminho (envio, eco,
   histórica) muda o contrato publicado — ver `.claude/rules/webhooks.md`.
+- ⚠️ **As automações da mensagem rodam EM SEQUÊNCIA, um tipo de gatilho por
+  vez** (Meta e `inbound-store`, como o original #409): a ordem das mensagens
+  e o "um card por contato" do `create_deal` dependem disso. Detalhe em
+  `automacoes.md`.
 - ⚠️⚠️ **Motores (robô, automações, IA) só nos caminhos de cliente do
   WhatsApp.** Grupo, `historica.ts`, `tardia.ts` e Instagram (decisão D1) não
   importam motor nenhum — garantia ESTRUTURAL (`persist.test.ts`,
@@ -136,6 +171,18 @@ com pino default-deny: quem cria um caminho novo repete a lista abaixo. Irmãs:
   Como importar: `supabase.md`.
 
 ## Webhook: o que responde
+- ⚠️⚠️ **O dono do que a entrada cria é o DONO DA CONTA** (`donoDaConta`,
+  `resolve-inbound.ts`), nunca quem conectou o número (`cb_channels.created_by`,
+  `whatsapp_config.user_id`): `contacts`/`conversations.user_id` CASCADEiam de
+  `auth.users`. Os quatro resolvedores (Evolution, o fallback
+  `whatsapp_config`, o 2º número da Meta, Instagram) e o número padrão da Meta
+  passam por ele; a leitura que falha é repetida uma vez, e sem dono a entrega
+  é descartada com log — nunca a queda para quem conectou. Pino
+  `dono-duravel.test.ts`. Na Evolution a leitura roda antes de separar os
+  eventos: se falhar duas vezes, o recibo e o `connection.update` daquela
+  entrega caem junto — aceito na revisão (a leitura de `cb_channels` logo antes
+  já descartava tudo assim). A API v1 segue a mesma régua
+  (`resolveAuditUserId`, 500 sem dono).
 - Só assinatura inválida vale 4xx; o resto responde 200 com log e trabalha em
   `after()` — 4xx repetido faz o provedor desativar a entrega. A Evolution não
   reentrega: o 200 sai antes do `after()`.

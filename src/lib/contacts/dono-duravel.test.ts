@@ -49,8 +49,9 @@ const UNIVERSO: Record<
   'app/api/cb/conversas/abrir/route.ts': { fontes: ['donoDaConta'], callSites: 2 },
   'app/api/whatsapp/send/route.ts': { fontes: ['donoDaConta'], callSites: 1 },
   'app/api/whatsapp/webhook/route.ts': {
-    // Dono da config do WhatsApp — a ingestão sempre atribuiu a ele
-    // ("stable default"); é durável do mesmo jeito (dono da conexão).
+    // O dono DA CONTA, resolvido por `donoDaConta` (resolve-inbound.ts) e
+    // passado adiante — nunca quem conectou o número. O teste "a ingestão
+    // resolve o dono pela conta" abaixo amarra a origem.
     fontes: ['configOwnerUserId'],
     callSites: 2,
   },
@@ -93,8 +94,10 @@ const UNIVERSO: Record<
     callSites: 2,
   },
   'lib/api/v1/contacts.ts': {
-    // `resolveApiAuthor` (authorship.ts): usuário de auditoria da v1 com
-    // queda para o dono da conta — nunca um membro comum.
+    // `resolveAuditUserId`: o dono DA CONTA (`accounts.owner_user_id`), e
+    // só ele — até a decisão 7 da Fase 11 preferia `whatsapp_config.user_id`
+    // (quem conectou o número). O teste "a API resolve o dono pela CONTA"
+    // abaixo amarra a origem.
     fontes: ['auditUserId'],
     callSites: 1,
   },
@@ -185,7 +188,10 @@ describe('dono durável: quem cria contato/conversa/campo grava o dono da conta'
       // tem de ser uma fonte declarada (pega também as construções de
       // `rows` fora do argumento, e ignora o `user_id` legítimo de outras
       // tabelas — ex.: a autoria do insert de `broadcasts`).
-      const gravacoes = [...src.matchAll(/user_id\s*:\s*([A-Za-z0-9_.?]+)/g)];
+      // ⚠️ `(?<![\w])`: o `user_id:` DENTRO de `wa_user_id:` e de
+      // `wa_parent_user_id:` (o BSUID da Meta, Fase 11.2) não é o dono — sem a
+      // borda, o valor do BSUID seria lido como a fonte do `user_id`.
+      const gravacoes = [...src.matchAll(/(?<![\w])user_id\s*:\s*([A-Za-z0-9_.?]+)/g)];
       expect(gravacoes.length, `${arquivo}: nenhum user_id gravado?`).toBeGreaterThan(0);
       for (const g of gravacoes) {
         const antes = src.slice(0, g.index);
@@ -213,7 +219,9 @@ describe('dono durável: quem cria contato/conversa/campo grava o dono da conta'
         ).toBe(false);
         if (!viaVariavel) {
           expect(
-            /user_id\s*:/.test(site.argumento),
+            // A mesma borda: com `wa_user_id:` no objeto, sem ela o insert
+            // passaria aqui mesmo sem gravar o dono.
+            /(?<![\w])user_id\s*:/.test(site.argumento),
             `${arquivo}: o insert de ${site.tabela} não grava user_id inline — ` +
               `se passou a montar as linhas fora, marque \`viaVariavel\` no UNIVERSO`,
           ).toBe(true);
@@ -251,6 +259,57 @@ describe('dono durável: quem cria contato/conversa/campo grava o dono da conta'
         `${arquivo}: fallback na resolução do dono (${rhs.trim()}) — falhe fechado`,
       ).toBe(false);
     }
+  });
+
+  it('a ingestão resolve o dono pela CONTA (`donoDaConta`), nunca por quem conectou o número', () => {
+    // As rotas de entrada (Meta, Evolution, Instagram) recebem só a chave de
+    // roteamento e passam `ownerUserId` para `inbound-store`, `cb-groups`,
+    // `instagram/persistir` e os inserts da rota da Meta. A origem mora em
+    // `resolve-inbound.ts` e no caminho do número padrão da Meta.
+    const resolver = fontesDe.get('lib/cb-channels/resolve-inbound.ts') ?? '';
+    const decl = resolver.match(/export async function donoDaConta[\s\S]*?\n}\n/);
+    expect(decl, 'cadê o donoDaConta?').not.toBeNull();
+    // Lê `accounts.owner_user_id` e, sem ele, devolve nulo — nada de queda.
+    expect(decl![0]).toMatch(/from\(\s*['"]accounts['"]\s*\)/);
+    expect(decl![0]).toMatch(/return data\?\.owner_user_id \?\? null/);
+    // Quem conectou o número não é dono de nada que a ingestão cria.
+    expect(resolver, 'resolve-inbound.ts voltou a ler created_by').not.toMatch(/\bcreated_by\b/);
+    expect(resolver, 'resolve-inbound.ts voltou a ler whatsapp_config.user_id').not.toMatch(
+      /(?<![\w])user_id\b/,
+    );
+    // Todo `ownerUserId` devolvido nasce do `donoDaConta` (shorthand de uma
+    // const atribuída por ele).
+    const devolvidos = [...resolver.matchAll(/ownerUserId(\s*:\s*([^,\n]+))?,/g)];
+    expect(devolvidos.length).toBeGreaterThanOrEqual(4);
+    for (const d of devolvidos) {
+      expect(d[1], `ownerUserId devolvido com valor explícito: ${d[0]}`).toBeUndefined();
+    }
+    const atribuicoes = [...resolver.matchAll(/const ownerUserId\s*=\s*([^;\n]+)/g)].map((m) =>
+      m[1].trim(),
+    );
+    expect(atribuicoes.length).toBe(4);
+    for (const a of atribuicoes) expect(a).toMatch(/^await donoDaConta\(db, /);
+
+    // O número padrão da Meta (whatsapp_config) não passa pelo resolvedor.
+    const meta = fontesDe.get('app/api/whatsapp/webhook/route.ts') ?? '';
+    const donos = [...meta.matchAll(/ownerUserId:\s*([^,\n]+)/g)]
+      .map((m) => m[1].trim())
+      .filter((v) => v !== 'string'); // a anotação de tipo do `resolved`
+    expect(donos.sort()).toEqual(['ch.ownerUserId', 'dono']);
+    expect(meta).toMatch(/const dono = await donoDaConta\(supabaseAdmin\(\), config\.account_id\)/);
+  });
+
+  it('a API resolve o dono pela CONTA (`resolveAuditUserId`), nunca por quem conectou o número', () => {
+    const src = fontesDe.get('lib/api/v1/contacts.ts') ?? '';
+    const decl = src.match(/export async function resolveAuditUserId[\s\S]*?\n}\n/);
+    expect(decl, 'cadê o resolveAuditUserId?').not.toBeNull();
+    expect(decl![0]).toMatch(/from\(\s*['"]accounts['"]\s*\)/);
+    // Nenhuma outra tabela: era `whatsapp_config` primeiro, com a conta de queda.
+    expect([...decl![0].matchAll(/from\(\s*['"]([a-z_]+)['"]\s*\)/g)].map((m) => m[1])).toEqual([
+      'accounts',
+    ]);
+    // Sem dono (ou leitura que falha) = 500, nunca queda.
+    expect(decl![0]).toMatch(/if \(error \|\| !owner\)/);
   });
 
   it('no client, `ownerUserId` vem do useAuth() e não é redeclarado', () => {

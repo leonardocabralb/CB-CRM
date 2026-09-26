@@ -13,6 +13,7 @@ import {
   validateSendMessageParams,
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
+import { alvoDeEnvio, FRASE_SO_NUMERO_OFICIAL } from '@/lib/whatsapp/alvo-de-envio'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -176,6 +177,37 @@ export async function POST(request: Request) {
       )
     }
     if (typeof channel_id === 'string' && channel_id) {
+      // Fase 11.3 — a ficha só-BSUID (a Meta sem telefone) só é alcançável
+      // pela API oficial. O núcleo recusaria o envio, mas DEPOIS de o pino
+      // prender a conversa num número que não alcança o cliente: a
+      // conferência vem ANTES. Erro de leitura não decide — o pino confere a
+      // posse e o núcleo, o alvo (é ele a guarda de verdade).
+      const [{ data: daConversa }, { data: canalEscolhido }] = await Promise.all([
+        supabase
+          .from('conversations')
+          .select('group_id, contact:contacts(phone, wa_user_id)')
+          .eq('id', conversationId)
+          .eq('account_id', accountId)
+          .maybeSingle(),
+        supabase
+          .from('cb_channels')
+          .select('kind')
+          .eq('id', channel_id)
+          .eq('account_id', accountId)
+          .maybeSingle(),
+      ])
+      const contatoDaConversa = Array.isArray(daConversa?.contact)
+        ? daConversa.contact[0]
+        : daConversa?.contact
+      if (daConversa && !daConversa.group_id && canalEscolhido) {
+        const alvo = alvoDeEnvio(contatoDaConversa, canalEscolhido)
+        if (!alvo.ok && alvo.motivo === 'so_numero_oficial') {
+          return NextResponse.json(
+            { error: FRASE_SO_NUMERO_OFICIAL, code: 'not_supported' },
+            { status: 400 },
+          )
+        }
+      }
       const fixou = await pinConversationChannel(
         supabase,
         accountId,

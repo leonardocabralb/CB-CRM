@@ -162,6 +162,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   process.env.EVOLUTION_WEBHOOK_SECRET = SEGREDO;
   h.estado.tabelas = {
+    accounts: [{ id: 'conta-1', owner_user_id: 'dono-1' }],
     cb_channels: [
       {
         id: 'canal-1',

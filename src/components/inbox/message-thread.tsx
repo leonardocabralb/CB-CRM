@@ -120,6 +120,7 @@ import {
 import { ehEvolution } from "@/lib/cb-channels/transporte";
 import { IconeDoTransporte } from "@/components/channels/transporte-icone";
 import { identidadeDoContato, nomeDoContato } from "@/lib/contacts/identidade";
+import { alvoDeEnvio } from "@/lib/whatsapp/alvo-de-envio";
 
 interface ReplyDraft {
   id: string;
@@ -2324,6 +2325,22 @@ export function MessageThread({
   // divergência é trânsito de realtime (ver `canalDivergente`).
   // `activeChannel` nulo (canais ainda carregando) cala o aviso lá dentro.
   const corDoCanalAtivo = corDoCanal(coresDosCanais, activeChannel?.id);
+  // Fase 11.4 (decisão do operador, 24/09/2026): a ficha que a Meta manda só
+  // com o nome de usuário (BSUID, sem telefone) só é alcançável pela API
+  // oficial. As conexões que não a alcançam (QR Code, Instagram) ficam
+  // DESABILITADAS no seletor, e o motivo aparece UMA vez no topo do menu (no
+  // item, repetido, ele enchia o menu). A régua é a do envio (`alvoDeEnvio`):
+  // senão o menu ofereceria um número que o núcleo recusaria.
+  const canaisQueNaoAlcancam = new Set(
+    !ehGrupo && contact
+      ? channels
+          .filter((c) => {
+            const alvo = alvoDeEnvio(contact, c);
+            return !alvo.ok && alvo.motivo === "so_numero_oficial";
+          })
+          .map((c) => c.id)
+      : [],
+  );
   const canalDoClienteDivergente = channelsById.get(
     canalDivergente({
       messages,
@@ -2531,13 +2548,24 @@ export function MessageThread({
                 <ChevronDown className="h-3 w-3" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="border-border bg-popover">
+                {canaisQueNaoAlcancam.size > 0 && (
+                  <>
+                    <p className="max-w-[15rem] px-2 py-1.5 text-xs text-muted-foreground">
+                      {t("channelSoOficial")}
+                    </p>
+                    <DropdownMenuSeparator className="bg-border" />
+                  </>
+                )}
                 {channels.map((c) => {
                   const isSelected =
                     Boolean(conversation.channel_pinned) &&
                     c.id === activeChannel.id;
+                  const naoAlcanca = canaisQueNaoAlcancam.has(c.id);
                   return (
                     <DropdownMenuItem
                       key={c.id}
+                      disabled={naoAlcanca}
+                      title={naoAlcanca ? t("channelSoOficial") : undefined}
                       onClick={() => handleChannelChange(c.id)}
                       className={cn(
                         "text-sm",

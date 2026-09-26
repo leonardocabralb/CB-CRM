@@ -46,6 +46,8 @@ const CONTATO: WebhookEventData['deal.created']['contact'] = {
   avatar_url: null,
   instagram_id: null,
   instagram_username: null,
+  whatsapp_user_id: null,
+  whatsapp_username: null,
   tags: [{ id: ID.etiqueta, name: 'Typebot', color: '#3b82f6' }],
   created_at: '2026-09-20T12:00:00.000Z',
   updated_at: QUANDO,

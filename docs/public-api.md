@@ -279,6 +279,17 @@ there is a `400 bad_request`.
 > still requires `phone` — Instagram contacts are created by the Direct
 > webhook, never by the API.
 
+> **WhatsApp usernames (since migration 1041):** Meta may deliver a message
+> from a customer who adopted a WhatsApp username with **no phone number**,
+> only a business-scoped user ID (BSUID). Every contact object carries two
+> read-only fields: `whatsapp_user_id` (the BSUID, e.g.
+> `"BR.13491208655302741918"`) and `whatsapp_username` (the `@` without the
+> arroba, when Meta sends it). Both are `null` when unknown. A contact known
+> only by BSUID has `phone: null`, can be reached **only through the
+> official Meta number**, and the only API path to message it is
+> [`POST /api/v1/scheduled-messages`](#post-apiv1scheduled-messages). The
+> `?search=` filter above matches name and phone only, not usernames.
+
 ### `POST /api/v1/contacts`
 
 Create a contact. Scope: `contacts:write`. `phone` is required (read as in
@@ -482,8 +493,9 @@ current values in the response of its own writes).
 
 List conversations, newest first. Scope: `conversations:read`.
 Paginated. Optional filters: `?status=` (`open` / `pending` / `closed`)
-and `?contact_id=`. Each conversation embeds its contact + tags. Group
-conversations are not listed.
+and `?contact_id=`. Each conversation embeds its contact (`id`, `phone`,
+`name`, `email`, `company`, `whatsapp_user_id`, `whatsapp_username`) +
+tags. Group conversations are not listed.
 
 ### `GET /api/v1/conversations/{id}`
 
@@ -704,9 +716,21 @@ message would fire at the wrong hour with no error anywhere.
 
 The sending channel is resolved **now** and frozen on the row (it does
 not follow the conversation later). Domain error codes: `no_channel`
-(409 — the account has no registered connection) and
-`group_channel_unknown` (409 — a group whose number isn't known yet).
+(409 — the account has no registered connection),
+`group_channel_unknown` (409 — a group whose number isn't known yet) and
+`not_supported` (409 — see below).
 Response: `201` with the scheduled message.
+
+**Contacts without a phone number (WhatsApp usernames).** When a
+customer has adopted a WhatsApp username, Meta may deliver their
+messages with no phone number at all — only a business-scoped user ID.
+Their contact has `phone: null`, and **only the official Meta API
+connection can reach them**. This endpoint is the API's only way to
+message such a contact (`POST /api/v1/messages` addresses by phone):
+schedule it on a conversation whose channel is the official Meta number.
+If the resolved channel is a QR Code (Evolution) connection, the request
+is refused with `409 not_supported` and nothing is queued — otherwise the
+refusal would only surface at dispatch time, with nobody watching.
 
 > Scheduled rows are dispatched by the external scheduler hitting the
 > cron endpoint — the API only enqueues.

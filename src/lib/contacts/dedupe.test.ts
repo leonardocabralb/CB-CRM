@@ -210,6 +210,22 @@ describe("findExistingContact", () => {
     expect(hit.falhou).toBe(false);
   });
 
+  it("texto com LETRA não é telefone: um BSUID não é procurado pelos 8 finais (Fase 11.2)", async () => {
+    // "BR.13491208655302741918" vira, pelos dígitos, um número terminado em
+    // 02741918 — e casaria com o celular de um cliente que termina igual.
+    let consultou = false;
+    const db = {
+      from: () => {
+        consultou = true;
+        throw new Error("não devia consultar");
+      },
+    } as unknown as SupabaseClient;
+    for (const texto of ["BR.13491208655302741918", "BR.ENT.11815799212886844830", "5583900000001@lid"]) {
+      expect(await findExistingContact(db, "acct", texto)).toEqual({ contato: null, falhou: false });
+    }
+    expect(consultou).toBe(false);
+  });
+
   it("marca `falhou` quando a CONSULTA erra — nunca 'não achei' (#04)", async () => {
     // Colapsar erro em null era o que duplicava a ficha: a rota de abrir
     // conversa lia "não achei" e criava a variante do nono dígito.

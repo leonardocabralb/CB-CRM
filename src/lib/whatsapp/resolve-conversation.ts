@@ -16,7 +16,8 @@
 //
 // Audit user: created rows need a NOT NULL `user_id`. As with the
 // webhook (where there's no logged-in human either), we attribute
-// them to the WhatsApp config owner — a stable account-level default.
+// them to the ACCOUNT OWNER (`resolveAuditUserId`) — never who
+// connected the number, whose login CASCADEs the rows away.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';

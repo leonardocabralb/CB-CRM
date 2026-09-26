@@ -53,7 +53,7 @@ export default function AutomationLogsPage({
             .maybeSingle(),
           supabase
             .from("automation_logs")
-            .select("*, contact:contacts(id, name, phone, instagram_username)")
+            .select("*, contact:contacts(id, name, phone, wa_username, instagram_username)")
             .eq("automation_id", id)
             .order("created_at", { ascending: false })
             .limit(100),

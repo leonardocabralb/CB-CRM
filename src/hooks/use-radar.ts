@@ -63,7 +63,7 @@ export interface InsightDaConta {
 }
 
 const SELECT_COM_CONVERSA =
-  '*, conversation:conversations(id, last_message_at, contact:contacts(id, name, phone, instagram_username))';
+  '*, conversation:conversations(id, last_message_at, contact:contacts(id, name, phone, wa_username, instagram_username))';
 
 /** Para-choque, não paginação — se bater, a tela avisa (padrão agendadas). */
 const TETO = 200;

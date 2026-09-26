@@ -14,9 +14,10 @@
 // quando a base passasse de mil.
 //
 // Irmão de `filtrarContatos` (o mesmo recorte, feito em JS sobre uma lista
-// já carregada) e do `.or()` escrito à mão dentro do seletor da agenda.
-// Aqui as duas regras difíceis ficam testáveis: o ESCAPE do termo e as
-// grafias do NONO DÍGITO.
+// já carregada). O seletor da agenda tinha um `.or()` escrito à mão, e desde
+// a Fase 11.4 usa este também (sem ele, não achava a ficha sem telefone
+// pelo @ e comparava o telefone pelo texto cru). Aqui as duas regras
+// difíceis ficam testáveis: o ESCAPE do termo e as grafias do NONO DÍGITO.
 //
 // ⚠️ Uma diferença ASSUMIDA em relação ao `filtrarContatos`: o `ilike` do
 // Postgres é indiferente à CAIXA, não ao ACENTO. Buscar "jose" não acha
@@ -139,11 +140,15 @@ export function ramosDaBuscaDeContato(termo: string): string | null {
 
   const ramos = [`name.ilike.${paraIlike(limpo)}`];
 
-  // O @ do Instagram conta como nome, como em `casaComContato`: a ficha que
-  // só existe no Direct (989) não tem telefone nenhum, e é pelo @ que a
-  // equipe a conhece. O @ digitado é descartado — a coluna guarda sem ele.
+  // O @ conta como nome, como em `casaComContato`: a ficha que só existe no
+  // Direct (989) ou que a Meta manda só com o nome de usuário do WhatsApp
+  // (BSUID, Fase 11.4) não tem telefone nenhum, e é pelo @ que a equipe a
+  // conhece. O @ digitado é descartado — as colunas guardam sem ele.
   const arroba = limpo.replace(/^@/, '').trim();
-  if (arroba) ramos.push(`instagram_username.ilike.${paraIlike(arroba)}`);
+  if (arroba) {
+    ramos.push(`wa_username.ilike.${paraIlike(arroba)}`);
+    ramos.push(`instagram_username.ilike.${paraIlike(arroba)}`);
+  }
 
   // ⚠️⚠️ Telefone casa contra `phone_normalized`, NUNCA contra `phone`.
   // `phone` guarda o que o escritório DIGITOU — o formulário de contato

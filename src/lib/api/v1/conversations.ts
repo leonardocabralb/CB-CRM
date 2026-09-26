@@ -38,6 +38,10 @@ export interface ApiConversation {
     name: string | null;
     email: string | null;
     company: string | null;
+    /** O BSUID do WhatsApp (`wa_user_id`), só leitura — ver `ApiContact`. */
+    whatsapp_user_id: string | null;
+    /** O `@` do WhatsApp, sem a arroba (`wa_username`). */
+    whatsapp_username: string | null;
     tags: { id: string; name: string; color: string }[];
   } | null;
 }
@@ -84,6 +88,8 @@ export function serializeConversation(conv: Conversation): ApiConversation {
           name: c.name ?? null,
           email: c.email ?? null,
           company: c.company ?? null,
+          whatsapp_user_id: c.wa_user_id ?? null,
+          whatsapp_username: c.wa_username ?? null,
           tags: (c.tags ?? []).map((t) => ({
             id: t.id,
             name: t.name,

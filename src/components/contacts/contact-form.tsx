@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { escritaDoNomeManual, marcaDoNomeManual } from '@/lib/contacts/nome-fixado';
 import { emailMudou, emailNormalizado } from '@/lib/contacts/email-espelhado';
+import { podeFicarSemTelefone } from '@/lib/contacts/identidade';
 import {
   escritaDoTelefone,
   telefoneDigitado,
@@ -167,11 +168,12 @@ export function ContactForm({
     // O telefone DIGITADO vira os dígitos de `contacts.phone` (a nossa régua:
     // brasileiro sem DDI ganha o 55). Gravado cru, "(81) 98874-5316" era a
     // ficha "81988745316" — que sai para +81. Na EDIÇÃO, telefone que não
-    // mudou não é conferido nem regravado; a ficha só do Instagram (989) pode
-    // ficar sem. Na CRIAÇÃO o telefone continua obrigatório.
+    // mudou não é conferido nem regravado; a ficha com outra identidade
+    // (Instagram, 989, ou o BSUID do WhatsApp, 1041) pode ficar sem. Na
+    // CRIAÇÃO o telefone continua obrigatório.
     const escritaTelefone = escritaDoTelefone(contact?.phone, phone, {
       criacao: !isEdit,
-      podeFicarSem: isEdit && !!contact?.instagram_id,
+      podeFicarSem: isEdit && podeFicarSemTelefone(contact),
     });
     if (!escritaTelefone.ok) {
       avisarTelefone(escritaTelefone.motivo);

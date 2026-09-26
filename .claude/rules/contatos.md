@@ -39,13 +39,24 @@ decide mais "mesma pessoa".
   finais. Pelo texto, "+55 83 98000-0016" não casava e a mensagem sumia; a
   tolerante sozinha devolve a ficha mais antiga com o mesmo final — outro DDD,
   outra pessoa. Nunca passe JID de grupo, LID ou IGSID por ela (fundiria com o
-  celular de um cliente).
+  celular de um cliente) — e ela RECUSA sem consultar texto com letra (BSUID,
+  LID, JID), cujos dígitos casariam pelos 8 finais (Fase 11.2).
 - ⚠️ **Lote casa por PESSOA** (`chaveDePessoa`), nunca por grafia: dedupe por
   grafia derruba o lote inteiro no 23505. O CSV do disparo busca as DUAS
   grafias (`variantesDoNonoDigito`) em fatias, abaixo do teto de 1000 linhas.
 - Coluna gerada não lê outra gerada: a canônica sai de `phone`, repetindo o
   `regexp_replace`.
 - Ficha só do Instagram: `phone` nulo, canônica nula, fora do índice parcial.
+- Ficha só-BSUID (a Meta sem telefone; 1041): `phone` nulo, identidade em
+  `wa_user_id`, único POR CONTA (índice parcial da 1038). O BSUID nunca passa
+  por `findExistingContact`: casamento EXATO, `buscarPorBsuid`/
+  `fichaQueVenceuPorBsuid` (`src/lib/contacts/bsuid.ts`). Na tela ela aparece
+  pelo `@` do WhatsApp (`identidadeDoContato`, nunca o BSUID); o telefone é
+  apagável quando há outra identidade (`podeFicarSemTelefone`: Instagram OU
+  BSUID). As três buscas (`casaComABusca`, `casaComContato`,
+  `ramosDaBuscaDeContato` — que o seletor da agenda também usa) casam pelos
+  dois `@`; "@" sozinho não casa nada (agulha vazia). Limite escrito: a busca
+  de /contatos (RPC 025) e o `?search=` da v1 não olham o `@`.
 - Fundir fichas NÃO é `merge_duplicate_contacts` (apaga tarefas do perdedor e
   agrupa por grafia exata): a receita está em `supabase.md`.
 

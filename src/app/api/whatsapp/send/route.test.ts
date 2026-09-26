@@ -10,6 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // Records of what the route wrote, so we can assert the right rows landed.
 const conversationInserts: Array<Record<string, unknown>> = []
 const messageInserts: Array<Record<string, unknown>> = []
+// UPDATEs em `conversations` — o pino do canal (`pinConversationChannel`).
+const conversationUpdates: Array<Record<string, unknown>> = []
+// A linha de `cb_channels` que o canal escolhido resolve (Fase 11.3).
+let channelRow: Record<string, unknown> | null = null
 
 // Toggles for the per-test scenario.
 let existingConversation: Record<string, unknown> | null = null
@@ -70,6 +74,8 @@ function makeSupabaseMock() {
           }
         case 'message_templates':
           return { data: null, error: null }
+        case 'cb_channels':
+          return { data: channelRow, error: null }
         default:
           return { data: null, error: null }
       }
@@ -99,9 +105,13 @@ function makeSupabaseMock() {
 
     const b: Record<string, unknown> = {}
     const chain = () => b
-    for (const m of ['select', 'eq', 'in', 'order', 'limit', 'update', 'delete']) {
+    for (const m of ['select', 'eq', 'in', 'order', 'limit', 'delete']) {
       b[m] = vi.fn(chain)
     }
+    b.update = vi.fn((payload: Record<string, unknown>) => {
+      if (table === 'conversations') conversationUpdates.push(payload)
+      return b
+    })
     b.insert = vi.fn((payload: Record<string, unknown>) => {
       didInsert = true
       if (table === 'conversations') {
@@ -347,5 +357,99 @@ describe('POST /api/whatsapp/send — role enforcement', () => {
 
     expect(res.status).toBe(200)
     expect(sendTemplateMessage).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fase 11.3 — o canal ESCOLHIDO e a ficha só-BSUID.
+//
+// A ficha de quem a Meta identifica só pelo nome de usuário (BSUID, sem
+// telefone) só é alcançável pela API oficial. O núcleo recusaria o envio por
+// uma conexão por QR Code — mas DEPOIS de `pinConversationChannel` prender a
+// conversa naquele número, e a conversa ficaria fixada onde não alcança o
+// cliente. A rota confere ANTES do pino.
+// ---------------------------------------------------------------------------
+describe('POST /api/whatsapp/send — canal escolhido × ficha só-BSUID', () => {
+  const BSUID = 'BR.13491208655302741918'
+
+  function postComCanal(channelId: string) {
+    return POST(
+      new Request('http://localhost/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversation_id: 'conv-existing',
+          message_type: 'text',
+          content_text: 'oi',
+          channel_id: channelId,
+        }),
+      }),
+    )
+  }
+
+  beforeEach(() => {
+    conversationInserts.length = 0
+    messageInserts.length = 0
+    conversationUpdates.length = 0
+    createdConversation = null
+    callerRole = 'agent'
+    supabaseMock = makeSupabaseMock()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('só-BSUID + conexão por QR Code: 400 com o motivo, e a conversa NÃO é fixada', async () => {
+    existingConversation = {
+      id: 'conv-existing',
+      account_id: 'acct-1',
+      group_id: null,
+      contact: { id: 'contact-1', phone: null, wa_user_id: BSUID },
+    }
+    channelRow = { id: 'ch-evo', kind: 'evolution' }
+
+    const res = await postComCanal('ch-evo')
+    const json = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(json.code).toBe('not_supported')
+    expect(json.error).toMatch(/número oficial/)
+    expect(conversationUpdates.filter((u) => 'channel_pinned' in u)).toEqual([])
+    expect(messageInserts).toEqual([])
+  })
+
+  it('com telefone, a mesma conexão por QR Code é fixada como sempre', async () => {
+    existingConversation = {
+      id: 'conv-existing',
+      account_id: 'acct-1',
+      group_id: null,
+      contact: { id: 'contact-1', phone: '+5583988887777', wa_user_id: BSUID },
+    }
+    channelRow = { id: 'ch-evo', kind: 'evolution' }
+
+    await postComCanal('ch-evo')
+
+    expect(conversationUpdates).toContainEqual({
+      channel_id: 'ch-evo',
+      channel_pinned: true,
+    })
+  })
+
+  it('só-BSUID + conexão da Meta: a conversa é fixada (é o número que alcança)', async () => {
+    existingConversation = {
+      id: 'conv-existing',
+      account_id: 'acct-1',
+      group_id: null,
+      contact: { id: 'contact-1', phone: null, wa_user_id: BSUID },
+    }
+    channelRow = { id: 'ch-meta', kind: 'meta' }
+
+    await postComCanal('ch-meta')
+
+    expect(conversationUpdates).toContainEqual({
+      channel_id: 'ch-meta',
+      channel_pinned: true,
+    })
   })
 })

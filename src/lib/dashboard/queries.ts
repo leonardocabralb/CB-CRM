@@ -493,7 +493,7 @@ export async function loadResponseTime(
 
 // --- 5. Activity feed --------------------------------------------------
 
-type ContatoDoFeed = { name: string | null; phone: string | null; instagram_username?: string | null }
+type ContatoDoFeed = { name: string | null; phone: string | null; wa_username?: string | null; instagram_username?: string | null }
 
 export async function loadActivity(
   db: DB,
@@ -517,7 +517,7 @@ export async function loadActivity(
         db
           .from('messages')
           .select(
-            'id, content_text, sender_type, created_at, conversation_id, conversations!inner(group_id, contact_id, contacts(name, phone, instagram_username))',
+            'id, content_text, sender_type, created_at, conversation_id, conversations!inner(group_id, contact_id, contacts(name, phone, wa_username, instagram_username))',
           )
           .eq('sender_type', 'customer'),
       ),
@@ -528,7 +528,7 @@ export async function loadActivity(
     semCanal
       ? db
           .from('contacts')
-          .select('id, name, phone, instagram_username, created_at')
+          .select('id, name, phone, wa_username, instagram_username, created_at')
           .order('created_at', { ascending: false })
           .limit(10)
       : Promise.resolve({ data: [] }),
@@ -549,7 +549,7 @@ export async function loadActivity(
     porCanal(
       db
         .from('automation_logs')
-        .select('id, trigger_event, status, created_at, automation:automations(name), contact:contacts(name, phone, instagram_username)'),
+        .select('id, trigger_event, status, created_at, automation:automations(name), contact:contacts(name, phone, wa_username, instagram_username)'),
       channelId,
     )
       .order('created_at', { ascending: false })
@@ -581,7 +581,7 @@ export async function loadActivity(
     })
   }
 
-  for (const c of (contacts.data ?? []) as Array<{ id: string; name: string | null; phone: string | null; instagram_username?: string | null; created_at: string }>) {
+  for (const c of (contacts.data ?? []) as Array<{ id: string; name: string | null; phone: string | null; wa_username?: string | null; instagram_username?: string | null; created_at: string }>) {
     items.push({
       id: `contact-${c.id}`,
       kind: 'contact',

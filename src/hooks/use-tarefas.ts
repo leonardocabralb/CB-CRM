@@ -61,6 +61,7 @@ export interface ContatoDaTarefa {
   id: string;
   name: string | null;
   phone: string | null;
+  wa_username?: string | null;
   instagram_username?: string | null;
 }
 
@@ -78,7 +79,7 @@ export type TarefaNaTela = Task & {
   conversation_id: string | null;
 };
 
-const SELECT = '*, contact:contacts(id, name, phone, instagram_username)';
+const SELECT = '*, contact:contacts(id, name, phone, wa_username, instagram_username)';
 
 export interface TarefasDaTela {
   pendentes: TarefaNaTela[];

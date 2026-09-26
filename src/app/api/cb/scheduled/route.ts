@@ -12,6 +12,7 @@ import {
 } from '@/lib/rate-limit';
 import { lerAnexo, podeTerLegenda, tetoDaLegenda } from '@/lib/scheduled/midia';
 import { CHAT_MEDIA_BUCKET } from '@/lib/storage/buckets';
+import { alvoDeEnvio, FRASE_SO_NUMERO_OFICIAL } from '@/lib/whatsapp/alvo-de-envio';
 
 /**
  * POST /api/cb/scheduled — agenda uma mensagem de texto (migration 925).
@@ -169,7 +170,9 @@ export async function POST(request: Request) {
     // ⚠️ O `group:cb_groups(channel_id)` não é enfeite — ver o bloco abaixo.
     const { data: conversa } = await ctx.supabase
       .from('conversations')
-      .select('id, channel_id, group_id, group:cb_groups(channel_id)')
+      .select(
+        'id, channel_id, group_id, group:cb_groups(channel_id), contact:contacts(phone, wa_user_id)',
+      )
       .eq('id', conversationId)
       .eq('account_id', ctx.accountId)
       .maybeSingle();
@@ -265,6 +268,23 @@ export async function POST(request: Request) {
         },
         { status: 409 },
       );
+    }
+
+    // Fase 11.3 — a ficha só-BSUID (a Meta sem telefone) só é alcançável pela
+    // API oficial. Agendar por uma conexão por QR Code seria descobrir a
+    // recusa de madrugada, sem ninguém na tela: FALHA FECHADA aqui, com o
+    // motivo, como a do canal logo acima. (Espelho na API v1.)
+    if (!ehGrupo) {
+      const contato = (
+        conversa as { contact?: { phone?: string | null; wa_user_id?: string | null } | null }
+      ).contact;
+      const alvo = alvoDeEnvio(contato, canal);
+      if (!alvo.ok && alvo.motivo === 'so_numero_oficial') {
+        return NextResponse.json(
+          { error: FRASE_SO_NUMERO_OFICIAL, code: 'not_supported' },
+          { status: 409 },
+        );
+      }
     }
 
     // Mesma cascata do `memberLabel` e da 912. `full_name` é NOT NULL no

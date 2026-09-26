@@ -368,6 +368,8 @@ um espelho com pino lendo o SQL. Mudou um lado, muda o outro.
 - **Receita de fusão**: reapontar TODAS as referências do perdedor para o
   sobrevivente (as 15 do SET NULL e as 6 do CASCADE; `contact_tags` e
   `contact_custom_values` com `NOT EXISTS`, por serem únicas por contato) →
-  mover os campos que faltam na ficha sobrevivente → apagar o negócio duplicado
+  mover os campos que faltam na ficha sobrevivente — `wa_user_id`/`wa_username`/
+  `wa_parent_user_id` (o BSUID) ZERADOS no perdedor ANTES de gravados no
+  sobrevivente, senão o índice único por conta (1038) recusa — → apagar o negócio duplicado
   EXPLICITAMENTE → só então apagar o contato. Tabela nova com `contact_id`
   entra na receita no MESMO PR (não há pino).

@@ -204,8 +204,8 @@ na casca e o cartão em *Seu perfil*. Pino estrutural:
   depois no mesmo computador herdar o "ligado". O snapshot do
   `useSyncExternalStore` é o TEXTO cru — objeto novo a cada leitura faria o
   componente renderizar sem parar.
-- **O título sai de `nomeDoContato`** (telefone, senão `@instagram`), nunca do
-  `pickContactDisplayName` do original.
+- **O título sai de `nomeDoContato`** (telefone, senão o `@` do WhatsApp ou do
+  Instagram), nunca do `pickContactDisplayName` do original.
 - ⚠️ **O clique dispara `EVENTO_ABRIR_CONVERSA` além do `router.push`**: com
   o inbox já montado (visível noutra conversa, num segundo monitor), o push só
   troca a query — a página não remonta e o deep link só é lido quando a lista

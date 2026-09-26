@@ -120,6 +120,11 @@ export async function findExistingContact(
   accountId: string,
   phone: string,
 ): Promise<BuscaDeContato> {
+  // ⚠️ NOSSO (Fase 11.2): texto com LETRA não é telefone, e não se procura.
+  // `normalizePhone` tira as letras e deixaria os dígitos: os 8 finais de um
+  // BSUID ("US.1349…"), de um LID ou de um JID de grupo casariam com o
+  // celular de um cliente real, e a mensagem cairia na ficha dele.
+  if (/[A-Za-z]/.test(phone)) return { contato: null, falhou: false };
   const normalized = normalizePhone(phone);
   if (!normalized) return { contato: null, falhou: false };
 
