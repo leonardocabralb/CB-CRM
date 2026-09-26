@@ -43,11 +43,83 @@ export const MOTIVOS_DO_CELULAR: readonly MotivoDoCelular[] = [
   'nao_e_celular',
 ];
 
-/** 55 + DDD (dois dígitos de 1 a 9: nenhum DDD tem 0). */
-const DDD_BRASILEIRO = /^55[1-9]{2}/;
+/**
+ * Os 67 DDDs em uso no Brasil (plano de numeração da Anatel). Só dígitos de
+ * 1 a 9 não bastava: "(23) 91234-5678" passava, e um erro de digitação
+ * cumpria a exigência com um número que não existe (Codex, PR #302).
+ */
+export const DDDS_DO_BRASIL: ReadonlySet<string> = new Set([
+  '11',
+  '12',
+  '13',
+  '14',
+  '15',
+  '16',
+  '17',
+  '18',
+  '19',
+  '21',
+  '22',
+  '24',
+  '27',
+  '28',
+  '31',
+  '32',
+  '33',
+  '34',
+  '35',
+  '37',
+  '38',
+  '41',
+  '42',
+  '43',
+  '44',
+  '45',
+  '46',
+  '47',
+  '48',
+  '49',
+  '51',
+  '53',
+  '54',
+  '55',
+  '61',
+  '62',
+  '63',
+  '64',
+  '65',
+  '66',
+  '67',
+  '68',
+  '69',
+  '71',
+  '73',
+  '74',
+  '75',
+  '77',
+  '79',
+  '81',
+  '82',
+  '83',
+  '84',
+  '85',
+  '86',
+  '87',
+  '88',
+  '89',
+  '91',
+  '92',
+  '93',
+  '94',
+  '95',
+  '96',
+  '97',
+  '98',
+  '99',
+]);
 
-/** 55 + DDD + 9 + 8 dígitos. */
-const CELULAR_BRASILEIRO = /^55[1-9]{2}9\d{8}$/;
+/** 55 + DDD + 9 + 8 dígitos (o DDD é conferido à parte, pela lista). */
+const CELULAR_BRASILEIRO = /^55\d{2}9\d{8}$/;
 
 export function celularDigitado(
   texto: string | null | undefined
@@ -61,9 +133,9 @@ export function celularDigitado(
   if (!comDdi && !r.digitos.startsWith('55'))
     return { ok: false, motivo: 'invalido' };
   if (r.digitos.startsWith('55')) {
-    // DDD que não existe ("20", "30"…) é número errado, não "fixo": a frase
+    // DDD que não existe ("20", "23"…) é número errado, não "fixo": a frase
     // de "não é celular" mandaria a pessoa procurar o 9 que ela já escreveu.
-    if (!DDD_BRASILEIRO.test(r.digitos))
+    if (!DDDS_DO_BRASIL.has(r.digitos.slice(2, 4)))
       return { ok: false, motivo: 'invalido' };
     if (!CELULAR_BRASILEIRO.test(r.digitos))
       return { ok: false, motivo: 'nao_e_celular' };

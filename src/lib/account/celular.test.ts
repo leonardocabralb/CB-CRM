@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   celularDigitado,
+  DDDS_DO_BRASIL,
   ehMotivoDoCelular,
   MOTIVOS_DO_CELULAR,
 } from './celular';
@@ -92,10 +93,46 @@ describe('celularDigitado — o celular que o membro digita para si', () => {
   });
 
   it('DDD que não existe é número errado, não "fixo"', () => {
-    expect(celularDigitado('(20) 91234-5678')).toEqual({
-      ok: false,
-      motivo: 'invalido',
-    });
+    for (const ddd of [
+      '20',
+      '23',
+      '25',
+      '26',
+      '29',
+      '30',
+      '36',
+      '39',
+      '40',
+      '50',
+      '52',
+      '56',
+      '60',
+      '70',
+      '72',
+      '76',
+      '78',
+      '80',
+      '90',
+    ]) {
+      expect(celularDigitado(`(${ddd}) 91234-5678`), ddd).toEqual({
+        ok: false,
+        motivo: 'invalido',
+      });
+    }
+  });
+
+  it('todo DDD em uso passa, das pontas do país', () => {
+    for (const ddd of ['11', '55', '68', '69', '79', '96', '99']) {
+      expect(celularDigitado(`(${ddd}) 91234-5678`), ddd).toEqual({
+        ok: true,
+        digitos: `55${ddd}912345678`,
+      });
+    }
+  });
+
+  it('a lista tem os 67 DDDs do plano de numeração, sem repetição e sem 0', () => {
+    expect(DDDS_DO_BRASIL.size).toBe(67);
+    for (const ddd of DDDS_DO_BRASIL) expect(ddd).toMatch(/^[1-9]{2}$/);
   });
 
   it('letra, 0 de tronco e 0800 são "invalido"', () => {
