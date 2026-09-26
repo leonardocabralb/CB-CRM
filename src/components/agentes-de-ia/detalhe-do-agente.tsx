@@ -2,10 +2,14 @@
 
 // O detalhe de um agente de IA (F1b, 5.9): Configuração, Playground e Uso.
 //
-// ⚠️ As abas ficam MONTADAS depois da primeira visita (escondidas, não
-// desmontadas): o rascunho da Configuração vive nela, e trocar de aba para
-// testar no Playground apagava, sem aviso, o que tinha sido digitado. A
-// conversa do Playground também sobrevive à troca.
+// ⚠️ Configuração e Playground ficam MONTADAS depois da primeira visita
+// (escondidas, não desmontadas): o rascunho da Configuração vive nela, e
+// trocar de aba para testar no Playground apagava, sem aviso, o que tinha
+// sido digitado. A conversa do Playground também sobrevive à troca — MENOS a
+// um salvamento: a conversa gerada pela configuração anterior, mandada à
+// nova, não testa versão nenhuma do agente (Codex, #295). A aba Uso, sem
+// rascunho, remonta a cada visita: montada, os testes feitos no Playground
+// não apareciam até recarregar a página.
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -32,6 +36,9 @@ export function DetalheDoAgente({ id }: { id: string }) {
   const [aba, setAba] = useState<Aba>('configuracao');
   const [visitadas, setVisitadas] = useState<ReadonlySet<Aba>>(() => new Set<Aba>(['configuracao']));
   const [configuracaoNaoSalva, setConfiguracaoNaoSalva] = useState(false);
+  // Quantas vezes a configuração foi salva nesta tela: entra na `key` do
+  // Playground para zerar a conversa a cada versão nova do agente.
+  const [salvamentos, setSalvamentos] = useState(0);
 
   function trocarDeAba(nova: Aba) {
     setAba(nova);
@@ -104,24 +111,23 @@ export function DetalheDoAgente({ id }: { id: string }) {
             <ConfiguracaoDoAgente
               key={e.agente.id}
               agente={e.agente}
-              aoSalvar={(novo) => setEstado({ de: id, e: { fase: 'pronto', agente: novo } })}
+              aoSalvar={(novo) => {
+                setEstado({ de: id, e: { fase: 'pronto', agente: novo } });
+                setSalvamentos((n) => n + 1);
+              }}
               aoMudarNaoSalvo={setConfiguracaoNaoSalva}
             />
           </div>
           {visitadas.has('playground') ? (
             <div hidden={aba !== 'playground'}>
               <PlaygroundDoAgente
-                key={e.agente.id}
+                key={`${e.agente.id}:${salvamentos}`}
                 agente={e.agente}
                 configuracaoNaoSalva={configuracaoNaoSalva}
               />
             </div>
           ) : null}
-          {visitadas.has('uso') ? (
-            <div hidden={aba !== 'uso'}>
-              <UsoDeIa agenteId={e.agente.id} />
-            </div>
-          ) : null}
+          {aba === 'uso' ? <UsoDeIa key={e.agente.id} agenteId={e.agente.id} /> : null}
         </>
       )}
     </div>
