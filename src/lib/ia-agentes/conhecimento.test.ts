@@ -172,6 +172,11 @@ describe('consultaDaUltimaMensagem', () => {
     ).toBe('qual o horário?')
     expect(consultaDaUltimaMensagem([{ role: 'user', content: '[document: extrato.pdf] segue' }])).toBe('segue')
     expect(consultaDaUltimaMensagem([{ role: 'user', content: 'texto [com colchete]' }])).toBe('texto [com colchete]')
+    // O colchete que o CLIENTE digitou fica: não é rótulo (Codex, #312).
+    expect(consultaDaUltimaMensagem([{ role: 'user', content: '[reembolso]' }])).toBe('[reembolso]')
+    expect(consultaDaUltimaMensagem([{ role: 'user', content: '[preço] quais as condições?' }])).toBe('[preço] quais as condições?')
+    expect(consultaDaUltimaMensagem([{ role: 'user', content: '[image] olha isso' }])).toBe('olha isso')
+    expect(consultaDaUltimaMensagem([{ role: 'user', content: '[document] segue' }])).toBe('segue')
   })
 
   it('áudio sem transcrição = consulta vazia (nada a buscar)', () => {

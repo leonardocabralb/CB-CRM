@@ -70,7 +70,7 @@ import { transcreverAudio } from '@/lib/transcricao/transcrever'
 
 import { lerOQueOAgenteVe } from './acesso'
 import type { IaAgente } from './agente'
-import { consultaDaUltimaMensagem } from './conhecimento'
+import { consultaDaUltimaMensagem, PRAZO_DO_EMBEDDING_MS } from './conhecimento'
 import { lerConversaDaConexao } from './contexto'
 import {
   agendarDisparo,
@@ -751,6 +751,15 @@ async function conduzir(
   if (!apiKey) return { status: 'falhou', erro: `sem chave do provedor ${agente.provedor}` }
 
   const opcoes = await agentesParaPassar(turno, agente)
+
+  // PRÉVIA do prazo ANTES de gastar a vaga da conta: a leitura do que o agente
+  // vê (F3) ainda pode levar até `PRAZO_DO_EMBEDDING_MS`, e o turno que a
+  // transcrição quase esgotou reagendaria DEPOIS de ter gasto a vaga — 30
+  // áudios assim secavam a cota da conta (Codex, #312).
+  if (PRAZO_DO_TURNO_MS - (Date.now() - inicio) - RESERVA_DO_ENVIO_MS - PRAZO_DO_EMBEDDING_MS < 3_000) {
+    if (andamento.transcreveu) return { status: 'reagendar' }
+    return { status: 'falhou', erro: 'o prazo do turno acabou antes de gerar' }
+  }
 
   // Teto por CONTA sobre a chave compartilhada: uma rajada de 200 clientes ao
   // mesmo tempo não pode estourar o limite do provedor. Passou → sem resposta

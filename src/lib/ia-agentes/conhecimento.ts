@@ -58,7 +58,11 @@ function lerLinhas(data: unknown): LinhaDaBusca[] {
  * por palavras (que exige TODAS as palavras) nunca acharia nada num áudio.
  */
 export function consultaDaUltimaMensagem(conversa: ChatMessage[]): string {
-  return latestUserMessage(conversa).replace(/^\[[^\]]*\]\s*/, '').trim()
+  // ⚠️ SÓ os rótulos que `contexto.ts` põe: "[reembolso]" digitado pelo
+  // cliente é a pergunta, não rótulo (Codex, #312).
+  return latestUserMessage(conversa)
+    .replace(/^\[(?:audio message[^\]]*|image|video|document(?::[^\]]*)?|sticker|location)\]\s*/, '')
+    .trim()
 }
 
 /**
