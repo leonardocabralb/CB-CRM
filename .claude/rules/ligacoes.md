@@ -34,6 +34,9 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
 - Só o `offer` diz quem ligou: no `accept` o `from`/`chatId` é o aparelho do
   escritório.
 - Chamada de GRUPO é ignorada. Número de Meta Cloud API não tem este aviso.
+- ⚠️⚠️ **A ligação FEITA pelo celular do escritório não gera aviso nenhum**
+  (medido ao vivo em 26/09/2026): o WhatsApp só avisa os aparelhos conectados
+  da chamada RECEBIDA. Não há como marcar a feita a partir do `CALL`.
 
 ## O desfecho
 
@@ -89,7 +92,8 @@ obrigações gerais de caminho de entrada estão em `.claude/rules/ingestao.md`.
   antes e o "há mensagem depois?" são lidos ANTES do insert, e a pergunta se
   REPETE logo depois da reabertura (colada no insert): uma resposta gravada no
   meio faria a bolha subir a conversa sobre cliente atendido (Codex, PR #304).
-  A faixa escreve `ligacao.inicio`.
+  Não é atômico: sobra a janela entre a 2ª pergunta e a escrita na conversa
+  (limite aceito, no plano). A faixa escreve `ligacao.inicio`.
 - Com a conversa aberta, a bolha "no passado" é acrescentada no FIM da lista
   em memória (o tempo real não reordena, de propósito): quem pergunta por
   ORDEM (`aberturasDeCanal`, `ultimoCanalDoCliente`) passa por `naOrdemDoFio`

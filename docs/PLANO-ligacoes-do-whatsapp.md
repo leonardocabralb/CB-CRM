@@ -186,6 +186,14 @@ tentou ligar, para alguém ver e retornar?"
   (a espera passa da graça do SIGTERM), nem a perdida sem bolha de um
   processo morto no meio. Recolher isso (varredura no cron, contagem no Meu
   dia) fica para depois, se o registro mostrar que acontece.
+- **A escolha "última ou história" não é atômica** (Codex, PR #304): a
+  pergunta "há mensagem depois?" roda antes do insert e de novo logo depois da
+  reabertura, mas uma resposta gravada entre a 2ª pergunta e a escrita na
+  conversa (milissegundos) deixa a perdida somar +1 de não lida e pôr
+  "📞 Ligação" na prévia por cima da resposta. O "em atraso" não é afetado (o
+  gatilho da 972 limpa com a resposta). Fechar pede gravar a bolha DENTRO de
+  uma função no banco, com a conversa travada — migration nova; é a mesma
+  janela que a 1010 aceitou por escrito.
 - **Resposta por TEXTO nos ~11 s entre o fim do toque e a decisão**: a bolha
   perdida, gravada depois, acende "em atraso" sobre cliente já respondido
   (a 972 decide pela ordem de inserção). Janela pequena, aceita.
@@ -229,6 +237,15 @@ tentou ligar, para alguém ver e retornar?"
   mostrava a ordem trocada, com o "em atraso" aceso sobre um cliente atendido.
   Corrigido no PR seguinte: a bolha entra na hora real e, se não for a
   última, como história.
+  Segunda rodada, com captura AO VIVO do log da Evolution: o "desligar em
+  5 s" chegou (offer → sinalização → terminate) e foi registrado; ele veio com
+  o LID COM o `:aparelho` (`…:4@lid`) — o caso que a revisão apontou, já
+  resolvido por `lidSemAparelho`. ⚠️⚠️ **A ligação FEITA pelo escritório (do
+  celular da conexão para o cliente) não gera NADA na Evolution**: nenhum
+  aviso `CALL`, nenhuma mensagem — o WhatsApp não avisa os aparelhos
+  conectados de uma chamada feita pelo celular principal. Marcar no fio as
+  ligações que o escritório faz exige outro caminho (registro manual na
+  conversa, ou ligar pelo próprio CRM); decisão do operador pendente.
 - **Fase 3** (26/09/2026): 1044 aplicada (histórico `20260926112303`) e
   conferida no catálogo. Ponta a ponta no preview, com avisos sintéticos no
   webhook LOCAL da Evolution e só o lead de teste: perdida com o telefone
